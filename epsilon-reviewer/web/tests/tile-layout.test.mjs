@@ -593,6 +593,103 @@ function polygonArea(points) {
   );
 }
 
+test("rivers carry the riichi marker past called tiles without changing replay data", () => {
+  const discard = Object.freeze({ tile: "3s", riichi: false, called: false });
+  const riichi = Object.freeze({ tile: "4s", riichi: true, called: false });
+  const calledRiichi = Object.freeze({ ...riichi, called: true });
+  const calledDiscard = Object.freeze({ ...discard, called: true });
+  const cases = [
+    { name: "ordinary river", river: [discard, discard], sideways: -1 },
+    { name: "declaration", river: [discard, riichi, discard], sideways: 1 },
+    {
+      name: "called declaration",
+      river: [discard, calledRiichi],
+      sideways: -1,
+    },
+    {
+      name: "next discard",
+      river: [discard, calledRiichi, discard, discard],
+      sideways: 1,
+    },
+    {
+      name: "successive calls",
+      river: [
+        calledDiscard,
+        discard,
+        calledRiichi,
+        calledDiscard,
+        discard,
+        discard,
+      ],
+      sideways: 1,
+    },
+    {
+      name: "end of row",
+      river: [...Array(5).fill(discard), calledRiichi, discard, discard],
+      sideways: 5,
+    },
+    {
+      name: "start of next row",
+      river: [...Array(6).fill(discard), calledRiichi, discard, discard],
+      sideways: 6,
+    },
+    { name: "rewind before riichi", river: [discard, discard], sideways: -1 },
+  ];
+  const fixture = makeTileProjectionFixture();
+  try {
+    for (const mode of ["desktop", "landscape", "portrait"]) {
+      const dimensions = tableDimensions(mode);
+      for (const scenario of cases) {
+        const river = Object.freeze(scenario.river);
+        const snapshot = makeProjectionSnapshot([[], [], [], []], -1);
+        for (const player of snapshot.players) player.river = river;
+        fixture.layer.build({
+          snapshot,
+          event: { eventType: "dahai", actor: 0 },
+          viewSeat: 0,
+          reveal: true,
+          layout: mode,
+          labels: { draw: "Draw" },
+          animateDraw: false,
+        });
+        for (const seat of SEATS) {
+          const tiles = fixture.table.pieces.children.filter(
+            (group) =>
+              group.isGroup &&
+              group.userData.kind === "river" &&
+              group.userData.seat === seat,
+          );
+          const context = `${mode}: ${seat}: ${scenario.name}`;
+          const baseAngle = local(seat, 0, 0).angle;
+          assert.equal(
+            tiles.length,
+            river.filter((tile) => !tile.called).length,
+            context,
+          );
+          for (const [index, tile] of tiles.entries()) {
+            const sideways = index === scenario.sideways;
+            assert.ok(
+              Math.abs(
+                tile.rotation.z - baseAngle - (sideways ? Math.PI / 2 : 0),
+              ) < EPSILON,
+              `${context}: discard ${index} has the wrong orientation`,
+            );
+            if (index % 6 === 0) continue;
+            const previousWidth = index - 1 === scenario.sideways ? 4 / 3 : 1;
+            const width = sideways ? 4 / 3 : 1;
+            assert.ok(
+              tile.position.distanceTo(tiles[index - 1].position) >=
+                (dimensions.riverWidth * (previousWidth + width)) / 2 - EPSILON,
+              `${context}: discard ${index} overlaps the previous tile`,
+            );
+          }
+        }
+      }
+    }
+  } finally {
+    fixture.dispose();
+  }
+});
 test("initial tile positions along every seat stay centered across record widths, viewpoint, draws and reveal settings", () => {
   const wideMelds = Array.from({ length: 4 }, () => makeMeld("DAIMINKAN", 3));
   const rowWidths = [

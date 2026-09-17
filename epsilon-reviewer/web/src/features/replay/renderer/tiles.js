@@ -196,12 +196,17 @@ export function createTileLayer(
       }
 
       let riverIndex = 0,
-        sidewaysOffset = 0;
+        sidewaysOffset = 0,
+        pendingRiichiMarker = false;
       for (const discarded of player.river) {
+        // 宣言牌が鳴かれた場合は、次に河へ残る牌を横向きにする。
+        pendingRiichiMarker ||= discarded.riichi;
         if (discarded.called) continue;
+        const sideways = pendingRiichiMarker;
+        pendingRiichiMarker = false;
         const i = riverIndex++;
         if (i % 6 === 0) sidewaysOffset = 0;
-        const extra = discarded.riichi ? dimensions.riverWidth / 3 : 0;
+        const extra = sideways ? dimensions.riverWidth / 3 : 0;
         const position = local(
           seat,
           dimensions.riverStart +
@@ -214,7 +219,7 @@ export function createTileLayer(
         const group = tile({
           value: discarded.tile,
           ...position,
-          angle: position.angle + (discarded.riichi ? Math.PI / 2 : 0),
+          angle: position.angle + (sideways ? Math.PI / 2 : 0),
           river: true,
           kind: "river",
           tsumogiri: discarded.tsumogiri,

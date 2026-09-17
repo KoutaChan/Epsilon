@@ -1,0 +1,81 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Compiled files
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.exe
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.iml
+.classpath
+.project
+.settings/
+
+# DeepLearning4J / DL4J
+data/models/
+*.nd4j
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+
+# Build artifacts
+dist/
+build/
+
+# Large language models
+.serena
+.mcp.json
+.claude
+CLAUDE.md
+
+# Neural network models
+models/
+*.pb
+*.h5
+*.pt
+
+# Kiro automation helpers (local only, never commit)
+.askpass.bat
+.remote-launch-phase1.sh
+
+# Per-series local configuration and generated training artifacts
+/config/
+/checkpoints/
+
+# local settings
+/.codex/
+/.commandcode/
+/docs/
+/tools/
+AGENTS.md
+/MEMO.md
+/epsilon-reviewer/PLAN.md
+/epsilon-reviewer/VALIDATION.md

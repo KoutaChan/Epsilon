@@ -1,0 +1,1197 @@
+/* 卓の座標はrendererが所有し、CSSは画像と操作UIを各端末の寸法で表示する。 */
+#epsilon-review-material {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #0b203e;
+  color-scheme: dark;
+  font-family: "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  color: #edf4f9;
+  --em-primary: #a3dff1;
+  --em-secondary: #c6d9e6;
+  --em-container: #172d41;
+  --em-container-high: #29445c;
+  --em-text: #edf4f9;
+  --em-outline: #466076;
+  --em-on-container: #e1eff8;
+  --em-backing: #72c4df;
+}
+#epsilon-review-material * {
+  box-sizing: border-box;
+}
+#epsilon-review-material :is(button, input) {
+  font: inherit;
+}
+#epsilon-review-material button {
+  color: inherit;
+  cursor: pointer;
+}
+#epsilon-review-material button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+#epsilon-review-material :is(button, summary, input):focus-visible {
+  outline: 3px solid var(--em-primary);
+  outline-offset: 2px;
+}
+#epsilon-review-material
+  :is(.em-device, .em-app, .em-table-surface, .em-board) {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+#epsilon-review-material :is(.em-app, .em-board) {
+  position: relative;
+  min-width: 0;
+  isolation: isolate;
+}
+#epsilon-review-material .em-app {
+  overflow: clip;
+}
+#epsilon-review-material .em-board {
+  overflow: hidden;
+}
+#epsilon-review-material :is(.em-physical-canvas, .em-scene-labels) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+#epsilon-review-material .em-physical-canvas {
+  display: block;
+  z-index: 0;
+}
+#epsilon-review-material .em-scene-labels {
+  z-index: 2;
+}
+/* 牌のDOMはアクセシビリティと描画入力として保持する。2Dの卓は重ねない。 */
+#epsilon-review-material
+  :is(.em-hidden, .em-cluster, .em-hand, .em-meld-source, .em-sr-only) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  pointer-events: none;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-world-draw {
+  position: absolute;
+  transform: translate(-50%, 0);
+  padding: 1px 5px;
+  background: #b8e9f6;
+  color: #0c344b;
+  box-shadow: 0 1px 4px #0007;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+/* SVGの図柄には照明や色フィルターをかけない。 */
+#epsilon-review-material .em-face {
+  display: block;
+  position: relative;
+  aspect-ratio: 3/4;
+  min-width: 0;
+  flex-shrink: 0;
+  border-radius: 12% / 9%;
+  background: linear-gradient(110deg, #fffef3 2%, #ede9da 64%, #ddd6c1);
+  box-shadow:
+    inset 1px 1px 1px #fffef9,
+    inset -1px -1px 2px #b7aa8e88,
+    1px 2px 0 #d4c8a8,
+    1px 4px 0 var(--em-backing),
+    2px 6px 3px #03150da0;
+}
+#epsilon-review-material .em-face img {
+  position: absolute;
+  inset: 8%;
+  display: block;
+  object-fit: contain;
+  width: 84%;
+  height: 84%;
+  pointer-events: none;
+  user-select: none;
+}
+#epsilon-review-material .em-face.is-back {
+  background: var(--em-backing);
+}
+
+/* ドラ表示牌・供託・本場 */
+#epsilon-review-material .em-dora-hud {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  left: var(--em-hud-inset, 16px);
+  top: var(--em-hud-top, 16px);
+  width: var(--em-dora-width, 166px);
+  color: #dfeaf0;
+}
+#epsilon-review-material .em-dora {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 5px 5px 9px;
+  border-radius: 3px;
+  background: #081727a3;
+  box-shadow: 0 2px 4px #0003;
+}
+#epsilon-review-material .em-dora .em-face {
+  width: var(--em-dora-tile, 28px);
+  border-radius: 3px;
+  background: linear-gradient(115deg, #fffffa, #f4f0e4 70%, #dfd8c6);
+  box-shadow:
+    inset 1px 1px 0 #fffffff0,
+    inset -1px -1px 1px #aba99488,
+    0 2px 0 #dfd9c9,
+    0 5px 0 var(--em-backing),
+    0 6px 0 #1b5367,
+    0 8px 4px #000a;
+}
+#epsilon-review-material .em-dora .em-face img {
+  inset: 7%;
+  width: 86%;
+  height: 86%;
+  z-index: 2;
+}
+#epsilon-review-material .em-dora .em-face::before {
+  content: "";
+  position: absolute;
+  inset: 1px 1px auto;
+  height: 18%;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(#ffffff35, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+#epsilon-review-material .em-dora .em-face.is-back {
+  background:
+    linear-gradient(125deg, #d5f4ff22, transparent 65%, #16435f18),
+    var(--em-backing);
+  box-shadow:
+    inset 1px 1px 0 #d2f2fbac,
+    inset -1px -1px 0 #327b9890,
+    0 2px 0 #f2f1e9,
+    0 5px 0 #c6cfc9,
+    0 6px 0 #8599a1,
+    0 8px 4px #000a;
+}
+#epsilon-review-material .em-dora-count {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  padding: 5px 4px 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: #b6c9d5;
+}
+#epsilon-review-material .em-dora-stat {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-dora-stat strong {
+  font-size: 13px;
+  font-weight: 500;
+  color: #f3f5ee;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px #000;
+}
+#epsilon-review-material .em-point-stick {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 17px;
+  height: 5px;
+  border-radius: 1px;
+  background: #eae8de;
+  transform: rotate(-12deg);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 1px 0 #9fa7a3,
+    0 2px 2px #0009;
+}
+#epsilon-review-material .em-point-stick::before {
+  content: "";
+  position: absolute;
+  inset: 1px 4px;
+  background:
+    radial-gradient(circle at 15% 25%, #26333d 0 0.7px, transparent 0.9px),
+    radial-gradient(circle at 50% 25%, #26333d 0 0.7px, transparent 0.9px),
+    radial-gradient(circle at 85% 25%, #26333d 0 0.7px, transparent 0.9px),
+    radial-gradient(circle at 15% 80%, #26333d 0 0.7px, transparent 0.9px),
+    radial-gradient(circle at 50% 80%, #26333d 0 0.7px, transparent 0.9px),
+    radial-gradient(circle at 85% 80%, #26333d 0 0.7px, transparent 0.9px);
+}
+#epsilon-review-material .em-point-stick.is-riichi::before {
+  inset: 1px 6px;
+  background: #b7483e;
+  border-radius: 50%;
+}
+
+/* 再生操作と選択メニュー */
+#epsilon-review-material .em-playback {
+  position: absolute;
+  z-index: 8;
+  top: var(--em-playback-top);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border-radius: 6px;
+  background: #0b2033eb;
+  box-shadow:
+    inset 0 0 0 1px #8ab2c52e,
+    0 2px 4px #0003;
+}
+#epsilon-review-material :is(.em-transport, .em-playback-meta) {
+  display: flex;
+  align-items: center;
+}
+#epsilon-review-material :is(.em-icon, .em-info > summary) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: #d9ebf5;
+  background: transparent;
+}
+#epsilon-review-material :is(.em-icon, .em-info > summary) svg {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+#epsilon-review-material
+  :is(.em-icon:hover:not(:disabled), .em-info[open] > summary) {
+  background: #d6eeff18;
+}
+#epsilon-review-material .em-icon.em-play {
+  background: #30556e;
+  box-shadow: inset 0 0 0 1px #87b6d244;
+  color: #f2f9fd;
+}
+#epsilon-review-material .em-action-label {
+  display: none;
+  white-space: nowrap;
+}
+#epsilon-review-material :is(.em-round-picker, .em-seat-picker, .em-info) {
+  position: relative;
+  flex: none;
+  margin: 0;
+}
+#epsilon-review-material summary {
+  list-style: none;
+  cursor: pointer;
+}
+#epsilon-review-material summary::-webkit-details-marker {
+  display: none;
+}
+#epsilon-review-material :is(.em-round-trigger, .em-seat-trigger) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 5px;
+  color: #d9ebf5;
+  background: #153149;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-round-trigger svg {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+#epsilon-review-material .em-seat-trigger svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+#epsilon-review-material :is(.em-round-trigger:hover, .em-seat-trigger:hover),
+#epsilon-review-material
+  :is(.em-round-picker, .em-seat-picker)[open]
+  > summary {
+  background: #294960;
+}
+#epsilon-review-material :is(.em-round-menu, .em-seat-menu) {
+  position: absolute;
+  z-index: 12;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 220px;
+  max-height: min(55dvh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid #547187;
+  border-radius: 7px;
+  background: #13283b;
+  box-shadow: 0 8px 28px #0007;
+}
+#epsilon-review-material :is(.em-round-menu, .em-seat-menu) button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #e9f2f7;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+#epsilon-review-material :is(.em-round-menu, .em-seat-menu) button:hover {
+  background: #ffffff12;
+}
+#epsilon-review-material
+  :is(.em-round-menu, .em-seat-menu)
+  button[aria-pressed="true"] {
+  background: #365770;
+}
+#epsilon-review-material .em-seat-option-wind {
+  color: #b3c9d9;
+  flex: none;
+}
+#epsilon-review-material .em-seat-option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#epsilon-review-material :is(.em-round-menu, .em-seat-menu) svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-left: auto;
+}
+#epsilon-review-material
+  button:not([aria-pressed="true"])
+  :is(.em-round-option-check, .em-seat-option-check) {
+  visibility: hidden;
+}
+#epsilon-review-material .em-info-content {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: 52px;
+  width: 244px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(var(--em-playback-top) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  background: var(--em-container);
+  border-radius: 6px;
+  box-shadow: 0 5px 20px #0005;
+}
+#epsilon-review-material .em-info-content p {
+  margin: 8px 0 12px;
+  font-size: 12px;
+  line-height: 18px;
+}
+#epsilon-review-material .em-info-content a {
+  font-size: 12px;
+  color: var(--em-primary);
+}
+#epsilon-review-material .em-decision-stats {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--em-outline);
+  font-size: 14px;
+  line-height: 1.4;
+}
+#epsilon-review-material .em-stats-player {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-stats-scope {
+  display: block;
+  margin-top: 4px;
+  color: var(--em-secondary);
+  font-size: 0.85em;
+}
+#epsilon-review-material .em-decision-stats dl {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+#epsilon-review-material .em-decision-stats dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+}
+#epsilon-review-material .em-decision-stats dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-position {
+  margin-left: 10px;
+  font-size: 11px;
+  color: var(--em-secondary);
+}
+#epsilon-review-material .em-seek-label {
+  display: block;
+  font-size: 12px;
+  margin-top: 8px;
+}
+#epsilon-review-material .em-timeline {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  accent-color: var(--em-primary);
+}
+#epsilon-review-material .em-reveal-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  margin: -4px 0 12px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--em-outline);
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+}
+#epsilon-review-material .em-reveal-hands {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  margin: 0;
+  accent-color: var(--em-primary);
+  cursor: pointer;
+}
+#epsilon-review-material .em-review-actions {
+  display: grid;
+  gap: 8px;
+}
+#epsilon-review-material .review-home-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #29465d;
+  color: #edf6fb;
+  font-size: 14px;
+}
+#epsilon-review-material .em-info-content .tile-credit {
+  font-size: 10px;
+  color: #9cafbf;
+  margin-bottom: 0;
+}
+
+/* プレイヤー名の位置と衝突回避はrendererが計算する。 */
+#epsilon-review-material .em-player-label {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 20px;
+  color: #e3edf5;
+  text-shadow:
+    0 1px 3px #061221,
+    0 0 5px #061221;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-player-wind {
+  flex: none;
+  color: #9db9cc;
+}
+#epsilon-review-material .em-player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+#epsilon-review-material .em-player-label[data-active="true"] .em-player-wind {
+  color: #b4edfc;
+}
+#epsilon-review-material:not([data-ready]) .em-player-label {
+  visibility: hidden;
+}
+
+/* AI候補は横画面の左側、縦画面は卓の下へ配置する。 */
+#epsilon-review-material .em-action-candidates {
+  position: absolute;
+  z-index: 3;
+  top: var(--em-action-candidates-top, 150px);
+  left: 12px;
+  width: 120px;
+  color: #ecf3f9;
+  pointer-events: none;
+}
+#epsilon-review-material .em-action-candidates[hidden] {
+  display: none;
+}
+#epsilon-review-material .em-action-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #b8cddd;
+}
+#epsilon-review-material .em-action-heading small {
+  font-size: 11px;
+  color: #92a9ba;
+}
+#epsilon-review-material .em-action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 5px;
+}
+#epsilon-review-material .em-action-row {
+  min-height: 40px;
+  padding: 4px 7px;
+  background: #10293bea;
+  border-left: 2px solid #7898aa;
+  border-radius: 2px;
+}
+#epsilon-review-material .em-action-row.is-top {
+  border-left-color: #b9ebce;
+  background: #17362fea;
+}
+#epsilon-review-material .em-choice-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 17px;
+}
+#epsilon-review-material .em-choice-name {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 500;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+#epsilon-review-material .em-choice-rate {
+  font-size: 13px;
+  line-height: 17px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* 行動名の幅を確保し、牌と選択率をその下の同じ行へ配置する。 */
+#epsilon-review-material .em-action-row .em-review-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 4px;
+}
+#epsilon-review-material .em-action-row .em-choice-line {
+  display: contents;
+}
+#epsilon-review-material .em-action-row .em-choice-name {
+  grid-column: 1 / -1;
+}
+#epsilon-review-material .em-action-row .em-choice-rate {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+}
+#epsilon-review-material .em-action-row .em-choice-tiles {
+  grid-column: 1;
+  grid-row: 2;
+  flex-wrap: wrap;
+}
+#epsilon-review-material .em-action-row .em-choice-tail {
+  margin-left: 0;
+  white-space: normal;
+}
+#epsilon-review-material .em-choice-rate small {
+  margin-left: 1px;
+  font-size: 11px;
+  color: #a9bfd0;
+}
+#epsilon-review-material .em-choice-tiles {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-height: 20px;
+  margin-top: 2px;
+}
+#epsilon-review-material .em-choice-tiles .em-face {
+  width: 12px;
+  height: 16px;
+  flex: none;
+  border-radius: 2px;
+  box-shadow:
+    0 1px 0 #c9cec9,
+    0 2px 0 var(--em-backing),
+    0 3px 2px #0005;
+}
+#epsilon-review-material .em-choice-tiles .em-face img {
+  inset: 4%;
+  width: 92%;
+  height: 92%;
+}
+#epsilon-review-material .em-choice-tail {
+  font-size: 11px;
+  line-height: 16px;
+  margin-left: 4px;
+  color: #b2c7d5;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-review-detail {
+  display: none;
+}
+#epsilon-review-material .em-review-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+#epsilon-review-material .em-review-heading h2 {
+  flex: none;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  margin: 0;
+}
+#epsilon-review-material .em-review-heading > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #9dafbf;
+  line-height: 16px;
+}
+#epsilon-review-material .em-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+#epsilon-review-material .em-review-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 56px;
+}
+#epsilon-review-material .em-review-rank {
+  font-size: 11px;
+  line-height: 16px;
+  color: #7891a7;
+  font-variant-numeric: tabular-nums;
+}
+#epsilon-review-material .em-review-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+#epsilon-review-material .em-review-value {
+  font-size: 19px;
+  line-height: 24px;
+  font-weight: 500;
+  color: #eff8fc;
+  font-variant-numeric: tabular-nums;
+}
+#epsilon-review-material .em-review-value small {
+  font-size: 11px;
+  font-weight: 400;
+  color: #9dafbf;
+  margin-left: 3px;
+}
+#epsilon-review-material .em-review-action .em-choice-name {
+  font-size: 13px;
+  line-height: 18px;
+}
+#epsilon-review-material .em-review-action .em-choice-tiles {
+  margin-top: 3px;
+  min-height: 25px;
+}
+#epsilon-review-material .em-review-action .em-choice-tiles .em-face {
+  width: 17px;
+  height: 22.667px;
+}
+#epsilon-review-material .em-review-action .em-choice-tail {
+  font-size: 11px;
+  line-height: 18px;
+}
+#epsilon-review-material .em-review-action .em-review-copy {
+  gap: 0;
+}
+#epsilon-review-material .em-recent-events {
+  padding-top: 8px;
+}
+#epsilon-review-material .em-event-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px 0;
+  border-bottom: 1px solid #45607833;
+}
+#epsilon-review-material .em-event-player {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #9dafbf;
+  font-size: 11px;
+  line-height: 18px;
+}
+#epsilon-review-material .em-event-row .em-choice-tiles {
+  margin-top: 0;
+}
+#epsilon-review-material .render-error {
+  position: absolute;
+  inset: auto 16px 16px;
+  z-index: 30;
+  background: #21384cf5;
+  color: #fff;
+  box-shadow: 0 3px 22px #0008;
+  border: 1px solid #607b91;
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+#epsilon-review-material .render-error p {
+  width: 100%;
+  text-align: center;
+  line-height: 1.7;
+}
+#epsilon-review-material .render-error button {
+  min-height: 44px;
+  padding: 8px 16px;
+  background: #45697f;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* PC: 卓と前景手牌の間に、一列の操作を置く。 */
+#epsilon-review-material .em-device[data-layout="desktop"] .em-playback {
+  height: calc(62px * var(--em-pc-ui-scale));
+  border-radius: 7px;
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  :is(.em-icon, .em-info > summary) {
+  width: calc(62px * var(--em-pc-ui-scale));
+  min-width: calc(62px * var(--em-pc-ui-scale));
+  height: calc(62px * var(--em-pc-ui-scale));
+  gap: calc(8px * var(--em-pc-ui-scale));
+  border-radius: 6px;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-icon[data-step] {
+  width: calc(128px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-action-label {
+  display: inline;
+  font-size: calc(22px * var(--em-pc-ui-scale));
+  line-height: 1.2;
+  font-weight: 500;
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  :is(.em-icon, .em-info > summary)
+  svg {
+  width: calc(28px * var(--em-pc-ui-scale));
+  height: calc(28px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  :is(.em-round-trigger, .em-seat-trigger) {
+  height: calc(62px * var(--em-pc-ui-scale));
+  font-size: calc(22px * var(--em-pc-ui-scale));
+  gap: calc(8px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-round-trigger {
+  width: calc(126px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-seat-trigger {
+  width: calc(108px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  :is(.em-round-trigger, .em-seat-trigger, .em-round-menu, .em-seat-menu)
+  svg {
+  width: calc(18px * var(--em-pc-ui-scale));
+  height: calc(18px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-round-menu {
+  width: calc(260px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-seat-menu {
+  width: calc(280px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  :is(.em-round-menu, .em-seat-menu) {
+  padding: calc(6px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  :is(.em-round-menu, .em-seat-menu)
+  button {
+  min-height: calc(62px * var(--em-pc-ui-scale));
+  padding: calc(8px * var(--em-pc-ui-scale)) calc(12px * var(--em-pc-ui-scale));
+  gap: calc(12px * var(--em-pc-ui-scale));
+  font-size: calc(20px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-info-content {
+  width: calc(340px * var(--em-pc-ui-scale));
+  bottom: calc(70px * var(--em-pc-ui-scale));
+  padding: calc(16px * var(--em-pc-ui-scale));
+  font-size: calc(20px * var(--em-pc-ui-scale));
+  line-height: 1.4;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-decision-stats {
+  font-size: inherit;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-reveal-option {
+  min-height: calc(62px * var(--em-pc-ui-scale));
+  margin-bottom: calc(12px * var(--em-pc-ui-scale));
+  font-size: calc(20px * var(--em-pc-ui-scale));
+  line-height: 1.4;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-reveal-hands {
+  width: calc(28px * var(--em-pc-ui-scale));
+  height: calc(28px * var(--em-pc-ui-scale));
+  min-width: calc(28px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  :is(.em-info-content p, .em-info-content a, .em-position, .em-seek-label) {
+  font-size: calc(16px * var(--em-pc-ui-scale));
+  line-height: 1.5;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-timeline {
+  height: calc(62px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-dora-count {
+  padding-top: 8px;
+  font-size: calc(16px * var(--em-pc-ui-scale));
+  line-height: calc(24px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-dora-stat {
+  gap: calc(5px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  .em-dora-stat
+  strong {
+  font-size: calc(20px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-point-stick {
+  width: calc(24px * var(--em-pc-ui-scale));
+  height: calc(6px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-world-draw {
+  font-size: 14px;
+  line-height: 20px;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-player-label {
+  font-size: calc(18px * var(--em-pc-ui-scale));
+  line-height: 1.2;
+  gap: calc(7px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  .em-action-candidates {
+  left: calc(20px * var(--em-pc-ui-scale));
+  top: var(--em-action-candidates-top, 35%);
+  width: calc(160px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-action-heading {
+  font-size: calc(18px * var(--em-pc-ui-scale));
+  line-height: 1.4;
+  margin-bottom: calc(8px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  .em-action-heading
+  small {
+  font-size: calc(16px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-action-list {
+  gap: calc(7px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-action-row {
+  min-height: calc(70px * var(--em-pc-ui-scale));
+  padding: calc(7px * var(--em-pc-ui-scale)) calc(10px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-choice-line {
+  min-height: calc(26px * var(--em-pc-ui-scale));
+  align-items: flex-start;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-choice-name {
+  font-size: calc(16px * var(--em-pc-ui-scale));
+  line-height: 1.3;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-choice-rate {
+  font-size: calc(22px * var(--em-pc-ui-scale));
+  line-height: 1.3;
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  :is(.em-choice-rate small, .em-choice-tail) {
+  font-size: calc(16px * var(--em-pc-ui-scale));
+  line-height: 1.3;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-choice-tiles {
+  min-height: calc(28px * var(--em-pc-ui-scale));
+  margin-top: calc(3px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  .em-choice-tiles
+  .em-face {
+  width: calc(19px * var(--em-pc-ui-scale));
+  height: calc(25.333px * var(--em-pc-ui-scale));
+}
+
+/* スマホの操作。横は一段、縦は右上の二段へ配置する。 */
+#epsilon-review-material .em-device:not([data-layout="desktop"]) .em-playback {
+  left: auto;
+  transform: none;
+  display: grid;
+  grid-template-columns: repeat(6, 44px);
+  grid-template-rows: 44px;
+  width: 264px;
+  height: 44px;
+  background: transparent;
+  box-shadow: none;
+  isolation: isolate;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-playback::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: #0b2033eb;
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 1px #8ab2c52e,
+    0 2px 4px #0003;
+}
+#epsilon-review-material .em-device:not([data-layout="desktop"]) .em-transport {
+  display: contents;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-round-picker {
+  grid-area: 1 / 1;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-seat-picker {
+  grid-area: 1 / 2;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-icon[data-step="-1"] {
+  grid-area: 1 / 3;
+}
+#epsilon-review-material .em-device:not([data-layout="desktop"]) .em-play {
+  grid-area: 1 / 4;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-icon[data-step="1"] {
+  grid-area: 1 / 5;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-playback-meta {
+  grid-area: 1 / 6;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-dora
+  .em-face {
+  border-radius: 2px;
+  box-shadow:
+    inset 1px 1px 0 #fffffff0,
+    inset -1px -1px 1px #aba99477,
+    0 1px 0 #dfd9c9,
+    0 3px 0 var(--em-backing),
+    0 4px 0 #1b5367,
+    0 5px 3px #0009;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-dora
+  .is-back {
+  box-shadow:
+    inset 1px 1px 0 #d2f2fbaa,
+    inset -1px -1px 0 #327b9890,
+    0 1px 0 #f2f1e9,
+    0 3px 0 #c6cfc9,
+    0 4px 0 #8599a1,
+    0 5px 3px #0009;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  :is(.em-round-menu, .em-seat-menu) {
+  left: auto;
+  right: 0;
+}
+/* 横画面は操作を一段にまとめ、その下を手牌の全幅に使う。 */
+#epsilon-review-material .em-device[data-layout="landscape"] .em-playback {
+  right: 8px;
+}
+#epsilon-review-material
+  .em-device[data-layout="landscape"]
+  .em-action-candidates {
+  left: 8px;
+  width: 140px;
+}
+#epsilon-review-material
+  .em-device[data-layout="landscape"]
+  .em-action-heading {
+  margin-bottom: 4px;
+}
+#epsilon-review-material .em-device[data-layout="landscape"] .em-action-list {
+  gap: 4px;
+}
+#epsilon-review-material .em-device[data-layout="landscape"] .em-action-row {
+  min-height: 38px;
+  padding: 2px 6px;
+}
+#epsilon-review-material .em-device[data-layout="landscape"] .em-choice-name {
+  font-size: 11px;
+  line-height: 15px;
+}
+#epsilon-review-material .em-device[data-layout="landscape"] .em-choice-tiles {
+  min-height: 18px;
+  margin-top: 0;
+}
+#epsilon-review-material
+  .em-device[data-layout="landscape"]
+  .em-player-label[data-player-label="south"] {
+  line-height: 18px;
+}
+#epsilon-review-material .em-device[data-layout="portrait"] .em-playback {
+  right: 10px;
+  top: 16px;
+  grid-template-columns: repeat(4, 44px);
+  grid-template-rows: 44px 44px;
+  width: 176px;
+  height: 88px;
+}
+#epsilon-review-material
+  .em-device[data-layout="portrait"]
+  .em-playback::before {
+  inset: 0 0 0 88px;
+}
+#epsilon-review-material
+  .em-device[data-layout="portrait"]
+  .em-icon[data-step="1"] {
+  grid-area: 2 / 3;
+}
+#epsilon-review-material .em-device[data-layout="portrait"] .em-playback-meta {
+  grid-area: 2 / 4;
+}
+#epsilon-review-material
+  .em-device[data-layout="portrait"]
+  :is(.em-round-menu, .em-seat-menu, .em-info-content) {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+#epsilon-review-material .em-device[data-layout="portrait"] .em-round-menu {
+  right: -132px;
+  width: 244px;
+}
+#epsilon-review-material .em-device[data-layout="portrait"] .em-info-content {
+  max-width: calc(100vw - 48px);
+  max-height: calc(100dvh - 132px);
+}
+#epsilon-review-material .em-device[data-layout="portrait"] .em-dora-count {
+  font-size: 11px;
+  line-height: 15px;
+}
+#epsilon-review-material .em-device[data-layout="portrait"] .em-point-stick {
+  width: 13px;
+}
+#epsilon-review-material
+  .em-device[data-layout="portrait"]
+  .em-point-stick.is-riichi::before {
+  inset: 1px 5px;
+}
+#epsilon-review-material
+  .em-device[data-layout="portrait"]
+  :is(
+    .em-player-label[data-player-label="west"],
+    .em-player-label[data-player-label="east"]
+  ) {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  justify-content: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 12px;
+}
+#epsilon-review-material
+  .em-device[data-layout="portrait"]
+  .em-action-candidates {
+  display: none;
+}
+#epsilon-review-material .em-device[data-layout="portrait"] .em-review-detail {
+  display: block;
+  position: absolute;
+  top: var(--em-review-top, 550px);
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  overflow-y: auto;
+  padding: 17px 20px 20px;
+  background: #0c192a;
+  border-top: 1px solid #5f819c3d;
+  color: #edf3f8;
+}

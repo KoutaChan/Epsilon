@@ -1,0 +1,15 @@
+{
+  "models": [
+    {
+      "modelId": "epsilon-nano",
+      "revision": "replace-with-immutable-checkpoint-revision",
+      "displayName": "Epsilon Nano",
+      "version": "replace-with-display-version",
+      "series": "epsilon-nano",
+      "checkpoint": "./checkpoints/replace-with-checkpoint-directory",
+      "options": {
+        "device": "cpu"
+      }
+    }
+  ]
+}

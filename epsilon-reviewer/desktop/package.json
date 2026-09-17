@@ -1,0 +1,57 @@
+{
+  "name": "@epsilon-reviewer/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Epsilon AI レビュアー",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "npm run build && electron .",
+    "test": "npm run build && node --test test/*.test.cjs",
+    "pack": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "44.3.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "~5.9.3"
+  },
+  "build": {
+    "appId": "com.epsilon.reviewer",
+    "productName": "Epsilon AI レビュアー",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web"
+      },
+      {
+        "from": "../assets/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "../language",
+        "to": "language"
+      }
+    ],
+    "win": {
+      "target": "dir"
+    },
+    "mac": {
+      "target": "dir",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": "dir",
+      "category": "Utility"
+    },
+    "icon": "../assets/icon.png"
+  }
+}

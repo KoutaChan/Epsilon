@@ -1,0 +1,631 @@
+# Epsilon-Pico の同梱既定設定。各項目の値はこのファイルを正本としてJARに同梱する。
+# 系列CLIは同梱値へ config/epsilon-pico.toml または選択した設定ファイルを重ねる。
+# ファイル選択の優先順位は、先頭の --settings、-Depsilon.settings.path、EPSILON_SETTINGS、上記既定パス。
+# 各 -Depsilon.* 値を最後に重ね、起動時に不変の設定として読み込む。省略した項目は同梱値を使う。
+# 系列間epsilon-arenaは参加モデルごとのsettingsを明示し、共通CLIの自動設定読込とは区別する。
+# 以下の行数は特記がなければ判断局面数。対局数・牌山seed数・sample行数は別の単位。
+# 0・空文字列の特別な意味は各項目に記す。正の値が必要な件数や学習率に0は指定できない。
+
+# 系列CLIで使うdeviceの割当て。指定は "cpu"、"gpu:0"、"gpu:0,gpu:1" など。
+# 空文字列・"auto"・"all" は認識された全GPUを選び、GPUが0台ならCPUを使う。
+# GPUを明示した指定では、使用不能なGPUをCPUへ置き換えない。
+[epsilon.devices]
+
+# trueなら明示したGPU番号が認識された範囲内か事前確認する。falseでも指定書式は検証される。
+validateIndices = false
+
+# Decision学習のdevice。複数指定の先頭に正準モデルを置き、残りへ学習を分配する。
+learner = ""
+
+# Decision推論のdevice。学習用推論replicaと系列CLIの対戦で使用する。arenaのdevice指定はこれに優先する。
+inference = ""
+
+# GRPの学習・教師推論に使うdevice。"cpu" はGPUのDecision推論と資源を分ける指定。
+grp = "cpu"
+
+# 天鳳互換JSONの表示先。モデル・学習・対局ルールには影響しない。
+[epsilon.tenhou]
+
+# URL encodeしたJSONを末尾へ連結するviewerのURL接頭辞。fragmentの "#json=" まで含める。
+viewerUrlPrefix = "https://tenhou.net/6/#json="
+
+# play-riichiで使う接続・実行設定。
+[epsilon.riichi]
+
+# RiichiLabの接続token。空なら未設定であり、接続にはローカル設定での指定が必要。tokenを含む設定はcommitしない。
+token = ""
+
+# 接続対局で読み込む、この系列のcheckpointディレクトリ。相対パスは起動ディレクトリ基準。
+checkpointDir = "checkpoints/epsilon-pico"
+
+# 完了する対局数の上限。0なら停止されるまで次の対局へ参加する。
+maxGames = 0
+
+# GRPは局の境界情報から最終順位分布を予測する教師モデル。DecisionのPolicy-only推論とは別に扱う。
+# hidden/layersは新規モデルの構成であり、既存checkpointの構成を上書きする指定ではない。
+[epsilon.grp]
+
+# Decisionの牌譜事前学習・自己対戦で、保存済みGRPを凍結教師として利用する。
+# これらのDecision学習中にGRPの重みは更新しない。GRP自体の学習はpretrain-grp-logsで行う。
+# falseならそのDecision学習sessionのGRP教師経路を無効にする。
+enabled = true
+
+# GRP networkの隠れ表現幅。正の整数。大きくするとparameter数と計算・保存量が増える。
+hidden = 64
+
+# GRP trunkの層数。正の整数。checkpointのarchitectureと対応する。
+layers = 2
+
+# GRPの1 optimizer stepへ渡す学習行数。Decision側のbatch行数とは独立。
+batchSize = 256
+
+# GRP optimizerの初期学習率。正の値。
+learningRate = 2e-4
+
+# GRPのAdamW weight decay係数。0ならweight decayを加えない。
+weightDecay = 1e-4
+
+# GRPのglobal gradient normを抑える上限。正の値。
+gradClip = 0.5
+
+# GRP教師推論のbatch形成。Decisionの推論batchには適用しない。
+[epsilon.grp.inference]
+
+# 1回のGRP forwardへまとめる最大局面数。正の整数。
+maxBatch = 64
+
+# trueなら呼出し元の外で要求を集約して推論する。falseなら同期の推論経路を使う。
+asyncBatchingEnabled = true
+
+# 非同期集約で追加要求を待つ上限時間（マイクロ秒）。0でも既に待機中の要求はまとめる。
+coalesceWaitMicros = 0
+
+# GRPの牌譜事前学習で使う検証用データの分割と最低件数。
+[epsilon.grp.pretrain.validation]
+
+# source gameを検証へ固定割当てする比率。0〜0.5。0ならこの検証を無効にする。
+fraction = 0.10
+
+# 検証結果を確定するために必要なGRP example数。検証有効時に不足すれば失敗する。
+minExamples = 64
+
+# 検証結果に必要な元対局数。1対局から複数exampleができるためminExamplesと別に確認する。
+minGames = 8
+
+# 公開観測から他家の状態を推定する独立Beliefモデル。Decisionの構成や推論精度を切り替える設定ではない。
+[epsilon.belief]
+
+# 新規Belief networkの隠れ表現幅。正の整数。既存checkpointの幅は保存構成から復元する。
+hidden = 128
+
+# Belief optimizerの初期学習率。正の値。
+learningRate = 2e-4
+
+# BeliefのAdamW weight decay係数。0ならweight decayを加えない。
+weightDecay = 1e-4
+
+# Beliefのglobal gradient normを抑える上限。正の値。
+gradClip = 0.5
+
+# 独立Beliefモデルの推論batch設定。
+[epsilon.belief.inference]
+
+# 1回のBelief forwardへまとめる最大局面数。正の整数。
+maxBatch = 64
+
+# Beliefの牌譜事前学習で使うCPU読込とoptimizer batch。
+[epsilon.belief.pretrain]
+
+# 1回の入力chunkとして扱う牌譜ファイル数。正の整数。
+logChunkFiles = 8
+
+# 牌譜をsampleへ変換する際、メモリにまとめて保持する最大行数。
+logSampleChunkSize = 4096
+
+# Beliefの1 optimizer stepへ渡す学習行数。読込chunkの大きさとは別に指定する。
+batchSize = 256
+
+# pretrain-decision-logsの牌譜コンパイル・教師あり学習。train-decisionの自己対戦設定とは独立。
+# optimizerBatchRowsは更新1回の全device合計行数、maximumDeviceBatchRowsはforward1回の上限。
+# dataset shardは保存・先読みの単位であり、optimizer stepの単位ではない。
+[epsilon.decision.pretrain]
+
+# compiled dataset作成時に並べ替え用のCPU bufferへ保持するsample行数。
+compilerSampleBufferRows = 16384
+
+# gzip/XML等のsource牌譜を並列に読むCPU worker数。読込結果はsource順に消費する。
+compilerReaderWorkers = 8
+
+# 読込workerへ先行投入するsourceファイル数の上限。worker数と合わせてCPUメモリを使う。
+compilerPrefetchFiles = 32
+
+# 1 optimizer stepで使う全device合計のsample行数。device数を増やしてもこの値は増えない。
+optimizerBatchRows = 4096
+
+# 1 deviceのforwardへ同時に載せる最大行数。大きいoptimizer batchは分割して勾配を蓄積する。
+maximumDeviceBatchRows = 2048
+
+# 入力のhost転送buffer。DIRECT_BUFFERは再利用Java direct buffer、PINNED_BUFFERは再利用pinned memory。
+tensorTransfer = "PINNED_BUFFER"
+
+# FLOAT32 / FLOAT16 / BFLOAT16。forwardと連続値入力の精度。
+# BFLOAT16では実行parameter・gradientもBFLOAT16、更新用master weight・AdamW stateはFLOAT32。
+# FLOAT16ではparameterはFLOAT32のままforwardをautocastする。自己対戦の精度設定とは別。
+computePrecision = "BFLOAT16"
+
+# compiled datasetの1 shardへ保存する行数。変更するとcompiler識別子が変わる。
+# 次回は別ディレクトリへコンパイルし、既存datasetを上書きしない。
+datasetRowsPerShard = 32768
+
+# 学習に先行して読み込むcompiled shard数。大きくするとCPU側の先読みメモリが増える。
+datasetPrefetchShards = 2
+
+# optimizer batchを分配するとき1 deviceに確保したい最小行数。これを基に稼働device数を選ぶ。
+minimumRowsPerDataParallelDevice = 256
+
+# dataset検証・学習・validationの進捗を出力する間隔（秒）。正の整数。
+progressLogIntervalSeconds = 60
+
+# Decision事前学習専用の初期学習率。epsilon.decision.learningRateはこの値の代わりには使わない。
+learningRate = 2e-4
+
+# epochごとの学習率倍率。1なら一定、1未満なら減衰、1より大きい値なら増加する。
+lrDecayPerEpoch = 1.0
+
+# 牌譜で選ばれた合法手のPolicy NLLへ掛ける係数。0ならPolicy目的を無効にする。
+behaviorCloningCoef = 1.0
+
+# HL-Gaussの順位utility Value lossへ掛ける係数。0ならValue目的を無効にする。
+# behaviorCloningCoefと同時に0にはできない。Valueの勾配はPolicyの共有表現へ流さない。
+valueCoef = 0.5
+
+# 立直対ダマの判断に対するPolicy lossの重み。0なら該当Policy lossを除く。Value係数とは別。
+riichiDecisionWeight = 2.0
+
+# PASS・鳴き・ロン等の応答判断に対するPolicy lossの重み。0なら該当Policy lossを除く。
+reactionDecisionWeight = 2.0
+
+# Decision事前学習の検証。sourceファイル名の安定ハッシュで分割し、同じ牌譜を学習と検証へ分けない。
+# 検証metricは学習状態の診断用であり、自己対戦championの昇格判定はchampionDuelで行う。
+[epsilon.decision.pretrain.validation]
+
+# sourceファイルを検証へ回す比率。0〜0.5。0なら検証用の分割を作らない。
+# 有限のファイル集合では正確な指定比率とは限らず、検証側が空になる場合もある。
+fraction = 0.01
+
+# 検証forward1回の最大行数。学習・通常推論のbatch上限とは独立する。
+maximumDeviceBatchRows = 512
+
+# checkpointの検証診断をVALIDとみなす最低sample数。検証用fileがない場合も含め、
+# この件数に届かない診断はINVALIDとなる。
+minSamples = 1024
+
+# Decisionモデルの新規構成とoptimizerの共通係数。checkpoint読込時は保存済み構成を使う。
+# 自己対戦campaignのActor/Value学習率はtrain.selectedPg.optimizerで個別に制御する。
+[epsilon.decision]
+
+# 汎用Decision trainerを直接構築するときのActor/Value初期学習率。
+# pretrain-decision-logsはpretrain.learningRate、train-decisionはselectedPg.optimizerの学習率を使う。
+learningRate = 2e-5
+
+# DecisionのAdamW weight decay係数。事前学習・自己対戦で使用する。0ならweight decayを加えない。
+weightDecay = 1e-4
+
+# Decisionのglobal gradient normを抑える上限。事前学習・自己対戦で使用する。正の値。
+gradClip = 0.5
+
+# 新規Decision networkの表現幅。モデル規模と計算量に影響する。既存checkpointの幅は変更しない。
+hidden = 128
+
+# Valueが学習する対局utility。TENHOUは1〜4着を [2/3, 1/3, 0, -1] と評価する。
+# ほかにPLACEMENT / TOP / LAST_AVOIDANCE / MLEAGUEを使用できる。
+# SCOREはenumに存在するが、現在のDecision HL-Gauss Valueでは拒否される。
+# 学習再開時はcheckpointのutilityと一致が必要。公式の段位ptや大会得点を再現する指定ではない。
+utilityProfile = "TENHOU"
+
+# 学習用rolloutの行動選択。系列間epsilon-arenaはgreedy推論を使うため、この探索設定を使わない。
+[epsilon.decision.rollout]
+
+# FULL_SUPPORTはnode探索を混ぜてsample、POLICY_SAMPLEは探索を加えずPolicyからsample、
+# POLICY_GREEDYは最大確率の合法手を選ぶ。selected-PG campaignはFULL_SUPPORTを必要とする。
+selectionMode = "FULL_SUPPORT"
+
+# 各nodeでActor分布へ合法候補上の一様分布を混ぜる確率質量。各massは0以上1未満。
+# 適応探索が有効ならmassへ局面別倍率を掛ける。選択された枝の確率を合成した後にleafの下限を適用する。
+# selected-PGでは全nodeのmassとminimumLeafProbabilityを正にして、すべての合法手を探索可能にする。
+[epsilon.decision.rollout.fullSupport]
+
+# 和了・九種九牌等の終端宣言と続行を分けるgateの探索質量。
+terminalGateExplorationMass = 0.004
+
+# PASSと鳴きを分けるgateの探索質量。
+callGateExplorationMass = 0.004
+
+# チー・ポン・大明槓の種類を選ぶnodeの探索質量。
+meldTypeExplorationMass = 0.004
+
+# 同じ鳴き種別内の組合せ・赤牌の使い方を選ぶnodeの探索質量。
+meldCandidateExplorationMass = 0.004
+
+# 続行と槓を分けるgateの探索質量。
+kanGateExplorationMass = 0.004
+
+# 暗槓と加槓の種類を選ぶnodeの探索質量。
+kanTypeExplorationMass = 0.004
+
+# 同じ槓種別内の牌候補を選ぶnodeの探索質量。
+kanCandidateExplorationMass = 0.004
+
+# 捨てる牌候補を選ぶnodeの探索質量。
+discardIdentityExplorationMass = 0.010
+
+# ダマと立直を分けるgateの探索質量。
+riichiGateExplorationMass = 0.004
+
+# 各合法手の最終behavior確率の下限。0ならleaf下限を無効にする。許容範囲は0以上1/64未満。
+# nodeごとの確率を掛け合わせた結果が極小になっても、この確率を確保する。適応倍率は掛けない。
+minimumLeafProbability = 1.0e-4
+
+# Policyの不確実性に応じたnode探索量の調整。macro内では直前macroで固定したCDFを使う。
+[epsilon.decision.rollout.fullSupport.adaptiveExploration]
+
+# NORMALはnode massをそのまま使う（倍率1）。PERCENTILE_SCALEは不確実性percentileから倍率を決める。
+schedule = "PERCENTILE_SCALE"
+
+# 不確実性scoreにおける合法leaf Policyの正規化entropyの比重（0〜1）。
+# 残りの1-entropyWeightを、上位2手の選びにくさに割り当てる。
+entropyWeight = 0.5
+
+# 探索massへ掛ける倍率の下限。0より大きく1以下。
+minimumScale = 0.1
+
+# 探索massへ掛ける倍率の上限。1以上。すべてのnode massとの積が1未満であることが必要。
+maximumScale = 5.0
+
+# percentileを倍率へ変換する際の正の指数。大きいほど高percentile側へ大きな探索倍率を集中させる。
+percentileExponent = 4.5
+
+# Decision推論のbatch・精度・診断設定。学習forwardの精度はpretrain/trainそれぞれで指定する。
+# GPUはpinned bufferと非同期slotを再利用する。CPU推論はEAGERでparameter・入力・forwardをFLOAT32にする。
+# epsilon-arenaではslot/ready容量は対戦全体の実行contextが所有し、以下の系列側容量設定より優先する。
+[epsilon.decision.inference]
+
+# 最古行からの待ち時間上限。供給が不足するdeviceへは期限前でも端数を発行する。
+maxBatchWaitMicros = 1000000
+
+# 系列CLIのGPUごとの再利用実行slot数（1〜4）。slotごとに入力・workspaceを持ち、増加するとVRAMも増える。
+slotsPerDevice = 3
+
+# 物理GPUごとに共通host予算へ加えるbatch数。slotsPerDevice以上。モデル数では増やさない。
+# 全GPU分を合算してencode中・slot待ちを制限し、slotへ引き渡すと予約を返す。実行slotは別枠。
+# この数だけdevice workspaceを複製する指定ではない。
+readyBatchesPerDevice = 6
+
+# 単一transition候補の要求をまとめる最大行数。1行は1判断局面であり、1対局ではない。
+maxBatch = 4096
+
+# 複数transition候補を持つ要求の最大行数。maxBatch以下。bucketが違う要求は別batchになる。
+multiTransitionMaxBatch = 2048
+
+# GPU forwardの精度。FLOAT32 / FLOAT16 / BFLOAT16。低精度は対応backendを必要とする。
+computePrecision = "BFLOAT16"
+
+# 凍結推論parameterをcomputePrecisionの低精度へ変換して保持する。
+# 名称にBFLOAT16を含むがFLOAT16にも適用する。学習中parameterには適用しない。
+frozenBfloat16Parameters = true
+
+# GPUへ転送する連続値入力もcomputePrecisionに揃える。falseなら入力はFLOAT32。整数入力は変換しない。
+lowPrecisionInputNumerics = true
+
+# 現在のDecision推論では未対応。falseのみ使用でき、trueは設定検証で拒否される。
+acceleratorGraph = false
+
+# graph用の行数項目。現在はacceleratorGraphが未対応のため推論の行数・速度に影響しない。
+acceleratorGraphRows = 0
+
+# 各推論componentの実行方式。EAGERは通常のDJL演算、FUSIONはdjl-rocmの永続planを使う。
+# GPUの凍結モデルに適用し、CPUや更新可能モデルを借用する経路はEAGERになる。
+# planと定数は再利用し、実行workspaceはslotの寿命に合わせて管理する。単一GPU kernelになる保証はない。
+# 低精度の凍結weightを要求するcomponentではfrozenBfloat16Parameters=trueが必要。
+[epsilon.decision.inference.fusion]
+
+# 自家を含む各家のsummary・河・面子からplayer memoryを作るtransformerの実行方式。
+playerMemory = "FUSION"
+
+# 34牌種の関係を扱うtile transformerの実行方式。
+tileRelation = "FUSION"
+
+# 局・手牌・4家summaryをまとめるstrategic transformerの実行方式。
+strategicContext = "FUSION"
+
+# entity memoryからPolicy/Valueの状態表現を読むcross-attentionの実行方式。
+# Policy-only推論ではValue専用readoutを実行しない。
+stateReadout = "FUSION"
+
+# candidate・transition・alternative scorerの線形投影・加算・活性化をまとめる方式。
+# candidatePrefixと同時にFUSIONは指定できない。同じcandidate計算を二重に所有するため拒否される。
+policyAffine = "EAGER"
+
+# 立直・鳴き・ロン・槓・九種九牌・ツモの疎な二値gateを、有効な位置だけ採点する方式。
+policyIndexedAffine = "FUSION"
+
+# candidate scorerへ渡す候補別componentを、投影dtypeへ変換・連結する方式。
+# FUSIONでも後段の線形投影自体は通常演算を使う。policyAffine=FUSIONとの併用不可。
+candidatePrefix = "FUSION"
+
+# 4家の牌別文脈をprojected residual MLPで合成する方式。
+playerTileContext = "FUSION"
+
+# action種別ごとに候補文脈を集約し、networkの列へ対応付ける方式。
+candidateContext = "FUSION"
+
+# 鳴き・槓・九種九牌のbaseline/selected分岐とpresenceを合成する方式。
+binaryContext = "FUSION"
+
+# 各Policy scoreと必要時のValue scoreを、host転送用の行優先FLOAT32 tensorへ変換・連結する方式。
+outputPacking = "FUSION"
+
+# 系列CLIの学習・評価で使う推論モデルの配置。epsilon-arenaのモデル共有とは別の設定。
+[epsilon.decision.inference.replicas]
+
+# trueならinference device上に凍結推論replicaを用意する。
+# falseなら学習Actorは更新可能モデルを借用し、checkpoint evaluatorはlearnerの先頭deviceを使う。
+# epsilon-arenaのModelProviderはこの値にかかわらずcheckpointから専用の凍結推論モデルを開く。
+enabled = true
+
+# 推論や学習の資源診断。性能測定値そのものを変更する設定ではない。
+[epsilon.decision.perf]
+
+# trueなら処理フェーズ境界でGPUメモリ・stream別poolの情報をログへ出す。falseなら記録しない。
+memorySnapshots = false
+
+# 学習で参照するcheckpoint snapshotのregistry。
+[epsilon.decision.snapshotPool]
+
+# registryへ保持する最大snapshot件数。正の整数。対戦中のGPUモデル複製数を直接指定する値ではない。
+max = 32
+
+# train-decisionで自己対戦sampleを更新する際の読込上限・転送・精度。
+[epsilon.decision.train]
+
+# 1 macro updateへ投入するsample行数の上限。gamesPerMacroは対局数なので単位が異なる。
+sampleLimit = 8192000
+
+# learnerへの入力転送buffer。DIRECT_BUFFERまたはPINNED_BUFFER。OVERLAPPEDではPINNED_BUFFERが必要。
+tensorTransfer = "PINNED_BUFFER"
+
+# ON_DEMANDは利用直前に転送する。OVERLAPPEDは次batchのH2D転送を現在batchの学習計算へ重ねる。
+deviceTransferSchedule = "OVERLAPPED"
+
+# 学習forwardのautocast精度。FLOAT32 / FLOAT16 / BFLOAT16。
+# 自己対戦ではparameter・gradient・loss・Actor/ValueのAdamW stateはFLOAT32を維持する。
+computePrecision = "BFLOAT16"
+
+# train-decisionのselected-action policy-gradient campaign。macroは対局収集とそのsampleの更新を1組とする。
+# 保存済みcampaignを継続し、duelでPROMOTEDならchampionを更新、UNRESOLVEDならcandidateを継続する。
+# HARMFULまたは学習guard違反でcampaignを終了する。
+[epsilon.decision.train.selectedPg]
+
+# immutable arena championとの比較までに実行するmacro数。正の整数。
+macrosPerDuel = 10
+
+# 今回のコマンド呼出しで追加実行するmacro数の上限。累計予算や減衰計画とは独立する。
+maximumMacros = 50
+
+# campaignの乱数seed基点。0ならrun UUIDから生成する。非0なら再現可能な固定基点として使う。
+runSeedBase = 0
+
+# 1 macroで生成する対局数。4席rotationを行うため正の4の倍数。
+gamesPerMacro = 32768
+
+# 全learner deviceを合わせた1 waveの最大sample行数。optimizer step全体の行数とは別。
+microBatchSize = 4800
+
+# 1 deviceが同時保持する 行数×action容量×transition容量 の上限。
+# 大きいbucketではこの制限に合わせてwaveの行数を減らす。
+maximumDeviceTransitionCells = 768000
+
+# 同じfresh macroのsample全体を学習する回数。1なら1巡し、2以上なら同じ収集データを再評価して更新する。
+ppoEpochs = 1
+
+# 1 epochのmacro全体を分割するoptimizer step数。
+# 1 macroの予定更新数はppoEpochs×この値。microBatchSizeは各step内部の分割を制御する。
+optimizerStepsPerEpoch = 64
+
+# Actor/Valueの時間差targetに使うtrace係数（0〜1）。大きいほど後続判断の影響を長く伝える。
+causalTraceLambda = 0.95
+
+# 打牌opportunityを学習sampleへ採用する確率重み（0より大きく1以下）。
+# optimizerStepsPerEpochが2以上ならriichiWeight・reactionWeightと同じ値が必要。
+dahaiWeight = 1.0
+
+# 立直対ダマのopportunityを採用する確率重み（0より大きく1以下）。pretrainのloss倍率とは異なる。
+riichiWeight = 1.0
+
+# 応答opportunityを採用する確率重み（0より大きく1以下）。1ならすべて採用する。
+reactionWeight = 1.0
+
+# piCurrent/piRolloutへ適用するPPO clip幅。0より大きく1未満。
+policyUpdateClipRange = 0.2
+
+# behavior探索で選んだactionへ残すselected-action creditの線形混合率。0より大きく1以下の必須値。
+explorationCreditMix = 0.10
+
+# 現在の合法leaf Policy entropyへ掛ける固定bonus係数（0〜0.05）。0ならentropy bonusを加えない。
+entropyCoefficient = 0.001
+
+# Actor重みで平均したKL(piRollout || piCurrent)のshard上限。
+# 超過時は更新guardが失敗する。0ならこのKL閾値を無効にする。Actor LR制御の目標KLとは別。
+maximumOptimizerShardMeanKl = 0.01
+
+# 更新前後のActor入力・重み・advantage等を追加検査する。CPU走査量が増える診断用設定。
+debugActorValidationEnabled = false
+
+# macro更新後に正準モデルで全selected sampleを追加監査する。監査結果を学習targetには使わない。
+debugFinalAuditEnabled = false
+
+# final auditで一度に読むchunkの最大行数。監査総件数をこの値へ制限する設定ではない。
+finalAuditSampleLimit = 4096
+
+# 自己対戦のActorとValueは別のoptimizer状態と学習率を持つ。
+[epsilon.decision.train.selectedPg.optimizer]
+
+# Value用AdamWの固定学習率。正の値。ActorのKL制御や目標減衰では変更しない。
+valueLearningRate = 1.25e-6
+
+# 受理されたmacroの実測KLに追従してActor学習率を調整する。制御状態と校正結果はcampaignに保存する。
+[epsilon.decision.train.selectedPg.optimizer.actorKlControl]
+
+# 新規制御の開始時とwarmup中に使うActor学習率。hardMinimum以上hardMaximum以下。
+initialLearningRate = 1.25e-6
+
+# KL制御で下げられるActor学習率の絶対下限。正の値。減衰後の目標学習率ではない。
+hardMinimumLearningRate = 2.5e-7
+
+# KL制御で上げられるActor学習率の絶対上限。initialLearningRate以上。
+hardMaximumLearningRate = 5.0e-6
+
+# 初期学習率を固定して基準KLを校正する受理macro数。正の整数。
+warmupMacros = 3
+
+# warmup後のKL判定に使う直近受理macro数。外れ値の影響を抑えるため中央値を使う。
+medianWindowMacros = 3
+
+# warmupの基準KLへ掛ける倍率。1以上。この初期目標へtargetDecayの倍率を適用する。
+targetMultiplier = 1.25
+
+# 目標KL/この値〜目標KL×この値の範囲では学習率を変更しない。1より大きい値。
+deadbandFactor = 1.25
+
+# 1 macroで学習率を増減できる最大倍率。1より大きい値。
+# 減少側には逆数を使い、hardMinimum/hardMaximumでも制限する。
+maximumAdjustmentFactorPerMacro = 1.02
+
+# 新規campaignのActor目標KL減衰計画。時計は受理されたActor optimizer更新の累計。
+# 最初の計画更新数の10%（校正が長い場合は校正終了）まで目標を保ち、残りをcosine減衰する。
+# 保存済み計画は設定ファイルの編集だけでは上書きせず、明示的なreplan操作で変更する。
+[epsilon.decision.train.selectedPg.optimizer.actorKlControl.targetDecay]
+
+# 計画終点の累計Actor optimizer更新数。0なら校正後の目標を固定する。
+# 正の値ならwarmupMacros×ppoEpochs×optimizerStepsPerEpochを超える必要がある。
+plannedOptimizerSteps = 43200
+
+# 初期目標KLに対する計画終点の倍率。0より大きく1以下。1なら減衰しない。Value LRや探索率は変更しない。
+finalScale = 0.5
+
+# 完了済み対局を学習fragmentとして保存する非同期writer。
+[epsilon.decision.train.spool]
+
+# fragmentの保存先。相対パスはcheckpointルート基準、絶対パスはその場所を使う。
+# その配下にcampaign・lineage・duel・macroごとのディレクトリを作る。
+dir = "train-fragments"
+
+# 現行コードにはこの項目の読込・参照がないため、変更してもfragmentサイズに影響しない。
+maxSamplesPerFragment = 4096
+
+# trueなら消費・終了後もfragmentファイルを残す。falseなら一時fragmentを後片付けする。
+keepFragments = false
+
+# writer待ちqueueへ保持できる完了対局数。sample行数ではない。大きくするとCPUメモリ保持量が増える。
+asyncQueueGames = 1024
+
+# fragment保存を並列に行うwriter数。正の整数。
+asyncWriters = 4
+
+# 未完了対局のtrajectory payloadを退避し、対局進行の同期経路から保存処理を外す。
+[epsilon.decision.train.inFlightSpool]
+
+# writer配置先ディレクトリのカンマ区切り一覧。複数指定ならwriterを順に分散する。
+# 相対パスはそのmacroのfragment保存先基準。絶対パスはその場所を使う。
+dirs = "train-inflight"
+
+# writer待ちqueueへ保持できるpayload件数。待機中はpayloadをメモリに保持する。
+asyncQueuePayloads = 1024
+
+# payloadを並列保存するwriter数。正の整数。配置先への分散単位もwriterとなる。
+asyncWriters = 4
+
+# Zstandardへ渡す圧縮level。圧縮率と圧縮CPU時間の釣合いを調整する。
+# 0は無圧縮を意味せず、Zstandardの既定levelを指定する。
+compressionLevel = 1
+
+# 系列内の自己対戦データ収集用arena。epsilon-arenaの系列間対戦設定とは独立する。
+# gamesPerMacroは生成総数、gamesInFlightは同時に停止・進行状態を保持する対局数。
+[epsilon.decision.train.arena]
+
+# 同時進行する対局数の上限。総対局数以下の範囲で使う。大きくすると推論要求を集めやすいがCPUメモリも増える。
+gamesInFlight = 32768
+
+# 対局群を分けるcohort数。streamingSchedulerEnabledが有効な経路では分割せず一つのschedulerへまとめる。
+cohorts = 1
+
+# trueならCPUの対局進行・encodeと非同期推論を重ねる。falseなら同期経路。
+asyncInferencePipelineEnabled = true
+
+# 非同期pipeline有効時に、完了した推論から対局を再開・補充する。
+# trueなら全cohortの共通barrierを使わない。asyncInferencePipelineEnabled=falseのときは無効。
+streamingSchedulerEnabled = true
+
+# CPUで独立した対局を進めるworker数（1〜32）。GPU stream数やencode batch行数ではない。
+advanceWorkers = 32
+
+# 1 worker当たり同時発行できるadvance task数。worker数との積が発行量を制限する。
+advanceTasksPerWorker = 2
+
+# 1 advance taskへまとめる対局数の上限。正の整数。
+maximumAdvanceTaskSize = 64
+
+# 1学習intervalへ混在させる相手snapshot数の上限。正の整数。
+maximumOpponentSnapshotsPerInterval = 1
+
+# campaignのchampion比較。固定牌山1 seedにつき候補席を4席rotationしてpaired評価する。
+# CI下限が0より大きければPROMOTED、上限が0より小さければHARMFUL、それ以外はUNRESOLVED。
+[epsilon.decision.championDuel]
+
+# 最初の途中判定を行う累積牌山seed数。実対局数は4倍。maximumWallSeeds未満。
+interimWallSeeds = 50000
+
+# 途中判定がUNRESOLVEDだった場合の最終累積牌山seed数。最終fixed-horizon比較でも使用する。
+maximumWallSeeds = 100000
+
+# 1回のduelに割り当てる両側誤差率の総量。0より大きく1未満。campaignの全duel合計に対する値ではない。
+alpha = 0.01
+
+# alphaのうち途中判定へ割り当てる割合（0より大きく1未満）。残りを最終判定へ割り当てる。
+interimAlphaFraction = 0.25
+
+# 系列CLIのeval-vsとchampion比較で使う対局進行・報告設定。epsilon-arenaのduelには適用しない。
+[epsilon.decision.evalVs]
+
+# 同時進行する評価対局数の上限。完了枠に次の対局を補充する。
+gamesInFlight = 32768
+
+# duel用の各推論replicaへ適用する最大行数。通常の自己対戦推論設定を書き換えない。
+maximumInferenceBatch = 2048
+
+# 統計・進捗ログを更新する牌山seed数間隔。ログ更新のためにarenaを停止・再作成しない。
+progressIntervalWallSeeds = 2048
+
+# eval-vsで用いる牌山seedの基点。同条件を再比較する場合は固定する。
+seedBase = 40000
+
+# Value・学習trajectoryを保持しない、系列内duel専用schedulerのCPU並列度。
+[epsilon.decision.evalVs.arena]
+
+# 対局進行に使うCPU worker数（1〜64）。
+advanceWorkers = 32
+
+# 1 worker当たり同時発行できるadvance task数。
+advanceTasksPerWorker = 2
+
+# 1 advance taskへまとめる対局数の上限。
+maximumAdvanceTaskSize = 64
+
+# 自己対戦で保存したfragmentをlearnerへ供給するCPU読込設定。
+[epsilon.decision.train.streaming]
+
+# learnerに先行して準備するfragment数。datasetPrefetchShardsは事前学習の別設定。
+prefetch = 3
+
+# fragmentを並列decodeするCPU worker数。GPU数とは独立する。
+prefetchWorkers = 4

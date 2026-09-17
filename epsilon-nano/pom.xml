@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.epsilon</groupId>
+    <artifactId>epsilon-parent</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>epsilon-nano</artifactId>
+  <properties>
+    <epsilon.mainClass>com.epsilon.nano.Main</epsilon.mainClass>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+  <build>
+    <finalName>epsilon-nano</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

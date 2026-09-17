@@ -1,0 +1,70 @@
+# Arenaの実行既定値と、4参加枠を指定するmatch用の初回設定テンプレート。
+# helpを実行すると、存在しない場合だけconfig/arena.tomlへコピーします。
+# 起動例: java -jar epsilon-arena/target/epsilon-arena-1.0-SNAPSHOT-all.jar match
+# checkpoint と options.settings の相対パスは、この TOML の場所を基準に解決します。
+# 以下の checkpoint は配置例です。実際に保存した対応系列のディレクトリを指定してください。
+
+[arena]
+# 測定する半荘数。4以上の4の倍数。同じ牌山を4席 rotation して一組として集計します。
+games = 256
+# 同時に進行する半荘数。正の整数。大きくすると batch を埋めやすく、CPU側の保持状態も増えます。
+concurrentGames = 128
+# ゲーム進行と共有 encode 基盤へ設定する CPU worker 数。正の整数。
+# 省略時はJVMが認識するCPU論理数の半分（最低1）を使います。固定する場合だけ指定します。
+# workers = 8
+# 固定牌山を生成する基準 seed。同じ seed と壁番号なら処理の完了順に依存しません。
+seed = 1
+# 開始する壁の組番号（0以上）。1組につき4半荘です。
+# --warmup-games を指定した場合、測定は warmupGames / 4 組だけ後から始まります。
+firstWallFamily = 0
+# 最古行の待ち時間上限（マイクロ秒、0以上）。期限、full、供給不足の順に発行します。
+# これは結果が返るまでの上限ではなく、CPU/GPU が混雑すれば追加の待ち時間が生じます。
+maxBatchWaitMicros = 1000000
+# 物理 GPU ごとの共有実行 slot 数（1～4）。同じ GPU を使う全参加モデルで共有します。
+# 各モデルの入力 workspace は model × slot ごとに保持され、slot を増やすと VRAM 使用量も増えます。
+slotsPerDevice = 2
+# 物理GPUごとに共通host予算へ加えるbatch数。slotsPerDevice以上。モデル数では増やしません。
+# 全GPU分を合算してencode中・slot待ちを制限します。実行slotへ引き渡すと予約を返します。
+# 満杯の間は次の batch を encode する前に待ちます。
+readyBatchesPerDevice = 4
+
+# seat0～seat3 は集計上の参加枠です。固定の東南西北ではなく、各壁の4半荘で席を循環します。
+[seat0]
+# 登録済み provider 名: epsilon-nano / epsilon-pico / epsilon。
+series = "epsilon-nano"
+# 対応系列の Decision checkpoint。入力・architecture が合わない保存物はロード時に拒否します。
+checkpoint = "../checkpoints/epsilon-nano/decision_00001"
+[seat0.options]
+# auto は利用可能な全 GPU を選び、GPU がなければ CPU を使います。固定する場合は cpu / gpu:0。
+# 複数 device は options の devices で指定できます。device / devices は同時に指定しません。
+# 系列別設定ファイルは settings、個別上書きは epsilon.* の完全な key で指定します。
+device = "auto"
+
+[seat1]
+# Pico の provider。同じ意味の key でも、入力・network・checkpoint の解釈は Pico が所有します。
+series = "epsilon-pico"
+# 現行 Pico の architecture に対応する checkpoint を指定します。
+checkpoint = "../checkpoints/epsilon-pico/decision_00001"
+[seat1.options]
+# この参加枠で使う推論 device。各枠で異なる device を指定することもできます。
+device = "auto"
+
+[seat2]
+# Epsilon の provider。
+series = "epsilon"
+# Epsilon の checkpoint。
+checkpoint = "../checkpoints/epsilon/decision_00001"
+[seat2.options]
+# この参加枠で使う推論 device。
+device = "auto"
+
+# 同じ系列・checkpoint の実パス・options なので seat2 と runtime / weights を共有します。
+# 統計上の参加枠は分かれます。別の checkpoint または異なる options なら別 runtime になります。
+[seat3]
+# seat2 と同じ Epsilon の provider。
+series = "epsilon"
+# seat2 と同じ checkpoint。
+checkpoint = "../checkpoints/epsilon/decision_00001"
+[seat3.options]
+# seat2 と同じ device 指定。共有時は options の指定も揃えます。
+device = "auto"

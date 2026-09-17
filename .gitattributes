@@ -1,0 +1,5 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# 上流のライセンス原文の改行を保持する。
+/LICENSES/** -text

@@ -1,0 +1,10 @@
+node_modules/
+web/dist/
+desktop/dist/
+desktop/release/
+backend/target/
+.data/
+models.local.json
+*.log
+reviewer-data/
+/backend/API.md

@@ -169,6 +169,8 @@ final class MahjongSoulBinary {
     int[] deltas = new int[4];
     for (byte[] value : record.byteList(3)) {
       int[] change = new Proto(value).integers(3);
+      // 点数移動のない流局では、雀魂は差分配列を省略する。
+      if (change.length == 0) continue;
       MahjongSoulReader.requireFourScores(change);
       for (int seat = 0; seat < 4; seat++) deltas[seat] = Math.addExact(deltas[seat], change[seat]);
     }

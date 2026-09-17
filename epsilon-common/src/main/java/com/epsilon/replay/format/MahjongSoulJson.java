@@ -198,9 +198,10 @@ final class MahjongSoulJson {
 
   private static ExhaustiveDraw readExhaustiveDraw(JsonObject record) {
     int[] deltas = new int[4];
-    for (JsonElement score : readRequiredField(record, "scores").getAsJsonArray()) {
-      int[] change =
-          readIntegers(readRequiredField(score.getAsJsonObject(), "delta_scores").getAsJsonArray());
+    for (JsonElement score : readOptionalArray(record, "scores")) {
+      int[] change = readIntegers(readOptionalArray(score.getAsJsonObject(), "delta_scores"));
+      // 復号済み JSON でも、点数移動がなければ差分は省略または空配列になる。
+      if (change.length == 0) continue;
       MahjongSoulReader.requireFourScores(change);
       for (int seat = 0; seat < 4; seat++) deltas[seat] = Math.addExact(deltas[seat], change[seat]);
     }

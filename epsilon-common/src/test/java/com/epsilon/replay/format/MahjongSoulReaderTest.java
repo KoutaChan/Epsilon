@@ -375,6 +375,60 @@ public class MahjongSoulReaderTest {
     assertEquals(MahjongSoulReader.readRecord(binary).completion(), RecordCompletion.INCOMPLETE);
   }
 
+  @Test(dataProvider = "recordEncodings")
+  public void exhaustiveDrawAcceptsOmittedAndEmptyScoreChanges(boolean binary) {
+    for (boolean emptyArray : new boolean[] {false, true}) {
+      byte[] score = packed(2, 25000, 25000, 25000, 25000);
+      JsonObject jsonScore = json("{\"old_scores\":[25000,25000,25000,25000]}");
+      if (emptyArray) {
+        score = join(score, packed(3));
+        jsonScore.add("delta_scores", new JsonArray());
+      }
+      ReplayRecord result =
+          exhaustiveDraw(
+              binary,
+              join(field(3, score), integer(4, 1)),
+              json("{\"scores\":[" + jsonScore + "],\"gameend\":true}"));
+      assertEquals(events(result, Ryukyoku.class).getFirst().deltas(), new int[4]);
+      assertEquals(result.metadata().finalScores(), new int[] {25000, 25000, 25000, 25000});
+      assertEquals(result.completion(), RecordCompletion.COMPLETE);
+    }
+    ReplayRecord noTransfers = exhaustiveDraw(binary, integer(4, 1), json("{\"gameend\":true}"));
+    assertEquals(events(noTransfers, Ryukyoku.class).getFirst().deltas(), new int[4]);
+  }
+
+  @Test(dataProvider = "recordEncodings")
+  public void exhaustiveDrawPreservesRecordedTransfers(boolean binary) {
+    ReplayRecord result =
+        exhaustiveDraw(
+            binary,
+            join(field(3, packed(3, 3000, -1000, -1000, -1000)), integer(4, 1)),
+            json("{\"scores\":[{\"delta_scores\":[3000,-1000,-1000,-1000]}],\"gameend\":true}"));
+    assertEquals(
+        events(result, Ryukyoku.class).getFirst().deltas(), new int[] {3000, -1000, -1000, -1000});
+    assertEquals(result.metadata().finalScores(), new int[] {28000, 24000, 24000, 24000});
+  }
+
+  @Test(dataProvider = "recordEncodings")
+  public void exhaustiveDrawRejectsIncompleteNonemptyScoreChanges(boolean binary) {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            exhaustiveDraw(
+                binary,
+                field(3, packed(3, 0, 0, 0)),
+                json("{\"scores\":[{\"delta_scores\":[0,0,0]}]}")));
+  }
+
+  private static ReplayRecord exhaustiveDraw(boolean binary, byte[] record, JsonObject jsonRecord) {
+    return binary
+        ? MahjongSoulReader.readRecord(
+            wrapper(
+                "GameDetailRecords",
+                join(action("RecordNewRound", binaryStart(false)), action("RecordNoTile", record))))
+        : read(document(start(), record("RecordNoTile", jsonRecord)));
+  }
+
   @org.testng.annotations.DataProvider
   public Object[][] recordEncodings() {
     return new Object[][] {{false}, {true}};

@@ -58,6 +58,7 @@ CLAUDE.md
 
 # Neural network models
 models/
+!/epsilon-reviewer/web/src/features/models/
 *.pb
 *.h5
 *.pt

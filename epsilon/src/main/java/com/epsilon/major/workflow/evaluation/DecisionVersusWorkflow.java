@@ -53,7 +53,7 @@ public final class DecisionVersusWorkflow
         + evaluation.candidateCheckpoint()
         + " opponent="
         + evaluation.opponentCheckpoint()
-        + " games="
+        + " selectionMode=POLICY_GREEDY games="
         + evaluation.games()
         + " candidateRank="
         + evaluation.candidateAverageRank()
@@ -77,6 +77,8 @@ public final class DecisionVersusWorkflow
         + System.lineSeparator()
         + "opponentCheckpoint="
         + result.opponentCheckpoint()
+        + System.lineSeparator()
+        + "selectionMode=POLICY_GREEDY"
         + System.lineSeparator()
         + "games="
         + result.games()

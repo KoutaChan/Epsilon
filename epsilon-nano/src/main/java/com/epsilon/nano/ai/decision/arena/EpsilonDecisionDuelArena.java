@@ -20,9 +20,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 同じ牌山で評価対象を4席に入れ替えて対戦させ、席ごとの結果を対応付けて集計する。 */
 public final class EpsilonDecisionDuelArena {
+
+  private static final Logger LOG = LoggerFactory.getLogger(EpsilonDecisionDuelArena.class);
 
   private static final int SEAT_ROTATIONS = GameState.NUM_PLAYERS;
   private static final double LCB_95_Z = 1.96;
@@ -200,6 +204,11 @@ public final class EpsilonDecisionDuelArena {
       throw new IllegalArgumentException("gamesInFlight must be positive");
     }
     int totalGames = totalDuelGames(games);
+    LOG.info(
+        "Decision duel started: selectionMode={} games={} gamesInFlight={}",
+        DecisionSelectionMode.POLICY_GREEDY,
+        totalGames,
+        gamesInFlight);
     Totals totals =
         new Totals(
             collectOutcomes,

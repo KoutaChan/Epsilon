@@ -59,7 +59,7 @@ public final class DecisionEvaluationWorkflow
   public String summarize(Result result) {
     return "checkpoint="
         + result.checkpoint()
-        + " games="
+        + " selectionMode=POLICY_GREEDY games="
         + result.evaluation().games()
         + " lastFinalScores="
         + Arrays.toString(result.evaluation().lastFinalScores())
@@ -72,6 +72,8 @@ public final class DecisionEvaluationWorkflow
   private static String render(Path checkpoint, EpsilonDecisionEvaluationRunner.Result evaluation) {
     return "checkpoint="
         + checkpoint
+        + System.lineSeparator()
+        + "selectionMode=POLICY_GREEDY"
         + System.lineSeparator()
         + "games="
         + evaluation.games()

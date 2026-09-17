@@ -1,5 +1,7 @@
 package com.epsilon.nano.ai.decision.duel;
 
+import com.epsilon.ai.decision.DecisionSelectionMode;
+import com.epsilon.config.settings.DecisionFullSupportSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.config.settings.TenhouLogSettings;
 import com.epsilon.core.GameState;
@@ -16,9 +18,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Decision プレイヤーによる評価対局を実行し、必要に応じて天鳳互換の牌譜を保存する。 */
 public final class EpsilonDecisionEvaluationRunner {
+
+  private static final Logger LOG = LoggerFactory.getLogger(EpsilonDecisionEvaluationRunner.class);
 
   private EpsilonDecisionEvaluationRunner() {}
 
@@ -34,6 +40,10 @@ public final class EpsilonDecisionEvaluationRunner {
     if (games <= 0) {
       throw new IllegalArgumentException("games must be positive");
     }
+    LOG.info(
+        "Decision evaluation started: selectionMode={} games={}",
+        DecisionSelectionMode.POLICY_GREEDY,
+        games);
     int[] lastScores = new int[GameState.NUM_PLAYERS];
     ArrayList<Path> tenhouLogFiles = new ArrayList<>();
     ArrayList<String> viewerUrls = new ArrayList<>();
@@ -66,7 +76,11 @@ public final class EpsilonDecisionEvaluationRunner {
       EpsilonDecisionEvaluator evaluator, long seed, GameRecorder recorder, SettingsLoader config) {
     Player[] players = new Player[GameState.NUM_PLAYERS];
     for (int seat = 0; seat < players.length; seat++) {
-      players[seat] = EpsilonDecisionPlayer.builder(evaluator, config).build();
+      players[seat] =
+          EpsilonDecisionPlayer.builder(evaluator, config)
+              .selectionMode(DecisionSelectionMode.POLICY_GREEDY)
+              .fullSupport(DecisionFullSupportSettings.disabled())
+              .build();
     }
     SynchronousGameRunner runner =
         recorder == null

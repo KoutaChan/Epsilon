@@ -76,7 +76,7 @@ public final class WallEvaluationWorkflow
         + result.reportFile()
         + " wallSeeds="
         + result.evaluation().wallSeeds()
-        + " decision="
+        + " selectionMode=POLICY_GREEDY decision="
         + result.evaluation().decision();
   }
 
@@ -97,6 +97,8 @@ public final class WallEvaluationWorkflow
         + System.lineSeparator()
         + "auditId="
         + EpsilonDecisionProductionAuditProtocol.auditId(seedBase, result.duelSequence())
+        + System.lineSeparator()
+        + "selectionMode=POLICY_GREEDY"
         + System.lineSeparator()
         + "requestedWallSeeds="
         + requestedWallSeeds

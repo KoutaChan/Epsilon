@@ -186,7 +186,7 @@ public final class MjaiReader {
     if (value == null) return null;
     return switch (value) {
       case "fanpai", "exhaustive_draw" -> "EXHAUSTIVE_DRAW";
-      case "kyushukyuhai", "yao9" -> "NINE_TERMINALS";
+      case "kyushu_kyuhai", "kyushukyuhai", "yao9" -> "NINE_TERMINALS";
       case "suchareach", "reach4" -> "FOUR_RIICHI";
       case "sanchaho", "ron3" -> "THREE_RON";
       case "sukaikan", "kan4" -> "FOUR_KANS";

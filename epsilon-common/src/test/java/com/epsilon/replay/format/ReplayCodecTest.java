@@ -2,12 +2,15 @@ package com.epsilon.replay.format;
 
 import com.epsilon.client.tenhou.TenhouEvent;
 import com.epsilon.client.tenhou.TenhouMessageParser;
+import com.epsilon.core.Action;
 import com.epsilon.core.Tile;
 import com.epsilon.replay.*;
 import com.epsilon.replay.ReplayEvent.*;
 import com.google.gson.*;
+import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /** 生牌譜の所有権・物理 ID・記録された完了状態を検証する。 */
@@ -54,6 +57,43 @@ public class ReplayCodecTest {
       Assert.assertNotEquals(draw.physicalTileId(), id);
     }
     Assert.assertEquals(kakan.addedPhysicalTileId(), draw.physicalTileId());
+  }
+
+  @DataProvider
+  public Object[][] mjaiNineTerminalsReasons() {
+    return new Object[][] {{"kyushu_kyuhai"}, {"kyushukyuhai"}, {"yao9"}};
+  }
+
+  @Test(dataProvider = "mjaiNineTerminalsReasons")
+  public void mjaiNineTerminalsEmitsTheRecordedChoiceAtTheFinalDraw(String reason) {
+    // 南4局の実際の手牌を使い、流局直前の判断が解析へ通知されることを確認する。
+    String input =
+        """
+        {"type":"start_game"}
+        {"type":"start_kyoku","bakaze":"S","kyoku":4,"honba":0,"kyotaku":0,"oya":3,"dora_marker":"3s","scores":[6000,34500,14600,44900],"tehais":[["2m","3m","3p","6p","7p","7p","7p","8p","4s","8s","S","F","F"],["5m","9m","1p","1p","5p","6p","6p","2s","5s","6s","N","N","P"],["1m","2m","4m","4m","7m","9m","9m","6s","7s","9s","W","P","F"],["7m","9m","4p","5p","9p","1s","9s","E","W","W","N","P","C"]]}
+        {"type":"tsumo","actor":3,"pai":"7m"}
+        {"type":"ryukyoku","reason":"%s","deltas":[0,0,0,0]}
+        {"type":"end_kyoku"}
+        {"type":"end_game"}
+        """
+            .formatted(reason);
+    ReplayRecord record = MjaiReader.readRecord(input);
+    var choices = new ArrayList<Action>();
+    int[] scores =
+        ReplayEngine.replay(
+            record,
+            (point, state, player, legal) -> {
+              choices.add(legal.get(point.chosenSlot()));
+              Assert.assertEquals(player, 3);
+              Assert.assertEquals(point.choiceKind(), DecisionPoint.ChoiceKind.RECORDED_ACTION);
+              Assert.assertEquals(point.eventIndex(), 3);
+              Assert.assertEquals(point.causeEventIndex(), 2);
+              Assert.assertEquals(state.hand(player).concealedTileCount(), 14);
+              Assert.assertTrue(
+                  legal.stream().anyMatch(action -> action.type() == Action.Type.DAHAI));
+            });
+    Assert.assertEquals(choices, List.of(Action.kyushuKyuhai()));
+    Assert.assertEquals(scores, new int[] {6000, 34500, 14600, 44900});
   }
 
   @Test

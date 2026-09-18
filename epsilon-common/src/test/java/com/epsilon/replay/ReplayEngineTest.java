@@ -17,6 +17,7 @@ import com.epsilon.replay.ReplayEvent.Tsumo;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /** 行動適用前の判断とイベント適用後の観測をモデルなしで確認する。 */
@@ -136,6 +137,77 @@ public class ReplayEngineTest {
     Assert.assertEquals(startingScores, new int[] {25000, 25000, 25000, 25000});
     recordedFinalScores[0] = -1;
     Assert.assertEquals(scores, new int[] {31000, 18000, 27000, 24000});
+  }
+
+  @DataProvider
+  public Object[][] lowScoreRiichiCases() {
+    return new Object[][] {
+      {500, true}, {0, true}, {-3500, true},
+      {500, false}, {0, false}, {-3500, false}
+    };
+  }
+
+  @Test(dataProvider = "lowScoreRiichiCases")
+  public void onlyRecordedLowScoreRiichiIsAcceptedWithoutChangingScores(
+      int startingScore, boolean recordedRiichi) {
+    int[] startingScores = {25000, startingScore, 25000, 25000};
+    var events =
+        new ArrayList<ReplayEvent>(
+            List.of(
+                new StartGame(),
+                new StartKyoku(Tile.TON, 1, 0, 0, 1, Tile.HAKU, callHands(), startingScores),
+                new Tsumo(1, 25)));
+    if (recordedRiichi) events.add(new Reach(1));
+    events.add(new Dahai(1, 25, true));
+    if (recordedRiichi) events.add(new ReachAccepted(1));
+    var choices = new ArrayList<Action.Type>();
+    int[] scores =
+        replaySelected(
+            events,
+            (state, player, legal, chosenSlot) -> {
+              if (player != 1) return;
+              Assert.assertEquals(state.getScore(player), startingScore);
+              var ordinaryActions = new ArrayList<Action>();
+              new com.epsilon.engine.ActionGenerator()
+                  .generateTurnActionsInto(
+                      ordinaryActions, state, player, (TurnEvent.Draw) state.getTurnEvent());
+              Assert.assertTrue(
+                  ordinaryActions.stream().noneMatch(a -> a.type() == Action.Type.RIICHI_DAHAI));
+              Assert.assertEquals(
+                  legal.stream().anyMatch(a -> a.type() == Action.Type.RIICHI_DAHAI),
+                  recordedRiichi);
+              choices.add(legal.get(chosenSlot).type());
+            });
+    Assert.assertEquals(
+        choices, List.of(recordedRiichi ? Action.Type.RIICHI_DAHAI : Action.Type.DAHAI));
+    Assert.assertEquals(scores[1], startingScore - (recordedRiichi ? 1000 : 0));
+    Assert.assertEquals(startingScores[1], startingScore);
+  }
+
+  @Test
+  public void recordedLowScoreRiichiStillRequiresTenpai() {
+    var events =
+        List.<ReplayEvent>of(
+            new StartGame(),
+            new StartKyoku(
+                Tile.TON,
+                1,
+                0,
+                0,
+                1,
+                Tile.HAKU,
+                callHands(),
+                new int[] {25000, -3500, 25000, 25000}),
+            new Tsumo(1, 25),
+            new Reach(1),
+            new Dahai(1, 0, false));
+    Assert.expectThrows(
+        IllegalStateException.class,
+        () ->
+            replaySelected(
+                events,
+                (state, player, legal, slot) ->
+                    Assert.fail("A non-tenpai riichi must not reach the consumer")));
   }
 
   @Test

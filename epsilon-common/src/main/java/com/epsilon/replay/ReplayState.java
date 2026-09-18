@@ -32,6 +32,7 @@ final class ReplayState {
   private static final int NUM_PLAYERS = GameState.NUM_PLAYERS;
   private final EngineActionBuffer turnActionsBuf = new EngineActionBuffer();
   private final EngineActionBuffer callDahaiActionsBuf = new EngineActionBuffer();
+  private final EngineActionBuffer recordedRiichiActionsBuf = new EngineActionBuffer();
   private final EngineActionBuffer[] responseActionsByPlayer = new EngineActionBuffer[NUM_PLAYERS];
   private final ActionGenerator actionGenerator = new ActionGenerator();
 
@@ -119,7 +120,18 @@ final class ReplayState {
           callDahaiActionsBuf, state.hand(player), restriction);
       return callDahaiActionsBuf;
     }
-    return turnActions(player);
+    List<Action> actions = turnActions(player);
+    // 元牌譜で宣言済みなら、持ち点不足だけで拒否しない。点数は元のまま保ち、聴牌形などは検証する。
+    if (reachPending[player]
+        && state.getScore(player) < 1000
+        && !state.isRiichi(player)
+        && state.hand(player).isMenzen()
+        && state.remainingWallTiles() >= 4) {
+      actionGenerator.generateRiichiDahaiActionsInto(
+          recordedRiichiActionsBuf, state.hand(player), currentDraw());
+      actions.addAll(recordedRiichiActionsBuf);
+    }
+    return actions;
   }
 
   List<Action> turnActions(int player) {

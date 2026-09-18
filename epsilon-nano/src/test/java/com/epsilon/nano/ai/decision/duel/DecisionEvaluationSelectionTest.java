@@ -1,10 +1,15 @@
 package com.epsilon.nano.ai.decision.duel;
 
 import com.epsilon.ai.decision.duel.DuelEvaluation;
+import com.epsilon.ai.decision.duel.EpsilonDecisionDuelArena;
+import com.epsilon.config.settings.DecisionDuelArenaSettings;
+import com.epsilon.config.settings.InferenceBatchingSettings;
 import com.epsilon.config.settings.SettingsLoader;
-import com.epsilon.nano.ai.decision.arena.EpsilonDecisionDuelArena;
+import com.epsilon.nano.ai.decision.arena.DecisionBatchEncoder;
 import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionEvaluator;
+import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionGreedyEvaluator;
 import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionInferenceServer.Prediction;
+import com.epsilon.nano.config.settings.DecisionSettings;
 import com.epsilon.nano.config.settings.EpsilonSettings;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -40,33 +45,44 @@ public class DecisionEvaluationSelectionTest {
     Assert.assertEquals(actual.wallOutcomes(), expected.wallOutcomes());
     Assert.assertEquals(actual.rotationOutcomes().size(), 4);
     List<DuelEvaluation.WallOutcome> streamed = new ArrayList<>();
-    var continuous =
-        EpsilonDecisionDuelArena.evaluateDuelStreaming(
-            Path.of("candidate"),
-            Path.of("opponent"),
-            evaluator(true),
-            evaluator(false),
-            4,
-            193L,
-            0L,
-            1,
-            streamed::add,
-            settings(mode));
-    Assert.assertEquals(streamed, expected.wallOutcomes());
-    Assert.assertEquals(continuous.result().games(), 4);
+    var settings = settings(mode);
+    try (var encoder =
+        new DecisionBatchEncoder(settings.bind(DecisionDuelArenaSettings.class).advanceWorkers())) {
+      var continuous =
+          EpsilonDecisionDuelArena.evaluateDuelStreaming(
+              Path.of("candidate"),
+              Path.of("opponent"),
+              new DuelPolicy(EpsilonDecisionGreedyEvaluator.adapt(evaluator(true)), encoder),
+              new DuelPolicy(EpsilonDecisionGreedyEvaluator.adapt(evaluator(false)), encoder),
+              4,
+              193L,
+              0L,
+              1,
+              streamed::add,
+              settings.bind(DecisionSettings.class).utilityProfile(),
+              settings.bind(DecisionDuelArenaSettings.class),
+              settings.bind(InferenceBatchingSettings.class));
+      Assert.assertEquals(streamed, expected.wallOutcomes());
+      Assert.assertEquals(continuous.result().games(), 4);
+    }
   }
 
   private static EpsilonDecisionDuelArena.Evaluation duel(SettingsLoader settings) {
-    return EpsilonDecisionDuelArena.evaluateDuel(
-        Path.of("candidate"),
-        Path.of("opponent"),
-        evaluator(true),
-        evaluator(false),
-        4,
-        193L,
-        0L,
-        1,
-        settings);
+    try (var encoder =
+        new DecisionBatchEncoder(settings.bind(DecisionDuelArenaSettings.class).advanceWorkers())) {
+      return EpsilonDecisionDuelArena.evaluateDuel(
+          Path.of("candidate"),
+          Path.of("opponent"),
+          new DuelPolicy(EpsilonDecisionGreedyEvaluator.adapt(evaluator(true)), encoder),
+          new DuelPolicy(EpsilonDecisionGreedyEvaluator.adapt(evaluator(false)), encoder),
+          4,
+          193L,
+          0L,
+          1,
+          settings.bind(DecisionSettings.class).utilityProfile(),
+          settings.bind(DecisionDuelArenaSettings.class),
+          settings.bind(InferenceBatchingSettings.class));
+    }
   }
 
   private static JsonObject replay(SettingsLoader settings) throws Exception {

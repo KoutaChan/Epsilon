@@ -2,11 +2,15 @@ package com.epsilon.pico.ai.decision.duel;
 
 import com.epsilon.ai.decision.duel.DuelEvaluation;
 import com.epsilon.ai.decision.duel.DuelEvaluationSource;
+import com.epsilon.ai.decision.duel.EpsilonDecisionDuelArena;
+import com.epsilon.config.settings.DecisionDuelArenaSettings;
 import com.epsilon.config.settings.DecisionEvalVsSettings;
+import com.epsilon.config.settings.InferenceBatchingSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.core.GameState;
-import com.epsilon.pico.ai.decision.arena.EpsilonDecisionDuelArena;
+import com.epsilon.pico.ai.decision.arena.DecisionBatchEncoder;
 import com.epsilon.pico.ai.decision.runtime.EpsilonDecisionEvaluatorFactory;
+import com.epsilon.pico.config.settings.DecisionSettings;
 import com.epsilon.pico.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
@@ -22,6 +26,9 @@ import java.util.function.Consumer;
 public final class EpsilonDecisionDuelSession implements DuelEvaluationSource, AutoCloseable {
 
   private final SettingsLoader config;
+  private final DecisionBatchEncoder encoder;
+  private final DuelPolicy candidatePolicy;
+  private final DuelPolicy opponentPolicy;
   private final EpsilonDecisionEvaluatorFactory.GreedyHandle candidate;
   private final EpsilonDecisionEvaluatorFactory.GreedyHandle opponent;
 
@@ -32,6 +39,10 @@ public final class EpsilonDecisionDuelSession implements DuelEvaluationSource, A
     this.config = config;
     this.candidate = candidate;
     this.opponent = opponent;
+    encoder =
+        new DecisionBatchEncoder(config.bind(DecisionDuelArenaSettings.class).advanceWorkers());
+    candidatePolicy = new DuelPolicy(candidate.evaluator(), encoder);
+    opponentPolicy = new DuelPolicy(opponent.evaluator(), encoder);
   }
 
   /**
@@ -59,14 +70,25 @@ public final class EpsilonDecisionDuelSession implements DuelEvaluationSource, A
     EpsilonDecisionEvaluatorFactory.GreedyHandle candidate =
         EpsilonDecisionEvaluatorFactory.openGreedyPolicyCheckpointEvaluator(
             candidateCheckpoint, maximumInferenceBatch, context, config);
+    EpsilonDecisionEvaluatorFactory.GreedyHandle opponent = null;
     try {
-      return new EpsilonDecisionDuelSession(
-          candidate,
+      opponent =
           EpsilonDecisionEvaluatorFactory.openGreedyPolicyCheckpointEvaluator(
-              opponentCheckpoint, maximumInferenceBatch, context, config),
-          config);
+              opponentCheckpoint, maximumInferenceBatch, context, config);
+      return new EpsilonDecisionDuelSession(candidate, opponent, config);
     } catch (IOException | RuntimeException | Error failure) {
-      candidate.close();
+      if (opponent != null) {
+        try {
+          opponent.close();
+        } catch (RuntimeException | Error closeFailure) {
+          failure.addSuppressed(closeFailure);
+        }
+      }
+      try {
+        candidate.close();
+      } catch (RuntimeException | Error closeFailure) {
+        failure.addSuppressed(closeFailure);
+      }
       throw failure;
     }
   }
@@ -85,13 +107,15 @@ public final class EpsilonDecisionDuelSession implements DuelEvaluationSource, A
     return EpsilonDecisionDuelArena.evaluateDuel(
         candidate.checkpointPath(),
         opponent.checkpointPath(),
-        candidate.evaluator(),
-        opponent.evaluator(),
+        candidatePolicy,
+        opponentPolicy,
         games,
         seedBase,
         firstWallFamilyId,
         gamesInFlight,
-        config);
+        config.bind(DecisionSettings.class).utilityProfile(),
+        config.bind(DecisionDuelArenaSettings.class),
+        config.bind(InferenceBatchingSettings.class));
   }
 
   /**
@@ -114,14 +138,16 @@ public final class EpsilonDecisionDuelSession implements DuelEvaluationSource, A
     return EpsilonDecisionDuelArena.evaluateDuelStreaming(
         candidate.checkpointPath(),
         opponent.checkpointPath(),
-        candidate.evaluator(),
-        opponent.evaluator(),
+        candidatePolicy,
+        opponentPolicy,
         Math.multiplyExact(wallSeeds, GameState.NUM_PLAYERS),
         seedBase,
         firstWallFamilyId,
         gamesInFlight,
         wallOutcomeSink,
-        config);
+        config.bind(DecisionSettings.class).utilityProfile(),
+        config.bind(DecisionDuelArenaSettings.class),
+        config.bind(InferenceBatchingSettings.class));
   }
 
   @Override
@@ -154,9 +180,15 @@ public final class EpsilonDecisionDuelSession implements DuelEvaluationSource, A
   public void close() {
     Throwable failure = null;
     try {
-      opponent.close();
+      encoder.close();
     } catch (RuntimeException | Error closeFailure) {
       failure = closeFailure;
+    }
+    try {
+      opponent.close();
+    } catch (RuntimeException | Error closeFailure) {
+      if (failure == null) failure = closeFailure;
+      else failure.addSuppressed(closeFailure);
     }
     try {
       candidate.close();

@@ -27,6 +27,7 @@ import com.epsilon.pico.ai.decision.input.DecisionHostBatch;
 import com.epsilon.pico.ai.decision.runtime.EpsilonDecisionEvaluator;
 import com.epsilon.pico.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.pico.ai.decision.runtime.EpsilonDecisionRequestBatcher;
+import com.epsilon.runtime.ArenaAdvanceExecutor;
 import com.epsilon.runtime.DecisionInferenceIngress;
 import com.epsilon.runtime.InferenceAdmission;
 import com.epsilon.runtime.InferenceAdmission.AdmittedBatch;
@@ -319,8 +320,7 @@ public final class EpsilonDecisionArena {
     ArenaMetrics metrics = new ArenaMetrics();
     ArrayList<GameContext> active = new ArrayList<>(Math.min(plan.capacity(), run.games()));
     long nextGame = plan.firstGameIndex();
-    try (EpsilonDecisionArenaAdvanceExecutor advanceExecutor =
-        new EpsilonDecisionArenaAdvanceExecutor(advanceWorkers)) {
+    try (ArenaAdvanceExecutor advanceExecutor = new ArenaAdvanceExecutor(advanceWorkers)) {
       while (nextGame < run.games() || !active.isEmpty()) {
         requireCohortRunning();
         while (nextGame < run.games() && active.size() < plan.capacity()) {
@@ -362,7 +362,7 @@ public final class EpsilonDecisionArena {
         inferenceAdmission;
     private final BlockingQueue<SchedulerEvent> events = new LinkedBlockingQueue<>();
     private final ArrayList<GameEvaluation> readyEvaluations = new ArrayList<>();
-    private final EpsilonDecisionArenaAdvanceExecutor advanceExecutor;
+    private final ArenaAdvanceExecutor advanceExecutor;
     private final DecisionBatchEncoder encodingExecutor;
     private long nextGame;
     private int activeGames;
@@ -382,7 +382,7 @@ public final class EpsilonDecisionArena {
               (evaluator, key) -> evaluator.tryAcquireInferenceIngress(),
               EpsilonDecisionEvaluator::needsInferenceWork);
       this.nextGame = plan.firstGameIndex();
-      this.advanceExecutor = new EpsilonDecisionArenaAdvanceExecutor(advanceWorkers);
+      this.advanceExecutor = new ArenaAdvanceExecutor(advanceWorkers);
       this.encodingExecutor = new DecisionBatchEncoder(advanceWorkers);
     }
 
@@ -710,7 +710,7 @@ public final class EpsilonDecisionArena {
 
   private static void advanceActiveGames(
       ArrayList<GameContext> active,
-      EpsilonDecisionArenaAdvanceExecutor advanceExecutor,
+      ArenaAdvanceExecutor advanceExecutor,
       ArenaRun run,
       ArenaMetrics metrics)
       throws Exception {
@@ -740,8 +740,7 @@ public final class EpsilonDecisionArena {
   }
 
   private static GameStepResult[] executeAdvances(
-      GameAdvance[] advances, EpsilonDecisionArenaAdvanceExecutor advanceExecutor)
-      throws Exception {
+      GameAdvance[] advances, ArenaAdvanceExecutor advanceExecutor) throws Exception {
     GameStepResult[] nextSteps = new GameStepResult[advances.length];
 
     advanceExecutor.invoke(

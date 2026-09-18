@@ -1,22 +1,19 @@
-package com.epsilon.pico.ai.decision.arena;
+package com.epsilon.ai.decision.duel;
 
 import com.epsilon.config.settings.DecisionDuelArenaSettings;
 import com.epsilon.config.settings.InferenceBatchingSettings;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
-import com.epsilon.core.RoundPublicStateIndex;
 import com.epsilon.engine.EngineDecisionPoint;
 import com.epsilon.engine.EngineSelectionBuffer;
 import com.epsilon.engine.GameEngine;
 import com.epsilon.engine.GameStepResult;
-import com.epsilon.pico.ai.decision.input.DecisionBatchBuilder;
-import com.epsilon.pico.ai.decision.input.DecisionBoundaryContext;
-import com.epsilon.pico.ai.decision.input.DecisionBucket;
-import com.epsilon.pico.ai.decision.input.DecisionHostBatch;
-import com.epsilon.pico.ai.decision.runtime.EpsilonDecisionGreedyEvaluator;
+import com.epsilon.runtime.ArenaAdvanceExecutor;
 import com.epsilon.runtime.DecisionInferenceIngress;
 import com.epsilon.runtime.InferenceAdmission;
 import com.epsilon.runtime.InferenceAdmission.AdmittedBatch;
+import com.epsilon.spi.BatchedPolicy;
+import com.epsilon.spi.DecisionRequest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -31,16 +28,16 @@ import java.util.function.Consumer;
 /**
  * 固定牌山で席を入れ替える対戦評価について、方策推論と対局進行を並列に実行する。
  *
- * <p>スケジューラースレッドは、合法手要求の型付きキュー、ホスト符号化用Ingress、ゲーム境界の状態遷移を一元管理する。推論とゲーム進行は
- * ワーカーへ委譲するが、ワーカーは完了イベントだけを返し、キューや有効な対局集合を変更しない。この所有権により、同じゲームの符号化と {@link GameEngine}進行は重ならない。
+ * <p>スケジューラースレッドが推論待ちの要求と対局の状態を管理する。ワーカーは完了イベントだけを返す。 同じ対局の入力符号化と {@link GameEngine}
+ * の進行は重ならず、推論が完了するまで公開観測を借用できる。
  *
- * <p>要求は評価器と{@link DecisionBucket}ごとに対局一括処理を越えて保持する。期限、満杯、実行先への供給の順にバッチを選び、
- * 共有ホスト容量の範囲でバッチを確定して符号化し、符号化完了後にCommonが実行先デバイスを選ぶ。
+ * <p>要求を方策とバッチ分類キーごとにまとめ、待機期限、バッチの充填状況、実行先の空きに応じて発行する。 入力符号化と推論器への投入は系列の {@link BatchedPolicy}
+ * が担当する。
  */
 final class EpsilonDecisionDuelScheduler {
 
-  private final EpsilonDecisionGreedyEvaluator candidateEvaluator;
-  private final EpsilonDecisionGreedyEvaluator opponentEvaluator;
+  private final BatchedPolicy candidateEvaluator;
+  private final BatchedPolicy opponentEvaluator;
   private final int totalGames;
   private final long seedBase;
   private final long firstWallFamilyId;
@@ -50,20 +47,18 @@ final class EpsilonDecisionDuelScheduler {
   private final int maximumAdvanceTaskSize;
   private final Consumer<CompletedGame> completedGameSink;
   private final MetricsBuilder metrics = new MetricsBuilder();
-  private final InferenceAdmission<EpsilonDecisionGreedyEvaluator, DecisionBucket, ActionRequest>
-      inferenceAdmission;
+  private final InferenceAdmission<BatchedPolicy, Object, ActionRequest> inferenceAdmission;
   private final BlockingQueue<CompletionEvent> completedWork = new LinkedBlockingQueue<>();
   private final ArrayList<DecisionBoundary> boundariesReadyToAdvance = new ArrayList<>();
   private final AtomicInteger nextGameIndex = new AtomicInteger();
-  private final EpsilonDecisionArenaAdvanceExecutor advanceExecutor;
-  private final DecisionBatchEncoder encodingExecutor;
+  private final ArenaAdvanceExecutor advanceExecutor;
   private int activeGameCount;
   private int inFlightAdvanceTaskCount;
   private boolean ingressWakeScheduled;
 
   private EpsilonDecisionDuelScheduler(
-      EpsilonDecisionGreedyEvaluator candidateEvaluator,
-      EpsilonDecisionGreedyEvaluator opponentEvaluator,
+      BatchedPolicy candidateEvaluator,
+      BatchedPolicy opponentEvaluator,
       int totalGames,
       long seedBase,
       long firstWallFamilyId,
@@ -84,16 +79,15 @@ final class EpsilonDecisionDuelScheduler {
     inferenceAdmission =
         new InferenceAdmission<>(
             batchingSettings,
-            EpsilonDecisionGreedyEvaluator::preferredStreamingBatchSize,
-            (evaluator, key) -> evaluator.tryAcquireInferenceIngress(),
-            EpsilonDecisionGreedyEvaluator::needsInferenceWork);
-    advanceExecutor = new EpsilonDecisionArenaAdvanceExecutor(advanceWorkers);
-    encodingExecutor = new DecisionBatchEncoder(advanceWorkers);
+            BatchedPolicy::maxBatchSize,
+            EpsilonDecisionDuelScheduler::acquire,
+            BatchedPolicy::needsInferenceWork);
+    advanceExecutor = new ArenaAdvanceExecutor(advanceWorkers);
   }
 
   static Execution run(
-      EpsilonDecisionGreedyEvaluator candidateEvaluator,
-      EpsilonDecisionGreedyEvaluator opponentEvaluator,
+      BatchedPolicy candidateEvaluator,
+      BatchedPolicy opponentEvaluator,
       int totalGames,
       long seedBase,
       long firstWallFamilyId,
@@ -127,15 +121,14 @@ final class EpsilonDecisionDuelScheduler {
       drainPendingWork(failure);
       throw asSchedulerFailure(failure);
     } finally {
-      encodingExecutor.close();
       advanceExecutor.close();
     }
   }
 
-  /** 準備済みな境界を進め、利用可能なIngressへ全ての推論符号化を発行する。 */
+  /** 準備済みの境界を進め、予約できた容量へ推論バッチを発行する。 */
   private void scheduleAvailableWork() {
     submitReadyAdvances();
-    dispatchAvailableEncodings();
+    dispatchAvailableInference();
     scheduleIngressWakeIfBlocked();
     if (hasInFlightWork() || inferenceAdmission.hasQueuedRows()) {
       return;
@@ -160,9 +153,7 @@ final class EpsilonDecisionDuelScheduler {
   }
 
   private void applyCompletion(CompletionEvent event) throws Exception {
-    if (event instanceof EncodingCompleted encoding) {
-      applyEncodingCompletion(encoding);
-    } else if (event instanceof InferenceCompleted inference) {
+    if (event instanceof InferenceCompleted inference) {
       applyInferenceCompletion(inference);
     } else if (event instanceof AdvanceCompleted advance) {
       applyAdvanceCompletion(advance);
@@ -194,8 +185,7 @@ final class EpsilonDecisionDuelScheduler {
     EpsilonDecisionDuelArena.Rotation rotation =
         EpsilonDecisionDuelArena.rotationForGame(
             Math.addExact(firstGameIndex, gameIndex), seedBase);
-    EpsilonDecisionGreedyEvaluator[] evaluators =
-        new EpsilonDecisionGreedyEvaluator[GameState.NUM_PLAYERS];
+    BatchedPolicy[] evaluators = new BatchedPolicy[GameState.NUM_PLAYERS];
     for (int seat = 0; seat < evaluators.length; seat++) {
       evaluators[seat] = seat == rotation.candidateSeat() ? candidateEvaluator : opponentEvaluator;
     }
@@ -227,16 +217,16 @@ final class EpsilonDecisionDuelScheduler {
   }
 
   /** 満杯と期限超過のバッチは直ちに符号化し、未充填の補充バッチはCPU対局進行による後続入力の生成が終わるまで待つ。 */
-  private void dispatchAvailableEncodings() {
-    AdmittedBatch<EpsilonDecisionGreedyEvaluator, DecisionBucket, ActionRequest> batch;
+  private void dispatchAvailableInference() {
+    AdmittedBatch<BatchedPolicy, Object, ActionRequest> batch;
     while ((batch =
             inferenceAdmission.startNextEncoding(System.nanoTime(), inFlightAdvanceTaskCount > 0))
         != null) {
-      startEncoding(batch);
+      submitInference(batch);
     }
   }
 
-  /** 他スケジューラーが占有する格納枠を待つ場合もイベント反復処理を停止させず、空き容量が次に更新されるまで待つ。 */
+  /** 他スケジューラーが占有する格納枠を待つ場合もイベントループを停止させず、空き容量が次に更新されるまで待つ。 */
   private void scheduleIngressWakeIfBlocked() {
     if (!inferenceAdmission.hasQueuedRows()
         || !inferenceAdmission.isWaitingForIngress()
@@ -251,47 +241,24 @@ final class EpsilonDecisionDuelScheduler {
                 completedWork.add(new IngressAvailable(unwrapAsyncFailure(failure))));
   }
 
-  private void startEncoding(
-      AdmittedBatch<EpsilonDecisionGreedyEvaluator, DecisionBucket, ActionRequest> batch) {
-    metrics.recordInferenceBatch(batch.rows().size());
-    try {
-      encodingExecutor
-          .encodeAsync(
-              batch.rows(),
-              batch.key(),
-              (requests, builder, from, to) -> {
-                try (var session = builder.openEncoding()) {
-                  for (int row = from; row < to; row++) {
-                    ActionRequest request = requests.get(row);
-                    session.encodeInferenceRow(
-                        row,
-                        request.boundary.game.engine,
-                        request.decision,
-                        DecisionBoundaryContext.uniform());
-                  }
-                }
-              })
-          .whenComplete(
-              (hostBatch, failure) -> {
-                completedWork.add(
-                    new EncodingCompleted(batch, hostBatch, unwrapAsyncFailure(failure)));
-              });
-    } catch (RuntimeException | Error failure) {
-      completedWork.add(new EncodingCompleted(batch, null, failure));
-    }
+  private static DecisionInferenceIngress.Attempt acquire(BatchedPolicy policy, Object key) {
+    CompletableFuture<Void> available = new CompletableFuture<>();
+    BatchedPolicy.Ingress ingress = policy.tryAcquire(key, () -> available.complete(null));
+    return ingress == null
+        ? DecisionInferenceIngress.Attempt.blocked(available)
+        : DecisionInferenceIngress.Attempt.acquired(
+            new DecisionInferenceIngress(policy, ingress, ingress::close));
   }
 
-  private void applyEncodingCompletion(EncodingCompleted completed) throws Exception {
-    if (completed.failure() != null) {
-      inferenceAdmission.encodingFailed(completed.batch());
-      throw asWorkerException(completed.failure());
-    }
-
+  private void submitInference(AdmittedBatch<BatchedPolicy, Object, ActionRequest> batch) {
+    metrics.recordInferenceBatch(batch.rows().size());
     CompletableFuture<int[]> future;
-    try {
-      future =
-          submitEncodedInference(
-              completed.batch().evaluator(), completed.hostBatch(), completed.batch().ingress());
+    BatchedPolicy.Ingress ingress =
+        (BatchedPolicy.Ingress) batch.ingress().handoff(batch.evaluator()).move();
+    try (ingress) {
+      List<DecisionRequest> requests = new ArrayList<>(batch.rows().size());
+      for (ActionRequest request : batch.rows()) requests.add(request.input);
+      future = ingress.submit(requests);
     } catch (RuntimeException | Error failure) {
       inferenceAdmission.inferenceFinished();
       throw failure;
@@ -299,22 +266,7 @@ final class EpsilonDecisionDuelScheduler {
     future.whenComplete(
         (selectedSlots, failure) ->
             completedWork.add(
-                new InferenceCompleted(
-                    completed.batch(), selectedSlots, unwrapAsyncFailure(failure))));
-  }
-
-  private CompletableFuture<int[]> submitEncodedInference(
-      EpsilonDecisionGreedyEvaluator evaluator,
-      DecisionHostBatch hostBatch,
-      DecisionInferenceIngress ingress) {
-    return submitInferenceAsync(evaluator, hostBatch, ingress);
-  }
-
-  private CompletableFuture<int[]> submitInferenceAsync(
-      EpsilonDecisionGreedyEvaluator evaluator,
-      DecisionHostBatch batch,
-      DecisionInferenceIngress ingress) {
-    return evaluator.submitGreedyActionSlots(batch, ingress);
+                new InferenceCompleted(batch, selectedSlots, unwrapAsyncFailure(failure))));
   }
 
   private void applyInferenceCompletion(InferenceCompleted completed) throws Exception {
@@ -433,9 +385,7 @@ final class EpsilonDecisionDuelScheduler {
     while (hasInFlightWork()) {
       try {
         CompletionEvent event = completedWork.take();
-        if (event instanceof EncodingCompleted encoding) {
-          inferenceAdmission.encodingFailed(encoding.batch());
-        } else if (event instanceof InferenceCompleted inference) {
+        if (event instanceof InferenceCompleted) {
           inferenceAdmission.inferenceFinished();
         } else if (event instanceof AdvanceCompleted) {
           inFlightAdvanceTaskCount--;
@@ -510,16 +460,10 @@ final class EpsilonDecisionDuelScheduler {
       InferenceAdmission.Metrics batching) {}
 
   private sealed interface CompletionEvent
-      permits EncodingCompleted, InferenceCompleted, AdvanceCompleted, IngressAvailable {}
-
-  private record EncodingCompleted(
-      AdmittedBatch<EpsilonDecisionGreedyEvaluator, DecisionBucket, ActionRequest> batch,
-      DecisionHostBatch hostBatch,
-      Throwable failure)
-      implements CompletionEvent {}
+      permits InferenceCompleted, AdvanceCompleted, IngressAvailable {}
 
   private record InferenceCompleted(
-      AdmittedBatch<EpsilonDecisionGreedyEvaluator, DecisionBucket, ActionRequest> batch,
+      AdmittedBatch<BatchedPolicy, Object, ActionRequest> batch,
       int[] selectedSlots,
       Throwable failure)
       implements CompletionEvent {}
@@ -531,14 +475,14 @@ final class EpsilonDecisionDuelScheduler {
 
   private record AdvanceResult(ActiveGame game, GameStepResult boundary, ActiveGame replacement) {}
 
-  /** 一つの半荘と、現在停止している対局エンジン境界を保持する。 */
+  /** 一つの半荘と、現在停止しているエンジン境界を保持する。 */
   private static final class ActiveGame {
 
     private final long wallIndex;
     private final long wallSeed;
     private final int candidateSeat;
     private final GameEngine engine;
-    private final EpsilonDecisionGreedyEvaluator[] evaluators;
+    private final BatchedPolicy[] evaluators;
     private GameStepResult boundary;
 
     private ActiveGame(
@@ -547,7 +491,7 @@ final class EpsilonDecisionDuelScheduler {
         int candidateSeat,
         GameEngine engine,
         GameStepResult boundary,
-        EpsilonDecisionGreedyEvaluator[] evaluators) {
+        BatchedPolicy[] evaluators) {
       this.wallIndex = wallIndex;
       this.wallSeed = wallSeed;
       this.candidateSeat = candidateSeat;
@@ -557,7 +501,7 @@ final class EpsilonDecisionDuelScheduler {
     }
   }
 
-  /** 同じ対局エンジン境界で同時に解決すべき全プレイヤーの行動要求。 */
+  /** 同じエンジン境界で同時に解決すべき全プレイヤーの行動要求。 */
   private static final class DecisionBoundary {
 
     private final ActiveGame game;
@@ -583,10 +527,6 @@ final class EpsilonDecisionDuelScheduler {
       return boundary;
     }
 
-    private RoundPublicStateIndex publicStateContext() {
-      return game.engine.getState().publicState();
-    }
-
     private boolean markActionResolved() {
       return --unresolvedActionCount == 0;
     }
@@ -597,22 +537,29 @@ final class EpsilonDecisionDuelScheduler {
 
     private final DecisionBoundary boundary;
     private final EngineDecisionPoint decision;
-    private final EpsilonDecisionGreedyEvaluator evaluator;
-    private final DecisionBucket bucket;
+    private final BatchedPolicy evaluator;
+    private final Object bucket;
+    private final DecisionRequest input;
     private int selectedActionSlot = -1;
 
     private ActionRequest(
-        DecisionBoundary boundary,
-        EngineDecisionPoint decision,
-        EpsilonDecisionGreedyEvaluator evaluator) {
+        DecisionBoundary boundary, EngineDecisionPoint decision, BatchedPolicy evaluator) {
       this.boundary = boundary;
       this.decision = decision;
-      bucket = DecisionBatchBuilder.selectInferenceBucket(decision.legalActions());
+      this.evaluator = evaluator;
       if (decision.legalActions().size() == 1) {
         selectedActionSlot = 0;
-        this.evaluator = evaluator;
+        input = null;
+        bucket = null;
       } else {
-        this.evaluator = evaluator.resolveInferenceEvaluator(decision.legalActions());
+        input =
+            new DecisionRequest(
+                decision.id(),
+                decision.player(),
+                decision.kind(),
+                boundary.game.engine.observation(decision.player()),
+                decision.legalActions());
+        bucket = evaluator.batchKey(input);
       }
     }
 

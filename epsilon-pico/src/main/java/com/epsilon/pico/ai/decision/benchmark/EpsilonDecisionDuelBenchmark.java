@@ -1,8 +1,8 @@
 package com.epsilon.pico.ai.decision.benchmark;
 
 import com.epsilon.ai.decision.duel.DuelEvaluation;
+import com.epsilon.ai.decision.duel.EpsilonDecisionDuelArena;
 import com.epsilon.config.settings.SettingsLoader;
-import com.epsilon.pico.ai.decision.arena.EpsilonDecisionDuelArena;
 import com.epsilon.pico.ai.decision.duel.EpsilonDecisionDuelSession;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;

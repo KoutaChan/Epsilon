@@ -1,9 +1,9 @@
 package com.epsilon.major.ai.decision.duel;
 
 import com.epsilon.ai.decision.duel.DuelEvaluation;
+import com.epsilon.ai.decision.duel.EpsilonDecisionDuelArena;
 import com.epsilon.config.settings.DecisionEvalVsSettings;
 import com.epsilon.config.settings.SettingsLoader;
-import com.epsilon.major.ai.decision.arena.EpsilonDecisionDuelArena;
 import com.epsilon.major.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;

@@ -1,24 +1,19 @@
-package com.epsilon.major.ai.decision.arena;
+package com.epsilon.ai.decision.duel;
 
 import com.epsilon.ai.decision.DecisionSelectionMode;
 import com.epsilon.ai.decision.EpsilonDecisionSeeds;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.ai.decision.duel.DuelEvaluation;
+import com.epsilon.config.settings.DecisionDuelArenaSettings;
 import com.epsilon.config.settings.InferenceBatchingSettings;
-import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.core.GameState;
 import com.epsilon.core.ScoreRanking;
-import com.epsilon.major.ai.decision.EpsilonDecisionConstants;
-import com.epsilon.major.ai.decision.runtime.EpsilonDecisionEvaluator;
-import com.epsilon.major.ai.decision.runtime.EpsilonDecisionGreedyEvaluator;
-import com.epsilon.major.config.settings.EpsilonSettings;
+import com.epsilon.spi.BatchedPolicy;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,40 +27,6 @@ public final class EpsilonDecisionDuelArena {
   private static final double LCB_95_Z = 1.96;
 
   private EpsilonDecisionDuelArena() {}
-
-  /**
-   * チェックポイント解決済み評価器を最大確率の行動を選ぶ方式で対戦させる。
-   *
-   * <p>同じ牌山乱数シードごとに候補を0..3席へ一度ずつ置き、残り3席を対戦相手にする。{@code games} は半荘数で、1評価単位の4半荘へ切り上げる。
-   *
-   * @param candidateCheckpoint 候補識別情報として記録するチェックポイントパス
-   * @param opponentCheckpoint 対戦相手識別情報として記録するチェックポイントパス
-   * @param candidateEvaluator 候補行動を選ぶ推論器
-   * @param opponentEvaluator 残り3席の行動を選ぶ推論器
-   * @param games 要求する半荘数。完全な4席を入れ替えた対局へ切り上げる
-   * @param seedBase 同一牌山の対局組乱数シードの基点
-   * @param gamesInFlight 同時進行する半荘数
-   * @return 対応をそろえた着順差・点差と推論バッチ指標
-   */
-  public static Evaluation evaluateDuel(
-      Path candidateCheckpoint,
-      Path opponentCheckpoint,
-      EpsilonDecisionEvaluator candidateEvaluator,
-      EpsilonDecisionEvaluator opponentEvaluator,
-      int games,
-      long seedBase,
-      int gamesInFlight) {
-    return evaluateDuel(
-        candidateCheckpoint,
-        opponentCheckpoint,
-        candidateEvaluator,
-        opponentEvaluator,
-        games,
-        seedBase,
-        0L,
-        gamesInFlight,
-        EpsilonSettings.defaults());
-  }
 
   /**
    * {@code firstWallFamilyId}から始まる新しく生成した牌山範囲で評価する。
@@ -85,13 +46,15 @@ public final class EpsilonDecisionDuelArena {
   public static Evaluation evaluateDuel(
       Path candidateCheckpoint,
       Path opponentCheckpoint,
-      EpsilonDecisionEvaluator candidateEvaluator,
-      EpsilonDecisionEvaluator opponentEvaluator,
+      BatchedPolicy candidateEvaluator,
+      BatchedPolicy opponentEvaluator,
       int games,
       long seedBase,
       long firstWallFamilyId,
       int gamesInFlight,
-      SettingsLoader config) {
+      EpsilonUtilityProfile utilityProfile,
+      DecisionDuelArenaSettings settings,
+      InferenceBatchingSettings batchingSettings) {
     DuelRun run =
         runDuel(
             candidateCheckpoint,
@@ -104,7 +67,9 @@ public final class EpsilonDecisionDuelArena {
             gamesInFlight,
             true,
             ignored -> {},
-            config);
+            utilityProfile,
+            settings,
+            batchingSettings);
     return new Evaluation(run.result(), run.metrics(), run.rotationOutcomes(), run.wallOutcomes());
   }
 
@@ -117,14 +82,16 @@ public final class EpsilonDecisionDuelArena {
   public static DuelEvaluation evaluateDuelStreaming(
       Path candidateCheckpoint,
       Path opponentCheckpoint,
-      EpsilonDecisionEvaluator candidateEvaluator,
-      EpsilonDecisionEvaluator opponentEvaluator,
+      BatchedPolicy candidateEvaluator,
+      BatchedPolicy opponentEvaluator,
       int games,
       long seedBase,
       long firstWallFamilyId,
       int gamesInFlight,
       Consumer<DuelEvaluation.WallOutcome> wallOutcomeSink,
-      SettingsLoader config) {
+      EpsilonUtilityProfile utilityProfile,
+      DecisionDuelArenaSettings settings,
+      InferenceBatchingSettings batchingSettings) {
     DuelRun run =
         runDuel(
             candidateCheckpoint,
@@ -137,66 +104,26 @@ public final class EpsilonDecisionDuelArena {
             gamesInFlight,
             false,
             wallOutcomeSink,
-            config);
+            utilityProfile,
+            settings,
+            batchingSettings);
     return new DuelEvaluation(run.result(), run.metrics());
-  }
-
-  public static Evaluation evaluateDuel(
-      Path candidate,
-      Path opponent,
-      EpsilonDecisionEvaluator candidateEvaluator,
-      EpsilonDecisionEvaluator opponentEvaluator,
-      int games,
-      long seed,
-      long firstWall,
-      int gamesInFlight) {
-    return evaluateDuel(
-        candidate,
-        opponent,
-        candidateEvaluator,
-        opponentEvaluator,
-        games,
-        seed,
-        firstWall,
-        gamesInFlight,
-        EpsilonSettings.defaults());
-  }
-
-  public static DuelEvaluation evaluateDuelStreaming(
-      Path candidate,
-      Path opponent,
-      EpsilonDecisionEvaluator candidateEvaluator,
-      EpsilonDecisionEvaluator opponentEvaluator,
-      int games,
-      long seed,
-      long firstWall,
-      int gamesInFlight,
-      Consumer<DuelEvaluation.WallOutcome> sink) {
-    return evaluateDuelStreaming(
-        candidate,
-        opponent,
-        candidateEvaluator,
-        opponentEvaluator,
-        games,
-        seed,
-        firstWall,
-        gamesInFlight,
-        sink,
-        EpsilonSettings.defaults());
   }
 
   private static DuelRun runDuel(
       Path candidateCheckpoint,
       Path opponentCheckpoint,
-      EpsilonDecisionEvaluator candidateEvaluator,
-      EpsilonDecisionEvaluator opponentEvaluator,
+      BatchedPolicy candidateEvaluator,
+      BatchedPolicy opponentEvaluator,
       int games,
       long seedBase,
       long firstWallFamilyId,
       int gamesInFlight,
       boolean collectOutcomes,
       Consumer<DuelEvaluation.WallOutcome> wallOutcomeSink,
-      SettingsLoader config) {
+      EpsilonUtilityProfile utilityProfile,
+      DecisionDuelArenaSettings settings,
+      InferenceBatchingSettings batchingSettings) {
     if (firstWallFamilyId < 0L) {
       throw new IllegalArgumentException("firstWallFamilyId must be non-negative");
     }
@@ -209,22 +136,18 @@ public final class EpsilonDecisionDuelArena {
         DecisionSelectionMode.POLICY_GREEDY,
         totalGames,
         gamesInFlight);
-    Totals totals =
-        new Totals(
-            collectOutcomes,
-            wallOutcomeSink,
-            config.bind(com.epsilon.major.config.settings.DecisionSettings.class).utilityProfile());
+    Totals totals = new Totals(collectOutcomes, wallOutcomeSink, utilityProfile);
     EpsilonDecisionDuelScheduler.Execution execution =
         EpsilonDecisionDuelScheduler.run(
-            EpsilonDecisionGreedyEvaluator.adapt(candidateEvaluator),
-            EpsilonDecisionGreedyEvaluator.adapt(opponentEvaluator),
+            candidateEvaluator,
+            opponentEvaluator,
             totalGames,
             seedBase,
             firstWallFamilyId,
             gamesInFlight,
             totals::add,
-            config.bind(com.epsilon.config.settings.DecisionDuelArenaSettings.class),
-            config.bind(InferenceBatchingSettings.class));
+            settings,
+            batchingSettings);
     EpsilonDecisionDuelScheduler.Metrics schedulerMetrics = execution.metrics();
     return new DuelRun(
         totals.toResult(candidateCheckpoint, opponentCheckpoint, totalGames),
@@ -250,10 +173,6 @@ public final class EpsilonDecisionDuelArena {
       throw new IllegalArgumentException("requestedGames must be positive");
     }
     return ((requestedGames + SEAT_ROTATIONS - 1) / SEAT_ROTATIONS) * SEAT_ROTATIONS;
-  }
-
-  static Rotation rotationForGame(int gameIndex, long seedBase) {
-    return rotationForGame((long) gameIndex, seedBase);
   }
 
   static Rotation rotationForGame(long gameIndex, long seedBase) {
@@ -298,64 +217,6 @@ public final class EpsilonDecisionDuelArena {
     return sum / SEAT_ROTATIONS;
   }
 
-  /**
-   * 4席を入れ替えた対局を、独立な同一牌山の対局組単位のPLACEMENT差へまとめる。
-   *
-   * <p>全席が比較元である対照では、各席の {@link #pairedGameRankDelta(int, int...)} の平均は任意の
-   * 順位順列について厳密に0になる。したがって候補-vs-3-比較元の4席平均は、追加の 比較元-vs-比較元対局を行わずに候補-minus-比較元差として使える。
-   */
-  static List<DuelEvaluation.WallOutcome> wallOutcomes(List<RotationOutcome> rotationOutcomes) {
-    if (rotationOutcomes == null) {
-      throw new IllegalArgumentException("rotation outcomes must not be null");
-    }
-    TreeMap<Long, WallOutcomeBuilder> byWall = new TreeMap<>();
-    for (RotationOutcome outcome : rotationOutcomes) {
-      if (outcome == null) {
-        throw new IllegalArgumentException("rotation outcome must not be null");
-      }
-      byWall
-          .computeIfAbsent(
-              outcome.wallIndex(),
-              ignored -> new WallOutcomeBuilder(outcome.wallIndex(), outcome.wallSeed()))
-          .add(outcome);
-    }
-    ArrayList<DuelEvaluation.WallOutcome> out = new ArrayList<>(byWall.size());
-    for (WallOutcomeBuilder builder : byWall.values()) {
-      out.add(builder.finish());
-    }
-    return out;
-  }
-
-  static PairedRankStats pairedRankStats(double... wallRankDeltas) {
-    if (wallRankDeltas == null || wallRankDeltas.length == 0) {
-      return new PairedRankStats(0, 0.0, 0.0, 0.0);
-    }
-    double sum = 0.0;
-    for (double delta : wallRankDeltas) {
-      if (!Double.isFinite(delta)) {
-        throw new IllegalArgumentException("wall paired rank delta must be finite: " + delta);
-      }
-      sum += delta;
-    }
-    double mean = sum / wallRankDeltas.length;
-    double standardError = 0.0;
-    if (wallRankDeltas.length > 1) {
-      double squaredDeviation = 0.0;
-      for (double delta : wallRankDeltas) {
-        double deviation = delta - mean;
-        squaredDeviation += deviation * deviation;
-      }
-      double sampleVariance = squaredDeviation / (wallRankDeltas.length - 1);
-      standardError = Math.sqrt(sampleVariance / wallRankDeltas.length);
-    }
-    return new PairedRankStats(
-        wallRankDeltas.length, mean, standardError, mean - LCB_95_Z * standardError);
-  }
-
-  static DecisionSelectionMode evaluationSelectionMode() {
-    return DecisionSelectionMode.POLICY_GREEDY;
-  }
-
   private static final class Totals {
     private final boolean collectOutcomes;
     private final Consumer<DuelEvaluation.WallOutcome> wallOutcomeSink;
@@ -370,8 +231,7 @@ public final class EpsilonDecisionDuelArena {
     private int opponentTop;
     private int candidateLast;
     private int opponentLast;
-    private final double[] profileAdvantages =
-        new double[EpsilonDecisionConstants.UTILITY_PROFILE_COUNT];
+    private final double[] profileAdvantages = new double[EpsilonUtilityProfile.values().length];
     private int completedWalls;
     private double wallMean;
     private double wallSquaredDeviation;
@@ -404,8 +264,8 @@ public final class EpsilonDecisionDuelArena {
       int opponentLastForGame = 0;
       int[] opponentRanks = new int[GameState.NUM_PLAYERS - 1];
       int opponentRankIndex = 0;
-      double[] candidateTotals = new double[EpsilonDecisionConstants.UTILITY_PROFILE_COUNT];
-      double[] opponentTotals = new double[EpsilonDecisionConstants.UTILITY_PROFILE_COUNT];
+      double[] candidateTotals = new double[EpsilonUtilityProfile.values().length];
+      double[] opponentTotals = new double[EpsilonUtilityProfile.values().length];
       for (int seat = 0; seat < scores.length; seat++) {
         if (seat == candidateSeat) {
           candidateScore += scores[seat];
@@ -567,7 +427,7 @@ public final class EpsilonDecisionDuelArena {
       List<DuelEvaluation.WallOutcome> wallOutcomes) {}
 
   /**
-   * 1 牌山 × 候補席の対応をそろえたスカラー。カテゴリ未計測値を捏造せず、測定済み項目だけを持つ。
+   * 1つの牌山と候補の席に対応する対戦結果。計測した指標を保持する。
    *
    * @param wallIndex 評価列内の牌山インデックス
    * @param wallSeed 牌山を再現する乱数シード
@@ -650,6 +510,4 @@ public final class EpsilonDecisionDuelArena {
   }
 
   record Rotation(long wallIndex, long wallSeed, int candidateSeat) {}
-
-  record PairedRankStats(int wallSeeds, double mean, double se, double lcb) {}
 }

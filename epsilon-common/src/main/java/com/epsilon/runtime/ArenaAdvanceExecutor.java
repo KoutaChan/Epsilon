@@ -1,4 +1,4 @@
-package com.epsilon.nano.ai.decision.arena;
+package com.epsilon.runtime;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,18 +13,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 対局の進行処理を、指定したワーカー数を上限として並列実行する。
+ * 対局をワーカーごとに分担し、同時実行数を制限して進行させる。
  *
- * <p>対局ごとにタスクを作らず、ワーカー数に応じたグループへ分割する。結果の適用と完了した対局の通知は呼び出し側が行う。
+ * <p>1ゲームごとにタスクを作らず、ワーカー数ぶんの処理分担へ分ける。結果の適用と完了ゲームの公開は呼出側が行う。
  */
-final class EpsilonDecisionArenaAdvanceExecutor implements AutoCloseable {
+public final class ArenaAdvanceExecutor implements AutoCloseable {
 
   private static final AtomicInteger THREAD_SEQUENCE = new AtomicInteger();
 
   private final int workers;
   private final ExecutorService executor;
 
-  EpsilonDecisionArenaAdvanceExecutor(int workers) {
+  public ArenaAdvanceExecutor(int workers) {
     if (workers <= 0) {
       throw new IllegalArgumentException("workers must be positive");
     }
@@ -41,7 +41,7 @@ final class EpsilonDecisionArenaAdvanceExecutor implements AutoCloseable {
             });
   }
 
-  void invoke(int itemCount, IndexedAdvance advance) throws Exception {
+  public void invoke(int itemCount, IndexedAdvance advance) throws Exception {
     if (itemCount < 0) {
       throw new IllegalArgumentException("itemCount must be non-negative");
     }
@@ -88,7 +88,7 @@ final class EpsilonDecisionArenaAdvanceExecutor implements AutoCloseable {
     }
   }
 
-  <T> CompletableFuture<T> submit(Callable<T> task) {
+  public <T> CompletableFuture<T> submit(Callable<T> task) {
     CompletableFuture<T> future = new CompletableFuture<>();
     executor.execute(
         () -> {
@@ -150,7 +150,7 @@ final class EpsilonDecisionArenaAdvanceExecutor implements AutoCloseable {
   }
 
   @FunctionalInterface
-  interface IndexedAdvance {
+  public interface IndexedAdvance {
     void run(int index) throws Exception;
   }
 }

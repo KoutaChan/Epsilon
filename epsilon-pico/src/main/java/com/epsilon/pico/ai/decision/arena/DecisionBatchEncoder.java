@@ -8,12 +8,12 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /** 系列固有の作業領域と保存領域を使い、共通の並列実行処理から入力を符号化する。 */
-final class DecisionBatchEncoder implements AutoCloseable {
+public final class DecisionBatchEncoder implements AutoCloseable {
 
   private final BatchEncodingExecutor<DecisionBucket, DecisionBatchBuilder, DecisionHostBatch>
       executor;
 
-  DecisionBatchEncoder(int workers) {
+  public DecisionBatchEncoder(int workers) {
     var workspaces = new DecisionBatchBuilder.EncodingWorkspacePool(workers);
     executor =
         new BatchEncodingExecutor<>(
@@ -22,7 +22,7 @@ final class DecisionBatchEncoder implements AutoCloseable {
             DecisionBatchBuilder::buildEncodedInferenceRows);
   }
 
-  <R> CompletableFuture<DecisionHostBatch> encodeAsync(
+  public <R> CompletableFuture<DecisionHostBatch> encodeAsync(
       List<R> rows,
       DecisionBucket bucket,
       BatchEncodingExecutor.RangeEncoder<? super R, DecisionBatchBuilder> encoder) {

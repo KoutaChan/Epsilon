@@ -1,15 +1,12 @@
 package com.epsilon.major.ai.decision.input;
 
 import com.epsilon.calculate.scoring.RiichiState;
-import com.epsilon.calculate.scoring.ScoringYaku;
-import com.epsilon.calculate.scoring.WinConditions;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Meld;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.ActionEffect;
-import com.epsilon.engine.WinSettlementProjection;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -31,7 +28,7 @@ import java.util.HexFormat;
 public final class DecisionInputSchema {
 
   /** 変換済みデータセットとチェックポイントの互換性判定に使うスキーマ世代。 */
-  public static final int VERSION = 21;
+  public static final int VERSION = 22;
 
   /** 可変長格納位置の未使用値。カテゴリ埋め込み上の実値とはフィールドごとの符号化・復号処理で分離する。 */
   public static final int PAD_ID = 0;
@@ -95,6 +92,20 @@ public final class DecisionInputSchema {
     RON,
     /** 自摸牌で和了する経路。 */
     TSUMO
+  }
+
+  /** 即時和了・待ち和了が共通で渡す、固定点数計算前の公開情報だけの事実。 */
+  public enum WinFact {
+    /** この和了方法で公開情報から和了可能なら1。 */
+    VALID,
+    /** 裏ドラを除き公開情報から確定する翻数。 */
+    HAN_WITHOUT_URA,
+    /** {@code ScoreMath.encodeFuCode} で符を離散化した値。 */
+    FU_CODE,
+    /** 役満の複合数。通常和了では0。 */
+    YAKUMAN_MULTIPLIER,
+    /** 包精算が必要で、v47のPoint Contextを無効化するなら1。 */
+    REQUIRES_PAO_CORRECTION
   }
 
   /** 判断境界を生んだ直近イベントの種別。{@link TurnEvent.KanKind} は別フィールドへ保持する。 */
@@ -403,10 +414,6 @@ public final class DecisionInputSchema {
     WIN_CONTEXT,
     /** 裏ドラを数える資格がある和了なら1。 */
     URA_ELIGIBLE,
-    /** 公開情報だけの得点射影で採用した決済仮定。 */
-    SETTLEMENT_ASSUMPTION,
-    /** 単独和了を仮定したときの自家予測順位。 */
-    SOLE_WIN_PROJECTED_RANK,
     /** 行動により一発権が開始するなら1。 */
     STARTS_IPPATSU,
     /** 行動により既存の一発権を中断するなら1。 */
@@ -415,42 +422,6 @@ public final class DecisionInputSchema {
     FOLLOW_UP_KIND,
     /** 行動が局を終了するなら1。 */
     TERMINAL
-  }
-
-  /** 行動候補だけで確定する費用・和了・順位射影の数値フィールド。 */
-  public enum ActionFloat {
-    /** リーチ宣言で支払う正規化点数。 */
-    RIICHI_DECLARATION_COST,
-    /** リーチ棒支払い直後の自家正規化得点。 */
-    SELF_SCORE_AFTER_DECLARATION,
-    /** 宣言支払い後の1位までの正規化得点差。 */
-    SCORE_TO_FIRST_AFTER_DECLARATION,
-    /** 宣言支払い後の4位までの正規化得点差。 */
-    SCORE_TO_FOURTH_AFTER_DECLARATION,
-    /** 裏ドラを除き公開情報から確定する和了翻数。 */
-    NORMALIZED_VISIBLE_HAN_WITHOUT_URA,
-    /** 公開情報から確定する和了符。 */
-    NORMALIZED_VISIBLE_FU,
-    /** 公開情報から確定する基本点。 */
-    NORMALIZED_VISIBLE_BASE_POINTS,
-    /** 単独和了時に自家が受け取る最低正規化支払額。 */
-    NORMALIZED_PAYMENT_FLOOR_SELF,
-    /** 単独和了時の下家の最低正規化支払額。 */
-    NORMALIZED_PAYMENT_FLOOR_SHIMOCHA,
-    /** 単独和了時の対面の最低正規化支払額。 */
-    NORMALIZED_PAYMENT_FLOOR_TOIMEN,
-    /** 単独和了時の上家の最低正規化支払額。 */
-    NORMALIZED_PAYMENT_FLOOR_KAMICHA,
-    /** 和了時に参照し得る裏ドラ表示牌数。 */
-    NORMALIZED_URA_INDICATOR_COUNT,
-    /** 単独和了後の自家と1位の正規化得点差。 */
-    NORMALIZED_SOLE_WIN_SCORE_GAP_SELF,
-    /** 単独和了後の下家と1位の正規化得点差。 */
-    NORMALIZED_SOLE_WIN_SCORE_GAP_SHIMOCHA,
-    /** 単独和了後の対面と1位の正規化得点差。 */
-    NORMALIZED_SOLE_WIN_SCORE_GAP_TOIMEN,
-    /** 単独和了後の上家と1位の正規化得点差。 */
-    NORMALIZED_SOLE_WIN_SCORE_GAP_KAMICHA
   }
 
   /**
@@ -550,22 +521,6 @@ public final class DecisionInputSchema {
     NORMALIZED_CONCEALED_TILE_COUNT
   }
 
-  /** 一牌種・一遷移に付与する、RON/TSUMO別の公開得点特徴。 */
-  public enum ActionTransitionWaitFloat {
-    /** RON時に公開情報から確定する正規化翻数。 */
-    RON_NORMALIZED_VISIBLE_HAN,
-    /** RON時に公開情報から確定する正規化符。 */
-    RON_NORMALIZED_FU,
-    /** RON時に公開情報から確定する正規化基本点。 */
-    RON_NORMALIZED_BASE_POINTS,
-    /** TSUMO時に公開情報から確定する正規化翻数。 */
-    TSUMO_NORMALIZED_VISIBLE_HAN,
-    /** TSUMO時に公開情報から確定する正規化符。 */
-    TSUMO_NORMALIZED_FU,
-    /** TSUMO時に公開情報から確定する正規化基本点。 */
-    TSUMO_NORMALIZED_BASE_POINTS
-  }
-
   /** 一行に含まれる局カテゴリ値フィールド数。 */
   public static final int ROUND_INT_COUNT = RoundInt.values().length;
 
@@ -599,9 +554,6 @@ public final class DecisionInputSchema {
   /** 一つの行動候補に含まれるカテゴリ値フィールド数。 */
   public static final int ACTION_INT_STRIDE = ActionInt.values().length;
 
-  /** 一つの行動候補に含まれる数値フィールド数。 */
-  public static final int ACTION_FLOAT_STRIDE = ActionFloat.values().length;
-
   /** 一つの行動候補に含まれる方策グラフ経路数。 */
   public static final int ACTION_ROUTE_STRIDE = ActionRoute.values().length;
 
@@ -627,23 +579,12 @@ public final class DecisionInputSchema {
               * ACTION_TRANSITION_TILE_FLAG_COMBINATION_COUNT
           + 1;
 
-  /** 一つのカテゴリ IDへ連結する役マスクのビット数。 */
-  public static final int WAIT_YAKU_BITS_PER_CHUNK = 14;
+  /** 一つの即時和了候補に含まれるPoint Facts数。 */
+  public static final int ACTION_WIN_FACT_STRIDE = WinFact.values().length;
 
-  /** RONまたはTSUMO一経路の全役を保持するために必要なまとまり数。 */
-  public static final int WAIT_YAKU_CHUNKS_PER_WIN_TYPE =
-      (ScoringYaku.values().length + WAIT_YAKU_BITS_PER_CHUNK - 1) / WAIT_YAKU_BITS_PER_CHUNK;
-
-  /** 一待ち格納位置に並べるRON・TSUMO両経路の役まとまり数。 */
-  public static final int ACTION_TRANSITION_WAIT_YAKU_STRIDE = WAIT_YAKU_CHUNKS_PER_WIN_TYPE * 2;
-
-  /** 役ビットまとまりをパディング ID込みで埋め込みする辞書幅。 */
-  public static final int ACTION_TRANSITION_WAIT_YAKU_DICTIONARY_SIZE =
-      (1 << WAIT_YAKU_BITS_PER_CHUNK) + 1;
-
-  /** 一待ち格納位置に含まれるRON・TSUMO別得点フィールド数。 */
-  public static final int ACTION_TRANSITION_WAIT_FLOAT_STRIDE =
-      ActionTransitionWaitFloat.values().length;
+  /** 一つの待ち格納位置に含まれるRON・TSUMO別Point Facts数。 */
+  public static final int ACTION_TRANSITION_WAIT_WIN_FACT_STRIDE =
+      WaitWinType.values().length * WinFact.values().length;
 
   /** 埋め込み辞書を通さない公開履歴関係の開始位置。ここまでは従来のカテゴリ値フィールド。 */
   public static final int PUBLIC_HISTORY_RELATION_OFFSET =
@@ -678,6 +619,11 @@ public final class DecisionInputSchema {
    */
   public static String fingerprint() {
     return FingerprintHolder.VALUE;
+  }
+
+  /** 方策固有の行動・遷移契約を除いた、状態入力だけの互換性識別子を返す。 */
+  public static String stateFingerprint() {
+    return FingerprintHolder.STATE_VALUE;
   }
 
   private DecisionInputSchema() {}
@@ -744,14 +690,12 @@ public final class DecisionInputSchema {
             + Arrays.toString(MeldFloat.values())
             + ";actionI="
             + Arrays.toString(ActionInt.values())
-            + ";actionF="
-            + Arrays.toString(ActionFloat.values())
             + ";actionTransitionI="
             + Arrays.toString(ActionTransitionInt.values())
             + ";actionTransitionF="
             + Arrays.toString(ActionTransitionFloat.values())
-            + ";actionTransitionWaitF="
-            + Arrays.toString(ActionTransitionWaitFloat.values())
+            + ";winFacts="
+            + Arrays.toString(WinFact.values())
             + ";actionTransitionKinds="
             + Arrays.toString(ActionTransitionKind.values())
             + ";discardContexts="
@@ -774,8 +718,6 @@ public final class DecisionInputSchema {
             + Arrays.toString(Meld.AkaSource.values())
             + ";actionFollowUps="
             + Arrays.toString(ActionEffect.NextStep.values())
-            + ";settlementAssumptions="
-            + Arrays.toString(WinSettlementProjection.SettlementAssumption.values())
             + ";eventTypes="
             + Arrays.toString(EventType.values())
             + ";riichiStatuses="
@@ -794,16 +736,10 @@ public final class DecisionInputSchema {
             + ACTION_TRANSITION_TILE_DICTIONARY_SIZE
             + ";maxWaitTileTypes="
             + MAX_WAIT_TILE_TYPES
-            + ";waitYakuMaskPerChunk="
-            + WAIT_YAKU_BITS_PER_CHUNK
-            + ";waitYakuChunks="
-            + ACTION_TRANSITION_WAIT_YAKU_STRIDE
-            + ";waitYakuDictionary="
-            + ACTION_TRANSITION_WAIT_YAKU_DICTIONARY_SIZE
-            + ";waitFloatStride="
-            + ACTION_TRANSITION_WAIT_FLOAT_STRIDE
-            + ";yakus="
-            + Arrays.toString(ScoringYaku.values())
+            + ";actionWinFactStride="
+            + ACTION_WIN_FACT_STRIDE
+            + ";waitWinFactStride="
+            + ACTION_TRANSITION_WAIT_WIN_FACT_STRIDE
             + ";categoryLayout="
             + DecisionCategoryLayout.descriptor()
             + ";tensorLayout="
@@ -814,6 +750,52 @@ public final class DecisionInputSchema {
             + MAX_MELDS_PER_PLAYER
             + ";publicHistory="
             + DecisionPublicHistory.descriptor();
+    return fingerprintDescriptor(descriptor);
+  }
+
+  private static String createStateFingerprint() {
+    String descriptor =
+        "state-v1"
+            + ";roundI="
+            + Arrays.toString(RoundInt.values())
+            + ";roundF="
+            + Arrays.toString(RoundFloat.values())
+            + ";playerI="
+            + Arrays.toString(PlayerInt.values())
+            + ";playerF="
+            + Arrays.toString(PlayerFloat.values())
+            + ";tileI="
+            + Arrays.toString(TileInt.values())
+            + ";tileF="
+            + Arrays.toString(TileFloat.values())
+            + ";riverI="
+            + Arrays.toString(RiverInt.values())
+            + ";riverF="
+            + Arrays.toString(RiverFloat.values())
+            + ";meldI="
+            + Arrays.toString(MeldInt.values())
+            + ";meldF="
+            + Arrays.toString(MeldFloat.values())
+            + ";eventTypes="
+            + Arrays.toString(EventType.values())
+            + ";riichiStatuses="
+            + Arrays.toString(RiichiState.values())
+            + ";turnEventDrawSources="
+            + Arrays.toString(TurnEvent.DrawSource.values())
+            + ";turnEventKanKinds="
+            + Arrays.toString(TurnEvent.KanKind.values())
+            + ";categoryLayout="
+            + DecisionCategoryLayout.stateDescriptor()
+            + ";river="
+            + MAX_RIVER_EVENTS_PER_PLAYER
+            + ";meld="
+            + MAX_MELDS_PER_PLAYER
+            + ";publicHistory="
+            + DecisionPublicHistory.descriptor();
+    return fingerprintDescriptor(descriptor);
+  }
+
+  private static String fingerprintDescriptor(String descriptor) {
     try {
       byte[] digest =
           MessageDigest.getInstance("SHA-256").digest(descriptor.getBytes(StandardCharsets.UTF_8));
@@ -825,5 +807,6 @@ public final class DecisionInputSchema {
 
   private static final class FingerprintHolder {
     private static final String VALUE = createFingerprint();
+    private static final String STATE_VALUE = createStateFingerprint();
   }
 }

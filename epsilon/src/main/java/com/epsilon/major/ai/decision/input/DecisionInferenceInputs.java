@@ -2,26 +2,27 @@ package com.epsilon.major.ai.decision.input;
 
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.index.NDIndex;
+import ai.djl.ndarray.types.DataType;
 
 /**
  * 通常の逐次実行による推論で使う、状態・行動と実在する遷移のテンソル。
  *
- * <p>状態・行動テンソルは密なバッチ形状、遷移六テンソルはホストの存在するインデックス順に並ぶ {@code [present, 1, 1, ...]} 形状である。標準形式の
+ * <p>状態・行動テンソルは密なバッチ形状、遷移五テンソルはホストの存在するインデックス順に並ぶ {@code [present, 1, 1, ...]} 形状である。標準形式の
  * NDListと学習チェックポイントスキーマには参加しない。
  */
 public record DecisionInferenceInputs(
     NDArray stateCategories,
     NDArray actionCategories,
     NDArray actionRoutes,
+    NDArray pointLedger100,
+    NDArray actionWinFacts,
     NDArray transitionCategories,
     NDArray transitionTiles,
     NDArray waitTileIds,
-    NDArray waitYakus,
+    NDArray waitWinFacts,
     NDArray stateNumerics,
     NDArray boundaryContext,
-    NDArray actionNumerics,
     NDArray transitionNumerics,
-    NDArray waitScores,
     DecisionBucket bucket)
     implements DecisionPolicyInputs {
 
@@ -32,14 +33,14 @@ public record DecisionInferenceInputs(
     if (rows < 1
         || actionCategories.getShape().get(0) != rows
         || actionRoutes.getShape().get(0) != rows
+        || pointLedger100.getShape().get(0) != rows
+        || actionWinFacts.getShape().get(0) != rows
         || stateNumerics.getShape().get(0) != rows
         || boundaryContext.getShape().get(0) != rows
-        || actionNumerics.getShape().get(0) != rows
         || transitionTiles.getShape().get(0) != present
         || waitTileIds.getShape().get(0) != present
-        || waitYakus.getShape().get(0) != present
-        || transitionNumerics.getShape().get(0) != present
-        || waitScores.getShape().get(0) != present) {
+        || waitWinFacts.getShape().get(0) != present
+        || transitionNumerics.getShape().get(0) != present) {
       throw new IllegalArgumentException("Decision inference tensors have inconsistent axes");
     }
   }
@@ -63,15 +64,15 @@ public record DecisionInferenceInputs(
         views[DecisionInputLayout.Tensor.STATE_CATEGORIES.ordinal()],
         views[DecisionInputLayout.Tensor.ACTION_CATEGORIES.ordinal()],
         views[DecisionInputLayout.Tensor.ACTION_ROUTES.ordinal()],
+        views[DecisionInputLayout.Tensor.POINT_LEDGER_100.ordinal()].toType(DataType.INT32, false),
+        views[DecisionInputLayout.Tensor.ACTION_WIN_FACTS.ordinal()],
         views[DecisionInputLayout.Tensor.TRANSITION_CATEGORIES.ordinal()],
         views[DecisionInputLayout.Tensor.TRANSITION_TILES.ordinal()],
         views[DecisionInputLayout.Tensor.WAIT_TILE_IDS.ordinal()],
-        views[DecisionInputLayout.Tensor.WAIT_YAKUS.ordinal()],
+        views[DecisionInputLayout.Tensor.WAIT_WIN_FACTS.ordinal()],
         views[DecisionInputLayout.Tensor.STATE_NUMERICS.ordinal()],
         views[DecisionInputLayout.Tensor.BOUNDARY_CONTEXT.ordinal()],
-        views[DecisionInputLayout.Tensor.ACTION_NUMERICS.ordinal()],
         views[DecisionInputLayout.Tensor.TRANSITION_NUMERICS.ordinal()],
-        views[DecisionInputLayout.Tensor.WAIT_SCORES.ordinal()],
         layout.bucket());
   }
 
@@ -86,15 +87,15 @@ public record DecisionInferenceInputs(
       stateCategories,
       actionCategories,
       actionRoutes,
+      pointLedger100,
+      actionWinFacts,
       transitionCategories,
       transitionTiles,
       waitTileIds,
-      waitYakus,
+      waitWinFacts,
       stateNumerics,
       boundaryContext,
-      actionNumerics,
-      transitionNumerics,
-      waitScores
+      transitionNumerics
     };
   }
 

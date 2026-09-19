@@ -36,6 +36,7 @@ public final class WinSettlementProjection {
   private final int[] scoreGaps = new int[GameState.NUM_PLAYERS];
   private boolean uraEligible;
   private int uraIndicatorCount;
+  private boolean paoApplies;
   private SettlementAssumption settlementAssumption = SettlementAssumption.EXACT_TSUMO;
 
   WinSettlementProjection() {}
@@ -106,6 +107,11 @@ public final class WinSettlementProjection {
     return settlementAssumption;
   }
 
+  /** 包が成立する和了なら {@code true}。 */
+  public boolean paoApplies() {
+    return paoApplies;
+  }
+
   /**
    * RONまたはTSUMOの公開得点下限と和了後順位を、実対局と同じ和了・精算規則で計算する。
    *
@@ -135,7 +141,7 @@ public final class WinSettlementProjection {
                   hand.ownedAkaMask(),
                   scoreBuffer),
               scoreBuffer);
-      WinSettlementCalculator.tsumoDeltaInto(
+      WinSettlementCalculator.settleTsumoInto(
           player, state.getOya(), state.getHonba(), result, hand, paymentFloor);
       projectedDelta.bind(
           paymentFloor.player0(),
@@ -158,9 +164,9 @@ public final class WinSettlementProjection {
                       hand.ownedAkaMask(), source.tileType(), source.isAkaTile()),
                   scoreBuffer),
               scoreBuffer);
-      WinSettlementCalculator.ronDeltaInto(
+      WinSettlementCalculator.settleRonInto(
           player, source.player(), state.getOya(), 0, result, hand, paymentFloor);
-      WinSettlementCalculator.ronDeltaInto(
+      WinSettlementCalculator.settleRonInto(
           player, source.player(), state.getOya(), state.getHonba(), result, hand, projectedDelta);
       settlementAssumption = SettlementAssumption.SOLE_RON;
     } else {
@@ -176,6 +182,7 @@ public final class WinSettlementProjection {
       scoreGaps[seat] = projectedScores[player] - projectedScores[seat];
     }
     VisibleHandScoreBuffer.copyInto(result, visibleScore);
+    paoApplies = PaoRules.applies(hand, result);
     uraEligible = state.isRiichi(player);
     uraIndicatorCount = doraCount;
     return this;

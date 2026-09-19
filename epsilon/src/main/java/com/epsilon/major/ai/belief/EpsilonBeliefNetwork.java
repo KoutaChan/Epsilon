@@ -25,7 +25,7 @@ public final class EpsilonBeliefNetwork extends AbstractBeliefNetwork {
       "belief-mahjong-entity-tile-rel2h4-key-attention-c64-"
           + EpsilonMahjongStateEncoder.STRATEGIC_CONTEXT_FINGERPRINT
           + "-readout-pertile-v11-"
-          + DecisionInputSchema.fingerprint()
+          + DecisionInputSchema.stateFingerprint()
           + "-"
           + EpsilonTileRelationEncoder.FINGERPRINT;
 

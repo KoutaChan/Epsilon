@@ -17,7 +17,7 @@ final class RoundWinResolver {
   RoundResult resolveTsumo(int player, HandScoreBuffer agari) {
     Hand hand = state.hand(player);
     WinClaim.Tsumo claim =
-        WinSettlementCalculator.tsumo(
+        WinSettlementCalculator.createTsumoClaim(
             player, state.getOya(), state.getHonba(), agari, hand, state.isRiichi(player));
     return new RoundResult.TsumoAgari(claim);
   }
@@ -51,7 +51,7 @@ final class RoundWinResolver {
   private WinClaim.Ron resolveRon(
       int winner, TurnEvent.ResponseSource response, int honba, HandScoreBuffer agari) {
     Hand hand = state.hand(winner);
-    return WinSettlementCalculator.ron(
+    return WinSettlementCalculator.createRonClaim(
         winner, response.player(), state.getOya(), honba, agari, hand, state.isRiichi(winner));
   }
 

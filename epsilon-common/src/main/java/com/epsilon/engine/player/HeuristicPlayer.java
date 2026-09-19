@@ -12,8 +12,8 @@ import com.epsilon.core.RoundPublicStateIndex;
 import com.epsilon.core.ScoreRanking;
 import com.epsilon.core.Tile;
 import com.epsilon.engine.ActionEffect;
-import com.epsilon.engine.DecisionHandAnalysisBuffer;
 import com.epsilon.engine.EngineDecisionBuffer;
+import com.epsilon.engine.HandAnalysisBuffer;
 import com.epsilon.engine.Player;
 import com.epsilon.engine.ScorePayments;
 import com.epsilon.engine.YakuRouteAnalyzer;
@@ -519,14 +519,14 @@ public final class HeuristicPlayer implements Player {
 
     private HandQuality bind(
         HandView hand,
-        DecisionHandAnalysisBuffer analysis,
+        HandAnalysisBuffer analysis,
         int secondOrderUkeire,
         long confirmedYakuRouteBits) {
       allTilesSimple = allTilesAreSimple(hand);
       oneSuitAndHonors = allTilesUseOneSuitAndHonors(hand);
       minimumShanten = analysis.minimumShanten();
       sevenPairsShanten = analysis.chiitoitsuShanten();
-      specialHandsAvailable = analysis.specialHandsAvailable();
+      specialHandsAvailable = analysis.specialHandShantenAvailable();
       ukeireCount = analysis.liveImprovingCopies();
       ukeireTileTypes = analysis.liveImprovingTileTypes();
       this.secondOrderUkeire = secondOrderUkeire;
@@ -712,7 +712,7 @@ public final class HeuristicPlayer implements Player {
           decision.analyzeTransitionWaits(actionIndex, transitionIndex, riichiStatus));
     }
 
-    private HandQuality quality(HandView projectedHand, DecisionHandAnalysisBuffer analysis) {
+    private HandQuality quality(HandView projectedHand, HandAnalysisBuffer analysis) {
       int secondOrder =
           analysis.minimumShanten() >= 1 && analysis.minimumShanten() <= 2
               ? secondOrderUkeire(projectedHand, analysis.minimumShanten())
@@ -750,7 +750,7 @@ public final class HeuristicPlayer implements Player {
       return callChoices[callChoiceCursor++].bind(action, quality, score);
     }
 
-    private void fillWaitValue(HandQuality quality, DecisionHandAnalysisBuffer waits) {
+    private void fillWaitValue(HandQuality quality, HandAnalysisBuffer waits) {
       int liveTiles = 0;
       int liveTypes = 0;
       int liveRonTiles = 0;
@@ -762,11 +762,11 @@ public final class HeuristicPlayer implements Player {
         if (remaining <= 0) {
           continue;
         }
-        if (waits.ronYakuMask(index) != 0L || waits.tsumoYakuMask(index) != 0L) {
+        if (waits.ronYakuBits(index) != 0L || waits.tsumoYakuBits(index) != 0L) {
           liveTiles += remaining;
           liveTypes++;
         }
-        if (waits.ronYakuMask(index) != 0L) {
+        if (waits.ronYakuBits(index) != 0L) {
           int points = ronPoints(waits.ronBasePoints(index), dealer);
           liveRonTiles += remaining;
           minimumRonPoints = Math.min(minimumRonPoints, points);

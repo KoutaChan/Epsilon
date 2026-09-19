@@ -28,7 +28,7 @@ import java.util.Map;
 public final class EpsilonDecisionInferenceReplayCorpusStore {
 
   private static final long MAGIC = 0x4550535245504C59L;
-  private static final int FORMAT_VERSION = 2;
+  private static final int FORMAT_VERSION = 3;
   private static final int ROLE_COUNT = 2;
   private static final int MAXIMUM_BUCKETS = 32;
   private static final int MAXIMUM_TEXT_BYTES = 256;

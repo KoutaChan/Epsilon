@@ -42,7 +42,7 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
 
   /** Decision専用の戦略文脈ブロックをチェックポイント識別子へ固定する文字列。 */
   public static final String STRATEGIC_CONTEXT_FINGERPRINT =
-      "public-cross4x112-c64-f256-shared-kv-handpool-c64-strategic6x3h4-c128-f960";
+      "public-cross4x112-c128-f256-shared-kv-handpool-c64-strategic6x3h4-c128-f960";
 
   /** 1人分のプレイヤートークン、河、面子を含むメモリ実行枠数。 */
   public static final int PLAYER_MEMORY_TOKEN_COUNT =

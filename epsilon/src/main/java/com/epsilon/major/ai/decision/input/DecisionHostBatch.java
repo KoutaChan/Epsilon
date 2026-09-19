@@ -229,16 +229,14 @@ public final class DecisionHostBatch {
     return inputs.actionCategory(row, actionSlot, field);
   }
 
-  /**
-   * 合法行動の数値特徴量を読む。
-   *
-   * @param row 有効行インデックス
-   * @param actionSlot 合法行動候補の位置
-   * @param field 特徴量種別
-   * @return 符号化済み数値
-   */
-  public float actionNumeric(int row, int actionSlot, DecisionInputSchema.ActionFloat field) {
-    return inputs.actionNumeric(row, actionSlot, field);
+  /** 絶対席順の現在点を100点単位で読む。 */
+  public int pointLedger100(int row, int absoluteSeat) {
+    return inputs.pointLedger100(row, absoluteSeat);
+  }
+
+  /** 即時和了候補のPoint Factを読む。 */
+  public int actionWinFact(int row, int actionSlot, DecisionInputSchema.WinFact fact) {
+    return inputs.actionWinFact(row, actionSlot, fact);
   }
 
   /**
@@ -298,37 +296,15 @@ public final class DecisionHostBatch {
     return inputs.waitTile(row, actionSlot, transitionSlot, waitSlot);
   }
 
-  /**
-   * 指定待ち牌で成立可能な役特徴量を読む。
-   *
-   * @param row 有効行インデックス
-   * @param actionSlot 合法行動候補の位置
-   * @param transitionSlot 行動内の遷移候補の位置
-   * @param waitSlot 待ち集合内の格納位置
-   * @param feature wait-yaku 特徴量インデックス
-   * @return 符号化済み役特徴量値
-   */
-  public int waitYaku(int row, int actionSlot, int transitionSlot, int waitSlot, int feature) {
-    return inputs.waitYaku(row, actionSlot, transitionSlot, waitSlot, feature);
-  }
-
-  /**
-   * 指定待ち牌の得点特徴量を読む。
-   *
-   * @param row 有効行インデックス
-   * @param actionSlot 合法行動候補の位置
-   * @param transitionSlot 行動内の遷移候補の位置
-   * @param waitSlot 待ち集合内の格納位置
-   * @param field 得点特徴量種別
-   * @return 符号化済み得点値
-   */
-  public float waitScore(
+  /** 指定待ち牌のRON・TSUMO別Point Factを読む。 */
+  public int waitWinFact(
       int row,
       int actionSlot,
       int transitionSlot,
       int waitSlot,
-      DecisionInputSchema.ActionTransitionWaitFloat field) {
-    return inputs.waitScore(row, actionSlot, transitionSlot, waitSlot, field);
+      DecisionInputSchema.WaitWinType winType,
+      DecisionInputSchema.WinFact fact) {
+    return inputs.waitWinFact(row, actionSlot, transitionSlot, waitSlot, winType, fact);
   }
 
   /**

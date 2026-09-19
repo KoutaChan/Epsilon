@@ -14,10 +14,10 @@ public final class EpsilonDecisionConstants {
 
   /** 公開時系列・共有K/V・独立幅二択分岐・価値残差を統合したmajor 構造。 */
   public static final String ARCHITECTURE_ID =
-      "epsilon-major-v46-shared-discard-public-history-shared-kv-"
+      "epsilon-major-v47-point-projection-point-gate6-shared-discard-public-history-shared-kv-"
           + EpsilonMahjongStateEncoder.STRATEGIC_CONTEXT_FINGERPRINT
-          + "-policy-c64-f384-g256-folded-offset-transition-bridge-"
-          + "value-c64-f256-detached-preactivation-residual-hl101-"
+          + "-policy-context-c128-readout-c128-f384-g256-folded-offset-transition-bridge-"
+          + "value-readout-c128-f256-detached-preactivation-residual-hl101-"
           + DecisionInputSchema.fingerprint()
           + "-"
           + EpsilonTileRelationEncoder.FINGERPRINT;

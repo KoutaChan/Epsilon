@@ -14,7 +14,7 @@ import java.nio.ShortBuffer;
 /** 対局の収集中に退避する一行分の入力と確率分布を、現行形式で符号化・復号する。 */
 final class EpsilonDecisionTrajectoryPayloadCodec {
 
-  static final int MAGIC = 0xED20_001B;
+  static final int MAGIC = 0xED20_001C;
 
   private EpsilonDecisionTrajectoryPayloadCodec() {}
 

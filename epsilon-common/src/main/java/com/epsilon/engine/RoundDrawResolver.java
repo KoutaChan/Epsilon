@@ -66,10 +66,9 @@ final class RoundDrawResolver {
       }
       winnerMask |= 1 << player;
       WinPayment.Tsumo payment =
-          WinSettlementCalculator.tsumoPayment(
+          WinSettlementCalculator.calculateTsumoPayment(
               2000, player == oya ? WinnerRole.DEALER : WinnerRole.CHILD, 0);
-      scoreDelta[player] += payment.total();
-      WinSettlementCalculator.applyTsumo(scoreDelta, player, oya, payment);
+      WinSettlementCalculator.addTsumoPayments(scoreDelta, player, oya, payment);
     }
     return winnerMask;
   }

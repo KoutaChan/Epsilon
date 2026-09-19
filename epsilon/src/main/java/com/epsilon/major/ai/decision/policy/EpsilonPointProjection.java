@@ -1,0 +1,431 @@
+package com.epsilon.major.ai.decision.policy;
+
+import ai.djl.ndarray.NDArray;
+import ai.djl.ndarray.NDArrays;
+import ai.djl.ndarray.NDList;
+import ai.djl.ndarray.NDManager;
+import ai.djl.ndarray.types.DataType;
+import ai.djl.ndarray.types.Shape;
+import ai.djl.nn.AbstractBlock;
+import ai.djl.training.ParameterStore;
+import ai.djl.util.PairList;
+import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.calculate.scoring.ScoreMath;
+import com.epsilon.core.Action;
+import com.epsilon.core.GameState;
+import com.epsilon.engine.HanchanProgression;
+import com.epsilon.engine.ScorePayments;
+import com.epsilon.major.ai.decision.input.DecisionFeatureCodec;
+import com.epsilon.major.ai.decision.input.DecisionInputSchema;
+
+/** 公開情報だけの和了事実から、点棒移動・順位・半荘遷移の固定特徴量を計算する。 */
+public final class EpsilonPointProjection extends AbstractBlock {
+
+  static final int FEATURE_WIDTH = 26;
+  static final int GATE_FEATURE_WIDTH = 6;
+
+  private static final int FU_COUNT = 12;
+  private static final int HAN_COUNT = 14;
+  private static final int YAKUMAN_COUNT = 16;
+  private static final int TABLE_SIZE = FU_COUNT * HAN_COUNT * YAKUMAN_COUNT;
+  private static final int SCORE_NORMALIZER_100 = 1000;
+  private static final int[] WAIT_RON = {1, 1, 1, 0, 1, 1, 1, 0};
+  private static final int[] WAIT_SOURCE = {1, 2, 3, 0, 1, 2, 3, 0};
+  private static final int[] WAIT_AKA = {0, 0, 0, 0, 1, 1, 1, 1};
+
+  private final EpsilonUtilityProfile utilityProfile;
+  private NDArray ronChild;
+  private NDArray ronDealer;
+  private NDArray tsumoSingle;
+  private NDArray tsumoDouble;
+  private NDArray rankUtility;
+  private NDArray waitRon;
+  private NDArray waitSource;
+  private NDArray waitAka;
+
+  public EpsilonPointProjection(EpsilonUtilityProfile utilityProfile) {
+    this.utilityProfile = utilityProfile;
+  }
+
+  Projection projectActions(
+      NDArray pointLedger100,
+      NDArray stateCategories,
+      NDArray actionCategories,
+      NDArray actionWinFacts) {
+    long rows = actionWinFacts.getShape().get(0);
+    long actions = actionWinFacts.getShape().get(1);
+    NDArray actionTypes =
+        actionCategories
+            .get("...,{}", DecisionInputSchema.ActionInt.TYPE.ordinal())
+            .toType(DataType.INT32, false);
+    NDArray ron =
+        actionTypes
+            .eq(DecisionFeatureCodec.actionType(Action.Type.RON_AGARI))
+            .toType(DataType.INT32, false);
+    NDArray tsumo =
+        actionTypes
+            .eq(DecisionFeatureCodec.actionType(Action.Type.TSUMO_AGARI))
+            .toType(DataType.INT32, false);
+    NDArray source =
+        round(stateCategories, DecisionInputSchema.RoundInt.SOURCE_PLAYER_RELATIVE_SEAT)
+            .sub(1)
+            .reshape(rows, 1);
+    NDArray zeros = ron.mul(0);
+    return project(
+        pointLedger100.reshape(rows, 1, GameState.NUM_PLAYERS),
+        actionWinFacts,
+        round(stateCategories, DecisionInputSchema.RoundInt.PLAYER_SEAT).sub(1).reshape(rows, 1),
+        round(stateCategories, DecisionInputSchema.RoundInt.DEALER_RELATIVE_SEAT)
+            .sub(1)
+            .reshape(rows, 1),
+        round(stateCategories, DecisionInputSchema.RoundInt.KYOKU_INDEX).sub(1).reshape(rows, 1),
+        round(stateCategories, DecisionInputSchema.RoundInt.HONBA).reshape(rows, 1),
+        round(stateCategories, DecisionInputSchema.RoundInt.KYOTAKU).reshape(rows, 1),
+        ron,
+        tsumo,
+        source.add(tsumo.mul(source.neg())),
+        zeros,
+        zeros,
+        zeros);
+  }
+
+  Projection projectWaits(
+      NDArray pointLedger100,
+      NDArray stateCategories,
+      NDArray actionTypes,
+      NDArray waitWinFacts,
+      NDArray akaAvailable) {
+    long rows = waitWinFacts.getShape().get(0);
+    long actions = waitWinFacts.getShape().get(1);
+    NDArray ronFacts = waitWinFacts.get("...,{},:", DecisionInputSchema.WaitWinType.RON.ordinal());
+    NDArray tsumoFacts =
+        waitWinFacts.get("...,{},:", DecisionInputSchema.WaitWinType.TSUMO.ordinal());
+    NDArray ronRed = redFacts(ronFacts, akaAvailable);
+    NDArray tsumoRed = redFacts(tsumoFacts, akaAvailable);
+    NDArray facts =
+        NDArrays.stack(
+            new NDList(ronFacts, ronFacts, ronFacts, tsumoFacts, ronRed, ronRed, ronRed, tsumoRed),
+            ronFacts.getShape().dimension() - 1);
+    NDArray riichi =
+        actionTypes
+            .eq(DecisionFeatureCodec.actionType(Action.Type.RIICHI_DAHAI))
+            .toType(DataType.INT32, false)
+            .reshape(rows, actions, 1, 1, 1);
+    NDArray aka = waitAka.reshape(1, 1, 1, 1, WAIT_AKA.length).mul(akaAvailable.expandDims(4));
+    return project(
+        pointLedger100.reshape(rows, 1, 1, 1, 1, GameState.NUM_PLAYERS),
+        facts,
+        round(stateCategories, DecisionInputSchema.RoundInt.PLAYER_SEAT)
+            .sub(1)
+            .reshape(rows, 1, 1, 1, 1),
+        round(stateCategories, DecisionInputSchema.RoundInt.DEALER_RELATIVE_SEAT)
+            .sub(1)
+            .reshape(rows, 1, 1, 1, 1),
+        round(stateCategories, DecisionInputSchema.RoundInt.KYOKU_INDEX)
+            .sub(1)
+            .reshape(rows, 1, 1, 1, 1),
+        round(stateCategories, DecisionInputSchema.RoundInt.HONBA).reshape(rows, 1, 1, 1, 1),
+        round(stateCategories, DecisionInputSchema.RoundInt.KYOTAKU).reshape(rows, 1, 1, 1, 1),
+        waitRon.reshape(1, 1, 1, 1, WAIT_RON.length),
+        waitRon.neg().add(1).reshape(1, 1, 1, 1, WAIT_RON.length),
+        waitSource.reshape(1, 1, 1, 1, WAIT_SOURCE.length),
+        riichi,
+        waitRon.mul(0).add(1).reshape(1, 1, 1, 1, WAIT_RON.length),
+        aka);
+  }
+
+  private Projection project(
+      NDArray pointLedger100,
+      NDArray facts,
+      NDArray playerSeat,
+      NDArray dealerRelativeSeat,
+      NDArray kyoku,
+      NDArray honba,
+      NDArray kyotaku,
+      NDArray ron,
+      NDArray tsumo,
+      NDArray sourceRelativeSeat,
+      NDArray riichi,
+      NDArray snapshot,
+      NDArray aka) {
+    NDArray stored = facts.toType(DataType.INT32, false).stopGradient();
+    NDArray valid =
+        stored
+            .get("...,{}", DecisionInputSchema.WinFact.VALID.ordinal())
+            .eq(1)
+            .logicalAnd(
+                stored
+                    .get("...,{}", DecisionInputSchema.WinFact.REQUIRES_PAO_CORRECTION.ordinal())
+                    .eq(0))
+            .logicalAnd(ron.add(tsumo).gt(0))
+            .toType(DataType.INT32, false);
+    NDArray han = stored.get("...,{}", DecisionInputSchema.WinFact.HAN_WITHOUT_URA.ordinal());
+    NDArray fuCode = stored.get("...,{}", DecisionInputSchema.WinFact.FU_CODE.ordinal());
+    NDArray yakuman =
+        stored.get("...,{}", DecisionInputSchema.WinFact.YAKUMAN_MULTIPLIER.ordinal());
+    NDArray tableIndex =
+        yakuman.mul(HAN_COUNT * FU_COUNT).add(han.minimum(13).mul(FU_COUNT)).add(fuCode);
+    NDArray dealerWinner = dealerRelativeSeat.eq(0).toType(DataType.INT32, false);
+    NDArray ronPayment =
+        ronChild
+            .take(tableIndex)
+            .mul(dealerWinner.neg().add(1))
+            .add(ronDealer.take(tableIndex).mul(dealerWinner))
+            .add(honba.mul(3));
+    NDArray singlePayment = tsumoSingle.take(tableIndex).add(honba);
+    NDArray doublePayment = tsumoDouble.take(tableIndex).add(honba);
+    NDArray tsumoReceived =
+        doublePayment
+            .mul(3)
+            .mul(dealerWinner)
+            .add(doublePayment.add(singlePayment.mul(2)).mul(dealerWinner.neg().add(1)));
+
+    int prefixDimension = facts.getShape().dimension() - 1;
+    NDList settlementBySeat = new NDList();
+    NDList adjustedBySeat = new NDList();
+    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
+      NDArray winner = playerSeat.eq(seat).toType(DataType.INT32, false);
+      NDArray source =
+          absoluteSeatMask(playerSeat, sourceRelativeSeat, seat).toType(DataType.INT32, false);
+      NDArray dealer =
+          absoluteSeatMask(playerSeat, dealerRelativeSeat, seat).toType(DataType.INT32, false);
+      NDArray ronDelta = winner.mul(ronPayment).sub(source.mul(ronPayment));
+      NDArray payerPayment =
+          doublePayment
+              .mul(dealerWinner)
+              .add(
+                  doublePayment
+                      .mul(dealer)
+                      .add(singlePayment.mul(dealer.neg().add(1)))
+                      .mul(dealerWinner.neg().add(1)));
+      NDArray tsumoDelta = winner.mul(tsumoReceived).sub(winner.neg().add(1).mul(payerPayment));
+      settlementBySeat.add(
+          ronDelta.mul(ron).add(tsumoDelta.mul(tsumo)).mul(valid).expandDims(prefixDimension));
+      adjustedBySeat.add(
+          pointLedger100
+              .get("...,{}", seat)
+              .sub(winner.mul(riichi).mul(HanchanProgression.RIICHI_COST / 100))
+              .expandDims(prefixDimension));
+    }
+    NDArray settlement = NDArrays.concat(settlementBySeat, prefixDimension);
+    NDArray adjustedLedger = NDArrays.concat(adjustedBySeat, prefixDimension);
+    NDArray terminationScores = adjustedLedger.add(settlement);
+    NDArray winnerMask = absoluteSeatOneHot(playerSeat, prefixDimension);
+    NDArray finalScores =
+        terminationScores.add(
+            winnerMask.mul(
+                kyotaku
+                    .add(riichi)
+                    .mul(HanchanProgression.RIICHI_COST / 100)
+                    .expandDims(prefixDimension)));
+    NDArray selfScore = finalScores.mul(winnerMask).sum(new int[] {prefixDimension});
+    NDArray terminationSelfScore =
+        terminationScores.mul(winnerMask).sum(new int[] {prefixDimension});
+    NDArray terminationRank =
+        rank(terminationScores, terminationSelfScore, playerSeat, prefixDimension);
+    NDArray rank = rank(finalScores, selfScore, playerSeat, prefixDimension);
+    NDArray rankOneHot = rank.oneHot(GameState.NUM_PLAYERS, DataType.FLOAT32);
+    NDArray topScore = terminationScores.max(new int[] {prefixDimension}, false);
+    NDArray busted = terminationScores.min(new int[] {prefixDimension}, false).lt(0);
+    NDArray dealerContinues = dealerRelativeSeat.eq(0);
+    NDArray topSelf = terminationRank.eq(0);
+    NDArray southOrLater = kyoku.gte(HanchanProgression.SOUTH_END_KYOKU);
+    NDArray finishAtSouthOrLater =
+        dealerContinues
+            .logicalAnd(terminationSelfScore.gte(HanchanProgression.TOP_THRESHOLD / 100))
+            .logicalAnd(topSelf)
+            .logicalOr(
+                dealerContinues
+                    .logicalNot()
+                    .logicalAnd(topScore.gte(HanchanProgression.TOP_THRESHOLD / 100)));
+    NDArray hanchanEnd =
+        busted
+            .logicalOr(kyoku.gte(HanchanProgression.WEST_END_KYOKU))
+            .logicalOr(southOrLater.logicalAnd(finishAtSouthOrLater))
+            .toType(DataType.FLOAT32, false)
+            .mul(valid);
+    NDArray active = valid.toType(DataType.FLOAT32, false);
+    NDArray notEnd = active.sub(hanchanEnd);
+    NDArray dealerRepeat = notEnd.mul(dealerContinues.toType(DataType.FLOAT32, false));
+    NDArray westExtension =
+        notEnd
+            .mul(dealerContinues.logicalNot().toType(DataType.FLOAT32, false))
+            .mul(southOrLater.toType(DataType.FLOAT32, false));
+    NDArray nextRound = notEnd.sub(dealerRepeat).sub(westExtension);
+    NDArray terminalUtility = rankUtility.take(rank).mul(hanchanEnd);
+    NDArray broadcastZero = active.mul(0);
+
+    NDList features = new NDList();
+    features.add(active.expandDims(prefixDimension));
+    features.add(
+        ron.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
+    features.add(
+        tsumo.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
+    for (int relativeSeat = 0; relativeSeat < GameState.NUM_PLAYERS; relativeSeat++) {
+      features.add(
+          sourceRelativeSeat
+              .eq(relativeSeat)
+              .toType(DataType.FLOAT32, false)
+              .mul(ron)
+              .add(broadcastZero)
+              .expandDims(prefixDimension));
+    }
+    features.add(settlement.toType(DataType.FLOAT32, false).div(SCORE_NORMALIZER_100));
+    for (int relativeSeat = 0; relativeSeat < GameState.NUM_PLAYERS; relativeSeat++) {
+      NDArray relativeScore = relativeScore(finalScores, playerSeat, relativeSeat, prefixDimension);
+      features.add(
+          selfScore
+              .sub(relativeScore)
+              .toType(DataType.FLOAT32, false)
+              .div(SCORE_NORMALIZER_100)
+              .expandDims(prefixDimension));
+    }
+    features.add(rankOneHot);
+    features.add(hanchanEnd.expandDims(prefixDimension));
+    features.add(dealerRepeat.expandDims(prefixDimension));
+    features.add(nextRound.expandDims(prefixDimension));
+    features.add(westExtension.expandDims(prefixDimension));
+    features.add(terminalUtility.expandDims(prefixDimension));
+    features.add(
+        snapshot.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
+    features.add(
+        aka.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
+    NDArray projected =
+        NDArrays.concat(features, prefixDimension).mul(active.expandDims(prefixDimension));
+    NDArray gateFeatures =
+        NDArrays.concat(
+                new NDList(
+                    hanchanEnd.expandDims(prefixDimension),
+                    terminalUtility.expandDims(prefixDimension),
+                    rankOneHot),
+                prefixDimension)
+            .mul(active.expandDims(prefixDimension));
+    return new Projection(projected, gateFeatures, active);
+  }
+
+  private static NDArray redFacts(NDArray facts, NDArray akaAvailable) {
+    int axis = facts.getShape().dimension() - 1;
+    NDList fields = new NDList();
+    fields.add(
+        facts
+            .get("...,{}", DecisionInputSchema.WinFact.VALID.ordinal())
+            .mul(akaAvailable)
+            .expandDims(axis));
+    fields.add(
+        facts
+            .get("...,{}", DecisionInputSchema.WinFact.HAN_WITHOUT_URA.ordinal())
+            .add(1)
+            .expandDims(axis));
+    for (int field = DecisionInputSchema.WinFact.FU_CODE.ordinal();
+        field < DecisionInputSchema.WinFact.values().length;
+        field++) {
+      fields.add(facts.get("...,{}", field).expandDims(axis));
+    }
+    return NDArrays.concat(fields, axis);
+  }
+
+  private static NDArray round(NDArray stateCategories, DecisionInputSchema.RoundInt field) {
+    return stateCategories.get(":,{}", field.ordinal()).toType(DataType.INT32, false);
+  }
+
+  private static NDArray absoluteSeatMask(
+      NDArray playerSeat, NDArray relativeSeat, int absoluteSeat) {
+    NDArray result = playerSeat.eq(0).logicalAnd(relativeSeat.eq(absoluteSeat));
+    for (int player = 1; player < GameState.NUM_PLAYERS; player++) {
+      result =
+          result.logicalOr(
+              playerSeat
+                  .eq(player)
+                  .logicalAnd(
+                      relativeSeat.eq(
+                          (absoluteSeat - player + GameState.NUM_PLAYERS)
+                              % GameState.NUM_PLAYERS)));
+    }
+    return result;
+  }
+
+  private static NDArray absoluteSeatOneHot(NDArray playerSeat, int axis) {
+    NDList masks = new NDList();
+    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
+      masks.add(playerSeat.eq(seat).toType(DataType.INT32, false).expandDims(axis));
+    }
+    return NDArrays.concat(masks, axis);
+  }
+
+  private static NDArray relativeScore(
+      NDArray scores, NDArray playerSeat, int relativeSeat, int axis) {
+    NDArray result = scores.get("...,0").mul(0);
+    for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
+      int seat = (player + relativeSeat) % GameState.NUM_PLAYERS;
+      result =
+          result.add(
+              scores.get("...,{}", seat).mul(playerSeat.eq(player).toType(DataType.INT32, false)));
+    }
+    return result;
+  }
+
+  private static NDArray rank(NDArray scores, NDArray selfScore, NDArray playerSeat, int axis) {
+    NDArray rank = selfScore.mul(0);
+    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
+      NDArray score = scores.get("...,{}", seat);
+      NDArray ahead =
+          score.gt(selfScore).logicalOr(score.eq(selfScore).logicalAnd(playerSeat.gt(seat)));
+      rank = rank.add(ahead.toType(DataType.INT32, false));
+    }
+    return rank;
+  }
+
+  @Override
+  protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
+    int[] childRon = new int[TABLE_SIZE];
+    int[] dealerRon = new int[TABLE_SIZE];
+    int[] single = new int[TABLE_SIZE];
+    int[] doubled = new int[TABLE_SIZE];
+    for (int yakuman = 0; yakuman < YAKUMAN_COUNT; yakuman++) {
+      for (int han = 0; han < HAN_COUNT; han++) {
+        for (int fuCode = 0; fuCode < FU_COUNT; fuCode++) {
+          int index = yakuman * HAN_COUNT * FU_COUNT + han * FU_COUNT + fuCode;
+          int fu = ScoreMath.decodeFuCode(fuCode);
+          int basePoints = ScoreMath.basePoints(han, fu, yakuman);
+          childRon[index] = ScorePayments.ronPoints(basePoints, false) / 100;
+          dealerRon[index] = ScorePayments.ronPoints(basePoints, true) / 100;
+          single[index] = ScorePayments.tsumoFromChild(basePoints, false) / 100;
+          doubled[index] = ScorePayments.tsumoFromDealer(basePoints) / 100;
+        }
+      }
+    }
+    ronChild = manager.create(childRon);
+    ronDealer = manager.create(dealerRon);
+    tsumoSingle = manager.create(single);
+    tsumoDouble = manager.create(doubled);
+    rankUtility =
+        utilityProfile == EpsilonUtilityProfile.TENHOU
+            ? manager.create(new float[] {0.0f, 0.0f, 0.0f, -1.0f})
+            : manager.create(
+                new float[] {
+                  utilityProfile.utilityForRank(0),
+                  utilityProfile.utilityForRank(1),
+                  utilityProfile.utilityForRank(2),
+                  utilityProfile.utilityForRank(3)
+                });
+    waitRon = manager.create(WAIT_RON);
+    waitSource = manager.create(WAIT_SOURCE);
+    waitAka = manager.create(WAIT_AKA);
+  }
+
+  @Override
+  protected NDList forwardInternal(
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> runtimeParameters) {
+    throw new UnsupportedOperationException("Use projectActions or projectWaits");
+  }
+
+  @Override
+  public Shape[] getOutputShapes(Shape[] inputShapes) {
+    return new Shape[] {new Shape(-1, FEATURE_WIDTH)};
+  }
+
+  record Projection(NDArray features, NDArray gateFeatures, NDArray validMask) {}
+}

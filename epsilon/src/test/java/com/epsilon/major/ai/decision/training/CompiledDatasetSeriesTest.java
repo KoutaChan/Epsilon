@@ -10,7 +10,7 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-/** 旧形式と同じ系列の学習データを受け入れ、明示された別系列のデータを拒否することを検証する。 */
+/** 現行形式の系列境界と、v47より前の形式拒否を検証する。 */
 public class CompiledDatasetSeriesTest {
   @DataProvider
   public Object[][] series() {
@@ -18,11 +18,11 @@ public class CompiledDatasetSeriesTest {
   }
 
   @Test(dataProvider = "series")
-  public void legacyAndOwnSeriesOpenButExplicitOtherSeriesIsRejected(
+  public void unmarkedAndOwnSeriesOpenButExplicitOtherSeriesIsRejected(
       String series, boolean accepted) throws Exception {
     Path directory = Files.createTempDirectory("compiled-series-");
     JsonObject manifest = new JsonObject();
-    manifest.addProperty("formatVersion", 11);
+    manifest.addProperty("formatVersion", 12);
     manifest.addProperty("schemaFingerprint", DecisionInputSchema.fingerprint());
     manifest.addProperty("identity", "series-boundary");
     manifest.addProperty("rows", 0);
@@ -39,6 +39,25 @@ public class CompiledDatasetSeriesTest {
                 IOException.class, () -> EpsilonDecisionCompiledDataset.open(directory));
         Assert.assertTrue(error.getMessage().contains("series mismatch"));
       }
+    } finally {
+      Files.deleteIfExists(directory.resolve("manifest.json"));
+      Files.delete(directory);
+    }
+  }
+
+  @Test
+  public void format11DatasetIsRejected() throws Exception {
+    Path directory = Files.createTempDirectory("compiled-v11-");
+    JsonObject manifest = new JsonObject();
+    manifest.addProperty("formatVersion", 11);
+    manifest.addProperty("schemaFingerprint", DecisionInputSchema.fingerprint());
+    manifest.addProperty("identity", "old-format");
+    manifest.addProperty("rows", 0);
+    manifest.addProperty("batches", 0);
+    manifest.add("shards", new JsonArray());
+    try {
+      Files.writeString(directory.resolve("manifest.json"), manifest.toString());
+      Assert.expectThrows(IOException.class, () -> EpsilonDecisionCompiledDataset.open(directory));
     } finally {
       Files.deleteIfExists(directory.resolve("manifest.json"));
       Files.delete(directory);

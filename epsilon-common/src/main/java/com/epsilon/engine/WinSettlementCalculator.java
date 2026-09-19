@@ -1,251 +1,190 @@
 package com.epsilon.engine;
 
 import com.epsilon.calculate.scoring.HandScoreBuffer;
-import com.epsilon.calculate.scoring.ScoringYaku;
 import com.epsilon.core.GameState;
 import com.epsilon.core.HandView;
-import com.epsilon.core.Meld;
-import com.epsilon.core.Tile;
 
 /** 和了時の点棒移動を計算する。 */
 final class WinSettlementCalculator {
 
   private WinSettlementCalculator() {}
 
-  /** 候補の評価や入力の符号化に使うツモ和了の点棒移動を、和了明細や支払いオブジェクトを生成せずに書き込む。 */
-  static void tsumoDeltaInto(
-      int winner,
-      int oya,
+  /** ツモ和了の精算結果を、和了明細や支払いオブジェクトを生成せずに書き込む。 */
+  static void settleTsumoInto(
+      int winnerSeat,
+      int dealerSeat,
       int honba,
-      HandScoreBuffer agari,
+      HandScoreBuffer score,
       HandView winnerHand,
-      PointDeltaBuffer out) {
+      PointDeltaBuffer destination) {
     int bonus = honba * 100;
-    int base = agari.basePoints();
-    int fromDealer;
-    int fromChild;
-    if (winner == oya) {
-      fromDealer = 0;
-      fromChild = ScorePayments.tsumoFromDealer(base) + bonus;
-    } else {
-      fromDealer = ScorePayments.tsumoFromDealer(base) + bonus;
-      fromChild = ScorePayments.tsumoFromChild(base, false) + bonus;
-    }
-    int total = winner == oya ? fromChild * 3 : fromDealer + fromChild * 2;
-    int d0 = 0;
-    int d1 = 0;
-    int d2 = 0;
-    int d3 = 0;
-    int pao = paoPlayer(winner, winnerHand, agari);
-    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
-      int delta;
-      if (seat == winner) {
-        delta = total;
-      } else if (pao >= 0) {
-        delta = seat == pao ? -total : 0;
-      } else {
-        delta = -(winner == oya ? fromChild : seat == oya ? fromDealer : fromChild);
-      }
-      if (seat == 0) d0 = delta;
-      else if (seat == 1) d1 = delta;
-      else if (seat == 2) d2 = delta;
-      else d3 = delta;
-    }
-    out.bind(d0, d1, d2, d3);
+    boolean dealerWin = winnerSeat == dealerSeat;
+    int dealerPayment = dealerTsumoPayment(score.basePoints(), dealerWin, bonus);
+    int childPayment = childTsumoPayment(score.basePoints(), dealerWin, bonus);
+    int liableSeat = PaoRules.liableSeat(winnerSeat, winnerHand, score);
+    destination.bind(
+        tsumoDelta(0, winnerSeat, dealerSeat, dealerPayment, childPayment, liableSeat),
+        tsumoDelta(1, winnerSeat, dealerSeat, dealerPayment, childPayment, liableSeat),
+        tsumoDelta(2, winnerSeat, dealerSeat, dealerPayment, childPayment, liableSeat),
+        tsumoDelta(3, winnerSeat, dealerSeat, dealerPayment, childPayment, liableSeat));
   }
 
-  /** 候補の評価や入力の符号化に使うロン和了の点棒移動を、和了明細や支払いオブジェクトを生成せずに書き込む。 */
-  static void ronDeltaInto(
-      int winner,
-      int loser,
-      int oya,
+  /** ロン和了の精算結果を、和了明細や支払いオブジェクトを生成せずに書き込む。 */
+  static void settleRonInto(
+      int winnerSeat,
+      int discarderSeat,
+      int dealerSeat,
       int honba,
-      HandScoreBuffer agari,
+      HandScoreBuffer score,
       HandView winnerHand,
-      PointDeltaBuffer out) {
-    int basePayment = ScorePayments.ronPoints(agari.basePoints(), winner == oya);
-    int points = basePayment + honba * 300;
-    int pao = paoPlayer(winner, winnerHand, agari);
-    int d0 = 0;
-    int d1 = 0;
-    int d2 = 0;
-    int d3 = 0;
-    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
-      int delta = 0;
-      if (seat == winner) {
-        delta = points;
-      } else if (pao < 0 || pao == loser) {
-        delta = seat == loser ? -points : 0;
-      } else {
-        int half = basePayment / 2;
-        if (seat == pao) delta = -half - honba * 300;
-        else if (seat == loser) delta = -half;
-      }
-      if (seat == 0) d0 = delta;
-      else if (seat == 1) d1 = delta;
-      else if (seat == 2) d2 = delta;
-      else d3 = delta;
-    }
-    out.bind(d0, d1, d2, d3);
+      PointDeltaBuffer destination) {
+    int basePayment = ronBasePayment(score.basePoints(), winnerSeat == dealerSeat);
+    int honbaPayment = honba * 300;
+    int liableSeat = PaoRules.liableSeat(winnerSeat, winnerHand, score);
+    destination.bind(
+        ronDelta(0, winnerSeat, discarderSeat, basePayment, honbaPayment, liableSeat),
+        ronDelta(1, winnerSeat, discarderSeat, basePayment, honbaPayment, liableSeat),
+        ronDelta(2, winnerSeat, discarderSeat, basePayment, honbaPayment, liableSeat),
+        ronDelta(3, winnerSeat, discarderSeat, basePayment, honbaPayment, liableSeat));
   }
 
-  static WinClaim.Tsumo tsumo(
-      int winner,
-      int oya,
+  static WinClaim.Tsumo createTsumoClaim(
+      int winnerSeat,
+      int dealerSeat,
       int honba,
-      HandScoreBuffer agari,
+      HandScoreBuffer score,
       HandView winnerHand,
       boolean riichiDeclared) {
     WinPayment.Tsumo payment =
-        tsumoPayment(
-            agari.basePoints(), winner == oya ? WinnerRole.DEALER : WinnerRole.CHILD, honba);
-    int player0 = 0;
-    int player1 = 0;
-    int player2 = 0;
-    int player3 = 0;
-    int pao = paoPlayer(winner, winnerHand, agari);
-    for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
-      int delta;
-      if (player == winner) {
-        delta = payment.total();
-      } else if (pao >= 0) {
-        delta = player == pao ? -payment.total() : 0;
-      } else {
-        delta =
-            switch (payment) {
-              case WinPayment.DealerTsumo tsumo -> -tsumo.each();
-              case WinPayment.ChildTsumo tsumo ->
-                  -(player == oya ? tsumo.fromDealer() : tsumo.fromChild());
-            };
-      }
-      switch (player) {
-        case 0 -> player0 = delta;
-        case 1 -> player1 = delta;
-        case 2 -> player2 = delta;
-        default -> player3 = delta;
-      }
-    }
+        calculateTsumoPayment(
+            score.basePoints(),
+            winnerSeat == dealerSeat ? WinnerRole.DEALER : WinnerRole.CHILD,
+            honba);
+    int dealerPayment = dealerPayment(payment);
+    int childPayment = childPayment(payment);
+    int liableSeat = PaoRules.liableSeat(winnerSeat, winnerHand, score);
     return new WinClaim.Tsumo(
-        winner,
-        agari.snapshot(),
+        winnerSeat,
+        score.snapshot(),
         payment,
         honba,
-        new PointDelta(player0, player1, player2, player3),
+        new PointDelta(
+            tsumoDelta(0, winnerSeat, dealerSeat, dealerPayment, childPayment, liableSeat),
+            tsumoDelta(1, winnerSeat, dealerSeat, dealerPayment, childPayment, liableSeat),
+            tsumoDelta(2, winnerSeat, dealerSeat, dealerPayment, childPayment, liableSeat),
+            tsumoDelta(3, winnerSeat, dealerSeat, dealerPayment, childPayment, liableSeat)),
         riichiDeclared);
   }
 
-  static WinPayment.Tsumo tsumoPayment(int basePoints, WinnerRole role, int honba) {
-    WinPayment.Tsumo payment = ScorePayments.tsumo(basePoints, role);
-    if (honba == 0) {
-      return payment;
-    }
+  static WinPayment.Tsumo calculateTsumoPayment(
+      int basePoints, WinnerRole winnerRole, int honba) {
     int bonus = honba * 100;
+    boolean dealerWin = winnerRole == WinnerRole.DEALER;
+    int childPayment = childTsumoPayment(basePoints, dealerWin, bonus);
+    return dealerWin
+        ? new WinPayment.DealerTsumo(childPayment)
+        : new WinPayment.ChildTsumo(
+            dealerTsumoPayment(basePoints, false, bonus), childPayment);
+  }
+
+  /** 複数人の流し満貫を重ねられるよう、通常ツモの精算額を既存配列へ加算する。 */
+  static void addTsumoPayments(
+      int[] scoreDelta, int winnerSeat, int dealerSeat, WinPayment.Tsumo payment) {
+    int dealerPayment = dealerPayment(payment);
+    int childPayment = childPayment(payment);
+    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
+      scoreDelta[seat] +=
+          tsumoDelta(seat, winnerSeat, dealerSeat, dealerPayment, childPayment, -1);
+    }
+  }
+
+  static WinClaim.Ron createRonClaim(
+      int winnerSeat,
+      int discarderSeat,
+      int dealerSeat,
+      int honba,
+      HandScoreBuffer score,
+      HandView winnerHand,
+      boolean riichiDeclared) {
+    int honbaPayment = honba * 300;
+    int basePayment = ronBasePayment(score.basePoints(), winnerSeat == dealerSeat);
+    WinPayment.Ron payment = new WinPayment.Ron(basePayment + honbaPayment);
+    int liableSeat = PaoRules.liableSeat(winnerSeat, winnerHand, score);
+    return new WinClaim.Ron(
+        winnerSeat,
+        discarderSeat,
+        score.snapshot(),
+        payment,
+        honba,
+        new PointDelta(
+            ronDelta(0, winnerSeat, discarderSeat, basePayment, honbaPayment, liableSeat),
+            ronDelta(1, winnerSeat, discarderSeat, basePayment, honbaPayment, liableSeat),
+            ronDelta(2, winnerSeat, discarderSeat, basePayment, honbaPayment, liableSeat),
+            ronDelta(3, winnerSeat, discarderSeat, basePayment, honbaPayment, liableSeat)),
+        riichiDeclared);
+  }
+
+  private static int dealerTsumoPayment(int basePoints, boolean dealerWin, int bonus) {
+    return dealerWin ? 0 : ScorePayments.tsumoFromDealer(basePoints) + bonus;
+  }
+
+  private static int childTsumoPayment(int basePoints, boolean dealerWin, int bonus) {
+    return ScorePayments.tsumoFromChild(basePoints, dealerWin) + bonus;
+  }
+
+  private static int ronBasePayment(int basePoints, boolean dealerWin) {
+    return ScorePayments.ronPoints(basePoints, dealerWin);
+  }
+
+  private static int dealerPayment(WinPayment.Tsumo payment) {
+    return payment instanceof WinPayment.ChildTsumo childTsumo ? childTsumo.fromDealer() : 0;
+  }
+
+  private static int childPayment(WinPayment.Tsumo payment) {
     return switch (payment) {
-      case WinPayment.DealerTsumo tsumo -> new WinPayment.DealerTsumo(tsumo.each() + bonus);
-      case WinPayment.ChildTsumo tsumo ->
-          new WinPayment.ChildTsumo(tsumo.fromDealer() + bonus, tsumo.fromChild() + bonus);
+      case WinPayment.DealerTsumo dealerTsumo -> dealerTsumo.each();
+      case WinPayment.ChildTsumo childTsumo -> childTsumo.fromChild();
     };
   }
 
-  static void applyTsumo(int[] delta, int winner, int oya, WinPayment.Tsumo payment) {
-    switch (payment) {
-      case WinPayment.DealerTsumo tsumo -> {
-        for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
-          if (player != winner) {
-            delta[player] -= tsumo.each();
-          }
-        }
-      }
-      case WinPayment.ChildTsumo tsumo -> {
-        for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
-          if (player != winner) {
-            delta[player] -= player == oya ? tsumo.fromDealer() : tsumo.fromChild();
-          }
-        }
-      }
+  private static int tsumoDelta(
+      int seat,
+      int winnerSeat,
+      int dealerSeat,
+      int dealerPayment,
+      int childPayment,
+      int liableSeat) {
+    int winnerGain =
+        winnerSeat == dealerSeat ? childPayment * 3 : dealerPayment + childPayment * 2;
+    if (seat == winnerSeat) {
+      return winnerGain;
     }
+    if (liableSeat >= 0) {
+      return seat == liableSeat ? -winnerGain : 0;
+    }
+    return -(winnerSeat == dealerSeat
+        ? childPayment
+        : seat == dealerSeat ? dealerPayment : childPayment);
   }
 
-  static WinClaim.Ron ron(
-      int winner,
-      int loser,
-      int oya,
-      int honba,
-      HandScoreBuffer agari,
-      HandView winnerHand,
-      boolean riichiDeclared) {
-    WinPayment.Ron payment =
-        ronPayment(agari.basePoints(), winner == oya ? WinnerRole.DEALER : WinnerRole.CHILD, honba);
-    int player0 = 0;
-    int player1 = 0;
-    int player2 = 0;
-    int player3 = 0;
-    int pao = paoPlayer(winner, winnerHand, agari);
-    for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
-      int delta = 0;
-      if (player == winner) {
-        delta = payment.total();
-      } else if (pao < 0 || pao == loser) {
-        delta = player == loser ? -payment.points() : 0;
-      } else {
-        int honbaPayment = honba * 300;
-        int half = (payment.points() - honbaPayment) / 2;
-        if (player == pao) {
-          delta = -half - honbaPayment;
-        } else if (player == loser) {
-          delta = -half;
-        }
-      }
-      switch (player) {
-        case 0 -> player0 = delta;
-        case 1 -> player1 = delta;
-        case 2 -> player2 = delta;
-        default -> player3 = delta;
-      }
+  private static int ronDelta(
+      int seat,
+      int winnerSeat,
+      int discarderSeat,
+      int basePayment,
+      int honbaPayment,
+      int liableSeat) {
+    int winnerGain = basePayment + honbaPayment;
+    if (seat == winnerSeat) {
+      return winnerGain;
     }
-    return new WinClaim.Ron(
-        winner,
-        loser,
-        agari.snapshot(),
-        payment,
-        honba,
-        new PointDelta(player0, player1, player2, player3),
-        riichiDeclared);
-  }
-
-  private static WinPayment.Ron ronPayment(int basePoints, WinnerRole role, int honba) {
-    WinPayment.Ron payment = ScorePayments.ron(basePoints, role);
-    return honba == 0 ? payment : new WinPayment.Ron(payment.points() + honba * 300);
-  }
-
-  private static int paoPlayer(int winner, HandView winnerHand, HandScoreBuffer yaku) {
-    if (yaku.hasYakuman(ScoringYaku.DAISANGEN)) {
-      int player = paoPlayer(winner, winnerHand, ScoringYaku.DAISANGEN);
-      if (player >= 0) {
-        return player;
-      }
+    if (liableSeat < 0 || liableSeat == discarderSeat) {
+      return seat == discarderSeat ? -winnerGain : 0;
     }
-    if (yaku.hasYakuman(ScoringYaku.DAISUUSHII)) {
-      return paoPlayer(winner, winnerHand, ScoringYaku.DAISUUSHII);
+    int halfPayment = basePayment / 2;
+    if (seat == liableSeat) {
+      return -halfPayment - honbaPayment;
     }
-    return -1;
-  }
-
-  private static int paoPlayer(int winner, HandView winnerHand, ScoringYaku yakuman) {
-    int requiredMelds = yakuman == ScoringYaku.DAISANGEN ? 3 : 4;
-    int found = 0;
-    for (int meldIndex = 0; meldIndex < winnerHand.meldCount(); meldIndex++) {
-      Meld meld = winnerHand.meld(meldIndex);
-      int tile = meld.baseTileType();
-      boolean relevant = yakuman == ScoringYaku.DAISANGEN ? Tile.isDragon(tile) : Tile.isWind(tile);
-      if (!relevant || ++found < requiredMelds) {
-        continue;
-      }
-      if (meld.preservesMenzen()) {
-        return -1;
-      }
-      return (winner + meld.relativeSource().playerOffset()) % GameState.NUM_PLAYERS;
-    }
-    return -1;
+    return seat == discarderSeat ? -halfPayment : 0;
   }
 }

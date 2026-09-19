@@ -19,13 +19,13 @@ import com.epsilon.ai.model.EpsilonResidualLayerNorm;
  * <p>方策と価値は牌・河・副露の高価な局所文脈化を共有する一方、このブロックのパラメーターは共有しない。したがって、方策は
  * 行動選択に必要な構成要素を、価値は着順予測に必要な構成要素を、それぞれ別のクエリと射影で集約できる。
  *
- * <p>トークンと出力は{@code hiddenSize}次元を保ち、注意機構通信だけを最大64次元へ制限する。残差接続の恒等写像は圧縮されないため、
+ * <p>トークンと出力は{@code hiddenSize}次元を保ち、注意機構通信だけを用途別の上限へ制限する。残差接続の恒等写像は圧縮されないため、
  * 低ランクなのは周囲から受け取る更新量だけである。
  */
 public final class EpsilonMahjongStateReadout extends AbstractBlock {
 
   private static final int ATTENTION_HEADS = EpsilonMahjongStateEncoder.ATTENTION_HEADS;
-  private static final int MAXIMUM_ATTENTION_WIDTH = 64;
+  private static final int DEFAULT_MAXIMUM_ATTENTION_WIDTH = 64;
   private static final int DEFAULT_MAXIMUM_FEED_FORWARD_WIDTH = 128;
 
   private final int hiddenSize;
@@ -48,25 +48,31 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
    * @param hiddenSize 構成要素トークンと出力状態の幅
    */
   public EpsilonMahjongStateReadout(int hiddenSize) {
-    this(hiddenSize, DEFAULT_MAXIMUM_FEED_FORWARD_WIDTH);
+    this(hiddenSize, DEFAULT_MAXIMUM_ATTENTION_WIDTH, DEFAULT_MAXIMUM_FEED_FORWARD_WIDTH);
   }
 
   /**
-   * 指定した上限までFFNを拡張する目的固有特徴量の集約を構築する。
+   * 指定した上限まで注意機構通信とFFNを拡張する目的固有特徴量の集約を構築する。
    *
    * @param hiddenSize 構成要素トークンと出力状態の幅
+   * @param maximumAttentionWidth 注意機構通信幅の上限
    * @param maximumFeedForwardWidth 特徴量の集約 FFN幅の上限
    */
-  EpsilonMahjongStateReadout(int hiddenSize, int maximumFeedForwardWidth) {
+  EpsilonMahjongStateReadout(
+      int hiddenSize, int maximumAttentionWidth, int maximumFeedForwardWidth) {
     if (hiddenSize <= 0 || hiddenSize % ATTENTION_HEADS != 0) {
       throw new IllegalArgumentException(
           "hiddenSize must be positive and divisible by " + ATTENTION_HEADS);
+    }
+    if (maximumAttentionWidth <= 0 || maximumAttentionWidth % ATTENTION_HEADS != 0) {
+      throw new IllegalArgumentException(
+          "maximumAttentionWidth must be positive and divisible by " + ATTENTION_HEADS);
     }
     if (maximumFeedForwardWidth <= 0) {
       throw new IllegalArgumentException("maximumFeedForwardWidth must be positive");
     }
     this.hiddenSize = hiddenSize;
-    attentionWidth = Math.min(hiddenSize, MAXIMUM_ATTENTION_WIDTH);
+    attentionWidth = Math.min(hiddenSize, maximumAttentionWidth);
     attentionHeadSize = attentionWidth / ATTENTION_HEADS;
     feedForwardWidth = Math.min(hiddenSize * 2, maximumFeedForwardWidth);
     querySeedProjection =

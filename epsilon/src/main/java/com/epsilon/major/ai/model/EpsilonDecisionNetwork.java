@@ -51,7 +51,9 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
   /** 設定から解決した標準隠れ層埋め込み幅。 */
   public static final int DEFAULT_HIDDEN = DecisionSettings.defaults().hidden();
 
+  private static final int POLICY_READOUT_MAXIMUM_ATTENTION_WIDTH = 128;
   private static final int POLICY_READOUT_MAXIMUM_FEED_FORWARD_WIDTH = 384;
+  private static final int VALUE_READOUT_MAXIMUM_ATTENTION_WIDTH = 128;
   private static final int VALUE_READOUT_MAXIMUM_FEED_FORWARD_WIDTH = 256;
 
   private final int hiddenSize;
@@ -94,12 +96,19 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
     policyStateReadout =
         addChildBlock(
             "policyStateReadout",
-            new EpsilonMahjongStateReadout(hiddenSize, POLICY_READOUT_MAXIMUM_FEED_FORWARD_WIDTH));
+            new EpsilonMahjongStateReadout(
+                hiddenSize,
+                POLICY_READOUT_MAXIMUM_ATTENTION_WIDTH,
+                POLICY_READOUT_MAXIMUM_FEED_FORWARD_WIDTH));
     valueStateReadout =
         addChildBlock(
             "valueStateReadout",
-            new EpsilonMahjongStateReadout(hiddenSize, VALUE_READOUT_MAXIMUM_FEED_FORWARD_WIDTH));
-    policyHead = addChildBlock("policyHead", new EpsilonDecisionPolicyHead(hiddenSize));
+            new EpsilonMahjongStateReadout(
+                hiddenSize,
+                VALUE_READOUT_MAXIMUM_ATTENTION_WIDTH,
+                VALUE_READOUT_MAXIMUM_FEED_FORWARD_WIDTH));
+    policyHead =
+        addChildBlock("policyHead", new EpsilonDecisionPolicyHead(hiddenSize, this.utilityProfile));
     valueHiddenHead =
         addChildBlock("valueHiddenHead", Linear.builder().setUnits(hiddenSize).build());
     Linear valueResidual = Linear.builder().setUnits(hiddenSize).build();
@@ -151,11 +160,12 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
         + "+tile-rel2h4-c128-f256+player-local1h4-c64"
         + "+"
         + EpsilonMahjongStateEncoder.STRATEGIC_CONTEXT_FINGERPRINT
-        + " towers=shared-policy-owned-memory+policy-readout-c64-f384"
-        + "+value-readout-c64-f256+value-preactivation-residual+value-detached"
+        + " towers=shared-policy-owned-memory+policy-readout-c128-f384"
+        + "+value-readout-c128-f256+value-preactivation-residual+value-detached"
         + "+hl-gauss-value101+frozen-grp-scalar-prior+decision-utility-bin-residual"
-        + " policy=coherent-transition-attention+fused-key-value+fused-wait-yaku-score"
-        + "+player-tile-safety+player-tile-context-residual-c64+context-transition-bridge"
+        + " policy=coherent-transition-attention+fused-key-value+point-projection-context-c128"
+        + "+terminal-point-gate6"
+        + "+player-tile-safety+player-tile-context-residual-c128+context-transition-bridge"
         + "+shared-discard+folded-alternative-offset+binary-branch-gates-g256"
         + "+policy-consistent-candidate-context"
         + " graph=response{RON,DECLINE_RON{PASS,MELD{TYPE,CANDIDATE}}}"
@@ -177,12 +187,13 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
         manager,
         dataType,
         DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.ACTION_CATEGORIES),
-        DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.ACTION_NUMERICS),
+        DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.POINT_LEDGER_100),
+        DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.ACTION_WIN_FACTS),
         DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.TRANSITION_CATEGORIES),
         DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.TRANSITION_NUMERICS),
         DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.TRANSITION_TILES),
-        DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.WAIT_YAKUS),
-        DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.WAIT_SCORES));
+        DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.WAIT_TILE_IDS),
+        DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.WAIT_WIN_FACTS));
     valueHiddenHead.initialize(manager, dataType, new Shape(-1, hiddenSize));
     valueResidualHead.initialize(manager, dataType, new Shape(-1, hiddenSize));
     valueHead.initialize(manager, dataType, new Shape(-1, hiddenSize));

@@ -342,16 +342,14 @@ public final class DecisionHostInputs {
     return categoricalSlab[actionCategoryOffset(row, actionSlot, field)];
   }
 
-  /**
-   * 行動候補の数値特徴量を読む。
-   *
-   * @param row 容量内の行インデックス
-   * @param actionSlot 容量区分内の行動候補の位置
-   * @param field 特徴量種別
-   * @return 符号化済み数値
-   */
-  public float actionNumeric(int row, int actionSlot, DecisionInputSchema.ActionFloat field) {
-    return numericSlab[actionNumericOffset(row, actionSlot, field)];
+  /** 絶対席順の現在点を100点単位で読む。 */
+  public int pointLedger100(int row, int absoluteSeat) {
+    return categoricalSlab[pointLedger100Offset(row, absoluteSeat)];
+  }
+
+  /** 即時和了候補のPoint Factを読む。 */
+  public int actionWinFact(int row, int actionSlot, DecisionInputSchema.WinFact fact) {
+    return categoricalSlab[actionWinFactOffset(row, actionSlot, fact)];
   }
 
   /**
@@ -425,39 +423,16 @@ public final class DecisionHostInputs {
     return transitionCategories(row)[waitTileOffset(row, actionSlot, transitionSlot, waitSlot)];
   }
 
-  /**
-   * 指定待ち牌で成立可能な役特徴量を読む。
-   *
-   * @param row 容量内の行インデックス
-   * @param actionSlot 実在する合法行動候補の位置
-   * @param transitionSlot 行動内の実在遷移候補の位置
-   * @param waitSlot 待ち集合内の格納位置
-   * @param feature wait-yaku 特徴量インデックス
-   * @return 符号化済み役特徴量値
-   */
-  public int waitYaku(int row, int actionSlot, int transitionSlot, int waitSlot, int feature) {
-    return transitionCategories(row)[
-        waitYakuOffset(row, actionSlot, transitionSlot, waitSlot, feature)];
-  }
-
-  /**
-   * 指定待ち牌の公開情報だけで確定する得点特徴量を読む。
-   *
-   * @param row 容量内の行インデックス
-   * @param actionSlot 実在する合法行動候補の位置
-   * @param transitionSlot 行動内の実在遷移候補の位置
-   * @param waitSlot 待ち集合内の格納位置
-   * @param field 得点特徴量種別
-   * @return 符号化済み得点値
-   */
-  public float waitScore(
+  /** 指定待ち牌のRON・TSUMO別Point Factを読む。 */
+  public int waitWinFact(
       int row,
       int actionSlot,
       int transitionSlot,
       int waitSlot,
-      DecisionInputSchema.ActionTransitionWaitFloat field) {
-    return transitionNumerics(row)[
-        waitScoreOffset(row, actionSlot, transitionSlot, waitSlot, field.ordinal())];
+      DecisionInputSchema.WaitWinType winType,
+      DecisionInputSchema.WinFact fact) {
+    return transitionCategories(row)[
+        waitWinFactOffset(row, actionSlot, transitionSlot, waitSlot, winType, fact)];
   }
 
   int playerMemoryPresentCount(int fromInclusive, int rowCount) {
@@ -523,6 +498,12 @@ public final class DecisionHostInputs {
         sourceRow,
         destinationRow,
         DecisionBoundaryContext.INPUT_SIZE);
+    copyTensorRow(
+        source,
+        DecisionInputLayout.Tensor.POINT_LEDGER_100,
+        sourceRow,
+        destinationRow,
+        GameState.NUM_PLAYERS);
     for (int action = 0; action < source.bucket().legalActionCapacity(); action++) {
       copy(
           source.categoricalSlab,
@@ -531,13 +512,11 @@ public final class DecisionHostInputs {
           actionCategoryOffset(destinationRow, action, DecisionInputSchema.ActionInt.ID),
           DecisionInputSchema.ACTION_INT_STRIDE);
       copy(
-          source.numericSlab,
-          source.actionNumericOffset(
-              sourceRow, action, DecisionInputSchema.ActionFloat.RIICHI_DECLARATION_COST),
-          numericSlab,
-          actionNumericOffset(
-              destinationRow, action, DecisionInputSchema.ActionFloat.RIICHI_DECLARATION_COST),
-          DecisionInputSchema.ACTION_FLOAT_STRIDE);
+          source.categoricalSlab,
+          source.actionWinFactOffset(sourceRow, action, DecisionInputSchema.WinFact.VALID),
+          categoricalSlab,
+          actionWinFactOffset(destinationRow, action, DecisionInputSchema.WinFact.VALID),
+          DecisionInputSchema.ACTION_WIN_FACT_STRIDE);
       copy(
           source.categoricalSlab,
           source.actionRouteOffset(
@@ -573,11 +552,23 @@ public final class DecisionHostInputs {
             DecisionInputSchema.MAX_WAIT_TILE_TYPES);
         copy(
             source.transitionCategories(sourceRow),
-            source.waitYakuOffset(sourceRow, action, transition, 0, 0),
+            source.waitWinFactOffset(
+                sourceRow,
+                action,
+                transition,
+                0,
+                DecisionInputSchema.WaitWinType.RON,
+                DecisionInputSchema.WinFact.VALID),
             categoricalSlab,
-            waitYakuOffset(destinationRow, action, transition, 0, 0),
+            waitWinFactOffset(
+                destinationRow,
+                action,
+                transition,
+                0,
+                DecisionInputSchema.WaitWinType.RON,
+                DecisionInputSchema.WinFact.VALID),
             DecisionInputSchema.MAX_WAIT_TILE_TYPES
-                * DecisionInputSchema.ACTION_TRANSITION_WAIT_YAKU_STRIDE);
+                * DecisionInputSchema.ACTION_TRANSITION_WAIT_WIN_FACT_STRIDE);
         copy(
             source.transitionNumerics(sourceRow),
             source.transitionNumericOffset(
@@ -592,13 +583,6 @@ public final class DecisionHostInputs {
                 transition,
                 DecisionInputSchema.ActionTransitionFloat.NORMALIZED_MIN_SHANTEN),
             DecisionInputSchema.ACTION_TRANSITION_FLOAT_STRIDE);
-        copy(
-            source.transitionNumerics(sourceRow),
-            source.waitScoreOffset(sourceRow, action, transition, 0, 0),
-            numericSlab,
-            waitScoreOffset(destinationRow, action, transition, 0, 0),
-            DecisionInputSchema.MAX_WAIT_TILE_TYPES
-                * DecisionInputSchema.ACTION_TRANSITION_WAIT_FLOAT_STRIDE);
       }
     }
   }
@@ -774,10 +758,14 @@ public final class DecisionHostInputs {
         + field.ordinal();
   }
 
-  int actionNumericOffset(int row, int actionSlot, DecisionInputSchema.ActionFloat field) {
-    return layout.region(DecisionInputLayout.Tensor.ACTION_NUMERICS).rowOffset(row)
-        + actionSlot * DecisionInputSchema.ACTION_FLOAT_STRIDE
-        + field.ordinal();
+  int pointLedger100Offset(int row, int absoluteSeat) {
+    return layout.region(DecisionInputLayout.Tensor.POINT_LEDGER_100).rowOffset(row) + absoluteSeat;
+  }
+
+  int actionWinFactOffset(int row, int actionSlot, DecisionInputSchema.WinFact fact) {
+    return layout.region(DecisionInputLayout.Tensor.ACTION_WIN_FACTS).rowOffset(row)
+        + actionSlot * DecisionInputSchema.ACTION_WIN_FACT_STRIDE
+        + fact.ordinal();
   }
 
   int actionRouteOffset(int row, int actionSlot, DecisionInputSchema.ActionRoute field) {
@@ -819,22 +807,20 @@ public final class DecisionHostInputs {
         + waitSlot;
   }
 
-  int waitYakuOffset(int row, int actionSlot, int transitionSlot, int waitSlot, int feature) {
-    return transitionRegionBase(row, DecisionInputLayout.Tensor.WAIT_YAKUS)
+  int waitWinFactOffset(
+      int row,
+      int actionSlot,
+      int transitionSlot,
+      int waitSlot,
+      DecisionInputSchema.WaitWinType winType,
+      DecisionInputSchema.WinFact fact) {
+    return transitionRegionBase(row, DecisionInputLayout.Tensor.WAIT_WIN_FACTS)
         + ((transitionIndex(row, actionSlot, transitionSlot))
                     * DecisionInputSchema.MAX_WAIT_TILE_TYPES
                 + waitSlot)
-            * DecisionInputSchema.ACTION_TRANSITION_WAIT_YAKU_STRIDE
-        + feature;
-  }
-
-  int waitScoreOffset(int row, int actionSlot, int transitionSlot, int waitSlot, int feature) {
-    return transitionRegionBase(row, DecisionInputLayout.Tensor.WAIT_SCORES)
-        + ((transitionIndex(row, actionSlot, transitionSlot))
-                    * DecisionInputSchema.MAX_WAIT_TILE_TYPES
-                + waitSlot)
-            * DecisionInputSchema.ACTION_TRANSITION_WAIT_FLOAT_STRIDE
-        + feature;
+            * DecisionInputSchema.ACTION_TRANSITION_WAIT_WIN_FACT_STRIDE
+        + winType.ordinal() * DecisionInputSchema.ACTION_WIN_FACT_STRIDE
+        + fact.ordinal();
   }
 
   private int stateCategoryRowOffset(int row) {

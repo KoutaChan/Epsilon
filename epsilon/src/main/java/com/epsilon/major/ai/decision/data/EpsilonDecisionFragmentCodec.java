@@ -3,6 +3,7 @@ package com.epsilon.major.ai.decision.data;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.major.ai.decision.input.DecisionBucket;
+import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -23,7 +24,7 @@ import java.util.List;
  */
 final class EpsilonDecisionFragmentCodec {
 
-  private static final int MAGIC = 0xED10_0023;
+  private static final int MAGIC = 0xED10_0024;
 
   private EpsilonDecisionFragmentCodec() {}
 
@@ -33,6 +34,7 @@ final class EpsilonDecisionFragmentCodec {
     EpsilonDecisionCompletedGame game = fragment.game();
     List<EpsilonDecisionSampleRecord> samples = game.samples();
     out.writeInt(MAGIC);
+    out.writeUTF(DecisionInputSchema.fingerprint());
     out.writeLong(fragment.actorSnapshotId());
     out.writeInt(fragment.grpTeacherIteration());
     out.writeLong(game.gameId());
@@ -158,6 +160,7 @@ final class EpsilonDecisionFragmentCodec {
 
   private static FragmentPrefix readPrefix(DataInputStream in, int magic) throws IOException {
     requireCurrentMagic(magic);
+    requireCurrentSchema(in.readUTF());
     long actorSnapshotId = in.readLong();
     int grpTeacherIteration = in.readInt();
     requireGrpTeacherIteration(grpTeacherIteration);
@@ -218,6 +221,12 @@ final class EpsilonDecisionFragmentCodec {
     if (magic != MAGIC) {
       throw new UnsupportedFormatException(
           "Unsupported Decision fragment magic: 0x" + Integer.toHexString(magic));
+    }
+  }
+
+  private static void requireCurrentSchema(String fingerprint) throws IOException {
+    if (!DecisionInputSchema.fingerprint().equals(fingerprint)) {
+      throw new UnsupportedFormatException("Unsupported Decision fragment schema: " + fingerprint);
     }
   }
 

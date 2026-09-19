@@ -24,6 +24,47 @@ public final class EpsilonPointProjectionTest {
   private static final int AKA = 25;
 
   @Test(groups = "native")
+  public void repeatedProjectionDoesNotRetainBatchArraysInModelManager() {
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu(), "PyTorch")) {
+      EpsilonPointProjection projection = new EpsilonPointProjection(EpsilonUtilityProfile.TENHOU);
+      projection.initialize(manager, DataType.FLOAT32);
+      int modelArrays = manager.getManagedArrays().size();
+      int[] winFact = fact(2, ScoreMath.encodeFuCode(30), 0);
+      int[] action = new int[DecisionInputSchema.ActionInt.values().length];
+      action[DecisionInputSchema.ActionInt.TYPE.ordinal()] =
+          DecisionFeatureCodec.actionType(Action.Type.RON_AGARI);
+      for (int iteration = 0; iteration < 10; iteration++) {
+        try (NDManager batch = manager.newSubManager()) {
+          NDArray ledger = batch.create(new int[][] {{250, 250, 250, 250}});
+          NDArray state = batch.create(new int[][] {state(0, 1, 0, 1, 0, 0)});
+          var immediate =
+              projection.projectActions(
+                  ledger,
+                  state,
+                  batch.create(action).reshape(1, 1, action.length),
+                  batch.create(winFact).reshape(1, 1, winFact.length));
+          var wait =
+              projection.projectWaits(
+                  ledger,
+                  state,
+                  batch
+                      .create(new int[] {DecisionFeatureCodec.actionType(Action.Type.DAHAI)})
+                      .reshape(1, 1),
+                  batch
+                      .create(new int[][] {winFact, winFact})
+                      .reshape(1, 1, 1, 1, 2, winFact.length),
+                  batch.create(new int[] {1}).reshape(1, 1, 1, 1));
+          Assert.assertSame(immediate.features().getManager(), batch);
+          Assert.assertSame(wait.features().getManager(), batch);
+          Assert.assertEquals(delta100(immediate.features(), 0, 0), 20);
+          Assert.assertEquals(waitDelta100(wait.features(), 0, 0, 0), 20);
+        }
+        Assert.assertEquals(manager.getManagedArrays().size(), modelArrays);
+      }
+    }
+  }
+
+  @Test(groups = "native")
   public void scoreTableMatchesScoreMathForChildDealerRonTsumoHonbaAndHanClamp() {
     int rows = 20 * 12 * 2 * 2;
     int[][] ledgers = new int[rows][4];
@@ -138,12 +179,7 @@ public final class EpsilonPointProjectionTest {
                 }
               }
               assertDelta(
-                  projection.features(),
-                  row,
-                  expected[0],
-                  expected[1],
-                  expected[2],
-                  expected[3]);
+                  projection.features(), row, expected[0], expected[1], expected[2], expected[3]);
               row++;
             }
           }

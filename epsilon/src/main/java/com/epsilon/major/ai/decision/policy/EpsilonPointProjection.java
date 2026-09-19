@@ -53,41 +53,51 @@ public final class EpsilonPointProjection extends AbstractBlock {
       NDArray stateCategories,
       NDArray actionCategories,
       NDArray actionWinFacts) {
-    long rows = actionWinFacts.getShape().get(0);
-    long actions = actionWinFacts.getShape().get(1);
-    NDArray actionTypes =
-        actionCategories
-            .get("...,{}", DecisionInputSchema.ActionInt.TYPE.ordinal())
-            .toType(DataType.INT32, false);
-    NDArray ron =
-        actionTypes
-            .eq(DecisionFeatureCodec.actionType(Action.Type.RON_AGARI))
-            .toType(DataType.INT32, false);
-    NDArray tsumo =
-        actionTypes
-            .eq(DecisionFeatureCodec.actionType(Action.Type.TSUMO_AGARI))
-            .toType(DataType.INT32, false);
-    NDArray source =
-        round(stateCategories, DecisionInputSchema.RoundInt.SOURCE_PLAYER_RELATIVE_SEAT)
-            .sub(1)
-            .reshape(rows, 1);
-    NDArray zeros = ron.mul(0);
-    return project(
-        pointLedger100.reshape(rows, 1, GameState.NUM_PLAYERS),
-        actionWinFacts,
-        round(stateCategories, DecisionInputSchema.RoundInt.PLAYER_SEAT).sub(1).reshape(rows, 1),
-        round(stateCategories, DecisionInputSchema.RoundInt.DEALER_RELATIVE_SEAT)
-            .sub(1)
-            .reshape(rows, 1),
-        round(stateCategories, DecisionInputSchema.RoundInt.KYOKU_INDEX).sub(1).reshape(rows, 1),
-        round(stateCategories, DecisionInputSchema.RoundInt.HONBA).reshape(rows, 1),
-        round(stateCategories, DecisionInputSchema.RoundInt.KYOTAKU).reshape(rows, 1),
-        ron,
-        tsumo,
-        source.mul(ron),
-        zeros,
-        zeros,
-        zeros);
+    NDManager manager = actionWinFacts.getManager();
+    try (NDManager scope = projectionScope(manager)) {
+      long rows = actionWinFacts.getShape().get(0);
+      long actions = actionWinFacts.getShape().get(1);
+      NDArray actionTypes =
+          actionCategories
+              .get("...,{}", DecisionInputSchema.ActionInt.TYPE.ordinal())
+              .toType(DataType.INT32, false);
+      NDArray ron =
+          actionTypes
+              .eq(DecisionFeatureCodec.actionType(Action.Type.RON_AGARI))
+              .toType(DataType.INT32, false);
+      NDArray tsumo =
+          actionTypes
+              .eq(DecisionFeatureCodec.actionType(Action.Type.TSUMO_AGARI))
+              .toType(DataType.INT32, false);
+      NDArray source =
+          round(stateCategories, DecisionInputSchema.RoundInt.SOURCE_PLAYER_RELATIVE_SEAT)
+              .sub(1)
+              .reshape(rows, 1);
+      NDArray zeros = ron.mul(0);
+      Projection result =
+          project(
+              pointLedger100.reshape(rows, 1, GameState.NUM_PLAYERS),
+              actionWinFacts,
+              round(stateCategories, DecisionInputSchema.RoundInt.PLAYER_SEAT)
+                  .sub(1)
+                  .reshape(rows, 1),
+              round(stateCategories, DecisionInputSchema.RoundInt.DEALER_RELATIVE_SEAT)
+                  .sub(1)
+                  .reshape(rows, 1),
+              round(stateCategories, DecisionInputSchema.RoundInt.KYOKU_INDEX)
+                  .sub(1)
+                  .reshape(rows, 1),
+              round(stateCategories, DecisionInputSchema.RoundInt.HONBA).reshape(rows, 1),
+              round(stateCategories, DecisionInputSchema.RoundInt.KYOTAKU).reshape(rows, 1),
+              ron,
+              tsumo,
+              source.mul(ron),
+              zeros,
+              zeros,
+              zeros);
+      manager.attachAll(result.features(), result.gateFeatures(), result.validMask());
+      return result;
+    }
   }
 
   Projection projectWaits(
@@ -96,43 +106,68 @@ public final class EpsilonPointProjection extends AbstractBlock {
       NDArray actionTypes,
       NDArray waitWinFacts,
       NDArray akaAvailable) {
-    long rows = waitWinFacts.getShape().get(0);
-    long actions = waitWinFacts.getShape().get(1);
-    NDArray ronFacts = waitWinFacts.get("...,{},:", DecisionInputSchema.WaitWinType.RON.ordinal());
-    NDArray tsumoFacts =
-        waitWinFacts.get("...,{},:", DecisionInputSchema.WaitWinType.TSUMO.ordinal());
-    NDArray ronRed = redFacts(ronFacts, akaAvailable);
-    NDArray tsumoRed = redFacts(tsumoFacts, akaAvailable);
-    NDArray facts =
-        NDArrays.stack(
-            new NDList(ronFacts, ronFacts, ronFacts, tsumoFacts, ronRed, ronRed, ronRed, tsumoRed),
-            ronFacts.getShape().dimension() - 1);
-    NDArray riichi =
-        actionTypes
-            .eq(DecisionFeatureCodec.actionType(Action.Type.RIICHI_DAHAI))
-            .toType(DataType.INT32, false)
-            .reshape(rows, actions, 1, 1, 1);
-    NDArray aka = waitAka.reshape(1, 1, 1, 1, WAIT_AKA.length).mul(akaAvailable.expandDims(4));
-    return project(
-        pointLedger100.reshape(rows, 1, 1, 1, 1, GameState.NUM_PLAYERS),
-        facts,
-        round(stateCategories, DecisionInputSchema.RoundInt.PLAYER_SEAT)
-            .sub(1)
-            .reshape(rows, 1, 1, 1, 1),
-        round(stateCategories, DecisionInputSchema.RoundInt.DEALER_RELATIVE_SEAT)
-            .sub(1)
-            .reshape(rows, 1, 1, 1, 1),
-        round(stateCategories, DecisionInputSchema.RoundInt.KYOKU_INDEX)
-            .sub(1)
-            .reshape(rows, 1, 1, 1, 1),
-        round(stateCategories, DecisionInputSchema.RoundInt.HONBA).reshape(rows, 1, 1, 1, 1),
-        round(stateCategories, DecisionInputSchema.RoundInt.KYOTAKU).reshape(rows, 1, 1, 1, 1),
-        waitRon.reshape(1, 1, 1, 1, WAIT_RON.length),
-        waitRon.neg().add(1).reshape(1, 1, 1, 1, WAIT_RON.length),
-        waitSource.reshape(1, 1, 1, 1, WAIT_SOURCE.length),
-        riichi,
-        waitRon.mul(0).add(1).reshape(1, 1, 1, 1, WAIT_RON.length),
-        aka);
+    NDManager manager = waitWinFacts.getManager();
+    try (NDManager scope = projectionScope(manager)) {
+      long rows = waitWinFacts.getShape().get(0);
+      long actions = waitWinFacts.getShape().get(1);
+      NDArray ronFacts =
+          waitWinFacts.get("...,{},:", DecisionInputSchema.WaitWinType.RON.ordinal());
+      NDArray tsumoFacts =
+          waitWinFacts.get("...,{},:", DecisionInputSchema.WaitWinType.TSUMO.ordinal());
+      NDArray ronRed = redFacts(ronFacts, akaAvailable);
+      NDArray tsumoRed = redFacts(tsumoFacts, akaAvailable);
+      NDArray facts =
+          NDArrays.stack(
+              new NDList(
+                  ronFacts, ronFacts, ronFacts, tsumoFacts, ronRed, ronRed, ronRed, tsumoRed),
+              ronFacts.getShape().dimension() - 1);
+      NDArray riichi =
+          actionTypes
+              .eq(DecisionFeatureCodec.actionType(Action.Type.RIICHI_DAHAI))
+              .toType(DataType.INT32, false)
+              .reshape(rows, actions, 1, 1, 1);
+      NDArray aka = waitAka.reshape(1, 1, 1, 1, WAIT_AKA.length).mul(akaAvailable.expandDims(4));
+      Projection result =
+          project(
+              pointLedger100.reshape(rows, 1, 1, 1, 1, GameState.NUM_PLAYERS),
+              facts,
+              round(stateCategories, DecisionInputSchema.RoundInt.PLAYER_SEAT)
+                  .sub(1)
+                  .reshape(rows, 1, 1, 1, 1),
+              round(stateCategories, DecisionInputSchema.RoundInt.DEALER_RELATIVE_SEAT)
+                  .sub(1)
+                  .reshape(rows, 1, 1, 1, 1),
+              round(stateCategories, DecisionInputSchema.RoundInt.KYOKU_INDEX)
+                  .sub(1)
+                  .reshape(rows, 1, 1, 1, 1),
+              round(stateCategories, DecisionInputSchema.RoundInt.HONBA).reshape(rows, 1, 1, 1, 1),
+              round(stateCategories, DecisionInputSchema.RoundInt.KYOTAKU)
+                  .reshape(rows, 1, 1, 1, 1),
+              waitRon.reshape(1, 1, 1, 1, WAIT_RON.length),
+              waitRon.neg().add(1).reshape(1, 1, 1, 1, WAIT_RON.length),
+              waitSource.reshape(1, 1, 1, 1, WAIT_SOURCE.length),
+              riichi,
+              waitRon.mul(0).add(1).reshape(1, 1, 1, 1, WAIT_RON.length),
+              aka);
+      manager.attachAll(result.features(), result.gateFeatures(), result.validMask());
+      return result;
+    }
+  }
+
+  /** 固定表から派生する一時配列をモデル寿命まで保持しない。 */
+  private NDManager projectionScope(NDManager manager) {
+    NDManager scope = manager.newSubManager();
+    scope.tempAttachAll(
+        ronChild,
+        ronDealer,
+        tsumoSingle,
+        tsumoDouble,
+        rankUtility,
+        waitRon,
+        waitSource,
+        waitAka,
+        absoluteSeats);
+    return scope;
   }
 
   private Projection project(

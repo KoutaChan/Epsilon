@@ -282,8 +282,7 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
         usesStateEntityFeaturePack(
             stateCategories.getDevice(),
             stateNumerics.getDataType(),
-            stateEmbeddingTable.getDataType(),
-            training);
+            stateEmbeddingTable.getDataType());
     NDArray categoricalFeatureEmbeddings =
         useStateEntityFeaturePack
             ? null
@@ -506,19 +505,18 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
                 tileEmbeddings.reshape(rowCount * Tile.NUM_TILE_TYPES, 1, hiddenSize)),
             0);
     NDArray projectionRoundAndTileEmbeddings;
-    if (!training
-        && normalizedRoundAndTileEmbeddings.getDevice().isGpu()
+    if (normalizedRoundAndTileEmbeddings.getDevice().isGpu()
         && normalizedRoundAndTileEmbeddings.getDataType() != DataType.FLOAT32) {
       NDArray gamma =
           parameterStore.getValue(
               entityTokenLayerNorm.getParameters().get("gamma"),
               normalizedRoundAndTileEmbeddings.getDevice(),
-              false);
+              training);
       NDArray beta =
           parameterStore.getValue(
               entityTokenLayerNorm.getParameters().get("beta"),
               normalizedRoundAndTileEmbeddings.getDevice(),
-              false);
+              training);
       NDList normalizedOutputs =
           LayerNorm.layerNormAndCast(
               normalizedRoundAndTileEmbeddings,
@@ -595,39 +593,42 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
           playerMemoryForward.encode(
               playerTokens, riverTokens, meldTokens, playerMemoryPresentIndices);
     }
+    NDList memorySections =
+        playerMemory.split(new long[] {1, 1 + DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER}, 2);
     EpsilonStrategicContextEncoder.StrategicContext strategicContext =
         strategicContextEncoder.encode(
             parameterStore,
             normalizedRoundEmbedding,
             tileEmbeddings,
             tileProjectionEmbeddings,
-            playerMemory,
+            memorySections.get(0).reshape(rowCount, GameState.NUM_PLAYERS, hiddenSize),
             training,
             strategicForward,
             runtimeParameters);
     normalizedRoundEmbedding = strategicContext.roundEmbedding();
-    playerMemory =
-        replacePlayerSummaries(playerMemory, strategicContext.playerSummaries(), training);
+    if (training) {
+      playerMemory =
+          NDArrays.concat(
+              new NDList(
+                  strategicContext.playerSummaries().expandDims(2),
+                  memorySections.get(1),
+                  memorySections.get(2)),
+              2);
+    } else {
+      playerMemory.set(new NDIndex(":,:,0,:"), strategicContext.playerSummaries());
+    }
 
-    int riverMemoryOffset = 1;
-    int meldMemoryOffset = riverMemoryOffset + DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER;
     NDArray entityTokenEmbeddings;
     try (var ignored = InferenceProfile.section("state.entity_concat")) {
-      // 河・面子は家ごとのビューを直接連結し、4家を畳む中間テンソルを作らない。
-      NDList entitySections =
-          new NDList(
-              normalizedRoundEmbedding.reshape(rowCount, 1, hiddenSize),
-              playerMemory.get(":,:,0,:"),
-              tileEmbeddings);
-      for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
-        entitySections.add(
-            playerMemory.get(":,{},{}:{},:", player, riverMemoryOffset, meldMemoryOffset));
-      }
-      for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
-        entitySections.add(
-            playerMemory.get(":,{},{}:{},:", player, meldMemoryOffset, PLAYER_MEMORY_TOKEN_COUNT));
-      }
-      entityTokenEmbeddings = NDArrays.concat(entitySections, 1);
+      entityTokenEmbeddings =
+          NDArrays.concat(
+              new NDList(
+                  normalizedRoundEmbedding.reshape(rowCount, 1, hiddenSize),
+                  strategicContext.playerSummaries(),
+                  tileEmbeddings,
+                  memorySections.get(1).reshape(rowCount, RIVER_TOKEN_COUNT, hiddenSize),
+                  memorySections.get(2).reshape(rowCount, MELD_TOKEN_COUNT, hiddenSize)),
+              1);
     }
 
     return new EncodedMemory(
@@ -638,25 +639,6 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
         tileProjectionEmbeddings,
         playerMemory,
         playerMemoryMask);
-  }
-
-  /**
-   * 戦略文脈の層の組が更新した4家の要約だけをプレイヤーごとの履歴表現へ戻す。
-   *
-   * <p>推論時のプレイヤーごとの履歴表現は当該順伝播が所有する出力なので、先頭トークンだけを上書きし、残り28 トークンを
-   * 再連結しない。学習時はautogradが参照する値を破壊しないよう、従来どおり新しいテンソルを構成する。
-   */
-  static NDArray replacePlayerSummaries(
-      NDArray playerMemory, NDArray playerSummaries, boolean training) {
-    if (training) {
-      return NDArrays.concat(
-          new NDList(
-              playerSummaries.expandDims(2),
-              playerMemory.get(":,:,1:{},:", PLAYER_MEMORY_TOKEN_COUNT)),
-          2);
-    }
-    playerMemory.set(new NDIndex(":,:,0,:"), playerSummaries);
-    return playerMemory;
   }
 
   /** 各家の要約トークンを必ず有効にし、その後ろへ河・面子の存在マスクを並べる。 */
@@ -692,10 +674,10 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
     return NDArrays.embeddingWithOffsets(rawIds, offsets, table);
   }
 
-  /** GPU重みを固定したモデルの推論で埋め込みテーブルと数値入力のデータ型が一致するときだけ構成要素特徴量を直接詰める。 */
+  /** GPUで埋め込みテーブルと数値入力のデータ型が一致するときは構成要素特徴量を直接詰める。 */
   static boolean usesStateEntityFeaturePack(
-      Device device, DataType numericDataType, DataType embeddingDataType, boolean training) {
-    return !training && device.isGpu() && numericDataType == embeddingDataType;
+      Device device, DataType numericDataType, DataType embeddingDataType) {
+    return device.isGpu() && numericDataType == embeddingDataType;
   }
 
   @Override
@@ -966,7 +948,7 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
    * @param entityEmbeddings プレイヤー・牌・河・面子を席順と時系列を保って並べた表現。形状は {@code [batch, entity, hidden]}
    * @param entityMask {@code entityEmbeddings} の有効トークンマスク。形状は {@code [batch, entity]}
    * @param tileEmbeddings 34牌種それぞれのcontextual表現。形状は {@code [batch, 34, hidden]}
-   * @param tileProjectionEmbeddings 牌種表現をLinearへ渡す低精度ビュー。学習時とCPU推論では {@code tileEmbeddings} と同じ参照
+   * @param tileProjectionEmbeddings 牌種表現をLinearへ渡す低精度ビュー。CPUやFP32実行では {@code tileEmbeddings} と同じ参照
    * @param playerMemory プレイヤートークンと各家の河・面子を席別に保持したメモリ。形状は {@code [batch, 4, playerMemory, hidden]}
    * @param playerMemoryMask {@code playerMemory} の有効トークンマスク。形状は {@code [batch, 4, playerMemory]}
    */
@@ -1031,7 +1013,7 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
    *
    * @param stateEmbedding 方策専用特徴量の集約が集約した局面表現。形状は {@code [batch, hidden]}
    * @param tileEmbeddings 34牌種それぞれのcontextual表現。形状は {@code [batch, 34, hidden]}
-   * @param tileProjectionEmbeddings 牌種表現をLinearへ渡す低精度ビュー。学習時とCPU推論では {@code tileEmbeddings} と同じ参照
+   * @param tileProjectionEmbeddings 牌種表現をLinearへ渡す低精度ビュー。CPUやFP32実行では {@code tileEmbeddings} と同じ参照
    * @param playerMemory プレイヤートークンと各家の河・面子を席別に保持したメモリ。形状は {@code [batch, 4, playerMemory, hidden]}
    * @param playerMemoryMask {@code playerMemory} の有効トークンマスク。形状は {@code [batch, 4, playerMemory]}
    */

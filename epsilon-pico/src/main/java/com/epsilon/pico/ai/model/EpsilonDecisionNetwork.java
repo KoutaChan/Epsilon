@@ -807,7 +807,7 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
             training,
             runtimeParameters);
     EpsilonMahjongStateReadout.ReadoutContext readoutContext =
-        EpsilonMahjongStateReadout.summarize(memory);
+        policyStateReadout.summarize(memory, playerMemoryPresentIndices);
     NDArray policyStateEmbedding =
         policyStateReadout.read(
             parameterStore, memory, readoutContext, training, runtimeParameters);

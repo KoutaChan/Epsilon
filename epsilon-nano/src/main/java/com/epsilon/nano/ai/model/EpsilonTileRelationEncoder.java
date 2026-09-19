@@ -537,19 +537,20 @@ public final class EpsilonTileRelationEncoder extends AbstractBlock {
               normalizedTileTokens,
               training,
               runtimeParameters);
+      NDList queryKeyValueParts = queryKeyValues.split(3, 2);
       NDArray queries =
-          queryKeyValues
-              .get("...,0:{}", attentionWidth)
+          queryKeyValueParts
+              .get(0)
               .reshape(batchSize, Tile.NUM_TILE_TYPES, ATTENTION_HEADS, attentionHeadSize)
               .swapAxes(1, 2);
       NDArray keys =
-          queryKeyValues
-              .get("...,{}:{}", attentionWidth, attentionWidth * 2)
+          queryKeyValueParts
+              .get(1)
               .reshape(batchSize, Tile.NUM_TILE_TYPES, ATTENTION_HEADS, attentionHeadSize)
               .swapAxes(1, 2);
       NDArray values =
-          queryKeyValues
-              .get("...,{}:{}", attentionWidth * 2, attentionWidth * 3)
+          queryKeyValueParts
+              .get(2)
               .reshape(batchSize, Tile.NUM_TILE_TYPES, ATTENTION_HEADS, attentionHeadSize)
               .swapAxes(1, 2);
       NDArray relationBias =

@@ -1224,7 +1224,15 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     return new TransitionSet(discardScores, aggregatedEmbeddings);
   }
 
-  private NDArray encodeWaitPointContexts(
+  EpsilonPointProjection pointProjection() {
+    return pointProjection;
+  }
+
+  EpsilonPointOutcomeEncoder pointOutcomeEncoder() {
+    return pointOutcomeEncoder;
+  }
+
+  NDArray encodeWaitPointContexts(
       ParameterStore parameterStore,
       NDArray pointLedger100,
       NDArray stateCategories,
@@ -1235,27 +1243,110 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       DataType dataType,
       boolean training,
       PairList<String, Object> runtimeParameters) {
-    NDArray akaAvailable = waitAkaAvailable(transitionTileCodes, waitTileIds);
-    EpsilonPointProjection.Projection projected =
-        pointProjection.projectWaits(
-            pointLedger100, stateCategories, actionTypes, waitWinFacts, akaAvailable);
-    NDArray contexts =
-        pointOutcomeEncoder.encode(
-            parameterStore,
-            projected.features().toType(dataType, false),
-            training,
-            runtimeParameters);
-    int scenarioAxis = contexts.getShape().dimension() - 2;
-    NDArray count =
-        projected.validMask().sum(new int[] {scenarioAxis}).maximum(1.0f).expandDims(scenarioAxis);
-    return contexts
-        .mul(
-            projected
-                .validMask()
-                .toType(contexts.getDataType(), false)
-                .expandDims(scenarioAxis + 1))
-        .sum(new int[] {scenarioAxis})
-        .div(count.toType(contexts.getDataType(), false));
+    if (!training) {
+      NDArray akaAvailable = waitAkaAvailable(transitionTileCodes, waitTileIds);
+      EpsilonPointProjection.Projection projected =
+          pointProjection.projectWaits(
+              pointLedger100, stateCategories, actionTypes, waitWinFacts, akaAvailable);
+      NDArray contexts =
+          pointOutcomeEncoder.encode(
+              parameterStore,
+              projected.features().toType(dataType, false),
+              false,
+              runtimeParameters);
+      int scenarioAxis = contexts.getShape().dimension() - 2;
+      NDArray count =
+          projected
+              .validMask()
+              .sum(new int[] {scenarioAxis})
+              .maximum(1.0f)
+              .expandDims(scenarioAxis);
+      return contexts
+          .mul(
+              projected
+                  .validMask()
+                  .toType(contexts.getDataType(), false)
+                  .expandDims(scenarioAxis + 1))
+          .sum(new int[] {scenarioAxis})
+          .div(count.toType(contexts.getDataType(), false));
+    }
+    NDManager outputManager = waitWinFacts.getManager();
+    try (NDManager scope = outputManager.newSubManager()) {
+      scope.tempAttachAll(
+          pointLedger100,
+          stateCategories,
+          actionTypes,
+          transitionTileCodes,
+          waitTileIds,
+          waitWinFacts);
+      long rows = waitWinFacts.getShape().get(0);
+      NDArray validRows =
+          waitWinFacts
+              .get("...,{}", DecisionInputSchema.WinFact.VALID.ordinal())
+              .reshape(rows, -1)
+              .sum(new int[] {1});
+      NDArray waitRows = EpsilonMaskedRows.indices(validRows);
+      if (waitRows.size() == 0) {
+        // 待ちのないバッチでは固定計算を省き、空のEncoderだけでゼロ勾配を維持する。
+        NDArray emptyContexts =
+            pointOutcomeEncoder.encode(
+                parameterStore,
+                scope.zeros(new Shape(0, EpsilonPointProjection.FEATURE_WIDTH), dataType),
+                true,
+                runtimeParameters);
+        Shape outputShape = waitTileIds.getShape().add(contextWidth);
+        NDArray result =
+            EpsilonMaskedRows.scatter(
+                    emptyContexts.reshape(0, outputShape.size() / rows), waitRows, rows)
+                .reshape(outputShape);
+        outputManager.attachAll(result);
+        return result;
+      }
+      pointLedger100 = EpsilonMaskedRows.gather(pointLedger100, waitRows);
+      stateCategories = EpsilonMaskedRows.gather(stateCategories, waitRows);
+      actionTypes = EpsilonMaskedRows.gather(actionTypes, waitRows);
+      transitionTileCodes = EpsilonMaskedRows.gather(transitionTileCodes, waitRows);
+      waitTileIds = EpsilonMaskedRows.gather(waitTileIds, waitRows);
+      waitWinFacts = EpsilonMaskedRows.gather(waitWinFacts, waitRows);
+      NDArray akaAvailable = waitAkaAvailable(transitionTileCodes, waitTileIds);
+      EpsilonPointProjection.Projection projected =
+          pointProjection.projectWaits(
+              pointLedger100, stateCategories, actionTypes, waitWinFacts, akaAvailable);
+      NDArray presentIndices = EpsilonMaskedRows.indices(projected.validMask());
+      NDArray features = projected.features();
+      NDArray presentContexts =
+          pointOutcomeEncoder.encode(
+              parameterStore,
+              EpsilonMaskedRows.gather(
+                      features.reshape(-1, EpsilonPointProjection.FEATURE_WIDTH), presentIndices)
+                  .toType(dataType, false),
+              training,
+              runtimeParameters);
+      long[] contextShape = features.getShape().getShape();
+      contextShape[contextShape.length - 1] = presentContexts.getShape().get(1);
+      NDArray contexts =
+          EpsilonMaskedRows.scatter(presentContexts, presentIndices, projected.validMask().size())
+              .reshape(contextShape);
+      int scenarioAxis = contexts.getShape().dimension() - 2;
+      NDArray count =
+          projected
+              .validMask()
+              .sum(new int[] {scenarioAxis})
+              .maximum(1.0f)
+              .expandDims(scenarioAxis);
+      NDArray pooled =
+          contexts.sum(new int[] {scenarioAxis}).div(count.toType(contexts.getDataType(), false));
+      long[] pooledShape = pooled.getShape().getShape();
+      long width = 1;
+      for (int axis = 1; axis < pooledShape.length; axis++) {
+        width *= pooledShape[axis];
+      }
+      pooledShape[0] = rows;
+      NDArray result =
+          EpsilonMaskedRows.scatter(pooled.reshape(-1, width), waitRows, rows).reshape(pooledShape);
+      outputManager.attachAll(result);
+      return result;
+    }
   }
 
   private static NDArray waitAkaAvailable(NDArray transitionTileCodes, NDArray waitTileIds) {
@@ -1410,7 +1501,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     if (relationTable.getDataType() == query.getDataType()) {
       return relationTable;
     }
-    NDArray converted = relationTable.toType(query.getDataType(), false);
+    NDArray converted = relationTable.getNDArrayInternal().differentiableCast(query.getDataType());
     converted.attach(query.getManager());
     return converted;
   }

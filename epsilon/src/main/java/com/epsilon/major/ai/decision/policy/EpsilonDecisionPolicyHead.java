@@ -276,17 +276,15 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           switch (fusionSettings.policyIndexedAffine()) {
             case EAGER ->
                 DecisionPolicyIndexedAffineExecution.eager(
-                    riichiGate, callGate, ronGate, kanGate, kyushuGate, tsumoGate, executionSlots);
+                    riichiGate, callGate, kanGate, kyushuGate, executionSlots);
             case FUSION ->
                 new DecisionPolicyFusionIndexedAffineExecution(
                     manager,
                     parameterStore,
                     riichiGate,
                     callGate,
-                    ronGate,
                     kanGate,
                     kyushuGate,
-                    tsumoGate,
                     hiddenSize,
                     expectedDataType,
                     maxBatch,

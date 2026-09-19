@@ -42,6 +42,7 @@ public final class EpsilonPointProjection extends AbstractBlock {
   private NDArray waitRon;
   private NDArray waitSource;
   private NDArray waitAka;
+  private NDArray absoluteSeats;
 
   public EpsilonPointProjection(EpsilonUtilityProfile utilityProfile) {
     this.utilityProfile = utilityProfile;
@@ -83,7 +84,7 @@ public final class EpsilonPointProjection extends AbstractBlock {
         round(stateCategories, DecisionInputSchema.RoundInt.KYOTAKU).reshape(rows, 1),
         ron,
         tsumo,
-        source.add(tsumo.mul(source.neg())),
+        source.mul(ron),
         zeros,
         zeros,
         zeros);
@@ -181,36 +182,43 @@ public final class EpsilonPointProjection extends AbstractBlock {
             .add(doublePayment.add(singlePayment.mul(2)).mul(dealerWinner.neg().add(1)));
 
     int prefixDimension = facts.getShape().dimension() - 1;
-    NDList settlementBySeat = new NDList();
-    NDList adjustedBySeat = new NDList();
-    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
-      NDArray winner = playerSeat.eq(seat).toType(DataType.INT32, false);
-      NDArray source =
-          absoluteSeatMask(playerSeat, sourceRelativeSeat, seat).toType(DataType.INT32, false);
-      NDArray dealer =
-          absoluteSeatMask(playerSeat, dealerRelativeSeat, seat).toType(DataType.INT32, false);
-      NDArray ronDelta = winner.mul(ronPayment).sub(source.mul(ronPayment));
-      NDArray payerPayment =
-          doublePayment
-              .mul(dealerWinner)
-              .add(
-                  doublePayment
-                      .mul(dealer)
-                      .add(singlePayment.mul(dealer.neg().add(1)))
-                      .mul(dealerWinner.neg().add(1)));
-      NDArray tsumoDelta = winner.mul(tsumoReceived).sub(winner.neg().add(1).mul(payerPayment));
-      settlementBySeat.add(
-          ronDelta.mul(ron).add(tsumoDelta.mul(tsumo)).mul(valid).expandDims(prefixDimension));
-      adjustedBySeat.add(
-          pointLedger100
-              .get("...,{}", seat)
-              .sub(winner.mul(riichi).mul(HanchanProgression.RIICHI_COST / 100))
-              .expandDims(prefixDimension));
-    }
-    NDArray settlement = NDArrays.concat(settlementBySeat, prefixDimension);
-    NDArray adjustedLedger = NDArrays.concat(adjustedBySeat, prefixDimension);
+    NDArray winnerMask = seatOneHot(playerSeat, prefixDimension, DataType.INT32);
+    NDArray sourceMask =
+        seatOneHot(
+            playerSeat.add(sourceRelativeSeat).mod(GameState.NUM_PLAYERS),
+            prefixDimension,
+            DataType.INT32);
+    NDArray dealerMask =
+        seatOneHot(
+            playerSeat.add(dealerRelativeSeat).mod(GameState.NUM_PLAYERS),
+            prefixDimension,
+            DataType.INT32);
+    NDArray ronDelta = winnerMask.sub(sourceMask).mul(ronPayment.expandDims(prefixDimension));
+    NDArray doublePaymentBySeat = doublePayment.expandDims(prefixDimension);
+    NDArray childWinnerPayment =
+        dealerMask
+            .mul(doublePaymentBySeat)
+            .add(dealerMask.neg().add(1).mul(singlePayment.expandDims(prefixDimension)));
+    NDArray payerPayment =
+        doublePaymentBySeat
+            .mul(dealerWinner.expandDims(prefixDimension))
+            .add(childWinnerPayment.mul(dealerWinner.neg().add(1).expandDims(prefixDimension)));
+    NDArray tsumoDelta =
+        winnerMask
+            .mul(tsumoReceived.expandDims(prefixDimension).add(payerPayment))
+            .sub(payerPayment);
+    NDArray activeVector = valid.expandDims(prefixDimension);
+    NDArray settlement =
+        ronDelta
+            .mul(ron.expandDims(prefixDimension))
+            .add(tsumoDelta.mul(tsumo.expandDims(prefixDimension)))
+            .mul(activeVector);
+    NDArray adjustedLedger =
+        pointLedger100.sub(
+            winnerMask
+                .mul(riichi.expandDims(prefixDimension))
+                .mul(HanchanProgression.RIICHI_COST / 100));
     NDArray terminationScores = adjustedLedger.add(settlement);
-    NDArray winnerMask = absoluteSeatOneHot(playerSeat, prefixDimension);
     NDArray finalScores =
         terminationScores.add(
             winnerMask.mul(
@@ -224,7 +232,7 @@ public final class EpsilonPointProjection extends AbstractBlock {
     NDArray terminationRank =
         rank(terminationScores, terminationSelfScore, playerSeat, prefixDimension);
     NDArray rank = rank(finalScores, selfScore, playerSeat, prefixDimension);
-    NDArray rankOneHot = rank.oneHot(GameState.NUM_PLAYERS, DataType.FLOAT32);
+    NDArray rankOneHot = seatOneHot(rank, prefixDimension, DataType.FLOAT32);
     NDArray topScore = terminationScores.max(new int[] {prefixDimension}, false);
     NDArray busted = terminationScores.min(new int[] {prefixDimension}, false).lt(0);
     NDArray dealerContinues = dealerRelativeSeat.eq(0);
@@ -254,32 +262,29 @@ public final class EpsilonPointProjection extends AbstractBlock {
     NDArray nextRound = notEnd.sub(dealerRepeat).sub(westExtension);
     NDArray terminalUtility = rankUtility.take(rank).mul(hanchanEnd);
     NDArray broadcastZero = active.mul(0);
-
-    NDList features = new NDList();
-    features.add(active.expandDims(prefixDimension));
-    features.add(
-        ron.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
-    features.add(
-        tsumo.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
+    NDArray sourceOneHot =
+        seatOneHot(sourceRelativeSeat, prefixDimension, DataType.FLOAT32)
+            .mul(ron.toType(DataType.FLOAT32, false).expandDims(prefixDimension))
+            .add(broadcastZero.expandDims(prefixDimension));
+    NDList scoreGaps = new NDList();
     for (int relativeSeat = 0; relativeSeat < GameState.NUM_PLAYERS; relativeSeat++) {
-      features.add(
-          sourceRelativeSeat
-              .eq(relativeSeat)
-              .toType(DataType.FLOAT32, false)
-              .mul(ron)
-              .add(broadcastZero)
-              .expandDims(prefixDimension));
-    }
-    features.add(settlement.toType(DataType.FLOAT32, false).div(SCORE_NORMALIZER_100));
-    for (int relativeSeat = 0; relativeSeat < GameState.NUM_PLAYERS; relativeSeat++) {
-      NDArray relativeScore = relativeScore(finalScores, playerSeat, relativeSeat, prefixDimension);
-      features.add(
+      scoreGaps.add(
           selfScore
-              .sub(relativeScore)
+              .sub(relativeScore(finalScores, playerSeat, relativeSeat))
               .toType(DataType.FLOAT32, false)
               .div(SCORE_NORMALIZER_100)
               .expandDims(prefixDimension));
     }
+
+    NDList features = new NDList();
+    features.add(activeVector);
+    features.add(
+        ron.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
+    features.add(
+        tsumo.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
+    features.add(sourceOneHot);
+    features.add(settlement.toType(DataType.FLOAT32, false).div(SCORE_NORMALIZER_100));
+    features.add(NDArrays.concat(scoreGaps, prefixDimension));
     features.add(rankOneHot);
     features.add(hanchanEnd.expandDims(prefixDimension));
     features.add(dealerRepeat.expandDims(prefixDimension));
@@ -290,8 +295,7 @@ public final class EpsilonPointProjection extends AbstractBlock {
         snapshot.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
     features.add(
         aka.toType(DataType.FLOAT32, false).add(broadcastZero).expandDims(prefixDimension));
-    NDArray projected =
-        NDArrays.concat(features, prefixDimension).mul(active.expandDims(prefixDimension));
+    NDArray projected = NDArrays.concat(features, prefixDimension).mul(activeVector);
     NDArray gateFeatures =
         NDArrays.concat(
                 new NDList(
@@ -299,7 +303,7 @@ public final class EpsilonPointProjection extends AbstractBlock {
                     terminalUtility.expandDims(prefixDimension),
                     rankOneHot),
                 prefixDimension)
-            .mul(active.expandDims(prefixDimension));
+            .mul(activeVector);
     return new Projection(projected, gateFeatures, active);
   }
 
@@ -328,32 +332,15 @@ public final class EpsilonPointProjection extends AbstractBlock {
     return stateCategories.get(":,{}", field.ordinal()).toType(DataType.INT32, false);
   }
 
-  private static NDArray absoluteSeatMask(
-      NDArray playerSeat, NDArray relativeSeat, int absoluteSeat) {
-    NDArray result = playerSeat.eq(0).logicalAnd(relativeSeat.eq(absoluteSeat));
-    for (int player = 1; player < GameState.NUM_PLAYERS; player++) {
-      result =
-          result.logicalOr(
-              playerSeat
-                  .eq(player)
-                  .logicalAnd(
-                      relativeSeat.eq(
-                          (absoluteSeat - player + GameState.NUM_PLAYERS)
-                              % GameState.NUM_PLAYERS)));
-    }
-    return result;
-  }
-
-  private static NDArray absoluteSeatOneHot(NDArray playerSeat, int axis) {
+  private static NDArray seatOneHot(NDArray seats, int axis, DataType dataType) {
     NDList masks = new NDList();
     for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
-      masks.add(playerSeat.eq(seat).toType(DataType.INT32, false).expandDims(axis));
+      masks.add(seats.eq(seat).toType(dataType, false).expandDims(axis));
     }
     return NDArrays.concat(masks, axis);
   }
 
-  private static NDArray relativeScore(
-      NDArray scores, NDArray playerSeat, int relativeSeat, int axis) {
+  private static NDArray relativeScore(NDArray scores, NDArray playerSeat, int relativeSeat) {
     NDArray result = scores.get("...,0").mul(0);
     for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
       int seat = (player + relativeSeat) % GameState.NUM_PLAYERS;
@@ -364,15 +351,13 @@ public final class EpsilonPointProjection extends AbstractBlock {
     return result;
   }
 
-  private static NDArray rank(NDArray scores, NDArray selfScore, NDArray playerSeat, int axis) {
-    NDArray rank = selfScore.mul(0);
-    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
-      NDArray score = scores.get("...,{}", seat);
-      NDArray ahead =
-          score.gt(selfScore).logicalOr(score.eq(selfScore).logicalAnd(playerSeat.gt(seat)));
-      rank = rank.add(ahead.toType(DataType.INT32, false));
-    }
-    return rank;
+  private NDArray rank(NDArray scores, NDArray selfScore, NDArray playerSeat, int axis) {
+    NDArray self = selfScore.expandDims(axis);
+    return scores
+        .gt(self)
+        .logicalOr(scores.eq(self).logicalAnd(absoluteSeats.lt(playerSeat.expandDims(axis))))
+        .toType(DataType.INT32, false)
+        .sum(new int[] {axis});
   }
 
   @Override
@@ -411,6 +396,7 @@ public final class EpsilonPointProjection extends AbstractBlock {
     waitRon = manager.create(WAIT_RON);
     waitSource = manager.create(WAIT_SOURCE);
     waitAka = manager.create(WAIT_AKA);
+    absoluteSeats = manager.arange(GameState.NUM_PLAYERS).toType(DataType.INT32, false);
   }
 
   @Override

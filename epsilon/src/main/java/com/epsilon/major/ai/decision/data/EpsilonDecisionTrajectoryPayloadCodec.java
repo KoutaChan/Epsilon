@@ -113,6 +113,7 @@ final class EpsilonDecisionTrajectoryPayloadCodec {
         descriptor.advantage(),
         actorWeight,
         sampleWeight);
+    destination.writeBranchTarget(row, descriptor.branchTarget());
   }
 
   private static DecisionBucket readHeader(DataInputStream in) throws IOException {

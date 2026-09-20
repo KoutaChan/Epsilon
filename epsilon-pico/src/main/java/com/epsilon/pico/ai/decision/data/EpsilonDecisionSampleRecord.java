@@ -1,5 +1,6 @@
 package com.epsilon.pico.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.pico.ai.decision.input.DecisionHostBatch;
 
@@ -158,6 +159,8 @@ public interface EpsilonDecisionSampleRecord {
 
   /** 選択が方策判断列、価値判断列のどちらを進めるか返す。 */
   DecisionLearningRole learningRole();
+
+  DecisionBranchTarget branchTarget();
 
   /**
    * 価値教師値とアドバンテージを置換した同一観測のレコードを返す。

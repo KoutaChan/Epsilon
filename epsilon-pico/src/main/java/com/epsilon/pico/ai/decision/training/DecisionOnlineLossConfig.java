@@ -2,7 +2,10 @@ package com.epsilon.pico.ai.decision.training;
 
 /** 自己対局で選択した行動を使う学習で、方策と価値関数を一度の逆伝播で更新するための損失設定。 */
 public record DecisionOnlineLossConfig(
-    float policyUpdateClipRange, float explorationCreditMix, float entropyCoefficient) {
+    float policyUpdateClipRange,
+    float explorationCreditMix,
+    float entropyCoefficient,
+    boolean branchComparisonEnabled) {
 
   public static final float DEFAULT_POLICY_UPDATE_CLIP_RANGE = 0.2f;
   public static final float DEFAULT_EXPLORATION_CREDIT_MIX = 0.10f;
@@ -28,31 +31,37 @@ public record DecisionOnlineLossConfig(
     }
   }
 
+  public DecisionOnlineLossConfig withBranchComparison(boolean enabled) {
+    return new DecisionOnlineLossConfig(
+        policyUpdateClipRange, explorationCreditMix, entropyCoefficient, enabled);
+  }
+
   public static DecisionOnlineLossConfig create() {
     return new DecisionOnlineLossConfig(
         DEFAULT_POLICY_UPDATE_CLIP_RANGE,
         DEFAULT_EXPLORATION_CREDIT_MIX,
-        DEFAULT_ENTROPY_COEFFICIENT);
+        DEFAULT_ENTROPY_COEFFICIENT,
+        false);
   }
 
   /** PPO クリップ幅を明示し、探索による選択の学習への寄与には標準値を使う。 */
   public static DecisionOnlineLossConfig createWithPolicyUpdateClipRange(
       float policyUpdateClipRange) {
     return new DecisionOnlineLossConfig(
-        policyUpdateClipRange, DEFAULT_EXPLORATION_CREDIT_MIX, DEFAULT_ENTROPY_COEFFICIENT);
+        policyUpdateClipRange, DEFAULT_EXPLORATION_CREDIT_MIX, DEFAULT_ENTROPY_COEFFICIENT, false);
   }
 
   /** PPO クリップ幅と探索による選択の学習への寄与混合率を明示する。 */
   public static DecisionOnlineLossConfig create(
       float policyUpdateClipRange, float explorationCreditMix) {
     return new DecisionOnlineLossConfig(
-        policyUpdateClipRange, explorationCreditMix, DEFAULT_ENTROPY_COEFFICIENT);
+        policyUpdateClipRange, explorationCreditMix, DEFAULT_ENTROPY_COEFFICIENT, false);
   }
 
   /** PPO クリップ幅、探索による選択の学習への寄与混合率、最終的な行動の確率分布エントロピー係数を明示する。 */
   public static DecisionOnlineLossConfig create(
       float policyUpdateClipRange, float explorationCreditMix, float entropyCoefficient) {
     return new DecisionOnlineLossConfig(
-        policyUpdateClipRange, explorationCreditMix, entropyCoefficient);
+        policyUpdateClipRange, explorationCreditMix, entropyCoefficient, false);
   }
 }

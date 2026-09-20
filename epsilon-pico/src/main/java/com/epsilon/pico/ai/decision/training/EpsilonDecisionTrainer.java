@@ -9,6 +9,7 @@ import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
+import com.epsilon.config.settings.DecisionBranchComparisonSettings;
 import com.epsilon.config.settings.DecisionComputePrecision;
 import com.epsilon.config.settings.DecisionTensorTransfer;
 import com.epsilon.config.settings.DecisionTrainSettings;
@@ -236,9 +237,11 @@ public final class EpsilonDecisionTrainer implements AutoCloseable {
     ensureOpen();
     DecisionOnlineLossConfig config =
         DecisionOnlineLossConfig.create(
-            policyPlan.policyUpdateClipRange(),
-            policyPlan.explorationCreditMix(),
-            policyPlan.entropyCoefficient());
+                policyPlan.policyUpdateClipRange(),
+                policyPlan.explorationCreditMix(),
+                policyPlan.entropyCoefficient())
+            .withBranchComparison(
+                this.config.bind(DecisionBranchComparisonSettings.class).enabled());
     return trainAccumulatedActorAndValueStreaming(
         fragmentPaths,
         reader,

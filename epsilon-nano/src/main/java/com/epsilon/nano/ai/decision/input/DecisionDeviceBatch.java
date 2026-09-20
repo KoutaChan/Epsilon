@@ -74,6 +74,7 @@ public record DecisionDeviceBatch(
    * @param advantage 効用の選択行動アドバンテージ
    * @param actorWeight 方策損失対象行の重み
    * @param sampleWeight 価値損失対象行の重み
+   * @param branchTargets 終了ゲートの分岐比較教師値
    */
   public record TrainingTargets(
       NDArray categoricalSlab,
@@ -84,5 +85,6 @@ public record DecisionDeviceBatch(
       NDArray valueTarget,
       NDArray advantage,
       NDArray actorWeight,
-      NDArray sampleWeight) {}
+      NDArray sampleWeight,
+      NDArray branchTargets) {}
 }

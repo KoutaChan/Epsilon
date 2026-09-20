@@ -13,13 +13,11 @@ import com.epsilon.pico.ai.grp.EpsilonGrpTrainingSession;
 import com.epsilon.pico.config.settings.DecisionPretrainSettings;
 import com.epsilon.pico.training.EpsilonLogPretrainDataCollector;
 import com.epsilon.replay.ReplayRecordReader;
-import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.DigestInputStream;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
@@ -78,7 +76,7 @@ final class EpsilonDecisionPretrainDatasetCompiler {
     if (sourceFiles.isEmpty()) {
       throw new IllegalArgumentException("Decision pretrain source files must not be empty");
     }
-    String sourceDigest = sourceDigest(sourceFiles, settings.progressLogIntervalNanos());
+    String sourceDigest = sourceDigest(sourceFiles);
     EpsilonGrpTeacherIdentity teacher = grpSession.identity();
     String teacherIdentity = teacher.iteration() + ":" + teacher.checkpointSha256();
     String compilerIdentity = createCompilerIdentity(settings, utilityProfile);
@@ -94,9 +92,6 @@ final class EpsilonDecisionPretrainDatasetCompiler {
     Path directory = datasetRoot.toAbsolutePath().normalize().resolve(identity.substring(0, 20));
     if (Files.isRegularFile(directory.resolve("manifest.json"))) {
       EpsilonDecisionCompiledDataset existing = EpsilonDecisionCompiledDataset.open(directory);
-      if (!identity.equals(existing.manifest().identity())) {
-        throw new IOException("Compiled Decision dataset identity mismatch: " + directory);
-      }
       log.info(
           "Reusing compiled Decision warm-start dataset: directory={} rows={} batches={} shards={}",
           directory,
@@ -233,40 +228,22 @@ final class EpsilonDecisionPretrainDatasetCompiler {
     return prepared.size();
   }
 
-  private static String sourceDigest(List<Path> sourceFiles, long progressLogIntervalNanos)
-      throws IOException {
+  /**
+   * パス・サイズ・更新時刻から牌譜キャッシュの識別子を作る。内容の全読みや破損検証は行わない。
+   *
+   * <p>同じサイズ・更新時刻のまま内容を差し替えた場合は、既存キャッシュを明示的に削除する。
+   */
+  static String sourceDigest(List<Path> sourceFiles) throws IOException {
     MessageDigest digest = digest();
+    digest.update("source-metadata-v1\n".getBytes(StandardCharsets.UTF_8));
     ArrayList<Path> ordered = new ArrayList<>(sourceFiles);
     ordered.sort(Comparator.comparing(path -> path.toAbsolutePath().normalize().toString()));
-    byte[] separator = {0};
-    long started = System.nanoTime();
-    long nextProgressLog = started + progressLogIntervalNanos;
-    for (int sourceIndex = 0; sourceIndex < ordered.size(); sourceIndex++) {
-      Path normalized = ordered.get(sourceIndex).toAbsolutePath().normalize();
-      digest.update(normalized.toString().getBytes(StandardCharsets.UTF_8));
-      digest.update(separator);
-      try (InputStream in =
-          new DigestInputStream(
-              new BufferedInputStream(Files.newInputStream(normalized), 1 << 20), digest)) {
-        in.transferTo(java.io.OutputStream.nullOutputStream());
-      }
-      digest.update(separator);
-      long now = System.nanoTime();
-      if (now >= nextProgressLog) {
-        int completedFiles = sourceIndex + 1;
-        double elapsedSeconds = (now - started) / 1_000_000_000.0;
-        double filesPerSecond = completedFiles / elapsedSeconds;
-        double etaSeconds = (ordered.size() - completedFiles) / filesPerSecond;
-        log.info(
-            "Decision pretrain source digest progress: files={}/{} elapsedSeconds={} "
-                + "etaSeconds={} filesPerSecond={}",
-            completedFiles,
-            ordered.size(),
-            elapsedSeconds,
-            etaSeconds,
-            filesPerSecond);
-        nextProgressLog = now + progressLogIntervalNanos;
-      }
+    for (Path source : ordered) {
+      Path normalized = source.toAbsolutePath().normalize();
+      BasicFileAttributes attributes = Files.readAttributes(normalized, BasicFileAttributes.class);
+      String metadata =
+          normalized + "\0" + attributes.size() + "\0" + attributes.lastModifiedTime() + "\0";
+      digest.update(metadata.getBytes(StandardCharsets.UTF_8));
     }
     return HexFormat.of().formatHex(digest.digest());
   }

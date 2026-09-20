@@ -1,6 +1,7 @@
 package com.epsilon.nano.ai.decision.training;
 
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.config.settings.DecisionBranchComparisonSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.nano.ai.decision.EpsilonDecisionConstants;
 import com.epsilon.nano.ai.decision.arena.DecisionAdaptiveExploration;
@@ -18,7 +19,7 @@ import java.util.Objects;
 /** 保存した AdamW 状態が、現在の方策損失と対局収集条件に対応するか識別する。 */
 final class DecisionSelectedPgLearnerContract {
 
-  private static final String SCHEMA = "decision-selected-pg-actor-v11";
+  private static final String SCHEMA = "decision-selected-pg-actor-v12";
 
   private DecisionSelectedPgLearnerContract() {}
 
@@ -43,7 +44,14 @@ final class DecisionSelectedPgLearnerContract {
             settings.explorationCreditMix());
     var optimizer = config.bind(DecisionSettings.class);
     return new Resolved(
-        actor, opponent, fingerprint(settings, actor, optimizer.utilityProfile(), optimizer));
+        actor,
+        opponent,
+        fingerprint(
+            settings,
+            actor,
+            optimizer.utilityProfile(),
+            optimizer,
+            config.bind(DecisionBranchComparisonSettings.class)));
   }
 
   record Resolved(
@@ -63,6 +71,20 @@ final class DecisionSelectedPgLearnerContract {
       EpsilonDecisionPlayer.RolloutConfig actorRollout,
       EpsilonUtilityProfile utilityProfile,
       DecisionSettings optimizer) {
+    return fingerprint(
+        campaign,
+        actorRollout,
+        utilityProfile,
+        optimizer,
+        EpsilonSettings.defaults().bind(DecisionBranchComparisonSettings.class));
+  }
+
+  private static String fingerprint(
+      DecisionSelectedPgCampaignSettings campaign,
+      EpsilonDecisionPlayer.RolloutConfig actorRollout,
+      EpsilonUtilityProfile utilityProfile,
+      DecisionSettings optimizer,
+      DecisionBranchComparisonSettings branch) {
     Objects.requireNonNull(campaign, "campaign");
     Objects.requireNonNull(actorRollout, "actorRollout");
     Objects.requireNonNull(utilityProfile, "utilityProfile");
@@ -83,6 +105,7 @@ final class DecisionSelectedPgLearnerContract {
             "architecture=" + EpsilonDecisionConstants.ARCHITECTURE_ID,
             "utilityProfile=" + utilityProfile,
             "selectionMode=" + actorRollout.selectionMode(),
+            "branchComparison=" + (branch.enabled() ? branch : "disabled"),
             "fullSupport=" + actorRollout.fullSupport(),
             "adaptiveHistogramBins=" + DecisionAdaptiveExploration.HISTOGRAM_BINS,
             "adaptiveMinimumCalibrationSamples="

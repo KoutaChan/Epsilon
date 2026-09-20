@@ -119,7 +119,6 @@ public final class DecisionKlTargetTrial {
       throw new IllegalArgumentException("trial settings/seeds differ from its saved plan");
     }
     manifest.conditions().requireSame(TrialConditions.current(settings, config));
-    manifest.teacher().verify(root);
     Path evaluationPlan = root.resolve("evaluation-plan.json");
     EvaluationPlan requested =
         new EvaluationPlan(macrosPerArm, config.bind(DecisionChampionDuelSettings.class));
@@ -444,28 +443,23 @@ public final class DecisionKlTargetTrial {
     }
   }
 
-  /** 固定教師モデルの内容を記録する。入力元のlatest更新には追従しない。 */
-  record Teacher(boolean enabled, String sha256) {
-    void verify(Path root) throws IOException {
-      if (enabled
-          && !sha256.equals(EpsilonGrpCheckpointManager.checkpointSha256(root.resolve("grp")))) {
-        throw new IOException("fixed trial GRP checkpoint differs from its saved SHA-256");
-      }
-    }
-  }
+  /** 固定教師モデルの使用有無。モデル本体は試行ディレクトリへ一度だけ保存する。 */
+  record Teacher(boolean enabled) {}
 
   static Teacher snapshotTeacher(Path sourceRoot, Path trialRoot, boolean enabled)
       throws IOException {
-    if (!enabled) return new Teacher(false, null);
+    if (!enabled) {
+      return new Teacher(false);
+    }
     Path target = trialRoot.resolve("grp");
     // 初回準備中の中断から再開するときも、先に固定した教師モデルを引き継ぐ。
     if (Files.exists(target)) {
-      return new Teacher(true, EpsilonGrpCheckpointManager.checkpointSha256(target));
+      return new Teacher(true);
     }
     Path source = EpsilonGrpCheckpointManager.resolveExisting(sourceRoot.resolve("grp"));
-    if (source == null)
+    if (source == null) {
       throw new IOException("GRP checkpoint not found in " + sourceRoot.resolve("grp"));
-    String expectedSha = EpsilonGrpCheckpointManager.checkpointSha256(source);
+    }
     Path temporary = Files.createTempDirectory(trialRoot, ".grp-");
     try {
       // オプティマイザー.状態は推論では使わないがチェックポイントマニフェストの必須保存物なので含める。
@@ -474,19 +468,18 @@ public final class DecisionKlTargetTrial {
           Files.copy(file, temporary.resolve(file.getFileName()));
         }
       }
-      if (!expectedSha.equals(EpsilonGrpCheckpointManager.checkpointSha256(temporary))) {
-        throw new IOException("GRP checkpoint changed while preparing the fixed trial teacher");
-      }
       try {
         Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
       } catch (AtomicMoveNotSupportedException unsupported) {
         Files.move(temporary, target);
       }
-      return new Teacher(true, expectedSha);
+      return new Teacher(true);
     } finally {
       if (Files.exists(temporary)) {
         try (var files = Files.list(temporary)) {
-          for (Path file : files.toList()) Files.delete(file);
+          for (Path file : files.toList()) {
+            Files.delete(file);
+          }
         }
         Files.delete(temporary);
       }

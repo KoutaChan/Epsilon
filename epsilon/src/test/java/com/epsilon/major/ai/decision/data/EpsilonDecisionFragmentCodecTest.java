@@ -11,8 +11,8 @@ import org.testng.annotations.Test;
 public class EpsilonDecisionFragmentCodecTest {
 
   @Test
-  public void v46FragmentMagicIsRejectedBeforeReadingPayload() {
-    byte[] oldHeader = ByteBuffer.allocate(Integer.BYTES).putInt(0xED10_0023).array();
+  public void previousFragmentMagicIsRejectedBeforeReadingPayload() {
+    byte[] oldHeader = ByteBuffer.allocate(Integer.BYTES).putInt(0xED10_0024).array();
     Assert.expectThrows(
         EpsilonDecisionFragmentCodec.UnsupportedFormatException.class,
         () -> EpsilonDecisionFragmentCodec.readHeaderMetadata(new ByteArrayInputStream(oldHeader)));
@@ -22,7 +22,7 @@ public class EpsilonDecisionFragmentCodecTest {
   public void mismatchedSchemaIsRejectedBeforeReadingPayload() throws Exception {
     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
     try (DataOutputStream out = new DataOutputStream(bytes)) {
-      out.writeInt(0xED10_0024);
+      out.writeInt(0xED10_0025);
       out.writeUTF("not-the-current-schema");
     }
     Assert.expectThrows(

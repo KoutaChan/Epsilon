@@ -5,6 +5,7 @@ import ai.djl.ndarray.NDArrays;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
+import com.epsilon.ai.decision.DecisionBranchLoss;
 import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.pico.ai.decision.EpsilonUtilityTargets;
@@ -24,6 +25,9 @@ import com.epsilon.pico.ai.decision.training.DecisionOnlineLossConfig;
  *
  * <p>価値関数は期待効用をガウス分布に基づくヒストグラムへ変換した HL-Gauss の交差エントロピーで学習する。局境界の GRP 予測を固定の事前予測とし、Decision
  * は各区間のロジットの残差を学習する。
+ *
+ * <p>限定二分岐が有効な自己対局では、完成した比較を対象gateだけの二択目的へ渡す。そのgateは通常PPOと
+ * エントロピー項からdetachする。KYUSHUは比較未完成でもdetachし、比較結果を価値教師へ混ぜない。
  */
 public final class EpsilonDecisionLoss {
 
@@ -179,8 +183,17 @@ public final class EpsilonDecisionLoss {
                 : valueConstants.targetProbabilities(targets.valueTarget()),
             sampleWeight,
             sampleWeightNormalization);
+    DecisionPolicyScores onlineScores = applyLossPrecision(output.policyScores());
+    if (config.branchComparisonEnabled()) {
+      onlineScores =
+          new DecisionPolicyScores(
+              DecisionBranchLoss.detachComparedGates(
+                  onlineScores.alternativeScores(), targets.branchTargets()),
+              onlineScores.actionCandidateScores(),
+              onlineScores.riichiGateScores());
+    }
     EpsilonDecisionPolicyGraph.Distribution currentPolicy =
-        composePolicyDistributionForLoss(output.policyScores(), input);
+        composePolicyDistributionForLoss(onlineScores, input);
     NDArray selectedCurrentLogProbability =
         selectedByIndices(currentPolicy.logProbabilities(), chosenIndices);
     NDArray behaviorCloningLoss =
@@ -305,6 +318,15 @@ public final class EpsilonDecisionLoss {
             effectiveActorRatio,
             policyUpdateClipIndicator,
             actorWeights);
+    if (config.branchComparisonEnabled()) {
+      policyGradientLoss =
+          policyGradientLoss.add(
+              DecisionBranchLoss.loss(
+                  output.policyScores().alternativeScores().toType(DataType.FLOAT32, false),
+                  targets.branchTargets(),
+                  actorWeights,
+                  config.policyUpdateClipRange()));
+    }
     NDArray total = policyGradientLoss.add(entropyBonusLoss);
     return new TrainingLossResult(
         total,

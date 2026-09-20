@@ -1,5 +1,6 @@
 package com.epsilon.nano.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.nano.ai.decision.input.DecisionBucket;
@@ -23,7 +24,7 @@ import java.util.List;
  */
 final class EpsilonDecisionFragmentCodec {
 
-  private static final int MAGIC = 0xED10_0023;
+  private static final int MAGIC = 0xED10_0024;
 
   private EpsilonDecisionFragmentCodec() {}
 
@@ -293,6 +294,7 @@ final class EpsilonDecisionFragmentCodec {
     out.writeFloat(sample.behaviorProb());
     out.writeFloat(sample.valueTarget());
     out.writeFloat(sample.advantage());
+    sample.branchTarget().writeTo(out);
     out.writeInt(sample.boundaryIndex());
     out.writeInt(sample.seatDecisionOrdinal());
     out.writeInt(sample.ruleProfile());
@@ -317,6 +319,7 @@ final class EpsilonDecisionFragmentCodec {
     float behaviorProb = in.readFloat();
     float valueTarget = in.readFloat();
     float advantage = in.readFloat();
+    DecisionBranchTarget branchTarget = DecisionBranchTarget.readFrom(in);
     int boundaryIndex = in.readInt();
     int seatDecisionOrdinal = in.readInt();
     int ruleProfile = in.readInt();
@@ -356,7 +359,8 @@ final class EpsilonDecisionFragmentCodec {
           seatDecisionOrdinal,
           boundary.grpFeatureSequenceView(),
           header.finalRanksCode(),
-          DecisionLearningRole.values()[roleCode]);
+          DecisionLearningRole.values()[roleCode],
+          branchTarget);
     } catch (IllegalArgumentException e) {
       throw new IOException("Invalid Decision sample identity", e);
     }
@@ -367,7 +371,7 @@ final class EpsilonDecisionFragmentCodec {
     readSamplePayloadRef(in, payloadFiles);
     EpsilonDecisionBinaryArrayCodec.skipIntArray(in);
     in.skipNBytes(6L * Integer.BYTES + 2L * Float.BYTES);
-    in.skipNBytes(2L * Float.BYTES);
+    in.skipNBytes(2L * Float.BYTES + DecisionBranchTarget.BYTES);
     in.skipNBytes(3L * Integer.BYTES + Byte.BYTES);
   }
 

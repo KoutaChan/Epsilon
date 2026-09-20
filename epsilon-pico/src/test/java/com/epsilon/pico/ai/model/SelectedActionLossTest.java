@@ -39,7 +39,9 @@ public class SelectedActionLossTest {
     ArrayList<Action> actions = new ArrayList<>();
     int[] counts = state.hand(0).copyConcealedTileCounts();
     for (int tile = 0; tile < counts.length && actions.size() < 2; tile++) {
-      if (counts[tile] > 0) actions.add(Action.dahai(tile));
+      if (counts[tile] > 0) {
+        actions.add(Action.dahai(tile));
+      }
     }
     DecisionBucket bucket =
         DecisionBatchBuilder.minimumDetachedBucket(state, 0, actions, state.publicState());
@@ -82,7 +84,7 @@ public class SelectedActionLossTest {
             EpsilonDecisionLoss.computeOnlineTrainingLoss(
                 output,
                 input,
-                new DecisionOnlineLossConfig(0.2f, 0.1f, 0),
+                new DecisionOnlineLossConfig(0.2f, 0.1f, 0, false),
                 true,
                 true,
                 EpsilonUtilityProfile.TENHOU,

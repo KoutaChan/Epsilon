@@ -791,9 +791,9 @@ public final class EpsilonDecisionArena {
       }
     }
 
-    /** 通常対局の要求を先に投入した後、余剰予算内の追加枝だけを同じ推論キューへ渡す。 */
+    /** 通常対局の投入後、予算内の追加枝も同じキューへ渡す。混雑時も枝の進行とキャンセル済み枠の回収を止めない。 */
     private void enqueuePendingBranches() {
-      if (pendingBranches == null || inferenceAdmission.hasQueuedRows()) {
+      if (pendingBranches == null) {
         return;
       }
       while (!pendingBranches.isEmpty()) {

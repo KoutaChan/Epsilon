@@ -9,6 +9,7 @@ import ai.djl.nn.AbstractBlock;
 import ai.djl.nn.core.Linear;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
+import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.major.ai.model.EpsilonMahjongStateEncoder;
 
 /** 固定計算した即時和了・将来待ちの結果を、方策用の共有文脈へ変換する。 */
@@ -32,6 +33,23 @@ public final class EpsilonPointOutcomeEncoder extends AbstractBlock {
         projection
             .forward(parameterStore, new NDList(pointFeatures), training, runtimeParameters)
             .singletonOrThrow());
+  }
+
+  NDArray encodeSelected(
+      ParameterStore parameterStore,
+      NDArray pointFeatures,
+      NDArray validMask,
+      NDArray suppliedIndices,
+      boolean training,
+      PairList<String, Object> runtimeParameters) {
+    NDArray indices =
+        suppliedIndices != null ? suppliedIndices : EpsilonMaskedRows.indices(validMask);
+    long rows = validMask.size();
+    NDArray selected = EpsilonMaskedRows.gather(pointFeatures.reshape(rows, -1), indices);
+    NDArray encoded = encode(parameterStore, selected, training, runtimeParameters);
+    // The projection has no bias and SiLU(0) == 0, so invalid rows are exactly zero.
+    return EpsilonMaskedRows.scatter(encoded, indices, rows)
+        .reshape(validMask.getShape().add(outputWidth));
   }
 
   @Override

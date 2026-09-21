@@ -73,6 +73,7 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
   private final EpsilonPublicHistoryEncoder publicHistoryEncoder;
   private final EpsilonStrategicContextEncoder strategicContextEncoder;
   private NDArray stateCategoryOffsets;
+  private NDArray publicTokenIndices;
 
   /**
    * 指定幅の構成要素エンコーダーを構築する。
@@ -598,12 +599,7 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
     // 公開112 トークンは以後変更しない。時系列と方策で同じK/Vを再利用する。
     NDList memorySections =
         playerMemory.split(new long[] {1, 1 + DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER}, 2);
-    NDArray publicTokens =
-        NDArrays.concat(
-            new NDList(
-                memorySections.get(1).reshape(rowCount, RIVER_TOKEN_COUNT, hiddenSize),
-                memorySections.get(2).reshape(rowCount, MELD_TOKEN_COUNT, hiddenSize)),
-            1);
+    NDArray publicTokens = gatherPublicTokens(playerMemory, publicTokenIndices);
     NDArray publicKeyValues =
         applyLinear(
             playerMemoryKeyValueProjection,
@@ -728,8 +724,35 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
     return device.isGpu() && numericDataType == embeddingDataType;
   }
 
+  /** 河を全家分、その後に面子を全家分並べ、分割ビューのreshapeによる中間コピーを避ける。 */
+  static NDArray gatherPublicTokens(NDArray playerMemory, NDArray indices) {
+    Shape shape = playerMemory.getShape();
+    try (NDArray indexRow = indices.reshape(1, -1, 1);
+        NDArray gatherIndices = indexRow.broadcast(shape.get(0), indices.size(), shape.get(3))) {
+      return playerMemory
+          .reshape(shape.get(0), GameState.NUM_PLAYERS * PLAYER_MEMORY_TOKEN_COUNT, shape.get(3))
+          .gather(gatherIndices, 1);
+    }
+  }
+
+  static long[] publicTokenIndices() {
+    long[] indices = new long[RIVER_TOKEN_COUNT + MELD_TOKEN_COUNT];
+    for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
+      int base = player * PLAYER_MEMORY_TOKEN_COUNT + 1;
+      for (int river = 0; river < DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER; river++) {
+        indices[player * DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER + river] = base + river;
+      }
+      for (int meld = 0; meld < DecisionInputSchema.MAX_MELDS_PER_PLAYER; meld++) {
+        indices[RIVER_TOKEN_COUNT + player * DecisionInputSchema.MAX_MELDS_PER_PLAYER + meld] =
+            base + DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER + meld;
+      }
+    }
+    return indices;
+  }
+
   @Override
   protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
+    publicTokenIndices = manager.create(publicTokenIndices());
     stateCategoryOffsets =
         manager
             .create(DecisionCategoryLayout.stateOffsets())
@@ -934,7 +957,9 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
               .reshape(rowCount, entityCount, floatStride);
       entityFeatures = categoricalEntityFeatures.concat(numericEntityFeatures, 2);
     }
-    return applyLinear(projection, parameterStore, entityFeatures, training, runtimeParameters);
+    try (entityFeatures) {
+      return applyLinear(projection, parameterStore, entityFeatures, training, runtimeParameters);
+    }
   }
 
   /** 状態の1 構成要素区間をleading-strided ビューのままオフセット埋め込みと数値末尾へ連結する。 */

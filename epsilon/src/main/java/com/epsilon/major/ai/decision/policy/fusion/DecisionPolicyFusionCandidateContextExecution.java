@@ -34,7 +34,8 @@ import org.slf4j.LoggerFactory;
  * 入力テンソルの所有権は移さず、出力利用権だけを方策順伝播の寿命へ結び付ける。
  *
  * <p>候補幅はDecision 容量区分ごとに固定である。スコア、マスク、候補表現のデータ型は独立なので、最初の投入時に実テンソルの組を
- * 記述情報へ固定し、同じ容量区分では再利用する。再利用する出力を持つセッションも実際に使った容量区分だけ生成するため、未使用容量区分の VRAMは確保しない。
+ * 記述情報へ固定し、同じ容量区分では実行計画を再利用する。出力を持つセッションは実行枠ごとに一つだけ保持し、
+ * 前の順伝播の利用権を返却した枠で候補幅が変わったときだけ差し替える。容量区分ごとの最大出力は重複して保持しない。
  */
 public final class DecisionPolicyFusionCandidateContextExecution
     extends DecisionPolicyCandidateContextExecution {
@@ -56,8 +57,9 @@ public final class DecisionPolicyFusionCandidateContextExecution
   private final NDArray tsumoMapping;
   private final int hiddenSize;
   private final int maximumBatch;
-  private final int executionSlots;
   private final Program[] programsByCandidateCapacity;
+  private final FusionSession[] sessionsBySlot;
+  private final Program[] sessionProgramsBySlot;
   private final FusionForward[] activeForwards;
   private final ArrayList<FusionOutputLease> poisonedLeases = new ArrayList<>();
   private Throwable failure;
@@ -73,8 +75,9 @@ public final class DecisionPolicyFusionCandidateContextExecution
     requireFloatingType(dataType);
     this.hiddenSize = hiddenSize;
     this.maximumBatch = maximumBatch;
-    this.executionSlots = executionSlots;
     activeForwards = new FusionForward[executionSlots];
+    sessionsBySlot = new FusionSession[executionSlots];
+    sessionProgramsBySlot = new Program[executionSlots];
     programsByCandidateCapacity = new Program[DecisionInputSchema.MAX_LEGAL_ACTIONS + 1];
     resourceManager = manager.newSubManager();
 
@@ -96,14 +99,12 @@ public final class DecisionPolicyFusionCandidateContextExecution
       long expectedOutputBytesPerSlot = outputBytes(maximumBatch, hiddenSize, dataType);
       long maximumRetainedOutputBytes =
           Math.multiplyExact(
-              Math.multiplyExact(
-                  outputBytes(maximumBatch, hiddenSize, DataType.FLOAT32), executionSlots),
-              DecisionInputSchema.LEGAL_ACTION_BUCKETS.length);
+              outputBytes(maximumBatch, hiddenSize, DataType.FLOAT32), executionSlots);
       LOGGER.info(
           "Decision candidate context fusion: maximumBatch={}, referenceRows={}, buckets={},"
               + " groups={}, destinations={}, hiddenSize={}, slots={}, expectedDtype={},"
               + " programBinding=FIRST_ACTUAL_DTYPES,"
-              + " modelDtypeEstimateBytesPerSlotPerActiveBucket={},"
+              + " sessionOwnership=EXECUTION_SLOT, modelDtypeEstimateBytesPerSlot={},"
               + " maximumRetainedOutputBytes={}, activeLogicalBytesAtReference={}",
           maximumBatch,
           referenceRows,
@@ -198,7 +199,10 @@ public final class DecisionPolicyFusionCandidateContextExecution
       throw new IllegalStateException(
           "cannot close candidate context fusion with an active forward");
     }
-    Throwable closeFailure = closePrograms(null);
+    Throwable closeFailure = closeSessions(null);
+    if (closeFailure == null) {
+      closeFailure = closePrograms(null);
+    }
     if (closeFailure == null) {
       closeFailure = closeResource(null, resourceManager);
     }
@@ -224,7 +228,7 @@ public final class DecisionPolicyFusionCandidateContextExecution
     FusionOutputLease lease = null;
     NDArray[] active = new NDArray[8];
     boolean submitAttempted = false;
-    try (FusionInvocation invocation = program.acquire()) {
+    try (FusionInvocation invocation = acquire(program, owner.slot)) {
       invocation.setInput(program.scoresInput(), candidateScores);
       invocation.setInput(program.masksInput(), typeMasks);
       invocation.setInput(program.valuesInput(), candidateEmbeddings);
@@ -297,7 +301,6 @@ public final class DecisionPolicyFusionCandidateContextExecution
       program =
           new Program(
               compiler,
-              resourceManager,
               alternativeMapping,
               passMapping,
               ronMapping,
@@ -308,8 +311,7 @@ public final class DecisionPolicyFusionCandidateContextExecution
               scoreType,
               maskType,
               valueType,
-              maximumBatch,
-              executionSlots);
+              maximumBatch);
       programsByCandidateCapacity[candidateCapacity] = program;
     } else if (!program.matches(scoreType, maskType, valueType)) {
       throw new IllegalStateException(
@@ -323,6 +325,21 @@ public final class DecisionPolicyFusionCandidateContextExecution
               + valueType);
     }
     return program;
+  }
+
+  private FusionInvocation acquire(Program program, int slot) {
+    if (sessionProgramsBySlot[slot] != program) {
+      if (sessionsBySlot[slot] != null) {
+        // この枠の前の利用権は、全消費処理の完了後にForward.close()で返却済み。
+        sessionsBySlot[slot].close();
+        sessionsBySlot[slot] = null;
+        sessionProgramsBySlot[slot] = null;
+      }
+      sessionsBySlot[slot] =
+          program.executable.newSession(resourceManager, FusionSessionConfig.defaults());
+      sessionProgramsBySlot[slot] = program;
+    }
+    return sessionsBySlot[slot].acquire();
   }
 
   private static NDArray activeRows(NDArray storage, long rows, NDManager workingManager) {
@@ -379,6 +396,22 @@ public final class DecisionPolicyFusionCandidateContextExecution
     return closeFailure;
   }
 
+  private Throwable closeSessions(Throwable closeFailure) {
+    for (int slot = sessionsBySlot.length - 1; slot >= 0; slot--) {
+      if (sessionsBySlot[slot] == null) {
+        continue;
+      }
+      try {
+        sessionsBySlot[slot].close();
+        sessionsBySlot[slot] = null;
+        sessionProgramsBySlot[slot] = null;
+      } catch (Throwable failure) {
+        closeFailure = addFailure(closeFailure, failure);
+      }
+    }
+    return closeFailure;
+  }
+
   private static void requireFloatingType(DataType dataType) {
     if (dataType != DataType.FLOAT16
         && dataType != DataType.BFLOAT16
@@ -390,9 +423,6 @@ public final class DecisionPolicyFusionCandidateContextExecution
 
   private static final class Program implements AutoCloseable {
 
-    private final NDManager resourceManager;
-    private final int candidateCapacity;
-    private final int executionSlots;
     private final DataType scoreType;
     private final DataType maskType;
     private final DataType valueType;
@@ -408,14 +438,11 @@ public final class DecisionPolicyFusionCandidateContextExecution
     private final FusionRecipe.Output kyushuContextsOutput;
     private final FusionRecipe.Output kyushuPresenceOutput;
     private final FusionRecipe.Output tsumoContextsOutput;
-    private final FusionCompilationReport report;
     private FusionPlan plan;
     private FusionExecutable executable;
-    private FusionSession session;
 
     private Program(
         FusionCompiler compiler,
-        NDManager resourceManager,
         NDArray alternativeMappingValue,
         NDArray passMappingValue,
         NDArray ronMappingValue,
@@ -426,11 +453,7 @@ public final class DecisionPolicyFusionCandidateContextExecution
         DataType scoreType,
         DataType maskType,
         DataType valueType,
-        int maximumBatch,
-        int executionSlots) {
-      this.resourceManager = resourceManager;
-      this.candidateCapacity = candidateCapacity;
-      this.executionSlots = executionSlots;
+        int maximumBatch) {
       this.scoreType = scoreType;
       this.maskType = maskType;
       this.valueType = valueType;
@@ -509,11 +532,12 @@ public final class DecisionPolicyFusionCandidateContextExecution
       }
       plan = createdPlan;
       executable = createdExecutable;
-      report = createdReport;
+      FusionCompilationReport report = createdReport;
       LOGGER.info(
           "Decision candidate context fusion bucket prepared: candidateCapacity={}, "
               + "scoresDtype={}, masksDtype={}, valuesDtype={}, backend={}, commands={}, "
-              + "executableStorageBytes={}, executionStorageBytes={}, workspaceBytes={}",
+              + "executableStorageBytes={}, executionStorageBytes={}, workspaceBytes={}, "
+              + "retainedSessionStorageBytesPerSlot={}, requiredExecutionLaneStorageBytes={}",
           candidateCapacity,
           scoreType,
           maskType,
@@ -522,7 +546,9 @@ public final class DecisionPolicyFusionCandidateContextExecution
           report.getCommandCount(),
           report.getExecutableStorageBytes(),
           report.getExecutionStorageBytes(),
-          report.getWorkspaceBytes());
+          report.getWorkspaceBytes(),
+          report.getRetainedSessionStorageBytes(1),
+          report.getRequiredExecutionLaneStorageBytes());
     }
 
     private boolean matches(
@@ -530,24 +556,6 @@ public final class DecisionPolicyFusionCandidateContextExecution
       return scoreType == candidateScoreType
           && maskType == candidateMaskType
           && valueType == candidateValueType;
-    }
-
-    private FusionInvocation acquire() {
-      if (session == null) {
-        session =
-            executable.newSession(
-                resourceManager,
-                FusionSessionConfig.builder().optOutputSlotCount(executionSlots).build());
-        LOGGER.info(
-            "Decision candidate context fusion bucket activated: candidateCapacity={}, "
-                + "outputSlots={}, retainedSessionStorageBytes={}, "
-                + "requiredExecutionLaneStorageBytes={}",
-            candidateCapacity,
-            executionSlots,
-            report.getRetainedSessionStorageBytes(executionSlots),
-            report.getRequiredExecutionLaneStorageBytes());
-      }
-      return session.acquire();
     }
 
     private FusionRecipe.Dimension batch() {
@@ -601,15 +609,7 @@ public final class DecisionPolicyFusionCandidateContextExecution
     @Override
     public void close() {
       Throwable failure = null;
-      if (session != null) {
-        try {
-          session.close();
-          session = null;
-        } catch (Throwable closeFailure) {
-          failure = addFailure(failure, closeFailure);
-        }
-      }
-      if (session == null && executable != null) {
+      if (executable != null) {
         try {
           executable.close();
           executable = null;
@@ -617,7 +617,7 @@ public final class DecisionPolicyFusionCandidateContextExecution
           failure = addFailure(failure, closeFailure);
         }
       }
-      if (session == null && executable == null && plan != null) {
+      if (executable == null && plan != null) {
         try {
           plan.close();
           plan = null;

@@ -4,6 +4,7 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDArrays;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
+import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.AbstractBlock;
@@ -666,11 +667,16 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             inputs.pointLedger100(),
             inputs.stateCategories(),
             inputs.actionCategories(),
-            inputs.actionWinFacts());
+            inputs.actionWinFacts(),
+            inputs instanceof DecisionInferenceInputs inference
+                ? inference.winningActions()
+                : null);
     NDArray pointContext =
-        pointOutcomeEncoder.encode(
+        pointOutcomeEncoder.encodeSelected(
             parameterStore,
             actionPoints.features().toType(encodedState.stateEmbedding().getDataType(), false),
+            actionPoints.validMask(),
+            inputs instanceof DecisionInferenceInputs inference ? inference.winningActions() : null,
             training,
             runtimeParameters);
     NDArray actionFeatures =
@@ -911,6 +917,13 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             encodedState.stateEmbedding().getDataType(),
             training,
             runtimeParameters);
+    NDArray projectedWaitKeyValues =
+        applyLinear(
+            transitionWaitKeyValueProjection,
+            parameterStore,
+            waitPointContexts,
+            training,
+            runtimeParameters);
     NDArray transitionTileContexts =
         attendTransitionTiles(
             parameterStore,
@@ -919,7 +932,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             transitionFeatureEmbeddings,
             transitionInputs.tileCodes(),
             transitionInputs.waitTileIds(),
-            waitPointContexts,
+            projectedWaitKeyValues,
             rowCount,
             actionCapacity,
             transitionCapacity,
@@ -1076,11 +1089,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             presentIndices, rowCount, actionCapacity, transitionCapacity);
     NDArray compactCategoryIds = compactCategories.add(transitionCategoryOffsets);
     NDArray compactActionIndices =
-        presentIndices
-            .toType(DataType.FLOAT32, false)
-            .div(transitionCapacity)
-            .floor()
-            .toType(DataType.INT64, false);
+        presentIndices.floorDivide(transitionCapacity).toType(DataType.INT64, false);
     NDArray compactActionTypes =
         EpsilonMaskedRows.gather(
             inputs
@@ -1088,18 +1097,36 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
                 .get("...,{}", DecisionInputSchema.ActionInt.TYPE.ordinal())
                 .reshape(Math.multiplyExact(rowCount, actionCapacity), 1),
             compactActionIndices);
-    NDArray compactWaitPointContexts =
-        encodeWaitPointContexts(
-            parameterStore,
-            EpsilonMaskedRows.gather(inputs.pointLedger100(), compactBatchIds),
-            EpsilonMaskedRows.gather(inputs.stateCategories(), compactBatchIds),
-            compactActionTypes,
-            compactTileCodes,
-            compactWaitTileIds,
-            compactWaitWinFacts,
-            encodedState.stateEmbedding().getDataType(),
-            training,
-            runtimeParameters);
+    NDArray compactWaitKeyValues =
+        !training && inputs instanceof DecisionInferenceInputs inference
+            ? encodeSelectedWaitKeyValues(
+                parameterStore,
+                inputs.pointLedger100(),
+                inputs.stateCategories(),
+                compactActionTypes,
+                compactTileCodes,
+                compactWaitTileIds,
+                compactWaitWinFacts,
+                encodedState.stateEmbedding().getDataType(),
+                runtimeParameters,
+                inference.waitRows(),
+                compactBatchIds)
+            : applyLinear(
+                transitionWaitKeyValueProjection,
+                parameterStore,
+                encodeWaitPointContexts(
+                    parameterStore,
+                    EpsilonMaskedRows.gather(inputs.pointLedger100(), compactBatchIds),
+                    EpsilonMaskedRows.gather(inputs.stateCategories(), compactBatchIds),
+                    compactActionTypes,
+                    compactTileCodes,
+                    compactWaitTileIds,
+                    compactWaitWinFacts,
+                    encodedState.stateEmbedding().getDataType(),
+                    training,
+                    runtimeParameters),
+                training,
+                runtimeParameters);
     NDArray compactCategoryEmbeddings =
         actionFeatureEmbedding
             .forward(parameterStore, new NDList(compactCategoryIds), training, runtimeParameters)
@@ -1135,7 +1162,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             compactFeatureEmbeddings,
             compactTileCodes,
             compactWaitTileIds,
-            compactWaitPointContexts,
+            compactWaitKeyValues,
             presentCount,
             1,
             1,
@@ -1241,33 +1268,6 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       DataType dataType,
       boolean training,
       PairList<String, Object> runtimeParameters) {
-    if (!training) {
-      NDArray akaAvailable = waitAkaAvailable(transitionTileCodes, waitTileIds);
-      EpsilonPointProjection.Projection projected =
-          pointProjection.projectWaits(
-              pointLedger100, stateCategories, actionTypes, waitWinFacts, akaAvailable);
-      NDArray contexts =
-          pointOutcomeEncoder.encode(
-              parameterStore,
-              projected.features().toType(dataType, false),
-              false,
-              runtimeParameters);
-      int scenarioAxis = contexts.getShape().dimension() - 2;
-      NDArray count =
-          projected
-              .validMask()
-              .sum(new int[] {scenarioAxis})
-              .maximum(1.0f)
-              .expandDims(scenarioAxis);
-      return contexts
-          .mul(
-              projected
-                  .validMask()
-                  .toType(contexts.getDataType(), false)
-                  .expandDims(scenarioAxis + 1))
-          .sum(new int[] {scenarioAxis})
-          .div(count.toType(contexts.getDataType(), false));
-    }
     NDManager outputManager = waitWinFacts.getManager();
     try (NDManager scope = outputManager.newSubManager()) {
       scope.tempAttachAll(
@@ -1290,7 +1290,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             pointOutcomeEncoder.encode(
                 parameterStore,
                 scope.zeros(new Shape(0, EpsilonPointProjection.FEATURE_WIDTH), dataType),
-                true,
+                training,
                 runtimeParameters);
         Shape outputShape = waitTileIds.getShape().add(contextWidth);
         NDArray result =
@@ -1310,8 +1310,8 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       EpsilonPointProjection.Projection projected =
           pointProjection.projectWaits(
               pointLedger100, stateCategories, actionTypes, waitWinFacts, akaAvailable);
-      NDArray presentIndices = EpsilonMaskedRows.indices(projected.validMask());
       NDArray features = projected.features();
+      NDArray presentIndices = EpsilonMaskedRows.indices(projected.validMask());
       NDArray presentContexts =
           pointOutcomeEncoder.encode(
               parameterStore,
@@ -1347,6 +1347,120 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     }
   }
 
+  NDArray encodeSelectedWaitKeyValues(
+      ParameterStore store,
+      NDArray ledger,
+      NDArray states,
+      NDArray actions,
+      NDArray tiles,
+      NDArray waitIds,
+      NDArray facts,
+      DataType dataType,
+      PairList<String, Object> parameters,
+      NDArray indices,
+      NDArray batchIds) {
+    NDManager owner = facts.getManager();
+    try (NDManager scope = owner.newSubManager()) {
+      scope.tempAttachAll(ledger, states, actions, tiles, waitIds, facts);
+      NDArray pooled =
+          poolSelectedWaitSlots(
+              store,
+              ledger,
+              states,
+              actions,
+              tiles,
+              waitIds,
+              facts,
+              dataType,
+              parameters,
+              indices,
+              batchIds);
+      int width = TRANSITION_TILE_KEY_WIDTH + contextWidth;
+      // 無効な待ちも密なLinearのゼロ入力と同じバイアス・演算型を保持する。
+      NDArray zeroProjection =
+          applyLinear(
+              transitionWaitKeyValueProjection,
+              store,
+              scope.zeros(new Shape(1, contextWidth), pooled.getDataType()),
+              false,
+              parameters);
+      NDArray output = zeroProjection.broadcast(waitIds.size(), width).duplicate();
+      if (indices.size() != 0) {
+        NDArray selected =
+            applyLinear(transitionWaitKeyValueProjection, store, pooled, false, parameters);
+        output.set(new NDIndex("{}", indices), selected);
+      }
+      output = output.reshape(waitIds.getShape().add(width));
+      owner.attachAll(output);
+      return output;
+    }
+  }
+
+  private NDArray poolSelectedWaitSlots(
+      ParameterStore store,
+      NDArray ledger,
+      NDArray states,
+      NDArray actions,
+      NDArray tiles,
+      NDArray waitIds,
+      NDArray facts,
+      DataType dataType,
+      PairList<String, Object> parameters,
+      NDArray indices,
+      NDArray batchIds) {
+    NDManager owner = facts.getManager();
+    try (NDManager scope = owner.newSubManager()) {
+      scope.tempAttachAll(ledger, states, actions, tiles, waitIds, facts);
+      long rows = facts.getShape().get(0);
+      long slots = waitIds.size() / rows;
+      NDArray output;
+      if (indices.size() == 0) {
+        output = scope.zeros(new Shape(0, contextWidth), dataType);
+      } else {
+        NDArray rowIndices = indices.floorDivide(slots).toType(DataType.INT64, false);
+        NDArray selectedIds =
+            EpsilonMaskedRows.gather(waitIds.reshape(-1, 1), indices).reshape(-1, 1, 1, 1);
+        NDArray selectedTiles = EpsilonMaskedRows.gather(tiles, rowIndices);
+        NDArray stateRows =
+            batchIds == null
+                ? rowIndices
+                : EpsilonMaskedRows.gather(batchIds.reshape(-1, 1), rowIndices).reshape(-1);
+        var projected =
+            pointProjection.projectWaits(
+                EpsilonMaskedRows.gather(ledger, stateRows),
+                EpsilonMaskedRows.gather(states, stateRows),
+                EpsilonMaskedRows.gather(actions, rowIndices),
+                EpsilonMaskedRows.gather(facts.reshape(rows * slots, -1), indices)
+                    .reshape(
+                        -1,
+                        1,
+                        1,
+                        1,
+                        DecisionInputSchema.WaitWinType.values().length,
+                        DecisionInputSchema.WinFact.values().length),
+                waitAkaAvailable(selectedTiles, selectedIds));
+        NDArray contexts =
+            pointOutcomeEncoder.encode(
+                store, projected.features().toType(dataType, false), false, parameters);
+        contexts =
+            contexts.mul(projected.validMask().toType(contexts.getDataType(), false).expandDims(5));
+        output =
+            contexts
+                .sum(new int[] {4})
+                .div(
+                    projected
+                        .validMask()
+                        .sum(new int[] {4})
+                        .maximum(1)
+                        .toType(contexts.getDataType(), false)
+                        .expandDims(4))
+                .reshape(-1, contextWidth);
+      }
+      owner.attachAll(output);
+      return output;
+    }
+  }
+
   private static NDArray waitAkaAvailable(NDArray transitionTileCodes, NDArray waitTileIds) {
     int tileAxis = transitionTileCodes.getShape().dimension() - 1;
     NDArray indices = waitTileIds.toType(DataType.INT64, false).maximum(1).sub(1).stopGradient();
@@ -1367,7 +1481,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       NDArray transitionFeatureEmbeddings,
       NDArray transitionTileCodes,
       NDArray waitTileIds,
-      NDArray waitPointContexts,
+      NDArray projectedWaitKeyValues,
       long rowCount,
       int actionCapacity,
       int transitionCapacity,
@@ -1381,7 +1495,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           transitionFeatureEmbeddings,
           transitionTileCodes,
           waitTileIds,
-          waitPointContexts,
+          projectedWaitKeyValues,
           rowCount,
           actionCapacity,
           transitionCapacity,
@@ -1395,7 +1509,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           transitionFeatureEmbeddings,
           transitionTileCodes,
           waitTileIds,
-          waitPointContexts);
+          projectedWaitKeyValues);
       if (projectedTileGroupIndices != null) {
         scope.tempAttachAll(projectedTileGroupIndices);
       }
@@ -1407,7 +1521,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
               transitionFeatureEmbeddings,
               transitionTileCodes,
               waitTileIds,
-              waitPointContexts,
+              projectedWaitKeyValues,
               rowCount,
               actionCapacity,
               transitionCapacity,
@@ -1431,7 +1545,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       NDArray transitionFeatureEmbeddings,
       NDArray transitionTileCodes,
       NDArray waitTileIds,
-      NDArray waitPointContexts,
+      NDArray projectedWaitKeyValues,
       long rowCount,
       int actionCapacity,
       int transitionCapacity,
@@ -1440,13 +1554,6 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     long candidatesPerState = Math.multiplyExact(actionCapacity, transitionCapacity);
     long candidateCount = Math.multiplyExact(rowCount, candidatesPerState);
     NDArray storedRelationCodes = transitionTileCodes.stopGradient().toType(DataType.INT32, false);
-    NDArray projectedWaitKeyValues =
-        applyLinear(
-            transitionWaitKeyValueProjection,
-            parameterStore,
-            waitPointContexts,
-            training,
-            runtimeParameters);
     NDArray flatTransitionQueries =
         applyLinear(
                 transitionTileQueryProjection,

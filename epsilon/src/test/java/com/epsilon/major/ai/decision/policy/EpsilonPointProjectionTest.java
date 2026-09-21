@@ -24,6 +24,49 @@ public final class EpsilonPointProjectionTest {
   private static final int AKA = 25;
 
   @Test(groups = "native")
+  public void compactActionsMatchDenseProjection() {
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu(), "PyTorch")) {
+      EpsilonPointProjection projection = new EpsilonPointProjection(EpsilonUtilityProfile.TENHOU);
+      projection.initialize(manager, DataType.FLOAT32);
+      NDArray ledger = manager.create(new int[][] {{250, 250, 250, 250}, {400, 200, 100, 300}});
+      NDArray states =
+          manager.create(new int[][] {state(0, 1, 0, 1, 0, 0), state(2, 3, 7, 0, 2, 1)});
+      int width = DecisionInputSchema.ActionInt.values().length;
+      int[] categories = new int[2 * 4 * width];
+      int[] facts = new int[2 * 4 * DecisionInputSchema.WinFact.values().length];
+      for (int i = 0; i < 8; i++) {
+        categories[i * width] =
+            DecisionFeatureCodec.actionType(
+                i % 3 == 0
+                    ? Action.Type.RON_AGARI
+                    : i % 3 == 1 ? Action.Type.TSUMO_AGARI : Action.Type.DAHAI);
+        int[] value = fact(2 + i, ScoreMath.encodeFuCode(30), 0);
+        System.arraycopy(value, 0, facts, i * value.length, value.length);
+      }
+      NDArray action = manager.create(categories).reshape(2, 4, width);
+      NDArray win = manager.create(facts).reshape(2, 4, -1);
+      for (boolean empty : new boolean[] {false, true}) {
+        if (empty) win.fillI(0);
+        var expected = projection.projectActionsDense(ledger, states, action, win);
+        var actual = projection.projectActions(ledger, states, action, win);
+        Assert.assertEquals(actual.features().toFloatArray(), expected.features().toFloatArray());
+        Assert.assertEquals(
+            actual.gateFeatures().toFloatArray(), expected.gateFeatures().toFloatArray());
+        Assert.assertEquals(actual.validMask().toFloatArray(), expected.validMask().toFloatArray());
+        NDArray supplied = manager.create(empty ? new int[0] : new int[] {0, 1, 3, 4, 6, 7});
+        var hostSelected = projection.projectActions(ledger, states, action, win, supplied);
+        Assert.assertEquals(
+            hostSelected.features().toFloatArray(), expected.features().toFloatArray());
+        Assert.assertEquals(
+            hostSelected.gateFeatures().toFloatArray(), expected.gateFeatures().toFloatArray());
+        Assert.assertEquals(
+            hostSelected.validMask().toFloatArray(), expected.validMask().toFloatArray());
+        Assert.assertFalse(supplied.isReleased());
+      }
+    }
+  }
+
+  @Test(groups = "native")
   public void repeatedProjectionDoesNotRetainBatchArraysInModelManager() {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu(), "PyTorch")) {
       EpsilonPointProjection projection = new EpsilonPointProjection(EpsilonUtilityProfile.TENHOU);

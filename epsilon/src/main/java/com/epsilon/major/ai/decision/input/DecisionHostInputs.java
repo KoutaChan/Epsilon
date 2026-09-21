@@ -435,6 +435,26 @@ public final class DecisionHostInputs {
         waitWinFactOffset(row, actionSlot, transitionSlot, waitSlot, winType, fact)];
   }
 
+  boolean hasWaitWinFacts(int row, int actionSlot, int transitionSlot) {
+    short[] values = transitionCategories(row);
+    int start =
+        waitWinFactOffset(
+            row,
+            actionSlot,
+            transitionSlot,
+            0,
+            DecisionInputSchema.WaitWinType.RON,
+            DecisionInputSchema.WinFact.VALID);
+    int end =
+        start
+            + DecisionInputSchema.MAX_WAIT_TILE_TYPES
+                * DecisionInputSchema.ACTION_TRANSITION_WAIT_WIN_FACT_STRIDE;
+    for (int offset = start; offset < end; offset += DecisionInputSchema.ACTION_WIN_FACT_STRIDE) {
+      if (values[offset] > 0) return true;
+    }
+    return false;
+  }
+
   int playerMemoryPresentCount(int fromInclusive, int rowCount) {
     int count = 0;
     for (int row = fromInclusive; row < fromInclusive + rowCount; row++) {

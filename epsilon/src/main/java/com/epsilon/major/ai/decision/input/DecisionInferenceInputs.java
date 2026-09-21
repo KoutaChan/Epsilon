@@ -23,6 +23,8 @@ public record DecisionInferenceInputs(
     NDArray stateNumerics,
     NDArray boundaryContext,
     NDArray transitionNumerics,
+    NDArray waitRows,
+    NDArray winningActions,
     DecisionBucket bucket)
     implements DecisionPolicyInputs {
 
@@ -47,7 +49,11 @@ public record DecisionInferenceInputs(
 
   /** 二本のコンパクト推論連続バッファから全論理ビューを構築する。 */
   public static DecisionInferenceInputs bind(
-      DecisionInferenceInputLayout layout, NDArray categoricalSlab, NDArray numericSlab) {
+      DecisionInferenceInputLayout layout,
+      NDArray categoricalSlab,
+      NDArray numericSlab,
+      NDArray waitRows,
+      NDArray winningActions) {
     NDArray[] views = new NDArray[DecisionInputLayout.tensorCount()];
     for (DecisionInputLayout.Tensor tensor : DecisionInputLayout.tensors()) {
       DecisionInferenceInputLayout.Region region = layout.region(tensor);
@@ -73,6 +79,8 @@ public record DecisionInferenceInputs(
         views[DecisionInputLayout.Tensor.STATE_NUMERICS.ordinal()],
         views[DecisionInputLayout.Tensor.BOUNDARY_CONTEXT.ordinal()],
         views[DecisionInputLayout.Tensor.TRANSITION_NUMERICS.ordinal()],
+        waitRows,
+        winningActions,
         layout.bucket());
   }
 
@@ -95,7 +103,9 @@ public record DecisionInferenceInputs(
       waitWinFacts,
       stateNumerics,
       boundaryContext,
-      transitionNumerics
+      transitionNumerics,
+      waitRows,
+      winningActions
     };
   }
 

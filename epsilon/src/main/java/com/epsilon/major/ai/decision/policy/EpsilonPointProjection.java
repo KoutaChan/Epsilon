@@ -10,6 +10,7 @@ import ai.djl.nn.AbstractBlock;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.calculate.scoring.ScoreMath;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
@@ -49,6 +50,82 @@ public final class EpsilonPointProjection extends AbstractBlock {
   }
 
   Projection projectActions(
+      NDArray pointLedger100,
+      NDArray stateCategories,
+      NDArray actionCategories,
+      NDArray actionWinFacts) {
+    return projectActions(pointLedger100, stateCategories, actionCategories, actionWinFacts, null);
+  }
+
+  Projection projectActions(
+      NDArray pointLedger100,
+      NDArray stateCategories,
+      NDArray actionCategories,
+      NDArray actionWinFacts,
+      NDArray suppliedIndices) {
+    NDManager manager = actionWinFacts.getManager();
+    try (NDManager scope = manager.newSubManager()) {
+      scope.tempAttachAll(pointLedger100, stateCategories, actionCategories, actionWinFacts);
+      long rows = actionWinFacts.getShape().get(0);
+      long actions = actionWinFacts.getShape().get(1);
+      NDArray indices = suppliedIndices;
+      if (indices == null) {
+        NDArray types =
+            actionCategories.get("...,{}", DecisionInputSchema.ActionInt.TYPE.ordinal());
+        NDArray valid =
+            actionWinFacts
+                .get("...,{}", DecisionInputSchema.WinFact.VALID.ordinal())
+                .eq(1)
+                .logicalAnd(
+                    actionWinFacts
+                        .get(
+                            "...,{}", DecisionInputSchema.WinFact.REQUIRES_PAO_CORRECTION.ordinal())
+                        .eq(0))
+                .logicalAnd(
+                    types
+                        .eq(DecisionFeatureCodec.actionType(Action.Type.RON_AGARI))
+                        .logicalOr(
+                            types.eq(DecisionFeatureCodec.actionType(Action.Type.TSUMO_AGARI))));
+        indices = EpsilonMaskedRows.indices(valid);
+      }
+      Projection result;
+      if (indices.size() == 0) {
+        result =
+            new Projection(
+                scope.zeros(new Shape(rows, actions, FEATURE_WIDTH)),
+                scope.zeros(new Shape(rows, actions, GATE_FEATURE_WIDTH)),
+                scope.zeros(new Shape(rows, actions)));
+      } else {
+        NDArray rowIndices =
+            indices.floorDivide(actions).toType(DataType.INT64, false);
+        Projection compact =
+            projectActionsDense(
+                EpsilonMaskedRows.gather(pointLedger100, rowIndices),
+                EpsilonMaskedRows.gather(stateCategories, rowIndices),
+                EpsilonMaskedRows.gather(actionCategories.reshape(rows * actions, -1), indices)
+                    .expandDims(1),
+                EpsilonMaskedRows.gather(actionWinFacts.reshape(rows * actions, -1), indices)
+                    .expandDims(1));
+        result =
+            new Projection(
+                EpsilonMaskedRows.scatter(
+                        compact.features().reshape(-1, FEATURE_WIDTH), indices, rows * actions)
+                    .reshape(rows, actions, FEATURE_WIDTH),
+                EpsilonMaskedRows.scatter(
+                        compact.gateFeatures().reshape(-1, GATE_FEATURE_WIDTH),
+                        indices,
+                        rows * actions)
+                    .reshape(rows, actions, GATE_FEATURE_WIDTH),
+                EpsilonMaskedRows.scatter(
+                        compact.validMask().reshape(-1, 1), indices, rows * actions)
+                    .reshape(rows, actions));
+      }
+      manager.attachAll(result.features(), result.gateFeatures(), result.validMask());
+      return result;
+    }
+  }
+
+  Projection projectActionsDense(
       NDArray pointLedger100,
       NDArray stateCategories,
       NDArray actionCategories,

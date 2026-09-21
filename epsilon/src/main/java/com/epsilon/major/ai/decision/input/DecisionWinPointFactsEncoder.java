@@ -18,7 +18,7 @@ final class DecisionWinPointFactsEncoder {
         actionSlot,
         score.available() ? 1 : 0,
         score.visibleHan(),
-        ScoreMath.encodeFuCode(score.fu()),
+        encodeFuCode(score.visibleHan(), score.fu()),
         score.yakumanMultiplier(),
         requiresPaoCorrection ? 1 : 0);
   }
@@ -40,8 +40,15 @@ final class DecisionWinPointFactsEncoder {
         winType,
         yakuBits != 0L ? 1 : 0,
         hanWithoutUra,
-        ScoreMath.encodeFuCode(fu),
+        encodeFuCode(hanWithoutUra, fu),
         YakuBits.yakumanCount(yakuBits),
         requiresPaoCorrection ? 1 : 0);
+  }
+
+  private static int encodeFuCode(int han, int fu) {
+    // 3翻110符ですでに満貫。高符の手は既存コードへまとめても、追加ドラを含め基本点は変わらない。
+    // 採点結果の符は保持し、Point Factsだけを正規化して保存済みモデルの入力形式を維持する。
+    if (han >= 3 && fu > 110 && fu % 10 == 0) return ScoreMath.encodeFuCode(110);
+    return ScoreMath.encodeFuCode(fu);
   }
 }

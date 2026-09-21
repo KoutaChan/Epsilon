@@ -599,8 +599,15 @@ advanceTasksPerWorker = 2
 # 1 advance taskへまとめる対局数の上限。正の整数。
 maximumAdvanceTaskSize = 64
 
-# 1学習intervalへ混在させる相手snapshot数の上限。正の整数。
-maximumOpponentSnapshotsPerInterval = 1
+# 各macroの相手を1種類だけ抽選し、全相手席・全GPUで固定する。
+[epsilon.decision.train.opponents]
+
+# 最新チャンピオンの抽選確率。残りは履歴から一様抽選する。履歴がなければ常にチャンピオン。
+# 1.0ならチャンピオン固定。保持数はepsilon.decision.snapshotPool.maxで指定する。
+championProbability = 0.7
+
+# 保存済みモデルを履歴へ登録する間隔。正の整数。失敗・未完了macroは登録しない。
+snapshotIntervalMacros = 10
 
 # campaignのchampion比較。固定牌山1 seedにつき候補席を4席rotationしてpaired評価する。
 # CI下限が0より大きければPROMOTED、上限が0より小さければHARMFUL、それ以外はUNRESOLVED。

@@ -16,6 +16,7 @@ import com.epsilon.major.ai.grp.EpsilonGrpCheckpointManager;
 import com.epsilon.major.ai.grp.EpsilonGrpTrainingSession;
 import com.epsilon.major.ai.network.NetworkFactory;
 import com.epsilon.major.config.settings.DecisionInferenceSettings;
+import com.epsilon.major.config.settings.DecisionOpponentSettings;
 import com.epsilon.major.config.settings.DecisionSelectedPgCampaignSettings;
 import com.epsilon.major.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
@@ -311,12 +312,8 @@ public final class DecisionKlTargetTrial {
                 + (SeedMixer.indexed(manifest.trainSeed(), SNAPSHOT_SALT, macro)
                     & (Long.MAX_VALUE - 1L));
         long[][] opponents =
-            pool.sampleOpponentIdsForSeats(
-                Long.MAX_VALUE,
-                seed,
-                config
-                    .bind(DecisionTrainArenaSettings.class)
-                    .maximumOpponentSnapshotsPerInterval());
+            pool.sampleOpponentIdsForMacro(
+                seed, config.bind(DecisionOpponentSettings.class).championProbability());
         var execution =
             runner.run(
                 new DecisionSelectedPgMacroRunner.Request(
@@ -416,6 +413,7 @@ public final class DecisionKlTargetTrial {
       DecisionInferenceSettings inference,
       DecisionInferenceFusionSettings inferenceFusion,
       DecisionSnapshotPoolSettings snapshotPool,
+      DecisionOpponentSettings opponents,
       DeviceSettings devices,
       boolean grpEnabled,
       GrpInferenceSettings grpInference) {
@@ -430,6 +428,7 @@ public final class DecisionKlTargetTrial {
           config.bind(DecisionInferenceSettings.class),
           config.bind(DecisionInferenceFusionSettings.class),
           config.bind(DecisionSnapshotPoolSettings.class),
+          config.bind(DecisionOpponentSettings.class),
           config.bind(DeviceSettings.class),
           config.bind(GrpSettings.class).enabled(),
           config.bind(GrpInferenceSettings.class));

@@ -100,7 +100,6 @@ record DecisionSelectedPgCampaignState(
       int duelRound,
       Path directory,
       long seedBase,
-      long[][] opponentIds,
       int plannedMacros,
       DecisionChampionDuelSettings duelSettings,
       int games,

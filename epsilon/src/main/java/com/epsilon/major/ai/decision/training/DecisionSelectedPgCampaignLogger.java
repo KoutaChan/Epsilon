@@ -4,9 +4,9 @@ import com.epsilon.major.ai.decision.arena.DecisionAdaptiveExploration;
 import com.epsilon.major.ai.decision.arena.EpsilonDecisionPlayer;
 import com.epsilon.major.ai.decision.audit.EpsilonDecisionSelectedPgDebugAudit;
 import com.epsilon.major.ai.decision.input.DecisionInputSchema;
+import com.epsilon.major.config.settings.DecisionOpponentSettings;
 import com.epsilon.major.config.settings.DecisionSelectedPgCampaignSettings;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -120,25 +120,36 @@ final class DecisionSelectedPgCampaignLogger {
         learnerCheckpoint);
   }
 
+  void macroOpponent(
+      int macro,
+      EpsilonDecisionSnapshotPool.SnapshotEntry opponent,
+      DecisionOpponentSettings sampling) {
+    log.info(
+        "Decision macro opponent: macro={} snapshotId={} iteration={} createdStep={} champion={}"
+            + " checkpoint={} championProbability={} snapshotIntervalMacros={}",
+        macro,
+        opponent.id(),
+        opponent.iteration(),
+        opponent.createdStep(),
+        opponent.currentArenaChampion(),
+        opponent.path(),
+        sampling.championProbability(),
+        sampling.snapshotIntervalMacros());
+  }
+
   void intervalStarted(
-      int lineage,
-      int duelRound,
-      int candidateIteration,
-      int campaignMacros,
-      Path actorReplica,
-      long[][] opponentIds) {
+      int lineage, int duelRound, int candidateIteration, int campaignMacros, Path actorReplica) {
     log.info(
         "Decision dense selected-PG duel interval start: lineage={} duelRound={} "
             + "candidateIteration={} macros={} cumulativeMacros={} invocationMacroBudget={} "
-            + "actorReplica={} opponentsByActorSeat={}",
+            + "actorReplica={} opponentSelection=PER_MACRO",
         lineage,
         duelRound,
         candidateIteration,
         settings.macrosPerDuel(),
         campaignMacros,
         settings.maximumMacros(),
-        actorReplica,
-        Arrays.deepToString(opponentIds));
+        actorReplica);
   }
 
   void macroRejected(

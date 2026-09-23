@@ -1,10 +1,17 @@
 package com.epsilon.nano.ai.decision.arena;
 
+import com.epsilon.ai.decision.DecisionBranchBudget;
+import com.epsilon.ai.decision.DecisionBranchComparison;
+import com.epsilon.ai.decision.DecisionBranchGate;
+import com.epsilon.ai.decision.DecisionBranchOutcome;
+import com.epsilon.ai.decision.DecisionBranchSelection;
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.ai.decision.DecisionSelectionMode;
 import com.epsilon.ai.decision.EpsilonDecisionSeeds;
 import com.epsilon.ai.grp.EpsilonGrpRankPredictor;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.ai.grp.EpsilonGrpSequence;
+import com.epsilon.config.settings.DecisionBranchComparisonSettings;
 import com.epsilon.config.settings.DecisionFullSupportSettings;
 import com.epsilon.config.settings.DecisionRolloutSettings;
 import com.epsilon.config.settings.SettingsLoader;
@@ -61,6 +68,12 @@ public class EpsilonDecisionPlayer implements Player {
   private final EpsilonGrpSequence grpSequence = new EpsilonGrpSequence();
   private final int[] seatDecisionOrdinals = new int[GameState.NUM_PLAYERS];
   private BoundarySnapshot currentBoundary;
+  private final DecisionBranchComparisonSettings branchSettings;
+  private final SplittableRandom branchRandom;
+  private BranchCandidate branchCandidate;
+  private List<PendingDecision> roundComparisons;
+  private boolean comparisonOnly;
+  private DecisionBoundaryContext branchContext;
 
   /**
    * 一つの Decision 方策モデルが使う対局生成規則。
@@ -193,6 +206,7 @@ public class EpsilonDecisionPlayer implements Player {
   /** 対局中の行動履歴収集、無作為抽出、GRP 入力に使う事前予測依存を明示して方策モデルを構築するビルダー。 */
   public static final class Builder {
     private final EpsilonDecisionEvaluator evaluator;
+    private final DecisionBranchComparisonSettings branchSettings;
     private boolean collectTrajectory;
     private long actorSnapshotId;
     private DecisionSelectionMode selectionMode;
@@ -207,6 +221,7 @@ public class EpsilonDecisionPlayer implements Player {
 
     private Builder(EpsilonDecisionEvaluator evaluator, SettingsLoader config) {
       this.evaluator = evaluator;
+      branchSettings = config.bind(DecisionBranchComparisonSettings.class);
       selectionMode = config.bind(DecisionRolloutSettings.class).selectionMode();
       fullSupport = config.bind(DecisionFullSupportSettings.class);
       causalTraceLambda = config.bind(DecisionSelectedPgCampaignSettings.class).causalTraceLambda();
@@ -338,6 +353,12 @@ public class EpsilonDecisionPlayer implements Player {
     utilityProfile = builder.utilityProfile;
     this.evaluator = builder.evaluator;
     this.collectTrajectory = builder.collectTrajectory;
+    branchSettings =
+        collectTrajectory && builder.branchSettings.enabled() ? builder.branchSettings : null;
+    branchRandom =
+        branchSettings == null
+            ? null
+            : new SplittableRandom(EpsilonDecisionSeeds.branch(builder.randomSeed, 0));
     this.actorSnapshotId = builder.actorSnapshotId;
     this.selectionMode = builder.selectionMode;
     this.fullSupport = builder.fullSupport;
@@ -475,7 +496,10 @@ public class EpsilonDecisionPlayer implements Player {
     DecisionAdaptiveExploration.Observation explorationObservation =
         selectionMode == DecisionSelectionMode.FULL_SUPPORT && adaptiveExplorationSession != null
             ? adaptiveExplorationSession.decide(
-                legalActions, modelRolloutPolicy, adaptivePercentileRandom.nextDouble())
+                legalActions,
+                modelRolloutPolicy,
+                adaptivePercentileRandom.nextDouble(),
+                !comparisonOnly)
             : null;
     float explorationMultiplier =
         explorationObservation == null ? 1.0f : explorationObservation.multiplier();
@@ -494,7 +518,7 @@ public class EpsilonDecisionPlayer implements Player {
           case FULL_SUPPORT, POLICY_SAMPLE -> mixture.behaviorPolicy();
         };
     int selectedSlot = selectSlot(prediction, actionProbabilities);
-    if (explorationObservation != null) {
+    if (explorationObservation != null && !comparisonOnly) {
       adaptiveExplorationSession.recordSelection(
           explorationObservation, rolloutPolicy, actionProbabilities, selectedSlot);
     }
@@ -539,6 +563,15 @@ public class EpsilonDecisionPlayer implements Player {
             legalCount == 1 ? DecisionLearningRole.FORCED : DecisionLearningRole.CAUSAL);
       }
     }
+    if (collectTrajectory && branchSettings != null) {
+      prepareBranchCandidate(
+          engineDecisionId,
+          legalActions,
+          rolloutPolicy,
+          actionProbabilities,
+          selectedSlot,
+          explorationMultiplier);
+    }
     return legalActions.get(selectedSlot);
   }
 
@@ -557,8 +590,7 @@ public class EpsilonDecisionPlayer implements Player {
             "Engine outcome action does not match collected trajectory decision "
                 + engineDecisionId);
       }
-      PendingDecision resolved = decision.withLearningRole(learningRole);
-      trajectory.set(i, resolved);
+      decision.resolveLearningRole(learningRole);
       if (adaptiveExplorationSession != null && decision.explorationRoleCode() != 0) {
         adaptiveExplorationSession.recordLearningRole(decision.explorationRoleCode(), learningRole);
       }
@@ -566,6 +598,142 @@ public class EpsilonDecisionPlayer implements Player {
     }
     throw new IllegalStateException(
         "No collected trajectory decision for engine decision " + engineDecisionId);
+  }
+
+  record BranchCandidate(
+      long decisionId,
+      Action alternative,
+      DecisionBranchGate gate,
+      float oldProbability,
+      boolean mainAccepted,
+      int trajectoryIndex,
+      int playerSeat,
+      float[] grpPrefix) {}
+
+  BranchCandidate takeBranchCandidate() {
+    BranchCandidate candidate = branchCandidate;
+    branchCandidate = null;
+    return candidate;
+  }
+
+  DecisionBranchComparison admitBranch(BranchCandidate candidate, DecisionBranchBudget budget) {
+    PendingDecision decision = trajectory.get(candidate.trajectoryIndex());
+    DecisionBranchComparison comparison =
+        new DecisionBranchComparison(
+            candidate.gate(), candidate.oldProbability(), candidate.mainAccepted(), budget);
+    decision.comparison = comparison;
+    if (roundComparisons == null) {
+      roundComparisons = new ArrayList<>();
+    }
+    roundComparisons.add(decision);
+    return comparison;
+  }
+
+  CompletableFuture<Float> branchUtility(RoundSettlement settlement, BranchCandidate candidate) {
+    return DecisionBranchOutcome.utility(
+        settlement, candidate.grpPrefix(), candidate.playerSeat(), utilityProfile, grpInference);
+  }
+
+  EpsilonDecisionPlayer branchPlayer(long seed, SettingsLoader config) {
+    Builder builder =
+        builder(evaluator, config)
+            .actorSnapshotId(actorSnapshotId)
+            .randomSeed(seed)
+            .rolloutConfig(
+                new RolloutConfig(
+                    selectionMode, fullSupport, causalTraceLambda, explorationCreditMix));
+    builder.adaptiveExplorationSession = adaptiveExplorationSession;
+    EpsilonDecisionPlayer player = builder.build();
+    player.comparisonOnly = true;
+    player.branchContext =
+        currentBoundary == null
+            ? DecisionBoundaryContext.uniform()
+            : currentBoundary.contextFuture().join();
+    return player;
+  }
+
+  private void prepareBranchCandidate(
+      long decisionId,
+      List<Action> actions,
+      float[] rollout,
+      float[] behavior,
+      int selected,
+      float explorationMultiplier) {
+    branchCandidate = null;
+    if (branchSettings == null) {
+      return;
+    }
+    PendingDecision decision = trajectory.getLast();
+    for (DecisionBranchGate gate : DecisionBranchGate.PRIORITY) {
+      boolean kyushu = gate == DecisionBranchGate.KYUSHU;
+      if (kyushu ? !branchSettings.kyushu() : !branchSettings.winDecline()) {
+        continue;
+      }
+      int acceptedSlot = -1;
+      boolean hasDecline = false;
+      for (int slot = 0; slot < actions.size(); slot++) {
+        if (gate.accepts(actions.get(slot))) {
+          acceptedSlot = slot;
+        } else if (gate.contains(actions.get(slot))) {
+          hasDecline = true;
+        }
+      }
+      if (acceptedSlot < 0 || !hasDecline) {
+        continue;
+      }
+      if (kyushu) {
+        decision.branchTarget = DecisionBranchTarget.KYUSHU_ONLY;
+      }
+      if (!gate.contains(actions.get(selected))) {
+        return;
+      }
+      float probability = DecisionBranchSelection.acceptanceProbability(gate, actions, rollout);
+      // 丸めで0/1になったgateは比較比率を定義できない。KYUSHUの通常勾配停止は維持する。
+      if (!(probability > 0 && probability < 1)) {
+        return;
+      }
+      boolean accepted = gate.accepts(actions.get(selected));
+      if (!kyushu) {
+        if (accepted || selectionMode != DecisionSelectionMode.FULL_SUPPORT) {
+          continue;
+        }
+        float mass = fullSupport.terminalGateExplorationMass() * explorationMultiplier;
+        double posterior =
+            DecisionBranchSelection.explorationPosterior(
+                probability, behavior[selected], mass, fullSupport.minimumLeafProbability());
+        if (branchRandom.nextDouble() >= posterior) {
+          continue;
+        }
+      }
+      int alternateSlot =
+          accepted
+              ? DecisionBranchSelection.sampleDecline(
+                  gate, actions, behavior, branchRandom.nextDouble())
+              : acceptedSlot;
+      branchCandidate =
+          new BranchCandidate(
+              decisionId,
+              actions.get(alternateSlot),
+              gate,
+              probability,
+              accepted,
+              trajectory.size() - 1,
+              decision.playerSeat(),
+              decision.grpFeatureSequence());
+      return;
+    }
+  }
+
+  private DecisionBranchTarget branchTargetFor(PendingDecision decision) {
+    if (decision.comparison == null) {
+      return decision.branchTarget;
+    }
+    DecisionBranchTarget target =
+        decision.learningRole().advancesActorClock()
+            ? decision.comparison.freeze()
+            : decision.branchTarget;
+    decision.comparison.cancel();
+    return target;
   }
 
   EpsilonDecisionEvaluator evaluator() {
@@ -578,7 +746,8 @@ public class EpsilonDecisionPlayer implements Player {
 
   CompletableFuture<DecisionBoundaryContext> prepareBoundaryContextAsync(GameState state) {
     if (!collectTrajectory) {
-      return CompletableFuture.completedFuture(DecisionBoundaryContext.uniform());
+      return CompletableFuture.completedFuture(
+          branchContext == null ? DecisionBoundaryContext.uniform() : branchContext);
     }
     return ensureBoundarySnapshot(grpSequence.include(state)).contextFuture();
   }
@@ -598,6 +767,26 @@ public class EpsilonDecisionPlayer implements Player {
       case RoundTransition.HanchanFinished ignored -> {
         // 最終局は次のGRP境界を追加せず、出力確定時に終局効用で局内トレースを閉じる。
       }
+    }
+    if (roundComparisons != null && !roundComparisons.isEmpty()) {
+      for (PendingDecision decision : roundComparisons) {
+        CompletableFuture<Float> utility =
+            transition instanceof RoundTransition.NextRound
+                ? currentBoundary
+                    .grpRankProbabilities()
+                    .thenApply(
+                        marginals ->
+                            DecisionBranchOutcome.expectedUtility(
+                                marginals, decision.playerSeat(), utilityProfile))
+                : DecisionBranchOutcome.utility(
+                    settlement,
+                    decision.grpFeatureSequence(),
+                    decision.playerSeat(),
+                    utilityProfile,
+                    grpInference);
+        decision.comparison.completeMain(utility);
+      }
+      roundComparisons.clear();
     }
   }
 
@@ -656,7 +845,8 @@ public class EpsilonDecisionPlayer implements Player {
               decision.seatDecisionOrdinal(),
               decision.grpFeatureSequence(),
               finalRanksCode,
-              decision.learningRole()));
+              decision.learningRole(),
+              branchTargetFor(decision)));
     }
     EpsilonDecisionCompletedGame completed =
         new EpsilonDecisionCompletedGame(gameId, finalRanksCode, boundaries, samples);
@@ -666,6 +856,10 @@ public class EpsilonDecisionPlayer implements Player {
 
   private void resetTrajectory() {
     trajectory.clear();
+    branchCandidate = null;
+    if (roundComparisons != null) {
+      roundComparisons.clear();
+    }
     boundarySnapshots.clear();
     currentBoundary = null;
     Arrays.fill(seatDecisionOrdinals, 0);
@@ -682,11 +876,7 @@ public class EpsilonDecisionPlayer implements Player {
     float[] nextActorPredictionBySeat = new float[GameState.NUM_PLAYERS];
     boolean[] hasNextActorBySeat = new boolean[GameState.NUM_PLAYERS];
     float[] nextActorTargetBySeat = new float[GameState.NUM_PLAYERS];
-    float[] nextValueTraceCoefficientBySeat = new float[GameState.NUM_PLAYERS];
-    float[] nextActorTraceCoefficientBySeat = new float[GameState.NUM_PLAYERS];
     Arrays.fill(activeBoundaryBySeat, -1);
-    Arrays.fill(nextValueTraceCoefficientBySeat, 1.0f);
-    Arrays.fill(nextActorTraceCoefficientBySeat, 1.0f);
     for (int i = trajectory.size() - 1; i >= 0; i--) {
       PendingDecision decision = trajectory.get(i);
       int seat = decision.playerSeat();
@@ -698,38 +888,38 @@ public class EpsilonDecisionPlayer implements Player {
         nextValueTargetBySeat[seat] = boundaryTarget;
         hasNextActorBySeat[seat] = false;
         nextActorTargetBySeat[seat] = boundaryTarget;
-        nextValueTraceCoefficientBySeat[seat] = 1.0f;
-        nextActorTraceCoefficientBySeat[seat] = 1.0f;
       }
+      float currentValue = decision.rolloutValue();
+      float coefficient = decision.traceCoefficient(explorationCreditMix);
+      float nextValue =
+          hasNextValueBySeat[seat] ? nextValuePredictionBySeat[seat] : nextValueTargetBySeat[seat];
       float valueTarget =
-          !hasNextValueBySeat[seat]
-              ? nextValueTargetBySeat[seat]
-              : EpsilonDecisionReturns.scalarRetraceTarget(
-                  nextValuePredictionBySeat[seat],
-                  nextValueTargetBySeat[seat],
-                  causalTraceLambda,
-                  nextValueTraceCoefficientBySeat[seat]);
+          EpsilonDecisionReturns.scalarVTraceTarget(
+              currentValue, nextValue, nextValueTargetBySeat[seat], causalTraceLambda, coefficient);
       float advantage = 0.0f;
       if (decision.learningRole().advancesActorClock()) {
-        float actorTarget =
-            !hasNextActorBySeat[seat]
-                ? nextActorTargetBySeat[seat]
-                : EpsilonDecisionReturns.scalarRetraceTarget(
-                    nextActorPredictionBySeat[seat],
-                    nextActorTargetBySeat[seat],
-                    causalTraceLambda,
-                    nextActorTraceCoefficientBySeat[seat]);
-        advantage = actorTarget - decision.rolloutValue();
-        nextActorPredictionBySeat[seat] = decision.rolloutValue();
+        float nextActorValue =
+            hasNextActorBySeat[seat]
+                ? nextActorPredictionBySeat[seat]
+                : nextActorTargetBySeat[seat];
+        float actorLookahead =
+            EpsilonDecisionReturns.actorLookaheadTarget(
+                nextActorValue, nextActorTargetBySeat[seat], causalTraceLambda);
+        advantage = actorLookahead - currentValue;
+        nextActorPredictionBySeat[seat] = currentValue;
         hasNextActorBySeat[seat] = true;
-        nextActorTargetBySeat[seat] = actorTarget;
-        nextActorTraceCoefficientBySeat[seat] = decision.traceCoefficient(explorationCreditMix);
+        nextActorTargetBySeat[seat] =
+            EpsilonDecisionReturns.scalarVTraceTarget(
+                currentValue,
+                nextActorValue,
+                nextActorTargetBySeat[seat],
+                causalTraceLambda,
+                coefficient);
       }
       targets[i] = new TrainingTarget(valueTarget, advantage, finalRank);
-      nextValuePredictionBySeat[seat] = decision.rolloutValue();
+      nextValuePredictionBySeat[seat] = currentValue;
       hasNextValueBySeat[seat] = true;
       nextValueTargetBySeat[seat] = valueTarget;
-      nextValueTraceCoefficientBySeat[seat] = decision.traceCoefficient(explorationCreditMix);
     }
     return targets;
   }
@@ -874,7 +1064,7 @@ public class EpsilonDecisionPlayer implements Player {
     if (learningRole != DecisionLearningRole.CAUSAL) {
       return 1.0f;
     }
-    return EpsilonDecisionReturns.selectedRetraceCoefficient(
+    return EpsilonDecisionReturns.selectedTraceCoefficient(
         rolloutProbability, behaviorProbability, explorationCreditMix);
   }
 
@@ -911,8 +1101,10 @@ public class EpsilonDecisionPlayer implements Player {
     private final int boundaryIndex;
     private final int seatDecisionOrdinal;
     private final int explorationRoleCode;
-    private final boolean decisionOutcomeResolved;
-    private final DecisionLearningRole learningRole;
+    private boolean decisionOutcomeResolved;
+    private DecisionLearningRole learningRole;
+    private DecisionBranchTarget branchTarget = DecisionBranchTarget.NONE;
+    private DecisionBranchComparison comparison;
 
     private PendingDecision(
         long engineDecisionId,
@@ -1005,31 +1197,13 @@ public class EpsilonDecisionPlayer implements Player {
       this.learningRole = learningRole;
     }
 
-    private PendingDecision withLearningRole(DecisionLearningRole nextLearningRole) {
+    private void resolveLearningRole(DecisionLearningRole nextLearningRole) {
       if (engineDecisionId == 0L || decisionOutcomeResolved) {
         throw new IllegalStateException(
-            "Engine decision outcome is already resolved: " + engineDecisionId);
+            "Engine decision outcome already resolved: " + engineDecisionId);
       }
-      return new PendingDecision(
-          engineDecisionId,
-          payloadRef,
-          legalActionIdBySlot,
-          legalActionCount,
-          playerSeat,
-          sourcePlayerRelativeSeat,
-          currentPlayerRelativeSeat,
-          chosenLegalSlot,
-          chosenActionId,
-          behaviorLogProb,
-          behaviorProb,
-          rolloutProb,
-          rolloutValue,
-          grpFeatureSequence,
-          boundaryIndex,
-          seatDecisionOrdinal,
-          explorationRoleCode,
-          true,
-          nextLearningRole);
+      decisionOutcomeResolved = true;
+      learningRole = nextLearningRole;
     }
 
     private long engineDecisionId() {

@@ -14,6 +14,7 @@ import com.epsilon.config.settings.BeliefSettings;
 import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.GrpSettings;
 import com.epsilon.major.ai.belief.EpsilonBeliefNetwork;
+import com.epsilon.major.ai.decision.input.DecisionNetworkInputs;
 import com.epsilon.major.ai.model.EpsilonDecisionNetwork;
 import com.epsilon.major.config.settings.EpsilonSettings;
 import java.util.ArrayList;
@@ -196,44 +197,7 @@ public final class NetworkFactory {
           device);
     }
     NDManager manager = model.getNDManager();
-    block.initialize(
-        manager,
-        DataType.FLOAT32,
-        new Shape(-1, com.epsilon.major.ai.decision.input.DecisionInputSchema.STATE_INT_COUNT),
-        new Shape(
-            -1, -1, com.epsilon.major.ai.decision.input.DecisionInputSchema.ACTION_INT_STRIDE),
-        new Shape(
-            -1,
-            -1,
-            -1,
-            com.epsilon.major.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_INT_STRIDE),
-        new Shape(
-            -1,
-            -1,
-            -1,
-            com.epsilon.major.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT),
-        new Shape(
-            -1,
-            -1,
-            -1,
-            com.epsilon.major.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT,
-            com.epsilon.major.ai.decision.input.DecisionInputSchema
-                .ACTION_TRANSITION_WAIT_YAKU_STRIDE),
-        new Shape(-1, com.epsilon.major.ai.decision.input.DecisionInputSchema.STATE_FLOAT_COUNT),
-        new Shape(
-            -1, -1, com.epsilon.major.ai.decision.input.DecisionInputSchema.ACTION_FLOAT_STRIDE),
-        new Shape(
-            -1,
-            -1,
-            -1,
-            com.epsilon.major.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_FLOAT_STRIDE),
-        new Shape(
-            -1,
-            -1,
-            -1,
-            com.epsilon.major.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT,
-            com.epsilon.major.ai.decision.input.DecisionInputSchema
-                .ACTION_TRANSITION_WAIT_FLOAT_STRIDE));
+    block.initialize(manager, DataType.FLOAT32, DecisionNetworkInputs.initializationShapes());
     return model;
   }
 

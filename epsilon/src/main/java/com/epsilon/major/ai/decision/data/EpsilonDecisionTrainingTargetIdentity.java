@@ -3,7 +3,8 @@ package com.epsilon.major.ai.decision.data;
 /**
  * Decision の学習データに用いた教師値の計算方式と係数を識別する。
  *
- * <p>現行規約は直後の局のGRP予測で局内トレースを閉じ、価値計算用の遷移列と因果関係を持つ方策更新用の遷移列を分離したスカラー q-ret Retraceだけを受け付ける。
+ * <p>現行規約は直後の局の GRP 予測で局内トレースを閉じ、Value と Actor の遷移列を分けて、現在の行動の補正係数を
+ * 局所 TD 誤差と後続トレースに適用するスカラー V-trace を受け付ける。
  *
  * @param targetProtocolVersion 教師値構築規則を識別する規約バージョン
  * @param causalTraceLambda 価値計算用と方策更新用の二つの遷移列のスカラー値のトレース係数
@@ -12,12 +13,12 @@ package com.epsilon.major.ai.decision.data;
 public record EpsilonDecisionTrainingTargetIdentity(
     int targetProtocolVersion, float causalTraceLambda, float explorationCreditMix) {
 
-  /** 直後の局のGRP予測を初期化にし、選択行動のq-ret係数で局内を補正する教師値規約。 */
-  public static final int NEXT_BOUNDARY_GRP_SCALAR_Q_RET_RETRACE_V7 = 7;
+  /** 直後の局の GRP 予測で閉じる、重なり方策に対するスカラー V-trace 教師値規約。 */
+  public static final int NEXT_BOUNDARY_GRP_SCALAR_OVERLAP_VTRACE_V8 = 8;
 
   /** 規約バージョンと二つの実効係数を検証する。 */
   public EpsilonDecisionTrainingTargetIdentity {
-    if (targetProtocolVersion != NEXT_BOUNDARY_GRP_SCALAR_Q_RET_RETRACE_V7) {
+    if (targetProtocolVersion != NEXT_BOUNDARY_GRP_SCALAR_OVERLAP_VTRACE_V8) {
       throw new IllegalArgumentException(
           "Unsupported Decision training target protocol: " + targetProtocolVersion);
     }
@@ -39,12 +40,12 @@ public record EpsilonDecisionTrainingTargetIdentity(
    * 現行選択行動の方策勾配学習教師値規約の識別情報を作る。
    *
    * @param causalTraceLambda 価値/方策価値計算用と方策更新用の二つの遷移列に使う実効lambda
-   * @param explorationCreditMix q-retに使う探索分の学習への寄与混合率
+   * @param explorationCreditMix 重なり方策に使う探索分の学習への寄与混合率
    * @return 学習データ片ヘッダーへ保存する教師値識別情報
    */
   public static EpsilonDecisionTrainingTargetIdentity selectedPg(
       float causalTraceLambda, float explorationCreditMix) {
     return new EpsilonDecisionTrainingTargetIdentity(
-        NEXT_BOUNDARY_GRP_SCALAR_Q_RET_RETRACE_V7, causalTraceLambda, explorationCreditMix);
+        NEXT_BOUNDARY_GRP_SCALAR_OVERLAP_VTRACE_V8, causalTraceLambda, explorationCreditMix);
   }
 }

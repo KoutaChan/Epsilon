@@ -1,5 +1,6 @@
 package com.epsilon.nano.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.ai.grp.EpsilonGrpFeature;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.core.DecisionLearningRole;
@@ -12,8 +13,8 @@ import com.epsilon.nano.ai.decision.training.EpsilonDecisionPretrainTargets;
 /**
  * 一回の判断で得た入力・選択行動・確率分布と、その判断に対する教師値を保持する。
  *
- * <p>{@code valueTarget}は直後の次局GRPで閉じるスカラー q-ret Retrace、{@code advantage}は教師値と 対局生成予測の効用差である。探索後の /
- * 対局生成方策は合法手候補の位置順の正規化済み確率である。
+ * <p>{@code valueTarget}は直後の次局GRPで閉じる探索補正付きスカラー価値、{@code
+ * advantage}は因果関係のある行動の先読み価値と対局生成予測の効用差である。探索後の / 対局生成方策は合法手候補の位置順の正規化済み確率である。
  *
  * @param input 1 判断行の型付きホスト入力
  * @param chosenLegalSlot 動的合法候補列で実際に選択した枠
@@ -30,6 +31,7 @@ import com.epsilon.nano.ai.decision.training.EpsilonDecisionPretrainTargets;
  * @param grpFeatureSequence 局境界で固定するGRP 入力に使う事前予測の特徴量列
  * @param grpFinalRanksCode GRP 用に符号化した終局順位
  * @param learningRole CAUSAL/FORCED/PREEMPTEDの明示的な学習役割
+ * @param branchTarget 終了ゲートの分岐比較教師値
  */
 public record EpsilonDecisionSample(
     DecisionHostBatch input,
@@ -48,7 +50,8 @@ public record EpsilonDecisionSample(
     int seatDecisionOrdinal,
     float[] grpFeatureSequence,
     int grpFinalRanksCode,
-    DecisionLearningRole learningRole)
+    DecisionLearningRole learningRole,
+    DecisionBranchTarget branchTarget)
     implements EpsilonDecisionSampleRecord {
 
   private static final float POLICY_SUM_EPS = 1.0e-4f;
@@ -87,7 +90,8 @@ public record EpsilonDecisionSample(
         -1,
         grpFeatureSequence,
         grpFinalRanksCode,
-        legalActionCount == 1 ? DecisionLearningRole.FORCED : DecisionLearningRole.CAUSAL);
+        legalActionCount == 1 ? DecisionLearningRole.FORCED : DecisionLearningRole.CAUSAL,
+        DecisionBranchTarget.NONE);
   }
 
   /** 形状、識別情報、確率分布、教師値のサンプル契約を直ちに例外を送出で検証する。 */
@@ -169,7 +173,8 @@ public record EpsilonDecisionSample(
         seatDecisionOrdinal,
         grpFeatureSequence,
         grpFinalRanksCode,
-        learningRole);
+        learningRole,
+        branchTarget);
   }
 
   /** 固定検証用の予測器で使う参照方策だけを置き換え、収集時の探索後のと学習教師値は保持する。 */
@@ -191,7 +196,8 @@ public record EpsilonDecisionSample(
         seatDecisionOrdinal,
         grpFeatureSequence,
         grpFinalRanksCode,
-        learningRole);
+        learningRole,
+        branchTarget);
   }
 
   @Override

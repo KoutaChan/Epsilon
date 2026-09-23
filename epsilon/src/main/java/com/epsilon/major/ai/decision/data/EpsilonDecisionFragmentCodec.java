@@ -1,8 +1,10 @@
 package com.epsilon.major.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.major.ai.decision.input.DecisionBucket;
+import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -23,7 +25,7 @@ import java.util.List;
  */
 final class EpsilonDecisionFragmentCodec {
 
-  private static final int MAGIC = 0xED10_0023;
+  private static final int MAGIC = 0xED10_0025;
 
   private EpsilonDecisionFragmentCodec() {}
 
@@ -33,6 +35,7 @@ final class EpsilonDecisionFragmentCodec {
     EpsilonDecisionCompletedGame game = fragment.game();
     List<EpsilonDecisionSampleRecord> samples = game.samples();
     out.writeInt(MAGIC);
+    out.writeUTF(DecisionInputSchema.fingerprint());
     out.writeLong(fragment.actorSnapshotId());
     out.writeInt(fragment.grpTeacherIteration());
     out.writeLong(game.gameId());
@@ -158,6 +161,7 @@ final class EpsilonDecisionFragmentCodec {
 
   private static FragmentPrefix readPrefix(DataInputStream in, int magic) throws IOException {
     requireCurrentMagic(magic);
+    requireCurrentSchema(in.readUTF());
     long actorSnapshotId = in.readLong();
     int grpTeacherIteration = in.readInt();
     requireGrpTeacherIteration(grpTeacherIteration);
@@ -218,6 +222,12 @@ final class EpsilonDecisionFragmentCodec {
     if (magic != MAGIC) {
       throw new UnsupportedFormatException(
           "Unsupported Decision fragment magic: 0x" + Integer.toHexString(magic));
+    }
+  }
+
+  private static void requireCurrentSchema(String fingerprint) throws IOException {
+    if (!DecisionInputSchema.fingerprint().equals(fingerprint)) {
+      throw new UnsupportedFormatException("Unsupported Decision fragment schema: " + fingerprint);
     }
   }
 
@@ -293,6 +303,7 @@ final class EpsilonDecisionFragmentCodec {
     out.writeFloat(sample.behaviorProb());
     out.writeFloat(sample.valueTarget());
     out.writeFloat(sample.advantage());
+    sample.branchTarget().writeTo(out);
     out.writeInt(sample.boundaryIndex());
     out.writeInt(sample.seatDecisionOrdinal());
     out.writeInt(sample.ruleProfile());
@@ -317,6 +328,7 @@ final class EpsilonDecisionFragmentCodec {
     float behaviorProb = in.readFloat();
     float valueTarget = in.readFloat();
     float advantage = in.readFloat();
+    DecisionBranchTarget branchTarget = DecisionBranchTarget.readFrom(in);
     int boundaryIndex = in.readInt();
     int seatDecisionOrdinal = in.readInt();
     int ruleProfile = in.readInt();
@@ -356,7 +368,8 @@ final class EpsilonDecisionFragmentCodec {
           seatDecisionOrdinal,
           boundary.grpFeatureSequenceView(),
           header.finalRanksCode(),
-          DecisionLearningRole.values()[roleCode]);
+          DecisionLearningRole.values()[roleCode],
+          branchTarget);
     } catch (IllegalArgumentException e) {
       throw new IOException("Invalid Decision sample identity", e);
     }
@@ -367,7 +380,7 @@ final class EpsilonDecisionFragmentCodec {
     readSamplePayloadRef(in, payloadFiles);
     EpsilonDecisionBinaryArrayCodec.skipIntArray(in);
     in.skipNBytes(6L * Integer.BYTES + 2L * Float.BYTES);
-    in.skipNBytes(2L * Float.BYTES);
+    in.skipNBytes(2L * Float.BYTES + DecisionBranchTarget.BYTES);
     in.skipNBytes(3L * Integer.BYTES + Byte.BYTES);
   }
 

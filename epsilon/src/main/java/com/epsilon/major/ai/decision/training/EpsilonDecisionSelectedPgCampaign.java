@@ -4,7 +4,6 @@ import ai.djl.Device;
 import ai.djl.Model;
 import com.epsilon.ai.decision.duel.EpsilonDecisionWallDuelEvaluator;
 import com.epsilon.config.settings.DecisionChampionDuelSettings;
-import com.epsilon.config.settings.DecisionTrainArenaSettings;
 import com.epsilon.config.settings.DecisionTrainSettings;
 import com.epsilon.config.settings.DecisionTrainSpoolSettings;
 import com.epsilon.config.settings.GrpSettings;
@@ -15,6 +14,7 @@ import com.epsilon.major.ai.decision.audit.EpsilonDecisionSelectedPgDebugAudit;
 import com.epsilon.major.ai.decision.runtime.DecisionGpuMemoryDiagnostics;
 import com.epsilon.major.ai.grp.EpsilonGrpTrainingSession;
 import com.epsilon.major.ai.network.NetworkFactory;
+import com.epsilon.major.config.settings.DecisionOpponentSettings;
 import com.epsilon.major.config.settings.DecisionSelectedPgCampaignSettings;
 import com.epsilon.major.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
@@ -67,6 +67,7 @@ public final class EpsilonDecisionSelectedPgCampaign {
     private final Path checkpointRoot;
     private final Path workingCheckpoint;
     private final DecisionSelectedPgCampaignSettings settings;
+    private final DecisionOpponentSettings opponentSettings;
     private final String learnerContractId;
     private final DecisionSelectedPgRunContext run;
     private final DecisionExecutionContext executionContext;
@@ -100,6 +101,7 @@ public final class EpsilonDecisionSelectedPgCampaign {
       this.checkpointRoot = checkpointRoot;
       this.workingCheckpoint = EpsilonDecisionCheckpointManager.working(checkpointRoot);
       this.settings = settings;
+      this.opponentSettings = config.bind(DecisionOpponentSettings.class);
       this.learnerContractId = learnerContractId;
       this.run = run;
       this.executionContext = executionContext;
@@ -400,7 +402,6 @@ public final class EpsilonDecisionSelectedPgCampaign {
                   activeInterval.duelRound,
                   activeInterval.directory,
                   activeInterval.seedBase,
-                  activeInterval.opponentIds,
                   activeInterval.plannedMacros,
                   activeInterval.duelSettings,
                   activeInterval.games,
@@ -453,7 +454,6 @@ public final class EpsilonDecisionSelectedPgCampaign {
                 state.duelRound(),
                 state.directory(),
                 state.seedBase(),
-                state.opponentIds(),
                 state.plannedMacros(),
                 state.duelSettings(),
                 System.nanoTime());
@@ -511,17 +511,11 @@ public final class EpsilonDecisionSelectedPgCampaign {
       lineage.duelRound = duelRound;
       Path directory = run.duelDirectory(lineage.directory, duelRound);
       long seedBase = run.duelSeed(lineage.seedBase, duelRound);
-      long[][] opponentIds =
-          snapshotPool.sampleOpponentIdsForSeats(
-              lineage.candidateIteration,
-              seedBase,
-              config.bind(DecisionTrainArenaSettings.class).maximumOpponentSnapshotsPerInterval());
       Interval interval =
           new Interval(
               duelRound,
               directory,
               seedBase,
-              opponentIds,
               settings.macrosPerDuel(),
               config.bind(DecisionChampionDuelSettings.class),
               System.nanoTime());
@@ -530,8 +524,7 @@ public final class EpsilonDecisionSelectedPgCampaign {
           duelRound,
           lineage.candidateIteration,
           progress.completedMacros,
-          lineage.actorReplicaCheckpoint,
-          opponentIds);
+          lineage.actorReplicaCheckpoint);
       return interval;
     }
 
@@ -542,6 +535,10 @@ public final class EpsilonDecisionSelectedPgCampaign {
       int lineageMacro = Math.addExact(lineage.completedMacros, 1);
       long actorSnapshotId = run.actorSnapshotId(lineage.seedBase, lineageMacro);
       long macroSeed = interval.seedBase + (long) macroWithinInterval * 1_000_000L;
+      long[][] opponentIds =
+          snapshotPool.sampleOpponentIdsForMacro(macroSeed, opponentSettings.championProbability());
+      campaignLog.macroOpponent(
+          campaignMacro, snapshotPool.snapshot(opponentIds[0][0]), opponentSettings);
       DecisionSelectedPgMacroRunner.Execution execution =
           macroRunner.run(
               new DecisionSelectedPgMacroRunner.Request(
@@ -553,7 +550,7 @@ public final class EpsilonDecisionSelectedPgCampaign {
                       config.bind(DecisionTrainSpoolSettings.class).dir()),
                   lineage.actorReplicaCheckpoint,
                   actorSnapshotId,
-                  interval.opponentIds,
+                  opponentIds,
                   settings.gamesPerMacro(),
                   macroSeed));
       DecisionSelectedPgMacroRunner.TrainingResult training = execution.training();
@@ -618,6 +615,10 @@ public final class EpsilonDecisionSelectedPgCampaign {
           lineage.candidateIteration,
           progress.selfPlayGames);
       saveWorking();
+      if (opponentSettings.shouldRegister(campaignMacro)) {
+        snapshotPool.registerMacroCheckpoint(macroCheckpoint);
+        snapshotPool.save(checkpointRoot);
+      }
       DecisionSelectedPgReportWriter.writeMacro(
           interval.directory,
           lineage.number,
@@ -723,19 +724,12 @@ public final class EpsilonDecisionSelectedPgCampaign {
         throws IOException {
       if (resolution.status() == DecisionSelectedPgDuelResult.Status.PROMOTED) {
         Path candidate = duelResult.candidate();
-        String candidateId = EpsilonDecisionCheckpointManager.candidateId(candidate);
         EpsilonDecisionWallDuelEvaluator.Result duel =
             resolution.championDuel().orElseThrow().result();
-        snapshotPool.addArenaSnapshot(
-            new EpsilonDecisionSnapshotPool.SnapshotEntry(
-                candidate.toAbsolutePath().normalize().toString(),
-                lineage.candidateIteration,
-                progress.globalStep,
-                false,
-                EpsilonDecisionSnapshotPool.EvalStats.fromDuelResult(duel.descriptiveResult()),
-                candidateId));
         progress.arenaChampion = candidate;
-        snapshotPool.registerArenaChampion(candidate);
+        snapshotPool.registerArenaChampion(
+            candidate,
+            EpsilonDecisionSnapshotPool.EvalStats.fromDuelResult(duel.descriptiveResult()));
         snapshotPool.save(checkpointRoot);
       } else if (!resolution.status().preservesLearnerState()) {
         learner.reloadWorking(lineage.parentLearner);
@@ -858,7 +852,6 @@ public final class EpsilonDecisionSelectedPgCampaign {
     private final int duelRound;
     private final Path directory;
     private final long seedBase;
-    private final long[][] opponentIds;
     private final int plannedMacros;
     private final DecisionChampionDuelSettings duelSettings;
     private final long startedNanos;
@@ -876,14 +869,12 @@ public final class EpsilonDecisionSelectedPgCampaign {
         int duelRound,
         Path directory,
         long seedBase,
-        long[][] opponentIds,
         int plannedMacros,
         DecisionChampionDuelSettings duelSettings,
         long startedNanos) {
       this.duelRound = duelRound;
       this.directory = directory;
       this.seedBase = seedBase;
-      this.opponentIds = opponentIds;
       this.plannedMacros = plannedMacros;
       this.duelSettings = duelSettings;
       this.startedNanos = startedNanos;

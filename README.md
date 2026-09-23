@@ -27,7 +27,7 @@ Epsilonは、JavaとDJL / PyTorchを使った4人リーチ麻雀AIです。牌�
 | --- | ---: |
 | [Epsilon-Pico](epsilon-pico/README.md) | **1,507,396**（約1.51M） |
 | [Epsilon-Nano](epsilon-nano/README.md) | **4,725,700**（約4.73M） |
-| [Epsilon](epsilon/README.md) | **9,989,780**（約9.99M） |
+| [Epsilon](epsilon/README.md) | **10,699,636**（約10.70M） |
 
 - [Epsilon Arena](epsilon-arena/README.md)：異なる系列のモデルを対戦させ、成績を比較できます。
 - [Epsilon AI レビュアー](epsilon-reviewer/README.md)：牌譜をAIで解析し、行動の候補を確認できます。

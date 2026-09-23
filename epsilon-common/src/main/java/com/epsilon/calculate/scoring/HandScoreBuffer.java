@@ -28,14 +28,14 @@ public final class HandScoreBuffer {
     yakuBits = YakuBits.effective(bits, menzen);
     yakumanMultiplier = YakuBits.yakumanCount(yakuBits);
     if (yakumanMultiplier > 0) {
-      basePoints = 8000 * yakumanMultiplier;
+      basePoints = ScoreMath.basePoints(0, 0, yakumanMultiplier);
     } else if (yakuBits != 0L) {
       omoteDoraCount = omoteDora;
       akaDoraCount = akaDora;
       uraDoraCount = uraDora;
       han = YakuBits.han(yakuBits, menzen) + omoteDora + akaDora + uraDora;
       this.fu = fu;
-      basePoints = ScoreMath.normalBasePoints(han, fu);
+      basePoints = ScoreMath.basePoints(han, fu, 0);
     }
     return this;
   }

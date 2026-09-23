@@ -3,8 +3,8 @@ package com.epsilon.nano.ai.decision.input;
 import com.epsilon.core.Action;
 import com.epsilon.core.HandView;
 import com.epsilon.core.Tile;
-import com.epsilon.engine.DecisionHandAnalysisBuffer;
 import com.epsilon.engine.EngineDecisionBuffer;
+import com.epsilon.engine.HandAnalysisBuffer;
 
 /** 行動による遷移の特徴量を、遷移入力の連続バッファへ書き込む。 */
 final class DecisionTransitionEncoder {
@@ -29,7 +29,7 @@ final class DecisionTransitionEncoder {
       DecisionInputSchema.DiscardContext discardContext,
       DecisionInputSchema.RonFuritenKind resultingRonFuriten,
       long calledIntoMeldTileMask,
-      DecisionHandAnalysisBuffer hand,
+      HandAnalysisBuffer hand,
       short[] tileCategories,
       DecisionInputWriter writer) {
     Action discard = decision.discardAction(actionSlot, transitionSlot);
@@ -71,7 +71,7 @@ final class DecisionTransitionEncoder {
         actionSlot,
         transitionSlot,
         DecisionInputSchema.ActionTransitionInt.SPECIAL_HANDS_AVAILABLE,
-        hand.specialHandsAvailable() ? 1 : 0);
+        hand.specialHandShantenAvailable() ? 1 : 0);
     writer.transition(
         actionSlot, transitionSlot, DecisionInputSchema.ActionTransitionInt.PRESENT, 1);
 
@@ -89,12 +89,12 @@ final class DecisionTransitionEncoder {
         actionSlot,
         transitionSlot,
         DecisionInputSchema.ActionTransitionFloat.NORMALIZED_CHIITOI_SHANTEN,
-        hand.specialHandsAvailable() ? normalizeShanten(hand.chiitoitsuShanten()) : 0.0f);
+        hand.specialHandShantenAvailable() ? normalizeShanten(hand.chiitoitsuShanten()) : 0.0f);
     writer.transition(
         actionSlot,
         transitionSlot,
         DecisionInputSchema.ActionTransitionFloat.NORMALIZED_KOKUSHI_SHANTEN,
-        hand.specialHandsAvailable() ? normalizeShanten(hand.kokushiShanten()) : 0.0f);
+        hand.specialHandShantenAvailable() ? normalizeShanten(hand.kokushiShanten()) : 0.0f);
     writer.transition(
         actionSlot,
         transitionSlot,
@@ -162,21 +162,21 @@ final class DecisionTransitionEncoder {
     for (int waitSlot = 0; waitSlot < hand.waitCount(); waitSlot++) {
       writer.waitTile(actionSlot, transitionSlot, waitSlot, hand.waitTileType(waitSlot) + 1);
       encodeWaitYaku(
-          hand.ronYakuMask(waitSlot),
+          hand.ronYakuBits(waitSlot),
           DecisionInputSchema.WaitWinType.RON,
           writer,
           actionSlot,
           transitionSlot,
           waitSlot);
       encodeWaitYaku(
-          hand.tsumoYakuMask(waitSlot),
+          hand.tsumoYakuBits(waitSlot),
           DecisionInputSchema.WaitWinType.TSUMO,
           writer,
           actionSlot,
           transitionSlot,
           waitSlot);
       encodeWaitScore(
-          hand.ronVisibleHan(waitSlot),
+          hand.ronHanWithoutUra(waitSlot),
           hand.ronFu(waitSlot),
           hand.ronBasePoints(waitSlot),
           DecisionInputSchema.ActionTransitionWaitFloat.RON_NORMALIZED_VISIBLE_HAN,
@@ -187,7 +187,7 @@ final class DecisionTransitionEncoder {
           transitionSlot,
           waitSlot);
       encodeWaitScore(
-          hand.tsumoVisibleHan(waitSlot),
+          hand.tsumoHanWithoutUra(waitSlot),
           hand.tsumoFu(waitSlot),
           hand.tsumoBasePoints(waitSlot),
           DecisionInputSchema.ActionTransitionWaitFloat.TSUMO_NORMALIZED_VISIBLE_HAN,
@@ -201,7 +201,7 @@ final class DecisionTransitionEncoder {
   }
 
   private static void encodeDrawHorizon(
-      DecisionHandAnalysisBuffer analysis,
+      HandAnalysisBuffer analysis,
       DecisionInputWriter writer,
       int actionSlot,
       int transitionSlot) {
@@ -229,26 +229,26 @@ final class DecisionTransitionEncoder {
         actionSlot,
         transitionSlot,
         DecisionInputSchema.ActionTransitionFloat.NORMALIZED_INTRINSIC_RON_YAKU_WAIT_KINDS,
-        analysis.intrinsicRonWaitTileTypes() / TILE_TYPE_COUNT_NORMALIZER);
+        analysis.ronWaitTileTypesWithoutRiichi() / TILE_TYPE_COUNT_NORMALIZER);
     writer.transition(
         actionSlot,
         transitionSlot,
         DecisionInputSchema.ActionTransitionFloat.NORMALIZED_INTRINSIC_RON_YAKU_WAIT_COPIES,
-        analysis.intrinsicRonWaitCopies() / UKEIRE_COUNT_NORMALIZER);
+        analysis.ronWaitCopiesWithoutRiichi() / UKEIRE_COUNT_NORMALIZER);
     writer.transition(
         actionSlot,
         transitionSlot,
         DecisionInputSchema.ActionTransitionFloat.NORMALIZED_INTRINSIC_TSUMO_YAKU_WAIT_KINDS,
-        analysis.intrinsicTsumoWaitTileTypes() / TILE_TYPE_COUNT_NORMALIZER);
+        analysis.tsumoWaitTileTypesWithoutRiichi() / TILE_TYPE_COUNT_NORMALIZER);
     writer.transition(
         actionSlot,
         transitionSlot,
         DecisionInputSchema.ActionTransitionFloat.NORMALIZED_INTRINSIC_TSUMO_YAKU_WAIT_COPIES,
-        analysis.intrinsicTsumoWaitCopies() / UKEIRE_COUNT_NORMALIZER);
+        analysis.tsumoWaitCopiesWithoutRiichi() / UKEIRE_COUNT_NORMALIZER);
   }
 
   private static void encodeYakuTenpaiFrontier(
-      DecisionHandAnalysisBuffer analysis,
+      HandAnalysisBuffer analysis,
       DecisionInputWriter writer,
       int actionSlot,
       int transitionSlot) {

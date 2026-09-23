@@ -1,5 +1,6 @@
 package com.epsilon.pico.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.pico.ai.decision.EpsilonDecisionReturns;
 import com.epsilon.pico.ai.decision.EpsilonUtilityTargets;
@@ -36,6 +37,7 @@ final class EpsilonDecisionDeferredSample implements EpsilonDecisionSampleRecord
   private final float[] grpFeatureSequence;
   private final int grpFinalRanksCode;
   private final DecisionLearningRole learningRole;
+  private final DecisionBranchTarget branchTarget;
 
   EpsilonDecisionDeferredSample(
       EpsilonDecisionTrajectoryPayloadStore payloadStore,
@@ -59,7 +61,8 @@ final class EpsilonDecisionDeferredSample implements EpsilonDecisionSampleRecord
       int seatDecisionOrdinal,
       float[] grpFeatureSequence,
       int grpFinalRanksCode,
-      DecisionLearningRole learningRole) {
+      DecisionLearningRole learningRole,
+      DecisionBranchTarget branchTarget) {
     this.payloadStore = payloadStore;
     this.payloadRef = payloadRef;
     int compactCount = EpsilonDecisionLegalActions.compactCount(legalActionCount);
@@ -117,10 +120,16 @@ final class EpsilonDecisionDeferredSample implements EpsilonDecisionSampleRecord
       throw new IllegalArgumentException("single-action sample must be FORCED or PREEMPTED");
     }
     this.learningRole = learningRole;
+    this.branchTarget = branchTarget;
   }
 
   EpsilonDecisionTrajectoryPayloadStore payloadStore() {
     return payloadStore;
+  }
+
+  @Override
+  public DecisionBranchTarget branchTarget() {
+    return branchTarget;
   }
 
   PayloadRef payloadRef() {
@@ -272,7 +281,8 @@ final class EpsilonDecisionDeferredSample implements EpsilonDecisionSampleRecord
         seatDecisionOrdinal,
         grpFeatureSequence,
         grpFinalRanksCode,
-        learningRole);
+        learningRole,
+        branchTarget);
   }
 
   @Override
@@ -309,7 +319,8 @@ final class EpsilonDecisionDeferredSample implements EpsilonDecisionSampleRecord
         seatDecisionOrdinal,
         grpFeatureSequence,
         grpFinalRanksCode,
-        learningRole);
+        learningRole,
+        branchTarget);
   }
 
   private EpsilonDecisionTrajectoryPayload payload() {

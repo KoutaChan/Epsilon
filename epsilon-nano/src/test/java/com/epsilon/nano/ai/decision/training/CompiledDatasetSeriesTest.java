@@ -22,13 +22,15 @@ public class CompiledDatasetSeriesTest {
       String series, boolean accepted) throws Exception {
     Path directory = Files.createTempDirectory("compiled-series-");
     JsonObject manifest = new JsonObject();
-    manifest.addProperty("formatVersion", 11);
+    manifest.addProperty("formatVersion", 12);
     manifest.addProperty("schemaFingerprint", DecisionInputSchema.fingerprint());
     manifest.addProperty("identity", "series-boundary");
     manifest.addProperty("rows", 0);
     manifest.addProperty("batches", 0);
     manifest.add("shards", new JsonArray());
-    if (series != null) manifest.addProperty("series", series);
+    if (series != null) {
+      manifest.addProperty("series", series);
+    }
     try {
       Files.writeString(directory.resolve("manifest.json"), manifest.toString());
       if (accepted) {

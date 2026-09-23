@@ -9,8 +9,8 @@ import com.epsilon.core.River;
 import com.epsilon.core.RoundPublicStateIndex;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
-import com.epsilon.engine.DecisionHandAnalysisBuffer;
 import com.epsilon.engine.EngineDecisionBuffer;
+import com.epsilon.engine.HandAnalysisBuffer;
 
 /**
  * 判断するプレイヤーが観測できる局・プレイヤー・牌・河・面子の情報を、一行の入力へ符号化する。
@@ -31,7 +31,7 @@ final class DecisionRowEncoder {
     DecisionInputWriter writer = batch.inputs().writer(row);
     PublicObservation state = decision.state();
     int player = decision.playerIndex();
-    DecisionHandAnalysisBuffer currentHand = decision.analyzeCurrentHand();
+    HandAnalysisBuffer currentHand = decision.analyzeCurrentShape();
     encodeStateFeatures(state, player, decision, currentHand, writer);
     writer.boundaryContext(boundaryContext);
     DecisionFeatureEncoder.encode(decision, writer, scratch);
@@ -41,7 +41,7 @@ final class DecisionRowEncoder {
     batch.inputs().prepareTransitions(row, decision);
     DecisionInputWriter writer = batch.inputs().writer(row);
     encodeStateFeatures(
-        decision.state(), decision.playerIndex(), decision, decision.analyzeCurrentHand(), writer);
+        decision.state(), decision.playerIndex(), decision, decision.analyzeCurrentShape(), writer);
     writer.boundaryContext(DecisionBoundaryContext.uniform());
   }
 
@@ -49,7 +49,7 @@ final class DecisionRowEncoder {
       PublicObservation state,
       int player,
       EngineDecisionBuffer context,
-      DecisionHandAnalysisBuffer currentHand,
+      HandAnalysisBuffer currentHand,
       DecisionInputWriter writer) {
     RoundPublicStateIndex publicState = state.publicState();
     TurnEvent event = state.turnEvent();
@@ -89,6 +89,9 @@ final class DecisionRowEncoder {
         state.firstTurnCallOccurred() ? 1 : 0);
     writer.round(DecisionInputSchema.RoundInt.LAST_LIVE_TILE, state.isWallExhausted() ? 1 : 0);
     encodeEvent(state, player, event, writer);
+    for (int absoluteSeat = 0; absoluteSeat < GameState.NUM_PLAYERS; absoluteSeat++) {
+      writer.pointLedger100(absoluteSeat, state.score(absoluteSeat) / 100);
+    }
     int selfScore = state.score(player);
     int highestScore = Integer.MIN_VALUE;
     int lowestScore = Integer.MAX_VALUE;
@@ -120,7 +123,7 @@ final class DecisionRowEncoder {
       PublicObservation state,
       int player,
       EngineDecisionBuffer context,
-      DecisionHandAnalysisBuffer currentHand,
+      HandAnalysisBuffer currentHand,
       DecisionInputWriter writer) {
     RoundPublicStateIndex publicState = state.publicState();
     int selfScore = state.score(player);
@@ -205,7 +208,7 @@ final class DecisionRowEncoder {
       PublicObservation state,
       int player,
       EngineDecisionBuffer context,
-      DecisionHandAnalysisBuffer currentHand,
+      HandAnalysisBuffer currentHand,
       DecisionInputWriter writer) {
     HandView selfHand = state.hand(player);
     long currentUkeireTileTypeMask = currentHand.improvingTileTypeMask();

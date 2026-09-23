@@ -76,7 +76,7 @@ final class EpsilonStrategicContextEncoder extends AbstractBlock {
       ParameterStore parameterStore,
       NDArray roundEmbedding,
       NDArray tileEmbeddings,
-      NDArray playerMemory,
+      NDArray playerSummaries,
       boolean training,
       PairList<String, Object> runtimeParameters) {
     return encode(
@@ -84,7 +84,7 @@ final class EpsilonStrategicContextEncoder extends AbstractBlock {
         roundEmbedding,
         tileEmbeddings,
         tileEmbeddings,
-        playerMemory,
+        playerSummaries,
         training,
         null,
         runtimeParameters);
@@ -96,13 +96,12 @@ final class EpsilonStrategicContextEncoder extends AbstractBlock {
       NDArray roundEmbedding,
       NDArray tileEmbeddings,
       NDArray tileProjectionEmbeddings,
-      NDArray playerMemory,
+      NDArray playerSummaries,
       boolean training,
       EpsilonStrategicContextFusionExecution.Forward inferenceForward,
       PairList<String, Object> runtimeParameters) {
-    validateInputs(roundEmbedding, tileEmbeddings, tileProjectionEmbeddings, playerMemory);
+    validateInputs(roundEmbedding, tileEmbeddings, tileProjectionEmbeddings, playerSummaries);
     long rowCount = roundEmbedding.getShape().get(0);
-    NDArray playerSummaries = playerMemory.get(":,:,0,:");
     NDArray handSummary =
         summarizeHand(
             parameterStore,
@@ -135,11 +134,10 @@ final class EpsilonStrategicContextEncoder extends AbstractBlock {
             block.encode(parameterStore, strategicTokens, training, runtimeParameters);
       }
     }
+    NDList strategicSections = strategicTokens.split(new long[] {1, 2}, 1);
     return new StrategicContext(
-        strategicTokens.get(":,0,:").reshape(rowCount, hiddenSize),
-        strategicTokens
-            .get(":,2:{},:", STRATEGIC_TOKEN_COUNT)
-            .reshape(rowCount, GameState.NUM_PLAYERS, hiddenSize));
+        strategicSections.get(0).reshape(rowCount, hiddenSize),
+        strategicSections.get(2).reshape(rowCount, GameState.NUM_PLAYERS, hiddenSize));
   }
 
   /**
@@ -196,14 +194,15 @@ final class EpsilonStrategicContextEncoder extends AbstractBlock {
             tileProjectionEmbeddings,
             training,
             runtimeParameters);
+    NDList keyValueSections = keyValues.split(2, 2);
     NDArray keys =
-        keyValues
-            .get("...,0:{}", handAttentionWidth)
+        keyValueSections
+            .get(0)
             .reshape(rowCount, Tile.NUM_TILE_TYPES, ATTENTION_HEADS, handAttentionHeadSize)
             .swapAxes(1, 2);
     NDArray values =
-        keyValues
-            .get("...,{}:{}", handAttentionWidth, handAttentionWidth * 2)
+        keyValueSections
+            .get(1)
             .reshape(rowCount, Tile.NUM_TILE_TYPES, ATTENTION_HEADS, handAttentionHeadSize)
             .swapAxes(1, 2);
     NDArray context =
@@ -227,20 +226,15 @@ final class EpsilonStrategicContextEncoder extends AbstractBlock {
       NDArray roundEmbedding,
       NDArray tileEmbeddings,
       NDArray tileProjectionEmbeddings,
-      NDArray playerMemory) {
+      NDArray playerSummaries) {
     long rows = roundEmbedding.getShape().get(0);
     Shape expectedRound = new Shape(rows, hiddenSize);
     Shape expectedTiles = new Shape(rows, Tile.NUM_TILE_TYPES, hiddenSize);
-    Shape expectedPlayers =
-        new Shape(
-            rows,
-            GameState.NUM_PLAYERS,
-            EpsilonMahjongStateEncoder.PLAYER_MEMORY_TOKEN_COUNT,
-            hiddenSize);
+    Shape expectedPlayers = new Shape(rows, GameState.NUM_PLAYERS, hiddenSize);
     if (!roundEmbedding.getShape().equals(expectedRound)
         || !tileEmbeddings.getShape().equals(expectedTiles)
         || !tileProjectionEmbeddings.getShape().equals(expectedTiles)
-        || !playerMemory.getShape().equals(expectedPlayers)) {
+        || !playerSummaries.getShape().equals(expectedPlayers)) {
       throw new IllegalArgumentException(
           "strategic context shape mismatch: "
               + roundEmbedding.getShape()
@@ -249,7 +243,7 @@ final class EpsilonStrategicContextEncoder extends AbstractBlock {
               + " / "
               + tileProjectionEmbeddings.getShape()
               + " / "
-              + playerMemory.getShape());
+              + playerSummaries.getShape());
     }
   }
 
@@ -359,13 +353,10 @@ final class EpsilonStrategicContextEncoder extends AbstractBlock {
       NDArray queryKeyValues =
           applyLinear(
               queryKeyValueProjection, parameterStore, normalized, training, runtimeParameters);
-      NDArray queries = attentionHeads(queryKeyValues.get("...,0:{}", attentionWidth), rowCount);
-      NDArray keys =
-          attentionHeads(
-              queryKeyValues.get("...,{}:{}", attentionWidth, attentionWidth * 2), rowCount);
-      NDArray values =
-          attentionHeads(
-              queryKeyValues.get("...,{}:{}", attentionWidth * 2, attentionWidth * 3), rowCount);
+      NDList queryKeyValueSections = queryKeyValues.split(3, 2);
+      NDArray queries = attentionHeads(queryKeyValueSections.get(0), rowCount);
+      NDArray keys = attentionHeads(queryKeyValueSections.get(1), rowCount);
+      NDArray values = attentionHeads(queryKeyValueSections.get(2), rowCount);
       NDArray context =
           queries
               .getNDArrayInternal()

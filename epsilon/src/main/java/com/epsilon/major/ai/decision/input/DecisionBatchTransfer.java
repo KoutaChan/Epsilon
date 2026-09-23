@@ -129,7 +129,12 @@ public final class DecisionBatchTransfer {
             : workspace.transferInference(manager, hostRows, transferMode);
     NDArray inputNumerics = convertInputNumerics(slabs.inputNumerics(), inputNumericType);
     DecisionInferenceInputs inputs =
-        DecisionInferenceInputs.bind(slabs.layout(), slabs.inputCategories(), inputNumerics);
+        DecisionInferenceInputs.bind(
+            slabs.layout(),
+            slabs.inputCategories(),
+            inputNumerics,
+            slabs.waitRows(),
+            slabs.winningActions());
     return new DecisionInferenceDeviceBatch(
         slabs.inputCategories(),
         inputNumerics,
@@ -413,7 +418,8 @@ public final class DecisionBatchTransfer {
         rowTargets.get("...,0"),
         rowTargets.get("...," + valueEnd),
         rowTargets.get("...," + advantageEnd),
-        rowTargets.get("...," + (advantageEnd + 1)));
+        rowTargets.get("...," + (advantageEnd + 1)),
+        rowTargets.get(":,4:"));
   }
 
   private static NDArray slice(NDArray slab, int start, int end, Shape shape) {
@@ -578,7 +584,12 @@ public final class DecisionBatchTransfer {
       InferenceSlabs slabs = InferenceSlabs.bind(input, indices, staged.inputLayout);
       NDArray inputNumerics = convertInputNumerics(slabs.inputNumerics(), inputNumericType);
       DecisionInferenceInputs inputs =
-          DecisionInferenceInputs.bind(slabs.layout(), slabs.inputCategories(), inputNumerics);
+          DecisionInferenceInputs.bind(
+              slabs.layout(),
+              slabs.inputCategories(),
+              inputNumerics,
+              slabs.waitRows(),
+              slabs.winningActions());
       return new DecisionInferenceDeviceBatch(
           slabs.inputCategories(),
           inputNumerics,
@@ -928,6 +939,8 @@ public final class DecisionBatchTransfer {
       NDArray inputNumerics,
       NDArray playerMemoryPresentIndices,
       NDArray transitionPresentIndices,
+      NDArray waitRows,
+      NDArray winningActions,
       DecisionInferenceDeviceBatch.PolicyExecutionIndices policyExecutionIndices,
       DecisionInferenceInputLayout layout) {
 
@@ -955,6 +968,8 @@ public final class DecisionBatchTransfer {
           input.numerics(),
           indices.playerMemoryPresentIndices(),
           indices.transitionPresentIndices(),
+          indices.waitRows(),
+          indices.winningActions(),
           indices.policyExecutionIndices(),
           inputLayout);
     }
@@ -964,6 +979,8 @@ public final class DecisionBatchTransfer {
       NDArray packedIndices,
       NDArray playerMemoryPresentIndices,
       NDArray transitionPresentIndices,
+      NDArray waitRows,
+      NDArray winningActions,
       DecisionInferenceDeviceBatch.PolicyExecutionIndices policyExecutionIndices) {
 
     private static InferenceIndexSlab regular(
@@ -1005,6 +1022,16 @@ public final class DecisionBatchTransfer {
           packedIndices,
           playerMemoryPresentIndices,
           transitionPresentIndices,
+          slice(
+              packedIndices,
+              layout.waitOffset(),
+              layout.winningOffset(),
+              new Shape(layout.waitCount())),
+          slice(
+              packedIndices,
+              layout.winningOffset(),
+              layout.totalCount(),
+              new Shape(layout.winningCount())),
           policyExecutionIndices);
     }
   }

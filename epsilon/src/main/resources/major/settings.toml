@@ -230,6 +230,18 @@ utilityProfile = "TENHOU"
 # POLICY_GREEDYは最大確率の合法手を選ぶ。selected-PG campaignはFULL_SUPPORTを必要とする。
 selectionMode = "FULL_SUPPORT"
 
+# 限定二分岐学習。無効時は通常PPOのみ。async/streaming arenaと固定GRPが必要。
+# 有効時はKYUSHU gateを比較結果だけで更新し、未完成の比較では更新しない。
+[epsilon.decision.rollout.branchComparison]
+enabled = false
+winDecline = false
+kyushu = true
+maxBranchesPerGame = 1
+maxInFlightBranches = 8
+# 追加Decision/GRP推論行数を、通常Decision推論行数のこの比率以内に制限する。
+# 時間増加率の保証ではない。元対局のGRPは再利用し、追加推論しない。
+maxExtraInferenceRatio = 0.01
+
 # 各nodeでActor分布へ合法候補上の一様分布を混ぜる確率質量。各massは0以上1未満。
 # 適応探索が有効ならmassへ局面別倍率を掛ける。選択された枝の確率を合成した後にleafの下限を適用する。
 # selected-PGでは全nodeのmassとminimumLeafProbabilityを正にして、すべての合法手を探索可能にする。
@@ -457,7 +469,7 @@ riichiWeight = 1.0
 # 応答opportunityを採用する確率重み（0より大きく1以下）。1ならすべて採用する。
 reactionWeight = 1.0
 
-# piCurrent/piRolloutへ適用するPPO clip幅。0より大きく1未満。
+# 正規化した重なり方策の更新比へ適用するPPO clip幅。0より大きく1未満。
 policyUpdateClipRange = 0.2
 
 # behavior探索で選んだactionへ残すselected-action creditの線形混合率。0より大きく1以下の必須値。
@@ -587,8 +599,15 @@ advanceTasksPerWorker = 2
 # 1 advance taskへまとめる対局数の上限。正の整数。
 maximumAdvanceTaskSize = 64
 
-# 1学習intervalへ混在させる相手snapshot数の上限。正の整数。
-maximumOpponentSnapshotsPerInterval = 1
+# 各macroの相手を1種類だけ抽選し、全相手席・全GPUで固定する。
+[epsilon.decision.train.opponents]
+
+# 最新チャンピオンの抽選確率。残りは履歴から一様抽選する。履歴がなければ常にチャンピオン。
+# 1.0ならチャンピオン固定。保持数はepsilon.decision.snapshotPool.maxで指定する。
+championProbability = 0.7
+
+# 保存済みモデルを履歴へ登録する間隔。正の整数。失敗・未完了macroは登録しない。
+snapshotIntervalMacros = 10
 
 # campaignのchampion比較。固定牌山1 seedにつき候補席を4席rotationしてpaired評価する。
 # CI下限が0より大きければPROMOTED、上限が0より小さければHARMFUL、それ以外はUNRESOLVED。

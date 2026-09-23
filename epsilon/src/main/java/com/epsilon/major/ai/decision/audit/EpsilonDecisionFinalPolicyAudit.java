@@ -531,7 +531,7 @@ public final class EpsilonDecisionFinalPolicyAudit {
    * @param batchCount 監査したバッチ数
    * @param meanRolloutPolicyKl 方策学習の重みで加重した {@code KL(piRollout || piCurrent)} 平均
    * @param maximumRolloutPolicyKl サンプル単位対局生成 KLの最大値
-   * @param maximumObservedPolicyUpdateRatio 観測した {@code piCurrent/piRollout} 最大値
+   * @param maximumObservedPolicyUpdateRatio 観測した重なり方策の更新比率の最大値
    * @param actorWeight 集約に使った方策学習の重みの総和
    */
   public record Report(

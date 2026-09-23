@@ -9,6 +9,7 @@ import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
+import com.epsilon.config.settings.DecisionBranchComparisonSettings;
 import com.epsilon.config.settings.DecisionComputePrecision;
 import com.epsilon.config.settings.DecisionTensorTransfer;
 import com.epsilon.config.settings.DecisionTrainSettings;
@@ -44,8 +45,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Decision の選択行動に対する方策勾配と価値損失を計算し、モデルを更新する。
  *
- * <p>自己対局学習方策は選択行動へ探索学習への寄与 {@code alpha + (1-alpha) * piRollout/muBehavior} を残し、{@code
- * piCurrent/piRollout} だけをPPO クリップします。対局生成 KLは損失ではなく、各更新前の診断と棄却判定に使います。方策モデルはFULL_POLICY（方策ネットワーク +
+ * <p>自己対局学習方策は選択行動へ探索学習への寄与 {@code min(1, alpha + (1-alpha) * piRollout/muBehavior)} を残し、{@code
+ * betaCurrent/betaRollout} だけをPPO クリップします。対局生成 KLは探索前方策の診断と棄却判定に使います。方策モデルはFULL_POLICY（方策ネットワーク +
  * 行動候補のスコア計算処理 + 分岐出力層）を所有し、価値 ネットワーク/出力層とは独立したAdamW 状態/更新回数で更新します。
  */
 public final class EpsilonDecisionTrainer implements AutoCloseable {
@@ -235,9 +236,11 @@ public final class EpsilonDecisionTrainer implements AutoCloseable {
     ensureOpen();
     DecisionOnlineLossConfig config =
         DecisionOnlineLossConfig.create(
-            policyPlan.policyUpdateClipRange(),
-            policyPlan.explorationCreditMix(),
-            policyPlan.entropyCoefficient());
+                policyPlan.policyUpdateClipRange(),
+                policyPlan.explorationCreditMix(),
+                policyPlan.entropyCoefficient())
+            .withBranchComparison(
+                this.config.bind(DecisionBranchComparisonSettings.class).enabled());
     return trainAccumulatedActorAndValueStreaming(
         fragmentPaths,
         reader,

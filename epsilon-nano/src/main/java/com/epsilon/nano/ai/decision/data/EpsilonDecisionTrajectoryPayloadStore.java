@@ -1,5 +1,6 @@
 package com.epsilon.nano.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.config.settings.DecisionTrainInFlightSpoolSettings;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.io.ZstdFrameBuffer;
@@ -129,7 +130,8 @@ public interface EpsilonDecisionTrajectoryPayloadStore extends AutoCloseable {
       int seatDecisionOrdinal,
       float[] grpFeatureSequence,
       int grpFinalRanksCode,
-      DecisionLearningRole learningRole) {
+      DecisionLearningRole learningRole,
+      DecisionBranchTarget branchTarget) {
     return new EpsilonDecisionDeferredSample(
         this,
         payloadRef,
@@ -152,7 +154,8 @@ public interface EpsilonDecisionTrajectoryPayloadStore extends AutoCloseable {
         seatDecisionOrdinal,
         grpFeatureSequence,
         grpFinalRanksCode,
-        learningRole);
+        learningRole,
+        branchTarget);
   }
 
   /**

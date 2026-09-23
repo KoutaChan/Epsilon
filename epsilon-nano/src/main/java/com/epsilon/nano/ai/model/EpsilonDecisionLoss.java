@@ -5,6 +5,7 @@ import ai.djl.ndarray.NDArrays;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
+import com.epsilon.ai.decision.DecisionBranchLoss;
 import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.nano.ai.decision.EpsilonUtilityTargets;
@@ -18,10 +19,13 @@ import com.epsilon.nano.ai.decision.training.DecisionOnlineLossConfig;
 /**
  * 牌譜による方策の模倣学習、スカラー価値の学習、選択行動の方策勾配学習の損失を計算する。
  *
- * <p>PPO教師信号は実行資格を持つ選択した行動に対してだけ与える。探索学習への寄与は {@code alpha + (1-alpha) * piRollout/muBehavior}
- * とし、方策更新比率 {@code piCurrent/piRollout} だけをPPO クリップした代理目的関数へ入れる。エントロピー
- * 項は反実仮想ラベルを使わず、現在の合法手分布全体へ勾配を流す。対局生成方策との {@code KL(piRollout || piCurrent)}
+ * <p>PPO教師信号は実行資格を持つ選択した行動に対してだけ与える。探索学習への寄与は {@code min(1, alpha + (1-alpha) *
+ * piRollout/muBehavior)} とし、探索前の方策変化で再重み付けした重なり方策 {@code betaCurrent/betaRollout} だけをPPO
+ * クリップした代理目的関数へ入れる。エントロピー 項は反実仮想ラベルを使わず、現在の合法手分布全体へ勾配を流す。探索前方策との {@code KL(piRollout || piCurrent)}
  * は損失に加算せず、更新前の診断と棄却判定にだけ使う。
+ *
+ * <p>限定二分岐が有効な自己対局では、完成した比較を対象gateだけの二択目的へ渡す。そのgateは通常PPOと
+ * エントロピー項からdetachする。KYUSHUは比較未完成でもdetachし、比較結果を価値教師へ混ぜない。
  *
  * <p>Decision 価値は期待効用をガウス分布のヒストグラムへ変換した HL-Gauss 交差エントロピーで学習する。GRP 境界分布の期待
  * 効用は固定事前予測としてネットワークへ入り、Decision 側は区間ロジットの残差を学習する。
@@ -180,8 +184,17 @@ public final class EpsilonDecisionLoss {
                 : valueConstants.targetProbabilities(targets.valueTarget()),
             sampleWeight,
             sampleWeightNormalization);
+    DecisionPolicyScores onlineScores = applyLossPrecision(output.policyScores());
+    if (config.branchComparisonEnabled()) {
+      onlineScores =
+          new DecisionPolicyScores(
+              DecisionBranchLoss.detachComparedGates(
+                  onlineScores.alternativeScores(), targets.branchTargets()),
+              onlineScores.actionCandidateScores(),
+              onlineScores.riichiGateScores());
+    }
     EpsilonDecisionPolicyGraph.Distribution currentPolicy =
-        composePolicyDistributionForLoss(output.policyScores(), input);
+        composePolicyDistributionForLoss(onlineScores, input);
     NDArray selectedCurrentLogProbability =
         selectedByIndices(currentPolicy.logProbabilities(), chosenIndices);
     NDArray behaviorCloningLoss =
@@ -242,13 +255,38 @@ public final class EpsilonDecisionLoss {
         selectedRolloutProbability
             .div(selectedBehaviorProbability.add(inactiveActor))
             .stopGradient();
-    NDArray explorationCreditWeight =
-        rawExplorationRatio
+    NDArray retainedPolicy =
+        rolloutPolicy
             .mul(1.0f - config.explorationCreditMix())
-            .add(config.explorationCreditMix())
+            .add(behaviorPolicy.mul(config.explorationCreditMix()));
+    NDArray overlapPolicy = behaviorPolicy.minimum(retainedPolicy);
+    NDArray explorationCreditWeight =
+        selectedByIndices(overlapPolicy, chosenIndices)
+            .div(selectedBehaviorProbability.add(inactiveActor))
             .stopGradient();
+    NDArray betaRollout =
+        overlapPolicy
+            .div(
+                overlapPolicy
+                    .sum(new int[] {1})
+                    .reshape(batch, 1)
+                    .add(inactiveActor.reshape(batch, 1)))
+            .stopGradient();
+    // 合法手の piRollout は正値。非合法手の 0/0 だけを避け、合法手の比率は変えない。
+    NDArray zeroRolloutProbability =
+        rolloutPolicy.lte(0.0f).toType(LOSS_DATA_TYPE, false).stopGradient();
+    NDArray canonicalPolicyUpdate =
+        currentPolicy.probabilities().div(rolloutPolicy.add(zeroRolloutProbability));
+    NDArray betaCurrentUnnormalized = betaRollout.mul(canonicalPolicyUpdate);
+    NDArray betaCurrent =
+        betaCurrentUnnormalized.div(
+            betaCurrentUnnormalized
+                .sum(new int[] {1})
+                .reshape(batch, 1)
+                .add(inactiveActor.reshape(batch, 1)));
     NDArray policyUpdateRatio =
-        selectedCurrentProbability.div(selectedRolloutProbability.add(inactiveActor));
+        selectedByIndices(betaCurrent, chosenIndices)
+            .div(selectedByIndices(betaRollout, chosenIndices).add(inactiveActor));
     NDArray clippedPolicyUpdateRatio =
         clipPolicyUpdateRatio(policyUpdateRatio, config.policyUpdateClipRange());
     NDArray scalarAdvantage = targets.advantage().reshape(batch).stopGradient();
@@ -306,6 +344,15 @@ public final class EpsilonDecisionLoss {
             effectiveActorRatio,
             policyUpdateClipIndicator,
             actorWeights);
+    if (config.branchComparisonEnabled()) {
+      policyGradientLoss =
+          policyGradientLoss.add(
+              DecisionBranchLoss.loss(
+                  output.policyScores().alternativeScores().toType(DataType.FLOAT32, false),
+                  targets.branchTargets(),
+                  actorWeights,
+                  config.policyUpdateClipRange()));
+    }
     NDArray total = policyGradientLoss.add(entropyBonusLoss);
     return new TrainingLossResult(
         total,
@@ -631,8 +678,8 @@ public final class EpsilonDecisionLoss {
    * 元の探索比、探索学習への寄与、方策更新、実効方策モデル比を混同しない選択行動診断。
    *
    * @param rawExplorationRatio {@code piRollout/muBehavior}。診断専用
-   * @param explorationCreditWeight {@code alpha + (1-alpha) * piRollout/muBehavior}
-   * @param policyUpdate {@code piCurrent/piRollout}
+   * @param explorationCreditWeight {@code min(1, alpha + (1-alpha) * piRollout/muBehavior)}
+   * @param policyUpdate {@code betaCurrent/betaRollout}。探索前方策の変化で重なり方策を再重み付けする
    * @param effectiveActorRatio {@code explorationCreditWeight * policyUpdate}
    * @param policyUpdateClipFraction クリップ範囲外だった方策学習の重みの比率
    * @param effectiveActorRatioMeanSquare 小バッチを跨いで厳密なESSを集約するための加重二次モーメント

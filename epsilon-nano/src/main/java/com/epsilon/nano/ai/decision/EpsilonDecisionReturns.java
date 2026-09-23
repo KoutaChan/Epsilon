@@ -4,15 +4,20 @@ import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.nano.ai.decision.data.EpsilonDecisionDataException;
 
-/** 価値学習と方策学習で遡る手順を分けた局内の Retrace 教師値を計算し、HL-Gauss 教師の範囲を検証する。 */
+/** 価値学習と方策学習で遡る手順を分けた局内の補正付き教師値を計算し、HL-Gauss 教師の範囲を検証する。 */
 public final class EpsilonDecisionReturns {
   private EpsilonDecisionReturns() {}
 
-  /** 検証済みの予測と教師値を、同じ遷移列の次の判断に対応する係数で線形混合する。 */
-  public static float scalarRetraceTarget(
-      float nextValue, float nextTarget, float lambda, float coefficient) {
-    float traceWeight = lambda * coefficient;
-    return (1.0f - traceWeight) * nextValue + traceWeight * nextTarget;
+  /** 現在のTD誤差と後続トレースを同じ選択行動の補正係数で重み付けする。 */
+  public static float scalarVTraceTarget(
+      float currentValue, float nextValue, float nextTarget, float lambda, float coefficient) {
+    float lookahead = actorLookaheadTarget(nextValue, nextTarget, lambda);
+    return (1.0f - coefficient) * currentValue + coefficient * lookahead;
+  }
+
+  /** 選択行動の先で観測した価値と、補正済みの後続価値から方策用のQ推定値を作る。 */
+  public static float actorLookaheadTarget(float nextValue, float nextTarget, float lambda) {
+    return (1.0f - lambda) * nextValue + lambda * nextTarget;
   }
 
   /** CPUの教師入力境界で有限性と余白込み値域を確認する。範囲内の値は丸めない。 */
@@ -26,8 +31,8 @@ public final class EpsilonDecisionReturns {
     return value;
   }
 
-  /** 選択行動の対局生成/探索後の比へ探索学習への寄与を残し、Retrace係数 {@code c=min(1,q_ret)} を返す。 */
-  public static float selectedRetraceCoefficient(
+  /** 選択行動の探索前/探索後の比へ探索学習への寄与を残し、局所補正係数 {@code rho=min(1,q)} を返す。 */
+  public static float selectedTraceCoefficient(
       float rolloutProbability, float behaviorProbability, float explorationCreditMix) {
     if (!Float.isFinite(rolloutProbability)
         || rolloutProbability < 0.0f

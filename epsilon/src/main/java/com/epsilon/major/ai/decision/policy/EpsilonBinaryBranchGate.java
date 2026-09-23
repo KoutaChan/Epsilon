@@ -9,6 +9,7 @@ import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.AbstractBlock;
 import ai.djl.nn.core.Linear;
 import ai.djl.training.ParameterStore;
+import ai.djl.training.initializer.ConstantInitializer;
 import ai.djl.util.PairList;
 import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.major.ai.model.EpsilonDecisionArchitecture;
@@ -19,18 +20,38 @@ import com.epsilon.major.ai.model.EpsilonMahjongStateEncoder;
  *
  * <p>入力は局面表現、基準分岐表現、選択分岐表現である。正の出力を選択分岐、
  * 負の出力を基準分岐のロジットとして扱う。RON/TSUMO/九種九牌/CALL/KAN/RIICHIを同じ比較形式で採点し、 拒否・継続・DAMA側を暗黙のゼロ表現にはしない。
+ * RON/TSUMOだけは固定計算した終局6要素を同じ隠れ層の前活性へ直接加える。
  */
 public final class EpsilonBinaryBranchGate extends AbstractBlock {
 
   private final int hiddenSize;
   private final int gateWidth;
+  private final int directFeatureWidth;
   private final Linear hidden;
+  private final Linear directFeatureProjection;
   private final Linear score;
 
   EpsilonBinaryBranchGate(int hiddenSize) {
+    this(hiddenSize, 0);
+  }
+
+  EpsilonBinaryBranchGate(int hiddenSize, int directFeatureWidth) {
     this.hiddenSize = hiddenSize;
     gateWidth = Math.min(hiddenSize, EpsilonDecisionArchitecture.GATE_WIDTH);
+    this.directFeatureWidth = directFeatureWidth;
     hidden = addChildBlock("hidden", Linear.builder().setUnits(gateWidth).build());
+    if (directFeatureWidth > 0) {
+      directFeatureProjection =
+          addChildBlock(
+              "directFeatureProjection",
+              Linear.builder().setUnits(gateWidth).optBias(false).build());
+      directFeatureProjection
+          .getDirectParameters()
+          .get("weight")
+          .setInitializer(new ConstantInitializer(0.0f));
+    } else {
+      directFeatureProjection = null;
+    }
     score = addChildBlock("score", Linear.builder().setUnits(1).build());
   }
 
@@ -57,12 +78,31 @@ public final class EpsilonBinaryBranchGate extends AbstractBlock {
       NDArray selectedBranch,
       boolean training,
       PairList<String, Object> runtimeParameters) {
+    return score(
+        parameterStore, state, baselineBranch, selectedBranch, null, training, runtimeParameters);
+  }
+
+  NDArray score(
+      ParameterStore parameterStore,
+      NDArray state,
+      NDArray baselineBranch,
+      NDArray selectedBranch,
+      NDArray directFeatures,
+      boolean training,
+      PairList<String, Object> runtimeParameters) {
     NDArray comparison = NDArrays.concat(new NDList(state, baselineBranch, selectedBranch), 1);
-    NDArray hiddenValue =
-        EpsilonMahjongStateEncoder.silu(
-            hidden
-                .forward(parameterStore, new NDList(comparison), training, runtimeParameters)
-                .singletonOrThrow());
+    NDArray hiddenPreactivation =
+        hidden
+            .forward(parameterStore, new NDList(comparison), training, runtimeParameters)
+            .singletonOrThrow();
+    if (directFeatureProjection != null) {
+      hiddenPreactivation =
+          hiddenPreactivation.add(
+              directFeatureProjection
+                  .forward(parameterStore, new NDList(directFeatures), training, runtimeParameters)
+                  .singletonOrThrow());
+    }
+    NDArray hiddenValue = EpsilonMahjongStateEncoder.silu(hiddenPreactivation);
     return score
         .forward(parameterStore, new NDList(hiddenValue), training, runtimeParameters)
         .singletonOrThrow();
@@ -96,6 +136,28 @@ public final class EpsilonBinaryBranchGate extends AbstractBlock {
       long rowCount,
       boolean training,
       PairList<String, Object> runtimeParameters) {
+    return scoreRows(
+        parameterStore,
+        state,
+        baselineBranch,
+        selectedBranch,
+        null,
+        activeRows,
+        rowCount,
+        training,
+        runtimeParameters);
+  }
+
+  NDArray scoreRows(
+      ParameterStore parameterStore,
+      NDArray state,
+      NDArray baselineBranch,
+      NDArray selectedBranch,
+      NDArray directFeatures,
+      NDArray activeRows,
+      long rowCount,
+      boolean training,
+      PairList<String, Object> runtimeParameters) {
     long activeCount = activeRows.getShape().size();
     if (activeCount == 0) {
       return state.getManager().zeros(new Shape(rowCount, 1), state.getDataType());
@@ -106,6 +168,10 @@ public final class EpsilonBinaryBranchGate extends AbstractBlock {
             EpsilonMaskedRows.gather(state.reshape(rowCount, hiddenSize), activeRows),
             EpsilonMaskedRows.gather(baselineBranch.reshape(rowCount, hiddenSize), activeRows),
             EpsilonMaskedRows.gather(selectedBranch.reshape(rowCount, hiddenSize), activeRows),
+            directFeatures == null
+                ? null
+                : EpsilonMaskedRows.gather(
+                    directFeatures.reshape(rowCount, directFeatureWidth), activeRows),
             training,
             runtimeParameters);
     return EpsilonMaskedRows.scatter(activeScores.reshape(activeCount, 1), activeRows, rowCount);
@@ -127,7 +193,7 @@ public final class EpsilonBinaryBranchGate extends AbstractBlock {
     if (activeCount == 0) {
       return state.getManager().zeros(new Shape(rowCount, actionCapacity), state.getDataType());
     }
-    NDArray activeRows = activeActions.div(actionCapacity).toType(DataType.INT32, false);
+    NDArray activeRows = activeActions.floorDivide(actionCapacity).toType(DataType.INT32, false);
     NDArray activeScores =
         score(
             parameterStore,
@@ -146,6 +212,9 @@ public final class EpsilonBinaryBranchGate extends AbstractBlock {
   @Override
   protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
     hidden.initialize(manager, dataType, new Shape(-1, hiddenSize * 3L));
+    if (directFeatureProjection != null) {
+      directFeatureProjection.initialize(manager, dataType, new Shape(-1, directFeatureWidth));
+    }
     score.initialize(manager, dataType, new Shape(-1, gateWidth));
   }
 

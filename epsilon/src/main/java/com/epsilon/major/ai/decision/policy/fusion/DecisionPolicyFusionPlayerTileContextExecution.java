@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * 4家の牌別文脈をdjl-rocmのPROJECTED_RESIDUAL_MLPで合成する凍結推論実行。
  *
  * <p>実行計画とパラメーターはパイプライン全体で共有し、各実行枠は最大 {@code [maxBatch,34,context]} の出力と処理段階 作業領域だけを持つ。{@code
- * maxBatch=4096}、{@code context=64}では、実行枠ごとの論理データ本体は FLOAT16/BFLOAT16で約68 MiB、FLOAT32で約136
+ * maxBatch=4096}、{@code context=128}では、実行枠ごとの論理データ本体は FLOAT16/BFLOAT16で約136 MiB、FLOAT32で約272
  * MiBとなる。入力のプレイヤー軸を並べ替える一時値と出力利用権は、同じバッチの最終D2Hが完了するまで {@link FusionForward}が保持する。
  */
 public final class DecisionPolicyFusionPlayerTileContextExecution

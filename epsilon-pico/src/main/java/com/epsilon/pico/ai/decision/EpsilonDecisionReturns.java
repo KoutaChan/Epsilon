@@ -5,18 +5,24 @@ import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.pico.ai.decision.data.EpsilonDecisionDataException;
 
 /**
- * Retrace による収益の推定と、HL-Gauss の教師値の検証を行う。
+ * 探索補正付きの Value トレースと、HL-Gauss の教師値の検証を行う。
  *
- * <p>価値学習と方策学習では対象となる判断の列を分け、それぞれの次の判断に対応する係数で予測値と教師値を混合する。
+ * <p>価値学習と方策学習では対象となる判断の列を分ける。選択行動の補正係数は現在の判断の TD 差分に掛け、
+ * 後続判断へのトレースにも同じ係数を掛ける。
  */
 public final class EpsilonDecisionReturns {
   private EpsilonDecisionReturns() {}
 
-  /** 検証済みの予測と教師値を、同じ判断列の次Decision係数で線形混合する。 */
-  public static float scalarRetraceTarget(
-      float nextValue, float nextTarget, float lambda, float coefficient) {
-    float traceWeight = lambda * coefficient;
-    return (1.0f - traceWeight) * nextValue + traceWeight * nextTarget;
+  /** 現在の判断に対応する補正係数を局所 TD 差分と後続トレースの両方へ適用する。 */
+  public static float scalarVTraceTarget(
+      float currentValue, float nextValue, float nextTarget, float lambda, float coefficient) {
+    double continuation = (1.0 - lambda) * nextValue + lambda * nextTarget;
+    return (float) ((1.0 - coefficient) * currentValue + coefficient * continuation);
+  }
+
+  /** Actor 判断列の次の補正済み Value から、選択行動の継続価値を推定する。 */
+  public static float actorLookaheadTarget(float nextValue, float nextTarget, float lambda) {
+    return (float) ((1.0 - lambda) * nextValue + lambda * nextTarget);
   }
 
   /** CPUの教師入力境界で有限性と余白込み値域を確認する。範囲内の値は丸めない。 */
@@ -30,8 +36,8 @@ public final class EpsilonDecisionReturns {
     return value;
   }
 
-  /** 選択行動の対局生成/探索適用後の比へ探索による選択の学習への寄与を残し、Retrace係数 {@code c=min(1,q_ret)} を返す。 */
-  public static float selectedRetraceCoefficient(
+  /** 探索前と探索後の選択確率から、共通の Value / Actor 補正係数を返す。 */
+  public static float selectedTraceCoefficient(
       float rolloutProbability, float behaviorProbability, float explorationCreditMix) {
     if (!Float.isFinite(rolloutProbability)
         || rolloutProbability < 0.0f

@@ -45,8 +45,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Decision の選択行動に対する方策勾配と価値損失を計算し、モデルを更新する。
  *
- * <p>自己対局の方策は選択行動へ探索分の学習への寄与 {@code alpha + (1-alpha) * piRollout/muBehavior} を残し、{@code
- * piCurrent/piRollout} だけをPPO クリップします。対局生成 KLは損失ではなく、各更新前の診断と棄却判定に使います。方策はFULL_POLICY（方策ネットワーク部分 +
+ * <p>自己対局の方策は選択行動へ重なり方策の補正係数を掛け、重なり方策の更新比率を PPO クリップします。
+ * 探索前方策間の KL は損失ではなく、各更新前の診断と棄却判定に使います。方策は FULL_POLICY（方策ネットワーク部分 +
  * 選択肢採点器 + 二択分岐ヘッド）を所有し、価値 ネットワーク部分/ヘッドとは独立したAdamW 状態と更新回数で更新します。
  */
 public final class EpsilonDecisionTrainer implements AutoCloseable {

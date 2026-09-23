@@ -13,7 +13,7 @@ import com.epsilon.major.ai.decision.training.EpsilonDecisionPretrainTargets;
 /**
  * 一回の判断で得た入力・選択行動・確率分布と、その判断に対する教師値を保持する。
  *
- * <p>{@code valueTarget}は直後の局のGRP予測で閉じるスカラー q-ret Retrace、{@code advantage}は教師値と
+ * <p>{@code valueTarget}は直後の局の GRP 予測で閉じるスカラー V-trace、{@code advantage}は行動価値教師値と
  * 対局生成予測の効用差である。探索後と探索前の方策は合法手候補の位置順の正規化済み確率である。
  *
  * @param input 1 判断行の型付きホスト入力

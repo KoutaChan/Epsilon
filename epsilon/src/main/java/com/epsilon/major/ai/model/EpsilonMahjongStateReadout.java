@@ -202,7 +202,9 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
     NDArray playerSlots = playerMemoryPresentIndices.mod(playerMemoryCount);
     NDArray batchOffsets =
         playerMemoryPresentIndices
-            .floorDivide(playerMemoryCount)
+            .toType(DataType.FLOAT64, false)
+            .div(playerMemoryCount)
+            .floor()
             .mul(entityCount)
             .toType(DataType.INT32, false);
     NDArray mappedSlots = EpsilonMaskedRows.gather(playerEntitySlots, playerSlots);

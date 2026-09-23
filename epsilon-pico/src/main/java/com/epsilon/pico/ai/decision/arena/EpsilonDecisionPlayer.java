@@ -876,11 +876,7 @@ public class EpsilonDecisionPlayer implements Player {
     float[] nextActorPredictionBySeat = new float[GameState.NUM_PLAYERS];
     boolean[] hasNextActorBySeat = new boolean[GameState.NUM_PLAYERS];
     float[] nextActorTargetBySeat = new float[GameState.NUM_PLAYERS];
-    float[] nextValueTraceCoefficientBySeat = new float[GameState.NUM_PLAYERS];
-    float[] nextActorTraceCoefficientBySeat = new float[GameState.NUM_PLAYERS];
     Arrays.fill(activeBoundaryBySeat, -1);
-    Arrays.fill(nextValueTraceCoefficientBySeat, 1.0f);
-    Arrays.fill(nextActorTraceCoefficientBySeat, 1.0f);
     for (int i = trajectory.size() - 1; i >= 0; i--) {
       PendingDecision decision = trajectory.get(i);
       int seat = decision.playerSeat();
@@ -892,38 +888,44 @@ public class EpsilonDecisionPlayer implements Player {
         nextValueTargetBySeat[seat] = boundaryTarget;
         hasNextActorBySeat[seat] = false;
         nextActorTargetBySeat[seat] = boundaryTarget;
-        nextValueTraceCoefficientBySeat[seat] = 1.0f;
-        nextActorTraceCoefficientBySeat[seat] = 1.0f;
       }
+      float currentValue = decision.rolloutValue();
+      float coefficient = decision.traceCoefficient(explorationCreditMix);
+      float nextValue =
+          hasNextValueBySeat[seat]
+              ? nextValuePredictionBySeat[seat]
+              : nextValueTargetBySeat[seat];
       float valueTarget =
-          !hasNextValueBySeat[seat]
-              ? nextValueTargetBySeat[seat]
-              : EpsilonDecisionReturns.scalarRetraceTarget(
-                  nextValuePredictionBySeat[seat],
-                  nextValueTargetBySeat[seat],
-                  causalTraceLambda,
-                  nextValueTraceCoefficientBySeat[seat]);
+          EpsilonDecisionReturns.scalarVTraceTarget(
+              currentValue,
+              nextValue,
+              nextValueTargetBySeat[seat],
+              causalTraceLambda,
+              coefficient);
       float advantage = 0.0f;
       if (decision.learningRole().advancesActorClock()) {
+        float nextActorValue =
+            hasNextActorBySeat[seat]
+                ? nextActorPredictionBySeat[seat]
+                : nextActorTargetBySeat[seat];
         float actorTarget =
-            !hasNextActorBySeat[seat]
-                ? nextActorTargetBySeat[seat]
-                : EpsilonDecisionReturns.scalarRetraceTarget(
-                    nextActorPredictionBySeat[seat],
-                    nextActorTargetBySeat[seat],
-                    causalTraceLambda,
-                    nextActorTraceCoefficientBySeat[seat]);
-        advantage = actorTarget - decision.rolloutValue();
-        nextActorPredictionBySeat[seat] = decision.rolloutValue();
+            EpsilonDecisionReturns.actorLookaheadTarget(
+                nextActorValue, nextActorTargetBySeat[seat], causalTraceLambda);
+        advantage = actorTarget - currentValue;
+        nextActorPredictionBySeat[seat] = currentValue;
         hasNextActorBySeat[seat] = true;
-        nextActorTargetBySeat[seat] = actorTarget;
-        nextActorTraceCoefficientBySeat[seat] = decision.traceCoefficient(explorationCreditMix);
+        nextActorTargetBySeat[seat] =
+            EpsilonDecisionReturns.scalarVTraceTarget(
+                currentValue,
+                nextActorValue,
+                nextActorTargetBySeat[seat],
+                causalTraceLambda,
+                coefficient);
       }
       targets[i] = new TrainingTarget(valueTarget, advantage, finalRank);
-      nextValuePredictionBySeat[seat] = decision.rolloutValue();
+      nextValuePredictionBySeat[seat] = currentValue;
       hasNextValueBySeat[seat] = true;
       nextValueTargetBySeat[seat] = valueTarget;
-      nextValueTraceCoefficientBySeat[seat] = decision.traceCoefficient(explorationCreditMix);
     }
     return targets;
   }
@@ -1068,7 +1070,7 @@ public class EpsilonDecisionPlayer implements Player {
     if (learningRole != DecisionLearningRole.CAUSAL) {
       return 1.0f;
     }
-    return EpsilonDecisionReturns.selectedRetraceCoefficient(
+    return EpsilonDecisionReturns.selectedTraceCoefficient(
         rolloutProbability, behaviorProbability, explorationCreditMix);
   }
 

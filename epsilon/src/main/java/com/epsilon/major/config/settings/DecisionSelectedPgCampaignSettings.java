@@ -28,7 +28,7 @@ import com.epsilon.config.settings.SettingsPrefix;
  * @param dahaiWeight 打牌判断機会を学習へ採用する確率重み
  * @param riichiWeight RIICHI対DAMA 判断機会を学習へ採用する確率重み
  * @param reactionWeight 応答判断機会を学習へ採用する確率重み
- * @param policyUpdateClipRange {@code piCurrent/piRollout} に適用するPPO クリップ幅
+ * @param policyUpdateClipRange 重なり方策の更新比率に適用する PPO クリップ幅
  * @param explorationCreditMix 探索適用後の探索へ残す選択行動学習への寄与の線形混合率
  * @param entropyCoefficient 現在の合法最終的な行動分布のエントロピーを支える固定係数
  * @param maximumOptimizerShardMeanKl オプティマイザー分割ファイルに許容する {@code KL(piRollout || piCurrent)} 平均

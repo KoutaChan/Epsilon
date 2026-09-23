@@ -457,7 +457,7 @@ riichiWeight = 1.0
 # 応答opportunityを採用する確率重み（0より大きく1以下）。1ならすべて採用する。
 reactionWeight = 1.0
 
-# piCurrent/piRolloutへ適用するPPO clip幅。0より大きく1未満。
+# 正規化した重なり方策の更新比へ適用するPPO clip幅。0より大きく1未満。
 policyUpdateClipRange = 0.2
 
 # behavior探索で選んだactionへ残すselected-action creditの線形混合率。0より大きく1以下の必須値。

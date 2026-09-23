@@ -19,9 +19,9 @@ import com.epsilon.major.ai.decision.training.DecisionOnlineLossConfig;
 /**
  * 牌譜による方策の模倣学習、スカラー価値の学習、選択行動の方策勾配学習の損失を計算する。
  *
- * <p>PPO教師信号は実行資格を持つ選択最終行動に対してだけ与える。探索分の学習への寄与は {@code alpha + (1-alpha) * piRollout/muBehavior}
- * とし、方策更新比率 {@code piCurrent/piRollout} だけをPPO クリップ付き代理目的関数へ入れる。エントロピー
- * 追加項は反実仮想ラベルを使わず、現在の合法最終行動分布全体へ勾配を流す。対局生成方策との {@code KL(piRollout || piCurrent)}
+ * <p>PPO教師信号は実行資格を持つ選択最終行動に対してだけ与える。探索後の方策と探索寄与を混ぜた方策の重なりを
+ * 正規化した方策を Actor/Value の評価対象とし、Actor はその方策を探索前方策の相対変化で更新する。エントロピー
+ * 追加項は反実仮想ラベルを使わず、現在の合法最終行動分布全体へ勾配を流す。探索前方策間の {@code KL(piRollout || piCurrent)}
  * は損失に加算せず、更新前の診断と棄却判定にだけ使う。
  *
  * <p>限定二分岐が有効な自己対局では、完成した比較を対象gateだけの二択目的へ渡す。そのgateは通常PPOと
@@ -259,9 +259,24 @@ public final class EpsilonDecisionLoss {
         rawExplorationRatio
             .mul(1.0f - config.explorationCreditMix())
             .add(config.explorationCreditMix())
+            .minimum(1.0f)
             .stopGradient();
+    // beta_old は mu_old と ((1-alpha) pi_old + alpha mu_old) の重なりを正規化した方策。
+    // PPO 更新中は beta_old を固定し、pi_theta/pi_old で再重み付けして正規化する。
+    NDArray oldOverlap =
+        rolloutPolicy
+            .mul(1.0f - config.explorationCreditMix())
+            .add(behaviorPolicy.mul(config.explorationCreditMix()))
+            .minimum(behaviorPolicy)
+            .stopGradient();
+    NDArray oldOverlapMass = oldOverlap.sum(new int[] {1}).stopGradient();
+    NDArray betaTilt = oldOverlap.div(rolloutPolicy.maximum(PROBABILITY_EPSILON)).stopGradient();
+    NDArray currentTiltMass =
+        currentPolicy.probabilities().mul(betaTilt).sum(new int[] {1});
     NDArray policyUpdateRatio =
-        selectedCurrentProbability.div(selectedRolloutProbability.add(inactiveActor));
+        selectedCurrentProbability
+            .div(selectedRolloutProbability.add(inactiveActor))
+            .mul(oldOverlapMass.div(currentTiltMass));
     NDArray clippedPolicyUpdateRatio =
         clipPolicyUpdateRatio(policyUpdateRatio, config.policyUpdateClipRange());
     NDArray scalarAdvantage = targets.advantage().reshape(batch).stopGradient();
@@ -653,8 +668,8 @@ public final class EpsilonDecisionLoss {
    * 未加工の探索比、探索分の学習への寄与、方策更新、実効方策比を混同しない選択行動診断。
    *
    * @param rawExplorationRatio {@code piRollout/muBehavior}。診断専用
-   * @param explorationCreditWeight {@code alpha + (1-alpha) * piRollout/muBehavior}
-   * @param policyUpdate {@code piCurrent/piRollout}
+   * @param explorationCreditWeight 重なり方策の非正規化質量と探索後方策の比
+   * @param policyUpdate 重なり方策の更新比率
    * @param effectiveActorRatio {@code explorationCreditWeight * policyUpdate}
    * @param policyUpdateClipFraction クリップ範囲外だった方策学習の重みの比率
    * @param effectiveActorRatioMeanSquare 小バッチを跨いで厳密なESSを集約するための加重二次移動平均

@@ -19,7 +19,7 @@ import java.util.Objects;
 /** 保存した AdamW 状態が、現在の方策損失と対局収集条件に対応するか識別する。 */
 final class DecisionSelectedPgLearnerContract {
 
-  private static final String SCHEMA = "decision-selected-pg-actor-v12";
+  private static final String SCHEMA = "decision-selected-pg-actor-v13";
 
   private DecisionSelectedPgLearnerContract() {}
 

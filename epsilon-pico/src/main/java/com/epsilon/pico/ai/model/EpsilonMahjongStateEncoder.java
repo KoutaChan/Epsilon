@@ -879,7 +879,9 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
               .reshape(rowCount, entityCount, floatStride);
       entityFeatures = categoricalEntityFeatures.concat(numericEntityFeatures, 2);
     }
-    return applyLinear(projection, parameterStore, entityFeatures, training, runtimeParameters);
+    try (entityFeatures) {
+      return applyLinear(projection, parameterStore, entityFeatures, training, runtimeParameters);
+    }
   }
 
   /** 状態の1 構成要素区間をleading-strided ビューのままオフセット埋め込みと数値末尾へ詰める。 */

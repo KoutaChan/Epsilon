@@ -1089,11 +1089,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             presentIndices, rowCount, actionCapacity, transitionCapacity);
     NDArray compactCategoryIds = compactCategories.add(transitionCategoryOffsets);
     NDArray compactActionIndices =
-        presentIndices
-            .toType(DataType.FLOAT64, false)
-            .div(transitionCapacity)
-            .floor()
-            .toType(DataType.INT64, false);
+        presentIndices.floorDivide(transitionCapacity).toType(DataType.INT64, false);
     NDArray compactActionTypes =
         EpsilonMaskedRows.gather(
             inputs
@@ -1421,8 +1417,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       if (indices.size() == 0) {
         output = scope.zeros(new Shape(0, contextWidth), dataType);
       } else {
-        NDArray rowIndices =
-            indices.toType(DataType.FLOAT64, false).div(slots).floor().toType(DataType.INT64, false);
+        NDArray rowIndices = indices.floorDivide(slots).toType(DataType.INT64, false);
         NDArray selectedIds =
             EpsilonMaskedRows.gather(waitIds.reshape(-1, 1), indices).reshape(-1, 1, 1, 1);
         NDArray selectedTiles = EpsilonMaskedRows.gather(tiles, rowIndices);

@@ -96,8 +96,7 @@ public final class EpsilonPointProjection extends AbstractBlock {
                 scope.zeros(new Shape(rows, actions, GATE_FEATURE_WIDTH)),
                 scope.zeros(new Shape(rows, actions)));
       } else {
-        NDArray rowIndices =
-            indices.toType(DataType.FLOAT64, false).div(actions).floor().toType(DataType.INT64, false);
+        NDArray rowIndices = indices.floorDivide(actions).toType(DataType.INT64, false);
         Projection compact =
             projectActionsDense(
                 EpsilonMaskedRows.gather(pointLedger100, rowIndices),

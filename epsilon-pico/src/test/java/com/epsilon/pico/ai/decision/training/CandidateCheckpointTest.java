@@ -200,9 +200,9 @@ public class CandidateCheckpointTest {
       pool.registerArenaChampion(champion);
       pool.save(root);
       EpsilonDecisionSnapshotPool restored = EpsilonDecisionSnapshotPool.load(root, 2);
-      Assert.assertEquals(restored.snapshot(2).path(), champion.toString());
-      Assert.assertEquals(restored.snapshot(2).candidateId(), "initial/00002");
-      Assert.assertTrue(restored.snapshot(2).currentArenaChampion());
+      Assert.assertEquals(restored.snapshot(1).path(), champion.toString());
+      Assert.assertEquals(restored.snapshot(1).iteration(), 2);
+      Assert.assertTrue(restored.snapshot(1).currentArenaChampion());
       Files.writeString(champion.resolve("architecture.id"), "incompatible-architecture");
       Assert.expectThrows(IOException.class, () -> EpsilonDecisionSnapshotPool.load(root, 2));
     } finally {

@@ -1,5 +1,6 @@
 package com.epsilon.major.ai.decision.input;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.PublicObservation;
@@ -410,6 +411,11 @@ public final class DecisionBatchBuilder {
     }
     sealed = true;
     return hostBatch;
+  }
+
+  /** 指定行の分岐比較教師値を書き込む。 */
+  public void writeBranchTarget(int row, DecisionBranchTarget target) {
+    hostBatch.trainingTargets().writeBranchTarget(row, target);
   }
 
   private void requireOpen() {

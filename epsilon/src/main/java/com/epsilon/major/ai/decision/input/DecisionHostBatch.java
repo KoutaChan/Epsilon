@@ -229,16 +229,14 @@ public final class DecisionHostBatch {
     return inputs.actionCategory(row, actionSlot, field);
   }
 
-  /**
-   * 合法行動の数値特徴量を読む。
-   *
-   * @param row 有効行インデックス
-   * @param actionSlot 合法行動候補の位置
-   * @param field 特徴量種別
-   * @return 符号化済み数値
-   */
-  public float actionNumeric(int row, int actionSlot, DecisionInputSchema.ActionFloat field) {
-    return inputs.actionNumeric(row, actionSlot, field);
+  /** 絶対席順の現在点を100点単位で読む。 */
+  public int pointLedger100(int row, int absoluteSeat) {
+    return inputs.pointLedger100(row, absoluteSeat);
+  }
+
+  /** 即時和了候補のPoint Factを読む。 */
+  public int actionWinFact(int row, int actionSlot, DecisionInputSchema.WinFact fact) {
+    return inputs.actionWinFact(row, actionSlot, fact);
   }
 
   /**
@@ -298,37 +296,15 @@ public final class DecisionHostBatch {
     return inputs.waitTile(row, actionSlot, transitionSlot, waitSlot);
   }
 
-  /**
-   * 指定待ち牌で成立可能な役特徴量を読む。
-   *
-   * @param row 有効行インデックス
-   * @param actionSlot 合法行動候補の位置
-   * @param transitionSlot 行動内の遷移候補の位置
-   * @param waitSlot 待ち集合内の格納位置
-   * @param feature wait-yaku 特徴量インデックス
-   * @return 符号化済み役特徴量値
-   */
-  public int waitYaku(int row, int actionSlot, int transitionSlot, int waitSlot, int feature) {
-    return inputs.waitYaku(row, actionSlot, transitionSlot, waitSlot, feature);
-  }
-
-  /**
-   * 指定待ち牌の得点特徴量を読む。
-   *
-   * @param row 有効行インデックス
-   * @param actionSlot 合法行動候補の位置
-   * @param transitionSlot 行動内の遷移候補の位置
-   * @param waitSlot 待ち集合内の格納位置
-   * @param field 得点特徴量種別
-   * @return 符号化済み得点値
-   */
-  public float waitScore(
+  /** 指定待ち牌のRON・TSUMO別Point Factを読む。 */
+  public int waitWinFact(
       int row,
       int actionSlot,
       int transitionSlot,
       int waitSlot,
-      DecisionInputSchema.ActionTransitionWaitFloat field) {
-    return inputs.waitScore(row, actionSlot, transitionSlot, waitSlot, field);
+      DecisionInputSchema.WaitWinType winType,
+      DecisionInputSchema.WinFact fact) {
+    return inputs.waitWinFact(row, actionSlot, transitionSlot, waitSlot, winType, fact);
   }
 
   /**
@@ -957,7 +933,32 @@ public final class DecisionHostBatch {
       PolicyExecutionLayout policyLayout =
           includePolicyExecution ? policyExecutionLayout() : PolicyExecutionLayout.empty();
       return InferenceIndexLayout.create(
-          playerMemoryCount, transitionCount, policyLayout, includePolicyExecution);
+          playerMemoryCount,
+          transitionCount,
+          policyLayout,
+          includePolicyExecution,
+          copyWaitRowsTo(null, 0),
+          copyWinningActionsTo(null, 0));
+    }
+
+    int copyWinningActionsTo(IntBuffer destination, int rowBase) {
+      int count = 0;
+      for (int row = 0; row < size; row++) {
+        int sourceRow = fromInclusive + row;
+        for (int action = 0; action < source.inferenceActionCount(sourceRow); action++) {
+          int type = source.actionCategory(sourceRow, action, DecisionInputSchema.ActionInt.TYPE);
+          if ((type == RON_TYPE || type == DecisionFeatureCodec.actionType(Action.Type.TSUMO_AGARI))
+              && source.actionWinFact(sourceRow, action, DecisionInputSchema.WinFact.VALID) == 1
+              && source.actionWinFact(
+                      sourceRow, action, DecisionInputSchema.WinFact.REQUIRES_PAO_CORRECTION)
+                  == 0) {
+            if (destination != null)
+              destination.put((rowBase + row) * bucket().legalActionCapacity() + action);
+            count++;
+          }
+        }
+      }
+      return count;
     }
 
     DecisionInferenceInputLayout inferenceInputLayout(InferenceIndexLayout indexLayout) {
@@ -977,6 +978,8 @@ public final class DecisionHostBatch {
           0, segment(destination, layout.playerMemoryOffset(), layout.playerMemoryCount()));
       copyTransitionPresentIndicesTo(
           0, segment(destination, layout.transitionOffset(), layout.transitionCount()));
+      copyWaitRowsTo(segment(destination, layout.waitOffset(), layout.waitCount()), 0);
+      copyWinningActionsTo(segment(destination, layout.winningOffset(), layout.winningCount()), 0);
       if (layout.includesPolicyExecution()) {
         copyPolicyExecutionIndicesTo(
             segment(destination, layout.policyExecutionOffset(), layout.policyExecutionCount()),
@@ -1027,6 +1030,46 @@ public final class DecisionHostBatch {
         }
       }
       destination.position(layout.totalCount());
+    }
+
+    int copyWaitRowsTo(IntBuffer destination, int transitionBase) {
+      int present = transitionBase;
+      int count = 0;
+      for (int localRow = 0; localRow < size; localRow++) {
+        int sourceRow = fromInclusive + localRow;
+        int actions = source.inferenceActionCount(sourceRow);
+        for (int action = 0; action < actions; action++) {
+          int transitions =
+              source.inputs.isDense()
+                  ? source.actionTransitionCount(sourceRow, action)
+                  : source.inputs.transitionCapacity(sourceRow, action);
+          for (int transition = 0; transition < transitions; transition++, present++) {
+            for (int wait = 0; wait < DecisionInputSchema.MAX_WAIT_TILE_TYPES; wait++) {
+              if (source.waitWinFact(
+                          sourceRow,
+                          action,
+                          transition,
+                          wait,
+                          DecisionInputSchema.WaitWinType.RON,
+                          DecisionInputSchema.WinFact.VALID)
+                      > 0
+                  || source.waitWinFact(
+                          sourceRow,
+                          action,
+                          transition,
+                          wait,
+                          DecisionInputSchema.WaitWinType.TSUMO,
+                          DecisionInputSchema.WinFact.VALID)
+                      > 0) {
+                count++;
+                if (destination != null)
+                  destination.put(present * DecisionInputSchema.MAX_WAIT_TILE_TYPES + wait);
+              }
+            }
+          }
+        }
+      }
+      return count;
     }
 
     void copyTransitionPresentIndicesTo(int destinationRowBase, IntBuffer destination) {
@@ -1284,6 +1327,8 @@ public final class DecisionHostBatch {
     InferenceIndexLayout inferenceIndexLayout(boolean includePolicyExecution) {
       int playerMemoryCount = 0;
       int transitionCount = 0;
+      int waitCount = 0;
+      int winningCount = 0;
       int riichiActions = 0;
       int callRows = 0;
       int ronRows = 0;
@@ -1293,6 +1338,8 @@ public final class DecisionHostBatch {
       for (RowSlice slice : slices) {
         playerMemoryCount = Math.addExact(playerMemoryCount, slice.playerMemoryPresentCount());
         transitionCount = Math.addExact(transitionCount, slice.transitionPresentCount());
+        waitCount = Math.addExact(waitCount, slice.copyWaitRowsTo(null, 0));
+        winningCount = Math.addExact(winningCount, slice.copyWinningActionsTo(null, 0));
         if (includePolicyExecution) {
           PolicyExecutionLayout layout = slice.policyExecutionLayout();
           riichiActions = Math.addExact(riichiActions, layout.riichiActionCount());
@@ -1309,7 +1356,12 @@ public final class DecisionHostBatch {
                   riichiActions, callRows, ronRows, kanRows, kyushuRows, tsumoRows)
               : PolicyExecutionLayout.empty();
       return InferenceIndexLayout.create(
-          playerMemoryCount, transitionCount, policyLayout, includePolicyExecution);
+          playerMemoryCount,
+          transitionCount,
+          policyLayout,
+          includePolicyExecution,
+          waitCount,
+          winningCount);
     }
 
     /** コンパクト推論入力の集約配置を返します。 */
@@ -1394,9 +1446,15 @@ public final class DecisionHostBatch {
           RowSlice.segment(destination, layout.playerMemoryOffset(), layout.playerMemoryCount()));
       IntBuffer transitions =
           RowSlice.segment(destination, layout.transitionOffset(), layout.transitionCount());
+      IntBuffer waits = RowSlice.segment(destination, layout.waitOffset(), layout.waitCount());
+      IntBuffer wins = RowSlice.segment(destination, layout.winningOffset(), layout.winningCount());
       int globalRow = 0;
+      int transitionBase = 0;
       for (RowSlice slice : slices) {
         slice.copyTransitionPresentIndicesTo(globalRow, transitions);
+        slice.copyWaitRowsTo(waits, transitionBase);
+        slice.copyWinningActionsTo(wins, globalRow);
+        transitionBase += slice.transitionPresentCount();
         globalRow += slice.size;
       }
       if (layout.includesPolicyExecution()) {
@@ -1541,11 +1599,15 @@ public final class DecisionHostBatch {
       int policyExecutionOffset,
       int policyExecutionCount,
       PolicyExecutionLayout policyExecutionLayout,
-      boolean includesPolicyExecution) {
+      boolean includesPolicyExecution,
+      int waitCount,
+      int winningCount) {
 
     InferenceIndexLayout {
       if (playerMemoryOffset != 0
           || playerMemoryCount < 0
+          || waitCount < 0
+          || winningCount < 0
           || transitionOffset != playerMemoryCount
           || transitionCount < 0
           || policyExecutionOffset != Math.addExact(transitionOffset, transitionCount)
@@ -1562,7 +1624,9 @@ public final class DecisionHostBatch {
         int playerMemoryCount,
         int transitionCount,
         PolicyExecutionLayout policyExecutionLayout,
-        boolean includePolicyExecution) {
+        boolean includePolicyExecution,
+        int waitCount,
+        int winningCount) {
       int transitionOffset = playerMemoryCount;
       int policyExecutionOffset = Math.addExact(transitionOffset, transitionCount);
       int policyExecutionCount = includePolicyExecution ? policyExecutionLayout.totalCount() : 0;
@@ -1574,10 +1638,20 @@ public final class DecisionHostBatch {
           policyExecutionOffset,
           policyExecutionCount,
           policyExecutionLayout,
-          includePolicyExecution);
+          includePolicyExecution,
+          waitCount,
+          winningCount);
     }
 
     int totalCount() {
+      return Math.addExact(winningOffset(), winningCount);
+    }
+
+    int winningOffset() {
+      return Math.addExact(waitOffset(), waitCount);
+    }
+
+    int waitOffset() {
       return Math.addExact(policyExecutionOffset, policyExecutionCount);
     }
   }

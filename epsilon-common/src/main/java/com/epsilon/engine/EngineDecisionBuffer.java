@@ -25,8 +25,8 @@ public final class EngineDecisionBuffer {
   private static final ActionEffect.NextStep[] NEXT_STEPS = ActionEffect.NextStep.values();
   private static final Meld.AkaSource[] MELD_AKA_SOURCES = Meld.AkaSource.values();
 
-  private final DecisionHandAnalysisBuffer handAnalysis = new DecisionHandAnalysisBuffer();
-  private final DecisionHandAnalyzer analyzer = new DecisionHandAnalyzer();
+  private final HandAnalysisBuffer handAnalysisBuffer = new HandAnalysisBuffer();
+  private final HandAnalyzer handAnalyzer = new HandAnalyzer();
   private final DecisionTileIndex tileIndex = new DecisionTileIndex();
   private final EngineActionBuffer immediateDiscards = new EngineActionBuffer();
   private final ActionEffect.ProjectedHand rootProjectionHand = new ActionEffect.ProjectedHand();
@@ -103,7 +103,8 @@ public final class EngineDecisionBuffer {
       continuationByAction[actionIndex] = (byte) projectionResult.nextStep().ordinal();
       meldAkaSourceByAction[actionIndex] = (byte) projectionResult.meldAkaSource().ordinal();
       if (action.type() == Action.Type.RON_AGARI || action.type() == Action.Type.TSUMO_AGARI) {
-        immediateWinByAction[actionIndex].load(state, player, action, analyzer.scoreEvaluator());
+        immediateWinByAction[actionIndex].load(
+            state, player, action, handAnalyzer.scoreEvaluator());
       }
       firstTransitionByAction[actionIndex] = transitionCount;
       int doraCountAfterAction = tileIndex.doraCountAfter(action);
@@ -202,44 +203,40 @@ public final class EngineDecisionBuffer {
   }
 
   /** 形状のみを解析する。結果は次の解析まで有効。 */
-  public DecisionHandAnalysisBuffer analyzeCurrentHand() {
-    analyzer.analyzeShape(state.hand(playerIndex()), this, handAnalysis);
-    return handAnalysis;
+  public HandAnalysisBuffer analyzeCurrentShape() {
+    handAnalyzer.analyzeShape(state.hand(playerIndex()), this, handAnalysisBuffer);
+    return handAnalysisBuffer;
   }
 
   /** 現在待ちまでを解析し、一向聴からの探索は実行しない。 */
-  public DecisionHandAnalysisBuffer analyzeCurrentWaits(RiichiState riichi) {
-    analyzer.analyzeWaits(
-        state.hand(playerIndex()), tileIndex.currentHandDoraCount(), riichi, this, handAnalysis);
-    return handAnalysis;
-  }
-
-  /** 現在待ちと、一向聴からの到達待ちを解析する。 */
-  public DecisionHandAnalysisBuffer analyzeCurrentHand(RiichiState riichi, long ownRiver) {
-    analyzeCurrentWaits(riichi);
-    analyzer.analyzeFrontier(state.hand(playerIndex()), ownRiver, this, handAnalysis);
-    return handAnalysis;
+  public HandAnalysisBuffer analyzeCurrentWaits(RiichiState riichi) {
+    handAnalyzer.analyzeWaits(
+        state.hand(playerIndex()),
+        tileIndex.currentHandDoraCount(),
+        riichi,
+        this,
+        handAnalysisBuffer);
+    return handAnalysisBuffer;
   }
 
   /** 候補行動を適用した手牌の現在待ちまでを解析する。 */
-  public DecisionHandAnalysisBuffer analyzeTransitionWaits(
-      int action, int transition, RiichiState riichi) {
-    analyzer.analyzeWaits(
+  public HandAnalysisBuffer analyzeTransitionWaits(int action, int transition, RiichiState riichi) {
+    handAnalyzer.analyzeWaits(
         materializeAfterstate(action, transition),
         doraCountByTransition[firstTransitionByAction[action] + transition] & 0xff,
         riichi,
         this,
-        handAnalysis);
-    return handAnalysis;
+        handAnalysisBuffer);
+    return handAnalysisBuffer;
   }
 
   /** 候補行動を適用した手牌の現在待ちと到達待ちを解析する。 */
-  public DecisionHandAnalysisBuffer analyzeTransition(
+  public HandAnalysisBuffer analyzeTransition(
       int action, int transition, RiichiState riichi, long ownRiver) {
     analyzeTransitionWaits(action, transition, riichi);
-    analyzer.analyzeFrontier(
-        materializeAfterstate(action, transition), ownRiver, this, handAnalysis);
-    return handAnalysis;
+    handAnalyzer.analyzeFrontier(
+        materializeAfterstate(action, transition), ownRiver, this, handAnalysisBuffer);
+    return handAnalysisBuffer;
   }
 
   private HandView materializeAfterstate(int actionIndex, int transitionIndex) {

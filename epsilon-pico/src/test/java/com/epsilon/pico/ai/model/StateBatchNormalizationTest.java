@@ -12,6 +12,7 @@ import ai.djl.nn.norm.LayerNorm;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
 import com.epsilon.pico.ai.decision.input.DecisionInputSchema;
+import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -28,8 +29,7 @@ public class StateBatchNormalizationTest {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       var encoder = initializedEncoder(manager, width);
       var store = new ParameterStore(manager, true);
-      NDArray categories =
-          manager.ones(new Shape(rows, DecisionInputSchema.STATE_INT_COUNT), DataType.INT32);
+      NDArray categories = categoriesWithDifferentMasks(manager, rows);
       NDArray numerics = numericInput(manager, rows);
       numerics.setRequiresGradient(true);
       LayerNorm normalization = entityNormalization(encoder);
@@ -176,6 +176,36 @@ public class StateBatchNormalizationTest {
     float[] values = new float[(int) shape.size()];
     for (int i = 0; i < values.length; i++) values[i] = (i % 11 - 5) * 0.03f;
     return manager.create(values, shape);
+  }
+
+  private static NDArray categoriesWithDifferentMasks(NDManager manager, int rows) {
+    int[] values = new int[rows * DecisionInputSchema.STATE_INT_COUNT];
+    Arrays.fill(values, 1);
+    int riverOffset =
+        DecisionInputSchema.ROUND_INT_COUNT
+            + 4 * DecisionInputSchema.PLAYER_INT_STRIDE
+            + 34 * DecisionInputSchema.TILE_INT_STRIDE;
+    int meldOffset = riverOffset + 96 * DecisionInputSchema.RIVER_INT_STRIDE;
+    for (int row = 0; row < rows; row++) {
+      int base = row * DecisionInputSchema.STATE_INT_COUNT;
+      for (int token = 0; token < 96; token++) {
+        int present =
+            base
+                + riverOffset
+                + token * DecisionInputSchema.RIVER_INT_STRIDE
+                + DecisionInputSchema.RiverInt.PRESENT.ordinal();
+        values[present] = row == 0 || (row + token) % 3 == 0 ? 0 : 1;
+      }
+      for (int token = 0; token < 16; token++) {
+        int present =
+            base
+                + meldOffset
+                + token * DecisionInputSchema.MELD_INT_STRIDE
+                + DecisionInputSchema.MeldInt.PRESENT.ordinal();
+        values[present] = row == 0 || (row + token) % 2 == 0 ? 0 : 1;
+      }
+    }
+    return manager.create(values, new Shape(rows, DecisionInputSchema.STATE_INT_COUNT));
   }
 
   private static LayerNorm entityNormalization(EpsilonMahjongStateEncoder encoder) {

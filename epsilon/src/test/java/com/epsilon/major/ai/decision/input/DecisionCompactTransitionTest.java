@@ -1,5 +1,7 @@
 package com.epsilon.major.ai.decision.input;
 
+import ai.djl.ndarray.NDManager;
+import ai.djl.ndarray.types.DataType;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
@@ -181,6 +183,62 @@ public class DecisionCompactTransitionTest {
       dirty(categories, numerics);
       actual.copyInferenceInputsTo(categories, numerics, inputLayout);
       assertWritten(categories, numerics, expectedCategories, expectedNumerics);
+    }
+  }
+
+  @Test
+  public void pointFactsKeepInt16StorageAndExposeInt32Ledger() {
+    DecisionBucket bucket = new DecisionBucket(1, 1);
+    DecisionHostInputs encoded = new DecisionHostInputs(1, bucket);
+    DecisionInputWriter writer = encoded.writer(0);
+    writer.action(0, DecisionInputSchema.ActionInt.ID, 1);
+    writer.action(
+        0,
+        DecisionInputSchema.ActionInt.GROUP,
+        DecisionFeatureCodec.actionGroup(Action.Type.PASS.group()));
+    writer.action(
+        0, DecisionInputSchema.ActionInt.TYPE, DecisionFeatureCodec.actionType(Action.Type.PASS));
+    writer.transition(0, 0, DecisionInputSchema.ActionTransitionInt.PRESENT, 1);
+    writer.transition(
+        0,
+        0,
+        DecisionInputSchema.ActionTransitionInt.KIND,
+        DecisionInputSchema.ActionTransitionKind.IDENTITY.ordinal() + 1);
+    int[] ledger = {250, -12, 301, 461};
+    for (int seat = 0; seat < ledger.length; seat++) writer.pointLedger100(seat, ledger[seat]);
+    writer.actionWinFact(0, DecisionInputSchema.WinFact.VALID, 1);
+    writer.actionWinFact(0, DecisionInputSchema.WinFact.HAN_WITHOUT_URA, 6);
+    writer.actionWinFact(0, DecisionInputSchema.WinFact.FU_CODE, 4);
+    writer.actionWinFact(0, DecisionInputSchema.WinFact.YAKUMAN_MULTIPLIER, 0);
+    writer.actionWinFact(0, DecisionInputSchema.WinFact.REQUIRES_PAO_CORRECTION, 0);
+    writer.waitWinFact(
+        0,
+        0,
+        0,
+        DecisionInputSchema.WaitWinType.TSUMO,
+        DecisionInputSchema.WinFact.HAN_WITHOUT_URA,
+        3);
+    DecisionHostBatch batch =
+        DecisionHostBatch.fromEncodedRow(
+            bucket, encoded.denseCategories(), encoded.denseNumerics());
+
+    Assert.assertEquals(batch.pointLedger100(0, 1), -12);
+    Assert.assertEquals(batch.actionWinFact(0, 0, DecisionInputSchema.WinFact.HAN_WITHOUT_URA), 6);
+    Assert.assertEquals(
+        batch.waitWinFact(
+            0,
+            0,
+            0,
+            0,
+            DecisionInputSchema.WaitWinType.TSUMO,
+            DecisionInputSchema.WinFact.HAN_WITHOUT_URA),
+        3);
+    try (NDManager manager = NDManager.newBaseManager()) {
+      DecisionDeviceBatch device = DecisionBatchTransfer.transferTrainingToDevice(manager, batch);
+      Assert.assertEquals(device.inputs().pointLedger100().getDataType(), DataType.INT32);
+      Assert.assertEquals(device.inputs().pointLedger100().toIntArray(), ledger);
+      Assert.assertEquals(device.inputs().actionWinFacts().getDataType(), DataType.INT16);
+      Assert.assertEquals(device.inputs().waitWinFacts().getDataType(), DataType.INT16);
     }
   }
 

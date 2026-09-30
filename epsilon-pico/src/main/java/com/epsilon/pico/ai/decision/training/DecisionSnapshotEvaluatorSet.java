@@ -13,7 +13,7 @@ import java.util.Map;
 /**
  * 自己対局に使う保存済みモデルの評価器を、必要になった時点で生成してまとめて解放する。
  *
- * <p>現在の候補については呼び出し側が管理する評価器を共有する。過去の採用モデルはチェックポイントから個別に読み込み、保存済みモデルの ID ごとに同じ評価器を再利用する。
+ * <p>現在の候補については呼び出し側が管理する評価器を共有する。対戦相手は登録済みの変更不可チェックポイントから開き、スナップショット ID ごとに評価器を再利用する。
  */
 final class DecisionSnapshotEvaluatorSet
     implements DecisionSnapshotEvaluatorProvider, AutoCloseable {
@@ -57,9 +57,9 @@ final class DecisionSnapshotEvaluatorSet
   }
 
   /**
-   * 複数モデルによるが選んだ過去対局収集に使う採用モデルスナップショットを解決します。
+   * 選ばれた対戦相手のスナップショットを解決する。
    *
-   * <p>解決不能時に候補へ戻すと、スナップショット対戦に見える同一方策対戦になるため不整合を検出して直ちに例外を送出するします。
+   * <p>解決不能時に候補へ戻すと同一方策対戦になるため、直ちに例外を送出する。
    */
   static Path resolveSnapshotCheckpoint(
       long snapshotId, EpsilonDecisionSnapshotPool.SnapshotEntry snapshot) {
@@ -68,7 +68,7 @@ final class DecisionSnapshotEvaluatorSet
           "Decision snapshot pool selected a missing snapshot: snapshotId=" + snapshotId);
     }
     try {
-      return EpsilonDecisionSnapshotPool.requireArenaChampionCheckpoint(snapshot);
+      return EpsilonDecisionSnapshotPool.requireSnapshotCheckpoint(snapshot);
     } catch (IOException | RuntimeException e) {
       throw new IllegalStateException(
           "Decision snapshot checkpoint is not usable: snapshotId="

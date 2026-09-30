@@ -9,6 +9,7 @@ import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
+import com.epsilon.config.settings.DecisionBranchComparisonSettings;
 import com.epsilon.config.settings.DecisionComputePrecision;
 import com.epsilon.config.settings.DecisionTensorTransfer;
 import com.epsilon.config.settings.DecisionTrainSettings;
@@ -44,8 +45,9 @@ import org.slf4j.LoggerFactory;
 /**
  * 自己対局で選択した行動を使い、Decision の方策と価値関数を更新する。
  *
- * <p>方策の更新では探索による選択の寄与を {@code alpha + (1-alpha) * piRollout/muBehavior} で残し、{@code
- * piCurrent/piRollout} だけに PPO のクリッピングを適用する。収集時の方策との KL ダイバージェンスは損失には加えず、更新前の診断と棄却判定に使う。
+ * <p>方策の更新では探索補正係数を {@code min(1, alpha + (1-alpha) * piRollout/muBehavior)} とし、
+ * 正規化した重なり方策の更新比に PPO のクリッピングを適用する。収集時の探索前方策との KL ダイバージェンスは損失には加えず、
+ * 更新前の診断と棄却判定に使う。
  *
  * <p>方策の出力用ネットワーク、候補のスコア計算、二択の判定をまとめて更新する。価値関数とは AdamW の状態と更新回数を分離する。
  */
@@ -236,9 +238,11 @@ public final class EpsilonDecisionTrainer implements AutoCloseable {
     ensureOpen();
     DecisionOnlineLossConfig config =
         DecisionOnlineLossConfig.create(
-            policyPlan.policyUpdateClipRange(),
-            policyPlan.explorationCreditMix(),
-            policyPlan.entropyCoefficient());
+                policyPlan.policyUpdateClipRange(),
+                policyPlan.explorationCreditMix(),
+                policyPlan.entropyCoefficient())
+            .withBranchComparison(
+                this.config.bind(DecisionBranchComparisonSettings.class).enabled());
     return trainAccumulatedActorAndValueStreaming(
         fragmentPaths,
         reader,

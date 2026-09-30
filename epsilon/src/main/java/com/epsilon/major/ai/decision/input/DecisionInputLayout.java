@@ -1,6 +1,7 @@
 package com.epsilon.major.ai.decision.input;
 
 import ai.djl.ndarray.types.Shape;
+import com.epsilon.core.GameState;
 import com.epsilon.core.Tile;
 import java.util.List;
 
@@ -33,24 +34,24 @@ public final class DecisionInputLayout {
     ACTION_CATEGORIES(Slab.CATEGORICAL),
     /** 方策グラフが条件付き候補を直接抽出するための経路選択メタデータ。 */
     ACTION_ROUTES(Slab.CATEGORICAL),
+    /** 絶対席順の現在点を100点単位で保持する台帳。論理viewではINT32へ拡張する。 */
+    POINT_LEDGER_100(Slab.CATEGORICAL),
+    /** 即時和了候補ごとの固定点数計算前の事実。 */
+    ACTION_WIN_FACTS(Slab.CATEGORICAL),
     /** 行動候補適用後の各遷移に属するカテゴリ値特徴量。 */
     TRANSITION_CATEGORIES(Slab.CATEGORICAL),
     /** 各遷移の34牌種別行動適用後の状態特徴量。 */
     TRANSITION_TILES(Slab.CATEGORICAL),
     /** 各遷移の待ち格納位置に対応する牌種ID。 */
     WAIT_TILE_IDS(Slab.CATEGORICAL),
-    /** 各待ち牌で成立可能なRON・TSUMO別の役ビットまとまり。 */
-    WAIT_YAKUS(Slab.CATEGORICAL),
+    /** 各待ち牌で成立可能なRON・TSUMO別の固定点数計算前の事実。 */
+    WAIT_WIN_FACTS(Slab.CATEGORICAL),
     /** 局・各家・牌種・河・面子の数値状態。 */
     STATE_NUMERICS(Slab.NUMERIC),
     /** 価値専用のGRP 4x4 周辺分布と配牌前局境界特徴量。 */
     BOUNDARY_CONTEXT(Slab.NUMERIC),
-    /** 合法行動候補ごとの数値特徴量。 */
-    ACTION_NUMERICS(Slab.NUMERIC),
     /** 各遷移のシャンテン・受入れ・面子状態。 */
-    TRANSITION_NUMERICS(Slab.NUMERIC),
-    /** 各待ち牌のRON・TSUMO別公開得点特徴量。 */
-    WAIT_SCORES(Slab.NUMERIC);
+    TRANSITION_NUMERICS(Slab.NUMERIC);
 
     private final Slab slab;
 
@@ -82,9 +83,10 @@ public final class DecisionInputLayout {
         case STATE_CATEGORIES -> DecisionInputSchema.STATE_INT_COUNT;
         case ACTION_CATEGORIES -> actions * DecisionInputSchema.ACTION_INT_STRIDE;
         case ACTION_ROUTES -> actions * DecisionInputSchema.ACTION_ROUTE_STRIDE;
+        case POINT_LEDGER_100 -> GameState.NUM_PLAYERS;
+        case ACTION_WIN_FACTS -> actions * DecisionInputSchema.ACTION_WIN_FACT_STRIDE;
         case STATE_NUMERICS -> DecisionInputSchema.STATE_FLOAT_COUNT;
         case BOUNDARY_CONTEXT -> DecisionBoundaryContext.INPUT_SIZE;
-        case ACTION_NUMERICS -> actions * DecisionInputSchema.ACTION_FLOAT_STRIDE;
         default -> throw new AssertionError(this);
       };
     }
@@ -95,9 +97,8 @@ public final class DecisionInputLayout {
         case TRANSITION_CATEGORIES,
             TRANSITION_TILES,
             WAIT_TILE_IDS,
-            WAIT_YAKUS,
-            TRANSITION_NUMERICS,
-            WAIT_SCORES ->
+            WAIT_WIN_FACTS,
+            TRANSITION_NUMERICS ->
             true;
         default -> false;
       };
@@ -109,13 +110,10 @@ public final class DecisionInputLayout {
         case TRANSITION_CATEGORIES -> DecisionInputSchema.ACTION_TRANSITION_INT_STRIDE;
         case TRANSITION_TILES -> DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT;
         case WAIT_TILE_IDS -> DecisionInputSchema.MAX_WAIT_TILE_TYPES;
-        case WAIT_YAKUS ->
+        case WAIT_WIN_FACTS ->
             DecisionInputSchema.MAX_WAIT_TILE_TYPES
-                * DecisionInputSchema.ACTION_TRANSITION_WAIT_YAKU_STRIDE;
+                * DecisionInputSchema.ACTION_TRANSITION_WAIT_WIN_FACT_STRIDE;
         case TRANSITION_NUMERICS -> DecisionInputSchema.ACTION_TRANSITION_FLOAT_STRIDE;
-        case WAIT_SCORES ->
-            DecisionInputSchema.MAX_WAIT_TILE_TYPES
-                * DecisionInputSchema.ACTION_TRANSITION_WAIT_FLOAT_STRIDE;
         default -> throw new IllegalArgumentException("not a transition tensor: " + this);
       };
     }
@@ -133,32 +131,28 @@ public final class DecisionInputLayout {
         case STATE_CATEGORIES -> new Shape(rows, DecisionInputSchema.STATE_INT_COUNT);
         case ACTION_CATEGORIES -> new Shape(rows, actions, DecisionInputSchema.ACTION_INT_STRIDE);
         case ACTION_ROUTES -> new Shape(rows, actions, DecisionInputSchema.ACTION_ROUTE_STRIDE);
+        case POINT_LEDGER_100 -> new Shape(rows, GameState.NUM_PLAYERS);
+        case ACTION_WIN_FACTS ->
+            new Shape(rows, actions, DecisionInputSchema.ACTION_WIN_FACT_STRIDE);
         case TRANSITION_CATEGORIES ->
             new Shape(rows, actions, transitions, DecisionInputSchema.ACTION_TRANSITION_INT_STRIDE);
         case TRANSITION_TILES ->
             new Shape(rows, actions, transitions, DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT);
         case WAIT_TILE_IDS ->
             new Shape(rows, actions, transitions, DecisionInputSchema.MAX_WAIT_TILE_TYPES);
-        case WAIT_YAKUS ->
+        case WAIT_WIN_FACTS ->
             new Shape(
                 rows,
                 actions,
                 transitions,
                 DecisionInputSchema.MAX_WAIT_TILE_TYPES,
-                DecisionInputSchema.ACTION_TRANSITION_WAIT_YAKU_STRIDE);
+                DecisionInputSchema.WaitWinType.values().length,
+                DecisionInputSchema.ACTION_WIN_FACT_STRIDE);
         case STATE_NUMERICS -> new Shape(rows, DecisionInputSchema.STATE_FLOAT_COUNT);
         case BOUNDARY_CONTEXT -> new Shape(rows, DecisionBoundaryContext.INPUT_SIZE);
-        case ACTION_NUMERICS -> new Shape(rows, actions, DecisionInputSchema.ACTION_FLOAT_STRIDE);
         case TRANSITION_NUMERICS ->
             new Shape(
                 rows, actions, transitions, DecisionInputSchema.ACTION_TRANSITION_FLOAT_STRIDE);
-        case WAIT_SCORES ->
-            new Shape(
-                rows,
-                actions,
-                transitions,
-                DecisionInputSchema.MAX_WAIT_TILE_TYPES,
-                DecisionInputSchema.ACTION_TRANSITION_WAIT_FLOAT_STRIDE);
       };
     }
   }

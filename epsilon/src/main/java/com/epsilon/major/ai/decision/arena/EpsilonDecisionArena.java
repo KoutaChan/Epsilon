@@ -1,9 +1,12 @@
 package com.epsilon.major.ai.decision.arena;
 
+import com.epsilon.ai.decision.DecisionBranchBudget;
+import com.epsilon.ai.decision.DecisionBranchComparison;
 import com.epsilon.ai.decision.EpsilonDecisionSeeds;
 import com.epsilon.ai.grp.EpsilonGrpInference;
 import com.epsilon.ai.grp.EpsilonGrpInferenceBatcher;
 import com.epsilon.ai.grp.EpsilonGrpRankPredictor;
+import com.epsilon.config.settings.DecisionBranchComparisonSettings;
 import com.epsilon.config.settings.DecisionTrainArenaSettings;
 import com.epsilon.config.settings.InferenceBatchingSettings;
 import com.epsilon.config.settings.SettingsLoader;
@@ -18,6 +21,7 @@ import com.epsilon.engine.EngineSelectionBuffer;
 import com.epsilon.engine.GameEngine;
 import com.epsilon.engine.GameStepResult;
 import com.epsilon.engine.RoundSettlement;
+import com.epsilon.engine.RoundTransition;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionCompletedGame;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionTrajectoryPayloadStore;
 import com.epsilon.major.ai.decision.input.DecisionBatchBuilder;
@@ -31,6 +35,7 @@ import com.epsilon.runtime.ArenaAdvanceExecutor;
 import com.epsilon.runtime.DecisionInferenceIngress;
 import com.epsilon.runtime.InferenceAdmission;
 import com.epsilon.runtime.InferenceAdmission.AdmittedBatch;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -127,7 +132,7 @@ public final class EpsilonDecisionArena {
     }
   }
 
-  private static Metrics collectPopulationGamesWithRankPredictor(
+  static Metrics collectPopulationGamesWithRankPredictor(
       int games,
       long seedBase,
       int gamesInFlight,
@@ -178,6 +183,11 @@ public final class EpsilonDecisionArena {
     long maxBatchWaitMicros = config.bind(InferenceBatchingSettings.class).maxBatchWaitMicros();
     boolean streamingSchedulerEnabled =
         asyncInferencePipelineEnabled && arenaSettings.streamingSchedulerEnabled();
+    var branchSettings = config.bind(DecisionBranchComparisonSettings.class);
+    if (branchSettings.enabled() && (!streamingSchedulerEnabled || grpInference == null)) {
+      throw new IllegalArgumentException(
+          "Branch comparison requires the streaming arena and a frozen GRP predictor");
+    }
     if (asyncInferencePipelineEnabled) {
       log.info(
           "Decision arena async inference pipeline enabled: configuredCohorts={}"
@@ -368,9 +378,14 @@ public final class EpsilonDecisionArena {
     private int activeGames;
     private int inFlightAdvanceTasks;
     private boolean ingressWakeScheduled;
+    private final DecisionBranchBudget branchBudget;
+    private final ArrayDeque<GameContext> pendingBranches;
 
     private StreamingScheduler(ArenaRun run, CohortPlan plan, DecisionTrainArenaSettings settings) {
       this.run = run;
+      var branchSettings = run.config().bind(DecisionBranchComparisonSettings.class);
+      branchBudget = branchSettings.enabled() ? new DecisionBranchBudget(branchSettings) : null;
+      pendingBranches = branchBudget == null ? null : new ArrayDeque<>();
       this.plan = plan;
       this.advanceWorkers = settings.advanceWorkers();
       this.advanceTasksPerWorker = settings.advanceTasksPerWorker();
@@ -395,6 +410,8 @@ public final class EpsilonDecisionArena {
             submitReadyAdvances();
           }
           dispatchAvailableEncodings();
+          enqueuePendingBranches();
+          dispatchAvailableEncodings();
           scheduleIngressWakeIfBlocked();
           if (!hasInFlightWork() && !inferenceAdmission.hasQueuedRows()) {
             throw new IllegalStateException(
@@ -402,7 +419,13 @@ public final class EpsilonDecisionArena {
           }
 
           SchedulerEvent event = inferenceAdmission.awaitEvent(events);
-          if (event != null) handleReadyEvents(event);
+          if (event != null) {
+            handleReadyEvents(event);
+          }
+        }
+        if (branchBudget != null) {
+          drainPending(null);
+          log.info("Decision branch comparison complete: {}", branchBudget.summary());
         }
         return metrics.snapshot(inferenceAdmission.metrics());
       } catch (Throwable failure) {
@@ -464,13 +487,25 @@ public final class EpsilonDecisionArena {
       long enqueuedNanos = System.nanoTime();
       for (GameContext context : contexts) {
         GameEvaluation evaluation = collectEvaluation(context);
-        for (DecisionRequest request : evaluation.requests) {
-          if (!request.requiresEvaluation()) {
-            if (evaluation.predictionAttached()) {
-              readyEvaluations.add(evaluation);
+        if (branchBudget != null) {
+          int rows = 0;
+          for (DecisionRequest request : evaluation.requests)
+            if (request.requiresEvaluation()) {
+              rows++;
             }
-            continue;
+          branchBudget.recordMainRows(rows);
+        }
+        enqueueEvaluation(evaluation, enqueuedNanos);
+      }
+    }
+
+    private void enqueueEvaluation(GameEvaluation evaluation, long enqueuedNanos) {
+      for (DecisionRequest request : evaluation.requests) {
+        if (!request.requiresEvaluation()) {
+          if (evaluation.predictionAttached()) {
+            readyEvaluations.add(evaluation);
           }
+        } else {
           inferenceAdmission.add(
               request.inferenceEvaluator,
               REQUEST_ENCODER.selectBucket(request),
@@ -637,8 +672,8 @@ public final class EpsilonDecisionArena {
       }
     }
 
-    private static List<GameAdvanceResult> advanceBatch(
-        GameEvaluation[] evaluations, int from, int to) throws Exception {
+    private List<GameAdvanceResult> advanceBatch(GameEvaluation[] evaluations, int from, int to)
+        throws Exception {
       // 同じゲームの選択順を保ち、方策標本化と対局中の行動履歴書込みも対局進行ワーカーへ渡す。
 
       for (int index = from; index < to; index++) {
@@ -650,6 +685,9 @@ public final class EpsilonDecisionArena {
       for (int index = from; index < to; index++) {
         requireCohortRunning();
         GameContext context = evaluations[index].context;
+        if (branchBudget != null && context.branch == null) {
+          context.createdBranch = forkComparison(context);
+        }
         GameStepResult nextStep = commitAndAdvance(context, context.selections);
         results.add(new GameAdvanceResult(context, nextStep));
       }
@@ -666,6 +704,14 @@ public final class EpsilonDecisionArena {
         requireCohortRunning();
         GameContext context = result.context();
         context.step = result.step();
+        if (context.branch != null) {
+          finishOrQueueBranch(context);
+          continue;
+        }
+        if (context.createdBranch != null) {
+          finishOrQueueBranch(context.createdBranch);
+          context.createdBranch = null;
+        }
         if (context.step instanceof GameStepResult.HanchanEnded ended) {
           finishGame(context, ended, run.completedGameSink(), run.completedGameLock(), metrics);
           activeGames--;
@@ -675,6 +721,96 @@ public final class EpsilonDecisionArena {
       }
       refill(completed.results().size(), nextBoundaries);
       enqueue(nextBoundaries);
+    }
+
+    private GameContext forkComparison(GameContext main) {
+      EpsilonDecisionPlayer.BranchCandidate candidate = main.actorPlayer.takeBranchCandidate();
+      if (candidate == null || !branchBudget.admit(main.branchCount)) {
+        return null;
+      }
+      main.branchCount++;
+      var comparison = main.actorPlayer.admitBranch(candidate, branchBudget);
+      GameEngine engine = main.engine.forkAtDecisionBoundary();
+      long seed = EpsilonDecisionSeeds.branch(main.seed, candidate.decisionId());
+      EpsilonDecisionPlayer[] players = new EpsilonDecisionPlayer[GameState.NUM_PLAYERS];
+      for (int seat = 0; seat < players.length; seat++) {
+        players[seat] =
+            main.players[seat].branchPlayer(EpsilonDecisionSeeds.player(seed, seat), run.config());
+      }
+      GameContext extra =
+          new GameContext(
+              main.gameIndex,
+              main.gameId,
+              seed,
+              engine,
+              null,
+              players,
+              players[candidate.playerSeat()]);
+      extra.branch = new BranchRun(main, candidate, comparison);
+      for (EngineDecisionSelection selection : main.selections) {
+        extra.selections.add(
+            selection.decisionId(),
+            selection.decisionId() == candidate.decisionId()
+                ? candidate.alternative()
+                : selection.action());
+      }
+      extra.step = engine.commitDecisionsWithOutcomes(extra.selections).step();
+      return extra;
+    }
+
+    private void finishOrQueueBranch(GameContext extra) {
+      BranchRun branch = extra.branch;
+      if (branch.comparison().cancelled()) {
+        branchBudget.release();
+        return;
+      }
+      RoundSettlement settlement =
+          switch (extra.step) {
+            case GameStepResult.RoundSettled settled -> settled.settlement();
+            case GameStepResult.HanchanEnded ended -> ended.settlement();
+            default -> null;
+          };
+      if (settlement != null) {
+        if (settlement.transition() instanceof RoundTransition.NextRound
+            && !branchBudget.takeRows(1)) {
+          branch.comparison().cancel();
+          branchBudget.release();
+          return;
+        }
+        branch
+            .comparison()
+            .completeExtra(
+                branch.owner().actorPlayer.branchUtility(settlement, branch.candidate()));
+        branchBudget.release();
+      } else {
+        pendingBranches.addLast(extra);
+      }
+    }
+
+    /** 通常対局の投入後、予算内の追加枝も同じキューへ渡す。混雑時も枝の進行とキャンセル済み枠の回収を止めない。 */
+    private void enqueuePendingBranches() {
+      if (pendingBranches == null) {
+        return;
+      }
+      while (!pendingBranches.isEmpty()) {
+        GameContext extra = pendingBranches.removeFirst();
+        if (extra.branch.comparison().cancelled()) {
+          branchBudget.release();
+          continue;
+        }
+        GameEvaluation evaluation = collectEvaluation(extra);
+        int rows = 0;
+        for (DecisionRequest request : evaluation.requests)
+          if (request.requiresEvaluation()) {
+            rows++;
+          }
+        if (!branchBudget.takeRows(rows)) {
+          extra.branch.comparison().cancel();
+          branchBudget.release();
+          continue;
+        }
+        enqueueEvaluation(evaluation, System.nanoTime());
+      }
     }
 
     private void drainPending(Throwable primaryFailure) {
@@ -699,6 +835,9 @@ public final class EpsilonDecisionArena {
             ingressWakeScheduled = false;
           }
         } catch (RuntimeException | Error cleanupFailure) {
+          if (primaryFailure == null) {
+            throw cleanupFailure;
+          }
           primaryFailure.addSuppressed(cleanupFailure);
         }
       }
@@ -905,7 +1044,9 @@ public final class EpsilonDecisionArena {
       GameContext context, List<EngineDecisionSelection> selections) {
     EngineCommitResult committed = context.engine.commitDecisionsWithOutcomes(selections);
     notifyDecisionOutcomes(context.players, committed.decisionOutcomes());
-    return advanceToBoundary(context.engine, committed.step(), context.players);
+    return context.branch == null
+        ? advanceToBoundary(context.engine, committed.step(), context.players)
+        : committed.step();
   }
 
   private static void notifyDecisionOutcomes(
@@ -942,7 +1083,7 @@ public final class EpsilonDecisionArena {
     for (EngineDecisionPoint decision : decisions) {
       EpsilonDecisionPlayer player = context.players[decision.player()];
       CompletableFuture<DecisionBoundaryContext> boundaryContext =
-          player.collectsTrajectory()
+          player == context.actorPlayer
               ? actorBoundaryContext
               : CompletableFuture.completedFuture(DecisionBoundaryContext.uniform());
       evaluation.requests.add(
@@ -1231,6 +1372,11 @@ public final class EpsilonDecisionArena {
     }
   }
 
+  private record BranchRun(
+      GameContext owner,
+      EpsilonDecisionPlayer.BranchCandidate candidate,
+      DecisionBranchComparison comparison) {}
+
   private static final class GameContext {
     private final int gameIndex;
     private final long gameId;
@@ -1240,6 +1386,9 @@ public final class EpsilonDecisionArena {
     private final EpsilonDecisionPlayer actorPlayer;
     private final EngineSelectionBuffer selections = new EngineSelectionBuffer();
     private GameStepResult step;
+    private BranchRun branch;
+    private GameContext createdBranch;
+    private int branchCount;
 
     private GameContext(
         int gameIndex,

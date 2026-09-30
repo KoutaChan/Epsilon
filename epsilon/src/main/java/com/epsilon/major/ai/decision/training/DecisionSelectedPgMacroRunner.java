@@ -1,5 +1,6 @@
 package com.epsilon.major.ai.decision.training;
 
+import ai.djl.pytorch.jni.JniUtils;
 import com.epsilon.config.settings.DecisionTrainStreamingSettings;
 import com.epsilon.major.ai.decision.arena.DecisionAdaptiveExploration;
 import com.epsilon.major.ai.decision.arena.EpsilonDecisionArena;
@@ -114,6 +115,8 @@ final class DecisionSelectedPgMacroRunner {
   private AutoCloseable drainPhaseOnClose(String phase) {
     return () -> {
       executionContext.awaitIdle();
+      // 前の段階で解放したバッファの未使用キャッシュを次の段階へ持ち越さない。
+      JniUtils.emptyCudaCache();
       DecisionGpuMemoryDiagnostics.logSnapshot(
           phase,
           executionContext,

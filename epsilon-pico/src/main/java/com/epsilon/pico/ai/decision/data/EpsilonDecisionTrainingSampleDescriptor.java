@@ -1,5 +1,6 @@
 package com.epsilon.pico.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.pico.ai.decision.input.DecisionBucket;
 import java.io.IOException;
@@ -123,6 +124,10 @@ public final class EpsilonDecisionTrainingSampleDescriptor {
 
   public int grpFinalRanksCode() {
     return sample.grpFinalRanksCode();
+  }
+
+  public DecisionBranchTarget branchTarget() {
+    return sample.branchTarget();
   }
 
   public DecisionLearningRole learningRole() {

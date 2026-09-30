@@ -9,19 +9,29 @@ import com.epsilon.engine.GameEngine;
 import com.epsilon.engine.GameStepResult;
 import com.epsilon.major.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.major.ai.decision.input.DecisionBoundaryContext;
+import com.epsilon.major.ai.decision.policy.DecisionPolicyIndexedAffineExecution;
 import com.epsilon.major.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.major.ai.network.NetworkFactory;
 import com.epsilon.major.config.settings.DecisionInferenceSettings;
 import com.epsilon.major.config.settings.EpsilonSettings;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class GpuPolicyParityTest {
+  @Test
+  public void pointFeatureGatesAreNotOwnedByIndexedAffine() {
+    Assert.assertEquals(
+        Arrays.stream(DecisionPolicyIndexedAffineExecution.Site.values()).map(Enum::name).toList(),
+        List.of("RIICHI", "CALL", "KAN", "KYUSHU"));
+  }
+
   @DataProvider
   public Object[][] precisions() {
     return new Object[][] {{"FLOAT32", 0.0002f}, {"BFLOAT16", 0.02f}};
@@ -64,7 +74,8 @@ public class GpuPolicyParityTest {
           builder.addInferenceRow(engine, point, DecisionBoundaryContext.uniform());
           var host = builder.build();
           var expected = reference.evaluateBatch(host).getFirst();
-          var observed = actual.evaluateBatch(host).getFirst();
+          // 事前学習後の検証と同じ経路でも、4種類のIndexed Affineだけで完了できる。
+          var observed = actual.evaluateDiagnosticBatch(host).predictions().getFirst();
           float[] want = expected.policyProbabilities(), got = observed.policyProbabilities();
           Assert.assertEquals(got.length, want.length);
           double sum = 0;

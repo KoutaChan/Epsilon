@@ -259,17 +259,25 @@ public final class DecisionAdaptiveExploration {
      * @param tieFraction 行動の無作為抽出とは独立な[0, 1)の決定論的乱数
      */
     Observation decide(List<Action> legalActions, float[] rolloutPolicy, double tieFraction) {
+      return decide(legalActions, rolloutPolicy, tieFraction, true);
+    }
+
+    Observation decide(
+        List<Action> legalActions, float[] rolloutPolicy, double tieFraction, boolean record) {
       requireOpen();
       if (!Double.isFinite(tieFraction) || tieFraction < 0.0 || tieFraction >= 1.0) {
         throw new IllegalArgumentException("tieFraction must be finite and in [0, 1)");
       }
       Kind kind = classify(legalActions);
-      LocalAccumulator accumulator = localAccumulator.get();
       if (kind == Kind.FORCED) {
         return Observation.forced();
       }
       Measurement measurement = measure(rolloutPolicy, settings);
-      accumulator.histogram.observe(kind, isResponse(legalActions), measurement.uncertainty());
+      if (record)
+        localAccumulator
+            .get()
+            .histogram
+            .observe(kind, isResponse(legalActions), measurement.uncertainty());
       Lookup lookup =
           calibration.lookup(
               kind, isResponse(legalActions), measurement.uncertainty(), tieFraction);

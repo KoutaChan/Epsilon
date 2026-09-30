@@ -146,7 +146,7 @@ public final class EpsilonBeliefCheckpointManager {
       throw new IOException(
           "Unsupported Belief series or hidden: " + bundle.series + "/" + bundle.hidden);
     if (bundle.inputFingerprint != null
-        && !DecisionInputSchema.fingerprint().equals(bundle.inputFingerprint))
+        && !DecisionInputSchema.stateFingerprint().equals(bundle.inputFingerprint))
       throw new IOException("Unsupported Belief input: " + bundle.inputFingerprint);
     return bundle;
   }
@@ -156,7 +156,7 @@ public final class EpsilonBeliefCheckpointManager {
     model.save(dir, MODEL_PREFIX);
     var manifest = new EpsilonBeliefCheckpointBundle(globalStep, iteration);
     manifest.series = "epsilon";
-    manifest.inputFingerprint = DecisionInputSchema.fingerprint();
+    manifest.inputFingerprint = DecisionInputSchema.stateFingerprint();
     manifest.hidden = ((EpsilonBeliefNetwork) model.getBlock()).hiddenSize();
     Files.writeString(dir.resolve("manifest.json"), GSON.toJson(manifest));
     Files.writeString(

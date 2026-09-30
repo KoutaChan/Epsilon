@@ -20,14 +20,14 @@ public final class DecisionInputWriter {
   private final int stateNumericBase;
   private final int boundaryContextBase;
   private final int actionCategoryBase;
-  private final int actionNumericBase;
   private final int actionRouteBase;
+  private final int pointLedgerBase;
+  private final int actionWinFactBase;
   private final int transitionCategoryBase;
   private final int transitionNumericBase;
   private final int transitionTileBase;
   private final int waitTileBase;
-  private final int waitYakuBase;
-  private final int waitScoreBase;
+  private final int waitWinFactBase;
   private final int transitionsPerAction;
 
   DecisionInputWriter(DecisionHostInputs inputs, int row) {
@@ -42,8 +42,9 @@ public final class DecisionInputWriter {
     stateNumericBase = rowBase(layout, DecisionInputLayout.Tensor.STATE_NUMERICS, row);
     boundaryContextBase = rowBase(layout, DecisionInputLayout.Tensor.BOUNDARY_CONTEXT, row);
     actionCategoryBase = rowBase(layout, DecisionInputLayout.Tensor.ACTION_CATEGORIES, row);
-    actionNumericBase = rowBase(layout, DecisionInputLayout.Tensor.ACTION_NUMERICS, row);
     actionRouteBase = rowBase(layout, DecisionInputLayout.Tensor.ACTION_ROUTES, row);
+    pointLedgerBase = rowBase(layout, DecisionInputLayout.Tensor.POINT_LEDGER_100, row);
+    actionWinFactBase = rowBase(layout, DecisionInputLayout.Tensor.ACTION_WIN_FACTS, row);
     transitionCategoryBase =
         inputs.transitionRegionBase(row, DecisionInputLayout.Tensor.TRANSITION_CATEGORIES);
     transitionNumericBase =
@@ -51,8 +52,7 @@ public final class DecisionInputWriter {
     transitionTileBase =
         inputs.transitionRegionBase(row, DecisionInputLayout.Tensor.TRANSITION_TILES);
     waitTileBase = inputs.transitionRegionBase(row, DecisionInputLayout.Tensor.WAIT_TILE_IDS);
-    waitYakuBase = inputs.transitionRegionBase(row, DecisionInputLayout.Tensor.WAIT_YAKUS);
-    waitScoreBase = inputs.transitionRegionBase(row, DecisionInputLayout.Tensor.WAIT_SCORES);
+    waitWinFactBase = inputs.transitionRegionBase(row, DecisionInputLayout.Tensor.WAIT_WIN_FACTS);
     transitionsPerAction = inputs.bucket().actionTransitionCapacity();
   }
 
@@ -262,19 +262,37 @@ public final class DecisionInputWriter {
         (short) value;
   }
 
-  /**
-   * 行動候補の数値フィールドを書き込む。
-   *
-   * @param actionSlot 容量区分内の行動候補の位置
-   * @param field 書き込むフィールド
-   * @param value 有限な数値
-   */
-  public void action(int actionSlot, DecisionInputSchema.ActionFloat field, float value) {
-    numericSlab[
-            actionNumericBase
-                + actionSlot * DecisionInputSchema.ACTION_FLOAT_STRIDE
-                + field.ordinal()] =
-        value;
+  /** 絶対席順の現在点を100点単位で書き込む。 */
+  public void pointLedger100(int absoluteSeat, int score100) {
+    categoricalSlab[pointLedgerBase + absoluteSeat] = (short) score100;
+  }
+
+  /** 即時和了候補のPoint Factを書き込む。 */
+  public void actionWinFact(int actionSlot, DecisionInputSchema.WinFact fact, int value) {
+    categoricalSlab[
+            actionWinFactBase
+                + actionSlot * DecisionInputSchema.ACTION_WIN_FACT_STRIDE
+                + fact.ordinal()] =
+        (short) value;
+  }
+
+  /** 即時和了候補の5つのPoint Factを一括書き込みする。 */
+  void actionWinFacts(
+      int actionSlot,
+      int valid,
+      int hanWithoutUra,
+      int fuCode,
+      int yakumanMultiplier,
+      int requiresPaoCorrection) {
+    int base = actionWinFactBase + actionSlot * DecisionInputSchema.ACTION_WIN_FACT_STRIDE;
+    categoricalSlab[base + DecisionInputSchema.WinFact.VALID.ordinal()] = (short) valid;
+    categoricalSlab[base + DecisionInputSchema.WinFact.HAN_WITHOUT_URA.ordinal()] =
+        (short) hanWithoutUra;
+    categoricalSlab[base + DecisionInputSchema.WinFact.FU_CODE.ordinal()] = (short) fuCode;
+    categoricalSlab[base + DecisionInputSchema.WinFact.YAKUMAN_MULTIPLIER.ordinal()] =
+        (short) yakumanMultiplier;
+    categoricalSlab[base + DecisionInputSchema.WinFact.REQUIRES_PAO_CORRECTION.ordinal()] =
+        (short) requiresPaoCorrection;
   }
 
   /**
@@ -385,50 +403,50 @@ public final class DecisionInputWriter {
         (short) storedTileType;
   }
 
-  /**
-   * 待ち牌のRON・TSUMO別役マスクまとまりを書き込む。
-   *
-   * @param actionSlot 親行動候補の位置
-   * @param transitionSlot 行動内の遷移候補の位置
-   * @param waitSlot 待ち集合内の格納位置
-   * @param feature RON・TSUMOを通したまとまりインデックス
-   * @param storedCategory パディングを分離した連結済みカテゴリ ID
-   */
-  public void waitYaku(
-      int actionSlot, int transitionSlot, int waitSlot, int feature, int storedCategory) {
-    transitionCategories[
-            waitYakuBase
-                + (flatTransition(actionSlot, transitionSlot)
-                            * DecisionInputSchema.MAX_WAIT_TILE_TYPES
-                        + waitSlot)
-                    * DecisionInputSchema.ACTION_TRANSITION_WAIT_YAKU_STRIDE
-                + feature] =
-        (short) storedCategory;
-  }
-
-  /**
-   * 待ち牌の公開得点特徴量を書き込む。
-   *
-   * @param actionSlot 親行動候補の位置
-   * @param transitionSlot 行動内の遷移候補の位置
-   * @param waitSlot 待ち集合内の格納位置
-   * @param field RON・TSUMO別の得点フィールド
-   * @param value 有限な正規化値
-   */
-  public void waitScore(
+  /** 待ち牌のRON・TSUMO別Point Factを書き込む。 */
+  public void waitWinFact(
       int actionSlot,
       int transitionSlot,
       int waitSlot,
-      DecisionInputSchema.ActionTransitionWaitFloat field,
-      float value) {
-    transitionNumerics[
-            waitScoreBase
+      DecisionInputSchema.WaitWinType winType,
+      DecisionInputSchema.WinFact fact,
+      int value) {
+    transitionCategories[
+            waitWinFactBase
                 + (flatTransition(actionSlot, transitionSlot)
                             * DecisionInputSchema.MAX_WAIT_TILE_TYPES
                         + waitSlot)
-                    * DecisionInputSchema.ACTION_TRANSITION_WAIT_FLOAT_STRIDE
-                + field.ordinal()] =
-        value;
+                    * DecisionInputSchema.ACTION_TRANSITION_WAIT_WIN_FACT_STRIDE
+                + winType.ordinal() * DecisionInputSchema.ACTION_WIN_FACT_STRIDE
+                + fact.ordinal()] =
+        (short) value;
+  }
+
+  /** 待ち牌のRON・TSUMO別に5つのPoint Factを一括書き込みする。 */
+  void waitWinFacts(
+      int actionSlot,
+      int transitionSlot,
+      int waitSlot,
+      DecisionInputSchema.WaitWinType winType,
+      int valid,
+      int hanWithoutUra,
+      int fuCode,
+      int yakumanMultiplier,
+      int requiresPaoCorrection) {
+    int base =
+        waitWinFactBase
+            + (flatTransition(actionSlot, transitionSlot) * DecisionInputSchema.MAX_WAIT_TILE_TYPES
+                    + waitSlot)
+                * DecisionInputSchema.ACTION_TRANSITION_WAIT_WIN_FACT_STRIDE
+            + winType.ordinal() * DecisionInputSchema.ACTION_WIN_FACT_STRIDE;
+    transitionCategories[base + DecisionInputSchema.WinFact.VALID.ordinal()] = (short) valid;
+    transitionCategories[base + DecisionInputSchema.WinFact.HAN_WITHOUT_URA.ordinal()] =
+        (short) hanWithoutUra;
+    transitionCategories[base + DecisionInputSchema.WinFact.FU_CODE.ordinal()] = (short) fuCode;
+    transitionCategories[base + DecisionInputSchema.WinFact.YAKUMAN_MULTIPLIER.ordinal()] =
+        (short) yakumanMultiplier;
+    transitionCategories[base + DecisionInputSchema.WinFact.REQUIRES_PAO_CORRECTION.ordinal()] =
+        (short) requiresPaoCorrection;
   }
 
   private int flatTransition(int actionSlot, int transitionSlot) {

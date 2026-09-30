@@ -200,56 +200,11 @@ public final class DecisionFeatureCodec {
     return (requireTransitionTile(storedCode) & AKA_WINNING_TILE_AVAILABLE_MASK) != 0;
   }
 
-  /**
-   * 役ビット集合の指定まとまりを、パディング 0と衝突しないカテゴリへ変換する。
-   *
-   * @param yakuBits 成立可能役を表すビット集合
-   * @param chunk 取り出すまとまりインデックス
-   * @return まとまり値へ1を加えたカテゴリ
-   */
-  public static int waitYakuChunk(long yakuBits, int chunk) {
-    long mask = (1L << DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK) - 1L;
-    return (int) ((yakuBits >>> (chunk * DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK)) & mask) + 1;
-  }
-
-  /**
-   * 保存済みカテゴリから指定まとまりの役ビットを元の位置へ復元する。
-   *
-   * @param storedCode 0をパディングに予約したまとまりカテゴリ
-   * @param chunk 復元先まとまりインデックス
-   * @return 元のビット位置へ定数加算した役ビット集合
-   */
-  public static long decodeWaitYakuChunk(int storedCode, int chunk) {
-    if (storedCode <= DecisionInputSchema.PAD_ID
-        || storedCode >= DecisionInputSchema.ACTION_TRANSITION_WAIT_YAKU_DICTIONARY_SIZE) {
-      throw new IllegalArgumentException("wait yaku code out of range: " + storedCode);
-    }
-    requireWaitYakuChunk(chunk);
-    return (long) (storedCode - 1) << (chunk * DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK);
-  }
-
-  /**
-   * RON/TSUMOとまとまり番号を待ち役テンソル末尾次元へ写す。
-   *
-   * @param winType RONまたはTSUMO
-   * @param chunk 役ビットまとまりインデックス
-   * @return 待ち役テンソルの特徴量インデックス
-   */
-  public static int waitYakuFeature(DecisionInputSchema.WaitWinType winType, int chunk) {
-    return winType.ordinal() * DecisionInputSchema.WAIT_YAKU_CHUNKS_PER_WIN_TYPE + chunk;
-  }
-
   private static int requireTransitionTile(int storedCode) {
     if (storedCode <= DecisionInputSchema.PAD_ID
         || storedCode >= DecisionInputSchema.ACTION_TRANSITION_TILE_DICTIONARY_SIZE) {
       throw new IllegalArgumentException("transition tile code out of range: " + storedCode);
     }
     return storedCode - 1;
-  }
-
-  private static void requireWaitYakuChunk(int chunk) {
-    if (chunk < 0 || chunk >= DecisionInputSchema.WAIT_YAKU_CHUNKS_PER_WIN_TYPE) {
-      throw new IllegalArgumentException("wait yaku chunk out of range: " + chunk);
-    }
   }
 }

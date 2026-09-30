@@ -116,11 +116,17 @@ public final class EpsilonFeatureFusion extends AbstractBlock {
       inputs.add(components[component]);
     }
     Parameter bias = projections[0].getDirectParameters().get("bias");
-    return Linear.linear(
-            NDArrays.concat(inputs, components[0].getShape().dimension() - 1),
-            prefixWeight(parameterStore, components[0], training),
-            parameterStore.getValue(bias, components[0].getDevice(), training))
-        .singletonOrThrow();
+    // Autograd retains its saved tensors independently of these temporary handles.
+    try (NDArray weight = prefixWeight(parameterStore, components[0], training);
+        NDArray packed =
+            training
+                ? NDArrays.concat(inputs, components[0].getShape().dimension() - 1)
+                : NDArrays.concatToType(
+                    inputs, components[0].getShape().dimension() - 1, weight.getDataType())) {
+      return Linear.linear(
+              packed, weight, parameterStore.getValue(bias, components[0].getDevice(), training))
+          .singletonOrThrow();
+    }
   }
 
   private NDArray prefixWeight(ParameterStore parameterStore, NDArray reference, boolean training) {

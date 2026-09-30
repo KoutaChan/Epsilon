@@ -11,7 +11,11 @@ import ai.djl.nn.core.Linear;
 import ai.djl.nn.norm.LayerNorm;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
+import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.ai.model.EpsilonResidualLayerNorm;
+import com.epsilon.core.GameState;
+import com.epsilon.core.Tile;
+import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 
 /**
  * 共有された麻雀局面の特徴表現を、方策または価値に使う一つの局面表現へ集約する。
@@ -19,14 +23,16 @@ import com.epsilon.ai.model.EpsilonResidualLayerNorm;
  * <p>方策と価値は牌・河・副露の高価な局所文脈化を共有する一方、このブロックのパラメーターは共有しない。したがって、方策は
  * 行動選択に必要な構成要素を、価値は着順予測に必要な構成要素を、それぞれ別のクエリと射影で集約できる。
  *
- * <p>トークンと出力は{@code hiddenSize}次元を保ち、注意機構通信だけを最大64次元へ制限する。残差接続の恒等写像は圧縮されないため、
+ * <p>トークンと出力は{@code hiddenSize}次元を保ち、注意機構通信だけを用途別の上限へ制限する。残差接続の恒等写像は圧縮されないため、
  * 低ランクなのは周囲から受け取る更新量だけである。
  */
 public final class EpsilonMahjongStateReadout extends AbstractBlock {
 
   private static final int ATTENTION_HEADS = EpsilonMahjongStateEncoder.ATTENTION_HEADS;
-  private static final int MAXIMUM_ATTENTION_WIDTH = 64;
+  private static final int DEFAULT_MAXIMUM_ATTENTION_WIDTH = 64;
   private static final int DEFAULT_MAXIMUM_FEED_FORWARD_WIDTH = 128;
+  private static final int[] PLAYER_MEMORY_ENTITY_SLOTS = playerMemoryEntitySlots();
+  private static final int[] ROUND_AND_TILE_ENTITY_SLOTS = roundAndTileEntitySlots();
 
   private final int hiddenSize;
   private final int attentionWidth;
@@ -41,6 +47,8 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
   private final Linear feedForwardExpansion;
   private final Linear feedForwardProjection;
   private final LayerNorm outputLayerNorm;
+  private NDArray playerEntitySlots;
+  private NDArray roundTileEntitySlots;
 
   /**
    * 指定した構成要素隠れ層幅の目的固有特徴量の集約を構築する。
@@ -48,25 +56,31 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
    * @param hiddenSize 構成要素トークンと出力状態の幅
    */
   public EpsilonMahjongStateReadout(int hiddenSize) {
-    this(hiddenSize, DEFAULT_MAXIMUM_FEED_FORWARD_WIDTH);
+    this(hiddenSize, DEFAULT_MAXIMUM_ATTENTION_WIDTH, DEFAULT_MAXIMUM_FEED_FORWARD_WIDTH);
   }
 
   /**
-   * 指定した上限までFFNを拡張する目的固有特徴量の集約を構築する。
+   * 指定した上限まで注意機構通信とFFNを拡張する目的固有特徴量の集約を構築する。
    *
    * @param hiddenSize 構成要素トークンと出力状態の幅
+   * @param maximumAttentionWidth 注意機構通信幅の上限
    * @param maximumFeedForwardWidth 特徴量の集約 FFN幅の上限
    */
-  EpsilonMahjongStateReadout(int hiddenSize, int maximumFeedForwardWidth) {
+  EpsilonMahjongStateReadout(
+      int hiddenSize, int maximumAttentionWidth, int maximumFeedForwardWidth) {
     if (hiddenSize <= 0 || hiddenSize % ATTENTION_HEADS != 0) {
       throw new IllegalArgumentException(
           "hiddenSize must be positive and divisible by " + ATTENTION_HEADS);
+    }
+    if (maximumAttentionWidth <= 0 || maximumAttentionWidth % ATTENTION_HEADS != 0) {
+      throw new IllegalArgumentException(
+          "maximumAttentionWidth must be positive and divisible by " + ATTENTION_HEADS);
     }
     if (maximumFeedForwardWidth <= 0) {
       throw new IllegalArgumentException("maximumFeedForwardWidth must be positive");
     }
     this.hiddenSize = hiddenSize;
-    attentionWidth = Math.min(hiddenSize, MAXIMUM_ATTENTION_WIDTH);
+    attentionWidth = Math.min(hiddenSize, maximumAttentionWidth);
     attentionHeadSize = attentionWidth / ATTENTION_HEADS;
     feedForwardWidth = Math.min(hiddenSize * 2, maximumFeedForwardWidth);
     querySeedProjection =
@@ -134,6 +148,9 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
           memory.entityMask(),
           readoutContext.meanEmbedding(),
           readoutContext.attentionMask());
+      if (readoutContext.projectionIndices() != null) {
+        scope.tempAttachAll(readoutContext.projectionInput(), readoutContext.projectionIndices());
+      }
       NDArray stateEmbedding =
           readInternal(parameterStore, memory, readoutContext, false, runtimeParameters);
       outputManager.attachAll(stateEmbedding);
@@ -156,7 +173,77 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
             .reshape(rowCount, 1, 1, EpsilonMahjongStateEncoder.ENTITY_TOKEN_COUNT)
             .log()
             .stopGradient();
-    return new ReadoutContext(meanEmbedding, attentionMask);
+    return new ReadoutContext(meanEmbedding, attentionMask, entityEmbeddings, null);
+  }
+
+  /** 転送済みの有効行インデックスから射影入力を共有し、デバイス上の nonzero 同期を増やさない。 */
+  ReadoutContext summarize(
+      EpsilonMahjongStateEncoder.EncodedMemory memory, NDArray playerMemoryPresentIndices) {
+    ReadoutContext summary = summarize(memory);
+    if (playerMemoryPresentIndices == null) {
+      return summary;
+    }
+    NDArray entityEmbeddings = memory.entityEmbeddings();
+    NDArray entityIndices =
+        entityIndices(
+            entityEmbeddings.getManager(),
+            playerMemoryPresentIndices,
+            entityEmbeddings.getShape().get(0));
+    NDArray presentEntities =
+        EpsilonMaskedRows.gather(
+            entityEmbeddings.reshape(-1, entityEmbeddings.getShape().get(2)), entityIndices);
+    return new ReadoutContext(
+        summary.meanEmbedding(), summary.attentionMask(), presentEntities, entityIndices);
+  }
+
+  private NDArray entityIndices(NDManager manager, NDArray playerMemoryPresentIndices, long rows) {
+    int entityCount = EpsilonMahjongStateEncoder.ENTITY_TOKEN_COUNT;
+    int playerMemoryCount = PLAYER_MEMORY_ENTITY_SLOTS.length;
+    NDArray playerSlots = playerMemoryPresentIndices.mod(playerMemoryCount);
+    NDArray batchOffsets =
+        playerMemoryPresentIndices
+            .floorDivide(playerMemoryCount)
+            .mul(entityCount)
+            .toType(DataType.INT32, false);
+    NDArray mappedSlots = EpsilonMaskedRows.gather(playerEntitySlots, playerSlots);
+    // 固定表はモデル管理元が持つが、抽出結果はこの小バッチで解放する。
+    mappedSlots.attach(manager);
+    NDArray mappedPlayers = mappedSlots.reshape(-1).add(batchOffsets);
+    NDArray alwaysPresent =
+        manager
+            .arange(Math.toIntExact(rows))
+            .mul(entityCount)
+            .reshape(rows, 1)
+            .add(roundTileEntitySlots)
+            .reshape(-1);
+    return mappedPlayers.concat(alwaysPresent).stopGradient();
+  }
+
+  private static int[] playerMemoryEntitySlots() {
+    int rivers = DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER;
+    int melds = DecisionInputSchema.MAX_MELDS_PER_PLAYER;
+    int tokens = 1 + rivers + melds;
+    int publicStart = 1 + GameState.NUM_PLAYERS + Tile.NUM_TILE_TYPES;
+    int[] slots = new int[GameState.NUM_PLAYERS * tokens];
+    for (int player = 0; player < GameState.NUM_PLAYERS; player++) {
+      slots[player * tokens] = 1 + player;
+      for (int river = 0; river < rivers; river++) {
+        slots[player * tokens + 1 + river] = publicStart + player * rivers + river;
+      }
+      for (int meld = 0; meld < melds; meld++) {
+        slots[player * tokens + 1 + rivers + meld] =
+            publicStart + GameState.NUM_PLAYERS * rivers + player * melds + meld;
+      }
+    }
+    return slots;
+  }
+
+  private static int[] roundAndTileEntitySlots() {
+    int[] slots = new int[1 + Tile.NUM_TILE_TYPES];
+    for (int tile = 0; tile < Tile.NUM_TILE_TYPES; tile++) {
+      slots[1 + tile] = 1 + GameState.NUM_PLAYERS + tile;
+    }
+    return slots;
   }
 
   private NDArray readInternal(
@@ -179,10 +266,24 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
             .reshape(rowCount, ATTENTION_HEADS, 1, attentionHeadSize);
     NDArray keyValues =
         applyLinear(
-            keyValueProjection, parameterStore, entityEmbeddings, training, runtimeParameters);
+            keyValueProjection,
+            parameterStore,
+            readoutContext.projectionInput(),
+            training,
+            runtimeParameters);
+    if (readoutContext.projectionIndices() != null) {
+      keyValues =
+          EpsilonMaskedRows.scatter(
+                  keyValues,
+                  readoutContext.projectionIndices(),
+                  rowCount * EpsilonMahjongStateEncoder.ENTITY_TOKEN_COUNT)
+              .reshape(
+                  rowCount, EpsilonMahjongStateEncoder.ENTITY_TOKEN_COUNT, 2L * attentionWidth);
+    }
+    NDList keyValueParts = keyValues.split(2, 2);
     NDArray keys =
-        keyValues
-            .get("...,0:{}", attentionWidth)
+        keyValueParts
+            .get(0)
             .reshape(
                 rowCount,
                 EpsilonMahjongStateEncoder.ENTITY_TOKEN_COUNT,
@@ -190,8 +291,8 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
                 attentionHeadSize)
             .swapAxes(1, 2);
     NDArray values =
-        keyValues
-            .get("...,{}:{}", attentionWidth, attentionWidth * 2)
+        keyValueParts
+            .get(1)
             .reshape(
                 rowCount,
                 EpsilonMahjongStateEncoder.ENTITY_TOKEN_COUNT,
@@ -238,15 +339,26 @@ public final class EpsilonMahjongStateReadout extends AbstractBlock {
   }
 
   /** 2つの特徴量の集約が共有できるパラメーターを持たない構成要素要約。 */
-  record ReadoutContext(NDArray meanEmbedding, NDArray attentionMask) {
+  record ReadoutContext(
+      NDArray meanEmbedding,
+      NDArray attentionMask,
+      NDArray projectionInput,
+      NDArray projectionIndices) {
 
     ReadoutContext stopGradient() {
-      return new ReadoutContext(meanEmbedding.stopGradient(), attentionMask);
+      return new ReadoutContext(
+          meanEmbedding.stopGradient(),
+          attentionMask,
+          projectionInput.stopGradient(),
+          projectionIndices);
     }
   }
 
   @Override
   protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
+    playerEntitySlots =
+        manager.create(PLAYER_MEMORY_ENTITY_SLOTS).reshape(PLAYER_MEMORY_ENTITY_SLOTS.length, 1);
+    roundTileEntitySlots = manager.create(ROUND_AND_TILE_ENTITY_SLOTS).reshape(1, -1);
     querySeedProjection.initialize(manager, dataType, new Shape(-1, hiddenSize * 2L));
     queryLayerNorm.initialize(manager, dataType, new Shape(-1, hiddenSize));
     queryProjection.initialize(manager, dataType, new Shape(-1, hiddenSize));

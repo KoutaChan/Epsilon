@@ -1,6 +1,9 @@
 package com.epsilon.engine;
 
 import com.epsilon.calculate.scoring.HandScoreEvaluator;
+import com.epsilon.calculate.scoring.RiichiState;
+import com.epsilon.calculate.scoring.ScoreMath;
+import com.epsilon.calculate.scoring.YakuBits;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.HandView;
@@ -114,6 +117,9 @@ public class DecisionProjectionTest {
             Assert.assertEquals(actual.visibleHan(), win.visibleScore().visibleHan());
             Assert.assertEquals(actual.fu(), win.visibleScore().fu());
             Assert.assertEquals(actual.basePoints(), win.visibleScore().basePoints());
+            Assert.assertEquals(actual.yakumanMultiplier(), win.visibleScore().yakumanMultiplier());
+            Assert.assertEquals(buffer.immediateWin(index).paoApplies(), win.paoApplies());
+            Assert.assertFalse(buffer.immediateWin(index).paoApplies());
             for (int seat = 0; seat < 4; seat++) {
               Assert.assertEquals(
                   buffer.immediateWin(index).paymentFloor(seat), win.paymentFloor(seat));
@@ -125,6 +131,41 @@ public class DecisionProjectionTest {
       }
     }
     Assert.assertEquals(types, EnumSet.allOf(Action.Type.class));
+  }
+
+  @Test
+  public void waitWinFactsRetainRawScoreInputs() {
+    GameState state = MahjongFixtures.state();
+    state.setCurrentPlayer(1);
+    MahjongFixtures.hand(state, 1, "123m123p123s1112z");
+    EngineDecisionBuffer buffer = new EngineDecisionBuffer();
+    buffer.bind(state, 1, List.of(Action.pass()), state.publicState());
+
+    HandAnalysisBuffer hand = buffer.analyzeCurrentWaits(RiichiState.NONE);
+    int waitIndex = -1;
+    for (int index = 0; index < hand.waitCount(); index++) {
+      if (hand.waitTileType(index) == Tile.NAN) {
+        waitIndex = index;
+        break;
+      }
+    }
+    Assert.assertTrue(waitIndex >= 0);
+    int ronYakumanMultiplier = YakuBits.yakumanCount(hand.ronYakuBits(waitIndex));
+    int tsumoYakumanMultiplier = YakuBits.yakumanCount(hand.tsumoYakuBits(waitIndex));
+    Assert.assertNotEquals(hand.ronYakuBits(waitIndex), 0L);
+    Assert.assertNotEquals(hand.tsumoYakuBits(waitIndex), 0L);
+    Assert.assertEquals(
+        hand.ronBasePoints(waitIndex),
+        ScoreMath.basePoints(
+            hand.ronHanWithoutUra(waitIndex), hand.ronFu(waitIndex), ronYakumanMultiplier));
+    Assert.assertEquals(
+        hand.tsumoBasePoints(waitIndex),
+        ScoreMath.basePoints(
+            hand.tsumoHanWithoutUra(waitIndex), hand.tsumoFu(waitIndex), tsumoYakumanMultiplier));
+    Assert.assertEquals(ronYakumanMultiplier, 0);
+    Assert.assertEquals(tsumoYakumanMultiplier, 0);
+    Assert.assertFalse(hand.ronPaoApplies(waitIndex));
+    Assert.assertFalse(hand.tsumoPaoApplies(waitIndex));
   }
 
   private static Scenario scenario(String name, boolean aka) {

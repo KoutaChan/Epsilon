@@ -7,7 +7,6 @@ import com.epsilon.core.Meld;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.ActionEffect;
-import com.epsilon.engine.WinSettlementProjection;
 import java.util.Arrays;
 import java.util.function.ToIntFunction;
 
@@ -150,6 +149,15 @@ public final class DecisionCategoryLayout {
    * @return スキーマ順序と各値域を安定表現した文字列
    */
   public static String descriptor() {
+    return stateDescriptor()
+        + ";action="
+        + Arrays.toString(ACTION_CARDINALITIES)
+        + ";transition="
+        + Arrays.toString(TRANSITION_CARDINALITIES);
+  }
+
+  /** 方策固有カテゴリを除いた状態入力だけの値域記述を返す。 */
+  public static String stateDescriptor() {
     return "round="
         + Arrays.toString(ROUND_CARDINALITIES)
         + ";player="
@@ -159,11 +167,7 @@ public final class DecisionCategoryLayout {
         + ";river="
         + Arrays.toString(RIVER_CARDINALITIES)
         + ";meld="
-        + Arrays.toString(MELD_CARDINALITIES)
-        + ";action="
-        + Arrays.toString(ACTION_CARDINALITIES)
-        + ";transition="
-        + Arrays.toString(TRANSITION_CARDINALITIES);
+        + Arrays.toString(MELD_CARDINALITIES);
   }
 
   private static int cardinality(DecisionInputSchema.RoundInt field) {
@@ -274,9 +278,6 @@ public final class DecisionCategoryLayout {
       case RESULTING_RIICHI_STATUS -> RiichiState.values().length + 1;
       case WIN_CONTEXT -> DecisionInputSchema.WinConditions.values().length + 1;
       case URA_ELIGIBLE, STARTS_IPPATSU, BREAKS_IPPATSU, TERMINAL -> 2;
-      case SETTLEMENT_ASSUMPTION ->
-          WinSettlementProjection.SettlementAssumption.values().length + 1;
-      case SOLE_WIN_PROJECTED_RANK -> GameState.NUM_PLAYERS + 1;
       case FOLLOW_UP_KIND -> ActionEffect.NextStep.values().length + 1;
     };
   }

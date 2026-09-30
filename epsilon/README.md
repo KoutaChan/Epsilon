@@ -8,7 +8,7 @@
 
 [![Java 21](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![DJL / PyTorch](https://img.shields.io/badge/DJL-PyTorch-EE4C2C?logo=pytorch&logoColor=white)](https://djl.ai/)
-[![Parameters: 9.99M](https://img.shields.io/badge/Parameters-9.99M-7c3aed)](../README.md#epsilon-シリーズ)
+[![Parameters: 10.70M](https://img.shields.io/badge/Parameters-10.70M-7c3aed)](../README.md#epsilon-シリーズ)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](../LICENSE)
 
 [はじめに](#はじめに) · [設定](#設定と保存先) · [学習](#牌譜から学習する) · [評価](#学習したモデルを評価する) · [オンライン対局](#自己対戦とオンライン対局)
@@ -18,7 +18,7 @@
 > [!IMPORTANT]
 > 学習済みモデルと牌譜は同梱していません。
 
-既定のDecisionモデルは **9,989,780パラメーター（約9.99M）** です。Policy・Valueを含み、別モデルのGRP・Beliefは含みません。
+既定のDecisionモデルは **10,699,636パラメーター（約10.70M）** です。Policy・Valueを含み、別モデルのGRP・Beliefは含みません。
 
 ## はじめに
 

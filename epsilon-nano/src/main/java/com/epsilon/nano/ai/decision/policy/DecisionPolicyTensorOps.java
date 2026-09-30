@@ -26,7 +26,7 @@ final class DecisionPolicyTensorOps {
     Math.multiplyExact(rowCount, rowsPerBatch);
     long presentCount = presentIndices.getShape().size();
     return presentIndices
-        .div(rowsPerBatch)
+        .floorDivide(rowsPerBatch)
         .toType(DataType.INT32, false)
         .reshape(1, presentCount)
         .stopGradient();
@@ -111,7 +111,8 @@ final class DecisionPolicyTensorOps {
       NDArray compactWeights =
           EpsilonMaskedRows.gather(transitionWeights.reshape(denseCount, 1), presentIndices);
       NDArray weightedRows = compactRows.mul(compactWeights);
-      NDArray actionIndices = presentIndices.div(transitionCapacity).toType(DataType.INT64, false);
+      NDArray actionIndices =
+          presentIndices.floorDivide(transitionCapacity).toType(DataType.INT64, false);
       long actionCount = Math.multiplyExact(rowCount, actionCapacity);
       NDArray zeros =
           compactRows

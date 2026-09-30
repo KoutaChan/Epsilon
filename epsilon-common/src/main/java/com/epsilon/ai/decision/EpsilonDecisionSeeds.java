@@ -14,8 +14,14 @@ public final class EpsilonDecisionSeeds {
   private static final long PROMOTION_ATTEMPT_SALT = 0x4D4F4E4F544F4E45L;
   private static final long PLAYER_SALT = 0x89E182857D9ED689L;
   private static final long ADAPTIVE_PERCENTILE_SALT = 0xA24BAED4963EE407L;
+  private static final long BRANCH_SALT = 0xC13FA9A902A6328FL;
 
   private EpsilonDecisionSeeds() {}
+
+  /** 元対局の行動抽選を消費しない比較専用乱数列。 */
+  public static long branch(long gameSeed, long decisionId) {
+    return SeedMixer.indexed(gameSeed, BRANCH_SALT, decisionId);
+  }
 
   /** 自己対戦の対局インデックスに対応するシードを返す。 */
   public static long trainGame(long seedBase, long gameIndex) {

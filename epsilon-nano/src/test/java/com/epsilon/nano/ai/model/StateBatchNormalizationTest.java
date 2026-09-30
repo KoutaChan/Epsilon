@@ -12,6 +12,7 @@ import ai.djl.nn.norm.LayerNorm;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
 import com.epsilon.nano.ai.decision.input.DecisionInputSchema;
+import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -29,8 +30,7 @@ public class StateBatchNormalizationTest {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       var encoder = initializedEncoder(manager, width);
       var store = new ParameterStore(manager, true);
-      NDArray categories =
-          manager.ones(new Shape(rows, DecisionInputSchema.STATE_INT_COUNT), DataType.INT32);
+      NDArray categories = categoriesWithDifferentMasks(manager, rows);
       NDArray numerics = numericInput(manager, rows);
       numerics.setRequiresGradient(true);
       LayerNorm normalization = entityNormalization(encoder);
@@ -40,6 +40,10 @@ public class StateBatchNormalizationTest {
       NDArray roundWeights = weights(manager, new Shape(rows, width));
       NDArray entityWeights =
           weights(manager, new Shape(rows, EpsilonMahjongStateEncoder.ENTITY_TOKEN_COUNT, width));
+      NDArray playerWeights =
+          weights(
+              manager,
+              new Shape(rows, 4, EpsilonMahjongStateEncoder.PLAYER_MEMORY_TOKEN_COUNT, width));
       EpsilonMahjongStateEncoder.EncodedMemory batched;
       try (var collector = manager.getEngine().newGradientCollector()) {
         batched = encoder.encodeMemory(store, categories, numerics, true, new PairList<>());
@@ -49,7 +53,8 @@ public class StateBatchNormalizationTest {
                 .mul(tileWeights)
                 .sum()
                 .add(batched.roundEmbedding().mul(roundWeights).sum())
-                .add(batched.entityEmbeddings().mul(entityWeights).sum()));
+                .add(batched.entityEmbeddings().mul(entityWeights).sum())
+                .add(batched.playerMemory().mul(playerWeights).sum()));
       }
       float[] inputGradient = numerics.getGradient().toFloatArray();
       float[] gammaGradient = gamma.getGradient().toFloatArray();
@@ -65,6 +70,7 @@ public class StateBatchNormalizationTest {
       NDList tiles = new NDList();
       NDList projections = new NDList();
       NDList entities = new NDList();
+      NDList playerMemories = new NDList();
       try (var collector = manager.getEngine().newGradientCollector()) {
         NDArray loss = manager.zeros(new Shape());
         for (int row = 0; row < rows; row++) {
@@ -78,6 +84,7 @@ public class StateBatchNormalizationTest {
           rounds.add(single.roundEmbedding());
           tiles.add(single.tileEmbeddings());
           projections.add(single.tileProjectionEmbeddings());
+          playerMemories.add(single.playerMemory());
           NDArray expectedEntities = referenceEntities(single, width);
           entities.add(expectedEntities);
           Assert.assertEquals(
@@ -86,7 +93,12 @@ public class StateBatchNormalizationTest {
               loss.add(
                       single.tileEmbeddings().mul(tileWeights.get("{}:{},:,:", row, row + 1)).sum())
                   .add(single.roundEmbedding().mul(roundWeights.get("{}:{},:", row, row + 1)).sum())
-                  .add(expectedEntities.mul(entityWeights.get("{}:{},:,:", row, row + 1)).sum());
+                  .add(expectedEntities.mul(entityWeights.get("{}:{},:,:", row, row + 1)).sum())
+                  .add(
+                      single
+                          .playerMemory()
+                          .mul(playerWeights.get("{}:{},:,:,:", row, row + 1))
+                          .sum());
         }
         collector.backward(loss);
       }
@@ -107,6 +119,10 @@ public class StateBatchNormalizationTest {
           NDArrays.concat(entities, 0).toFloatArray(),
           0.0002f);
       Assert.assertEquals(inputGradient, numerics.getGradient().toFloatArray(), 0.001f);
+      Assert.assertEquals(
+          batched.playerMemory().toFloatArray(),
+          NDArrays.concat(playerMemories, 0).toFloatArray(),
+          0.0002f);
       Assert.assertEquals(gammaGradient, gamma.getGradient().toFloatArray(), 0.001f);
       Assert.assertEquals(betaGradient, beta.getGradient().toFloatArray(), 0.001f);
     }
@@ -171,6 +187,36 @@ public class StateBatchNormalizationTest {
     float[] values = new float[rows * DecisionInputSchema.STATE_FLOAT_COUNT];
     for (int i = 0; i < values.length; i++) values[i] = (i % 19 - 9) * 0.01f;
     return manager.create(values, new Shape(rows, DecisionInputSchema.STATE_FLOAT_COUNT));
+  }
+
+  private static NDArray categoriesWithDifferentMasks(NDManager manager, int rows) {
+    int[] values = new int[rows * DecisionInputSchema.STATE_INT_COUNT];
+    Arrays.fill(values, 1);
+    int riverOffset =
+        DecisionInputSchema.ROUND_INT_COUNT
+            + 4 * DecisionInputSchema.PLAYER_INT_STRIDE
+            + 34 * DecisionInputSchema.TILE_INT_STRIDE;
+    int meldOffset = riverOffset + 96 * DecisionInputSchema.RIVER_INT_STRIDE;
+    for (int row = 0; row < rows; row++) {
+      int base = row * DecisionInputSchema.STATE_INT_COUNT;
+      for (int token = 0; token < 96; token++) {
+        int present =
+            base
+                + riverOffset
+                + token * DecisionInputSchema.RIVER_INT_STRIDE
+                + DecisionInputSchema.RiverInt.PRESENT.ordinal();
+        values[present] = row == 0 || (row + token) % 3 == 0 ? 0 : 1;
+      }
+      for (int token = 0; token < 16; token++) {
+        int present =
+            base
+                + meldOffset
+                + token * DecisionInputSchema.MELD_INT_STRIDE
+                + DecisionInputSchema.MeldInt.PRESENT.ordinal();
+        values[present] = row == 0 || (row + token) % 2 == 0 ? 0 : 1;
+      }
+    }
+    return manager.create(values, new Shape(rows, DecisionInputSchema.STATE_INT_COUNT));
   }
 
   private static NDArray weights(NDManager manager, Shape shape) {

@@ -11,11 +11,13 @@ public interface DecisionPolicyInputs {
 
   NDArray actionRoutes();
 
+  NDArray pointLedger100();
+
+  NDArray actionWinFacts();
+
   NDArray stateNumerics();
 
   NDArray boundaryContext();
-
-  NDArray actionNumerics();
 
   DecisionBucket bucket();
 

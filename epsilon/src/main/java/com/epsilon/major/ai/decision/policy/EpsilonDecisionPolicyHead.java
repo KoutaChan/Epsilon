@@ -4,6 +4,7 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDArrays;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
+import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.AbstractBlock;
@@ -13,13 +14,16 @@ import ai.djl.nn.transformer.IdEmbedding;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.initializer.ConstantInitializer;
 import ai.djl.util.PairList;
+import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.ai.model.EpsilonLinear;
 import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.config.settings.DecisionInferenceFusionMode;
 import com.epsilon.config.settings.DecisionInferenceFusionSettings;
+import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Tile;
 import com.epsilon.major.ai.decision.input.DecisionCategoryLayout;
+import com.epsilon.major.ai.decision.input.DecisionFeatureCodec;
 import com.epsilon.major.ai.decision.input.DecisionInferenceDeviceBatch;
 import com.epsilon.major.ai.decision.input.DecisionInferenceInputs;
 import com.epsilon.major.ai.decision.input.DecisionInputSchema;
@@ -48,8 +52,7 @@ import com.epsilon.major.ai.model.EpsilonMahjongStateEncoder;
  * 各重みは勾配を遮断し、上位損失から子ロジットへの直接勾配だけを遮断する。独立した種類-クエリ注意機構は持たない。
  *
  * <p>各遷移の34牌関係は、小さい関係-キーベクトルとして文脈を反映した牌トークンへのマルチヘッド
- * 注意機構へ入る。形待ちとRON/TSUMO別の役あり待ち、待ちごとの公開役・点数は対応する牌種の表現へ加える。役マスクは転送時だけ
- * まとめた整数とし、ネットワーク内では役ビットごとの加算埋め込みへ戻すため、異なる役集合に現れる同じ役が同じパラメーターを学習する。
+ * 注意機構へ入る。形待ちとRON/TSUMO別の公開和了事実は固定Projectionで点棒・順位・半荘遷移へ変換し、対応する牌種の表現へ加える。
  *
  * <p>34牌種はクエリとして各プレイヤー固有のプレイヤートークン・河・副露メモリを一度だけ読む。捨て牌遷移は全プレイヤー文脈を牌種で
  * 指定位置の抽出し、応答行動はイベントの牌種と打牌元のプレイヤーで直接抽出する。KANは主デバイス牌の全プレイヤー文脈を使う。これにより
@@ -58,19 +61,18 @@ import com.epsilon.major.ai.model.EpsilonMahjongStateEncoder;
 public final class EpsilonDecisionPolicyHead extends AbstractBlock {
 
   private static final int CATEGORY_EMBEDDING = 8;
-  private static final int WAIT_YAKU_EMBEDDING = 16;
   private static final int TRANSITION_TILE_ATTENTION_HEADS = 4;
   private static final int TRANSITION_TILE_KEY_SIZE = 8;
   private static final int TRANSITION_TILE_KEY_WIDTH =
       TRANSITION_TILE_ATTENTION_HEADS * TRANSITION_TILE_KEY_SIZE;
-  private static final int WAIT_YAKU_CODE_COUNT = 1 << DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK;
   private static final long[] ALTERNATIVE_IDS = alternativeIds();
 
   private final int hiddenSize;
   private final int contextWidth;
   private final IdEmbedding actionFeatureEmbedding;
   private final IdEmbedding transitionTileRelationEmbedding;
-  private final Linear transitionWaitYakuProjection;
+  private final EpsilonPointProjection pointProjection;
+  private final EpsilonPointOutcomeEncoder pointOutcomeEncoder;
   private final IdEmbedding alternativeOffset;
   private final Linear actionFeatureProjection;
   private final Linear transitionFeatureProjection;
@@ -97,8 +99,6 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
   private final EpsilonBinaryBranchGate riichiGate;
   private NDArray actionCategoryOffsets;
   private NDArray transitionCategoryOffsets;
-  private NDArray waitYakuBitDivisors;
-  private NDArray inferenceWaitYakuLookup;
   private NDArray alternativeIds;
 
   /**
@@ -106,7 +106,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
    *
    * @param hiddenSize 状態、行動、遷移埋め込みの共通幅
    */
-  public EpsilonDecisionPolicyHead(int hiddenSize) {
+  public EpsilonDecisionPolicyHead(int hiddenSize, EpsilonUtilityProfile utilityProfile) {
     if (hiddenSize % TRANSITION_TILE_ATTENTION_HEADS != 0) {
       throw new IllegalArgumentException(
           "hiddenSize must be divisible by transition tile attention heads");
@@ -127,10 +127,9 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
                 .setDictionarySize(DecisionInputSchema.ACTION_TRANSITION_TILE_DICTIONARY_SIZE)
                 .setEmbeddingSize(TRANSITION_TILE_KEY_WIDTH + contextWidth)
                 .build());
-    transitionWaitYakuProjection =
-        addChildBlock(
-            "transitionWaitYakuProjection",
-            Linear.builder().setUnits(WAIT_YAKU_EMBEDDING).optBias(false).build());
+    pointProjection = addChildBlock("pointProjection", new EpsilonPointProjection(utilityProfile));
+    pointOutcomeEncoder =
+        addChildBlock("pointOutcomeEncoder", new EpsilonPointOutcomeEncoder(contextWidth));
     alternativeOffset =
         addChildBlock(
             "alternativeOffset",
@@ -191,9 +190,15 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     alternativeHidden = addChildBlock("alternativeHidden", hiddenLinear());
     alternativeScoreHead =
         addChildBlock("alternativeScoreHead", Linear.builder().setUnits(1).build());
-    ronGate = addChildBlock("ronGate", new EpsilonBinaryBranchGate(hiddenSize));
+    ronGate =
+        addChildBlock(
+            "ronGate",
+            new EpsilonBinaryBranchGate(hiddenSize, EpsilonPointProjection.GATE_FEATURE_WIDTH));
     callGate = addChildBlock("callGate", new EpsilonBinaryBranchGate(hiddenSize));
-    tsumoGate = addChildBlock("tsumoGate", new EpsilonBinaryBranchGate(hiddenSize));
+    tsumoGate =
+        addChildBlock(
+            "tsumoGate",
+            new EpsilonBinaryBranchGate(hiddenSize, EpsilonPointProjection.GATE_FEATURE_WIDTH));
     kyushuGate = addChildBlock("kyushuGate", new EpsilonBinaryBranchGate(hiddenSize));
     kanGate = addChildBlock("kanGate", new EpsilonBinaryBranchGate(hiddenSize));
     riichiGate = addChildBlock("riichiGate", new EpsilonBinaryBranchGate(hiddenSize));
@@ -272,17 +277,15 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           switch (fusionSettings.policyIndexedAffine()) {
             case EAGER ->
                 DecisionPolicyIndexedAffineExecution.eager(
-                    riichiGate, callGate, ronGate, kanGate, kyushuGate, tsumoGate, executionSlots);
+                    riichiGate, callGate, kanGate, kyushuGate, executionSlots);
             case FUSION ->
                 new DecisionPolicyFusionIndexedAffineExecution(
                     manager,
                     parameterStore,
                     riichiGate,
                     callGate,
-                    ronGate,
                     kanGate,
                     kyushuGate,
-                    tsumoGate,
                     hiddenSize,
                     expectedDataType,
                     maxBatch,
@@ -593,6 +596,12 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             legalActionCapacity);
     NDArray candidateEmbeddings = candidates.embeddings();
     NDArray rootCandidateScores = candidates.scores();
+    NDArray actionTypes =
+        inputs.actionCategories().get("...,{}", DecisionInputSchema.ActionInt.TYPE.ordinal());
+    NDArray ronPointGateFeatures =
+        pointGateFeatures(candidates.gateFeatures(), actionTypes, Action.Type.RON_AGARI);
+    NDArray tsumoPointGateFeatures =
+        pointGateFeatures(candidates.gateFeatures(), actionTypes, Action.Type.TSUMO_AGARI);
     DecisionPolicyCandidates.DiscardChoices discardChoices =
         DecisionPolicyCandidates.discardChoices(inputs.actionRoutes(), candidateMasks);
     NDArray discardRootMask = discardChoices.discardMask();
@@ -630,6 +639,8 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             riichiGateScores,
             discardChoices,
             discardBranchContexts,
+            ronPointGateFeatures,
+            tsumoPointGateFeatures,
             rowCount,
             policyExecutionIndices,
             policyForward,
@@ -651,11 +662,28 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       PairList<String, Object> runtimeParameters,
       long rowCount,
       int actionCapacity) {
+    EpsilonPointProjection.Projection actionPoints =
+        pointProjection.projectActions(
+            inputs.pointLedger100(),
+            inputs.stateCategories(),
+            inputs.actionCategories(),
+            inputs.actionWinFacts(),
+            inputs instanceof DecisionInferenceInputs inference
+                ? inference.winningActions()
+                : null);
+    NDArray pointContext =
+        pointOutcomeEncoder.encodeSelected(
+            parameterStore,
+            actionPoints.features().toType(encodedState.stateEmbedding().getDataType(), false),
+            actionPoints.validMask(),
+            inputs instanceof DecisionInferenceInputs inference ? inference.winningActions() : null,
+            training,
+            runtimeParameters);
     NDArray actionFeatures =
         encodeActionFeatures(
             parameterStore,
             inputs.actionCategories(),
-            inputs.actionNumerics(),
+            pointContext,
             training,
             runtimeParameters,
             rowCount,
@@ -708,30 +736,30 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     NDArray scores =
         scoreRootCandidates(parameterStore, candidateEmbeddings, training, runtimeParameters)
             .reshape(rowCount, actionCapacity);
-    return new CandidateSet(candidateEmbeddings, scores);
+    return new CandidateSet(
+        candidateEmbeddings,
+        scores,
+        actionPoints.gateFeatures().toType(candidateEmbeddings.getDataType(), false));
+  }
+
+  private static NDArray pointGateFeatures(
+      NDArray actionGateFeatures, NDArray actionTypes, Action.Type actionType) {
+    NDArray typeMask =
+        actionTypes
+            .eq(DecisionFeatureCodec.actionType(actionType))
+            .toType(actionGateFeatures.getDataType(), false)
+            .expandDims(2);
+    return actionGateFeatures.mul(typeMask).sum(new int[] {1});
   }
 
   private NDArray encodeActionFeatures(
       ParameterStore parameterStore,
       NDArray actionCategories,
-      NDArray actionNumerics,
+      NDArray pointContext,
       boolean training,
       PairList<String, Object> runtimeParameters,
       long rowCount,
       int actionCapacity) {
-    if (!training && actionCategories.getDevice().isGpu()) {
-      NDArray embeddingTable =
-          actionFeatureEmbedding.getValue(parameterStore, actionCategories.getDevice(), false);
-      if (embeddingTable.getDataType() == actionNumerics.getDataType()) {
-        return packActionFeatures(
-            actionCategories,
-            actionCategoryOffsets,
-            embeddingTable,
-            actionNumerics,
-            rowCount,
-            actionCapacity);
-      }
-    }
     NDArray actionCategoryIds = actionCategories.stopGradient().add(actionCategoryOffsets);
     NDArray actionCategoryEmbeddings =
         actionFeatureEmbedding
@@ -740,29 +768,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     return actionCategoryEmbeddings
         .reshape(
             rowCount, actionCapacity, DecisionInputSchema.ACTION_INT_STRIDE * CATEGORY_EMBEDDING)
-        .concat(actionNumerics, 2);
-  }
-
-  static NDArray packActionFeatures(
-      NDArray actionCategories,
-      NDArray categoryOffsets,
-      NDArray embeddingTable,
-      NDArray actionNumerics,
-      long rowCount,
-      int actionCapacity) {
-    long flatRows = Math.multiplyExact(rowCount, actionCapacity);
-    return NDArrays.embeddingFeaturePack(
-            actionCategories
-                .stopGradient()
-                .reshape(flatRows, DecisionInputSchema.ACTION_INT_STRIDE),
-            categoryOffsets.reshape(1, DecisionInputSchema.ACTION_INT_STRIDE),
-            embeddingTable,
-            actionNumerics.reshape(flatRows, DecisionInputSchema.ACTION_FLOAT_STRIDE))
-        .reshape(
-            rowCount,
-            actionCapacity,
-            DecisionInputSchema.ACTION_INT_STRIDE * CATEGORY_EMBEDDING
-                + DecisionInputSchema.ACTION_FLOAT_STRIDE);
+        .concat(pointContext, 2);
   }
 
   private NDArray scoreRootCandidates(
@@ -818,8 +824,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           transitionInputs.numerics(),
           transitionInputs.tileCodes(),
           transitionInputs.waitTileIds(),
-          transitionInputs.waitYakus(),
-          transitionInputs.waitScores());
+          transitionInputs.waitWinFacts());
       tempAttachTileProjection(scope, encodedState);
       TransitionSet transitions =
           encodeTransitionsInternal(
@@ -861,6 +866,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           parameterStore,
           encodedState,
           transitionInputs,
+          inputs,
           allPlayerTileContexts,
           transitionPresentIndices,
           policyForward,
@@ -899,6 +905,25 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             allPlayerTileContexts,
             training,
             runtimeParameters);
+    NDArray waitPointContexts =
+        encodeWaitPointContexts(
+            parameterStore,
+            inputs.pointLedger100(),
+            inputs.stateCategories(),
+            inputs.actionCategories().get("...,{}", DecisionInputSchema.ActionInt.TYPE.ordinal()),
+            transitionInputs.tileCodes(),
+            transitionInputs.waitTileIds(),
+            transitionInputs.waitWinFacts(),
+            encodedState.stateEmbedding().getDataType(),
+            training,
+            runtimeParameters);
+    NDArray projectedWaitKeyValues =
+        applyLinear(
+            transitionWaitKeyValueProjection,
+            parameterStore,
+            waitPointContexts,
+            training,
+            runtimeParameters);
     NDArray transitionTileContexts =
         attendTransitionTiles(
             parameterStore,
@@ -907,8 +932,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             transitionFeatureEmbeddings,
             transitionInputs.tileCodes(),
             transitionInputs.waitTileIds(),
-            transitionInputs.waitYakus(),
-            transitionInputs.waitScores(),
+            projectedWaitKeyValues,
             rowCount,
             actionCapacity,
             transitionCapacity,
@@ -988,6 +1012,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       ParameterStore parameterStore,
       EpsilonMahjongStateEncoder.EncodedState encodedState,
       TransitionInputs transitionInputs,
+      DecisionPolicyInputs inputs,
       NDArray allPlayerTileContexts,
       NDArray suppliedPresentIndices,
       DecisionPolicyExecution.Forward policyForward,
@@ -1053,21 +1078,55 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             ? transitionInputs.waitTileIds()
             : DecisionPolicyTensorOps.compactTransitionRows(
                 transitionInputs.waitTileIds(), presentIndices, denseCount);
-    NDArray compactWaitYakus =
+    NDArray compactWaitWinFacts =
         transitionInputs.hostCompacted()
-            ? transitionInputs.waitYakus()
+            ? transitionInputs.waitWinFacts()
             : DecisionPolicyTensorOps.compactTransitionRows(
-                transitionInputs.waitYakus(), presentIndices, denseCount);
-    NDArray compactWaitScores =
-        transitionInputs.hostCompacted()
-            ? transitionInputs.waitScores()
-            : DecisionPolicyTensorOps.compactTransitionRows(
-                transitionInputs.waitScores(), presentIndices, denseCount);
+                transitionInputs.waitWinFacts(), presentIndices, denseCount);
 
     NDArray compactBatchIds =
         DecisionPolicyTensorOps.compactBatchIds(
             presentIndices, rowCount, actionCapacity, transitionCapacity);
     NDArray compactCategoryIds = compactCategories.add(transitionCategoryOffsets);
+    NDArray compactActionIndices =
+        presentIndices.floorDivide(transitionCapacity).toType(DataType.INT64, false);
+    NDArray compactActionTypes =
+        EpsilonMaskedRows.gather(
+            inputs
+                .actionCategories()
+                .get("...,{}", DecisionInputSchema.ActionInt.TYPE.ordinal())
+                .reshape(Math.multiplyExact(rowCount, actionCapacity), 1),
+            compactActionIndices);
+    NDArray compactWaitKeyValues =
+        !training && inputs instanceof DecisionInferenceInputs inference
+            ? encodeSelectedWaitKeyValues(
+                parameterStore,
+                inputs.pointLedger100(),
+                inputs.stateCategories(),
+                compactActionTypes,
+                compactTileCodes,
+                compactWaitTileIds,
+                compactWaitWinFacts,
+                encodedState.stateEmbedding().getDataType(),
+                runtimeParameters,
+                inference.waitRows(),
+                compactBatchIds)
+            : applyLinear(
+                transitionWaitKeyValueProjection,
+                parameterStore,
+                encodeWaitPointContexts(
+                    parameterStore,
+                    EpsilonMaskedRows.gather(inputs.pointLedger100(), compactBatchIds),
+                    EpsilonMaskedRows.gather(inputs.stateCategories(), compactBatchIds),
+                    compactActionTypes,
+                    compactTileCodes,
+                    compactWaitTileIds,
+                    compactWaitWinFacts,
+                    encodedState.stateEmbedding().getDataType(),
+                    training,
+                    runtimeParameters),
+                training,
+                runtimeParameters);
     NDArray compactCategoryEmbeddings =
         actionFeatureEmbedding
             .forward(parameterStore, new NDList(compactCategoryIds), training, runtimeParameters)
@@ -1103,8 +1162,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
             compactFeatureEmbeddings,
             compactTileCodes,
             compactWaitTileIds,
-            compactWaitYakus,
-            compactWaitScores,
+            compactWaitKeyValues,
             presentCount,
             1,
             1,
@@ -1191,6 +1249,231 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     return new TransitionSet(discardScores, aggregatedEmbeddings);
   }
 
+  EpsilonPointProjection pointProjection() {
+    return pointProjection;
+  }
+
+  EpsilonPointOutcomeEncoder pointOutcomeEncoder() {
+    return pointOutcomeEncoder;
+  }
+
+  NDArray encodeWaitPointContexts(
+      ParameterStore parameterStore,
+      NDArray pointLedger100,
+      NDArray stateCategories,
+      NDArray actionTypes,
+      NDArray transitionTileCodes,
+      NDArray waitTileIds,
+      NDArray waitWinFacts,
+      DataType dataType,
+      boolean training,
+      PairList<String, Object> runtimeParameters) {
+    NDManager outputManager = waitWinFacts.getManager();
+    try (NDManager scope = outputManager.newSubManager()) {
+      scope.tempAttachAll(
+          pointLedger100,
+          stateCategories,
+          actionTypes,
+          transitionTileCodes,
+          waitTileIds,
+          waitWinFacts);
+      long rows = waitWinFacts.getShape().get(0);
+      NDArray validRows =
+          waitWinFacts
+              .get("...,{}", DecisionInputSchema.WinFact.VALID.ordinal())
+              .reshape(rows, -1)
+              .sum(new int[] {1});
+      NDArray waitRows = EpsilonMaskedRows.indices(validRows);
+      if (waitRows.size() == 0) {
+        // 待ちのないバッチでは固定計算を省き、空のEncoderだけでゼロ勾配を維持する。
+        NDArray emptyContexts =
+            pointOutcomeEncoder.encode(
+                parameterStore,
+                scope.zeros(new Shape(0, EpsilonPointProjection.FEATURE_WIDTH), dataType),
+                training,
+                runtimeParameters);
+        Shape outputShape = waitTileIds.getShape().add(contextWidth);
+        NDArray result =
+            EpsilonMaskedRows.scatter(
+                    emptyContexts.reshape(0, outputShape.size() / rows), waitRows, rows)
+                .reshape(outputShape);
+        outputManager.attachAll(result);
+        return result;
+      }
+      pointLedger100 = EpsilonMaskedRows.gather(pointLedger100, waitRows);
+      stateCategories = EpsilonMaskedRows.gather(stateCategories, waitRows);
+      actionTypes = EpsilonMaskedRows.gather(actionTypes, waitRows);
+      transitionTileCodes = EpsilonMaskedRows.gather(transitionTileCodes, waitRows);
+      waitTileIds = EpsilonMaskedRows.gather(waitTileIds, waitRows);
+      waitWinFacts = EpsilonMaskedRows.gather(waitWinFacts, waitRows);
+      NDArray akaAvailable = waitAkaAvailable(transitionTileCodes, waitTileIds);
+      EpsilonPointProjection.Projection projected =
+          pointProjection.projectWaits(
+              pointLedger100, stateCategories, actionTypes, waitWinFacts, akaAvailable);
+      NDArray features = projected.features();
+      NDArray presentIndices = EpsilonMaskedRows.indices(projected.validMask());
+      NDArray presentContexts =
+          pointOutcomeEncoder.encode(
+              parameterStore,
+              EpsilonMaskedRows.gather(
+                      features.reshape(-1, EpsilonPointProjection.FEATURE_WIDTH), presentIndices)
+                  .toType(dataType, false),
+              training,
+              runtimeParameters);
+      long[] contextShape = features.getShape().getShape();
+      contextShape[contextShape.length - 1] = presentContexts.getShape().get(1);
+      NDArray contexts =
+          EpsilonMaskedRows.scatter(presentContexts, presentIndices, projected.validMask().size())
+              .reshape(contextShape);
+      int scenarioAxis = contexts.getShape().dimension() - 2;
+      NDArray count =
+          projected
+              .validMask()
+              .sum(new int[] {scenarioAxis})
+              .maximum(1.0f)
+              .expandDims(scenarioAxis);
+      NDArray pooled =
+          contexts.sum(new int[] {scenarioAxis}).div(count.toType(contexts.getDataType(), false));
+      long[] pooledShape = pooled.getShape().getShape();
+      long width = 1;
+      for (int axis = 1; axis < pooledShape.length; axis++) {
+        width *= pooledShape[axis];
+      }
+      pooledShape[0] = rows;
+      NDArray result =
+          EpsilonMaskedRows.scatter(pooled.reshape(-1, width), waitRows, rows).reshape(pooledShape);
+      outputManager.attachAll(result);
+      return result;
+    }
+  }
+
+  NDArray encodeSelectedWaitKeyValues(
+      ParameterStore store,
+      NDArray ledger,
+      NDArray states,
+      NDArray actions,
+      NDArray tiles,
+      NDArray waitIds,
+      NDArray facts,
+      DataType dataType,
+      PairList<String, Object> parameters,
+      NDArray indices,
+      NDArray batchIds) {
+    NDManager owner = facts.getManager();
+    try (NDManager scope = owner.newSubManager()) {
+      scope.tempAttachAll(ledger, states, actions, tiles, waitIds, facts);
+      NDArray pooled =
+          poolSelectedWaitSlots(
+              store,
+              ledger,
+              states,
+              actions,
+              tiles,
+              waitIds,
+              facts,
+              dataType,
+              parameters,
+              indices,
+              batchIds);
+      int width = TRANSITION_TILE_KEY_WIDTH + contextWidth;
+      // 無効な待ちも密なLinearのゼロ入力と同じバイアス・演算型を保持する。
+      NDArray zeroProjection =
+          applyLinear(
+              transitionWaitKeyValueProjection,
+              store,
+              scope.zeros(new Shape(1, contextWidth), pooled.getDataType()),
+              false,
+              parameters);
+      NDArray output = zeroProjection.broadcast(waitIds.size(), width).duplicate();
+      if (indices.size() != 0) {
+        NDArray selected =
+            applyLinear(transitionWaitKeyValueProjection, store, pooled, false, parameters);
+        output.set(new NDIndex("{}", indices), selected);
+      }
+      output = output.reshape(waitIds.getShape().add(width));
+      owner.attachAll(output);
+      return output;
+    }
+  }
+
+  private NDArray poolSelectedWaitSlots(
+      ParameterStore store,
+      NDArray ledger,
+      NDArray states,
+      NDArray actions,
+      NDArray tiles,
+      NDArray waitIds,
+      NDArray facts,
+      DataType dataType,
+      PairList<String, Object> parameters,
+      NDArray indices,
+      NDArray batchIds) {
+    NDManager owner = facts.getManager();
+    try (NDManager scope = owner.newSubManager()) {
+      scope.tempAttachAll(ledger, states, actions, tiles, waitIds, facts);
+      long rows = facts.getShape().get(0);
+      long slots = waitIds.size() / rows;
+      NDArray output;
+      if (indices.size() == 0) {
+        output = scope.zeros(new Shape(0, contextWidth), dataType);
+      } else {
+        NDArray rowIndices = indices.floorDivide(slots).toType(DataType.INT64, false);
+        NDArray selectedIds =
+            EpsilonMaskedRows.gather(waitIds.reshape(-1, 1), indices).reshape(-1, 1, 1, 1);
+        NDArray selectedTiles = EpsilonMaskedRows.gather(tiles, rowIndices);
+        NDArray stateRows =
+            batchIds == null
+                ? rowIndices
+                : EpsilonMaskedRows.gather(batchIds.reshape(-1, 1), rowIndices).reshape(-1);
+        var projected =
+            pointProjection.projectWaits(
+                EpsilonMaskedRows.gather(ledger, stateRows),
+                EpsilonMaskedRows.gather(states, stateRows),
+                EpsilonMaskedRows.gather(actions, rowIndices),
+                EpsilonMaskedRows.gather(facts.reshape(rows * slots, -1), indices)
+                    .reshape(
+                        -1,
+                        1,
+                        1,
+                        1,
+                        DecisionInputSchema.WaitWinType.values().length,
+                        DecisionInputSchema.WinFact.values().length),
+                waitAkaAvailable(selectedTiles, selectedIds));
+        NDArray contexts =
+            pointOutcomeEncoder.encode(
+                store, projected.features().toType(dataType, false), false, parameters);
+        contexts =
+            contexts.mul(projected.validMask().toType(contexts.getDataType(), false).expandDims(5));
+        output =
+            contexts
+                .sum(new int[] {4})
+                .div(
+                    projected
+                        .validMask()
+                        .sum(new int[] {4})
+                        .maximum(1)
+                        .toType(contexts.getDataType(), false)
+                        .expandDims(4))
+                .reshape(-1, contextWidth);
+      }
+      owner.attachAll(output);
+      return output;
+    }
+  }
+
+  private static NDArray waitAkaAvailable(NDArray transitionTileCodes, NDArray waitTileIds) {
+    int tileAxis = transitionTileCodes.getShape().dimension() - 1;
+    NDArray indices = waitTileIds.toType(DataType.INT64, false).maximum(1).sub(1).stopGradient();
+    return transitionTileCodes
+        .gather(indices, tileAxis)
+        .toType(DataType.INT32, false)
+        .maximum(1)
+        .sub(1)
+        .mod(2)
+        .mul(waitTileIds.neq(0).toType(DataType.INT32, false))
+        .stopGradient();
+  }
+
   private NDArray attendTransitionTiles(
       ParameterStore parameterStore,
       NDArray projectedTileKeyValues,
@@ -1198,8 +1481,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       NDArray transitionFeatureEmbeddings,
       NDArray transitionTileCodes,
       NDArray waitTileIds,
-      NDArray transitionWaitYakuCodes,
-      NDArray transitionWaitScores,
+      NDArray projectedWaitKeyValues,
       long rowCount,
       int actionCapacity,
       int transitionCapacity,
@@ -1213,8 +1495,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           transitionFeatureEmbeddings,
           transitionTileCodes,
           waitTileIds,
-          transitionWaitYakuCodes,
-          transitionWaitScores,
+          projectedWaitKeyValues,
           rowCount,
           actionCapacity,
           transitionCapacity,
@@ -1228,8 +1509,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           transitionFeatureEmbeddings,
           transitionTileCodes,
           waitTileIds,
-          transitionWaitYakuCodes,
-          transitionWaitScores);
+          projectedWaitKeyValues);
       if (projectedTileGroupIndices != null) {
         scope.tempAttachAll(projectedTileGroupIndices);
       }
@@ -1241,8 +1521,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
               transitionFeatureEmbeddings,
               transitionTileCodes,
               waitTileIds,
-              transitionWaitYakuCodes,
-              transitionWaitScores,
+              projectedWaitKeyValues,
               rowCount,
               actionCapacity,
               transitionCapacity,
@@ -1266,8 +1545,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       NDArray transitionFeatureEmbeddings,
       NDArray transitionTileCodes,
       NDArray waitTileIds,
-      NDArray transitionWaitYakuCodes,
-      NDArray transitionWaitScores,
+      NDArray projectedWaitKeyValues,
       long rowCount,
       int actionCapacity,
       int transitionCapacity,
@@ -1276,16 +1554,6 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     long candidatesPerState = Math.multiplyExact(actionCapacity, transitionCapacity);
     long candidateCount = Math.multiplyExact(rowCount, candidatesPerState);
     NDArray storedRelationCodes = transitionTileCodes.stopGradient().toType(DataType.INT32, false);
-    NDArray waitYakuEmbeddings =
-        encodeWaitYakus(parameterStore, transitionWaitYakuCodes, training, runtimeParameters);
-    NDArray waitFeatures = waitYakuEmbeddings.concat(transitionWaitScores, 4);
-    NDArray projectedWaitKeyValues =
-        applyLinear(
-            transitionWaitKeyValueProjection,
-            parameterStore,
-            waitFeatures,
-            training,
-            runtimeParameters);
     NDArray flatTransitionQueries =
         applyLinear(
                 transitionTileQueryProjection,
@@ -1338,112 +1606,9 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     if (relationTable.getDataType() == query.getDataType()) {
       return relationTable;
     }
-    NDArray converted = relationTable.toType(query.getDataType(), false);
+    NDArray converted = relationTable.getNDArrayInternal().differentiableCast(query.getDataType());
     converted.attach(query.getManager());
     return converted;
-  }
-
-  /** まとめた待ち役マスクを一括展開し、RON/TSUMOで共有する役埋め込みへ変換する。 */
-  private NDArray encodeWaitYakus(
-      ParameterStore parameterStore,
-      NDArray storedCodes,
-      boolean training,
-      PairList<String, Object> runtimeParameters) {
-    if (training) {
-      clearInferenceWaitYakuLookup();
-      return encodeWaitYakusInternal(parameterStore, storedCodes, true, runtimeParameters);
-    }
-    NDArray lookup = inferenceWaitYakuLookup(parameterStore, storedCodes);
-    NDManager outputManager = storedCodes.getManager();
-    try (NDManager scope = outputManager.newSubManager()) {
-      scope.tempAttachAll(storedCodes, lookup);
-      NDArray embeddings = encodeWaitYakusFromLookup(storedCodes, lookup);
-      outputManager.attachAll(embeddings);
-      return embeddings;
-    }
-  }
-
-  private NDArray encodeWaitYakusInternal(
-      ParameterStore parameterStore,
-      NDArray storedCodes,
-      boolean training,
-      PairList<String, Object> runtimeParameters) {
-    Shape shape = storedCodes.getShape();
-    NDArray packedBits =
-        storedCodes.toType(DataType.FLOAT32, false).maximum(1.0f).sub(1.0f).stopGradient();
-    NDArray yakuBits =
-        packedBits
-            .expandDims(5)
-            .div(waitYakuBitDivisors)
-            .floor()
-            .mod(2)
-            .reshape(
-                shape.get(0),
-                shape.get(1),
-                shape.get(2),
-                shape.get(3),
-                DecisionInputSchema.WaitWinType.values().length,
-                DecisionInputSchema.WAIT_YAKU_CHUNKS_PER_WIN_TYPE
-                    * DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK)
-            .stopGradient();
-    return applyLinear(
-            transitionWaitYakuProjection, parameterStore, yakuBits, training, runtimeParameters)
-        .reshape(
-            shape.get(0),
-            shape.get(1),
-            shape.get(2),
-            shape.get(3),
-            DecisionInputSchema.WaitWinType.values().length * WAIT_YAKU_EMBEDDING);
-  }
-
-  static NDArray encodeWaitYakusFromLookup(NDArray storedCodes, NDArray lookup) {
-    Shape shape = storedCodes.getShape();
-    int winTypes = DecisionInputSchema.WaitWinType.values().length;
-    int chunks = DecisionInputSchema.WAIT_YAKU_CHUNKS_PER_WIN_TYPE;
-    NDArray chunkCodes =
-        storedCodes.reshape(
-            shape.get(0), shape.get(1), shape.get(2), shape.get(3), winTypes, chunks);
-    return NDArrays.segmentedLookupSum(lookup, chunkCodes)
-        .reshape(
-            shape.get(0), shape.get(1), shape.get(2), shape.get(3), winTypes * WAIT_YAKU_EMBEDDING);
-  }
-
-  private NDArray inferenceWaitYakuLookup(ParameterStore parameterStore, NDArray storedCodes) {
-    if (inferenceWaitYakuLookup != null) {
-      return inferenceWaitYakuLookup;
-    }
-    NDArray weight =
-        parameterStore.getValue(
-            transitionWaitYakuProjection.getParameters().get("weight"),
-            storedCodes.getDevice(),
-            false);
-    NDManager outputManager = weight.getManager();
-    try (NDManager scope = outputManager.newSubManager()) {
-      scope.tempAttachAll(weight, waitYakuBitDivisors);
-      NDArray codes =
-          scope.arange(WAIT_YAKU_CODE_COUNT).toType(DataType.FLOAT32, false).reshape(-1, 1);
-      NDArray bits = codes.div(waitYakuBitDivisors).floor().mod(2);
-      NDList chunkTables = new NDList();
-      for (int chunk = 0; chunk < DecisionInputSchema.WAIT_YAKU_CHUNKS_PER_WIN_TYPE; chunk++) {
-        int start = chunk * DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK;
-        int end = start + DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK;
-        chunkTables.add(bits.matMul(weight.get(":,{}:{}", start, end).transpose()));
-      }
-      inferenceWaitYakuLookup =
-          NDArrays.stack(chunkTables)
-              .reshape(
-                  (long) DecisionInputSchema.WAIT_YAKU_CHUNKS_PER_WIN_TYPE * WAIT_YAKU_CODE_COUNT,
-                  WAIT_YAKU_EMBEDDING);
-      outputManager.attachAll(inferenceWaitYakuLookup);
-      return inferenceWaitYakuLookup;
-    }
-  }
-
-  private void clearInferenceWaitYakuLookup() {
-    if (inferenceWaitYakuLookup != null) {
-      inferenceWaitYakuLookup.close();
-      inferenceWaitYakuLookup = null;
-    }
   }
 
   /** プレイヤー別メモリを牌種クエリで読み、プレイヤー軸保持表現と全プレイヤー融合表現を一度だけ構築する。 */
@@ -1611,6 +1776,8 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
       NDArray riichiGateScores,
       DecisionPolicyCandidates.DiscardChoices discardChoices,
       DecisionPolicyContextPool.DiscardBranchContexts discardBranchContexts,
+      NDArray ronPointGateFeatures,
+      NDArray tsumoPointGateFeatures,
       long rowCount,
       DecisionInferenceDeviceBatch.PolicyExecutionIndices policyExecutionIndices,
       DecisionPolicyExecution.Forward policyForward,
@@ -1711,14 +1878,13 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     NDArray ronContext = conditionalCandidateContexts[DecisionAlternative.RON.networkIndex()];
     NDArray ronPresence = alternativePresenceByIndex[DecisionAlternative.RON.networkIndex()];
     NDArray ronScore =
-        scoreGate(
-            DecisionPolicyIndexedAffineExecution.Site.RON,
+        scorePointGate(
             ronGate,
-            policyForward,
             parameterStore,
             stateEmbedding,
             declinedRonContext,
             ronContext,
+            ronPointGateFeatures,
             declinedRonPresence,
             ronPresence,
             policyExecutionIndices == null ? null : policyExecutionIndices.ronRows(),
@@ -1799,14 +1965,13 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     NDArray tsumoContext = conditionalCandidateContexts[DecisionAlternative.TSUMO.networkIndex()];
     NDArray tsumoPresence = alternativePresenceByIndex[DecisionAlternative.TSUMO.networkIndex()];
     NDArray tsumoScore =
-        scoreGate(
-            DecisionPolicyIndexedAffineExecution.Site.TSUMO,
+        scorePointGate(
             tsumoGate,
-            policyForward,
             parameterStore,
             stateEmbedding,
             declinedTsumoContext,
             tsumoContext,
+            tsumoPointGateFeatures,
             declinedTsumoPresence,
             tsumoPresence,
             policyExecutionIndices == null ? null : policyExecutionIndices.tsumoRows(),
@@ -1902,6 +2067,43 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
         .mul(activeMask);
   }
 
+  private static NDArray scorePointGate(
+      EpsilonBinaryBranchGate gate,
+      ParameterStore parameterStore,
+      NDArray stateEmbedding,
+      NDArray baselineContext,
+      NDArray selectedContext,
+      NDArray directFeatures,
+      NDArray baselinePresence,
+      NDArray selectedPresence,
+      NDArray activeRows,
+      long rowCount,
+      boolean training,
+      PairList<String, Object> runtimeParameters) {
+    if (activeRows != null) {
+      return gate.scoreRows(
+          parameterStore,
+          stateEmbedding,
+          baselineContext,
+          selectedContext,
+          directFeatures,
+          activeRows,
+          rowCount,
+          training,
+          runtimeParameters);
+    }
+    NDArray activeMask = baselinePresence.mul(selectedPresence);
+    return gate.score(
+            parameterStore,
+            stateEmbedding,
+            baselineContext,
+            selectedContext,
+            directFeatures,
+            training,
+            runtimeParameters)
+        .mul(activeMask);
+  }
+
   @Override
   protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
     actionCategoryOffsets =
@@ -1912,31 +2114,20 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
         manager
             .create(DecisionCategoryLayout.transitionOffsets())
             .reshape(1, 1, 1, DecisionInputSchema.ACTION_TRANSITION_INT_STRIDE);
-    float[] bitDivisors = new float[DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK];
-    for (int bit = 0; bit < bitDivisors.length; bit++) {
-      bitDivisors[bit] = 1 << bit;
-    }
-    waitYakuBitDivisors = manager.create(bitDivisors);
     alternativeIds = manager.create(ALTERNATIVE_IDS);
     actionFeatureEmbedding.initialize(
         manager, dataType, new Shape(-1, -1, DecisionInputSchema.ACTION_INT_STRIDE));
     transitionTileRelationEmbedding.initialize(
         manager, dataType, new Shape(-1, -1, -1, DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT));
-    transitionWaitYakuProjection.initialize(
-        manager,
-        dataType,
-        new Shape(
-            -1,
-            DecisionInputSchema.WAIT_YAKU_CHUNKS_PER_WIN_TYPE
-                * DecisionInputSchema.WAIT_YAKU_BITS_PER_CHUNK));
+    pointProjection.initialize(
+        manager, dataType, new Shape(-1, EpsilonPointProjection.FEATURE_WIDTH));
+    pointOutcomeEncoder.initialize(
+        manager, dataType, new Shape(-1, EpsilonPointProjection.FEATURE_WIDTH));
     alternativeOffset.initialize(manager, dataType, new Shape(DecisionAlternative.NETWORK_SIZE));
     actionFeatureProjection.initialize(
         manager,
         dataType,
-        new Shape(
-            -1,
-            DecisionInputSchema.ACTION_INT_STRIDE * CATEGORY_EMBEDDING
-                + DecisionInputSchema.ACTION_FLOAT_STRIDE));
+        new Shape(-1, DecisionInputSchema.ACTION_INT_STRIDE * CATEGORY_EMBEDDING + contextWidth));
     transitionFeatureProjection.initialize(
         manager,
         dataType,
@@ -1947,13 +2138,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
     transitionTileKeyValueProjection.initialize(manager, dataType, new Shape(-1, hiddenSize));
     transitionPublicContextProjection.initialize(manager, dataType, new Shape(-1, contextWidth));
     transitionTileQueryProjection.initialize(manager, dataType, new Shape(-1, hiddenSize));
-    transitionWaitKeyValueProjection.initialize(
-        manager,
-        dataType,
-        new Shape(
-            -1,
-            DecisionInputSchema.WaitWinType.values().length * WAIT_YAKU_EMBEDDING
-                + DecisionInputSchema.ACTION_TRANSITION_WAIT_FLOAT_STRIDE));
+    transitionWaitKeyValueProjection.initialize(manager, dataType, new Shape(-1, contextWidth));
     playerTileQueryProjection.initialize(manager, dataType, new Shape(-1, hiddenSize));
     playerTileContextMixer.initialize(
         manager, dataType, new Shape(-1, GameState.NUM_PLAYERS, Tile.NUM_TILE_TYPES, contextWidth));
@@ -2023,15 +2208,14 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
 
   private record PlayerTileContexts(NDArray byPlayer, NDArray allPlayers) {}
 
-  private record CandidateSet(NDArray embeddings, NDArray scores) {}
+  private record CandidateSet(NDArray embeddings, NDArray scores, NDArray gateFeatures) {}
 
   private record TransitionInputs(
       NDArray categories,
       NDArray numerics,
       NDArray tileCodes,
       NDArray waitTileIds,
-      NDArray waitYakus,
-      NDArray waitScores,
+      NDArray waitWinFacts,
       boolean hostCompacted) {
 
     private static TransitionInputs dense(DecisionNetworkInputs inputs) {
@@ -2040,8 +2224,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           inputs.transitionNumerics(),
           inputs.transitionTiles(),
           inputs.waitTileIds(),
-          inputs.waitYakus(),
-          inputs.waitScores(),
+          inputs.waitWinFacts(),
           false);
     }
 
@@ -2051,8 +2234,7 @@ public final class EpsilonDecisionPolicyHead extends AbstractBlock {
           inputs.transitionNumerics(),
           inputs.transitionTiles(),
           inputs.waitTileIds(),
-          inputs.waitYakus(),
-          inputs.waitScores(),
+          inputs.waitWinFacts(),
           true);
     }
   }

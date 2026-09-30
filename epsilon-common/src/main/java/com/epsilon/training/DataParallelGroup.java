@@ -376,15 +376,10 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
    */
   public void applyFlattenedOptimizerStep(
       Optimizer optimizer, ParameterScope optimizerScope, double gradientScale) throws IOException {
-    PreparedFlatOptimizerStep prepared =
-        prepareFlattenedOptimizerStep(optimizerScope, gradientScale);
-    validateAndScalePreparedGradients(prepared);
-    try {
-      commitPreparedOptimizerSteps(new PreparedOptimizerUpdate(optimizer, prepared));
-    } catch (IOException | RuntimeException | Error failure) {
-      poisonAfterCommitFailure(failure);
-      throw failure;
-    }
+    applyFlattenedOptimizerSteps(
+        new Optimizer[] {optimizer},
+        new ParameterScope[] {optimizerScope},
+        new double[] {gradientScale});
   }
 
   /** 方策と価値の勾配を両方検証してから更新し、検証エラーによって片方だけが更新されることを防ぐ。 */
@@ -397,19 +392,10 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
     if (scope != ParameterScope.ONLINE) {
       throw new IllegalStateException("fused online optimizer steps require an ONLINE session");
     }
-    PreparedFlatOptimizerStep actor =
-        prepareFlattenedOptimizerStep(ParameterScope.ONLINE_ACTOR, actorGradientScale);
-    PreparedFlatOptimizerStep value =
-        prepareFlattenedOptimizerStep(ParameterScope.ONLINE_VALUE, valueGradientScale);
-    validateAndScalePreparedGradients(actor, value);
-    try {
-      commitPreparedOptimizerSteps(
-          new PreparedOptimizerUpdate(actorOptimizer, actor),
-          new PreparedOptimizerUpdate(valueOptimizer, value));
-    } catch (IOException | RuntimeException | Error failure) {
-      poisonAfterCommitFailure(failure);
-      throw failure;
-    }
+    applyFlattenedOptimizerSteps(
+        new Optimizer[] {actorOptimizer, valueOptimizer},
+        new ParameterScope[] {ParameterScope.ONLINE_ACTOR, ParameterScope.ONLINE_VALUE},
+        new double[] {actorGradientScale, valueGradientScale});
   }
 
   /** 方策と価値の勾配を1回のホスト同期で検証し、それぞれ独立したAdamWの状態で更新する。 */
@@ -419,37 +405,42 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       throw new IllegalStateException(
           "fused pretrain optimizer steps require a PRETRAIN_ALL session");
     }
-    PreparedFlatOptimizerStep policy =
-        prepareFlattenedOptimizerStep(ParameterScope.PRETRAIN_POLICY, 1.0);
-    PreparedFlatOptimizerStep value =
-        prepareFlattenedOptimizerStep(ParameterScope.PRETRAIN_VALUE, 1.0);
-    validateAndScalePreparedGradients(policy, value);
-    try {
-      commitPreparedOptimizerSteps(
-          new PreparedOptimizerUpdate(policyOptimizer, policy),
-          new PreparedOptimizerUpdate(valueOptimizer, value));
-    } catch (IOException | RuntimeException | Error failure) {
-      poisonAfterCommitFailure(failure);
-      throw failure;
-    }
+    applyFlattenedOptimizerSteps(
+        new Optimizer[] {policyOptimizer, valueOptimizer},
+        new ParameterScope[] {ParameterScope.PRETRAIN_POLICY, ParameterScope.PRETRAIN_VALUE},
+        new double[] {1.0, 1.0});
   }
 
-  private PreparedFlatOptimizerStep prepareFlattenedOptimizerStep(
-      ParameterScope optimizerScope, double gradientScale) throws IOException {
+  private void applyFlattenedOptimizerSteps(
+      Optimizer[] optimizers, ParameterScope[] optimizerScopes, double[] gradientScales)
+      throws IOException {
     requireOpen();
-    if (!Double.isFinite(gradientScale)
-        || gradientScale <= 0.0
-        || gradientScale > Float.MAX_VALUE) {
-      throw new IllegalArgumentException(
-          optimizerScope + " gradientScale must be finite and positive: " + gradientScale);
+    FlatOptimizerState[] optimizerStates = new FlatOptimizerState[optimizerScopes.length];
+    boolean initializeBuffers = false;
+    for (int index = 0; index < optimizerScopes.length; index++) {
+      ParameterScope optimizerScope = optimizerScopes[index];
+      double gradientScale = gradientScales[index];
+      if (!Double.isFinite(gradientScale)
+          || gradientScale <= 0.0
+          || gradientScale > Float.MAX_VALUE) {
+        throw new IllegalArgumentException(
+            optimizerScope + " gradientScale must be finite and positive: " + gradientScale);
+      }
+      if (!scope.contains(optimizerScope)) {
+        throw new IllegalArgumentException(
+            "Decision data-parallel scope " + scope + " does not contain " + optimizerScope);
+      }
+      FlatOptimizerState optimizerState = flatOptimizerState(optimizerScope);
+      optimizerStates[index] = optimizerState;
+      initializeBuffers |= !optimizerState.parametersInitialized;
     }
-    if (!scope.contains(optimizerScope)) {
-      throw new IllegalArgumentException(
-          "Decision data-parallel scope " + scope + " does not contain " + optimizerScope);
+    if (initializeBuffers) {
+      try (ComputeScopes ignored = openComputeScopes()) {
+        for (FlatOptimizerState optimizerState : optimizerStates) {
+          initializeFlatOptimizerBuffers(optimizerState);
+        }
+      }
     }
-    FlatOptimizerState optimizerState = flatOptimizerState(optimizerScope);
-    initializeFlatOptimizerBuffers(optimizerState);
-    ParameterLayout layout = optimizerState.layout();
 
     ArrayList<LaneWork<L, Boolean>> packWork = new ArrayList<>(activeGradientLanes.length);
     boolean canonicalContributes = false;
@@ -457,75 +448,84 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       canonicalContributes |= laneIndex == 0;
       packWork.add(
           lane -> {
-            TransferBuffers buffers = lane.transferBuffers(optimizerScope, layout);
-            buffers.packAndClearGradients(optimizerScope.allowsMissingLaneGradients());
+            for (FlatOptimizerState optimizerState : optimizerStates) {
+              TransferBuffers buffers =
+                  lane.transferBuffers(optimizerState.scope(), optimizerState.layout());
+              buffers.packAndClearGradients(optimizerState.scope().allowsMissingLaneGradients());
+            }
             return true;
           });
     }
     executeAssigned(activeGradientLanes, packWork);
 
-    try (ComputeScopes ignored = openComputeScopes()) {
-      L canonical = lanes.getFirst();
-      TransferBuffers canonicalBuffers = canonical.transferBuffers(optimizerScope, layout);
-      if (canonicalContributes) {
-        canonicalBuffers.prepareOptimizerGradient();
-      } else {
-        canonicalBuffers.gradient().fillI(0.0f);
-      }
-      for (int laneIndex : activeGradientLanes) {
-        if (laneIndex == 0) continue;
-        lanes
-            .get(laneIndex)
-            .transferBuffers(optimizerScope, layout)
-            .packedGradient()
-            .copyTo(optimizerState.gradientReductionBuffer());
-        canonicalBuffers.gradient().addi(optimizerState.gradientReductionBuffer());
-      }
-
-      return new PreparedFlatOptimizerStep(optimizerScope, canonicalBuffers, layout, gradientScale);
-    }
-  }
-
-  private void commitPreparedOptimizerSteps(PreparedOptimizerUpdate... updates) throws IOException {
-    try (ComputeScopes ignored = openComputeScopes()) {
-      for (PreparedOptimizerUpdate update : updates) {
-        PreparedFlatOptimizerStep prepared = update.prepared();
-        if (prepared.layout().parameterDataType() == prepared.layout().optimizerDataType()) {
-          update
-              .optimizer()
-              .update(
-                  prepared.scope().label(),
-                  prepared.canonicalBuffers().parameter(),
-                  prepared.canonicalBuffers().gradient());
-        } else {
-          update
-              .optimizer()
-              .updateWithMasterWeight(
-                  prepared.scope().label(),
-                  prepared.canonicalBuffers().modelParameter(),
-                  prepared.canonicalBuffers().parameter(),
-                  prepared.canonicalBuffers().gradient());
+    boolean commitStarted = false;
+    PreparedFlatOptimizerStep[] prepared = new PreparedFlatOptimizerStep[optimizerStates.length];
+    try {
+      try (ComputeScopes ignored = openComputeScopes()) {
+        L canonical = lanes.getFirst();
+        for (int index = 0; index < optimizerStates.length; index++) {
+          FlatOptimizerState optimizerState = optimizerStates[index];
+          ParameterLayout layout = optimizerState.layout();
+          TransferBuffers canonicalBuffers =
+              canonical.transferBuffers(optimizerState.scope(), layout);
+          if (canonicalContributes) {
+            canonicalBuffers.prepareOptimizerGradient();
+          } else {
+            canonicalBuffers.gradient().fillI(0.0f);
+          }
+          for (int laneIndex : activeGradientLanes) {
+            if (laneIndex == 0) continue;
+            lanes
+                .get(laneIndex)
+                .transferBuffers(optimizerState.scope(), layout)
+                .packedGradient()
+                .copyTo(optimizerState.gradientReductionBuffer());
+            canonicalBuffers.gradient().addi(optimizerState.gradientReductionBuffer());
+          }
+          prepared[index] =
+              new PreparedFlatOptimizerStep(
+                  optimizerState.scope(), canonicalBuffers, layout, gradientScales[index]);
         }
-        for (int laneIndex = 1; laneIndex < lanes.size(); laneIndex++) {
-          TransferBuffers destination =
-              lanes.get(laneIndex).transferBuffers(prepared.scope(), prepared.layout());
-          prepared.canonicalBuffers().modelParameter().copyTo(destination.modelParameter());
+        validateAndScalePreparedGradients(prepared);
+        commitStarted = true;
+        for (int index = 0; index < prepared.length; index++) {
+          PreparedFlatOptimizerStep update = prepared[index];
+          if (update.layout().parameterDataType() == update.layout().optimizerDataType()) {
+            optimizers[index].update(
+                update.scope().label(),
+                update.canonicalBuffers().parameter(),
+                update.canonicalBuffers().gradient());
+          } else {
+            optimizers[index].updateWithMasterWeight(
+                update.scope().label(),
+                update.canonicalBuffers().modelParameter(),
+                update.canonicalBuffers().parameter(),
+                update.canonicalBuffers().gradient());
+          }
+          for (int laneIndex = 1; laneIndex < lanes.size(); laneIndex++) {
+            TransferBuffers destination =
+                lanes.get(laneIndex).transferBuffers(update.scope(), update.layout());
+            update.canonicalBuffers().modelParameter().copyTo(destination.modelParameter());
+          }
         }
       }
+      ArrayList<LaneWork<L, Boolean>> unpackWork = new ArrayList<>(lanes.size());
+      for (int laneIndex = 0; laneIndex < lanes.size(); laneIndex++) {
+        unpackWork.add(
+            lane -> {
+              for (PreparedFlatOptimizerStep update : prepared) {
+                lane.transferBuffers(update.scope(), update.layout()).synchronizeModelParameters();
+              }
+              return true;
+            });
+      }
+      executeWork(unpackWork);
+    } catch (IOException | RuntimeException | Error failure) {
+      if (commitStarted) {
+        poisonAfterCommitFailure(failure);
+      }
+      throw failure;
     }
-    ArrayList<LaneWork<L, Boolean>> unpackWork = new ArrayList<>(lanes.size());
-    for (int laneIndex = 0; laneIndex < lanes.size(); laneIndex++) {
-      unpackWork.add(
-          lane -> {
-            for (PreparedOptimizerUpdate update : updates) {
-              PreparedFlatOptimizerStep prepared = update.prepared();
-              lane.transferBuffers(prepared.scope(), prepared.layout())
-                  .synchronizeModelParameters();
-            }
-            return true;
-          });
-    }
-    executeWork(unpackWork);
   }
 
   private void poisonAfterCommitFailure(Throwable failure) {
@@ -562,58 +562,53 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
   }
 
   private void validateAndScalePreparedGradients(PreparedFlatOptimizerStep... preparedSteps) {
-    try (ComputeScopes ignored = openComputeScopes()) {
-      if (preparedSteps.length == 0) {
-        throw new IllegalArgumentException("At least one prepared gradient is required");
-      }
-      ArrayList<NDArray> temporaries = new ArrayList<>(preparedSteps.length * 2);
-      ArrayList<NDArray> maximumArrays = new ArrayList<>(preparedSteps.length);
-      float[] maximums;
-      try {
-        for (PreparedFlatOptimizerStep prepared : preparedSteps) {
-          NDArray absolute = prepared.canonicalBuffers().gradient().abs();
-          NDArray maximum = absolute.max();
-          temporaries.add(absolute);
-          temporaries.add(maximum);
-          maximumArrays.add(maximum);
-        }
-        if (maximumArrays.size() == 1) {
-          maximums = new float[] {maximumArrays.getFirst().getFloat()};
-        } else {
-          try (NDArray packedMaximums = NDArrays.stack(new NDList(maximumArrays))) {
-            maximums = packedMaximums.toFloatArray();
-          }
-        }
-      } finally {
-        for (int index = temporaries.size() - 1; index >= 0; index--) {
-          temporaries.get(index).close();
-        }
-      }
-
-      for (int index = 0; index < preparedSteps.length; index++) {
-        PreparedFlatOptimizerStep prepared = preparedSteps[index];
-        float maximum = maximums[index];
-        if (!Float.isFinite(maximum)) {
-          throw new IllegalStateException(
-              prepared.scope().label() + " gradient contains a non-finite value");
-        }
-        if (!(maximum > 0.0f)) {
-          throw new IllegalStateException(prepared.scope().label() + " gradient is zero");
-        }
-        double scaledMaximum = maximum * prepared.gradientScale();
-        if (!Double.isFinite(scaledMaximum) || scaledMaximum > Float.MAX_VALUE) {
-          throw new IllegalStateException(
-              prepared.scope().label()
-                  + " gradient normalization would overflow: maxAbs="
-                  + maximum
-                  + " scale="
-                  + prepared.gradientScale());
-        }
-      }
+    ArrayList<NDArray> temporaries = new ArrayList<>(preparedSteps.length * 2);
+    ArrayList<NDArray> maximumArrays = new ArrayList<>(preparedSteps.length);
+    float[] maximums;
+    try {
       for (PreparedFlatOptimizerStep prepared : preparedSteps) {
-        if (prepared.gradientScale() != 1.0) {
-          prepared.canonicalBuffers().gradient().muli((float) prepared.gradientScale());
+        NDArray absolute = prepared.canonicalBuffers().gradient().abs();
+        NDArray maximum = absolute.max();
+        temporaries.add(absolute);
+        temporaries.add(maximum);
+        maximumArrays.add(maximum);
+      }
+      if (maximumArrays.size() == 1) {
+        maximums = new float[] {maximumArrays.getFirst().getFloat()};
+      } else {
+        try (NDArray packedMaximums = NDArrays.stack(new NDList(maximumArrays))) {
+          maximums = packedMaximums.toFloatArray();
         }
+      }
+    } finally {
+      for (int index = temporaries.size() - 1; index >= 0; index--) {
+        temporaries.get(index).close();
+      }
+    }
+
+    for (int index = 0; index < preparedSteps.length; index++) {
+      PreparedFlatOptimizerStep prepared = preparedSteps[index];
+      float maximum = maximums[index];
+      if (!Float.isFinite(maximum)) {
+        throw new IllegalStateException(
+            prepared.scope().label() + " gradient contains a non-finite value");
+      }
+      if (!(maximum > 0.0f)) {
+        throw new IllegalStateException(prepared.scope().label() + " gradient is zero");
+      }
+      double scaledMaximum = maximum * prepared.gradientScale();
+      if (!Double.isFinite(scaledMaximum) || scaledMaximum > Float.MAX_VALUE) {
+        throw new IllegalStateException(
+            prepared.scope().label()
+                + " gradient normalization would overflow: maxAbs="
+                + maximum
+                + " scale="
+                + prepared.gradientScale());
+      }
+    }
+    for (PreparedFlatOptimizerStep prepared : preparedSteps) {
+      if (prepared.gradientScale() != 1.0) {
+        prepared.canonicalBuffers().gradient().muli((float) prepared.gradientScale());
       }
     }
   }
@@ -635,22 +630,21 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
   }
 
   private void initializeFlatOptimizerBuffers(FlatOptimizerState optimizerState) {
-    try (ComputeScopes ignored = openComputeScopes()) {
-      ParameterLayout layout = optimizerState.layout();
-      L canonical = lanes.getFirst();
-      lanes.forEach(lane -> lane.transferBuffers(optimizerState.scope(), layout));
-      if (lanes.size() > 1 && optimizerState.gradientReductionBuffer() == null) {
-        optimizerState.gradientReductionBuffer =
-            canonical.manager().zeros(new Shape(layout.elements()), layout.parameterDataType());
-      }
-      if (!optimizerState.parametersInitialized) {
-        packParameters(
-            masterModel == null ? canonical.model() : masterModel,
-            canonical.transferBuffers(optimizerState.scope(), layout).parameter(),
-            layout);
-        optimizerState.parametersInitialized = true;
-      }
+    if (optimizerState.parametersInitialized) {
+      return;
     }
+    ParameterLayout layout = optimizerState.layout();
+    L canonical = lanes.getFirst();
+    lanes.forEach(lane -> lane.transferBuffers(optimizerState.scope(), layout));
+    if (lanes.size() > 1) {
+      optimizerState.gradientReductionBuffer =
+          canonical.manager().zeros(new Shape(layout.elements()), layout.parameterDataType());
+    }
+    packParameters(
+        masterModel == null ? canonical.model() : masterModel,
+        canonical.transferBuffers(optimizerState.scope(), layout).parameter(),
+        layout);
+    optimizerState.parametersInitialized = true;
   }
 
   private static void packParameters(Model model, NDArray packed, ParameterLayout layout) {
@@ -950,8 +944,6 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       TransferBuffers canonicalBuffers,
       ParameterLayout layout,
       double gradientScale) {}
-
-  private record PreparedOptimizerUpdate(Optimizer optimizer, PreparedFlatOptimizerStep prepared) {}
 
   public static class Lane implements AutoCloseable {
     private final Model model;

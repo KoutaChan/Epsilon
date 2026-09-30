@@ -12,7 +12,7 @@ package com.epsilon.config.settings;
  * @param strategicContext 局・手牌・4人の要約を処理するTransformer
  * @param stateReadout 方策と価値の計算に使う局面特徴の集約処理
  * @param policyAffine 候補・行動後の状態・分岐ごとのアフィン変換を加算する処理
- * @param policyIndexedAffine リーチ・鳴き・ロン・槓・九種九牌・ツモの二値分岐の計算
+ * @param policyIndexedAffine 疎な二値分岐の計算。Majorの点数特徴付きロン・ツモは対象外
  * @param candidatePrefix 候補のアフィン変換に使う特徴の前処理。policyAffineの融合演算とは同時に指定できない
  * @param playerTileContext 4人の牌種別特徴を合成する残差付き多層パーセプトロン
  * @param candidateContext 行動の種類ごとに候補の文脈を集約する処理

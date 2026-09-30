@@ -1,5 +1,6 @@
 package com.epsilon.nano.ai.decision.input;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
@@ -18,7 +19,11 @@ public final class DecisionTrainingTargets {
   public static final int ADVANTAGE_SIZE = 1;
 
   /** Decision 価値、アドバンテージ、方策モデル/サンプル重みを合わせた行幅。 */
-  public static final int ROW_NUMERIC_STRIDE = VALUE_TARGET_SIZE + ADVANTAGE_SIZE + 2;
+  public static final int ROW_NUMERIC_STRIDE =
+      VALUE_TARGET_SIZE + ADVANTAGE_SIZE + 2 + DecisionBranchTarget.WIDTH;
+
+  /** 行内の分岐比較教師値の開始位置。 */
+  public static final int BRANCH_OFFSET = 4;
 
   private static final int ADVANTAGE_COMPONENT = VALUE_TARGET_SIZE;
   private static final int ACTOR_WEIGHT_COMPONENT = ADVANTAGE_COMPONENT + ADVANTAGE_SIZE;
@@ -185,6 +190,11 @@ public final class DecisionTrainingTargets {
         sampleWeight);
   }
 
+  /** 指定行の分岐比較教師値を書き込む。 */
+  public void writeBranchTarget(int row, DecisionBranchTarget target) {
+    target.writeTo(numericSlab, rowNumericOffset(row) + BRANCH_OFFSET);
+  }
+
   /** 検証済み教師値を追加走査せず格納する内部経路。 */
   void writeTrustedRow(
       int row,
@@ -204,6 +214,7 @@ public final class DecisionTrainingTargets {
     numericSlab[rowOffset + ADVANTAGE_COMPONENT] = advantage;
     numericSlab[rowOffset + ACTOR_WEIGHT_COMPONENT] = actorWeight;
     numericSlab[rowOffset + SAMPLE_WEIGHT_COMPONENT] = sampleWeight;
+    DecisionBranchTarget.NONE.writeTo(numericSlab, rowOffset + BRANCH_OFFSET);
   }
 
   /** 状態符号化前に、一行の教師データが宣言容量区分と整合することを検証する。 */

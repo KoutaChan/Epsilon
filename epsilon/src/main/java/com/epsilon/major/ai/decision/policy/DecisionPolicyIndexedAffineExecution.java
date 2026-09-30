@@ -6,7 +6,9 @@ import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
 
 /**
- * 一つのDecision デバイスパイプラインで疎な二択分岐を実行する境界。
+ * 一つのDecision デバイスパイプラインでRIICHI・CALL・KAN・KYUSHUの疎な二択分岐を実行する境界。
+ *
+ * <p>RON・TSUMOは点数特徴を受け取る別経路で計算するため、この実行系には含めない。
  *
  * <p>学習ブロックとパラメーターは所有せず、凍結済みパラメーターを参照する。各順伝播が返す密なスコアは、最終D2H完了まで{@link Forward}の利用権で再利用を止める。
  */
@@ -15,10 +17,8 @@ public abstract class DecisionPolicyIndexedAffineExecution implements AutoClosea
   public enum Site {
     RIICHI,
     CALL,
-    RON,
     KAN,
-    KYUSHU,
-    TSUMO
+    KYUSHU
   }
 
   /** 一つの方策順伝播を開始する。 */
@@ -64,16 +64,11 @@ public abstract class DecisionPolicyIndexedAffineExecution implements AutoClosea
   static DecisionPolicyIndexedAffineExecution eager(
       EpsilonBinaryBranchGate riichiGate,
       EpsilonBinaryBranchGate callGate,
-      EpsilonBinaryBranchGate ronGate,
       EpsilonBinaryBranchGate kanGate,
       EpsilonBinaryBranchGate kyushuGate,
-      EpsilonBinaryBranchGate tsumoGate,
       int executionSlots) {
     return new Eager(
-        new EpsilonBinaryBranchGate[] {
-          riichiGate, callGate, ronGate, kanGate, kyushuGate, tsumoGate
-        },
-        executionSlots);
+        new EpsilonBinaryBranchGate[] {riichiGate, callGate, kanGate, kyushuGate}, executionSlots);
   }
 
   private static final class Eager extends DecisionPolicyIndexedAffineExecution {

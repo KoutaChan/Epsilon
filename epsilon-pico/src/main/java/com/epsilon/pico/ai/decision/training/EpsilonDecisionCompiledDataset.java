@@ -33,7 +33,7 @@ final class EpsilonDecisionCompiledDataset {
 
   private static final int DATA_MAGIC = 0xED21_000A;
   private static final int SAMPLE_ID_MAGIC = 0xED21_4901;
-  private static final int FORMAT_VERSION = 11;
+  private static final int FORMAT_VERSION = 12;
   private static final String MANIFEST_FILE = "manifest.json";
   private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 

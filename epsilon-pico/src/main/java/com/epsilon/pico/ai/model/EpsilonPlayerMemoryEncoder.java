@@ -190,11 +190,10 @@ final class EpsilonPlayerMemoryEncoder extends AbstractBlock {
                 presentTokenIndices,
                 flattenedTokenCount)
             .reshape(flattenedPlayers, tokenCount, attentionWidth * 3L);
-    NDArray queries = attentionHeads(queryKeyValues.get("...,0:{}", attentionWidth));
-    NDArray keys =
-        attentionHeads(queryKeyValues.get("...,{}:{}", attentionWidth, attentionWidth * 2));
-    NDArray values =
-        attentionHeads(queryKeyValues.get("...,{}:{}", attentionWidth * 2, attentionWidth * 3));
+    NDList queryKeyValueParts = queryKeyValues.split(3, 2);
+    NDArray queries = attentionHeads(queryKeyValueParts.get(0));
+    NDArray keys = attentionHeads(queryKeyValueParts.get(1));
+    NDArray values = attentionHeads(queryKeyValueParts.get(2));
     // 存在マスクは0/1なので、対数を取りパディングだけを厳密な負の無限大へ変換する。
     NDArray attentionMask =
         playerTokenMask
@@ -269,11 +268,10 @@ final class EpsilonPlayerMemoryEncoder extends AbstractBlock {
     NDArray queryKeyValues =
         applyLinear(
             queryKeyValueProjection, parameterStore, normalized, training, runtimeParameters);
-    NDArray queries = attentionHeads(queryKeyValues.get("...,0:{}", attentionWidth));
-    NDArray keys =
-        attentionHeads(queryKeyValues.get("...,{}:{}", attentionWidth, attentionWidth * 2));
-    NDArray values =
-        attentionHeads(queryKeyValues.get("...,{}:{}", attentionWidth * 2, attentionWidth * 3));
+    NDList queryKeyValueParts = queryKeyValues.split(3, 2);
+    NDArray queries = attentionHeads(queryKeyValueParts.get(0));
+    NDArray keys = attentionHeads(queryKeyValueParts.get(1));
+    NDArray values = attentionHeads(queryKeyValueParts.get(2));
     NDArray mask = playerTokenMask.toType(queries.getDataType(), false).stopGradient();
     NDArray attentionMask = mask.reshape(flattenedPlayers, 1, 1, tokenCount).log();
     NDArray context =

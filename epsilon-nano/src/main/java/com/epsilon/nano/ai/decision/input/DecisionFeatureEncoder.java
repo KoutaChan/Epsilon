@@ -7,8 +7,8 @@ import com.epsilon.core.Meld;
 import com.epsilon.core.PublicObservation;
 import com.epsilon.core.Tile;
 import com.epsilon.engine.ActionEffect;
-import com.epsilon.engine.DecisionHandAnalysisBuffer;
 import com.epsilon.engine.EngineDecisionBuffer;
+import com.epsilon.engine.HandAnalysisBuffer;
 
 /** 行動の適用結果から特徴量を求め、入力バッファへ書き込む処理を順に実行する。 */
 final class DecisionFeatureEncoder {
@@ -49,7 +49,7 @@ final class DecisionFeatureEncoder {
         }
         DecisionInputSchema.DiscardContext discardContext =
             discardContext(state, player, action, discard);
-        DecisionHandAnalysisBuffer analysis =
+        HandAnalysisBuffer analysis =
             decision.analyzeTransition(
                 actionSlot, transitionSlot, riichiStatus, resultingRiverMask);
         DecisionTransitionEncoder.encode(

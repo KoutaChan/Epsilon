@@ -1,5 +1,6 @@
 package com.epsilon.pico.ai.decision.input;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.core.GameState;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -239,9 +240,16 @@ public final class DecisionTrainingSlabWriter {
     targetNumerics.put(targetOffset + VALUE_TARGET_SIZE, requireFinite(advantage, "advantage"));
     targetNumerics.put(targetOffset + targetLayout.actorWeightComponent(), actorWeight);
     targetNumerics.put(targetOffset + targetLayout.sampleWeightComponent(), sampleWeight);
+    writeBranchTarget(row, DecisionBranchTarget.NONE);
     pendingTargetRow = -1;
     pendingTargetLegalActionCount = 0;
     targetRows++;
+  }
+
+  /** 指定行の分岐比較教師値を書き込む。 */
+  public void writeBranchTarget(int row, DecisionBranchTarget target) {
+    target.writeTo(
+        targetNumerics, targetLayout.rowNumericOffset(row) + DecisionTrainingTargets.BRANCH_OFFSET);
   }
 
   /** 全行が一度ずつ書かれたことを確認し、以後の更新を禁止する。 */

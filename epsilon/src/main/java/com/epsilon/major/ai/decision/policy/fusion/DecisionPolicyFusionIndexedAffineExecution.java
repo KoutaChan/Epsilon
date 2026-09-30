@@ -31,9 +31,8 @@ import org.slf4j.LoggerFactory;
 /**
  * djl-rocmのINDEXED_AFFINEを使い、疎な方策二択分岐をパイプラインの実行枠間で永続実行する。
  *
- * <p>RIICHI、CALL、RON、KAN、KYUSHU、TSUMOはパラメーターと有効なインデックスを別々に持つため、初期実装では一二択分岐を一実行計画として
- * EAGERとのA/Bを分離する。CALL+KAN、RON+KYUSHUを一つの処理構成へまとめる4-一括処理化は可能だが、ネイティブ内のGEMMは同じストリームで逐次実行される。
- * したがって、処理箇所ごとの版の改善を確認してからJNI削減だけを独立評価する。
+ * <p>RIICHI・CALL・KAN・KYUSHUは、それぞれのパラメーターと有効なインデックスを使って実行する。
+ * 点数特徴を使うRON・TSUMOは別経路で計算し、この実行系の管理対象には含めない。
  *
  * <p>各実行計画の密な出力上限と有効な作業領域上限は独立に成長させる。有効な位置がない処理箇所はゼロテンソルを直接返し、実行計画を生成しない。
  * 疎な二択分岐の作業領域を密な行動数で常駐させず、実際に観測した有効な位置数に合わせて共有実行処理実行系の対局実行処理を成長させる。
@@ -76,10 +75,8 @@ public final class DecisionPolicyFusionIndexedAffineExecution
       ParameterStore parameterStore,
       EpsilonBinaryBranchGate riichiGate,
       EpsilonBinaryBranchGate callGate,
-      EpsilonBinaryBranchGate ronGate,
       EpsilonBinaryBranchGate kanGate,
       EpsilonBinaryBranchGate kyushuGate,
-      EpsilonBinaryBranchGate tsumoGate,
       int hiddenSize,
       DataType expectedDataType,
       int maxBatch,
@@ -88,10 +85,7 @@ public final class DecisionPolicyFusionIndexedAffineExecution
       throw new IllegalArgumentException("executionSlots must be positive");
     }
     this.parameterStore = parameterStore;
-    gates =
-        new EpsilonBinaryBranchGate[] {
-          riichiGate, callGate, ronGate, kanGate, kyushuGate, tsumoGate
-        };
+    gates = new EpsilonBinaryBranchGate[] {riichiGate, callGate, kanGate, kyushuGate};
     this.hiddenSize = hiddenSize;
     this.maxBatch = maxBatch;
     this.executionSlots = executionSlots;

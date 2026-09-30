@@ -1,6 +1,7 @@
 package com.epsilon.engine;
 
 import com.epsilon.calculate.scoring.HandScoreBuffer;
+import com.epsilon.calculate.scoring.YakuBits;
 
 /** 公開情報で確定する役・翻・符・基本点を所有する再利用出力。 */
 public final class VisibleHandScoreBuffer {
@@ -36,6 +37,11 @@ public final class VisibleHandScoreBuffer {
 
   public int basePoints() {
     return basePoints;
+  }
+
+  /** 数え役満を除く役満の合計倍率を返す。通常役では0。 */
+  public int yakumanMultiplier() {
+    return YakuBits.yakumanCount(yakuBits);
   }
 
   public boolean available() {

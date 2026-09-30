@@ -592,7 +592,8 @@ public final class DecisionPolicyFusionAffineExecution extends DecisionPolicyAff
     for (int component = 0; component < 2; component++) {
       NDArray view = weight.get(":,{}:{}", component * hiddenSize, (component + 1) * hiddenSize);
       try {
-        slices[component] = view.duplicate();
+        slices[component] = constantsManager.zeros(view.getShape(), view.getDataType());
+        slices[component].set(new NDIndex(":,:"), view);
         slices[component].attach(constantsManager);
       } finally {
         view.close();
@@ -606,7 +607,9 @@ public final class DecisionPolicyFusionAffineExecution extends DecisionPolicyAff
     requireType(offset, "alternativeOffset.embedding");
     NDArray transposedOffset = offset.transpose();
     try {
-      slices[2] = transposedOffset.duplicate();
+      slices[2] =
+          constantsManager.zeros(transposedOffset.getShape(), transposedOffset.getDataType());
+      slices[2].set(new NDIndex(":,:"), transposedOffset);
       slices[2].attach(constantsManager);
     } finally {
       transposedOffset.close();

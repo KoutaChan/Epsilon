@@ -3,6 +3,7 @@ package com.epsilon.major.ai.decision.input;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.index.NDIndex;
+import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 
 /**
@@ -14,29 +15,29 @@ import ai.djl.ndarray.types.Shape;
  * @param stateCategories 局・プレイヤー・牌・河・面子のカテゴリ値フィールド
  * @param actionCategories 行動候補ごとのカテゴリ値フィールド
  * @param actionRoutes 方策グラフの条件付き経路 ID
+ * @param pointLedger100 絶対席順の現在点を100点単位で保持するINT32台帳
+ * @param actionWinFacts 即時和了候補ごとのPoint Facts
  * @param transitionCategories 行動-遷移ごとのカテゴリ値フィールド
  * @param transitionTiles 行動適用後の状態の牌種別フィールド
  * @param waitTileIds 遷移ごとの疎な wait 牌種 ID
- * @param waitYakus 疎な wait と和了方法ごとの役ビットフィールド
+ * @param waitWinFacts 疎なwaitと和了方法ごとのPoint Facts
  * @param stateNumerics 局・プレイヤー・牌・河・面子の数値フィールド
  * @param boundaryContext 価値専用のGRP 周辺分布と配牌前局境界特徴量
- * @param actionNumerics 行動候補ごとの数値フィールド
  * @param transitionNumerics 行動-遷移ごとの数値フィールド
- * @param waitScores 疎な wait と和了方法ごとの得点フィールド
  */
 public record DecisionNetworkInputs(
     NDArray stateCategories,
     NDArray actionCategories,
     NDArray actionRoutes,
+    NDArray pointLedger100,
+    NDArray actionWinFacts,
     NDArray transitionCategories,
     NDArray transitionTiles,
     NDArray waitTileIds,
-    NDArray waitYakus,
+    NDArray waitWinFacts,
     NDArray stateNumerics,
     NDArray boundaryContext,
-    NDArray actionNumerics,
-    NDArray transitionNumerics,
-    NDArray waitScores)
+    NDArray transitionNumerics)
     implements DecisionPolicyInputs {
 
   /** 全論理的なテンソルが同じ正のバッチ行数を持つことを検証する。 */
@@ -45,15 +46,15 @@ public record DecisionNetworkInputs(
     if (rows < 1
         || actionCategories.getShape().get(0) != rows
         || actionRoutes.getShape().get(0) != rows
+        || pointLedger100.getShape().get(0) != rows
+        || actionWinFacts.getShape().get(0) != rows
         || transitionCategories.getShape().get(0) != rows
         || transitionTiles.getShape().get(0) != rows
         || waitTileIds.getShape().get(0) != rows
-        || waitYakus.getShape().get(0) != rows
+        || waitWinFacts.getShape().get(0) != rows
         || stateNumerics.getShape().get(0) != rows
         || boundaryContext.getShape().get(0) != rows
-        || actionNumerics.getShape().get(0) != rows
-        || transitionNumerics.getShape().get(0) != rows
-        || waitScores.getShape().get(0) != rows) {
+        || transitionNumerics.getShape().get(0) != rows) {
       throw new IllegalArgumentException("Decision input tensors have inconsistent row counts");
     }
   }
@@ -112,15 +113,15 @@ public record DecisionNetworkInputs(
         stateCategories,
         actionCategories,
         actionRoutes,
+        pointLedger100,
+        actionWinFacts,
         transitionCategories,
         transitionTiles,
         waitTileIds,
-        waitYakus,
+        waitWinFacts,
         stateNumerics,
         boundaryContext,
-        actionNumerics,
-        transitionNumerics,
-        waitScores);
+        transitionNumerics);
   }
 
   /**
@@ -188,15 +189,15 @@ public record DecisionNetworkInputs(
         views[DecisionInputLayout.Tensor.STATE_CATEGORIES.ordinal()],
         views[DecisionInputLayout.Tensor.ACTION_CATEGORIES.ordinal()],
         views[DecisionInputLayout.Tensor.ACTION_ROUTES.ordinal()],
+        views[DecisionInputLayout.Tensor.POINT_LEDGER_100.ordinal()].toType(DataType.INT32, false),
+        views[DecisionInputLayout.Tensor.ACTION_WIN_FACTS.ordinal()],
         views[DecisionInputLayout.Tensor.TRANSITION_CATEGORIES.ordinal()],
         views[DecisionInputLayout.Tensor.TRANSITION_TILES.ordinal()],
         views[DecisionInputLayout.Tensor.WAIT_TILE_IDS.ordinal()],
-        views[DecisionInputLayout.Tensor.WAIT_YAKUS.ordinal()],
+        views[DecisionInputLayout.Tensor.WAIT_WIN_FACTS.ordinal()],
         views[DecisionInputLayout.Tensor.STATE_NUMERICS.ordinal()],
         views[DecisionInputLayout.Tensor.BOUNDARY_CONTEXT.ordinal()],
-        views[DecisionInputLayout.Tensor.ACTION_NUMERICS.ordinal()],
-        views[DecisionInputLayout.Tensor.TRANSITION_NUMERICS.ordinal()],
-        views[DecisionInputLayout.Tensor.WAIT_SCORES.ordinal()]);
+        views[DecisionInputLayout.Tensor.TRANSITION_NUMERICS.ordinal()]);
   }
 
   private static NDArray slice(NDArray slab, int start, int end, Shape shape) {

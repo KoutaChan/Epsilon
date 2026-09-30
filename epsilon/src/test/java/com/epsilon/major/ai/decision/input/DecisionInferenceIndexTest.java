@@ -104,4 +104,62 @@ public class DecisionInferenceIndexTest {
     }
     return batch;
   }
+
+  @Test
+  public void winningActionsUseGlobalOffsetsAndExcludePao() {
+    DecisionHostBatch first = batch();
+    DecisionHostBatch second = batch();
+    var a = first.inputs().writer(2);
+    a.action(
+        1,
+        DecisionInputSchema.ActionInt.TYPE,
+        DecisionFeatureCodec.actionType(Action.Type.RON_AGARI));
+    a.actionWinFact(1, DecisionInputSchema.WinFact.VALID, 1);
+    var b = second.inputs().writer(1);
+    b.action(
+        0,
+        DecisionInputSchema.ActionInt.TYPE,
+        DecisionFeatureCodec.actionType(Action.Type.TSUMO_AGARI));
+    b.actionWinFact(0, DecisionInputSchema.WinFact.VALID, 1);
+    b.action(
+        1,
+        DecisionInputSchema.ActionInt.TYPE,
+        DecisionFeatureCodec.actionType(Action.Type.RON_AGARI));
+    b.actionWinFact(1, DecisionInputSchema.WinFact.VALID, 1);
+    b.actionWinFact(1, DecisionInputSchema.WinFact.REQUIRES_PAO_CORRECTION, 1);
+    var rows =
+        DecisionHostBatch.RowBatch.of(List.of(first.sliceRows(2, 1), second.sliceRows(1, 2)));
+    var layout = rows.inferenceIndexLayout(false);
+    Assert.assertEquals(layout.winningCount(), 2);
+    IntBuffer indices = IntBuffer.allocate(layout.totalCount());
+    rows.copyInferenceIndicesTo(indices, layout);
+    Assert.assertEquals(indices.get(layout.winningOffset()), 1);
+    Assert.assertEquals(indices.get(layout.winningOffset() + 1), 4);
+  }
+
+  @Test
+  public void waitRowsUseCompactedTransitionOffsetsAcrossSlices() {
+    DecisionHostBatch first = batch();
+    DecisionHostBatch second = batch();
+    first
+        .inputs()
+        .writer(2)
+        .waitWinFact(
+            1, 1, 12, DecisionInputSchema.WaitWinType.TSUMO, DecisionInputSchema.WinFact.VALID, 1);
+    second
+        .inputs()
+        .writer(1)
+        .waitWinFact(
+            1, 2, 0, DecisionInputSchema.WaitWinType.RON, DecisionInputSchema.WinFact.VALID, 1);
+    var rows =
+        DecisionHostBatch.RowBatch.of(List.of(first.sliceRows(2, 1), second.sliceRows(1, 2)));
+    var layout = rows.inferenceIndexLayout(false);
+    Assert.assertEquals(layout.waitCount(), 2);
+    IntBuffer indices = IntBuffer.allocate(layout.totalCount());
+    rows.copyInferenceIndicesTo(indices, layout);
+    Assert.assertEquals(
+        indices.get(layout.waitOffset()), 2 * DecisionInputSchema.MAX_WAIT_TILE_TYPES + 12);
+    Assert.assertEquals(
+        indices.get(layout.waitOffset() + 1), 9 * DecisionInputSchema.MAX_WAIT_TILE_TYPES);
+  }
 }

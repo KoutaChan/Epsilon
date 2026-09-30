@@ -20,13 +20,13 @@ final class ShapeAnalysisCache {
   private final byte[] standardShanten = new byte[CAPACITY];
   private final byte[] sevenPairsShanten = new byte[CAPACITY];
   private final byte[] thirteenOrphansShanten = new byte[CAPACITY];
-  private final boolean[] specialHandsAvailable = new boolean[CAPACITY];
+  private final boolean[] specialHandShantenAvailable = new boolean[CAPACITY];
   private final boolean[] occupied = new boolean[CAPACITY];
   private final HandShapeState shape = new HandShapeState();
   private final HandShapeAnalysisBuffer analysis = new HandShapeAnalysisBuffer();
   private final HandShapeAnalyzer analyzer = new HandShapeAnalyzer();
 
-  void analyzeInto(HandView hand, DecisionHandAnalysisBuffer destination) {
+  void analyzeInto(HandView hand, HandAnalysisBuffer destination) {
     hand.copyShapeInto(shape);
     long low = shape.packedConcealedTileCountsLow();
     long high = shape.packedConcealedTileCountsHigh();
@@ -50,19 +50,19 @@ final class ShapeAnalysisCache {
     standardShanten[index] = (byte) analysis.standardShanten();
     sevenPairsShanten[index] = (byte) analysis.chiitoitsuShanten();
     thirteenOrphansShanten[index] = (byte) analysis.kokushiShanten();
-    specialHandsAvailable[index] = analysis.specialHandsAvailable();
+    specialHandShantenAvailable[index] = analysis.specialHandsAvailable();
     improvingTileTypeMasks[index] = analysis.ukeireTileTypeMask();
     agariTileTypeMasks[index] = analysis.agariTileTypeMask();
     occupied[index] = true;
     read(index, destination);
   }
 
-  private void read(int index, DecisionHandAnalysisBuffer destination) {
+  private void read(int index, HandAnalysisBuffer destination) {
     destination.minimumShanten = minimumShanten[index];
     destination.standardShanten = standardShanten[index];
     destination.chiitoitsuShanten = sevenPairsShanten[index];
     destination.kokushiShanten = thirteenOrphansShanten[index];
-    destination.specialHandsAvailable = specialHandsAvailable[index];
+    destination.specialHandShantenAvailable = specialHandShantenAvailable[index];
     destination.improvingTileTypeMask = improvingTileTypeMasks[index];
     destination.shapeWaitTileTypeMask = agariTileTypeMasks[index];
   }

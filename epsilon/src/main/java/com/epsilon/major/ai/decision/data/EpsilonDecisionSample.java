@@ -1,5 +1,6 @@
 package com.epsilon.major.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.ai.grp.EpsilonGrpFeature;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.core.DecisionLearningRole;
@@ -12,7 +13,7 @@ import com.epsilon.major.ai.decision.training.EpsilonDecisionPretrainTargets;
 /**
  * 一回の判断で得た入力・選択行動・確率分布と、その判断に対する教師値を保持する。
  *
- * <p>{@code valueTarget}は直後の局のGRP予測で閉じるスカラー q-ret Retrace、{@code advantage}は教師値と
+ * <p>{@code valueTarget}は直後の局の GRP 予測で閉じるスカラー V-trace、{@code advantage}は行動価値教師値と
  * 対局生成予測の効用差である。探索後と探索前の方策は合法手候補の位置順の正規化済み確率である。
  *
  * @param input 1 判断行の型付きホスト入力
@@ -30,6 +31,7 @@ import com.epsilon.major.ai.decision.training.EpsilonDecisionPretrainTargets;
  * @param grpFeatureSequence 局境界で固定するGRP 入力に使う事前予測の特徴量列
  * @param grpFinalRanksCode GRP 用に符号化した終局順位
  * @param learningRole CAUSAL/FORCED/PREEMPTEDの明示的な学習役割
+ * @param branchTarget 終了ゲートの分岐比較教師値
  */
 public record EpsilonDecisionSample(
     DecisionHostBatch input,
@@ -48,7 +50,8 @@ public record EpsilonDecisionSample(
     int seatDecisionOrdinal,
     float[] grpFeatureSequence,
     int grpFinalRanksCode,
-    DecisionLearningRole learningRole)
+    DecisionLearningRole learningRole,
+    DecisionBranchTarget branchTarget)
     implements EpsilonDecisionSampleRecord {
 
   private static final float POLICY_SUM_EPS = 1.0e-4f;
@@ -87,7 +90,8 @@ public record EpsilonDecisionSample(
         -1,
         grpFeatureSequence,
         grpFinalRanksCode,
-        legalActionCount == 1 ? DecisionLearningRole.FORCED : DecisionLearningRole.CAUSAL);
+        legalActionCount == 1 ? DecisionLearningRole.FORCED : DecisionLearningRole.CAUSAL,
+        DecisionBranchTarget.NONE);
   }
 
   /** 形状、識別情報、確率分布、教師値のサンプル契約を検証し、不整合があれば直ちに例外を送出する。 */
@@ -169,7 +173,8 @@ public record EpsilonDecisionSample(
         seatDecisionOrdinal,
         grpFeatureSequence,
         grpFinalRanksCode,
-        learningRole);
+        learningRole,
+        branchTarget);
   }
 
   /** 固定調査処理で使う参照方策だけを置き換え、収集時の探索後の方策と学習教師値は保持する。 */
@@ -191,7 +196,8 @@ public record EpsilonDecisionSample(
         seatDecisionOrdinal,
         grpFeatureSequence,
         grpFinalRanksCode,
-        learningRole);
+        learningRole,
+        branchTarget);
   }
 
   @Override

@@ -462,7 +462,7 @@ public final class EpsilonDecisionPairedTrajectoryAudit {
     return DecisionSampleBatcher.evaluateInBucketedBatches(evaluator, samples);
   }
 
-  /** 現行方策と同じ局境界GRP 終端値とCAUSALに分類された行動の遷移列でスカラーアドバンテージを再現する。 */
+  /** 現行方策と同じ局境界 GRP 終端値と CAUSAL に分類された行動の V-trace でアドバンテージを再現する。 */
   static float[] recomputeAdvantages(
       List<EpsilonDecisionSample> samples,
       List<EpsilonDecisionInferenceServer.Prediction> predictions,
@@ -488,16 +488,13 @@ public final class EpsilonDecisionPairedTrajectoryAudit {
     float[] nextTargetBySeat = new float[EpsilonDecisionConstants.PLAYERS];
     boolean[] hasNextBySeat = new boolean[EpsilonDecisionConstants.PLAYERS];
     int[] activeBoundaryBySeat = new int[EpsilonDecisionConstants.PLAYERS];
-    float[] nextTraceCoefficientBySeat = new float[EpsilonDecisionConstants.PLAYERS];
     Arrays.fill(activeBoundaryBySeat, -1);
-    Arrays.fill(nextTraceCoefficientBySeat, 1.0f);
     for (int index = samples.size() - 1; index >= 0; index--) {
       EpsilonDecisionSample sample = samples.get(index);
       int seat = sample.playerSeat();
       if (activeBoundaryBySeat[seat] != sample.boundaryIndex()) {
         activeBoundaryBySeat[seat] = sample.boundaryIndex();
         hasNextBySeat[seat] = false;
-        nextTraceCoefficientBySeat[seat] = 1.0f;
         EpsilonUtilityProfile profile = EpsilonUtilityProfile.values()[sample.ruleProfile()];
         int nextBoundary = sample.boundaryIndex() + 1;
         nextTargetBySeat[seat] =
@@ -510,24 +507,25 @@ public final class EpsilonDecisionPairedTrajectoryAudit {
       }
       if (sample.learningRole().advancesActorClock()) {
         float current = predictions.get(index).valueUtility();
-        float traceWeight = lambda * nextTraceCoefficientBySeat[seat];
+        float nextValue =
+            hasNextBySeat[seat] ? nextPredictionBySeat[seat] : nextTargetBySeat[seat];
         float target =
-            !hasNextBySeat[seat]
-                ? nextTargetBySeat[seat]
-                : (1.0f - traceWeight) * nextPredictionBySeat[seat]
-                    + traceWeight * nextTargetBySeat[seat];
+            EpsilonDecisionReturns.actorLookaheadTarget(
+                nextValue, nextTargetBySeat[seat], lambda);
         advantages[index] = target - current;
         nextPredictionBySeat[seat] = current;
-        nextTargetBySeat[seat] = target;
         hasNextBySeat[seat] = true;
         EpsilonDecisionInferenceServer.Prediction prediction = predictions.get(index);
         float selectedRolloutProbability =
             useStoredRolloutPolicy
                 ? sample.rolloutPolicy()[sample.chosenLegalSlot()]
                 : canonicalSelectedRolloutProbability(prediction, sample.chosenLegalSlot());
-        nextTraceCoefficientBySeat[seat] =
-            EpsilonDecisionReturns.selectedRetraceCoefficient(
+        float coefficient =
+            EpsilonDecisionReturns.selectedTraceCoefficient(
                 selectedRolloutProbability, sample.behaviorProb(), explorationCreditMix);
+        nextTargetBySeat[seat] =
+            EpsilonDecisionReturns.scalarVTraceTarget(
+                current, nextValue, nextTargetBySeat[seat], lambda, coefficient);
       }
     }
     return advantages;
@@ -750,7 +748,7 @@ public final class EpsilonDecisionPairedTrajectoryAudit {
    * @param discardIdentityExplorationMass 打牌の識別情報の探索に割り当てる確率
    * @param riichiGateExplorationMass RIICHI 二択分岐の探索に割り当てる確率
    * @param causalTraceLambda 因果関係を持つ方策更新用の遷移列のスカラー値のトレース係数
-   * @param explorationCreditMix q-retに使う探索分の学習への寄与混合率
+   * @param explorationCreditMix 重なり方策に使う探索分の学習への寄与混合率
    * @param opponentSelectionMode 対戦相手の選択方式
    */
   public record RolloutSettings(

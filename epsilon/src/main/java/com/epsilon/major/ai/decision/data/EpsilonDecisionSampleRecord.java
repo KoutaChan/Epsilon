@@ -1,5 +1,6 @@
 package com.epsilon.major.ai.decision.data;
 
+import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.major.ai.decision.input.DecisionHostBatch;
 
@@ -158,6 +159,8 @@ public interface EpsilonDecisionSampleRecord {
 
   /** 選択が方策遷移列、価値遷移列のどちらを進めるか返す。 */
   DecisionLearningRole learningRole();
+
+  DecisionBranchTarget branchTarget();
 
   /**
    * 価値教師値とアドバンテージを置換した同一観測のレコードを返す。

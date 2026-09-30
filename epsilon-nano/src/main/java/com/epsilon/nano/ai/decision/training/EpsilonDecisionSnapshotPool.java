@@ -4,7 +4,6 @@ import com.epsilon.ai.decision.duel.DuelEvaluation;
 import com.epsilon.config.settings.DecisionSnapshotPoolSettings;
 import com.epsilon.core.GameState;
 import com.epsilon.nano.config.settings.EpsilonSettings;
-import com.epsilon.util.SeedMixer;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -16,37 +15,37 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.SplittableRandom;
 
-/** 自己対局の対戦相手に使う、過去に採用されたモデルのスナップショットを管理する。 */
+/** 自己対局の対戦相手として使う、過去の保存モデルのスナップショットを管理する。 */
 public final class EpsilonDecisionSnapshotPool {
 
   private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
   private static final String REGISTRY_FILE = "decision-snapshot-pool.json";
   static final String CURRENT_REGISTRY_FORMAT = "epsilon-decision-arena-snapshot-pool";
-  static final int CURRENT_REGISTRY_VERSION = 2;
+  static final int CURRENT_REGISTRY_VERSION = 3;
   private static final Set<String> REGISTRY_FIELDS = Set.of("format", "version", "snapshots");
   private static final Set<String> SNAPSHOT_FIELDS =
-      Set.of("path", "version", "createdStep", "currentArenaChampion", "evalStats", "candidateId");
+      Set.of("path", "id", "iteration", "createdStep", "currentArenaChampion", "evalStats");
   private static final Set<String> EVAL_FIELDS = Set.of("averageRank", "topRate", "lastRate");
-  private static final long OPPONENT_SEAT_SALT = 0x9FB21C651E98DF25L;
 
   private final int maxSnapshots;
   private final ArrayList<SnapshotEntry> snapshots = new ArrayList<>();
 
-  /** 設定の保持上限を使って空の対局スナップショット集約を作る。 */
+  /** 設定の保持上限を使って空の対戦相手スナップショット一覧を作る。 */
   public EpsilonDecisionSnapshotPool() {
     this(EpsilonSettings.defaults().bind(DecisionSnapshotPoolSettings.class).max());
   }
 
   /**
-   * 指定した保持上限で空の対局スナップショット集約を作る。
+   * 指定した保持上限で空の対戦相手スナップショット一覧を作る。
    *
-   * @param maxSnapshots 登録一覧に保持する最大チェックポイント数
+   * @param maxSnapshots 登録先に保持する最大チェックポイント数
    */
   public EpsilonDecisionSnapshotPool(int maxSnapshots) {
     if (maxSnapshots <= 0) {
@@ -56,87 +55,88 @@ public final class EpsilonDecisionSnapshotPool {
   }
 
   /**
-   * 対局収集に使う採用モデルチェックポイント登録情報をバージョンで置換または追加する。
+   * 対戦相手のチェックポイント項目をIDで置換または追加する。
    *
-   * <p>上限を超えた場合は現在の対局収集に使う採用モデルを残し、最古の非現在の登録情報を削除する。
+   * <p>上限を超えた場合は現在の対局収集用の採用モデルを残し、最古の非現在の項目を削除する。
    *
-   * @param snapshot 検証済み変更不可チェックポイント登録情報
+   * @param snapshot 検証済み変更不可チェックポイント項目
    */
-  public synchronized void addArenaSnapshot(SnapshotEntry snapshot) {
+  private synchronized void addSnapshot(SnapshotEntry snapshot) {
     if (snapshot.currentArenaChampion()) {
       for (int i = 0; i < snapshots.size(); i++) {
         SnapshotEntry existing = snapshots.get(i);
-        if (existing.version() != snapshot.version() && existing.currentArenaChampion()) {
+        if (existing.id() != snapshot.id() && existing.currentArenaChampion()) {
           snapshots.set(i, withCurrentArenaChampion(existing, false));
         }
       }
     }
-    long snapshotVersion = snapshot.version();
-    snapshots.removeIf(existing -> existing.version() == snapshotVersion);
+    long snapshotId = snapshot.id();
+    snapshots.removeIf(existing -> existing.id() == snapshotId);
     snapshots.add(snapshot);
-    snapshots.sort(Comparator.comparingLong(SnapshotEntry::version));
+    snapshots.sort(Comparator.comparingLong(SnapshotEntry::id));
     while (snapshots.size() > maxSnapshots) {
       removeOldestEvictableSnapshot();
     }
   }
 
-  /**
-   * 指定バージョンを現在の対局収集に使う採用モデルとして固定する。既存登録情報があっても、検証済み変更不可チェックポイントの {@code fallbackPath} と候補 IDへ差し替える。
-   *
-   * @param version 現在の対局収集に使う採用モデルにするスナップショットバージョン
-   * @param fallbackPath 検証済みチェックポイントの絶対パス
-   * @param fallbackCreatedStep チェックポイント作成時の累積更新回数
-   * @param fallbackCandidateId 保存先から決まる候補の不変ID
-   */
-  public synchronized void markArenaChampion(
-      long version, String fallbackPath, int fallbackCreatedStep, String fallbackCandidateId) {
-    boolean found = false;
-    for (int i = 0; i < snapshots.size(); i++) {
-      SnapshotEntry entry = snapshots.get(i);
-      if (entry.version() == version) {
-        snapshots.set(
-            i,
-            new SnapshotEntry(
-                fallbackPath,
-                version,
-                fallbackCreatedStep,
-                true,
-                entry.evalStats(),
-                fallbackCandidateId));
-        found = true;
-      } else if (entry.currentArenaChampion()) {
-        snapshots.set(i, withCurrentArenaChampion(entry, false));
-      }
-    }
-    if (!found) {
-      addArenaSnapshot(
-          new SnapshotEntry(
-              fallbackPath,
-              version,
-              fallbackCreatedStep,
-              true,
-              EvalStats.empty(),
-              fallbackCandidateId));
-    }
+  /** 採用モデルを登録する。反復回数とは独立したIDを割り当てる。 */
+  public synchronized void registerArenaChampion(Path checkpoint) throws IOException {
+    ensureArenaChampionFromMacro(checkpoint, null);
   }
 
-  /** 対局収集に使う採用モデルを現在のスナップショットとして登録する。 */
-  public void registerArenaChampion(Path champion) throws IOException {
-    Path resolved = EpsilonDecisionCheckpointManager.resolveExistingStrict(champion);
-    if (resolved == null) {
-      throw new IOException("Arena champion checkpoint not found: " + champion);
+  /** 昇格参照だけが先に保存された場合も、元macroの登録IDを引き継いで復旧する。 */
+  synchronized void ensureArenaChampionFromMacro(Path checkpoint, Path sourceMacroCheckpoint)
+      throws IOException {
+    Path normalized = checkpoint.toAbsolutePath().normalize();
+    for (SnapshotEntry entry : snapshots) {
+      if (entry.currentArenaChampion() && Path.of(entry.path()).equals(normalized)) return;
     }
+    registerCheckpoint(checkpoint, true, EvalStats.empty(), sourceMacroCheckpoint);
+  }
+
+  void registerArenaChampion(Path checkpoint, EvalStats stats) throws IOException {
+    registerArenaChampion(checkpoint, stats, null);
+  }
+
+  /** 候補が指定macroから作られた場合だけ、その履歴IDを採用モデルへ引き継ぐ。 */
+  void registerArenaChampion(Path checkpoint, EvalStats stats, Path sourceMacroCheckpoint)
+      throws IOException {
+    registerCheckpoint(checkpoint, true, stats, sourceMacroCheckpoint);
+  }
+
+  /** 保存済みmacroをコピーせず、対戦相手の履歴へ登録する。 */
+  void registerMacroCheckpoint(Path checkpoint) throws IOException {
+    registerCheckpoint(checkpoint, false, EvalStats.empty(), null);
+  }
+
+  private synchronized void registerCheckpoint(
+      Path checkpoint, boolean champion, EvalStats stats, Path sourceMacroCheckpoint)
+      throws IOException {
+    Path resolved = checkpoint.toAbsolutePath().normalize();
+    Path source =
+        sourceMacroCheckpoint == null ? null : sourceMacroCheckpoint.toAbsolutePath().normalize();
     EpsilonDecisionCheckpointBundle manifest =
         EpsilonDecisionCheckpointManager.loadManifest(resolved);
-    String candidateId = EpsilonDecisionCheckpointManager.candidateId(resolved);
-    markArenaChampion(
-        manifest.iteration,
-        resolved.toAbsolutePath().normalize().toString(),
-        manifest.globalStep,
-        candidateId);
+    long id = snapshots.isEmpty() ? 1L : Math.addExact(snapshots.getLast().id(), 1L);
+    for (SnapshotEntry entry : snapshots) {
+      if (Path.of(entry.path()).equals(resolved)
+          || (champion
+              && source != null
+              && Path.of(entry.path()).equals(source)
+              && entry.iteration() == manifest.iteration
+              && entry.createdStep() == manifest.globalStep)) {
+        id = entry.id();
+        break;
+      }
+    }
+    SnapshotEntry snapshot =
+        new SnapshotEntry(
+            resolved.toString(), id, manifest.iteration, manifest.globalStep, champion, stats);
+    requireSnapshotCheckpoint(snapshot);
+    addSnapshot(snapshot);
   }
 
-  /** 現在の対局収集に使う採用モデルだけを固定し、それ以外の対局スナップショットを古い順に削除する。 */
+  /** 現在の採用モデルを残し、最も古い履歴の登録を削除する。 */
   private void removeOldestEvictableSnapshot() {
     for (int i = 0; i < snapshots.size(); i++) {
       if (!snapshots.get(i).currentArenaChampion()) {
@@ -150,106 +150,50 @@ public final class EpsilonDecisionSnapshotPool {
       SnapshotEntry snapshot, boolean currentArenaChampion) {
     return new SnapshotEntry(
         snapshot.path(),
-        snapshot.version(),
+        snapshot.id(),
+        snapshot.iteration(),
         snapshot.createdStep(),
         currentArenaChampion,
-        snapshot.evalStats(),
-        snapshot.candidateId());
+        snapshot.evalStats());
   }
 
-  /**
-   * 方策モデル席ごとの3対戦相手を選ぶ。現在の対局収集に使う採用モデルが候補自身でない限り、各対戦相手の組合せへ必ず1席以上含める。
-   *
-   * @param candidateVersion 対戦相手から除外する現在の候補バージョン
-   * @param seed 対戦相手の組合せを再現する乱数シード
-   * @param maxDistinctSnapshots 一つの収集で利用するスナップショット種類の上限
-   * @return {@code [actorSeat][opponentSeatSlot]} のスナップショットバージョン
-   */
-  public synchronized long[][] sampleOpponentIdsForSeats(
-      long candidateVersion, long seed, int maxDistinctSnapshots) {
-    ArrayList<SnapshotEntry> eligible = eligibleArenaSnapshots(candidateVersion);
-    if (eligible.isEmpty()) {
-      throw new IllegalStateException(
-          "Decision snapshot pool has no eligible arena opponent: candidateVersion="
-              + candidateVersion);
-    }
-    int distinctCount = Math.min(maxDistinctSnapshots, eligible.size());
-    long[] distinctIds = sampleDistinctSnapshotIds(eligible, distinctCount, seed);
-    long currentArenaChampionId = currentArenaChampionId(eligible);
-    long[][] ids = new long[GameState.NUM_PLAYERS][];
-    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
-      SplittableRandom rng =
-          new SplittableRandom(SeedMixer.indexed(seed, OPPONENT_SEAT_SALT, seat));
-      ids[seat] = new long[GameState.NUM_PLAYERS - 1];
-      int currentArenaChampionSlot =
-          currentArenaChampionId >= 0L ? rng.nextInt(ids[seat].length) : -1;
-      for (int i = 0; i < ids[seat].length; i++) {
-        ids[seat][i] =
-            i == currentArenaChampionSlot
-                ? currentArenaChampionId
-                : distinctIds[rng.nextInt(distinctIds.length)];
-      }
-    }
-    return ids;
-  }
-
-  private ArrayList<SnapshotEntry> eligibleArenaSnapshots(long candidateVersion) {
-    ArrayList<SnapshotEntry> eligible = new ArrayList<>();
+  /** macro全体で一つの相手を使う。履歴がなければ必ず現在の採用モデルを使う。 */
+  public synchronized long[][] sampleOpponentIdsForMacro(long seed, double championProbability) {
+    SnapshotEntry champion = null;
+    ArrayList<SnapshotEntry> history = new ArrayList<>();
     for (SnapshotEntry snapshot : snapshots) {
-      if (snapshot.version() != candidateVersion) {
-        eligible.add(snapshot);
-      }
+      if (snapshot.currentArenaChampion()) champion = snapshot;
+      else history.add(snapshot);
     }
-    return eligible;
-  }
-
-  private static long[] sampleDistinctSnapshotIds(
-      ArrayList<SnapshotEntry> eligible, int distinctCount, long seed) {
-    ArrayList<SnapshotEntry> remaining = new ArrayList<>(eligible);
-    SplittableRandom rng = new SplittableRandom(seed ^ 0x5EED5EEDL);
-    long[] ids = new long[distinctCount];
-    int next = 0;
-    for (SnapshotEntry snapshot : eligible) {
-      if (snapshot.currentArenaChampion() && next < ids.length) {
-        ids[next++] = snapshot.version();
-        remaining.remove(snapshot);
-        break;
-      }
-    }
-    for (int i = next; i < ids.length; i++) {
-      int index = rng.nextInt(remaining.size());
-      ids[i] = remaining.remove(index).version();
-    }
+    if (champion == null) throw new IllegalStateException("Decision snapshot pool has no champion");
+    SplittableRandom random = new SplittableRandom(seed);
+    long id =
+        history.isEmpty() || random.nextDouble() < championProbability
+            ? champion.id()
+            : history.get(random.nextInt(history.size())).id();
+    long[][] ids = new long[GameState.NUM_PLAYERS][GameState.NUM_PLAYERS - 1];
+    for (long[] seats : ids) Arrays.fill(seats, id);
     return ids;
   }
 
-  private static long currentArenaChampionId(ArrayList<SnapshotEntry> eligible) {
-    for (SnapshotEntry snapshot : eligible) {
-      if (snapshot.currentArenaChampion()) {
-        return snapshot.version();
-      }
-    }
-    return -1L;
-  }
-
   /**
-   * 登録一覧内の対局スナップショット数を返す。
+   * 登録済みスナップショットの数を返す。
    *
-   * @return 保持中登録情報数
+   * @return 保持中項目数
    */
   public synchronized int size() {
     return snapshots.size();
   }
 
   /**
-   * 指定バージョンのスナップショット登録情報を検索する。
+   * 指定IDのスナップショット項目を検索する。
    *
-   * @param version 検索するスナップショットバージョン
-   * @return 対応登録情報。存在しない場合は {@code null}
+   * @param id 検索するスナップショットID
+   * @return 対応項目。存在しない場合は {@code null}
    */
-  public synchronized SnapshotEntry snapshot(long version) {
+  public synchronized SnapshotEntry snapshot(long id) {
     for (SnapshotEntry snapshot : snapshots) {
-      if (snapshot.version() == version) {
+      if (snapshot.id() == id) {
         return snapshot;
       }
     }
@@ -257,15 +201,15 @@ public final class EpsilonDecisionSnapshotPool {
   }
 
   /**
-   * 登録一覧をチェックポイントのルートディレクトリへ不可分な操作で保存する。
+   * 登録先をチェックポイントの親ディレクトリへ原子的に保存する。
    *
-   * @param checkpointDir 登録一覧ファイルを置くチェックポイントのルートディレクトリ
-   * @throws IOException 現在の対局収集に使う採用モデル、チェックポイント識別情報、または書込の検証に失敗した場合
+   * @param checkpointDir 登録先ファイルを置くチェックポイントの親ディレクトリ
+   * @throws IOException 現在の対局収集用の採用モデル、チェックポイント識別情報、または書込の検証に失敗した場合
    */
   public synchronized void save(Path checkpointDir) throws IOException {
     requireSingleCurrentArenaChampion(snapshots);
     for (SnapshotEntry snapshot : snapshots) {
-      requireArenaChampionCheckpoint(snapshot);
+      requireSnapshotCheckpoint(snapshot);
     }
     Files.createDirectories(checkpointDir);
     Path target = checkpointDir.resolve(REGISTRY_FILE);
@@ -290,9 +234,9 @@ public final class EpsilonDecisionSnapshotPool {
   }
 
   /**
-   * チェックポイントのルートディレクトリの現在の-形式登録一覧を厳密に読み込む。
+   * チェックポイントルートにある現行形式の登録一覧を厳密に読み込む。
    *
-   * @param checkpointDir 登録一覧ファイルを持つチェックポイントのルートディレクトリ
+   * @param checkpointDir 登録先ファイルを持つチェックポイントの親ディレクトリ
    * @return 検証済み集約。ファイルが無い場合は空の集約
    * @throws IOException 形式、フィールド、チェックポイント識別情報のいずれかが不正な場合
    */
@@ -322,6 +266,17 @@ public final class EpsilonDecisionSnapshotPool {
                 + " checkpoint root");
       }
       requireExactFields(root, REGISTRY_FIELDS, "registry");
+      if (CURRENT_REGISTRY_FORMAT.equals(root.get("format").getAsString())
+          && root.get("version").getAsInt() == 2) {
+        for (JsonElement element : root.getAsJsonArray("snapshots")) {
+          JsonObject entry = element.getAsJsonObject();
+          JsonElement version = entry.remove("version");
+          entry.add("id", version);
+          entry.add("iteration", version);
+          entry.remove("candidateId");
+        }
+        root.addProperty("version", CURRENT_REGISTRY_VERSION);
+      }
       if (!root.get("format").isJsonPrimitive()
           || !CURRENT_REGISTRY_FORMAT.equals(root.get("format").getAsString())
           || !root.get("version").isJsonPrimitive()
@@ -357,14 +312,14 @@ public final class EpsilonDecisionSnapshotPool {
         || registry.snapshots() == null) {
       throw new IOException("Invalid Decision snapshot registry schema: " + file);
     }
-    HashSet<Long> versions = new HashSet<>();
+    HashSet<Long> ids = new HashSet<>();
     ArrayList<SnapshotEntry> canonicalSnapshots = new ArrayList<>();
     int currentArenaChampionCount = 0;
     for (SnapshotEntry snapshot : registry.snapshots()) {
       SnapshotEntry canonical = requireCanonicalSnapshot(snapshot);
-      if (!versions.add(canonical.version())) {
+      if (!ids.add(canonical.id())) {
         throw new IOException(
-            "Decision snapshot registry contains duplicate version: " + canonical.version());
+            "Decision snapshot registry contains duplicate id: " + canonical.id());
       }
       if (canonical.currentArenaChampion()) {
         currentArenaChampionCount++;
@@ -379,8 +334,8 @@ public final class EpsilonDecisionSnapshotPool {
       throw new IOException("Decision snapshot registry has no current arena champion entry");
     }
     for (SnapshotEntry canonical : canonicalSnapshots) {
-      requireArenaChampionCheckpoint(canonical);
-      pool.addArenaSnapshot(canonical);
+      requireSnapshotCheckpoint(canonical);
+      pool.addSnapshot(canonical);
     }
     return pool;
   }
@@ -397,14 +352,14 @@ public final class EpsilonDecisionSnapshotPool {
     }
   }
 
-  /** 登録情報が実在する変更不可チェックポイントの反復回数と候補 ID に一致することを検証する。 */
-  static Path requireArenaChampionCheckpoint(SnapshotEntry snapshot) throws IOException {
+  /** 登録情報が実在する変更不可チェックポイントの反復回数・更新回数に一致することを検証する。 */
+  static Path requireSnapshotCheckpoint(SnapshotEntry snapshot) throws IOException {
     Path checkpoint = Path.of(snapshot.path()).toAbsolutePath().normalize();
     Path resolved = EpsilonDecisionCheckpointManager.resolveExistingStrict(checkpoint);
     if (resolved == null || !checkpoint.equals(resolved.toAbsolutePath().normalize())) {
       throw new IOException(
-          "Decision snapshot checkpoint does not resolve to the exact checkpoint: version="
-              + snapshot.version()
+          "Decision snapshot checkpoint does not resolve to the exact checkpoint: id="
+              + snapshot.id()
               + " path="
               + checkpoint
               + " resolved="
@@ -412,26 +367,21 @@ public final class EpsilonDecisionSnapshotPool {
     }
     EpsilonDecisionCheckpointBundle checkpointManifest =
         EpsilonDecisionCheckpointManager.loadManifest(checkpoint);
-    if (checkpointManifest.iteration != snapshot.version()) {
+    if (checkpointManifest.iteration != snapshot.iteration()
+        || checkpointManifest.globalStep != snapshot.createdStep()) {
       throw new IOException(
-          "Decision snapshot checkpoint iteration mismatch: snapshotId="
-              + snapshot.version()
+          "Decision snapshot checkpoint generation mismatch: snapshotId="
+              + snapshot.id()
               + " checkpoint="
               + checkpoint
               + " manifestIteration="
-              + checkpointManifest.iteration);
-    }
-    String candidateId = EpsilonDecisionCheckpointManager.candidateId(checkpoint);
-    if (!snapshot.candidateId().equals(candidateId)) {
-      throw new IOException(
-          "Decision snapshot checkpoint identity mismatch: snapshotId="
-              + snapshot.version()
-              + " checkpoint="
-              + checkpoint
-              + " expectedCandidateId="
-              + snapshot.candidateId()
-              + " actualCandidateId="
-              + candidateId);
+              + checkpointManifest.iteration
+              + " manifestStep="
+              + checkpointManifest.globalStep
+              + " expectedIteration="
+              + snapshot.iteration()
+              + " expectedStep="
+              + snapshot.createdStep());
     }
     return checkpoint;
   }
@@ -453,47 +403,46 @@ public final class EpsilonDecisionSnapshotPool {
     if (snapshot == null) {
       throw new IOException("Decision snapshot registry contains a null entry");
     }
-    if (snapshot.version() < 0L) {
-      throw new IOException(
-          "Decision snapshot registry contains a negative version: " + snapshot.version());
+    if (snapshot.id() < 0L) {
+      throw new IOException("Decision snapshot registry contains a negative id: " + snapshot.id());
     }
     try {
       return new SnapshotEntry(
           snapshot.path(),
-          snapshot.version(),
+          snapshot.id(),
+          snapshot.iteration(),
           snapshot.createdStep(),
           snapshot.currentArenaChampion(),
-          snapshot.evalStats(),
-          snapshot.candidateId());
+          snapshot.evalStats());
     } catch (IllegalArgumentException e) {
       throw new IOException(
-          "Decision snapshot registry contains an invalid entry: version=" + snapshot.version(), e);
+          "Decision snapshot registry contains an invalid entry: id=" + snapshot.id(), e);
     }
   }
 
   /**
-   * スナップショット登録一覧に保存する変更不可チェックポイント登録情報。
+   * スナップショット登録先に保存する変更不可チェックポイント項目。
    *
    * @param path チェックポイントの正規化済み絶対パス
-   * @param version 登録一覧内の単調増加バージョン
+   * @param id 登録先内のスナップショットID
+   * @param iteration チェックポイントの反復回数
    * @param createdStep チェックポイント作成時の累積更新回数
-   * @param currentArenaChampion 現在の対局採用モデルへの参照なら {@code true}
+   * @param currentArenaChampion 現在の対局収集用の採用モデルへの参照なら {@code true}
    * @param evalStats チェックポイントの保存済み評価指標
-   * @param candidateId 保存先から決まる候補の不変ID
    */
   public record SnapshotEntry(
       String path,
-      long version,
+      long id,
+      int iteration,
       int createdStep,
       boolean currentArenaChampion,
-      EvalStats evalStats,
-      String candidateId) {
+      EvalStats evalStats) {
 
-    /** バージョン、絶対パス、評価値、候補 ID を検証して登録情報を構築する。 */
+    /** ID、反復回数、絶対パス、評価値を検証して項目を構築する。 */
     public SnapshotEntry {
-      if (version < 0L) {
+      if (id < 0L || iteration < 0) {
         throw new IllegalArgumentException(
-            "Decision snapshot version must be non-negative: " + version);
+            "Decision snapshot id and iteration must be non-negative: " + id + "/" + iteration);
       }
       if (createdStep < 0) {
         throw new IllegalArgumentException(
@@ -517,14 +466,11 @@ public final class EpsilonDecisionSnapshotPool {
       if (evalStats == null) {
         throw new IllegalArgumentException("Decision snapshot evalStats must not be null");
       }
-      if (candidateId == null || candidateId.isBlank()) {
-        throw new IllegalArgumentException("Decision snapshot candidateId must not be blank");
-      }
     }
   }
 
   /**
-   * スナップショットに付随する最小対戦比較指標。
+   * スナップショットに付随する最小対戦評価指標。
    *
    * @param averageRank 候補の平均順位
    * @param topRate 候補の1着率
@@ -540,7 +486,7 @@ public final class EpsilonDecisionSnapshotPool {
     }
 
     /**
-     * 対戦比較未実施を表す全ゼロ指標を返す。
+     * 対戦評価未実施を表す全ゼロ指標を返す。
      *
      * @return 全項目0の評価指標
      */
@@ -549,9 +495,9 @@ public final class EpsilonDecisionSnapshotPool {
     }
 
     /**
-     * 対戦比較結果から候補の最小登録一覧指標を抽出する。
+     * 対戦評価結果から候補の登録用指標を抽出する。
      *
-     * @param result 候補と対戦相手の対戦比較結果
+     * @param result 候補と対戦相手の対戦評価結果
      * @return 候補の平均順位、1着率、4着率
      */
     public static EvalStats fromDuelResult(DuelEvaluation.Result result) {

@@ -2,26 +2,15 @@ package com.epsilon.major.ai.decision.input;
 
 import com.epsilon.calculate.scoring.RiichiState;
 import com.epsilon.core.Action;
-import com.epsilon.core.GameState;
 import com.epsilon.core.PublicObservation;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.ActionEffect;
 import com.epsilon.engine.EngineDecisionBuffer;
-import com.epsilon.engine.VisibleHandScoreBuffer;
 import com.epsilon.engine.WinSettlementProjection;
 
 /** 解析済みの行動候補を、行動特徴量の連続バッファへ書き込む。 */
 final class DecisionActionEncoder {
-
-  private static final int RIICHI_DECLARATION_POINTS = 1000;
-  private static final float SCORE_NORMALIZER = 100000.0f;
-  private static final float HAN_NORMALIZER = 13.0f;
-  private static final float FU_NORMALIZER = 110.0f;
-  private static final float BASE_POINTS_NORMALIZER = 32000.0f;
-  private static final float DORA_INDICATOR_COUNT_NORMALIZER = 5.0f;
-  private static final DecisionInputSchema.ActionFloat[] ACTION_FLOATS =
-      DecisionInputSchema.ActionFloat.values();
 
   private DecisionActionEncoder() {}
 
@@ -84,14 +73,8 @@ final class DecisionActionEncoder {
           actionSlot,
           DecisionInputSchema.ActionInt.URA_ELIGIBLE,
           immediateWin.uraEligible() ? 1 : 0);
-      writer.action(
-          actionSlot,
-          DecisionInputSchema.ActionInt.SETTLEMENT_ASSUMPTION,
-          categoryId(immediateWin.settlementAssumption()));
-      writer.action(
-          actionSlot,
-          DecisionInputSchema.ActionInt.SOLE_WIN_PROJECTED_RANK,
-          immediateWin.projectedRank(player) + 1);
+      DecisionWinPointFactsEncoder.encodeAction(
+          immediateWin.visibleScore(), immediateWin.paoApplies(), writer, actionSlot);
     }
     writer.action(
         actionSlot,
@@ -107,74 +90,6 @@ final class DecisionActionEncoder {
         actionSlot,
         DecisionInputSchema.ActionInt.TERMINAL,
         continuation == ActionEffect.NextStep.ROUND_COMPLETE ? 1 : 0);
-
-    int declarationCost = action.type() == Action.Type.RIICHI_DAHAI ? RIICHI_DECLARATION_POINTS : 0;
-    int scoreAfterDeclaration = state.score(player) - declarationCost;
-    writer.action(
-        actionSlot,
-        DecisionInputSchema.ActionFloat.RIICHI_DECLARATION_COST,
-        declarationCost / SCORE_NORMALIZER);
-    writer.action(
-        actionSlot,
-        DecisionInputSchema.ActionFloat.SELF_SCORE_AFTER_DECLARATION,
-        scoreAfterDeclaration / SCORE_NORMALIZER);
-    writer.action(
-        actionSlot,
-        DecisionInputSchema.ActionFloat.SCORE_TO_FIRST_AFTER_DECLARATION,
-        (scoreAfterDeclaration
-                - extremeScoreAfterDeclaration(state, player, scoreAfterDeclaration, true))
-            / SCORE_NORMALIZER);
-    writer.action(
-        actionSlot,
-        DecisionInputSchema.ActionFloat.SCORE_TO_FOURTH_AFTER_DECLARATION,
-        (scoreAfterDeclaration
-                - extremeScoreAfterDeclaration(state, player, scoreAfterDeclaration, false))
-            / SCORE_NORMALIZER);
-    if (immediateWin != null) {
-      encodeImmediateWin(immediateWin, player, writer, actionSlot);
-    }
-  }
-
-  private static void encodeImmediateWin(
-      WinSettlementProjection immediateWin,
-      int player,
-      DecisionInputWriter writer,
-      int actionSlot) {
-    VisibleHandScoreBuffer agari = immediateWin.visibleScore();
-    writer.action(
-        actionSlot,
-        DecisionInputSchema.ActionFloat.NORMALIZED_VISIBLE_HAN_WITHOUT_URA,
-        agari.visibleHan() / HAN_NORMALIZER);
-    writer.action(
-        actionSlot,
-        DecisionInputSchema.ActionFloat.NORMALIZED_VISIBLE_FU,
-        agari.fu() / FU_NORMALIZER);
-    writer.action(
-        actionSlot,
-        DecisionInputSchema.ActionFloat.NORMALIZED_VISIBLE_BASE_POINTS,
-        agari.basePoints() / BASE_POINTS_NORMALIZER);
-    for (int relativeSeat = 0; relativeSeat < GameState.NUM_PLAYERS; relativeSeat++) {
-      int absoluteSeat = (player + relativeSeat) % GameState.NUM_PLAYERS;
-      writer.action(
-          actionSlot,
-          ACTION_FLOATS[
-              DecisionInputSchema.ActionFloat.NORMALIZED_PAYMENT_FLOOR_SELF.ordinal()
-                  + relativeSeat],
-          immediateWin.paymentFloor(absoluteSeat) / SCORE_NORMALIZER);
-    }
-    writer.action(
-        actionSlot,
-        DecisionInputSchema.ActionFloat.NORMALIZED_URA_INDICATOR_COUNT,
-        immediateWin.uraIndicatorCount() / DORA_INDICATOR_COUNT_NORMALIZER);
-    for (int relativeSeat = 0; relativeSeat < GameState.NUM_PLAYERS; relativeSeat++) {
-      int absoluteSeat = (player + relativeSeat) % GameState.NUM_PLAYERS;
-      writer.action(
-          actionSlot,
-          ACTION_FLOATS[
-              DecisionInputSchema.ActionFloat.NORMALIZED_SOLE_WIN_SCORE_GAP_SELF.ordinal()
-                  + relativeSeat],
-          immediateWin.scoreGap(absoluteSeat) / SCORE_NORMALIZER);
-    }
   }
 
   private static DecisionInputSchema.WinConditions winContext(
@@ -202,16 +117,6 @@ final class DecisionActionEncoder {
           : DecisionInputSchema.WinConditions.RON;
     }
     return DecisionInputSchema.WinConditions.NONE;
-  }
-
-  private static int extremeScoreAfterDeclaration(
-      PublicObservation state, int player, int selfScoreAfterDeclaration, boolean maximum) {
-    int extreme = maximum ? Integer.MIN_VALUE : Integer.MAX_VALUE;
-    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
-      int score = seat == player ? selfScoreAfterDeclaration : state.score(seat);
-      extreme = maximum ? Math.max(extreme, score) : Math.min(extreme, score);
-    }
-    return extreme;
   }
 
   private static int categoryId(Enum<?> value) {

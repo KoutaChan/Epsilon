@@ -125,7 +125,7 @@ public final class EpsilonBinaryBranchGate extends AbstractBlock {
     if (activeCount == 0) {
       return state.getManager().zeros(new Shape(rowCount, actionCapacity), state.getDataType());
     }
-    NDArray activeRows = activeActions.div(actionCapacity).toType(DataType.INT32, false);
+    NDArray activeRows = activeActions.floorDivide(actionCapacity).toType(DataType.INT32, false);
     NDArray activeScores =
         score(
             parameterStore,

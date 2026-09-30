@@ -12,6 +12,7 @@ import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
@@ -86,7 +87,7 @@ public class EpsilonDecisionInferenceReplayCorpusStoreTest {
     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
     try (DataOutputStream out = new DataOutputStream(bytes)) {
       out.writeLong(0x4550535245504C59L);
-      out.writeInt(2);
+      out.writeInt(3);
       writeText(out, DecisionInputSchema.fingerprint());
       out.writeLong(23L);
       out.writeInt(2);
@@ -107,6 +108,32 @@ public class EpsilonDecisionInferenceReplayCorpusStoreTest {
       }
     }
     return bytes.toByteArray();
+  }
+
+  @Test
+  public void version2CorpusIsRejected() throws Exception {
+    GameEngine engine = new GameEngine(8181L);
+    var boundary = (GameStepResult.AwaitingDecisions) engine.stepHanchan();
+    var point = boundary.decisions().getFirst();
+    var bucket = DecisionBatchBuilder.selectInferenceBucket(point.legalActions());
+    var builder = DecisionBatchBuilder.inference(1, bucket);
+    builder.addInferenceRow(engine, point, DecisionBoundaryContext.uniform());
+    DecisionHostBatch batch = builder.build();
+    ShortBuffer categories =
+        ShortBuffer.allocate(batch.sliceRows(0, 1).inputCategoricalElementCount());
+    FloatBuffer numerics = FloatBuffer.allocate(batch.sliceRows(0, 1).inputNumericElementCount());
+    batch.sliceRows(0, 1).copyInputCategoriesTo(categories);
+    batch.sliceRows(0, 1).copyInputNumericsTo(numerics);
+    byte[] old = expectedBytes(batch, categories.array(), numerics.array());
+    ByteBuffer.wrap(old).putInt(Long.BYTES, 2);
+    Path file = Files.createTempFile("major-replay-v2-", ".bin");
+    try {
+      Files.write(file, old);
+      Assert.expectThrows(
+          IOException.class, () -> EpsilonDecisionInferenceReplayCorpusStore.load(file));
+    } finally {
+      Files.deleteIfExists(file);
+    }
   }
 
   private static void writeText(DataOutputStream out, String value) throws IOException {

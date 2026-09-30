@@ -411,7 +411,8 @@ public final class DecisionBatchTransfer {
         rowTargets.get("...,0"),
         rowTargets.get("...," + valueEnd),
         rowTargets.get("...," + advantageEnd),
-        rowTargets.get("...," + (advantageEnd + 1)));
+        rowTargets.get("...," + (advantageEnd + 1)),
+        rowTargets.get(":,4:"));
   }
 
   private static NDArray slice(NDArray slab, int start, int end, Shape shape) {

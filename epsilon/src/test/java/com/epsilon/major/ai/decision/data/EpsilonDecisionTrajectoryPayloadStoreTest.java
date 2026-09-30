@@ -9,8 +9,12 @@ import com.epsilon.major.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.major.ai.decision.input.DecisionBucket;
 import com.epsilon.major.ai.decision.input.DecisionHostBatch;
 import com.github.luben.zstd.Zstd;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.nio.file.Files;
@@ -78,6 +82,18 @@ public class EpsilonDecisionTrajectoryPayloadStoreTest {
       }
       Files.delete(directory);
     }
+  }
+
+  @Test
+  public void v46PayloadMagicIsRejected() throws Exception {
+    byte[] old = canonicalBytes(payload(false));
+    ByteBuffer.wrap(old).putInt(0, 0xED20_001B);
+    Assert.expectThrows(
+        IOException.class,
+        () ->
+            EpsilonDecisionTrajectoryPayloadCodec.read(
+                new DataInputStream(new ByteArrayInputStream(old)),
+                new EpsilonDecisionBinaryArrayCodec.Scratch()));
   }
 
   private static EpsilonDecisionTrajectoryPayload payload(boolean multipleTransitions) {

@@ -117,6 +117,7 @@ public final class EpsilonDecisionTrainingBatch {
             sample.advantage(),
             actorWeight,
             sampleWeight);
+        builder.writeBranchTarget(index - start, sample.branchTarget());
       }
       return new EpsilonDecisionTrainingBatch(builder.build());
     }

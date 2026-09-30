@@ -225,7 +225,8 @@ public final class EpsilonDecisionPretrainTargets {
                 seatOrdinals[source.playerSeat()]++,
                 boundarySequences.get(boundaryIndex),
                 finalRanksCode,
-                source.learningRole());
+                source.learningRole(),
+                source.branchTarget());
       }
     }
 

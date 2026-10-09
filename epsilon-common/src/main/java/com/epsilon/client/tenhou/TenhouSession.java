@@ -43,8 +43,15 @@ final class TenhouSession {
       return responses;
     }
 
+    if (event instanceof TenhouEvent.Rejoin rejoin) {
+      return List.of(TenhouActionEncoder.encodeJoin(rejoin.target()));
+    }
     if (event instanceof TenhouEvent.Go) {
       return List.of(TenhouActionEncoder.encodeGok());
+    }
+    if (event instanceof TenhouEvent.GameStart && !nextReadySent) {
+      nextReadySent = true;
+      return List.of(TenhouActionEncoder.encodeNextReady());
     }
     if (event instanceof TenhouEvent.Un un) {
       logPlayerNames(un);

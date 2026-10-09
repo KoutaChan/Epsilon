@@ -16,6 +16,8 @@ public final class TenhouConnection implements AutoCloseable {
   private static final int KEEPALIVE_INTERVAL_SEC = 10;
   private static final Map<String, String> HEADERS =
       Map.of(
+          "Origin",
+          "https://tenhou.net",
           "User-Agent",
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
               + " Chrome/146.0.0.0 Safari/537.36");

@@ -123,7 +123,8 @@ final class TenhouDecisionCoordinator {
       case RON_AGARI -> prompt.canRon();
       case CHI -> prompt.canChi();
       case PON -> prompt.canPon();
-      case ANKAN, KAKAN, DAIMINKAN -> prompt.canKan();
+      case ANKAN, KAKAN -> prompt.canSelfKan();
+      case DAIMINKAN -> prompt.canDaiminkan();
       case KYUSHU_KYUHAI -> prompt.canKyushu();
       case PASS -> prompt.phase() == TenhouEvent.PromptPhase.RESPONSE;
     };

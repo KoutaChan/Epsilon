@@ -4,6 +4,7 @@ import com.epsilon.core.Action;
 import com.epsilon.core.Hand;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
+import com.google.gson.JsonObject;
 
 /**
  * AI の行動を 天鳳のWebSocketプロトコルで使用するJSONメッセージに変換する。
@@ -26,6 +27,14 @@ import com.epsilon.core.TurnEvent;
 public final class TenhouActionEncoder {
 
   private TenhouActionEncoder() {}
+
+  /** ロビー・対局種別・追加フラグを保持した参加要求を生成する。 */
+  public static String encodeJoin(String target) {
+    JsonObject message = new JsonObject();
+    message.addProperty("tag", "JOIN");
+    message.addProperty("t", target);
+    return message.toString();
+  }
 
   /**
    * 打牌用の簡易変換。

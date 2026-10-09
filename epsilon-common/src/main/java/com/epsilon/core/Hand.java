@@ -2,6 +2,7 @@ package com.epsilon.core;
 
 import com.epsilon.calculate.shape.HandShapeState;
 import java.util.Arrays;
+import java.util.Objects;
 
 /** 手牌を表現するクラス。 牌種の形状と物理牌・副露の所有状態を分離して管理する。 */
 public final class Hand implements HandView {
@@ -331,7 +332,7 @@ public final class Hand implements HandView {
 
   @Override
   public Meld meld(int meldIndex) {
-    return melds[java.util.Objects.checkIndex(meldIndex, meldCount())];
+    return melds[Objects.checkIndex(meldIndex, meldCount())];
   }
 
   /**
@@ -356,7 +357,7 @@ public final class Hand implements HandView {
   /** 局内の共通公開イベント連番を付ける。加槓面子を直接追加する場合、元のポンの成立時点は不明のまま保持する。 */
   void addMeld(Meld meld, int afterRiverIndex, int creationEvent) {
     requireAfterRiverIndex(afterRiverIndex);
-    java.util.Objects.requireNonNull(meld, "meld");
+    Objects.requireNonNull(meld, "meld");
     if (meldCount() >= melds.length) {
       throw new IllegalStateException("a hand cannot contain more than four melds");
     }
@@ -395,7 +396,7 @@ public final class Hand implements HandView {
    * @return 鳴き直後打牌の河インデックス。不明または対象外なら -1
    */
   public int meldCallAfterRiverIndex(int meldIndex) {
-    return meldCallAfterRiverIndexes[java.util.Objects.checkIndex(meldIndex, meldCount())];
+    return meldCallAfterRiverIndexes[Objects.checkIndex(meldIndex, meldCount())];
   }
 
   /**
@@ -405,17 +406,17 @@ public final class Hand implements HandView {
    * @return 槓成立時の河要素数。不明または対象外なら -1
    */
   public int meldKanAfterRiverIndex(int meldIndex) {
-    return meldKanAfterRiverIndexes[java.util.Objects.checkIndex(meldIndex, meldCount())];
+    return meldKanAfterRiverIndexes[Objects.checkIndex(meldIndex, meldCount())];
   }
 
   /** 面子の最初の公開記録イベント。加槓でも元のポンのイベント連番を保つ。不明なら-1。 */
   public int meldCreationEvent(int meldIndex) {
-    return meldCreationEvents[java.util.Objects.checkIndex(meldIndex, meldCount())];
+    return meldCreationEvents[Objects.checkIndex(meldIndex, meldCount())];
   }
 
   /** 槍槓応答前の加槓公開イベント。加槓で-1ならイベント連番は不明、他の面子には後続イベントがない。 */
   public int meldKakanEvent(int meldIndex) {
-    return meldKakanEvents[java.util.Objects.checkIndex(meldIndex, meldCount())];
+    return meldKakanEvents[Objects.checkIndex(meldIndex, meldCount())];
   }
 
   /**

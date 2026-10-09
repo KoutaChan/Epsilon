@@ -1,7 +1,8 @@
 package com.epsilon.reviewer.model;
 
 import com.epsilon.reviewer.ApiException;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Comparator;
 import org.testng.Assert;
 import org.testng.annotations.Test;

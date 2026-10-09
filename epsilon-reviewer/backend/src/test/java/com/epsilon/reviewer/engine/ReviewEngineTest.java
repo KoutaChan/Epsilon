@@ -3,19 +3,49 @@ package com.epsilon.reviewer.engine;
 import ai.djl.Device;
 import ai.djl.Model;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.core.*;
+import com.epsilon.core.Action;
+import com.epsilon.core.AkaTileMask;
+import com.epsilon.core.GameState;
+import com.epsilon.core.Tile;
 import com.epsilon.nano.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.nano.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.nano.ai.network.NetworkFactory;
-import com.epsilon.replay.*;
-import com.epsilon.replay.ReplayEvent.*;
-import com.epsilon.reviewer.dto.*;
+import com.epsilon.replay.DecisionPoint;
+import com.epsilon.replay.RecordCompletion;
+import com.epsilon.replay.RecordFormat;
+import com.epsilon.replay.RecordMetadata;
+import com.epsilon.replay.ReplayEngine;
+import com.epsilon.replay.ReplayEvent;
+import com.epsilon.replay.ReplayEvent.Dahai;
+import com.epsilon.replay.ReplayEvent.Dora;
+import com.epsilon.replay.ReplayEvent.Pon;
+import com.epsilon.replay.ReplayEvent.StartGame;
+import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.replay.ReplayEvent.Tsumo;
+import com.epsilon.replay.ReplayObserver;
+import com.epsilon.replay.ReplayRecord;
+import com.epsilon.reviewer.dto.ActionCandidate;
+import com.epsilon.reviewer.dto.ReplayStep;
+import com.epsilon.reviewer.dto.TableState;
 import com.epsilon.reviewer.model.ModelDefinition;
-import com.google.gson.*;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -293,16 +323,16 @@ public class ReviewEngineTest {
     String combined = games.toString();
     try {
       engine.prepareRecord(combined.getBytes(StandardCharsets.UTF_8), "combined.mjai");
-      org.testng.Assert.fail("Accepted another game after the completed game");
+      Assert.fail("Accepted another game after the completed game");
     } catch (IllegalArgumentException expected) {
-      org.testng.Assert.assertTrue(expected.getMessage().contains("end_game"));
+      Assert.assertTrue(expected.getMessage().contains("end_game"));
     }
   }
 
   private static ReplayRecord replayRecord(List<ReplayEvent> events) {
     return new ReplayRecord(
         events,
-        new com.epsilon.replay.RecordMetadata(
+        new RecordMetadata(
             RecordFormat.MJAI, List.of("A", "B", "C", "D"), null, "unavailable", null),
         null,
         RecordCompletion.INCOMPLETE);

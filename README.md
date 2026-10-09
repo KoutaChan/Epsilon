@@ -19,7 +19,7 @@
 
 ## 概要
 
-Epsilonは、JavaとDJL / PyTorchを使った4人リーチ麻雀AIです。牌譜からの学習と自己対戦による追加学習に対応し、Epsilon-Pico、Epsilon-Nano、Epsilonの3系列で学習・評価・対局を実行できます。
+Epsilonは、JavaとDJL / PyTorchを使った4人リーチ麻雀AIです。Epsilon-Pico、Epsilon-Nano、Epsilonは牌譜からの学習と自己対戦による追加学習に対応し、Epsilon-CFRは自己対戦からLCFRで学習します。
 
 ## Epsilon シリーズ
 
@@ -31,6 +31,7 @@ Epsilonは、JavaとDJL / PyTorchを使った4人リーチ麻雀AIです。牌�
 
 - [Epsilon Arena](epsilon-arena/README.md)：異なる系列のモデルを対戦させ、成績を比較できます。
 - [Epsilon AI レビュアー](epsilon-reviewer/README.md)：牌譜をAIで解析し、行動の候補を確認できます。
+- [Epsilon-CFR](epsilon-cfr/README.md)：自己対戦から後悔と平均方策を学習し、学習済みモデルをArenaで比較できます。
 
 ## ライセンス
 
@@ -38,6 +39,6 @@ Epsilonは、JavaとDJL / PyTorchを使った4人リーチ麻雀AIです。牌�
 
 <div align="center">
 
-[Epsilon-Pico](epsilon-pico/README.md) · [Epsilon-Nano](epsilon-nano/README.md) · [Epsilon](epsilon/README.md)
+[Epsilon-Pico](epsilon-pico/README.md) · [Epsilon-Nano](epsilon-nano/README.md) · [Epsilon](epsilon/README.md) · [Epsilon-CFR](epsilon-cfr/README.md)
 
 </div>

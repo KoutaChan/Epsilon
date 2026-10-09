@@ -793,7 +793,7 @@ public interface EpsilonDecisionTrajectoryPayloadStore extends AutoCloseable {
 }
 
 record EpsilonDecisionTrajectoryPayload(
-    com.epsilon.nano.ai.decision.input.DecisionHostBatch.RowSlice input,
+    DecisionHostBatch.RowSlice input,
     float[] behaviorPolicy,
     float[] rolloutPolicy) {
 

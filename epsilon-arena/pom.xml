@@ -12,6 +12,9 @@
   </properties>
   <dependencies>
     <dependency>
+      <groupId>com.epsilon</groupId><artifactId>epsilon-cfr</artifactId><version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>com.epsilon</groupId>
       <artifactId>epsilon-common</artifactId>
       <version>${project.version}</version>

@@ -2,6 +2,7 @@ package com.epsilon.io;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.testng.Assert;
@@ -25,7 +26,7 @@ public class LegacyBeliefParametersTest {
     Path truncated = fixture(20, 8);
     try {
       Assert.expectThrows(IOException.class, () -> LegacyBeliefParameters.readHidden(wrong));
-      try (var file = new java.io.RandomAccessFile(truncated.toFile(), "rw")) {
+      try (var file = new RandomAccessFile(truncated.toFile(), "rw")) {
         file.setLength(file.length() - 1);
       }
       Assert.expectThrows(IOException.class, () -> LegacyBeliefParameters.readHidden(truncated));

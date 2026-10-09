@@ -12,7 +12,9 @@ import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.SettingsLoader;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.pico.ai.decision.input.DecisionBatchTransfer;
 import com.epsilon.pico.ai.decision.input.DecisionDeviceBatch;
 import com.epsilon.pico.ai.decision.input.DecisionHostBatch;
@@ -21,9 +23,9 @@ import com.epsilon.pico.ai.decision.runtime.EpsilonDecisionAutocast;
 import com.epsilon.pico.ai.model.EpsilonDecisionLoss;
 import com.epsilon.pico.ai.model.EpsilonDecisionNetwork;
 import com.epsilon.pico.ai.model.EpsilonDecisionOutput;
-import com.epsilon.pico.ai.network.NetworkDevices;
 import com.epsilon.pico.ai.network.NetworkFactory;
 import com.epsilon.pico.config.settings.DecisionPretrainSettings;
+import com.epsilon.pico.config.settings.DecisionSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -49,7 +51,7 @@ public final class EpsilonDecisionPretrainer implements AutoCloseable {
   private static final Logger log = LoggerFactory.getLogger(EpsilonDecisionPretrainer.class);
   private static final int METRIC_COUNT = 5;
   private final Model checkpointModel;
-  private final com.epsilon.pico.config.settings.DecisionSettings optimizerSettings;
+  private final DecisionSettings optimizerSettings;
   private final DecisionPretrainSettings settings;
   private final NetworkDevices activeDevices;
   private volatile float learningRate;
@@ -87,12 +89,7 @@ public final class EpsilonDecisionPretrainer implements AutoCloseable {
       DecisionPretrainSettings settings,
       NetworkDevices devices,
       DecisionExecutionContext executionContext) {
-    this(
-        checkpointModel,
-        settings,
-        devices,
-        executionContext,
-        com.epsilon.pico.config.settings.DecisionSettings.defaults());
+    this(checkpointModel, settings, devices, executionContext, DecisionSettings.defaults());
   }
 
   public static EpsilonDecisionPretrainer open(
@@ -100,10 +97,9 @@ public final class EpsilonDecisionPretrainer implements AutoCloseable {
     return new EpsilonDecisionPretrainer(
         model,
         config.bind(DecisionPretrainSettings.class),
-        NetworkFactory.getLearnerDevices(
-            config.bind(com.epsilon.config.settings.DeviceSettings.class)),
+        NetworkFactory.getLearnerDevices(config.bind(DeviceSettings.class)),
         context,
-        config.bind(com.epsilon.pico.config.settings.DecisionSettings.class));
+        config.bind(DecisionSettings.class));
   }
 
   public static EpsilonDecisionPretrainer open(
@@ -111,7 +107,7 @@ public final class EpsilonDecisionPretrainer implements AutoCloseable {
       DecisionPretrainSettings settings,
       NetworkDevices devices,
       DecisionExecutionContext context,
-      com.epsilon.pico.config.settings.DecisionSettings optimizer) {
+      DecisionSettings optimizer) {
     return new EpsilonDecisionPretrainer(model, settings, devices, context, optimizer);
   }
 
@@ -120,7 +116,7 @@ public final class EpsilonDecisionPretrainer implements AutoCloseable {
       DecisionPretrainSettings settings,
       NetworkDevices devices,
       DecisionExecutionContext executionContext,
-      com.epsilon.pico.config.settings.DecisionSettings optimizerSettings) {
+      DecisionSettings optimizerSettings) {
     this.optimizerSettings = optimizerSettings;
     this.checkpointModel = requireDecisionModel(checkpointModel);
     if (((EpsilonDecisionNetwork) checkpointModel.getBlock()).utilityProfile()

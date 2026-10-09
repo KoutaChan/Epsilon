@@ -3,6 +3,7 @@ package com.epsilon.major.ai.decision.audit;
 import ai.djl.Device;
 import com.epsilon.ai.decision.DecisionSelectionMode;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.ai.grp.EpsilonGrpFeature;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.ai.grp.EpsilonGrpTeacherIdentity;
@@ -13,7 +14,6 @@ import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.core.Action;
 import com.epsilon.major.ai.decision.EpsilonDecisionConstants;
 import com.epsilon.major.ai.decision.EpsilonDecisionReturns;
-import com.epsilon.major.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.major.ai.decision.arena.DecisionSnapshotEvaluatorProvider;
 import com.epsilon.major.ai.decision.arena.EpsilonDecisionArena;
 import com.epsilon.major.ai.decision.arena.EpsilonDecisionPlayer;
@@ -33,10 +33,10 @@ import com.epsilon.major.ai.decision.training.EpsilonDecisionCheckpointBundle;
 import com.epsilon.major.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.major.ai.grp.EpsilonGrpCheckpointManager;
 import com.epsilon.major.ai.grp.EpsilonGrpTrainingSession;
-import com.epsilon.major.ai.network.NetworkDevices;
 import com.epsilon.major.ai.network.NetworkFactory;
 import com.epsilon.major.config.settings.DecisionSelectedPgCampaignSettings;
 import com.epsilon.major.config.settings.EpsilonSettings;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -507,11 +507,9 @@ public final class EpsilonDecisionPairedTrajectoryAudit {
       }
       if (sample.learningRole().advancesActorClock()) {
         float current = predictions.get(index).valueUtility();
-        float nextValue =
-            hasNextBySeat[seat] ? nextPredictionBySeat[seat] : nextTargetBySeat[seat];
+        float nextValue = hasNextBySeat[seat] ? nextPredictionBySeat[seat] : nextTargetBySeat[seat];
         float target =
-            EpsilonDecisionReturns.actorLookaheadTarget(
-                nextValue, nextTargetBySeat[seat], lambda);
+            EpsilonDecisionReturns.actorLookaheadTarget(nextValue, nextTargetBySeat[seat], lambda);
         advantages[index] = target - current;
         nextPredictionBySeat[seat] = current;
         hasNextBySeat[seat] = true;

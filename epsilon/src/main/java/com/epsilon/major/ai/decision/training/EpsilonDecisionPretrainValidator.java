@@ -3,6 +3,8 @@ package com.epsilon.major.ai.decision.training;
 import ai.djl.Model;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
+import com.epsilon.config.settings.DecisionInferenceFusionSettings;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.major.ai.decision.EpsilonDecisionConstants;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionDataException;
@@ -12,8 +14,10 @@ import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 import com.epsilon.major.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.major.ai.grp.EpsilonGrpTrainingSession;
 import com.epsilon.major.ai.network.NetworkFactory;
+import com.epsilon.major.config.settings.DecisionInferenceSettings;
 import com.epsilon.major.config.settings.DecisionPretrainSettings;
 import com.epsilon.major.config.settings.DecisionPretrainValidationSettings;
+import com.epsilon.major.config.settings.DecisionSettings;
 import com.epsilon.major.config.settings.EpsilonSettings;
 import com.epsilon.major.training.EpsilonLogPretrainDataCollector;
 import java.io.IOException;
@@ -66,14 +70,14 @@ public final class EpsilonDecisionPretrainValidator {
             EpsilonDecisionCheckpointManager.loadForInference(
                 checkpoint,
                 NetworkFactory.getLearnerDevice(
-                    config.bind(com.epsilon.config.settings.DeviceSettings.class)),
-                config.bind(com.epsilon.major.config.settings.DecisionInferenceSettings.class));
+                    config.bind(DeviceSettings.class)),
+                config.bind(DecisionInferenceSettings.class));
         EpsilonDecisionInferenceServer server =
             EpsilonDecisionInferenceServer.forFrozenModel(
                 model,
                 maximumDeviceBatchRows,
-                config.bind(com.epsilon.major.config.settings.DecisionInferenceSettings.class),
-                config.bind(com.epsilon.config.settings.DecisionInferenceFusionSettings.class))) {
+                config.bind(DecisionInferenceSettings.class),
+                config.bind(DecisionInferenceFusionSettings.class))) {
       log.info(
           "Decision pretrain validation opened fresh checkpoint: checkpoint={} device={} "
               + "maximumDeviceBatchRows={}",
@@ -115,7 +119,7 @@ public final class EpsilonDecisionPretrainValidator {
                 EpsilonLogPretrainDataCollector.collectDecisionFile(file),
                 grpSession,
                 config
-                    .bind(com.epsilon.major.config.settings.DecisionSettings.class)
+                    .bind(DecisionSettings.class)
                     .utilityProfile());
       } catch (EpsilonDecisionDataException e) {
         throw e;

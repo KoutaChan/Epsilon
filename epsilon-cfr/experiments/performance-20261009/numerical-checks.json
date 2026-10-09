@@ -1,0 +1,2907 @@
+{
+  "acceptedHistoryBatching": [
+    {
+      "repeat": 0,
+      "role": "REGRET",
+      "step": 1,
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "optimizedLoss": 0.5522740259766579,
+      "oldGradientNorm": 25.290816236328496,
+      "repeatOldGradientNorm": 25.290712327672157,
+      "optimizedGradientNorm": 25.296289027668145,
+      "repeatOldGradientDifference": {
+        "actualL2": 25.290711819938306,
+        "cosine": 0.9999999579890542,
+        "expectedL2": 25.290816940176967,
+        "relativeL2": 0.00028989450347663594,
+        "maxAbs": 0.0009765625
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.5564392224177,
+        "cosine": 0.9999999999989132,
+        "expectedL2": 208.55643934148463,
+        "relativeL2": 1.4471583685891153e-06,
+        "maxAbs": 5.127862095832825e-05
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55643946483445,
+        "cosine": 0.9999999999658218,
+        "expectedL2": 208.55643934148463,
+        "relativeL2": 8.227707396711869e-06,
+        "maxAbs": 0.00037192367017269135
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 0.834518067546182,
+        "cosine": 0.999999934602579,
+        "expectedL2": 0.8345174859529653,
+        "relativeL2": 0.0003616631186242015,
+        "maxAbs": 5.127862095832825e-05
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 0.8344580224347902,
+        "cosine": 0.9999978884051113,
+        "expectedL2": 0.8345174859529653,
+        "relativeL2": 0.0020562077937076764,
+        "maxAbs": 0.00037192367017269135
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "REGRET",
+      "step": 2,
+      "oldLoss": 20.473745048046112,
+      "repeatOldLoss": 20.43957069516182,
+      "optimizedLoss": 20.407016038894653,
+      "oldGradientNorm": 426.6041014112272,
+      "repeatOldGradientNorm": 426.4345139528039,
+      "optimizedGradientNorm": 425.86314130477945,
+      "repeatOldGradientDifference": {
+        "actualL2": 426.434525670429,
+        "cosine": 0.999981768685814,
+        "expectedL2": 426.6040938385263,
+        "relativeL2": 0.006050299980959253,
+        "maxAbs": 0.4921875
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55718442824934,
+        "cosine": 0.9999999998045994,
+        "expectedL2": 208.55718381214055,
+        "relativeL2": 1.9752475396442257e-05,
+        "maxAbs": 9.733438491821289e-05
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55718395575823,
+        "cosine": 0.999999999597363,
+        "expectedL2": 208.55718381214055,
+        "relativeL2": 2.8366342794803186e-05,
+        "maxAbs": 0.00037656351923942566
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.3934151381084592,
+        "cosine": 0.9999956298284184,
+        "expectedL2": 1.3934218284354893,
+        "relativeL2": 0.0029564059913040983,
+        "maxAbs": 9.733438491821289e-05
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.3933458196514357,
+        "cosine": 0.9999909881596925,
+        "expectedL2": 1.3934218284354893,
+        "relativeL2": 0.004245666637055879,
+        "maxAbs": 0.00037656351923942566
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "REGRET",
+      "step": 3,
+      "oldLoss": 0.3563606068491936,
+      "repeatOldLoss": 0.3565453700721264,
+      "optimizedLoss": 0.35546979680657387,
+      "oldGradientNorm": 21.151208746395174,
+      "repeatOldGradientNorm": 21.104696509658364,
+      "optimizedGradientNorm": 21.193482667862547,
+      "repeatOldGradientDifference": {
+        "actualL2": 21.104696673985877,
+        "cosine": 0.9999690319432814,
+        "expectedL2": 21.1512100751057,
+        "relativeL2": 0.008163081836237575,
+        "maxAbs": 0.0390625
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.5580999976606,
+        "cosine": 0.9999999991187698,
+        "expectedL2": 208.55809671978957,
+        "relativeL2": 4.197257606423752e-05,
+        "maxAbs": 0.000131151988171041
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55809378090788,
+        "cosine": 0.9999999985395173,
+        "expectedL2": 208.55809671978957,
+        "relativeL2": 5.4039095539197934e-05,
+        "maxAbs": 0.00037691928446292877
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.8383712193344532,
+        "cosine": 0.9999886631943202,
+        "expectedL2": 1.838358620747576,
+        "relativeL2": 0.004761704533375669,
+        "maxAbs": 0.000131151988171041
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.8381748748831472,
+        "cosine": 0.9999812108318933,
+        "expectedL2": 1.838358620747576,
+        "relativeL2": 0.006130626955436412,
+        "maxAbs": 0.00037691928446292877
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "AVERAGE",
+      "step": 1,
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "optimizedLoss": 1.6981635093688965,
+      "oldGradientNorm": 6.147893533973001,
+      "repeatOldGradientNorm": 6.147893533973001,
+      "optimizedGradientNorm": 6.147843103070701,
+      "repeatOldGradientDifference": {
+        "actualL2": 6.147893469111638,
+        "cosine": 0.9999999999993407,
+        "expectedL2": 6.147893469263114,
+        "relativeL2": 1.1483324000345461e-06,
+        "maxAbs": 3.814697265625e-06
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55638706515538,
+        "cosine": 0.9999999999999994,
+        "expectedL2": 208.55638706515722,
+        "relativeL2": 2.3062922654165627e-08,
+        "maxAbs": 1.9198341760784388e-06
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.5563875159322,
+        "cosine": 0.9999999999920507,
+        "expectedL2": 208.55638706515722,
+        "relativeL2": 3.921742694938744e-06,
+        "maxAbs": 3.349035978317261e-05
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 0.8358994283056315,
+        "cosine": 0.9999999999834449,
+        "expectedL2": 0.8358994287590721,
+        "relativeL2": 5.754184843811269e-06,
+        "maxAbs": 1.9198341760784388e-06
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 0.8359001130073682,
+        "cosine": 0.9999995213087585,
+        "expectedL2": 0.8358994287590721,
+        "relativeL2": 0.0009784723608075808,
+        "maxAbs": 3.349035978317261e-05
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "AVERAGE",
+      "step": 2,
+      "oldLoss": 1.4820684492588043,
+      "repeatOldLoss": 1.4820684492588043,
+      "optimizedLoss": 1.4818437099456787,
+      "oldGradientNorm": 0.9223530157293609,
+      "repeatOldGradientNorm": 0.9223524411264631,
+      "optimizedGradientNorm": 0.9226287266973284,
+      "repeatOldGradientDifference": {
+        "actualL2": 0.9223524085909036,
+        "cosine": 0.9999999703517033,
+        "expectedL2": 0.9223530319691019,
+        "relativeL2": 0.00024350977742162695,
+        "maxAbs": 3.0517578125e-05
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55725587976607,
+        "cosine": 0.9999999999998028,
+        "expectedL2": 208.55725592001465,
+        "relativeL2": 6.045959883289498e-07,
+        "maxAbs": 1.2248754501342773e-05
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55726815166315,
+        "cosine": 0.999999994421867,
+        "expectedL2": 208.55725592001465,
+        "relativeL2": 0.0001056201044367387,
+        "maxAbs": 0.0005525946617126465
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.422150359317704,
+        "cosine": 0.9999999960694236,
+        "expectedL2": 1.422150517992636,
+        "relativeL2": 8.866352658937604e-05,
+        "maxAbs": 1.2248754501342773e-05
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.4218290968611351,
+        "cosine": 0.999880042242944,
+        "expectedL2": 1.422150517992636,
+        "relativeL2": 0.015489105318053016,
+        "maxAbs": 0.0005525946617126465
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "AVERAGE",
+      "step": 3,
+      "oldLoss": 1.4518051445484161,
+      "repeatOldLoss": 1.4510476887226105,
+      "optimizedLoss": 1.4509336054325104,
+      "oldGradientNorm": 1.107479097987499,
+      "repeatOldGradientNorm": 1.1049402994714295,
+      "optimizedGradientNorm": 1.0997485065263806,
+      "repeatOldGradientDifference": {
+        "actualL2": 1.1049403257226198,
+        "cosine": 0.999692134195649,
+        "expectedL2": 1.1074790658769815,
+        "relativeL2": 0.024891264400701055,
+        "maxAbs": 0.0068359375
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55866131848643,
+        "cosine": 0.9999999988179984,
+        "expectedL2": 208.55866488518765,
+        "relativeL2": 4.8615499718020634e-05,
+        "maxAbs": 0.00021032243967056274
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.5586628523999,
+        "cosine": 0.9999999737083978,
+        "expectedL2": 208.55866488518765,
+        "relativeL2": 0.00022930854302015766,
+        "maxAbs": 0.0007514357566833496
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.910208033448671,
+        "cosine": 0.9999859136850909,
+        "expectedL2": 1.9102500764301276,
+        "relativeL2": 0.005307778200885976,
+        "maxAbs": 0.00021032243967056274
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.9090871105296696,
+        "cosine": 0.9996866035470838,
+        "expectedL2": 1.9102500764301276,
+        "relativeL2": 0.025035614011556878,
+        "maxAbs": 0.0007514357566833496
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "REGRET",
+      "step": 1,
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "optimizedLoss": 0.5522740259766579,
+      "oldGradientNorm": 25.290816236328496,
+      "repeatOldGradientNorm": 25.290816236328496,
+      "optimizedGradientNorm": 25.296289027668145,
+      "repeatOldGradientDifference": {
+        "actualL2": 25.29081694057353,
+        "cosine": 0.9999999999991798,
+        "expectedL2": 25.29081694134068,
+        "relativeL2": 1.2807219229249561e-06,
+        "maxAbs": 7.867813110351562e-06
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55643934148276,
+        "cosine": 0.9999999999999997,
+        "expectedL2": 208.55643934148193,
+        "relativeL2": 2.6745362205805695e-08,
+        "maxAbs": 1.638210960663855e-06
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55643946483485,
+        "cosine": 0.9999999999658229,
+        "expectedL2": 208.55643934148193,
+        "relativeL2": 8.227607600450653e-06,
+        "maxAbs": 0.00037192367017269135
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 0.8345174854812772,
+        "cosine": 0.9999999999776618,
+        "expectedL2": 0.8345174852756673,
+        "relativeL2": 6.68400316225671e-06,
+        "maxAbs": 1.638210960663855e-06
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 0.8344580225334581,
+        "cosine": 0.9999978884563292,
+        "expectedL2": 0.8345174852756673,
+        "relativeL2": 0.0020561828550327856,
+        "maxAbs": 0.00037192367017269135
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "REGRET",
+      "step": 2,
+      "oldLoss": 20.442620933055878,
+      "repeatOldLoss": 20.473745048046112,
+      "optimizedLoss": 20.407016038894653,
+      "oldGradientNorm": 426.70986603346336,
+      "repeatOldGradientNorm": 426.6040719466766,
+      "optimizedGradientNorm": 425.86314130477945,
+      "repeatOldGradientDifference": {
+        "actualL2": 426.6040968418762,
+        "cosine": 0.9999775435740808,
+        "expectedL2": 426.70988441045586,
+        "relativeL2": 0.006705458916237259,
+        "maxAbs": 0.5
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55718381067882,
+        "cosine": 0.999999999769537,
+        "expectedL2": 208.55718754683105,
+        "relativeL2": 2.1455125044927843e-05,
+        "maxAbs": 0.00012127123773097992
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55718397604,
+        "cosine": 0.9999999996430994,
+        "expectedL2": 208.55718754683105,
+        "relativeL2": 2.6705653123820874e-05,
+        "maxAbs": 0.00037656165659427643
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.3934218277478727,
+        "cosine": 0.9999948441111933,
+        "expectedL2": 1.3934403154585049,
+        "relativeL2": 0.00321120358597015,
+        "maxAbs": 0.00012127123773097992
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.3933458712000693,
+        "cosine": 0.999992013542189,
+        "expectedL2": 1.3934403154585049,
+        "relativeL2": 0.003997053799374719,
+        "maxAbs": 0.00037656165659427643
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "REGRET",
+      "step": 3,
+      "oldLoss": 0.355515044182539,
+      "repeatOldLoss": 0.3563606068491936,
+      "optimizedLoss": 0.3558145985007286,
+      "oldGradientNorm": 21.25829605591284,
+      "repeatOldGradientNorm": 21.15120968819082,
+      "optimizedGradientNorm": 21.27393604297789,
+      "repeatOldGradientDifference": {
+        "actualL2": 21.151210193927508,
+        "cosine": 0.9999585124351967,
+        "expectedL2": 21.258297052211184,
+        "relativeL2": 0.010389066227342054,
+        "maxAbs": 0.0546875
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55809670366332,
+        "cosine": 0.9999999990292215,
+        "expectedL2": 208.55809532715142,
+        "relativeL2": 4.4054478934924626e-05,
+        "maxAbs": 0.00013640522956848145
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55809362684644,
+        "cosine": 0.9999999988527967,
+        "expectedL2": 208.55809532715142,
+        "relativeL2": 4.7891152228762784e-05,
+        "maxAbs": 0.00037331879138946533
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.8383586339370288,
+        "cosine": 0.9999875104693692,
+        "expectedL2": 1.838331830371349,
+        "relativeL2": 0.004997965038467514,
+        "maxAbs": 0.00013640522956848145
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.838171499490956,
+        "cosine": 0.9999852425070477,
+        "expectedL2": 1.838331830371349,
+        "relativeL2": 0.00543323426534795,
+        "maxAbs": 0.00037331879138946533
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "AVERAGE",
+      "step": 1,
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "optimizedLoss": 1.6981635093688965,
+      "oldGradientNorm": 6.147893533973001,
+      "repeatOldGradientNorm": 6.147893533973001,
+      "optimizedGradientNorm": 6.147843103070701,
+      "repeatOldGradientDifference": {
+        "actualL2": 6.147893468642715,
+        "cosine": 0.9999999999990371,
+        "expectedL2": 6.147893469092465,
+        "relativeL2": 1.3878264978792288e-06,
+        "maxAbs": 3.814697265625e-06
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55638706515072,
+        "cosine": 0.9999999999999998,
+        "expectedL2": 208.55638706515683,
+        "relativeL2": 2.7139067619681364e-08,
+        "maxAbs": 1.9198341760784388e-06
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55638751592699,
+        "cosine": 0.9999999999920509,
+        "expectedL2": 208.55638706515683,
+        "relativeL2": 3.921730509064855e-06,
+        "maxAbs": 3.349035978317261e-05
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 0.8358994271409134,
+        "cosine": 0.9999999999770756,
+        "expectedL2": 0.8358994286628225,
+        "relativeL2": 6.771180475780443e-06,
+        "maxAbs": 1.9198341760784388e-06
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 0.8359001117088208,
+        "cosine": 0.9999995213117313,
+        "expectedL2": 0.8358994286628225,
+        "relativeL2": 0.0009784693205522961,
+        "maxAbs": 3.349035978317261e-05
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "AVERAGE",
+      "step": 2,
+      "oldLoss": 1.4820684492588043,
+      "repeatOldLoss": 1.4820684492588043,
+      "optimizedLoss": 1.4818437099456787,
+      "oldGradientNorm": 0.9223528590195152,
+      "repeatOldGradientNorm": 0.9223494636329861,
+      "optimizedGradientNorm": 0.9226285198937272,
+      "repeatOldGradientDifference": {
+        "actualL2": 0.9223494613380893,
+        "cosine": 0.9999999661859877,
+        "expectedL2": 0.9223528544599234,
+        "relativeL2": 0.0002600794304154841,
+        "maxAbs": 3.0517578125e-05
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55725590069213,
+        "cosine": 0.9999999999996451,
+        "expectedL2": 208.5572559145802,
+        "relativeL2": 7.727433757311869e-07,
+        "maxAbs": 1.3310462236404419e-05
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55726815069906,
+        "cosine": 0.9999999944212454,
+        "expectedL2": 208.5572559145802,
+        "relativeL2": 0.00010562599314761516,
+        "maxAbs": 0.0005525946617126465
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.422150137076156,
+        "cosine": 0.9999999935792602,
+        "expectedL2": 1.422150017508596,
+        "relativeL2": 0.00011332224869707998,
+        "maxAbs": 1.3310462236404419e-05
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.4218293577820202,
+        "cosine": 0.999880028722469,
+        "expectedL2": 1.422150017508596,
+        "relativeL2": 0.015489974343712807,
+        "maxAbs": 0.0005525946617126465
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "AVERAGE",
+      "step": 3,
+      "oldLoss": 1.4515081644058228,
+      "repeatOldLoss": 1.4522547721862793,
+      "optimizedLoss": 1.4518384635448456,
+      "oldGradientNorm": 1.1083752921717753,
+      "repeatOldGradientNorm": 1.1107691786133458,
+      "optimizedGradientNorm": 1.0983947525536644,
+      "repeatOldGradientDifference": {
+        "actualL2": 1.1107691780660693,
+        "cosine": 0.9997302245418013,
+        "expectedL2": 1.1083753034133472,
+        "relativeL2": 0.023353393763663004,
+        "maxAbs": 0.00634765625
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55865701165885,
+        "cosine": 0.9999999988568734,
+        "expectedL2": 208.5586617931065,
+        "relativeL2": 4.780837252154888e-05,
+        "maxAbs": 0.00029464997351169586
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55867162857098,
+        "cosine": 0.9999999744411894,
+        "expectedL2": 208.5586617931065,
+        "relativeL2": 0.00022609059588924647,
+        "maxAbs": 0.0006926283240318298
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.9101608826233931,
+        "cosine": 0.9999863775271055,
+        "expectedL2": 1.9100376817530083,
+        "relativeL2": 0.0052202374282215415,
+        "maxAbs": 0.00029464997351169586
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.909152154533526,
+        "cosine": 0.9996952415320334,
+        "expectedL2": 1.9100376817530083,
+        "relativeL2": 0.02468702715822376,
+        "maxAbs": 0.0006926283240318298
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "REGRET",
+      "step": 1,
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "optimizedLoss": 0.5522740259766579,
+      "oldGradientNorm": 25.290816236328496,
+      "repeatOldGradientNorm": 25.290712327672157,
+      "optimizedGradientNorm": 25.296289027668145,
+      "repeatOldGradientDifference": {
+        "actualL2": 25.290711815008407,
+        "cosine": 0.9999999579893856,
+        "expectedL2": 25.29081693866745,
+        "relativeL2": 0.00028989336102541193,
+        "maxAbs": 0.0009765625
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55643922240625,
+        "cosine": 0.999999999998913,
+        "expectedL2": 208.55643934147204,
+        "relativeL2": 1.446953579074337e-06,
+        "maxAbs": 5.127862095832825e-05
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55643946483093,
+        "cosine": 0.9999999999658232,
+        "expectedL2": 208.55643934147204,
+        "relativeL2": 8.227586397930004e-06,
+        "maxAbs": 0.00037192367017269135
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 0.8345180646752709,
+        "cosine": 0.9999999346210869,
+        "expectedL2": 0.8345174828067053,
+        "relativeL2": 0.00036161194050627276,
+        "maxAbs": 5.127862095832825e-05
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 0.8344580215608984,
+        "cosine": 0.999997888467089,
+        "expectedL2": 0.8345174828067053,
+        "relativeL2": 0.002056177562338808,
+        "maxAbs": 0.00037192367017269135
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "REGRET",
+      "step": 2,
+      "oldLoss": 20.446114629507065,
+      "repeatOldLoss": 20.43837085366249,
+      "optimizedLoss": 20.407016038894653,
+      "oldGradientNorm": 426.772134109211,
+      "repeatOldGradientNorm": 426.38996776712287,
+      "optimizedGradientNorm": 425.8632454219656,
+      "repeatOldGradientDifference": {
+        "actualL2": 426.38997163898125,
+        "cosine": 0.9999794318729684,
+        "expectedL2": 426.7721369294636,
+        "relativeL2": 0.006473121405269396,
+        "maxAbs": 0.53125
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.5571843124093,
+        "cosine": 0.9999999997596417,
+        "expectedL2": 208.55718754962558,
+        "relativeL2": 2.1913535280383706e-05,
+        "maxAbs": 8.944794535636902e-05
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.557183954001,
+        "cosine": 0.9999999996460511,
+        "expectedL2": 208.55718754962558,
+        "relativeL2": 2.659273128275116e-05,
+        "maxAbs": 0.00037656165659427643
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.3934206635905784,
+        "cosine": 0.9999946213783238,
+        "expectedL2": 1.3934355470642434,
+        "relativeL2": 0.0032798253905428855,
+        "maxAbs": 8.944794535636902e-05
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.3933457905248383,
+        "cosine": 0.9999920807085878,
+        "expectedL2": 1.3934355470642434,
+        "relativeL2": 0.003980166328667535,
+        "maxAbs": 0.00037656165659427643
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "REGRET",
+      "step": 3,
+      "oldLoss": 0.35654351860284805,
+      "repeatOldLoss": 0.35773593559861183,
+      "optimizedLoss": 0.35501646250486374,
+      "oldGradientNorm": 21.355534381252745,
+      "repeatOldGradientNorm": 21.35599797804403,
+      "optimizedGradientNorm": 21.20637653410636,
+      "repeatOldGradientDifference": {
+        "actualL2": 21.355996588567617,
+        "cosine": 0.9999635841417027,
+        "expectedL2": 21.355533193802476,
+        "relativeL2": 0.008534270236118123,
+        "maxAbs": 0.03515625
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55809560717168,
+        "cosine": 0.9999999989981779,
+        "expectedL2": 208.55809713819127,
+        "relativeL2": 4.475467205952875e-05,
+        "maxAbs": 0.0001406446099281311
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55809279890127,
+        "cosine": 0.9999999988524396,
+        "expectedL2": 208.55809713819127,
+        "relativeL2": 4.7898930038269055e-05,
+        "maxAbs": 0.0003756862133741379
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.8383385862418622,
+        "cosine": 0.9999871100598278,
+        "expectedL2": 1.8382976127099202,
+        "relativeL2": 0.005077496254275977,
+        "maxAbs": 0.0001406446099281311
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.8381547426531608,
+        "cosine": 0.9999852365191179,
+        "expectedL2": 1.8382976127099202,
+        "relativeL2": 0.005434217851705987,
+        "maxAbs": 0.0003756862133741379
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "AVERAGE",
+      "step": 1,
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "optimizedLoss": 1.6981635093688965,
+      "oldGradientNorm": 6.147893533973001,
+      "repeatOldGradientNorm": 6.147893533973001,
+      "optimizedGradientNorm": 6.147843103070701,
+      "repeatOldGradientDifference": {
+        "actualL2": 6.1478934683787605,
+        "cosine": 0.99999999999928,
+        "expectedL2": 6.147893469251393,
+        "relativeL2": 1.199992448193541e-06,
+        "maxAbs": 3.814697265625e-06
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.556387065147,
+        "cosine": 0.9999999999999998,
+        "expectedL2": 208.55638706515705,
+        "relativeL2": 2.2170465553102054e-08,
+        "maxAbs": 1.8383725546300411e-06
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55638751593602,
+        "cosine": 0.9999999999920506,
+        "expectedL2": 208.55638706515705,
+        "relativeL2": 3.921785765474216e-06,
+        "maxAbs": 3.349035978317261e-05
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 0.8358994262088657,
+        "cosine": 0.9999999999847012,
+        "expectedL2": 0.835899428719043,
+        "relativeL2": 5.531517352982427e-06,
+        "maxAbs": 1.8383725546300411e-06
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 0.8359001139682827,
+        "cosine": 0.9999995212982448,
+        "expectedL2": 0.835899428719043,
+        "relativeL2": 0.0009784831069262227,
+        "maxAbs": 3.349035978317261e-05
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "AVERAGE",
+      "step": 2,
+      "oldLoss": 1.4820684492588043,
+      "repeatOldLoss": 1.4820684492588043,
+      "optimizedLoss": 1.4818437099456787,
+      "oldGradientNorm": 0.92235275454627,
+      "repeatOldGradientNorm": 0.9223529634927488,
+      "optimizedGradientNorm": 0.9226300709196067,
+      "repeatOldGradientDifference": {
+        "actualL2": 0.9223529456131627,
+        "cosine": 0.9999999756057687,
+        "expectedL2": 0.9223527933229867,
+        "relativeL2": 0.00022088118692884095,
+        "maxAbs": 1.9073486328125e-05
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55725592653928,
+        "cosine": 0.9999999999998247,
+        "expectedL2": 208.55725584611096,
+        "relativeL2": 5.658607360182234e-07,
+        "maxAbs": 1.2248754501342773e-05
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.55726827797665,
+        "cosine": 0.9999999944223265,
+        "expectedL2": 208.55725584611096,
+        "relativeL2": 0.00010561581658772747,
+        "maxAbs": 0.0005525946617126465
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.4221508205160405,
+        "cosine": 0.9999999965570194,
+        "expectedL2": 1.4221501988995675,
+        "relativeL2": 8.298305086645456e-05,
+        "maxAbs": 1.2248754501342773e-05
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.4218292135635098,
+        "cosine": 0.999880051898505,
+        "expectedL2": 1.4221501988995675,
+        "relativeL2": 0.015488479978082932,
+        "maxAbs": 0.0005525946617126465
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "AVERAGE",
+      "step": 3,
+      "oldLoss": 1.4515539109706879,
+      "repeatOldLoss": 1.4512398838996887,
+      "optimizedLoss": 1.4513725638389587,
+      "oldGradientNorm": 1.1112722372559856,
+      "repeatOldGradientNorm": 1.1064949017406713,
+      "optimizedGradientNorm": 1.0930971350695673,
+      "repeatOldGradientDifference": {
+        "actualL2": 1.106494922096618,
+        "cosine": 0.9996798086152213,
+        "expectedL2": 1.1112722617183741,
+        "relativeL2": 0.025614664235799965,
+        "maxAbs": 0.0072021484375
+      },
+      "repeatOldParameterDifference": {
+        "actualL2": 208.55866777463828,
+        "cosine": 0.9999999986135248,
+        "expectedL2": 208.55866335388433,
+        "relativeL2": 5.265326064510024e-05,
+        "maxAbs": 0.0002526193857192993
+      },
+      "optimizedParameterDifference": {
+        "actualL2": 208.5586702175045,
+        "cosine": 0.9999999735969028,
+        "expectedL2": 208.55866335388433,
+        "relativeL2": 0.00022979460848417474,
+        "maxAbs": 0.000838935375213623
+      },
+      "repeatOldUpdateDifference": {
+        "actualL2": 1.9103010913608396,
+        "cosine": 0.9999834789184362,
+        "expectedL2": 1.9101664367179143,
+        "relativeL2": 0.005748867454835016,
+        "maxAbs": 0.0002526193857192993
+      },
+      "optimizedUpdateDifference": {
+        "actualL2": 1.9090214324556551,
+        "cosine": 0.9996852424498972,
+        "expectedL2": 1.9101664367179143,
+        "relativeL2": 0.02508978038255947,
+        "maxAbs": 0.000838935375213623
+      }
+    }
+  ],
+  "rejectedStateBatching": [
+    {
+      "repeat": 0,
+      "role": "REGRET",
+      "stage": "initial",
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "stateOnceLoss": 0.5513967871665955,
+      "repeatOldLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 1.0,
+        "actualL2": 1.093536495759865,
+        "maxAbs": 0.0,
+        "relativeL2": 0.0
+      },
+      "stateOnceLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 0.9998843463338652,
+        "actualL2": 1.0856217257125564,
+        "maxAbs": 0.0107421875,
+        "relativeL2": 0.016793408080043905
+      },
+      "repeatOldGradients": {
+        "expectedL2": 25.290711818116286,
+        "cosine": 0.9999999579896073,
+        "actualL2": 25.290816940476795,
+        "maxAbs": 0.0009765625,
+        "relativeL2": 0.0002898938008405852
+      },
+      "stateOnceGradients": {
+        "expectedL2": 25.290711818116286,
+        "cosine": 0.9998385131610605,
+        "actualL2": 25.339237885529,
+        "maxAbs": 0.046875,
+        "relativeL2": 0.01809074088731224
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "REGRET",
+      "step": 1,
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "optimizedLoss": 0.5522740259766579,
+      "oldGradientNorm": 25.290712327672157,
+      "repeatOldGradientNorm": 25.290816236328496,
+      "optimizedGradientNorm": 25.29632020372881,
+      "repeatOldGradientDifference": {
+        "expectedL2": 25.290711818116286,
+        "cosine": 0.9999999579896073,
+        "actualL2": 25.290816940476795,
+        "maxAbs": 0.0009765625,
+        "relativeL2": 0.0002898938008405852
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55643922241603,
+        "cosine": 0.9999999999989133,
+        "actualL2": 208.55643934148142,
+        "maxAbs": 5.127862095832825e-05,
+        "relativeL2": 1.4469587241633184e-06
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55643922241603,
+        "cosine": 0.9999999999738871,
+        "actualL2": 208.55643949027785,
+        "maxAbs": 0.00037192367017269135,
+        "relativeL2": 7.159665733707559e-06
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 0.8345180671283828,
+        "cosine": 0.9999999346206224,
+        "actualL2": 0.8345174851578845,
+        "maxAbs": 5.127862095832825e-05,
+        "relativeL2": 0.00036161297292427205
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 0.8345180671283828,
+        "cosine": 0.9999984016097815,
+        "actualL2": 0.834459190829742,
+        "maxAbs": 0.00037192367017269135,
+        "relativeL2": 0.0017892894716862746
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "REGRET",
+      "step": 2,
+      "oldLoss": 20.43837085366249,
+      "repeatOldLoss": 20.44276589155197,
+      "optimizedLoss": 20.447543382644653,
+      "oldGradientNorm": 426.39011513546217,
+      "repeatOldGradientNorm": 426.3766216761015,
+      "optimizedGradientNorm": 426.9123765908115,
+      "repeatOldGradientDifference": {
+        "expectedL2": 426.3901173192194,
+        "cosine": 0.9999834685744861,
+        "actualL2": 426.37661726702527,
+        "maxAbs": 0.5078125,
+        "relativeL2": 0.005750026796571779
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55718429714926,
+        "cosine": 0.999999999807965,
+        "actualL2": 208.55718519078457,
+        "maxAbs": 8.725374937057495e-05,
+        "relativeL2": 1.9582716323880644e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55718429714926,
+        "cosine": 0.9999999996784138,
+        "actualL2": 208.5571872735284,
+        "maxAbs": 0.0003766138106584549,
+        "relativeL2": 2.5350820419082466e-05
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.393420647974041,
+        "cosine": 0.9999957051299244,
+        "actualL2": 1.3934593498634467,
+        "maxAbs": 8.725374937057495e-05,
+        "relativeL2": 0.002931000185289672
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.393420647974041,
+        "cosine": 0.9999928018912553,
+        "actualL2": 1.393372427431999,
+        "maxAbs": 0.0003766138106584549,
+        "relativeL2": 0.0037943285352586603
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "REGRET",
+      "step": 3,
+      "oldLoss": 0.3570318669080734,
+      "repeatOldLoss": 0.3570255748927593,
+      "optimizedLoss": 0.3544839881360531,
+      "oldGradientNorm": 21.30579527407859,
+      "repeatOldGradientNorm": 21.299997620436585,
+      "optimizedGradientNorm": 20.885876649960295,
+      "repeatOldGradientDifference": {
+        "expectedL2": 21.30579507108346,
+        "cosine": 0.9999740282315734,
+        "actualL2": 21.299997064913043,
+        "maxAbs": 0.0390625,
+        "relativeL2": 0.007211342331557268
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55809573194875,
+        "cosine": 0.9999999992102503,
+        "actualL2": 208.55809830577465,
+        "maxAbs": 0.00020295381546020508,
+        "relativeL2": 3.973354805941877e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55809573194875,
+        "cosine": 0.9999999986397908,
+        "actualL2": 208.5580996705772,
+        "maxAbs": 0.0003686286509037018,
+        "relativeL2": 5.215066839102364e-05
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.8383268609258958,
+        "cosine": 0.9999898400829782,
+        "actualL2": 1.8383363934661832,
+        "maxAbs": 0.00020295381546020508,
+        "relativeL2": 0.004507769154704361
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.8383268609258958,
+        "cosine": 0.9999824982746582,
+        "actualL2": 1.838370560658491,
+        "maxAbs": 0.0003686286509037018,
+        "relativeL2": 0.005916490871107747
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "AVERAGE",
+      "stage": "initial",
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "stateOnceLoss": 1.6985011100769043,
+      "repeatOldLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 1.0,
+        "actualL2": 1.093536495759865,
+        "maxAbs": 0.0,
+        "relativeL2": 0.0
+      },
+      "stateOnceLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 0.9998843463338652,
+        "actualL2": 1.0856217257125564,
+        "maxAbs": 0.0107421875,
+        "relativeL2": 0.016793408080043905
+      },
+      "repeatOldGradients": {
+        "expectedL2": 6.147893469035743,
+        "cosine": 0.9999999999993066,
+        "actualL2": 6.147893469746034,
+        "maxAbs": 3.814697265625e-06,
+        "relativeL2": 1.177947188322425e-06
+      },
+      "stateOnceGradients": {
+        "expectedL2": 6.147893469035743,
+        "cosine": 0.9998572893994435,
+        "actualL2": 6.16506541940985,
+        "maxAbs": 0.0126953125,
+        "relativeL2": 0.017147013634713562
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "AVERAGE",
+      "step": 1,
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "optimizedLoss": 1.6981635093688965,
+      "oldGradientNorm": 6.147893533973001,
+      "repeatOldGradientNorm": 6.147893533973001,
+      "optimizedGradientNorm": 6.147859705025416,
+      "repeatOldGradientDifference": {
+        "expectedL2": 6.147893469035743,
+        "cosine": 0.9999999999993066,
+        "actualL2": 6.147893469746034,
+        "maxAbs": 3.814697265625e-06,
+        "relativeL2": 1.177947188322425e-06
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55638706515367,
+        "cosine": 1.0,
+        "actualL2": 208.5563870651619,
+        "maxAbs": 1.9198341760784388e-06,
+        "relativeL2": 2.1351957837272356e-08
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55638706515367,
+        "cosine": 0.9999999999935979,
+        "actualL2": 208.55638722049324,
+        "maxAbs": 1.9008293747901917e-05,
+        "relativeL2": 3.505689189140972e-06
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 0.8358994278763298,
+        "cosine": 0.99999999998581,
+        "actualL2": 0.8358994299337127,
+        "maxAbs": 1.9198341760784388e-06,
+        "relativeL2": 5.32730019282636e-06
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 0.8358994278763298,
+        "cosine": 0.9999996174933442,
+        "actualL2": 0.8359011159285987,
+        "maxAbs": 1.9008293747901917e-05,
+        "relativeL2": 0.0008746672710592877
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "AVERAGE",
+      "step": 2,
+      "oldLoss": 1.4820684492588043,
+      "repeatOldLoss": 1.4820684492588043,
+      "optimizedLoss": 1.4830321967601776,
+      "oldGradientNorm": 0.92235275454627,
+      "repeatOldGradientNorm": 0.9223534336221527,
+      "optimizedGradientNorm": 0.9215967990548741,
+      "repeatOldGradientDifference": {
+        "expectedL2": 0.9223527729193023,
+        "cosine": 0.9999999862647854,
+        "actualL2": 0.9223534266690376,
+        "maxAbs": 1.52587890625e-05,
+        "relativeL2": 0.0001657436355955232
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55725585749832,
+        "cosine": 0.9999999999998811,
+        "actualL2": 208.55725585249283,
+        "maxAbs": 1.1317431926727295e-05,
+        "relativeL2": 4.214347788461635e-07
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55725585749832,
+        "cosine": 0.9999999933736127,
+        "actualL2": 208.55724774693564,
+        "maxAbs": 0.0006976183503866196,
+        "relativeL2": 0.00011511725455578943
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.4221501408146822,
+        "cosine": 0.9999999980902259,
+        "actualL2": 1.4221502710754663,
+        "maxAbs": 1.1317431926727295e-05,
+        "relativeL2": 6.180309552176936e-05
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.4221501408146822,
+        "cosine": 0.9998575150715028,
+        "actualL2": 1.422257812925167,
+        "maxAbs": 0.0006976183503866196,
+        "relativeL2": 0.0168818593923221
+      }
+    },
+    {
+      "repeat": 0,
+      "role": "AVERAGE",
+      "step": 3,
+      "oldLoss": 1.4521443843841553,
+      "repeatOldLoss": 1.450908213853836,
+      "optimizedLoss": 1.4517142474651337,
+      "oldGradientNorm": 1.112350214549836,
+      "repeatOldGradientNorm": 1.107872066200597,
+      "optimizedGradientNorm": 1.118193806684586,
+      "repeatOldGradientDifference": {
+        "expectedL2": 1.1123501176822213,
+        "cosine": 0.9996931154260729,
+        "actualL2": 1.1078720236162447,
+        "maxAbs": 0.00634765625,
+        "relativeL2": 0.02505005526727776
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.5586624361238,
+        "cosine": 0.9999999988953858,
+        "actualL2": 208.55866618855254,
+        "maxAbs": 0.0001799948513507843,
+        "relativeL2": 4.699637973981457e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.5586624361238,
+        "cosine": 0.9999999753307999,
+        "actualL2": 208.55864921346998,
+        "maxAbs": 0.0014520790427923203,
+        "relativeL2": 0.0002221208192305262
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.9102234320438418,
+        "cosine": 0.999986835950126,
+        "actualL2": 1.9101958082402948,
+        "maxAbs": 0.0001799948513507843,
+        "relativeL2": 0.005131076257078872
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.9102234320438418,
+        "cosine": 0.9997060073909196,
+        "actualL2": 1.9105622125580946,
+        "maxAbs": 0.0014520790427923203,
+        "relativeL2": 0.024251205477240412
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "REGRET",
+      "stage": "initial",
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "stateOnceLoss": 0.5513967871665955,
+      "repeatOldLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 1.0,
+        "actualL2": 1.093536495759865,
+        "maxAbs": 0.0,
+        "relativeL2": 0.0
+      },
+      "stateOnceLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 0.9998843463338652,
+        "actualL2": 1.0856217257125564,
+        "maxAbs": 0.0107421875,
+        "relativeL2": 0.016793408080043905
+      },
+      "repeatOldGradients": {
+        "expectedL2": 25.2907118170923,
+        "cosine": 0.9999999579892661,
+        "actualL2": 25.29081694015867,
+        "maxAbs": 0.0009765625,
+        "relativeL2": 0.00028989497770928605
+      },
+      "stateOnceGradients": {
+        "expectedL2": 25.2907118170923,
+        "cosine": 0.9998385131643795,
+        "actualL2": 25.33923788140928,
+        "maxAbs": 0.046875,
+        "relativeL2": 0.018090740689429084
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "REGRET",
+      "step": 1,
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "optimizedLoss": 0.5522740259766579,
+      "oldGradientNorm": 25.290712327672157,
+      "repeatOldGradientNorm": 25.290816236328496,
+      "optimizedGradientNorm": 25.29632020372881,
+      "repeatOldGradientDifference": {
+        "expectedL2": 25.2907118170923,
+        "cosine": 0.9999999579892661,
+        "actualL2": 25.29081694015867,
+        "maxAbs": 0.0009765625,
+        "relativeL2": 0.00028989497770928605
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55643922241075,
+        "cosine": 0.9999999999989132,
+        "actualL2": 208.55643934148094,
+        "maxAbs": 5.127862095832825e-05,
+        "relativeL2": 1.4470284187983733e-06
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55643922241075,
+        "cosine": 0.999999999973887,
+        "actualL2": 208.5564394902778,
+        "maxAbs": 0.00037192367017269135,
+        "relativeL2": 7.159632496326086e-06
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 0.8345180658121008,
+        "cosine": 0.9999999346143229,
+        "actualL2": 0.8345174850295461,
+        "maxAbs": 5.127862095832825e-05,
+        "relativeL2": 0.0003616303910503648
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 0.8345180658121008,
+        "cosine": 0.9999984016245326,
+        "actualL2": 0.8344591908155861,
+        "maxAbs": 0.00037192367017269135,
+        "relativeL2": 0.0017892811680736375
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "REGRET",
+      "step": 2,
+      "oldLoss": 20.43837085366249,
+      "repeatOldLoss": 20.446114629507065,
+      "optimizedLoss": 20.447543382644653,
+      "oldGradientNorm": 426.390144609124,
+      "repeatOldGradientNorm": 426.7721193827365,
+      "optimizedGradientNorm": 426.9123765908115,
+      "repeatOldGradientDifference": {
+        "expectedL2": 426.39015106111157,
+        "cosine": 0.9999794296373938,
+        "actualL2": 426.77212627956186,
+        "maxAbs": 0.53125,
+        "relativeL2": 0.006479205378142205
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.5571843032588,
+        "cosine": 0.9999999997595932,
+        "actualL2": 208.5571875392499,
+        "maxAbs": 8.944794535636902e-05,
+        "relativeL2": 2.1915746879797154e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.5571843032588,
+        "cosine": 0.9999999996784118,
+        "actualL2": 208.55718727893347,
+        "maxAbs": 0.0003766138106584549,
+        "relativeL2": 2.5350750943826002e-05
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.3934206523254213,
+        "cosine": 0.9999946202939393,
+        "actualL2": 1.3934356454364747,
+        "maxAbs": 8.944794535636902e-05,
+        "relativeL2": 0.003280191414936758
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.3934206523254213,
+        "cosine": 0.9999928019343289,
+        "actualL2": 1.3933722493730398,
+        "maxAbs": 0.0003766138106584549,
+        "relativeL2": 0.0037943181249640175
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "REGRET",
+      "step": 3,
+      "oldLoss": 0.35747727006673813,
+      "repeatOldLoss": 0.35594792291522026,
+      "optimizedLoss": 0.3533387929201126,
+      "oldGradientNorm": 21.275741594324227,
+      "repeatOldGradientNorm": 21.104435042038308,
+      "optimizedGradientNorm": 20.913260625891795,
+      "repeatOldGradientDifference": {
+        "expectedL2": 21.2757417705569,
+        "cosine": 0.999970944739248,
+        "actualL2": 21.10443537383874,
+        "maxAbs": 0.0390625,
+        "relativeL2": 0.011066746977465715
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.5580999848382,
+        "cosine": 0.999999998924386,
+        "actualL2": 208.55809922665603,
+        "maxAbs": 0.00015403330326080322,
+        "relativeL2": 4.637391798993278e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.5580999848382,
+        "cosine": 0.9999999987169854,
+        "actualL2": 208.558095330357,
+        "maxAbs": 0.00039072707295417786,
+        "relativeL2": 5.064927919730855e-05
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.8383698861453692,
+        "cosine": 0.99998616092963,
+        "actualL2": 1.8383638357532488,
+        "maxAbs": 0.00015403330326080322,
+        "relativeL2": 0.005260995786387844
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.8383698861453692,
+        "cosine": 0.9999834915135545,
+        "actualL2": 1.83832365344204,
+        "maxAbs": 0.00039072707295417786,
+        "relativeL2": 0.005746023971890153
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "AVERAGE",
+      "stage": "initial",
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "stateOnceLoss": 1.6985011100769043,
+      "repeatOldLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 1.0,
+        "actualL2": 1.093536495759865,
+        "maxAbs": 0.0,
+        "relativeL2": 0.0
+      },
+      "stateOnceLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 0.9998843463338652,
+        "actualL2": 1.0856217257125564,
+        "maxAbs": 0.0107421875,
+        "relativeL2": 0.016793408080043905
+      },
+      "repeatOldGradients": {
+        "expectedL2": 6.147893468981515,
+        "cosine": 0.9999999960779994,
+        "actualL2": 6.147919139314204,
+        "maxAbs": 3.0517578125e-05,
+        "relativeL2": 8.866497153288416e-05
+      },
+      "stateOnceGradients": {
+        "expectedL2": 6.147893468981515,
+        "cosine": 0.9998572893939689,
+        "actualL2": 6.165065418482553,
+        "maxAbs": 0.0126953125,
+        "relativeL2": 0.017147013930572094
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "AVERAGE",
+      "step": 1,
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "optimizedLoss": 1.6981635093688965,
+      "oldGradientNorm": 6.147893533973001,
+      "repeatOldGradientNorm": 6.147919193463993,
+      "optimizedGradientNorm": 6.147859705025416,
+      "repeatOldGradientDifference": {
+        "expectedL2": 6.147893468981515,
+        "cosine": 0.9999999960779994,
+        "actualL2": 6.147919139314204,
+        "maxAbs": 3.0517578125e-05,
+        "relativeL2": 8.866497153288416e-05
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55638706515424,
+        "cosine": 0.9999999999999016,
+        "actualL2": 208.556387049554,
+        "maxAbs": 2.4110078811645508e-05,
+        "relativeL2": 4.135549842902774e-07
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55638706515424,
+        "cosine": 0.9999999999935979,
+        "actualL2": 208.55638722048192,
+        "maxAbs": 1.9008293747901917e-05,
+        "relativeL2": 3.5057124746293877e-06
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 0.8358994280256857,
+        "cosine": 0.9999999946795048,
+        "actualL2": 0.835898770735151,
+        "maxAbs": 2.4110078811645508e-05,
+        "relativeL2": 0.00010318171120188466
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 0.8358994280256857,
+        "cosine": 0.9999996174882544,
+        "actualL2": 0.8359011131119144,
+        "maxAbs": 1.9008293747901917e-05,
+        "relativeL2": 0.000874673080617875
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "AVERAGE",
+      "step": 2,
+      "oldLoss": 1.4820684492588043,
+      "repeatOldLoss": 1.4828927516937256,
+      "optimizedLoss": 1.4830321967601776,
+      "oldGradientNorm": 0.9223535903319009,
+      "repeatOldGradientNorm": 0.926083112270408,
+      "optimizedGradientNorm": 0.9215998957015497,
+      "repeatOldGradientDifference": {
+        "expectedL2": 0.9223535724708736,
+        "cosine": 0.9995561043626418,
+        "actualL2": 0.9260830222797767,
+        "maxAbs": 0.00604248046875,
+        "relativeL2": 0.03012855964839699
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.5572558667552,
+        "cosine": 0.9999999960721838,
+        "actualL2": 208.55725058802324,
+        "maxAbs": 0.0005364902317523956,
+        "relativeL2": 8.862843917183518e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.5572558667552,
+        "cosine": 0.9999999933745682,
+        "actualL2": 208.55724782030214,
+        "maxAbs": 0.0006976183503866196,
+        "relativeL2": 0.00011510914717412297
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.422150094632786,
+        "cosine": 0.9999155368023469,
+        "actualL2": 1.4221750016482089,
+        "maxAbs": 0.0005364902317523956,
+        "relativeL2": 0.0129972948250616
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.422150094632786,
+        "cosine": 0.9998575352645741,
+        "actualL2": 1.4222586327789757,
+        "maxAbs": 0.0006976183503866196,
+        "relativeL2": 0.01688067099977683
+      }
+    },
+    {
+      "repeat": 1,
+      "role": "AVERAGE",
+      "step": 3,
+      "oldLoss": 1.4514811635017395,
+      "repeatOldLoss": 1.4501674473285675,
+      "optimizedLoss": 1.4518656432628632,
+      "oldGradientNorm": 1.1044668901102437,
+      "repeatOldGradientNorm": 1.0881053342141302,
+      "optimizedGradientNorm": 1.122360130977043,
+      "repeatOldGradientDifference": {
+        "expectedL2": 1.104466867602533,
+        "cosine": 0.9991880633620899,
+        "actualL2": 1.0881053159009528,
+        "maxAbs": 0.0064697265625,
+        "relativeL2": 0.04265291660390252
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55866433336726,
+        "cosine": 0.9999999848632217,
+        "actualL2": 208.55865752808518,
+        "maxAbs": 0.0006614625453948975,
+        "relativeL2": 0.00017399124615237615
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55866433336726,
+        "cosine": 0.9999999756499607,
+        "actualL2": 208.55865187440716,
+        "maxAbs": 0.0016807317733764648,
+        "relativeL2": 0.0002206790790293287
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.9100771151551639,
+        "cosine": 0.9998195775976694,
+        "actualL2": 1.9103558410909895,
+        "maxAbs": 0.0006614625453948975,
+        "relativeL2": 0.01899786224091267
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.9100771151551639,
+        "cosine": 0.9997098117223391,
+        "actualL2": 1.910582180632617,
+        "maxAbs": 0.0016807317733764648,
+        "relativeL2": 0.02409564179555945
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "REGRET",
+      "stage": "initial",
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "stateOnceLoss": 0.5513967871665955,
+      "repeatOldLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 1.0,
+        "actualL2": 1.093536495759865,
+        "maxAbs": 0.0,
+        "relativeL2": 0.0
+      },
+      "stateOnceLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 0.9998843463338652,
+        "actualL2": 1.0856217257125564,
+        "maxAbs": 0.0107421875,
+        "relativeL2": 0.016793408080043905
+      },
+      "repeatOldGradients": {
+        "expectedL2": 25.290711817542956,
+        "cosine": 0.999999957988985,
+        "actualL2": 25.290816942815322,
+        "maxAbs": 0.0009765625,
+        "relativeL2": 0.00028989594942501726
+      },
+      "stateOnceGradients": {
+        "expectedL2": 25.290711817542956,
+        "cosine": 0.9998385131712504,
+        "actualL2": 25.339237884578996,
+        "maxAbs": 0.046875,
+        "relativeL2": 0.018090740321252227
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "REGRET",
+      "step": 1,
+      "oldLoss": 0.5522740185260773,
+      "repeatOldLoss": 0.5522740185260773,
+      "optimizedLoss": 0.5522740259766579,
+      "oldGradientNorm": 25.290712327672157,
+      "repeatOldGradientNorm": 25.290816236328496,
+      "optimizedGradientNorm": 25.29632020372881,
+      "repeatOldGradientDifference": {
+        "expectedL2": 25.290711817542956,
+        "cosine": 0.999999957988985,
+        "actualL2": 25.290816942815322,
+        "maxAbs": 0.0009765625,
+        "relativeL2": 0.00028989594942501726
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55643922241237,
+        "cosine": 0.9999999999989129,
+        "actualL2": 208.55643934148551,
+        "maxAbs": 5.127862095832825e-05,
+        "relativeL2": 1.4471346320700807e-06
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55643922241237,
+        "cosine": 0.9999999999738867,
+        "actualL2": 208.5564394902688,
+        "maxAbs": 0.00037192367017269135,
+        "relativeL2": 7.159628267233035e-06
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 0.834518066204774,
+        "cosine": 0.999999934604723,
+        "actualL2": 0.8345174861722255,
+        "maxAbs": 5.127862095832825e-05,
+        "relativeL2": 0.0003616569348972176
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 0.834518066204774,
+        "cosine": 0.9999984016266446,
+        "actualL2": 0.8344591885556534,
+        "maxAbs": 0.00037192367017269135,
+        "relativeL2": 0.0017892801103287967
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "REGRET",
+      "step": 2,
+      "oldLoss": 20.43957069516182,
+      "repeatOldLoss": 20.442620933055878,
+      "optimizedLoss": 20.447543382644653,
+      "oldGradientNorm": 426.4345286909373,
+      "repeatOldGradientNorm": 426.7098365762159,
+      "optimizedGradientNorm": 426.91228730207604,
+      "repeatOldGradientDifference": {
+        "expectedL2": 426.4345247610435,
+        "cosine": 0.9999799387964274,
+        "actualL2": 426.70983011593745,
+        "maxAbs": 0.5,
+        "relativeL2": 0.006369074390295941
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55718442634816,
+        "cosine": 0.9999999997633573,
+        "actualL2": 208.55718757525548,
+        "maxAbs": 8.784979581832886e-05,
+        "relativeL2": 2.1739994719708783e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55718442634816,
+        "cosine": 0.9999999996807686,
+        "actualL2": 208.55718728650444,
+        "maxAbs": 0.00037661194801330566,
+        "relativeL2": 2.52588957263201e-05
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.3934151404099444,
+        "cosine": 0.9999947063370157,
+        "actualL2": 1.3934403919702092,
+        "maxAbs": 8.784979581832886e-05,
+        "relativeL2": 0.0032538989685817698
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.3934151404099444,
+        "cosine": 0.9999928538459403,
+        "actualL2": 1.393372429860977,
+        "maxAbs": 0.00037661194801330566,
+        "relativeL2": 0.0037805848534487783
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "REGRET",
+      "step": 3,
+      "oldLoss": 0.35743433982133865,
+      "repeatOldLoss": 0.3563130125403404,
+      "optimizedLoss": 0.35530973225831985,
+      "oldGradientNorm": 21.3799401851702,
+      "repeatOldGradientNorm": 21.291396997898772,
+      "optimizedGradientNorm": 21.03975978789527,
+      "repeatOldGradientDifference": {
+        "expectedL2": 21.379940534536168,
+        "cosine": 0.9999716055490656,
+        "actualL2": 21.291398347223673,
+        "maxAbs": 0.0390625,
+        "relativeL2": 0.00858514077806104
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55809889486642,
+        "cosine": 0.9999999989847032,
+        "actualL2": 208.55809798138378,
+        "maxAbs": 0.0001480206847190857,
+        "relativeL2": 4.5056535404782375e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55809889486642,
+        "cosine": 0.9999999988488234,
+        "actualL2": 208.5580984414433,
+        "maxAbs": 0.0003640800714492798,
+        "relativeL2": 4.797857570674391e-05
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.838381281581968,
+        "cosine": 0.9999869362444941,
+        "actualL2": 1.838332345150878,
+        "maxAbs": 0.0001480206847190857,
+        "relativeL2": 0.005111510577786348
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.838381281581968,
+        "cosine": 0.999985186824857,
+        "actualL2": 1.838330207317483,
+        "maxAbs": 0.0003640800714492798,
+        "relativeL2": 0.005443006103973856
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "AVERAGE",
+      "stage": "initial",
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "stateOnceLoss": 1.6985011100769043,
+      "repeatOldLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 1.0,
+        "actualL2": 1.093536495759865,
+        "maxAbs": 0.0,
+        "relativeL2": 0.0
+      },
+      "stateOnceLogits": {
+        "expectedL2": 1.093536495759865,
+        "cosine": 0.9998843463338652,
+        "actualL2": 1.0856217257125564,
+        "maxAbs": 0.0107421875,
+        "relativeL2": 0.016793408080043905
+      },
+      "repeatOldGradients": {
+        "expectedL2": 6.147893468956741,
+        "cosine": 0.9999999999993685,
+        "actualL2": 6.14789346992983,
+        "maxAbs": 2.4437904357910156e-06,
+        "relativeL2": 1.1237566469794342e-06
+      },
+      "stateOnceGradients": {
+        "expectedL2": 6.147893468956741,
+        "cosine": 0.9998572893935815,
+        "actualL2": 6.165065421163678,
+        "maxAbs": 0.0126953125,
+        "relativeL2": 0.017147014028605082
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "AVERAGE",
+      "step": 1,
+      "oldLoss": 1.6981635093688965,
+      "repeatOldLoss": 1.6981635093688965,
+      "optimizedLoss": 1.6981635093688965,
+      "oldGradientNorm": 6.147893533973001,
+      "repeatOldGradientNorm": 6.147893533973001,
+      "optimizedGradientNorm": 6.147859705025416,
+      "repeatOldGradientDifference": {
+        "expectedL2": 6.147893468956741,
+        "cosine": 0.9999999999993685,
+        "actualL2": 6.14789346992983,
+        "maxAbs": 2.4437904357910156e-06,
+        "relativeL2": 1.1237566469794342e-06
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55638706515268,
+        "cosine": 0.9999999999999998,
+        "actualL2": 208.55638706516024,
+        "maxAbs": 1.214328221976757e-06,
+        "relativeL2": 1.960235542987142e-08
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55638706515268,
+        "cosine": 0.999999999993598,
+        "actualL2": 208.55638722049804,
+        "maxAbs": 1.9008293747901917e-05,
+        "relativeL2": 3.5056440031948244e-06
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 0.8358994276263646,
+        "cosine": 0.9999999999880402,
+        "actualL2": 0.8358994295081361,
+        "maxAbs": 1.214328221976757e-06,
+        "relativeL2": 4.890775482440368e-06
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 0.8358994276263646,
+        "cosine": 0.9999996175032089,
+        "actualL2": 0.8359011171336249,
+        "maxAbs": 1.9008293747901917e-05,
+        "relativeL2": 0.0008746559974553942
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "AVERAGE",
+      "step": 2,
+      "oldLoss": 1.4820684492588043,
+      "repeatOldLoss": 1.4820684492588043,
+      "optimizedLoss": 1.4830321967601776,
+      "oldGradientNorm": 0.9223495158697966,
+      "repeatOldGradientNorm": 0.9223521277065497,
+      "optimizedGradientNorm": 0.9215997434076941,
+      "repeatOldGradientDifference": {
+        "expectedL2": 0.9223494673777013,
+        "cosine": 0.9999999593069846,
+        "actualL2": 0.9223520887697044,
+        "maxAbs": 3.0517578125e-05,
+        "relativeL2": 0.0002852969337966913
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.5572559269345,
+        "cosine": 0.9999999999996266,
+        "actualL2": 208.55725596574595,
+        "maxAbs": 1.331232488155365e-05,
+        "relativeL2": 8.216541734520052e-07
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.5572559269345,
+        "cosine": 0.999999993373997,
+        "actualL2": 208.55724770203256,
+        "maxAbs": 0.0006976202130317688,
+        "relativeL2": 0.00011511425346691118
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.422150565819557,
+        "cosine": 0.9999999927406517,
+        "actualL2": 1.4221505351193955,
+        "maxAbs": 1.331232488155365e-05,
+        "relativeL2": 0.0001204949348223978
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.422150565819557,
+        "cosine": 0.9998575226089392,
+        "actualL2": 1.4222583885558444,
+        "maxAbs": 0.0006976202130317688,
+        "relativeL2": 0.016881414245545314
+      }
+    },
+    {
+      "repeat": 2,
+      "role": "AVERAGE",
+      "step": 3,
+      "oldLoss": 1.4518523514270782,
+      "repeatOldLoss": 1.4523678421974182,
+      "optimizedLoss": 1.4513557851314545,
+      "oldGradientNorm": 1.109941179694893,
+      "repeatOldGradientNorm": 1.1106882349733742,
+      "optimizedGradientNorm": 1.1177260832709899,
+      "repeatOldGradientDifference": {
+        "expectedL2": 1.1099412101778747,
+        "cosine": 0.9996804434446095,
+        "actualL2": 1.1106881973398581,
+        "maxAbs": 0.0059814453125,
+        "relativeL2": 0.025298145346580092
+      },
+      "repeatOldParameterDifference": {
+        "expectedL2": 208.55866414370604,
+        "cosine": 0.9999999986688094,
+        "actualL2": 208.5586649358969,
+        "maxAbs": 0.0002474263310432434,
+        "relativeL2": 5.1590093311504505e-05
+      },
+      "optimizedParameterDifference": {
+        "expectedL2": 208.55866414370604,
+        "cosine": 0.9999999760223041,
+        "actualL2": 208.55864856947366,
+        "maxAbs": 0.001304788514971733,
+        "relativeL2": 0.0002189862204472188
+      },
+      "repeatOldUpdateDifference": {
+        "expectedL2": 1.9101816576245045,
+        "cosine": 0.9999841360204833,
+        "actualL2": 1.9101665008750865,
+        "maxAbs": 0.0002474263310432434,
+        "relativeL2": 0.005632742258386606
+      },
+      "optimizedUpdateDifference": {
+        "expectedL2": 1.9101816576245045,
+        "cosine": 0.9997142456296652,
+        "actualL2": 1.9105651941286017,
+        "maxAbs": 0.001304788514971733,
+        "relativeL2": 0.023909492283130794
+      }
+    }
+  ],
+  "rejectedBfloat16Gru": [
+    {
+      "role": "REGRET",
+      "step": 0,
+      "referenceLoss": 0.5522740259766579,
+      "candidateLoss": 0.5526145845651627,
+      "lossRelative": 0.0006166478459720014,
+      "logits": {
+        "candidateL2": 1.0918952922274217,
+        "cosine": 0.9999537575302011,
+        "relativeL2": 0.00972618129484728,
+        "referenceL2": 1.093536495759865,
+        "maxAbs": 0.003662109375
+      },
+      "gradients": {
+        "candidateL2": 25.228631939461405,
+        "cosine": 0.9999819043406262,
+        "relativeL2": 0.006576313657750589,
+        "referenceL2": 25.29628887588904,
+        "maxAbs": 0.03564453125
+      },
+      "historyGradients": {
+        "candidateL2": 0.09017152652271658,
+        "cosine": 0.9999696412427821,
+        "relativeL2": 0.008218283989612609,
+        "referenceL2": 0.09041044160189696,
+        "maxAbs": 0.0001437664031982422
+      },
+      "boundaryGradients": {
+        "candidateL2": 0.06836888152890397,
+        "cosine": 0.999941340648276,
+        "relativeL2": 0.010883652066071494,
+        "referenceL2": 0.06830000767014788,
+        "maxAbs": 0.00018310546875
+      },
+      "parameters": {
+        "candidateL2": 208.5568322354895,
+        "cosine": 1.0,
+        "relativeL2": 0.0,
+        "referenceL2": 208.5568322354895,
+        "maxAbs": 0.0
+      }
+    },
+    {
+      "role": "REGRET",
+      "step": 1,
+      "referenceLoss": 20.407016038894653,
+      "candidateLoss": 20.44343662261963,
+      "lossRelative": 0.001784708928319552,
+      "referenceUpdateLoss": 0.5522740259766579,
+      "candidateUpdateLoss": 0.5526145845651627,
+      "referenceUpdateGradientNorm": 25.296289027668145,
+      "candidateUpdateGradientNorm": 25.228632346971096,
+      "logits": {
+        "candidateL2": 11.341318589773252,
+        "cosine": 0.9999964243902881,
+        "relativeL2": 0.0029565544640956266,
+        "referenceL2": 11.327076156994682,
+        "maxAbs": 0.009765625
+      },
+      "gradients": {
+        "candidateL2": 426.3650425630725,
+        "cosine": 0.9999440785728756,
+        "relativeL2": 0.010647187206285496,
+        "referenceL2": 425.8633230628327,
+        "maxAbs": 0.61328125
+      },
+      "historyGradients": {
+        "candidateL2": 1.278916494085867,
+        "cosine": 0.999917085251685,
+        "relativeL2": 0.012906324556296405,
+        "referenceL2": 1.2801316997430705,
+        "maxAbs": 0.003662109375
+      },
+      "boundaryGradients": {
+        "candidateL2": 0.8795031167592737,
+        "cosine": 0.9998477498749343,
+        "relativeL2": 0.01767693243613215,
+        "referenceL2": 0.8771561769145071,
+        "maxAbs": 0.0041046142578125
+      },
+      "parameters": {
+        "candidateL2": 208.55643642393804,
+        "cosine": 0.9999999994009456,
+        "relativeL2": 3.460360750631292e-05,
+        "referenceL2": 208.55643946483406,
+        "maxAbs": 0.00021780282258987427
+      },
+      "cumulativeUpdate": {
+        "candidateL2": 0.8346613829085814,
+        "cosine": 0.9999626405889429,
+        "relativeL2": 0.008648493969660134,
+        "referenceL2": 0.8344580223415283,
+        "maxAbs": 0.00021780282258987427
+      }
+    },
+    {
+      "role": "REGRET",
+      "step": 2,
+      "referenceLoss": 0.3550879992544651,
+      "candidateLoss": 0.35239411890506744,
+      "lossRelative": 0.007586514765505088,
+      "referenceUpdateLoss": 20.407016038894653,
+      "candidateUpdateLoss": 20.44343662261963,
+      "referenceUpdateGradientNorm": 425.8633197913686,
+      "candidateUpdateGradientNorm": 426.36504434111976,
+      "logits": {
+        "candidateL2": 0.8843818152067349,
+        "cosine": 0.9996132587709133,
+        "relativeL2": 0.035172391271922517,
+        "referenceL2": 0.9042037026046651,
+        "maxAbs": 0.0078125
+      },
+      "gradients": {
+        "candidateL2": 20.39751278399911,
+        "cosine": 0.9998088599775733,
+        "relativeL2": 0.03616254518798964,
+        "referenceL2": 21.041659943652018,
+        "maxAbs": 0.1884765625
+      },
+      "historyGradients": {
+        "candidateL2": 0.06396865888478047,
+        "cosine": 0.9996935992747665,
+        "relativeL2": 0.030484402588015373,
+        "referenceL2": 0.06514779564585987,
+        "maxAbs": 0.00035858154296875
+      },
+      "boundaryGradients": {
+        "candidateL2": 0.04441125966000298,
+        "cosine": 0.9994998969545028,
+        "relativeL2": 0.0358754845291927,
+        "referenceL2": 0.04519972195351743,
+        "maxAbs": 0.00022983551025390625
+      },
+      "parameters": {
+        "candidateL2": 208.55718172753225,
+        "cosine": 0.9999999977880948,
+        "relativeL2": 6.650683376262794e-05,
+        "referenceL2": 208.55718393462496,
+        "maxAbs": 0.00026360154151916504
+      },
+      "cumulativeUpdate": {
+        "candidateL2": 1.3936605577471055,
+        "cosine": 0.9999504876778298,
+        "relativeL2": 0.009954798684231556,
+        "referenceL2": 1.3933459030078448,
+        "maxAbs": 0.00026360154151916504
+      }
+    },
+    {
+      "role": "REGRET",
+      "step": 3,
+      "referenceLoss": 2.509884297847748,
+      "candidateLoss": 2.4902570247650146,
+      "lossRelative": 0.007819991184280386,
+      "referenceUpdateLoss": 0.3550879992544651,
+      "candidateUpdateLoss": 0.35239411890506744,
+      "referenceUpdateGradientNorm": 21.04166000057256,
+      "candidateUpdateGradientNorm": 20.397512239726048,
+      "logits": {
+        "candidateL2": 3.81248248987398,
+        "cosine": 0.9999260055462796,
+        "relativeL2": 0.012678791974182153,
+        "referenceL2": 3.826438563478855,
+        "maxAbs": 0.015625
+      },
+      "gradients": {
+        "candidateL2": 113.50505118054826,
+        "cosine": 0.9998294592468376,
+        "relativeL2": 0.019102223698489778,
+        "referenceL2": 114.08155339368341,
+        "maxAbs": 0.4921875
+      },
+      "historyGradients": {
+        "candidateL2": 0.2417435733436102,
+        "cosine": 0.9995843149282322,
+        "relativeL2": 0.028906830564912216,
+        "referenceL2": 0.24235311339713558,
+        "maxAbs": 0.002254486083984375
+      },
+      "boundaryGradients": {
+        "candidateL2": 0.1680244452267697,
+        "cosine": 0.9994316910607319,
+        "relativeL2": 0.034138666563759947,
+        "referenceL2": 0.16721660455633006,
+        "maxAbs": 0.002017974853515625
+      },
+      "parameters": {
+        "candidateL2": 208.5580885048732,
+        "cosine": 0.9999999949018952,
+        "relativeL2": 0.00010097257372380271,
+        "referenceL2": 208.55809372409166,
+        "maxAbs": 0.00028906017541885376
+      },
+      "cumulativeUpdate": {
+        "candidateL2": 1.8387051703064874,
+        "cosine": 0.9999344394502081,
+        "relativeL2": 0.011456386508540957,
+        "referenceL2": 1.8381579111835984,
+        "maxAbs": 0.00028906017541885376
+      }
+    },
+    {
+      "role": "AVERAGE",
+      "step": 0,
+      "referenceLoss": 1.6981635093688965,
+      "candidateLoss": 1.6983542144298553,
+      "lossRelative": 0.00011230076485964282,
+      "logits": {
+        "candidateL2": 1.0918952922274217,
+        "cosine": 0.9999537575302011,
+        "relativeL2": 0.00972618129484728,
+        "referenceL2": 1.093536495759865,
+        "maxAbs": 0.003662109375
+      },
+      "gradients": {
+        "candidateL2": 6.1382872926406,
+        "cosine": 0.9999703429871688,
+        "relativeL2": 0.007850973072735003,
+        "referenceL2": 6.147843071823131,
+        "maxAbs": 0.0050048828125
+      },
+      "historyGradients": {
+        "candidateL2": 0.027009696773380356,
+        "cosine": 0.9999545204872193,
+        "relativeL2": 0.009696502357821182,
+        "referenceL2": 0.027058300272297796,
+        "maxAbs": 8.96453857421875e-05
+      },
+      "boundaryGradients": {
+        "candidateL2": 0.02343020126081575,
+        "cosine": 0.9999388824372891,
+        "relativeL2": 0.01168239113486176,
+        "referenceL2": 0.023343517782908156,
+        "maxAbs": 5.7220458984375e-05
+      },
+      "parameters": {
+        "candidateL2": 208.5568322354895,
+        "cosine": 1.0,
+        "relativeL2": 0.0,
+        "referenceL2": 208.5568322354895,
+        "maxAbs": 0.0
+      }
+    },
+    {
+      "role": "AVERAGE",
+      "step": 1,
+      "referenceLoss": 1.4818437099456787,
+      "candidateLoss": 1.4820756316184998,
+      "lossRelative": 0.00015650886207800328,
+      "referenceUpdateLoss": 1.6981635093688965,
+      "candidateUpdateLoss": 1.6983542144298553,
+      "referenceUpdateGradientNorm": 6.147843103070701,
+      "candidateUpdateGradientNorm": 6.138287139032225,
+      "logits": {
+        "candidateL2": 1.7343544745358364,
+        "cosine": 0.999700607956173,
+        "relativeL2": 0.02565654140378619,
+        "referenceL2": 1.7215831544798754,
+        "maxAbs": 0.013671875
+      },
+      "gradients": {
+        "candidateL2": 0.9217830285880724,
+        "cosine": 0.999182284878767,
+        "relativeL2": 0.04043230536001936,
+        "referenceL2": 0.9226284885826725,
+        "maxAbs": 0.0067043304443359375
+      },
+      "historyGradients": {
+        "candidateL2": 0.0032522545673517064,
+        "cosine": 0.9989101145274928,
+        "relativeL2": 0.046680854567537365,
+        "referenceL2": 0.0032534564186098482,
+        "maxAbs": 2.8848648071289062e-05
+      },
+      "boundaryGradients": {
+        "candidateL2": 0.004280987097933447,
+        "cosine": 0.9992568004673666,
+        "relativeL2": 0.03964970428642508,
+        "referenceL2": 0.004324362236258683,
+        "maxAbs": 6.818771362304688e-05
+      },
+      "parameters": {
+        "candidateL2": 208.5563823475183,
+        "cosine": 0.9999999991089773,
+        "relativeL2": 4.2206582176583324e-05,
+        "referenceL2": 208.5563875159276,
+        "maxAbs": 0.0003419443964958191
+      },
+      "cumulativeUpdate": {
+        "candidateL2": 0.835958420910462,
+        "cosine": 0.9999445605204532,
+        "relativeL2": 0.010530507393450099,
+        "referenceL2": 0.8359001118614112,
+        "maxAbs": 0.0003419443964958191
+      }
+    },
+    {
+      "role": "AVERAGE",
+      "step": 2,
+      "referenceLoss": 1.4519172608852386,
+      "candidateLoss": 1.4512630701065063,
+      "lossRelative": 0.0004505702882362853,
+      "referenceUpdateLoss": 1.4818437099456787,
+      "candidateUpdateLoss": 1.4820756316184998,
+      "referenceUpdateGradientNorm": 0.9226284681928197,
+      "candidateUpdateGradientNorm": 0.9217829952453661,
+      "logits": {
+        "candidateL2": 4.562866614257089,
+        "cosine": 0.9999376625548414,
+        "relativeL2": 0.017506805642252925,
+        "referenceL2": 4.62552536738438,
+        "maxAbs": 0.015625
+      },
+      "gradients": {
+        "candidateL2": 1.0984885536916793,
+        "cosine": 0.9982162032188561,
+        "relativeL2": 0.05973068751276787,
+        "referenceL2": 1.0984394542634732,
+        "maxAbs": 0.0069580078125
+      },
+      "historyGradients": {
+        "candidateL2": 0.003915607345659573,
+        "cosine": 0.9971301420993163,
+        "relativeL2": 0.07599784490980516,
+        "referenceL2": 0.0039008702395226936,
+        "maxAbs": 5.626678466796875e-05
+      },
+      "boundaryGradients": {
+        "candidateL2": 0.007431084794194056,
+        "cosine": 0.9994432474786084,
+        "relativeL2": 0.03345882774417264,
+        "referenceL2": 0.00745394119432688,
+        "maxAbs": 5.6743621826171875e-05
+      },
+      "parameters": {
+        "candidateL2": 208.55724533729685,
+        "cosine": 0.9999999899112164,
+        "relativeL2": 0.00014204511844991146,
+        "referenceL2": 208.55726819043036,
+        "maxAbs": 0.0005225394852459431
+      },
+      "cumulativeUpdate": {
+        "candidateL2": 1.4222939987611887,
+        "cosine": 0.9997830650583637,
+        "relativeL2": 0.020835517601406107,
+        "referenceL2": 1.421828937990981,
+        "maxAbs": 0.0005225394852459431
+      }
+    },
+    {
+      "role": "AVERAGE",
+      "step": 3,
+      "referenceLoss": 1.3902393877506256,
+      "candidateLoss": 1.3895911276340485,
+      "lossRelative": 0.0004662938788017062,
+      "referenceUpdateLoss": 1.4519172608852386,
+      "candidateUpdateLoss": 1.4512630701065063,
+      "referenceUpdateGradientNorm": 1.098438595972533,
+      "candidateUpdateGradientNorm": 1.0984885880854216,
+      "logits": {
+        "candidateL2": 2.7697249373056017,
+        "cosine": 0.9995434631455433,
+        "relativeL2": 0.05386261055276639,
+        "referenceL2": 2.652652773039465,
+        "maxAbs": 0.0390625
+      },
+      "gradients": {
+        "candidateL2": 1.19720634030677,
+        "cosine": 0.9928093350722763,
+        "relativeL2": 0.11996030717979256,
+        "referenceL2": 1.1964764336378932,
+        "maxAbs": 0.008453369140625
+      },
+      "historyGradients": {
+        "candidateL2": 0.004853375409898107,
+        "cosine": 0.994288506382081,
+        "relativeL2": 0.10673433771215335,
+        "referenceL2": 0.004887946184973918,
+        "maxAbs": 0.000125885009765625
+      },
+      "boundaryGradients": {
+        "candidateL2": 0.007958965698375503,
+        "cosine": 0.9971439198646574,
+        "relativeL2": 0.07737782580269283,
+        "referenceL2": 0.008118811591687418,
+        "maxAbs": 0.00017523765563964844
+      },
+      "parameters": {
+        "candidateL2": 208.55864492530912,
+        "cosine": 0.9999999589667442,
+        "relativeL2": 0.00028647121622705634,
+        "referenceL2": 208.55867127080546,
+        "maxAbs": 0.0011430233716964722
+      },
+      "cumulativeUpdate": {
+        "candidateL2": 1.9103138157669635,
+        "cosine": 0.9995108066773101,
+        "relativeL2": 0.03129407165076067,
+        "referenceL2": 1.9091812941571704,
+        "maxAbs": 0.0011430233716964722
+      }
+    }
+  ],
+  "repeatedReferenceForGru": [
+    {
+      "role": "REGRET",
+      "step": 0,
+      "referenceLoss": 0.5522740259766579,
+      "candidateLoss": 0.5522740259766579,
+      "lossRelative": 0.0,
+      "logits": {
+        "cosine": 1.0,
+        "candidateL2": 1.093536495759865,
+        "maxAbs": 0.0,
+        "referenceL2": 1.093536495759865,
+        "relativeL2": 0.0
+      },
+      "gradients": {
+        "cosine": 0.9999999999986754,
+        "candidateL2": 25.296288879027358,
+        "maxAbs": 1.71661376953125e-05,
+        "referenceL2": 25.29628887588904,
+        "relativeL2": 1.627756614884439e-06
+      },
+      "historyGradients": {
+        "cosine": 1.0,
+        "candidateL2": 0.09041044160189696,
+        "maxAbs": 0.0,
+        "referenceL2": 0.09041044160189696,
+        "relativeL2": 0.0
+      },
+      "boundaryGradients": {
+        "cosine": 1.0,
+        "candidateL2": 0.06830000767014788,
+        "maxAbs": 0.0,
+        "referenceL2": 0.06830000767014788,
+        "relativeL2": 0.0
+      },
+      "parameters": {
+        "cosine": 1.0,
+        "candidateL2": 208.5568322354895,
+        "maxAbs": 0.0,
+        "referenceL2": 208.5568322354895,
+        "relativeL2": 0.0
+      }
+    },
+    {
+      "role": "REGRET",
+      "step": 1,
+      "referenceLoss": 20.407016038894653,
+      "candidateLoss": 20.407016038894653,
+      "lossRelative": 0.0,
+      "referenceUpdateLoss": 0.5522740259766579,
+      "candidateUpdateLoss": 0.5522740259766579,
+      "referenceUpdateGradientNorm": 25.296289027668145,
+      "candidateUpdateGradientNorm": 25.296289027668145,
+      "logits": {
+        "cosine": 1.0,
+        "candidateL2": 11.327076156994682,
+        "maxAbs": 0.0,
+        "referenceL2": 11.327076156994682,
+        "relativeL2": 0.0
+      },
+      "gradients": {
+        "cosine": 0.9999999999931953,
+        "candidateL2": 425.8633230914141,
+        "maxAbs": 0.0009765625,
+        "referenceL2": 425.8633230628327,
+        "relativeL2": 3.689189711398344e-06
+      },
+      "historyGradients": {
+        "cosine": 1.0,
+        "candidateL2": 1.2801316997430705,
+        "maxAbs": 0.0,
+        "referenceL2": 1.2801316997430705,
+        "relativeL2": 0.0
+      },
+      "boundaryGradients": {
+        "cosine": 1.0,
+        "candidateL2": 0.8771561769145071,
+        "maxAbs": 0.0,
+        "referenceL2": 0.8771561769145071,
+        "relativeL2": 0.0
+      },
+      "parameters": {
+        "cosine": 0.9999999999999998,
+        "candidateL2": 208.55643946483792,
+        "maxAbs": 1.8190348782809451e-06,
+        "referenceL2": 208.55643946483406,
+        "relativeL2": 1.82363916741691e-08
+      },
+      "cumulativeUpdate": {
+        "cosine": 0.999999999989613,
+        "candidateL2": 0.8344580233100396,
+        "maxAbs": 1.8190348782809451e-06,
+        "referenceL2": 0.8344580223415283,
+        "relativeL2": 4.557828931380594e-06
+      }
+    },
+    {
+      "role": "REGRET",
+      "step": 2,
+      "referenceLoss": 0.3550879992544651,
+      "candidateLoss": 0.35590263083577156,
+      "lossRelative": 0.00229416815836311,
+      "referenceUpdateLoss": 20.407016038894653,
+      "candidateUpdateLoss": 20.407016038894653,
+      "referenceUpdateGradientNorm": 425.8633197913686,
+      "candidateUpdateGradientNorm": 425.8633197913686,
+      "logits": {
+        "cosine": 0.9999824213362043,
+        "candidateL2": 0.9063406602959209,
+        "maxAbs": 0.00390625,
+        "referenceL2": 0.9042037026046651,
+        "relativeL2": 0.006389513387902169
+      },
+      "gradients": {
+        "cosine": 0.999996245856097,
+        "candidateL2": 21.088613655355058,
+        "maxAbs": 0.015625,
+        "referenceL2": 21.041659943652018,
+        "relativeL2": 0.003536166795261395
+      },
+      "historyGradients": {
+        "cosine": 0.9999933082532074,
+        "candidateL2": 0.0653243798094155,
+        "maxAbs": 8.0108642578125e-05,
+        "referenceL2": 0.06514779564585987,
+        "relativeL2": 0.004557046028355615
+      },
+      "boundaryGradients": {
+        "cosine": 0.9999734221834413,
+        "candidateL2": 0.045412486204556735,
+        "maxAbs": 9.441375732421875e-05,
+        "referenceL2": 0.04519972195351743,
+        "relativeL2": 0.008692732841819715
+      },
+      "parameters": {
+        "cosine": 1.0000000000000004,
+        "candidateL2": 208.55718393231635,
+        "maxAbs": 2.8481881599873304e-06,
+        "referenceL2": 208.55718393462496,
+        "relativeL2": 3.215786121729326e-08
+      },
+      "cumulativeUpdate": {
+        "cosine": 0.9999999999884192,
+        "candidateL2": 1.3933458948632726,
+        "maxAbs": 2.8481881599873304e-06,
+        "referenceL2": 1.3933459030078448,
+        "relativeL2": 4.813415651031927e-06
+      }
+    },
+    {
+      "role": "REGRET",
+      "step": 3,
+      "referenceLoss": 2.509884297847748,
+      "candidateLoss": 2.51407590508461,
+      "lossRelative": 0.001670040025532862,
+      "referenceUpdateLoss": 0.3550879992544651,
+      "candidateUpdateLoss": 0.35590263083577156,
+      "referenceUpdateGradientNorm": 21.04166000057256,
+      "candidateUpdateGradientNorm": 21.088614150356673,
+      "logits": {
+        "cosine": 0.9999923056115744,
+        "candidateL2": 3.8291258457292363,
+        "maxAbs": 0.005859375,
+        "referenceL2": 3.826438563478855,
+        "relativeL2": 0.0039865775041704726
+      },
+      "gradients": {
+        "cosine": 0.9999755151413364,
+        "candidateL2": 114.25876238688159,
+        "maxAbs": 0.16015625,
+        "referenceL2": 114.08155339368341,
+        "relativeL2": 0.007173471434846569
+      },
+      "historyGradients": {
+        "cosine": 0.9999625057262779,
+        "candidateL2": 0.2428861502053909,
+        "maxAbs": 0.0005769729614257812,
+        "referenceL2": 0.24235311339713558,
+        "relativeL2": 0.00894376524496527
+      },
+      "boundaryGradients": {
+        "cosine": 0.9999244663669369,
+        "candidateL2": 0.1681547348481595,
+        "maxAbs": 0.000579833984375,
+        "referenceL2": 0.16721660455633006,
+        "relativeL2": 0.01354215356549918
+      },
+      "parameters": {
+        "cosine": 0.9999999999634412,
+        "candidateL2": 208.55809386739148,
+        "maxAbs": 3.2670795917510986e-05,
+        "referenceL2": 208.55809372409166,
+        "relativeL2": 8.507741738567877e-06
+      },
+      "cumulativeUpdate": {
+        "cosine": 0.9999995341723498,
+        "candidateL2": 1.838176900687308,
+        "maxAbs": 3.2670795917510986e-05,
+        "referenceL2": 1.8381579111835984,
+        "relativeL2": 0.0009652916042180991
+      }
+    },
+    {
+      "role": "AVERAGE",
+      "step": 0,
+      "referenceLoss": 1.6981635093688965,
+      "candidateLoss": 1.6981635093688965,
+      "lossRelative": 0.0,
+      "logits": {
+        "cosine": 1.0,
+        "candidateL2": 1.093536495759865,
+        "maxAbs": 0.0,
+        "referenceL2": 1.093536495759865,
+        "relativeL2": 0.0
+      },
+      "gradients": {
+        "cosine": 0.9999999999982381,
+        "candidateL2": 6.14784307333448,
+        "maxAbs": 6.67572021484375e-06,
+        "referenceL2": 6.147843071823131,
+        "relativeL2": 1.877191981429646e-06
+      },
+      "historyGradients": {
+        "cosine": 1.0,
+        "candidateL2": 0.027058300272297796,
+        "maxAbs": 0.0,
+        "referenceL2": 0.027058300272297796,
+        "relativeL2": 0.0
+      },
+      "boundaryGradients": {
+        "cosine": 1.0,
+        "candidateL2": 0.023343517782908156,
+        "maxAbs": 0.0,
+        "referenceL2": 0.023343517782908156,
+        "relativeL2": 0.0
+      },
+      "parameters": {
+        "cosine": 1.0,
+        "candidateL2": 208.5568322354895,
+        "maxAbs": 0.0,
+        "referenceL2": 208.5568322354895,
+        "relativeL2": 0.0
+      }
+    },
+    {
+      "role": "AVERAGE",
+      "step": 1,
+      "referenceLoss": 1.4818437099456787,
+      "candidateLoss": 1.4818437099456787,
+      "lossRelative": 0.0,
+      "referenceUpdateLoss": 1.6981635093688965,
+      "candidateUpdateLoss": 1.6981635093688965,
+      "referenceUpdateGradientNorm": 6.147843103070701,
+      "candidateUpdateGradientNorm": 6.147843103070701,
+      "logits": {
+        "cosine": 1.0,
+        "candidateL2": 1.7215831544798754,
+        "maxAbs": 0.0,
+        "referenceL2": 1.7215831544798754,
+        "relativeL2": 0.0
+      },
+      "gradients": {
+        "cosine": 0.9999999661755591,
+        "candidateL2": 0.922628966835982,
+        "maxAbs": 3.0517578125e-05,
+        "referenceL2": 0.9226284885826725,
+        "relativeL2": 0.0002600945787862558
+      },
+      "historyGradients": {
+        "cosine": 1.0,
+        "candidateL2": 0.0032534564186098482,
+        "maxAbs": 0.0,
+        "referenceL2": 0.0032534564186098482,
+        "relativeL2": 0.0
+      },
+      "boundaryGradients": {
+        "cosine": 1.0,
+        "candidateL2": 0.004324362236258683,
+        "maxAbs": 0.0,
+        "referenceL2": 0.004324362236258683,
+        "relativeL2": 0.0
+      },
+      "parameters": {
+        "cosine": 0.9999999999999998,
+        "candidateL2": 208.55638751592863,
+        "maxAbs": 1.5796103980392218e-06,
+        "referenceL2": 208.5563875159276,
+        "relativeL2": 2.233005556430595e-08
+      },
+      "cumulativeUpdate": {
+        "cosine": 0.9999999999844802,
+        "candidateL2": 0.8359001121202729,
+        "maxAbs": 1.5796103980392218e-06,
+        "referenceL2": 0.8359001118614112,
+        "relativeL2": 5.57133042027121e-06
+      }
+    },
+    {
+      "role": "AVERAGE",
+      "step": 2,
+      "referenceLoss": 1.4519172608852386,
+      "candidateLoss": 1.451089084148407,
+      "lossRelative": 0.0005704021566123699,
+      "referenceUpdateLoss": 1.4818437099456787,
+      "candidateUpdateLoss": 1.4818437099456787,
+      "referenceUpdateGradientNorm": 0.9226284681928197,
+      "candidateUpdateGradientNorm": 0.9226289852017647,
+      "logits": {
+        "cosine": 0.9999917063385528,
+        "candidateL2": 4.623566276404469,
+        "maxAbs": 0.0078125,
+        "referenceL2": 4.62552536738438,
+        "relativeL2": 0.0040938591703671735
+      },
+      "gradients": {
+        "cosine": 0.9996690610578807,
+        "candidateL2": 1.0955045208757848,
+        "maxAbs": 0.00482177734375,
+        "referenceL2": 1.0984394542634732,
+        "relativeL2": 0.0258311540469143
+      },
+      "historyGradients": {
+        "cosine": 0.999688351547679,
+        "candidateL2": 0.0038953214664810597,
+        "maxAbs": 2.4139881134033203e-05,
+        "referenceL2": 0.0039008702395226936,
+        "relativeL2": 0.024988670406178973
+      },
+      "boundaryGradients": {
+        "cosine": 0.9999139617177951,
+        "candidateL2": 0.007454040555804791,
+        "maxAbs": 2.384185791015625e-05,
+        "referenceL2": 0.00745394119432688,
+        "relativeL2": 0.01311788991762771
+      },
+      "parameters": {
+        "cosine": 0.9999999999997576,
+        "candidateL2": 208.5572681370303,
+        "maxAbs": 1.1567026376724243e-05,
+        "referenceL2": 208.55726819043036,
+        "relativeL2": 6.818635194799837e-07
+      },
+      "cumulativeUpdate": {
+        "cosine": 0.9999999949983959,
+        "candidateL2": 1.4218296236175643,
+        "maxAbs": 1.1567026376724243e-05,
+        "referenceL2": 1.421828937990981,
+        "relativeL2": 0.00010001737136001361
+      }
+    },
+    {
+      "role": "AVERAGE",
+      "step": 3,
+      "referenceLoss": 1.3902393877506256,
+      "candidateLoss": 1.3897255957126617,
+      "lossRelative": 0.0003695709116651993,
+      "referenceUpdateLoss": 1.4519172608852386,
+      "candidateUpdateLoss": 1.451089084148407,
+      "referenceUpdateGradientNorm": 1.098438595972533,
+      "candidateUpdateGradientNorm": 1.095504465192872,
+      "logits": {
+        "cosine": 0.9992794224169246,
+        "candidateL2": 2.503340396828809,
+        "maxAbs": 0.033203125,
+        "referenceL2": 2.652652773039465,
+        "relativeL2": 0.0672931525030225
+      },
+      "gradients": {
+        "cosine": 0.9991424638017923,
+        "candidateL2": 1.196775664676631,
+        "maxAbs": 0.0082244873046875,
+        "referenceL2": 1.1964764336378932,
+        "relativeL2": 0.04141936591405845
+      },
+      "historyGradients": {
+        "cosine": 0.9987913023232116,
+        "candidateL2": 0.00487924776469386,
+        "maxAbs": 4.7147274017333984e-05,
+        "referenceL2": 0.004887946184973918,
+        "relativeL2": 0.049155470637025286
+      },
+      "boundaryGradients": {
+        "cosine": 0.9997443309205633,
+        "candidateL2": 0.008166224158085197,
+        "maxAbs": 4.976987838745117e-05,
+        "referenceL2": 0.008118811591687418,
+        "relativeL2": 0.02341854034114886
+      },
+      "parameters": {
+        "cosine": 0.9999999986084367,
+        "candidateL2": 208.55866283771707,
+        "maxAbs": 0.0002685524523258209,
+        "referenceL2": 208.55867127080546,
+        "relativeL2": 5.274746214855421e-05
+      },
+      "cumulativeUpdate": {
+        "cosine": 0.9999834051746089,
+        "candidateL2": 1.9089345418227883,
+        "maxAbs": 0.0002685524523258209,
+        "referenceL2": 1.9091812941571704,
+        "relativeL2": 0.005762124661642496
+      }
+    }
+  ],
+  "isolatedGru": {
+    "FLOAT32": {
+      "probe": "gru-fp32-master-differentiable-casts",
+      "computeType": "float32",
+      "batch": 256,
+      "sequenceLength": 512,
+      "inputWidth": 64,
+      "historyWidth": 64,
+      "warmup": 2,
+      "iterations": 6,
+      "seed": 46813,
+      "scope": "Fresh single-layer GRU, dropout=0, explicit matching-dtype h0. Timings include gradient zeroing, per-forward casts, final-state FP32 loss, and complete GPU synchronization plus scope cleanup. No embedding, sampling, decode, optimizer, or checkpoint I/O. MIOpen use must be confirmed from native log.",
+      "outputType": "float32",
+      "masterType": "FLOAT32",
+      "inputMasterType": "float32",
+      "outputAccuracyVsFP32": {
+        "elements": 16384,
+        "actualNonzeroElements": 16384,
+        "relativeL2": 0.0,
+        "cosine": 1.0,
+        "maxAbs": 0.0,
+        "referenceNorm": 20.92774827442863,
+        "actualNorm": 20.92774827442863
+      },
+      "inputGradientAccuracyVsFP32": {
+        "elements": 8388608,
+        "actualNonzeroElements": 7591525,
+        "relativeL2": 0.0,
+        "cosine": 1.0,
+        "maxAbs": 0.0,
+        "referenceNorm": 0.0031971492947528843,
+        "actualNorm": 0.0031971492947528843
+      },
+      "masterGradientAccuracyVsFP32": {
+        "elements": 24960,
+        "actualNonzeroElements": 24960,
+        "relativeL2": 0.0,
+        "cosine": 1.0,
+        "maxAbs": 0.0,
+        "referenceNorm": 0.010642389532929307,
+        "actualNorm": 0.010642389532929307
+      },
+      "masterGradientFiniteNonzero": true,
+      "inputGradientFiniteNonzero": true,
+      "trainingForwardBackward": {
+        "milliseconds": [
+          60.955865,
+          61.088876,
+          60.822694,
+          60.957899,
+          61.074379,
+          61.030856
+        ],
+        "meanMs": 60.988428166666665,
+        "minMs": 60.822694,
+        "maxMs": 61.088876,
+        "rowsPerSecond": 4197.517589737085
+      },
+      "trainingForwardOnly": {
+        "milliseconds": [
+          20.515096,
+          20.447738,
+          20.468077,
+          20.576152,
+          20.493084,
+          20.457176
+        ],
+        "meanMs": 20.492887166666666,
+        "minMs": 20.447738,
+        "maxMs": 20.576152,
+        "rowsPerSecond": 12492.139244118058
+      },
+      "status": "supported"
+    },
+    "FLOAT16": {
+      "probe": "gru-fp32-master-differentiable-casts",
+      "computeType": "float16",
+      "batch": 256,
+      "sequenceLength": 512,
+      "inputWidth": 64,
+      "historyWidth": 64,
+      "warmup": 2,
+      "iterations": 6,
+      "seed": 46813,
+      "scope": "Fresh single-layer GRU, dropout=0, explicit matching-dtype h0. Timings include gradient zeroing, per-forward casts, final-state FP32 loss, and complete GPU synchronization plus scope cleanup. No embedding, sampling, decode, optimizer, or checkpoint I/O. MIOpen use must be confirmed from native log.",
+      "outputType": "float16",
+      "masterType": "FLOAT32",
+      "inputMasterType": "float32",
+      "outputAccuracyVsFP32": {
+        "elements": 16384,
+        "actualNonzeroElements": 16383,
+        "relativeL2": 0.0008097808319974764,
+        "cosine": 0.9999996721484982,
+        "maxAbs": 0.0006929636001586914,
+        "referenceNorm": 20.92774827442863,
+        "actualNorm": 20.927605584120915
+      },
+      "inputGradientAccuracyVsFP32": {
+        "elements": 8388608,
+        "actualNonzeroElements": 1030949,
+        "relativeL2": 0.02143176252223903,
+        "cosine": 0.9997705634926787,
+        "maxAbs": 3.425157046876848e-07,
+        "referenceNorm": 0.0031971492947528843,
+        "actualNorm": 0.0031986766366579903
+      },
+      "masterGradientAccuracyVsFP32": {
+        "elements": 24960,
+        "actualNonzeroElements": 24840,
+        "relativeL2": 0.009513491060578182,
+        "cosine": 0.999955199286689,
+        "maxAbs": 1.588794111739844e-05,
+        "referenceNorm": 0.010642389532929307,
+        "actualNorm": 0.010652048708308224
+      },
+      "masterGradientFiniteNonzero": true,
+      "inputGradientFiniteNonzero": true,
+      "trainingForwardBackward": {
+        "milliseconds": [
+          45.358829,
+          45.195471,
+          45.530023,
+          45.197605,
+          44.381183,
+          44.287886
+        ],
+        "meanMs": 44.991832833333326,
+        "minMs": 44.287886,
+        "maxMs": 45.530023,
+        "rowsPerSecond": 5689.921567505825
+      },
+      "trainingForwardOnly": {
+        "milliseconds": [
+          16.484662,
+          16.512084,
+          16.500402,
+          16.322276,
+          16.458032,
+          16.384412
+        ],
+        "meanMs": 16.443644666666668,
+        "minMs": 16.322276,
+        "maxMs": 16.512084,
+        "rowsPerSecond": 15568.32473514489
+      },
+      "status": "supported"
+    },
+    "BFLOAT16": {
+      "probe": "gru-fp32-master-differentiable-casts",
+      "computeType": "bfloat16",
+      "batch": 256,
+      "sequenceLength": 512,
+      "inputWidth": 64,
+      "historyWidth": 64,
+      "warmup": 2,
+      "iterations": 6,
+      "seed": 46813,
+      "scope": "Fresh single-layer GRU, dropout=0, explicit matching-dtype h0. Timings include gradient zeroing, per-forward casts, final-state FP32 loss, and complete GPU synchronization plus scope cleanup. No embedding, sampling, decode, optimizer, or checkpoint I/O. MIOpen use must be confirmed from native log.",
+      "outputType": "bfloat16",
+      "masterType": "FLOAT32",
+      "inputMasterType": "float32",
+      "outputAccuracyVsFP32": {
+        "elements": 16384,
+        "actualNonzeroElements": 16384,
+        "relativeL2": 0.003885838608542278,
+        "cosine": 0.9999924501244745,
+        "maxAbs": 0.0031187236309051514,
+        "referenceNorm": 20.92774827442863,
+        "actualNorm": 20.927734759479126
+      },
+      "inputGradientAccuracyVsFP32": {
+        "elements": 8388608,
+        "actualNonzeroElements": 6171951,
+        "relativeL2": 0.005413194643886631,
+        "cosine": 0.9999853493867009,
+        "maxAbs": 3.5205448511987925e-07,
+        "referenceNorm": 0.0031971492947528843,
+        "actualNorm": 0.0031969720376287545
+      },
+      "masterGradientAccuracyVsFP32": {
+        "elements": 24960,
+        "actualNonzeroElements": 24960,
+        "relativeL2": 0.009487805367888345,
+        "cosine": 0.9999562929941993,
+        "maxAbs": 2.7526868507266045e-05,
+        "referenceNorm": 0.010642389532929307,
+        "actualNorm": 0.01062474310777427
+      },
+      "masterGradientFiniteNonzero": true,
+      "inputGradientFiniteNonzero": true,
+      "trainingForwardBackward": {
+        "milliseconds": [
+          38.540859,
+          38.260068,
+          38.395435,
+          39.86467,
+          38.563843,
+          39.655175
+        ],
+        "meanMs": 38.88000833333333,
+        "minMs": 38.260068,
+        "maxMs": 39.86467,
+        "rowsPerSecond": 6584.360728660682
+      },
+      "trainingForwardOnly": {
+        "milliseconds": [
+          10.162599,
+          9.061669,
+          10.457065,
+          9.011283,
+          10.419574,
+          8.973873
+        ],
+        "meanMs": 9.6810105,
+        "minMs": 8.973873,
+        "maxMs": 10.457065,
+        "rowsPerSecond": 26443.52053951393
+      },
+      "status": "supported"
+    }
+  }
+}

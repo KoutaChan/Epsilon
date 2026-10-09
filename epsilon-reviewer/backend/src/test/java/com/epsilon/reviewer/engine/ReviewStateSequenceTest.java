@@ -1,13 +1,28 @@
 package com.epsilon.reviewer.engine;
 
-import com.epsilon.core.*;
-import com.epsilon.replay.*;
-import com.epsilon.reviewer.dto.*;
+import com.epsilon.core.Action;
+import com.epsilon.core.GameState;
+import com.epsilon.core.Meld;
+import com.epsilon.core.Tile;
+import com.epsilon.core.TurnEvent;
+import com.epsilon.replay.DecisionPoint;
+import com.epsilon.replay.ReplayEngine;
+import com.epsilon.replay.ReplayEvent;
+import com.epsilon.replay.ReplayObserver;
+import com.epsilon.reviewer.dto.ActionCandidate;
+import com.epsilon.reviewer.dto.ArrayPatch;
+import com.epsilon.reviewer.dto.ReplayRound;
+import com.epsilon.reviewer.dto.ReplayStep;
+import com.epsilon.reviewer.dto.StateFrame;
+import com.epsilon.reviewer.dto.TableState;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

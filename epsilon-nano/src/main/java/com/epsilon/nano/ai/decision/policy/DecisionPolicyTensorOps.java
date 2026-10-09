@@ -170,6 +170,42 @@ final class DecisionPolicyTensorOps {
     return responseContext.mul(responseMask).add(turnKanContext.mul(turnKanMask));
   }
 
+  /** 応答元の文脈を盤面ごとに引き、合法候補へ集めて元と同じマスク演算で合成する。 */
+  static NDArray composeCompactedRootPlayerContexts(
+      NDArray playerTileContexts,
+      NDArray allPlayerTileContexts,
+      NDArray actionCategories,
+      DecisionPolicyCandidates.CandidateMasks masks,
+      NDArray eventPlayerIds,
+      NDArray eventTileIds,
+      NDArray batchIds) {
+    long rows = playerTileContexts.getShape().get(0);
+    NDArray responseByRow =
+        gatherPlayerTileContexts(
+            playerTileContexts,
+            eventPlayerIds.reshape(rows, 1),
+            eventTileIds.reshape(rows, 1),
+            rows,
+            1);
+    NDArray response = EpsilonMaskedRows.gather(responseByRow, batchIds);
+    NDArray kan =
+        gatherCompactedActionPrimaryTileEmbeddings(
+            allPlayerTileContexts, actionCategories, batchIds);
+    return response
+        .mul(masks.response().expandDims(2))
+        .add(kan.mul(masks.group(Action.Group.KAN).expandDims(2)));
+  }
+
+  /** 盤面の牌表を複製せず、各合法候補の主牌だけを集める。 */
+  static NDArray gatherCompactedActionPrimaryTileEmbeddings(
+      NDArray tileEmbeddings, NDArray actionCategories, NDArray batchIds) {
+    NDArray ids =
+        actionCategories
+            .get("...,{}", DecisionInputSchema.ActionInt.PRIMARY_TILE.ordinal())
+            .stopGradient();
+    return gatherStoredEmbeddingsByBatchIds(tileEmbeddings, ids, batchIds);
+  }
+
   static NDArray gatherTransitionDiscardContexts(
       NDArray allPlayerTileContexts,
       NDArray transitionCategories,

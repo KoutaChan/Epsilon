@@ -14,6 +14,7 @@ import com.epsilon.config.settings.DecisionComputePrecision;
 import com.epsilon.config.settings.DecisionTensorTransfer;
 import com.epsilon.config.settings.DecisionTrainSettings;
 import com.epsilon.config.settings.DecisionTrainingDeviceTransferSchedule;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.pico.ai.decision.data.EpsilonDecisionDataException;
 import com.epsilon.pico.ai.decision.data.EpsilonDecisionFragmentStore;
@@ -31,6 +32,7 @@ import com.epsilon.pico.ai.model.EpsilonDecisionLoss;
 import com.epsilon.pico.ai.model.EpsilonDecisionNetwork;
 import com.epsilon.pico.ai.model.EpsilonDecisionOutput;
 import com.epsilon.pico.ai.policy.EpsilonTrainingConstants;
+import com.epsilon.pico.config.settings.DecisionSettings;
 import com.epsilon.pico.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
@@ -59,7 +61,7 @@ public final class EpsilonDecisionTrainer implements AutoCloseable {
 
   private final Model model;
   private final SettingsLoader config;
-  private final com.epsilon.pico.config.settings.DecisionSettings optimizerSettings;
+  private final DecisionSettings optimizerSettings;
   private final DecisionExecutionContext executionContext;
   private final Optimizer actorOptimizer;
   private final Optimizer valueOptimizer;
@@ -136,7 +138,7 @@ public final class EpsilonDecisionTrainer implements AutoCloseable {
       DecisionExecutionContext executionContext,
       SettingsLoader config) {
     this.config = config;
-    this.optimizerSettings = config.bind(com.epsilon.pico.config.settings.DecisionSettings.class);
+    this.optimizerSettings = config.bind(DecisionSettings.class);
     float initialActorLearningRate = actorLearningRate.getNewValue(0);
     if (!Float.isFinite(initialActorLearningRate) || initialActorLearningRate <= 0.0f) {
       throw new IllegalArgumentException("Decision Actor learning rate must be positive");
@@ -170,8 +172,8 @@ public final class EpsilonDecisionTrainer implements AutoCloseable {
     this(
         model,
         Tracker.fixed(
-            config.bind(com.epsilon.pico.config.settings.DecisionSettings.class).learningRate()),
-        config.bind(com.epsilon.pico.config.settings.DecisionSettings.class).learningRate(),
+            config.bind(DecisionSettings.class).learningRate()),
+        config.bind(DecisionSettings.class).learningRate(),
         GENERIC_LEARNER_CONTRACT,
         executionContext,
         config);
@@ -1071,7 +1073,7 @@ public final class EpsilonDecisionTrainer implements AutoCloseable {
               tensorTransfer,
               deviceTransferSchedule,
               executionContext,
-              config.bind(com.epsilon.config.settings.DeviceSettings.class));
+              config.bind(DeviceSettings.class));
     }
     dataParallel.ensureUsable();
     return dataParallel;

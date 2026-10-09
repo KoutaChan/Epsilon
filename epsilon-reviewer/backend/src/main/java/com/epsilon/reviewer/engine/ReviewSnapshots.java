@@ -1,8 +1,18 @@
 package com.epsilon.reviewer.engine;
 
-import com.epsilon.core.*;
+import com.epsilon.core.Action;
+import com.epsilon.core.GameState;
+import com.epsilon.core.Hand;
+import com.epsilon.core.Meld;
+import com.epsilon.core.Tile;
+import com.epsilon.core.TurnEvent;
 import com.epsilon.replay.ReplayEvent;
-import com.epsilon.reviewer.dto.*;
+import com.epsilon.reviewer.dto.ActionCandidate;
+import com.epsilon.reviewer.dto.MeldSnapshot;
+import com.epsilon.reviewer.dto.PlayerState;
+import com.epsilon.reviewer.dto.RiverTile;
+import com.epsilon.reviewer.dto.RoundOutcome;
+import com.epsilon.reviewer.dto.TableState;
 import java.util.ArrayList;
 import java.util.List;
 

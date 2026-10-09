@@ -1,9 +1,9 @@
 package com.epsilon.major.ai.decision.data;
 
 import com.epsilon.ai.decision.DecisionBranchTarget;
+import com.epsilon.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.major.ai.decision.EpsilonDecisionReturns;
-import com.epsilon.major.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionTrajectoryPayloadStore.PayloadRef;
 import com.epsilon.major.ai.decision.input.DecisionHostBatch;
 import java.io.IOException;

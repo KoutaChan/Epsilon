@@ -8,6 +8,9 @@ import com.epsilon.ai.decision.DecisionBranchSelection;
 import com.epsilon.ai.decision.DecisionBranchTarget;
 import com.epsilon.ai.decision.DecisionSelectionMode;
 import com.epsilon.ai.decision.EpsilonDecisionSeeds;
+import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.decision.EpsilonUtilityTargets;
+import com.epsilon.ai.grp.EpsilonGrpFeature;
 import com.epsilon.ai.grp.EpsilonGrpRankPredictor;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.ai.grp.EpsilonGrpSequence;
@@ -23,7 +26,6 @@ import com.epsilon.engine.Player;
 import com.epsilon.engine.RoundSettlement;
 import com.epsilon.engine.RoundTransition;
 import com.epsilon.nano.ai.decision.EpsilonDecisionReturns;
-import com.epsilon.nano.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.nano.ai.decision.data.EpsilonDecisionCompletedGame;
 import com.epsilon.nano.ai.decision.data.EpsilonDecisionGameBoundary;
 import com.epsilon.nano.ai.decision.data.EpsilonDecisionLegalActions;
@@ -213,7 +215,7 @@ public class EpsilonDecisionPlayer implements Player {
     private DecisionFullSupportSettings fullSupport;
     private float causalTraceLambda;
     private float explorationCreditMix;
-    private final com.epsilon.ai.decision.EpsilonUtilityProfile utilityProfile;
+    private final EpsilonUtilityProfile utilityProfile;
     private long randomSeed;
     private EpsilonGrpRankPredictor grpInference;
     private EpsilonDecisionTrajectoryPayloadStore trajectoryPayloadStore;
@@ -347,7 +349,7 @@ public class EpsilonDecisionPlayer implements Player {
     }
   }
 
-  private final com.epsilon.ai.decision.EpsilonUtilityProfile utilityProfile;
+  private final EpsilonUtilityProfile utilityProfile;
 
   private EpsilonDecisionPlayer(Builder builder) {
     utilityProfile = builder.utilityProfile;
@@ -942,13 +944,12 @@ public class EpsilonDecisionPlayer implements Player {
   }
 
   private BoundarySnapshot ensureBoundarySnapshot(float[] grpFeatureSequence) {
-    int steps = com.epsilon.ai.grp.EpsilonGrpFeature.steps(grpFeatureSequence);
+    int steps = EpsilonGrpFeature.steps(grpFeatureSequence);
     if (steps <= 0) {
       throw new IllegalStateException("Decision boundary requires a non-empty GRP prefix");
     }
     if (currentBoundary != null) {
-      int currentSteps =
-          com.epsilon.ai.grp.EpsilonGrpFeature.steps(currentBoundary.grpFeatureSequence());
+      int currentSteps = EpsilonGrpFeature.steps(currentBoundary.grpFeatureSequence());
       if (currentSteps == steps) {
         return currentBoundary;
       }

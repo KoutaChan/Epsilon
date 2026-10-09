@@ -1,0 +1,4 @@
+[epsilon.devices]
+learner = "gpu:0"
+inference = "gpu:0"
+grp = "cpu"

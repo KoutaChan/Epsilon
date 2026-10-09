@@ -1,0 +1,4269 @@
+{
+  "targetDecisionsPerSecond": 100000,
+  "status": "Production saved 32768 games at 4096 concurrency reached 87633.98150814915 decisions/s. An 8192-concurrent no-save diagnostic reached 108913.24522264395; the saved 100000 target remains unverified.",
+  "historicalPersistedBest": {
+    "decisionsPerSecond": 77964.587,
+    "source": "../collection-80k-20261009/results.json",
+    "candidate": "v5+Generational ZGC"
+  },
+  "diagnostics": [
+    {
+      "tag": "diagnostic-v5-zgc-no-save",
+      "jarSha256": "cbef973e069d2e80673e065c1921610fc2b4c9604061347db19cb4d963697601",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.638742146,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 10.152418757,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 25.21566595383887,
+          "handsPerSecond": 299.7315292872331,
+          "trajectoriesPerSecond": 299.7315292872331,
+          "completedDecisionsPerSecond": 26748.798143571297,
+          "nonForcedDecisionsPerSecond": 26742.59272577797,
+          "mainInferenceRowsPerSecond": 26748.798143571297,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.258877342425208,
+          "averageInferenceBatchRows": 59.50909090909091,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4565,
+            "largestBatch": 256,
+            "elapsedSeconds": 10.147262508,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 52.303817091,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 78.31168407601375,
+          "handsPerSecond": 936.4899681179944,
+          "trajectoriesPerSecond": 936.4899681179944,
+          "completedDecisionsPerSecond": 83500.76998016091,
+          "nonForcedDecisionsPerSecond": 83477.88446115726,
+          "mainInferenceRowsPerSecond": 83500.76998016091,
+          "branchInferenceRows": 2491,
+          "branchInferenceRowsPerSecond": 47.62558716634527,
+          "averageInferenceBatchRows": 1132.0984455958549,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 3860,
+            "largestBatch": 4096,
+            "elapsedSeconds": 52.303280738,
+            "branchComparisons": 857,
+            "branchEpisodes": 669,
+            "branchInferenceRows": 2491
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v5.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/diagnostic-v5-zgc-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 68.82393818674609,
+        "processCpuUserSeconds": 221.179397,
+        "processCpuSystemSeconds": 67.053643,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 4024852480,
+        "peakProcessRssBytes": 22230540288,
+        "sampleCount": 1367,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForTarget": false
+    },
+    {
+      "tag": "diagnostic-v6-zgc-no-save",
+      "jarSha256": "5d3269cccaf91b0d44eb949e5e398f11b2d635c885f2b559f3082dcdf51b84ce",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.661249418,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 9.820387962,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 26.068216550159956,
+          "handsPerSecond": 309.86555844584666,
+          "trajectoriesPerSecond": 309.86555844584666,
+          "completedDecisionsPerSecond": 27653.184482203862,
+          "nonForcedDecisionsPerSecond": 27646.76925703722,
+          "mainInferenceRowsPerSecond": 27653.184482203862,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.57192326451186,
+          "averageInferenceBatchRows": 59.73153034300792,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4548,
+            "largestBatch": 256,
+            "elapsedSeconds": 9.818382635,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 52.280766292,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 78.34621201079773,
+          "handsPerSecond": 936.9028702912341,
+          "trajectoriesPerSecond": 936.9028702912341,
+          "completedDecisionsPerSecond": 83537.58580367826,
+          "nonForcedDecisionsPerSecond": 83514.69019435771,
+          "mainInferenceRowsPerSecond": 83537.58580367826,
+          "branchInferenceRows": 2661,
+          "branchInferenceRowsPerSecond": 50.89825931658515,
+          "averageInferenceBatchRows": 1119.6694850115296,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 3903,
+            "largestBatch": 4096,
+            "elapsedSeconds": 52.280437671,
+            "branchComparisons": 858,
+            "branchEpisodes": 670,
+            "branchInferenceRows": 2661
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/v6-current-head.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/diagnostic-v6-zgc-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 68.46080027008429,
+        "processCpuUserSeconds": 218.268218,
+        "processCpuSystemSeconds": 69.462171,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 4043706368,
+        "peakProcessRssBytes": 22511779840,
+        "sampleCount": 1360,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForTarget": false
+    },
+    {
+      "tag": "diagnostic-payload-only-zgc-no-save",
+      "jarSha256": "cbf37d0a95afa95ea4956e505b4dc0e02e788ecd0b3ac0e2b6e306f2c98f79d9",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.637435112,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 10.012281024,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 25.568599142029036,
+          "handsPerSecond": 303.92674683279046,
+          "trajectoriesPerSecond": 303.92674683279046,
+          "completedDecisionsPerSecond": 27123.18994533248,
+          "nonForcedDecisionsPerSecond": 27116.89767288737,
+          "mainInferenceRowsPerSecond": 27123.18994533248,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.388469997463787,
+          "averageInferenceBatchRows": 59.48303043573462,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4567,
+            "largestBatch": 256,
+            "elapsedSeconds": 10.010230292,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 51.027389977,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 80.2706154840807,
+          "handsPerSecond": 959.9158417092872,
+          "trajectoriesPerSecond": 959.9158417092872,
+          "completedDecisionsPerSecond": 85589.50402849447,
+          "nonForcedDecisionsPerSecond": 85566.04603856907,
+          "mainInferenceRowsPerSecond": 85589.50402849447,
+          "branchInferenceRows": 2491,
+          "branchInferenceRowsPerSecond": 48.816919719444584,
+          "averageInferenceBatchRows": 1117.9073931951905,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 3909,
+            "largestBatch": 4096,
+            "elapsedSeconds": 51.027067046,
+            "branchComparisons": 859,
+            "branchEpisodes": 671,
+            "branchInferenceRows": 2491
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/payload-only.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/diagnostic-payload-only-zgc-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 67.46766991633922,
+        "processCpuUserSeconds": 193.773482,
+        "processCpuSystemSeconds": 65.37747,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 4003844096,
+        "peakProcessRssBytes": 22118711296,
+        "sampleCount": 1341,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForTarget": false
+    },
+    {
+      "tag": "diagnostic-combined-zgc-no-save",
+      "jarSha256": "49c30aa3fd69c9b7d0055b934caa40265eaf9f99a8d78d2e09bbee805682344f",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.634636251,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 10.115702227,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 25.307190173778135,
+          "handsPerSecond": 300.81945194846435,
+          "trajectoriesPerSecond": 300.81945194846435,
+          "completedDecisionsPerSecond": 26845.887107586168,
+          "nonForcedDecisionsPerSecond": 26839.65916625434,
+          "mainInferenceRowsPerSecond": 26845.887107586168,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.29248389193416,
+          "averageInferenceBatchRows": 58.73708108108108,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4625,
+            "largestBatch": 256,
+            "elapsedSeconds": 10.113662674,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 50.561338127,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 81.01051419390177,
+          "handsPerSecond": 968.7639175404532,
+          "trajectoriesPerSecond": 968.7639175404532,
+          "completedDecisionsPerSecond": 86378.42987916853,
+          "nonForcedDecisionsPerSecond": 86354.755663961,
+          "mainInferenceRowsPerSecond": 86378.42987916853,
+          "branchInferenceRows": 2490,
+          "branchInferenceRowsPerSecond": 49.24711434150767,
+          "averageInferenceBatchRows": 1111.6507250063596,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 3931,
+            "largestBatch": 4096,
+            "elapsedSeconds": 50.561015338,
+            "branchComparisons": 869,
+            "branchEpisodes": 677,
+            "branchInferenceRows": 2490
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/combined.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/diagnostic-combined-zgc-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 67.01237127510831,
+        "processCpuUserSeconds": 199.935802,
+        "processCpuSystemSeconds": 63.801478,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 4117118976,
+        "peakProcessRssBytes": 21710135296,
+        "sampleCount": 1332,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForTarget": false
+    },
+    {
+      "tag": "diagnostic-compact-actions-zgc-no-save",
+      "jarSha256": "ef8a097d9ba4103824ac8d638679817d315ff0722a85e26ce4289443ab9ac3ab",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.634775956,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 10.047558855,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 25.478825622664143,
+          "handsPerSecond": 302.85963425690227,
+          "trajectoriesPerSecond": 302.85963425690227,
+          "completedDecisionsPerSecond": 27027.95812585464,
+          "nonForcedDecisionsPerSecond": 27021.687946111564,
+          "mainInferenceRowsPerSecond": 27027.95812585464,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.35550628332199,
+          "averageInferenceBatchRows": 58.53458306399483,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4641,
+            "largestBatch": 256,
+            "elapsedSeconds": 10.045459359,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 49.883552139,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 82.1112335502199,
+          "handsPerSecond": 981.9268656632985,
+          "trajectoriesPerSecond": 981.9268656632985,
+          "completedDecisionsPerSecond": 87552.085060628,
+          "nonForcedDecisionsPerSecond": 87528.08917523747,
+          "mainInferenceRowsPerSecond": 87552.085060628,
+          "branchInferenceRows": 2666,
+          "branchInferenceRowsPerSecond": 53.44446988400542,
+          "averageInferenceBatchRows": 1114.8150510204082,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 3920,
+            "largestBatch": 4096,
+            "elapsedSeconds": 49.883214501,
+            "branchComparisons": 860,
+            "branchEpisodes": 672,
+            "branchInferenceRows": 2666
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/compact-actions.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/diagnostic-compact-actions-zgc-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 66.33435698412359,
+        "processCpuUserSeconds": 195.082661,
+        "processCpuSystemSeconds": 62.714653,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 8101703680,
+        "peakProcessRssBytes": 22285664256,
+        "sampleCount": 1318,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForPersistedTarget": false
+    },
+    {
+      "tag": "diagnostic-accepted-payload-zgc-no-save",
+      "jarSha256": "0cd24c39e20fb27feee337623ca8f318ee0acc3c8e905469f8ceec2b8c2ece41",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.64221275,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 10.257273952,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 24.95789828739869,
+          "handsPerSecond": 296.6675175334149,
+          "trajectoriesPerSecond": 296.6675175334149,
+          "completedDecisionsPerSecond": 26475.358001630568,
+          "nonForcedDecisionsPerSecond": 26469.216018848903,
+          "mainInferenceRowsPerSecond": 26475.358001630568,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.164228277404206,
+          "averageInferenceBatchRows": 58.38362346872985,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4653,
+            "largestBatch": 256,
+            "elapsedSeconds": 10.255228468,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 50.431492554,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 81.21909133690954,
+          "handsPerSecond": 971.2581864903573,
+          "trajectoriesPerSecond": 971.2581864903573,
+          "completedDecisionsPerSecond": 86600.82775308614,
+          "nonForcedDecisionsPerSecond": 86577.09258406018,
+          "mainInferenceRowsPerSecond": 86600.82775308614,
+          "branchInferenceRows": 2499,
+          "branchInferenceRowsPerSecond": 49.552370422592034,
+          "averageInferenceBatchRows": 1107.1466936914112,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 3947,
+            "largestBatch": 4096,
+            "elapsedSeconds": 50.431146069,
+            "branchComparisons": 861,
+            "branchEpisodes": 670,
+            "branchInferenceRows": 2499
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/accepted-payload.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/diagnostic-accepted-payload-zgc-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 67.11987780500203,
+        "processCpuUserSeconds": 196.142097,
+        "processCpuSystemSeconds": 65.941604,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 3959820288,
+        "peakProcessRssBytes": 22127316992,
+        "sampleCount": 1334,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForPersistedTarget": false,
+      "decision": "Earlier payload start rejected: no measured benefit; production source restored."
+    },
+    {
+      "tag": "diagnostic-accept-payload-only-zgc-no-save",
+      "jarSha256": "60a5dde13721981efe9f8e889d27a503ee8663f3c2a2084055cc7c543895d7f7",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.622320951,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 9.962931249,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 25.69524907899924,
+          "handsPerSecond": 305.4321990132605,
+          "trajectoriesPerSecond": 305.4321990132605,
+          "completedDecisionsPerSecond": 27257.540297415737,
+          "nonForcedDecisionsPerSecond": 27251.2168572127,
+          "mainInferenceRowsPerSecond": 27257.540297415737,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.434974271195033,
+          "averageInferenceBatchRows": 59.86315557514323,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4538,
+            "largestBatch": 256,
+            "elapsedSeconds": 9.960821966,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 51.418138741,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 79.66060422046968,
+          "handsPerSecond": 952.6210243962514,
+          "trajectoriesPerSecond": 952.6210243962514,
+          "completedDecisionsPerSecond": 84939.0722211712,
+          "nonForcedDecisionsPerSecond": 84915.7924986976,
+          "mainInferenceRowsPerSecond": 84939.0722211712,
+          "branchInferenceRows": 2752,
+          "branchInferenceRowsPerSecond": 53.52196846062807,
+          "averageInferenceBatchRows": 1113.7005606523956,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 3924,
+            "largestBatch": 4096,
+            "elapsedSeconds": 51.417810631,
+            "branchComparisons": 858,
+            "branchEpisodes": 669,
+            "branchInferenceRows": 2752
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/accept-payload-only.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/diagnostic-accept-payload-only-zgc-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 67.76145658362657,
+        "processCpuUserSeconds": 196.936783,
+        "processCpuSystemSeconds": 67.337413,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 4001787904,
+        "peakProcessRssBytes": 22288941056,
+        "sampleCount": 1347,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForPersistedTarget": false,
+      "decision": "Earlier payload start rejected: no measured benefit; production source restored."
+    }
+  ],
+  "inputDistribution": {
+    "benchmarkVersion": 2,
+    "operation": "inspect",
+    "matchesDirectory": "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v5-zgc/matches",
+    "availableMatches": 4096,
+    "requestedMatches": 32,
+    "inspectedMatches": 32,
+    "selection": "First completed .bin files in lexicographic filename order; not a random sample",
+    "scope": "Saved main-path decisions from every trajectory and seat; branch outcome metadata is counted but branch inference inputs are not retained",
+    "byteEstimateScope": "Canonical uncompressed observation bytes including the CFR header; compact estimate removes only transition padding and excludes any new metadata, object overhead or compression effects; natural bucket sizes are hypothetical regrouping, not measured GPU work",
+    "zeroRunScope": "Contiguous structural padding within each transition tensor, merging each action suffix with the following unused action slots; zero-valued real features are retained",
+    "bytesPerTransition": 688,
+    "transitionTensorCount": 6,
+    "matches": [
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 632414,
+        "decisions": 1095,
+        "file": "00000000.bin",
+        "gameId": 0,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 639117,
+        "decisions": 1063,
+        "file": "00000001.bin",
+        "gameId": 1,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 1,
+        "compressedFileBytes": 613470,
+        "decisions": 1067,
+        "file": "00000002.bin",
+        "gameId": 2,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 623168,
+        "decisions": 1076,
+        "file": "00000003.bin",
+        "gameId": 3,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 644396,
+        "decisions": 1091,
+        "file": "00000004.bin",
+        "gameId": 4,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 627783,
+        "decisions": 1063,
+        "file": "00000005.bin",
+        "gameId": 5,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 635418,
+        "decisions": 1083,
+        "file": "00000006.bin",
+        "gameId": 6,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 625496,
+        "decisions": 1056,
+        "file": "00000007.bin",
+        "gameId": 7,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 1,
+        "compressedFileBytes": 669640,
+        "decisions": 1163,
+        "file": "00000008.bin",
+        "gameId": 8,
+        "trajectories": 13
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 607833,
+        "decisions": 1070,
+        "file": "00000009.bin",
+        "gameId": 9,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 1,
+        "compressedFileBytes": 639781,
+        "decisions": 1073,
+        "file": "00000010.bin",
+        "gameId": 10,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 614354,
+        "decisions": 1062,
+        "file": "00000011.bin",
+        "gameId": 11,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 628482,
+        "decisions": 1067,
+        "file": "00000012.bin",
+        "gameId": 12,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 629901,
+        "decisions": 1050,
+        "file": "00000013.bin",
+        "gameId": 13,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 672644,
+        "decisions": 1165,
+        "file": "00000014.bin",
+        "gameId": 14,
+        "trajectories": 13
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 618338,
+        "decisions": 1062,
+        "file": "00000015.bin",
+        "gameId": 15,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 1,
+        "compressedFileBytes": 623457,
+        "decisions": 1062,
+        "file": "00000016.bin",
+        "gameId": 16,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 631300,
+        "decisions": 1061,
+        "file": "00000017.bin",
+        "gameId": 17,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 629272,
+        "decisions": 1079,
+        "file": "00000018.bin",
+        "gameId": 18,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 627056,
+        "decisions": 1072,
+        "file": "00000019.bin",
+        "gameId": 19,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 561386,
+        "decisions": 969,
+        "file": "00000020.bin",
+        "gameId": 20,
+        "trajectories": 11
+      },
+      {
+        "branchOutcomes": 1,
+        "compressedFileBytes": 626160,
+        "decisions": 1077,
+        "file": "00000021.bin",
+        "gameId": 21,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 635673,
+        "decisions": 1084,
+        "file": "00000022.bin",
+        "gameId": 22,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 636734,
+        "decisions": 1072,
+        "file": "00000023.bin",
+        "gameId": 23,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 1,
+        "compressedFileBytes": 628069,
+        "decisions": 1075,
+        "file": "00000024.bin",
+        "gameId": 24,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 665535,
+        "decisions": 1164,
+        "file": "00000025.bin",
+        "gameId": 25,
+        "trajectories": 13
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 642984,
+        "decisions": 1082,
+        "file": "00000026.bin",
+        "gameId": 26,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 630515,
+        "decisions": 1087,
+        "file": "00000027.bin",
+        "gameId": 27,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 625484,
+        "decisions": 1067,
+        "file": "00000028.bin",
+        "gameId": 28,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 641585,
+        "decisions": 1105,
+        "file": "00000029.bin",
+        "gameId": 29,
+        "trajectories": 12
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 683886,
+        "decisions": 1175,
+        "file": "00000030.bin",
+        "gameId": 30,
+        "trajectories": 13
+      },
+      {
+        "branchOutcomes": 0,
+        "compressedFileBytes": 618985,
+        "decisions": 1092,
+        "file": "00000031.bin",
+        "gameId": 31,
+        "trajectories": 12
+      }
+    ],
+    "observations": {
+      "rows": 34629,
+      "legalActions": 301577,
+      "actualTransitions": 341892,
+      "oneTransitionPerActionRows": 29614,
+      "meanLegalActions": 8.70879898351093,
+      "meanActualTransitions": 9.872996621328944,
+      "legalActionCountRows": {
+        "1": 1,
+        "2": 4396,
+        "3": 606,
+        "4": 430,
+        "5": 1123,
+        "6": 850,
+        "7": 2724,
+        "8": 3802,
+        "9": 3279,
+        "10": 5116,
+        "11": 4527,
+        "12": 3598,
+        "13": 3079,
+        "14": 1094,
+        "15": 4
+      },
+      "maximumTransitionsPerActionRows": {
+        "1": 29614,
+        "2": 28,
+        "3": 14,
+        "4": 178,
+        "5": 377,
+        "6": 357,
+        "7": 873,
+        "8": 961,
+        "9": 886,
+        "10": 927,
+        "11": 414
+      },
+      "actualTransitionCountRows": {
+        "1": 1,
+        "2": 44,
+        "3": 49,
+        "4": 379,
+        "5": 1273,
+        "6": 1194,
+        "7": 3046,
+        "8": 4588,
+        "9": 4174,
+        "10": 5906,
+        "11": 5332,
+        "12": 3938,
+        "13": 3101,
+        "14": 1119,
+        "15": 53,
+        "16": 24,
+        "17": 60,
+        "18": 24,
+        "19": 58,
+        "20": 45,
+        "21": 89,
+        "22": 27,
+        "23": 42,
+        "24": 1,
+        "25": 2,
+        "26": 1,
+        "27": 7,
+        "28": 7,
+        "29": 6,
+        "30": 6,
+        "31": 11,
+        "32": 2,
+        "33": 5,
+        "34": 5,
+        "39": 2,
+        "40": 1,
+        "41": 2,
+        "44": 2,
+        "45": 1,
+        "48": 1,
+        "50": 1
+      },
+      "transitionCountActions": {
+        "1": 295891,
+        "2": 30,
+        "3": 18,
+        "4": 198,
+        "5": 415,
+        "6": 413,
+        "7": 959,
+        "8": 1070,
+        "9": 1033,
+        "10": 1078,
+        "11": 472
+      },
+      "naturalBucketRows": {
+        "10x1": 8395,
+        "12x1": 8125,
+        "14x1": 4173,
+        "16x1": 4,
+        "1x1": 1,
+        "2x1": 44,
+        "2x12": 1862,
+        "2x4": 199,
+        "2x8": 2291,
+        "4x1": 387,
+        "4x12": 355,
+        "4x4": 21,
+        "4x8": 273,
+        "8x1": 8485,
+        "8x12": 10,
+        "8x8": 4
+      },
+      "storedActionSlots": 493889,
+      "storedTransitionSlots": 795809,
+      "naturalActionSlots": 320865,
+      "naturalTransitionSlots": 419717,
+      "storedActionPaddingFraction": 0.3893830395088775,
+      "storedTransitionPaddingFraction": 0.5703843510189003,
+      "densePayloadBytes": 782866628,
+      "naturalBucketDensePayloadBytes": 505428740,
+      "transitionPaddingBytes": 312294896,
+      "compactPayloadBytesExcludingMetadata": 470571732,
+      "transitionPaddingByteFraction": 0.3989120047150611,
+      "structuralZeroRuns": 242442
+    },
+    "byStoredBucket": {
+      "16x1": {
+        "rows": 29610,
+        "legalActions": 290779,
+        "actualTransitions": 290779,
+        "oneTransitionPerActionRows": 29610,
+        "meanLegalActions": 9.820297196892941,
+        "meanActualTransitions": 9.820297196892941,
+        "legalActionCountRows": {
+          "2": 41,
+          "3": 22,
+          "4": 365,
+          "5": 1114,
+          "6": 845,
+          "7": 2724,
+          "8": 3802,
+          "9": 3279,
+          "10": 5116,
+          "11": 4527,
+          "12": 3598,
+          "13": 3079,
+          "14": 1094,
+          "15": 4
+        },
+        "maximumTransitionsPerActionRows": {
+          "1": 29610
+        },
+        "actualTransitionCountRows": {
+          "2": 41,
+          "3": 22,
+          "4": 365,
+          "5": 1114,
+          "6": 845,
+          "7": 2724,
+          "8": 3802,
+          "9": 3279,
+          "10": 5116,
+          "11": 4527,
+          "12": 3598,
+          "13": 3079,
+          "14": 1094,
+          "15": 4
+        },
+        "transitionCountActions": {
+          "1": 290779
+        },
+        "naturalBucketRows": {
+          "10x1": 8395,
+          "12x1": 8125,
+          "14x1": 4173,
+          "16x1": 4,
+          "2x1": 41,
+          "4x1": 387,
+          "8x1": 8485
+        },
+        "storedActionSlots": 473760,
+        "storedTransitionSlots": 473760,
+        "naturalActionSlots": 309446,
+        "naturalTransitionSlots": 309446,
+        "storedActionPaddingFraction": 0.3862314251941911,
+        "storedTransitionPaddingFraction": 0.3862314251941911,
+        "densePayloadBytes": 532743120,
+        "naturalBucketDensePayloadBytes": 401949176,
+        "transitionPaddingBytes": 125890928,
+        "compactPayloadBytesExcludingMetadata": 406852192,
+        "transitionPaddingByteFraction": 0.23630699914059894,
+        "structuralZeroRuns": 177660
+      },
+      "1x1": {
+        "rows": 1,
+        "legalActions": 1,
+        "actualTransitions": 1,
+        "oneTransitionPerActionRows": 1,
+        "meanLegalActions": 1.0,
+        "meanActualTransitions": 1.0,
+        "legalActionCountRows": {
+          "1": 1
+        },
+        "maximumTransitionsPerActionRows": {
+          "1": 1
+        },
+        "actualTransitionCountRows": {
+          "1": 1
+        },
+        "transitionCountActions": {
+          "1": 1
+        },
+        "naturalBucketRows": {
+          "1x1": 1
+        },
+        "storedActionSlots": 1,
+        "storedTransitionSlots": 1,
+        "naturalActionSlots": 1,
+        "naturalTransitionSlots": 1,
+        "storedActionPaddingFraction": 0.0,
+        "storedTransitionPaddingFraction": 0.0,
+        "densePayloadBytes": 6052,
+        "naturalBucketDensePayloadBytes": 6052,
+        "transitionPaddingBytes": 0,
+        "compactPayloadBytesExcludingMetadata": 6052,
+        "transitionPaddingByteFraction": 0.0,
+        "structuralZeroRuns": 0
+      },
+      "4x16": {
+        "rows": 5004,
+        "legalActions": 10722,
+        "actualTransitions": 50566,
+        "oneTransitionPerActionRows": 3,
+        "meanLegalActions": 2.142685851318945,
+        "meanActualTransitions": 10.10511590727418,
+        "legalActionCountRows": {
+          "2": 4355,
+          "3": 584,
+          "4": 65
+        },
+        "maximumTransitionsPerActionRows": {
+          "1": 3,
+          "2": 28,
+          "3": 14,
+          "4": 178,
+          "5": 377,
+          "6": 356,
+          "7": 872,
+          "8": 959,
+          "9": 884,
+          "10": 922,
+          "11": 411
+        },
+        "actualTransitionCountRows": {
+          "2": 3,
+          "3": 27,
+          "4": 14,
+          "5": 159,
+          "6": 349,
+          "7": 322,
+          "8": 786,
+          "9": 895,
+          "10": 790,
+          "11": 805,
+          "12": 340,
+          "13": 22,
+          "14": 25,
+          "15": 49,
+          "16": 24,
+          "17": 60,
+          "18": 24,
+          "19": 58,
+          "20": 45,
+          "21": 89,
+          "22": 27,
+          "23": 41,
+          "24": 1,
+          "25": 2,
+          "26": 1,
+          "27": 6,
+          "28": 7,
+          "29": 6,
+          "30": 6,
+          "31": 11,
+          "32": 1,
+          "33": 4,
+          "34": 5
+        },
+        "transitionCountActions": {
+          "1": 5096,
+          "2": 30,
+          "3": 18,
+          "4": 198,
+          "5": 413,
+          "6": 409,
+          "7": 953,
+          "8": 1060,
+          "9": 1020,
+          "10": 1061,
+          "11": 464
+        },
+        "naturalBucketRows": {
+          "2x1": 3,
+          "2x12": 1862,
+          "2x4": 199,
+          "2x8": 2291,
+          "4x12": 355,
+          "4x4": 21,
+          "4x8": 273
+        },
+        "storedActionSlots": 20016,
+        "storedTransitionSlots": 320256,
+        "naturalActionSlots": 11306,
+        "naturalTransitionSlots": 109054,
+        "storedActionPaddingFraction": 0.4643285371702638,
+        "storedTransitionPaddingFraction": 0.8421075639488409,
+        "densePayloadBytes": 248798880,
+        "naturalBucketDensePayloadBytes": 102551224,
+        "transitionPaddingBytes": 185546720,
+        "compactPayloadBytesExcludingMetadata": 63252160,
+        "transitionPaddingByteFraction": 0.7457699166491425,
+        "structuralZeroRuns": 64332
+      },
+      "8x16": {
+        "rows": 14,
+        "legalActions": 75,
+        "actualTransitions": 546,
+        "oneTransitionPerActionRows": 0,
+        "meanLegalActions": 5.357142857142857,
+        "meanActualTransitions": 39.0,
+        "legalActionCountRows": {
+          "5": 9,
+          "6": 5
+        },
+        "maximumTransitionsPerActionRows": {
+          "6": 1,
+          "7": 1,
+          "8": 2,
+          "9": 2,
+          "10": 5,
+          "11": 3
+        },
+        "actualTransitionCountRows": {
+          "23": 1,
+          "27": 1,
+          "32": 1,
+          "33": 1,
+          "39": 2,
+          "40": 1,
+          "41": 2,
+          "44": 2,
+          "45": 1,
+          "48": 1,
+          "50": 1
+        },
+        "transitionCountActions": {
+          "1": 15,
+          "5": 2,
+          "6": 4,
+          "7": 6,
+          "8": 10,
+          "9": 13,
+          "10": 17,
+          "11": 8
+        },
+        "naturalBucketRows": {
+          "8x12": 10,
+          "8x8": 4
+        },
+        "storedActionSlots": 112,
+        "storedTransitionSlots": 1792,
+        "naturalActionSlots": 112,
+        "naturalTransitionSlots": 1216,
+        "storedActionPaddingFraction": 0.33035714285714285,
+        "storedTransitionPaddingFraction": 0.6953125,
+        "densePayloadBytes": 1318576,
+        "naturalBucketDensePayloadBytes": 922288,
+        "transitionPaddingBytes": 857248,
+        "compactPayloadBytesExcludingMetadata": 461328,
+        "transitionPaddingByteFraction": 0.6501316571816869,
+        "structuralZeroRuns": 450
+      }
+    },
+    "diagnosticSeconds": 0.540967271
+  },
+  "inputDistributionProvenance": {
+    "command": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java -Xmx2g -cp /home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/inspect-classes:/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6.jar com.epsilon.cfr.benchmark.CfrPerformanceBenchmark inspect /home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v5-zgc/matches /home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/inspect-32-v6 32",
+    "jar": "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6.jar",
+    "jarSha256": "7b3e39828a97dd654389c01ac6164911644f6e247d6c3fd8032b20f277881394",
+    "classFiles": [
+      {
+        "path": "com/epsilon/cfr/benchmark/CfrPerformanceBenchmark$1.class",
+        "sha256": "bdf7f96b35c2d5aa6aa092f8de34cce5a6ece1db4183b3f7f8aae03ea68f7bdc"
+      },
+      {
+        "path": "com/epsilon/cfr/benchmark/CfrPerformanceBenchmark$ObservationShape.class",
+        "sha256": "66a6760510c846d9104224c6c1e447845a25352ebaa1a576c9906a60e57834e4"
+      },
+      {
+        "path": "com/epsilon/cfr/benchmark/CfrPerformanceBenchmark$ObservationStats.class",
+        "sha256": "d5bcf2c4f4f8ba29d7e93cc4d0cf5fe5470e47c41b170001f714896b0187ed32"
+      },
+      {
+        "path": "com/epsilon/cfr/benchmark/CfrPerformanceBenchmark$SamplingMode.class",
+        "sha256": "5f78a8d226cb7a0158b7d15373927ac47084bcecce08c5fb9bc0a68ad10c61f0"
+      },
+      {
+        "path": "com/epsilon/cfr/benchmark/CfrPerformanceBenchmark$Shape.class",
+        "sha256": "937b741b82240bf85959222e53ff9b6d34981d6120e148f59ef3eebf38a9880d"
+      },
+      {
+        "path": "com/epsilon/cfr/benchmark/CfrPerformanceBenchmark$Shapes.class",
+        "sha256": "ab0c595180952fc5851d5ad266c77ec8417f771a89518f9e72fec9dc2d24e19b"
+      },
+      {
+        "path": "com/epsilon/cfr/benchmark/CfrPerformanceBenchmark.class",
+        "sha256": "15dbc3b1f4e8f2c23b2637af275be3d47f4f4f29b522bbac9b4778b3f29506f6"
+      },
+      {
+        "path": "com/epsilon/cfr/benchmark/CfrPerformanceBenchmarkTest.class",
+        "sha256": "e768b65fc30a9ba14a70d99ff03ebd5a403f2f137c2d34e0013b2c21d9d30575"
+      }
+    ],
+    "corpus": "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v5-zgc/matches",
+    "limit": 32,
+    "scope": "CPU-only sequential read; no model/GPU; input files unchanged",
+    "startedUtc": "2026-10-09T09:05:46Z",
+    "exitCode": 0
+  },
+  "verification": {
+    "regularTests": {
+      "common": 411,
+      "nano": 123,
+      "cfr": 138,
+      "failed": 0,
+      "skipped": 0
+    },
+    "nativeTests": {
+      "common": 3,
+      "nano": 46,
+      "cfr": 164,
+      "failed": 0,
+      "skipped": 0
+    },
+    "initialCombinedRocm": {
+      "passed": 29,
+      "failed": 2,
+      "skipped": 0,
+      "note": "Grouped test compared dense and frozen policies; BF16 AdamW numerical threshold also exceeded. Neither failure discarded."
+    },
+    "v6WithSameNewTests": {
+      "passed": 9,
+      "failed": 3,
+      "skipped": 0,
+      "note": "The prior artifact also exceeded dense/frozen policy KL and BF16 AdamW thresholds."
+    },
+    "isolatedBatchingRocm": {
+      "v6Passed": 2,
+      "combinedPassed": 2,
+      "failed": 0
+    },
+    "revisedGroupedTest": "Use separate-bucket staged policy as the reference; same raw-score and policy thresholds; existing dense/frozen tests retained.",
+    "correctedGroupedRocm": {
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "jarSha256": "49c30aa3fd69c9b7d0055b934caa40265eaf9f99a8d78d2e09bbee805682344f",
+      "note": "New grouped policy reference aligned to frozen per-bucket execution. Existing tests and all thresholds unchanged. Raw results retained in target/cfr-100k-20261009/combined-reference-rocm-raw."
+    },
+    "compactActionsRegularTests": {
+      "common": 411,
+      "nano": 123,
+      "cfr": 139,
+      "failed": 0,
+      "skipped": 0
+    },
+    "compactActionsInitialRocm": {
+      "passed": 33,
+      "failed": 2,
+      "skipped": 0,
+      "jarSha256": "ef8a097d9ba4103824ac8d638679817d315ff0722a85e26ce4289443ab9ac3ab",
+      "note": "New compact-action BF16/FP16 policy KL comparisons exceeded thresholds; investigation pending. Raw scores passed."
+    },
+    "writerWorkSharing": {
+      "passed": 9,
+      "failed": 0,
+      "baselineHeadOfLineTestFailed": true,
+      "performanceMeasured": false
+    },
+    "compactActionsNativeTests": {
+      "common": 3,
+      "nano": 47,
+      "cfr": 166,
+      "failed": 0,
+      "skipped": 0
+    },
+    "allModulesTestCompile": {
+      "modules": 8,
+      "successful": true
+    },
+    "groupingPrecisionDiagnosis": {
+      "policyComparison": {
+        "identicalPolicyLines": true,
+        "comparedPolicyRows": 128,
+        "groups": [
+          {
+            "variant": "grouped",
+            "key": [
+              "BFLOAT16",
+              "false",
+              "AVERAGE"
+            ],
+            "rows": 16,
+            "maxKL": 0.00016419342674642355,
+            "maxAbs": 0.0037134677271886823,
+            "fail": 4
+          },
+          {
+            "variant": "grouped",
+            "key": [
+              "BFLOAT16",
+              "false",
+              "REGRET"
+            ],
+            "rows": 16,
+            "maxKL": 2.0645727319327178e-05,
+            "maxAbs": 0.0009282906811649422,
+            "fail": 0
+          },
+          {
+            "variant": "grouped",
+            "key": [
+              "BFLOAT16",
+              "true",
+              "AVERAGE"
+            ],
+            "rows": 16,
+            "maxKL": 0.00045658921490247285,
+            "maxAbs": 0.014571463278528651,
+            "fail": 5
+          },
+          {
+            "variant": "grouped",
+            "key": [
+              "BFLOAT16",
+              "true",
+              "REGRET"
+            ],
+            "rows": 16,
+            "maxKL": 1.749426906652075e-05,
+            "maxAbs": 0.0029160039384988345,
+            "fail": 0
+          },
+          {
+            "variant": "grouped",
+            "key": [
+              "FLOAT16",
+              "false",
+              "AVERAGE"
+            ],
+            "rows": 16,
+            "maxKL": 2.8306283582444497e-06,
+            "maxAbs": 0.0007568421167488681,
+            "fail": 8
+          },
+          {
+            "variant": "grouped",
+            "key": [
+              "FLOAT16",
+              "false",
+              "REGRET"
+            ],
+            "rows": 16,
+            "maxKL": 3.3141016949535403e-07,
+            "maxAbs": 0.0002420924749036435,
+            "fail": 0
+          },
+          {
+            "variant": "grouped",
+            "key": [
+              "FLOAT16",
+              "true",
+              "AVERAGE"
+            ],
+            "rows": 16,
+            "maxKL": 5.500620333911705e-06,
+            "maxAbs": 0.001407190090216448,
+            "fail": 9
+          },
+          {
+            "variant": "grouped",
+            "key": [
+              "FLOAT16",
+              "true",
+              "REGRET"
+            ],
+            "rows": 16,
+            "maxKL": 1.057825305088593e-06,
+            "maxAbs": 0.0006631112117075344,
+            "fail": 1
+          },
+          {
+            "variant": "compact",
+            "key": [
+              "BFLOAT16",
+              "false",
+              "AVERAGE"
+            ],
+            "rows": 16,
+            "maxKL": 0.00016419342674642355,
+            "maxAbs": 0.0037134677271886823,
+            "fail": 4
+          },
+          {
+            "variant": "compact",
+            "key": [
+              "BFLOAT16",
+              "false",
+              "REGRET"
+            ],
+            "rows": 16,
+            "maxKL": 2.0645727319327178e-05,
+            "maxAbs": 0.0009282906811649422,
+            "fail": 0
+          },
+          {
+            "variant": "compact",
+            "key": [
+              "BFLOAT16",
+              "true",
+              "AVERAGE"
+            ],
+            "rows": 16,
+            "maxKL": 0.00045658921490247285,
+            "maxAbs": 0.014571463278528651,
+            "fail": 5
+          },
+          {
+            "variant": "compact",
+            "key": [
+              "BFLOAT16",
+              "true",
+              "REGRET"
+            ],
+            "rows": 16,
+            "maxKL": 1.749426906652075e-05,
+            "maxAbs": 0.0029160039384988345,
+            "fail": 0
+          },
+          {
+            "variant": "compact",
+            "key": [
+              "FLOAT16",
+              "false",
+              "AVERAGE"
+            ],
+            "rows": 16,
+            "maxKL": 2.8306283582444497e-06,
+            "maxAbs": 0.0007568421167488681,
+            "fail": 8
+          },
+          {
+            "variant": "compact",
+            "key": [
+              "FLOAT16",
+              "false",
+              "REGRET"
+            ],
+            "rows": 16,
+            "maxKL": 3.3141016949535403e-07,
+            "maxAbs": 0.0002420924749036435,
+            "fail": 0
+          },
+          {
+            "variant": "compact",
+            "key": [
+              "FLOAT16",
+              "true",
+              "AVERAGE"
+            ],
+            "rows": 16,
+            "maxKL": 5.500620333911705e-06,
+            "maxAbs": 0.001407190090216448,
+            "fail": 9
+          },
+          {
+            "variant": "compact",
+            "key": [
+              "FLOAT16",
+              "true",
+              "REGRET"
+            ],
+            "rows": 16,
+            "maxKL": 1.057825305088593e-06,
+            "maxAbs": 0.0006631112117075344,
+            "fail": 1
+          }
+        ],
+        "differentLines": []
+      },
+      "float32Oracle": {
+        "oracleRows": 64,
+        "maxOracleProbabilityDifference": 1.759715045790422e-06,
+        "maxOracleKL": 6.712909425601448e-12,
+        "maxOracleScoreDifference": 5.699999999997374e-06,
+        "precisionGroups": [
+          {
+            "dtype": "BFLOAT16",
+            "fused": "false",
+            "role": "REGRET",
+            "path": "separate",
+            "scoreMaxAbs": 0.03793259999999998,
+            "scoreRms": 0.020044486848517135,
+            "policyMaxAbs": 0.0020230471914058357,
+            "maxKL": 1.317705435476815e-05
+          },
+          {
+            "dtype": "BFLOAT16",
+            "fused": "false",
+            "role": "REGRET",
+            "path": "grouped",
+            "scoreMaxAbs": 0.03756199999999987,
+            "scoreRms": 0.015448254968057483,
+            "policyMaxAbs": 0.001960517025858588,
+            "maxKL": 1.1877561920236594e-05
+          },
+          {
+            "dtype": "BFLOAT16",
+            "fused": "false",
+            "role": "AVERAGE",
+            "path": "separate",
+            "scoreMaxAbs": 0.03793259999999998,
+            "scoreRms": 0.020044486848517135,
+            "policyMaxAbs": 0.0047876767864794,
+            "maxKL": 0.00011186160095705158
+          },
+          {
+            "dtype": "BFLOAT16",
+            "fused": "false",
+            "role": "AVERAGE",
+            "path": "grouped",
+            "scoreMaxAbs": 0.03756199999999987,
+            "scoreRms": 0.015448254968057483,
+            "policyMaxAbs": 0.0047876767864794,
+            "maxKL": 0.00011186160095705158
+          },
+          {
+            "dtype": "BFLOAT16",
+            "fused": "true",
+            "role": "REGRET",
+            "path": "separate",
+            "scoreMaxAbs": 0.04544350000000019,
+            "scoreRms": 0.022494956121267135,
+            "policyMaxAbs": 0.003507681730461787,
+            "maxKL": 2.4673734645602827e-05
+          },
+          {
+            "dtype": "BFLOAT16",
+            "fused": "true",
+            "role": "REGRET",
+            "path": "grouped",
+            "scoreMaxAbs": 0.04544350000000019,
+            "scoreRms": 0.021175352995467158,
+            "policyMaxAbs": 0.003507681730461787,
+            "maxKL": 2.4673734645602827e-05
+          },
+          {
+            "dtype": "BFLOAT16",
+            "fused": "true",
+            "role": "AVERAGE",
+            "path": "separate",
+            "scoreMaxAbs": 0.04544350000000019,
+            "scoreRms": 0.022494956121267135,
+            "policyMaxAbs": 0.016648088841840103,
+            "maxKL": 0.0005932491848610957
+          },
+          {
+            "dtype": "BFLOAT16",
+            "fused": "true",
+            "role": "AVERAGE",
+            "path": "grouped",
+            "scoreMaxAbs": 0.04544350000000019,
+            "scoreRms": 0.021175352995467158,
+            "policyMaxAbs": 0.016648088841840103,
+            "maxKL": 0.0005932491848610957
+          },
+          {
+            "dtype": "FLOAT16",
+            "fused": "false",
+            "role": "REGRET",
+            "path": "separate",
+            "scoreMaxAbs": 0.004837999999999898,
+            "scoreRms": 0.0023544587918157248,
+            "policyMaxAbs": 0.000347269907674419,
+            "maxKL": 3.6059759697616624e-07
+          },
+          {
+            "dtype": "FLOAT16",
+            "fused": "false",
+            "role": "REGRET",
+            "path": "grouped",
+            "scoreMaxAbs": 0.004837999999999898,
+            "scoreRms": 0.0021749630523211477,
+            "policyMaxAbs": 0.0003200206861841415,
+            "maxKL": 3.2672068674438235e-07
+          },
+          {
+            "dtype": "FLOAT16",
+            "fused": "false",
+            "role": "AVERAGE",
+            "path": "separate",
+            "scoreMaxAbs": 0.004837999999999898,
+            "scoreRms": 0.0023544587918157248,
+            "policyMaxAbs": 0.0011738967903968112,
+            "maxKL": 2.984486302363325e-06
+          },
+          {
+            "dtype": "FLOAT16",
+            "fused": "false",
+            "role": "AVERAGE",
+            "path": "grouped",
+            "scoreMaxAbs": 0.004837999999999898,
+            "scoreRms": 0.0021749630523211477,
+            "policyMaxAbs": 0.0011738967903968112,
+            "maxKL": 3.1145226952667496e-06
+          },
+          {
+            "dtype": "FLOAT16",
+            "fused": "true",
+            "role": "REGRET",
+            "path": "separate",
+            "scoreMaxAbs": 0.004912599999999934,
+            "scoreRms": 0.0022265466832175796,
+            "policyMaxAbs": 0.0001812705491216482,
+            "maxKL": 2.524808030959354e-07
+          },
+          {
+            "dtype": "FLOAT16",
+            "fused": "true",
+            "role": "REGRET",
+            "path": "grouped",
+            "scoreMaxAbs": 0.006701000000000068,
+            "scoreRms": 0.0022468949313966093,
+            "policyMaxAbs": 0.0005824533507600149,
+            "maxKL": 8.214902798747746e-07
+          },
+          {
+            "dtype": "FLOAT16",
+            "fused": "true",
+            "role": "AVERAGE",
+            "path": "separate",
+            "scoreMaxAbs": 0.004912599999999934,
+            "scoreRms": 0.0022265466832175796,
+            "policyMaxAbs": 0.0005141489488737494,
+            "maxKL": 2.1374791942001047e-06
+          },
+          {
+            "dtype": "FLOAT16",
+            "fused": "true",
+            "role": "AVERAGE",
+            "path": "grouped",
+            "scoreMaxAbs": 0.006701000000000068,
+            "scoreRms": 0.0022468949313966093,
+            "policyMaxAbs": 0.0012362156921985334,
+            "maxKL": 4.293519924328574e-06
+          }
+        ]
+      },
+      "conclusion": "Compact legal actions introduce no further score or policy differences in this fixture. Grouping changes low-precision rounding relative to per-bucket execution. FLOAT32 discrepancy is small, and grouping does not systematically worsen error against FLOAT32. Low-precision policy equivalence to separate buckets is not guaranteed.",
+      "limits": "One synthetic nonuniform random-head fixture, not trained-model gameplay quality evidence. Original failed comparisons retained."
+    },
+    "compactActionsCorrectedRocm": {
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0,
+      "note": "Independent shared-state/transition plus dense-candidate reference tests compact candidates only. Fixture and thresholds unchanged. Per-bucket versus grouped rounding difference remains recorded separately."
+    },
+    "coalescedRegularTests": {
+      "common": 411,
+      "nano": 124,
+      "cfr": 139,
+      "failed": 0,
+      "skipped": 0
+    },
+    "coalescedNativeTests": {
+      "common": 3,
+      "nano": 48,
+      "cfr": 166,
+      "failed": 0,
+      "skipped": 0
+    },
+    "finalAllModulesTestCompile": {
+      "modules": 8,
+      "successful": true
+    },
+    "formatCheck": {
+      "javaFiles": 38,
+      "failed": 0
+    },
+    "coalescedRocm": {
+      "passed": 34,
+      "failed": 1,
+      "skipped": 0,
+      "failure": "Existing CfrBatchingTest BF16 AVERAGE step 3 relativeL2 0.03088078950916133 exceeded 0.03; cosine 0.9995231344112863. Controlled isolated comparison reproduced the same failure on old and new production JARs. New compact/grouped inference comparisons passed."
+    },
+    "finalIsolatedBatchingRocm": {
+      "sameTestClasses": true,
+      "v6": {
+        "passed": 1,
+        "failed": 1,
+        "relativeL2": 0.03091732210627614,
+        "cosine": 0.9995219711648249
+      },
+      "coalesced": {
+        "passed": 1,
+        "failed": 1,
+        "relativeL2": 0.03067534319496003,
+        "cosine": 0.9995295484610767
+      },
+      "threshold": 0.03,
+      "thresholdChanged": false,
+      "scope": "Existing BF16 AVERAGE update parity test, step 3. The same failure exists on the old JAR and is not unique to the candidate; this does not rule out other numerical effects. All GPU tests are not green."
+    },
+    "freshBuild": {
+      "jarSha256": "5c753201a976e5a213c59d254532337a09c06afb221a9a27dee5c462e6e8e5a4",
+      "sharedProductionClassCount": 1498,
+      "allSharedProductionClassesByteIdenticalToTestedJar": true,
+      "removedUnusedStaleGeneratedClasses": [
+        "com/epsilon/ai/decision/DecisionRiverWindow.class",
+        "com/epsilon/spi/DecisionRequest$GameContext.class"
+      ],
+      "rootPackageClassMapMatchesFreshBuild": true,
+      "testsRerunOnFreshJar": false,
+      "note": "Fresh isolated package and root repack passed. Only two unused stale generated classes were absent; all current production class bytes match the tested artifact."
+    }
+  },
+  "kernelProfile": {
+    "attempts": 2,
+    "bothExitSignal": "SIGSEGV",
+    "kernelRecords": 0,
+    "retryOnlyChanged": "-Djdk.lang.Process.launchMechanism=FORK",
+    "note": "Profiler-instrumented runs only; no production JVM setting changed. No kernel bottleneck ranking obtained."
+  },
+  "storageCleanup": {
+    "authorizedDirectories": [
+      "candidate-v1/matches",
+      "candidate-v1/warmup-matches",
+      "candidate-v1b/matches",
+      "candidate-v1b/warmup-matches",
+      "candidate-v2/matches",
+      "candidate-v2/warmup-matches",
+      "candidate-v2b/matches",
+      "candidate-v2b/warmup-matches"
+    ],
+    "removedFiles": 17408,
+    "removedPayloadBytes": 10788919950,
+    "freeBefore": 2577653760,
+    "freeAfter": 13402554368,
+    "archive": "D:/Epsilon-benchmark-archives/cfr-100k-20261009/completed-measurements.tar",
+    "modelsLogsResultsRetained": true,
+    "targetsAbsent": true,
+    "archiveVerification": {
+      "archive": "C:\\Users\\narun\\Documents\\GitHub\\Epsilon-Release\\epsilon-cfr\\target\\cfr-100k-20261009\\archive\\completed-measurements.tar",
+      "archiveBytes": 10802339840,
+      "sha256": "6638944fdb442392ce338a834737d5b9d4b73675341f35b9edc60ec7abe80974",
+      "verifiedFiles": 17408,
+      "verifiedPayloadBytes": 10788919950,
+      "remoteDataRemoved": false,
+      "elapsedSeconds": 132.75
+    }
+  },
+  "cpuProfileSummary": {
+    "source": "target/cfr-100k-20261009/compact-actions-jfr-summary.json",
+    "profiledSeconds": 49.805194,
+    "cpuJavaSamples": 3909,
+    "featureEncodingPercent": 52.75,
+    "serializationPercent": 24.1,
+    "enginePercent": 11.95,
+    "schedulerPercent": 5.45,
+    "hostStagePercent": 3.43,
+    "allocatedBytesEstimate": 71800000000,
+    "serializationAllocatedBytesEstimate": 61120000000,
+    "gcPauseMilliseconds": 0.306029,
+    "stageInputQueueParkSeconds": 30.356,
+    "stageSlotParkSeconds": 0.613,
+    "submitQueueParkSeconds": 18.653,
+    "parkLowerBoundThresholdMillis": 10,
+    "limitation": "Samples are not wall-time attribution; waits exclude intervals below threshold; no batch-size or queue-depth time series was captured; profiled throughput is not a comparative result."
+  },
+  "persistedComparisons": [
+    {
+      "tag": "baseline-v6-zgc",
+      "jarSha256": "5d3269cccaf91b0d44eb949e5e398f11b2d635c885f2b559f3082dcdf51b84ce",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": true,
+        "setupSeconds": 4.62749956,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 10.038847893,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 25.500934243510805,
+          "handsPerSecond": 303.122433214857,
+          "trajectoriesPerSecond": 303.122433214857,
+          "completedDecisionsPerSecond": 27051.41096812114,
+          "nonForcedDecisionsPerSecond": 27045.13534758465,
+          "mainInferenceRowsPerSecond": 27051.41096812114,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.363624292539123,
+          "averageInferenceBatchRows": 59.48303043573462,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4567,
+            "largestBatch": 256,
+            "elapsedSeconds": 10.027048067,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 57.378893031,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 71.3851345613632,
+          "handsPerSecond": 853.65885280388,
+          "trajectoriesPerSecond": 853.65885280388,
+          "completedDecisionsPerSecond": 76115.25369861053,
+          "nonForcedDecisionsPerSecond": 76094.3923690036,
+          "mainInferenceRowsPerSecond": 76115.25369861053,
+          "branchInferenceRows": 2668,
+          "branchInferenceRowsPerSecond": 46.4979343285442,
+          "averageInferenceBatchRows": 658.1441265060241,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 6640,
+            "largestBatch": 4096,
+            "elapsedSeconds": 57.375611454,
+            "branchComparisons": 867,
+            "branchEpisodes": 677,
+            "branchInferenceRows": 2668
+          }
+        },
+        "completedObservationShapes": {
+          "bucketRows": {
+            "16x1": 3738942,
+            "1x1": 1197,
+            "40x1": 9,
+            "4x16": 626466,
+            "8x16": 795
+          },
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "rows": 4367409
+        },
+        "postMeasurementDecodeDiagnosticSeconds": 35.20825453,
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xlog:gc*,safepoint:file=/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/baseline-v6-zgc-gc.log:uptime,level,tags",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/v6-current-head.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/baseline-v6-zgc",
+          "256",
+          "true"
+        ],
+        "processSeconds": 109.1953576640226,
+        "processCpuUserSeconds": 322.734949,
+        "processCpuSystemSeconds": 70.912814,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 7625633792,
+        "peakProcessRssBytes": 24396087296,
+        "sampleCount": 2170,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      }
+    },
+    {
+      "tag": "candidate-coalesced-zgc",
+      "jarSha256": "f347cd35f035411853407f60d63fa9a3f8564b7d1bbcab4f6b71710cbe33c61d",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 4096,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": true,
+        "setupSeconds": 4.64448829,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 8.076489978,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 31.69693774118864,
+          "handsPerSecond": 376.7725841657697,
+          "trajectoriesPerSecond": 376.7725841657697,
+          "completedDecisionsPerSecond": 33624.13631908552,
+          "nonForcedDecisionsPerSecond": 33616.335900813276,
+          "mainInferenceRowsPerSecond": 33624.13631908552,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 11.638719326842704,
+          "averageInferenceBatchRows": 87.83026188166828,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 3093,
+            "largestBatch": 256,
+            "elapsedSeconds": 8.071173833,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 53.572930792,
+          "completedGames": 4096,
+          "completedHands": 48982,
+          "completedTrajectories": 48982,
+          "completedDecisions": 4367409,
+          "forcedDecisions": 1197,
+          "forcedDecisionFraction": 0.00027407554456200463,
+          "gamesPerSecond": 76.45652271485682,
+          "handsPerSecond": 914.3050282273233,
+          "trajectoriesPerSecond": 914.3050282273233,
+          "completedDecisionsPerSecond": 81522.68198573487,
+          "nonForcedDecisionsPerSecond": 81500.33861227549,
+          "mainInferenceRowsPerSecond": 81522.68198573487,
+          "branchInferenceRows": 2577,
+          "branchInferenceRowsPerSecond": 48.10265113188135,
+          "averageInferenceBatchRows": 771.5370762711865,
+          "collectorStats": {
+            "games": 4096,
+            "hands": 48982,
+            "trajectories": 48982,
+            "decisions": 4367409,
+            "inferenceBatches": 5664,
+            "largestBatch": 4096,
+            "elapsedSeconds": 53.565941685,
+            "branchComparisons": 867,
+            "branchEpisodes": 677,
+            "branchInferenceRows": 2577
+          }
+        },
+        "completedObservationShapes": {
+          "rows": 4367409,
+          "bucketRows": {
+            "16x1": 3738942,
+            "1x1": 1197,
+            "40x1": 9,
+            "4x16": 626466,
+            "8x16": 795
+          },
+          "forcedDecisionFraction": 0.00027407554456200463
+        },
+        "postMeasurementDecodeDiagnosticSeconds": 35.230766437,
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xlog:gc*,safepoint:file=/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/candidate-coalesced-zgc-gc.log:uptime,level,tags",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/coalesced.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/candidate-coalesced-zgc",
+          "256",
+          "true"
+        ],
+        "processSeconds": 103.54497815622017,
+        "processCpuUserSeconds": 295.792079,
+        "processCpuSystemSeconds": 63.315483,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 3955642368,
+        "peakProcessRssBytes": 24213929984,
+        "sampleCount": 2058,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForPersistedTarget": true
+    }
+  ],
+  "productionSizeDiagnostics": [
+    {
+      "tag": "production-compact-actions-zgc-no-save",
+      "jarSha256": "ef8a097d9ba4103824ac8d638679817d315ff0722a85e26ce4289443ab9ac3ab",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 32768,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.634363253,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 10.197409283,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 25.104415532950615,
+          "handsPerSecond": 298.4091268233153,
+          "trajectoriesPerSecond": 298.4091268233153,
+          "completedDecisionsPerSecond": 26630.783610178645,
+          "nonForcedDecisionsPerSecond": 26624.605570418586,
+          "mainInferenceRowsPerSecond": 26630.783610178645,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 9.218027578505303,
+          "averageInferenceBatchRows": 59.159189895470384,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 4592,
+            "largestBatch": 256,
+            "elapsedSeconds": 10.195310959,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 389.222643032,
+          "completedGames": 32768,
+          "completedHands": 391510,
+          "completedTrajectories": 391510,
+          "completedDecisions": 34909817,
+          "forcedDecisions": 9192,
+          "forcedDecisionFraction": 0.00026330702335105336,
+          "gamesPerSecond": 84.18831891367115,
+          "handsPerSecond": 1005.8767315030332,
+          "trajectoriesPerSecond": 1005.8767315030332,
+          "completedDecisionsPerSecond": 89691.12569622493,
+          "nonForcedDecisionsPerSecond": 89667.50939289686,
+          "mainInferenceRowsPerSecond": 89691.12569622493,
+          "branchInferenceRows": 23395,
+          "branchInferenceRowsPerSecond": 60.10698611405446,
+          "averageInferenceBatchRows": 1436.9302784747645,
+          "collectorStats": {
+            "games": 32768,
+            "hands": 391510,
+            "trajectories": 391510,
+            "decisions": 34909817,
+            "inferenceBatches": 24311,
+            "largestBatch": 4096,
+            "elapsedSeconds": 389.22049305,
+            "branchComparisons": 6989,
+            "branchEpisodes": 5469,
+            "branchInferenceRows": 23395
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/compact-actions.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-production-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/production-compact-actions-zgc-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 406.6616727230139,
+        "processCpuUserSeconds": 1449.270281,
+        "processCpuSystemSeconds": 239.322858,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 3955625984,
+        "peakProcessRssBytes": 25177669632,
+        "sampleCount": 8081,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForPersistedTarget": false
+    }
+  ],
+  "productionStorageCleanup": {
+    "authorizedDirectories": [
+      "current-profile/matches",
+      "current-profile/warmup-matches",
+      "candidate-v1-profile/matches",
+      "candidate-v1-profile/warmup-matches",
+      "candidate-v2-profile/matches",
+      "candidate-v2-profile/warmup-matches",
+      "candidate-v3-profile/matches",
+      "candidate-v3-profile/warmup-matches",
+      "candidate-v3/matches",
+      "candidate-v3/warmup-matches",
+      "candidate-v3-zgc/matches",
+      "candidate-v3-zgc/warmup-matches"
+    ],
+    "removedFiles": 26112,
+    "removedPayloadBytes": 16183386607,
+    "freeBefore": 10688212992,
+    "freeAfter": 26925600768,
+    "archive": "D:/Epsilon-benchmark-archives/cfr-100k-20261009-production-capacity/completed-measurements.tar",
+    "modelsLogsResultsRetained": true,
+    "targetsAbsent": true,
+    "archiveVerification": {
+      "archive": "D:\\Epsilon-benchmark-archives\\cfr-100k-20261009-production-capacity\\completed-measurements.tar",
+      "archiveBytes": 16203530240,
+      "sha256": "7b75a47688dea473b0b93eb3b14e82b5f024a9c82970fb005911286ab0e57853",
+      "persistedSha256": "7b75a47688dea473b0b93eb3b14e82b5f024a9c82970fb005911286ab0e57853",
+      "archiveHashMatched": true,
+      "verifiedFiles": 26112,
+      "verifiedPayloadBytes": 16183386607,
+      "remoteDataRemoved": false,
+      "elapsedSeconds": 172.625
+    }
+  },
+  "persistedComparisonSummary": {
+    "baseline": "baseline-v6-zgc",
+    "candidate": "candidate-coalesced-zgc",
+    "games": 4096,
+    "throughputGainPercent": 7.104263632275143,
+    "runsPerCandidate": 1,
+    "matchingMainCounts": [
+      "completedGames",
+      "completedHands",
+      "completedDecisions",
+      "forcedDecisions"
+    ],
+    "branchRowsIdentical": false,
+    "note": "Same checkpoint, seed, effective config and fixed benchmark classes. Asynchronous branch work differs and is reported separately. One run each; no confidence interval.",
+    "meanBatchDefinition": "Main and branch inference rows divided by inference batches, matching collector report."
+  },
+  "productionPersistedComparisons": [
+    {
+      "tag": "production-coalesced-zgc",
+      "jarSha256": "5c753201a976e5a213c59d254532337a09c06afb221a9a27dee5c462e6e8e5a4",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 32768,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": true,
+        "setupSeconds": 4.638824984,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 8.049219228,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 31.80432694757261,
+          "handsPerSecond": 378.0490894588416,
+          "trajectoriesPerSecond": 378.0490894588416,
+          "completedDecisionsPerSecond": 33738.05487311545,
+          "nonForcedDecisionsPerSecond": 33730.228027030695,
+          "mainInferenceRowsPerSecond": 33738.05487311545,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 11.678151301061817,
+          "averageInferenceBatchRows": 88.4306640625,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 3072,
+            "largestBatch": 256,
+            "elapsedSeconds": 8.043418978,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 398.359362421,
+          "completedGames": 32768,
+          "completedHands": 391510,
+          "completedTrajectories": 391510,
+          "completedDecisions": 34909817,
+          "forcedDecisions": 9192,
+          "forcedDecisionFraction": 0.00026330702335105336,
+          "gamesPerSecond": 82.25738639818798,
+          "handsPerSecond": 982.8060714341606,
+          "trajectoriesPerSecond": 982.8060714341606,
+          "completedDecisionsPerSecond": 87633.98150814915,
+          "nonForcedDecisionsPerSecond": 87610.90686533383,
+          "mainInferenceRowsPerSecond": 87633.98150814915,
+          "branchInferenceRows": 23300,
+          "branchInferenceRowsPerSecond": 58.48990182732482,
+          "averageInferenceBatchRows": 1497.219141093777,
+          "collectorStats": {
+            "games": 32768,
+            "hands": 391510,
+            "trajectories": 391510,
+            "decisions": 34909817,
+            "inferenceBatches": 23332,
+            "largestBatch": 4096,
+            "elapsedSeconds": 398.35093445,
+            "branchComparisons": 7014,
+            "branchEpisodes": 5497,
+            "branchInferenceRows": 23300
+          }
+        },
+        "completedObservationShapes": {
+          "forcedDecisionFraction": 0.00026330702335105336,
+          "bucketRows": {
+            "16x1": 29888091,
+            "1x1": 9192,
+            "40x1": 70,
+            "4x16": 5006141,
+            "8x16": 6323
+          },
+          "rows": 34909817
+        },
+        "postMeasurementDecodeDiagnosticSeconds": 279.479869937,
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xlog:gc*,safepoint:file=/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/production-coalesced-zgc-gc.log:uptime,level,tags",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/clean-coalesced.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-production-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/production-coalesced-zgc",
+          "256",
+          "true"
+        ],
+        "processSeconds": 693.3361422820017,
+        "processCpuUserSeconds": 2203.054538,
+        "processCpuSystemSeconds": 261.972578,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 3964010496,
+        "peakProcessRssBytes": 27224387584,
+        "sampleCount": 13784,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForPersistedTarget": true
+    }
+  ],
+  "productionPersistedSummary": {
+    "games": 32768,
+    "concurrentGames": 4096,
+    "completedDecisionsPerSecond": 87633.98150814915,
+    "throughputGainPercentOver4096Games": 7.496440712639529,
+    "targetAchieved": false,
+    "remainingThroughputGainPercent": 14.110985577781744,
+    "sameCurrentProductionClassBytesAs4096GameJar": true,
+    "runs": 1
+  },
+  "configurationParity": {
+    "nanoDefaultGamesInFlight": 32768,
+    "cfrDefaultConcurrentGames": 4096,
+    "sameBatchLimits": true,
+    "sameSlotsAndReadyBatches": true,
+    "sameAdvanceWorkerAndTaskLimits": true,
+    "note": "8192 concurrency is tested without persistence, retaining the same 20 GiB heap cap. Nano default32768 concurrency has not been tested for CFR; CFR default remains4096 pending the saved comparison."
+  },
+  "productionBaselineArchive": {
+    "verification": {
+      "archive": "D:\\Epsilon-benchmark-archives\\cfr-100k-20261009-production-coalesced\\completed-measurements.tar",
+      "archiveBytes": 20478894080,
+      "sha256": "b7926b879058d6dcbb669a66d71a2123b4874096120c53579d25be92c40a4180",
+      "persistedSha256": "b7926b879058d6dcbb669a66d71a2123b4874096120c53579d25be92c40a4180",
+      "archiveHashMatched": true,
+      "verifiedFiles": 33024,
+      "verifiedPayloadBytes": 20453495143,
+      "remoteDataRemoved": false,
+      "elapsedSeconds": 223.40599999995902
+    },
+    "remoteBase": "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009",
+    "directories": [
+      "production-coalesced-zgc/matches",
+      "production-coalesced-zgc/warmup-matches"
+    ],
+    "deletionAuthorized": false,
+    "remoteDataRemoved": false
+  },
+  "concurrencyDiagnostics": [
+    {
+      "tag": "production-coalesced-inflight4096-no-save",
+      "jarSha256": "5c753201a976e5a213c59d254532337a09c06afb221a9a27dee5c462e6e8e5a4",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 32768,
+            "concurrentGames": 4096,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.685795115,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 7.850998767,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 32.60731629153241,
+          "handsPerSecond": 387.5939979497388,
+          "trajectoriesPerSecond": 387.5939979497388,
+          "completedDecisionsPerSecond": 34589.86659652344,
+          "nonForcedDecisionsPerSecond": 34581.842139779816,
+          "mainInferenceRowsPerSecond": 34589.86659652344,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 11.972998950797058,
+          "averageInferenceBatchRows": 88.6326264274062,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 3065,
+            "largestBatch": 256,
+            "elapsedSeconds": 7.848925271,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 378.377587571,
+          "completedGames": 32768,
+          "completedHands": 391510,
+          "completedTrajectories": 391510,
+          "completedDecisions": 34909817,
+          "forcedDecisions": 9192,
+          "forcedDecisionFraction": 0.00026330702335105336,
+          "gamesPerSecond": 86.60132385312411,
+          "handsPerSecond": 1034.7071625285835,
+          "trajectoriesPerSecond": 1034.7071625285835,
+          "completedDecisionsPerSecond": 92261.85204071953,
+          "nonForcedDecisionsPerSecond": 92237.55884708984,
+          "mainInferenceRowsPerSecond": 92261.85204071953,
+          "branchInferenceRows": 23219,
+          "branchInferenceRowsPerSecond": 61.36462825151638,
+          "averageInferenceBatchRows": 1585.1992557970686,
+          "collectorStats": {
+            "games": 32768,
+            "hands": 391510,
+            "trajectories": 391510,
+            "decisions": 34909817,
+            "inferenceBatches": 22037,
+            "largestBatch": 4096,
+            "elapsedSeconds": 378.375353892,
+            "branchComparisons": 7001,
+            "branchEpisodes": 5480,
+            "branchInferenceRows": 23219
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xlog:gc*,safepoint:file=/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/production-coalesced-inflight4096-no-save-gc.log:uptime,level,tags",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/clean-coalesced.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-production-collection.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/production-coalesced-inflight4096-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 393.64287213003263,
+        "processCpuUserSeconds": 1440.214367,
+        "processCpuSystemSeconds": 229.672496,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 8433065984,
+        "peakProcessRssBytes": 26239950848,
+        "sampleCount": 7822,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForPersistedTarget": false
+    },
+    {
+      "tag": "production-coalesced-inflight8192-no-save",
+      "jarSha256": "5c753201a976e5a213c59d254532337a09c06afb221a9a27dee5c462e6e8e5a4",
+      "report": {
+        "benchmarkVersion": 2,
+        "operation": "collect",
+        "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+        "effectiveConfig": {
+          "seed": 20261008,
+          "solves": 1,
+          "iterations": 128,
+          "utilityProfile": "TENHOU",
+          "collection": {
+            "mode": "HAND_GRP",
+            "games": 32768,
+            "concurrentGames": 8192,
+            "inferenceBatch": 4096,
+            "exploration": 0.1,
+            "centerUtility": true,
+            "multiTransitionMaxBatch": 2048,
+            "slotsPerDevice": 2,
+            "readyBatchesPerDevice": 4,
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            },
+            "branchComparison": {
+              "enabled": true,
+              "winDecline": true,
+              "kyushu": true,
+              "maxBranchesPerGame": 1,
+              "maxInFlightBranches": 8,
+              "maxExtraInferenceRatio": 0.01
+            }
+          },
+          "learning": {
+            "batchSize": 1024,
+            "microBatchSize": 1024,
+            "regretUpdates": 256,
+            "averageUpdates": 256,
+            "checkpointEveryUpdates": 32,
+            "learningRate": 0.0002,
+            "weightDecay": 0.0001,
+            "gradientClip": 0.5,
+            "computePrecision": "BFLOAT16",
+            "tensorTransfer": "PINNED_BUFFER"
+          },
+          "replay": {
+            "regretCapacity": 1048576,
+            "averageCapacity": 1048576,
+            "maxStoredBytes": 137438953472,
+            "maxRowBytes": 1048576,
+            "cacheRows": 1024
+          },
+          "network": {
+            "hidden": 256,
+            "devices": {
+              "validateIndices": false,
+              "learner": "gpu:0",
+              "inference": "gpu:0",
+              "grp": "cpu"
+            }
+          },
+          "boundary": {
+            "checkpoint": "",
+            "bootstrapGames": 4096,
+            "calibrationGames": 4096
+          },
+          "evaluation": {
+            "every": 10,
+            "championDuel": {
+              "interimWallSeeds": 50000,
+              "maximumWallSeeds": 100000,
+              "alpha": 0.01,
+              "interimAlphaFraction": 0.25
+            },
+            "evalVs": {
+              "gamesInFlight": 32768,
+              "maximumInferenceBatch": 2048,
+              "progressIntervalWallSeeds": 2048,
+              "seedBase": 40000
+            },
+            "arena": {
+              "advanceWorkers": 32,
+              "advanceTasksPerWorker": 2,
+              "maximumAdvanceTaskSize": 64
+            },
+            "batching": {
+              "maxBatchWaitMicros": 1000000
+            }
+          },
+          "initialization": {
+            "nanoCheckpoint": "",
+            "games": 256,
+            "updates": 2048,
+            "capacity": 65536
+          }
+        },
+        "javaVersion": "21.0.12.1",
+        "availableProcessors": 32,
+        "inferenceDevices": "[gpu(0)]",
+        "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+        "persistMatches": false,
+        "setupSeconds": 4.640438603,
+        "modelConfig": {
+          "hiddenSize": 256,
+          "microBatchSize": 512,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "seed": 4541363064315823307,
+          "inferenceBatchSize": 4096,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER",
+          "utilityProfile": "TENHOU"
+        },
+        "warmup": {
+          "elapsedSeconds": 7.829793055,
+          "completedGames": 256,
+          "completedHands": 3043,
+          "completedTrajectories": 3043,
+          "completedDecisions": 271565,
+          "forcedDecisions": 63,
+          "forcedDecisionFraction": 0.00023198865833225931,
+          "gamesPerSecond": 32.6956278667572,
+          "handsPerSecond": 388.64373280680536,
+          "trajectoriesPerSecond": 388.64373280680536,
+          "completedDecisionsPerSecond": 34683.54758451531,
+          "nonForcedDecisionsPerSecond": 34675.50139484498,
+          "mainInferenceRowsPerSecond": 34683.54758451531,
+          "branchInferenceRows": 94,
+          "branchInferenceRowsPerSecond": 12.00542585732491,
+          "averageInferenceBatchRows": 88.83551340745585,
+          "collectorStats": {
+            "games": 256,
+            "hands": 3043,
+            "trajectories": 3043,
+            "decisions": 271565,
+            "inferenceBatches": 3058,
+            "largestBatch": 256,
+            "elapsedSeconds": 7.827611876,
+            "branchComparisons": 54,
+            "branchEpisodes": 43,
+            "branchInferenceRows": 94
+          }
+        },
+        "measured": {
+          "elapsedSeconds": 320.528664155,
+          "completedGames": 32768,
+          "completedHands": 391510,
+          "completedTrajectories": 391510,
+          "completedDecisions": 34909817,
+          "forcedDecisions": 9192,
+          "forcedDecisionFraction": 0.00026330702335105336,
+          "gamesPerSecond": 102.23110649521873,
+          "handsPerSecond": 1221.4508210431848,
+          "trajectoriesPerSecond": 1221.4508210431848,
+          "completedDecisionsPerSecond": 108913.24522264395,
+          "nonForcedDecisionsPerSecond": 108884.56760024087,
+          "mainInferenceRowsPerSecond": 108913.24522264395,
+          "branchInferenceRows": 21024,
+          "branchInferenceRowsPerSecond": 65.59163766343623,
+          "averageInferenceBatchRows": 2942.2878200808627,
+          "collectorStats": {
+            "games": 32768,
+            "hands": 391510,
+            "trajectories": 391510,
+            "decisions": 34909817,
+            "inferenceBatches": 11872,
+            "largestBatch": 4096,
+            "elapsedSeconds": 320.526178971,
+            "branchComparisons": 6396,
+            "branchEpisodes": 4982,
+            "branchInferenceRows": 21024
+          }
+        },
+        "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed match persistence including writer drain. Games count actual hanchan completions; hands and LCFR trajectories are separate. Completed decisions count all retained main-game choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. The game budget uses the same hanchan unit as Nano, but CFR retains all four seats instead of Nano's learner seat. CollectorStats elapsedSeconds excludes the final writer drain; headline elapsedSeconds includes it."
+      },
+      "resources": {
+        "targetDecisionsPerSecond": 100000,
+        "exitCode": 0,
+        "command": [
+          "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+          "-XX:+UseZGC",
+          "-XX:+ZGenerational",
+          "-Xlog:gc*,safepoint:file=/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/production-coalesced-inflight8192-no-save-gc.log:uptime,level,tags",
+          "-Xms1g",
+          "-Xmx20g",
+          "-XX:MaxDirectMemorySize=6g",
+          "-Dai.djl.pytorch.num_threads=1",
+          "-Dai.djl.pytorch.num_interop_threads=1",
+          "-cp",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-80k-20261009/candidate-v6-epsilon-cfr-tests:/home/koutachan/.m2/repository/ai/djl/pytorch/pytorch-jni-rocm7.2-linux-x86_64/2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT/pytorch-jni-rocm7.2-linux-x86_64-2.11.0-0.40.4-rocm7.2.2-cfr-SNAPSHOT.jar:/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/clean-coalesced.jar",
+          "com.epsilon.cfr.benchmark.CfrPerformanceBenchmark",
+          "collect",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/cfr-production-inflight8192.toml",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-event-optimization-20261009/optimized-input",
+          "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+          "/home/koutachan/epsilon-ai/benchmarks/cfr-100k-20261009/production-coalesced-inflight8192-no-save",
+          "256",
+          "false"
+        ],
+        "processSeconds": 335.3259096168913,
+        "processCpuUserSeconds": 1553.058288,
+        "processCpuSystemSeconds": 173.502903,
+        "cpuScope": "Entire Java child process including setup, warmup and post-run decode; not measured collection interval only.",
+        "initialDeviceBytes": 26734592,
+        "peakDeviceBytes": 6507855872,
+        "peakProcessRssBytes": 24018366464,
+        "sampleCount": 6657,
+        "gpuMemorySource": "/sys/class/drm/card0/device/mem_info_vram_used",
+        "memoryScope": "GPU0 device-wide VRAM and Java process RSS sampled every 50 ms over the entire process, including setup, warmup and diagnostics; not framework allocator metrics. ZGC may expose multiple mappings in RSS; no heap-footprint claim."
+      },
+      "eligibleForPersistedTarget": false
+    }
+  ],
+  "concurrencyDiagnosticStatus": "Matched no-save comparison completed. 8192 concurrency improved throughput by 18.04797195548966 percent. Saved comparison awaits authorization to remove the verified archived production baseline data.",
+  "concurrencyComparisonSummary": {
+    "games": 32768,
+    "persist": false,
+    "lowConcurrency": 4096,
+    "highConcurrency": 8192,
+    "lowDecisionsPerSecond": 92261.85204071953,
+    "highDecisionsPerSecond": 108913.24522264395,
+    "throughputGainPercent": 18.04797195548966,
+    "lowAverageInferenceBatchRows": 1585.1992557970686,
+    "highAverageInferenceBatchRows": 2942.2878200808627,
+    "lowBranchInferenceRows": 23219,
+    "highBranchInferenceRows": 21024,
+    "sameJarAndModelConfig": true,
+    "onlyEffectiveConfigDifference": "collection.concurrentGames",
+    "maximumHeapGiB": 20,
+    "runsPerSetting": 1,
+    "eligibleForPersistedTarget": false,
+    "note": "All main game, hand and decision counts match; asynchronous branch admission counts differ. One run per setting, no confidence interval. Do not treat no-save throughput as persisted collection throughput."
+  },
+  "nextExperiment": {
+    "tag": "production-coalesced-inflight8192-zgc",
+    "games": 32768,
+    "concurrentGames": 8192,
+    "persist": true,
+    "status": "Awaiting user authorization for deletion of production-coalesced-zgc/matches and warmup-matches after verified archival. No benchmark Java process remains active."
+  }
+}

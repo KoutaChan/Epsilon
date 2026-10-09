@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * GPUごとに、ホストからの入力転送・順伝播・ホストへの出力転送をまとめて実行する。
@@ -323,7 +324,7 @@ public final class DecisionDevicePipeline implements AutoCloseable, InferenceDis
         putUninterruptibly(submitActions, slot);
       }
       if (!completed) {
-        java.util.concurrent.locks.LockSupport.parkNanos(POLL_NANOS);
+        LockSupport.parkNanos(POLL_NANOS);
       }
     }
   }

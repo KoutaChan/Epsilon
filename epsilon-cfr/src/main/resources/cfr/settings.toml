@@ -1,0 +1,113 @@
+# Epsilon-CFR の同梱既定設定。同梱値 < 選択したTOML < 明示上書きの順に適用する。
+# 系列CLIの --settings / -Depsilon.* は他系列と共通。省略項目は同梱値を使う。
+# run/config.json は確定値の保存形式であり、再開中は変更しない。
+
+[epsilon.cfr]
+seed = 20261007
+solves = 1
+iterations = 128
+# commonの順位効用。TENHOU / PLACEMENT / TOP / LAST_AVOIDANCE / MLEAGUE。
+# 終端・GRP境界・分岐・昇格評価を同じ尺度にする。run開始後は変更しない。
+utilityProfile = "TENHOU"
+
+[epsilon.cfr.collection]
+# 両方式とも半荘を最後まで収集する。HAND_GRPは局ごとに固定GRPで評価し、MATCH_MCは最終順位を使う。
+mode = "HAND_GRP"
+games = 32768
+# 同時に進める半荘数。HAND_GRPでは保存先に受け渡した局の観測を順次解放する。
+concurrentGames = 4096
+inferenceBatch = 4096
+multiTransitionMaxBatch = 2048
+slotsPerDevice = 2
+readyBatchesPerDevice = 4
+exploration = 0.10
+centerUtility = true
+
+[epsilon.cfr.collection.arena]
+advanceWorkers = 32
+advanceTasksPerWorker = 2
+maximumAdvanceTaskSize = 64
+
+[epsilon.cfr.collection.batching]
+maxBatchWaitMicros = 1000000
+
+[epsilon.cfr.collection.branchComparison]
+# RON見逃しと九種九牌の二択を追加枝で比較する。通常の収集数や平均方策の教師には含めない。
+enabled = true
+winDecline = true
+kyushu = true
+maxBranchesPerGame = 1
+maxInFlightBranches = 8
+# 追加枝の開始予算。開始済みの枝は同じ評価境界まで進めるため、完了時には超える場合がある。
+maxExtraInferenceRatio = 0.01
+
+[epsilon.cfr.learning]
+# 1更新でreplayから抽選する判断数。collection.gamesの収集半荘数とは別。
+batchSize = 1024
+# 1デバイスの計算上限。複数GPUではbatchSizeをデバイス数で分けた上限も適用する。
+microBatchSize = 1024
+regretUpdates = 256
+# evaluation.everyで指定した評価直前と、各solveの最終反復だけ学習する。
+averageUpdates = 256
+checkpointEveryUpdates = 32
+learningRate = 2e-4
+weightDecay = 1e-4
+gradientClip = 0.5
+computePrecision = "BFLOAT16"
+tensorTransfer = "PINNED_BUFFER"
+
+[epsilon.cfr.replay]
+regretCapacity = 1048576
+averageCapacity = 1048576
+# 圧縮payload保存量の上限128GiB、1判断の上限1MiB。
+maxStoredBytes = 137438953472
+maxRowBytes = 1048576
+cacheRows = 1024
+
+[epsilon.cfr.network]
+# Nano初期化では元checkpointのhiddenと揃える。
+hidden = 256
+
+[epsilon.cfr.network.devices]
+# 空文字列は利用可能な全GPU、自動選択できなければCPU。明示GPU指定はCPUへfallbackしない。
+validateIndices = false
+learner = ""
+inference = ""
+grp = "cpu"
+
+[epsilon.cfr.boundary]
+# 空文字列は未指定。相対パスは起動ディレクトリ基準。
+checkpoint = ""
+bootstrapGames = 4096
+calibrationGames = 4096
+
+[epsilon.cfr.evaluation]
+# 平均方策の学習と評価の共通間隔。平均用の教師は毎反復蓄積する。
+every = 10
+
+[epsilon.cfr.evaluation.championDuel]
+interimWallSeeds = 50000
+maximumWallSeeds = 100000
+alpha = 0.01
+interimAlphaFraction = 0.25
+
+[epsilon.cfr.evaluation.evalVs]
+gamesInFlight = 32768
+maximumInferenceBatch = 2048
+progressIntervalWallSeeds = 2048
+seedBase = 40000
+
+[epsilon.cfr.evaluation.arena]
+advanceWorkers = 32
+advanceTasksPerWorker = 2
+maximumAdvanceTaskSize = 64
+
+[epsilon.cfr.evaluation.batching]
+maxBatchWaitMicros = 1000000
+
+[epsilon.cfr.initialization]
+# 空ならNano初期化を行わない。指定時はrunへ元モデルを固定保存する。
+nanoCheckpoint = ""
+games = 256
+updates = 2048
+capacity = 65536

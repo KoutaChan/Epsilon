@@ -14,7 +14,9 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -153,7 +155,7 @@ public final class EpsilonDecisionCheckpointManager {
                         try {
                           return Files.getLastModifiedTime(p).toMillis();
                         } catch (IOException failure) {
-                          throw new java.io.UncheckedIOException(failure);
+                          throw new UncheckedIOException(failure);
                         }
                       }))
               .orElse(null);
@@ -208,6 +210,12 @@ public final class EpsilonDecisionCheckpointManager {
         deleteDirectoryQuietly(tmp);
       }
     }
+  }
+
+  /** 推論に必要な保存物だけを、新しい変更不可スナップショットへ複製する。 */
+  public static void copyInferenceSnapshot(Path source, Path target) throws IOException {
+    if (Files.exists(target)) throw new FileAlreadyExistsException(target.toString());
+    copyAtIteration(source, target, requireValidCheckpoint(source).iteration);
   }
 
   /** 指定反復回数のチェックポイントを変更不可スナップショットとして複製する。 */

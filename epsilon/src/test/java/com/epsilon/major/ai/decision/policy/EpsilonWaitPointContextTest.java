@@ -13,6 +13,7 @@ import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.core.Action;
 import com.epsilon.major.ai.decision.input.DecisionFeatureCodec;
 import com.epsilon.major.ai.decision.input.DecisionInputSchema;
@@ -31,7 +32,7 @@ public final class EpsilonWaitPointContextTest {
       NDArray weight = encoder.getParameters().valueAt(0).getArray();
       for (boolean empty : new boolean[] {false, true}) {
         NDArray features = manager.zeros(new Shape(3, EpsilonPointProjection.FEATURE_WIDTH));
-        if (!empty) features.set(new ai.djl.ndarray.index.NDIndex("1,:"), 0.5f);
+        if (!empty) features.set(new NDIndex("1,:"), 0.5f);
         NDArray valid = manager.create(empty ? new float[] {0, 0, 0} : new float[] {0, 1, 0});
         NDArray indices = manager.create(empty ? new int[0] : new int[] {1});
         weight.getGradient().fillI(0);
@@ -205,8 +206,8 @@ public final class EpsilonWaitPointContextTest {
       // 無効な事実でも待ち牌IDは非ゼロになり得るため、未選択行のバイアスも比較する。
       NDArray waitIds = manager.ones(new Shape(3, 1, 1, slots), DataType.INT32);
       NDArray permutation = manager.create(new int[] {2, 0, 1});
-      NDArray sourceLedger = com.epsilon.ai.model.EpsilonMaskedRows.gather(ledger, permutation);
-      NDArray sourceStates = com.epsilon.ai.model.EpsilonMaskedRows.gather(state, permutation);
+      NDArray sourceLedger = EpsilonMaskedRows.gather(ledger, permutation);
+      NDArray sourceStates = EpsilonMaskedRows.gather(state, permutation);
       NDArray batchIds = manager.create(new int[] {1, 2, 0});
       try (var autocast =
           dataType == DataType.FLOAT32

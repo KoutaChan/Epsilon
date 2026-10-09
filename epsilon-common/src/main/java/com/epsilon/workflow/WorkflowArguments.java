@@ -6,7 +6,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
-/** コマンド名を除いた位置引数を一貫したエラー形式で型変換する。 */
+/** コマンド名を除いた引数を一貫したエラー形式で型変換する。 */
 public final class WorkflowArguments {
 
   private final String command;
@@ -25,6 +25,11 @@ public final class WorkflowArguments {
 
   public int size() {
     return values.size();
+  }
+
+  /** 全引数を {@code --name value} 形式で解析する。位置引数を使うコマンドとは併用しない。 */
+  public WorkflowOptions namedOptions() {
+    return WorkflowOptions.parse(command, values);
   }
 
   public String text(int index, String name) {

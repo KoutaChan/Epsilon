@@ -44,6 +44,11 @@ public final class DecisionHostBatch {
     return new DecisionHostBatch(DecisionHostInputs.inference(capacity, bucket), null);
   }
 
+  static DecisionHostBatch inference(
+      int capacity, DecisionBucket bucket, DecisionHostInputs.InferenceStorage storage) {
+    return new DecisionHostBatch(DecisionHostInputs.inference(capacity, bucket, storage), null);
+  }
+
   private DecisionHostBatch(DecisionHostInputs inputs, DecisionTrainingTargets trainingTargets) {
     this.inputs = inputs;
     this.trainingTargets = trainingTargets;
@@ -890,7 +895,7 @@ public final class DecisionHostBatch {
      * @return カテゴリ値 要素数
      */
     public int inputCategoricalElementCount() {
-      return new DecisionInputLayout(size, bucket()).categoricalElementCount();
+      return DecisionInputLayout.elementCount(DecisionInputLayout.Slab.CATEGORICAL, size, bucket());
     }
 
     /**
@@ -899,7 +904,7 @@ public final class DecisionHostBatch {
      * @return 数値 要素数
      */
     public int inputNumericElementCount() {
-      return new DecisionInputLayout(size, bucket()).numericElementCount();
+      return DecisionInputLayout.elementCount(DecisionInputLayout.Slab.NUMERIC, size, bucket());
     }
 
     int playerMemoryPresentCount() {
@@ -1079,6 +1084,38 @@ public final class DecisionHostBatch {
           DecisionInputLayout.Slab.NUMERIC, fromInclusive, size, null, destination);
     }
 
+    /**
+     * 新規確保などでゼロ初期化済みのバッファへ書き込む。実在しない遷移の領域は位置だけ進め、既存のゼロを残す。
+     * 再利用バッファには通常のcopyInputCategoriesToとcopyInputNumericsToを使う。
+     */
+    public void copyInputsToZeroed(ShortBuffer categories, FloatBuffer numerics) {
+      source.inputs.copyRowsTo(
+          DecisionInputLayout.Slab.CATEGORICAL, fromInclusive, size, categories, null, false);
+      source.inputs.copyRowsTo(
+          DecisionInputLayout.Slab.NUMERIC, fromInclusive, size, null, numerics, false);
+    }
+
+    /** 未使用遷移を持たない記憶領域から構築された入力かを返す。 */
+    public boolean hasCompactTransitions() {
+      return !source.inputs.isDense();
+    }
+
+    /** 一行の保存に使用する、指定行動の記憶領域にある遷移数を返す。 */
+    public int actionTransitionCount(int action) {
+      if (size != 1) throw new IllegalStateException("Transition counts require one input row");
+      return source.inputs.transitionCapacity(fromInclusive, action);
+    }
+
+    /** 推論と同じテンソル順で実在する入力だけを連続して複製する。未使用遷移の領域は書かない。 */
+    public void copyCompactInputsTo(ShortBuffer categories, FloatBuffer numerics) {
+      for (DecisionInputLayout.Tensor tensor : DecisionInputLayout.tensors()) {
+        copyInferenceTensorTo(
+            tensor,
+            tensor.slab() == DecisionInputLayout.Slab.CATEGORICAL ? categories : null,
+            tensor.slab() == DecisionInputLayout.Slab.NUMERIC ? numerics : null);
+      }
+    }
+
     void copyInferenceInputsTo(
         ShortBuffer categoricalDestination,
         FloatBuffer numericDestination,
@@ -1086,61 +1123,48 @@ public final class DecisionHostBatch {
       int categoricalStart = categoricalDestination.position();
       int numericStart = numericDestination.position();
       for (DecisionInputLayout.Tensor tensor : DecisionInputLayout.tensors()) {
-        if (tensor.isTransition()) {
-          continue;
-        }
-        DecisionInferenceInputLayout.Region region = layout.region(tensor);
-        ShortBuffer categorical =
+        var region = layout.region(tensor);
+        copyInferenceTensorTo(
+            tensor,
             tensor.slab() == DecisionInputLayout.Slab.CATEGORICAL
-                ? categoricalDestination.position(
-                    Math.addExact(categoricalStart, region.slabOffset()))
-                : null;
-        FloatBuffer numeric =
+                ? categoricalDestination.position(categoricalStart + region.slabOffset())
+                : null,
             tensor.slab() == DecisionInputLayout.Slab.NUMERIC
-                ? numericDestination.position(Math.addExact(numericStart, region.slabOffset()))
-                : null;
-        source.inputs.copyTensorRowsTo(tensor, fromInclusive, size, categorical, numeric);
+                ? numericDestination.position(numericStart + region.slabOffset())
+                : null);
       }
+      categoricalDestination.position(categoricalStart + layout.categoricalElementCount());
+      numericDestination.position(numericStart + layout.numericElementCount());
+    }
 
+    /** 元の容量区分を保ち、一つの論理テンソルだけを最終転送位置へ書き込む。 */
+    void copyInferenceTensorTo(
+        DecisionInputLayout.Tensor tensor, ShortBuffer categorical, FloatBuffer numeric) {
+      if (!tensor.isTransition()) {
+        source.inputs.copyTensorRowsTo(tensor, fromInclusive, size, categorical, numeric);
+        return;
+      }
+      int stride = tensor.elementsPerTransition();
       int transitionCapacity = bucket().actionTransitionCapacity();
       boolean compact = !source.inputs.isDense();
-      for (DecisionInputLayout.Tensor tensor : DecisionInputLayout.tensors()) {
-        if (!tensor.isTransition()) {
+      for (int localRow = 0; localRow < size; localRow++) {
+        int sourceRow = fromInclusive + localRow;
+        if (compact || transitionCapacity == 1) {
+          int transitions =
+              compact
+                  ? source.inputs.compactTransitionCount(sourceRow)
+                  : source.legalActionCount(sourceRow);
+          source.inputs.copyTransitionRowsTo(
+              tensor, sourceRow, 0, transitions, stride, categorical, numeric);
           continue;
         }
-        int stride = tensor.elementsPerTransition();
-        DecisionInferenceInputLayout.Region region = layout.region(tensor);
-        ShortBuffer categorical =
-            tensor.slab() == DecisionInputLayout.Slab.CATEGORICAL
-                ? categoricalDestination.position(
-                    Math.addExact(categoricalStart, region.slabOffset()))
-                : null;
-        FloatBuffer numeric =
-            tensor.slab() == DecisionInputLayout.Slab.NUMERIC
-                ? numericDestination.position(Math.addExact(numericStart, region.slabOffset()))
-                : null;
-        for (int localRow = 0; localRow < size; localRow++) {
-          int sourceRow = fromInclusive + localRow;
-          if (compact || transitionCapacity == 1) {
-            int transitions =
-                compact
-                    ? source.inputs.compactTransitionCount(sourceRow)
-                    : source.legalActionCount(sourceRow);
-            source.inputs.copyTransitionRowsTo(
-                tensor, sourceRow, 0, transitions, stride, categorical, numeric);
-            continue;
-          }
-          int actions = source.legalActionCount(sourceRow);
-          for (int action = 0; action < actions; action++) {
-            int transitions = source.actionTransitionCount(sourceRow, action);
-            source.inputs.copyTransitionRowsTo(
-                tensor, sourceRow, action, transitions, stride, categorical, numeric);
-          }
+        int actions = source.legalActionCount(sourceRow);
+        for (int action = 0; action < actions; action++) {
+          int transitions = source.actionTransitionCount(sourceRow, action);
+          source.inputs.copyTransitionRowsTo(
+              tensor, sourceRow, action, transitions, stride, categorical, numeric);
         }
       }
-      categoricalDestination.position(
-          Math.addExact(categoricalStart, layout.categoricalElementCount()));
-      numericDestination.position(Math.addExact(numericStart, layout.numericElementCount()));
     }
 
     void copyStateCategoriesTo(ShortBuffer destination) {
@@ -1326,66 +1350,19 @@ public final class DecisionHostBatch {
       int categoricalStart = categoricalDestination.position();
       int numericStart = numericDestination.position();
       for (DecisionInputLayout.Tensor tensor : DecisionInputLayout.tensors()) {
-        if (tensor.isTransition()) {
-          continue;
-        }
-        DecisionInferenceInputLayout.Region region = layout.region(tensor);
+        var region = layout.region(tensor);
         ShortBuffer categorical =
             tensor.slab() == DecisionInputLayout.Slab.CATEGORICAL
-                ? categoricalDestination.position(
-                    Math.addExact(categoricalStart, region.slabOffset()))
+                ? categoricalDestination.position(categoricalStart + region.slabOffset())
                 : null;
         FloatBuffer numeric =
             tensor.slab() == DecisionInputLayout.Slab.NUMERIC
-                ? numericDestination.position(Math.addExact(numericStart, region.slabOffset()))
+                ? numericDestination.position(numericStart + region.slabOffset())
                 : null;
-        for (RowSlice slice : slices) {
-          slice.source.inputs.copyTensorRowsTo(
-              tensor, slice.fromInclusive, slice.size, categorical, numeric);
-        }
+        for (RowSlice slice : slices) slice.copyInferenceTensorTo(tensor, categorical, numeric);
       }
-
-      int transitionCapacity = bucket.actionTransitionCapacity();
-      for (DecisionInputLayout.Tensor tensor : DecisionInputLayout.tensors()) {
-        if (!tensor.isTransition()) {
-          continue;
-        }
-        int stride = tensor.elementsPerTransition();
-        DecisionInferenceInputLayout.Region region = layout.region(tensor);
-        ShortBuffer categorical =
-            tensor.slab() == DecisionInputLayout.Slab.CATEGORICAL
-                ? categoricalDestination.position(
-                    Math.addExact(categoricalStart, region.slabOffset()))
-                : null;
-        FloatBuffer numeric =
-            tensor.slab() == DecisionInputLayout.Slab.NUMERIC
-                ? numericDestination.position(Math.addExact(numericStart, region.slabOffset()))
-                : null;
-        for (RowSlice slice : slices) {
-          boolean compact = !slice.source.inputs.isDense();
-          for (int localRow = 0; localRow < slice.size; localRow++) {
-            int sourceRow = slice.fromInclusive + localRow;
-            if (compact || transitionCapacity == 1) {
-              int transitions =
-                  compact
-                      ? slice.source.inputs.compactTransitionCount(sourceRow)
-                      : slice.source.legalActionCount(sourceRow);
-              slice.source.inputs.copyTransitionRowsTo(
-                  tensor, sourceRow, 0, transitions, stride, categorical, numeric);
-              continue;
-            }
-            int actions = slice.source.legalActionCount(sourceRow);
-            for (int action = 0; action < actions; action++) {
-              int transitions = slice.source.actionTransitionCount(sourceRow, action);
-              slice.source.inputs.copyTransitionRowsTo(
-                  tensor, sourceRow, action, transitions, stride, categorical, numeric);
-            }
-          }
-        }
-      }
-      categoricalDestination.position(
-          Math.addExact(categoricalStart, layout.categoricalElementCount()));
-      numericDestination.position(Math.addExact(numericStart, layout.numericElementCount()));
+      categoricalDestination.position(categoricalStart + layout.categoricalElementCount());
+      numericDestination.position(numericStart + layout.numericElementCount());
     }
 
     /** 全入力元のプレイヤーごとの履歴表現、遷移、方策実行インデックスを集約順に書き込みます。 */

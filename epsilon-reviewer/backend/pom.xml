@@ -11,6 +11,7 @@
   <name>Epsilon AI Reviewer server</name>
   <properties><epsilon.mainClass>com.epsilon.reviewer.Main</epsilon.mainClass></properties>
   <dependencies>
+    <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-cfr</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-common</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>com.epsilon</groupId><artifactId>epsilon</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-nano</artifactId><version>${project.version}</version></dependency>

@@ -229,6 +229,7 @@
   <modules>
     <module>epsilon-common</module>
     <module>epsilon-nano</module>
+    <module>epsilon-cfr</module>
     <module>epsilon-pico</module>
     <module>epsilon</module>
     <module>epsilon-arena</module>

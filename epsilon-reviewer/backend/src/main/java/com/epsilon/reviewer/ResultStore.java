@@ -4,15 +4,32 @@ import com.epsilon.reviewer.RecordFetcher.SourceRecord;
 import com.epsilon.reviewer.dto.ModelInfo;
 import com.epsilon.reviewer.dto.RecordMetadata;
 import com.epsilon.reviewer.dto.ReviewResult;
-import com.google.gson.*;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.stream.JsonWriter;
-import java.io.*;
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.time.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 
 /** 結果と元牌譜を同時に確定し、小さい一覧データだけを履歴で読みます。 */
@@ -346,7 +363,7 @@ public final class ResultStore {
   private static void write(Path path, byte[] data) throws IOException {
     try (FileChannel channel =
         FileChannel.open(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-      var buffer = java.nio.ByteBuffer.wrap(data);
+      var buffer = ByteBuffer.wrap(data);
       while (buffer.hasRemaining()) channel.write(buffer);
       channel.force(true);
     }

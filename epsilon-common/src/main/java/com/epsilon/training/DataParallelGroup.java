@@ -35,6 +35,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
 /**
@@ -47,7 +48,7 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
   private static final AtomicInteger THREAD_IDS = new AtomicInteger();
 
   protected final List<L> lanes;
-  private final java.util.function.BiPredicate<ParameterScope, String> parameterSelection;
+  private final BiPredicate<ParameterScope, String> parameterSelection;
   private final DecisionExecutionContext executionContext;
   private final ParameterScope scope;
   private final Model masterModel;
@@ -66,7 +67,7 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       Model masterModel,
       DataType optimizerDataType,
       DecisionExecutionContext executionContext,
-      java.util.function.BiPredicate<ParameterScope, String> parameterSelection) {
+      BiPredicate<ParameterScope, String> parameterSelection) {
     this.parameterSelection = parameterSelection;
     this.lanes = lanes;
     this.executionContext = executionContext;
@@ -126,6 +127,14 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
 
   public void ensureUsable() {
     requireOpen();
+  }
+
+  /** 別の実行ストリームへモデルを公開する前に、学習ワーカーのパラメーター更新を待つ。 */
+  public void awaitParameterUpdates() {
+    requireOpen();
+    for (L lane : lanes) {
+      if (lane.stepCompletion != null) lane.stepCompletion.synchronize();
+    }
   }
 
   public <T> List<T> executeWork(List<? extends LaneWork<L, T>> work) throws IOException {
@@ -487,6 +496,9 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
                   optimizerState.scope(), canonicalBuffers, layout, gradientScales[index]);
         }
         validateAndScalePreparedGradients(prepared);
+        for (PreparedFlatOptimizerStep update : prepared) {
+          prepareOptimizerGradient(update.scope(), update.canonicalBuffers().gradient());
+        }
         commitStarted = true;
         for (int index = 0; index < prepared.length; index++) {
           PreparedFlatOptimizerStep update = prepared[index];
@@ -532,6 +544,18 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
     if (terminalCommitFailure == null) {
       terminalCommitFailure = failure;
     }
+  }
+
+  /**
+   * 検証・集約済みの勾配に系列固有の診断や正規化を適用する。既定では何も変更しない。
+   *
+   * <p>呼出しはoptimizer更新前の1回だけで、配列を保持してはならない。変更する場合は有限性を維持する。
+   */
+  protected void prepareOptimizerGradient(ParameterScope optimizerScope, NDArray gradient) {}
+
+  /** 最適点など、損失の性質からゼロ勾配での更新を許す系列だけが上書きする。 */
+  protected boolean allowsZeroGradientUpdates() {
+    return false;
   }
 
   @Override
@@ -593,7 +617,7 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
         throw new IllegalStateException(
             prepared.scope().label() + " gradient contains a non-finite value");
       }
-      if (!(maximum > 0.0f)) {
+      if (!(maximum > 0.0f) && !allowsZeroGradientUpdates()) {
         throw new IllegalStateException(prepared.scope().label() + " gradient is zero");
       }
       double scaledMaximum = maximum * prepared.gradientScale();
@@ -787,6 +811,7 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
 
   /** 学習段階と、更新対象が方策・価値・その両方のどれかを表す。 */
   public enum ParameterScope {
+    ALL("all"),
     ONLINE("online"),
     ONLINE_ACTOR("online-actor"),
     ONLINE_VALUE("online-value"),
@@ -812,7 +837,7 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
     }
 
     public boolean allowsMissingLaneGradients() {
-      return this == ONLINE_ACTOR || this == ONLINE_VALUE;
+      return this == ONLINE_ACTOR || this == ONLINE_VALUE || this == ALL;
     }
 
     public boolean usesOnlineTrainingInput() {

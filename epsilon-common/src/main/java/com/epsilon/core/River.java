@@ -1,6 +1,7 @@
 package com.epsilon.core;
 
 import java.util.Arrays;
+import java.util.Objects;
 
 /** 河（捨て牌）を管理するクラス。 */
 public final class River {
@@ -249,7 +250,7 @@ public final class River {
 
   /** 指定インデックスの打牌を返す。 */
   public Discard discard(int index) {
-    return discards[java.util.Objects.checkIndex(index, size)];
+    return discards[Objects.checkIndex(index, size)];
   }
 
   /** 指定牌種を捨てた回数を返す。 */

@@ -1,0 +1,3914 @@
+{
+  "date": "2026-10-09 Asia/Tokyo",
+  "gpu": "AMD Radeon RX 7900 XTX 24 GiB, physical GPU 0",
+  "baselineCommit": "44c07f4",
+  "acceptedJarSha256": "dae21c2941dccbe8d81a2c03c32b4f7a3d8dba889ca07a5dd1350c76849e69a0",
+  "runtime": "Java 21, DJL 0.40.4 ROCm snapshot, PyTorch 2.11.0 ROCm 7.2.2",
+  "baselineAndAccepted": {
+    "collection": [
+      "collect-baseline",
+      "collect-final"
+    ],
+    "weightedLearner": [
+      "learn-baseline",
+      "learn-final"
+    ],
+    "distinctDiagnostic": [
+      "learn-baseline-distinct",
+      "learn-final-distinct"
+    ],
+    "nanoLearner": [
+      "learn-nano",
+      "learn-nano-optimized"
+    ]
+  },
+  "notAdopted": [
+    "learn-optimized",
+    "learn-optimized-distinct",
+    "learn-gru-bf16",
+    "learn-gru-bf16-distinct-v2"
+  ],
+  "excludedInvalidMeasurement": "learn-gru-bf16-distinct did not include the GRU overlay in its classpath and is excluded. Its corrected replacement is learn-gru-bf16-distinct-v2; class loading confirmed CfrStateRepresentation and HistoryCastStore came from gru-bf16-overlay.",
+  "measurements": {
+    "collect-baseline": {
+      "benchmarkVersion": 1,
+      "operation": "collect",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "inferenceDevices": "[gpu(0)]",
+      "rootBank": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/solves/solve-0000-f9fb790d-a17f-4c3a-a036-8848ac1777cd/root-bank.bin",
+      "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+      "persistEpisodes": true,
+      "setupSeconds": 5.517551418,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "warmup": {
+        "elapsedSeconds": 4.173670627,
+        "completedEpisodes": 256,
+        "completedDecisions": 22775,
+        "forcedDecisions": 14,
+        "forcedDecisionFraction": 0.0006147091108671789,
+        "episodesPerSecond": 61.336895715704976,
+        "completedDecisionsPerSecond": 5456.827343457738,
+        "nonForcedDecisionsPerSecond": 5453.472981973285,
+        "mainInferenceRowsPerSecond": 5456.827343457738,
+        "averageInferenceBatchRows": 104.95391705069125,
+        "collectorStats": {
+          "episodes": 256,
+          "decisions": 22775,
+          "inferenceBatches": 217,
+          "largestBatch": 256,
+          "elapsedSeconds": 4.17271432,
+          "branchComparisons": 7,
+          "branchEpisodes": 6,
+          "branchInferenceRows": 0
+        }
+      },
+      "measured": {
+        "elapsedSeconds": 27.287751618,
+        "completedEpisodes": 4096,
+        "completedDecisions": 362527,
+        "forcedDecisions": 167,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "episodesPerSecond": 150.1039754883333,
+        "completedDecisionsPerSecond": 13285.33787154761,
+        "nonForcedDecisionsPerSecond": 13279.217909656363,
+        "mainInferenceRowsPerSecond": 13285.33787154761,
+        "averageInferenceBatchRows": 1088.918918918919,
+        "collectorStats": {
+          "episodes": 4096,
+          "decisions": 362527,
+          "inferenceBatches": 333,
+          "largestBatch": 4096,
+          "elapsedSeconds": 27.287615841,
+          "branchComparisons": 125,
+          "branchEpisodes": 45,
+          "branchInferenceRows": 83
+        }
+      },
+      "completedObservationShapes": {
+        "maxHistoryTokens": 969,
+        "p95HistoryTokens": 828,
+        "rows": 362527,
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "meanBoundaryFloats": 42.807749491761996,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanHistoryTokens": 456.4576128122871
+      },
+      "postMeasurementDecodeDiagnosticSeconds": 5.914969537,
+      "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional synchronous compressed episode persistence. Completed decisions count retained main-episode choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. This is not a Nano-equivalent workload."
+    },
+    "collect-final": {
+      "benchmarkVersion": 1,
+      "operation": "collect",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "inferenceDevices": "[gpu(0)]",
+      "rootBank": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/solves/solve-0000-f9fb790d-a17f-4c3a-a036-8848ac1777cd/root-bank.bin",
+      "grpCheckpoint": "/home/koutachan/epsilon-ai/runs/epsilon-cfr-lcfr-nano-20261008/train-32768-bounded/artifacts/nano-source-00000000-4cee842e-8409-40e3-818c-39f494e96720",
+      "persistEpisodes": true,
+      "setupSeconds": 5.012069563,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "warmup": {
+        "elapsedSeconds": 2.826071718,
+        "completedEpisodes": 256,
+        "completedDecisions": 22686,
+        "forcedDecisions": 20,
+        "forcedDecisionFraction": 0.0008816009873931059,
+        "episodesPerSecond": 90.58510382785693,
+        "completedDecisionsPerSecond": 8027.397130620165,
+        "nonForcedDecisionsPerSecond": 8020.320169383614,
+        "mainInferenceRowsPerSecond": 8027.397130620165,
+        "averageInferenceBatchRows": 63.904225352112675,
+        "collectorStats": {
+          "episodes": 256,
+          "decisions": 22686,
+          "inferenceBatches": 355,
+          "largestBatch": 256,
+          "elapsedSeconds": 2.820004096,
+          "branchComparisons": 9,
+          "branchEpisodes": 6,
+          "branchInferenceRows": 0
+        }
+      },
+      "measured": {
+        "elapsedSeconds": 15.017656531,
+        "completedEpisodes": 4096,
+        "completedDecisions": 362631,
+        "forcedDecisions": 176,
+        "forcedDecisionFraction": 0.0004853418488766818,
+        "episodesPerSecond": 272.7456172369428,
+        "completedDecisionsPerSecond": 24146.9765440063,
+        "nonForcedDecisionsPerSecond": 24135.25700576565,
+        "mainInferenceRowsPerSecond": 24146.9765440063,
+        "averageInferenceBatchRows": 1126.44099378882,
+        "collectorStats": {
+          "episodes": 4096,
+          "decisions": 362631,
+          "inferenceBatches": 322,
+          "largestBatch": 4096,
+          "elapsedSeconds": 15.011900016,
+          "branchComparisons": 120,
+          "branchEpisodes": 41,
+          "branchInferenceRows": 83
+        }
+      },
+      "completedObservationShapes": {
+        "maxHistoryTokens": 961,
+        "meanHistoryTokens": 456.44385339367017,
+        "forcedDecisionFraction": 0.0004853418488766818,
+        "meanBoundaryFloats": 42.81178387948079,
+        "bucketRows": {
+          "16x1": 309808,
+          "1x1": 176,
+          "40x1": 7,
+          "4x16": 52551,
+          "8x16": 89
+        },
+        "rows": 362631,
+        "p95HistoryTokens": 828
+      },
+      "postMeasurementDecodeDiagnosticSeconds": 6.028725176,
+      "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed episode persistence including writer drain. Completed decisions count retained main-episode choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. This is not a Nano-equivalent workload."
+    },
+    "learn-baseline": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.734373457,
+      "corpusDecodeDiagnosticSeconds": 3.4869706409999974,
+      "corpusShapes": {
+        "p95HistoryTokens": 828,
+        "maxHistoryTokens": 969,
+        "meanHistoryTokens": 456.4576128122871,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanBoundaryFloats": 42.807749491761996,
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "rows": 362527
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.904397962,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "elapsedSeconds": 2.708392683,
+        "samplingAndPayloadDecodeSeconds": 0.015536958,
+        "trainCallIncludingObservationDecodeSeconds": 2.2368826790000003,
+        "checkpointSaveAndSynchronizationSeconds": 0.453197312,
+        "instrumentationAndLoopSeconds": 0.00277573399999953,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 894,
+        "distinctRowsAcrossWindow": 369,
+        "logicalSamplesPerSecond": 3024.6721797099167,
+        "uniqueProcessedRowsPerSecond": 330.08507429939766,
+        "updatesPerSecond": 2.9537814254979655,
+        "meanLoss": 0.001574459376570303,
+        "logicalSampleShapes": {
+          "p95HistoryTokens": 886,
+          "maxHistoryTokens": 951,
+          "meanHistoryTokens": 852.790283203125,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 38.7794189453125,
+          "bucketRows": {
+            "16x1": 8104,
+            "4x16": 88
+          },
+          "rows": 8192
+        },
+        "uniqueProcessedShapes": {
+          "p95HistoryTokens": 907,
+          "maxHistoryTokens": 951,
+          "meanHistoryTokens": 853.4351230425056,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 52.75055928411633,
+          "bucketRows": {
+            "16x1": 832,
+            "4x16": 62
+          },
+          "rows": 894
+        }
+      },
+      "measured": {
+        "elapsedSeconds": 22.875184978,
+        "samplingAndPayloadDecodeSeconds": 0.07303284299999997,
+        "trainCallIncludingObservationDecodeSeconds": 21.000682038999997,
+        "checkpointSaveAndSynchronizationSeconds": 1.778853095,
+        "instrumentationAndLoopSeconds": 0.022617001000002634,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 5729.8771627882925,
+        "uniqueProcessedRowsPerSecond": 631.1642950160016,
+        "updatesPerSecond": 5.595583166785442,
+        "meanLoss": 0.0008831808830536692,
+        "logicalSampleShapes": {
+          "p95HistoryTokens": 886,
+          "maxHistoryTokens": 942,
+          "meanHistoryTokens": 852.7174224853516,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 38.793785095214844,
+          "bucketRows": {
+            "16x1": 129772,
+            "4x16": 1300
+          },
+          "rows": 131072
+        },
+        "uniqueProcessedShapes": {
+          "p95HistoryTokens": 906,
+          "maxHistoryTokens": 942,
+          "meanHistoryTokens": 853.8456157362516,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 53.518631389389114,
+          "bucketRows": {
+            "16x1": 13550,
+            "4x16": 888
+          },
+          "rows": 14438
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-final": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false,
+      "samplingScope": "Production log-weight sampling with replacement.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.698844474,
+      "corpusDecodeDiagnosticSeconds": 3.4601358629999983,
+      "corpusShapes": {
+        "meanHistoryTokens": 456.4576128122871,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanBoundaryFloats": 42.807749491761996,
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "rows": 362527,
+        "p95HistoryTokens": 828,
+        "maxHistoryTokens": 969
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.855350586,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 2.125151346,
+        "samplingAndPayloadDecodeSeconds": 0.015463021999999998,
+        "trainCallIncludingObservationDecodeSeconds": 1.6532186130000002,
+        "checkpointSaveAndSynchronizationSeconds": 0.453666614,
+        "instrumentationAndLoopSeconds": 0.0028030969999997546,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 894,
+        "distinctRowsAcrossWindow": 369,
+        "logicalSamplesPerSecond": 3854.7842794439734,
+        "uniqueProcessedRowsPerSecond": 420.67592112096094,
+        "updatesPerSecond": 3.7644377728945053,
+        "meanLoss": 0.0015744602569611743,
+        "logicalSampleShapes": {
+          "meanHistoryTokens": 852.790283203125,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 38.7794189453125,
+          "bucketRows": {
+            "16x1": 8104,
+            "4x16": 88
+          },
+          "rows": 8192,
+          "p95HistoryTokens": 886,
+          "maxHistoryTokens": 951
+        },
+        "uniqueProcessedShapes": {
+          "meanHistoryTokens": 853.4351230425056,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 52.75055928411633,
+          "bucketRows": {
+            "16x1": 832,
+            "4x16": 62
+          },
+          "rows": 894,
+          "p95HistoryTokens": 907,
+          "maxHistoryTokens": 951
+        }
+      },
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 14.232456432,
+        "samplingAndPayloadDecodeSeconds": 0.07460384100000003,
+        "trainCallIncludingObservationDecodeSeconds": 12.385031555000001,
+        "checkpointSaveAndSynchronizationSeconds": 1.7519475279999999,
+        "instrumentationAndLoopSeconds": 0.02087350799999821,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9209.373000805403,
+        "uniqueProcessedRowsPerSecond": 1014.4418898439668,
+        "updatesPerSecond": 8.993528321099026,
+        "meanLoss": 0.0008765218697135424,
+        "logicalSampleShapes": {
+          "meanHistoryTokens": 852.7174224853516,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 38.793785095214844,
+          "bucketRows": {
+            "16x1": 129772,
+            "4x16": 1300
+          },
+          "rows": 131072,
+          "p95HistoryTokens": 886,
+          "maxHistoryTokens": 942
+        },
+        "uniqueProcessedShapes": {
+          "meanHistoryTokens": 853.8456157362516,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 53.518631389389114,
+          "bucketRows": {
+            "16x1": 13550,
+            "4x16": 888
+          },
+          "rows": 14438,
+          "p95HistoryTokens": 906,
+          "maxHistoryTokens": 942
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-baseline-distinct": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true,
+      "samplingScope": "Diagnostic only: uniform sampling without replacement within each update over all retained rows in the role reservoir, including zero-weight rows. The same row may recur across updates. Stored targets and weights are unchanged; this changes the sampling distribution and is not a training-algorithm setting.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.713785387,
+      "corpusDecodeDiagnosticSeconds": 3.496087384000008,
+      "corpusShapes": {
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "rows": 362527,
+        "p95HistoryTokens": 828,
+        "maxHistoryTokens": 969,
+        "meanHistoryTokens": 456.4576128122871,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanBoundaryFloats": 42.807749491761996
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.893813441,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 4.846434124,
+        "samplingAndPayloadDecodeSeconds": 0.110739293,
+        "trainCallIncludingObservationDecodeSeconds": 4.272000982,
+        "checkpointSaveAndSynchronizationSeconds": 0.453151858,
+        "instrumentationAndLoopSeconds": 0.010541991000000195,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 8192,
+        "distinctRowsAcrossWindow": 8080,
+        "logicalSamplesPerSecond": 1690.3149388603968,
+        "uniqueProcessedRowsPerSecond": 1690.3149388603968,
+        "updatesPerSecond": 1.6506981824808562,
+        "meanLoss": 0.007841676888801885,
+        "logicalSampleShapes": {
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "rows": 8192,
+          "p95HistoryTokens": 830,
+          "maxHistoryTokens": 913,
+          "meanHistoryTokens": 457.8221435546875,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanBoundaryFloats": 42.94677734375
+        },
+        "uniqueProcessedShapes": {
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "rows": 8192,
+          "p95HistoryTokens": 830,
+          "maxHistoryTokens": 913,
+          "meanHistoryTokens": 457.8221435546875,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanBoundaryFloats": 42.94677734375
+        }
+      },
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 30.477138147,
+        "samplingAndPayloadDecodeSeconds": 0.839455272,
+        "trainCallIncludingObservationDecodeSeconds": 28.681120763999996,
+        "checkpointSaveAndSynchronizationSeconds": 0.8789001439999999,
+        "instrumentationAndLoopSeconds": 0.07766196700000738,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 2150.333134426895,
+        "uniqueProcessedRowsPerSecond": 2150.333134426895,
+        "updatesPerSecond": 2.0999347015887646,
+        "meanLoss": 0.007718881996736704,
+        "logicalSampleShapes": {
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "rows": 65536,
+          "p95HistoryTokens": 829,
+          "maxHistoryTokens": 950,
+          "meanHistoryTokens": 456.98268127441406,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanBoundaryFloats": 42.72503662109375
+        },
+        "uniqueProcessedShapes": {
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "rows": 65536,
+          "p95HistoryTokens": 829,
+          "maxHistoryTokens": 950,
+          "meanHistoryTokens": 456.98268127441406,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanBoundaryFloats": 42.72503662109375
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-final-distinct": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true,
+      "samplingScope": "Diagnostic only: uniform sampling without replacement within each update over all retained rows in the role reservoir, including zero-weight rows. The same row may recur across updates. Stored targets and weights are unchanged; this changes the sampling distribution and is not a training-algorithm setting.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.787815554,
+      "corpusDecodeDiagnosticSeconds": 3.505273189999998,
+      "corpusShapes": {
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "meanBoundaryFloats": 42.807749491761996,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanHistoryTokens": 456.4576128122871,
+        "maxHistoryTokens": 969,
+        "p95HistoryTokens": 828,
+        "rows": 362527
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.905711855,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 3.444660595,
+        "samplingAndPayloadDecodeSeconds": 0.108443215,
+        "trainCallIncludingObservationDecodeSeconds": 2.869862646,
+        "checkpointSaveAndSynchronizationSeconds": 0.455921734,
+        "instrumentationAndLoopSeconds": 0.010433000000000248,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 8192,
+        "distinctRowsAcrossWindow": 8080,
+        "logicalSamplesPerSecond": 2378.173342212834,
+        "uniqueProcessedRowsPerSecond": 2378.173342212834,
+        "updatesPerSecond": 2.322434904504721,
+        "meanLoss": 0.007841670652851462,
+        "logicalSampleShapes": {
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "meanBoundaryFloats": 42.94677734375,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanHistoryTokens": 457.8221435546875,
+          "maxHistoryTokens": 913,
+          "p95HistoryTokens": 830,
+          "rows": 8192
+        },
+        "uniqueProcessedShapes": {
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "meanBoundaryFloats": 42.94677734375,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanHistoryTokens": 457.8221435546875,
+          "maxHistoryTokens": 913,
+          "p95HistoryTokens": 830,
+          "rows": 8192
+        }
+      },
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 18.327525265,
+        "samplingAndPayloadDecodeSeconds": 0.8011746120000001,
+        "trainCallIncludingObservationDecodeSeconds": 16.564933754,
+        "checkpointSaveAndSynchronizationSeconds": 0.883299133,
+        "instrumentationAndLoopSeconds": 0.07811776599999964,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3575.8237433808827,
+        "uniqueProcessedRowsPerSecond": 3575.8237433808827,
+        "updatesPerSecond": 3.4920153743953932,
+        "meanLoss": 0.007712545193498954,
+        "logicalSampleShapes": {
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "meanBoundaryFloats": 42.72503662109375,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanHistoryTokens": 456.98268127441406,
+          "maxHistoryTokens": 950,
+          "p95HistoryTokens": 829,
+          "rows": 65536
+        },
+        "uniqueProcessedShapes": {
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "meanBoundaryFloats": 42.72503662109375,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanHistoryTokens": 456.98268127441406,
+          "maxHistoryTokens": 950,
+          "p95HistoryTokens": 829,
+          "rows": 65536
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-nano": {
+      "checkpointRoot": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/nano-input",
+      "decisionCheckpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/nano-input",
+      "dataset": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/learn-nano/dataset",
+      "seed": 20261008,
+      "learnerDevices": "[gpu(0)]",
+      "selectedPgSettings": {
+        "macrosPerDuel": 10,
+        "maximumMacros": 50,
+        "gamesPerMacro": 32768,
+        "microBatchSize": 4800,
+        "maximumDeviceTransitionCells": 768000,
+        "ppoEpochs": 1,
+        "optimizerStepsPerEpoch": 32,
+        "optimizer": {
+          "valueLearningRate": 1.25e-06,
+          "actorKlControl": {
+            "initialLearningRate": 1.25e-06,
+            "hardMinimumLearningRate": 2.5e-07,
+            "hardMaximumLearningRate": 5e-06,
+            "warmupMacros": 3,
+            "medianWindowMacros": 3,
+            "targetMultiplier": 1.25,
+            "deadbandFactor": 1.25,
+            "maximumAdjustmentFactorPerMacro": 1.02,
+            "targetDecay": {
+              "plannedOptimizerSteps": 43200,
+              "finalScale": 0.5
+            }
+          }
+        },
+        "causalTraceLambda": 0.95,
+        "dahaiWeight": 1.0,
+        "riichiWeight": 1.0,
+        "reactionWeight": 1.0,
+        "policyUpdateClipRange": 0.2,
+        "explorationCreditMix": 0.1,
+        "entropyCoefficient": 0.001,
+        "maximumOptimizerShardMeanKl": 0.01,
+        "debugActorValidationEnabled": false,
+        "debugFinalAuditEnabled": false,
+        "finalAuditSampleLimit": 4096,
+        "runSeedBase": 0
+      },
+      "trainingSettings": {
+        "sampleLimit": 8192000,
+        "tensorTransfer": "PINNED_BUFFER",
+        "deviceTransferSchedule": "OVERLAPPED",
+        "computePrecision": "BFLOAT16"
+      },
+      "optimizerState": "Fresh production AdamW; retained across warmup and measured passes.",
+      "teacherReuse": "One completed-game dataset and fixed GRP teacher; no recollection.",
+      "timingScope": "Learner includes descriptor reads, CPU materialization, H2D, forward/backward, optimizer updates, production KL probes, training-input drain and device sync. Model loading, collection, spool-plan construction, warmup and checkpoint export are excluded. No checkpoint export or inference-replica synchronization runs. A logical row is counted once per committed fused Actor/Value update, not twice. This is a production Nano PPO workload, not a matched CFR objective or episode budget.",
+      "learnerSetupSeconds": 4.513057557,
+      "collectionSetupSeconds": 0.210875351,
+      "actorDevices": "[gpu(0)]",
+      "opponentDevices": "[gpu(0)]",
+      "grpTeacherIteration": 10,
+      "arenaMetrics": {
+        "games": 4096,
+        "inferenceBatchCount": 4989,
+        "inferenceRequestCount": 2572202,
+        "maxInferenceBatchSize": 3506,
+        "batching": {
+          "fullBatches": 0,
+          "fullRows": 0,
+          "supplyBatches": 4878,
+          "supplyRows": 2566221,
+          "deadlineBatches": 111,
+          "deadlineRows": 5981,
+          "totalOldestRowWaitNanos": 242568440203,
+          "maxOldestRowWaitNanos": 1004585770
+        }
+      },
+      "requestedNetworkDecisions": 2572202,
+      "adaptiveExploration": {
+        "schedule": "PERCENTILE_SCALE",
+        "histogramBins": 2048,
+        "minimumCalibrationSamples": 1024,
+        "calibrationSourceSamples": 0,
+        "collectedSnapshotId": 2,
+        "collectedHistogramHash": "928b8153e2ae02cc94e931a61b4b080d8712b582102d75663d6dc8d6f2ca002d",
+        "collectedHistogramSamples": 635542,
+        "unweightedConfiguredNodeMassMean": 0.004666667017671797,
+        "meanScaledUnweightedConfiguredNodeMass": 0.004666667017671797,
+        "overall": {
+          "selections": 664035,
+          "nonForcedSelections": 635542,
+          "calibratedSelections": 0,
+          "kindCalibrations": 0,
+          "turnCalibrations": 0,
+          "responseCalibrations": 0,
+          "globalCalibrations": 0,
+          "uncalibratedSelections": 635542,
+          "nonTopOneSelections": 137433,
+          "forcedRoles": 28493,
+          "causalRoles": 632941,
+          "preemptedRoles": 2601,
+          "meanNormalizedEntropy": 0.2274334426042537,
+          "meanTopTwoAmbiguity": 0.33187693310905925,
+          "meanUncertainty": 0.279655187847774,
+          "meanPercentile": 0.0,
+          "meanMultiplier": 1.0,
+          "meanTotalVariation": 0.007217318798531732,
+          "meanBehaviorToRolloutKl": 0.045257276271652894,
+          "meanSelectedRolloutProbability": 0.7149919951709175,
+          "meanSelectedBehaviorProbability": 0.7097334935685377,
+          "meanSelectedRolloutToBehaviorRatio": 1.000046021224549,
+          "meanSelectedRolloutRank": 1.3569614596674964,
+          "meanTopOneMassChange": -0.00605745749943835
+        },
+        "byKind": [
+          {
+            "kind": "FORCED",
+            "statistics": {
+              "selections": 28493,
+              "nonForcedSelections": 0,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 0,
+              "nonTopOneSelections": 0,
+              "forcedRoles": 28493,
+              "causalRoles": 0,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.0,
+              "meanTopTwoAmbiguity": 0.0,
+              "meanUncertainty": 0.0,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 0.0,
+              "meanTotalVariation": 0.0,
+              "meanBehaviorToRolloutKl": 0.0,
+              "meanSelectedRolloutProbability": 0.0,
+              "meanSelectedBehaviorProbability": 0.0,
+              "meanSelectedRolloutToBehaviorRatio": 0.0,
+              "meanSelectedRolloutRank": 0.0,
+              "meanTopOneMassChange": 0.0
+            }
+          },
+          {
+            "kind": "AGARI_OR_ABORT",
+            "statistics": {
+              "selections": 8711,
+              "nonForcedSelections": 8711,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 8711,
+              "nonTopOneSelections": 127,
+              "forcedRoles": 0,
+              "causalRoles": 8711,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.017287515500371636,
+              "meanTopTwoAmbiguity": 0.017890591204655807,
+              "meanUncertainty": 0.017589053366655387,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.002405237281453467,
+              "meanBehaviorToRolloutKl": 0.020048076109497968,
+              "meanSelectedRolloutProbability": 0.9816872101520349,
+              "meanSelectedBehaviorProbability": 0.9793910704608094,
+              "meanSelectedRolloutToBehaviorRatio": 1.0002692074744761,
+              "meanSelectedRolloutRank": 1.0336356331075651,
+              "meanTopOneMassChange": -0.002337834657422301
+            }
+          },
+          {
+            "kind": "CALL",
+            "statistics": {
+              "selections": 127417,
+              "nonForcedSelections": 127417,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 127417,
+              "nonTopOneSelections": 4832,
+              "forcedRoles": 0,
+              "causalRoles": 124816,
+              "preemptedRoles": 2601,
+              "meanNormalizedEntropy": 0.112988064107322,
+              "meanTopTwoAmbiguity": 0.07018572046930106,
+              "meanUncertainty": 0.09158689227956131,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.002014771263905574,
+              "meanBehaviorToRolloutKl": 0.007428963027284886,
+              "meanSelectedRolloutProbability": 0.946222638185996,
+              "meanSelectedBehaviorProbability": 0.9442890497401364,
+              "meanSelectedRolloutToBehaviorRatio": 0.9999094662080629,
+              "meanSelectedRolloutRank": 1.0389665429259831,
+              "meanTopOneMassChange": -0.002011322096738999
+            }
+          },
+          {
+            "kind": "KAN",
+            "statistics": {
+              "selections": 5144,
+              "nonForcedSelections": 5144,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 5144,
+              "nonTopOneSelections": 996,
+              "forcedRoles": 0,
+              "causalRoles": 5144,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.20425362329379876,
+              "meanTopTwoAmbiguity": 0.31127048340506963,
+              "meanUncertainty": 0.2577620533089073,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.008512897928954839,
+              "meanBehaviorToRolloutKl": 0.049366727348228105,
+              "meanSelectedRolloutProbability": 0.7349636785731882,
+              "meanSelectedBehaviorProbability": 0.7284023040332299,
+              "meanSelectedRolloutToBehaviorRatio": 1.0019119629163231,
+              "meanSelectedRolloutRank": 1.2923794712286159,
+              "meanTopOneMassChange": -0.0074300482509944525
+            }
+          },
+          {
+            "kind": "RIICHI",
+            "statistics": {
+              "selections": 16105,
+              "nonForcedSelections": 16105,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 16105,
+              "nonTopOneSelections": 2145,
+              "forcedRoles": 0,
+              "causalRoles": 16105,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.11594565504917835,
+              "meanTopTwoAmbiguity": 0.21204724957658655,
+              "meanUncertainty": 0.1639964522535901,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.011295922620662218,
+              "meanBehaviorToRolloutKl": 0.08712199539791284,
+              "meanSelectedRolloutProbability": 0.8209673007370947,
+              "meanSelectedBehaviorProbability": 0.8112520370132305,
+              "meanSelectedRolloutToBehaviorRatio": 0.9993699170527068,
+              "meanSelectedRolloutRank": 1.2035392735175412,
+              "meanTopOneMassChange": -0.010478041405005693
+            }
+          },
+          {
+            "kind": "DISCARD",
+            "statistics": {
+              "selections": 478165,
+              "nonForcedSelections": 478165,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 478165,
+              "nonTopOneSelections": 129333,
+              "forcedRoles": 0,
+              "causalRoles": 478165,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.26576250427136205,
+              "meanTopTwoAmbiguity": 0.4115877042776244,
+              "meanUncertainty": 0.33867510426719527,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.008540001696093123,
+              "meanBehaviorToRolloutKl": 0.05434241887599213,
+              "meanSelectedRolloutProbability": 0.6447330605054407,
+              "meanSelectedBehaviorProbability": 0.6386987232356353,
+              "meanSelectedRolloutToBehaviorRatio": 1.00008104158099,
+              "meanSelectedRolloutRank": 1.4534501688747608,
+              "meanTopOneMassChange": -0.0070397417706781484
+            }
+          }
+        ],
+        "byKindAndDecile": []
+      },
+      "requestedGames": 4096,
+      "completedGames": 4096,
+      "completedRetainedActorDecisions": 664035,
+      "collectionSeconds": 32.872308442,
+      "collectionCounterScope": "Retained actor decisions are completed-game training records from the one actor seat. Requested network decisions include all evaluated seats and branch requests. All-seat engine decisions, including skipped forced opponent actions, are not exposed by this production API and are not inferred from either counter. Collection is not separately warmed; use the selfplay benchmark for collector speed.",
+      "planSeconds": 0.042995315,
+      "selectedTrainingRows": 664035,
+      "fragmentCount": 4096,
+      "warmup": [
+        {
+          "elapsedSeconds": 38.921248972,
+          "logicalUpdatedRows": 664035,
+          "logicalUpdatedRowsPerSecond": 17060.988985160977,
+          "actorLearningRate": 1.25e-06,
+          "valueLearningRate": 1.25e-06,
+          "result": {
+            "actorMetrics": {
+              "optimizerSteps": 32,
+              "microBatches": 256,
+              "loss": -0.0006452729,
+              "actorLoss": -0.00013009876,
+              "entropyBonusLoss": -0.0005151741,
+              "behaviorCloningLoss": 0.5917682,
+              "valueLoss": 4.7516913,
+              "entropy": 0.5151741,
+              "rolloutEntropy": 0.5145261,
+              "behaviorToRolloutPolicyKl": 0.0433997,
+              "chosenProb": 0.71387756,
+              "behaviorProbMean": 0.7087919,
+              "behaviorProbMin": 0.00013471722,
+              "meanRolloutPolicyKl": 0.00015271497,
+              "maximumRolloutPolicyKl": 0.8436593,
+              "actorWeight": 0.9531742,
+              "policyRatios": {
+                "rawExplorationRatio": {
+                  "mean": 1.0000418,
+                  "minimum": 2.913461e-06,
+                  "maximum": 1.015993
+                },
+                "explorationCreditWeight": {
+                  "mean": 0.99352115,
+                  "minimum": 0.10000262,
+                  "maximum": 1.0
+                },
+                "policyUpdate": {
+                  "mean": 0.9981322,
+                  "minimum": 1.0140278e-09,
+                  "maximum": 2.7415378
+                },
+                "effectiveActorRatio": {
+                  "mean": 0.99351656,
+                  "minimum": 1.0141183e-10,
+                  "maximum": 2.7415378
+                },
+                "policyUpdateClipFraction": 0.0027553912,
+                "effectiveActorRatioEffectiveSampleFraction": 0.9944279
+              },
+              "positiveScalarAdvantageSamples": 0,
+              "negativeScalarAdvantageSamples": 0,
+              "zeroScalarAdvantageSamples": 0,
+              "rejection": {
+                "code": "PASSED",
+                "context": "",
+                "diagnostic": ""
+              },
+              "performance": {
+                "elapsedMillis": 38919.005754,
+                "fusedTotalElapsedMillis": 38919.005754,
+                "optimizerSteps": 32,
+                "microBatches": 256,
+                "samples": 664035,
+                "fragments": 4096,
+                "descriptorSamples": 664035,
+                "configuredSamples": 664035,
+                "prefetchDepth": 3,
+                "prefetchWorkers": 4
+              }
+            },
+            "valueMetrics": {
+              "optimizerSteps": 32,
+              "microBatches": 256,
+              "loss": 4.7516913,
+              "actorLoss": 0.0,
+              "entropyBonusLoss": 0.0,
+              "behaviorCloningLoss": 0.0,
+              "valueLoss": 4.7516913,
+              "entropy": 0.0,
+              "rolloutEntropy": 0.0,
+              "behaviorToRolloutPolicyKl": 0.0,
+              "chosenProb": 0.0,
+              "behaviorProbMean": 0.0,
+              "behaviorProbMin": 0.0,
+              "meanRolloutPolicyKl": 0.0,
+              "maximumRolloutPolicyKl": 0.0,
+              "actorWeight": 0.0,
+              "policyRatios": {
+                "rawExplorationRatio": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "explorationCreditWeight": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "policyUpdate": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "effectiveActorRatio": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "policyUpdateClipFraction": 0.0,
+                "effectiveActorRatioEffectiveSampleFraction": 0.0
+              },
+              "positiveScalarAdvantageSamples": 0,
+              "negativeScalarAdvantageSamples": 0,
+              "zeroScalarAdvantageSamples": 0,
+              "rejection": {
+                "code": "PASSED",
+                "context": "",
+                "diagnostic": ""
+              },
+              "performance": {
+                "elapsedMillis": 0.0,
+                "fusedTotalElapsedMillis": 38919.005754,
+                "optimizerSteps": 32,
+                "microBatches": 256,
+                "samples": 664035,
+                "fragments": 4096,
+                "descriptorSamples": 664035,
+                "configuredSamples": 664035,
+                "prefetchDepth": 3,
+                "prefetchWorkers": 4
+              }
+            },
+            "meanActorUpdateKl": 7.8849414e-05
+          }
+        }
+      ],
+      "measured": [
+        {
+          "elapsedSeconds": 38.65994481,
+          "logicalUpdatedRows": 664035,
+          "logicalUpdatedRowsPerSecond": 17176.30491361273,
+          "actorLearningRate": 1.25e-06,
+          "valueLearningRate": 1.25e-06,
+          "result": {
+            "actorMetrics": {
+              "optimizerSteps": 32,
+              "microBatches": 256,
+              "loss": -0.00066099456,
+              "actorLoss": -0.00014523078,
+              "entropyBonusLoss": -0.00051576376,
+              "behaviorCloningLoss": 0.59172875,
+              "valueLoss": 4.750853,
+              "entropy": 0.51576376,
+              "rolloutEntropy": 0.5145261,
+              "behaviorToRolloutPolicyKl": 0.0433997,
+              "chosenProb": 0.713741,
+              "behaviorProbMean": 0.7087919,
+              "behaviorProbMin": 0.00013471722,
+              "meanRolloutPolicyKl": 0.00016972113,
+              "maximumRolloutPolicyKl": 1.1958758,
+              "actorWeight": 0.9531742,
+              "policyRatios": {
+                "rawExplorationRatio": {
+                  "mean": 1.0000418,
+                  "minimum": 2.913461e-06,
+                  "maximum": 1.015993
+                },
+                "explorationCreditWeight": {
+                  "mean": 0.99352115,
+                  "minimum": 0.10000262,
+                  "maximum": 1.0
+                },
+                "policyUpdate": {
+                  "mean": 0.9981689,
+                  "minimum": 1.0136221e-09,
+                  "maximum": 2.7682378
+                },
+                "effectiveActorRatio": {
+                  "mean": 0.9935104,
+                  "minimum": 1.0137126e-10,
+                  "maximum": 2.7682378
+                },
+                "policyUpdateClipFraction": 0.0028091087,
+                "effectiveActorRatioEffectiveSampleFraction": 0.99441737
+              },
+              "positiveScalarAdvantageSamples": 0,
+              "negativeScalarAdvantageSamples": 0,
+              "zeroScalarAdvantageSamples": 0,
+              "rejection": {
+                "code": "PASSED",
+                "context": "",
+                "diagnostic": ""
+              },
+              "performance": {
+                "elapsedMillis": 38659.603755,
+                "fusedTotalElapsedMillis": 38659.603755,
+                "optimizerSteps": 32,
+                "microBatches": 256,
+                "samples": 664035,
+                "fragments": 4096,
+                "descriptorSamples": 664035,
+                "configuredSamples": 664035,
+                "prefetchDepth": 3,
+                "prefetchWorkers": 4
+              }
+            },
+            "valueMetrics": {
+              "optimizerSteps": 32,
+              "microBatches": 256,
+              "loss": 4.750853,
+              "actorLoss": 0.0,
+              "entropyBonusLoss": 0.0,
+              "behaviorCloningLoss": 0.0,
+              "valueLoss": 4.750853,
+              "entropy": 0.0,
+              "rolloutEntropy": 0.0,
+              "behaviorToRolloutPolicyKl": 0.0,
+              "chosenProb": 0.0,
+              "behaviorProbMean": 0.0,
+              "behaviorProbMin": 0.0,
+              "meanRolloutPolicyKl": 0.0,
+              "maximumRolloutPolicyKl": 0.0,
+              "actorWeight": 0.0,
+              "policyRatios": {
+                "rawExplorationRatio": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "explorationCreditWeight": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "policyUpdate": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "effectiveActorRatio": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "policyUpdateClipFraction": 0.0,
+                "effectiveActorRatioEffectiveSampleFraction": 0.0
+              },
+              "positiveScalarAdvantageSamples": 0,
+              "negativeScalarAdvantageSamples": 0,
+              "zeroScalarAdvantageSamples": 0,
+              "rejection": {
+                "code": "PASSED",
+                "context": "",
+                "diagnostic": ""
+              },
+              "performance": {
+                "elapsedMillis": 0.0,
+                "fusedTotalElapsedMillis": 38659.603755,
+                "optimizerSteps": 32,
+                "microBatches": 256,
+                "samples": 664035,
+                "fragments": 4096,
+                "descriptorSamples": 664035,
+                "configuredSamples": 664035,
+                "prefetchDepth": 3,
+                "prefetchWorkers": 4
+              }
+            },
+            "meanActorUpdateKl": 0.00014119683
+          }
+        }
+      ],
+      "warmupPassesRequested": 1,
+      "measuredPassesRequested": 1,
+      "complete": true,
+      "rejected": false,
+      "logicalUpdatedRows": 664035,
+      "learnerSeconds": 38.65994481,
+      "logicalUpdatedRowsPerSecond": 17176.30491361273
+    },
+    "learn-nano-optimized": {
+      "checkpointRoot": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/nano-input",
+      "decisionCheckpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/nano-input",
+      "dataset": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/learn-nano-optimized/dataset",
+      "seed": 20261008,
+      "learnerDevices": "[gpu(0)]",
+      "selectedPgSettings": {
+        "macrosPerDuel": 10,
+        "maximumMacros": 50,
+        "gamesPerMacro": 32768,
+        "microBatchSize": 4800,
+        "maximumDeviceTransitionCells": 768000,
+        "ppoEpochs": 1,
+        "optimizerStepsPerEpoch": 32,
+        "optimizer": {
+          "valueLearningRate": 1.25e-06,
+          "actorKlControl": {
+            "initialLearningRate": 1.25e-06,
+            "hardMinimumLearningRate": 2.5e-07,
+            "hardMaximumLearningRate": 5e-06,
+            "warmupMacros": 3,
+            "medianWindowMacros": 3,
+            "targetMultiplier": 1.25,
+            "deadbandFactor": 1.25,
+            "maximumAdjustmentFactorPerMacro": 1.02,
+            "targetDecay": {
+              "plannedOptimizerSteps": 43200,
+              "finalScale": 0.5
+            }
+          }
+        },
+        "causalTraceLambda": 0.95,
+        "dahaiWeight": 1.0,
+        "riichiWeight": 1.0,
+        "reactionWeight": 1.0,
+        "policyUpdateClipRange": 0.2,
+        "explorationCreditMix": 0.1,
+        "entropyCoefficient": 0.001,
+        "maximumOptimizerShardMeanKl": 0.01,
+        "debugActorValidationEnabled": false,
+        "debugFinalAuditEnabled": false,
+        "finalAuditSampleLimit": 4096,
+        "runSeedBase": 0
+      },
+      "trainingSettings": {
+        "sampleLimit": 8192000,
+        "tensorTransfer": "PINNED_BUFFER",
+        "deviceTransferSchedule": "OVERLAPPED",
+        "computePrecision": "BFLOAT16"
+      },
+      "optimizerState": "Fresh production AdamW; retained across warmup and measured passes.",
+      "teacherReuse": "One completed-game dataset and fixed GRP teacher; no recollection.",
+      "timingScope": "Learner includes descriptor reads, CPU materialization, H2D, forward/backward, optimizer updates, production KL probes, training-input drain and device sync. Model loading, collection, spool-plan construction, warmup and checkpoint export are excluded. No checkpoint export or inference-replica synchronization runs. A logical row is counted once per committed fused Actor/Value update, not twice. This is a production Nano PPO workload, not a matched CFR objective or episode budget.",
+      "learnerSetupSeconds": 4.511152172,
+      "collectionSetupSeconds": 0.220878712,
+      "actorDevices": "[gpu(0)]",
+      "opponentDevices": "[gpu(0)]",
+      "grpTeacherIteration": 10,
+      "arenaMetrics": {
+        "games": 4096,
+        "inferenceBatchCount": 5268,
+        "inferenceRequestCount": 2573243,
+        "maxInferenceBatchSize": 3072,
+        "batching": {
+          "fullBatches": 0,
+          "fullRows": 0,
+          "supplyBatches": 5157,
+          "supplyRows": 2567289,
+          "deadlineBatches": 111,
+          "deadlineRows": 5954,
+          "totalOldestRowWaitNanos": 241471945036,
+          "maxOldestRowWaitNanos": 1002818861
+        }
+      },
+      "requestedNetworkDecisions": 2573243,
+      "adaptiveExploration": {
+        "schedule": "PERCENTILE_SCALE",
+        "histogramBins": 2048,
+        "minimumCalibrationSamples": 1024,
+        "calibrationSourceSamples": 0,
+        "collectedSnapshotId": 2,
+        "collectedHistogramHash": "434424684a64625d814d6d08194b5086714b93963e9a153546e73531417c81e9",
+        "collectedHistogramSamples": 635811,
+        "unweightedConfiguredNodeMassMean": 0.004666667017671797,
+        "meanScaledUnweightedConfiguredNodeMass": 0.004666667017671797,
+        "overall": {
+          "selections": 664647,
+          "nonForcedSelections": 635811,
+          "calibratedSelections": 0,
+          "kindCalibrations": 0,
+          "turnCalibrations": 0,
+          "responseCalibrations": 0,
+          "globalCalibrations": 0,
+          "uncalibratedSelections": 635811,
+          "nonTopOneSelections": 137411,
+          "forcedRoles": 28836,
+          "causalRoles": 633168,
+          "preemptedRoles": 2643,
+          "meanNormalizedEntropy": 0.22739479275076702,
+          "meanTopTwoAmbiguity": 0.33190122499925595,
+          "meanUncertainty": 0.27964800887615415,
+          "meanPercentile": 0.0,
+          "meanMultiplier": 1.0,
+          "meanTotalVariation": 0.007215930237290892,
+          "meanBehaviorToRolloutKl": 0.045277011311453084,
+          "meanSelectedRolloutProbability": 0.7148966147372471,
+          "meanSelectedBehaviorProbability": 0.7096406196961409,
+          "meanSelectedRolloutToBehaviorRatio": 0.999979869363548,
+          "meanSelectedRolloutRank": 1.3569488417155413,
+          "meanTopOneMassChange": -0.006056001231908835
+        },
+        "byKind": [
+          {
+            "kind": "FORCED",
+            "statistics": {
+              "selections": 28836,
+              "nonForcedSelections": 0,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 0,
+              "nonTopOneSelections": 0,
+              "forcedRoles": 28836,
+              "causalRoles": 0,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.0,
+              "meanTopTwoAmbiguity": 0.0,
+              "meanUncertainty": 0.0,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 0.0,
+              "meanTotalVariation": 0.0,
+              "meanBehaviorToRolloutKl": 0.0,
+              "meanSelectedRolloutProbability": 0.0,
+              "meanSelectedBehaviorProbability": 0.0,
+              "meanSelectedRolloutToBehaviorRatio": 0.0,
+              "meanSelectedRolloutRank": 0.0,
+              "meanTopOneMassChange": 0.0
+            }
+          },
+          {
+            "kind": "AGARI_OR_ABORT",
+            "statistics": {
+              "selections": 8734,
+              "nonForcedSelections": 8734,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 8734,
+              "nonTopOneSelections": 116,
+              "forcedRoles": 0,
+              "causalRoles": 8734,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.01679756217472596,
+              "meanTopTwoAmbiguity": 0.01745408593627361,
+              "meanUncertainty": 0.017125824082965615,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.002410580662332342,
+              "meanBehaviorToRolloutKl": 0.020078591050177026,
+              "meanSelectedRolloutProbability": 0.9824517639812855,
+              "meanSelectedBehaviorProbability": 0.9801465429526403,
+              "meanSelectedRolloutToBehaviorRatio": 1.000396494718472,
+              "meanSelectedRolloutRank": 1.0328600870162583,
+              "meanTopOneMassChange": -0.0023433274502254117
+            }
+          },
+          {
+            "kind": "CALL",
+            "statistics": {
+              "selections": 127530,
+              "nonForcedSelections": 127530,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 127530,
+              "nonTopOneSelections": 4809,
+              "forcedRoles": 0,
+              "causalRoles": 124887,
+              "preemptedRoles": 2643,
+              "meanNormalizedEntropy": 0.11269105872573401,
+              "meanTopTwoAmbiguity": 0.06998642631007962,
+              "meanUncertainty": 0.09133874253148791,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.002014871547908448,
+              "meanBehaviorToRolloutKl": 0.007426823095714937,
+              "meanSelectedRolloutProbability": 0.9464121165350083,
+              "meanSelectedBehaviorProbability": 0.9444780321270974,
+              "meanSelectedRolloutToBehaviorRatio": 1.0000069409589039,
+              "meanSelectedRolloutRank": 1.0386418881831725,
+              "meanTopOneMassChange": -0.0020115194844702294
+            }
+          },
+          {
+            "kind": "KAN",
+            "statistics": {
+              "selections": 5027,
+              "nonForcedSelections": 5027,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 5027,
+              "nonTopOneSelections": 977,
+              "forcedRoles": 0,
+              "causalRoles": 5027,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.20654889368948445,
+              "meanTopTwoAmbiguity": 0.31263592023926234,
+              "meanUncertainty": 0.2595924069157135,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.008459529642753935,
+              "meanBehaviorToRolloutKl": 0.04835342263663037,
+              "meanSelectedRolloutProbability": 0.7332189968542194,
+              "meanSelectedBehaviorProbability": 0.7267067953350566,
+              "meanSelectedRolloutToBehaviorRatio": 1.0017825240638543,
+              "meanSelectedRolloutRank": 1.290630594788144,
+              "meanTopOneMassChange": -0.007374169964877611
+            }
+          },
+          {
+            "kind": "RIICHI",
+            "statistics": {
+              "selections": 16092,
+              "nonForcedSelections": 16092,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 16092,
+              "nonTopOneSelections": 2144,
+              "forcedRoles": 0,
+              "causalRoles": 16092,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.11516774953558227,
+              "meanTopTwoAmbiguity": 0.21011957215439345,
+              "meanUncertainty": 0.1626436608753271,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.011301237174419521,
+              "meanBehaviorToRolloutKl": 0.08727071502751933,
+              "meanSelectedRolloutProbability": 0.8213423390529745,
+              "meanSelectedBehaviorProbability": 0.8116190766644622,
+              "meanSelectedRolloutToBehaviorRatio": 0.9993211525140302,
+              "meanSelectedRolloutRank": 1.204822271936366,
+              "meanTopOneMassChange": -0.010497439002630695
+            }
+          },
+          {
+            "kind": "DISCARD",
+            "statistics": {
+              "selections": 478428,
+              "nonForcedSelections": 478428,
+              "calibratedSelections": 0,
+              "kindCalibrations": 0,
+              "turnCalibrations": 0,
+              "responseCalibrations": 0,
+              "globalCalibrations": 0,
+              "uncalibratedSelections": 478428,
+              "nonTopOneSelections": 129365,
+              "forcedRoles": 0,
+              "causalRoles": 478428,
+              "preemptedRoles": 0,
+              "meanNormalizedEntropy": 0.2658086676202634,
+              "meanTopTwoAmbiguity": 0.4117563602213053,
+              "meanUncertainty": 0.3387825139176729,
+              "meanPercentile": 0.0,
+              "meanMultiplier": 1.0,
+              "meanTotalVariation": 0.008539574765623507,
+              "meanBehaviorToRolloutKl": 0.05438159905670314,
+              "meanSelectedRolloutProbability": 0.6445265071591855,
+              "meanSelectedBehaviorProbability": 0.6384946104000438,
+              "meanSelectedRolloutToBehaviorRatio": 0.9999682623504935,
+              "meanSelectedRolloutRank": 1.4535269674851807,
+              "meanTopOneMassChange": -0.007038638534142355
+            }
+          }
+        ],
+        "byKindAndDecile": []
+      },
+      "requestedGames": 4096,
+      "completedGames": 4096,
+      "completedRetainedActorDecisions": 664647,
+      "collectionSeconds": 33.650937943,
+      "collectionCounterScope": "Retained actor decisions are completed-game training records from the one actor seat. Requested network decisions include all evaluated seats and branch requests. All-seat engine decisions, including skipped forced opponent actions, are not exposed by this production API and are not inferred from either counter. Collection is not separately warmed; use the selfplay benchmark for collector speed.",
+      "planSeconds": 0.046079868,
+      "selectedTrainingRows": 664647,
+      "fragmentCount": 4096,
+      "warmup": [
+        {
+          "elapsedSeconds": 39.979742153,
+          "logicalUpdatedRows": 664647,
+          "logicalUpdatedRowsPerSecond": 16624.59446227635,
+          "actorLearningRate": 1.25e-06,
+          "valueLearningRate": 1.25e-06,
+          "result": {
+            "actorMetrics": {
+              "optimizerSteps": 32,
+              "microBatches": 256,
+              "loss": -0.0005061059,
+              "actorLoss": 9.0577705e-06,
+              "entropyBonusLoss": -0.00051516364,
+              "behaviorCloningLoss": 0.5925519,
+              "valueLoss": 4.77777,
+              "entropy": 0.51516366,
+              "rolloutEntropy": 0.5144906,
+              "behaviorToRolloutPolicyKl": 0.04341984,
+              "chosenProb": 0.71377224,
+              "behaviorProbMean": 0.7086962,
+              "behaviorProbMin": 0.00011666149,
+              "meanRolloutPolicyKl": 0.00015205602,
+              "maximumRolloutPolicyKl": 0.9127223,
+              "actorWeight": 0.95263803,
+              "policyRatios": {
+                "rawExplorationRatio": {
+                  "mean": 0.9999756,
+                  "minimum": 2.913461e-06,
+                  "maximum": 1.0159928
+                },
+                "explorationCreditWeight": {
+                  "mean": 0.99346423,
+                  "minimum": 0.10000262,
+                  "maximum": 1.0
+                },
+                "policyUpdate": {
+                  "mean": 0.9981431,
+                  "minimum": 9.488397e-11,
+                  "maximum": 3.5332217
+                },
+                "effectiveActorRatio": {
+                  "mean": 0.99345696,
+                  "minimum": 9.489029e-12,
+                  "maximum": 3.5318599
+                },
+                "policyUpdateClipFraction": 0.0027338716,
+                "effectiveActorRatioEffectiveSampleFraction": 0.99438584
+              },
+              "positiveScalarAdvantageSamples": 0,
+              "negativeScalarAdvantageSamples": 0,
+              "zeroScalarAdvantageSamples": 0,
+              "rejection": {
+                "code": "PASSED",
+                "context": "",
+                "diagnostic": ""
+              },
+              "performance": {
+                "elapsedMillis": 39975.984713,
+                "fusedTotalElapsedMillis": 39975.984713,
+                "optimizerSteps": 32,
+                "microBatches": 256,
+                "samples": 664647,
+                "fragments": 4096,
+                "descriptorSamples": 664647,
+                "configuredSamples": 664647,
+                "prefetchDepth": 3,
+                "prefetchWorkers": 4
+              }
+            },
+            "valueMetrics": {
+              "optimizerSteps": 32,
+              "microBatches": 256,
+              "loss": 4.77777,
+              "actorLoss": 0.0,
+              "entropyBonusLoss": 0.0,
+              "behaviorCloningLoss": 0.0,
+              "valueLoss": 4.77777,
+              "entropy": 0.0,
+              "rolloutEntropy": 0.0,
+              "behaviorToRolloutPolicyKl": 0.0,
+              "chosenProb": 0.0,
+              "behaviorProbMean": 0.0,
+              "behaviorProbMin": 0.0,
+              "meanRolloutPolicyKl": 0.0,
+              "maximumRolloutPolicyKl": 0.0,
+              "actorWeight": 0.0,
+              "policyRatios": {
+                "rawExplorationRatio": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "explorationCreditWeight": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "policyUpdate": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "effectiveActorRatio": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "policyUpdateClipFraction": 0.0,
+                "effectiveActorRatioEffectiveSampleFraction": 0.0
+              },
+              "positiveScalarAdvantageSamples": 0,
+              "negativeScalarAdvantageSamples": 0,
+              "zeroScalarAdvantageSamples": 0,
+              "rejection": {
+                "code": "PASSED",
+                "context": "",
+                "diagnostic": ""
+              },
+              "performance": {
+                "elapsedMillis": 0.0,
+                "fusedTotalElapsedMillis": 39975.984713,
+                "optimizerSteps": 32,
+                "microBatches": 256,
+                "samples": 664647,
+                "fragments": 4096,
+                "descriptorSamples": 664647,
+                "configuredSamples": 664647,
+                "prefetchDepth": 3,
+                "prefetchWorkers": 4
+              }
+            },
+            "meanActorUpdateKl": 9.8445176e-05
+          }
+        }
+      ],
+      "measured": [
+        {
+          "elapsedSeconds": 38.649677341,
+          "logicalUpdatedRows": 664647,
+          "logicalUpdatedRowsPerSecond": 17196.70242356552,
+          "actorLearningRate": 1.25e-06,
+          "valueLearningRate": 1.25e-06,
+          "result": {
+            "actorMetrics": {
+              "optimizerSteps": 32,
+              "microBatches": 256,
+              "loss": -0.0005211606,
+              "actorLoss": -5.227829e-06,
+              "entropyBonusLoss": -0.0005159328,
+              "behaviorCloningLoss": 0.5925163,
+              "valueLoss": 4.7770486,
+              "entropy": 0.5159328,
+              "rolloutEntropy": 0.5144906,
+              "behaviorToRolloutPolicyKl": 0.04341984,
+              "chosenProb": 0.71359295,
+              "behaviorProbMean": 0.7086962,
+              "behaviorProbMin": 0.00011666149,
+              "meanRolloutPolicyKl": 0.0001774107,
+              "maximumRolloutPolicyKl": 2.3410277,
+              "actorWeight": 0.95263803,
+              "policyRatios": {
+                "rawExplorationRatio": {
+                  "mean": 0.9999756,
+                  "minimum": 2.913461e-06,
+                  "maximum": 1.0159928
+                },
+                "explorationCreditWeight": {
+                  "mean": 0.99346423,
+                  "minimum": 0.10000262,
+                  "maximum": 1.0
+                },
+                "policyUpdate": {
+                  "mean": 0.9981945,
+                  "minimum": 1.07517606e-10,
+                  "maximum": 3.6246467
+                },
+                "effectiveActorRatio": {
+                  "mean": 0.99345547,
+                  "minimum": 1.0752478e-11,
+                  "maximum": 3.5409596
+                },
+                "policyUpdateClipFraction": 0.0027938872,
+                "effectiveActorRatioEffectiveSampleFraction": 0.99436647
+              },
+              "positiveScalarAdvantageSamples": 0,
+              "negativeScalarAdvantageSamples": 0,
+              "zeroScalarAdvantageSamples": 0,
+              "rejection": {
+                "code": "PASSED",
+                "context": "",
+                "diagnostic": ""
+              },
+              "performance": {
+                "elapsedMillis": 38649.334563,
+                "fusedTotalElapsedMillis": 38649.334563,
+                "optimizerSteps": 32,
+                "microBatches": 256,
+                "samples": 664647,
+                "fragments": 4096,
+                "descriptorSamples": 664647,
+                "configuredSamples": 664647,
+                "prefetchDepth": 3,
+                "prefetchWorkers": 4
+              }
+            },
+            "valueMetrics": {
+              "optimizerSteps": 32,
+              "microBatches": 256,
+              "loss": 4.7770486,
+              "actorLoss": 0.0,
+              "entropyBonusLoss": 0.0,
+              "behaviorCloningLoss": 0.0,
+              "valueLoss": 4.7770486,
+              "entropy": 0.0,
+              "rolloutEntropy": 0.0,
+              "behaviorToRolloutPolicyKl": 0.0,
+              "chosenProb": 0.0,
+              "behaviorProbMean": 0.0,
+              "behaviorProbMin": 0.0,
+              "meanRolloutPolicyKl": 0.0,
+              "maximumRolloutPolicyKl": 0.0,
+              "actorWeight": 0.0,
+              "policyRatios": {
+                "rawExplorationRatio": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "explorationCreditWeight": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "policyUpdate": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "effectiveActorRatio": {
+                  "mean": 0.0,
+                  "minimum": 0.0,
+                  "maximum": 0.0
+                },
+                "policyUpdateClipFraction": 0.0,
+                "effectiveActorRatioEffectiveSampleFraction": 0.0
+              },
+              "positiveScalarAdvantageSamples": 0,
+              "negativeScalarAdvantageSamples": 0,
+              "zeroScalarAdvantageSamples": 0,
+              "rejection": {
+                "code": "PASSED",
+                "context": "",
+                "diagnostic": ""
+              },
+              "performance": {
+                "elapsedMillis": 0.0,
+                "fusedTotalElapsedMillis": 38649.334563,
+                "optimizerSteps": 32,
+                "microBatches": 256,
+                "samples": 664647,
+                "fragments": 4096,
+                "descriptorSamples": 664647,
+                "configuredSamples": 664647,
+                "prefetchDepth": 3,
+                "prefetchWorkers": 4
+              }
+            },
+            "meanActorUpdateKl": 7.230519e-05
+          }
+        }
+      ],
+      "warmupPassesRequested": 1,
+      "measuredPassesRequested": 1,
+      "complete": true,
+      "rejected": false,
+      "logicalUpdatedRows": 664647,
+      "learnerSeconds": 38.649677341,
+      "logicalUpdatedRowsPerSecond": 17196.70242356552
+    },
+    "learn-streamed-distinct-micro256": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/model-micro256",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true,
+      "samplingScope": "Diagnostic only: uniform sampling without replacement within each update over all retained rows in the role reservoir, including zero-weight rows. The same row may recur across updates. Stored targets and weights are unchanged; this changes the sampling distribution and is not a training-algorithm setting.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.626126377,
+      "corpusDecodeDiagnosticSeconds": 3.4778597149999984,
+      "corpusShapes": {
+        "maxHistoryTokens": 969,
+        "p95HistoryTokens": 828,
+        "rows": 362527,
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "meanBoundaryFloats": 42.807749491761996,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanHistoryTokens": 456.4576128122871
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.83540995,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 256,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 4.085201754,
+        "samplingAndPayloadDecodeSeconds": 0.108116847,
+        "trainCallIncludingObservationDecodeSeconds": 3.5161826080000003,
+        "checkpointSaveAndSynchronizationSeconds": 0.45038788,
+        "instrumentationAndLoopSeconds": 0.010514418999999775,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 8192,
+        "distinctRowsAcrossWindow": 8080,
+        "logicalSamplesPerSecond": 2005.2865178516224,
+        "uniqueProcessedRowsPerSecond": 2005.2865178516224,
+        "updatesPerSecond": 1.958287615089475,
+        "meanLoss": 0.00784181289782282,
+        "logicalSampleShapes": {
+          "maxHistoryTokens": 913,
+          "p95HistoryTokens": 830,
+          "rows": 8192,
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "meanBoundaryFloats": 42.94677734375,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanHistoryTokens": 457.8221435546875
+        },
+        "uniqueProcessedShapes": {
+          "maxHistoryTokens": 913,
+          "p95HistoryTokens": 830,
+          "rows": 8192,
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "meanBoundaryFloats": 42.94677734375,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanHistoryTokens": 457.8221435546875
+        }
+      },
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 22.935880162,
+        "samplingAndPayloadDecodeSeconds": 0.7952784220000002,
+        "trainCallIncludingObservationDecodeSeconds": 21.187904192,
+        "checkpointSaveAndSynchronizationSeconds": 0.8750489290000001,
+        "instrumentationAndLoopSeconds": 0.07764861899999964,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 2857.3570988821075,
+        "uniqueProcessedRowsPerSecond": 2857.3570988821075,
+        "updatesPerSecond": 2.790387791877058,
+        "meanLoss": 0.007714344521446037,
+        "logicalSampleShapes": {
+          "maxHistoryTokens": 950,
+          "p95HistoryTokens": 829,
+          "rows": 65536,
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "meanBoundaryFloats": 42.72503662109375,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanHistoryTokens": 456.98268127441406
+        },
+        "uniqueProcessedShapes": {
+          "maxHistoryTokens": 950,
+          "p95HistoryTokens": 829,
+          "rows": 65536,
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "meanBoundaryFloats": 42.72503662109375,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanHistoryTokens": 456.98268127441406
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-streamed-distinct-micro1024": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/model-micro1024",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true,
+      "samplingScope": "Diagnostic only: uniform sampling without replacement within each update over all retained rows in the role reservoir, including zero-weight rows. The same row may recur across updates. Stored targets and weights are unchanged; this changes the sampling distribution and is not a training-algorithm setting.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.606207409,
+      "corpusDecodeDiagnosticSeconds": 3.460618170999997,
+      "corpusShapes": {
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "rows": 362527,
+        "p95HistoryTokens": 828,
+        "maxHistoryTokens": 969,
+        "meanHistoryTokens": 456.4576128122871,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanBoundaryFloats": 42.807749491761996
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.863077269,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 1024,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 3.428559618,
+        "samplingAndPayloadDecodeSeconds": 0.13988256999999998,
+        "trainCallIncludingObservationDecodeSeconds": 2.8304746640000005,
+        "checkpointSaveAndSynchronizationSeconds": 0.447685584,
+        "instrumentationAndLoopSeconds": 0.010516799999999327,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 8192,
+        "distinctRowsAcrossWindow": 8080,
+        "logicalSamplesPerSecond": 2389.341564017686,
+        "uniqueProcessedRowsPerSecond": 2389.341564017686,
+        "updatesPerSecond": 2.3333413711110214,
+        "meanLoss": 0.007841516402550042,
+        "logicalSampleShapes": {
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "rows": 8192,
+          "p95HistoryTokens": 830,
+          "maxHistoryTokens": 913,
+          "meanHistoryTokens": 457.8221435546875,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanBoundaryFloats": 42.94677734375
+        },
+        "uniqueProcessedShapes": {
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "rows": 8192,
+          "p95HistoryTokens": 830,
+          "maxHistoryTokens": 913,
+          "meanHistoryTokens": 457.8221435546875,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanBoundaryFloats": 42.94677734375
+        }
+      },
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 18.526683503,
+        "samplingAndPayloadDecodeSeconds": 0.8324283710000001,
+        "trainCallIncludingObservationDecodeSeconds": 16.726077389999997,
+        "checkpointSaveAndSynchronizationSeconds": 0.889440742,
+        "instrumentationAndLoopSeconds": 0.07873700000000527,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3537.3843348372548,
+        "uniqueProcessedRowsPerSecond": 3537.3843348372548,
+        "updatesPerSecond": 3.4544768894895066,
+        "meanLoss": 0.007709755758696701,
+        "logicalSampleShapes": {
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "rows": 65536,
+          "p95HistoryTokens": 829,
+          "maxHistoryTokens": 950,
+          "meanHistoryTokens": 456.98268127441406,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanBoundaryFloats": 42.72503662109375
+        },
+        "uniqueProcessedShapes": {
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "rows": 65536,
+          "p95HistoryTokens": 829,
+          "maxHistoryTokens": 950,
+          "meanHistoryTokens": 456.98268127441406,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanBoundaryFloats": 42.72503662109375
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-optimized": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false,
+      "samplingScope": "Production log-weight sampling with replacement.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.681169499,
+      "corpusDecodeDiagnosticSeconds": 3.5062026430000075,
+      "corpusShapes": {
+        "maxHistoryTokens": 969,
+        "p95HistoryTokens": 828,
+        "rows": 362527,
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "meanBoundaryFloats": 42.807749491761996,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanHistoryTokens": 456.4576128122871
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.887645709,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 2.056807637,
+        "samplingAndPayloadDecodeSeconds": 0.014450555,
+        "trainCallIncludingObservationDecodeSeconds": 1.5862103000000003,
+        "checkpointSaveAndSynchronizationSeconds": 0.453456538,
+        "instrumentationAndLoopSeconds": 0.0026902439999997863,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 894,
+        "distinctRowsAcrossWindow": 369,
+        "logicalSamplesPerSecond": 3982.8712479639635,
+        "uniqueProcessedRowsPerSecond": 434.654162070286,
+        "updatesPerSecond": 3.889522703089808,
+        "meanLoss": 0.0015745185519335791,
+        "logicalSampleShapes": {
+          "maxHistoryTokens": 951,
+          "p95HistoryTokens": 886,
+          "rows": 8192,
+          "bucketRows": {
+            "16x1": 8104,
+            "4x16": 88
+          },
+          "meanBoundaryFloats": 38.7794189453125,
+          "forcedDecisionFraction": 0.0,
+          "meanHistoryTokens": 852.790283203125
+        },
+        "uniqueProcessedShapes": {
+          "maxHistoryTokens": 951,
+          "p95HistoryTokens": 907,
+          "rows": 894,
+          "bucketRows": {
+            "16x1": 832,
+            "4x16": 62
+          },
+          "meanBoundaryFloats": 52.75055928411633,
+          "forcedDecisionFraction": 0.0,
+          "meanHistoryTokens": 853.4351230425056
+        }
+      },
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 13.749130858,
+        "samplingAndPayloadDecodeSeconds": 0.07577366500000002,
+        "trainCallIncludingObservationDecodeSeconds": 11.878234155999996,
+        "checkpointSaveAndSynchronizationSeconds": 1.7723334709999998,
+        "instrumentationAndLoopSeconds": 0.02278956600000348,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9533.11168201844,
+        "uniqueProcessedRowsPerSecond": 1050.1027409742908,
+        "updatesPerSecond": 9.309679376971133,
+        "meanLoss": 0.0008893600241890454,
+        "logicalSampleShapes": {
+          "maxHistoryTokens": 942,
+          "p95HistoryTokens": 886,
+          "rows": 131072,
+          "bucketRows": {
+            "16x1": 129772,
+            "4x16": 1300
+          },
+          "meanBoundaryFloats": 38.793785095214844,
+          "forcedDecisionFraction": 0.0,
+          "meanHistoryTokens": 852.7174224853516
+        },
+        "uniqueProcessedShapes": {
+          "maxHistoryTokens": 942,
+          "p95HistoryTokens": 906,
+          "rows": 14438,
+          "bucketRows": {
+            "16x1": 13550,
+            "4x16": 888
+          },
+          "meanBoundaryFloats": 53.518631389389114,
+          "forcedDecisionFraction": 0.0,
+          "meanHistoryTokens": 853.8456157362516
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-optimized-distinct": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true,
+      "samplingScope": "Diagnostic only: uniform sampling without replacement within each update over all retained rows in the role reservoir, including zero-weight rows. The same row may recur across updates. Stored targets and weights are unchanged; this changes the sampling distribution and is not a training-algorithm setting.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 23.017513465,
+      "corpusDecodeDiagnosticSeconds": 3.509677467999994,
+      "corpusShapes": {
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanBoundaryFloats": 42.807749491761996,
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "rows": 362527,
+        "p95HistoryTokens": 828,
+        "maxHistoryTokens": 969,
+        "meanHistoryTokens": 456.4576128122871
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.926487793,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 3.369957779,
+        "samplingAndPayloadDecodeSeconds": 0.11176111199999998,
+        "trainCallIncludingObservationDecodeSeconds": 2.79297496,
+        "checkpointSaveAndSynchronizationSeconds": 0.454744962,
+        "instrumentationAndLoopSeconds": 0.01047674500000001,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 8192,
+        "distinctRowsAcrossWindow": 8080,
+        "logicalSamplesPerSecond": 2430.8909895099314,
+        "uniqueProcessedRowsPerSecond": 2430.8909895099314,
+        "updatesPerSecond": 2.3739169819432924,
+        "meanLoss": 0.007841789600206539,
+        "logicalSampleShapes": {
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanBoundaryFloats": 42.94677734375,
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "rows": 8192,
+          "p95HistoryTokens": 830,
+          "maxHistoryTokens": 913,
+          "meanHistoryTokens": 457.8221435546875
+        },
+        "uniqueProcessedShapes": {
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanBoundaryFloats": 42.94677734375,
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "rows": 8192,
+          "p95HistoryTokens": 830,
+          "maxHistoryTokens": 913,
+          "meanHistoryTokens": 457.8221435546875
+        }
+      },
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 17.585317206,
+        "samplingAndPayloadDecodeSeconds": 0.8135323729999999,
+        "trainCallIncludingObservationDecodeSeconds": 15.812728205000003,
+        "checkpointSaveAndSynchronizationSeconds": 0.880804724,
+        "instrumentationAndLoopSeconds": 0.07825190399999549,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3726.7453997155953,
+        "uniqueProcessedRowsPerSecond": 3726.7453997155953,
+        "updatesPerSecond": 3.639399804409761,
+        "meanLoss": 0.007707799482886912,
+        "logicalSampleShapes": {
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanBoundaryFloats": 42.72503662109375,
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "rows": 65536,
+          "p95HistoryTokens": 829,
+          "maxHistoryTokens": 950,
+          "meanHistoryTokens": 456.98268127441406
+        },
+        "uniqueProcessedShapes": {
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanBoundaryFloats": 42.72503662109375,
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "rows": 65536,
+          "p95HistoryTokens": 829,
+          "maxHistoryTokens": 950,
+          "meanHistoryTokens": 456.98268127441406
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-gru-bf16": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false,
+      "samplingScope": "Production log-weight sampling with replacement.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.736710242,
+      "corpusDecodeDiagnosticSeconds": 3.5110809830000016,
+      "corpusShapes": {
+        "meanHistoryTokens": 456.4576128122871,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanBoundaryFloats": 42.807749491761996,
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "rows": 362527,
+        "p95HistoryTokens": 828,
+        "maxHistoryTokens": 969
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.913149608,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 1.997939584,
+        "samplingAndPayloadDecodeSeconds": 0.013970211000000001,
+        "trainCallIncludingObservationDecodeSeconds": 1.5113254179999998,
+        "checkpointSaveAndSynchronizationSeconds": 0.469720482,
+        "instrumentationAndLoopSeconds": 0.002923473000000343,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 894,
+        "distinctRowsAcrossWindow": 369,
+        "logicalSamplesPerSecond": 4100.224083652772,
+        "uniqueProcessedRowsPerSecond": 447.46097787909883,
+        "updatesPerSecond": 4.00412508169216,
+        "meanLoss": 0.00157416335423477,
+        "logicalSampleShapes": {
+          "meanHistoryTokens": 852.790283203125,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 38.7794189453125,
+          "bucketRows": {
+            "16x1": 8104,
+            "4x16": 88
+          },
+          "rows": 8192,
+          "p95HistoryTokens": 886,
+          "maxHistoryTokens": 951
+        },
+        "uniqueProcessedShapes": {
+          "meanHistoryTokens": 853.4351230425056,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 52.75055928411633,
+          "bucketRows": {
+            "16x1": 832,
+            "4x16": 62
+          },
+          "rows": 894,
+          "p95HistoryTokens": 907,
+          "maxHistoryTokens": 951
+        }
+      },
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 13.883775,
+        "samplingAndPayloadDecodeSeconds": 0.07764520000000001,
+        "trainCallIncludingObservationDecodeSeconds": 12.028737733999998,
+        "checkpointSaveAndSynchronizationSeconds": 1.7522974689999997,
+        "instrumentationAndLoopSeconds": 0.02509459700000294,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9440.660051030789,
+        "uniqueProcessedRowsPerSecond": 1039.9188981382945,
+        "updatesPerSecond": 9.219394581084755,
+        "meanLoss": 0.0008749161448804443,
+        "logicalSampleShapes": {
+          "meanHistoryTokens": 852.7174224853516,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 38.793785095214844,
+          "bucketRows": {
+            "16x1": 129772,
+            "4x16": 1300
+          },
+          "rows": 131072,
+          "p95HistoryTokens": 886,
+          "maxHistoryTokens": 942
+        },
+        "uniqueProcessedShapes": {
+          "meanHistoryTokens": 853.8456157362516,
+          "forcedDecisionFraction": 0.0,
+          "meanBoundaryFloats": 53.518631389389114,
+          "bucketRows": {
+            "16x1": 13550,
+            "4x16": 888
+          },
+          "rows": 14438,
+          "p95HistoryTokens": 906,
+          "maxHistoryTokens": 942
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    },
+    "learn-gru-bf16-distinct-v2": {
+      "benchmarkVersion": 1,
+      "operation": "learn",
+      "checkpoint": "/home/koutachan/epsilon-ai/runs/cfr-regret-repair-20261008/trial/B/checkpoints/regret-1-128-8d970683-8a64-4ae1-9552-f62cc1a1dfa2",
+      "effectiveConfig": {
+        "seed": 20261008,
+        "solves": 1,
+        "iterations": 128,
+        "collection": {
+          "mode": "HAND_GRP",
+          "episodes": 4096,
+          "concurrentGames": 4096,
+          "inferenceBatch": 4096,
+          "exploration": 0.1,
+          "centerUtility": true,
+          "multiTransitionMaxBatch": 2048,
+          "slotsPerDevice": 2,
+          "readyBatchesPerDevice": 4,
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          },
+          "branchComparison": {
+            "enabled": true,
+            "winDecline": true,
+            "kyushu": true,
+            "maxBranchesPerGame": 1,
+            "maxInFlightBranches": 8,
+            "maxExtraInferenceRatio": 0.01
+          }
+        },
+        "learning": {
+          "batchSize": 1024,
+          "microBatchSize": 512,
+          "regretUpdates": 256,
+          "averageUpdates": 256,
+          "checkpointEveryUpdates": 32,
+          "learningRate": 0.0002,
+          "weightDecay": 0.0001,
+          "gradientClip": 0.5,
+          "computePrecision": "BFLOAT16",
+          "tensorTransfer": "PINNED_BUFFER"
+        },
+        "replay": {
+          "regretCapacity": 262144,
+          "averageCapacity": 262144,
+          "maxStoredBytes": 17179869184,
+          "maxRowBytes": 1048576,
+          "cacheRows": 1024
+        },
+        "network": {
+          "hidden": 256,
+          "devices": {
+            "validateIndices": false,
+            "learner": "gpu:0",
+            "inference": "gpu:0",
+            "grp": "cpu"
+          }
+        },
+        "boundary": {
+          "bootstrapGames": 4096,
+          "calibrationGames": 4096
+        },
+        "evaluation": {
+          "every": 10,
+          "championDuel": {
+            "interimWallSeeds": 50000,
+            "maximumWallSeeds": 100000,
+            "alpha": 0.01,
+            "interimAlphaFraction": 0.25
+          },
+          "evalVs": {
+            "gamesInFlight": 32768,
+            "maximumInferenceBatch": 2048,
+            "progressIntervalWallSeeds": 2048,
+            "seedBase": 40000
+          },
+          "arena": {
+            "advanceWorkers": 32,
+            "advanceTasksPerWorker": 2,
+            "maximumAdvanceTaskSize": 64
+          },
+          "batching": {
+            "maxBatchWaitMicros": 1000000
+          }
+        }
+      },
+      "javaVersion": "21.0.12.1",
+      "availableProcessors": 32,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true,
+      "samplingScope": "Diagnostic only: uniform sampling without replacement within each update over all retained rows in the role reservoir, including zero-weight rows. The same row may recur across updates. Stored targets and weights are unchanged; this changes the sampling distribution and is not a training-algorithm setting.",
+      "replayStorage": {
+        "episodes": 4096,
+        "seenRows": 362527,
+        "regretRows": 262144,
+        "averageRows": 262144,
+        "uniquePayloads": 334754,
+        "livePayloadBytes": 663498597,
+        "storedBytes": 712487068,
+        "cachedBytes": 0
+      },
+      "corpusPreparationSeconds": 22.718185723,
+      "corpusDecodeDiagnosticSeconds": 3.509287014999996,
+      "corpusShapes": {
+        "p95HistoryTokens": 828,
+        "rows": 362527,
+        "bucketRows": {
+          "16x1": 309616,
+          "1x1": 167,
+          "40x1": 9,
+          "4x16": 52657,
+          "8x16": 78
+        },
+        "meanBoundaryFloats": 42.807749491761996,
+        "forcedDecisionFraction": 0.0004606553442915976,
+        "meanHistoryTokens": 456.4576128122871,
+        "maxHistoryTokens": 969
+      },
+      "sourceEpisodes": 4096,
+      "learnerDevices": "[gpu(0)]",
+      "loadSeconds": 5.835441744,
+      "modelConfig": {
+        "hiddenSize": 256,
+        "historyWidth": 64,
+        "microBatchSize": 512,
+        "learningRate": 0.0002,
+        "weightDecay": 0.0001,
+        "gradientClip": 0.5,
+        "seed": 4541363064315823307,
+        "inferenceBatchSize": 4096,
+        "computePrecision": "BFLOAT16",
+        "tensorTransfer": "PINNED_BUFFER"
+      },
+      "role": "REGRET",
+      "replayWeights": {
+        "rows": 262144,
+        "positiveWeightRows": 105644,
+        "zeroWeightRows": 156500,
+        "logTotalWeight": 50.681728696630536,
+        "effectiveSampleSize": 3.8776110569304234,
+        "maximumReplayProbability": 0.48379738569523806
+      },
+      "warmup": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 3.127235502,
+        "samplingAndPayloadDecodeSeconds": 0.137424164,
+        "trainCallIncludingObservationDecodeSeconds": 2.526518587,
+        "checkpointSaveAndSynchronizationSeconds": 0.452880979,
+        "instrumentationAndLoopSeconds": 0.010411771999999986,
+        "updates": 8,
+        "checkpointSaves": 1,
+        "logicalSamples": 8192,
+        "uniqueProcessedRows": 8192,
+        "distinctRowsAcrossWindow": 8080,
+        "logicalSamplesPerSecond": 2619.566065542831,
+        "uniqueProcessedRowsPerSecond": 2619.566065542831,
+        "updatesPerSecond": 2.558169985881671,
+        "meanLoss": 0.007841704413294792,
+        "logicalSampleShapes": {
+          "p95HistoryTokens": 830,
+          "rows": 8192,
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "meanBoundaryFloats": 42.94677734375,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanHistoryTokens": 457.8221435546875,
+          "maxHistoryTokens": 913
+        },
+        "uniqueProcessedShapes": {
+          "p95HistoryTokens": 830,
+          "rows": 8192,
+          "bucketRows": {
+            "16x1": 7046,
+            "1x1": 1,
+            "4x16": 1145
+          },
+          "meanBoundaryFloats": 42.94677734375,
+          "forcedDecisionFraction": 0.0001220703125,
+          "meanHistoryTokens": 457.8221435546875,
+          "maxHistoryTokens": 913
+        }
+      },
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 16.260133725,
+        "samplingAndPayloadDecodeSeconds": 0.8129954359999998,
+        "trainCallIncludingObservationDecodeSeconds": 14.492420001000005,
+        "checkpointSaveAndSynchronizationSeconds": 0.876417062,
+        "instrumentationAndLoopSeconds": 0.07830122599999512,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 4030.47115776411,
+        "uniqueProcessedRowsPerSecond": 4030.47115776411,
+        "updatesPerSecond": 3.9360069900040138,
+        "meanLoss": 0.007713447950663976,
+        "logicalSampleShapes": {
+          "p95HistoryTokens": 829,
+          "rows": 65536,
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "meanBoundaryFloats": 42.72503662109375,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanHistoryTokens": 456.98268127441406,
+          "maxHistoryTokens": 950
+        },
+        "uniqueProcessedShapes": {
+          "p95HistoryTokens": 829,
+          "rows": 65536,
+          "bucketRows": {
+            "16x1": 55964,
+            "1x1": 34,
+            "40x1": 1,
+            "4x16": 9524,
+            "8x16": 13
+          },
+          "meanBoundaryFloats": 42.72503662109375,
+          "forcedDecisionFraction": 0.000518798828125,
+          "meanHistoryTokens": 456.98268127441406,
+          "maxHistoryTokens": 950
+        }
+      },
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately."
+    }
+  },
+  "nanoCollectorLogs": {
+    "collect-nano-streamed": [
+      "16:30:58.599 [main] INFO  c.epsilon.workflow.WorkflowRegistry - benchmark workflow complete: command=benchmark-decision-selfplay successful=true elapsedMs=48255 decisionsPerSecond=81055.685 games=4096 warmupGames=256 configuredGamesInFlight=32768 effectiveGamesInFlight=4096 samples=664386 elapsedMillis=31750 gamesPerSecond=129.008 computePrecision=BFLOAT16 actorDevices=[gpu(0)] opponentDevices=[gpu(0)] inferenceBatches=5332 inferenceRequests=2573518 averageInferenceBatch=482.655 maximumInferenceBatch=3072"
+    ],
+    "collect-nano": [
+      "15:12:26.929 [main] INFO  c.epsilon.workflow.WorkflowRegistry - benchmark workflow complete: command=benchmark-decision-selfplay successful=true elapsedMs=47356 decisionsPerSecond=82852.253 games=4096 warmupGames=256 configuredGamesInFlight=32768 effectiveGamesInFlight=4096 samples=662448 elapsedMillis=30965 gamesPerSecond=132.278 computePrecision=BFLOAT16 actorDevices=[gpu(0)] opponentDevices=[gpu(0)] inferenceBatches=4970 inferenceRequests=2565520 averageInferenceBatch=516.201 maximumInferenceBatch=3072"
+    ],
+    "collect-nano-fused": [
+      "15:59:13.730 [main] INFO  c.epsilon.workflow.WorkflowRegistry - benchmark workflow complete: command=benchmark-decision-selfplay successful=true elapsedMs=47842 decisionsPerSecond=82547.237 games=4096 warmupGames=256 configuredGamesInFlight=32768 effectiveGamesInFlight=4096 samples=666225 elapsedMillis=31257 gamesPerSecond=131.043 computePrecision=BFLOAT16 actorDevices=[gpu(0)] opponentDevices=[gpu(0)] inferenceBatches=5008 inferenceRequests=2580179 averageInferenceBatch=515.211 maximumInferenceBatch=3072"
+    ]
+  }
+}

@@ -3,8 +3,10 @@ package com.epsilon.nano.ai.decision.policy;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDArrays;
 import ai.djl.ndarray.NDList;
+import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Activation;
 import com.epsilon.core.Action;
+import java.util.Arrays;
 
 /**
  * 条件付きの行動確率で下位の候補表現を重み付けし、上位の分岐を評価する文脈を作る。
@@ -182,12 +184,12 @@ public final class DecisionPolicyContextPool {
         byType
             .contexts()
             .getManager()
-            .zeros(new ai.djl.ndarray.types.Shape(batch, width), byType.contexts().getDataType());
+            .zeros(new Shape(batch, width), byType.contexts().getDataType());
     NDArray zeroPresence =
         byType
             .presence()
             .getManager()
-            .zeros(new ai.djl.ndarray.types.Shape(batch, 1), byType.presence().getDataType());
+            .zeros(new Shape(batch, 1), byType.presence().getDataType());
     NDArray[] contexts = new NDArray[DecisionAlternative.NETWORK_SIZE];
     NDArray[] presence = new NDArray[DecisionAlternative.NETWORK_SIZE];
     for (DecisionAlternative alternative : DecisionAlternative.values()) {
@@ -216,7 +218,7 @@ public final class DecisionPolicyContextPool {
 
   private static int[] createAlternativeTypeMapping() {
     int[] mapping = new int[DecisionAlternative.NETWORK_SIZE];
-    java.util.Arrays.fill(mapping, -1);
+    Arrays.fill(mapping, -1);
     for (DecisionAlternative alternative : DecisionAlternative.values()) {
       if (alternative.hasActionType()) {
         mapping[alternative.networkIndex()] = alternative.actionType().ordinal();

@@ -3,6 +3,7 @@ package com.epsilon.nano.ai.decision.benchmark;
 import ai.djl.Model;
 import com.epsilon.config.settings.DecisionComputePrecision;
 import com.epsilon.config.settings.DecisionTensorTransfer;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.core.Action;
 import com.epsilon.core.Tile;
@@ -15,13 +16,15 @@ import com.epsilon.nano.ai.decision.input.DecisionInputSchema;
 import com.epsilon.nano.ai.decision.input.DecisionInputWriter;
 import com.epsilon.nano.ai.decision.input.DecisionTrainingTargets;
 import com.epsilon.nano.ai.decision.training.EpsilonDecisionPretrainer;
-import com.epsilon.nano.ai.network.NetworkDevices;
 import com.epsilon.nano.ai.network.NetworkFactory;
 import com.epsilon.nano.config.settings.DecisionPretrainSettings;
 import com.epsilon.nano.config.settings.DecisionSettings;
+import com.epsilon.nano.config.settings.EpsilonSettings;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -65,7 +68,7 @@ public final class EpsilonDecisionPretrainBenchmark {
         measuredSteps,
         legalActionCapacity,
         actionTransitionCapacity,
-        com.epsilon.nano.config.settings.EpsilonSettings.defaults());
+        EpsilonSettings.defaults());
   }
 
   public static Report run(
@@ -83,9 +86,7 @@ public final class EpsilonDecisionPretrainBenchmark {
     }
     DecisionBucket bucket = new DecisionBucket(legalActionCapacity, actionTransitionCapacity);
     DecisionHostBatch batch = syntheticBatch(optimizerBatchRows, bucket, config);
-    NetworkDevices devices =
-        NetworkFactory.getLearnerDevices(
-            config.bind(com.epsilon.config.settings.DeviceSettings.class));
+    NetworkDevices devices = NetworkFactory.getLearnerDevices(config.bind(DeviceSettings.class));
     DecisionPretrainSettings settings =
         config
             .bind(DecisionPretrainSettings.class)
@@ -124,8 +125,7 @@ public final class EpsilonDecisionPretrainBenchmark {
   }
 
   public static DecisionHostBatch syntheticBatch(int rows, DecisionBucket bucket) {
-    return syntheticBatch(
-        rows, bucket, com.epsilon.nano.config.settings.EpsilonSettings.defaults());
+    return syntheticBatch(rows, bucket, EpsilonSettings.defaults());
   }
 
   public static DecisionHostBatch syntheticBatch(
@@ -134,7 +134,7 @@ public final class EpsilonDecisionPretrainBenchmark {
     DecisionTrainingTargets targets = new DecisionTrainingTargets(rows, bucket);
     float actionProbability = 1.0f / bucket.legalActionCapacity();
     float[] policy = new float[bucket.legalActionCapacity()];
-    java.util.Arrays.fill(policy, actionProbability);
+    Arrays.fill(policy, actionProbability);
     List<Action> responseActions = syntheticActions(true, bucket.legalActionCapacity());
     List<Action> turnActions = syntheticActions(false, bucket.legalActionCapacity());
     DecisionActionRouteEncoder.Scratch routeScratch = new DecisionActionRouteEncoder.Scratch();

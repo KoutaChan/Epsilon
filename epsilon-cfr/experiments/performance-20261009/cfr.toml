@@ -1,0 +1,15 @@
+[epsilon.cfr]
+seed = 20261008
+
+[epsilon.cfr.collection]
+episodes = 4096
+
+[epsilon.cfr.network.devices]
+learner = "gpu:0"
+inference = "gpu:0"
+grp = "cpu"
+
+[epsilon.cfr.replay]
+regretCapacity = 262144
+averageCapacity = 262144
+maxStoredBytes = 17179869184

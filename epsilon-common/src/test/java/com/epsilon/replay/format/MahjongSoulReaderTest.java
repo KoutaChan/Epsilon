@@ -1,15 +1,49 @@
 package com.epsilon.replay.format;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.epsilon.core.Action;
 import com.epsilon.core.Tile;
-import com.epsilon.replay.*;
-import com.epsilon.replay.ReplayEvent.*;
-import com.google.gson.*;
+import com.epsilon.replay.DecisionPoint;
+import com.epsilon.replay.RecordCompletion;
+import com.epsilon.replay.RecordFormat;
+import com.epsilon.replay.ReplayEngine;
+import com.epsilon.replay.ReplayEvent;
+import com.epsilon.replay.ReplayEvent.Ankan;
+import com.epsilon.replay.ReplayEvent.Dahai;
+import com.epsilon.replay.ReplayEvent.Dora;
+import com.epsilon.replay.ReplayEvent.EndGame;
+import com.epsilon.replay.ReplayEvent.EndKyoku;
+import com.epsilon.replay.ReplayEvent.Hora;
+import com.epsilon.replay.ReplayEvent.Kakan;
+import com.epsilon.replay.ReplayEvent.Pon;
+import com.epsilon.replay.ReplayEvent.Reach;
+import com.epsilon.replay.ReplayEvent.ReachAccepted;
+import com.epsilon.replay.ReplayEvent.Ryukyoku;
+import com.epsilon.replay.ReplayEvent.StartGame;
+import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.replay.ReplayEvent.Tsumo;
+import com.epsilon.replay.ReplayRecord;
+import com.epsilon.replay.WinDetails;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.List;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /** 雀魂のJSONとバイナリ牌譜について、赤牌・副露・採点・終局情報の復元と不正データの拒否を検証する。 */
@@ -429,7 +463,7 @@ public class MahjongSoulReaderTest {
         : read(document(start(), record("RecordNoTile", jsonRecord)));
   }
 
-  @org.testng.annotations.DataProvider
+  @DataProvider
   public Object[][] recordEncodings() {
     return new Object[][] {{false}, {true}};
   }
@@ -458,7 +492,7 @@ public class MahjongSoulReaderTest {
     assertEquals(choices, List.of(Action.kyushuKyuhai()));
   }
 
-  @org.testng.annotations.DataProvider
+  @DataProvider
   public Object[][] otherAbortiveDrawCodes() {
     return new Object[][] {{0}, {2}, {3}, {4}, {5}, {99}};
   }

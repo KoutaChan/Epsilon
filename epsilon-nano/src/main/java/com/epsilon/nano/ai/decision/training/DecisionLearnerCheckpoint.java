@@ -2,6 +2,7 @@ package com.epsilon.nano.ai.decision.training;
 
 import com.epsilon.nano.ai.decision.EpsilonDecisionConstants;
 import com.epsilon.nano.config.settings.DecisionSelectedPgCampaignSettings.ActorKlControlSettings;
+import com.epsilon.nano.config.settings.DecisionSettings;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -65,7 +66,7 @@ final class DecisionLearnerCheckpoint {
       float expectedValueLearningRate,
       String expectedLearnerContractId,
       ActorKlControlSettings controllerSettings,
-      com.epsilon.nano.config.settings.DecisionSettings optimizerSettings)
+      DecisionSettings optimizerSettings)
       throws IOException {
     if (Files.exists(checkpoint.resolve(RETIRED_OPTIMIZER_MANIFEST))) {
       throw new IOException(

@@ -1,0 +1,1311 @@
+{
+  "date": "2026-10-09 Asia/Tokyo",
+  "baselineCommit": "d583db5",
+  "gpu": "AMD Radeon RX 7900 XTX 24 GiB, physical GPU 0",
+  "remoteDirectory": "/home/koutachan/epsilon-ai/benchmarks/cfr-followup-20261009",
+  "baselineJarSha256": "fcd266d390d418c7af9bef6489d92b9b1a06ee38cb2ea1cb5725e7c89bef1ef0",
+  "finalJarSha256": "337e68ff163efb5a776bea38b2e88d225c9d311e731cb926562a21157deba8b0",
+  "effectiveConfig": {
+    "seed": 20261008,
+    "solves": 1,
+    "iterations": 128,
+    "utilityProfile": "TENHOU",
+    "collection": {
+      "mode": "HAND_GRP",
+      "episodes": 4096,
+      "concurrentGames": 4096,
+      "inferenceBatch": 4096,
+      "exploration": 0.1,
+      "centerUtility": true,
+      "multiTransitionMaxBatch": 2048,
+      "slotsPerDevice": 2,
+      "readyBatchesPerDevice": 4,
+      "arena": {
+        "advanceWorkers": 32,
+        "advanceTasksPerWorker": 2,
+        "maximumAdvanceTaskSize": 64
+      },
+      "batching": {
+        "maxBatchWaitMicros": 1000000
+      },
+      "branchComparison": {
+        "enabled": true,
+        "winDecline": true,
+        "kyushu": true,
+        "maxBranchesPerGame": 1,
+        "maxInFlightBranches": 8,
+        "maxExtraInferenceRatio": 0.01
+      }
+    },
+    "learning": {
+      "batchSize": 1024,
+      "microBatchSize": 512,
+      "regretUpdates": 256,
+      "averageUpdates": 256,
+      "checkpointEveryUpdates": 32,
+      "learningRate": 0.0002,
+      "weightDecay": 0.0001,
+      "gradientClip": 0.5,
+      "computePrecision": "BFLOAT16",
+      "tensorTransfer": "PINNED_BUFFER"
+    },
+    "replay": {
+      "regretCapacity": 262144,
+      "averageCapacity": 262144,
+      "maxStoredBytes": 17179869184,
+      "maxRowBytes": 1048576,
+      "cacheRows": 1024
+    },
+    "network": {
+      "hidden": 256,
+      "devices": {
+        "validateIndices": false,
+        "learner": "gpu:0",
+        "inference": "gpu:0",
+        "grp": "cpu"
+      }
+    },
+    "boundary": {
+      "bootstrapGames": 4096,
+      "calibrationGames": 4096
+    },
+    "evaluation": {
+      "every": 10,
+      "championDuel": {
+        "interimWallSeeds": 50000,
+        "maximumWallSeeds": 100000,
+        "alpha": 0.01,
+        "interimAlphaFraction": 0.25
+      },
+      "evalVs": {
+        "gamesInFlight": 32768,
+        "maximumInferenceBatch": 2048,
+        "progressIntervalWallSeeds": 2048,
+        "seedBase": 40000
+      },
+      "arena": {
+        "advanceWorkers": 32,
+        "advanceTasksPerWorker": 2,
+        "maximumAdvanceTaskSize": 64
+      },
+      "batching": {
+        "maxBatchWaitMicros": 1000000
+      }
+    }
+  },
+  "inputCheckpoint": "/home/koutachan/epsilon-ai/benchmarks/cfr-followup-20261009/input-model",
+  "modelConfig": {
+    "hiddenSize": 256,
+    "historyWidth": 64,
+    "microBatchSize": 512,
+    "learningRate": 0.0002,
+    "weightDecay": 0.0001,
+    "gradientClip": 0.5,
+    "seed": 4541363064315823307,
+    "inferenceBatchSize": 4096,
+    "computePrecision": "BFLOAT16",
+    "tensorTransfer": "PINNED_BUFFER",
+    "utilityProfile": "TENHOU"
+  },
+  "learnerCorpus": "/home/koutachan/epsilon-ai/benchmarks/cfr-performance-20261008/collect-baseline/episodes",
+  "replayWeights": {
+    "rows": 262144,
+    "positiveWeightRows": 105644,
+    "zeroWeightRows": 156500,
+    "logTotalWeight": 50.681728696630536,
+    "effectiveSampleSize": 3.8776110569304234,
+    "maximumReplayProbability": 0.48379738569523806
+  },
+  "corpusShapes": {
+    "bucketRows": {
+      "16x1": 309616,
+      "1x1": 167,
+      "40x1": 9,
+      "4x16": 52657,
+      "8x16": 78
+    },
+    "rows": 362527,
+    "p95HistoryTokens": 828,
+    "maxHistoryTokens": 969,
+    "meanHistoryTokens": 456.4576128122871,
+    "forcedDecisionFraction": 0.0004606553442915976,
+    "meanBoundaryFloats": 42.807749491761996
+  },
+  "summary": {
+    "collection": {
+      "baseline": {
+        "median": 24749.69136283482,
+        "minimum": 24546.63924494018,
+        "maximum": 26586.395293268375,
+        "values": [
+          26586.395293268375,
+          24546.63924494018,
+          24749.69136283482
+        ]
+      },
+      "final": {
+        "median": 24661.44827720678,
+        "minimum": 24639.259491934336,
+        "maximum": 25286.327783782926,
+        "values": [
+          24661.44827720678,
+          25286.327783782926,
+          24639.259491934336
+        ]
+      },
+      "percentChange": -0.3565421658572654
+    },
+    "weightedLogical": {
+      "baseline": {
+        "median": 9187.517172928066,
+        "minimum": 9184.952954070352,
+        "maximum": 9213.835310026267,
+        "values": [
+          9187.517172928066,
+          9213.835310026267,
+          9184.952954070352
+        ]
+      },
+      "final": {
+        "median": 9309.035302150347,
+        "minimum": 9307.359956297185,
+        "maximum": 9310.123268854126,
+        "values": [
+          9309.035302150347,
+          9307.359956297185,
+          9310.123268854126
+        ]
+      },
+      "percentChange": 1.3226438322242906
+    },
+    "weightedProcessed": {
+      "baseline": {
+        "median": 1012.0344005030474,
+        "minimum": 1011.751943594877,
+        "maximum": 1014.9334274761906,
+        "values": [
+          1012.0344005030474,
+          1014.9334274761906,
+          1011.751943594877
+        ]
+      },
+      "final": {
+        "median": 1025.420011081289,
+        "minimum": 1025.2354663774013,
+        "maximum": 1025.5398540932913,
+        "values": [
+          1025.420011081289,
+          1025.2354663774013,
+          1025.5398540932913
+        ]
+      },
+      "percentChange": 1.3226438322242906
+    },
+    "distinctDiagnostic": {
+      "baseline": {
+        "median": 3576.2976642691197,
+        "minimum": 3573.513603923718,
+        "maximum": 3579.037845774849,
+        "values": [
+          3576.2976642691197,
+          3579.037845774849,
+          3573.513603923718
+        ]
+      },
+      "final": {
+        "median": 3649.455685639075,
+        "minimum": 3644.301549318518,
+        "maximum": 3651.867286312071,
+        "values": [
+          3644.301549318518,
+          3651.867286312071,
+          3649.455685639075
+        ]
+      },
+      "percentChange": 2.0456356891340066
+    }
+  },
+  "measurements": {
+    "baseline-collect-1": {
+      "operation": "collect",
+      "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed episode persistence including writer drain. Completed decisions count retained main-episode choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. This is not a Nano-equivalent workload.",
+      "measured": {
+        "elapsedSeconds": 13.63159601,
+        "completedEpisodes": 4096,
+        "completedDecisions": 362415,
+        "forcedDecisions": 177,
+        "forcedDecisionFraction": 0.0004883903811928314,
+        "episodesPerSecond": 300.4783883703138,
+        "completedDecisionsPerSecond": 26586.395293268375,
+        "nonForcedDecisionsPerSecond": 26573.410753536555,
+        "mainInferenceRowsPerSecond": 26586.395293268375,
+        "averageInferenceBatchRows": 1095.1601208459215,
+        "collectorStats": {
+          "episodes": 4096,
+          "decisions": 362415,
+          "inferenceBatches": 331,
+          "largestBatch": 4096,
+          "elapsedSeconds": 13.628864239,
+          "branchComparisons": 122,
+          "branchEpisodes": 38,
+          "branchInferenceRows": 83
+        }
+      },
+      "setupSeconds": 5.073757201
+    },
+    "baseline-collect-2": {
+      "operation": "collect",
+      "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed episode persistence including writer drain. Completed decisions count retained main-episode choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. This is not a Nano-equivalent workload.",
+      "measured": {
+        "elapsedSeconds": 14.758680257,
+        "completedEpisodes": 4096,
+        "completedDecisions": 362276,
+        "forcedDecisions": 178,
+        "forcedDecisionFraction": 0.0004913380958164493,
+        "episodesPerSecond": 277.53159013369634,
+        "completedDecisionsPerSecond": 24546.63924494018,
+        "nonForcedDecisionsPerSecond": 24534.578545954875,
+        "mainInferenceRowsPerSecond": 24546.63924494018,
+        "averageInferenceBatchRows": 1139.493710691824,
+        "collectorStats": {
+          "episodes": 4096,
+          "decisions": 362276,
+          "inferenceBatches": 318,
+          "largestBatch": 4096,
+          "elapsedSeconds": 14.75517236,
+          "branchComparisons": 121,
+          "branchEpisodes": 38,
+          "branchInferenceRows": 83
+        }
+      },
+      "setupSeconds": 5.027454635
+    },
+    "baseline-collect-3": {
+      "operation": "collect",
+      "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed episode persistence including writer drain. Completed decisions count retained main-episode choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. This is not a Nano-equivalent workload.",
+      "measured": {
+        "elapsedSeconds": 14.640788634,
+        "completedEpisodes": 4096,
+        "completedDecisions": 362355,
+        "forcedDecisions": 167,
+        "forcedDecisionFraction": 0.0004608740047743235,
+        "episodesPerSecond": 279.7663501874444,
+        "completedDecisionsPerSecond": 24749.69136283482,
+        "nonForcedDecisionsPerSecond": 24738.284873459503,
+        "mainInferenceRowsPerSecond": 24749.69136283482,
+        "averageInferenceBatchRows": 1146.9556962025317,
+        "collectorStats": {
+          "episodes": 4096,
+          "decisions": 362355,
+          "inferenceBatches": 316,
+          "largestBatch": 4096,
+          "elapsedSeconds": 14.6368509,
+          "branchComparisons": 121,
+          "branchEpisodes": 41,
+          "branchInferenceRows": 83
+        }
+      },
+      "setupSeconds": 5.029042811
+    },
+    "baseline-weighted-1": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 14.26631347,
+        "samplingAndPayloadDecodeSeconds": 0.074731642,
+        "trainCallIncludingObservationDecodeSeconds": 12.407137500999996,
+        "checkpointSaveAndSynchronizationSeconds": 1.763136737,
+        "instrumentationAndLoopSeconds": 0.021307590000004595,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9187.517172928066,
+        "uniqueProcessedRowsPerSecond": 1012.0344005030474,
+        "updatesPerSecond": 8.972184739187565,
+        "meanLoss": 0.0008938042086583664
+      },
+      "corpusPreparationSeconds": 22.802479264,
+      "loadSeconds": 5.867926379,
+      "sourceEpisodes": 4096,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false
+    },
+    "baseline-weighted-2": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 14.225563578,
+        "samplingAndPayloadDecodeSeconds": 0.07508653100000004,
+        "trainCallIncludingObservationDecodeSeconds": 12.369474482000003,
+        "checkpointSaveAndSynchronizationSeconds": 1.758012147,
+        "instrumentationAndLoopSeconds": 0.022990417999996016,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9213.835310026267,
+        "uniqueProcessedRowsPerSecond": 1014.9334274761906,
+        "updatesPerSecond": 8.997886044947526,
+        "meanLoss": 0.0008939014098814368
+      },
+      "corpusPreparationSeconds": 22.773749646,
+      "loadSeconds": 5.886466476,
+      "sourceEpisodes": 4096,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false
+    },
+    "baseline-weighted-3": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 14.270296283,
+        "samplingAndPayloadDecodeSeconds": 0.07541577199999996,
+        "trainCallIncludingObservationDecodeSeconds": 12.417246294000007,
+        "checkpointSaveAndSynchronizationSeconds": 1.7552341360000001,
+        "instrumentationAndLoopSeconds": 0.0224000809999938,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9184.952954070352,
+        "uniqueProcessedRowsPerSecond": 1011.751943594877,
+        "updatesPerSecond": 8.969680619209328,
+        "meanLoss": 0.0008924808564643172
+      },
+      "corpusPreparationSeconds": 22.69690912,
+      "loadSeconds": 5.925230706,
+      "sourceEpisodes": 4096,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false
+    },
+    "baseline-distinct-1": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 18.325096553,
+        "samplingAndPayloadDecodeSeconds": 0.8017753029999998,
+        "trainCallIncludingObservationDecodeSeconds": 16.570345153000005,
+        "checkpointSaveAndSynchronizationSeconds": 0.875006948,
+        "instrumentationAndLoopSeconds": 0.07796914899999696,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3576.2976642691197,
+        "uniqueProcessedRowsPerSecond": 3576.2976642691197,
+        "updatesPerSecond": 3.492478187762812,
+        "meanLoss": 0.007713739607424941
+      },
+      "corpusPreparationSeconds": 22.987654361,
+      "loadSeconds": 5.845381467,
+      "sourceEpisodes": 4096,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true
+    },
+    "baseline-distinct-2": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 18.3110665,
+        "samplingAndPayloadDecodeSeconds": 0.800402348,
+        "trainCallIncludingObservationDecodeSeconds": 16.557459622000003,
+        "checkpointSaveAndSynchronizationSeconds": 0.8755933659999999,
+        "instrumentationAndLoopSeconds": 0.07761116399999723,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3579.037845774849,
+        "uniqueProcessedRowsPerSecond": 3579.037845774849,
+        "updatesPerSecond": 3.495154146264501,
+        "meanLoss": 0.007718967739492655
+      },
+      "corpusPreparationSeconds": 23.118975224,
+      "loadSeconds": 5.89038099,
+      "sourceEpisodes": 4096,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true
+    },
+    "baseline-distinct-3": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 18.339373307,
+        "samplingAndPayloadDecodeSeconds": 0.8440852640000002,
+        "trainCallIncludingObservationDecodeSeconds": 16.537944692999996,
+        "checkpointSaveAndSynchronizationSeconds": 0.878716228,
+        "instrumentationAndLoopSeconds": 0.0786271220000021,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3573.513603923718,
+        "uniqueProcessedRowsPerSecond": 3573.513603923718,
+        "updatesPerSecond": 3.489759378831756,
+        "meanLoss": 0.007716213665844407
+      },
+      "corpusPreparationSeconds": 22.729385309,
+      "loadSeconds": 5.908526188,
+      "sourceEpisodes": 4096,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true
+    },
+    "final-collect-1": {
+      "operation": "collect",
+      "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed episode persistence including writer drain. Completed decisions count retained main-episode choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. This is not a Nano-equivalent workload.",
+      "measured": {
+        "elapsedSeconds": 14.703759322,
+        "completedEpisodes": 4096,
+        "completedDecisions": 362616,
+        "forcedDecisions": 183,
+        "forcedDecisionFraction": 0.0005046660930571183,
+        "episodesPerSecond": 278.56821580801443,
+        "completedDecisionsPerSecond": 24661.44827720678,
+        "nonForcedDecisionsPerSecond": 24649.00248045559,
+        "mainInferenceRowsPerSecond": 24661.44827720678,
+        "averageInferenceBatchRows": 1119.4413580246915,
+        "collectorStats": {
+          "episodes": 4096,
+          "decisions": 362616,
+          "inferenceBatches": 324,
+          "largestBatch": 4096,
+          "elapsedSeconds": 14.700725694,
+          "branchComparisons": 122,
+          "branchEpisodes": 41,
+          "branchInferenceRows": 83
+        }
+      },
+      "setupSeconds": 5.019810717
+    },
+    "final-collect-2": {
+      "operation": "collect",
+      "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed episode persistence including writer drain. Completed decisions count retained main-episode choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. This is not a Nano-equivalent workload.",
+      "measured": {
+        "elapsedSeconds": 14.33671995,
+        "completedEpisodes": 4096,
+        "completedDecisions": 362523,
+        "forcedDecisions": 170,
+        "forcedDecisionFraction": 0.00046893576407565867,
+        "episodesPerSecond": 285.69993794152333,
+        "completedDecisionsPerSecond": 25286.327783782926,
+        "nonForcedDecisionsPerSecond": 25274.470120342972,
+        "mainInferenceRowsPerSecond": 25286.327783782926,
+        "averageInferenceBatchRows": 1108.8868501529053,
+        "collectorStats": {
+          "episodes": 4096,
+          "decisions": 362523,
+          "inferenceBatches": 327,
+          "largestBatch": 4096,
+          "elapsedSeconds": 14.332993614,
+          "branchComparisons": 124,
+          "branchEpisodes": 41,
+          "branchInferenceRows": 83
+        }
+      },
+      "setupSeconds": 5.012547054
+    },
+    "final-collect-3": {
+      "operation": "collect",
+      "timingScope": "Measured collection includes feature encoding, all inference and engine work, GRP, branch completion, and optional compressed episode persistence including writer drain. Completed decisions count retained main-episode choices, including forced choices; branch work is reported separately. Model load, warmup and post-run observation shape decoding are excluded. This is not a Nano-equivalent workload.",
+      "measured": {
+        "elapsedSeconds": 14.704743871,
+        "completedEpisodes": 4096,
+        "completedDecisions": 362314,
+        "forcedDecisions": 172,
+        "forcedDecisionFraction": 0.0004747263423439337,
+        "episodesPerSecond": 278.5495644081185,
+        "completedDecisionsPerSecond": 24639.259491934336,
+        "nonForcedDecisionsPerSecond": 24627.562586397667,
+        "mainInferenceRowsPerSecond": 24639.259491934336,
+        "averageInferenceBatchRows": 1132.490625,
+        "collectorStats": {
+          "episodes": 4096,
+          "decisions": 362314,
+          "inferenceBatches": 320,
+          "largestBatch": 4096,
+          "elapsedSeconds": 14.701022384,
+          "branchComparisons": 121,
+          "branchEpisodes": 40,
+          "branchInferenceRows": 83
+        }
+      },
+      "setupSeconds": 5.01535531
+    },
+    "final-weighted-1": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 14.080084106,
+        "samplingAndPayloadDecodeSeconds": 0.102757852,
+        "trainCallIncludingObservationDecodeSeconds": 12.187257015000007,
+        "checkpointSaveAndSynchronizationSeconds": 1.767949346,
+        "instrumentationAndLoopSeconds": 0.022119892999992175,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9309.035302150347,
+        "uniqueProcessedRowsPerSecond": 1025.420011081289,
+        "updatesPerSecond": 9.090854787256198,
+        "meanLoss": 0.0008879631761828932
+      },
+      "corpusPreparationSeconds": 20.87630731,
+      "loadSeconds": 5.865959276,
+      "sourceEpisodes": 4096,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false
+    },
+    "final-weighted-2": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 14.082618553,
+        "samplingAndPayloadDecodeSeconds": 0.07506616899999999,
+        "trainCallIncludingObservationDecodeSeconds": 12.226141253000003,
+        "checkpointSaveAndSynchronizationSeconds": 1.759673477,
+        "instrumentationAndLoopSeconds": 0.021737653999996942,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9307.359956297185,
+        "uniqueProcessedRowsPerSecond": 1025.2354663774013,
+        "updatesPerSecond": 9.08921870732147,
+        "meanLoss": 0.0008881114930545664
+      },
+      "corpusPreparationSeconds": 20.874385803,
+      "loadSeconds": 5.844666902,
+      "sourceEpisodes": 4096,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false
+    },
+    "final-weighted-3": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "weighted",
+        "diagnosticOnly": false,
+        "elapsedSeconds": 14.078438729,
+        "samplingAndPayloadDecodeSeconds": 0.075060309,
+        "trainCallIncludingObservationDecodeSeconds": 12.211953911999991,
+        "checkpointSaveAndSynchronizationSeconds": 1.7693779809999999,
+        "instrumentationAndLoopSeconds": 0.02204652700000942,
+        "updates": 128,
+        "checkpointSaves": 4,
+        "logicalSamples": 131072,
+        "uniqueProcessedRows": 14438,
+        "distinctRowsAcrossWindow": 1389,
+        "logicalSamplesPerSecond": 9310.123268854126,
+        "uniqueProcessedRowsPerSecond": 1025.5398540932913,
+        "updatesPerSecond": 9.091917254740357,
+        "meanLoss": 0.0008989947665440923
+      },
+      "corpusPreparationSeconds": 20.873664961,
+      "loadSeconds": 5.858126695,
+      "sourceEpisodes": 4096,
+      "samplingMode": "weighted",
+      "diagnosticOnly": false
+    },
+    "final-distinct-1": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 17.983144126,
+        "samplingAndPayloadDecodeSeconds": 0.8274470069999998,
+        "trainCallIncludingObservationDecodeSeconds": 16.191702094,
+        "checkpointSaveAndSynchronizationSeconds": 0.885912807,
+        "instrumentationAndLoopSeconds": 0.07808221799999915,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3644.301549318518,
+        "uniqueProcessedRowsPerSecond": 3644.301549318518,
+        "updatesPerSecond": 3.5588882317563653,
+        "meanLoss": 0.007723852364506456
+      },
+      "corpusPreparationSeconds": 21.416306915,
+      "loadSeconds": 5.878829292,
+      "sourceEpisodes": 4096,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true
+    },
+    "final-distinct-2": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 17.945887641,
+        "samplingAndPayloadDecodeSeconds": 0.8630221859999998,
+        "trainCallIncludingObservationDecodeSeconds": 16.12956962300001,
+        "checkpointSaveAndSynchronizationSeconds": 0.875156788,
+        "instrumentationAndLoopSeconds": 0.07813904399999139,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3651.867286312071,
+        "uniqueProcessedRowsPerSecond": 3651.867286312071,
+        "updatesPerSecond": 3.566276646789132,
+        "meanLoss": 0.007708220700806123
+      },
+      "corpusPreparationSeconds": 21.167571958,
+      "loadSeconds": 5.892131674,
+      "sourceEpisodes": 4096,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true
+    },
+    "final-distinct-3": {
+      "operation": "learn",
+      "timingScope": "Headline samples/s includes replay sampling and payload decode, CfrModel.train including observation decode, bucket assignment, CPU preparation, transfer, forward/backward/optimizer, and periodic saveTraining including deferred GPU synchronization. Checkpoints are saved every configured interval and at window end. Internal decode cannot be separated through the public model API; the reported corpusDecodeDiagnosticSeconds is separate setup work, not a subtraction from learner time. Unique processed rows sum within-update distinct identities. Sampling mode is reported separately; uniform-distinct is a compute diagnostic, not production weighted training. Stored teachers and weights are unchanged. Warmup, model/replay load, and corpus preparation are reported separately.",
+      "measured": {
+        "samplingMode": "uniform-distinct",
+        "diagnosticOnly": true,
+        "elapsedSeconds": 17.957746482,
+        "samplingAndPayloadDecodeSeconds": 0.872506342,
+        "trainCallIncludingObservationDecodeSeconds": 16.130194814000003,
+        "checkpointSaveAndSynchronizationSeconds": 0.877368123,
+        "instrumentationAndLoopSeconds": 0.07767720299999692,
+        "updates": 64,
+        "checkpointSaves": 2,
+        "logicalSamples": 65536,
+        "uniqueProcessedRows": 65536,
+        "distinctRowsAcrossWindow": 58044,
+        "logicalSamplesPerSecond": 3649.455685639075,
+        "uniqueProcessedRowsPerSecond": 3649.455685639075,
+        "updatesPerSecond": 3.563921568006909,
+        "meanLoss": 0.007716287494986318
+      },
+      "corpusPreparationSeconds": 21.230213975,
+      "loadSeconds": 5.838774685,
+      "sourceEpisodes": 4096,
+      "samplingMode": "uniform-distinct",
+      "diagnosticOnly": true
+    }
+  },
+  "codecMicrobenchmarks": {
+    "baseline-warmed-repeat": {
+      "java": "21.0.9",
+      "warmup": 20000,
+      "measured": 10000,
+      "repeats": 5,
+      "cases": [
+        {
+          "history": 456,
+          "operation": "encode",
+          "payloadBytes": 19084,
+          "medianRowsPerSecond": 175500.792,
+          "seconds": [
+            0.081562,
+            0.0713859,
+            0.0534572,
+            0.0542087,
+            0.0569798
+          ]
+        },
+        {
+          "history": 456,
+          "operation": "decode",
+          "payloadBytes": 19084,
+          "medianRowsPerSecond": 118733.963,
+          "seconds": [
+            0.0760634,
+            0.0844105,
+            0.0851386,
+            0.0825724,
+            0.0842219
+          ]
+        },
+        {
+          "history": 854,
+          "operation": "encode",
+          "payloadBytes": 19880,
+          "medianRowsPerSecond": 128375.637,
+          "seconds": [
+            0.0778964,
+            0.0767538,
+            0.0842792,
+            0.0810378,
+            0.0762406
+          ]
+        },
+        {
+          "history": 854,
+          "operation": "decode",
+          "payloadBytes": 19880,
+          "medianRowsPerSecond": 88104.252,
+          "seconds": [
+            0.1152949,
+            0.1190262,
+            0.1123709,
+            0.1135019,
+            0.1106804
+          ]
+        },
+        {
+          "history": 8192,
+          "operation": "encode",
+          "payloadBytes": 34556,
+          "medianRowsPerSecond": 24604.58,
+          "seconds": [
+            0.4442931,
+            0.3838943,
+            0.4064284,
+            0.4073973,
+            0.4047319
+          ]
+        },
+        {
+          "history": 8192,
+          "operation": "decode",
+          "payloadBytes": 34556,
+          "medianRowsPerSecond": 11230.769,
+          "seconds": [
+            0.890411,
+            0.8607368,
+            0.9105602,
+            0.8976831,
+            0.876181
+          ]
+        }
+      ],
+      "sink": 5847499720
+    },
+    "baseline-warmed": {
+      "java": "21.0.9",
+      "warmup": 20000,
+      "measured": 10000,
+      "repeats": 5,
+      "cases": [
+        {
+          "history": 456,
+          "operation": "encode",
+          "payloadBytes": 19084,
+          "medianRowsPerSecond": 157990.363,
+          "seconds": [
+            0.1119432,
+            0.0914598,
+            0.0625773,
+            0.0609352,
+            0.063295
+          ]
+        },
+        {
+          "history": 456,
+          "operation": "decode",
+          "payloadBytes": 19084,
+          "medianRowsPerSecond": 127601.312,
+          "seconds": [
+            0.0804127,
+            0.0747284,
+            0.0765743,
+            0.0800459,
+            0.0783691
+          ]
+        },
+        {
+          "history": 854,
+          "operation": "encode",
+          "payloadBytes": 19880,
+          "medianRowsPerSecond": 132755.405,
+          "seconds": [
+            0.077023,
+            0.0753265,
+            0.0789235,
+            0.07451,
+            0.0740825
+          ]
+        },
+        {
+          "history": 854,
+          "operation": "decode",
+          "payloadBytes": 19880,
+          "medianRowsPerSecond": 83640.573,
+          "seconds": [
+            0.1192961,
+            0.1217285,
+            0.1192913,
+            0.1195592,
+            0.1195624
+          ]
+        },
+        {
+          "history": 8192,
+          "operation": "encode",
+          "payloadBytes": 34556,
+          "medianRowsPerSecond": 19122.66,
+          "seconds": [
+            0.5229398,
+            0.5023348,
+            0.5309553,
+            0.5062527,
+            0.5235963
+          ]
+        },
+        {
+          "history": 8192,
+          "operation": "decode",
+          "payloadBytes": 34556,
+          "medianRowsPerSecond": 11113.466,
+          "seconds": [
+            0.8900022,
+            0.8998093,
+            0.9041576,
+            0.882534,
+            0.9074081
+          ]
+        }
+      ],
+      "sink": 5847499720
+    },
+    "candidate-warmed-repeat": {
+      "java": "21.0.9",
+      "warmup": 20000,
+      "measured": 10000,
+      "repeats": 5,
+      "cases": [
+        {
+          "history": 456,
+          "operation": "encode",
+          "payloadBytes": 19084,
+          "medianRowsPerSecond": 236515.651,
+          "seconds": [
+            0.0693626,
+            0.0593091,
+            0.0389072,
+            0.040884,
+            0.0422805
+          ]
+        },
+        {
+          "history": 456,
+          "operation": "decode",
+          "payloadBytes": 19084,
+          "medianRowsPerSecond": 306218.689,
+          "seconds": [
+            0.0336063,
+            0.033023,
+            0.032232,
+            0.0326564,
+            0.0308809
+          ]
+        },
+        {
+          "history": 854,
+          "operation": "encode",
+          "payloadBytes": 19880,
+          "medianRowsPerSecond": 208805.32,
+          "seconds": [
+            0.0476682,
+            0.0482546,
+            0.049831,
+            0.0471461,
+            0.0478915
+          ]
+        },
+        {
+          "history": 854,
+          "operation": "decode",
+          "payloadBytes": 19880,
+          "medianRowsPerSecond": 286553.478,
+          "seconds": [
+            0.0347099,
+            0.0374918,
+            0.0348975,
+            0.0379831,
+            0.0348893
+          ]
+        },
+        {
+          "history": 8192,
+          "operation": "encode",
+          "payloadBytes": 34556,
+          "medianRowsPerSecond": 50072.68,
+          "seconds": [
+            0.2258855,
+            0.1952833,
+            0.1997097,
+            0.1975129,
+            0.2272684
+          ]
+        },
+        {
+          "history": 8192,
+          "operation": "decode",
+          "payloadBytes": 34556,
+          "medianRowsPerSecond": 75297.349,
+          "seconds": [
+            0.1351757,
+            0.1317344,
+            0.1328068,
+            0.1252553,
+            0.1334617
+          ]
+        }
+      ],
+      "sink": 5847499720
+    },
+    "candidate-warmed": {
+      "java": "21.0.9",
+      "warmup": 20000,
+      "measured": 10000,
+      "repeats": 5,
+      "cases": [
+        {
+          "history": 456,
+          "operation": "encode",
+          "payloadBytes": 19084,
+          "medianRowsPerSecond": 219959.088,
+          "seconds": [
+            0.0729986,
+            0.0617123,
+            0.0399991,
+            0.0393163,
+            0.045463
+          ]
+        },
+        {
+          "history": 456,
+          "operation": "decode",
+          "payloadBytes": 19084,
+          "medianRowsPerSecond": 334252.528,
+          "seconds": [
+            0.0363089,
+            0.0299175,
+            0.0290539,
+            0.0341064,
+            0.0297552
+          ]
+        },
+        {
+          "history": 854,
+          "operation": "encode",
+          "payloadBytes": 19880,
+          "medianRowsPerSecond": 203580.99,
+          "seconds": [
+            0.0473803,
+            0.0491998,
+            0.0518439,
+            0.0474324,
+            0.0491205
+          ]
+        },
+        {
+          "history": 854,
+          "operation": "decode",
+          "payloadBytes": 19880,
+          "medianRowsPerSecond": 267034.819,
+          "seconds": [
+            0.0361414,
+            0.037579,
+            0.038598,
+            0.0374483,
+            0.0338825
+          ]
+        },
+        {
+          "history": 8192,
+          "operation": "encode",
+          "payloadBytes": 34556,
+          "medianRowsPerSecond": 48381.658,
+          "seconds": [
+            0.2066899,
+            0.2004153,
+            0.2074178,
+            0.2046759,
+            0.217268
+          ]
+        },
+        {
+          "history": 8192,
+          "operation": "decode",
+          "payloadBytes": 34556,
+          "medianRowsPerSecond": 79679.116,
+          "seconds": [
+            0.1255034,
+            0.1344778,
+            0.1374123,
+            0.1200901,
+            0.1206535
+          ]
+        }
+      ],
+      "sink": 5847499720
+    }
+  },
+  "historyAllocationMicrobenchmarks": [
+    {
+      "run": 1,
+      "variant": "baseline",
+      "phase": "events",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 10115.2,
+      "allocatedBytesPerOperation": 40152.0,
+      "checksum": 18440000
+    },
+    {
+      "run": 1,
+      "variant": "baseline",
+      "phase": "hand",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 1859.3,
+      "allocatedBytesPerOperation": 7554.2,
+      "checksum": 18580000
+    },
+    {
+      "run": 1,
+      "variant": "baseline",
+      "phase": "match",
+      "iterations": 5000,
+      "nanosecondsPerOperation": 10134.0,
+      "allocatedBytesPerOperation": 89421.7,
+      "checksum": 55740000
+    },
+    {
+      "run": 1,
+      "variant": "candidate",
+      "phase": "events",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 9341.7,
+      "allocatedBytesPerOperation": 40200.0,
+      "checksum": 18440000
+    },
+    {
+      "run": 1,
+      "variant": "candidate",
+      "phase": "hand",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 681.0,
+      "allocatedBytesPerOperation": 3802.2,
+      "checksum": 18580000
+    },
+    {
+      "run": 1,
+      "variant": "candidate",
+      "phase": "match",
+      "iterations": 5000,
+      "nanosecondsPerOperation": 8029.0,
+      "allocatedBytesPerOperation": 44797.7,
+      "checksum": 55740000
+    },
+    {
+      "run": 2,
+      "variant": "baseline",
+      "phase": "events",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 9411.3,
+      "allocatedBytesPerOperation": 40152.0,
+      "checksum": 18440000
+    },
+    {
+      "run": 2,
+      "variant": "baseline",
+      "phase": "hand",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 1686.9,
+      "allocatedBytesPerOperation": 7554.2,
+      "checksum": 18580000
+    },
+    {
+      "run": 2,
+      "variant": "baseline",
+      "phase": "match",
+      "iterations": 5000,
+      "nanosecondsPerOperation": 10190.0,
+      "allocatedBytesPerOperation": 89421.7,
+      "checksum": 55740000
+    },
+    {
+      "run": 2,
+      "variant": "candidate",
+      "phase": "events",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 9648.8,
+      "allocatedBytesPerOperation": 40200.0,
+      "checksum": 18440000
+    },
+    {
+      "run": 2,
+      "variant": "candidate",
+      "phase": "hand",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 721.2,
+      "allocatedBytesPerOperation": 3802.2,
+      "checksum": 18580000
+    },
+    {
+      "run": 2,
+      "variant": "candidate",
+      "phase": "match",
+      "iterations": 5000,
+      "nanosecondsPerOperation": 8888.8,
+      "allocatedBytesPerOperation": 44797.7,
+      "checksum": 55740000
+    },
+    {
+      "run": 3,
+      "variant": "baseline",
+      "phase": "events",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 9989.4,
+      "allocatedBytesPerOperation": 40179.7,
+      "checksum": 18440000
+    },
+    {
+      "run": 3,
+      "variant": "baseline",
+      "phase": "hand",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 1713.0,
+      "allocatedBytesPerOperation": 7554.2,
+      "checksum": 18580000
+    },
+    {
+      "run": 3,
+      "variant": "baseline",
+      "phase": "match",
+      "iterations": 5000,
+      "nanosecondsPerOperation": 9418.1,
+      "allocatedBytesPerOperation": 89421.7,
+      "checksum": 55740000
+    },
+    {
+      "run": 3,
+      "variant": "candidate",
+      "phase": "events",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 10125.6,
+      "allocatedBytesPerOperation": 40200.0,
+      "checksum": 18440000
+    },
+    {
+      "run": 3,
+      "variant": "candidate",
+      "phase": "hand",
+      "iterations": 20000,
+      "nanosecondsPerOperation": 712.1,
+      "allocatedBytesPerOperation": 3802.2,
+      "checksum": 18580000
+    },
+    {
+      "run": 3,
+      "variant": "candidate",
+      "phase": "match",
+      "iterations": 5000,
+      "nanosecondsPerOperation": 8810.0,
+      "allocatedBytesPerOperation": 44797.7,
+      "checksum": 55740000
+    }
+  ],
+  "excludedMeasurements": "optimized-* were preliminary builds before the final sequence-buffer growth policy and are not included.",
+  "validation": {
+    "regularTests": 142,
+    "cpuNativeTests": 13,
+    "gpuTests": 9,
+    "failures": 0,
+    "skips": 0,
+    "cpuParameterComparisonTolerance": 1e-07,
+    "formatCheck": "google-java-format 1.28.0 passed",
+    "javadoc": "passed with no warnings or errors",
+    "measurementOrder": [
+      "baseline repetition 1",
+      "baseline repetition 2",
+      "final repetition 1",
+      "final repetition 2",
+      "final repetition 3",
+      "baseline repetition 3"
+    ],
+    "bf16IndependentTrajectoryDiagnostic": {
+      "reason": "Independent BF16 training trajectories accumulate roundoff and exceeded the inherited 1% loss tolerance on both versions.",
+      "baseline": {
+        "step": 6,
+        "lossActual": 1.5724771916866302,
+        "lossExpected": 1.5564236044883728
+      },
+      "final": {
+        "step": 5,
+        "lossActual": 10.933639287948608,
+        "lossExpected": 11.125936031341553
+      },
+      "logs": [
+        "verify-cache-baseline-bf16.log",
+        "verify-cache-bf16.log"
+      ],
+      "classification": "Diagnostic failure in both versions; not evidence of a cache-specific regression."
+    },
+    "bf16CacheComparison": {
+      "method": "Six paired single-update comparisons per role from identical model and AdamW states; cached learner stays alive across comparisons and same-ID row replacement.",
+      "precision": "BFLOAT16",
+      "historyLengths": [
+        192,
+        257,
+        384,
+        513,
+        321
+      ],
+      "metrics": {
+        "REGRET": {
+          "maxLossDifference": 0.0,
+          "maxGradientNormDifference": 0.0,
+          "maxParameterRelativeL2": 4.165714910507988e-08,
+          "maxUpdateRelativeL2": 1.1506723262994712e-05,
+          "minUpdateCosine": 0.9999999999337977
+        },
+        "AVERAGE": {
+          "maxLossDifference": 0.0,
+          "maxGradientNormDifference": 5.26737882022843e-06,
+          "maxParameterRelativeL2": 2.348040878693514e-07,
+          "maxUpdateRelativeL2": 0.00010988937998835646,
+          "minUpdateCosine": 0.9999999939627926
+        }
+      },
+      "log": "verify-cache-paired-bf16.log",
+      "thresholds": {
+        "lossAbsolute": 0.0002,
+        "lossRelative": 0.01,
+        "gradientNormAbsolute": 0.0002,
+        "gradientNormRelative": 0.02,
+        "parameterRelativeL2": 0.0005,
+        "parameterCosine": 0.99999,
+        "updateRelativeL2": 0.03,
+        "updateCosine": 0.999
+      }
+    },
+    "cpuRetestAfterGpuTestRefactor": {
+      "tests": 5,
+      "failures": 0,
+      "skips": 0
+    }
+  },
+  "learnerRole": "REGRET"
+}

@@ -3,6 +3,7 @@ package com.epsilon.major.ai.decision.input;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.DataType;
+import ai.djl.ndarray.types.Shape;
 
 /**
  * 通常の逐次実行による推論で使う、状態・行動と実在する遷移のテンソル。
@@ -109,7 +110,7 @@ public record DecisionInferenceInputs(
     };
   }
 
-  private static NDArray slice(NDArray slab, int start, int end, ai.djl.ndarray.types.Shape shape) {
+  private static NDArray slice(NDArray slab, int start, int end, Shape shape) {
     if (start == end) {
       return slab.get(new NDIndex().addSliceDim(0, 0)).reshape(shape);
     }

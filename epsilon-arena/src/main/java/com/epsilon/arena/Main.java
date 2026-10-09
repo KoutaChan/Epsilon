@@ -1,5 +1,6 @@
 package com.epsilon.arena;
 
+import com.epsilon.cfr.runtime.CfrModelProvider;
 import com.epsilon.major.EpsilonModelProvider;
 import com.epsilon.nano.NanoModelProvider;
 import com.epsilon.pico.PicoModelProvider;
@@ -86,7 +87,10 @@ public final class Main {
         ModelRegistry registry =
             new ModelRegistry(
                 List.of(
-                    new NanoModelProvider(), new PicoModelProvider(), new EpsilonModelProvider()),
+                    new NanoModelProvider(),
+                    new PicoModelProvider(),
+                    new EpsilonModelProvider(),
+                    new CfrModelProvider()),
                 execution)) {
       List<Participant> participants = new ArrayList<>(4);
       for (ModelSpec spec : config.seats()) participants.add(registry.open(spec));

@@ -2,6 +2,7 @@ package com.epsilon.runtime;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -102,6 +103,6 @@ public class InferenceBatchQueueTest {
       Assert.assertEquals(batch.enqueuedNanos(), batch.rows().getFirst().longValue());
       actual.addAll(batch.rows());
     }
-    Assert.assertEquals(actual, java.util.stream.IntStream.range(16, 80).boxed().toList());
+    Assert.assertEquals(actual, IntStream.range(16, 80).boxed().toList());
   }
 }

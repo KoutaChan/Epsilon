@@ -34,6 +34,59 @@ public class DataParallelGroupTest {
     verifyReductionAndResume(scope, Device.cpu(), Device.cpu());
   }
 
+  @Test(groups = "native")
+  public void zeroGradientRequiresExplicitObjectiveContractAndStillRejectsNonfiniteValues()
+      throws Exception {
+    try (DecisionExecutionContext context = new DecisionExecutionContext();
+        Model canonical = model(Device.cpu());
+        Model replica = model(Device.cpu());
+        Model reference = model(Device.cpu())) {
+      try (Group strict = new Group(canonical, replica, ParameterScope.ALL, context)) {
+        strict.executeWork(
+            List.of(
+                lane -> {
+                  gradients(lane.model(), true, true, 0);
+                  return true;
+                },
+                lane -> {
+                  gradients(lane.model(), true, true, 0);
+                  return true;
+                }));
+        Assert.expectThrows(
+            IllegalStateException.class, () -> strict.applyFlattenedOptimizerStep(adam()));
+        assertModelsEqual(canonical, reference);
+      }
+      try (Group regression = new Group(canonical, replica, ParameterScope.ALL, context, true)) {
+        regression.executeWork(
+            List.of(
+                lane -> {
+                  gradients(lane.model(), true, true, 0);
+                  return true;
+                },
+                lane -> {
+                  gradients(lane.model(), true, true, 0);
+                  return true;
+                }));
+        gradients(reference, true, true, 0);
+        Optimizer referenceOptimizer = adam();
+        regression.applyFlattenedOptimizerStep(adam());
+        referenceStep(reference, referenceOptimizer, true);
+        referenceStep(reference, referenceOptimizer, false);
+        assertModelsEqual(canonical, reference);
+        assertModelsEqual(replica, reference);
+        regression.executeWork(
+            List.of(
+                lane -> {
+                  gradients(lane.model(), true, true, Float.NaN);
+                  return true;
+                }));
+        Assert.expectThrows(
+            IllegalStateException.class, () -> regression.applyFlattenedOptimizerStep(adam()));
+        assertModelsEqual(canonical, reference);
+      }
+    }
+  }
+
   @DataProvider
   public Object[][] gpuLanes() {
     return new Object[][] {
@@ -185,7 +238,18 @@ public class DataParallelGroupTest {
   }
 
   private static final class Group extends DataParallelGroup<DataParallelGroup.Lane> {
+    private final boolean allowZero;
+
     Group(Model canonical, Model replica, ParameterScope scope, DecisionExecutionContext context) {
+      this(canonical, replica, scope, context, false);
+    }
+
+    Group(
+        Model canonical,
+        Model replica,
+        ParameterScope scope,
+        DecisionExecutionContext context,
+        boolean allowZero) {
       super(
           List.of(
               new Lane(canonical, false, false, context),
@@ -204,11 +268,17 @@ public class DataParallelGroupTest {
           context,
           (selected, name) ->
               switch (selected) {
-                case ONLINE, PRETRAIN_ALL -> true;
+                case ALL, ONLINE, PRETRAIN_ALL -> true;
                 case ONLINE_ACTOR, PRETRAIN_POLICY -> name.contains("actor");
                 case ONLINE_VALUE, PRETRAIN_VALUE -> name.contains("value");
               });
+      this.allowZero = allowZero;
       recordParameterReadiness();
+    }
+
+    @Override
+    protected boolean allowsZeroGradientUpdates() {
+      return allowZero;
     }
   }
 

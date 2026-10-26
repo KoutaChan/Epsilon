@@ -1,9 +1,25 @@
 package com.epsilon.replay.format;
 
-import com.epsilon.replay.format.MahjongSoulRecord.*;
-import com.google.gson.*;
+import com.epsilon.replay.format.MahjongSoulRecord.AbortiveDraw;
+import com.epsilon.replay.format.MahjongSoulRecord.Call;
+import com.epsilon.replay.format.MahjongSoulRecord.Discard;
+import com.epsilon.replay.format.MahjongSoulRecord.Draw;
+import com.epsilon.replay.format.MahjongSoulRecord.ExhaustiveDraw;
+import com.epsilon.replay.format.MahjongSoulRecord.Fan;
+import com.epsilon.replay.format.MahjongSoulRecord.GameEnd;
+import com.epsilon.replay.format.MahjongSoulRecord.Kan;
+import com.epsilon.replay.format.MahjongSoulRecord.Riichi;
+import com.epsilon.replay.format.MahjongSoulRecord.Round;
+import com.epsilon.replay.format.MahjongSoulRecord.Win;
+import com.epsilon.replay.format.MahjongSoulRecord.Winner;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
 
 /** 雀魂 JSON のフィールドを固有レコードへ復号し、型付きの処理へ渡す。 */
 final class MahjongSoulJson {

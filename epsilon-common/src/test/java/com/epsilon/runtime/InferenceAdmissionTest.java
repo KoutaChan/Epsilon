@@ -7,6 +7,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -305,7 +306,7 @@ public class InferenceAdmissionTest {
   }
 
   private static InferenceAdmission<String, String, Integer> directAdmission(
-      java.util.function.Predicate<String> needsWork) {
+      Predicate<String> needsWork) {
     return new InferenceAdmission<>(
         new InferenceBatchingSettings(1),
         (e, key) -> 4,

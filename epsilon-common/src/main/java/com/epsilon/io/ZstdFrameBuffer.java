@@ -63,6 +63,12 @@ public final class ZstdFrameBuffer implements AutoCloseable {
 
   /** 指定範囲のフレームを読み込み、展開内容を借用ストリームとして返す。 */
   public DataInputStream read(FileChannel channel, long offset, int length) throws IOException {
+    return read(channel, offset, length, Integer.MAX_VALUE);
+  }
+
+  /** 内容サイズを確かめてから展開用バッファを確保する。 */
+  public DataInputStream read(FileChannel channel, long offset, int length, long maximumRawBytes)
+      throws IOException {
     frame = capacity(frame, length);
     frame.clear().limit(length);
     while (frame.hasRemaining()) {
@@ -71,7 +77,7 @@ public final class ZstdFrameBuffer implements AutoCloseable {
       }
     }
     long rawLength = Zstd.getDirectByteBufferFrameContentSize(frame, 0, length);
-    if (rawLength <= 0L || rawLength > Integer.MAX_VALUE) {
+    if (rawLength <= 0L || rawLength > Integer.MAX_VALUE || rawLength > maximumRawBytes) {
       throw new IOException("Invalid Zstd frame content size: " + rawLength);
     }
     input.buffer = capacity(input.buffer, (int) rawLength);

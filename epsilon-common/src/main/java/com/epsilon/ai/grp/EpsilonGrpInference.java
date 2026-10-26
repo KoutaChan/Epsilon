@@ -42,6 +42,15 @@ public final class EpsilonGrpInference implements EpsilonGrpRankPredictor {
   }
 
   /**
+   * 今の重みを写した CPU の逐次評価器を作る。系列の隠れ状態を1回求め、局境界を1つ足した候補をまとめて評価するときに使う。
+   *
+   * @return 重みの写し。以後の学習の更新は反映しない
+   */
+  public EpsilonGrpStepper stepper() {
+    return new EpsilonGrpStepper(network);
+  }
+
+  /**
    * 一つの局開始時点までの GRP 特徴量系列から指定席の4通りの最終順位の周辺確率を返す。
    *
    * @param sequence 一次元化済み GRP 特徴量系列

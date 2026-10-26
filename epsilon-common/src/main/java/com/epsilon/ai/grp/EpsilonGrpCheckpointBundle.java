@@ -1,5 +1,8 @@
 package com.epsilon.ai.grp;
 
+import java.io.IOException;
+import java.util.regex.Pattern;
+
 /** GRPチェックポイントの形式、モデル構成、累計更新回数、世代番号を記録する保存情報。 */
 public final class EpsilonGrpCheckpointBundle {
 
@@ -36,22 +39,22 @@ public final class EpsilonGrpCheckpointBundle {
   }
 
   /** 保存時の構成を読み、入力と数式の契約も一致することを検証する。 */
-  public Configuration configuration() throws java.io.IOException {
+  public Configuration configuration() throws IOException {
     var match =
-        java.util.regex.Pattern.compile(".* gruHidden=(\\d+) layers=(\\d+) .*")
+        Pattern.compile(".* gruHidden=(\\d+) layers=(\\d+) .*")
             .matcher(architecture == null ? "" : architecture);
     if (!match.matches())
-      throw new java.io.IOException("Unsupported GRP architecture: " + architecture);
+      throw new IOException("Unsupported GRP architecture: " + architecture);
     try {
       int hidden = Integer.parseInt(match.group(1));
       int layers = Integer.parseInt(match.group(2));
       if (hidden <= 0
           || layers <= 0
           || !EpsilonGrpNetwork.architectureSummary(hidden, layers).equals(architecture))
-        throw new java.io.IOException("Unsupported GRP architecture: " + architecture);
+        throw new IOException("Unsupported GRP architecture: " + architecture);
       return new Configuration(hidden, layers);
     } catch (NumberFormatException e) {
-      throw new java.io.IOException("Invalid GRP architecture: " + architecture, e);
+      throw new IOException("Invalid GRP architecture: " + architecture, e);
     }
   }
 

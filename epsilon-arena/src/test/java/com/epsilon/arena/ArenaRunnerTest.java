@@ -5,8 +5,10 @@ import com.epsilon.runtime.MeasurementStatus;
 import com.epsilon.spi.BatchedPolicy;
 import com.epsilon.spi.DecisionRequest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -85,9 +87,9 @@ public class ArenaRunnerTest {
   @Test(timeOut = 10000)
   public void asynchronousFailureIsPropagatedWithoutFallingBackToAnAction() {
     BatchedPolicy broken = immediatePolicy(true);
-    java.util.concurrent.CompletionException failure =
+    CompletionException failure =
         Assert.expectThrows(
-            java.util.concurrent.CompletionException.class,
+            CompletionException.class,
             () -> new ArenaRunner(four(broken), new RunSettings(4, 4, 2, 1, 0)).run());
     Assert.assertTrue(failure.getCause().getMessage().contains("deliberate inference failure"));
   }
@@ -247,7 +249,7 @@ public class ArenaRunnerTest {
               return CompletableFuture.failedFuture(
                   new IllegalStateException("deliberate inference failure"));
             int[] invalid = new int[requests.size()];
-            java.util.Arrays.fill(invalid, Integer.MAX_VALUE);
+            Arrays.fill(invalid, Integer.MAX_VALUE);
             return CompletableFuture.completedFuture(invalid);
           }
 

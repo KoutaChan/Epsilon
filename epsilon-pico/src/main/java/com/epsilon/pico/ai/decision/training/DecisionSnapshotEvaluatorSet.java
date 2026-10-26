@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 自己対局に使う保存済みモデルの評価器を、必要になった時点で生成してまとめて解放する。
@@ -35,7 +36,7 @@ final class DecisionSnapshotEvaluatorSet
     this.snapshotPool = snapshotPool;
     this.candidateEvaluator = candidateEvaluator;
     this.candidateVersion = candidateVersion;
-    this.executionContext = java.util.Objects.requireNonNull(executionContext, "executionContext");
+    this.executionContext = Objects.requireNonNull(executionContext, "executionContext");
   }
 
   @Override

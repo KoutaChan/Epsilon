@@ -1,5 +1,6 @@
 package com.epsilon.pico.ai.decision.training;
 
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.pico.ai.network.NetworkFactory;
 import com.epsilon.pico.config.settings.DecisionSelectedPgCampaignSettings;
@@ -30,7 +31,7 @@ public final class DecisionKlTrainingPlan {
             DecisionLearner.openWorking(
                 working,
                 NetworkFactory.getLearnerDevice(
-                    config.bind(com.epsilon.config.settings.DeviceSettings.class)),
+                    config.bind(DeviceSettings.class)),
                 settings.optimizer(),
                 resolved.learnerContractId(),
                 context,

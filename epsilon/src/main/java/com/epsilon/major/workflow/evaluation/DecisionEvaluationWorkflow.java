@@ -1,9 +1,13 @@
 package com.epsilon.major.workflow.evaluation;
 
 import ai.djl.Model;
+import com.epsilon.config.settings.DecisionInferenceFusionSettings;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.major.ai.decision.duel.EpsilonDecisionEvaluationRunner;
 import com.epsilon.major.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.major.ai.decision.training.EpsilonDecisionCheckpointManager;
+import com.epsilon.major.ai.network.NetworkFactory;
+import com.epsilon.major.config.settings.DecisionInferenceSettings;
 import com.epsilon.workflow.CommandWorkflow;
 import com.epsilon.workflow.StandardWorkflowDefinitions;
 import com.epsilon.workflow.WorkflowArguments;
@@ -35,16 +39,16 @@ public final class DecisionEvaluationWorkflow
     var inference =
         arguments
             .settings()
-            .bind(com.epsilon.major.config.settings.DecisionInferenceSettings.class);
+            .bind(DecisionInferenceSettings.class);
     var fusion =
         arguments
             .settings()
-            .bind(com.epsilon.config.settings.DecisionInferenceFusionSettings.class);
-    var devices = arguments.settings().bind(com.epsilon.config.settings.DeviceSettings.class);
+            .bind(DecisionInferenceFusionSettings.class);
+    var devices = arguments.settings().bind(DeviceSettings.class);
     try (Model model =
             EpsilonDecisionCheckpointManager.loadForInference(
                 checkpoint,
-                com.epsilon.major.ai.network.NetworkFactory.getInferenceDevices(devices).primary(),
+                NetworkFactory.getInferenceDevices(devices).primary(),
                 inference);
         EpsilonDecisionInferenceServer server =
             EpsilonDecisionInferenceServer.forFrozenModel(

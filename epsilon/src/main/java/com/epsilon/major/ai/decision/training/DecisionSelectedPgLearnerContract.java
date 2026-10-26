@@ -1,7 +1,10 @@
 package com.epsilon.major.ai.decision.training;
 
+import com.epsilon.ai.decision.DecisionSelectionMode;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.config.settings.DecisionBranchComparisonSettings;
+import com.epsilon.config.settings.DecisionFullSupportSettings;
+import com.epsilon.config.settings.DecisionRolloutSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.major.ai.decision.EpsilonDecisionConstants;
 import com.epsilon.major.ai.decision.arena.DecisionAdaptiveExploration;
@@ -32,14 +35,14 @@ final class DecisionSelectedPgLearnerContract {
     Objects.requireNonNull(settings, "settings");
     EpsilonDecisionPlayer.RolloutConfig actor =
         new EpsilonDecisionPlayer.RolloutConfig(
-            config.bind(com.epsilon.config.settings.DecisionRolloutSettings.class).selectionMode(),
-            config.bind(com.epsilon.config.settings.DecisionFullSupportSettings.class),
+            config.bind(DecisionRolloutSettings.class).selectionMode(),
+            config.bind(DecisionFullSupportSettings.class),
             settings.causalTraceLambda(),
             settings.explorationCreditMix());
     EpsilonDecisionPlayer.RolloutConfig opponent =
         new EpsilonDecisionPlayer.RolloutConfig(
-            com.epsilon.ai.decision.DecisionSelectionMode.POLICY_GREEDY,
-            com.epsilon.config.settings.DecisionFullSupportSettings.disabled(),
+            DecisionSelectionMode.POLICY_GREEDY,
+            DecisionFullSupportSettings.disabled(),
             settings.causalTraceLambda(),
             settings.explorationCreditMix());
     var optimizer = config.bind(DecisionSettings.class);

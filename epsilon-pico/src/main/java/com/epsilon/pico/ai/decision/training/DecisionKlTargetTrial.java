@@ -18,6 +18,7 @@ import com.epsilon.pico.ai.network.NetworkFactory;
 import com.epsilon.pico.config.settings.DecisionInferenceSettings;
 import com.epsilon.pico.config.settings.DecisionOpponentSettings;
 import com.epsilon.pico.config.settings.DecisionSelectedPgCampaignSettings;
+import com.epsilon.pico.config.settings.DecisionSettings;
 import com.epsilon.pico.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.util.SeedMixer;
@@ -211,7 +212,7 @@ public final class DecisionKlTargetTrial {
             settings.optimizer().valueLearningRate(),
             contract,
             settings.optimizer().actorKlControl(),
-            config.bind(com.epsilon.pico.config.settings.DecisionSettings.class));
+            config.bind(DecisionSettings.class));
     if (state == null || !state.targetResolved())
       throw new IllegalStateException("complete KL calibration before a target trial");
     // 学習前状態を一度だけディスクへ固定する。各比較条件はこの同じAdamW/時計から始める。
@@ -260,7 +261,7 @@ public final class DecisionKlTargetTrial {
             DecisionLearner.openWorking(
                 initial,
                 NetworkFactory.getLearnerDevice(
-                    config.bind(com.epsilon.config.settings.DeviceSettings.class)),
+                    config.bind(DeviceSettings.class)),
                 settings.optimizer(),
                 manifest.learnerContract(),
                 context,
@@ -270,7 +271,7 @@ public final class DecisionKlTargetTrial {
                 ? EpsilonGrpTrainingSession.openInferenceOnly(
                     root,
                     NetworkFactory.getGrpDevices(
-                            config.bind(com.epsilon.config.settings.DeviceSettings.class))
+                            config.bind(DeviceSettings.class))
                         .primary(),
                     config)
                 : EpsilonGrpTrainingSession.disabled(root.resolve("grp"))) {

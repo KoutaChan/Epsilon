@@ -11,10 +11,11 @@ import ai.djl.pytorch.engine.PtPinnedBuffer;
 import ai.djl.pytorch.engine.PtStream;
 import ai.djl.pytorch.engine.PtTransferBatch;
 import ai.djl.pytorch.engine.PtTransferTicket;
+import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.config.settings.DecisionTensorTransfer;
 import com.epsilon.config.settings.DecisionTrainingDeviceTransferSchedule;
 import com.epsilon.core.GameState;
-import com.epsilon.major.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionDataException;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionTrainingSampleDescriptor;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionTrajectoryPayloadStore;
@@ -26,6 +27,7 @@ import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 import com.epsilon.major.ai.decision.input.DecisionTrainingSlabWriter;
 import com.epsilon.major.ai.decision.input.DecisionTrainingTargetLayout;
 import com.epsilon.major.ai.decision.training.DecisionTrainingMetrics.AdvantageSigns;
+import com.epsilon.major.config.settings.DecisionSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
 import java.nio.Buffer;
@@ -65,7 +67,7 @@ final class DecisionTrainingInputPipeline implements AutoCloseable {
 
   private static final AtomicInteger WORKER_IDS = new AtomicInteger();
 
-  private final com.epsilon.ai.decision.EpsilonUtilityProfile utilityProfile;
+  private final EpsilonUtilityProfile utilityProfile;
   private final int laneIndex;
   private final NDManager owner;
   private final Device device;
@@ -107,7 +109,7 @@ final class DecisionTrainingInputPipeline implements AutoCloseable {
         transferMode,
         schedule,
         executionContext,
-        EpsilonUtilityTargets.configuredTrainingProfile());
+        DecisionSettings.defaults().utilityProfile());
   }
 
   DecisionTrainingInputPipeline(
@@ -116,7 +118,7 @@ final class DecisionTrainingInputPipeline implements AutoCloseable {
       DecisionTensorTransfer transferMode,
       DecisionTrainingDeviceTransferSchedule schedule,
       DecisionExecutionContext executionContext,
-      com.epsilon.ai.decision.EpsilonUtilityProfile utilityProfile) {
+      EpsilonUtilityProfile utilityProfile) {
     this.utilityProfile = utilityProfile;
     if (laneIndex < 0) {
       throw new IllegalArgumentException("laneIndex must be non-negative: " + laneIndex);

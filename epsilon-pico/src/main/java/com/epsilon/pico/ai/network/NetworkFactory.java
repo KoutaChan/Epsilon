@@ -2,7 +2,6 @@ package com.epsilon.pico.ai.network;
 
 import ai.djl.Device;
 import ai.djl.Model;
-import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
@@ -13,14 +12,13 @@ import com.epsilon.ai.grp.EpsilonGrpNetwork;
 import com.epsilon.config.settings.BeliefSettings;
 import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.GrpSettings;
+import com.epsilon.network.NetworkDeviceResolver;
+import com.epsilon.network.NetworkDevices;
+import com.epsilon.network.NetworkRuntime;
 import com.epsilon.pico.ai.belief.EpsilonBeliefNetwork;
+import com.epsilon.pico.ai.decision.input.DecisionInputSchema;
 import com.epsilon.pico.ai.model.EpsilonDecisionNetwork;
 import com.epsilon.pico.config.settings.EpsilonSettings;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.function.Function;
-import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,34 +28,21 @@ public final class NetworkFactory {
   private static final Logger log = LoggerFactory.getLogger(NetworkFactory.class);
 
   static {
-    // 小さいGRPのCPU演算でスレッド過多を避け、明示されたDJL/OpenMP/MKL設定は優先する。
-    String ompThreads = System.getenv("OMP_NUM_THREADS");
-    String mklThreads = System.getenv("MKL_NUM_THREADS");
-    if (System.getProperty("ai.djl.pytorch.num_threads") == null
-        && (ompThreads == null || ompThreads.isBlank())
-        && (mklThreads == null || mklThreads.isBlank())) {
-      System.setProperty("ai.djl.pytorch.num_threads", "1");
-    }
+    NetworkRuntime.initialize();
   }
 
   private NetworkFactory() {}
 
   public static NetworkDevices getLearnerDevices(DeviceSettings settings) {
-    return resolveDevices(
-        new DeviceSelection("learner", settings.learner(), settings.validateIndices()),
-        () -> getPreferredDevices(0));
+    return NetworkDeviceResolver.learner(settings);
   }
 
   public static NetworkDevices getInferenceDevices(DeviceSettings settings) {
-    return resolveDevices(
-        new DeviceSelection("inference", settings.inference(), settings.validateIndices()),
-        () -> getPreferredDevices(0));
+    return NetworkDeviceResolver.inference(settings);
   }
 
   public static NetworkDevices getGrpDevices(DeviceSettings settings) {
-    return resolveDevices(
-        new DeviceSelection("grp", settings.grp(), settings.validateIndices()),
-        () -> getPreferredDevices(0));
+    return NetworkDeviceResolver.grp(settings);
   }
 
   public static Device getLearnerDevice(DeviceSettings settings) {
@@ -88,7 +73,7 @@ public final class NetworkFactory {
    * @return データ並列学習器デバイス集合
    */
   public static NetworkDevices getLearnerDevices() {
-    return resolveDevices(DeviceSelection.learner(), () -> getPreferredDevices(0));
+    return getLearnerDevices(EpsilonSettings.defaults().bind(DeviceSettings.class));
   }
 
   /**
@@ -97,7 +82,7 @@ public final class NetworkFactory {
    * @return 推論デバイス集合
    */
   public static NetworkDevices getInferenceDevices() {
-    return resolveDevices(DeviceSelection.inference(), () -> getPreferredDevices(0));
+    return getInferenceDevices(EpsilonSettings.defaults().bind(DeviceSettings.class));
   }
 
   /**
@@ -106,7 +91,7 @@ public final class NetworkFactory {
    * @return GRP デバイス集合
    */
   public static NetworkDevices getGrpDevices() {
-    return resolveDevices(DeviceSelection.grp(), () -> getPreferredDevices(0));
+    return getGrpDevices(EpsilonSettings.defaults().bind(DeviceSettings.class));
   }
 
   /**
@@ -116,20 +101,7 @@ public final class NetworkFactory {
    * @return 1要素以上のデバイス集合
    */
   public static NetworkDevices getPreferredDevices(int maxGpus) {
-    {
-      Engine engine = Engine.getInstance();
-      int gpuCount = engine.getGpuCount();
-      if (gpuCount > 0) {
-        int limit = maxGpus > 0 ? Math.min(gpuCount, maxGpus) : gpuCount;
-        ArrayList<Device> devices = new ArrayList<>(limit);
-        for (int i = 0; i < limit; i++) {
-          devices.add(Device.gpu(i));
-        }
-        return NetworkDevices.copyOf(devices);
-      }
-      log.warn("GPU count is {}", gpuCount);
-    }
-    return NetworkDevices.of(Device.cpu());
+    return NetworkDeviceResolver.preferred(maxGpus);
   }
 
   /**
@@ -199,40 +171,25 @@ public final class NetworkFactory {
     block.initialize(
         manager,
         DataType.FLOAT32,
-        new Shape(-1, com.epsilon.pico.ai.decision.input.DecisionInputSchema.STATE_INT_COUNT),
-        new Shape(-1, -1, com.epsilon.pico.ai.decision.input.DecisionInputSchema.ACTION_INT_STRIDE),
+        new Shape(-1, DecisionInputSchema.STATE_INT_COUNT),
+        new Shape(-1, -1, DecisionInputSchema.ACTION_INT_STRIDE),
+        new Shape(-1, -1, -1, DecisionInputSchema.ACTION_TRANSITION_INT_STRIDE),
+        new Shape(-1, -1, -1, DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT),
         new Shape(
             -1,
             -1,
             -1,
-            com.epsilon.pico.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_INT_STRIDE),
+            DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT,
+            DecisionInputSchema.ACTION_TRANSITION_WAIT_YAKU_STRIDE),
+        new Shape(-1, DecisionInputSchema.STATE_FLOAT_COUNT),
+        new Shape(-1, -1, DecisionInputSchema.ACTION_FLOAT_STRIDE),
+        new Shape(-1, -1, -1, DecisionInputSchema.ACTION_TRANSITION_FLOAT_STRIDE),
         new Shape(
             -1,
             -1,
             -1,
-            com.epsilon.pico.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT),
-        new Shape(
-            -1,
-            -1,
-            -1,
-            com.epsilon.pico.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT,
-            com.epsilon.pico.ai.decision.input.DecisionInputSchema
-                .ACTION_TRANSITION_WAIT_YAKU_STRIDE),
-        new Shape(-1, com.epsilon.pico.ai.decision.input.DecisionInputSchema.STATE_FLOAT_COUNT),
-        new Shape(
-            -1, -1, com.epsilon.pico.ai.decision.input.DecisionInputSchema.ACTION_FLOAT_STRIDE),
-        new Shape(
-            -1,
-            -1,
-            -1,
-            com.epsilon.pico.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_FLOAT_STRIDE),
-        new Shape(
-            -1,
-            -1,
-            -1,
-            com.epsilon.pico.ai.decision.input.DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT,
-            com.epsilon.pico.ai.decision.input.DecisionInputSchema
-                .ACTION_TRANSITION_WAIT_FLOAT_STRIDE));
+            DecisionInputSchema.ACTION_TRANSITION_TILE_COUNT,
+            DecisionInputSchema.ACTION_TRANSITION_WAIT_FLOAT_STRIDE));
     return model;
   }
 
@@ -296,91 +253,8 @@ public final class NetworkFactory {
     block.initialize(
         manager,
         DataType.FLOAT32,
-        new Shape(-1, com.epsilon.pico.ai.decision.input.DecisionInputSchema.STATE_INT_COUNT),
-        new Shape(-1, com.epsilon.pico.ai.decision.input.DecisionInputSchema.STATE_FLOAT_COUNT));
+        new Shape(-1, DecisionInputSchema.STATE_INT_COUNT),
+        new Shape(-1, DecisionInputSchema.STATE_FLOAT_COUNT));
     return model;
-  }
-
-  private static NetworkDevices resolveDevices(
-      DeviceSelection selection, Supplier<NetworkDevices> fallbackSupplier) {
-    String deviceSpec = selection.deviceSpec().trim();
-    if (deviceSpec.isEmpty()) {
-      return fallbackSupplier.get();
-    }
-    String normalized = deviceSpec.toLowerCase(Locale.ROOT);
-    if ("auto".equals(normalized) || "all".equals(normalized)) {
-      return getPreferredDevices(0);
-    }
-
-    int gpuCount = selection.validateGpuIndices() ? detectedGpuCount() : -1;
-    List<Device> devices = new ArrayList<>();
-    for (String rawToken : deviceSpec.split(",", -1)) {
-      String token = rawToken.trim();
-      devices.add(parseDeviceToken(selection.role(), token, gpuCount));
-    }
-    return NetworkDevices.copyOf(devices);
-  }
-
-  private static Device parseDeviceToken(String role, String token, int gpuCount) {
-    String normalized = token.toLowerCase(Locale.ROOT);
-    if ("cpu".equals(normalized)) {
-      return Device.cpu();
-    }
-    if (normalized.startsWith("gpu:")) {
-      normalized = normalized.substring("gpu:".length());
-    } else if (normalized.startsWith("gpu")) {
-      normalized = normalized.substring("gpu".length());
-    } else if (normalized.startsWith("cuda:")) {
-      normalized = normalized.substring("cuda:".length());
-    }
-    int gpuIndex;
-    try {
-      gpuIndex = Integer.parseInt(normalized);
-    } catch (NumberFormatException e) {
-      throw new IllegalArgumentException("Invalid " + role + " device: " + token, e);
-    }
-    if (gpuIndex < 0) {
-      throw new IllegalArgumentException("Negative GPU index in " + role + " devices: " + token);
-    }
-    if (gpuCount == 0) {
-      throw new IllegalArgumentException(
-          "GPU configured for " + role + " but no GPU is visible: " + token);
-    }
-    if (gpuCount > 0 && gpuIndex >= gpuCount) {
-      throw new IllegalArgumentException(
-          "GPU index outside visible range in "
-              + role
-              + " devices: token="
-              + token
-              + " visibleGpus="
-              + gpuCount);
-    }
-    return Device.gpu(gpuIndex);
-  }
-
-  private static int detectedGpuCount() {
-    return Engine.getInstance().getGpuCount();
-  }
-
-  private record DeviceSelection(String role, String deviceSpec, boolean validateGpuIndices) {
-
-    private static DeviceSelection learner() {
-      return configured("learner", DeviceSettings::learner);
-    }
-
-    private static DeviceSelection inference() {
-      return configured("inference", DeviceSettings::inference);
-    }
-
-    private static DeviceSelection grp() {
-      return configured("grp", DeviceSettings::grp);
-    }
-
-    private static DeviceSelection configured(
-        String role, Function<DeviceSettings, String> deviceSpecReader) {
-      DeviceSettings settings = EpsilonSettings.defaults().bind(DeviceSettings.class);
-      return new DeviceSelection(
-          role, deviceSpecReader.apply(settings), settings.validateIndices());
-    }
   }
 }

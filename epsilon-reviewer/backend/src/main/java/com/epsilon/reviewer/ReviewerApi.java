@@ -1,10 +1,14 @@
 package com.epsilon.reviewer;
 
-import static com.epsilon.reviewer.ReviewerHttp.*;
+import static com.epsilon.reviewer.ReviewerHttp.bytes;
+import static com.epsilon.reviewer.ReviewerHttp.json;
+import static com.epsilon.reviewer.ReviewerHttp.readRequiredString;
+import static com.epsilon.reviewer.ReviewerHttp.requestJson;
+import static com.epsilon.reviewer.ReviewerHttp.streamResult;
 
 import com.epsilon.reviewer.RecordFetcher.SourceRecord;
 import com.epsilon.reviewer.model.ModelCatalog;
-import com.google.gson.*;
+import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.net.URLDecoder;

@@ -310,7 +310,7 @@ test("preserves current scored results after restart", async () => {
   }
 });
 
-for (const version of [1, 2, 3, 5]) {
+for (const version of [1, 2, 3, 4]) {
   test(`rejects unsupported result version ${version} before creating storage files`, async () => {
     const root = await mkdtemp(
       path.join(os.tmpdir(), "epsilon-reviewer-unsupported-save-"),

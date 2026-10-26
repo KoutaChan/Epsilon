@@ -1,8 +1,18 @@
 package com.epsilon.reviewer.engine;
 
-import com.epsilon.core.*;
+import com.epsilon.core.Action;
+import com.epsilon.core.GameState;
+import com.epsilon.core.Hand;
+import com.epsilon.core.Meld;
+import com.epsilon.core.Tile;
+import com.epsilon.core.TurnEvent;
 import com.epsilon.replay.ReplayEvent;
-import com.epsilon.reviewer.dto.*;
+import com.epsilon.reviewer.dto.ActionCandidate;
+import com.epsilon.reviewer.dto.MeldSnapshot;
+import com.epsilon.reviewer.dto.PlayerState;
+import com.epsilon.reviewer.dto.RiverTile;
+import com.epsilon.reviewer.dto.RoundOutcome;
+import com.epsilon.reviewer.dto.TableState;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -87,8 +97,14 @@ final class ReviewSnapshots {
     return values;
   }
 
+  /** @param valueLoss 最善手との価値の差。価値を推定しないモデルは null */
   static ActionCandidate candidate(
-      Action action, float probability, boolean chosen, GameState state, int seat) {
+      Action action,
+      float probability,
+      Float valueLoss,
+      boolean chosen,
+      GameState state,
+      int seat) {
     List<String> tiles = new ArrayList<>();
     int type = action.tileType();
     switch (action.type()) {
@@ -120,7 +136,13 @@ final class ReviewSnapshots {
       default -> {}
     }
     return new ActionCandidate(
-        action.toIndex(), action.type().name(), tiles, probability, chosen, action.isTsumogiri());
+        action.toIndex(),
+        action.type().name(),
+        tiles,
+        probability,
+        valueLoss,
+        chosen,
+        action.isTsumogiri());
   }
 
   private static MeldSnapshot meld(Meld meld, int seat) {

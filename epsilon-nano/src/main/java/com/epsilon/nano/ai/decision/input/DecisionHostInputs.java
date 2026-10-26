@@ -6,6 +6,7 @@ import com.epsilon.engine.EngineDecisionBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.util.Arrays;
 
 /**
  * Decision のカテゴリ特徴量と数値特徴量を保持し、推論・保存・学習へ渡す。
@@ -42,6 +43,41 @@ public final class DecisionHostInputs {
         new DecisionTransitionStorage(capacity, bucket.legalActionCapacity()));
   }
 
+  static DecisionHostInputs inference(
+      int capacity, DecisionBucket bucket, InferenceStorage storage) {
+    var layout = DecisionInputLayout.stateAndActions(capacity, bucket);
+    storage.prepare(layout);
+    return new DecisionHostInputs(
+        layout,
+        storage.categories,
+        storage.numerics,
+        new DecisionTransitionStorage(capacity, bucket.legalActionCapacity(), storage.transitions));
+  }
+
+  /** 配置の記述情報を持たず、次の借用でも使える入力配列だけを保持する。 */
+  static final class InferenceStorage {
+    private short[] categories = new short[0];
+    private float[] numerics = new float[0];
+    private final DecisionTransitionStorage.Buffers transitions =
+        new DecisionTransitionStorage.Buffers();
+
+    private void prepare(DecisionInputLayout layout) {
+      int categoryCount = layout.categoricalElementCount();
+      int numericCount = layout.numericElementCount();
+      if (categories.length < categoryCount) categories = new short[categoryCount];
+      else Arrays.fill(categories, 0, categoryCount, (short) 0);
+      if (numerics.length < numericCount) numerics = new float[numericCount];
+      else Arrays.fill(numerics, 0, numericCount, 0f);
+    }
+
+    long byteCount() {
+      return 32L
+          + (long) Short.BYTES * categories.length
+          + (long) Float.BYTES * numerics.length
+          + transitions.byteCount();
+    }
+  }
+
   private DecisionHostInputs(DecisionInputLayout layout, DecisionTransitionStorage transitions) {
     this.layout = layout;
     this.transitions = transitions;
@@ -51,8 +87,16 @@ public final class DecisionHostInputs {
 
   private DecisionHostInputs(
       DecisionInputLayout layout, short[] categoricalSlab, float[] numericSlab) {
+    this(layout, categoricalSlab, numericSlab, null);
+  }
+
+  private DecisionHostInputs(
+      DecisionInputLayout layout,
+      short[] categoricalSlab,
+      float[] numericSlab,
+      DecisionTransitionStorage transitions) {
     this.layout = layout;
-    transitions = null;
+    this.transitions = transitions;
     this.categoricalSlab = categoricalSlab;
     this.numericSlab = numericSlab;
   }
@@ -256,8 +300,7 @@ public final class DecisionHostInputs {
   /** 指定行の重みを固定したGRP局境界事前予測を独立所有配列で返す。 */
   public float[] boundaryRankPrior(int row) {
     int offset = boundaryContextOffset(row);
-    return java.util.Arrays.copyOfRange(
-        numericSlab, offset, offset + DecisionBoundaryContext.GRP_RANK_SIZE);
+    return Arrays.copyOfRange(numericSlab, offset, offset + DecisionBoundaryContext.GRP_RANK_SIZE);
   }
 
   /** 指定席の4順位周辺分布だけを独立配列として返す。 */
@@ -267,7 +310,7 @@ public final class DecisionHostInputs {
     }
     int rankCount = DecisionBoundaryContext.GRP_RANK_SIZE / GameState.NUM_PLAYERS;
     int offset = boundaryContextOffset(row) + seat * rankCount;
-    return java.util.Arrays.copyOfRange(numericSlab, offset, offset + rankCount);
+    return Arrays.copyOfRange(numericSlab, offset, offset + rankCount);
   }
 
   /**
@@ -597,10 +640,25 @@ public final class DecisionHostInputs {
       int rowCount,
       ShortBuffer categoricalDestination,
       FloatBuffer numericDestination) {
+    copyRowsTo(slab, fromInclusive, rowCount, categoricalDestination, numericDestination, true);
+  }
+
+  void copyRowsTo(
+      DecisionInputLayout.Slab slab,
+      int fromInclusive,
+      int rowCount,
+      ShortBuffer categoricalDestination,
+      FloatBuffer numericDestination,
+      boolean clearPadding) {
     for (DecisionInputLayout.Tensor tensor : DecisionInputLayout.tensors()) {
       if (tensor.slab() == slab) {
         copyTensorRowsTo(
-            tensor, fromInclusive, rowCount, categoricalDestination, numericDestination);
+            tensor,
+            fromInclusive,
+            rowCount,
+            categoricalDestination,
+            numericDestination,
+            clearPadding);
       }
     }
   }
@@ -611,6 +669,17 @@ public final class DecisionHostInputs {
       int rowCount,
       ShortBuffer categoricalDestination,
       FloatBuffer numericDestination) {
+    copyTensorRowsTo(
+        tensor, fromInclusive, rowCount, categoricalDestination, numericDestination, true);
+  }
+
+  private void copyTensorRowsTo(
+      DecisionInputLayout.Tensor tensor,
+      int fromInclusive,
+      int rowCount,
+      ShortBuffer categoricalDestination,
+      FloatBuffer numericDestination,
+      boolean clearPadding) {
     if (transitions == null || !tensor.isTransition()) {
       DecisionInputLayout.Region region = layout.region(tensor);
       int offset = region.rowOffset(fromInclusive);
@@ -623,26 +692,61 @@ public final class DecisionHostInputs {
       return;
     }
     int stride = tensor.elementsPerTransition();
+    int transitionCapacity = bucket().actionTransitionCapacity();
+    int actionCapacity = bucket().legalActionCapacity();
     for (int row = fromInclusive; row < fromInclusive + rowCount; row++) {
-      for (int action = 0; action < bucket().legalActionCapacity(); action++) {
+      if (transitionCapacity == 1) {
+        // 一行動一遷移なら実候補が連続しているため、行動ごとに分割せず一度で複製する。
+        int count = transitions.count(row);
+        copyTransitionRowsTo(
+            tensor, row, 0, count, stride, categoricalDestination, numericDestination);
+        writePadding(
+            tensor.slab(),
+            (actionCapacity - count) * stride,
+            categoricalDestination,
+            numericDestination,
+            clearPadding);
+        continue;
+      }
+      for (int action = 0; action < actionCapacity; action++) {
         int count = transitions.count(row, action);
         copyTransitionRowsTo(
             tensor, row, action, count, stride, categoricalDestination, numericDestination);
-        int padding = (bucket().actionTransitionCapacity() - count) * stride;
-        // 保存・学習の固定形状境界では、再利用バッファの未使用領域も明示的にゼロへ戻す。
-        if (tensor.slab() == DecisionInputLayout.Slab.CATEGORICAL) {
-          while (padding > 0) {
-            int countToWrite = Math.min(padding, CATEGORY_PADDING.length);
-            categoricalDestination.put(CATEGORY_PADDING, 0, countToWrite);
-            padding -= countToWrite;
-          }
-        } else {
-          while (padding > 0) {
-            int countToWrite = Math.min(padding, NUMERIC_PADDING.length);
-            numericDestination.put(NUMERIC_PADDING, 0, countToWrite);
-            padding -= countToWrite;
-          }
-        }
+        writePadding(
+            tensor.slab(),
+            (transitionCapacity - count) * stride,
+            categoricalDestination,
+            numericDestination,
+            clearPadding);
+      }
+    }
+  }
+
+  private static void writePadding(
+      DecisionInputLayout.Slab slab,
+      int padding,
+      ShortBuffer categoricalDestination,
+      FloatBuffer numericDestination,
+      boolean clearPadding) {
+    if (padding == 0) return;
+    if (!clearPadding) {
+      if (slab == DecisionInputLayout.Slab.CATEGORICAL)
+        categoricalDestination.position(categoricalDestination.position() + padding);
+      else numericDestination.position(numericDestination.position() + padding);
+      return;
+    }
+    // 再利用バッファへ書く場合は、未使用領域も明示的にゼロへ戻す。
+    if (slab == DecisionInputLayout.Slab.CATEGORICAL) {
+      while (padding > 0) {
+        int count = Math.min(padding, CATEGORY_PADDING.length);
+        categoricalDestination.put(CATEGORY_PADDING, 0, count);
+        padding -= count;
+      }
+    } else {
+      while (padding > 0) {
+        int count = Math.min(padding, NUMERIC_PADDING.length);
+        numericDestination.put(NUMERIC_PADDING, 0, count);
+        padding -= count;
       }
     }
   }

@@ -13,10 +13,8 @@ import ai.djl.training.initializer.ConstantInitializer;
 import ai.djl.util.PairList;
 import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.config.settings.DecisionInferenceFusionMode;
 import com.epsilon.config.settings.DecisionInferenceFusionSettings;
 import com.epsilon.nano.ai.decision.EpsilonDecisionConstants;
-import com.epsilon.nano.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.nano.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.nano.ai.decision.input.DecisionDeviceBatch;
 import com.epsilon.nano.ai.decision.input.DecisionInferenceDeviceBatch;
@@ -31,9 +29,6 @@ import com.epsilon.nano.ai.decision.policy.DecisionPolicyExecution;
 import com.epsilon.nano.ai.decision.policy.DecisionPolicyScores;
 import com.epsilon.nano.ai.decision.policy.EpsilonDecisionPolicyHead;
 import com.epsilon.nano.ai.model.fusion.EpsilonMahjongStateReadoutGroupExecution;
-import com.epsilon.nano.ai.model.fusion.EpsilonPlayerMemoryFusionExecution;
-import com.epsilon.nano.ai.model.fusion.EpsilonStrategicContextFusionExecution;
-import com.epsilon.nano.ai.model.fusion.EpsilonTileRelationFusionExecution;
 import com.epsilon.nano.config.settings.DecisionSettings;
 import java.util.Objects;
 
@@ -51,12 +46,12 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
   /** 設定から解決した標準隠れ層埋め込み幅。 */
   public static final int DEFAULT_HIDDEN = DecisionSettings.defaults().hidden();
 
-  private static final int POLICY_READOUT_MAXIMUM_FEED_FORWARD_WIDTH = 384;
   private static final int VALUE_READOUT_MAXIMUM_FEED_FORWARD_WIDTH = 256;
 
   private final int hiddenSize;
   private final EpsilonUtilityProfile utilityProfile;
   private final float[] utilityWeights;
+  private final EpsilonDecisionFeatureSpine featureSpine;
   private final EpsilonMahjongStateEncoder stateEncoder;
   private final EpsilonMahjongStateReadout policyStateReadout;
   private final EpsilonMahjongStateReadout valueStateReadout;
@@ -75,7 +70,7 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
    * @param hiddenSize 状態・行動埋め込み幅。注意ヘッド数で割り切れる正数
    */
   public EpsilonDecisionNetwork(int hiddenSize) {
-    this(hiddenSize, EpsilonUtilityTargets.configuredProfile());
+    this(hiddenSize, DecisionSettings.defaults().utilityProfile());
   }
 
   /** モデルの複製が入力元モデルと同じ効用定義を明示的に継承するコンストラクター。 */
@@ -89,16 +84,15 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
     this.utilityProfile = Objects.requireNonNull(utilityProfile, "utilityProfile");
     EpsilonDecisionHlGauss.support(utilityProfile);
     this.utilityWeights = utilityProfile.rankUtility();
-    stateEncoder = addChildBlock("stateEncoder", new EpsilonMahjongStateEncoder(hiddenSize));
-    policyStateReadout =
-        addChildBlock(
-            "policyStateReadout",
-            new EpsilonMahjongStateReadout(hiddenSize, POLICY_READOUT_MAXIMUM_FEED_FORWARD_WIDTH));
+    featureSpine = new EpsilonDecisionFeatureSpine(hiddenSize);
+    stateEncoder = addChildBlock("stateEncoder", featureSpine.stateEncoder());
+    policyStateReadout = addChildBlock("policyStateReadout", featureSpine.stateReadout());
     valueStateReadout =
         addChildBlock(
             "valueStateReadout",
             new EpsilonMahjongStateReadout(hiddenSize, VALUE_READOUT_MAXIMUM_FEED_FORWARD_WIDTH));
-    policyHead = addChildBlock("policyHead", new EpsilonDecisionPolicyHead(hiddenSize));
+    policyHead =
+        addChildBlock("policyHead", new EpsilonDecisionPolicyHead(featureSpine.candidates()));
     valueHiddenHead =
         addChildBlock("valueHiddenHead", Linear.builder().setUnits(hiddenSize).build());
     Linear residualHead = Linear.builder().setUnits(EpsilonDecisionHlGauss.BIN_COUNT).build();
@@ -342,8 +336,7 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
             training,
             runtimeParameters);
     EpsilonMahjongStateEncoder.EncodedState encodedState =
-        memory.withStateEmbedding(
-            policyStateReadout.read(parameterStore, memory, training, runtimeParameters));
+        featureSpine.readState(parameterStore, memory, training, runtimeParameters);
     return policyHead.score(
         parameterStore,
         encodedState,
@@ -677,82 +670,34 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
     if (fusionSettings.hasFusion() && !manager.getDevice().isGpu()) {
       throw new UnsupportedOperationException("FUSION execution requires a GPU inference device");
     }
-    EpsilonPlayerMemoryFusionExecution playerMemory = null;
-    EpsilonTileRelationFusionExecution tileRelation = null;
-    EpsilonStrategicContextFusionExecution strategic = null;
-    EpsilonMahjongStateReadoutGroupExecution readout = null;
+    DecisionPolicyExecution policy =
+        policyHead.newExecution(
+            manager,
+            parameterStore,
+            runtimeParameters,
+            fusionSettings,
+            expectedDataType,
+            maxBatch,
+            multiTransitionMaxBatch,
+            executionSlots,
+            frozenParameters);
     try {
-      playerMemory =
-          fusionSettings.playerMemory() == DecisionInferenceFusionMode.FUSION
-              ? stateEncoder.newPlayerMemoryInferenceExecution(
-                  manager,
-                  parameterStore,
-                  expectedDataType,
-                  inputDataType,
-                  maxBatch,
-                  executionSlots)
-              : null;
-      tileRelation =
-          fusionSettings.tileRelation() == DecisionInferenceFusionMode.FUSION
-              ? stateEncoder.newTileRelationInferenceExecution(
-                  manager, parameterStore, expectedDataType, maxBatch, executionSlots)
-              : null;
-      strategic =
-          fusionSettings.strategicContext() == DecisionInferenceFusionMode.FUSION
-              ? stateEncoder.newStrategicInferenceExecution(
-                  manager, parameterStore, expectedDataType, maxBatch, executionSlots)
-              : null;
-      readout =
-          fusionSettings.stateReadout() == DecisionInferenceFusionMode.FUSION
-              ? EpsilonMahjongStateReadoutGroupExecution.create(
-                  manager,
-                  maxBatch,
-                  executionSlots,
-                  policyStateReadout.frozenParameterView(parameterStore, manager),
-                  valueReadoutEnabled
-                      ? valueStateReadout.frozenParameterView(parameterStore, manager)
-                      : null)
-              : null;
-      DecisionPolicyExecution policy =
-          policyHead.newExecution(
-              manager,
-              parameterStore,
-              runtimeParameters,
-              fusionSettings,
-              expectedDataType,
-              maxBatch,
-              multiTransitionMaxBatch,
-              executionSlots,
-              frozenParameters);
-      return new DecisionInferenceExecution(playerMemory, tileRelation, strategic, readout, policy);
+      return featureSpine.newInferenceExecution(
+          manager,
+          parameterStore,
+          fusionSettings,
+          expectedDataType,
+          inputDataType,
+          maxBatch,
+          executionSlots,
+          valueReadoutEnabled ? valueStateReadout : null,
+          policy,
+          null);
     } catch (RuntimeException | Error failure) {
-      if (readout != null) {
-        try {
-          readout.close();
-        } catch (Throwable closeFailure) {
-          failure.addSuppressed(closeFailure);
-        }
-      }
-      if (strategic != null) {
-        try {
-          strategic.close();
-        } catch (Throwable closeFailure) {
-          failure.addSuppressed(closeFailure);
-        }
-      }
-      if (tileRelation != null) {
-        try {
-          tileRelation.close();
-        } catch (Throwable closeFailure) {
-          failure.addSuppressed(closeFailure);
-        }
-      }
-      if (playerMemory != null) {
-        try {
-          playerMemory.close();
-        } catch (Throwable closeFailure) {
-          failure.addSuppressed(closeFailure);
-        }
+      try {
+        policy.close();
+      } catch (Throwable closeFailure) {
+        failure.addSuppressed(closeFailure);
       }
       throw failure;
     }

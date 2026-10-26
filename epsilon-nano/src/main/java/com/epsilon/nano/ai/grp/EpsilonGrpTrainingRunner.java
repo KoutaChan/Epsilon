@@ -5,11 +5,13 @@ import com.epsilon.ai.grp.EpsilonGrpExample;
 import com.epsilon.ai.grp.EpsilonGrpInference;
 import com.epsilon.ai.grp.EpsilonGrpTrainer;
 import com.epsilon.ai.grp.EpsilonGrpValidationGate;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.GrpPretrainValidationSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.nano.ai.decision.data.EpsilonDecisionDataException;
 import com.epsilon.nano.ai.decision.data.EpsilonDecisionSample;
 import com.epsilon.nano.ai.network.NetworkFactory;
+import com.epsilon.nano.config.settings.EpsilonSettings;
 import com.epsilon.nano.training.EpsilonLogPretrainDataCollector;
 import com.epsilon.util.FormatUtils;
 import java.nio.file.Files;
@@ -43,7 +45,7 @@ public final class EpsilonGrpTrainingRunner {
         logDir,
         epochs,
         maxFiles,
-        com.epsilon.nano.config.settings.EpsilonSettings.defaults());
+        EpsilonSettings.defaults());
   }
 
   public static LogTrainSummary trainFromLogs(
@@ -103,7 +105,7 @@ public final class EpsilonGrpTrainingRunner {
     }
     Device device =
         NetworkFactory.getGrpDevices(
-                settings.bind(com.epsilon.config.settings.DeviceSettings.class))
+                settings.bind(DeviceSettings.class))
             .primary();
     TrainTotals totals = new TrainTotals();
     totals.files = train.processedFiles;

@@ -11,6 +11,7 @@ import ai.djl.nn.Parameter;
 import ai.djl.nn.core.Linear;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
+import com.epsilon.ai.model.EpsilonMaskedRows;
 
 /**
  * 幅の異なる複数表現を共通出力幅へ投影し、固有形状のままブロードキャスト加算するブロック。
@@ -72,6 +73,21 @@ public final class EpsilonFeatureFusion extends AbstractBlock {
               runtimeParameters));
     }
     return result;
+  }
+
+  /** 盤面の射影を共有し、対応する合法候補へ集めてから先頭射影へ加算する。 */
+  NDArray fuseIndexedState(
+      ParameterStore parameterStore,
+      PairList<String, Object> runtimeParameters,
+      NDArray state,
+      NDArray stateRows,
+      NDArray... prefix) {
+    if (prefix.length != fusedPrefixComponents || projections.length != prefix.length + 1)
+      throw new IllegalArgumentException("Indexed state fusion requires one final state component");
+    NDArray result = fusePrefix(parameterStore, prefix, false);
+    NDArray projectedState =
+        applyLinear(projections[prefix.length], parameterStore, state, false, runtimeParameters);
+    return result.addi(EpsilonMaskedRows.gather(projectedState, stateRows));
   }
 
   /**

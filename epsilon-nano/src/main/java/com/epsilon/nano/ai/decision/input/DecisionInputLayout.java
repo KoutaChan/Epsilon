@@ -199,6 +199,37 @@ public final class DecisionInputLayout {
   private final int categoricalElementCount;
   private final int numericElementCount;
 
+  /** 容量区分ごとに計算済みの行幅から、標準形式の要素数を求める。 */
+  static int elementCount(Slab slab, int rows, DecisionBucket bucket) {
+    int perRow =
+        RowWidths.VALUES[slab.ordinal()][bucket.legalActionCapacity()][
+            bucket.actionTransitionCapacity()];
+    return Math.multiplyExact(rows, perRow);
+  }
+
+  /** スキーマの初期化後に一度だけ、保存形式の行幅を全容量区分について確定する。 */
+  private static final class RowWidths {
+    private static final int[][][] VALUES = create();
+
+    private static int[][][] create() {
+      int[] actionBuckets = DecisionInputSchema.LEGAL_ACTION_BUCKETS;
+      int[] transitionBuckets = DecisionInputSchema.ACTION_TRANSITION_BUCKETS;
+      int[][][] values =
+          new int[Slab.values().length][actionBuckets[actionBuckets.length - 1] + 1]
+              [transitionBuckets[transitionBuckets.length - 1] + 1];
+      for (int actions : actionBuckets) {
+        for (int transitions : transitionBuckets) {
+          DecisionBucket bucket = new DecisionBucket(actions, transitions);
+          for (Tensor tensor : TENSORS) {
+            int[] widths = values[tensor.slab().ordinal()][actions];
+            widths[transitions] = Math.addExact(widths[transitions], tensor.elementsPerRow(bucket));
+          }
+        }
+      }
+      return values;
+    }
+  }
+
   /**
    * 指定容量の二本のホスト側の連続バッファを記述する配置を作る。
    *

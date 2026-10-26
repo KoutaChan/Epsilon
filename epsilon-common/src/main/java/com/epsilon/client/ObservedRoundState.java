@@ -4,6 +4,7 @@ import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
 import com.epsilon.core.Meld;
+import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.MahjongTransition;
 import com.epsilon.engine.PostCallDahaiRestriction;
@@ -103,6 +104,24 @@ public final class ObservedRoundState {
 
   /** 打牌を反映する。ツモ切りの判定は入力プロトコル側で確定させる。 */
   public TurnEvent.Discard discard(int player, int tileType, boolean aka, boolean tsumogiri) {
+    return discard(player, tileType, aka, tsumogiri, player == selfSeat);
+  }
+
+  /** 実牌 ID を持つプロトコルの打牌を反映し、自家ではサーバーが確定した実牌だけを消費する。 */
+  public TurnEvent.Discard discardPhysical(int player, int physicalTileId, boolean tsumogiri) {
+    if (player == selfSeat) {
+      if (!selfTiles().containsPhysicalTile(physicalTileId)) {
+        throw new IllegalStateException(
+            "Discarded physical tile is not in hand: " + physicalTileId);
+      }
+      selfTiles().removePhysicalTile(physicalTileId);
+    }
+    return discard(
+        player, Tile.typeOf(physicalTileId), Tile.isAka(physicalTileId), tsumogiri, false);
+  }
+
+  private TurnEvent.Discard discard(
+      int player, int tileType, boolean aka, boolean tsumogiri, boolean consumeHand) {
     boolean riichi = reachDiscardPlayer == player;
     Action action =
         riichi
@@ -110,7 +129,7 @@ public final class ObservedRoundState {
             : Action.dahai(tileType, aka, tsumogiri);
     TurnEvent.Discard discard =
         transition.reconstructDiscard(
-            player, action, continuation != Continuation.CALL_DISCARD, player == selfSeat);
+            player, action, continuation != Continuation.CALL_DISCARD, consumeHand);
     continuation = Continuation.NORMAL;
     if (riichi) {
       reachDiscardPlayer = -1;

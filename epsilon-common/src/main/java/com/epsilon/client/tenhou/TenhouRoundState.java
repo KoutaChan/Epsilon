@@ -91,8 +91,7 @@ public final class TenhouRoundState {
             || (player == SELF
                 && state().getTurnEvent() instanceof TurnEvent.Draw draw
                 && physicalTileId == draw.physicalTileId());
-    return round.discard(
-        player, Tile.typeOf(physicalTileId), Tile.isAka(physicalTileId), tsumogiri);
+    return round.discardPhysical(player, physicalTileId, tsumogiri);
   }
 
   private TenhouRoundOutcome applyNaki(TenhouEvent.Naki naki) {

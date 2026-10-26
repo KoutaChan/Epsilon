@@ -15,6 +15,7 @@ Linux・macOSでは`./mvnw package`を使います。特定の系列だけをビ
 | Epsilon-Pico | `epsilon-pico/target/epsilon-pico-1.0-SNAPSHOT-all.jar` |
 | Epsilon-Nano | `epsilon-nano/target/epsilon-nano-1.0-SNAPSHOT-all.jar` |
 | Epsilon      | `epsilon/target/epsilon-1.0-SNAPSHOT-all.jar`           |
+| Epsilon-Prism | `epsilon-prism/target/epsilon-prism-1.0-SNAPSHOT-all.jar` |
 
 <details>
 <summary>AMD GPUを使う場合（Linux / ROCm）</summary>

@@ -128,8 +128,8 @@ public final class GameEngine {
     actions = new MahjongTransition(state, recorder);
   }
 
-  private GameEngine(GameEngine source) {
-    this(source.state.snapshotCopy(), null);
+  private GameEngine(GameEngine source, GameRecorder recorder) {
+    this(source.state.snapshotCopy(), recorder);
     if (!source.stage.awaitingDecision()) {
       throw new IllegalStateException("GameEngine can only fork at an action boundary");
     }
@@ -158,10 +158,22 @@ public final class GameEngine {
    * @return 現在境界から独立して進行できるエンジン
    */
   public GameEngine forkAtDecisionBoundary() {
+    return forkAtDecisionBoundary(null);
+  }
+
+  /**
+   * 現在の行動境界を複製し、分岐後のイベントを指定レコーダーへ記録する。
+   *
+   * <p>既存の履歴は再送しない。履歴を使う呼び出し元は、主枝から独立した履歴の複製を渡す。
+   *
+   * @param recorder 分岐専用の記録処理。不要なら {@code null}
+   * @return 現在境界から独立して進行できるエンジン
+   */
+  public GameEngine forkAtDecisionBoundary(GameRecorder recorder) {
     if (!stage.awaitingDecision()) {
       throw new IllegalStateException("GameEngine can only fork at an action boundary");
     }
-    return new GameEngine(this);
+    return new GameEngine(this, recorder);
   }
 
   /**

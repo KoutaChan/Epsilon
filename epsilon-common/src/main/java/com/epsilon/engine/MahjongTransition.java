@@ -24,7 +24,10 @@ public final class MahjongTransition {
   }
 
   public TurnEvent.Draw drawFromWall(int player) {
-    int physicalTileId = state.drawLiveWallTile();
+    if (recorder != null) {
+      recorder.beforeDraw(player, false, state);
+    }
+    int physicalTileId = state.drawLiveWallTile(player);
     state.hand(player).addPhysicalTile(physicalTileId);
     TurnEvent.Draw draw =
         state.recordDraw(player, physicalTileId, TurnEvent.DrawSource.WALL, false);
@@ -38,6 +41,9 @@ public final class MahjongTransition {
     revealPendingDora();
     if (!delayDoraRevealUntilDiscard) {
       revealDora();
+    }
+    if (recorder != null) {
+      recorder.beforeDraw(player, true, state);
     }
     int physicalTileId = state.drawRinshanTile();
     state.hand(player).addPhysicalTile(physicalTileId);
@@ -283,6 +289,9 @@ public final class MahjongTransition {
   }
 
   private void revealDora() {
+    if (recorder != null) {
+      recorder.beforeDoraReveal(state);
+    }
     state.revealDoraIndicator();
     if (recorder != null) {
       int index = state.doraState().indicatorCount() - 1;

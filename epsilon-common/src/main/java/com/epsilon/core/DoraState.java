@@ -129,6 +129,20 @@ public final class DoraState {
     indicatorCount = index + 1;
   }
 
+  /**
+   * 公開済みの表示牌 index の裏ドラ表示牌を差し替える（見えない牌を並べ替えたとき）。裏ドラが分かっていない表示牌には使えない。
+   */
+  void replaceUraIndicator(int index, int uraIndicatorTileType) {
+    requireRevealedIndex(index);
+    requireTileType(uraIndicatorTileType);
+    if ((uraKnownMask & (1 << index)) == 0)
+      throw new IllegalStateException("ura indicator " + index + " is unknown");
+    long mask = TILE_MASK << (index * TILE_BITS);
+    uraDoraTileTypesPacked =
+        (uraDoraTileTypesPacked & ~mask)
+            | (long) Tile.doraFrom(uraIndicatorTileType) << (index * TILE_BITS);
+  }
+
   private static long appendPacked(long packed, int index, int tileType) {
     return packed | (long) tileType << (index * TILE_BITS);
   }

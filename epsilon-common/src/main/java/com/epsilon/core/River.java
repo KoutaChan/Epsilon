@@ -1,11 +1,18 @@
 package com.epsilon.core;
 
 import java.util.Arrays;
+import java.util.Objects;
 
-/** 河（捨て牌）を管理するクラス。 */
+/**
+ * 河（捨て牌）を管理するクラス。
+ *
+ * <p>ルール上、1局で1席が捨てる枚数に固定の上限はない（鳴きで他家の手番が飛ぶと 24 枚を超えうる）ので、記録は必要に応じて伸ばす。打牌の記録の
+ * オブジェクトは使うところまでしか作らない（局面の複製を軽くするため）。
+ */
 public final class River {
 
-  private static final int MAX_DISCARDS = 24;
+  /** 最初に確保する記録の数。通常の局はこの中に収まる。 */
+  private static final int INITIAL_CAPACITY = 24;
 
   /** 河の1枚の情報。 */
   public static final class Discard {
@@ -113,7 +120,7 @@ public final class River {
     }
   }
 
-  private final Discard[] discards;
+  private Discard[] discards;
   private final int[] discardCountsByTileType;
   private int size;
   private long discardedTileTypeMask;
@@ -124,10 +131,7 @@ public final class River {
 
   /** 空の河を生成する。 */
   public River() {
-    this.discards = new Discard[MAX_DISCARDS];
-    for (int index = 0; index < discards.length; index++) {
-      discards[index] = new Discard(-1, -1, false, false, false, -1);
-    }
+    this.discards = new Discard[INITIAL_CAPACITY];
     this.discardCountsByTileType = new int[Tile.NUM_TILE_TYPES];
     this.riichiDeclarationIndex = -1;
     this.riichiDeclarationSequence = -1;
@@ -139,13 +143,12 @@ public final class River {
    * @param other 複製元の河
    */
   public River(River other) {
-    this.discards = new Discard[MAX_DISCARDS];
-    for (int index = 0; index < discards.length; index++) {
-      discards[index] = new Discard(-1, -1, false, false, false, -1);
-    }
+    this.discards = new Discard[Math.max(INITIAL_CAPACITY, other.size)];
     this.size = other.size;
     for (int index = 0; index < size; index++) {
-      this.discards[index].copyFrom(other.discards[index]);
+      Discard discard = new Discard(-1, -1, false, false, false, -1);
+      discard.copyFrom(other.discards[index]);
+      this.discards[index] = discard;
     }
     this.discardCountsByTileType = other.discardCountsByTileType.clone();
     this.discardedTileTypeMask = other.discardedTileTypeMask;
@@ -222,9 +225,13 @@ public final class River {
       int sequence,
       int creationEvent) {
     if (size == discards.length) {
-      throw new IllegalStateException("river capacity exceeded: " + discards.length);
+      discards = Arrays.copyOf(discards, discards.length * 2);
     }
-    Discard discard = discards[size++];
+    Discard discard = discards[size];
+    if (discard == null) {
+      discards[size] = discard = new Discard(-1, -1, false, false, false, -1);
+    }
+    size++;
     discard.set(tileType, turnNumber, riichiDeclaration, aka, tsumogiri, sequence);
     discard.creationEvent = creationEvent;
     discardCountsByTileType[tileType]++;
@@ -249,7 +256,7 @@ public final class River {
 
   /** 指定インデックスの打牌を返す。 */
   public Discard discard(int index) {
-    return discards[java.util.Objects.checkIndex(index, size)];
+    return discards[Objects.checkIndex(index, size)];
   }
 
   /** 指定牌種を捨てた回数を返す。 */

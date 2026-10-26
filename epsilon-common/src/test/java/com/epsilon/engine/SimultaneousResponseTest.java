@@ -4,7 +4,10 @@ import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Tile;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -23,7 +26,7 @@ public class SimultaneousResponseTest {
     state.startRound(0, 0, 0, 0);
     MahjongFixtures.hand(state, 0, "123m123p123s111z5z");
     for (int seat = 1; seat < 4; seat++) MahjongFixtures.hand(state, seat, "123m123p123s11z55z");
-    int[] wall = java.util.stream.IntStream.range(0, 136).toArray();
+    int[] wall = IntStream.range(0, 136).toArray();
     wall[52] = 0;
     wall[0] = 52;
     state.initializeWall(wall);
@@ -45,12 +48,12 @@ public class SimultaneousResponseTest {
       choices.add(new EngineDecisionSelection(response.id(), action));
     }
     // 同時応答のリスト順で優先順位や精算を変えない。
-    java.util.Collections.reverse(choices);
+    Collections.reverse(choices);
     var ended = (GameStepResult.RoundEnded) engine.commitDecisions(choices);
     Assert.assertFalse(state.isRiichi(0));
     Assert.assertEquals(state.getKyotakuCount(), 0);
     int[] deltas = ended.result().pointDelta().toArray();
-    Assert.assertEquals(java.util.Arrays.stream(deltas).sum(), 0);
+    Assert.assertEquals(Arrays.stream(deltas).sum(), 0);
     if (winners == 3) {
       Assert.assertEquals(
           ((RoundResult.AbortiveDraw) ended.result()).reason(),

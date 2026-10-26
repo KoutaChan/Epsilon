@@ -84,6 +84,7 @@ public final class GameState {
 
   // セクション: 山
   private final Wall wall;
+  private boolean seatStreamDraws;
   private final PublicObservation[] observations = new PublicObservation[NUM_PLAYERS];
 
   /** 停止中の局面を特定席の公開情報として借用する。 */
@@ -165,6 +166,7 @@ public final class GameState {
     }
 
     this.wall = new Wall(other.wall);
+    this.seatStreamDraws = other.seatStreamDraws;
 
     this.currentPlayer = other.currentPlayer;
     this.dahaiCount = other.dahaiCount;
@@ -264,6 +266,7 @@ public final class GameState {
       int physicalTileId = wall.draw();
       hands[player].addPhysicalTile(physicalTileId);
     }
+    if (seatStreamDraws) wall.enableSeatStreams(oya);
   }
 
   /**
@@ -523,6 +526,44 @@ public final class GameState {
   /** 王牌を除く牌山から次の物理牌を取り出す。 */
   public int drawLiveWallTile() {
     return wall.draw();
+  }
+
+  /**
+   * 指定席のツモ。{@link #enableSeatStreamDraws()} を呼んでいなければ {@link #drawLiveWallTile()} と同じ。
+   *
+   * @param seat ツモる席
+   */
+  public int drawLiveWallTile(int seat) {
+    return wall.draw(seat);
+  }
+
+  /**
+   * 以後の局で席別ツモ列（WASO）を使う。各局の配牌の直後に、位置 52+k の牌を席 (親+k) mod 4 の列に割り当てる。
+   *
+   * <p>共通乱数の分岐で、鳴きや手番のずれがあっても各席が同じ牌を引けるようにするためのもの。牌の中身を見ない位置だけの規則なので、ツモの分布は
+   * 位置順と同じ（一様）。既定は位置順で、呼ばない限り挙動は変わらない。分岐（{@link #snapshotCopy()}）は列も複製する。
+   */
+  public void enableSeatStreamDraws() {
+    seatStreamDraws = true;
+  }
+
+  public boolean seatStreamDrawsEnabled() {
+    return seatStreamDraws;
+  }
+
+  /**
+   * 全席から見えない牌（牌山の残り・未使用の嶺上牌・未公開のドラ表示牌・すべての裏ドラ表示牌）を一様に並べ替える。手牌・河・副露・公開済みの
+   * 表示牌は変えない。同じ公開情報と手牌のもとで、牌山だけを独立に引き直した局面を作るためのもの（共通乱数の分岐の複製に使う）。公開済みの
+   * 表示牌の裏ドラは並べ替えた後の牌で写し直す。
+   *
+   * @param seed 並べ替えの乱数。同じ状態と seed からは同じ結果になる
+   * @throws IllegalStateException 牌譜から再構成した、牌の分からない牌山のとき
+   */
+  public void reshuffleUnseen(long seed) {
+    int revealed = doraState.indicatorCount();
+    wall.reshuffleUnseen(seed, revealed);
+    for (int slot = 0; slot < revealed; slot++)
+      doraState.replaceUraIndicator(slot, Tile.typeOf(wall.uraDoraIndicatorPhysicalTileIdAt(slot)));
   }
 
   /** 王牌から次の嶺上物理牌を取り出し、王牌を除く牌山を一枚短縮する。 */

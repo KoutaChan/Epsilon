@@ -41,6 +41,11 @@ public final class EpsilonGrpInference implements EpsilonGrpRankPredictor {
     this.cpuSinkhorn = !model.getNDManager().getDevice().isGpu();
   }
 
+  /** 1 回の順伝播に通す行の数の上限（{@link #predictMarginalProbabilities} はこの数ずつに分けて評価する）。 */
+  public int maxBatch() {
+    return maxBatch;
+  }
+
   /**
    * 今の重みを写した CPU の逐次評価器を作る。系列の隠れ状態を1回求め、局境界を1つ足した候補をまとめて評価するときに使う。
    *

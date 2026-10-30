@@ -18,7 +18,13 @@ public enum EpsilonUtilityProfile {
   TENHOU(new double[] {2.0 / 3.0, 1.0 / 3.0, 0.0, -1.0}),
 
   /** Mリーグの順位点傾向を表す効用値。 */
-  MLEAGUE(new double[] {1.0, 0.2, -0.2, -0.6});
+  MLEAGUE(new double[] {1.0, 0.2, -0.2, -0.6}),
+
+  /**
+   * 平均順位を等間隔に評価する効用値 {@code [1, 1/3, -1/3, -1]}。Epsilon-Major の AVERAGE_RANK 版の網（価値の定義に profile=AVERAGE_RANK を
+   * 持つチェックポイント）を読むための互換用。番号は保存した行の profile の番号に入るので、末尾に置く。
+   */
+  AVERAGE_RANK(new double[] {1.0, 1.0 / 3.0, -1.0 / 3.0, -1.0});
 
   private final double[] rankUtility;
 

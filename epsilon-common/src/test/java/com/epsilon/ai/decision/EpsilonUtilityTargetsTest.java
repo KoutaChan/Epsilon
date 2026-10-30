@@ -12,7 +12,8 @@ public class EpsilonUtilityTargetsTest {
       {.4f, .2f, 0, -1},
       {0, 0, 0, 0},
       {2f / 3, 1f / 3, 0, -1},
-      {1, .2f, -.2f, -.6f}
+      {1, .2f, -.2f, -.6f},
+      {1, 1f / 3, -1f / 3, -1}
     };
     for (EpsilonUtilityProfile profile : EpsilonUtilityProfile.values()) {
       Assert.assertEquals(profile.rankUtility(), expected[profile.ordinal()]);
@@ -26,6 +27,19 @@ public class EpsilonUtilityTargetsTest {
     }
     Assert.assertEquals(EpsilonUtilityProfile.TENHOU.utilityForRankDouble(0), 2.0 / 3.0);
     Assert.assertEquals(EpsilonUtilityProfile.TENHOU.utilityForRankDouble(1), 1.0 / 3.0);
+  }
+
+  /** AVERAGE_RANK の価値の定義は、Epsilon-Major の AVERAGE_RANK 版の書き出し（macro614・macro964）の manifest の値と 1 文字も違わない。 */
+  @Test
+  public void averageRankMatchesTheEpsilonMajorExport() {
+    Assert.assertEquals(
+        EpsilonDecisionHlGauss.fingerprint(EpsilonUtilityProfile.AVERAGE_RANK),
+        "hl-gauss-v1-bins=101;sigma-bin=0.75;padding-sigmas=6.0;profile=AVERAGE_RANK;"
+            + "utility=0x1.0p0,0x1.555556p-2,-0x1.555556p-2,-0x1.0p0;"
+            + "minimum=-0x1.190b21642c859p0;maximum=0x1.190b21642c859p0;prior-floor=1.0E-8");
+    Assert.assertEquals(
+        EpsilonUtilityProfile.AVERAGE_RANK.ordinal(), EpsilonUtilityProfile.values().length - 1);
+    Assert.assertEquals(EpsilonUtilityProfile.MLEAGUE.ordinal(), 5);
   }
 
   @Test

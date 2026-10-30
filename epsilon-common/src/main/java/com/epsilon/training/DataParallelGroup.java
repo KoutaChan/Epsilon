@@ -1030,6 +1030,11 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       return computeStream != null;
     }
 
+    /** 学習ワーカーの演算用ストリーム（GPU のレーンだけ。CPU のレーンは null）。自前の演算を DJL の演算と同じストリームに積むために使う。 */
+    public final PtStream computeStream() {
+      return computeStream;
+    }
+
     /** 学習ワーカーの演算用ストリームに切り替え、パラメーターの準備完了を待ってから演算する。終了時には元のストリームでも演算完了を待てるようにする。 */
     final LaneExecution openExecution() {
       if (computeStream == null) return LaneExecution.DIRECT;

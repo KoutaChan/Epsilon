@@ -15,7 +15,7 @@
 </div>
 
 > [!IMPORTANT]
-> Nano のみ学習モデルを配布しています。その他の学習モデルのデータの配布予定は未定です。
+> 近日中に、Epsilon-Prism (PRISM: Posterior-start Roll-in Information-Set Matching) の重みを公開する予定です。 
 
 ## 概要
 

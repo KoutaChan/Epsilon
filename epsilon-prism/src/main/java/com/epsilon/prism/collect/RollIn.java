@@ -1,8 +1,10 @@
 package com.epsilon.prism.collect;
 
+import com.epsilon.prism.core.Greedy;
+
 /**
- * 中立ロールインの逸脱の分布 q(·|o)（論文 3.3 M2）。台は候補集合 C(o)（{@link CandidateSet#support}）で、C の中の s の順位 r（0 が最大。比べ方は
- * {@link com.epsilon.prism.core.Greedy#before}: 同点は p0 の大きい手、それも同じなら番号の小さい手を上）に沿った重みに一様な床 ε_q を混ぜる。
+ * 中立ロールインの逸脱の分布 q(·|o)。台は候補集合 C(o)（{@link CandidateSet#support}）で、C の中の s の順位 r（0 が最大。比べ方は
+ * {@link Greedy#before}: 同点は p0 の大きい手、それも同じなら番号の小さい手を上）に沿った重みに一様な床 ε_q を混ぜる。
  *
  * <pre>
  * q(c) = (1 − ε_q)·0.5^r(c) / Σ_{k=0}^{|C|−1} 0.5^k + ε_q / |C|      （c ∈ C）

@@ -1,6 +1,6 @@
 package com.epsilon.prism.workflow;
 
-import com.epsilon.prism.run.Pipeline;
+import com.epsilon.prism.run.Lineage;
 import com.epsilon.workflow.CommandWorkflow;
 import com.epsilon.workflow.WorkflowArguments;
 import com.epsilon.workflow.WorkflowDefinition;
@@ -8,7 +8,9 @@ import com.epsilon.workflow.WorkflowKind;
 import com.epsilon.workflow.WorkflowOptions;
 import java.nio.file.Path;
 
-/** run を始めるか再開する（{@link Pipeline}）。新しい run は設定の [epsilon.prism] から始め、再開は run の config.json を読む。 */
+/**
+ * run を始めるか再開する（網の系譜 {@link Lineage}）。新しい run は設定の [epsilon.prism] から始め、再開は run の config.json を読む。
+ */
 public final class TrainWorkflow implements CommandWorkflow<Integer> {
   @Override
   public WorkflowDefinition definition() {
@@ -23,7 +25,7 @@ public final class TrainWorkflow implements CommandWorkflow<Integer> {
     int stopAfter =
         Integer.parseInt(options.optionalText("stop-after", Integer.toString(Integer.MAX_VALUE)));
     options.requireEmpty();
-    return Pipeline.run(run, stopAfter, arguments.settings());
+    return Lineage.run(run, stopAfter, arguments.settings());
   }
 
   @Override

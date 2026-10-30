@@ -8,7 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * 版の係数（policy.json）。網の出力 s(o, a) から σ への写像は貪欲（s の argmax、同点は p0。{@link NetPolicyService}）だけなので、版が持つのは番号だけ。
+ * 版の係数（policy.json）。網の出力 s(o, a) から σ への写像は貪欲（s の argmax、同点は p0。{@link GreedyAnswer}）だけなので、版が持つのは番号だけ。
  *
  * @param version 方策の版。反復番号と同じ
  */

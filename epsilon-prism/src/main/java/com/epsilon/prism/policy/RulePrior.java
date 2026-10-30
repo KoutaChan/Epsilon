@@ -1,8 +1,7 @@
 package com.epsilon.prism.policy;
 
 /**
- * 打牌の規則による事前分布のロジット（CRR の R0 を β = 0・c = 1 で移したもの。CRR の RulePrior と HedgePolicyHead の事前分布と基準測度の部分）。
- * 向聴を減らし受け入れを増やす打牌を優先する。
+ * 打牌の規則による事前分布のロジット。向聴を減らし受け入れを増やす打牌を優先する。
  *
  * <pre>
  * q(a) = −α·shanten(a) + γ·ukeire(a)                                  （a ∈ D: 打牌のまとまり {@link ActionGroups#DISCARD}）
@@ -12,7 +11,7 @@ package com.epsilon.prism.policy;
  * </pre>
  *
  * 正規化により Σ_{a∈D} e^{prior(a)} = |D| となり、事前分布は打牌のまとまりの中の配分だけを変える。まとまりの総確率は基準測度で決まる（打牌全体・鳴き全体・
- * ほかの 1 手ごとに等しい）。打牌でない手は自分のまとまりの中で一様。特徴は Nano の入力エンコーダーが計算した遷移特徴（{@link R0Features}）。
+ * ほかの 1 手ごとに等しい）。打牌でない手は自分のまとまりの中で一様。特徴は記録 O から作る打牌の後の向聴と受け入れの枚数（{@link Prior}）。
  */
 public final class RulePrior {
   private RulePrior() {}

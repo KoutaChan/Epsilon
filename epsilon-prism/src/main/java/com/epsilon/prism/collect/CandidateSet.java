@@ -2,15 +2,16 @@ package com.epsilon.prism.collect;
 
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
+import com.epsilon.prism.core.CrnSeeds;
 import com.epsilon.prism.core.Greedy;
 import com.epsilon.prism.core.Twins;
+import com.epsilon.prism.policy.GreedyAnswer;
 import com.epsilon.prism.policy.RegimeRepresentatives;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * 候補集合 C(o)（論文 3.6 の「2 教師」）。o・π_t・p0・硬貨だけで決め、結果に依らない（命題 6 の仮定）。硬貨（ε_C）は H を固定しても一様
- * （{@link com.epsilon.prism.core.CrnSeeds}）。
+ * 候補集合 C(o)。o・π_t・p0・硬貨だけで決め、結果に依らない。硬貨（ε_C）は H を固定しても一様（{@link CrnSeeds}）。
  *
  * <p>作り方（{@link #build}）: 次の優先の順に手を足し、すでに入っている手の双子（{@link Twins#same}）は飛ばす。上限は ε_C の硬貨が当たれば
  * maxCandidates − 1、外れれば maxCandidates で、上限に達したら止める。
@@ -32,7 +33,7 @@ import java.util.List;
  *
  * <p>s の順位は {@link Greedy#before}（同点は p0 の大きい手、それも同じなら番号の小さい手）、p0 の順位の同点は番号の小さい手を上にする。「k 番目の
  * 手」は双子をまとめた順位で数える（上位に双子がある手は数えない）ので、s の上位 3 手は双子でない 3 つの候補になる。s の 1 番目は b の貪欲の手そのもの
- * （方策の RequestEncoder の argmax と同じ比べ方）。
+ * （方策の貪欲 {@link GreedyAnswer} と同じ比べ方）。
  *
  * @param support C(o)（合法手の位置の昇順）。根の記録では逸脱の分布 q の台
  * @param measured ラベル行で値を測る手 C ∪ {played}（昇順）
@@ -135,7 +136,7 @@ record CandidateSet(int[] support, int[] measured, boolean explored) {
 
   /**
    * actions を values の降順に並べた、actions の中の添字。比べ方は {@link Greedy#before}（同点は tieBreak の大きい手、それも同じか tieBreak が
-   * null なら番号の小さい手）で、方策の RequestEncoder の argmax と同じ。挿入ソートなので、NaN が混じっても順列を返す。
+   * null なら番号の小さい手）で、方策の貪欲と同じ。挿入ソートなので、NaN が混じっても順列を返す。
    *
    * @param values 合法手ごとの主の値（s か p0）
    * @param tieBreak 同点を割る合法手ごとの値（s の順位なら p0、p0 の順位なら null）
@@ -219,7 +220,7 @@ record CandidateSet(int[] support, int[] measured, boolean explored) {
     return false;
   }
 
-  /** 行に書く support（{@link com.epsilon.prism.rows.PrismRow#support}）。 */
+  /** 行に書く support（{@link RowDraft#support}。位置の昇順）。 */
   byte[] supportBytes() {
     byte[] bytes = new byte[support.length];
     for (int i = 0; i < support.length; i++) bytes[i] = (byte) support[i];

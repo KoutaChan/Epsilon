@@ -6,8 +6,7 @@ import com.epsilon.prism.core.CrnSeeds.Domain;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.metrics.StageTimer;
 import com.epsilon.prism.policy.PolicyService;
-import com.epsilon.prism.rows.PrismRow;
-import com.epsilon.prism.rows.RowSink;
+import com.epsilon.prism.rows.Row;
 
 /**
  * 1コホートの収集で全 run が共有する、変更されない設定と並行に更新する計数。抽選は全て run の種・コホートの種・半荘 ID・判断 ID のハッシュ
@@ -16,15 +15,17 @@ import com.epsilon.prism.rows.RowSink;
  * <p>判断の硬貨は進行ごとの硬貨の鍵（主経路は {@link #mainKey}、写しは {@link #copyKey}）から引く。分岐は硬貨を引かない。
  */
 final class CollectContext {
-  final int iteration;
   final long runSeed;
   final long iterationSeed;
   final PolicyService policy;
-  final RowSink sink;
+
   final EpsilonUtilityProfile profile;
 
   /** 収集の率（評価は {@link Sampling#OFF}）。 */
   final Sampling sampling;
+
+  /** ラベルの枠ごとに運の精算の帳簿（{@link EventLedger}）を付けるか（{@link Sampling#eventLedger}）。 */
+  final boolean eventLedger;
 
   /** 全席の行動方策 b（null なら方策の σ から引く。評価）。 */
   final Behaviour behaviour;
@@ -34,15 +35,22 @@ final class CollectContext {
   final CollectionDriver.SeatPolicies seating;
   final CollectionDriver.GameObserver observer;
 
-  /** ラベル行の候補を測定器の 1 手に替える仕掛け（probe-nano だけ。通常は null）。 */
-  final CandidateProbe probe;
+  /**
+   * 行（{@link Row}）の受け口（行を作らない評価は null）。null でなければ、経路ごとに {@link RowRecorder} を持ち、ラベル行と根の記録が行を
+   * 作る。
+   */
+  final RowSink rows;
+
+  /**
+   * 運の網 Ω の標本の受け口（標本を集める収集だけ。ほかは null）。null でなければ、経路ごとに {@link LuckRecorder} を持ち、境界で復元した
+   * 出来事から標本を引いて、局末の値を Y にして書く。
+   */
+  final LuckSampleSink luck;
 
   CollectContext(
-      int iteration,
       long runSeed,
       long iterationSeed,
       PolicyService policy,
-      RowSink sink,
       EpsilonUtilityProfile profile,
       Sampling sampling,
       Behaviour behaviour,
@@ -50,35 +58,50 @@ final class CollectContext {
       StageTimer timer,
       CollectionDriver.SeatPolicies seating,
       CollectionDriver.GameObserver observer,
-      CandidateProbe probe) {
-    this.iteration = iteration;
+      RowSink rows,
+      LuckSampleSink luck) {
     this.runSeed = runSeed;
     this.iterationSeed = iterationSeed;
     this.policy = policy;
-    this.sink = sink;
     this.profile = profile;
     this.sampling = sampling == null ? Sampling.OFF : sampling;
+    eventLedger = this.sampling.eventLedger();
     this.behaviour = behaviour;
     this.metrics = metrics;
     this.timer = timer;
     this.seating = seating;
     this.observer = observer;
-    this.probe = probe;
+    this.rows = rows;
+    this.luck = luck;
+  }
+
+  /**
+   * そろった行を受け口へ渡す（{@link RowDraft#row} で作る）。ドライバのスレッドだけが呼ぶ。
+   *
+   * @param values 合法手ごとの Y
+   * @param ledger 手ごとの運の精算の帳簿（帳簿を付けない収集は null）
+   * @param outcomes 手ごとの局末の 3 語
+   */
+  void write(RowDraft draft, float[] values, float[] ledger, long[] outcomes) {
+    metrics.rowsWritten.increment();
+    long started = System.nanoTime();
+    rows.accept(draft.row(values, ledger, outcomes));
+    timer.add(StageTimer.Stage.V2_ROWS, System.nanoTime() - started);
   }
 
   /** 半荘の行の用途。保留の割り当ては run 全体の種と半荘 ID だけで決め、反復をまたいで変えない。 */
-  PrismRow.Purpose purpose(long gameId) {
+  Row.Purpose purpose(long gameId) {
     return CrnSeeds.unit(CrnSeeds.derive(runSeed, Domain.HOLDOUT, gameId))
             < sampling.holdoutFraction()
-        ? PrismRow.Purpose.HOLDOUT
-        : PrismRow.Purpose.TRAIN;
+        ? Row.Purpose.HOLDOUT
+        : Row.Purpose.TRAIN;
   }
 
   /** 半荘の組（A・B、半々）。run 全体の種と半荘 ID だけで決める。 */
-  PrismRow.Group group(long gameId) {
+  Row.Group group(long gameId) {
     return CrnSeeds.unit(CrnSeeds.derive(runSeed, Domain.GROUP, gameId)) < 0.5
-        ? PrismRow.Group.A
-        : PrismRow.Group.B;
+        ? Row.Group.A
+        : Row.Group.B;
   }
 
   /** 主経路の硬貨の鍵。 */
@@ -91,7 +114,7 @@ final class CollectContext {
     return CrnSeeds.copyKey(iterationSeed, gameId, rootDecisionId);
   }
 
-  /** 主経路の判断をラベル行に予約するか（率 ρ_c）。 */
+  /** 主経路の判断をラベル行にするか（率 ρ_c）。 */
   boolean label(long coinKey, long decisionId, DecisionClass c) {
     double rate = sampling.labelRate(c);
     return rate > 0 && CrnSeeds.coin(coinKey, Domain.LABEL, decisionId) < rate;

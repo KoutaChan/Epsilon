@@ -65,18 +65,25 @@ public final class CrnKeys {
 
   /** 席×種別類ごとの序数。主経路・写し・分岐で同じだけ進め、fork のときに写す。 */
   public static final class Cursor {
+    private final int kindClasses;
     private final int[] ordinals;
 
-    public Cursor() {
-      ordinals = new int[4 * KIND_CLASSES];
+    /**
+     * 序数を 0 で始める。
+     *
+     * @param kindClasses 種別類の数（{@link CrnScheme#kindClasses}）
+     */
+    public Cursor(int kindClasses) {
+      this(kindClasses, new int[4 * kindClasses]);
     }
 
-    private Cursor(int[] ordinals) {
+    private Cursor(int kindClasses, int[] ordinals) {
+      this.kindClasses = kindClasses;
       this.ordinals = ordinals;
     }
 
     public int next(int seat, int kindClass) {
-      return ordinals[seat * KIND_CLASSES + kindClass]++;
+      return ordinals[seat * kindClasses + kindClass]++;
     }
 
     public void reset() {
@@ -84,7 +91,7 @@ public final class CrnKeys {
     }
 
     public Cursor copy() {
-      return new Cursor(ordinals.clone());
+      return new Cursor(kindClasses, ordinals.clone());
     }
   }
 }

@@ -2,9 +2,10 @@ package com.epsilon.prism.eval;
 
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
-import com.epsilon.prism.collect.CollectionDriver;
+import com.epsilon.core.Meld;
 import com.epsilon.engine.EngineDecisionPoint;
 import com.epsilon.engine.RoundResult;
+import com.epsilon.prism.collect.CollectionDriver;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
@@ -94,7 +95,7 @@ public final class PlayStats implements CollectionDriver.GameObserver {
       if (state.isRiichi(seat)) side.riichiHands.increment();
       var hand = state.hand(seat);
       for (int meld = 0; meld < hand.meldCount(); meld++)
-        if (hand.meld(meld).type() != com.epsilon.core.Meld.Type.ANKAN) {
+        if (hand.meld(meld).type() != Meld.Type.ANKAN) {
           side.openHands.increment();
           break;
         }

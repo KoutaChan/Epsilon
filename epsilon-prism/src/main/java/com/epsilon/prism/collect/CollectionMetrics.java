@@ -28,6 +28,7 @@ public final class CollectionMetrics {
   final LongAdder explored = new LongAdder();
   final LongAdder playedOutside = new LongAdder();
   final LongAdder rowsWritten = new LongAdder();
+  final LongAdder mainNonGreedy = new LongAdder();
 
   static LongAdder[] adders(int count) {
     LongAdder[] result = new LongAdder[count];
@@ -56,6 +57,7 @@ public final class CollectionMetrics {
    * @param explored 候補集合に一様な 1 手を足した判断（ラベル行か根を記録した判断ごとに 1。同じ判断のラベル行と根は 1 と数える）
    * @param playedOutside 打った手が候補集合の外だった（床 ε_b の手）ラベル行
    * @param rowsWritten 受け口へ渡した行（MAIN + ROLLIN + ROOT）
+   * @param mainNonGreedy 主経路で貪欲（σ の argmax）でない手を打った NN 推論判断（床 ε_b と探索の分）
    */
   public record Snapshot(
       long modelDecisions,
@@ -75,7 +77,8 @@ public final class CollectionMetrics {
       long measured,
       long explored,
       long playedOutside,
-      long rowsWritten) {
+      long rowsWritten,
+      long mainNonGreedy) {
     /** 全ての類のラベル行（MAIN + ROLLIN）。 */
     public long labels() {
       long total = 0;
@@ -117,7 +120,8 @@ public final class CollectionMetrics {
         measured.sum(),
         explored.sum(),
         playedOutside.sum(),
-        rowsWritten.sum());
+        rowsWritten.sum(),
+        mainNonGreedy.sum());
   }
 
   static long[] sums(LongAdder[] adders) {

@@ -1,7 +1,7 @@
 package com.epsilon.prism.policy;
 
 /**
- * 規則事前 p0 の係数（{@link RulePrior}。CRR の R0 の係数 c = 1 の版）。
+ * 規則事前 p0 の係数（{@link RulePrior}）。
  *
  * @param alpha 打牌後の向聴 1 つあたりの nat（既定 4.0）
  * @param gamma 打牌後の受け入れ 1 枚あたりの nat（既定 0.05）

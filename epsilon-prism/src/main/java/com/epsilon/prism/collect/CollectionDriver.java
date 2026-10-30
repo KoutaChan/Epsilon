@@ -2,16 +2,24 @@ package com.epsilon.prism.collect;
 
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.config.settings.InferenceBatchingSettings;
+import com.epsilon.core.Action;
+import com.epsilon.core.GameState;
+import com.epsilon.engine.EngineDecisionPoint;
+import com.epsilon.engine.GameRecorder;
+import com.epsilon.engine.RoundResult;
+import com.epsilon.prism.auxiliary.HandEndFacts;
+import com.epsilon.prism.auxiliary.OutcomeCodec;
+import com.epsilon.prism.eval.Arena;
 import com.epsilon.prism.metrics.StageTimer;
 import com.epsilon.prism.policy.Capacity;
 import com.epsilon.prism.policy.PolicyRequest;
 import com.epsilon.prism.policy.PolicyService;
-import com.epsilon.prism.rows.RowSink;
 import com.epsilon.runtime.InferenceAdmission;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionException;
@@ -24,9 +32,9 @@ import java.util.function.Consumer;
 /**
  * 収集のイベントループ。帳簿だけを扱い、対局の進行・符号化・GRP・保存はほかのスレッドに任せる。
  *
- * <p>流れ: 進行ワーカーが境界まで進める → 非同期の方策の問い合わせを版ごとにまとめて評価器へ → 結果がそろった run を進行ワーカーへ戻す。局末は Φ に
- * 渡し、値が返ったらその局の枠（ラベル行・根の記録）に渡す。新しい半荘の開始だけを上限で止める。写しと分岐は作った仕事の中で深さ優先に進め、
- * 走っている進行として数える。
+ * <p>流れ: 進行ワーカーが境界まで進める → 非同期の方策の問い合わせを版と受付の区分（{@link PolicyService#admissionKey}）ごとにまとめて評価器へ →
+ * 結果がそろった run を進行ワーカーへ戻す。局末は Φ に渡し、値が返ったらその局の枠（ラベル行・根の記録）に渡す。新しい半荘の開始だけを上限で
+ * 止める。写しと分岐は作った仕事の中で深さ優先に進め、走っている進行として数える。
  */
 public final class CollectionDriver implements AutoCloseable {
   /**
@@ -54,32 +62,32 @@ public final class CollectionDriver implements AutoCloseable {
     void gameEnded(long gameId, int[] finalScores);
 
     /** 判断（診断用）。state は commit の前で、進行ワーカーから並行に呼ばれる。 */
-    default void decided(
-        long gameId,
-        com.epsilon.core.GameState state,
-        com.epsilon.engine.EngineDecisionPoint point,
-        com.epsilon.core.Action action) {}
+    default void decided(long gameId, GameState state, EngineDecisionPoint point, Action action) {}
 
     /** 局の終わり（診断用）。state は局の終わりの局面で、進行ワーカーから並行に呼ばれる。 */
-    default void handEnded(
-        long gameId, com.epsilon.core.GameState state, com.epsilon.engine.RoundResult result) {}
+    default void handEnded(long gameId, GameState state, RoundResult result) {}
+
+    /**
+     * 主経路の局末の評価の入力（診断用。GRP の監査）。半荘が続くなら次局 root の公開系列（Φ の入力）、終わったなら null。scores は精算後の
+     * 点数。{@link #handEnded} の後、半荘が終わる局では {@link #gameEnded} の前に呼ばれる。
+     */
+    default void handValued(long gameId, float[] nextRootPrefix, int[] scores) {}
 
     /** 牌譜の記録先（診断用。記録しないなら null）。半荘の始めに1回呼ばれ、その半荘の進行ワーカーだけが使う。 */
-    default com.epsilon.engine.GameRecorder recorder(long gameId) {
+    default GameRecorder recorder(long gameId) {
       return null;
     }
   }
 
   /**
    * 1コホート。半荘 ID は run 全体で一意。収集は sampling（PRISM の率）と全席の行動方策 behaviour で打ち、seating と observer は null。
-   * 評価（{@link com.epsilon.prism.eval.Arena}）は {@link Sampling#OFF}・behaviour null（方策の σ）で、seating と observer を使う。
+   * 評価（{@link Arena}）は {@link Sampling#OFF}・behaviour null（方策の σ）で、seating と observer を使う。
    *
    * @param iterationSeed コホートの種（局のキーと硬貨の鍵の素）
    * @param sampling 収集の率（null なら {@link Sampling#OFF}）
    * @param behaviour 全席の行動方策 b（null なら方策の σ）
    */
   public record Cohort(
-      int iteration,
       long runSeed,
       long iterationSeed,
       List<Long> gameIds,
@@ -94,17 +102,24 @@ public final class CollectionDriver implements AutoCloseable {
   }
 
   /**
+   * 書いた行。
+   *
+   * @param rows 行の数
+   * @param bytes 圧縮後のバイト数
+   */
+  public record RowStats(long rows, long bytes) {}
+
+  /**
    * 1 コホートの結果。
    *
-   * @param rows 受け口の書いた行（{@link RowSink#stats}。収集が終わった時点の値で、書き手のキューに残る行を含まない。封印した後の値は {@link
-   *     #withRows} で差し替える）
+   * @param rows 受け口に渡した行の数（バイトは 0。封印した後の目録の値は {@link #withRows} で差し替える）
    */
   public record Result(
       CollectionMetrics.Snapshot counts,
       Map<StageTimer.Stage, StageTimer.Entry> stages,
       InferenceAdmission.Metrics admission,
       HandValue.Stats phi,
-      RowSink.RowStats rows,
+      RowStats rows,
       long batches,
       int largestBatch,
       double seconds) {
@@ -113,8 +128,8 @@ public final class CollectionDriver implements AutoCloseable {
       return counts.modelDecisions() / seconds;
     }
 
-    /** 書いた行だけを差し替えた結果（封印の後の manifest の値）。 */
-    public Result withRows(RowSink.RowStats written) {
+    /** 書いた行だけを差し替えた結果（封印の後の目録の値）。 */
+    public Result withRows(RowStats written) {
       return new Result(counts, stages, admission, phi, written, batches, largestBatch, seconds);
     }
 
@@ -133,7 +148,7 @@ public final class CollectionDriver implements AutoCloseable {
           Locale.ROOT,
           "collect %.1fs %.0f model decisions/s (copy %d, fork %d) games=%d hands=%d rows=%d"
               + " labels=%d rollin=%d roots=%d (copies %d, same %d, floor skipped %d) forks=%d"
-              + " |C|=%.2f explored=%d outside=%d",
+              + " |C|=%.2f explored=%d outside=%d mainNonGreedy=%d",
           seconds,
           modelDecisionsPerSecond(),
           counts.copyDecisions(),
@@ -150,7 +165,8 @@ public final class CollectionDriver implements AutoCloseable {
           counts.forks(),
           rowsWithValues == 0 ? 0.0 : counts.measured() / (double) rowsWithValues,
           counts.explored(),
-          counts.playedOutside());
+          counts.playedOutside(),
+          counts.mainNonGreedy());
     }
   }
 
@@ -176,23 +192,37 @@ public final class CollectionDriver implements AutoCloseable {
     return task -> events.add(new Task(task));
   }
 
-  public Result collect(Cohort cohort, PolicyService policy, HandValue phi, RowSink sink) {
-    return collect(cohort, policy, phi, sink, null);
+  /**
+   * 行を作らない対局（評価）。率は {@link Sampling#OFF} でなければならない。
+   *
+   * @throws IllegalArgumentException 率が {@link Sampling#OFF} でないとき
+   */
+  public Result collect(Cohort cohort, PolicyService policy, HandValue phi) {
+    if (cohort.sampling() != Sampling.OFF)
+      throw new IllegalArgumentException("A collection without a row sink plays with Sampling.OFF");
+    return new Loop(cohort, policy, phi, null, null).run();
   }
 
   /**
-   * 測定器つきの収集（{@link CandidateProbe}。probe-nano）。probe が null なら {@link #collect(Cohort, PolicyService, HandValue, RowSink)}
-   * と同じ。測定器を使うときはロールインと写しの率が 0 でなければならない（根も写しも作らない）。
+   * 収集: ラベル行と根の記録を rows に書く。行の記録の失敗は収集を止める。結果の rows は書き手に渡した行の数（バイトは封印した目録の値に差し替える）。
+   *
+   * @param rows 行の受け口
+   */
+  public Result collect(Cohort cohort, PolicyService policy, HandValue phi, RowSink rows) {
+    return collect(cohort, policy, phi, rows, null);
+  }
+
+  /**
+   * 運の網 Ω の標本も集める収集。luck があれば、全ての経路の偶然の出来事（ツモ・槓ドラの表示）から標本を引き、その経路の局末の値を Y にして書く
+   * （{@link LuckSampleSink}）。主経路で枠のない局も、標本があれば局末の値を求める。標本は進行・乱数・行を変えず、標本が失敗しても収集は続ける（失敗は
+   * {@link LuckSampleSink#failure}）。
+   *
+   * @param rows 行の受け口
+   * @param luck 運の網の標本の受け口（null なら標本を集めない）
    */
   public Result collect(
-      Cohort cohort, PolicyService policy, HandValue phi, RowSink sink, CandidateProbe probe) {
-    Sampling sampling = cohort.sampling();
-    if (probe != null
-        && (sampling.rollinRateDiscard() > 0
-            || sampling.rollinRateCommit() > 0
-            || sampling.rhoBranch() > 0))
-      throw new IllegalArgumentException("Probed collection needs roll-in and copy rates of 0");
-    return new Loop(cohort, policy, phi, sink, probe).run();
+      Cohort cohort, PolicyService policy, HandValue phi, RowSink rows, LuckSampleSink luck) {
+    return new Loop(cohort, policy, phi, Objects.requireNonNull(rows, "rows"), luck).run();
   }
 
   @Override
@@ -216,26 +246,25 @@ public final class CollectionDriver implements AutoCloseable {
   private final class Loop {
     final Cohort cohort;
     final HandValue phi;
-    final RowSink sink;
     final CollectContext context;
     final InferenceAdmission<PolicyService, Capacity, PolicyRequest> admission;
     final List<GameRunner> ready = new ArrayList<>();
+
+    /** 局末の 3 語の書き手（行を書く収集で、ドライバのスレッドだけが使う）。 */
+    final OutcomeCodec outcomes = new OutcomeCodec();
+
     int nextGame, activeGames, inFlightTasks, largest;
     long batches;
     boolean ingressWakeScheduled;
 
-    Loop(
-        Cohort cohort, PolicyService policy, HandValue phi, RowSink sink, CandidateProbe probe) {
+    Loop(Cohort cohort, PolicyService policy, HandValue phi, RowSink rows, LuckSampleSink luck) {
       this.cohort = cohort;
       this.phi = phi;
-      this.sink = sink;
       context =
           new CollectContext(
-              cohort.iteration(),
               cohort.runSeed(),
               cohort.iterationSeed(),
               policy,
-              sink,
               cohort.profile(),
               cohort.sampling(),
               cohort.behaviour(),
@@ -243,7 +272,8 @@ public final class CollectionDriver implements AutoCloseable {
               new StageTimer(),
               cohort.seating(),
               cohort.observer(),
-              probe);
+              rows,
+              luck);
       admission =
           new InferenceAdmission<>(
               settings.batching(),
@@ -310,7 +340,7 @@ public final class CollectionDriver implements AutoCloseable {
           context.timer.snapshot(),
           admission.metrics(),
           phi.stats(),
-          sink.stats(),
+          new RowStats(context.rows == null ? 0 : context.rows.rows(), 0),
           batches,
           largest,
           (System.nanoTime() - start) / 1e9);
@@ -328,7 +358,7 @@ public final class CollectionDriver implements AutoCloseable {
       int additions =
           Math.min(cohort.gameIds().size() - nextGame, settings.maxActiveGames() - activeGames);
       // 行の背圧は走っている半荘があるときだけ掛ける（全部止めると書き手の進みを知る出来事が来ず、停止と誤認する）
-      if (additions <= 0 || (activeGames > 0 && sink.backlog() >= ROW_BACKLOG)) return;
+      if (additions <= 0 || (activeGames > 0 && backlog() >= ROW_BACKLOG)) return;
       int first = nextGame;
       nextGame += additions;
       activeGames += additions;
@@ -343,6 +373,11 @@ public final class CollectionDriver implements AutoCloseable {
               return runs;
             });
       }
+    }
+
+    /** 書き終えていない行（行を書かない評価は 0）。 */
+    long backlog() {
+      return context.rows == null ? 0 : context.rows.backlog();
     }
 
     void submitReady() {
@@ -433,8 +468,10 @@ public final class CollectionDriver implements AutoCloseable {
             run.handEnds().clear();
             switch (advanced.status().get(index)) {
               case NEEDS_POLICY -> {
-                for (PolicyRequest request : run.outstanding())
-                  admission.add(run.policyFor(request), request.capacity(), request, now);
+                for (PolicyRequest request : run.outstanding()) {
+                  PolicyService policy = run.policyFor(request);
+                  admission.add(policy, policy.admissionKey(request), request, now);
+                }
               }
               case FINISHED -> activeGames--;
             }
@@ -456,17 +493,35 @@ public final class CollectionDriver implements AutoCloseable {
       }
     }
 
-    /** 局末の値を Φ に求め（半荘末は最終効用をそのまま）、その局の行に渡す。 */
+    /** 局末の値を Φ に求め（半荘末は最終効用をそのまま）、その局の行と運の網の標本に渡す。 */
     void settle(HandEnd end) {
       if (end.values() != null) {
-        accept(end.targets(), end.values());
+        accept(end, end.values());
         return;
       }
-      phi.request(end.prefix(), end.scores(), values -> accept(end.targets(), values));
+      phi.request(end.prefix(), end.scores(), values -> accept(end, values));
     }
 
-    private static void accept(List<Slot> targets, double[] values) {
-      for (Slot slot : targets) slot.target().accept(slot.action(), values);
+    /**
+     * 局の枠ごとに、帳簿 → 局末の事実（行を書く収集）→ 値の順に渡し、運の網の標本があれば同じ値を Y にして書く。標本が書けなければ標本だけを
+     * 止める。
+     */
+    private void accept(HandEnd end, double[] values) {
+      List<Slot> targets = end.targets();
+      HandEndFacts facts = end.facts();
+      long outcomeNanos = 0;
+      for (Slot slot : targets) {
+        if (slot.ledger() != null) slot.target().acceptLedger(slot.action(), slot.ledger());
+        if (facts != null) {
+          long started = System.nanoTime();
+          slot.target().acceptOutcome(slot.action(), facts, outcomes);
+          outcomeNanos += System.nanoTime() - started;
+        }
+        slot.target().accept(slot.action(), values);
+      }
+      if (facts != null) context.timer.add(StageTimer.Stage.V2_OUTCOMES, outcomeNanos, targets.size());
+      if (end.luck() != null)
+        context.luck.settle(end.luck(), values, targets.isEmpty() && end.values() == null);
     }
 
     /** 失敗後は新しい仕事を出さず、借用中の観測やモデルを使う処理が終わるのを待つ。 */

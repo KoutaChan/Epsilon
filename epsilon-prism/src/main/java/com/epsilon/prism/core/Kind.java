@@ -1,8 +1,6 @@
 package com.epsilon.prism.core;
 
 import com.epsilon.core.Action;
-import com.epsilon.core.PublicObservation;
-import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.EngineDecisionKind;
 import java.util.List;
 
@@ -50,18 +48,5 @@ public enum Kind {
     if (call) return CALL;
     if (decision == EngineDecisionKind.POST_CALL_DAHAI) return POSTCALL;
     return DISCARD;
-  }
-
-  /**
-   * エンジンの判断の種別が来ない判断（牌譜解析）の種別。{@link #classify(EngineDecisionKind, List)} と同じ値になる。CHI・PON の直後は手番の出来事が
-   * 消え（{@link TurnEvent.None}）、手番は鳴いた席になる（通常の手番は自摸の出来事を持つ）。種別の判断で要るのは鳴いた直後の打牌とほかの打牌の
-   * 区別だけで、ほかの種別は合法手で決まる。
-   */
-  public static Kind classify(PublicObservation observation, List<Action> legal) {
-    boolean postCall =
-        observation.turnEvent() == TurnEvent.None.INSTANCE
-            && observation.currentPlayer() == observation.observer()
-            && legal.stream().allMatch(action -> action.type() == Action.Type.DAHAI);
-    return classify(postCall ? EngineDecisionKind.POST_CALL_DAHAI : EngineDecisionKind.TURN, legal);
   }
 }

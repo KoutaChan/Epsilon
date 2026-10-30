@@ -20,7 +20,19 @@
     </dependency>
     <dependency>
       <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-common</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
       <artifactId>epsilon-nano</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism-hip</artifactId>
       <version>${project.version}</version>
     </dependency>
   </dependencies>

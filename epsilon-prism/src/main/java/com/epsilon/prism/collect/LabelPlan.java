@@ -1,15 +1,16 @@
 package com.epsilon.prism.collect;
 
 import com.epsilon.core.Action;
+import com.epsilon.prism.core.CrnSeeds;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.core.Twins;
 import java.util.List;
 
 /**
- * 1 判断の収集の予定。{@link GameRunner#prepare} が推論の前に決める（payload を作るか = {@link #retain}）。決め方は硬貨と類だけで、推論の結果
- * にも結果の値にも依らない（行の採否が o と独立な乱数だけでその場で決まる、論文 命題 3 (iv)）。硬貨の座標の判断 ID は他家の伏せた手牌で枝ごとに
+ * 1 判断の収集の予定。{@link GameRunner#prepare} が推論の前に決める（行を作るか = {@link #retain}）。決め方は硬貨と類だけで、推論の結果
+ * にも結果の値にも依らない（行の採否が o と独立な乱数だけでその場で決まる）。硬貨の座標の判断 ID は他家の伏せた手牌で枝ごとに
  * ずれるので、硬貨は観測だけの関数ではないが、鍵は山と独立なハッシュなので H を固定しても一様で、採否の確率は H に依らない（{@link
- * com.epsilon.prism.core.CrnSeeds}）。
+ * CrnSeeds}）。
  *
  * <ul>
  *   <li>MAIN: label = {@link CollectContext#label}（率 ρ_c）、rollIn = {@link CollectContext#rollIn}（率 β_c）。どちらも合法手が双子だけでない
@@ -28,7 +29,7 @@ record LabelPlan(DecisionClass decisionClass, int threats, boolean label, boolea
   /** 何もしない予定（分岐・評価・強制手）。類は使わない。 */
   static final LabelPlan NONE = new LabelPlan(DecisionClass.DISCARD_MID, 0, false, false);
 
-  /** payload を作るか（ラベル行か根の記録を書く判断）。 */
+  /** 行を作るか（ラベル行か根の記録を書く判断。方策が p0 を書き、記録 O を捕捉する）。 */
   boolean retain() {
     return label || rollIn;
   }

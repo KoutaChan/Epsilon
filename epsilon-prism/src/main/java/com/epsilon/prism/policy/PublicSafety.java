@@ -12,7 +12,7 @@ import java.util.List;
  * 公開情報だけで測った打牌の安全度（体制の代表の「安全度の最善」）。判断の席から見える情報（河・立直の現物・見えている枚数）だけを読み、ほかの席の
  * 伏せた牌を見ない。
  *
- * <p>脅威の相手 j（{@link com.epsilon.prism.core.Threats#isThreat}）に対する現物の集合 G_j: j が立直なら {@code
+ * <p>脅威の相手 j（{@link Threats#isThreat}）に対する現物の集合 G_j: j が立直なら {@code
  * riichiGenbutsuTileTypeMask(j)}（立直前の j の河と、立直後に誰かが通した牌）、立直でなければ j の河（{@code riverTileTypeMask(j)}）。筋も G_j
  * で数える（立直者の待ちは変わらないので、立直後に通った牌の筋も河の筋と同じ理由で安全になる）。
  *

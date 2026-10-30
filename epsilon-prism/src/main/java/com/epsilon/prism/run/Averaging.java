@@ -1,8 +1,10 @@
 package com.epsilon.prism.run;
 
+import com.epsilon.prism.model.PrismNetwork;
+
 /**
  * 方策の記憶: 打つ網 A を学習の網 θ の重み付きの平均にする決め方。版 v を公開するたびに A_v = (1 − η_v)·A_{v−1} + η_v·θ_v とする
- * （{@link com.epsilon.prism.model.PrismModel#mixIn}）。
+ * （{@link PrismNetwork#mixIn}）。
  *
  * <ul>
  *   <li>{@value #NONE}: 平均しない（η = 1、A = θ）。

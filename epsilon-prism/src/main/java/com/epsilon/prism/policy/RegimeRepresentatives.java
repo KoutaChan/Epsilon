@@ -3,12 +3,13 @@ package com.epsilon.prism.policy;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.prism.core.Greedy;
+import com.epsilon.prism.core.Threats;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * 体制の代表（論文 3.6 の候補集合の「体制の代表(o)」）。確約点の両側の行き先を候補に必ず入れる。o・s・p0 と判断の席から見える公開情報だけで決める。
+ * 体制の代表（候補集合の「体制の代表(o)」）。確約点の両側の行き先を候補に必ず入れる。o・s・p0 と判断の席から見える公開情報だけで決める。
  *
  * <p>返す順（当てはまる体制だけ。各組は「確約する側、しない側」の順。同じ手が重なっても除かない。双子をまとめるのは呼び出し側の {@link
  * com.epsilon.prism.collect.CandidateSet}）:
@@ -40,7 +41,7 @@ public final class RegimeRepresentatives {
    * @param state 判断の時点の state（commit の前。席 seat から見える公開情報だけを読む）
    * @param scores 合法手ごとの s
    * @param prior 合法手ごとの p0
-   * @param threats 判断の席から見た公開の脅威の数（{@link com.epsilon.prism.core.Threats#count}）
+   * @param threats 判断の席から見た公開の脅威の数（{@link Threats#count}）
    */
   public static int[] of(
       GameState state, int seat, List<Action> legal, float[] scores, float[] prior, int threats) {

@@ -2,6 +2,7 @@ package com.epsilon.prism.collect;
 
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
+import com.epsilon.prism.core.Greedy;
 import com.epsilon.prism.core.Threats;
 import com.epsilon.prism.core.Twins;
 import java.util.Arrays;
@@ -10,8 +11,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 候補集合 C(o)（{@link CandidateSet#build}）は観測・π_t の s・p0・ハッシュの硬貨だけで決まり、隠れた牌（相手の手牌と山）に依らない（論文 命題 6
- * の仮定）。優先の順・ε_C の 1 手・打った手の双子の置き換えも確かめる。
+ * 候補集合 C(o)（{@link CandidateSet#build}）は観測・π_t の s・p0・ハッシュの硬貨だけで決まり、隠れた牌（相手の手牌と山）に依らない。
+ * 優先の順・ε_C の 1 手・打った手の双子の置き換えも確かめる。
  */
 public class CandidateSetTest {
   private static final int M1 = 0, M2 = 1, M4 = 3, M5 = 4, M6 = 5, M7 = 6, M9 = 8;
@@ -167,8 +168,6 @@ public class CandidateSetTest {
         CandidateSet.ranking(
             new int[] {0, 1, 2, 3}, new float[4], new float[] {0.1f, 0.4f, 0.1f, 0.4f}),
         new int[] {1, 3, 0, 2});
-    Assert.assertEquals(
-        com.epsilon.prism.core.Greedy.argmax(new float[4], new float[] {0.1f, 0.2f, 0.4f, 0.3f}, 4),
-        2);
+    Assert.assertEquals(Greedy.argmax(new float[4], new float[] {0.1f, 0.2f, 0.4f, 0.3f}, 4), 2);
   }
 }

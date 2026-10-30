@@ -1,193 +1,392 @@
 package com.epsilon.prism.model;
 
-import ai.djl.Device;
+import ai.djl.MalformedModelException;
 import ai.djl.ndarray.NDArray;
+import ai.djl.ndarray.NDArrays;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.AbstractBlock;
-import ai.djl.nn.ParameterList;
-import ai.djl.nn.core.Linear;
+import ai.djl.nn.Block;
+import ai.djl.nn.Parameter;
 import ai.djl.training.ParameterStore;
-import ai.djl.training.initializer.ConstantInitializer;
+import ai.djl.util.Pair;
 import ai.djl.util.PairList;
-import com.epsilon.nano.ai.decision.input.DecisionDeviceBatch;
-import com.epsilon.nano.ai.decision.input.DecisionGroupedInferenceBatch;
-import com.epsilon.nano.ai.decision.input.DecisionInputLayout;
-import com.epsilon.nano.ai.decision.input.DecisionNetworkInputs;
-import com.epsilon.nano.ai.decision.policy.TransitionPooling;
-import com.epsilon.nano.ai.model.DecisionInferenceExecution;
-import com.epsilon.nano.ai.model.EpsilonDecisionFeatureSpine;
-import com.epsilon.nano.ai.model.EpsilonDecisionFrozenFeatures;
-import com.epsilon.nano.ai.model.EpsilonMahjongStateEncoder;
+import com.epsilon.prism.auxiliary.TargetSchema;
+import com.epsilon.prism.hip.RelationCodes;
+import com.epsilon.prism.input.FrontierField;
+import com.epsilon.prism.input.InputSchema;
+import com.epsilon.prism.input.InputSchema.Tensor;
+import com.epsilon.prism.model.FitProbe.Stage;
+import com.epsilon.prism.model.WidthPlan.Axis;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
- * 生徒 π_θ（論文 3.4 M3、3.7）。合法手ごとのスコア s(o, a) だけを出し、値の頭は持たない。s は効用の単位で読み、打つときは argmax、学習では
- * s/λ_c をロジットにする。盤面と候補手の表現は Nano と同じ形を使う。
+ * PRISM の網。関係の偏りつきの背骨 → 遷移ごとの交差注意 → 価値グラフの頭で s を出し、学習では補助の頭も計算する。
  *
- * <p>出力の 1 単位の層（output）は自動混合精度でも FP32 で計算する（{@link #head}）。BF16 の出力では値が 0.002〜0.004 刻みに丸まり、近い手が
- * 同点になる。隠れ層（candidateHidden）は BF16 のまま。打つときの融合推論（{@link #inference}）も同じ s を FP32 で出す。
+ * <p>子の登録の順は保存の形式の一部（DJL は子の名前に登録の番号を付ける）: stateEmbedding、encoder0〜encoder{L−1}、finalNorm、
+ * candidate、discardValue、gates、reading、outcome。補助の頭（reading・outcome）は最後に置き、推論の重みの束
+ * （{@link #inferenceParameters()}）に入れない。
  *
- * <p>子ブロックの登録順は stateEncoder、stateReadout、候補の表現、candidateHidden、output。DJL は子ブロック名に登録順の番号を付けるので、
- * 順を変えると保存した版の重みの名前が合わなくなる。output は白紙の網ではゼロで初期化する（出力 0）。
+ * <p>前線の腕（{@link PrismShape#frontier()}）は候補層だけが違い、入力に前線の区画を求める。model.json には前線の入力の指紋
+ * （{@link FrontierField#fingerprint()}）も書く。
+ *
+ * <p>白紙では価値グラフの最後の層が全て 0 なので s ≡ 0（PASS と詰め物も 0）。
  */
-final class PrismNetwork extends AbstractBlock {
-  static final String ARCHITECTURE = "epsilon-prism-v1";
-  private final ModelConfig config;
-  private final EpsilonDecisionFeatureSpine featureSpine;
-  private final Linear candidateHidden, output;
+public final class PrismNetwork extends AbstractBlock {
 
-  PrismNetwork(ModelConfig config) {
-    this.config = config;
-    int hidden = config.hiddenSize();
-    featureSpine =
-        new EpsilonDecisionFeatureSpine(hidden, TransitionPooling.CANDIDATE_REPRESENTATION);
-    addChildBlock("stateEncoder", featureSpine.stateEncoder());
-    addChildBlock("stateReadout", featureSpine.stateReadout());
-    featureSpine.candidates().registerWith(this::addChildBlock);
-    candidateHidden = addChildBlock("candidateHidden", Linear.builder().setUnits(hidden).build());
-    output = addChildBlock("output", Linear.builder().setUnits(1).build());
-    output.getDirectParameters().get("weight").setInitializer(new ConstantInitializer(0));
-    output.getDirectParameters().get("bias").setInitializer(new ConstantInitializer(0));
-  }
+  /** model.json の網の形式。 */
+  public static final String ARCHITECTURE = "epsilon-prism-v2";
 
-  EpsilonDecisionFrozenFeatures frozenFeatures(NDManager owner, DataType computeType) {
-    return featureSpine.newFrozenInference(owner, computeType);
-  }
+  private static final String WEIGHTS = "weights.bin";
+  private static final String METADATA = "model.json";
+  private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-  /** 学習と採点の出力 s。[行, 合法手の容量]、FP32（合法でない手の値は使わない）。 */
-  NDArray scores(ParameterStore store, DecisionDeviceBatch batch, boolean training) {
-    return scores(store, batch, training, new PairList<>());
-  }
+  /** model.json の中身（frontierSchema は前線の腕だけ、ほかは null で書かない）。 */
+  private record Metadata(
+      String architecture,
+      String inputSchema,
+      String frontierSchema,
+      String headSchema,
+      PrismShape shape) {}
+
+  private final PrismShape shape;
+  private final TokenEmbedding embedding;
+  private final EncoderLayer[] encoders;
+  private final RmsNorm finalNorm;
+  private final CandidateLayer candidate;
+  private final DiscardValue discardValue;
+  private final ValueGraphHead gates;
+  private final ReadingHeads reading;
+  private final OutcomeHeads outcome;
 
   /**
-   * 学習と採点の出力 s。[行, 合法手の容量]、FP32。
+   * 網を組む（パラメーターは {@link #initialize(NDManager)} で作る）。
    *
-   * @param parameters 実行時パラメータ（{@code EpsilonTileRelationEncoder#createRuntimeParameters}。空なら順伝播のたびに作る）
+   * @param shape 形
    */
-  NDArray scores(
-      ParameterStore store,
-      DecisionDeviceBatch batch,
-      boolean training,
-      PairList<String, Object> parameters) {
-    var state =
-        featureSpine.encodeState(
-            store, batch.inputs(), batch.playerMemoryPresentIndices(), training, parameters);
-    NDArray candidate =
-        featureSpine
-            .candidates()
-            .encodeRepresentation(
-                store,
-                state,
-                batch.inputs(),
-                batch.transitionPresentIndices(),
-                training,
-                parameters);
-    return scoreCandidates(
-        store, candidate, batch.bucket().legalActionCapacity(), training, parameters);
+  public PrismNetwork(PrismShape shape) {
+    this.shape = shape;
+    embedding = addChildBlock("stateEmbedding", new TokenEmbedding(shape));
+    encoders = new EncoderLayer[shape.depth()];
+    for (int layer = 0; layer < encoders.length; layer++) {
+      encoders[layer] = addChildBlock("encoder" + layer, new EncoderLayer(shape, layer));
+    }
+    finalNorm = addChildBlock("finalNorm", new RmsNorm(shape));
+    candidate = addChildBlock("candidate", new CandidateLayer(shape));
+    discardValue = addChildBlock("discardValue", new DiscardValue(shape));
+    gates = addChildBlock("gates", new ValueGraphHead(shape));
+    reading = addChildBlock("reading", new ReadingHeads(shape));
+    outcome = addChildBlock("outcome", new OutcomeHeads(shape));
+  }
+
+  public PrismShape shape() {
+    return shape;
   }
 
   /**
-   * 打つときの出力 s（FP32）。全盤面・遷移を共有し、合法候補の s だけを元の行動順で返す。同じ網と盤面なら {@link #scores} と同じ s。
-   */
-  NDArray inference(
-      ParameterStore store,
-      DecisionGroupedInferenceBatch batch,
-      EpsilonDecisionFrozenFeatures frozen,
-      DecisionInferenceExecution.Forward forward) {
-    var parameters = new PairList<String, Object>();
-    var state =
-        frozen == null
-            ? featureSpine.encodeState(
-                store,
-                batch.stateCategories(),
-                batch.stateNumerics(),
-                batch.playerMemoryPresentIndices(),
-                false,
-                parameters)
-            : frozen.encodeState(
-                store,
-                batch.stateCategories(),
-                batch.stateNumerics(),
-                batch.playerMemoryPresentIndices(),
-                forward,
-                parameters);
-    var encoder = frozen == null ? featureSpine.candidates() : frozen.candidates();
-    NDArray candidates =
-        encoder.encodeGroupedInferenceRepresentation(
-            store, state, batch, forward == null ? null : forward.candidates(), parameters);
-    return scoreCandidates(store, candidates, 1, false, parameters).reshape(-1);
-  }
-
-  private NDArray scoreCandidates(
-      ParameterStore store,
-      NDArray candidate,
-      int actionCapacity,
-      boolean training,
-      PairList<String, Object> parameters) {
-    NDArray hidden =
-        candidateHidden.forward(store, new NDList(candidate), training, parameters).getFirst();
-    return head(store, output, hidden, training)
-        .reshape(candidate.getShape().get(0), actionCapacity);
-  }
-
-  /**
-   * 1 単位の出力層 y = Σ silu(h)·w + b を FP32 で計算する（最後の軸を消す）。Linear の行列積は自動混合精度で BF16 に下がり出力も BF16 に
-   * 丸まるので、要素ごとの積と和で計算する（autocast は要素ごとの積を下げず、和の入力はすでに FP32）。silu(h) は BF16 のまま FP32 の重みと掛け、
-   * 型昇格で FP32 にする。重みは ParameterStore から読むので、勾配・名前・登録・保存の形式は Linear のまま。
+   * パラメーターを FP32 で作る（初期値は管理元のエンジンの乱数の種で決まる）。
    *
-   * <p>推論の ParameterStore は重みを写さず、パラメーターの配列そのもの（管理元はモデル）を返す。そこから reshape などで配列を作るとモデルの
-   * 管理元に付いて閉じられずに残るので、重みは形を変えずにブロードキャストで使い、新しい配列は入力の管理元に付ける。
+   * @param manager パラメーターの管理元
    */
-  private static NDArray head(
-      ParameterStore store, Linear layer, NDArray hidden, boolean training) {
-    NDArray input = EpsilonMahjongStateEncoder.silu(hidden);
-    NDManager working = input.getManager();
-    Device device = input.getDevice();
-    ParameterList parameters = layer.getDirectParameters();
-    NDArray weight =
-        float32(store.getValue(parameters.get("weight"), device, training), working);
-    NDArray bias = float32(store.getValue(parameters.get("bias"), device, training), working);
-    // weight は [1, 幅] なので [行, 容量, 幅] にもそのまま広がる。bias は [1]
-    return input.mul(weight).sum(new int[] {input.getShape().dimension() - 1}).add(bias);
-  }
-
-  /** パラメーターの FP32 の見方。FP32 ならそのまま返し（写さない）、変換したときだけ新しい配列を作業用の管理元に付ける。 */
-  private static NDArray float32(NDArray parameter, NDManager working) {
-    if (parameter.getDataType() == DataType.FLOAT32) return parameter;
-    NDArray cast = parameter.getNDArrayInternal().differentiableCast(DataType.FLOAT32);
-    cast.attach(working);
-    return cast;
+  public void initialize(NDManager manager) {
+    initialize(manager, DataType.FLOAT32);
   }
 
   @Override
-  protected void initializeChildBlocks(NDManager manager, DataType type, Shape... ignored) {
-    int hidden = config.hiddenSize();
-    featureSpine
-        .stateEncoder()
-        .initialize(
-            manager,
-            type,
-            DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.STATE_CATEGORIES),
-            DecisionNetworkInputs.initializationShape(DecisionInputLayout.Tensor.STATE_NUMERICS));
-    featureSpine
-        .stateReadout()
-        .initialize(
-            manager, type, new Shape(-1, EpsilonMahjongStateEncoder.ENTITY_TOKEN_COUNT, hidden));
-    featureSpine.candidates().initialize(manager, type);
-    candidateHidden.initialize(manager, type, new Shape(-1, -1, hidden));
-    output.initialize(manager, type, new Shape(-1, -1, hidden));
+  protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... ignored) {
+    for (Block child : getChildren().values()) {
+      child.initialize(manager, dataType);
+    }
+  }
+
+  /**
+   * 順伝播。autocast は開かずに呼ぶ（丸める所は {@link Precision} が決める）。段の区切りに順伝播の種類の時計の印を付ける
+   * （{@link FitProbe}）。
+   *
+   * @param store パラメーターの値の取り元
+   * @param inputs 入力（作った配列は入力の管理元に付く）
+   * @param pass 順伝播の種類
+   * @return 出力
+   * @throws IllegalArgumentException 入力の前線の区画の有無が網の前線の腕と合わないとき
+   */
+  public Outputs forward(ParameterStore store, NetworkInputs inputs, Pass pass) {
+    if (shape.frontier() != (inputs.frontier() != null)) {
+      throw new IllegalArgumentException(
+          shape.frontier()
+              ? "the frontier arm needs frontier inputs"
+              : "frontier inputs given to a network without the frontier arm");
+    }
+    FitProbe probe = pass.probe();
+    Context context =
+        new Context(
+            store, inputs.manager(), pass.precision(), pass.training(), pass.tape(), probe);
+    BatchIndex index = new BatchIndex(inputs, pass);
+    probe.mark(Stage.BATCH_INDEX);
+    NDArray states = backbone(context, inputs, index);
+    NDArray decision = states.get(":, {}, :", TokenType.ROUND.first());
+    NDArray transitions = candidate.forward(context, inputs, index, states);
+    probe.mark(Stage.CANDIDATE);
+    NDArray values =
+        discardValue.forward(context, transitions, inputs.get(Tensor.DISCARD_EXACT));
+    NDArray representations = context.toFloat(transitions);
+    NDArray scores =
+        gates.scores(
+            context, index, representations, values, decision, inputs.get(Tensor.ACTION_EXACT));
+    probe.mark(Stage.VALUE_GRAPH);
+    Outputs.Auxiliary auxiliary =
+        pass.auxiliary() == null
+            ? null
+            : auxiliary(context, index, representations, values, decision, states);
+    probe.mark(Stage.AUX_HEADS);
+    return new Outputs(scores, index.legal, index.rowActions, index.discardValueSlots, auxiliary);
+  }
+
+  /** 背骨: 埋め込み → L 層 → 最後の正規化。局・席・牌の [行, 39, H] を返す。 */
+  private NDArray backbone(Context context, NetworkInputs inputs, BatchIndex index) {
+    FitProbe probe = context.probe();
+    int rows = inputs.rows();
+    long hidden = shape.hidden();
+    NDList parts = new NDList();
+    for (TokenType type : TokenType.values()) {
+      if (type == TokenType.EVENT) {
+        if (index.maxEvents > 0) {
+          NDArray events = embedding.embed(context, inputs, index, type);
+          parts.add(
+              NDArrays.scatterRows(events, index.eventSlots, (long) rows * index.maxEvents)
+                  .reshape(rows, index.maxEvents, hidden));
+        }
+      } else {
+        parts.add(
+            embedding.embed(context, inputs, index, type).reshape(rows, type.perRow(), hidden));
+      }
+    }
+    NDArray tokens = NDArrays.concat(parts, 1);
+    probe.mark(Stage.EMBED);
+    NDArray codes = relationCodes(context, inputs, index);
+    probe.mark(Stage.RELATION);
+    for (int layer = 0; layer < encoders.length; layer++) {
+      int queries = layer == encoders.length - 1 ? TokenType.FIXED_TOKENS : index.tokens;
+      tokens = encoders[layer].forward(context, tokens, index.tokenMask, codes, queries);
+    }
+    NDArray states = finalNorm.apply(context, tokens);
+    probe.mark(Stage.FINAL_NORM);
+    return splitBackward(context, states);
+  }
+
+  /**
+   * 計測のときは背骨の出力を葉にする（{@link FitProbe#cuts}）。損失の逆伝播は頭の側（{@link Stage#HEADS_BACKWARD}）で止まり、
+   * 最後の正規化と最後の層の O 射影・FFN は、葉に溜めた頭からの勾配の注入として別に計れる（{@link AttentionTape}）。注入する勾配は頭からの
+   * 寄与の和そのものなので、勾配は葉にしないときと同じ式。
+   */
+  private NDArray splitBackward(Context context, NDArray states) {
+    AttentionTape tape = context.tape();
+    return tape == null || !context.probe().cuts()
+        ? states
+        : tape.cut(states, Stage.O_FFN_BACKWARD, encoders.length - 1);
+  }
+
+  /**
+   * 関係の符号 [行, S, S, 2]（INT16）。GPU の学習で注意の記録の演算が符号も作るなら自前の演算（{@link AttentionTape#relationCodes}）、
+   * ほかは eager（CPU・djl-rocm の注意・推論）。どちらも同じビット。
+   */
+  private static NDArray relationCodes(Context context, NetworkInputs inputs, BatchIndex index) {
+    RelationCodes kernel = context.tape() == null ? null : context.tape().relationCodes();
+    return kernel == null ? RelationClass.codes(inputs, index) : RelationClass.codes(kernel, inputs, index);
+  }
+
+  /** 補助の頭（候補の結果と読み）。 */
+  private Outputs.Auxiliary auxiliary(
+      Context context,
+      BatchIndex index,
+      NDArray representations,
+      NDArray values,
+      NDArray decision,
+      NDArray states) {
+    NDArray candidates = null;
+    if (index.candidateCount > 0) {
+      NDArray chosen =
+          ValueGraphHead.aggregate(
+              representations,
+              values,
+              index.candidateTransitions,
+              index.candidateMask,
+              index.candidateCount,
+              index.candidateWidth);
+      candidates =
+          outcome.forward(context, chosen, NDArrays.gatherRows(decision, index.candidateRows));
+    }
+    NDArray readings =
+        index.readingCount == 0
+            ? null
+            : reading.forward(context, NDArrays.gatherRows(states, index.readingRows));
+    return new Outputs.Auxiliary(candidates, readings);
+  }
+
+  /**
+   * 推論の重みの束（HIP の WeightLayout の元）。登録の順で、補助の頭を除く。
+   *
+   * @return 名前とパラメーター
+   */
+  public PairList<String, Parameter> inferenceParameters() {
+    Set<String> auxiliary = auxiliaryChildren();
+    PairList<String, Parameter> result = new PairList<>();
+    for (Pair<String, Parameter> pair : getParameters()) {
+      String child = pair.getKey().substring(0, pair.getKey().indexOf('_'));
+      if (!auxiliary.contains(child)) {
+        result.add(pair);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * この網の重みを、同じ形の網 other の重みと混ぜる（方策の記憶: w ← (1 − eta)·w + eta·w_other。{@link ParameterMix#mix}）。
+   *
+   * @param other 混ぜる網
+   * @param eta 混ぜる割合（(0, 1]。1 なら other の写し）
+   * @throws IllegalArgumentException eta が範囲の外か、パラメーターの名前か形が違うとき
+   */
+  public void mixIn(PrismNetwork other, double eta) {
+    ParameterMix.mix(getParameters(), other.getParameters(), eta);
+  }
+
+  /**
+   * 全てのパラメーターの軸の役を返す。
+   *
+   * @return 軸の役の表
+   */
+  public WidthPlan widthPlan() {
+    Map<String, List<Axis>> axes = new LinkedHashMap<>();
+    for (Pair<String, Block> child : getChildren()) {
+      Module module = (Module) child.getValue();
+      for (Pair<String, Parameter> pair : module.getParameters()) {
+        axes.put(child.getKey() + "_" + pair.getKey(), module.axes(pair.getValue()));
+      }
+    }
+    return new WidthPlan(axes);
+  }
+
+  /**
+   * 重み（weights.bin）と model.json（網の形式・入力の指紋・前線の腕なら前線の入力の指紋・頭の指紋・形）を書く。
+   *
+   * @param directory 書く先
+   * @throws IOException 書けないとき
+   */
+  public void save(Path directory) throws IOException {
+    Files.createDirectories(directory);
+    try (DataOutputStream out =
+        new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(directory.resolve(WEIGHTS))))) {
+      saveParameters(out);
+    }
+    Files.writeString(
+        directory.resolve(METADATA),
+        GSON.toJson(
+            new Metadata(
+                ARCHITECTURE,
+                InputSchema.fingerprint(),
+                frontierSchema(shape),
+                TargetSchema.fingerprint(),
+                shape)));
+  }
+
+  /**
+   * 保存した網の形を読む。網の形式と指紋（入力・前線の腕なら前線の入力・頭）を照らす。
+   *
+   * @param directory 保存した所
+   * @return 形
+   * @throws IOException 読めないか、形式・指紋が合わないとき
+   */
+  public static PrismShape readShape(Path directory) throws IOException {
+    Metadata metadata;
+    try {
+      metadata = GSON.fromJson(Files.readString(directory.resolve(METADATA)), Metadata.class);
+    } catch (RuntimeException invalid) {
+      throw new IOException("Invalid PRISM metadata " + directory, invalid);
+    }
+    if (metadata == null || metadata.shape() == null || !ARCHITECTURE.equals(metadata.architecture())) {
+      throw new IOException("Not a PRISM model: " + directory);
+    }
+    if (!InputSchema.fingerprint().equals(metadata.inputSchema())) {
+      throw new IOException("PRISM input schema mismatch " + directory);
+    }
+    if (!TargetSchema.fingerprint().equals(metadata.headSchema())) {
+      throw new IOException("PRISM head schema mismatch " + directory);
+    }
+    PrismShape shape =
+        new PrismShape(
+            metadata.shape().hidden(),
+            metadata.shape().ffn(),
+            metadata.shape().gate(),
+            metadata.shape().depth(),
+            metadata.shape().frontier());
+    if (!Objects.equals(frontierSchema(shape), metadata.frontierSchema())) {
+      throw new IOException("PRISM frontier schema mismatch " + directory);
+    }
+    return shape;
+  }
+
+  /** 前線の腕なら前線の入力の指紋、ほかは null。 */
+  private static String frontierSchema(PrismShape shape) {
+    return shape.frontier() ? FrontierField.fingerprint() : null;
+  }
+
+  /**
+   * 保存した網を読む。
+   *
+   * @param directory 保存した所
+   * @param manager パラメーターの管理元
+   * @return 網
+   * @throws IOException 読めないか、形式・指紋・重みが合わないとき
+   */
+  public static PrismNetwork load(Path directory, NDManager manager) throws IOException {
+    PrismNetwork network = new PrismNetwork(readShape(directory));
+    network.initialize(manager);
+    try (DataInputStream in =
+        new DataInputStream(new BufferedInputStream(Files.newInputStream(directory.resolve(WEIGHTS))))) {
+      network.loadParameters(manager, in);
+      if (in.read() != -1) {
+        throw new IOException("Trailing PRISM weight data " + directory);
+      }
+    } catch (MalformedModelException invalid) {
+      throw new IOException("Invalid PRISM weights " + directory, invalid);
+    }
+    return network;
+  }
+
+  private Set<String> auxiliaryChildren() {
+    Set<String> names = new HashSet<>();
+    for (Pair<String, Block> child : getChildren()) {
+      if (child.getValue() == reading || child.getValue() == outcome) {
+        names.add(child.getKey());
+      }
+    }
+    return names;
   }
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore store, NDList inputs, boolean training, PairList<String, Object> parameters) {
-    throw new UnsupportedOperationException("Use the typed scores entrypoint");
+      ParameterStore store, NDList inputs, boolean training, PairList<String, Object> params) {
+    throw new UnsupportedOperationException("Use forward(ParameterStore, NetworkInputs, Pass)");
   }
 
   @Override
-  public Shape[] getOutputShapes(Shape[] shapes) {
-    return new Shape[] {new Shape(-1, -1)};
+  public Shape[] getOutputShapes(Shape[] inputShapes) {
+    throw new UnsupportedOperationException("Shapes follow PrismShape");
   }
 }

@@ -2,12 +2,16 @@ package com.epsilon.prism.eval;
 
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.ai.decision.EpsilonUtilityTargets;
+import com.epsilon.core.Action;
+import com.epsilon.core.GameState;
 import com.epsilon.core.ScoreRanking;
+import com.epsilon.engine.EngineDecisionPoint;
+import com.epsilon.engine.GameRecorder;
+import com.epsilon.engine.RoundResult;
 import com.epsilon.prism.collect.CollectionDriver;
 import com.epsilon.prism.collect.HandValue;
 import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.policy.PolicyService;
-import com.epsilon.prism.rows.RowSink;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -138,23 +142,22 @@ public final class Arena {
 
               @Override
               public void decided(
-                  long gameId,
-                  com.epsilon.core.GameState state,
-                  com.epsilon.engine.EngineDecisionPoint point,
-                  com.epsilon.core.Action action) {
+                  long gameId, GameState state, EngineDecisionPoint point, Action action) {
                 watcher.decided(gameId, state, point, action);
               }
 
               @Override
-              public void handEnded(
-                  long gameId,
-                  com.epsilon.core.GameState state,
-                  com.epsilon.engine.RoundResult result) {
+              public void handEnded(long gameId, GameState state, RoundResult result) {
                 watcher.handEnded(gameId, state, result);
               }
 
               @Override
-              public com.epsilon.engine.GameRecorder recorder(long gameId) {
+              public void handValued(long gameId, float[] nextRootPrefix, int[] scores) {
+                watcher.handValued(gameId, nextRootPrefix, scores);
+              }
+
+              @Override
+              public GameRecorder recorder(long gameId) {
                 return watcher.recorder(gameId);
               }
             };
@@ -162,7 +165,6 @@ public final class Arena {
     for (int game = 0; game < games; game++) ids.add(gameIdBase + game);
     var cohort =
         new CollectionDriver.Cohort(
-            Math.max(1, candidate.version()),
             seed,
             seed,
             ids,
@@ -175,11 +177,8 @@ public final class Arena {
               return seats;
             },
             observer);
-    try (var sink = RowSink.counting();
-        var phi = HandValue.scoreRank(profile)) {
-      driver.collect(cohort, candidate, phi, sink);
-    } catch (java.io.IOException impossible) {
-      throw new IllegalStateException(impossible);
+    try (var phi = HandValue.scoreRank(profile)) {
+      driver.collect(cohort, candidate, phi);
     }
     int[][] scores = new int[games][];
     for (int game = 0; game < games; game++) {

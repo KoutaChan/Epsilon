@@ -4,7 +4,7 @@ import com.epsilon.core.Action;
 import java.util.List;
 
 /**
- * 手出しとツモ切りの双子。同じ種類（DAHAI か RIICHI_DAHAI）・同じ牌種・同じ赤の選びの打牌は 1 つの候補として扱う（候補集合・逸脱・認証で同じ手と数える）。
+ * 手出しとツモ切りの双子。同じ種類（DAHAI か RIICHI_DAHAI）・同じ牌種・同じ赤の選びの打牌は 1 つの候補として扱う（候補集合・逸脱で同じ手と数える）。
  * 双子でない手は自分とだけ同じ。
  */
 public final class Twins {

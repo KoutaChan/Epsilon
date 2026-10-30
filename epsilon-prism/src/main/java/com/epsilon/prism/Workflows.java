@@ -1,10 +1,9 @@
 package com.epsilon.prism;
 
-import com.epsilon.prism.workflow.AverageWorkflow;
+import com.epsilon.prism.luck.LuckFitWorkflow;
+import com.epsilon.prism.run.FitWorkflow;
+import com.epsilon.prism.workflow.AuditGrpWorkflow;
 import com.epsilon.prism.workflow.EvaluateWorkflow;
-import com.epsilon.prism.workflow.ProbeHonorWorkflow;
-import com.epsilon.prism.workflow.ProbeNanoWorkflow;
-import com.epsilon.prism.workflow.RefitWorkflow;
 import com.epsilon.prism.workflow.TrainWorkflow;
 import com.epsilon.workflow.WorkflowRegistry;
 import java.util.List;
@@ -18,9 +17,8 @@ final class Workflows {
         List.of(
             new TrainWorkflow(),
             new EvaluateWorkflow(),
-            new AverageWorkflow(),
-            new ProbeNanoWorkflow(),
-            new ProbeHonorWorkflow(),
-            new RefitWorkflow()));
+            new FitWorkflow(),
+            new LuckFitWorkflow(),
+            new AuditGrpWorkflow()));
   }
 }

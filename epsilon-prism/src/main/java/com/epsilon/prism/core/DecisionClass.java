@@ -1,7 +1,7 @@
 package com.epsilon.prism.core;
 
 /**
- * 判断の類 c。ラベル行の率 ρ_c、ロールインの率 β_c、損失の温度 λ_c、認証の集計の単位。種別（{@link Kind}）・段階（{@link Stage}）・公開の脅威の数
+ * 判断の類 c。ラベル行の率 ρ_c、ロールインの率 β_c、損失の温度 λ_c、運の精算の係数 β_c の単位。種別（{@link Kind}）・段階（{@link Stage}）・公開の脅威の数
  * （{@link Threats#count}）だけで決まる公開情報。
  *
  * <ul>
@@ -31,14 +31,13 @@ public enum DecisionClass {
 
   private static final DecisionClass[] VALUES = values();
 
-  /** 類の数。 */
   public static final int COUNT = VALUES.length;
 
   public static DecisionClass of(int ordinal) {
     return VALUES[ordinal];
   }
 
-  /** 確約の類か（打牌の 3 類のほか）。率・温度は確約の値を使い、認証は確約の類を合わせて判定する。 */
+  /** 確約の類か（打牌の 3 類のほか）。率・温度は確約の値を使う。 */
   public boolean commitment() {
     return ordinal() >= THREAT.ordinal();
   }

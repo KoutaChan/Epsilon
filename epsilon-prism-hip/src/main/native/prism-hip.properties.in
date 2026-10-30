@@ -1,0 +1,4 @@
+# libprism_hip.so を組み立てた条件。HipLibrary が読み込みのときに、DJL が読んだ libtorch と照らす。
+torch.version=@PRISM_TORCH_VERSION@
+torch.flavor=@PRISM_TORCH_FLAVOR@
+arch=@PRISM_HIP_ARCH@

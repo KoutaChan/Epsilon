@@ -229,6 +229,8 @@
   <modules>
     <module>epsilon-common</module>
     <module>epsilon-nano</module>
+    <!-- PRISM の HIP の実行系。Java の部分はどこでも組み立て、native（libprism_hip.so）は -Pnative-hip のときだけ作る。 -->
+    <module>epsilon-prism-hip</module>
     <module>epsilon-prism</module>
     <module>epsilon-pico</module>
     <module>epsilon</module>

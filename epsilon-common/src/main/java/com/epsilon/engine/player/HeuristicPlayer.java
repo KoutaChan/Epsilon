@@ -686,7 +686,7 @@ public final class HeuristicPlayer implements Player {
       }
       long mask = 0L;
       for (int index = 0; index < declarationIndex; index++) {
-        mask |= 1L << river.discard(index).tileType();
+        mask |= 1L << river.tileType(index);
       }
       return mask;
     }

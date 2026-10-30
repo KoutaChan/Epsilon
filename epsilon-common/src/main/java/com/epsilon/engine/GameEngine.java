@@ -4,6 +4,7 @@ import com.epsilon.core.Action;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
+import com.epsilon.core.Meld;
 import com.epsilon.core.PublicObservation;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.WinLegality.RonStatus;
@@ -493,15 +494,11 @@ public final class GameEngine {
         return finishTurnAndContinue(turnCompletionPlayer, turnCompletionRiichiDahai);
       }
       if (action.type() == Action.Type.PON) {
-        actions.applyPon(caller, discard, action.usesAkaTileFromHand());
-        return preparePostCallDahai(caller, PostCallDahaiRestriction.afterPon(discard.tileType()));
+        return preparePostCallDahai(
+            caller, actions.applyPon(caller, discard, action.usesAkaTileFromHand()));
       }
       if (action.type() == Action.Type.CHI) {
-        actions.applyChi(caller, discard, action);
-        return preparePostCallDahai(
-            caller,
-            PostCallDahaiRestriction.afterChi(
-                action.chiSequenceBaseTileType(), discard.tileType()));
+        return preparePostCallDahai(caller, actions.applyChi(caller, discard, action));
       }
       throw new IllegalStateException("Unexpected selected meld action: " + action);
     }
@@ -510,12 +507,12 @@ public final class GameEngine {
     return finishTurnAndContinue(turnCompletionPlayer, turnCompletionRiichiDahai);
   }
 
-  private GameStepResult preparePostCallDahai(int player, PostCallDahaiRestriction restriction) {
+  /** チー・ポンを適用した後の打牌の判断を作る（打てる牌は {@link PostCallDiscards}）。 */
+  private GameStepResult preparePostCallDahai(int player, Meld call) {
     EngineDecisionBatch decisions = scratch.decisions;
     decisions.clear();
     EngineDecisionPoint decision = appendDecision(EngineDecisionKind.POST_CALL_DAHAI, player);
-    ActionGenerator.generateCallDahaiActionsInto(
-        decision.mutableLegalActions(), state.hand(player), restriction);
+    PostCallDiscards.generateInto(state.hand(player), call, decision.mutableLegalActions());
     stage = Stage.AWAIT_CALL_DAHAI;
     return awaitingStep.bind(decisions);
   }

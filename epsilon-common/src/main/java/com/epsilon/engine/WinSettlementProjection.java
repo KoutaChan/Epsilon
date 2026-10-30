@@ -39,7 +39,8 @@ public final class WinSettlementProjection {
   private boolean paoApplies;
   private SettlementAssumption settlementAssumption = SettlementAssumption.EXACT_TSUMO;
 
-  WinSettlementProjection() {}
+  /** 空の射影（持ち主が使い回し、{@link #load} のたびに全ての欄を書き直す）。 */
+  public WinSettlementProjection() {}
 
   /**
    * 公開情報から確定する役・翻・符・基本点を返す。
@@ -117,12 +118,15 @@ public final class WinSettlementProjection {
    *
    * <p>ロンの点棒移動は、複数ロン時にも各和了者について計算できるよう、本場を0として求める。順位だけは現在本場と供託を一人で受け取る単独RON仮定を使う。
    *
+   * <p>判断の解析（{@link EngineDecisionBuffer}）と PRISM の O の捕獲（{@link com.epsilon.core.PublicObservation#projectWin} が借用局面を
+   * 渡す。live も牌譜も同じ）が呼ぶ唯一の和了の射影。
+   *
    * @param state 行動が合法と判定された現在局面
    * @param player 和了する絶対席
    * @param action RONまたはTSUMO
    * @return 公開得点、支払下限、仮定付き和了後順位
    */
-  WinSettlementProjection load(
+  public WinSettlementProjection load(
       GameState state, int player, Action action, HandScoreEvaluator scoreEvaluator) {
     Hand hand = state.hand(player);
     HandScoreBuffer result;

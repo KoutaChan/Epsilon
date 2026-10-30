@@ -3,7 +3,6 @@ package com.epsilon.core;
 /** 麻雀の局全体の状態を管理するクラス。 4人のプレイヤー情報、山、ドラ、局情報を保持する。 */
 public final class GameState {
 
-  /** 4人打ちで固定されるプレイヤー数。 */
   public static final int NUM_PLAYERS = 4;
 
   /** 王牌14枚を除く、局開始時に通常ツモ可能な牌数。 */
@@ -65,24 +64,25 @@ public final class GameState {
     return turnEvent;
   }
 
-  // セクション: 局情報
   private int kyokuIndex; // 局番号 (0=東1局, 1=東2局, ..., 7=南4局)
   private int oya; // 親のプレイヤーインデックス (0-3)
-  private int honba; // 本場
-  private int kyotakuCount; // 供託リーチ棒数
+  private int honba;
+  private int kyotakuCount;
 
-  // セクション: プレイヤー情報
-  private final Hand[] hands; // 各プレイヤーの手牌
-  private final River[] rivers; // 各プレイヤーの河
-  private final int[] scores; // 各プレイヤーの点数
-  private final boolean[] riichi; // リーチ状態
+  // 公開の出来事の記録。河と副露の時系列はこの記録への添字だけを持つ。書くのは commitDiscard・addMeld・
+  // replacePonWithKakan だけ。
+  private final PublicEventLog log = new PublicEventLog();
+
+  private final Hand[] hands;
+  private final River[] rivers;
+  private final int[] scores;
+  private final boolean[] riichi;
   private final boolean[] doubleRiichi; // ダブルリーチ状態（宣言時に確定）
-  private final boolean[] ippatsu; // 一発フラグ
+  private final boolean[] ippatsu;
   private final boolean[] temporaryFuriten;
   private final RoundPublicStateIndex publicStateIndex;
   private final DoraState doraState;
 
-  // セクション: 山
   private final Wall wall;
   private boolean seatStreamDraws;
   private final PublicObservation[] observations = new PublicObservation[NUM_PLAYERS];
@@ -95,10 +95,8 @@ public final class GameState {
     return observation;
   }
 
-  // セクション: ターン情報
-  private int currentPlayer; // 現在の手番プレイヤー
+  private int currentPlayer;
   private int dahaiCount; // 通常打牌カウンタ (巡目計算用)
-  private int publicEventCount; // 打牌・面子・槓の公開記録に共通するイベント連番。加槓は槍槓応答前の宣言時に記録する。
   private final TurnEvent.Draw drawEvent =
       new TurnEvent.Draw(-1, -1, TurnEvent.DrawSource.WALL, false);
   private final TurnEvent.Discard discardEvent = new TurnEvent.Discard(-1, -1, false);
@@ -133,8 +131,8 @@ public final class GameState {
     this.wall = wall;
 
     for (int player = 0; player < NUM_PLAYERS; player++) {
-      hands[player] = new Hand();
-      rivers[player] = new River();
+      hands[player] = new Hand(log);
+      rivers[player] = new River(log);
       scores[player] = 25000;
     }
   }
@@ -159,10 +157,11 @@ public final class GameState {
     this.temporaryFuriten = other.temporaryFuriten.clone();
     this.publicStateIndex = new RoundPublicStateIndex(other.publicStateIndex);
     this.doraState = new DoraState(other.doraState);
+    this.log.copyFrom(other.log);
 
     for (int player = 0; player < NUM_PLAYERS; player++) {
-      this.hands[player] = other.hands[player].snapshotCopy();
-      this.rivers[player] = new River(other.rivers[player]);
+      this.hands[player] = new Hand(other.hands[player], log);
+      this.rivers[player] = new River(other.rivers[player], log);
     }
 
     this.wall = new Wall(other.wall);
@@ -170,7 +169,6 @@ public final class GameState {
 
     this.currentPlayer = other.currentPlayer;
     this.dahaiCount = other.dahaiCount;
-    this.publicEventCount = other.publicEventCount;
     this.turnEvent =
         switch (other.turnEvent) {
           case TurnEvent.Draw draw ->
@@ -231,6 +229,7 @@ public final class GameState {
     this.honba = honba;
     this.kyotakuCount = kyotakuCount;
 
+    log.clear();
     for (int player = 0; player < NUM_PLAYERS; player++) {
       hands[player].clear();
       rivers[player].clear();
@@ -242,13 +241,11 @@ public final class GameState {
 
     currentPlayer = oya;
     dahaiCount = 0;
-    publicEventCount = 0;
     turnEvent = TurnEvent.None.INSTANCE;
     publicStateIndex.reset();
     doraState.reset();
   }
 
-  /** 配牌を行う。 */
   public void dealInitialHands() {
     // 各プレイヤーに4枚×3回 = 12枚
     for (int round = 0; round < 3; round++) {
@@ -309,38 +306,18 @@ public final class GameState {
     return kyokuIndex;
   }
 
-  /**
-   * 現在の親席を返す。
-   *
-   * @return 親のプレイヤーインデックス
-   */
   public int getOya() {
     return oya;
   }
 
-  /**
-   * 現在の本場数を返す。
-   *
-   * @return 本場数
-   */
   public int getHonba() {
     return honba;
   }
 
-  /**
-   * 現在の供託リーチ棒数を返す。
-   *
-   * @return 供託数
-   */
   public int getKyotakuCount() {
     return kyotakuCount;
   }
 
-  /**
-   * 精算後の供託リーチ棒数を設定する。
-   *
-   * @param kyotakuCount 新しい供託数
-   */
   public void setKyotakuCount(int kyotakuCount) {
     this.kyotakuCount = kyotakuCount;
   }
@@ -360,6 +337,15 @@ public final class GameState {
     return publicStateIndex;
   }
 
+  /**
+   * 局の公開の出来事の記録を返す。読む口だけが public で、書くのはこの状態の打牌・副露・加槓の口だけ。
+   *
+   * @return この状態が所有する記録（状態が進むと伸びる）
+   */
+  public PublicEventLog events() {
+    return log;
+  }
+
   /** 局内のドラ状態を管理するオブジェクトを返す。非公開の裏ドラ情報を含むため、AIへ直接渡してはならない。 */
   public DoraState doraState() {
     return doraState;
@@ -375,22 +361,10 @@ public final class GameState {
     return rivers[player];
   }
 
-  /**
-   * 指定プレイヤーの現在得点を返す。
-   *
-   * @param player 対象席
-   * @return 点棒数
-   */
   public int getScore(int player) {
     return scores[player];
   }
 
-  /**
-   * 指定プレイヤーの得点を置き換える。
-   *
-   * @param player 対象席
-   * @param score 新しい点棒数
-   */
   public void setScore(int player, int score) {
     scores[player] = score;
   }
@@ -415,54 +389,24 @@ public final class GameState {
     return riichi[player];
   }
 
-  /**
-   * 指定プレイヤーのリーチ状態を設定する。
-   *
-   * @param player 対象席
-   * @param value 新しいリーチ状態
-   */
   public void setRiichi(int player, boolean value) {
     riichi[player] = value;
     publicStateIndex.setRiichi(player, value || doubleRiichi[player]);
   }
 
-  /**
-   * 指定プレイヤーのリーチがダブルリーチかを返す。
-   *
-   * @param player 対象席
-   * @return ダブルリーチなら {@code true}
-   */
   public boolean isDoubleRiichi(int player) {
     return doubleRiichi[player];
   }
 
-  /**
-   * 指定プレイヤーのダブルリーチ状態を設定する。
-   *
-   * @param player 対象席
-   * @param value 新しいダブルリーチ状態
-   */
   public void setDoubleRiichi(int player, boolean value) {
     doubleRiichi[player] = value;
     publicStateIndex.setRiichi(player, value || riichi[player]);
   }
 
-  /**
-   * 指定プレイヤーの一発権が残っているかを返す。
-   *
-   * @param player 対象席
-   * @return 一発が有効なら {@code true}
-   */
   public boolean isIppatsu(int player) {
     return ippatsu[player];
   }
 
-  /**
-   * 指定プレイヤーの一発状態を設定する。
-   *
-   * @param player 対象席
-   * @param value 新しい一発状態
-   */
   public void setIppatsu(int player, boolean value) {
     ippatsu[player] = value;
   }
@@ -487,11 +431,6 @@ public final class GameState {
     return temporaryFuriten[player];
   }
 
-  /**
-   * 指定プレイヤーを同巡内フリテンへ移す。
-   *
-   * @param player 対象席
-   */
   public void enterTemporaryFuriten(int player) {
     temporaryFuriten[player] = true;
   }
@@ -552,6 +491,16 @@ public final class GameState {
   }
 
   /**
+   * 以後の局の牌山の物理牌を写す。各局のシャッフルの直後に、位置の牌 id を {@code physicalMap[id]} に置き換える。同じ種で萬子・筒子・索子を
+   * 入れ替えた半荘を作るためのもの（評価の対称化。並べ方は種だけで決まり、写しは中身だけを替える）。最初の局の配牌の前に呼ぶ。
+   *
+   * @param physicalMap 136 枚の物理牌 id の置換（赤は赤へ写すこと）
+   */
+  public void mapWallTiles(int[] physicalMap) {
+    wall.mapTiles(physicalMap);
+  }
+
+  /**
    * 全席から見えない牌（牌山の残り・未使用の嶺上牌・未公開のドラ表示牌・すべての裏ドラ表示牌）を一様に並べ替える。手牌・河・副露・公開済みの
    * 表示牌は変えない。同じ公開情報と手牌のもとで、牌山だけを独立に引き直した局面を作るためのもの（共通乱数の分岐の複製に使う）。公開済みの
    * 表示牌の裏ドラは並べ替えた後の牌で写し直す。
@@ -581,20 +530,10 @@ public final class GameState {
     wall.consumeDeadWallDraw();
   }
 
-  /**
-   * 現在手番のプレイヤーを返す。
-   *
-   * @return 現在の手番の席
-   */
   public int getCurrentPlayer() {
     return currentPlayer;
   }
 
-  /**
-   * 現在手番を指定プレイヤーへ設定する。
-   *
-   * @param player 新たに手番となる席
-   */
   public void setCurrentPlayer(int player) {
     this.currentPlayer = player;
   }
@@ -690,23 +629,16 @@ public final class GameState {
   /**
    * 第一巡中に鳴きまたは槓が既に発生したかを返す。
    *
-   * @return いずれかの手牌が面子を持てば {@code true}
+   * @return この局でいずれかの席が副露（暗槓を含む）を持てば {@code true}
    */
   public boolean isFirstTurnCallOccurred() {
-    for (Hand hand : hands) {
-      if (hand.meldCount() != 0) {
-        return true;
-      }
-    }
-    return false;
+    return log.anyMeld();
   }
 
-  /** 次のプレイヤーに手番を移す。 */
   public void advancePlayer() {
     currentPlayer = (currentPlayer + 1) % NUM_PLAYERS;
   }
 
-  /** 全プレイヤーの一発フラグを解除。 */
   public void clearAllIppatsu() {
     for (int player = 0; player < NUM_PLAYERS; player++) {
       ippatsu[player] = false;
@@ -723,7 +655,7 @@ public final class GameState {
   }
 
   /**
-   * 打牌を河、公開局面インデックス、現在手番イベントへ不可分に反映する。
+   * 打牌を公開の出来事の記録、河、公開局面インデックス、現在手番イベントへ不可分に反映する。
    *
    * <p>非リーチプレイヤーの一時フリテン解除も同じ処理で行う。
    */
@@ -735,11 +667,11 @@ public final class GameState {
       boolean aka,
       boolean tsumogiri,
       int sequence) {
-    River river = rivers[player];
-    river.append(
-        tileType, turnNumber, riichiDeclaration, aka, tsumogiri, sequence, publicEventCount);
-    publicEventCount++;
-    publicStateIndex.addDiscard(player, river.discard(river.size() - 1));
+    int event =
+        log.appendDiscard(
+            player, tileType, aka, tsumogiri, riichiDeclaration, turnNumber, sequence);
+    rivers[player].append(event);
+    publicStateIndex.addDiscard(player, log, event);
     if (!riichi[player]) {
       temporaryFuriten[player] = false;
     }
@@ -754,27 +686,38 @@ public final class GameState {
         player, tileType, getTurnNumber(), false, aka, false, totalRiverDahaiCount());
   }
 
-  /** 最後の打牌を鳴かれた状態へ移し、可視牌の二重計上を防ぐ。 */
-  public void markLastDiscardCalled(int player) {
-    River river = rivers[player];
-    River.Discard discard = river.discard(river.size() - 1);
-    if (!discard.called()) {
-      river.markLastCalled();
-      publicStateIndex.markDiscardCalled(discard);
+  /**
+   * 指定席の手牌へ副露（加槓を除く）を足し、記録と公開局面インデックスを同時に更新する。鳴き（チー・ポン・大明槓）なら、元の打牌（記録の
+   * 最後の出来事）に鳴いた席を書き、見える枚数の二重計上を外す。インデックスは副露の牌を足してから鳴かれた牌を引く。
+   *
+   * @param player 副露した席
+   * @param meld 足す面子
+   * @param afterRiverIndex 副露した時の本人の河の枚数（鳴いた直後の打牌の河の位置）
+   * @throws IllegalStateException 鳴きの直前の出来事が元の打牌でないとき
+   */
+  public void addMeld(int player, Meld meld, int afterRiverIndex) {
+    int event = log.appendMeld(player, meld, afterRiverIndex);
+    hands[player].addMeld(meld, event);
+    publicStateIndex.addMeld(player, meld);
+    if (meld.isCalledFromDiscard()) {
+      publicStateIndex.markDiscardCalled(log, event - 1);
     }
   }
 
-  /** 指定席の手牌へ面子を追加し、公開局面インデックスを同時に更新する。 */
-  public void addMeld(int player, Meld meld, int afterRiverIndex) {
-    hands[player].addMeld(meld, afterRiverIndex, publicEventCount);
-    publicEventCount++;
-    publicStateIndex.addMeld(player, meld);
-  }
-
-  /** 指定席のポンを加槓へ置換し、追加公開牌と槓数を更新する。 */
+  /**
+   * 指定席のポンを加槓へ置換し、記録に加槓の出来事を足して、追加公開牌と槓数を更新する。元のポンの出来事は書き換えない。
+   *
+   * @param player 加槓した席
+   * @param pon 手にある元のポン
+   * @param kakan そのポンから作った加槓
+   * @param kanAfterRiverIndex 加槓した時の本人の河の枚数
+   */
   public void replacePonWithKakan(int player, Meld pon, Meld kakan, int kanAfterRiverIndex) {
-    hands[player].replacePonWithKakan(pon, kakan, kanAfterRiverIndex, publicEventCount);
-    publicEventCount++;
+    Hand hand = hands[player];
+    int meldIndex = hand.requirePonIndex(pon);
+    int event =
+        log.appendKakan(player, kakan, hand.meldCreationEvent(meldIndex), kanAfterRiverIndex);
+    hand.replacePonWithKakan(meldIndex, kakan, event);
     publicStateIndex.replacePonWithKakan(player, kakan);
   }
 

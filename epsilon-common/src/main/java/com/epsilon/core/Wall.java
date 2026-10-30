@@ -21,7 +21,10 @@ final class Wall {
   private static final int RINSHAN_START = TOTAL_TILES - 4;
 
   private final int[] physicalTileIds;
-  private final Random random;
+
+  // 局ごとのシャッフルの乱数。shuffle はいつもその局の種から始める（初回は new Random(seed)、以後は setSeed(seed)。どちらも同じ状態に
+  // なるので引きは同じ）。局をまたがない分岐の写しはシャッフルしないので、最初のシャッフルまで作らない（null）。
+  private Random random;
   private final long shuffleSeed;
   private int shuffleEpoch;
   private int drawIndex;
@@ -34,6 +37,9 @@ final class Wall {
   private int[] streamLength;
   private int[] streamCursor;
   private int[] positionOf;
+
+  // 局ごとのシャッフルの直後に掛ける物理牌の置換（null なら掛けない）。萬子・筒子・索子を入れ替えた同じ牌山を作る（評価の対称化）
+  private int[] tileMap;
 
   /** 非決定的シードで最初の局の牌山を構築する。 */
   Wall() {
@@ -51,7 +57,6 @@ final class Wall {
 
   private Wall(long shuffleSeed, int initialShuffleEpoch, boolean shuffleImmediately) {
     this.physicalTileIds = new int[TOTAL_TILES];
-    this.random = new Random(0L);
     this.shuffleSeed = shuffleSeed;
     this.shuffleEpoch = initialShuffleEpoch;
     resetOrdered();
@@ -76,12 +81,12 @@ final class Wall {
    */
   Wall(Wall other) {
     this.physicalTileIds = other.physicalTileIds.clone();
-    this.random = new Random(0L);
     this.shuffleSeed = other.shuffleSeed;
     this.shuffleEpoch = other.shuffleEpoch;
     this.drawIndex = other.drawIndex;
     this.deadWallIndex = other.deadWallIndex;
     this.kanDrawCount = other.kanDrawCount;
+    this.tileMap = other.tileMap;
     if (other.seatStreams != null) {
       this.seatStreams = new int[other.seatStreams.length][];
       for (int seat = 0; seat < seatStreams.length; seat++)
@@ -212,10 +217,30 @@ final class Wall {
   private void shuffleNextRound() {
     shuffle(SeedMixer.indexed(shuffleSeed, ROUND_SHUFFLE_SALT, shuffleEpoch));
     shuffleEpoch++;
+    if (tileMap != null)
+      for (int position = 0; position < TOTAL_TILES; position++)
+        physicalTileIds[position] = tileMap[physicalTileIds[position]];
+  }
+
+  /**
+   * 以後の局のシャッフルの直後に掛ける物理牌の置換を決める（{@link GameState#mapWallTiles}）。
+   *
+   * @param map 136 枚の物理牌 id の置換
+   */
+  void mapTiles(int[] map) {
+    if (map.length != TOTAL_TILES) throw new IllegalArgumentException("Tile map needs 136 entries");
+    boolean[] seen = new boolean[TOTAL_TILES];
+    for (int tile : map) {
+      if (tile < 0 || tile >= TOTAL_TILES || seen[tile])
+        throw new IllegalArgumentException("Tile map is not a permutation");
+      seen[tile] = true;
+    }
+    tileMap = map.clone();
   }
 
   private void shuffle(long seed) {
-    random.setSeed(seed);
+    if (random == null) random = new Random(seed);
+    else random.setSeed(seed);
     for (int destinationIndex = TOTAL_TILES - 1; destinationIndex > 0; destinationIndex--) {
       int sourceIndex = random.nextInt(destinationIndex + 1);
       int temporaryPhysicalTileId = physicalTileIds[destinationIndex];

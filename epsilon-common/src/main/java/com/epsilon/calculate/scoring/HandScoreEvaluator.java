@@ -67,7 +67,16 @@ public final class HandScoreEvaluator {
       DoraState dora,
       boolean includeUra,
       HandScoreBatchBuffer output) {
-    score(shape, fixedHand, tile, false, dora, includeUra, output);
+    score(
+        shape,
+        fixedHand,
+        tile,
+        false,
+        doraTiles(dora),
+        doraCount(dora),
+        uraTiles(dora, includeUra),
+        uraKnownMask(dora, includeUra),
+        output);
   }
 
   /**
@@ -83,7 +92,36 @@ public final class HandScoreEvaluator {
       DoraState dora,
       boolean includeUra,
       HandScoreBatchBuffer output) {
-    score(shape, fixedHand, tile, true, dora, includeUra, output);
+    score(
+        shape,
+        fixedHand,
+        tile,
+        true,
+        doraTiles(dora),
+        doraCount(dora),
+        uraTiles(dora, includeUra),
+        uraKnownMask(dora, includeUra),
+        output);
+  }
+
+  /**
+   * {@link #scoreAfterAddingBatch(HandShapeView, HandView, int, DoraState, boolean, HandScoreBatchBuffer)} と同じ採点を、表ドラを基本型で受けて行う。
+   * {@link DoraState} を作れない呼び出し元（公開の情報から局面を組み直す符号化など）のための口で、裏ドラは数えない。
+   *
+   * @param doraTileTypesPacked 表ドラの牌種を表示の順に詰めた列（{@link DoraState#doraTileTypesPacked()} と同じ形。局面の外では
+   *     {@link DoraState#packTile} で作る）
+   * @param doraCount 表ドラの数（ドラ表示牌の数。0〜{@link DoraState#MAX_INDICATORS}）
+   * @throws IllegalArgumentException 表ドラの数か牌種が範囲外のとき
+   */
+  public void scoreAfterAddingBatch(
+      HandShapeView shape,
+      HandView fixedHand,
+      int tile,
+      long doraTileTypesPacked,
+      int doraCount,
+      HandScoreBatchBuffer output) {
+    requireDora(doraTileTypesPacked, doraCount);
+    score(shape, fixedHand, tile, true, doraTileTypesPacked, doraCount, 0L, 0, output);
   }
 
   /** 指定された和了方法に役があるかだけを調べ、成立した方法のマスクを返す。 */
@@ -120,7 +158,16 @@ public final class HandScoreEvaluator {
       HandScoreBuffer output) {
     Objects.requireNonNull(output, "output").clear();
     Objects.requireNonNull(method, "method");
-    load(source, source, tile, adding, conditions, dora, includeUra);
+    load(
+        source,
+        source,
+        tile,
+        adding,
+        conditions,
+        doraTiles(dora),
+        doraCount(dora),
+        uraTiles(dora, includeUra),
+        uraKnownMask(dora, includeUra));
     validateAkaMask(ownedAkaMask, source, adding ? tile : -1);
     long yakuman =
         YakuRules.evaluateHandYakumanMask(hand)
@@ -131,7 +178,7 @@ public final class HandScoreEvaluator {
                 | YakuRules.evaluateContextYakuMask(hand.menzen, method, conditions)
             : 0L;
     int red = Integer.bitCount(ownedAkaMask);
-    int ura = uraCount(conditions, includeUra);
+    int ura = uraCount(conditions);
     if (hand.thirteenOrphansComplete || hand.sevenPairsComplete) {
       consider(
           output, specialYaku(normalYaku, yakuman), hand.sevenPairsComplete ? 25 : 0, red, ura);
@@ -145,24 +192,36 @@ public final class HandScoreEvaluator {
     return output.available();
   }
 
+  /** 裏ドラを数えない採点では、裏ドラの列と既知のマスクに 0 を渡す。 */
   private void score(
       HandShapeView shape,
       HandView fixedHand,
       int tile,
       boolean adding,
-      DoraState dora,
-      boolean includeUra,
+      long doraTileTypesPacked,
+      int doraCount,
+      long uraDoraTileTypesPacked,
+      int uraKnownMask,
       HandScoreBatchBuffer output) {
     Objects.requireNonNull(output, "output");
     for (HandScoreBuffer result : output.results) result.clear();
     if (output.size == 0) throw new IllegalArgumentException("empty scoring batch");
     WinConditions common = Objects.requireNonNull(output.conditions[0], "unconfigured condition");
-    load(shape, fixedHand, tile, adding, common, dora, includeUra);
+    load(
+        shape,
+        fixedHand,
+        tile,
+        adding,
+        common,
+        doraTileTypesPacked,
+        doraCount,
+        uraDoraTileTypesPacked,
+        uraKnownMask);
     if (hand.thirteenOrphansComplete || hand.sevenPairsComplete && !hand.standardPatternMayExist) {
       for (int i = 0; i < output.size; i++) {
         validateCondition(output, i, shape, adding ? tile : -1, common);
       }
-      scoreSpecialBatch(output, includeUra);
+      scoreSpecialBatch(output);
       return;
     }
     ensureCapacity(output.size);
@@ -183,7 +242,7 @@ public final class HandScoreEvaluator {
         handYaku[i] = 0L;
       }
       redCounts[i] = Integer.bitCount(output.ownedAkaMasks[i]);
-      uraCounts[i] = uraCount(conditions, includeUra);
+      uraCounts[i] = uraCount(conditions);
     }
 
     // 特殊形も成立の確認が先。牌種・局況だけで未完成形を役満にしない。
@@ -227,7 +286,7 @@ public final class HandScoreEvaluator {
   }
 
   /** 通常形と競合しない特殊形は、全条件の検証後に一時配列を介さず採点する。 */
-  private void scoreSpecialBatch(HandScoreBatchBuffer output, boolean includeUra) {
+  private void scoreSpecialBatch(HandScoreBatchBuffer output) {
     long[] contextYaku = hand.menzen ? output.closedContextYakuMasks : output.openContextYakuMasks;
     long structuralYakuman = YakuRules.evaluateHandYakumanMask(hand);
     long commonYaku = 0L;
@@ -248,7 +307,7 @@ public final class HandScoreEvaluator {
           specialYaku(normalYaku, yakuman),
           fu,
           Integer.bitCount(output.ownedAkaMasks[i]),
-          uraCount(output.conditions[i], includeUra));
+          uraCount(output.conditions[i]));
     }
   }
 
@@ -282,10 +341,9 @@ public final class HandScoreEvaluator {
         : FuCalculator.calculate(hand, decomposition, method, currentWait, tile, bits);
   }
 
-  private int uraCount(WinConditions conditions, boolean includeUra) {
-    return includeUra && hand.menzen && conditions.riichiStatus() != RiichiState.NONE
-        ? hand.uraDoraCount
-        : 0;
+  /** 裏ドラを数えない採点では load が既知のマスク 0 を渡すので、裏ドラの枚数は 0 になる。 */
+  private int uraCount(WinConditions conditions) {
+    return hand.menzen && conditions.riichiStatus() != RiichiState.NONE ? hand.uraDoraCount : 0;
   }
 
   private int probe(
@@ -297,7 +355,7 @@ public final class HandScoreEvaluator {
       WinConditions conditions) {
     if (requestedMethods == 0 || (requestedMethods & ~BOTH) != 0)
       throw new IllegalArgumentException("invalid requested method mask");
-    load(shape, fixedHand, tile, adding, conditions, null, false);
+    load(shape, fixedHand, tile, adding, conditions, 0L, 0, 0L, 0);
     if (hand.thirteenOrphansComplete || hand.sevenPairsComplete) return requestedMethods;
     if (!hand.standardPatternMayExist) return 0;
     long structuralYakuman = YakuRules.evaluateHandYakumanMask(hand);
@@ -361,8 +419,10 @@ public final class HandScoreEvaluator {
       int tile,
       boolean adding,
       WinConditions conditions,
-      DoraState dora,
-      boolean includeUra) {
+      long doraTileTypesPacked,
+      int doraCount,
+      long uraDoraTileTypesPacked,
+      int uraKnownMask) {
     Objects.requireNonNull(shape, "shape");
     Objects.requireNonNull(fixedHand, "fixedHand");
     Objects.requireNonNull(conditions, "conditions");
@@ -384,10 +444,35 @@ public final class HandScoreEvaluator {
         fixedHand,
         adding ? tile : -1,
         conditions,
-        dora == null ? 0L : dora.doraTileTypesPacked(),
-        dora == null ? 0 : dora.indicatorCount(),
-        dora == null || !includeUra ? 0L : dora.uraDoraTileTypesPacked(),
-        dora == null || !includeUra ? 0 : dora.uraKnownMask());
+        doraTileTypesPacked,
+        doraCount,
+        uraDoraTileTypesPacked,
+        uraKnownMask);
+  }
+
+  private static long doraTiles(DoraState dora) {
+    return dora == null ? 0L : dora.doraTileTypesPacked();
+  }
+
+  private static int doraCount(DoraState dora) {
+    return dora == null ? 0 : dora.indicatorCount();
+  }
+
+  private static long uraTiles(DoraState dora, boolean includeUra) {
+    return dora == null || !includeUra ? 0L : dora.uraDoraTileTypesPacked();
+  }
+
+  private static int uraKnownMask(DoraState dora, boolean includeUra) {
+    return dora == null || !includeUra ? 0 : dora.uraKnownMask();
+  }
+
+  private static void requireDora(long doraTileTypesPacked, int doraCount) {
+    if (doraCount < 0 || doraCount > DoraState.MAX_INDICATORS)
+      throw new IllegalArgumentException("invalid dora count: " + doraCount);
+    for (int index = 0; index < doraCount; index++) {
+      if (DoraState.packedTile(doraTileTypesPacked, index) >= Tile.NUM_TILE_TYPES)
+        throw new IllegalArgumentException("invalid dora tile at " + index);
+    }
   }
 
   private void validateAkaMask(int mask, HandShapeView shape, int addedTile) {

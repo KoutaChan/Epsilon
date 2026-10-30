@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.SplittableRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -20,6 +22,8 @@ import org.testng.annotations.Test;
  * （2026-10-11 の調査では 42.9万局で違反 0、最長の河 24 枚）。
  */
 public class TurnAccountingTest {
+  private static final Logger log = LoggerFactory.getLogger(TurnAccountingTest.class);
+
   @Test
   public void randomCallHeavyPlay() {
     Assert.assertEquals(run(false, Integer.getInteger("turns.games", 200), 0.95), "violations=0");
@@ -106,7 +110,7 @@ public class TurnAccountingTest {
         out.append(String.format("  longest river %d: %d hands%n", length, histogram[length]));
     if (example != null) out.append("  violation e.g. ").append(example).append('\n');
     out.append("  longest: ").append(longestExample).append('\n');
-    if (Boolean.getBoolean("turns.verbose")) System.out.print(out);
+    if (Boolean.getBoolean("turns.verbose")) log.info("{}", out.toString().stripTrailing());
     return violations == 0 ? "violations=0" : out.toString();
   }
 

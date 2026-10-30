@@ -91,6 +91,24 @@ public final class DoraState {
     return (int) (packed >>> (index * TILE_BITS) & TILE_MASK);
   }
 
+  /**
+   * {@link #packedTile} の逆。ビット列の表示位置に牌種を入れた列を返す（その位置の前の値は消す）。表ドラの列を局面の外で組み立てるとき
+   * （{@code HandScoreEvaluator} の表ドラを基本型で受ける口に渡す列など）に使う。
+   *
+   * @param packed 元のビット列
+   * @param index 表示位置（0 始まり、{@link #MAX_INDICATORS} 未満）
+   * @param tileType 牌種
+   * @return 入れた後のビット列
+   * @throws IndexOutOfBoundsException 表示位置が範囲外のとき
+   * @throws IllegalArgumentException 牌種が範囲外のとき
+   */
+  public static long packTile(long packed, int index, int tileType) {
+    if (index < 0 || index >= MAX_INDICATORS) throw new IndexOutOfBoundsException(index);
+    requireTileType(tileType);
+    int shift = index * TILE_BITS;
+    return packed & ~(TILE_MASK << shift) | (long) tileType << shift;
+  }
+
   void reset() {
     for (int index = 0; index < indicatorCount; index++) {
       indicatorMultiplicity[packedTile(indicatorTileTypesPacked, index)] = 0;

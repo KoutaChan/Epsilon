@@ -4,8 +4,17 @@ import com.epsilon.calculate.shape.HandShapeState;
 import java.util.Arrays;
 import java.util.Objects;
 
-/** 手牌を表現するクラス。 牌種の形状と物理牌・副露の所有状態を分離して管理する。 */
+/**
+ * 手牌を表現するクラス。 牌種の形状と物理牌・副露の所有状態を分離して管理する。
+ *
+ * <p>副露の {@link Meld} は形の解析に要るので手が持つ。副露の時系列（作った出来事・加槓の出来事・その時の河の位置）は局の {@link
+ * PublicEventLog} にあり、手は出来事の番号だけを持つ。副露を足す口は {@link GameState} の {@code addMeld}・{@code
+ * replacePonWithKakan} だけで、局に属さない手（{@link #Hand()}）は副露を持たない。
+ */
 public final class Hand implements HandView {
+
+  /** 副露の出来事の番号の空き（その位置に副露がないか、加槓でない）。 */
+  private static final byte NO_EVENT = -1;
 
   private static final int MELD_ID_BITS = 14;
   private final HandShapeState shape = new HandShapeState();
@@ -20,42 +29,51 @@ public final class Hand implements HandView {
     shape.copyTileCountsInto(destination);
   }
 
+  private final PublicEventLog log;
   private final byte[] concealedPhysicalCopyMasks;
   private final Meld[] melds;
-  private final int[] meldCallAfterRiverIndexes;
-  private final int[] meldKanAfterRiverIndexes;
-  private final int[] meldCreationEvents;
-  private final int[] meldKakanEvents;
+  private final byte[] meldEvents;
+  private final byte[] kakanEvents;
   private int concealedAkaMask;
   private int openMeldCount;
   private int kanCount;
   private int ownedAkaMask;
   private long canonicalMeldSignature;
 
-  /** 空の手牌（副露・暗槓を除く）と面子リストを作る。 */
+  /** 局に属さない空の手牌を作る（牌の形だけを使う試験・計測用）。自分の空の記録を持ち、副露は持たない。 */
   public Hand() {
+    this(new PublicEventLog());
+  }
+
+  /**
+   * 局の席の空の手牌を作る。
+   *
+   * @param log 副露を書く局の記録
+   */
+  Hand(PublicEventLog log) {
+    this.log = log;
     this.concealedPhysicalCopyMasks = new byte[Tile.NUM_TILE_TYPES];
-    this.melds = new Meld[4];
-    this.meldCallAfterRiverIndexes = new int[] {-1, -1, -1, -1};
-    this.meldKanAfterRiverIndexes = new int[] {-1, -1, -1, -1};
-    this.meldCreationEvents = new int[] {-1, -1, -1, -1};
-    this.meldKakanEvents = new int[] {-1, -1, -1, -1};
+    this.melds = new Meld[RoundLimits.MAX_MELDS];
+    this.meldEvents = new byte[RoundLimits.MAX_MELDS];
+    this.kakanEvents = new byte[RoundLimits.MAX_MELDS];
+    Arrays.fill(meldEvents, NO_EVENT);
+    Arrays.fill(kakanEvents, NO_EVENT);
     this.concealedAkaMask = AkaTileMask.EMPTY;
   }
 
   /**
-   * 手牌（副露・暗槓を除く）、赤牌状態、面子発生記録を複製する。
+   * 手牌（副露・暗槓を除く）、赤牌状態、副露を複製する。
    *
    * @param other 複製元の手牌
+   * @param log 副露の出来事を読む記録（局面の分岐では写した記録、手の写しでは元と同じ記録）
    */
-  public Hand(Hand other) {
+  Hand(Hand other, PublicEventLog log) {
+    this.log = log;
     shape.load(other);
     this.concealedPhysicalCopyMasks = other.concealedPhysicalCopyMasks.clone();
     this.melds = other.melds.clone();
-    this.meldCallAfterRiverIndexes = other.meldCallAfterRiverIndexes.clone();
-    this.meldKanAfterRiverIndexes = other.meldKanAfterRiverIndexes.clone();
-    this.meldCreationEvents = other.meldCreationEvents.clone();
-    this.meldKakanEvents = other.meldKakanEvents.clone();
+    this.meldEvents = other.meldEvents.clone();
+    this.kakanEvents = other.kakanEvents.clone();
     this.concealedAkaMask = other.concealedAkaMask;
     this.openMeldCount = other.openMeldCount;
     this.kanCount = other.kanCount;
@@ -72,9 +90,12 @@ public final class Hand implements HandView {
     addCount(tileType);
   }
 
-  /** スナップショットの保存や対局の分岐に使う、元の手牌と独立したコピー。 */
+  /**
+   * 牌の枚数と赤を独立に変えられる手の写し。副露の時系列は元と同じ局の記録を読む（記録は局の中で追記だけなので、その局が続く間は正しい）。
+   * 局面の分岐は {@link GameState#snapshotCopy()} を使う。
+   */
   public Hand snapshotCopy() {
-    return new Hand(this);
+    return new Hand(this, log);
   }
 
   /**
@@ -336,28 +357,12 @@ public final class Hand implements HandView {
   }
 
   /**
-   * 発生記録時点不明として面子を追加する。
+   * 記録に足した副露（加槓を除く）を手へ足す。{@link GameState#addMeld} だけが呼ぶ。
    *
-   * @param meld 追加する面子
+   * @param meld 足す面子
+   * @param event 記録の副露の番号
    */
-  public void addMeld(Meld meld) {
-    addMeld(meld, -1);
-  }
-
-  /**
-   * 副露をタイミング付きで追加する。
-   *
-   * @param meld 追加する面子
-   * @param afterRiverIndex 鳴いた時点の本人の河サイズ (= 鳴き直後打牌の河インデックス)。-1 は不明
-   */
-  public void addMeld(Meld meld, int afterRiverIndex) {
-    addMeld(meld, afterRiverIndex, -1);
-  }
-
-  /** 局内の共通公開イベント連番を付ける。加槓面子を直接追加する場合、元のポンの成立時点は不明のまま保持する。 */
-  void addMeld(Meld meld, int afterRiverIndex, int creationEvent) {
-    requireAfterRiverIndex(afterRiverIndex);
-    Objects.requireNonNull(meld, "meld");
+  void addMeld(Meld meld, int event) {
     if (meldCount() >= melds.length) {
       throw new IllegalStateException("a hand cannot contain more than four melds");
     }
@@ -367,15 +372,7 @@ public final class Hand implements HandView {
     int meldIndex = meldCount();
     shape.setMeldCount(meldIndex + 1);
     melds[meldIndex] = meld;
-    meldCreationEvents[meldIndex] = meld.type() == Meld.Type.KAKAN ? -1 : creationEvent;
-    meldKakanEvents[meldIndex] = meld.type() == Meld.Type.KAKAN ? creationEvent : -1;
-    if (meld.type() == Meld.Type.CHI || meld.type() == Meld.Type.PON) {
-      meldCallAfterRiverIndexes[meldIndex] = afterRiverIndex;
-      meldKanAfterRiverIndexes[meldIndex] = -1;
-    } else {
-      meldCallAfterRiverIndexes[meldIndex] = -1;
-      meldKanAfterRiverIndexes[meldIndex] = afterRiverIndex;
-    }
+    meldEvents[meldIndex] = (byte) event;
     canonicalMeldSignature |= (long) meld.canonicalId() << (meldIndex * MELD_ID_BITS);
     if (!meld.preservesMenzen()) {
       openMeldCount++;
@@ -390,33 +387,42 @@ public final class Hand implements HandView {
   }
 
   /**
-   * チー・ポンの成立タイミングを本人の河インデックスで返す。
+   * チー・ポンの成立タイミングを本人の河インデックスで返す。加槓に上げたポンもポンの時の値のまま。
    *
    * @param meldIndex 面子インデックス
-   * @return 鳴き直後打牌の河インデックス。不明または対象外なら -1
+   * @return 鳴き直後打牌の河インデックス。チー・ポンから作った面子でなければ -1
    */
+  @Override
   public int meldCallAfterRiverIndex(int meldIndex) {
-    return meldCallAfterRiverIndexes[Objects.checkIndex(meldIndex, meldCount())];
+    int event = meldCreationEvent(meldIndex);
+    Meld.Type created = log.meld(event).type();
+    return created == Meld.Type.CHI || created == Meld.Type.PON ? log.afterRiver(event) : -1;
   }
 
   /**
-   * 大明槓・暗槓・加槓の成立タイミングを本人の河インデックスで返す。
+   * 大明槓・暗槓・加槓の成立タイミングを本人の河インデックスで返す（加槓は加槓の時の値）。
    *
    * @param meldIndex 面子インデックス
-   * @return 槓成立時の河要素数。不明または対象外なら -1
+   * @return 槓成立時の河要素数。槓でなければ -1
    */
+  @Override
   public int meldKanAfterRiverIndex(int meldIndex) {
-    return meldKanAfterRiverIndexes[Objects.checkIndex(meldIndex, meldCount())];
+    int event = meldCreationEvent(meldIndex);
+    int kakan = kakanEvents[meldIndex];
+    if (kakan != NO_EVENT) {
+      return log.afterRiver(kakan);
+    }
+    return log.meld(event).isKan() ? log.afterRiver(event) : -1;
   }
 
-  /** 面子の最初の公開記録イベント。加槓でも元のポンのイベント連番を保つ。不明なら-1。 */
+  /** 面子を作った公開の出来事の番号。加槓でも元のポンの番号を保つ。 */
   public int meldCreationEvent(int meldIndex) {
-    return meldCreationEvents[Objects.checkIndex(meldIndex, meldCount())];
+    return meldEvents[Objects.checkIndex(meldIndex, meldCount())];
   }
 
-  /** 槍槓応答前の加槓公開イベント。加槓で-1ならイベント連番は不明、他の面子には後続イベントがない。 */
+  /** 槍槓の応答の前に記録した加槓の公開の出来事の番号。加槓でなければ -1。 */
   public int meldKakanEvent(int meldIndex) {
-    return meldKakanEvents[Objects.checkIndex(meldIndex, meldCount())];
+    return kakanEvents[Objects.checkIndex(meldIndex, meldCount())];
   }
 
   /**
@@ -455,36 +461,22 @@ public final class Hand implements HandView {
   }
 
   /**
-   * ポンを加槓に置換する。ポンの成立時点を引き継ぎ、加槓の宣言時点を記録する。
+   * ポンを加槓に置換する。ポンを作った出来事の番号を保ち、加槓の出来事の番号を足す。{@link GameState#replacePonWithKakan} だけが
+   * 呼ぶ。
    *
-   * @param ponMeld 置換対象の既存 PON インスタンス
+   * @param meldIndex 置換するポンの面子の位置（{@link #requirePonIndex} の値）
    * @param kakanMeld 対象ポンから作った KAKAN
-   * @param kanAfterRiverIndex 加槓時点の本人の河サイズ。-1 は不明
+   * @param kakanEvent 記録の加槓の番号
    */
-  public void replacePonWithKakan(Meld ponMeld, Meld kakanMeld, int kanAfterRiverIndex) {
-    replacePonWithKakan(ponMeld, kakanMeld, kanAfterRiverIndex, -1);
-  }
-
-  /** ポン成立時のイベント連番を保ち、加槓宣言のイベント連番を追加する。 */
-  void replacePonWithKakan(Meld ponMeld, Meld kakanMeld, int kanAfterRiverIndex, int kakanEvent) {
-    requireAfterRiverIndex(kanAfterRiverIndex);
-    if (ponMeld.type() != Meld.Type.PON) {
-      throw new IllegalArgumentException("replace source must be PON");
-    }
-    if (!kakanMeld.isKakanUpgradeOf(ponMeld)) {
+  void replacePonWithKakan(int meldIndex, Meld kakanMeld, int kakanEvent) {
+    if (!kakanMeld.isKakanUpgradeOf(melds[meldIndex])) {
       throw new IllegalArgumentException("replacement KAKAN must be derived from source PON");
-    }
-
-    int meldIndex = indexOfMeldIdentity(ponMeld);
-    if (meldIndex < 0) {
-      throw new IllegalArgumentException("PON meld not found");
     }
     if (kakanMeld.addedTileIsAka()) {
       requireAkaTileNotOwned(kakanMeld.baseTileType());
     }
     melds[meldIndex] = kakanMeld;
-    meldKanAfterRiverIndexes[meldIndex] = kanAfterRiverIndex;
-    meldKakanEvents[meldIndex] = kakanEvent;
+    kakanEvents[meldIndex] = (byte) kakanEvent;
     long meldMask = ((1L << MELD_ID_BITS) - 1L) << (meldIndex * MELD_ID_BITS);
     canonicalMeldSignature =
         (canonicalMeldSignature & ~meldMask)
@@ -500,10 +492,8 @@ public final class Hand implements HandView {
     Arrays.fill(concealedPhysicalCopyMasks, (byte) 0);
     Arrays.fill(melds, 0, meldCount(), null);
     shape.clear();
-    Arrays.fill(meldCallAfterRiverIndexes, -1);
-    Arrays.fill(meldKanAfterRiverIndexes, -1);
-    Arrays.fill(meldCreationEvents, -1);
-    Arrays.fill(meldKakanEvents, -1);
+    Arrays.fill(meldEvents, NO_EVENT);
+    Arrays.fill(kakanEvents, NO_EVENT);
     concealedAkaMask = AkaTileMask.EMPTY;
     openMeldCount = 0;
     kanCount = 0;
@@ -546,18 +536,21 @@ public final class Hand implements HandView {
     }
   }
 
-  private int indexOfMeldIdentity(Meld meld) {
+  /**
+   * 手にあるポンの面子の位置を返す。
+   *
+   * @param ponMeld この手の既存 PON インスタンス
+   * @throws IllegalArgumentException ポンでないか、この手にないとき
+   */
+  int requirePonIndex(Meld ponMeld) {
+    if (ponMeld.type() != Meld.Type.PON) {
+      throw new IllegalArgumentException("replace source must be PON");
+    }
     for (int meldIndex = 0; meldIndex < meldCount(); meldIndex++) {
-      if (melds[meldIndex] == meld) {
+      if (melds[meldIndex] == ponMeld) {
         return meldIndex;
       }
     }
-    return -1;
-  }
-
-  private static void requireAfterRiverIndex(int afterRiverIndex) {
-    if (afterRiverIndex < -1) {
-      throw new IllegalArgumentException("afterRiverIndex must be -1 or greater");
-    }
+    throw new IllegalArgumentException("PON meld not found");
   }
 }

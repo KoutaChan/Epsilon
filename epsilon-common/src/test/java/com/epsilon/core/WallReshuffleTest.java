@@ -1,6 +1,7 @@
 package com.epsilon.core;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.SplittableRandom;
 import org.testng.Assert;
@@ -164,7 +165,7 @@ public class WallReshuffleTest {
 
   private static void assertUniform(HashSet<Integer> support, Draw draw) {
     int trials = support.size() * 100;
-    var counts = new java.util.HashMap<Integer, Integer>();
+    var counts = new HashMap<Integer, Integer>();
     for (int seed = 0; seed < trials; seed++) {
       int tile = draw.apply(seed * 0x9E3779B97F4A7C15L);
       Assert.assertTrue(support.contains(tile), "tile " + tile + " is not unseen");

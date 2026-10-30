@@ -7,7 +7,6 @@ import com.epsilon.core.Meld;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.MahjongTransition;
-import com.epsilon.engine.PostCallDahaiRestriction;
 import com.epsilon.engine.WinLegality.RonStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +18,8 @@ public final class ObservedRoundState {
   /** 副露を反映した直後の判断境界。次のイベントを反映する前に消費する。 */
   public sealed interface MeldResult permits OpenCall, Daiminkan, Kan {}
 
-  /** チー・ポン後の打牌制約。 */
-  public record OpenCall(PostCallDahaiRestriction restriction) implements MeldResult {}
+  /** チー・ポンの後の打牌を待つ（打てる牌は鳴いた副露から {@link com.epsilon.engine.PostCallDiscards} が決める）。 */
+  public record OpenCall(Meld call) implements MeldResult {}
 
   /** 大明槓後は槍槓応答を開かず、嶺上ツモを待つ。 */
   public enum Daiminkan implements MeldResult {
@@ -141,9 +140,7 @@ public final class ObservedRoundState {
   public MeldResult meld(int player, Meld meld, int[] consumedPhysicalTileIds) {
     transition.applyReconstructedMeld(player, meld, consumedPhysicalTileIds, player == selfSeat);
     return switch (meld.type()) {
-      case CHI ->
-          openCall(PostCallDahaiRestriction.afterChi(meld.baseTileType(), meld.calledTileType()));
-      case PON -> openCall(PostCallDahaiRestriction.afterPon(meld.baseTileType()));
+      case CHI, PON -> openCall(meld);
       case DAIMINKAN -> {
         continuation = Continuation.RINSHAN_DRAW;
         yield Daiminkan.INSTANCE;
@@ -166,9 +163,9 @@ public final class ObservedRoundState {
     };
   }
 
-  private OpenCall openCall(PostCallDahaiRestriction restriction) {
+  private OpenCall openCall(Meld call) {
     continuation = Continuation.CALL_DISCARD;
-    return new OpenCall(restriction);
+    return new OpenCall(call);
   }
 
   /** 次の当該プレイヤーの打牌をリーチ宣言牌として扱う。支払いは成立通知で行う。 */

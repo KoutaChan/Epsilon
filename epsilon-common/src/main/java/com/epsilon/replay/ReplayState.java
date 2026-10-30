@@ -2,12 +2,13 @@ package com.epsilon.replay;
 
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
+import com.epsilon.core.Meld;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.ActionGenerator;
 import com.epsilon.engine.EngineActionBuffer;
 import com.epsilon.engine.MahjongTransition;
-import com.epsilon.engine.PostCallDahaiRestriction;
+import com.epsilon.engine.PostCallDiscards;
 import com.epsilon.engine.WinLegality.RonStatus;
 import com.epsilon.replay.ReplayEvent.Ankan;
 import com.epsilon.replay.ReplayEvent.Chi;
@@ -40,7 +41,8 @@ final class ReplayState {
   private final MahjongTransition transition = new MahjongTransition(state);
   private final boolean[] reachPending = new boolean[NUM_PLAYERS];
   private final int[][] decodedWalls;
-  private PostCallDahaiRestriction restriction;
+  /** 鳴いた後の打牌を待つ間の、直前のチー・ポン。ほかは null。 */
+  private Meld call;
   private final int[] lastKnownScores = new int[NUM_PLAYERS];
   private boolean hasLastKnownScores;
   private int kyokuIndex;
@@ -94,7 +96,7 @@ final class ReplayState {
       }
     }
     Arrays.fill(reachPending, false);
-    clearRestriction();
+    clearCall();
   }
 
   void applyDraw(Tsumo tsumo) {
@@ -116,8 +118,7 @@ final class ReplayState {
 
   List<Action> discardActions(int player) {
     if (isCallDahai()) {
-      ActionGenerator.generateCallDahaiActionsInto(
-          callDahaiActionsBuf, state.hand(player), restriction);
+      PostCallDiscards.generateInto(state.hand(player), call, callDahaiActionsBuf);
       return callDahaiActionsBuf;
     }
     List<Action> actions = turnActions(player);
@@ -142,7 +143,7 @@ final class ReplayState {
   void applyDiscard(Dahai discard, Action action) {
     reachPending[discard.actor()] = false;
     transition.reconstructDiscard(discard.actor(), action, !isCallDahai());
-    clearRestriction();
+    clearCall();
   }
 
   static Action chiAction(Chi chi) {
@@ -190,30 +191,30 @@ final class ReplayState {
             calledTileType,
             Math.min(
                 Tile.typeOf(consumedPhysicalTileIds[0]), Tile.typeOf(consumedPhysicalTileIds[1])));
-    transition.applyChi(
+    afterCall(
         chi.actor(),
-        (TurnEvent.Discard) state.getTurnEvent(),
-        Action.chiSequence(
-            sequenceBaseTileType,
-            calledTileType,
-            consumedTilesContainAka(consumedPhysicalTileIds)));
-    afterCall(chi.actor(), PostCallDahaiRestriction.afterChi(sequenceBaseTileType, calledTileType));
+        transition.applyChi(
+            chi.actor(),
+            (TurnEvent.Discard) state.getTurnEvent(),
+            Action.chiSequence(
+                sequenceBaseTileType,
+                calledTileType,
+                consumedTilesContainAka(consumedPhysicalTileIds))));
   }
 
   void applyPon(Pon pon) {
-    int tileType = Tile.typeOf(pon.calledPhysicalTileId());
-    int[] consumedPhysicalTileIds = pon.consumedPhysicalTileIds();
-    transition.applyPon(
+    afterCall(
         pon.actor(),
-        (TurnEvent.Discard) state.getTurnEvent(),
-        consumedTilesContainAka(consumedPhysicalTileIds));
-    afterCall(pon.actor(), PostCallDahaiRestriction.afterPon(tileType));
+        transition.applyPon(
+            pon.actor(),
+            (TurnEvent.Discard) state.getTurnEvent(),
+            consumedTilesContainAka(pon.consumedPhysicalTileIds())));
   }
 
   void applyOpenKan(Daiminkan kan) {
     transition.completeDaiminkan(kan.actor(), (TurnEvent.Discard) state.getTurnEvent());
     transition.beginReconstructionRinshan(kan.actor());
-    clearRestriction();
+    clearCall();
   }
 
   void revealDora(Dora dora) {
@@ -296,24 +297,24 @@ final class ReplayState {
     }
   }
 
-  private void afterCall(int actor, PostCallDahaiRestriction restriction) {
+  private void afterCall(int actor, Meld call) {
     state.clearAllIppatsu();
     state.setCurrentPlayer(actor);
     state.clearTurnEvent();
-    this.restriction = restriction;
+    this.call = call;
   }
 
   private void afterSelfKan(int actor) {
     transition.beginReconstructionRinshan(actor);
-    clearRestriction();
+    clearCall();
   }
 
   private boolean isCallDahai() {
-    return restriction != null;
+    return call != null;
   }
 
-  private void clearRestriction() {
-    restriction = null;
+  private void clearCall() {
+    call = null;
   }
 
   GameState borrowedState() {

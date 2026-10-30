@@ -102,7 +102,7 @@ public final class TenhouRoundState {
         switch (result) {
           case ObservedRoundState.OpenCall call ->
               naki.player() == SELF
-                  ? new TenhouRoundOutcome.PostCallDahai(call.restriction())
+                  ? new TenhouRoundOutcome.PostCallDahai(call.call())
                   : TenhouRoundOutcome.None.INSTANCE;
           case ObservedRoundState.Daiminkan ignored -> TenhouRoundOutcome.None.INSTANCE;
           case ObservedRoundState.Kan kan -> responseOutcome(kan.attempt(), naki.prompt());

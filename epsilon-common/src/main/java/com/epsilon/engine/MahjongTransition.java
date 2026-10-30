@@ -148,7 +148,10 @@ public final class MahjongTransition {
     return discard;
   }
 
-  /** 復号済みの牌譜の副露を、既知手牌（副露・暗槓を除く）の実牌消費と公開インデックスへ一括反映する。 */
+  /**
+   * 復号済みの牌譜の副露を、既知手牌（副露・暗槓を除く）の実牌消費と公開インデックスへ一括反映する。鳴かれた打牌の印は {@link
+   * GameState#addMeld} が付ける。
+   */
   public void applyReconstructedMeld(
       int player, Meld meld, int[] consumedPhysicalTileIds, boolean concealedHandKnown) {
     Hand hand = state.hand(player);
@@ -163,16 +166,11 @@ public final class MahjongTransition {
     } else {
       state.addMeld(player, meld, state.river(player).size());
     }
-    switch (meld.type()) {
-      case CHI, PON, DAIMINKAN -> {
-        int source = (player + meld.relativeSource().playerOffset()) % GameState.NUM_PLAYERS;
-        state.markLastDiscardCalled(source);
-        state.clearTurnEvent();
-        state.clearAllIppatsu();
-      }
-      case ANKAN, KAKAN -> {}
+    if (meld.isCalledFromDiscard()) {
+      takeTurnAfterCall(player);
+    } else {
+      state.setCurrentPlayer(player);
     }
-    state.setCurrentPlayer(player);
   }
 
   public TurnEvent.KanAttempt recordKanAttempt(
@@ -221,7 +219,7 @@ public final class MahjongTransition {
   public Meld completeDaiminkan(int player, TurnEvent.Discard discard) {
     Meld daiminkan = ActionEffect.applyDaiminkan(state, player, discard, handMutationTarget);
     int sourcePlayerOffset = state.getRelativePosition(player, discard.player());
-    markCalled(discard, player);
+    takeTurnAfterCall(player);
     if (recorder != null) {
       recorder.recordDaiminkan(
           player,
@@ -237,7 +235,7 @@ public final class MahjongTransition {
     Meld pon =
         ActionEffect.applyPon(state, player, discard, consumeAkaFromHand, handMutationTarget);
     int sourcePlayerOffset = state.getRelativePosition(player, discard.player());
-    markCalled(discard, player);
+    takeTurnAfterCall(player);
     if (recorder != null) {
       recorder.recordPon(
           player,
@@ -251,7 +249,7 @@ public final class MahjongTransition {
 
   public Meld applyChi(int player, TurnEvent.Discard discard, Action chiAction) {
     Meld chi = ActionEffect.applyChi(state, player, discard, chiAction, handMutationTarget);
-    markCalled(discard, player);
+    takeTurnAfterCall(player);
     if (recorder != null) {
       recorder.recordChi(
           player,
@@ -275,8 +273,8 @@ public final class MahjongTransition {
     state.revealDoraIndicator(indicatorTileType);
   }
 
-  private void markCalled(TurnEvent.Discard discard, int callingPlayer) {
-    state.markLastDiscardCalled(discard.player());
+  /** 鳴いた席へ手番を移す（鳴かれた打牌の印は副露を足した {@link GameState#addMeld} が付けた）。一発はすべて消える。 */
+  private void takeTurnAfterCall(int callingPlayer) {
     state.setCurrentPlayer(callingPlayer);
     state.clearTurnEvent();
     state.clearAllIppatsu();

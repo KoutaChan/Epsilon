@@ -20,13 +20,13 @@ import org.testng.annotations.Test;
 public class DecisionWinPointFactsEncoderTest {
   @Test
   public void threeKansProduce120FuWithoutChangingScoring() {
-    Hand hand = new Hand();
-    hand.addMeld(Meld.ankan(0)); // 一萬
-    hand.addMeld(Meld.ankan(8)); // 九萬
-    hand.addMeld(Meld.ankan(10)); // 二筒
-    for (int tile : new int[] {21, 23, Tile.HAKU, Tile.HAKU}) hand.add(tile);
     GameState state = new GameState(17);
     state.startRound(0, 0, 0, 0);
+    state.addMeld(0, Meld.ankan(0), 0); // 一萬
+    state.addMeld(0, Meld.ankan(8), 0); // 九萬
+    state.addMeld(0, Meld.ankan(10), 0); // 二筒
+    Hand hand = state.hand(0);
+    for (int tile : new int[] {21, 23, Tile.HAKU, Tile.HAKU}) hand.add(tile);
     HandScoreBuffer score = new HandScoreBuffer();
     Assert.assertTrue(
         new HandScoreEvaluator()

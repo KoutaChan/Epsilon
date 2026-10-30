@@ -297,7 +297,6 @@ final class DecisionRowEncoder {
       River river = state.river((player + relativeSeat) % GameState.NUM_PLAYERS);
       int encoded = riverCategory(river.size());
       for (int riverIndex = 0; riverIndex < encoded; riverIndex++) {
-        River.Discard discard = river.discard(riverIndex);
         writer.river(
             relativeSeat,
             riverIndex,
@@ -305,31 +304,40 @@ final class DecisionRowEncoder {
             relativeSeat + 1);
         writer.river(relativeSeat, riverIndex, DecisionInputSchema.RiverInt.INDEX, riverIndex + 1);
         writer.river(
-            relativeSeat, riverIndex, DecisionInputSchema.RiverInt.TILE, discard.tileType() + 1);
+            relativeSeat,
+            riverIndex,
+            DecisionInputSchema.RiverInt.TILE,
+            river.tileType(riverIndex) + 1);
         writer.river(
-            relativeSeat, riverIndex, DecisionInputSchema.RiverInt.IS_AKA, discard.aka() ? 1 : 0);
+            relativeSeat,
+            riverIndex,
+            DecisionInputSchema.RiverInt.IS_AKA,
+            river.aka(riverIndex) ? 1 : 0);
         writer.river(
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverInt.TSUMOGIRI,
-            discard.tsumogiri() ? 1 : 0);
+            river.tsumogiri(riverIndex) ? 1 : 0);
         writer.river(
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverInt.RIICHI,
-            discard.riichiDeclaration() ? 1 : 0);
+            river.riichiDeclaration(riverIndex) ? 1 : 0);
         writer.river(
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverInt.CALLED,
-            discard.called() ? 1 : 0);
+            river.called(riverIndex) ? 1 : 0);
         writer.river(
-            relativeSeat, riverIndex, DecisionInputSchema.RiverInt.TURN, discard.turnNumber() + 1);
+            relativeSeat,
+            riverIndex,
+            DecisionInputSchema.RiverInt.TURN,
+            river.turnNumber(riverIndex) + 1);
         writer.river(
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverInt.GLOBAL_SEQUENCE,
-            discard.sequence() + 1);
+            river.sequence(riverIndex) + 1);
         writer.river(relativeSeat, riverIndex, DecisionInputSchema.RiverInt.PRESENT, 1);
         writer.river(
             relativeSeat,
@@ -340,7 +348,7 @@ final class DecisionRowEncoder {
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverFloat.GLOBAL_PROGRESS,
-            Math.max(0, discard.sequence()) / 70.0f);
+            Math.max(0, river.sequence(riverIndex)) / 70.0f);
       }
     }
   }

@@ -6,6 +6,8 @@ import com.google.gson.GsonBuilder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 本番自己対局で保存した教師を、本番の逐次読み込み learner で更新する明示起動専用測定。
@@ -14,6 +16,8 @@ import java.util.Map;
  * [SEED=20261008]。SETTINGS=- は同梱設定、OUTPUT は未作成のディレクトリを指定する。 同じ収集済みデータを再利用し、元チェックポイントは更新しない。
  */
 public final class NanoPerformanceBenchmark {
+  private static final Logger log = LoggerFactory.getLogger(NanoPerformanceBenchmark.class);
+
   private NanoPerformanceBenchmark() {}
 
   public static void main(String[] args) throws Exception {
@@ -46,7 +50,7 @@ public final class NanoPerformanceBenchmark {
             seed);
     String result = json.toJson(report);
     Files.writeString(output.resolve("report.json"), result + System.lineSeparator());
-    System.out.println(result);
+    log.info("{}", result);
   }
 
   private static int positive(String[] args, int index, int fallback) {

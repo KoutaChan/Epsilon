@@ -4,6 +4,7 @@ import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
 import com.epsilon.core.Meld;
+import com.epsilon.core.River;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.replay.ReplayEvent;
@@ -41,14 +42,14 @@ final class ReviewSnapshots {
         tiles.remove(draw);
       }
       List<RiverTile> river = new ArrayList<>();
-      for (int i = 0; i < state.river(seat).size(); i++) {
-        var discard = state.river(seat).discard(i);
+      River discards = state.river(seat);
+      for (int i = 0; i < discards.size(); i++) {
         river.add(
             new RiverTile(
-                tile(discard.tileType(), discard.aka()),
-                discard.tsumogiri(),
-                discard.riichiDeclaration(),
-                discard.called()));
+                tile(discards.tileType(i), discards.aka(i)),
+                discards.tsumogiri(i),
+                discards.riichiDeclaration(i),
+                discards.called(i)));
       }
       List<MeldSnapshot> melds = new ArrayList<>();
       for (int i = 0; i < hand.meldCount(); i++) melds.add(meld(hand.meld(i), seat));

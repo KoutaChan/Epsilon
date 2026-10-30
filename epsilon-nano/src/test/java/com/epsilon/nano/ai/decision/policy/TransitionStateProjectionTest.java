@@ -11,12 +11,16 @@ import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.nano.ai.model.EpsilonMahjongStateEncoder;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public final class TransitionStateProjectionTest {
+  private static final Logger log = LoggerFactory.getLogger(TransitionStateProjectionTest.class);
+
   @Test(groups = "native")
   public void projectedStatesPreserveRowMappingWeightsAndRepeatedExecution() {
     verify(Device.cpu(), DataType.FLOAT32, false);
@@ -194,7 +198,7 @@ public final class TransitionStateProjectionTest {
             + relativeRms
             + " cosine="
             + cosine;
-    System.out.println(metrics);
+    log.info("{}", metrics);
     // 共有特徴テストと同じ基準で、型の相対精度2単位と最大座標4単位を確認する。
     Assert.assertTrue(relativeRms <= 2 * resolution, metrics);
     Assert.assertTrue(cosine >= .9998, metrics);

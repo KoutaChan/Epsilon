@@ -149,7 +149,6 @@ public class ReviewStateSequenceTest {
     capture(sequence, expected, state);
     Assert.assertNotNull(sequence.frames().getLast().delta().players().getFirst().draw());
     Assert.assertNull(sequence.frames().getLast().delta().players().getFirst().draw().tile());
-    state.markLastDiscardCalled(0);
     Meld pon = Meld.pon(Tile.M5, Meld.RelativeSource.KAMICHA, Meld.AkaSource.CALLED_TILE);
     state.addMeld(1, pon, 0);
     state.setCurrentPlayer(1);

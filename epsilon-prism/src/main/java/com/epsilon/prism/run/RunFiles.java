@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -30,6 +31,9 @@ public final class RunFiles {
   /** 版の評価の記録の名前。 */
   public static final String EVALUATIONS = "evaluations.jsonl";
 
+  /** 公開した版を並べるディレクトリの名前（root/snapshots/&lt;5 桁の版の番号&gt;）。 */
+  public static final String SNAPSHOTS = "snapshots";
+
   /** jsonl は 1 行 1 記録。 */
   private static final Gson LINES = new GsonBuilder().serializeSpecialFloatingPointValues().create();
 
@@ -40,6 +44,26 @@ public final class RunFiles {
    */
   public RunFiles(Path root) {
     reports = root.resolve("reports");
+  }
+
+  /** run の版 version のディレクトリ。 */
+  public static Path snapshot(Path root, int version) {
+    return root.resolve(SNAPSHOTS).resolve(String.format("%05d", version));
+  }
+
+  /** run の最新の版: root/snapshots の、{@value Snapshot#POLICY} まで書き終わった版のうち番号が最も大きいもの。 */
+  public static Path latestSnapshot(Path root) throws IOException {
+    Path snapshots = root.resolve(SNAPSHOTS);
+    if (!Files.isDirectory(snapshots)) {
+      throw new IOException("Not a snapshot or a run directory: " + root);
+    }
+    try (Stream<Path> versions = Files.list(snapshots)) {
+      return versions
+          .filter(path -> path.getFileName().toString().matches("\\d+"))
+          .filter(path -> Files.isRegularFile(path.resolve(Snapshot.POLICY)))
+          .max(Comparator.comparingInt(path -> Integer.parseInt(path.getFileName().toString())))
+          .orElseThrow(() -> new IOException("No snapshot in " + snapshots));
+    }
   }
 
   /** reports/name の最後の記録の鍵 key の整数（ファイルか記録か鍵がなければ 0）。再開で同じ反復の記録と評価を書き直さないために使う。 */

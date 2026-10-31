@@ -502,7 +502,7 @@ public final class Lineage {
   }
 
   private Path snapshot(int t) {
-    return root.resolve("snapshots").resolve(String.format("%05d", t));
+    return RunFiles.snapshot(root, t);
   }
 
   private Path cohort(int t) {

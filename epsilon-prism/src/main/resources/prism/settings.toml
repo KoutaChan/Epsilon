@@ -9,6 +9,18 @@ validateIndices = false
 # 版を開く既定の device。空ならGPUを番号順に全て使い、GPUがなければCPU。cpu・gpu:0・gpu:0,gpu:1 のように書く。
 inference = ""
 
+# play-riichi（RiichiLab のランク戦）の接続と実行の設定。
+[epsilon.riichi]
+
+# RiichiLab の接続 token。空なら未設定で、接続にはローカルの設定での指定が要る。token を含む設定は commit しない。
+token = ""
+
+# 打つ版のディレクトリ（snapshots/<版>）か run のディレクトリ（その最新の版）。相対パスは起動ディレクトリが基準。
+checkpointDir = "runs/prism-v2b"
+
+# 完了する対局数の上限。0 なら止めるまで次の対局へ参加する。
+maxGames = 0
+
 # 新しい run の設定。鍵は run の config.json の欄の名前と同じで、train が新しい run を始めるときだけ値を読む（再開は config.json を読む）。
 # evaluate・audit-grp・牌譜解析のバッチ・device・推論の道・seed もここから読む。epsilon.prism. で始まる鍵は全てここの鍵で、知らない鍵は
 # 新しい run でも再開でも拒む。系譜は白紙の網から始め、生徒 1 本を TEMPO で当て、教師は運の精算の帳簿で補正し、根の記録も学ぶ（学習器の形は

@@ -26,9 +26,6 @@ import org.slf4j.LoggerFactory;
  */
 public final class Fit {
 
-  /** 記録の名前。 */
-  public static final String NAME = "v2";
-
   /** 先に作っておく歩の数。 */
   static final int PREFETCH = 2;
 
@@ -143,7 +140,7 @@ public final class Fit {
     int steps = plan.learner().steps();
     int batchSize = plan.learner().batchSize();
     if (rows.length == 0 || steps <= 0) {
-      return FitResult.empty(NAME, rows.length);
+      return FitResult.empty(rows.length);
     }
     int[] order = shuffle(rows, plan.seed());
     double sum = 0;
@@ -205,7 +202,6 @@ public final class Fit {
     }
     // 秒数は学習器を閉じる（更新の完了を待つ）までを含める
     return new FitResult(
-        NAME,
         rows.length,
         steps,
         clipped,

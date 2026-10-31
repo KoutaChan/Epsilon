@@ -246,7 +246,7 @@ public class NetworkPolicyTest {
           snapshot,
           network,
           PolicyParams.of(1),
-          new Snapshot.FitRecord(snapshot.toString(), 1, 1, 0, plan, FitResult.empty(Fit.NAME, 0)));
+          new Snapshot.FitRecord(snapshot.toString(), 1, 1, 0, plan, FitResult.empty(0)));
     }
   }
 

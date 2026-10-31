@@ -426,7 +426,7 @@ public final class Lineage {
     try (Model student = Fit.load(start, devices.primary())) {
       result =
           steps == 0
-              ? FitResult.empty(Fit.NAME, rows.length)
+              ? FitResult.empty(rows.length)
               : Fit.run(
                   store,
                   rows,

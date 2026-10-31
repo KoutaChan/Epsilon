@@ -4,7 +4,7 @@ import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.config.settings.InferenceBatchingSettings;
 import com.epsilon.nano.ai.grp.EpsilonGrpTrainingSession;
 import com.epsilon.prism.collect.CollectionDriver;
-import com.epsilon.prism.collect.FixedGrpPhi;
+import com.epsilon.prism.collect.GrpPhi;
 import com.epsilon.prism.collect.HandValue;
 import com.epsilon.prism.collect.PhiCalibration;
 import com.epsilon.spi.PolicyExecutionContext;
@@ -70,7 +70,7 @@ public final class TrainingResources implements AutoCloseable {
       HandValue phi =
           grp == null
               ? HandValue.scoreRank(profile)
-              : new FixedGrpPhi(
+              : new GrpPhi(
                   grp.inference(),
                   profile,
                   driver.executor(),

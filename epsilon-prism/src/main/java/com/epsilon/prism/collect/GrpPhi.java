@@ -23,7 +23,7 @@ import java.util.function.Consumer;
  * {@link EpsilonGrpInference#maxBatch} 行で行い、足りない行はバッチの最後の系列の写しで埋める。行の数が一つに決まれば、値は行の位置・隣の系列・
  * 詰め物の長さに依らない。メモの追い出しの後に評価し直しても同じ値になるので、同じ設定で 2 回集めた Y は最後のビットまで一致する。
  */
-public final class FixedGrpPhi implements HandValue {
+public final class GrpPhi implements HandValue {
   private static final Object STOP = new Object();
   private final EpsilonGrpInference inference;
   private final EpsilonUtilityProfile profile;
@@ -43,7 +43,7 @@ public final class FixedGrpPhi implements HandValue {
   /**
    * @param driver ドライバのスレッドで実行するための投入口
    */
-  public FixedGrpPhi(
+  public GrpPhi(
       EpsilonGrpInference inference,
       EpsilonUtilityProfile profile,
       Consumer<Runnable> driver,
@@ -58,7 +58,7 @@ public final class FixedGrpPhi implements HandValue {
    * @param temperatures 次局の局番号（東1 = 0）ごとの温度（最後の値はそれ以降の局にも使う）。空なら較正しない
    * @param calibration 効用の空間の較正の表（{@link PhiCalibration}。null なら使わない。温度で較正した後の Φ に掛ける）
    */
-  public FixedGrpPhi(
+  public GrpPhi(
       EpsilonGrpInference inference,
       EpsilonUtilityProfile profile,
       Consumer<Runnable> driver,
@@ -67,8 +67,9 @@ public final class FixedGrpPhi implements HandValue {
       double[] temperatures,
       PhiCalibration calibration) {
     this.calibration = calibration;
-    for (double temperature : temperatures)
+    for (double temperature : temperatures) {
       if (!(temperature > 0)) throw new IllegalArgumentException("Φ temperatures must be positive");
+    }
     this.temperatures = temperatures.clone();
     this.inference = Objects.requireNonNull(inference);
     if (!profile.rankBased()) throw new IllegalArgumentException("Φ needs a rank utility");
@@ -90,8 +91,11 @@ public final class FixedGrpPhi implements HandValue {
     Entry entry = caches.get(key);
     if (entry != null) {
       hits++;
-      if (entry.values != null) completion.accept(entry.values);
-      else entry.waiters.add(completion);
+      if (entry.values != null) {
+        completion.accept(entry.values);
+      } else {
+        entry.waiters.add(completion);
+      }
       return;
     }
     if (caches.size() >= maxCaches) caches.values().removeIf(old -> old.values != null);
@@ -129,9 +133,13 @@ public final class FixedGrpPhi implements HandValue {
           batch.add((Entry) next);
         }
         long started = System.nanoTime();
-        for (Entry entry : batch) prefixes.add(entry.prefix);
+        for (Entry entry : batch) {
+          prefixes.add(entry.prefix);
+        }
         // 不変条件: 順伝播の行の数は常に inference.maxBatch()（詰め物の結果は捨てる）
-        while (prefixes.size() % inference.maxBatch() != 0) prefixes.add(batch.getLast().prefix);
+        while (prefixes.size() % inference.maxBatch() != 0) {
+          prefixes.add(batch.getLast().prefix);
+        }
         List<float[]> marginals = inference.predictMarginalProbabilities(prefixes);
         if (marginals.size() != prefixes.size())
           throw new IllegalStateException("GRP returned a different batch size");

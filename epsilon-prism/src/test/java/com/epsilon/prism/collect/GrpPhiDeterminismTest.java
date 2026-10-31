@@ -25,7 +25,7 @@ import org.testng.annotations.Test;
  * GRP の Φ の値は公開系列だけで決まる: 要求の来る間隔（バッチの組み方）とメモの追い出しを変えても、同じ系列には最後のビットまで同じ値を返し、それは
  * {@link EpsilonGrpInference#maxBatch} 行ずつの評価と一致する。ドライバのスレッドがメモを持ち、複数のスレッドが要求を投げる収集と同じ形で確かめる。
  */
-public class FixedGrpPhiDeterminismTest {
+public class GrpPhiDeterminismTest {
   private static final int PRODUCERS = 8, PREFIXES = 2000, REQUESTS = 1500, MEMO = 512;
 
   @Test(groups = "native")
@@ -60,7 +60,7 @@ public class FixedGrpPhiDeterminismTest {
     double[][] values = new double[PREFIXES][];
     int[] conflicts = {0};
     CountDownLatch done = new CountDownLatch(PRODUCERS * REQUESTS);
-    try (var phi = new FixedGrpPhi(inference, EpsilonUtilityProfile.TENHOU, driver::execute, 256, MEMO)) {
+    try (var phi = new GrpPhi(inference, EpsilonUtilityProfile.TENHOU, driver::execute, 256, MEMO)) {
       List<Thread> producers = new ArrayList<>();
       for (int p = 0; p < PRODUCERS; p++) {
         var random = new SplittableRandom(100 + p);

@@ -6,7 +6,7 @@ import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.network.NetworkDevices;
 import com.epsilon.prism.collect.Behaviour;
 import com.epsilon.prism.collect.EventLedger;
-import com.epsilon.prism.collect.FixedGrpPhi;
+import com.epsilon.prism.collect.GrpPhi;
 import com.epsilon.prism.collect.PhiCalibration;
 import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.core.CrnScheme;
@@ -98,7 +98,7 @@ import java.util.Set;
  * @param filterLrMode TEMPO の学習率の倍率の決め方（{@link FilterLrMode}。GAIN = min(1, K′_t / {@value #FILTER_LR_GAIN})、FULL = 1。K′_t の予定は
  *     変えない）
  * @param phiTemperatures Φ の較正: 次局の局番号ごとの温度を読点で区切ったもの（GRP の順位分布を p' ∝ p^(1/T) にする。{@link
- *     FixedGrpPhi#calibrated}。空なら較正しない）
+ *     GrpPhi#calibrated}。空なら較正しない）
  * @param phiCalibration Φ の効用の空間の較正の表（{@link PhiCalibration} の JSON のパス。空なら使わない。phiTemperatures の後に掛ける）
  * @param phi 局末の値 Φ の種類（{@value #PHI_GRP} = 固定の GRP、{@value #PHI_SCORE_RANK} = 局末の点数をそのまま最終順位とみなす試験用の代用）
  * @param grpCheckpoint Φ の固定の GRP（phi = grp の train では必須）

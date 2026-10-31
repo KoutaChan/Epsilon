@@ -29,10 +29,10 @@ public final class FixedGrpPhi implements HandValue {
   private final EpsilonUtilityProfile profile;
   private final Consumer<Runnable> driver;
   private final int maxBatch;
-  private final int memoLimit;
+  private final int maxCaches;
   private final double[] temperatures;
   private final PhiCalibration calibration;
-  private final HashMap<Key, Entry> memo = new HashMap<>();
+  private final HashMap<Key, Entry> caches = new HashMap<>();
   private final LinkedBlockingQueue<Object> queue = new LinkedBlockingQueue<>();
   private final Thread worker;
   private volatile Throwable failure;
@@ -48,8 +48,8 @@ public final class FixedGrpPhi implements HandValue {
       EpsilonUtilityProfile profile,
       Consumer<Runnable> driver,
       int maxBatch,
-      int memoLimit) {
-    this(inference, profile, driver, maxBatch, memoLimit, new double[0], null);
+      int maxCaches) {
+    this(inference, profile, driver, maxBatch, maxCaches, new double[0], null);
   }
 
   /**
@@ -63,7 +63,7 @@ public final class FixedGrpPhi implements HandValue {
       EpsilonUtilityProfile profile,
       Consumer<Runnable> driver,
       int maxBatch,
-      int memoLimit,
+      int maxCaches,
       double[] temperatures,
       PhiCalibration calibration) {
     this.calibration = calibration;
@@ -75,7 +75,7 @@ public final class FixedGrpPhi implements HandValue {
     this.profile = profile;
     this.driver = Objects.requireNonNull(driver);
     this.maxBatch = maxBatch;
-    this.memoLimit = memoLimit;
+    this.maxCaches = maxCaches;
     worker = new Thread(this::run, "prism-grp");
     worker.setDaemon(true);
     worker.start();
@@ -87,17 +87,17 @@ public final class FixedGrpPhi implements HandValue {
     if (problem != null) throw new IllegalStateException("GRP evaluation failed", problem);
     requests++;
     Key key = new Key(prefix);
-    Entry entry = memo.get(key);
+    Entry entry = caches.get(key);
     if (entry != null) {
       hits++;
       if (entry.values != null) completion.accept(entry.values);
       else entry.waiters.add(completion);
       return;
     }
-    if (memo.size() >= memoLimit) memo.values().removeIf(old -> old.values != null);
+    if (caches.size() >= maxCaches) caches.values().removeIf(old -> old.values != null);
     entry = new Entry(prefix);
     entry.waiters.add(completion);
-    memo.put(key, entry);
+    caches.put(key, entry);
     pending++;
     queue.add(entry);
   }

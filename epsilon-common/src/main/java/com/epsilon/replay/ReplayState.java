@@ -162,7 +162,7 @@ final class ReplayState {
 
   void applyClosedKan(Ankan kan) {
     transition.completeAnkan(kan.actor(), Tile.typeOf(kan.consumedPhysicalTileIds()[0]));
-    afterSelfKan(kan.actor());
+    afterSelfKan(kan.actor(), TurnEvent.KanKind.ANKAN);
   }
 
   void applyAddedKan(Kakan kan) {
@@ -213,12 +213,19 @@ final class ReplayState {
 
   void applyOpenKan(Daiminkan kan) {
     transition.completeDaiminkan(kan.actor(), (TurnEvent.Discard) state.getTurnEvent());
-    transition.beginReconstructionRinshan(kan.actor());
+    transition.beginReconstructionRinshan(kan.actor(), true);
     clearCall();
   }
 
   void revealDora(Dora dora) {
     state.revealDoraIndicator(dora.indicatorTileType(), dora.indicatorAka());
+  }
+
+  /** {@code player} が大明槓・加槓の嶺上牌をツモり、その新ドラを打牌の後まで保留しているか。 */
+  boolean revealsDoraAfterDiscard(int player) {
+    return state.getTurnEvent() instanceof TurnEvent.Draw draw
+        && draw.player() == player
+        && draw.doraRevealPending();
   }
 
   void settleWin(Hora hora) {
@@ -264,7 +271,7 @@ final class ReplayState {
 
   private void completeAddedKan(ResponseWindow window) {
     clearKanRobState();
-    afterSelfKan(window.sourcePlayer());
+    afterSelfKan(window.sourcePlayer(), TurnEvent.KanKind.KAKAN);
   }
 
   private void clearKanRobState() {
@@ -304,8 +311,8 @@ final class ReplayState {
     this.call = call;
   }
 
-  private void afterSelfKan(int actor) {
-    transition.beginReconstructionRinshan(actor);
+  private void afterSelfKan(int actor, TurnEvent.KanKind kind) {
+    transition.beginReconstructionRinshan(actor, kind == TurnEvent.KanKind.KAKAN);
     clearCall();
   }
 

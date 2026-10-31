@@ -35,6 +35,9 @@ public final class ReplayEngine {
   private int stateId;
   private int turnCauseEventIndex = -1;
 
+  /** すぐ後の打牌の後に開く大明槓・加槓の新ドラ（なければ null）。 */
+  private Dora doraAfterKan;
+
   private ReplayEngine(ReplayRecord record, ReplayObserver observer) {
     events = record.events();
     this.observer = observer;
@@ -86,6 +89,10 @@ public final class ReplayEngine {
         emitRecordedAction(
             discard.actor(), action, state.discardActions(discard.actor()), turnCauseEventIndex);
         state.applyDiscard(discard, action);
+        if (doraAfterKan != null) {
+          state.revealDora(doraAfterKan);
+          doraAfterKan = null;
+        }
         openResponses(discard.actor(), false);
       }
       case Ankan kan -> {
@@ -107,7 +114,13 @@ public final class ReplayEngine {
       }
       case Reach reach -> state.applyRiichiDeclaration(reach);
       case ReachAccepted accepted -> state.applyRiichiPayment(accepted);
-      case Dora dora -> state.revealDora(dora);
+      case Dora dora -> {
+        if (revealsAfterTheNextDiscard()) {
+          doraAfterKan = dora;
+        } else {
+          state.revealDora(dora);
+        }
+      }
       case Hora win -> {
         if (win.actor() != win.target())
           throw new IllegalStateException("Ron event outside response window: " + win);
@@ -133,6 +146,16 @@ public final class ReplayEngine {
       case Daiminkan ignored -> throw responseOutsideWindow(event);
     }
     stateId++;
+  }
+
+  /**
+   * 今のドラ表示が、すぐ後の打牌の後に開く大明槓・加槓の新ドラか。
+   */
+  private boolean revealsAfterTheNextDiscard() {
+    int next = currentEventIndex + 1;
+    return next < events.size()
+        && events.get(next) instanceof Dahai discard
+        && state.revealsDoraAfterDiscard(discard.actor());
   }
 
   private void openResponses(int sourcePlayer, boolean addedKan) {

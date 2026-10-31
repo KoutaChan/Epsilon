@@ -56,10 +56,16 @@ public final class MahjongTransition {
     return draw;
   }
 
-  /** 牌譜の既知ツモを基準の牌山カーソルと手牌へ同時反映する。 */
+  /**
+   * 牌譜の既知ツモを基準の牌山カーソルと手牌へ同時反映する。{@link #beginReconstructionRinshan} で始めた嶺上ツモは、新ドラを打牌の後まで
+   * 保留する印を引き継ぐ。
+   */
   public TurnEvent.Draw reconstructDraw(int player, int physicalTileId, boolean rinshan) {
+    boolean doraRevealPending = false;
     if (rinshan) {
-      if (!(state.getTurnEvent() instanceof TurnEvent.Draw draw && draw.isRinshanDraw())) {
+      if (state.getTurnEvent() instanceof TurnEvent.Draw begun && begun.isRinshanDraw()) {
+        doraRevealPending = begun.doraRevealPending();
+      } else {
         state.consumeReconstructionRinshanDraw();
       }
     } else {
@@ -73,7 +79,7 @@ public final class MahjongTransition {
             player,
             physicalTileId,
             rinshan ? TurnEvent.DrawSource.RINSHAN : TurnEvent.DrawSource.WALL,
-            false);
+            doraRevealPending);
     state.setCurrentPlayer(player);
     return draw;
   }
@@ -261,12 +267,17 @@ public final class MahjongTransition {
     return chi;
   }
 
-  /** 牌譜再生で成立済み槓の未知嶺上ツモ境界へ進める。 */
-  public TurnEvent.Draw beginReconstructionRinshan(int player) {
+  /**
+   * 牌譜再生で成立済み槓の未知嶺上ツモ境界へ進める。大明槓・加槓は {@link #drawFromDeadWall} と同じく新ドラを打牌の後まで保留する印を付ける
+   * （開くのは牌譜のドラ表示）。
+   */
+  public TurnEvent.Draw beginReconstructionRinshan(
+      int player, boolean delayDoraRevealUntilDiscard) {
     state.consumeReconstructionRinshanDraw();
     state.clearAllIppatsu();
     state.setCurrentPlayer(player);
-    return state.recordDraw(player, -1, TurnEvent.DrawSource.RINSHAN, false);
+    return state.recordDraw(
+        player, -1, TurnEvent.DrawSource.RINSHAN, delayDoraRevealUntilDiscard);
   }
 
   public void revealReconstructedDora(int indicatorTileType) {

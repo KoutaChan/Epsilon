@@ -18,8 +18,7 @@ import org.testng.annotations.Test;
  * 河の長さに上限を置かず、鳴きの多い局でも手順が崩れないことを確かめる。
  *
  * <p>random は鳴きを高い率で受ける乱数の打ち手。target は席0の手番が最も増える鳴き方だけをする: 席0の捨て牌を他の3席がポン・チーし（上家の
- * ポンなら他の2席の手番が飛ぶ）、席0は下家の捨て牌をポンする。局数はシステムプロパティ turns.games で増やせ、turns.verbose で分布を出す
- * （2026-10-11 の調査では 42.9万局で違反 0、最長の河 24 枚）。
+ * ポンなら他の2席の手番が飛ぶ）、席0は下家の捨て牌をポンする。局数はシステムプロパティ turns.games で増やせ、turns.verbose で分布を出す。
  */
 public class TurnAccountingTest {
   private static final Logger log = LoggerFactory.getLogger(TurnAccountingTest.class);

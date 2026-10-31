@@ -38,7 +38,11 @@ HIPでの推論と自己対戦の収集には、自前のHIPの実行系を使�
 ./mvnw -Procm -Dpytorch.rocm.flavor=rocm7.2 -Pnative-hip package
 ```
 
-CPUだけで動かす場合は、設定の`inference`を`"EAGER"`にします（DJLで推論します）。
+### CUDAの場合
+
+NVIDIA GPUでは自前のHIPの実行系は使えません。`-Pcuda`で組み立て（[プロジェクト共通の手順](../BUILDING.md)）、設定の`inference`を`"EAGER"`にすると、DJLで推論と学習を行います。
+
+CPUだけで動かす場合も、設定の`inference`を`"EAGER"`にします（DJLで推論します）。
 
 ## 設定と保存先
 

@@ -30,4 +30,17 @@ GPU実行環境の準備は[djl-rocm](https://github.com/KoutaChan/djl-rocm)を�
 
 </details>
 
+<details>
+<summary>NVIDIA GPUを使う場合（Linux / Windows・CUDA）</summary>
+
+NVIDIA GPUを使う場合は、`-Pcuda`を付けてビルドします。実行用JARに同梱するDJLのJNIがCUDA版になります。CUDA 12.8の例です。
+
+```bash
+./mvnw -Pcuda -Dpytorch.cuda.flavor=cu128 package
+```
+
+CUDA版のJNI（`pytorch-jni-cu128-linux-x86_64`・`pytorch-jni-cu128-win-x86_64`）は、使っているDJLと同じ版のものを[djl-rocm](https://github.com/KoutaChan/djl-rocm)で用意する必要があります。
+
+</details>
+
 [シリーズ一覧へ戻る](README.md#epsilon-シリーズ)

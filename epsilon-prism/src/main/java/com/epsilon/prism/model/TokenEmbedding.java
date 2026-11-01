@@ -3,6 +3,7 @@ package com.epsilon.prism.model;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
+import com.epsilon.prism.model.FitProbe.Stage;
 import com.epsilon.prism.model.WidthPlan.Axis;
 import com.epsilon.prism.model.WidthPlan.Role;
 import java.util.EnumMap;
@@ -60,6 +61,10 @@ final class TokenEmbedding extends Module {
             ? type.pack().pack(category, columns, table)
             : type.pack()
                 .pack(category, columns, table, context.toCompute(inputs.get(type.scalar())));
-    return context.linear(packed, projections.get(type), biases.get(type));
+    // 計測のときは欄の並べを葉にして、表の勾配への足し込みを Linear の逆伝播と分ける（Context#probeCut）
+    return context.linear(
+        context.probeCut(packed, Stage.EMBED_PACK_BACKWARD, 0),
+        projections.get(type),
+        biases.get(type));
   }
 }

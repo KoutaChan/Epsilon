@@ -224,12 +224,18 @@ public final class PrismNetwork extends AbstractBlock {
               index.candidateWidth);
       candidates =
           outcome.forward(
-              context, chosen, NDArrays.gatherRows(decision, index.candidateRows.array()));
+              context,
+              chosen,
+              context.probeCut(
+                  NDArrays.gatherRows(decision, index.candidateRows.array()), Stage.GATHER_BACKWARD, 0));
     }
     NDArray readings =
         index.readingCount == 0
             ? null
-            : reading.forward(context, NDArrays.gatherRows(states, index.readingRows.array()));
+            : reading.forward(
+                context,
+                context.probeCut(
+                    NDArrays.gatherRows(states, index.readingRows.array()), Stage.GATHER_BACKWARD, 0));
     return new Outputs.Auxiliary(candidates, readings);
   }
 

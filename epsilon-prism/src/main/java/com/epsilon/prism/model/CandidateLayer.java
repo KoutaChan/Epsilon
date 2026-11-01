@@ -14,6 +14,7 @@ import com.epsilon.prism.input.InputSchema.KeyBlock;
 import com.epsilon.prism.input.InputSchema.Tensor;
 import com.epsilon.prism.input.InputSchema.TransitionField;
 import com.epsilon.prism.input.InputSchema.TransitionScalar;
+import com.epsilon.prism.model.FitProbe.Stage;
 import com.epsilon.prism.model.WidthPlan.Axis;
 import com.epsilon.prism.model.WidthPlan.Role;
 
@@ -130,10 +131,14 @@ final class CandidateLayer extends Module {
     NDArray category = inputs.get(Tensor.TRANSITION_CATEGORY);
     NDArray packed =
         PACK.pack(category, index.columns(PACK), context.value(table), scalars(context, inputs));
+    // 計測のときは t0 と、交差注意の FP32 の入力と出力を葉にして、逆伝播を段に分ける（Context#probeCut）
     NDArray start =
-        context
-            .linear(packed, project, projectBias)
-            .add(context.linear(tileStates(context, category, index, states), tileEntry, null));
+        context.probeCut(
+            context
+                .linear(packed, project, projectBias)
+                .add(context.linear(tileStates(context, category, index, states), tileEntry, null)),
+            Stage.CANDIDATE_START_BACKWARD,
+            0);
 
     NDArray queries =
         context
@@ -143,15 +148,18 @@ final class CandidateLayer extends Module {
     NDArray codes = context.own(context.fp32(codeKey).concat(context.fp32(codeValue), 1));
     NDManager working = context.working();
     NDArray attended =
-        NDArrays.mappedGroupedIndexedScaledDotProductAttention(
-            context.toFloat(queries),
-            context.toFloat(memory),
-            index.transitionRows.array(),
-            codes,
-            inputs.get(Tensor.TRANSITION_CODE).toType(DataType.INT32, false),
-            working.zeros(new Shape(transitions, 1, 2L * attention), DataType.FLOAT32),
-            working.zeros(new Shape(transitions, 1), DataType.INT32),
-            EncoderLayer.SCALE);
+        context.probeCut(
+            NDArrays.mappedGroupedIndexedScaledDotProductAttention(
+                context.probeCut(context.toFloat(queries), Stage.CROSS_PROJECTION_BACKWARD, 0),
+                context.probeCut(context.toFloat(memory), Stage.CROSS_PROJECTION_BACKWARD, 0),
+                index.transitionRows.array(),
+                codes,
+                inputs.get(Tensor.TRANSITION_CODE).toType(DataType.INT32, false),
+                working.zeros(new Shape(transitions, 1, 2L * attention), DataType.FLOAT32),
+                working.zeros(new Shape(transitions, 1), DataType.INT32),
+                EncoderLayer.SCALE),
+            Stage.CROSS_ATTENTION_BACKWARD,
+            0);
     NDArray residual =
         start.add(
             context.linear(
@@ -187,6 +195,8 @@ final class CandidateLayer extends Module {
     long hidden = states.getShape().get(2);
     NDArray flat = states.reshape(-1, hidden);
     NDArray present = tile.gt(0).toType(context.compute(), false).expandDims(1);
-    return NDArrays.gatherRows(flat, position).mul(present);
+    return context
+        .probeCut(NDArrays.gatherRows(flat, position), Stage.GATHER_BACKWARD, 0)
+        .mul(present);
   }
 }

@@ -129,7 +129,7 @@ public final class AttentionTape {
   }
 
   /**
-   * 値を葉にする（層の入力と、q・kv が共に読む正規化の出力。計測のときは背骨の出力も）。
+   * 値を葉にする（層の入力と、q・kv が共に読む正規化の出力。計測のときは {@link Context#probeCut} の葉も）。
    *
    * @param source 値（前の木の出力）
    * @param stage 葉の注入（元の値の木の逆伝播）を計る段

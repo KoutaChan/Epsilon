@@ -11,6 +11,7 @@ import ai.djl.nn.Activation;
 import ai.djl.nn.Parameter;
 import ai.djl.nn.core.Linear;
 import ai.djl.training.ParameterStore;
+import com.epsilon.prism.model.FitProbe.Stage;
 
 /**
  * 1 回の順伝播の文脈。パラメーターの値の取り方と、丸めの所を 1 か所に置く。
@@ -74,6 +75,20 @@ public final class Context {
   /** 段の時計の印（計測しないなら {@link FitProbe#NONE}）。 */
   FitProbe probe() {
     return probe;
+  }
+
+  /**
+   * 計測のときだけ値を葉にする（{@link FitProbe#cuts} で、注意の記録がある学習。{@link AttentionTape#cut}）。葉の勾配の注入は stage
+   * の段に入るので、逆伝播を段に分けて計れる。注入する勾配は葉への寄与の和そのものなので、勾配は葉にしないときと同じ式。注入は木を
+   * 残さないので、source の木（前の葉まで）は、値を保存した節をほかの葉の木と共にしないこと。
+   *
+   * @param source 値（勾配を持つ木の出力）
+   * @param stage 葉の注入を計る段
+   * @param layer 段の層の番号（層の段でなければ 0）
+   * @return 計測のときは葉（同じ値）、ほかは source
+   */
+  NDArray probeCut(NDArray source, Stage stage, int layer) {
+    return tape == null || !probe.cuts() ? source : tape.cut(source, stage, layer);
   }
 
   public NDManager working() {

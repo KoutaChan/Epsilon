@@ -4,6 +4,9 @@ import com.epsilon.prism.collect.EventLedger;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.rows.LedgerRow;
 import com.epsilon.prism.rows.Row;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -219,6 +222,62 @@ public class LedgerFitTest {
     LedgerFit.Correction fit = LedgerFit.fit(rows(20_000, 0, mixed, coefficients, 0.2, 7)).correction();
     for (int g = 0; g < 2; g++)
       Assert.assertEquals(fit.beta()[g][DecisionClass.CALL.ordinal()][15], 4.0, 0.2, "fold " + g);
+  }
+
+  /**
+   * 書き手ごとに書いた順に足す {@link LedgerFit.Stream} は、シャード 0、1、2 の順に並べた列の {@link LedgerFit#fit} とビットで同じ（シャードの
+   * 間の呼ぶ順に依らない）。帳簿は fp16 に丸め、行ごとに欄の一部を全ての手で 0（中心化して 0）、1 手だけ 0 にし、飛ばす行（帳簿なし・測った手が 1 つ）
+   * も混ぜる。
+   */
+  @Test
+  public void streamMatchesTheReadBackOrderBitwise() {
+    int shards = 3;
+    List<SyntheticRow> written = new ArrayList<>();
+    for (SyntheticRow row : rows(6000, 0, ones(), planted(), 0.3, 11)) {
+      float[] ledger = row.ledger().clone();
+      for (int a = 0; a < row.actions(); a++)
+        for (int f = 0; f < F; f++) {
+          int k = a * F + f;
+          if (Float.isNaN(ledger[k])) continue;
+          boolean zero = (row.gameId() + f) % 3 == 0 || (a == 1 && f % 5 == 0);
+          ledger[k] = zero ? 0f : Float.float16ToFloat(Float.floatToFloat16(ledger[k]));
+        }
+      written.add(withValues(row, row.values(), ledger));
+    }
+    written.set(17, withValues(written.get(17), written.get(17).values(), null));
+    float[] single = written.get(29).values().clone();
+    single[1] = single[2] = Float.NaN;
+    float[] singleLedger = written.get(29).ledger().clone();
+    Arrays.fill(singleLedger, F, 3 * F, Float.NaN);
+    written.set(29, withValues(written.get(29), single, singleLedger));
+    List<List<SyntheticRow>> byShard = new ArrayList<>();
+    for (int shard = 0; shard < shards; shard++) byShard.add(new ArrayList<>());
+    for (int i = 0; i < written.size(); i++) byShard.get(i % shards).add(written.get(i));
+    List<SyntheticRow> readBack = new ArrayList<>();
+    for (List<SyntheticRow> shard : byShard) readBack.addAll(shard);
+    var stream = new LedgerFit.Stream(shards);
+    for (int shard : new int[] {2, 0, 1}) for (SyntheticRow row : byShard.get(shard)) stream.add(shard, row);
+    LedgerFit.Result streamed = stream.fit();
+    Assert.assertEquals(streamed.report().skippedRows(), 2);
+    assertBitwiseEqual(streamed, LedgerFit.fit(readBack));
+  }
+
+  /** 2 つの当てはめの係数と報告（秒を除く）がビットで同じ。 */
+  public static void assertBitwiseEqual(LedgerFit.Result actual, LedgerFit.Result expected) {
+    double[][][] a = actual.correction().beta(), e = expected.correction().beta();
+    for (int g = 0; g < e.length; g++)
+      for (int c = 0; c < e[g].length; c++)
+        for (int f = 0; f < e[g][c].length; f++)
+          Assert.assertEquals(
+              Double.doubleToRawLongBits(a[g][c][f]),
+              Double.doubleToRawLongBits(e[g][c][f]),
+              "beta " + g + " " + c + " " + f);
+    Gson gson = new GsonBuilder().serializeSpecialFloatingPointValues().create();
+    JsonObject left = gson.toJsonTree(actual.report()).getAsJsonObject();
+    JsonObject right = gson.toJsonTree(expected.report()).getAsJsonObject();
+    left.remove("seconds");
+    right.remove("seconds");
+    Assert.assertEquals(left.toString(), right.toString());
   }
 
   private static SyntheticRow withValues(SyntheticRow row, float[] values, float[] ledger) {

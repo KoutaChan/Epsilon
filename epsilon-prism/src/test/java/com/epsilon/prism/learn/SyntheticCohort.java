@@ -81,7 +81,7 @@ final class SyntheticCohort implements DecisionWalk.Visitor {
    * @throws IOException 書けないとき
    */
   static void write(Path directory, int iteration, List<Row> rows) throws IOException {
-    try (CohortWriter writer = new CohortWriter(directory, iteration, 0, 2)) {
+    try (CohortWriter writer = new CohortWriter(directory, iteration, 0, 2, CohortWriter.Tap.NONE)) {
       for (Row row : rows) {
         writer.accept(row);
       }

@@ -55,7 +55,8 @@ import org.slf4j.LoggerFactory;
  *   <li>収集（{@link #collect}）: 版 t の collectWith の網（{@link NetworkPolicy}）の貪欲に床 ε_b を混ぜた b で全席が
  *       打ち、ラベル行（MAIN・ROLLIN）と根の記録（ROOT）を rows-v2/&lt;t&gt; に書いて封印する。封印済みなら使い回す。
  *   <li>運の精算: 生徒の行（コホート t の TRAIN のラベル行と根の記録、{@link Selection#LABELS_AND_ROOTS}）の帳簿で、半荘の偶奇で交差適合
- *       した β_c を当てる（{@link LedgerFit}）。
+ *       した β_c を当てる（{@link LedgerFit}）。和は収集の書き手が行を書くときに作り（{@link LedgerFit.Stream}）、使い回したコホートでは
+ *       読み直して作る（どちらも同じ行を同じ順に足すので、β はビットで同じ）。
  *   <li>生徒（{@link #fitStudent}）: 版 t の learnFrom の網 θ_t から温め、生徒の行を 1 行 fitEpochs 周（上限 fitSteps 歩）当てる（{@link Fit}）。
  *       教師は (1 − K′_t)·s_θt + K′_t·Ỹ（Ỹ は帳簿で補正した Y。帳簿のある行がなければ生の Y。錨は凍結した θ_t）、補助の頭の項も K′_t 倍
  *       （{@link Teacher}）、学習率は filterLrMode が K′_t から決める倍率（{@link FilterLrMode}: GAIN なら min(1, K′_t / 0.25)、FULL なら 1）。
@@ -159,7 +160,8 @@ public final class Lineage {
         report.put("iteration", t);
         report.put("phi", config.phi());
         // 1. 収集（版 t の b）
-        totalRows += collect(t, resources, profile, collectDevices, report);
+        Collected collected = collect(t, resources, profile, collectDevices, report);
+        totalRows += collected.rows();
         report.put("collectSeconds", (System.nanoTime() - started) / 1e9);
         report.put("totalRows", totalRows);
         // 2〜3. 運の精算と生徒
@@ -174,7 +176,7 @@ public final class Lineage {
               counts.copyLabels(),
               counts.roots(),
               counts.holdout());
-          ledgerR2 = learn(t, store, learnerDevices, ledgerR2, report);
+          ledgerR2 = learn(t, store, collected.ledger(), learnerDevices, ledgerR2, report);
         }
         accepted++;
         // 4. 方策の記憶（版 t+1）
@@ -219,6 +221,14 @@ public final class Lineage {
   }
 
   /**
+   * 集めたコホート。
+   *
+   * @param rows 行数（封印した目録の値）
+   * @param ledger 書き手が作った運の精算の和（封印済みのコホートを使い回したときは null）
+   */
+  private record Collected(long rows, LedgerFit.Stream ledger) {}
+
+  /**
    * state.json を読む。なければ版 1 を書いて始める: 白紙の網（形は {@link PrismConfig#shape}、初期値の種は seed + 100）。
    */
   private State loadOrInitialize() throws IOException {
@@ -247,12 +257,12 @@ public final class Lineage {
    * コホート t を集めて封印する。封印済みなら使い回す（{@link CohortWriter#MANIFEST} がある）。途中のコホートは消して集め直す（その行で当てた
    * work/&lt;t&gt; も消す）。方策は版 t の collectWith の網（{@link Snapshot#open}、p0 の係数は {@link
    * PrismConfig#priorSettings}）で、Cohort(seed, cohortSeed(seed, t), cohortGames(t, gamesPerCohort(t)), 効用, sampling(), behaviour()) を
-   * 収集する。受付とデバイスのパイプラインの計測（待ち・合成・空き）は収集の区間だけで測り、方策を閉じる前に記録に書く（{@link
-   * DecisionCollectionDiagnostics}）。
+   * 収集する。書き手は書いた行で運の精算の和を作る（{@link LedgerFit.Stream}）。受付とデバイスのパイプラインの計測（待ち・合成・空き）は
+   * 収集の区間だけで測り、方策を閉じる前に記録に書く（{@link DecisionCollectionDiagnostics}）。
    *
-   * @return そのコホートの行数（封印した目録の値）
+   * @return そのコホートの行数と運の精算の和
    */
-  private long collect(
+  private Collected collect(
       int t,
       TrainingResources resources,
       EpsilonUtilityProfile profile,
@@ -263,12 +273,13 @@ public final class Lineage {
     if (Files.exists(cohort.resolve(CohortWriter.MANIFEST))) {
       report.put("collection", "reused the sealed cohort");
       LOG.info("t={} reusing the sealed cohort", t);
-      return CohortWriter.readManifest(cohort).rows();
+      return new Collected(CohortWriter.readManifest(cohort).rows(), null);
     }
     if (Files.exists(cohort)) deleteTree(cohort);
     if (Files.exists(work(t))) deleteTree(work(t));
     Sampling sampling = config.sampling();
     CollectionDriver.Result collected;
+    var ledger = new LedgerFit.Stream(config.rowWriters());
     try (var policy =
             Snapshot.open(
                 snapshot(t),
@@ -278,7 +289,8 @@ public final class Lineage {
                 config.inferBatch(),
                 config.priorSettings(),
                 config.inference());
-        var writer = new CohortWriter(cohort, t, EventLedger.FEATURES, config.rowWriters())) {
+        var writer =
+            new CohortWriter(cohort, t, EventLedger.FEATURES, config.rowWriters(), ledger)) {
       // 計測の区間をこの収集に合わせる（網を開いた後でまだ推論はない。同じ JVM の前の評価の予約の最大などを持ち越さない）
       DecisionExecutionContext inference = resources.execution().devices();
       inference.resetInferenceMetrics();
@@ -315,7 +327,7 @@ public final class Lineage {
     report.put("copies", counts.copies());
     report.put("forks", counts.forks());
     LOG.info("t={} {}", t, collected.summary());
-    return written.rows();
+    return new Collected(written.rows(), ledger);
   }
 
   /**
@@ -342,11 +354,17 @@ public final class Lineage {
    * 反復 t の学習（クラスの説明の 2〜3）: 生徒の行の帳簿で β を当て、生徒 1 本を当てる。帳簿のある行を当てはめたときだけ教師を補正する。
    * 生徒を当てるなら、帳簿の当てはめの間に錨の s と学習器の温めを別のスレッドで進める（帳簿は CPU だけを使い、学習のデバイスは空いている）。
    *
+   * @param stream 収集の書き手が作った運の精算の和（null ならコホートを読み直す）
    * @param ledgerR2 前の反復で教師に掛けた補正の保留の R²（この反復の K′ の元）
    * @return この反復で教師に掛けた補正の保留の R²（次の反復の K′ の元。掛けなければ 0）
    */
   private double learn(
-      int t, CohortStore store, NetworkDevices devices, double ledgerR2, Map<String, Object> report)
+      int t,
+      CohortStore store,
+      LedgerFit.Stream stream,
+      NetworkDevices devices,
+      double ledgerR2,
+      Map<String, Object> report)
       throws IOException {
     int[] rows = store.select(t, t, Selection.LABELS_AND_ROOTS);
     boolean fits = !studentSaved(t) && fitSteps(rows.length) > 0;
@@ -376,7 +394,7 @@ public final class Lineage {
                           config.decodeThreads()))
               : null;
       try {
-        ledger = fitLedger(t, store, rows, report);
+        ledger = fitLedger(t, store, rows, stream, report);
         if (scores != null) anchor = await(scores);
       } catch (IOException | RuntimeException | Error failure) {
         if (warmed != null) closeAfter(warmed, failure);
@@ -399,19 +417,33 @@ public final class Lineage {
   }
 
   /**
-   * 運の精算の係数を、生徒の行の帳簿で半荘の偶奇で交差適合して当てる。行は貯蔵から batchSize 行ずつ decodeThreads 本で読む。
+   * 運の精算の係数を、生徒の行の帳簿で半荘の偶奇で交差適合して当てる。和は書き手が作ったもの（stream）を使い、なければ行を貯蔵から batchSize
+   * 行ずつ decodeThreads 本で読み直す。
+   *
+   * @throws IllegalStateException stream の行の数が選んだ行の数と違うとき
    */
-  private LedgerFit.Result fitLedger(int t, CohortStore store, int[] rows, Map<String, Object> report) {
+  private LedgerFit.Result fitLedger(
+      int t, CohortStore store, int[] rows, LedgerFit.Stream stream, Map<String, Object> report) {
     LedgerFit.Result ledger;
-    try (ExecutorService readers = Executors.newFixedThreadPool(config.decodeThreads())) {
-      ledger = LedgerFit.fit(store.iterate(rows, config.batchSize(), readers, config.decodeThreads()));
+    if (stream != null) {
+      ledger = stream.fit();
+      long seen = ledger.report().rows() + ledger.report().skippedRows();
+      if (seen != rows.length)
+        throw new IllegalStateException(
+            "Ledger of cohort " + t + " summed " + seen + " rows but " + rows.length + " are selected");
+    } else {
+      try (ExecutorService readers = Executors.newFixedThreadPool(config.decodeThreads())) {
+        ledger =
+            LedgerFit.fit(store.iterate(rows, config.batchSize(), readers, config.decodeThreads()));
+      }
     }
     LedgerFit.Report fit = ledger.report();
     report.put("ledger", fit);
     LOG.info(
         String.format(
-            "t=%d ledger rows=%d skipped=%d r2=%.4f forks=%.3f groups=%s %.1fs",
+            "t=%d ledger %s rows=%d skipped=%d r2=%.4f forks=%.3f groups=%s %.1fs",
             t,
+            stream != null ? "streamed" : "re-read",
             fit.rows(),
             fit.skippedRows(),
             fit.all().r2(),

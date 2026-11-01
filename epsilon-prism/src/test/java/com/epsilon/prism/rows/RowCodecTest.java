@@ -73,7 +73,7 @@ public class RowCodecTest {
   public void cohortWriterRecordsFingerprintsAndFrames() throws IOException {
     Path directory = Files.createTempDirectory("prism-rows");
     List<Row> rows = rows(120);
-    try (CohortWriter writer = new CohortWriter(directory, 3, FEATURES, 2)) {
+    try (CohortWriter writer = new CohortWriter(directory, 3, FEATURES, 2, CohortWriter.Tap.NONE)) {
       for (Row row : rows) {
         writer.accept(row);
       }

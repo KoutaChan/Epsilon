@@ -17,14 +17,19 @@ import java.util.function.Consumer;
  * 元の GRP（grp-epsilon-v3）を固定で使う Φ。公開系列の内容でメモ化し、同じ pivot の候補が同じ点数で局を終えた場合は1回だけ評価する。
  *
  * <p>評価は専用のスレッド（prism-grp）でまとめて行い、完了はドライバの実行キューへ戻す。メモと待ち合わせの表はドライバのスレッドだけが触る。
+ * バッチは最初の要求から {@link #GATHER_NANOS} を期限に、順伝播の塊（{@link EpsilonGrpInference#maxBatch} 行）が満ちるまで待って集める。
+ * 塊が満ちたら待たずに今ある分だけ足すので、詰め物は期限で閉じたバッチの最後の塊にしか出ない。局末の値の遅れは期限と評価の時間までで、
+ * 対局の進行は値を待たない（値は行と運の網の標本に渡るだけ）。
  *
- * <p>決定性: Φ の値は公開系列だけで決まる。バッチの組み方は実行の順（キューに入った順と poll で集まった数）で変わるが、CPU の GRU の出力は
+ * <p>決定性: Φ の値は公開系列だけで決まる。バッチの組み方は実行の順（キューに入った順と期限までに集まった数）で変わるが、CPU の GRU の出力は
  * 順伝播の行の数で最後のビットが変わる（1 行・2〜3 行・4 行以上で別の値。2〜3 行では隣の行にも依る）。そこで順伝播は常に
  * {@link EpsilonGrpInference#maxBatch} 行で行い、足りない行はバッチの最後の系列の写しで埋める。行の数が一つに決まれば、値は行の位置・隣の系列・
  * 詰め物の長さに依らない。メモの追い出しの後に評価し直しても同じ値になるので、同じ設定で 2 回集めた Y は最後のビットまで一致する。
  */
 public final class GrpPhi implements HandValue {
   private static final Object STOP = new Object();
+  /** 最初の要求からバッチを閉じるまでの期限（ナノ秒）。局末の到着の速さで塊がおよそ満ちる長さ。 */
+  static final long GATHER_NANOS = TimeUnit.MILLISECONDS.toNanos(10);
   private final EpsilonGrpInference inference;
   private final EpsilonUtilityProfile profile;
   private final Consumer<Runnable> driver;
@@ -124,8 +129,13 @@ public final class GrpPhi implements HandValue {
         Object first = queue.take();
         if (first == STOP) return;
         batch.add((Entry) first);
-        Object next;
-        while (batch.size() < maxBatch && (next = queue.poll(0, TimeUnit.NANOSECONDS)) != null) {
+        long deadline = System.nanoTime() + GATHER_NANOS;
+        while (batch.size() < maxBatch) {
+          // 満ちていない塊は期限まで待って埋め、満ちた塊の後は今ある分だけを取る
+          long wait =
+              batch.size() % inference.maxBatch() == 0 ? 0 : deadline - System.nanoTime();
+          Object next = queue.poll(Math.max(0, wait), TimeUnit.NANOSECONDS);
+          if (next == null) break;
           if (next == STOP) {
             queue.add(STOP);
             break;

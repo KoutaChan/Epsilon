@@ -41,7 +41,7 @@ public class GrpPhiDeterminismTest {
           new Shape(-1));
       var inference = new EpsilonGrpInference(model, 64);
       double[][] expected = expected(inference, prefixes);
-      // 間隔 0 は大きなバッチ、2 ms は 1〜数件のバッチ（GRU の別の計算になる 1〜3 行）を作る
+      // 間隔 0 は塊の満ちた大きなバッチ、2 ms は期限で閉じる詰め物の多いバッチを作る
       for (long gapNanos : new long[] {0, 2_000_000}) {
         double[][] values = collect(inference, prefixes, gapNanos);
         for (int id = 0; id < PREFIXES; id++)
@@ -50,6 +50,69 @@ public class GrpPhiDeterminismTest {
                 Arrays.stream(values[id]).mapToLong(Double::doubleToRawLongBits).toArray(),
                 Arrays.stream(expected[id]).mapToLong(Double::doubleToRawLongBits).toArray(),
                 "prefix " + id + " gap " + gapNanos);
+      }
+    }
+  }
+
+  /**
+   * 一度に来た要求は塊の満ちたバッチにまとまり（期限で閉じない限りバッチの数は ⌈件数 / 塊⌉ 以下）、1 件だけの要求も期限で評価されて、値は
+   * 塊ごとの評価とビットで一致する。
+   */
+  @Test(groups = "native")
+  public void burstsFillWholeForwardsAndALoneRequestCompletes() throws Exception {
+    List<float[]> prefixes = prefixes(new SplittableRandom(11)).subList(0, 200);
+    try (Model model = Model.newInstance("grp", Device.cpu(), "PyTorch")) {
+      var block = new EpsilonGrpNetwork();
+      model.setBlock(block);
+      block.initialize(
+          model.getNDManager(),
+          DataType.FLOAT32,
+          new Shape(-1, -1, EpsilonGrpFeature.FEATURE_SIZE),
+          new Shape(-1));
+      var inference = new EpsilonGrpInference(model, 64);
+      double[][] expected = expected(inference, prefixes);
+      ExecutorService driver = Executors.newSingleThreadExecutor();
+      try (var phi = new GrpPhi(inference, EpsilonUtilityProfile.TENHOU, driver::execute, 256, MEMO)) {
+        double[][] values = new double[prefixes.size()][];
+        CountDownLatch lone = new CountDownLatch(1);
+        driver.execute(
+            () ->
+                phi.request(
+                    prefixes.get(0),
+                    new int[4],
+                    result -> {
+                      values[0] = result;
+                      lone.countDown();
+                    }));
+        Assert.assertTrue(lone.await(30, TimeUnit.SECONDS), "a lone request must be evaluated");
+        CountDownLatch burst = new CountDownLatch(prefixes.size() - 1);
+        driver.execute(
+            () -> {
+              for (int id = 1; id < prefixes.size(); id++) {
+                int row = id;
+                phi.request(
+                    prefixes.get(row),
+                    new int[4],
+                    result -> {
+                      values[row] = result;
+                      burst.countDown();
+                    });
+              }
+            });
+        Assert.assertTrue(burst.await(30, TimeUnit.SECONDS));
+        // バッチの数は完了を渡した後に数えるので、ここで読む値は少ない側にしかずれない（1 件だけの要求の分は数え終わっている）
+        int chunk = inference.maxBatch();
+        long batches = phi.stats().batches() - 1;
+        Assert.assertTrue(
+            batches <= (prefixes.size() - 1 + chunk - 1) / chunk, "batches " + batches);
+        for (int id = 0; id < prefixes.size(); id++)
+          Assert.assertEquals(
+              Arrays.stream(values[id]).mapToLong(Double::doubleToRawLongBits).toArray(),
+              Arrays.stream(expected[id]).mapToLong(Double::doubleToRawLongBits).toArray(),
+              "prefix " + id);
+      } finally {
+        driver.shutdown();
+        driver.awaitTermination(1, TimeUnit.MINUTES);
       }
     }
   }
@@ -101,8 +164,8 @@ public class GrpPhiDeterminismTest {
     var padded = new ArrayList<>(prefixes);
     while (padded.size() % inference.maxBatch() != 0) padded.add(prefixes.getLast());
     List<float[]> marginals = inference.predictMarginalProbabilities(padded);
-    double[][] out = new double[PREFIXES][4];
-    for (int id = 0; id < PREFIXES; id++)
+    double[][] out = new double[prefixes.size()][4];
+    for (int id = 0; id < prefixes.size(); id++)
       for (int seat = 0; seat < 4; seat++)
         out[id][seat] =
             EpsilonUtilityTargets.expectedRankUtilityTrustedDouble(

@@ -15,6 +15,10 @@ import com.epsilon.engine.WinClaim;
 import com.epsilon.prism.auxiliary.OutcomeCodec;
 import com.epsilon.prism.core.CrnScheme;
 import com.epsilon.prism.core.CrnSeeds;
+import com.epsilon.prism.learn.CohortStore;
+import com.epsilon.prism.learn.LedgerFit;
+import com.epsilon.prism.learn.LedgerFitTest;
+import com.epsilon.prism.learn.Selection;
 import com.epsilon.prism.luck.LuckSample;
 import com.epsilon.prism.luck.LuckSampleStore;
 import com.epsilon.prism.luck.LuckSampleWriter;
@@ -48,6 +52,7 @@ import java.util.Map;
 import java.util.SplittableRandom;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -111,21 +116,27 @@ public class CollectionDriverTest {
   }
 
   /**
-   * 行を一時ディレクトリのコホートに書き（書き手 2 本）、封印して {@link RowCodec} で読み戻す道具。閉じるとディレクトリを消す。
+   * 行を一時ディレクトリのコホートに書き（書き手 2 本。書いた行で運の精算の和も作る）、封印して {@link RowCodec} で読み戻す道具。閉じると
+   * ディレクトリを消す。
    */
   static final class TemporaryCohort implements AutoCloseable {
     final Path directory;
+    final LedgerFit.Stream ledger = new LedgerFit.Stream(2);
     final CohortWriter writer;
     final RowSink sink;
 
     /** 収集の率 sampling の帳簿の有無に合わせた欄の数で書き手を作る。 */
     TemporaryCohort(Sampling sampling) throws IOException {
       directory = Files.createTempDirectory("prism-rows");
-      writer = new CohortWriter(directory, 1, sampling.eventLedger() ? EventLedger.FEATURES : 0, 2);
+      writer =
+          new CohortWriter(directory, 1, sampling.eventLedger() ? EventLedger.FEATURES : 0, 2, ledger);
       sink = new RowSink(writer);
     }
 
-    /** 封印して全ての行を読み戻す（目録とフレームの数の食い違いは試験の失敗）。 */
+    /**
+     * 封印して全ての行を読み戻す（目録とフレームの数の食い違いは試験の失敗）。書き手が作った運の精算の和は、封印したコホートを選んで読み直した
+     * 当てはめとビットで同じ。
+     */
     List<Row> sealAndRead() throws IOException {
       writer.seal();
       CohortWriter.Manifest manifest = CohortWriter.readManifest(directory);
@@ -137,6 +148,16 @@ public class CollectionDriverTest {
       }
       Assert.assertEquals(rows.size(), manifest.rows());
       Assert.assertEquals(rows.size(), sink.rows());
+      try (var store = new CohortStore();
+          var readers = Executors.newFixedThreadPool(2)) {
+        store.addCohort(directory);
+        int[] selected = store.select(1, 1, Selection.LABELS_AND_ROOTS);
+        LedgerFit.Result streamed = ledger.fit();
+        Assert.assertEquals(
+            streamed.report().rows() + streamed.report().skippedRows(), selected.length);
+        LedgerFitTest.assertBitwiseEqual(
+            streamed, LedgerFit.fit(store.iterate(selected, 7, readers, 2)));
+      }
       return rows;
     }
 

@@ -16,6 +16,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -30,6 +31,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>{@link #seal} で全シャードを同期してから目録を原子的に置き、以後このディレクトリは変えない。封印せずに閉じたら（収集が途中で失敗した）
  * 目録を置かないので、再開時に途中のコホートとして消して集め直す。
+ *
+ * <p>書いた行は、書き手のスレッドでシャードごとに書いた順に {@link Tap} へ渡す（行を読み直さずに行の和を作る読み手のため）。
  */
 public final class CohortWriter implements AutoCloseable {
 
@@ -66,6 +69,21 @@ public final class CohortWriter implements AutoCloseable {
   public static Path index(Path shard) {
     String name = shard.getFileName().toString();
     return shard.resolveSibling(name.substring(0, name.lastIndexOf('.')) + ".idx");
+  }
+
+  /** 書いた行の受け手。 */
+  public interface Tap {
+    /** 何もしない受け手。 */
+    Tap NONE = (shard, row, index) -> {};
+
+    /**
+     * シャード shard に行を書いた（シャードの書き手のスレッドから、シャードの中の書いた順に呼ぶ）。投げた例外は書き手の失敗になる。
+     *
+     * @param shard シャードの番号
+     * @param row 行
+     * @param index 行の索引（.idx に書いたもの）
+     */
+    void written(int shard, Row row, RowCodec.Index index);
   }
 
   /**
@@ -114,6 +132,7 @@ public final class CohortWriter implements AutoCloseable {
   private final Path directory;
   private final int iteration;
   private final int ledgerFeatures;
+  private final Tap tap;
   private final List<Worker> workers = new ArrayList<>();
   private final AtomicInteger next = new AtomicInteger();
   private final AtomicLong backlog = new AtomicLong();
@@ -129,10 +148,11 @@ public final class CohortWriter implements AutoCloseable {
    * @param iteration コホート
    * @param ledgerFeatures 帳簿の欄の数（全ての行で同じ）
    * @param writers 書き手のスレッドの数（シャードの数）
+   * @param tap 書いた行の受け手
    * @throws IllegalArgumentException 書き手の数か帳簿の欄の数が範囲の外のとき
    * @throws IOException 既に封印されているか、ディレクトリを作れないとき
    */
-  public CohortWriter(Path directory, int iteration, int ledgerFeatures, int writers)
+  public CohortWriter(Path directory, int iteration, int ledgerFeatures, int writers, Tap tap)
       throws IOException {
     if (writers < 1) {
       throw new IllegalArgumentException("writer count must be positive: " + writers);
@@ -140,6 +160,7 @@ public final class CohortWriter implements AutoCloseable {
     this.directory = directory;
     this.iteration = iteration;
     this.ledgerFeatures = ledgerFeatures;
+    this.tap = Objects.requireNonNull(tap, "tap");
     Files.createDirectories(directory);
     if (Files.exists(directory.resolve(MANIFEST))) {
       throw new IOException("Rows are already sealed: " + directory);
@@ -276,6 +297,7 @@ public final class CohortWriter implements AutoCloseable {
     static final Object STOP = new Object();
 
     final LinkedBlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+    final int shard;
     final Path file;
     final Thread thread;
     final RowCodec codec = new RowCodec(ledgerFeatures);
@@ -283,6 +305,7 @@ public final class CohortWriter implements AutoCloseable {
     long bytes;
 
     Worker(int index) {
+      shard = index;
       file = directory.resolve(String.format("shard-%02d.rows", index));
       thread = new Thread(this::run, "prism-row-" + index);
       thread.setDaemon(true);
@@ -320,6 +343,7 @@ public final class CohortWriter implements AutoCloseable {
               .put((byte) entry.source().ordinal())
               .put((byte) entry.decisionClass().ordinal())
               .put((byte) entry.measured());
+          tap.written(shard, row, entry);
           rows++;
           bytes += frame.length;
           CohortWriter.this.bytes.addAndGet(frame.length);

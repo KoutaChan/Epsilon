@@ -2,8 +2,12 @@ package com.epsilon.prism.learn;
 
 import com.epsilon.prism.collect.EventLedger;
 import com.epsilon.prism.core.DecisionClass;
+import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.LedgerRow;
+import com.epsilon.prism.rows.Row;
+import com.epsilon.prism.rows.RowCodec;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +29,9 @@ import java.util.Map;
  * <p>報告（{@link Report}）: held-out の残差 SSE_{g,c} = yy − 2β·b + βᵀAβ（偶奇 g の和、β は他方の偶奇で当てたもの）から R² = 1 − ΣSSE/Σyy
  * （行の中で中心化した Y の分散の減り）と同等の分岐の本数 Σyy/ΣSSE、欄の組（{@link EventLedger#GROUPS}）ごとの部分
  * R²、偏りの確かめ（特徴ごとの生の L の平均・標準偏差・0 でない割合・半荘で束ねた z）。
+ *
+ * <p>系譜は和を収集の間に作る（{@link Stream}）。和は行を足す順で決まるので、{@link Stream} は封印したコホートを選んで読み直す {@link #fit} と
+ * 同じ行を同じ順に足し、結果はビットで同じ。
  */
 public final class LedgerFit {
   /** ridge の係数（特徴ごとの対角 A_ff に掛ける。標準化した特徴の上の ridge と同じ）。 */
@@ -117,7 +124,7 @@ public final class LedgerFit {
    * @param skippedRows 帳簿のない行（と帳簿の欠けた行）の数
    * @param all 全体（全ての類をまとめた交差適合）
    * @param byClass 類ごと（行のない類は載せない）
-   * @param seconds 当てはめの全体の秒（行の列を読む時間を含む）
+   * @param seconds 当てはめの秒（{@link #fit} は行の列を読む時間を含み、{@link Stream#fit} は貯めた行を足して解く時間）
    */
   public record Report(
       long rows,
@@ -142,6 +149,183 @@ public final class LedgerFit {
     var accumulator = new Accumulator();
     for (LedgerRow row : rows) accumulator.add(row);
     return accumulator.fit(started);
+  }
+
+  /**
+   * 収集の間に和を作る当てはめ（コホートの書き手の {@link CohortWriter.Tap}）。足すのは {@link Selection#LABELS_AND_ROOTS} の行で、
+   * 封印したコホートを選んで読み直す列（シャード 0 の行を書いた順、続いてシャード 1、…）と同じ順に足す: シャード 0 の行はその書き手のスレッドで
+   * そのまま足し、ほかのシャードの行は測った手の Y と帳簿を書いた順に貯めて（{@link Tape}）、{@link #fit} でシャードの順に足す。
+   *
+   * <p>{@link #written} はシャードごとに 1 つのスレッド（その書き手）から呼ぶ。{@link #fit} は書き手を止めた後（{@link CohortWriter#seal}）に
+   * 1 度だけ呼ぶ。
+   */
+  public static final class Stream implements CohortWriter.Tap {
+    private final Accumulator accumulator = new Accumulator();
+    private final Tape[] tapes;
+    private boolean fitted;
+
+    /**
+     * @param shards コホートの書き手の数（シャードの数）
+     */
+    public Stream(int shards) {
+      if (shards < 1) throw new IllegalArgumentException("shard count must be positive: " + shards);
+      tapes = new Tape[shards];
+      for (int shard = 1; shard < shards; shard++) tapes[shard] = new Tape();
+    }
+
+    @Override
+    public void written(int shard, Row row, RowCodec.Index index) {
+      if (Selection.LABELS_AND_ROOTS.test(index)) add(shard, row);
+    }
+
+    /** シャード shard の書き手が次に書いた行を足す（シャード 0 は足し、ほかは貯める）。 */
+    void add(int shard, LedgerRow row) {
+      if (shard < 0 || shard >= tapes.length)
+        throw new IllegalArgumentException("shard " + shard + " out of " + tapes.length);
+      if (shard == 0) accumulator.add(row);
+      else tapes[shard].append(row);
+    }
+
+    /**
+     * 貯めた行をシャードの順に足して解く（貯めた行はここで手放す）。
+     *
+     * @throws IllegalStateException 2 度目に呼んだとき
+     */
+    public Result fit() {
+      if (fitted) throw new IllegalStateException("Ledger stream is already fitted");
+      fitted = true;
+      long started = System.nanoTime();
+      for (int shard = 1; shard < tapes.length; shard++) {
+        tapes[shard].replay(accumulator);
+        tapes[shard] = null;
+      }
+      return accumulator.fit(started);
+    }
+  }
+
+  /**
+   * シャード 1 本の貯めた行: 行ごとに半荘・類・組と、測った手（手の順）の Y と帳簿の欄を書いた順に持つ。帳簿は fp16 で持つ（コホートの行の帳簿は fp16
+   * で厳密。{@link RowCodec}）。手は {@value #BLOCK} 手の塊に置き、1 行の手は塊をまたがない。飛ばす行（{@link Accumulator#measured} が null）は
+   * 数だけ持つ。
+   */
+  private static final class Tape {
+    static final int BLOCK = 1 << 16;
+    static final DecisionClass[] CLASS = DecisionClass.values();
+    static final Row.Group[] GROUP = Row.Group.values();
+
+    final List<float[]> values = new ArrayList<>();
+    final List<short[]> terms = new ArrayList<>();
+    long[] games = new long[1024];
+    byte[] classes = new byte[1024], groups = new byte[1024], counts = new byte[1024];
+
+    /** 行の手の位置（塊の番号 × BLOCK + 塊の中の位置）。 */
+    long[] starts = new long[1024];
+
+    int rows;
+
+    /** 次の行の手の位置。 */
+    long slot;
+
+    long skipped;
+
+    void append(LedgerRow row) {
+      int[] measured = Accumulator.measured(row);
+      if (measured == null) {
+        skipped++;
+        return;
+      }
+      int m = measured.length;
+      if (slot % BLOCK + m > BLOCK) slot += BLOCK - slot % BLOCK;
+      if (slot / BLOCK == values.size()) {
+        values.add(new float[BLOCK]);
+        terms.add(new short[BLOCK * F]);
+      }
+      if (rows == games.length) {
+        int capacity = rows * 2;
+        games = Arrays.copyOf(games, capacity);
+        classes = Arrays.copyOf(classes, capacity);
+        groups = Arrays.copyOf(groups, capacity);
+        counts = Arrays.copyOf(counts, capacity);
+        starts = Arrays.copyOf(starts, capacity);
+      }
+      float[] y = values.get((int) (slot / BLOCK));
+      short[] l = terms.get((int) (slot / BLOCK));
+      int at = (int) (slot % BLOCK);
+      float[] source = row.values();
+      for (int i = 0; i < m; i++) {
+        y[at + i] = source[measured[i]];
+        for (int f = 0; f < F; f++) {
+          float term = row.ledger(measured[i], f);
+          short half = Float.floatToFloat16(term);
+          if (Float.floatToRawIntBits(Float.float16ToFloat(half)) != Float.floatToRawIntBits(term))
+            throw new IllegalArgumentException("ledger term is not exact in fp16: " + term);
+          l[(at + i) * F + f] = half;
+        }
+      }
+      games[rows] = row.gameId();
+      classes[rows] = (byte) row.decisionClass().ordinal();
+      groups[rows] = (byte) row.group().ordinal();
+      counts[rows] = (byte) m;
+      starts[rows] = slot;
+      rows++;
+      slot += m;
+    }
+
+    /** 貯めた行を書いた順に足す（測った手だけの行として。測った手の順と値は元の行と同じなので、足す値もビットで同じ）。 */
+    void replay(Accumulator accumulator) {
+      accumulator.skipped += skipped;
+      for (int r = 0; r < rows; r++) accumulator.add(new Stored(r));
+    }
+
+    /** 貯めた行 r。 */
+    private final class Stored implements LedgerRow {
+      final int row, start;
+      final float[] y;
+      final short[] l;
+
+      Stored(int row) {
+        this.row = row;
+        int block = (int) (starts[row] / BLOCK);
+        start = (int) (starts[row] % BLOCK);
+        y = values.get(block);
+        l = terms.get(block);
+      }
+
+      @Override
+      public long gameId() {
+        return games[row];
+      }
+
+      @Override
+      public DecisionClass decisionClass() {
+        return CLASS[classes[row]];
+      }
+
+      @Override
+      public Row.Group group() {
+        return GROUP[groups[row]];
+      }
+
+      @Override
+      public float[] values() {
+        return Arrays.copyOfRange(y, start, start + counts[row]);
+      }
+
+      @Override
+      public boolean hasLedger() {
+        return true;
+      }
+
+      @Override
+      public int ledgerFeatures() {
+        return F;
+      }
+
+      @Override
+      public float ledger(int action, int feature) {
+        return Float.float16ToFloat(l[(start + action) * F + feature]);
+      }
+    }
   }
 
   /** (組, 偶奇, 類) の和: A = Σ l̃ l̃ᵀ、b = Σ l̃ ỹ、yy = Σ ỹ²、行と手の数。 */
@@ -251,29 +435,35 @@ public final class LedgerFit {
         for (int p = 0; p < 2; p++) for (int c = 0; c < CLASSES; c++) sums[g][p][c] = new Sums();
     }
 
-    void add(LedgerRow row) {
-      if (!row.hasLedger()) {
-        skipped++;
-        return;
-      }
+    /**
+     * 当てはめに入れる行の測った手（手の順。長さは測った手の数）。帳簿がないか、測った手が 2 つに足りないか、測った手の帳簿が 1 つでも有限でなければ
+     * null（飛ばす行）。
+     *
+     * @throws IllegalStateException 帳簿の欄の数が {@link EventLedger#FEATURES} でないとき
+     */
+    static int[] measured(LedgerRow row) {
+      if (!row.hasLedger()) return null;
       if (row.ledgerFeatures() != F)
         throw new IllegalStateException(
             "Ledger of game " + row.gameId() + " has " + row.ledgerFeatures() + " features, expected " + F);
       float[] values = row.values();
-      int n = values.length;
-      int[] measured = new int[n];
+      int[] measured = new int[values.length];
       int m = 0;
-      for (int a = 0; a < n; a++) if (!Float.isNaN(values[a])) measured[m++] = a;
-      if (m < 2) {
+      for (int a = 0; a < values.length; a++) if (!Float.isNaN(values[a])) measured[m++] = a;
+      if (m < 2) return null;
+      for (int i = 0; i < m; i++)
+        for (int f = 0; f < F; f++) if (!Float.isFinite(row.ledger(measured[i], f))) return null;
+      return Arrays.copyOf(measured, m);
+    }
+
+    void add(LedgerRow row) {
+      int[] measured = measured(row);
+      if (measured == null) {
         skipped++;
         return;
       }
-      for (int i = 0; i < m; i++)
-        for (int f = 0; f < F; f++)
-          if (!Float.isFinite(row.ledger(measured[i], f))) {
-            skipped++;
-            return;
-          }
+      float[] values = row.values();
+      int m = measured.length;
       double meanY = 0;
       double[] meanL = new double[F];
       for (int i = 0; i < m; i++) {

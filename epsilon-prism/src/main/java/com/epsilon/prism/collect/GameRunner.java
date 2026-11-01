@@ -297,7 +297,7 @@ final class GameRunner {
 
   /**
    * 境界の各判断の方策を求める。合法手 1 つは強制手で問い合わせない（requests[index] = null、plans[index] = {@link LabelPlan#NONE}）。ほかの判断は
-   * 種別・段階・脅威の数から類を決め（{@link DecisionClass#of}）、予定を決め（{@link LabelPlan#decide}。写しのラベル行の
+   * 種別・段階・脅威の数・局の番号から類を決め（{@link DecisionClass#of}）、予定を決め（{@link LabelPlan#decide}。写しのラベル行の
    * 予約はここで copyLabels を数える）、{@link PolicyRequest}（retain = 予定の retain）を作り、記録 O を要る問い合わせだけ捕捉する（{@link
    * #capture}）。inline の方策はその場で評価し、そうでなければ outstanding に足す。件数（modelDecisions・役割別・類ごとの主経路の判断）もここで
    * 経路の {@link DecisionCounts} に数える（advance の終わりに metrics へ足す）。非同期の問い合わせが残れば true。
@@ -321,7 +321,8 @@ final class GameRunner {
       int seat = point.player();
       Kind kind = Kind.classify(point.kind(), legal);
       int threats = Threats.count(state, seat);
-      DecisionClass decisionClass = DecisionClass.of(kind, stage, threats);
+      DecisionClass decisionClass =
+          DecisionClass.of(kind, stage, threats, state.getKyokuIndex());
       decisionCounts.countModel(decisionClass);
       LabelPlan plan =
           LabelPlan.decide(

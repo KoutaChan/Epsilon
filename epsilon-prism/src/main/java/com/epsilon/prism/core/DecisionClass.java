@@ -1,13 +1,20 @@
 package com.epsilon.prism.core;
 
+import com.epsilon.engine.HanchanProgression;
+
 /**
  * 判断の類 c。ラベル行の率 ρ_c、ロールインの率 β_c、損失の温度 λ_c、運の精算の係数 β_c の単位。種別（{@link Kind}）・段階（{@link Stage}）・公開の脅威の数
- * （{@link Threats#count}）だけで決まる公開情報。
+ * （{@link Threats#count}）・局の番号だけで決まる公開情報。
  *
  * <ul>
  *   <li>打牌の類（{@link #DISCARD_EARLY}・{@link #DISCARD_MID}・{@link #DISCARD_LATE}）: 種別が DISCARD か POSTCALL で、脅威のない打牌。段階で分ける。
- *   <li>確約の類（{@link #commitment()}）: {@link #THREAT}（脅威のもとの打牌）・{@link #RIICHI}・{@link #CALL}・{@link #KAN}・{@link #END}。
+ *   <li>確約の類（{@link #commitment()}）: {@link #THREAT}（脅威のもとの打牌）・{@link #RIICHI}・{@link #CALL}・{@link #KAN}・{@link #END}・
+ *       {@link #FINAL_END}。
  * </ul>
+ *
+ * <p>オーラス（飛びのほかに、この局の終わりで半荘が終わりうる局。南 4 局と西入の局）の和了は {@link #FINAL_END} に分け、ラベル行の率を確約の類と
+ * 別に持つ（既定で全てラベル行にする）。半荘の行方を決める判断で、和了で半荘を終えた分岐の値は推定でなく確定した順位の効用になる。九種九牌は
+ * 局をやり直すだけで半荘を終えないので、オーラスでも {@link #END} に残す。
  *
  * <p>番号は行の形式（フレームの索引と本体）に入るので、足すときは末尾に足す。
  */
@@ -26,8 +33,10 @@ public enum DecisionClass {
   CALL,
   /** 暗槓・加槓・大明槓のいずれかが合法。 */
   KAN,
-  /** 局を終える手（ツモ和了・ロン和了・九種九牌）が合法。 */
-  END;
+  /** 局を終える手（ツモ和了・ロン和了・九種九牌）が合法（オーラスの和了のほか）。 */
+  END,
+  /** オーラスで和了（ツモ和了・ロン和了）が合法。 */
+  FINAL_END;
 
   private static final DecisionClass[] VALUES = values();
 
@@ -43,14 +52,16 @@ public enum DecisionClass {
   }
 
   /**
-   * 判断の類。種別の優先は {@link Kind#classify} のまま（和了・九種 → END、立直 → RIICHI、槓 → KAN、鳴き → CALL）。打牌（DISCARD・POSTCALL）は
-   * 脅威があれば THREAT、なければ段階の打牌の類。
+   * 判断の類。種別の優先は {@link Kind#classify} のまま（和了 → END、オーラスなら FINAL_END、九種 → END、立直 → RIICHI、槓 → KAN、
+   * 鳴き → CALL）。打牌（DISCARD・POSTCALL）は脅威があれば THREAT、なければ段階の打牌の類。
    *
    * @param threats 判断の席から見た公開の脅威の数（{@link Threats#count}）
+   * @param kyoku 局の番号（東 1 局を 0 とする通算。{@link HanchanProgression#SOUTH_END_KYOKU} 以降がオーラス）
    */
-  public static DecisionClass of(Kind kind, Stage stage, int threats) {
+  public static DecisionClass of(Kind kind, Stage stage, int threats, int kyoku) {
     return switch (kind) {
-      case WIN, KYUSHU -> END;
+      case WIN -> kyoku >= HanchanProgression.SOUTH_END_KYOKU ? FINAL_END : END;
+      case KYUSHU -> END;
       case RIICHI -> RIICHI;
       case KAN -> KAN;
       case CALL -> CALL;

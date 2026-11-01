@@ -85,7 +85,10 @@ public final class SnapshotScorer implements AutoCloseable {
         legal,
         kind,
         DecisionClass.of(
-            kind, Stage.of(observation.remainingWallTiles()), Threats.count(observation)),
+            kind,
+            Stage.of(observation.remainingWallTiles()),
+            Threats.count(observation),
+            observation.roundIndex()),
         false);
   }
 

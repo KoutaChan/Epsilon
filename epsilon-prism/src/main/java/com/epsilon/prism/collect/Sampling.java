@@ -11,7 +11,8 @@ import java.util.Arrays;
  * @param labelRateDiscardEarly 脅威のない序盤の打牌のラベル行の率 ρ
  * @param labelRateDiscardMid 脅威のない中盤の打牌のラベル行の率 ρ
  * @param labelRateDiscardLate 脅威のない終盤の打牌のラベル行の率 ρ
- * @param labelRateCommit 確約の類（{@link DecisionClass#commitment()}）のラベル行の率 ρ
+ * @param labelRateCommit 確約の類（{@link DecisionClass#commitment()}）のラベル行の率 ρ（{@link DecisionClass#FINAL_END} のほか）
+ * @param labelRateFinalEnd オーラスの和了（{@link DecisionClass#FINAL_END}）のラベル行の率 ρ
  * @param maxCandidates 候補集合 C(o) の大きさの上限（双子をまとめた後）
  * @param measureAllDiscards 打牌の類（脅威のない序盤・中盤・終盤）では候補集合を全ての合法手（双子をまとめた代表）にするか
  * @param epsilonC 候補集合に一様な 1 手を足す確率 ε_C
@@ -30,6 +31,7 @@ public record Sampling(
     double labelRateDiscardMid,
     double labelRateDiscardLate,
     double labelRateCommit,
+    double labelRateFinalEnd,
     int maxCandidates,
     boolean measureAllDiscards,
     double epsilonC,
@@ -41,7 +43,7 @@ public record Sampling(
     double[] rollinOverrides,
     boolean eventLedger) {
   /** 行も写しも作らない（評価）。 */
-  public static final Sampling OFF = new Sampling(0, 0, 0, 0, 0, 2, false, 0, 0, 0, 0, 0, 0);
+  public static final Sampling OFF = new Sampling(0, 0, 0, 0, 0, 0, 2, false, 0, 0, 0, 0, 0, 0);
 
   public Sampling {
     if (!(holdoutFraction >= 0 && holdoutFraction < 1))
@@ -52,6 +54,7 @@ public record Sampling(
           labelRateDiscardMid,
           labelRateDiscardLate,
           labelRateCommit,
+          labelRateFinalEnd,
           epsilonC,
           rollinRateDiscard,
           rollinRateCommit,
@@ -76,6 +79,7 @@ public record Sampling(
       double labelRateDiscardMid,
       double labelRateDiscardLate,
       double labelRateCommit,
+      double labelRateFinalEnd,
       int maxCandidates,
       boolean measureAllDiscards,
       double epsilonC,
@@ -90,6 +94,7 @@ public record Sampling(
         labelRateDiscardMid,
         labelRateDiscardLate,
         labelRateCommit,
+        labelRateFinalEnd,
         maxCandidates,
         measureAllDiscards,
         epsilonC,
@@ -110,6 +115,7 @@ public record Sampling(
         labelRateDiscardMid,
         labelRateDiscardLate,
         labelRateCommit,
+        labelRateFinalEnd,
         maxCandidates,
         measureAllDiscards,
         epsilonC,
@@ -140,7 +146,8 @@ public record Sampling(
       case DISCARD_EARLY -> labelRateDiscardEarly;
       case DISCARD_MID -> labelRateDiscardMid;
       case DISCARD_LATE -> labelRateDiscardLate;
-      default -> labelRateCommit;
+      case THREAT, RIICHI, CALL, KAN, END -> labelRateCommit;
+      case FINAL_END -> labelRateFinalEnd;
     };
   }
 

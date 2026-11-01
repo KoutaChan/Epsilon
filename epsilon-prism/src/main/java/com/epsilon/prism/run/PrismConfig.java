@@ -58,7 +58,8 @@ import java.util.Set;
  * @param labelRateDiscardEarly 脅威のない序盤の打牌のラベル行の率 ρ
  * @param labelRateDiscardMid 脅威のない中盤の打牌のラベル行の率 ρ
  * @param labelRateDiscardLate 脅威のない終盤の打牌のラベル行の率 ρ
- * @param labelRateCommit 確約の類のラベル行の率 ρ
+ * @param labelRateCommit 確約の類のラベル行の率 ρ（オーラスの和了のほか）
+ * @param labelRateFinalEnd オーラスの和了（{@link DecisionClass#FINAL_END}）のラベル行の率 ρ（既定 1 で全て分岐する）
  * @param maxCandidates 確約の類の候補集合の大きさの上限
  * @param epsilonC 確約の類の候補集合に一様な 1 手を足す確率 ε_C
  * @param rollinRateDiscard 打牌の類の中立ロールインの率 β
@@ -134,6 +135,7 @@ public record PrismConfig(
     double labelRateDiscardMid,
     double labelRateDiscardLate,
     double labelRateCommit,
+    double labelRateFinalEnd,
     int maxCandidates,
     double epsilonC,
     // 中立ロールイン
@@ -459,6 +461,7 @@ public record PrismConfig(
         labelRateDiscardMid,
         labelRateDiscardLate,
         labelRateCommit,
+        labelRateFinalEnd,
         maxCandidates,
         true,
         epsilonC,

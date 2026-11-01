@@ -53,6 +53,12 @@ public class PrismConfigTest {
     Assert.assertEquals(defaults.epsilonB(), 0.005);
     Assert.assertEquals(defaults.holdoutFraction(), 0.05);
     Assert.assertEquals(defaults.labelRateCommit(), 0.104);
+    // オーラスの和了は確約の類と別の率で、既定は全てラベル行
+    Assert.assertEquals(defaults.labelRateFinalEnd(), 1.0);
+    Assert.assertEquals(defaults.sampling().labelRate(DecisionClass.END), 0.104);
+    Assert.assertEquals(defaults.sampling().labelRate(DecisionClass.FINAL_END), 1.0);
+    Assert.assertEquals(
+        config("labelRateFinalEnd", "0.5").sampling().labelRate(DecisionClass.FINAL_END), 0.5);
     Assert.assertEquals(defaults.maxCandidates(), 6);
     Assert.assertEquals(defaults.keepCohorts(), 16);
     Assert.assertEquals(defaults.fitSteps(), 2000);

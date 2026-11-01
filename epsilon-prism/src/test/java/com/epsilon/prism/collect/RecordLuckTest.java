@@ -40,7 +40,8 @@ public class RecordLuckTest {
   @Test(timeOut = 900_000)
   public void luckSamplesLeaveTheRowsAlone() throws IOException {
     var sampling =
-        new Sampling(0.25, 0.03, 0.03, 0.03, 0.15, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2).withEventLedger(true);
+        new Sampling(0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2)
+            .withEventLedger(true);
     List<Collection> collections =
         List.of(
             new Collection(sampling, SEED * 3, 100, new Behaviour(0.05, 0, CrnScheme.V1)),

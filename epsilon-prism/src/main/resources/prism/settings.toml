@@ -59,13 +59,16 @@ exploreTemperature = 0.0
 # 保留（HOLDOUT）にする半荘の割合
 holdoutFraction = 0.05
 
-# ラベル行: 判断の類ごとの率 ρ（脅威のない打牌は段階ごと、確約の類 = 脅威のもとの打牌・立直・鳴き・槓・和了と九種）。打牌の類（脅威のない
-# 序盤・中盤・終盤）は全ての合法手を測り、確約の類の候補集合 C(o) は s の上位 3・p0 の上位 2・体制の代表・確率 ε_C で一様な 1 手（双子は
-# まとめる。最大 maxCandidates）
+# ラベル行: 判断の類ごとの率 ρ（脅威のない打牌は段階ごと、確約の類 = 脅威のもとの打牌・立直・鳴き・槓・和了と九種、オーラス（南 4 局と
+# 西入の局）の和了）。打牌の類（脅威のない序盤・中盤・終盤）は全ての合法手を測り、確約の類の候補集合 C(o) は s の上位 3・p0 の
+# 上位 2・体制の代表・確率 ε_C で一様な 1 手（双子はまとめる。最大 maxCandidates）
 labelRateDiscardEarly = 0.013
 labelRateDiscardMid = 0.039
 labelRateDiscardLate = 0.0312
 labelRateCommit = 0.104
+# オーラスの和了（FINAL_END）は半荘の行方を決め、和了で半荘を終えた分岐の値は確定した順位の効用になるので、既定で全てラベル行にする。
+# オーラスの九種九牌は局をやり直すだけなので labelRateCommit の類に残す
+labelRateFinalEnd = 1.0
 maxCandidates = 6
 epsilonC = 0.1
 

@@ -62,7 +62,7 @@ public class CollectionDriverTest {
 
   /** ラベル行・ロールイン・写しの中の行がどれも出る率（本番より高い）。 */
   private static final Sampling SAMPLING =
-      new Sampling(0.25, 0.03, 0.03, 0.03, 0.15, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
+      new Sampling(0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
 
   /** 床 ε_b = 0.05 の行動方策（評価と同じ乱数の使い方）。 */
   private static final Behaviour FLOOR = new Behaviour(0.05, 0, CrnScheme.V1);

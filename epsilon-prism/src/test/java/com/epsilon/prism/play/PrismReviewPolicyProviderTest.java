@@ -50,7 +50,8 @@ public class PrismReviewPolicyProviderTest {
               DecisionClass.of(
                   kind,
                   Stage.of(state.remainingWallTiles()),
-                  Threats.count(state, point.player()));
+                  Threats.count(state, point.player()),
+                  state.getKyokuIndex());
           PolicyRequest request =
               SnapshotScorer.request(engine.observation(point.player()), legal);
           Assert.assertEquals(request.kind(), kind, point.toString());

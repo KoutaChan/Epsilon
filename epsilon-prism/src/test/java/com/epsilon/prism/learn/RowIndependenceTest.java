@@ -47,7 +47,7 @@ public class RowIndependenceTest {
             AuxiliaryLoss.standard(),
             1_000_000,
             5);
-    Encoder encoder = new Encoder(plan, Teacher.RAW);
+    Encoder encoder = new Encoder(plan);
     Observation observation = new Observation();
 
     HostInputs together = batch(rows.size());
@@ -56,7 +56,7 @@ public class RowIndependenceTest {
       assertTrue(together.plan().add(observation.bind(row.observation(), 0)) >= 0);
     }
     together.plan().seal();
-    Microbatch all = encoder.encode(together, rows);
+    Microbatch all = encoder.encode(together, rows, new int[rows.size()], Teacher.RAW);
 
     try (Model model = Fit.blank(SHAPE, Device.cpu(), 7);
         NDManager manager = NDManager.newBaseManager(Device.cpu())) {
@@ -74,7 +74,7 @@ public class RowIndependenceTest {
         single.plan().clear();
         single.plan().add(observation);
         single.plan().seal();
-        float[] alone = scores(network, encoder.encode(single, List.of(row)), manager);
+        float[] alone = scores(network, encoder.encode(single, List.of(row), new int[1], Teacher.RAW), manager);
         for (int a = 0; a < legal; a++) {
           float expected = alone[a];
           float actual = joint[r * jointWidth + a];

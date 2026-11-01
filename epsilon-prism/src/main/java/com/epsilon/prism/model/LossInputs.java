@@ -16,8 +16,7 @@ import java.util.Objects;
  * 条件の印（{@link AuxiliaryLoss.Inputs}）を、ホストで全て並べてから型ごとに 1 本の配列でデバイスへ送る（各区画はその切り出し。
  * {@link BatchIndex} と同じ送り方）。{@link PrismLoss} は送った配列を読むだけにする。
  *
- * <p>学習のレーンは網の順伝播の前に作る（{@link #of(NetworkInputs, List, AuxiliaryLabels, AuxiliaryLoss.Denominators)}）。GPU の管理元での
- * 配列の作成はホストからの写しとストリームの同期なので、順伝播の後に作るとホストは順伝播が終わるまで待ち、その間に損失と逆伝播を積めない。
+ * <p>学習では歩の作り手が前もって並べ（教師は錨を混ぜた後）、網の入力・索引と一緒に網の順伝播の前に非同期で送る（{@link StagedBatch}）。
  * 配列の値・型・形は損失がその場で作っていたものと同じ（差分整合の κ = 0・一様の基準の配列）で、損失の演算も同じ順なので、損失と勾配は
  * ビットで同じ。
  *
@@ -28,7 +27,6 @@ public final class LossInputs {
 
   private static final ActionRole[] ROLES = ActionRole.values();
 
-  private final NDManager manager;
   private final int[] actions;
   private final boolean[] discards;
   private final int capacity;
@@ -43,7 +41,7 @@ public final class LossInputs {
   private final AuxiliaryLoss.Inputs auxiliary;
 
   /**
-   * 教師をホストで並べて送る。
+   * 教師をホストで並べて載せる（送るのは staging の持ち主）。
    *
    * <ul>
    *   <li>差分整合: [行, 容量] の C の印・Y（C の外は 0）・log p0_C（C の外は 0）と、[行, 1] の λ・行の重み（|C| &lt; 2 の行は 0）。
@@ -51,14 +49,13 @@ public final class LossInputs {
    * </ul>
    */
   private LossInputs(
-      Uploads uploads,
-      NDManager manager,
       int[] actions,
       boolean[] discards,
       int capacity,
       List<ValueLabel> labels,
       AuxiliaryLabels auxiliaryLabels,
-      AuxiliaryLoss.Denominators denominators) {
+      AuxiliaryLoss.Denominators denominators,
+      Staging staging) {
     int rows = actions.length;
     if (labels.size() != rows) {
       throw new IllegalArgumentException(labels.size() + " labels for " + rows + " rows");
@@ -70,12 +67,10 @@ public final class LossInputs {
     if ((auxiliaryLabels == null) != (denominators == null)) {
       throw new IllegalArgumentException("auxiliary labels and their denominators go together");
     }
-    this.manager = manager;
     this.actions = actions;
     this.discards = discards;
     this.capacity = capacity;
     boolean[] measuredSlots = new boolean[rows * capacity];
-    float[] values = new float[rows * capacity];
     float[] logPriors = new float[rows * capacity];
     float[] lambdas = new float[rows];
     float[] valueWeights = new float[rows];
@@ -97,7 +92,6 @@ public final class LossInputs {
           continue;
         }
         measuredSlots[base + a] = true;
-        values[base + a] = y[a];
         measuredCount++;
         if (discards[base + a]) {
           discardSlots[base + a] = true;
@@ -118,11 +112,10 @@ public final class LossInputs {
       counts[row] = Math.max(discardCount, 1);
       discardRowWeights[row] = discardCount == 0 ? 0f : label.weight();
     }
-    Staging staging = new Staging();
     Shape slots = new Shape(rows, capacity);
     lambda = staging.add(lambdas, new Shape(rows, 1));
     measured = staging.add(measuredSlots, slots);
-    targets = staging.add(values, slots);
+    targets = staging.add(targets(labels, capacity), slots);
     logPrior = staging.add(logPriors, slots);
     weights = staging.add(valueWeights, new Shape(rows, 1));
     measuredDiscards = staging.add(discardSlots, slots);
@@ -130,24 +123,25 @@ public final class LossInputs {
     discardWeights = staging.add(discardRowWeights, new Shape(rows));
     auxiliary =
         auxiliaryLabels == null ? null : AuxiliaryLoss.stage(auxiliaryLabels, denominators, staging);
-    staging.send(uploads, manager);
   }
 
   /**
-   * 網の入力（索引のホストの写し）と教師から作って送る（学習のレーンの口。網の順伝播の前に呼ぶ）。
+   * 塊の索引のホストの写しと教師から作って載せる（学習の歩の作り手の口。送るのは staging の持ち主）。
    *
-   * @param inputs 網の入力（配列は同じ管理元に作る）
-   * @param labels 行の順の教師（錨を混ぜた後）
+   * @param inputs 塊の数と索引のホストの写し
+   * @param labels 行の順の教師
    * @param auxiliary 補助の頭の教師（補助の頭を計算しないなら null）
    * @param denominators 補助の頭の平均の分母（教師があるときだけ。詰め方の 1 塊を分けた部分には元の塊の数）
+   * @param staging 区画を載せる組
    * @return 損失の入力
    * @throws IllegalArgumentException 行の数か行の手の数が入力と合わないか、補助の教師と分母の片方だけがあるとき
    */
-  public static LossInputs of(
-      NetworkInputs inputs,
+  static LossInputs stage(
+      HostColumns inputs,
       List<ValueLabel> labels,
       AuxiliaryLabels auxiliary,
-      AuxiliaryLoss.Denominators denominators) {
+      AuxiliaryLoss.Denominators denominators,
+      Staging staging) {
     int rows = inputs.rows();
     int[] actions = new int[rows];
     int capacity = 0;
@@ -165,15 +159,7 @@ public final class LossInputs {
         discards[row * capacity + k] = Composition.of(role) == Composition.DISCARD_VALUE;
       }
     }
-    return new LossInputs(
-        inputs.uploads(),
-        inputs.manager(),
-        actions,
-        discards,
-        capacity,
-        labels,
-        auxiliary,
-        denominators);
+    return new LossInputs(actions, discards, capacity, labels, auxiliary, denominators, staging);
   }
 
   /**
@@ -194,15 +180,32 @@ public final class LossInputs {
       List<ValueLabel> labels,
       AuxiliaryLabels auxiliary,
       AuxiliaryLoss.Denominators denominators) {
-    return new LossInputs(
-        Uploads.on(manager),
-        manager,
-        outputs.actions(),
-        outputs.discards(),
-        Math.toIntExact(outputs.scores().getShape().get(1)),
-        labels,
-        auxiliary,
-        denominators);
+    Staging staging = new Staging();
+    LossInputs inputs =
+        new LossInputs(
+            outputs.actions(),
+            outputs.discards(),
+            Math.toIntExact(outputs.scores().getShape().get(1)),
+            labels,
+            auxiliary,
+            denominators,
+            staging);
+    staging.send(Uploads.on(manager), manager);
+    return inputs;
+  }
+
+  /** Y [行 × 容量]（C の外は 0）。 */
+  private static float[] targets(List<ValueLabel> labels, int capacity) {
+    float[] values = new float[labels.size() * capacity];
+    for (int row = 0; row < labels.size(); row++) {
+      float[] y = labels.get(row).values();
+      for (int a = 0; a < y.length; a++) {
+        if (!Float.isNaN(y[a])) {
+          values[row * capacity + a] = y[a];
+        }
+      }
+    }
+    return values;
   }
 
   /**
@@ -219,9 +222,9 @@ public final class LossInputs {
     }
   }
 
-  /** 配列の管理元（損失の配列もここに作る）。 */
+  /** 送った配列の管理元（損失の配列もここに作る）。 */
   NDManager manager() {
-    return manager;
+    return lambda.array().getManager();
   }
 
   /** λ [行, 1]。 */

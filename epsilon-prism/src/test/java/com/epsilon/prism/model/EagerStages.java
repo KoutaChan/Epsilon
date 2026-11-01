@@ -97,7 +97,7 @@ public final class EagerStages {
   public static Stages run(PrismNetwork network, ParameterStore store, NetworkInputs inputs, Precision precision) {
     Pass pass = Pass.inference(precision);
     Context context = new Context(store, inputs.manager(), precision, false);
-    BatchIndex index = new BatchIndex(inputs, pass);
+    BatchIndex index = BatchIndex.send(inputs, pass);
     TokenEmbedding embedding = null;
     List<EncoderLayer> encoders = new ArrayList<>();
     RmsNorm finalNorm = null;
@@ -139,7 +139,7 @@ public final class EagerStages {
           NDArray events = embedding.embed(context, inputs, index, type);
           typed.add(events);
           parts.add(
-              NDArrays.scatterRows(events, index.eventSlots, (long) rows * index.maxEvents)
+              NDArrays.scatterRows(events, index.eventSlots.array(), (long) rows * index.maxEvents)
                   .reshape(rows, index.maxEvents, hidden));
         }
       } else {
@@ -153,10 +153,10 @@ public final class EagerStages {
     NDArray attributes =
         NDArrays.scatterRows(
                 inputs.get(Tensor.RELATION).toType(DataType.INT32, false),
-                index.tokenSlots,
+                index.tokenSlots.array(),
                 (long) rows * index.tokens)
             .reshape(rows, index.tokens, InputSchema.RELATION.width());
-    NDArray codes = RelationClass.codes(attributes, index.tokenTypes, index.tileRelations);
+    NDArray codes = RelationClass.codes(attributes, index.tokenTypes.array(), index.tileRelations.array());
 
     List<float[]> attention = new ArrayList<>();
     List<float[]> layers = new ArrayList<>();
@@ -164,9 +164,9 @@ public final class EagerStages {
       boolean last = layer == encoders.size() - 1;
       int queries = last ? fixed : index.tokens;
       EncoderLayer encoder = encoders.get(layer);
-      NDArray attended = attend(context, network.shape(), encoder, tokens, index.tokenMask, codes, queries);
+      NDArray attended = attend(context, network.shape(), encoder, tokens, index.tokenMask.array(), codes, queries);
       attention.add(sectioned(floats(attended), rows, queries, network.shape().attention(), firstEvent, eventCounts, last));
-      tokens = encoder.forward(context, tokens, index.tokenMask, codes, queries);
+      tokens = encoder.forward(context, tokens, index.tokenMask.array(), codes, queries);
       layers.add(sectioned(floats(tokens), rows, queries, (int) hidden, firstEvent, eventCounts, last));
     }
     NDArray states = finalNorm.apply(context, tokens);

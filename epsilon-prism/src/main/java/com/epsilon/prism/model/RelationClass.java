@@ -107,10 +107,10 @@ final class RelationClass {
     NDArray attributes =
         NDArrays.scatterRows(
                 inputs.get(Tensor.RELATION).toType(DataType.INT32, false),
-                index.tokenSlots,
+                index.tokenSlots.array(),
                 (long) rows * index.tokens)
             .reshape(rows, index.tokens, InputSchema.RELATION.width());
-    return codes(attributes, index.tokenTypes, index.tileRelations);
+    return codes(attributes, index.tokenTypes.array(), index.tileRelations.array());
   }
 
   /**
@@ -131,7 +131,7 @@ final class RelationClass {
         index.tokens,
         inputs.get(Tensor.RELATION),
         inputs.get(Tensor.ROW_COLUMN),
-        index.tileRelations,
+        index.tileRelations.array(),
         codes);
     return codes;
   }

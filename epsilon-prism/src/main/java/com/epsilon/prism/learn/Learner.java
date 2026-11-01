@@ -3,8 +3,13 @@ package com.epsilon.prism.learn;
 import ai.djl.Device;
 import ai.djl.Model;
 import ai.djl.ndarray.NDArray;
+import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
+import ai.djl.ndarray.types.Shape;
+import ai.djl.nn.Parameter;
+import ai.djl.pytorch.engine.PtEngine;
+import ai.djl.pytorch.engine.PtFlatGradientPacker;
 import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
@@ -13,27 +18,21 @@ import com.epsilon.network.NetworkDevices;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.hip.RelationAttention;
-import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.model.AttentionTape;
 import com.epsilon.prism.model.FitProbe;
 import com.epsilon.prism.model.FitProbe.Stage;
 import com.epsilon.prism.model.LearningRateSchedule;
-import com.epsilon.prism.model.LossInputs;
-import com.epsilon.prism.model.NetworkInputs;
 import com.epsilon.prism.model.Outputs;
 import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
-import com.epsilon.prism.model.Uploads;
-import com.epsilon.prism.model.ValueLabel;
-import com.epsilon.prism.policy.InferencePath;
+import com.epsilon.prism.model.StagedBatch;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.training.DataParallelGroup;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.LongAdder;
@@ -47,13 +46,15 @@ import java.util.concurrent.atomic.LongAdder;
  * <p>1 歩の損失は Σ_微小バッチ {@link PrismLoss#total}（分母 B_C は 1 歩の全てのレーンで数え、補助の項は微小バッチの元の塊の行の割合
  * {@link Microbatch#share} とゲイン K′ を掛ける。replay は K′ = 1）。勾配のノルムは上限で切り、切った歩数を見積もる。
  *
- * <p>錨（{@link Teacher#anchor}）は、各レーンが自分のデバイスに読む（{@link Anchor}。道は {@link Teacher#anchorInference}）。
- * 微小バッチごとに、生徒の順伝播の前に錨の s を出してホストに戻してから教師に混ぜる。HIP の錨はレーンの計算ストリームに計画を 1 つ開き、
- * eager の錨は配列をその中で閉じるので、錨と生徒の配列は同時にデバイスに載らない。混ぜた教師は網の入力と一緒に順伝播の前にデバイスへ送る
- * （{@link LossInputs}）。順伝播の後に作ると配列の作成の同期でホストが順伝播の終わりまで待ち、その間に損失と逆伝播を積めない。
+ * <p>教師（錨の s を混ぜたもの。{@link Teacher}）は微小バッチを作るときに出来ている。網の入力・索引・損失の入力（教師を含む）は歩の
+ * 作り手がページ固定の領域に前もって並べてあり（{@link StagedBatch}）、レーンは型ごとに 1 回の非同期の写しを計算ストリームに積むだけに
+ * する（{@link Microbatch#send}）。ホストは写しも索引の組み立ても待たずに順伝播・損失・逆伝播を積み続け、写しはストリームの順で順伝播の
+ * 前に終わる。
+ *
+ * <p>温め（{@link #rehearse}）は最初の歩の前に、レーンと複製を作り、各レーンで微小バッチを 1 つ通して核と作業域を用意する。
  *
  * <p>当てはめの計測（{@link FitProfile}）では、レーンごとの時計（{@link FitProfile.Clock}）を順伝播の種類と注意の記録に渡し、微小バッチの
- * 段（錨・混ぜる・転送・網と逆伝播の段・損失・閉じる）に印を付ける。計測しないときの時計は何もしない。
+ * 段（転送・網と逆伝播の段・損失・閉じる）に印を付ける。計測しないときの時計は何もしない。
  */
 final class Learner implements AutoCloseable {
 
@@ -70,18 +71,14 @@ final class Learner implements AutoCloseable {
   private final PrismLoss loss;
   private final Optimizer optimizer;
 
-  /** 教師の作り方（錨の網のディレクトリ・錨の重み・補助の頭の項に掛けるゲイン K′・錨の推論の道）。 */
-  private final Teacher teacher;
-
-  /** 微小バッチの容量（HIP の錨の計画の大きさ）。 */
-  private final BatchPlan.Capacity capacity;
+  /** 補助の頭の項に掛けるゲイン K′（{@link Teacher#gain}）。 */
+  private final float gain;
 
   /** 当てはめの計測（無効なら時計は何もしない）。 */
   private final FitProfile profile;
 
   private final DecisionExecutionContext execution = new DecisionExecutionContext();
   private final LongAdder transferNanos = new LongAdder();
-  private final LongAdder anchorNanos = new LongAdder();
   private final LongAdder computeNanos = new LongAdder();
   private final LongAdder optimizerNanos = new LongAdder();
   private ParallelOptimizer parallel;
@@ -97,10 +94,10 @@ final class Learner implements AutoCloseable {
    * @param canonical 正本の網のモデル（ブロックは {@link PrismNetwork}、デバイスは devices の先頭）
    * @param devices 学習のデバイス（先頭が正本）
    * @param plan 当てはめの計画
-   * @param teacher 教師の作り方（錨があれば各レーンが読む。補助の頭の項のゲインは {@link Teacher#gain}）
+   * @param gain 補助の頭の項に掛けるゲイン K′（{@link Teacher#gain}）
    * @param profile 当てはめの計測（レーンの時計を作り、計る歩の時間を足す）
    */
-  Learner(Model canonical, NetworkDevices devices, FitPlan plan, Teacher teacher, FitProfile profile) {
+  Learner(Model canonical, NetworkDevices devices, FitPlan plan, float gain, FitProfile profile) {
     if (!(canonical.getBlock() instanceof PrismNetwork block)) {
       throw new IllegalArgumentException("the model does not hold a PRISM network");
     }
@@ -113,9 +110,8 @@ final class Learner implements AutoCloseable {
     schedule = plan.schedule();
     gradientClip = plan.learner().gradientClip();
     loss = new PrismLoss(plan.auxiliary());
-    this.teacher = teacher;
+    this.gain = gain;
     this.profile = profile;
-    capacity = StepFeed.capacity(plan.tokenBudget());
     optimizer =
         Optimizer.adamW()
             .optLearningRateTracker(
@@ -175,6 +171,54 @@ final class Learner implements AutoCloseable {
     }
   }
 
+  /**
+   * 学習器を温める: レーンと複製を作り（{@link #parallel}）、各レーンで歩のそのレーンの最初の微小バッチの順伝播・損失・逆伝播を 1 回通して、
+   * 勾配を捨てる。歩の数・学習率・最適化の状態・計測・損失の回収には触れず、乱数も使わない。捨てた後のパラメーターの .grad は未定義で、
+   * 温めないときの最初の歩の前と同じ（{@link NetworkLane#forgetGradients}）。なので温めても当てた重みは変わらない。
+   *
+   * @param prepared 温めに使う歩（どの行でもよい）
+   */
+  void rehearse(StepFeed.Step prepared) {
+    ParallelOptimizer group = parallel();
+    List<Integer> active = new ArrayList<>();
+    List<DataParallelGroup.LaneWork<NetworkLane, Boolean>> work = new ArrayList<>();
+    for (int lane = 0; lane < prepared.lanes().size(); lane++) {
+      List<Microbatch> parts = prepared.lanes().get(lane);
+      if (parts.isEmpty()) {
+        continue;
+      }
+      active.add(lane);
+      work.add(worker -> rehearse(worker, parts.getFirst(), prepared.denominator()));
+    }
+    try {
+      group.executeAssigned(active.stream().mapToInt(Integer::intValue).toArray(), work);
+    } catch (IOException failure) {
+      throw new UncheckedIOException("PRISM learner rehearsal failed", failure);
+    }
+  }
+
+  /**
+   * 1 つの微小バッチの順伝播・損失・逆伝播を通し、勾配を捨てる（段の時計に印を付けない）。返り値は使わない（レーンの仕事の結果は null に
+   * できない）。
+   */
+  private Boolean rehearse(NetworkLane lane, Microbatch part, int denominator) {
+    try (NDManager scope = lane.manager().newSubManager();
+        GradientCollector collector = lane.newGradientCollector()) {
+      StagedBatch.Sent sent = part.send(scope, lane.computeStream());
+      AttentionTape tape =
+          lane.attention == null ? null : new AttentionTape(lane.attention, FitProbe.NONE);
+      Outputs outputs =
+          lane.network.forward(
+              new ParameterStore(scope, false),
+              sent.inputs(),
+              Pass.training(lane.precision, part.measured(), part.auxiliary(), tape, FitProbe.NONE));
+      NDArray value = loss.total(outputs, sent.loss(), gain, denominator, part.share());
+      backward(collector, tape, value, FitProbe.NONE);
+    }
+    lane.forgetGradients();
+    return Boolean.TRUE;
+  }
+
   /** レーンの微小バッチを順に通し、勾配を溜める。返り値はその損失の和（回収しない歩は NaN）。 */
   private double backward(
       NetworkLane lane, List<Microbatch> parts, StepFeed.Step prepared, FitProfile.Timing timing) {
@@ -183,12 +227,10 @@ final class Learner implements AutoCloseable {
     FitProfile.Clock clock = lane.clock;
     clock.begin(timing);
     for (Microbatch part : parts) {
-      List<ValueLabel> labels = lane.anchor == null ? part.labels() : anchored(lane, part);
       try (NDManager scope = lane.manager().newSubManager();
           GradientCollector collector = lane.newGradientCollector()) {
         long started = System.nanoTime();
-        NetworkInputs inputs = part.inputs(scope, lane.uploads);
-        LossInputs targets = part.lossInputs(inputs, labels);
+        StagedBatch.Sent sent = part.send(scope, lane.computeStream());
         transferNanos.add(System.nanoTime() - started);
         clock.mark(Stage.TRANSFER);
         AttentionTape tape =
@@ -196,10 +238,10 @@ final class Learner implements AutoCloseable {
         Outputs outputs =
             lane.network.forward(
                 new ParameterStore(scope, false),
-                inputs,
+                sent.inputs(),
                 Pass.training(lane.precision, part.measured(), part.auxiliary(), tape, clock));
         NDArray value =
-            loss.total(outputs, targets, teacher.gain(), prepared.denominator(), part.share());
+            loss.total(outputs, sent.loss(), gain, prepared.denominator(), part.share());
         clock.mark(Stage.LOSS);
         if (!gpu) {
           collector.backward(value);
@@ -224,17 +266,6 @@ final class Learner implements AutoCloseable {
       clock.mark(Stage.RELEASE);
     }
     return total;
-  }
-
-  /** レーンの錨で微小バッチの s を出し、教師に混ぜる。錨のデバイスの仕事はこの中で終わる（生徒の順伝播と重ならない）。 */
-  private List<ValueLabel> anchored(NetworkLane lane, Microbatch part) {
-    long started = System.nanoTime();
-    Anchor.Scores scores = lane.anchor.scores(part.batch());
-    anchorNanos.add(System.nanoTime() - started);
-    lane.clock.mark(Stage.ANCHOR);
-    List<ValueLabel> mixed = teacher.mix(part.labels(), scores);
-    lane.clock.mark(Stage.MIX);
-    return mixed;
   }
 
   /** 損失から逆伝播する（自前の注意の記録があれば記録が段に分けて印を付け、なければ全体を 1 つの段にする）。 */
@@ -276,15 +307,6 @@ final class Learner implements AutoCloseable {
     };
   }
 
-  /**
-   * 錨の s を出した秒数の和を返す（全てのレーンの和。順伝播と逆伝播の段に含まれる）。
-   *
-   * @return 秒
-   */
-  double anchorSeconds() {
-    return anchorNanos.sum() / 1e9;
-  }
-
   /** データ並列のレーンを作る（1 回だけ）。 */
   private ParallelOptimizer parallel() {
     if (parallel != null) {
@@ -293,10 +315,7 @@ final class Learner implements AutoCloseable {
     List<NetworkLane> lanes = new ArrayList<>();
     ParallelOptimizer created = null;
     try {
-      Path anchor = teacher.anchored() ? teacher.anchor() : null;
-      lanes.add(
-          new NetworkLane(
-              canonical, network, false, execution, anchor, teacher.anchorInference(), capacity, profile));
+      lanes.add(new NetworkLane(canonical, network, false, execution, profile));
       PrismShape shape = network.shape();
       for (int index = 1; index < devices.size(); index++) {
         Model replica =
@@ -306,9 +325,7 @@ final class Learner implements AutoCloseable {
           replica.setBlock(copy);
           copy.initialize(replica.getNDManager());
           DataParallelGroup.copyParameters(canonical, replica);
-          lanes.add(
-              new NetworkLane(
-                  replica, copy, true, execution, anchor, teacher.anchorInference(), capacity, profile));
+          lanes.add(new NetworkLane(replica, copy, true, execution, profile));
         } catch (RuntimeException | Error failure) {
           replica.close();
           throw failure;
@@ -358,7 +375,7 @@ final class Learner implements AutoCloseable {
     }
   }
 
-  /** 1 つのデバイスの網と計算の型（GPU なら計算ストリームに積む注意の演算も）と、送り出しの置き場と、錨の網と、段の時計。 */
+  /** 1 つのデバイスの網と計算の型（GPU なら計算ストリームに積む注意の演算も）と、段の時計。 */
   private static final class NetworkLane extends DataParallelGroup.Lane {
 
     private final PrismNetwork network;
@@ -370,29 +387,16 @@ final class Learner implements AutoCloseable {
     /** 当てはめの計測の時計（計測しないなら何もしない）。 */
     private final FitProfile.Clock clock;
 
-    /** 微小バッチの索引と損失の入力をデバイスへ送る置き場（このレーンのスレッドだけが使う）。 */
-    private final Uploads uploads;
-
-    /** このデバイスに読んだ錨（錨がなければ null）。 */
-    private final Anchor anchor;
-
     /**
-     * レーンを作る。錨は最後に読む。
+     * レーンを作る。
      *
-     * @param anchorDirectory 錨の網のディレクトリ（錨がなければ null）
-     * @param anchorInference 錨の s を出す推論の道
-     * @param capacity 微小バッチの容量（HIP の錨の計画の大きさ）
      * @param profile 当てはめの計測（レーンの時計を作る）
-     * @throws UncheckedIOException 錨の網を読めないとき
      */
     NetworkLane(
         Model model,
         PrismNetwork network,
         boolean ownsModel,
         DecisionExecutionContext execution,
-        Path anchorDirectory,
-        InferencePath anchorInference,
-        BatchPlan.Capacity capacity,
         FitProfile profile) {
       super(model, ownsModel, false, execution);
       this.network = network;
@@ -403,36 +407,30 @@ final class Learner implements AutoCloseable {
               ? HipAttention.on(HipLibrary.load(), computeStream())
               : null;
       clock = profile.clock(computeStream());
-      uploads = Uploads.on(manager());
-      try {
-        anchor =
-            anchorDirectory == null
-                ? null
-                : Anchor.open(
-                    anchorDirectory,
-                    anchorInference,
-                    device,
-                    device.isGpu() ? computeStream() : null,
-                    attention,
-                    capacity);
-      } catch (IOException failure) {
-        throw new UncheckedIOException("cannot load the TEMPO anchor " + anchorDirectory, failure);
+    }
+
+    /**
+     * パラメーターの .grad を未定義に戻す（レーンの計算ストリームの上で呼ぶ）。0 で埋めると次の逆伝播が 0 に足す形になり、勾配の −0 が +0 に
+     * 変わり得るので、未定義に戻して温めないときと同じ状態にする。勾配の詰め手の置き場は .grad を戻すためだけに作り、すぐに捨てる。
+     */
+    void forgetGradients() {
+      NDList parameters = new NDList();
+      long elements = 0;
+      for (Parameter parameter : network.getParameters().values()) {
+        NDArray array = parameter.getArray();
+        parameters.add(array);
+        elements += array.size();
+      }
+      PtEngine engine = (PtEngine) manager().getEngine();
+      try (NDArray destination = manager().zeros(new Shape(elements), DataType.BFLOAT16);
+          PtFlatGradientPacker packer = engine.newFlatGradientPacker(parameters, destination)) {
+        packer.clearParameterGradients();
       }
     }
 
     @Override
     protected void closeRuntime() {
-      try {
-        if (anchor != null) {
-          anchor.close();
-        }
-      } finally {
-        try {
-          uploads.close();
-        } finally {
-          clock.close();
-        }
-      }
+      clock.close();
     }
   }
 

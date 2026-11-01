@@ -124,7 +124,7 @@ public class TrainingAttentionGpuBench {
         PtStream stream = ((PtEngine) model.getNDManager().getEngine()).newStream(gpu);
         PtStreamScope ignored = stream.openScope();
         PtEvent event = stream.newEvent();
-        StepFeed feed = new StepFeed(store, plan, Teacher.RAW, LANES, THREADS)) {
+        StepFeed feed = new StepFeed(store, plan, LANES, THREADS)) {
       store.addCohort(Path.of(directory));
       int cohort = store.cohorts().get(0);
       int[] rows = Fit.shuffle(store.select(cohort, cohort, Selection.LABELS), 5);
@@ -133,7 +133,8 @@ public class TrainingAttentionGpuBench {
       double slowest = 0;
       for (int step = 0; step < STEPS; step++) {
         StepFeed.Step prepared =
-            feed.prepare(Arrays.copyOfRange(rows, step * STEP_ROWS, (step + 1) * STEP_ROWS)).join();
+            feed.prepare(Arrays.copyOfRange(rows, step * STEP_ROWS, (step + 1) * STEP_ROWS), Teacher.RAW)
+                .join();
         double[] lanes = new double[LANES];
         for (int lane = 0; lane < LANES; lane++) {
           double[] sums = new double[2];

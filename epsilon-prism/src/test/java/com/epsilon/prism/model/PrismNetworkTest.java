@@ -132,7 +132,7 @@ public class PrismNetworkTest {
     PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       NetworkInputs inputs = batch.inputs(manager);
-      BatchIndex index = new BatchIndex(inputs, Pass.training(Precision.FLOAT32, ValueLabel.measured(labels), null));
+      BatchIndex index = BatchIndex.send(inputs, Pass.training(Precision.FLOAT32, ValueLabel.measured(labels), null));
       int rows = labels.size();
       int capacity = 0;
       for (ValueLabel label : labels) {
@@ -213,7 +213,7 @@ public class PrismNetworkTest {
 
   /** 葉の s を網の出力にする（行の手の数と合法手は塊の索引から）。 */
   private static Outputs outputs(NDArray scores, BatchIndex index) {
-    return new Outputs(scores, index.legal, index.rowActions, index.discardValueSlots, null);
+    return new Outputs(scores, index.legal.array(), index.rowActions, index.discardValueSlots, null);
   }
 
   /** 錨の試験の結果: B・Δ の勾配と、同じ s を葉にしたときの s の勾配 g。 */
@@ -225,7 +225,7 @@ public class PrismNetworkTest {
     PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       NetworkInputs inputs = batch.inputs(manager);
-      BatchIndex index = new BatchIndex(inputs, Pass.training(Precision.FLOAT32, ValueLabel.measured(labels), null));
+      BatchIndex index = BatchIndex.send(inputs, Pass.training(Precision.FLOAT32, ValueLabel.measured(labels), null));
       NDArray discard = manager.create(discardValues);
       NDArray gate = manager.create(gateValues);
       discard.setRequiresGradient(true);
@@ -235,13 +235,13 @@ public class PrismNetworkTest {
         NDArray scores = ValueGraphHead.compose(manager, index, discard, gate);
         composed = scores.toFloatArray();
         collector.backward(
-            loss.value(manager, new Outputs(scores, index.legal, index.rowActions, index.discardValueSlots, null), labels));
+            loss.value(manager, new Outputs(scores, index.legal.array(), index.rowActions, index.discardValueSlots, null), labels));
       }
       NDArray leaf = manager.create(composed, new Shape(1, composed.length));
       leaf.setRequiresGradient(true);
       try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
         collector.backward(
-            loss.value(manager, new Outputs(leaf, index.legal, index.rowActions, index.discardValueSlots, null), labels));
+            loss.value(manager, new Outputs(leaf, index.legal.array(), index.rowActions, index.discardValueSlots, null), labels));
       }
       return new Anchor(
           discard.getGradient().toFloatArray(),

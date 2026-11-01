@@ -19,14 +19,13 @@ import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.input.InputSchema.Axis;
 import com.epsilon.prism.model.AttentionTape;
 import com.epsilon.prism.model.AuxiliaryLoss;
-import com.epsilon.prism.model.LossInputs;
-import com.epsilon.prism.model.NetworkInputs;
 import com.epsilon.prism.model.Outputs;
 import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.StagedBatch;
 import com.epsilon.prism.model.Uploads;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -111,16 +110,16 @@ public class FitStepGpuBench {
         HipAttention attention = HipAttention.on(HipLibrary.load(), stream);
         int from = 0;
         for (int stepRows : quick ? new int[0] : new int[] {1024, 2048, 4096, 8192}) {
-          from = steps(store, rows, from, plan, model, stepRows, false, null, null);
-          from = steps(store, rows, from, plan, model, stepRows, true, null, null);
-          from = steps(store, rows, from, plan, model, stepRows, true, attention, null);
+          from = steps(store, rows, from, plan, model, stream, stepRows, false, null, null);
+          from = steps(store, rows, from, plan, model, stream, stepRows, true, null, null);
+          from = steps(store, rows, from, plan, model, stream, stepRows, true, attention, null);
         }
         if (quick) {
-          steps(store, rows, from, plan, model, STEP_ROWS, true, attention, null);
+          steps(store, rows, from, plan, model, stream, STEP_ROWS, true, attention, null);
         }
         String trace = System.getProperty("prism.bench.trace");
         if (trace != null) {
-          steps(store, rows, from, plan, model, STEP_ROWS, true, attention, trace);
+          steps(store, rows, from, plan, model, stream, STEP_ROWS, true, attention, trace);
         }
       }
     }
@@ -157,8 +156,8 @@ public class FitStepGpuBench {
   }
 
   /**
-   * GPU 1 枚で歩を回して測る（同期は歩の終わりに値を 1 つ読む）。attention があれば背骨の注意を自前の HIP の演算にする。trace があれば
-   * 温めの後の 2 歩を記録する。
+   * GPU 1 枚で歩を回して測る（同期は歩の終わりに値を 1 つ読む）。逆伝播の歩は学習器と同じく、前もって並べた入力を stream に非同期で
+   * 送る。attention があれば背骨の注意を自前の HIP の演算にする。trace があれば温めの後の 2 歩を記録する。
    *
    * @return 次に使う行の位置
    */
@@ -168,6 +167,7 @@ public class FitStepGpuBench {
       int from,
       FitPlan plan,
       Model model,
+      PtStream stream,
       int stepRows,
       boolean backward,
       HipAttention attention,
@@ -181,12 +181,12 @@ public class FitStepGpuBench {
     long real = 0;
     long padded = 0;
     long parts = 0;
-    try (StepFeed feed = new StepFeed(store, plan, Teacher.RAW, 1, THREADS)) {
+    try (StepFeed feed = new StepFeed(store, plan, 1, THREADS)) {
       for (int step = 0; step < WARMUP + measured; step++) {
         if (from + stepRows > rows.length) {
           from = 0;
         }
-        StepFeed.Step prepared = feed.prepare(Arrays.copyOfRange(rows, from, from + stepRows)).join();
+        StepFeed.Step prepared = feed.prepare(Arrays.copyOfRange(rows, from, from + stepRows), Teacher.RAW).join();
         from += stepRows;
         boolean counted = step >= WARMUP;
         if (counted && step == WARMUP && trace != null) {
@@ -196,18 +196,17 @@ public class FitStepGpuBench {
         List<Microbatch> lane = prepared.lanes().get(0);
         for (Microbatch part : lane) {
           try (NDManager scope = manager.newSubManager()) {
-            NetworkInputs inputs = part.inputs(scope, Uploads.on(scope));
             if (backward) {
               try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
-                LossInputs targets = part.lossInputs(inputs, part.labels());
+                StagedBatch.Sent sent = part.send(scope, stream);
                 AttentionTape tape = attention == null ? null : new AttentionTape(attention);
                 Outputs outputs =
                     network.forward(
                         new ParameterStore(scope, false),
-                        inputs,
+                        sent.inputs(),
                         Pass.training(Precision.BFLOAT16, part.measured(), part.auxiliary(), tape));
                 NDArray value =
-                    loss.total(outputs, targets, 1f, prepared.denominator(), part.share());
+                    loss.total(outputs, sent.loss(), 1f, prepared.denominator(), part.share());
                 if (tape == null) {
                   collector.backward(value);
                 } else {
@@ -220,7 +219,10 @@ public class FitStepGpuBench {
               }
             } else {
               network
-                  .forward(new ParameterStore(scope, false), inputs, Pass.inference(Precision.BFLOAT16))
+                  .forward(
+                      new ParameterStore(scope, false),
+                      part.inputs(scope, Uploads.on(scope)),
+                      Pass.inference(Precision.BFLOAT16))
                   .scores()
                   .toFloatArray();
             }

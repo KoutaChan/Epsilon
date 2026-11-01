@@ -23,6 +23,9 @@ import org.slf4j.LoggerFactory;
  * 先読みのスレッドで {@link #PREFETCH} 歩先まで作り（{@link StepFeed}）、学習のスレッドはデバイスの計算だけを回す（{@link Learner}）。
  * デバイスが 2 つ以上なら、詰めた塊の数がデバイスの数の倍数でなかった歩の数を記録する（その歩の最後の塊はデバイスの数の部分に分ける）。
  * 系の性質 {@value FitProfile#PROPERTY} があれば、段の時計の計測の表を当てはめの終わりに記録に出す（{@link FitProfile}）。
+ *
+ * <p>系譜は教師が決まる前（運の精算の当てはめの間）に {@link #prepare} で生徒を読み、学習器を温めておく（{@link Learner#rehearse}）。温めは
+ * 重みにも最適化の状態にも歩の数にも触れないので、温めてから当てた重みは {@link #run} で当てた重みとビットで同じ。
  */
 public final class Fit {
 
@@ -137,79 +140,251 @@ public final class Fit {
       int threads,
       FitProfile profile) {
     long started = System.nanoTime();
-    int steps = plan.learner().steps();
-    int batchSize = plan.learner().batchSize();
-    if (rows.length == 0 || steps <= 0) {
+    if (rows.length == 0 || plan.learner().steps() <= 0) {
       return FitResult.empty(rows.length);
     }
-    int[] order = shuffle(rows, plan.seed());
-    double sum = 0;
-    double first = Double.NaN;
-    double last = Double.NaN;
-    int measured = 0;
-    double[] stages;
-    int clipped;
-    try (StepFeed feed = new StepFeed(store, plan, teacher, devices.size(), threads);
-        Learner learner = new Learner(model, devices, plan, teacher, profile)) {
-      ArrayDeque<CompletableFuture<StepFeed.Step>> pending = new ArrayDeque<>(PREFETCH);
-      int from = 0;
-      int queued = 0;
-      for (int step = 0; step < steps; step++) {
-        while (pending.size() < PREFETCH && queued < steps) {
-          pending.add(feed.prepare(batch(order, from, batchSize)));
-          from = from + batchSize < order.length ? from + batchSize : 0;
-          queued++;
-        }
-        StepFeed.Step prepared = await(pending.remove());
-        double loss;
-        try {
-          loss = learner.train(prepared);
-        } finally {
-          feed.release(prepared);
-        }
-        if (!Double.isNaN(loss)) {
-          sum += loss;
-          measured++;
-          if (Double.isNaN(first)) {
-            first = loss;
-          }
-          last = loss;
-        }
-        if (step % PROGRESS_EVERY == 0) {
-          LOG.info(
-              "fit step {}/{} loss {} {}s",
-              step + 1,
-              steps,
-              loss,
-              String.format("%.1f", (System.nanoTime() - started) / 1e9));
-        }
-      }
-      double[] learned = learner.stageSeconds();
-      stages = new double[] {feed.seconds(), learned[0], learned[1], learned[2]};
-      clipped = learner.clippedSteps();
-      if (teacher.anchored()) {
-        LOG.info("fit TEMPO anchor {}s over all lanes", String.format("%.1f", learner.anchorSeconds()));
-      }
-      if (devices.size() > 1) {
-        LOG.info(
-            "fit {} of {} steps packed into a piece count that is not a multiple of {} lanes;"
-                + " their last piece was split across the lanes",
-            feed.unevenSteps(),
-            steps,
-            devices.size());
-      }
-      profile.log();
+    return new Session(store, rows, model, plan, teacher.gain(), devices, threads, profile)
+        .run(teacher, started);
+  }
+
+  /**
+   * 生徒を読み、学習器を温める（{@link Learner#rehearse}: レーンと複製を作り、核を読み込み、最初の歩の行の微小バッチを 1 つずつ通して勾配を
+   * 捨てる）。温めの微小バッチの教師は生の Y（補正と錨は当てはめの教師で決まるが、捨てる勾配の値は何でもよい）。
+   *
+   * @param store 行の貯蔵
+   * @param rows 学ぶ行
+   * @param start 生徒の始めの網のディレクトリ
+   * @param plan 当てはめの計画（歩数は 1 以上）
+   * @param gain 補助の頭の項に掛けるゲイン K′（当てはめの教師と同じ）
+   * @param devices 学習のデバイス
+   * @param threads 行の読み出しと符号化のスレッドの数
+   * @return 温めた当てはめ（閉じるのは呼び手）
+   * @throws IOException 生徒の網を読めないとき
+   * @throws IllegalArgumentException 行がないか歩数が 0 のとき
+   */
+  public static Prepared prepare(
+      CohortStore store,
+      int[] rows,
+      Path start,
+      FitPlan plan,
+      float gain,
+      NetworkDevices devices,
+      int threads)
+      throws IOException {
+    if (rows.length == 0 || plan.learner().steps() <= 0) {
+      throw new IllegalArgumentException(
+          "a prepared fit needs rows and steps: " + rows.length + ", " + plan.learner().steps());
     }
-    // 秒数は学習器を閉じる（更新の完了を待つ）までを含める
-    return new FitResult(
-        rows.length,
-        steps,
-        clipped,
-        measured > 0 ? sum / measured : Double.NaN,
-        first,
-        last,
-        (System.nanoTime() - started) / 1e9,
-        stages);
+    long started = System.nanoTime();
+    Model model = load(start, devices.primary());
+    try {
+      Session session =
+          new Session(store, rows, model, plan, gain, devices, threads, FitProfile.configured());
+      try {
+        session.rehearse();
+      } catch (RuntimeException | Error failure) {
+        session.closeQuietly(failure);
+        throw failure;
+      }
+      LOG.info(
+          "fit prepared the learner {}s", String.format("%.1f", (System.nanoTime() - started) / 1e9));
+      return new Prepared(model, session);
+    } catch (RuntimeException | Error failure) {
+      model.close();
+      throw failure;
+    }
+  }
+
+  /** 温めた当てはめ（{@link #prepare}）。生徒のモデルを持ち、閉じるときに閉じる。 */
+  public static final class Prepared implements AutoCloseable {
+
+    private final Model model;
+    private final Session session;
+
+    private Prepared(Model model, Session session) {
+      this.model = model;
+      this.session = session;
+    }
+
+    /**
+     * 生徒の網（当てた後の重みを保存するのは呼び手）。
+     *
+     * @return 網
+     */
+    public PrismNetwork network() {
+      return (PrismNetwork) model.getBlock();
+    }
+
+    /**
+     * 網を当てる（1 度だけ）。秒数はこの呼び出しから学習器を閉じるまで（読み込みと温めは含めない）。
+     *
+     * @param teacher 教師の作り方（ゲインは温めたときと同じ）
+     * @return 記録
+     * @throws IllegalArgumentException 教師のゲインが温めたときと違うとき
+     */
+    public FitResult fit(Teacher teacher) {
+      return session.run(teacher, System.nanoTime());
+    }
+
+    /** 当てていなければ学習器と先読みを閉じ、生徒のモデルを閉じる。 */
+    @Override
+    public void close() {
+      try {
+        session.close();
+      } finally {
+        model.close();
+      }
+    }
+  }
+
+  /** 1 回の当てはめの先読みと学習器（並べ替えた行の順を持つ）。{@link #run} の終わりか {@link #close} で閉じる。 */
+  private static final class Session implements AutoCloseable {
+
+    private final int[] order;
+    private final FitPlan plan;
+    private final float gain;
+    private final int lanes;
+    private final FitProfile profile;
+    private final StepFeed feed;
+    private final Learner learner;
+    private boolean closed;
+
+    Session(
+        CohortStore store,
+        int[] rows,
+        Model model,
+        FitPlan plan,
+        float gain,
+        NetworkDevices devices,
+        int threads,
+        FitProfile profile) {
+      order = shuffle(rows, plan.seed());
+      this.plan = plan;
+      this.gain = gain;
+      lanes = devices.size();
+      this.profile = profile;
+      feed = new StepFeed(store, plan, devices.size(), threads);
+      try {
+        learner = new Learner(model, devices, plan, gain, profile);
+      } catch (RuntimeException | Error failure) {
+        feed.close();
+        throw failure;
+      }
+    }
+
+    /** 最初の歩の行で学習器を温める（教師は生の Y）。 */
+    void rehearse() {
+      int[] rows = batch(order, 0, plan.learner().batchSize());
+      StepFeed.Step step = await(feed.prepare(rows, new Teacher(null, null, 0, gain)));
+      try {
+        learner.rehearse(step);
+      } finally {
+        feed.release(step);
+      }
+    }
+
+    /** 計画の歩数だけ当てて閉じる。秒数は started から学習器を閉じる（更新の完了を待つ）まで。 */
+    FitResult run(Teacher teacher, long started) {
+      if (closed) {
+        throw new IllegalStateException("the fit already ran");
+      }
+      if (teacher.gain() != gain) {
+        throw new IllegalArgumentException(
+            "the teacher gain " + teacher.gain() + " differs from the learner gain " + gain);
+      }
+      int steps = plan.learner().steps();
+      int batchSize = plan.learner().batchSize();
+      double sum = 0;
+      double first = Double.NaN;
+      double last = Double.NaN;
+      int measured = 0;
+      double[] stages;
+      int clipped;
+      try {
+        ArrayDeque<CompletableFuture<StepFeed.Step>> pending = new ArrayDeque<>(PREFETCH);
+        int from = 0;
+        int queued = 0;
+        for (int step = 0; step < steps; step++) {
+          while (pending.size() < PREFETCH && queued < steps) {
+            pending.add(feed.prepare(batch(order, from, batchSize), teacher));
+            from = from + batchSize < order.length ? from + batchSize : 0;
+            queued++;
+          }
+          StepFeed.Step prepared = await(pending.remove());
+          double loss;
+          try {
+            loss = learner.train(prepared);
+          } finally {
+            feed.release(prepared);
+          }
+          if (!Double.isNaN(loss)) {
+            sum += loss;
+            measured++;
+            if (Double.isNaN(first)) {
+              first = loss;
+            }
+            last = loss;
+          }
+          if (step % PROGRESS_EVERY == 0) {
+            LOG.info(
+                "fit step {}/{} loss {} {}s",
+                step + 1,
+                steps,
+                loss,
+                String.format("%.1f", (System.nanoTime() - started) / 1e9));
+          }
+        }
+        double[] learned = learner.stageSeconds();
+        stages = new double[] {feed.seconds(), learned[0], learned[1], learned[2]};
+        clipped = learner.clippedSteps();
+        if (lanes > 1) {
+          LOG.info(
+              "fit {} of {} steps packed into a piece count that is not a multiple of {} lanes;"
+                  + " their last piece was split across the lanes",
+              feed.unevenSteps(),
+              steps,
+              lanes);
+        }
+        profile.log();
+      } catch (RuntimeException | Error failure) {
+        closeQuietly(failure);
+        throw failure;
+      }
+      close();
+      // 秒数は学習器を閉じる（更新の完了を待つ）までを含める
+      return new FitResult(
+          order.length,
+          steps,
+          clipped,
+          measured > 0 ? sum / measured : Double.NaN,
+          first,
+          last,
+          (System.nanoTime() - started) / 1e9,
+          stages);
+    }
+
+    /** 学習器を閉じ（更新の完了を待つ）、先読みを止める（2 度目からは何もしない）。 */
+    @Override
+    public void close() {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      try {
+        learner.close();
+      } finally {
+        feed.close();
+      }
+    }
+
+    /** 失敗の後に閉じる（閉じるときの例外は失敗に添える）。 */
+    void closeQuietly(Throwable failure) {
+      try {
+        close();
+      } catch (RuntimeException | Error problem) {
+        failure.addSuppressed(problem);
+      }
+    }
   }
 
   /**

@@ -21,9 +21,9 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 /**
- * 錨（凍結した学習の網 θ_t）の s を、学習のレーンのデバイスで出す。道は方策と同じ {@link InferencePath} で選ぶ。HIP なら収集の
- * 方策と同じ自前の推論（レーンの計算ストリームに計画を 1 つ開く）、そうでなければ eager の凍結した網（背骨の注意はレーンと同じ演算）。
- * どちらも 1 回の呼び出しの中でデバイスの仕事を終え、s をホストに返す。スレッド安全ではない（1 つのレーンだけが使う）。
+ * 錨（凍結した学習の網 θ_t）の s を 1 つのデバイスで出す（当てはめの前に全ての行の分を出す {@link AnchorScores} が使う）。道は方策と同じ
+ * {@link InferencePath} で選ぶ。HIP なら収集の方策と同じ自前の推論（渡したストリームに計画を 1 つ開く）、そうでなければ eager の凍結した網。
+ * どちらも 1 回の呼び出しの中でデバイスの仕事を終え、s をホストに返す。スレッド安全ではない（同時に使うのは 1 つのスレッドだけ）。
  */
 sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
 
@@ -58,8 +58,8 @@ sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
    *
    * @param directory 錨の網のディレクトリ
    * @param path 推論の道（設定の inference。GPU・前線なし・特化した幅のときだけ HIP になる）
-   * @param device レーンのデバイス
-   * @param stream レーンの計算ストリーム（HIP の道で使う。CPU のレーンは null）
+   * @param device デバイス
+   * @param stream 計算ストリーム（HIP の道で使う。CPU は null）
    * @param attention 背骨の注意の自前の演算（eager の道で使う。null なら djl-rocm の演算）
    * @param capacity 微小バッチの容量
    * @return 錨
@@ -127,7 +127,7 @@ sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
       this.backend = backend;
     }
 
-    /** 網を CPU に読んで重みの束を作り、レーンの計算ストリームに計画を開いて写す。 */
+    /** 網を CPU に読んで重みの束を作り、渡したストリームに計画を開いて写す。 */
     static Hip open(Path directory, PtStream stream, BatchPlan.Capacity capacity) throws IOException {
       WeightPack pack = WeightPack.load(directory, VERSION);
       HipBackend backend = HipBackend.open(HipLibrary.load(), stream, pack.layout(), capacity);

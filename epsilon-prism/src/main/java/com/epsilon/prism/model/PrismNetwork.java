@@ -27,9 +27,13 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -136,7 +140,7 @@ public final class PrismNetwork extends AbstractBlock {
     Context context =
         new Context(
             store, inputs.manager(), pass.precision(), pass.training(), pass.tape(), probe);
-    BatchIndex index = new BatchIndex(inputs, pass);
+    BatchIndex index = inputs.index(pass);
     probe.mark(Stage.BATCH_INDEX);
     NDArray states = backbone(context, inputs, index);
     NDArray decision = states.get(":, {}, :", TokenType.ROUND.first());
@@ -154,7 +158,8 @@ public final class PrismNetwork extends AbstractBlock {
             ? null
             : auxiliary(context, index, representations, values, decision, states);
     probe.mark(Stage.AUX_HEADS);
-    return new Outputs(scores, index.legal, index.rowActions, index.discardValueSlots, auxiliary);
+    return new Outputs(
+        scores, index.legal.array(), index.rowActions, index.discardValueSlots, auxiliary);
   }
 
   /** 背骨: 埋め込み → L 層 → 最後の正規化。局・席・牌の [行, 39, H] を返す。 */
@@ -168,7 +173,7 @@ public final class PrismNetwork extends AbstractBlock {
         if (index.maxEvents > 0) {
           NDArray events = embedding.embed(context, inputs, index, type);
           parts.add(
-              NDArrays.scatterRows(events, index.eventSlots, (long) rows * index.maxEvents)
+              NDArrays.scatterRows(events, index.eventSlots.array(), (long) rows * index.maxEvents)
                   .reshape(rows, index.maxEvents, hidden));
         }
       } else {
@@ -182,7 +187,7 @@ public final class PrismNetwork extends AbstractBlock {
     probe.mark(Stage.RELATION);
     for (int layer = 0; layer < encoders.length; layer++) {
       int queries = layer == encoders.length - 1 ? TokenType.FIXED_TOKENS : index.tokens;
-      tokens = encoders[layer].forward(context, tokens, index.tokenMask, codes, queries);
+      tokens = encoders[layer].forward(context, tokens, index.tokenMask.array(), codes, queries);
     }
     NDArray states = finalNorm.apply(context, tokens);
     probe.mark(Stage.FINAL_NORM);
@@ -224,17 +229,18 @@ public final class PrismNetwork extends AbstractBlock {
           ValueGraphHead.aggregate(
               representations,
               values,
-              index.candidateTransitions,
-              index.candidateMask,
+              index.candidateTransitions.array(),
+              index.candidateMask.array(),
               index.candidateCount,
               index.candidateWidth);
       candidates =
-          outcome.forward(context, chosen, NDArrays.gatherRows(decision, index.candidateRows));
+          outcome.forward(
+              context, chosen, NDArrays.gatherRows(decision, index.candidateRows.array()));
     }
     NDArray readings =
         index.readingCount == 0
             ? null
-            : reading.forward(context, NDArrays.gatherRows(states, index.readingRows));
+            : reading.forward(context, NDArrays.gatherRows(states, index.readingRows.array()));
     return new Outputs.Auxiliary(candidates, readings);
   }
 
@@ -339,6 +345,29 @@ public final class PrismNetwork extends AbstractBlock {
       throw new IOException("PRISM frontier schema mismatch " + directory);
     }
     return shape;
+  }
+
+  /**
+   * 保存した網の重みの指紋（weights.bin の SHA-256 の 16 進）。同じ重みを書いた網は同じ指紋になり、重みが 1 ビットでも違えば違う。
+   *
+   * @param directory 保存した所
+   * @return 64 文字の 16 進
+   * @throws IOException 重みを読めないとき
+   */
+  public static String weightsFingerprint(Path directory) throws IOException {
+    MessageDigest digest;
+    try {
+      digest = MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException missing) {
+      throw new IllegalStateException("SHA-256 is not available", missing);
+    }
+    try (InputStream in = Files.newInputStream(directory.resolve(WEIGHTS))) {
+      byte[] buffer = new byte[1 << 16];
+      for (int read = in.read(buffer); read >= 0; read = in.read(buffer)) {
+        digest.update(buffer, 0, read);
+      }
+    }
+    return HexFormat.of().formatHex(digest.digest());
   }
 
   /** 前線の腕なら前線の入力の指紋、ほかは null。 */

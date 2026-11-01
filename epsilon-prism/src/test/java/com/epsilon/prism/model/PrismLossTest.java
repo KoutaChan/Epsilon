@@ -183,12 +183,15 @@ public class PrismLossTest {
     PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
     try (NDManager scope = manager.newSubManager()) {
       NetworkInputs inputs = batch.inputs(scope);
+      Staging staging = new Staging();
       LossInputs staged =
-          LossInputs.of(
+          LossInputs.stage(
               inputs,
               labels,
               auxiliary,
-              auxiliary == null ? null : AuxiliaryLoss.Denominators.of(auxiliary));
+              auxiliary == null ? null : AuxiliaryLoss.Denominators.of(auxiliary),
+              staging);
+      staging.send(inputs.uploads(), scope);
       Outputs outputs =
           network.forward(
               new ParameterStore(manager, false),
@@ -397,7 +400,7 @@ public class PrismLossTest {
       List<ValueLabel> partLabels = labels.subList(from, to);
       AuxiliaryLabels partAuxiliary = select(auxiliary, picked, read, batch.firstAction(from), from);
       BatchIndex index =
-          new BatchIndex(
+          BatchIndex.send(
               Batches.build(rows.subList(from, to), 5).inputs(manager),
               Pass.training(Precision.FLOAT32, ValueLabel.measured(partLabels), partAuxiliary));
       int count = partLabels.size();
@@ -409,7 +412,7 @@ public class PrismLossTest {
       Outputs outputs =
           new Outputs(
               manager.create(values, new Shape(count, capacity)),
-              index.legal,
+              index.legal.array(),
               index.rowActions,
               index.discardValueSlots,
               new Outputs.Auxiliary(

@@ -2,6 +2,7 @@ package com.epsilon.prism.learn;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import ai.djl.Device;
 import ai.djl.Model;
@@ -41,6 +42,7 @@ import com.epsilon.prism.observe.Observation;
 import com.epsilon.prism.observe.ObservationArena;
 import com.epsilon.prism.observe.ObservationSchema;
 import com.epsilon.prism.observe.ObservationWriter;
+import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.Row;
@@ -70,7 +72,7 @@ import org.testng.annotations.Test;
  * 学習の道（CPU、FP32、小さな網）。合成のコホート 2 つ（GREEDY の実際の判断の O・神託・局末に乱数の Y を付けた行）を貯蔵から読み、
  * 塊にして数歩当てると損失が下がる。版に書いて開くと s がビットで同じ。補助の教師の形が網の補助の頭と合い、読みの教師の牌の軸は入力と同じ
  * 色の写しになる（色を入れ替えた半荘の対で、入力の牌のトークンが同じ判断は読みの教師もビットで同じ）。前線の腕は命令 refit
- * --frontier on で当てはめ、前線を書いた塊で版の網が動く。
+ * --frontier on で当てはめ、前線を書いた塊で版の網が動く。先に出した錨の s は行の番号で教師に混ざる。
  */
 public class FitTest {
   private static final Logger log = LoggerFactory.getLogger(FitTest.class);
@@ -187,13 +189,13 @@ public class FitTest {
         Path snapshot = root.resolve("out").resolve("snapshot");
         Snapshot.FitRecord record = new Snapshot.FitRecord(root.toString(), 1, 2, 0, plan, result);
         Snapshot.write(snapshot, network, PolicyParams.of(3), record);
-        try (StepFeed feed = new StepFeed(store, plan, Teacher.RAW, 1, 2);
+        try (StepFeed feed = new StepFeed(store, plan, 1, 2);
             NDManager manager = NDManager.newBaseManager(Device.cpu())) {
           Snapshot.Loaded loaded = Snapshot.load(snapshot, manager);
           assertEquals(loaded.params().version(), 3);
           assertEquals(loaded.fit().plan(), plan);
           assertEquals(loaded.fit().result().steps(), STEPS);
-          StepFeed.Step step = feed.prepare(Arrays.copyOf(rows, 40)).join();
+          StepFeed.Step step = feed.prepare(Arrays.copyOf(rows, 40), Teacher.RAW).join();
           for (Microbatch part : step.lanes().get(0)) {
             assertSameScores(network, loaded.network(), part, manager);
             assertAuxiliaryShapes(loaded.network(), part, manager);
@@ -201,6 +203,147 @@ public class FitTest {
           feed.release(step);
         }
       }
+    }
+  }
+
+  /**
+   * 温めた当てはめ（{@link Fit#prepare}）: 学習器を温めてから当てた重みが、温めずに当てた重み（{@link Fit#run}）とビットで同じ（温めは重み・
+   * 最適化の状態・歩の数・.grad を残さない）。
+   */
+  @Test(timeOut = 600_000)
+  public void preparedFitMatchesTheColdFitBitwise() throws IOException {
+    FitPlan plan =
+        new FitPlan(
+            new FitSettings(4, 4096, 3e-3, 3e-4, 1f, 0.01, 0.02),
+            SHAPE,
+            AuxiliaryLoss.standard(),
+            BUDGET,
+            9);
+    Path start = root.resolve("start");
+    try (Model model = Fit.blank(SHAPE, Device.cpu(), 9)) {
+      PrismNetwork network = (PrismNetwork) model.getBlock();
+      Random random = new Random(29);
+      for (Pair<String, Parameter> pair : network.getParameters()) {
+        NDArray array = pair.getValue().getArray();
+        float[] values = array.toFloatArray();
+        for (int i = 0; i < values.length; i++) {
+          values[i] += (float) random.nextGaussian() * 0.05f;
+        }
+        array.set(values);
+      }
+      network.save(start);
+    }
+    Teacher teacher = new Teacher(null, null, 0, 0.5f);
+    NetworkDevices cpu = NetworkDevices.of(Device.cpu());
+    try (CohortStore store = new CohortStore()) {
+      store.addCohort(CohortWriter.directory(root, 1));
+      int[] rows = store.select(1, 1, Selection.LABELS);
+      Map<String, float[]> cold = new LinkedHashMap<>();
+      try (Model model = Fit.load(start, Device.cpu())) {
+        Fit.run(store, rows, model, plan, teacher, cpu, 2);
+        for (Pair<String, Parameter> pair : model.getBlock().getParameters()) {
+          cold.put(pair.getKey(), pair.getValue().getArray().toFloatArray());
+        }
+      }
+      try (Fit.Prepared prepared = Fit.prepare(store, rows, start, plan, 0.5f, cpu, 2)) {
+        expectThrows(IllegalArgumentException.class, () -> prepared.fit(Teacher.RAW));
+        FitResult result = prepared.fit(teacher);
+        assertEquals(result.steps(), 4);
+        for (Pair<String, Parameter> pair : prepared.network().getParameters()) {
+          float[] warm = pair.getValue().getArray().toFloatArray();
+          float[] reference = cold.get(pair.getKey());
+          assertEquals(warm.length, reference.length, pair.getKey());
+          for (int i = 0; i < warm.length; i++) {
+            assertEquals(
+                Float.floatToRawIntBits(warm[i]),
+                Float.floatToRawIntBits(reference[i]),
+                pair.getKey() + " " + i);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * 錨の s（{@link AnchorScores}）: 全ての行の s を先に出して教師に混ぜた値が、同じ微小バッチを錨の網に通して混ぜた値と合う（eager の CPU の
+   * 錨は塊の組み方で最後のビットが変わるので、その差だけを許す。行の取り違えは桁が違う）。違う重みの網と照らすと止まり、ない行は引けない。
+   */
+  @Test(timeOut = 600_000)
+  public void anchorScoresFollowEachRowIntoTheTeacher() throws IOException {
+    FitPlan plan =
+        new FitPlan(
+            new FitSettings(1, 4096, 3e-3, 3e-4, 1f, 0.01, 0.02),
+            SHAPE,
+            AuxiliaryLoss.standard(),
+            BUDGET,
+            5);
+    Path anchor = root.resolve("anchor");
+    Path other = root.resolve("other");
+    try (Model model = Fit.blank(SHAPE, Device.cpu(), 5)) {
+      PrismNetwork network = (PrismNetwork) model.getBlock();
+      Random random = new Random(21);
+      for (Pair<String, Parameter> pair : network.getParameters()) {
+        NDArray array = pair.getValue().getArray();
+        float[] values = array.toFloatArray();
+        for (int i = 0; i < values.length; i++) {
+          values[i] += (float) random.nextGaussian() * 0.05f;
+        }
+        array.set(values);
+      }
+      network.save(anchor);
+      NDArray first = network.getParameters().get(0).getValue().getArray();
+      first.set(first.add(1f).toFloatArray());
+      network.save(other);
+    }
+    try (CohortStore store = new CohortStore()) {
+      store.addCohort(CohortWriter.directory(root, 1));
+      store.addCohort(CohortWriter.directory(root, 2));
+      int[] rows = store.select(1, 2, Selection.LABELS);
+      AnchorScores scores =
+          AnchorScores.compute(
+              store, rows, anchor, InferencePath.EAGER, NetworkDevices.of(Device.cpu()), 2);
+      scores.requireNetwork(anchor);
+      expectThrows(IllegalStateException.class, () -> scores.requireNetwork(other));
+      expectThrows(IllegalArgumentException.class, () -> scores.scores(-1));
+      Teacher teacher = new Teacher(null, scores, 0.5, 1f);
+      int[] part = Arrays.copyOf(rows, 40);
+      int compared = 0;
+      try (StepFeed feed = new StepFeed(store, plan, 1, 2);
+          Anchor eager =
+              Anchor.open(
+                  anchor, InferencePath.EAGER, Device.cpu(), null, null, StepFeed.capacity(BUDGET))) {
+        StepFeed.Step plain = feed.prepare(part, Teacher.RAW).join();
+        StepFeed.Step anchored = feed.prepare(part, teacher).join();
+        List<Microbatch> references = plain.lanes().get(0);
+        List<Microbatch> results = anchored.lanes().get(0);
+        assertEquals(results.size(), references.size());
+        for (int p = 0; p < references.size(); p++) {
+          Microbatch reference = references.get(p);
+          Anchor.Scores s = eager.scores(reference.batch());
+          for (int row = 0; row < reference.rows(); row++) {
+            float[] y = reference.labels().get(row).values();
+            int from = s.starts()[row];
+            float[] expected =
+                Teacher.anchored(y, Arrays.copyOfRange(s.values(), from, from + y.length), 0.5);
+            float[] actual = results.get(p).labels().get(row).values();
+            assertEquals(actual.length, expected.length);
+            for (int a = 0; a < expected.length; a++) {
+              if (Float.isNaN(expected[a])) {
+                assertTrue(Float.isNaN(actual[a]), "row " + row + " action " + a);
+                continue;
+              }
+              assertTrue(
+                  Math.abs(actual[a] - expected[a]) <= 1e-5 + 1e-4 * Math.abs(expected[a]),
+                  "row " + row + " action " + a + ": " + actual[a] + " vs " + expected[a]);
+              compared++;
+            }
+          }
+        }
+        feed.release(plain);
+        feed.release(anchored);
+      }
+      log.info("PRISM-ANCHOR-SCORES rows={} compared={}", rows.length, compared);
+      assertTrue(compared > 0, "no measured actions were compared");
     }
   }
 
@@ -254,8 +397,8 @@ public class FitTest {
       store.addCohort(CohortWriter.directory(root, 1));
       store.addCohort(CohortWriter.directory(root, 2));
       int[] rows = store.select(1, 2, Selection.LABELS);
-      try (StepFeed feed = new StepFeed(store, plan, Teacher.RAW, 1, 2)) {
-        StepFeed.Step step = feed.prepare(Arrays.copyOf(rows, 40)).join();
+      try (StepFeed feed = new StepFeed(store, plan, 1, 2)) {
+        StepFeed.Step step = feed.prepare(Arrays.copyOf(rows, 40), Teacher.RAW).join();
         for (Microbatch part : step.lanes().get(0)) {
           assertTrue(written(part.batch().frontier()), "the frontier features were not written");
           try (NDManager scope = manager.newSubManager()) {
@@ -386,7 +529,7 @@ public class FitTest {
     private long physicalTiles;
 
     Side(FitPlan plan) {
-      encoder = new Encoder(plan, Teacher.RAW);
+      encoder = new Encoder(plan);
     }
 
     AuxiliaryLabels encode(GameEngine engine, EngineDecisionPoint point) {
@@ -429,7 +572,7 @@ public class FitTest {
       batch.plan().clear();
       batch.plan().add(observation.bind(o, 0));
       batch.plan().seal();
-      return encoder.encode(batch, List.of(row)).auxiliary();
+      return encoder.encode(batch, List.of(row), new int[1], Teacher.RAW).auxiliary();
     }
 
     /** 入力の牌のトークンの欄（色の写しの後）。 */

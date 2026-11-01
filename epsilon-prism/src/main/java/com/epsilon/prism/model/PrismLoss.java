@@ -24,11 +24,11 @@ import java.util.Objects;
  * にも効かず、B の定数だけを 0 に止める（最適は s = Q − mean_D Q）。打つ手は行の定数に依らないので、目標を Y の平均（局 1 本の雑音を
  * 含む絶対値）にする理由はない。補助の項は {@link AuxiliaryLoss}。
  *
- * <p>損失は 2 段で取る。学習のレーンは網の順伝播の前に教師をデバイスへ送り（{@link LossInputs#of(NetworkInputs, List, AuxiliaryLabels,
- * AuxiliaryLoss.Denominators)}）、順伝播の後は送った配列を読むだけにする（{@link #total(Outputs, LossInputs, float, int, float)}）。GPU の
- * 管理元での配列の作成はホストからの写しとストリームの同期なので、順伝播の後に作るとホストは順伝播が終わるまで待ち、その間に損失と逆伝播を
- * 積めない。網の出力が既にあるときの口（{@link #total(NDManager, Outputs, List, AuxiliaryLabels, float, int, float)}・{@link #value}・
- * {@link #rowMean}）は、出力から教師を作って送り、同じ演算を通す。
+ * <p>損失は 2 段で取る。学習のレーンは網の順伝播の前に教師をデバイスへ送り（{@link StagedBatch#send}）、順伝播の後は送った配列を
+ * 読むだけにする（{@link #total(Outputs, LossInputs, float, int, float)}）。GPU の管理元での同期の写しはストリームの同期なので、順伝播の
+ * 後に作るとホストは順伝播が終わるまで待ち、その間に損失と逆伝播を積めない。網の出力が既にあるときの口
+ * （{@link #total(NDManager, Outputs, List, AuxiliaryLabels, float, int, float)}・{@link #value}・{@link #rowMean}）は、出力から教師を
+ * 作って送り、同じ演算を通す。
  *
  * @param auxiliary 補助の頭の損失
  */
@@ -124,8 +124,7 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
    * 微小バッチの損失 (1/B_C)·[Σ w·ℓ_PRISM + η·Σ w·s̄_D²] + share·L_aux（教師は順伝播の前に送ったもの）。
    *
    * @param outputs 網の出力（補助の頭を計算した順伝播なら補助の項も足す）
-   * @param inputs 送った教師（{@link LossInputs#of(NetworkInputs, List, AuxiliaryLabels, AuxiliaryLoss.Denominators)}。補助の教師が
-   *     なければ補助の項を足さない）
+   * @param inputs 送った教師（{@link StagedBatch#send}。補助の教師がなければ補助の項を足さない）
    * @param gain ゲイン K′（replay では 1）
    * @param denominator 1 歩の全レーンで |C| ≥ 2 の行の数 B_C（なければ 1）
    * @param share 1 歩の行のうち、微小バッチの元の塊の行の割合（1 歩が 1 つの微小バッチなら 1）

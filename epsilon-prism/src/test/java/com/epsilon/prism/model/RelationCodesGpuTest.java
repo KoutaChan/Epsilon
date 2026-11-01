@@ -92,7 +92,7 @@ public class RelationCodesGpuTest {
       NDManager manager, RelationCodes kernel, String name, Function<NDManager, NetworkInputs> batch) {
     try (NDManager scope = manager.newSubManager()) {
       NetworkInputs inputs = batch.apply(scope);
-      BatchIndex index = new BatchIndex(inputs, Pass.inference(Precision.BFLOAT16));
+      BatchIndex index = BatchIndex.send(inputs, Pass.inference(Precision.BFLOAT16));
       ShortBuffer expected = words(RelationClass.codes(inputs, index));
       ShortBuffer actual = words(RelationClass.codes(kernel, inputs, index));
       Assert.assertEquals(actual.limit(), expected.limit(), "code words");

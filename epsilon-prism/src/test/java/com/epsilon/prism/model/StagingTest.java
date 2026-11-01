@@ -4,13 +4,16 @@ import ai.djl.Device;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * {@link Staging} と {@link Uploads}: 送った区画が DJL のホストの配列から作る配列とバイトで同じこと（型・形・同じ型の区画の位置）、置き場を
- * 使い回しても前に送った配列が変わらないこと（足りないバッファの取り直しを含む）、誤った区画を拒むこと。
+ * {@link Staging} と {@link Uploads}・{@link UploadRegion}: 送った区画が DJL のホストの配列から作る配列とバイトで同じこと（型・形・同じ型の
+ * 区画の位置）、置き場や領域を使い回しても前に送った配列が変わらないこと（足りないバッファの取り直しを含む）、組の境目の揃え方、誤った区画を
+ * 拒むこと。
  */
 public class StagingTest {
 
@@ -56,6 +59,52 @@ public class StagingTest {
       Assert.assertEquals(second.toFloatArray(), large);
       Assert.assertEquals(third.toFloatArray(), again);
     }
+  }
+
+  @Test(timeOut = 120_000)
+  public void regionSectionsMatchArraysMadeFromHostValues() {
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu());
+        UploadRegion region = UploadRegion.on(manager)) {
+      long[] longs = {Long.MIN_VALUE, -1, 0, 7};
+      float[] floats = {Float.NaN, -0f, 2.5f};
+      float[] targets = {1f, 2f, 3f, 4f};
+      ByteBuffer raw = ByteBuffer.allocateDirect(6).order(ByteOrder.nativeOrder());
+      raw.putShort((short) 0x3f80).putShort((short) 0xc000).putShort((short) 0x7fc0).flip();
+      Staging staging = new Staging();
+      Staging.Section first = staging.add(longs, new Shape(2, 2));
+      staging.align();
+      Staging.Section second = staging.add(floats, new Shape(3));
+      Staging.Section third = staging.add(raw, Staging.Kind.BFLOAT16, new Shape(3, 1));
+      staging.align();
+      Staging.Section fourth = staging.add(targets, new Shape(2, 2));
+      staging.write(region);
+      staging.enqueue(manager, null);
+      assertSameBytes(first.array(), manager.create(longs).reshape(2, 2));
+      assertSameBytes(second.array(), manager.create(floats));
+      Assert.assertEquals(third.array().toByteBuffer(), raw);
+      assertSameBytes(fourth.array(), manager.create(targets).reshape(2, 2));
+      // 送り直しは領域に書き直してから。長い組は領域のバッファを取り直す
+      staging.write(region);
+      staging.enqueue(manager, null);
+      assertSameBytes(fourth.array(), manager.create(targets).reshape(2, 2));
+      float[] large = new float[4096];
+      Staging larger = new Staging();
+      Staging.Section whole = larger.add(large, new Shape(4096));
+      larger.write(region);
+      larger.enqueue(manager, null);
+      Assert.assertEquals(whole.array().toFloatArray(), large);
+      Assert.assertEquals(first.array().toLongArray(), longs);
+    }
+  }
+
+  @Test
+  public void groupsStartOnAllocatorBoundaries() {
+    Assert.assertEquals(Staging.Kind.LONG.aligned(1), 64);
+    Assert.assertEquals(Staging.Kind.FLOAT.aligned(128), 128);
+    Assert.assertEquals(Staging.Kind.FLOAT.aligned(129), 256);
+    Assert.assertEquals(Staging.Kind.BFLOAT16.aligned(3), 256);
+    Assert.assertEquals(Staging.Kind.BOOLEAN.aligned(0), 0);
+    Assert.assertEquals(Staging.Kind.BYTE.aligned(513), 1024);
   }
 
   @Test

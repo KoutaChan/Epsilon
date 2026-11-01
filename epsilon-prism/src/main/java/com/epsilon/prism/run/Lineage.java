@@ -17,6 +17,7 @@ import com.epsilon.prism.collect.EventLedger;
 import com.epsilon.prism.collect.RowSink;
 import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.core.CrnSeeds;
+import com.epsilon.prism.learn.AnchorScores;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.learn.FitPlan;
@@ -40,8 +41,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,7 +60,8 @@ import org.slf4j.LoggerFactory;
  *       教師は (1 − K′_t)·s_θt + K′_t·Ỹ（Ỹ は帳簿で補正した Y。帳簿のある行がなければ生の Y。錨は凍結した θ_t）、補助の頭の項も K′_t 倍
  *       （{@link Teacher}）、学習率は filterLrMode が K′_t から決める倍率（{@link FilterLrMode}: GAIN なら min(1, K′_t / 0.25)、FULL なら 1）。
  *       K′_t は前の反復で教師に掛けた補正の保留の R² の分だけ K_t を上げたゲイン（{@link PrismConfig#filterGain(int, double)}。最初の反復と補正を
- *       掛けなかった反復の次は K_t）。work/&lt;t&gt;/Single に保存し、再開では使い回す。
+ *       掛けなかった反復の次は K_t）。運の精算の当てはめ（CPU だけ）と並べて、全ての生徒の行の錨の s を GPU で出し（{@link AnchorScores}）、
+ *       生徒を読んで学習器を温める（{@link Fit#prepare}）。work/&lt;t&gt;/Single に保存し、再開では使い回す。
  *   <li>方策の記憶（{@link #publish}）: averaging = none なら θ_{t+1} をそのまま版 t+1 にする。それ以外は打つ網を A_{t+1} = (1 − η)·A_t +
  *       η·θ_{t+1}（{@link Averaging}、{@link PrismNetwork#mixIn}）にして、θ_{t+1} を iterate/ に添える。
  *   <li>reports/iterations.jsonl に 1 行、evalEvery 反復ごとに版 t+1 の打つ網（evaluateIterate なら学習の網も）を 3×Heuristic と打たせて
@@ -336,6 +340,7 @@ public final class Lineage {
 
   /**
    * 反復 t の学習（クラスの説明の 2〜3）: 生徒の行の帳簿で β を当て、生徒 1 本を当てる。帳簿のある行を当てはめたときだけ教師を補正する。
+   * 生徒を当てるなら、帳簿の当てはめの間に錨の s と学習器の温めを別のスレッドで進める（帳簿は CPU だけを使い、学習のデバイスは空いている）。
    *
    * @param ledgerR2 前の反復で教師に掛けた補正の保留の R²（この反復の K′ の元）
    * @return この反復で教師に掛けた補正の保留の R²（次の反復の K′ の元。掛けなければ 0）
@@ -344,11 +349,49 @@ public final class Lineage {
       int t, CohortStore store, NetworkDevices devices, double ledgerR2, Map<String, Object> report)
       throws IOException {
     int[] rows = store.select(t, t, Selection.LABELS_AND_ROOTS);
-    LedgerFit.Result ledger = fitLedger(t, store, rows, report);
+    boolean fits = !studentSaved(t) && fitSteps(rows.length) > 0;
+    Path start = learnStart(t);
+    LedgerFit.Result ledger;
+    AnchorScores anchor = null;
+    Fit.Prepared prepared;
+    try (ExecutorService ahead = Executors.newFixedThreadPool(2)) {
+      Future<AnchorScores> scores =
+          fits
+              ? ahead.submit(
+                  () ->
+                      AnchorScores.compute(
+                          store, rows, start, config.inference(), devices, config.decodeThreads()))
+              : null;
+      Future<Fit.Prepared> warmed =
+          fits
+              ? ahead.submit(
+                  () ->
+                      Fit.prepare(
+                          store,
+                          rows,
+                          start,
+                          studentPlan(t, rows.length, ledgerR2),
+                          (float) config.filterGain(t, ledgerR2),
+                          devices,
+                          config.decodeThreads()))
+              : null;
+      try {
+        ledger = fitLedger(t, store, rows, report);
+        if (scores != null) anchor = await(scores);
+      } catch (IOException | RuntimeException | Error failure) {
+        if (warmed != null) closeAfter(warmed, failure);
+        throw failure;
+      }
+      prepared = warmed == null ? null : await(warmed);
+    }
     LedgerFit.Correction correction = ledger.report().rows() > 0 ? ledger.correction() : null;
-    if (correction == null)
-      LOG.warn("t={} no rows carry a ledger: the student learns the raw Y", t);
-    fitStudent(t, store, rows, correction, ledgerR2, devices, report);
+    try {
+      if (correction == null)
+        LOG.warn("t={} no rows carry a ledger: the student learns the raw Y", t);
+      fitStudent(t, rows, correction, anchor, prepared, ledgerR2, devices, report);
+    } finally {
+      if (prepared != null) prepared.close();
+    }
     report.put("accepted", true);
     report.put("acceptance", "single");
     double r2 = correction == null ? 0 : ledger.report().all().r2();
@@ -379,24 +422,28 @@ public final class Lineage {
   }
 
   /**
-   * 生徒を当てて work/&lt;t&gt;/Single に保存する。保存済み（網と work/&lt;t&gt;/Single.json がそろっている）なら使い回す。行がないか fitSteps が 0
-   * なら、θ_t の重みをそのまま保存する。
+   * 生徒を当てて work/&lt;t&gt;/Single に保存する。保存済み（{@link #studentSaved}）なら使い回す。行がないか fitSteps が 0 なら、θ_t の重みを
+   * そのまま保存する。
    *
    * @param correction 運の精算の補正（null なら生の Y）
+   * @param anchor 錨 θ_t の全ての生徒の行の s（使い回すときと歩数が 0 のときは null）
+   * @param prepared θ_t から読んで温めた生徒（使い回すときと歩数が 0 のときは null。閉じるのは呼び手）
    * @param ledgerR2 K′ の元の R²
+   * @throws IllegalStateException 錨の s が θ_t と違う重みの網から出たとき
    */
   private void fitStudent(
       int t,
-      CohortStore store,
       int[] rows,
       LedgerFit.Correction correction,
+      AnchorScores anchor,
+      Fit.Prepared prepared,
       double ledgerR2,
       NetworkDevices devices,
       Map<String, Object> report)
       throws IOException {
     Path directory = work(t).resolve(SINGLE), record = work(t).resolve(SINGLE + ".json");
     String key = "fit" + SINGLE;
-    if (Files.isDirectory(directory) && Files.exists(record)) {
+    if (studentSaved(t)) {
       FitResult reused = GSON.fromJson(Files.readString(record), FitResult.class);
       report.put(key, reused);
       LOG.info("t={} reusing student {} ({})", t, SINGLE, directory);
@@ -412,31 +459,17 @@ public final class Lineage {
     filter.put("scheduledGain", config.filterGain(t));
     filter.put("r2", ledgerR2);
     report.put("filter", filter);
-    int steps =
-        PrismConfig.steps(config.fitSteps(), config.fitEpochs(), rows.length, config.batchSize());
     Path start = learnStart(t);
-    FitPlan plan =
-        new FitPlan(
-            config.fitSettings(steps, lrScale),
-            PrismNetwork.readShape(start),
-            config.auxiliaryLoss(),
-            FitPlan.TOKEN_BUDGET,
-            CrnSeeds.derive(config.seed(), CrnSeeds.Domain.LEARN, t, SINGLE_SALT));
     FitResult result;
-    try (Model student = Fit.load(start, devices.primary())) {
-      result =
-          steps == 0
-              ? FitResult.empty(rows.length)
-              : Fit.run(
-                  store,
-                  rows,
-                  student,
-                  plan,
-                  new Teacher(correction, start, 1 - gain, (float) gain, config.inference()),
-                  devices,
-                  config.decodeThreads());
-      PrismNetwork network = (PrismNetwork) student.getBlock();
-      Snapshot.save(network, directory);
+    if (prepared == null) {
+      try (Model student = Fit.load(start, devices.primary())) {
+        result = FitResult.empty(rows.length);
+        Snapshot.save((PrismNetwork) student.getBlock(), directory);
+      }
+    } else {
+      anchor.requireNetwork(start);
+      result = prepared.fit(new Teacher(correction, anchor, 1 - gain, (float) gain));
+      Snapshot.save(prepared.network(), directory);
     }
     RunFiles.writeAtomically(record, GSON.toJson(result));
     report.put(key, result);
@@ -494,6 +527,55 @@ public final class Lineage {
     LOG.info(evaluation.summary(version, label));
     LOG.info(evaluation.playSummary(version, label));
     return evaluation.record();
+  }
+
+  /** 生徒を保存済み（網と work/&lt;t&gt;/Single.json がそろっている）なら true。 */
+  private boolean studentSaved(int t) {
+    return Files.isDirectory(work(t).resolve(SINGLE))
+        && Files.exists(work(t).resolve(SINGLE + ".json"));
+  }
+
+  /**
+   * 反復 t の生徒の当てはめの計画: 歩数は {@link #fitSteps}、学習率は filterLrMode の倍率、形は θ_t の形、並べ替えの種は
+   * derive(seed, LEARN, t, {@value #SINGLE_SALT})。
+   */
+  private FitPlan studentPlan(int t, int rows, double ledgerR2) throws IOException {
+    return new FitPlan(
+        config.fitSettings(fitSteps(rows), config.filterLrScale(t, ledgerR2)),
+        PrismNetwork.readShape(learnStart(t)),
+        config.auxiliaryLoss(),
+        FitPlan.TOKEN_BUDGET,
+        CrnSeeds.derive(config.seed(), CrnSeeds.Domain.LEARN, t, SINGLE_SALT));
+  }
+
+  /** 失敗の後に、先に始めた温めの完了を待って閉じる（温めと閉じるときの例外は失敗に添える）。 */
+  private static void closeAfter(Future<Fit.Prepared> warmed, Throwable failure) {
+    try {
+      await(warmed).close();
+    } catch (IOException | RuntimeException | Error problem) {
+      failure.addSuppressed(problem);
+    }
+  }
+
+  /** 生徒の行の数から当てはめの歩数（1 行 fitEpochs 周、上限 fitSteps 歩）。 */
+  private int fitSteps(int rows) {
+    return PrismConfig.steps(config.fitSteps(), config.fitEpochs(), rows, config.batchSize());
+  }
+
+  /** 先に始めた仕事の完了を待つ。仕事の例外は包みを外して投げる。 */
+  private static <T> T await(Future<T> future) throws IOException {
+    try {
+      return future.get();
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      throw new IOException("interrupted while waiting for the learner preparation", interrupted);
+    } catch (ExecutionException failure) {
+      Throwable cause = failure.getCause();
+      if (cause instanceof IOException unreadable) throw unreadable;
+      if (cause instanceof RuntimeException runtime) throw runtime;
+      if (cause instanceof Error error) throw error;
+      throw new IOException("the learner preparation failed", cause);
+    }
   }
 
   /** 生徒の始めの網と錨: 版 t の learnFrom の網。 */

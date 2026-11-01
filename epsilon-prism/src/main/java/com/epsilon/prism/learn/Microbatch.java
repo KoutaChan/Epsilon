@@ -1,14 +1,16 @@
 package com.epsilon.prism.learn;
 
 import ai.djl.ndarray.NDManager;
+import ai.djl.pytorch.engine.PtStream;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.FrontierBatch;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.model.AuxiliaryLabels;
 import com.epsilon.prism.model.AuxiliaryLoss;
-import com.epsilon.prism.model.LossInputs;
 import com.epsilon.prism.model.NetworkInputs;
+import com.epsilon.prism.model.StagedBatch;
+import com.epsilon.prism.model.UploadRegion;
 import com.epsilon.prism.model.Uploads;
 import com.epsilon.prism.model.ValueLabel;
 import java.nio.ByteOrder;
@@ -23,13 +25,16 @@ import java.util.List;
  * 条件を満たす所の数。塊を分けない微小バッチは自分の行と教師から決まり、塊を分けた部分は元の塊の割合と分母を持つ（{@link #ofPiece}）。補助の
  * 項は塊ごとの平均に割合を掛けたものなので、部分の項の和が元の塊の項になる。
  *
+ * <p>学習の歩の作り手は、割合と分母を付けた後にデバイスへの入力を前もって並べ（{@link #staged}）、レーンはそれを送る（{@link #send}）。
+ *
  * @param batch 入力（封じた塊）
  * @param labels 行の順の教師
  * @param measured C の印（塊の手の順。{@link ValueLabel#measured}）
  * @param auxiliary 補助の頭の教師（補助の頭を計算しないなら null）
- * @param tokens 詰めたトークン（行の数 × 最も長い行の S。デバイスへの割り当ての重さ）
+ * @param tokens 詰めたトークン（行の数 × 最も長い行の S）
  * @param share 補助の項に掛ける割合（1 歩の行のうち元の塊の行の割合）
  * @param denominators 補助の頭の平均の分母（元の塊の数。補助の頭を計算しないなら null）
+ * @param staged 前もって並べたデバイスへの入力（並べる前は null）
  */
 record Microbatch(
     HostInputs batch,
@@ -38,7 +43,8 @@ record Microbatch(
     AuxiliaryLabels auxiliary,
     long tokens,
     float share,
-    AuxiliaryLoss.Denominators denominators) {
+    AuxiliaryLoss.Denominators denominators,
+    StagedBatch staged) {
 
   static {
     // HostBatch と FrontierBatch はリトルエンディアン、網の入口はネイティブの順で区画を読む
@@ -70,7 +76,8 @@ record Microbatch(
         auxiliary,
         tokens,
         1f,
-        auxiliary == null ? null : AuxiliaryLoss.Denominators.of(auxiliary));
+        auxiliary == null ? null : AuxiliaryLoss.Denominators.of(auxiliary),
+        null);
   }
 
   /**
@@ -95,7 +102,14 @@ record Microbatch(
     for (Microbatch part : parts) {
       placed.add(
           new Microbatch(
-              part.batch, part.labels, part.measured, part.auxiliary, part.tokens, share, denominators));
+              part.batch,
+              part.labels,
+              part.measured,
+              part.auxiliary,
+              part.tokens,
+              share,
+              denominators,
+              null));
     }
     return placed;
   }
@@ -105,26 +119,48 @@ record Microbatch(
   }
 
   /**
-   * 網の入力を作る（{@link NetworkInputs#of(NDManager, Uploads, HostBatch, FrontierBatch)}。CPU では配列が塊の
-   * 領域を指すので、配列を閉じるまで塊を返さない）。
+   * 網の入力・索引・損失の入力（教師は錨を混ぜた後、補助の頭の分母は元の塊の数）を並べて領域に書いた微小バッチを返す（作業のスレッド）。
+   *
+   * @param region 領域（{@link StepFeed#release} で返すまでこの微小バッチだけが使う）
+   * @return 並べた微小バッチ
+   */
+  Microbatch staged(UploadRegion region) {
+    return new Microbatch(
+        batch,
+        labels,
+        measured,
+        auxiliary,
+        tokens,
+        share,
+        denominators,
+        StagedBatch.stage(
+            region, batch.input(), batch.frontier(), measured, auxiliary, labels, denominators));
+  }
+
+  /**
+   * 並べた入力を、呼び手のスレッドの今のストリームに非同期の写しで送る（{@link StagedBatch#send}。網の順伝播の前に呼ぶ）。
    *
    * @param manager 配列を作る管理元
-   * @param uploads 索引と損失の入力を送る置き場（レーンの物）
+   * @param stream 呼び手のスレッドの今のストリーム（CPU の管理元なら null）
+   * @return 網の入力と損失の入力
+   * @throws IllegalStateException 並べる前のとき
+   */
+  StagedBatch.Sent send(NDManager manager, PtStream stream) {
+    if (staged == null) {
+      throw new IllegalStateException("the microbatch has not been staged");
+    }
+    return staged.send(manager, stream);
+  }
+
+  /**
+   * 網の入力をその場で作る（{@link NetworkInputs#of(NDManager, Uploads, HostBatch, FrontierBatch)}。索引は順伝播がその場で作って置き場から
+   * 送る。CPU では配列が塊の領域を指すので、配列を閉じるまで塊を返さない）。
+   *
+   * @param manager 配列を作る管理元
+   * @param uploads 索引を送る置き場（呼び手のスレッドの物）
    * @return 入力
    */
   NetworkInputs inputs(NDManager manager, Uploads uploads) {
     return NetworkInputs.of(manager, uploads, batch.input(), batch.frontier());
-  }
-
-  /**
-   * 損失の入力を作って送る（{@link LossInputs#of(NetworkInputs, List, AuxiliaryLabels, AuxiliaryLoss.Denominators)}。補助の頭の分母は
-   * 元の塊の数）。網の順伝播の前に呼ぶ。
-   *
-   * @param inputs この微小バッチの網の入力（配列は同じ管理元に作る）
-   * @param labels 行の順の教師（錨を混ぜた後）
-   * @return 損失の入力
-   */
-  LossInputs lossInputs(NetworkInputs inputs, List<ValueLabel> labels) {
-    return LossInputs.of(inputs, labels, auxiliary, denominators);
   }
 }

@@ -158,26 +158,31 @@ final class ValueGraphHead extends Module {
           aggregate(
               transitions,
               values,
-              index.gateTransitions,
-              index.gateTransitionMask,
+              index.gateTransitions.array(),
+              index.gateTransitionMask.array(),
               index.gateCount,
               index.gateWidth);
-      NDArray base = NDArrays.gatherRows(transitions, index.gateBaseTransitions);
+      NDArray base = NDArrays.gatherRows(transitions, index.gateBaseTransitions.array());
       if (index.barWidth > 0) {
         NDArray bar =
             aggregate(
-                transitions, values, index.barTransitions, index.barMask, index.rows, index.barWidth);
-        NDArray usesBar = index.gateUsesBar.broadcast(base.getShape());
-        base = NDArrays.where(usesBar, NDArrays.gatherRows(bar, index.gateRows), base);
+                transitions,
+                values,
+                index.barTransitions.array(),
+                index.barMask.array(),
+                index.rows,
+                index.barWidth);
+        NDArray usesBar = index.gateUsesBar.array().broadcast(base.getShape());
+        base = NDArrays.where(usesBar, NDArrays.gatherRows(bar, index.gateRows.array()), base);
       }
       delta =
           gate(
               context,
               chosen,
               base,
-              NDArrays.gatherRows(states, index.gateRows),
-              index.gateKinds,
-              NDArrays.gatherRows(actionExact, index.gateActions));
+              NDArrays.gatherRows(states, index.gateRows.array()),
+              index.gateKinds.array(),
+              NDArrays.gatherRows(actionExact, index.gateActions.array()));
     }
     return compose(context.working(), index, values, delta);
   }
@@ -250,38 +255,42 @@ final class ValueGraphHead extends Module {
    * @return s [行, 手の容量]（FP32）
    */
   static NDArray compose(NDManager working, BatchIndex index, NDArray values, NDArray delta) {
-    long actions = index.actionSlots.size();
+    long actions = index.actionSlots.array().size();
     long slots = (long) index.rows * index.actionCapacity;
     NDArray sum = working.zeros(new Shape(actions));
     if (index.discardCount > 0) {
-      sum = sum.add(spread(NDArrays.gatherRows(values, index.discardTransitions), index.discardActions, actions));
+      NDArray discards = NDArrays.gatherRows(values, index.discardTransitions.array());
+      sum = sum.add(spread(discards, index.discardActions.array(), actions));
     }
     if (index.riichiCount > 0) {
-      NDArray dama = NDArrays.gatherRows(values, index.riichiBaseTransitions);
+      NDArray dama = NDArrays.gatherRows(values, index.riichiBaseTransitions.array());
       if (index.riichiAnchors != null) {
-        dama = NDArrays.where(index.riichiAnchors, dama, dama.stopGradient());
+        dama = NDArrays.where(index.riichiAnchors.array(), dama, dama.stopGradient());
       }
-      NDArray riichi = dama.add(NDArrays.gatherRows(delta, index.riichiGates));
-      sum = sum.add(spread(riichi, index.riichiActions, actions));
+      NDArray riichi = dama.add(NDArrays.gatherRows(delta, index.riichiGates.array()));
+      sum = sum.add(spread(riichi, index.riichiActions.array(), actions));
     }
     if (index.responseCount > 0) {
-      sum = sum.add(spread(NDArrays.gatherRows(delta, index.responseGates), index.responseActions, actions));
+      NDArray responses = NDArrays.gatherRows(delta, index.responseGates.array());
+      sum = sum.add(spread(responses, index.responseActions.array(), actions));
     }
     if (index.turnCount > 0) {
-      NDArray dense = spread(sum, index.actionSlots, slots).reshape(index.rows, index.actionCapacity);
+      NDArray dense =
+          spread(sum, index.actionSlots.array(), slots).reshape(index.rows, index.actionCapacity);
       NDArray candidates =
-          NDArrays.where(index.pivotMask, dense, working.full(dense.getShape(), FLOOR));
+          NDArrays.where(index.pivotMask.array(), dense, working.full(dense.getShape(), FLOOR));
       NDArray pivot = candidates.argMax(1).expandDims(1);
       NDArray peak = dense.gather(pivot, 1);
       if (index.measured != null) {
-        peak = NDArrays.where(index.measured.gather(pivot, 1), peak, peak.stopGradient());
+        peak = NDArrays.where(index.measured.array().gather(pivot, 1), peak, peak.stopGradient());
       }
-      peak = peak.mul(index.pivotPresent).reshape(index.rows);
+      peak = peak.mul(index.pivotPresent.array()).reshape(index.rows);
       NDArray turn =
-          NDArrays.gatherRows(peak, index.turnRows).add(NDArrays.gatherRows(delta, index.turnGates));
-      sum = sum.add(spread(turn, index.turnActions, actions));
+          NDArrays.gatherRows(peak, index.turnRows.array())
+              .add(NDArrays.gatherRows(delta, index.turnGates.array()));
+      sum = sum.add(spread(turn, index.turnActions.array(), actions));
     }
-    return spread(sum, index.actionSlots, slots).reshape(index.rows, index.actionCapacity);
+    return spread(sum, index.actionSlots.array(), slots).reshape(index.rows, index.actionCapacity);
   }
 
   /** 値を 0 の列の決まった位置へ散らす。 */

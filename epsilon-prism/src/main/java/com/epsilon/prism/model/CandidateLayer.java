@@ -146,7 +146,7 @@ final class CandidateLayer extends Module {
         NDArrays.mappedGroupedIndexedScaledDotProductAttention(
             context.toFloat(queries),
             context.toFloat(memory),
-            index.transitionRows,
+            index.transitionRows.array(),
             codes,
             inputs.get(Tensor.TRANSITION_CODE).toType(DataType.INT32, false),
             working.zeros(new Shape(transitions, 1, 2L * attention), DataType.FLOAT32),
@@ -180,6 +180,7 @@ final class CandidateLayer extends Module {
     NDArray position =
         index
             .transitionRows
+            .array()
             .mul(TokenType.FIXED_TOKENS)
             .add(TokenType.TILE.first() - 1)
             .add(tile.maximum(1));

@@ -22,8 +22,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 網の入力の 1 塊。{@link Tensor} の区画ごとの NDArray（同じ管理元・同じデバイス）と、前線の腕なら前線の区画、行・手の索引のホストの写し、
- * そこから作る索引と損失の入力をデバイスへ送る置き場（{@link Uploads}。入力を作ったスレッドの物）を持つ。
+ * 網の入力の 1 塊。{@link Tensor} の区画ごとの NDArray（同じ管理元・同じデバイス）と、前線の腕なら前線の区画、行・手の索引のホストの写しを
+ * 持つ。索引（{@link BatchIndex}）は、その場で作って送る置き場（{@link Uploads}。入力を作ったスレッドの物）か、前もって作って入力と一緒に
+ * 送った索引（{@link StagedBatch}）のどちらか一方を持つ。
  *
  * <p>並びの約束（Tokenizer・HostBatch・HIP と共有する）:
  *
@@ -49,7 +50,8 @@ import java.util.Objects;
  * @param actions 手の数
  * @param rowColumns 行の索引のホストの写し（[行, {@link RowColumn}] を平らに）
  * @param actionColumns 手の索引のホストの写し（[手, {@link ActionColumn}] を平らに）
- * @param uploads 索引（{@link BatchIndex}）と損失の入力（{@link LossInputs}）を送る置き場
+ * @param uploads 索引（{@link BatchIndex}）をその場で作って送る置き場（前もって送った索引を持つなら null）
+ * @param staged 前もって作って送った索引（その場で作るなら null）
  */
 public record NetworkInputs(
     Map<Tensor, NDArray> tensors,
@@ -60,7 +62,9 @@ public record NetworkInputs(
     int actions,
     int[] rowColumns,
     int[] actionColumns,
-    Uploads uploads) {
+    Uploads uploads,
+    BatchIndex staged)
+    implements HostColumns {
 
   static {
     // HostBatch はリトルエンディアン、網の入口はネイティブの順で区画を読む
@@ -78,7 +82,7 @@ public record NetworkInputs(
   /**
    * 形を確かめる。
    *
-   * @throws IllegalArgumentException 区画が欠けるか、形が数と合わないとき
+   * @throws IllegalArgumentException 区画が欠けるか、形が数と合わないか、置き場と前もって送った索引がちょうど一方でないとき
    */
   public NetworkInputs {
     if (rows <= 0 || events < 0 || transitions < rows || actions < rows) {
@@ -102,7 +106,9 @@ public record NetworkInputs(
     if (rowColumns.length != rows * ROW_WIDTH || actionColumns.length != actions * ACTION_WIDTH) {
       throw new IllegalArgumentException("row or action columns do not match the counts");
     }
-    Objects.requireNonNull(uploads, "uploads");
+    if ((uploads == null) == (staged == null)) {
+      throw new IllegalArgumentException("the inputs need either uploads or a staged index");
+    }
   }
 
   /**
@@ -217,7 +223,8 @@ public record NetworkInputs(
         actions,
         ints(sections.get(Tensor.ROW_COLUMN), rows * ROW_WIDTH),
         ints(sections.get(Tensor.ACTION_COLUMN), actions * ACTION_WIDTH),
-        uploads);
+        uploads,
+        null);
   }
 
   /**
@@ -242,14 +249,33 @@ public record NetworkInputs(
     };
   }
 
+  /**
+   * 順伝播の索引を返す。前もって送った索引があればそれ（同じ C の印と補助の頭の教師で作ったもの）、なければその場で作って送る。
+   *
+   * @param pass 順伝播の種類
+   * @return 索引
+   * @throws IllegalArgumentException 前もって送った索引が別の C の印か補助の頭の教師で作ったものであるとき
+   */
+  BatchIndex index(Pass pass) {
+    if (staged == null) {
+      return BatchIndex.send(this, pass);
+    }
+    if (!staged.builtFor(pass)) {
+      throw new IllegalArgumentException("the staged index was built for another pass");
+    }
+    return staged;
+  }
+
   public NDArray get(Tensor tensor) {
     return tensors.get(tensor);
   }
 
+  @Override
   public int row(int row, RowColumn column) {
     return rowColumns[row * ROW_WIDTH + column.ordinal()];
   }
 
+  @Override
   public int action(int action, ActionColumn column) {
     return actionColumns[action * ACTION_WIDTH + column.ordinal()];
   }
@@ -268,7 +294,7 @@ public record NetworkInputs(
     };
   }
 
-  private static int[] ints(ByteBuffer section, int count) {
+  static int[] ints(ByteBuffer section, int count) {
     int[] values = new int[count];
     section.duplicate().order(ByteOrder.nativeOrder()).asIntBuffer().get(values);
     return values;

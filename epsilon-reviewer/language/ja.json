@@ -109,7 +109,7 @@
   "replay.badMoveRate": "悪手率",
   "replay.agreementDescription": "同じ牌の手出し・ツモ切りを合算したAI第1候補と一致した割合。同率の候補も一致に含みます。",
   "replay.badMoveDescription": "同じ牌の手出し・ツモ切りを合算したAI選択率が5%未満で、第1候補と一致しなかった割合。",
-  "replay.valueAgreementDescription": "同じ牌の手出し・ツモ切りの良い方で比べ、最善手との価値差が0.002未満（最善・ほぼ同等）だった割合。",
+  "replay.valueAgreementDescription": "同じ牌の手出し・ツモ切りの良い方で比べ、最善手と一致した割合。同じ価値の最善手も一致に含みます。",
   "replay.valueBadMoveDescription": "同じ牌の手出し・ツモ切りの良い方で比べ、最善手との価値差が0.005以上だった割合。",
   "replay.meanLoss": "平均損失",
   "replay.meanLossDescription": "実際の選択と最善手との価値差の平均。価値を推定した判断だけを集計します。",

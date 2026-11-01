@@ -109,7 +109,7 @@
   "replay.badMoveRate": "Bad move rate",
   "replay.agreementDescription": "The percentage of decisions matching the highest AI probability after combining hand discards and tsumogiri of the same tile. Tied top choices count as matches.",
   "replay.badMoveDescription": "The percentage of decisions with an AI probability below 5% that did not match a top choice, after combining hand discards and tsumogiri of the same tile.",
-  "replay.valueAgreementDescription": "The percentage of decisions whose value was within 0.002 of the best action (best or near-best), comparing the better of hand discard and tsumogiri of the same tile.",
+  "replay.valueAgreementDescription": "The percentage of decisions matching the best action, comparing the better of hand discard and tsumogiri of the same tile. Actions tied for the best value count as matches.",
   "replay.valueBadMoveDescription": "The percentage of decisions whose value was 0.005 or more below the best action, comparing the better of hand discard and tsumogiri of the same tile.",
   "replay.meanLoss": "Mean loss",
   "replay.meanLossDescription": "The average value difference between the actual choice and the best action, over decisions with value estimates.",

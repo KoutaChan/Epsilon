@@ -57,7 +57,7 @@ export function summarizePlayerDecisions(
         const grade = gradeLoss(chosen);
         stats.valued++;
         stats.totalLoss += chosen;
-        if (grade === "best" || grade === "near") stats.matched++;
+        if (grade === "best") stats.matched++;
         else if (grade === "mistake") stats.badMoves++;
       } else {
         const grade = gradeProbability(chosen, Math.max(...scores.values()));

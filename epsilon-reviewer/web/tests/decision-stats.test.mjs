@@ -319,10 +319,11 @@ function valued(
   return candidate(actionId, type, tiles, 0, chosen, tsumogiri, valueLoss);
 }
 
-test("value decisions grade the chosen loss against the near and mistake thresholds", () => {
+test("value decisions match only the best value and grade mistakes at the threshold", () => {
   for (const [loss, matched, badMoves] of [
     [0, 1, 0],
-    [0.002 - 1e-9, 1, 0],
+    [1e-12, 0, 0],
+    [0.002 - 1e-9, 0, 0],
     [0.002, 0, 0],
     [0.005 - 1e-9, 0, 0],
     [0.005, 0, 1],
@@ -348,8 +349,8 @@ test("value decisions ignore the display probability", () => {
   const counts = summarizePlayerDecisions([
     round(
       decision(0, [
-        candidate(1, "DAHAI", ["1m"], 0.99, false, false, 0),
-        candidate(2, "DAHAI", ["2m"], 0.01, true, false, 0.001),
+        candidate(1, "DAHAI", ["1m"], 0.99, false, false, 0.001),
+        candidate(2, "DAHAI", ["2m"], 0.01, true, false, 0),
       ]),
     ),
   ]);
@@ -357,7 +358,7 @@ test("value decisions ignore the display probability", () => {
     reviewed: 1,
     matched: 1,
     badMoves: 0,
-    meanLoss: 0.001,
+    meanLoss: 0,
   });
 });
 
@@ -367,9 +368,9 @@ for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
       const counts = summarizePlayerDecisions([
         round(
           decision(0, [
-            valued(1, type, ["1m"], 0),
+            valued(1, type, ["1m"], 0.002),
             valued(2, type, ["2m"], 0.03, !drawnChosen),
-            valued(3, type, ["2m"], 0.001, drawnChosen, true),
+            valued(3, type, ["2m"], 0, drawnChosen, true),
           ]),
         ),
       ]);
@@ -377,7 +378,7 @@ for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
         reviewed: 1,
         matched: 1,
         badMoves: 0,
-        meanLoss: 0.001,
+        meanLoss: 0,
       });
     }
   });

@@ -4,7 +4,7 @@
 
 **Riichi Mahjong AI**
 
-人の牌譜を使わず、白紙の網から自己対戦だけで打ち方を育てる麻雀AI。
+人の牌譜を使わず、自己対戦だけで打ち方を育てる麻雀AI。
 
 [![Java 21](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![DJL / PyTorch](https://img.shields.io/badge/DJL-PyTorch-EE4C2C?logo=pytorch&logoColor=white)](https://djl.ai/)
@@ -48,12 +48,12 @@ CPUだけで動かす場合も、設定の`inference`を`"EAGER"`にします（
 
 初回起動時に`config/epsilon-prism.toml`が作成されます。収集と学習に使うGPU、1反復の半荘の数、学習率などをこのファイルで変更できます。各項目の説明は[同梱設定](src/main/resources/prism/settings.toml)にあります。
 
-| 用途            | 既定の場所                                      |
-|---------------|--------------------------------------------|
-| 設定ファイル        | `config/epsilon-prism.toml`                |
-| 学習のrun        | `train`の`--run`で指定（例：`runs/epsilon-prism`） |
-| 学習結果（版）       | `<run>/snapshots/<版>`                      |
-| RiichiLabで打つ版 | `[epsilon.riichi]`の`checkpointDir`         |
+| 用途             | 既定の場所                                      |
+|----------------|--------------------------------------------|
+| 設定ファイル         | `config/epsilon-prism.toml`                |
+| 学習のrun         | `train`の`--run`で指定（例：`runs/epsilon-prism`） |
+| 学習結果（版）        | `<run>/snapshots/<版>`                      |
+| RiichiLabで打つ重み | `[epsilon.riichi]`の`checkpointDir`         |
 
 設定ファイルを明示する場合は、コマンドの前に`--settings`を指定します。省略した項目には同梱設定の値を使います。
 

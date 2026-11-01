@@ -156,6 +156,7 @@ struct MlpArgs {
   MlpWeights weights;
   Span<const float> nextNorm;  // 次の層の注意の利得 [H]
   int tokens;
+  int residualTokens;  // x を書き戻す先頭のトークンの数（0..tokens）。その先の x は前の値のまま残る
   int ffn;
   float epsilon;
 };

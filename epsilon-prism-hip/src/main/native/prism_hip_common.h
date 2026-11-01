@@ -32,17 +32,24 @@ using bf16x16 = __bf16 __attribute__((ext_vector_type(16)));
 // する。要素は一度スカラーとして値で受けてから写す（asPair など）。
 
 // float を BF16 に最近接偶数で丸める（c10::BFloat16 と同じ。NaN は 0x7FC0）。NaN の判定を浮動小数の比較にすると比較と選択の 2 つで
-// 済む（ビットで書くと and・比較・選択の 3 つ）。判定する集合は同じなので結果はビットで同じ。
-// GPU が作る活性（K2〜K6）もこの関数（と pack8）で丸め、NaN の選択を残す。選択のない形 (bits + 0x7FFF + lsb) >> 16（lsb = bit 16）は
-// NaN でない全ての入力でビットで同じだが、NaN（指数が全て 1 で仮数が 0 でない）は top7 = bit 22:16、low16 = bit 15:0 として次の
-// 2 つだけが NaN でなくなる（それ以外は NaN のままで、中身は 0x7FC0 にそろわない）:
-//   top7 = 0 で low16 が 1〜0x8000: 桁上がりがなく仮数が 0 になり、同じ符号の inf
-//   top7 = 0x7F で low16 ≥ 0x8000: 桁上がりが指数を越えて符号の bit に入り、符号の反転した 0（+NaN は −0）
-// 正規の 0x7FC00000 はどちらにも当たらない（top7 = 0x40）が、WMMA が返す NaN の payload は確かめられていないので選択を残す。
+// 済む（ビットで書くと and・比較・選択の 3 つ）。判定する集合は同じなので結果はビットで同じ。ホスト、K1、K7 と学習はこちらで丸める。
 __host__ __device__ __forceinline__ uint16_t bf16Round(float value) {
   const uint32_t bits = __builtin_bit_cast(uint32_t, value);
   const uint16_t rounded = static_cast<uint16_t>((bits + 0x7fffu + ((bits >> 16) & 1u)) >> 16);
   return __builtin_isnan(value) ? static_cast<uint16_t>(0x7fc0u) : rounded;
+}
+
+// GPU が作る活性（K2〜K6）の丸め: bf16Round から NaN の選択を除いた (bits + 0x7FFF + lsb) >> 16（lsb = bit 16）。NaN でない全ての
+// 入力で bf16Round とビットで同じ。NaN（指数が全て 1 で仮数が 0 でない）は top7 = bit 22:16、low16 = bit 15:0 として次の 2 つだけが
+// NaN でなくなる（それ以外は NaN のままで、中身は 0x7FC0 にそろわない）:
+//   top7 = 0 で low16 が 1〜0x8000: 桁上がりがなく仮数が 0 になり、同じ符号の inf
+//   top7 = 0x7F で low16 ≥ 0x8000: 桁上がりが指数を越えて符号の bit に入り、符号の反転した 0（+NaN は −0）
+// K2〜K6 の丸めの位置に届く NaN はどちらにも当たらないことを約束とする: 入ってくる NaN は K1 の丸めの 0x7FC0 と K2〜K6 の活性
+// だけで（重みは公開のときに NaN を拒む）、K2〜K6 の演算はそこから静かな NaN（bit 22 が 1 なので top7 ≥ 0x40）しか作らず、
+// bit 22:15 が全て 1 の NaN も作らない。丸めの位置にこれ以外の NaN が届く演算を足すなら、そこは bf16Round で丸めること。
+__host__ __device__ __forceinline__ uint16_t bf16RoundActivation(float value) {
+  const uint32_t bits = __builtin_bit_cast(uint32_t, value);
+  return static_cast<uint16_t>((bits + 0x7fffu + ((bits >> 16) & 1u)) >> 16);
 }
 
 __host__ __device__ __forceinline__ float bf16Float(uint16_t value) {
@@ -93,12 +100,23 @@ __device__ __forceinline__ void unpack8(u32x4 packed, float (&values)[8]) {
   }
 }
 
-// 8 個の float を BF16 に丸めて 16 バイトに詰める。
+// 8 個の float を BF16 に丸めて 16 バイトに詰める（bf16Round）。
 __device__ __forceinline__ u32x4 pack8(const float (&values)[8]) {
   u32x4 packed;
 #pragma unroll
   for (int w = 0; w < 4; ++w) {
     packed[w] = static_cast<uint32_t>(bf16Round(values[2 * w])) | (static_cast<uint32_t>(bf16Round(values[2 * w + 1])) << 16);
+  }
+  return packed;
+}
+
+// 8 個の float を活性の丸め（bf16RoundActivation）で BF16 に丸めて 16 バイトに詰める。
+__device__ __forceinline__ u32x4 pack8Activation(const float (&values)[8]) {
+  u32x4 packed;
+#pragma unroll
+  for (int w = 0; w < 4; ++w) {
+    packed[w] = static_cast<uint32_t>(bf16RoundActivation(values[2 * w])) |
+                (static_cast<uint32_t>(bf16RoundActivation(values[2 * w + 1])) << 16);
   }
   return packed;
 }

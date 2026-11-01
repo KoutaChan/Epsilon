@@ -14,7 +14,7 @@
 // 行列積は全て段ずらし（tileEntry・query・discardHidden は gemmTile、mlpStage は計画の断片の順の写しを読む gemmFragmentsFrom。
 // prism_hip_mlp.h）。t_s を最初に読み、t0 の epilogue を 1/rms と同じ受け持ちの 1 回に畳むので、tileEntry の段ずらしも
 // spill しない。交差注意は鍵を kAhead 個先まで生の buffer で読む段ずらしの輪（attendPipelined）。FFN の h と B の silu は siluFast、
-// 活性の丸めは bf16Round（NaN の選択つき）、待ち合わせは全て tile::barrier（LDS だけ。読む区画と書く区画が別という約束）。
+// 活性の丸めは bf16RoundActivation（NaN の選択なし）、待ち合わせは全て tile::barrier（LDS だけ。読む区画と書く区画が別という約束）。
 #include "prism_hip_mlp.h"
 
 namespace prism {
@@ -213,8 +213,8 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
       ring[j % kSlots].accumulate(logits[j] * inverse, value);
       __builtin_amdgcn_sched_barrier(0);
     }
-    *reinterpret_cast<u32x4*>(&inner[i][h * 16]) = pack8(value[0]);
-    *reinterpret_cast<u32x4*>(&inner[i][h * 16 + 8]) = pack8(value[1]);
+    *reinterpret_cast<u32x4*>(&inner[i][h * 16]) = pack8Activation(value[0]);
+    *reinterpret_cast<u32x4*>(&inner[i][h * 16 + 8]) = pack8Activation(value[1]);
   }
 }
 
@@ -330,7 +330,7 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
       for (int m = 0; m < kRowTiles; ++m) {
 #pragma unroll
         for (int v = 0; v < 8; ++v) {
-          stream[m * 16 + 2 * v + half][output[j]] = bf16Round(acc[m][j][v]);
+          stream[m * 16 + 2 * v + half][output[j]] = bf16RoundActivation(acc[m][j][v]);
         }
       }
     }
@@ -349,8 +349,8 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
       for (int w = 0; w < 4; ++w) {
         const float baseLo = real ? bf16Float(static_cast<uint16_t>(staticPart[c][w] & 0xffffu)) : 0.0f;
         const float baseHi = real ? bf16Float(static_cast<uint16_t>(staticPart[c][w] >> 16)) : 0.0f;
-        const uint16_t lo = bf16Round(baseLo + bf16Float(static_cast<uint16_t>(entry[w] & 0xffffu)));
-        const uint16_t hi = bf16Round(baseHi + bf16Float(static_cast<uint16_t>(entry[w] >> 16)));
+        const uint16_t lo = bf16RoundActivation(baseLo + bf16Float(static_cast<uint16_t>(entry[w] & 0xffffu)));
+        const uint16_t hi = bf16RoundActivation(baseHi + bf16Float(static_cast<uint16_t>(entry[w] >> 16)));
         part[c][w] = static_cast<uint32_t>(lo) | (static_cast<uint32_t>(hi) << 16);
       }
       *reinterpret_cast<u32x4*>(&stream[normRow][normCol + 8 * c]) = part[c];
@@ -385,7 +385,7 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
         for (int c = 0; c < 8; ++c) {
           values[c] = (values[c] * inverse) * args.queryNorm.data[g + c];
         }
-        *reinterpret_cast<u32x4*>(&inner[r][col]) = pack8(values);
+        *reinterpret_cast<u32x4*>(&inner[r][col]) = pack8Activation(values);
       }
       tile::barrier();
       tile::gemmTile<1, kChunk>(q, inner, args.query.data, args.query.limit, H, k0, units, column, bounds);
@@ -396,7 +396,7 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
     for (int m = 0; m < kRowTiles; ++m) {
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
-        inner[m * 16 + 2 * v + half][units[0]] = bf16Round(q[m][0][v] + bias);
+        inner[m * 16 + 2 * v + half][units[0]] = bf16RoundActivation(q[m][0][v] + bias);
       }
     }
   }
@@ -436,7 +436,7 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
     for (int m = 0; m < kRowTiles; ++m) {
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
-        rowSum[m][v] += siluFast(bf16Float(bf16Round(u[m][0][v] + bias))) * weight;
+        rowSum[m][v] += siluFast(bf16Float(bf16RoundActivation(u[m][0][v] + bias))) * weight;
       }
     }
   }

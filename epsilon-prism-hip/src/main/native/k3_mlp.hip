@@ -2,6 +2,7 @@
 // 重みの公開のときに MLP の重みの断片の順の写しを作る mlpFragmentKernel もここに置く（K3・K5・K6 が読む）。
 //
 // K3: x ← mlpStage(x, o)（全てのトークン、最後でない層）。続けて次の層の注意の入力 n = ⌊N_attn(x)⌉ をレジスタから NORMALIZED へ。
+//     x を全体メモリへ書き戻すのは先頭 residualTokens トークンだけ（n は LDS の x から作るので全てのトークンで書く）。
 // K5: 局・席・牌のトークン（トークンの軸の先頭 F·R）に最後の層の mlpStage → y = ⌊N_final(x)⌉ を STATE へ →
 //     [K V] = ⌊y·W_kvᵀ + b_kv⌉ を MEMORY の [行, 位置, 2A] へ（候補層の交差注意が行ごとに読む並び）。
 // 行列積は段ずらし（K5 の鍵と値の射影は 2 歩ずつの輪の gemmFragmentsLoop）、待ち合わせは全て tile::barrier（LDS だけ。読む区画と
@@ -34,7 +35,11 @@ __global__ __launch_bounds__(kThreads) void mlpKernel(MlpArgs args) {
   tile::barrier();
   tile::mlpStage<H>(shared, args.weights, args.ffn, args.epsilon, bounds);
   bounds.trap();
-  tile::storeTile<H>(args.x.data, args.x.limit, shared.stream, token0, rows, tid, bounds);
+  // 書き戻す行の数は作業群で一様。0 以下の塊は LDS も読まずに飛ばす。
+  const int stored = min(rows, args.residualTokens - token0);
+  if (stored > 0) {
+    tile::storeTile<H>(args.x.data, args.x.limit, shared.stream, token0, stored, tid, bounds);
+  }
   // 次の層の注意の入力 n = ⌊(x·r)·g⌉ をレジスタから直に書く（K2・K4 が A の断片として直に読む）。
   tile::normalizeStore<H>(shared.stream, args.nextNorm.data, args.nextNorm.limit, args.epsilon, args.normalized.data,
                           args.normalized.limit, token0, rows, tid, bounds);
@@ -96,7 +101,7 @@ __global__ __launch_bounds__(kThreads) void mlpKvKernel(MlpKvArgs args) {
     for (int m = 0; m < kRowTiles; ++m) {
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
-        shared.stream[m * 16 + 2 * v + half][col] = bf16Round(acc[m][j][v] + bias);
+        shared.stream[m * 16 + 2 * v + half][col] = bf16RoundActivation(acc[m][j][v] + bias);
       }
     }
   }
@@ -163,6 +168,10 @@ void launchMlpFragments(const MlpFragmentArgs& args, hipStream_t stream) {
 }
 
 void launchMlp(int hidden, const MlpArgs& args, hipStream_t stream) {
+  if (args.residualTokens < 0 || args.residualTokens > args.tokens) {
+    throw std::invalid_argument("K3 writes back " + std::to_string(args.residualTokens) + " residual tokens of " +
+                                std::to_string(args.tokens));
+  }
   if (args.tokens <= 0) {
     return;
   }

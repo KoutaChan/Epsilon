@@ -1,5 +1,6 @@
 // MLP の段の部品（K3・K5・K6 で共通）。塊の行 Rows は LDS の配列の形が持つ（K3・K5 は k3_mlp.hip の kMlpRows、K6 は
-// k6_candidate.hip の kTile。どちらも 48）。行列積は WMMA の BF16、累積は FP32、⌊⌉ は BF16 への最近接偶数の丸め（bf16Round）。
+// k6_candidate.hip の kTile。どちらも 48）。行列積は WMMA の BF16、累積は FP32、⌊⌉ は BF16 への最近接偶数の丸め（NaN の選択の
+// ない活性の丸め bf16RoundActivation。prism_hip_common.h）。
 //
 // mlpStage は K3 の式:
 //   x1 = ⌊x + ⌊o·Woᵀ + bo⌉⌉ → n = ⌊(x1·r)·g⌉（r = rsqrt(mean(x1²) + ε)、FP32）
@@ -162,7 +163,8 @@ __device__ __forceinline__ u32x4 normalize8(u32x4 packed, const float* __restric
     // 2 つの積を出してから丸める（積ごとに丸めると組み立て器の命令の並びが変わる）。
     const float lo = (bf16Float(static_cast<uint16_t>(packed[w] & 0xffffu)) * r) * gLo;
     const float hi = (bf16Float(static_cast<uint16_t>(packed[w] >> 16)) * r) * gHi;
-    normalized[w] = static_cast<uint32_t>(bf16Round(lo)) | (static_cast<uint32_t>(bf16Round(hi)) << 16);
+    normalized[w] =
+        static_cast<uint32_t>(bf16RoundActivation(lo)) | (static_cast<uint32_t>(bf16RoundActivation(hi)) << 16);
   }
   return normalized;
 }
@@ -473,8 +475,8 @@ __device__ __forceinline__ void mlpStage(MlpShared<H, Rows>& shared, const MlpWe
 #pragma unroll
         for (int e = 0; e < 2; ++e) {
           const int row = m * 16 + 2 * (v + e) + half;
-          const float y = bf16Float(bf16Round(acc[m][j][v + e] + outBias[j]));
-          const uint16_t x1 = bf16Round(bf16Float(shared.stream[row][col]) + y);
+          const float y = bf16Float(bf16RoundActivation(acc[m][j][v + e] + outBias[j]));
+          const uint16_t x1 = bf16RoundActivation(bf16Float(shared.stream[row][col]) + y);
           shared.stream[row][col] = x1;
           pair |= static_cast<uint32_t>(x1) << (16 * e);
         }
@@ -535,7 +537,7 @@ __device__ __forceinline__ void mlpStage(MlpShared<H, Rows>& shared, const MlpWe
     for (int m = 0; m < kRowTiles; ++m) {
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
-        h[m][v] = bf16Round(siluFast(bf16Float(bf16Round(up[m][0][v] + upBias))));
+        h[m][v] = bf16RoundActivation(siluFast(bf16Float(bf16RoundActivation(up[m][0][v] + upBias))));
       }
     }
     barrier();
@@ -561,8 +563,8 @@ __device__ __forceinline__ void mlpStage(MlpShared<H, Rows>& shared, const MlpWe
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
         const uint16_t x1 = static_cast<uint16_t>(keep[m][j][v / 2] >> (16 * (v % 2)));
-        const float y = bf16Float(bf16Round(down[m][j][v] + downBias[j]));
-        shared.stream[m * 16 + 2 * v + half][col] = bf16Round(bf16Float(x1) + y);
+        const float y = bf16Float(bf16RoundActivation(down[m][j][v] + downBias[j]));
+        shared.stream[m * 16 + 2 * v + half][col] = bf16RoundActivation(bf16Float(x1) + y);
       }
     }
   }

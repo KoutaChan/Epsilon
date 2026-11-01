@@ -280,8 +280,8 @@ bool containsNan(const uint8_t* pack, size_t offset, size_t count) {
 }
 
 // WeightPack の BF16・FP32 の部分（重みの置き場と、埋め込みの表・W_d・b）に NaN がないこと（頭を照らした後に呼ぶ）。NaN の重みは使う
-// 判断のスコアを黙って NaN にするので、公開のときに名前つきで拒む。網の中の NaN は演算が作るものだけになり、活性の丸め（bf16Round）は
-// NaN の選択を残すので、payload に依らず 0x7FC0 にそろう（選択のない丸めが NaN を失う条件は prism_hip_common.h）。
+// 判断のスコアを黙って NaN にするので、公開のときに名前つきで拒む。網の中の NaN は演算が作るものだけになる（K2〜K6 の活性の
+// 丸め bf16RoundActivation は NaN の選択を持たず、届く NaN についての約束は prism_hip_common.h）。
 void requireNoNan(const PackHeader& header, const PlanShape& shape, const uint8_t* pack) {
   for (int w = 0; w < kWeightSlots; ++w) {
     const Weight weight = static_cast<Weight>(w);
@@ -749,7 +749,7 @@ TokenLayout Plan::layout(const BatchShape& batch) const {
   return TokenLayout{batch.rows, header_.value(Schema::kSeats), header_.value(Schema::kTiles)};
 }
 
-void Plan::launch(Kernel kernel, int layer, const BatchShape& batch) {
+void Plan::launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass) {
   const int hidden = shape_.hidden;
   const TokenLayout tokens = layout(batch);
   const size_t fixed = static_cast<size_t>(tokens.fixed()) * batch.rows;
@@ -833,6 +833,8 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch) {
       args.weights = mlpWeights(layer);
       args.nextNorm = weight<float>(Weight::kAttentionNorm, layer + 1);
       args.tokens = static_cast<int>(fixed + batch.events);
+      const bool last = pass == Pass::kForward && layer == shape_.depth - 2;
+      args.residualTokens = last ? static_cast<int>(fixed) : args.tokens;
       args.ffn = shape_.ffn;
       args.epsilon = shape_.epsilon;
       timed(kernel, [&] { launchMlp(hidden, args, stream_); });
@@ -968,7 +970,7 @@ void Plan::run(Kernel kernel, int layer, const BatchShape& batch) {
           "kernel " + std::to_string(ordinal(kernel)) + " does not run layer " + std::to_string(layer));
   DeviceScope scope(device_);
   resetTiming();
-  launch(kernel, layer, batch);
+  launch(kernel, layer, batch, Pass::kKernel);
 }
 
 void Plan::forward(const void* input, const BatchShape& batch, void* scores, int64_t version) {
@@ -979,16 +981,16 @@ void Plan::forward(const void* input, const BatchShape& batch, void* scores, int
   PRISM_HIP(hipMemcpyAsync(workspace_ + regionOffset_[ordinal(Region::kInput)], input, batch.bytes,
                            hipMemcpyHostToDevice, stream_));
   resetTiming();
-  launch(Kernel::kEmbed, 0, batch);
-  launch(Kernel::kRelation, 0, batch);
+  launch(Kernel::kEmbed, 0, batch, Pass::kForward);
+  launch(Kernel::kRelation, 0, batch, Pass::kForward);
   for (int l = 0; l + 1 < shape_.depth; ++l) {
-    launch(Kernel::kAttention0, l, batch);
-    launch(Kernel::kMlp0, l, batch);
+    launch(Kernel::kAttention0, l, batch, Pass::kForward);
+    launch(Kernel::kMlp0, l, batch, Pass::kForward);
   }
-  launch(Kernel::kAttention1, shape_.depth - 1, batch);
-  launch(Kernel::kMlp1Kv, shape_.depth - 1, batch);
-  launch(Kernel::kCandidate, 0, batch);
-  launch(Kernel::kValueGraph, 0, batch);
+  launch(Kernel::kAttention1, shape_.depth - 1, batch, Pass::kForward);
+  launch(Kernel::kMlp1Kv, shape_.depth - 1, batch, Pass::kForward);
+  launch(Kernel::kCandidate, 0, batch, Pass::kForward);
+  launch(Kernel::kValueGraph, 0, batch, Pass::kForward);
   PRISM_HIP(hipMemcpyAsync(scores, workspace_ + regionOffset_[ordinal(Region::kScores)],
                            static_cast<size_t>(batch.actions) * sizeof(float), hipMemcpyDeviceToHost, stream_));
 }

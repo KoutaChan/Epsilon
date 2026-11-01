@@ -106,7 +106,12 @@ class Plan {
  private:
   static constexpr int kMaxLaunches = kMaxDepth;
 
-  void launch(Kernel kernel, int layer, const BatchShape& batch);
+  // 起動の目的。kKernel（run）は 1 つのカーネルの出力を全て書く。kForward は後のカーネルが読む値だけ書く: 最後の K3 の後で x を
+  // 読むのは K5 だけで、K5 が読むのは局・席・牌のトークン（K4 は n だけ、K6・K7 は x を読まない）なので、最後の K3 は出来事の x を
+  // 書き戻さない。
+  enum class Pass { kKernel, kForward };
+
+  void launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass);
   void validate(const BatchShape& batch) const;
   void validateHeader(const PackHeader& header, size_t bytes) const;
   void resetTiming();

@@ -12,7 +12,8 @@
 //        FP32 に近い精度を保つ）
 //      最後に O / Σe を BF16 に 1 回丸める。
 //
-// 段 1 と段 2 の間の待ち合わせは LDS の順序だけ（phaseBarrier）。q・k・v・o の丸めは bf16Round（NaN の選択つき）。
+// 段 1 と段 2 の間の待ち合わせは LDS の順序だけ（phaseBarrier）。q・k・v・o の丸めは活性の丸め（bf16RoundActivation・
+// pack8Activation。NaN の選択なし）。
 //
 // eager の packedRelationScaledDotProductAttention と式は同じで、和の順と exp だけが違う（相対 RMS ≤ 2e-2 の約束の内）。縮約は全て行の
 // 中で順は固定、原子的な加算もない。WMMA の要素は互いに独立なので、同じ行の o は塊の組み方に依らずビットで同じ。
@@ -362,7 +363,7 @@ __device__ __forceinline__ void storeHead(const HeadState& s, bool inside, size_
   for (int v = 0; v < 8; ++v) {
     values[v] = s.out[v] * inverse;
   }
-  const u32x4 words = pack8(values);
+  const u32x4 words = pack8Activation(values);
   if (inside) {
     *reinterpret_cast<u32x4*>(args.o.data + bounds.index(at, 8, args.o.limit)) = words;
   }
@@ -454,7 +455,7 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
         for (int v = 0; v < 8; ++v) {
           values[v] = acc[0][v] + bias[v];
         }
-        const u32x4 own = pack8(values);
+        const u32x4 own = pack8Activation(values);
         if constexpr (kLast) {
           const int t = 16 * m + column;
           *reinterpret_cast<u32x4*>(&shared.fixedQuery[t][8 * ((2 * h + half) ^ ((t >> 1) & 3))]) = own;
@@ -470,7 +471,7 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
 #pragma unroll
         for (int v = 0; v < 8; ++v) {
           const int key = 16 * m + 2 * v + half;
-          shared.k[key][swizzled(key, kHeadWidth * h + column)] = bf16Round(acc[1][v] + bias);
+          shared.k[key][swizzled(key, kHeadWidth * h + column)] = bf16RoundActivation(acc[1][v] + bias);
         }
       }
       {
@@ -482,7 +483,7 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
         }
         const int dimension = 2 * (column & 7) + (column >> 3);
         *reinterpret_cast<u32x4*>(&shared.valueT[kHeadWidth * h + dimension][16 * m + 8 * half]) =
-            pack8(values);
+            pack8Activation(values);
       }
       // 次の頭の先読みを、この頭の丸めの一時のレジスタと重ねない（重ねるとレジスタが増えて K2 の占有が下がる）。
       __builtin_amdgcn_sched_barrier(0);

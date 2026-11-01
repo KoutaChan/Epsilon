@@ -38,7 +38,7 @@ public final class HipFixtures {
   /** 公開の出来事が 100 を超える局（どちらも 103）を含む CALLS の半荘の種。 */
   private static final long[] LONG_GAMES = {8_285, 8_441};
 
-  /** 長い行の公開の出来事の下限（T = 39 + 出来事 > 128 で、K2 の波の 2 つ目の問い合わせの塊が LDS の q を通る）。 */
+  /** 長い行の公開の出来事の下限（T = 39 + 出来事 > 128 で、K2・K4 は 10 波の組の核を通る）。 */
   private static final int LONG_ROW_EVENTS = 90;
 
   /** 速さの試験が回す本番の塊のディレクトリの系の性質（{@link BatchSamples} が書いた *.batch。なければ模擬の半荘の行）。 */

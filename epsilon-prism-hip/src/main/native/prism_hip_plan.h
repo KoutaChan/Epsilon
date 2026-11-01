@@ -90,10 +90,11 @@ class Plan {
   void copyIn(Region region, const void* host, size_t bytes);
   void copyOut(Region region, void* host, size_t bytes);
 
-  // 作業域の今の中身のまま 1 つのカーネルを回す（試験と測り）。
+  // 作業域の今の中身のまま 1 つのカーネルを回す（試験と測り）。K0・K2・K4 は行の組を数えるために作業域の行の索引をホストへ写す
+  // （同期する）。K2・K4 は前の K0 が書いた組の順の行の番号を読む。
   void run(Kernel kernel, int layer, const BatchShape& batch);
 
-  // H2D 1 回 → K1〜K7 → s の D2H 1 回（同期しない）。
+  // H2D 1 回 → K1〜K7 → s の D2H 1 回（同期しない）。K2・K4 の行の組は input の行の索引からホストで数える。
   void forward(const void* input, const BatchShape& batch, void* scores, int64_t version);
 
   void setProfile(bool enabled) { profile_ = enabled; }
@@ -112,6 +113,8 @@ class Plan {
   enum class Pass { kKernel, kForward };
 
   void launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass);
+  // ホストの行の索引 [行, 幅]（int32、揃いは問わない）から K2・K4 の組ごとの行の数 groupRows_ を数える。
+  void countGroupRows(const char* rowColumn, int rows);
   void validate(const BatchShape& batch) const;
   void validateHeader(const PackHeader& header, size_t bytes) const;
   void resetTiming();
@@ -149,6 +152,8 @@ class Plan {
   uint16_t* qkvFragments_ = nullptr;  // 層ごとの QKV の断片の写し（k2_attention.hip の置き方。uploadWeights が W_qkv から作る）
   uint16_t* mlpFragments_ = nullptr;  // MLP の重みの断片の順の写し（prism_hip_mlp.h の置き方。uploadWeights が層ごとの W_o・W1・
                                       // W2、W_kv と候補の W_o・W1・W2 から作る）
+  int32_t* rowOrder_ = nullptr;  // K2・K4 の組の順の行の番号（K0 の起動で rowOrderKernel が塊ごとに書く。RowOrderArgs）
+  int groupRows_[kAttentionGroups] = {};  // 今の塊の組ごとの行の数（forward・run がホストで数える）
   size_t weightsUsed_ = 0;
   PackHeader header_{};
   int64_t version_ = -1;

@@ -98,8 +98,8 @@ public class HipForwardTest {
   }
 
   /**
-   * 普通の行 2 つと公開の出来事が 90 を超える行 2 つの塊の s と eager の BF16 の s（深さ 2 と 3）。行のトークンが 128 を超えるので、K2 は
-   * 波の 2 つ目の問い合わせの塊の q を LDS に置いて読む道を通る。
+   * 普通の行 2 つと公開の出来事が 90 を超える行 2 つの塊の s と eager の BF16 の s（深さ 2 と 3）。行のトークンが 128 を超えるので、K2・K4 は
+   * 10 波の組の核を通る（普通の行はほかの組の核）。
    */
   public void longRowsMatchEager() {
     List<long[]> rows = HipFixtures.longMixedRows();

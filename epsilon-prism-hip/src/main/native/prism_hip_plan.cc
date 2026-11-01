@@ -6,6 +6,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <vector>
 
 #include "prism_hip_kernels.h"
 #include "prism_hip_relation.h"
@@ -398,6 +399,8 @@ Plan::Plan(int device, hipStream_t stream, const PlanShape& shape) : device_(dev
     PRISM_HIP(hipMalloc(reinterpret_cast<void**>(&qkvFragments_),
                         shape.depth * qkvFragmentElements(shape) * sizeof(uint16_t) + kSlack));
     PRISM_HIP(hipMalloc(reinterpret_cast<void**>(&mlpFragments_), mlpFragmentBytes + kSlack));
+    PRISM_HIP(hipMalloc(reinterpret_cast<void**>(&rowOrder_),
+                        static_cast<size_t>(shape.rows) * sizeof(int32_t) + kSlack));
     for (int k = 0; k < kKernels; ++k) {
       for (int l = 0; l < kMaxLaunches; ++l) {
         PRISM_HIP(hipEventCreate(&start_[k][l]));
@@ -422,7 +425,7 @@ Plan::~Plan() {
 void Plan::release() noexcept {
   // 解放の前に、この計画の仕事が終わるのを待つ（作業域を使うカーネルが残らないように）。
   if (workspace_ != nullptr || weights_ != nullptr || relationBias_ != nullptr || qkvFragments_ != nullptr ||
-      mlpFragments_ != nullptr) {
+      mlpFragments_ != nullptr || rowOrder_ != nullptr) {
     (void)hipStreamSynchronize(stream_);
   }
   for (int k = 0; k < kKernels; ++k) {
@@ -436,6 +439,10 @@ void Plan::release() noexcept {
         stop_[k][l] = nullptr;
       }
     }
+  }
+  if (rowOrder_ != nullptr) {
+    (void)hipFree(rowOrder_);
+    rowOrder_ = nullptr;
   }
   if (mlpFragments_ != nullptr) {
     (void)hipFree(mlpFragments_);
@@ -749,6 +756,18 @@ TokenLayout Plan::layout(const BatchShape& batch) const {
   return TokenLayout{batch.rows, header_.value(Schema::kSeats), header_.value(Schema::kTiles)};
 }
 
+void Plan::countGroupRows(const char* rowColumn, int rows) {
+  const int width = header_.width(Section::kRowColumn);
+  const int column = header_.value(Schema::kRowEvents);
+  const int fixed = TokenLayout{rows, header_.value(Schema::kSeats), header_.value(Schema::kTiles)}.fixed();
+  std::fill(std::begin(groupRows_), std::end(groupRows_), 0);
+  for (int r = 0; r < rows; ++r) {
+    int32_t events;
+    std::memcpy(&events, rowColumn + (static_cast<size_t>(r) * width + column) * sizeof(int32_t), sizeof(events));
+    ++groupRows_[attentionGroup(fixed, events)];
+  }
+}
+
 void Plan::launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass) {
   const int hidden = shape_.hidden;
   const TokenLayout tokens = layout(batch);
@@ -803,7 +822,22 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass) 
                                      header_.value(Schema::kRelationRiichi),  header_.value(Schema::kRelationLastDiscard),
                                      header_.value(Schema::kRelationLink),    header_.value(Schema::kRelationSafety),
                                      header_.value(Schema::kRelationSafeties)};
-      timed(kernel, [&] { launchRelation(args, stream_); });
+      // 同じ起動で、K2・K4 の組の順の行の番号も書く（どちらも塊に 1 回で、K2・K4 の全ての層が読む）。
+      RowOrderArgs order{};
+      order.rowColumn = args.rowColumn;
+      order.rowOrder = Span<int32_t>{rowOrder_, static_cast<size_t>(batch.rows)};
+      order.rows = batch.rows;
+      order.fixed = tokens.fixed();
+      order.rowWidth = args.rowWidth;
+      order.rowEvents = args.rowEvents;
+      for (int g = 0, start = 0; g < kAttentionGroups; start += groupRows_[g++]) {
+        order.groupStart[g] = start;
+        order.groupRows[g] = groupRows_[g];
+      }
+      timed(kernel, [&] {
+        launchRelation(args, stream_);
+        launchRowOrder(order, stream_);
+      });
       return;
     }
     case Kernel::kAttention0:
@@ -813,6 +847,7 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass) 
       args.o = regionSpan<uint16_t>(Region::kAttention, 0);
       args.codes = regionSpan<const uint32_t>(Region::kRelationCode, 0);
       args.rowColumn = section<int32_t>(batch, Section::kRowColumn);
+      args.rowOrder = Span<const int32_t>{rowOrder_, static_cast<size_t>(batch.rows)};
       args.qkv = qkvFragments<const uint16_t>(layer);
       args.qkvBias = weight<float>(Weight::kQkvBias, layer);
       args.bias = relationBias<const float>(layer);
@@ -822,7 +857,7 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass) 
       args.rowEvents = header_.value(Schema::kRowEvents);
       args.scale = scale;
       const bool last = kernel == Kernel::kAttention1;
-      timed(kernel, [&] { launchAttention(hidden, last, args, shape_.heads() / 2, stream_); });
+      timed(kernel, [&] { launchAttention(hidden, last, args, shape_.heads() / 2, groupRows_, stream_); });
       return;
     }
     case Kernel::kMlp0: {
@@ -969,6 +1004,16 @@ void Plan::run(Kernel kernel, int layer, const BatchShape& batch) {
   require(layered ? layer >= 0 && layer < shape_.depth - 1 : last ? layer == shape_.depth - 1 : layer == 0,
           "kernel " + std::to_string(ordinal(kernel)) + " does not run layer " + std::to_string(layer));
   DeviceScope scope(device_);
+  // K0・K2・K4 は行の組を数える。この道の行の索引は作業域にしかないので、写して数える（同期する）。
+  if (kernel == Kernel::kRelation || kernel == Kernel::kAttention0 || kernel == Kernel::kAttention1) {
+    const size_t bytes = static_cast<size_t>(batch.rows) * header_.width(Section::kRowColumn) * sizeof(int32_t);
+    const char* device =
+        workspace_ + regionOffset_[ordinal(Region::kInput)] + batch.section[ordinal(Section::kRowColumn)];
+    std::vector<char> rowColumn(bytes);
+    PRISM_HIP(hipMemcpyAsync(rowColumn.data(), device, bytes, hipMemcpyDeviceToHost, stream_));
+    PRISM_HIP(hipStreamSynchronize(stream_));
+    countGroupRows(rowColumn.data(), batch.rows);
+  }
   resetTiming();
   launch(kernel, layer, batch, Pass::kKernel);
 }
@@ -978,6 +1023,7 @@ void Plan::forward(const void* input, const BatchShape& batch, void* scores, int
   require(version == version_, "weight pack version " + std::to_string(version_) + " is stale; the network is at " +
                                    std::to_string(version));
   DeviceScope scope(device_);
+  countGroupRows(static_cast<const char*>(input) + batch.section[ordinal(Section::kRowColumn)], batch.rows);
   PRISM_HIP(hipMemcpyAsync(workspace_ + regionOffset_[ordinal(Region::kInput)], input, batch.bytes,
                            hipMemcpyHostToDevice, stream_));
   resetTiming();

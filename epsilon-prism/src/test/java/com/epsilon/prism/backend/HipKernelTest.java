@@ -95,8 +95,8 @@ public class HipKernelTest {
   }
 
   /**
-   * 普通の行 2 つと公開の出来事が 90 を超える行 2 つの塊（深さ 2）で K0 → K2・K4。行のトークンが 128 を超えるので、K2 は波の 2 つ目の
-   * 問い合わせの塊の q を LDS に置いて読む道を通る。
+   * 普通の行 2 つと公開の出来事が 90 を超える行 2 つの塊（深さ 2）で K0 → K2・K4。行のトークンが 128 を超えるので、K2・K4 は 10 波の
+   * 組の核を通る（普通の行はほかの組の核）。
    */
   public void attentionLongRows() {
     List<String> failures = new ArrayList<>();

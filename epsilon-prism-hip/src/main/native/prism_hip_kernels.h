@@ -132,12 +132,43 @@ struct MlpFragmentArgs {
   int columns;
 };
 
-// K2・K4: 頭の対 × 行。
+// K2・K4 の行の組。組 g の核は attentionWaves(g) 波で LDS を 16·attentionWaves(g) トークン分だけ持ち、16 トークンの塊の数 ⌈T/16⌉ が
+// attentionWaves(g) 以下で前の組に入らない行を受け持つ（1 波が鍵の塊 1 つを作り、問い合わせの塊 1 つを回す）。計画は組ごとに起動し、
+// 行の数は組の中の行で決まる（遊ぶ波を持たない）。行の算術は組に依らない（k2_attention.hip）。
+constexpr int kAttentionGroups = 4;
+
+__host__ __device__ constexpr int attentionWaves(int group) {
+  return group == 0 ? 4 : group == 1 ? 6 : group == 2 ? 8 : 10;
+}
+
+// 行の組。T = min(F + max(出来事, 0), kMaxRowTokens) は K2・K4 の行のトークンと同じ切り詰め。
+__host__ __device__ constexpr int attentionGroup(int fixed, int events) {
+  const int tokens = fixed + (events > 0 ? events : 0);
+  const int blocks = ((tokens < kMaxRowTokens ? tokens : kMaxRowTokens) + 15) / 16;
+  return blocks <= attentionWaves(0) ? 0 : blocks <= attentionWaves(1) ? 1 : blocks <= attentionWaves(2) ? 2 : 3;
+}
+
+static_assert(16 * attentionWaves(kAttentionGroups - 1) >= kMaxRowTokens, "the last row group holds the longest row");
+
+// K0 の後: 行の番号を組の順に並べる（組の中は行の順）。組の先頭と行の数はホストが行の索引から数えたもの。
+struct RowOrderArgs {
+  Span<const int32_t> rowColumn;  // 行の索引 [行, 幅]
+  Span<int32_t> rowOrder;         // [行]: 組 g の i 番目の行が groupStart[g] + i
+  int rows;
+  int fixed;
+  int rowWidth;
+  int rowEvents;
+  int groupStart[kAttentionGroups];
+  int groupRows[kAttentionGroups];
+};
+
+// K2・K4: 頭の対 × 組の行（起動は組ごと）。
 struct AttentionArgs {
   Span<const uint16_t> normalized;  // 注意の入力 n = ⌊(x·r)·g⌉ [トークン, H]（K1・K3 が書く）
   Span<uint16_t> o;                 // [トークン, A]
   Span<const uint32_t> codes;       // 関係の符号 [行, 塊, 塊, 256]（K0）
   Span<const int32_t> rowColumn;    // 行の索引 [行, 幅]
+  Span<const int32_t> rowOrder;     // 組の順の行の番号 [行]（RowOrderArgs）
   Span<const uint16_t> qkv;         // W_qkv の断片の写し（重みの公開のときに作る。QkvFragmentArgs::fragments）
   Span<const float> qkvBias;        // [3A]
   Span<const float> bias;           // その層の偏りの表 [頭の対, kBiasEntries, 2]（重みの公開のときに作る）
@@ -145,6 +176,7 @@ struct AttentionArgs {
   int rowWidth;
   int rowFirstEvent;
   int rowEvents;
+  int groupStart;  // この起動の組の rowOrder の先頭（launchAttention が組ごとに入れる）
   float scale;
 };
 
@@ -258,7 +290,10 @@ void launchEmbed(int hidden, const EmbedArgs& args, int blocks, hipStream_t stre
 void launchRelation(const RelationArgs& args, hipStream_t stream);
 void launchRelationBias(const RelationBiasArgs& args, int headPairs, hipStream_t stream);
 void launchQkvFragments(int hidden, const QkvFragmentArgs& args, int headPairs, hipStream_t stream);
-void launchAttention(int hidden, bool last, const AttentionArgs& args, int headPairs, hipStream_t stream);
+void launchRowOrder(const RowOrderArgs& args, hipStream_t stream);
+// 組ごとに 1 回起動する（行の数 0 の組は起動しない）。groupRows は RowOrderArgs と同じ組の行の数。
+void launchAttention(int hidden, bool last, const AttentionArgs& args, int headPairs,
+                     const int (&groupRows)[kAttentionGroups], hipStream_t stream);
 void launchMlpFragments(const MlpFragmentArgs& args, hipStream_t stream);
 void launchMlp(int hidden, const MlpArgs& args, hipStream_t stream);
 void launchMlpKv(int hidden, const MlpKvArgs& args, hipStream_t stream);

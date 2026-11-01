@@ -1,12 +1,14 @@
-// K2（attn0）と K4（attn1）: 作業群は 1 頭の対 × 1 行（256 スレッド = 8 波）。eager の EncoderLayer の注意の半分（O 射影は K3・K5）。
+// K2（attn0）と K4（attn1）: 作業群は 1 頭の対 × 1 行で、波の数 W は行の組の W（prism_hip_kernels.h の attentionWaves。行の 16
+// トークンの塊の数が W 以下）。計画は組ごとに起動し、作業群は組の順の行の番号（rowOrderKernel）から自分の行を引く。eager の
+// EncoderLayer の注意の半分（O 射影は K3・K5）。
 //
 //   0. 2 頭の偏りの表（×log2e）を LDS へ写す（重みの公開のときに relationBiasKernel が層ごとに作ったもの。prism_hip_relation.h）
 //   1. 頭の対の q・k・v = ⌊n·W_qkvᵀ + b⌉（WMMA。K4 は q を局・席・牌の 39 個だけ）。n = ⌊(x·r)·g⌉ は前の段（K1・K3）が
 //      NORMALIZED に書いたもので、断片としてそのまま読む。W_qkv は重みの公開のときに qkvFragmentKernel が断片の順に並べ替えた写し
-//      （下）を読む。k・v は LDS へ。q は転置の qᵀ = W_q·nᵀ で作る。K2 は問い合わせの B の断片のままレジスタに残し（塊 m を作る波が
-//      問い合わせの塊 m を受け持つ。波の 2 つ目の塊（T > 128）の q だけ LDS へ）、K4 は全て LDS へ置く
-//   2. 問い合わせの塊（16 個）ごとに、K2 は 1 波が 2 頭を、K4 は 1 波が 1 頭を回す（K4 の問い合わせの塊は 3 つ以下なので 6 波以下）。
-//      鍵の塊（16 個）ごとに
+//      （下）を読む。波 m が 16 トークンの塊 m を作る。k・v は LDS へ。q は転置の qᵀ = W_q·nᵀ で作り、問い合わせの B の断片のまま
+//      レジスタに残す（波 m が問い合わせの塊 m を受け持つ）。ただし 1 波が 1 頭を回す K4 の組（W ≥ 6）は q を LDS へ置く
+//   2. 問い合わせの塊（16 個）ごとに 1 波が 2 頭を回す。K4 の W ≥ 6 の組は 1 波が 1 頭を回す（K4 の問い合わせの塊は 3 つ以下なので
+//      6 波以下）。鍵の塊（16 個）ごとに
 //        S^T = K·Qᵀ（WMMA、BF16 の積を FP32 で累積）、ℓ = S·scale + Σ_s ρ[16s + c_s(i, j)]（c は K0 の符号。ρ は区画 2 つずつ前もって
 //        足した表を引く）、オンラインの softmax（exp2）、O^T += V^T·P^T（WMMA。P は FP32 の e を hi・lo の 2 つの BF16 に分けて 2 回掛け、
 //        FP32 に近い精度を保つ）
@@ -16,52 +18,53 @@
 // pack8Activation。NaN の選択なし）。
 //
 // eager の packedRelationScaledDotProductAttention と式は同じで、和の順と exp だけが違う（相対 RMS ≤ 2e-2 の約束の内）。縮約は全て行の
-// 中で順は固定、原子的な加算もない。WMMA の要素は互いに独立なので、同じ行の o は塊の組み方に依らずビットで同じ。
+// 中で順は固定、原子的な加算もない。WMMA の要素は互いに独立なので、同じ行の o は塊の組み方に依らずビットで同じ。W は塊と頭を受け
+// 持つ波を決めるだけで、塊ごと・頭ごとの演算（被演算子・K の順・丸め・置く位置）はどの組の核でも同じなので、o は組にも依らない。
 //
 // 射影の重みの写し（qkvFragmentKernel。重みの公開のときに層ごとに 1 回）: 頭の対ごとに [歩 k][頭 h][j = q・k・v][半分][行 r][8]
 // = W_qkv[unit(j, h, r)][16k + 8·半分 .. +8]。unit(q, h, r) = 32·対 + 16h + π(r)（π(r) = (r >> 1) + 8(r & 1)）、
 // unit(k, h, r) = A + 32·対 + 16h + r、unit(v, h, r) = 2A + 32·対 + 16h + r。断片 1 つは 512 バイト、歩 1 つは 3 KB、頭の対は 48 KB。
 // lane は行 column の 16 バイトを lane の位置 column·16 と波で同じ soffset k·3072 + (3h + j)·512（上の 8 要素は + 256）で読むので、
 // b128 の 1 回は続いた 256 バイト（2 本の cache line。W_qkv をそのまま読むと 512 バイト離れた 16 行）。値と WMMA の断片は同じ。
+#include <utility>
+
 #include "prism_hip_relation.h"
 
 namespace prism {
 namespace {
 
-constexpr int kThreads = 256;
-constexpr int kWaves = kThreads / kWave;
 constexpr int kHeadWidth = 16;
 constexpr int kPairWidth = 2 * kHeadWidth;                 // 頭の対の q・k の列
-constexpr int kValueStride = kMaxRowTokens + 8;            // V^T の行（bank の衝突を避ける詰め物）
 constexpr int kFixedBlocks = (kMaxFixedTokens + 15) / 16;  // K4 の問い合わせの塊
-static_assert(2 * kFixedBlocks <= kWaves, "K4 gives every query block and head its own wave");
+constexpr int kBiasChunks = kBiasEntries / 2;              // 偏りの表の 16 バイトの塊
 static_assert(kBiasEntries % 2 == 0, "the bias table is copied 16 bytes at a time");
 static_assert(sizeof(float2) == kBiasEntryBytes, "a code field holds the byte offset of a two-head bias entry");
-static_assert(kThreads <= kBiasEntries / 2 && kBiasEntries / 2 <= 2 * kThreads,
-              "every thread copies one or two 16-byte chunks of the bias table");
+constexpr int kQkvThreads = 256;     // qkvFragmentKernel の作業群
+constexpr int kOrderThreads = 1024;  // rowOrderKernel の作業群（1 つ）
+constexpr int kOrderWaves = kOrderThreads / kWave;
 
 // 射影の重みの写しの置き方（上）。
 constexpr int kFragmentBytes = 512;                 // 断片 1 つ（K の下の 8 要素の 16 行、上の 8 要素の 16 行）
 constexpr int kStepBytes = 2 * 3 * kFragmentBytes;  // 歩 1 つ（2 頭 × q・k・v）
 
-// 問い合わせの q の LDS（k と同じ入れ替えで置く）。K2 は波の 2 つ目の問い合わせの塊（m ≥ 8、T > 128）の q だけを置き、最初の塊の q は
-// レジスタに残す。K4 は 1 波が 1 頭を回すので、問い合わせ（局・席・牌の 48 以下）の q を全て置く。
-template <bool kLast>
-struct QueryStash {
-  uint16_t queryStash[kMaxRowTokens - 16 * kWaves][kPairWidth];
-};
+// 問い合わせの q の LDS（k と同じ入れ替えで置く）。1 波が 1 頭を回す K4 の組だけが、問い合わせ（局・席・牌の 48 以下）の q を全て
+// 置く。ほかの組の q はレジスタに残す。
+template <bool kHeadWaves>
+struct FixedQueries {};
 
 template <>
-struct QueryStash<true> {
+struct FixedQueries<true> {
   uint16_t fixedQuery[kMaxFixedTokens][kPairWidth];
 };
 
-// LDS。k は [トークン][2 頭 × 16] の行の 16 バイトの塊を (トークン >> 1) & 3 で入れ替えて置く（8 lane の b128 の読みで bank が衝突
-// しない）。V^T は [16h + r(d)][κ] で、r(d) = 2(d & 7) + (d >> 3)、鍵 16m + 2v + half は列 16m + v + 8·half。この並びで O^T の断片の
-// lane が続いた 8 次元を持ち、P^T の B の断片は lane と相方の 8 値を続けるだけになる。
-template <bool kLast>
-struct alignas(16) AttentionShared : QueryStash<kLast> {
-  uint16_t k[kMaxRowTokens][kPairWidth];
+// LDS（kTokens = 16W トークン分）。k は [トークン][2 頭 × 16] の行の 16 バイトの塊を (トークン >> 1) & 3 で入れ替えて置く（8 lane の
+// b128 の読みで bank が衝突しない）。V^T は [16h + r(d)][κ] で、r(d) = 2(d & 7) + (d >> 3)、鍵 16m + 2v + half は列 16m + v + 8·half。
+// この並びで O^T の断片の lane が続いた 8 次元を持ち、P^T の B の断片は lane と相方の 8 値を続けるだけになる。V^T の行の刻み
+// kTokens + 8 要素（8W + 4 語）は 8 語の倍数から 4 語ずれるので、16 lane が 16 バイトずつ読むとき bank が衝突しない。
+template <int kTokens, bool kHeadWaves>
+struct alignas(16) AttentionShared : FixedQueries<kHeadWaves> {
+  static constexpr int kValueStride = kTokens + 8;
+  uint16_t k[kTokens][kPairWidth];
   uint16_t valueT[kPairWidth][kValueStride];
   float2 bias[kBiasEntries];  // 2 頭の偏りの表（×log2e）
 };
@@ -80,6 +83,7 @@ __device__ __forceinline__ bf16x16 headFragment(const uint16_t (*m)[kPairWidth],
 }
 
 // V^T の頭 head の行 column（= r(d)）の鍵の塊 block の 16 鍵（WMMA の A の断片の行）。
+template <int kValueStride>
 __device__ __forceinline__ const uint16_t* valueRow(const uint16_t (*valueT)[kValueStride], int head, int block,
                                                     int column) {
   return &valueT[kHeadWidth * head + column][16 * block];
@@ -308,11 +312,11 @@ __device__ __forceinline__ void attendBlock(HeadState& s, const float (&logit)[8
   s.out = mma(values, low, s.out);
 }
 
-// 問い合わせの塊 qt の頭 head 〜 head + kHeads − 1 を鍵の塊 kt < blocks で回す（K2 は頭 0・1 を 1 波で、K4 は頭 head だけ）。符号の
-// 8 語は 1 塊先を読む。頭ごとの演算と順は kHeads に依らない。
-template <int kHeads, bool kLast>
+// 問い合わせの塊 qt の頭 head 〜 head + kHeads − 1 を鍵の塊 kt < blocks で回す（頭 0・1 を 1 波で、または頭 head だけ）。符号の
+// 8 語は 1 塊先を読む。頭ごとの演算と順は kHeads に依らない（pairBias と headBias は頭ごとに同じ順で足す）。
+template <int kHeads, class Shared>
 __device__ __forceinline__ void attendKeys(HeadState (&state)[kHeads], const bf16x16 (&query)[kHeads], int head,
-                                           const AttentionShared<kLast>& shared, const AttentionArgs& args,
+                                           const Shared& shared, const AttentionArgs& args,
                                            Bounds& bounds, int row, int qt, int blocks, int lane, int column,
                                            float scale) {
   const size_t codes = codeIndex(row, qt, 0) + static_cast<size_t>(lane) * 8;
@@ -371,17 +375,25 @@ __device__ __forceinline__ void storeHead(const HeadState& s, bool inside, size_
   }
 }
 
-template <int H, bool kLast>
-__global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) {
+// 組の核: kWaves 波・LDS は 16·kWaves トークン分。作業群の行は組の順の行の番号 rowOrder[groupStart + blockIdx.y]。
+template <int H, bool kLast, int kWaves>
+__global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs args) {
+  constexpr int kThreads = kWave * kWaves;
+  constexpr int kTokens = 16 * kWaves;
   constexpr int A = H / 2;
   constexpr int kPairElements = (H / 16) * kStepBytes / static_cast<int>(sizeof(uint16_t));  // 頭の対の重みの写し
   constexpr int kSets = kLast ? 4 : 3;  // 射影の断片の組（projectHead）
-  static_assert(sizeof(AttentionShared<kLast>) <= 64 * 1024, "LDS of one work group is 64 KiB");
+  // K4 で問い合わせの塊と頭の組ごとに波があれば 1 波が 1 頭を回し（q は LDS）、なければ 1 波が 2 頭を回す（q はレジスタ）。
+  constexpr bool kHeadWaves = kLast && 2 * kFixedBlocks <= kWaves;
+  constexpr int kBiasCopies = (kBiasChunks + kThreads - 1) / kThreads;  // スレッドが写す偏りの表の塊
+  using Shared = AttentionShared<kTokens, kHeadWaves>;
+  static_assert(sizeof(Shared) <= 64 * 1024, "LDS of one work group is 64 KiB");
   static_assert(H * sizeof(uint16_t) == 4 * 128, "an n row spans four 128-byte lines");
-  __shared__ AttentionShared<kLast> shared;
+  static_assert(!kLast || kFixedBlocks <= kWaves, "K4 gives every query block a wave");
+  static_assert(kThreads <= kBiasChunks, "every thread copies at least one chunk of the bias table");
+  __shared__ Shared shared;
 
   const int pair = blockIdx.x;
-  const int row = blockIdx.y;
   const int tid = threadIdx.x;
   const int lane = tid % kWave;
   const int wave = tid / kWave;
@@ -390,40 +402,48 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
   const TokenLayout layout = args.layout;
   Bounds bounds;
 
+  const int row = args.rowOrder.data[bounds.index(static_cast<size_t>(args.groupStart) + blockIdx.y, 1,
+                                                  args.rowOrder.limit)];
   const int firstEvent = args.rowColumn.data[bounds.index(
       static_cast<size_t>(row) * args.rowWidth + args.rowFirstEvent, 1, args.rowColumn.limit)];
   const int events = args.rowColumn.data[bounds.index(
       static_cast<size_t>(row) * args.rowWidth + args.rowEvents, 1, args.rowColumn.limit)];
   const int fixed = layout.fixed();
-  // 規則の上限で 149 以下。範囲外は検査つきの組み立てで止め、通常の組み立てでも LDS の外には書かない。
-  const int tokens = min(fixed + max(events, 0), kMaxRowTokens);
+  // 規則の上限で 149 以下、組の上限で 16W 以下。範囲外と組の取り違えは検査つきの組み立てで止め、通常の組み立てでも LDS の外には
+  // 書かない（組は attentionGroup が同じ切り詰めの T で決めるので、通常は切り詰めない）。
+  const int tokens = min(fixed + max(events, 0), kTokens);
   (void)bounds.index(static_cast<size_t>(fixed + events), 0, kMaxRowTokens);
+  (void)bounds.index(static_cast<size_t>(fixed + max(events, 0)), 0, kTokens);
   const int queries = kLast ? fixed : tokens;
-  const int blocks = (tokens + 15) / 16;  // 16 トークンの塊（鍵の塊）
+  const int blocks = (tokens + 15) / 16;  // 16 トークンの塊（鍵の塊。W 以下）
 
-  // 0. 2 頭の偏りの表を 16 バイトの塊で写す。スレッドは塊 tid と tid + 256 を受け持ち、2 つの読みを先に出して待ちを 1 回にする
-  //    （2 つ目の塊が表の外のスレッドは 1 つ目の塊を読み直して同じ所へ書き直す。書きに分岐がないので、読みが分岐の中へ沈まない）。
+  // 0. 2 頭の偏りの表を 16 バイトの塊で写す。スレッドは塊 tid + c·32W（c < kBiasCopies）を受け持ち、読みを全て先に出して待ちを 1 回
+  //    にする（表の外の塊のスレッドは塊 tid を読み直して同じ所へ書き直す。書きに分岐がないので、読みが分岐の中へ沈まない）。
   {
-    const int second = tid + kThreads < kBiasEntries / 2 ? tid + kThreads : tid;
-    const f32x4 low = biasChunk(args, bounds, pair, tid);
-    const f32x4 high = biasChunk(args, bounds, pair, second);
-    reinterpret_cast<f32x4*>(shared.bias)[tid] = low;
-    reinterpret_cast<f32x4*>(shared.bias)[second] = high;
+    int at[kBiasCopies];
+    f32x4 chunk[kBiasCopies];
+#pragma unroll
+    for (int c = 0; c < kBiasCopies; ++c) {
+      at[c] = tid + c * kThreads < kBiasChunks ? tid + c * kThreads : tid;
+      chunk[c] = biasChunk(args, bounds, pair, at[c]);
+    }
+#pragma unroll
+    for (int c = 0; c < kBiasCopies; ++c) {
+      reinterpret_cast<f32x4*>(shared.bias)[at[c]] = chunk[c];
+    }
   }
 
-  // 1. q・k・v（WMMA）。波は 16 トークンの塊 m ≡ 波 (mod 8) を後ろから回し、頭ごとに q・k・v の 3 つの断片を作る。n と重みの写しは
-  //    生の buffer で読み、n は lane の行の位置（行の全ての歩を含む）、写しは作業群の頭の対の 48 KB を範囲の検査にかける。行の外の
-  //    lane は行の最後のトークンを読む（有限。その鍵は符号 kPaddedKeyCode で −∞ になって P = 0、その問い合わせは書かない）。q の
-  //    A の断片の行 r は W_q の行 π(r) なので（写しがそう並べてある）、C の断片の lane はトークン 16m + column の次元 8·half + v
-  //    （v < 8）を持つ。K2 が最後に作る q は問い合わせの塊 qt = 波 のもので、レジスタに残す。
+  // 1. q・k・v（WMMA）。波 m（< 塊の数）が 16 トークンの塊 m の頭ごとに q・k・v の 3 つの断片を作る。n と重みの写しは生の buffer で
+  //    読み、n は lane の行の位置（行の全ての歩を含む）、写しは作業群の頭の対の 48 KB を範囲の検査にかける。行の外の lane は行の最後
+  //    のトークンを読む（有限。その鍵は符号 kPaddedKeyCode で −∞ になって P = 0、その問い合わせは書かない）。q の A の断片の行 r は
+  //    W_q の行 π(r) なので（写しがそう並べてある）、C の断片の lane はトークン 16m + column の次元 8·half + v（v < 8）を持つ。
   const __amdgpu_buffer_rsrc_t weights = bufferResource(
       args.qkv.data + bounds.index(static_cast<size_t>(pair) * kPairElements, kPairElements, args.qkv.limit));
   const uint32_t fragmentRow = static_cast<uint32_t>(column) * 16;  // 写しの半分の中の lane の行（lane 16〜31 は 0〜15 と同じ）
   const __amdgpu_buffer_rsrc_t inputs = bufferResource(args.normalized.data);
-  bf16x16 keptQuery[2];  // K2 の波の最初の問い合わせの塊の q（頭ごとの B の断片）
-  const int owned = (blocks - wave + kWaves - 1) / kWaves;  // この波の塊 m = 波 + 8i（i < owned）
-  for (int i = owned - 1; i >= 0; --i) {
-    const int m = wave + kWaves * i;
+  bf16x16 keptQuery[2];  // 波の問い合わせの塊 m の q（頭ごとの B の断片。1 波が 1 頭を回す K4 の組は LDS に置く）
+  if (wave < blocks) {
+    const int m = wave;
     const int token = min(16 * m + column, tokens - 1);
     const uint32_t inputRow =
         static_cast<uint32_t>(bounds.index(static_cast<size_t>(layout.index(row, firstEvent, token)) * H, H,
@@ -447,8 +467,8 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
       } else {
         projectHead<H, 1, kSets>(acc, weights, fragmentRow, h, inputs, inputRow);
       }
-      // 偏りを足して丸める。q は K2 なら相方と合わせて問い合わせの B の断片に（波の 2 つ目の塊は lane の 8 次元を LDS へ）、K4 なら
-      // lane の 8 次元を LDS へ。k は入れ替えた位置へ 1 値ずつ、v は V^T の行へ 8 値を 1 回で書く。
+      // 偏りを足して丸める。q は相方と合わせて問い合わせの B の断片に（1 波が 1 頭を回す K4 の組は lane の 8 次元を LDS へ）。k は
+      // 入れ替えた位置へ 1 値ずつ、v は V^T の行へ 8 値を 1 回で書く。
       if (hasQuery) {
         const size_t at = bounds.index(static_cast<size_t>(base + 8 * half), 8, args.qkvBias.limit);
         const f32x8 bias = *reinterpret_cast<const f32x8*>(args.qkvBias.data + at);
@@ -458,14 +478,11 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
           values[v] = acc[0][v] + bias[v];
         }
         const u32x4 own = pack8Activation(values);
-        if constexpr (kLast) {
+        if constexpr (kHeadWaves) {
           const int t = 16 * m + column;
           *reinterpret_cast<u32x4*>(&shared.fixedQuery[t][8 * ((2 * h + half) ^ ((t >> 1) & 3))]) = own;
-        } else if (m < kWaves) {
-          keptQuery[h] = joinHalves(own);
         } else {
-          const int t = 16 * (m - kWaves) + column;
-          *reinterpret_cast<u32x4*>(&shared.queryStash[t][8 * ((2 * h + half) ^ ((t >> 1) & 3))]) = own;
+          keptQuery[h] = joinHalves(own);
         }
       }
       {
@@ -497,8 +514,8 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
   // 2. 注意。lane は問い合わせ query = 16qt + column の鍵 16kt + 2v + half（v < 8）を持つ。
   const int queryBlocks = (queries + 15) / 16;
   const float scale = args.scale * kLog2e;
-  if constexpr (kLast) {
-    // K4: 波 w が問い合わせの塊 w >> 1 の頭 w & 1 を回す。頭ごとの演算と順は 1 波で 2 頭を回すのと同じなので、o もビットで同じ。
+  if constexpr (kHeadWaves) {
+    // 波 w が問い合わせの塊 w >> 1 の頭 w & 1 を回す。頭ごとの演算と順は 1 波で 2 頭を回すのと同じなので、o もビットで同じ。
     const int qt = wave >> 1;
     const int h = wave & 1;
     if (qt < queryBlocks) {
@@ -510,15 +527,12 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
       storeHead(state[0], query < queries, at + kHeadWidth * h, args, bounds);
     }
   } else {
-    // K2: 波が問い合わせの塊 qt を受け持ち、2 頭を同時に回す。問い合わせの B の断片は、波の最初の塊（qt = 波）はレジスタに残した q、
-    // 2 つ目の塊は LDS に置いた q。
-    for (int qt = wave; qt < queryBlocks; qt += kWaves) {
+    // 波が問い合わせの塊 qt = 波 を受け持ち、段 1 でレジスタに残した q で 2 頭を同時に回す（問い合わせの塊は鍵の塊より多くないので、
+    // その波は段 1 で塊 qt を作り、その q を持つ。K4 の問い合わせの塊はどれも局・席・牌に掛かる）。
+    const int qt = wave;
+    if (qt < queryBlocks) {
       const int query = qt * 16 + column;
-      bf16x16 queryFragment[2] = {keptQuery[0], keptQuery[1]};
-      if (qt >= kWaves) {
-        queryFragment[0] = headFragment(shared.queryStash, query - 16 * kWaves, 0);
-        queryFragment[1] = headFragment(shared.queryStash, query - 16 * kWaves, 1);
-      }
+      const bf16x16 queryFragment[2] = {keptQuery[0], keptQuery[1]};
       HeadState state[2];
       attendKeys(state, queryFragment, 0, shared, args, bounds, row, qt, blocks, lane, column, scale);
       const size_t at = static_cast<size_t>(layout.index(row, firstEvent, query)) * A + kPairWidth * pair + 8 * half;
@@ -531,16 +545,92 @@ __global__ __launch_bounds__(kThreads) void attentionKernel(AttentionArgs args) 
   bounds.trap();
 }
 
+// K0 の後: 行の番号を組の順に並べる（組の中は行の順なので、並びは塊だけで決まる）。作業群 1 つが 1024 行ずつ、波の ballot で組ごとの
+// 順位を数えて書く。置いた行の数がホストの数えた組の行の数と違えば、検査つきの組み立てで止める（行が組の 16W を超えれば K2・K4 も
+// 止める）。
+__global__ __launch_bounds__(kOrderThreads) void rowOrderKernel(RowOrderArgs args) {
+  __shared__ int waveRows[kOrderWaves][kAttentionGroups];  // 今の 1024 行の波ごと・組ごとの行の数
+  const int tid = threadIdx.x;
+  const int lane = tid % kWave;
+  const int wave = tid / kWave;
+  Bounds bounds;
+  int placed[kAttentionGroups] = {};  // 前の 1024 行までに置いた組ごとの行の数（どのスレッドも同じ）
+  for (int first = 0; first < args.rows; first += kOrderThreads) {
+    const int row = first + tid;
+    int group = -1;
+    if (row < args.rows) {
+      const int events = args.rowColumn.data[bounds.index(
+          static_cast<size_t>(row) * args.rowWidth + args.rowEvents, 1, args.rowColumn.limit)];
+      group = attentionGroup(args.fixed, events);
+    }
+    int rank = 0;  // 波の中で前の lane にある同じ組の行の数
+#pragma unroll
+    for (int g = 0; g < kAttentionGroups; ++g) {
+      const uint32_t mask = __builtin_amdgcn_ballot_w32(group == g);
+      if (lane == 0) {
+        waveRows[wave][g] = __builtin_popcount(mask);
+      }
+      rank = group == g ? __builtin_popcount(mask & ((1u << lane) - 1u)) : rank;
+    }
+    __syncthreads();
+    int at = 0;
+#pragma unroll
+    for (int g = 0; g < kAttentionGroups; ++g) {
+      int before = 0;
+      int total = 0;
+      for (int w = 0; w < kOrderWaves; ++w) {
+        const int count = waveRows[w][g];
+        before += w < wave ? count : 0;
+        total += count;
+      }
+      at = group == g ? args.groupStart[g] + placed[g] + before + rank : at;
+      placed[g] += total;
+    }
+    if (group >= 0) {
+      args.rowOrder.data[bounds.index(static_cast<size_t>(at), 1, args.rowOrder.limit)] = row;
+    }
+    __syncthreads();
+  }
+  // 置いた数とホストの数が等しい（≤ と ≥ を範囲の検査で照らす）。
+#pragma unroll
+  for (int g = 0; g < kAttentionGroups; ++g) {
+    (void)bounds.index(static_cast<size_t>(placed[g]), 0, static_cast<size_t>(args.groupRows[g]));
+    (void)bounds.index(static_cast<size_t>(args.groupRows[g]), 0, static_cast<size_t>(placed[g]));
+  }
+  bounds.trap();
+}
+
+// 組 kGroup の行（rows 行、rowOrder の start から）を起動し、start を次の組の先頭へ進める。行の数 0 の組は起動しない。
+template <int H, bool kLast, int kGroup>
+void launchGroup(AttentionArgs args, int& start, int rows, int headPairs, hipStream_t stream) {
+  constexpr int kWaves = attentionWaves(kGroup);
+  if (rows > 0) {
+    args.groupStart = start;
+    // 同じ行の頭の対が隣どうしで走る（行の x と符号を L2 で使い回す）。
+    hipLaunchKernelGGL((attentionKernel<H, kLast, kWaves>), dim3(headPairs, rows), dim3(kWave * kWaves), 0, stream,
+                       args);
+    PRISM_HIP(hipGetLastError());
+  }
+  start += rows;
+}
+
+template <int H, bool kLast, int... kGroups>
+void launchGroups(const AttentionArgs& args, const int (&groupRows)[kAttentionGroups], int headPairs,
+                  hipStream_t stream, std::integer_sequence<int, kGroups...>) {
+  int start = 0;
+  (launchGroup<H, kLast, kGroups>(args, start, groupRows[kGroups], headPairs, stream), ...);
+}
+
 // 重みの公開のとき: 1 層の W_qkv を射影の重みの写し（上）に並べ替える。作業群は 1 頭の対で、スレッドは写しの 16 バイト（W_qkv の
 // 行 unit(j, h, r) の K の 8 要素）を 1 つずつ写す。
 template <int H>
-__global__ __launch_bounds__(kThreads) void qkvFragmentKernel(QkvFragmentArgs args) {
+__global__ __launch_bounds__(kQkvThreads) void qkvFragmentKernel(QkvFragmentArgs args) {
   constexpr int A = H / 2;
   constexpr int kChunks = (H / 16) * kStepBytes / 16;  // 頭の対の写しの 16 バイトの数
   const int pair = blockIdx.x;
   Bounds bounds;
 
-  for (int c = threadIdx.x; c < kChunks; c += kThreads) {
+  for (int c = threadIdx.x; c < kChunks; c += kQkvThreads) {
     // c = (((k·2 + h)·3 + j)·2 + upper)·16 + r（upper は K の上の 8 要素）。
     const int r = c % 16;
     const int upper = (c / 16) % 2;
@@ -558,30 +648,37 @@ __global__ __launch_bounds__(kThreads) void qkvFragmentKernel(QkvFragmentArgs ar
 
 }  // namespace
 
-void launchAttention(int hidden, bool last, const AttentionArgs& args, int headPairs, hipStream_t stream) {
+void launchRowOrder(const RowOrderArgs& args, hipStream_t stream) {
+  if (args.rows <= 0) {
+    return;
+  }
+  hipLaunchKernelGGL(rowOrderKernel, dim3(1), dim3(kOrderThreads), 0, stream, args);
+  PRISM_HIP(hipGetLastError());
+}
+
+void launchAttention(int hidden, bool last, const AttentionArgs& args, int headPairs,
+                     const int (&groupRows)[kAttentionGroups], hipStream_t stream) {
   if (args.layout.rows <= 0) {
     return;
   }
-  // 同じ行の頭の対が隣どうしで走る（行の x と符号を L2 で使い回す）。
-  const dim3 grid(headPairs, args.layout.rows);
+  constexpr auto groups = std::make_integer_sequence<int, kAttentionGroups>{};
   switch (hidden) {
     case 256:
       if (last) {
-        hipLaunchKernelGGL((attentionKernel<256, true>), grid, dim3(kThreads), 0, stream, args);
+        launchGroups<256, true>(args, groupRows, headPairs, stream, groups);
       } else {
-        hipLaunchKernelGGL((attentionKernel<256, false>), grid, dim3(kThreads), 0, stream, args);
+        launchGroups<256, false>(args, groupRows, headPairs, stream, groups);
       }
       break;
     default:
       throw std::invalid_argument("K2/K4 have no specialisation for hidden " + std::to_string(hidden));
   }
-  PRISM_HIP(hipGetLastError());
 }
 
 void launchQkvFragments(int hidden, const QkvFragmentArgs& args, int headPairs, hipStream_t stream) {
   switch (hidden) {
     case 256:
-      hipLaunchKernelGGL((qkvFragmentKernel<256>), dim3(headPairs), dim3(kThreads), 0, stream, args);
+      hipLaunchKernelGGL((qkvFragmentKernel<256>), dim3(headPairs), dim3(kQkvThreads), 0, stream, args);
       break;
     default:
       throw std::invalid_argument("the QKV fragment copy has no specialisation for hidden " + std::to_string(hidden));

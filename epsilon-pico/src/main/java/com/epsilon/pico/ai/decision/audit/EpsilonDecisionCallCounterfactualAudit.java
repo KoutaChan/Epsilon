@@ -3,6 +3,7 @@ package com.epsilon.pico.ai.decision.audit;
 import ai.djl.Device;
 import com.epsilon.ai.decision.EpsilonDecisionSeeds;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.ai.grp.EpsilonGrpCheckpointBundle;
 import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.SettingsLoader;
@@ -17,7 +18,7 @@ import com.epsilon.engine.EngineDecisionPoint;
 import com.epsilon.engine.EngineDecisionSelection;
 import com.epsilon.engine.GameEngine;
 import com.epsilon.engine.GameStepResult;
-import com.epsilon.pico.ai.decision.EpsilonUtilityTargets;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.pico.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.pico.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.pico.ai.decision.input.DecisionBucket;
@@ -29,7 +30,6 @@ import com.epsilon.pico.ai.decision.runtime.EpsilonDecisionRequestBatcher;
 import com.epsilon.pico.ai.decision.training.EpsilonDecisionCheckpointBundle;
 import com.epsilon.pico.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.pico.ai.grp.EpsilonGrpCheckpointManager;
-import com.epsilon.pico.ai.network.NetworkDevices;
 import com.epsilon.pico.ai.network.NetworkFactory;
 import com.epsilon.pico.config.settings.DecisionSettings;
 import com.epsilon.pico.config.settings.EpsilonSettings;
@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.SplittableRandom;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -790,7 +791,7 @@ public final class EpsilonDecisionCallCounterfactualAudit {
   }
 
   private static Map<String, PairedMetrics> grouped(
-      List<RootOutcome> outcomes, java.util.function.Function<RootOutcome, String> keyFunction) {
+      List<RootOutcome> outcomes, Function<RootOutcome, String> keyFunction) {
     LinkedHashMap<String, ArrayList<RootOutcome>> groups = new LinkedHashMap<>();
     for (RootOutcome outcome : outcomes) {
       groups.computeIfAbsent(keyFunction.apply(outcome), ignored -> new ArrayList<>()).add(outcome);

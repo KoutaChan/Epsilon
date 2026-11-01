@@ -1,6 +1,10 @@
 package com.epsilon.runtime;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;

@@ -15,8 +15,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
 
   private final DecisionPolicyAffineExecution affine;
   private final DecisionPolicyIndexedAffineExecution indexedAffine;
-  private final DecisionPolicyCandidatePrefixExecution candidatePrefix;
-  private final DecisionPolicyPlayerTileContextExecution playerTileContext;
+  private final DecisionCandidateExecution representation;
   private final DecisionPolicyCandidateContextExecution candidateContext;
   private final DecisionPolicyContextExecution context;
   private final Forward[] activeForwards;
@@ -25,8 +24,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
   DecisionPolicyExecution(
       DecisionPolicyAffineExecution affine,
       DecisionPolicyIndexedAffineExecution indexedAffine,
-      DecisionPolicyCandidatePrefixExecution candidatePrefix,
-      DecisionPolicyPlayerTileContextExecution playerTileContext,
+      DecisionCandidateExecution representation,
       DecisionPolicyCandidateContextExecution candidateContext,
       DecisionPolicyContextExecution context,
       int executionSlots) {
@@ -35,8 +33,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
     }
     this.affine = affine;
     this.indexedAffine = indexedAffine;
-    this.candidatePrefix = candidatePrefix;
-    this.playerTileContext = playerTileContext;
+    this.representation = representation;
     this.candidateContext = candidateContext;
     this.context = context;
     activeForwards = new Forward[executionSlots];
@@ -56,15 +53,12 @@ public final class DecisionPolicyExecution implements AutoCloseable {
     DecisionPolicyAffineExecution.Forward affineComponentForward =
         affine.beginForward(workingManager);
     DecisionPolicyIndexedAffineExecution.Forward indexedComponentForward = null;
-    DecisionPolicyCandidatePrefixExecution.Forward candidatePrefixComponentForward = null;
-    DecisionPolicyPlayerTileContextExecution.Forward playerTileContextComponentForward = null;
+    DecisionCandidateExecution.Forward representationForward = null;
     DecisionPolicyCandidateContextExecution.Forward candidateContextComponentForward = null;
     DecisionPolicyContextExecution.Forward contextComponentForward = null;
     try {
       indexedComponentForward = indexedAffine.beginForward(workingManager);
-      candidatePrefixComponentForward =
-          candidatePrefix == null ? null : candidatePrefix.beginForward(workingManager);
-      playerTileContextComponentForward = playerTileContext.beginForward(workingManager);
+      representationForward = representation.beginForward(workingManager);
       candidateContextComponentForward = candidateContext.beginForward(workingManager);
       contextComponentForward = context.beginForward(workingManager);
       Forward created =
@@ -73,8 +67,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
               slot,
               affineComponentForward,
               indexedComponentForward,
-              candidatePrefixComponentForward,
-              playerTileContextComponentForward,
+              representationForward,
               candidateContextComponentForward,
               contextComponentForward);
       activeForwards[slot] = created;
@@ -94,16 +87,9 @@ public final class DecisionPolicyExecution implements AutoCloseable {
           failure.addSuppressed(closeFailure);
         }
       }
-      if (playerTileContextComponentForward != null) {
+      if (representationForward != null) {
         try {
-          playerTileContextComponentForward.close();
-        } catch (Throwable closeFailure) {
-          failure.addSuppressed(closeFailure);
-        }
-      }
-      if (candidatePrefixComponentForward != null) {
-        try {
-          candidatePrefixComponentForward.close();
+          representationForward.close();
         } catch (Throwable closeFailure) {
           failure.addSuppressed(closeFailure);
         }
@@ -129,8 +115,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
   public boolean hasIncompleteWork() {
     return affine.hasIncompleteWork()
         || indexedAffine.hasIncompleteWork()
-        || (candidatePrefix != null && candidatePrefix.hasIncompleteWork())
-        || playerTileContext.hasIncompleteWork()
+        || representation.hasIncompleteWork()
         || candidateContext.hasIncompleteWork()
         || context.hasIncompleteWork();
   }
@@ -145,13 +130,9 @@ public final class DecisionPolicyExecution implements AutoCloseable {
     if (indexedFailure != null) {
       return indexedFailure;
     }
-    Throwable candidatePrefixFailure = candidatePrefix == null ? null : candidatePrefix.failure();
-    if (candidatePrefixFailure != null) {
-      return candidatePrefixFailure;
-    }
-    Throwable playerTileContextFailure = playerTileContext.failure();
-    if (playerTileContextFailure != null) {
-      return playerTileContextFailure;
+    Throwable representationFailure = representation.failure();
+    if (representationFailure != null) {
+      return representationFailure;
     }
     Throwable candidateContextFailure = candidateContext.failure();
     return candidateContextFailure != null ? candidateContextFailure : context.failure();
@@ -171,16 +152,9 @@ public final class DecisionPolicyExecution implements AutoCloseable {
       failure = addFailure(failure, closeFailure);
     }
     try {
-      playerTileContext.releaseFailedForwardAfterCompletion();
+      representation.releaseFailedForwardAfterCompletion();
     } catch (Throwable closeFailure) {
       failure = addFailure(failure, closeFailure);
-    }
-    if (candidatePrefix != null) {
-      try {
-        candidatePrefix.releaseFailedForwardAfterCompletion();
-      } catch (Throwable closeFailure) {
-        failure = addFailure(failure, closeFailure);
-      }
     }
     try {
       indexedAffine.releaseFailedForwardAfterCompletion();
@@ -228,16 +202,9 @@ public final class DecisionPolicyExecution implements AutoCloseable {
       failure = addFailure(failure, closeFailure);
     }
     try {
-      playerTileContext.close();
+      representation.close();
     } catch (Throwable closeFailure) {
       failure = addFailure(failure, closeFailure);
-    }
-    if (candidatePrefix != null) {
-      try {
-        candidatePrefix.close();
-      } catch (Throwable closeFailure) {
-        failure = addFailure(failure, closeFailure);
-      }
     }
     try {
       indexedAffine.close();
@@ -256,14 +223,13 @@ public final class DecisionPolicyExecution implements AutoCloseable {
   }
 
   /** 一つの方策順伝播に属する各実行計画の利用権を束ねる。 */
-  public static final class Forward {
+  public static final class Forward implements DecisionCandidateForward {
 
     private final DecisionPolicyExecution owner;
     private final int slot;
     private final DecisionPolicyAffineExecution.Forward affine;
     private final DecisionPolicyIndexedAffineExecution.Forward indexedAffine;
-    private final DecisionPolicyCandidatePrefixExecution.Forward candidatePrefix;
-    private final DecisionPolicyPlayerTileContextExecution.Forward playerTileContext;
+    private final DecisionCandidateExecution.Forward representation;
     private final DecisionPolicyCandidateContextExecution.Forward candidateContext;
     private final DecisionPolicyContextExecution.Forward context;
     private Dependencies dependencies;
@@ -276,21 +242,20 @@ public final class DecisionPolicyExecution implements AutoCloseable {
         int slot,
         DecisionPolicyAffineExecution.Forward affine,
         DecisionPolicyIndexedAffineExecution.Forward indexedAffine,
-        DecisionPolicyCandidatePrefixExecution.Forward candidatePrefix,
-        DecisionPolicyPlayerTileContextExecution.Forward playerTileContext,
+        DecisionCandidateExecution.Forward representation,
         DecisionPolicyCandidateContextExecution.Forward candidateContext,
         DecisionPolicyContextExecution.Forward context) {
       this.owner = owner;
       this.slot = slot;
       this.affine = affine;
       this.indexedAffine = indexedAffine;
-      this.candidatePrefix = candidatePrefix;
-      this.playerTileContext = playerTileContext;
+      this.representation = representation;
       this.candidateContext = candidateContext;
       this.context = context;
     }
 
-    NDArray candidate(
+    @Override
+    public NDArray candidate(
         ParameterStore parameterStore,
         PairList<String, Object> runtimeParameters,
         NDArray actionFeatures,
@@ -298,7 +263,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
         NDArray transitions,
         NDArray playerContexts,
         NDArray stateContext) {
-      return candidatePrefix == null
+      return !representation.hasCandidatePrefix()
           ? affine.candidate(
               parameterStore,
               runtimeParameters,
@@ -307,7 +272,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
               transitions,
               playerContexts,
               stateContext)
-          : candidatePrefix.project(
+          : representation.candidate(
               parameterStore,
               runtimeParameters,
               actionFeatures,
@@ -317,14 +282,37 @@ public final class DecisionPolicyExecution implements AutoCloseable {
               stateContext);
     }
 
-    NDArray transition(
+    @Override
+    public NDArray compactCandidate(
+        ParameterStore parameterStore,
+        PairList<String, Object> runtimeParameters,
+        NDArray actionFeatures,
+        NDArray primaryTiles,
+        NDArray transitions,
+        NDArray playerContexts,
+        NDArray states,
+        NDArray stateRows) {
+      return representation.compactCandidate(
+          parameterStore,
+          runtimeParameters,
+          actionFeatures,
+          primaryTiles,
+          transitions,
+          playerContexts,
+          states,
+          stateRows);
+    }
+
+    @Override
+    public NDArray transition(
         ParameterStore parameterStore,
         PairList<String, Object> runtimeParameters,
         NDArray features,
         NDArray tileContexts,
         NDArray discardTiles,
         NDArray discardSafety,
-        NDArray stateContexts) {
+        NDArray states,
+        NDArray stateRows) {
       return affine.transition(
           parameterStore,
           runtimeParameters,
@@ -332,7 +320,8 @@ public final class DecisionPolicyExecution implements AutoCloseable {
           tileContexts,
           discardTiles,
           discardSafety,
-          stateContexts);
+          states,
+          stateRows);
     }
 
     NDArray alternative(
@@ -343,8 +332,9 @@ public final class DecisionPolicyExecution implements AutoCloseable {
       return affine.alternative(parameterStore, runtimeParameters, stateContext, candidateContexts);
     }
 
-    NDArray mixPlayerTileContexts(ParameterStore parameterStore, NDArray byPlayer) {
-      return playerTileContext.mix(parameterStore, byPlayer);
+    @Override
+    public NDArray mixPlayerTileContexts(ParameterStore parameterStore, NDArray byPlayer) {
+      return representation.mixPlayerTileContexts(parameterStore, byPlayer);
     }
 
     DecisionPolicyContextPool.MappedCandidateContexts candidateContexts(
@@ -419,10 +409,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
       try {
         dependencies.add(affine.seal());
         dependencies.add(indexedAffine.seal());
-        if (candidatePrefix != null) {
-          dependencies.add(candidatePrefix.seal());
-        }
-        dependencies.add(playerTileContext.seal());
+        dependencies.add(representation.seal());
         dependencies.add(candidateContext.seal());
         dependencies.add(context.seal());
         sealed = true;
@@ -456,15 +443,8 @@ public final class DecisionPolicyExecution implements AutoCloseable {
       } catch (Throwable componentFailure) {
         poisonFailure = addFailure(poisonFailure, componentFailure);
       }
-      if (candidatePrefix != null) {
-        try {
-          candidatePrefix.poison(failure);
-        } catch (Throwable componentFailure) {
-          poisonFailure = addFailure(poisonFailure, componentFailure);
-        }
-      }
       try {
-        playerTileContext.poison(failure);
+        representation.poison(failure);
       } catch (Throwable componentFailure) {
         poisonFailure = addFailure(poisonFailure, componentFailure);
       }
@@ -504,7 +484,7 @@ public final class DecisionPolicyExecution implements AutoCloseable {
     private int size;
 
     private Dependencies() {
-      values = new AutoCloseable[6];
+      values = new AutoCloseable[5];
     }
 
     private void add(AutoCloseable value) {

@@ -10,5 +10,5 @@ public record ReviewResult(
     RecordMetadata metadata,
     ModelInfo model,
     List<ReplayRound> rounds) {
-  public static final int CURRENT_FORMAT_VERSION = 4;
+  public static final int CURRENT_FORMAT_VERSION = 5;
 }

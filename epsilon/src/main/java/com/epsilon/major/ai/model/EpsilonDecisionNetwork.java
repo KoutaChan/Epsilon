@@ -16,7 +16,6 @@ import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.config.settings.DecisionInferenceFusionMode;
 import com.epsilon.config.settings.DecisionInferenceFusionSettings;
 import com.epsilon.major.ai.decision.EpsilonDecisionConstants;
-import com.epsilon.major.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.major.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.major.ai.decision.input.DecisionDeviceBatch;
 import com.epsilon.major.ai.decision.input.DecisionInferenceDeviceBatch;
@@ -78,7 +77,7 @@ public final class EpsilonDecisionNetwork extends AbstractBlock {
    * @param hiddenSize 状態・行動埋め込み幅。Attentionヘッド数で割り切れる正数
    */
   public EpsilonDecisionNetwork(int hiddenSize) {
-    this(hiddenSize, EpsilonUtilityTargets.configuredProfile());
+    this(hiddenSize, DecisionSettings.defaults().utilityProfile());
   }
 
   /** モデルの複製が入力元モデルと同じ効用定義を明示的に継承するコンストラクター。 */

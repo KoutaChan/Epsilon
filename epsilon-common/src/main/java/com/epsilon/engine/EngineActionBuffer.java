@@ -67,6 +67,14 @@ public final class EngineActionBuffer extends AbstractList<Action> implements Ra
     size = 0;
   }
 
+  /** destination を消し、この一覧の手を同じ順に写す（一覧へ書く public な口のため。反復子は作らない）。 */
+  void copyInto(List<Action> destination) {
+    destination.clear();
+    for (int index = 0; index < size; index++) {
+      destination.add(Action.fromIndex(actionIds[index] & 0xffff));
+    }
+  }
+
   List<Action> borrowedView() {
     return borrowedView;
   }

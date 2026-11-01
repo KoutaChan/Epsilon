@@ -5,15 +5,26 @@ import com.epsilon.calculate.shape.HandShapeAnalyzer;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
-import com.epsilon.core.HandView;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.WinLegality.RonStatus;
 import java.util.List;
 
-/** 麻雀の各決定点に対する合法アクション生成器。ワーカーごとに所有し、決定点間で再利用する。 */
+/**
+ * 麻雀の各決定点に対する合法アクション生成器。ワーカーごとに所有し、決定点間で再利用する。
+ *
+ * <p>生成はいつも判断点へ書く（和了が合法なら点も判断点の箱へ書く）。一覧へ書く public な口（牌譜の再生・対局の client）は、この生成器の
+ * 作業用の判断点へ生成してから一覧へ写す。作業用の判断点はその口を初めて使うときに作る（{@link GameEngine} は判断点の口だけを使うので、
+ * 分岐ごとに作る生成器は作業用の判断点を持たない）。
+ */
 public final class ActionGenerator {
   private final HandScoreEvaluator winEvaluation = new HandScoreEvaluator();
   private final HandShapeAnalyzer handAnalysis = new HandShapeAnalyzer();
+
+  /**
+   * 一覧へ書く public な口の作業用の判断点。この生成器だけが持ち、1 回の呼び出しの間だけ使う（ID・種類・席は束ねない）。初めて使うまで
+   * null（{@link #listScratch}）。
+   */
+  private EngineDecisionPoint scratch;
 
   public ActionGenerator() {}
 
@@ -27,8 +38,9 @@ public final class ActionGenerator {
    */
   public void generateTurnActionsInto(
       List<Action> actions, GameState state, int player, TurnEvent.Draw draw) {
-    TurnActionGenerator.generateInto(
-        actions, state, player, draw, null, winEvaluation, handAnalysis);
+    EngineDecisionPoint decision = listScratch();
+    TurnActionGenerator.generateInto(decision, state, player, draw, winEvaluation, handAnalysis);
+    decision.mutableLegalActions().copyInto(actions);
   }
 
   /**
@@ -47,8 +59,7 @@ public final class ActionGenerator {
 
   void generateTurnActionsInto(
       EngineDecisionPoint decision, GameState state, int player, TurnEvent.Draw draw) {
-    TurnActionGenerator.generateInto(
-        decision.mutableLegalActions(), state, player, draw, decision, winEvaluation, handAnalysis);
+    TurnActionGenerator.generateInto(decision, state, player, draw, winEvaluation, handAnalysis);
   }
 
   /**
@@ -62,48 +73,28 @@ public final class ActionGenerator {
    */
   public RonStatus generateResponseActionsInto(
       List<Action> actions, GameState state, int player, TurnEvent.ResponseSource source) {
-    return ResponseActionGenerator.generateInto(
-        actions, state, player, source, null, winEvaluation, handAnalysis);
+    EngineDecisionPoint decision = listScratch();
+    RonStatus ronStatus =
+        ResponseActionGenerator.generateInto(
+            decision, state, player, source, winEvaluation, handAnalysis);
+    decision.mutableLegalActions().copyInto(actions);
+    return ronStatus;
   }
 
   RonStatus generateResponseActionsInto(
       EngineDecisionPoint decision, GameState state, int player, TurnEvent.ResponseSource source) {
     return ResponseActionGenerator.generateInto(
-        decision.mutableLegalActions(),
-        state,
-        player,
-        source,
-        decision,
-        winEvaluation,
-        handAnalysis);
+        decision, state, player, source, winEvaluation, handAnalysis);
   }
 
-  /** 行動一覧が不要な境界でRON可否だけを返す。 */
+  /** 一覧へ書く口の作業用の判断点。初めての呼び出しで作り、以後は同じものを返す。 */
+  private EngineDecisionPoint listScratch() {
+    if (scratch == null) scratch = new EngineDecisionPoint();
+    return scratch;
+  }
+
+  /** 行動一覧が不要な境界でRON可否だけを返す（点は求めない probe の判定）。 */
   public RonStatus ronStatus(GameState state, int player, TurnEvent.ResponseSource source) {
     return WinLegality.ronStatus(state, player, source, winEvaluation, handAnalysis);
-  }
-
-  /**
-   * 出力一覧を消去し、鳴き直後の合法打牌行動を書き込む。
-   *
-   * @param actions 再利用する出力一覧
-   * @param hand 鳴きを既に適用した手牌
-   * @param restriction 鳴いた牌形から導出した喰い替え制約
-   */
-  public static void generateCallDahaiActionsInto(
-      List<Action> actions, HandView hand, PostCallDahaiRestriction restriction) {
-    actions.clear();
-    long discardableTileTypeMask = hand.concealedTileTypeMask() & ~restriction.forbiddenMask();
-    for (long remaining = discardableTileTypeMask; remaining != 0L; remaining &= remaining - 1) {
-      int tileType = Long.numberOfTrailingZeros(remaining);
-      if (!hand.hasAkaTile(tileType)) {
-        actions.add(Action.dahai(tileType));
-        continue;
-      }
-      actions.add(Action.dahai(tileType, true));
-      if (hand.hasNonAkaTile(tileType)) {
-        actions.add(Action.dahai(tileType, false));
-      }
-    }
   }
 }

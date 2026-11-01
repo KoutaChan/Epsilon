@@ -1,8 +1,10 @@
 package com.epsilon.reviewer.model;
 
 import com.epsilon.reviewer.ApiException;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -20,8 +22,11 @@ public final class ModelCatalogTest {
       Files.writeString(
           config,
           "{\"models\":[{\"modelId\":\"epsilon\",\"revision\":\"r1\",\"displayName\":\"Epsilon\",\"version\":\"1\",\"series\":\"epsilon\",\"checkpoint\":\"checkpoint\"}]}");
-      var catalog = new ModelCatalog(config);
+      var catalog = new ModelCatalog(config, Set.of("epsilon"));
       Assert.assertEquals(catalog.publicCatalog().models().getFirst().availability(), "available");
+      var unsupported = new ModelCatalog(config, Set.of("epsilon-nano"));
+      Assert.assertEquals(
+          unsupported.publicCatalog().models().getFirst().reasonCode(), "unsupported_series");
       Assert.assertFalse(catalog.publicCatalog().toString().contains("checkpoint"));
       Path leased;
       try (var lease = catalog.acquire("epsilon", "r1", directory.resolve("leases"))) {

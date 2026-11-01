@@ -1,7 +1,9 @@
 package com.epsilon.reviewer.engine;
 
-import com.epsilon.replay.*;
-import com.epsilon.replay.ReplayEvent.*;
+import com.epsilon.replay.ReplayEngine;
+import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.replay.ReplayRecord;
+import com.epsilon.replay.ReplayRecordReader;
 import com.epsilon.reviewer.dto.PreparedRecord;
 import com.epsilon.reviewer.dto.RecordMetadata;
 import java.util.Arrays;

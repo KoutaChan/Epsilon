@@ -15,6 +15,7 @@ Linux・macOSでは`./mvnw package`を使います。特定の系列だけをビ
 | Epsilon-Pico | `epsilon-pico/target/epsilon-pico-1.0-SNAPSHOT-all.jar` |
 | Epsilon-Nano | `epsilon-nano/target/epsilon-nano-1.0-SNAPSHOT-all.jar` |
 | Epsilon      | `epsilon/target/epsilon-1.0-SNAPSHOT-all.jar`           |
+| Epsilon-Prism | `epsilon-prism/target/epsilon-prism-1.0-SNAPSHOT-all.jar` |
 
 <details>
 <summary>AMD GPUを使う場合（Linux / ROCm）</summary>
@@ -26,6 +27,19 @@ LinuxでAMD GPUを使う場合は、ROCm環境に合わせてビルドします�
 ```
 
 GPU実行環境の準備は[djl-rocm](https://github.com/KoutaChan/djl-rocm)を参照してください。
+
+</details>
+
+<details>
+<summary>NVIDIA GPUを使う場合（Linux / Windows・CUDA）</summary>
+
+NVIDIA GPUを使う場合は、`-Pcuda`を付けてビルドします。実行用JARに同梱するDJLのJNIがCUDA版になります。CUDA 12.8の例です。
+
+```bash
+./mvnw -Pcuda -Dpytorch.cuda.flavor=cu128 package
+```
+
+CUDA版のJNI（`pytorch-jni-cu128-linux-x86_64`・`pytorch-jni-cu128-win-x86_64`）は、使っているDJLと同じ版のものを[djl-rocm](https://github.com/KoutaChan/djl-rocm)で用意する必要があります。
 
 </details>
 

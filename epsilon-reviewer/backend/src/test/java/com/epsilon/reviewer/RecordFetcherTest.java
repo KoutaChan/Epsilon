@@ -1,9 +1,11 @@
 package com.epsilon.reviewer;
 
 import com.sun.net.httpserver.HttpServer;
-import java.io.*;
-import java.net.*;
-import java.net.http.*;
+import java.io.ByteArrayOutputStream;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;

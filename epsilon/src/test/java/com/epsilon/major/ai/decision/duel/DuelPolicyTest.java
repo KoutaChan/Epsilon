@@ -1,5 +1,7 @@
 package com.epsilon.major.ai.decision.duel;
 
+import ai.djl.Device;
+import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.engine.EngineDecisionPoint;
 import com.epsilon.engine.EngineSelectionBuffer;
 import com.epsilon.engine.GameEngine;
@@ -8,13 +10,22 @@ import com.epsilon.major.ai.decision.arena.DecisionBatchEncoder;
 import com.epsilon.major.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.major.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.major.ai.decision.input.DecisionHostBatch;
+import com.epsilon.major.ai.decision.runtime.EpsilonDecisionEvaluatorFactory;
 import com.epsilon.major.ai.decision.runtime.EpsilonDecisionGreedyEvaluator;
 import com.epsilon.major.ai.decision.runtime.EpsilonDecisionInferenceServer;
+import com.epsilon.major.ai.decision.training.EpsilonDecisionCheckpointManager;
+import com.epsilon.major.ai.network.NetworkFactory;
+import com.epsilon.major.config.settings.EpsilonSettings;
+import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.runtime.DecisionInferenceIngress;
 import com.epsilon.spi.DecisionRequest;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -71,7 +82,8 @@ public class DuelPolicyTest {
       unused.close();
       Assert.assertEquals(evaluator.released, 1);
       var invalid =
-          new DecisionRequest(point.id(), point.player(), point.kind(), null, point.legalActions());
+          new DecisionRequest(
+              0L, point.id(), point.player(), point.kind(), null, point.legalActions());
       try (var ingress = policy.tryAcquire(policy.batchKey(valid), () -> {})) {
         Assert.expectThrows(
             CompletionException.class, () -> ingress.submit(List.of(invalid)).join());
@@ -83,30 +95,27 @@ public class DuelPolicyTest {
 
   @Test(groups = "native")
   public void checkpointEvaluatorKeepsGreedyActionsThroughCommonPolicy() throws Exception {
-    java.nio.file.Path temporary = java.nio.file.Files.createTempDirectory("duel-policy-");
+    Path temporary = Files.createTempDirectory("duel-policy-");
     try {
       var config =
-          com.epsilon.major.config.settings.EpsilonSettings.load(
+          EpsilonSettings.load(
               null,
-              java.util.Map.of(
+              Map.of(
                   "epsilon.devices.learner", "cpu",
                   "epsilon.devices.inference", "cpu",
                   "epsilon.decision.inference.maxBatch", "4",
                   "epsilon.decision.inference.multiTransitionMaxBatch", "4"));
       try (var model =
-          com.epsilon.major.ai.network.NetworkFactory.createDecisionModel(
-              ai.djl.Device.cpu(), false, 32, com.epsilon.ai.decision.EpsilonUtilityProfile.TOP)) {
-        com.epsilon.major.ai.decision.training.EpsilonDecisionCheckpointManager.saveInitial(
-            model, temporary.resolve("checkpoint"));
+          NetworkFactory.createDecisionModel(Device.cpu(), false, 32, EpsilonUtilityProfile.TOP)) {
+        EpsilonDecisionCheckpointManager.saveInitial(model, temporary.resolve("checkpoint"));
       }
       GameEngine engine = new GameEngine(91826L);
       var point = ((GameStepResult.AwaitingDecisions) engine.stepHanchan()).decisions().getFirst();
       DecisionRequest request = request(engine, point);
-      try (var execution = new com.epsilon.runtime.DecisionExecutionContext();
+      try (var execution = new DecisionExecutionContext();
           var handle =
-              com.epsilon.major.ai.decision.runtime.EpsilonDecisionEvaluatorFactory
-                  .openGreedyPolicyCheckpointEvaluator(
-                      temporary.resolve("checkpoint"), 4, execution, config);
+              EpsilonDecisionEvaluatorFactory.openGreedyPolicyCheckpointEvaluator(
+                  temporary.resolve("checkpoint"), 4, execution, config);
           var encoder = new DecisionBatchEncoder(2);
           var policy = new DuelPolicy(handle.evaluator(), encoder)) {
         var builder =
@@ -120,15 +129,15 @@ public class DuelPolicyTest {
         }
       }
     } finally {
-      try (var paths = java.nio.file.Files.walk(temporary)) {
-        for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
-          java.nio.file.Files.delete(path);
+      try (var paths = Files.walk(temporary)) {
+        for (var path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
       }
     }
   }
 
   private static DecisionRequest request(GameEngine engine, EngineDecisionPoint point) {
     return new DecisionRequest(
+        0L,
         point.id(),
         point.player(),
         point.kind(),

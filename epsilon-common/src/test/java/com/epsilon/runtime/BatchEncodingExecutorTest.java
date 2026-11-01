@@ -1,5 +1,6 @@
 package com.epsilon.runtime;
 
+import java.util.List;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -120,7 +121,7 @@ public class BatchEncodingExecutorTest {
             })) {
       var result =
           executor.encodeAsync(
-              java.util.List.of(7),
+              List.of(7),
               "shape",
               (sources, storage, from, to) -> writes.incrementAndGet());
       CompletionException actual = Assert.expectThrows(CompletionException.class, result::join);

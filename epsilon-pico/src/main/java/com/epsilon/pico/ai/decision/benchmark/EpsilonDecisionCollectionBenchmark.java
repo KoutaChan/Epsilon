@@ -3,6 +3,8 @@ package com.epsilon.pico.ai.decision.benchmark;
 import ai.djl.Device;
 import com.epsilon.config.settings.DecisionComputePrecision;
 import com.epsilon.config.settings.DecisionTrainArenaSettings;
+import com.epsilon.config.settings.DecisionTrainInFlightSpoolSettings;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.GrpSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.core.GameState;
@@ -16,6 +18,7 @@ import com.epsilon.pico.ai.grp.EpsilonGrpTrainingSession;
 import com.epsilon.pico.ai.network.NetworkFactory;
 import com.epsilon.pico.config.settings.DecisionInferenceSettings;
 import com.epsilon.pico.config.settings.DecisionSelectedPgCampaignSettings;
+import com.epsilon.pico.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionDevicePipeline;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.runtime.InferenceDispatcher;
@@ -23,6 +26,7 @@ import com.epsilon.runtime.InputBatchProfile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -57,7 +61,7 @@ public final class EpsilonDecisionCollectionBenchmark {
         seedBase,
         scratchDir,
         warmupGames,
-        com.epsilon.pico.config.settings.EpsilonSettings.defaults());
+        EpsilonSettings.defaults());
   }
 
   public static Report run(
@@ -75,7 +79,7 @@ public final class EpsilonDecisionCollectionBenchmark {
     Path checkpoint = requireBenchmarkCheckpoint(checkpointDir);
     Files.createDirectories(scratchDir);
     Device grpDevice =
-        NetworkFactory.getGrpDevices(config.bind(com.epsilon.config.settings.DeviceSettings.class))
+        NetworkFactory.getGrpDevices(config.bind(DeviceSettings.class))
             .primary();
     EpsilonDecisionPlayer.RolloutConfig actorRollout =
         EpsilonDecisionPlayer.RolloutConfig.fromSettings(config)
@@ -102,14 +106,14 @@ public final class EpsilonDecisionCollectionBenchmark {
                 scratchDir,
                 false,
                 config.bind(
-                    com.epsilon.config.settings.DecisionTrainInFlightSpoolSettings.class))) {
+                    DecisionTrainInFlightSpoolSettings.class))) {
       if (warmupGames > 0) {
         try (var warmupStore =
             EpsilonDecisionTrajectoryPayloadStore.fromSettings(
                 scratchDir.resolve("warmup"),
                 false,
                 config.bind(
-                    com.epsilon.config.settings.DecisionTrainInFlightSpoolSettings.class))) {
+                    DecisionTrainInFlightSpoolSettings.class))) {
           EpsilonDecisionPopulationCollector.collect(
               EpsilonDecisionPopulationCollector.Request.standard(
                       warmupGames,
@@ -186,7 +190,7 @@ public final class EpsilonDecisionCollectionBenchmark {
   private static long[][] opponentIds() {
     long[][] result = new long[GameState.NUM_PLAYERS][GameState.NUM_PLAYERS - 1];
     for (long[] ids : result) {
-      java.util.Arrays.fill(ids, OPPONENT_SNAPSHOT_ID);
+      Arrays.fill(ids, OPPONENT_SNAPSHOT_ID);
     }
     return result;
   }

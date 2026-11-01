@@ -36,12 +36,10 @@ final class ShapeAnalysisCache {
         && packedCountsLow[index] == low
         && packedCountsHigh[index] == high
         && meldCounts[index] == meldCount) {
-      EngineDecisionAnalysisMetrics.recordShape(true);
       read(index, destination);
       return;
     }
 
-    EngineDecisionAnalysisMetrics.recordShape(false);
     analyzer.analyzeInto(hand, analysis);
     packedCountsLow[index] = low;
     packedCountsHigh[index] = high;

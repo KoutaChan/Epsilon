@@ -4,6 +4,7 @@ import com.epsilon.core.Action;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
+import java.util.Arrays;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -60,7 +61,7 @@ public class DecisionInferenceIndexTest {
     rows.copyInferenceIndicesTo(destination, layout);
     Assert.assertEquals(destination.position(), start + layout.totalCount());
     int[] expected = new int[count];
-    java.util.Arrays.fill(expected, -1);
+    Arrays.fill(expected, -1);
     System.arraycopy(players, 0, expected, start + layout.playerMemoryOffset(), players.length);
     System.arraycopy(
         transitions, 0, expected, start + layout.transitionOffset(), transitions.length);

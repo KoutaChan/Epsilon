@@ -1,8 +1,10 @@
 package com.epsilon.replay;
 
 import com.epsilon.core.Action;
+import com.epsilon.core.GameState;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
+import com.epsilon.engine.ActionGenerator;
 import com.epsilon.replay.ReplayEvent.Dahai;
 import com.epsilon.replay.ReplayEvent.Dora;
 import com.epsilon.replay.ReplayEvent.EndGame;
@@ -15,6 +17,7 @@ import com.epsilon.replay.ReplayEvent.StartGame;
 import com.epsilon.replay.ReplayEvent.StartKyoku;
 import com.epsilon.replay.ReplayEvent.Tsumo;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -168,7 +171,7 @@ public class ReplayEngineTest {
               if (player != 1) return;
               Assert.assertEquals(state.getScore(player), startingScore);
               var ordinaryActions = new ArrayList<Action>();
-              new com.epsilon.engine.ActionGenerator()
+              new ActionGenerator()
                   .generateTurnActionsInto(
                       ordinaryActions, state, player, (TurnEvent.Draw) state.getTurnEvent());
               Assert.assertTrue(
@@ -289,7 +292,7 @@ public class ReplayEngineTest {
         record(events),
         new ReplayObserver() {
           public void onDecision(
-              DecisionPoint point, com.epsilon.core.GameState state, int seat, List<Action> legal) {
+              DecisionPoint point, GameState state, int seat, List<Action> legal) {
             int chosen = point.chosenSlot();
             int eventIndex = point.eventIndex();
             if (chosen >= 0 && legal.get(chosen).type() == Action.Type.RIICHI_DAHAI) {
@@ -299,7 +302,7 @@ public class ReplayEngineTest {
           }
 
           public void onEventApplied(
-              int eventIndex, int stateId, ReplayEvent event, com.epsilon.core.GameState state) {
+              int eventIndex, int stateId, ReplayEvent event, GameState state) {
             indices.add(eventIndex);
             if (event instanceof ReachAccepted) {
               Assert.assertEquals(state.getKyotakuCount(), 1);
@@ -319,14 +322,14 @@ public class ReplayEngineTest {
     var events = discardedSeven();
     events.add(new Dora(Tile.P6));
     events.add(new Tsumo(2, 27));
-    var revisions = new java.util.HashMap<Integer, Integer>();
+    var revisions = new HashMap<Integer, Integer>();
     var points = new ArrayList<DecisionPoint>();
     ReplayEngine.replay(
         record(events),
         new ReplayObserver() {
           public void onDecision(
               DecisionPoint point,
-              com.epsilon.core.GameState state,
+              GameState state,
               int player,
               List<Action> legal) {
             points.add(point);
@@ -342,7 +345,7 @@ public class ReplayEngineTest {
           }
 
           public void onEventApplied(
-              int index, int stateId, ReplayEvent event, com.epsilon.core.GameState state) {
+              int index, int stateId, ReplayEvent event, GameState state) {
             revisions.put(index, stateId);
           }
         });
@@ -383,7 +386,7 @@ public class ReplayEngineTest {
         new ReplayObserver() {
           public void onDecision(
               DecisionPoint point,
-              com.epsilon.core.GameState state,
+              GameState state,
               int player,
               List<Action> legal) {
             if (point.choiceKind() == DecisionPoint.ChoiceKind.UNOBSERVED
@@ -400,7 +403,7 @@ public class ReplayEngineTest {
           }
 
           public void onEventApplied(
-              int index, int stateId, ReplayEvent event, com.epsilon.core.GameState state) {
+              int index, int stateId, ReplayEvent event, GameState state) {
             if (index == 4) callRevision.add(stateId);
           }
         });
@@ -444,44 +447,14 @@ public class ReplayEngineTest {
     Assert.assertEquals(wins.size(), 1);
   }
 
-  @org.testng.annotations.DataProvider
+  @DataProvider
   public Object[][] addedKanEndings() {
     return new Object[][] {{false}, {true}};
   }
 
   @Test(dataProvider = "addedKanEndings")
   public void addedKanResponsesKeepTheirSourceUntilRonOrRinshanIsResolved(boolean robbed) {
-    int[][] hands =
-        physicalHands(
-            new int[] {6, 6, 0, 1, 2, 3, 4, 5, 7, 8, 9, 14, 15},
-            new int[] {0, 0, 1, 2, 3, 10, 11, 12, 19, 20, 21, Tile.HAKU, Tile.HAKU},
-            new int[] {0, 1, 2, 9, 10, 11, 18, 19, 20, 7, 8, Tile.TON, Tile.TON},
-            new int[] {3, 4, 5, 12, 13, 14, 21, 22, 23, Tile.NAN, Tile.NAN, Tile.SHA, Tile.PEI});
-    var events =
-        new ArrayList<ReplayEvent>(
-            List.of(
-                new StartGame(),
-                new StartKyoku(
-                    Tile.TON,
-                    1,
-                    0,
-                    0,
-                    1,
-                    Tile.HATSU,
-                    hands,
-                    new int[] {25000, 25000, 25000, 25000}),
-                new Tsumo(1, 26),
-                new Dahai(1, 26, true),
-                new Pon(0, 1, 26, new int[] {24, 25}),
-                new Dahai(0, 0, false),
-                new Tsumo(1, 18),
-                new Dahai(1, 18, true),
-                new Tsumo(2, 53),
-                new Dahai(2, 53, true),
-                new Tsumo(3, 104),
-                new Dahai(3, 104, true),
-                new Tsumo(0, 27),
-                new ReplayEvent.Kakan(0, 27)));
+    var events = addedKan();
     if (robbed) events.add(new Hora(2, 0, Tile.M7, new int[] {-8000, 0, 8000, 0}));
     else {
       events.add(new Dora(Tile.P6));
@@ -495,7 +468,7 @@ public class ReplayEngineTest {
         new ReplayObserver() {
           public void onDecision(
               DecisionPoint point,
-              com.epsilon.core.GameState state,
+              GameState state,
               int player,
               List<Action> legal) {
             if (point.causeEventIndex() == 13) {
@@ -520,7 +493,7 @@ public class ReplayEngineTest {
           }
 
           public void onEventApplied(
-              int index, int stateId, ReplayEvent event, com.epsilon.core.GameState state) {
+              int index, int stateId, ReplayEvent event, GameState state) {
             if (index == 13) kanRevision.add(stateId);
             if (index == 14) {
               Assert.assertTrue(stateId > kanRevision.getFirst());
@@ -538,6 +511,35 @@ public class ReplayEngineTest {
   }
 
   @Test
+  public void anOpenKanDoraBeforeItsDahaiOpensAfterTheDiscard() {
+    var events = addedKan();
+    events.add(new Tsumo(0, 58));
+    events.add(new Dora(Tile.P6));
+    events.add(new Dahai(0, 58, true));
+    var indicators = new ArrayList<String>();
+    ReplayEngine.replay(
+        record(events),
+        new ReplayObserver() {
+          public void onDecision(
+              DecisionPoint point,
+              GameState state,
+              int player,
+              List<Action> legal) {
+            if (point.choiceKind() != DecisionPoint.ChoiceKind.RECORDED_ACTION
+                || point.eventIndex() != 16) return;
+            Assert.assertTrue(((TurnEvent.Draw) state.getTurnEvent()).doraRevealPending());
+            indicators.add("decision " + state.doraState().indicatorCount());
+          }
+
+          public void onEventApplied(
+              int index, int stateId, ReplayEvent event, GameState state) {
+            if (index >= 15) indicators.add(index + " " + state.doraState().indicatorCount());
+          }
+        });
+    Assert.assertEquals(indicators, List.of("15 1", "decision 1", "16 2"));
+  }
+
+  @Test
   public void nineTerminalsReportsTheChosenActionBeforeTheRoundEnds() {
     var points = new ArrayList<DecisionPoint>();
     int[] drawRevision = new int[1];
@@ -546,7 +548,7 @@ public class ReplayEngineTest {
         new ReplayObserver() {
           public void onDecision(
               DecisionPoint point,
-              com.epsilon.core.GameState state,
+              GameState state,
               int player,
               List<Action> legal) {
             points.add(point);
@@ -562,7 +564,7 @@ public class ReplayEngineTest {
           }
 
           public void onEventApplied(
-              int index, int stateId, ReplayEvent event, com.epsilon.core.GameState state) {
+              int index, int stateId, ReplayEvent event, GameState state) {
             if (event instanceof Tsumo) drawRevision[0] = stateId;
             if (event instanceof ReplayEvent.Ryukyoku) {
               Assert.assertEquals(points.size(), 1);
@@ -573,7 +575,7 @@ public class ReplayEngineTest {
     Assert.assertEquals(points.size(), 1);
   }
 
-  @org.testng.annotations.DataProvider
+  @DataProvider
   public Object[][] nonPlayerSelectedDrawReasons() {
     return new Object[][] {
       {null},
@@ -622,6 +624,33 @@ public class ReplayEngineTest {
         new ReplayEvent.Ryukyoku(new int[4], reason));
   }
 
+  /** 席0がポンした七萬を加槓するまで（加槓は出来事 13）。 */
+  private static ArrayList<ReplayEvent> addedKan() {
+    int[][] hands =
+        physicalHands(
+            new int[] {6, 6, 0, 1, 2, 3, 4, 5, 7, 8, 9, 14, 15},
+            new int[] {0, 0, 1, 2, 3, 10, 11, 12, 19, 20, 21, Tile.HAKU, Tile.HAKU},
+            new int[] {0, 1, 2, 9, 10, 11, 18, 19, 20, 7, 8, Tile.TON, Tile.TON},
+            new int[] {3, 4, 5, 12, 13, 14, 21, 22, 23, Tile.NAN, Tile.NAN, Tile.SHA, Tile.PEI});
+    return new ArrayList<>(
+        List.of(
+            new StartGame(),
+            new StartKyoku(
+                Tile.TON, 1, 0, 0, 1, Tile.HATSU, hands, new int[] {25000, 25000, 25000, 25000}),
+            new Tsumo(1, 26),
+            new Dahai(1, 26, true),
+            new Pon(0, 1, 26, new int[] {24, 25}),
+            new Dahai(0, 0, false),
+            new Tsumo(1, 18),
+            new Dahai(1, 18, true),
+            new Tsumo(2, 53),
+            new Dahai(2, 53, true),
+            new Tsumo(3, 104),
+            new Dahai(3, 104, true),
+            new Tsumo(0, 27),
+            new ReplayEvent.Kakan(0, 27)));
+  }
+
   private static ReplayRecord record(List<ReplayEvent> events) {
     return new ReplayRecord(events, null, null, RecordCompletion.INCOMPLETE);
   }
@@ -638,7 +667,7 @@ public class ReplayEngineTest {
 
   @FunctionalInterface
   private interface SelectedDecision {
-    void accept(com.epsilon.core.GameState state, int player, List<Action> legal, int chosenSlot);
+    void accept(GameState state, int player, List<Action> legal, int chosenSlot);
   }
 
   private static ArrayList<ReplayEvent> discardedSeven() {

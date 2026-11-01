@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 複数モデルを使う自己対局で使う固定スナップショット評価器を遅延生成し、一括して解放します。
@@ -35,7 +36,7 @@ final class DecisionSnapshotEvaluatorSet
     this.snapshotPool = snapshotPool;
     this.candidateEvaluator = candidateEvaluator;
     this.candidateVersion = candidateVersion;
-    this.executionContext = java.util.Objects.requireNonNull(executionContext, "executionContext");
+    this.executionContext = Objects.requireNonNull(executionContext, "executionContext");
   }
 
   @Override

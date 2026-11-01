@@ -16,6 +16,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.util.List;
 
 /**
  * ホスト側の連続バッファをデバイスへ転送し、共通の配置定義からテンソルのビューを構築する。
@@ -140,6 +141,42 @@ public final class DecisionBatchTransfer {
   }
 
   /**
+   * 標準形式の入力と任意の教師値をページ固定バッファへ準備した不変の記述情報。
+   *
+   * <p>ホスト行は保持しない。バッファは作成元の {@link Workspace} が所有し、次の準備処理や破棄の前に、呼出元がH2D完了を保証する。
+   */
+  public static final class StagedTraining {
+    private final Workspace workspace;
+    private final DecisionInputLayout inputLayout;
+    private final DecisionTrainingTargetLayout targetLayout;
+    private final int playerMemoryPresentCount;
+    private final int transitionPresentCount;
+
+    private StagedTraining(
+        Workspace workspace,
+        DecisionInputLayout inputLayout,
+        DecisionTrainingTargetLayout targetLayout,
+        int playerMemoryPresentCount,
+        int transitionPresentCount) {
+      this.workspace = workspace;
+      this.inputLayout = inputLayout;
+      this.targetLayout = targetLayout;
+      this.playerMemoryPresentCount = playerMemoryPresentCount;
+      this.transitionPresentCount = transitionPresentCount;
+    }
+
+    /** 準備済みの行数を返す。 */
+    public int rows() {
+      return inputLayout.capacity();
+    }
+
+    /** 準備済み入力の容量区分を返す。 */
+    public DecisionBucket bucket() {
+      return inputLayout.bucket();
+    }
+  }
+
+  /**
    * 枠専用ページ固定のバッファへ複数の非所有行ビューを直接指定位置の要素を集めた状態です。
    *
    * <p>記述情報はバッファを所有しません。同じ{@link Workspace}で次の準備処理を始める前に、H2D イベントの完了を保証する必要があります。
@@ -174,6 +211,28 @@ public final class DecisionBatchTransfer {
     /** H2D対象の合計バイト数を返します。 */
     public long inputByteCount() {
       return inputLayout.inputByteCount() + (long) indexLayout.totalCount() * Integer.BYTES;
+    }
+  }
+
+  /** 容量区分を保ったまま一括転送する入力。枠の再利用は推論完了後に限る。 */
+  public static final class StagedGroupedInference {
+    private final Workspace workspace;
+    private final DecisionGroupedInferenceLayout layout;
+    private final short[] categories;
+    private final float[] numerics;
+    private final int[] indices;
+
+    private StagedGroupedInference(
+        Workspace workspace,
+        DecisionGroupedInferenceLayout layout,
+        short[] categories,
+        float[] numerics,
+        int[] indices) {
+      this.workspace = workspace;
+      this.layout = layout;
+      this.categories = categories;
+      this.numerics = numerics;
+      this.indices = indices;
     }
   }
 
@@ -494,6 +553,64 @@ public final class DecisionBatchTransfer {
       directInferenceIndices = new DirectInferenceIndexSlot(this.owner);
     }
 
+    /** 保存用の行ビューを変更せず、共通演算に必要な区分を一度に準備する。 */
+    public StagedGroupedInference stageGroupedInference(
+        List<DecisionHostBatch.RowSlice> rows, DecisionTensorTransfer transferMode) {
+      var layout = new DecisionGroupedInferenceLayout(rows);
+      if (owner != null && transferMode == DecisionTensorTransfer.PINNED_BUFFER) {
+        pinnedInferenceInputs.ensureCapacity(layout.categoricalCount(), layout.numericCount());
+        pinnedInferenceIndices.ensureCapacity(Math.max(1, layout.indexCount()));
+        layout.copyTo(
+            pinnedInferenceInputs
+                .categoricalBuffer
+                .getByteBuffer()
+                .order(ByteOrder.nativeOrder())
+                .asShortBuffer(),
+            pinnedInferenceInputs
+                .numericBuffer
+                .getByteBuffer()
+                .order(ByteOrder.nativeOrder())
+                .asFloatBuffer(),
+            pinnedInferenceIndices
+                .buffer
+                .getByteBuffer()
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer());
+        return new StagedGroupedInference(this, layout, null, null, null);
+      }
+      short[] categories = new short[layout.categoricalCount()];
+      float[] numerics = new float[layout.numericCount()];
+      int[] indices = new int[layout.indexCount()];
+      layout.copyTo(
+          ShortBuffer.wrap(categories), FloatBuffer.wrap(numerics), IntBuffer.wrap(indices));
+      return new StagedGroupedInference(this, layout, categories, numerics, indices);
+    }
+
+    /** カテゴリ・数値・位置情報の3本を転送し、区分別と共有のビューを同じ記憶領域へ結び付ける。 */
+    public DecisionGroupedInferenceBatch enqueueGroupedInference(
+        NDManager destination, StagedGroupedInference staged, DataType inputNumericType) {
+      if (staged.workspace != this)
+        throw new IllegalArgumentException("Staged inference belongs to another workspace");
+      NDArray categories, numerics, indices;
+      if (staged.categories == null) {
+        var manager = (PtNDManager) destination;
+        var input =
+            pinnedInferenceInputs.enqueue(
+                manager, staged.layout.categoricalCount(), staged.layout.numericCount());
+        categories = input.categories();
+        numerics = input.numerics();
+        var packed = manager.create(new Shape(staged.layout.indexCount()), DataType.INT32);
+        if (staged.layout.indexCount() > 0) packed.enqueueCopyFrom(pinnedInferenceIndices.buffer);
+        indices = packed;
+      } else {
+        categories = transferCategories(destination, staged.categories);
+        numerics = destination.create(staged.numerics);
+        indices = destination.create(staged.indices);
+      }
+      return staged.layout.bind(
+          categories, convertInputNumerics(numerics, inputNumericType), indices);
+    }
+
     private Slabs transferTraining(
         NDManager manager,
         DecisionHostBatch.RowSlice hostRows,
@@ -532,6 +649,59 @@ public final class DecisionBatchTransfer {
           yield InferenceSlabs.bind(input, indices, inputLayout);
         }
       };
+    }
+
+    /**
+     * 入力と任意の教師値を標準形式のページ固定バッファへ準備する。
+     *
+     * <p>密な保存行と実在遷移だけを持つ推論行の双方を、既存の行複製契約で同じ形式へ展開する。 この作業領域での前回の転送が完了してから呼び出す。
+     */
+    public StagedTraining stageTraining(DecisionHostBatch.RowSlice rows) {
+      requireExactlyFilled(rows);
+      if (owner == null) {
+        throw new IllegalStateException("pinned training staging requires a GPU workspace");
+      }
+      pinnedInputCategories.stage(rows);
+      pinnedInputNumerics.stage(rows);
+      int playerCount = pinnedPlayerMemoryPresentIndices.stage(rows);
+      int transitionCount = pinnedTransitionPresentIndices.stage(rows);
+      DecisionTrainingTargetLayout targets = null;
+      if (rows.hasTrainingTargets()) {
+        pinnedTargetCategories.stage(rows);
+        pinnedTargetNumerics.stage(rows);
+        targets = new DecisionTrainingTargetLayout(rows.size(), rows.bucket());
+      }
+      return new StagedTraining(
+          this,
+          new DecisionInputLayout(rows.size(), rows.bucket()),
+          targets,
+          playerCount,
+          transitionCount);
+    }
+
+    /** 準備済みの標準形式バッファを現在のPyTorchストリームへ転送し、既存の論理ビューへ結び付ける。 */
+    public DecisionDeviceBatch enqueueStagedTraining(
+        PtNDManager destination, StagedTraining staged, DataType inputNumericType) {
+      if (staged.workspace != this) {
+        throw new IllegalArgumentException("staged training belongs to another workspace");
+      }
+      return bindTrainingSlabs(
+          staged.rows(),
+          staged.bucket(),
+          pinnedInputCategories.enqueue(destination, staged.inputLayout.categoricalElementCount()),
+          pinnedInputNumerics.enqueue(destination, staged.inputLayout.numericElementCount()),
+          pinnedPlayerMemoryPresentIndices.enqueue(destination, staged.playerMemoryPresentCount),
+          pinnedTransitionPresentIndices.enqueue(destination, staged.transitionPresentCount),
+          staged.targetLayout == null
+              ? null
+              : pinnedTargetCategories.enqueue(
+                  destination, staged.targetLayout.categoricalElementCount()),
+          staged.targetLayout == null
+              ? null
+              : pinnedTargetNumerics.enqueue(
+                  destination, staged.targetLayout.numericElementCount()),
+          staged.targetLayout != null,
+          inputNumericType);
     }
 
     /**
@@ -1021,11 +1191,22 @@ public final class DecisionBatchTransfer {
     }
 
     private NDArray copy(PtNDManager destination, DecisionHostBatch.RowSlice hostRows) {
+      int elements = stage(hostRows);
+      PtNDArray array = destination.create(new Shape(elements), kind.dataType());
+      array.copyFromPinnedBufferAsync(buffer);
+      return array;
+    }
+
+    private int stage(DecisionHostBatch.RowSlice hostRows) {
       int elements = kind.elements(hostRows);
       ensureCapacity(elements);
       kind.copy(hostRows, buffer.getByteBuffer());
+      return elements;
+    }
+
+    private NDArray enqueue(PtNDManager destination, int elements) {
       PtNDArray array = destination.create(new Shape(elements), kind.dataType());
-      array.copyFromPinnedBufferAsync(buffer);
+      array.enqueueCopyFrom(buffer);
       return array;
     }
 
@@ -1117,28 +1298,34 @@ public final class DecisionBatchTransfer {
 
     private InferenceInputSlabs enqueue(
         PtNDManager destination, DecisionInferenceInputLayout layout) {
-      PtNDArray categories =
-          destination.create(new Shape(layout.categoricalElementCount()), DataType.INT16);
-      PtNDArray numerics =
-          destination.create(new Shape(layout.numericElementCount()), DataType.FLOAT32);
+      return enqueue(destination, layout.categoricalElementCount(), layout.numericElementCount());
+    }
+
+    private InferenceInputSlabs enqueue(
+        PtNDManager destination, int categoricalCount, int numericCount) {
+      PtNDArray categories = destination.create(new Shape(categoricalCount), DataType.INT16);
+      PtNDArray numerics = destination.create(new Shape(numericCount), DataType.FLOAT32);
       categories.enqueueCopyFrom(categoricalBuffer);
       numerics.enqueueCopyFrom(numericBuffer);
       return new InferenceInputSlabs(categories, numerics);
     }
 
     private void ensureCapacity(DecisionInferenceInputLayout layout) {
-      if (categoricalBuffer == null
-          || categoricalBuffer.size() < layout.categoricalElementCount()) {
+      ensureCapacity(layout.categoricalElementCount(), layout.numericElementCount());
+    }
+
+    private void ensureCapacity(int categoricalCount, int numericCount) {
+      if (categoricalBuffer == null || categoricalBuffer.size() < categoricalCount) {
         if (categoricalBuffer != null) {
           categoricalBuffer.close();
         }
-        categoricalBuffer = owner.allocatePinned(layout.categoricalElementCount(), DataType.INT16);
+        categoricalBuffer = owner.allocatePinned(categoricalCount, DataType.INT16);
       }
-      if (numericBuffer == null || numericBuffer.size() < layout.numericElementCount()) {
+      if (numericBuffer == null || numericBuffer.size() < numericCount) {
         if (numericBuffer != null) {
           numericBuffer.close();
         }
-        numericBuffer = owner.allocatePinned(layout.numericElementCount(), DataType.FLOAT32);
+        numericBuffer = owner.allocatePinned(numericCount, DataType.FLOAT32);
       }
     }
 

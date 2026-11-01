@@ -13,16 +13,21 @@ import com.epsilon.nano.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.nano.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.nano.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.nano.ai.network.NetworkFactory;
+import com.epsilon.nano.config.settings.DecisionInferenceSettings;
 import com.epsilon.nano.config.settings.EpsilonSettings;
 import com.epsilon.spi.BatchedPolicy;
 import com.epsilon.spi.DecisionRequest;
+import com.epsilon.spi.ModelProvider;
 import com.epsilon.spi.PolicyExecutionContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -43,6 +48,7 @@ public class NativePolicyTest {
       EngineDecisionPoint point = boundary.decisions().get(0);
       DecisionRequest request =
           new DecisionRequest(
+              0L,
               point.id(),
               point.player(),
               point.kind(),
@@ -55,14 +61,14 @@ public class NativePolicyTest {
       try (var direct =
           EpsilonDecisionInferenceServer.forPolicySession(
               source,
-              com.epsilon.nano.config.settings.DecisionInferenceSettings.defaults(),
+              DecisionInferenceSettings.defaults(),
               EpsilonSettings.defaults().bind(DecisionInferenceFusionSettings.class))) {
         expected = direct.evaluateGreedyActionSlots(builder.build());
       }
       var provider = new NanoModelProvider();
       Path policySettings = temporary.resolve("policy.toml");
       Files.writeString(policySettings, "[epsilon.devices]\ninference = \"cpu\"\n");
-      var configured = new java.util.LinkedHashMap<>(options(8));
+      var configured = new LinkedHashMap<>(options(8));
       configured.remove("device");
       configured.put("settings", policySettings.toString());
       try (var execution = new PolicyExecutionContext(2, 1, 4);
@@ -132,7 +138,7 @@ public class NativePolicyTest {
               "4",
               "epsilon.decision.inference.computePrecision",
               "FLOAT32");
-      var otherModelSettings = new java.util.LinkedHashMap<>(gpu);
+      var otherModelSettings = new LinkedHashMap<>(gpu);
       otherModelSettings.put("epsilon.decision.inference.slotsPerDevice", "4");
       otherModelSettings.put("epsilon.decision.inference.readyBatchesPerDevice", "8");
       try (var execution = new PolicyExecutionContext();
@@ -143,6 +149,7 @@ public class NativePolicyTest {
         EngineDecisionPoint point = boundary.decisions().get(0);
         DecisionRequest request =
             new DecisionRequest(
+                0L,
                 point.id(),
                 point.player(),
                 point.kind(),
@@ -171,10 +178,9 @@ public class NativePolicyTest {
   }
 
   private static void cancelledBatchStillDrains(
-      com.epsilon.spi.ModelProvider provider, Path checkpoint, DecisionRequest request)
-      throws Exception {
-    var started = new java.util.concurrent.CountDownLatch(2);
-    var release = new java.util.concurrent.CountDownLatch(1);
+      ModelProvider provider, Path checkpoint, DecisionRequest request) throws Exception {
+    var started = new CountDownLatch(2);
+    var release = new CountDownLatch(1);
     try (var execution = new PolicyExecutionContext(2);
         var policy = provider.open(checkpoint, options(128), execution)) {
       var occupied =
@@ -189,17 +195,16 @@ public class NativePolicyTest {
                 }
               });
       try {
-        Assert.assertTrue(started.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        Assert.assertTrue(started.await(10, TimeUnit.SECONDS));
         try (var ingress = policy.tryAcquire(policy.batchKey(request), () -> {})) {
-          var result = ingress.submit(java.util.Collections.nCopies(128, request));
+          var result = ingress.submit(Collections.nCopies(128, request));
           Assert.assertTrue(result.cancel(false));
         }
       } finally {
         release.countDown();
       }
       occupied.join();
-      java.util.concurrent.CompletableFuture.runAsync(policy::close)
-          .get(30, java.util.concurrent.TimeUnit.SECONDS);
+      CompletableFuture.runAsync(policy::close).get(30, TimeUnit.SECONDS);
     }
   }
 

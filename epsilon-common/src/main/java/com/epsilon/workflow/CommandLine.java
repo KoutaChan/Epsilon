@@ -1,7 +1,11 @@
 package com.epsilon.workflow;
 
 import com.epsilon.config.settings.SettingsLoader;
+import java.io.PrintStream;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,11 +16,35 @@ public final class CommandLine {
   private CommandLine() {}
 
   public static int run(String[] args, WorkflowRegistry workflows, SettingsLoader settings) {
+    return run(args, workflows, settings, log::info, true);
+  }
+
+  /** 設定スナップショットを維持し、ヘルプの出力先を明示する。 */
+  public static int run(
+      String[] args, WorkflowRegistry workflows, SettingsLoader settings, PrintStream output) {
+    Objects.requireNonNull(output, "output");
+    return run(args, workflows, settings, output::println, true);
+  }
+
+  /** 系列固有の設定を各ワークフローで読む CLI を、設定ファイルの初期化なしで実行する。 */
+  public static int run(String[] args, WorkflowRegistry workflows, PrintStream output) {
+    Objects.requireNonNull(output, "output");
+    return run(args, workflows, SettingsLoader.of(Map.of()), output::println, false);
+  }
+
+  private static int run(
+      String[] args,
+      WorkflowRegistry workflows,
+      SettingsLoader settings,
+      Consumer<String> usage,
+      boolean commonSettings) {
     String command = args.length == 0 ? "help" : args[0];
     boolean help = command.equals("--help") || command.equals("-h") || command.equals("help");
     if (help || !workflows.handles(command)) {
-      log.info("Common option: --settings <file> <command> [arguments]");
-      workflows.usageLines().forEach(log::info);
+      if (commonSettings) {
+        usage.accept("Common option: --settings <file> <command> [arguments]");
+      }
+      workflows.usageLines().forEach(usage);
       return help ? 0 : 2;
     }
     try {

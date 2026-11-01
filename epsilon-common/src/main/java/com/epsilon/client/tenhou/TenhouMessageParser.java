@@ -70,6 +70,7 @@ public final class TenhouMessageParser {
       }
       case "GO" ->
           new TenhouEvent.Go(fields.intOrDefault("type", 0), fields.intOrDefault("lobby", 0));
+      case "REJOIN" -> new TenhouEvent.Rejoin(fields.required("t"));
       case "UN" ->
           new TenhouEvent.Un(
               new String[] {
@@ -86,9 +87,10 @@ public final class TenhouMessageParser {
       case "RYUUKYOKU" ->
           new TenhouEvent.Ryukyoku(optionalSettledScores(fields), fields.has("owari"));
       case "OWARI" -> new TenhouEvent.EndGame();
-      case "TAIKYOKU", "SAIKAI" -> new TenhouEvent.GameStart();
+      case "TAIKYOKU" -> new TenhouEvent.GameStart();
       case "LN" -> new TenhouEvent.KeepAlive();
-      case "SHUFFLE", "CHAT", "DATE", "KANSEN", "PROF", "BYE" -> new TenhouEvent.Ignored(tag);
+      case "SAIKAI", "SHUFFLE", "CHAT", "DATE", "KANSEN", "PROF", "BYE" ->
+          new TenhouEvent.Ignored(tag);
       default -> {
         log.debug("Unknown tenhou tag: {}", tag);
         yield new TenhouEvent.Unknown(fields.raw());

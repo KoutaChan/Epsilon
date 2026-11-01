@@ -15,26 +15,29 @@ final class ResponseActionGenerator {
 
   private ResponseActionGenerator() {}
 
+  /**
+   * 応答の合法手を decision へ書く。ロンが合法なら、その点も decision の即時和了の箱へ書く。
+   *
+   * @return RON不可理由と見逃し時のフリテン効果
+   */
   static RonStatus generateInto(
-      List<Action> actions,
+      EngineDecisionPoint decision,
       GameState state,
       int player,
       TurnEvent.ResponseSource source,
-      EngineDecisionPoint decision,
       HandScoreEvaluator scoreEvaluator,
       HandShapeAnalyzer shapeAnalyzer) {
+    List<Action> actions = decision.mutableLegalActions();
     actions.clear();
     RonStatus ronStatus =
-        decision == null
-            ? WinLegality.ronStatus(state, player, source, scoreEvaluator, shapeAnalyzer)
-            : WinLegality.evaluateRonInto(
-                state,
-                player,
-                source,
-                decision.mutableImmediateWinResult(),
-                scoreEvaluator,
-                shapeAnalyzer);
-    if (decision != null) decision.setImmediateWinAvailable(ronStatus.canRon());
+        WinLegality.evaluateRonInto(
+            state,
+            player,
+            source,
+            decision.mutableImmediateWinResult(),
+            scoreEvaluator,
+            shapeAnalyzer);
+    decision.setImmediateWinAvailable(ronStatus.canRon());
     if (ronStatus.canRon()) {
       actions.add(Action.ronAgari());
     }

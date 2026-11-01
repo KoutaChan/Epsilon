@@ -65,6 +65,7 @@ export function decisionSnapshot(cause, actor, type, fields = {}) {
         type,
         tiles: [],
         probability: 1,
+        valueLoss: null,
         chosen: true,
         tsumogiri: false,
       }),
@@ -165,7 +166,7 @@ export function reviewRound(steps) {
 }
 export function reviewResult(steps, fields = {}) {
   return Object.freeze({
-    formatVersion: 4,
+    formatVersion: 5,
     resultId: "result-1",
     createdAt: "2026-09-15T00:00:00Z",
     metadata: Object.freeze({

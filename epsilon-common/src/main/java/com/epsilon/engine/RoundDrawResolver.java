@@ -107,7 +107,7 @@ final class RoundDrawResolver {
       if (river.size() == 0) {
         return false;
       }
-      int tile = river.discard(0).tileType();
+      int tile = river.tileType(0);
       if (firstTile < 0) {
         firstTile = tile;
       } else if (firstTile != tile) {
@@ -123,8 +123,7 @@ final class RoundDrawResolver {
       return false;
     }
     for (int discardIndex = 0; discardIndex < river.size(); discardIndex++) {
-      River.Discard discard = river.discard(discardIndex);
-      if (discard.called() || !Tile.isTerminalOrHonor(discard.tileType())) {
+      if (river.called(discardIndex) || !Tile.isTerminalOrHonor(river.tileType(discardIndex))) {
         return false;
       }
     }

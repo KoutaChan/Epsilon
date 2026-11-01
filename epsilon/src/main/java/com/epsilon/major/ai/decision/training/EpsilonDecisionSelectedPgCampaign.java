@@ -4,8 +4,11 @@ import ai.djl.Device;
 import ai.djl.Model;
 import com.epsilon.ai.decision.duel.EpsilonDecisionWallDuelEvaluator;
 import com.epsilon.config.settings.DecisionChampionDuelSettings;
+import com.epsilon.config.settings.DecisionPerfSettings;
+import com.epsilon.config.settings.DecisionSnapshotPoolSettings;
 import com.epsilon.config.settings.DecisionTrainSettings;
 import com.epsilon.config.settings.DecisionTrainSpoolSettings;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.GrpSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.major.ai.decision.arena.EpsilonDecisionPlayer;
@@ -20,6 +23,7 @@ import com.epsilon.major.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.util.FormatUtils;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Objects;
@@ -152,7 +156,7 @@ public final class EpsilonDecisionSelectedPgCampaign {
       Path working = EpsilonDecisionCheckpointManager.working(root);
       DecisionSelectedPgCampaignState saved = DecisionSelectedPgCampaignState.read(working);
       if (saved == null
-          && java.nio.file.Files.isRegularFile(
+          && Files.isRegularFile(
               working.resolve(DecisionLearnerCheckpoint.STATE_FILE))) {
         throw new IOException(
             "Working learner has no campaign resume state; use an explicit campaign bootstrap: "
@@ -171,10 +175,10 @@ public final class EpsilonDecisionSelectedPgCampaign {
 
       Device learnerDevice =
           NetworkFactory.getLearnerDevice(
-              config.bind(com.epsilon.config.settings.DeviceSettings.class));
+              config.bind(DeviceSettings.class));
       Device grpDevice =
           NetworkFactory.getGrpDevices(
-                  config.bind(com.epsilon.config.settings.DeviceSettings.class))
+                  config.bind(DeviceSettings.class))
               .primary();
       Model model = null;
       DecisionLearner learner = null;
@@ -214,7 +218,7 @@ public final class EpsilonDecisionSelectedPgCampaign {
         EpsilonDecisionSnapshotPool snapshotPool =
             EpsilonDecisionSnapshotPool.load(
                 root,
-                config.bind(com.epsilon.config.settings.DecisionSnapshotPoolSettings.class).max());
+                config.bind(DecisionSnapshotPoolSettings.class).max());
         snapshotPool.registerArenaChampion(arenaChampion);
         snapshotPool.save(root);
         Progress progress =
@@ -696,7 +700,7 @@ public final class EpsilonDecisionSelectedPgCampaign {
       DecisionGpuMemoryDiagnostics.logSnapshot(
           "duel-drained",
           executionContext,
-          config.bind(com.epsilon.config.settings.DecisionPerfSettings.class));
+          config.bind(DecisionPerfSettings.class));
       return resolution;
     }
 
@@ -772,7 +776,7 @@ public final class EpsilonDecisionSelectedPgCampaign {
         DecisionGpuMemoryDiagnostics.logSnapshot(
             "session-close",
             executionContext,
-            config.bind(com.epsilon.config.settings.DecisionPerfSettings.class));
+            config.bind(DecisionPerfSettings.class));
       }
     }
   }

@@ -11,6 +11,8 @@ buildNumber.properties
 .mvn/wrapper/maven-wrapper.jar
 
 # Compiled files
+__pycache__/
+*.py[cod]
 *.class
 *.jar
 !.mvn/wrapper/maven-wrapper.jar

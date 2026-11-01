@@ -15,12 +15,15 @@ import com.epsilon.pico.ai.decision.input.DecisionInputSchema;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class CompactReadoutTest {
+  private static final Logger log = LoggerFactory.getLogger(CompactReadoutTest.class);
 
   @DataProvider
   public Object[][] layouts() {
@@ -177,10 +180,14 @@ public class CompactReadoutTest {
       }
       Assert.assertTrue(
           gradientMagnitude > 0, "Detached value readout still learns its own weights");
-      System.out.printf(
-          "CompactReadout BF16 rows=%d dense=%s maxOutputAbs=%g maxInputGradientAbs=%g"
-              + " maxParameterGradientAbs=%g%n",
-          rows, dense, outputError, inputGradientError, parameterGradientError);
+      log.info(
+          "CompactReadout BF16 rows={} dense={} maxOutputAbs={} maxInputGradientAbs={}"
+              + " maxParameterGradientAbs={}",
+          rows,
+          dense,
+          outputError,
+          inputGradientError,
+          parameterGradientError);
     }
   }
 

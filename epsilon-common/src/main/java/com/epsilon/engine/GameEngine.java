@@ -4,6 +4,7 @@ import com.epsilon.core.Action;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
+import com.epsilon.core.Meld;
 import com.epsilon.core.PublicObservation;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.WinLegality.RonStatus;
@@ -128,8 +129,8 @@ public final class GameEngine {
     actions = new MahjongTransition(state, recorder);
   }
 
-  private GameEngine(GameEngine source) {
-    this(source.state.snapshotCopy(), null);
+  private GameEngine(GameEngine source, GameRecorder recorder) {
+    this(source.state.snapshotCopy(), recorder);
     if (!source.stage.awaitingDecision()) {
       throw new IllegalStateException("GameEngine can only fork at an action boundary");
     }
@@ -158,10 +159,22 @@ public final class GameEngine {
    * @return 現在境界から独立して進行できるエンジン
    */
   public GameEngine forkAtDecisionBoundary() {
+    return forkAtDecisionBoundary(null);
+  }
+
+  /**
+   * 現在の行動境界を複製し、分岐後のイベントを指定レコーダーへ記録する。
+   *
+   * <p>既存の履歴は再送しない。履歴を使う呼び出し元は、主枝から独立した履歴の複製を渡す。
+   *
+   * @param recorder 分岐専用の記録処理。不要なら {@code null}
+   * @return 現在境界から独立して進行できるエンジン
+   */
+  public GameEngine forkAtDecisionBoundary(GameRecorder recorder) {
     if (!stage.awaitingDecision()) {
       throw new IllegalStateException("GameEngine can only fork at an action boundary");
     }
-    return new GameEngine(this);
+    return new GameEngine(this, recorder);
   }
 
   /**
@@ -481,15 +494,11 @@ public final class GameEngine {
         return finishTurnAndContinue(turnCompletionPlayer, turnCompletionRiichiDahai);
       }
       if (action.type() == Action.Type.PON) {
-        actions.applyPon(caller, discard, action.usesAkaTileFromHand());
-        return preparePostCallDahai(caller, PostCallDahaiRestriction.afterPon(discard.tileType()));
+        return preparePostCallDahai(
+            caller, actions.applyPon(caller, discard, action.usesAkaTileFromHand()));
       }
       if (action.type() == Action.Type.CHI) {
-        actions.applyChi(caller, discard, action);
-        return preparePostCallDahai(
-            caller,
-            PostCallDahaiRestriction.afterChi(
-                action.chiSequenceBaseTileType(), discard.tileType()));
+        return preparePostCallDahai(caller, actions.applyChi(caller, discard, action));
       }
       throw new IllegalStateException("Unexpected selected meld action: " + action);
     }
@@ -498,12 +507,12 @@ public final class GameEngine {
     return finishTurnAndContinue(turnCompletionPlayer, turnCompletionRiichiDahai);
   }
 
-  private GameStepResult preparePostCallDahai(int player, PostCallDahaiRestriction restriction) {
+  /** チー・ポンを適用した後の打牌の判断を作る（打てる牌は {@link PostCallDiscards}）。 */
+  private GameStepResult preparePostCallDahai(int player, Meld call) {
     EngineDecisionBatch decisions = scratch.decisions;
     decisions.clear();
     EngineDecisionPoint decision = appendDecision(EngineDecisionKind.POST_CALL_DAHAI, player);
-    ActionGenerator.generateCallDahaiActionsInto(
-        decision.mutableLegalActions(), state.hand(player), restriction);
+    PostCallDiscards.generateInto(state.hand(player), call, decision.mutableLegalActions());
     stage = Stage.AWAIT_CALL_DAHAI;
     return awaitingStep.bind(decisions);
   }

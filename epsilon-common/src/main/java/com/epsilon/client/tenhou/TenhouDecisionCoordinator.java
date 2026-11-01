@@ -5,6 +5,7 @@ import com.epsilon.core.GameState;
 import com.epsilon.engine.ActionGenerator;
 import com.epsilon.engine.EngineActionBuffer;
 import com.epsilon.engine.Player;
+import com.epsilon.engine.PostCallDiscards;
 import com.epsilon.engine.WinLegality.RonStatus;
 import java.util.List;
 
@@ -50,8 +51,7 @@ final class TenhouDecisionCoordinator {
           selectAndEncode(
               prepareDrawActions(round.state(), draw, turnActions, actionGenerator), round);
       case TenhouRoundOutcome.PostCallDahai postCall -> {
-        ActionGenerator.generateCallDahaiActionsInto(
-            callDahaiActions, round.state().hand(SELF), postCall.restriction());
+        PostCallDiscards.generateInto(round.state().hand(SELF), postCall.call(), callDahaiActions);
         yield selectAndEncode(callDahaiActions, round);
       }
       case TenhouRoundOutcome.ResponseDecision response -> respondTo(response, round);
@@ -123,7 +123,8 @@ final class TenhouDecisionCoordinator {
       case RON_AGARI -> prompt.canRon();
       case CHI -> prompt.canChi();
       case PON -> prompt.canPon();
-      case ANKAN, KAKAN, DAIMINKAN -> prompt.canKan();
+      case ANKAN, KAKAN -> prompt.canSelfKan();
+      case DAIMINKAN -> prompt.canDaiminkan();
       case KYUSHU_KYUHAI -> prompt.canKyushu();
       case PASS -> prompt.phase() == TenhouEvent.PromptPhase.RESPONSE;
     };

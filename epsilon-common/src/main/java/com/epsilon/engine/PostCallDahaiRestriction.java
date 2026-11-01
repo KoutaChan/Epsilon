@@ -1,13 +1,15 @@
 package com.epsilon.engine;
 
+import com.epsilon.core.Meld;
 import com.epsilon.core.Tile;
 
 /**
- * チー・ポン直後の喰い替え禁止牌。
+ * チー・ポン直後の喰い替え禁止牌。鳴いた後の打牌（{@link PostCallDiscards}）と、鳴きの後に打てる牌が残るかの応答の検査
+ * （{@link ResponseActionGenerator}）が読む。
  *
  * @param forbiddenMask ビット {@code tileType} が1なら、その牌種を直後に捨てられない34-ビットマスク
  */
-public record PostCallDahaiRestriction(long forbiddenMask) {
+record PostCallDahaiRestriction(long forbiddenMask) {
 
   private static final PostCallDahaiRestriction[] PON = new PostCallDahaiRestriction[34];
   private static final PostCallDahaiRestriction[] CHI = new PostCallDahaiRestriction[81];
@@ -29,12 +31,27 @@ public record PostCallDahaiRestriction(long forbiddenMask) {
   }
 
   /**
+   * 鳴いた副露の直後の喰い替え禁止集合を返す。
+   *
+   * @param call チーかポン
+   * @return チーは現物と筋、ポンは同じ牌を禁じる制約
+   * @throws IllegalArgumentException チー・ポンでないとき
+   */
+  static PostCallDahaiRestriction after(Meld call) {
+    return switch (call.type()) {
+      case CHI -> afterChi(call.baseTileType(), call.calledTileType());
+      case PON -> afterPon(call.calledTileType());
+      default -> throw new IllegalArgumentException("post-call discards require CHI or PON: " + call);
+    };
+  }
+
+  /**
    * ポン直後の喰い替え禁止集合を返す。
    *
    * @param calledTile 鳴いた牌種ID
    * @return 鳴いた牌と同牌を禁じる制約
    */
-  public static PostCallDahaiRestriction afterPon(int calledTile) {
+  static PostCallDahaiRestriction afterPon(int calledTile) {
     Tile.requireValidType(calledTile, "calledTile");
     return PON[calledTile];
   }
@@ -42,16 +59,11 @@ public record PostCallDahaiRestriction(long forbiddenMask) {
   /**
    * チー直後の喰い替え禁止集合を返す。
    *
-   * @param chiTiles 生成した順子3牌種
+   * @param sequenceBaseTile 順子で最も小さい牌種
    * @param calledTile 鳴いた牌種ID
    * @return 現物と筋の喰い替えを禁じる制約
    */
-  public static PostCallDahaiRestriction afterChi(int[] chiTiles, int calledTile) {
-    int sequenceBaseTile = Math.min(chiTiles[0], Math.min(chiTiles[1], chiTiles[2]));
-    return afterChi(sequenceBaseTile, calledTile);
-  }
-
-  public static PostCallDahaiRestriction afterChi(int sequenceBaseTile, int calledTile) {
+  static PostCallDahaiRestriction afterChi(int sequenceBaseTile, int calledTile) {
     if (sequenceBaseTile < Tile.M1
         || sequenceBaseTile >= Tile.TON
         || Tile.numberOf(sequenceBaseTile) > 6
@@ -84,16 +96,6 @@ public record PostCallDahaiRestriction(long forbiddenMask) {
       }
     }
     return mask;
-  }
-
-  /**
-   * 指定牌種が直後の打牌として禁止されるかを返す。
-   *
-   * @param tileType 判定する牌種ID
-   * @return 禁止牌なら {@code true}
-   */
-  public boolean forbids(int tileType) {
-    return (forbiddenMask & tileMask(tileType)) != 0L;
   }
 
   private static long tileMask(int tileType) {

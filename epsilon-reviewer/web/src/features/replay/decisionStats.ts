@@ -1,46 +1,73 @@
-import type { ReviewRound } from "../../api/types";
+import type { Candidate, ReviewRound } from "../../api/types";
+import {
+  gradeLoss,
+  gradeProbability,
+  hasValueLoss,
+} from "./decisionGrade.ts";
 
-function isProbabilityLower(value: number, reference: number): boolean {
-  // 確率の合算で生じる binary64 の丸め差だけを許容し、表示桁数では丸めない。
-  return reference - value > Number.EPSILON * Math.max(value, reference);
+export interface PlayerDecisionSummary {
+  reviewed: number;
+  matched: number;
+  badMoves: number;
+  /** 価値を推定した判断での平均損失。該当する判断がなければ null。 */
+  meanLoss: number | null;
+}
+
+// 同じ牌の手出しとツモ切りは一つの打牌として扱う。赤牌は別の選択のまま残す。
+function choiceKey(candidate: Candidate): string | number {
+  return candidate.type === "DAHAI" || candidate.type === "RIICHI_DAHAI"
+    ? `${candidate.type}:${candidate.tiles[0]}`
+    : candidate.actionId;
 }
 
 export function summarizePlayerDecisions(
   rounds: readonly Pick<ReviewRound, "steps">[],
-): { reviewed: number; matched: number; badMoves: number }[] {
+): PlayerDecisionSummary[] {
   const players = Array.from({ length: 4 }, () => ({
     reviewed: 0,
     matched: 0,
     badMoves: 0,
+    valued: 0,
+    totalLoss: 0,
   }));
   for (const round of rounds) {
     for (const step of round.steps) {
       if (!step.decision) continue;
-      const probabilities = new Map<string | number, number>();
+      const valued = hasValueLoss(step.candidates);
+      // 価値は同じ打牌の良い方の損失、確率は合算を打牌の評価とする。
+      const scores = new Map<string | number, number>();
       let chosenKey: string | number | undefined;
       for (const candidate of step.candidates) {
-        const key =
-          candidate.type === "DAHAI" || candidate.type === "RIICHI_DAHAI"
-            ? `${candidate.type}:${candidate.tiles[0]}`
-            : candidate.actionId;
-        probabilities.set(
+        const key = choiceKey(candidate),
+          previous = scores.get(key);
+        scores.set(
           key,
-          (probabilities.get(key) ?? 0) + candidate.probability,
+          valued
+            ? Math.min(previous ?? Infinity, candidate.valueLoss!)
+            : (previous ?? 0) + candidate.probability,
         );
         // 同じ打牌のどちらかが実行されていれば、集約した打牌を実際の選択とする。
         if (candidate.chosen) chosenKey = key;
       }
-      if (chosenKey === undefined || probabilities.size < 2) continue;
-      const chosenProbability = probabilities.get(chosenKey)!;
-      let maximumProbability = 0;
-      for (const probability of probabilities.values())
-        maximumProbability = Math.max(maximumProbability, probability);
+      if (chosenKey === undefined || scores.size < 2) continue;
+      const chosen = scores.get(chosenKey)!;
       const stats = players[step.actor];
       stats.reviewed++;
-      if (!isProbabilityLower(chosenProbability, maximumProbability))
-        stats.matched++;
-      else if (isProbabilityLower(chosenProbability, 0.05)) stats.badMoves++;
+      if (valued) {
+        const grade = gradeLoss(chosen);
+        stats.valued++;
+        stats.totalLoss += chosen;
+        if (grade === "best") stats.matched++;
+        else if (grade === "mistake") stats.badMoves++;
+      } else {
+        const grade = gradeProbability(chosen, Math.max(...scores.values()));
+        if (grade === "top") stats.matched++;
+        else if (grade === "bad") stats.badMoves++;
+      }
     }
   }
-  return players;
+  return players.map(({ valued, totalLoss, ...counts }) => ({
+    ...counts,
+    meanLoss: valued === 0 ? null : totalLoss / valued,
+  }));
 }

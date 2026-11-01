@@ -5,6 +5,7 @@ import com.epsilon.reviewer.dto.RecordMetadata;
 import com.epsilon.reviewer.dto.ReviewResult;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.io.ByteArrayInputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -19,6 +20,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import java.util.zip.GZIPInputStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -256,7 +258,7 @@ public final class SharingHttpTest {
         data.resolve("results").resolve(owner.hash()).resolve(id).resolve("result.json.gz");
     byte[] stored = Files.readAllBytes(resultFile);
     byte[] expected;
-    try (var gzip = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(stored))) {
+    try (var gzip = new GZIPInputStream(new ByteArrayInputStream(stored))) {
       expected = gzip.readAllBytes();
     }
     try (var server = startServer(data, null);

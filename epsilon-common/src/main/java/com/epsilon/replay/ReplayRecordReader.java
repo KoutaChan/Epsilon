@@ -1,16 +1,28 @@
 package com.epsilon.replay;
 
 import com.epsilon.core.Tile;
-import com.epsilon.replay.ReplayEvent.*;
+import com.epsilon.replay.ReplayEvent.EndGame;
+import com.epsilon.replay.ReplayEvent.EndKyoku;
+import com.epsilon.replay.ReplayEvent.StartGame;
+import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.replay.ReplayEvent.Tsumo;
 import com.epsilon.replay.format.MahjongSoulReader;
 import com.epsilon.replay.format.MjaiReader;
 import com.epsilon.replay.format.TenhouXmlReader;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
 /** 圧縮の展開、牌譜形式の判定、入力の整合性の検証をまとめて行う。 */

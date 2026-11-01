@@ -5,9 +5,11 @@ import com.epsilon.ai.belief.EpsilonBeliefCalibration;
 import com.epsilon.ai.belief.EpsilonBeliefInferenceServer;
 import com.epsilon.ai.belief.EpsilonBeliefSample;
 import com.epsilon.config.settings.BeliefInferenceSettings;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.pico.ai.belief.BeliefInputs;
 import com.epsilon.pico.ai.belief.EpsilonBeliefCheckpointManager;
 import com.epsilon.pico.ai.decision.input.DecisionHostBatch;
+import com.epsilon.pico.ai.network.NetworkFactory;
 import com.epsilon.pico.training.EpsilonLogPretrainDataCollector;
 import com.epsilon.workflow.BeliefCalibrationStatus;
 import com.epsilon.workflow.CommandWorkflow;
@@ -66,8 +68,8 @@ public final class BeliefCalibrationWorkflow
     try (Model model =
             EpsilonBeliefCheckpointManager.load(
                 checkpoint,
-                com.epsilon.pico.ai.network.NetworkFactory.getInferenceDevices(
-                        arguments.settings().bind(com.epsilon.config.settings.DeviceSettings.class))
+                NetworkFactory.getInferenceDevices(
+                        arguments.settings().bind(DeviceSettings.class))
                     .primary());
         EpsilonBeliefInferenceServer<DecisionHostBatch> server =
             new EpsilonBeliefInferenceServer<>(

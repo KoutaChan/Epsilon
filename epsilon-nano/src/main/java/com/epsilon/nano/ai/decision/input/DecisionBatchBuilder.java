@@ -113,10 +113,15 @@ public final class DecisionBatchBuilder {
       DecisionBucket bucket,
       boolean includeTrainingTargets,
       EncodingWorkspacePool workspacePool) {
-    hostBatch =
+    this(
         includeTrainingTargets
             ? new DecisionHostBatch(rowCapacity, bucket, true)
-            : DecisionHostBatch.inference(rowCapacity, bucket);
+            : DecisionHostBatch.inference(rowCapacity, bucket),
+        workspacePool);
+  }
+
+  DecisionBatchBuilder(DecisionHostBatch hostBatch, EncodingWorkspacePool workspacePool) {
+    this.hostBatch = hostBatch;
     this.workspacePool = Objects.requireNonNull(workspacePool, "workspacePool");
   }
 

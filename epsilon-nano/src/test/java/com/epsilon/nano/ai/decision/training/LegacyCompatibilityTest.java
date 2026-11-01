@@ -9,6 +9,7 @@ import ai.djl.ndarray.types.Shape;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
+import ai.djl.util.PairList;
 import com.epsilon.ai.grp.EpsilonGrpExample;
 import com.epsilon.ai.grp.EpsilonGrpFeature;
 import com.epsilon.ai.grp.EpsilonGrpTrainer;
@@ -22,15 +23,20 @@ import com.epsilon.nano.ai.decision.input.DecisionHostBatch;
 import com.epsilon.nano.ai.decision.input.DecisionInputSchema;
 import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.nano.ai.grp.EpsilonGrpCheckpointManager;
-import com.epsilon.nano.ai.network.NetworkDevices;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.io.DataOutputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.DigestOutputStream;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -177,11 +183,9 @@ public class LegacyCompatibilityTest {
   }
 
   static String batchDigest(DecisionHostBatch batch) throws Exception {
-    var digest = java.security.MessageDigest.getInstance("SHA-256");
+    var digest = MessageDigest.getInstance("SHA-256");
     try (var out =
-        new java.io.DataOutputStream(
-            new java.security.DigestOutputStream(
-                java.io.OutputStream.nullOutputStream(), digest))) {
+        new DataOutputStream(new DigestOutputStream(OutputStream.nullOutputStream(), digest))) {
       out.writeInt(batch.size());
       out.writeInt(batch.bucket().legalActionCapacity());
       out.writeInt(batch.bucket().actionTransitionCapacity());
@@ -190,7 +194,7 @@ public class LegacyCompatibilityTest {
       for (int value : batch.trainingTargets().categoricalSlab()) out.writeInt(value);
       for (float value : batch.trainingTargets().numericSlab()) out.writeFloat(value);
     }
-    return java.util.HexFormat.of().formatHex(digest.digest());
+    return HexFormat.of().formatHex(digest.digest());
   }
 
   private static Path fixture() {
@@ -315,7 +319,7 @@ public class LegacyCompatibilityTest {
               manager.zeros(new Shape(1, DecisionInputSchema.STATE_FLOAT_COUNT)));
       return model
           .getBlock()
-          .forward(new ParameterStore(manager, false), inputs, false, new ai.djl.util.PairList<>())
+          .forward(new ParameterStore(manager, false), inputs, false, new PairList<>())
           .singletonOrThrow()
           .toFloatArray();
     }
@@ -329,7 +333,7 @@ public class LegacyCompatibilityTest {
               manager.create(new float[] {3}));
       return model
           .getBlock()
-          .forward(new ParameterStore(manager, false), inputs, false, new ai.djl.util.PairList<>())
+          .forward(new ParameterStore(manager, false), inputs, false, new PairList<>())
           .singletonOrThrow()
           .toFloatArray();
     }

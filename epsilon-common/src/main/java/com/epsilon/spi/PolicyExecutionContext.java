@@ -18,6 +18,7 @@ public final class PolicyExecutionContext implements AutoCloseable {
   private final int slotsPerDevice;
   private final int readyBatchesPerDevice;
   private ExecutorService encoder;
+  private boolean closed;
 
   public PolicyExecutionContext() {
     this(Math.min(32, Runtime.getRuntime().availableProcessors()));
@@ -118,6 +119,19 @@ public final class PolicyExecutionContext implements AutoCloseable {
       encodeRange.encode(0, rows);
       return CompletableFuture.completedFuture(null);
     }
+    return scheduleRows(rows, tasks, encodeRange, encodingStarted);
+  }
+
+  /** 小さいバッチも同じCPUプールへ投入し、呼出スレッドで符号化処理を実行しません。 */
+  public CompletableFuture<Void> encodeRowsAsync(int rows, RangeEncoder encodeRange) {
+    int tasks = rows < 128 ? 1 : Math.min(encodingWorkers, rows / 64);
+    return scheduleRows(rows, tasks, encodeRange, () -> {});
+  }
+
+  // closeがタスク投入の途中でプールを停止しないよう、一バッチの投入だけを直列化する。
+  private synchronized CompletableFuture<Void> scheduleRows(
+      int rows, int tasks, RangeEncoder encodeRange, Runnable encodingStarted) {
+    if (closed) throw new IllegalStateException("Policy execution context is closed");
     ExecutorService executor = encoder();
     CompletableFuture<?>[] complete = new CompletableFuture<?>[tasks];
     AtomicBoolean started = new AtomicBoolean();
@@ -152,7 +166,16 @@ public final class PolicyExecutionContext implements AutoCloseable {
 
   @Override
   public void close() {
-    if (encoder != null) encoder.close();
-    devices.close();
+    ExecutorService closingEncoder;
+    synchronized (this) {
+      if (closed) return;
+      closed = true;
+      closingEncoder = encoder;
+    }
+    try {
+      if (closingEncoder != null) closingEncoder.close();
+    } finally {
+      devices.close();
+    }
   }
 }

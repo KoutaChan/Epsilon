@@ -1,0 +1,149 @@
+# Epsilon-Prism の同梱既定設定。同梱値 < 選択した TOML（--settings）< 明示上書き（-Depsilon.*）の順に適用する。
+# 省略した項目は同梱値を使う。[epsilon.prism] の同梱値は本番の系譜の値で、run の TOML にはその run に固有の値だけを書く。
+
+[epsilon.devices]
+
+# trueなら明示したGPU番号が認識された範囲内か事前確認する。falseでも指定書式は検証される。
+validateIndices = false
+
+# 版を開く既定の device。空ならGPUを番号順に全て使い、GPUがなければCPU。cpu・gpu:0・gpu:0,gpu:1 のように書く。
+inference = ""
+
+# play-riichi（RiichiLab のランク戦）の接続と実行の設定。
+[epsilon.riichi]
+
+# RiichiLab の接続 token。空なら未設定で、接続にはローカルの設定での指定が要る。token を含む設定は commit しない。
+token = ""
+
+# 打つ版のディレクトリ（snapshots/<版>）か run のディレクトリ（その最新の版）。相対パスは起動ディレクトリが基準。
+checkpointDir = "runs/prism-v2b"
+
+# 完了する対局数の上限。0 なら止めるまで次の対局へ参加する。
+maxGames = 0
+
+# 新しい run の設定。鍵は run の config.json の欄の名前と同じで、train が新しい run を始めるときだけ値を読む（再開は config.json を読む）。
+# evaluate・audit-grp・牌譜解析のバッチ・device・推論の道・seed もここから読む。epsilon.prism. で始まる鍵は全てここの鍵で、知らない鍵は
+# 新しい run でも再開でも拒む。系譜は白紙の網から始め、生徒 1 本を TEMPO で当て、教師は運の精算の帳簿で補正し、根の記録も学ぶ（学習器の形は
+# 決まっている）。
+[epsilon.prism]
+# 牌山・抽選・網の初期値の種
+seed = 20261010
+# 1 コホートの半荘の数と、その段（「始めの反復:半荘の数」を読点で区切り始めの昇順。反復 t は始めが t 以下で最も後の段の数。空なら
+# gamesPerCohort のまま）
+gamesPerCohort = 65536
+gamesSchedule = "1:8192,9:16384,17:32768,25:65536"
+# 反復の数
+iterations = 1000
+# commonの順位効用（TENHOU / PLACEMENT / TOP / LAST_AVOIDANCE / MLEAGUE）
+utility = "TENHOU"
+
+# 収集。device は cpu か gpu0,gpu1 のような GPU の列
+collectDevices = "gpu0,gpu1"
+maxActiveGames = 8192
+advanceWorkers = 28
+encoders = 20
+slots = 2
+readyBatches = 4
+inferBatch = 2048
+batchWaitMicros = 100000
+rowWriters = 4
+# 網の推論の道: "HIP"（自前の HIP の実行系。-Pnative-hip で組み立てた jar が要り、libprism_hip.so が読めなければ方策を開くときに止まる）か
+# "EAGER"（DJL の eager）。HIP でも CPU・前線の腕・HIP の特化のない幅（H ≠ 256）の網は eager で打つ
+inference = "HIP"
+
+# 行動方策 b: 凍結した π_t の貪欲（s の argmax）に一様の床 ε_b（全席）
+epsilonB = 0.005
+# 主経路の探索の温度 τ（効用の単位）。主経路の判断だけ s の Boltzmann 分布 softmax(s/τ) に床 ε_b を混ぜて引く（分岐と写しの続きは上の b のまま、
+# ラベルの意味は変わらない）。0 なら探索しない
+exploreTemperature = 0.0
+# 保留（HOLDOUT）にする半荘の割合
+holdoutFraction = 0.05
+
+# ラベル行: 判断の類ごとの率 ρ（脅威のない打牌は段階ごと、確約の類 = 脅威のもとの打牌・立直・鳴き・槓・和了と九種、オーラス（南 4 局と
+# 西入の局）の和了）。打牌の類（脅威のない序盤・中盤・終盤）は全ての合法手を測り、確約の類の候補集合 C(o) は s の上位 3・p0 の
+# 上位 2・体制の代表・確率 ε_C で一様な 1 手（双子はまとめる。最大 maxCandidates）
+labelRateDiscardEarly = 0.013
+labelRateDiscardMid = 0.039
+labelRateDiscardLate = 0.0312
+labelRateCommit = 0.104
+# オーラスの和了（FINAL_END）は半荘の行方を決め、和了で半荘を終えた分岐の値は確定した順位の効用になるので、既定で全てラベル行にする。
+# オーラスの九種九牌は局をやり直すだけなので labelRateCommit の類に残す
+labelRateFinalEnd = 1.0
+maxCandidates = 6
+epsilonC = 0.1
+
+# 中立ロールイン: 写しを作る率 β（打牌の類・確約の類）、逸脱の分布 q の一様な床 ε_q、写しの中の逸脱した席の判断をラベル行にする率 ρ_br と
+# 写しごとの上限
+rollinRateDiscard = 0.002
+rollinRateCommit = 0.03
+# 類ごとのロールインの率の上書き（"CALL=0.15" のように "類=率" を読点で区切る。類は DISCARD_EARLY・CALL などの名前）。"" なら上書きしない
+rollinClassRates = ""
+epsilonQ = 0.1
+rhoBranch = 0.3
+maxCopyLabels = 2
+
+# 規則事前 p0: 打牌後の向聴 1 つあたりと受け入れ 1 枚あたりの nat
+priorAlpha = 4.0
+priorGamma = 0.05
+
+# 網。learnerDevice は先頭が正本で、残りはデータ並列の複製
+learnerDevice = "gpu1,gpu0"
+# 版 1 の白紙の網の形: 背骨の層の数（2 か 3。幅は H 256・F 512・G 256）と、前線の腕（候補層が前線の特徴も読む）か
+depth = 2
+frontier = false
+# 補助の頭の重み: 読みの頭 α_o と候補の結果の頭 α_r
+auxOracle = 0.01
+auxResult = 0.01
+
+# 生徒: 残す行のコホートの数（古いものから消す）、歩数の上限、1 行を見る回数の上限（周回数。歩数は min(上限の歩数, ceil(周回数 × 行 ÷
+# バッチ))）、バッチ、学習率（cosine）、勾配のノルムの上限（0 なら切らない）、展開のスレッド数
+keepCohorts = 16
+fitSteps = 2000
+fitEpochs = 1.0
+batchSize = 4096
+lrPeak = 0.0012
+lrFloor = 0.00006
+gradientClip = 0.5
+decodeThreads = 48
+# 差分整合の温度 λ（打牌の類・確約の類）
+lambdaDiscard = 0.01
+lambdaCommit = 0.02
+
+# 方策の記憶: 打つ網 A を学習の網 θ の重み付きの平均にする（A_v = (1 − η)·A_{v−1} + η·θ_v）。
+#   averaging = "none"（平均しない）、"ema"（η = 1 − 2^(−1/averageHalfLife)）、"power"（版 k の重み k^averagePower、0 で一様、1 で線形 CFR）
+#   averageFrom: 平均を始める版。collectWith: 収集で打つ網（"average" か "iterate"）。learnFrom: 生徒を始める網と TEMPO の錨（"iterate" か
+#   "average"）。evaluateIterate: 打つ網に加えて学習の網も 3×Heuristic で測る
+averaging = "none"
+averageHalfLife = 8.0
+averagePower = 1.0
+averageFrom = 16
+collectWith = "iterate"
+learnFrom = "iterate"
+evaluateIterate = false
+
+# TEMPO: コホート t だけを、学習の網 θ_t を錨にして当てる（教師 = (1 − K′_t)·s_θt + K′_t·Ỹ、補助の頭の項も K′_t 倍）。
+# K_t = filterGain·(1 + max(0, t − filterFrom)/filterTau)^(−filterPower)、K′_t は前の反復で教師に掛けた運の精算の補正の保留の R² の分だけ上げた
+# ゲイン（K′ = K / (K + (1 − K)(1 − R²))）。網の出力が全てのコホートのラベルの再帰平均になり、K_t が減るほどラベルの雑音の床が下がる
+filterFrom = 1
+filterGain = 0.9
+filterTau = 4.0
+filterPower = 0.6666667
+# TEMPO の学習率の倍率: "GAIN" は min(1, K′_t/0.25)、"FULL" は 1（K′_t の予定は教師と補助の頭にだけ効く）
+filterLrMode = "GAIN"
+
+# Φ の較正: 次局の局番号（東1 = 0、東2 = 1、…、南4 = 7。最後の値はそれ以降の局にも使う）ごとの温度 T を読点で区切る。GRP の順位分布を席ごとに
+# p' ∝ p^(1/T) にしてから期待効用にする（T > 1 で軟らかく）。"" なら較正しない（元の GRP のまま）
+phiTemperatures = ""
+# Φ の較正の表: 終わった局の段 × Φ の値の区分ごとに、自己対戦の局末の平均の残差 E[u − Φ] を足す表の JSON（audit-grp の CSV から作る。4 席の和は
+# 変えない）。"" なら使わない。phiTemperatures と両方あれば温度の後に掛ける
+phiCalibration = ""
+
+# Φ: "grp"（固定の GRP。train では grpCheckpoint が必須）か "score-rank"（局末の点数を最終順位とみなす試験用の代用）
+phi = "grp"
+grpCheckpoint = ""
+grpDevice = "cpu"
+grpBatch = 256
+
+# 評価: 3×Heuristic を evalEvery 反復ごと（0 なら測らない）に evalGames 局（evaluate の既定の局数も evalGames）
+evalEvery = 1
+evalGames = 8192

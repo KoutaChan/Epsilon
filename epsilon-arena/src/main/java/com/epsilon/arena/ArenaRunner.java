@@ -142,8 +142,9 @@ public final class ArenaRunner {
                           });
                       return;
                     }
-                    for (EngineDecisionPoint point : game.boundary)
+                    for (EngineDecisionPoint point : game.boundary) {
                       game.selections.add(point.id(), point.legalActions().getFirst());
+                    }
                     step = game.engine.commitDecisions(game.selections);
                     game.selections.clear();
                   }
@@ -184,6 +185,7 @@ public final class ArenaRunner {
         BatchedPolicy policy = participants.get((point.player() - game.rotation + 4) % 4).policy();
         DecisionRequest request =
             new DecisionRequest(
+                game.index,
                 point.id(),
                 point.player(),
                 point.kind(),

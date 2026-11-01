@@ -7,11 +7,11 @@ import com.epsilon.ai.grp.EpsilonGrpSequence;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.ScoreRanking;
-import com.epsilon.major.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionSample;
 import com.epsilon.major.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.major.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.major.ai.decision.input.DecisionHostBatch;
+import com.epsilon.major.config.settings.DecisionSettings;
 import com.epsilon.replay.DecisionPoint;
 import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayObserver;
@@ -94,7 +94,7 @@ public final class EpsilonReplaySampleCollector implements ReplayObserver {
 
     int[] finalRanks = ScoreRanking.byScoreThenSeat(finalScores);
     int finalRanksCode = EpsilonGrpRanks.encode(finalRanks);
-    int trainingProfile = EpsilonUtilityTargets.configuredTrainingProfile().ordinal();
+    int trainingProfile = DecisionSettings.defaults().utilityProfile().ordinal();
     ArrayList<EpsilonDecisionSample> samples = new ArrayList<>(decisionCount);
     for (int seat = 0; seat < NUM_PLAYERS; seat++) {
       int finalRank = finalRanks[seat];

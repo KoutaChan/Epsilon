@@ -8,4 +8,21 @@
   </parent>
   <artifactId>epsilon-common</artifactId>
   <dependencies />
+  <build>
+    <plugins>
+      <!-- 試験の道具（決まった対局の組 GoldenGames・GoldenHash）を他のモジュールの試験から使うため、試験の jar も作る。 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>

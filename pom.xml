@@ -15,6 +15,7 @@
     <djl.version>0.40.4-rocm-SNAPSHOT</djl.version>
     <pytorch.native.version>2.11.0</pytorch.native.version>
     <pytorch.linux.flavor>cpu</pytorch.linux.flavor>
+    <pytorch.windows.flavor>cpu</pytorch.windows.flavor>
     <surefire.excludedGroups>native,rocm,legacy</surefire.excludedGroups>
     <testng.version>7.11.0</testng.version>
   </properties>
@@ -173,7 +174,7 @@
       </dependencies>
     </profile>
     <profile>
-      <id>cpu-windows</id>
+      <id>windows-native</id>
       <activation>
         <os>
           <family>windows</family>
@@ -182,7 +183,7 @@
       <dependencies>
         <dependency>
           <groupId>ai.djl.pytorch</groupId>
-          <artifactId>pytorch-jni-cpu-win-x86_64</artifactId>
+          <artifactId>pytorch-jni-${pytorch.windows.flavor}-win-x86_64</artifactId>
           <version>${pytorch.native.version}-${djl.version}</version>
           <scope>runtime</scope>
         </dependency>
@@ -213,6 +214,17 @@
         <pytorch.linux.flavor>${pytorch.rocm.flavor}</pytorch.linux.flavor>
       </properties>
     </profile>
+    <!-- NVIDIA の GPU（Linux・Windows）。同梱する DJL の JNI を CUDA の版にする。その版の JNI が djl-rocm に要る。 -->
+    <profile>
+      <id>cuda</id>
+      <properties>
+        <pytorch.cuda.version>2.11.0</pytorch.cuda.version>
+        <pytorch.cuda.flavor>cu128</pytorch.cuda.flavor>
+        <pytorch.native.version>${pytorch.cuda.version}</pytorch.native.version>
+        <pytorch.linux.flavor>${pytorch.cuda.flavor}</pytorch.linux.flavor>
+        <pytorch.windows.flavor>${pytorch.cuda.flavor}</pytorch.windows.flavor>
+      </properties>
+    </profile>
     <profile>
       <id>native-tests</id>
       <properties>
@@ -229,6 +241,9 @@
   <modules>
     <module>epsilon-common</module>
     <module>epsilon-nano</module>
+    <!-- PRISM の HIP の実行系。Java の部分はどこでも組み立て、native（libprism_hip.so）は -Pnative-hip のときだけ作る。 -->
+    <module>epsilon-prism-hip</module>
+    <module>epsilon-prism</module>
     <module>epsilon-pico</module>
     <module>epsilon</module>
     <module>epsilon-arena</module>

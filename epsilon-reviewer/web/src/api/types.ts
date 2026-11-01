@@ -69,6 +69,8 @@ export interface Candidate {
   type: ActionType;
   tiles: readonly string[];
   probability: number;
+  /** 最善手との価値差。価値を推定しないモデルでは null。 */
+  valueLoss: number | null;
   chosen: boolean;
   tsumogiri: boolean;
 }
@@ -167,7 +169,7 @@ export interface ReviewRound {
   steps: readonly ReviewStep[];
 }
 export interface ReviewResult extends HistoryEntry {
-  formatVersion: 4;
+  formatVersion: 5;
   rounds: readonly ReviewRound[];
 }
 export interface Job {

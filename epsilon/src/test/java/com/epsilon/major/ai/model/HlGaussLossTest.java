@@ -7,6 +7,7 @@ import ai.djl.ndarray.types.Shape;
 import ai.djl.training.GradientCollector;
 import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -15,7 +16,7 @@ import org.testng.annotations.Test;
 public class HlGaussLossTest {
   @DataProvider
   public Object[][] profiles() {
-    return java.util.Arrays.stream(EpsilonUtilityProfile.values())
+    return Arrays.stream(EpsilonUtilityProfile.values())
         .filter(EpsilonUtilityProfile::rankBased)
         .map(profile -> new Object[] {profile})
         .toArray(Object[][]::new);

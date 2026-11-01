@@ -3,7 +3,6 @@ package com.epsilon.major.ai.decision.training;
 import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
 import com.epsilon.ai.grp.EpsilonGrpTeacherIdentity;
-import com.epsilon.major.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionDataException;
 import com.epsilon.major.ai.decision.data.EpsilonDecisionSample;
 import com.epsilon.major.ai.decision.input.DecisionBucket;
@@ -11,6 +10,7 @@ import com.epsilon.major.ai.decision.input.DecisionHostBatch;
 import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 import com.epsilon.major.ai.grp.EpsilonGrpTrainingSession;
 import com.epsilon.major.config.settings.DecisionPretrainSettings;
+import com.epsilon.major.config.settings.DecisionSettings;
 import com.epsilon.major.training.EpsilonLogPretrainDataCollector;
 import com.epsilon.replay.ReplayRecordReader;
 import java.io.IOException;
@@ -63,7 +63,7 @@ final class EpsilonDecisionPretrainDatasetCompiler {
         sourceFiles,
         grpSession,
         settings,
-        EpsilonUtilityTargets.configuredTrainingProfile());
+        DecisionSettings.defaults().utilityProfile());
   }
 
   static Compilation compileOrOpen(
@@ -666,7 +666,7 @@ final class EpsilonDecisionPretrainDatasetCompiler {
   }
 
   public static String createCompilerIdentity(DecisionPretrainSettings settings) {
-    return createCompilerIdentity(settings, EpsilonUtilityTargets.configuredTrainingProfile());
+    return createCompilerIdentity(settings, DecisionSettings.defaults().utilityProfile());
   }
 
   public static String createCompilerIdentity(

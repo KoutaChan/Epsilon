@@ -3,6 +3,7 @@ package com.epsilon.nano.ai.decision.audit;
 import ai.djl.Device;
 import com.epsilon.ai.decision.EpsilonDecisionSeeds;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.ai.grp.EpsilonGrpCheckpointBundle;
 import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.SettingsLoader;
@@ -17,7 +18,6 @@ import com.epsilon.engine.EngineDecisionPoint;
 import com.epsilon.engine.EngineDecisionSelection;
 import com.epsilon.engine.GameEngine;
 import com.epsilon.engine.GameStepResult;
-import com.epsilon.nano.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.nano.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.nano.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.nano.ai.decision.input.DecisionBucket;
@@ -29,10 +29,10 @@ import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionRequestBatcher;
 import com.epsilon.nano.ai.decision.training.EpsilonDecisionCheckpointBundle;
 import com.epsilon.nano.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.nano.ai.grp.EpsilonGrpCheckpointManager;
-import com.epsilon.nano.ai.network.NetworkDevices;
 import com.epsilon.nano.ai.network.NetworkFactory;
 import com.epsilon.nano.config.settings.DecisionSettings;
 import com.epsilon.nano.config.settings.EpsilonSettings;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.SplittableRandom;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -789,7 +790,7 @@ public final class EpsilonDecisionCallCounterfactualAudit {
   }
 
   private static Map<String, PairedMetrics> grouped(
-      List<RootOutcome> outcomes, java.util.function.Function<RootOutcome, String> keyFunction) {
+      List<RootOutcome> outcomes, Function<RootOutcome, String> keyFunction) {
     LinkedHashMap<String, ArrayList<RootOutcome>> groups = new LinkedHashMap<>();
     for (RootOutcome outcome : outcomes) {
       groups.computeIfAbsent(keyFunction.apply(outcome), ignored -> new ArrayList<>()).add(outcome);

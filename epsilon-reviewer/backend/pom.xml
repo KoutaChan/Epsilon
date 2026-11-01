@@ -12,6 +12,7 @@
   <properties><epsilon.mainClass>com.epsilon.reviewer.Main</epsilon.mainClass></properties>
   <dependencies>
     <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-common</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-prism</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>com.epsilon</groupId><artifactId>epsilon</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-nano</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-pico</artifactId><version>${project.version}</version></dependency>

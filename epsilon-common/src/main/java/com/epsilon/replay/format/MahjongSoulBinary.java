@@ -1,8 +1,23 @@
 package com.epsilon.replay.format;
 
-import com.epsilon.replay.format.MahjongSoulRecord.*;
+import com.epsilon.replay.format.MahjongSoulRecord.AbortiveDraw;
+import com.epsilon.replay.format.MahjongSoulRecord.Call;
+import com.epsilon.replay.format.MahjongSoulRecord.Discard;
+import com.epsilon.replay.format.MahjongSoulRecord.Draw;
+import com.epsilon.replay.format.MahjongSoulRecord.ExhaustiveDraw;
+import com.epsilon.replay.format.MahjongSoulRecord.Fan;
+import com.epsilon.replay.format.MahjongSoulRecord.GameEnd;
+import com.epsilon.replay.format.MahjongSoulRecord.Kan;
+import com.epsilon.replay.format.MahjongSoulRecord.Riichi;
+import com.epsilon.replay.format.MahjongSoulRecord.Round;
+import com.epsilon.replay.format.MahjongSoulRecord.Win;
+import com.epsilon.replay.format.MahjongSoulRecord.Winner;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /** Liqi の保存形式フィールドを雀魂固有の型へ直接復号する。 */
 final class MahjongSoulBinary {

@@ -3,6 +3,8 @@ package com.epsilon.major.workflow.play;
 import ai.djl.Model;
 import com.epsilon.ai.decision.DecisionSelectionMode;
 import com.epsilon.client.riichi.RiichiClient;
+import com.epsilon.config.settings.DecisionInferenceFusionSettings;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.RiichiSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.engine.GameEngine;
@@ -12,6 +14,7 @@ import com.epsilon.major.ai.decision.runtime.EpsilonDecisionEvaluator;
 import com.epsilon.major.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.major.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.major.ai.network.NetworkFactory;
+import com.epsilon.major.config.settings.DecisionInferenceSettings;
 import com.epsilon.major.config.settings.EpsilonSettings;
 import com.epsilon.workflow.CommandWorkflow;
 import com.epsilon.workflow.StandardWorkflowDefinitions;
@@ -48,12 +51,12 @@ public final class RiichiPlayWorkflow implements CommandWorkflow<RiichiPlayWorkf
     var inference =
         arguments
             .settings()
-            .bind(com.epsilon.major.config.settings.DecisionInferenceSettings.class);
+            .bind(DecisionInferenceSettings.class);
     var fusion =
         arguments
             .settings()
-            .bind(com.epsilon.config.settings.DecisionInferenceFusionSettings.class);
-    var devices = arguments.settings().bind(com.epsilon.config.settings.DeviceSettings.class);
+            .bind(DecisionInferenceFusionSettings.class);
+    var devices = arguments.settings().bind(DeviceSettings.class);
     try (Model model =
             EpsilonDecisionCheckpointManager.loadForInference(
                 checkpoint, NetworkFactory.getInferenceDevices(devices).primary(), inference);

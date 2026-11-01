@@ -74,6 +74,18 @@ public final class EpsilonGrpNetwork extends AbstractBlock {
     return layers;
   }
 
+  GRU gru() {
+    return gru;
+  }
+
+  Linear projection() {
+    return projection;
+  }
+
+  Linear logitsHead() {
+    return logitsHead;
+  }
+
   /** 標準構成のチェックポイント互換性を判定するための識別子を返す。 */
   public static String architectureSummary() {
     return architectureSummary(DEFAULT_HIDDEN, DEFAULT_LAYERS);

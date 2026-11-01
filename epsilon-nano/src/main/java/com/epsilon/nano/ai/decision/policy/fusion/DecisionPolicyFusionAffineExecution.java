@@ -21,6 +21,7 @@ import ai.djl.nn.core.Linear;
 import ai.djl.nn.transformer.IdEmbedding;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
+import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.nano.ai.decision.input.DecisionInputSchema;
 import com.epsilon.nano.ai.decision.policy.DecisionAlternative;
 import com.epsilon.nano.ai.decision.policy.DecisionPolicyAffineExecution;
@@ -895,7 +896,11 @@ public final class DecisionPolicyFusionAffineExecution extends DecisionPolicyAff
         NDArray tileContexts,
         NDArray discardTiles,
         NDArray discardSafety,
-        NDArray stateContexts) {
+        NDArray states,
+        NDArray stateRows) {
+      NDArray stateContexts =
+          EpsilonMaskedRows.gather(states, stateRows)
+              .reshape(features.getShape().get(0), 1, 1, states.getShape().get(1));
       return owner.submitTransition(
           this, features, tileContexts, discardTiles, discardSafety, stateContexts);
     }

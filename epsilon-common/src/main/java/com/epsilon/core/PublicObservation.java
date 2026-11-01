@@ -1,7 +1,10 @@
 package com.epsilon.core;
 
+import com.epsilon.calculate.scoring.HandScoreEvaluator;
 import com.epsilon.calculate.shape.HandShapeState;
+import com.epsilon.engine.ActionEffect;
 import com.epsilon.engine.EngineDecisionBuffer;
+import com.epsilon.engine.WinSettlementProjection;
 import java.util.List;
 
 /** 自家手牌と公開情報のみを読む、席に固定された借用参照。 エンジンが停止している間だけ有効。GameState、山、他家手牌への入口を公開しない。 */
@@ -118,6 +121,11 @@ public final class PublicObservation {
     return state.publicState();
   }
 
+  /** 局の公開の出来事の記録（打牌・副露・加槓。どの席にも公開の事実だけを持つ）。 */
+  public PublicEventLog events() {
+    return state.events();
+  }
+
   public VisibleDora doraState() {
     return dora;
   }
@@ -125,6 +133,33 @@ public final class PublicObservation {
   /** 組み込みルール解析へ借用局面を渡す。解析結果からも完全状態は取り出せない。 */
   public void analyze(List<Action> legalActions, EngineDecisionBuffer destination) {
     destination.analyze(state, observer, legalActions, state.publicState());
+  }
+
+  /**
+   * 自家の合法なチー・ポンを仮の手へ適用し、鳴いた副露を返す（{@link ActionEffect#projectCallInto} へ借用局面を渡す）。局面は読むだけで
+   * 変えず、書くのは呼ぶ側の {@code afterCall}（自家の手と公開の副露の写し）だけ。鳴いた後に打てる牌は
+   * {@link com.epsilon.engine.PostCallDiscards} で求める。
+   *
+   * @param call 自家の合法なチーかポン（直前の出来事は他家の打牌）
+   * @param afterCall 書く先（鳴いた後の自家の手）
+   * @return 鳴いた副露
+   */
+  public Meld projectCall(Action call, ActionEffect.ProjectedHand afterCall) {
+    return ActionEffect.projectCallInto(state, observer, call, afterCall);
+  }
+
+  /**
+   * 自家の合法なロン・ツモの公開の射影（裏を除く点・支払いの下限・和了後の順位）を書く（{@link WinSettlementProjection#load} へ借用局面を
+   * 渡す）。射影からも完全状態は取り出せない。
+   *
+   * @param win 自家の合法なロンかツモ
+   * @param scoreEvaluator 呼ぶ側の作業域
+   * @param into 書く先
+   * @return {@code into}
+   */
+  public WinSettlementProjection projectWin(
+      Action win, HandScoreEvaluator scoreEvaluator, WinSettlementProjection into) {
+    return into.load(state, observer, win, scoreEvaluator);
   }
 
   /** 可変なエンジンイベント自体を外へ渡さず、参照が所有する小さいイベントを再利用する。 */

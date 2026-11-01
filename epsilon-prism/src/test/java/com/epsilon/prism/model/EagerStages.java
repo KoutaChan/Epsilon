@@ -81,7 +81,8 @@ public final class EagerStages {
       copy.position(0);
       sections.put(tensor, copy);
     }
-    return NetworkInputs.of(manager, rows, events, transitions, actions, sections);
+    return NetworkInputs.of(
+        manager, Uploads.on(manager), rows, events, transitions, actions, sections);
   }
 
   /**

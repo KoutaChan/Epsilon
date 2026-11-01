@@ -8,16 +8,17 @@ import ai.djl.pytorch.engine.PtNDManager;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.FrontierFeatures;
-import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputWriter;
 import com.epsilon.prism.input.Tokenizer;
 import com.epsilon.prism.learn.FitPlan;
 import com.epsilon.spi.PolicyExecutionContext;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.IntFunction;
 
 /**
  * 問い合わせの塊を網の入力にする（{@link Encoding}）。入力は問い合わせが運ぶ記録 O だけで、捕捉は出す側が済ませている（{@link
@@ -57,8 +58,8 @@ final class BatchEncoder implements AutoCloseable {
 
   private final int budget;
   private final boolean frontier;
-  private final Memory memory;
   private final PtNDManager pinned;
+  private final IntFunction<ByteBuffer> blobs;
   private final ThreadLocal<Tools> tools;
   private final ConcurrentLinkedQueue<Encoding> encodings = new ConcurrentLinkedQueue<>();
   private final ConcurrentLinkedQueue<HostInputs> batches = new ConcurrentLinkedQueue<>();
@@ -79,11 +80,15 @@ final class BatchEncoder implements AutoCloseable {
     }
     this.budget = budget;
     this.frontier = frontier;
-    this.memory = memory;
     pinned =
         memory == Memory.PINNED
             ? (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME)
             : null;
+    blobs =
+        switch (memory) {
+          case DIRECT -> ByteBuffer::allocateDirect;
+          case PINNED -> bytes -> pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer();
+        };
     tools = ThreadLocal.withInitial(() -> new Tools(frontier));
   }
 
@@ -162,18 +167,7 @@ final class BatchEncoder implements AutoCloseable {
   private HostInputs batch() {
     HostInputs batch = batches.poll();
     if (batch == null) {
-      batch =
-          switch (memory) {
-            case DIRECT -> HostInputs.allocate(BatchPlan.Capacity.DEFAULT, frontier);
-            case PINNED -> {
-              int bytes = BatchPlan.maxBytes(BatchPlan.Capacity.DEFAULT);
-              yield new HostInputs(
-                  new HostBatch(
-                      BatchPlan.Capacity.DEFAULT,
-                      pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer()),
-                  null);
-            }
-          };
+      batch = HostInputs.allocate(BatchPlan.Capacity.DEFAULT, frontier, blobs);
     }
     batch.plan().clear();
     return batch;

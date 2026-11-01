@@ -14,6 +14,7 @@ import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.model.FrozenNetwork;
 import com.epsilon.prism.model.NetworkInputs;
 import com.epsilon.prism.model.PrismNetwork;
+import com.epsilon.prism.model.Uploads;
 import com.epsilon.prism.policy.InferencePath;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -78,22 +79,26 @@ sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
     return new Eager(FrozenNetwork.load(directory, device), attention);
   }
 
-  /** eager の凍結した網。s は [行, 手の容量] を行優先に平らにした形。 */
+  /** eager の凍結した網。s は [行, 手の容量] を行優先に平らにした形。索引の送り出しの置き場は網に付けて 1 つ持つ。 */
   final class Eager implements Anchor {
 
     private final FrozenNetwork network;
     private final RelationAttention attention;
+    private final Uploads uploads;
 
     Eager(FrozenNetwork network, RelationAttention attention) {
       this.network = network;
       this.attention = attention;
+      uploads = network.newUploads();
     }
 
     @Override
     public Scores scores(HostInputs inputs) {
       try (NDManager scope = network.newScope();
           InferenceMode inference = network.inference()) {
-        NDArray s = network.scores(NetworkInputs.of(scope, inputs.input(), inputs.frontier()), attention);
+        NDArray s =
+            network.scores(
+                NetworkInputs.of(scope, uploads, inputs.input(), inputs.frontier()), attention);
         int rows = Math.toIntExact(s.getShape().get(0));
         int capacity = Math.toIntExact(s.getShape().get(1));
         int[] starts = new int[rows];

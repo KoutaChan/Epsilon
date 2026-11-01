@@ -9,6 +9,7 @@ import com.epsilon.prism.model.AuxiliaryLabels;
 import com.epsilon.prism.model.AuxiliaryLoss;
 import com.epsilon.prism.model.LossInputs;
 import com.epsilon.prism.model.NetworkInputs;
+import com.epsilon.prism.model.Uploads;
 import com.epsilon.prism.model.ValueLabel;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -104,14 +105,15 @@ record Microbatch(
   }
 
   /**
-   * 網の入力を作る（{@link NetworkInputs#of(NDManager, HostBatch, FrontierBatch)}。CPU では配列が塊の領域を
-   * 指すので、配列を閉じるまで塊を返さない）。
+   * 網の入力を作る（{@link NetworkInputs#of(NDManager, Uploads, HostBatch, FrontierBatch)}。CPU では配列が塊の
+   * 領域を指すので、配列を閉じるまで塊を返さない）。
    *
    * @param manager 配列を作る管理元
+   * @param uploads 索引と損失の入力を送る置き場（レーンの物）
    * @return 入力
    */
-  NetworkInputs inputs(NDManager manager) {
-    return NetworkInputs.of(manager, batch.input(), batch.frontier());
+  NetworkInputs inputs(NDManager manager, Uploads uploads) {
+    return NetworkInputs.of(manager, uploads, batch.input(), batch.frontier());
   }
 
   /**

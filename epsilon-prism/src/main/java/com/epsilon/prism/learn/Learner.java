@@ -26,6 +26,7 @@ import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.Uploads;
 import com.epsilon.prism.model.ValueLabel;
 import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.runtime.DecisionExecutionContext;
@@ -186,7 +187,7 @@ final class Learner implements AutoCloseable {
       try (NDManager scope = lane.manager().newSubManager();
           GradientCollector collector = lane.newGradientCollector()) {
         long started = System.nanoTime();
-        NetworkInputs inputs = part.inputs(scope);
+        NetworkInputs inputs = part.inputs(scope, lane.uploads);
         LossInputs targets = part.lossInputs(inputs, labels);
         transferNanos.add(System.nanoTime() - started);
         clock.mark(Stage.TRANSFER);
@@ -357,7 +358,7 @@ final class Learner implements AutoCloseable {
     }
   }
 
-  /** 1 つのデバイスの網と計算の型（GPU なら計算ストリームに積む注意の演算も）と、錨の網と、段の時計。 */
+  /** 1 つのデバイスの網と計算の型（GPU なら計算ストリームに積む注意の演算も）と、送り出しの置き場と、錨の網と、段の時計。 */
   private static final class NetworkLane extends DataParallelGroup.Lane {
 
     private final PrismNetwork network;
@@ -368,6 +369,9 @@ final class Learner implements AutoCloseable {
 
     /** 当てはめの計測の時計（計測しないなら何もしない）。 */
     private final FitProfile.Clock clock;
+
+    /** 微小バッチの索引と損失の入力をデバイスへ送る置き場（このレーンのスレッドだけが使う）。 */
+    private final Uploads uploads;
 
     /** このデバイスに読んだ錨（錨がなければ null）。 */
     private final Anchor anchor;
@@ -399,6 +403,7 @@ final class Learner implements AutoCloseable {
               ? HipAttention.on(HipLibrary.load(), computeStream())
               : null;
       clock = profile.clock(computeStream());
+      uploads = Uploads.on(manager());
       try {
         anchor =
             anchorDirectory == null
@@ -422,7 +427,11 @@ final class Learner implements AutoCloseable {
           anchor.close();
         }
       } finally {
-        clock.close();
+        try {
+          uploads.close();
+        } finally {
+          clock.close();
+        }
       }
     }
   }

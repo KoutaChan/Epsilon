@@ -161,10 +161,10 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
    * @param denominators 頭ごとの平均の分母
    */
   record Inputs(
-      LossInputs.Section candidateTargets,
-      Map<CandidateTarget, LossInputs.Section> candidateMasks,
-      LossInputs.Section readingTargets,
-      Map<ReadingTarget, LossInputs.Section> readingMasks,
+      Staging.Section candidateTargets,
+      Map<CandidateTarget, Staging.Section> candidateMasks,
+      Staging.Section readingTargets,
+      Map<ReadingTarget, Staging.Section> readingMasks,
       Denominators denominators) {}
 
   /**
@@ -176,9 +176,9 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
    * @return 送った後に読む教師と条件の印
    * @throws IllegalArgumentException 分母が教師の条件を満たす所の数より小さいとき
    */
-  static Inputs stage(AuxiliaryLabels labels, Denominators denominators, LossInputs.Staging staging) {
+  static Inputs stage(AuxiliaryLabels labels, Denominators denominators, Staging staging) {
     int candidates = labels.candidateActions().length;
-    Map<CandidateTarget, LossInputs.Section> candidateMasks = new EnumMap<>(CandidateTarget.class);
+    Map<CandidateTarget, Staging.Section> candidateMasks = new EnumMap<>(CandidateTarget.class);
     for (CandidateTarget target : CANDIDATE_TARGETS) {
       float[] mask = candidateMask(target, labels.outcomes());
       if (covered(target, mask, denominators.candidate()[target.ordinal()]) > 0) {
@@ -187,7 +187,7 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
     }
     int rows = labels.readingRows().length;
     int units = rows * OPPONENTS;
-    Map<ReadingTarget, LossInputs.Section> readingMasks = new EnumMap<>(ReadingTarget.class);
+    Map<ReadingTarget, Staging.Section> readingMasks = new EnumMap<>(ReadingTarget.class);
     for (ReadingTarget target : READING_TARGETS) {
       float[] mask = readingMask(target, labels.readingValues(), units);
       if (covered(target, mask, denominators.reading()[target.ordinal()]) > 0) {
@@ -211,19 +211,19 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
   }
 
   /**
-   * 損失を計算する（網の出力が既にあるときの口）。教師を送ってから {@link #terms(NDManager, Outputs.Auxiliary, Inputs, float)} と同じ
-   * 演算を通し、分母は教師から数える。
+   * 損失を計算する（網の出力が既にあるときの口。試験と点検が使い、送り出しの置き場は scope に付けて作る）。教師を送ってから
+   * {@link #terms(NDManager, Outputs.Auxiliary, Inputs, float)} と同じ演算を通し、分母は教師から数える。
    *
-   * @param scope 作った配列を付ける管理元
+   * @param scope 作った配列と送り出しの置き場を付ける管理元
    * @param outputs 補助の頭の出力
    * @param labels 教師
    * @param gain ゲイン K′（replay では 1）
    * @return 頭ごとの損失と合計
    */
   public Terms terms(NDManager scope, Outputs.Auxiliary outputs, AuxiliaryLabels labels, float gain) {
-    LossInputs.Staging staging = new LossInputs.Staging();
+    Staging staging = new Staging();
     Inputs inputs = stage(labels, Denominators.of(labels), staging);
-    staging.send(scope);
+    staging.send(Uploads.on(scope), scope);
     return terms(scope, outputs, inputs, gain);
   }
 
@@ -240,7 +240,7 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
     Map<CandidateTarget, NDArray> candidate = new EnumMap<>(CandidateTarget.class);
     NDArray candidateSum = scope.zeros(new Shape());
     for (CandidateTarget target : CANDIDATE_TARGETS) {
-      LossInputs.Section mask = inputs.candidateMasks().get(target);
+      Staging.Section mask = inputs.candidateMasks().get(target);
       NDArray term;
       if (mask == null) {
         term = scope.zeros(new Shape());
@@ -257,7 +257,7 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
     Map<ReadingTarget, NDArray> reading = new EnumMap<>(ReadingTarget.class);
     NDArray readingSum = scope.zeros(new Shape());
     for (ReadingTarget target : READING_TARGETS) {
-      LossInputs.Section mask = inputs.readingMasks().get(target);
+      Staging.Section mask = inputs.readingMasks().get(target);
       NDArray term;
       if (mask == null) {
         term = scope.zeros(new Shape());

@@ -22,6 +22,7 @@ import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.Uploads;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -183,7 +184,7 @@ public class TrainingAttentionGpuBench {
       Capture capture = new Capture(kernels);
       network.forward(
           new ParameterStore(scope, false),
-          part.inputs(scope),
+          part.inputs(scope, Uploads.on(scope)),
           Pass.inference(Precision.BFLOAT16, AttentionTape.forwardOnly(capture)));
       for (int layer = 0; layer < capture.calls.size(); layer++) {
         Call call = capture.calls.get(layer);

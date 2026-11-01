@@ -141,13 +141,15 @@ final class Batches {
 
     /** 前線のない網の入力。 */
     NetworkInputs inputs(NDManager manager) {
-      return NetworkInputs.of(manager, rows.size(), events, transitions, actions, sections);
+      return NetworkInputs.of(
+          manager, Uploads.on(manager), rows.size(), events, transitions, actions, sections);
     }
 
     /** 形に合わせた網の入力（前線の腕なら前線の区画も渡す）。 */
     NetworkInputs inputs(NDManager manager, PrismShape shape) {
       return NetworkInputs.of(
           manager,
+          Uploads.on(manager),
           rows.size(),
           events,
           transitions,

@@ -1,8 +1,6 @@
 package com.epsilon.prism.model;
 
 import ai.djl.ndarray.NDArray;
-import ai.djl.ndarray.NDManager;
-import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.Shape;
 import com.epsilon.ai.model.MahjongTileRelation;
 import com.epsilon.prism.Limits;
@@ -20,7 +18,8 @@ import java.util.Objects;
 
 /**
  * 1 回の順伝播の索引。行と手の索引（ホストの写し）を確かめ、トークンの並べ替え・候補の集約・価値グラフの合成に要る添字をホストで作り、
- * 型ごとに 1 本の配列でデバイスへ送る（各区画はその切り出し）。デバイスの上では値で形が決まる演算（nonzero など）を使わない。
+ * 型ごとに 1 本の配列でデバイスへ送る（{@link Staging}。入力を作ったスレッドの置き場 {@link NetworkInputs#uploads} から写し、各区画は
+ * その切り出し）。デバイスの上では値で形が決まる演算（nonzero など）を使わない。
  *
  * <p>手の値の作り方は {@link Composition} が役割から決める。代表でない双子は代表の遷移を読む。
  */
@@ -184,11 +183,11 @@ final class BatchIndex {
     for (int i = 0; i < relations.length; i++) {
       relations[i] = Math.toIntExact(relationIds[i]);
     }
-    int hEventSlots = events == 0 ? -1 : staging.add(eventSlot, new Shape(events));
-    int hTokenSlots = staging.add(tokenSlot, new Shape(tokenSlot.length));
-    int hTokenMask = staging.add(mask, new Shape(rows, tokens));
-    int hTokenTypes = staging.add(types, new Shape(tokens));
-    int hTileRelations = staging.add(relations, new Shape(relations.length));
+    Staging.Section hEventSlots = events == 0 ? null : staging.add(eventSlot, new Shape(events));
+    Staging.Section hTokenSlots = staging.add(tokenSlot, new Shape(tokenSlot.length));
+    Staging.Section hTokenMask = staging.add(mask, new Shape(rows, tokens));
+    Staging.Section hTokenTypes = staging.add(types, new Shape(tokens));
+    Staging.Section hTileRelations = staging.add(relations, new Shape(relations.length));
 
     // 遷移
     int[] transitionRow = new int[inputs.transitions()];
@@ -197,7 +196,7 @@ final class BatchIndex {
         transitionRow[structure.firstTransitionOfRow[r] + t] = r;
       }
     }
-    int hTransitionRows = staging.add(transitionRow, new Shape(transitionRow.length));
+    Staging.Section hTransitionRows = staging.add(transitionRow, new Shape(transitionRow.length));
 
     // 手の並べ方と価値グラフ
     int actions = inputs.actions();
@@ -261,15 +260,16 @@ final class BatchIndex {
         case ZERO -> {}
       }
     }
-    int hActionSlots = staging.add(actionSlot, new Shape(actions));
-    int hLegal = staging.add(legalSlot, new Shape(rows, capacity));
-    int hPivot = staging.add(pivot, new Shape(rows, capacity));
-    int hPivotRow = staging.add(pivotRow, new Shape(rows, 1));
-    int hMeasured = measuredSlot == null ? -1 : staging.add(measuredSlot, new Shape(rows, capacity));
+    Staging.Section hActionSlots = staging.add(actionSlot, new Shape(actions));
+    Staging.Section hLegal = staging.add(legalSlot, new Shape(rows, capacity));
+    Staging.Section hPivot = staging.add(pivot, new Shape(rows, capacity));
+    Staging.Section hPivotRow = staging.add(pivotRow, new Shape(rows, 1));
+    Staging.Section hMeasured =
+        measuredSlot == null ? null : staging.add(measuredSlot, new Shape(rows, capacity));
 
     discardCount = lists.discardActions.size();
-    int hDiscardActions = staging.addLongs(lists.discardActions);
-    int hDiscardTransitions = staging.addLongs(lists.discardTransitions);
+    Staging.Section hDiscardActions = staging.addLongs(lists.discardActions);
+    Staging.Section hDiscardTransitions = staging.addLongs(lists.discardTransitions);
 
     gateCount = lists.gateActions.size();
     int width = 1;
@@ -282,16 +282,17 @@ final class BatchIndex {
     for (int g = 0; g < gateCount; g++) {
       structure.spread(lists.gateActions.get(g), gateTransition, gateMask, g * gateWidth);
     }
-    int hGateActions = staging.addLongs(lists.gateActions);
-    int hGateKinds = staging.addLongs(lists.gateKinds);
-    int hGateRows = staging.addLongs(lists.gateRows);
-    int hGateTransitions =
-        gateCount == 0 ? -1 : staging.add(gateTransition, new Shape(gateTransition.length));
-    int hGateMask = gateCount == 0 ? -1 : staging.add(gateMask, new Shape(gateCount, gateWidth));
-    int hGateBase = staging.addLongs(lists.gateBaseTransitions);
-    int hGateUsesBar =
+    Staging.Section hGateActions = staging.addLongs(lists.gateActions);
+    Staging.Section hGateKinds = staging.addLongs(lists.gateKinds);
+    Staging.Section hGateRows = staging.addLongs(lists.gateRows);
+    Staging.Section hGateTransitions =
+        gateCount == 0 ? null : staging.add(gateTransition, new Shape(gateTransition.length));
+    Staging.Section hGateMask =
+        gateCount == 0 ? null : staging.add(gateMask, new Shape(gateCount, gateWidth));
+    Staging.Section hGateBase = staging.addLongs(lists.gateBaseTransitions);
+    Staging.Section hGateUsesBar =
         gateCount == 0
-            ? -1
+            ? null
             : staging.add(toBooleans(lists.gateUsesBar), new Shape(gateCount, 1));
 
     // ē: 行ごとの代表の打牌
@@ -309,8 +310,8 @@ final class BatchIndex {
       }
     }
     barWidth = turnCount == 0 ? 0 : bar;
-    int hBarTransitions = -1;
-    int hBarMask = -1;
+    Staging.Section hBarTransitions = null;
+    Staging.Section hBarMask = null;
     if (barWidth > 0) {
       long[] barTransition = new long[rows * barWidth];
       float[] barSlot = new float[rows * barWidth];
@@ -328,19 +329,19 @@ final class BatchIndex {
     }
 
     riichiCount = lists.riichiActions.size();
-    int hRiichiActions = staging.addLongs(lists.riichiActions);
-    int hRiichiBase = staging.addLongs(lists.riichiBaseTransitions);
-    int hRiichiGates = staging.addLongs(lists.riichiGates);
-    int hRiichiAnchors =
+    Staging.Section hRiichiActions = staging.addLongs(lists.riichiActions);
+    Staging.Section hRiichiBase = staging.addLongs(lists.riichiBaseTransitions);
+    Staging.Section hRiichiGates = staging.addLongs(lists.riichiGates);
+    Staging.Section hRiichiAnchors =
         riichiCount == 0 || measuredFlags == null
-            ? -1
+            ? null
             : staging.add(toBooleans(lists.riichiAnchors), new Shape(riichiCount));
     responseCount = lists.responseActions.size();
-    int hResponseActions = staging.addLongs(lists.responseActions);
-    int hResponseGates = staging.addLongs(lists.responseGates);
-    int hTurnActions = staging.addLongs(lists.turnActions);
-    int hTurnGates = staging.addLongs(lists.turnGates);
-    int hTurnRows = staging.addLongs(lists.turnRows);
+    Staging.Section hResponseActions = staging.addLongs(lists.responseActions);
+    Staging.Section hResponseGates = staging.addLongs(lists.responseGates);
+    Staging.Section hTurnActions = staging.addLongs(lists.turnActions);
+    Staging.Section hTurnGates = staging.addLongs(lists.turnGates);
+    Staging.Section hTurnRows = staging.addLongs(lists.turnRows);
 
     // 補助の頭（学習で教師があるときだけ）
     AuxiliaryLabels labels = pass.auxiliary();
@@ -356,9 +357,9 @@ final class BatchIndex {
       candidateSpan = Math.max(candidateSpan, structure.transitionsOf(action));
     }
     candidateWidth = candidateSpan;
-    int hCandidateTransitions = -1;
-    int hCandidateMask = -1;
-    int hCandidateRows = -1;
+    Staging.Section hCandidateTransitions = null;
+    Staging.Section hCandidateMask = null;
+    Staging.Section hCandidateRows = null;
     if (candidateCount > 0) {
       long[] candidateTransition = new long[candidateCount * candidateWidth];
       float[] candidateSlot = new float[candidateCount * candidateWidth];
@@ -377,65 +378,66 @@ final class BatchIndex {
     for (int i = 0; i < readingCount; i++) {
       readingRow[i] = Objects.checkIndex(reading[i], rows);
     }
-    int hReadingRows = readingCount == 0 ? -1 : staging.add(readingRow, new Shape(readingCount));
+    Staging.Section hReadingRows =
+        readingCount == 0 ? null : staging.add(readingRow, new Shape(readingCount));
 
     // 欄の並べ方の列の添字（定数だが、転送を 1 本にまとめるためここで載せる）
-    int[][] packHandles = new int[FieldPack.ALL.size()][];
-    for (int p = 0; p < packHandles.length; p++) {
+    Staging.Section[][] packSections = new Staging.Section[FieldPack.ALL.size()][];
+    for (int p = 0; p < packSections.length; p++) {
       FieldPack pack = FieldPack.ALL.get(p);
-      packHandles[p] =
-          new int[] {
+      packSections[p] =
+          new Staging.Section[] {
             staging.add(pack.embeddedColumns(), new Shape(pack.embeddedColumns().length)),
             staging.add(pack.namespaceOffsets(), new Shape(1, pack.namespaceOffsets().length)),
             staging.add(pack.flagColumns(), new Shape(pack.flagColumns().length))
           };
     }
 
-    staging.send(inputs.manager());
-    for (int p = 0; p < packHandles.length; p++) {
+    staging.send(inputs.uploads(), inputs.manager());
+    for (int p = 0; p < packSections.length; p++) {
       columns.put(
           FieldPack.ALL.get(p),
           new FieldPack.Columns(
-              staging.get(packHandles[p][0]),
-              staging.get(packHandles[p][1]),
-              staging.get(packHandles[p][2])));
+              sent(packSections[p][0]),
+              sent(packSections[p][1]),
+              sent(packSections[p][2])));
     }
-    eventSlots = staging.get(hEventSlots);
-    tokenSlots = staging.get(hTokenSlots);
-    tokenMask = staging.get(hTokenMask);
-    tokenTypes = staging.get(hTokenTypes);
-    tileRelations = staging.get(hTileRelations);
-    transitionRows = staging.get(hTransitionRows);
-    actionSlots = staging.get(hActionSlots);
+    eventSlots = sent(hEventSlots);
+    tokenSlots = sent(hTokenSlots);
+    tokenMask = sent(hTokenMask);
+    tokenTypes = sent(hTokenTypes);
+    tileRelations = sent(hTileRelations);
+    transitionRows = sent(hTransitionRows);
+    actionSlots = sent(hActionSlots);
     discardValueSlots = discardValueSlot;
-    legal = staging.get(hLegal);
-    pivotMask = staging.get(hPivot);
-    pivotPresent = staging.get(hPivotRow);
-    measured = staging.get(hMeasured);
-    discardActions = staging.get(hDiscardActions);
-    discardTransitions = staging.get(hDiscardTransitions);
-    gateActions = staging.get(hGateActions);
-    gateKinds = staging.get(hGateKinds);
-    gateRows = staging.get(hGateRows);
-    gateTransitions = staging.get(hGateTransitions);
-    gateTransitionMask = staging.get(hGateMask);
-    gateBaseTransitions = staging.get(hGateBase);
-    gateUsesBar = staging.get(hGateUsesBar);
-    barTransitions = staging.get(hBarTransitions);
-    barMask = staging.get(hBarMask);
-    riichiActions = staging.get(hRiichiActions);
-    riichiBaseTransitions = staging.get(hRiichiBase);
-    riichiGates = staging.get(hRiichiGates);
-    riichiAnchors = staging.get(hRiichiAnchors);
-    responseActions = staging.get(hResponseActions);
-    responseGates = staging.get(hResponseGates);
-    turnActions = staging.get(hTurnActions);
-    turnGates = staging.get(hTurnGates);
-    turnRows = staging.get(hTurnRows);
-    candidateTransitions = staging.get(hCandidateTransitions);
-    candidateMask = staging.get(hCandidateMask);
-    candidateRows = staging.get(hCandidateRows);
-    readingRows = staging.get(hReadingRows);
+    legal = sent(hLegal);
+    pivotMask = sent(hPivot);
+    pivotPresent = sent(hPivotRow);
+    measured = sent(hMeasured);
+    discardActions = sent(hDiscardActions);
+    discardTransitions = sent(hDiscardTransitions);
+    gateActions = sent(hGateActions);
+    gateKinds = sent(hGateKinds);
+    gateRows = sent(hGateRows);
+    gateTransitions = sent(hGateTransitions);
+    gateTransitionMask = sent(hGateMask);
+    gateBaseTransitions = sent(hGateBase);
+    gateUsesBar = sent(hGateUsesBar);
+    barTransitions = sent(hBarTransitions);
+    barMask = sent(hBarMask);
+    riichiActions = sent(hRiichiActions);
+    riichiBaseTransitions = sent(hRiichiBase);
+    riichiGates = sent(hRiichiGates);
+    riichiAnchors = sent(hRiichiAnchors);
+    responseActions = sent(hResponseActions);
+    responseGates = sent(hResponseGates);
+    turnActions = sent(hTurnActions);
+    turnGates = sent(hTurnGates);
+    turnRows = sent(hTurnRows);
+    candidateTransitions = sent(hCandidateTransitions);
+    candidateMask = sent(hCandidateMask);
+    candidateRows = sent(hCandidateRows);
+    readingRows = sent(hReadingRows);
   }
 
   /**
@@ -446,6 +448,11 @@ final class BatchIndex {
    */
   FieldPack.Columns columns(FieldPack pack) {
     return Objects.requireNonNull(columns.get(pack), "unknown field pack");
+  }
+
+  /** 送った区画の配列（載せなかった区画は null）。 */
+  private static NDArray sent(Staging.Section section) {
+    return section == null ? null : section.array();
   }
 
   private static boolean[] toBooleans(List<Boolean> values) {
@@ -630,95 +637,4 @@ final class BatchIndex {
     }
   }
 
-  /** ホストの索引を型ごとに 1 本の配列で送り、区画を切り出す。 */
-  private static final class Staging {
-
-    private enum Kind {
-      LONG,
-      INT,
-      FLOAT,
-      BOOLEAN
-    }
-
-    private record Part(Kind kind, int offset, int length, Shape shape) {}
-
-    private final List<Part> parts = new ArrayList<>();
-    private final List<Object> data = new ArrayList<>();
-    private final int[] sizes = new int[Kind.values().length];
-    private final NDArray[] arrays = new NDArray[Kind.values().length];
-
-    int add(long[] values, Shape shape) {
-      return add(Kind.LONG, values, values.length, shape);
-    }
-
-    int add(int[] values, Shape shape) {
-      return add(Kind.INT, values, values.length, shape);
-    }
-
-    int add(float[] values, Shape shape) {
-      return add(Kind.FLOAT, values, values.length, shape);
-    }
-
-    int add(boolean[] values, Shape shape) {
-      return add(Kind.BOOLEAN, values, values.length, shape);
-    }
-
-    /** 整数の列を INT64 の区画にする（空なら −1）。 */
-    int addLongs(List<? extends Number> values) {
-      if (values.isEmpty()) {
-        return -1;
-      }
-      long[] array = new long[values.size()];
-      for (int i = 0; i < array.length; i++) {
-        array[i] = values.get(i).longValue();
-      }
-      return add(array, new Shape(array.length));
-    }
-
-    private int add(Kind kind, Object values, int length, Shape shape) {
-      if (length == 0 || shape.size() != length) {
-        throw new IllegalStateException("invalid staged part " + shape + " of " + length);
-      }
-      parts.add(new Part(kind, sizes[kind.ordinal()], length, shape));
-      data.add(values);
-      sizes[kind.ordinal()] += length;
-      return parts.size() - 1;
-    }
-
-    void send(NDManager manager) {
-      long[] longs = new long[sizes[Kind.LONG.ordinal()]];
-      int[] ints = new int[sizes[Kind.INT.ordinal()]];
-      float[] floats = new float[sizes[Kind.FLOAT.ordinal()]];
-      boolean[] booleans = new boolean[sizes[Kind.BOOLEAN.ordinal()]];
-      for (int i = 0; i < parts.size(); i++) {
-        Part part = parts.get(i);
-        Object source = data.get(i);
-        Object target =
-            switch (part.kind) {
-              case LONG -> longs;
-              case INT -> ints;
-              case FLOAT -> floats;
-              case BOOLEAN -> booleans;
-            };
-        System.arraycopy(source, 0, target, part.offset, part.length);
-      }
-      arrays[Kind.LONG.ordinal()] = longs.length == 0 ? null : manager.create(longs);
-      arrays[Kind.INT.ordinal()] = ints.length == 0 ? null : manager.create(ints);
-      arrays[Kind.FLOAT.ordinal()] = floats.length == 0 ? null : manager.create(floats);
-      arrays[Kind.BOOLEAN.ordinal()] = booleans.length == 0 ? null : manager.create(booleans);
-    }
-
-    NDArray get(int handle) {
-      if (handle < 0) {
-        return null;
-      }
-      Part part = parts.get(handle);
-      NDArray all = arrays[part.kind.ordinal()];
-      NDArray slice =
-          part.length == all.size()
-              ? all
-              : all.get(new NDIndex("{}:{}", part.offset, part.offset + part.length));
-      return slice.reshape(part.shape);
-    }
-  }
 }

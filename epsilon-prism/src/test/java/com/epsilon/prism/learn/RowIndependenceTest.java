@@ -17,8 +17,10 @@ import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.Uploads;
 import com.epsilon.prism.observe.Observation;
 import com.epsilon.prism.rows.Row;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Random;
 import org.slf4j.Logger;
@@ -104,7 +106,7 @@ public class RowIndependenceTest {
             rows * Limits.MAX_EVENT_TOKENS,
             rows * Limits.MAX_TRANSITIONS,
             rows * Limits.MAX_LEGAL_ACTIONS);
-    return HostInputs.allocate(capacity, false);
+    return HostInputs.allocate(capacity, false, ByteBuffer::allocateDirect);
   }
 
   private static float[] scores(PrismNetwork network, Microbatch part, NDManager manager) {
@@ -112,7 +114,7 @@ public class RowIndependenceTest {
       return network
           .forward(
               new ParameterStore(scope, false),
-              part.inputs(scope),
+              part.inputs(scope, Uploads.on(scope)),
               Pass.inference(Precision.FLOAT32))
           .scores()
           .toFloatArray();

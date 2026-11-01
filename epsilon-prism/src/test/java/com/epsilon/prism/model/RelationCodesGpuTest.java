@@ -69,11 +69,19 @@ public class RelationCodesGpuTest {
       Batches.Batch random = Batches.build(randomRows(), 5);
       compare(manager, kernel, "random", random::inputs);
       List<long[]> engine = HipFixtures.mixedRows(ROWS, 900);
-      compare(manager, kernel, "engine", scope -> NetworkInputs.of(scope, HipFixtures.encode(engine)));
+      compare(
+          manager,
+          kernel,
+          "engine",
+          scope -> NetworkInputs.of(scope, Uploads.on(scope), HipFixtures.encode(engine)));
       String directory = System.getProperty(ROWS_PROPERTY);
       if (directory != null) {
         for (List<long[]> piece : pieces(Path.of(directory))) {
-          compare(manager, kernel, "rows", scope -> NetworkInputs.of(scope, HipFixtures.encode(piece)));
+          compare(
+              manager,
+              kernel,
+              "rows",
+              scope -> NetworkInputs.of(scope, Uploads.on(scope), HipFixtures.encode(piece)));
         }
       }
     }

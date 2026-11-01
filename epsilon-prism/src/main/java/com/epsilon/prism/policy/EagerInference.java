@@ -10,12 +10,14 @@ import ai.djl.pytorch.engine.PtNDArray;
 import ai.djl.pytorch.engine.PtStream;
 import com.epsilon.prism.model.FrozenNetwork;
 import com.epsilon.prism.model.NetworkInputs;
+import com.epsilon.prism.model.Uploads;
 import com.epsilon.runtime.DecisionDevicePipeline;
 import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.nio.file.Path;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * eager の推論の道（1 つのデバイス）。保存した網を凍結して持ち（{@link FrozenNetwork}。GPU は BF16 の丸め、CPU は FP32）、
@@ -24,11 +26,15 @@ import java.util.Map;
  * <p>実行枠では、入力を共通の H2D のストリームで作り、順伝播を実行枠ごとの計算のストリームで出す（網の索引の転送が同期するので、ほかの実行枠の
  * 計算を待たないため）。出力の D2H は共通のパイプラインが受け持つ（{@code Slot.prepareOutput}）。実行枠の計算のストリームは提出のスレッドだけが
  * 作り、使う。
+ *
+ * <p>1 回の仕事は索引の送り出しの置き場（{@link Uploads}）を池から借り、終わると返す（呼び手のスレッドがいくつあっても、置き場は同時に 1 つの
+ * 仕事だけが使う）。
  */
 final class EagerInference implements DeviceInference {
 
   private final FrozenNetwork network;
   private final Map<DecisionDevicePipeline.Slot, PtStream> streams = new IdentityHashMap<>();
+  private final ConcurrentLinkedQueue<Uploads> uploads = new ConcurrentLinkedQueue<>();
 
   private EagerInference(FrozenNetwork network) {
     this.network = network;
@@ -59,6 +65,17 @@ final class EagerInference implements DeviceInference {
   /** 自動微分を記録しない区間（順伝播と出力の整形をこの中で行う）。 */
   InferenceMode inference() {
     return network.inference();
+  }
+
+  /** 1 回の仕事の送り出しの置き場を借りる（池が空なら網に付けて作る）。{@link #releaseUploads} で返す。 */
+  Uploads acquireUploads() {
+    Uploads borrowed = uploads.poll();
+    return borrowed == null ? network.newUploads() : borrowed;
+  }
+
+  /** 借りた置き場を池に返す（送った区画の写しは同期で終わっているので、次の仕事がすぐ使える）。 */
+  void releaseUploads(Uploads borrowed) {
+    uploads.add(borrowed);
   }
 
   /**
@@ -105,6 +122,7 @@ final class EagerInference implements DeviceInference {
       }
     }
     streams.clear();
+    uploads.clear();
     try {
       network.close();
     } catch (RuntimeException | Error problem) {

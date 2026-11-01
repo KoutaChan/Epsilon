@@ -22,8 +22,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 網の入力の 1 塊。{@link Tensor} の区画ごとの NDArray（同じ管理元・同じデバイス）と、前線の腕なら前線の区画、行・手の索引のホストの写しを
- * 持つ。
+ * 網の入力の 1 塊。{@link Tensor} の区画ごとの NDArray（同じ管理元・同じデバイス）と、前線の腕なら前線の区画、行・手の索引のホストの写し、
+ * そこから作る索引と損失の入力をデバイスへ送る置き場（{@link Uploads}。入力を作ったスレッドの物）を持つ。
  *
  * <p>並びの約束（Tokenizer・HostBatch・HIP と共有する）:
  *
@@ -49,6 +49,7 @@ import java.util.Objects;
  * @param actions 手の数
  * @param rowColumns 行の索引のホストの写し（[行, {@link RowColumn}] を平らに）
  * @param actionColumns 手の索引のホストの写し（[手, {@link ActionColumn}] を平らに）
+ * @param uploads 索引（{@link BatchIndex}）と損失の入力（{@link LossInputs}）を送る置き場
  */
 public record NetworkInputs(
     Map<Tensor, NDArray> tensors,
@@ -58,7 +59,8 @@ public record NetworkInputs(
     int transitions,
     int actions,
     int[] rowColumns,
-    int[] actionColumns) {
+    int[] actionColumns,
+    Uploads uploads) {
 
   static {
     // HostBatch はリトルエンディアン、網の入口はネイティブの順で区画を読む
@@ -100,29 +102,34 @@ public record NetworkInputs(
     if (rowColumns.length != rows * ROW_WIDTH || actionColumns.length != actions * ACTION_WIDTH) {
       throw new IllegalArgumentException("row or action columns do not match the counts");
     }
+    Objects.requireNonNull(uploads, "uploads");
   }
 
   /**
-   * Tokenizer が書いた塊から、前線のない入力を作る（{@link #of(NDManager, HostBatch, FrontierBatch)} の前線なし）。
+   * Tokenizer が書いた塊から、前線のない入力を作る（{@link #of(NDManager, Uploads, HostBatch, FrontierBatch)} の前線なし）。
    *
    * @param manager 配列を作る管理元（デバイスもここで決まる）
+   * @param uploads 索引と損失の入力を送る置き場（呼び手のスレッドの物）
    * @param batch 計画を封じた塊
    * @return 入力
    */
-  public static NetworkInputs of(NDManager manager, HostBatch batch) {
-    return of(manager, batch, null);
+  public static NetworkInputs of(NDManager manager, Uploads uploads, HostBatch batch) {
+    return of(manager, uploads, batch, null);
   }
 
   /**
    * Tokenizer が書いた塊（と前線の腕なら前線の書き手が書いた塊）から作る。区画を切り出して
-   * {@link #of(NDManager, int, int, int, int, Map, ByteBuffer)} に渡す。CPU では配列が塊の領域を指すので、配列を閉じるまで塊を使い回さない。
+   * {@link #of(NDManager, Uploads, int, int, int, int, Map, ByteBuffer)} に渡す。CPU では配列が塊の領域を指すので、配列を閉じるまで
+   * 塊を使い回さない。
    *
    * @param manager 配列を作る管理元（デバイスもここで決まる）
+   * @param uploads 索引と損失の入力を送る置き場（呼び手のスレッドの物）
    * @param batch 計画を封じた塊
    * @param frontier 前線の塊（前線のない入力は null）
    * @return 入力
    */
-  public static NetworkInputs of(NDManager manager, HostBatch batch, FrontierBatch frontier) {
+  public static NetworkInputs of(
+      NDManager manager, Uploads uploads, HostBatch batch, FrontierBatch frontier) {
     BatchPlan plan = batch.plan();
     Map<Tensor, ByteBuffer> sections = new EnumMap<>(Tensor.class);
     for (Tensor tensor : Tensor.values()) {
@@ -132,6 +139,7 @@ public record NetworkInputs(
     }
     return of(
         manager,
+        uploads,
         plan.rows(),
         plan.count(Axis.EVENT),
         plan.count(Axis.TRANSITION),
@@ -146,6 +154,7 @@ public record NetworkInputs(
    * ホストの区画（転送の符号のまま、ネイティブのバイト順）から、前線のない入力を作る。HostBatch の blob の区画を切り出して渡す口。
    *
    * @param manager 配列を作る管理元（デバイスもここで決まる）
+   * @param uploads 索引と損失の入力を送る置き場（呼び手のスレッドの物）
    * @param rows 行の数
    * @param events 出来事のトークンの数
    * @param transitions 遷移の数
@@ -155,18 +164,20 @@ public record NetworkInputs(
    */
   public static NetworkInputs of(
       NDManager manager,
+      Uploads uploads,
       int rows,
       int events,
       int transitions,
       int actions,
       Map<Tensor, ByteBuffer> sections) {
-    return of(manager, rows, events, transitions, actions, sections, null);
+    return of(manager, uploads, rows, events, transitions, actions, sections, null);
   }
 
   /**
    * ホストの区画と前線の区画から作る。前線の腕では、同じ塊の FrontierBatch の blob の先頭を渡す。
    *
    * @param manager 配列を作る管理元（デバイスもここで決まる）
+   * @param uploads 索引と損失の入力を送る置き場（呼び手のスレッドの物）
    * @param rows 行の数
    * @param events 出来事のトークンの数
    * @param transitions 遷移の数
@@ -177,6 +188,7 @@ public record NetworkInputs(
    */
   public static NetworkInputs of(
       NDManager manager,
+      Uploads uploads,
       int rows,
       int events,
       int transitions,
@@ -204,7 +216,8 @@ public record NetworkInputs(
         transitions,
         actions,
         ints(sections.get(Tensor.ROW_COLUMN), rows * ROW_WIDTH),
-        ints(sections.get(Tensor.ACTION_COLUMN), actions * ACTION_WIDTH));
+        ints(sections.get(Tensor.ACTION_COLUMN), actions * ACTION_WIDTH),
+        uploads);
   }
 
   /**

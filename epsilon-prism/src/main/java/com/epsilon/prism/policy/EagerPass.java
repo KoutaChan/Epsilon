@@ -11,7 +11,8 @@ import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputSchema.Axis;
 import com.epsilon.prism.model.NetworkInputs;
-import java.nio.LongBuffer;
+import com.epsilon.prism.model.Staging;
+import com.epsilon.prism.model.Uploads;
 
 /**
  * eager の 1 回の受け付けのデバイスの仕事: 塊ごとの入力の転送（{@link #upload}）と順伝播（{@link #forward}）。GPU では転送を H2D のストリーム
@@ -22,13 +23,15 @@ import java.nio.LongBuffer;
  *
  * <p>入力の配列・枠の位置・出力は仕事の管理元に付けて、{@link #close} まで持つ（H2D のストリームで取った領域なので、計算が終わるまで捨てない。
  * CPU では入力の配列が塊の領域を指す）。塊ごとの順伝播の途中の配列は、その塊の順伝播を出した直後に捨てる。計算のストリームで取った領域は、同じ
- * ストリームの後の確保だけが使い回すので、計算が終わる前に捨ててよい。
+ * ストリームの後の確保だけが使い回すので、計算が終わる前に捨ててよい。索引と枠の位置は網から借りた置き場（{@link Uploads}）から送り、
+ * {@link #close} で返す。
  */
 final class EagerPass implements AutoCloseable {
 
   private final EagerInference network;
   private final Encoding encoding;
   private final NDManager work;
+  private final Uploads uploads;
   private final NDManager[] scopes;
   private final NetworkInputs[] inputs;
   private final NDArray[] slots;
@@ -43,6 +46,7 @@ final class EagerPass implements AutoCloseable {
     this.encoding = encoding;
     int chunks = encoding.chunks().size();
     work = network.newScope();
+    uploads = network.acquireUploads();
     scopes = new NDManager[chunks];
     inputs = new NetworkInputs[chunks];
     slots = new NDArray[chunks];
@@ -55,7 +59,7 @@ final class EagerPass implements AutoCloseable {
       BatchPlan plan = encoding.chunks().get(chunk).batch().plan();
       scopes[chunk] = work.newSubManager();
       HostInputs batch = encoding.chunks().get(chunk).batch();
-      inputs[chunk] = NetworkInputs.of(scopes[chunk], batch.input(), batch.frontier());
+      inputs[chunk] = NetworkInputs.of(scopes[chunk], uploads, batch.input(), batch.frontier());
       int width = 0;
       for (int row = 0; row < plan.rows(); row++) {
         width = Math.max(width, plan.actions(row));
@@ -103,11 +107,18 @@ final class EagerPass implements AutoCloseable {
         positions[first + action] = (long) row * width + action;
       }
     }
-    return work.create(LongBuffer.wrap(positions), new Shape(actions));
+    Staging staging = new Staging();
+    Staging.Section section = staging.add(positions, new Shape(actions));
+    staging.send(uploads, work);
+    return section.array();
   }
 
   @Override
   public void close() {
-    work.close();
+    try {
+      work.close();
+    } finally {
+      network.releaseUploads(uploads);
+    }
   }
 }

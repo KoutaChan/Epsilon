@@ -3,6 +3,7 @@ package com.epsilon.prism.input;
 import com.epsilon.prism.model.PrismShape;
 import java.nio.ByteBuffer;
 import java.util.Objects;
+import java.util.function.IntFunction;
 
 /**
  * 1 回の順伝播のホストの入力（学習の微小バッチと推論の塊で使い回す）。基準の入力の塊と、前線を使う網（{@link
@@ -27,20 +28,19 @@ public record HostInputs(HostBatch input, FrontierBatch frontier) {
   }
 
   /**
-   * ダイレクトの領域に塊を取る。
+   * 塊を取る。
    *
    * @param capacity 1 塊の上限
    * @param frontier 前線を使う網なら true
+   * @param memory バイト数から blob の領域を取る（ダイレクトの領域か、デバイスが読む塊ならページ固定の領域）
    * @return 塊
    */
-  public static HostInputs allocate(BatchPlan.Capacity capacity, boolean frontier) {
-    HostBatch input =
-        new HostBatch(capacity, ByteBuffer.allocateDirect(BatchPlan.maxBytes(capacity)));
+  public static HostInputs allocate(
+      BatchPlan.Capacity capacity, boolean frontier, IntFunction<ByteBuffer> memory) {
+    HostBatch input = new HostBatch(capacity, memory.apply(BatchPlan.maxBytes(capacity)));
     return new HostInputs(
         input,
-        frontier
-            ? new FrontierBatch(input, ByteBuffer.allocateDirect(FrontierBatch.maxBytes(capacity)))
-            : null);
+        frontier ? new FrontierBatch(input, memory.apply(FrontierBatch.maxBytes(capacity))) : null);
   }
 
   /**

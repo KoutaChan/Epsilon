@@ -60,6 +60,15 @@ public final class FrozenNetwork implements AutoCloseable {
     return manager.newSubManager();
   }
 
+  /**
+   * 順伝播の索引をデバイスへ送る置き場を作る（網の管理元に付け、網を閉じると返る）。1 つのスレッドが順に使う。
+   *
+   * @return 置き場
+   */
+  public Uploads newUploads() {
+    return Uploads.on(manager);
+  }
+
   /** 自動微分を記録しない区間（順伝播と出力の整形をこの中で行う）。 */
   public InferenceMode inference() {
     return manager.getEngine().newInferenceMode();

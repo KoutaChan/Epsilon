@@ -19,6 +19,7 @@ import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.Uploads;
 import com.epsilon.prism.rows.CohortWriter;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -178,7 +179,7 @@ public class StepFeedTest {
     double total = 0;
     for (Microbatch part : microbatches(step)) {
       try (NDManager scope = manager.newSubManager()) {
-        NetworkInputs inputs = part.inputs(scope);
+        NetworkInputs inputs = part.inputs(scope, Uploads.on(scope));
         LossInputs targets = part.lossInputs(inputs, part.labels());
         Outputs outputs =
             network.forward(

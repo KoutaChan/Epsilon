@@ -2,13 +2,11 @@ package com.epsilon.prism.model;
 
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
-import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.Shape;
 import com.epsilon.prism.input.InputSchema.ActionColumn;
 import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.input.InputSchema.RowColumn;
 import com.epsilon.prism.model.ValueGraphHead.Composition;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -30,24 +28,18 @@ public final class LossInputs {
 
   private static final ActionRole[] ROLES = ActionRole.values();
 
-  /** 送る区画の型。 */
-  private enum Kind {
-    FLOAT,
-    BOOLEAN
-  }
-
   private final NDManager manager;
   private final int[] actions;
   private final boolean[] discards;
   private final int capacity;
-  private final Section lambda;
-  private final Section measured;
-  private final Section targets;
-  private final Section logPrior;
-  private final Section weights;
-  private final Section measuredDiscards;
-  private final Section discardCounts;
-  private final Section discardWeights;
+  private final Staging.Section lambda;
+  private final Staging.Section measured;
+  private final Staging.Section targets;
+  private final Staging.Section logPrior;
+  private final Staging.Section weights;
+  private final Staging.Section measuredDiscards;
+  private final Staging.Section discardCounts;
+  private final Staging.Section discardWeights;
   private final AuxiliaryLoss.Inputs auxiliary;
 
   /**
@@ -59,6 +51,7 @@ public final class LossInputs {
    * </ul>
    */
   private LossInputs(
+      Uploads uploads,
       NDManager manager,
       int[] actions,
       boolean[] discards,
@@ -137,7 +130,7 @@ public final class LossInputs {
     discardWeights = staging.add(discardRowWeights, new Shape(rows));
     auxiliary =
         auxiliaryLabels == null ? null : AuxiliaryLoss.stage(auxiliaryLabels, denominators, staging);
-    staging.send(manager);
+    staging.send(uploads, manager);
   }
 
   /**
@@ -173,13 +166,21 @@ public final class LossInputs {
       }
     }
     return new LossInputs(
-        inputs.manager(), actions, discards, capacity, labels, auxiliary, denominators);
+        inputs.uploads(),
+        inputs.manager(),
+        actions,
+        discards,
+        capacity,
+        labels,
+        auxiliary,
+        denominators);
   }
 
   /**
-   * 網の出力の行の手の数・打牌の印と教師から作って送る（網の出力が既にあるときの口）。
+   * 網の出力の行の手の数・打牌の印と教師から作って送る（網の出力が既にあるときの口。試験と点検が使い、送り出しの置き場は管理元に付けて
+   * 作る）。
    *
-   * @param manager 配列を作る管理元
+   * @param manager 配列と送り出しの置き場を付ける管理元
    * @param outputs 網の出力
    * @param labels 行の順の教師
    * @param auxiliary 補助の頭の教師（補助の項を足さないなら null）
@@ -194,6 +195,7 @@ public final class LossInputs {
       AuxiliaryLabels auxiliary,
       AuxiliaryLoss.Denominators denominators) {
     return new LossInputs(
+        Uploads.on(manager),
         manager,
         outputs.actions(),
         outputs.discards(),
@@ -267,94 +269,4 @@ public final class LossInputs {
     return auxiliary;
   }
 
-  /** 送る区画。{@link Staging#send} が型ごとの 1 本の配列の切り出しを付け、それから {@link #array} で読む。 */
-  static final class Section {
-
-    private final Kind kind;
-    private final Object values;
-    private final int offset;
-    private final int length;
-    private final Shape shape;
-    private NDArray array;
-
-    private Section(Kind kind, Object values, int offset, int length, Shape shape) {
-      this.kind = kind;
-      this.values = values;
-      this.offset = offset;
-      this.length = length;
-      this.shape = shape;
-    }
-
-    /**
-     * 送った配列の切り出しを返す。
-     *
-     * @return 配列
-     * @throws IllegalStateException 送る前のとき
-     */
-    NDArray array() {
-      if (array == null) {
-        throw new IllegalStateException("the section has not been sent");
-      }
-      return array;
-    }
-  }
-
-  /** ホストの配列を型ごとに 1 本にまとめて送り、区画に切り出しを付ける。 */
-  static final class Staging {
-
-    private final List<Section> sections = new ArrayList<>();
-    private final int[] sizes = new int[Kind.values().length];
-
-    /** FP32 の区画を載せる。 */
-    Section add(float[] values, Shape shape) {
-      return add(Kind.FLOAT, values, values.length, shape);
-    }
-
-    /** BOOLEAN の区画を載せる。 */
-    Section add(boolean[] values, Shape shape) {
-      return add(Kind.BOOLEAN, values, values.length, shape);
-    }
-
-    private Section add(Kind kind, Object values, int length, Shape shape) {
-      if (length == 0 || shape.size() != length) {
-        throw new IllegalStateException("invalid staged section " + shape + " of " + length);
-      }
-      Section section = new Section(kind, values, sizes[kind.ordinal()], length, shape);
-      sections.add(section);
-      sizes[kind.ordinal()] += length;
-      return section;
-    }
-
-    /**
-     * 型ごとに 1 本の配列で送り、区画に切り出しを付ける。
-     *
-     * @param manager 配列を作る管理元
-     */
-    void send(NDManager manager) {
-      float[] floats = new float[sizes[Kind.FLOAT.ordinal()]];
-      boolean[] booleans = new boolean[sizes[Kind.BOOLEAN.ordinal()]];
-      for (Section section : sections) {
-        Object target =
-            switch (section.kind) {
-              case FLOAT -> floats;
-              case BOOLEAN -> booleans;
-            };
-        System.arraycopy(section.values, 0, target, section.offset, section.length);
-      }
-      NDArray floatArray = floats.length == 0 ? null : manager.create(floats);
-      NDArray booleanArray = booleans.length == 0 ? null : manager.create(booleans);
-      for (Section section : sections) {
-        NDArray all =
-            switch (section.kind) {
-              case FLOAT -> floatArray;
-              case BOOLEAN -> booleanArray;
-            };
-        NDArray slice =
-            section.length == all.size()
-                ? all
-                : all.get(new NDIndex("{}:{}", section.offset, section.offset + section.length));
-        section.array = slice.reshape(section.shape);
-      }
-    }
-  }
 }

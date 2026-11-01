@@ -35,6 +35,7 @@ import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.Uploads;
 import com.epsilon.prism.observe.ObservationArena;
 import com.epsilon.prism.observe.ObservationWriter;
 import com.epsilon.prism.play.SnapshotScorer;
@@ -362,7 +363,7 @@ public class NetworkPolicyTest {
             network
                 .forward(
                     new ParameterStore(scope, false),
-                    NetworkInputs.of(scope, inputs.input(), inputs.frontier()),
+                    NetworkInputs.of(scope, Uploads.on(scope), inputs.input(), inputs.frontier()),
                     Pass.inference(precision))
                 .scores()
                 .toType(DataType.FLOAT32, false);

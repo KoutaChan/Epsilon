@@ -8,6 +8,7 @@ import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputWriter;
 import com.epsilon.prism.input.Tokenizer;
 import com.epsilon.prism.observe.Observation;
+import java.nio.ByteBuffer;
 import java.util.List;
 
 /** 方策を通さずに、問い合わせが運ぶ O を問い合わせの順の 1 つの塊にする（直の順伝播の材料。塊は使い回す）。 */
@@ -24,7 +25,7 @@ final class RequestBatch {
    */
   RequestBatch(boolean frontier) {
     this.frontier = frontier ? new FrontierFeatures() : null;
-    batch = HostInputs.allocate(BatchPlan.Capacity.DEFAULT, frontier);
+    batch = HostInputs.allocate(BatchPlan.Capacity.DEFAULT, frontier, ByteBuffer::allocateDirect);
   }
 
   /**

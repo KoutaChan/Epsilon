@@ -36,6 +36,7 @@ import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.Uploads;
 import com.epsilon.prism.observe.Observation;
 import com.epsilon.prism.observe.ObservationArena;
 import com.epsilon.prism.observe.ObservationSchema;
@@ -300,7 +301,7 @@ public class FitTest {
     return network
         .forward(
             new ParameterStore(scope, false),
-            part.inputs(scope),
+            part.inputs(scope, Uploads.on(scope)),
             Pass.inference(Precision.FLOAT32))
         .scores()
         .toFloatArray();
@@ -318,7 +319,7 @@ public class FitTest {
       Outputs outputs =
           network.forward(
               new ParameterStore(scope, false),
-              part.inputs(scope),
+              part.inputs(scope, Uploads.on(scope)),
               Pass.training(Precision.FLOAT32, part.measured(), labels));
       assertEquals(
           outputs.auxiliary().candidates().getShape(),
@@ -379,7 +380,8 @@ public class FitTest {
     private final ObservationArena arena = new ObservationArena(256);
     private final Observation observation = new Observation();
     private final OracleCapture oracles = new OracleCapture();
-    private final HostInputs batch = HostInputs.allocate(ONE_ROW, false);
+    private final HostInputs batch =
+        HostInputs.allocate(ONE_ROW, false, ByteBuffer::allocateDirect);
     private boolean informative;
     private long physicalTiles;
 

@@ -27,6 +27,7 @@ import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.Uploads;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -195,7 +196,7 @@ public class FitStepGpuBench {
         List<Microbatch> lane = prepared.lanes().get(0);
         for (Microbatch part : lane) {
           try (NDManager scope = manager.newSubManager()) {
-            NetworkInputs inputs = part.inputs(scope);
+            NetworkInputs inputs = part.inputs(scope, Uploads.on(scope));
             if (backward) {
               try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
                 LossInputs targets = part.lossInputs(inputs, part.labels());

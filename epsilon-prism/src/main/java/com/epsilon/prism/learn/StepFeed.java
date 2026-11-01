@@ -1,5 +1,10 @@
 package com.epsilon.prism.learn;
 
+import ai.djl.Device;
+import ai.djl.ndarray.NDManager;
+import ai.djl.ndarray.types.DataType;
+import ai.djl.pytorch.engine.PtEngine;
+import ai.djl.pytorch.engine.PtNDManager;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
@@ -10,6 +15,7 @@ import com.epsilon.prism.observe.Observation;
 import com.epsilon.prism.rows.Row;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -19,8 +25,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 学習の 1 歩分の行を、デバイスごとの微小バッチにする（ホストの仕事。学習のスレッドと重ねる）。
@@ -39,10 +48,16 @@ import java.util.concurrent.atomic.LongAdder;
  *   <li>重い微小バッチから、仕事の少ないデバイスへ割り当てる。
  * </ol>
  *
- * <p>塊は使い回す（{@link #release} で返す）。足りなければ新しく取るので、同時に作る歩の数だけ増えて止まる。前線の腕（網の形の
- * {@link PrismShape#frontier()}）では、塊ごとに前線の塊も取る。歩はここで 1 つずつ順に作る。
+ * <p>塊は使い回す（{@link #release} で返す）。足りなければ新しく取るので、同時に作る歩の数だけ増えて止まる。塊の blob はページ固定の
+ * 領域に取り、学習のレーンの H2D と HIP の錨は固定メモリから読む。前線の腕（網の形の {@link PrismShape#frontier()}）では、塊ごとに
+ * 前線の塊も取る。歩はここで 1 つずつ順に作る。
  */
 final class StepFeed implements AutoCloseable {
+
+  private static final Logger LOG = LoggerFactory.getLogger(StepFeed.class);
+
+  /** 閉じるときに、先読みと作業のスレッドがそれぞれの書きかけの仕事を終えるまで待つ上限。 */
+  private static final long STOP_SECONDS = 60;
 
   /** 1 塊の遷移と手の上限は、トークンの上限のこの分の 1（1 行あたりの平均は約 10 で、超える塊は分ける）。 */
   private static final int TOKENS_PER_TRANSITION = 4;
@@ -72,6 +87,7 @@ final class StepFeed implements AutoCloseable {
   private final ThreadLocal<Encoder> encoders;
   private final Observation observation = new Observation();
   private final ConcurrentLinkedQueue<HostInputs> free = new ConcurrentLinkedQueue<>();
+  private final PtNDManager pinned;
   private final LongAdder nanos = new LongAdder();
   private final LongAdder uneven = new LongAdder();
 
@@ -111,6 +127,7 @@ final class StepFeed implements AutoCloseable {
     frontier = plan.shape().frontier();
     budget = plan.tokenBudget();
     capacity = capacity(budget);
+    pinned = (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME);
     coordinator = Executors.newSingleThreadExecutor(daemons("prism-feed-"));
     workers = Executors.newFixedThreadPool(threads, daemons("prism-lrn-"));
     encoders = ThreadLocal.withInitial(() -> new Encoder(plan, teacher));
@@ -318,10 +335,14 @@ final class StepFeed implements AutoCloseable {
   private HostInputs acquire() {
     HostInputs batch = free.poll();
     if (batch == null) {
-      batch = HostInputs.allocate(capacity, frontier);
+      batch = HostInputs.allocate(capacity, frontier, this::pinnedBlob);
     }
     batch.plan().clear();
     return batch;
+  }
+
+  private ByteBuffer pinnedBlob(int bytes) {
+    return pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer();
   }
 
   /** トークンの上限から 1 塊の上限を決める（行は全て出来事のない行でも入る数）。 */
@@ -340,10 +361,32 @@ final class StepFeed implements AutoCloseable {
     };
   }
 
+  /**
+   * 先読みを止めてから塊のページ固定の領域を返す（学習のレーンを閉じた後に呼ぶ）。先読みの歩は作業のスレッドの仕事を待つので、先読みが
+   * 終わるまで作業のスレッドを止めない。どちらかが上限の間に終わらなければ、書きかけの塊を壊さないように領域を返さずに残す。
+   */
   @Override
   public void close() {
     coordinator.shutdownNow();
+    boolean stopped = stopped(coordinator);
     workers.shutdownNow();
+    stopped &= stopped(workers);
     free.clear();
+    if (stopped) {
+      pinned.close();
+    } else {
+      LOG.warn(
+          "step feed threads did not stop in {} s; leaving their pinned batches allocated",
+          STOP_SECONDS);
+    }
+  }
+
+  private static boolean stopped(ExecutorService pool) {
+    try {
+      return pool.awaitTermination(STOP_SECONDS, TimeUnit.SECONDS);
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
   }
 }

@@ -179,10 +179,11 @@ public final class HeuristicPlayer implements Player {
       return abort;
     }
 
-    DiscardChoice offensiveDama =
-        chooseBestDiscard(context, legalActions, Action.Type.DAHAI, AttackMode.NORMAL);
-    DiscardChoice bestRiichi =
-        chooseBestDiscard(context, legalActions, Action.Type.RIICHI_DAHAI, AttackMode.NORMAL);
+    int damaFrom = evaluateDiscards(context, legalActions, Action.Type.DAHAI);
+    int riichiFrom = evaluateDiscards(context, legalActions, Action.Type.RIICHI_DAHAI);
+    int riichiTo = context.discardChoiceCursor;
+    DiscardChoice offensiveDama = chooseDiscard(context, damaFrom, riichiFrom, AttackMode.NORMAL);
+    DiscardChoice bestRiichi = chooseDiscard(context, riichiFrom, riichiTo, AttackMode.NORMAL);
 
     if (offensiveDama == null && bestRiichi == null) {
       return legalActions.getFirst();
@@ -191,7 +192,7 @@ public final class HeuristicPlayer implements Player {
     AttackMode mode = chooseAttackMode(context, offensiveDama != null ? offensiveDama : bestRiichi);
     DiscardChoice selectedDama = offensiveDama;
     if (offensiveDama != null && mode != AttackMode.NORMAL) {
-      selectedDama = chooseBestDiscard(context, legalActions, Action.Type.DAHAI, mode);
+      selectedDama = chooseDiscard(context, damaFrom, riichiFrom, mode);
     }
 
     DiscardChoice selected = selectedDama != null ? selectedDama : bestRiichi;
@@ -314,24 +315,39 @@ public final class HeuristicPlayer implements Player {
         && context.shapeAnalyzer.calculateKokushi(context.hand) > KYUSHU_CONTINUE_MAX_SHANTEN;
   }
 
-  private static DiscardChoice chooseBestDiscard(
-      DecisionContext context, List<Action> actions, Action.Type targetType, AttackMode mode) {
-    DiscardChoice best = null;
+  /**
+   * 種類 targetType の打牌候補を局面ごとに一度だけ解析し、作業領域の続きに並べる。
+   *
+   * <p>候補の score は押し引きによらない攻めの点（{@link #offensiveScore}）。押し引きの重みは選ぶときに {@link
+   * DiscardChoice#score(AttackMode)} が足すので、同じ候補の並びを押し引きの違う選択に使い回せる。
+   *
+   * @return 並べた候補の先頭の位置（終わりは呼んだ後の {@code discardChoiceCursor}）
+   */
+  private static int evaluateDiscards(
+      DecisionContext context, List<Action> actions, Action.Type targetType) {
+    int from = context.discardChoiceCursor;
+    RiichiState riichiStatus =
+        targetType == Action.Type.RIICHI_DAHAI
+            ? context.declarationRiichiStatus()
+            : context.currentRiichiStatus();
     for (Action action : actions) {
       if (action.type() != targetType) {
         continue;
       }
-      RiichiState riichiStatus =
-          targetType == Action.Type.RIICHI_DAHAI
-              ? context.declarationRiichiStatus()
-              : context.currentRiichiStatus();
       HandQuality quality = context.analyzeTransition(context.actionIndex(action), 0, riichiStatus);
       boolean furiten = context.isFuriten(quality.shapeWaitMask, action.tileType());
       int danger = context.danger(action.tileType());
-      long attackScore = offensiveScore(quality, furiten);
-      long score =
-          mode == AttackMode.PRESS ? attackScore - danger * PRESS_DANGER_WEIGHT : attackScore;
-      DiscardChoice candidate = context.discardChoice(action, quality, danger, score);
+      context.discardChoice(action, quality, danger, offensiveScore(quality, furiten));
+    }
+    return from;
+  }
+
+  /** 作業領域の [from, to) に並べた候補から、押し引き mode で最良の打牌を選ぶ（候補が無ければ null）。 */
+  private static DiscardChoice chooseDiscard(
+      DecisionContext context, int from, int to, AttackMode mode) {
+    DiscardChoice best = null;
+    for (int index = from; index < to; index++) {
+      DiscardChoice candidate = context.discardChoices[index];
       if (best == null || betterDiscard(candidate, best, mode)) {
         best = candidate;
       }
@@ -347,8 +363,10 @@ public final class HeuristicPlayer implements Player {
     if (candidate.quality.minimumShanten != incumbent.quality.minimumShanten) {
       return candidate.quality.minimumShanten < incumbent.quality.minimumShanten;
     }
-    if (candidate.score != incumbent.score) {
-      return candidate.score > incumbent.score;
+    long candidateScore = candidate.score(mode);
+    long incumbentScore = incumbent.score(mode);
+    if (candidateScore != incumbentScore) {
+      return candidateScore > incumbentScore;
     }
     int candidateAkaHan = Integer.bitCount(candidate.quality.ownedAkaMask);
     int incumbentAkaHan = Integer.bitCount(incumbent.quality.ownedAkaMask);
@@ -474,6 +492,8 @@ public final class HeuristicPlayer implements Player {
     private Action action;
     private HandQuality quality;
     private int danger;
+
+    /** 押し引きによらない攻めの点。 */
     private long score;
 
     private DiscardChoice bind(Action action, HandQuality quality, int danger, long score) {
@@ -482,6 +502,11 @@ public final class HeuristicPlayer implements Player {
       this.danger = danger;
       this.score = score;
       return this;
+    }
+
+    /** 押し引き mode での点。押すときだけ危険度 1 につき {@code PRESS_DANGER_WEIGHT} を引く。 */
+    private long score(AttackMode mode) {
+      return mode == AttackMode.PRESS ? score - danger * PRESS_DANGER_WEIGHT : score;
     }
   }
 

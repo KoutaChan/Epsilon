@@ -16,16 +16,16 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 段の時計の印（{@link FitProbe}）: 計測のときに背骨の出力も葉にして逆伝播を頭の側と背骨の側に分けても、損失と全てのパラメーターの勾配が
- * 印のない学習とビットで同じこと（CPU、自前の注意の記録に参照の実装 {@link ReferenceAttention}、FP32 と BF16、深さ 2 と 3）。印は
- * 1 微小バッチの順伝播と逆伝播の区切りを決まった順で通る。
+ * 段の時計の印（{@link FitProbe}）: 印を付けても、損失と全てのパラメーターの勾配が印のない学習とビットで同じこと（CPU、自前の注意と
+ * 正規化の記録に参照の実装 {@link ReferenceAttention}、FP32 と BF16、深さ 2 と 3）。印は 1 微小バッチの順伝播と逆伝播の区切りを
+ * 決まった順で通る。
  */
 public class FitProbeTest {
   private static final Logger log = LoggerFactory.getLogger(FitProbeTest.class);
 
   private static final int[] EVENTS = {0, 3, 9, 17};
 
-  /** 印の段と層を順に覚え、背骨の出力も葉にする印。 */
+  /** 印の段と層を順に覚える印。 */
   private static final class Recorder implements FitProbe {
 
     private final List<String> marks = new ArrayList<>();
@@ -34,17 +34,12 @@ public class FitProbeTest {
     public void mark(Stage stage, int layer) {
       marks.add(name(stage, layer));
     }
-
-    @Override
-    public boolean cuts() {
-      return true;
-    }
   }
 
   private record Outcome(float loss, Map<String, float[]> gradients) {}
 
   @Test(timeOut = 600_000)
-  public void splitBackwardKeepsTheGradientsBitwise() {
+  public void marksKeepTheGradientsBitwise() {
     for (Precision precision : Precision.values()) {
       for (int depth = PrismShape.MIN_DEPTH; depth <= PrismShape.MAX_DEPTH; depth++) {
         try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
@@ -104,12 +99,15 @@ public class FitProbeTest {
     marks.add(name(Stage.VALUE_GRAPH, 0));
     marks.add(name(Stage.AUX_HEADS, 0));
     marks.add(name(Stage.HEADS_BACKWARD, 0));
-    marks.add(name(Stage.O_FFN_BACKWARD, depth - 1));
     for (int layer = depth - 1; layer >= 0; layer--) {
+      // 最後の正規化（最後の層）か次の層の入力の葉、FFN の前の正規化、残差の葉
+      for (int injection = 0; injection < 3; injection++) {
+        marks.add(name(Stage.O_FFN_BACKWARD, layer));
+      }
       marks.add(name(Stage.ATTENTION_BACKWARD, layer));
       marks.add(name(Stage.NORM_QKV_BACKWARD, layer));
-      marks.add(layer > 0 ? name(Stage.O_FFN_BACKWARD, layer - 1) : name(Stage.EMBED_BACKWARD, 0));
     }
+    marks.add(name(Stage.EMBED_BACKWARD, 0));
     return marks;
   }
 

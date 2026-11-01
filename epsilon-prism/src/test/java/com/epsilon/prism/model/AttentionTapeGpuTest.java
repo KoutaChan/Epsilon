@@ -11,7 +11,7 @@ import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.RelationAttention;
+import com.epsilon.prism.hip.TrainingKernels;
 import com.epsilon.prism.model.Batches.Batch;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -282,7 +282,11 @@ public class AttentionTapeGpuTest {
 
   /** 1 回の順伝播と逆伝播（attention が null なら djl-rocm の演算の道）。勾配の写しを取り、0 に戻す。 */
   private static Outcome run(
-      PrismNetwork network, NDManager manager, Batch batch, RelationAttention attention, Precision precision) {
+      PrismNetwork network,
+      NDManager manager,
+      Batch batch,
+      TrainingKernels attention,
+      Precision precision) {
     List<ValueLabel> labels = Batches.values(batch, 11);
     AuxiliaryLabels auxiliary = Batches.auxiliary(batch, 13);
     boolean[] measured = ValueLabel.measured(labels);

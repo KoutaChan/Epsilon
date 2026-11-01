@@ -17,7 +17,7 @@ import ai.djl.training.tracker.Tracker;
 import com.epsilon.network.NetworkDevices;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.RelationAttention;
+import com.epsilon.prism.hip.TrainingKernels;
 import com.epsilon.prism.model.AttentionTape;
 import com.epsilon.prism.model.FitProbe;
 import com.epsilon.prism.model.FitProbe.Stage;
@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.LongAdder;
 /**
  * 1 回の当てはめの学習器。デバイスごとのレーンで微小バッチの順伝播と逆伝播をし、勾配を集めて AdamW（重みの
  * 減衰 0、FP32 の連続バッファ）で 1 歩進める。レーン 0 が正本の網で、残りはデータ並列の複製。GPU のレーンは BF16、CPU のレーンは FP32 で
- * 計算する。GPU のレーンの背骨の注意は、組み立てが libprism_hip.so を同梱していれば（{@link HipLibrary#bundled}）自前の HIP の演算
+ * 計算する。GPU のレーンの背骨の注意と正規化は、組み立てが libprism_hip.so を同梱していれば（{@link HipLibrary#bundled}）自前の HIP の演算
  * （{@link AttentionTape}）をレーンの計算ストリームに積み、同梱していなければ djl-rocm の演算。CPU のレーンは djl の演算。
  *
  * <p>1 歩の損失は Σ_微小バッチ {@link PrismLoss#total}（分母 B_C は 1 歩の全てのレーンで数え、補助の項は微小バッチの元の塊の行の割合
@@ -381,8 +381,8 @@ final class Learner implements AutoCloseable {
     private final PrismNetwork network;
     private final Precision precision;
 
-    /** 背骨の注意の自前の演算（libprism_hip.so を同梱した組み立ての GPU のレーンだけ。ほかは null で djl の演算）。 */
-    private final RelationAttention attention;
+    /** 背骨の注意と正規化の自前の演算（libprism_hip.so を同梱した組み立ての GPU のレーンだけ。ほかは null で djl の演算）。 */
+    private final TrainingKernels attention;
 
     /** 当てはめの計測の時計（計測しないなら何もしない）。 */
     private final FitProfile.Clock clock;

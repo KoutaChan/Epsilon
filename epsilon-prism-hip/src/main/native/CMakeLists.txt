@@ -42,11 +42,13 @@ set(PRISM_SOURCES
   k6_candidate.hip
   k7_value_graph.hip
   t0_relation.hip
-  t1_attention.hip)
+  t1_attention.hip
+  t2_norm.hip)
 # 全ての翻訳単位を HIP として 7.2.2 の clang に通す（HIP の実行系のヘッダと定義をそろえる）。
 set_source_files_properties(prism_hip_jni.cc prism_hip_plan.cc prism_hip_runtime.cc prism_hip_torch.cc PROPERTIES LANGUAGE HIP)
-# 注意のカーネルは、レジスタ・scratch・LDS・占有を組み立ての記録に出す。
-set_source_files_properties(k0_relation.hip k2_attention.hip t1_attention.hip PROPERTIES COMPILE_OPTIONS "-Rpass-analysis=kernel-resource-usage")
+# 注意と学習の RMSNorm のカーネルは、レジスタ・scratch・LDS・占有を組み立ての記録に出す。
+set_source_files_properties(k0_relation.hip k2_attention.hip t1_attention.hip t2_norm.hip
+  PROPERTIES COMPILE_OPTIONS "-Rpass-analysis=kernel-resource-usage")
 
 function(prism_hip_library name checked)
   add_library(${name} SHARED ${PRISM_SOURCES})

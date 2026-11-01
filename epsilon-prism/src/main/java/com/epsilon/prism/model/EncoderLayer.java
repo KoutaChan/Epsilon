@@ -21,7 +21,8 @@ import com.epsilon.prism.model.WidthPlan.Role;
  * だけを更新して返し、鍵と値は全てのトークンから作る。
  *
  * <p>段の時計の印（{@link FitProbe}）は層の番号で数える: 順伝播は正規化と q・kv の射影、注意、O 射影と FFN。逆伝播は注意の記録の葉で区切り、
- * 層の入力の葉は前の層の O 射影と FFN（最初の層は埋め込み）、正規化の出力の葉は注意の前の正規化と q・kv の射影として計る。
+ * 層の入力の葉は前の層の O 射影と FFN（最初の層は埋め込み）、注意の前の正規化は注意の前の正規化と q・kv の射影、残差の葉と FFN の前の
+ * 正規化は O 射影と FFN として計る。
  */
 public final class EncoderLayer extends Module {
 
@@ -93,14 +94,15 @@ public final class EncoderLayer extends Module {
   public NDArray forward(Context context, NDArray tokens, NDArray mask, NDArray codes, int queries) {
     AttentionTape tape = context.tape();
     FitProbe probe = context.probe();
-    // 自前の注意の逆伝播をつなぐため、層の入力と、q・kv が共に読む正規化の出力を葉にする（AttentionTape）
+    // 自前の注意と正規化の逆伝播をつなぐため、層の入力と残差（正規化と残差の和が共に読む値）を葉にする。正規化の出力（q・kv が共に読む）は
+    // 記録の正規化が葉にする（AttentionTape）
     NDArray input =
         layer == 0
             ? cut(tape, tokens, Stage.EMBED_BACKWARD, 0)
             : cut(tape, tokens, Stage.O_FFN_BACKWARD, layer - 1);
     boolean all = queries == input.getShape().get(1);
     NDArray normalized =
-        cut(tape, context.norm(input, attentionNorm, epsilon), Stage.NORM_QKV_BACKWARD, layer);
+        context.backboneNorm(input, attentionNorm, epsilon, Stage.NORM_QKV_BACKWARD, layer);
     NDArray weights = context.value(qkv);
     NDArray biases = context.value(qkvBias);
     NDArray keyValue =
@@ -136,10 +138,12 @@ public final class EncoderLayer extends Module {
                 SCALE,
                 layer);
     probe.mark(Stage.ATTENTION, layer);
+    NDArray projected = context.linear(attended, output, outputBias);
     NDArray residual =
-        (all ? input : prefix(input, queries)).add(context.linear(attended, output, outputBias));
-    NDArray hidden =
-        Context.silu(context.linear(context.norm(residual, ffnNorm, epsilon), up, upBias));
+        cut(tape, (all ? input : prefix(input, queries)).add(projected), Stage.O_FFN_BACKWARD, layer);
+    NDArray normalizedResidual =
+        context.backboneNorm(residual, ffnNorm, epsilon, Stage.O_FFN_BACKWARD, layer);
+    NDArray hidden = Context.silu(context.linear(normalizedResidual, up, upBias));
     NDArray updated = residual.add(context.linear(hidden, down, downBias));
     probe.mark(Stage.O_FFN, layer);
     return updated;

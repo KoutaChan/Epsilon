@@ -15,8 +15,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * {@link AttentionTape} のつなぎ（CPU の FP32）: 背骨の注意を自動微分の外の参照の実装（{@link ReferenceAttention}）にして区切った逆伝播の
- * 損失・s・全てのパラメーターの勾配が、djl-rocm の演算の道（自動微分の中）と和の順の違いを除いて同じこと。深さ 2 と 3、出来事の数の違う行と、
+ * {@link AttentionTape} のつなぎ（CPU の FP32）: 背骨の注意と正規化を自動微分の外の参照の実装（{@link ReferenceAttention}）にして区切った逆伝播の
+ * 損失・s・全てのパラメーターの勾配が、eager の道（自動微分の中）と和の順の違いを除いて同じこと。深さ 2 と 3、出来事の数の違う行と、
  * 最後の層の問い合わせを絞る形を含む。記録しない形（{@link AttentionTape#forwardOnly}、TEMPO の錨の推論）は s が推論の道と同じこと。
  */
 public class AttentionTapeTest {
@@ -31,7 +31,10 @@ public class AttentionTapeTest {
     }
   }
 
-  /** BF16（GPU の学習と同じ丸め）でも、つなぎが勾配を落とさないこと。差は丸めの順だけなので緩く見る。 */
+  /**
+   * BF16（GPU の学習と同じ丸め）でも、つなぎが勾配を落とさないこと。差は和の順と、そこから来る BF16 の丸めの違い（正規化の出力の稀な
+   * 1 ulp が網で広がる）だけなので、GPU の試験と同じ幅で緩く見る。
+   */
   @Test(timeOut = 600_000)
   public void tapeKeepsTheGradientsInBfloat16() {
     compare(PrismShape.MIN_DEPTH, Precision.BFLOAT16);
@@ -126,7 +129,7 @@ public class AttentionTapeTest {
           worstName,
           String.format("%.3g", worst));
       Assert.assertTrue(Batches.maxAbs(reference.scores()) > 1e-3f, "scores must be non-trivial");
-      Assert.assertTrue(scoreError < (exact ? 1e-5 : 1e-3), "scores rel " + scoreError);
+      Assert.assertTrue(scoreError < (exact ? 1e-5 : 1e-2), "scores rel " + scoreError);
       Assert.assertTrue(worst < (exact ? 1e-4 : 1e-2), "gradient " + worstName + " rel " + worst);
     }
   }

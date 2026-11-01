@@ -9,12 +9,12 @@ import ai.djl.pytorch.engine.PtStream;
 import java.util.Objects;
 
 /**
- * {@link RelationAttention} と {@link RelationCodes} の GPU の演算（{@code t1_attention.hip}・{@code t0_relation.hip}）。DJL の GPU の配列を
- * 写さずに読み書きし、ストリームの順で前後の DJL の演算とそろう。注意の内積・softmax・p·v と勾配は FP32 で、出力と q・kv の勾配は BF16 に
- * 1 回丸める。q・kv・出力とそれらの勾配は BF16、関係の属性は UINT8、ほかは FP32・INT32・INT16 で、配列は全て連続（演算の結果か、その
- * 先頭からの切り出し）で同じ GPU にあること。
+ * {@link TrainingKernels} と {@link RelationCodes} の GPU の演算（{@code t1_attention.hip}・{@code t2_norm.hip}・{@code t0_relation.hip}）。
+ * DJL の GPU の配列を写さずに読み書きし、ストリームの順で前後の DJL の演算とそろう。注意の内積・softmax・p·v と勾配、RMSNorm の統計と
+ * 勾配は FP32 で、出力と入力の勾配は BF16 に 1 回丸める。q・kv・出力・RMSNorm の入出力とそれらの勾配は BF16、関係の属性は UINT8、ほかは
+ * FP32・INT32・INT16 で、配列は全て連続（演算の結果か、その先頭からの切り出し）で同じ GPU にあること。
  */
-public final class HipAttention implements RelationAttention, RelationCodes {
+public final class HipAttention implements TrainingKernels, RelationCodes {
 
   /** native に渡す要素の型（native の TensorElement と同じ順）。 */
   private enum Element {
@@ -167,6 +167,42 @@ public final class HipAttention implements RelationAttention, RelationCodes {
         address(gradTable, new Shape((long) d.rows() * d.heads(), d.tableRows()), DataType.FLOAT32));
   }
 
+  @Override
+  public void forward(
+      NormShape d, NDArray input, NDArray gain, NDArray out, NDArray inverseRms) {
+    PrismHip.normForward(
+        stream,
+        d.rows(),
+        d.width(),
+        d.epsilon(),
+        rowsAddress(input, d, DataType.BFLOAT16),
+        address(gain, new Shape(d.width()), DataType.FLOAT32),
+        rowsAddress(out, d, DataType.BFLOAT16),
+        address(inverseRms, new Shape(d.rows()), DataType.FLOAT32));
+  }
+
+  @Override
+  public void backward(
+      NormShape d,
+      NDArray input,
+      NDArray gain,
+      NDArray inverseRms,
+      NDArray gradOut,
+      NDArray gradInput,
+      NDArray gradGain) {
+    PrismHip.normBackward(
+        stream,
+        d.rows(),
+        d.width(),
+        d.epsilon(),
+        rowsAddress(input, d, DataType.BFLOAT16),
+        address(gain, new Shape(d.width()), DataType.FLOAT32),
+        address(inverseRms, new Shape(d.rows()), DataType.FLOAT32),
+        rowsAddress(gradOut, d, DataType.BFLOAT16),
+        rowsAddress(gradInput, d, DataType.BFLOAT16),
+        address(gradGain, new Shape(d.partials(), d.width()), DataType.FLOAT32));
+  }
+
   private static Shape queryShape(Dimensions d) {
     return new Shape(d.rows(), d.queries(), d.width());
   }
@@ -177,9 +213,30 @@ public final class HipAttention implements RelationAttention, RelationCodes {
 
   /** 形・型・デバイスを照らして、配列のデータのデバイスのアドレスを返す。 */
   private long address(NDArray array, Shape shape, DataType type) {
-    if (!array.getShape().equals(shape) || array.getDataType() != type) {
+    if (!array.getShape().equals(shape)) {
       throw new IllegalArgumentException(
           "HIP training kernels expect " + type + shape + ", got " + array.getDataType() + array.getShape());
+    }
+    return deviceAddress(array, type);
+  }
+
+  /** RMSNorm の行の配列（最後の軸が width で、要素が rows·width）のアドレスを返す。 */
+  private long rowsAddress(NDArray array, NormShape d, DataType type) {
+    Shape shape = array.getShape();
+    if (shape.dimension() == 0
+        || shape.get(shape.dimension() - 1) != d.width()
+        || shape.size() != (long) d.rows() * d.width()) {
+      throw new IllegalArgumentException(
+          "HIP RMSNorm expects " + type + " rows of " + d + ", got " + array.getDataType() + shape);
+    }
+    return deviceAddress(array, type);
+  }
+
+  /** 型・デバイスを照らして、配列のデータのデバイスのアドレスを返す。 */
+  private long deviceAddress(NDArray array, DataType type) {
+    if (array.getDataType() != type) {
+      throw new IllegalArgumentException(
+          "HIP training kernels expect " + type + ", got " + array.getDataType() + array.getShape());
     }
     if (!device.equals(array.getDevice()) || !(array instanceof PtNDArray tensor)) {
       throw new IllegalArgumentException("HIP training arrays must be PyTorch arrays on " + device);

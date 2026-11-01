@@ -29,9 +29,8 @@ import org.slf4j.LoggerFactory;
  *       残りが入るので、同期する歩との差がその所で吸った待ちになる。
  * </ul>
  *
- * <p>計測のときは背骨の出力も葉にして（{@link FitProbe#cuts}。温めの歩を含むどの歩でも同じ木）、逆伝播を頭の側と背骨の側に分ける。当てはめ
- * の終わりに、段ごとの歩あたりの ms（レーンごとと、歩ごとに忙しい時間の長い方のレーン「遅いレーン」の、同期する歩とホストだけの歩）、歩の
- * 窓（レーンの仕事・最適化）、レーンの微小バッチの形（歩あたり）の表を記録に出す（{@link #log}）。
+ * <p>当てはめの終わりに、段ごとの歩あたりの ms（レーンごとと、歩ごとに忙しい時間の長い方のレーン「遅いレーン」の、同期する歩と
+ * ホストだけの歩）、歩の窓（レーンの仕事・最適化）、レーンの微小バッチの形（歩あたり）の表を記録に出す（{@link #log}）。
  */
 final class FitProfile {
 
@@ -408,11 +407,6 @@ final class FitProfile {
       long now = System.nanoTime();
       nanos[slot(stage, layer)] += now - last;
       last = now;
-    }
-
-    @Override
-    public boolean cuts() {
-      return enabled();
     }
 
     /** 歩の仕事の始めから最後の印までの時間（ns）。 */

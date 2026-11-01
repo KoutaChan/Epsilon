@@ -9,16 +9,7 @@ package com.epsilon.prism.model;
 public interface FitProbe {
 
   /** 何もしない印（計測しない学習と推論）。 */
-  FitProbe NONE =
-      new FitProbe() {
-        @Override
-        public void mark(Stage stage, int layer) {}
-
-        @Override
-        public boolean cuts() {
-          return false;
-        }
-      };
+  FitProbe NONE = (stage, layer) -> {};
 
   /**
    * 段の区切り（前の印からの時間を段に足す）。
@@ -36,13 +27,6 @@ public interface FitProbe {
   default void mark(Stage stage) {
     mark(stage, 0);
   }
-
-  /**
-   * 背骨の出力も葉にして、損失の逆伝播を頭の側（{@link Stage#HEADS_BACKWARD}）と背骨の側に分けるなら true（計測のときだけ）。
-   *
-   * @return 分けるなら true
-   */
-  boolean cuts();
 
   /** 段（1 微小バッチの中の順）。層の段は背骨の層ごとに数える。 */
   enum Stage {

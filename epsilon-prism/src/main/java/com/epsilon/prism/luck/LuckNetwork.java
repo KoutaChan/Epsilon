@@ -146,7 +146,7 @@ public final class LuckNetwork extends AbstractBlock {
     for (EncoderLayer encoder : encoders) {
       tokens = encoder.forward(context, tokens, mask, inputs.codes(), Token.ROW_TOKENS);
     }
-    return head.forward(context, finalNorm.apply(context, tokens));
+    return head.forward(context, finalNorm.apply(context, tokens, DEPTH - 1));
   }
 
   /**

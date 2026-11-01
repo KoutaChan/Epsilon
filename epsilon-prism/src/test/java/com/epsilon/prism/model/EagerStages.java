@@ -169,7 +169,7 @@ public final class EagerStages {
       tokens = encoder.forward(context, tokens, index.tokenMask.array(), codes, queries);
       layers.add(sectioned(floats(tokens), rows, queries, (int) hidden, firstEvent, eventCounts, last));
     }
-    NDArray states = finalNorm.apply(context, tokens);
+    NDArray states = finalNorm.apply(context, tokens, encoders.size() - 1);
     float[] stateValues = sectioned(floats(states), rows, fixed, (int) hidden, firstEvent, eventCounts, true);
 
     Map<String, Parameter> parameters = new HashMap<>();

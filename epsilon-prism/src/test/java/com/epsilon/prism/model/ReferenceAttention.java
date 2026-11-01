@@ -2,14 +2,16 @@ package com.epsilon.prism.model;
 
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.types.DataType;
-import com.epsilon.prism.hip.RelationAttention;
+import com.epsilon.prism.hip.RmsNormKernels;
+import com.epsilon.prism.hip.TrainingKernels;
 
 /**
- * {@link RelationAttention} の参照の実装（試験だけ）。配列をホストに写し、式をそのまま書いた繰り返しで計算して、配列の型で書き戻す（CPU の
- * FP32 でも GPU の BF16 でも使える）。{@link AttentionTape} のつなぎを自前の HIP の演算と切り離して確かめるために使う。softmax は最大を引く
- * 2 回の繰り返し、逆伝播は ds_ij = p_ij·(do_i·v_j − δ_i)。
+ * {@link TrainingKernels} の参照の実装（試験だけ）。配列をホストに写し、式をそのまま書いた繰り返しで計算して、配列の型で書き戻す（CPU の
+ * FP32 でも GPU の BF16 でも使える）。{@link AttentionTape} のつなぎを自前の HIP の演算と切り離して確かめるために使う。注意の softmax は
+ * 最大を引く 2 回の繰り返し、逆伝播は ds_ij = p_ij·(do_i·v_j − δ_i)。RMSNorm は {@link RmsNormKernels} の式を FP64 で計算し（r は
+ * 逆伝播でも入力から計算し直す）、利得の勾配は同じ塊の部分和にする。
  */
-final class ReferenceAttention implements RelationAttention {
+final class ReferenceAttention implements TrainingKernels {
 
   @Override
   public void forward(
@@ -102,6 +104,71 @@ final class ReferenceAttention implements RelationAttention {
     write(gradQuery, dq);
     write(gradKeyValue, dkv);
     write(gradTable, drho);
+  }
+
+  @Override
+  public void forward(NormShape d, NDArray input, NDArray gain, NDArray out, NDArray inverseRms) {
+    float[] x = input.toType(DataType.FLOAT32, false).toFloatArray();
+    float[] g = gain.toFloatArray();
+    float[] y = new float[x.length];
+    float[] r = new float[d.rows()];
+    for (int i = 0; i < d.rows(); i++) {
+      double inverse = inverseRms(d, x, i);
+      r[i] = (float) inverse;
+      for (int j = 0; j < d.width(); j++) {
+        int at = i * d.width() + j;
+        y[at] = (float) (x[at] * inverse * g[j]);
+      }
+    }
+    write(out, y);
+    write(inverseRms, r);
+  }
+
+  @Override
+  public void backward(
+      NormShape d,
+      NDArray input,
+      NDArray gain,
+      NDArray inverseRms,
+      NDArray gradOut,
+      NDArray gradInput,
+      NDArray gradGain) {
+    float[] x = input.toType(DataType.FLOAT32, false).toFloatArray();
+    float[] g = gain.toFloatArray();
+    float[] dy = gradOut.toType(DataType.FLOAT32, false).toFloatArray();
+    float[] dx = new float[x.length];
+    double[] sums = new double[d.partials() * d.width()];
+    for (int i = 0; i < d.rows(); i++) {
+      double inverse = inverseRms(d, x, i);
+      int first = i * d.width();
+      double m = 0;
+      for (int j = 0; j < d.width(); j++) {
+        m += (double) dy[first + j] * g[j] * x[first + j] * inverse;
+      }
+      m /= d.width();
+      int block = i / RmsNormKernels.GAIN_ROWS * d.width();
+      for (int j = 0; j < d.width(); j++) {
+        double normalized = x[first + j] * inverse;
+        dx[first + j] = (float) (inverse * ((double) dy[first + j] * g[j] - normalized * m));
+        sums[block + j] += dy[first + j] * normalized;
+      }
+    }
+    float[] partials = new float[sums.length];
+    for (int k = 0; k < sums.length; k++) {
+      partials[k] = (float) sums[k];
+    }
+    write(gradInput, dx);
+    write(gradGain, partials);
+  }
+
+  /** 行 i の 1/rms（FP64）。 */
+  private static double inverseRms(NormShape d, float[] x, int i) {
+    double sum = 0;
+    for (int j = 0; j < d.width(); j++) {
+      double value = x[i * d.width() + j];
+      sum += value * value;
+    }
+    return 1 / Math.sqrt(sum / d.width() + d.epsilon());
   }
 
   /** 値を配列の型にして書く（GPU の BF16 の配列にも書ける）。 */

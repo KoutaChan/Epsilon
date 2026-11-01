@@ -7,7 +7,7 @@ import ai.djl.ndarray.NDManager;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.training.ParameterStore;
 import com.epsilon.network.NetworkRuntime;
-import com.epsilon.prism.hip.RelationAttention;
+import com.epsilon.prism.hip.TrainingKernels;
 import java.io.IOException;
 import java.nio.file.Path;
 
@@ -85,13 +85,13 @@ public final class FrozenNetwork implements AutoCloseable {
   }
 
   /**
-   * 1 つの塊の s を、背骨の注意を自前の演算（記録なし。学習のレーンと同じ演算）にして出す。順伝播の配列は入力の管理元に付く。
+   * 1 つの塊の s を、背骨の注意と正規化を自前の演算（記録なし。学習のレーンと同じ演算）にして出す。順伝播の配列は入力の管理元に付く。
    *
    * @param inputs 塊の入力
-   * @param attention 背骨の注意の自前の演算（null なら djl-rocm の演算）
+   * @param attention 背骨の注意と正規化の自前の演算（null なら djl-rocm の演算）
    * @return s [行, 手の容量]（FP32。列 k は行の k 番目の手）
    */
-  public NDArray scores(NetworkInputs inputs, RelationAttention attention) {
+  public NDArray scores(NetworkInputs inputs, TrainingKernels attention) {
     Pass pass =
         Pass.inference(precision, attention == null ? null : AttentionTape.forwardOnly(attention));
     return network.forward(new ParameterStore(manager, false), inputs, pass).scores();

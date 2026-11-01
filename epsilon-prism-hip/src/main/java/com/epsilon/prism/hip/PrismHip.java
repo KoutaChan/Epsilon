@@ -151,4 +151,21 @@ final class PrismHip {
       long gradQuery,
       long gradKeyValue,
       long gradTable);
+
+  /** 学習の RMSNorm の順伝播をストリームに積む（アドレスは {@link #tensorAddress}）。 */
+  static native void normForward(
+      long stream, int rows, int width, float epsilon, long input, long gain, long out, long inverseRms);
+
+  /** 学習の RMSNorm の逆伝播をストリームに積む。 */
+  static native void normBackward(
+      long stream,
+      int rows,
+      int width,
+      float epsilon,
+      long input,
+      long gain,
+      long inverseRms,
+      long gradOut,
+      long gradInput,
+      long gradGain);
 }

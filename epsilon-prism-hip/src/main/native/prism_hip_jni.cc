@@ -267,4 +267,27 @@ JNIEXPORT void JNICALL Java_com_epsilon_prism_hip_PrismHip_attentionBackward(
   });
 }
 
+JNIEXPORT void JNICALL Java_com_epsilon_prism_hip_PrismHip_normForward(JNIEnv* env, jclass, jlong stream, jint rows,
+                                                                      jint width, jfloat epsilon, jlong input,
+                                                                      jlong gain, jlong out, jlong inverseRms) {
+  guarded(env, [&] {
+    const prism::NormShape shape{rows, width, epsilon};
+    const prism::NormForward arrays{device<const uint16_t>(input), device<const float>(gain), device<uint16_t>(out),
+                                    device<float>(inverseRms)};
+    prism::normForward(shape, arrays, reinterpret_cast<hipStream_t>(stream));
+  });
+}
+
+JNIEXPORT void JNICALL Java_com_epsilon_prism_hip_PrismHip_normBackward(
+    JNIEnv* env, jclass, jlong stream, jint rows, jint width, jfloat epsilon, jlong input, jlong gain,
+    jlong inverseRms, jlong gradOut, jlong gradInput, jlong gradGain) {
+  guarded(env, [&] {
+    const prism::NormShape shape{rows, width, epsilon};
+    const prism::NormBackward arrays{device<const uint16_t>(input),   device<const float>(gain),
+                                     device<const float>(inverseRms), device<const uint16_t>(gradOut),
+                                     device<uint16_t>(gradInput),      device<float>(gradGain)};
+    prism::normBackward(shape, arrays, reinterpret_cast<hipStream_t>(stream));
+  });
+}
+
 }  // extern "C"

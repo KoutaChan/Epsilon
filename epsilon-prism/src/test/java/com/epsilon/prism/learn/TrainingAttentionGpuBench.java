@@ -16,6 +16,7 @@ import ai.djl.training.ParameterStore;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.hip.RelationAttention;
+import com.epsilon.prism.hip.TrainingKernels;
 import com.epsilon.prism.model.AttentionTape;
 import com.epsilon.prism.model.AuxiliaryLoss;
 import com.epsilon.prism.model.Pass;
@@ -62,13 +63,13 @@ public class TrainingAttentionGpuBench {
       NDArray outFloat,
       NDArray logSumExp) {}
 
-  /** 注意の演算を通し、順伝播に渡った配列を覚える（記録しない推論の順伝播だけに使う）。 */
-  private static final class Capture implements RelationAttention {
+  /** 注意と正規化の演算を通し、注意の順伝播に渡った配列を覚える（記録しない推論の順伝播だけに使う）。 */
+  private static final class Capture implements TrainingKernels {
 
-    private final RelationAttention kernels;
+    private final TrainingKernels kernels;
     private final List<Call> calls = new ArrayList<>();
 
-    private Capture(RelationAttention kernels) {
+    private Capture(TrainingKernels kernels) {
       this.kernels = kernels;
     }
 
@@ -101,6 +102,23 @@ public class TrainingAttentionGpuBench {
         NDArray gradQuery,
         NDArray gradKeyValue,
         NDArray gradTable) {
+      throw new UnsupportedOperationException("the capture records forward passes only");
+    }
+
+    @Override
+    public void forward(NormShape d, NDArray input, NDArray gain, NDArray out, NDArray inverseRms) {
+      kernels.forward(d, input, gain, out, inverseRms);
+    }
+
+    @Override
+    public void backward(
+        NormShape d,
+        NDArray input,
+        NDArray gain,
+        NDArray inverseRms,
+        NDArray gradOut,
+        NDArray gradInput,
+        NDArray gradGain) {
       throw new UnsupportedOperationException("the capture records forward passes only");
     }
   }
@@ -176,7 +194,7 @@ public class TrainingAttentionGpuBench {
    * @return 層ごとの 1 回あたりの ms {順伝播, 逆伝播}
    */
   private static List<double[]> measure(
-      Model model, RelationAttention kernels, PtEvent event, Microbatch part, int step, int lane) {
+      Model model, TrainingKernels kernels, PtEvent event, Microbatch part, int step, int lane) {
     NDManager manager = model.getNDManager();
     PrismNetwork network = (PrismNetwork) model.getBlock();
     List<double[]> layers = new ArrayList<>();

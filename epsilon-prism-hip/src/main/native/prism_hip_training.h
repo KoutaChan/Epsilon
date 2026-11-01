@@ -1,5 +1,5 @@
-// 学習の自前の演算（DJL の配列のデバイスのメモリを直に読み書きする）: 関係の符号、関係の偏りつきの注意の順伝播と逆伝播、DJL の配列の
-// アドレス。
+// 学習の自前の演算（DJL の配列のデバイスのメモリを直に読み書きする）: 関係の符号、関係の偏りつきの注意の順伝播と逆伝播、RMSNorm の
+// 順伝播と逆伝播、DJL の配列のアドレス。
 #pragma once
 
 #include <hip/hip_runtime.h>
@@ -100,6 +100,44 @@ void checkAttentionShape(const AttentionShape& shape);
 void attentionForward(const AttentionShape& shape, const AttentionForward& arrays, hipStream_t stream);
 
 void attentionBackward(const AttentionShape& shape, const AttentionBackward& arrays, hipStream_t stream);
+
+// RMSNorm の幅の上限と、利得の勾配の部分和 1 つが受け持つ行の数（Java の RmsNormKernels.MAX_WIDTH・GAIN_ROWS）。
+constexpr int kNormMaxWidth = 1024;
+constexpr int kNormGainRows = 128;
+
+// RMSNorm の数。入力・出力とそれらの勾配は [rows, width]（BF16、連続、先頭は 16 バイトにそろう）、利得は [width]（FP32、16 バイトに
+// そろう）。width は 8 の倍数で kNormMaxWidth 以下。
+struct NormShape {
+  int rows;
+  int width;
+  float epsilon;
+};
+
+// 順伝播の配列。inverseRms [rows] は逆伝播のための r = rsqrt(Σx²/width + ε)（FP32）。
+struct NormForward {
+  const uint16_t* input;
+  const float* gain;
+  uint16_t* out;
+  float* inverseRms;
+};
+
+// 逆伝播の配列。gradInput は FP32 で作って BF16 に最近接偶数で 1 回丸める。gradGain [⌈rows / kNormGainRows⌉, width] は FP32 の、
+// 行の塊（kNormGainRows 行）ごとの部分和（原子的な加算なしの決まった順で、呼び手が塊で足す）。
+struct NormBackward {
+  const uint16_t* input;
+  const float* gain;
+  const float* inverseRms;
+  const uint16_t* gradOut;
+  uint16_t* gradInput;
+  float* gradGain;
+};
+
+// 数を確かめる（範囲外は std::invalid_argument）。
+void checkNormShape(const NormShape& shape);
+
+void normForward(const NormShape& shape, const NormForward& arrays, hipStream_t stream);
+
+void normBackward(const NormShape& shape, const NormBackward& arrays, hipStream_t stream);
 
 // DJL の配列の要素の型（Java の HipAttention.Element と同じ順）。
 enum class TensorElement : int { kBool = 0, kInt16 = 1, kInt32 = 2, kBfloat16 = 3, kFloat32 = 4, kUint8 = 5 };

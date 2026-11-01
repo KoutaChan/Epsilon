@@ -190,6 +190,26 @@ public final class Context {
     return toCompute(normalized);
   }
 
+  /**
+   * 背骨の RMSNorm（{@link #norm} と同じ式）。注意の記録があれば記録の自前の演算（入出力は計算の型、統計・利得は FP32。
+   * {@link AttentionTape#norm}）で計算し、記録する形では出力の葉を返す。input の木は、この正規化のほかに自動微分の中から読まれないこと
+   * （ほかの読み手には、先に葉にした値を渡す）: 入力の勾配は記録の逆伝播が input を根にして流すので、損失の逆伝播が先に同じ木をたどっては
+   * ならない。
+   *
+   * @param input 入力 [..., H]（計算の型）
+   * @param gain 利得 [H]
+   * @param epsilon ε
+   * @param stage 記録の逆伝播（入力と利得への注入）を計る段
+   * @param layer 段の層の番号
+   * @return 正規化した値（計算の型）
+   */
+  NDArray backboneNorm(
+      NDArray input, Parameter gain, double epsilon, FitProbe.Stage stage, int layer) {
+    return tape == null
+        ? norm(input, gain, epsilon)
+        : tape.norm(input, fp32(gain), (float) epsilon, stage, layer);
+  }
+
   /** SiLU（FP32 で計算して入力の型に丸める）。 */
   public static NDArray silu(NDArray input) {
     return Activation.swish(input, 1f);

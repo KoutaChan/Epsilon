@@ -8,7 +8,7 @@ import ai.djl.pytorch.engine.PtStream;
 import com.epsilon.prism.backend.HipBackend;
 import com.epsilon.prism.backend.WeightPack;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.RelationAttention;
+import com.epsilon.prism.hip.TrainingKernels;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.model.FrozenNetwork;
@@ -60,7 +60,7 @@ sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
    * @param path 推論の道（設定の inference。GPU・前線なし・特化した幅のときだけ HIP になる）
    * @param device デバイス
    * @param stream 計算ストリーム（HIP の道で使う。CPU は null）
-   * @param attention 背骨の注意の自前の演算（eager の道で使う。null なら djl-rocm の演算）
+   * @param attention 背骨の注意と正規化の自前の演算（eager の道で使う。null なら djl-rocm の演算）
    * @param capacity 微小バッチの容量
    * @return 錨
    * @throws IOException 錨の網を読めないとき
@@ -70,7 +70,7 @@ sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
       InferencePath path,
       Device device,
       PtStream stream,
-      RelationAttention attention,
+      TrainingKernels attention,
       BatchPlan.Capacity capacity)
       throws IOException {
     if (path.resolve(device, PrismNetwork.readShape(directory)) == InferencePath.HIP) {
@@ -83,10 +83,10 @@ sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
   final class Eager implements Anchor {
 
     private final FrozenNetwork network;
-    private final RelationAttention attention;
+    private final TrainingKernels attention;
     private final Uploads uploads;
 
-    Eager(FrozenNetwork network, RelationAttention attention) {
+    Eager(FrozenNetwork network, TrainingKernels attention) {
       this.network = network;
       this.attention = attention;
       uploads = network.newUploads();

@@ -189,21 +189,10 @@ public final class PrismNetwork extends AbstractBlock {
       int queries = layer == encoders.length - 1 ? TokenType.FIXED_TOKENS : index.tokens;
       tokens = encoders[layer].forward(context, tokens, index.tokenMask.array(), codes, queries);
     }
-    NDArray states = finalNorm.apply(context, tokens);
+    // 注意の記録があれば背骨の出力は記録の正規化の葉で、損失の逆伝播は頭の側（Stage.HEADS_BACKWARD）で止まる
+    NDArray states = finalNorm.apply(context, tokens, encoders.length - 1);
     probe.mark(Stage.FINAL_NORM);
-    return splitBackward(context, states);
-  }
-
-  /**
-   * 計測のときは背骨の出力を葉にする（{@link FitProbe#cuts}）。損失の逆伝播は頭の側（{@link Stage#HEADS_BACKWARD}）で止まり、
-   * 最後の正規化と最後の層の O 射影・FFN は、葉に溜めた頭からの勾配の注入として別に計れる（{@link AttentionTape}）。注入する勾配は頭からの
-   * 寄与の和そのものなので、勾配は葉にしないときと同じ式。
-   */
-  private NDArray splitBackward(Context context, NDArray states) {
-    AttentionTape tape = context.tape();
-    return tape == null || !context.probe().cuts()
-        ? states
-        : tape.cut(states, Stage.O_FFN_BACKWARD, encoders.length - 1);
+    return states;
   }
 
   /**

@@ -5,6 +5,7 @@ import com.epsilon.network.NetworkRuntime;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.backend.WeightPack;
 import com.epsilon.prism.input.BatchPlan;
+import com.epsilon.prism.input.BatchShape;
 import com.epsilon.prism.input.Tokenizer;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
@@ -34,7 +35,8 @@ import org.slf4j.LoggerFactory;
  * <p>GPU では Nano と共通の受付・予約・デバイスパイプラインに載せ、複数の GPU には同じ版の写しを置く。符号化は符号化のプールで進み、順伝播は
  * 実行枠ごとの計算のストリームで出すので、次の受け付けの符号化と 2 つの実行枠の順伝播が重なる。CPU の網では同じ道を呼び出しスレッドで通す。
  *
- * <p>行は収集が O から作る。入力は色の正準形（萬子・筒子・索子の入れ替えで変わらない）。仕事の量（{@link Throughput}）は閉じるときに記録に書く。
+ * <p>行は収集が O から作る。入力は色の正準形（萬子・筒子・索子の入れ替えで変わらない）。仕事の量（{@link Throughput}）と順伝播の塊の形
+ * （{@link BatchShape}）は閉じるときに記録に書く。系の性質で受け付けの O を抜き取って書き出せる（{@link BatchSamples}）。
  */
 public final class NetworkPolicy implements PolicyService {
 
@@ -82,6 +84,8 @@ public final class NetworkPolicy implements PolicyService {
   private final LongAdder chunks = new LongAdder();
   private final AtomicLong first = new AtomicLong(UNSET);
   private final AtomicLong last = new AtomicLong(UNSET);
+  private final BatchShape shape = new BatchShape();
+  private final BatchSamples samples = BatchSamples.configured();
   private boolean closed;
 
   private NetworkPolicy(
@@ -417,11 +421,15 @@ public final class NetworkPolicy implements PolicyService {
     }
   }
 
-  /** 答えを書き終えた受け付けを数える。 */
+  /** 答えを書き終えた受け付けを数える（塊の形と抜き取りも。塊は池に返す前）。 */
   private void answered(Encoding encoding) {
     decisions.add(encoding.rows().size());
     batches.increment();
     chunks.add(encoding.chunks().size());
+    for (Encoding.Chunk chunk : encoding.chunks()) {
+      shape.add(chunk.batch().plan());
+    }
+    samples.offer(encoding.rows(), params.version());
     last.accumulateAndGet(System.nanoTime(), Math::max);
   }
 
@@ -467,6 +475,7 @@ public final class NetworkPolicy implements PolicyService {
           String.format("%.1f", done.seconds()),
           String.format("%.0f", done.decisionsPerSecond()),
           String.format("%.1f", done.encodeSeconds()));
+      LOG.info("PRISM policy v{} batch shape: {}", params.version(), shape.summary().line());
     }
     // 実行枠を全て返し（リース）、デバイスの道（計画はストリームを待ってから返す・ストリーム・網）を閉じてから、入力の blob を返す
     List<AutoCloseable> resources = new ArrayList<>(leases);

@@ -18,13 +18,19 @@ import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.observe.Observation;
 import com.epsilon.prism.observe.ObservationArena;
 import com.epsilon.prism.observe.ObservationWriter;
+import com.epsilon.prism.policy.BatchSamples;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Random;
+import java.util.function.IntFunction;
+import java.util.stream.Stream;
 
 /** HIP の試験の材料: 乱数で動かした網と、エンジンで打った半荘の判断から Tokenizer で作った塊。 */
 public final class HipFixtures {
@@ -34,6 +40,17 @@ public final class HipFixtures {
 
   /** 長い行の公開の出来事の下限（T = 39 + 出来事 > 128 で、K2 の波の 2 つ目の問い合わせの塊が LDS の q を通る）。 */
   private static final int LONG_ROW_EVENTS = 90;
+
+  /** 速さの試験が回す本番の塊のディレクトリの系の性質（{@link BatchSamples} が書いた *.batch。なければ模擬の半荘の行）。 */
+  static final String SPEED_BATCHES = "prism.speedBatches";
+
+  /**
+   * 速さの試験の 1 塊の行。
+   *
+   * @param name 名前（模擬なら synthetic、本番の塊ならファイルの名前）
+   * @param rows O の語の列
+   */
+  record SpeedBatch(String name, List<long[]> rows) {}
 
   private HipFixtures() {}
 
@@ -220,10 +237,60 @@ public final class HipFixtures {
   }
 
   /** 長い行の試験の塊の行: 普通の行 2 つの後に {@link #longRows()}（長い行の出来事のトークンは塊の途中から始まる）。 */
-  static List<long[]> longMixedRows() {
+  public static List<long[]> longMixedRows() {
     List<long[]> rows = new ArrayList<>(mixedRows(2, 900));
     rows.addAll(longRows());
     return rows;
+  }
+
+  /**
+   * GREEDY と CALLS の半荘から交互に集めた行。
+   *
+   * @param count 行の数
+   * @param seed 最初の半荘の種
+   * @return O の語の列
+   */
+  static List<long[]> simulatedRows(int count, long seed) {
+    List<long[]> greedy = observations(seed, 1 + count / 600, DecisionWalk.Policy.GREEDY, count);
+    List<long[]> calls = observations(seed + 1, 1 + count / 600, DecisionWalk.Policy.CALLS, count);
+    List<long[]> rows = new ArrayList<>();
+    for (int i = 0; rows.size() < count && (i < greedy.size() || i < calls.size()); i++) {
+      if (i < greedy.size()) {
+        rows.add(greedy.get(i));
+      }
+      if (i < calls.size() && rows.size() < count) {
+        rows.add(calls.get(i));
+      }
+    }
+    return rows;
+  }
+
+  /**
+   * 速さの試験の塊。系の性質 {@value #SPEED_BATCHES} があればそのディレクトリの本番の塊（名前の順）、なければ模擬の半荘の行の塊 1 つ。
+   *
+   * @param count 模擬の塊の行の数
+   * @param seed 模擬の塊の最初の半荘の種
+   * @return 塊（1 つ以上）
+   * @throws IllegalStateException ディレクトリに塊がないとき
+   */
+  static List<SpeedBatch> speedBatches(int count, long seed) {
+    String directory = System.getProperty(SPEED_BATCHES);
+    if (directory == null || directory.isBlank()) {
+      return List.of(new SpeedBatch("synthetic", simulatedRows(count, seed)));
+    }
+    try (Stream<Path> files = Files.list(Path.of(directory))) {
+      List<SpeedBatch> batches = new ArrayList<>();
+      for (Path file :
+          files.filter(f -> f.getFileName().toString().endsWith(".batch")).sorted().toList()) {
+        batches.add(new SpeedBatch(file.getFileName().toString(), BatchSamples.read(file)));
+      }
+      if (batches.isEmpty()) {
+        throw new IllegalStateException("no *.batch files in " + directory);
+      }
+      return batches;
+    } catch (IOException failure) {
+      throw new UncheckedIOException(failure);
+    }
   }
 
   /**
@@ -233,6 +300,17 @@ public final class HipFixtures {
    * @return 封じた塊
    */
   public static HostBatch encode(List<long[]> rows) {
+    return encode(rows, ByteBuffer::allocateDirect);
+  }
+
+  /**
+   * O の列を 1 つの塊に符号化する。
+   *
+   * @param rows O の語の列
+   * @param memory blob の置き場を取る口（バイト数を受ける）
+   * @return 封じた塊
+   */
+  static HostBatch encode(List<long[]> rows, IntFunction<ByteBuffer> memory) {
     int n = rows.size();
     BatchPlan.Capacity capacity =
         new BatchPlan.Capacity(
@@ -240,8 +318,7 @@ public final class HipFixtures {
             Math.max(n * Limits.MAX_EVENT_TOKENS, Limits.MAX_EVENT_TOKENS),
             Math.max(n * Limits.MAX_TRANSITIONS, Limits.MAX_TRANSITIONS),
             Math.max(n * Limits.MAX_LEGAL_ACTIONS, Limits.MAX_LEGAL_ACTIONS));
-    HostBatch batch =
-        new HostBatch(capacity, ByteBuffer.allocateDirect(BatchPlan.maxBytes(capacity)).order(ByteOrder.LITTLE_ENDIAN));
+    HostBatch batch = new HostBatch(capacity, memory.apply(BatchPlan.maxBytes(capacity)));
     BatchPlan plan = batch.plan();
     plan.clear();
     Observation read = new Observation();

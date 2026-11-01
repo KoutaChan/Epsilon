@@ -72,4 +72,21 @@ endfunction()
 prism_hip_library(prism_hip OFF)
 prism_hip_library(prism_hip_check ON)
 
+# prism_hip_bench: JVM の外で Plan を直に回す台（rocprofv3 の計数と kernel-trace）。jar の .so とは別の実行ファイルで、既定の組み立て
+# にも入らない（cmake --build <dir> --target prism_hip_bench）。推論の道の翻訳単位を、通常の .so と同じ定義と旗で翻訳し直す。
+add_executable(prism_hip_bench EXCLUDE_FROM_ALL
+  prism_hip_bench.cc
+  prism_hip_plan.cc
+  k0_relation.hip
+  k1_embed.hip
+  k2_attention.hip
+  k3_mlp.hip
+  k6_candidate.hip
+  k7_value_graph.hip)
+set_source_files_properties(prism_hip_bench.cc PROPERTIES LANGUAGE HIP)
+target_include_directories(prism_hip_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(prism_hip_bench PRIVATE PRISM_HIP_ARCH="${PRISM_HIP_ARCH}" PRISM_HIP_CHECKED=0)
+target_compile_options(prism_hip_bench PRIVATE -O3 -Wall -Wextra -fvisibility=hidden -fvisibility-inlines-hidden)
+set_target_properties(prism_hip_bench PROPERTIES HIP_ARCHITECTURES ${PRISM_HIP_ARCH} POSITION_INDEPENDENT_CODE ON)
+
 configure_file(prism-hip.properties.in ${PRISM_OUTPUT_DIR}/prism-hip.properties @ONLY)

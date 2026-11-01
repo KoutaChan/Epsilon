@@ -6,9 +6,9 @@ import ai.djl.ndarray.NDManager;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtStream;
 import ai.djl.training.ParameterStore;
-import com.epsilon.prism.DecisionWalk;
 import com.epsilon.prism.hip.HipKernel;
 import com.epsilon.prism.hip.HipLibrary;
+import com.epsilon.prism.input.BatchShape;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.input.InputSchema.Axis;
@@ -35,7 +35,8 @@ import org.testng.annotations.Test;
  *   <li>公開の出来事が 90 を超える行（T > 128）を含む塊でも同じ（記録の行の頭は「PRISM-HIP-T5 long」）
  *   <li>塊を組み直しても（行を混ぜ、前に別の行を足しても）同じ行の s がビットで同じ
  *   <li>白紙の網で s が全て +0.0f、版が違えば例外
- *   <li>1 判断あたりの GPU の時間（カーネルごと、本番の形の 2048 行の塊）
+ *   <li>1 判断あたりの GPU の時間（カーネルごと、本番の形の 2048 行の塊。系の性質 {@value HipFixtures#SPEED_BATCHES} があれば、
+ *       書き出した本番の塊ごと）
  * </ul>
  */
 @Test(groups = "rocm")
@@ -136,7 +137,7 @@ public class HipForwardTest {
       WeightLayout layout = WeightLayout.of(network);
       WeightPack pack = WeightPack.build(layout, network, 4);
       List<long[]> rows = HipReferenceTest.mixedRows(GpuCase.ROWS);
-      List<long[]> other = rows(GpuCase.ROWS, 700);
+      List<long[]> other = HipFixtures.simulatedRows(GpuCase.ROWS, 700);
       List<long[]> shuffled = new ArrayList<>(rows);
       Collections.shuffle(shuffled, new Random(9));
       List<long[]> prefixed = new ArrayList<>(other.subList(0, 7));
@@ -184,76 +185,72 @@ public class HipForwardTest {
     }
   }
 
-  /** 1 判断あたりの GPU の時間（本番の形 H256・F512・G256、2048 行の塊、深さ 2 と 3）。 */
+  /**
+   * 1 判断あたりの GPU の時間（本番の形 H256・F512・G256、深さ 2 と 3）。塊は模擬の半荘の 2048 行か、系の性質
+   * {@value HipFixtures#SPEED_BATCHES} の本番の塊（塊ごとに 1 行。行の終わりに塊の名前と形）。
+   */
   public void measureSpeed() {
-    List<long[]> rows = rows(SPEED_ROWS, 800);
-    HostBatch batch = HipFixtures.encode(rows);
-    int decisions = batch.plan().rows();
-    for (int depth = 2; depth <= 3; depth++) {
-      try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-          PtStream stream = newStream()) {
-        PrismNetwork network = HipFixtures.network(manager, depth, 70 + depth);
-        WeightLayout layout = WeightLayout.of(network);
-        try (HipBackend backend = HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(SPEED_ROWS))) {
-          backend.publish(WeightPack.build(layout, network, 5));
-          backend.plan().profile(true);
-          float[][] millis = new float[ITERATIONS][];
-          float[] totals = new float[ITERATIONS];
-          for (int i = 0; i < WARMUP + ITERATIONS; i++) {
-            long start = System.nanoTime();
-            backend.forward(batch, 5);
-            long wall = System.nanoTime() - start;
-            float[] kernels = backend.plan().kernelMillis();
-            if (i >= WARMUP) {
-              millis[i - WARMUP] = kernels;
-              totals[i - WARMUP] = wall / 1e6f;
-            }
-          }
-          StringBuilder line = new StringBuilder();
-          double sum = 0;
-          for (HipKernel kernel : HipKernel.values()) {
-            float[] samples = new float[ITERATIONS];
-            for (int i = 0; i < ITERATIONS; i++) {
-              samples[i] = millis[i][kernel.ordinal()];
-            }
-            Arrays.sort(samples);
-            double median = samples[ITERATIONS / 2];
-            sum += median;
-            line.append(String.format(Locale.ROOT, " %s=%.3fms(%.3fus)", kernel, median, median * 1e3 / decisions));
-          }
-          Arrays.sort(totals);
-          log.info(
-              "PRISM-HIP-SPEED depth {} rows {} tokens/row {} transitions/row {} actions/row {}:{} kernels={}ms"
-                  + " ({} us/decision) wall={}ms ({} us/decision)",
-              depth,
-              decisions,
-              String.format(Locale.ROOT, "%.1f", (39.0 * decisions + batch.plan().count(Axis.EVENT)) / decisions),
-              String.format(Locale.ROOT, "%.1f", (double) batch.plan().count(Axis.TRANSITION) / decisions),
-              String.format(Locale.ROOT, "%.1f", (double) batch.plan().count(Axis.ACTION) / decisions),
-              line,
-              String.format(Locale.ROOT, "%.3f", sum),
-              String.format(Locale.ROOT, "%.3f", sum * 1e3 / decisions),
-              String.format(Locale.ROOT, "%.3f", totals[ITERATIONS / 2]),
-              String.format(Locale.ROOT, "%.3f", totals[ITERATIONS / 2] * 1e3 / decisions));
-        }
+    for (HipFixtures.SpeedBatch source : HipFixtures.speedBatches(SPEED_ROWS, 800)) {
+      HostBatch batch = HipFixtures.encode(source.rows());
+      BatchShape shape = new BatchShape();
+      shape.add(batch.plan());
+      for (int depth = 2; depth <= 3; depth++) {
+        measureSpeed(batch, depth, source.name() + " " + shape.summary().line());
       }
     }
   }
 
-  /** GREEDY と CALLS の半荘から交互に集めた行。 */
-  private static List<long[]> rows(int count, long seed) {
-    List<long[]> greedy = HipFixtures.observations(seed, 1 + count / 600, DecisionWalk.Policy.GREEDY, count);
-    List<long[]> calls = HipFixtures.observations(seed + 1, 1 + count / 600, DecisionWalk.Policy.CALLS, count);
-    List<long[]> rows = new ArrayList<>();
-    for (int i = 0; rows.size() < count && (i < greedy.size() || i < calls.size()); i++) {
-      if (i < greedy.size()) {
-        rows.add(greedy.get(i));
-      }
-      if (i < calls.size() && rows.size() < count) {
-        rows.add(calls.get(i));
+  private void measureSpeed(HostBatch batch, int depth, String label) {
+    int decisions = batch.plan().rows();
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu());
+        PtStream stream = newStream()) {
+      PrismNetwork network = HipFixtures.network(manager, depth, 70 + depth);
+      WeightLayout layout = WeightLayout.of(network);
+      try (HipBackend backend =
+          HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(decisions))) {
+        backend.publish(WeightPack.build(layout, network, 5));
+        backend.plan().profile(true);
+        float[][] millis = new float[ITERATIONS][];
+        float[] totals = new float[ITERATIONS];
+        for (int i = 0; i < WARMUP + ITERATIONS; i++) {
+          long start = System.nanoTime();
+          backend.forward(batch, 5);
+          long wall = System.nanoTime() - start;
+          float[] kernels = backend.plan().kernelMillis();
+          if (i >= WARMUP) {
+            millis[i - WARMUP] = kernels;
+            totals[i - WARMUP] = wall / 1e6f;
+          }
+        }
+        StringBuilder line = new StringBuilder();
+        double sum = 0;
+        for (HipKernel kernel : HipKernel.values()) {
+          float[] samples = new float[ITERATIONS];
+          for (int i = 0; i < ITERATIONS; i++) {
+            samples[i] = millis[i][kernel.ordinal()];
+          }
+          Arrays.sort(samples);
+          double median = samples[ITERATIONS / 2];
+          sum += median;
+          line.append(String.format(Locale.ROOT, " %s=%.3fms(%.3fus)", kernel, median, median * 1e3 / decisions));
+        }
+        Arrays.sort(totals);
+        log.info(
+            "PRISM-HIP-SPEED depth {} rows {} tokens/row {} transitions/row {} actions/row {}:{} kernels={}ms"
+                + " ({} us/decision) wall={}ms ({} us/decision) batch={}",
+            depth,
+            decisions,
+            String.format(Locale.ROOT, "%.1f", (39.0 * decisions + batch.plan().count(Axis.EVENT)) / decisions),
+            String.format(Locale.ROOT, "%.1f", (double) batch.plan().count(Axis.TRANSITION) / decisions),
+            String.format(Locale.ROOT, "%.1f", (double) batch.plan().count(Axis.ACTION) / decisions),
+            line,
+            String.format(Locale.ROOT, "%.3f", sum),
+            String.format(Locale.ROOT, "%.3f", sum * 1e3 / decisions),
+            String.format(Locale.ROOT, "%.3f", totals[ITERATIONS / 2]),
+            String.format(Locale.ROOT, "%.3f", totals[ITERATIONS / 2] * 1e3 / decisions),
+            label);
       }
     }
-    return rows;
   }
 
   private static PtStream newStream() {

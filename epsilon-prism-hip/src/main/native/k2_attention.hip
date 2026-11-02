@@ -6,7 +6,8 @@
 //   1. 頭の対の q・k・v = ⌊n·W_qkvᵀ + b⌉（WMMA。K4 は q を局・席・牌の 39 個だけ）。n = ⌊(x·r)·g⌉ は前の段（K1・K3）が
 //      NORMALIZED に書いたもので、断片としてそのまま読む。W_qkv は重みの公開のときに qkvFragmentKernel が断片の順に並べ替えた写し
 //      （下）を読む。波 m が 16 トークンの塊 m を作る。k・v は LDS へ。q は転置の qᵀ = W_q·nᵀ で作り、問い合わせの B の断片のまま
-//      レジスタに残す（波 m が問い合わせの塊 m を受け持つ）。ただし 1 波が 1 頭を回す K4 の組（W ≥ 6）は q を LDS へ置く
+//      レジスタに残す（波 m が問い合わせの塊 m を受け持つ）。ただし K4 の W ≥ 6 の組は 1 波が 2 塊の 1 頭を作り（重みの断片を 2 塊で
+//      共有して読みを減らす）、q を LDS へ置く
 //   2. 問い合わせの塊（16 個）ごとに 1 波が 2 頭を回す。K4 の W ≥ 6 の組は 1 波が 1 頭を回す（K4 の問い合わせの塊は 3 つ以下なので
 //      6 波以下）。鍵の塊（16 個）ごとに
 //        S^T = K·Qᵀ（WMMA、BF16 の積を FP32 で累積）、ℓ = S·scale + Σ_s ρ[16s + c_s(i, j)]（c は K0 の符号。ρ は区画 2 つずつ前もって
@@ -143,56 +144,71 @@ __device__ __forceinline__ bf16x16 bufferFragment(__amdgpu_buffer_rsrc_t resourc
   return __builtin_bit_cast(bf16x16, __builtin_shufflevector(lo, hi, 0, 1, 2, 3, 4, 5, 6, 7));
 }
 
-// 射影の K の 1 歩の断片: 頭 h の q・k・v（j = 0・1・2）の重みの断片（写しの soffset k·3072 + (3h + j)·512）と n の行の 32k バイト。
-// kSkip より前（K4 の q を作らない塊の q）は読まず掛けない。
-template <int kSkip>
+// 射影の K の 1 歩の断片: 頭 h の q・k・v（j = 0・1・2）の重みの断片（写しの soffset k·3072 + (3h + j)·512）と、塊 b < kBlocks の
+// n の行の 32k バイト。重みは塊で共有する。q を作るのは先頭の kQueries 個の塊だけで（K4 の局・席・牌より後の塊は作らない）、
+// kQueries = 0 なら q の重みも読まない。
+template <int kBlocks, int kQueries>
 struct ProjectionStep {
+  static_assert(0 <= kQueries && kQueries <= kBlocks, "the blocks with a query come first");
   bf16x16 weight[3];
-  bf16x16 input;
+  bf16x16 input[kBlocks];
 
   __device__ __forceinline__ void load(__amdgpu_buffer_rsrc_t weights, uint32_t fragmentRow, int h,
-                                       __amdgpu_buffer_rsrc_t inputs, uint32_t inputRow, int k) {
+                                       __amdgpu_buffer_rsrc_t inputs, const uint32_t (&inputRow)[kBlocks], int k) {
 #pragma unroll
-    for (int j = kSkip; j < 3; ++j) {
+    for (int j = kQueries > 0 ? 0 : 1; j < 3; ++j) {
       const int at = k * kStepBytes + (3 * h + j) * kFragmentBytes;
       weight[j] = bufferFragment(weights, fragmentRow, at, at + kFragmentBytes / 2);
     }
-    input = bufferFragment(inputs, inputRow, 32 * k, 32 * k + 16);
+#pragma unroll
+    for (int b = 0; b < kBlocks; ++b) {
+      input[b] = bufferFragment(inputs, inputRow[b], 32 * k, 32 * k + 16);
+    }
   }
 
-  // acc[0] += W_q·nᵀ（転置の q）、acc[1]・acc[2] += n·W_k,vᵀ。
-  __device__ __forceinline__ void multiply(f32x8 (&acc)[3]) const {
-    if constexpr (kSkip == 0) {
-      acc[0] = mma(weight[0], input, acc[0]);
-    }
+  // 塊 b の acc[b][0] += W_q·nᵀ（転置の q）、acc[b][1]・acc[b][2] += n·W_k,vᵀ。
+  __device__ __forceinline__ void multiply(f32x8 (&acc)[kBlocks][3]) const {
 #pragma unroll
-    for (int j = 1; j < 3; ++j) {
-      acc[j] = mma(input, weight[j], acc[j]);
+    for (int b = 0; b < kBlocks; ++b) {
+      if (b < kQueries) {
+        acc[b][0] = mma(weight[0], input[b], acc[b][0]);
+      }
+#pragma unroll
+      for (int j = 1; j < 3; ++j) {
+        acc[b][j] = mma(input[b], weight[j], acc[b][j]);
+      }
     }
   }
 };
 
-// 頭 h の射影 acc（ProjectionStep::multiply の式）を K の 16 歩で作る。断片の組 kSets 個を回して kSets − 1 歩先まで読みながら掛ける。
-// 読みは全て無条件なので輪は 1 つの基本塊のまま（組を写す mov がない）、sched_barrier が次の読みを掛け算の後ろに留める。
+// 頭 h の塊 kBlocks 個の射影 acc（ProjectionStep::multiply の式）を K の 16 歩で作る。断片の組 kSets 個を回して kSets − 1 歩先まで
+// 読みながら掛ける。読みは全て無条件なので輪は 1 つの基本塊のまま（組を写す mov がない）、sched_barrier が次の読みを掛け算の後ろに
+// 留める。
+//   組 2 つ（K4 の q を作る塊 2 つ）: 展開しない 2 歩の輪と最後の 2 歩（読み直しはない）
 //   組 3 つ（K2）: 展開しない 3 歩の輪と最後の 1 歩。最後の周の 1 つは歩 15 を読み直す（使わない）
-//   組 4 つ（K4）: 3 歩を先に読み、展開しない 4 歩の輪と最後の 4 歩（読み直しはない）
-// 組 2 つでは待ちが 1 歩ぶんしか隠れず、展開すると断片が重なってレジスタが溢れる。K2 は組 4 つにするとレジスタが増えて占有が下がる
-// ので組 3 つにする（K4 は組 4 つでも下がらない）。どちらも各 acc の K の順は 0〜15 で同じ。
-template <int H, int kSkip, int kSets>
-__device__ __forceinline__ void projectHead(f32x8 (&acc)[3], __amdgpu_buffer_rsrc_t weights, uint32_t fragmentRow,
-                                            int h, __amdgpu_buffer_rsrc_t inputs, uint32_t inputRow) {
+//   組 4 つ（K4 の q を作らない塊 2 つと塊 1 つ）: 3 歩を先に読み、展開しない 4 歩の輪と最後の 4 歩（読み直しはない）
+// 組はカーネルが 8 波/SIMD のレジスタ（192）に収まる最多にする。塊 1 つの組 2 つでは 1 歩の掛け算 3 つの間しか読みを隠せず、
+// 展開すると断片が重なってレジスタが溢れる。K2 は組 4 つで占有が下がるので組 3 つ。K4 の q を作る塊 2 つは acc 6 つと組 1 つの断片
+// 5 つが要るので組 2 つまでで、1 歩の掛け算 5〜6 つの間に読みを隠す。どれも各 acc の K の順は 0〜15 で同じ。
+template <int H, int kSets, int kBlocks, int kQueries>
+__device__ __forceinline__ void projectHead(f32x8 (&acc)[kBlocks][3], __amdgpu_buffer_rsrc_t weights,
+                                            uint32_t fragmentRow, int h, __amdgpu_buffer_rsrc_t inputs,
+                                            const uint32_t (&inputRow)[kBlocks]) {
   constexpr int kSteps = H / 16;
 #pragma unroll
-  for (int j = 0; j < 3; ++j) {
-    acc[j] = f32x8{};
+  for (int b = 0; b < kBlocks; ++b) {
+#pragma unroll
+    for (int j = 0; j < 3; ++j) {
+      acc[b][j] = f32x8{};
+    }
   }
-  ProjectionStep<kSkip> a;
-  ProjectionStep<kSkip> b;
-  ProjectionStep<kSkip> c;
+  ProjectionStep<kBlocks, kQueries> a;
+  ProjectionStep<kBlocks, kQueries> b;
   a.load(weights, fragmentRow, h, inputs, inputRow, 0);
-  b.load(weights, fragmentRow, h, inputs, inputRow, 1);
   if constexpr (kSets == 3) {
     static_assert(kSteps % 3 == 1, "the rolled loop covers the steps in threes plus the last one");
+    ProjectionStep<kBlocks, kQueries> c;
+    b.load(weights, fragmentRow, h, inputs, inputRow, 1);
 #pragma unroll 1
     for (int k = 0; k + 1 < kSteps; k += 3) {
       c.load(weights, fragmentRow, h, inputs, inputRow, k + 2);
@@ -206,9 +222,26 @@ __device__ __forceinline__ void projectHead(f32x8 (&acc)[3], __amdgpu_buffer_rsr
       __builtin_amdgcn_sched_barrier(0);
     }
     a.multiply(acc);
+  } else if constexpr (kSets == 2) {
+    static_assert(kSteps % 2 == 0, "the rolled loop covers the steps in twos");
+#pragma unroll 1
+    for (int k = 0; k + 2 < kSteps; k += 2) {
+      b.load(weights, fragmentRow, h, inputs, inputRow, k + 1);
+      a.multiply(acc);
+      __builtin_amdgcn_sched_barrier(0);
+      a.load(weights, fragmentRow, h, inputs, inputRow, k + 2);
+      b.multiply(acc);
+      __builtin_amdgcn_sched_barrier(0);
+    }
+    b.load(weights, fragmentRow, h, inputs, inputRow, kSteps - 1);
+    a.multiply(acc);
+    __builtin_amdgcn_sched_barrier(0);
+    b.multiply(acc);
   } else {
     static_assert(kSets == 4 && kSteps % 4 == 0, "the rolled loop covers the steps in fours");
-    ProjectionStep<kSkip> d;
+    ProjectionStep<kBlocks, kQueries> c;
+    ProjectionStep<kBlocks, kQueries> d;
+    b.load(weights, fragmentRow, h, inputs, inputRow, 1);
     c.load(weights, fragmentRow, h, inputs, inputRow, 2);
 #pragma unroll 1
     for (int k = 0; k + 4 < kSteps; k += 4) {
@@ -375,6 +408,81 @@ __device__ __forceinline__ void storeHead(const HeadState& s, bool inside, size_
   }
 }
 
+// K4 の射影の波の仕事 1 つ: 頭 h の塊 first 〜 first + kBlocks − 1（先頭の kQueries 個が局・席・牌の q を作る）の q・k・v を作り、
+// 偏りを足して丸めて LDS へ置く（q は lane の 8 次元を fixedQuery へ、k・v は K2 と同じ置き方）。重みの断片を塊で共有するので、
+// 1 歩の読みは重み 3（q を作らなければ 2）と n の kBlocks 個。偏りも塊で共有して 1 回読む。値は塊ごとに 1 頭を回すのとビットで
+// 同じ（各 acc の被演算子と K の順、偏りの足し方と丸めが同じ）。
+template <int H, int kBlocks, int kQueries, class Shared>
+__device__ __forceinline__ void projectLast(Shared& shared, const AttentionArgs& args, Bounds& bounds,
+                                            __amdgpu_buffer_rsrc_t weights, int row, int firstEvent, int tokens,
+                                            int pair, int h, int first, int lane) {
+  constexpr int A = H / 2;
+  constexpr int kSets = kBlocks == 2 && kQueries > 0 ? 2 : 4;  // projectHead
+  const int column = lane & 15;
+  const int half = lane >> 4;
+  const __amdgpu_buffer_rsrc_t inputs = bufferResource(args.normalized.data);
+  uint32_t inputRow[kBlocks];
+  uint32_t touched[kBlocks][3];
+#pragma unroll
+  for (int b = 0; b < kBlocks; ++b) {
+    const int token = min(16 * (first + b) + column, tokens - 1);
+    inputRow[b] = static_cast<uint32_t>(bounds.index(static_cast<size_t>(args.layout.index(row, firstEvent, token)) * H,
+                                                     H, args.normalized.limit)) *
+                  static_cast<uint32_t>(sizeof(uint16_t));
+    // n の行の 2〜4 本目の 128 バイトの行を 1 語ずつ先に読み、MALL から引いておく（K2 と同じ。値は射影の後の空の asm まで生かす）。
+#pragma unroll
+    for (int t = 0; t < 3; ++t) {
+      touched[b][t] = __builtin_amdgcn_raw_buffer_load_b32(inputs, inputRow[b], 128 * (t + 1), 0);
+    }
+  }
+  f32x8 acc[kBlocks][3];
+  projectHead<H, kSets, kBlocks, kQueries>(acc, weights, static_cast<uint32_t>(column) * 16, h, inputs, inputRow);
+  const int base = kPairWidth * pair + kHeadWidth * h;
+  if constexpr (kQueries > 0) {
+    const size_t at = bounds.index(static_cast<size_t>(base + 8 * half), 8, args.qkvBias.limit);
+    const f32x8 bias = *reinterpret_cast<const f32x8*>(args.qkvBias.data + at);
+#pragma unroll
+    for (int b = 0; b < kQueries; ++b) {
+      float values[8];
+#pragma unroll
+      for (int v = 0; v < 8; ++v) {
+        values[v] = acc[b][0][v] + bias[v];
+      }
+      const int t = 16 * (first + b) + column;
+      *reinterpret_cast<u32x4*>(&shared.fixedQuery[t][8 * ((2 * h + half) ^ ((t >> 1) & 3))]) = pack8Activation(values);
+    }
+  }
+  {
+    const float bias = args.qkvBias.data[bounds.index(A + base + column, 1, args.qkvBias.limit)];
+#pragma unroll
+    for (int b = 0; b < kBlocks; ++b) {
+#pragma unroll
+      for (int v = 0; v < 8; ++v) {
+        const int key = 16 * (first + b) + 2 * v + half;
+        shared.k[key][swizzled(key, kHeadWidth * h + column)] = bf16RoundActivation(acc[b][1][v] + bias);
+      }
+    }
+  }
+  {
+    const float bias = args.qkvBias.data[bounds.index(2 * A + base + column, 1, args.qkvBias.limit)];
+    const int dimension = 2 * (column & 7) + (column >> 3);
+#pragma unroll
+    for (int b = 0; b < kBlocks; ++b) {
+      float values[8];
+#pragma unroll
+      for (int v = 0; v < 8; ++v) {
+        values[v] = acc[b][2][v] + bias;
+      }
+      *reinterpret_cast<u32x4*>(&shared.valueT[kHeadWidth * h + dimension][16 * (first + b) + 8 * half]) =
+          pack8Activation(values);
+    }
+  }
+#pragma unroll
+  for (int b = 0; b < kBlocks; ++b) {
+    asm volatile("" ::"v"(touched[b][0]), "v"(touched[b][1]), "v"(touched[b][2]));
+  }
+}
+
 // 組の核: kWaves 波・LDS は 16·kWaves トークン分。作業群の行は組の順の行の番号 rowOrder[groupStart + blockIdx.y]。
 template <int H, bool kLast, int kWaves>
 __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs args) {
@@ -382,14 +490,15 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
   constexpr int kTokens = 16 * kWaves;
   constexpr int A = H / 2;
   constexpr int kPairElements = (H / 16) * kStepBytes / static_cast<int>(sizeof(uint16_t));  // 頭の対の重みの写し
-  constexpr int kSets = kLast ? 4 : 3;  // 射影の断片の組（projectHead）
-  // K4 で問い合わせの塊と頭の組ごとに波があれば 1 波が 1 頭を回し（q は LDS）、なければ 1 波が 2 頭を回す（q はレジスタ）。
+  // K4 で問い合わせの塊と頭の組ごとに波があれば、射影は 1 波が 2 塊の 1 頭を作って q を LDS に置き、注意は 1 波が 1 頭を回す。
+  // なければ（W = 4 の組。q の 3 KB を LDS に足すと占有が 8 から 7 に下がる）1 波が 1 塊の 2 頭を作り、q はレジスタに残す。
   constexpr bool kHeadWaves = kLast && 2 * kFixedBlocks <= kWaves;
   constexpr int kBiasCopies = (kBiasChunks + kThreads - 1) / kThreads;  // スレッドが写す偏りの表の塊
   using Shared = AttentionShared<kTokens, kHeadWaves>;
   static_assert(sizeof(Shared) <= 64 * 1024, "LDS of one work group is 64 KiB");
   static_assert(H * sizeof(uint16_t) == 4 * 128, "an n row spans four 128-byte lines");
   static_assert(!kLast || kFixedBlocks <= kWaves, "K4 gives every query block a wave");
+  static_assert(!kHeadWaves || kWaves % 2 == 0, "K4 pairs the waves of the two heads in the projection");
   static_assert(kThreads <= kBiasChunks, "every thread copies at least one chunk of the bias table");
   __shared__ Shared shared;
 
@@ -433,22 +542,49 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
     }
   }
 
-  // 1. q・k・v（WMMA）。波 m（< 塊の数）が 16 トークンの塊 m の頭ごとに q・k・v の 3 つの断片を作る。n と重みの写しは生の buffer で
-  //    読み、n は lane の行の位置（行の全ての歩を含む）、写しは作業群の頭の対の 48 KB を範囲の検査にかける。行の外の lane は行の最後
-  //    のトークンを読む（有限。その鍵は符号 kPaddedKeyCode で −∞ になって P = 0、その問い合わせは書かない）。q の A の断片の行 r は
-  //    W_q の行 π(r) なので（写しがそう並べてある）、C の断片の lane はトークン 16m + column の次元 8·half + v（v < 8）を持つ。
+  // 1. q・k・v（WMMA）。n と重みの写しは生の buffer で読み、n は lane の行の位置（行の全ての歩を含む）、写しは作業群の頭の対の 48 KB
+  //    を範囲の検査にかける。行の外の lane は行の最後のトークンを読む（有限。その鍵は符号 kPaddedKeyCode で −∞ になって P = 0、その
+  //    問い合わせは書かない）。q の A の断片の行 r は W_q の行 π(r) なので（写しがそう並べてある）、C の断片の lane はトークン
+  //    16m + column の次元 8·half + v（v < 8）を持つ。
   const __amdgpu_buffer_rsrc_t weights = bufferResource(
       args.qkv.data + bounds.index(static_cast<size_t>(pair) * kPairElements, kPairElements, args.qkv.limit));
-  const uint32_t fragmentRow = static_cast<uint32_t>(column) * 16;  // 写しの半分の中の lane の行（lane 16〜31 は 0〜15 と同じ）
-  const __amdgpu_buffer_rsrc_t inputs = bufferResource(args.normalized.data);
-  bf16x16 keptQuery[2];  // 波の問い合わせの塊 m の q（頭ごとの B の断片。1 波が 1 頭を回す K4 の組は LDS に置く）
-  if (wave < blocks) {
+  bf16x16 keptQuery[2];  // 波の問い合わせの塊 m の q（頭ごとの B の断片。K4 の W ≥ 6 の組は LDS に置く）
+  if constexpr (kHeadWaves) {
+    // K4（W ≥ 6）: 波 w は頭 w & 1 で塊の対 2(w >> 1)・2(w >> 1) + 1（行の最後の塊が対の前の側なら 1 つ）を作る（projectLast）。
+    //    塊は W 以下なので、対は全ての塊を 1 回ずつ覆う。q を作るのは局・席・牌の塊（16m < fixed）だけで、対の中では前の塊から
+    //    続く。波の番号は SGPR に置く（頭は重みの写しの soffset に入るので、VGPR のままだと読みごとに lane を回す輪になる。塊の枝も
+    //    スカラーになる）。
+    const int uniformWave = __builtin_amdgcn_readfirstlane(wave);
+    const int h = uniformWave & 1;
+    const int first = 2 * (uniformWave >> 1);
+    if (first < blocks) {
+      const int pairQueries = min(max((fixed - 16 * first + 15) / 16, 0), 2);
+      if (first + 1 < blocks) {
+        if (pairQueries == 2) {
+          projectLast<H, 2, 2>(shared, args, bounds, weights, row, firstEvent, tokens, pair, h, first, lane);
+        } else if (pairQueries == 1) {
+          projectLast<H, 2, 1>(shared, args, bounds, weights, row, firstEvent, tokens, pair, h, first, lane);
+        } else {
+          projectLast<H, 2, 0>(shared, args, bounds, weights, row, firstEvent, tokens, pair, h, first, lane);
+        }
+      } else if (pairQueries > 0) {
+        projectLast<H, 1, 1>(shared, args, bounds, weights, row, firstEvent, tokens, pair, h, first, lane);
+      } else {
+        projectLast<H, 1, 0>(shared, args, bounds, weights, row, firstEvent, tokens, pair, h, first, lane);
+      }
+    }
+  } else if (wave < blocks) {
+    // 波 m（< 塊の数）が 16 トークンの塊 m の頭ごとに q・k・v の 3 つの断片を作り、q は問い合わせの塊 qt = m のものとしてレジスタに
+    // 残す。断片の組（projectHead）は K2 が 3 つ、K4 が 4 つ。
+    constexpr int kSets = kLast ? 4 : 3;
+    const uint32_t fragmentRow = static_cast<uint32_t>(column) * 16;  // 写しの半分の中の lane の行（lane 16〜31 は 0〜15 と同じ）
+    const __amdgpu_buffer_rsrc_t inputs = bufferResource(args.normalized.data);
     const int m = wave;
     const int token = min(16 * m + column, tokens - 1);
-    const uint32_t inputRow =
+    const uint32_t inputRow[1] = {
         static_cast<uint32_t>(bounds.index(static_cast<size_t>(layout.index(row, firstEvent, token)) * H, H,
                                            args.normalized.limit)) *
-        sizeof(uint16_t);
+        static_cast<uint32_t>(sizeof(uint16_t))};
     // K4 は局・席・牌より後の塊で q を作らない。
     const bool hasQuery = !kLast || 16 * m < fixed;
     // n の行（512 バイト）の 2〜4 本目の 128 バイトの行（歩 4〜15 で読む）を 1 語ずつ先に読み、MALL から引いておく。値は使わないが
@@ -456,41 +592,35 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
     uint32_t touched[3];
 #pragma unroll
     for (int t = 0; t < 3; ++t) {
-      touched[t] = __builtin_amdgcn_raw_buffer_load_b32(inputs, inputRow, 128 * (t + 1), 0);
+      touched[t] = __builtin_amdgcn_raw_buffer_load_b32(inputs, inputRow[0], 128 * (t + 1), 0);
     }
 #pragma unroll
     for (int h = 0; h < 2; ++h) {
       const int base = kPairWidth * pair + kHeadWidth * h;
-      f32x8 acc[3];
+      f32x8 acc[1][3];
       if (hasQuery) {
-        projectHead<H, 0, kSets>(acc, weights, fragmentRow, h, inputs, inputRow);
+        projectHead<H, kSets, 1, 1>(acc, weights, fragmentRow, h, inputs, inputRow);
       } else {
-        projectHead<H, 1, kSets>(acc, weights, fragmentRow, h, inputs, inputRow);
+        projectHead<H, kSets, 1, 0>(acc, weights, fragmentRow, h, inputs, inputRow);
       }
-      // 偏りを足して丸める。q は相方と合わせて問い合わせの B の断片に（1 波が 1 頭を回す K4 の組は lane の 8 次元を LDS へ）。k は
-      // 入れ替えた位置へ 1 値ずつ、v は V^T の行へ 8 値を 1 回で書く。
+      // 偏りを足して丸める。q は相方と合わせて問い合わせの B の断片に。k は入れ替えた位置へ 1 値ずつ、v は V^T の行へ 8 値を 1 回で
+      // 書く。
       if (hasQuery) {
         const size_t at = bounds.index(static_cast<size_t>(base + 8 * half), 8, args.qkvBias.limit);
         const f32x8 bias = *reinterpret_cast<const f32x8*>(args.qkvBias.data + at);
         float values[8];
 #pragma unroll
         for (int v = 0; v < 8; ++v) {
-          values[v] = acc[0][v] + bias[v];
+          values[v] = acc[0][0][v] + bias[v];
         }
-        const u32x4 own = pack8Activation(values);
-        if constexpr (kHeadWaves) {
-          const int t = 16 * m + column;
-          *reinterpret_cast<u32x4*>(&shared.fixedQuery[t][8 * ((2 * h + half) ^ ((t >> 1) & 3))]) = own;
-        } else {
-          keptQuery[h] = joinHalves(own);
-        }
+        keptQuery[h] = joinHalves(pack8Activation(values));
       }
       {
         const float bias = args.qkvBias.data[bounds.index(A + base + column, 1, args.qkvBias.limit)];
 #pragma unroll
         for (int v = 0; v < 8; ++v) {
           const int key = 16 * m + 2 * v + half;
-          shared.k[key][swizzled(key, kHeadWidth * h + column)] = bf16RoundActivation(acc[1][v] + bias);
+          shared.k[key][swizzled(key, kHeadWidth * h + column)] = bf16RoundActivation(acc[0][1][v] + bias);
         }
       }
       {
@@ -498,13 +628,13 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
         float values[8];
 #pragma unroll
         for (int v = 0; v < 8; ++v) {
-          values[v] = acc[2][v] + bias;
+          values[v] = acc[0][2][v] + bias;
         }
         const int dimension = 2 * (column & 7) + (column >> 3);
         *reinterpret_cast<u32x4*>(&shared.valueT[kHeadWidth * h + dimension][16 * m + 8 * half]) =
             pack8Activation(values);
       }
-      // 次の頭の先読みを、この頭の丸めの一時のレジスタと重ねない（重ねるとレジスタが増えて K2 の占有が下がる）。
+      // 次の頭の先読みを、この頭の丸めの一時のレジスタと重ねない（重ねるとレジスタが増えて占有が下がる）。
       __builtin_amdgcn_sched_barrier(0);
     }
     asm volatile("" ::"v"(touched[0]), "v"(touched[1]), "v"(touched[2]));

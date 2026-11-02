@@ -1,6 +1,8 @@
 package com.epsilon.prism;
 
 import com.epsilon.prism.grp.CheckConfigWorkflow;
+import com.epsilon.prism.grp.GrpRefitWorkflow;
+import com.epsilon.prism.grp.GrpSwitchWorkflow;
 import com.epsilon.prism.luck.LuckFitWorkflow;
 import com.epsilon.prism.play.RiichiPlayWorkflow;
 import com.epsilon.prism.run.FitWorkflow;
@@ -23,6 +25,8 @@ final class Workflows {
             new LuckFitWorkflow(),
             new AuditGrpWorkflow(),
             new CheckConfigWorkflow(),
+            new GrpRefitWorkflow(),
+            new GrpSwitchWorkflow(),
             new RiichiPlayWorkflow()));
   }
 }

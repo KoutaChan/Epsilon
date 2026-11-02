@@ -10,6 +10,7 @@ import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtFlatGradientPacker;
+import ai.djl.pytorch.engine.PtStream;
 import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
@@ -47,9 +48,10 @@ import java.util.concurrent.atomic.LongAdder;
  * {@link Microbatch#share} とゲイン K′ を掛ける。replay は K′ = 1）。勾配のノルムは上限で切り、切った歩数を見積もる。
  *
  * <p>教師（錨の s を混ぜたもの。{@link Teacher}）は微小バッチを作るときに出来ている。網の入力・索引・損失の入力（教師を含む）は歩の
- * 作り手がページ固定の領域に前もって並べてあり（{@link StagedBatch}）、レーンは型ごとに 1 回の非同期の写しを計算ストリームに積むだけに
- * する（{@link Microbatch#send}）。ホストは写しも索引の組み立ても待たずに順伝播・損失・逆伝播を積み続け、写しはストリームの順で順伝播の
- * 前に終わる。
+ * 作り手がページ固定の領域に前もって並べてあり（{@link StagedBatch}）、レーンは型ごとに 1 回の非同期の写しをレーンの写しのストリームに
+ * 積むだけにする（{@link Microbatch#send}）。微小バッチ i の計算を積む前に i+1 の写しを積み、計算ストリームは i の順伝播の直前に i の
+ * 写しの終わりだけを待つ（{@link StagedBatch.Upload#receive}）ので、i+1 の写しは i の計算と重なる。ホストは写しも索引の組み立ても待たずに
+ * 順伝播・損失・逆伝播を積み続ける。
  *
  * <p>温め（{@link #rehearse}）は最初の歩の前に、レーンと複製を作り、各レーンで微小バッチを 1 つ通して核と作業域を用意する。
  *
@@ -202,9 +204,10 @@ final class Learner implements AutoCloseable {
    * できない）。
    */
   private Boolean rehearse(NetworkLane lane, Microbatch part, int denominator) {
-    try (NDManager scope = lane.manager().newSubManager();
+    Pending pending = upload(lane, part);
+    try (NDManager scope = pending.scope();
         GradientCollector collector = lane.newGradientCollector()) {
-      StagedBatch.Sent sent = part.send(scope, lane.computeStream());
+      StagedBatch.Sent sent = pending.upload().receive();
       AttentionTape tape =
           lane.attention == null ? null : new AttentionTape(lane.attention, FitProbe.NONE);
       Outputs outputs =
@@ -219,53 +222,89 @@ final class Learner implements AutoCloseable {
     return Boolean.TRUE;
   }
 
-  /** レーンの微小バッチを順に通し、勾配を溜める。返り値はその損失の和（回収しない歩は NaN）。 */
+  /**
+   * レーンの微小バッチを順に通し、勾配を溜める。返り値はその損失の和（回収しない歩は NaN）。
+   *
+   * <p>微小バッチ i の順伝播を積む前に i+1 の写しを写しのストリームに積む（{@link #upload}）。i+1 の配列は i+1 の管理元が持ち、i の管理元を
+   * 閉じた後も i+1 の計算を積み終えるまで生かす。途中で失敗したら、積んだだけの i+1 の管理元も閉じる（計算に使っていない配列なので、
+   * 写しのストリームの順で写しの後に塊が使い回される）。
+   */
   private double backward(
       NetworkLane lane, List<Microbatch> parts, StepFeed.Step prepared, FitProfile.Timing timing) {
     double total = 0;
     boolean gpu = lane.manager().getDevice().isGpu();
     FitProfile.Clock clock = lane.clock;
     clock.begin(timing);
-    for (Microbatch part : parts) {
-      try (NDManager scope = lane.manager().newSubManager();
-          GradientCollector collector = lane.newGradientCollector()) {
-        long started = System.nanoTime();
-        StagedBatch.Sent sent = part.send(scope, lane.computeStream());
-        transferNanos.add(System.nanoTime() - started);
-        clock.mark(Stage.TRANSFER);
-        AttentionTape tape =
-            lane.attention == null ? null : new AttentionTape(lane.attention, clock);
-        Outputs outputs =
-            lane.network.forward(
-                new ParameterStore(scope, false),
-                sent.inputs(),
-                Pass.training(lane.precision, part.measured(), part.auxiliary(), tape, clock));
-        NDArray value =
-            loss.total(outputs, sent.loss(), gain, prepared.denominator(), part.share());
-        clock.mark(Stage.LOSS);
-        if (!gpu) {
-          collector.backward(value);
-          clock.mark(Stage.BACKWARD);
-          total += value.getFloat();
-        } else if (step % METRIC_EVERY == 1) {
-          // 回収（ホストへの同期）は METRIC_EVERY 歩に 1 回。回収を逆伝播より先に予約する
-          try (NDArray metric = value.reshape(1)) {
-            try {
-              lane.enqueueMetricReadback(metric);
-              backward(collector, tape, value, clock);
-              total += lane.awaitMetricReadback()[0];
-            } finally {
-              lane.closeMetricReadback();
-            }
+    long started = System.nanoTime();
+    Pending next = upload(lane, parts.getFirst());
+    transferNanos.add(System.nanoTime() - started);
+    try {
+      for (int index = 0; index < parts.size(); index++) {
+        Microbatch part = parts.get(index);
+        Pending current = next;
+        next = null;
+        try (NDManager scope = current.scope();
+            GradientCollector collector = lane.newGradientCollector()) {
+          long sending = System.nanoTime();
+          if (index + 1 < parts.size()) {
+            next = upload(lane, parts.get(index + 1));
           }
-        } else {
-          backward(collector, tape, value, clock);
-          total = Double.NaN;
+          StagedBatch.Sent sent = current.upload().receive();
+          transferNanos.add(System.nanoTime() - sending);
+          clock.mark(Stage.TRANSFER);
+          AttentionTape tape =
+              lane.attention == null ? null : new AttentionTape(lane.attention, clock);
+          Outputs outputs =
+              lane.network.forward(
+                  new ParameterStore(scope, false),
+                  sent.inputs(),
+                  Pass.training(lane.precision, part.measured(), part.auxiliary(), tape, clock));
+          NDArray value =
+              loss.total(outputs, sent.loss(), gain, prepared.denominator(), part.share());
+          clock.mark(Stage.LOSS);
+          if (!gpu) {
+            collector.backward(value);
+            clock.mark(Stage.BACKWARD);
+            total += value.getFloat();
+          } else if (step % METRIC_EVERY == 1) {
+            // 回収（ホストへの同期）は METRIC_EVERY 歩に 1 回。回収を逆伝播より先に予約する
+            try (NDArray metric = value.reshape(1)) {
+              try {
+                lane.enqueueMetricReadback(metric);
+                backward(collector, tape, value, clock);
+                total += lane.awaitMetricReadback()[0];
+              } finally {
+                lane.closeMetricReadback();
+              }
+            }
+          } else {
+            backward(collector, tape, value, clock);
+            total = Double.NaN;
+          }
         }
+        clock.mark(Stage.RELEASE);
       }
-      clock.mark(Stage.RELEASE);
+    } finally {
+      if (next != null) {
+        next.scope().close();
+      }
     }
     return total;
+  }
+
+  /**
+   * 微小バッチの写しを、新しい管理元でレーンの写しのストリームに積む（失敗したら管理元を閉じる）。
+   *
+   * @return 積んだ写しと、写し先の配列を持つ管理元
+   */
+  private static Pending upload(NetworkLane lane, Microbatch part) {
+    NDManager scope = lane.manager().newSubManager();
+    try {
+      return new Pending(scope, part.send(scope, lane.copyStream));
+    } catch (RuntimeException | Error failure) {
+      scope.close();
+      throw failure;
+    }
   }
 
   /** 損失から逆伝播する（自前の注意の記録があれば記録が段に分けて印を付け、なければ全体を 1 つの段にする）。 */
@@ -375,11 +414,25 @@ final class Learner implements AutoCloseable {
     }
   }
 
-  /** 1 つのデバイスの網と計算の型（GPU なら計算ストリームに積む注意の演算も）と、段の時計。 */
+  /**
+   * 写しを積んだ微小バッチ。
+   *
+   * @param scope 写し先の配列を持つ管理元（その微小バッチの計算を積み終えて閉じる）
+   * @param upload 積んだ写し
+   */
+  private record Pending(NDManager scope, StagedBatch.Upload upload) {}
+
+  /** 1 つのデバイスの網と計算の型（GPU なら計算ストリームに積む注意の演算も）と、写しのストリームと、段の時計。 */
   private static final class NetworkLane extends DataParallelGroup.Lane {
 
     private final PrismNetwork network;
     private final Precision precision;
+
+    /**
+     * 微小バッチの入力の写しのストリーム（GPU のレーンだけ。学習器の実行の文脈のそのデバイスの h2d のストリームで、計算ストリームと別に
+     * 順に写す。CPU のレーンは null で同期で写す）。
+     */
+    private final PtStream copyStream;
 
     /** 背骨の注意と正規化の自前の演算（libprism_hip.so を同梱した組み立ての GPU のレーンだけ。ほかは null で djl の演算）。 */
     private final TrainingKernels attention;
@@ -402,6 +455,7 @@ final class Learner implements AutoCloseable {
       this.network = network;
       Device device = model.getNDManager().getDevice();
       precision = device.isGpu() ? Precision.BFLOAT16 : Precision.FLOAT32;
+      copyStream = device.isGpu() ? execution.streams(device).h2d() : null;
       attention =
           device.isGpu() && HipLibrary.bundled()
               ? HipAttention.on(HipLibrary.load(), computeStream())

@@ -6,7 +6,10 @@ import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.pytorch.engine.PtNDArray;
+import ai.djl.pytorch.engine.PtNDManager;
 import ai.djl.pytorch.engine.PtStream;
+import ai.djl.pytorch.engine.PtTransferBatch;
+import ai.djl.pytorch.engine.PtTransferTicket;
 import com.epsilon.prism.input.InputSchema.Element;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -22,8 +25,8 @@ import java.util.List;
  * <ul>
  *   <li>{@link #send}: {@link Uploads} のページ固定のバッファに並べ、型ごとに同期で写す（写し終えてから返る）。
  *   <li>{@link #write} と {@link #enqueue}: 前もって（別のスレッドで）{@link UploadRegion} の型ごとのページ固定のバッファに並べておき、
- *       後でレーンのストリームに型ごとに 1 回の非同期の写しを積む。写しの後に記録した event が終わるまで、領域を書き換えも解放もしない
- *       （{@link UploadRegion#await}）。
+ *       後でレーンの写しのストリームに型ごとに 1 回の非同期の写しを積む。写しの切符が終わるまで、領域を書き換えも解放もしない
+ *       （{@link UploadRegion#await}）。切り出しを読むストリームは、読む前に切符を待つ（{@link PtTransferTicket#waitOnStream}）。
  * </ul>
  */
 public final class Staging {
@@ -288,30 +291,49 @@ public final class Staging {
   }
 
   /**
-   * 書いた領域から、型ごとに 1 回の非同期の写しを呼び手のスレッドの今のストリームに積み、写しの後に領域の event を記録して、区画に
-   * 切り出しを付ける（CPU の配列は同期で写す）。積んだ後に送り直すときは {@link #write} からやり直す。
+   * 書いた領域から、型ごとに 1 回の非同期の写しを stream に積み、区画に切り出しを付ける（CPU の配列は同期で写す）。写しの切符は領域に
+   * 預け、領域は書き直す前・閉じる前に写しの終わりを待つ。切り出しを読むほかのストリームは、読む前に返した切符の
+   * {@link PtTransferTicket#waitOnStream} を自分の上で呼ぶ: 写しの終わりの待ちを積み（ホストは待たない）、写し先の配列をそのストリームの
+   * 使用として記録する。写し先の配列は stream の上で取るので、記録がないと管理元を閉じた時点で塊が stream に返り、読むストリームがまだ
+   * 読んでいる間に stream の次の確保が書き換え得る。積んだ後に送り直すときは {@link #write} からやり直す。
    *
-   * @param manager 配列を作る管理元
-   * @param stream 呼び手のスレッドの今のストリーム（CPU の管理元なら null）
+   * @param manager 写し先の配列を作る管理元
+   * @param stream 写しを積むストリーム（CPU の管理元なら null）
+   * @return 写しの切符（CPU なら null）
    * @throws IllegalStateException 領域に書いていないとき
    */
-  void enqueue(NDManager manager, PtStream stream) {
+  PtTransferTicket enqueue(NDManager manager, PtStream stream) {
     if (written == null) {
       throw new IllegalStateException("the staging has not been written to a region");
     }
     UploadRegion region = written;
     written = null;
     NDArray[] arrays = new NDArray[KINDS.length];
-    for (Kind kind : KINDS) {
-      int size = sizes[kind.ordinal()];
-      if (size > 0) {
-        PtNDArray array = (PtNDArray) manager.create(new Shape(size), kind.type());
-        array.enqueueCopyFrom(region.pinned(kind));
-        arrays[kind.ordinal()] = array;
+    PtTransferTicket ticket = null;
+    if (stream == null) {
+      for (Kind kind : KINDS) {
+        int size = sizes[kind.ordinal()];
+        if (size > 0) {
+          PtNDArray array = (PtNDArray) manager.create(new Shape(size), kind.type());
+          array.enqueueCopyFrom(region.pinned(kind));
+          arrays[kind.ordinal()] = array;
+        }
       }
+    } else {
+      // 締める前に失敗したら、閉じる処理が積んだ写しの終わりを待ってから写し先を返す
+      try (PtTransferBatch batch = stream.newTransferBatch((PtNDManager) manager)) {
+        for (Kind kind : KINDS) {
+          int size = sizes[kind.ordinal()];
+          if (size > 0) {
+            arrays[kind.ordinal()] = batch.copy(region.pinned(kind), new Shape(size));
+          }
+        }
+        ticket = batch.commit();
+      }
+      region.copied(ticket);
     }
-    region.copied(stream);
     slice(arrays);
+    return ticket;
   }
 
   private void writeAll(Kind kind, ByteBuffer buffer) {

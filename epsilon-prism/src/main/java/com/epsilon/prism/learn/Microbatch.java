@@ -138,14 +138,15 @@ record Microbatch(
   }
 
   /**
-   * 並べた入力を、呼び手のスレッドの今のストリームに非同期の写しで送る（{@link StagedBatch#send}。網の順伝播の前に呼ぶ）。
+   * 並べた入力を、写しのストリームに非同期の写しで送る（{@link StagedBatch#send}。計算ストリームは順伝播の前に
+   * {@link StagedBatch.Upload#receive} で写しの終わりを待つ）。
    *
-   * @param manager 配列を作る管理元
-   * @param stream 呼び手のスレッドの今のストリーム（CPU の管理元なら null）
-   * @return 網の入力と損失の入力
+   * @param manager 写し先の配列を作る管理元（計算を終えるまで閉じない）
+   * @param stream 写しを積むストリーム（CPU の管理元なら null）
+   * @return 積んだ写し
    * @throws IllegalStateException 並べる前のとき
    */
-  StagedBatch.Sent send(NDManager manager, PtStream stream) {
+  StagedBatch.Upload send(NDManager manager, PtStream stream) {
     if (staged == null) {
       throw new IllegalStateException("the microbatch has not been staged");
     }

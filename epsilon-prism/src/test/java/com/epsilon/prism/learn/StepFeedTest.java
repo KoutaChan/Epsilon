@@ -135,7 +135,7 @@ public class StepFeedTest {
                         step.denominator(),
                         part.share())
                     .getFloat();
-            StagedBatch.Sent sent = part.send(scope, null);
+            StagedBatch.Sent sent = part.send(scope, null).receive();
             Outputs staged = network.forward(parameters, sent.inputs(), pass);
             float actual =
                 loss.total(staged, sent.loss(), 1f, step.denominator(), part.share()).getFloat();
@@ -222,7 +222,7 @@ public class StepFeedTest {
     double total = 0;
     for (Microbatch part : microbatches(step)) {
       try (NDManager scope = manager.newSubManager()) {
-        StagedBatch.Sent sent = part.send(scope, null);
+        StagedBatch.Sent sent = part.send(scope, null).receive();
         Outputs outputs =
             network.forward(
                 new ParameterStore(scope, false),

@@ -4,6 +4,7 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.pytorch.engine.PtStream;
+import ai.djl.pytorch.engine.PtTransferTicket;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.FrontierBatch;
 import com.epsilon.prism.input.FrontierField;
@@ -21,7 +22,8 @@ import java.util.Map;
 /**
  * 学習の微小バッチのデバイスへの入力を、ホストで前もって並べたもの: 網の入力の区画（{@link Tensor} の順と、前線の腕なら前線の区画）・索引
  * （{@link BatchIndex}）・損失の入力（{@link LossInputs}）。学習の歩の作り手が作業のスレッドで {@link UploadRegion} に書き
- * （{@link #stage}）、レーンが {@link #send} で型ごとに 1 回の非同期の写しを積む。レーンのホストは写しも索引の組み立ても待たない。
+ * （{@link #stage}）、レーンが {@link #send} で型ごとに 1 回の非同期の写しを写しのストリームに積み、計算の直前に {@link Upload#receive}
+ * で計算ストリームに写しの終わりの待ちを積む。レーンのホストは写しも索引の組み立ても待たない。
  *
  * <p>並び: 型ごとの 1 本の配列に、網の入力の区画（区画ごとに {@link Staging#ALIGNMENT} の境目から）、索引の組、損失の入力の組（組ごとに
  * 境目から、組の中は同期で送るときと同じ並び）を続ける。どの区画も、先頭の 512 の剰余と値が区画（網の入力）・組（索引と損失の入力）ごとに
@@ -36,6 +38,33 @@ public final class StagedBatch {
    * @param loss 損失の入力
    */
   public record Sent(NetworkInputs inputs, LossInputs loss) {}
+
+  /** 積んだ写し（{@link #send}）。送った配列は {@link #receive} を呼んだストリームの上でだけ、その後に使う。 */
+  public static final class Upload {
+
+    /** 写しの切符（CPU の同期の写しは null）。 */
+    private final PtTransferTicket ticket;
+
+    private final Sent sent;
+
+    private Upload(PtTransferTicket ticket, Sent sent) {
+      this.ticket = ticket;
+      this.sent = sent;
+    }
+
+    /**
+     * 呼び手のスレッドの今のストリームに写しの終わりの待ちを積み（ホストは待たない）、写し先の配列をそのストリームの使用として記録して、
+     * 網の入力と損失の入力を返す。CPU の写しは同期で終わっているので何も積まない。
+     *
+     * @return 網の入力と損失の入力
+     */
+    public Sent receive() {
+      if (ticket != null) {
+        ticket.waitOnStream();
+      }
+      return sent;
+    }
+  }
 
   /** 塊の数と索引のホストの写し。 */
   private record Columns(
@@ -139,18 +168,18 @@ public final class StagedBatch {
   }
 
   /**
-   * 型ごとに 1 回の非同期の写しを呼び手のスレッドの今のストリームに積み、写しの後に領域の event を記録して、網の入力と損失の入力を返す
-   * （ホストは写しを待たない）。送り直すときは領域の前の写しの終わりを待ってから書き直す。
+   * 型ごとに 1 回の非同期の写しを stream に積み、写しの切符を領域に預けて、積んだ写しを返す（ホストは写しを待たない）。送った配列を
+   * 計算に使うストリームは、使う前に {@link Upload#receive} を呼ぶ。送り直すときは領域の前の写しの終わりを待ってから書き直す。
    *
-   * @param manager 配列を作る管理元
-   * @param stream 呼び手のスレッドの今のストリーム（CPU の管理元なら null）
-   * @return 網の入力と損失の入力
+   * @param manager 写し先の配列を作る管理元（計算を終えるまで閉じない）
+   * @param stream 写しを積むストリーム（CPU の管理元なら null）
+   * @return 積んだ写し
    */
-  public Sent send(NDManager manager, PtStream stream) {
+  public Upload send(NDManager manager, PtStream stream) {
     if (!staging.written()) {
       staging.write(region);
     }
-    staging.enqueue(manager, stream);
+    PtTransferTicket ticket = staging.enqueue(manager, stream);
     Map<Tensor, NDArray> arrays = new EnumMap<>(Tensor.class);
     for (Tensor tensor : Tensor.values()) {
       Staging.Section section = tensors.get(tensor);
@@ -172,7 +201,7 @@ public final class StagedBatch {
             columns.actionColumns(),
             null,
             index);
-    return new Sent(inputs, loss);
+    return new Upload(ticket, new Sent(inputs, loss));
   }
 
   /**

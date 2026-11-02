@@ -103,6 +103,7 @@ public class FitStepGpuBench {
       FitPlan plan = plan(PrismShape.standard(), 1);
       try (Model model = Fit.blank(plan.shape(), all[0], plan.seed());
           PtStream stream = ((PtEngine) model.getNDManager().getEngine()).newStream(all[0]);
+          PtStream copies = ((PtEngine) model.getNDManager().getEngine()).newStream(all[0]);
           PtStreamScope ignored = stream.openScope()) {
         for (Pair<String, Parameter> pair : model.getBlock().getParameters()) {
           pair.getValue().getArray().setRequiresGradient(true);
@@ -110,16 +111,16 @@ public class FitStepGpuBench {
         HipAttention attention = HipAttention.on(HipLibrary.load(), stream);
         int from = 0;
         for (int stepRows : quick ? new int[0] : new int[] {1024, 2048, 4096, 8192}) {
-          from = steps(store, rows, from, plan, model, stream, stepRows, false, null, null);
-          from = steps(store, rows, from, plan, model, stream, stepRows, true, null, null);
-          from = steps(store, rows, from, plan, model, stream, stepRows, true, attention, null);
+          from = steps(store, rows, from, plan, model, stream, copies, stepRows, false, null, null);
+          from = steps(store, rows, from, plan, model, stream, copies, stepRows, true, null, null);
+          from = steps(store, rows, from, plan, model, stream, copies, stepRows, true, attention, null);
         }
         if (quick) {
-          steps(store, rows, from, plan, model, stream, STEP_ROWS, true, attention, null);
+          steps(store, rows, from, plan, model, stream, copies, STEP_ROWS, true, attention, null);
         }
         String trace = System.getProperty("prism.bench.trace");
         if (trace != null) {
-          steps(store, rows, from, plan, model, stream, STEP_ROWS, true, attention, trace);
+          steps(store, rows, from, plan, model, stream, copies, STEP_ROWS, true, attention, trace);
         }
       }
     }
@@ -156,8 +157,9 @@ public class FitStepGpuBench {
   }
 
   /**
-   * GPU 1 枚で歩を回して測る（同期は歩の終わりに値を 1 つ読む）。逆伝播の歩は学習器と同じく、前もって並べた入力を stream に非同期で
-   * 送る。attention があれば背骨の注意を自前の HIP の演算にする。trace があれば温めの後の 2 歩を記録する。
+   * GPU 1 枚で歩を回して測る（同期は歩の終わりに値を 1 つ読む）。逆伝播の歩は、前もって並べた入力を copies に非同期で写し、stream は
+   * 順伝播の前に写しの終わりを待つ（学習器と違い次の微小バッチの写しを先に積まない）。attention があれば背骨の注意を自前の HIP の
+   * 演算にする。trace があれば温めの後の 2 歩を記録する。
    *
    * @return 次に使う行の位置
    */
@@ -168,6 +170,7 @@ public class FitStepGpuBench {
       FitPlan plan,
       Model model,
       PtStream stream,
+      PtStream copies,
       int stepRows,
       boolean backward,
       HipAttention attention,
@@ -198,7 +201,7 @@ public class FitStepGpuBench {
           try (NDManager scope = manager.newSubManager()) {
             if (backward) {
               try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
-                StagedBatch.Sent sent = part.send(scope, stream);
+                StagedBatch.Sent sent = part.send(scope, copies).receive();
                 AttentionTape tape = attention == null ? null : new AttentionTape(attention);
                 Outputs outputs =
                     network.forward(

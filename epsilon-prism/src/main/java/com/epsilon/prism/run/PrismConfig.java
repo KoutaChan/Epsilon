@@ -493,12 +493,17 @@ public record PrismConfig(
 
   /** Φ の温度（次局の局番号ごと。phiTemperatures を読点で区切る。空なら較正しない）。 */
   public double[] phiTemperatureTable() {
-    if (phiTemperatures.isBlank()) return new double[0];
-    String[] parts = phiTemperatures.split(",");
+    return temperatures(phiTemperatures);
+  }
+
+  /** phiTemperatures の書き方の温度の列（読点で区切る。空なら空の列）。phi.jsonl の項目の temperatures も同じ書き方。 */
+  public static double[] temperatures(String text) {
+    if (text.isBlank()) return new double[0];
+    String[] parts = text.split(",");
     double[] temperatures = new double[parts.length];
     for (int i = 0; i < parts.length; i++) {
       temperatures[i] = Double.parseDouble(parts[i].strip());
-      if (!(temperatures[i] > 0)) throw new IllegalArgumentException("phiTemperatures must be positive: " + phiTemperatures);
+      if (!(temperatures[i] > 0)) throw new IllegalArgumentException("phiTemperatures must be positive: " + text);
     }
     return temperatures;
   }

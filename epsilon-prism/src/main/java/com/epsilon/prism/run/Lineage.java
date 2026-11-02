@@ -17,6 +17,11 @@ import com.epsilon.prism.collect.EventLedger;
 import com.epsilon.prism.collect.RowSink;
 import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.core.CrnSeeds;
+import com.epsilon.prism.grp.ActivePhi;
+import com.epsilon.prism.grp.GameLog;
+import com.epsilon.prism.grp.GameLogObserver;
+import com.epsilon.prism.grp.GrpFiles;
+import com.epsilon.prism.grp.PhiEntry;
 import com.epsilon.prism.learn.AnchorScores;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
@@ -52,8 +57,11 @@ import org.slf4j.LoggerFactory;
  * 網の系譜（train）。版の網で集めた行で次の版の網を育てる。反復 t ごとに
  *
  * <ol>
+ *   <li>Φ: 反復 t の局末の値（{@link TrainingResources#phi}。SELF_GRP なら phi.jsonl の効く項目）。Φ の種類が点数だけの Φ から GRP に変わる
+ *       反復では、運の精算の R² を持ち越さない（K′_t = K_t）。
  *   <li>収集（{@link #collect}）: 版 t の collectWith の網（{@link NetworkPolicy}）の貪欲に床 ε_b を混ぜた b で全席が
- *       打ち、ラベル行（MAIN・ROLLIN）と根の記録（ROOT）を rows-v2/&lt;t&gt; に書いて封印する。封印済みなら使い回す。
+ *       打ち、ラベル行（MAIN・ROLLIN）と根の記録（ROOT）を rows-v2/&lt;t&gt; に書いて封印する。封印済みなら使い回す。phiMonitor が OFF で
+ *       なければ、封印の前に主経路の対局を grp/games に記録する（{@link GameLogObserver}。記録はラベル行を変えず、失敗しても系譜を止めない）。
  *   <li>運の精算: 生徒の行（コホート t の TRAIN のラベル行と根の記録、{@link Selection#LABELS_AND_ROOTS}）の帳簿で、半荘の偶奇で交差適合
  *       した β_c を当てる（{@link LedgerFit}）。和は収集の書き手が行を書くときに作り（{@link LedgerFit.Stream}）、使い回したコホートでは
  *       読み直して作る（どちらも同じ行を同じ順に足すので、β はビットで同じ）。
@@ -71,7 +79,8 @@ import org.slf4j.LoggerFactory;
  * </ol>
  *
  * 版 1 は白紙の網（s ≡ 0 なので argmax p0 で打つ。網の初期値の種は seed + 100、形は {@link PrismConfig#shape}）。再開は state.json の次の
- * コホートから。iterations.jsonl の鍵: iteration・phi・collection（{@link CollectionDriver.Result}）・copies・forks・collectSeconds・totalRows・
+ * コホートから。iterations.jsonl の鍵: iteration・phi（使った Φ の項目 {@link PhiEntry}）・ledgerR2Reset（R² を持ち越さなかった反復だけ、
+ * 捨てた R²）・collection（{@link CollectionDriver.Result}）・copies・forks・collectSeconds・totalRows・
  * memory・labels・copyLabels・roots（{@link RowCounts}）・ledger（{@link LedgerFit.Report}）・filter・fitSingle（{@link FitResult}）・accepted・
  * acceptance・average・seconds。filter は使ったゲイン gain = K′_t・錨の重み anchorWeight・学習率の倍率 lrScale に、K_t の scheduledGain と K′ の
  * 元の R² の r2 を足したもの。evaluations.jsonl: iteration・version・heuristic・play・iterate。
@@ -108,11 +117,13 @@ public final class Lineage {
   private final Path root;
   private final PrismConfig config;
   private final RunFiles files;
+  private final GrpFiles grpFiles;
 
   private Lineage(Path root, PrismConfig config) {
     this.root = root;
     this.config = config;
     files = new RunFiles(root);
+    grpFiles = new GrpFiles(root);
   }
 
   /**
@@ -146,7 +157,7 @@ public final class Lineage {
     var profile = EpsilonUtilityProfile.valueOf(config.utility());
     State state = loadOrInitialize();
     RunFiles.removeFinishedWork(root.resolve("work"), state.next());
-    try (var resources = TrainingResources.open(config, profile)) {
+    try (var resources = TrainingResources.open(config, profile, root)) {
       int next = state.next();
       long totalRows = state.totalRows();
       int accepted = state.accepted();
@@ -158,9 +169,15 @@ public final class Lineage {
         long started = System.nanoTime();
         var report = new LinkedHashMap<String, Object>();
         report.put("iteration", t);
-        report.put("phi", config.phi());
+        // 0. 反復 t の Φ（Φ の種類が点数だけの Φ から GRP に変わる反復は、運の精算の R² を持ち越さない）
+        ActivePhi phi = resources.phi(t);
+        report.put("phi", phi.entry());
+        if (phi.resetsLedger()) {
+          report.put("ledgerR2Reset", ledgerR2);
+          ledgerR2 = 0;
+        }
         // 1. 収集（版 t の b）
-        Collected collected = collect(t, resources, profile, collectDevices, report);
+        Collected collected = collect(t, resources, phi, profile, collectDevices, report);
         totalRows += collected.rows();
         report.put("collectSeconds", (System.nanoTime() - started) / 1e9);
         report.put("totalRows", totalRows);
@@ -265,6 +282,7 @@ public final class Lineage {
   private Collected collect(
       int t,
       TrainingResources resources,
+      ActivePhi phi,
       EpsilonUtilityProfile profile,
       List<Device> devices,
       Map<String, Object> report)
@@ -280,6 +298,7 @@ public final class Lineage {
     Sampling sampling = config.sampling();
     CollectionDriver.Result collected;
     var ledger = new LedgerFit.Stream(config.rowWriters());
+    GameLogObserver games = gameLog(t, phi);
     try (var policy =
             Snapshot.open(
                 snapshot(t),
@@ -306,13 +325,15 @@ public final class Lineage {
                       sampling,
                       config.behaviour(),
                       null,
-                      null),
+                      games),
                   policy,
-                  resources.phi(),
+                  phi.value(),
                   new RowSink(writer));
       // 推論を回収してから、方策（デバイスの利用権）を閉じる前に、受付とデバイスごとの待ち・合成・空きを記録に書く
       inference.awaitInferenceIdle();
       DecisionCollectionDiagnostics.log(inference, collected.admission());
+      // 対局の記録は封印の前に書く（封印済みのコホートを使い回すときは記録し直さない）
+      writeGameLog(t, games, collected.counts());
       writer.seal();
     }
     // 収集の終わりの数は書き手のキューに残る行を含まないので、封印した目録の値に差し替える
@@ -328,6 +349,33 @@ public final class Lineage {
     report.put("forks", counts.forks());
     LOG.info("t={} {}", t, collected.summary());
     return new Collected(written.rows(), ledger);
+  }
+
+  /**
+   * コホート t の主経路の対局の記録の口（phiMonitor が OFF なら null）。開けなければ 1 回書き残して記録しない（記録の失敗で系譜を止めない）。
+   */
+  private GameLogObserver gameLog(int t, ActivePhi phi) {
+    if (!config.phiMonitor().records()) return null;
+    try {
+      return GameLogObserver.open(t, phi.entry(), config.behaviour());
+    } catch (RuntimeException failure) {
+      LOG.warn("t={} the game log is off for this cohort: {}", t, failure.toString());
+      return null;
+    }
+  }
+
+  /**
+   * コホート t の対局の記録を grp/games に書く（記録しなければ何もしない）。失敗は 1 回書き残して続ける（記録の失敗で系譜を止めない）。
+   *
+   * @param counts 収集の数（局末の数を記録と突き合わせる）
+   */
+  private void writeGameLog(int t, GameLogObserver games, CollectionMetrics.Snapshot counts) {
+    if (games == null) return;
+    try {
+      GameLog.write(grpFiles.games(t), games.seal(counts));
+    } catch (IOException | RuntimeException failure) {
+      LOG.warn("t={} the game log was not written: {}", t, failure.toString());
+    }
   }
 
   /**

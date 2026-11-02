@@ -1,6 +1,7 @@
 package com.epsilon.prism.collect;
 
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.grp.EpsilonGrpFeature;
 import com.epsilon.config.settings.InferenceBatchingSettings;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
@@ -73,6 +74,12 @@ public final class CollectionDriver implements AutoCloseable {
      */
     default void handValued(long gameId, float[] nextRootPrefix, int[] scores) {}
 
+    /**
+     * 主経路の半荘が続く局末の次局の整数（GRP の自己対局の記録）。次局 root の公開系列の最後の 1 歩は、この整数を {@link
+     * EpsilonGrpFeature#fromProgress} に渡したもの。scores は精算後の点数（書き換えない）。{@link #handValued} の直前に呼ばれる。
+     */
+    default void handProgressed(long gameId, int kyokuIndex, int honba, int kyotakuCount, int[] scores) {}
+
     /** 牌譜の記録先（診断用。記録しないなら null）。半荘の始めに1回呼ばれ、その半荘の進行ワーカーだけが使う。 */
     default GameRecorder recorder(long gameId) {
       return null;
@@ -80,8 +87,9 @@ public final class CollectionDriver implements AutoCloseable {
   }
 
   /**
-   * 1コホート。半荘 ID は run 全体で一意。収集は sampling（PRISM の率）と全席の行動方策 behaviour で打ち、seating と observer は null。
-   * 評価（{@link Arena}）は {@link Sampling#OFF}・behaviour null（方策の σ）で、seating と observer を使う。
+   * 1コホート。半荘 ID は run 全体で一意。収集は sampling（PRISM の率）と全席の行動方策 behaviour で打ち、seating は null、observer は
+   * 主経路の対局の記録（記録しなければ null。観察はラベル行を変えない）。評価（{@link Arena}）は {@link Sampling#OFF}・behaviour null
+   * （方策の σ）で、seating と observer を使う。
    *
    * @param iterationSeed コホートの種（局のキーと硬貨の鍵の素）
    * @param sampling 収集の率（null なら {@link Sampling#OFF}）

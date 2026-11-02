@@ -12,6 +12,15 @@ import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.core.CrnScheme;
 import com.epsilon.prism.core.CrnSeeds;
 import com.epsilon.prism.core.DecisionClass;
+import com.epsilon.prism.grp.GrpInit;
+import com.epsilon.prism.grp.GrpRefit;
+import com.epsilon.prism.grp.GrpSwitch;
+import com.epsilon.prism.grp.PhiDrift;
+import com.epsilon.prism.grp.PhiMonitor;
+import com.epsilon.prism.grp.PhiShadowReference;
+import com.epsilon.prism.grp.PhiSource;
+import com.epsilon.prism.grp.PhiStart;
+import com.epsilon.prism.grp.RefitWindow;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.learn.FitSettings;
 import com.epsilon.prism.learn.LedgerFit;
@@ -101,10 +110,26 @@ import java.util.Set;
  * @param phiTemperatures Φ の較正: 次局の局番号ごとの温度を読点で区切ったもの（GRP の順位分布を p' ∝ p^(1/T) にする。{@link
  *     GrpPhi#calibrated}。空なら較正しない）
  * @param phiCalibration Φ の効用の空間の較正の表（{@link PhiCalibration} の JSON のパス。空なら使わない。phiTemperatures の後に掛ける）
- * @param phi 局末の値 Φ の種類（{@value #PHI_GRP} = 固定の GRP、{@value #PHI_SCORE_RANK} = 局末の点数をそのまま最終順位とみなす試験用の代用）
- * @param grpCheckpoint Φ の固定の GRP（phi = grp の train では必須）
+ * @param phiSource 局末の値 Φ の出どころ（{@link PhiSource}）
+ * @param phiStart SELF_GRP の最初の項目 g000 の種類（{@link PhiStart}。SELF_GRP でなければ GRP_CHECKPOINT）
+ * @param grpCheckpoint 元の GRP（決定の checkpoint のディレクトリ。FIXED_GRP と、phiStart = GRP_CHECKPOINT の train では必須、点数だけの Φ
+ *     では空）
  * @param grpDevice GRP のデバイス
  * @param grpBatch GRP の 1 回の評価の局末の数
+ * @param phiMonitor 主経路の対局の記録と裏の採点（{@link PhiMonitor}。SELF_GRP では OFF にできない）
+ * @param grpRefit GRP の学習の時期（{@link GrpRefit}。SELF_GRP でなければ MANUAL）
+ * @param grpSwitch 合格した候補の入れ方（{@link GrpSwitch}。AUTO は予定表の学習のときだけ、SELF_GRP でなければ PROPOSE）
+ * @param grpInit 使用中が GRP のときの学習の始め（{@link GrpInit}）
+ * @param grpRefitSchedule 学習の間隔の段: 「始めの反復:間隔」を読点で区切り始めの昇順（{@link #refitInterval}）
+ * @param grpSwitchLag AUTO の候補が効く反復 h + L の L（1 以上）
+ * @param grpSwitchSettle 切り替えの後、警報で学習しない期間を決める TEMPO の吸収の割合（(0, 1)）
+ * @param grpRetryCooldown 関門に落ちた後に次の学習を待つ反復の数（0 以上）
+ * @param grpMaxFailures 予定表を止める連続の失敗の数（1 以上）
+ * @param phiDrift ずれの警報の使い方（{@link PhiDrift}。REFIT ⇔ grpRefit = SCHEDULE_AND_DRIFT、OFF でなければ phiMonitor = SCORE）
+ * @param phiDriftK 警報の線の EWMA の標準偏差の倍数 k（正）
+ * @param phiShadowReference 影として採点する Φ（{@link PhiShadowReference}。WITH_ORIGINAL は grpCheckpoint が要る）
+ * @param grpWindow 学習の窓のコホートの数の上限（1 以上。{@link RefitWindow}）
+ * @param grpTrustGames 点数だけの Φ から最初に置き換えるのに要る窓の半荘の数（1 以上）
  * @param evalEvery 3×Heuristic の評価の間隔（反復。0 なら測らない）
  * @param evalGames 3×Heuristic の評価の半荘の数（evaluate の既定の半荘の数）
  */
@@ -183,22 +208,32 @@ public record PrismConfig(
     String phiTemperatures,
     String phiCalibration,
     // Φ
-    String phi,
+    PhiSource phiSource,
+    PhiStart phiStart,
     String grpCheckpoint,
     String grpDevice,
     int grpBatch,
+    // GRP の自己対局
+    PhiMonitor phiMonitor,
+    GrpRefit grpRefit,
+    GrpSwitch grpSwitch,
+    GrpInit grpInit,
+    String grpRefitSchedule,
+    int grpSwitchLag,
+    double grpSwitchSettle,
+    int grpRetryCooldown,
+    int grpMaxFailures,
+    PhiDrift phiDrift,
+    double phiDriftK,
+    PhiShadowReference phiShadowReference,
+    int grpWindow,
+    int grpTrustGames,
     // 評価
     int evalEvery,
     int evalGames) {
 
   /** config.json の形式。 */
   public static final int FORMAT = 2;
-
-  /** Φ の種類: 固定の GRP（本線）。 */
-  public static final String PHI_GRP = "grp";
-
-  /** Φ の種類: 局末の点数をそのまま最終順位とみなす代用（GRP のない CPU の試験だけ）。 */
-  public static final String PHI_SCORE_RANK = "score-rank";
 
   /**
    * TEMPO の学習率の基準のゲイン: filterLrMode = GAIN なら学習率を lrPeak・lrFloor の min(1, K′_t / これ) 倍にする（錨の重みが大きいほど 1 歩を
@@ -224,6 +259,59 @@ public record PrismConfig(
    * @param games 1 コホートの半荘の数
    */
   public record GamesStep(int from, int games) {}
+
+  /**
+   * GRP の学習の間隔の段の 1 つ。
+   *
+   * @param from 始めの反復（1 から）
+   * @param every 学習の間隔（反復）
+   */
+  public record RefitStep(int from, int every) {}
+
+  /**
+   * grpRefitSchedule を読む（書いた順。始めの昇順と間隔の正は {@link #validate} が確かめる）。
+   *
+   * @return 段（空なら空の列）
+   * @throws IllegalArgumentException 「始め:間隔」の形でないとき
+   */
+  public List<RefitStep> refitSteps() {
+    if (grpRefitSchedule.isBlank()) return List.of();
+    List<RefitStep> steps = new ArrayList<>();
+    for (String entry : grpRefitSchedule.split(",")) {
+      String[] pair = entry.strip().split(":");
+      if (pair.length != 2)
+        throw new IllegalArgumentException("grpRefitSchedule entries are from:every, got " + entry);
+      try {
+        steps.add(new RefitStep(Integer.parseInt(pair[0].strip()), Integer.parseInt(pair[1].strip())));
+      } catch (NumberFormatException invalid) {
+        throw new IllegalArgumentException("grpRefitSchedule entries are from:every, got " + entry, invalid);
+      }
+    }
+    return steps;
+  }
+
+  /**
+   * 反復 t の GRP の学習の間隔（grpRefitSchedule の段のうち始めが t 以下で最も後のものの間隔。そのような段がなければ 0 = 学習しない）。
+   *
+   * @param t 反復
+   * @return 間隔（反復）か 0
+   */
+  public int refitInterval(int t) {
+    int every = 0;
+    for (RefitStep step : refitSteps()) {
+      if (step.from() <= t) every = step.every();
+    }
+    return every;
+  }
+
+  /**
+   * Φ が点数だけで決まる（phiSource = SCORE_RANK・SCORE_SMOOTH か、SELF_GRP の g000 が点数だけの Φ）なら true。GRP も較正も読まない。
+   */
+  public boolean scoreOnlyPhi() {
+    return phiSource == PhiSource.SCORE_RANK
+        || phiSource == PhiSource.SCORE_SMOOTH
+        || (phiSource == PhiSource.SELF_GRP && phiStart.kind().scoreBased());
+  }
 
   /**
    * gamesSchedule を読む（書いた順。始めの昇順は {@link #validate} が確かめる）。
@@ -319,7 +407,10 @@ public record PrismConfig(
     return read(parsed.getAsJsonObject());
   }
 
-  /** config.json の木を読む（{@link #read(String)} と同じ決まり）。 */
+  /**
+   * config.json の木を読む（{@link #read(String)} と同じ決まり）。enum の欄は定数の名前とちょうど同じ文字列に限る（Gson は知らない名前を黙って
+   * null にするので、ここで拒む）。
+   */
   static PrismConfig read(JsonObject tree) {
     Set<String> fields = new HashSet<>();
     for (RecordComponent component : PrismConfig.class.getRecordComponents()) {
@@ -327,6 +418,12 @@ public record PrismConfig(
       fields.add(name);
       JsonElement value = tree.get(name);
       if (value == null || value.isJsonNull()) throw new IllegalArgumentException("Missing config.json key " + name);
+      Class<?> type = component.getType();
+      if (type.isEnum()
+          && Arrays.stream(type.getEnumConstants())
+              .noneMatch(constant -> value.isJsonPrimitive() && ((Enum<?>) constant).name().equals(value.getAsString())))
+        throw new IllegalArgumentException(
+            "config.json key " + name + " must be one of " + Arrays.toString(type.getEnumConstants()) + ": " + value);
     }
     for (String key : tree.keySet())
       if (!fields.contains(key)) throw new IllegalArgumentException("Unknown config.json key " + key);
@@ -432,23 +529,66 @@ public record PrismConfig(
       throw new IllegalArgumentException("auxOracle must be a finite non-negative weight: " + auxOracle);
     if (!(auxResult >= 0) || !Double.isFinite(auxResult))
       throw new IllegalArgumentException("auxResult must be a finite non-negative weight: " + auxResult);
-    if (!phi.equals(PHI_GRP) && !phi.equals(PHI_SCORE_RANK))
-      throw new IllegalArgumentException(
-          "phi must be " + PHI_GRP + " or " + PHI_SCORE_RANK + ": " + phi);
     if (grpBatch < 1 || evalEvery < 0 || evalGames < 1)
       throw new IllegalArgumentException("Invalid Φ or evaluation settings");
+    validateGrp();
   }
 
   /**
-   * train の設定を確かめる（{@link #validate} に加えて、Φ が決まっていること）。phi = grp なら grpCheckpoint が要る。黙って点数の順位の代用に
-   * 落ちると、ラベルと根が全て別の目的の値になるので、代用は phi = score-rank と明示したときだけ許す。evaluate は Φ を使わないので
-   * {@link #validate} だけを呼ぶ。
+   * Φ の出どころと GRP の自己対局の組を確かめる。黙って無視される組は拒む: 自己対局の鍵（phiStart の点数だけの Φ・予定表の学習・AUTO）は
+   * SELF_GRP だけ、点数だけの Φ に GRP と較正を重ねない、SELF_GRP は記録なしでは学べない、警報の REFIT と予定表＋警報の学習は対で、警報は採点が
+   * 要る。
+   */
+  private void validateGrp() {
+    if (phiSource != PhiSource.SELF_GRP
+        && (phiStart != PhiStart.GRP_CHECKPOINT || grpRefit != GrpRefit.MANUAL || grpSwitch != GrpSwitch.PROPOSE))
+      throw new IllegalArgumentException(
+          "phiStart, grpRefit and grpSwitch other than GRP_CHECKPOINT/MANUAL/PROPOSE need phiSource = SELF_GRP: "
+              + phiSource);
+    if (phiSource == PhiSource.SELF_GRP && !phiMonitor.records())
+      throw new IllegalArgumentException("phiSource = SELF_GRP learns from the recorded games: phiMonitor must not be OFF");
+    if (scoreOnlyPhi()
+        && (!grpCheckpoint.isEmpty() || !phiTemperatures.isBlank() || !phiCalibration.isBlank()))
+      throw new IllegalArgumentException(
+          "a score-only Φ takes no grpCheckpoint, phiTemperatures or phiCalibration");
+    if (grpSwitch == GrpSwitch.AUTO && !grpRefit.scheduled())
+      throw new IllegalArgumentException("grpSwitch = AUTO needs a scheduled grpRefit: " + grpRefit);
+    if (grpRefit.drift() != (phiDrift == PhiDrift.REFIT))
+      throw new IllegalArgumentException(
+          "grpRefit = SCHEDULE_AND_DRIFT and phiDrift = REFIT go together: " + grpRefit + "/" + phiDrift);
+    if (phiDrift != PhiDrift.OFF && !phiMonitor.scores())
+      throw new IllegalArgumentException("phiDrift = " + phiDrift + " needs phiMonitor = SCORE");
+    if (grpRefit.scheduled() && refitSteps().isEmpty())
+      throw new IllegalArgumentException("grpRefit = " + grpRefit + " needs a grpRefitSchedule");
+    int previous = 0;
+    for (RefitStep step : refitSteps()) {
+      if (step.from() <= previous || step.every() < 1)
+        throw new IllegalArgumentException("Invalid grpRefitSchedule " + grpRefitSchedule);
+      previous = step.from();
+    }
+    if (grpSwitchLag < 1
+        || !(grpSwitchSettle > 0 && grpSwitchSettle < 1)
+        || grpRetryCooldown < 0
+        || grpMaxFailures < 1
+        || !(phiDriftK > 0)
+        || !Double.isFinite(phiDriftK)
+        || grpWindow < 1
+        || grpTrustGames < 1)
+      throw new IllegalArgumentException("Invalid GRP self-play settings");
+  }
+
+  /**
+   * train の設定を確かめる（{@link #validate} に加えて、Φ が決まっていること）。元の GRP を読む Φ（FIXED_GRP、SELF_GRP の g000 =
+   * GRP_CHECKPOINT）と影の WITH_ORIGINAL は grpCheckpoint が要る。黙って点数だけの Φ に落ちると、ラベルと根が全て別の目的の値になるので、
+   * 点数だけの Φ は phiSource か phiStart で明示したときだけ許す。evaluate は Φ を使わないので {@link #validate} だけを呼ぶ。
    */
   public void validateTraining() {
     validate();
-    if (phi.equals(PHI_GRP) && grpCheckpoint.isEmpty())
+    if (!scoreOnlyPhi() && grpCheckpoint.isEmpty())
       throw new IllegalArgumentException(
-          "phi = grp needs grpCheckpoint (set phi = \"" + PHI_SCORE_RANK + "\" only for tests)");
+          "phiSource = " + phiSource + " with phiStart = " + phiStart + " needs grpCheckpoint");
+    if (phiShadowReference == PhiShadowReference.WITH_ORIGINAL && grpCheckpoint.isEmpty())
+      throw new IllegalArgumentException("phiShadowReference = WITH_ORIGINAL needs grpCheckpoint");
   }
 
   /**

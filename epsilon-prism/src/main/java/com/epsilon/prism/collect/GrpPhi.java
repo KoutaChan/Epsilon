@@ -25,6 +25,8 @@ import java.util.function.Consumer;
  * 順伝播の行の数で最後のビットが変わる（1 行・2〜3 行・4 行以上で別の値。2〜3 行では隣の行にも依る）。そこで順伝播は常に
  * {@link EpsilonGrpInference#maxBatch} 行で行い、足りない行はバッチの最後の系列の写しで埋める。行の数が一つに決まれば、値は行の位置・隣の系列・
  * 詰め物の長さに依らない。メモの追い出しの後に評価し直しても同じ値になるので、同じ設定で 2 回集めた Y は最後のビットまで一致する。
+ *
+ * <p>有限でない Φ（NaN・無限大）は完了を渡さずに評価の失敗にする（ラベルに入れず、その反復を失敗にする）。値そのものは変えない。
  */
 public final class GrpPhi implements HandValue {
   private static final Object STOP = new Object();
@@ -153,10 +155,19 @@ public final class GrpPhi implements HandValue {
         List<float[]> marginals = inference.predictMarginalProbabilities(prefixes);
         if (marginals.size() != prefixes.size())
           throw new IllegalStateException("GRP returned a different batch size");
+        double[][] results = new double[batch.size()][];
         for (int index = 0; index < batch.size(); index++) {
           Entry entry = batch.get(index);
           double[] raw = utilities(calibrated(marginals.get(index), entry.prefix, temperatures));
-          double[] values = calibration == null ? raw : calibration.apply(raw, entry.prefix);
+          results[index] = calibration == null ? raw : calibration.apply(raw, entry.prefix);
+          // 有限でない Φ はラベルに入れず、評価の失敗にする（その反復を失敗にする）
+          for (double value : results[index])
+            if (!Double.isFinite(value))
+              throw new IllegalStateException("Φ is not finite: " + Arrays.toString(results[index]));
+        }
+        for (int index = 0; index < batch.size(); index++) {
+          Entry entry = batch.get(index);
+          double[] values = results[index];
           driver.accept(() -> complete(entry, values));
         }
         busyNanos += System.nanoTime() - started;

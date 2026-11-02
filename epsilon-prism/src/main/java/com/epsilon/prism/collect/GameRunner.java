@@ -710,7 +710,10 @@ final class GameRunner {
     if (!slots.isEmpty() || samples != null)
       handEnds.add(new HandEnd(nextRoot.publicPrefix(), scores, null, slots, facts, samples));
     if (role != Role.MAIN) return;
-    if (context.observer != null) context.observer.handValued(gameId, nextRoot.publicPrefix(), scores);
+    if (context.observer != null) {
+      context.observer.handProgressed(gameId, next.kyokuIndex(), next.honba(), next.kyotakuCount(), scores);
+      context.observer.handValued(gameId, nextRoot.publicPrefix(), scores);
+    }
     targets = new ArrayList<>();
     if (ledger != null) ledger.reset();
     if (rows != null) rows.reset();

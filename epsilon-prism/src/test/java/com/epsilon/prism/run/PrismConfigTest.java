@@ -2,6 +2,14 @@ package com.epsilon.prism.run;
 
 import com.epsilon.prism.config.settings.EpsilonSettings;
 import com.epsilon.prism.core.DecisionClass;
+import com.epsilon.prism.grp.GrpInit;
+import com.epsilon.prism.grp.GrpRefit;
+import com.epsilon.prism.grp.GrpSwitch;
+import com.epsilon.prism.grp.PhiDrift;
+import com.epsilon.prism.grp.PhiMonitor;
+import com.epsilon.prism.grp.PhiShadowReference;
+import com.epsilon.prism.grp.PhiSource;
+import com.epsilon.prism.grp.PhiStart;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.policy.InferencePath;
@@ -92,12 +100,110 @@ public class PrismConfigTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> config("depth", "two"));
     Assert.assertThrows(IllegalArgumentException.class, () -> config("frontier", "yes"));
     Assert.assertThrows(IllegalArgumentException.class, () -> config("keepCohorts", "0").validate());
-    // Φ: 既定は GRP で、train は grpCheckpoint がなければ拒む（点数の順位の代用は明示したときだけ）
-    Assert.assertEquals(defaults.phi(), PrismConfig.PHI_GRP);
+    // Φ: 既定は固定の GRP で、train は grpCheckpoint がなければ拒む（点数の順位の代用は明示したときだけ）
+    Assert.assertEquals(defaults.phiSource(), PhiSource.FIXED_GRP);
     Assert.assertThrows(IllegalArgumentException.class, defaults::validateTraining);
-    config("phi", PrismConfig.PHI_SCORE_RANK).validateTraining();
+    config("phiSource", "SCORE_RANK").validateTraining();
     config("grpCheckpoint", "/grp").validateTraining();
-    Assert.assertThrows(IllegalArgumentException.class, () -> config("phi", "gpr").validate());
+    Assert.assertThrows(IllegalArgumentException.class, () -> config("phiSource", "grp"));
+  }
+
+  /** GRP の自己対局の既定: 固定の GRP を記録して採点し、学習は手動・提案だけ、温め始め、予定表 "1:2,40:8,120:48,800:56"。 */
+  @Test
+  public void grpSelfPlayDefaults() {
+    PrismConfig defaults = PrismConfig.fromSettings(EpsilonSettings.defaults());
+    Assert.assertEquals(defaults.phiStart(), PhiStart.GRP_CHECKPOINT);
+    Assert.assertEquals(defaults.phiMonitor(), PhiMonitor.SCORE);
+    Assert.assertEquals(defaults.grpRefit(), GrpRefit.MANUAL);
+    Assert.assertEquals(defaults.grpSwitch(), GrpSwitch.PROPOSE);
+    Assert.assertEquals(defaults.grpInit(), GrpInit.WARM);
+    Assert.assertEquals(defaults.phiDrift(), PhiDrift.REPORT);
+    Assert.assertEquals(defaults.phiShadowReference(), PhiShadowReference.SELF_ONLY);
+    Assert.assertEquals(defaults.grpSwitchLag(), 2);
+    Assert.assertEquals(defaults.grpSwitchSettle(), 0.60);
+    Assert.assertEquals(defaults.grpRetryCooldown(), 8);
+    Assert.assertEquals(defaults.grpMaxFailures(), 3);
+    Assert.assertEquals(defaults.phiDriftK(), 4.0);
+    Assert.assertEquals(defaults.grpWindow(), 8);
+    Assert.assertEquals(defaults.grpTrustGames(), 131072);
+    Assert.assertFalse(defaults.scoreOnlyPhi());
+    // 間隔は始めが t 以下で最も後の段、最初の段より前は 0（学習しない）
+    Assert.assertEquals(defaults.refitInterval(1), 2);
+    Assert.assertEquals(defaults.refitInterval(39), 2);
+    Assert.assertEquals(defaults.refitInterval(40), 8);
+    Assert.assertEquals(defaults.refitInterval(560), 48);
+    Assert.assertEquals(defaults.refitInterval(900), 56);
+    Assert.assertEquals(config("grpRefitSchedule", "10:4").refitInterval(9), 0);
+    Assert.assertEquals(config("grpRefitSchedule", "").refitInterval(9), 0);
+    for (String schedule : new String[] {"9:2,1:4", "1:0", "48"}) {
+      PrismConfig wrong = config("grpRefitSchedule", schedule);
+      Assert.assertThrows(IllegalArgumentException.class, wrong::validate);
+    }
+  }
+
+  /**
+   * phiStart: GRP_CHECKPOINT は grpCheckpoint が要り、点数だけの Φ は grpCheckpoint・温度・較正の表を拒む。SELF_GRP でない出どころに自己対局の
+   * 鍵を付けると拒む（黙って無視しない）。
+   */
+  @Test
+  public void phiStartNeedsAnExplicitCheckpointChoice() {
+    String[] self = {"phiSource", "SELF_GRP"};
+    PrismConfig warm = config(with(self, "grpCheckpoint", "/grp"));
+    warm.validateTraining();
+    Assert.assertFalse(warm.scoreOnlyPhi());
+    PrismConfig missing = config(self);
+    missing.validate();
+    Assert.assertThrows(IllegalArgumentException.class, missing::validateTraining);
+    PrismConfig scoreStart = config(with(self, "phiStart", "SCORE_RANK"));
+    scoreStart.validateTraining();
+    Assert.assertTrue(scoreStart.scoreOnlyPhi());
+    Assert.assertTrue(config("phiSource", "SCORE_RANK").scoreOnlyPhi());
+    String[][] wrong = {
+      with(self, "phiStart", "SCORE_RANK", "grpCheckpoint", "/grp"),
+      with(self, "phiStart", "SCORE_RANK", "phiTemperatures", "1.1"),
+      with(self, "phiStart", "SCORE_RANK", "phiCalibration", "/calib.json"),
+      {"phiSource", "SCORE_RANK", "grpCheckpoint", "/grp"},
+      {"phiStart", "SCORE_RANK"},
+      {"grpRefit", "SCHEDULE"},
+      {"grpSwitch", "AUTO", "grpRefit", "SCHEDULE"},
+      with(self, "phiMonitor", "OFF", "phiDrift", "OFF"),
+    };
+    for (String[] pairs : wrong) {
+      PrismConfig config = config(pairs);
+      Assert.assertThrows(IllegalArgumentException.class, config::validate);
+    }
+    PrismConfig original = config("phiShadowReference", "WITH_ORIGINAL");
+    original.validate();
+    Assert.assertThrows(IllegalArgumentException.class, original::validateTraining);
+  }
+
+  /** 学習の時期・入れ方・警報の組: AUTO は予定表の学習だけ、警報の REFIT は予定表＋警報と対、警報は採点が要る。 */
+  @Test
+  public void refitSwitchAndDriftGoTogether() {
+    String[] self = {"phiSource", "SELF_GRP", "grpCheckpoint", "/grp"};
+    config(with(self, "grpRefit", "SCHEDULE", "grpSwitch", "AUTO")).validateTraining();
+    config(with(self, "grpRefit", "SCHEDULE_AND_DRIFT", "phiDrift", "REFIT", "grpSwitch", "AUTO")).validateTraining();
+    config(with(self, "phiMonitor", "RECORD", "phiDrift", "OFF")).validateTraining();
+    String[][] wrong = {
+      with(self, "grpSwitch", "AUTO"),
+      with(self, "grpRefit", "SCHEDULE_AND_DRIFT"),
+      with(self, "grpRefit", "SCHEDULE", "phiDrift", "REFIT"),
+      with(self, "phiMonitor", "RECORD"),
+      {"phiMonitor", "OFF"},
+      with(self, "grpSwitchLag", "0"),
+      with(self, "grpSwitchSettle", "1"),
+      with(self, "grpRetryCooldown", "-1"),
+      with(self, "grpMaxFailures", "0"),
+      with(self, "phiDriftK", "0"),
+      with(self, "grpWindow", "0"),
+      with(self, "grpTrustGames", "0"),
+    };
+    for (String[] pairs : wrong) {
+      PrismConfig config = config(pairs);
+      Assert.assertThrows(IllegalArgumentException.class, config::validate);
+    }
+    // phiMonitor = OFF は警報も OFF なら通る（記録しない FIXED_GRP の系譜）
+    config("phiMonitor", "OFF", "phiDrift", "OFF").validate();
   }
 
   /**
@@ -131,6 +237,17 @@ public class PrismConfigTest {
     JsonObject empty = tree.deepCopy();
     empty.add("inference", JsonNull.INSTANCE);
     Assert.assertThrows(IllegalArgumentException.class, () -> PrismConfig.read(gson.toJson(empty)));
+    // enum は定数の名前とちょうど同じ文字列だけ（Gson は知らない名前を黙って null にする）
+    for (String[] wrong : new String[][] {{"grpInit", "warm"}, {"grpSwitch", "auto"}, {"phiSource", "SELF"}, {"inference", "hip"}}) {
+      JsonObject typo = tree.deepCopy();
+      typo.addProperty(wrong[0], wrong[1]);
+      IllegalArgumentException rejected =
+          Assert.expectThrows(IllegalArgumentException.class, () -> PrismConfig.read(gson.toJson(typo)));
+      Assert.assertTrue(rejected.getMessage().contains(wrong[0]), rejected.getMessage());
+    }
+    JsonObject number = tree.deepCopy();
+    number.addProperty("phiShadowReference", 1);
+    Assert.assertThrows(IllegalArgumentException.class, () -> PrismConfig.read(gson.toJson(number)));
     JsonObject older = tree.deepCopy();
     older.addProperty("format", PrismConfig.FORMAT - 1);
     PrismConfig read = PrismConfig.read(gson.toJson(older));

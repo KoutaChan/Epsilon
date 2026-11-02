@@ -88,7 +88,8 @@ public class LineageSmokeTest {
    */
   private static Map<String, String> settings() {
     String[] pairs = {
-      "phi", "score-rank", "gamesPerCohort", "1", "gamesSchedule", "", "iterations", "10",
+      "phiSource", "SCORE_RANK", "phiMonitor", "OFF", "phiDrift", "OFF", "gamesPerCohort", "1",
+      "gamesSchedule", "", "iterations", "10",
       "collectDevices", "cpu", "learnerDevice", "cpu", "maxActiveGames", "8", "advanceWorkers", "2",
       "encoders", "2", "slots", "1", "readyBatches", "2", "inferBatch", "256",
       "batchWaitMicros", "1000", "rowWriters", "1", "labelRateDiscardEarly", "0.003",

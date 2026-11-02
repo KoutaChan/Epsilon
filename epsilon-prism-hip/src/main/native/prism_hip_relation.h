@@ -15,8 +15,10 @@
 // 1 回作り、対の符号は 2 つのトークンの語と牌の関係の表の 1 バイトから選択だけで作る（relationSegments。分岐は書かない）。鍵の側
 // だけで決まる前後(番号(j), 立直(j)) と時間の段はトークンの語に入れておく。
 //
-// K0 が行ごとに全ての対の符号を作って 1 語に詰め（区画 s を bit 4s から、eager の 2 語の low・high と同じ並び）、K2・K4 の全ての頭の対と
-// 層がそれを読む。区画 6 は 10 以下なので、15 を行の外の鍵の印にする（K2・K4 の偏りの表で −∞）。
+// 対の符号の語は 2 通りある。T0 は eager の RelationClass と同じ語（packCode: 区画 s を bit 4s から、eager の 2 語の low・high と同じ
+// 並び）を書き、学習の注意（T1）が読む。K0 は行ごとに全ての対の符号を推論の語（attentionCode: 区画 2 つずつを偏りの表の項の番号に
+// 直した並び）に詰め、K2・K4 の全ての頭の対と層がそれを読む。区画 6 は 10 以下なので、15 を行の外の鍵の印にする（K2・K4 の偏りの表で
+// −∞）。
 //
 // 偏りの表は ρ だけで決まるので、重みの公開のとき（Plan::uploadWeights）に K0 の隣の relationBiasKernel が層ごとに 1 回作り、K2・K4 の
 // 作業群は自分の頭の対の分を LDS へ写すだけにする。
@@ -35,7 +37,7 @@ constexpr int kMaxTiles = 34;       // 牌の種類の上限（K0・T0 の LDS �
 // 符号の置き方: 行ごとに 16 トークンの塊の対 (qt, kt) を kCodeBlockWords 語ずつ（Java の HipShape.RELATION_CODE_WORDS）。
 constexpr int kCodeBlocks = kMaxRowTokens / 16;
 constexpr int kCodeBlockWords = 256;
-constexpr uint32_t kPaddedKeyCode = 0x0F000000u;  // 区画 6 が 15: 行の外の鍵
+constexpr uint32_t kPaddedKeyCode = 0x0F000000u;  // 推論の語で区画 6 が 15、他の区画が 0: 行の外の鍵
 
 // 行 row の塊の対 (qt, kt) の先頭の語。語 t は lane = t >> 3、v = t & 7 として i = 16qt + (lane & 15)、j = 16kt + 2v + (lane >> 4)
 // の符号（K2・K4 の WMMA の S^T の断片で lane が持つ 8 鍵の順）。
@@ -44,13 +46,23 @@ __host__ __device__ __forceinline__ size_t codeIndex(int row, int qt, int kt) {
 }
 
 // 偏りの表の置き方: 1 層は [頭の対, kBiasEntries, 2] の FP32 で、項は (頭 2p, 頭 2p + 1) の値の対（exp2 の softmax のため ×log2e）。
-// 区画 2 つずつ前もって足した組の表 τ（< 3）の項 a + 16b は ρ[32τ + a] + ρ[32τ + 16 + b]、区画 6 の表の項 a は ρ[96 + a]
-// （15 は行の外の鍵の −∞）。K2・K4 は符号を 8 bit ずつ 4 回引いて足す。
+// 区画 2 つずつ前もって足した組の表 τ（< 3）の項 pairTableEntry(a, b) は ρ[32τ + a] + ρ[32τ + 16 + b]（a は区画 2τ、b は区画 2τ + 1 の
+// 符号）、区画 6 の表の項 a は ρ[96 + a]（15 は行の外の鍵の −∞）。K2・K4 は推論の語を 8 bit ずつ 4 回引いて足す。
 constexpr int kPairTables = 3;
 constexpr int kPairEntries = kRelationEntries * kRelationEntries;
 constexpr int kBiasEntries = kPairTables * kPairEntries + kRelationEntries;
 constexpr float kLog2e = 1.4426950408889634f;
 static_assert(2 * kPairTables + 1 == kRelationSegments, "the pair tables cover segments 0..5 and the last table segment 6");
+
+// 組の表の区画の対 (a, b)（各 < 16）の項 (a ^ b) + 16b（16 × 16 の全単射）。表の 8 バイトの項 e が載る LDS の bank は e mod 16 で
+// 決まる（K2 の b64 は 2 bank の対、K4 の b32 は頭ごとに 1 bank）。1 回の読みの 16 lane は同じ鍵・違う問い合わせで、区画 2τ（型の対・
+// 牌の関係の後半・立直）はほぼ揃い、区画 2τ + 1 がばらつくので、下の 4 bit を a ^ b にして b の違いを bank に出す（a + 16b の並び
+// では違う項が同じ bank に重なる）。
+__host__ __device__ constexpr int pairTableEntry(int a, int b) { return (a ^ b) | b << 4; }
+
+// 組の表の項 e（< 256）の区画の対 (a, b)（pairTableEntry の逆）。
+__host__ __device__ constexpr int pairTableFirst(int e) { return (e ^ (e >> 4)) & 15; }
+__host__ __device__ constexpr int pairTableSecond(int e) { return e >> 4; }
 
 // 1 層の偏りの表の FP32 の数。
 __host__ __device__ __forceinline__ size_t relationBiasFloats(int headPairs) {
@@ -165,7 +177,7 @@ __device__ __forceinline__ void relationSegments(const RelationToken& q, const R
   segments[6] = link + (seatToTile ? k.safetyFrom(ownerQ) + 3 : 0) + (tileToSeat ? q.safetyFrom(ownerK) + 7 : 0);
 }
 
-// 7 区画の符号を 1 語に詰める（区画 s は bit 4s から 4 bit）。
+// 学習の語（T0）: 7 区画の符号を 1 語に詰める（区画 s は bit 4s から 4 bit。eager の RelationClass と同じ並び）。
 __device__ __forceinline__ uint32_t packCode(const int (&segments)[kRelationSegments]) {
   uint32_t code = 0;
 #pragma unroll
@@ -174,5 +186,57 @@ __device__ __forceinline__ uint32_t packCode(const int (&segments)[kRelationSegm
   }
   return code;
 }
+
+// 推論の語（K0 が書き、K2・K4 が読む）: バイト τ（< 3）に組の表 τ の項 pairTableEntry(区画 2τ, 区画 2τ + 1)、バイト 3 に区画 6 の符号
+// （区画の符号はどれも 16 未満）。
+__host__ __device__ constexpr uint32_t attentionCode(const int (&segments)[kRelationSegments]) {
+  uint32_t code = static_cast<uint32_t>(segments[kRelationSegments - 1]) << (8 * kPairTables);
+#pragma unroll
+  for (int table = 0; table < kPairTables; ++table) {
+    code |= static_cast<uint32_t>(pairTableEntry(segments[2 * table], segments[2 * table + 1])) << (8 * table);
+  }
+  return code;
+}
+
+// 推論の語を K2・K4 と同じく 8 bit ずつ引いた項が、全ての区画の符号の組で RelationClass と同じ ρ の行を指すこと（組の表 τ の項は
+// 行 32τ + a と 32τ + 16 + b、区画 6 の表の項は行 96 + c）。区画は語の別々のビットに入るので、引く区画の対・符号を全て回し、他の
+// 区画を 0 と 15 にして漏れがないことを見れば全ての語を尽くす。行の外の鍵の印は区画 6 の 15 と組の表の (0, 0) を指す。
+constexpr bool attentionCodeMatchesRelationRows() {
+  for (int other = 0; other < kRelationEntries; other += kRelationEntries - 1) {
+    for (int table = 0; table < kPairTables; ++table) {
+      for (int a = 0; a < kRelationEntries; ++a) {
+        for (int b = 0; b < kRelationEntries; ++b) {
+          int segments[kRelationSegments] = {other, other, other, other, other, other, other};
+          segments[2 * table] = a;
+          segments[2 * table + 1] = b;
+          const uint32_t code = attentionCode(segments);
+          for (int t = 0; t < kPairTables; ++t) {
+            const int e = static_cast<int>((code >> (8 * t)) & 0xffu);
+            if (pairTableFirst(e) != segments[2 * t] || pairTableSecond(e) != segments[2 * t + 1]) {
+              return false;
+            }
+          }
+          if (static_cast<int>(code >> (8 * kPairTables)) != other) {
+            return false;
+          }
+        }
+      }
+    }
+    for (int c = 0; c < kRelationEntries; ++c) {
+      int segments[kRelationSegments] = {other, other, other, other, other, other, c};
+      if (static_cast<int>(attentionCode(segments) >> (8 * kPairTables)) != c) {
+        return false;
+      }
+    }
+  }
+  for (int t = 0; t < kPairTables; ++t) {
+    const int e = static_cast<int>((kPaddedKeyCode >> (8 * t)) & 0xffu);
+    if (pairTableFirst(e) != 0 || pairTableSecond(e) != 0) {
+      return false;
+    }
+  }
+  return static_cast<int>(kPaddedKeyCode >> (8 * kPairTables)) == kRelationEntries - 1;
+}
+static_assert(attentionCodeMatchesRelationRows(), "the attention code must address the relation rows of every segment code");
 
 }  // namespace prism

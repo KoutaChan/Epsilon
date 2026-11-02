@@ -1,5 +1,6 @@
-// K0（関係の符号）: 作業群は 1 行（256 スレッド）。行の全ての対（問い合わせ i, 鍵 j）の 7 区画の符号を 1 語に詰めて全体メモリへ書く
-// （置き方は prism_hip_relation.h の codeIndex）。K2・K4 の全ての頭の対と層が同じ符号を読むので、1 回の順伝播で 1 回だけ作る。
+// K0（関係の符号）: 作業群は 1 行（256 スレッド）。行の全ての対（問い合わせ i, 鍵 j）の 7 区画の符号を推論の語（attentionCode）に
+// 詰めて全体メモリへ書く（置き方は prism_hip_relation.h の codeIndex）。K2・K4 の全ての頭の対と層が同じ符号を読むので、1 回の順伝播で
+// 1 回だけ作る。
 //
 // 行のトークンごとに属性を詰めた語（RelationToken、12 バイト）を LDS に 1 回作り、対の符号はトークンの語 2 つと牌の関係の表の 1 バイト
 // から選択だけで作る（relationSegments）。問い合わせの塊 qt を外の輪にして、問い合わせの語は鍵の塊の間レジスタに置く。塊の対ごとに、
@@ -64,18 +65,23 @@ __global__ __launch_bounds__(kThreads) void relationKernel(RelationArgs args) {
       const RelationToken key = token[min(j, tokens - 1)];
       int segments[kRelationSegments];
       relationSegments(query, key, tileRelation[tileRow + key.tileIndex()], segments);
-      // 区画 6 の 15 は行の外の鍵の印なので、実の対では 14 以下（検査つきの組み立てで止める）。
-      (void)bounds.index(static_cast<size_t>(i < tokens && j < tokens ? segments[kRelationSegments - 1] : 0), 1,
-                         kRelationEntries - 1);
-      const uint32_t code = j >= tokens ? kPaddedKeyCode : i < tokens ? packCode(segments) : 0u;
+      // 区画の符号は 16 未満（推論の語の項の番号が組の表に収まる）で、区画 6 の 15 は行の外の鍵の印なので実の対では 14 以下
+      // （検査つきの組み立てで止める）。
+      const bool inside = i < tokens && j < tokens;
+#pragma unroll
+      for (int s = 0; s < kRelationSegments; ++s) {
+        (void)bounds.index(static_cast<size_t>(inside ? segments[s] : 0), 1,
+                           s == kRelationSegments - 1 ? kRelationEntries - 1 : kRelationEntries);
+      }
+      const uint32_t code = j >= tokens ? kPaddedKeyCode : i < tokens ? attentionCode(segments) : 0u;
       args.codes.data[bounds.index(codeIndex(row, qt, kt) + tid, 1, args.codes.limit)] = code;
     }
   }
   bounds.trap();
 }
 
-// 偏りの表の 1 頭の対: 項 e の (頭 2p, 頭 2p + 1) の値（×log2e）。組の表 τ の項 a + 16b は ρ[32τ + a] + ρ[32τ + 16 + b]、区画 6 の表の
-// 項 a は ρ[96 + a]（15 は行の外の鍵の −∞）。ρ は [関係の行, 頭]。
+// 偏りの表の 1 頭の対: 項 e の (頭 2p, 頭 2p + 1) の値（×log2e）。組の表 τ の項 pairTableEntry(a, b) は ρ[32τ + a] + ρ[32τ + 16 + b]、
+// 区画 6 の表の項 a は ρ[96 + a]（15 は行の外の鍵の −∞）。ρ は [関係の行, 頭]。
 __global__ __launch_bounds__(kThreads) void relationBiasKernel(RelationBiasArgs args) {
   const int pair = blockIdx.x;
   Bounds bounds;
@@ -88,8 +94,9 @@ __global__ __launch_bounds__(kThreads) void relationBiasKernel(RelationBiasArgs 
       float bias;
       if (e < kPairTables * kPairEntries) {
         const int table = e / kPairEntries;
-        const int first = kRelationEntries * 2 * table + e % kRelationEntries;
-        const int second = kRelationEntries * (2 * table + 1) + (e / kRelationEntries) % kRelationEntries;
+        const int entry = e % kPairEntries;
+        const int first = kRelationEntries * 2 * table + pairTableFirst(entry);
+        const int second = kRelationEntries * (2 * table + 1) + pairTableSecond(entry);
         bias = args.rho.data[bounds.index(static_cast<size_t>(first) * args.heads + head, 1, args.rho.limit)] +
                args.rho.data[bounds.index(static_cast<size_t>(second) * args.heads + head, 1, args.rho.limit)];
       } else {

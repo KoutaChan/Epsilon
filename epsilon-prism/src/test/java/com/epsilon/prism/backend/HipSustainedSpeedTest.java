@@ -27,7 +27,7 @@ import org.testng.annotations.Test;
 /**
  * 本番の負荷での推論の速さ（rocm の組。見える GPU を全て同時に使い、GPU ごとに測る。1 枚だけなら HIP_VISIBLE_DEVICES で絞る）。
  *
- * <p>GPU ごとに本番の実行枠と同じ {@link #LANES} 本の道具（計算ストリームと計画、ページ固定の blob と s の置き場）を作り、それぞれのスレッドが
+ * <p>GPU ごとに実行枠の数 {@link #LANES} 本の道具（計算ストリームと計画、ページ固定の blob と s の置き場）を作り、それぞれのスレッドが
  * 塊の順伝播を積んでは待つことを休みなく続ける。電力の上限で時計が下がった状態を測るため、最初の {@link #WARM_SECONDS} 秒は捨て、続く
  * {@link #MEASURE_SECONDS} 秒に終えた塊の判断の数から 1 判断あたりの壁の時間（区間の長さ / 判断）を出す。その後も負荷を切らずに
  * {@link #PROFILE_SECONDS} 秒カーネルの計時を入れ、カーネルごとの時間の割合で壁の時間を分ける（ストリームが重なるので、計時の印の間には他の
@@ -40,7 +40,11 @@ import org.testng.annotations.Test;
 public class HipSustainedSpeedTest {
   private static final Logger log = LoggerFactory.getLogger(HipSustainedSpeedTest.class);
 
-  private static final int LANES = 3;
+  /**
+   * GPU ごとの道具の数（system property {@code prism.lanes}、既定は本番の実行枠の数 3）。道具は他のストリームより先に GPU ごとに作るので、
+   * {@code GPU_MAX_HW_QUEUES}（既定 4）以下なら各道具が専用の HW キューを持つ。
+   */
+  private static final int LANES = Integer.getInteger("prism.lanes", 3);
   private static final int WARM_SECONDS = 10;
   private static final int MEASURE_SECONDS = 30;
   private static final int PROFILE_SECONDS = 5;
@@ -139,11 +143,12 @@ public class HipSustainedSpeedTest {
     }
   }
 
-  /** 本番の形（深さ {@link PrismShape#DEFAULT_DEPTH}）の網を GPU ごとに 3 本のストリームで回し続けたときの 1 判断あたりの時間。 */
+  /** 本番の形（深さ {@link PrismShape#DEFAULT_DEPTH}）の網を GPU ごとに {@link #LANES} 本のストリームで回し続けたときの 1 判断あたりの時間。 */
   @Test(groups = "rocm", timeOut = 600_000)
   public void measureSustained() throws Exception {
     int gpus = Engine.getInstance().getGpuCount();
     Assert.assertTrue(gpus > 0, "no visible GPU");
+    Assert.assertTrue(LANES > 0, "prism.lanes must be positive: " + LANES);
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
         PtNDManager pinned = (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME)) {
       PrismNetwork network = HipFixtures.network(manager, PrismShape.DEFAULT_DEPTH, 72);

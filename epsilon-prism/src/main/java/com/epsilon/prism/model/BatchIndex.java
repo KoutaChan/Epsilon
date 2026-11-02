@@ -10,6 +10,7 @@ import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.input.InputSchema.RowColumn;
 import com.epsilon.prism.model.ValueGraphHead.Composition;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -306,7 +307,8 @@ final class BatchIndex {
     long[] gateTransition = new long[gateCount * gateWidth];
     float[] gateMask = new float[gateCount * gateWidth];
     for (int g = 0; g < gateCount; g++) {
-      structure.spread(lists.gateActions.get(g), gateTransition, gateMask, g * gateWidth);
+      structure.spread(
+          lists.gateActions.get(g), gateTransition, gateMask, g * gateWidth, gateWidth);
     }
     gateActions = staging.addLongs(lists.gateActions);
     gateKinds = staging.addLongs(lists.gateKinds);
@@ -337,7 +339,12 @@ final class BatchIndex {
     }
     barWidth = turnCount == 0 ? 0 : bar;
     if (barWidth > 0) {
+      // 詰め物はその行の最初の遷移・印 0（重みは厳密に 0。逆の加算の宛先を行ごとに散らす）
       long[] barTransition = new long[rows * barWidth];
+      for (int r = 0; r < rows; r++) {
+        Arrays.fill(
+            barTransition, r * barWidth, (r + 1) * barWidth, structure.firstTransitionOfRow[r]);
+      }
       float[] barSlot = new float[rows * barWidth];
       int[] filled = new int[rows];
       for (int a = 0; a < actions; a++) {
@@ -388,7 +395,8 @@ final class BatchIndex {
       float[] candidateSlot = new float[candidateCount * candidateWidth];
       long[] candidateRow = new long[candidateCount];
       for (int c = 0; c < candidateCount; c++) {
-        structure.spread(candidates[c], candidateTransition, candidateSlot, c * candidateWidth);
+        structure.spread(
+            candidates[c], candidateTransition, candidateSlot, c * candidateWidth, candidateWidth);
         candidateRow[c] = structure.row[candidates[c]];
       }
       candidateTransitions =
@@ -558,14 +566,18 @@ final class BatchIndex {
       return base;
     }
 
-    /** 手の代表の遷移を、幅をそろえた列に書く（詰め物は遷移 0・印 0）。 */
-    void spread(int action, long[] transitions, float[] mask, int from) {
+    /**
+     * 手の代表の遷移を、幅をそろえた列に書く。詰め物はその手の最初の遷移・印 0 で、重みは厳密に 0 なので値は変わらない。宛先を手ごとに
+     * 散らすのは、逆の原子的な加算を 1 つの遷移の行に集めないため。
+     */
+    void spread(int action, long[] transitions, float[] mask, int from, int width) {
       int first = firstTransition(action);
       int count = transitionsOf(action);
       for (int t = 0; t < count; t++) {
         transitions[from + t] = first + t;
         mask[from + t] = 1f;
       }
+      Arrays.fill(transitions, from + count, from + width, first);
     }
 
     private boolean inRow(int action, int r) {

@@ -192,7 +192,7 @@ final class ValueGraphHead extends Module {
    *
    * @param transitions z [遷移, H]（FP32）
    * @param values B [遷移]（FP32）
-   * @param chosen 手ごとの遷移 [手 × 幅]（INT64、詰め物は 0）
+   * @param chosen 手ごとの遷移 [手 × 幅]（INT64、詰め物は印 0 の任意の遷移）
    * @param mask 遷移の在否 [手, 幅]
    * @param count 手の数
    * @param width 幅

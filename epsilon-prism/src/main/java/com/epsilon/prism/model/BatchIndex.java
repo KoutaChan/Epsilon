@@ -74,18 +74,15 @@ final class BatchIndex {
   final Staging.Section discardTransitions;
 
   final int gateCount;
-  final int gateWidth;
   final Staging.Section gateActions;
   final Staging.Section gateKinds;
   final Staging.Section gateRows;
-  final Staging.Section gateTransitions;
-  final Staging.Section gateTransitionMask;
-  final Staging.Section gateBaseTransitions;
-  final Staging.Section gateUsesBar;
 
-  final int barWidth;
-  final Staging.Section barTransitions;
-  final Staging.Section barMask;
+  /** 門の手 e_a の集約（門がなければ null）。 */
+  final Aggregation gateChosen;
+
+  /** 門の基準 e_base の集約。基準の手の z か、ē を使う門では行の ē（門がなければ null）。 */
+  final Aggregation gateBase;
 
   final int riichiCount;
   final Staging.Section riichiActions;
@@ -114,9 +111,10 @@ final class BatchIndex {
   final Staging.Section measured;
 
   final int candidateCount;
-  final int candidateWidth;
-  final Staging.Section candidateTransitions;
-  final Staging.Section candidateMask;
+
+  /** 候補の手 e_a の集約（候補がなければ null）。 */
+  final Aggregation candidates;
+
   final Staging.Section candidateRows;
 
   final int readingCount;
@@ -299,67 +297,57 @@ final class BatchIndex {
     discardTransitions = staging.addLongs(lists.discardTransitions);
 
     gateCount = lists.gateActions.size();
-    int width = 1;
-    for (int g = 0; g < gateCount; g++) {
-      width = Math.max(width, structure.transitionsOf(lists.gateActions.get(g)));
-    }
-    gateWidth = width;
-    long[] gateTransition = new long[gateCount * gateWidth];
-    float[] gateMask = new float[gateCount * gateWidth];
-    for (int g = 0; g < gateCount; g++) {
-      structure.spread(
-          lists.gateActions.get(g), gateTransition, gateMask, g * gateWidth, gateWidth);
-    }
     gateActions = staging.addLongs(lists.gateActions);
     gateKinds = staging.addLongs(lists.gateKinds);
     gateRows = staging.addLongs(lists.gateRows);
-    gateTransitions =
-        gateCount == 0 ? null : staging.add(gateTransition, new Shape(gateTransition.length));
-    gateTransitionMask =
-        gateCount == 0 ? null : staging.add(gateMask, new Shape(gateCount, gateWidth));
-    gateBaseTransitions = staging.addLongs(lists.gateBaseTransitions);
-    gateUsesBar =
-        gateCount == 0
-            ? null
-            : staging.add(toBooleans(lists.gateUsesBar), new Shape(gateCount, 1));
 
-    // ē: 行ごとの代表の打牌
+    // ē: 行ごとの代表の打牌の遷移（行の中の手の順）
     turnCount = lists.turnActions.size();
-    int bar = 0;
-    int[] representativeDiscards = new int[rows];
+    int[] discardStart = new int[rows + 1];
     for (int a = 0; a < actions; a++) {
       if (structure.role[a] == ActionRole.DISCARD && structure.representative[a] == a) {
-        bar = Math.max(bar, ++representativeDiscards[structure.row[a]]);
+        discardStart[structure.row[a] + 1]++;
+      }
+    }
+    int bar = 0;
+    for (int r = 0; r < rows; r++) {
+      bar = Math.max(bar, discardStart[r + 1]);
+      discardStart[r + 1] += discardStart[r];
+    }
+    int[] discardTransition = new int[discardStart[rows]];
+    int[] filled = Arrays.copyOf(discardStart, rows);
+    for (int a = 0; a < actions; a++) {
+      if (structure.role[a] == ActionRole.DISCARD && structure.representative[a] == a) {
+        discardTransition[filled[structure.row[a]]++] = structure.firstTransition(a);
       }
     }
     for (int index = 0; index < turnCount; index++) {
-      if (representativeDiscards[lists.turnRows.get(index)] == 0) {
+      int r = lists.turnRows.get(index);
+      if (discardStart[r + 1] == discardStart[r]) {
         throw new IllegalArgumentException("turn gate in a row without discards");
       }
     }
-    barWidth = turnCount == 0 ? 0 : bar;
-    if (barWidth > 0) {
-      // 詰め物はその行の最初の遷移・印 0（重みは厳密に 0。逆の加算の宛先を行ごとに散らす）
-      long[] barTransition = new long[rows * barWidth];
-      for (int r = 0; r < rows; r++) {
-        Arrays.fill(
-            barTransition, r * barWidth, (r + 1) * barWidth, structure.firstTransitionOfRow[r]);
-      }
-      float[] barSlot = new float[rows * barWidth];
-      int[] filled = new int[rows];
-      for (int a = 0; a < actions; a++) {
-        if (structure.role[a] == ActionRole.DISCARD && structure.representative[a] == a) {
-          int r = structure.row[a];
-          int at = r * barWidth + filled[r]++;
-          barTransition[at] = structure.firstTransition(a);
-          barSlot[at] = 1f;
+    if (gateCount > 0) {
+      Aggregation.Builder chosen = new Aggregation.Builder(gateCount);
+      Aggregation.Builder base = new Aggregation.Builder(gateCount);
+      for (int g = 0; g < gateCount; g++) {
+        int action = lists.gateActions.get(g);
+        chosen.add(structure.firstTransition(action), structure.transitionsOf(action));
+        int baseTransition = lists.gateBaseTransitions.get(g);
+        if (baseTransition == Lists.BAR) {
+          int r = lists.gateRows.get(g);
+          base.add(discardTransition, discardStart[r], discardStart[r + 1] - discardStart[r]);
+        } else {
+          base.add(baseTransition, 1);
         }
       }
-      barTransitions = staging.add(barTransition, new Shape(barTransition.length));
-      barMask = staging.add(barSlot, new Shape(rows, barWidth));
+      gateChosen = chosen.build(1, staging);
+      // ē の幅は塊の全ての行の代表の打牌の数の最大。GPU の和の順は幅で決まるので、ē は行の打牌と
+      // 塊だけで決まり、どの行に ē の門があるかに依らない（詰めるのは ē の門の行だけで、費用は小さい）
+      gateBase = base.build(bar, staging);
     } else {
-      barTransitions = null;
-      barMask = null;
+      gateChosen = null;
+      gateBase = null;
     }
 
     riichiCount = lists.riichiActions.size();
@@ -380,32 +368,25 @@ final class BatchIndex {
     // 補助の頭（学習で教師があるときだけ）
     int[] candidates = labels == null ? new int[0] : labels.candidateActions();
     candidateCount = candidates.length;
-    int candidateSpan = 1;
     for (int action : candidates) {
       Objects.checkIndex(action, actions);
       if (!TargetSchema.hasCandidateTargets(structure.role[action])) {
         throw new IllegalArgumentException(
             "action " + action + " (" + structure.role[action] + ") has no candidate targets");
       }
-      candidateSpan = Math.max(candidateSpan, structure.transitionsOf(action));
     }
-    candidateWidth = candidateSpan;
     if (candidateCount > 0) {
-      long[] candidateTransition = new long[candidateCount * candidateWidth];
-      float[] candidateSlot = new float[candidateCount * candidateWidth];
+      Aggregation.Builder chosen = new Aggregation.Builder(candidateCount);
       long[] candidateRow = new long[candidateCount];
       for (int c = 0; c < candidateCount; c++) {
-        structure.spread(
-            candidates[c], candidateTransition, candidateSlot, c * candidateWidth, candidateWidth);
-        candidateRow[c] = structure.row[candidates[c]];
+        int action = candidates[c];
+        chosen.add(structure.firstTransition(action), structure.transitionsOf(action));
+        candidateRow[c] = structure.row[action];
       }
-      candidateTransitions =
-          staging.add(candidateTransition, new Shape(candidateTransition.length));
-      candidateMask = staging.add(candidateSlot, new Shape(candidateCount, candidateWidth));
+      this.candidates = chosen.build(1, staging);
       candidateRows = staging.add(candidateRow, new Shape(candidateCount));
     } else {
-      candidateTransitions = null;
-      candidateMask = null;
+      this.candidates = null;
       candidateRows = null;
     }
     int[] reading = labels == null ? new int[0] : labels.readingRows();
@@ -456,6 +437,151 @@ final class BatchIndex {
       result[i] = values.get(i);
     }
     return result;
+  }
+
+  /**
+   * 手ごとの遷移の集約 e_m = Σ_t sg(softmax_t(B(t)/τ))·z_t の添字（{@link ValueGraphHead#aggregate}）。
+   * 手は 2 つの組に分ける。遷移が 1 つの手は重みが厳密に 1 なので z_t を直に読み、2 つ以上の手だけを
+   * 幅をそろえて詰める。詰め物はその手の最初の遷移・印 0 で、重みは厳密に 0。詰め物の宛先を手ごとに
+   * 散らすのは、逆の原子的な加算を 1 つの遷移の行に集めないため。
+   */
+  static final class Aggregation {
+
+    /** 手の数。 */
+    final int count;
+
+    /** 遷移が 1 つの手（直の組）の数。 */
+    final int directCount;
+
+    /** 遷移が 2 つ以上の手（詰めた組）の数。 */
+    final int spreadCount;
+
+    /** 詰めた組の幅（組の最大の遷移の数と、作り手が決めた下限の大きい方）。 */
+    final int width;
+
+    /** 直の組の遷移（INT64 [直の組]、組が空なら null）。 */
+    final Staging.Section directTransitions;
+
+    /** 詰めた組の遷移（INT64 [詰めた組 × 幅]、組が空なら null）。 */
+    final Staging.Section spreadTransitions;
+
+    /** 詰めた組の遷移の在否（FP32 [詰めた組, 幅]、組が空なら null）。 */
+    final Staging.Section spreadMask;
+
+    /**
+     * 手ごとの、直の組の後に詰めた組を続けた列の中の位置（INT64 [手]）。両方の組があるときだけ持つ。
+     * 片方の組だけなら、その組の順が手の順なので null。
+     */
+    final Staging.Section order;
+
+    private Aggregation(int[] transitions, int[] ends, int minimumWidth, Staging staging) {
+      count = ends.length;
+      int direct = 0;
+      int widest = minimumWidth;
+      for (int m = 0, start = 0; m < count; start = ends[m++]) {
+        int length = ends[m] - start;
+        if (length == 1) {
+          direct++;
+        } else {
+          widest = Math.max(widest, length);
+        }
+      }
+      directCount = direct;
+      spreadCount = count - direct;
+      width = widest;
+      long[] directTransition = new long[directCount];
+      long[] spreadTransition = new long[spreadCount * width];
+      float[] spreadSlot = new float[spreadCount * width];
+      long[] position = new long[count];
+      int d = 0;
+      int k = 0;
+      for (int m = 0, start = 0; m < count; start = ends[m++]) {
+        int length = ends[m] - start;
+        if (length == 1) {
+          position[m] = d;
+          directTransition[d++] = transitions[start];
+        } else {
+          position[m] = directCount + k;
+          int from = k++ * width;
+          Arrays.fill(spreadTransition, from, from + width, transitions[start]);
+          for (int t = 0; t < length; t++) {
+            spreadTransition[from + t] = transitions[start + t];
+          }
+          Arrays.fill(spreadSlot, from, from + length, 1f);
+        }
+      }
+      directTransitions =
+          directCount == 0 ? null : staging.add(directTransition, new Shape(directCount));
+      spreadTransitions =
+          spreadCount == 0
+              ? null
+              : staging.add(spreadTransition, new Shape(spreadTransition.length));
+      spreadMask = spreadCount == 0 ? null : staging.add(spreadSlot, new Shape(spreadCount, width));
+      order = directCount == 0 || spreadCount == 0 ? null : staging.add(position, new Shape(count));
+    }
+
+    /** 手を順に集める。 */
+    static final class Builder {
+
+      private final int[] ends;
+      private int[] transitions;
+      private int members;
+      private int size;
+
+      /**
+       * @param count 手の数
+       */
+      Builder(int count) {
+        ends = new int[count];
+        transitions = new int[count];
+      }
+
+      /** 連続した遷移 [first, first + length) の手を足す。 */
+      void add(int first, int length) {
+        reserve(length);
+        for (int t = 0; t < length; t++) {
+          transitions[size + t] = first + t;
+        }
+        close(length);
+      }
+
+      /** 遷移の列 source[from, from + length) の手を足す。 */
+      void add(int[] source, int from, int length) {
+        reserve(length);
+        System.arraycopy(source, from, transitions, size, length);
+        close(length);
+      }
+
+      /**
+       * 添字を作って載せる。
+       *
+       * @param minimumWidth 詰めた組の幅の下限
+       * @param staging 区画を載せる組
+       * @return 集約の添字
+       * @throws IllegalStateException 足した手の数が作るときの数と違うとき
+       */
+      Aggregation build(int minimumWidth, Staging staging) {
+        if (members != ends.length) {
+          throw new IllegalStateException(
+              "aggregation has " + members + " of " + ends.length + " actions");
+        }
+        return new Aggregation(transitions, ends, minimumWidth, staging);
+      }
+
+      private void reserve(int length) {
+        if (length < 1) {
+          throw new IllegalArgumentException("aggregated action without transitions");
+        }
+        if (size + length > transitions.length) {
+          transitions = Arrays.copyOf(transitions, Math.max(size + length, transitions.length * 2));
+        }
+      }
+
+      private void close(int length) {
+        size += length;
+        ends[members++] = size;
+      }
+    }
   }
 
   /** 行と手の索引のホストの写しを読み、並びの約束を確かめる。 */
@@ -566,20 +692,6 @@ final class BatchIndex {
       return base;
     }
 
-    /**
-     * 手の代表の遷移を、幅をそろえた列に書く。詰め物はその手の最初の遷移・印 0 で、重みは厳密に 0 なので値は変わらない。宛先を手ごとに
-     * 散らすのは、逆の原子的な加算を 1 つの遷移の行に集めないため。
-     */
-    void spread(int action, long[] transitions, float[] mask, int from, int width) {
-      int first = firstTransition(action);
-      int count = transitionsOf(action);
-      for (int t = 0; t < count; t++) {
-        transitions[from + t] = first + t;
-        mask[from + t] = 1f;
-      }
-      Arrays.fill(transitions, from + count, from + width, first);
-    }
-
     private boolean inRow(int action, int r) {
       return action >= firstAction[r] && action < firstAction[r] + actionCount[r];
     }
@@ -610,13 +722,18 @@ final class BatchIndex {
   /** 役割ごとの手の組を集める。 */
   private static final class Lists {
 
+    /** ē を基準にする門の印（遷移の番号にならない値）。 */
+    static final int BAR = -1;
+
     final List<Integer> discardActions = new ArrayList<>();
     final List<Integer> discardTransitions = new ArrayList<>();
     final List<Integer> gateActions = new ArrayList<>();
     final List<Integer> gateKinds = new ArrayList<>();
     final List<Integer> gateRows = new ArrayList<>();
+
+    /** 門の基準の手の最初の遷移（ē を使う門は {@link #BAR}）。 */
     final List<Integer> gateBaseTransitions = new ArrayList<>();
-    final List<Boolean> gateUsesBar = new ArrayList<>();
+
     final List<Integer> riichiActions = new ArrayList<>();
     final List<Integer> riichiBaseTransitions = new ArrayList<>();
     final List<Integer> riichiGates = new ArrayList<>();
@@ -631,8 +748,7 @@ final class BatchIndex {
       gateActions.add(action);
       gateKinds.add(ValueGraphHead.gateIndex(structure.role[action]));
       gateRows.add(structure.row[action]);
-      gateBaseTransitions.add(usesBar ? 0 : structure.firstTransition(base));
-      gateUsesBar.add(usesBar);
+      gateBaseTransitions.add(usesBar ? BAR : structure.firstTransition(base));
     }
   }
 

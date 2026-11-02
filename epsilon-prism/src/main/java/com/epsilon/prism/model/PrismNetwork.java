@@ -214,14 +214,7 @@ public final class PrismNetwork extends AbstractBlock {
       NDArray states) {
     NDArray candidates = null;
     if (index.candidateCount > 0) {
-      NDArray chosen =
-          ValueGraphHead.aggregate(
-              representations,
-              values,
-              index.candidateTransitions.array(),
-              index.candidateMask.array(),
-              index.candidateCount,
-              index.candidateWidth);
+      NDArray chosen = ValueGraphHead.aggregate(representations, values, index.candidates);
       candidates =
           outcome.forward(
               context,

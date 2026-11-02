@@ -154,32 +154,11 @@ final class ValueGraphHead extends Module {
       NDArray actionExact) {
     NDArray delta = null;
     if (index.gateCount > 0) {
-      NDArray chosen =
-          aggregate(
-              transitions,
-              values,
-              index.gateTransitions.array(),
-              index.gateTransitionMask.array(),
-              index.gateCount,
-              index.gateWidth);
-      NDArray base = NDArrays.gatherRows(transitions, index.gateBaseTransitions.array());
-      if (index.barWidth > 0) {
-        NDArray bar =
-            aggregate(
-                transitions,
-                values,
-                index.barTransitions.array(),
-                index.barMask.array(),
-                index.rows,
-                index.barWidth);
-        NDArray usesBar = index.gateUsesBar.array().broadcast(base.getShape());
-        base = NDArrays.where(usesBar, NDArrays.gatherRows(bar, index.gateRows.array()), base);
-      }
       delta =
           gate(
               context,
-              chosen,
-              base,
+              aggregate(transitions, values, index.gateChosen),
+              aggregate(transitions, values, index.gateBase),
               NDArrays.gatherRows(states, index.gateRows.array()),
               index.gateKinds.array(),
               NDArrays.gatherRows(actionExact, index.gateActions.array()));
@@ -188,23 +167,38 @@ final class ValueGraphHead extends Module {
   }
 
   /**
-   * 手の表現 e_a = Σ_t sg(softmax_t(B(t)/τ))·z_t（FP32）。
+   * 手の表現 e_a = Σ_t sg(softmax_t(B(t)/τ))·z_t（FP32）。遷移が 1 つの手は重みが厳密に 1 なので
+   * z_t をそのまま読む（詰めて和を取るのと、0 の符号を除いてビットで同じ）。2 つ以上の手は詰めた組で
+   * 和を取り、手の順に並べ直す。
    *
    * @param transitions z [遷移, H]（FP32）
    * @param values B [遷移]（FP32）
-   * @param chosen 手ごとの遷移 [手 × 幅]（INT64、詰め物は印 0 の任意の遷移）
-   * @param mask 遷移の在否 [手, 幅]
-   * @param count 手の数
-   * @param width 幅
+   * @param aggregation 集約の添字
    * @return e [手, H]（FP32）
    */
   static NDArray aggregate(
-      NDArray transitions, NDArray values, NDArray chosen, NDArray mask, long count, long width) {
+      NDArray transitions, NDArray values, BatchIndex.Aggregation aggregation) {
+    NDArray direct =
+        aggregation.directCount == 0
+            ? null
+            : NDArrays.gatherRows(transitions, aggregation.directTransitions.array());
+    if (aggregation.spreadCount == 0) {
+      return direct;
+    }
+    NDArray chosen = aggregation.spreadTransitions.array();
+    long count = aggregation.spreadCount;
+    long width = aggregation.width;
     NDArray logits = NDArrays.gatherRows(values, chosen).reshape(count, width).div(TAU);
-    NDArray weights = NDArrays.maskedSoftmax(logits, mask, 1).stopGradient();
+    NDArray weights =
+        NDArrays.maskedSoftmax(logits, aggregation.spreadMask.array(), 1).stopGradient();
     long hiddenWidth = transitions.getShape().get(1);
     NDArray rows = NDArrays.gatherRows(transitions, chosen).reshape(count, width, hiddenWidth);
-    return rows.mul(weights.expandDims(2)).sum(new int[] {1});
+    NDArray spread = rows.mul(weights.expandDims(2)).sum(new int[] {1});
+    if (direct == null) {
+      return spread;
+    }
+    return NDArrays.gatherRows(
+        NDArrays.concat(new NDList(direct, spread), 0), aggregation.order.array());
   }
 
   /**

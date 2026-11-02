@@ -83,9 +83,9 @@ struct TokenLayout {
   }
 };
 
-// K1: 型ごとの埋め込み。作業群は 64 トークン（波ごとに 8 トークン、lane は H/32 列）。
+// K1: 型ごとの埋め込み。作業群は 64 トークン（波ごとに 8 トークン、lane は x の H/32 列と qkv0 の 3A/32 列）。
 struct EmbedArgs {
-  Span<const uint8_t> pack;             // WeightPack 全体（表・W_d・b はバイトの位置で引く）
+  Span<const uint8_t> pack;             // WeightPack 全体（表・W_d・b・畳んだ表はバイトの位置で引く）
   const EmbeddingSpec* spec;            // デバイスの頭の埋め込み（pack の中）
   Span<const uint8_t> input;            // blob 全体
   size_t section[kSections];            // 区画の先頭（バイト）
@@ -93,8 +93,7 @@ struct EmbedArgs {
   int count[kEmbeddingSlots];           // 型ごとのトークンの数
   int blockStart[kEmbeddingSlots + 1];  // 型ごとの最初の作業群
   Span<uint16_t> out[kEmbeddingSlots];  // 型ごとの出力 [count, H]
-  Span<uint16_t> normalized[kEmbeddingSlots];  // 型ごとの層 0 の注意の入力 n [count, H]（遷移は書かない）
-  Span<const float> attentionNorm;             // 層 0 の注意の利得 [H]
+  Span<uint16_t> qkv0[kEmbeddingSlots];  // 型ごとの層 0 の q・k・v [count, 3A]（頭の対の並び。遷移は書かない）
   float epsilon;
 };
 
@@ -162,9 +161,9 @@ struct RowOrderArgs {
   int groupRows[kAttentionGroups];
 };
 
-// K2・K4: 頭の対 × 組の行（起動は組ごと）。
+// K2・K4: 頭の対 × 組の行（起動は組ごと）。K2 の層 0 は射影をせず qkv0 を読む（n・qkv・qkvBias は読まない）。
 struct AttentionArgs {
-  Span<const uint16_t> normalized;  // 注意の入力 n = ⌊(x·r)·g⌉ [トークン, H]（K1・K3 が書く）
+  Span<const uint16_t> normalized;  // 注意の入力 n = ⌊(x·r)·g⌉ [トークン, H]（K3 が書く）
   Span<uint16_t> o;                 // [トークン, A]
   Span<const uint32_t> codes;       // 関係の符号 [行, 塊, 塊, 256]（K0）
   Span<const int32_t> rowColumn;    // 行の索引 [行, 幅]
@@ -178,6 +177,7 @@ struct AttentionArgs {
   int rowEvents;
   int groupStart;  // この起動の組の rowOrder の先頭（launchAttention が組ごとに入れる）
   float scale;
+  Span<const uint16_t> qkv0;  // 層 0 の q・k・v [トークン, 3A]（頭の対の並び。K1 が書き、K2 の層 0 だけが読む）
 };
 
 // K3: kMlpRows トークン（k3_mlp.hip）。
@@ -286,13 +286,17 @@ struct ValueGraphArgs {
 };
 
 // 起動の口（hidden は特化した幅。同期はしない）。
-void launchEmbed(int hidden, const EmbedArgs& args, int blocks, hipStream_t stream);
+// sharedBytes は作業群の動的な LDS（embedSharedBytes）。
+void launchEmbed(int hidden, const EmbedArgs& args, int blocks, size_t sharedBytes, hipStream_t stream);
+// K1 の動的な LDS のバイト数: 型ごとに W_d [dense, H]（BF16）と、畳む型は W'_d [dense, 3A]（FP32）。8 特徴の組でまとめて読む W_d の
+// 行の分（組の外の行は読むが使わない）も含めた、全ての型の最大。
+size_t embedSharedBytes(int hidden, const EmbeddingSpec (&spec)[kEmbeddingSlots]);
 void launchRelation(const RelationArgs& args, hipStream_t stream);
 void launchRelationBias(const RelationBiasArgs& args, int headPairs, hipStream_t stream);
 void launchQkvFragments(int hidden, const QkvFragmentArgs& args, int headPairs, hipStream_t stream);
 void launchRowOrder(const RowOrderArgs& args, hipStream_t stream);
-// 組ごとに 1 回起動する（行の数 0 の組は起動しない）。groupRows は RowOrderArgs と同じ組の行の数。
-void launchAttention(int hidden, bool last, const AttentionArgs& args, int headPairs,
+// 組ごとに 1 回起動する（行の数 0 の組は起動しない）。groupRows は RowOrderArgs と同じ組の行の数。folded は K2 の層 0（qkv0 を読む）。
+void launchAttention(int hidden, bool last, bool folded, const AttentionArgs& args, int headPairs,
                      const int (&groupRows)[kAttentionGroups], hipStream_t stream);
 void launchMlpFragments(const MlpFragmentArgs& args, hipStream_t stream);
 void launchMlp(int hidden, const MlpArgs& args, hipStream_t stream);

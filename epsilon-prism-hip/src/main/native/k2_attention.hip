@@ -1,9 +1,10 @@
 // K2（attn0）と K4（attn1）: 作業群は 1 頭の対 × 1 行で、波の数 W は行の組の W（prism_hip_kernels.h の attentionWaves。行の 16
 // トークンの塊の数が W 以下）。計画は組ごとに起動し、作業群は組の順の行の番号（rowOrderKernel）から自分の行を引く。eager の
-// EncoderLayer の注意の半分（O 射影は K3・K5）。
+// EncoderLayer の注意の半分（O 射影は K3・K5）。K2 の層 0 は段 1 の射影をせず、K1 が畳んだ表から作った q・k・v（qkv0）を写す
+// （loadFolded。L0-FOLD）。段 2 は同じ。
 //
 //   0. 2 頭の偏りの表（×log2e）を LDS へ写す（重みの公開のときに relationBiasKernel が層ごとに作ったもの。prism_hip_relation.h）
-//   1. 頭の対の q・k・v = ⌊n·W_qkvᵀ + b⌉（WMMA。K4 は q を局・席・牌の 39 個だけ）。n = ⌊(x·r)·g⌉ は前の段（K1・K3）が
+//   1. 頭の対の q・k・v = ⌊n·W_qkvᵀ + b⌉（WMMA。K4 は q を局・席・牌の 39 個だけ）。n = ⌊(x·r)·g⌉ は前の段（K3）が
 //      NORMALIZED に書いたもので、断片としてそのまま読む。W_qkv は重みの公開のときに qkvFragmentKernel が断片の順に並べ替えた写し
 //      （下）を読む。波 m が 16 トークンの塊 m を作る。k・v は LDS へ。q は転置の qᵀ = W_q·nᵀ で作り、問い合わせの B の断片のまま
 //      レジスタに残す（波 m が問い合わせの塊 m を受け持つ）。ただし K4 の W ≥ 6 の組は 1 波が 2 塊の 1 頭を作り（重みの断片を 2 塊で
@@ -392,6 +393,50 @@ __device__ __forceinline__ void storeHead(const HeadState& s, bool inside, size_
   }
 }
 
+// K2 の層 0 の段 1（L0-FOLD）: 波 m の塊 m の q・k・v を、K1 が書いた qkv0（頭の対の並び foldColumn。トークンの頭の対 pair の 192
+// バイトが続く）から写す。lane（column, half）はトークン 16m + column の頭 h の次元 8·half 〜 8·half + 7 を q・k・v ごとに 16 バイト
+// ずつ読む（6 回で 1 往復）。q は相方と合わせて問い合わせの B の断片に、k は入れ替えた位置へ 16 バイトを 1 回で、v は V^T の 8 行へ
+// 1 値ずつ置く。行の外の lane は行の最後のトークンを読む（射影の版と同じ）。置く値と位置は射影の版の q・k・v と同じ形なので、段 2 は
+// 変わらない（qkv0 は K1 で丸めてあり、ここでは丸めない）。
+template <int H, class Shared>
+__device__ __forceinline__ void loadFolded(Shared& shared, bf16x16 (&query)[2], const AttentionArgs& args,
+                                           Bounds& bounds, int row, int firstEvent, int tokens, int pair, int m,
+                                           int lane) {
+  constexpr int A = H / 2;
+  constexpr int kWidth = 3 * A;
+  const int column = lane & 15;
+  const int half = lane >> 4;
+  const int key = 16 * m + column;
+  const int token = min(key, tokens - 1);
+  const size_t base = bounds.index(static_cast<size_t>(args.layout.index(row, firstEvent, token)) * kWidth +
+                                       foldColumn(kPairWidth * pair, A),
+                                   3 * kPairWidth, args.qkv0.limit);
+  u32x4 part[3][2];
+#pragma unroll
+  for (int j = 0; j < 3; ++j) {
+#pragma unroll
+    for (int h = 0; h < 2; ++h) {
+      const int at = foldColumn(j * A + kPairWidth * pair + kHeadWidth * h + 8 * half, A) - foldColumn(kPairWidth * pair, A);
+      part[j][h] = *reinterpret_cast<const u32x4*>(args.qkv0.data + base + at);
+    }
+  }
+#pragma unroll
+  for (int h = 0; h < 2; ++h) {
+    query[h] = joinHalves(part[0][h]);
+    *reinterpret_cast<u32x4*>(&shared.k[key][8 * ((2 * h + half) ^ ((key >> 1) & 3))]) = part[1][h];
+  }
+  // 鍵 16m + 2v + half' は V^T の列 16m + v + 8·half'、次元 d = 8·half + i は行 r(d) = 2i + half。
+  const int value = 16 * m + (column >> 1) + 8 * (column & 1);
+#pragma unroll
+  for (int h = 0; h < 2; ++h) {
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      const uint32_t word = part[2][h][i / 2];
+      shared.valueT[kHeadWidth * h + 2 * i + half][value] = static_cast<uint16_t>(i % 2 == 0 ? word : word >> 16);
+    }
+  }
+}
+
 // K4 の射影の波の仕事 1 つ: 頭 h の塊 first 〜 first + kBlocks − 1（先頭の kQueries 個が局・席・牌の q を作る）の q・k・v を作り、
 // 偏りを足して丸めて LDS へ置く（q は lane の 8 次元を fixedQuery へ、k・v は K2 と同じ置き方）。重みの断片を塊で共有するので、
 // 1 歩の読みは重み 3（q を作らなければ 2）と n の kBlocks 個。偏りも塊で共有して 1 回読む。値は塊ごとに 1 頭を回すのとビットで
@@ -467,8 +512,9 @@ __device__ __forceinline__ void projectLast(Shared& shared, const AttentionArgs&
   }
 }
 
-// 組の核: kWaves 波・LDS は 16·kWaves トークン分。作業群の行は組の順の行の番号 rowOrder[groupStart + blockIdx.y]。
-template <int H, bool kLast, int kWaves>
+// 組の核: kWaves 波・LDS は 16·kWaves トークン分。作業群の行は組の順の行の番号 rowOrder[groupStart + blockIdx.y]。kFolded は K2 の
+// 層 0（段 1 は qkv0 の写し）。
+template <int H, bool kLast, bool kFolded, int kWaves>
 __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs args) {
   constexpr int kThreads = kWave * kWaves;
   constexpr int kTokens = 16 * kWaves;
@@ -484,6 +530,7 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
   static_assert(!kLast || kFixedBlocks <= kWaves, "K4 gives every query block a wave");
   static_assert(!kPairedBlocks || kWaves % 2 == 0, "K4 pairs the waves of the two heads in the projection");
   static_assert(kThreads <= kBiasChunks, "every thread copies at least one chunk of the bias table");
+  static_assert(!(kLast && kFolded), "only K2 reads the folded layer-0 q, k and v");
   __shared__ Shared shared;
 
   const int pair = blockIdx.x;
@@ -530,8 +577,11 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
   //    を範囲の検査にかける。行の外の lane は行の最後のトークンを読む（有限。その鍵は符号 kPaddedKeyCode で −∞ になって P = 0、その
   //    問い合わせは書かない）。q の A の断片の行 r は W_q の行 π(r) なので（写しがそう並べてある）、C の断片の lane はトークン
   //    16m + column の次元 8·half + v（v < 8）を持つ。
+  //    K2 の層 0 は写しを読まない（射影をしない）。
   const __amdgpu_buffer_rsrc_t weights = bufferResource(
-      args.qkv.data + bounds.index(static_cast<size_t>(pair) * kPairElements, kPairElements, args.qkv.limit));
+      kFolded ? args.qkv.data
+              : args.qkv.data +
+                    bounds.index(static_cast<size_t>(pair) * kPairElements, kPairElements, args.qkv.limit));
   bf16x16 keptQuery[2];  // 波の問い合わせの塊 m の q（頭ごとの B の断片。K4 の W ≥ 6 の組は LDS に置く）
   if constexpr (kPairedBlocks) {
     // K4（W ≥ 6）: 波 w は頭 w & 1 で塊の対 2(w >> 1)・2(w >> 1) + 1（行の最後の塊が対の前の側なら 1 つ）を作る（projectLast）。
@@ -556,6 +606,11 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
       } else {
         projectLast<H, 1, 0>(shared, args, bounds, weights, row, firstEvent, tokens, pair, h, first, lane);
       }
+    }
+  } else if constexpr (kFolded) {
+    // K2 の層 0: 波 m（< 塊の数）が塊 m の q・k・v を qkv0 から写す（q はレジスタ、k・v は LDS。射影の版と同じ置き方）。
+    if (wave < blocks) {
+      loadFolded<H>(shared, keptQuery, args, bounds, row, firstEvent, tokens, pair, wave, lane);
     }
   } else if (wave < blocks) {
     // 波 m（< 塊の数）が 16 トークンの塊 m の頭ごとに q・k・v の 3 つの断片を作り、q は問い合わせの塊 qt = m のものとしてレジスタに
@@ -708,24 +763,24 @@ __global__ __launch_bounds__(kOrderThreads) void rowOrderKernel(RowOrderArgs arg
 }
 
 // 組 kGroup の行（rows 行、rowOrder の start から）を起動し、start を次の組の先頭へ進める。行の数 0 の組は起動しない。
-template <int H, bool kLast, int kGroup>
+template <int H, bool kLast, bool kFolded, int kGroup>
 void launchGroup(AttentionArgs args, int& start, int rows, int headPairs, hipStream_t stream) {
   constexpr int kWaves = attentionWaves(kGroup);
   if (rows > 0) {
     args.groupStart = start;
     // 同じ行の頭の対が隣どうしで走る（行の x と符号を L2 で使い回す）。
-    hipLaunchKernelGGL((attentionKernel<H, kLast, kWaves>), dim3(headPairs, rows), dim3(kWave * kWaves), 0, stream,
-                       args);
+    hipLaunchKernelGGL((attentionKernel<H, kLast, kFolded, kWaves>), dim3(headPairs, rows), dim3(kWave * kWaves), 0,
+                       stream, args);
     PRISM_HIP(hipGetLastError());
   }
   start += rows;
 }
 
-template <int H, bool kLast, int... kGroups>
+template <int H, bool kLast, bool kFolded, int... kGroups>
 void launchGroups(const AttentionArgs& args, const int (&groupRows)[kAttentionGroups], int headPairs,
                   hipStream_t stream, std::integer_sequence<int, kGroups...>) {
   int start = 0;
-  (launchGroup<H, kLast, kGroups>(args, start, groupRows[kGroups], headPairs, stream), ...);
+  (launchGroup<H, kLast, kFolded, kGroups>(args, start, groupRows[kGroups], headPairs, stream), ...);
 }
 
 // 重みの公開のとき: 1 層の W_qkv を射影の重みの写し（上）に並べ替える。作業群は 1 頭の対で、スレッドは写しの 16 バイト（W_qkv の
@@ -763,18 +818,23 @@ void launchRowOrder(const RowOrderArgs& args, hipStream_t stream) {
   PRISM_HIP(hipGetLastError());
 }
 
-void launchAttention(int hidden, bool last, const AttentionArgs& args, int headPairs,
+void launchAttention(int hidden, bool last, bool folded, const AttentionArgs& args, int headPairs,
                      const int (&groupRows)[kAttentionGroups], hipStream_t stream) {
   if (args.layout.rows <= 0) {
     return;
+  }
+  if (last && folded) {
+    throw std::invalid_argument("K4 has no folded layer-0 path");
   }
   constexpr auto groups = std::make_integer_sequence<int, kAttentionGroups>{};
   switch (hidden) {
     case 256:
       if (last) {
-        launchGroups<256, true>(args, groupRows, headPairs, stream, groups);
+        launchGroups<256, true, false>(args, groupRows, headPairs, stream, groups);
+      } else if (folded) {
+        launchGroups<256, false, true>(args, groupRows, headPairs, stream, groups);
       } else {
-        launchGroups<256, false>(args, groupRows, headPairs, stream, groups);
+        launchGroups<256, false, false>(args, groupRows, headPairs, stream, groups);
       }
       break;
     default:

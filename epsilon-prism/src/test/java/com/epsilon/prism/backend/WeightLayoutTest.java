@@ -65,6 +65,7 @@ public class WeightLayoutTest {
           groups.append(rows).append('/');
         }
         Assert.assertEquals(spec.source().length, header.embedding(slot).dense().size());
+        checkFold(view, layout, slot, spec);
       }
       Assert.assertEquals(pack.version(), 7);
       Assert.assertEquals(pack.buffer().remaining(), layout.bytes());
@@ -76,6 +77,59 @@ public class WeightLayoutTest {
           String.format(Locale.ROOT, "%.2f", tables * PrismShape.standard().hidden() * 4 / 1e6),
           groups);
     }
+  }
+
+  /**
+   * 層 0 の QKV に畳んだ表（L0-FOLD）: 遷移の型にはなく、ほかの型は T' の各表の行 1 つと b'・b_qkv を FP64 で作り直した値と同じ（列は頭の
+   * 対の並び）。
+   */
+  private static void checkFold(PackView view, WeightLayout layout, HipEmbedding.Slot slot, PackView.Spec spec) {
+    if (slot == HipEmbedding.Slot.TRANSITION) {
+      Assert.assertEquals(spec.fold(), -1);
+      for (int offset : spec.tableFold()) {
+        Assert.assertEquals(offset, -1);
+      }
+      return;
+    }
+    int hidden = layout.shape().hidden();
+    int attention = layout.shape().attention();
+    int width = 3 * attention;
+    int dense = spec.source().length;
+    for (int t = 0; t < spec.tableOffset().length; t++) {
+      int row = spec.tableRows()[t] / 2;
+      float[] source = new float[hidden];
+      for (int h = 0; h < hidden; h++) {
+        source[h] = view.bytes.getFloat(spec.tableOffset()[t] + (row * hidden + h) * Float.BYTES);
+      }
+      for (int c = 0; c < width; c++) {
+        int at = spec.tableFold()[t] + (row * width + HipEmbedding.foldColumn(c, attention)) * Float.BYTES;
+        Assert.assertEquals(view.bytes.getFloat(at), projected(view, source, c), slot + " T' table " + t + " column " + c);
+      }
+    }
+    float[] bias = new float[hidden];
+    for (int h = 0; h < hidden; h++) {
+      bias[h] = view.bytes.getFloat(spec.biasOffset() + h * Float.BYTES);
+    }
+    for (int c = 0; c < width; c++) {
+      int column = HipEmbedding.foldColumn(c, attention);
+      Assert.assertEquals(
+          view.bytes.getFloat(spec.fold() + (dense * width + column) * Float.BYTES), projected(view, bias, c), slot + " b'");
+      Assert.assertEquals(
+          view.bytes.getFloat(spec.fold() + ((dense + 1) * width + column) * Float.BYTES),
+          view.f32(HipWeight.QKV_BIAS, 0, c),
+          slot + " b_qkv");
+    }
+  }
+
+  /** (v·diag(g0)·W_qkv0ᵀ)[c] を FP64 で h の順に足して FP32 に丸めた値。 */
+  private static float projected(PackView view, float[] v, int c) {
+    double sum = 0;
+    for (int h = 0; h < v.length; h++) {
+      if (v[h] != 0) {
+        sum += v[h] * ((double) view.f32(HipWeight.ATTENTION_NORM, 0, h) * view.bf16(HipWeight.QKV, 0, c * v.length + h));
+      }
+    }
+    return (float) sum;
   }
 
   @Test

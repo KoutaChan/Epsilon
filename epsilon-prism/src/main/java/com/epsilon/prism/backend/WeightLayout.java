@@ -42,7 +42,7 @@ import java.util.Set;
  *   <li>行列は BF16、Linear の偏りは BF16 に丸めた値を FP32 で、利得・関係の偏り・符号の表・頭の最後の層は FP32 のまま（eager の
  *       {@code Precision.BFLOAT16} の丸めと同じ所）。
  *   <li>埋め込みの表と型ごとの Linear は、K1 の畳んだ組の表（FP32 の W·E、1 トークン 8 引き以下）と、表に畳まない特徴の W（BF16、転置）と
- *       偏りにする。
+ *       偏りにする。局・席・牌・出来事の型は、層 0 の QKV に畳んだ表 T'・W'_d・b' と b_qkv（FP32、L0-FOLD）も置く。
  *   <li>全ての推論のパラメーターをちょうど 1 回ずつ置く（置き場のない名前は例外）。
  * </ul>
  *
@@ -86,8 +86,9 @@ public final class WeightLayout {
    * @param strides 欄ごとの刻み
    * @param rows 行の数
    * @param offset WeightPack の中のバイトの位置
+   * @param foldOffset 層 0 の QKV に畳んだ表 T' の位置（畳まない型は −1）
    */
-  record Group(int[] members, int[] strides, int rows, long offset) {}
+  record Group(int[] members, int[] strides, int rows, long offset, long foldOffset) {}
 
   /**
    * 1 つの型の埋め込みの置き方。
@@ -100,6 +101,7 @@ public final class WeightLayout {
    * @param groups 畳んだ組の表
    * @param denseOffset 表に畳まない特徴の W の位置
    * @param biasOffset 偏りの位置
+   * @param foldOffset 層 0 の QKV に畳んだ W'_d に続く b' と b_qkv の位置（畳まない型は −1）
    */
   record Embedding(
       EmbeddingSource source,
@@ -109,7 +111,8 @@ public final class WeightLayout {
       int dimension,
       List<Group> groups,
       long denseOffset,
-      long biasOffset) {}
+      long biasOffset,
+      long foldOffset) {}
 
   private final PrismShape shape;
   private final HipDimensions dimensions;
@@ -465,6 +468,9 @@ public final class WeightLayout {
             projectionKey + " has shape " + Arrays.toString(projection) + ", expected [" + shape.hidden() + ", " + inputs + "]");
       }
       requireShape(biasKey, shape.hidden());
+      // 局・席・牌・出来事は層 0 の QKV に畳んだ表（行ごとに 3A の FP32）を持つ。遷移は注意に入らない。
+      boolean folding = source.slot() != HipEmbedding.Slot.TRANSITION;
+      long foldRow = 3L * shape.attention() * Float.BYTES;
       List<Group> groups = new ArrayList<>();
       for (int[] members : groupColumns(source)) {
         int rows = 1;
@@ -474,11 +480,13 @@ public final class WeightLayout {
           rows = Math.multiplyExact(rows, source.vocabulary(members[m]));
         }
         long offset = allocate((long) rows * shape.hidden() * Float.BYTES);
-        groups.add(new Group(members, strides, rows, offset));
+        long foldOffset = folding ? allocate(rows * foldRow) : -1;
+        groups.add(new Group(members, strides, rows, offset, foldOffset));
       }
       long denseOffset =
           source.denseCount() == 0 ? 0 : allocate((long) source.denseCount() * shape.hidden() * Short.BYTES);
       long biasOffset = allocate((long) shape.hidden() * Float.BYTES);
+      long foldOffset = folding ? allocate((source.denseCount() + 2L) * foldRow) : -1;
       used.add(tableKey);
       used.add(projectionKey);
       used.add(biasKey);
@@ -491,7 +499,8 @@ public final class WeightLayout {
               dimension,
               Collections.unmodifiableList(groups),
               denseOffset,
-              biasOffset);
+              biasOffset,
+              foldOffset);
       embeddings.put(source, embedding);
       List<HipEmbedding.Table> tables = new ArrayList<>();
       int[] embedded = source.embedded();
@@ -500,7 +509,13 @@ public final class WeightLayout {
         for (int m = 0; m < columns.length; m++) {
           columns[m] = embedded[group.members()[m]];
         }
-        tables.add(new HipEmbedding.Table(Math.toIntExact(group.offset()), group.rows(), columns, group.strides()));
+        tables.add(
+            new HipEmbedding.Table(
+                Math.toIntExact(group.offset()),
+                group.rows(),
+                columns,
+                group.strides(),
+                Math.toIntExact(group.foldOffset())));
       }
       header.embedding(
           source.slot(),
@@ -511,7 +526,8 @@ public final class WeightLayout {
               tables,
               List.of(source.dense()),
               Math.toIntExact(denseOffset),
-              Math.toIntExact(biasOffset)));
+              Math.toIntExact(biasOffset),
+              Math.toIntExact(foldOffset)));
     }
 
     /**

@@ -72,7 +72,10 @@ final class PackView {
     return bytes.get(weight(weight, layer) + index) & 0xFF;
   }
 
-  /** 1 つの型の埋め込み（native の EmbeddingSpec の並び）。 */
+  /**
+   * 1 つの型の埋め込み（native の EmbeddingSpec の並び）。tableFold は表ごとの T' の位置、fold は W'_d に続く b' と b_qkv の位置（層 0 の
+   * QKV に畳まない型は −1）。
+   */
   record Spec(
       int category,
       int scalar,
@@ -81,9 +84,11 @@ final class PackView {
       int[] tableRows,
       int[][] columns,
       int[][] strides,
+      int[] tableFold,
       int[] source,
       int denseOffset,
-      int biasOffset) {}
+      int biasOffset,
+      int fold) {}
 
   Spec embedding(HipEmbedding.Slot slot) {
     int at = EMBEDDINGS_AT + slot.ordinal() * HipEmbedding.INTS;
@@ -91,12 +96,14 @@ final class PackView {
     int dense = integer(at + 4);
     int[] offsets = new int[tables];
     int[] rows = new int[tables];
+    int[] folds = new int[tables];
     int[][] columns = new int[tables][];
     int[][] strides = new int[tables][];
     for (int t = 0; t < tables; t++) {
       int table = at + 8 + t * HipEmbedding.TABLE_INTS;
       offsets[t] = integer(table);
       rows[t] = integer(table + 1);
+      folds[t] = integer(table + 3 + 2 * HipEmbedding.MAX_MEMBERS);
       int members = integer(table + 2);
       columns[t] = new int[members];
       strides[t] = new int[members];
@@ -110,7 +117,7 @@ final class PackView {
       sources[k] = integer(at + 8 + HipEmbedding.MAX_TABLES * HipEmbedding.TABLE_INTS + k);
     }
     return new Spec(
-        integer(at), integer(at + 1), integer(at + 2), offsets, rows, columns, strides, sources, integer(at + 5),
-        integer(at + 6));
+        integer(at), integer(at + 1), integer(at + 2), offsets, rows, columns, strides, folds, sources, integer(at + 5),
+        integer(at + 6), integer(at + 7));
   }
 }

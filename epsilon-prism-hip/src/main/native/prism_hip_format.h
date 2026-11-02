@@ -130,16 +130,20 @@ constexpr int kSections = static_cast<int>(Section::kCount);
 constexpr int kWeightSlots = static_cast<int>(Weight::kCount);
 constexpr int kEmbeddingSlots = static_cast<int>(EmbeddingSlot::kCount);
 
-// 畳んだ組の表 1 つ: FP32 の [rows, H]。行 = Σ 値(column[i])·stride[i]。
+// 畳んだ組の表 1 つ: FP32 の [rows, H]。行 = Σ 値(column[i])·stride[i]。foldOffset は同じ行の層 0 の QKV の表
+// T' = T·diag(g0)·W_qkv0ᵀ（FP32 の [rows, 3A]、列は頭の対の並び。L0-FOLD）で、遷移の表は −1。
 struct EmbeddingTable {
   int32_t offset;
   int32_t rows;
   int32_t members;
   int32_t column[kMaxMembers];
   int32_t stride[kMaxMembers];
+  int32_t foldOffset;
 };
 
-// 1 つの型の埋め込み（Java の HipEmbedding.encode と同じ並び）。tables == 0 は置き場なし。
+// 1 つの型の埋め込み（Java の HipEmbedding.encode と同じ並び）。tables == 0 は置き場なし。foldOffset は層 0 の QKV に畳んだ
+// W'_d = W_d·diag(g0)·W_qkv0ᵀ（FP32 の [dense, 3A]）に続けて b' = b·diag(g0)·W_qkv0ᵀ と b_qkv（FP32 の [2, 3A]）で、列は頭の対の
+// 並び（foldColumn）。遷移の型は −1。
 struct EmbeddingSpec {
   int32_t category;  // Section
   int32_t scalar;    // Section か −1
@@ -148,10 +152,17 @@ struct EmbeddingSpec {
   int32_t dense;
   int32_t denseOffset;  // W_d^T [dense, H] BF16
   int32_t biasOffset;   // [H] FP32
-  int32_t reserved;
+  int32_t foldOffset;   // [dense + 2, 3A] FP32 か −1
   EmbeddingTable table[kMaxTables];
   int32_t source[kMaxDense];  // DenseSource << 16 | 列
 };
+
+// 層 0 の QKV の列 column（q・k・v の [3A] の並び。j = column / A）を、頭の対ごとの並びの位置へ写す（Java の
+// HipEmbedding.foldColumn と同じ）。頭の対 p の q・k・v の 32 列（頭 2p・2p + 1 の 16 次元ずつ）が 96p から続き、K2 の頭の対の
+// 作業群は 1 トークンの 192 バイトの続いた所を読む。
+constexpr int foldColumn(int column, int attention) {
+  return 96 * ((column % attention) / 32) + 32 * (column / attention) + column % 32;
+}
 
 struct PackHeader {
   int32_t magic;
@@ -169,7 +180,7 @@ struct PackHeader {
 
 constexpr int kHeaderInts = static_cast<int>(sizeof(PackHeader) / sizeof(int32_t));
 static_assert(sizeof(PackHeader) % sizeof(int32_t) == 0, "the pack header is a sequence of int32");
-static_assert(sizeof(EmbeddingSpec) == (8 + kMaxTables * (3 + 2 * kMaxMembers) + kMaxDense) * sizeof(int32_t),
+static_assert(sizeof(EmbeddingSpec) == (8 + kMaxTables * (4 + 2 * kMaxMembers) + kMaxDense) * sizeof(int32_t),
               "EmbeddingSpec must match HipEmbedding.INTS");
 
 // 区画の要素のバイト数（Java の HipSection.element）。

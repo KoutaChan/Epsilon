@@ -19,8 +19,9 @@ import java.nio.ByteOrder;
 /**
  * HIP の K1〜K7 の CPU の参照。カーネルと同じ式・同じ丸めの所を、書いた WeightPack（頭を native の並びで読み直す）と HostBatch の blob
  * から素朴な FP32 の積和で計算する。和の順は行列積（WMMA）と 1/rms でカーネルと違い、ほかの所（K1・注意の softmax と p·v・候補の
- * 交差注意・集約・合成）はカーネルと同じ順にする。作業域の値は HIP の作業域と同じ並びの float（BF16 の区画は BF16 の値）。行ごとに閉じた計算
- * なので、同じ行の s は塊の組み方に依らずビットで同じ。方策の試験は GPU の計画の代わりに使う（{@link #forward} だけを公開）。
+ * 交差注意・集約・合成）はカーネルと同じ順にする。層 0 の q・k・v は K1 と同じ L0-FOLD の式・同じ FP32 の順（畳んだ表と r の 1/rms を
+ * 含む）で作るので、K1 の x・qkv0 はカーネルとビットで同じ。作業域の値は HIP の作業域と同じ並びの float（BF16 の区画は BF16
+ * の値）。行ごとに閉じた計算なので、同じ行の s は塊の組み方に依らずビットで同じ。方策の試験は GPU の計画の代わりに使う（{@link #forward} だけを公開）。
  */
 public final class HipReference {
 
@@ -52,6 +53,12 @@ public final class HipReference {
 
   /** K6 の交差注意を FP64 で計算し、o を BF16 に 1 回だけ丸める（カーネルの FP32 の順の精度を測る物差し。既定はカーネルと同じ順の FP32）。 */
   boolean exactCrossAttention;
+
+  /**
+   * K1 の L0-FOLD の qkv0（[トークン, 3A]、列は頭の対の並び。QKV0 の区画と同じ値の並び）: 束の畳んだ表から
+   * ⌊r·(ΣT'[idx] + ΣW'_d·f + b') + b_qkv⌉、r は丸める前の x の 1/rms。
+   */
+  private float[] layer0Qkv;
 
   /**
    * @param weights 重みの束（頭を native の並びで読み直す）
@@ -173,9 +180,16 @@ public final class HipReference {
     transitions = new float[in.transitions * hidden];
     values = new float[in.transitions];
     scores = new float[in.actions];
+    layer0Qkv = new float[tokens * 3 * attention];
+  }
+
+  /** K1 の後の層 0 の qkv0（QKV0 の区画と同じ並び）。 */
+  float[] layer0Qkv() {
+    return layer0Qkv;
   }
 
   void embed(Input in) {
+    int width = 3 * attention;
     for (HipEmbedding.Slot slot : HipEmbedding.Slot.values()) {
       PackView.Spec spec = pack.embedding(slot);
       int count =
@@ -197,6 +211,9 @@ public final class HipReference {
       Tensor category = tensor(spec.category());
       Tensor scalar = spec.scalar() < 0 ? null : tensor(spec.scalar());
       Tensor exact = spec.exact() < 0 ? null : tensor(spec.exact());
+      boolean folding = slot != HipEmbedding.Slot.TRANSITION;
+      int[] entries = new int[spec.tableOffset().length];
+      float[] features = new float[spec.source().length];
       for (int t = 0; t < count; t++) {
         float[] acc = new float[hidden];
         for (int table = 0; table < spec.tableOffset().length; table++) {
@@ -204,6 +221,7 @@ public final class HipReference {
           for (int m = 0; m < spec.columns()[table].length; m++) {
             entry += in.u8(category, t, spec.columns()[table][m]) * spec.strides()[table][m];
           }
+          entries[table] = entry;
           int base = spec.tableOffset()[table] + entry * hidden * Float.BYTES;
           for (int h = 0; h < hidden; h++) {
             acc[h] += pack.bytes.getFloat(base + h * Float.BYTES);
@@ -218,6 +236,7 @@ public final class HipReference {
                 case SCALAR -> in.bf16(scalar, t, index);
                 case EXACT -> bf(in.f32(exact, t, index));
               };
+          features[k] = feature;
           for (int h = 0; h < hidden; h++) {
             float weight =
                 Float.intBitsToFloat(
@@ -229,7 +248,48 @@ public final class HipReference {
           acc[h] += pack.bytes.getFloat(spec.biasOffset() + h * Float.BYTES);
           out[(start + t) * hidden + h] = bf(acc[h]);
         }
+        if (folding) {
+          foldToken(spec, acc, entries, features, (start + t) * width);
+        }
       }
+    }
+  }
+
+  /**
+   * K1 の L0-FOLD の 1 トークン（k1_embed.hip と同じ順）: r = 1/√(Σ/H + ε)（Σ は lane の 8 列の acc² を fma で順に足し、32 lane を xor の
+   * 木で足したもの）、列ごとに s = 0 から表の順に T'、特徴の順に fma で W'_d·f、b' を足し、⌊r·s + b_qkv⌉（積と和は別々に丸める）。
+   */
+  private void foldToken(PackView.Spec spec, float[] acc, int[] entries, float[] features, int at) {
+    int width = 3 * attention;
+    int lanes = 32;
+    int perLane = hidden / lanes;
+    float[] partial = new float[lanes];
+    for (int lane = 0; lane < lanes; lane++) {
+      float square = 0f;
+      for (int c = 0; c < perLane; c++) {
+        square = Math.fma(acc[lane * perLane + c], acc[lane * perLane + c], square);
+      }
+      partial[lane] = square;
+    }
+    for (int stride = lanes / 2; stride > 0; stride >>= 1) {
+      float[] next = new float[lanes];
+      for (int lane = 0; lane < lanes; lane++) {
+        next[lane] = partial[lane] + partial[lane ^ stride];
+      }
+      partial = next;
+    }
+    float r = 1f / (float) Math.sqrt(partial[0] / hidden + epsilon);
+    int dense = features.length;
+    for (int o = 0; o < width; o++) {
+      float s = 0f;
+      for (int table = 0; table < entries.length; table++) {
+        s += pack.bytes.getFloat(spec.tableFold()[table] + (entries[table] * width + o) * Float.BYTES);
+      }
+      for (int k = 0; k < dense; k++) {
+        s = Math.fma(pack.bytes.getFloat(spec.fold() + (k * width + o) * Float.BYTES), features[k], s);
+      }
+      s += pack.bytes.getFloat(spec.fold() + (dense * width + o) * Float.BYTES);
+      layer0Qkv[at + o] = bf(r * s + pack.bytes.getFloat(spec.fold() + ((dense + 1) * width + o) * Float.BYTES));
     }
   }
 
@@ -266,6 +326,16 @@ public final class HipReference {
       }
       float[][] qkv = new float[tokens][3 * attention];
       for (int p = 0; p < tokens; p++) {
+        if (layer == 0) {
+          // L0-FOLD: K1 が作った qkv0（頭の対の並び）を q・k・v の並びに読む。
+          for (int col = 0; col < 3 * attention; col++) {
+            if (col < attention && p >= queries) {
+              continue;
+            }
+            qkv[p][col] = layer0Qkv[global[p] * 3 * attention + HipEmbedding.foldColumn(col, attention)];
+          }
+          continue;
+        }
         float[] normalized = normalize(residual, global[p] * hidden, HipWeight.ATTENTION_NORM, layer);
         for (int col = 0; col < 3 * attention; col++) {
           if (col < attention && p >= queries) {

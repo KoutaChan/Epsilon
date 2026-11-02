@@ -76,10 +76,11 @@ public class HipLibraryTest {
                     HipSection.TILE_CATEGORY,
                     null,
                     null,
-                    List.of(new HipEmbedding.Table(8192, 700, new int[] {0, 1}, new int[] {1, 35})),
+                    List.of(new HipEmbedding.Table(8192, 700, new int[] {0, 1}, new int[] {1, 35}, 24576)),
                     List.of(new HipEmbedding.Dense(HipEmbedding.Source.FLAG, 2)),
                     16384,
-                    20480));
+                    20480,
+                    32768));
     ByteBuffer pack = TestPack.direct(HipPack.HEADER_BYTES);
     header.write(pack);
     ByteBuffer ints = pack.duplicate().order(ByteOrder.LITTLE_ENDIAN);
@@ -105,6 +106,8 @@ public class HipLibraryTest {
     assertEquals(ints.getInt((tile + 8) * 4), 8192);
     assertEquals(ints.getInt((tile + 9) * 4), 700);
     assertEquals(ints.getInt((tile + 11 + HipEmbedding.MAX_MEMBERS + 1) * 4), 35);
+    assertEquals(ints.getInt((tile + 7) * 4), 32768);
+    assertEquals(ints.getInt((tile + 11 + 2 * HipEmbedding.MAX_MEMBERS) * 4), 24576);
     assertEquals(ints.getInt((tile + 8 + HipEmbedding.MAX_TABLES * HipEmbedding.TABLE_INTS) * 4), 2);
     assertTrue(HipPack.HEADER_BYTES >= HipPack.HEADER_INTS * 4 && HipPack.HEADER_BYTES % HipPack.ALIGNMENT == 0);
   }

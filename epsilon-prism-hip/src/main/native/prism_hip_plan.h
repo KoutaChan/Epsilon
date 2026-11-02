@@ -16,6 +16,7 @@ enum class Region : int {
   kInput,
   kResidual,
   kNormalized,
+  kQkv0,
   kAttention,
   kRelationCode,
   kState,
@@ -81,8 +82,8 @@ class Plan {
   // 区画の容量（バイト）。
   size_t regionBytes(Region region) const;
 
-  // WeightPack（頭つき）を読んで照らし（BF16・FP32 の部分に NaN があれば拒む）、デバイスへ写して偏りの表と QKV・MLP の重みの断片の
-  // 写しを作り直し、版を覚える。公開のときだけ呼び、ストリームを同期する。重みを替える道はこれだけで、途中で失敗したら版を忘れる
+  // WeightPack（頭つき）を読んで照らし（BF16・FP32 の部分に NaN があれば拒む）、デバイスへ写して偏りの表と QKV（層 1 から）・MLP の
+  // 重みの断片の写しを作り直し、版を覚える。公開のときだけ呼び、ストリームを同期する。重みを替える道はこれだけで、途中で失敗したら版を忘れる
   // （forward・run は次に写し終えるまで止まる）。
   void uploadWeights(const void* host, size_t bytes, int64_t version);
 
@@ -149,12 +150,14 @@ class Plan {
   char* workspace_ = nullptr;
   char* weights_ = nullptr;
   float* relationBias_ = nullptr;     // 層ごとの偏りの表（prism_hip_relation.h の置き方。uploadWeights が ρ から作る）
-  uint16_t* qkvFragments_ = nullptr;  // 層ごとの QKV の断片の写し（k2_attention.hip の置き方。uploadWeights が W_qkv から作る）
+  uint16_t* qkvFragments_ = nullptr;  // 層ごとの QKV の断片の写し（k2_attention.hip の置き方。uploadWeights が層 1 からの W_qkv から作る。
+                                      // 層 0 は K1 の表に畳んであり、K2 の層 0 は qkv0 を読む）
   uint16_t* mlpFragments_ = nullptr;  // MLP の重みの断片の順の写し（prism_hip_mlp.h の置き方。uploadWeights が層ごとの W_o・W1・
                                       // W2、W_kv と候補の W_o・W1・W2 から作る）
   int32_t* rowOrder_ = nullptr;  // K2・K4 の組の順の行の番号（K0 の起動で rowOrderKernel が塊ごとに書く。RowOrderArgs）
   int groupRows_[kAttentionGroups] = {};  // 今の塊の組ごとの行の数（forward・run がホストで数える）
   size_t weightsUsed_ = 0;
+  size_t embedShared_ = 0;  // K1 の動的な LDS（uploadWeights が頭の特徴の数から決める。embedSharedBytes）
   PackHeader header_{};
   int64_t version_ = -1;
   bool profile_ = false;

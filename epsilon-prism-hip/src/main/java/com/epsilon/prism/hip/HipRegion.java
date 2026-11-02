@@ -10,10 +10,15 @@ public enum HipRegion {
   /** 残差の流れ x {@code [トークン, H]}（BF16）。K1 が書き、K3・K5 が読み、K3 が上書きする。 */
   RESIDUAL(HipElement.BF16),
   /**
-   * 次の層の注意の入力 n = ⌊(x·r)·g⌉ {@code [トークン, H]}（BF16、RMSNorm をかけた残差の流れ）。K1（層 0）と K3（次の層）が書き、K2・K4 が
-   * A の断片として読む。
+   * 次の層の注意の入力 n = ⌊(x·r)·g⌉ {@code [トークン, H]}（BF16、RMSNorm をかけた残差の流れ）。K3 が次の層の分を書き、K2（層 1 から）・
+   * K4 が A の断片として読む。
    */
   NORMALIZED(HipElement.BF16),
+  /**
+   * 層 0 の注意の q・k・v {@code [トークン, 3A]}（BF16、列は頭の対の並び {@link HipEmbedding#foldColumn}）。K1 が層 0 の QKV に畳んだ表から
+   * 書き（L0-FOLD）、K2 の層 0 が射影をせずに読む。
+   */
+  QKV0(HipElement.BF16),
   /** 注意の出力 o {@code [トークン, A]}（BF16）。K2・K4 が書き、K3・K5 が読む。 */
   ATTENTION(HipElement.BF16),
   /**
@@ -50,6 +55,7 @@ public enum HipRegion {
     return switch (this) {
       case INPUT -> capacity.inputBytes();
       case RESIDUAL, NORMALIZED -> shape.tokens() * shape.hidden() * element.bytes();
+      case QKV0 -> shape.tokens() * 3L * shape.attention() * element.bytes();
       case ATTENTION -> shape.tokens() * shape.attention() * element.bytes();
       case RELATION_CODE -> (long) capacity.rows() * HipShape.RELATION_CODE_WORDS * element.bytes();
       case STATE -> shape.fixedTokenCapacity() * shape.hidden() * element.bytes();
@@ -67,6 +73,7 @@ public enum HipRegion {
     return switch (this) {
       case INPUT -> batch.bytes();
       case RESIDUAL, NORMALIZED -> tokens * shape.hidden() * element.bytes();
+      case QKV0 -> tokens * 3L * shape.attention() * element.bytes();
       case ATTENTION -> tokens * shape.attention() * element.bytes();
       case RELATION_CODE -> (long) batch.rows() * HipShape.RELATION_CODE_WORDS * element.bytes();
       case STATE -> fixed * shape.hidden() * element.bytes();

@@ -9,12 +9,14 @@ import ai.djl.util.PairList;
 import com.epsilon.ai.model.MahjongTileRelation;
 import com.epsilon.network.NetworkRuntime;
 import com.epsilon.prism.codec.Bfloat16;
+import com.epsilon.prism.hip.HipEmbedding;
 import com.epsilon.prism.hip.HipWeight;
 import com.epsilon.prism.model.PrismNetwork;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -25,6 +27,10 @@ import java.util.Objects;
  *
  * <p>埋め込みの畳んだ組の表は、BF16 に丸めた W と E の積を FP32 で足したもの（欄ごとに P_m[c] = W_m·E[off_m + c] を作り、組の行は
  * Σ_m P_m[c_m] を欄の順に）。eager の Linear との差は和の順だけ。
+ *
+ * <p>局・席・牌・出来事の型は、層 0 の注意の QKV の射影もその表へ畳む（L0-FOLD）: 書いた束の T・W_d・b（BF16 の値）と層 0 の g・W_qkv
+ * （BF16 の値）から T' = T·diag(g)·W_qkvᵀ、W'_d = W_d·diag(g)·W_qkvᵀ、b' = b·diag(g)·W_qkvᵀ を FP64 で作り、FP32 に丸めて置く。b_qkv
+ * （BF16 に丸めた値）を b' の後ろに写す。列は頭の対の並び（{@link HipEmbedding#foldColumn}）。
  */
 public final class WeightPack {
 
@@ -92,6 +98,12 @@ public final class WeightPack {
     }
     for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
       fold(buffer, layout, embedding, values);
+    }
+    double[] projection = layer0Projection(buffer, layout);
+    for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
+      if (embedding.foldOffset() >= 0) {
+        foldLayer0(buffer, layout, embedding, projection);
+      }
     }
     writeTileRelations(
         buffer,
@@ -214,6 +226,88 @@ public final class WeightPack {
     int biasAt = Math.toIntExact(embedding.biasOffset());
     for (int h = 0; h < hidden; h++) {
       buffer.putFloat(biasAt + h * Float.BYTES, round(bias[h]));
+    }
+  }
+
+  /**
+   * 層 0 の M = diag(g)·W_qkvᵀ（FP64 の {@code [H, 3A]}、列は頭の対の並び）。g は FP32、W_qkv は書いた束の BF16 の値。
+   */
+  private static double[] layer0Projection(ByteBuffer buffer, WeightLayout layout) {
+    int hidden = layout.shape().hidden();
+    int attention = layout.shape().attention();
+    int width = 3 * attention;
+    int gain = Math.toIntExact(layout.header().weight(HipWeight.ATTENTION_NORM, 0));
+    int qkv = Math.toIntExact(layout.header().weight(HipWeight.QKV, 0));
+    double[] projection = new double[hidden * width];
+    for (int c = 0; c < width; c++) {
+      int column = HipEmbedding.foldColumn(c, attention);
+      for (int h = 0; h < hidden; h++) {
+        float weight = Float.intBitsToFloat((buffer.getShort(qkv + (c * hidden + h) * Short.BYTES) & 0xFFFF) << 16);
+        projection[h * width + column] = (double) buffer.getFloat(gain + h * Float.BYTES) * weight;
+      }
+    }
+    return projection;
+  }
+
+  /**
+   * 1 つの型の層 0 の QKV に畳んだ表: 書いた束の T・W_d・b を FP64 で M に掛けて FP32 に丸め、T'・W'_d・b' を置き、b_qkv を写す。
+   */
+  private static void foldLayer0(
+      ByteBuffer buffer, WeightLayout layout, WeightLayout.Embedding embedding, double[] projection) {
+    int hidden = layout.shape().hidden();
+    int attention = layout.shape().attention();
+    int width = 3 * attention;
+    double[] source = new double[hidden];
+    double[] projected = new double[width];
+    for (WeightLayout.Group group : embedding.groups()) {
+      int from = Math.toIntExact(group.offset());
+      int to = Math.toIntExact(group.foldOffset());
+      for (int row = 0; row < group.rows(); row++) {
+        for (int h = 0; h < hidden; h++) {
+          source[h] = buffer.getFloat(from + (row * hidden + h) * Float.BYTES);
+        }
+        project(source, projection, projected);
+        for (int c = 0; c < width; c++) {
+          buffer.putFloat(to + (row * width + c) * Float.BYTES, (float) projected[c]);
+        }
+      }
+    }
+    int dense = embedding.source().denseCount();
+    int denseAt = Math.toIntExact(embedding.denseOffset());
+    int to = Math.toIntExact(embedding.foldOffset());
+    for (int k = 0; k <= dense; k++) {
+      for (int h = 0; h < hidden; h++) {
+        source[h] =
+            k < dense
+                ? Float.intBitsToFloat((buffer.getShort(denseAt + (k * hidden + h) * Short.BYTES) & 0xFFFF) << 16)
+                : buffer.getFloat(Math.toIntExact(embedding.biasOffset()) + h * Float.BYTES);
+      }
+      project(source, projection, projected);
+      for (int c = 0; c < width; c++) {
+        buffer.putFloat(to + (k * width + c) * Float.BYTES, (float) projected[c]);
+      }
+    }
+    int qkvBias = Math.toIntExact(layout.header().weight(HipWeight.QKV_BIAS, 0));
+    for (int c = 0; c < width; c++) {
+      buffer.putFloat(
+          to + ((dense + 1) * width + HipEmbedding.foldColumn(c, attention)) * Float.BYTES,
+          buffer.getFloat(qkvBias + c * Float.BYTES));
+    }
+  }
+
+  /** out = v·M（M は {@code [v の長さ, out の長さ]}、FP64）。 */
+  private static void project(double[] v, double[] m, double[] out) {
+    int width = out.length;
+    Arrays.fill(out, 0);
+    for (int h = 0; h < v.length; h++) {
+      double x = v[h];
+      if (x == 0) {
+        continue;
+      }
+      int at = h * width;
+      for (int c = 0; c < width; c++) {
+        out[c] += x * m[at + c];
+      }
     }
   }
 

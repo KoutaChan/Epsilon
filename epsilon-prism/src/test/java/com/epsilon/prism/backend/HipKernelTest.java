@@ -24,7 +24,9 @@ import org.testng.annotations.Test;
  * カーネルごとの一致（rocm の組。GPU 1 枚）。各カーネルに CPU の eager（BF16）の
  * その段の入力を入れて GPU で 1 本だけ回し、eager のその段の出力と比べる（相対 RMS ≤ 2e-2、BF16 の 1 ulp 以内の割合は報告）。同じ入力で
  * CPU の参照（{@link HipReference}）の段も回して比べる（和の順の差だけのはず）。深さ 2 と 3 の両方。公開の出来事が 90 を超える行の
- * 注意は {@link #attentionLongRows} が別の塊で確かめ、記録の行の頭は「long depth L」。
+ * 注意は {@link #attentionLongRows} が別の塊で確かめ、記録の行の頭は「long depth L」。K1 の x と層 0 の qkv0（L0-FOLD）は参照と
+ * ビットで同じことを求める（参照はカーネルと同じ順の FP32）。K2 の層 0 は参照の qkv0 を QKV0 に入れて回す（eager の層 0 は畳まない
+ * 射影なので、eager との差は丸めの位置の差を含む）。
  *
  * <p>検査つきの組み立てで範囲外があると GPU の trap で止まるので、カーネルを回す前に「PRISM-HIP-K start」を書いて流す（落ちた所が記録の
  * 最後の start で分かる）。
@@ -65,10 +67,9 @@ public class HipKernelTest {
       float[] statics = c.getBf16(HipRegion.STATIC, c.eager.statics().length);
       check(failures, c, "K1 x vs eager", Diff.bf16(c.eager.embedded(), x));
       check(failures, c, "K1 t_s vs eager", Diff.bf16(c.eager.statics(), statics));
-      float[] n = c.getBf16(HipRegion.NORMALIZED, tokens * hidden(c));
-      check(failures, c, "K1 n vs reference",
-          Diff.bf16(reference.attentionInput(Arrays.copyOf(reference.residual, n.length), 0), n));
-      report(c, "K1 x vs reference", Diff.bf16(reference.residual, x));
+      float[] qkv0 = c.getBf16(HipRegion.QKV0, tokens * 3 * attention(c));
+      bitwise(failures, c, "K1 qkv0 vs reference", reference.layer0Qkv(), qkv0);
+      bitwise(failures, c, "K1 x vs reference", reference.residual, x);
       report(c, "K1 t_s vs reference", Diff.bf16(reference.statics, statics));
     }
     Assert.assertTrue(failures.isEmpty(), failures.toString());
@@ -82,7 +83,7 @@ public class HipKernelTest {
         HipReference reference = reference(c);
         c.putInput();
         run(c, HipKernel.RELATION, 0);
-        c.putBf16(HipRegion.NORMALIZED, reference.attentionInput(input, layer));
+        putAttentionInput(c, reference, input, layer);
         run(c, HipKernel.ATTENTION0, layer);
         float[] o = c.getBf16(HipRegion.ATTENTION, c.eager.attention().get(layer).length);
         reference.residual = input.clone();
@@ -107,7 +108,7 @@ public class HipKernelTest {
         HipReference reference = reference(c);
         c.putInput();
         run(c, HipKernel.RELATION, 0);
-        c.putBf16(HipRegion.NORMALIZED, reference.attentionInput(input, layer));
+        putAttentionInput(c, reference, input, layer);
         run(c, last ? HipKernel.ATTENTION1 : HipKernel.ATTENTION0, layer);
         float[] expected = c.eager.attention().get(layer);
         float[] o = c.getBf16(HipRegion.ATTENTION, expected.length);
@@ -331,6 +332,30 @@ public class HipKernelTest {
     log.info("PRISM-HIP-K done {} layer {} {}", kernel, layer, c.name);
   }
 
+  /**
+   * 注意の層 layer の入力を作業域に置く: 層 0 は参照の K1 の qkv0（QKV0）、ほかは参照の n = ⌊(x·r)·g⌉（NORMALIZED。x は input）。
+   */
+  private static void putAttentionInput(GpuCase c, HipReference reference, float[] input, int layer) {
+    if (layer == 0) {
+      reference.embed(input(c));
+      c.putBf16(HipRegion.QKV0, reference.layer0Qkv());
+    } else {
+      c.putBf16(HipRegion.NORMALIZED, reference.attentionInput(input, layer));
+    }
+  }
+
+  /** 参照とビットで同じことを求める（違う要素の数も記録の行に出す）。 */
+  private static void bitwise(List<String> failures, GpuCase c, String label, float[] expected, float[] actual) {
+    int differ = 0;
+    for (int i = 0; i < expected.length; i++) {
+      differ += Float.floatToRawIntBits(expected[i]) != Float.floatToRawIntBits(actual[i]) ? 1 : 0;
+    }
+    log.info("PRISM-HIP-K {} {}, bits differ {}", c.name, Diff.bf16(expected, actual).line(label), differ);
+    if (differ != 0) {
+      failures.add(c.name + " " + label + " differs in " + differ + " of " + expected.length + " values");
+    }
+  }
+
   private static HipReference reference(GpuCase c) {
     HipReference reference = new HipReference(c.pack);
     reference.allocate(input(c));
@@ -343,6 +368,10 @@ public class HipKernelTest {
 
   private static int hidden(GpuCase c) {
     return c.layout.shape().hidden();
+  }
+
+  private static int attention(GpuCase c) {
+    return c.layout.shape().attention();
   }
 
   private static void check(List<String> failures, GpuCase c, String label, Diff diff) {

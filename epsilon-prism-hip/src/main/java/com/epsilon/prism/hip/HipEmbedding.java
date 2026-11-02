@@ -8,11 +8,20 @@ import java.util.Objects;
  * K1 の 1 つの型の埋め込み（BF16 にした W と E の積を FP32 で畳んだ組の表の和）。
  *
  * <pre>
- * x = ⌊Σ_表 T[Σ_i 値(列_i)·刻み_i] + Σ_k W_d[k]·特徴_k + b⌉
+ * x = ⌊acc⌉、acc = Σ_表 T[Σ_i 値(列_i)·刻み_i] + Σ_k W_d[k]·特徴_k + b
  * </pre>
  *
  * 表 T は FP32 の {@code [行, H]}、W_d は 2 値の欄・数値・厳密な欄を Linear の入力の順に並べた BF16 の {@code [特徴, H]}（転置）、
  * b は BF16 に丸めた偏りを FP32 で持つ。位置は全て WeightPack の中のバイトの位置。
+ *
+ * <p>局・席・牌・出来事の型は、層 0 の注意の q・k・v を畳んだ表も持つ（L0-FOLD。遷移の型は持たず、位置は −1）:
+ *
+ * <pre>
+ * qkv0 = ⌊r·(Σ_表 T'[行] + Σ_k W'_d[k]·特徴_k + b') + b_qkv⌉、r = 1/√(mean(acc²) + ε)
+ * </pre>
+ *
+ * T' = T·diag(g0)·W_qkv0ᵀ（表ごとに FP32 の {@code [行, 3A]}）、W'_d = W_d·diag(g0)·W_qkv0ᵀ（FP32 の {@code [特徴, 3A]}）、b' と
+ * b_qkv（FP32 の {@code [2, 3A]}）。列は頭の対の並び（{@link #foldColumn}）。
  *
  * @param category 欄の区画
  * @param scalar 数値の区画（BF16、なければ null）
@@ -21,6 +30,7 @@ import java.util.Objects;
  * @param dense 表に畳まない特徴（{@link #MAX_DENSE} 以下、Linear の入力の順）
  * @param denseOffset W_d の位置（特徴がなければ 0）
  * @param biasOffset b の位置
+ * @param foldOffset W'_d に続く b' と b_qkv の位置（層 0 の QKV に畳まない型は −1）
  */
 public record HipEmbedding(
     HipSection category,
@@ -29,7 +39,8 @@ public record HipEmbedding(
     List<Table> tables,
     List<Dense> dense,
     int denseOffset,
-    int biasOffset) {
+    int biasOffset,
+    int foldOffset) {
 
   /** 1 トークンが引く表の上限。 */
   public static final int MAX_TABLES = 8;
@@ -40,8 +51,8 @@ public record HipEmbedding(
   /** 表に畳まない特徴の上限。 */
   public static final int MAX_DENSE = 24;
 
-  /** 1 つの表の int の数（位置・行・欄の数・列・刻み）。 */
-  public static final int TABLE_INTS = 3 + 2 * MAX_MEMBERS;
+  /** 1 つの表の int の数（位置・行・欄の数・列・刻み・T' の位置）。 */
+  public static final int TABLE_INTS = 4 + 2 * MAX_MEMBERS;
 
   /** 1 つの型の int の数（native の {@code EmbeddingSpec} と同じ）。 */
   public static final int INTS = 8 + MAX_TABLES * TABLE_INTS + MAX_DENSE;
@@ -71,14 +82,27 @@ public record HipEmbedding(
   }
 
   /**
+   * 層 0 の QKV の列 column（q・k・v の {@code [3A]} の並び）の、畳んだ表の頭の対ごとの並びの位置（native の foldColumn と同じ）。頭の対
+   * p の q・k・v の 32 列（頭 2p・2p + 1 の 16 次元ずつ）が 96p から続き、K2 の頭の対の作業群は 1 トークンの 192 バイトの続いた所を読む。
+   *
+   * @param column q・k・v の並びの列（{@code < 3A}）
+   * @param attention 注意の幅 A
+   * @return 頭の対の並びの位置
+   */
+  public static int foldColumn(int column, int attention) {
+    return 96 * ((column % attention) / 32) + 32 * (column / attention) + column % 32;
+  }
+
+  /**
    * 畳んだ組の表。
    *
    * @param offset 表の位置（FP32 の {@code [rows, H]}）
    * @param rows 行の数（欄の語彙の積）
    * @param columns 欄の列
    * @param strides 欄ごとの刻み（行 = Σ 値·刻み）
+   * @param foldOffset T' の位置（FP32 の {@code [rows, 3A]}、層 0 の QKV に畳まない型は −1）
    */
-  public record Table(int offset, int rows, int[] columns, int[] strides) {
+  public record Table(int offset, int rows, int[] columns, int[] strides, int foldOffset) {
 
     /**
      * 形を確かめる。
@@ -86,7 +110,7 @@ public record HipEmbedding(
      * @throws IllegalArgumentException 欄の数が合わないか、範囲を外れるとき
      */
     public Table {
-      if (offset < 0 || rows <= 0 || columns.length == 0 || columns.length > MAX_MEMBERS) {
+      if (offset < 0 || rows <= 0 || columns.length == 0 || columns.length > MAX_MEMBERS || foldOffset < -1) {
         throw new IllegalArgumentException("invalid embedding table at " + offset + " with " + rows + " rows");
       }
       if (columns.length != strides.length) {
@@ -112,17 +136,19 @@ public record HipEmbedding(
           && offset == that.offset
           && rows == that.rows
           && Arrays.equals(columns, that.columns)
-          && Arrays.equals(strides, that.strides);
+          && Arrays.equals(strides, that.strides)
+          && foldOffset == that.foldOffset;
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(offset, rows, Arrays.hashCode(columns), Arrays.hashCode(strides));
+      return Objects.hash(offset, rows, Arrays.hashCode(columns), Arrays.hashCode(strides), foldOffset);
     }
 
     @Override
     public String toString() {
-      return "Table[offset=" + offset + ", rows=" + rows + ", columns=" + Arrays.toString(columns) + "]";
+      return "Table[offset=" + offset + ", rows=" + rows + ", columns=" + Arrays.toString(columns) + ", foldOffset="
+          + foldOffset + "]";
     }
   }
 
@@ -168,8 +194,13 @@ public record HipEmbedding(
         throw new IllegalArgumentException("dense feature " + feature + " has no source section");
       }
     }
-    if (denseOffset < 0 || biasOffset < 0) {
+    if (denseOffset < 0 || biasOffset < 0 || foldOffset < -1) {
       throw new IllegalArgumentException("embedding offsets must not be negative");
+    }
+    for (Table table : tables) {
+      if ((table.foldOffset() < 0) != (foldOffset < 0)) {
+        throw new IllegalArgumentException("the folded tables and the folded dense weights must be present together");
+      }
     }
   }
 
@@ -188,6 +219,7 @@ public record HipEmbedding(
     spec[4] = dense.size();
     spec[5] = denseOffset;
     spec[6] = biasOffset;
+    spec[7] = foldOffset;
     int cursor = 8;
     for (int t = 0; t < MAX_TABLES; t++, cursor += TABLE_INTS) {
       if (t >= tables.size()) {
@@ -201,6 +233,7 @@ public record HipEmbedding(
         spec[cursor + 3 + m] = table.columns[m];
         spec[cursor + 3 + MAX_MEMBERS + m] = table.strides[m];
       }
+      spec[cursor + 3 + 2 * MAX_MEMBERS] = table.foldOffset();
     }
     for (int k = 0; k < dense.size(); k++) {
       spec[cursor + k] = dense.get(k).source().ordinal() << 16 | dense.get(k).index();

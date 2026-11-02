@@ -37,7 +37,9 @@ import org.testng.annotations.Test;
  * <ul>
  *   <li>乱数で動かした標準の形（H 256）の版の s が、同じ重みの束の参照で同じ O を問い合わせの順の 1 つの塊にして直に回した s とビットで同じ。詰めた
  *       トークンの上限で塊を分けても（S の順に並べ替える）ビットで同じ（参照は行ごとに閉じた計算）。σ は貪欲の one-hot。
- *   <li>重みの束は読んだ網と合う: s が eager の BF16 の s と相対 RMS 2e-2 以内（HipReferenceTest の段の基準）。
+ *   <li>重みの束は読んだ網と合う: s が eager の BF16 の s と相対 RMS 4e-2 以内。層 0 の q・k・v は K1 の畳んだ表から 1 回の丸めで作る
+ *       （L0-FOLD）ので、x と n も丸める eager とは丸めの位置が違い、この乱した網では段の基準 2e-2 を超える（畳む前 1.6e-2、畳んだ後
+ *       2.6e-2）。束と網の食い違い（置き場・並びの誤り）は O(1) の差になる。
  *   <li>道具の写しの版が方策の版と違えば、受け付けは例外で終わる（古い写しを使わない）。
  *   <li>HIP を選んでも、CPU・前線の腕・特化のない幅では eager の道になる（CPU の方策は native を読まずに開ける）。GPU で libprism_hip.so が
  *       なければ、英語の例外で止まる（eager に落ちない）。
@@ -50,8 +52,8 @@ public class NetworkPolicyHipTest {
   private static final int BATCHES = 16;
   private static final int VERSION = 3;
 
-  /** 段の相対 RMS の上限。 */
-  private static final double STAGE_LIMIT = 2e-2;
+  /** eager の BF16 の s との相対 RMS の上限（L0-FOLD の丸めの位置の差を含む。上の説明）。 */
+  private static final double EAGER_LIMIT = 4e-2;
 
   @Test(timeOut = 900_000)
   public void servedScoresMatchTheReference() throws Exception {
@@ -127,7 +129,7 @@ public class NetworkPolicyHipTest {
         assertTrue(parts.chunks() > parts.batches(), "the small budget splits batches");
         assertTrue(counts[2] > 3, "batches must hold several rows: " + counts[2]);
         assertTrue(squares[1] > 0, "the perturbed network must give nonzero scores");
-        assertTrue(relative <= STAGE_LIMIT, "HIP s against eager BF16: " + relative);
+        assertTrue(relative <= EAGER_LIMIT, "HIP s against eager BF16: " + relative);
       }
     } finally {
       Snapshot.deleteTree(root);

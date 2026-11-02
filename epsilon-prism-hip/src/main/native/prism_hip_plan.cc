@@ -21,6 +21,7 @@ constexpr size_t kSlack = 256;           // 区画ごとの余り（検査つき
 constexpr int kRelationRowsExpected = kRelationSegments * kRelationEntries;
 constexpr int kMaxExact = 16;            // K7 の LDS の門の道
 constexpr int kTileRelationClasses = 30;  // 区画 1・2 の 4 bit に入る牌の関係の類の上限
+constexpr size_t kMaxSharedBytes = 64 * 1024;  // 作業群の LDS の上限
 
 size_t alignUp(size_t value) {
   return (value + kPackAlignment - 1) / kPackAlignment * kPackAlignment;
@@ -315,6 +316,17 @@ void requireNoNan(const PackHeader& header, const PlanShape& shape, const uint8_
             name + " dense weights contain NaN");
     require(!containsNan<uint32_t>(pack, static_cast<size_t>(spec.biasOffset), shape.hidden),
             name + " bias contains NaN");
+    if (spec.foldOffset < 0) {
+      continue;
+    }
+    const size_t width = static_cast<size_t>(3) * shape.attention();
+    for (int t = 0; t < spec.tables; ++t) {
+      const EmbeddingTable& table = spec.table[t];
+      require(!containsNan<uint32_t>(pack, static_cast<size_t>(table.foldOffset), static_cast<size_t>(table.rows) * width),
+              name + " folded table " + std::to_string(t) + " contains NaN");
+    }
+    require(!containsNan<uint32_t>(pack, static_cast<size_t>(spec.foldOffset), static_cast<size_t>(spec.dense + 2) * width),
+            name + " folded dense weights or biases contain NaN");
   }
 }
 
@@ -356,6 +368,7 @@ Plan::Plan(int device, hipStream_t stream, const PlanShape& shape) : device_(dev
   regionCapacity_[ordinal(Region::kInput)] = shape.inputBytes;
   regionCapacity_[ordinal(Region::kResidual)] = shape.tokens() * shape.hidden * sizeof(uint16_t);
   regionCapacity_[ordinal(Region::kNormalized)] = shape.tokens() * shape.hidden * sizeof(uint16_t);
+  regionCapacity_[ordinal(Region::kQkv0)] = shape.tokens() * 3 * shape.attention() * sizeof(uint16_t);
   regionCapacity_[ordinal(Region::kAttention)] = shape.tokens() * shape.attention() * sizeof(uint16_t);
   regionCapacity_[ordinal(Region::kRelationCode)] = codeIndex(shape.rows, 0, 0) * sizeof(uint32_t);
   regionCapacity_[ordinal(Region::kState)] = shape.fixed() * shape.hidden * sizeof(uint16_t);
@@ -564,6 +577,12 @@ void Plan::validateHeader(const PackHeader& header, size_t bytes) const {
             name + " exact section is invalid");
     require(spec.tables > 0 && spec.tables <= kMaxTables, name + " table count out of range");
     const int categoryWidth = header.sectionWidth[spec.category];
+    // 局・席・牌・出来事は層 0 の QKV に畳んだ表（L0-FOLD）を持ち、遷移は持たない。
+    const bool folding = static_cast<EmbeddingSlot>(e) != EmbeddingSlot::kTransition;
+    const size_t foldRow = static_cast<size_t>(3) * shape_.attention() * sizeof(float);
+    const auto inside = [&](int32_t offset, size_t size) {
+      return offset >= 0 && static_cast<size_t>(offset) % 16 == 0 && static_cast<size_t>(offset) + size <= bytes;
+    };
     for (int t = 0; t < spec.tables; ++t) {
       const EmbeddingTable& table = spec.table[t];
       require(table.members > 0 && table.members <= kMaxMembers && table.rows > 0, name + " table shape is invalid");
@@ -571,6 +590,8 @@ void Plan::validateHeader(const PackHeader& header, size_t bytes) const {
                   static_cast<size_t>(table.offset) + static_cast<size_t>(table.rows) * shape_.hidden * sizeof(float) <=
                       bytes,
               name + " table " + std::to_string(t) + " is outside the weight pack");
+      require(folding ? inside(table.foldOffset, static_cast<size_t>(table.rows) * foldRow) : table.foldOffset == -1,
+              name + " folded table " + std::to_string(t) + (folding ? " is outside the weight pack" : " must be absent"));
       for (int m = 0; m < table.members; ++m) {
         require(table.column[m] >= 0 && table.column[m] < categoryWidth && table.stride[m] >= 0,
                 name + " table member out of range");
@@ -585,6 +606,9 @@ void Plan::validateHeader(const PackHeader& header, size_t bytes) const {
     require(spec.biasOffset >= 0 && static_cast<size_t>(spec.biasOffset) % 16 == 0 &&
                 static_cast<size_t>(spec.biasOffset) + shape_.hidden * sizeof(float) <= bytes,
             name + " bias is outside the weight pack");
+    require(folding ? inside(spec.foldOffset, static_cast<size_t>(spec.dense + 2) * foldRow) : spec.foldOffset == -1,
+            name + (folding ? " folded dense weights and biases are outside the weight pack"
+                            : " folded dense weights must be absent"));
     for (int k = 0; k < spec.dense; ++k) {
       const int source = spec.source[k] >> 16;
       const int index = spec.source[k] & 0xffff;
@@ -618,20 +642,25 @@ void Plan::uploadWeights(const void* host, size_t bytes, int64_t version) {
     }
   }
   requireNoNan(header, shape_, static_cast<const uint8_t*>(host));
+  const size_t embedShared = embedSharedBytes(shape_.hidden, header.embedding);
+  require(embedShared + sizeof(EmbeddingSpec) <= kMaxSharedBytes,
+          "K1 needs " + std::to_string(embedShared) + " bytes of LDS for the dense weights");
   DeviceScope scope(device_);
   // 写しと重みから作るものが済むまでは重みのない計画として扱う（途中で失敗しても、新しい重みと古い表・写しの組で forward が回らない）。
   version_ = -1;
   header_ = header;
   weightsUsed_ = bytes;
+  embedShared_ = embedShared;
   PRISM_HIP(hipMemcpyAsync(weights_, host, bytes, hipMemcpyHostToDevice, stream_));
   // 偏りの表と QKV・MLP の重みの断片の写しは重みだけで決まり、重みを替える道はここだけなので、公開のたびに作り直す（古いものは
-  // 残らない）。pack にない層・重みの分は作らず、カーネルが引くときに止める（relationBias・qkvFragments・mlpFragments）。
+  // 残らない）。pack にない層・重みの分は作らず、カーネルが引くときに止める（relationBias・qkvFragments・mlpFragments）。層 0 の
+  // W_qkv は K1 の表に畳んであり（K2 の層 0 は qkv0 を読む）、写さない。
   for (int l = 0; l < shape_.depth; ++l) {
     if (header_.weight[ordinal(Weight::kRelationBias)][l] >= 0) {
       const RelationBiasArgs args{weight<float>(Weight::kRelationBias, l), relationBias<float>(l), shape_.heads()};
       launchRelationBias(args, shape_.heads() / 2, stream_);
     }
-    if (header_.weight[ordinal(Weight::kQkv)][l] >= 0) {
+    if (l > 0 && header_.weight[ordinal(Weight::kQkv)][l] >= 0) {
       const QkvFragmentArgs args{weight<uint16_t>(Weight::kQkv, l), qkvFragments<uint16_t>(l)};
       launchQkvFragments(shape_.hidden, args, shape_.heads() / 2, stream_);
     }
@@ -719,6 +748,7 @@ Span<T> Plan::relationBias(int layer) const {
 
 template <class T>
 Span<T> Plan::qkvFragments(int layer) const {
+  require(layer > 0, "the layer-0 QKV weights are folded into the K1 tables and have no fragment copy");
   require(header_.weight[ordinal(Weight::kQkv)][layer] >= 0,
           weightName(Weight::kQkv) + " layer " + std::to_string(layer) + " is absent from the weight pack");
   const size_t elements = qkvFragmentElements(shape_);
@@ -798,13 +828,12 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass) 
         blocks += (counts[e] + 63) / 64;
         const bool transition = static_cast<EmbeddingSlot>(e) == EmbeddingSlot::kTransition;
         args.out[e] = regionSpan<uint16_t>(transition ? Region::kStatic : Region::kResidual, starts[e] * hidden);
-        args.normalized[e] =
-            transition ? Span<uint16_t>{nullptr, 0} : regionSpan<uint16_t>(Region::kNormalized, starts[e] * hidden);
+        args.qkv0[e] = transition ? Span<uint16_t>{nullptr, 0}
+                                  : regionSpan<uint16_t>(Region::kQkv0, starts[e] * 3 * shape_.attention());
       }
       args.blockStart[kEmbeddingSlots] = blocks;
-      args.attentionNorm = weight<float>(Weight::kAttentionNorm, 0);
       args.epsilon = shape_.epsilon;
-      timed(kernel, [&] { launchEmbed(hidden, args, blocks, stream_); });
+      timed(kernel, [&] { launchEmbed(hidden, args, blocks, embedShared_, stream_); });
       return;
     }
     case Kernel::kRelation: {
@@ -842,14 +871,20 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass) 
     }
     case Kernel::kAttention0:
     case Kernel::kAttention1: {
+      // K2 の層 0 は射影をせず、K1 が書いた qkv0 を読む（L0-FOLD）。ほかは n と W_qkv の写しで射影する。
+      const bool folded = layer == 0;
       AttentionArgs args{};
-      args.normalized = regionSpan<const uint16_t>(Region::kNormalized, 0);
       args.o = regionSpan<uint16_t>(Region::kAttention, 0);
       args.codes = regionSpan<const uint32_t>(Region::kRelationCode, 0);
       args.rowColumn = section<int32_t>(batch, Section::kRowColumn);
       args.rowOrder = Span<const int32_t>{rowOrder_, static_cast<size_t>(batch.rows)};
-      args.qkv = qkvFragments<const uint16_t>(layer);
-      args.qkvBias = weight<float>(Weight::kQkvBias, layer);
+      if (folded) {
+        args.qkv0 = regionSpan<const uint16_t>(Region::kQkv0, 0);
+      } else {
+        args.normalized = regionSpan<const uint16_t>(Region::kNormalized, 0);
+        args.qkv = qkvFragments<const uint16_t>(layer);
+        args.qkvBias = weight<float>(Weight::kQkvBias, layer);
+      }
       args.bias = relationBias<const float>(layer);
       args.layout = tokens;
       args.rowWidth = header_.width(Section::kRowColumn);
@@ -857,7 +892,7 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch, Pass pass) 
       args.rowEvents = header_.value(Schema::kRowEvents);
       args.scale = scale;
       const bool last = kernel == Kernel::kAttention1;
-      timed(kernel, [&] { launchAttention(hidden, last, args, shape_.heads() / 2, groupRows_, stream_); });
+      timed(kernel, [&] { launchAttention(hidden, last, folded, args, shape_.heads() / 2, groupRows_, stream_); });
       return;
     }
     case Kernel::kMlp0: {

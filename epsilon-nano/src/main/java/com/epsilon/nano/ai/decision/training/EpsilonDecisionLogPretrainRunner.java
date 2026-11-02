@@ -1,12 +1,14 @@
 package com.epsilon.nano.ai.decision.training;
 
 import ai.djl.Model;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.GrpSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.nano.ai.grp.EpsilonGrpTrainingSession;
 import com.epsilon.nano.ai.network.NetworkFactory;
 import com.epsilon.nano.config.settings.DecisionPretrainSettings;
 import com.epsilon.nano.config.settings.DecisionPretrainValidationSettings;
+import com.epsilon.nano.config.settings.DecisionSettings;
 import com.epsilon.nano.config.settings.EpsilonSettings;
 import com.epsilon.nano.training.EpsilonLogPretrainDataCollector;
 import com.epsilon.runtime.DecisionExecutionContext;
@@ -100,7 +102,7 @@ public final class EpsilonDecisionLogPretrainRunner {
               grpSession,
               pretrainSettings,
               config
-                  .bind(com.epsilon.nano.config.settings.DecisionSettings.class)
+                  .bind(DecisionSettings.class)
                   .utilityProfile());
       try (compilation) {
         trainingRun =
@@ -180,11 +182,11 @@ public final class EpsilonDecisionLogPretrainRunner {
       EpsilonDecisionPretrainDatasetCompiler.Compilation compilation,
       DecisionPretrainSettings settings)
       throws Exception {
-    var decision = config.bind(com.epsilon.nano.config.settings.DecisionSettings.class);
+    var decision = config.bind(DecisionSettings.class);
     Model model =
         NetworkFactory.createDecisionModel(
             NetworkFactory.getLearnerDevice(
-                config.bind(com.epsilon.config.settings.DeviceSettings.class)),
+                config.bind(DeviceSettings.class)),
             true,
             decision.hidden(),
             decision.utilityProfile());
@@ -431,7 +433,7 @@ public final class EpsilonDecisionLogPretrainRunner {
     }
     return EpsilonGrpTrainingSession.openInferenceOnly(
         checkpointDir,
-        NetworkFactory.getGrpDevices(config.bind(com.epsilon.config.settings.DeviceSettings.class))
+        NetworkFactory.getGrpDevices(config.bind(DeviceSettings.class))
             .primary(),
         config);
   }

@@ -8,6 +8,7 @@ import com.epsilon.ai.grp.EpsilonGrpInferenceBatcher;
 import com.epsilon.ai.grp.EpsilonGrpRankPredictor;
 import com.epsilon.config.settings.DecisionBranchComparisonSettings;
 import com.epsilon.config.settings.DecisionTrainArenaSettings;
+import com.epsilon.config.settings.GrpInferenceSettings;
 import com.epsilon.config.settings.InferenceBatchingSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.core.Action;
@@ -103,11 +104,11 @@ public final class EpsilonDecisionArena {
         EpsilonGrpInferenceBatcher.create(
             grpInference,
             config
-                .bind(com.epsilon.config.settings.GrpInferenceSettings.class)
+                .bind(GrpInferenceSettings.class)
                 .asyncBatchingEnabled(),
-            config.bind(com.epsilon.config.settings.GrpInferenceSettings.class).maxBatch(),
+            config.bind(GrpInferenceSettings.class).maxBatch(),
             config
-                .bind(com.epsilon.config.settings.GrpInferenceSettings.class)
+                .bind(GrpInferenceSettings.class)
                 .coalesceWaitMicros());
     try {
       return collectPopulationGamesWithRankPredictor(

@@ -1,6 +1,9 @@
 package com.epsilon.major.ai.decision.training;
 
 import ai.djl.pytorch.jni.JniUtils;
+import com.epsilon.config.settings.DecisionPerfSettings;
+import com.epsilon.config.settings.DecisionTrainInFlightSpoolSettings;
+import com.epsilon.config.settings.DecisionTrainSpoolSettings;
 import com.epsilon.config.settings.DecisionTrainStreamingSettings;
 import com.epsilon.major.ai.decision.arena.DecisionAdaptiveExploration;
 import com.epsilon.major.ai.decision.arena.EpsilonDecisionArena;
@@ -120,7 +123,7 @@ final class DecisionSelectedPgMacroRunner {
       DecisionGpuMemoryDiagnostics.logSnapshot(
           phase,
           executionContext,
-          learner.config().bind(com.epsilon.config.settings.DecisionPerfSettings.class));
+          learner.config().bind(DecisionPerfSettings.class));
     };
   }
 
@@ -163,14 +166,14 @@ final class DecisionSelectedPgMacroRunner {
               true,
               learner
                   .config()
-                  .bind(com.epsilon.config.settings.DecisionTrainInFlightSpoolSettings.class))) {
+                  .bind(DecisionTrainInFlightSpoolSettings.class))) {
         Spool spoolSink =
             EpsilonDecisionTrainFragmentPipeline.openSpool(
                 request.spoolDirectory(),
                 expectedFragmentIdentity,
                 learner
                     .config()
-                    .bind(com.epsilon.config.settings.DecisionTrainSpoolSettings.class));
+                    .bind(DecisionTrainSpoolSettings.class));
         try {
           executionContext.resetInferenceMetrics();
           EpsilonDecisionArena.Metrics metrics =

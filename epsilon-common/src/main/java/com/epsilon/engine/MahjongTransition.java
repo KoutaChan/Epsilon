@@ -24,7 +24,10 @@ public final class MahjongTransition {
   }
 
   public TurnEvent.Draw drawFromWall(int player) {
-    int physicalTileId = state.drawLiveWallTile();
+    if (recorder != null) {
+      recorder.beforeDraw(player, false, state);
+    }
+    int physicalTileId = state.drawLiveWallTile(player);
     state.hand(player).addPhysicalTile(physicalTileId);
     TurnEvent.Draw draw =
         state.recordDraw(player, physicalTileId, TurnEvent.DrawSource.WALL, false);
@@ -39,6 +42,9 @@ public final class MahjongTransition {
     if (!delayDoraRevealUntilDiscard) {
       revealDora();
     }
+    if (recorder != null) {
+      recorder.beforeDraw(player, true, state);
+    }
     int physicalTileId = state.drawRinshanTile();
     state.hand(player).addPhysicalTile(physicalTileId);
     TurnEvent.Draw draw =
@@ -50,10 +56,16 @@ public final class MahjongTransition {
     return draw;
   }
 
-  /** 牌譜の既知ツモを基準の牌山カーソルと手牌へ同時反映する。 */
+  /**
+   * 牌譜の既知ツモを基準の牌山カーソルと手牌へ同時反映する。{@link #beginReconstructionRinshan} で始めた嶺上ツモは、新ドラを打牌の後まで
+   * 保留する印を引き継ぐ。
+   */
   public TurnEvent.Draw reconstructDraw(int player, int physicalTileId, boolean rinshan) {
+    boolean doraRevealPending = false;
     if (rinshan) {
-      if (!(state.getTurnEvent() instanceof TurnEvent.Draw draw && draw.isRinshanDraw())) {
+      if (state.getTurnEvent() instanceof TurnEvent.Draw begun && begun.isRinshanDraw()) {
+        doraRevealPending = begun.doraRevealPending();
+      } else {
         state.consumeReconstructionRinshanDraw();
       }
     } else {
@@ -67,7 +79,7 @@ public final class MahjongTransition {
             player,
             physicalTileId,
             rinshan ? TurnEvent.DrawSource.RINSHAN : TurnEvent.DrawSource.WALL,
-            false);
+            doraRevealPending);
     state.setCurrentPlayer(player);
     return draw;
   }
@@ -142,7 +154,10 @@ public final class MahjongTransition {
     return discard;
   }
 
-  /** 復号済みの牌譜の副露を、既知手牌（副露・暗槓を除く）の実牌消費と公開インデックスへ一括反映する。 */
+  /**
+   * 復号済みの牌譜の副露を、既知手牌（副露・暗槓を除く）の実牌消費と公開インデックスへ一括反映する。鳴かれた打牌の印は {@link
+   * GameState#addMeld} が付ける。
+   */
   public void applyReconstructedMeld(
       int player, Meld meld, int[] consumedPhysicalTileIds, boolean concealedHandKnown) {
     Hand hand = state.hand(player);
@@ -157,16 +172,11 @@ public final class MahjongTransition {
     } else {
       state.addMeld(player, meld, state.river(player).size());
     }
-    switch (meld.type()) {
-      case CHI, PON, DAIMINKAN -> {
-        int source = (player + meld.relativeSource().playerOffset()) % GameState.NUM_PLAYERS;
-        state.markLastDiscardCalled(source);
-        state.clearTurnEvent();
-        state.clearAllIppatsu();
-      }
-      case ANKAN, KAKAN -> {}
+    if (meld.isCalledFromDiscard()) {
+      takeTurnAfterCall(player);
+    } else {
+      state.setCurrentPlayer(player);
     }
-    state.setCurrentPlayer(player);
   }
 
   public TurnEvent.KanAttempt recordKanAttempt(
@@ -215,7 +225,7 @@ public final class MahjongTransition {
   public Meld completeDaiminkan(int player, TurnEvent.Discard discard) {
     Meld daiminkan = ActionEffect.applyDaiminkan(state, player, discard, handMutationTarget);
     int sourcePlayerOffset = state.getRelativePosition(player, discard.player());
-    markCalled(discard, player);
+    takeTurnAfterCall(player);
     if (recorder != null) {
       recorder.recordDaiminkan(
           player,
@@ -231,7 +241,7 @@ public final class MahjongTransition {
     Meld pon =
         ActionEffect.applyPon(state, player, discard, consumeAkaFromHand, handMutationTarget);
     int sourcePlayerOffset = state.getRelativePosition(player, discard.player());
-    markCalled(discard, player);
+    takeTurnAfterCall(player);
     if (recorder != null) {
       recorder.recordPon(
           player,
@@ -245,7 +255,7 @@ public final class MahjongTransition {
 
   public Meld applyChi(int player, TurnEvent.Discard discard, Action chiAction) {
     Meld chi = ActionEffect.applyChi(state, player, discard, chiAction, handMutationTarget);
-    markCalled(discard, player);
+    takeTurnAfterCall(player);
     if (recorder != null) {
       recorder.recordChi(
           player,
@@ -257,20 +267,25 @@ public final class MahjongTransition {
     return chi;
   }
 
-  /** 牌譜再生で成立済み槓の未知嶺上ツモ境界へ進める。 */
-  public TurnEvent.Draw beginReconstructionRinshan(int player) {
+  /**
+   * 牌譜再生で成立済み槓の未知嶺上ツモ境界へ進める。大明槓・加槓は {@link #drawFromDeadWall} と同じく新ドラを打牌の後まで保留する印を付ける
+   * （開くのは牌譜のドラ表示）。
+   */
+  public TurnEvent.Draw beginReconstructionRinshan(
+      int player, boolean delayDoraRevealUntilDiscard) {
     state.consumeReconstructionRinshanDraw();
     state.clearAllIppatsu();
     state.setCurrentPlayer(player);
-    return state.recordDraw(player, -1, TurnEvent.DrawSource.RINSHAN, false);
+    return state.recordDraw(
+        player, -1, TurnEvent.DrawSource.RINSHAN, delayDoraRevealUntilDiscard);
   }
 
   public void revealReconstructedDora(int indicatorTileType) {
     state.revealDoraIndicator(indicatorTileType);
   }
 
-  private void markCalled(TurnEvent.Discard discard, int callingPlayer) {
-    state.markLastDiscardCalled(discard.player());
+  /** 鳴いた席へ手番を移す（鳴かれた打牌の印は副露を足した {@link GameState#addMeld} が付けた）。一発はすべて消える。 */
+  private void takeTurnAfterCall(int callingPlayer) {
     state.setCurrentPlayer(callingPlayer);
     state.clearTurnEvent();
     state.clearAllIppatsu();
@@ -283,6 +298,9 @@ public final class MahjongTransition {
   }
 
   private void revealDora() {
+    if (recorder != null) {
+      recorder.beforeDoraReveal(state);
+    }
     state.revealDoraIndicator();
     if (recorder != null) {
       int index = state.doraState().indicatorCount() - 1;

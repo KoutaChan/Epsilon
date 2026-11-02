@@ -21,7 +21,7 @@ function isInvalidResult(error) {
   return error instanceof ApiError && error.code === "invalid_result";
 }
 
-for (const formatVersion of [undefined, 1, 2, 3, 5]) {
+for (const formatVersion of [undefined, 1, 2, 3, 4]) {
   test(`result loading rejects unsupported format ${formatVersion}`, async (t) => {
     serveResult(
       t,
@@ -43,6 +43,57 @@ test("current results preserve snapshot, probability and scoring data without co
   assert.equal(loaded.rounds[0].steps[2].candidates, choice.candidates);
   assert.equal(loaded.rounds[0].steps[3].outcome.details, null);
 });
+
+function discardResult(...valueLosses) {
+  const draw = eventSnapshot(1, "tsumo", 0);
+  const candidates = valueLosses.map((valueLoss, actionId) => ({
+    actionId,
+    type: "DAHAI",
+    tiles: [`${actionId + 1}m`],
+    probability: 1 / valueLosses.length,
+    ...(valueLoss === undefined ? {} : { valueLoss }),
+    chosen: actionId === 0,
+    tsumogiri: false,
+  }));
+  return reviewResult([
+    eventSnapshot(0, "start_kyoku"),
+    draw,
+    decisionSnapshot(draw, 0, "DAHAI", { candidates }),
+  ]);
+}
+
+test("value losses are preserved and absent losses become null", async (t) => {
+  for (const [losses, expected] of [
+    [[0, 0.004, 0.02], [0, 0.004, 0.02]],
+    [[null, null], [null, null]],
+    [[undefined, undefined], [null, null]],
+  ]) {
+    serveResult(t, discardResult(...losses));
+    const loaded = await api.result("result-1");
+    assert.deepEqual(
+      loaded.rounds[0].steps[2].candidates.map((entry) => entry.valueLoss),
+      expected,
+    );
+  }
+});
+
+for (const valueLoss of [-0.001, Infinity, Number.NaN, "0.01", true]) {
+  test(`invalid value loss ${String(valueLoss)} is rejected`, async (t) => {
+    serveResult(t, discardResult(0, valueLoss));
+    await assert.rejects(api.result("result-1"), isInvalidResult);
+  });
+}
+
+for (const losses of [
+  [0, null],
+  [null, 0.01],
+  [0, undefined],
+]) {
+  test(`a step cannot mix value and probability candidates: ${losses.map(String)}`, async (t) => {
+    serveResult(t, discardResult(...losses));
+    await assert.rejects(api.result("result-1"), isInvalidResult);
+  });
+}
 
 test("HTTP result loading rejects older server output with the localized error code", async (t) => {
   t.mock.method(

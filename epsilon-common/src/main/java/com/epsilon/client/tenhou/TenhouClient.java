@@ -47,7 +47,7 @@ public final class TenhouClient {
     log.info("HELO response received");
     connection.send("{\"tag\":\"LOBBY\",\"id\":\"" + options.room() + "\"}");
     // 南赤入の個室へ参加する。
-    connection.send("{\"tag\":\"JOIN\",\"t\":\"" + options.room() + ",9\"}");
+    connection.send(TenhouActionEncoder.encodeJoin(options.room() + ",9"));
     log.info("Join request sent for room {}", options.room());
   }
 

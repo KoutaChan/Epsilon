@@ -182,9 +182,9 @@ final class EpsilonDecisionDuelScheduler {
   private ActiveGame startGame(int gameIndex) {
 
     long firstGameIndex = Math.multiplyExact(firstWallFamilyId, (long) GameState.NUM_PLAYERS);
+    long episodeId = Math.addExact(firstGameIndex, gameIndex);
     EpsilonDecisionDuelArena.Rotation rotation =
-        EpsilonDecisionDuelArena.rotationForGame(
-            Math.addExact(firstGameIndex, gameIndex), seedBase);
+        EpsilonDecisionDuelArena.rotationForGame(episodeId, seedBase);
     BatchedPolicy[] evaluators = new BatchedPolicy[GameState.NUM_PLAYERS];
     for (int seat = 0; seat < evaluators.length; seat++) {
       evaluators[seat] = seat == rotation.candidateSeat() ? candidateEvaluator : opponentEvaluator;
@@ -192,6 +192,7 @@ final class EpsilonDecisionDuelScheduler {
     GameEngine engine = new GameEngine(rotation.wallSeed());
     GameStepResult boundary = advanceToDecisionBoundary(engine, engine.stepHanchan());
     return new ActiveGame(
+        episodeId,
         rotation.wallIndex(),
         rotation.wallSeed(),
         rotation.candidateSeat(),
@@ -478,6 +479,7 @@ final class EpsilonDecisionDuelScheduler {
   /** 一つの半荘と、現在停止しているエンジン境界を保持する。 */
   private static final class ActiveGame {
 
+    private final long episodeId;
     private final long wallIndex;
     private final long wallSeed;
     private final int candidateSeat;
@@ -486,12 +488,14 @@ final class EpsilonDecisionDuelScheduler {
     private GameStepResult boundary;
 
     private ActiveGame(
+        long episodeId,
         long wallIndex,
         long wallSeed,
         int candidateSeat,
         GameEngine engine,
         GameStepResult boundary,
         BatchedPolicy[] evaluators) {
+      this.episodeId = episodeId;
       this.wallIndex = wallIndex;
       this.wallSeed = wallSeed;
       this.candidateSeat = candidateSeat;
@@ -554,6 +558,7 @@ final class EpsilonDecisionDuelScheduler {
       } else {
         input =
             new DecisionRequest(
+                boundary.game.episodeId,
                 decision.id(),
                 decision.player(),
                 decision.kind(),

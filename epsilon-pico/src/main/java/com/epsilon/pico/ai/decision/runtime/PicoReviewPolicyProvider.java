@@ -9,6 +9,7 @@ import com.epsilon.pico.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.pico.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.pico.config.settings.DecisionInferenceSettings;
 import com.epsilon.pico.config.settings.EpsilonSettings;
+import com.epsilon.spi.ReviewEvaluation;
 import com.epsilon.spi.ReviewPolicy;
 import com.epsilon.spi.ReviewPolicyProvider;
 import java.io.IOException;
@@ -18,7 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 系列固有のエンコーダーと凍結モデルから全合法候補の確率を返す。 */
+/** 系列固有のエンコーダーと凍結モデルから全合法候補の方策の確率を返す（価値は返さない）。 */
 public final class PicoReviewPolicyProvider implements ReviewPolicyProvider {
   @Override
   public String seriesId() {
@@ -43,15 +44,16 @@ public final class PicoReviewPolicyProvider implements ReviewPolicyProvider {
         var server = EpsilonDecisionInferenceServer.forFrozenModel(model, 1);
         return new ReviewPolicy() {
           @Override
-          public float[] probabilities(PublicObservation observation, List<Action> legalActions) {
+          public ReviewEvaluation evaluate(PublicObservation observation, List<Action> legalActions) {
             var builder =
                 DecisionBatchBuilder.inference(
                     1, DecisionBatchBuilder.selectInferenceBucket(legalActions));
             builder.encodeObservedInferenceRow(0, observation, legalActions);
-            return server
-                .evaluateBatch(builder.buildEncodedInferenceRows())
-                .getFirst()
-                .policyProbabilities();
+            return ReviewEvaluation.policy(
+                server
+                    .evaluateBatch(builder.buildEncodedInferenceRows())
+                    .getFirst()
+                    .policyProbabilities());
           }
 
           @Override

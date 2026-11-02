@@ -1,5 +1,7 @@
 package com.epsilon.ai.grp;
 
+import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashSet;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -12,9 +14,9 @@ public class RankDistributionTest {
     for (int code = 0; code < 24; code++) {
       int[] ranks = EpsilonGrpRanks.decode(code);
       Assert.assertEquals(EpsilonGrpRanks.encode(ranks), code);
-      Assert.assertTrue(permutations.add(java.util.Arrays.toString(ranks)));
+      Assert.assertTrue(permutations.add(Arrays.toString(ranks)));
       var sorted = ranks.clone();
-      java.util.Arrays.sort(sorted);
+      Arrays.sort(sorted);
       Assert.assertEquals(sorted, new int[] {0, 1, 2, 3});
     }
     Assert.expectThrows(
@@ -57,6 +59,6 @@ public class RankDistributionTest {
     Assert.assertEquals(config, new EpsilonGrpCheckpointBundle.Configuration(48, 1));
     saved.architecture =
         saved.architecture.replace("marginalRepair=affine", "marginalRepair=other");
-    Assert.expectThrows(java.io.IOException.class, saved::configuration);
+    Assert.expectThrows(IOException.class, saved::configuration);
   }
 }

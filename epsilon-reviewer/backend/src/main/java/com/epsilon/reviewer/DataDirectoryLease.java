@@ -1,8 +1,12 @@
 package com.epsilon.reviewer;
 
 import java.io.IOException;
-import java.nio.channels.*;
-import java.nio.file.*;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 /** 同じ保存先を二つのサーバーが整理・更新することを防ぎます。 */
 final class DataDirectoryLease implements AutoCloseable {

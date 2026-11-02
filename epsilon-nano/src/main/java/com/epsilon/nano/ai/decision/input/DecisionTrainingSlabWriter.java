@@ -5,6 +5,7 @@ import com.epsilon.core.GameState;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.util.Objects;
 
 /**
  * バッチの構成が確定した後、対局から得た各行を学習用の最終 CPU バッファへ直接書き込む。
@@ -48,7 +49,7 @@ public final class DecisionTrainingSlabWriter {
       throw new IllegalArgumentException("rows must be positive: " + rows);
     }
     this.rows = rows;
-    this.bucket = java.util.Objects.requireNonNull(bucket, "bucket");
+    this.bucket = Objects.requireNonNull(bucket, "bucket");
     inputLayout = new DecisionInputLayout(rows, bucket);
     targetLayout = new DecisionTrainingTargetLayout(rows, bucket);
     this.inputCategories =
@@ -580,7 +581,7 @@ public final class DecisionTrainingSlabWriter {
   }
 
   private static ShortBuffer exactWritable(ShortBuffer buffer, int elements, String label) {
-    ShortBuffer view = java.util.Objects.requireNonNull(buffer, label).duplicate();
+    ShortBuffer view = Objects.requireNonNull(buffer, label).duplicate();
     view.clear();
     if (view.capacity() != elements || view.isReadOnly()) {
       throw new IllegalArgumentException(
@@ -590,7 +591,7 @@ public final class DecisionTrainingSlabWriter {
   }
 
   private static FloatBuffer exactWritable(FloatBuffer buffer, int elements, String label) {
-    FloatBuffer view = java.util.Objects.requireNonNull(buffer, label).duplicate();
+    FloatBuffer view = Objects.requireNonNull(buffer, label).duplicate();
     view.clear();
     if (view.capacity() != elements || view.isReadOnly()) {
       throw new IllegalArgumentException(
@@ -600,7 +601,7 @@ public final class DecisionTrainingSlabWriter {
   }
 
   private static IntBuffer exactWritable(IntBuffer buffer, int elements, String label) {
-    IntBuffer view = java.util.Objects.requireNonNull(buffer, label).duplicate();
+    IntBuffer view = Objects.requireNonNull(buffer, label).duplicate();
     view.clear();
     if (view.capacity() != elements || view.isReadOnly()) {
       throw new IllegalArgumentException(
@@ -610,7 +611,7 @@ public final class DecisionTrainingSlabWriter {
   }
 
   private static IntBuffer writableAtLeast(IntBuffer buffer, int elements, String label) {
-    IntBuffer view = java.util.Objects.requireNonNull(buffer, label).duplicate();
+    IntBuffer view = Objects.requireNonNull(buffer, label).duplicate();
     view.clear();
     if (view.capacity() < elements || view.isReadOnly()) {
       throw new IllegalArgumentException(
@@ -620,7 +621,7 @@ public final class DecisionTrainingSlabWriter {
   }
 
   private static ShortBuffer exactReadable(ShortBuffer buffer, int elements, String label) {
-    ShortBuffer view = java.util.Objects.requireNonNull(buffer, label).duplicate();
+    ShortBuffer view = Objects.requireNonNull(buffer, label).duplicate();
     if (view.remaining() != elements) {
       throw new IllegalArgumentException(
           label + " remaining must be " + elements + ": " + view.remaining());
@@ -629,7 +630,7 @@ public final class DecisionTrainingSlabWriter {
   }
 
   private static FloatBuffer exactReadable(FloatBuffer buffer, int elements, String label) {
-    FloatBuffer view = java.util.Objects.requireNonNull(buffer, label).duplicate();
+    FloatBuffer view = Objects.requireNonNull(buffer, label).duplicate();
     if (view.remaining() != elements) {
       throw new IllegalArgumentException(
           label + " remaining must be " + elements + ": " + view.remaining());

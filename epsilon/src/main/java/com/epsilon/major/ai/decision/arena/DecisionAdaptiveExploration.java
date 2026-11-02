@@ -12,6 +12,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -362,11 +363,11 @@ public final class DecisionAdaptiveExploration {
           + "/"
           + overall.nonForcedSelections()
           + ",meanScale="
-          + String.format(java.util.Locale.ROOT, "%.4f", overall.meanMultiplier())
+          + String.format(Locale.ROOT, "%.4f", overall.meanMultiplier())
           + ",meanTv="
-          + String.format(java.util.Locale.ROOT, "%.6f", overall.meanTotalVariation())
+          + String.format(Locale.ROOT, "%.6f", overall.meanTotalVariation())
           + ",meanNodeMass="
-          + String.format(java.util.Locale.ROOT, "%.6f", meanScaledUnweightedConfiguredNodeMass);
+          + String.format(Locale.ROOT, "%.6f", meanScaledUnweightedConfiguredNodeMass);
     }
   }
 

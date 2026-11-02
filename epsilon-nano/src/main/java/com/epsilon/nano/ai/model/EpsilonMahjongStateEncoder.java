@@ -1012,6 +1012,12 @@ public final class EpsilonMahjongStateEncoder extends AbstractBlock {
       NDArray playerMemory,
       NDArray playerMemoryMask) {
 
+    /** 局面文脈を追加する学習方式向けに、牌・席別メモリを保った状態表現を返す。 */
+    public EncodedState withStateEmbedding(NDArray embedding) {
+      return new EncodedState(
+          embedding, tileEmbeddings, tileProjectionEmbeddings, playerMemory, playerMemoryMask);
+    }
+
     /** 低精度ビューを分けない既存の呼び出し箇所用の同じ結果となるコンストラクター。 */
     public EncodedState(
         NDArray stateEmbedding,

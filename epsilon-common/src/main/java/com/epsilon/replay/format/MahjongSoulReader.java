@@ -1,11 +1,45 @@
 package com.epsilon.replay.format;
 
 import com.epsilon.core.Tile;
-import com.epsilon.replay.*;
-import com.epsilon.replay.ReplayEvent.*;
-import com.epsilon.replay.format.MahjongSoulRecord.*;
+import com.epsilon.replay.RecordCompletion;
+import com.epsilon.replay.RecordFormat;
+import com.epsilon.replay.RecordMetadata;
+import com.epsilon.replay.ReplayEvent;
+import com.epsilon.replay.ReplayEvent.Ankan;
+import com.epsilon.replay.ReplayEvent.Chi;
+import com.epsilon.replay.ReplayEvent.Dahai;
+import com.epsilon.replay.ReplayEvent.Daiminkan;
+import com.epsilon.replay.ReplayEvent.Dora;
+import com.epsilon.replay.ReplayEvent.EndGame;
+import com.epsilon.replay.ReplayEvent.EndKyoku;
+import com.epsilon.replay.ReplayEvent.Hora;
+import com.epsilon.replay.ReplayEvent.Kakan;
+import com.epsilon.replay.ReplayEvent.Pon;
+import com.epsilon.replay.ReplayEvent.Reach;
+import com.epsilon.replay.ReplayEvent.ReachAccepted;
+import com.epsilon.replay.ReplayEvent.Ryukyoku;
+import com.epsilon.replay.ReplayEvent.StartGame;
+import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.replay.ReplayEvent.Tsumo;
+import com.epsilon.replay.ReplayRecord;
+import com.epsilon.replay.TileNotation;
+import com.epsilon.replay.WinDetails;
+import com.epsilon.replay.format.MahjongSoulRecord.AbortiveDraw;
+import com.epsilon.replay.format.MahjongSoulRecord.Call;
+import com.epsilon.replay.format.MahjongSoulRecord.Discard;
+import com.epsilon.replay.format.MahjongSoulRecord.Draw;
+import com.epsilon.replay.format.MahjongSoulRecord.ExhaustiveDraw;
+import com.epsilon.replay.format.MahjongSoulRecord.Fan;
+import com.epsilon.replay.format.MahjongSoulRecord.GameEnd;
+import com.epsilon.replay.format.MahjongSoulRecord.Kan;
+import com.epsilon.replay.format.MahjongSoulRecord.Riichi;
+import com.epsilon.replay.format.MahjongSoulRecord.Round;
+import com.epsilon.replay.format.MahjongSoulRecord.Win;
+import com.epsilon.replay.format.MahjongSoulRecord.Winner;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /** 雀魂の元牌譜を、中間の別形式を作らず共通の対局データへ復号する。 */
 public final class MahjongSoulReader {

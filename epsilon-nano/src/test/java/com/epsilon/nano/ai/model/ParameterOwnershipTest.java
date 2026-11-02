@@ -1,6 +1,5 @@
 package com.epsilon.nano.ai.model;
 
-import com.epsilon.nano.ai.model.EpsilonDecisionNetwork;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;

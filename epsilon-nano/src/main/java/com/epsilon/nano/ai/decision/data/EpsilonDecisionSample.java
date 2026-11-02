@@ -1,12 +1,12 @@
 package com.epsilon.nano.ai.decision.data;
 
 import com.epsilon.ai.decision.DecisionBranchTarget;
+import com.epsilon.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.ai.grp.EpsilonGrpFeature;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
 import com.epsilon.core.DecisionLearningRole;
 import com.epsilon.nano.ai.decision.EpsilonDecisionConstants;
 import com.epsilon.nano.ai.decision.EpsilonDecisionReturns;
-import com.epsilon.nano.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.nano.ai.decision.input.DecisionHostBatch;
 import com.epsilon.nano.ai.decision.training.EpsilonDecisionPretrainTargets;
 

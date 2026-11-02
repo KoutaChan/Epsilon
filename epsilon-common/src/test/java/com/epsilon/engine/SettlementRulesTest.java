@@ -109,9 +109,9 @@ public class SettlementRulesTest {
     GameState state = MahjongFixtures.state();
     HandScoreBuffer daisangen = HandScoreBuffer.of(false, ScoringYaku.DAISANGEN.bit(), 0, 0, 0, 0);
     Assert.assertFalse(PaoRules.applies(state.hand(1), daisangen));
-    state.addMeld(1, Meld.pon(Tile.HAKU, Meld.RelativeSource.SHIMOCHA), 0);
-    state.addMeld(1, Meld.pon(Tile.HATSU, Meld.RelativeSource.TOIMEN), 0);
-    state.addMeld(1, Meld.pon(Tile.CHUN, Meld.RelativeSource.KAMICHA), 0);
+    MahjongFixtures.call(state, 1, Meld.pon(Tile.HAKU, Meld.RelativeSource.SHIMOCHA));
+    MahjongFixtures.call(state, 1, Meld.pon(Tile.HATSU, Meld.RelativeSource.TOIMEN));
+    MahjongFixtures.call(state, 1, Meld.pon(Tile.CHUN, Meld.RelativeSource.KAMICHA));
     boolean paoApplies = PaoRules.applies(state.hand(1), daisangen);
     Assert.assertTrue(paoApplies);
 
@@ -135,9 +135,9 @@ public class SettlementRulesTest {
     GameState state = MahjongFixtures.state();
     HandScoreBuffer score;
     if (pao) {
-      state.addMeld(1, Meld.pon(Tile.HAKU, Meld.RelativeSource.SHIMOCHA), 0);
-      state.addMeld(1, Meld.pon(Tile.HATSU, Meld.RelativeSource.TOIMEN), 0);
-      state.addMeld(1, Meld.pon(Tile.CHUN, Meld.RelativeSource.KAMICHA), 0);
+      MahjongFixtures.call(state, 1, Meld.pon(Tile.HAKU, Meld.RelativeSource.SHIMOCHA));
+      MahjongFixtures.call(state, 1, Meld.pon(Tile.HATSU, Meld.RelativeSource.TOIMEN));
+      MahjongFixtures.call(state, 1, Meld.pon(Tile.CHUN, Meld.RelativeSource.KAMICHA));
       score = HandScoreBuffer.of(false, ScoringYaku.DAISANGEN.bit(), 0, 0, 0, 0);
     } else {
       score = HandScoreBuffer.of(true, ScoringYaku.RIICHI.bit(), 0, 0, 0, 30);

@@ -1,14 +1,15 @@
 package com.epsilon.nano.ai.decision.training;
 
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
+import com.epsilon.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.ai.grp.EpsilonGrpFeature;
 import com.epsilon.ai.grp.EpsilonGrpRanks;
-import com.epsilon.nano.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.nano.ai.decision.data.EpsilonDecisionDataException;
 import com.epsilon.nano.ai.decision.data.EpsilonDecisionSample;
 import com.epsilon.nano.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.nano.ai.decision.input.DecisionHostBatch;
 import com.epsilon.nano.ai.grp.EpsilonGrpTrainingSession;
+import com.epsilon.nano.config.settings.DecisionSettings;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -29,7 +30,7 @@ public final class EpsilonDecisionPretrainTargets {
 
   public static List<EpsilonDecisionSample> prepare(
       List<EpsilonDecisionSample> source, EpsilonGrpTrainingSession grpSession) {
-    return prepare(source, grpSession, EpsilonUtilityTargets.configuredTrainingProfile());
+    return prepare(source, grpSession, DecisionSettings.defaults().utilityProfile());
   }
 
   public static List<EpsilonDecisionSample> prepare(
@@ -45,7 +46,7 @@ public final class EpsilonDecisionPretrainTargets {
 
   static List<EpsilonDecisionSample> prepare(
       List<EpsilonDecisionSample> source, MarginalPredictor predictor) {
-    return prepare(source, predictor, EpsilonUtilityTargets.configuredTrainingProfile());
+    return prepare(source, predictor, DecisionSettings.defaults().utilityProfile());
   }
 
   static List<EpsilonDecisionSample> prepare(

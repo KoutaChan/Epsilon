@@ -1,11 +1,18 @@
 package com.epsilon.reviewer;
 
-import java.io.*;
-import java.net.http.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /** HTTP 本文の受信中にも容量と時間の上限を適用します。 */
 final class BoundedHttp {

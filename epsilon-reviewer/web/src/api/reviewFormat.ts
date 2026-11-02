@@ -122,7 +122,7 @@ function requireMatchingEventOutcome(step: Record<string, any>): void {
 // 参照と差分の範囲を入口で確認し、全局の手牌・河を復元しない。
 export function readCurrentReviewResult(value: unknown): ReviewResult {
   const result = requireObject(value);
-  if (result.formatVersion !== 4)
+  if (result.formatVersion !== 5)
     throwInvalidReview("Unsupported review result format.");
   const names = requireArray(requireObject(result.metadata).names);
   if (names.length !== 4 || names.some((name) => typeof name !== "string"))
@@ -243,6 +243,7 @@ export function readCurrentReviewResult(value: unknown): ReviewResult {
       if (typeof step.eventType !== "string")
         throwInvalidReview("The replay event type is invalid.");
       if (step.actor !== -1) requireSeat(step.actor);
+      let valued: boolean | undefined;
       for (const rawCandidate of requireArray(step.candidates)) {
         const candidate = requireObject(rawCandidate);
         requireInteger(candidate.actionId);
@@ -268,6 +269,16 @@ export function readCurrentReviewResult(value: unknown): ReviewResult {
           candidate.probability > 1
         )
           throwInvalidReview("The review action probability is invalid.");
+        // 価値を推定しないモデルの欠けた損失は null にそろえる。
+        if (candidate.valueLoss === undefined) candidate.valueLoss = null;
+        const hasLoss = candidate.valueLoss !== null;
+        if (
+          hasLoss &&
+          (!Number.isFinite(candidate.valueLoss) || candidate.valueLoss < 0)
+        )
+          throwInvalidReview("The review action value loss is invalid.");
+        if ((valued ??= hasLoss) !== hasLoss)
+          throwInvalidReview("The review action values are incomplete.");
         requireArray(candidate.tiles).forEach(requireSupportedTileCode);
         requireBoolean(candidate.chosen);
         requireBoolean(candidate.tsumogiri);

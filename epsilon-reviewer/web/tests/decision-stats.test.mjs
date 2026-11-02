@@ -9,12 +9,14 @@ function candidate(
   probability,
   chosen = false,
   tsumogiri = false,
+  valueLoss = null,
 ) {
   return Object.freeze({
     actionId,
     type,
     tiles: Object.freeze(tiles),
     probability,
+    valueLoss,
     chosen,
     tsumogiri,
   });
@@ -38,7 +40,7 @@ function round(...steps) {
   return Object.freeze({ steps: Object.freeze(steps) });
 }
 
-const empty = { reviewed: 0, matched: 0, badMoves: 0 };
+const empty = { reviewed: 0, matched: 0, badMoves: 0, meanLoss: null };
 
 for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
   test(`${type} combines drawn and held copies before ranking either chosen variant`, () => {
@@ -53,7 +55,7 @@ for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
         ),
       ]);
       assert.deepEqual(summarizePlayerDecisions(input), [
-        { reviewed: 1, matched: 1, badMoves: 0 },
+        { reviewed: 1, matched: 1, badMoves: 0, meanLoss: null },
         empty,
         empty,
         empty,
@@ -73,7 +75,7 @@ test("discard aggregation uses candidates beyond the first three", () => {
       ]),
     ),
   ]);
-  assert.deepEqual(counts[0], { reviewed: 1, matched: 1, badMoves: 0 });
+  assert.deepEqual(counts[0], { reviewed: 1, matched: 1, badMoves: 0, meanLoss: null });
 });
 
 test("a recorded choice below the first three candidates is still reviewed", () => {
@@ -87,7 +89,7 @@ test("a recorded choice below the first three candidates is still reviewed", () 
       ]),
     ),
   ]);
-  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 1 });
+  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 1, meanLoss: null });
 });
 
 test("only a mismatching choice strictly below five percent is a bad move", () => {
@@ -104,7 +106,12 @@ test("only a mismatching choice strictly below five percent is a bad move", () =
         ]),
       ),
     ]);
-    assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves });
+    assert.deepEqual(counts[0], {
+      reviewed: 1,
+      matched: 0,
+      badMoves,
+      meanLoss: null,
+    });
   }
 });
 
@@ -119,7 +126,7 @@ test("split five-percent probability is not a bad move because of addition round
       ]),
     ),
   ]);
-  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 0 });
+  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 0, meanLoss: null });
 });
 
 test("a best tied choice matches despite binary64 addition rounding", () => {
@@ -135,7 +142,7 @@ test("a best tied choice matches despite binary64 addition rounding", () => {
       ]),
     ),
   ]);
-  assert.deepEqual(counts[0], { reviewed: 1, matched: 1, badMoves: 0 });
+  assert.deepEqual(counts[0], { reviewed: 1, matched: 1, badMoves: 0, meanLoss: null });
 });
 
 test("a genuine probability difference is not rounded into a tie", () => {
@@ -147,7 +154,7 @@ test("a genuine probability difference is not rounded into a tie", () => {
       ]),
     ),
   ]);
-  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 0 });
+  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 0, meanLoss: null });
 });
 
 test("a tied maximum below five percent is not a bad move", () => {
@@ -174,7 +181,7 @@ test("a tied maximum below five percent is not a bad move", () => {
       candidate(13 + index, "RIICHI_DAHAI", [tiles[index]], 0.04, index === 11),
     );
   const counts = summarizePlayerDecisions([round(decision(0, candidates))]);
-  assert.deepEqual(counts[0], { reviewed: 1, matched: 1, badMoves: 0 });
+  assert.deepEqual(counts[0], { reviewed: 1, matched: 1, badMoves: 0, meanLoss: null });
 });
 
 test("forced choices are excluded after discard aggregation", () => {
@@ -226,7 +233,7 @@ test("red tiles and riichi discards remain distinct choices", () => {
       ]),
     ),
   ]);
-  assert.deepEqual(counts[0], { reviewed: 2, matched: 0, badMoves: 2 });
+  assert.deepEqual(counts[0], { reviewed: 2, matched: 0, badMoves: 2, meanLoss: null });
 });
 
 test("different chii sequences and passing remain separate choices", () => {
@@ -239,7 +246,7 @@ test("different chii sequences and passing remain separate choices", () => {
       ]),
     ),
   ]);
-  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 1 });
+  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 1, meanLoss: null });
 });
 
 test("pon choices retain red-tile consumption and remain separate from passing", () => {
@@ -252,7 +259,7 @@ test("pon choices retain red-tile consumption and remain separate from passing",
       ]),
     ),
   ]);
-  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 1 });
+  assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 1, meanLoss: null });
 });
 
 test("winning and abortive-draw choices remain separate from passing or discarding", () => {
@@ -271,7 +278,7 @@ test("winning and abortive-draw choices remain separate from passing or discardi
     ],
   ]) {
     const counts = summarizePlayerDecisions([round(decision(0, candidates))]);
-    assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 1 });
+    assert.deepEqual(counts[0], { reviewed: 1, matched: 0, badMoves: 1, meanLoss: null });
   }
 });
 
@@ -293,9 +300,145 @@ test("all seats accumulate independently across rounds", () => {
     ]),
   );
   assert.deepEqual(counts, [
-    { reviewed: 2, matched: 1, badMoves: 1 },
-    { reviewed: 1, matched: 0, badMoves: 1 },
-    { reviewed: 1, matched: 1, badMoves: 0 },
-    { reviewed: 2, matched: 2, badMoves: 0 },
+    { reviewed: 2, matched: 1, badMoves: 1, meanLoss: null },
+    { reviewed: 1, matched: 0, badMoves: 1, meanLoss: null },
+    { reviewed: 1, matched: 1, badMoves: 0, meanLoss: null },
+    { reviewed: 2, matched: 2, badMoves: 0, meanLoss: null },
+  ]);
+});
+
+// 価値を推定したモデルの候補。確率は表示用なので集計に使わない。
+function valued(
+  actionId,
+  type,
+  tiles,
+  valueLoss,
+  chosen = false,
+  tsumogiri = false,
+) {
+  return candidate(actionId, type, tiles, 0, chosen, tsumogiri, valueLoss);
+}
+
+test("value decisions match only the best value and grade mistakes at the threshold", () => {
+  for (const [loss, matched, badMoves] of [
+    [0, 1, 0],
+    [1e-12, 0, 0],
+    [0.002 - 1e-9, 0, 0],
+    [0.002, 0, 0],
+    [0.005 - 1e-9, 0, 0],
+    [0.005, 0, 1],
+  ]) {
+    const counts = summarizePlayerDecisions([
+      round(
+        decision(0, [
+          valued(1, "DAHAI", ["1m"], 0),
+          valued(2, "DAHAI", ["2m"], loss, true),
+        ]),
+      ),
+    ]);
+    assert.deepEqual(counts[0], {
+      reviewed: 1,
+      matched,
+      badMoves,
+      meanLoss: loss,
+    });
+  }
+});
+
+test("value decisions ignore the display probability", () => {
+  const counts = summarizePlayerDecisions([
+    round(
+      decision(0, [
+        candidate(1, "DAHAI", ["1m"], 0.99, false, false, 0.001),
+        candidate(2, "DAHAI", ["2m"], 0.01, true, false, 0),
+      ]),
+    ),
+  ]);
+  assert.deepEqual(counts[0], {
+    reviewed: 1,
+    matched: 1,
+    badMoves: 0,
+    meanLoss: 0,
+  });
+});
+
+for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
+  test(`${type} value takes the better of drawn and held copies of the chosen tile`, () => {
+    for (const drawnChosen of [false, true]) {
+      const counts = summarizePlayerDecisions([
+        round(
+          decision(0, [
+            valued(1, type, ["1m"], 0.002),
+            valued(2, type, ["2m"], 0.03, !drawnChosen),
+            valued(3, type, ["2m"], 0, drawnChosen, true),
+          ]),
+        ),
+      ]);
+      assert.deepEqual(counts[0], {
+        reviewed: 1,
+        matched: 1,
+        badMoves: 0,
+        meanLoss: 0,
+      });
+    }
+  });
+}
+
+test("value decisions keep red fives distinct from plain fives", () => {
+  const counts = summarizePlayerDecisions([
+    round(
+      decision(0, [
+        valued(1, "DAHAI", ["5m"], 0),
+        valued(2, "DAHAI", ["5mr"], 0.025, true),
+        valued(3, "DAHAI", ["5mr"], 0.03, false, true),
+      ]),
+    ),
+  ]);
+  assert.deepEqual(counts[0], {
+    reviewed: 1,
+    matched: 0,
+    badMoves: 1,
+    meanLoss: 0.025,
+  });
+});
+
+test("forced value decisions are excluded after discard aggregation", () => {
+  const counts = summarizePlayerDecisions([
+    round(
+      decision(0, [
+        valued(1, "DAHAI", ["5m"], 0, true),
+        valued(2, "DAHAI", ["5m"], 0.01, false, true),
+      ]),
+    ),
+  ]);
+  assert.deepEqual(counts, [empty, empty, empty, empty]);
+});
+
+test("mean loss covers only value decisions while counts cover both kinds", () => {
+  const counts = summarizePlayerDecisions([
+    round(
+      decision(0, [
+        valued(1, "PASS", [], 0),
+        valued(2, "RON_AGARI", ["E"], 0.004, true),
+      ]),
+      decision(0, [
+        valued(1, "PASS", [], 0, true),
+        valued(2, "RON_AGARI", ["E"], 0.002),
+      ]),
+      decision(0, [
+        candidate(1, "PASS", [], 0.97),
+        candidate(2, "RON_AGARI", ["E"], 0.03, true),
+      ]),
+      decision(1, [
+        candidate(1, "PASS", [], 0.6, true),
+        candidate(2, "RON_AGARI", ["E"], 0.4),
+      ]),
+    ),
+  ]);
+  assert.deepEqual(counts, [
+    { reviewed: 3, matched: 1, badMoves: 1, meanLoss: 0.002 },
+    { reviewed: 1, matched: 1, badMoves: 0, meanLoss: null },
+    empty,
+    empty,
   ]);
 });

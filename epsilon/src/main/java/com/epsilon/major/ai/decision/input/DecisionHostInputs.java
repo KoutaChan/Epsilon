@@ -6,6 +6,7 @@ import com.epsilon.engine.EngineDecisionBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.util.Arrays;
 
 /**
  * Decision のカテゴリ特徴量と数値特徴量を保持し、推論・保存・学習へ渡す。
@@ -268,7 +269,7 @@ public final class DecisionHostInputs {
   /** 指定行の重みを固定したGRP局境界事前予測を独立所有配列で返す。 */
   public float[] boundaryRankPrior(int row) {
     int offset = boundaryContextOffset(row);
-    return java.util.Arrays.copyOfRange(
+    return Arrays.copyOfRange(
         numericSlab, offset, offset + DecisionBoundaryContext.GRP_RANK_SIZE);
   }
 
@@ -279,7 +280,7 @@ public final class DecisionHostInputs {
     }
     int rankCount = DecisionBoundaryContext.GRP_RANK_SIZE / GameState.NUM_PLAYERS;
     int offset = boundaryContextOffset(row) + seat * rankCount;
-    return java.util.Arrays.copyOfRange(numericSlab, offset, offset + rankCount);
+    return Arrays.copyOfRange(numericSlab, offset, offset + rankCount);
   }
 
   /**

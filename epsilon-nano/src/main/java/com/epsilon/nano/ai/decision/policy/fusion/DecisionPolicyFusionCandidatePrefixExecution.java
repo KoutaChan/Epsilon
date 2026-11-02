@@ -8,6 +8,7 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.nn.core.Linear;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
+import com.epsilon.ai.model.EpsilonMaskedRows;
 import com.epsilon.nano.ai.decision.policy.DecisionPolicyCandidatePrefixExecution;
 import com.epsilon.nano.ai.decision.policy.EpsilonFeatureFusion;
 import org.slf4j.Logger;
@@ -190,6 +191,47 @@ public final class DecisionPolicyFusionCandidatePrefixExecution
         NDArray transitions,
         NDArray playerContexts,
         NDArray stateContext) {
+      return project(
+          parameterStore,
+          runtimeParameters,
+          actionFeatures,
+          primaryTiles,
+          transitions,
+          playerContexts,
+          stateContext,
+          null);
+    }
+
+    @Override
+    public NDArray projectCompact(
+        ParameterStore parameterStore,
+        PairList<String, Object> runtimeParameters,
+        NDArray actionFeatures,
+        NDArray primaryTiles,
+        NDArray transitions,
+        NDArray playerContexts,
+        NDArray states,
+        NDArray stateRows) {
+      return project(
+          parameterStore,
+          runtimeParameters,
+          actionFeatures,
+          primaryTiles,
+          transitions,
+          playerContexts,
+          states,
+          stateRows);
+    }
+
+    private NDArray project(
+        ParameterStore parameterStore,
+        PairList<String, Object> runtimeParameters,
+        NDArray actionFeatures,
+        NDArray primaryTiles,
+        NDArray transitions,
+        NDArray playerContexts,
+        NDArray stateContext,
+        NDArray stateRows) {
       if (finished || sealed || executed) {
         throw new IllegalStateException("candidate prefix pack cannot execute twice");
       }
@@ -219,6 +261,7 @@ public final class DecisionPolicyFusionCandidatePrefixExecution
                 .stateProjection
                 .forward(parameterStore, new NDList(stateContext), false, runtimeParameters)
                 .singletonOrThrow();
+        if (stateRows != null) state = EpsilonMaskedRows.gather(state, stateRows);
         NDArray result = addStateProjectionAndActivate(projected, state);
         executed = true;
         return result;

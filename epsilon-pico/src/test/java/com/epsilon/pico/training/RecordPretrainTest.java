@@ -1,12 +1,19 @@
 package com.epsilon.pico.training;
 
 import com.epsilon.core.Tile;
+import com.epsilon.pico.ai.decision.data.EpsilonDecisionSample;
 import com.epsilon.replay.TileNotation;
-import com.google.gson.*;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
-import java.nio.file.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.StringJoiner;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,7 +25,7 @@ public final class RecordPretrainTest {
     try {
       String[] content = {tenhouRecord(), mjaiRecord(), mahjongSoulRecord()};
       String[] names = {"tenhou.xml", "mjai.jsonl", "majsoul.json"};
-      var inputs = new ArrayList<List<com.epsilon.pico.ai.decision.data.EpsilonDecisionSample>>();
+      var inputs = new ArrayList<List<EpsilonDecisionSample>>();
       for (int i = 0; i < names.length; i++) {
         Path file = Files.writeString(directory.resolve(names[i]), content[i]);
         inputs.add(EpsilonLogPretrainDataCollector.collectDecisionFile(file));

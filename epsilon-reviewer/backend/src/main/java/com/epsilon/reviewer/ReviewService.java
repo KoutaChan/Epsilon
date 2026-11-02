@@ -13,9 +13,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -247,7 +255,7 @@ public final class ReviewService implements AutoCloseable {
     synchronized JobSnapshot snapshot() {
       return new JobSnapshot(
           id,
-          status.name().toLowerCase(java.util.Locale.ROOT),
+          status.name().toLowerCase(Locale.ROOT),
           progress,
           cancelRequested,
           resultId,

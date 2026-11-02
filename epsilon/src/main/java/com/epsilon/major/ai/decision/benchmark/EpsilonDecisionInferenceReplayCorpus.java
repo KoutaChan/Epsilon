@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -61,14 +62,14 @@ public final class EpsilonDecisionInferenceReplayCorpus {
      * @param targetOverrides 既定以外の保持行数。未指定容量区分には標準上限を使う
      */
     Recorder(Role role, Map<DecisionBucket, Integer> targetOverrides) {
-      this.role = java.util.Objects.requireNonNull(role, "role");
+      this.role = Objects.requireNonNull(role, "role");
       HashMap<DecisionBucket, Integer> checkedTargets = new HashMap<>();
       targetOverrides.forEach(
           (bucket, rows) -> {
             if (rows == null || rows < 1) {
               throw new IllegalArgumentException("replay target rows must be positive: " + rows);
             }
-            checkedTargets.put(java.util.Objects.requireNonNull(bucket, "bucket"), rows);
+            checkedTargets.put(Objects.requireNonNull(bucket, "bucket"), rows);
           });
       this.targetOverrides = Map.copyOf(checkedTargets);
     }

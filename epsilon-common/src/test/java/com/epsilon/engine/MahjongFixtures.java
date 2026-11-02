@@ -2,6 +2,7 @@ package com.epsilon.engine;
 
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
+import com.epsilon.core.Meld;
 import com.epsilon.core.Tile;
 
 /** 麻雀ルールのシナリオで共有する、牌姿からの最小構築。 */
@@ -37,6 +38,13 @@ final class MahjongFixtures {
     for (int tile = 0; tile < counts.length; tile++) {
       for (int copy = 0; copy < counts[tile]; copy++) hand.add(tile);
     }
+  }
+
+  /** 元の席がその牌を打ってから、指定席がそれを鳴いた副露を足す（鳴きは記録の最後の打牌を鳴く）。 */
+  static void call(GameState state, int seat, Meld meld) {
+    int source = (seat + meld.relativeSource().playerOffset()) % GameState.NUM_PLAYERS;
+    state.commitDiscard(source, meld.calledTileType(), false);
+    state.addMeld(seat, meld, state.river(seat).size());
   }
 
   static GameState state() {

@@ -11,9 +11,9 @@ import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.major.ai.decision.input.DecisionBatchTransfer;
 import com.epsilon.major.ai.model.EpsilonDecisionNetwork;
 import com.epsilon.major.ai.model.EpsilonTileRelationEncoder;
-import com.epsilon.major.ai.network.NetworkDevices;
 import com.epsilon.major.ai.network.NetworkFactory;
 import com.epsilon.major.config.settings.EpsilonSettings;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.training.DataParallelGroup;
 import java.io.IOException;
@@ -48,6 +48,7 @@ final class EpsilonDecisionDataParallel
 
   private static boolean includes(ParameterScope scope, String name) {
     return switch (scope) {
+      case ALL -> throw new IllegalArgumentException("Unsupported Major training scope");
       case ONLINE -> EpsilonDecisionNetwork.isOnlineTrainingParameterName(name);
       case ONLINE_ACTOR -> EpsilonDecisionNetwork.isOnlineActorParameterName(name);
       case ONLINE_VALUE -> EpsilonDecisionNetwork.isValueParameterName(name);
@@ -59,6 +60,7 @@ final class EpsilonDecisionDataParallel
 
   private static void prepare(ParameterScope scope, EpsilonDecisionNetwork network) {
     switch (scope) {
+      case ALL -> throw new IllegalArgumentException("Unsupported Major training scope");
       case ONLINE, ONLINE_ACTOR, ONLINE_VALUE -> network.prepareForOnlineTraining();
       case PRETRAIN_ALL -> network.prepareForOfflinePretraining(true, true);
       case PRETRAIN_POLICY -> network.prepareForOfflinePretraining(true, false);

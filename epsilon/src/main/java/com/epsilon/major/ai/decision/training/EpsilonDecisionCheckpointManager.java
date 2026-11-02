@@ -14,6 +14,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -153,7 +154,7 @@ public final class EpsilonDecisionCheckpointManager {
                         try {
                           return Files.getLastModifiedTime(p).toMillis();
                         } catch (IOException failure) {
-                          throw new java.io.UncheckedIOException(failure);
+                          throw new UncheckedIOException(failure);
                         }
                       }))
               .orElse(null);

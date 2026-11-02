@@ -86,7 +86,9 @@ public final class Main {
         ModelRegistry registry =
             new ModelRegistry(
                 List.of(
-                    new NanoModelProvider(), new PicoModelProvider(), new EpsilonModelProvider()),
+                    new NanoModelProvider(),
+                    new PicoModelProvider(),
+                    new EpsilonModelProvider()),
                 execution)) {
       List<Participant> participants = new ArrayList<>(4);
       for (ModelSpec spec : config.seats()) participants.add(registry.open(spec));

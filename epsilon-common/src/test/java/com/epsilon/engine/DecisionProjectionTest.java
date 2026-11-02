@@ -10,7 +10,6 @@ import com.epsilon.core.HandView;
 import com.epsilon.core.Meld;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import org.testng.Assert;
@@ -48,8 +47,8 @@ public class DecisionProjectionTest {
     var scratch = new ActionEffect.ProjectedHand();
     var expected = new ActionEffect.ProjectionResult();
     var actual = new ActionEffect.ProjectionResult();
-    List<Action> expectedDiscards = new ArrayList<>();
-    List<Action> actualDiscards = new ArrayList<>();
+    var expectedDiscards = new EngineActionBuffer();
+    var actualDiscards = new EngineActionBuffer();
     actualDiscards.add(Action.dahai(Tile.M1));
     for (Action action : scenario.actions) {
       ActionEffect.projectInto(scenario.state, 1, action, expectedHand, expected, expectedDiscards);
@@ -80,7 +79,7 @@ public class DecisionProjectionTest {
           var root = new ActionEffect.ProjectedHand();
           var expected = new ActionEffect.ProjectedHand();
           var projected = new ActionEffect.ProjectionResult();
-          List<Action> discards = new ArrayList<>();
+          var discards = new EngineActionBuffer();
           ActionEffect.projectInto(scenario.state, 1, action, root, projected, discards);
           Assert.assertSame(buffer.action(index), action);
           Assert.assertEquals(buffer.continuation(index), projected.nextStep());
@@ -201,7 +200,7 @@ public class DecisionProjectionTest {
           }
           case "kakan" -> {
             MahjongFixtures.hand(state, 1, "5m123p123s1122z");
-            state.addMeld(1, Meld.pon(Tile.M5, Meld.RelativeSource.KAMICHA), 0);
+            MahjongFixtures.call(state, 1, Meld.pon(Tile.M5, Meld.RelativeSource.KAMICHA));
             yield List.of(Action.kakan(Tile.M5), Action.dahai(Tile.M5, aka));
           }
           case "tsumo" -> {

@@ -2,6 +2,7 @@ package com.epsilon.nano.ai.decision.input;
 
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.index.NDIndex;
+import ai.djl.ndarray.types.Shape;
 
 /**
  * 通常の即時実行による推論で使う入力テンソル。
@@ -59,6 +60,10 @@ public record DecisionInferenceInputs(
               Math.addExact(region.slabOffset(), region.elementCount()),
               region.shape());
     }
+    return fromViews(views, layout.bucket());
+  }
+
+  static DecisionInferenceInputs fromViews(NDArray[] views, DecisionBucket bucket) {
     return new DecisionInferenceInputs(
         views[DecisionInputLayout.Tensor.STATE_CATEGORIES.ordinal()],
         views[DecisionInputLayout.Tensor.ACTION_CATEGORIES.ordinal()],
@@ -72,7 +77,7 @@ public record DecisionInferenceInputs(
         views[DecisionInputLayout.Tensor.ACTION_NUMERICS.ordinal()],
         views[DecisionInputLayout.Tensor.TRANSITION_NUMERICS.ordinal()],
         views[DecisionInputLayout.Tensor.WAIT_SCORES.ordinal()],
-        layout.bucket());
+        bucket);
   }
 
   /** ホストで有効な要素の集約された遷移行数を返す。 */
@@ -98,7 +103,7 @@ public record DecisionInferenceInputs(
     };
   }
 
-  private static NDArray slice(NDArray slab, int start, int end, ai.djl.ndarray.types.Shape shape) {
+  private static NDArray slice(NDArray slab, int start, int end, Shape shape) {
     if (start == end) {
       return slab.get(new NDIndex().addSliceDim(0, 0)).reshape(shape);
     }

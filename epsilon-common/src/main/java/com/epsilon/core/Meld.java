@@ -11,28 +11,30 @@ public final class Meld {
   /** 面子の種別と、種別だけで確定する構造情報。 */
   public enum Type {
     /** 上家の捨て牌で作る順子。 */
-    CHI(3, false, false),
+    CHI(3, false, false, true),
 
     /** 他家の捨て牌で作る刻子。 */
-    PON(3, false, false),
+    PON(3, false, false, true),
 
     /** 他家の捨て牌で作る明槓子。 */
-    DAIMINKAN(4, true, false),
+    DAIMINKAN(4, true, false, true),
 
     /** 自手牌4枚で作る暗槓子。 */
-    ANKAN(4, true, true),
+    ANKAN(4, true, true, false),
 
     /** 既存ポンへ4枚目を加えた槓子。 */
-    KAKAN(4, true, false);
+    KAKAN(4, true, false, false);
 
     private final int tileCount;
     private final boolean kan;
     private final boolean preservesMenzen;
+    private final boolean calledFromDiscard;
 
-    Type(int tileCount, boolean kan, boolean preservesMenzen) {
+    Type(int tileCount, boolean kan, boolean preservesMenzen, boolean calledFromDiscard) {
       this.tileCount = tileCount;
       this.kan = kan;
       this.preservesMenzen = preservesMenzen;
+      this.calledFromDiscard = calledFromDiscard;
     }
   }
 
@@ -276,11 +278,6 @@ public final class Meld {
         Type.KAKAN, pon.baseTileType, pon.calledTileType, pon.relativeSource, resultingAkaSource);
   }
 
-  /**
-   * 面子種別を返す。
-   *
-   * @return CHI、PONまたは各KAN種別
-   */
   public Type type() {
     return type;
   }
@@ -399,6 +396,15 @@ public final class Meld {
    */
   public boolean preservesMenzen() {
     return type.preservesMenzen;
+  }
+
+  /**
+   * 他家の打牌を鳴いて作る面子かを返す。足すときに元の打牌へ鳴いた席を書く。
+   *
+   * @return チー・ポン・大明槓なら{@code true}
+   */
+  public boolean isCalledFromDiscard() {
+    return type.calledFromDiscard;
   }
 
   /**

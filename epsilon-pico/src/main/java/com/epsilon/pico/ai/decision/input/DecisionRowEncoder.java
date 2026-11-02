@@ -158,19 +158,20 @@ final class DecisionRowEncoder {
       writer.player(relativeSeat, DecisionInputSchema.PlayerInt.OPEN_MELD_COUNT, openMeldCount);
       writer.player(
           relativeSeat, DecisionInputSchema.PlayerInt.KAN_COUNT, publicState.kanCount(seat));
-      writer.player(relativeSeat, DecisionInputSchema.PlayerInt.RIVER_COUNT, river.size());
+      writer.player(
+          relativeSeat, DecisionInputSchema.PlayerInt.RIVER_COUNT, riverCategory(river.size()));
       writer.player(
           relativeSeat,
           DecisionInputSchema.PlayerInt.RIICHI_DECLARATION_INDEX,
-          context.riichiDeclarationIndex(relativeSeat) + 1);
+          riverCategory(context.riichiDeclarationIndex(relativeSeat) + 1));
       writer.player(
           relativeSeat,
           DecisionInputSchema.PlayerInt.DISCARDS_AFTER_RIICHI,
-          context.discardsAfterRiichi(relativeSeat));
+          riverCategory(context.discardsAfterRiichi(relativeSeat)));
       writer.player(
           relativeSeat,
           DecisionInputSchema.PlayerInt.POST_RIICHI_TSUMOGIRI_COUNT,
-          context.postRiichiTsumogiriCount(relativeSeat));
+          riverCategory(context.postRiichiTsumogiriCount(relativeSeat)));
 
       writer.player(
           relativeSeat, DecisionInputSchema.PlayerFloat.SCORE, state.score(seat) / 100000.0f);
@@ -278,12 +279,24 @@ final class DecisionRowEncoder {
     }
   }
 
+  /**
+   * 河の枚数・位置のカテゴリ値。入力の河は1席 {@link DecisionInputSchema#MAX_RIVER_EVENTS_PER_PLAYER} 枚までなので、それを超える値は上限に
+   * まとめる。ルール上は鳴きで他家の手番が飛ぶと1席の打牌がこれを超えうる（ごくまれ）。上限以下の値は変えない。
+   */
+  private static int riverCategory(int value) {
+    return Math.min(value, DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER);
+  }
+
+  /**
+   * 河のトークン。上限を超えた河は最初の {@link DecisionInputSchema#MAX_RIVER_EVENTS_PER_PLAYER} 枚だけを書く（牌種ごとの枚数の特徴と、直前の
+   * 打牌のイベントは河全体から作るので、それより後の打牌も失われない）。
+   */
   private static void encodeRivers(
       PublicObservation state, int player, DecisionInputWriter writer) {
     for (int relativeSeat = 0; relativeSeat < GameState.NUM_PLAYERS; relativeSeat++) {
       River river = state.river((player + relativeSeat) % GameState.NUM_PLAYERS);
-      for (int riverIndex = 0; riverIndex < river.size(); riverIndex++) {
-        River.Discard discard = river.discard(riverIndex);
+      int encoded = riverCategory(river.size());
+      for (int riverIndex = 0; riverIndex < encoded; riverIndex++) {
         writer.river(
             relativeSeat,
             riverIndex,
@@ -291,31 +304,40 @@ final class DecisionRowEncoder {
             relativeSeat + 1);
         writer.river(relativeSeat, riverIndex, DecisionInputSchema.RiverInt.INDEX, riverIndex + 1);
         writer.river(
-            relativeSeat, riverIndex, DecisionInputSchema.RiverInt.TILE, discard.tileType() + 1);
+            relativeSeat,
+            riverIndex,
+            DecisionInputSchema.RiverInt.TILE,
+            river.tileType(riverIndex) + 1);
         writer.river(
-            relativeSeat, riverIndex, DecisionInputSchema.RiverInt.IS_AKA, discard.aka() ? 1 : 0);
+            relativeSeat,
+            riverIndex,
+            DecisionInputSchema.RiverInt.IS_AKA,
+            river.aka(riverIndex) ? 1 : 0);
         writer.river(
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverInt.TSUMOGIRI,
-            discard.tsumogiri() ? 1 : 0);
+            river.tsumogiri(riverIndex) ? 1 : 0);
         writer.river(
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverInt.RIICHI,
-            discard.riichiDeclaration() ? 1 : 0);
+            river.riichiDeclaration(riverIndex) ? 1 : 0);
         writer.river(
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverInt.CALLED,
-            discard.called() ? 1 : 0);
+            river.called(riverIndex) ? 1 : 0);
         writer.river(
-            relativeSeat, riverIndex, DecisionInputSchema.RiverInt.TURN, discard.turnNumber() + 1);
+            relativeSeat,
+            riverIndex,
+            DecisionInputSchema.RiverInt.TURN,
+            river.turnNumber(riverIndex) + 1);
         writer.river(
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverInt.GLOBAL_SEQUENCE,
-            discard.sequence() + 1);
+            river.sequence(riverIndex) + 1);
         writer.river(relativeSeat, riverIndex, DecisionInputSchema.RiverInt.PRESENT, 1);
         writer.river(
             relativeSeat,
@@ -326,7 +348,7 @@ final class DecisionRowEncoder {
             relativeSeat,
             riverIndex,
             DecisionInputSchema.RiverFloat.GLOBAL_PROGRESS,
-            Math.max(0, discard.sequence()) / 70.0f);
+            Math.max(0, river.sequence(riverIndex)) / 70.0f);
       }
     }
   }
@@ -366,12 +388,12 @@ final class DecisionRowEncoder {
             relativeSeat,
             meldIndex,
             DecisionInputSchema.MeldInt.CALL_AFTER_RIVER,
-            hand.meldCallAfterRiverIndex(meldIndex) + 1);
+            riverCategory(hand.meldCallAfterRiverIndex(meldIndex) + 1));
         writer.meld(
             relativeSeat,
             meldIndex,
             DecisionInputSchema.MeldInt.KAN_AFTER_RIVER,
-            hand.meldKanAfterRiverIndex(meldIndex) + 1);
+            riverCategory(hand.meldKanAfterRiverIndex(meldIndex) + 1));
         writer.meld(relativeSeat, meldIndex, DecisionInputSchema.MeldInt.PRESENT, 1);
         writer.meld(
             relativeSeat,

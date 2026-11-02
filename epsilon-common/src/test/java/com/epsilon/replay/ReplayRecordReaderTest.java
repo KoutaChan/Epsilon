@@ -1,11 +1,15 @@
 package com.epsilon.replay;
 
 import com.epsilon.core.Tile;
-import com.google.gson.*;
-import java.io.*;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 import java.util.zip.GZIPOutputStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -102,7 +106,7 @@ public final class ReplayRecordReaderTest {
       var files = ReplayRecordReader.listRecordFiles(directory, 0);
       Assert.assertEquals(
           files.stream().map(path -> path.getFileName().toString()).toList(),
-          java.util.List.of("a.xml.gz", "b.jsonl.gz", "c.mjai", "d.json", "e.pb", "f.majsoul"));
+          List.of("a.xml.gz", "b.jsonl.gz", "c.mjai", "d.json", "e.pb", "f.majsoul"));
       Assert.assertEquals(ReplayRecordReader.listRecordFiles(directory, 2).size(), 2);
       Assert.assertEquals(
           ReplayRecordReader.listRecordFiles(directory.resolve("notes.txt"), 0).size(), 1);

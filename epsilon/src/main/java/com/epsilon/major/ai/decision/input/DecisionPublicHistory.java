@@ -51,7 +51,7 @@ public final class DecisionPublicHistory {
       int riichiIndex = queryRiver.riichiDeclarationIndex();
       int riichiAnchor =
           riichiIndex >= 0
-              ? queryRiver.discard(riichiIndex).creationEvent()
+              ? queryRiver.event(riichiIndex)
               : state.isRiichi(querySeat) ? UNKNOWN_EVENT : ABSENT_EVENT;
       VisibleHand queryHand = state.hand(querySeat);
       int openMeldAnchor = lastMeldEvent(queryHand, false);
@@ -65,7 +65,7 @@ public final class DecisionPublicHistory {
           int packed =
               index < river.size()
                   ? pack(
-                      river.discard(index).creationEvent(),
+                      river.event(index),
                       ABSENT_EVENT,
                       riichiAnchor,
                       openMeldAnchor,
@@ -109,10 +109,6 @@ public final class DecisionPublicHistory {
           kan && meld.type() == Meld.Type.KAKAN
               ? hand.meldKakanEvent(index)
               : hand.meldCreationEvent(index);
-      if (event == UNKNOWN_EVENT) {
-        // 時刻不明の面子と既知面子のどちらが最後かは推測しない。
-        return UNKNOWN_EVENT;
-      }
       latest = Math.max(latest, event);
     }
     return latest;

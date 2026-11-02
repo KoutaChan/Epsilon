@@ -12,7 +12,7 @@ import path from "node:path";
 import { gunzip } from "node:zlib";
 import { promisify } from "node:util";
 
-export const CURRENT_RESULT_FORMAT_VERSION = 4;
+export const CURRENT_RESULT_FORMAT_VERSION = 5;
 
 export interface ModelSnapshot {
   modelId: string;

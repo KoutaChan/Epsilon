@@ -15,28 +15,27 @@ final class TurnActionGenerator {
 
   private TurnActionGenerator() {}
 
+  /** ツモ後の合法手を decision へ書く。ツモ和了が合法なら、その点も decision の即時和了の箱へ書く。 */
   static void generateInto(
-      List<Action> actions,
+      EngineDecisionPoint decision,
       GameState state,
       int player,
       TurnEvent.Draw draw,
-      EngineDecisionPoint decision,
       HandScoreEvaluator scoreEvaluator,
       HandShapeAnalyzer shapeAnalyzer) {
+    List<Action> actions = decision.mutableLegalActions();
     actions.clear();
     Hand hand = state.hand(player);
 
     boolean canTsumo =
-        decision == null
-            ? WinLegality.canTsumo(state, player, draw, scoreEvaluator, shapeAnalyzer)
-            : WinLegality.evaluateTsumoInto(
-                state,
-                player,
-                draw,
-                decision.mutableImmediateWinResult(),
-                scoreEvaluator,
-                shapeAnalyzer);
-    if (decision != null) decision.setImmediateWinAvailable(canTsumo);
+        WinLegality.evaluateTsumoInto(
+            state,
+            player,
+            draw,
+            decision.mutableImmediateWinResult(),
+            scoreEvaluator,
+            shapeAnalyzer);
+    decision.setImmediateWinAvailable(canTsumo);
     if (canTsumo) {
       actions.add(Action.tsumoAgari());
     }

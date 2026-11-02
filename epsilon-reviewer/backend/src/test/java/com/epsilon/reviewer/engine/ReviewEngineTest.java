@@ -3,20 +3,56 @@ package com.epsilon.reviewer.engine;
 import ai.djl.Device;
 import ai.djl.Model;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.core.*;
+import com.epsilon.core.Action;
+import com.epsilon.core.AkaTileMask;
+import com.epsilon.core.GameState;
+import com.epsilon.core.PublicObservation;
+import com.epsilon.core.Tile;
 import com.epsilon.nano.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.nano.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.nano.ai.network.NetworkFactory;
-import com.epsilon.replay.*;
-import com.epsilon.replay.ReplayEvent.*;
-import com.epsilon.reviewer.dto.*;
+import com.epsilon.replay.DecisionPoint;
+import com.epsilon.replay.RecordCompletion;
+import com.epsilon.replay.RecordFormat;
+import com.epsilon.replay.RecordMetadata;
+import com.epsilon.replay.ReplayEngine;
+import com.epsilon.replay.ReplayEvent;
+import com.epsilon.replay.ReplayEvent.Dahai;
+import com.epsilon.replay.ReplayEvent.Dora;
+import com.epsilon.replay.ReplayEvent.Pon;
+import com.epsilon.replay.ReplayEvent.StartGame;
+import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.replay.ReplayEvent.Tsumo;
+import com.epsilon.replay.ReplayObserver;
+import com.epsilon.replay.ReplayRecord;
+import com.epsilon.reviewer.dto.ActionCandidate;
+import com.epsilon.reviewer.dto.PreparedRecord;
+import com.epsilon.reviewer.dto.ReplayStep;
+import com.epsilon.reviewer.dto.ReviewResult;
+import com.epsilon.reviewer.dto.TableState;
 import com.epsilon.reviewer.model.ModelDefinition;
-import com.google.gson.*;
+import com.epsilon.spi.ReviewEvaluation;
+import com.epsilon.spi.ReviewPolicy;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.function.Function;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -286,6 +322,95 @@ public class ReviewEngineTest {
   }
 
   @Test
+  public void valuedPolicySortsByValueLossThenProbabilityAndKeepsTheChosenAction() {
+    var record = record();
+    List<Integer> chosen = new ArrayList<>();
+    ReplayEngine.replay(
+        record.replay(),
+        (point, state, seat, legal) ->
+            chosen.add(point.chosenSlot() < 0 ? -1 : legal.get(point.chosenSlot()).toIndex()));
+    // 価値は actionId の 2 つずつで同じにし、同じ価値の中は確率（actionId が大きいほど高い）の順になることも確かめる。
+    var result =
+        analyze(
+            record,
+            legal -> {
+              float[] values = new float[legal.size()], logits = new float[legal.size()];
+              for (int i = 0; i < legal.size(); i++) {
+                values[i] = -0.001f * (legal.get(i).toIndex() / 2);
+                logits[i] = 0.001f * legal.get(i).toIndex();
+              }
+              return ReviewEvaluation.valued(values, ReviewEvaluation.softmax(logits, 0.02));
+            });
+    var decisions = decisions(result);
+    Assert.assertEquals(decisions.size(), chosen.size());
+    Assert.assertTrue(decisions.stream().anyMatch(step -> step.candidates().size() > 2));
+    for (int s = 0; s < decisions.size(); s++) {
+      List<ActionCandidate> candidates = decisions.get(s).candidates();
+      int best =
+          candidates.stream().mapToInt(candidate -> candidate.actionId() / 2).min().orElseThrow();
+      List<Integer> expected =
+          candidates.stream()
+              .map(ActionCandidate::actionId)
+              .sorted(
+                  Comparator.<Integer>comparingInt(id -> id / 2)
+                      .thenComparing(Comparator.reverseOrder()))
+              .toList();
+      Assert.assertEquals(candidates.stream().map(ActionCandidate::actionId).toList(), expected);
+      Assert.assertEquals(candidates.getFirst().valueLoss().floatValue(), 0f);
+      for (var candidate : candidates) {
+        Assert.assertEquals(
+            candidate.valueLoss().floatValue(), 0.001f * (candidate.actionId() / 2 - best), 1e-5f);
+        Assert.assertEquals(candidate.chosen(), candidate.actionId() == chosen.get(s));
+      }
+    }
+  }
+
+  @Test
+  public void probabilityOnlyPolicyHasNoValueLossAndSortsByProbability() {
+    var result =
+        analyze(
+            record(),
+            legal -> {
+              float[] logits = new float[legal.size()];
+              for (int i = 0; i < legal.size(); i++) logits[i] = 0.001f * legal.get(i).toIndex();
+              return ReviewEvaluation.policy(ReviewEvaluation.softmax(logits, 0.02));
+            });
+    var decisions = decisions(result);
+    Assert.assertTrue(decisions.stream().anyMatch(step -> step.candidates().size() > 2));
+    for (var step : decisions) {
+      List<ActionCandidate> candidates = step.candidates();
+      for (int i = 0; i < candidates.size(); i++) {
+        Assert.assertNull(candidates.get(i).valueLoss());
+        if (i > 0)
+          Assert.assertTrue(candidates.get(i - 1).probability() >= candidates.get(i).probability());
+      }
+      Assert.assertEquals(candidates.stream().filter(ActionCandidate::chosen).count(), 1L);
+    }
+    // 保存と HTTP の JSON（serializeNulls）では、価値のない候補の valueLoss を明示の null で書く。
+    JsonObject candidate =
+        new GsonBuilder()
+            .serializeNulls()
+            .create()
+            .toJsonTree(decisions.getFirst().candidates().getFirst())
+            .getAsJsonObject();
+    Assert.assertTrue(candidate.get("valueLoss").isJsonNull());
+  }
+
+  @Test
+  public void policyOutputForAnotherNumberOfActionsIsRejected() {
+    Assert.expectThrows(
+        IllegalStateException.class,
+        () ->
+            analyze(
+                record(),
+                legal -> {
+                  float[] probabilities = new float[legal.size() + 1];
+                  Arrays.fill(probabilities, 1f / probabilities.length);
+                  return ReviewEvaluation.policy(probabilities);
+                }));
+  }
+
+  @Test
   public void completedGameCannotBeFollowedByAnotherRoundOrAnotherGame() {
     var engine = new ReviewEngine();
     JsonArray games = JsonParser.parseString(mjai(true)).getAsJsonArray();
@@ -293,16 +418,48 @@ public class ReviewEngineTest {
     String combined = games.toString();
     try {
       engine.prepareRecord(combined.getBytes(StandardCharsets.UTF_8), "combined.mjai");
-      org.testng.Assert.fail("Accepted another game after the completed game");
+      Assert.fail("Accepted another game after the completed game");
     } catch (IllegalArgumentException expected) {
-      org.testng.Assert.assertTrue(expected.getMessage().contains("end_game"));
+      Assert.assertTrue(expected.getMessage().contains("end_game"));
     }
+  }
+
+  private static PreparedRecord record() {
+    return new ReviewEngine()
+        .prepareRecord(mjai(true).getBytes(StandardCharsets.UTF_8), "game.mjai");
+  }
+
+  /** 合法手だけから評価する偽の方策で解析する。 */
+  private static ReviewResult analyze(
+      PreparedRecord record, Function<List<Action>, ReviewEvaluation> evaluator) {
+    var model =
+        new ModelDefinition(
+            "fake", "fixed-revision", "Fake", "1", "fake", Path.of("unused"), Map.of());
+    var policy =
+        new ReviewPolicy() {
+          @Override
+          public ReviewEvaluation evaluate(
+              PublicObservation observation, List<Action> legalActions) {
+            return evaluator.apply(legalActions);
+          }
+
+          @Override
+          public void close() {}
+        };
+    return new ReviewEngine().analyzeWithPolicy(record, model, policy, () -> false, ignored -> {});
+  }
+
+  private static List<ReplayStep> decisions(ReviewResult result) {
+    return result.rounds().stream()
+        .flatMap(round -> round.steps().stream())
+        .filter(ReplayStep::decision)
+        .toList();
   }
 
   private static ReplayRecord replayRecord(List<ReplayEvent> events) {
     return new ReplayRecord(
         events,
-        new com.epsilon.replay.RecordMetadata(
+        new RecordMetadata(
             RecordFormat.MJAI, List.of("A", "B", "C", "D"), null, "unavailable", null),
         null,
         RecordCompletion.INCOMPLETE);

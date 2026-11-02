@@ -2,6 +2,8 @@ package com.epsilon.major.ai.belief;
 
 import ai.djl.Device;
 import ai.djl.Model;
+import ai.djl.util.Utils;
+import com.epsilon.io.LegacyBeliefParameters;
 import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 import com.epsilon.major.ai.network.NetworkFactory;
 import com.google.gson.Gson;
@@ -12,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
+import java.util.Locale;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,11 +70,11 @@ public final class EpsilonBeliefCheckpointManager {
     var manifest = loadManifest(dir);
     int hidden = manifest.hidden;
     if (hidden == 0) {
-      int epoch = ai.djl.util.Utils.getCurrentEpoch(dir, MODEL_PREFIX);
+      int epoch = Utils.getCurrentEpoch(dir, MODEL_PREFIX);
       if (epoch < 0) throw new IOException("Belief parameter file not found: " + dir);
       Path parameters =
-          dir.resolve(String.format(java.util.Locale.ROOT, "belief-%04d.params", epoch));
-      hidden = com.epsilon.io.LegacyBeliefParameters.readHidden(parameters);
+          dir.resolve(String.format(Locale.ROOT, "belief-%04d.params", epoch));
+      hidden = LegacyBeliefParameters.readHidden(parameters);
     }
     Model model = NetworkFactory.createBeliefModel(device, hidden);
     try {

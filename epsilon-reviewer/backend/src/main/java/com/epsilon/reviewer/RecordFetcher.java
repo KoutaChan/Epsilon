@@ -1,11 +1,20 @@
 package com.epsilon.reviewer;
 
-import java.io.*;
-import java.net.*;
-import java.net.http.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.net.UnknownHostException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 
 /** 天鳳の牌譜URLとアップロードを扱い、入力サイズと転送先を制限します。 */
 public final class RecordFetcher implements AutoCloseable {

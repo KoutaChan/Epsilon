@@ -4,9 +4,9 @@ import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
 import com.epsilon.core.Meld;
+import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
 import com.epsilon.engine.MahjongTransition;
-import com.epsilon.engine.PostCallDahaiRestriction;
 import com.epsilon.engine.WinLegality.RonStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,8 +18,8 @@ public final class ObservedRoundState {
   /** 副露を反映した直後の判断境界。次のイベントを反映する前に消費する。 */
   public sealed interface MeldResult permits OpenCall, Daiminkan, Kan {}
 
-  /** チー・ポン後の打牌制約。 */
-  public record OpenCall(PostCallDahaiRestriction restriction) implements MeldResult {}
+  /** チー・ポンの後の打牌を待つ（打てる牌は鳴いた副露から {@link com.epsilon.engine.PostCallDiscards} が決める）。 */
+  public record OpenCall(Meld call) implements MeldResult {}
 
   /** 大明槓後は槍槓応答を開かず、嶺上ツモを待つ。 */
   public enum Daiminkan implements MeldResult {
@@ -103,6 +103,24 @@ public final class ObservedRoundState {
 
   /** 打牌を反映する。ツモ切りの判定は入力プロトコル側で確定させる。 */
   public TurnEvent.Discard discard(int player, int tileType, boolean aka, boolean tsumogiri) {
+    return discard(player, tileType, aka, tsumogiri, player == selfSeat);
+  }
+
+  /** 実牌 ID を持つプロトコルの打牌を反映し、自家ではサーバーが確定した実牌だけを消費する。 */
+  public TurnEvent.Discard discardPhysical(int player, int physicalTileId, boolean tsumogiri) {
+    if (player == selfSeat) {
+      if (!selfTiles().containsPhysicalTile(physicalTileId)) {
+        throw new IllegalStateException(
+            "Discarded physical tile is not in hand: " + physicalTileId);
+      }
+      selfTiles().removePhysicalTile(physicalTileId);
+    }
+    return discard(
+        player, Tile.typeOf(physicalTileId), Tile.isAka(physicalTileId), tsumogiri, false);
+  }
+
+  private TurnEvent.Discard discard(
+      int player, int tileType, boolean aka, boolean tsumogiri, boolean consumeHand) {
     boolean riichi = reachDiscardPlayer == player;
     Action action =
         riichi
@@ -110,7 +128,7 @@ public final class ObservedRoundState {
             : Action.dahai(tileType, aka, tsumogiri);
     TurnEvent.Discard discard =
         transition.reconstructDiscard(
-            player, action, continuation != Continuation.CALL_DISCARD, player == selfSeat);
+            player, action, continuation != Continuation.CALL_DISCARD, consumeHand);
     continuation = Continuation.NORMAL;
     if (riichi) {
       reachDiscardPlayer = -1;
@@ -122,9 +140,7 @@ public final class ObservedRoundState {
   public MeldResult meld(int player, Meld meld, int[] consumedPhysicalTileIds) {
     transition.applyReconstructedMeld(player, meld, consumedPhysicalTileIds, player == selfSeat);
     return switch (meld.type()) {
-      case CHI ->
-          openCall(PostCallDahaiRestriction.afterChi(meld.baseTileType(), meld.calledTileType()));
-      case PON -> openCall(PostCallDahaiRestriction.afterPon(meld.baseTileType()));
+      case CHI, PON -> openCall(meld);
       case DAIMINKAN -> {
         continuation = Continuation.RINSHAN_DRAW;
         yield Daiminkan.INSTANCE;
@@ -147,9 +163,9 @@ public final class ObservedRoundState {
     };
   }
 
-  private OpenCall openCall(PostCallDahaiRestriction restriction) {
+  private OpenCall openCall(Meld call) {
     continuation = Continuation.CALL_DISCARD;
-    return new OpenCall(restriction);
+    return new OpenCall(call);
   }
 
   /** 次の当該プレイヤーの打牌をリーチ宣言牌として扱う。支払いは成立通知で行う。 */

@@ -11,6 +11,8 @@ import ai.djl.nn.core.Linear;
 import ai.djl.nn.transformer.IdEmbedding;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.PairList;
+import com.epsilon.ai.model.EpsilonMaskedRows;
+import com.epsilon.nano.ai.decision.policy.fusion.DecisionPolicyFusionCandidatePrefixExecution;
 import com.epsilon.nano.ai.model.EpsilonMahjongStateEncoder;
 
 /**
@@ -65,7 +67,8 @@ public abstract class DecisionPolicyAffineExecution implements AutoCloseable {
         NDArray tileContexts,
         NDArray discardTiles,
         NDArray discardSafety,
-        NDArray stateContexts);
+        NDArray states,
+        NDArray stateRows);
 
     public abstract NDArray alternative(
         ParameterStore parameterStore,
@@ -114,7 +117,7 @@ public abstract class DecisionPolicyAffineExecution implements AutoCloseable {
         executionSlots,
         packedTransitionEnabled
             ? new PackedTransitionProjection(
-                manager, parameterStore, transitionFusion, expectedDataType)
+                manager, parameterStore, transitionFusion, expectedDataType, true)
             : null);
   }
 
@@ -266,11 +269,15 @@ public abstract class DecisionPolicyAffineExecution implements AutoCloseable {
         NDArray tileContexts,
         NDArray discardTiles,
         NDArray discardSafety,
-        NDArray stateContexts) {
+        NDArray states,
+        NDArray stateRows) {
       if (owner.packedTransition != null) {
         return owner.packedTransition.project(
-            features, tileContexts, discardTiles, discardSafety, stateContexts);
+            stateRows, features, tileContexts, discardTiles, discardSafety, states);
       }
+      NDArray stateContexts =
+          EpsilonMaskedRows.gather(states, stateRows)
+              .reshape(features.getShape().get(0), 1, 1, owner.hiddenSize);
       return EpsilonMahjongStateEncoder.silu(
           owner.transitionFusion.fuse(
               parameterStore,
@@ -357,14 +364,17 @@ public abstract class DecisionPolicyAffineExecution implements AutoCloseable {
     private final int prefixComponents;
     private final int hiddenSize;
     private final DataType dataType;
+    private final boolean fusedActivation;
     private boolean closed;
 
     PackedTransitionProjection(
         NDManager manager,
         ParameterStore parameterStore,
         EpsilonFeatureFusion transitionFusion,
-        DataType expectedDataType) {
+        DataType expectedDataType,
+        boolean fusedActivation) {
       resourceManager = manager.newSubManager();
+      this.fusedActivation = fusedActivation;
       prefixComponents = transitionFusion.fusedPrefixComponents();
       if (prefixComponents <= 0 || transitionFusion.componentCount() != prefixComponents + 1) {
         resourceManager.close();
@@ -404,7 +414,7 @@ public abstract class DecisionPolicyAffineExecution implements AutoCloseable {
       }
     }
 
-    NDArray project(NDArray... components) {
+    NDArray project(NDArray stateRows, NDArray... components) {
       if (closed) {
         throw new IllegalStateException("packed transition projection is closed");
       }
@@ -421,9 +431,18 @@ public abstract class DecisionPolicyAffineExecution implements AutoCloseable {
         prefixInputs.add(components[component]);
       }
       NDArray packed = NDArrays.concatToType(prefixInputs, lastAxis, dataType);
-      NDArray projected = Linear.linear(packed, prefixWeight, null).singletonOrThrow();
+      // 盤面の射影は候補数によらず一度だけ行い、元の遷移と同じ行対応で取り出す。
       NDArray state =
           Linear.linear(components[prefixComponents], stateWeight, null).singletonOrThrow();
+      state =
+          EpsilonMaskedRows.gather(state, stateRows)
+              .reshape(components[0].getShape().get(0), 1, 1, hiddenSize);
+      if (!fusedActivation) {
+        // 共有表現では元のバイアス付きLinear、状態加算、SiLUの丸め境界を保つ。
+        NDArray projected = Linear.linear(packed, prefixWeight, bias).singletonOrThrow();
+        return addStateProjectionAndActivate(projected, state, hiddenSize);
+      }
+      NDArray projected = Linear.linear(packed, prefixWeight, null).singletonOrThrow();
       return addBiasAndStateProjectionAndActivate(projected, bias, state, hiddenSize);
     }
 
@@ -434,6 +453,16 @@ public abstract class DecisionPolicyAffineExecution implements AutoCloseable {
         resourceManager.close();
       }
     }
+  }
+
+  /** バイアス込みの射影へ状態を加算し、GPUではNano共通演算で同じバッファへSiLUを適用する。 */
+  static NDArray addStateProjectionAndActivate(NDArray projected, NDArray state, int hiddenSize) {
+    if (!projected.getDevice().isGpu())
+      return EpsilonMahjongStateEncoder.silu(projected.addi(state));
+    long rows = projected.getShape().size() / hiddenSize;
+    DecisionPolicyFusionCandidatePrefixExecution.addStateProjectionAndActivate(
+        projected.reshape(rows, 1, hiddenSize), state.reshape(rows, 1, hiddenSize));
+    return projected;
   }
 
   /** バイアス、対応する状態射影、SiLUを段階丸めのまま所有済みバッファへ適用する。 */

@@ -1,12 +1,25 @@
 package com.epsilon.reviewer;
 
-import com.epsilon.reviewer.dto.*;
-import com.google.gson.*;
-import java.io.*;
+import com.epsilon.reviewer.dto.ModelInfo;
+import com.epsilon.reviewer.dto.RecordMetadata;
+import com.epsilon.reviewer.dto.ReviewResult;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.*;
-import java.util.concurrent.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -61,7 +74,7 @@ public final class ResultStoreTest {
       store.save(owner, result(web), source, false);
       Assert.assertEquals(store.history(owner).size(), 1);
       Assert.assertEquals(store.history(owner).get(0).resultId(), web);
-      store.cleanTemporary(java.time.Instant.now().plus(java.time.Duration.ofHours(25)));
+      store.cleanTemporary(Instant.now().plus(Duration.ofHours(25)));
       Assert.expectThrows(ApiException.class, () -> store.openResult(owner, desktop));
       Assert.assertTrue(readCompressedResult(store, owner, web).length > 0);
     } finally {
@@ -156,7 +169,7 @@ public final class ResultStoreTest {
               original.model(),
               original.rounds());
       Assert.expectThrows(
-          java.io.IOException.class, () -> store.save(owner, duplicate, source, false));
+          IOException.class, () -> store.save(owner, duplicate, source, false));
       Assert.assertEquals(store.history(owner).size(), 1);
       Assert.assertEquals(
           new Gson().fromJson(readJsonResult(store, owner, id), ReviewResult.class), original);
@@ -170,7 +183,7 @@ public final class ResultStoreTest {
 
   @DataProvider(name = "unsupportedResultVersions")
   public Object[][] unsupportedResultVersions() {
-    return new Object[][] {{1}, {2}, {3}, {ReviewResult.CURRENT_FORMAT_VERSION + 1}};
+    return new Object[][] {{1}, {2}, {3}, {4}, {ReviewResult.CURRENT_FORMAT_VERSION + 1}};
   }
 
   @Test(dataProvider = "unsupportedResultVersions")
@@ -224,7 +237,7 @@ public final class ResultStoreTest {
       }
       var restarted = new ResultStore(data);
       Assert.assertTrue(restarted.history(owner).isEmpty());
-      restarted.cleanTemporary(java.time.Instant.now().plus(java.time.Duration.ofHours(25)));
+      restarted.cleanTemporary(Instant.now().plus(Duration.ofHours(25)));
       for (String id : ids) {
         Path directory = data.resolve(owner).resolve(id);
         Assert.assertTrue(Files.isRegularFile(directory.resolve("result.json")));
@@ -255,6 +268,31 @@ public final class ResultStoreTest {
   }
 
   @Test
+  public void compressedResultOfAnOlderFormatVersionIsHiddenAndNotOpened() throws Exception {
+    Path data = Files.createTempDirectory("reviewer-older-version-");
+    try {
+      var store = new ResultStore(data);
+      String owner = "a".repeat(64), id = UUID.randomUUID().toString();
+      var source = new RecordFetcher.SourceRecord(new byte[] {1}, "game.mjson", "mjai");
+      store.save(owner, result(id), source, false);
+      Path summary = data.resolve(owner).resolve(id).resolve("summary.json");
+      JsonObject older = JsonParser.parseString(Files.readString(summary)).getAsJsonObject();
+      older.addProperty("formatVersion", ReviewResult.CURRENT_FORMAT_VERSION - 1);
+      Files.writeString(summary, older.toString());
+      var restarted = new ResultStore(data);
+      Assert.assertTrue(restarted.history(owner).isEmpty());
+      Assert.assertEquals(
+          Assert.expectThrows(ApiException.class, () -> restarted.openResult(owner, id)).code(),
+          "invalid_result");
+      Assert.assertEquals(
+          Assert.expectThrows(ApiException.class, () -> restarted.openSharedResult(id)).code(),
+          "share_not_found");
+    } finally {
+      delete(data);
+    }
+  }
+
+  @Test
   public void openedCompressedResultRemainsReadableAfterDeletionWithoutKeepingTheStoreLocked()
       throws Exception {
     Path data = Files.createTempDirectory("reviewer-open-result-");
@@ -277,7 +315,7 @@ public final class ResultStoreTest {
         Assert.assertEquals(
             Assert.expectThrows(ApiException.class, () -> store.openSharedResult(id)).code(),
             "share_not_found");
-        store.cleanTemporary(java.time.Instant.now());
+        store.cleanTemporary(Instant.now());
         Assert.assertTrue(Files.exists(data.resolve(owner).resolve(id).resolve(".deleted")));
         Assert.assertEquals(opened.input().readAllBytes(), expected);
         opened.input().close();
@@ -317,7 +355,7 @@ public final class ResultStoreTest {
       Assert.assertEquals(
           Assert.expectThrows(ApiException.class, () -> restarted.openSharedResult(id)).code(),
           "share_not_found");
-      restarted.cleanTemporary(java.time.Instant.now());
+      restarted.cleanTemporary(Instant.now());
       Assert.assertFalse(Files.exists(directory));
     } finally {
       delete(data);
@@ -384,7 +422,7 @@ public final class ResultStoreTest {
               });
       try {
         Assert.assertTrue(writing.await(5, TimeUnit.SECONDS), "The JSON writer did not start.");
-        store.cleanTemporary(java.time.Instant.now());
+        store.cleanTemporary(Instant.now());
         Assert.assertFalse(Files.exists(orphan));
       } finally {
         resume.countDown();

@@ -1,9 +1,13 @@
 package com.epsilon.pico.workflow.evaluation;
 
 import ai.djl.Model;
+import com.epsilon.config.settings.DecisionInferenceFusionSettings;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.pico.ai.decision.duel.EpsilonDecisionEvaluationRunner;
 import com.epsilon.pico.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.pico.ai.decision.training.EpsilonDecisionCheckpointManager;
+import com.epsilon.pico.ai.network.NetworkFactory;
+import com.epsilon.pico.config.settings.DecisionInferenceSettings;
 import com.epsilon.workflow.CommandWorkflow;
 import com.epsilon.workflow.StandardWorkflowDefinitions;
 import com.epsilon.workflow.WorkflowArguments;
@@ -33,16 +37,16 @@ public final class DecisionEvaluationWorkflow
       throw new IOException("Decision checkpoint not found: " + directory);
     }
     var inference =
-        arguments.settings().bind(com.epsilon.pico.config.settings.DecisionInferenceSettings.class);
+        arguments.settings().bind(DecisionInferenceSettings.class);
     var fusion =
         arguments
             .settings()
-            .bind(com.epsilon.config.settings.DecisionInferenceFusionSettings.class);
-    var devices = arguments.settings().bind(com.epsilon.config.settings.DeviceSettings.class);
+            .bind(DecisionInferenceFusionSettings.class);
+    var devices = arguments.settings().bind(DeviceSettings.class);
     try (Model model =
             EpsilonDecisionCheckpointManager.loadForInference(
                 checkpoint,
-                com.epsilon.pico.ai.network.NetworkFactory.getInferenceDevices(devices).primary(),
+                NetworkFactory.getInferenceDevices(devices).primary(),
                 inference);
         EpsilonDecisionInferenceServer server =
             EpsilonDecisionInferenceServer.forFrozenModel(

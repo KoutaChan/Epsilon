@@ -18,6 +18,7 @@ import com.epsilon.nano.ai.network.NetworkFactory;
 import com.epsilon.nano.config.settings.DecisionInferenceSettings;
 import com.epsilon.nano.config.settings.DecisionOpponentSettings;
 import com.epsilon.nano.config.settings.DecisionSelectedPgCampaignSettings;
+import com.epsilon.nano.config.settings.DecisionSettings;
 import com.epsilon.nano.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.util.SeedMixer;
@@ -211,7 +212,7 @@ public final class DecisionKlTargetTrial {
             settings.optimizer().valueLearningRate(),
             contract,
             settings.optimizer().actorKlControl(),
-            config.bind(com.epsilon.nano.config.settings.DecisionSettings.class));
+            config.bind(DecisionSettings.class));
     if (state == null || !state.targetResolved())
       throw new IllegalStateException("complete KL calibration before a target trial");
     // 学習前状態を一度だけディスクへ保存する。各実験条件はこの同じ AdamW の状態と更新回数から始める。
@@ -260,7 +261,7 @@ public final class DecisionKlTargetTrial {
             DecisionLearner.openWorking(
                 initial,
                 NetworkFactory.getLearnerDevice(
-                    config.bind(com.epsilon.config.settings.DeviceSettings.class)),
+                    config.bind(DeviceSettings.class)),
                 settings.optimizer(),
                 manifest.learnerContract(),
                 context,
@@ -270,7 +271,7 @@ public final class DecisionKlTargetTrial {
                 ? EpsilonGrpTrainingSession.openInferenceOnly(
                     root,
                     NetworkFactory.getGrpDevices(
-                            config.bind(com.epsilon.config.settings.DeviceSettings.class))
+                            config.bind(DeviceSettings.class))
                         .primary(),
                     config)
                 : EpsilonGrpTrainingSession.disabled(root.resolve("grp"))) {

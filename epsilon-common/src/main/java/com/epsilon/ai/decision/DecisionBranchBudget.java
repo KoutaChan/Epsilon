@@ -2,7 +2,7 @@ package com.epsilon.ai.decision;
 
 import com.epsilon.config.settings.DecisionBranchComparisonSettings;
 
-/** スケジューラー所有の追加推論予算。通常推論で獲得した行数だけを使う。 */
+/** スケジューラー所有の追加推論予算。通常の推論行数を基準に新しい枝の開始を制御する。 */
 public final class DecisionBranchBudget {
   private final DecisionBranchComparisonSettings settings;
   private long mainRows;
@@ -39,6 +39,11 @@ public final class DecisionBranchBudget {
     }
     extraRows += rows;
     return true;
+  }
+
+  /** 開始済みの枝を完了させる収集器用。超過分は次の枝の開始判定で抑制する。 */
+  public synchronized void recordExtraRows(int rows) {
+    extraRows += rows;
   }
 
   /** 追加枝の実行枠を解放する。 */

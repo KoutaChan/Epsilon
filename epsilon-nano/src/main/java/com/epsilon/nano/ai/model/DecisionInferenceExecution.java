@@ -1,6 +1,8 @@
 package com.epsilon.nano.ai.model;
 
 import ai.djl.ndarray.NDManager;
+import com.epsilon.nano.ai.decision.policy.DecisionCandidateExecution;
+import com.epsilon.nano.ai.decision.policy.DecisionCandidateForward;
 import com.epsilon.nano.ai.decision.policy.DecisionPolicyExecution;
 import com.epsilon.nano.ai.model.fusion.EpsilonMahjongStateReadoutGroupExecution;
 import com.epsilon.nano.ai.model.fusion.EpsilonPlayerMemoryFusionExecution;
@@ -20,6 +22,7 @@ public final class DecisionInferenceExecution implements AutoCloseable {
   private final EpsilonStrategicContextFusionExecution strategic;
   private final EpsilonMahjongStateReadoutGroupExecution readout;
   private final DecisionPolicyExecution policy;
+  private final DecisionCandidateExecution candidates;
   private boolean closed;
 
   DecisionInferenceExecution(
@@ -27,12 +30,14 @@ public final class DecisionInferenceExecution implements AutoCloseable {
       EpsilonTileRelationFusionExecution tileRelation,
       EpsilonStrategicContextFusionExecution strategic,
       EpsilonMahjongStateReadoutGroupExecution readout,
-      DecisionPolicyExecution policy) {
+      DecisionPolicyExecution policy,
+      DecisionCandidateExecution candidates) {
     this.playerMemory = playerMemory;
     this.tileRelation = tileRelation;
     this.strategic = strategic;
     this.readout = readout;
     this.policy = policy;
+    this.candidates = candidates;
   }
 
   /** 空いている共通枠で一つのネットワーク順伝播を開始する。 */
@@ -44,18 +49,22 @@ public final class DecisionInferenceExecution implements AutoCloseable {
     EpsilonTileRelationFusionExecution.Forward tileRelationForward = null;
     EpsilonStrategicContextFusionExecution.Forward strategicForward = null;
     EpsilonMahjongStateReadoutGroupExecution.Forward readoutForward = null;
+    DecisionCandidateExecution.Forward candidateForward = null;
     try {
       playerMemoryForward = playerMemory == null ? null : playerMemory.beginForward(workingManager);
       tileRelationForward = tileRelation == null ? null : tileRelation.beginForward(workingManager);
       strategicForward = strategic == null ? null : strategic.beginForward(workingManager);
       readoutForward = readout == null ? null : readout.beginForward(workingManager);
+      candidateForward = candidates == null ? null : candidates.beginForward(workingManager);
       return new Forward(
-          policy.beginForward(workingManager),
+          policy == null ? null : policy.beginForward(workingManager),
+          candidateForward,
           playerMemoryForward,
           tileRelationForward,
           strategicForward,
           readoutForward);
     } catch (RuntimeException | Error failure) {
+      if (candidateForward != null) candidateForward.poison(failure);
       if (readoutForward != null) {
         readoutForward.poison(failure);
       }
@@ -74,7 +83,8 @@ public final class DecisionInferenceExecution implements AutoCloseable {
 
   /** 完了未確認のデバイス処理を保持しているなら{@code true}を返す。 */
   public boolean hasIncompleteWork() {
-    return policy.hasIncompleteWork()
+    return (policy != null && policy.hasIncompleteWork())
+        || (candidates != null && candidates.hasIncompleteWork())
         || (readout != null && readout.hasIncompleteWork())
         || (strategic != null && strategic.hasIncompleteWork())
         || (tileRelation != null && tileRelation.hasIncompleteWork())
@@ -83,10 +93,12 @@ public final class DecisionInferenceExecution implements AutoCloseable {
 
   /** 実行コンテキストを利用不能にした最初の失敗を返す。 */
   public Throwable failure() {
-    Throwable policyFailure = policy.failure();
+    Throwable policyFailure = policy == null ? null : policy.failure();
     if (policyFailure != null) {
       return policyFailure;
     }
+    Throwable candidateFailure = candidates == null ? null : candidates.failure();
+    if (candidateFailure != null) return candidateFailure;
     Throwable readoutFailure = readout == null ? null : readout.failure();
     if (readoutFailure != null) {
       return readoutFailure;
@@ -105,9 +117,16 @@ public final class DecisionInferenceExecution implements AutoCloseable {
   public void releaseFailedForwardAfterCompletion() {
     Throwable failure = null;
     try {
-      policy.releaseFailedForwardAfterCompletion();
+      if (policy != null) policy.releaseFailedForwardAfterCompletion();
     } catch (Throwable closeFailure) {
       failure = closeFailure;
+    }
+    if (candidates != null) {
+      try {
+        candidates.releaseFailedForwardAfterCompletion();
+      } catch (Throwable closeFailure) {
+        failure = addFailure(failure, closeFailure);
+      }
     }
     if (readout != null) {
       try {
@@ -147,9 +166,16 @@ public final class DecisionInferenceExecution implements AutoCloseable {
     }
     Throwable failure = null;
     try {
-      policy.close();
+      if (policy != null) policy.close();
     } catch (Throwable closeFailure) {
       failure = closeFailure;
+    }
+    if (candidates != null) {
+      try {
+        candidates.close();
+      } catch (Throwable closeFailure) {
+        failure = addFailure(failure, closeFailure);
+      }
     }
     if (readout != null) {
       try {
@@ -189,6 +215,7 @@ public final class DecisionInferenceExecution implements AutoCloseable {
   public static final class Forward {
 
     private final DecisionPolicyExecution.Forward policy;
+    private final DecisionCandidateExecution.Forward candidates;
     private final EpsilonPlayerMemoryFusionExecution.Forward playerMemory;
     private final EpsilonTileRelationFusionExecution.Forward tileRelation;
     private final EpsilonStrategicContextFusionExecution.Forward strategic;
@@ -198,11 +225,13 @@ public final class DecisionInferenceExecution implements AutoCloseable {
 
     private Forward(
         DecisionPolicyExecution.Forward policy,
+        DecisionCandidateExecution.Forward candidates,
         EpsilonPlayerMemoryFusionExecution.Forward playerMemory,
         EpsilonTileRelationFusionExecution.Forward tileRelation,
         EpsilonStrategicContextFusionExecution.Forward strategic,
         EpsilonMahjongStateReadoutGroupExecution.Forward readout) {
       this.policy = policy;
+      this.candidates = candidates;
       this.playerMemory = playerMemory;
       this.tileRelation = tileRelation;
       this.strategic = strategic;
@@ -211,6 +240,10 @@ public final class DecisionInferenceExecution implements AutoCloseable {
 
     DecisionPolicyExecution.Forward policy() {
       return policy;
+    }
+
+    public DecisionCandidateForward candidates() {
+      return candidates == null ? policy : candidates;
     }
 
     EpsilonPlayerMemoryFusionExecution.Forward playerMemory() {
@@ -248,7 +281,8 @@ public final class DecisionInferenceExecution implements AutoCloseable {
         if (readout != null) {
           dependencies.add(readout.seal());
         }
-        dependencies.add(policy.seal());
+        if (candidates != null) dependencies.add(candidates.seal());
+        if (policy != null) dependencies.add(policy.seal());
         sealed = true;
         return dependencies;
       } catch (RuntimeException | Error failure) {
@@ -263,7 +297,8 @@ public final class DecisionInferenceExecution implements AutoCloseable {
         return;
       }
       poisoned = true;
-      policy.poison(failure);
+      if (policy != null) policy.poison(failure);
+      if (candidates != null) candidates.poison(failure);
       if (readout != null) {
         readout.poison(failure);
       }
@@ -281,7 +316,7 @@ public final class DecisionInferenceExecution implements AutoCloseable {
 
   private static final class Dependencies implements AutoCloseable {
 
-    private final AutoCloseable[] values = new AutoCloseable[5];
+    private final AutoCloseable[] values = new AutoCloseable[6];
     private int size;
 
     private void add(AutoCloseable value) {

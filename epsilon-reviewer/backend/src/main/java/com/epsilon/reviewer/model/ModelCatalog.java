@@ -2,18 +2,38 @@ package com.epsilon.reviewer.model;
 
 import com.epsilon.reviewer.ApiError;
 import com.epsilon.reviewer.ApiException;
-import com.google.gson.*;
-import java.io.*;
-import java.nio.file.*;
-import java.security.*;
-import java.util.*;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.Reader;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /** 起動時に読み込んだモデルの識別情報とチェックポイントを固定して保持する一覧。 */
 public final class ModelCatalog {
   private final List<Entry> entries;
   private final ModelKey defaultModel;
 
-  public ModelCatalog(Path config) throws IOException {
+  /**
+   * @param config モデル一覧の JSON（null なら空の一覧）
+   * @param supportedSeries 解析できるモデル系列の ID（それ以外の系列のモデルは利用不可として載せる）
+   */
+  public ModelCatalog(Path config, Set<String> supportedSeries) throws IOException {
     if (config == null) {
       entries = List.of();
       defaultModel = null;
@@ -54,7 +74,7 @@ public final class ModelCatalog {
               checkpoint,
               options);
       ApiError unavailable = null;
-      if (!Set.of("epsilon", "epsilon-nano", "epsilon-pico").contains(definition.series()))
+      if (!supportedSeries.contains(definition.series()))
         unavailable = new ApiError("unsupported_series", "Model series is not supported.");
       if (!Files.isDirectory(checkpoint) || !Files.isReadable(checkpoint))
         unavailable = new ApiError("model_unavailable", "Checkpoint is unavailable.");
@@ -163,9 +183,9 @@ public final class ModelCatalog {
             path.relativize(file)
                 .toString()
                 .replace('\\', '/')
-                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                .getBytes(StandardCharsets.UTF_8));
         digest.update((byte) 0);
-        digest.update(java.nio.ByteBuffer.allocate(Long.BYTES).putLong(Files.size(file)).array());
+        digest.update(ByteBuffer.allocate(Long.BYTES).putLong(Files.size(file)).array());
         try (InputStream in = Files.newInputStream(file);
             var stream = new DigestInputStream(in, digest)) {
           stream.transferTo(OutputStream.nullOutputStream());

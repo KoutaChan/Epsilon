@@ -9,7 +9,6 @@ import com.epsilon.core.HandView;
 import com.epsilon.core.Meld;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
-import java.util.List;
 
 /**
  * 合法手を自家手牌へ適用する処理と、局面を変更せずに適用後の手牌を調べる処理を共有する。
@@ -58,7 +57,7 @@ public final class ActionEffect {
       Action action,
       ProjectedHand scratch,
       ProjectionResult result,
-      List<Action> immediateDiscards) {
+      EngineActionBuffer immediateDiscards) {
     switch (action.type()) {
       case DAHAI, RIICHI_DAHAI, PASS -> {
         immediateDiscards.clear();
@@ -79,20 +78,19 @@ public final class ActionEffect {
       Action action,
       ProjectedHand resultingHand,
       ProjectionResult result,
-      List<Action> immediateDiscards) {
-    resultingHand.copyFrom(state.hand(player));
-    resultingHand.setOccurrenceAfterRiverIndex(state.river(player).size());
+      EngineActionBuffer immediateDiscards) {
+    loadHand(state, player, resultingHand);
     immediateDiscards.clear();
     switch (action.type()) {
       case DAHAI, RIICHI_DAHAI -> {
         removeDiscardedTile(resultingHand, action.tileType(), action.usesAkaTileFromHand());
         result.set(NextStep.DECISION_COMPLETE, Meld.AkaSource.NONE);
       }
-      case CHI ->
-          projectChiInto(state, action, resultingHand, resultingHand, result, immediateDiscards);
-      case PON ->
-          projectPonInto(
-              state, player, action, resultingHand, resultingHand, result, immediateDiscards);
+      case CHI, PON -> {
+        Meld call = applyCall(state, player, action, resultingHand);
+        PostCallDiscards.generateInto(resultingHand, call, immediateDiscards);
+        result.set(NextStep.IMMEDIATE_DISCARD, call.akaSource());
+      }
       case DAIMINKAN -> {
         Meld meld = createDaiminkan(resultingHand, state, player, currentDiscard(state));
         result.set(NextStep.RINSHAN_DRAW, meld.akaSource());
@@ -109,6 +107,41 @@ public final class ActionEffect {
           result.set(NextStep.ROUND_COMPLETE, Meld.AkaSource.NONE);
       case PASS -> result.set(NextStep.DECISION_COMPLETE, Meld.AkaSource.NONE);
     }
+  }
+
+  /**
+   * 席の合法なチー・ポンを仮の手へ適用し、鳴いた副露を返す。判断の解析の遷移（{@link #projectInto}）と同じ作り方で、鳴いた後に打てる牌
+   * （{@link PostCallDiscards}）を判断の解析を通さずに求める口（PRISM の O の捕獲は {@link
+   * com.epsilon.core.PublicObservation#projectCall} から借用局面で呼ぶ）。
+   *
+   * @param state 他家の打牌に応答している局面（呼び出しの間だけ借りる）
+   * @param player 鳴く席
+   * @param call その席の合法なチーかポン
+   * @param afterCall 書く先（鳴いた後の手）
+   * @return 鳴いた副露
+   * @throws IllegalArgumentException チー・ポンでないとき
+   * @throws IllegalStateException 直前の出来事が打牌でないとき
+   */
+  public static Meld projectCallInto(
+      GameState state, int player, Action call, ProjectedHand afterCall) {
+    loadHand(state, player, afterCall);
+    return applyCall(state, player, call, afterCall);
+  }
+
+  /** 席の今の手を仮の手へ写す（副露の時系列の位置は今の河の長さ）。 */
+  private static void loadHand(GameState state, int player, ProjectedHand hand) {
+    hand.copyFrom(state.hand(player));
+    hand.setOccurrenceAfterRiverIndex(state.river(player).size());
+  }
+
+  /** 直前の打牌へのチー・ポンを仮の手へ適用する。 */
+  private static Meld applyCall(GameState state, int player, Action call, ProjectedHand hand) {
+    TurnEvent.Discard discard = currentDiscard(state);
+    return switch (call.type()) {
+      case CHI -> createChi(hand, discard, call);
+      case PON -> createPon(hand, state, player, discard, call.usesAkaTileFromHand());
+      default -> throw new IllegalArgumentException("call projection requires CHI or PON: " + call);
+    };
   }
 
   static void projectImmediateDiscardInto(
@@ -190,36 +223,6 @@ public final class ActionEffect {
       Action chiAction,
       GameHandMutationTarget mutationTarget) {
     return createChi(mutationTarget.bind(state, player), discard, chiAction);
-  }
-
-  private static void projectChiInto(
-      GameState state,
-      Action action,
-      ProjectedHand resultingHand,
-      MutationTarget target,
-      ProjectionResult result,
-      List<Action> immediateDiscards) {
-    TurnEvent.Discard discard = currentDiscard(state);
-    Meld meld = createChi(target, discard, action);
-    PostCallDahaiRestriction restriction =
-        PostCallDahaiRestriction.afterChi(action.chiSequenceBaseTileType(), discard.tileType());
-    ActionGenerator.generateCallDahaiActionsInto(immediateDiscards, resultingHand, restriction);
-    result.set(NextStep.IMMEDIATE_DISCARD, meld.akaSource());
-  }
-
-  private static void projectPonInto(
-      GameState state,
-      int player,
-      Action action,
-      ProjectedHand resultingHand,
-      MutationTarget target,
-      ProjectionResult result,
-      List<Action> immediateDiscards) {
-    TurnEvent.Discard discard = currentDiscard(state);
-    Meld meld = createPon(target, state, player, discard, action.usesAkaTileFromHand());
-    ActionGenerator.generateCallDahaiActionsInto(
-        immediateDiscards, resultingHand, PostCallDahaiRestriction.afterPon(discard.tileType()));
-    result.set(NextStep.IMMEDIATE_DISCARD, meld.akaSource());
   }
 
   private static boolean removeDiscardedTile(
@@ -433,8 +436,11 @@ public final class ActionEffect {
     }
   }
 
-  /** 34要素配列を持たない行動候補専用手牌。生成後は外部から変更できない。 */
-  static final class ProjectedHand implements HandView, MutationTarget {
+  /**
+   * 34要素配列を持たない行動候補専用手牌。書くのは ActionEffect の射影だけで、使う側は {@link HandView} として読む。持ち主（判断の解析・
+   * O の捕獲の作業域）が使い回し、次の射影まで有効。
+   */
+  public static final class ProjectedHand implements HandView, MutationTarget {
     private static final int MELD_ID_BITS = 14;
     private static final int TIMELINE_BITS = 8;
     private static final int TIMELINE_MASK = (1 << TIMELINE_BITS) - 1;
@@ -459,7 +465,7 @@ public final class ActionEffect {
     private int kanCount;
     private int occurrenceAfterRiverIndex;
 
-    ProjectedHand() {}
+    public ProjectedHand() {}
 
     void copyFrom(HandView source) {
       shape.load(source);

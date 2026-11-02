@@ -5,9 +5,11 @@ import com.epsilon.ai.belief.EpsilonBeliefSample;
 import com.epsilon.ai.belief.EpsilonBeliefTrainer;
 import com.epsilon.config.settings.BeliefPretrainSettings;
 import com.epsilon.config.settings.BeliefSettings;
+import com.epsilon.config.settings.DeviceSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.nano.ai.decision.input.DecisionHostBatch;
 import com.epsilon.nano.ai.network.NetworkFactory;
+import com.epsilon.nano.config.settings.EpsilonSettings;
 import com.epsilon.nano.training.EpsilonLogPretrainDataCollector;
 import com.epsilon.util.FormatUtils;
 import java.nio.file.Path;
@@ -40,7 +42,7 @@ public final class EpsilonBeliefLogPretrainRunner {
         logDir,
         epochs,
         maxFiles,
-        com.epsilon.nano.config.settings.EpsilonSettings.defaults());
+        EpsilonSettings.defaults());
   }
 
   public static TrainSummary pretrainFromLogs(
@@ -66,8 +68,8 @@ public final class EpsilonBeliefLogPretrainRunner {
       model =
           NetworkFactory.createBeliefModel(
               NetworkFactory.getLearnerDevice(
-                  settings.bind(com.epsilon.config.settings.DeviceSettings.class)),
-              settings.bind(com.epsilon.config.settings.BeliefSettings.class).hidden());
+                  settings.bind(DeviceSettings.class)),
+              settings.bind(BeliefSettings.class).hidden());
       log.info("Belief log pretrain created a new model");
     } else {
       EpsilonBeliefCheckpointBundle manifest =
@@ -78,7 +80,7 @@ public final class EpsilonBeliefLogPretrainRunner {
           EpsilonBeliefCheckpointManager.load(
               checkpoint,
               NetworkFactory.getLearnerDevice(
-                  settings.bind(com.epsilon.config.settings.DeviceSettings.class)));
+                  settings.bind(DeviceSettings.class)));
       log.info(
           "Belief log pretrain loaded checkpoint: checkpoint={} step={} iteration={}",
           checkpoint,

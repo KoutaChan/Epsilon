@@ -6,7 +6,7 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.pico.ai.network.NetworkDevices;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.pico.ai.network.NetworkFactory;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.nio.file.Files;

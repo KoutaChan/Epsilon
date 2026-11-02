@@ -8,13 +8,13 @@ import ai.djl.ndarray.types.Shape;
 import com.epsilon.ai.decision.DecisionBranchLoss;
 import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.nano.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.nano.ai.decision.input.DecisionDeviceBatch;
 import com.epsilon.nano.ai.decision.input.DecisionInputSchema;
 import com.epsilon.nano.ai.decision.policy.DecisionAlternative;
 import com.epsilon.nano.ai.decision.policy.DecisionPolicyScores;
 import com.epsilon.nano.ai.decision.policy.EpsilonDecisionPolicyGraph;
 import com.epsilon.nano.ai.decision.training.DecisionOnlineLossConfig;
+import com.epsilon.nano.config.settings.DecisionSettings;
 
 /**
  * 牌譜による方策の模倣学習、スカラー価値の学習、選択行動の方策勾配学習の損失を計算する。
@@ -129,7 +129,7 @@ public final class EpsilonDecisionLoss {
         config,
         hasPositiveActorWeight,
         debugValidatePolicyGradientInputs,
-        EpsilonUtilityTargets.configuredTrainingProfile());
+        DecisionSettings.defaults().utilityProfile());
   }
 
   /** モデル生成時の効用の定義を使い、CPU 転送なしで自己対局学習損失を計算する。 */
@@ -518,7 +518,7 @@ public final class EpsilonDecisionLoss {
   public static NDArray computeValueLoss(
       NDArray valueLogits, NDArray valueTarget, NDArray sampleWeight) {
     return computeValueLoss(
-        valueLogits, valueTarget, sampleWeight, EpsilonUtilityTargets.configuredTrainingProfile());
+        valueLogits, valueTarget, sampleWeight, DecisionSettings.defaults().utilityProfile());
   }
 
   /** モデル固有の値域を使う、サンプル重みで正規化した HL-Gauss 目的関数。 */

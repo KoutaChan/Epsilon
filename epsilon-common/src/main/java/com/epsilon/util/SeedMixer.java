@@ -33,4 +33,13 @@ public final class SeedMixer {
   public static long indexed(long baseSeed, long salt, long index) {
     return mix64(baseSeed + salt + index * GOLDEN_GAMMA);
   }
+
+  /** 用途と複数の座標から、スケジューラーの実行順に依存しない乱数系列を導出する。 */
+  public static long derive(long baseSeed, long salt, long... coordinates) {
+    long result = mix64(baseSeed ^ salt);
+    for (long coordinate : coordinates) {
+      result = mix64(result ^ mix64(coordinate));
+    }
+    return result;
+  }
 }

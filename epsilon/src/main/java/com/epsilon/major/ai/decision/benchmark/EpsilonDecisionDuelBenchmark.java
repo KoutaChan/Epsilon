@@ -4,6 +4,7 @@ import com.epsilon.ai.decision.duel.DuelEvaluation;
 import com.epsilon.ai.decision.duel.EpsilonDecisionDuelArena;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.major.ai.decision.duel.EpsilonDecisionDuelSession;
+import com.epsilon.major.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -44,7 +45,7 @@ public final class EpsilonDecisionDuelBenchmark {
         measuredWallSeeds,
         seedBase,
         gamesInFlight,
-        com.epsilon.major.config.settings.EpsilonSettings.defaults());
+        EpsilonSettings.defaults());
   }
 
   public static Report run(

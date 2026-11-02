@@ -13,6 +13,86 @@ import org.testng.annotations.Test;
 public class TenhouSessionTest {
 
   @DataProvider
+  public Object[][] rejoinRequests() {
+    return new Object[][] {
+      {"{\"tag\":\"REJOIN\",\"t\":\"1212,9,r\"}", "1212,9,r"},
+      {"<REJOIN t=\"C12345678,9,r\"/>", "C12345678,9,r"}
+    };
+  }
+
+  @Test(dataProvider = "rejoinRequests")
+  public void rejoinPreservesTheServerTargetAndFlags(String request, String target) {
+    var session = new TenhouSession(new TenhouGameController(noDecision()));
+    Assert.assertEquals(
+        session.handleMessage(request), List.of("{\"tag\":\"JOIN\",\"t\":\"" + target + "\"}"));
+    Assert.assertFalse(session.ended());
+  }
+
+  @Test
+  public void malformedRejoinDoesNotSendAnEmptyJoinRequest() {
+    var session = new TenhouSession(new TenhouGameController(noDecision()));
+    Assert.assertEquals(session.handleMessage("{\"tag\":\"REJOIN\"}"), List.of());
+    Assert.assertEquals(session.handleMessage("<REJOIN t=\"\"/>"), List.of());
+  }
+
+  @DataProvider
+  public Object[][] gameStarts() {
+    return new Object[][] {{"{\"tag\":\"TAIKYOKU\"}"}, {"<TAIKYOKU/>"}};
+  }
+
+  @Test(dataProvider = "gameStarts")
+  public void initialReadinessDoesNotSuppressReadinessAfterTheFirstRound(String start) {
+    var session = new TenhouSession(new TenhouGameController(noDecision()));
+    Assert.assertEquals(
+        session.handleMessage("{\"tag\":\"GO\",\"type\":9,\"lobby\":1212}"),
+        List.of("{\"tag\":\"GOK\"}"));
+    Assert.assertEquals(session.handleMessage(start), List.of("{\"tag\":\"NEXTREADY\"}"));
+    Assert.assertEquals(session.handleMessage(start), List.of());
+    session.handleMessage(init("0,4,8,36,40,44,72,76,80,96,100,104,108"));
+    Assert.assertEquals(session.handleMessage("<RYUUKYOKU/>"), List.of("{\"tag\":\"NEXTREADY\"}"));
+  }
+
+  @Test
+  public void resumingWaitsForTheServerWithoutAcknowledgingAnotherGameStart() {
+    var session = new TenhouSession(new TenhouGameController(noDecision()));
+    Assert.assertEquals(session.handleMessage("{\"tag\":\"SAIKAI\"}"), List.of());
+    Assert.assertEquals(session.handleMessage("<SAIKAI/>"), List.of());
+    Assert.assertFalse(session.ended());
+  }
+
+  @DataProvider
+  public Object[][] ownDrawDiscards() {
+    return new Object[][] {{"{\"tag\":\"D38\"}"}, {"<d38/>"}};
+  }
+
+  @Test(dataProvider = "ownDrawDiscards")
+  public void discardingADrawnCopyDoesNotLeaveThatPhysicalTileAvailableForTheNextTurn(
+      String confirmedDiscard) {
+    AtomicInteger decisions = new AtomicInteger();
+    Player player =
+        (state, seat, actions) -> {
+          boolean tsumogiri = decisions.getAndIncrement() == 0;
+          return actions.stream()
+              .filter(action -> action.type() == Action.Type.DAHAI && action.tileType() == Tile.P1)
+              .filter(action -> action.isTsumogiri() == tsumogiri)
+              .findFirst()
+              .orElseThrow();
+        };
+    var controller = new TenhouGameController(player);
+    var session = new TenhouSession(controller);
+    session.handleMessage(init("0,4,8,37,40,44,72,76,80,96,100,104,108"));
+
+    Assert.assertEquals(session.handleMessage("<T38/>"), List.of("{\"tag\":\"D\",\"p\":38}"));
+    session.handleMessage(confirmedDiscard);
+    Assert.assertTrue(controller.getState().hand(0).containsPhysicalTile(37));
+    Assert.assertFalse(controller.getState().hand(0).containsPhysicalTile(38));
+    Assert.assertEquals(controller.getState().hand(0).concealedTileCount(), 13);
+    Assert.assertEquals(session.handleMessage("<T106/>"), List.of("{\"tag\":\"D\",\"p\":37}"));
+    session.handleMessage("<D37/>");
+    Assert.assertFalse(controller.getState().hand(0).containsPhysicalTile(37));
+  }
+
+  @DataProvider
   public Object[][] responsePrompts() {
     return new Object[][] {{"<E18/>", false}, {"<E18 t=\"1\"/>", true}};
   }

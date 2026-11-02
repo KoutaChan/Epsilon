@@ -3,6 +3,7 @@ package com.epsilon.core;
 import com.epsilon.util.SeedMixer;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.SplittableRandom;
 
 /**
  * 一局分の136枚の実牌IDと、通常ツモ・嶺上ツモの進行位置を管理する。
@@ -17,14 +18,28 @@ final class Wall {
   private static final int INITIAL_DORA_INDICATOR_WALL_INDEX = TOTAL_TILES - 6;
   private static final int INITIAL_URA_DORA_INDICATOR_WALL_INDEX = TOTAL_TILES - 5;
   private static final long ROUND_SHUFFLE_SALT = 0xC6BC279692B5CC83L;
+  private static final int RINSHAN_START = TOTAL_TILES - 4;
 
   private final int[] physicalTileIds;
-  private final Random random;
+
+  // 局ごとのシャッフルの乱数。shuffle はいつもその局の種から始める（初回は new Random(seed)、以後は setSeed(seed)。どちらも同じ状態に
+  // なるので引きは同じ）。局をまたがない分岐の写しはシャッフルしないので、最初のシャッフルまで作らない（null）。
+  private Random random;
   private final long shuffleSeed;
   private int shuffleEpoch;
   private int drawIndex;
   private int deadWallIndex;
   private int kanDrawCount;
+
+  // 席別ツモ列（WASO）。null なら位置順。列は物理牌 ID の並びで、配牌直後に位置 52+k の牌を席 (親+k) mod 4 に割り当てる。
+  // ツモのときは自分の列の次の牌を現在の読み位置へ入れ替えてから読む。割り当ては位置だけで決まり牌の中身を見ないので、ツモの列は一様な並びのまま。
+  private int[][] seatStreams;
+  private int[] streamLength;
+  private int[] streamCursor;
+  private int[] positionOf;
+
+  // 局ごとのシャッフルの直後に掛ける物理牌の置換（null なら掛けない）。萬子・筒子・索子を入れ替えた同じ牌山を作る（評価の対称化）
+  private int[] tileMap;
 
   /** 非決定的シードで最初の局の牌山を構築する。 */
   Wall() {
@@ -42,7 +57,6 @@ final class Wall {
 
   private Wall(long shuffleSeed, int initialShuffleEpoch, boolean shuffleImmediately) {
     this.physicalTileIds = new int[TOTAL_TILES];
-    this.random = new Random(0L);
     this.shuffleSeed = shuffleSeed;
     this.shuffleEpoch = initialShuffleEpoch;
     resetOrdered();
@@ -67,12 +81,20 @@ final class Wall {
    */
   Wall(Wall other) {
     this.physicalTileIds = other.physicalTileIds.clone();
-    this.random = new Random(0L);
     this.shuffleSeed = other.shuffleSeed;
     this.shuffleEpoch = other.shuffleEpoch;
     this.drawIndex = other.drawIndex;
     this.deadWallIndex = other.deadWallIndex;
     this.kanDrawCount = other.kanDrawCount;
+    this.tileMap = other.tileMap;
+    if (other.seatStreams != null) {
+      this.seatStreams = new int[other.seatStreams.length][];
+      for (int seat = 0; seat < seatStreams.length; seat++)
+        this.seatStreams[seat] = other.seatStreams[seat].clone();
+      this.streamLength = other.streamLength.clone();
+      this.streamCursor = other.streamCursor.clone();
+      this.positionOf = other.positionOf.clone();
+    }
   }
 
   /** 実牌を初期順へ戻し、次局の生成番号を使って再シャッフルする。 */
@@ -88,15 +110,137 @@ final class Wall {
     drawIndex = 0;
     deadWallIndex = TOTAL_TILES - 1;
     kanDrawCount = 0;
+    seatStreams = null;
+  }
+
+  /**
+   * 配牌の直後に席別ツモ列を作る。以後 {@link #draw(int)} は席ごとの列から供給する。
+   *
+   * @param dealer 親の席
+   */
+  void enableSeatStreams(int dealer) {
+    if (drawIndex != 52) throw new IllegalStateException("Seat streams start right after the deal");
+    seatStreams = new int[4][(LIVE_WALL_SIZE - drawIndex + 3) / 4];
+    streamLength = new int[4];
+    streamCursor = new int[4];
+    positionOf = new int[TOTAL_TILES];
+    for (int position = drawIndex; position < LIVE_WALL_SIZE; position++) {
+      int seat = (dealer + position - drawIndex) % 4;
+      seatStreams[seat][streamLength[seat]++] = physicalTileIds[position];
+    }
+    for (int position = 0; position < TOTAL_TILES; position++)
+      positionOf[physicalTileIds[position]] = position;
+  }
+
+  /**
+   * 指定席のツモ。席別ツモ列が有効なら自分の列の次の牌を読み位置へ入れ替えてから読み、列が尽きたら位置順に戻る。
+   *
+   * @param seat ツモる席
+   * @return 物理牌 ID
+   */
+  int draw(int seat) {
+    if (seatStreams == null) return draw();
+    if (drawIndex >= LIVE_WALL_SIZE - kanDrawCount) {
+      throw new IllegalStateException("Wall is exhausted");
+    }
+    int[] stream = seatStreams[seat];
+    while (streamCursor[seat] < streamLength[seat]
+        && positionOf[stream[streamCursor[seat]]] < drawIndex) streamCursor[seat]++;
+    if (streamCursor[seat] < streamLength[seat]) {
+      int tile = stream[streamCursor[seat]];
+      int from = positionOf[tile];
+      if (from != drawIndex) {
+        int displaced = physicalTileIds[drawIndex];
+        physicalTileIds[drawIndex] = tile;
+        physicalTileIds[from] = displaced;
+        positionOf[tile] = drawIndex;
+        positionOf[displaced] = from;
+      }
+    }
+    return physicalTileIds[drawIndex++];
+  }
+
+  boolean seatStreamsEnabled() {
+    return seatStreams != null;
+  }
+
+  /**
+   * 全席から見えない牌を一様に並べ替える。対象は王牌を除く牌山の残り（槓で届かなくなった位置を含む）、未使用の嶺上牌、未公開のドラ表示牌の枠、
+   * すべての裏ドラ表示牌の枠。見えている牌（公開済みの表示牌を含む）は動かさない。公開済みの表示牌の裏ドラは {@link DoraState} が覚えている
+   * ので、呼び出し側が写し直す（{@link GameState#reshuffleUnseen(long)}）。
+   *
+   * <p>置換は牌の位置ではなく牌そのものに掛け、席別ツモ列の未ツモの要素にも同じ置換を適用する。どの位置の牌を誰が引くかの規則は変わらないので、
+   * 並べ替えた後の牌山も公開情報のもとで一様に従う。
+   *
+   * @param seed 並べ替えの乱数
+   * @param revealedIndicators 公開済みのドラ表示牌の数
+   */
+  void reshuffleUnseen(long seed, int revealedIndicators) {
+    int[] positions = new int[TOTAL_TILES];
+    int count = 0;
+    for (int position = drawIndex; position < LIVE_WALL_SIZE; position++)
+      positions[count++] = position;
+    for (int position = RINSHAN_START; position <= deadWallIndex; position++)
+      positions[count++] = position;
+    for (int slot = 0; slot < DoraState.MAX_INDICATORS; slot++) {
+      if (slot >= revealedIndicators) positions[count++] = doraIndicatorWallIndex(slot);
+      positions[count++] = uraDoraIndicatorWallIndex(slot);
+    }
+    int[] tiles = new int[count];
+    for (int i = 0; i < count; i++) {
+      tiles[i] = physicalTileIds[positions[i]];
+      if (tiles[i] == UNKNOWN_PHYSICAL_TILE_ID)
+        throw new IllegalStateException("Cannot reshuffle a reconstructed wall");
+    }
+    int[] replacement = new int[TOTAL_TILES];
+    for (int tile = 0; tile < TOTAL_TILES; tile++) replacement[tile] = tile;
+    var random = new SplittableRandom(seed);
+    int[] shuffled = tiles.clone();
+    for (int i = count - 1; i > 0; i--) {
+      int j = random.nextInt(i + 1);
+      int swap = shuffled[i];
+      shuffled[i] = shuffled[j];
+      shuffled[j] = swap;
+    }
+    for (int i = 0; i < count; i++) {
+      replacement[tiles[i]] = shuffled[i];
+      physicalTileIds[positions[i]] = shuffled[i];
+    }
+    if (seatStreams == null) return;
+    for (int seat = 0; seat < seatStreams.length; seat++)
+      for (int k = 0; k < streamLength[seat]; k++)
+        seatStreams[seat][k] = replacement[seatStreams[seat][k]];
+    for (int position = 0; position < TOTAL_TILES; position++)
+      positionOf[physicalTileIds[position]] = position;
   }
 
   private void shuffleNextRound() {
     shuffle(SeedMixer.indexed(shuffleSeed, ROUND_SHUFFLE_SALT, shuffleEpoch));
     shuffleEpoch++;
+    if (tileMap != null)
+      for (int position = 0; position < TOTAL_TILES; position++)
+        physicalTileIds[position] = tileMap[physicalTileIds[position]];
+  }
+
+  /**
+   * 以後の局のシャッフルの直後に掛ける物理牌の置換を決める（{@link GameState#mapWallTiles}）。
+   *
+   * @param map 136 枚の物理牌 id の置換
+   */
+  void mapTiles(int[] map) {
+    if (map.length != TOTAL_TILES) throw new IllegalArgumentException("Tile map needs 136 entries");
+    boolean[] seen = new boolean[TOTAL_TILES];
+    for (int tile : map) {
+      if (tile < 0 || tile >= TOTAL_TILES || seen[tile])
+        throw new IllegalArgumentException("Tile map is not a permutation");
+      seen[tile] = true;
+    }
+    tileMap = map.clone();
   }
 
   private void shuffle(long seed) {
-    random.setSeed(seed);
+    if (random == null) random = new Random(seed);
+    else random.setSeed(seed);
     for (int destinationIndex = TOTAL_TILES - 1; destinationIndex > 0; destinationIndex--) {
       int sourceIndex = random.nextInt(destinationIndex + 1);
       int temporaryPhysicalTileId = physicalTileIds[destinationIndex];
@@ -130,6 +274,11 @@ final class Wall {
     }
     kanDrawCount++;
     return physicalTileIds[deadWallIndex--];
+  }
+
+  /** 牌山の位置の物理牌 ID（試験用）。 */
+  int physicalTileIdAt(int position) {
+    return physicalTileIds[position];
   }
 
   int doraIndicatorPhysicalTileIdAt(int slot) {
@@ -188,6 +337,7 @@ final class Wall {
           "decodedPhysicalTileIds must have " + TOTAL_TILES + " elements");
     }
     System.arraycopy(decodedPhysicalTileIds, 0, physicalTileIds, 0, TOTAL_TILES);
+    this.seatStreams = null;
     this.drawIndex = 52;
     this.deadWallIndex = TOTAL_TILES - 1;
     this.kanDrawCount = 0;
@@ -203,6 +353,7 @@ final class Wall {
    */
   void initForReconstruction(int drawIndex) {
     Arrays.fill(physicalTileIds, UNKNOWN_PHYSICAL_TILE_ID);
+    this.seatStreams = null;
     this.drawIndex = drawIndex;
     this.deadWallIndex = TOTAL_TILES - 1;
     this.kanDrawCount = 0;

@@ -36,6 +36,21 @@ public class DecisionBranchComparisonTest {
   }
 
   @Test
+  public void admittedBranchCanFinishAndOverspendSuppressesNewStarts() {
+    var budget = budget();
+    budget.recordMainRows(100);
+    Assert.assertTrue(budget.admit(0));
+    budget.recordExtraRows(12);
+    budget.recordCompletedComparison();
+    budget.release();
+    Assert.assertFalse(budget.admit(0));
+    budget.recordMainRows(1100);
+    Assert.assertFalse(budget.admit(0));
+    budget.recordMainRows(100);
+    Assert.assertTrue(budget.admit(0));
+  }
+
+  @Test
   public void unfinishedKyushuNeverFallsBackToPpoAndCannotCompleteLate() {
     var pair = new DecisionBranchComparison(DecisionBranchGate.KYUSHU, .2f, true, budget());
     var pending = new CompletableFuture<Float>();

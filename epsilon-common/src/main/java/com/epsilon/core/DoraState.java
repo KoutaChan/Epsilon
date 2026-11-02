@@ -91,6 +91,24 @@ public final class DoraState {
     return (int) (packed >>> (index * TILE_BITS) & TILE_MASK);
   }
 
+  /**
+   * {@link #packedTile} の逆。ビット列の表示位置に牌種を入れた列を返す（その位置の前の値は消す）。表ドラの列を局面の外で組み立てるとき
+   * （{@code HandScoreEvaluator} の表ドラを基本型で受ける口に渡す列など）に使う。
+   *
+   * @param packed 元のビット列
+   * @param index 表示位置（0 始まり、{@link #MAX_INDICATORS} 未満）
+   * @param tileType 牌種
+   * @return 入れた後のビット列
+   * @throws IndexOutOfBoundsException 表示位置が範囲外のとき
+   * @throws IllegalArgumentException 牌種が範囲外のとき
+   */
+  public static long packTile(long packed, int index, int tileType) {
+    if (index < 0 || index >= MAX_INDICATORS) throw new IndexOutOfBoundsException(index);
+    requireTileType(tileType);
+    int shift = index * TILE_BITS;
+    return packed & ~(TILE_MASK << shift) | (long) tileType << shift;
+  }
+
   void reset() {
     for (int index = 0; index < indicatorCount; index++) {
       indicatorMultiplicity[packedTile(indicatorTileTypesPacked, index)] = 0;
@@ -127,6 +145,20 @@ public final class DoraState {
       uraKnownMask |= 1 << index;
     }
     indicatorCount = index + 1;
+  }
+
+  /**
+   * 公開済みの表示牌 index の裏ドラ表示牌を差し替える（見えない牌を並べ替えたとき）。裏ドラが分かっていない表示牌には使えない。
+   */
+  void replaceUraIndicator(int index, int uraIndicatorTileType) {
+    requireRevealedIndex(index);
+    requireTileType(uraIndicatorTileType);
+    if ((uraKnownMask & (1 << index)) == 0)
+      throw new IllegalStateException("ura indicator " + index + " is unknown");
+    long mask = TILE_MASK << (index * TILE_BITS);
+    uraDoraTileTypesPacked =
+        (uraDoraTileTypesPacked & ~mask)
+            | (long) Tile.doraFrom(uraIndicatorTileType) << (index * TILE_BITS);
   }
 
   private static long appendPacked(long packed, int index, int tileType) {

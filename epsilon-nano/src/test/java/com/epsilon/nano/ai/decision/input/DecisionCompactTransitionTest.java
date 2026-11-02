@@ -1,5 +1,10 @@
 package com.epsilon.nano.ai.decision.input;
 
+import ai.djl.Device;
+import ai.djl.ndarray.NDArray;
+import ai.djl.ndarray.NDManager;
+import ai.djl.ndarray.types.DataType;
+import com.epsilon.config.settings.DecisionTensorTransfer;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Hand;
@@ -30,6 +35,114 @@ public class DecisionCompactTransitionTest {
   private static final int SUFFIX = 2;
   private static final short DIRTY_CATEGORY = -17;
   private static final float DIRTY_NUMERIC = -19.25f;
+
+  @Test(groups = "native")
+  public void mixedBucketsShareInputsWithoutPaddingOrSourceMutation() {
+    verifyGroupedTransfer(Device.cpu(), DataType.FLOAT32);
+  }
+
+  @Test(groups = "rocm")
+  public void mixedBucketsPreservePinnedBfloat16TransferAndReuse() {
+    verifyGroupedTransfer(Device.gpu(0), DataType.BFLOAT16);
+  }
+
+  private static void verifyGroupedTransfer(Device device, DataType numericType) {
+    var cases = scenarios();
+    var single =
+        inference(
+            List.of(cases.get(0), cases.get(3), cases.get(0)),
+            new DecisionBatchBuilder.EncodingWorkspacePool(1),
+            new DecisionBucket(16, 1));
+    var multiple = inference(cases, new DecisionBatchBuilder.EncodingWorkspacePool(1));
+    var dense = training(cases);
+    var empty = DecisionBatchBuilder.stateOnlyBatch(cases.getFirst().state, 1);
+    try (var manager = NDManager.newBaseManager(device, "PyTorch");
+        var workspace = new DecisionBatchTransfer.Workspace(manager)) {
+      NDArray held = null;
+      float[] heldValues = null;
+      for (var sources :
+          List.of(
+              List.of(single.sliceRows(1, 2), multiple.sliceRows(1, 2), empty.sliceRows(0, 1)),
+              List.of(dense.sliceRows(1, 1), single.sliceRows(0, 1)),
+              List.of(empty.sliceRows(0, 1)))) {
+        var before = sources.stream().map(DecisionCompactTransitionTest::categories).toList();
+        var staged = workspace.stageGroupedInference(sources, DecisionTensorTransfer.PINNED_BUFFER);
+        var grouped = workspace.enqueueGroupedInference(manager, staged, numericType);
+        int rowOffset = 0, transitionOffset = 0;
+        var memories = new ArrayList<Integer>();
+        var batchIds = new ArrayList<Integer>();
+        var actionBatchIds = new ArrayList<Integer>();
+        for (int index = 0; index < sources.size(); index++) {
+          var source = sources.get(index);
+          var reference =
+              DecisionBatchTransfer.transferInferenceToDevice(
+                  manager, source, null, DecisionTensorTransfer.DIRECT_BUFFER, numericType);
+          var group = grouped.groups().get(index);
+          Assert.assertEquals(group.inputs().bucket(), reference.bucket());
+          Assert.assertEquals(group.transitionOffset(), transitionOffset);
+          var expected = reference.inputs().arrays();
+          var actual = group.inputs().arrays();
+          for (int tensor = 0; tensor < expected.length; tensor++) {
+            Assert.assertEquals(actual[tensor].getShape(), expected[tensor].getShape());
+            Assert.assertEquals(actual[tensor].getDataType(), expected[tensor].getDataType());
+            Assert.assertEquals(floats(actual[tensor]), floats(expected[tensor]));
+          }
+          Assert.assertEquals(
+              group.transitionPresentIndices().toIntArray(),
+              reference.transitionPresentIndices().toIntArray());
+          var actionIndices = new ArrayList<Integer>();
+          for (int row = 0; row < source.size(); row++) {
+            int actions = source.source().legalActionCount(source.fromInclusive() + row);
+            for (int action = 0; action < actions; action++) {
+              actionIndices.add(row * source.bucket().legalActionCapacity() + action);
+              actionBatchIds.add(rowOffset + row);
+            }
+          }
+          Assert.assertEquals(
+              group.actionPresentIndices().toIntArray(),
+              actionIndices.stream().mapToInt(Integer::intValue).toArray());
+          Assert.assertEquals(
+              floats(grouped.stateCategories().get("{}:{}", rowOffset, rowOffset + source.size())),
+              floats(reference.inputs().stateCategories()));
+          Assert.assertEquals(
+              floats(grouped.stateNumerics().get("{}:{}", rowOffset, rowOffset + source.size())),
+              floats(reference.inputs().stateNumerics()));
+          int stride =
+              source.bucket().legalActionCapacity() * source.bucket().actionTransitionCapacity();
+          for (int value : reference.transitionPresentIndices().toIntArray())
+            batchIds.add(rowOffset + value / stride);
+          int memoryStride =
+              GameState.NUM_PLAYERS
+                  * (1
+                      + DecisionInputSchema.MAX_RIVER_EVENTS_PER_PLAYER
+                      + DecisionInputSchema.MAX_MELDS_PER_PLAYER);
+          for (int value : reference.playerMemoryPresentIndices().toIntArray())
+            memories.add(value + rowOffset * memoryStride);
+          transitionOffset += reference.inputs().transitionCount();
+          rowOffset += source.size();
+          Assert.assertEquals(categories(source), before.get(index));
+        }
+        Assert.assertEquals(
+            grouped.transitionBatchIds().toIntArray(),
+            batchIds.stream().mapToInt(Integer::intValue).toArray());
+        Assert.assertEquals(
+            grouped.playerMemoryPresentIndices().toIntArray(),
+            memories.stream().mapToInt(Integer::intValue).toArray());
+        Assert.assertEquals(grouped.rowCount(), rowOffset);
+        Assert.assertEquals(
+            grouped.actionBatchIds().toIntArray(),
+            actionBatchIds.stream().mapToInt(Integer::intValue).toArray());
+        Assert.assertEquals(grouped.actionCount(), actionBatchIds.size());
+        if (held != null) Assert.assertEquals(floats(held), heldValues);
+        held = grouped.stateNumerics();
+        heldValues = floats(held);
+      }
+    }
+  }
+
+  private static float[] floats(NDArray array) {
+    return array.toType(DataType.FLOAT32, false).toFloatArray();
+  }
 
   @DataProvider
   public Object[][] bufferKinds() {

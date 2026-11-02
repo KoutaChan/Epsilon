@@ -4,6 +4,7 @@ import ai.djl.Device;
 import ai.djl.Model;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.pico.config.settings.DecisionSelectedPgCampaignSettings.OptimizerSettings;
+import com.epsilon.pico.config.settings.DecisionSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -113,7 +114,7 @@ final class DecisionLearner implements AutoCloseable {
         optimizerSettings.valueLearningRate(),
         learnerContractId,
         optimizerSettings.actorKlControl(),
-        config.bind(com.epsilon.pico.config.settings.DecisionSettings.class));
+        config.bind(DecisionSettings.class));
   }
 
   /** 同じモデルを重複loadせず、保存された学習器を直接開く。 */
@@ -134,7 +135,7 @@ final class DecisionLearner implements AutoCloseable {
             settings.valueLearningRate(),
             contract,
             settings.actorKlControl(),
-            config.bind(com.epsilon.pico.config.settings.DecisionSettings.class));
+            config.bind(DecisionSettings.class));
     if (state == null) {
       throw new IOException("Decision learner checkpoint not found: " + checkpoint);
     }

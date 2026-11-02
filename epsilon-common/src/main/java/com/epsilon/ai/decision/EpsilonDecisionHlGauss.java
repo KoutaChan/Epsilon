@@ -4,6 +4,7 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
+import com.epsilon.core.GameState;
 import java.util.Objects;
 
 /**
@@ -79,7 +80,7 @@ public final class EpsilonDecisionHlGauss {
   private static Support createSupport(EpsilonUtilityProfile profile) {
     double minimum = Double.POSITIVE_INFINITY;
     double maximum = Double.NEGATIVE_INFINITY;
-    for (int rank = 0; rank < com.epsilon.core.GameState.NUM_PLAYERS; rank++) {
+    for (int rank = 0; rank < GameState.NUM_PLAYERS; rank++) {
       minimum = Math.min(minimum, profile.utilityForRank(rank));
       maximum = Math.max(maximum, profile.utilityForRank(rank));
     }

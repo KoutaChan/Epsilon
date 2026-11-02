@@ -10,7 +10,9 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,14 +35,15 @@ public final class ReviewerServer implements AutoCloseable {
     fetcher = new RecordFetcher();
     HttpServer created = null;
     try {
-      var catalog = new ModelCatalog(models);
+      var engine = new ReviewEngine();
+      var catalog = new ModelCatalog(models, engine.series());
       var store = new ResultStore(dataDirectory.resolve("results"));
       store.cleanTemporary(Instant.now());
       Path snapshots = dataDirectory.resolve("temporary-models");
       ModelCatalog.cleanSnapshots(snapshots);
       created = HttpServer.create(bind, 64);
       server = created;
-      service = new ReviewService(new ReviewEngine(), catalog, store, snapshots);
+      service = new ReviewService(engine, catalog, store, snapshots);
       http = new ReviewerHttp(publicOrigin, webDirectory, this::port);
       api = new ReviewerApi(catalog, store, service, fetcher, http);
       server.setExecutor(requests);

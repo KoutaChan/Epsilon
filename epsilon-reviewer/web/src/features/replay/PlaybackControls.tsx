@@ -100,6 +100,12 @@ export function PlaybackControls({
     playerStats.reviewed === 0
       ? "—"
       : percent.format(count / playerStats.reviewed);
+  // 価値を推定したモデルの判断は損失の基準で数えるため、説明も切り替える。
+  const valued = playerStats.meanLoss !== null;
+  const loss = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
   return (
     <nav
       className="em-playback"
@@ -248,7 +254,13 @@ export function PlaybackControls({
                 })}
               </span>
               <dl>
-                <div title={t("replay.agreementDescription")}>
+                <div
+                  title={t(
+                    valued
+                      ? "replay.valueAgreementDescription"
+                      : "replay.agreementDescription",
+                  )}
+                >
                   <dt>{t("replay.agreementRate")}</dt>
                   <dd
                     aria-label={
@@ -260,7 +272,13 @@ export function PlaybackControls({
                     {formatDecisionRate(playerStats.matched)}
                   </dd>
                 </div>
-                <div title={t("replay.badMoveDescription")}>
+                <div
+                  title={t(
+                    valued
+                      ? "replay.valueBadMoveDescription"
+                      : "replay.badMoveDescription",
+                  )}
+                >
                   <dt>{t("replay.badMoveRate")}</dt>
                   <dd
                     aria-label={
@@ -272,6 +290,12 @@ export function PlaybackControls({
                     {formatDecisionRate(playerStats.badMoves)}
                   </dd>
                 </div>
+                {playerStats.meanLoss !== null && (
+                  <div title={t("replay.meanLossDescription")}>
+                    <dt>{t("replay.meanLoss")}</dt>
+                    <dd>{loss.format(playerStats.meanLoss)}</dd>
+                  </div>
+                )}
               </dl>
             </section>
             <label className="em-reveal-option">

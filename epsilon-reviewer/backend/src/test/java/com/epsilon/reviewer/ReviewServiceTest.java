@@ -7,12 +7,17 @@ import com.epsilon.nano.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.nano.ai.network.NetworkFactory;
 import com.epsilon.reviewer.engine.ReviewEngine;
 import com.epsilon.reviewer.model.ModelCatalog;
-import com.google.gson.*;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
 import java.util.zip.GZIPInputStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -34,10 +39,11 @@ public final class ReviewServiceTest {
           "options":{"device":"cpu"}}]}
           """);
       var store = new ResultStore(directory.resolve("results"));
+      var engine = new ReviewEngine();
       try (var service =
           new ReviewService(
-              new ReviewEngine(),
-              new ModelCatalog(config),
+              engine,
+              new ModelCatalog(config, engine.series()),
               store,
               directory.resolve("temporary"))) {
         String owner = "a".repeat(64);
@@ -75,10 +81,11 @@ public final class ReviewServiceTest {
       Files.writeString(
           config,
           "{\"models\":[{\"modelId\":\"fixture\",\"revision\":\"fixed\",\"displayName\":\"Fixture\",\"version\":\"1\",\"series\":\"epsilon-nano\",\"checkpoint\":\"checkpoint\",\"options\":{\"device\":\"cpu\"}}]}");
-      var catalog = new ModelCatalog(config);
+      var engine = new ReviewEngine();
+      var catalog = new ModelCatalog(config, engine.series());
       var store = new ResultStore(directory.resolve("results"));
       try (var service =
-          new ReviewService(new ReviewEngine(), catalog, store, directory.resolve("temporary"))) {
+          new ReviewService(engine, catalog, store, directory.resolve("temporary"))) {
         String owner = "a".repeat(64), other = "b".repeat(64);
         var source =
             new RecordFetcher.SourceRecord(

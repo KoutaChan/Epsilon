@@ -69,6 +69,7 @@ function recordedStates(count = 100) {
           type: "DAHAI",
           tiles: ["5mr"],
           probability: 0.12345678901234567,
+          valueLoss: 0.0123456789,
           chosen: true,
           tsumogiri: false,
         },
@@ -77,7 +78,7 @@ function recordedStates(count = 100) {
   });
 }
 
-test("v4 checkpoints and sparse state patches reconstruct every recorded field after random seeks", () => {
+test("v5 checkpoints and sparse state patches reconstruct every recorded field after random seeks", () => {
   const source = recordedStates();
   const wire = JSON.parse(JSON.stringify(reviewResult(source)));
   const unchanged = JSON.stringify(wire);
@@ -207,6 +208,7 @@ test("all candidates and unknown versus empty scoring metadata retain their exac
     type: "DAHAI",
     tiles: ["1m"],
     probability: (actionId + 1) / 36,
+    valueLoss: (7 - actionId) / 1000,
     chosen: actionId === 7,
     tsumogiri: actionId === 0,
   }));

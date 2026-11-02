@@ -6,6 +6,7 @@ import com.epsilon.config.settings.DecisionChampionDuelSettings;
 import com.epsilon.config.settings.DecisionEvalVsSettings;
 import com.epsilon.config.settings.SettingsLoader;
 import com.epsilon.major.ai.decision.data.DecisionJsonFiles;
+import com.epsilon.major.config.settings.DecisionSettings;
 import com.epsilon.major.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.google.gson.Gson;
@@ -46,7 +47,7 @@ public final class DecisionKlTargetComparison {
     Files.createDirectories(reports);
     var bounds =
         EpsilonDecisionWallDuelEvaluator.utilityBounds(
-            config.bind(com.epsilon.major.config.settings.DecisionSettings.class).utilityProfile());
+            config.bind(DecisionSettings.class).utilityProfile());
     var differences =
         new EpsilonDecisionFixedSampleConfidenceInterval(
             bounds.lower() - bounds.upper(), bounds.upper() - bounds.lower());

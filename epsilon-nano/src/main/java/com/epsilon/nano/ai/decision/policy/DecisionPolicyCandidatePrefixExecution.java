@@ -23,7 +23,7 @@ public abstract class DecisionPolicyCandidatePrefixExecution implements AutoClos
   /** 一つの方策順伝播で使う候補先頭部分出力を所有する。 */
   public abstract static class Forward implements AutoCloseable {
 
-    /** 先頭構成要素を連結して既存射影を一回だけ実行する。 */
+    /** 先頭構成要素を連結し、一順伝播で一度だけ射影する。 */
     public abstract NDArray project(
         ParameterStore parameterStore,
         PairList<String, Object> runtimeParameters,
@@ -32,6 +32,17 @@ public abstract class DecisionPolicyCandidatePrefixExecution implements AutoClos
         NDArray transitions,
         NDArray playerContexts,
         NDArray stateContext);
+
+    /** 盤面の射影を合法候補へ対応付け、通常の候補射影と同じ丸め位置で合成する。 */
+    public abstract NDArray projectCompact(
+        ParameterStore parameterStore,
+        PairList<String, Object> runtimeParameters,
+        NDArray actionFeatures,
+        NDArray primaryTiles,
+        NDArray transitions,
+        NDArray playerContexts,
+        NDArray states,
+        NDArray stateRows);
 
     /** 出力枠を最終D2H完了まで再利用不能にする依存オブジェクトを返す。 */
     public abstract AutoCloseable seal();

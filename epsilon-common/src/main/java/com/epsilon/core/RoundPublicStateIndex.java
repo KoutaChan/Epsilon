@@ -5,7 +5,7 @@ import java.util.Arrays;
 /**
  * 河・副露・ドラ表示から決まる公開局面を、局進行と同時に増分更新するインデックス。
  *
- * <p>履歴は{@link River}が保持し、このクラスはAI入力・安全牌判定・残り牌計算で頻繁に読む集約値だけを保持する。
+ * <p>履歴は{@link PublicEventLog}が保持し、このクラスはAI入力・安全牌判定・残り牌計算で頻繁に読む集約値だけを保持する。
  */
 public final class RoundPublicStateIndex {
 
@@ -81,7 +81,6 @@ public final class RoundPublicStateIndex {
     visibleDiscardOrMeldAkaMask = other.visibleDiscardOrMeldAkaMask;
   }
 
-  /** 指定牌種の公開枚数を返す。 */
   public int visibleTileCount(int tileType) {
     return visibleTileCounts[tileType];
   }
@@ -101,12 +100,10 @@ public final class RoundPublicStateIndex {
     return visibleDiscardOrMeldAkaMask;
   }
 
-  /** 指定席が指定牌種を河へ捨てた回数を返す。 */
   public int riverDiscardCount(int seat, int tileType) {
     return riverDiscardCountsBySeat[seat][tileType];
   }
 
-  /** 指定席の河に現れた牌種マスクを返す。 */
   public long riverTileTypeMask(int seat) {
     return riverTileTypeMasksBySeat[seat];
   }
@@ -116,17 +113,14 @@ public final class RoundPublicStateIndex {
     return riichiGenbutsuTileTypeMasksBySeat[seat];
   }
 
-  /** 局内の全打牌数を返す。 */
   public int totalDiscardCount() {
     return totalDiscardCount;
   }
 
-  /** 局内の全槓数を返す。 */
   public int totalKanCount() {
     return totalKanCount;
   }
 
-  /** 指定席の槓数を返す。 */
   public int kanCount(int seat) {
     return kanCountsBySeat[seat];
   }
@@ -174,22 +168,23 @@ public final class RoundPublicStateIndex {
     visibleTileCounts[indicatorTileType]--;
   }
 
-  void addDiscard(int seat, River.Discard discard) {
-    int tileType = discard.tileType();
+  /** 記録に足した打牌 {@code event} を数える。 */
+  void addDiscard(int seat, PublicEventLog log, int event) {
+    int tileType = log.tile(event);
     riverDiscardCountsBySeat[seat][tileType]++;
     riverDiscardTotalsBySeat[seat]++;
     riverTileTypeMasksBySeat[seat] |= 1L << tileType;
     visibleTileCounts[tileType]++;
     totalDiscardCount++;
-    if (discard.aka()) {
+    if (log.aka(event)) {
       visibleDiscardOrMeldAkaMask = AkaTileMask.includeTile(visibleDiscardOrMeldAkaMask, tileType);
     }
-    if (riichiDeclarationIndexBySeat[seat] < 0 && discard.riichiDeclaration()) {
+    if (riichiDeclarationIndexBySeat[seat] < 0 && log.riichi(event)) {
       riichiDeclarationIndexBySeat[seat] = riverDiscardTotalsBySeat[seat] - 1;
-      riichiDeclarationSequenceBySeat[seat] = discard.sequence();
+      riichiDeclarationSequenceBySeat[seat] = log.sequence(event);
     } else if (riichiDeclarationIndexBySeat[seat] >= 0) {
       postRiichiDiscardCountsBySeat[seat]++;
-      if (discard.tsumogiri()) {
+      if (log.tsumogiri(event)) {
         postRiichiTsumogiriCountsBySeat[seat]++;
       }
     }
@@ -201,8 +196,9 @@ public final class RoundPublicStateIndex {
     }
   }
 
-  void markDiscardCalled(River.Discard discard) {
-    visibleTileCounts[discard.tileType()]--;
+  /** 鳴かれた打牌 {@code event} を見える枚数から外す（副露の牌として {@link #addMeld} が数え直す）。 */
+  void markDiscardCalled(PublicEventLog log, int event) {
+    visibleTileCounts[log.tile(event)]--;
   }
 
   void addMeld(int seat, Meld meld) {

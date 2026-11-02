@@ -1,9 +1,34 @@
 package com.epsilon.replay.format;
 
 import com.epsilon.core.Tile;
-import com.epsilon.replay.*;
-import com.epsilon.replay.ReplayEvent.*;
-import com.google.gson.*;
+import com.epsilon.replay.RecordCompletion;
+import com.epsilon.replay.RecordFormat;
+import com.epsilon.replay.RecordMetadata;
+import com.epsilon.replay.ReplayEvent;
+import com.epsilon.replay.ReplayEvent.Ankan;
+import com.epsilon.replay.ReplayEvent.Chi;
+import com.epsilon.replay.ReplayEvent.Dahai;
+import com.epsilon.replay.ReplayEvent.Daiminkan;
+import com.epsilon.replay.ReplayEvent.Dora;
+import com.epsilon.replay.ReplayEvent.EndGame;
+import com.epsilon.replay.ReplayEvent.EndKyoku;
+import com.epsilon.replay.ReplayEvent.Hora;
+import com.epsilon.replay.ReplayEvent.Kakan;
+import com.epsilon.replay.ReplayEvent.None;
+import com.epsilon.replay.ReplayEvent.Pon;
+import com.epsilon.replay.ReplayEvent.Reach;
+import com.epsilon.replay.ReplayEvent.ReachAccepted;
+import com.epsilon.replay.ReplayEvent.Ryukyoku;
+import com.epsilon.replay.ReplayEvent.StartGame;
+import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.replay.ReplayEvent.Tsumo;
+import com.epsilon.replay.ReplayRecord;
+import com.epsilon.replay.TileNotation;
+import com.epsilon.replay.WinDetails;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.List;
 

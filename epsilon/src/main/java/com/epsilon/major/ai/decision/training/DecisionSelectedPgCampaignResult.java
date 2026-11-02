@@ -1,6 +1,7 @@
 package com.epsilon.major.ai.decision.training;
 
 import java.util.List;
+import java.util.Objects;
 
 /** 選択行動の方策勾配学習の実行全体の変更不可の結果。 */
 public record DecisionSelectedPgCampaignResult(
@@ -21,7 +22,7 @@ public record DecisionSelectedPgCampaignResult(
       throw new IllegalArgumentException("selected PG campaign counters are invalid");
     }
     duels = List.copyOf(duels);
-    java.util.Objects.requireNonNull(status, "status");
+    Objects.requireNonNull(status, "status");
   }
 
   /** 検証条件違反ではなく、事前定義した対局実行処理状態へ終端したか。 */

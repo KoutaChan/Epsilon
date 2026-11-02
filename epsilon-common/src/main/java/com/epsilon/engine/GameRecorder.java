@@ -1,5 +1,7 @@
 package com.epsilon.engine;
 
+import com.epsilon.core.GameState;
+
 /**
  * ゲーム記録用インターフェース。
  *
@@ -65,6 +67,26 @@ public interface GameRecorder {
    * @param concealedAkaMask 配牌に含まれる赤5の3-ビットマスク
    */
   void recordHaipai(int player, int[] concealedTileCounts, int concealedAkaMask);
+
+  /**
+   * 牌山から牌を取り出す直前に呼ぶ。state はツモの前の局面で、受け取った側は書き換えない。取り出した牌は直後の {@link #recordDraw} か
+   * {@link #recordRinshanDraw} で受け取る。
+   *
+   * <p>ツモの前の局面だけから期待値を作り、実際の牌は後で受け取るためのもの。ツモの後の局面から作り直すと、引いた牌に依存する量が混ざる。
+   *
+   * @param player ツモる席（0-3）
+   * @param rinshan 嶺上ツモなら {@code true}
+   * @param state ツモの前の局面
+   */
+  default void beforeDraw(int player, boolean rinshan, GameState state) {}
+
+  /**
+   * 槓ドラ表示牌を公開する直前に呼ぶ。state は公開の前の局面で、受け取った側は書き換えない。公開した牌は直後の {@link #recordNewDora} で
+   * 受け取る。
+   *
+   * @param state 公開の前の局面
+   */
+  default void beforeDoraReveal(GameState state) {}
 
   /**
    * 局開始時のドラ表示牌を記録する。

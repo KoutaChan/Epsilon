@@ -8,21 +8,20 @@ import ai.djl.ndarray.types.Shape;
 import com.epsilon.ai.decision.DecisionBranchLoss;
 import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.major.ai.decision.EpsilonUtilityTargets;
 import com.epsilon.major.ai.decision.input.DecisionDeviceBatch;
 import com.epsilon.major.ai.decision.input.DecisionInputSchema;
 import com.epsilon.major.ai.decision.policy.DecisionAlternative;
 import com.epsilon.major.ai.decision.policy.DecisionPolicyScores;
 import com.epsilon.major.ai.decision.policy.EpsilonDecisionPolicyGraph;
 import com.epsilon.major.ai.decision.training.DecisionOnlineLossConfig;
+import com.epsilon.major.config.settings.DecisionSettings;
 
 /**
  * 牌譜による方策の模倣学習、スカラー価値の学習、選択行動の方策勾配学習の損失を計算する。
  *
- * <p>PPO教師信号は実行資格を持つ選択最終行動に対してだけ与える。探索後の方策と探索寄与を混ぜた方策の重なりを
- * 正規化した方策を Actor/Value の評価対象とし、Actor はその方策を探索前方策の相対変化で更新する。エントロピー
- * 追加項は反実仮想ラベルを使わず、現在の合法最終行動分布全体へ勾配を流す。探索前方策間の {@code KL(piRollout || piCurrent)}
- * は損失に加算せず、更新前の診断と棄却判定にだけ使う。
+ * <p>PPO教師信号は実行資格を持つ選択最終行動に対してだけ与える。探索後の方策と探索寄与を混ぜた方策の重なりを 正規化した方策を Actor/Value の評価対象とし、Actor
+ * はその方策を探索前方策の相対変化で更新する。エントロピー 追加項は反実仮想ラベルを使わず、現在の合法最終行動分布全体へ勾配を流す。探索前方策間の {@code KL(piRollout ||
+ * piCurrent)} は損失に加算せず、更新前の診断と棄却判定にだけ使う。
  *
  * <p>限定二分岐が有効な自己対局では、完成した比較を対象gateだけの二択目的へ渡す。そのgateは通常PPOと
  * エントロピー項からdetachする。KYUSHUは比較未完成でもdetachし、比較結果を価値教師へ混ぜない。
@@ -129,7 +128,7 @@ public final class EpsilonDecisionLoss {
         config,
         hasPositiveActorWeight,
         debugValidatePolicyGradientInputs,
-        EpsilonUtilityTargets.configuredTrainingProfile());
+        DecisionSettings.defaults().utilityProfile());
   }
 
   /** モデル生成時の効用の定義を使い、CPU 転送なしで自己対局による損失を計算する。 */
@@ -271,8 +270,7 @@ public final class EpsilonDecisionLoss {
             .stopGradient();
     NDArray oldOverlapMass = oldOverlap.sum(new int[] {1}).stopGradient();
     NDArray betaTilt = oldOverlap.div(rolloutPolicy.maximum(PROBABILITY_EPSILON)).stopGradient();
-    NDArray currentTiltMass =
-        currentPolicy.probabilities().mul(betaTilt).sum(new int[] {1});
+    NDArray currentTiltMass = currentPolicy.probabilities().mul(betaTilt).sum(new int[] {1});
     NDArray policyUpdateRatio =
         selectedCurrentProbability
             .div(selectedRolloutProbability.add(inactiveActor))
@@ -508,7 +506,7 @@ public final class EpsilonDecisionLoss {
   public static NDArray computeValueLoss(
       NDArray valueLogits, NDArray valueTarget, NDArray sampleWeight) {
     return computeValueLoss(
-        valueLogits, valueTarget, sampleWeight, EpsilonUtilityTargets.configuredTrainingProfile());
+        valueLogits, valueTarget, sampleWeight, DecisionSettings.defaults().utilityProfile());
   }
 
   /** モデル固有の値域を使う、サンプル重みで正規化した HL-Gauss 目的関数。 */

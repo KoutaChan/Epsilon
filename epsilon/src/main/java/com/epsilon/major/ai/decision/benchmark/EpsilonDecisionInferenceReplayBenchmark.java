@@ -34,10 +34,12 @@ import java.io.IOException;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -316,7 +318,7 @@ public final class EpsilonDecisionInferenceReplayBenchmark {
               corpusBundle.captureGames(),
               repetitions,
               targetRowsPerSecond,
-              java.util.Arrays.stream(measuredBatchRows).boxed().toList(),
+              Arrays.stream(measuredBatchRows).boxed().toList(),
               new EffectiveSettings(
                   settings.computePrecision(),
                   settings.maxBatch(),
@@ -377,7 +379,7 @@ public final class EpsilonDecisionInferenceReplayBenchmark {
       return new PreparedCorpora(loaded, deviceDescription, deviceDescription, devices);
     }
     if (Files.exists(normalizedCorpus)) {
-      throw new java.nio.file.FileAlreadyExistsException(normalizedCorpus.toString());
+      throw new FileAlreadyExistsException(normalizedCorpus.toString());
     }
     Path reportParent = reportFile.getParent();
     Path scratchRoot =
@@ -484,7 +486,7 @@ public final class EpsilonDecisionInferenceReplayBenchmark {
   private static long[][] opponentIds() {
     long[][] result = new long[GameState.NUM_PLAYERS][GameState.NUM_PLAYERS - 1];
     for (long[] row : result) {
-      java.util.Arrays.fill(row, 1L);
+      Arrays.fill(row, 1L);
     }
     return result;
   }

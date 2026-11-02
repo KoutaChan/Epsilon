@@ -1,119 +1,19 @@
 package com.epsilon.core;
 
 import java.util.Arrays;
+import java.util.Objects;
 
-/** 河（捨て牌）を管理するクラス。 */
+/**
+ * 1 席の河（捨て牌）。打牌の中身は局の {@link PublicEventLog} にあり、ここは河の順の出来事の番号と、牌の種類ごとの枚数・立直の位置の
+ * 集約だけを持つ（記録は {@code log}、河の順の番号は {@code events}）。河の位置 i の欄は記録の出来事 {@link #event(int) event(i)} の欄と同じ値。
+ *
+ * <p>容量は {@link RoundLimits#MAX_SEAT_DISCARDS}（鳴きで他家の手番が飛ぶと 24 枚を超えうるので、巡目からは決めない）。持ち主は記録と同じ
+ * {@link GameState} で、分岐は番号の配列を写すだけ（打牌ごとの物は作らない）。
+ */
 public final class River {
 
-  private static final int MAX_DISCARDS = 24;
-
-  /** 河の1枚の情報。 */
-  public static final class Discard {
-    private int tileType;
-    private int turnNumber;
-    private boolean riichiDeclaration;
-    private boolean aka;
-    private boolean tsumogiri;
-    private int sequence;
-    private int creationEvent;
-
-    private boolean calledFlag; // 鳴かれたかフラグ(変更可能)
-
-    /**
-     * 河へ記録する一枚の完全な打牌情報を生成する。
-     *
-     * @param tileType 捨てた牌の34牌種 ID
-     * @param turnNumber 捨てた席における0始まりの打牌巡目
-     * @param riichiDeclaration リーチ宣言牌か
-     * @param aka 捨てた物理牌が赤ドラか
-     * @param tsumogiri 自摸切りか
-     * @param sequence 局内で全席を通した打牌連番。不明なら {@code -1}
-     */
-    private Discard(
-        int tileType,
-        int turnNumber,
-        boolean riichiDeclaration,
-        boolean aka,
-        boolean tsumogiri,
-        int sequence) {
-      set(tileType, turnNumber, riichiDeclaration, aka, tsumogiri, sequence);
-    }
-
-    private void set(
-        int tileType,
-        int turnNumber,
-        boolean riichiDeclaration,
-        boolean aka,
-        boolean tsumogiri,
-        int sequence) {
-      this.tileType = tileType;
-      this.turnNumber = turnNumber;
-      this.riichiDeclaration = riichiDeclaration;
-      this.aka = aka;
-      this.tsumogiri = tsumogiri;
-      this.sequence = sequence;
-      creationEvent = -1;
-      calledFlag = false;
-    }
-
-    private void copyFrom(Discard other) {
-      set(
-          other.tileType,
-          other.turnNumber,
-          other.riichiDeclaration,
-          other.aka,
-          other.tsumogiri,
-          other.sequence);
-      this.calledFlag = other.calledFlag;
-      this.creationEvent = other.creationEvent;
-    }
-
-    /** 捨てた牌の34牌種IDを返す。 */
-    public int tileType() {
-      return tileType;
-    }
-
-    /** 捨てた席における0始まりの打牌巡目を返す。 */
-    public int turnNumber() {
-      return turnNumber;
-    }
-
-    /** リーチ宣言牌なら {@code true} を返す。 */
-    public boolean riichiDeclaration() {
-      return riichiDeclaration;
-    }
-
-    /** 捨てた物理牌が赤ドラなら {@code true} を返す。 */
-    public boolean aka() {
-      return aka;
-    }
-
-    /** 直前の自摸牌を捨てた場合は {@code true} を返す。 */
-    public boolean tsumogiri() {
-      return tsumogiri;
-    }
-
-    /** 局内で全席を通した0始まりの打牌連番。不明なら {@code -1}。 */
-    public int sequence() {
-      return sequence;
-    }
-
-    /** 打牌・面子・槓の公開記録で共有する局内イベント連番。不明なら-1。 */
-    public int creationEvent() {
-      return creationEvent;
-    }
-
-    /**
-     * この捨て牌が他家の副露に使われたかを返す。
-     *
-     * @return チー、ポンまたは大明槓で鳴かれていれば {@code true}
-     */
-    public boolean called() {
-      return calledFlag;
-    }
-  }
-
-  private final Discard[] discards;
+  private final PublicEventLog log;
+  private final byte[] events = new byte[RoundLimits.MAX_SEAT_DISCARDS];
   private final int[] discardCountsByTileType;
   private int size;
   private long discardedTileTypeMask;
@@ -122,31 +22,28 @@ public final class River {
   private int postRiichiDiscardCount;
   private int postRiichiTsumogiriCount;
 
-  /** 空の河を生成する。 */
-  public River() {
-    this.discards = new Discard[MAX_DISCARDS];
-    for (int index = 0; index < discards.length; index++) {
-      discards[index] = new Discard(-1, -1, false, false, false, -1);
-    }
+  /**
+   * 空の河を作る。
+   *
+   * @param log 打牌を書く局の記録
+   */
+  River(PublicEventLog log) {
+    this.log = log;
     this.discardCountsByTileType = new int[Tile.NUM_TILE_TYPES];
     this.riichiDeclarationIndex = -1;
     this.riichiDeclarationSequence = -1;
   }
 
   /**
-   * 打牌と鳴かれた状態を複製した河を生成する。
+   * 分岐の河を作る。{@code log} は {@code other} の記録を写した記録。
    *
-   * @param other 複製元の河
+   * @param other 写す河
+   * @param log 写した局面の記録
    */
-  public River(River other) {
-    this.discards = new Discard[MAX_DISCARDS];
-    for (int index = 0; index < discards.length; index++) {
-      discards[index] = new Discard(-1, -1, false, false, false, -1);
-    }
+  River(River other, PublicEventLog log) {
+    this.log = log;
+    System.arraycopy(other.events, 0, events, 0, other.size);
     this.size = other.size;
-    for (int index = 0; index < size; index++) {
-      this.discards[index].copyFrom(other.discards[index]);
-    }
     this.discardCountsByTileType = other.discardCountsByTileType.clone();
     this.discardedTileTypeMask = other.discardedTileTypeMask;
     this.riichiDeclarationIndex = other.riichiDeclarationIndex;
@@ -156,100 +53,67 @@ public final class River {
   }
 
   /**
-   * 通常牌の手出しを河へ追加する。
+   * 記録に足した打牌を河の最後に置き、集約を進める。
    *
-   * @param tileType 捨てた牌の34牌種 ID
-   * @param turnNumber 捨てた席における0始まりの打牌巡目
-   * @param riichiDeclaration リーチ宣言牌か
+   * @param event 記録の打牌の番号
    */
-  void append(int tileType, int turnNumber, boolean riichiDeclaration) {
-    append(tileType, turnNumber, riichiDeclaration, false, false, -1);
-  }
-
-  /**
-   * 赤牌情報を含む手出しを河へ追加する。
-   *
-   * @param tileType 捨てた牌の34牌種 ID
-   * @param turnNumber 捨てた席における0始まりの打牌巡目
-   * @param riichiDeclaration リーチ宣言牌か
-   * @param aka 捨てた物理牌が赤ドラか
-   */
-  void append(int tileType, int turnNumber, boolean riichiDeclaration, boolean aka) {
-    append(tileType, turnNumber, riichiDeclaration, aka, false, -1);
-  }
-
-  /**
-   * 赤牌・自摸切り情報を含む打牌を河へ追加する。
-   *
-   * @param tileType 捨てた牌の34牌種 ID
-   * @param turnNumber 捨てた席における0始まりの打牌巡目
-   * @param riichiDeclaration リーチ宣言牌か
-   * @param aka 捨てた物理牌が赤ドラか
-   * @param tsumogiri 自摸切りか
-   */
-  void append(
-      int tileType, int turnNumber, boolean riichiDeclaration, boolean aka, boolean tsumogiri) {
-    append(tileType, turnNumber, riichiDeclaration, aka, tsumogiri, -1);
-  }
-
-  /**
-   * 全席通し連番を含む完全な打牌情報を河へ追加する。
-   *
-   * @param tileType 捨てた牌の34牌種 ID
-   * @param turnNumber 捨てた席における0始まりの打牌巡目
-   * @param riichiDeclaration リーチ宣言牌か
-   * @param aka 捨てた物理牌が赤ドラか
-   * @param tsumogiri 自摸切りか
-   * @param sequence 局内で全席を通した0始まりの打牌連番。不明なら {@code -1}
-   */
-  void append(
-      int tileType,
-      int turnNumber,
-      boolean riichiDeclaration,
-      boolean aka,
-      boolean tsumogiri,
-      int sequence) {
-    append(tileType, turnNumber, riichiDeclaration, aka, tsumogiri, sequence, -1);
-  }
-
-  /** GameStateが管理する公開イベント連番を付けて打牌を記録する。 */
-  void append(
-      int tileType,
-      int turnNumber,
-      boolean riichiDeclaration,
-      boolean aka,
-      boolean tsumogiri,
-      int sequence,
-      int creationEvent) {
-    if (size == discards.length) {
-      throw new IllegalStateException("river capacity exceeded: " + discards.length);
+  void append(int event) {
+    if (size == events.length) {
+      throw new IllegalStateException("a seat discards at most " + events.length + " tiles");
     }
-    Discard discard = discards[size++];
-    discard.set(tileType, turnNumber, riichiDeclaration, aka, tsumogiri, sequence);
-    discard.creationEvent = creationEvent;
+    events[size++] = (byte) event;
+    int tileType = log.tile(event);
     discardCountsByTileType[tileType]++;
     discardedTileTypeMask |= 1L << tileType;
-    if (riichiDeclarationIndex < 0 && riichiDeclaration) {
+    if (riichiDeclarationIndex < 0 && log.riichi(event)) {
       riichiDeclarationIndex = size - 1;
-      riichiDeclarationSequence = sequence;
+      riichiDeclarationSequence = log.sequence(event);
     } else if (riichiDeclarationIndex >= 0) {
       postRiichiDiscardCount++;
-      if (tsumogiri) {
+      if (log.tsumogiri(event)) {
         postRiichiTsumogiriCount++;
       }
     }
   }
 
-  /** 最後の捨て牌を「鳴かれた」としてマークする。 */
-  void markLastCalled() {
-    if (size != 0) {
-      discards[size - 1].calledFlag = true;
-    }
+  /** 河の位置 {@code index} の打牌の、局の公開の出来事の番号。 */
+  public int event(int index) {
+    return events[Objects.checkIndex(index, size)];
   }
 
-  /** 指定インデックスの打牌を返す。 */
-  public Discard discard(int index) {
-    return discards[java.util.Objects.checkIndex(index, size)];
+  /** 捨てた牌の34牌種IDを返す。 */
+  public int tileType(int index) {
+    return log.tile(event(index));
+  }
+
+  /** 捨てた席における0始まりの打牌巡目を返す。 */
+  public int turnNumber(int index) {
+    return log.turn(event(index));
+  }
+
+  /** リーチ宣言牌なら {@code true} を返す。 */
+  public boolean riichiDeclaration(int index) {
+    return log.riichi(event(index));
+  }
+
+  /** 捨てた物理牌が赤ドラなら {@code true} を返す。 */
+  public boolean aka(int index) {
+    return log.aka(event(index));
+  }
+
+  /** 直前の自摸牌を捨てた場合は {@code true} を返す。 */
+  public boolean tsumogiri(int index) {
+    return log.tsumogiri(event(index));
+  }
+
+  /** 局内で全席を通した0始まりの打牌連番。 */
+  public int sequence(int index) {
+    return log.sequence(event(index));
+  }
+
+  /** チー、ポンまたは大明槓で鳴かれていれば {@code true} を返す。 */
+  public boolean called(int index) {
+    return log.calledBy(event(index)) != PublicEventLog.NOT_CALLED;
   }
 
   /** 指定牌種を捨てた回数を返す。 */
@@ -267,7 +131,7 @@ public final class River {
     return riichiDeclarationIndex;
   }
 
-  /** リーチ宣言牌の全席通し連番。不明または不在なら-1。 */
+  /** リーチ宣言牌の全席通し連番。不在なら-1。 */
   public int riichiDeclarationSequence() {
     return riichiDeclarationSequence;
   }
@@ -292,16 +156,11 @@ public final class River {
     return (discardedTileTypeMask & 1L << tileType) != 0L;
   }
 
-  /**
-   * 河へ記録されている打牌数を返す。
-   *
-   * @return 打牌数
-   */
   public int size() {
     return size;
   }
 
-  /** 河をリセット。 */
+  /** 局の初めの空の河に戻す（記録は {@link GameState} が同時に空にする）。 */
   void clear() {
     size = 0;
     Arrays.fill(discardCountsByTileType, 0);
@@ -316,15 +175,14 @@ public final class River {
   public String toString() {
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < size; i++) {
-      Discard discard = discards[i];
       if (i > 0) {
         sb.append(' ');
       }
-      if (discard.riichiDeclaration) {
+      if (riichiDeclaration(i)) {
         sb.append('*');
       }
-      sb.append(Tile.name(discard.tileType));
-      if (discard.calledFlag) {
+      sb.append(Tile.name(tileType(i)));
+      if (called(i)) {
         sb.append('!');
       }
     }

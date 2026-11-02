@@ -8,10 +8,10 @@ import com.epsilon.ai.decision.EpsilonDecisionHlGauss;
 import com.epsilon.config.settings.DecisionTensorTransfer;
 import com.epsilon.config.settings.DecisionTrainingDeviceTransferSchedule;
 import com.epsilon.config.settings.DeviceSettings;
+import com.epsilon.network.NetworkDevices;
 import com.epsilon.pico.ai.decision.input.DecisionBatchTransfer;
 import com.epsilon.pico.ai.model.EpsilonDecisionNetwork;
 import com.epsilon.pico.ai.model.EpsilonTileRelationEncoder;
-import com.epsilon.pico.ai.network.NetworkDevices;
 import com.epsilon.pico.ai.network.NetworkFactory;
 import com.epsilon.pico.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
@@ -48,6 +48,7 @@ final class EpsilonDecisionDataParallel
 
   private static boolean includes(ParameterScope scope, String name) {
     return switch (scope) {
+      case ALL -> throw new IllegalArgumentException("Unsupported Pico training scope");
       case ONLINE -> EpsilonDecisionNetwork.isOnlineTrainingParameterName(name);
       case ONLINE_ACTOR -> EpsilonDecisionNetwork.isOnlineActorParameterName(name);
       case ONLINE_VALUE -> EpsilonDecisionNetwork.isValueParameterName(name);
@@ -59,6 +60,7 @@ final class EpsilonDecisionDataParallel
 
   private static void prepare(ParameterScope scope, EpsilonDecisionNetwork network) {
     switch (scope) {
+      case ALL -> throw new IllegalArgumentException("Unsupported Pico training scope");
       case ONLINE, ONLINE_ACTOR, ONLINE_VALUE -> network.prepareForOnlineTraining();
       case PRETRAIN_ALL -> network.prepareForOfflinePretraining(true, true);
       case PRETRAIN_POLICY -> network.prepareForOfflinePretraining(true, false);

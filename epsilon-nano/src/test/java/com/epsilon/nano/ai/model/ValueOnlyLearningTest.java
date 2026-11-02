@@ -18,6 +18,7 @@ import com.epsilon.nano.ai.decision.training.EpsilonDecisionPretrainer;
 import com.epsilon.nano.ai.network.NetworkFactory;
 import com.epsilon.nano.config.settings.EpsilonSettings;
 import com.epsilon.runtime.DecisionExecutionContext;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -105,7 +106,7 @@ public class ValueOnlyLearningTest {
         if (actor.contains(parameter.getValue())) {
           Assert.assertEquals(actual, original, parameter.getKey());
         } else {
-          valueChanged |= !java.util.Arrays.equals(actual, original);
+          valueChanged |= !Arrays.equals(actual, original);
         }
       }
       Assert.assertTrue(valueChanged, "Value optimizer must update its network parameters");

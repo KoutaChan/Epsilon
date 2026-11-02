@@ -91,8 +91,7 @@ public final class TenhouRoundState {
             || (player == SELF
                 && state().getTurnEvent() instanceof TurnEvent.Draw draw
                 && physicalTileId == draw.physicalTileId());
-    return round.discard(
-        player, Tile.typeOf(physicalTileId), Tile.isAka(physicalTileId), tsumogiri);
+    return round.discardPhysical(player, physicalTileId, tsumogiri);
   }
 
   private TenhouRoundOutcome applyNaki(TenhouEvent.Naki naki) {
@@ -103,7 +102,7 @@ public final class TenhouRoundState {
         switch (result) {
           case ObservedRoundState.OpenCall call ->
               naki.player() == SELF
-                  ? new TenhouRoundOutcome.PostCallDahai(call.restriction())
+                  ? new TenhouRoundOutcome.PostCallDahai(call.call())
                   : TenhouRoundOutcome.None.INSTANCE;
           case ObservedRoundState.Daiminkan ignored -> TenhouRoundOutcome.None.INSTANCE;
           case ObservedRoundState.Kan kan -> responseOutcome(kan.attempt(), naki.prompt());

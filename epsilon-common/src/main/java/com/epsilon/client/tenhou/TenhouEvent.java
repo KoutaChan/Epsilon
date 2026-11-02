@@ -28,6 +28,13 @@ public sealed interface TenhouEvent {
   record Go(int type, int lobby) implements TenhouEvent {}
 
   /**
+   * 参加要求の再送指示。
+   *
+   * @param target サーバーが指定したロビー・対局種別・追加フラグを含む JOIN の t 値
+   */
+  record Rejoin(String target) implements TenhouEvent {}
+
+  /**
    * UN メッセージ。
    *
    * @param names 席番号順のURL 符号化済みプレイヤー名
@@ -196,7 +203,7 @@ public sealed interface TenhouEvent {
    */
   record ActionPrompt(PromptPhase phase, int mask) {
     private static final int PON = 1;
-    private static final int KAN = 2;
+    private static final int DAIMINKAN = 2;
     private static final int CHI = 4;
     private static final int RON = 8;
     private static final int TSUMO = 16;
@@ -290,12 +297,23 @@ public sealed interface TenhouEvent {
     }
 
     /**
-     * 現在フェーズでいずれかの槓を選択できるかを返す。
+     * 手元で合法と判定した暗槓・加槓を選択できる自摸フェーズかを返す。
      *
-     * @return 行動要求が存在し KAN ビットが立っていれば {@code true}
+     * <p>自摸時の暗槓・加槓はサーバーのビットマスクに含まれないため、合法性は行動生成側で判定する。
+     *
+     * @return 自摸フェーズなら {@code true}
      */
-    public boolean canKan() {
-      return present() && has(KAN);
+    public boolean canSelfKan() {
+      return phase == PromptPhase.DRAW;
+    }
+
+    /**
+     * サーバーが許可した大明槓を選択できるかを返す。
+     *
+     * @return 応答フェーズで DAIMINKAN ビットが立っていれば {@code true}
+     */
+    public boolean canDaiminkan() {
+      return phase == PromptPhase.RESPONSE && has(DAIMINKAN);
     }
 
     /**
@@ -322,7 +340,7 @@ public sealed interface TenhouEvent {
   }
 
   // 制御
-  /** TAIKYOKU/SAIKAI による対局開始通知。ライブプロトコルでは自席は常に P0。 */
+  /** TAIKYOKU による対局開始確認。ライブプロトコルでは自席は常に P0。 */
   record GameStart() implements TenhouEvent {}
 
   /** 生存確認応答。 */

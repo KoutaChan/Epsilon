@@ -41,8 +41,7 @@ public final class GrpWorkerMain {
   /** 札を確かめる間隔。 */
   static final Duration HOLD_POLL = Duration.ofSeconds(30);
 
-  static final String USAGE =
-      "GrpWorkerMain --run DIR --hold-dir DIR --own-hold NAME | GrpWorkerMain --run DIR --copy-jar";
+  static final String USAGE = "GrpWorkerMain --run DIR --hold-dir DIR --own-hold NAME";
 
   private GrpWorkerMain() {}
 
@@ -50,23 +49,17 @@ public final class GrpWorkerMain {
    * 引数。
    *
    * @param run run のディレクトリ
-   * @param holdDirectory 札の置き場（--copy-jar なら null）
-   * @param ownHold 走らせ役自身の札の名前（--copy-jar なら null）
-   * @param copyJar jar を写してパスを出すだけなら true
+   * @param holdDirectory 札の置き場
+   * @param ownHold 走らせ役自身の札の名前
    */
-  record Arguments(Path run, Path holdDirectory, String ownHold, boolean copyJar) {
+  record Arguments(Path run, Path holdDirectory, String ownHold) {
 
     /** 引数を読む（誤りは IllegalArgumentException）。 */
     static Arguments parse(String[] arguments) {
       Path run = null, holds = null;
       String own = null;
-      boolean copy = false;
       for (int i = 0; i < arguments.length; i++) {
         String name = arguments[i];
-        if (name.equals("--copy-jar")) {
-          copy = true;
-          continue;
-        }
         if (i + 1 >= arguments.length) throw new IllegalArgumentException("Missing value for " + name);
         String value = arguments[++i];
         switch (name) {
@@ -77,11 +70,8 @@ public final class GrpWorkerMain {
         }
       }
       if (run == null) throw new IllegalArgumentException("--run is required");
-      if (copy && (holds != null || own != null))
-        throw new IllegalArgumentException("--copy-jar takes only --run");
-      if (!copy && (holds == null || own == null))
-        throw new IllegalArgumentException("--hold-dir and --own-hold are required");
-      return new Arguments(run, holds, own, copy);
+      if (holds == null || own == null) throw new IllegalArgumentException("--hold-dir and --own-hold are required");
+      return new Arguments(run, holds, own);
     }
   }
 
@@ -100,10 +90,6 @@ public final class GrpWorkerMain {
       return 2;
     }
     var files = new GrpFiles(parsed.run());
-    if (parsed.copyJar()) {
-      System.out.println(copyJar(files));
-      return 0;
-    }
     try {
       work(parsed, files);
     } catch (InterruptedException interrupted) {
@@ -118,18 +104,6 @@ public final class GrpWorkerMain {
   public static void main(String[] arguments) {
     int status = run(arguments);
     if (status != 0) System.exit(status);
-  }
-
-  /** jar を grp/jars へ写したパス（写せなければ今の jar のまま。走らせ役はどちらでも起動できる）。 */
-  static Path copyJar(GrpFiles files) {
-    Path running = null;
-    try {
-      running = WorkerJar.running();
-      return WorkerJar.copy(files, running);
-    } catch (IOException | RuntimeException failure) {
-      LOG.warn("the worker jar was not copied: {}", failure.toString());
-      return running == null ? Path.of("") : running;
-    }
   }
 
   private static void work(Arguments arguments, GrpFiles files) throws IOException, InterruptedException {

@@ -9,7 +9,6 @@ import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +20,7 @@ import org.testng.annotations.Test;
 
 /**
  * 裏の作業の部品: 錠（同じ種類は 1 つだけ、種類どうしは独立、外せば取り直せる）、心拍（pid・状態・終わり）、計測の札（自分の札は数えず、ほかの
- * 札が消えるまで待つ）、jar の写し（sha の名前、同じ sha は写し直さない）、主クラス（引数の誤りだけ 0 でなく、作業の失敗でも 0 で錠を残さない）。
+ * 札が消えるまで待つ）、主クラス（引数の誤りだけ 0 でなく、作業の失敗でも 0 で錠を残さない）。
  */
 public class WorkerLockTest {
   private Path run;
@@ -92,25 +91,7 @@ public class WorkerLockTest {
   }
 
   @Test
-  public void jarCopiesAreNamedBySha() throws IOException {
-    Path jar = run.resolve("epsilon-prism.jar");
-    Files.write(jar, "jar bytes".getBytes());
-    Path copy = WorkerJar.copy(files, jar);
-    String sha = WorkerJar.sha256(jar);
-    Assert.assertEquals(copy, files.jars().resolve(sha.substring(0, 16) + ".jar"));
-    Assert.assertEquals(Files.readAllBytes(copy), Files.readAllBytes(jar));
-    FileTime written = FileTime.fromMillis(1_000_000L);
-    Files.setLastModifiedTime(copy, written);
-    Assert.assertEquals(WorkerJar.copy(files, jar), copy);
-    Assert.assertEquals(Files.getLastModifiedTime(copy), written, "the same sha is not copied again");
-    // 中身が変われば別の写し（前の写しは残す）
-    Files.write(jar, "new jar bytes".getBytes());
-    Path next = WorkerJar.copy(files, jar);
-    Assert.assertNotEquals(next, copy);
-    try (var listed = Files.list(files.jars())) {
-      Assert.assertEquals(listed.count(), 2L);
-    }
-    Assert.assertThrows(IOException.class, () -> WorkerJar.copy(files, run.resolve("missing.jar")));
+  public void classDirectoriesHaveNoJarSha() throws IOException {
     // 試験はクラスのディレクトリから動くので sha はない
     Assert.assertEquals(WorkerJar.runningSha256(), "");
   }
@@ -119,7 +100,7 @@ public class WorkerLockTest {
   public void workerMainExitsZeroAndReleasesItsLocks() throws IOException {
     Assert.assertEquals(GrpWorkerMain.run(new String[] {"--run"}), 2);
     Assert.assertEquals(GrpWorkerMain.run(new String[] {"--run", run.toString()}), 2);
-    Assert.assertEquals(GrpWorkerMain.run(new String[] {"--run", run.toString(), "--copy-jar", "--own-hold", "x"}), 2);
+    Assert.assertEquals(GrpWorkerMain.run(new String[] {"--run", run.toString(), "--copy-jar"}), 2);
     Assert.assertEquals(GrpWorkerMain.run(new String[] {"--run", run.toString(), "--bogus", "1"}), 2);
     String[] work = {"--run", run.toString(), "--hold-dir", run.resolve("holds").toString(), "--own-hold", "HOLD.train.v2b"};
     // config.json がなくても系譜は止めない
@@ -139,8 +120,6 @@ public class WorkerLockTest {
     try (WorkerLock score = WorkerLock.tryAcquire(files, WorkerLock.Kind.SCORE).orElseThrow()) {
       Assert.assertTrue(Files.exists(files.lock("score")));
     }
-    // 写しは今の jar（試験はクラスのディレクトリ）が写せなくても、起動できるパスを返す
-    Assert.assertEquals(GrpWorkerMain.copyJar(files), WorkerJar.running());
     Assert.assertEquals(GrpWorkerMain.lastSealed(files), 0, "cohort 3 has a game log but no sealed rows");
   }
 

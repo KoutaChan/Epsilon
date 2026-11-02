@@ -76,7 +76,8 @@ __global__ __launch_bounds__(kThreads) void relationCodeKernel(RelationCodeArgs 
     const RelationToken query = token[i];
     const RelationToken key = token[j];
     int segments[kRelationSegments];
-    relationSegments(query, key, tileRelation[query.tileIndex() * layout.tiles + key.tileIndex()], segments);
+    relationSegments<BlockKind::MIXED, BlockKind::MIXED>(
+        query, key, tileRelation[query.tileIndex() * layout.tiles + key.tileIndex()], segments);
     // 区画の符号は 4 bit 以下（検査つきの組み立てで止める）なので、packCode の論理和は RelationClass の区画ごとの和と同じ。
 #pragma unroll
     for (int s = 0; s < kRelationSegments; ++s) {

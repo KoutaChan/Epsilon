@@ -149,12 +149,21 @@ __device__ __forceinline__ RelationToken relationToken(int type, const uint8_t* 
   return token;
 }
 
+// 出来事のトークンの型。
+constexpr int kEventType = 3;
+
+// トークンの塊（16 の位置）の型の揃い方。型は位置だけで決まる（局・席・牌は位置 0〜F − 1、出来事は F から）ので作業群で一様。
+// FIXED は局・席・牌だけ（型 < 3）、EVENT は出来事だけ（型 3）、MIXED はどちらもありうる（塊で分けない T0 もこれを使う）。
+enum class BlockKind { FIXED, MIXED, EVENT };
+
 // 対 (問い合わせ q, 鍵 k) の 7 区画の符号を segments に書く（選択だけで書き、分岐は書かない）。relation は牌の関係の類
-// tileRelation[q.tileIndex()·tiles + k.tileIndex()]。
+// tileRelation[q.tileIndex()·tiles + k.tileIndex()]。Query・Key は q・k の塊の型で、型から 0 と決まる項を組み立ての時に落とす
+// （固定どうしは区画 4・5 と繋がり、固定と出来事は区画 6 の全て）。落とすのは 0 の項だけなので、区画は MIXED の式とビットで同じ。
+template <BlockKind Query, BlockKind Key>
 __device__ __forceinline__ void relationSegments(const RelationToken& q, const RelationToken& k, int relation,
                                                  int (&segments)[kRelationSegments]) {
-  const int typeQ = q.type();
-  const int typeK = k.type();
+  const int typeQ = Query == BlockKind::EVENT ? kEventType : q.type();
+  const int typeK = Key == BlockKind::EVENT ? kEventType : k.type();
   segments[0] = 4 * typeQ + typeK;
 
   const bool bothTiles = q.tile() > 0 && k.tile() > 0;
@@ -171,8 +180,8 @@ __device__ __forceinline__ void relationSegments(const RelationToken& q, const R
 
   const int eventQ = q.event();
   const int eventK = k.event();
-  const bool keyEvent = typeK == 3;
-  const bool queryEvent = typeQ == 3;
+  const bool keyEvent = Key == BlockKind::MIXED ? typeK == kEventType : Key == BlockKind::EVENT;
+  const bool queryEvent = Query == BlockKind::MIXED ? typeQ == kEventType : Query == BlockKind::EVENT;
   const int lastDiscardQ = q.lastDiscard();
   const bool afterDiscard = lastDiscardQ > 0 && eventK > lastDiscardQ;
   segments[4] = (keyEvent ? k.phase() + 1 + 4 * afterDiscard : 0) +

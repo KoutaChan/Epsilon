@@ -7,6 +7,10 @@
 // スレッド t が語 t（1 KiB の連続）を書く。鍵が行の外なら kPaddedKeyCode、問い合わせだけが外なら 0（行の外の位置は行の最後の
 // トークンの語で作って捨てる）。
 //
+// 塊の型（BlockKind: 固定の 39 トークンなら塊 0・1 が FIXED、塊 2 が MIXED、塊 3 から EVENT）は作業群で一様なので、塊の対ごとに
+// スカラーの分岐で型の組の式を選ぶ。型の組の式は型から 0 と決まる項と、固定の塊では起きない行の外の選択を落とすだけなので、全ての語は
+// 型を問わない式とビットで同じ。行の外の位置の語（行の最後のトークン）は出来事の塊では出来事なので、EVENT の式で作ってよい。
+//
 // 偏りの表（relationBiasKernel）: 重みの公開のときに層ごとに 1 回（Plan::uploadWeights）。作業群は 1 頭の対で、K2・K4 が引く
 // 2 頭の表（prism_hip_relation.h の置き方）を ρ から作る。
 #include "prism_hip_relation.h"
@@ -16,6 +20,58 @@ namespace {
 
 constexpr int kThreads = 256;
 static_assert(kThreads == kCodeBlockWords, "one thread per code word of a block pair");
+
+// 塊 b（位置 16b〜16b + 15）の型。fixed は局・席・牌のトークンの数 F（位置 0〜F − 1）。
+__device__ __forceinline__ BlockKind blockKind(int block, int fixed) {
+  return 16 * block + 16 <= fixed ? BlockKind::FIXED : 16 * block >= fixed ? BlockKind::EVENT : BlockKind::MIXED;
+}
+
+// 問い合わせの位置 i と鍵の位置 j の対の語（i・j は塊の型が Query・Key の塊の中）。query は位置 min(i, S − 1) の語、tileRow はその
+// 牌の関係の表の行の先頭。FIXED の塊は行の中（16b + 15 < F ≤ S）なので、行の外の選択と位置の切り詰めを落とす。
+template <BlockKind Query, BlockKind Key>
+__device__ __forceinline__ uint32_t pairCode(const RelationToken* token, const uint8_t* tileRelation,
+                                             const RelationToken& query, int tileRow, int i, int j, int tokens,
+                                             Bounds& bounds) {
+  const bool queryInside = Query == BlockKind::FIXED || i < tokens;
+  const bool keyInside = Key == BlockKind::FIXED || j < tokens;
+  const RelationToken key = token[Key == BlockKind::FIXED ? j : min(j, tokens - 1)];
+  int segments[kRelationSegments];
+  relationSegments<Query, Key>(query, key, tileRelation[tileRow + key.tileIndex()], segments);
+  // 区画の符号は 16 未満（推論の語の項の番号が組の表に収まる）で、区画 6 の 15 は行の外の鍵の印なので実の対では 14 以下
+  // （検査つきの組み立てで止める）。
+  const bool inside = queryInside && keyInside;
+#pragma unroll
+  for (int s = 0; s < kRelationSegments; ++s) {
+    (void)bounds.index(static_cast<size_t>(inside ? segments[s] : 0), 1,
+                       s == kRelationSegments - 1 ? kRelationEntries - 1 : kRelationEntries);
+  }
+  return !keyInside ? kPaddedKeyCode : queryInside ? attentionCode(segments) : 0u;
+}
+
+// 問い合わせの塊 qt（型 Query）と全ての鍵の塊の対の語を書く。鍵の塊の型は kt だけで決まるのでスカラーの分岐で選ぶ。
+template <BlockKind Query>
+__device__ __forceinline__ void writeQueryBlock(const RelationArgs& args, const RelationToken* token,
+                                                const uint8_t* tileRelation, int row, int qt, int blocks, int tokens,
+                                                Bounds& bounds) {
+  const int tid = threadIdx.x;
+  const int lane = tid >> 3;
+  const int v = tid & 7;
+  const int fixed = args.layout.fixed();
+  const int i = 16 * qt + (lane & 15);
+  const RelationToken query = token[Query == BlockKind::FIXED ? i : min(i, tokens - 1)];
+  const int tileRow = query.tileIndex() * args.layout.tiles;
+  for (int kt = 0; kt < blocks; ++kt) {
+    const int j = 16 * kt + 2 * v + (lane >> 4);
+    const BlockKind keyKind = blockKind(kt, fixed);
+    const uint32_t code =
+        keyKind == BlockKind::FIXED
+            ? pairCode<Query, BlockKind::FIXED>(token, tileRelation, query, tileRow, i, j, tokens, bounds)
+        : keyKind == BlockKind::EVENT
+            ? pairCode<Query, BlockKind::EVENT>(token, tileRelation, query, tileRow, i, j, tokens, bounds)
+            : pairCode<Query, BlockKind::MIXED>(token, tileRelation, query, tileRow, i, j, tokens, bounds);
+    args.codes.data[bounds.index(codeIndex(row, qt, kt) + tid, 1, args.codes.limit)] = code;
+  }
+}
 
 __global__ __launch_bounds__(kThreads) void relationKernel(RelationArgs args) {
   __shared__ RelationToken token[kMaxRowTokens];
@@ -53,28 +109,18 @@ __global__ __launch_bounds__(kThreads) void relationKernel(RelationArgs args) {
   }
   __syncthreads();
 
-  const int lane = tid >> 3;
-  const int v = tid & 7;
   const int blocks = (tokens + 15) / 16;
   for (int qt = 0; qt < blocks; ++qt) {
-    const int i = 16 * qt + (lane & 15);
-    const RelationToken query = token[min(i, tokens - 1)];
-    const int tileRow = query.tileIndex() * layout.tiles;
-    for (int kt = 0; kt < blocks; ++kt) {
-      const int j = 16 * kt + 2 * v + (lane >> 4);
-      const RelationToken key = token[min(j, tokens - 1)];
-      int segments[kRelationSegments];
-      relationSegments(query, key, tileRelation[tileRow + key.tileIndex()], segments);
-      // 区画の符号は 16 未満（推論の語の項の番号が組の表に収まる）で、区画 6 の 15 は行の外の鍵の印なので実の対では 14 以下
-      // （検査つきの組み立てで止める）。
-      const bool inside = i < tokens && j < tokens;
-#pragma unroll
-      for (int s = 0; s < kRelationSegments; ++s) {
-        (void)bounds.index(static_cast<size_t>(inside ? segments[s] : 0), 1,
-                           s == kRelationSegments - 1 ? kRelationEntries - 1 : kRelationEntries);
-      }
-      const uint32_t code = j >= tokens ? kPaddedKeyCode : i < tokens ? attentionCode(segments) : 0u;
-      args.codes.data[bounds.index(codeIndex(row, qt, kt) + tid, 1, args.codes.limit)] = code;
+    switch (blockKind(qt, fixed)) {
+      case BlockKind::FIXED:
+        writeQueryBlock<BlockKind::FIXED>(args, token, tileRelation, row, qt, blocks, tokens, bounds);
+        break;
+      case BlockKind::MIXED:
+        writeQueryBlock<BlockKind::MIXED>(args, token, tileRelation, row, qt, blocks, tokens, bounds);
+        break;
+      case BlockKind::EVENT:
+        writeQueryBlock<BlockKind::EVENT>(args, token, tileRelation, row, qt, blocks, tokens, bounds);
+        break;
     }
   }
   bounds.trap();

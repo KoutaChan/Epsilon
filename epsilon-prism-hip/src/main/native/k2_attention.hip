@@ -36,6 +36,7 @@ constexpr int kValueStride = kMaxRowTokens + 8;            // V^T の行（bank 
 constexpr int kFixedBlocks = (kMaxFixedTokens + 15) / 16;  // K4 の問い合わせの塊
 static_assert(2 * kFixedBlocks <= kWaves, "K4 gives every query block and head its own wave");
 static_assert(kBiasEntries % 2 == 0, "the bias table is copied 16 bytes at a time");
+static_assert(sizeof(float2) == kBiasEntryBytes, "a code field holds the byte offset of a two-head bias entry");
 static_assert(kThreads <= kBiasEntries / 2 && kBiasEntries / 2 <= 2 * kThreads,
               "every thread copies one or two 16-byte chunks of the bias table");
 
@@ -246,22 +247,23 @@ __device__ __forceinline__ void phaseBarrier() {
   __builtin_amdgcn_fence(__ATOMIC_ACQUIRE, "workgroup", "local");
 }
 
-// 符号 code の 4 つの表の項の和 Σ_s ρ（×log2e）。表の項は (頭 2p, 頭 2p + 1) の値の対で、2 頭は対を 1 回で引く。
+// 符号 code（推論の語）の 4 つの表の項の和 Σ_s ρ（×log2e）。表の項は (頭 2p, 頭 2p + 1) の値の対で、2 頭は対を 1 回で引く。語の欄は
+// 項のバイトの位置なので、番地の式は欄の取り出しだけになる（項の番号に直す ÷8 と配列の ×8 は打ち消し合う）。
 __device__ __forceinline__ float2 pairBias(const float2 (&bias)[kBiasEntries], uint32_t code) {
-  const float2 b01 = bias[code & 0xffu];
-  const float2 b23 = bias[kPairEntries + ((code >> 8) & 0xffu)];
-  const float2 b45 = bias[2 * kPairEntries + ((code >> 16) & 0xffu)];
-  const float2 b6 = bias[3 * kPairEntries + (code >> 24)];
+  const float2 b01 = bias[pairTableOffset(code, 0) / kBiasEntryBytes];
+  const float2 b23 = bias[kPairEntries + pairTableOffset(code, 1) / kBiasEntryBytes];
+  const float2 b45 = bias[2 * kPairEntries + pairTableOffset(code, 2) / kBiasEntryBytes];
+  const float2 b6 = bias[3 * kPairEntries + lastTableOffset(code) / kBiasEntryBytes];
   return make_float2(((b01.x + b23.x) + b45.x) + b6.x, ((b01.y + b23.y) + b45.y) + b6.y);
 }
 
 // 同じ和の頭 head（0・1）の分だけ（対の片方を引く。足す順は pairBias と同じ）。
 __device__ __forceinline__ float headBias(const float2 (&bias)[kBiasEntries], uint32_t code, int head) {
   const float* table = reinterpret_cast<const float*>(bias) + head;
-  const float b01 = table[2 * (code & 0xffu)];
-  const float b23 = table[2 * (kPairEntries + ((code >> 8) & 0xffu))];
-  const float b45 = table[2 * (2 * kPairEntries + ((code >> 16) & 0xffu))];
-  const float b6 = table[2 * (3 * kPairEntries + (code >> 24))];
+  const float b01 = table[2 * (pairTableOffset(code, 0) / kBiasEntryBytes)];
+  const float b23 = table[2 * (kPairEntries + pairTableOffset(code, 1) / kBiasEntryBytes)];
+  const float b45 = table[2 * (2 * kPairEntries + pairTableOffset(code, 2) / kBiasEntryBytes)];
+  const float b6 = table[2 * (3 * kPairEntries + lastTableOffset(code) / kBiasEntryBytes)];
   return ((b01 + b23) + b45) + b6;
 }
 

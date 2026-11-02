@@ -163,8 +163,7 @@ __device__ __forceinline__ u32x4 normalize8(u32x4 packed, const float* __restric
     // 2 つの積を出してから丸める（積ごとに丸めると組み立て器の命令の並びが変わる）。
     const float lo = (bf16Float(static_cast<uint16_t>(packed[w] & 0xffffu)) * r) * gLo;
     const float hi = (bf16Float(static_cast<uint16_t>(packed[w] >> 16)) * r) * gHi;
-    normalized[w] =
-        static_cast<uint32_t>(bf16RoundActivation(lo)) | (static_cast<uint32_t>(bf16RoundActivation(hi)) << 16);
+    normalized[w] = bf16RoundActivationPair(lo, hi);
   }
   return normalized;
 }

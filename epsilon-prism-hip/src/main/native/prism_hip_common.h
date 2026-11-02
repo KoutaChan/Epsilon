@@ -52,6 +52,15 @@ __host__ __device__ __forceinline__ uint16_t bf16RoundActivation(float value) {
   return static_cast<uint16_t>((bits + 0x7fffu + ((bits >> 16) & 1u)) >> 16);
 }
 
+// 2 つの float を bf16RoundActivation で丸めて 1 語に詰める（lo が下、hi が上）。丸めの和 bits + 0x7FFF + lsb の上位 16 bit を
+// v_perm 1 つで選ぶので、bf16RoundActivation(lo) | bf16RoundActivation(hi) << 16 とビットで同じ（シフトと and_or の 2 命令が 1 つ）。
+__device__ __forceinline__ uint32_t bf16RoundActivationPair(float lo, float hi) {
+  const uint32_t loBits = __builtin_bit_cast(uint32_t, lo);
+  const uint32_t hiBits = __builtin_bit_cast(uint32_t, hi);
+  return __builtin_amdgcn_perm(hiBits + 0x7fffu + ((hiBits >> 16) & 1u), loBits + 0x7fffu + ((loBits >> 16) & 1u),
+                               0x07060302u);
+}
+
 __host__ __device__ __forceinline__ float bf16Float(uint16_t value) {
   return __builtin_bit_cast(float, static_cast<uint32_t>(value) << 16);
 }

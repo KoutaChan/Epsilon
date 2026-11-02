@@ -103,8 +103,8 @@ public class DriftAlarmTest {
   }
 
   /**
-   * 自己対局で学んだ項目は、公開のときに測ったその候補の較正からの増分で決める: D_SPG が本番の床より大きくても（段 1 の C で 1.28e-4）安定して
-   * いれば ON にならず、区分の傾きも基準からの z で見る。
+   * 自己対局で学んだ項目は、公開のときに測ったその候補の較正からの増分で決める: D_SPG が本番の床より大きくても安定していれば ON にならず、
+   * 区分の傾きも基準からの z で見る。
    */
   @Test
   public void aSelfPlayEntryIsJudgedFromItsOwnBaseline() {

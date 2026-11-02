@@ -27,17 +27,15 @@ import org.testng.annotations.Test;
  * 手ごとの局末の記録（{@link OutcomeCodec}: 判断の席から見た 4 席の精算後の点数と次局の局）から収集と同じ式で作る（半荘が終わった手は最終順位の
  * 効用で、行の値と一致することを確かめる）。局末の記録のない手（ツモ・ロン・九種）を測った行は割合に入れず、数だけ出す。
  *
- * <p>事前登録の線: E1〜E4 の打牌の行か E1〜E4 の鳴きの行で、点数の順位の割合が 30% を超えれば傾向あり（CONFIRMED）。この割合には、測った
- * 全ての手の局末が同じでどの Φ でも差が 0 になる行（本番の Φ の差がちょうど 0、GRP0）も入るので、判定の行には点数の順位に固有の分を見る
- * ための GRP0 と、本番の Φ に差がある行での割合 P(SR0 | GRP > 0) も並べる（判定の規則は変えない）。結果は標準出力と、
- * {@code -Dprism.grp.zero.out=<file.json>} があればその JSON に書く。名前が *Test でないので、既定の試験には入らず {@code -Dtest} で名指ししたとき
- * だけ走る。
+ * <p>判定: E1〜E4 の打牌の行か E1〜E4 の鳴きの行で、点数の順位の割合が 30% を超えれば CONFIRMED。この割合には全ての手の局末が同じでどの Φ
+ * でも差が 0 になる行（GRP0）も入るので、GRP0 と、本番の Φ に差がある行での割合 P(SR0 | GRP > 0) も並べる。結果は標準出力と、
+ * {@code -Dprism.grp.zero.out=<file.json>} があればその JSON に書く。名前が *Test でないので {@code -Dtest} で名指ししたときだけ走る。
  */
 public class ZeroSpreadBench {
   private static final String COHORT_PROPERTY = "prism.grp.zero.cohort";
   private static final String OUT_PROPERTY = "prism.grp.zero.out";
 
-  /** 事前登録の線（点数の順位の割合）。 */
+  /** 判定の線（点数の順位の割合）。 */
   private static final double THRESHOLD = 0.30;
 
   /** 「ほぼ 0」の差の線（効用の単位）。 */

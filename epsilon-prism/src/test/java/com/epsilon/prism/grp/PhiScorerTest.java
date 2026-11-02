@@ -20,7 +20,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 /**
- * 裏の採点（{@link PhiScorer}）を小さな合成の記録で確かめる（測りはほかの持ち主の本体の代わりに、Φ の値から決まる偽の {@link CellReport}）:
+ * 裏の採点（{@link PhiScorer}）を小さな合成の記録で確かめる（測りは Φ の値から決まる偽の {@link CellReport}）:
  * 採点するコホートは未採点で遅れが 8 以内のもの。使用中の Φ と影の Φ を記録の半荘で評価して 1 行書き、EWMA は同じ項目なら λ = 1/8 で進め、
  * 項目が変わったら初めから。影が開けなければその影だけを飛ばし、記録が読めなければ何も書かない。書きかけの行は読み飛ばし、次の行は読める。
  */

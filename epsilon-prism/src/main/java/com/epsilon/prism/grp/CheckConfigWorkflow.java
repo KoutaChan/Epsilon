@@ -24,12 +24,9 @@ import org.slf4j.LoggerFactory;
  * validateTraining で確かめ、Φ を解決する（FIXED_GRP は GRP の正確なディレクトリと sha、SELF_GRP は phi.jsonl を読んで反復 t の項目）。GPU を
  * 使わず、何も書かない。
  *
- * <p>反復 t は --run の state.json の次のコホート（--run がなければ 1）。SELF_GRP で phi.jsonl がまだなければ、学習の JVM が最初に書く g000 の
- * 出どころ（phiStart）を確かめる。phi.jsonl があれば、その g000 が設定と合うか（学習の JVM が起動で拒む食い違い。{@link
- * PhiHistory#requireInitialMatches}）も確かめる。GRP を読む項目は sha を計算し直して項目と照らし、CPU で網を開いて閉じる。較正の表は読んで形を
- * 確かめる。WITH_ORIGINAL なら影の元の GRP も解決する。誤りは書き残して状態 1 を返す（例外は投げない）。
- *
- * <p>本番の jar の Main で打つので、走らせ役の照合（学習の JVM の待ち）に掛かる。反復の境目を避け、GPU を隠して（{@code PRISM_GPU=}）打つ。
+ * <p>反復 t は --run の state.json の次のコホート（--run がなければ 1）。SELF_GRP で phi.jsonl がまだなければ g000 の出どころ（phiStart）を、
+ * あればその g000 が設定と合うか（{@link PhiHistory#requireInitialMatches}）を確かめる。GRP を読む項目は sha を計算し直して項目と照らし、CPU で
+ * 網を開いて閉じる。較正の表は読んで形を確かめる。WITH_ORIGINAL なら影の元の GRP も解決する。誤りは書き残して状態 1 を返す（例外は投げない）。
  */
 public final class CheckConfigWorkflow implements CommandWorkflow<Integer> {
   private static final Logger LOG = LoggerFactory.getLogger(CheckConfigWorkflow.class);

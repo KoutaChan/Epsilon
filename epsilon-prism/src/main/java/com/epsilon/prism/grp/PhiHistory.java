@@ -23,16 +23,13 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Φ の切り替えの記録 grp/phi.jsonl（追記だけ、1 行 1 {@link PhiEntry}）。反復 t の Φ は effectiveFrom ≤ t の行のうち effectiveFrom が最も
- * 大きい行（同じなら後の行）で、時計に依らない。書き込みはファイルの錠を取り、effectiveFrom が始まった最後の反復（state.json の次のコホート
- * − 1）より後でなければ拒む（学習の JVM が動いているか、次のコホートが封印済み＝落ちた反復の行を再開で使い回すなら、さらに + 1）。走っている
- * 反復の過去を書き換えない。
+ * Φ の切り替えの記録 grp/phi.jsonl（追記だけ、1 行 1 {@link PhiEntry}）。反復 t の Φ は {@link #effectiveAt} で決まり、時計に依らない。
+ * 追記はファイルの錠の中で、effectiveFrom が {@link #firstOpenIteration} より前なら拒む（走っている反復の過去を書き換えない）。
  *
- * <p>学習の JVM が動いているかは、SELF_GRP の学習の JVM（{@link PhiResolver}）が開いているあいだ持つ錠 grp/{@value #TRAINING_LOCK}.lock で
- * 決める（プロセスが死ねばカーネルが外す）。最後の改行のない行は書きかけ（書き手が止まった）として読まず、次の追記で切り捨てる。
+ * <p>学習の JVM が動いているかは、{@link PhiResolver} が開いているあいだ持つ錠 grp/{@value #TRAINING_LOCK}.lock で決める（プロセスが死ねば
+ * カーネルが外す）。最後の改行のない行は書きかけとして読まず、次の追記で切り捨てる。refits.jsonl（{@link RefitRecord}）も同じ書き方。
  *
- * <p>同じ JVM の中の追記は 1 つずつ（ファイルの錠は JVM ごとなので、同じ JVM の別の口からは重ねられない）。refits.jsonl（{@link
- * RefitRecord}）も同じ書き方。
+ * <p>ファイルの錠は JVM ごとなので、同じ JVM の中の追記はクラスの監視で 1 つずつにする。
  */
 public final class PhiHistory {
   private PhiHistory() {}

@@ -11,29 +11,21 @@ import java.util.Optional;
 /**
  * ずれの警報（phiDrift が OFF でないとき、採点の行ごとに進める）。使用中の項目の基準（{@link Baseline}）からの増分で決める: ON の線 = F_E +
  * phiDriftK·W、OFF の線 = F_E + 2·W、W = √(SD_EWMA² + SD(F_E)²)。F_E は項目の D_SPG の床、SD_EWMA は 1 コホートの SD(D_SPG) を EWMA（λ =
- * {@link PhiMonitorLine#EWMA_WEIGHT}）で縮めた分。D_SPG の EWMA が ON の線以上か、区分の傾きの基準からの z がボンフェローニの線 {@value
- * #SLOPE_Z} を越えた状態が {@value #CONSECUTIVE} 回連続し、前の切り替えが grpSwitchSettle まで入っていれば ON（{@link
- * RefitScheduler#settled}）。D_SPG の EWMA が OFF の線以下で傾きも線の内に戻るまで ON。使用中の項目が変わったら EWMA と連続の数を初めから
- * やり直す。使用中が点数だけの Φ なら出さない。状態は grp/drift.jsonl に書く。
+ * {@link PhiMonitorLine#EWMA_WEIGHT}）で縮めた分。D_SPG の EWMA が ON の線以上か、区分の傾きの基準からの z が {@value #SLOPE_Z} を越えた
+ * 状態が {@value #CONSECUTIVE} 回連続し、前の切り替えが grpSwitchSettle まで入っていれば ON（{@link RefitScheduler#settled}）。D_SPG の EWMA
+ * が OFF の線以下で傾きも線の内に戻るまで ON。使用中の項目が変わったら EWMA と連続の数を初めからやり直す。使用中が点数だけの Φ なら出さない。
+ * 状態は grp/drift.jsonl に書く。
  *
- * <p>基準: 本番の Φ（元の GRP ＋ 較正の表。FIXED_GRP と SELF_GRP の g000）は段 1 の床 F = {@value #FLOOR}・傾き 1。自己対局で学んだ項目は、
- * 公開のときに取り置きのコホートで測ったその候補の D_SPG・区分の傾きと SE（refits.jsonl の関門の candidate）。学んだ GRP の D_SPG は本番の
- * Φ の床より大きいことがある（段 1 の C で 1.28e-4）ので、大域の F で比べると切り替えた瞬間から ON のままになる。基準の測りは 1 コホートなので、
- * その SD を線の幅に足す。基準の見つからない候補は警報を出さない。
- *
- * <p>F と SD は段 1（GrpStudyBench）で v224 の監査（65,536 半荘）を {@link CellStats#measure} で測った値（採点の行の D_SPG と同じ定義）。
- * F = D_SPG(元の GRP ＋ 半荘の偶奇で交差させた較正の表＝本番の Φ) = 4.535e-5（元の GRP だけなら 3.00e-4）、半荘のブートストラップ（200 回）の
- * 1 コホートの SD(D_SPG) = 7.97e-6。SD は半荘の数の平方根に反比例させる。定常の EWMA の SD は 0.258·SD = 2.06e-6 で、k = 4 の ON の線は
- * 5.36e-5、OFF の線は 4.95e-5。EWMA の分散は SD² を重みの二乗で足したもので、切り替えの直後（コホートが少ない）ほど線が広い（線を定常の値に
- * 固定して 1 コホートからやり直すと、16 反復以内の誤警報が 11.6% になるため）。定常の誤警報（700 反復で 1 回でも）は D_SPG の側が 1 回の
- * 越えで 1.64%、2 回連続で 0.43%。傾きの側（8 区分、独立なコホートで 2 回連続）は約 8%（1 コホートで約 1.1%）。
+ * <p>基準は、本番の Φ（元の GRP ＋ 較正の表）なら床 {@value #FLOOR}・傾き 1、自己対局で学んだ項目なら公開のときに取り置きのコホートで測った
+ * その候補の D_SPG・区分の傾きと SE（学んだ GRP の床は本番より大きいことがあり、大域の床で比べると切り替えた瞬間から ON になるため）。基準の
+ * 見つからない候補は警報を出さない。EWMA の分散は 1 コホートの SD² を重みの二乗で足すので、切り替えの直後ほど線が広い。
  */
 public final class DriftAlarm {
 
-  /** 床 F（本番の Φ の D_SPG）。 */
+  /** 床 F（本番の Φ の D_SPG を {@link CellStats#measure} で測った値）。 */
   static final double FLOOR = 4.535e-5;
 
-  /** {@value #REFERENCE_GAMES} 半荘の 1 コホートの SD(D_SPG)。 */
+  /** {@value #REFERENCE_GAMES} 半荘の 1 コホートの SD(D_SPG)（半荘のブートストラップ。半荘の数の平方根に反比例させる）。 */
   static final double COHORT_SD = 7.97e-6;
 
   /** COHORT_SD を測った半荘の数。 */
@@ -53,13 +45,13 @@ public final class DriftAlarm {
    * 項目の基準（警報はここからの増分で決める）。
    *
    * @param floor D_SPG の床 F_E
-   * @param floorSd その測りの SD（段 1 の床は 0）
+   * @param floorSd その測りの SD（本番の床は 0）
    * @param slope 区分ごとの傾きの基準（null なら β = 1・SE 0）
    * @param slopeSe その SE
    */
   record Baseline(double floor, double floorSd, double[] slope, double[] slopeSe) {
 
-    /** 本番の Φ（元の GRP ＋ 較正の表）: 段 1 の床、傾き 1。 */
+    /** 本番の Φ（元の GRP ＋ 較正の表）: 床 {@link #FLOOR}、傾き 1。 */
     static final Baseline PRODUCTION = new Baseline(FLOOR, 0, null, null);
 
     /** 自己対局で学んだ候補: 公開のときに取り置きのコホートで測った候補の較正。 */

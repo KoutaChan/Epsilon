@@ -12,8 +12,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 手順 0 の組み直し: 次局の局と本場は同じ半荘の次の行、供託は (100000 − Σ s)/1000、半荘の最後の行には次局がなく最終の点数になる。p と Φ は半荘が
- * 続く局末だけを {@link HandEndPhi#gameValues} の順に並べる。
+ * audit-grp の CSV の組み直し: 次局の局と本場は同じ半荘の次の行、供託は (100000 − Σ s)/1000、半荘の最後の行には次局がなく最終の
+ * 点数になる。p と Φ は半荘が続く局末だけを {@link HandEndPhi#gameValues} の順に並べる。
  */
 public class AuditCsvGamesTest {
   private static final String HEADER;

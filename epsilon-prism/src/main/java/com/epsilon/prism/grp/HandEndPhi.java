@@ -9,8 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 記録した局末の Φ を CPU でまとめて評価するもの（裏の採点・関門・段 1 の調べ。学習の JVM のラベルは {@code HandValue}）。GRP の順伝播の行の
- * 数は常に GRP の maxBatch で、学習の JVM と同じスレッド数なら同じ入力に同じ値を返す。
+ * 記録した局末の Φ を CPU でまとめて評価するもの（裏の採点と関門。学習の JVM の局末の値は {@code HandValue}）。GRP の順伝播の行の数は常に
+ * GRP の maxBatch で、学習の JVM と同じスレッド数なら同じ入力に同じ値を返す。
  */
 public interface HandEndPhi extends AutoCloseable {
 

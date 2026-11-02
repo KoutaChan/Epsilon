@@ -53,8 +53,8 @@ public record PhiMonitorLine(
       new GsonBuilder().serializeSpecialFloatingPointValues().setStrictness(Strictness.LENIENT).create();
 
   /**
-   * phimon.jsonl の全ての行（書いた順。ファイルがなければ空、書きかけの最後の行は読み飛ばす）。書きかけの行は次の {@link #append} が改行で
-   * 閉じるので、途中の壊れた行も書きかけの残りとして読み飛ばす。
+   * phimon.jsonl の全ての行（書いた順。ファイルがなければ空）。壊れた行は、最後の行でなくても書きかけの残り（次の {@link #append} が改行で
+   * 閉じる）として読み飛ばす。
    */
   public static List<PhiMonitorLine> readAll(GrpFiles files) throws IOException {
     Path path = files.monitor();
@@ -67,7 +67,6 @@ public record PhiMonitorLine(
       try {
         lines.add(parse(text));
       } catch (JsonParseException | IllegalStateException | NullPointerException broken) {
-        // 書きかけで止まった行（次の append が改行で閉じるので、最後の行とは限らない）
         LOG.warn("skipped the broken line {} of {}", i + 1, path);
       }
     }

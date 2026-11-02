@@ -22,12 +22,10 @@ import org.testng.annotations.Test;
  * ディレクトリ）・{@code -Dprism.grp.rows.calibration}（較正の表、既定は空）・{@code -Dprism.grp.rows.monitor}（phiMonitor、既定 SCORE）・
  * {@code -Dprism.grp.rows.source}（phiSource を読点で区切って並べる、既定 FIXED_GRP。SELF_GRP なら phiStart = GRP_CHECKPOINT の g000）で、
  * phiSource ごとに小さな系譜を 1 反復回し、コホート 1 の行の指紋（{@link RowHash}）を {@code -Dprism.grp.rows.out} に 1 行ずつ書く（1 つなら
- * 「行数 sha」、並べたら「phiSource 行数 sha」）。同じ形の調べを Φ の設定の前のコード（phi = "grp"）でも回し、
- * 指紋が同じならラベル行はビットで同じ（SELF_GRP の g000 も同じ指紋になるはず＝jar B の前提）。
+ * 「行数 sha」、並べたら「phiSource 行数 sha」）。2 つの jar の指紋が同じならラベル行はビットで同じ。
  *
- * <p>{@code -Dprism.grp.checkConfig=<config.json,...>} は、移し替えた config.json の写しを check-config と同じ点検（{@link
- * CheckConfigWorkflow#check}、run なし、GPU なし）に通す（本番の jar の Main を起動しないため）。名前が *Test でないので、{@code -Dtest} で
- * 名指ししたときだけ走る。
+ * <p>{@code -Dprism.grp.checkConfig=<config.json,...>} は、config.json を check-config と同じ点検（{@link CheckConfigWorkflow#check}、run
+ * なし、GPU なし）に通す。名前が *Test でないので、{@code -Dtest} で名指ししたときだけ走る。
  */
 public class FixedGrpRowsBench {
   private static final Logger LOG = LoggerFactory.getLogger(FixedGrpRowsBench.class);

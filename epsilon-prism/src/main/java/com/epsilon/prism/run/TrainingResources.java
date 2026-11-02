@@ -146,7 +146,7 @@ public final class TrainingResources implements AutoCloseable {
   }
 
   /**
-   * 反復 t の局末の値 Φ（FIXED_GRP・SCORE_RANK は全ての反復で同じ）。
+   * 反復 t の局末の値 Φ（SELF_GRP 以外は全ての反復で同じ）。
    *
    * @throws IOException SELF_GRP で既に効いている項目の GRP が読めないとき
    */

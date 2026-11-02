@@ -26,13 +26,13 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * 段 1 のオフラインの調べ（CPU だけ）: audit-grp の CSV（{@code -Dprism.grp.study.csv=<v224.csv.gz>}）と較正の表
- * （{@code -Dprism.grp.study.calibration=<phi-calib-v224.json>}）、元の GRP（{@code -Dprism.grp.study.grp=<GRP の正確なディレクトリ>}）で、
+ * GRP の Φ のオフラインの調べ（CPU だけ）: audit-grp の CSV（{@code -Dprism.grp.study.csv=<audit.csv.gz>}）と較正の表
+ * （{@code -Dprism.grp.study.calibration=<phi-calib.json>}）、元の GRP（{@code -Dprism.grp.study.grp=<GRP の正確なディレクトリ>}）で、
  * 手順 0 の組み直し、腕 A〜E の較正の測り、床と警報の線、学習の速さを測り、{@code -Dprism.grp.study.out=<dir>} に書く。名前が *Test でないので、
  * 既定の試験には入らず {@code -Dtest} で名指ししたときだけ走る。
  *
  * <p>腕: A 元の GRP、A+表 本番の表（全データで当てた表なので標本内）、B A ＋ 交差で当てた表、C 元の GRP から温めた自己対局の GRP（最大 6 epoch）、
- * D 白紙の自己対局の GRP（8k・16k・32k 半荘）、E 点数の順位、F 点数のなめらかな関数（{@link ScoreSmoothPhi}。σ の係数は同じ v224 で
+ * D 白紙の自己対局の GRP（8k・16k・32k 半荘）、E 点数の順位、F 点数のなめらかな関数（{@link ScoreSmoothPhi}。σ の係数は同じ監査で
  * 当てた 1 個の定数なので標本内）。{@code -Dprism.grp.study.scoreOnly=true} なら学習する腕（C・D）を飛ばし、A・B・E・F だけ測る。分け方は半荘 ID の偶奇（grp_calib_util.py と同じ）。学習は片方の折りの最後の
  * {@value #VALIDATION} 半荘を検証（早めの打ち切り）に取り、残りで学ぶ。交差の腕（B・C・D32）は偶の折りで学んだものを奇の折りに、奇で学んだものを
  * 偶に当てて全ての半荘で測る。D8・D16 は偶の折りで学び奇の折りだけで測る。{@code -Dprism.grp.study.games=N} で先頭 N 半荘に絞る（煙試験）。
@@ -321,7 +321,7 @@ public class GrpStudyBench {
     return new Alarm(any / (double) SIMULATIONS, total / (double) SIMULATIONS);
   }
 
-  /** 段 3 へ GO / NO-GO / HOLD と、偶奇の ΔΦ の RMS・差の変化の床。 */
+  /** 自己対局の GRP へ進むかの判定（GO / NO-GO / HOLD）と、偶奇の ΔΦ の RMS・差の変化の床。 */
   private void verdict(
       List<RecordedGame> games, PhiValues a, PhiValues b, Pair c, CellReport reportA, Path grp,
       List<RecordedGame> odd, Arm cEven) throws IOException {

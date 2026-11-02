@@ -21,8 +21,6 @@ import org.slf4j.LoggerFactory;
  *
  * <p>足す前に確かめること: 候補は refits.jsonl の最後の行が READY（境目の点検で REJECTED になった候補は入れ直さない）、GRP の項目は checkpoint
  * の sha が今も同じ、新しい候補は境目の点検の見本がある。その反復に既に同じ Φ が効いていれば何もしない（状態 1）。
- *
- * <p>本番の jar の Main で打つので、走らせ役の照合（学習の JVM の待ち）に掛かる。反復の境目を避け、GPU を隠して（{@code PRISM_GPU=}）打つ。
  */
 public final class GrpSwitchWorkflow implements CommandWorkflow<Integer> {
   private static final Logger LOG = LoggerFactory.getLogger(GrpSwitchWorkflow.class);

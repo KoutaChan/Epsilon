@@ -72,7 +72,7 @@ public final class GrpGameTrainer {
       double gamesPerSecond,
       boolean timedOut) {}
 
-  /** epoch の終わりの通知（段 1 の学習曲線）。 */
+  /** epoch の終わりの通知。 */
   @FunctionalInterface
   public interface EpochListener {
     /** 何もしない。 */

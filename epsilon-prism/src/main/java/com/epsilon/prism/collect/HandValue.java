@@ -25,7 +25,7 @@ public interface HandValue extends AutoCloseable {
 
   record Stats(long requests, long memoHits, long evaluated, long batches, long busyNanos) {}
 
-  /** 局末の点数をそのまま最終順位とみなす代用の評価。GRP を使わない CPU の試験と計測に使う。 */
+  /** 局末の点数をそのまま最終順位とみなす評価（GRP を使わない。phiSource = SCORE_RANK）。 */
   static HandValue scoreRank(EpsilonUtilityProfile profile) {
     return new HandValue() {
       private long requests;

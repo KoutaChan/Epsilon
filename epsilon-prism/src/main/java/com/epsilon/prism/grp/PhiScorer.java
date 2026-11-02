@@ -24,10 +24,9 @@ import org.slf4j.LoggerFactory;
  * 裏の採点（採点の錠を持って呼ぶ）: 対局の記録があり phimon.jsonl にまだないコホートを、記録の先頭の Φ の項目（{@link HandEndPhi#of}）と影の
  * Φ（READY の候補、WITH_ORIGINAL なら元の GRP）で採点し（{@link CellStats#measure}）、EWMA を進めて 1 行書く。
  *
- * <p>使用中の項目は記録の先頭の id と sha で引き直す: {@value PhiEntry#FIXED_ID} は grpCheckpoint の今の子、{@value PhiEntry#SCORE_RANK_ID} は
- * 点数の順位、{@value PhiEntry#SCORE_SMOOTH_ID} は点数のなめらかな関数、それ以外は phi.jsonl の同じ id の行。sha が記録と違えば（GRP が差し替わった）別の Φ で採点しないように飛ばす。影の候補は
- * phiSource = SELF_GRP のときだけ refits.jsonl から読み、最後の状態が READY の試行のうち使用中でない新しい {@value #SHADOW_CANDIDATES} つ。
- * 影の Φ が開けなければその影だけを飛ばす。
+ * <p>使用中の項目は記録の先頭の id で引き直し（{@value PhiEntry#FIXED_ID} は grpCheckpoint の今の子、点数だけの Φ は固定の項目、それ以外は
+ * phi.jsonl の同じ id の行）、sha が記録と違えばそのコホートを採点しない。影の候補は phiSource = SELF_GRP のときだけ、refits.jsonl の最後の
+ * 状態が READY で使用中でない新しい {@value #SHADOW_CANDIDATES} つ。開けない影はその影だけを飛ばす。
  */
 public final class PhiScorer {
   private static final Logger LOG = LoggerFactory.getLogger(PhiScorer.class);
@@ -40,7 +39,7 @@ public final class PhiScorer {
 
   private static final Pattern GAME_LOG = Pattern.compile("c(\\d{5})\\.bin\\.gz");
 
-  /** 採点の道具（試験はほかの持ち主の本体の代わりに偽物を入れる）。 */
+  /** 採点の道具（試験は差し替える）。 */
   interface Tools {
     /** 記録の先頭の項目を引き直す。 */
     PhiEntry active(GrpFiles files, PrismConfig config, GameLogHeader header) throws IOException;

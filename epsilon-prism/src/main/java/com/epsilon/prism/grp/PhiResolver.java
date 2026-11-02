@@ -21,14 +21,12 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 学習の JVM の SELF_GRP の Φ（{@code TrainingResources} が持つ）。反復の始めに phi.jsonl を 1 回読み、効く項目が開いている項目と違えば新しい
- * {@link GrpPhi} を作り直す（GrpPhi のメモは接頭辞だけで引くので、中の推論だけを差し替えると古い値を返す）。GRP は正確なパスと sha で読み
- * （{@code EpsilonGrpCheckpointManager.load}）、一番新しい子を選ぶ読み方は使わない。順伝播の行の数は GRP の推論の設定の maxBatch のまま（本番
- * の読み手 {@code openInferenceOnly} と同じ定数）、GrpPhi の引数も FIXED_GRP と同じなので、g000 = 元の GRP ＋ 表のラベルは FIXED_GRP と
- * ビットで同じ。
+ * {@link GrpPhi} を作る（GrpPhi のメモは接頭辞だけで引くので、推論だけを差し替えると古い値を返す）。GRP は項目の正確なパスと sha で読む。
+ * 順伝播の行の数と GrpPhi の引数は FIXED_GRP と同じなので、g000 = 元の GRP ＋ 表のラベルは FIXED_GRP とビットで同じ。
  *
- * <p>失敗の扱い: まだ効いたことのない自己対局の候補（反復 t で初めて効く SELF_CHECKPOINT）が読めない・sha が違う・READY でない・境目の点検
- * （{@link BoundaryCheck}）に落ちるなら、refits.jsonl に REJECTED を書き、phi.jsonl に前の項目を反復 t から効かせる行を足して前の項目のまま
- * 続ける（再開しても同じ歴史）。既に効いたことのある項目が読めなければ止める（黙って別の Φ に落ちない）。
+ * <p>失敗の扱い: 反復 t で初めて効く自己対局の候補が読めない・sha が違う・READY でない・境目の点検（{@link BoundaryCheck}）に落ちるなら、
+ * refits.jsonl に REJECTED を書き、phi.jsonl に前の項目を反復 t から効かせる行を足して続ける（再開しても同じ歴史）。既に効いたことのある項目が
+ * 読めなければ止める（黙って別の Φ に落ちない）。
  *
  * <p>開いているあいだ、学習の JVM の印の錠（{@link PhiHistory#firstOpenIteration}）を持つ。
  */

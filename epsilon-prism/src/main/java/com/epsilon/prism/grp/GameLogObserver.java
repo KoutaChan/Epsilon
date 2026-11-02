@@ -14,10 +14,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 収集の主経路の対局を記録する観察の口（phiMonitor が OFF でないとき、学習の JVM の {@code Lineage} が収集のコホートにだけ付ける。x1n3・3×H・
- * 監査の対局には付けない）。進行ワーカーから並行に呼ばれるので、半荘ごとの物を ConcurrentHashMap に持ち、{@link #gameEnded} で取り出して列に
- * 積む（半荘の中の列は compute の中で足すので、ワーカーをまたいでも見え方がずれない）。ラベル行には触れない。中の例外は全て捕まえ、記録だけを
- * 止めて 1 回だけ書き残す（{@link #seal} は空を返さず失敗を投げる）。
+ * 収集の主経路の対局を記録する観察の口（収集のコホートにだけ付ける）。進行ワーカーから並行に呼ばれるので、半荘ごとの物を ConcurrentHashMap に
+ * 持ち、{@link #gameEnded} で取り出して列に積む（半荘の中の列は compute の中で足すので、ワーカーをまたいでも見え方がずれない）。ラベル行には
+ * 触れない。中の例外は全て捕まえ、記録だけを止めて 1 回だけ書き残す（{@link #seal} は空を返さず失敗を投げる）。
  */
 public final class GameLogObserver implements CollectionDriver.GameObserver {
   private static final Logger LOG = LoggerFactory.getLogger(GameLogObserver.class);

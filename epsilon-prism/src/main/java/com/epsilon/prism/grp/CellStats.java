@@ -49,7 +49,7 @@ public final class CellStats {
   public record Paired(double mseDifference, double standardError) {}
 
   /**
-   * 局 × Φ の区間の絶対の較正（点数だけの Φ からの最初の置き換えの関門）。
+   * 局 × Φ の区間の絶対の較正。
    *
    * @param rms 升目の残差の平均の重み付き RMS √(Σ_c (n_c/N) m_c²)
    * @param floor 雑音の床 √(Σ_c (n_c/N) v_c)（較正が完全でも残る分）
@@ -260,7 +260,7 @@ public final class CellStats {
   }
 
   /**
-   * 半荘のブートストラップでの D_SPG の標準偏差（1 コホートの大きさ。警報の線の SD）。
+   * 半荘のブートストラップでの D_SPG の標準偏差。
    *
    * @param resamples 引き直しの回数
    * @param seed 引き直しの種

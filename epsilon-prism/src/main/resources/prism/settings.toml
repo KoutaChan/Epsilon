@@ -144,8 +144,7 @@ phiCalibration = ""
 phiSource = "FIXED_GRP"
 # SELF_GRP の最初の項目 g000: "GRP_CHECKPOINT"（grpCheckpoint の GRP に phiTemperatures・phiCalibration を重ねたもの。train では grpCheckpoint
 # が必須）か点数だけの Φ（"SCORE_RANK" 点数の順位・"SCORE_SMOOTH" 点数のなめらかな関数。grpCheckpoint・phiTemperatures・phiCalibration は
-# 空でなければならない）。SELF_GRP でなければ
-# GRP_CHECKPOINT
+# 空でなければならない）。SELF_GRP でなければ GRP_CHECKPOINT
 phiStart = "GRP_CHECKPOINT"
 grpCheckpoint = ""
 grpDevice = "cpu"
@@ -164,12 +163,11 @@ grpSwitch = "PROPOSE"
 grpInit = "WARM"
 # 学習の間隔の段: 「始めの反復:間隔」を読点で区切り始めの昇順（反復 t は始めが t 以下で最も後の段の間隔。最初の段より前は学習しない）
 grpRefitSchedule = "1:2,40:8,120:48,800:56"
-# AUTO の候補が効く反復 h + L の L（1 以上）。温めの学習は窓の上限でも約 4 分（段 1 の CPU 4 本の速さ）で 1 反復より短く、合格の直後に
-# 切り替えを書くので 2 で間に合う。白紙の学習（点数だけの Φ からの最初の置き換え）は間に合わなければ SKIPPED_NOT_READY になる
+# AUTO の候補が効く反復 h + L の L（1 以上）。その時点で READY でない候補は SKIPPED_NOT_READY になる
 grpSwitchLag = 2
 # 切り替えの後、前の切り替えが TEMPO の実際のゲインでこの割合まで入るまでは、警報で学習しない（(0, 1)）
 grpSwitchSettle = 0.60
-# 関門に落ちた後に次の学習を待つ反復の数（0 以上）と、予定表を止めてユーザーに知らせる連続の失敗の数（1 以上）
+# 関門に落ちた後に次の学習を待つ反復の数（0 以上）と、予定表を止める連続の失敗の数（1 以上）
 grpRetryCooldown = 8
 grpMaxFailures = 3
 # ずれの警報: "OFF"、"REPORT"（記録だけ）、"REFIT"（学習の前倒しにも使う。grpRefit = "SCHEDULE_AND_DRIFT" と組む）。OFF でなければ

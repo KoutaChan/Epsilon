@@ -21,7 +21,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 計画 §1 の失敗の扱いの表（学習の JVM の側）: まだ効いたことのない候補が読めない・sha が違う・READY でない・境目の点検に落ちるなら REJECTED と
+ * 学習の JVM の側の失敗の扱い: まだ効いたことのない候補が読めない・sha が違う・READY でない・境目の点検に落ちるなら REJECTED と
  * 前の項目の行を書いて続け（再開しても同じ）、既に効いたことのある項目が読めなければ止める。有限でない Φ は完了を渡さずに評価の失敗にする。
  * 学習の失敗は refits.jsonl の行にして続ける（{@link GrpRefitterTest}）。
  */

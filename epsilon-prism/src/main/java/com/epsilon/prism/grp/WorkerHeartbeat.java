@@ -13,8 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 裏の作業の心拍（錠の種類ごとに grp/worker-&lt;score|refit&gt;.heartbeat に pid・状態・時刻を一定の間隔で書く。錠を持つあいだだけ）。走らせ役の要約の行が学習の状態をここから出す。書き込みは
- * 一時ファイルからの rename なので、読み手は書きかけを見ない。心拍の書き込みの失敗は 1 回だけ書き残し、作業は止めない。
+ * 裏の作業の心拍: 錠を持つあいだ、錠の種類ごとに grp/worker-&lt;score|refit&gt;.heartbeat へ pid・状態・時刻を {@value #PERIOD_SECONDS} 秒
+ * ごとに書く（走らせ役の要約の行が読む）。一時ファイルからの rename で書くので読み手は書きかけを見ない。書き込みの失敗は 1 回だけ書き残し、
+ * 作業は止めない。
  */
 public final class WorkerHeartbeat implements AutoCloseable {
   private static final Logger LOG = LoggerFactory.getLogger(WorkerHeartbeat.class);

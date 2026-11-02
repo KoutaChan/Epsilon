@@ -13,35 +13,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 裏の作業の主クラス（学習の JVM の主クラスと別なので、走らせ役が学習の JVM を待つ照合に掛からない）。走らせ役が各反復の後に GPU を隠し
- * nice 19・CPU 4 本で起動する: {@code GrpWorkerMain --run DIR --hold-dir DIR --own-hold NAME}。起動の前に {@code GrpWorkerMain --run DIR
- * --copy-jar} で jar を grp/jars へ写し（{@link WorkerJar}）、標準出力の最後の行の写しのパスから作業を起動する。
- *
- * <p>起動の行: prism.sh と同じ環境（JAVA_HOME・ROCM_PATH・PYTORCH_LIBRARY_PATH・PYTORCH_VERSION・PYTORCH_FLAVOR・LD_LIBRARY_PATH・DJL_OFFLINE・
- * DJL_CACHE_DIR・MALLOC_ARENA_MAX）を export し、fat jar は ROCm の JNI を同梱しないので prism.sh の JNI の jar を先頭に置く。GPU は隠す:
- *
- * <pre>{@code
- * (cd $RUN && setsid nice -n 19 env HIP_VISIBLE_DEVICES= OMP_NUM_THREADS=4 taskset -c <固定のコア 4 本> \
- *    $JAVA_HOME/bin/java -Xmx3g -Dai.djl.pytorch.num_threads=4 -Dai.djl.pytorch.num_interop_threads=1 \
- *    -cp $JNI:<写しの jar> com.epsilon.prism.grp.GrpWorkerMain --run $RUN --hold-dir <札の置き場> --own-hold <走らせ役の札> \
- *    9>&- >> grp/worker.log 2>&1 < /dev/null &)
- * }</pre>
- *
- * 作業は起動の初めに自分の oom_score_adj を 1000 にする（メモリが尽きたとき、学習の JVM より先に殺される）。
+ * 裏の作業の主クラス（学習の JVM と別の主クラスなので、走らせ役が学習の JVM を待つ照合に掛からない）。走らせ役が各反復の後に、GPU を隠し
+ * nice 19・CPU 4 本の別の JVM で起動する: {@code GrpWorkerMain --run DIR --hold-dir DIR --own-hold NAME}。
  *
  * <ol>
- *   <li>jar の sha を決める（{@link WorkerJar}）。心拍（{@link WorkerHeartbeat}）は錠を持つあいだ、錠の種類ごとのファイルに書く。
- *   <li>採点の錠が取れれば（{@link WorkerLock.Kind#SCORE}）、ほかの札が消えるまで待ち（{@link ForeignHolds}）、MemAvailable が {@value
- *       #SCORE_MEMORY_GIB} GiB 以上なら未採点のコホートを採点する
- *       （{@link PhiScorer}）。phiMonitor = SCORE のときだけ。警報（{@link DriftAlarm}）は phiDrift が OFF でなければ書いた行ごとに進める。
- *       錠が取れなければ（前の作業がまだ採点か札の待ち）採点しない（待つ作業は 1 つだけ）。
- *   <li>phiSource = SELF_GRP で学習の錠が取れれば（{@link WorkerLock.Kind#REFIT}）、札を待ってから: AUTO なら効く時期の来た候補を入れ
- *       （{@link AutoSwitch}）、巻き戻しの点検（{@link RollbackCheck}）、手動の要求か予定表（{@link RefitScheduler}）で学習が決まれば 1 回
- *       学習する（{@link GrpRefitter}）。合格（READY）なら AUTO の切り替えをもう一度確かめる。学習は MemAvailable が {@value #REFIT_MEMORY_GIB} GiB 以上のときだけ決める（足りなければ手動の
- *       要求も消さずに次の作業に残す）。
+ *   <li>採点の錠（{@link WorkerLock.Kind#SCORE}）が取れれば、ほかの札が消えるまで待ち（{@link ForeignHolds}）、MemAvailable が {@value
+ *       #SCORE_MEMORY_GIB} GiB 以上なら未採点のコホートを採点する（{@link PhiScorer}。phiMonitor = SCORE のときだけ）。警報（{@link
+ *       DriftAlarm}）は phiDrift が OFF でなければ書いた行ごとに進める。錠が取れなければ採点しない（待つ作業は 1 つだけ）。
+ *   <li>phiSource = SELF_GRP で学習の錠（{@link WorkerLock.Kind#REFIT}）が取れれば、札を待ってから、AUTO なら効く時期の来た候補を入れ
+ *       （{@link AutoSwitch}）、巻き戻しを点検し（{@link RollbackCheck}）、手動の要求か予定表（{@link RefitScheduler}）で決まれば 1 回学習する
+ *       （{@link GrpRefitter}）。READY なら AUTO の切り替えをもう一度確かめる。学習は MemAvailable が {@value #REFIT_MEMORY_GIB} GiB 以上のとき
+ *       だけ決める（足りなければ手動の要求を次の作業に残す）。
  * </ol>
  *
- * 失敗は全て 1 回だけ記録して終わる（終了の状態は 0。系譜は止めない）。
+ * <p>心拍（{@link WorkerHeartbeat}）は錠を持つあいだ錠の種類ごとのファイルに書く。起動の初めに oom_score_adj を 1000 にする（メモリが尽きた
+ * とき学習の JVM より先に殺される）。失敗は全て 1 回だけ記録して終わる（終了の状態は 0。系譜は止めない）。
  */
 public final class GrpWorkerMain {
   private static final Logger LOG = LoggerFactory.getLogger(GrpWorkerMain.class);
@@ -156,7 +142,7 @@ public final class GrpWorkerMain {
     if (config.phiSource() == PhiSource.SELF_GRP) refit(arguments, files, config, jar);
   }
 
-  /** メモリが尽きたとき、24g の学習の JVM より先にこの作業が選ばれるようにする（特権なしで上げられる。書けなければ 1 回書き残すだけ）。 */
+  /** メモリが尽きたとき、学習の JVM より先にこの作業が選ばれるようにする（特権なしで上げられる。書けなければ 1 回書き残すだけ）。 */
   private static void yieldToOomKiller() {
     try {
       Files.writeString(Path.of("/proc/self/oom_score_adj"), "1000\n", StandardCharsets.US_ASCII);

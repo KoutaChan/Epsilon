@@ -27,9 +27,9 @@ import org.slf4j.LoggerFactory;
  * GRP の学習 1 回（裏の作業の中、学習の錠を持って呼ぶ）: 取り置き h の窓（{@link RefitWindow}）の対局の記録で GRP を学習し（{@link
  * GrpGameTrainer}。使用中が GRP なら grpInit、点数だけの Φ なら白紙）、取り置きのコホートで関門を通し（使用中が GRP なら {@link
  * GateEvaluator}、点数だけの Φ なら {@link TrustCriteria}）、合格なら候補を公開する: 試行ごとの名前で staging に保存 → fsync → candidates へ
- * rename → 境目の点検の見本（{@link BoundaryCheck}）→ refits.jsonl に READY。同じ名前の再試行はしない（保存は既存を拒む）。締め切り（段 1 で
- * 測った学習の時間の 3 倍、{@link GrpTrainingPlan#deadline}）は試行 1 回の上限で、信頼の条件の双子の学習も残りの時間で回す。過ぎたら止めて
- * TIMEOUT を書く。失敗は全て refits.jsonl の行にし、系譜は止めない。
+ * rename → 境目の点検の見本（{@link BoundaryCheck}）→ refits.jsonl に READY。同じ名前の再試行はしない（保存は既存を拒む）。締め切り（{@link
+ * GrpTrainingPlan#deadline}）は試行 1 回の上限で、信頼の条件の双子の学習も残りの時間で回す。過ぎたら止めて TIMEOUT を書く。失敗は全て
+ * refits.jsonl の行にし、系譜は止めない。
  *
  * <p>使用中の項目は phi.jsonl の次の反復（state.json の次のコホート）に効く項目。窓の半荘の 1/{@value #VALIDATION_MODULUS}（半荘 ID で決まる。
  * {@link Split}）は学習の早めの打ち切りの検証に回し、取り置きのコホートは学習にも検証にも使わない。候補の形は、checkpoint の構造が grp-epsilon-v3 で、境目の
@@ -83,7 +83,7 @@ public final class GrpRefitter {
     return String.format("g%03d-a%d", holdout, attempt);
   }
 
-  /** 学習の部品（試験では偽物に差し替える）。 */
+  /** 学習の部品（試験で差し替える）。 */
   interface Steps {
     /** 本番の部品。 */
     Steps PRODUCTION =

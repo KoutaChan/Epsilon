@@ -29,8 +29,6 @@ import java.util.zip.GZIPOutputStream;
  * 半荘ごと: i64 gameId  u16 半荘が続く局末の数 k  （k 回: u8 局番号  u16 本場  u16 供託  i32×4 点数）  i32×4 最終の点数
  * i32 END（書き終えた印。gzip の CRC と合わせて、途中で切れた記録を拒む）
  * </pre>
- *
- * 1 反復（65,536 半荘・約 70 万局末）で gzip の後約 5 MB。
  */
 public final class GameLog {
 

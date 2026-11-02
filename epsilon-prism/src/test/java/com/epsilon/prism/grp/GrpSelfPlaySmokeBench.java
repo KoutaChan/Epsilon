@@ -68,7 +68,7 @@ public class GrpSelfPlaySmokeBench {
     }
   }
 
-  /** (c) 点数だけの Φ で反復 1〜4、白紙の GRP を学んで反復 5 から入れ、止めて反復 6 を再開する。 */
+  /** 点数だけの Φ で反復 1〜4、白紙の GRP を学んで反復 5 から入れ、止めて反復 6 を再開する。 */
   private static RefitRecord grownSwitch(Path run, String start, PhiEntryKind kind) throws Exception {
     Assert.assertEquals(Lineage.run(run, 4, EpsilonSettings.of(settings(start))), 0);
     var files = new GrpFiles(run);
@@ -119,7 +119,7 @@ public class GrpSelfPlaySmokeBench {
     return grown;
   }
 
-  /** (d) grp-refit の要求 → 温めの学習 → grp-switch で反復 7、巻き戻しで反復 8。 */
+  /** grp-refit の要求 → 温めの学習 → grp-switch で反復 7、巻き戻しで反復 8。 */
   private static void manualRoundTrip(Path run, RefitRecord grown) throws Exception {
     rewriteConfig(run, Map.of("grpRefit", "MANUAL", "grpSwitch", "PROPOSE"));
     var files = new GrpFiles(run);
@@ -166,7 +166,7 @@ public class GrpSelfPlaySmokeBench {
         PhiHistory.read(files).size());
   }
 
-  /** (e) 裏の作業の採点と、締め切り 0 の学習の TIMEOUT。 */
+  /** 裏の作業の採点と、締め切り 0 の学習の TIMEOUT。 */
   private static void workerAndTimeout(Path run, RefitRecord grown) throws Exception {
     rewriteConfig(run, Map.of("phiMonitor", "SCORE", "phiDrift", "REPORT"));
     var files = new GrpFiles(run);

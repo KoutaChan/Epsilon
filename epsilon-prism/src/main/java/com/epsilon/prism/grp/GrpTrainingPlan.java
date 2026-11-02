@@ -36,9 +36,8 @@ public record GrpTrainingPlan(
   }
 
   /**
-   * 始め init の学習の計画（バッチ 128 半荘、学習率 温め 2e-4・白紙 1e-3、epoch の上限 温め 3・白紙 40、CPU 4 本）。締め切りは窓の上限
-   * （8 コホート × 65,536 半荘）を上限の epoch まで回す時間の約 3 倍。速さは段 1 で本番の負荷の下、CPU 4 本で測った遅い側（温め 7,450 半荘/秒、
-   * 白紙 6,191 半荘/秒。3 回の測りで ±25% 揺れた）で、温め 211 秒 → 11 分、白紙 56 分 → 170 分。
+   * 始め init の学習の計画。締め切りは、窓の上限（8 コホート × 65,536 半荘）を上限の epoch まで回す時間（本番の負荷の下、CPU 4 本の遅い側の
+   * 速さ）の約 3 倍。
    */
   public static GrpTrainingPlan of(GrpInit init, long seed) {
     return switch (init) {

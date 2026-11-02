@@ -20,24 +20,24 @@ import java.nio.ByteOrder;
  * HIP の K1〜K7 の CPU の参照。カーネルと同じ式・同じ丸めの所を、書いた WeightPack（頭を native の並びで読み直す）と HostBatch の blob
  * から素朴な FP32 の積和で計算する。和の順は行列積（WMMA）と 1/rms でカーネルと違い、ほかの所（K1・注意の softmax と p·v・候補の
  * 交差注意・集約・合成）はカーネルと同じ順にする。層 0 の q・k・v は K1 と同じ L0-FOLD の式・同じ FP32 の順（畳んだ表と r の 1/rms を
- * 含む）で作るので、K1 の x・qkv0 はカーネルとビットで同じ。作業域の値は HIP の作業域と同じ並びの float（BF16 の区画は BF16
+ * 含む）で作るので、K1 の x・qkv0 はカーネルとビットで同じ（{@link Layer0}）。作業域の値は HIP の作業域と同じ並びの float（BF16 の区画は BF16
  * の値）。行ごとに閉じた計算なので、同じ行の s は塊の組み方に依らずビットで同じ。方策の試験は GPU の計画の代わりに使う（{@link #forward} だけを公開）。
  */
 public final class HipReference {
 
-  private final PackView pack;
-  private final int hidden;
-  private final int attention;
-  private final int heads;
-  private final int ffn;
-  private final int gate;
-  private final int depth;
-  private final float epsilon;
-  private final int seats;
-  private final int tiles;
-  private final int fixed;
-  private final float scale;
-  private final float tau;
+  final PackView pack;
+  final int hidden;
+  final int attention;
+  final int heads;
+  final int ffn;
+  final int gate;
+  final int depth;
+  final float epsilon;
+  final int seats;
+  final int tiles;
+  final int fixed;
+  final float scale;
+  final float tau;
 
   /** 置き場ごと・層ごとの値（BF16・UINT8 は float にした値）。 */
   private final float[][][] cache = new float[HipWeight.values().length][][];
@@ -54,9 +54,19 @@ public final class HipReference {
   /** K6 の交差注意を FP64 で計算し、o を BF16 に 1 回だけ丸める（カーネルの FP32 の順の精度を測る物差し。既定はカーネルと同じ順の FP32）。 */
   boolean exactCrossAttention;
 
+  /** 層 0 の q・k・v の作り方。 */
+  enum Layer0 {
+    /** K1 の L0-FOLD（既定。本番の式）。 */
+    FOLDED,
+    /** 畳む前の式（K1 で x と n を BF16 に丸め、K2 で ⌊W_qkv0·n + b_qkv⌉）。L0-FOLD の精度の比べの基準だけ。 */
+    PROJECTED
+  }
+
+  Layer0 layer0 = Layer0.FOLDED;
+
   /**
    * K1 の L0-FOLD の qkv0（[トークン, 3A]、列は頭の対の並び。QKV0 の区画と同じ値の並び）: 束の畳んだ表から
-   * ⌊r·(ΣT'[idx] + ΣW'_d·f + b') + b_qkv⌉、r は丸める前の x の 1/rms。
+   * ⌊r·(ΣT'[idx] + ΣW'_d·f + b') + b_qkv⌉、r は丸める前の x の 1/rms。{@link Layer0#PROJECTED} では null。
    */
   private float[] layer0Qkv;
 
@@ -100,7 +110,7 @@ public final class HipReference {
   }
 
   /** 置き場の値（層を持たない置き場は層 0）。 */
-  private float weight(HipWeight weight, int layer, int index) {
+  float weight(HipWeight weight, int layer, int index) {
     return cache[weight.ordinal()][weight.layered() ? layer : 0][index];
   }
 
@@ -180,7 +190,28 @@ public final class HipReference {
     transitions = new float[in.transitions * hidden];
     values = new float[in.transitions];
     scores = new float[in.actions];
-    layer0Qkv = new float[tokens * 3 * attention];
+    layer0Qkv = layer0 == Layer0.FOLDED ? new float[tokens * 3 * attention] : null;
+  }
+
+  /** 型 slot のトークンの数。 */
+  int slotCount(HipEmbedding.Slot slot, Input in) {
+    return switch (slot) {
+      case ROUND -> in.rows;
+      case SEAT -> seats * in.rows;
+      case TILE -> tiles * in.rows;
+      case EVENT -> in.events;
+      case TRANSITION -> in.transitions;
+    };
+  }
+
+  /** 型 slot の最初のトークンの番号（遷移は遷移の区画の中）。 */
+  int slotStart(HipEmbedding.Slot slot, Input in) {
+    return switch (slot) {
+      case ROUND, TRANSITION -> 0;
+      case SEAT -> in.rows;
+      case TILE -> (1 + seats) * in.rows;
+      case EVENT -> fixed * in.rows;
+    };
   }
 
   /** K1 の後の層 0 の qkv0（QKV0 の区画と同じ並び）。 */
@@ -192,26 +223,13 @@ public final class HipReference {
     int width = 3 * attention;
     for (HipEmbedding.Slot slot : HipEmbedding.Slot.values()) {
       PackView.Spec spec = pack.embedding(slot);
-      int count =
-          switch (slot) {
-            case ROUND -> in.rows;
-            case SEAT -> seats * in.rows;
-            case TILE -> tiles * in.rows;
-            case EVENT -> in.events;
-            case TRANSITION -> in.transitions;
-          };
-      int start =
-          switch (slot) {
-            case ROUND, TRANSITION -> 0;
-            case SEAT -> in.rows;
-            case TILE -> (1 + seats) * in.rows;
-            case EVENT -> fixed * in.rows;
-          };
+      int count = slotCount(slot, in);
+      int start = slotStart(slot, in);
       float[] out = slot == HipEmbedding.Slot.TRANSITION ? statics : residual;
       Tensor category = tensor(spec.category());
       Tensor scalar = spec.scalar() < 0 ? null : tensor(spec.scalar());
       Tensor exact = spec.exact() < 0 ? null : tensor(spec.exact());
-      boolean folding = slot != HipEmbedding.Slot.TRANSITION;
+      boolean folding = layer0Qkv != null && slot != HipEmbedding.Slot.TRANSITION;
       int[] entries = new int[spec.tableOffset().length];
       float[] features = new float[spec.source().length];
       for (int t = 0; t < count; t++) {
@@ -326,7 +344,7 @@ public final class HipReference {
       }
       float[][] qkv = new float[tokens][3 * attention];
       for (int p = 0; p < tokens; p++) {
-        if (layer == 0) {
+        if (layer == 0 && layer0Qkv != null) {
           // L0-FOLD: K1 が作った qkv0（頭の対の並び）を q・k・v の並びに読む。
           for (int col = 0; col < 3 * attention; col++) {
             if (col < attention && p >= queries) {
@@ -409,7 +427,7 @@ public final class HipReference {
   }
 
   /** RelationClass と同じ 7 区画の符号。 */
-  private int[] segments(
+  int[] segments(
       int typeQ,
       int typeK,
       int[] q,
@@ -824,7 +842,7 @@ public final class HipReference {
     return out;
   }
 
-  private int tokenIndex(int rows, int row, int firstEvent, int position) {
+  int tokenIndex(int rows, int row, int firstEvent, int position) {
     if (position == 0) {
       return row;
     }
@@ -837,12 +855,12 @@ public final class HipReference {
     return fixed * rows + firstEvent + position - fixed;
   }
 
-  private int type(int position) {
+  int type(int position) {
     return position == 0 ? 0 : position <= seats ? 1 : position < fixed ? 2 : 3;
   }
 
   /** 局・席・牌のトークンの番号の行と位置。 */
-  private int[] locate(int rows, int token) {
+  int[] locate(int rows, int token) {
     if (token < rows) {
       return new int[] {token, 0};
     }
@@ -854,7 +872,7 @@ public final class HipReference {
     return new int[] {u / tiles, 1 + seats + u % tiles};
   }
 
-  private static int[] transitionRows(Input in) {
+  static int[] transitionRows(Input in) {
     int[] rows = new int[in.transitions];
     for (int r = 0; r < in.rows; r++) {
       int first = in.row(r, RowColumn.FIRST_TRANSITION);
@@ -866,7 +884,7 @@ public final class HipReference {
     return rows;
   }
 
-  private static Tensor tensor(int section) {
+  static Tensor tensor(int section) {
     return Tensor.valueOf(HipSection.values()[section].name());
   }
 

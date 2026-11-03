@@ -87,7 +87,7 @@ public class GrpSelfPlaySmokeBench {
     Assert.assertTrue(AutoSwitch.apply(files, config).isEmpty());
     RefitScheduler.Decision decision = RefitScheduler.decide(files, config, sealed).orElseThrow();
     Assert.assertEquals(decision, new RefitScheduler.Decision(4, RefitCause.SCHEDULE));
-    RefitRecord grown = GrpRefitter.refit(files, config, 4, decision.cause(), "smoke", new Forced(null));
+    RefitRecord grown = GrpRefitter.refit(files, config, 4, decision.cause(), new Forced(null));
     line("%s grown %s %s init %s parent %s window %s %.1fs", start, grown.id(), grown.status(), grown.init(),
         grown.parent(), grown.window(), grown.seconds());
     Assert.assertEquals(grown.status(), RefitStatus.READY, grown.detail());
@@ -131,7 +131,7 @@ public class GrpSelfPlaySmokeBench {
         RefitScheduler.decide(files, config, GrpWorkerMain.lastSealed(files)).orElseThrow();
     Assert.assertEquals(decision, new RefitScheduler.Decision(6, RefitCause.MANUAL));
     Assert.assertFalse(Files.exists(files.refitRequest()), "the request is consumed");
-    RefitRecord warm = GrpRefitter.refit(files, config, 6, RefitCause.MANUAL, "smoke", new Forced(null));
+    RefitRecord warm = GrpRefitter.refit(files, config, 6, RefitCause.MANUAL, new Forced(null));
     line("manual refit %s %s init %s parent %s %.1fs", warm.id(), warm.status(), warm.init(), warm.parent(),
         warm.seconds());
     Assert.assertEquals(warm.status(), RefitStatus.READY, warm.detail());
@@ -189,7 +189,7 @@ public class GrpSelfPlaySmokeBench {
     byte[] state = Files.readAllBytes(run.resolve("state.json"));
     RowHash.Digest rows = RowHash.of(CohortWriter.directory(run, 8));
     RefitRecord timedOut =
-        GrpRefitter.refit(files, config(run), 8, RefitCause.MANUAL, "smoke", new Forced(Duration.ZERO));
+        GrpRefitter.refit(files, config(run), 8, RefitCause.MANUAL, new Forced(Duration.ZERO));
     line("timeout refit %s %s: %s", timedOut.id(), timedOut.status(), timedOut.detail());
     Assert.assertEquals(timedOut.status(), RefitStatus.TIMEOUT);
     Assert.assertEquals(RefitRecord.readAll(files).getLast().status(), RefitStatus.TIMEOUT);

@@ -25,7 +25,6 @@ import org.slf4j.LoggerFactory;
  * @param cohort コホート t
  * @param phiId 使用中の項目の id（コホートの記録の先頭のもの）
  * @param phiSha256 その sha
- * @param jarSha256 作業が動いた jar の sha
  * @param active 使用中の Φ の測り
  * @param shadows 影の Φ の測り（項目か試行の id → 測り。元の GRP は {@value PhiEntry#FIXED_ID}）
  * @param dSpgEwma 使用中の D_SPG の EWMA
@@ -36,7 +35,6 @@ public record PhiMonitorLine(
     int cohort,
     String phiId,
     String phiSha256,
-    String jarSha256,
     CellReport active,
     Map<String, CellReport> shadows,
     double dSpgEwma,

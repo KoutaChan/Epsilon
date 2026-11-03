@@ -15,8 +15,8 @@ import org.slf4j.LoggerFactory;
  * nice 19・CPU 4 本の別の JVM で起動する: {@code GrpWorkerMain --run DIR}。学習の JVM は採点だけを自分のスレッドで行う（{@link PhiScoring}）。
  *
  * <ol>
- *   <li>phiMonitor = SCORE で採点の錠（{@link WorkerLock.Kind#SCORE}）が取れ、MemAvailable が {@value PhiScoring#MEMORY_GIB} GiB 以上なら、
- *       未採点のコホートを採点する（{@link PhiScoring#scorePending}）。錠が取れなければ採点しない（学習の JVM が採点している）。
+ *   <li>phiMonitor = SCORE で採点の錠（{@link WorkerLock.Kind#SCORE}）が取れれば、未採点のコホートを採点する（{@link PhiScoring#scorePending}）。
+ *       錠が取れなければ採点しない（学習の JVM が採点している）。
  *   <li>phiSource = SELF_GRP で学習の錠（{@link WorkerLock.Kind#REFIT}）が取れれば、AUTO なら効く時期の来た候補を入れ（{@link AutoSwitch}）、
  *       巻き戻しを点検し（{@link RollbackCheck}）、手動の要求か予定表（{@link RefitScheduler}）で決まれば 1 回学習する（{@link GrpRefitter}）。
  *       READY なら AUTO の切り替えをもう一度確かめる。学習は MemAvailable が {@value #REFIT_MEMORY_GIB} GiB 以上のときだけ決める（足りなければ
@@ -81,9 +81,8 @@ public final class GrpWorkerMain {
         PrismConfig.read(Files.readString(files.run().resolve("config.json"), StandardCharsets.UTF_8));
     config.validate();
     yieldToOomKiller();
-    String jar = PhiScoring.jarSha256();
-    if (config.phiMonitor().scores()) score(files, config, jar);
-    if (config.phiSource() == PhiSource.SELF_GRP) refit(files, config, jar);
+    if (config.phiMonitor().scores()) score(files, config);
+    if (config.phiSource() == PhiSource.SELF_GRP) refit(files, config);
   }
 
   /** メモリが尽きたとき、学習の JVM より先にこの作業が選ばれるようにする（特権なしで上げられる。書けなければ 1 回書き残すだけ）。 */
@@ -96,7 +95,7 @@ public final class GrpWorkerMain {
   }
 
   /** 採点の錠を持って、未採点のコホートを採点する。 */
-  private static void score(GrpFiles files, PrismConfig config, String jar) throws IOException {
+  private static void score(GrpFiles files, PrismConfig config) throws IOException {
     Optional<WorkerLock> lock = WorkerLock.tryAcquire(files, WorkerLock.Kind.SCORE);
     if (lock.isEmpty()) {
       LOG.info("another GRP worker holds the score lock");
@@ -104,12 +103,12 @@ public final class GrpWorkerMain {
     }
     try (WorkerLock held = lock.get();
         var heartbeat = WorkerHeartbeat.start(files, WorkerLock.Kind.SCORE, "score: starting")) {
-      if (PhiScoring.memoryAvailable()) PhiScoring.scorePending(files, config, jar, heartbeat::state);
+      PhiScoring.scorePending(files, config, heartbeat::state);
     }
   }
 
   /** 学習の錠を持って、自動の切り替え・巻き戻しの点検・学習を行う。 */
-  private static void refit(GrpFiles files, PrismConfig config, String jar) throws IOException {
+  private static void refit(GrpFiles files, PrismConfig config) throws IOException {
     Optional<WorkerLock> lock = WorkerLock.tryAcquire(files, WorkerLock.Kind.REFIT);
     if (lock.isEmpty()) {
       LOG.info("another GRP worker holds the refit lock");
@@ -134,7 +133,7 @@ public final class GrpWorkerMain {
         if (decision.isEmpty()) return;
         heartbeat.state(String.format("refit h=%d %s", decision.get().holdout(), decision.get().cause()));
         RefitRecord record =
-            GrpRefitter.refit(files, config, decision.get().holdout(), decision.get().cause(), jar);
+            GrpRefitter.refit(files, config, decision.get().holdout(), decision.get().cause());
         LOG.info("refit {} {} {}", record.id(), record.status(), record.detail());
         if (record.status() == RefitStatus.READY) autoSwitch(files, config, heartbeat);
       } catch (IOException | RuntimeException failure) {

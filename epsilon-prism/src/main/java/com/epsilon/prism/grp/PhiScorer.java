@@ -144,18 +144,15 @@ public final class PhiScorer {
   /**
    * コホート t を採点して phimon.jsonl に書く。
    *
-   * @param jarSha256 作業が動いている jar の sha
    * @return 書いた行（記録が読めなければ空。1 回だけ書き残す）
    * @throws IOException phimon.jsonl が書けないとき
    */
-  public static Optional<PhiMonitorLine> score(
-      GrpFiles files, PrismConfig config, int cohort, String jarSha256) throws IOException {
-    return score(files, config, cohort, jarSha256, PRODUCTION);
+  public static Optional<PhiMonitorLine> score(GrpFiles files, PrismConfig config, int cohort) throws IOException {
+    return score(files, config, cohort, PRODUCTION);
   }
 
-  /** {@link #score(GrpFiles, PrismConfig, int, String)} を道具 tools で行う。 */
-  static Optional<PhiMonitorLine> score(
-      GrpFiles files, PrismConfig config, int cohort, String jarSha256, Tools tools) throws IOException {
+  /** {@link #score(GrpFiles, PrismConfig, int)} を道具 tools で行う。 */
+  static Optional<PhiMonitorLine> score(GrpFiles files, PrismConfig config, int cohort, Tools tools) throws IOException {
     long started = System.nanoTime();
     var profile = EpsilonUtilityProfile.valueOf(config.utility());
     CohortGames recorded;
@@ -213,7 +210,6 @@ public final class PhiScorer {
             cohort,
             active.id(),
             active.sha256(),
-            jarSha256,
             activeReport,
             shadows,
             ewma,

@@ -53,7 +53,7 @@ public class FailureTableTest {
         RefitRecord wrong = GrpFixtures.ready(files, "g005-a1", good, phi, games);
         wrong = new RefitRecord(
             wrong.id(), RefitStatus.READY, wrong.cause(), wrong.window(), wrong.init(), wrong.parent(), wrong.path(),
-            "0".repeat(64), wrong.jarSha256(), null, "", 1);
+            "0".repeat(64), null, "", 1);
         wrong.append(files);
         PhiHistory.append(files, wrong.entry(5, "test"));
         // 6: refits.jsonl に READY の行がない

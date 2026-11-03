@@ -20,7 +20,7 @@ public class DriftAlarmTest {
     z[2] = slopeZ;
     CellReport report =
         new CellReport(games, games * 40, 0.25, dSpg, 0, new double[8], new double[8], new double[8], z, 1.2, 0.6, 0);
-    return new PhiMonitorLine(cohort, phi, "sha", "jar", report, Map.of(), dSpg, 1, 1);
+    return new PhiMonitorLine(cohort, phi, "sha", report, Map.of(), dSpg, 1, 1);
   }
 
   private static PhiMonitorLine line(int cohort, double dSpg) {
@@ -140,7 +140,7 @@ public class DriftAlarmTest {
     Arrays.fill(errors, slopeSe);
     Arrays.fill(z, (slope - 1) / slopeSe);
     CellReport report = new CellReport(65536, 65536 * 40L, 0.25, dSpg, 0, new double[8], slopes, errors, z, 1.2, 0.6, 0);
-    return new PhiMonitorLine(cohort, "g048-a1", "sha", "jar", report, Map.of(), dSpg, 1, 1);
+    return new PhiMonitorLine(cohort, "g048-a1", "sha", report, Map.of(), dSpg, 1, 1);
   }
 
   @Test

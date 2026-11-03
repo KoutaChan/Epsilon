@@ -63,12 +63,6 @@ public class WorkerLockTest {
   }
 
   @Test
-  public void classDirectoriesHaveNoJarSha() throws IOException {
-    // 試験はクラスのディレクトリから動くので sha はない
-    Assert.assertEquals(WorkerJar.runningSha256(), "");
-  }
-
-  @Test
   public void workerMainExitsZeroAndReleasesItsLocks() throws IOException {
     Assert.assertEquals(GrpWorkerMain.run(new String[] {"--run"}), 2);
     Assert.assertEquals(GrpWorkerMain.run(new String[] {"--hold-dir", run.toString()}), 2);

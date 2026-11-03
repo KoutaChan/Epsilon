@@ -21,7 +21,6 @@ public class AutoSwitchTest {
         parent,
         "/run/grp/candidates/" + id,
         "sha-" + id,
-        "jar",
         null,
         "",
         30);

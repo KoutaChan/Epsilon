@@ -190,7 +190,7 @@ public final class PhiResolver implements AutoCloseable {
             .orElseThrow(() -> new IOException("Φ entry " + candidate.id() + " cannot be opened and nothing precedes it", failure));
     String detail = "boundary at iteration " + t + ": " + failure;
     RefitRecord rejected =
-        new RefitRecord(candidate.id(), RefitStatus.REJECTED, null, null, null, candidate.parent(), "", "", "", null, detail, 0);
+        new RefitRecord(candidate.id(), RefitStatus.REJECTED, null, null, null, candidate.parent(), "", "", null, detail, 0);
     try {
       RefitRecord.latest(RefitRecord.readAll(files), candidate.id())
           .map(ready -> ready.withStatus(RefitStatus.REJECTED, detail))

@@ -235,7 +235,7 @@ public class PhiHistoryTest {
                       try {
                         for (int i = 0; i < 10; i++) {
                           PhiHistory.append(files, self("g" + (100 + writer) + "-a" + (i + 1), 2 + i, "s" + writer + i));
-                          new RefitRecord("g" + writer + "-a" + i, RefitStatus.FAILED, RefitCause.MANUAL, null, GrpInit.WARM, "", "", "", "", null, "x", 0)
+                          new RefitRecord("g" + writer + "-a" + i, RefitStatus.FAILED, RefitCause.MANUAL, null, GrpInit.WARM, "", "", "", null, "x", 0)
                               .append(files);
                         }
                       } catch (Throwable failure) {

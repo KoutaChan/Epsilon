@@ -133,7 +133,6 @@ final class GrpFixtures {
             PhiEntry.INITIAL_ID,
             checkpoint.toString(),
             EpsilonGrpCheckpointManager.checkpointSha256(checkpoint),
-            "jar",
             null,
             "",
             1.0);

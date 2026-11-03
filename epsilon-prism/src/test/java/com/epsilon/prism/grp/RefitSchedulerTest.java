@@ -185,7 +185,7 @@ public class RefitSchedulerTest {
 
   static RefitRecord record(String id, RefitStatus status, RefitWindow window) {
     return new RefitRecord(
-        id, status, RefitCause.SCHEDULE, window, GrpInit.WARM, "g000", "", "", "jar", null, "", 1);
+        id, status, RefitCause.SCHEDULE, window, GrpInit.WARM, "g000", "", "", null, "", 1);
   }
 
   static String[] with(String[] pairs, String... more) {

@@ -101,7 +101,6 @@ public final class AutoSwitch {
         candidate.parent(),
         "",
         "",
-        candidate.jarSha256(),
         candidate.gate(),
         detail,
         candidate.seconds());

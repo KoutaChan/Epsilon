@@ -17,7 +17,6 @@ import java.util.Optional;
  * @param parent 使用中の項目の id（関門の相手と温めの始め）
  * @param path 公開した候補の正確なディレクトリ（READY のときだけ、ほかは空）
  * @param sha256 候補の sha（READY のときだけ、ほかは空）
- * @param jarSha256 作業が動いた jar の sha
  * @param gate 関門の報告（学習まで届かなければ null）
  * @param detail 失敗や拒否の理由（なければ空）
  * @param seconds 学習と関門の秒数
@@ -31,7 +30,6 @@ public record RefitRecord(
     String parent,
     String path,
     String sha256,
-    String jarSha256,
     GateReport gate,
     String detail,
     double seconds) {
@@ -82,6 +80,6 @@ public record RefitRecord(
 
   /** 同じ試行の状態を変えた行（境目の点検の REJECTED など）。 */
   public RefitRecord withStatus(RefitStatus next, String why) {
-    return new RefitRecord(id, next, cause, window, init, parent, path, sha256, jarSha256, gate, why, seconds);
+    return new RefitRecord(id, next, cause, window, init, parent, path, sha256, gate, why, seconds);
   }
 }

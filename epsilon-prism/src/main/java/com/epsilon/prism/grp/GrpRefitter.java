@@ -68,14 +68,11 @@ public final class GrpRefitter {
    * 取り置き h で 1 回学習する。
    *
    * @param holdout 取り置きのコホート h（封印済みで対局の記録があること）
-   * @param jarSha256 作業が動いている jar の sha
    * @return 書いた refits.jsonl の行
    * @throws IOException refits.jsonl が書けないとき
    */
-  public static RefitRecord refit(
-      GrpFiles files, PrismConfig config, int holdout, RefitCause cause, String jarSha256)
-      throws IOException {
-    return refit(files, config, holdout, cause, jarSha256, Steps.PRODUCTION);
+  public static RefitRecord refit(GrpFiles files, PrismConfig config, int holdout, RefitCause cause) throws IOException {
+    return refit(files, config, holdout, cause, Steps.PRODUCTION);
   }
 
   /** 試行の id（g&lt;k&gt;-a&lt;n&gt;）。 */
@@ -173,8 +170,7 @@ public final class GrpRefitter {
         throws IOException;
   }
 
-  static RefitRecord refit(
-      GrpFiles files, PrismConfig config, int holdout, RefitCause cause, String jarSha256, Steps steps)
+  static RefitRecord refit(GrpFiles files, PrismConfig config, int holdout, RefitCause cause, Steps steps)
       throws IOException {
     long started = System.nanoTime();
     var profile = EpsilonUtilityProfile.valueOf(config.utility());
@@ -183,7 +179,7 @@ public final class GrpRefitter {
     RefitWindow window = RefitWindow.ending(holdout, config.grpWindow()).orElse(null);
     Path staging = files.staging().resolve(id);
     Path candidate = files.candidate(id);
-    var draft = new Draft(id, cause, window, config.grpInit(), jarSha256, started);
+    var draft = new Draft(id, cause, window, config.grpInit(), started);
     RefitRecord record;
     try {
       record = attempt(files, config, holdout, profile, steps, draft, staging, candidate, attempt);
@@ -377,23 +373,21 @@ public final class GrpRefitter {
     final String id;
     final RefitCause cause;
     final RefitWindow window;
-    final String jarSha256;
     final long started;
     GrpInit init;
     String parent = "";
 
-    Draft(String id, RefitCause cause, RefitWindow window, GrpInit init, String jarSha256, long started) {
+    Draft(String id, RefitCause cause, RefitWindow window, GrpInit init, long started) {
       this.id = id;
       this.cause = cause;
       this.window = window;
       this.init = init;
-      this.jarSha256 = jarSha256;
       this.started = started;
     }
 
     RefitRecord record(RefitStatus status, String path, String sha256, GateReport gate, String detail) {
       return new RefitRecord(
-          id, status, cause, window, init, parent, path, sha256, jarSha256, gate, detail, (System.nanoTime() - started) / 1e9);
+          id, status, cause, window, init, parent, path, sha256, gate, detail, (System.nanoTime() - started) / 1e9);
     }
   }
 }

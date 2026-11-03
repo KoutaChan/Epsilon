@@ -53,7 +53,7 @@ public class PhiScorerTest {
     Assert.assertEquals(PhiScorer.pending(files), List.of());
     for (int t = 1; t <= 12; t++) write(t, PhiEntry.SCORE_RANK_ID, "", 3);
     Assert.assertEquals(PhiScorer.pending(files), List.of(4, 5, 6, 7, 8, 9, 10, 11, 12));
-    PhiScorer.score(files, config, 6, "jar", new Fake());
+    PhiScorer.score(files, config, 6, new Fake());
     Assert.assertEquals(PhiScorer.pending(files), List.of(4, 5, 7, 8, 9, 10, 11, 12));
     // 書きかけの一時ファイルは記録に数えない
     Files.writeString(files.games(13).resolveSibling("c00013.bin.gz.tmp"), "partial");
@@ -66,10 +66,9 @@ public class PhiScorerTest {
     write(5, PhiEntry.SCORE_RANK_ID, "", 9);
     write(6, "g006-a1", "cd".repeat(32), 4);
     var fake = new Fake();
-    PhiMonitorLine first = PhiScorer.score(files, config, 4, "jar-a", fake).orElseThrow();
+    PhiMonitorLine first = PhiScorer.score(files, config, 4, fake).orElseThrow();
     Assert.assertEquals(first.cohort(), 4);
     Assert.assertEquals(first.phiId(), PhiEntry.SCORE_RANK_ID);
-    Assert.assertEquals(first.jarSha256(), "jar-a");
     Assert.assertEquals(first.active().games(), 5);
     Assert.assertEquals(first.active().dSpg(), Fake.dSpg(5, PhiEntry.SCORE_RANK_ID));
     Assert.assertEquals(first.shadows().keySet(), Set.of("g001-a1"));
@@ -77,12 +76,12 @@ public class PhiScorerTest {
     Assert.assertEquals(first.ewmaCohorts(), 1);
     Assert.assertEquals(first.dSpgEwma(), first.active().dSpg());
     // 同じ項目: λ = 1/8 で進める
-    PhiMonitorLine second = PhiScorer.score(files, config, 5, "jar-a", fake).orElseThrow();
+    PhiMonitorLine second = PhiScorer.score(files, config, 5, fake).orElseThrow();
     Assert.assertEquals(second.ewmaCohorts(), 2);
     Assert.assertEquals(
         second.dSpgEwma(), first.dSpgEwma() + (second.active().dSpg() - first.dSpgEwma()) / 8, 1e-15);
     // 項目が変わったら初めから
-    PhiMonitorLine third = PhiScorer.score(files, config, 6, "jar-b", fake).orElseThrow();
+    PhiMonitorLine third = PhiScorer.score(files, config, 6, fake).orElseThrow();
     Assert.assertEquals(third.phiId(), "g006-a1");
     Assert.assertEquals(third.ewmaCohorts(), 1);
     Assert.assertEquals(third.dSpgEwma(), third.active().dSpg());
@@ -101,14 +100,14 @@ public class PhiScorerTest {
     write(2, PhiEntry.SCORE_RANK_ID, "", 3);
     var fake = new Fake();
     fake.brokenShadow = true;
-    PhiMonitorLine line = PhiScorer.score(files, config, 2, "jar", fake).orElseThrow();
+    PhiMonitorLine line = PhiScorer.score(files, config, 2, fake).orElseThrow();
     Assert.assertEquals(line.shadows(), Map.of());
     // 壊れた記録・ない記録・別のコホートの記録は採点しない（何も書かない）
     Files.writeString(files.games(3), "not a game log");
-    Assert.assertEquals(PhiScorer.score(files, config, 3, "jar", fake), Optional.empty());
-    Assert.assertEquals(PhiScorer.score(files, config, 7, "jar", fake), Optional.empty());
+    Assert.assertEquals(PhiScorer.score(files, config, 3, fake), Optional.empty());
+    Assert.assertEquals(PhiScorer.score(files, config, 7, fake), Optional.empty());
     GameLog.write(files.games(8), GameLogTest.synthetic(9, 2, 1));
-    Assert.assertEquals(PhiScorer.score(files, config, 8, "jar", fake), Optional.empty());
+    Assert.assertEquals(PhiScorer.score(files, config, 8, fake), Optional.empty());
     Assert.assertEquals(PhiMonitorLine.readAll(files).size(), 1);
   }
 
@@ -117,11 +116,11 @@ public class PhiScorerTest {
     write(2, PhiEntry.SCORE_RANK_ID, "", 3);
     write(3, PhiEntry.SCORE_RANK_ID, "", 3);
     var fake = new Fake();
-    PhiScorer.score(files, config, 2, "jar", fake);
+    PhiScorer.score(files, config, 2, fake);
     // 書きかけで止まった行（改行なし）
     Files.writeString(files.monitor(), "{\"cohort\":3,\"phiId\":\"sc", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
     Assert.assertEquals(PhiMonitorLine.readAll(files).size(), 1);
-    PhiScorer.score(files, config, 3, "jar", fake);
+    PhiScorer.score(files, config, 3, fake);
     List<PhiMonitorLine> lines = PhiMonitorLine.readAll(files);
     Assert.assertEquals(lines.stream().map(PhiMonitorLine::cohort).toList(), List.of(2, 3));
     Assert.assertEquals(lines.get(1).ewmaCohorts(), 2);

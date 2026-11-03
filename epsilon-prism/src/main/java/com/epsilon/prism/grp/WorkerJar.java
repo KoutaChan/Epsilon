@@ -9,10 +9,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
-/**
- * 裏の作業が動く jar: 本番の jar は反復の境目で上書きされるので、走らせ役が grp/jars/&lt;sha256 の先頭 16 文字&gt;.jar へ写し、その写しから
- * 起動する。sha は refits.jsonl と phimon.jsonl に書く。
- */
+/** 動いている jar の sha256（refits.jsonl と phimon.jsonl に書く）。 */
 public final class WorkerJar {
 
   private WorkerJar() {}

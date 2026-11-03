@@ -6,24 +6,21 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 裏の作業の主クラス（学習の JVM と別の主クラスなので、走らせ役が学習の JVM を待つ照合に掛からない）。走らせ役が各反復の後に、GPU を隠し
- * nice 19・CPU 4 本の別の JVM で起動する: {@code GrpWorkerMain --run DIR --hold-dir DIR --own-hold NAME}。
+ * GRP の裏の作業の主クラス（学習の JVM と別の主クラスなので、走らせ役が学習の JVM を待つ照合に掛からない）。走らせ役が反復の後に、GPU を隠し
+ * nice 19・CPU 4 本の別の JVM で起動する: {@code GrpWorkerMain --run DIR}。学習の JVM は採点だけを自分のスレッドで行う（{@link PhiScoring}）。
  *
  * <ol>
- *   <li>採点の錠（{@link WorkerLock.Kind#SCORE}）が取れれば、ほかの札が消えるまで待ち（{@link ForeignHolds}）、MemAvailable が {@value
- *       #SCORE_MEMORY_GIB} GiB 以上なら未採点のコホートを採点する（{@link PhiScorer}。phiMonitor = SCORE のときだけ）。警報（{@link
- *       DriftAlarm}）は phiDrift が OFF でなければ書いた行ごとに進める。錠が取れなければ採点しない（待つ作業は 1 つだけ）。
- *   <li>phiSource = SELF_GRP で学習の錠（{@link WorkerLock.Kind#REFIT}）が取れれば、札を待ってから、AUTO なら効く時期の来た候補を入れ
- *       （{@link AutoSwitch}）、巻き戻しを点検し（{@link RollbackCheck}）、手動の要求か予定表（{@link RefitScheduler}）で決まれば 1 回学習する
- *       （{@link GrpRefitter}）。READY なら AUTO の切り替えをもう一度確かめる。学習は MemAvailable が {@value #REFIT_MEMORY_GIB} GiB 以上のとき
- *       だけ決める（足りなければ手動の要求を次の作業に残す）。
+ *   <li>phiMonitor = SCORE で採点の錠（{@link WorkerLock.Kind#SCORE}）が取れ、MemAvailable が {@value PhiScoring#MEMORY_GIB} GiB 以上なら、
+ *       未採点のコホートを採点する（{@link PhiScoring#scorePending}）。錠が取れなければ採点しない（学習の JVM が採点している）。
+ *   <li>phiSource = SELF_GRP で学習の錠（{@link WorkerLock.Kind#REFIT}）が取れれば、AUTO なら効く時期の来た候補を入れ（{@link AutoSwitch}）、
+ *       巻き戻しを点検し（{@link RollbackCheck}）、手動の要求か予定表（{@link RefitScheduler}）で決まれば 1 回学習する（{@link GrpRefitter}）。
+ *       READY なら AUTO の切り替えをもう一度確かめる。学習は MemAvailable が {@value #REFIT_MEMORY_GIB} GiB 以上のときだけ決める（足りなければ
+ *       手動の要求を次の作業に残す）。
  * </ol>
  *
  * <p>心拍（{@link WorkerHeartbeat}）は錠を持つあいだ錠の種類ごとのファイルに書く。起動の初めに oom_score_adj を 1000 にする（メモリが尽きた
@@ -35,44 +32,20 @@ public final class GrpWorkerMain {
   /** 学習を決めるのに要る MemAvailable（GiB）。 */
   static final long REFIT_MEMORY_GIB = 10;
 
-  /** 採点を始めるのに要る MemAvailable（GiB）。 */
-  static final long SCORE_MEMORY_GIB = 4;
-
-  /** 札を確かめる間隔。 */
-  static final Duration HOLD_POLL = Duration.ofSeconds(30);
-
-  static final String USAGE = "GrpWorkerMain --run DIR --hold-dir DIR --own-hold NAME";
+  static final String USAGE = "GrpWorkerMain --run DIR";
 
   private GrpWorkerMain() {}
 
   /**
-   * 引数。
+   * 引数（{@code --run DIR}）を読む。
    *
-   * @param run run のディレクトリ
-   * @param holdDirectory 札の置き場
-   * @param ownHold 走らせ役自身の札の名前
+   * @return run のディレクトリ
+   * @throws IllegalArgumentException 引数が合わないとき
    */
-  record Arguments(Path run, Path holdDirectory, String ownHold) {
-
-    /** 引数を読む（誤りは IllegalArgumentException）。 */
-    static Arguments parse(String[] arguments) {
-      Path run = null, holds = null;
-      String own = null;
-      for (int i = 0; i < arguments.length; i++) {
-        String name = arguments[i];
-        if (i + 1 >= arguments.length) throw new IllegalArgumentException("Missing value for " + name);
-        String value = arguments[++i];
-        switch (name) {
-          case "--run" -> run = Path.of(value);
-          case "--hold-dir" -> holds = Path.of(value);
-          case "--own-hold" -> own = value;
-          default -> throw new IllegalArgumentException("Unknown argument " + name);
-        }
-      }
-      if (run == null) throw new IllegalArgumentException("--run is required");
-      if (holds == null || own == null) throw new IllegalArgumentException("--hold-dir and --own-hold are required");
-      return new Arguments(run, holds, own);
-    }
+  static Path parse(String[] arguments) {
+    if (arguments.length != 2 || !arguments[0].equals("--run"))
+      throw new IllegalArgumentException("Expected --run DIR, got " + String.join(" ", arguments));
+    return Path.of(arguments[1]);
   }
 
   /**
@@ -81,20 +54,17 @@ public final class GrpWorkerMain {
    * @return 終了の状態（引数の誤りだけ 0 でない）
    */
   public static int run(String[] arguments) {
-    Arguments parsed;
+    Path run;
     try {
-      parsed = Arguments.parse(arguments);
+      run = parse(arguments);
     } catch (IllegalArgumentException wrong) {
       System.err.println(wrong.getMessage());
       System.err.println("usage: " + USAGE);
       return 2;
     }
-    var files = new GrpFiles(parsed.run());
+    var files = new GrpFiles(run);
     try {
-      work(parsed, files);
-    } catch (InterruptedException interrupted) {
-      Thread.currentThread().interrupt();
-      LOG.warn("the GRP worker was interrupted");
+      work(files);
     } catch (IOException | RuntimeException failure) {
       LOG.warn("the GRP worker stopped: {}", failure.toString());
     }
@@ -106,14 +76,14 @@ public final class GrpWorkerMain {
     if (status != 0) System.exit(status);
   }
 
-  private static void work(Arguments arguments, GrpFiles files) throws IOException, InterruptedException {
+  private static void work(GrpFiles files) throws IOException {
     PrismConfig config =
         PrismConfig.read(Files.readString(files.run().resolve("config.json"), StandardCharsets.UTF_8));
     config.validate();
     yieldToOomKiller();
-    String jar = jarSha256(files);
-    if (config.phiMonitor().scores()) score(arguments, files, config, jar);
-    if (config.phiSource() == PhiSource.SELF_GRP) refit(arguments, files, config, jar);
+    String jar = PhiScoring.jarSha256();
+    if (config.phiMonitor().scores()) score(files, config, jar);
+    if (config.phiSource() == PhiSource.SELF_GRP) refit(files, config, jar);
   }
 
   /** メモリが尽きたとき、学習の JVM より先にこの作業が選ばれるようにする（特権なしで上げられる。書けなければ 1 回書き残すだけ）。 */
@@ -126,55 +96,27 @@ public final class GrpWorkerMain {
   }
 
   /** 採点の錠を持って、未採点のコホートを採点する。 */
-  private static void score(Arguments arguments, GrpFiles files, PrismConfig config, String jar)
-      throws IOException, InterruptedException {
+  private static void score(GrpFiles files, PrismConfig config, String jar) throws IOException {
     Optional<WorkerLock> lock = WorkerLock.tryAcquire(files, WorkerLock.Kind.SCORE);
     if (lock.isEmpty()) {
       LOG.info("another GRP worker holds the score lock");
       return;
     }
     try (WorkerLock held = lock.get();
-        var heartbeat = WorkerHeartbeat.start(files, WorkerLock.Kind.SCORE, "score: waiting for holds")) {
-      ForeignHolds.awaitClear(arguments.holdDirectory(), arguments.ownHold(), HOLD_POLL);
-      long available = memAvailableBytes();
-      if (available >= 0 && available < SCORE_MEMORY_GIB << 30) {
-        LOG.info("no scoring: MemAvailable {} MiB", available >> 20);
-        return;
-      }
-      List<Integer> pending = PhiScorer.pending(files);
-      for (int cohort : pending) {
-        heartbeat.state(String.format("scoring c%05d", cohort));
-        Optional<PhiMonitorLine> line;
-        try {
-          line = PhiScorer.score(files, config, cohort, jar);
-        } catch (IOException | RuntimeException failure) {
-          LOG.warn("c{} was not scored: {}", cohort, failure.toString());
-          continue;
-        }
-        if (line.isEmpty()) continue;
-        LOG.info("{}", line.get().summary());
-        if (config.phiDrift() == PhiDrift.OFF) continue;
-        try {
-          DriftAlarm.State state = DriftAlarm.update(files, config, line.get());
-          LOG.info("drift[{}] on={} streak={} ewma={}", cohort, state.on(), state.streak(), state.dSpgEwma());
-        } catch (IOException | RuntimeException failure) {
-          LOG.warn("c{} did not advance the drift alarm: {}", cohort, failure.toString());
-        }
-      }
+        var heartbeat = WorkerHeartbeat.start(files, WorkerLock.Kind.SCORE, "score: starting")) {
+      if (PhiScoring.memoryAvailable()) PhiScoring.scorePending(files, config, jar, heartbeat::state);
     }
   }
 
   /** 学習の錠を持って、自動の切り替え・巻き戻しの点検・学習を行う。 */
-  private static void refit(Arguments arguments, GrpFiles files, PrismConfig config, String jar)
-      throws IOException, InterruptedException {
+  private static void refit(GrpFiles files, PrismConfig config, String jar) throws IOException {
     Optional<WorkerLock> lock = WorkerLock.tryAcquire(files, WorkerLock.Kind.REFIT);
     if (lock.isEmpty()) {
       LOG.info("another GRP worker holds the refit lock");
       return;
     }
     try (WorkerLock held = lock.get();
-        var heartbeat = WorkerHeartbeat.start(files, WorkerLock.Kind.REFIT, "refit: waiting for holds")) {
-      ForeignHolds.awaitClear(arguments.holdDirectory(), arguments.ownHold(), HOLD_POLL);
+        var heartbeat = WorkerHeartbeat.start(files, WorkerLock.Kind.REFIT, "refit: starting")) {
       autoSwitch(files, config, heartbeat);
       heartbeat.state("rollback check");
       try {
@@ -212,19 +154,6 @@ public final class GrpWorkerMain {
       AutoSwitch.apply(files, config).ifPresent(entry -> LOG.info("auto switch to {}", entry));
     } catch (IOException | RuntimeException failure) {
       LOG.warn("the automatic switch failed: {}", failure.toString());
-    }
-  }
-
-  /** 動いている jar の sha（分からなければ空）。写しから動いていなければ書き残す。 */
-  private static String jarSha256(GrpFiles files) {
-    try {
-      Path running = WorkerJar.running();
-      if (!running.toAbsolutePath().normalize().startsWith(files.jars().toAbsolutePath().normalize()))
-        LOG.warn("the GRP worker runs from {}, not from a copy in {}", running, files.jars());
-      return WorkerJar.runningSha256();
-    } catch (IOException | RuntimeException failure) {
-      LOG.warn("the worker jar sha is unknown: {}", failure.toString());
-      return "";
     }
   }
 

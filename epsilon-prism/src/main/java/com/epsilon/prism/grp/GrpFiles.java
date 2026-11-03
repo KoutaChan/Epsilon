@@ -84,9 +84,4 @@ public record GrpFiles(Path run) {
   public Path lock(String name) {
     return directory().resolve(name + ".lock");
   }
-
-  /** 裏の作業が動く jar の写しの置き場（中身の sha の名前）。 */
-  public Path jars() {
-    return directory().resolve("jars");
-  }
 }

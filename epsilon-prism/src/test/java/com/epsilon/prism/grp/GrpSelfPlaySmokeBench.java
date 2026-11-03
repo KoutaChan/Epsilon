@@ -170,15 +170,7 @@ public class GrpSelfPlaySmokeBench {
   private static void workerAndTimeout(Path run, RefitRecord grown) throws Exception {
     rewriteConfig(run, Map.of("phiMonitor", "SCORE", "phiDrift", "REPORT"));
     var files = new GrpFiles(run);
-    Path holds = Files.createTempDirectory("prism-grp-holds");
-    try {
-      Assert.assertEquals(
-          GrpWorkerMain.run(
-              new String[] {"--run", run.toString(), "--hold-dir", holds.toString(), "--own-hold", "HOLD.train.smoke"}),
-          0);
-    } finally {
-      Snapshot.deleteTree(holds);
-    }
+    Assert.assertEquals(GrpWorkerMain.run(new String[] {"--run", run.toString()}), 0);
     List<PhiMonitorLine> lines = PhiMonitorLine.readAll(files);
     List<Integer> cohorts = lines.stream().map(PhiMonitorLine::cohort).toList();
     Assert.assertEquals(cohorts, List.of(1, 2, 3, 4, 5, 6, 7, 8));

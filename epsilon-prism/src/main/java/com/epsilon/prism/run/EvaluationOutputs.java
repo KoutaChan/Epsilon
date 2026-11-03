@@ -6,10 +6,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
- * バージョン V の x1n3 の出力（x1n3Dir の {@code v<V>-x1n3.*}）。印のファイルが測りの状態を表す:
+ * バージョン V の評価の出力（run の {@value #DIRECTORY} の {@code v<V>-<名前>.*}）。印のファイルが測りの状態を表す:
  *
  * <ul>
  *   <li>{@code .running}: 測りの最中（網を開く前に作り、{@code .done} の後に消す）。
@@ -21,9 +22,18 @@ import java.util.List;
  * 途中で止まると {@code .done} がないので、次の起動で初めから測り直す（{@code .tmp} は上書き）。
  *
  * @param directory 出力のディレクトリ
+ * @param name 評価の名前
  * @param version バージョン
  */
-public record X1n3Outputs(Path directory, int version) {
+public record EvaluationOutputs(Path directory, String name, int version) {
+
+  /** run の中の出力のディレクトリ。 */
+  public static final String DIRECTORY = "reports/evaluations";
+
+  /** run の root の評価 evaluation のバージョン version の出力。 */
+  public static EvaluationOutputs of(Path root, Evaluation evaluation, int version) {
+    return new EvaluationOutputs(root.resolve(DIRECTORY), evaluation.name(), version);
+  }
 
   /** 測りの最中の印。 */
   public Path running() {
@@ -78,22 +88,23 @@ public record X1n3Outputs(Path directory, int version) {
   }
 
   /**
-   * 測っていないバージョン: x1n3From ≤ V ≤ latest で V が x1n3Every の倍数、{@code .done} も {@code .failed} もないバージョン（古い順）。x1n3 = OFF なら空。
+   * 測っていない評価: latest までで評価ごとに測るバージョン（{@link Evaluation#versions}）のうち、{@code .done} も {@code .failed} もないもの。
+   * バージョンの古い順、同じバージョンでは評価の順。
    *
    * @param latest 公開した最新のバージョン
    */
-  public static List<Integer> pending(PrismConfig config, int latest) {
-    List<Integer> versions = new ArrayList<>();
-    if (config.x1n3() == X1n3.OFF) return versions;
-    Path directory = Path.of(config.x1n3Dir());
-    int every = config.x1n3Every();
-    int first = Math.ceilDiv(config.x1n3From(), every) * every;
-    for (int version = first; version <= latest; version += every)
-      if (!new X1n3Outputs(directory, version).settled()) versions.add(version);
-    return versions;
+  public static List<EvaluationOutputs> pending(Path root, List<Evaluation> evaluations, int latest) {
+    List<EvaluationOutputs> pending = new ArrayList<>();
+    for (Evaluation evaluation : evaluations)
+      for (int version : evaluation.versions(latest)) {
+        var outputs = of(root, evaluation, version);
+        if (!outputs.settled()) pending.add(outputs);
+      }
+    pending.sort(Comparator.comparingInt(EvaluationOutputs::version));
+    return pending;
   }
 
   private Path file(String suffix) {
-    return directory.resolve("v" + version + "-x1n3." + suffix);
+    return directory.resolve("v" + version + "-" + name + "." + suffix);
   }
 }

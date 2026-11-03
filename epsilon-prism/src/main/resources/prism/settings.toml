@@ -112,14 +112,13 @@ lambdaCommit = 0.02
 # 方策の記憶: 打つ網 A を学習の網 θ の重み付きの平均にする（A_v = (1 − η)·A_{v−1} + η·θ_v）。
 #   averaging = "none"（平均しない）、"ema"（η = 1 − 2^(−1/averageHalfLife)）、"power"（バージョン k の重み k^averagePower、0 で一様、1 で線形 CFR）
 #   averageFrom: 平均を始めるバージョン。collectWith: 収集で打つ網（"average" か "iterate"）。learnFrom: 生徒を始める網と TEMPO の錨（"iterate" か
-#   "average"）。evaluateIterate: 打つ網に加えて学習の網も 3×Heuristic で測る
+#   "average"）
 averaging = "none"
 averageHalfLife = 8.0
 averagePower = 1.0
 averageFrom = 16
 collectWith = "iterate"
 learnFrom = "iterate"
-evaluateIterate = false
 
 # TEMPO: コホート t だけを、学習の網 θ_t を錨にして当てる（教師 = (1 − K′_t)·s_θt + K′_t·Ỹ、補助の頭の項も K′_t 倍）。
 # K_t = filterGain·(1 + max(0, t − filterFrom)/filterTau)^(−filterPower)、K′_t は前の反復で教師に掛けた運の精算の補正の保留の R² の分だけ上げた
@@ -181,16 +180,12 @@ grpWindow = 8
 # 点数だけの Φ から最初に置き換えるのに要る窓の半荘の数（1 以上）
 grpTrustGames = 131072
 
-# 評価: 3×Heuristic を evalEvery 反復ごと（0 なら測らない）に evalGames 局（evaluate の既定の局数も evalGames）
-evalEvery = 1
-evalGames = 8192
-
-# x1n3: バージョンが x1n3Every の倍数（x1n3From 以上）のたびに、系譜の中でそのバージョンの打つ網 1 席対 x1n3Opponent 3 席を x1n3Games 局打ち、x1n3Dir に
-# v<バージョン>-x1n3.tsv・.log・.done を書く（"OFF"・"ON"）。相手は "heuristic" か "nano:<Nano の checkpoint の絶対パス>"（Nano は gpu:0）。
-# パスは絶対パス（~ は展開しない）で、ON では相手と出力先が要る
-x1n3 = "OFF"
-x1n3Every = 8
-x1n3From = 1
-x1n3Games = 131072
-x1n3Opponent = ""
-x1n3Dir = ""
+# 評価: [epsilon.prism.evaluation.<名前>]（名前は英数字）ごとに、バージョンの打つ網 1 席対 opponent 3 席を games 局打つ（全員貪欲。牌山と半荘 ID は
+# 全ての評価で同じ）。バージョンが every の倍数（from 以上。every = 0 なら測らない）のたびに系譜の中で反復の後に測り、run の reports/evaluations に
+# v<バージョン>-<名前>.tsv・.log・.done を書く。opponent は "heuristic" か "nano:<Nano の checkpoint の絶対パス>"（Nano は gpu:0。~ は展開しない）。
+# 評価を足すには、run の TOML に節を書く（例 [epsilon.prism.evaluation.x1n3] に opponent = "nano:/…"・games = 131072・every = 8・from = 1）
+[epsilon.prism.evaluation.3xH]
+opponent = "heuristic"
+games = 8192
+every = 1
+from = 1

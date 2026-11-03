@@ -19,62 +19,63 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 系譜の止め方と再開（CPU）: score-rank の Φ・1 コホート 1 局・x1n3 は 3×Heuristic の卓 2 局で、3 つの安全点（封印の後・反復の後・x1n3 の後）で
- * 止めては起動し直し、落ちた跡（state.json の前の落ち・x1n3 の途中・書きかけの記録の行・集めかけのコホート）と .failed のバージョンを置いてから最後まで
- * 回す。どこで止めても、記録・評価・x1n3 はバージョンごとにちょうど 1 回で、測った x1n3 は測り直さない。
+ * 系譜の止め方と再開（CPU）: score-rank の Φ・1 コホート 1 局・評価は 3xH（1 局）と x1n3（3×Heuristic の卓 2 局）で、3 つの安全点（封印の後・
+ * 反復の後・評価 1 つの後）で止めては起動し直し、落ちた跡（state.json の前の落ち・x1n3 の途中・書きかけの記録の行・集めかけのコホート）と .failed の
+ * バージョンを置いてから最後まで回す。どこで止めても、記録と評価はバージョンごとにちょうど 1 回で、測った評価は測り直さない。
  */
 public class LineageResumeTest {
 
   @Test(timeOut = 2_400_000)
   public void stopsAtSafePointsAndResumesWithoutDuplicates() throws Exception {
     Path run = Files.createTempDirectory("prism-resume");
-    Path x1n3 = Files.createTempDirectory("prism-x1n3").toAbsolutePath();
+    Path evaluations = run.resolve(EvaluationOutputs.DIRECTORY);
     try {
       // 封印の後: コホート 1 は封印済み、バージョン 2 はまだない
-      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.SEALED, 1)), 0);
+      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(), StopSignal.at(SafePoint.SEALED, 1)), 0);
       Assert.assertEquals(next(run), 1);
       Assert.assertTrue(Files.exists(CohortWriter.directory(run, 1).resolve(CohortWriter.MANIFEST)));
       Assert.assertFalse(Files.exists(run.resolve("reports/iterations.jsonl")));
       Assert.assertFalse(Files.exists(RunFiles.snapshot(run, 2)));
-      // 反復の後: 封印したコホートを使い回してバージョン 2 を公開し、x1n3 の前に止まる
-      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.ITERATED, 1)), 0);
+      // 反復の後: 封印したコホートを使い回してバージョン 2 を公開し、評価の前に止まる
+      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(), StopSignal.at(SafePoint.ITERATED, 1)), 0);
       Assert.assertEquals(next(run), 2);
       Assert.assertEquals(lines(run.resolve("reports/iterations.jsonl")).get(0).get("collection").getAsString(), "reused the sealed cohort");
-      Assert.assertFalse(new X1n3Outputs(x1n3, 2).settled());
-      // x1n3 の後: 起動時にバージョン 2 を測って止まる
-      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.MEASURED, 2)), 0);
+      Assert.assertFalse(Files.exists(evaluations));
+      // 評価 1 つの後: 起動時にバージョン 2 の 3xH を測って止まる（x1n3 はまだ）
+      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(), StopSignal.at(SafePoint.MEASURED, 2)), 0);
       Assert.assertEquals(next(run), 2);
-      var v2 = new X1n3Outputs(x1n3, 2);
+      Assert.assertTrue(Files.exists(new EvaluationOutputs(evaluations, "3xH", 2).done()));
+      var v2 = new EvaluationOutputs(evaluations, "x1n3", 2);
+      Assert.assertFalse(v2.settled());
+      // 反復 2: 起動時にバージョン 2 の x1n3 を測り、封印の後で止め、もう一度反復の後まで回してから、state.json を書く前に落ちたことにする
+      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(), StopSignal.at(SafePoint.SEALED, 2)), 0);
       assertMeasured(v2);
       byte[] v2Games = Files.readAllBytes(v2.tsv());
       FileTime v2Done = Files.getLastModifiedTime(v2.done());
-      // 反復 2: 封印の後で止め、もう一度反復の後まで回してから、state.json を書く前に落ちたことにする
-      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.SEALED, 2)), 0);
       String before = Files.readString(run.resolve("state.json"));
-      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.ITERATED, 2)), 0);
+      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(), StopSignal.at(SafePoint.ITERATED, 2)), 0);
       Assert.assertEquals(next(run), 3);
       Files.writeString(run.resolve("state.json"), before);
       // バージョン 3 の x1n3 の途中で落ちた跡、バージョン 4 は測れなかった印、書きかけの記録の行、集めかけのコホート 3
-      var v3 = new X1n3Outputs(x1n3, 3);
+      var v3 = new EvaluationOutputs(evaluations, "x1n3", 3);
       Files.writeString(v3.running(), "1\n");
       Files.writeString(v3.tsv().resolveSibling(v3.tsv().getFileName() + ".tmp"), "partial");
-      var v4 = new X1n3Outputs(x1n3, 4);
+      var v4 = new EvaluationOutputs(evaluations, "x1n3", 4);
       Files.writeString(v4.failed(), "");
       Files.writeString(run.resolve("reports/iterations.jsonl"), "{\"iteration\": 3, \"trunc", StandardOpenOption.APPEND);
       Files.createDirectories(CohortWriter.directory(run, 3));
       Files.writeString(CohortWriter.directory(run, 3).resolve("partial"), "x");
       // 止めずに最後まで（iterations = 3）
-      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.none()), 0);
+      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(), StopSignal.none()), 0);
       Assert.assertEquals(next(run), 4);
       List<JsonObject> iterations = lines(run.resolve("reports/iterations.jsonl"));
       Assert.assertEquals(iterations.stream().map(line -> line.get("iteration").getAsInt()).toList(), List.of(1, 2, 3));
       Assert.assertEquals(iterations.get(1).get("collection").getAsString(), "reused the sealed cohort");
       Assert.assertTrue(iterations.get(2).get("collection").isJsonObject(), "cohort 3 was collected again");
       Assert.assertFalse(Files.exists(CohortWriter.directory(run, 3).resolve("partial")));
-      List<JsonObject> evaluations = lines(run.resolve("reports/evaluations.jsonl"));
-      Assert.assertEquals(evaluations.stream().map(line -> line.get("version").getAsInt()).toList(), List.of(2, 3, 4));
-      for (JsonObject evaluation : evaluations)
-        Assert.assertTrue(evaluation.get("seconds").getAsDouble() > 0, "3xH seconds of " + evaluation);
+      for (int version = 2; version <= 4; version++)
+        Assert.assertTrue(Files.exists(new EvaluationOutputs(evaluations, "3xH", version).done()), "3xH v" + version);
+      Assert.assertFalse(new EvaluationOutputs(evaluations, "3xH", 1).settled());
       Assert.assertEquals(Files.readAllBytes(v2.tsv()), v2Games, "version 2 was measured again");
       Assert.assertEquals(Files.getLastModifiedTime(v2.done()), v2Done);
       assertMeasured(v3);
@@ -86,16 +87,15 @@ public class LineageResumeTest {
       // 合図が立っていれば何もせずに終わる
       StopSignal stopped = StopSignal.none();
       stopped.request("test");
-      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), stopped), 0);
+      Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(), stopped), 0);
       Assert.assertEquals(next(run), 4);
     } finally {
       Snapshot.deleteTree(run);
-      Snapshot.deleteTree(x1n3);
     }
   }
 
   /** バージョンの x1n3 が書き終わっている: .done があり .running はなく、tsv は 1 半荘 1 行、log は evaluate と同じ文言の 3 行。 */
-  private static void assertMeasured(X1n3Outputs outputs) throws Exception {
+  private static void assertMeasured(EvaluationOutputs outputs) throws Exception {
     Assert.assertTrue(Files.exists(outputs.done()), outputs.done().toString());
     Assert.assertFalse(Files.exists(outputs.running()));
     List<String> games = Files.readAllLines(outputs.tsv());
@@ -111,8 +111,11 @@ public class LineageResumeTest {
         log);
   }
 
-  /** CPU で回る小さな系譜（LineageSmokeTest と同じ形、方策の記憶なし）に、バージョン 2 からバージョンごとの x1n3（3×Heuristic、2 局）。 */
-  private static SettingsLoader settings(Path x1n3) {
+  /**
+   * CPU で回る小さな系譜（LineageSmokeTest と同じ形、方策の記憶なし）に、バージョン 2 からバージョンごとの 3xH（1 局）と x1n3（3×Heuristic の卓、
+   * 2 局）。
+   */
+  private static SettingsLoader settings() {
     String[] pairs = {
       "phiSource", "SCORE_RANK", "phiMonitor", "OFF", "phiDrift", "OFF", "gamesPerCohort", "1",
       "gamesSchedule", "", "iterations", "3",
@@ -121,9 +124,9 @@ public class LineageResumeTest {
       "batchWaitMicros", "1000", "rowWriters", "1", "labelRateDiscardEarly", "0.003",
       "labelRateDiscardMid", "0.003", "labelRateDiscardLate", "0.003", "labelRateCommit", "0.03",
       "maxCandidates", "4", "rollinRateDiscard", "0.001", "rollinRateCommit", "0.015", "rhoBranch", "0.2",
-      "batchSize", "16", "decodeThreads", "2", "evalEvery", "1", "evalGames", "1",
-      "x1n3", "ON", "x1n3Every", "1", "x1n3From", "2", "x1n3Games", "2", "x1n3Opponent", NanoTable.HEURISTIC,
-      "x1n3Dir", x1n3.toString()
+      "batchSize", "16", "decodeThreads", "2", "evaluation.3xH.games", "1", "evaluation.3xH.from", "2",
+      "evaluation.x1n3.opponent", NanoTable.HEURISTIC, "evaluation.x1n3.games", "2", "evaluation.x1n3.every", "1",
+      "evaluation.x1n3.from", "2"
     };
     Map<String, String> values = new LinkedHashMap<>();
     for (int i = 0; i < pairs.length; i += 2) values.put(PrismConfig.SETTINGS + pairs[i], pairs[i + 1]);

@@ -80,9 +80,17 @@ grpCheckpoint = "checkpoints/epsilon-nano"
 java -jar epsilon-prism/target/epsilon-prism-1.0-SNAPSHOT-all.jar train --run runs/epsilon-prism
 ```
 
-反復ごとに次の重みを`runs/epsilon-prism/snapshots/<重み>`に書き、`reports/iterations.jsonl`に記録を1行足します。各重みは規則の打ち手と打たせて測り、`reports/evaluations.jsonl`に書きます。`--stop-after N`を付けるとN反復で止まり、同じ`--run`を指定すると続きから再開します。新しいrunの設定は`config.json`に書かれ、再開ではそれを読みます。`train`は止められるまで反復を回し続け、SIGTERMを受けると次の安全点（コホートの封印の後、反復の後、x1n3の後）で止まって0で終わります。どこで止めても、同じ`--run`で起動し直せば続きから同じ結果になります。
+反復ごとに次の重みを`runs/epsilon-prism/snapshots/<重み>`に書き、`reports/iterations.jsonl`に記録を1行足します。各重みは設定の評価で測ります（下）。`--stop-after N`を付けるとN反復で止まり、同じ`--run`を指定すると続きから再開します。新しいrunの設定は`config.json`に書かれ、再開ではそれを読みます。`train`は止められるまで反復を回し続け、SIGTERMを受けると次の安全点（コホートの封印の後、反復の後、評価1つの後）で止まって0で終わります。どこで止めても、同じ`--run`で起動し直せば続きから同じ結果になります。
 
-設定の`x1n3 = "ON"`にすると、バージョンが`x1n3Every`の倍数のたびに、学習の中でそのバージョンを`x1n3Opponent`（`heuristic`か`nano:<絶対パス>`）3席と`x1n3Games`局打たせ、`x1n3Dir`に`v<バージョン>-x1n3.tsv`・`.log`・`.done`を書きます（測っている間は`.running`、測れなかったバージョンは`.failed`）。
+評価は設定の`[epsilon.prism.evaluation.<名前>]`ごとに、バージョンが`every`の倍数（`from`以上）のたびに、学習の中でそのバージョンを`opponent`（`heuristic`か`nano:<絶対パス>`）3席と`games`局打たせ、runの`reports/evaluations`に`v<バージョン>-<名前>.tsv`・`.log`・`.done`を書きます（測っている間は`.running`、測れなかったバージョンは`.failed`）。同梱の設定は`3xH`（規則の打ち手3席と8192局、毎バージョン）だけです。Nanoとの卓を足す例です。
+
+```toml
+[epsilon.prism.evaluation.x1n3]
+opponent = "nano:/home/me/checkpoints/epsilon-nano/decision_pretrain_logs_00001"
+games = 131072
+every = 8
+from = 1
+```
 
 既定値は、GPU2枚で収集（`collectDevices`）と学習（`learnerDevice`）を行う前提です。環境に合わせて変更してください。
 

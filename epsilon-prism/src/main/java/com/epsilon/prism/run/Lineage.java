@@ -79,15 +79,15 @@ import org.slf4j.LoggerFactory;
  *       生徒を読んで学習器を温める（{@link Fit#prepare}）。work/&lt;t&gt;/Single に保存し、再開では使い回す。
  *   <li>方策の記憶（{@link #publish}）: averaging = none なら θ_{t+1} をそのままバージョン t+1 にする。それ以外は打つ網を A_{t+1} = (1 − η)·A_t +
  *       η·θ_{t+1}（{@link Averaging}、{@link PrismNetwork#mixIn}）にして、θ_{t+1} を iterate/ に添える。
- *   <li>reports/iterations.jsonl に 1 行、evalEvery 反復ごとにバージョン t+1 の打つ網（evaluateIterate なら学習の網も）を 3×Heuristic と打たせて
- *       evaluations.jsonl（{@link HeuristicEvaluation}）。どちらも state.json を進める前に書き、再開で同じ反復をやり直したときは書き終えた行を
- *       書き直さない（番号で引く。{@link RunFiles#recorded}）。それから state.json を進め、keepCohorts より古い行と work/&lt;t&gt; を消す。
- *   <li>x1n3 = ON なら、測っていないバージョン（{@link X1n3Outputs#pending}。バージョン t+1 を含む）を古い順に x1n3 で測る（{@link #measure}）。
+ *   <li>reports/iterations.jsonl に 1 行を state.json を進める前に書き（再開で同じ反復をやり直したときは書き終えた行を書き直さない。番号で
+ *       引く。{@link RunFiles#recorded}）、state.json を進め、keepCohorts より古い行と work/&lt;t&gt; を消す。
+ *   <li>評価（{@link Evaluation}）: 測っていない評価（{@link EvaluationOutputs#pending}。バージョン t+1 を含む）を古い順に測る（{@link
+ *       #measure}）。
  * </ol>
  *
  * 反復は iterations まで（stopAfter 回まで）回し、止まる合図（{@link StopSignal}）が立てば次の安全点で止まる: コホートの封印の後（{@link
- * SafePoint#SEALED}）、反復の後（{@link SafePoint#ITERATED}）、x1n3 のバージョンごとの後（{@link SafePoint#MEASURED}）。どこで止まっても（落ちても）
- * 再開は同じ結果に戻る: 封印したコホートと保存した生徒は使い回し、バージョンの公開は差し替え、記録は番号で引いて書き直さず、x1n3 は .done のないバージョンを
+ * SafePoint#SEALED}）、反復の後（{@link SafePoint#ITERATED}）、評価 1 つの後（{@link SafePoint#MEASURED}）。どこで止まっても（落ちても）
+ * 再開は同じ結果に戻る: 封印したコホートと保存した生徒は使い回し、バージョンの公開は差し替え、記録は番号で引いて書き直さず、評価は .done のないものを
  * 初めから測る。バージョンが公開されたのは state.json の next が進んだときだけ。
  *
  * バージョン 1 は白紙の網（s ≡ 0 なので argmax p0 で打つ。網の初期値の種は seed + 100、形は {@link PrismConfig#shape}）。再開は state.json の次の
@@ -95,7 +95,7 @@ import org.slf4j.LoggerFactory;
  * 捨てた R²）・collection（{@link CollectionDriver.Result}）・copies・forks・collectSeconds・totalRows・
  * memory・labels・copyLabels・roots（{@link RowCounts}）・ledger（{@link LedgerFit.Report}）・filter・fitSingle（{@link FitResult}）・accepted・
  * acceptance・average・seconds。filter は使ったゲイン gain = K′_t・錨の重み anchorWeight・学習率の倍率 lrScale に、K_t の scheduledGain と K′ の
- * 元の R² の r2 を足したもの。evaluations.jsonl: iteration・version・heuristic・play・iterate・seconds（3×Heuristic の秒数）。
+ * 元の R² の r2 を足したもの。
  */
 public final class Lineage {
   private static final Logger LOG = LoggerFactory.getLogger(Lineage.class);
@@ -174,7 +174,7 @@ public final class Lineage {
 
   /**
    * 反復を回す。資源（{@link TrainingResources}）と採点のスレッド（{@link PhiScoring}）は反復をまたいで 1 つずつ持つ。起動の初めに未採点の
-   * コホートの採点を頼み、測っていないバージョンの x1n3 を測る。報告は 1 反復で 1 行。
+   * コホートの採点を頼み、測っていない評価を測る。報告は 1 反復で 1 行。
    */
   private int loop(int stopAfter) throws Exception {
     State state = loadOrInitialize();
@@ -240,7 +240,7 @@ public final class Lineage {
     // 4. 方策の記憶（バージョン t+1）
     Averaging averaging = config.policyMemory();
     double averageWeight = publish(t, averaging, state.averageWeight(), report);
-    // 5. 記録と評価を state.json より前に書く（再開で同じ反復をやり直したときは、書き終えた記録と評価を書き直さない）
+    // 5. 記録を state.json より前に書く（再開で同じ反復をやり直したときは、書き終えた記録を書き直さない）
     int version = t + 1;
     report.put("seconds", (System.nanoTime() - started) / 1e9);
     if (!files.recorded(RunFiles.ITERATIONS, "iteration", t)) files.append(RunFiles.ITERATIONS, report);
@@ -248,22 +248,6 @@ public final class Lineage {
         String.format(
             "t=%d published the student as version %d %.1fs",
             t, version, (System.nanoTime() - started) / 1e9));
-    if (config.evalEvery() > 0
-        && t % config.evalEvery() == 0
-        && !files.recorded(RunFiles.EVALUATIONS, "version", version)) {
-      long evaluated = System.nanoTime();
-      var evaluation = new LinkedHashMap<String, Object>();
-      evaluation.put("iteration", t);
-      evaluation.put("version", version);
-      Path published = snapshot(version);
-      evaluation.putAll(evaluate(version, model(published), "", resources));
-      if (config.evaluateIterate() && averaging.enabled())
-        evaluation.put(
-            Averaging.ITERATE,
-            evaluate(version, Snapshot.iterate(published), " (iterate)", resources));
-      evaluation.put("seconds", (System.nanoTime() - evaluated) / 1e9);
-      files.append(RunFiles.EVALUATIONS, evaluation);
-    }
     var next =
         new State(
             State.FORMAT, version, totalRows, state.accepted() + 1, averageWeight, ledgerR2);
@@ -276,39 +260,42 @@ public final class Lineage {
   }
 
   /**
-   * 測っていないバージョンの x1n3 を古い順に測る（{@link X1n3Outputs#pending}。x1n3 = OFF なら何もしない）。バージョンの前と後に止まる合図を見る（{@link
-   * SafePoint#MEASURED}）。
+   * 測っていない評価を古い順に測る（{@link EvaluationOutputs#pending}）。評価の前と後に止まる合図を見る（{@link SafePoint#MEASURED}）。
    *
    * @param latest 公開した最新のバージョン
    * @return 合図で止まるなら false
    */
   private boolean measurePending(int latest, TrainingResources resources) throws IOException {
-    for (int version : X1n3Outputs.pending(config, latest)) {
+    for (EvaluationOutputs outputs : EvaluationOutputs.pending(root, config.evaluations(), latest)) {
       if (stop.requested()) return false;
-      measure(version, resources);
-      if (stop.stopsAt(SafePoint.MEASURED, version)) return false;
+      measure(evaluation(outputs.name()), outputs, resources);
+      if (stop.stopsAt(SafePoint.MEASURED, outputs.version())) return false;
     }
     return true;
   }
 
+  /** 名前の評価。 */
+  private Evaluation evaluation(String name) {
+    return config.evaluations().stream().filter(evaluation -> evaluation.name().equals(name)).findFirst().orElseThrow();
+  }
+
   /**
-   * バージョン V の打つ網 1 席対 x1n3Opponent 3 席を x1n3Games 局打ち（{@link NanoTable}。学習の資源で打ち、Nano は {@value NanoTable#NANO_DEVICE}）、
-   * x1n3Dir に書く（{@link X1n3Outputs}）。log は evaluate の出力と同じ文言の 3 行（started、evaluate play、complete）。Java の例外で測れ
-   * なければ、log に失敗を書いて .failed にし、系譜は続ける。
+   * バージョンの打つ網 1 席対 opponent 3 席を games 局打ち（{@link NanoTable}。学習の資源で打ち、Nano は {@value NanoTable#NANO_DEVICE}）、
+   * 出力に書く（{@link EvaluationOutputs}）。log は evaluate の出力と同じ文言の 3 行（started、evaluate play、complete）。Java の例外で
+   * 測れなければ、log に失敗を書いて .failed にし、系譜は続ける。
    *
    * @throws IOException 印か失敗の log が書けないとき
    */
-  private void measure(int version, TrainingResources resources) throws IOException {
-    var outputs = new X1n3Outputs(Path.of(config.x1n3Dir()), version);
+  private void measure(Evaluation evaluation, EvaluationOutputs outputs, TrainingResources resources) throws IOException {
+    int version = outputs.version();
     outputs.begin();
-    String opponent = config.x1n3Opponent();
     var log = new StringBuilder();
     logLine(
         log,
         String.format(
             "evaluation workflow started: command=evaluate version=%d opponent=%s games=%d",
-            version, opponent, config.x1n3Games()));
-    LOG.info("x1n3 v{} started", version);
+            version, evaluation.opponent(), evaluation.games()));
+    LOG.info("{} v{} started", evaluation.name(), version);
     long started = System.nanoTime();
     try {
       var stats = new PlayStats();
@@ -316,8 +303,8 @@ public final class Lineage {
           NanoTable.play(
               config,
               snapshot(version),
-              opponent,
-              config.x1n3Games(),
+              evaluation.opponent(),
+              evaluation.games(),
               resources.driver(),
               resources.execution(),
               NanoTable.NANO_DEVICE,
@@ -330,9 +317,9 @@ public final class Lineage {
       logLine(log, NanoTable.playLine(stats));
       logLine(log, complete);
       outputs.commit(NanoTable.perGame(detailed.games()), log.toString());
-      LOG.info("x1n3 v{} {}", version, complete);
+      LOG.info("{} v{} {}", evaluation.name(), version, complete);
     } catch (Exception failure) {
-      LOG.warn("x1n3 v{} failed", version, failure);
+      LOG.warn("{} v{} failed", evaluation.name(), version, failure);
       logLine(
           log,
           String.format(
@@ -343,7 +330,7 @@ public final class Lineage {
     }
   }
 
-  /** x1n3 の log に時刻つきの 1 行を足す。 */
+  /** 評価の log に時刻つきの 1 行を足す。 */
   private static void logLine(StringBuilder log, String message) {
     log.append(Instant.now()).append(' ').append(message).append('\n');
   }
@@ -691,23 +678,6 @@ public final class Lineage {
         String.format("%.4f", step.eta()),
         step.totalWeight());
     return step.totalWeight();
-  }
-
-  /** バージョン version の網 net（打つ網か学習の網）を 3×Heuristic と打たせる（貪欲）。結果と対局の内訳。 */
-  private Map<String, Object> evaluate(
-      int version, Path net, String label, TrainingResources resources) throws IOException {
-    var evaluation =
-        HeuristicEvaluation.run(
-            config,
-            snapshot(version),
-            net,
-            resources.driver(),
-            resources.execution(),
-            collectDevices,
-            profile);
-    LOG.info(evaluation.summary(version, label));
-    LOG.info(evaluation.playSummary(version, label));
-    return evaluation.record();
   }
 
   /** 生徒を保存済み（網と work/&lt;t&gt;/Single.json がそろっている）なら true。 */

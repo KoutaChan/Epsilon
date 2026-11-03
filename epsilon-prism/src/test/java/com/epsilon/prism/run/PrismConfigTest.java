@@ -28,8 +28,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 設定の [epsilon.prism] の鍵は欄の名前と一致し、同梱の既定は本番の系譜の値で検査を通る。知らない鍵と形式は設定でも config.json でも拒み、
- * config.json は欄とちょうど同じ鍵を持つ。列は読点で区切る。
+ * 設定の [epsilon.prism] の鍵は欄の名前と一致し（評価は [epsilon.prism.evaluation.<名前>] の節）、同梱の既定は本番の系譜の値で検査を通る。知らない
+ * 鍵と形式は設定でも config.json でも拒み、config.json は欄とちょうど同じ鍵を持つ。列は読点で区切る。
  */
 public class PrismConfigTest {
   private static PrismConfig config(String... pairs) {
@@ -43,13 +43,13 @@ public class PrismConfigTest {
     Map<String, String> values = EpsilonSettings.defaults().values();
     Set<String> fields = new HashSet<>();
     for (RecordComponent component : PrismConfig.class.getRecordComponents())
-      if (!component.getName().equals("format")) {
+      if (!component.getName().equals("format") && !component.getName().equals("evaluations")) {
         fields.add(component.getName());
         Assert.assertTrue(
             values.containsKey(PrismConfig.SETTINGS + component.getName()), component.getName());
       }
     for (String key : values.keySet())
-      if (key.startsWith(PrismConfig.SETTINGS))
+      if (key.startsWith(PrismConfig.SETTINGS) && !key.startsWith(Evaluation.SETTINGS))
         Assert.assertTrue(fields.contains(key.substring(PrismConfig.SETTINGS.length())), key);
     PrismConfig defaults = PrismConfig.fromSettings(EpsilonSettings.defaults());
     defaults.validate();
@@ -77,7 +77,7 @@ public class PrismConfigTest {
     Assert.assertEquals(defaults.filterTau(), 4.0);
     Assert.assertEquals(defaults.filterPower(), 0.6666667);
     Assert.assertEquals(defaults.filterLrMode(), FilterLrMode.GAIN);
-    Assert.assertEquals(defaults.evalGames(), 8192);
+    Assert.assertEquals(defaults.evaluations(), List.of(new Evaluation("3xH", NanoTable.HEURISTIC, 8192, 1, 1)));
     // 方策の記憶: 既定は平均しない（収集も生徒も学習の網）。名前の間違いは拒む
     Assert.assertFalse(defaults.policyMemory().enabled());
     Assert.assertEquals(defaults.averageFrom(), 16);
@@ -207,17 +207,24 @@ public class PrismConfigTest {
   }
 
   /**
-   * epsilon.prism. で始まる知らない鍵（打ち間違い・なくなった設定・点で区切った名前・形式）は拒む。HIP の検査つきの組み立てを選ぶ系の性質だけは
-   * 設定の鍵でなくても通す。
+   * epsilon.prism. で始まる知らない鍵（打ち間違い・なくなった設定・点で区切った名前・形式・評価の知らない欄）は拒む。HIP の検査つきの組み立てを
+   * 選ぶ系の性質だけは設定の鍵でなくても通す。
    */
   @Test
   public void unknownSettingsAreRejected() {
     for (String key :
-        new String[] {"games", "format", "trainRoots", "eventLedger", "v2Inference", "v2.balancedLanes"}) {
+        new String[] {
+          "games", "format", "trainRoots", "eventLedger", "v2Inference", "v2.balancedLanes", "evalGames", "x1n3",
+          "evaluations", "evaluation.3xH.gamez", "evaluation.games"
+        }) {
       IllegalArgumentException failure =
           Assert.expectThrows(IllegalArgumentException.class, () -> config(key, "1"));
       Assert.assertTrue(failure.getMessage().contains(PrismConfig.SETTINGS + key), failure.getMessage());
     }
+    // 評価の節は欄が全てそろっていなければならない
+    IllegalArgumentException partial =
+        Assert.expectThrows(IllegalArgumentException.class, () -> config("evaluation.x1n3.games", "8"));
+    Assert.assertTrue(partial.getMessage().contains(Evaluation.SETTINGS + "x1n3.opponent"), partial.getMessage());
     Map<String, String> checked = Map.of(HipLibrary.CHECKED_PROPERTY, "true");
     PrismConfig.requireKnownSettings(EpsilonSettings.of(checked));
     PrismConfig.fromSettings(EpsilonSettings.of(checked)).validate();

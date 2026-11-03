@@ -30,9 +30,6 @@ public final class RunFiles {
   /** 反復ごとの記録の名前。 */
   public static final String ITERATIONS = "iterations.jsonl";
 
-  /** バージョンの評価の記録の名前。 */
-  public static final String EVALUATIONS = "evaluations.jsonl";
-
   /** 公開したバージョンを並べるディレクトリの名前（root/snapshots/&lt;5 桁のバージョン番号&gt;）。 */
   public static final String SNAPSHOTS = "snapshots";
 

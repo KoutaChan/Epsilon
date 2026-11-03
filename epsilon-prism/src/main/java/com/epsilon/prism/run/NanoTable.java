@@ -15,7 +15,7 @@ import java.nio.file.Path;
 
 /**
  * 候補の打ち手を 1 席、相手を 3 席に置く卓（{@link Arena#detailed}。候補の席は半荘 ID で回し、全員貪欲。牌山の種は seed ^ {@link
- * Arena#EVALUATION_SALT}、半荘 ID は {@link Arena#HEURISTIC_BASE} から）。evaluate と系譜の x1n3 が、打ち手の書き方・半荘ごとの記録・集計の行を
+ * Arena#EVALUATION_SALT}、半荘 ID は {@link Arena#HEURISTIC_BASE} から）。evaluate と系譜の評価（{@link Evaluation}）が、打ち手の書き方・半荘ごとの記録・集計の行を
  * ここで共有する。
  *
  * <p>打ち手の書き方: バージョンのディレクトリ（PRISM の打つ網。{@link Snapshot#open}）、{@value #HEURISTIC}（規則の打ち手）、{@value #NANO}DIR
@@ -29,7 +29,7 @@ public final class NanoTable {
   /** Nano の打ち手の接頭辞。 */
   public static final String NANO = "nano:";
 
-  /** 系譜の x1n3 の Nano のデバイス（Nano は GPU 1 枚で打つ）。 */
+  /** 系譜の評価の Nano のデバイス（Nano は GPU 1 枚で打つ）。 */
   public static final String NANO_DEVICE = "gpu:0";
 
   /** 内訳の行は 1 行（NaN もそのまま書く）。 */
@@ -83,7 +83,7 @@ public final class NanoTable {
         config.inference());
   }
 
-  /** 系譜の x1n3 の相手に書ける打ち手（{@value #HEURISTIC} か {@value #NANO}&lt;絶対パス&gt;）なら true。 */
+  /** 系譜の評価の相手に書ける打ち手（{@value #HEURISTIC} か {@value #NANO}&lt;絶対パス&gt;）なら true。 */
   public static boolean validOpponent(String name) {
     return name.equals(HEURISTIC)
         || (name.startsWith(NANO) && Path.of(name.substring(NANO.length())).isAbsolute());

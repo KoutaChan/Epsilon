@@ -18,19 +18,19 @@ public class RunFilesTest {
     Path directory = Files.createTempDirectory("prism-run-files");
     try {
       var files = new RunFiles(directory);
-      Assert.assertFalse(files.recorded(RunFiles.EVALUATIONS, "version", 2));
-      files.append(RunFiles.EVALUATIONS, Map.of("version", 2));
-      files.append(RunFiles.EVALUATIONS, Map.of("version", 3));
-      Path path = directory.resolve("reports").resolve(RunFiles.EVALUATIONS);
-      Files.writeString(path, "{\"version\": 4, \"he", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
-      Assert.assertTrue(files.recorded(RunFiles.EVALUATIONS, "version", 2));
-      Assert.assertTrue(files.recorded(RunFiles.EVALUATIONS, "version", 3));
-      Assert.assertFalse(files.recorded(RunFiles.EVALUATIONS, "version", 4));
-      files.append(RunFiles.EVALUATIONS, Map.of("version", 4));
+      Assert.assertFalse(files.recorded(RunFiles.ITERATIONS, "iteration", 2));
+      files.append(RunFiles.ITERATIONS, Map.of("iteration", 2));
+      files.append(RunFiles.ITERATIONS, Map.of("iteration", 3));
+      Path path = directory.resolve("reports").resolve(RunFiles.ITERATIONS);
+      Files.writeString(path, "{\"iteration\": 4, \"he", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+      Assert.assertTrue(files.recorded(RunFiles.ITERATIONS, "iteration", 2));
+      Assert.assertTrue(files.recorded(RunFiles.ITERATIONS, "iteration", 3));
+      Assert.assertFalse(files.recorded(RunFiles.ITERATIONS, "iteration", 4));
+      files.append(RunFiles.ITERATIONS, Map.of("iteration", 4));
       Assert.assertEquals(
           Files.readAllLines(path),
-          List.of("{\"version\":2}", "{\"version\":3}", "{\"version\": 4, \"he", "{\"version\":4}"));
-      Assert.assertTrue(files.recorded(RunFiles.EVALUATIONS, "version", 4));
+          List.of("{\"iteration\":2}", "{\"iteration\":3}", "{\"iteration\": 4, \"he", "{\"iteration\":4}"));
+      Assert.assertTrue(files.recorded(RunFiles.ITERATIONS, "iteration", 4));
     } finally {
       Snapshot.deleteTree(directory);
     }

@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 候補の打ち手を 1 席、相手の打ち手を 3 席に置いて打たせる（{@link Arena}。候補の席は半荘 ID で回す。全員貪欲）。牌山の種と基準の半荘 ID は
- * train の評価と同じなので、同じ seed と半荘の数なら、候補や相手を替えても同じ牌山の対比較になる。対局の設定（収集の device・ワーカー・バッチ・
+ * 系譜の評価と同じなので、同じ seed と半荘の数なら、候補や相手を替えても同じ牌山の対比較になる。対局の設定（収集の device・ワーカー・バッチ・
  * 網の推論の道・効用・seed）は [epsilon.prism]。
  *
  * <p>打ち手の書き方（--snapshot と --opponent。{@link NanoTable#open}）: バージョンのディレクトリ（PRISM の打つ網）、{@code heuristic}（規則の打ち手、
@@ -48,6 +48,9 @@ import org.slf4j.LoggerFactory;
  */
 public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
   private static final Logger LOG = LoggerFactory.getLogger(EvaluateWorkflow.class);
+
+  /** --games を書かないときの半荘の数。 */
+  public static final int DEFAULT_GAMES = 8192;
 
   @Override
   public WorkflowDefinition definition() {
@@ -76,7 +79,7 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
     if (candidateName == null) throw new IllegalArgumentException("evaluate requires --snapshot");
     PrismConfig config = PrismConfig.fromSettings(arguments.settings());
     int games =
-        Integer.parseInt(options.optionalText("games", Integer.toString(config.evalGames())));
+        Integer.parseInt(options.optionalText("games", Integer.toString(DEFAULT_GAMES)));
     String opponentName = options.optionalText("opponent", NanoTable.HEURISTIC);
     String nanoDevice = options.optionalText("nano-device", NanoTable.NANO_DEVICE);
     String hybridText = options.optionalText("hybrid", null);

@@ -36,7 +36,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import java.lang.reflect.RecordComponent;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -101,7 +100,6 @@ import java.util.Set;
  * @param averageFrom 平均を始めるバージョン（それより前のバージョンは平均せず、打つ網 = 学習の網）
  * @param collectWith 収集で打つ網（{@value Averaging#AVERAGE} = 平均の網、{@value Averaging#ITERATE} = 学習の網）
  * @param learnFrom 生徒を始める網と TEMPO の錨（{@value Averaging#ITERATE} か {@value Averaging#AVERAGE}）
- * @param evaluateIterate 打つ網に加えて学習の網も 3×Heuristic で測るか（平均があるときだけ意味がある）
  * @param filterFrom TEMPO のゲインの数え始めの反復 t0
  * @param filterGain TEMPO のゲインの始めの値 K0（(0, 1)）
  * @param filterTau TEMPO のゲインの減りの時定数 τ（反復、正）
@@ -131,15 +129,7 @@ import java.util.Set;
  * @param phiShadowReference 影として採点する Φ（{@link PhiShadowReference}。WITH_ORIGINAL は grpCheckpoint が要る）
  * @param grpWindow 学習の窓のコホートの数の上限（1 以上。{@link RefitWindow}）
  * @param grpTrustGames 点数だけの Φ から最初に置き換えるのに要る窓の半荘の数（1 以上）
- * @param evalEvery 3×Heuristic の評価の間隔（反復。0 なら測らない）
- * @param evalGames 3×Heuristic の評価の半荘の数（evaluate の既定の半荘の数）
- * @param x1n3 バージョンの網 1 席対 相手 3 席の卓を系譜の中で測るか（{@link X1n3}）
- * @param x1n3Every x1n3 を測るバージョンの間隔（バージョン番号がこの倍数のとき。1 以上）
- * @param x1n3From x1n3 を測る最初のバージョン（これより前のバージョンは測らない。1 以上）
- * @param x1n3Games x1n3 の半荘の数（1 以上）
- * @param x1n3Opponent x1n3 の相手（{@value NanoTable#HEURISTIC} か {@value NanoTable#NANO}&lt;Nano の checkpoint の絶対パス&gt;。x1n3 = ON
- *     では必須）
- * @param x1n3Dir x1n3 の出力のディレクトリ（絶対パス。x1n3 = ON では必須。{@link X1n3Outputs}）
+ * @param evaluations 系譜の中の評価（{@link Evaluation}。設定の {@code [epsilon.prism.evaluation.<名前>]}、名前の順）
  */
 public record PrismConfig(
     int format,
@@ -205,7 +195,6 @@ public record PrismConfig(
     int averageFrom,
     String collectWith,
     String learnFrom,
-    boolean evaluateIterate,
     // TEMPO
     int filterFrom,
     double filterGain,
@@ -237,18 +226,10 @@ public record PrismConfig(
     int grpWindow,
     int grpTrustGames,
     // 評価
-    int evalEvery,
-    int evalGames,
-    // x1n3
-    X1n3 x1n3,
-    int x1n3Every,
-    int x1n3From,
-    int x1n3Games,
-    String x1n3Opponent,
-    String x1n3Dir) {
+    List<Evaluation> evaluations) {
 
   /** config.json の形式。 */
-  public static final int FORMAT = 2;
+  public static final int FORMAT = 3;
 
   /**
    * TEMPO の学習率の基準のゲイン: filterLrMode = GAIN なら学習率を lrPeak・lrFloor の min(1, K′_t / これ) 倍にする（錨の重みが大きいほど 1 歩を
@@ -258,6 +239,9 @@ public record PrismConfig(
 
   /** 設定の鍵の接頭辞（{@link #fromSettings}）。 */
   public static final String SETTINGS = "epsilon.prism.";
+
+  /** 評価の欄（設定では {@code [epsilon.prism.evaluation.<名前>]} の節。{@link Evaluation#fromSettings}）。 */
+  private static final String EVALUATIONS_FIELD = "evaluations";
 
   /** 1コホートの半荘の数の上限。半荘の ID は (t−1)·この値 + 番号。 */
   public static final int MAX_GAMES_PER_COHORT = 1 << 20;
@@ -378,7 +362,8 @@ public record PrismConfig(
 
   /**
    * 新しい run の設定を、設定の [epsilon.prism]（同梱の prism/settings.toml に --settings と -Depsilon.prism.* を重ねたもの）から作る。鍵は欄の
-   * 名前で、列（collectDevices）は読点で区切る。形式は設定から読まない。知らない鍵は拒む（{@link #requireKnownSettings}）。
+   * 名前で、列（collectDevices）は読点で区切り、評価は {@code [epsilon.prism.evaluation.<名前>]} の節（{@link Evaluation#fromSettings}）。形式は
+   * 設定から読まない。知らない鍵は拒む（{@link #requireKnownSettings}）。
    */
   public static PrismConfig fromSettings(SettingsLoader settings) {
     requireKnownSettings(settings);
@@ -387,6 +372,10 @@ public record PrismConfig(
     for (RecordComponent component : PrismConfig.class.getRecordComponents()) {
       String name = component.getName();
       if (name.equals(FORMAT_FIELD)) continue;
+      if (name.equals(EVALUATIONS_FIELD)) {
+        tree.add(name, GSON.toJsonTree(Evaluation.fromSettings(settings.values())));
+        continue;
+      }
       String value = settings.values().get(SETTINGS + name);
       if (value == null) throw new IllegalArgumentException("Missing setting " + SETTINGS + name);
       tree.add(name, json(component, value));
@@ -395,17 +384,21 @@ public record PrismConfig(
   }
 
   /**
-   * 設定の {@value #SETTINGS} で始まる鍵が全て欄の名前であることを確かめる（形式は設定の鍵でない）。この接頭辞の鍵で欄でないのは、HIP の実行系の
-   * 検査つきの組み立てを選ぶ系の性質（{@link HipLibrary#CHECKED_PROPERTY}）だけ。再開の train も、設定を使わないがこれで確かめる。
+   * 設定の {@value #SETTINGS} で始まる鍵が全て欄の名前か評価の欄（{@code evaluation.<名前>.<欄>}）であることを確かめる（形式と評価の列は設定の鍵で
+   * ない）。この接頭辞の鍵でほかに許すのは、HIP の実行系の検査つきの組み立てを選ぶ系の性質（{@link HipLibrary#CHECKED_PROPERTY}）だけ。再開の train も、設定を使わないがこれで確かめる。
    *
    * @throws IllegalArgumentException 知らない鍵があるとき（打ち間違いか、なくなった設定）
    */
   public static void requireKnownSettings(SettingsLoader settings) {
     Set<String> known = new HashSet<>();
     for (RecordComponent component : PrismConfig.class.getRecordComponents())
-      if (!component.getName().equals(FORMAT_FIELD)) known.add(SETTINGS + component.getName());
+      if (!component.getName().equals(FORMAT_FIELD) && !component.getName().equals(EVALUATIONS_FIELD))
+        known.add(SETTINGS + component.getName());
     for (String key : settings.values().keySet())
-      if (key.startsWith(SETTINGS) && !key.equals(HipLibrary.CHECKED_PROPERTY) && !known.contains(key))
+      if (key.startsWith(SETTINGS)
+          && !key.equals(HipLibrary.CHECKED_PROPERTY)
+          && !known.contains(key)
+          && !(key.startsWith(Evaluation.SETTINGS) && Evaluation.settingsKey(key.substring(Evaluation.SETTINGS.length()))))
         throw new IllegalArgumentException("Unknown setting " + key);
   }
 
@@ -544,24 +537,14 @@ public record PrismConfig(
       throw new IllegalArgumentException("auxOracle must be a finite non-negative weight: " + auxOracle);
     if (!(auxResult >= 0) || !Double.isFinite(auxResult))
       throw new IllegalArgumentException("auxResult must be a finite non-negative weight: " + auxResult);
-    if (grpBatch < 1 || evalEvery < 0 || evalGames < 1)
-      throw new IllegalArgumentException("Invalid Φ or evaluation settings");
+    if (grpBatch < 1) throw new IllegalArgumentException("Invalid GRP batch " + grpBatch);
     validateGrp();
-    validateX1n3();
-  }
-
-  /** x1n3 の鍵を確かめる。パスは ~ を展開しないので絶対パスに限り、x1n3 = ON では相手と出力先を空にできない。 */
-  private void validateX1n3() {
-    if (x1n3Every < 1 || x1n3From < 1 || x1n3Games < 1)
-      throw new IllegalArgumentException(
-          "Invalid x1n3 settings " + x1n3Every + "/" + x1n3From + "/" + x1n3Games);
-    boolean on = x1n3 == X1n3.ON;
-    if (x1n3Opponent.isEmpty() ? on : !NanoTable.validOpponent(x1n3Opponent))
-      throw new IllegalArgumentException(
-          "x1n3Opponent must be " + NanoTable.HEURISTIC + " or " + NanoTable.NANO + "<absolute path>: '"
-              + x1n3Opponent + "'");
-    if (x1n3Dir.isEmpty() ? on : !Path.of(x1n3Dir).isAbsolute())
-      throw new IllegalArgumentException("x1n3Dir must be an absolute path: '" + x1n3Dir + "'");
+    Set<String> names = new HashSet<>();
+    for (Evaluation evaluation : evaluations) {
+      evaluation.validate();
+      if (!names.add(evaluation.name()))
+        throw new IllegalArgumentException("Duplicate evaluation " + evaluation.name());
+    }
   }
 
   /**

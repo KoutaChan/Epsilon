@@ -19,7 +19,7 @@ import org.testng.annotations.Test;
 
 /**
  * 網の系譜の煙（CPU）: score-rank の Φ・1 コホート 1 局で train を 2 反復回し、止めてから 1 反復を再開する。バージョン 1（白紙の網）で集めてバージョン 2 を当て、
- * バージョン 2・3 で集めてバージョン 3・4 を当てる。帳簿の補正・根の行・方策の記憶（ema）・学習の網の評価も通る。行・バージョン・記録・state.json がそろい、
+ * バージョン 2・3 で集めてバージョン 3・4 を当てる。帳簿の補正・根の行・方策の記憶（ema）・評価（3xH を 1 局）も通る。行・バージョン・記録・state.json がそろい、
  * 再開は書き終えた記録を書き直さない。再開でも設定の知らない鍵は拒む。
  */
 public class LineageSmokeTest {
@@ -42,9 +42,10 @@ public class LineageSmokeTest {
       Assert.assertEquals(state.get("next").getAsInt(), 4);
       Assert.assertTrue(state.has("ledgerR2"));
       List<JsonObject> iterations = lines(run.resolve("reports/iterations.jsonl"));
-      List<JsonObject> evaluations = lines(run.resolve("reports/evaluations.jsonl"));
       Assert.assertEquals(iterations.size(), 3);
-      Assert.assertEquals(evaluations.size(), 3);
+      try (var listed = Files.list(run.resolve(EvaluationOutputs.DIRECTORY))) {
+        Assert.assertEquals(listed.filter(path -> path.toString().endsWith(".done")).count(), 3);
+      }
       for (int t = 1; t <= 3; t++) {
         JsonObject iteration = iterations.get(t - 1);
         Assert.assertEquals(iteration.get("iteration").getAsInt(), t);
@@ -60,9 +61,9 @@ public class LineageSmokeTest {
             PrismNetwork.readShape(version.resolve("m0")), PrismShape.standard(2), "version " + (t + 1) + " plays");
         Assert.assertEquals(
             PrismNetwork.readShape(version.resolve("iterate")), PrismShape.standard(2), "version " + (t + 1) + " keeps θ");
-        JsonObject evaluation = evaluations.get(t - 1);
-        Assert.assertEquals(evaluation.get("version").getAsInt(), t + 1);
-        Assert.assertTrue(evaluation.has("heuristic") && evaluation.has("iterate"));
+        var evaluation = new EvaluationOutputs(run.resolve(EvaluationOutputs.DIRECTORY), "3xH", t + 1);
+        Assert.assertTrue(Files.exists(evaluation.done()), evaluation.done().toString());
+        Assert.assertEquals(Files.readAllLines(evaluation.tsv()).size(), 1);
       }
       // K′ の元は前の反復で教師に掛けた補正の保留の R²（バージョン 1 の当てはめは R² = 0 で K′ = K）
       JsonObject first = iterations.get(0).getAsJsonObject("filter");
@@ -97,8 +98,8 @@ public class LineageSmokeTest {
       "batchWaitMicros", "1000", "rowWriters", "1", "labelRateDiscardEarly", "0.003",
       "labelRateDiscardMid", "0.003", "labelRateDiscardLate", "0.003", "labelRateCommit", "0.03",
       "maxCandidates", "4", "rollinRateDiscard", "0.001", "rollinRateCommit", "0.015", "rhoBranch", "0.2",
-      "averaging", "ema", "averageFrom", "2", "evaluateIterate", "true", "batchSize", "16",
-      "decodeThreads", "2", "evalEvery", "1", "evalGames", "1"
+      "averaging", "ema", "averageFrom", "2", "batchSize", "16", "decodeThreads", "2",
+      "evaluation.3xH.games", "1", "evaluation.3xH.from", "2"
     };
     Map<String, String> values = new LinkedHashMap<>();
     for (int i = 0; i < pairs.length; i += 2) values.put("epsilon.prism." + pairs[i], pairs[i + 1]);

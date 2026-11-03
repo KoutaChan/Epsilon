@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 網の方策の σ は貪欲）。
  */
 public final class Arena {
-  /** 3×Heuristic の評価の牌山の種の塩と基準の半荘 ID（train の評価と evaluate が同じ牌山で測る）。 */
+  /** 評価の牌山の種の塩と基準の半荘 ID（系譜の評価と evaluate が同じ牌山で測る）。 */
   public static final long EVALUATION_SALT = 0x4556414cL, HEURISTIC_BASE = 1L << 40;
 
   public record Result(

@@ -98,8 +98,8 @@ public class FixedGrpRowsBench {
       "batchWaitMicros", "1000", "rowWriters", "1", "labelRateDiscardEarly", "0.003",
       "labelRateDiscardMid", "0.003", "labelRateDiscardLate", "0.003", "labelRateCommit", "0.03",
       "maxCandidates", "4", "rollinRateDiscard", "0.001", "rollinRateCommit", "0.015", "rhoBranch", "0.2",
-      "averaging", "ema", "averageFrom", "2", "evaluateIterate", "false", "batchSize", "16",
-      "decodeThreads", "2", "evalEvery", "0", "evalGames", "1"
+      "averaging", "ema", "averageFrom", "2", "batchSize", "16", "decodeThreads", "2",
+      "evaluation.3xH.every", "0"
     };
     Map<String, String> values = new LinkedHashMap<>();
     for (int i = 0; i < pairs.length; i += 2) values.put("epsilon.prism." + pairs[i], pairs[i + 1]);

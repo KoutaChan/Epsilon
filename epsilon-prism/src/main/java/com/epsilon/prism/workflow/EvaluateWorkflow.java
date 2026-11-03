@@ -9,17 +9,15 @@ import com.epsilon.prism.eval.EnsembleService;
 import com.epsilon.prism.eval.HybridSeat;
 import com.epsilon.prism.eval.NanoService;
 import com.epsilon.prism.eval.PlayStats;
-import com.epsilon.prism.policy.PlayerPolicy;
 import com.epsilon.prism.policy.PolicyService;
+import com.epsilon.prism.run.NanoTable;
 import com.epsilon.prism.run.PrismConfig;
-import com.epsilon.prism.run.Snapshot;
 import com.epsilon.spi.PolicyExecutionContext;
 import com.epsilon.workflow.CommandWorkflow;
 import com.epsilon.workflow.WorkflowArguments;
 import com.epsilon.workflow.WorkflowDefinition;
 import com.epsilon.workflow.WorkflowKind;
 import com.epsilon.workflow.WorkflowOptions;
-import com.google.gson.Gson;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * train の評価と同じなので、同じ seed と半荘の数なら、候補や相手を替えても同じ牌山の対比較になる。対局の設定（収集の device・ワーカー・バッチ・
  * 網の推論の道・効用・seed）は [epsilon.prism]。
  *
- * <p>打ち手の書き方（--snapshot と --opponent）: 版のディレクトリ（PRISM の打つ網。{@link Snapshot#open}）、{@code heuristic}（規則の打ち手、
+ * <p>打ち手の書き方（--snapshot と --opponent。{@link NanoTable#open}）: 版のディレクトリ（PRISM の打つ網）、{@code heuristic}（規則の打ち手、
  * 相手だけ）、{@code nano:DIR}（Epsilon-Nano の Decision チェックポイント。測定専用で、デバイスは --nano-device）。Nano の卓は
  * {@code --snapshot 版 --opponent nano:DIR}（PRISM 1 席 対 Nano 3 席）と {@code --snapshot nano:DIR --opponent 版}（Nano 1 席 対
  * PRISM 3 席）。
@@ -50,9 +48,6 @@ import org.slf4j.LoggerFactory;
  */
 public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
   private static final Logger LOG = LoggerFactory.getLogger(EvaluateWorkflow.class);
-
-  /** Nano の打ち手の接頭辞。 */
-  static final String NANO = "nano:";
 
   @Override
   public WorkflowDefinition definition() {
@@ -82,8 +77,8 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
     PrismConfig config = PrismConfig.fromSettings(arguments.settings());
     int games =
         Integer.parseInt(options.optionalText("games", Integer.toString(config.evalGames())));
-    String opponentName = options.optionalText("opponent", "heuristic");
-    String nanoDevice = options.optionalText("nano-device", "gpu:0");
+    String opponentName = options.optionalText("opponent", NanoTable.HEURISTIC);
+    String nanoDevice = options.optionalText("nano-device", NanoTable.NANO_DEVICE);
     String hybridText = options.optionalText("hybrid", null);
     String hybridNano = options.optionalText("hybrid-nano", null);
     String hybridOther = options.optionalText("hybrid-other", null);
@@ -94,14 +89,14 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
     String ensembleText = options.optionalText("ensemble", null);
     String ensembleWeights = options.optionalText("ensemble-weight", "0.5");
     options.requireEmpty();
-    if (candidateName.equals("heuristic"))
+    if (candidateName.equals(NanoTable.HEURISTIC))
       throw new IllegalArgumentException("The candidate must be a version or nano:DIR");
     if (hybridText != null
-        && ((hybridNano == null) == (hybridOther == null) || candidateName.startsWith(NANO)))
+        && ((hybridNano == null) == (hybridOther == null) || candidateName.startsWith(NanoTable.NANO)))
       throw new IllegalArgumentException(
           "--hybrid needs a version as the candidate and one of --hybrid-nano DIR or --hybrid-other DIR");
     if (ensembleText != null
-        && (hybridText != null || candidateName.startsWith(NANO) || ensembleText.contains(NANO)))
+        && (hybridText != null || candidateName.startsWith(NanoTable.NANO) || ensembleText.contains(NanoTable.NANO)))
       throw new IllegalArgumentException("--ensemble needs versions and no --hybrid");
     String[] ensembleNames = ensembleText == null ? new String[0] : ensembleText.split(",");
     double[] weights = ensembleWeights(ensembleWeights, ensembleNames.length);
@@ -115,14 +110,14 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
                     config.maxActiveGames(),
                     config.advanceWorkers(),
                     new InferenceBatchingSettings(config.batchWaitMicros())));
-        var base = open(candidateName, config, execution, nanoDevice);
-        var opponent = open(opponentName, config, execution, nanoDevice);
+        var base = NanoTable.open(candidateName, config, execution, nanoDevice);
+        var opponent = NanoTable.open(opponentName, config, execution, nanoDevice);
         var other =
             hybridText == null
                 ? null
                 : hybridNano != null
                     ? NanoService.open(Path.of(hybridNano), nanoDevice, execution)
-                    : open(hybridOther, config, execution, nanoDevice);
+                    : NanoTable.open(hybridOther, config, execution, nanoDevice);
         var partners = new Closer()) {
       HybridSeat hybrid = other == null ? null : new HybridSeat(base, other, hybridClasses, hybridOpen, hybridClosed, hybridFraction);
       PolicyService candidate = hybrid == null ? base : hybrid;
@@ -136,7 +131,9 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
       for (int i = 0; i < ensembleNames.length; i++)
         candidate =
             new EnsembleService(
-                candidate, partners.add(open(ensembleNames[i], config, execution, nanoDevice)), steps[i]);
+                candidate,
+                partners.add(NanoTable.open(ensembleNames[i], config, execution, nanoDevice)),
+                steps[i]);
       // 局の結果と判断の傾向の内訳（候補の席と相手の席）。打ち筋の違いを探す診断として記録する
       var stats = new PlayStats();
       Arena.Detailed detailed =
@@ -144,13 +141,13 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
               driver,
               candidate,
               opponent,
-              label(opponentName),
+              NanoTable.label(opponentName),
               games,
               config.seed() ^ Arena.EVALUATION_SALT,
               Arena.HEURISTIC_BASE,
               EpsilonUtilityProfile.valueOf(config.utility()),
               stats);
-      LOG.info("evaluate play {}", new Gson().toJson(stats.report()));
+      LOG.info(NanoTable.playLine(stats));
       if (hybrid != null) {
         long[] routed = hybrid.routed();
         LOG.info(
@@ -160,12 +157,8 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
             routed[0],
             routed[1]);
       }
-      if (perGame != null) {
-        StringBuilder text = new StringBuilder();
-        for (Arena.Game game : detailed.games())
-          text.append(game.gameId()).append('\t').append(game.rank()).append('\t').append(game.utility()).append('\n');
-        Files.writeString(Path.of(perGame), text, StandardCharsets.UTF_8);
-      }
+      if (perGame != null)
+        Files.writeString(Path.of(perGame), NanoTable.perGame(detailed.games()), StandardCharsets.UTF_8);
       return detailed.result();
     }
   }
@@ -212,42 +205,8 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
     }
   }
 
-  /** 打ち手の書き方から方策を開く（heuristic・nano:DIR・版のディレクトリ）。 */
-  private static PolicyService open(
-      String name, PrismConfig config, PolicyExecutionContext execution, String nanoDevice)
-      throws Exception {
-    if (name.equals("heuristic")) return PlayerPolicy.heuristic();
-    if (name.startsWith(NANO))
-      return NanoService.open(Path.of(name.substring(NANO.length())), nanoDevice, execution);
-    return Snapshot.open(
-        Path.of(name),
-        PrismConfig.devices(config.collectDevices()),
-        execution,
-        config.inferBatch(),
-        config.priorSettings(),
-        config.inference());
-  }
-
-  /** 結果の相手の名前（heuristic、nano:名前、snapshot:名前）。 */
-  static String label(String name) {
-    if (name.equals("heuristic")) return name;
-    if (name.startsWith(NANO)) return NANO + Path.of(name.substring(NANO.length())).getFileName();
-    return "snapshot:" + Path.of(name).getFileName();
-  }
-
   @Override
   public String summarize(Arena.Result result) {
-    return String.format(
-        "opponent=%s games=%d rank=%.3f±%.3f utility=%.3f±%.3f shares=%.3f/%.3f/%.3f/%.3f",
-        result.opponent(),
-        result.games(),
-        result.meanRank(),
-        result.rankError(),
-        result.meanUtility(),
-        result.utilityError(),
-        result.rankShares()[0],
-        result.rankShares()[1],
-        result.rankShares()[2],
-        result.rankShares()[3]);
+    return NanoTable.summary(result);
   }
 }

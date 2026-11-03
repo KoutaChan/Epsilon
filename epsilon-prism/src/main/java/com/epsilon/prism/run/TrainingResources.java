@@ -15,6 +15,7 @@ import com.epsilon.prism.grp.PhiEntryKind;
 import com.epsilon.prism.grp.PhiResolver;
 import com.epsilon.prism.grp.PhiSource;
 import com.epsilon.prism.grp.ScorePhi;
+import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.spi.PolicyExecutionContext;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -22,7 +23,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * train の系譜（{@link Lineage}）が反復をまたいで 1 つずつ持つ収集と評価の資源: 符号化と GPU の実行の資源、収集のドライバ、Φ（{@link
+ * train の系譜（{@link Lineage}）が反復をまたいで 1 つずつ持つ収集・学習・評価の資源: 符号化と GPU の実行の資源、学習器のストリーム、収集の
+ * ドライバ、Φ（{@link
  * PhiSource}: FIXED_GRP は固定の GRP、SCORE_RANK・SCORE_SMOOTH は GRP を開かずに局末の点数の順位かなめらかな関数とみなす代用で、どれも全ての
  * 反復で同じ。SELF_GRP は反復ごとに phi.jsonl の項目を解決する {@link PhiResolver}）。閉じる順は開いた順の逆。
  */
@@ -33,27 +35,36 @@ public final class TrainingResources implements AutoCloseable {
   private static final int PHI_MEMO = 1 << 16;
 
   private final PolicyExecutionContext execution;
+
+  /**
+   * 学習器のストリーム（{@link com.epsilon.prism.learn.Fit#prepare}）。PyTorch のキャッシュはストリームごとなので、反復をまたいで同じストリームで当てて前の反復の
+   * 作業域のキャッシュを使い回す（反復ごとに借り直すと、使われないキャッシュが反復ごとに 1 回分ずつ GPU に残る）。
+   */
+  private final DecisionExecutionContext learning;
+
   private final CollectionDriver driver;
 
   /** 固定の GRP（FIXED_GRP だけ）。 */
   private final EpsilonGrpTrainingSession grp;
 
   /** 全ての反復で同じ Φ（FIXED_GRP・SCORE_RANK・SCORE_SMOOTH。SELF_GRP は null）。 */
-  private final ActivePhi fixed;
+  private final ActivePhi phi;
 
   /** 反復ごとの Φ（SELF_GRP だけ）。 */
   private final PhiResolver resolver;
 
   private TrainingResources(
       PolicyExecutionContext execution,
+      DecisionExecutionContext learning,
       CollectionDriver driver,
       EpsilonGrpTrainingSession grp,
-      ActivePhi fixed,
+      ActivePhi phi,
       PhiResolver resolver) {
     this.execution = execution;
+    this.learning = learning;
     this.driver = driver;
     this.grp = grp;
-    this.fixed = fixed;
+    this.phi = phi;
     this.resolver = resolver;
   }
 
@@ -68,6 +79,7 @@ public final class TrainingResources implements AutoCloseable {
       throws IOException {
     var execution =
         new PolicyExecutionContext(config.encoders(), config.slots(), config.readyBatches());
+    var learning = new DecisionExecutionContext();
     CollectionDriver driver = null;
     EpsilonGrpTrainingSession grp = null;
     HandValue value = null;
@@ -79,7 +91,7 @@ public final class TrainingResources implements AutoCloseable {
                   config.maxActiveGames(),
                   config.advanceWorkers(),
                   new InferenceBatchingSettings(config.batchWaitMicros())));
-      ActivePhi fixed = null;
+      ActivePhi phi = null;
       switch (config.phiSource()) {
         case FIXED_GRP -> {
           Path checkpoint = Path.of(config.grpCheckpoint());
@@ -99,7 +111,7 @@ public final class TrainingResources implements AutoCloseable {
                       : null);
           // openInferenceOnly が読んだのと同じ子（一番新しい有効な checkpoint）と、その時に計算した sha
           Path exact = EpsilonGrpCheckpointManager.resolveExisting(checkpoint.resolve("grp"));
-          fixed =
+          phi =
               new ActivePhi(
                   PhiEntry.fixed(config, exact.toString(), grp.identity().checkpointSha256()),
                   value,
@@ -107,22 +119,23 @@ public final class TrainingResources implements AutoCloseable {
         }
         case SCORE_RANK -> {
           value = HandValue.scoreRank(profile);
-          fixed = new ActivePhi(PhiEntry.scoreRank(), value, false);
+          phi = new ActivePhi(PhiEntry.scoreRank(), value, false);
           LOG.warn(
               "phiSource = SCORE_RANK: hand ends are valued by the final score ranking, not a GRP");
         }
         case SCORE_SMOOTH -> {
           value = ScorePhi.handValue(PhiEntryKind.SCORE_SMOOTH, profile);
-          fixed = new ActivePhi(PhiEntry.scoreSmooth(), value, false);
+          phi = new ActivePhi(PhiEntry.scoreSmooth(), value, false);
           LOG.warn(
               "phiSource = SCORE_SMOOTH: hand ends are valued by a smooth function of the scores, not a GRP");
         }
         case SELF_GRP ->
             resolver = PhiResolver.open(config, profile, driver.executor(), new GrpFiles(root));
       }
-      return new TrainingResources(execution, driver, grp, fixed, resolver);
+      return new TrainingResources(execution, learning, driver, grp, phi, resolver);
     } catch (IOException | RuntimeException | Error failure) {
       try (execution;
+          learning;
           CollectionDriver openedDriver = driver;
           EpsilonGrpTrainingSession openedGrp = grp;
           HandValue openedValue = value;
@@ -140,6 +153,11 @@ public final class TrainingResources implements AutoCloseable {
     return execution;
   }
 
+  /** 学習器のストリームを借りる実行の文脈（反復をまたいで同じ）。 */
+  public DecisionExecutionContext learning() {
+    return learning;
+  }
+
   /** 収集のドライバ（評価もこれで打つ）。 */
   public CollectionDriver driver() {
     return driver;
@@ -151,17 +169,18 @@ public final class TrainingResources implements AutoCloseable {
    * @throws IOException SELF_GRP で既に効いている項目の GRP が読めないとき
    */
   public ActivePhi phi(int t) throws IOException {
-    return resolver == null ? fixed : resolver.resolve(t);
+    return resolver == null ? phi : resolver.resolve(t);
   }
 
-  /** Φ・GRP・ドライバ・実行の資源の順に閉じる（どれかが失敗しても残りを閉じる）。 */
+  /** Φ・GRP・ドライバ・学習器のストリーム・実行の資源の順に閉じる（どれかが失敗しても残りを閉じる）。 */
   @Override
   public void close() {
     try (execution;
-        driver;
-        grp;
-        HandValue value = fixed == null ? null : fixed.value();
-        resolver) {
+         learning;
+         driver;
+         grp;
+         HandValue value = phi == null ? null : phi.value();
+         resolver) {
       // 宣言の逆の順に閉じる
     }
   }

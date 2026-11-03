@@ -7,6 +7,7 @@ import com.epsilon.network.NetworkDevices;
 import com.epsilon.network.NetworkRuntime;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -25,7 +26,8 @@ import org.slf4j.LoggerFactory;
  * 系の性質 {@value FitProfile#PROPERTY} があれば、段の時計の計測の表を当てはめの終わりに記録に出す（{@link FitProfile}）。
  *
  * <p>系譜は教師が決まる前（運の精算の当てはめの間）に {@link #prepare} で生徒を読み、学習器を温めておく（{@link Learner#rehearse}）。温めは
- * 重みにも最適化の状態にも歩の数にも触れないので、温めてから当てた重みは {@link #run} で当てた重みとビットで同じ。
+ * 重みにも最適化の状態にも歩の数にも触れないので、温めてから当てた重みは {@link #run} で当てた重みとビットで同じ。学習器のストリームは
+ * {@link #prepare} では呼び手の実行の文脈から借り（系譜は反復をまたいで同じ文脈を渡す）、{@link #run} はその場で作って閉じる。
  */
 public final class Fit {
 
@@ -143,8 +145,10 @@ public final class Fit {
     if (rows.length == 0 || plan.learner().steps() <= 0) {
       return FitResult.empty(rows.length);
     }
-    return new Session(store, rows, model, plan, teacher.gain(), devices, threads, profile)
-        .run(teacher, started);
+    try (var execution = new DecisionExecutionContext()) {
+      return new Session(store, rows, model, plan, teacher.gain(), devices, threads, profile, execution)
+          .run(teacher, started);
+    }
   }
 
   /**
@@ -158,6 +162,7 @@ public final class Fit {
    * @param gain 補助の頭の項に掛けるゲイン K′（当てはめの教師と同じ）
    * @param devices 学習のデバイス
    * @param threads 行の読み出しと符号化のスレッドの数
+   * @param execution 学習器のストリームを借りる実行の文脈（閉じるのは呼び手。温めた当てはめを閉じるまで開いておく）
    * @return 温めた当てはめ（閉じるのは呼び手）
    * @throws IOException 生徒の網を読めないとき
    * @throws IllegalArgumentException 行がないか歩数が 0 のとき
@@ -169,7 +174,8 @@ public final class Fit {
       FitPlan plan,
       float gain,
       NetworkDevices devices,
-      int threads)
+      int threads,
+      DecisionExecutionContext execution)
       throws IOException {
     if (rows.length == 0 || plan.learner().steps() <= 0) {
       throw new IllegalArgumentException(
@@ -179,7 +185,7 @@ public final class Fit {
     Model model = load(start, devices.primary());
     try {
       Session session =
-          new Session(store, rows, model, plan, gain, devices, threads, FitProfile.configured());
+          new Session(store, rows, model, plan, gain, devices, threads, FitProfile.configured(), execution);
       try {
         session.rehearse();
       } catch (RuntimeException | Error failure) {
@@ -257,7 +263,8 @@ public final class Fit {
         float gain,
         NetworkDevices devices,
         int threads,
-        FitProfile profile) {
+        FitProfile profile,
+        DecisionExecutionContext execution) {
       order = shuffle(rows, plan.seed());
       this.plan = plan;
       this.gain = gain;
@@ -265,7 +272,7 @@ public final class Fit {
       this.profile = profile;
       feed = new StepFeed(store, plan, devices.size(), threads);
       try {
-        learner = new Learner(model, devices, plan, gain, profile);
+        learner = new Learner(model, devices, plan, gain, profile, execution);
       } catch (RuntimeException | Error failure) {
         feed.close();
         throw failure;

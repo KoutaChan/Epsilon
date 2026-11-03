@@ -79,7 +79,12 @@ final class Learner implements AutoCloseable {
   /** 当てはめの計測（無効なら時計は何もしない）。 */
   private final FitProfile profile;
 
-  private final DecisionExecutionContext execution = new DecisionExecutionContext();
+  /**
+   * レーンの計算・写しのストリームを借りる実行の文脈（持ち主は呼び手で、学習器は閉じない）。系譜は反復をまたいで同じ文脈を渡す: PyTorch の
+   * キャッシュはストリームごとなので、反復ごとに別のストリームになると前の反復の作業域のキャッシュが使い回されずに残る。
+   */
+  private final DecisionExecutionContext execution;
+
   private final LongAdder transferNanos = new LongAdder();
   private final LongAdder computeNanos = new LongAdder();
   private final LongAdder optimizerNanos = new LongAdder();
@@ -98,8 +103,15 @@ final class Learner implements AutoCloseable {
    * @param plan 当てはめの計画
    * @param gain 補助の頭の項に掛けるゲイン K′（{@link Teacher#gain}）
    * @param profile 当てはめの計測（レーンの時計を作り、計る歩の時間を足す）
+   * @param execution ストリームを借りる実行の文脈（閉じるのは呼び手）
    */
-  Learner(Model canonical, NetworkDevices devices, FitPlan plan, float gain, FitProfile profile) {
+  Learner(
+      Model canonical,
+      NetworkDevices devices,
+      FitPlan plan,
+      float gain,
+      FitProfile profile,
+      DecisionExecutionContext execution) {
     if (!(canonical.getBlock() instanceof PrismNetwork block)) {
       throw new IllegalArgumentException("the model does not hold a PRISM network");
     }
@@ -114,6 +126,7 @@ final class Learner implements AutoCloseable {
     loss = new PrismLoss(plan.auxiliary());
     this.gain = gain;
     this.profile = profile;
+    this.execution = execution;
     optimizer =
         Optimizer.adamW()
             .optLearningRateTracker(
@@ -395,7 +408,10 @@ final class Learner implements AutoCloseable {
     }
   }
 
-  /** 更新の完了を待ってから、データ並列の複製と連続バッファを捨てる（重みは正本の網に残る）。 */
+  /**
+   * 更新の完了を待ってから、データ並列の複製と連続バッファを捨て、借りたストリームの仕事の終わりを待つ（重みは正本の網に残る。ストリームは
+   * 閉じない）。
+   */
   @Override
   public void close() {
     try {
@@ -409,7 +425,7 @@ final class Learner implements AutoCloseable {
           parallel.close();
         }
       } finally {
-        execution.close();
+        execution.awaitIdle();
       }
     }
   }

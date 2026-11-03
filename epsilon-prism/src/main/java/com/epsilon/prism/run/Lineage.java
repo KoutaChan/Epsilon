@@ -235,7 +235,7 @@ public final class Lineage {
           counts.copyLabels(),
           counts.roots(),
           counts.holdout());
-      ledgerR2 = learn(t, store, collected.ledger(), ledgerR2, report);
+      ledgerR2 = learn(t, store, collected.ledger(), ledgerR2, resources.learning(), report);
     }
     // 4. 方策の記憶（バージョン t+1）
     Averaging averaging = config.policyMemory();
@@ -497,10 +497,16 @@ public final class Lineage {
    *
    * @param stream 収集の書き手が作った運の精算の和（null ならコホートを読み直す）
    * @param ledgerR2 前の反復で教師に掛けた補正の保留の R²（この反復の K′ の元）
+   * @param learning 学習器のストリームを借りる実行の文脈（{@link TrainingResources#learning}）
    * @return この反復で教師に掛けた補正の保留の R²（次の反復の K′ の元。掛けなければ 0）
    */
   private double learn(
-      int t, CohortStore store, LedgerFit.Stream stream, double ledgerR2, Map<String, Object> report)
+      int t,
+      CohortStore store,
+      LedgerFit.Stream stream,
+      double ledgerR2,
+      DecisionExecutionContext learning,
+      Map<String, Object> report)
       throws IOException {
     int[] rows = store.select(t, t, Selection.LABELS_AND_ROOTS);
     boolean fits = !studentSaved(t) && fitSteps(rows.length) > 0;
@@ -527,7 +533,8 @@ public final class Lineage {
                           studentPlan(t, rows.length, ledgerR2),
                           (float) config.filterGain(t, ledgerR2),
                           learnerDevices,
-                          config.decodeThreads()))
+                          config.decodeThreads(),
+                          learning))
               : null;
       try {
         ledger = fitLedger(t, store, rows, stream, report);

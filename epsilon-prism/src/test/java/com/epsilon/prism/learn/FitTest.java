@@ -49,6 +49,7 @@ import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.run.FitWorkflow;
 import com.epsilon.prism.run.PrismConfig;
 import com.epsilon.prism.run.Snapshot;
+import com.epsilon.runtime.DecisionExecutionContext;
 import com.epsilon.workflow.WorkflowArguments;
 import com.google.gson.GsonBuilder;
 import java.io.IOException;
@@ -245,7 +246,8 @@ public class FitTest {
           cold.put(pair.getKey(), pair.getValue().getArray().toFloatArray());
         }
       }
-      try (Fit.Prepared prepared = Fit.prepare(store, rows, start, plan, 0.5f, cpu, 2)) {
+      try (var execution = new DecisionExecutionContext();
+          Fit.Prepared prepared = Fit.prepare(store, rows, start, plan, 0.5f, cpu, 2, execution)) {
         expectThrows(IllegalArgumentException.class, () -> prepared.fit(Teacher.RAW));
         FitResult result = prepared.fit(teacher);
         assertEquals(result.steps(), 4);

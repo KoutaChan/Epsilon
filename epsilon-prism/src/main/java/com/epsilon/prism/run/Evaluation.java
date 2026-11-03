@@ -3,7 +3,6 @@ package com.epsilon.prism.run;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 
@@ -26,8 +25,8 @@ public record Evaluation(String name, String opponent, int games, int every, int
   /** 名前の書き方。 */
   private static final Pattern NAME = Pattern.compile("[A-Za-z0-9]+");
 
-  /** 設定に書く欄（名前は鍵に入る）。 */
-  private static final Set<String> FIELDS = Set.of("opponent", "games", "every", "from");
+  /** 設定に書く欄（名前は鍵に入る）。欠けた欄はこの順で最初の 1 つを報告する。 */
+  private static final List<String> FIELDS = List.of("opponent", "games", "every", "from");
 
   /** 範囲を確かめる。 */
   public void validate() {

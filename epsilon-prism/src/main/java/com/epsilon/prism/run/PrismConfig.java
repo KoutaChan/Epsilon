@@ -36,6 +36,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import java.lang.reflect.RecordComponent;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -132,6 +133,13 @@ import java.util.Set;
  * @param grpTrustGames 点数だけの Φ から最初に置き換えるのに要る窓の半荘の数（1 以上）
  * @param evalEvery 3×Heuristic の評価の間隔（反復。0 なら測らない）
  * @param evalGames 3×Heuristic の評価の半荘の数（evaluate の既定の半荘の数）
+ * @param x1n3 版の網 1 席対 相手 3 席の卓を系譜の中で測るか（{@link X1n3}）
+ * @param x1n3Every x1n3 を測る版の間隔（版の番号がこの倍数のとき。1 以上）
+ * @param x1n3From x1n3 を測る最初の版（これより前の版は測らない。1 以上）
+ * @param x1n3Games x1n3 の半荘の数（1 以上）
+ * @param x1n3Opponent x1n3 の相手（{@value NanoTable#HEURISTIC} か {@value NanoTable#NANO}&lt;Nano の checkpoint の絶対パス&gt;。x1n3 = ON
+ *     では必須）
+ * @param x1n3Dir x1n3 の出力のディレクトリ（絶対パス。x1n3 = ON では必須。{@link X1n3Outputs}）
  */
 public record PrismConfig(
     int format,
@@ -230,7 +238,14 @@ public record PrismConfig(
     int grpTrustGames,
     // 評価
     int evalEvery,
-    int evalGames) {
+    int evalGames,
+    // x1n3
+    X1n3 x1n3,
+    int x1n3Every,
+    int x1n3From,
+    int x1n3Games,
+    String x1n3Opponent,
+    String x1n3Dir) {
 
   /** config.json の形式。 */
   public static final int FORMAT = 2;
@@ -532,6 +547,21 @@ public record PrismConfig(
     if (grpBatch < 1 || evalEvery < 0 || evalGames < 1)
       throw new IllegalArgumentException("Invalid Φ or evaluation settings");
     validateGrp();
+    validateX1n3();
+  }
+
+  /** x1n3 の鍵を確かめる。パスは ~ を展開しないので絶対パスに限り、x1n3 = ON では相手と出力先を空にできない。 */
+  private void validateX1n3() {
+    if (x1n3Every < 1 || x1n3From < 1 || x1n3Games < 1)
+      throw new IllegalArgumentException(
+          "Invalid x1n3 settings " + x1n3Every + "/" + x1n3From + "/" + x1n3Games);
+    boolean on = x1n3 == X1n3.ON;
+    if (x1n3Opponent.isEmpty() ? on : !NanoTable.validOpponent(x1n3Opponent))
+      throw new IllegalArgumentException(
+          "x1n3Opponent must be " + NanoTable.HEURISTIC + " or " + NanoTable.NANO + "<absolute path>: '"
+              + x1n3Opponent + "'");
+    if (x1n3Dir.isEmpty() ? on : !Path.of(x1n3Dir).isAbsolute())
+      throw new IllegalArgumentException("x1n3Dir must be an absolute path: '" + x1n3Dir + "'");
   }
 
   /**

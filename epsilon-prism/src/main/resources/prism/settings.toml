@@ -184,3 +184,13 @@ grpTrustGames = 131072
 # 評価: 3×Heuristic を evalEvery 反復ごと（0 なら測らない）に evalGames 局（evaluate の既定の局数も evalGames）
 evalEvery = 1
 evalGames = 8192
+
+# x1n3: 版が x1n3Every の倍数（x1n3From 以上）のたびに、系譜の中でその版の打つ網 1 席対 x1n3Opponent 3 席を x1n3Games 局打ち、x1n3Dir に
+# v<版>-x1n3.tsv・.log・.done を書く（"OFF"・"ON"）。相手は "heuristic" か "nano:<Nano の checkpoint の絶対パス>"（Nano は gpu:0）。
+# パスは絶対パス（~ は展開しない）で、ON では相手と出力先が要る
+x1n3 = "OFF"
+x1n3Every = 8
+x1n3From = 1
+x1n3Games = 131072
+x1n3Opponent = ""
+x1n3Dir = ""

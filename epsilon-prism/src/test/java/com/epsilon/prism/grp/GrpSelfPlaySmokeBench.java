@@ -6,6 +6,7 @@ import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.run.Lineage;
 import com.epsilon.prism.run.PrismConfig;
 import com.epsilon.prism.run.Snapshot;
+import com.epsilon.prism.run.StopSignal;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
@@ -70,7 +71,7 @@ public class GrpSelfPlaySmokeBench {
 
   /** 点数だけの Φ で反復 1〜4、白紙の GRP を学んで反復 5 から入れ、止めて反復 6 を再開する。 */
   private static RefitRecord grownSwitch(Path run, String start, PhiEntryKind kind) throws Exception {
-    Assert.assertEquals(Lineage.run(run, 4, EpsilonSettings.of(settings(start))), 0);
+    Assert.assertEquals(Lineage.run(run, 4, EpsilonSettings.of(settings(start)), StopSignal.none()), 0);
     var files = new GrpFiles(run);
     List<PhiEntry> history = PhiHistory.read(files);
     Assert.assertEquals(history.size(), 1);
@@ -98,7 +99,7 @@ public class GrpSelfPlaySmokeBench {
     Assert.assertEquals(entry.kind(), PhiEntryKind.SELF_CHECKPOINT);
     Assert.assertEquals(entry.effectiveFrom(), 5);
     // 反復 5: 学習の JVM が候補を境目の点検で確かめて読む（点数だけの Φ から GRP に変わるので R² を持ち越さない）
-    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults()), 0);
+    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults(), StopSignal.none()), 0);
     JsonObject fifth = iterations(run).get(4);
     Assert.assertEquals(phiId(fifth), grown.id());
     Assert.assertTrue(fifth.has("ledgerR2Reset"), "iteration 5 resets the ledger R²");
@@ -106,7 +107,7 @@ public class GrpSelfPlaySmokeBench {
     Assert.assertEquals(header.phiId(), grown.id());
     Assert.assertEquals(header.phiSha256(), grown.sha256());
     // 再開: 同じ候補のまま、R² は持ち越す
-    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults()), 0);
+    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults(), StopSignal.none()), 0);
     JsonObject sixth = iterations(run).get(5);
     Assert.assertEquals(phiId(sixth), grown.id());
     Assert.assertFalse(sixth.has("ledgerR2Reset"), "iteration 6 keeps the ledger R²");
@@ -141,7 +142,7 @@ public class GrpSelfPlaySmokeBench {
     PhiEntry switched = PhiHistory.read(files).getLast();
     Assert.assertEquals(switched.id(), warm.id());
     Assert.assertEquals(switched.effectiveFrom(), 7);
-    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults()), 0);
+    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults(), StopSignal.none()), 0);
     JsonObject seventh = iterations(run).get(6);
     Assert.assertEquals(phiId(seventh), warm.id());
     Assert.assertFalse(seventh.has("ledgerR2Reset"), "a GRP to GRP switch keeps the ledger R²");
@@ -155,7 +156,7 @@ public class GrpSelfPlaySmokeBench {
     Assert.assertEquals(back.id(), grown.id());
     Assert.assertEquals(back.effectiveFrom(), 8);
     Assert.assertEquals(back.reason(), "rollback: smoke");
-    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults()), 0);
+    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults(), StopSignal.none()), 0);
     Assert.assertEquals(phiId(iterations(run).get(7)), grown.id());
     Assert.assertEquals(GameLog.read(files.games(8)).header().phiId(), grown.id());
     Assert.assertThrows(
@@ -198,7 +199,7 @@ public class GrpSelfPlaySmokeBench {
     Assert.assertFalse(Files.exists(files.candidate(timedOut.id())));
     Assert.assertFalse(Files.exists(files.staging().resolve(timedOut.id())));
     Assert.assertFalse(Files.exists(files.boundary(timedOut.id())));
-    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults()), 0);
+    Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults(), StopSignal.none()), 0);
     Assert.assertEquals(phiId(iterations(run).get(8)), grown.id());
     Assert.assertEquals(state(run).get("next").getAsInt(), 10);
     line("worker scored %d cohorts, drift %d lines; timeout left phi.jsonl, state.json and rows alone; iteration 9 ran",

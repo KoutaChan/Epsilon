@@ -5,6 +5,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,7 +22,7 @@ import org.slf4j.LoggerFactory;
 /**
  * run のディレクトリのファイル（train の系譜 {@link Lineage}）: reports/ の 1 行 1 記録の jsonl、途中で止まっても壊れない
  * 書き込み（config.json・state.json・当てはめの記録）、終わった反復の途中の網（work/&lt;t&gt;）の後始末。再開で同じ反復をやり直したときに書き終えた
- * 記録を書き直さないよう、最後の記録の鍵を読める（{@link #lastRecorded}）。
+ * 記録を書き直さないよう、記録を番号で引ける（{@link #recorded}）。
  */
 public final class RunFiles {
   private static final Logger LOG = LoggerFactory.getLogger(RunFiles.class);
@@ -66,35 +68,49 @@ public final class RunFiles {
     }
   }
 
-  /** reports/name の最後の記録の鍵 key の整数（ファイルか記録か鍵がなければ 0）。再開で同じ反復の記録と評価を書き直さないために使う。 */
-  public int lastRecorded(String name, String key) throws IOException {
+  /**
+   * reports/name に鍵 key の整数が value の記録があれば true（ファイルがなければ false）。書きかけで止まった行は読み飛ばす。再開で同じ反復の記録と
+   * 評価を書き直さないために使う。
+   */
+  public boolean recorded(String name, String key, int value) throws IOException {
     Path path = reports.resolve(name);
-    if (!Files.exists(path)) return 0;
-    List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
-    for (int i = lines.size() - 1; i >= 0; i--) {
-      String line = lines.get(i).trim();
-      if (line.isEmpty()) continue;
-      JsonElement value;
+    if (!Files.exists(path)) return false;
+    for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+      if (line.isBlank()) continue;
       try {
-        value = JsonParser.parseString(line).getAsJsonObject().get(key);
+        JsonElement number = JsonParser.parseString(line).getAsJsonObject().get(key);
+        if (number != null && !number.isJsonNull() && number.getAsInt() == value) return true;
       } catch (RuntimeException truncated) {
-        // 書きかけで止まった行は読み飛ばす
-        continue;
+        // 書きかけで止まった行
       }
-      return value == null || value.isJsonNull() ? 0 : value.getAsInt();
     }
-    return 0;
+    return false;
   }
 
-  /** reports/name に記録を 1 行足す。 */
+  /** reports/name に記録を 1 行足す。前の行が改行で終わっていなければ（書きかけで止まった行）、改行を足してから書く。 */
   public void append(String name, Map<String, Object> record) throws IOException {
     Files.createDirectories(reports);
+    Path path = reports.resolve(name);
+    String line = LINES.toJson(record) + "\n";
+    if (!endsWithNewline(path)) line = "\n" + line;
     Files.writeString(
-        reports.resolve(name),
-        LINES.toJson(record) + "\n",
+        path,
+        line,
         StandardCharsets.UTF_8,
         StandardOpenOption.CREATE,
         StandardOpenOption.APPEND);
+  }
+
+  /** ファイルがないか空か、最後のバイトが改行なら true。 */
+  private static boolean endsWithNewline(Path path) throws IOException {
+    if (!Files.exists(path)) return true;
+    try (SeekableByteChannel channel = Files.newByteChannel(path)) {
+      long size = channel.size();
+      if (size == 0) return true;
+      ByteBuffer last = ByteBuffer.allocate(1);
+      channel.position(size - 1).read(last);
+      return last.get(0) == '\n';
+    }
   }
 
   /** path.tmp に書いてから path に差し替える（途中で止まっても前の中身か新しい中身が残る）。 */

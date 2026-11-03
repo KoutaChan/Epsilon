@@ -28,14 +28,16 @@ public class LineageSmokeTest {
   public void trainsCollectsAndResumesOnCpu() throws Exception {
     Path run = Files.createTempDirectory("prism-lineage");
     try {
-      Assert.assertEquals(Lineage.run(run, 2, EpsilonSettings.of(settings())), 0);
+      Assert.assertEquals(Lineage.run(run, 2, EpsilonSettings.of(settings()), StopSignal.none()), 0);
       Assert.assertEquals(state(run).get("next").getAsInt(), 3);
       // 再開: 設定の値は使わないが、なくなった鍵は拒む
       Assert.assertThrows(
           IllegalArgumentException.class,
-          () -> Lineage.run(run, 1, EpsilonSettings.of(Map.of("epsilon.prism.trainRoots", "true"))));
+          () ->
+              Lineage.run(
+                  run, 1, EpsilonSettings.of(Map.of("epsilon.prism.trainRoots", "true")), StopSignal.none()));
       // 再開: 設定は run の config.json から読む（版 3 で集めて版 4 を当てる）
-      Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults()), 0);
+      Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults(), StopSignal.none()), 0);
       JsonObject state = state(run);
       Assert.assertEquals(state.get("next").getAsInt(), 4);
       Assert.assertTrue(state.has("ledgerR2"));

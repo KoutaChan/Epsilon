@@ -4,6 +4,7 @@ import com.epsilon.prism.config.settings.EpsilonSettings;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.run.Lineage;
 import com.epsilon.prism.run.Snapshot;
+import com.epsilon.prism.run.StopSignal;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
@@ -27,8 +28,8 @@ public class GameLogRowsTest {
     Path off = Files.createTempDirectory("prism-gamelog-off");
     Path on = Files.createTempDirectory("prism-gamelog-on");
     try {
-      Assert.assertEquals(Lineage.run(off, 1, EpsilonSettings.of(settings("OFF"))), 0);
-      Assert.assertEquals(Lineage.run(on, 1, EpsilonSettings.of(settings("RECORD"))), 0);
+      Assert.assertEquals(Lineage.run(off, 1, EpsilonSettings.of(settings("OFF")), StopSignal.none()), 0);
+      Assert.assertEquals(Lineage.run(on, 1, EpsilonSettings.of(settings("RECORD")), StopSignal.none()), 0);
       RowHash.Digest unrecorded = RowHash.of(CohortWriter.directory(off, 1));
       RowHash.Digest recorded = RowHash.of(CohortWriter.directory(on, 1));
       Assert.assertTrue(unrecorded.rows() > 0, "no rows");

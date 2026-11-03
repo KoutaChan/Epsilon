@@ -6,6 +6,7 @@ import com.epsilon.prism.config.settings.EpsilonSettings;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.run.Lineage;
 import com.epsilon.prism.run.Snapshot;
+import com.epsilon.prism.run.StopSignal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,7 +57,10 @@ public class FixedGrpRowsBench {
       throws Exception {
     Path run = Files.createTempDirectory("prism-fixed-rows");
     try {
-      Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.of(settings(source, checkpoint, calibration, monitor))), 0);
+      Assert.assertEquals(
+          Lineage.run(
+              run, 1, EpsilonSettings.of(settings(source, checkpoint, calibration, monitor)), StopSignal.none()),
+          0);
       RowHash.Digest digest = RowHash.of(CohortWriter.directory(run, 1));
       Assert.assertTrue(digest.rows() > 0, "no rows");
       LOG.info(

@@ -1,7 +1,6 @@
 package com.epsilon.prism.run;
 
 import static com.epsilon.prism.run.Snapshot.deleteTree;
-import static com.epsilon.prism.run.Snapshot.iterate;
 import static com.epsilon.prism.run.Snapshot.model;
 import static com.epsilon.prism.run.Snapshot.net;
 
@@ -17,11 +16,14 @@ import com.epsilon.prism.collect.EventLedger;
 import com.epsilon.prism.collect.RowSink;
 import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.core.CrnSeeds;
+import com.epsilon.prism.eval.Arena;
+import com.epsilon.prism.eval.PlayStats;
 import com.epsilon.prism.grp.ActivePhi;
 import com.epsilon.prism.grp.GameLog;
 import com.epsilon.prism.grp.GameLogObserver;
 import com.epsilon.prism.grp.GrpFiles;
 import com.epsilon.prism.grp.PhiEntry;
+import com.epsilon.prism.grp.PhiScoring;
 import com.epsilon.prism.learn.AnchorScores;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
@@ -35,6 +37,7 @@ import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.RowCounts;
+import com.epsilon.prism.run.StopSignal.SafePoint;
 import com.epsilon.runtime.DecisionCollectionDiagnostics;
 import com.epsilon.runtime.DecisionExecutionContext;
 import com.google.gson.Gson;
@@ -42,6 +45,7 @@ import com.google.gson.GsonBuilder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,6 +66,8 @@ import org.slf4j.LoggerFactory;
  *   <li>収集（{@link #collect}）: 版 t の collectWith の網（{@link NetworkPolicy}）の貪欲に床 ε_b を混ぜた b で全席が
  *       打ち、ラベル行（MAIN・ROLLIN）と根の記録（ROOT）を rows-v2/&lt;t&gt; に書いて封印する。封印済みなら使い回す。phiMonitor が OFF で
  *       なければ、封印の前に主経路の対局を grp/games に記録する（{@link GameLogObserver}。記録はラベル行を変えず、失敗しても系譜を止めない）。
+ *       phiMonitor = SCORE なら、封印の後（そこで止まらなければ）採点を頼む（{@link PhiScoring}。裏のスレッドで、待たない。
+ *       止まった反復のコホートは次の起動の初めに頼む）。
  *   <li>運の精算: 生徒の行（コホート t の TRAIN のラベル行と根の記録、{@link Selection#LABELS_AND_ROOTS}）の帳簿で、半荘の偶奇で交差適合
  *       した β_c を当てる（{@link LedgerFit}）。和は収集の書き手が行を書くときに作り（{@link LedgerFit.Stream}）、使い回したコホートでは
  *       読み直して作る（どちらも同じ行を同じ順に足すので、β はビットで同じ）。
@@ -75,15 +81,21 @@ import org.slf4j.LoggerFactory;
  *       η·θ_{t+1}（{@link Averaging}、{@link PrismNetwork#mixIn}）にして、θ_{t+1} を iterate/ に添える。
  *   <li>reports/iterations.jsonl に 1 行、evalEvery 反復ごとに版 t+1 の打つ網（evaluateIterate なら学習の網も）を 3×Heuristic と打たせて
  *       evaluations.jsonl（{@link HeuristicEvaluation}）。どちらも state.json を進める前に書き、再開で同じ反復をやり直したときは書き終えた行を
- *       書き直さない。それから state.json を進め、keepCohorts より古い行と work/&lt;t&gt; を消す。
+ *       書き直さない（番号で引く。{@link RunFiles#recorded}）。それから state.json を進め、keepCohorts より古い行と work/&lt;t&gt; を消す。
+ *   <li>x1n3 = ON なら、測っていない版（{@link X1n3Outputs#pending}。版 t+1 を含む）を古い順に x1n3 で測る（{@link #measure}）。
  * </ol>
+ *
+ * 反復は iterations まで（stopAfter 回まで）回し、止まる合図（{@link StopSignal}）が立てば次の安全点で止まる: コホートの封印の後（{@link
+ * SafePoint#SEALED}）、反復の後（{@link SafePoint#ITERATED}）、x1n3 の版ごとの後（{@link SafePoint#MEASURED}）。どこで止まっても（落ちても）
+ * 再開は同じ結果に戻る: 封印したコホートと保存した生徒は使い回し、版の公開は差し替え、記録は番号で引いて書き直さず、x1n3 は .done のない版を
+ * 初めから測る。版が公開されたのは state.json の next が進んだときだけ。
  *
  * 版 1 は白紙の網（s ≡ 0 なので argmax p0 で打つ。網の初期値の種は seed + 100、形は {@link PrismConfig#shape}）。再開は state.json の次の
  * コホートから。iterations.jsonl の鍵: iteration・phi（使った Φ の項目 {@link PhiEntry}）・ledgerR2Reset（R² を持ち越さなかった反復だけ、
  * 捨てた R²）・collection（{@link CollectionDriver.Result}）・copies・forks・collectSeconds・totalRows・
  * memory・labels・copyLabels・roots（{@link RowCounts}）・ledger（{@link LedgerFit.Report}）・filter・fitSingle（{@link FitResult}）・accepted・
  * acceptance・average・seconds。filter は使ったゲイン gain = K′_t・錨の重み anchorWeight・学習率の倍率 lrScale に、K_t の scheduledGain と K′ の
- * 元の R² の r2 を足したもの。evaluations.jsonl: iteration・version・heuristic・play・iterate。
+ * 元の R² の r2 を足したもの。evaluations.jsonl: iteration・version・heuristic・play・iterate・seconds（3×Heuristic の秒数）。
  */
 public final class Lineage {
   private static final Logger LOG = LoggerFactory.getLogger(Lineage.class);
@@ -116,14 +128,22 @@ public final class Lineage {
 
   private final Path root;
   private final PrismConfig config;
+  private final StopSignal stop;
   private final RunFiles files;
   private final GrpFiles grpFiles;
+  private final EpsilonUtilityProfile profile;
+  private final NetworkDevices learnerDevices;
+  private final List<Device> collectDevices;
 
-  private Lineage(Path root, PrismConfig config) {
+  private Lineage(Path root, PrismConfig config, StopSignal stop) {
     this.root = root;
     this.config = config;
+    this.stop = stop;
     files = new RunFiles(root);
     grpFiles = new GrpFiles(root);
+    profile = EpsilonUtilityProfile.valueOf(config.utility());
+    learnerDevices = config.learnerDevices();
+    collectDevices = PrismConfig.devices(config.collectDevices());
   }
 
   /**
@@ -132,9 +152,11 @@ public final class Lineage {
    * で確かめる）。
    *
    * @param stopAfter この呼び出しで回す反復の数の上限
-   * @return 0
+   * @param stop 止まる合図（立てば次の安全点で止まる）
+   * @return 0（反復を終えたか、上限に達したか、合図で止まった）
    */
-  public static int run(Path root, int stopAfter, SettingsLoader settings) throws Exception {
+  public static int run(Path root, int stopAfter, SettingsLoader settings, StopSignal stop)
+      throws Exception {
     Path configPath = root.resolve("config.json");
     PrismConfig config;
     if (Files.exists(configPath)) {
@@ -147,94 +169,183 @@ public final class Lineage {
       config.validateTraining();
       RunFiles.writeAtomically(configPath, GSON.toJson(config));
     }
-    return new Lineage(root, config).loop(stopAfter);
+    return new Lineage(root, config, stop).loop(stopAfter);
   }
 
-  /** 反復を回す。資源（{@link TrainingResources}）は反復をまたいで 1 つずつ持つ。報告は 1 反復で 1 行。 */
+  /**
+   * 反復を回す。資源（{@link TrainingResources}）と採点のスレッド（{@link PhiScoring}）は反復をまたいで 1 つずつ持つ。起動の初めに未採点の
+   * コホートの採点を頼み、測っていない版の x1n3 を測る。報告は 1 反復で 1 行。
+   */
   private int loop(int stopAfter) throws Exception {
-    NetworkDevices learnerDevices = config.learnerDevices();
-    List<Device> collectDevices = PrismConfig.devices(config.collectDevices());
-    var profile = EpsilonUtilityProfile.valueOf(config.utility());
     State state = loadOrInitialize();
     RunFiles.removeFinishedWork(root.resolve("work"), state.next());
-    try (var resources = TrainingResources.open(config, profile, root)) {
-      int next = state.next();
-      long totalRows = state.totalRows();
-      int accepted = state.accepted();
-      double averageWeight = state.averageWeight();
-      double ledgerR2 = state.ledgerR2();
-      Averaging averaging = config.policyMemory();
-      for (int done = 0; next <= config.iterations() && done < stopAfter; done++) {
-        int t = next;
-        long started = System.nanoTime();
-        var report = new LinkedHashMap<String, Object>();
-        report.put("iteration", t);
-        // 0. 反復 t の Φ（Φ の種類が点数だけの Φ から GRP に変わる反復は、運の精算の R² を持ち越さない）
-        ActivePhi phi = resources.phi(t);
-        report.put("phi", phi.entry());
-        if (phi.resetsLedger()) {
-          report.put("ledgerR2Reset", ledgerR2);
-          ledgerR2 = 0;
-        }
-        // 1. 収集（版 t の b）
-        Collected collected = collect(t, resources, phi, profile, collectDevices, report);
-        totalRows += collected.rows();
-        report.put("collectSeconds", (System.nanoTime() - started) / 1e9);
-        report.put("totalRows", totalRows);
-        // 2〜3. 運の精算と生徒
-        try (var store = new CohortStore()) {
-          report.put("memory", loadMemory(store, t));
-          var counts = RowCounts.of(store.select(t, t, index -> true), store::index);
-          counts.report(report);
-          LOG.info(
-              "t={} rows labels={} copyLabels={} roots={} (holdout rows {})",
-              t,
-              counts.labels(),
-              counts.copyLabels(),
-              counts.roots(),
-              counts.holdout());
-          ledgerR2 = learn(t, store, collected.ledger(), learnerDevices, ledgerR2, report);
-        }
-        accepted++;
-        // 4. 方策の記憶（版 t+1）
-        averageWeight = publish(t, averaging, averageWeight, report);
-        // 5. 記録と評価を state.json より前に書く（再開で同じ反復をやり直したときは、書き終えた記録と評価を書き直さない）
-        int version = t + 1;
-        report.put("seconds", (System.nanoTime() - started) / 1e9);
-        if (files.lastRecorded(RunFiles.ITERATIONS, "iteration") < t)
-          files.append(RunFiles.ITERATIONS, report);
-        LOG.info(
-            String.format(
-                "t=%d published the student as version %d %.1fs",
-                t, version, (System.nanoTime() - started) / 1e9));
-        if (config.evalEvery() > 0
-            && t % config.evalEvery() == 0
-            && files.lastRecorded(RunFiles.EVALUATIONS, "version") < version) {
-          var evaluation = new LinkedHashMap<String, Object>();
-          evaluation.put("iteration", t);
-          evaluation.put("version", version);
-          Path published = snapshot(version);
-          evaluation.putAll(
-              evaluate(version, model(published), "", resources, collectDevices, profile));
-          if (config.evaluateIterate() && averaging.enabled())
-            evaluation.put(
-                Averaging.ITERATE,
-                evaluate(
-                    version, iterate(published), " (iterate)", resources, collectDevices, profile));
-          files.append(RunFiles.EVALUATIONS, evaluation);
-        }
-        next = version;
-        RunFiles.writeAtomically(
-            root.resolve("state.json"),
-            GSON.toJson(
-                new State(State.FORMAT, next, totalRows, accepted, averageWeight, ledgerR2)));
-        // 古い行と途中の網を消す（state.json の後。間で止まった残りは、次の起動と次の反復の後始末が消す）
-        for (int c = 1; c <= t - config.keepCohorts(); c++)
-          if (Files.exists(cohort(c))) deleteTree(cohort(c));
-        if (Files.exists(work(t))) deleteTree(work(t));
+    try (var resources = TrainingResources.open(config, profile, root);
+        var scoring = PhiScoring.start(grpFiles, config)) {
+      scoring.request();
+      if (!measurePending(state.next(), resources)) return 0;
+      for (int done = 0;
+          state.next() <= config.iterations() && done < stopAfter && !stop.requested();
+          done++) {
+        int t = state.next();
+        state = iterate(state, resources, scoring);
+        if (state == null || stop.stopsAt(SafePoint.ITERATED, t)) break;
+        if (!measurePending(state.next(), resources)) break;
       }
-      return 0;
     }
+    return 0;
+  }
+
+  /**
+   * 反復 t（クラスの説明の Φ〜評価）。コホートの封印の後に止まる合図が立っていれば、採点を頼まず運の精算の前に止まる（{@link
+   * SafePoint#SEALED}。再開では封印したコホートを使い回す）。
+   *
+   * @param state 反復の前の state.json（next = t）
+   * @return 反復の後の state.json（封印の後で止まったときは null）
+   */
+  private State iterate(State state, TrainingResources resources, PhiScoring scoring)
+      throws Exception {
+    int t = state.next();
+    long started = System.nanoTime();
+    var report = new LinkedHashMap<String, Object>();
+    report.put("iteration", t);
+    double ledgerR2 = state.ledgerR2();
+    // 0. 反復 t の Φ（Φ の種類が点数だけの Φ から GRP に変わる反復は、運の精算の R² を持ち越さない）
+    ActivePhi phi = resources.phi(t);
+    report.put("phi", phi.entry());
+    if (phi.resetsLedger()) {
+      report.put("ledgerR2Reset", ledgerR2);
+      ledgerR2 = 0;
+    }
+    // 1. 収集（版 t の b）と封印
+    Collected collected = collect(t, resources, phi, report);
+    if (stop.stopsAt(SafePoint.SEALED, t)) return null;
+    scoring.request();
+    long totalRows = state.totalRows() + collected.rows();
+    report.put("collectSeconds", (System.nanoTime() - started) / 1e9);
+    report.put("totalRows", totalRows);
+    // 2〜3. 運の精算と生徒
+    try (var store = new CohortStore()) {
+      report.put("memory", loadMemory(store, t));
+      var counts = RowCounts.of(store.select(t, t, index -> true), store::index);
+      counts.report(report);
+      LOG.info(
+          "t={} rows labels={} copyLabels={} roots={} (holdout rows {})",
+          t,
+          counts.labels(),
+          counts.copyLabels(),
+          counts.roots(),
+          counts.holdout());
+      ledgerR2 = learn(t, store, collected.ledger(), ledgerR2, report);
+    }
+    // 4. 方策の記憶（版 t+1）
+    Averaging averaging = config.policyMemory();
+    double averageWeight = publish(t, averaging, state.averageWeight(), report);
+    // 5. 記録と評価を state.json より前に書く（再開で同じ反復をやり直したときは、書き終えた記録と評価を書き直さない）
+    int version = t + 1;
+    report.put("seconds", (System.nanoTime() - started) / 1e9);
+    if (!files.recorded(RunFiles.ITERATIONS, "iteration", t)) files.append(RunFiles.ITERATIONS, report);
+    LOG.info(
+        String.format(
+            "t=%d published the student as version %d %.1fs",
+            t, version, (System.nanoTime() - started) / 1e9));
+    if (config.evalEvery() > 0
+        && t % config.evalEvery() == 0
+        && !files.recorded(RunFiles.EVALUATIONS, "version", version)) {
+      long evaluated = System.nanoTime();
+      var evaluation = new LinkedHashMap<String, Object>();
+      evaluation.put("iteration", t);
+      evaluation.put("version", version);
+      Path published = snapshot(version);
+      evaluation.putAll(evaluate(version, model(published), "", resources));
+      if (config.evaluateIterate() && averaging.enabled())
+        evaluation.put(
+            Averaging.ITERATE,
+            evaluate(version, Snapshot.iterate(published), " (iterate)", resources));
+      evaluation.put("seconds", (System.nanoTime() - evaluated) / 1e9);
+      files.append(RunFiles.EVALUATIONS, evaluation);
+    }
+    var next =
+        new State(
+            State.FORMAT, version, totalRows, state.accepted() + 1, averageWeight, ledgerR2);
+    RunFiles.writeAtomically(root.resolve("state.json"), GSON.toJson(next));
+    // 古い行と途中の網を消す（state.json の後。間で止まった残りは、次の起動と次の反復の後始末が消す）
+    for (int c = 1; c <= t - config.keepCohorts(); c++)
+      if (Files.exists(cohort(c))) deleteTree(cohort(c));
+    if (Files.exists(work(t))) deleteTree(work(t));
+    return next;
+  }
+
+  /**
+   * 測っていない版の x1n3 を古い順に測る（{@link X1n3Outputs#pending}。x1n3 = OFF なら何もしない）。版の前と後に止まる合図を見る（{@link
+   * SafePoint#MEASURED}）。
+   *
+   * @param latest 公開した最新の版
+   * @return 合図で止まるなら false
+   */
+  private boolean measurePending(int latest, TrainingResources resources) throws IOException {
+    for (int version : X1n3Outputs.pending(config, latest)) {
+      if (stop.requested()) return false;
+      measure(version, resources);
+      if (stop.stopsAt(SafePoint.MEASURED, version)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * 版 V の打つ網 1 席対 x1n3Opponent 3 席を x1n3Games 局打ち（{@link NanoTable}。学習の資源で打ち、Nano は {@value NanoTable#NANO_DEVICE}）、
+   * x1n3Dir に書く（{@link X1n3Outputs}）。log は evaluate の出力と同じ文言の 3 行（started、evaluate play、complete）。Java の例外で測れ
+   * なければ、log に失敗を書いて .failed にし、系譜は続ける。
+   *
+   * @throws IOException 印か失敗の log が書けないとき
+   */
+  private void measure(int version, TrainingResources resources) throws IOException {
+    var outputs = new X1n3Outputs(Path.of(config.x1n3Dir()), version);
+    outputs.begin();
+    String opponent = config.x1n3Opponent();
+    var log = new StringBuilder();
+    logLine(
+        log,
+        String.format(
+            "evaluation workflow started: command=evaluate version=%d opponent=%s games=%d",
+            version, opponent, config.x1n3Games()));
+    LOG.info("x1n3 v{} started", version);
+    long started = System.nanoTime();
+    try {
+      var stats = new PlayStats();
+      Arena.Detailed detailed =
+          NanoTable.play(
+              config,
+              snapshot(version),
+              opponent,
+              config.x1n3Games(),
+              resources.driver(),
+              resources.execution(),
+              NanoTable.NANO_DEVICE,
+              stats);
+      String complete =
+          String.format(
+              "evaluation workflow complete: command=evaluate successful=true elapsedMs=%d %s",
+              (System.nanoTime() - started) / 1_000_000L,
+              NanoTable.summary(detailed.result()));
+      logLine(log, NanoTable.playLine(stats));
+      logLine(log, complete);
+      outputs.commit(NanoTable.perGame(detailed.games()), log.toString());
+      LOG.info("x1n3 v{} {}", version, complete);
+    } catch (Exception failure) {
+      LOG.warn("x1n3 v{} failed", version, failure);
+      logLine(
+          log,
+          String.format(
+              "evaluation workflow failed: command=evaluate elapsedMs=%d %s",
+              (System.nanoTime() - started) / 1_000_000L,
+              failure));
+      outputs.fail(log.toString());
+    }
+  }
+
+  /** x1n3 の log に時刻つきの 1 行を足す。 */
+  private static void logLine(StringBuilder log, String message) {
+    log.append(Instant.now()).append(' ').append(message).append('\n');
   }
 
   /**
@@ -280,12 +391,7 @@ public final class Lineage {
    * @return そのコホートの行数と運の精算の和
    */
   private Collected collect(
-      int t,
-      TrainingResources resources,
-      ActivePhi phi,
-      EpsilonUtilityProfile profile,
-      List<Device> devices,
-      Map<String, Object> report)
+      int t, TrainingResources resources, ActivePhi phi, Map<String, Object> report)
       throws IOException {
     Path cohort = cohort(t);
     if (Files.exists(cohort.resolve(CohortWriter.MANIFEST))) {
@@ -303,7 +409,7 @@ public final class Lineage {
             Snapshot.open(
                 snapshot(t),
                 net(snapshot(t), config.collectWith()),
-                devices,
+                collectDevices,
                 resources.execution(),
                 config.inferBatch(),
                 config.priorSettings(),
@@ -407,12 +513,7 @@ public final class Lineage {
    * @return この反復で教師に掛けた補正の保留の R²（次の反復の K′ の元。掛けなければ 0）
    */
   private double learn(
-      int t,
-      CohortStore store,
-      LedgerFit.Stream stream,
-      NetworkDevices devices,
-      double ledgerR2,
-      Map<String, Object> report)
+      int t, CohortStore store, LedgerFit.Stream stream, double ledgerR2, Map<String, Object> report)
       throws IOException {
     int[] rows = store.select(t, t, Selection.LABELS_AND_ROOTS);
     boolean fits = !studentSaved(t) && fitSteps(rows.length) > 0;
@@ -426,7 +527,7 @@ public final class Lineage {
               ? ahead.submit(
                   () ->
                       AnchorScores.compute(
-                          store, rows, start, config.inference(), devices, config.decodeThreads()))
+                          store, rows, start, config.inference(), learnerDevices, config.decodeThreads()))
               : null;
       Future<Fit.Prepared> warmed =
           fits
@@ -438,7 +539,7 @@ public final class Lineage {
                           start,
                           studentPlan(t, rows.length, ledgerR2),
                           (float) config.filterGain(t, ledgerR2),
-                          devices,
+                          learnerDevices,
                           config.decodeThreads()))
               : null;
       try {
@@ -454,7 +555,7 @@ public final class Lineage {
     try {
       if (correction == null)
         LOG.warn("t={} no rows carry a ledger: the student learns the raw Y", t);
-      fitStudent(t, rows, correction, anchor, prepared, ledgerR2, devices, report);
+      fitStudent(t, rows, correction, anchor, prepared, ledgerR2, learnerDevices, report);
     } finally {
       if (prepared != null) prepared.close();
     }
@@ -594,16 +695,16 @@ public final class Lineage {
 
   /** 版 version の網 net（打つ網か学習の網）を 3×Heuristic と打たせる（貪欲）。結果と対局の内訳。 */
   private Map<String, Object> evaluate(
-      int version,
-      Path net,
-      String label,
-      TrainingResources resources,
-      List<Device> devices,
-      EpsilonUtilityProfile profile)
-      throws IOException {
+      int version, Path net, String label, TrainingResources resources) throws IOException {
     var evaluation =
         HeuristicEvaluation.run(
-            config, snapshot(version), net, resources.driver(), resources.execution(), devices, profile);
+            config,
+            snapshot(version),
+            net,
+            resources.driver(),
+            resources.execution(),
+            collectDevices,
+            profile);
     LOG.info(evaluation.summary(version, label));
     LOG.info(evaluation.playSummary(version, label));
     return evaluation.record();

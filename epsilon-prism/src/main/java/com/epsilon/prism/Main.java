@@ -17,8 +17,8 @@ public final class Main {
     return CommandLine.run(startup.arguments(), Workflows.create(), settings);
   }
 
+  /** 終わりに必ず System.exit を呼ぶ（残ったスレッドで JVM が終われなくならないように）。 */
   public static void main(String[] arguments) throws IOException {
-    int status = run(arguments);
-    if (status != 0) System.exit(status);
+    System.exit(run(arguments));
   }
 }

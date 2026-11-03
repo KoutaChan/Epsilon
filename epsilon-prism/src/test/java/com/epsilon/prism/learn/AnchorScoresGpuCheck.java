@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 /**
  * 本物のコホートの錨の s の照合（rocm の組。GPU 2 枚。-Dprism.run と -Dprism.cohort がなければ飛ばす）。run のコホート t の生徒の全ての行
  * （{@link Selection#LABELS_AND_ROOTS}）で、先に出した s（{@link AnchorScores#compute}、2 枚）と、当てはめの並べ替えの順に詰めた塊を
- * HIP の錨（{@link Anchor.Hip}、1 枚）に通した s が、全ての手でビットで同じ。錨の網は版 t の学習の網。
+ * HIP の錨（{@link Anchor.Hip}、1 枚）に通した s が、全ての手でビットで同じ。錨の網はバージョン t の学習の網。
  */
 @Test(groups = "rocm")
 public class AnchorScoresGpuCheck {

@@ -34,7 +34,7 @@ import org.testng.annotations.Test;
  *   <li>HIP の s と eager の s（CPU の BF16 と FP32）の差の中央値・p99・最大・役割ごとの符号つきの平均、argmax の一致率
  *   <li>公開の出来事が 90 を超える行（T > 128）を含む塊でも同じ（記録の行の頭は「PRISM-HIP-T5 long」）
  *   <li>塊を組み直しても（行を混ぜ、前に別の行を足しても）同じ行の s がビットで同じ
- *   <li>白紙の網で s が全て +0.0f、版が違えば例外
+ *   <li>白紙の網で s が全て +0.0f、バージョンが違えば例外
  *   <li>1 判断あたりの GPU の時間（カーネルごと、本番の形の 2048 行の塊。系の性質 {@value HipFixtures#SPEED_BATCHES} があれば、
  *       書き出した本番の塊ごと）
  * </ul>
@@ -164,7 +164,7 @@ public class HipForwardTest {
     }
   }
 
-  /** 白紙の網で s が全て +0.0f。古い版の forward は例外。 */
+  /** 白紙の網で s が全て +0.0f。古いバージョンの forward は例外。 */
   public void blankScoresZeroAndStaleVersionsFail() {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
         PtStream stream = newStream()) {

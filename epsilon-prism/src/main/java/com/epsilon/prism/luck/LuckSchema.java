@@ -29,7 +29,7 @@ import java.util.Set;
  * （{@link HeaderBits#OUTCOME_TILE}・{@link HeaderBits#OUTCOME_AKA}）は学習の選びにだけ使い、網の入力（トークン）には入れない。
  *
  * <p>席は行為者から見た相対席（0 行為者、1 下家、2 対面、3 上家）で書き、行為者だけを絶対席で書く。牌は 34 種の番号、点は
- * {@link #POINT_UNIT} 点単位で書く。範囲は規則の上限（{@link Limits}）から取り、範囲の外の値は書くときに例外にする。版の番号は持たず、
+ * {@link #POINT_UNIT} 点単位で書く。範囲は規則の上限（{@link Limits}）から取り、範囲の外の値は書くときに例外にする。バージョン番号は持たず、
  * 形を変えれば {@link #fingerprint()} が変わる。
  */
 public final class LuckSchema {

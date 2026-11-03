@@ -8,9 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * 版の係数（policy.json）。網の出力 s(o, a) から σ への写像は貪欲（s の argmax、同点は p0。{@link GreedyAnswer}）だけなので、版が持つのは番号だけ。
+ * バージョンの係数（policy.json）。網の出力 s(o, a) から σ への写像は貪欲（s の argmax、同点は p0。{@link GreedyAnswer}）だけなので、バージョンが持つのは番号だけ。
  *
- * @param version 方策の版。反復番号と同じ
+ * @param version 方策のバージョン。反復番号と同じ
  */
 public record PolicyParams(int version) {
   private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();

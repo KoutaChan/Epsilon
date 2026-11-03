@@ -19,7 +19,7 @@ public final class StopSignal {
     /** 反復 t を終えて state.json を進めた後（x1n3 の前）。番号は反復。 */
     ITERATED,
 
-    /** 版 V の x1n3 を測った後。番号は版。 */
+    /** バージョン V の x1n3 を測った後。番号はバージョン。 */
     MEASURED
   }
 

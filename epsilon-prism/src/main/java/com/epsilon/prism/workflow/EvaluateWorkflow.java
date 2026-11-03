@@ -33,17 +33,17 @@ import org.slf4j.LoggerFactory;
  * train の評価と同じなので、同じ seed と半荘の数なら、候補や相手を替えても同じ牌山の対比較になる。対局の設定（収集の device・ワーカー・バッチ・
  * 網の推論の道・効用・seed）は [epsilon.prism]。
  *
- * <p>打ち手の書き方（--snapshot と --opponent。{@link NanoTable#open}）: 版のディレクトリ（PRISM の打つ網）、{@code heuristic}（規則の打ち手、
+ * <p>打ち手の書き方（--snapshot と --opponent。{@link NanoTable#open}）: バージョンのディレクトリ（PRISM の打つ網）、{@code heuristic}（規則の打ち手、
  * 相手だけ）、{@code nano:DIR}（Epsilon-Nano の Decision チェックポイント。測定専用で、デバイスは --nano-device）。Nano の卓は
- * {@code --snapshot 版 --opponent nano:DIR}（PRISM 1 席 対 Nano 3 席）と {@code --snapshot nano:DIR --opponent 版}（Nano 1 席 対
+ * {@code --snapshot バージョン --opponent nano:DIR}（PRISM 1 席 対 Nano 3 席）と {@code --snapshot nano:DIR --opponent バージョン}（Nano 1 席 対
  * PRISM 3 席）。
  *
- * <p>混成の席（測定専用）: {@code --hybrid 類[+類...] --hybrid-nano DIR [--hybrid-open true]} で、候補の版の席のうち類の判断だけ Nano に打たせる
- * （{@link HybridSeat}。NONE なら全て版）。--hybrid-other DIR は Nano の代わりに別の版に任せる。--hybrid-open は副露がある間の判断も Nano にする。
+ * <p>混成の席（測定専用）: {@code --hybrid 類[+類...] --hybrid-nano DIR [--hybrid-open true]} で、候補のバージョンの席のうち類の判断だけ Nano に打たせる
+ * （{@link HybridSeat}。NONE なら全てバージョン）。--hybrid-other DIR は Nano の代わりに別のバージョンに任せる。--hybrid-open は副露がある間の判断も Nano にする。
  * --hybrid-closed true は類の判断のうち門前の間だけ、--hybrid-fraction F は類の判断のうち硬貨が F 未満のものだけを任せる。
  * --per-game FILE は半荘ごとの候補の結果（半荘 ID・着順・効用）を書く（同じ牌山の対比較のため）。
  *
- * <p>合議の席（測定専用）: {@code --ensemble DIR [--ensemble-weight W]} で、候補の版と DIR の版の s を (1 − W)·s + W·s_DIR で混ぜた貪欲で打つ
+ * <p>合議の席（測定専用）: {@code --ensemble DIR [--ensemble-weight W]} で、候補のバージョンと DIR のバージョンの s を (1 − W)·s + W·s_DIR で混ぜた貪欲で打つ
  * （{@link EnsembleService}。2 つの s は同じ単位であること）。DIR と W を読点で区切って並べると K 本の合議（s = (1 − ΣW)·s + Σ W_i·s_i）。
  */
 public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
@@ -163,7 +163,7 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
     }
   }
 
-  /** --ensemble-weight の重み（合議の版の数だけ。各 [0, 1] で、2 本以上なら和 < 1）。 */
+  /** --ensemble-weight の重み（合議のバージョンの数だけ。各 [0, 1] で、2 本以上なら和 < 1）。 */
   static double[] ensembleWeights(String text, int count) {
     if (count == 0) return new double[0];
     String[] parts = text.split(",");
@@ -181,7 +181,7 @@ public final class EvaluateWorkflow implements CommandWorkflow<Arena.Result> {
     return weights;
   }
 
-  /** 合議の版をまとめて閉じる。 */
+  /** 合議のバージョンをまとめて閉じる。 */
   private static final class Closer implements AutoCloseable {
     private final List<PolicyService> opened = new ArrayList<>();
 

@@ -52,7 +52,7 @@ CPUだけで動かす場合も、設定の`inference`を`"EAGER"`にします（
 |----------------|--------------------------------------------|
 | 設定ファイル         | `config/epsilon-prism.toml`                |
 | 学習のrun         | `train`の`--run`で指定（例：`runs/epsilon-prism`） |
-| 学習結果（版）        | `<run>/snapshots/<版>`                      |
+| 学習結果（バージョン）        | `<run>/snapshots/<バージョン>`                      |
 | RiichiLabで打つ重み | `[epsilon.riichi]`の`checkpointDir`         |
 
 設定ファイルを明示する場合は、コマンドの前に`--settings`を指定します。省略した項目には同梱設定の値を使います。
@@ -82,7 +82,7 @@ java -jar epsilon-prism/target/epsilon-prism-1.0-SNAPSHOT-all.jar train --run ru
 
 反復ごとに次の重みを`runs/epsilon-prism/snapshots/<重み>`に書き、`reports/iterations.jsonl`に記録を1行足します。各重みは規則の打ち手と打たせて測り、`reports/evaluations.jsonl`に書きます。`--stop-after N`を付けるとN反復で止まり、同じ`--run`を指定すると続きから再開します。新しいrunの設定は`config.json`に書かれ、再開ではそれを読みます。`train`は止められるまで反復を回し続け、SIGTERMを受けると次の安全点（コホートの封印の後、反復の後、x1n3の後）で止まって0で終わります。どこで止めても、同じ`--run`で起動し直せば続きから同じ結果になります。
 
-設定の`x1n3 = "ON"`にすると、版が`x1n3Every`の倍数のたびに、学習の中でその版を`x1n3Opponent`（`heuristic`か`nano:<絶対パス>`）3席と`x1n3Games`局打たせ、`x1n3Dir`に`v<版>-x1n3.tsv`・`.log`・`.done`を書きます（測っている間は`.running`、測れなかった版は`.failed`）。
+設定の`x1n3 = "ON"`にすると、バージョンが`x1n3Every`の倍数のたびに、学習の中でそのバージョンを`x1n3Opponent`（`heuristic`か`nano:<絶対パス>`）3席と`x1n3Games`局打たせ、`x1n3Dir`に`v<バージョン>-x1n3.tsv`・`.log`・`.done`を書きます（測っている間は`.running`、測れなかったバージョンは`.failed`）。
 
 既定値は、GPU2枚で収集（`collectDevices`）と学習（`learnerDevice`）を行う前提です。環境に合わせて変更してください。
 
@@ -94,7 +94,7 @@ PRISMを1席、相手を3席に置いて打たせ、PRISMの着順を測りま�
 java -jar epsilon-prism/target/epsilon-prism-1.0-SNAPSHOT-all.jar evaluate --snapshot runs/epsilon-prism/snapshots/00160 --opponent nano:checkpoints/epsilon-nano/decision_pretrain_logs_00001 --games 131072 --per-game x1n3.tsv
 ```
 
-`--opponent heuristic`にすると、規則の打ち手3席と打たせます（学習中の評価と同じ卓）。`--per-game`は半荘ごとの結果（半荘ID・着順・効用）を書きます。同じ`seed`と半荘の数なら、版を替えても同じ牌山で比べられます。
+`--opponent heuristic`にすると、規則の打ち手3席と打たせます（学習中の評価と同じ卓）。`--per-game`は半荘ごとの結果（半荘ID・着順・効用）を書きます。同じ`seed`と半荘の数なら、バージョンを替えても同じ牌山で比べられます。
 
 ## オンライン対局と牌譜解析
 

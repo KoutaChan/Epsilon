@@ -58,12 +58,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 網の系譜（train）。版の網で集めた行で次の版の網を育てる。反復 t ごとに
+ * 網の系譜（train）。バージョンの網で集めた行で次のバージョンの網を育てる。反復 t ごとに
  *
  * <ol>
  *   <li>Φ: 反復 t の局末の値（{@link TrainingResources#phi}。SELF_GRP なら phi.jsonl の効く項目）。Φ の種類が点数だけの Φ から GRP に変わる
  *       反復では、運の精算の R² を持ち越さない（K′_t = K_t）。
- *   <li>収集（{@link #collect}）: 版 t の collectWith の網（{@link NetworkPolicy}）の貪欲に床 ε_b を混ぜた b で全席が
+ *   <li>収集（{@link #collect}）: バージョン t の collectWith の網（{@link NetworkPolicy}）の貪欲に床 ε_b を混ぜた b で全席が
  *       打ち、ラベル行（MAIN・ROLLIN）と根の記録（ROOT）を rows-v2/&lt;t&gt; に書いて封印する。封印済みなら使い回す。phiMonitor が OFF で
  *       なければ、封印の前に主経路の対局を grp/games に記録する（{@link GameLogObserver}。記録はラベル行を変えず、失敗しても系譜を止めない）。
  *       phiMonitor = SCORE なら、封印の後（そこで止まらなければ）採点を頼む（{@link PhiScoring}。裏のスレッドで、待たない。
@@ -71,26 +71,26 @@ import org.slf4j.LoggerFactory;
  *   <li>運の精算: 生徒の行（コホート t の TRAIN のラベル行と根の記録、{@link Selection#LABELS_AND_ROOTS}）の帳簿で、半荘の偶奇で交差適合
  *       した β_c を当てる（{@link LedgerFit}）。和は収集の書き手が行を書くときに作り（{@link LedgerFit.Stream}）、使い回したコホートでは
  *       読み直して作る（どちらも同じ行を同じ順に足すので、β はビットで同じ）。
- *   <li>生徒（{@link #fitStudent}）: 版 t の learnFrom の網 θ_t から温め、生徒の行を 1 行 fitEpochs 周（上限 fitSteps 歩）当てる（{@link Fit}）。
+ *   <li>生徒（{@link #fitStudent}）: バージョン t の learnFrom の網 θ_t から温め、生徒の行を 1 行 fitEpochs 周（上限 fitSteps 歩）当てる（{@link Fit}）。
  *       教師は (1 − K′_t)·s_θt + K′_t·Ỹ（Ỹ は帳簿で補正した Y。帳簿のある行がなければ生の Y。錨は凍結した θ_t）、補助の頭の項も K′_t 倍
  *       （{@link Teacher}）、学習率は filterLrMode が K′_t から決める倍率（{@link FilterLrMode}: GAIN なら min(1, K′_t / 0.25)、FULL なら 1）。
  *       K′_t は前の反復で教師に掛けた補正の保留の R² の分だけ K_t を上げたゲイン（{@link PrismConfig#filterGain(int, double)}。最初の反復と補正を
  *       掛けなかった反復の次は K_t）。運の精算の当てはめ（CPU だけ）と並べて、全ての生徒の行の錨の s を GPU で出し（{@link AnchorScores}）、
  *       生徒を読んで学習器を温める（{@link Fit#prepare}）。work/&lt;t&gt;/Single に保存し、再開では使い回す。
- *   <li>方策の記憶（{@link #publish}）: averaging = none なら θ_{t+1} をそのまま版 t+1 にする。それ以外は打つ網を A_{t+1} = (1 − η)·A_t +
+ *   <li>方策の記憶（{@link #publish}）: averaging = none なら θ_{t+1} をそのままバージョン t+1 にする。それ以外は打つ網を A_{t+1} = (1 − η)·A_t +
  *       η·θ_{t+1}（{@link Averaging}、{@link PrismNetwork#mixIn}）にして、θ_{t+1} を iterate/ に添える。
- *   <li>reports/iterations.jsonl に 1 行、evalEvery 反復ごとに版 t+1 の打つ網（evaluateIterate なら学習の網も）を 3×Heuristic と打たせて
+ *   <li>reports/iterations.jsonl に 1 行、evalEvery 反復ごとにバージョン t+1 の打つ網（evaluateIterate なら学習の網も）を 3×Heuristic と打たせて
  *       evaluations.jsonl（{@link HeuristicEvaluation}）。どちらも state.json を進める前に書き、再開で同じ反復をやり直したときは書き終えた行を
  *       書き直さない（番号で引く。{@link RunFiles#recorded}）。それから state.json を進め、keepCohorts より古い行と work/&lt;t&gt; を消す。
- *   <li>x1n3 = ON なら、測っていない版（{@link X1n3Outputs#pending}。版 t+1 を含む）を古い順に x1n3 で測る（{@link #measure}）。
+ *   <li>x1n3 = ON なら、測っていないバージョン（{@link X1n3Outputs#pending}。バージョン t+1 を含む）を古い順に x1n3 で測る（{@link #measure}）。
  * </ol>
  *
  * 反復は iterations まで（stopAfter 回まで）回し、止まる合図（{@link StopSignal}）が立てば次の安全点で止まる: コホートの封印の後（{@link
- * SafePoint#SEALED}）、反復の後（{@link SafePoint#ITERATED}）、x1n3 の版ごとの後（{@link SafePoint#MEASURED}）。どこで止まっても（落ちても）
- * 再開は同じ結果に戻る: 封印したコホートと保存した生徒は使い回し、版の公開は差し替え、記録は番号で引いて書き直さず、x1n3 は .done のない版を
- * 初めから測る。版が公開されたのは state.json の next が進んだときだけ。
+ * SafePoint#SEALED}）、反復の後（{@link SafePoint#ITERATED}）、x1n3 のバージョンごとの後（{@link SafePoint#MEASURED}）。どこで止まっても（落ちても）
+ * 再開は同じ結果に戻る: 封印したコホートと保存した生徒は使い回し、バージョンの公開は差し替え、記録は番号で引いて書き直さず、x1n3 は .done のないバージョンを
+ * 初めから測る。バージョンが公開されたのは state.json の next が進んだときだけ。
  *
- * 版 1 は白紙の網（s ≡ 0 なので argmax p0 で打つ。網の初期値の種は seed + 100、形は {@link PrismConfig#shape}）。再開は state.json の次の
+ * バージョン 1 は白紙の網（s ≡ 0 なので argmax p0 で打つ。網の初期値の種は seed + 100、形は {@link PrismConfig#shape}）。再開は state.json の次の
  * コホートから。iterations.jsonl の鍵: iteration・phi（使った Φ の項目 {@link PhiEntry}）・ledgerR2Reset（R² を持ち越さなかった反復だけ、
  * 捨てた R²）・collection（{@link CollectionDriver.Result}）・copies・forks・collectSeconds・totalRows・
  * memory・labels・copyLabels・roots（{@link RowCounts}）・ledger（{@link LedgerFit.Report}）・filter・fitSingle（{@link FitResult}）・accepted・
@@ -115,10 +115,10 @@ public final class Lineage {
   /**
    * run の進み（state.json）。
    *
-   * @param next 次に収集するコホート（= 次に使う版）
+   * @param next 次に収集するコホート（= 次に使うバージョン）
    * @param totalRows これまでに集めた行の総数
    * @param accepted 学習の網を受け入れた反復の数（生徒 1 本なので全ての反復）
-   * @param averageWeight 方策の記憶の power の重みの累計（版 next まで。ほかの決め方では 0）
+   * @param averageWeight 方策の記憶の power の重みの累計（バージョン next まで。ほかの決め方では 0）
    * @param ledgerR2 前の反復で生徒の教師に掛けた運の精算の補正の保留の R²（掛けなければ 0）
    */
   record State(
@@ -174,7 +174,7 @@ public final class Lineage {
 
   /**
    * 反復を回す。資源（{@link TrainingResources}）と採点のスレッド（{@link PhiScoring}）は反復をまたいで 1 つずつ持つ。起動の初めに未採点の
-   * コホートの採点を頼み、測っていない版の x1n3 を測る。報告は 1 反復で 1 行。
+   * コホートの採点を頼み、測っていないバージョンの x1n3 を測る。報告は 1 反復で 1 行。
    */
   private int loop(int stopAfter) throws Exception {
     State state = loadOrInitialize();
@@ -216,7 +216,7 @@ public final class Lineage {
       report.put("ledgerR2Reset", ledgerR2);
       ledgerR2 = 0;
     }
-    // 1. 収集（版 t の b）と封印
+    // 1. 収集（バージョン t の b）と封印
     Collected collected = collect(t, resources, phi, report);
     if (stop.stopsAt(SafePoint.SEALED, t)) return null;
     scoring.request();
@@ -237,7 +237,7 @@ public final class Lineage {
           counts.holdout());
       ledgerR2 = learn(t, store, collected.ledger(), ledgerR2, report);
     }
-    // 4. 方策の記憶（版 t+1）
+    // 4. 方策の記憶（バージョン t+1）
     Averaging averaging = config.policyMemory();
     double averageWeight = publish(t, averaging, state.averageWeight(), report);
     // 5. 記録と評価を state.json より前に書く（再開で同じ反復をやり直したときは、書き終えた記録と評価を書き直さない）
@@ -276,10 +276,10 @@ public final class Lineage {
   }
 
   /**
-   * 測っていない版の x1n3 を古い順に測る（{@link X1n3Outputs#pending}。x1n3 = OFF なら何もしない）。版の前と後に止まる合図を見る（{@link
+   * 測っていないバージョンの x1n3 を古い順に測る（{@link X1n3Outputs#pending}。x1n3 = OFF なら何もしない）。バージョンの前と後に止まる合図を見る（{@link
    * SafePoint#MEASURED}）。
    *
-   * @param latest 公開した最新の版
+   * @param latest 公開した最新のバージョン
    * @return 合図で止まるなら false
    */
   private boolean measurePending(int latest, TrainingResources resources) throws IOException {
@@ -292,7 +292,7 @@ public final class Lineage {
   }
 
   /**
-   * 版 V の打つ網 1 席対 x1n3Opponent 3 席を x1n3Games 局打ち（{@link NanoTable}。学習の資源で打ち、Nano は {@value NanoTable#NANO_DEVICE}）、
+   * バージョン V の打つ網 1 席対 x1n3Opponent 3 席を x1n3Games 局打ち（{@link NanoTable}。学習の資源で打ち、Nano は {@value NanoTable#NANO_DEVICE}）、
    * x1n3Dir に書く（{@link X1n3Outputs}）。log は evaluate の出力と同じ文言の 3 行（started、evaluate play、complete）。Java の例外で測れ
    * なければ、log に失敗を書いて .failed にし、系譜は続ける。
    *
@@ -357,7 +357,7 @@ public final class Lineage {
   private record Collected(long rows, LedgerFit.Stream ledger) {}
 
   /**
-   * state.json を読む。なければ版 1 を書いて始める: 白紙の網（形は {@link PrismConfig#shape}、初期値の種は seed + 100）。
+   * state.json を読む。なければバージョン 1 を書いて始める: 白紙の網（形は {@link PrismConfig#shape}、初期値の種は seed + 100）。
    */
   private State loadOrInitialize() throws IOException {
     Path path = root.resolve("state.json");
@@ -374,7 +374,7 @@ public final class Lineage {
     try (Model blank = Fit.blank(config.shape(), Device.cpu(), config.seed() + BLANK_SEED)) {
       Snapshot.write(snapshot(1), (PrismNetwork) blank.getBlock(), PolicyParams.of(1));
     }
-    // 版 1 は学習の網と打つ網が同じ（iterate/ を持たない）。power の重みの累計は版 1 の分から始める
+    // バージョン 1 は学習の網と打つ網が同じ（iterate/ を持たない）。power の重みの累計はバージョン 1 の分から始める
     var state =
         new State(State.FORMAT, 1, 0, 0, config.policyMemory().step(1, 0).totalWeight(), 0);
     RunFiles.writeAtomically(path, GSON.toJson(state));
@@ -383,7 +383,7 @@ public final class Lineage {
 
   /**
    * コホート t を集めて封印する。封印済みなら使い回す（{@link CohortWriter#MANIFEST} がある）。途中のコホートは消して集め直す（その行で当てた
-   * work/&lt;t&gt; も消す）。方策は版 t の collectWith の網（{@link Snapshot#open}、p0 の係数は {@link
+   * work/&lt;t&gt; も消す）。方策はバージョン t の collectWith の網（{@link Snapshot#open}、p0 の係数は {@link
    * PrismConfig#priorSettings}）で、Cohort(seed, cohortSeed(seed, t), cohortGames(t, gamesPerCohort(t)), 効用, sampling(), behaviour()) を
    * 収集する。書き手は書いた行で運の精算の和を作る（{@link LedgerFit.Stream}）。受付とデバイスのパイプラインの計測（待ち・合成・空き）は
    * 収集の区間だけで測り、方策を閉じる前に記録に書く（{@link DecisionCollectionDiagnostics}）。
@@ -658,11 +658,11 @@ public final class Lineage {
   }
 
   /**
-   * 版 t+1 を書く。方策の記憶がなければ学習の網 θ_{t+1}（work/&lt;t&gt;/Single）をそのまま版 t+1 にする（ファイルの写し）。あれば打つ網を
+   * バージョン t+1 を書く。方策の記憶がなければ学習の網 θ_{t+1}（work/&lt;t&gt;/Single）をそのままバージョン t+1 にする（ファイルの写し）。あれば打つ網を
    * A_{t+1} = (1 − η)·A_t + η·θ_{t+1}（{@link Averaging#step}、{@link PrismNetwork#mixIn}、CPU・FP32）にして、θ_{t+1} と一緒に書く。
    *
-   * @param averageWeight 版 t までの power の重みの累計
-   * @return 版 t+1 までの power の重みの累計
+   * @param averageWeight バージョン t までの power の重みの累計
+   * @return バージョン t+1 までの power の重みの累計
    */
   private double publish(int t, Averaging averaging, double averageWeight, Map<String, Object> report)
       throws IOException {
@@ -693,7 +693,7 @@ public final class Lineage {
     return step.totalWeight();
   }
 
-  /** 版 version の網 net（打つ網か学習の網）を 3×Heuristic と打たせる（貪欲）。結果と対局の内訳。 */
+  /** バージョン version の網 net（打つ網か学習の網）を 3×Heuristic と打たせる（貪欲）。結果と対局の内訳。 */
   private Map<String, Object> evaluate(
       int version, Path net, String label, TrainingResources resources) throws IOException {
     var evaluation =
@@ -759,7 +759,7 @@ public final class Lineage {
     }
   }
 
-  /** 生徒の始めの網と錨: 版 t の learnFrom の網。 */
+  /** 生徒の始めの網と錨: バージョン t の learnFrom の網。 */
   private Path learnStart(int t) {
     return net(snapshot(t), config.learnFrom());
   }

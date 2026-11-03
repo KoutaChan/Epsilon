@@ -61,7 +61,7 @@ public final class HipBackend implements AutoCloseable {
     return layout;
   }
 
-  /** 写した重みの版（まだなら −1）。 */
+  /** 写した重みのバージョン（まだなら −1）。 */
   public long weightsVersion() {
     return plan.weightsVersion();
   }
@@ -83,7 +83,7 @@ public final class HipBackend implements AutoCloseable {
    *
    * @param batch 封じた塊（blob は直の ByteBuffer。推論ではページ固定）
    * @param out s を書く先（位置 0 から手の数の FP32、直の ByteBuffer）
-   * @param version 期待する網の版（写した版と違えば例外）
+   * @param version 期待する網のバージョン（写したバージョンと違えば例外）
    */
   public void submit(HostBatch batch, ByteBuffer out, long version) {
     plan.forward(batch.blob().duplicate().position(0), batchOf(batch), out.duplicate().position(0), version);
@@ -93,7 +93,7 @@ public final class HipBackend implements AutoCloseable {
    * 1 塊の s を計算して返す（積んで、待って、読む）。
    *
    * @param batch 封じた塊
-   * @param version 期待する網の版
+   * @param version 期待する網のバージョン
    * @return s（塊の手の順）
    */
   public float[] forward(HostBatch batch, long version) {

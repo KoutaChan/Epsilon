@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 版の網の 3×Heuristic の評価（train の評価）: 版の網を 1 席、Heuristic を 3 席に置き、各席の σ（網の
+ * バージョンの網の 3×Heuristic の評価（train の評価）: バージョンの網を 1 席、Heuristic を 3 席に置き、各席の σ（網の
  * 方策は貪欲）で evalGames 局打つ（{@link Arena#duel}。牌山の種は seed ^ {@link Arena#EVALUATION_SALT}、半荘 ID は {@link
  * Arena#HEURISTIC_BASE} から）。
  *
@@ -28,7 +28,7 @@ public record HeuristicEvaluation(Arena.Result heuristic, Map<String, Object> pl
   private static final Gson LINES = new GsonBuilder().serializeSpecialFloatingPointValues().create();
 
   /**
-   * 版 snapshot の網 net（打つ網か学習の網）を評価する（{@link Snapshot#open}）。
+   * バージョン snapshot の網 net（打つ網か学習の網）を評価する（{@link Snapshot#open}）。
    *
    * @param devices 推論のデバイス
    */
@@ -79,7 +79,7 @@ public record HeuristicEvaluation(Arena.Result heuristic, Map<String, Object> pl
   /**
    * ログの集計の 1 行。
    *
-   * @param label 版の番号に添える名前（打つ網は空）
+   * @param label バージョン番号に添える名前（打つ網は空）
    */
   public String summary(int version, String label) {
     return String.format(
@@ -102,7 +102,7 @@ public record HeuristicEvaluation(Arena.Result heuristic, Map<String, Object> pl
   /**
    * ログの内訳の 1 行。
    *
-   * @param label 版の番号に添える名前（打つ網は空）
+   * @param label バージョン番号に添える名前（打つ網は空）
    */
   public String playSummary(int version, String label) {
     return "version " + version + label + " play " + LINES.toJson(play);

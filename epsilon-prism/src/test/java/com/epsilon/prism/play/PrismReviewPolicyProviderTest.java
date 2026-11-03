@@ -25,7 +25,7 @@ import java.util.SplittableRandom;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 牌譜解析の接続: 観測だけから求めた種別・類が収集と同じになり、網の版を開いて実際の判断を評価できる（CPU）。 */
+/** 牌譜解析の接続: 観測だけから求めた種別・類が収集と同じになり、網のバージョンを開いて実際の判断を評価できる（CPU）。 */
 public class PrismReviewPolicyProviderTest {
   @Test
   public void observationClassificationMatchesCollection() {
@@ -70,7 +70,7 @@ public class PrismReviewPolicyProviderTest {
     Assert.assertTrue(postCalls > 20, "post-call discards " + postCalls);
   }
 
-  /** 網の版を開いて実際の判断を評価する（CPU は FP32 の eager）。重みを動かした網で、手の値が 0 でないことも見る。 */
+  /** 網のバージョンを開いて実際の判断を評価する（CPU は FP32 の eager）。重みを動かした網で、手の値が 0 でないことも見る。 */
   @Test(timeOut = 300_000)
   public void snapshotEvaluatesRealDecisions() throws Exception {
     Path root = Files.createTempDirectory("prism-review");
@@ -90,7 +90,7 @@ public class PrismReviewPolicyProviderTest {
   /** 評価した判断（手が 2 つ以上）の数と、手の値の絶対値の最大。 */
   private record Evaluated(int decisions, float maxAbsValue) {}
 
-  /** 版を牌譜解析の口で開き、エンジンの半荘を最善手で進めながら 8 つ以上の判断を評価する（確率の和・最善手の損 0 を見る）。 */
+  /** バージョンを牌譜解析の口で開き、エンジンの半荘を最善手で進めながら 8 つ以上の判断を評価する（確率の和・最善手の損 0 を見る）。 */
   private static Evaluated evaluateRealDecisions(Path snapshot) {
     var provider = new PrismReviewPolicyProvider();
     Assert.assertEquals(provider.seriesId(), "epsilon-prism");

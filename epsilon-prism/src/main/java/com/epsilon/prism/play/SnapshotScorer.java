@@ -23,13 +23,13 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * 公開した版（snapshots/&lt;t&gt;）を開き、1 判断ずつ同期で s（合法手ごとの網の出力、効用の単位）を求める（牌譜解析）。差分整合の KL の基準は
+ * 公開したバージョン（snapshots/&lt;t&gt;）を開き、1 判断ずつ同期で s（合法手ごとの網の出力、効用の単位）を求める（牌譜解析）。差分整合の KL の基準は
  * C の上の一様分布なので s = 手の価値 + 判断ごとの定数で、同じ判断の手どうしの差が価値の差になる。
  *
- * <p>バッチの上限と p0 の係数は設定の [epsilon.prism]（evaluate と同じ）、device は epsilon.devices.inference から読む。実行文脈は版ごとに持ち、
+ * <p>バッチの上限と p0 の係数は設定の [epsilon.prism]（evaluate と同じ）、device は epsilon.devices.inference から読む。実行文脈はバージョンごとに持ち、
  * {@link #close} で網と一緒に閉じる（{@link Snapshot#open}。CPU は FP32 の eager）。
  *
- * <p>網の方策は記録 O だけを読むので、呼んだスレッドで O を捕捉して渡す（収集と同じ {@link PolicyRequest#capture}）。書き手と置き場はこの版の
+ * <p>網の方策は記録 O だけを読むので、呼んだスレッドで O を捕捉して渡す（収集と同じ {@link PolicyRequest#capture}）。書き手と置き場はこのバージョンの
  * 持ち物で、1 判断ずつ使い直す（{@link #scores} は同時に 1 つだけ走る）。
  */
 public final class SnapshotScorer implements AutoCloseable {

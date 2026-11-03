@@ -3,22 +3,22 @@ package com.epsilon.prism.run;
 import com.epsilon.prism.model.PrismNetwork;
 
 /**
- * 方策の記憶: 打つ網 A を学習の網 θ の重み付きの平均にする決め方。版 v を公開するたびに A_v = (1 − η_v)·A_{v−1} + η_v·θ_v とする
+ * 方策の記憶: 打つ網 A を学習の網 θ の重み付きの平均にする決め方。バージョン v を公開するたびに A_v = (1 − η_v)·A_{v−1} + η_v·θ_v とする
  * （{@link PrismNetwork#mixIn}）。
  *
  * <ul>
  *   <li>{@value #NONE}: 平均しない（η = 1、A = θ）。
- *   <li>{@value #EMA}: 指数移動平均。η = 1 − 2^{−1/halfLife}（版 halfLife 個前の重みが半分になる）。
- *   <li>{@value #POWER}: 版 k（平均の始まりからの番号、始まりの版が 1）の重みを k^power とした平均。η_k = k^power / Σ_{j≤k} j^power。
+ *   <li>{@value #EMA}: 指数移動平均。η = 1 − 2^{−1/halfLife}（バージョン halfLife 個前の重みが半分になる）。
+ *   <li>{@value #POWER}: バージョン k（平均の始まりからの番号、始まりのバージョンが 1）の重みを k^power とした平均。η_k = k^power / Σ_{j≤k} j^power。
  *       power = 0 は一様な平均（CFR の平均方策）、power = 1 は線形 CFR の重み。
  * </ul>
  *
- * from より前の版は平均しない（A = θ）。版 from で平均が始まり、そのときの A は θ_from そのもの（η = 1）。
+ * from より前のバージョンは平均しない（A = θ）。バージョン from で平均が始まり、そのときの A は θ_from そのもの（η = 1）。
  *
  * @param scheme {@value #NONE}・{@value #EMA}・{@value #POWER}
- * @param halfLife ema の半減期（版の数、正）
+ * @param halfLife ema の半減期（バージョンの数、正）
  * @param power power の指数（0 以上）
- * @param from 平均を始める版（1 以上）
+ * @param from 平均を始めるバージョン（1 以上）
  */
 public record Averaging(String scheme, double halfLife, double power, int from) {
   public static final String NONE = "none", EMA = "ema", POWER = "power";
@@ -41,7 +41,7 @@ public record Averaging(String scheme, double halfLife, double power, int from) 
   }
 
   /**
-   * 版 version を公開するときの混ぜる割合と、power の重みの累計。
+   * バージョン version を公開するときの混ぜる割合と、power の重みの累計。
    *
    * @param eta A_version = (1 − eta)·A_{version−1} + eta·θ_version の eta（1 なら A = θ）
    * @param totalWeight power の重みの累計 Σ_{j≤k} j^power（ほかの決め方では 0）
@@ -49,9 +49,9 @@ public record Averaging(String scheme, double halfLife, double power, int from) 
   public record Step(double eta, double totalWeight) {}
 
   /**
-   * 版 version の Step。
+   * バージョン version の Step。
    *
-   * @param totalWeight 版 version − 1 までの重みの累計（{@link Step#totalWeight}。始まりの前は 0）
+   * @param totalWeight バージョン version − 1 までの重みの累計（{@link Step#totalWeight}。始まりの前は 0）
    */
   public Step step(int version, double totalWeight) {
     if (!enabled() || version <= from) {

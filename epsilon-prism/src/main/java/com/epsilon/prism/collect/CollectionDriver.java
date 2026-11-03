@@ -33,7 +33,7 @@ import java.util.function.Consumer;
 /**
  * 収集のイベントループ。帳簿だけを扱い、対局の進行・符号化・GRP・保存はほかのスレッドに任せる。
  *
- * <p>流れ: 進行ワーカーが境界まで進める → 非同期の方策の問い合わせを版と受付の区分（{@link PolicyService#admissionKey}）ごとにまとめて評価器へ →
+ * <p>流れ: 進行ワーカーが境界まで進める → 非同期の方策の問い合わせをバージョンと受付の区分（{@link PolicyService#admissionKey}）ごとにまとめて評価器へ →
  * 結果がそろった run を進行ワーカーへ戻す。局末は Φ に渡し、値が返ったらその局の枠（ラベル行・根の記録）に渡す。新しい半荘の開始だけを上限で
  * 止める。写しと分岐は作った仕事の中で深さ優先に進め、走っている進行として数える。
  */
@@ -51,7 +51,7 @@ public final class CollectionDriver implements AutoCloseable {
   /** 書き終えていない行がこれを超えたら新しい半荘を始めない。 */
   private static final long ROW_BACKLOG = 500_000;
 
-  /** 半荘ごとの席の方策。評価で使う（収集では全席が同じ版）。 */
+  /** 半荘ごとの席の方策。評価で使う（収集では全席が同じバージョン）。 */
   @FunctionalInterface
   public interface SeatPolicies {
     PolicyService[] seats(long gameId);

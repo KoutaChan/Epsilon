@@ -30,10 +30,10 @@ public final class RunFiles {
   /** 反復ごとの記録の名前。 */
   public static final String ITERATIONS = "iterations.jsonl";
 
-  /** 版の評価の記録の名前。 */
+  /** バージョンの評価の記録の名前。 */
   public static final String EVALUATIONS = "evaluations.jsonl";
 
-  /** 公開した版を並べるディレクトリの名前（root/snapshots/&lt;5 桁の版の番号&gt;）。 */
+  /** 公開したバージョンを並べるディレクトリの名前（root/snapshots/&lt;5 桁のバージョン番号&gt;）。 */
   public static final String SNAPSHOTS = "snapshots";
 
   /** jsonl は 1 行 1 記録。 */
@@ -48,12 +48,12 @@ public final class RunFiles {
     reports = root.resolve("reports");
   }
 
-  /** run の版 version のディレクトリ。 */
+  /** run のバージョン version のディレクトリ。 */
   public static Path snapshot(Path root, int version) {
     return root.resolve(SNAPSHOTS).resolve(String.format("%05d", version));
   }
 
-  /** run の最新の版: root/snapshots の、{@value Snapshot#POLICY} まで書き終わった版のうち番号が最も大きいもの。 */
+  /** run の最新のバージョン: root/snapshots の、{@value Snapshot#POLICY} まで書き終わったバージョンのうち番号が最も大きいもの。 */
   public static Path latestSnapshot(Path root) throws IOException {
     Path snapshots = root.resolve(SNAPSHOTS);
     if (!Files.isDirectory(snapshots)) {

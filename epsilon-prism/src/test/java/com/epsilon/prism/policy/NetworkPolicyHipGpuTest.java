@@ -25,8 +25,8 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * HIP の方策と eager の方策の s の一致（rocm の組。GPU 1 枚）。同じ版（-Dprism.snapshot。なければ標準の形・深さ 2 の網に乱数を足した
- * 版）を 2 つの推論の道で開き、種の違う半荘を並べた同じ受け付けを両方に問い、s の差（HIP − eager）の中央値・p99・最大・手の役割ごとの
+ * HIP の方策と eager の方策の s の一致（rocm の組。GPU 1 枚）。同じバージョン（-Dprism.snapshot。なければ標準の形・深さ 2 の網に乱数を足した
+ * バージョン）を 2 つの推論の道で開き、種の違う半荘を並べた同じ受け付けを両方に問い、s の差（HIP − eager）の中央値・p99・最大・手の役割ごとの
  * 符号つきの平均と argmax の一致率を、{@link HipParity} の基準で出す。
  *
  * <p>乱数の網では eager の BF16 の丸めの差が大きく、基準と比べる意味が薄い。だから基準の合否は記録に書くだけにし、試験が求めるのは、HIP の道で

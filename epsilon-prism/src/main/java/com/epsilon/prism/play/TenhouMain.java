@@ -12,9 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 公開した版（snapshots/&lt;t&gt;）で天鳳の個室を打つ。手は版の s の貪欲（{@link GreedyPlayer}）。
+ * 公開したバージョン（snapshots/&lt;t&gt;）で天鳳の個室を打つ。手はバージョンの s の貪欲（{@link GreedyPlayer}）。
  *
- * <p>引数は共通の天鳳クライアント（{@link TenhouClient.Options}。{@code --checkpoint} は版のディレクトリ）に、{@code --settings &lt;toml&gt;}
+ * <p>引数は共通の天鳳クライアント（{@link TenhouClient.Options}。{@code --checkpoint} はバージョンのディレクトリ）に、{@code --settings &lt;toml&gt;}
  * （系列の設定。既定は同梱）と {@code --device &lt;cpu|gpu:0&gt;}（epsilon.devices.inference。既定 cpu、CPU は FP32 の eager）を足す。
  */
 public final class TenhouMain {

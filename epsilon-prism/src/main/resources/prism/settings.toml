@@ -6,7 +6,7 @@
 # trueなら明示したGPU番号が認識された範囲内か事前確認する。falseでも指定書式は検証される。
 validateIndices = false
 
-# 版を開く既定の device。空ならGPUを番号順に全て使い、GPUがなければCPU。cpu・gpu:0・gpu:0,gpu:1 のように書く。
+# バージョンを開く既定の device。空ならGPUを番号順に全て使い、GPUがなければCPU。cpu・gpu:0・gpu:0,gpu:1 のように書く。
 inference = ""
 
 # play-riichi（RiichiLab のランク戦）の接続と実行の設定。
@@ -15,7 +15,7 @@ inference = ""
 # RiichiLab の接続 token。空なら未設定で、接続にはローカルの設定での指定が要る。token を含む設定は commit しない。
 token = ""
 
-# 打つ版のディレクトリ（snapshots/<版>）か run のディレクトリ（その最新の版）。相対パスは起動ディレクトリが基準。
+# 打つバージョンのディレクトリ（snapshots/<バージョン>）か run のディレクトリ（その最新のバージョン）。相対パスは起動ディレクトリが基準。
 checkpointDir = "runs/prism-v2b"
 
 # 完了する対局数の上限。0 なら止めるまで次の対局へ参加する。
@@ -88,7 +88,7 @@ priorGamma = 0.05
 
 # 網。learnerDevice は先頭が正本で、残りはデータ並列の複製
 learnerDevice = "gpu1,gpu0"
-# 版 1 の白紙の網の形: 背骨の層の数（2 か 3。幅は H 256・F 512・G 256）と、前線の腕（候補層が前線の特徴も読む）か
+# バージョン 1 の白紙の網の形: 背骨の層の数（2 か 3。幅は H 256・F 512・G 256）と、前線の腕（候補層が前線の特徴も読む）か
 depth = 2
 frontier = false
 # 補助の頭の重み: 読みの頭 α_o と候補の結果の頭 α_r
@@ -110,8 +110,8 @@ lambdaDiscard = 0.01
 lambdaCommit = 0.02
 
 # 方策の記憶: 打つ網 A を学習の網 θ の重み付きの平均にする（A_v = (1 − η)·A_{v−1} + η·θ_v）。
-#   averaging = "none"（平均しない）、"ema"（η = 1 − 2^(−1/averageHalfLife)）、"power"（版 k の重み k^averagePower、0 で一様、1 で線形 CFR）
-#   averageFrom: 平均を始める版。collectWith: 収集で打つ網（"average" か "iterate"）。learnFrom: 生徒を始める網と TEMPO の錨（"iterate" か
+#   averaging = "none"（平均しない）、"ema"（η = 1 − 2^(−1/averageHalfLife)）、"power"（バージョン k の重み k^averagePower、0 で一様、1 で線形 CFR）
+#   averageFrom: 平均を始めるバージョン。collectWith: 収集で打つ網（"average" か "iterate"）。learnFrom: 生徒を始める網と TEMPO の錨（"iterate" か
 #   "average"）。evaluateIterate: 打つ網に加えて学習の網も 3×Heuristic で測る
 averaging = "none"
 averageHalfLife = 8.0
@@ -185,8 +185,8 @@ grpTrustGames = 131072
 evalEvery = 1
 evalGames = 8192
 
-# x1n3: 版が x1n3Every の倍数（x1n3From 以上）のたびに、系譜の中でその版の打つ網 1 席対 x1n3Opponent 3 席を x1n3Games 局打ち、x1n3Dir に
-# v<版>-x1n3.tsv・.log・.done を書く（"OFF"・"ON"）。相手は "heuristic" か "nano:<Nano の checkpoint の絶対パス>"（Nano は gpu:0）。
+# x1n3: バージョンが x1n3Every の倍数（x1n3From 以上）のたびに、系譜の中でそのバージョンの打つ網 1 席対 x1n3Opponent 3 席を x1n3Games 局打ち、x1n3Dir に
+# v<バージョン>-x1n3.tsv・.log・.done を書く（"OFF"・"ON"）。相手は "heuristic" か "nano:<Nano の checkpoint の絶対パス>"（Nano は gpu:0）。
 # パスは絶対パス（~ は展開しない）で、ON では相手と出力先が要る
 x1n3 = "OFF"
 x1n3Every = 8

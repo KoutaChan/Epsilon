@@ -12,7 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 本番の符号化の道を通す inline でない試験の方策。網の版の方策（{@link NetworkPolicy}）と同じく問い合わせが運ぶ記録 O だけを読み
+ * 本番の符号化の道を通す inline でない試験の方策。網のバージョンの方策（{@link NetworkPolicy}）と同じく問い合わせが運ぶ記録 O だけを読み
  * （{@link #readsRecord}。O は収集の進行のスレッドが捕捉する）、受け付けを {@link BatchEncoder} で付け・計画・符号化し（本番の HIP と同じ詰めた
  * トークンの上限なし）、{@link Encoding#answer} で s・p0・σ を書く。網の代わりに、s は符号化した行のハッシュ（{@link RowTokens#row}）と
  * 手の位置だけで決まる値にする。だから s は塊の組み方に依らず、収集は決定的で、入力のバイトが変われば打ち方も変わる。
@@ -68,7 +68,7 @@ public final class ServedGoldenPolicy implements PolicyService {
     return true;
   }
 
-  /** 網の版の方策と同じく、全ての行を 1 つの区分で受け付ける。 */
+  /** 網のバージョンの方策と同じく、全ての行を 1 つの区分で受け付ける。 */
   @Override
   public Capacity admissionKey(PolicyRequest request) {
     return Capacity.SINGLE_TRANSITION;

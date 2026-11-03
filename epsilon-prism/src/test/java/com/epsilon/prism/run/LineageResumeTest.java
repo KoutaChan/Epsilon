@@ -20,8 +20,8 @@ import org.testng.annotations.Test;
 
 /**
  * 系譜の止め方と再開（CPU）: score-rank の Φ・1 コホート 1 局・x1n3 は 3×Heuristic の卓 2 局で、3 つの安全点（封印の後・反復の後・x1n3 の後）で
- * 止めては起動し直し、落ちた跡（state.json の前の落ち・x1n3 の途中・書きかけの記録の行・集めかけのコホート）と .failed の版を置いてから最後まで
- * 回す。どこで止めても、記録・評価・x1n3 は版ごとにちょうど 1 回で、測った x1n3 は測り直さない。
+ * 止めては起動し直し、落ちた跡（state.json の前の落ち・x1n3 の途中・書きかけの記録の行・集めかけのコホート）と .failed のバージョンを置いてから最後まで
+ * 回す。どこで止めても、記録・評価・x1n3 はバージョンごとにちょうど 1 回で、測った x1n3 は測り直さない。
  */
 public class LineageResumeTest {
 
@@ -30,18 +30,18 @@ public class LineageResumeTest {
     Path run = Files.createTempDirectory("prism-resume");
     Path x1n3 = Files.createTempDirectory("prism-x1n3").toAbsolutePath();
     try {
-      // 封印の後: コホート 1 は封印済み、版 2 はまだない
+      // 封印の後: コホート 1 は封印済み、バージョン 2 はまだない
       Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.SEALED, 1)), 0);
       Assert.assertEquals(next(run), 1);
       Assert.assertTrue(Files.exists(CohortWriter.directory(run, 1).resolve(CohortWriter.MANIFEST)));
       Assert.assertFalse(Files.exists(run.resolve("reports/iterations.jsonl")));
       Assert.assertFalse(Files.exists(RunFiles.snapshot(run, 2)));
-      // 反復の後: 封印したコホートを使い回して版 2 を公開し、x1n3 の前に止まる
+      // 反復の後: 封印したコホートを使い回してバージョン 2 を公開し、x1n3 の前に止まる
       Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.ITERATED, 1)), 0);
       Assert.assertEquals(next(run), 2);
       Assert.assertEquals(lines(run.resolve("reports/iterations.jsonl")).get(0).get("collection").getAsString(), "reused the sealed cohort");
       Assert.assertFalse(new X1n3Outputs(x1n3, 2).settled());
-      // x1n3 の後: 起動時に版 2 を測って止まる
+      // x1n3 の後: 起動時にバージョン 2 を測って止まる
       Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.MEASURED, 2)), 0);
       Assert.assertEquals(next(run), 2);
       var v2 = new X1n3Outputs(x1n3, 2);
@@ -54,7 +54,7 @@ public class LineageResumeTest {
       Assert.assertEquals(Lineage.run(run, Integer.MAX_VALUE, settings(x1n3), StopSignal.at(SafePoint.ITERATED, 2)), 0);
       Assert.assertEquals(next(run), 3);
       Files.writeString(run.resolve("state.json"), before);
-      // 版 3 の x1n3 の途中で落ちた跡、版 4 は測れなかった印、書きかけの記録の行、集めかけのコホート 3
+      // バージョン 3 の x1n3 の途中で落ちた跡、バージョン 4 は測れなかった印、書きかけの記録の行、集めかけのコホート 3
       var v3 = new X1n3Outputs(x1n3, 3);
       Files.writeString(v3.running(), "1\n");
       Files.writeString(v3.tsv().resolveSibling(v3.tsv().getFileName() + ".tmp"), "partial");
@@ -94,7 +94,7 @@ public class LineageResumeTest {
     }
   }
 
-  /** 版の x1n3 が書き終わっている: .done があり .running はなく、tsv は 1 半荘 1 行、log は evaluate と同じ文言の 3 行。 */
+  /** バージョンの x1n3 が書き終わっている: .done があり .running はなく、tsv は 1 半荘 1 行、log は evaluate と同じ文言の 3 行。 */
   private static void assertMeasured(X1n3Outputs outputs) throws Exception {
     Assert.assertTrue(Files.exists(outputs.done()), outputs.done().toString());
     Assert.assertFalse(Files.exists(outputs.running()));
@@ -111,7 +111,7 @@ public class LineageResumeTest {
         log);
   }
 
-  /** CPU で回る小さな系譜（LineageSmokeTest と同じ形、方策の記憶なし）に、版 2 から毎版の x1n3（3×Heuristic、2 局）。 */
+  /** CPU で回る小さな系譜（LineageSmokeTest と同じ形、方策の記憶なし）に、バージョン 2 からバージョンごとの x1n3（3×Heuristic、2 局）。 */
   private static SettingsLoader settings(Path x1n3) {
     String[] pairs = {
       "phiSource", "SCORE_RANK", "phiMonitor", "OFF", "phiDrift", "OFF", "gamesPerCohort", "1",

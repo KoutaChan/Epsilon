@@ -23,14 +23,14 @@ import java.util.Objects;
 import java.util.stream.Stream;
 
 /**
- * 網の版のディレクトリ（系譜の snapshots/&lt;t&gt; と refit の out/snapshot）。
+ * 網のバージョンのディレクトリ（系譜の snapshots/&lt;t&gt; と refit の out/snapshot）。
  *
  * <pre>
  * m0/            打つ網の重み（weights.bin と model.json。architecture は epsilon-prism-v2）。方策の記憶があれば平均の網 A
  * iterate/       学習の網 θ（方策の記憶があるときだけ。なければ m0 が θ）
  * average.json   方策の記憶の記録（{@link AverageRecord}。方策の記憶があるときだけ）
- * policy.json    版の番号（{@link PolicyParams}）
- * fit.json       refit の版を作った当てはめの記録（{@link FitRecord}: 行・コホート・計画・結果。系譜の版は持たず、記録は iterations.jsonl）
+ * policy.json    バージョン番号（{@link PolicyParams}）
+ * fit.json       refit のバージョンを作った当てはめの記録（{@link FitRecord}: 行・コホート・計画・結果。系譜のバージョンは持たず、記録は iterations.jsonl）
  * </pre>
  *
  * 対局・評価・牌譜解析は m0 を読む（{@link #open}）。学習の続きは {@link #iterate} を読む。書くときは &lt;t&gt;.tmp に全てを書いてから
@@ -54,14 +54,14 @@ public final class Snapshot {
    * 方策の記憶の記録。
    *
    * @param scheme {@link Averaging#scheme}
-   * @param eta この版で学習の網を混ぜた割合（1 なら平均の網 = 学習の網）
+   * @param eta このバージョンで学習の網を混ぜた割合（1 なら平均の網 = 学習の網）
    * @param totalWeight power の重みの累計
-   * @param from 平均を始めた版
+   * @param from 平均を始めたバージョン
    */
   public record AverageRecord(String scheme, double eta, double totalWeight, int from) {}
 
   /**
-   * 版を作った当てはめの記録。
+   * バージョンを作った当てはめの記録。
    *
    * @param rows 行を読んだ run のディレクトリ（行は rows-v2/&lt;t&gt;）
    * @param firstCohort 学んだ最初のコホート
@@ -90,10 +90,10 @@ public final class Snapshot {
   }
 
   /**
-   * 読んだ版（{@link #load}）。
+   * 読んだバージョン（{@link #load}）。
    *
    * @param network 打つ網
-   * @param params 版の番号
+   * @param params バージョン番号
    * @param fit 当てはめの記録
    */
   public record Loaded(PrismNetwork network, PolicyParams params, FitRecord fit) {}
@@ -121,7 +121,7 @@ public final class Snapshot {
   }
 
   /**
-   * 版の打つ網 m0 を推論用に開く（貪欲 = s の argmax。{@link #open(Path, Path, List, PolicyExecutionContext, int, PriorSettings,
+   * バージョンの打つ網 m0 を推論用に開く（貪欲 = s の argmax。{@link #open(Path, Path, List, PolicyExecutionContext, int, PriorSettings,
    * InferencePath)}）。
    *
    * @param prior retain と s の最大が同点の問い合わせに書く p0 の係数
@@ -139,7 +139,7 @@ public final class Snapshot {
   }
 
   /**
-   * 版 snapshot の網 net（{@link #model} か {@link #iterate}）を推論用に開く（{@link NetworkPolicy}）。番号は版のもの。
+   * バージョン snapshot の網 net（{@link #model} か {@link #iterate}）を推論用に開く（{@link NetworkPolicy}）。番号はバージョンのもの。
    *
    * @param prior retain と s の最大が同点の問い合わせに書く p0 の係数
    * @param inference 網の推論の道（{@link PrismConfig#inference}）
@@ -158,11 +158,11 @@ public final class Snapshot {
   }
 
   /**
-   * 当てはめの記録つきの版を読む。網の形式と入力・頭の指紋は {@link PrismNetwork#load} が照らす。
+   * 当てはめの記録つきのバージョンを読む。網の形式と入力・頭の指紋は {@link PrismNetwork#load} が照らす。
    *
-   * @param snapshot 版のディレクトリ
+   * @param snapshot バージョンのディレクトリ
    * @param manager 網のパラメーターの管理元
-   * @return 読んだ版
+   * @return 読んだバージョン
    * @throws IOException 読めないか、当てはめの記録がないとき
    */
   public static Loaded load(Path snapshot, NDManager manager) throws IOException {
@@ -179,7 +179,7 @@ public final class Snapshot {
     return new Loaded(PrismNetwork.load(model(snapshot), manager), params, fit);
   }
 
-  /** 版を書く（m0 と policy.json）。&lt;t&gt;.tmp に全てを書いてから &lt;t&gt; へ rename する。rename の前に止まった版の残りがあれば消してから書く。 */
+  /** バージョンを書く（m0 と policy.json）。&lt;t&gt;.tmp に全てを書いてから &lt;t&gt; へ rename する。rename の前に止まったバージョンの残りがあれば消してから書く。 */
   public static void write(Path snapshot, PrismNetwork network, PolicyParams params)
       throws IOException {
     Path temporary = temporary(snapshot);
@@ -189,7 +189,7 @@ public final class Snapshot {
   }
 
   /**
-   * 当てはめの記録つきの版を書く（m0・policy.json・fit.json。refit の版）。書き方は {@link #write(Path, PrismNetwork,
+   * 当てはめの記録つきのバージョンを書く（m0・policy.json・fit.json。refit のバージョン）。書き方は {@link #write(Path, PrismNetwork,
    * PolicyParams)} と同じ。
    */
   public static void write(Path snapshot, PrismNetwork network, PolicyParams params, FitRecord fit)
@@ -211,7 +211,7 @@ public final class Snapshot {
   }
 
   /**
-   * 保存済みの網のディレクトリ（weights.bin と model.json）をそのまま版 to として書く（番号は params）。方策の記憶のない反復の公開に使う。網は
+   * 保存済みの網のディレクトリ（weights.bin と model.json）をそのままバージョン to として書く（番号は params）。方策の記憶のない反復の公開に使う。網は
    * 読まずにファイルを写すので、重みはビット単位で同じ。
    */
   public static void writeFiles(Path modelDirectory, Path to, PolicyParams params)
@@ -225,7 +225,7 @@ public final class Snapshot {
   }
 
   /**
-   * 方策の記憶つきの版を書く: 学習の網（保存済みの網のディレクトリ iterateDirectory をファイルのまま写す）を iterate/ に、平均の網 average を
+   * 方策の記憶つきのバージョンを書く: 学習の網（保存済みの網のディレクトリ iterateDirectory をファイルのまま写す）を iterate/ に、平均の網 average を
    * m0 に、記録を average.json に書く。
    */
   public static void writeAveraged(
@@ -261,7 +261,7 @@ public final class Snapshot {
     return temporary;
   }
 
-  /** &lt;t&gt;.tmp を &lt;t&gt; に差し替える（再開で同じ版を作り直すことがある）。 */
+  /** &lt;t&gt;.tmp を &lt;t&gt; に差し替える（再開で同じバージョンを作り直すことがある）。 */
   private static void publish(Path temporary, Path snapshot) throws IOException {
     if (Files.exists(snapshot)) deleteTree(snapshot);
     Files.move(temporary, snapshot, StandardCopyOption.ATOMIC_MOVE);

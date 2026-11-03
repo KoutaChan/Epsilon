@@ -57,15 +57,15 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * 網の版の方策（CPU、FP32、小さな網）。
+ * 網のバージョンの方策（CPU、FP32、小さな網）。
  *
  * <ul>
- *   <li>乱数で動かした網の版を {@link Snapshot#open} で開くと網の方策になり、種の違う半荘を並べた受け付けの s が、同じ O を
+ *   <li>乱数で動かした網のバージョンを {@link Snapshot#open} で開くと網の方策になり、種の違う半荘を並べた受け付けの s が、同じ O を
  *       同じ並びの 1 つの塊にして直に順伝播した s とビットで同じ。詰めたトークンの上限で塊を分けても（S の順に並べ替える）、問い合わせごとの s は
  *       変わらない（塊の組み方の丸めの差だけ。行どうしが混ざらない＝入力の書き手と網が関係の属性の並びの約束を共有している）。p0 は Nano の符号化の
  *       遷移特徴（{@link R0Features}）から {@link Prior} で求めた参照とビットで同じで、σ は貪欲の one-hot。受付の区分は 1 つで、受け付けには鳴きの
  *       行も混ざる（{@link NetworkPolicy#admissionKey}）。
- *   <li>白紙の版（s ≡ 0。p0 の最大で打つ）で evaluate が数局を打ち終え、半荘ごとの結果を書く。
+ *   <li>白紙のバージョン（s ≡ 0。p0 の最大で打つ）で evaluate が数局を打ち終え、半荘ごとの結果を書く。
  * </ul>
  */
 public class NetworkPolicyTest {
@@ -216,9 +216,9 @@ public class NetworkPolicyTest {
   }
 
   /**
-   * 白紙（perturbed なら全てのパラメーターに乱数を足した）網の版を書く（版の番号は 1）。
+   * 白紙（perturbed なら全てのパラメーターに乱数を足した）網のバージョンを書く（バージョン番号は 1）。
    *
-   * @param snapshot 版のディレクトリ
+   * @param snapshot バージョンのディレクトリ
    * @param shape 網の形
    * @param perturbed 乱数を足すなら true
    */

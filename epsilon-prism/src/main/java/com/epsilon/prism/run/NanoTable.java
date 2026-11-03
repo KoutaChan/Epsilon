@@ -18,7 +18,7 @@ import java.nio.file.Path;
  * Arena#EVALUATION_SALT}、半荘 ID は {@link Arena#HEURISTIC_BASE} から）。evaluate と系譜の x1n3 が、打ち手の書き方・半荘ごとの記録・集計の行を
  * ここで共有する。
  *
- * <p>打ち手の書き方: 版のディレクトリ（PRISM の打つ網。{@link Snapshot#open}）、{@value #HEURISTIC}（規則の打ち手）、{@value #NANO}DIR
+ * <p>打ち手の書き方: バージョンのディレクトリ（PRISM の打つ網。{@link Snapshot#open}）、{@value #HEURISTIC}（規則の打ち手）、{@value #NANO}DIR
  * （Epsilon-Nano の Decision チェックポイント。測定専用）。
  */
 public final class NanoTable {
@@ -38,7 +38,7 @@ public final class NanoTable {
   private NanoTable() {}
 
   /**
-   * 版 snapshot の打つ網 1 席対 opponent 3 席で games 局打つ。網の推論は config の収集のデバイス・バッチ・推論の道。
+   * バージョン snapshot の打つ網 1 席対 opponent 3 席で games 局打つ。網の推論は config の収集のデバイス・バッチ・推論の道。
    *
    * @param stats 局と判断の内訳を足す先
    */
@@ -67,7 +67,7 @@ public final class NanoTable {
     }
   }
 
-  /** 打ち手の書き方から方策を開く（{@value #HEURISTIC}・{@value #NANO}DIR・版のディレクトリ）。 */
+  /** 打ち手の書き方から方策を開く（{@value #HEURISTIC}・{@value #NANO}DIR・バージョンのディレクトリ）。 */
   public static PolicyService open(
       String name, PrismConfig config, PolicyExecutionContext execution, String nanoDevice)
       throws IOException {

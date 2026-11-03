@@ -27,12 +27,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 1 つの版の方策。問い合わせが運ぶ記録 O（出す側が捕捉する。{@link #readsRecord}）から
+ * 1 つのバージョンの方策。問い合わせが運ぶ記録 O（出す側が捕捉する。{@link #readsRecord}）から
  * {@link Tokenizer} で入力の塊を作り（{@link BatchEncoder}）、網の s を推論の道（{@link InferencePath}: eager か
  * HIP、{@link DeviceInference}）で出す。σ は s の貪欲（同点は p0）、p0 は retain と s の最大が同点の問い合わせにだけ書く（{@link GreedyAnswer}。
  * p0 の特徴は Tokenizer が作る）。受付の区分は 1 つで、鳴きの行も同じ受け付けに入る（{@link #admissionKey}）。
  *
- * <p>GPU では Nano と共通の受付・予約・デバイスパイプラインに載せ、複数の GPU には同じ版の写しを置く。符号化は符号化のプールで進み、順伝播は
+ * <p>GPU では Nano と共通の受付・予約・デバイスパイプラインに載せ、複数の GPU には同じバージョンの写しを置く。符号化は符号化のプールで進み、順伝播は
  * 実行枠ごとの計算のストリームで出すので、次の受け付けの符号化と 2 つの実行枠の順伝播が重なる。CPU の網では同じ道を呼び出しスレッドで通す。
  *
  * <p>行は収集が O から作る。入力は色の正準形（萬子・筒子・索子の入れ替えで変わらない）。仕事の量（{@link Throughput}）と順伝播の塊の形
@@ -136,7 +136,7 @@ public final class NetworkPolicy implements PolicyService {
    * 保存した網を eager で開く（{@link #open(PolicyParams, Path, List, PolicyExecutionContext, int, PriorSettings, InferencePath)} に
    * {@link InferencePath#EAGER} を渡すのと同じ）。
    *
-   * @param params 版の番号
+   * @param params バージョン番号
    * @param model 網のディレクトリ（weights.bin と model.json。architecture は epsilon-prism-v2）
    * @param devices GPU の列か、CPU 1 つ
    * @param execution 符号化のプールと GPU の実行の資源
@@ -160,7 +160,7 @@ public final class NetworkPolicy implements PolicyService {
    * 保存した網を開く。推論の道は網の形とデバイスで決める（{@link InferencePath#resolve}。HIP を選んで HIP の持たない形なら eager にして記録に
    * 書く）。HIP では先に libprism_hip.so を読み、読めなければ英語の例外で止まる。
    *
-   * @param params 版の番号（HIP の重みの束の版の番号にもなる）
+   * @param params バージョン番号（HIP の重みの束のバージョン番号にもなる）
    * @param model 網のディレクトリ（weights.bin と model.json。architecture は epsilon-prism-v2）
    * @param devices GPU の列か、CPU 1 つ
    * @param execution 符号化のプールと GPU の実行の資源

@@ -5,7 +5,7 @@ import com.epsilon.util.SeedMixer;
 /**
  * 乱数の唯一の素材。用途ごとのドメインと座標から決定的に導出し、実行順・バッチ構成・スレッド数に依存させない。
  *
- * <p>熱い経路で使うので、{@link SeedMixer#derive} の可変長引数による確保を避けた固定長の版を持つ。
+ * <p>熱い経路で使うので、{@link SeedMixer#derive} の可変長引数による確保を避けた固定長のバージョンを持つ。
  *
  * <p>WALL・HAND_KEY・HOLDOUT の塩を変えると、同じ run の種と半荘 ID でも牌山・局のキー（行動の共通乱数）・保留の半荘が変わる。
  *

@@ -18,8 +18,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 網の系譜の煙（CPU）: score-rank の Φ・1 コホート 1 局で train を 2 反復回し、止めてから 1 反復を再開する。版 1（白紙の網）で集めて版 2 を当て、
- * 版 2・3 で集めて版 3・4 を当てる。帳簿の補正・根の行・方策の記憶（ema）・学習の網の評価も通る。行・版・記録・state.json がそろい、
+ * 網の系譜の煙（CPU）: score-rank の Φ・1 コホート 1 局で train を 2 反復回し、止めてから 1 反復を再開する。バージョン 1（白紙の網）で集めてバージョン 2 を当て、
+ * バージョン 2・3 で集めてバージョン 3・4 を当てる。帳簿の補正・根の行・方策の記憶（ema）・学習の網の評価も通る。行・バージョン・記録・state.json がそろい、
  * 再開は書き終えた記録を書き直さない。再開でも設定の知らない鍵は拒む。
  */
 public class LineageSmokeTest {
@@ -36,7 +36,7 @@ public class LineageSmokeTest {
           () ->
               Lineage.run(
                   run, 1, EpsilonSettings.of(Map.of("epsilon.prism.trainRoots", "true")), StopSignal.none()));
-      // 再開: 設定は run の config.json から読む（版 3 で集めて版 4 を当てる）
+      // 再開: 設定は run の config.json から読む（バージョン 3 で集めてバージョン 4 を当てる）
       Assert.assertEquals(Lineage.run(run, 1, EpsilonSettings.defaults(), StopSignal.none()), 0);
       JsonObject state = state(run);
       Assert.assertEquals(state.get("next").getAsInt(), 4);
@@ -64,7 +64,7 @@ public class LineageSmokeTest {
         Assert.assertEquals(evaluation.get("version").getAsInt(), t + 1);
         Assert.assertTrue(evaluation.has("heuristic") && evaluation.has("iterate"));
       }
-      // K′ の元は前の反復で教師に掛けた補正の保留の R²（版 1 の当てはめは R² = 0 で K′ = K）
+      // K′ の元は前の反復で教師に掛けた補正の保留の R²（バージョン 1 の当てはめは R² = 0 で K′ = K）
       JsonObject first = iterations.get(0).getAsJsonObject("filter");
       Assert.assertEquals(first.get("r2").getAsDouble(), 0.0);
       Assert.assertEquals(first.get("gain").getAsDouble(), first.get("scheduledGain").getAsDouble());

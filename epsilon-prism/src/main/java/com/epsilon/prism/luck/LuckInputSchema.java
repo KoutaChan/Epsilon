@@ -29,7 +29,7 @@ import java.util.Set;
  * （{@link WinGrade}）で渡し、BF16 の数値にしない。出来事の結果（O° の結果の欄）は入力に入れない。
  *
  * <p>{@link #fingerprint()} は、読む O° の指紋、欄の名前・順・書き方・語彙・繰り返し、値の enum、数値の欄の正規化、トークンの並び、関係の符号と
- * 色の正準化の定義から作る。版の番号は持たない。
+ * 色の正準化の定義から作る。バージョン番号は持たない。
  */
 public final class LuckInputSchema {
 

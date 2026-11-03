@@ -118,7 +118,7 @@ sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
   /** 自前の HIP の推論（収集の方策と同じ K0〜K7）。s は塊の手の順。 */
   final class Hip implements Anchor {
 
-    /** 錨の重みの版（計画に写した版と照らすだけ）。 */
+    /** 錨の重みのバージョン（計画に写したバージョンと照らすだけ）。 */
     private static final long VERSION = 0;
 
     private final HipBackend backend;

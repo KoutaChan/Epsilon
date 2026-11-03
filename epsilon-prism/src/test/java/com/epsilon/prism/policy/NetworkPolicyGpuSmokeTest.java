@@ -18,10 +18,10 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * GPU の煙試験（rocm の組。GPU 1 枚）。版（-Dprism.snapshot。なければ標準の形・深さ 2 の白紙の版を作る）を evaluate で Nano の 3 席
+ * GPU の煙試験（rocm の組。GPU 1 枚）。バージョン（-Dprism.snapshot。なければ標準の形・深さ 2 の白紙のバージョンを作る）を evaluate で Nano の 3 席
  * （-Dprism.nano の Decision チェックポイント）と -Dprism.games 局（既定 2048）打たせ、平着と秒を出す。推論の道は -Dprism.inference
  * （EAGER か HIP、既定 EAGER。設定 epsilon.prism.inference）。PRISM の席の判断/秒は、方策が閉じるときの記録
- * 「PRISM policy v&lt;版&gt; (&lt;道&gt;)」に出る。
+ * 「PRISM policy v&lt;バージョン&gt; (&lt;道&gt;)」に出る。
  */
 public class NetworkPolicyGpuSmokeTest {
   private static final Logger log = LoggerFactory.getLogger(NetworkPolicyGpuSmokeTest.class);

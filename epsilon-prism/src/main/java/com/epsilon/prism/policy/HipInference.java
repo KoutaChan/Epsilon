@@ -26,7 +26,7 @@ import java.util.Map;
  * 塊ごとに blob の H2D 1 回 → K1〜K7 → s の D2H 1 回を積む。s は道具ごとのページ固定の置き場に、塊の順に塊の手の順で詰める。
  *
  * <p>道具は開くときに実行枠の数だけ作って重みを写し（作業域の確保と写しの同期は準備のときだけ）、実行枠には初めて使うときに 1 つずつ結ぶ。実行枠
- * ごとにストリームと作業域が別なので、片方の転送ともう片方の順伝播が重なる。順伝播には毎回方策の版の番号を渡し、道具の写しの版と照らす（古い写し
+ * ごとにストリームと作業域が別なので、片方の転送ともう片方の順伝播が重なる。順伝播には毎回方策のバージョン番号を渡し、道具の写しのバージョンと照らす（古い写し
  * が残る穴を塞ぐ）。
  */
 final class HipInference implements DeviceInference {
@@ -39,7 +39,7 @@ final class HipInference implements DeviceInference {
      *
      * @param batch 封じた塊（blob はページ固定の直の ByteBuffer）
      * @param out s を書く先（位置 0 から塊の手の数の FP32、little-endian の直の ByteBuffer）
-     * @param version 期待する網の版（写した版と違えば例外）
+     * @param version 期待する網のバージョン（写したバージョンと違えば例外）
      */
     void submit(HostBatch batch, ByteBuffer out, long version);
 
@@ -96,7 +96,7 @@ final class HipInference implements DeviceInference {
    * 道具を作り、重みを写す。
    *
    * @param device デバイス
-   * @param pack 重みの束（版の番号は方策の版）
+   * @param pack 重みの束（バージョン番号は方策のバージョン）
    * @param count 道具の数（GPU は実行枠の数。呼び出しスレッドの口だけなら 1）
    * @param capacity 1 回の受け付けの s の数の上限
    * @param lanes 道具を作る口

@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * run の行（rows-v2/&lt;t&gt;）のコホート A..B の TRAIN のラベル行と根の記録（{@link Selection#LABELS_AND_ROOTS}）で、白紙の網を
- * 生の Y・錨なしで当て、版の形で out/snapshot に書く（版の番号は B + 1）。
+ * 生の Y・錨なしで当て、バージョンの形で out/snapshot に書く（バージョン番号は B + 1）。
  *
  * <ul>
  *   <li>学習器の数（バッチ・学習率 lrPeak → lrFloor・勾配の上限・温度 λ_c・周回数 fitEpochs・学習のデバイス・展開のスレッド・種）は run の

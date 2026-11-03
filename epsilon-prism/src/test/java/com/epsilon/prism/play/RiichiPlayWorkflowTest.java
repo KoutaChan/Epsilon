@@ -21,7 +21,7 @@ import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** play-riichi: 打つ版の選び方、token の確かめ、版の s の貪欲が実際の判断で合法手を返すこと（CPU、通信なし）。 */
+/** play-riichi: 打つバージョンの選び方、token の確かめ、バージョンの s の貪欲が実際の判断で合法手を返すこと（CPU、通信なし）。 */
 public class RiichiPlayWorkflowTest {
   @Test
   public void checkpointDirIsASnapshotOrTheLatestWrittenSnapshotOfARun() throws Exception {
@@ -33,7 +33,7 @@ public class RiichiPlayWorkflowTest {
         Files.createDirectories(snapshot);
         Files.writeString(snapshot.resolve(Snapshot.POLICY), "{}");
       }
-      // 書き込み中の版（policy.json がまだない）は選ばない
+      // 書き込み中のバージョン（policy.json がまだない）は選ばない
       Files.createDirectories(RunFiles.snapshot(root, 13));
       Assert.assertEquals(RiichiPlayWorkflow.snapshot(root), newer);
       Assert.assertEquals(RiichiPlayWorkflow.snapshot(older), older);
@@ -52,7 +52,7 @@ public class RiichiPlayWorkflowTest {
     Assert.assertTrue(failure.getMessage().contains("epsilon.riichi.token"), failure.getMessage());
   }
 
-  /** 版を開いて半荘を貪欲で進め、手が 2 つ以上の判断 12 個で合法手が返る（CPU は FP32 の eager）。 */
+  /** バージョンを開いて半荘を貪欲で進め、手が 2 つ以上の判断 12 個で合法手が返る（CPU は FP32 の eager）。 */
   @Test(timeOut = 300_000)
   public void greedyPlayerAnswersRealDecisions() throws Exception {
     Path root = Files.createTempDirectory("prism-riichi");

@@ -19,10 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 公開した版で RiichiLab のランク戦を打つ（{@link RiichiClient}）。手は版の s の貪欲（{@link GreedyPlayer}）。
+ * 公開したバージョンで RiichiLab のランク戦を打つ（{@link RiichiClient}）。手はバージョンの s の貪欲（{@link GreedyPlayer}）。
  *
- * <p>設定は [epsilon.riichi]（{@link RiichiSettings}）: token は必須、checkpointDir は版のディレクトリ（snapshots/&lt;t&gt;）か run のディレクトリ
- * （その最新の版）、maxGames は完了する対局の数（0 なら止めるまで）。device は epsilon.devices.inference（CPU は FP32 の eager）。接続の前に白紙の
+ * <p>設定は [epsilon.riichi]（{@link RiichiSettings}）: token は必須、checkpointDir はバージョンのディレクトリ（snapshots/&lt;t&gt;）か run のディレクトリ
+ * （その最新のバージョン）、maxGames は完了する対局の数（0 なら止めるまで）。device は epsilon.devices.inference（CPU は FP32 の eager）。接続の前に白紙の
  * 半荘の最初の判断を 1 回採点して、最初の手の遅れを対局の外に出す。
  */
 public final class RiichiPlayWorkflow implements CommandWorkflow<RiichiPlayWorkflow.Result> {
@@ -50,7 +50,7 @@ public final class RiichiPlayWorkflow implements CommandWorkflow<RiichiPlayWorkf
     }
   }
 
-  /** checkpointDir の版: 版のディレクトリ（{@value Snapshot#POLICY} がある）ならそのもの、そうでなければ run のディレクトリとみて最新の版。 */
+  /** checkpointDir のバージョン: バージョンのディレクトリ（{@value Snapshot#POLICY} がある）ならそのもの、そうでなければ run のディレクトリとみて最新のバージョン。 */
   static Path snapshot(Path directory) throws IOException {
     if (Files.isRegularFile(directory.resolve(Snapshot.POLICY))) return directory;
     return RunFiles.latestSnapshot(directory);
@@ -74,6 +74,6 @@ public final class RiichiPlayWorkflow implements CommandWorkflow<RiichiPlayWorkf
         + result.play().interruptedGames();
   }
 
-  /** 打った版と対局の数。 */
+  /** 打ったバージョンと対局の数。 */
   public record Result(Path snapshot, RiichiClient.Result play) {}
 }

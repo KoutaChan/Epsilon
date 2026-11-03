@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * HIP のカーネルが読む推論の重みの束。公開のたびに網の FP32 の正本から作り、網の版の番号を持つ（forward で照らし、古い写しが
+ * HIP のカーネルが読む推論の重みの束。公開のたびに網の FP32 の正本から作り、網のバージョン番号を持つ（forward で照らし、古い写しが
  * 残る穴を作りから塞ぐ）。中身は {@link WeightLayout} の並びの直の ByteBuffer（little-endian、頭つき）。
  *
  * <p>埋め込みの畳んだ組の表は、BF16 に丸めた W と E の積を FP32 で足したもの（欄ごとに P_m[c] = W_m·E[off_m + c] を作り、組の行は
@@ -48,7 +48,7 @@ public final class WeightPack {
    * 保存した網から作る。重みを CPU に FP32 で読み、表と束を作ってから網を捨てる（束と表は網の配列を参照しない）。
    *
    * @param model 網のディレクトリ（weights.bin と model.json）
-   * @param version 網の版の番号（0 以上）
+   * @param version 網のバージョン番号（0 以上）
    * @return 重みの束（表は {@link #layout()}）
    * @throws IOException 読めないか、形式・指紋・重みが合わないとき
    */
@@ -65,7 +65,7 @@ public final class WeightPack {
    *
    * @param layout 網の表（同じ形・同じ名前の網から作ったもの）
    * @param network 網（推論の重みの束を読む。どのデバイスでもよい）
-   * @param version 網の版の番号（0 以上）
+   * @param version 網のバージョン番号（0 以上）
    * @return 重みの束
    */
   public static WeightPack build(WeightLayout layout, PrismNetwork network, long version) {
@@ -77,7 +77,7 @@ public final class WeightPack {
    *
    * @param layout 表
    * @param parameters 推論の重みの束（{@link PrismNetwork#inferenceParameters()}）
-   * @param version 網の版の番号（0 以上）
+   * @param version 網のバージョン番号（0 以上）
    * @return 重みの束
    * @throws IllegalArgumentException 表にないパラメーターがあるか、値が有限でないとき
    */
@@ -116,7 +116,7 @@ public final class WeightPack {
     return layout;
   }
 
-  /** 網の版の番号。 */
+  /** 網のバージョン番号。 */
   public long version() {
     return version;
   }

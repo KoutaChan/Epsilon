@@ -75,7 +75,7 @@ public final class Arena {
 
   /**
    * {@link #duel} と同じ対局の集計に、半荘ごとの候補の着順と効用を添えたもの。同じ seed と基準 ID なら、候補を替えても
-   * 同じ牌山・同じ席の半荘ごとの対比較になる（版どうしや設定どうしの差を、牌山の雑音を除いて測る）。
+   * 同じ牌山・同じ席の半荘ごとの対比較になる（バージョンどうしや設定どうしの差を、牌山の雑音を除いて測る）。
    */
   public static Detailed detailed(
       CollectionDriver driver,

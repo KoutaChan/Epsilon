@@ -8,8 +8,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * HIP の実行枠の道具の代わり（native なしの試験）。カーネルと同じ式・同じ丸めの CPU の参照（{@link HipReference}）で s を書き、版を計画と同じく
- * 写しの版と照らす。ストリームを持たないので、呼び出しスレッドの口（{@link HipInference#score}）だけで使う。
+ * HIP の実行枠の道具の代わり（native なしの試験）。カーネルと同じ式・同じ丸めの CPU の参照（{@link HipReference}）で s を書き、バージョンを計画と同じく
+ * 写しのバージョンと照らす。ストリームを持たないので、呼び出しスレッドの口（{@link HipInference#score}）だけで使う。
  */
 final class ReferenceLane implements HipInference.Lane {
 
@@ -24,10 +24,10 @@ final class ReferenceLane implements HipInference.Lane {
   }
 
   /**
-   * 写しの版を指定する（古い写しの試験）。
+   * 写しのバージョンを指定する（古い写しの試験）。
    *
    * @param pack 写す重みの束
-   * @param version 写しの版の番号
+   * @param version 写しのバージョン番号
    */
   ReferenceLane(WeightPack pack, long version) {
     reference = new HipReference(pack);

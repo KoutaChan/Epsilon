@@ -23,7 +23,7 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * 学んだ版（-Dprism.snapshot）の s の BF16 の丸めへの弱さを CPU で測る（診断。性質がなければ飛ばす）。本物の半荘の判断の行で
+ * 学んだバージョン（-Dprism.snapshot）の s の BF16 の丸めへの弱さを CPU で測る（診断。性質がなければ飛ばす）。本物の半荘の判断の行で
  * eager の s を FP32 と BF16 で出し、|s|・行の中で中心化した |s|・1 位と 2 位の差・FP32 と BF16 の差・最善手の一致率を出す。
  * HIP と eager の s の食い違いが、網の BF16 の雑音か HIP の不具合かを分けるのに使う。
  */

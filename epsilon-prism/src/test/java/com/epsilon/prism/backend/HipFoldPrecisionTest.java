@@ -27,7 +27,7 @@ import org.testng.annotations.Test;
 
 /**
  * L0-FOLD の通しの精度を GPU で測る（rocm の組。GPU 1 枚）。網は乱数で動かした深さ 2 の網（模擬の半荘の {@value #FIXTURE_ROWS} 行）と、系の
- * 性質 {@value #SNAPSHOT} があればその学んだ版（{@value #COHORT} の封印済みコホートのラベル行から {@value #ROWS} 行（既定 8192）を等間隔に。
+ * 性質 {@value #SNAPSHOT} があればその学んだバージョン（{@value #COHORT} の封印済みコホートのラベル行から {@value #ROWS} 行（既定 8192）を等間隔に。
  * なければ模擬の行）。行を {@value #BATCH_ROWS} 行の塊に分け、塊ごとに次の s を出して FP64 の順伝播（{@link ExactReference}）の s と比べる:
  *
  * <ul>
@@ -36,9 +36,9 @@ import org.testng.annotations.Test;
  *   <li>R: CPU の参照の既定（{@link HipReference.Layer0#FOLDED}。HIP の K1 とビットで同じ qkv0）
  * </ul>
  *
- * <p>記録の行「PRISM-HIP-FOLD &lt;網&gt; &lt;版&gt; vs FP64」に argmax の一致と確信の行の一致（上位 2 手の差は FP64 の側で測る）、s の相対
+ * <p>記録の行「PRISM-HIP-FOLD &lt;網&gt; &lt;バージョン&gt; vs FP64」に argmax の一致と確信の行の一致（上位 2 手の差は FP64 の側で測る）、s の相対
  * RMS、有限でない値の数を、「HIP vs R」に HIP と R の argmax の一致と s の相対 RMS を出す。HIP の s は有限であることだけを求める（精度の
- * 線は窓の判定が当てる: 学んだ版の HIP の argmax が A − 0.001 以上、確信の行の一致 0.995 以上、s の相対 RMS が A の 1.05 倍以下）。
+ * 線は窓の判定が当てる: 学んだバージョンの HIP の argmax が A − 0.001 以上、確信の行の一致 0.995 以上、s の相対 RMS が A の 1.05 倍以下）。
  */
 @Test(groups = "rocm")
 public class HipFoldPrecisionTest {
@@ -170,7 +170,7 @@ public class HipFoldPrecisionTest {
     }
   }
 
-  /** 1 つの版の集計（塊をまたいで足す）。 */
+  /** 1 つのバージョンの集計（塊をまたいで足す）。 */
   private static final class Tally {
     double error;
     double norm;

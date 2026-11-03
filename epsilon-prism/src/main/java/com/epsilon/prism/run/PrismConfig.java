@@ -50,7 +50,7 @@ import java.util.Set;
  * <p>学習器は系譜の形に決まっている: 生徒 1 本を TEMPO（コホート t だけを、学習の網 θ_t を錨にして当てる再帰平均。{@link #filterGain}）で温めて
  * 当て、損失は差分整合（κ = 0、KL の基準は C の上の一様分布）。生徒の行は TRAIN のラベル行と根の記録（{@link Selection#LABELS_AND_ROOTS}）で、
  * 教師は運の精算の帳簿で補正した Ỹ = Y − β_c·L（{@link LedgerFit}）。収集は打牌の類で全ての合法手を測り、ラベルの枠ごとに帳簿を書く
- * （{@link #sampling}）。版 1 は白紙の網（形は {@link #shape}）。
+ * （{@link #sampling}）。バージョン 1 は白紙の網（形は {@link #shape}）。
  *
  * @param format config.json の形式（{@value #FORMAT}）
  * @param seed 牌山・抽選・網の初期値の種
@@ -95,10 +95,10 @@ import java.util.Set;
  * @param decodeThreads 行の読み出しと符号化のスレッドの数
  * @param lambdaDiscard 打牌の類の温度 λ
  * @param lambdaCommit 確約の類の温度 λ
- * @param averaging 方策の記憶: 版の重みの平均の決め方（{@link Averaging}: none・ema・power）
+ * @param averaging 方策の記憶: バージョンの重みの平均の決め方（{@link Averaging}: none・ema・power）
  * @param averageHalfLife ema の半減期（反復）
- * @param averagePower power の重みの指数 p（版 k の重み k^p。0 で一様、1 で線形）
- * @param averageFrom 平均を始める版（それより前の版は平均せず、打つ網 = 学習の網）
+ * @param averagePower power の重みの指数 p（バージョン k の重み k^p。0 で一様、1 で線形）
+ * @param averageFrom 平均を始めるバージョン（それより前のバージョンは平均せず、打つ網 = 学習の網）
  * @param collectWith 収集で打つ網（{@value Averaging#AVERAGE} = 平均の網、{@value Averaging#ITERATE} = 学習の網）
  * @param learnFrom 生徒を始める網と TEMPO の錨（{@value Averaging#ITERATE} か {@value Averaging#AVERAGE}）
  * @param evaluateIterate 打つ網に加えて学習の網も 3×Heuristic で測るか（平均があるときだけ意味がある）
@@ -133,9 +133,9 @@ import java.util.Set;
  * @param grpTrustGames 点数だけの Φ から最初に置き換えるのに要る窓の半荘の数（1 以上）
  * @param evalEvery 3×Heuristic の評価の間隔（反復。0 なら測らない）
  * @param evalGames 3×Heuristic の評価の半荘の数（evaluate の既定の半荘の数）
- * @param x1n3 版の網 1 席対 相手 3 席の卓を系譜の中で測るか（{@link X1n3}）
- * @param x1n3Every x1n3 を測る版の間隔（版の番号がこの倍数のとき。1 以上）
- * @param x1n3From x1n3 を測る最初の版（これより前の版は測らない。1 以上）
+ * @param x1n3 バージョンの網 1 席対 相手 3 席の卓を系譜の中で測るか（{@link X1n3}）
+ * @param x1n3Every x1n3 を測るバージョンの間隔（バージョン番号がこの倍数のとき。1 以上）
+ * @param x1n3From x1n3 を測る最初のバージョン（これより前のバージョンは測らない。1 以上）
  * @param x1n3Games x1n3 の半荘の数（1 以上）
  * @param x1n3Opponent x1n3 の相手（{@value NanoTable#HEURISTIC} か {@value NanoTable#NANO}&lt;Nano の checkpoint の絶対パス&gt;。x1n3 = ON
  *     では必須）
@@ -198,7 +198,7 @@ public record PrismConfig(
     int decodeThreads,
     double lambdaDiscard,
     double lambdaCommit,
-    // 方策の記憶（版の重みの平均）
+    // 方策の記憶（バージョンの重みの平均）
     String averaging,
     double averageHalfLife,
     double averagePower,
@@ -723,7 +723,7 @@ public record PrismConfig(
     return new AuxiliaryLoss((float) auxOracle, (float) auxResult);
   }
 
-  /** 方策の記憶（版の重みの平均）の決め方。 */
+  /** 方策の記憶（バージョンの重みの平均）の決め方。 */
   public Averaging policyMemory() {
     return new Averaging(averaging, averageHalfLife, averagePower, averageFrom);
   }

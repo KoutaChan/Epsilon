@@ -29,7 +29,7 @@ public final class HybridSeat implements PolicyService, SeatRouter {
   private final LongAdder[] routed = {new LongAdder(), new LongAdder()};
 
   /**
-   * @param base ふだん打つ方策（PRISM の版）
+   * @param base ふだん打つ方策（PRISM のバージョン）
    * @param other classes の判断を打つ方策（Nano）
    * @param classes other に任せる類
    * @param openHand 副露がある間の判断も other に任せるか

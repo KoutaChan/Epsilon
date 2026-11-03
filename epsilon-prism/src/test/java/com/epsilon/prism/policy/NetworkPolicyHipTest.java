@@ -32,15 +32,15 @@ import org.testng.annotations.Test;
 
 /**
  * HIP の推論の道（CPU、native なし）。GPU の計画の代わりに、カーネルと同じ式・同じ丸めの CPU の参照（{@link HipReference}）を実行枠の道具にした
- * 方策で、HIP の道の組み立て（保存した網から作る重みの束と版の番号、ページ固定の blob の塊の区画、塊の順に詰めた s の並びと答え）を確かめる。
+ * 方策で、HIP の道の組み立て（保存した網から作る重みの束とバージョン番号、ページ固定の blob の塊の区画、塊の順に詰めた s の並びと答え）を確かめる。
  *
  * <ul>
- *   <li>乱数で動かした標準の形（H 256）の版の s が、同じ重みの束の参照で同じ O を問い合わせの順の 1 つの塊にして直に回した s とビットで同じ。詰めた
+ *   <li>乱数で動かした標準の形（H 256）のバージョンの s が、同じ重みの束の参照で同じ O を問い合わせの順の 1 つの塊にして直に回した s とビットで同じ。詰めた
  *       トークンの上限で塊を分けても（S の順に並べ替える）ビットで同じ（参照は行ごとに閉じた計算）。σ は貪欲の one-hot。
  *   <li>重みの束は読んだ網と合う: s が eager の BF16 の s と相対 RMS 4e-2 以内。層 0 の q・k・v は K1 の畳んだ表から 1 回の丸めで作る
  *       （L0-FOLD）ので、x と n も丸める eager とは丸めの位置が違い、この乱した網では段の基準 2e-2 を超える（畳む前 1.6e-2、畳んだ後
  *       2.6e-2）。束と網の食い違い（置き場・並びの誤り）は O(1) の差になる。
- *   <li>道具の写しの版が方策の版と違えば、受け付けは例外で終わる（古い写しを使わない）。
+ *   <li>道具の写しのバージョンが方策のバージョンと違えば、受け付けは例外で終わる（古い写しを使わない）。
  *   <li>HIP を選んでも、CPU・前線の腕・特化のない幅では eager の道になる（CPU の方策は native を読まずに開ける）。GPU で libprism_hip.so が
  *       なければ、英語の例外で止まる（eager に落ちない）。
  * </ul>
@@ -250,7 +250,7 @@ public class NetworkPolicyHipTest {
     HipInference.Lane open(WeightPack pack);
   }
 
-  /** 版 {@link #VERSION} の HIP の方策を呼び出しスレッドの口で開く（道具は試験の参照）。 */
+  /** バージョン {@link #VERSION} の HIP の方策を呼び出しスレッドの口で開く（道具は試験の参照）。 */
   private static NetworkPolicy hip(
       Path model, PrismConfig config, PriorSettings prior, int tokenBudget, PackLanes lanes) throws Exception {
     return NetworkPolicy.hip(

@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
  * {@value #PROPERTY} が {@code K:N:DIR} のときだけ働き、K 個目・2K 個目…の受け付けを N 個まで DIR に書く（収集の始めの短い行に偏らない
  * よう、最初は K 個目）。性質がなければ何もしない。
  *
- * <p>ファイル {@code prism-v<版>-<受け付けの番号>.batch} は big-endian で、{@link #MAGIC}・行の数・行ごとに（O の long の数・O の
+ * <p>ファイル {@code prism-v<バージョン>-<受け付けの番号>.batch} は big-endian で、{@link #MAGIC}・行の数・行ごとに（O の long の数・O の
  * long の列）。書くのは答えを書き終えた受け付けの完了のスレッドで、O は受け付けを返すまで書き換わらない。書けなければ記録に書いて抜き取りを
  * やめる（方策は止めない）。
  */
@@ -86,7 +86,7 @@ public final class BatchSamples {
    * 答えを書き終えた受け付けを数え、抜き取りの番なら行の O を書く。
    *
    * @param rows 受け付けの問い合わせ（O を捕捉したもの）
-   * @param version 方策の版
+   * @param version 方策のバージョン
    */
   void offer(List<PolicyRequest> rows, int version) {
     if (every == 0 || failed) {

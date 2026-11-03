@@ -35,7 +35,7 @@ import java.util.Set;
  * 点単位で書く。
  *
  * <p>欄は値の範囲（{@link Width}）を宣言し、範囲は規則の上限（{@link Limits}）から取る。範囲の外の値は書くときに例外にし、切り捨てない。
- * なしがありうる値は −1 をなしにする。版の番号は持たず、形を変えれば {@link #fingerprint()} が変わる。
+ * なしがありうる値は −1 をなしにする。バージョン番号は持たず、形を変えれば {@link #fingerprint()} が変わる。
  */
 public final class ObservationSchema {
 

@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * 1つの版の方策。inline の実装は進行ワーカーでその場で評価し、そうでない実装はドライバがまとめて非同期に評価する。
+ * 1つのバージョンの方策。inline の実装は進行ワーカーでその場で評価し、そうでない実装はドライバがまとめて非同期に評価する。
  *
- * <p>同じ版の評価は呼び出し順や同時実行に依存せず、同じ入力に同じ σ を返す。
+ * <p>同じバージョンの評価は呼び出し順や同時実行に依存せず、同じ入力に同じ σ を返す。
  */
 public interface PolicyService extends AutoCloseable {
   int version();

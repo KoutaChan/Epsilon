@@ -28,10 +28,10 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * JVM の外の台（epsilon-prism-hip の prism_hip_bench）に渡す 1 塊の材料を書く。網・行・容量・版は {@link HipForwardTest#measureSpeed} の
+ * JVM の外の台（epsilon-prism-hip の prism_hip_bench）に渡す 1 塊の材料を書く。網・行・容量・バージョンは {@link HipForwardTest#measureSpeed} の
  * 深さ 2 と同じなので、台のカーネルの時間はその記録の行とそのまま比べられる。
  *
- * <p>書く先は {@code -Dprism.hip.case=<dir>}（無ければ飛ばす）。中身は case.txt（計画の形・塊の数・区画の位置・版、"名前=値"）、
+ * <p>書く先は {@code -Dprism.hip.case=<dir>}（無ければ飛ばす）。中身は case.txt（計画の形・塊の数・区画の位置・バージョン、"名前=値"）、
  * weights.bin（WeightPack の頭つきの全体）、input.bin（blob の先頭 {@link HipBatch#bytes()} バイト）。{@link #writeScores} は加えて
  * scores.bin（{@link HipBackend#forward} の s、要求の順の FP32 little-endian）を書く。どれも種が決まっているので、何度書いても
  * バイトで同じ。名前が *Test でないので、既定の試験には入らず {@code -Dtest} で名指ししたときだけ走る。

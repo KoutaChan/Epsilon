@@ -8,7 +8,7 @@ import java.util.List;
  * {@link GreedyAnswer}）。打牌は向聴と受け入れ（{@link RulePrior}）、ほかの手はまとまりの中で一様（{@link ActionGroups}）。行は全ての合法手の p0 を
  * 持つ。
  *
- * <p>p0 は観測だけの固定の関数で、版にも学習にも依らない。合法手が 1 つなら {1}。特徴は記録 O から作る打牌の後の向聴と受け入れの枚数
+ * <p>p0 は観測だけの固定の関数で、バージョンにも学習にも依らない。合法手が 1 つなら {1}。特徴は記録 O から作る打牌の後の向聴と受け入れの枚数
  * （{@link Encoding}）。
  */
 public final class Prior {

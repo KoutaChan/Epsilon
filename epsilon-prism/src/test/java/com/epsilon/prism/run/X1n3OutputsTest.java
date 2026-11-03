@@ -13,7 +13,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 /**
- * x1n3 の出力の印（.running → tsv・log の差し替え → .done、失敗は .failed）、測っていない版の選び方（間隔・始め・.done と .failed を飛ばす）、
+ * x1n3 の出力の印（.running → tsv・log の差し替え → .done、失敗は .failed）、測っていないバージョンの選び方（間隔・始め・.done と .failed を飛ばす）、
  * x1n3 の鍵の検査（ON では絶対パスの相手と出力先が要る）。
  */
 public class X1n3OutputsTest {

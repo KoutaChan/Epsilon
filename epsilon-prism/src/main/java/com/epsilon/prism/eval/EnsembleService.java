@@ -22,7 +22,7 @@ public final class EnsembleService implements PolicyService {
   private final double weight;
 
   /**
-   * @param a 主の方策（受付の容量と版の番号はこちら）
+   * @param a 主の方策（受付の容量とバージョン番号はこちら）
    * @param b 混ぜる方策
    * @param weight b の重み w（[0, 1]）
    */

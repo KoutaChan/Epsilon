@@ -9,19 +9,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 版 V の x1n3 の出力（x1n3Dir の {@code v<V>-x1n3.*}）。印のファイルが測りの状態を表す:
+ * バージョン V の x1n3 の出力（x1n3Dir の {@code v<V>-x1n3.*}）。印のファイルが測りの状態を表す:
  *
  * <ul>
  *   <li>{@code .running}: 測りの最中（網を開く前に作り、{@code .done} の後に消す）。
  *   <li>{@code .tsv}・{@code .log}: 半荘ごとの結果（{@link NanoTable#perGame}）と集計の行。どちらも {@code .tmp} に書いてから差し替える。
  *   <li>{@code .done}: 書き終えた印（これがあれば測らない）。
- *   <li>{@code .failed}: 測れなかった版（これがあれば測らない。測り直すときは人が消す）。
+ *   <li>{@code .failed}: 測れなかったバージョン（これがあれば測らない。測り直すときは人が消す）。
  * </ul>
  *
  * 途中で止まると {@code .done} がないので、次の起動で初めから測り直す（{@code .tmp} は上書き）。
  *
  * @param directory 出力のディレクトリ
- * @param version 版
+ * @param version バージョン
  */
 public record X1n3Outputs(Path directory, int version) {
 
@@ -35,7 +35,7 @@ public record X1n3Outputs(Path directory, int version) {
     return file("done");
   }
 
-  /** 測れなかった版の印。 */
+  /** 測れなかったバージョンの印。 */
   public Path failed() {
     return file("failed");
   }
@@ -78,9 +78,9 @@ public record X1n3Outputs(Path directory, int version) {
   }
 
   /**
-   * 測っていない版: x1n3From ≤ V ≤ latest で V が x1n3Every の倍数、{@code .done} も {@code .failed} もない版（古い順）。x1n3 = OFF なら空。
+   * 測っていないバージョン: x1n3From ≤ V ≤ latest で V が x1n3Every の倍数、{@code .done} も {@code .failed} もないバージョン（古い順）。x1n3 = OFF なら空。
    *
-   * @param latest 公開した最新の版
+   * @param latest 公開した最新のバージョン
    */
   public static List<Integer> pending(PrismConfig config, int latest) {
     List<Integer> versions = new ArrayList<>();

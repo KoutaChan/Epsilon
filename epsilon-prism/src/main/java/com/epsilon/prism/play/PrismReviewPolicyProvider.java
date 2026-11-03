@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * epsilon-prism の版を牌譜解析に開く。手の価値は s（{@link SnapshotScorer}）、表示用の確率は softmax(s/τ)（最善手は貪欲と同じ）。
+ * epsilon-prism のバージョンを牌譜解析に開く。手の価値は s（{@link SnapshotScorer}）、表示用の確率は softmax(s/τ)（最善手は貪欲と同じ）。
  *
  * <p>options: {@code settings} は系列の TOML、{@code device}（か {@code devices}）は epsilon.devices.inference を差し替え（既定 cpu、
  * {@code gpu} は {@code gpu:0}）、{@code temperature} は τ（既定 {@link ReviewEvaluation#DISPLAY_TEMPERATURE}）、残りは epsilon.* の上書き。

@@ -10,6 +10,9 @@ public interface ReplayObserver {
   /** 適用前の判断を受け取る。必要な特徴量・表示値だけをここで生成し、借用値を保持・変更・非同期転送しない。 全席の手牌を含む状態を方策へ渡さず、推論には当該席の公開観測を使う。 */
   void onDecision(DecisionPoint point, GameState state, int player, List<Action> legalActions);
 
-  /** 一つの元イベントを適用した状態。判断と同じstateIdなら同じ更新時点の状態を表す。 */
+  /**
+   * 一つの元イベントを適用した状態。判断と同じstateIdなら同じ更新時点の状態を表す。和了の event は、牌譜に無い採点の内訳を再生が補った形
+   * （{@link ReplayEvent.Hora#details()}）で、ほかは元イベントそのもの。
+   */
   default void onEventApplied(int eventIndex, int stateId, ReplayEvent event, GameState state) {}
 }

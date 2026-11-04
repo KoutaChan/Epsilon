@@ -173,7 +173,7 @@ public final class ResultWriter implements Closeable {
     json.endObject();
   }
 
-  /** 和了の内訳。牌譜に無い欄は書かない（uraIndicators の空の配列は「見た記録があり 0 枚」）。 */
+  /** 和了の内訳。分からない欄は書かない（uraIndicators の空の配列は「見た記録があり 0 枚」）。 */
   private void details(WinDetails details) throws IOException {
     json.name("details").beginObject();
     optional("han", details.han());

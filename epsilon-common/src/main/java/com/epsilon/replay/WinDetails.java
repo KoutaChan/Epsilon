@@ -3,7 +3,8 @@ package com.epsilon.replay;
 import java.util.List;
 
 /**
- * 元牌譜に記録された和了の採点内訳。未記録の数値と配列は null とし、推定値で補わない。
+ * 和了の採点内訳。牌譜に書かれた値か、牌譜に無い時に再生が実対局と同じ規則で計算し、牌譜の点の移動を全ての席で再現した値
+ * （{@code WinDetailsScorer}）。分からない数値と配列は null とし、推定値で補わない。
  *
  * @param han 通常役の合計翻数
  * @param fu 符数
@@ -19,6 +20,11 @@ public record WinDetails(
     Integer yakuman,
     List<Yaku> yaku,
     List<String> uraIndicators) {
+
+  /** 採点の値（翻・符・点・役満倍率・役）のどれかを持つか。裏ドラ表示牌だけなら偽。 */
+  public boolean scored() {
+    return han != null || fu != null || points != null || yakuman != null || yaku != null;
+  }
 
   /** 翻役と役満を区別した役内訳。コードは牌譜形式に依存しない識別子。 */
   public record Yaku(String code, int han, int yakuman) {}

@@ -752,6 +752,11 @@ public final class GameState {
     revealReconstructedDora(indicatorTileType, indicatorIsAka);
   }
 
+  /** 公開済みのドラ表示牌 index の裏ドラ表示牌を、牌譜の和了が見せた牌種にする。牌山から分かっている裏ドラは変えない。 */
+  public void revealUraIndicator(int index, int uraIndicatorTileType) {
+    doraState.revealUraIndicator(index, uraIndicatorTileType);
+  }
+
   private void revealDoraFromWall() {
     int slot = doraState.indicatorCount();
     int indicatorPhysicalTileId = wall.doraIndicatorPhysicalTileIdAt(slot);

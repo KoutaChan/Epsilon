@@ -155,6 +155,19 @@ public final class DoraState {
     requireTileType(uraIndicatorTileType);
     if ((uraKnownMask & (1 << index)) == 0)
       throw new IllegalStateException("ura indicator " + index + " is unknown");
+    writeUraIndicator(index, uraIndicatorTileType);
+  }
+
+  /** 公開済みの表示牌 index の、まだ分かっていない裏ドラ表示牌を分かったものにする。分かっている裏ドラは変えない。 */
+  void revealUraIndicator(int index, int uraIndicatorTileType) {
+    requireRevealedIndex(index);
+    requireTileType(uraIndicatorTileType);
+    if ((uraKnownMask & (1 << index)) != 0) return;
+    writeUraIndicator(index, uraIndicatorTileType);
+    uraKnownMask |= 1 << index;
+  }
+
+  private void writeUraIndicator(int index, int uraIndicatorTileType) {
     long mask = TILE_MASK << (index * TILE_BITS);
     uraDoraTileTypesPacked =
         (uraDoraTileTypesPacked & ~mask)

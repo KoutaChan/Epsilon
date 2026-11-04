@@ -186,7 +186,8 @@ public sealed interface ReplayEvent {
    * @param target ロン対象。ツモ和了では行動したプレイヤーと同じ
    * @param winTileType 和了牌種
    * @param deltas 席ごとの点棒増減
-   * @param details 元牌譜の採点内訳。未記録なら null
+   * @param details 採点内訳。読み込んだ時は牌譜に書かれた分だけで、無ければ null（再生の通知では補うことがある:
+   *     {@link ReplayObserver#onEventApplied}）
    */
   record Hora(int actor, int target, int winTileType, int[] deltas, WinDetails details)
       implements ReplayEvent {

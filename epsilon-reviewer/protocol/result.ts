@@ -189,12 +189,15 @@ export type RoundOutcome =
       /** ロンされた席。ツモは actor と同じ。 */
       target: number;
       winningTile: string;
-      /** 牌譜に採点の内訳が無ければ書かない。 */
+      /** 採点の内訳が牌譜にも計算にも無ければ書かない。 */
       details?: WinDetails;
     }
   | { type: "ryukyoku" };
 
-/** 採点の内訳。牌譜に無い欄は書かない。 */
+/**
+ * 採点の内訳。牌譜に無い時は、天鳳の規則で計算した点の移動が牌譜と全ての席で一致した時だけ計算の値を持つ。
+ * 分からない欄は書かない。
+ */
 export interface WinDetails {
   han?: number;
   fu?: number;

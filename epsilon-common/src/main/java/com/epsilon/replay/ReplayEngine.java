@@ -58,8 +58,7 @@ public final class ReplayEngine {
         continue;
       }
       currentEventIndex = index;
-      applyEvent(events.get(index));
-      notifyEvent(index);
+      notifyEvent(index, applyEvent(events.get(index)));
       index++;
     }
     if (pendingWindow != null) {
@@ -69,11 +68,13 @@ public final class ReplayEngine {
     }
   }
 
-  private void notifyEvent(int index) {
-    observer.onEventApplied(index, stateId, events.get(index), state.borrowedState());
+  private void notifyEvent(int index, ReplayEvent applied) {
+    observer.onEventApplied(index, stateId, applied, state.borrowedState());
   }
 
-  private void applyEvent(ReplayEvent event) {
+  /** 出来事を適用し、通知する形を返す（ツモ和了は {@link ReplayState#settleWin} の返す和了、ほかは event そのもの）。 */
+  private ReplayEvent applyEvent(ReplayEvent event) {
+    ReplayEvent applied = event;
     switch (event) {
       case StartGame ignored -> state.startMatch();
       case StartKyoku start -> {
@@ -126,7 +127,7 @@ public final class ReplayEngine {
           throw new IllegalStateException("Ron event outside response window: " + win);
         emitRecordedAction(
             win.actor(), Action.tsumoAgari(), state.turnActions(win.actor()), turnCauseEventIndex);
-        state.settleWin(win);
+        applied = state.settleWin(win);
       }
       case Ryukyoku draw -> {
         if ("NINE_TERMINALS".equals(draw.reason())) {
@@ -139,13 +140,14 @@ public final class ReplayEngine {
       case EndKyoku ignored -> state.finishRound();
       case EndGame end -> state.finishMatch(end);
       case None ignored -> {
-        return;
+        return event;
       }
       case Chi ignored -> throw responseOutsideWindow(event);
       case Pon ignored -> throw responseOutsideWindow(event);
       case Daiminkan ignored -> throw responseOutsideWindow(event);
     }
     stateId++;
+    return applied;
   }
 
   /**
@@ -171,8 +173,7 @@ public final class ReplayEngine {
     currentEventIndex = index;
     ReplayEvent current = events.get(index);
     if (pendingWindow.preservesWindow(current)) {
-      applyEvent(current);
-      notifyEvent(index);
+      notifyEvent(index, applyEvent(current));
       return index + 1;
     }
     if (!pendingWindow.accepts(current)) {
@@ -196,19 +197,19 @@ public final class ReplayEngine {
       currentEventIndex = i;
       ReplayEvent response = events.get(i);
       if (pendingWindow.isExplicitPass(response)) {
-        notifyEvent(i);
+        notifyEvent(i, response);
         continue;
       }
       robbedByRon |= pendingWindow.isRon(response);
       applyResponse(response);
-      if (!(response instanceof Hora)) notifyEvent(i);
+      if (!(response instanceof Hora)) notifyEvent(i, response);
     }
     // 複数ロンは全員の適用前判断を通知してから、個々の得点増減を一度ずつ適用する。
     for (int i = index; i < end; i++) {
       if (events.get(i) instanceof Hora win) {
-        state.settleWin(win);
+        Hora settled = state.settleWin(win);
         stateId++;
-        notifyEvent(i);
+        notifyEvent(i, settled);
       }
     }
     closeResponses(robbedByRon);

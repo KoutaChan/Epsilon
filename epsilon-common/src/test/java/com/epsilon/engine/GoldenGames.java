@@ -522,6 +522,11 @@ public final class GoldenGames {
     };
   }
 
+  /** 保存した牌譜の名前（{@link #recordBytes} に渡す）。 */
+  public static List<String> records() {
+    return List.of(RECORDS);
+  }
+
   /** 保存した牌譜の 1 つ（{@link #RESOURCES} の下の名前）のバイト。 */
   public static byte[] recordBytes(String name) {
     try (InputStream input = GoldenGames.class.getResourceAsStream(RESOURCES + name)) {

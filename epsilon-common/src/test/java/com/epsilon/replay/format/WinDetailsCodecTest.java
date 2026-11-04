@@ -155,6 +155,18 @@ public class WinDetailsCodecTest {
   }
 
   @Test
+  public void mortalHoraKeepsItsUraMarkersWithoutScoring() {
+    var details =
+        mjaiWin(
+                """
+                {"type":"hora","actor":2,"target":1,"deltas":[0,-2600,3600,0],"ura_markers":["4s"]}
+                """)
+            .details();
+    Assert.assertFalse(details.scored());
+    Assert.assertEquals(details.uraIndicators(), List.of("4s"));
+  }
+
+  @Test
   public void mjaiYakuCountsSupplyTotalsWhenFanIsNotRecorded() {
     var details =
         mjaiWin(

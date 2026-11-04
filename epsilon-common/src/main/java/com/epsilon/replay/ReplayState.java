@@ -39,10 +39,13 @@ final class ReplayState {
 
   private final GameState state = new GameState();
   private final MahjongTransition transition = new MahjongTransition(state);
+  private final WinDetailsScorer winDetails = new WinDetailsScorer();
   private final boolean[] reachPending = new boolean[NUM_PLAYERS];
   private final int[][] decodedWalls;
   /** 鳴いた後の打牌を待つ間の、直前のチー・ポン。ほかは null。 */
   private Meld call;
+  /** この局で和了を精算したか。同じ打牌への 2 人目以降のロンは本場と供託を受け取らない（上家取り）。 */
+  private boolean winSettled;
   private final int[] lastKnownScores = new int[NUM_PLAYERS];
   private boolean hasLastKnownScores;
   private int kyokuIndex;
@@ -97,6 +100,7 @@ final class ReplayState {
     }
     Arrays.fill(reachPending, false);
     clearCall();
+    winSettled = false;
   }
 
   void applyDraw(Tsumo tsumo) {
@@ -228,9 +232,16 @@ final class ReplayState {
         && draw.doraRevealPending();
   }
 
-  void settleWin(Hora hora) {
+  /** 和了の点を動かし、通知する和了を返す。牌譜に無い採点の内訳は {@link WinDetailsScorer} が補う。 */
+  Hora settleWin(Hora hora) {
+    Hora settled =
+        winSettled
+            ? winDetails.complete(hora, state, 0, 0)
+            : winDetails.complete(hora, state, state.getHonba(), state.getKyotakuCount());
+    winSettled = true;
     applyDeltas(hora.deltas());
     state.setKyotakuCount(0);
+    return settled;
   }
 
   void settleDraw(Ryukyoku ryukyoku) {

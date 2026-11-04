@@ -9,7 +9,7 @@ public sealed interface RoundOutcome {
    *
    * @param target ロンされた席。ツモは actor と同じ
    * @param winningTile 適用した時の物理牌の記号（ツモ牌・打牌・槍槓の加槓の牌）
-   * @param details 牌譜の採点の内訳。無ければ null
+   * @param details 採点の内訳（牌譜に無ければ再生が補った物）。分からなければ null
    */
   record Hora(int actor, int target, String winningTile, WinDetails details)
       implements RoundOutcome {}

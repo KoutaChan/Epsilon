@@ -291,7 +291,9 @@ public final class MjaiReader {
     Integer fan = readOptionalInteger(event, "fan");
     Integer fu = readOptionalInteger(event, "fu");
     Integer points = readOptionalInteger(event, "hora_points");
-    List<String> uraIndicators = parseIndicatorTiles(event, "uradora_markers");
+    // 裏ドラ表示牌は Mortal（libriichi）の ura_markers か、元の mjai の uradora_markers。
+    List<String> uraIndicators = parseIndicatorTiles(event, "ura_markers");
+    if (uraIndicators == null) uraIndicators = parseIndicatorTiles(event, "uradora_markers");
     List<WinDetails.Yaku> yaku = null;
     Integer yakuman = fan != null ? fan / 100 : null;
     Integer han = fan != null ? (fan >= 100 ? 0 : fan) : null;

@@ -140,7 +140,7 @@
   "candidate.chosen": "Actual choice",
   "candidate.description": "{action}, AI choice probability {rate} per cent",
   "candidate.valueHeading": "AI evaluation",
-  "candidate.preference": "Preference {rate}%",
+  "candidate.preference": "{rate}%",
   "candidate.valueDescription": "{action}, {grade}, loss {loss}, preference {rate} per cent",
   "grade.best": "Best",
   "grade.near": "Near-best",

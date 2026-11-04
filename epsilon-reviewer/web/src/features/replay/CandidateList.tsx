@@ -64,8 +64,6 @@ export function CandidateList({
           const chosen = candidate.chosen && (
             <span className="em-choice-tail">{t("candidate.chosen")}</span>
           );
-          // 横の一覧は牌と数値を同じ段に並べるので、長い言語でも牌が折り返さないよう実際の選択は下の段に分ける。
-          const tilesTail = portrait ? chosen : null;
           return (
             <li
               key={candidate.actionId}
@@ -82,14 +80,15 @@ export function CandidateList({
                     </span>
                   )}
                 </div>
-                {(candidate.tiles.length > 0 || tilesTail) && (
+                {(candidate.tiles.length > 0 || (portrait && chosen)) && (
                   <div className="em-choice-tiles">
                     {candidate.tiles.map((tile, tileIndex) => (
                       <Tile tile={tile} key={tileIndex} />
                     ))}
-                    {tilesTail}
+                    {portrait && chosen}
                   </div>
                 )}
+                {/* 横の一覧は実際の選択を牌と損失の下の段に分け、候補欄の幅を抑える。 */}
                 {!portrait && chosen}
               </div>
               {portrait && (

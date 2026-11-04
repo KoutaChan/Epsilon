@@ -140,7 +140,7 @@
   "candidate.chosen": "実際の選択",
   "candidate.description": "{action}、AI選択率 {rate}パーセント",
   "candidate.valueHeading": "AI評価",
-  "candidate.preference": "推奨度 {rate}%",
+  "candidate.preference": "{rate}%",
   "candidate.valueDescription": "{action}、{grade}、損失 {loss}、推奨度 {rate}パーセント",
   "grade.best": "最善",
   "grade.near": "ほぼ同等",

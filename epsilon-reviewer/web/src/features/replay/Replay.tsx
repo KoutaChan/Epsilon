@@ -57,6 +57,10 @@ export function Replay({
     "--em-viewport-width": `${viewport.width}px`,
     "--em-viewport-height": `${viewport.height}px`,
     "--em-pc-ui-scale": String(viewport.width / 1440),
+    // 候補欄は左家の名札の下から画面の下までに収めるので、横長で縦の短い画面では高さに合わせて小さくする。
+    "--em-pc-candidate-scale": String(
+      Math.min(viewport.width / 1440, viewport.height / 760),
+    ),
     "--em-dora-tile": `${doraTile}px`,
     "--em-dora-width": `${doraTile * 5 + 22}px`,
     "--em-hud-inset": layout === "portrait" ? "10px" : "16px",

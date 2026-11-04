@@ -65,12 +65,7 @@ test("special candidates display their distinct action names", async () => {
     "RON_AGARI",
     "KYUSHU_KYUHAI",
   ].map((type) => catalog[actionMessageKeys[type]]);
-  assert.deepEqual(labels, [
-    "Riichi",
-    "Tsumo",
-    "Ron",
-    "Nine Terminal Initial Draw",
-  ]);
+  assert.deepEqual(labels, ["Riichi", "Tsumo", "Ron", "Nine Terminals"]);
 });
 
 test("kan action labels distinguish claiming, concealing and extending a meld", async () => {

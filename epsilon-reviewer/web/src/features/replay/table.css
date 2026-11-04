@@ -554,7 +554,7 @@
 }
 #epsilon-review-material .em-action-heading {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 4px;
   margin-bottom: 6px;
@@ -563,8 +563,10 @@
   color: #b8cddd;
 }
 #epsilon-review-material .em-action-heading small {
+  flex: none;
   font-size: 11px;
   color: #92a9ba;
+  white-space: nowrap;
 }
 #epsilon-review-material .em-action-list {
   list-style: none;
@@ -1612,11 +1614,14 @@
 }
 
 /* もしも: 候補の欄。見出しに札を付け、元の局面との比べを札の下に 1 行足す。 */
+/* 見出しは語の途中で折らず、もしもの札が入らなければ見出しの下の行へ送る（英語の見出しは長い）。 */
 #epsilon-review-material .em-action-title {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 2px 6px;
   min-width: 0;
+  white-space: nowrap;
 }
 #epsilon-review-material .em-scenario-chip {
   flex: none;
@@ -1699,6 +1704,7 @@
   color: #dcd2ff;
 }
 #epsilon-review-material .em-scenario-back {
+  flex: none;
   pointer-events: auto;
   padding: 0 6px;
   border: 0;

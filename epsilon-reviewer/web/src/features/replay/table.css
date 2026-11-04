@@ -616,10 +616,10 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* 行動名の幅を確保し、牌と選択率をその下の同じ行へ配置する。 */
+/* 行動名の幅を確保し、牌と選択率をその下の同じ行へ配置する。牌の列は牌の幅ちょうどにして、残りを選択率に渡す。 */
 #epsilon-review-material .em-action-row .em-review-copy {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: max-content minmax(min-content, 1fr);
   gap: 2px 4px;
 }
 #epsilon-review-material .em-action-row .em-choice-line {
@@ -632,14 +632,21 @@
   grid-column: 2;
   grid-row: 2;
   align-self: center;
+  justify-self: end;
 }
 #epsilon-review-material .em-action-row .em-choice-tiles {
   grid-column: 1;
   grid-row: 2;
-  flex-wrap: wrap;
 }
+/* 実際の選択は牌と選択率の下の段に置く。 */
 #epsilon-review-material .em-action-row .em-choice-tail {
+  grid-column: 1 / -1;
+  grid-row: 3;
   margin-left: 0;
+  white-space: normal;
+}
+/* 推奨度が長い言語では、牌を狭めずに推奨度を折り返す。 */
+#epsilon-review-material .em-action-row small.em-choice-preference {
   white-space: normal;
 }
 #epsilon-review-material .em-choice-rate small {

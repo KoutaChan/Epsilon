@@ -1,7 +1,11 @@
 import path from "node:path";
 import { app, dialog, ipcMain, type BrowserWindow } from "electron";
 import { resultFileName } from "../../protocol/result.ts";
-import { APP_URL, registerAppProtocol, registerAppScheme } from "./appProtocol.ts";
+import {
+  APP_URL,
+  registerAppProtocol,
+  registerAppScheme,
+} from "./appProtocol.ts";
 import { registerBridge } from "./bridge.ts";
 import { EngineProcess, engineLaunch } from "./engine/process.ts";
 import { Languages, type MessageKey } from "./language.ts";
@@ -21,7 +25,10 @@ app.setName(APP_NAME);
 const profile = process.env.EPSILON_REVIEWER_PROFILE;
 const profileValid = !profile || path.isAbsolute(profile);
 if (profileValid)
-  app.setPath("userData", profile || path.join(app.getPath("appData"), "epsilon-reviewer"));
+  app.setPath(
+    "userData",
+    profile || path.join(app.getPath("appData"), "epsilon-reviewer"),
+  );
 registerAppScheme();
 
 /** 起動の失敗の窓の文言。言語を読む前の失敗は英語の失敗の文をそのまま出す。 */
@@ -41,7 +48,8 @@ async function start(): Promise<void> {
   const languages = Languages.load(paths.language);
   const locale = languages.select(app.getLocale());
   message = (key) => languages.message(locale, key);
-  if (!profileValid) throw new Error("EPSILON_REVIEWER_PROFILE must be an absolute path.");
+  if (!profileValid)
+    throw new Error("EPSILON_REVIEWER_PROFILE must be an absolute path.");
   const development = developmentUrl(process.env.EPSILON_REVIEWER_DEV_URL);
   const settings = await SettingsStore.open(
     path.join(paths.userData, "settings.json"),
@@ -51,7 +59,8 @@ async function start(): Promise<void> {
     },
     (language) => languages.has(language),
   );
-  const text = (key: MessageKey): string => languages.message(settings.value.language, key);
+  const text = (key: MessageKey): string =>
+    languages.message(settings.value.language, key);
   message = text;
   // Java は窓と並べて起こす（JVM の起動と保存先・カタログの読み込みを窓の読み込みに重ねる）。
   const engineProcess = new EngineProcess(() =>
@@ -80,10 +89,15 @@ async function start(): Promise<void> {
           title: text("desktop.exportTitle"),
           defaultPath: resultFileName(resultId),
           filters: [
-            { name: text("desktop.exportFilter"), extensions: ["epsilon-reviewer.json.gz"] },
+            {
+              name: text("desktop.exportFilter"),
+              extensions: ["epsilon-reviewer.json.gz"],
+            },
           ],
         });
-        return choice.canceled || choice.filePath === "" ? null : choice.filePath;
+        return choice.canceled || choice.filePath === ""
+          ? null
+          : choice.filePath;
       },
       setTitle: (title) => window?.setTitle(title),
     },
@@ -111,7 +125,10 @@ function mainWindow(): BrowserWindow {
 function startupFailed(error: unknown): void {
   console.error("Application startup failed:", error);
   if (message !== null)
-    dialog.showErrorBox(message("desktop.startupTitle"), message("desktop.startupFailure"));
+    dialog.showErrorBox(
+      message("desktop.startupTitle"),
+      message("desktop.startupFailure"),
+    );
   else dialog.showErrorBox(APP_NAME, errorMessage(error));
   app.quit();
 }
@@ -127,7 +144,8 @@ else {
     if (process.platform !== "darwin") app.quit();
   });
   app.on("activate", () => {
-    if (window === null && openWindow !== null) openWindow().catch(startupFailed);
+    if (window === null && openWindow !== null)
+      openWindow().catch(startupFailed);
   });
   // 終わりの前に Java を止める（stdin を閉じて 5 秒待ち、終わらなければ kill）。
   app.on("will-quit", (event) => {

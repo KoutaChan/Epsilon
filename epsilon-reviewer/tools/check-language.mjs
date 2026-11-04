@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import {
-  CLIENT_ERROR_CODES,
-  SERVER_ERROR_CODES,
-} from "../protocol/errors.ts";
+import { CLIENT_ERROR_CODES, SERVER_ERROR_CODES } from "../protocol/errors.ts";
 
 // language/<言語>/<ファイル>.json を確かめる。ja が元で、どの言語も同じファイル・同じ鍵・同じ {名前} を持つ。
 // 鍵の頭の語はファイルの持ち主を表し、別のファイルの頭の語は使えない。errors.json は失敗の符号と 1 対 1。
@@ -22,7 +19,14 @@ const OWNERS = {
     "settings",
     "share",
   ],
-  "replay.json": ["replay", "candidate", "scenario", "grade", "event", "outcome"],
+  "replay.json": [
+    "replay",
+    "candidate",
+    "scenario",
+    "grade",
+    "event",
+    "outcome",
+  ],
   "mahjong.json": ["mahjong", "tile", "action", "yaku"],
   "desktop.json": ["desktop"],
   "errors.json": ["errors"],
@@ -62,7 +66,10 @@ for (const file of expectedFiles) {
         "string",
         `Invalid message: ${language}/${file}:${key}`,
       );
-      assert.ok(messages[key].trim(), `Empty message: ${language}/${file}:${key}`);
+      assert.ok(
+        messages[key].trim(),
+        `Empty message: ${language}/${file}:${key}`,
+      );
       assert.deepEqual(
         placeholders(messages[key]),
         placeholders(source[key]),
@@ -79,7 +86,11 @@ const errorKeys = Object.keys(await read("ja", "errors.json")).sort();
 const codes = [...SERVER_ERROR_CODES, ...CLIENT_ERROR_CODES]
   .map((code) => `errors.${code}`)
   .sort();
-assert.deepEqual(errorKeys, codes, "errors.json must match protocol/errors.ts.");
+assert.deepEqual(
+  errorKeys,
+  codes,
+  "errors.json must match protocol/errors.ts.",
+);
 console.log(
   `Validated ${languages.length} languages, ${expectedFiles.length} files and ${total} message keys.`,
 );

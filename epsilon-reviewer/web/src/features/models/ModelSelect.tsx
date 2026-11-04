@@ -32,7 +32,9 @@ export function ModelSelect({ models, id }: { models: Models; id: string }) {
                 >
                   {model.available
                     ? modelLabel(model)
-                    : t("model.unavailableOption", { model: modelLabel(model) })}
+                    : t("model.unavailableOption", {
+                        model: modelLabel(model),
+                      })}
                 </option>
               ))}
           </select>

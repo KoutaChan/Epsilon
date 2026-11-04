@@ -9,7 +9,11 @@ export interface WindowOptions {
 }
 
 /** 主の窓。新しい窓と移動は拒む。 */
-export function createMainWindow({ title, icon, preload }: WindowOptions): BrowserWindow {
+export function createMainWindow({
+  title,
+  icon,
+  preload,
+}: WindowOptions): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
     height: 960,
@@ -33,8 +37,8 @@ export function createMainWindow({ title, icon, preload }: WindowOptions): Brows
 
 /** 既定のセッションの権限の求めと確かめを全て断る。 */
 export function denyPermissions(): void {
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-    callback(false),
+  session.defaultSession.setPermissionRequestHandler(
+    (_contents, _permission, callback) => callback(false),
   );
   session.defaultSession.setPermissionCheckHandler(() => false);
 }
@@ -47,7 +51,9 @@ export function denyPermissions(): void {
 export function developmentUrl(value: string | undefined): string | null {
   if (!value) return null;
   if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(value))
-    throw new Error("EPSILON_REVIEWER_DEV_URL must point to a local Vite server.");
+    throw new Error(
+      "EPSILON_REVIEWER_DEV_URL must point to a local Vite server.",
+    );
   return value;
 }
 
@@ -72,7 +78,12 @@ export function untrustedSender(
       message: "IPC is restricted to the application main frame.",
     };
   const url = new URL(frame.url);
-  if (url.protocol === `${APP_SCHEME}:` && url.hostname === APP_HOST) return null;
-  if (development !== null && url.origin === new URL(development).origin) return null;
-  return { code: "invalid_request", message: "IPC sender origin is not trusted." };
+  if (url.protocol === `${APP_SCHEME}:` && url.hostname === APP_HOST)
+    return null;
+  if (development !== null && url.origin === new URL(development).origin)
+    return null;
+  return {
+    code: "invalid_request",
+    message: "IPC sender origin is not trusted.",
+  };
 }

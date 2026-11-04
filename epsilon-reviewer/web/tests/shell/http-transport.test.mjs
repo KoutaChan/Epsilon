@@ -12,14 +12,23 @@ const record = new Blob(["<mjloggm/>"]);
 const ROUTES = {
   models: { request: {}, method: "GET", path: "/api/models" },
   history: { request: {}, method: "GET", path: "/api/history" },
-  importBytes: { request: {}, method: "POST", path: "/api/records", binary: true },
+  importBytes: {
+    request: {},
+    method: "POST",
+    path: "/api/records",
+    binary: true,
+  },
   importTenhou: {
     request: { url: "https://tenhou.net/0/?log=2026110412gm-0089-0000-abcd" },
     method: "POST",
     path: "/api/records/tenhou",
     json: { url: "https://tenhou.net/0/?log=2026110412gm-0089-0000-abcd" },
   },
-  importStored: { request: { resultId: id }, method: "POST", path: `/api/results/${id}/record` },
+  importStored: {
+    request: { resultId: id },
+    method: "POST",
+    path: `/api/results/${id}/record`,
+  },
   startAnalysis: {
     request: { recordId: id, modelId: "prism", revision: "v551" },
     method: "POST",
@@ -27,12 +36,37 @@ const ROUTES = {
     json: { recordId: id, modelId: "prism", revision: "v551" },
   },
   job: { request: { jobId: id }, method: "GET", path: `/api/jobs/${id}` },
-  cancelJob: { request: { jobId: id }, method: "POST", path: `/api/jobs/${id}/cancel` },
-  result: { request: { resultId: id }, method: "GET", path: `/api/results/${id}` },
-  deleteResult: { request: { resultId: id }, method: "DELETE", path: `/api/results/${id}` },
-  downloadResult: { request: { resultId: id }, method: "GET", path: `/api/results/${id}/download` },
-  shareLink: { request: { resultId: id }, method: "GET", path: `/api/results/${id}/share` },
-  sharedResult: { request: { resultId: id }, method: "GET", path: `/api/shares/${id}`, share: true },
+  cancelJob: {
+    request: { jobId: id },
+    method: "POST",
+    path: `/api/jobs/${id}/cancel`,
+  },
+  result: {
+    request: { resultId: id },
+    method: "GET",
+    path: `/api/results/${id}`,
+  },
+  deleteResult: {
+    request: { resultId: id },
+    method: "DELETE",
+    path: `/api/results/${id}`,
+  },
+  downloadResult: {
+    request: { resultId: id },
+    method: "GET",
+    path: `/api/results/${id}/download`,
+  },
+  shareLink: {
+    request: { resultId: id },
+    method: "GET",
+    path: `/api/results/${id}/share`,
+  },
+  sharedResult: {
+    request: { resultId: id },
+    method: "GET",
+    path: `/api/shares/${id}`,
+    share: true,
+  },
   scenario: {
     request: { resultId: id, ...query },
     method: "POST",
@@ -120,14 +154,24 @@ test("responses decode by the command's response kind", async (t) => {
   assert.ok(blob instanceof Blob);
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), bytes);
 
-  fetch.mock.mockImplementation(async () => new Response(null, { status: 204 }));
-  assert.equal(await transport.call("deleteResult", { resultId: id }), undefined);
+  fetch.mock.mockImplementation(
+    async () => new Response(null, { status: 204 }),
+  );
+  assert.equal(
+    await transport.call("deleteResult", { resultId: id }),
+    undefined,
+  );
 });
 
 test("error envelopes become ApiError with the code, message and status", async (t) => {
   t.mock.method(globalThis, "fetch", async () =>
     Response.json(
-      { error: { code: "share_not_found", message: "The shared analysis was not found." } },
+      {
+        error: {
+          code: "share_not_found",
+          message: "The shared analysis was not found.",
+        },
+      },
       { status: 404 },
     ),
   );
@@ -146,7 +190,11 @@ test("odd error bodies become invalid_response with the status", async (t) => {
     () => new Response(null, { status: 413 }),
     () => new Response("<html>Bad gateway</html>", { status: 502 }),
     () => Response.json({ error: "busy" }, { status: 429 }),
-    () => Response.json({ error: { code: "no_such_code", message: "?" } }, { status: 400 }),
+    () =>
+      Response.json(
+        { error: { code: "no_such_code", message: "?" } },
+        { status: 400 },
+      ),
     () => Response.json(null, { status: 500 }),
   ];
   const fetch = t.mock.method(globalThis, "fetch");
@@ -164,7 +212,11 @@ test("odd error bodies become invalid_response with the status", async (t) => {
 });
 
 test("an unreadable success body is invalid_response", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response("{", { status: 200 }));
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response("{", { status: 200 }),
+  );
   await assert.rejects(
     httpTransport().call("models", {}),
     (error) =>

@@ -66,7 +66,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     setCurrent(id);
   }, []);
   const value = useMemo(
-    () => ({ language, locale: language, t: translator(language), setLanguage }),
+    () => ({
+      language,
+      locale: language,
+      t: translator(language),
+      setLanguage,
+    }),
     [language, setLanguage],
   );
   return <Context value={value}>{children}</Context>;

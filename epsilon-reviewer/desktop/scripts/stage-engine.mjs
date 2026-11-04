@@ -17,7 +17,16 @@
 // npx electron-builder --dir（web の dist を先に作る）。
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { copyFile, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +38,11 @@ const NATIVE_FILES = JSON.parse(
 );
 const JNI_FILE = "djl_torch.dll";
 const JNI_ENTRY = "jnilib/win-x86_64/cpu/djl_torch.dll";
-const DECISION_FILES = ["manifest.json", "architecture.id", "decision-0000.params"];
+const DECISION_FILES = [
+  "manifest.json",
+  "architecture.id",
+  "decision-0000.params",
+];
 /** 系列ごとの推論のファイル（学習の副ファイル campaign-state.json などは入れない）。 */
 const INFERENCE_FILES = {
   "epsilon-prism": ["policy.json", "m0/model.json", "m0/weights.bin"],
@@ -37,7 +50,14 @@ const INFERENCE_FILES = {
   "epsilon-pico": DECISION_FILES,
   epsilon: DECISION_FILES,
 };
-const MODEL_FIELDS = ["modelId", "revision", "displayName", "version", "series", "checkpoint"];
+const MODEL_FIELDS = [
+  "modelId",
+  "revision",
+  "displayName",
+  "version",
+  "series",
+  "checkpoint",
+];
 const PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 const { values: options } = parseArgs({
@@ -47,7 +67,12 @@ const { values: options } = parseArgs({
     models: { type: "string" },
     libtorch: {
       type: "string",
-      default: path.join(os.homedir(), ".djl.ai", "pytorch", "2.11.0-cpu-win-x86_64"),
+      default: path.join(
+        os.homedir(),
+        ".djl.ai",
+        "pytorch",
+        "2.11.0-cpu-win-x86_64",
+      ),
     },
     jni: {
       type: "string",
@@ -57,7 +82,10 @@ const { values: options } = parseArgs({
         "pytorch-jni-cpu-win-x86_64-2.11.0-0.40.4-rocm-SNAPSHOT.jar",
       ),
     },
-    out: { type: "string", default: fileURLToPath(new URL("../engine", import.meta.url)) },
+    out: {
+      type: "string",
+      default: fileURLToPath(new URL("../engine", import.meta.url)),
+    },
   },
 });
 for (const name of ["runtime", "jar", "models"])
@@ -72,18 +100,26 @@ await copyFile(options.jar, path.join(out, "lib", "epsilon-reviewer.jar"));
 await stageNative(path.join(out, "native"));
 await stageModels(path.resolve(options.models), path.join(out, "models"));
 for (const part of ["runtime", "lib", "native", "models"])
-  console.log(`${part.padEnd(8)}${(await treeSize(path.join(out, part))).toLocaleString("en-US")} B`);
+  console.log(
+    `${part.padEnd(8)}${(await treeSize(path.join(out, part))).toLocaleString("en-US")} B`,
+  );
 
 /** 6 つは libtorch のフォルダーから、djl_torch.dll は JNI の jar から。全て固定の大きさと SHA-256 で確かめる。 */
 async function stageNative(target) {
   await mkdir(target);
   for (const { name, size, sha256 } of NATIVE_FILES) {
     const file = path.join(target, name);
-    if (name === JNI_FILE) await writeFile(file, zipEntry(await readFile(options.jni), JNI_ENTRY));
+    if (name === JNI_FILE)
+      await writeFile(file, zipEntry(await readFile(options.jni), JNI_ENTRY));
     else await copyFile(path.join(options.libtorch, name), file);
-    const actual = { size: (await stat(file)).size, sha256: await fileDigest(file) };
+    const actual = {
+      size: (await stat(file)).size,
+      sha256: await fileDigest(file),
+    };
     if (actual.size !== size || actual.sha256 !== sha256)
-      throw new Error(`${name} does not match native-files.json (${actual.size} B, ${actual.sha256}).`);
+      throw new Error(
+        `${name} does not match native-files.json (${actual.size} B, ${actual.sha256}).`,
+      );
   }
 }
 
@@ -96,9 +132,12 @@ async function stageModels(source, target) {
       if (typeof entry[field] !== "string" || entry[field] === "")
         throw new Error(`models[].${field} must be a non-empty string.`);
     const files = INFERENCE_FILES[entry.series];
-    if (files === undefined) throw new Error(`Unknown series: ${entry.series}.`);
+    if (files === undefined)
+      throw new Error(`Unknown series: ${entry.series}.`);
     if (!PATH_SEGMENT.test(entry.modelId) || !PATH_SEGMENT.test(entry.revision))
-      throw new Error(`The model ID and revision must be folder names: ${entry.modelId}/${entry.revision}.`);
+      throw new Error(
+        `The model ID and revision must be folder names: ${entry.modelId}/${entry.revision}.`,
+      );
     const checkpoint = `${entry.modelId}/${entry.revision}`;
     if (models.some((model) => model.checkpoint === checkpoint))
       throw new Error(`Duplicate model: ${checkpoint}.`);
@@ -123,11 +162,16 @@ async function stageModels(source, target) {
   const first = models[0];
   if (first === undefined) throw new Error("models.json lists no models.");
   const { modelId, revision } = catalog.defaultModel ?? first;
-  if (!models.some((model) => model.modelId === modelId && model.revision === revision))
+  if (
+    !models.some(
+      (model) => model.modelId === modelId && model.revision === revision,
+    )
+  )
     throw new Error(`defaultModel ${modelId}/${revision} is not in models.`);
   await writeFile(
     path.join(target, "models.json"),
-    JSON.stringify({ models, defaultModel: { modelId, revision } }, null, 2) + "\n",
+    JSON.stringify({ models, defaultModel: { modelId, revision } }, null, 2) +
+      "\n",
   );
 }
 
@@ -136,12 +180,19 @@ async function stageModels(source, target) {
  * "/" でつないだ相対パスの UTF-8 のバイト順に、パス・0x00・大きさ（8 バイト BE）・中身。
  */
 async function checkpointDigest(directory) {
-  const names = (await readdir(directory, { recursive: true, withFileTypes: true }))
+  const names = (
+    await readdir(directory, { recursive: true, withFileTypes: true })
+  )
     .filter((entry) => entry.isFile())
     .map((entry) =>
-      path.relative(directory, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"),
+      path
+        .relative(directory, path.join(entry.parentPath, entry.name))
+        .split(path.sep)
+        .join("/"),
     )
-    .sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
+    .sort((left, right) =>
+      Buffer.compare(Buffer.from(left), Buffer.from(right)),
+    );
   const hash = createHash("sha256");
   for (const name of names) {
     const file = path.join(directory, name);
@@ -169,20 +220,32 @@ function zipEntry(zip, name) {
     if (zip.toString("utf8", offset + 46, offset + 46 + nameLength) === name) {
       const method = zip.readUInt16LE(offset + 10);
       const local = zip.readUInt32LE(offset + 42);
-      const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+      const start =
+        local +
+        30 +
+        zip.readUInt16LE(local + 26) +
+        zip.readUInt16LE(local + 28);
       const raw = zip.subarray(start, start + zip.readUInt32LE(offset + 20));
       if (method === 0) return raw;
       if (method === 8) return inflateRawSync(raw);
       throw new Error(`Unsupported zip method ${method} for ${name}.`);
     }
-    offset += 46 + nameLength + zip.readUInt16LE(offset + 30) + zip.readUInt16LE(offset + 32);
+    offset +=
+      46 +
+      nameLength +
+      zip.readUInt16LE(offset + 30) +
+      zip.readUInt16LE(offset + 32);
   }
   throw new Error(`${name} is not in the JNI jar.`);
 }
 
 async function treeSize(directory) {
   let total = 0;
-  for (const entry of await readdir(directory, { recursive: true, withFileTypes: true }))
-    if (entry.isFile()) total += (await stat(path.join(entry.parentPath, entry.name))).size;
+  for (const entry of await readdir(directory, {
+    recursive: true,
+    withFileTypes: true,
+  }))
+    if (entry.isFile())
+      total += (await stat(path.join(entry.parentPath, entry.name))).size;
   return total;
 }

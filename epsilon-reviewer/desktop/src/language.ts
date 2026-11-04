@@ -4,7 +4,8 @@ import type desktopMessages from "../../language/ja/desktop.json";
 import type shellMessages from "../../language/ja/shell.json";
 
 /** メインプロセスの文言の鍵（ja のファイルの鍵）。 */
-export type MessageKey = keyof typeof shellMessages | keyof typeof desktopMessages;
+export type MessageKey =
+  keyof typeof shellMessages | keyof typeof desktopMessages;
 
 /** メインプロセスが読む言語のファイル（窓の題とネイティブのダイアログ）。 */
 const FILES = ["shell.json", "desktop.json"] as const;
@@ -16,7 +17,9 @@ const SOURCE_LANGUAGE = "ja";
 export class Languages {
   readonly #messages: ReadonlyMap<string, ReadonlyMap<string, string>>;
 
-  private constructor(messages: ReadonlyMap<string, ReadonlyMap<string, string>>) {
+  private constructor(
+    messages: ReadonlyMap<string, ReadonlyMap<string, string>>,
+  ) {
     this.#messages = messages;
   }
 
@@ -35,7 +38,9 @@ export class Languages {
           if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
           throw error;
         }
-        for (const [key, value] of Object.entries(JSON.parse(text) as Record<string, string>))
+        for (const [key, value] of Object.entries(
+          JSON.parse(text) as Record<string, string>,
+        ))
           merged.set(key, value);
       }
       messages.set(entry.name, merged);

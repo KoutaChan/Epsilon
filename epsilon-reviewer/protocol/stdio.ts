@@ -35,8 +35,7 @@ export type StdioReply =
  * 失敗した時に 1 回だけ送り、状態 1 で終わる。
  */
 export type StdioEvent =
-  | { event: "ready" }
-  | { event: "failed"; error: ErrorBody };
+  { event: "ready" } | { event: "failed"; error: ErrorBody };
 
 export type StdioMessage = StdioReply | StdioEvent;
 

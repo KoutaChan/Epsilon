@@ -6,13 +6,32 @@ const record = {
   recordId: "4e7c1c3a-0b39-4c43-8b8e-2f1d5a3c9e10",
   record: { source: "tenhou", names: ["A", "B", "C", "D"], roundCount: 8 },
 };
-const model = { modelId: "prism", revision: "v551", displayName: "Prism", version: "v2" };
-const document = { format: 6, resultId: "82b7a497-06a6-42a1-8700-8b4b65e83273" };
-const entry = { resultId: document.resultId, createdAt: "", record: record.record, model };
+const model = {
+  modelId: "prism",
+  revision: "v551",
+  displayName: "Prism",
+  version: "v2",
+};
+const document = {
+  format: 6,
+  resultId: "82b7a497-06a6-42a1-8700-8b4b65e83273",
+};
+const entry = {
+  resultId: document.resultId,
+  createdAt: "",
+  record: record.record,
+  model,
+};
 
 const run = (...actions) => actions.reduce(navigate, INITIAL_NAVIGATION);
 const confirm = (seat = 0) => ({ name: "confirm", record, seat });
-const progress = (seat) => ({ name: "progress", record, seat, jobId: "job", model });
+const progress = (seat) => ({
+  name: "progress",
+  record,
+  seat,
+  jobId: "job",
+  model,
+});
 
 test("an import opens the confirmation with the first seat", () => {
   assert.deepEqual(run({ type: "imported", record }).screen, confirm(0));
@@ -40,7 +59,9 @@ test("back goes from progress to confirmation, and from confirmation or review h
   );
   const confirmation = navigate(started, { type: "back" });
   assert.deepEqual(confirmation.screen, confirm(1));
-  assert.deepEqual(navigate(confirmation, { type: "back" }).screen, { name: "home" });
+  assert.deepEqual(navigate(confirmation, { type: "back" }).screen, {
+    name: "home",
+  });
   const review = run({ type: "opened", document });
   assert.deepEqual(review.screen, { name: "review", document, seat: 0 });
   assert.deepEqual(navigate(review, { type: "back" }).screen, { name: "home" });

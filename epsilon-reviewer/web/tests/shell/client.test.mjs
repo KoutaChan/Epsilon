@@ -66,9 +66,15 @@ test("web export downloads the stored gzip untouched under the result file name"
   });
   const transport = fakeTransport("web", () => blob);
   const link = { click: t.mock.fn() };
-  globalThis.document = { createElement: (tag) => (assert.equal(tag, "a"), link) };
+  globalThis.document = {
+    createElement: (tag) => (assert.equal(tag, "a"), link),
+  };
   t.after(() => delete globalThis.document);
-  const created = t.mock.method(URL, "createObjectURL", () => "blob:review-export");
+  const created = t.mock.method(
+    URL,
+    "createObjectURL",
+    () => "blob:review-export",
+  );
   const revoked = t.mock.method(URL, "revokeObjectURL", () => {});
   const delays = [];
   t.mock.method(globalThis, "setTimeout", (callback, delay) => {
@@ -77,7 +83,10 @@ test("web export downloads the stored gzip untouched under the result file name"
   });
 
   assert.equal(await createApi(transport).export(id), "downloaded");
-  assert.deepEqual(transport.calls.map((call) => call.command), ["downloadResult"]);
+  assert.deepEqual(
+    transport.calls.map((call) => call.command),
+    ["downloadResult"],
+  );
   assert.equal(created.mock.calls[0].arguments[0], blob);
   assert.equal(link.href, "blob:review-export");
   assert.equal(link.download, `${id}.epsilon-reviewer.json.gz`);
@@ -118,7 +127,11 @@ test("desktop imports send the file path, or the bytes when the file has no path
   await api.importFile(withPath);
   await api.importFile(pasted);
   assert.deepEqual(transport.calls, [
-    { command: "importFile", request: { path: "C:\\牌譜\\record.xml" }, options: {} },
+    {
+      command: "importFile",
+      request: { path: "C:\\牌譜\\record.xml" },
+      options: {},
+    },
     { command: "importBytes", request: {}, options: { body: pasted } },
   ]);
 });
@@ -157,7 +170,10 @@ test("malformed share identifiers never become requests", async () => {
     );
   assert.equal(transport.calls.length, 0);
   assert.deepEqual(await api.sharedResult(id), documentOf(id));
-  assert.deepEqual(transport.calls.map((call) => call.command), ["sharedResult"]);
+  assert.deepEqual(
+    transport.calls.map((call) => call.command),
+    ["sharedResult"],
+  );
 });
 
 test("start sends only the model key of a catalog model", async () => {
@@ -184,8 +200,16 @@ test("scenario clients send the query to the owner or the share command", async 
   await api.scenarioClient(id, "owner").evaluate(query, signal);
   await api.scenarioClient(id, "share").evaluate(query, signal);
   assert.deepEqual(transport.calls, [
-    { command: "scenario", request: { resultId: id, ...query }, options: { signal } },
-    { command: "sharedScenario", request: { resultId: id, ...query }, options: { signal } },
+    {
+      command: "scenario",
+      request: { resultId: id, ...query },
+      options: { signal },
+    },
+    {
+      command: "sharedScenario",
+      request: { resultId: id, ...query },
+      options: { signal },
+    },
   ]);
 });
 

@@ -17,7 +17,10 @@ const { module: catalog } = await runnerImport("/src/language/catalog.ts", {
 });
 const read = async (language, file) =>
   JSON.parse(
-    await readFile(new URL(`../../../language/${language}/${file}`, import.meta.url), "utf8"),
+    await readFile(
+      new URL(`../../../language/${language}/${file}`, import.meta.url),
+      "utf8",
+    ),
   );
 
 test("languages are listed in folder order with their own names", () => {
@@ -32,9 +35,15 @@ test("languages are listed in folder order with their own names", () => {
 
 test("the page reads shell, replay, mahjong and errors but not desktop", async () => {
   const t = catalog.translator("ja");
-  for (const file of ["shell.json", "replay.json", "mahjong.json", "errors.json"]) {
+  for (const file of [
+    "shell.json",
+    "replay.json",
+    "mahjong.json",
+    "errors.json",
+  ]) {
     const messages = await read("ja", file);
-    for (const key of Object.keys(messages)) assert.equal(t(key), messages[key]);
+    for (const key of Object.keys(messages))
+      assert.equal(t(key), messages[key]);
   }
   const [desktopKey] = Object.keys(await read("ja", "desktop.json"));
   assert.equal(t(desktopKey), desktopKey);
@@ -47,7 +56,10 @@ test("placeholders take the given values and keep the token when a value is miss
   assert.equal(en("common.player", { number: 3 }), "Player 3");
   assert.equal(ja("common.player"), "プレイヤー {number}");
   assert.equal(ja("common.player", { other: 1 }), "プレイヤー {number}");
-  assert.equal(ja("history.analysedAt", { date: "{number}" }), "解析：{number}");
+  assert.equal(
+    ja("history.analysedAt", { date: "{number}" }),
+    "解析：{number}",
+  );
   assert.equal(
     en("confirm.summary", { source: "Tenhou", count: 12 }),
     "Tenhou · Hands: 12",
@@ -66,7 +78,10 @@ test("inherited names are not placeholder values", () => {
 test("errors map to their message key and anything else to operation_failed", () => {
   for (const code of [...SERVER_ERROR_CODES, ...CLIENT_ERROR_CODES]) {
     assert.equal(catalog.errorKey({ code }), `errors.${code}`);
-    assert.notEqual(catalog.translator("en")(`errors.${code}`), `errors.${code}`);
+    assert.notEqual(
+      catalog.translator("en")(`errors.${code}`),
+      `errors.${code}`,
+    );
   }
   for (const error of [
     null,

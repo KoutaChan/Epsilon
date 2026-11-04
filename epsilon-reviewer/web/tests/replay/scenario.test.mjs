@@ -288,9 +288,16 @@ test("the viewer's own river keeps the recorded discard style and counts as seen
   ]);
   const board = applyEdits(original, edits, VIEWER);
   assert.deepEqual(board.snapshot.players[VIEWER].river, [{ tile: "S" }]);
-  assert.equal(board.snapshot.players[VIEWER].hand, original.players[VIEWER].hand);
+  assert.equal(
+    board.snapshot.players[VIEWER].hand,
+    original.players[VIEWER].hand,
+  );
   // 自分の河の牌も、ほかの所の牌の一覧で見えている牌として数える。
-  const choices = tileChoices(board, VIEWER, { kind: "river", seat: 0, index: 0 });
+  const choices = tileChoices(board, VIEWER, {
+    kind: "river",
+    seat: 0,
+    index: 0,
+  });
   assert.equal(find(choices, "S").visible, 1);
   assert.equal(find(choices, "N").visible, 0);
 });

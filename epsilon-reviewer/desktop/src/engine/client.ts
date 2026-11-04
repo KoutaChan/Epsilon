@@ -81,10 +81,12 @@ export class EngineClient {
   }
 
   #accept({ header, body }: Frame): void {
-    if (!isFields(header)) throw new Error("The frame header is not an object.");
+    if (!isFields(header))
+      throw new Error("The frame header is not an object.");
     if (header.event === "ready") return;
     if (header.event === "failed") {
-      if (!isErrorBody(header.error)) throw new Error("The failed event has no error.");
+      if (!isErrorBody(header.error))
+        throw new Error("The failed event has no error.");
       this.#failure = header.error;
       return;
     }
@@ -101,16 +103,23 @@ export class EngineClient {
 /** @throws Error 答えの形が違う */
 function replyOf(header: Fields, body: ArrayBuffer | null): InvokeReply {
   if (header.ok === false) {
-    if (!isErrorBody(header.error)) throw new Error("The failed reply has no error.");
+    if (!isErrorBody(header.error))
+      throw new Error("The failed reply has no error.");
     return { ok: false, error: header.error };
   }
   if (header.ok !== true) throw new Error("The reply has no ok flag.");
-  const reply: { ok: true; response?: unknown; body?: ArrayBuffer } = { ok: true };
+  const reply: { ok: true; response?: unknown; body?: ArrayBuffer } = {
+    ok: true,
+  };
   if (header.response !== undefined) reply.response = header.response;
   if (body !== null) reply.body = body;
   return reply;
 }
 
 function isErrorBody(value: unknown): value is ErrorBody {
-  return isFields(value) && isErrorCode(value.code) && typeof value.message === "string";
+  return (
+    isFields(value) &&
+    isErrorCode(value.code) &&
+    typeof value.message === "string"
+  );
 }

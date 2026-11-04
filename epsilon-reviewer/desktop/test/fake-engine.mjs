@@ -34,16 +34,28 @@ function answer({ header, body }) {
       if (request.jobId === "crash") process.exit(3);
       if (request.jobId === "slow")
         return setTimeout(
-          () => send({ id, ok: true, response: { jobId: "slow", status: "running", progress: 1 } }),
+          () =>
+            send({
+              id,
+              ok: true,
+              response: { jobId: "slow", status: "running", progress: 1 },
+            }),
           100,
         );
       return send({
         id,
         ok: false,
-        error: { code: "job_not_found", message: "The analysis job was not found." },
+        error: {
+          code: "job_not_found",
+          message: "The analysis job was not found.",
+        },
       });
     default:
-      return send({ id, ok: false, error: { code: "invalid_request", message: "The request is invalid." } });
+      return send({
+        id,
+        ok: false,
+        error: { code: "invalid_request", message: "The request is invalid." },
+      });
   }
 }
 
@@ -51,7 +63,10 @@ if (process.env.FAKE_ENGINE === "locked") {
   send(
     {
       event: "failed",
-      error: { code: "data_locked", message: "The data directory is used by another reviewer." },
+      error: {
+        code: "data_locked",
+        message: "The data directory is used by another reviewer.",
+      },
     },
     undefined,
     () => process.exit(1),
@@ -61,5 +76,6 @@ if (process.env.FAKE_ENGINE === "locked") {
   send({ event: "ready" });
   const decoder = new FrameDecoder();
   process.stdin.on("data", (chunk) => decoder.push(chunk).forEach(answer));
-  if (process.env.FAKE_IGNORE_EOF) process.stdin.on("end", () => setInterval(() => {}, 1000));
+  if (process.env.FAKE_IGNORE_EOF)
+    process.stdin.on("end", () => setInterval(() => {}, 1000));
 }

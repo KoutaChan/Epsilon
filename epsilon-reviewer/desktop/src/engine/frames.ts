@@ -27,7 +27,9 @@ export function encodeFrame(header: object, body?: ArrayBuffer): Uint8Array[] {
   const headerLength = Buffer.byteLength(json);
   const bodyLength = body?.byteLength ?? 0;
   if (headerLength > FRAME_HEADER_LIMIT)
-    throw new RangeError(`The frame header exceeds ${FRAME_HEADER_LIMIT} bytes.`);
+    throw new RangeError(
+      `The frame header exceeds ${FRAME_HEADER_LIMIT} bytes.`,
+    );
   if (bodyLength > FRAME_BODY_LIMIT)
     throw new RangeError(`The frame body exceeds ${FRAME_BODY_LIMIT} bytes.`);
   const prefix = Buffer.allocUnsafe(headerLength + 2 * LENGTH_BYTES);
@@ -92,7 +94,9 @@ export class FrameDecoder {
       case "headerLength": {
         const length = readLength(bytes);
         if (length > FRAME_HEADER_LIMIT)
-          throw new Error(`The frame header of ${length} bytes exceeds the limit.`);
+          throw new Error(
+            `The frame header of ${length} bytes exceeds the limit.`,
+          );
         this.#expect("header", length);
         return null;
       }
@@ -103,7 +107,9 @@ export class FrameDecoder {
       case "bodyLength": {
         const length = readLength(bytes);
         if (length > FRAME_BODY_LIMIT)
-          throw new Error(`The frame body of ${length} bytes exceeds the limit.`);
+          throw new Error(
+            `The frame body of ${length} bytes exceeds the limit.`,
+          );
         if (length === 0) return this.#emit(null);
         this.#body = new ArrayBuffer(length);
         this.#pending = new Uint8Array(this.#body);
@@ -130,5 +136,7 @@ export class FrameDecoder {
 }
 
 function readLength(bytes: Uint8Array): number {
-  return new DataView(bytes.buffer, bytes.byteOffset, LENGTH_BYTES).getUint32(0);
+  return new DataView(bytes.buffer, bytes.byteOffset, LENGTH_BYTES).getUint32(
+    0,
+  );
 }

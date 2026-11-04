@@ -96,7 +96,8 @@ export interface CommandTypes {
 
 export type CommandName = keyof CommandTypes;
 export type CommandRequest<N extends CommandName> = CommandTypes[N]["request"];
-export type CommandResponse<N extends CommandName> = CommandTypes[N]["response"];
+export type CommandResponse<N extends CommandName> =
+  CommandTypes[N]["response"];
 
 export const COMMANDS = {
   models: {

@@ -8,9 +8,11 @@ const bridge: ReviewerBridge = {
       : ipcRenderer.invoke(BRIDGE_CHANNELS.invoke, command, request, body),
   pathForFile: (file) => webUtils.getPathForFile(file),
   settings: () => ipcRenderer.invoke(BRIDGE_CHANNELS.settings),
-  setLanguage: (language) => ipcRenderer.invoke(BRIDGE_CHANNELS.language, language),
+  setLanguage: (language) =>
+    ipcRenderer.invoke(BRIDGE_CHANNELS.language, language),
   chooseResultsDirectory: () => ipcRenderer.invoke(BRIDGE_CHANNELS.directory),
-  exportResult: (resultId) => ipcRenderer.invoke(BRIDGE_CHANNELS.export, resultId),
+  exportResult: (resultId) =>
+    ipcRenderer.invoke(BRIDGE_CHANNELS.export, resultId),
 };
 
 contextBridge.exposeInMainWorld("epsilonReviewer", bridge);

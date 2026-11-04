@@ -77,7 +77,10 @@ function isMissing(error: unknown): boolean {
 }
 
 /** 同じフォルダーの一時ファイルへ書いて fsync し、置き換える。 */
-async function writeJsonAtomically(file: string, value: unknown): Promise<void> {
+async function writeJsonAtomically(
+  file: string,
+  value: unknown,
+): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {

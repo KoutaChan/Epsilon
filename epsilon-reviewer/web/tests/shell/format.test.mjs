@@ -15,7 +15,12 @@ import {
 const t = (key, values) => (values ? `${key}${JSON.stringify(values)}` : key);
 
 test("model keys and labels", () => {
-  const model = { modelId: "prism", revision: "v551", displayName: "Prism", version: "v2" };
+  const model = {
+    modelId: "prism",
+    revision: "v551",
+    displayName: "Prism",
+    version: "v2",
+  };
   assert.equal(modelKey(model), '["prism","v551"]');
   assert.equal(modelKey({ ...model, displayName: "other" }), modelKey(model));
   assert.equal(modelLabel(model), "Prism v2");

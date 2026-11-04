@@ -6,7 +6,10 @@ import { build } from "esbuild";
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 
-await rm(new URL("../dist/", import.meta.url), { recursive: true, force: true });
+await rm(new URL("../dist/", import.meta.url), {
+  recursive: true,
+  force: true,
+});
 await build({
   absWorkingDir: desktop,
   entryPoints: { main: "src/main.ts", preload: "src/preload.ts" },

@@ -20,7 +20,11 @@ import { errorMessage, isFields, type Fields } from "./values.ts";
 
 /** ブリッジが使う Java の口（EngineProcess）。 */
 export interface Engine {
-  request(command: StdioCommandName, request: object, body?: ArrayBuffer): Promise<InvokeReply>;
+  request(
+    command: StdioCommandName,
+    request: object,
+    body?: ArrayBuffer,
+  ): Promise<InvokeReply>;
   /** 保存先を変えた後に、その保存先で開き直す。 */
   restart(): Promise<void>;
 }
@@ -43,7 +47,10 @@ export interface BridgeServices {
   host: BridgeHost;
 }
 
-type Listener = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>;
+type Listener = (
+  event: IpcMainInvokeEvent,
+  ...args: unknown[]
+) => Promise<unknown>;
 
 /** ipcMain の handle（試験は偽の表を渡す）。 */
 export interface IpcHandlers {
@@ -52,7 +59,11 @@ export interface IpcHandlers {
 
 type Refusal = { ok: false; error: ErrorBody };
 
-const FINISHED: ReadonlySet<string> = new Set<JobStatus>(["completed", "failed", "cancelled"]);
+const FINISHED: ReadonlySet<string> = new Set<JobStatus>([
+  "completed",
+  "failed",
+  "cancelled",
+]);
 
 /**
  * BRIDGE_CHANNELS の手を登録する。どの手も送り手を確かめ、BridgeReply か InvokeReply を返す（例外は IPC の
@@ -63,14 +74,20 @@ export function registerBridge(
   { engine, settings, languages, host }: BridgeServices,
 ): void {
   const analyses = new ActiveAnalyses();
-  const handle = (channel: string, run: (...args: unknown[]) => Promise<unknown>): void =>
+  const handle = (
+    channel: string,
+    run: (...args: unknown[]) => Promise<unknown>,
+  ): void =>
     ipc.handle(channel, async (event, ...args) => {
       try {
         const untrusted = host.checkSender(event);
         return untrusted === null ? await run(...args) : refuse(untrusted);
       } catch (error) {
         console.error(`The bridge call ${channel} failed:`, error);
-        return refuse({ code: "operation_failed", message: errorMessage(error) });
+        return refuse({
+          code: "operation_failed",
+          message: errorMessage(error),
+        });
       }
     });
 
@@ -84,9 +101,11 @@ export function registerBridge(
         return invalid("importFile needs an absolute path.");
       let bytes: ArrayBuffer | undefined;
       if (command === "importBytes") {
-        if (!(body instanceof ArrayBuffer)) return invalid("importBytes needs the record bytes.");
+        if (!(body instanceof ArrayBuffer))
+          return invalid("importBytes needs the record bytes.");
         bytes = body;
-      } else if (body !== undefined) return invalid(`${command} takes no body.`);
+      } else if (body !== undefined)
+        return invalid(`${command} takes no body.`);
       const reply = await engine.request(command, request, bytes);
       analyses.observe(command, request, reply);
       return reply;
@@ -117,7 +136,9 @@ export function registerBridge(
           code: "analysis_active",
           message: "An analysis is already queued or running.",
         });
-      const directory = await host.chooseDirectory(settings.value.resultsDirectory);
+      const directory = await host.chooseDirectory(
+        settings.value.resultsDirectory,
+      );
       if (directory === null) return accept(settings.value);
       const next = await settings.update({ resultsDirectory: directory });
       await engine.restart();
@@ -128,10 +149,14 @@ export function registerBridge(
   handle(
     BRIDGE_CHANNELS.export,
     async (resultId): Promise<BridgeReply<{ saved: boolean }>> => {
-      if (typeof resultId !== "string") return invalid("The result ID must be a string.");
+      if (typeof resultId !== "string")
+        return invalid("The result ID must be a string.");
       const target = await host.chooseExportPath(resultId);
       if (target === null) return accept({ saved: false });
-      const reply = await engine.request("exportResult", { resultId, path: target });
+      const reply = await engine.request("exportResult", {
+        resultId,
+        path: target,
+      });
       return reply.ok ? accept({ saved: true }) : reply;
     },
   );
@@ -145,11 +170,22 @@ class ActiveAnalyses {
   readonly #jobs = new Set<string>();
 
   /** 画面の呼び出しの答えを見る。 */
-  observe(command: RendererCommandName, request: Fields, reply: InvokeReply): void {
+  observe(
+    command: RendererCommandName,
+    request: Fields,
+    reply: InvokeReply,
+  ): void {
     if (command === "startAnalysis") {
-      if (reply.ok && isFields(reply.response) && typeof reply.response.jobId === "string")
+      if (
+        reply.ok &&
+        isFields(reply.response) &&
+        typeof reply.response.jobId === "string"
+      )
         this.#jobs.add(reply.response.jobId);
-    } else if ((command === "job" || command === "cancelJob") && typeof request.jobId === "string") {
+    } else if (
+      (command === "job" || command === "cancelJob") &&
+      typeof request.jobId === "string"
+    ) {
       this.#settle(request.jobId, reply);
     }
   }
@@ -163,8 +199,10 @@ class ActiveAnalyses {
 
   /** 走っている仕事の答えでなければ忘れる。失敗の答えは、子プロセスが替わって仕事が無いこと。 */
   #settle(jobId: string, reply: InvokeReply): void {
-    const status = reply.ok && isFields(reply.response) ? reply.response.status : undefined;
-    if (typeof status !== "string" || FINISHED.has(status)) this.#jobs.delete(jobId);
+    const status =
+      reply.ok && isFields(reply.response) ? reply.response.status : undefined;
+    if (typeof status !== "string" || FINISHED.has(status))
+      this.#jobs.delete(jobId);
   }
 }
 

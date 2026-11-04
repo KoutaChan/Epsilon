@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CircleAlert, FolderOpen, LoaderCircle, RefreshCw, Search } from "lucide-react";
+import {
+  CircleAlert,
+  FolderOpen,
+  LoaderCircle,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import type {
   HistoryEntry,
   HistoryList as HistoryData,
@@ -82,11 +88,12 @@ export function HistoryList({
       <div className="history-heading">
         <div>
           <h2>
-            {t("history.title")}{" "}
-            <span>{entries ? entries.length : ""}</span>
+            {t("history.title")} <span>{entries ? entries.length : ""}</span>
           </h2>
           <p>
-            {t(api.platform === "desktop" ? "history.local" : "history.browser")}
+            {t(
+              api.platform === "desktop" ? "history.local" : "history.browser",
+            )}
           </p>
         </div>
         <button

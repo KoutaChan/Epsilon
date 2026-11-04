@@ -5,7 +5,10 @@ export interface Task {
   error: unknown;
   clearError(): void;
   /** 前の run を置き換える。結果・失敗・busy は最後に始めた run だけが、画面の寿命の間だけ当てる。 */
-  run<T>(operation: () => Promise<T>, complete: (value: T) => void): Promise<void>;
+  run<T>(
+    operation: () => Promise<T>,
+    complete: (value: T) => void,
+  ): Promise<void>;
 }
 
 export function useTask(): Task {

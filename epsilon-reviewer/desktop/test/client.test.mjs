@@ -26,7 +26,11 @@ function harness() {
 test("ids increase from 1 and replies are matched by id in any order", async () => {
   const { client, requests, send } = harness();
   const first = client.request("job", { jobId: "a" });
-  const second = client.request("importBytes", {}, new Uint8Array([5, 6]).buffer);
+  const second = client.request(
+    "importBytes",
+    {},
+    new Uint8Array([5, 6]).buffer,
+  );
   const third = client.request("history", {});
   await tick();
   assert.deepEqual(
@@ -39,12 +43,22 @@ test("ids increase from 1 and replies are matched by id in any order", async () 
   );
   assert.deepEqual(new Uint8Array(requests[1].body), new Uint8Array([5, 6]));
   send({ id: 3, ok: true, response: { results: [] } });
-  send({ id: 1, ok: false, error: { code: "job_not_found", message: "The analysis job was not found." } });
+  send({
+    id: 1,
+    ok: false,
+    error: {
+      code: "job_not_found",
+      message: "The analysis job was not found.",
+    },
+  });
   send({ id: 2, ok: true, response: { recordId: "r" } });
   assert.deepEqual(await third, { ok: true, response: { results: [] } });
   assert.deepEqual(await first, {
     ok: false,
-    error: { code: "job_not_found", message: "The analysis job was not found." },
+    error: {
+      code: "job_not_found",
+      message: "The analysis job was not found.",
+    },
   });
   assert.deepEqual(await second, { ok: true, response: { recordId: "r" } });
 });
@@ -67,12 +81,18 @@ test("the ready event is accepted and a document reply carries its body", async 
 test("after a failed event the exit answers pending and later requests with its error", async () => {
   const { client, send } = harness();
   const pending = client.request("models", {});
-  const locked = { code: "data_locked", message: "The data directory is used by another reviewer." };
+  const locked = {
+    code: "data_locked",
+    message: "The data directory is used by another reviewer.",
+  };
   send({ event: "failed", error: locked });
   await tick();
   client.close();
   assert.deepEqual(await pending, { ok: false, error: locked });
-  assert.deepEqual(await client.request("history", {}), { ok: false, error: locked });
+  assert.deepEqual(await client.request("history", {}), {
+    ok: false,
+    error: locked,
+  });
   assert.deepEqual(client.failure, locked);
 });
 
@@ -80,14 +100,21 @@ test("the exit answers pending and later requests with engine_failed", async () 
   const { client } = harness();
   const pending = client.request("models", {});
   client.close();
-  const stopped = { ok: false, error: { code: "engine_failed", message: "The analysis engine stopped." } };
+  const stopped = {
+    ok: false,
+    error: { code: "engine_failed", message: "The analysis engine stopped." },
+  };
   assert.deepEqual(await pending, stopped);
   assert.deepEqual(await client.request("models", {}), stopped);
 });
 
 test("an invalid frame or an unknown reply breaks the engine", async (t) => {
   t.mock.method(console, "error", () => undefined);
-  for (const header of [{ id: 9, ok: true }, { event: "started" }, { id: 1, ok: false, error: { code: "nope", message: "" } }]) {
+  for (const header of [
+    { id: 9, ok: true },
+    { event: "started" },
+    { id: 1, ok: false, error: { code: "nope", message: "" } },
+  ]) {
     const { client, send, engine } = harness();
     const pending = client.request("models", {});
     await tick();
@@ -104,7 +131,11 @@ test("an invalid frame or an unknown reply breaks the engine", async (t) => {
 
 test("a request over the frame limit is refused without writing", async () => {
   const { client, requests } = harness();
-  const reply = await client.request("importBytes", {}, new ArrayBuffer(FRAME_BODY_LIMIT + 1));
+  const reply = await client.request(
+    "importBytes",
+    {},
+    new ArrayBuffer(FRAME_BODY_LIMIT + 1),
+  );
   assert.equal(reply.error.code, "invalid_request");
   await tick();
   assert.equal(requests.length, 0);

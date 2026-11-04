@@ -32,14 +32,19 @@ export function registerAppProtocol(webRoot: string): void {
     try {
       file = path.resolve(
         webRoot,
-        "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname),
+        "." +
+          decodeURIComponent(
+            url.pathname === "/" ? "/index.html" : url.pathname,
+          ),
       );
     } catch {
       return new Response(null, { status: 400 });
     }
-    if (!file.startsWith(webRoot + path.sep)) return new Response(null, { status: 403 });
+    if (!file.startsWith(webRoot + path.sep))
+      return new Response(null, { status: 403 });
     try {
-      if (!(await stat(file)).isFile()) return new Response(null, { status: 404 });
+      if (!(await stat(file)).isFile())
+        return new Response(null, { status: 404 });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT")
         return new Response(null, { status: 404 });

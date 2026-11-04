@@ -1,4 +1,10 @@
-import { Download, MoreHorizontal, RefreshCw, Share2, Trash2 } from "lucide-react";
+import {
+  Download,
+  MoreHorizontal,
+  RefreshCw,
+  Share2,
+  Trash2,
+} from "lucide-react";
 import { useLanguage } from "../../language/LanguageProvider";
 
 export type MenuAction = "share" | "export" | "reanalyse" | "delete";

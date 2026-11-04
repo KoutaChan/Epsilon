@@ -16,7 +16,10 @@ function fakeBridge(overrides = {}) {
     },
     pathForFile: (file) => file.path ?? "",
     settings: async () => ({ ok: true, value: settings }),
-    setLanguage: async (language) => ({ ok: true, value: { ...settings, language } }),
+    setLanguage: async (language) => ({
+      ok: true,
+      value: { ...settings, language },
+    }),
     chooseResultsDirectory: async () => ({ ok: true, value: settings }),
     exportResult: async () => ({ ok: true, value: { saved: true } }),
     ...overrides,
@@ -25,7 +28,9 @@ function fakeBridge(overrides = {}) {
 }
 
 async function gzip(text) {
-  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+  const stream = new Blob([text])
+    .stream()
+    .pipeThrough(new CompressionStream("gzip"));
   return new Response(stream).arrayBuffer();
 }
 
@@ -59,12 +64,19 @@ test("error replies become ApiError with the code and message", async () => {
     fakeBridge({
       invoke: async () => ({
         ok: false,
-        error: { code: "analysis_active", message: "An analysis is already queued or running." },
+        error: {
+          code: "analysis_active",
+          message: "An analysis is already queued or running.",
+        },
       }),
     }),
   );
   await assert.rejects(
-    transport.call("startAnalysis", { recordId: id, modelId: "m", revision: "r" }),
+    transport.call("startAnalysis", {
+      recordId: id,
+      modelId: "m",
+      revision: "r",
+    }),
     (error) =>
       error instanceof ApiError &&
       error.code === "analysis_active" &&
@@ -74,7 +86,11 @@ test("error replies become ApiError with the code and message", async () => {
 });
 
 test("documents arrive as gzip bytes and are inflated in the page", async () => {
-  const document = { format: 6, resultId: id, record: { names: ["東", "南", "西", "北"] } };
+  const document = {
+    format: 6,
+    resultId: id,
+    record: { names: ["東", "南", "西", "北"] },
+  };
   const body = await gzip(JSON.stringify(document));
   const transport = bridgeTransport(
     fakeBridge({ invoke: async () => ({ ok: true, body }) }),
@@ -131,7 +147,10 @@ test("bridge operations unwrap their replies", async () => {
   assert.equal((await transport.setLanguage("en")).language, "en");
   assert.deepEqual(await transport.chooseResultsDirectory(), settings);
   assert.equal(await transport.exportResult(id), true);
-  assert.equal(transport.pathForFile({ path: "C:\\record.xml" }), "C:\\record.xml");
+  assert.equal(
+    transport.pathForFile({ path: "C:\\record.xml" }),
+    "C:\\record.xml",
+  );
 
   const failing = bridgeTransport(
     fakeBridge({

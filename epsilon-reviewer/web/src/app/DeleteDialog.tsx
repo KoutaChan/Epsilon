@@ -19,7 +19,10 @@ export function DeleteDialog({
 }) {
   const { t } = useLanguage();
   return (
-    <Dialog title={t("history.deleteTitle")} onClose={() => !busy && onCancel()}>
+    <Dialog
+      title={t("history.deleteTitle")}
+      onClose={() => !busy && onCancel()}
+    >
       <p>{t("history.deleteDescription")}</p>
       {shareable && <p>{t("share.deleteHint")}</p>}
       {error !== null && (

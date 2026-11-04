@@ -60,7 +60,9 @@ async function decode(
 ): Promise<unknown> {
   if (kind === "empty") return undefined;
   try {
-    return kind === "attachment" ? await response.blob() : await response.json();
+    return kind === "attachment"
+      ? await response.blob()
+      : await response.json();
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new ApiError(

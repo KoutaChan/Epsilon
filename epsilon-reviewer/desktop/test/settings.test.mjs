@@ -13,7 +13,10 @@ async function folder(t) {
   return {
     directory,
     file: path.join(directory, "settings.json"),
-    defaults: { resultsDirectory: path.join(directory, "結果"), language: "ja" },
+    defaults: {
+      resultsDirectory: path.join(directory, "結果"),
+      language: "ja",
+    },
   };
 }
 
@@ -31,7 +34,11 @@ test("an unreadable or invalid file is replaced by the defaults", async (t) => {
     "[]",
     JSON.stringify({ resultsDirectory: "relative", language: "ja" }),
     JSON.stringify({ resultsDirectory: directory, language: "../unknown" }),
-    JSON.stringify({ resultsDirectory: directory, language: "en", serverUrl: "http://x" }),
+    JSON.stringify({
+      resultsDirectory: directory,
+      language: "en",
+      serverUrl: "http://x",
+    }),
   ];
   for (const text of invalid) {
     await writeFile(file, text);
@@ -50,16 +57,29 @@ test("concurrent updates commit in order and survive a restart", async (t) => {
     settings.update({ resultsDirectory: path.join(directory, "新しい") }),
   ]);
   assert.deepEqual(first, { ...defaults, language: "en" });
-  assert.deepEqual(second, { resultsDirectory: path.join(directory, "新しい"), language: "en" });
-  assert.deepEqual((await SettingsStore.open(file, defaults, isLanguage)).value, second);
+  assert.deepEqual(second, {
+    resultsDirectory: path.join(directory, "新しい"),
+    language: "en",
+  });
+  assert.deepEqual(
+    (await SettingsStore.open(file, defaults, isLanguage)).value,
+    second,
+  );
 });
 
 test("a failed write keeps the current value", async (t) => {
   const { directory, defaults } = await folder(t);
   const blocked = path.join(directory, "blocked");
-  const settings = await SettingsStore.open(path.join(blocked, "settings.json"), defaults, isLanguage);
+  const settings = await SettingsStore.open(
+    path.join(blocked, "settings.json"),
+    defaults,
+    isLanguage,
+  );
   await writeFile(blocked, "a file where the folder should be");
   await assert.rejects(settings.update({ language: "en" }));
   assert.deepEqual(settings.value, defaults);
-  assert.deepEqual(await settings.update({}).catch(() => "rejected"), "rejected");
+  assert.deepEqual(
+    await settings.update({}).catch(() => "rejected"),
+    "rejected",
+  );
 });

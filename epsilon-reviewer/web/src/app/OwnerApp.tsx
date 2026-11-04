@@ -19,7 +19,11 @@ import { modelKey } from "../language/format";
 import { AppHeader } from "./AppHeader";
 import { DeleteDialog } from "./DeleteDialog";
 import { ErrorBanner } from "./ErrorBanner";
-import { INITIAL_NAVIGATION, navigate, type NavigationAction } from "./navigation";
+import {
+  INITIAL_NAVIGATION,
+  navigate,
+  type NavigationAction,
+} from "./navigation";
 import { Toast } from "./Toast";
 import { useToast } from "./useToast";
 
@@ -38,7 +42,10 @@ export function OwnerApp() {
   const history = useHistory();
   const task = useTask();
   const toast = useToast();
-  const [{ screen, modal }, dispatch] = useReducer(navigate, INITIAL_NAVIGATION);
+  const [{ screen, modal }, dispatch] = useReducer(
+    navigate,
+    INITIAL_NAVIGATION,
+  );
   const web = api.platform === "web";
   const { reload: reloadHistory } = history;
   const { clearError } = task;
@@ -74,7 +81,8 @@ export function OwnerApp() {
         busy={task.busy}
         onSettings={
           api.desktop
-            ? () => dispatch({ type: "modalOpened", modal: { name: "settings" } })
+            ? () =>
+                dispatch({ type: "modalOpened", modal: { name: "settings" } })
             : null
         }
         onStorage={() =>

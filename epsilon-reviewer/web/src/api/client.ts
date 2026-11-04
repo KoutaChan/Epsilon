@@ -19,7 +19,8 @@ const DOCUMENT_CACHE_SIZE = 2;
 /** ダウンロードの blob の URL を返すまでの時間。 */
 const DOWNLOAD_URL_LIFETIME_MS = 1000;
 /** 共有の id（= 解析結果の id）の形。 */
-const RESULT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const RESULT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** 書き出しの結果。downloaded は Web のダウンロードの開始、saved と cancelled はデスクトップの保存の画面。 */
 export type ExportOutcome = "downloaded" | "saved" | "cancelled";

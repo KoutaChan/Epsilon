@@ -153,7 +153,11 @@ export interface Meld {
 /**
  * 配列の 1 か所の置き換え [位置, 消す数, ...入れる値]。前の配列の位置から消す数だけ消し、そこへ値を入れる。
  */
-export type Splice<T> = readonly [index: number, removeCount: number, ...values: T[]];
+export type Splice<T> = readonly [
+  index: number,
+  removeCount: number,
+  ...values: T[],
+];
 
 /** 局面の差分。変わった欄だけを書く。 */
 export interface StateDelta {
@@ -261,7 +265,8 @@ export function actionOf(actionId: number): ActionShape {
   if (actionId < 74) return discard("DAHAI", actionId);
   if (actionId < 155) return { type: "CHI", tsumogiri: false, tile: null };
   if (actionId < 192) return { type: "PON", tsumogiri: false, tile: null };
-  if (actionId < 226) return { type: "DAIMINKAN", tsumogiri: false, tile: null };
+  if (actionId < 226)
+    return { type: "DAIMINKAN", tsumogiri: false, tile: null };
   if (actionId < 260) return { type: "ANKAN", tsumogiri: false, tile: null };
   if (actionId < 294) return { type: "KAKAN", tsumogiri: false, tile: null };
   if (actionId < 368) return discard("RIICHI_DAHAI", actionId - 294);
@@ -273,9 +278,12 @@ export function actionOf(actionId: number): ActionShape {
 
 /** 打牌の 74 の並び（手出し 34、ツモ切り 34、赤の手出し 3、赤のツモ切り 3）の 1 つ。 */
 function discard(type: "DAHAI" | "RIICHI_DAHAI", offset: number): ActionShape {
-  if (offset < 34) return { type, tsumogiri: false, tile: tileTypeCode(offset) };
-  if (offset < 68) return { type, tsumogiri: true, tile: tileTypeCode(offset - 34) };
-  if (offset < 71) return { type, tsumogiri: false, tile: RED_FIVES[offset - 68]! };
+  if (offset < 34)
+    return { type, tsumogiri: false, tile: tileTypeCode(offset) };
+  if (offset < 68)
+    return { type, tsumogiri: true, tile: tileTypeCode(offset - 34) };
+  if (offset < 71)
+    return { type, tsumogiri: false, tile: RED_FIVES[offset - 68]! };
   return { type, tsumogiri: true, tile: RED_FIVES[offset - 71]! };
 }
 
@@ -308,7 +316,9 @@ export function candidateProbabilities(
 ): readonly number[] {
   if (set.probabilities) return set.probabilities;
   const values = set.candidates.map((row) => row[1]);
-  return temperature === undefined ? values : displayProbabilities(values, temperature);
+  return temperature === undefined
+    ? values
+    : displayProbabilities(values, temperature);
 }
 
 /** 判断の候補の損失（候補の順）。価値を推定しないモデルは null。 */

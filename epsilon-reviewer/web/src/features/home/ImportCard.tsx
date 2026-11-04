@@ -1,9 +1,14 @@
 import { useRef, useState } from "react";
 import { ArrowRight, Link, LoaderCircle, Upload } from "lucide-react";
+import { useLanguage } from "../../language/LanguageProvider";
 import { ModelSelect } from "../models/ModelSelect";
 import type { Models } from "../models/useModels";
-import { useLanguage } from "../../language/LanguageProvider";
 
+/** 選べる牌譜のファイル（mjai・天鳳 XML・雀魂。gzip も可）。 */
+const RECORD_FILE_TYPES =
+  ".jsonl,.mjson,.mjai,.gz,.xml,.json,.bin,.dat,.majsoul";
+
+/** 天鳳の URL（モデルが要る）か牌譜のファイル（選ぶ・落とす）で取り込む。 */
 export function ImportCard({
   models,
   busy,
@@ -73,7 +78,7 @@ export function ImportCard({
       <div className="file-row">
         <button
           className="button secondary"
-          onClick={() => fileInput.current!.click()}
+          onClick={() => fileInput.current?.click()}
           disabled={busy}
         >
           <Upload />
@@ -83,7 +88,7 @@ export function ImportCard({
         <input
           ref={fileInput}
           type="file"
-          accept=".jsonl,.mjson,.mjai,.gz,.xml,.json,.bin,.dat,.majsoul"
+          accept={RECORD_FILE_TYPES}
           hidden
           onChange={(event) => {
             const file = event.target.files?.[0];

@@ -2,24 +2,26 @@
   "name": "@epsilon-reviewer/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Epsilon AI レビュアー",
-  "main": "dist/main.js",
+  "description": "Epsilon AI Reviewer",
+  "type": "module",
+  "main": "dist/main.cjs",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.mjs",
     "start": "npm run build && electron .",
-    "test": "npm run build && node --test test/*.test.cjs",
     "pack": "electron-builder --dir"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "electron": "44.3.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "0.28.2",
     "typescript": "~5.9.3"
   },
   "build": {
     "appId": "com.epsilon.reviewer",
-    "productName": "Epsilon AI レビュアー",
+    "productName": "Epsilon AI Reviewer",
     "directories": {
       "output": "release"
     },
@@ -27,30 +29,35 @@
       "dist/**/*",
       "package.json"
     ],
+    "electronLanguages": [
+      "ja",
+      "en-US"
+    ],
     "extraResources": [
       {
         "from": "../web/dist",
-        "to": "web"
+        "to": "web",
+        "filter": [
+          "**/*",
+          "!**/*.br",
+          "!**/*.gz"
+        ]
+      },
+      {
+        "from": "../language",
+        "to": "language"
       },
       {
         "from": "../assets/icon.png",
         "to": "icon.png"
       },
       {
-        "from": "../language",
-        "to": "language"
+        "from": "engine",
+        "to": "engine"
       }
     ],
     "win": {
       "target": "dir"
-    },
-    "mac": {
-      "target": "dir",
-      "category": "public.app-category.utilities"
-    },
-    "linux": {
-      "target": "dir",
-      "category": "Utility"
     },
     "icon": "../assets/icon.png"
   }

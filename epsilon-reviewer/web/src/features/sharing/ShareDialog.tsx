@@ -1,37 +1,35 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Check, Copy, LoaderCircle } from "lucide-react";
-import { api } from "../../api/client";
-import type { HistoryEntry, ShareLink } from "../../api/types";
+import { api } from "../../api/platform";
 import { Dialog } from "../../components/Dialog";
-import { useTask } from "../../hooks/useTask";
+import { useResource } from "../../hooks/useResource";
 import { errorKey } from "../../language/catalog";
 import { playerName } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import "./sharing.css";
 
+/** 共有リンクの窓。写せなければ欄を選んで手で写してもらう。 */
 export function ShareDialog({
-  entry,
+  resultId,
+  names,
   onClose,
 }: {
-  entry: HistoryEntry;
+  resultId: string;
+  /** 4 席の対局者名。 */
+  names: readonly string[];
   onClose: () => void;
 }) {
   const { t } = useLanguage();
-  const { busy, error, run } = useTask();
-  const [attempt, setAttempt] = useState(0);
-  const [link, setLink] = useState<ShareLink | null>(null);
+  const { state, reload } = useResource(
+    (signal) => api.shareLink(resultId, signal),
+    [resultId],
+  );
   const [copied, setCopied] = useState<"copied" | "manual" | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    setLink(null);
-    setCopied(null);
-    void run(() => api.shareLink(entry.resultId, controller.signal), setLink);
-    return () => controller.abort();
-  }, [entry.resultId, attempt, run]);
 
   async function copyLink() {
-    const field = input.current!;
+    const field = input.current;
+    if (field === null) return;
     const url = field.value;
     let status: "copied" | "manual" = "manual";
     setCopied(null);
@@ -40,7 +38,7 @@ export function ShareDialog({
         await navigator.clipboard.writeText(url);
         status = "copied";
       } catch {
-        // HTTP接続やブラウザーの権限制限がある場合は手動コピーへ進む。
+        // HTTP の接続やブラウザーの権限で写せなければ手で写してもらう。
       }
     }
     if (input.current !== field || field.value !== url) return;
@@ -54,37 +52,33 @@ export function ShareDialog({
   return (
     <Dialog title={t("share.title")} onClose={onClose}>
       <p className="share-players">
-        {entry.metadata.names
+        {names
           .map((name, seat) => playerName(name, seat, t))
-          .join(" · ")}
+          .join(t("common.listSeparator"))}
       </p>
       <p>{t("share.description")}</p>
-      {busy && (
+      {state.status === "loading" && (
         <div className="share-loading" role="status">
           <LoaderCircle className="spin" aria-hidden="true" />
           {t("share.loading")}
         </div>
       )}
-      {error !== null && (
+      {state.status === "error" && (
         <div className="share-error" role="alert">
-          <p>{t(errorKey(error))}</p>
-          <button
-            className="button"
-            disabled={busy}
-            onClick={() => setAttempt((value) => value + 1)}
-          >
+          <p>{t(errorKey(state.error))}</p>
+          <button className="button" onClick={reload}>
             {t("common.retry")}
           </button>
         </div>
       )}
-      {link && (
+      {state.status === "ready" && (
         <>
           <label className="share-link-field">
             <span>{t("share.url")}</span>
             <input
               ref={input}
               type="url"
-              value={link.url}
+              value={state.value.url}
               readOnly
               spellCheck={false}
               onFocus={(event) => event.currentTarget.select()}

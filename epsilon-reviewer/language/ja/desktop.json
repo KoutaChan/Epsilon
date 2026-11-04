@@ -1,0 +1,7 @@
+{
+  "desktop.exportTitle": "解析結果をファイルに保存",
+  "desktop.exportFilter": "Epsilonの解析結果",
+  "desktop.directoryTitle": "解析結果の保存先を選択",
+  "desktop.startupTitle": "起動できませんでした",
+  "desktop.startupFailure": "アプリを起動できませんでした。"
+}

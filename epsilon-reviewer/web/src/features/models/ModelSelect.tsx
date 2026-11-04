@@ -6,7 +6,7 @@ import type { Models } from "./useModels";
 
 export function ModelSelect({ models, id }: { models: Models; id: string }) {
   const { t } = useLanguage();
-  const { state, selected, selectedKey, select, refresh } = models;
+  const { state, selected, select, reload } = models;
   return (
     <div className="model-control">
       <label className="filled-field">
@@ -15,7 +15,7 @@ export function ModelSelect({ models, id }: { models: Models; id: string }) {
           <span className="field-label">{t("model.label")}</span>
           <select
             id={id}
-            value={selectedKey}
+            value={selected ? modelKey(selected) : ""}
             disabled={state.status !== "ready"}
             onChange={(event) => select(event.target.value)}
             aria-describedby={`${id}-status`}
@@ -24,16 +24,15 @@ export function ModelSelect({ models, id }: { models: Models; id: string }) {
               {t(state.status === "loading" ? "model.loading" : "model.select")}
             </option>
             {state.status === "ready" &&
-              state.catalog.models.map((model) => (
+              state.value.models.map((model) => (
                 <option
                   key={modelKey(model)}
                   value={modelKey(model)}
-                  disabled={model.availability !== "available"}
+                  disabled={!model.available}
                 >
-                  {modelLabel(model)}
-                  {model.availability !== "available"
-                    ? ` — ${t("model.unavailable")}`
-                    : ""}
+                  {model.available
+                    ? modelLabel(model)
+                    : t("model.unavailableOption", { model: modelLabel(model) })}
                 </option>
               ))}
           </select>
@@ -48,15 +47,13 @@ export function ModelSelect({ models, id }: { models: Models; id: string }) {
         {state.status === "error" ? (
           <>
             {t(errorKey(state.error))}
-            <button className="text-button" onClick={refresh}>
+            <button className="text-button" onClick={reload}>
               <RefreshCw />
               {t("common.retry")}
             </button>
           </>
         ) : state.status === "ready" &&
-          !state.catalog.models.some(
-            (model) => model.availability === "available",
-          ) ? (
+          !state.value.models.some((model) => model.available) ? (
           t("model.empty")
         ) : state.status === "ready" && !selected ? (
           t("model.hint")

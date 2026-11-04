@@ -1,4 +1,4 @@
-import type { MessageKey, Translate } from "./catalog";
+import type { MessageKey, Translate } from "./catalog.ts";
 
 const yakuMessageKeys = {
   MENZEN_TSUMO: "yaku.MENZEN_TSUMO",
@@ -63,6 +63,7 @@ const yakuMessageKeys = {
   YAKUHAI_ROUND_N: "yaku.YAKUHAI_ROUND_N",
 } as const satisfies Record<string, MessageKey>;
 
+/** 牌譜の役の符号の文言。知らない符号は outcome.unknownYaku。 */
 export function yakuLabel(code: string, t: Translate): string {
   return t(
     Object.hasOwn(yakuMessageKeys, code)

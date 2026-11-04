@@ -1,13 +1,14 @@
 import { Tile, tileName } from "../../components/Tile";
-import { playerName } from "../../language/format";
 import type { Translate } from "../../language/catalog";
+import { playerName } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import {
   describeReplayEvent,
   type RecentReplayEvent,
   type ReplayEventDetails,
-} from "./recentEvents";
+} from "./model/recentEvents.ts";
 
+/** 読み上げの 1 行（行った人と行動、牌）。 */
 export function replayEventText(
   details: ReplayEventDetails,
   t: Translate,
@@ -19,7 +20,9 @@ export function replayEventText(
         action,
       })
     : action;
-  return [label, ...details.tiles.map((tile) => tileName(tile, t))].join(" · ");
+  return [label, ...details.tiles.map((tile) => tileName(tile, t))].join(
+    t("replay.separator"),
+  );
 }
 
 export function RecentEventList({

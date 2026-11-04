@@ -1,10 +1,11 @@
 import { ArrowLeft, ArrowRight, Check, LoaderCircle } from "lucide-react";
-import type { ImportedRecord } from "../../api/types";
+import type { ImportedRecord } from "../../../../protocol/model.ts";
 import { playerName, seatName, sourceLabel } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import { ModelSelect } from "../models/ModelSelect";
 import type { Models } from "../models/useModels";
 
+/** 解析の前の確かめ。席の名前は親を東家とした風（解析は 4 人全員）。 */
 export function ConfirmAnalysis({
   record,
   seat,
@@ -23,6 +24,7 @@ export function ConfirmAnalysis({
   onStart: () => void;
 }) {
   const { t } = useLanguage();
+  const { record: summary } = record;
   return (
     <section className="content-card confirm-card">
       <button className="text-button" disabled={busy} onClick={onBack}>
@@ -31,14 +33,16 @@ export function ConfirmAnalysis({
       </button>
       <h2>{t("confirm.title")}</h2>
       <p className="record-caption">
-        {sourceLabel(record.metadata.source, t)} ·{" "}
-        {t("confirm.rounds", { count: record.metadata.roundCount })}
+        {t("confirm.summary", {
+          source: sourceLabel(summary.source, t),
+          count: summary.roundCount,
+        })}
       </p>
       <ModelSelect models={models} id="confirm-model" />
       <fieldset className="player-options">
         <legend>{t("confirm.view")}</legend>
         <div>
-          {record.metadata.names.map((name, index) => (
+          {summary.names.map((name, index) => (
             <button
               type="button"
               key={index}

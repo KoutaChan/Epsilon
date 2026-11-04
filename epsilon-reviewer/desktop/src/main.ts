@@ -1,237 +1,118 @@
-import {
-  app,
-  BrowserWindow,
-  dialog,
-  ipcMain,
-  net,
-  protocol,
-  session,
-} from "electron";
-import { stat } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { writeBytesAtomically, ResultStore } from "./result-store";
-import { errorResponse, DesktopError } from "./errors";
-import { Languages } from "./language";
-import { SettingsStore, parseServerOrigin } from "./settings";
-import { RemoteClient } from "./remote-client";
-import { ReviewSession, parseDesktopApiRequest } from "./review-session";
+import { app, dialog, ipcMain, type BrowserWindow } from "electron";
+import { resultFileName } from "../../protocol/result.ts";
+import { APP_URL, registerAppProtocol, registerAppScheme } from "./appProtocol.ts";
+import { registerBridge } from "./bridge.ts";
+import { EngineProcess, engineLaunch } from "./engine/process.ts";
+import { Languages, type MessageKey } from "./language.ts";
+import { appPaths } from "./paths.ts";
+import { SettingsStore } from "./settings.ts";
+import { errorMessage } from "./values.ts";
+import {
+  createMainWindow,
+  denyPermissions,
+  developmentUrl,
+  untrustedSender,
+} from "./window.ts";
 
-const scheme = "epsilon-reviewer";
+const APP_NAME = "Epsilon AI Reviewer";
+
+app.setName(APP_NAME);
 const profile = process.env.EPSILON_REVIEWER_PROFILE;
-if (profile && !path.isAbsolute(profile))
-  throw new Error("EPSILON_REVIEWER_PROFILE must be an absolute path.");
-app.setName("Epsilon AI Reviewer");
-app.setPath(
-  "userData",
-  profile || path.join(app.getPath("appData"), "epsilon-reviewer"),
-);
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme,
-    privileges: {
-      standard: true,
-      secure: true,
-      supportFetchAPI: true,
-      corsEnabled: true,
-    },
-  },
-]);
+const profileValid = !profile || path.isAbsolute(profile);
+if (profileValid)
+  app.setPath("userData", profile || path.join(app.getPath("appData"), "epsilon-reviewer"));
+registerAppScheme();
 
+/** 起動の失敗の窓の文言。言語を読む前の失敗は英語の失敗の文をそのまま出す。 */
+let message: ((key: MessageKey) => string) | null = null;
+let engine: EngineProcess | null = null;
 let window: BrowserWindow | null = null;
-let settings: SettingsStore;
-let languages: Languages;
+let openWindow: (() => Promise<void>) | null = null;
+let engineStopped = false;
 
-function messageInCurrentLanguage(key: string): string {
-  return languages.getMessage(settings.value.language, key);
-}
-
-function requireTrustedRendererFrame(event: Electron.IpcMainInvokeEvent): void {
-  if (
-    !window ||
-    event.sender !== window.webContents ||
-    event.senderFrame !== window.webContents.mainFrame
-  )
-    throw new DesktopError(
-      "invalid_request",
-      "IPC is restricted to the application main frame.",
-      403,
-    );
-  const url = new URL(event.senderFrame.url);
-  if (url.protocol === scheme + ":" && url.hostname === "app") return;
-  const developmentUrl = process.env.EPSILON_REVIEWER_DEV_URL;
-  if (developmentUrl && url.origin === new URL(developmentUrl).origin) return;
-  throw new DesktopError(
-    "invalid_request",
-    "IPC sender origin is not requireTrustedRendererFrame.",
-    403,
+async function start(): Promise<void> {
+  const paths = appPaths(
+    app.isPackaged,
+    process.resourcesPath,
+    app.getAppPath(),
+    app.getPath("userData"),
   );
-}
-
-function registerAssets(): void {
-  const webRoot = app.isPackaged
-    ? path.join(process.resourcesPath, "web")
-    : path.resolve(__dirname, "../../web/dist");
-  protocol.handle(scheme, async (request) => {
-    const url = new URL(request.url);
-    if (url.hostname !== "app" || request.method !== "GET")
-      return new Response(null, { status: 403 });
-    let file: string;
-    try {
-      file = path.resolve(
-        webRoot,
-        "." +
-          decodeURIComponent(
-            url.pathname === "/" ? "/index.html" : url.pathname,
-          ),
-      );
-    } catch {
-      return new Response(null, { status: 400 });
-    }
-    if (!file.startsWith(webRoot + path.sep))
-      return new Response(null, { status: 403 });
-    try {
-      if (!(await stat(file)).isFile())
-        return new Response(null, { status: 404 });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT")
-        return new Response(null, { status: 404 });
-      throw error;
-    }
-    return net.fetch(pathToFileURL(file).toString());
-  });
-}
-
-async function initialize(): Promise<void> {
-  languages = new Languages(
-    app.isPackaged
-      ? path.join(process.resourcesPath, "language")
-      : path.resolve(__dirname, "../../language"),
-  );
-  const indexDirectory = path.join(app.getPath("userData"), "review");
-  settings = await SettingsStore.open(
-    path.join(indexDirectory, "settings.json"),
+  const languages = Languages.load(paths.language);
+  const locale = languages.select(app.getLocale());
+  message = (key) => languages.message(locale, key);
+  if (!profileValid) throw new Error("EPSILON_REVIEWER_PROFILE must be an absolute path.");
+  const development = developmentUrl(process.env.EPSILON_REVIEWER_DEV_URL);
+  const settings = await SettingsStore.open(
+    path.join(paths.userData, "settings.json"),
     {
-      serverUrl: parseServerOrigin(
-        process.env.EPSILON_REVIEWER_SERVER || "http://127.0.0.1:8080",
-      ),
-      resultsDirectory: path.join(
-        app.getPath("documents"),
-        "epsilon-reviewer",
-        "results",
-      ),
-      language: languages.selectLanguageForLocale(app.getLocale()),
+      resultsDirectory: path.join(app.getPath("documents"), "epsilon-reviewer"),
+      language: locale,
     },
-    languages,
+    (language) => languages.has(language),
   );
-  registerAssets();
-  session.defaultSession.setPermissionRequestHandler(
-    (_contents, _permission, callback) => callback(false),
+  const text = (key: MessageKey): string => languages.message(settings.value.language, key);
+  message = text;
+  // Java は窓と並べて起こす（JVM の起動と保存先・カタログの読み込みを窓の読み込みに重ねる）。
+  const engineProcess = new EngineProcess(() =>
+    engineLaunch(paths.engine, paths.userData, settings.value.resultsDirectory),
   );
-  session.defaultSession.setPermissionCheckHandler(() => false);
-  const apiSession = session.fromPartition("persist:reviewer-api");
-  const review = new ReviewSession(
+  engine = engineProcess;
+  engineProcess.start();
+  registerAppProtocol(paths.web);
+  denyPermissions();
+  registerBridge(ipcMain, {
+    engine: engineProcess,
     settings,
-    new ResultStore(indexDirectory),
-    new RemoteClient((url, init) => apiSession.fetch(url, init)),
-    async (id, bytes) => {
-      const choice = await dialog.showSaveDialog(window!, {
-        title: messageInCurrentLanguage("desktop.exportTitle"),
-        defaultPath: id + ".epsilon-reviewer.json.gz",
-        filters: [
-          {
-            name: messageInCurrentLanguage("desktop.exportFilter"),
-            extensions: ["epsilon-reviewer.json.gz"],
-          },
-        ],
-      });
-      if (choice.canceled) return { status: 200, body: { cancelled: true } };
-      await writeBytesAtomically(choice.filePath!, bytes);
-      return { status: 200, body: { saved: true } };
+    languages,
+    host: {
+      checkSender: (event) => untrustedSender(window, event, development),
+      chooseDirectory: async (current) => {
+        const choice = await dialog.showOpenDialog(mainWindow(), {
+          title: text("desktop.directoryTitle"),
+          defaultPath: current,
+          properties: ["openDirectory", "createDirectory"],
+        });
+        return choice.canceled ? null : (choice.filePaths[0] ?? null);
+      },
+      chooseExportPath: async (resultId) => {
+        const choice = await dialog.showSaveDialog(mainWindow(), {
+          title: text("desktop.exportTitle"),
+          defaultPath: resultFileName(resultId),
+          filters: [
+            { name: text("desktop.exportFilter"), extensions: ["epsilon-reviewer.json.gz"] },
+          ],
+        });
+        return choice.canceled || choice.filePath === "" ? null : choice.filePath;
+      },
+      setTitle: (title) => window?.setTitle(title),
     },
-  );
-  ipcMain.handle("reviewer:request", async (event, value: unknown) => {
-    requireTrustedRendererFrame(event);
-    try {
-      return await review.request(parseDesktopApiRequest(value));
-    } catch (error) {
-      console.error("Desktop request failed:", error);
-      return errorResponse(error);
-    }
   });
-  ipcMain.handle("reviewer:settings", (event) => {
-    requireTrustedRendererFrame(event);
-    return settings.value;
-  });
-  ipcMain.handle("reviewer:server", (event, value: string) => {
-    requireTrustedRendererFrame(event);
-    return settings.setServerUrl(value);
-  });
-  ipcMain.handle("reviewer:language", async (event, value: string) => {
-    requireTrustedRendererFrame(event);
-    const next = await settings.setLanguage(value);
-    window!.setTitle(messageInCurrentLanguage("app.title"));
-    return next;
-  });
-  ipcMain.handle("reviewer:directory", async (event) => {
-    requireTrustedRendererFrame(event);
-    const selected = await dialog.showOpenDialog(window!, {
-      title: messageInCurrentLanguage("desktop.directoryTitle"),
-      defaultPath: settings.value.resultsDirectory,
-      properties: ["openDirectory", "createDirectory"],
+  openWindow = async () => {
+    const created = createMainWindow({
+      title: text("app.title"),
+      icon: paths.icon,
+      preload: paths.preload,
     });
-    return selected.canceled
-      ? settings.value
-      : settings.setResultsDirectory(selected.filePaths[0]!);
-  });
-  await createWindow();
+    window = created;
+    created.on("closed", () => {
+      window = null;
+    });
+    await created.loadURL(development ?? APP_URL);
+  };
+  await openWindow();
 }
 
-function createWindow(): Promise<void> {
-  const developmentUrl = process.env.EPSILON_REVIEWER_DEV_URL;
-  if (
-    developmentUrl &&
-    !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(developmentUrl)
-  )
-    throw new Error(
-      "EPSILON_REVIEWER_DEV_URL must point to a local Vite server.",
-    );
-  window = new BrowserWindow({
-    width: 1440,
-    height: 960,
-    minWidth: 360,
-    minHeight: 500,
-    icon: app.isPackaged
-      ? path.join(process.resourcesPath, "icon.png")
-      : path.resolve(__dirname, "../../assets/icon.png"),
-    title: messageInCurrentLanguage("app.title"),
-    autoHideMenuBar: true,
-    backgroundColor: "#f5f6fa",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  window.webContents.on("will-navigate", (event) => event.preventDefault());
-  window.on("closed", () => {
-    window = null;
-  });
-  return window.loadURL(developmentUrl || scheme + "://app/");
+function mainWindow(): BrowserWindow {
+  if (window === null) throw new Error("The main window is closed.");
+  return window;
 }
 
 function startupFailed(error: unknown): void {
   console.error("Application startup failed:", error);
-  dialog.showErrorBox(
-    settings
-      ? messageInCurrentLanguage("desktop.startupTitle")
-      : "Application startup failed",
-    settings
-      ? messageInCurrentLanguage("desktop.startupFailure")
-      : "The application could not start. See the application log for details.",
-  );
+  if (message !== null)
+    dialog.showErrorBox(message("desktop.startupTitle"), message("desktop.startupFailure"));
+  else dialog.showErrorBox(APP_NAME, errorMessage(error));
   app.quit();
 }
 
@@ -241,11 +122,20 @@ else {
     window?.restore();
     window?.focus();
   });
-  app.whenReady().then(initialize).catch(startupFailed);
+  app.whenReady().then(start).catch(startupFailed);
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
   app.on("activate", () => {
-    if (!window && settings) void createWindow().catch(startupFailed);
+    if (window === null && openWindow !== null) openWindow().catch(startupFailed);
+  });
+  // 終わりの前に Java を止める（stdin を閉じて 5 秒待ち、終わらなければ kill）。
+  app.on("will-quit", (event) => {
+    if (engine === null || engineStopped) return;
+    event.preventDefault();
+    void engine.stop().finally(() => {
+      engineStopped = true;
+      app.quit();
+    });
   });
 }

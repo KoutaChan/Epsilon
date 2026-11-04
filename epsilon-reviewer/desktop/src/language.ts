@@ -1,43 +1,67 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { DesktopError } from "./errors";
+import type desktopMessages from "../../language/ja/desktop.json";
+import type shellMessages from "../../language/ja/shell.json";
 
-/** Web と同じカタログを使う。native dialog の表示直前に現在の言語を参照する。 */
+/** メインプロセスの文言の鍵（ja のファイルの鍵）。 */
+export type MessageKey = keyof typeof shellMessages | keyof typeof desktopMessages;
+
+/** メインプロセスが読む言語のファイル（窓の題とネイティブのダイアログ）。 */
+const FILES = ["shell.json", "desktop.json"] as const;
+
+/** 元の言語。どの言語にも無い鍵はこの言語の文言を使う。 */
+const SOURCE_LANGUAGE = "ja";
+
+/** language/<id>/ の文言。id はフォルダーの名前で、ファイルの無い言語の鍵は ja へ戻る。 */
 export class Languages {
-  private readonly catalogs = new Map<string, Record<string, string>>();
+  readonly #messages: ReadonlyMap<string, ReadonlyMap<string, string>>;
 
-  constructor(directory: string) {
-    for (const file of readdirSync(directory)) {
-      if (file.endsWith(".json")) {
-        this.catalogs.set(
-          path.basename(file, ".json"),
-          JSON.parse(readFileSync(path.join(directory, file), "utf8")),
-        );
+  private constructor(messages: ReadonlyMap<string, ReadonlyMap<string, string>>) {
+    this.#messages = messages;
+  }
+
+  /** @throws Error フォルダーが無い、ja が無い、または JSON が壊れている */
+  static load(directory: string): Languages {
+    const messages = new Map<string, ReadonlyMap<string, string>>();
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const merged = new Map<string, string>();
+      for (const file of FILES) {
+        const source = path.join(directory, entry.name, file);
+        let text: string;
+        try {
+          text = readFileSync(source, "utf8");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw error;
+        }
+        for (const [key, value] of Object.entries(JSON.parse(text) as Record<string, string>))
+          merged.set(key, value);
       }
+      messages.set(entry.name, merged);
     }
-    if (!this.catalogs.has("ja"))
-      throw new Error("The Japanese language catalog is missing.");
+    if (!messages.has(SOURCE_LANGUAGE))
+      throw new Error(`The language folder ${SOURCE_LANGUAGE} is missing.`);
+    return new Languages(messages);
   }
 
-  selectLanguageForLocale(locale: string): string {
-    if (this.catalogs.has(locale)) return locale;
-    const base = locale.split("-")[0]!;
-    return this.catalogs.has(base) ? base : "ja";
+  has(language: string): boolean {
+    return this.#messages.has(language);
   }
 
-  requireSupportedLanguage(language: string): string {
-    if (!this.catalogs.has(language))
-      throw new DesktopError(
-        "invalid_language",
-        "Unknown language: " + language,
-      );
-    return language;
+  /** OS の言語（例 en-US）に合う id。同じ id、無ければ - の前、それも無ければ ja。 */
+  select(locale: string): string {
+    if (this.has(locale)) return locale;
+    const base = locale.split("-")[0] ?? "";
+    return this.has(base) ? base : SOURCE_LANGUAGE;
   }
 
-  getMessage(language: string, key: string): string {
+  /** @throws Error ja にも鍵が無い */
+  message(language: string, key: MessageKey): string {
     const text =
-      this.catalogs.get(language)![key] ?? this.catalogs.get("ja")![key];
-    if (text === undefined) throw new Error("Missing language key: " + key);
+      this.#messages.get(language)?.get(key) ??
+      this.#messages.get(SOURCE_LANGUAGE)?.get(key);
+    if (text === undefined) throw new Error(`Missing language key: ${key}`);
     return text;
   }
 }

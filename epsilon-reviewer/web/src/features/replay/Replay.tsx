@@ -1,35 +1,45 @@
-import { useRef, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { RefreshCw } from "lucide-react";
-import type { ReviewResult } from "../../api/types";
 import { playerName, roundName } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
+import type { ScenarioClient } from "../../review-entry.ts";
 import { CandidateList } from "./CandidateList";
-import { RecentEventList, replayEventText } from "./RecentEventList";
-import { describeReplayEvent } from "./recentEvents";
+import { describeReplayEvent } from "./model/recentEvents.ts";
+import type { Timelines } from "./model/timeline.ts";
+import type { ReplayModel } from "./model/types.ts";
 import { OutcomeScreen } from "./OutcomeScreen";
 import { PlaybackControls } from "./PlaybackControls";
+import { RecentEventList, replayEventText } from "./RecentEventList";
+import { ScenarioControls, ScenarioEditor } from "./ScenarioPanel";
+import { targetKey } from "./scenario/scenario.ts";
+import { useScenario } from "./scenario/useScenario.ts";
+import { createTableElements } from "./tableElements.ts";
 import { TableOverlay } from "./TableOverlay";
-import { usePlayback } from "./usePlayback";
-import { useTable } from "./useTable";
+import { usePlayback } from "./usePlayback.ts";
+import { useTableRenderer } from "./useTableRenderer.ts";
 import "./table.css";
 
 export function Replay({
-  result,
+  model,
+  timelines,
   initialSeat,
-  onBack,
-  backLabel,
+  client,
   onShare,
+  backLabel,
+  onBack,
 }: {
-  result: ReviewResult;
+  model: ReplayModel;
+  timelines: Timelines;
   initialSeat: number;
+  client: ScenarioClient | null;
+  onShare: (() => void) | null;
+  backLabel: string;
   onBack: () => void;
-  backLabel?: string;
-  onShare?: () => void;
 }) {
   const { t } = useLanguage();
-  const root = useRef<HTMLDivElement>(null);
-  const playback = usePlayback(result, initialSeat);
-  const homeLabel = backLabel ?? t("replay.home");
+  const [elements] = useState(createTableElements);
+  const playback = usePlayback(model, timelines, initialSeat);
+  const scenario = useScenario(playback, client);
   const share =
     onShare &&
     (() => {
@@ -42,11 +52,16 @@ export function Replay({
     event,
     eventPrevious,
     recentEvents,
-    candidates,
     seat,
     reveal,
+    stage,
   } = playback;
-  const { viewport, layout, error, retry } = useTable(root, playback);
+  const { candidates, comparison } = scenario;
+  const { viewport, layout, targets, error, retry } = useTableRenderer(
+    elements,
+    playback,
+    { snapshot: scenario.display, targets: scenario.editing },
+  );
   const doraTile =
     layout === "desktop"
       ? Math.round(viewport.width / 30)
@@ -54,8 +69,6 @@ export function Replay({
         ? 24
         : 23;
   const style = {
-    "--em-viewport-width": `${viewport.width}px`,
-    "--em-viewport-height": `${viewport.height}px`,
     "--em-pc-ui-scale": String(viewport.width / 1440),
     // 候補欄は左家の名札の下から画面の下までに収めるので、横長で縦の短い画面では高さに合わせて小さくする。
     "--em-pc-candidate-scale": String(
@@ -68,63 +81,121 @@ export function Replay({
   return (
     <div
       id="epsilon-review-material"
-      ref={root}
+      ref={elements.root}
       className="review-root"
-      data-stage={playback.stage}
+      data-stage={stage}
       aria-label={t("replay.title")}
-      style={style}
     >
-      <div className="em-device" data-layout={layout} style={style}>
+      <div
+        className="em-device"
+        ref={elements.device}
+        data-layout={layout}
+        style={style}
+      >
         <div className="em-app">
           <span className="em-current em-sr-only" aria-live="polite">
-            {roundName(round, t)},{" "}
-            {replayEventText(
-              describeReplayEvent(event, eventPrevious, reveal, seat),
-              t,
-            )}
+            {t("replay.current", {
+              round: roundName(round, t),
+              event: replayEventText(
+                describeReplayEvent(event, eventPrevious, reveal, seat),
+                t,
+              ),
+            })}
           </span>
           <PlaybackControls
-            result={result}
+            elements={elements}
             playback={playback}
-            surface={root}
+            scenario={scenario}
             onBack={onBack}
-            backLabel={homeLabel}
+            backLabel={backLabel}
             onShare={share}
           />
-          <aside
-            className="em-review-detail"
-            aria-label={t("replay.details")}
-            inert={playback.stage !== "table"}
-          >
-            {candidates.length > 0 ? (
-              <CandidateList candidates={candidates} portrait />
-            ) : (
-              <RecentEventList
-                events={recentEvents}
-                reveal={reveal}
-                seat={seat}
-                perspective={playerName(snapshot.players[seat].name, seat, t)}
+          {/* 縦の画面では卓の下の一覧に、もしもの操作を先頭に置き、編集の間は候補の代わりに編集を出す。 */}
+          {layout === "portrait" && (
+            <aside
+              className="em-review-detail"
+              aria-label={t("replay.details")}
+              inert={stage !== "table"}
+              data-scenario={scenario.active ? scenario.listStatus : undefined}
+            >
+              {scenario.active && (
+                <ScenarioControls
+                  elements={elements}
+                  scenario={scenario}
+                  playback={playback}
+                />
+              )}
+              {scenario.editing && scenario.selection ? (
+                <ScenarioEditor
+                  key={targetKey(scenario.selection)}
+                  scenario={scenario}
+                  playback={playback}
+                  floating={false}
+                />
+              ) : candidates.length > 0 ? (
+                <CandidateList
+                  candidates={candidates}
+                  comparison={comparison}
+                  portrait
+                  onCall={scenario.branchTo}
+                  afterCall={
+                    scenario.branch?.status === "done"
+                      ? scenario.branch.call
+                      : null
+                  }
+                  onLeave={scenario.leaveBranch}
+                />
+              ) : (
+                !scenario.active && (
+                  <RecentEventList
+                    events={recentEvents}
+                    reveal={reveal}
+                    seat={seat}
+                    perspective={playerName(
+                      snapshot.players[seat]!.name,
+                      seat,
+                      t,
+                    )}
+                  />
+                )
+              )}
+            </aside>
+          )}
+          <TableOverlay
+            elements={elements}
+            playback={playback}
+            scenario={scenario}
+            targets={targets}
+            layout={layout}
+          />
+          {/* 横の画面の編集は卓の外の層に浮かべ、手牌の上の再生の操作より前に出す。 */}
+          {stage === "table" &&
+            layout !== "portrait" &&
+            scenario.editing &&
+            scenario.selection && (
+              <ScenarioEditor
+                key={targetKey(scenario.selection)}
+                scenario={scenario}
+                playback={playback}
+                floating
               />
             )}
-          </aside>
-          <TableOverlay playback={playback} />
-          {playback.stage !== "table" && (
+          {stage !== "table" && (
             <OutcomeScreen
-              result={result}
               playback={playback}
               onBack={onBack}
-              backLabel={homeLabel}
+              backLabel={backLabel}
               onShare={share}
             />
           )}
-          {error && playback.stage === "table" && (
+          {error && stage === "table" && (
             <div className="render-error" role="alert">
               <p>{t("errors.renderer_failed")}</p>
               <button onClick={retry}>
                 <RefreshCw />
                 {t("replay.retryRenderer")}
               </button>
-              <button onClick={onBack}>{homeLabel}</button>
+              <button onClick={onBack}>{backLabel}</button>
             </div>
           )}
         </div>

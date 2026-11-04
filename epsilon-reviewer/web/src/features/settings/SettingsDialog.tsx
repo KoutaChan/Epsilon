@@ -1,31 +1,28 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, Link } from "lucide-react";
-import type { DesktopSettings } from "../../api/types";
+import { FolderOpen } from "lucide-react";
+import type { DesktopSettings } from "../../../../protocol/bridge.ts";
+import type { DesktopSettingsAccess } from "../../api/client";
 import { Dialog } from "../../components/Dialog";
 import { useTask } from "../../hooks/useTask";
 import { errorKey } from "../../language/catalog";
 import { useLanguage } from "../../language/LanguageProvider";
 
+/** デスクトップの保存先。変えるとすぐ保存され、解析の側が新しいフォルダーで開き直す。 */
 export function SettingsDialog({
+  desktop,
   onClose,
-  onChanged,
+  onFolderChanged,
 }: {
+  desktop: DesktopSettingsAccess;
   onClose: () => void;
-  onChanged: (serverChanged: boolean) => void;
+  onFolderChanged: () => void;
 }) {
   const { t } = useLanguage();
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
-  const [serverUrl, setServerUrl] = useState("");
   const { run, busy, error } = useTask();
   useEffect(() => {
-    void run(
-      () => window.epsilonReviewer!.getSettings(),
-      (value) => {
-        setSettings(value);
-        setServerUrl(value.serverUrl);
-      },
-    );
-  }, [run]);
+    void run(() => desktop.settings(), setSettings);
+  }, [run, desktop]);
   return (
     <Dialog title={t("settings.title")} onClose={() => !busy && onClose()}>
       {error !== null && (
@@ -35,18 +32,6 @@ export function SettingsDialog({
       )}
       {settings ? (
         <>
-          <label className="filled-field">
-            <Link />
-            <span>
-              <span className="field-label">{t("settings.server")}</span>
-              <input
-                type="url"
-                value={serverUrl}
-                onChange={(event) => setServerUrl(event.target.value)}
-                placeholder="http://127.0.0.1:8080"
-              />
-            </span>
-          </label>
           <h3>{t("settings.directory")}</h3>
           <p className="path-copy">{settings.resultsDirectory}</p>
           <button
@@ -54,10 +39,11 @@ export function SettingsDialog({
             disabled={busy}
             onClick={() =>
               void run(
-                () => window.epsilonReviewer!.chooseResultsDirectory(),
+                () => desktop.chooseResultsDirectory(),
                 (value) => {
                   setSettings(value);
-                  onChanged(false);
+                  if (value.resultsDirectory !== settings.resultsDirectory)
+                    onFolderChanged();
                 },
               )
             }
@@ -65,23 +51,6 @@ export function SettingsDialog({
             <FolderOpen />
             {t("settings.changeDirectory")}
           </button>
-          <div className="dialog-actions">
-            <button
-              className="button primary"
-              disabled={busy || !serverUrl.trim()}
-              onClick={() =>
-                void run(
-                  () => window.epsilonReviewer!.setServerUrl(serverUrl),
-                  (value) => {
-                    onChanged(value.serverUrl !== settings.serverUrl);
-                    onClose();
-                  },
-                )
-              }
-            >
-              {t("common.save")}
-            </button>
-          </div>
         </>
       ) : (
         <p role="status">{t("settings.loading")}</p>

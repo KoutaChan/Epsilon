@@ -1,15 +1,31 @@
 {
   "models": [
     {
+      "modelId": "epsilon-prism-v2",
+      "revision": "prism-v2b-v551",
+      "displayName": "Epsilon-Prism-v2",
+      "version": "prism-v2b v551",
+      "series": "epsilon-prism",
+      "checkpoint": "models/prism-v2b-v551",
+      "options": {
+        "device": "cpu"
+      },
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
       "modelId": "epsilon-nano",
-      "revision": "replace-with-immutable-checkpoint-revision",
-      "displayName": "Epsilon Nano",
-      "version": "replace-with-display-version",
+      "revision": "nano-ppo17-20260910",
+      "displayName": "Epsilon-Nano",
+      "version": "PPO 17",
       "series": "epsilon-nano",
-      "checkpoint": "./checkpoints/replace-with-checkpoint-directory",
+      "checkpoint": "models/nano-ppo17",
       "options": {
         "device": "cpu"
       }
     }
-  ]
+  ],
+  "defaultModel": {
+    "modelId": "epsilon-prism-v2",
+    "revision": "prism-v2b-v551"
+  }
 }

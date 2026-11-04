@@ -1,7 +1,7 @@
-import type { ActionType } from "../api/types";
-import type { MessageKey } from "./catalog";
+import type { ActionType } from "../../../protocol/result.ts";
+import type { MessageKey } from "./catalog.ts";
 
-// 保存形式の行動名と表示文言の対応を、型検査できる一覧で定義する。
+// 行動の種類と表示文言の対応を、型検査できる一覧で定義する。
 export const actionMessageKeys = {
   DAHAI: "action.dahai",
   CHI: "action.chi",

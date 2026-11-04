@@ -1,8 +1,9 @@
-import type { WinDetails } from "../../api/types";
+import type { WinDetails } from "../../../../protocol/result.ts";
 import { Tile } from "../../components/Tile";
 import { useLanguage } from "../../language/LanguageProvider";
 import { yakuLabel } from "../../language/yakuMessages";
 
+/** 点数・翻符か役満・役の一覧と、ドラ・裏ドラの表示牌。内訳の無い和了は表示牌だけ。 */
 export function WinningDetails({
   details,
   dora,
@@ -13,12 +14,18 @@ export function WinningDetails({
   const { t, locale } = useLanguage();
   const yakumanLabel = (count: number) =>
     t(count === 1 ? "outcome.yakuman" : "outcome.multipleYakuman", { count });
+  const han =
+    details?.han !== undefined
+      ? t("outcome.han", { count: details.han })
+      : null;
+  const fu =
+    details?.fu !== undefined ? t("outcome.fu", { count: details.fu }) : null;
   return (
     <div className="em-winning-details">
       {details && (
         <>
           <div className="em-winning-value">
-            {details.points !== null && (
+            {details.points !== undefined && (
               <strong>
                 {details.points.toLocaleString(locale)}
                 <small>{t("outcome.points")}</small>
@@ -27,16 +34,9 @@ export function WinningDetails({
             <span>
               {details.yakuman
                 ? yakumanLabel(details.yakuman)
-                : [
-                    details.han !== null
-                      ? t("outcome.han", { count: details.han })
-                      : "",
-                    details.fu !== null
-                      ? t("outcome.fu", { count: details.fu })
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
+                : han && fu
+                  ? t("outcome.hanFu", { han, fu })
+                  : (han ?? fu ?? "")}
             </span>
           </div>
           {details.yaku && details.yaku.length > 0 && (

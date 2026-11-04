@@ -1,6 +1,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { useLanguage } from "../language/LanguageProvider";
+
+/** モーダルの窓。開いた時に showModal し、閉じたら前のフォーカスへ戻す。Esc と背景の押下は onClose。 */
 export function Dialog({
   title,
   children,
@@ -13,10 +15,15 @@ export function Dialog({
   const { t } = useLanguage();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    const trigger = document.activeElement as HTMLElement | null;
-    ref.current?.showModal();
+    const dialog = ref.current;
+    if (dialog === null) return;
+    const trigger =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    dialog.showModal();
     return () => {
-      ref.current?.close();
+      dialog.close();
       trigger?.focus();
     };
   }, []);
@@ -25,12 +32,12 @@ export function Dialog({
       className="dialog"
       ref={ref}
       aria-label={title}
-      onCancel={(e) => {
-        e.preventDefault();
+      onCancel={(event) => {
+        event.preventDefault();
         onClose();
       }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
       }}
     >
       <div className="dialog-body">

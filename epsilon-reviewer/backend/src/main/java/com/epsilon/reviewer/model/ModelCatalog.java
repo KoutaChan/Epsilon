@@ -1,258 +1,231 @@
 package com.epsilon.reviewer.model;
 
-import com.epsilon.reviewer.ApiError;
-import com.epsilon.reviewer.ApiException;
+import com.epsilon.reviewer.error.ErrorCode;
+import com.epsilon.reviewer.error.ReviewerException;
+import com.epsilon.reviewer.json.Json;
+import com.epsilon.spi.ReviewEvaluation;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Reader;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.DigestInputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/** 起動時に読み込んだモデルの識別情報とチェックポイントを固定して保持する一覧。 */
+/**
+ * 起動時に models.json を厳密に読んだモデルの一覧。使えるかは中身のハッシュを作らずに決め、画面のカタログは作り置きして使えるかが変わった
+ * 時だけ作り直す。
+ *
+ * <p>models.json は {"models":[{modelId, revision, displayName, version, series, checkpoint,
+ * options?, sha256?}], "defaultModel"?:{modelId, revision}}。checkpoint は models.json のフォルダーからの
+ * 相対か絶対。知らない欄・重複・無い既定のモデルは起動の失敗。
+ */
 public final class ModelCatalog {
-  private final List<Entry> entries;
-  private final ModelKey defaultModel;
+  private static final Logger LOG = LoggerFactory.getLogger(ModelCatalog.class);
 
-  /**
-   * @param config モデル一覧の JSON（null なら空の一覧）
-   * @param supportedSeries 解析できるモデル系列の ID（それ以外の系列のモデルは利用不可として載せる）
-   */
-  public ModelCatalog(Path config, Set<String> supportedSeries) throws IOException {
-    if (config == null) {
-      entries = List.of();
-      defaultModel = null;
-      return;
-    }
+  /** models.json の大きさの上限（バイト）。 */
+  private static final int FILE_LIMIT = 1024 * 1024;
+
+  private static final Set<String> CATALOG_FIELDS = Set.of("models", "defaultModel");
+  private static final Set<String> MODEL_FIELDS =
+      Set.of(
+          "modelId",
+          "revision",
+          "displayName",
+          "version",
+          "series",
+          "checkpoint",
+          "options",
+          "sha256");
+  private static final Set<String> KEY_FIELDS = Set.of("modelId", "revision");
+  private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
+
+  /** models.json の順。markChanged が値を替える。 */
+  private final Map<ModelKey, ModelEntry> entries;
+
+  private final Map<ModelKey, CheckpointFingerprint> fingerprints;
+  private final ModelKey defaultModel;
+  private volatile CatalogView view;
+
+  private ModelCatalog(
+      Map<ModelKey, ModelEntry> entries,
+      Map<ModelKey, CheckpointFingerprint> fingerprints,
+      ModelKey defaultModel) {
+    this.entries = entries;
+    this.fingerprints = fingerprints;
+    this.defaultModel = defaultModel;
+    view = buildView();
+  }
+
+  /** @throws IOException models.json が読めないか形が違う（起動の失敗） */
+  public static ModelCatalog load(Path modelsJson, PolicyProviders providers) throws IOException {
     JsonObject document;
-    try (Reader reader = Files.newBufferedReader(config)) {
-      document = JsonParser.parseReader(reader).getAsJsonObject();
-    } catch (RuntimeException e) {
-      throw new IOException("Invalid model catalog JSON.", e);
+    try {
+      document = Json.readObject(Files.readAllBytes(modelsJson), FILE_LIMIT);
+    } catch (ReviewerException failure) {
+      throw new IOException("Invalid model catalog " + modelsJson + ": " + failure.getMessage());
     }
-    var loaded = new ArrayList<Entry>();
-    var keys = new HashSet<String>();
-    for (JsonElement item : document.getAsJsonArray("models")) {
-      JsonObject row = item.getAsJsonObject();
-      String id = readRequiredPrimitiveText(row, "modelId");
-      String revision = readRequiredPrimitiveText(row, "revision");
-      if (!keys.add(id + "\n" + revision))
-        throw new IOException("Duplicate model ID and revision.");
-      Path checkpoint =
-          config
-              .toAbsolutePath()
-              .getParent()
-              .resolve(readRequiredPrimitiveText(row, "checkpoint"))
-              .normalize();
-      Map<String, String> options = new LinkedHashMap<>();
-      if (row.has("options"))
-        row.getAsJsonObject("options")
-            .entrySet()
-            .forEach(e -> options.put(e.getKey(), e.getValue().getAsString()));
-      var definition =
-          new ModelDefinition(
-              id,
-              revision,
-              readRequiredPrimitiveText(row, "displayName"),
-              readRequiredPrimitiveText(row, "version"),
-              readRequiredPrimitiveText(row, "series"),
+    requireFields(document, CATALOG_FIELDS, "The model catalog");
+    if (!(document.get("models") instanceof JsonArray models))
+      throw invalid("The model catalog requires a models array.");
+    Path base = modelsJson.toAbsolutePath().getParent();
+    Map<ModelKey, ModelEntry> entries = new LinkedHashMap<>();
+    Map<ModelKey, CheckpointFingerprint> fingerprints = new HashMap<>();
+    for (int i = 0; i < models.size(); i++) {
+      String name = "models[" + i + "]";
+      JsonObject row = object(models.get(i), name);
+      requireFields(row, MODEL_FIELDS, name);
+      var key = new ModelKey(text(row, "modelId", name), text(row, "revision", name));
+      if (entries.containsKey(key)) throw invalid(name + " repeats a model ID and revision.");
+      String series = text(row, "series", name);
+      Path checkpoint = base.resolve(text(row, "checkpoint", name)).normalize();
+      Map<String, String> options = options(row, name);
+      String sha256 = row.has("sha256") ? text(row, "sha256", name) : null;
+      if (sha256 != null && !SHA256.matcher(sha256).matches())
+        throw invalid(name + ".sha256 must be 64 lowercase hexadecimal digits.");
+      Availability availability = Availability.AVAILABLE;
+      if (providers.find(series).isEmpty()) {
+        availability = Availability.UNSUPPORTED_SERIES;
+        LOG.warn(
+            "Model {} {} has no provider for series {}.", key.modelId(), key.revision(), series);
+      } else
+        try {
+          fingerprints.put(key, CheckpointFingerprint.of(checkpoint));
+        } catch (IOException | UncheckedIOException failure) {
+          availability = Availability.CHECKPOINT_UNREADABLE;
+          LOG.warn(
+              "Model {} {} has an unreadable checkpoint: {}",
+              key.modelId(),
+              key.revision(),
+              failure.toString());
+        }
+      entries.put(
+          key,
+          new ModelEntry(
+              key,
+              text(row, "displayName", name),
+              text(row, "version", name),
+              series,
               checkpoint,
-              options);
-      ApiError unavailable = null;
-      if (!supportedSeries.contains(definition.series()))
-        unavailable = new ApiError("unsupported_series", "Model series is not supported.");
-      if (!Files.isDirectory(checkpoint) || !Files.isReadable(checkpoint))
-        unavailable = new ApiError("model_unavailable", "Checkpoint is unavailable.");
-      byte[] digest = unavailable == null ? digest(checkpoint) : null;
-      loaded.add(new Entry(definition, digest, unavailable));
+              options,
+              sha256,
+              temperature(options, name),
+              availability));
     }
-    entries = loaded;
+    ModelKey defaultModel = null;
     if (document.has("defaultModel")) {
-      JsonObject selected = document.getAsJsonObject("defaultModel");
+      JsonObject selected = object(document.get("defaultModel"), "defaultModel");
+      requireFields(selected, KEY_FIELDS, "defaultModel");
       defaultModel =
           new ModelKey(
-              readRequiredPrimitiveText(selected, "modelId"),
-              readRequiredPrimitiveText(selected, "revision"));
-      if (entries.stream()
-          .noneMatch(
-              entry ->
-                  entry.definition.modelId().equals(defaultModel.modelId())
-                      && entry.definition.revision().equals(defaultModel.revision())))
-        throw new IOException("Default model is not present in the catalog.");
-    } else defaultModel = null;
+              text(selected, "modelId", "defaultModel"),
+              text(selected, "revision", "defaultModel"));
+      if (!entries.containsKey(defaultModel))
+        throw invalid("The default model is not in the catalog.");
+    }
+    return new ModelCatalog(entries, fingerprints, defaultModel);
   }
 
-  public Catalog publicCatalog() {
-    var models = new ArrayList<AvailableModel>(entries.size());
-    for (Entry entry : entries) {
-      ModelDefinition model = entry.definition;
-      ApiError unavailable = unavailableReason(entry);
+  /** models.json の無いサーバの空のカタログ。 */
+  public static ModelCatalog empty() {
+    return new ModelCatalog(new LinkedHashMap<>(), Map.of(), null);
+  }
+
+  /** 作り置きのカタログ（ハッシュを作らない）。 */
+  public CatalogView view() {
+    return view;
+  }
+
+  /** @throws ReviewerException model_unavailable（カタログに無いか使えない） */
+  public ModelEntry require(ModelKey key) {
+    ModelEntry entry;
+    synchronized (this) {
+      entry = entries.get(key);
+    }
+    if (entry == null || entry.availability() != Availability.AVAILABLE)
+      throw new ReviewerException(ErrorCode.MODEL_UNAVAILABLE);
+    return entry;
+  }
+
+  /** チェックポイントが登録の時と違うと分かったモデルを、以後使えなくする。 */
+  void markChanged(ModelKey key) {
+    synchronized (this) {
+      entries.computeIfPresent(key, (ignored, entry) -> entry.with(Availability.MODEL_CHANGED));
+      view = buildView();
+    }
+    LOG.warn("Model {} {} changed after it was registered.", key.modelId(), key.revision());
+  }
+
+  /** 起動時の印。使えるモデルだけが持つ。 */
+  CheckpointFingerprint fingerprint(ModelKey key) {
+    return fingerprints.get(key);
+  }
+
+  private CatalogView buildView() {
+    List<CatalogModel> models = new ArrayList<>(entries.size());
+    for (ModelEntry entry : entries.values())
       models.add(
-          new AvailableModel(
-              model.modelId(),
-              model.revision(),
-              model.displayName(),
-              model.version(),
-              model.series(),
-              unavailable == null ? "available" : "unavailable",
-              unavailable == null ? null : unavailable.code(),
-              unavailable == null ? null : unavailable.message()));
-    }
-    return new Catalog(models, defaultModel);
+          new CatalogModel(
+              entry.key().modelId(),
+              entry.key().revision(),
+              entry.displayName(),
+              entry.version(),
+              entry.availability() == Availability.AVAILABLE));
+    return new CatalogView(List.copyOf(models), defaultModel);
   }
 
-  public ModelDefinition requireAvailableModelRevision(String id, String revision) {
-    Entry entry = requireCatalogEntry(id, revision);
-    ApiError unavailable = unavailableReason(entry);
-    if (unavailable != null) throw new ApiException(409, unavailable.code(), unavailable.message());
-    return entry.definition;
+  private static Map<String, String> options(JsonObject row, String name) throws IOException {
+    if (!row.has("options")) return Map.of();
+    JsonObject options = object(row.get("options"), name + ".options");
+    Map<String, String> values = new HashMap<>();
+    for (String key : options.keySet()) values.put(key, text(options, key, name + ".options"));
+    return Map.copyOf(values);
   }
 
-  public Lease acquire(String id, String revision, Path temporaryDirectory) throws IOException {
-    Entry entry = requireCatalogEntry(id, revision);
-    if (entry.unavailable != null)
-      throw new ApiException(409, entry.unavailable.code(), entry.unavailable.message());
-    Files.createDirectories(temporaryDirectory);
-    Path copy = Files.createTempDirectory(temporaryDirectory, "model-");
+  /** options.temperature（正の有限の数）。無ければ ReviewEvaluation の既定。 */
+  private static double temperature(Map<String, String> options, String name) throws IOException {
+    String text = options.get("temperature");
+    if (text == null) return ReviewEvaluation.DISPLAY_TEMPERATURE;
     try {
-      for (Path file : files(entry.definition.checkpoint())) {
-        Path target = copy.resolve(entry.definition.checkpoint().relativize(file));
-        Files.createDirectories(target.getParent());
-        Files.copy(file, target);
-      }
-      if (!MessageDigest.isEqual(entry.digest, digest(copy)))
-        throw new ApiException(
-            409, "model_changed", "Checkpoint changed; register it with a new revision.");
-      ModelDefinition d = entry.definition;
-      return new Lease(
-          new ModelDefinition(
-              d.modelId(),
-              d.revision(),
-              d.displayName(),
-              d.version(),
-              d.series(),
-              copy,
-              d.options()));
-    } catch (Throwable e) {
-      removeTree(copy);
-      throw e;
+      double temperature = Double.parseDouble(text);
+      if (temperature > 0 && Double.isFinite(temperature)) return temperature;
+    } catch (NumberFormatException ignored) {
+      // 下で断る。
     }
+    throw invalid(name + ".options.temperature must be a positive number.");
   }
 
-  private Entry requireCatalogEntry(String id, String revision) {
-    return entries.stream()
-        .filter(e -> e.definition.modelId().equals(id) && e.definition.revision().equals(revision))
-        .findFirst()
-        .orElseThrow(
-            () ->
-                new ApiException(
-                    409, "model_unavailable", "Selected model ID and revision were not found."));
+  private static void requireFields(JsonObject object, Set<String> fields, String name)
+      throws IOException {
+    for (String key : object.keySet())
+      if (!fields.contains(key)) throw invalid(name + " has an unknown field: " + key + ".");
   }
 
-  private ApiError unavailableReason(Entry entry) {
-    if (entry.unavailable != null) return entry.unavailable;
-    try {
-      if (!MessageDigest.isEqual(entry.digest, digest(entry.definition.checkpoint())))
-        return new ApiError("model_changed", "Checkpoint changed after catalog registration.");
-      return null;
-    } catch (IOException failure) {
-      return new ApiError("model_unavailable", "Checkpoint is unavailable.");
-    }
+  private static JsonObject object(JsonElement element, String name) throws IOException {
+    if (!(element instanceof JsonObject object)) throw invalid(name + " must be an object.");
+    return object;
   }
 
-  private static byte[] digest(Path path) throws IOException {
-    try {
-      var digest = MessageDigest.getInstance("SHA-256");
-      for (Path file : files(path)) {
-        digest.update(
-            path.relativize(file)
-                .toString()
-                .replace('\\', '/')
-                .getBytes(StandardCharsets.UTF_8));
-        digest.update((byte) 0);
-        digest.update(ByteBuffer.allocate(Long.BYTES).putLong(Files.size(file)).array());
-        try (InputStream in = Files.newInputStream(file);
-            var stream = new DigestInputStream(in, digest)) {
-          stream.transferTo(OutputStream.nullOutputStream());
-        }
-      }
-      return digest.digest();
-    } catch (NoSuchAlgorithmException e) {
-      throw new AssertionError(e);
-    }
+  private static String text(JsonObject object, String key, String name) throws IOException {
+    JsonElement value = object.get(key);
+    if (value == null
+        || !value.isJsonPrimitive()
+        || !value.getAsJsonPrimitive().isString()
+        || value.getAsString().isBlank())
+      throw invalid(name + "." + key + " must be a non-blank string.");
+    return value.getAsString();
   }
 
-  private static List<Path> files(Path directory) throws IOException {
-    if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory))
-      throw new IOException("Checkpoint must be a regular directory.");
-    try (var paths = Files.walk(directory)) {
-      var all = paths.sorted().toList();
-      if (all.stream().anyMatch(Files::isSymbolicLink))
-        throw new IOException("Symbolic links are not allowed inside a checkpoint.");
-      var files = all.stream().filter(Files::isRegularFile).toList();
-      if (files.isEmpty()) throw new IOException("Checkpoint contains no files.");
-      return files;
-    }
-  }
-
-  public static void cleanSnapshots(Path temporaryDirectory) throws IOException {
-    if (!Files.isDirectory(temporaryDirectory)) return;
-    try (var entries = Files.list(temporaryDirectory)) {
-      for (Path entry :
-          entries.filter(p -> p.getFileName().toString().startsWith("model-")).toList())
-        removeTree(entry);
-    }
-  }
-
-  private static void removeTree(Path directory) throws IOException {
-    try (var paths = Files.walk(directory)) {
-      for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
-    }
-  }
-
-  private static String readRequiredPrimitiveText(JsonObject value, String key) throws IOException {
-    if (!value.has(key)
-        || !value.get(key).isJsonPrimitive()
-        || value.get(key).getAsString().isBlank())
-      throw new IOException("Model catalog requires field: " + key + ".");
-    return value.get(key).getAsString();
-  }
-
-  public record ModelKey(String modelId, String revision) {}
-
-  public record AvailableModel(
-      String modelId,
-      String revision,
-      String displayName,
-      String version,
-      String series,
-      String availability,
-      String reasonCode,
-      String reason) {}
-
-  public record Catalog(List<AvailableModel> models, ModelKey defaultModel) {}
-
-  private record Entry(ModelDefinition definition, byte[] digest, ApiError unavailable) {}
-
-  public record Lease(ModelDefinition definition) implements AutoCloseable {
-    @Override
-    public void close() throws IOException {
-      removeTree(definition.checkpoint());
-    }
+  private static IOException invalid(String message) {
+    return new IOException("Invalid model catalog: " + message);
   }
 }

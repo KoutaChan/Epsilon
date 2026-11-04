@@ -12,11 +12,12 @@
     "build": "npm run check:language && npm run build --workspace web && npm run build --workspace desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "desktop": "npm run start --workspace desktop",
+    "desktop:engine": "node desktop/scripts/stage-engine.mjs",
     "desktop:pack": "npm run build && npm run pack --workspace desktop",
     "test:desktop": "npm run test --workspace desktop",
     "vendor:tiles": "node tools/vendor-tiles.mjs",
     "check:language": "node tools/check-language.mjs",
     "test": "npm run check:language && npm run test:web && npm run test:desktop",
-    "test:web": "node --test web/tests/*.test.mjs"
+    "test:web": "node --test \"web/tests/**/*.test.mjs\""
   }
 }

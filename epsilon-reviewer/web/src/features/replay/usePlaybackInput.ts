@@ -1,16 +1,21 @@
 import { useEffect, type RefObject } from "react";
-import type { Playback } from "./usePlayback";
+import type { Playback } from "./usePlayback.ts";
 
+/** ここで押したキーと回したホイールは再生を動かさない。 */
 const INTERACTIVE_TARGETS =
-  "input,textarea,select,button,summary,a,dialog,[contenteditable]:not([contenteditable=false]),[role=dialog],[role=menu],.em-review-detail";
+  "input,textarea,select,button,summary,a,dialog,[contenteditable]:not([contenteditable=false]),[role=dialog],[role=menu],.em-review-detail,.em-scenario-panel,.em-scenario-editor,.em-scenario-targets";
 
+const insideInteractive = (target: EventTarget | null, selector: string) =>
+  target instanceof Element && target.closest(selector) !== null;
+
+/** ← → で 1 つ進む・戻る、Space で再生と一時停止、Esc でメニューを閉じる。縦のホイールは 1 回で 1 つ動く。 */
 export function usePlaybackInput({
   surface,
   playback,
   menuOpen,
   closeMenu,
 }: {
-  surface: RefObject<HTMLDivElement | null>;
+  surface: RefObject<HTMLElement | null>;
   playback: Playback;
   menuOpen: boolean;
   closeMenu: () => void;
@@ -31,7 +36,7 @@ export function usePlaybackInput({
         event.metaKey ||
         event.altKey ||
         event.shiftKey ||
-        (event.target as Element).closest(INTERACTIVE_TARGETS)
+        insideInteractive(event.target, INTERACTIVE_TARGETS)
       )
         return;
       if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
@@ -51,7 +56,8 @@ export function usePlaybackInput({
         event.altKey ||
         event.shiftKey ||
         Math.abs(event.deltaX) >= Math.abs(event.deltaY) ||
-        (event.target as Element).closest(
+        insideInteractive(
+          event.target,
           `${INTERACTIVE_TARGETS},.em-outcome-scroll`,
         )
       )

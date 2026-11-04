@@ -1,14 +1,8 @@
 package com.epsilon.reviewer.engine;
 
-import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.Tile;
 import com.epsilon.core.TurnEvent;
-import com.epsilon.replay.DecisionPoint;
-import com.epsilon.replay.RecordCompletion;
-import com.epsilon.replay.RecordFormat;
-import com.epsilon.replay.RecordMetadata;
-import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayEvent;
 import com.epsilon.replay.ReplayEvent.Dahai;
 import com.epsilon.replay.ReplayEvent.EndGame;
@@ -18,186 +12,132 @@ import com.epsilon.replay.ReplayEvent.Ryukyoku;
 import com.epsilon.replay.ReplayEvent.StartGame;
 import com.epsilon.replay.ReplayEvent.StartKyoku;
 import com.epsilon.replay.ReplayEvent.Tsumo;
-import com.epsilon.replay.ReplayObserver;
-import com.epsilon.replay.ReplayRecord;
-import com.epsilon.reviewer.dto.ReplayRound;
-import com.epsilon.reviewer.dto.ReplayStep;
-import com.epsilon.reviewer.dto.RoundOutcome;
-import com.epsilon.reviewer.dto.TableState;
-import com.google.gson.GsonBuilder;
+import com.epsilon.reviewer.engine.view.OutcomeProjector;
+import com.epsilon.reviewer.engine.view.RoundOutcome;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 連続ロン・ツモ・槍槓の局結果と物理牌を保持し、未記録の点棒移動を推測で補わないことを検証する。 */
+/** 連続ロン・ツモ・槍槓の局の結果と物理牌を保ち、点の移動と流局の理由を文書に書かないことを確かめる。 */
 public class RoundOutcomeTest {
   @Test
-  public void consecutiveRonResultsKeepEachWinnerPaymentAndPostEventScore() {
+  public void consecutiveRonResultsKeepEachWinnerAndThePostEventScore() {
     int[][] hands =
         physicalHands(
             new int[] {3, 3, 3, 4, 5, 12, 13, 14, 21, 22, 23, Tile.NAN, Tile.SHA},
             new int[] {0, 1, 2, 9, 10, 11, 18, 19, 20, Tile.TON, Tile.TON, Tile.TON, Tile.HAKU},
             new int[] {6, 7, 8, 15, 16, 17, 24, 25, 26, Tile.CHUN, Tile.CHUN, Tile.CHUN, Tile.HAKU},
             new int[] {1, 1, 2, 4, 5, 7, 10, 12, 14, 19, 21, Tile.NAN, Tile.PEI});
-    List<OutcomeFrame> frames =
-        replayFrames(
-            List.of(
-                new StartGame(),
-                new StartKyoku(
-                    Tile.TON,
-                    1,
-                    0,
-                    0,
-                    0,
-                    Tile.HATSU,
-                    hands,
-                    new int[] {25000, 25000, 25000, 25000}),
-                new Tsumo(0, 126),
-                new Dahai(0, 126, true),
-                new Hora(1, 0, Tile.HAKU, new int[] {-2000, 2000, 0, 0}),
-                new Hora(2, 0, Tile.HAKU, new int[] {-3000, 0, 3000, 0}),
-                new EndKyoku(),
-                new EndGame(new int[] {20000, 27000, 29000, 25000})));
-    var wins = frames.stream().filter(frame -> frame.outcome() != null).toList();
+    List<Format6.Step> steps =
+        eventSteps(
+            new StartGame(),
+            new StartKyoku(
+                Tile.TON, 1, 0, 0, 0, Tile.HATSU, hands, new int[] {25000, 25000, 25000, 25000}),
+            new Tsumo(0, 126),
+            new Dahai(0, 126, true),
+            new Hora(1, 0, Tile.HAKU, new int[] {-2000, 2000, 0, 0}),
+            new Hora(2, 0, Tile.HAKU, new int[] {-3000, 0, 3000, 0}),
+            new EndKyoku(),
+            new EndGame(new int[] {20000, 27000, 29000, 25000}));
+    var wins = steps.stream().filter(step -> step.json().has("outcome")).toList();
     Assert.assertEquals(wins.size(), 2);
-    Assert.assertEquals(wins.get(0).outcome().actor().intValue(), 1);
-    Assert.assertEquals(wins.get(1).outcome().actor().intValue(), 2);
-    Assert.assertEquals(wins.get(0).outcome().target().intValue(), 0);
-    Assert.assertEquals(wins.get(1).outcome().winningTile(), "P");
-    Assert.assertEquals(wins.get(0).outcome().deltas(), List.of(-2000, 2000, 0, 0));
-    Assert.assertEquals(wins.get(1).outcome().deltas(), List.of(-3000, 0, 3000, 0));
-    Assert.assertEquals(wins.get(0).state().players().get(0).score(), 23000);
-    Assert.assertEquals(wins.get(1).state().players().get(0).score(), 20000);
-    Assert.assertEquals(wins.get(1).state().players().get(2).score(), 28000);
-    Assert.assertEquals(frames.getLast().state().players().get(2).score(), 29000);
-    Assert.assertNull(frames.getLast().outcome());
+    Assert.assertEquals(outcome(wins.get(0)), hora(1, 0, "P"));
+    Assert.assertEquals(outcome(wins.get(1)), hora(2, 0, "P"));
+    Assert.assertEquals(wins.get(0).table().players().get(0).score(), 23000);
+    Assert.assertEquals(wins.get(1).table().players().get(0).score(), 20000);
+    Assert.assertEquals(wins.get(1).table().players().get(2).score(), 28000);
+    Assert.assertEquals(steps.getLast().event(), "end_game");
+    Assert.assertEquals(steps.getLast().table().players().get(2).score(), 29000);
+    Assert.assertFalse(steps.getLast().json().has("outcome"));
   }
 
   @Test
   public void redTsumoRemainsSeparateFromTheWinningConcealedHand() {
-    List<OutcomeFrame> frames =
-        replayFrames(
-            List.of(
-                new StartGame(),
-                redFiveStart(0),
-                new Tsumo(0, 52),
-                new Hora(0, 0, Tile.P5, new int[] {6000, -2000, -2000, -2000})));
-    var win = frames.getLast();
-    Assert.assertEquals(win.outcome().winningTile(), "5pr");
-    Assert.assertEquals(win.outcome().actor(), win.outcome().target());
-    Assert.assertEquals(win.state().players().get(0).draw(), "5pr");
-    Assert.assertEquals(win.state().players().get(0).hand().size(), 13);
-    Assert.assertFalse(win.state().players().get(0).hand().contains("5pr"));
-    Assert.assertEquals(win.outcome().deltas(), List.of(6000, -2000, -2000, -2000));
+    List<Format6.Step> steps =
+        eventSteps(
+            new StartGame(),
+            redFiveStart(0),
+            new Tsumo(0, 52),
+            new Hora(0, 0, Tile.P5, new int[] {6000, -2000, -2000, -2000}));
+    Format6.Step win = steps.getLast();
+    Assert.assertEquals(outcome(win), hora(0, 0, "5pr"));
+    Assert.assertEquals(win.table().players().get(0).draw(), "5pr");
+    Assert.assertEquals(win.table().players().get(0).hand().size(), 13);
+    Assert.assertFalse(win.table().players().get(0).hand().contains("5pr"));
+    Assert.assertEquals(win.table().players().get(0).score(), 31000);
   }
 
   @Test
   public void redRonUsesTheDiscardAndLeavesTheWinnerHandAtThirteenTiles() {
-    List<OutcomeFrame> frames =
-        replayFrames(
-            List.of(
-                new StartGame(),
-                redFiveStart(1),
-                new Tsumo(0, 52),
-                new Dahai(0, 52, true),
-                new Hora(1, 0, Tile.P5, new int[] {-3900, 3900, 0, 0})));
-    var win = frames.getLast();
-    Assert.assertEquals(win.outcome().winningTile(), "5pr");
-    Assert.assertEquals(win.outcome().actor().intValue(), 1);
-    Assert.assertEquals(win.outcome().target().intValue(), 0);
-    Assert.assertEquals(win.state().players().get(1).hand().size(), 13);
-    Assert.assertNull(win.state().players().get(1).draw());
-    Assert.assertEquals(win.state().players().get(0).river().getLast().tile(), "5pr");
+    List<Format6.Step> steps =
+        eventSteps(
+            new StartGame(),
+            redFiveStart(1),
+            new Tsumo(0, 52),
+            new Dahai(0, 52, true),
+            new Hora(1, 0, Tile.P5, new int[] {-3900, 3900, 0, 0}));
+    Format6.Step win = steps.getLast();
+    Assert.assertEquals(outcome(win), hora(1, 0, "5pr"));
+    Assert.assertEquals(win.table().players().get(1).hand().size(), 13);
+    Assert.assertNull(win.table().players().get(1).draw());
+    Assert.assertEquals(win.table().players().get(0).river().getLast().tile(), "5pr");
   }
 
   @Test
   public void robbedRedAddedKanIsCapturedBeforeTheBorrowedTurnEventIsCleared() {
     GameState state = new GameState();
     state.recordKanAttempt(3, Tile.P5, true, TurnEvent.KanKind.KAKAN);
-    int[] deltas = {0, 8000, 0, -8000};
-    var outcome = ReviewSnapshots.snapshotRoundOutcome(new Hora(1, 3, Tile.P5, deltas), state);
+    RoundOutcome outcome =
+        OutcomeProjector.of(new Hora(1, 3, Tile.P5, new int[] {0, 8000, 0, -8000}), state);
     state.clearTurnEvent();
-    deltas[1] = 0;
-    Assert.assertEquals(outcome.winningTile(), "5pr");
-    Assert.assertEquals(outcome.target().intValue(), 3);
-    Assert.assertEquals(outcome.deltas(), List.of(0, 8000, 0, -8000));
+    Assert.assertEquals(outcome, new RoundOutcome.Hora(1, 3, "5pr", null));
   }
 
   @Test
-  public void unrecordedDrawPaymentsRemainNullAndDoNotBecomeZeroPayments() {
-    List<OutcomeFrame> frames =
-        replayFrames(List.of(new StartGame(), redFiveStart(0), new Ryukyoku(null), new EndKyoku()));
-    var draw = frames.get(1);
-    Assert.assertEquals(draw.outcome().type(), "ryukyoku");
-    Assert.assertNull(draw.outcome().actor());
-    Assert.assertNull(draw.outcome().deltas());
-    var json =
-        JsonParser.parseString(new GsonBuilder().serializeNulls().create().toJson(draw))
-            .getAsJsonObject();
-    Assert.assertTrue(json.getAsJsonObject("outcome").get("deltas").isJsonNull());
-    Assert.assertTrue(json.getAsJsonObject("outcome").get("winningTile").isJsonNull());
-    Assert.assertNull(frames.getFirst().outcome());
-    Assert.assertNull(frames.getLast().outcome());
+  public void drawOutcomesCarryNeitherPaymentsNorAReason() {
+    List<Format6.Step> steps =
+        eventSteps(new StartGame(), redFiveStart(0), new Ryukyoku(null), new EndKyoku());
+    Assert.assertEquals(
+        outcome(steps.get(1)), JsonParser.parseString("{\"type\":\"ryukyoku\"}"));
+    Assert.assertFalse(steps.getFirst().json().has("outcome"));
+    Assert.assertFalse(steps.getLast().json().has("outcome"));
+    Assert.assertEquals(steps.get(1).table().players().get(0).score(), 25000);
   }
 
   @Test
-  public void drawPaymentsRetainRecordedTenpaiTransfersWithoutInventingAReason() {
-    List<OutcomeFrame> frames =
-        replayFrames(
-            List.of(
-                new StartGame(),
-                redFiveStart(0),
-                new Ryukyoku(new int[] {1500, -1500, 1500, -1500})));
-    var draw = frames.getLast();
-    Assert.assertEquals(draw.outcome().deltas(), List.of(1500, -1500, 1500, -1500));
-    Assert.assertEquals(draw.state().players().get(0).score(), 26500);
-    Assert.assertEquals(draw.state().players().get(1).score(), 23500);
+  public void drawPaymentsMoveTheScoresWithoutAnOutcomePayment() {
+    List<Format6.Step> steps =
+        eventSteps(
+            new StartGame(),
+            redFiveStart(0),
+            new Ryukyoku(new int[] {1500, -1500, 1500, -1500}));
+    Format6.Step draw = steps.getLast();
+    Assert.assertEquals(outcome(draw), JsonParser.parseString("{\"type\":\"ryukyoku\"}"));
+    Assert.assertEquals(draw.table().players().get(0).score(), 26500);
+    Assert.assertEquals(draw.table().players().get(1).score(), 23500);
   }
 
-  private record OutcomeFrame(TableState state, RoundOutcome outcome) {}
+  private static JsonObject outcome(Format6.Step step) {
+    return step.json().getAsJsonObject("outcome");
+  }
 
-  private static List<OutcomeFrame> replayFrames(List<ReplayEvent> events) {
-    var states = new ReviewStateSequence();
-    List<ReplayStep> steps = new ArrayList<>();
-    ReplayEngine.replay(
-        new ReplayRecord(
-            events,
-            new RecordMetadata(
-                RecordFormat.MJAI, List.of("A", "B", "C", "D"), null, "unavailable", null),
-            null,
-            RecordCompletion.INCOMPLETE),
-        new ReplayObserver() {
-          public void onDecision(
-              DecisionPoint point, GameState state, int seat, List<Action> legal) {}
+  private static JsonObject hora(int actor, int target, String tile) {
+    JsonObject hora = new JsonObject();
+    hora.addProperty("type", "hora");
+    hora.addProperty("actor", actor);
+    hora.addProperty("target", target);
+    hora.addProperty("winningTile", tile);
+    return hora;
+  }
 
-          public void onEventApplied(int index, int stateId, ReplayEvent event, GameState state) {
-            if (event instanceof StartGame) return;
-            states.captureState(stateId, state);
-            steps.add(
-                new ReplayStep(
-                    steps.size(),
-                    index,
-                    stateId,
-                    "event",
-                    -1,
-                    false,
-                    null,
-                    List.of(),
-                    ReviewSnapshots.snapshotRoundOutcome(event, state)));
-          }
-        });
-    var json = new GsonBuilder().serializeNulls().create();
-    var round =
-        json.fromJson(
-            json.toJson(new ReplayRound("round-0", 0, 0, 0, states.frames(), steps)),
-            ReplayRound.class);
-    return round.steps().stream()
-        .map(
-            step ->
-                new OutcomeFrame(
-                    StateRestoration.at(round.states(), step.stateId()), step.outcome()))
+  /** 解析した文書の出来事の手順。 */
+  private static List<Format6.Step> eventSteps(ReplayEvent... events) {
+    Format6.Document document =
+        Format6.analyze(ScenarioReplayTest.synthetic(List.of(events)), new RecordingPolicy());
+    return document.rounds().getFirst().steps().stream()
+        .filter(step -> !step.decision())
         .toList();
   }
 

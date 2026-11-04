@@ -2,6 +2,7 @@ node_modules/
 web/dist/
 desktop/dist/
 desktop/release/
+desktop/engine/
 backend/target/
 .data/
 models.local.json

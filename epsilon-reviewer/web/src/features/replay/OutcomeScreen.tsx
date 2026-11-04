@@ -1,143 +1,46 @@
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { ArrowLeft, ArrowRight, RotateCcw, Share2 } from "lucide-react";
-import type { Meld, ReviewResult } from "../../api/types";
-import { Tile } from "../../components/Tile";
 import { playerName, roundName, seatName } from "../../language/format";
-import { actionMessageKeys } from "../../language/actionMessages";
 import { useLanguage } from "../../language/LanguageProvider";
 import {
   collectWinningHands,
   hasRecordedMatchEnd,
   rankFinalPlayers,
   roundScoreChanges,
-  type WinningHand,
-} from "./outcomeSummary";
+} from "./model/outcomeSummary.ts";
+import type { ReplayRound } from "./model/types.ts";
+import type { Playback } from "./usePlayback.ts";
 import { WinningDetails } from "./WinningDetails";
-import type { Playback } from "./usePlayback";
+import { WinningHandRow } from "./WinningHand";
 import "./outcome.css";
 
-const RESULT_TILE_GAP = 0.025;
-const RESULT_GROUP_GAP = 0.35;
-
-function WinningHandRow({ winner }: { winner: WinningHand }) {
-  const { t } = useLanguage();
-  const {
-    hand,
-    winningTile,
-    player: { melds },
-  } = winner;
-  const groupCount =
-    Number(hand.length > 0) + Number(winningTile !== null) + melds.length;
-  let widthUnits =
-    hand.length +
-    Number(winningTile !== null) +
-    Math.max(0, hand.length - 1) * RESULT_TILE_GAP +
-    Math.max(0, groupCount - 1) * RESULT_GROUP_GAP;
-  for (const meld of melds) {
-    const tileCount = meld.tiles.length - Number(meld.type === "KAKAN");
-    widthUnits +=
-      tileCount +
-      Number(meld.calledIndex >= 0) / 3 +
-      (tileCount - 1) * RESULT_TILE_GAP;
-  }
-  const style = {
-    "--em-result-width-units": widthUnits,
-    "--em-result-tile-gap-units": RESULT_TILE_GAP,
-    "--em-result-group-gap-units": RESULT_GROUP_GAP,
-  } as CSSProperties;
-  return (
-    <div
-      className="em-result-hand"
-      aria-label={t("outcome.winningHand")}
-      data-stacked={melds.some((meld) => meld.type === "KAKAN")}
-      style={style}
-    >
-      {hand.length > 0 && (
-        <div className="em-result-concealed">
-          {hand.map((tile, index) => (
-            <Tile key={index} tile={tile} />
-          ))}
-        </div>
-      )}
-      {winningTile && (
-        <div className="em-result-winning-tile">
-          <Tile tile={winningTile} />
-          <span>{t("outcome.winningTile")}</span>
-        </div>
-      )}
-      {melds.length > 0 && (
-        <div className="em-result-melds" aria-label={t("outcome.melds")}>
-          {melds.map((_, index) => {
-            const meldIndex = melds.length - 1 - index;
-            return <WinningMeld key={meldIndex} meld={melds[meldIndex]} />;
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WinningMeld({ meld }: { meld: Meld }) {
-  const { t } = useLanguage();
-  const concealedKan = meld.type === "ANKAN";
-  const redTile = concealedKan
-    ? meld.tiles.find((tile) => tile.includes("r"))
-    : undefined;
-  return (
-    <div
-      className="em-result-meld"
-      role="group"
-      aria-label={t(actionMessageKeys[meld.type])}
-    >
-      {meld.tiles.map((tile, index) => {
-        if (meld.type === "KAKAN" && index === meld.addedIndex) return null;
-        const sideways = index === meld.calledIndex;
-        const value = concealedKan
-          ? index === 0 || index === meld.tiles.length - 1
-            ? "back"
-            : index === 1 && redTile
-              ? redTile
-              : tile.replace("r", "")
-          : tile;
-        return (
-          <span
-            className="em-result-meld-tile"
-            data-sideways={sideways}
-            key={index}
-          >
-            <Tile tile={value} />
-            {sideways && meld.type === "KAKAN" && (
-              <span className="em-result-added-tile">
-                <Tile tile={meld.tiles[meld.addedIndex]} />
-              </span>
-            )}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
+/** 局の精算（和了の手・点数の増減）と、対局の結果（順位）。 */
 export function OutcomeScreen({
-  result,
   playback,
   onBack,
   backLabel,
   onShare,
 }: {
-  result: ReviewResult;
   playback: Playback;
   onBack: () => void;
   backLabel: string;
-  onShare?: () => void;
+  onShare: (() => void) | null;
 }) {
   const { t, locale } = useLanguage();
-  const { stage, round, snapshot, nextRound, outcomeEvents, move, dispatch } =
-    playback;
+  const {
+    model,
+    stage,
+    round,
+    snapshot,
+    nextRound,
+    outcomeEvents,
+    move,
+    dispatch,
+  } = playback;
   const heading = useRef<HTMLHeadingElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const isMatch = stage === "match-result";
-  const matchEnded = hasRecordedMatchEnd(result);
+  const matchEnded = hasRecordedMatchEnd(model);
   const scoreTitle = t(
     matchEnded ? "outcome.finalScores" : "outcome.lastScores",
   );
@@ -145,24 +48,32 @@ export function OutcomeScreen({
   const changes = roundScoreChanges(playback.roundStart, snapshot);
   const number = (value: number) => value.toLocaleString(locale);
   const delta = (value: number) =>
-    `${value > 0 ? "+" : value < 0 ? "−" : "±"}${number(Math.abs(value))}`;
+    t(
+      value > 0 ? "outcome.gain" : value < 0 ? "outcome.loss" : "outcome.even",
+      {
+        points: number(Math.abs(value)),
+      },
+    );
   const name = (seat: number) =>
-    playerName(snapshot.players[seat].name, seat, t);
-  const roundLabel = `${roundName(round, t)}${round.honba ? ` · ${t("replay.honbaCount", { count: round.honba })}` : ""}`;
-  const nextLabel =
-    nextRound &&
-    `${roundName(nextRound, t)}${nextRound.honba ? ` · ${t("replay.honbaCount", { count: nextRound.honba })}` : ""}`;
+    playerName(snapshot.players[seat]!.name, seat, t);
+  const roundLabel = (entry: ReplayRound) =>
+    entry.honba
+      ? t("outcome.roundHonba", {
+          round: roundName(entry, t),
+          honba: t("replay.honbaCount", { count: entry.honba }),
+        })
+      : roundName(entry, t);
   const title = isMatch
     ? t(matchEnded ? "outcome.matchTitle" : "outcome.recordEnd")
     : winners.length === 0
       ? t("event.ryukyoku")
       : winners.length === 1
-        ? t(`outcome.${winners[0].method}`)
+        ? t(`outcome.${winners[0]!.method}`)
         : t("outcome.multipleRon", { count: winners.length });
   useLayoutEffect(() => {
     heading.current!.focus({ preventScroll: true });
     content.current!.scrollTop = 0;
-  }, [stage, round.id]);
+  }, [stage, round.index]);
   return (
     <section
       className="em-outcome"
@@ -172,47 +83,46 @@ export function OutcomeScreen({
       <div className="em-outcome-panel">
         <header className="em-outcome-header">
           <div>
-            <p>{isMatch ? scoreTitle : roundLabel}</p>
+            <p>{isMatch ? scoreTitle : roundLabel(round)}</p>
             <h1 id="outcome-title" ref={heading} tabIndex={-1}>
               {title}
             </h1>
           </div>
           {!isMatch && winners.length === 1 && (
             <span className="em-outcome-winner">
-              {name(winners[0].player.seat)}
+              {name(winners[0]!.player.seat)}
             </span>
           )}
         </header>
         <div className="em-outcome-scroll" ref={content}>
           {isMatch ? (
             <ol className="em-final-ranking" aria-label={scoreTitle}>
-              {rankFinalPlayers(
-                snapshot.players,
-                result.metadata.finalScores,
-              ).map(({ player, score, rank }) => (
-                <li
-                  key={player.seat}
-                  data-rank={rank}
-                  data-perspective={player.seat === playback.seat}
-                >
-                  <span
-                    className="em-final-rank"
-                    aria-label={t("outcome.rank", { rank })}
+              {rankFinalPlayers(snapshot.players, model.record.finalScores).map(
+                ({ player, score, rank }) => (
+                  <li
+                    key={player.seat}
+                    data-rank={rank}
+                    data-perspective={player.seat === playback.seat}
                   >
-                    {rank}
-                  </span>
-                  <span className="em-final-name">
-                    {playerName(player.name, player.seat, t)}
-                    {player.seat === playback.seat && (
-                      <small>{t("outcome.perspective")}</small>
-                    )}
-                  </span>
-                  <strong>
-                    {number(score)}
-                    <small>{t("outcome.points")}</small>
-                  </strong>
-                </li>
-              ))}
+                    <span
+                      className="em-final-rank"
+                      aria-label={t("outcome.rank", { rank })}
+                    >
+                      {rank}
+                    </span>
+                    <span className="em-final-name">
+                      {playerName(player.name, player.seat, t)}
+                      {player.seat === playback.seat && (
+                        <small>{t("outcome.perspective")}</small>
+                      )}
+                    </span>
+                    <strong>
+                      {number(score)}
+                      <small>{t("outcome.points")}</small>
+                    </strong>
+                  </li>
+                ),
+              )}
             </ol>
           ) : (
             <div
@@ -235,7 +145,7 @@ export function OutcomeScreen({
                         <p>
                           {winner.method === "ron"
                             ? t("outcome.ronFrom", {
-                                name: name(winner.target!),
+                                name: name(winner.target),
                               })
                             : t(`outcome.${winner.method}`)}
                         </p>
@@ -263,33 +173,36 @@ export function OutcomeScreen({
                     </tr>
                   </thead>
                   <tbody>
-                    {snapshot.players.map((player) => (
-                      <tr
-                        key={player.seat}
-                        data-winner={winners.some(
-                          (winner) => winner.player.seat === player.seat,
-                        )}
-                      >
-                        <th scope="row">
-                          <span className="em-score-wind">
-                            {seatName(player.seat, round.dealer, t)}
-                          </span>
-                          <span>{name(player.seat)}</span>
-                        </th>
-                        <td
-                          className={
-                            changes[player.seat] > 0
-                              ? "is-positive"
-                              : changes[player.seat] < 0
-                                ? "is-negative"
-                                : ""
-                          }
+                    {snapshot.players.map((player) => {
+                      const change = changes[player.seat]!;
+                      return (
+                        <tr
+                          key={player.seat}
+                          data-winner={winners.some(
+                            (winner) => winner.player.seat === player.seat,
+                          )}
                         >
-                          {delta(changes[player.seat])}
-                        </td>
-                        <td>{number(player.score)}</td>
-                      </tr>
-                    ))}
+                          <th scope="row">
+                            <span className="em-score-wind">
+                              {seatName(player.seat, round.dealer, t)}
+                            </span>
+                            <span>{name(player.seat)}</span>
+                          </th>
+                          <td
+                            className={
+                              change > 0
+                                ? "is-positive"
+                                : change < 0
+                                  ? "is-negative"
+                                  : ""
+                            }
+                          >
+                            {delta(change)}
+                          </td>
+                          <td>{number(player.score)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </section>
@@ -330,7 +243,7 @@ export function OutcomeScreen({
                       ? "outcome.toMatchResult"
                       : "outcome.toRecordResult",
                 )}
-                {nextLabel && <small>{nextLabel}</small>}
+                {nextRound && <small>{roundLabel(nextRound)}</small>}
               </span>
               <ArrowRight />
             </button>

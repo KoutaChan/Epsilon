@@ -1,64 +1,40 @@
-import { useEffect, useState } from "react";
-import { api } from "../../api/client";
-import type { ModelCatalog } from "../../api/types";
-import { modelKey } from "../../language/format";
+import { useCallback, useState } from "react";
+import type {
+  CatalogModel,
+  ModelCatalog,
+  ModelKey,
+} from "../../../../protocol/model.ts";
+import { api } from "../../api/platform";
+import { useResource, type ResourceState } from "../../hooks/useResource";
+import { availableModel, initialChoice, isAvailable } from "./availability";
 
-type CatalogState =
-  | { status: "loading" }
-  | { status: "error"; error: unknown }
-  | { status: "ready"; catalog: ModelCatalog };
-export function useModels(connection: number) {
-  const [state, setState] = useState<CatalogState>({ status: "loading" });
-  const [selectedKey, select] = useState("");
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ status: "loading" });
-    api
-      .models(controller.signal)
-      .then((catalog) => {
-        if (controller.signal.aborted) return;
-        setState({ status: "ready", catalog });
-        select((previous) => {
-          if (
-            catalog.models.some(
-              (model) =>
-                modelKey(model) === previous &&
-                model.availability === "available",
-            )
-          )
-            return previous;
-          const defaultKey = catalog.defaultModel
-            ? modelKey(catalog.defaultModel)
-            : "";
-          return catalog.models.some(
-            (model) =>
-              modelKey(model) === defaultKey &&
-              model.availability === "available",
-          )
-            ? defaultKey
-            : "";
-        });
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) setState({ status: "error", error });
-      });
-    return () => controller.abort();
-  }, [connection, revision]);
-  const selected =
-    state.status === "ready"
-      ? state.catalog.models.find(
-          (model) =>
-            modelKey(model) === selectedKey &&
-            model.availability === "available",
-        )
-      : undefined;
+export interface Models {
+  state: ResourceState<ModelCatalog>;
+  /** 選んだモデル。カタログを読む前と、選んだモデルが使えない時は undefined。 */
+  selected: CatalogModel | undefined;
+  /** modelKey の値で選ぶ。カタログを読む前に選べば、読んだ後も使える限り残る。 */
+  select(key: string): void;
+  isAvailable(model: ModelKey): boolean;
+  reload(): void;
+}
+
+export function useModels(): Models {
+  const [choice, select] = useState("");
+  const { state, reload } = useResource(async (signal) => {
+    const catalog = await api.models(signal);
+    select((previous) => initialChoice(catalog, previous));
+    return catalog;
+  }, []);
+  const catalog = state.status === "ready" ? state.value : null;
+  const available = useCallback(
+    (model: ModelKey) => catalog !== null && isAvailable(catalog, model),
+    [catalog],
+  );
   return {
     state,
-    selectedKey,
-    selected,
+    selected: catalog ? availableModel(catalog, choice) : undefined,
     select,
-    refresh: () => setRevision((value) => value + 1),
+    isAvailable: available,
+    reload,
   };
 }
-export type Models = ReturnType<typeof useModels>;

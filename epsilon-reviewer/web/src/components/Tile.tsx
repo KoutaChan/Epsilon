@@ -1,29 +1,37 @@
-import type { Translate } from "../language/catalog";
+import { tileAssetName } from "../features/replay/tileAssets.ts";
+import type { MessageKey, Translate } from "../language/catalog";
 import { useLanguage } from "../language/LanguageProvider";
 
-const honors: Record<string, string> = {
-  E: "Ton",
-  S: "Nan",
-  W: "Shaa",
-  N: "Pei",
-  P: "Haku",
-  F: "Hatsu",
-  C: "Chun",
+/** 伏せた牌（文書の牌の記号ではない）。 */
+const BACK = "back";
+const HONOR_NAMES: Readonly<Record<string, MessageKey>> = {
+  E: "tile.E",
+  S: "tile.S",
+  W: "tile.W",
+  N: "tile.N",
+  P: "tile.P",
+  F: "tile.F",
+  C: "tile.C",
 };
-const suits: Record<string, string> = { m: "Man", p: "Pin", s: "Sou" };
+const SUIT_NAMES: Readonly<Record<string, MessageKey>> = {
+  m: "tile.m",
+  p: "tile.p",
+  s: "tile.s",
+};
+
 export function tileName(tile: string, t: Translate): string {
-  if (tile === "back" || tile === "?") return t("tile.back");
-  if (honors[tile]) return t(`tile.${tile}` as "tile.E");
-  const red = tile.includes("r") || tile[0] === "0";
-  const name = t(`tile.${tile[1]}` as "tile.m", { number: red ? 5 : tile[0] });
+  if (tile === BACK) return t("tile.back");
+  const honor = HONOR_NAMES[tile];
+  if (honor) return t(honor);
+  const red = tile.length === 3;
+  const name = t(SUIT_NAMES[tile[1]!]!, { number: red ? 5 : tile[0]! });
   return red ? t("tile.red", { tile: name }) : name;
 }
+
 export function tileAsset(tile: string): string {
-  const name =
-    honors[tile] ||
-    `${suits[tile[1]]}${tile.includes("r") || tile[0] === "0" ? "5-Dora" : tile[0]}`;
-  return `./tiles/Regular/${name}.svg`;
+  return `./tiles/Regular/${tileAssetName(tile)}.svg`;
 }
+
 export function Tile({
   tile,
   className = "",
@@ -32,7 +40,7 @@ export function Tile({
   className?: string;
 }) {
   const { t } = useLanguage();
-  const back = tile === "back" || tile === "?";
+  const back = tile === BACK;
   return (
     <span
       className={`em-face ${back ? "is-back" : ""} ${className}`}

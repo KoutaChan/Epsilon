@@ -1,164 +1,144 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
-  type RefObject,
+  type MouseEvent,
 } from "react";
 import {
-  ArrowLeft,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  MoreHorizontal,
   Pause,
   Play,
-  Share2,
+  Split,
 } from "lucide-react";
-import type { ReviewResult } from "../../api/types";
 import { playerName, roundName, seatName } from "../../language/format";
-import { LanguageSelect } from "../../language/LanguageSelect";
 import { useLanguage } from "../../language/LanguageProvider";
-import { summarizePlayerDecisions } from "./decisionStats";
-import type { Playback } from "./usePlayback";
-import { usePlaybackInput } from "./usePlaybackInput";
+import { OptionsMenu } from "./OptionsMenu";
+import type { Scenario } from "./scenario/useScenario.ts";
+import type { TableElements } from "./tableElements.ts";
+import type { Playback } from "./usePlayback.ts";
+import { usePlaybackInput } from "./usePlaybackInput.ts";
 
 type Menu = "round" | "seat" | "options";
+
+/** 再生の操作の帯。局・視点・設定の 3 つのメニューと、戻る・再生・進む・もしもの押し釦。 */
 export function PlaybackControls({
-  surface,
-  result,
+  elements,
   playback,
+  scenario,
   onBack,
   backLabel,
   onShare,
 }: {
-  surface: RefObject<HTMLDivElement | null>;
-  result: ReviewResult;
+  elements: TableElements;
   playback: Playback;
+  scenario: Scenario;
   onBack: () => void;
   backLabel: string;
-  onShare?: () => void;
+  onShare: (() => void) | null;
 }) {
-  const { t, locale } = useLanguage();
+  const { t } = useLanguage();
   const {
+    model,
     round,
     snapshot,
     seat,
-    stepIndex,
     playing,
-    reveal,
-    last,
     canPrevious,
     canNext,
     canPlay,
+    stage,
     dispatch,
     move,
     togglePlay,
   } = playback;
   const [menu, setMenu] = useState<Menu | null>(null);
-  const navigation = useRef<HTMLElement>(null);
-  const triggers = useRef<Partial<Record<Menu, HTMLElement | null>>>({});
+  // メニューを閉じたら、開いた札へ戻る。
+  const opener = useRef<HTMLElement | null>(null);
   const close = useCallback(() => {
-    if (menu) triggers.current[menu]?.focus();
+    if (menu) opener.current?.focus();
     setMenu(null);
   }, [menu]);
   usePlaybackInput({
-    surface,
+    surface: elements.root,
     playback,
     menuOpen: menu !== null,
     closeMenu: close,
   });
-  const toggle = (target: Menu) => {
+  const toggle = (target: Menu) => (event: MouseEvent<HTMLElement>) => {
+    event.preventDefault();
     dispatch({ type: "pause" });
+    opener.current = event.currentTarget;
     setMenu(menu === target ? null : target);
   };
   useEffect(() => {
     const pointer = (event: PointerEvent) => {
-      if (!navigation.current!.contains(event.target as Node)) setMenu(null);
+      const node = event.target;
+      if (!(node instanceof Node) || !elements.playback.current?.contains(node))
+        setMenu(null);
     };
     document.addEventListener("pointerdown", pointer);
     return () => document.removeEventListener("pointerdown", pointer);
-  }, []);
+  }, [elements]);
   useEffect(() => {
-    if (playback.stage !== "table") setMenu(null);
-  }, [playback.stage]);
-  const statistics = useMemo(
-    () => summarizePlayerDecisions(result.rounds),
-    [result],
-  );
-  const playerStats = statistics[seat];
-  const currentPlayer = snapshot.players[seat];
-  const name = playerName(currentPlayer.name, seat, t);
-  const percent = new Intl.NumberFormat(locale, {
-    style: "percent",
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  });
-  const formatDecisionRate = (count: number) =>
-    playerStats.reviewed === 0
-      ? "—"
-      : percent.format(count / playerStats.reviewed);
-  // 価値を推定したモデルの判断は損失の基準で数えるため、説明も切り替える。
-  const valued = playerStats.meanLoss !== null;
-  const loss = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
+    if (stage !== "table") setMenu(null);
+  }, [stage]);
+  // 押せないときは理由を出す。
+  const scenarioReason =
+    scenario.active || scenario.canStart
+      ? undefined
+      : scenario.available
+        ? t("scenario.noTurn", { seat: seatName(seat, round.dealer, t) })
+        : t("scenario.unavailableModel");
+  const currentPlayer = snapshot.players[seat]!;
   return (
     <nav
       className="em-playback"
-      ref={navigation}
+      ref={elements.playback}
       aria-label={t("replay.controls")}
-      inert={playback.stage !== "table"}
+      inert={stage !== "table"}
     >
       <details className="em-round-picker" open={menu === "round"}>
         <summary
-          ref={(element) => {
-            triggers.current.round = element;
-          }}
+          ref={elements.control}
           className="em-round-trigger"
-          onClick={(event) => {
-            event.preventDefault();
-            toggle("round");
-          }}
+          onClick={toggle("round")}
           aria-label={t("replay.chooseRound", { round: roundName(round, t) })}
         >
           <span className="em-round-label">{roundName(round, t, true)}</span>
           <ChevronDown />
         </summary>
         <div className="em-round-menu">
-          {result.rounds.map((entry, index) => (
+          {model.rounds.map((entry) => (
             <button
-              key={entry.id}
-              aria-pressed={index === playback.roundIndex}
+              key={entry.index}
+              aria-pressed={entry.index === playback.roundIndex}
               onClick={() => {
-                dispatch({ type: "round", index });
+                dispatch({ type: "round", index: entry.index });
                 close();
               }}
             >
               <span>
-                {roundName(entry, t)}
                 {entry.honba > 0
-                  ? ` ${t("replay.honbaCount", { count: entry.honba })}`
-                  : ""}
+                  ? t("replay.roundHonba", {
+                      round: roundName(entry, t),
+                      honba: t("replay.honbaCount", { count: entry.honba }),
+                    })
+                  : roundName(entry, t)}
               </span>
-              {index === playback.roundIndex && <Check />}
+              {entry.index === playback.roundIndex && <Check />}
             </button>
           ))}
         </div>
       </details>
       <details className="em-seat-picker" open={menu === "seat"}>
         <summary
-          ref={(element) => {
-            triggers.current.seat = element;
-          }}
+          ref={elements.control}
           className="em-seat-trigger"
-          onClick={(event) => {
-            event.preventDefault();
-            toggle("seat");
-          }}
+          onClick={toggle("seat")}
           aria-label={t("replay.chooseSeat", {
             seat: seatName(seat, round.dealer, t),
             name: playerName(currentPlayer.name, seat, t),
@@ -171,7 +151,7 @@ export function PlaybackControls({
         </summary>
         <div className="em-seat-menu">
           {[0, 1, 2, 3].map((offset) => {
-            const player = snapshot.players[(round.dealer + offset) % 4];
+            const player = snapshot.players[(round.dealer + offset) % 4]!;
             return (
               <button
                 key={player.seat}
@@ -195,6 +175,7 @@ export function PlaybackControls({
       </details>
       <div className="em-transport">
         <button
+          ref={elements.control}
           className="em-icon"
           data-step="-1"
           aria-label={t("replay.previous")}
@@ -205,6 +186,7 @@ export function PlaybackControls({
           <span className="em-action-label">{t("common.back")}</span>
         </button>
         <button
+          ref={elements.control}
           className="em-icon em-play"
           aria-label={t(playing ? "replay.pause" : "replay.play")}
           disabled={!canPlay && !playing}
@@ -216,6 +198,7 @@ export function PlaybackControls({
           {playing ? <Pause /> : <Play />}
         </button>
         <button
+          ref={elements.control}
           className="em-icon"
           data-step="1"
           aria-label={t("replay.next")}
@@ -225,133 +208,33 @@ export function PlaybackControls({
           <span className="em-action-label">{t("replay.forward")}</span>
           <ChevronRight />
         </button>
+        <button
+          ref={elements.control}
+          className="em-icon em-scenario-toggle"
+          aria-label={t("scenario.button")}
+          aria-pressed={scenario.active}
+          disabled={!scenario.active && !scenario.canStart}
+          title={scenarioReason}
+          onClick={() => {
+            setMenu(null);
+            scenario.toggle();
+          }}
+        >
+          <Split />
+          <span className="em-action-label">{t("scenario.button")}</span>
+        </button>
       </div>
       <div className="em-playback-meta">
-        <details className="em-info" open={menu === "options"}>
-          <summary
-            ref={(element) => {
-              triggers.current.options = element;
-            }}
-            onClick={(event) => {
-              event.preventDefault();
-              toggle("options");
-            }}
-            aria-label={t("replay.options")}
-          >
-            <MoreHorizontal />
-          </summary>
-          <div className="em-info-content">
-            <section
-              className="em-decision-stats"
-              aria-label={t("replay.statistics")}
-            >
-              <strong className="em-stats-player" title={name}>
-                {name}
-              </strong>
-              <span className="em-stats-scope">
-                {t("replay.statisticsScope", {
-                  count: playerStats.reviewed.toLocaleString(locale),
-                })}
-              </span>
-              <dl>
-                <div
-                  title={t(
-                    valued
-                      ? "replay.valueAgreementDescription"
-                      : "replay.agreementDescription",
-                  )}
-                >
-                  <dt>{t("replay.agreementRate")}</dt>
-                  <dd
-                    aria-label={
-                      playerStats.reviewed === 0
-                        ? t("replay.noDecisions")
-                        : undefined
-                    }
-                  >
-                    {formatDecisionRate(playerStats.matched)}
-                  </dd>
-                </div>
-                <div
-                  title={t(
-                    valued
-                      ? "replay.valueBadMoveDescription"
-                      : "replay.badMoveDescription",
-                  )}
-                >
-                  <dt>{t("replay.badMoveRate")}</dt>
-                  <dd
-                    aria-label={
-                      playerStats.reviewed === 0
-                        ? t("replay.noDecisions")
-                        : undefined
-                    }
-                  >
-                    {formatDecisionRate(playerStats.badMoves)}
-                  </dd>
-                </div>
-                {playerStats.meanLoss !== null && (
-                  <div title={t("replay.meanLossDescription")}>
-                    <dt>{t("replay.meanLoss")}</dt>
-                    <dd>{loss.format(playerStats.meanLoss)}</dd>
-                  </div>
-                )}
-              </dl>
-            </section>
-            <label className="em-reveal-option">
-              <span>{t("replay.reveal")}</span>
-              <input
-                className="em-reveal-hands"
-                type="checkbox"
-                checked={reveal}
-                onChange={(event) =>
-                  dispatch({ type: "reveal", reveal: event.target.checked })
-                }
-              />
-            </label>
-            <span className="em-position">
-              {stepIndex + 1} / {last + 1}
-            </span>
-            <label className="em-seek-label" htmlFor="review-seek">
-              {t("replay.position")}
-            </label>
-            <input
-              id="review-seek"
-              className="em-timeline"
-              type="range"
-              min="0"
-              max={last}
-              step="1"
-              value={stepIndex}
-              onChange={(event) =>
-                dispatch({ type: "seek", index: Number(event.target.value) })
-              }
-            />
-            <LanguageSelect />
-            <p>
-              {result.model.displayName} {result.model.version}
-            </p>
-            <div className="em-review-actions">
-              {onShare && (
-                <button
-                  className="review-home-button"
-                  onClick={() => {
-                    close();
-                    onShare();
-                  }}
-                >
-                  <Share2 />
-                  {t("share.title")}
-                </button>
-              )}
-              <button className="review-home-button" onClick={onBack}>
-                <ArrowLeft />
-                {backLabel}
-              </button>
-            </div>
-            <p className="tile-credit">{t("replay.credit")}</p>
-          </div>
-        </details>
+        <OptionsMenu
+          elements={elements}
+          playback={playback}
+          open={menu === "options"}
+          onToggle={toggle("options")}
+          onClose={close}
+          onBack={onBack}
+          backLabel={backLabel}
+          onShare={onShare}
+        />
       </div>
     </nav>
   );

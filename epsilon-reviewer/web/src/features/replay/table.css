@@ -13,11 +13,10 @@
   --em-primary: #a3dff1;
   --em-secondary: #c6d9e6;
   --em-container: #172d41;
-  --em-container-high: #29445c;
-  --em-text: #edf4f9;
   --em-outline: #466076;
-  --em-on-container: #e1eff8;
   --em-backing: #72c4df;
+  /* もしもで変えた所の色。最善〜悪手の色（緑・水色・黄・桃）と混ぜない。 */
+  --em-scenario: #b8a3ff;
 }
 #epsilon-review-material * {
   box-sizing: border-box;
@@ -69,9 +68,8 @@
 #epsilon-review-material .em-scene-labels {
   z-index: 2;
 }
-/* 牌のDOMはアクセシビリティと描画入力として保持する。2Dの卓は重ねない。 */
-#epsilon-review-material
-  :is(.em-hidden, .em-cluster, .em-hand, .em-meld-source, .em-sr-only) {
+/* 卓の読み上げの文（今の出来事・手牌・河・副露）。見た目からは隠す。 */
+#epsilon-review-material .em-sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -390,11 +388,6 @@
   flex: none;
   margin-left: auto;
 }
-#epsilon-review-material
-  button:not([aria-pressed="true"])
-  :is(.em-round-option-check, .em-seat-option-check) {
-  visibility: hidden;
-}
 #epsilon-review-material .em-info-content {
   position: absolute;
   z-index: 10;
@@ -414,10 +407,6 @@
   margin: 8px 0 12px;
   font-size: 12px;
   line-height: 18px;
-}
-#epsilon-review-material .em-info-content a {
-  font-size: 12px;
-  color: var(--em-primary);
 }
 #epsilon-review-material .em-decision-stats {
   margin-bottom: 16px;
@@ -1234,4 +1223,494 @@
   background: #0c192a;
   border-top: 1px solid #5f819c3d;
   color: #edf3f8;
+}
+
+/* もしも: 入り口のボタン。押している間は薄紫にする。 */
+#epsilon-review-material .em-scenario-toggle {
+  color: #dcd2ff;
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  .em-icon.em-scenario-toggle {
+  width: calc(128px * var(--em-pc-ui-scale));
+}
+#epsilon-review-material .em-device[data-layout="landscape"] .em-playback {
+  grid-template-columns: repeat(7, 44px);
+  width: 308px;
+}
+#epsilon-review-material
+  .em-device[data-layout="landscape"]
+  .em-scenario-toggle {
+  grid-area: 1 / 6;
+}
+#epsilon-review-material .em-device[data-layout="landscape"] .em-playback-meta {
+  grid-area: 1 / 7;
+}
+/* 縦の画面は二段目の空いている枠に置き、背景は選ぶボタンと同じにする。 */
+#epsilon-review-material
+  .em-device[data-layout="portrait"]
+  .em-scenario-toggle {
+  grid-area: 2 / 2;
+  background: #153149;
+}
+#epsilon-review-material .em-playback .em-scenario-toggle[aria-pressed="true"] {
+  background: #3a3168;
+  box-shadow: inset 0 0 0 1px #b8a3ffa0;
+  color: #f4f0ff;
+}
+
+/* もしも: 卓の上の当たり枠。形は描画が 3D の牌と中央の表示から求めた輪郭。 */
+#epsilon-review-material .em-scenario-targets {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+#epsilon-review-material .em-scenario-targets polygon {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+  pointer-events: all;
+  cursor: pointer;
+}
+#epsilon-review-material .em-scenario-targets polygon:hover {
+  stroke: #a3dff1;
+}
+#epsilon-review-material .em-scenario-targets polygon:focus {
+  outline: none;
+}
+#epsilon-review-material .em-scenario-targets polygon:focus-visible {
+  stroke: var(--em-primary);
+}
+#epsilon-review-material .em-scenario-targets polygon[data-edited="true"] {
+  stroke: var(--em-scenario);
+  filter: drop-shadow(0 0 5px #b8a3ffb0);
+}
+#epsilon-review-material .em-scenario-targets polygon[aria-pressed="true"] {
+  stroke: #f2f6fa;
+  filter: drop-shadow(0 0 6px #a3dff1cc);
+}
+#epsilon-review-material .em-dora > .em-scenario-pick {
+  display: block;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+}
+#epsilon-review-material .em-dora-count > .em-scenario-pick {
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+#epsilon-review-material .em-scenario-pick:hover {
+  box-shadow: 0 0 0 2px #a3dff1;
+}
+#epsilon-review-material .em-scenario-pick[data-edited="true"] {
+  box-shadow:
+    0 0 0 2px var(--em-scenario),
+    0 0 10px 2px #b8a3ff99;
+}
+#epsilon-review-material .em-scenario-pick[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 2px #f2f6fa,
+    0 0 12px 3px #a3dff1aa;
+}
+
+/* もしも: 右上の操作。ドラ表示（.em-dora-hud）と左右対称に置き、同じ幅・同じ地にする。大きさは変えない。 */
+#epsilon-review-material .em-scenario-panel {
+  --w: calc(1px * max(0.85, var(--em-pc-ui-scale)));
+  position: absolute;
+  z-index: 6;
+  top: var(--em-hud-top, 16px);
+  right: var(--em-hud-inset, 16px);
+  display: grid;
+  gap: calc(6 * var(--w));
+  width: var(--em-dora-width, 166px);
+  min-width: 200px;
+  padding: calc(7 * var(--w)) calc(7 * var(--w)) calc(8 * var(--w));
+  border-radius: 3px;
+  background: #081727a3;
+  box-shadow: 0 2px 4px #0003;
+  color: #dfeaf0;
+}
+#epsilon-review-material
+  .em-device[data-layout="landscape"]
+  .em-scenario-panel {
+  --w: 1px;
+}
+#epsilon-review-material .em-device[data-layout="portrait"] .em-scenario-panel {
+  --w: 1px;
+  position: static;
+  width: auto;
+  margin-bottom: 14px;
+}
+#epsilon-review-material .em-scenario-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(8 * var(--w));
+  padding: 0 calc(3 * var(--w));
+  font-size: calc(16 * var(--w));
+  line-height: 1.4;
+}
+#epsilon-review-material .em-scenario-head strong {
+  flex: none;
+  font-weight: 500;
+  color: #dcd2ff;
+}
+#epsilon-review-material .em-scenario-state {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #b6c9d5;
+  font-size: calc(13 * var(--w));
+}
+#epsilon-review-material .em-scenario-state[data-error="true"] {
+  color: #f1b2b2;
+}
+#epsilon-review-material .em-scenario-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: calc(4 * var(--w));
+}
+#epsilon-review-material .em-scenario-analyse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6 * var(--w));
+  min-width: 0;
+  height: calc(40 * var(--w));
+  padding: 0 calc(8 * var(--w));
+  border: 0;
+  border-radius: 5px;
+  background: #30556e;
+  box-shadow: inset 0 0 0 1px #87b6d244;
+  color: #f2f9fd;
+  font-size: calc(15 * var(--w));
+  font-weight: 500;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-scenario-analyse:hover:not(:disabled) {
+  background: #3a6580;
+}
+#epsilon-review-material .em-scenario-analyse svg {
+  flex: none;
+  width: calc(18 * var(--w));
+  height: calc(18 * var(--w));
+}
+#epsilon-review-material .em-scenario-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(40 * var(--w));
+  height: calc(40 * var(--w));
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #d9ebf5;
+}
+#epsilon-review-material .em-scenario-icon:hover:not(:disabled) {
+  background: #d6eeff18;
+}
+#epsilon-review-material .em-scenario-icon[aria-pressed="true"] {
+  background: #3a3168;
+  box-shadow: inset 0 0 0 1px #b8a3ffa0;
+  color: #f4f0ff;
+}
+#epsilon-review-material .em-scenario-icon svg {
+  width: calc(20 * var(--w));
+  height: calc(20 * var(--w));
+}
+
+/*
+ * もしも: 編集の吹き出し。設定のメニュー（.em-info-content）と同じ地で、押した所のそばに浮かべる。
+ * 卓の外の層に置き、手牌のすぐ上の再生の操作（z-index 8）より前に出す。
+ */
+#epsilon-review-material .em-scenario-editor {
+  --w: calc(1px * max(0.85, var(--em-pc-ui-scale)));
+  display: grid;
+  gap: calc(10 * var(--w));
+  color: #e9f2f7;
+  font-size: calc(14 * var(--w));
+  line-height: 1.4;
+}
+#epsilon-review-material
+  .em-device:not([data-layout="desktop"])
+  .em-scenario-editor {
+  --w: 1px;
+}
+#epsilon-review-material .em-scenario-editor[data-floating="true"] {
+  position: absolute;
+  z-index: 9;
+  width: max-content;
+  min-width: calc(220 * var(--w));
+  padding: calc(12 * var(--w));
+  border-radius: 6px;
+  background: var(--em-container);
+  box-shadow: 0 5px 20px #0005;
+}
+#epsilon-review-material .em-scenario-editor[data-placed="false"] {
+  visibility: hidden;
+}
+#epsilon-review-material .em-scenario-editor-head {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--w));
+}
+#epsilon-review-material .em-scenario-editor-head strong {
+  flex: none;
+  font-size: calc(15 * var(--w));
+  font-weight: 500;
+}
+#epsilon-review-material .em-scenario-was {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #9dafbf;
+  font-size: calc(12 * var(--w));
+}
+#epsilon-review-material .em-scenario-close {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(28 * var(--w));
+  height: calc(28 * var(--w));
+  margin: calc(-4 * var(--w)) calc(-4 * var(--w)) calc(-4 * var(--w)) 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #c6d9e6;
+}
+#epsilon-review-material .em-scenario-close:hover {
+  background: #ffffff12;
+}
+#epsilon-review-material .em-scenario-close svg {
+  width: calc(18 * var(--w));
+  height: calc(18 * var(--w));
+}
+#epsilon-review-material .em-scenario-segment {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 6px;
+  background: #0f2234;
+}
+#epsilon-review-material .em-scenario-segment button {
+  flex: 1;
+  padding: calc(6 * var(--w)) calc(8 * var(--w));
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--em-secondary);
+  font-size: calc(13 * var(--w));
+  line-height: 1.4;
+}
+#epsilon-review-material .em-scenario-segment button:hover {
+  background: #ffffff0d;
+}
+#epsilon-review-material .em-scenario-segment button[aria-pressed="true"] {
+  background: #365770;
+  color: #f2f9fd;
+}
+#epsilon-review-material .em-scenario-palette {
+  display: grid;
+  gap: calc(5 * var(--w));
+}
+#epsilon-review-material .em-scenario-palette-row {
+  display: flex;
+  gap: calc(3 * var(--w));
+}
+#epsilon-review-material .em-scenario-tile {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+}
+#epsilon-review-material .em-scenario-tile .em-face {
+  width: calc(24 * var(--w));
+  box-shadow:
+    1px 2px 0 #d4c8a8,
+    1px 3px 0 var(--em-backing),
+    1px 4px 3px #03150da0;
+}
+#epsilon-review-material
+  .em-device[data-layout="portrait"]
+  .em-scenario-tile
+  .em-face {
+  width: 29px;
+}
+#epsilon-review-material .em-scenario-tile:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+#epsilon-review-material .em-scenario-tile:disabled {
+  opacity: 0.22;
+  cursor: not-allowed;
+}
+#epsilon-review-material .em-scenario-tile[aria-pressed="true"] .em-face {
+  box-shadow:
+    0 0 0 2px var(--em-primary),
+    1px 3px 0 var(--em-backing);
+}
+#epsilon-review-material .em-scenario-number {
+  color: #f3d35e;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: calc(28 * var(--w));
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+#epsilon-review-material .em-scenario-steps {
+  display: flex;
+  gap: calc(5 * var(--w));
+}
+#epsilon-review-material .em-scenario-steps button {
+  flex: 1;
+  height: calc(34 * var(--w));
+  padding: 0 calc(6 * var(--w));
+  border: 0;
+  border-radius: 5px;
+  background: #29465d;
+  color: #edf6fb;
+  font-size: calc(14 * var(--w));
+  font-variant-numeric: tabular-nums;
+}
+#epsilon-review-material .em-scenario-steps button:hover:not(:disabled) {
+  background: #365770;
+}
+#epsilon-review-material .em-scenario-steps .em-scenario-number {
+  flex: none;
+  min-width: 2.4ch;
+  align-self: center;
+  text-align: center;
+}
+#epsilon-review-material .em-scenario-restore {
+  justify-self: start;
+  margin: calc(-4 * var(--w)) 0 0 calc(-6 * var(--w));
+  padding: calc(4 * var(--w)) calc(6 * var(--w));
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--em-primary);
+  font-size: calc(13 * var(--w));
+}
+#epsilon-review-material .em-scenario-restore:hover:not(:disabled) {
+  background: #ffffff12;
+}
+
+/* もしも: 候補の欄。見出しに札を付け、元の局面との比べを札の下に 1 行足す。 */
+#epsilon-review-material .em-action-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+#epsilon-review-material .em-scenario-chip {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #b8a3ff26;
+  box-shadow: inset 0 0 0 1px #b8a3ff88;
+  color: #dcd2ff;
+  font-size: 0.65em;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+/* 元の値と順位の動きは 1 行に並べ、順位の動きを右端に置く。 */
+#epsilon-review-material .em-scenario-compare {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 5px;
+  padding-top: 4px;
+  border-top: 1px solid #ffffff17;
+  color: #92a9ba;
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#epsilon-review-material .em-scenario-compare > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#epsilon-review-material .em-scenario-compare [data-move] {
+  flex: none;
+  margin-left: auto;
+}
+#epsilon-review-material .em-scenario-compare [data-move="up"] {
+  color: #b9ebce;
+}
+#epsilon-review-material .em-scenario-compare [data-move="down"] {
+  color: #f1b2b2;
+}
+#epsilon-review-material
+  .em-device[data-layout="desktop"]
+  .em-scenario-compare {
+  margin-top: calc(6px * var(--em-pc-ui-scale));
+  padding-top: calc(5px * var(--em-pc-ui-scale));
+  font-size: calc(12px * var(--em-pc-ui-scale));
+  line-height: 1.4;
+}
+/* 解析の間は元の候補を薄くして、古い数字と取り違えさせない。 */
+#epsilon-review-material
+  [data-scenario="loading"]
+  :is(.em-action-list, .em-review-list) {
+  opacity: 0.4;
+}
+/* もしも: チー・ポンの行は押すと鳴いた後の打牌へ進む。形は変えず、印は名前の横の小さな矢印だけ。 */
+#epsilon-review-material .is-callable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+#epsilon-review-material .em-action-row.is-callable:hover {
+  background: #173a52ea;
+}
+#epsilon-review-material .em-action-row.is-top.is-callable:hover {
+  background: #1d4338ea;
+}
+#epsilon-review-material .em-review-row.is-callable:hover {
+  background: #ffffff08;
+}
+#epsilon-review-material .is-callable:focus-visible {
+  outline: 3px solid var(--em-primary);
+  outline-offset: 2px;
+}
+#epsilon-review-material .em-scenario-next {
+  width: 1em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  color: #dcd2ff;
+}
+#epsilon-review-material .em-scenario-back {
+  pointer-events: auto;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--em-primary);
+  font-size: 11px;
+  line-height: inherit;
+}
+#epsilon-review-material .em-scenario-back:hover {
+  background: #ffffff12;
+}
+#epsilon-review-material .em-device[data-layout="desktop"] .em-scenario-back {
+  font-size: calc(16px * var(--em-pc-ui-scale));
 }

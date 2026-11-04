@@ -1,45 +1,45 @@
-import { useEffect, useState } from "react";
 import { ArrowLeft, CircleAlert, LoaderCircle } from "lucide-react";
-import { api, ApiError } from "../../api/client";
-import type { ReviewResult } from "../../api/types";
+import { ApiError } from "../../api/errors";
+import { api } from "../../api/platform";
+import { useResource } from "../../hooks/useResource";
 import { errorKey } from "../../language/catalog";
 import { LanguageSelect } from "../../language/LanguageSelect";
 import { useLanguage } from "../../language/LanguageProvider";
+import { isAvailable } from "../models/availability";
 import { ReviewView } from "../replay/ReviewView";
 import "./sharing.css";
 
-type SharedReviewState =
-  | { status: "loading" }
-  | { status: "ready"; result: ReviewResult }
-  | { status: "error"; error: unknown };
+const goHome = () => window.location.assign("./");
 
-export function SharedReview({ id }: { id: string }) {
+/** 共有リンクの閲覧。Cookie を送らず、持ち主の画面（取り込み・履歴）は出さない。 */
+export function SharedReview({ resultId }: { resultId: string }) {
   const { t } = useLanguage();
-  const [attempt, setAttempt] = useState(0);
-  const [state, setState] = useState<SharedReviewState>({ status: "loading" });
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ status: "loading" });
-    api.sharedResult(id, controller.signal).then(
-      (result) => {
-        if (!controller.signal.aborted) setState({ status: "ready", result });
-      },
-      (error: unknown) => {
-        if (!controller.signal.aborted) setState({ status: "error", error });
-      },
-    );
-    return () => controller.abort();
-  }, [id, attempt]);
+  const { state, reload } = useResource(
+    async (signal) => {
+      const [document, catalog] = await Promise.all([
+        api.sharedResult(resultId, signal),
+        // カタログを読めなければ、もしもを使えないだけで解析結果は開く。
+        api.models(signal).catch(() => null),
+      ]);
+      const scenario =
+        catalog !== null && isAvailable(catalog, document.model)
+          ? api.scenarioClient(resultId, "share")
+          : null;
+      return { document, scenario };
+    },
+    [resultId],
+  );
 
   if (state.status === "ready")
     return (
       <ReviewView
-        key={state.result.resultId}
-        result={state.result}
+        key={resultId}
+        document={state.value.document}
         initialSeat={0}
-        shareable={false}
-        backLabel={t("common.home")}
-        onBack={() => window.location.assign("./")}
+        scenario={state.value.scenario}
+        onShare={null}
+        back="home"
+        onBack={goHome}
       />
     );
 
@@ -70,10 +70,7 @@ export function SharedReview({ id }: { id: string }) {
             </div>
             <div className="shared-review-actions">
               {!unavailable && (
-                <button
-                  className="button"
-                  onClick={() => setAttempt((value) => value + 1)}
-                >
+                <button className="button" onClick={reload}>
                   {t("common.retry")}
                 </button>
               )}

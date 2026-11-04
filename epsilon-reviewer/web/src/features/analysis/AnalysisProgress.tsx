@@ -1,18 +1,25 @@
 import { RefreshCw } from "lucide-react";
-import type { ImportedRecord, Model, ReviewResult } from "../../api/types";
+import type {
+  ImportedRecord,
+  JobStatus,
+  ModelInfo,
+} from "../../../../protocol/model.ts";
+import type { ResultDocument } from "../../../../protocol/result.ts";
 import { errorKey, type MessageKey } from "../../language/catalog";
 import { modelLabel, sourceLabel } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import { useAnalysisJob } from "./useAnalysisJob";
 
-const statusKeys = {
+const STATUS_KEYS = {
   queued: "progress.queued",
   running: "progress.running",
   saving: "progress.saving",
   completed: "progress.saved",
   failed: "progress.failure",
   cancelled: "progress.cancellation",
-} satisfies Record<string, MessageKey>;
+} as const satisfies Record<JobStatus, MessageKey>;
+
+/** 解析の進み。戻るのは失敗か取り消しで終わった時だけ。 */
 export function AnalysisProgress({
   jobId,
   record,
@@ -22,17 +29,17 @@ export function AnalysisProgress({
 }: {
   jobId: string;
   record: ImportedRecord;
-  model: Model;
-  onComplete: (result: ReviewResult) => void;
+  model: ModelInfo;
+  onComplete: (document: ResultDocument) => void;
   onBack: () => void;
 }) {
   const { t } = useLanguage();
-  const { job, error, cancelling, cancel, retry } = useAnalysisJob(
+  const { job, error, cancelling, cancel, refresh } = useAnalysisJob(
     jobId,
     onComplete,
   );
-  const terminal = job.status === "failed" || job.status === "cancelled";
-  const title =
+  const ended = job.status === "failed" || job.status === "cancelled";
+  const title: MessageKey =
     error !== null
       ? "progress.disconnected"
       : job.status === "failed"
@@ -46,15 +53,17 @@ export function AnalysisProgress({
     <section className="content-card progress-card">
       <span className="eyebrow">{modelLabel(model)}</span>
       <h2>{t(title)}</h2>
-      <p>{sourceLabel(record.metadata.source, t)}</p>
+      <p>{sourceLabel(record.record.source, t)}</p>
       <progress
         value={job.progress}
         max="100"
         aria-label={t("progress.label")}
       />
       <div className="progress-caption">
-        <span>{t(statusKeys[job.status])}</span>
-        <strong>{Math.round(job.progress)}%</strong>
+        <span>{t(STATUS_KEYS[job.status])}</span>
+        <strong>
+          {t("progress.percent", { percent: Math.round(job.progress) })}
+        </strong>
       </div>
       {job.error && (
         <p className="error" role="alert">
@@ -65,14 +74,14 @@ export function AnalysisProgress({
         <div className="job-connection-error" role="alert">
           <p>{t(errorKey(error))}</p>
           <p>{t("progress.reconnectHint")}</p>
-          <button className="button secondary" onClick={retry}>
+          <button className="button secondary" onClick={refresh}>
             <RefreshCw />
             {t("progress.refresh")}
           </button>
         </div>
       )}
       <div className="progress-actions">
-        {terminal ? (
+        {ended ? (
           <button className="button" onClick={onBack}>
             {t("common.back")}
           </button>

@@ -1,9 +1,11 @@
-import { isDesktop } from "../../api/client";
+import { api } from "../../api/platform";
 import { Dialog } from "../../components/Dialog";
 import { useLanguage } from "../../language/LanguageProvider";
 
+/** 保存する情報の説明。保存先と送るものの文は Web とデスクトップで違う。 */
 export function StorageDialog({ onClose }: { onClose: () => void }) {
   const { t } = useLanguage();
+  const desktop = api.platform === "desktop";
   return (
     <Dialog title={t("storage.title")} onClose={onClose}>
       <dl className="stored-fields">
@@ -17,10 +19,10 @@ export function StorageDialog({ onClose }: { onClose: () => void }) {
         </div>
       </dl>
       <h3>{t("storage.location")}</h3>
-      <p>{t(isDesktop ? "storage.desktop" : "storage.web")}</p>
-      <p>{t(isDesktop ? "storage.desktopTransfer" : "storage.cookie")}</p>
+      <p>{t(desktop ? "storage.desktop" : "storage.web")}</p>
+      <p>{t(desktop ? "storage.desktopTransfer" : "storage.cookie")}</p>
       <p>{t("storage.delete")}</p>
-      {!isDesktop && <p>{t("storage.sharing")}</p>}
+      {!desktop && <p>{t("storage.sharing")}</p>}
       <div className="dialog-actions">
         <button className="button" onClick={onClose}>
           {t("common.close")}

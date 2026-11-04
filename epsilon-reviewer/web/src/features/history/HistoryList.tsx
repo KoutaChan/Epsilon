@@ -1,40 +1,33 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  CircleAlert,
-  Download,
-  FolderOpen,
-  LoaderCircle,
-  MoreHorizontal,
-  RefreshCw,
-  Search,
-  Share2,
-  Trash2,
-} from "lucide-react";
-import { isDesktop } from "../../api/client";
-import type { HistoryEntry } from "../../api/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CircleAlert, FolderOpen, LoaderCircle, RefreshCw, Search } from "lucide-react";
+import type {
+  HistoryEntry,
+  HistoryList as HistoryData,
+} from "../../../../protocol/model.ts";
+import { api } from "../../api/platform";
+import type { Resource } from "../../hooks/useResource";
 import { errorKey } from "../../language/catalog";
-import {
-  dateLabel,
-  modelLabel,
-  playerName,
-  sourceLabel,
-} from "../../language/format";
+import { modelLabel, sourceLabel } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
-import type { History } from "./useHistory";
+import { HistoryCard } from "./HistoryCard";
+import type { MenuAction } from "./HistoryMenu";
 
 export interface HistoryActions {
-  share?: (entry: HistoryEntry) => void;
-  open: (entry: HistoryEntry) => void;
-  export: (entry: HistoryEntry) => void;
-  reanalyse: (entry: HistoryEntry) => void;
-  delete: (entry: HistoryEntry) => void;
+  /** 共有の窓を開く（Web）。デスクトップは null。 */
+  share: ((entry: HistoryEntry) => void) | null;
+  open(entry: HistoryEntry): void;
+  export(entry: HistoryEntry): void;
+  reanalyse(entry: HistoryEntry): void;
+  delete(entry: HistoryEntry): void;
 }
+
+/** 履歴。検索は牌譜の種類（元の値と表示）・対局者名・モデルの表示を UI の言語で小文字にして探す。 */
 export function HistoryList({
   history,
   busy,
   actions,
 }: {
-  history: History;
+  history: Resource<HistoryData>;
   busy: boolean;
   actions: HistoryActions;
 }) {
@@ -42,37 +35,47 @@ export function HistoryList({
   const [search, setSearch] = useState("");
   const [menu, setMenu] = useState<string | null>(null);
   const trigger = useRef<HTMLElement | null>(null);
-  const { state, refresh } = history;
-  const share = actions.share;
+  const { state, reload } = history;
+  const entries = state.status === "ready" ? state.value.results : null;
+  const searchable = useMemo(
+    () =>
+      (entries ?? []).map((entry) => ({
+        entry,
+        text: `${entry.record.source} ${sourceLabel(entry.record.source, t)} ${entry.record.names.join(" ")} ${modelLabel(entry.model)}`.toLocaleLowerCase(
+          locale,
+        ),
+      })),
+    [entries, t, locale],
+  );
   useEffect(() => {
+    if (menu === null) return;
     const closeOutside = (event: PointerEvent) => {
-      if (!(event.target as Element).closest(".history-menu")) setMenu(null);
-    };
-    const closeKeyboard = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (
+        !(event.target instanceof Element) ||
+        !event.target.closest(".history-menu")
+      )
         setMenu(null);
-        trigger.current?.focus();
-      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMenu(null);
+      trigger.current?.focus();
     };
     document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeKeyboard);
+    document.addEventListener("keydown", closeOnEscape);
     return () => {
       document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeKeyboard);
+      document.removeEventListener("keydown", closeOnEscape);
     };
-  }, []);
-  const entries =
-    state.status === "ready"
-      ? state.entries.filter((entry) =>
-          `${entry.metadata.source} ${sourceLabel(entry.metadata.source, t)} ${entry.metadata.names.join(" ")} ${modelLabel(entry.model)}`
-            .toLocaleLowerCase(locale)
-            .includes(search.toLocaleLowerCase(locale)),
-        )
-      : [];
-  const act = (action: (entry: HistoryEntry) => void, entry: HistoryEntry) => {
+  }, [menu]);
+  const query = search.toLocaleLowerCase(locale);
+  const shown = searchable
+    .filter((item) => item.text.includes(query))
+    .map((item) => item.entry);
+  const choose = (entry: HistoryEntry, action: MenuAction) => {
     setMenu(null);
     trigger.current?.focus();
-    action(entry);
+    actions[action]?.(entry);
   };
   return (
     <section className="history-section">
@@ -80,15 +83,17 @@ export function HistoryList({
         <div>
           <h2>
             {t("history.title")}{" "}
-            <span>{state.status === "ready" ? state.entries.length : ""}</span>
+            <span>{entries ? entries.length : ""}</span>
           </h2>
-          <p>{t(isDesktop ? "history.local" : "history.browser")}</p>
+          <p>
+            {t(api.platform === "desktop" ? "history.local" : "history.browser")}
+          </p>
         </div>
         <button
           className="icon-button"
           aria-label={t("history.refresh")}
           disabled={state.status === "loading"}
-          onClick={refresh}
+          onClick={reload}
         >
           <RefreshCw className={state.status === "loading" ? "spin" : ""} />
         </button>
@@ -112,11 +117,11 @@ export function HistoryList({
         <div className="empty-state error" role="alert">
           <CircleAlert />
           <p>{t(errorKey(state.error))}</p>
-          <button className="button" onClick={refresh}>
+          <button className="button" onClick={reload}>
             {t("common.retry")}
           </button>
         </div>
-      ) : entries.length === 0 ? (
+      ) : shown.length === 0 ? (
         <div className="empty-state">
           <FolderOpen />
           <h3>{t(search ? "history.noMatches" : "history.empty")}</h3>
@@ -124,117 +129,21 @@ export function HistoryList({
         </div>
       ) : (
         <div className="history-list">
-          {entries.map((entry) => {
-            const source = sourceLabel(entry.metadata.source, t);
-            const scores = entry.metadata.names
-              .map((name, seat) => ({
-                seat,
-                name: playerName(name, seat, t),
-                points: entry.metadata.finalScores?.[seat],
-              }))
-              .sort(
-                (a, b) => (b.points ?? -Infinity) - (a.points ?? -Infinity),
-              );
-            return (
-              <article className="history-card" key={entry.resultId}>
-                <div className="history-card-top">
-                  <div>
-                    <strong className="source-label">{source}</strong>
-                    <span className="history-date">
-                      {t("history.analysedAt", {
-                        date: dateLabel(entry.createdAt, locale, t),
-                      })}
-                    </span>
-                    <p className="history-model">{modelLabel(entry.model)}</p>
-                  </div>
-                  <details
-                    className="history-menu"
-                    open={menu === entry.resultId}
-                  >
-                    <summary
-                      className="icon-button"
-                      aria-label={t("history.actions", { source })}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        trigger.current = event.currentTarget;
-                        setMenu(
-                          menu === entry.resultId ? null : entry.resultId,
-                        );
-                      }}
-                    >
-                      <MoreHorizontal />
-                    </summary>
-                    <div className="floating-menu">
-                      {share && (
-                        <button
-                          disabled={busy}
-                          onClick={() => act(share, entry)}
-                        >
-                          <Share2 />
-                          {t("share.title")}
-                        </button>
-                      )}
-                      <button
-                        disabled={busy}
-                        onClick={() => act(actions.export, entry)}
-                      >
-                        <Download />
-                        {t("history.export")}
-                      </button>
-                      <button
-                        disabled={busy}
-                        onClick={() => act(actions.reanalyse, entry)}
-                      >
-                        <RefreshCw />
-                        {t("history.reanalyse")}
-                      </button>
-                      <button
-                        disabled={busy}
-                        className="danger-text"
-                        onClick={() => act(actions.delete, entry)}
-                      >
-                        <Trash2 />
-                        {t("history.delete")}
-                      </button>
-                    </div>
-                  </details>
-                </div>
-                <div className="history-card-bottom">
-                  <div className="history-scores">
-                    <span className="score-caption">
-                      {t("history.finalScores")}
-                    </span>
-                    <dl>
-                      {scores.map((player) => (
-                        <div key={player.seat}>
-                          <dt>{player.name}</dt>
-                          <dd>
-                            {player.points === undefined ? (
-                              t("common.unknown")
-                            ) : (
-                              <>
-                                {player.points.toLocaleString(locale)}
-                                <small>{t("common.points")}</small>
-                              </>
-                            )}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                  <button
-                    className="button open-button"
-                    disabled={busy}
-                    onClick={() => actions.open(entry)}
-                    aria-label={t("history.open", { source })}
-                  >
-                    <FolderOpen />
-                    <span>{t("common.open")}</span>
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+          {shown.map((entry) => (
+            <HistoryCard
+              key={entry.resultId}
+              entry={entry}
+              busy={busy}
+              menuOpen={menu === entry.resultId}
+              shareable={actions.share !== null}
+              onToggleMenu={(element) => {
+                trigger.current = element;
+                setMenu(menu === entry.resultId ? null : entry.resultId);
+              }}
+              onChoose={(action) => choose(entry, action)}
+              onOpen={() => actions.open(entry)}
+            />
+          ))}
         </div>
       )}
     </section>

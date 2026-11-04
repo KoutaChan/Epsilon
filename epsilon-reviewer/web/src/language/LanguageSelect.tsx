@@ -1,6 +1,6 @@
-import { Languages } from "lucide-react";
 import { useState } from "react";
-import { languages, errorKey } from "./catalog";
+import { Languages } from "lucide-react";
+import { errorKey, languages } from "./catalog";
 import { useLanguage } from "./LanguageProvider";
 
 export function LanguageSelect() {
@@ -15,7 +15,7 @@ export function LanguageSelect() {
           aria-label={t("language.label")}
           onChange={(event) => {
             setError(null);
-            void setLanguage(event.target.value).catch(setError);
+            setLanguage(event.target.value).catch(setError);
           }}
         >
           {languages.map((entry) => (

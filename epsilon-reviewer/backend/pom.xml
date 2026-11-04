@@ -19,6 +19,90 @@
   </dependencies>
   <build>
     <finalName>epsilon-reviewer</finalName>
+    <!-- もしもの再生の試験は、epsilon-common の試験が持つ天鳳の牌譜（GoldenGames）を写さずに使う。 -->
+    <testResources>
+      <testResource><directory>${project.basedir}/src/test/resources</directory></testResource>
+      <testResource>
+        <directory>${project.basedir}/../../epsilon-common/src/test/resources</directory>
+        <includes><include>com/epsilon/engine/golden/*.xml.gz</include></includes>
+      </testResource>
+    </testResources>
     <plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId></plugin></plugins>
   </build>
+  <profiles>
+    <!--
+      デスクトップの jar（target/epsilon-reviewer-1.0-SNAPSHOT-desktop.jar）。"-P!linux-native,desktop" で組む（ROCm の JNI を
+      入れない）。Windows x64 のアプリが読まない他の OS のネイティブ（zstd-jni・JNA の win amd64 以外、jnilib）を除く。
+    -->
+    <profile>
+      <id>desktop</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-shade-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>desktop</id>
+                <phase>package</phase>
+                <goals><goal>shade</goal></goals>
+                <configuration>
+                  <shadedArtifactAttached>true</shadedArtifactAttached>
+                  <shadedClassifierName>desktop</shadedClassifierName>
+                  <createDependencyReducedPom>false</createDependencyReducedPom>
+                  <transformers>
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                      <mainClass>${epsilon.mainClass}</mainClass>
+                      <manifestEntries>
+                        <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                      </manifestEntries>
+                    </transformer>
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+                      <addHeader>false</addHeader>
+                    </transformer>
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.IncludeResourceTransformer">
+                      <resource>META-INF/LICENSE</resource>
+                      <file>${project.build.outputDirectory}/META-INF/LICENSE</file>
+                    </transformer>
+                  </transformers>
+                  <filters>
+                    <filter>
+                      <artifact>*:*</artifact>
+                      <excludes>
+                        <exclude>META-INF/*.SF</exclude>
+                        <exclude>META-INF/*.RSA</exclude>
+                        <exclude>META-INF/*.DSA</exclude>
+                        <exclude>META-INF/LICENSE</exclude>
+                        <exclude>jnilib/**</exclude>
+                      </excludes>
+                    </filter>
+                    <filter>
+                      <artifact>com.github.luben:zstd-jni</artifact>
+                      <excludes>
+                        <exclude>aix/**</exclude>
+                        <exclude>darwin/**</exclude>
+                        <exclude>freebsd/**</exclude>
+                        <exclude>linux/**</exclude>
+                        <exclude>win/aarch64/**</exclude>
+                        <exclude>win/x86/**</exclude>
+                      </excludes>
+                    </filter>
+                    <filter>
+                      <artifact>net.java.dev.jna:jna</artifact>
+                      <excludes>
+                        <exclude>com/sun/jna/*/libjnidispatch.*</exclude>
+                        <exclude>com/sun/jna/win32-x86/**</exclude>
+                        <exclude>com/sun/jna/win32-aarch64/**</exclude>
+                      </excludes>
+                    </filter>
+                  </filters>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

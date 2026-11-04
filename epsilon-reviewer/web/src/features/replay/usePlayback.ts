@@ -1,74 +1,105 @@
-import { useCallback, useEffect, useMemo, useReducer } from "react";
-import type { ReviewResult } from "../../api/types";
-import { playbackReducer } from "./playback";
-import { buildPlaybackPositions } from "./timeline";
 import {
-  createReplayStateReader,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  type Dispatch,
+} from "react";
+import { readCandidates } from "./model/candidates.ts";
+import {
+  playbackReducer,
+  type PlaybackAction,
+  type PlaybackState,
+} from "./model/playback.ts";
+import type { RecentReplayEvent } from "./model/recentEvents.ts";
+import {
+  createStateReader,
   maximumPlayerRowWidth,
-} from "./stateReader.ts";
-import { measurePlayerRowWidth } from "./renderer/tileLayout";
+  type StateReader,
+} from "./model/stateReader.ts";
+import type {
+  ReplayPosition,
+  ReplayStage,
+  Timelines,
+} from "./model/timeline.ts";
+import type {
+  Candidate,
+  DecisionStep,
+  EventSnapshot,
+  ReplayModel,
+  ReplayRound,
+  ReplayStep,
+  Snapshot,
+} from "./model/types.ts";
+import { measurePlayerRowWidth } from "./renderer/tileLayout.ts";
 
-export function usePlayback(result: ReviewResult, initialSeat: number) {
-  const [state, dispatch] = useReducer(playbackReducer, {
-    roundIndex: 0,
-    stepIndex: 0,
-    seat: initialSeat,
-    reveal: true,
-    playing: false,
-    animateDraw: false,
-  });
-  const timelines = useMemo(
-    () =>
-      result.rounds.map((round, index) =>
-        buildPlaybackPositions(round.steps, index === result.rounds.length - 1),
-      ),
-    [result],
+const AUTOPLAY_INTERVAL_MS = 850;
+
+/** 今の位置で画面が読む局面。位置（局・手順・席）が変わった時だけ作る。 */
+interface PositionView {
+  readonly stage: ReplayStage;
+  /** 卓に出す局面（判断があれば最初の判断の局面）。 */
+  readonly snapshot: Snapshot;
+  readonly event: EventSnapshot;
+  /** 加槓の直前の局面。 */
+  readonly eventPrevious: Snapshot | null;
+  readonly roundStart: Snapshot;
+  readonly outcomeEvents: readonly EventSnapshot[];
+  /** 局の直近 3 つの位置。 */
+  readonly recentEvents: readonly RecentReplayEvent[];
+  /** 見ている席の判断。 */
+  readonly decision: DecisionStep | null;
+  readonly candidates: readonly Candidate[];
+}
+
+export interface Playback extends PlaybackState, PositionView {
+  readonly model: ReplayModel;
+  readonly round: ReplayRound;
+  readonly nextRound: ReplayRound | undefined;
+  readonly positions: readonly ReplayPosition[];
+  /** 対局全体の席の列の幅（カメラを固定する）。 */
+  readonly rowWidth: number;
+  readonly last: number;
+  readonly canPrevious: boolean;
+  readonly canNext: boolean;
+  readonly canPlay: boolean;
+  readonly dispatch: Dispatch<PlaybackAction>;
+  move(delta: number): void;
+  togglePlay(): void;
+}
+
+export function usePlayback(
+  model: ReplayModel,
+  timelines: Timelines,
+  initialSeat: number,
+): Playback {
+  const [state, dispatch] = useReducer(
+    playbackReducer,
+    initialSeat,
+    (seat): PlaybackState => ({
+      roundIndex: 0,
+      stepIndex: 0,
+      seat,
+      reveal: true,
+      playing: false,
+      animateDraw: false,
+    }),
   );
-  const reader = useMemo(() => createReplayStateReader(result), [result]);
-  const playerRowWidth = useMemo(
-    () => maximumPlayerRowWidth(result, measurePlayerRowWidth),
-    [result],
+  const reader = useMemo(() => createStateReader(model), [model]);
+  const rowWidth = useMemo(
+    () => maximumPlayerRowWidth(model, measurePlayerRowWidth),
+    [model],
   );
-  const round = result.rounds[state.roundIndex];
-  const nextRound = result.rounds[state.roundIndex + 1];
-  const positions = timelines[state.roundIndex];
-  const {
-    snapshot: snapshotStep,
-    event: eventStep,
-    decisions,
-    kind: stage,
-    outcomeEvents: outcomeSteps,
-  } = positions[state.stepIndex];
-  const snapshot = reader.readSnapshot(state.roundIndex, snapshotStep);
-  const event = reader.readSnapshot(state.roundIndex, eventStep);
-  const eventPrevious =
-    eventStep.eventType === "kakan"
-      ? reader.readSnapshot(state.roundIndex, round.steps[eventStep.index - 1])
-      : null;
-  const roundStart = reader.readSnapshot(state.roundIndex, round.steps[0]);
-  const outcomeEvents = outcomeSteps.map((step) =>
-    reader.readSnapshot(state.roundIndex, step),
+  const { roundIndex, stepIndex, seat } = state;
+  const round = model.rounds[roundIndex]!;
+  const positions = timelines[roundIndex]!;
+  const view = useMemo(
+    () => readPosition(model, reader, round, positions, stepIndex, seat),
+    [model, reader, round, positions, stepIndex, seat],
   );
-  const recentEvents = positions
-    .slice(Math.max(0, state.stepIndex - 2), state.stepIndex + 1)
-    .map((position) => ({
-      kind: position.kind,
-      event: reader.readSnapshot(state.roundIndex, position.event),
-      previous:
-        position.event.eventType === "kakan"
-          ? reader.readSnapshot(
-              state.roundIndex,
-              round.steps[position.event.index - 1],
-            )
-          : null,
-    }));
-  const candidates =
-    decisions.find((decision) => decision.actor === state.seat)?.candidates ??
-    [];
   const last = positions.length - 1;
-  const canPrevious = state.roundIndex > 0 || state.stepIndex > 0;
-  const canNext = nextRound !== undefined || state.stepIndex < last;
-  const canPlay = stage === "table" && canNext;
+  const nextRound = model.rounds[roundIndex + 1];
+  const canNext = nextRound !== undefined || stepIndex < last;
   const move = useCallback(
     (delta: number) => dispatch({ type: "step", delta, timelines }),
     [timelines],
@@ -81,31 +112,59 @@ export function usePlayback(result: ReviewResult, initialSeat: number) {
     if (!state.playing) return;
     const timer = setInterval(
       () => dispatch({ type: "step", delta: 1, timelines, automatic: true }),
-      850,
+      AUTOPLAY_INTERVAL_MS,
     );
     return () => clearInterval(timer);
   }, [state.playing, timelines]);
   return {
     ...state,
-    playerRowWidth,
+    ...view,
+    model,
     round,
     nextRound,
     positions,
-    recentEvents,
-    roundStart,
-    stage,
-    outcomeEvents,
-    event,
-    eventPrevious,
-    snapshot,
-    candidates,
+    rowWidth,
     last,
-    canPrevious,
+    canPrevious: roundIndex > 0 || stepIndex > 0,
     canNext,
-    canPlay,
+    canPlay: view.stage === "table" && canNext,
     dispatch,
     move,
     togglePlay,
   };
 }
-export type Playback = ReturnType<typeof usePlayback>;
+
+function readPosition(
+  model: ReplayModel,
+  reader: StateReader,
+  round: ReplayRound,
+  positions: readonly ReplayPosition[],
+  stepIndex: number,
+  seat: number,
+): PositionView {
+  const position = positions[stepIndex]!;
+  const read = <S extends ReplayStep>(step: S) =>
+    reader.readSnapshot(round.index, step);
+  // 加槓は直前の手順の局面と比べて、どの副露が槓になったかを見る。
+  const previous = (event: ReplayPosition["event"]) =>
+    event.eventType === "kakan" ? read(round.steps[event.index - 1]!) : null;
+  const decision =
+    position.decisions.find((entry) => entry.actor === seat) ?? null;
+  return {
+    stage: position.kind,
+    snapshot: read(position.snapshot),
+    event: read(position.event),
+    eventPrevious: previous(position.event),
+    roundStart: read(round.steps[0]!),
+    outcomeEvents: position.outcomeEvents.map(read),
+    recentEvents: positions
+      .slice(Math.max(0, stepIndex - 2), stepIndex + 1)
+      .map((entry) => ({
+        kind: entry.kind,
+        event: read(entry.event),
+        previous: previous(entry.event),
+      })),
+    decision,
+    candidates: decision ? readCandidates(decision.set, model.temperature) : [],
+  };
+}

@@ -1,11 +1,16 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { BRIDGE_CHANNELS, type ReviewerBridge } from "../../protocol/bridge.ts";
 
-contextBridge.exposeInMainWorld("epsilonReviewer", {
-  request: (request: unknown) =>
-    ipcRenderer.invoke("reviewer:request", request),
-  getSettings: () => ipcRenderer.invoke("reviewer:settings"),
-  setServerUrl: (url: string) => ipcRenderer.invoke("reviewer:server", url),
-  setLanguage: (language: string) =>
-    ipcRenderer.invoke("reviewer:language", language),
-  chooseResultsDirectory: () => ipcRenderer.invoke("reviewer:directory"),
-});
+const bridge: ReviewerBridge = {
+  invoke: (command, request, body) =>
+    body === undefined
+      ? ipcRenderer.invoke(BRIDGE_CHANNELS.invoke, command, request)
+      : ipcRenderer.invoke(BRIDGE_CHANNELS.invoke, command, request, body),
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  settings: () => ipcRenderer.invoke(BRIDGE_CHANNELS.settings),
+  setLanguage: (language) => ipcRenderer.invoke(BRIDGE_CHANNELS.language, language),
+  chooseResultsDirectory: () => ipcRenderer.invoke(BRIDGE_CHANNELS.directory),
+  exportResult: (resultId) => ipcRenderer.invoke(BRIDGE_CHANNELS.export, resultId),
+};
+
+contextBridge.exposeInMainWorld("epsilonReviewer", bridge);

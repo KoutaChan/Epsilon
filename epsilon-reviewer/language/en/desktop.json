@@ -1,0 +1,7 @@
+{
+  "desktop.exportTitle": "Save analysis result",
+  "desktop.exportFilter": "Epsilon analysis result",
+  "desktop.directoryTitle": "Choose a results folder",
+  "desktop.startupTitle": "Unable to start the app",
+  "desktop.startupFailure": "The app could not start."
+}

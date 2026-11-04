@@ -1,0 +1,37 @@
+[
+  {
+    "name": "c10.dll",
+    "size": 1088000,
+    "sha256": "741b809377335af07b889f7a2bc616b43f50ab13e3dd7a2774f1e3c8c8872853"
+  },
+  {
+    "name": "djl_torch.dll",
+    "size": 798208,
+    "sha256": "11eecffeafbaed23b39434881d790d1e72fa53315041775401e24638daa85836"
+  },
+  {
+    "name": "libiomp5md.dll",
+    "size": 1614184,
+    "sha256": "eb14cf741b10a6ca176acded284bff7b069e421f49927e28fef9685c6f62abf3"
+  },
+  {
+    "name": "torch.dll",
+    "size": 9728,
+    "sha256": "55a2e13946d0af1abf532f3340f410cda8cebcd3e768c1ad768c7a1021e3f601"
+  },
+  {
+    "name": "torch_cpu.dll",
+    "size": 265835008,
+    "sha256": "f31ca43359b065449bc4f3e3f53a4ade7d5e462ff230ccfdbac2bc637dd63cfa"
+  },
+  {
+    "name": "torch_global_deps.dll",
+    "size": 9728,
+    "sha256": "68a927105265e11e3b758ab20718ddb3e47c4d8442215966d742c8bec93025df"
+  },
+  {
+    "name": "uv.dll",
+    "size": 195072,
+    "sha256": "fa569e682fc5fb7a8eb94c6829af9f30a569748dbbc6bce39735d48bc960bcf8"
+  }
+]

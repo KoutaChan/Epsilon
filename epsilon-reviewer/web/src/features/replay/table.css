@@ -976,7 +976,7 @@
   left: calc(20px * var(--em-pc-ui-scale));
   top: var(--em-action-candidates-top, 35%);
   /* 牌四枚と損失、「打牌（ツモ切り）」を一行に収める幅。 */
-  width: calc(176px * var(--em-pc-ui-scale));
+  width: calc(184px * var(--em-pc-ui-scale));
 }
 #epsilon-review-material .em-device[data-layout="desktop"] .em-action-heading {
   font-size: calc(18px * var(--em-pc-ui-scale));
@@ -1021,15 +1021,15 @@
   line-height: 1.2;
 }
 #epsilon-review-material .em-device[data-layout="desktop"] .em-choice-tiles {
-  min-height: calc(28px * var(--em-pc-ui-scale));
+  min-height: calc(30.667px * var(--em-pc-ui-scale));
   margin-top: calc(3px * var(--em-pc-ui-scale));
 }
 #epsilon-review-material
   .em-device[data-layout="desktop"]
   .em-choice-tiles
   .em-face {
-  width: calc(19px * var(--em-pc-ui-scale));
-  height: calc(25.333px * var(--em-pc-ui-scale));
+  width: calc(21px * var(--em-pc-ui-scale));
+  height: calc(28px * var(--em-pc-ui-scale));
 }
 
 /* スマホの操作。横は一段、縦は右上の二段へ配置する。 */

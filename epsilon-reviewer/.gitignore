@@ -3,6 +3,7 @@ web/dist/
 desktop/dist/
 desktop/release/
 desktop/engine/
+desktop/scripts/jlink.sh
 backend/target/
 .data/
 models.local.json

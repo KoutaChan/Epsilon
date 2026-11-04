@@ -1017,7 +1017,8 @@
 #epsilon-review-material
   .em-device[data-layout="desktop"]
   small.em-choice-preference {
-  font-size: calc(13px * var(--em-pc-ui-scale));
+  font-size: calc(15px * var(--em-pc-ui-scale));
+  line-height: 1.2;
 }
 #epsilon-review-material .em-device[data-layout="desktop"] .em-choice-tiles {
   min-height: calc(28px * var(--em-pc-ui-scale));

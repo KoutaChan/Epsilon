@@ -64,6 +64,8 @@ export function CandidateList({
           const chosen = candidate.chosen && (
             <span className="em-choice-tail">{t("candidate.chosen")}</span>
           );
+          // 横の一覧は牌があれば実際の選択を牌と損失の下の段に分けて候補欄の幅を抑え、牌のない見送りや和了は牌の位置に置く。
+          const below = !portrait && candidate.tiles.length > 0;
           return (
             <li
               key={candidate.actionId}
@@ -80,16 +82,15 @@ export function CandidateList({
                     </span>
                   )}
                 </div>
-                {(candidate.tiles.length > 0 || (portrait && chosen)) && (
+                {(candidate.tiles.length > 0 || chosen) && (
                   <div className="em-choice-tiles">
                     {candidate.tiles.map((tile, tileIndex) => (
                       <Tile tile={tile} key={tileIndex} />
                     ))}
-                    {portrait && chosen}
+                    {!below && chosen}
                   </div>
                 )}
-                {/* 横の一覧は実際の選択を牌と損失の下の段に分け、候補欄の幅を抑える。 */}
-                {!portrait && chosen}
+                {below && chosen}
               </div>
               {portrait && (
                 <span className={`em-review-value${gradeClass}`}>{figure}</span>

@@ -4,15 +4,26 @@ import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import java.util.List;
 
-/** 再生の判断とイベント適用を同期で受け取る。状態と合法手は通知中だけ読み取り専用で借用する。 */
+/**
+ * 再生の判断と、適用した出来事を同期で受け取る。局面と合法手は呼び出しの間だけ借り、保持も変更もしない。局面は全席の伏せた牌と、分かっていれば牌山と裏ドラを含むので、方策の入力には判断する席の
+ * {@link GameState#publicObservation} を使う。
+ */
 @FunctionalInterface
 public interface ReplayObserver {
-  /** 適用前の判断を受け取る。必要な特徴量・表示値だけをここで生成し、借用値を保持・変更・非同期転送しない。 全席の手牌を含む状態を方策へ渡さず、推論には当該席の公開観測を使う。 */
-  void onDecision(DecisionPoint point, GameState state, int player, List<Action> legalActions);
+  /**
+   * 手を適用する前の判断を受け取る。
+   *
+   * @param decision 値なので保持してよい
+   * @param legal 読みだけの合法手。手番は生成器の順で、牌譜が宣言した持ち点不足のリーチの打牌は末尾。応答は窓を開いた時に作った手
+   */
+  void onDecision(ReplayDecision decision, GameState state, List<Action> legal);
 
   /**
-   * 一つの元イベントを適用した状態。判断と同じstateIdなら同じ更新時点の状態を表す。和了の event は、牌譜に無い採点の内訳を再生が補った形
-   * （{@link ReplayEvent.Hora#details()}）で、ほかは元イベントそのもの。
+   * 出来事を適用した後の局面を受け取る。どの出来事も 1 回だけ、それが解く判断より後に、位置の順に届く。応答の並びのロンは、並びの全ての判断の後に精算して届く。位置の順の例外は、同じ並びで
+   * ロンの後に鳴きがある壊れた牌譜だけで、その鳴きは並びの最初のロンより先に届く。
+   *
+   * @param revision 局面の改訂。増えるだけで、同じなら局面も同じ（逆は成り立たない）
+   * @param event 牌譜の出来事。和了は精算した形（牌譜に無い採点の内訳を補うことがある）で、このとき局面の手番の出来事はまだ和了の元（ツモ・打牌・槍槓の加槓）
    */
-  default void onEventApplied(int eventIndex, int stateId, ReplayEvent event, GameState state) {}
+  default void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {}
 }

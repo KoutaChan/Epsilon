@@ -191,10 +191,11 @@ public final class GoldenGames {
      * @param seat 判断する席
      * @param legal 合法手
      * @param chosenSlot 牌譜の選んだ位置（未観測なら −1）
-     * @param stateId 再生の状態の改訂番号
+     * @param revision 再生の局面の改訂
      * @param at 位置
      */
-    void replayed(GameState state, int seat, List<Action> legal, int chosenSlot, int stateId, Position at);
+    void replayed(
+        GameState state, int seat, List<Action> legal, int chosenSlot, int revision, Position at);
 
     /** 牌譜の終局の点。既定は何もしない。 */
     default void replayEnded(int[] finalScores) {}
@@ -226,8 +227,14 @@ public final class GoldenGames {
       int[] scores =
           ReplayEngine.replay(
               ReplayRecordReader.readRecord(recordBytes(RECORDS[index])),
-              (point, state, seat, legal) ->
-                  visitor.replayed(state, seat, legal, point.chosenSlot(), point.stateId(), at));
+              (decision, state, legal) ->
+                  visitor.replayed(
+                      state,
+                      decision.seat(),
+                      legal,
+                      decision.chosenSlot(),
+                      decision.revision(),
+                      at));
       visitor.replayEnded(scores);
     }
     return coverage;
@@ -247,7 +254,10 @@ public final class GoldenGames {
      * @param shapes 打牌の後の向聴を求める解析器（呼び手のスレッドのもの）
      */
     Action choose(
-        GameState state, EngineDecisionPoint point, SplittableRandom random, HandShapeAnalyzer shapes) {
+        GameState state,
+        EngineDecisionPoint point,
+        SplittableRandom random,
+        HandShapeAnalyzer shapes) {
       List<Action> legal = point.legalActions();
       return this == UNIFORM
           ? legal.get(random.nextInt(legal.size()))
@@ -272,7 +282,9 @@ public final class GoldenGames {
       if (pick == null && random.nextInt(10) < 3) {
         pick = pick(legal, random, Action.Type.PON, Action.Type.CHI);
       }
-      if (pick == null && random.nextBoolean()) pick = pick(legal, random, Action.Type.KYUSHU_KYUHAI);
+      if (pick == null && random.nextBoolean()) {
+        pick = pick(legal, random, Action.Type.KYUSHU_KYUHAI);
+      }
       if (pick == null) pick = efficientDiscard(state, player, legal, random, shapes);
       if (pick == null) pick = pick(legal, random, Action.Type.PASS);
       return pick != null ? pick : legal.get(random.nextInt(legal.size()));
@@ -362,7 +374,14 @@ public final class GoldenGames {
           }
           step =
               commit(
-                  engine, awaiting.decisions(), policy, random, selections, shapes, visitor, coverage);
+                  engine,
+                  awaiting.decisions(),
+                  policy,
+                  random,
+                  selections,
+                  shapes,
+                  visitor,
+                  coverage);
         }
         case GameStepResult.RoundEnded ended ->
             throw new IllegalStateException("hanchan stepping returned an unsettled round");
@@ -388,7 +407,8 @@ public final class GoldenGames {
     GameStepResult step = fork.stepHanchan();
     while (step instanceof GameStepResult.AwaitingDecisions awaiting) {
       visit(fork, awaiting.decisions(), at, visitor, coverage);
-      step = commit(fork, awaiting.decisions(), policy, random, selections, shapes, visitor, coverage);
+      step =
+          commit(fork, awaiting.decisions(), policy, random, selections, shapes, visitor, coverage);
     }
     settle(fork, settlement(step), visitor, coverage);
   }
@@ -493,7 +513,9 @@ public final class GoldenGames {
       EngineSelectionBuffer selections,
       Visitor visitor) {
     selections.clear();
-    for (EngineDecisionPoint point : points) selections.add(point.id(), scene.choose(engine, point));
+    for (EngineDecisionPoint point : points) {
+      selections.add(point.id(), scene.choose(engine, point));
+    }
     EngineCommitResult result = engine.commitDecisionsWithOutcomes(selections);
     visitor.committed(engine, result.decisionOutcomes());
     return result.step();

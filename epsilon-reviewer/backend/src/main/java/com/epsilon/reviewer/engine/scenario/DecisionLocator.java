@@ -3,7 +3,7 @@ package com.epsilon.reviewer.engine.scenario;
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
 import com.epsilon.core.TurnEvent;
-import com.epsilon.replay.DecisionPoint;
+import com.epsilon.replay.ReplayDecision;
 import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayEvent;
 import com.epsilon.replay.ReplayEvent.Ankan;
@@ -90,21 +90,22 @@ public final class DecisionLocator {
     }
 
     @Override
-    public void onDecision(DecisionPoint point, GameState state, int player, List<Action> legal) {
-      if (table != null || player != seat || point.eventIndex() != target) return;
+    public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {
+      if (table != null || decision.seat() != seat || decision.resolveIndex() != target) return;
       kind =
-          state.turnEvent() instanceof TurnEvent.ResponseSource source && source.player() != seat
-              ? Kind.RESPONSE
-              : Kind.TURN;
+          switch (decision.kind()) {
+            case RESPONSE, CHANKAN -> Kind.RESPONSE;
+            case TURN, POST_CALL_DAHAI -> Kind.TURN;
+          };
       table = TableProjector.table(state);
-      recorded = point.chosenSlot() < 0 ? null : legal.get(point.chosenSlot());
+      recorded = decision.chosenSlot() < 0 ? null : legal.get(decision.chosenSlot());
       if (table.players().get(seat).draw() != null)
         drawn = ((TurnEvent.Draw) state.turnEvent()).physicalTileId();
       concealed = hand.stream().filter(id -> id != drawn).toList();
     }
 
     @Override
-    public void onEventApplied(int index, int stateId, ReplayEvent event, GameState state) {
+    public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
       if (table != null) return;
       switch (event) {
         case StartKyoku start -> {

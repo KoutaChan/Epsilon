@@ -402,8 +402,7 @@ final class SeatReplay {
       case Ankan kan when kan.actor() == seat -> prepareDrawActions();
       case Kakan kan when kan.actor() == seat -> prepareDrawActions();
       case Hora win when win.actor() == seat && win.target() == seat -> prepareDrawActions();
-      case Ryukyoku draw
-          when "NINE_TERMINALS".equals(draw.reason()) && state.getCurrentPlayer() == seat ->
+      case Ryukyoku draw when draw.isNineTerminals() && state.getCurrentPlayer() == seat ->
           prepareDrawActions();
       default ->
           throw new IllegalStateException("Event " + target + " is not a turn of seat " + seat);

@@ -12,7 +12,8 @@ import com.epsilon.major.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.major.ai.decision.input.DecisionBoundaryContext;
 import com.epsilon.major.ai.decision.input.DecisionHostBatch;
 import com.epsilon.major.config.settings.DecisionSettings;
-import com.epsilon.replay.DecisionPoint;
+import com.epsilon.replay.ReplayDecision;
+import com.epsilon.replay.ReplayDecision.Choice;
 import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayObserver;
 import com.epsilon.replay.ReplayRecord;
@@ -65,10 +66,10 @@ public final class EpsilonReplaySampleCollector implements ReplayObserver {
 
   /** 状態と合法手はこの呼出し中だけ借用し、系列固有の入力・教師へ取り込む。 */
   @Override
-  public void onDecision(
-      DecisionPoint point, GameState state, int player, List<Action> legalActions) {
-    if (point.choiceKind() == DecisionPoint.ChoiceKind.UNOBSERVED) return;
-    int chosenSlot = point.chosenSlot();
+  public void onDecision(ReplayDecision decision, GameState state, List<Action> legalActions) {
+    if (decision.choice() == Choice.UNOBSERVED) return;
+    int player = decision.seat();
+    int chosenSlot = decision.chosenSlot();
     if (collectBelief) {
       beliefSamples.add(
           new EpsilonBeliefSample<>(

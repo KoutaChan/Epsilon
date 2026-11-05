@@ -10,9 +10,9 @@ import static org.testng.Assert.fail;
 
 import com.epsilon.core.Action;
 import com.epsilon.core.Tile;
-import com.epsilon.replay.DecisionPoint;
 import com.epsilon.replay.RecordCompletion;
 import com.epsilon.replay.RecordFormat;
+import com.epsilon.replay.ReplayDecision.Choice;
 import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayEvent;
 import com.epsilon.replay.ReplayEvent.Ankan;
@@ -482,12 +482,12 @@ public class MahjongSoulReaderTest {
     var choices = new ArrayList<Action>();
     ReplayEngine.replay(
         result,
-        (point, state, player, legal) -> {
-          choices.add(legal.get(point.chosenSlot()));
-          assertEquals(player, 0);
-          assertEquals(point.choiceKind(), DecisionPoint.ChoiceKind.RECORDED_ACTION);
-          assertTrue(result.events().get(point.causeEventIndex()) instanceof Tsumo);
-          assertTrue(result.events().get(point.eventIndex()) instanceof Ryukyoku);
+        (decision, state, legal) -> {
+          choices.add(legal.get(decision.chosenSlot()));
+          assertEquals(decision.seat(), 0);
+          assertEquals(decision.choice(), Choice.RECORDED_ACTION);
+          assertTrue(result.events().get(decision.causeIndex()) instanceof Tsumo);
+          assertTrue(result.events().get(decision.resolveIndex()) instanceof Ryukyoku);
         });
     assertEquals(choices, List.of(Action.kyushuKyuhai()));
   }
@@ -504,7 +504,7 @@ public class MahjongSoulReaderTest {
       assertEquals(events(result, Ryukyoku.class).getFirst().reason(), "MAHJONG_SOUL_" + reason);
       ReplayEngine.replay(
           result,
-          (point, state, player, legal) ->
+          (decision, state, legal) ->
               fail("Other native draw codes must not invent a nine-terminals decision"));
     }
   }

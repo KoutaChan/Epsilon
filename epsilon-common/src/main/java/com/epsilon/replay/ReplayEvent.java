@@ -3,11 +3,7 @@ package com.epsilon.replay;
 /** 異なる牌譜形式に共通する、再生用の正規化されたイベント。 */
 public sealed interface ReplayEvent {
 
-  /**
-   * 他家の行動に応答したプレイヤーの席を返す。牌譜から応答時の判断を復元するために使う。
-   *
-   * @return 応答した席。応答イベントでなければ-1
-   */
+  /** チー・ポン・大明槓・ロンで他家の打牌か加槓に応答した席。ほか（明示の見送りの None を含む）は -1。 */
   default int responseActor() {
     return -1;
   }
@@ -97,7 +93,6 @@ public sealed interface ReplayEvent {
    */
   record Chi(int actor, int target, int calledPhysicalTileId, int[] consumedPhysicalTileIds)
       implements ReplayEvent {
-    /** {@inheritDoc} */
     @Override
     public int responseActor() {
       return actor;
@@ -114,7 +109,6 @@ public sealed interface ReplayEvent {
    */
   record Pon(int actor, int target, int calledPhysicalTileId, int[] consumedPhysicalTileIds)
       implements ReplayEvent {
-    /** {@inheritDoc} */
     @Override
     public int responseActor() {
       return actor;
@@ -131,7 +125,6 @@ public sealed interface ReplayEvent {
    */
   record Daiminkan(int actor, int target, int calledPhysicalTileId, int[] consumedPhysicalTileIds)
       implements ReplayEvent {
-    /** {@inheritDoc} */
     @Override
     public int responseActor() {
       return actor;
@@ -195,10 +188,14 @@ public sealed interface ReplayEvent {
       this(actor, target, winTileType, deltas, null);
     }
 
-    /** {@inheritDoc} */
+    /** 他家の打牌か加槓からの和了か（ツモ和了は target が actor と同じ）。 */
+    public boolean isRon() {
+      return actor != target;
+    }
+
     @Override
     public int responseActor() {
-      return actor != target ? actor : -1;
+      return isRon() ? actor : -1;
     }
   }
 
@@ -206,10 +203,18 @@ public sealed interface ReplayEvent {
    * 流局とその点棒移動を表す。
    *
    * @param deltas 席ごとの点棒増減
+   * @param reason 読み手が付けた理由（無ければ null）
    */
   record Ryukyoku(int[] deltas, String reason) implements ReplayEvent {
+    /** 手番の席が宣言した九種九牌の理由。読み手はこの文字列を書く。 */
+    public static final String NINE_TERMINALS = "NINE_TERMINALS";
+
     public Ryukyoku(int[] deltas) {
       this(deltas, null);
+    }
+
+    public boolean isNineTerminals() {
+      return NINE_TERMINALS.equals(reason);
     }
   }
 

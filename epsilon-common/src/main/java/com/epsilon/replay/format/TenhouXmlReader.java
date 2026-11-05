@@ -201,7 +201,7 @@ public final class TenhouXmlReader {
   private static String decodeDrawReason(String value) {
     if (value == null) return "EXHAUSTIVE_DRAW";
     return switch (value) {
-      case "yao9" -> "NINE_TERMINALS";
+      case "yao9" -> Ryukyoku.NINE_TERMINALS;
       case "reach4" -> "FOUR_RIICHI";
       case "ron3" -> "THREE_RON";
       case "kan4" -> "FOUR_KANS";

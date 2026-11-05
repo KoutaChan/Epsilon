@@ -4,8 +4,8 @@ import com.epsilon.client.tenhou.TenhouEvent;
 import com.epsilon.client.tenhou.TenhouMessageParser;
 import com.epsilon.core.Action;
 import com.epsilon.core.Tile;
-import com.epsilon.replay.DecisionPoint;
 import com.epsilon.replay.RecordCompletion;
+import com.epsilon.replay.ReplayDecision.Choice;
 import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayEvent.Dahai;
 import com.epsilon.replay.ReplayEvent.EndGame;
@@ -97,13 +97,13 @@ public class ReplayCodecTest {
     int[] scores =
         ReplayEngine.replay(
             record,
-            (point, state, player, legal) -> {
-              choices.add(legal.get(point.chosenSlot()));
-              Assert.assertEquals(player, 3);
-              Assert.assertEquals(point.choiceKind(), DecisionPoint.ChoiceKind.RECORDED_ACTION);
-              Assert.assertEquals(point.eventIndex(), 3);
-              Assert.assertEquals(point.causeEventIndex(), 2);
-              Assert.assertEquals(state.hand(player).concealedTileCount(), 14);
+            (decision, state, legal) -> {
+              choices.add(legal.get(decision.chosenSlot()));
+              Assert.assertEquals(decision.seat(), 3);
+              Assert.assertEquals(decision.choice(), Choice.RECORDED_ACTION);
+              Assert.assertEquals(decision.resolveIndex(), 3);
+              Assert.assertEquals(decision.causeIndex(), 2);
+              Assert.assertEquals(state.hand(decision.seat()).concealedTileCount(), 14);
               Assert.assertTrue(
                   legal.stream().anyMatch(action -> action.type() == Action.Type.DAHAI));
             });

@@ -75,7 +75,8 @@ public final class EngineActionBuffer extends AbstractList<Action> implements Ra
     }
   }
 
-  List<Action> borrowedView() {
+  /** この一覧の読みだけの見方。呼ぶたびに同じ物を返し、中身はいつもこの一覧と同じ。 */
+  public List<Action> borrowedView() {
     return borrowedView;
   }
 

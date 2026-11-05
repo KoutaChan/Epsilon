@@ -137,7 +137,7 @@ public final class MahjongSoulReader {
         events.add(
             new Ryukyoku(
                 new int[4],
-                draw.reason() == 1 ? "NINE_TERMINALS" : "MAHJONG_SOUL_" + draw.reason()));
+                draw.reason() == 1 ? Ryukyoku.NINE_TERMINALS : "MAHJONG_SOUL_" + draw.reason()));
         finishRound(draw.end());
       }
       default -> throw new IllegalArgumentException("Unexpected Mahjong Soul round event.");

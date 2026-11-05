@@ -2,11 +2,16 @@ package com.epsilon.reviewer.engine;
 
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
-import com.epsilon.replay.DecisionPoint;
+import com.epsilon.core.Tile;
+import com.epsilon.replay.ReplayDecision;
 import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayEvent;
+import com.epsilon.replay.ReplayEvent.Dahai;
+import com.epsilon.replay.ReplayEvent.Hora;
+import com.epsilon.replay.ReplayEvent.None;
 import com.epsilon.replay.ReplayEvent.StartGame;
 import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.replay.ReplayEvent.Tsumo;
 import com.epsilon.replay.ReplayObserver;
 import com.epsilon.reviewer.engine.format.ResultWriter;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
@@ -122,6 +127,32 @@ public class ResultWriterTest {
     }
   }
 
+  /** 席 1・2 が席 0 の白でロンでき、席 2 のロンの後に席 1 が見送りを明示する（mjai の none）。 */
+  @Test
+  public void aPassAfterARonIsWrittenAfterTheRonInRecordOrder() {
+    int[][] hands = {
+      {12, 13, 14, 16, 20, 48, 52, 56, 84, 88, 92, 112, 116},
+      {0, 4, 8, 36, 40, 44, 72, 76, 80, 108, 109, 110, 124},
+      {24, 28, 32, 60, 64, 68, 96, 100, 104, 132, 133, 134, 125},
+      {5, 6, 9, 17, 21, 29, 41, 49, 57, 77, 85, 113, 120}
+    };
+    List<ReplayEvent> events =
+        List.of(
+            new StartGame(),
+            new StartKyoku(
+                Tile.TON, 1, 0, 0, 0, Tile.HATSU, hands, new int[] {25000, 25000, 25000, 25000}),
+            new Tsumo(0, 126),
+            new Dahai(0, 126, true),
+            new Hora(2, 0, Tile.HAKU, new int[] {-3000, 0, 3000, 0}),
+            new None(1));
+    Format6.Document document =
+        Format6.analyze(ScenarioReplayTest.synthetic(events), new RecordingPolicy());
+    List<String> written = new ArrayList<>();
+    for (Format6.Step step : document.rounds().getFirst().steps())
+      if (!step.decision()) written.add(step.event());
+    Assert.assertEquals(written, List.of("start_kyoku", "tsumo", "dahai", "hora", "none"));
+  }
+
   @Test
   public void policyOnlyDocumentsHaveNoTemperature() throws IOException {
     LoadedRecord record = GoldenRecords.read("kakan-a");
@@ -191,20 +222,19 @@ public class ResultWriterTest {
           private boolean started;
 
           @Override
-          public void onDecision(
-              DecisionPoint point, GameState state, int player, List<Action> legal) {
+          public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {
             steps.add(
                 new Expected(
                     true,
                     null,
-                    player,
-                    point.eventIndex(),
-                    point.causeEventIndex(),
+                    decision.seat(),
+                    decision.resolveIndex(),
+                    decision.causeIndex(),
                     TableProjector.table(state)));
           }
 
           @Override
-          public void onEventApplied(int index, int stateId, ReplayEvent event, GameState state) {
+          public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
             if (event instanceof StartGame) return;
             started |= event instanceof StartKyoku;
             if (!started) return;

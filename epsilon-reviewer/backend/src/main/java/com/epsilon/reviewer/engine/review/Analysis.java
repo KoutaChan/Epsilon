@@ -2,7 +2,7 @@ package com.epsilon.reviewer.engine.review;
 
 import com.epsilon.core.Action;
 import com.epsilon.core.GameState;
-import com.epsilon.replay.DecisionPoint;
+import com.epsilon.replay.ReplayDecision;
 import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayEvent;
 import com.epsilon.replay.ReplayEvent.StartGame;
@@ -49,7 +49,7 @@ public final class Analysis {
     private boolean inRound;
 
     /** 最後に書いた手順の局面の改訂。 */
-    private int stateId = -1;
+    private int revision = -1;
 
     private boolean valued;
 
@@ -61,25 +61,25 @@ public final class Analysis {
     }
 
     @Override
-    public void onDecision(DecisionPoint point, GameState state, int player, List<Action> legal) {
+    public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {
       requireNotCancelled();
-      EvaluatedDecision decision =
-          DecisionEvaluator.evaluate(model, state, player, legal, point.chosenSlot());
-      valued = decision.valued();
+      EvaluatedDecision evaluated =
+          DecisionEvaluator.evaluate(model, state, decision.seat(), legal, decision.chosenSlot());
+      valued = evaluated.valued();
       try {
         writer.decision(
-            player,
-            point.causeEventIndex(),
-            point.eventIndex(),
-            decision,
-            changed(point.stateId(), state));
+            decision.seat(),
+            decision.causeIndex(),
+            decision.resolveIndex(),
+            evaluated,
+            changed(decision.revision(), state));
       } catch (IOException failure) {
         throw new UncheckedIOException(failure);
       }
     }
 
     @Override
-    public void onEventApplied(int eventIndex, int stateId, ReplayEvent event, GameState state) {
+    public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
       requireNotCancelled();
       if (event instanceof StartGame) return;
       try {
@@ -88,29 +88,29 @@ public final class Analysis {
               state.roundIndex(),
               state.honba(),
               state.dealer(),
-              eventIndex,
+              index,
               TableProjector.table(state));
-          this.stateId = stateId;
+          this.revision = revision;
           inRound = true;
-          writer.event(eventIndex, EventKind.START_KYOKU, -1, null, null);
+          writer.event(index, EventKind.START_KYOKU, -1, null, null);
         } else if (inRound) {
           writer.event(
-              eventIndex,
+              index,
               EventKind.of(event),
               EventKind.actor(event),
-              changed(stateId, state),
+              changed(revision, state),
               OutcomeProjector.of(event, state));
         }
       } catch (IOException failure) {
         throw new UncheckedIOException(failure);
       }
-      control.progress(Math.min(99, (eventIndex + 1) * 100 / events));
+      control.progress(Math.min(99, (index + 1) * 100 / events));
     }
 
     /** 局面の改訂が変わった時だけ局面を写す。 */
-    private TableState changed(int id, GameState state) {
-      if (id == stateId) return null;
-      stateId = id;
+    private TableState changed(int revision, GameState state) {
+      if (revision == this.revision) return null;
+      this.revision = revision;
       return TableProjector.table(state);
     }
 

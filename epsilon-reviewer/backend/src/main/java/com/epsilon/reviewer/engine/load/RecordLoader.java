@@ -19,7 +19,7 @@ public final class RecordLoader {
     ReplayRecord replay = ReplayRecordReader.readRecord(bytes);
     int[] reconstructed;
     try {
-      reconstructed = ReplayEngine.replay(replay, (point, state, seat, legal) -> {});
+      reconstructed = ReplayEngine.replay(replay, (decision, state, legal) -> {});
     } catch (RuntimeException failure) {
       throw new IllegalArgumentException("Record replay failed: " + failure.getMessage(), failure);
     }

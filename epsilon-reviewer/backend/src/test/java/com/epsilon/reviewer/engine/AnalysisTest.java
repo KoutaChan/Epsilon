@@ -12,7 +12,7 @@ import com.epsilon.nano.ai.decision.input.DecisionBatchBuilder;
 import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionInferenceServer;
 import com.epsilon.nano.ai.decision.training.EpsilonDecisionCheckpointManager;
 import com.epsilon.nano.ai.network.NetworkFactory;
-import com.epsilon.replay.DecisionPoint;
+import com.epsilon.replay.ReplayDecision;
 import com.epsilon.replay.ReplayEngine;
 import com.epsilon.replay.ReplayEvent;
 import com.epsilon.replay.ReplayEvent.Dahai;
@@ -126,14 +126,14 @@ public class AnalysisTest {
         ScenarioReplayTest.synthetic(events).replay(),
         new ReplayObserver() {
           @Override
-          public void onDecision(
-              DecisionPoint point, GameState state, int seat, List<Action> legal) {
-            int chosen = point.chosenSlot();
-            choices.add(seat + ":" + (chosen < 0 ? "UNOBSERVED" : legal.get(chosen).type()));
+          public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {
+            int chosen = decision.chosenSlot();
+            choices.add(
+                decision.seat() + ":" + (chosen < 0 ? "UNOBSERVED" : legal.get(chosen).type()));
           }
 
           @Override
-          public void onEventApplied(int index, int stateId, ReplayEvent event, GameState state) {
+          public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
             if (!(event instanceof StartGame)) frames.add(TableProjector.table(state));
           }
         });
@@ -161,11 +161,10 @@ public class AnalysisTest {
         record.replay(),
         new ReplayObserver() {
           @Override
-          public void onDecision(
-              DecisionPoint point, GameState state, int seat, List<Action> legal) {}
+          public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {}
 
           @Override
-          public void onEventApplied(int index, int stateId, ReplayEvent event, GameState state) {
+          public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
             if (event instanceof StartGame) return;
             indicators.add(TableProjector.table(state).dora());
             Assert.assertTrue(
@@ -249,11 +248,12 @@ public class AnalysisTest {
         try (var server = EpsilonDecisionInferenceServer.forFrozenModel(source, 1)) {
           ReplayEngine.replay(
               record.replay(),
-              (point, state, seat, legal) -> {
+              (decision, state, legal) -> {
                 var builder =
                     DecisionBatchBuilder.inference(
                         1, DecisionBatchBuilder.selectInferenceBucket(legal));
-                builder.encodeObservedInferenceRow(0, state.publicObservation(seat), legal);
+                builder.encodeObservedInferenceRow(
+                    0, state.publicObservation(decision.seat()), legal);
                 float[] probabilities =
                     server
                         .evaluateBatch(builder.buildEncodedInferenceRows())
@@ -285,8 +285,9 @@ public class AnalysisTest {
     List<Integer> chosen = new ArrayList<>();
     ReplayEngine.replay(
         record.replay(),
-        (point, state, seat, legal) ->
-            chosen.add(point.chosenSlot() < 0 ? -1 : legal.get(point.chosenSlot()).toIndex()));
+        (decision, state, legal) ->
+            chosen.add(
+                decision.chosenSlot() < 0 ? -1 : legal.get(decision.chosenSlot()).toIndex()));
     // 価値は actionId の 2 つずつで同じにし、同じ価値の中は確率（actionId が大きいほど高い）の順になることも確かめる。
     Format6.Document document =
         Format6.analyze(

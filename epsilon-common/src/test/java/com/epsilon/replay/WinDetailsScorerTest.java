@@ -112,11 +112,10 @@ public class WinDetailsScorerTest {
         record,
         new ReplayObserver() {
           @Override
-          public void onDecision(
-              DecisionPoint point, GameState state, int player, List<Action> legalActions) {}
+          public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {}
 
           @Override
-          public void onEventApplied(int index, int stateId, ReplayEvent event, GameState state) {
+          public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
             if (event instanceof Hora win) wins.put(index, win.details());
           }
         });

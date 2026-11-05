@@ -111,9 +111,9 @@ public class EngineInvariantsTest {
         int seat,
         List<Action> legal,
         int chosenSlot,
-        int stateId,
+        int revision,
         GoldenGames.Position at) {
-      String where = GoldenGames.Position.describe(at.pack(stateId));
+      String where = GoldenGames.Position.describe(at.pack(revision));
       Assert.assertEquals(pointsAndSticks(state), HANCHAN_POINTS, "points and sticks at " + where);
       requireTilesConserved(state, where);
     }
@@ -216,9 +216,9 @@ public class EngineInvariantsTest {
         int seat,
         List<Action> legal,
         int chosenSlot,
-        int stateId,
+        int revision,
         GoldenGames.Position at) {
-      hash.add(seat).add(chosenSlot).add(stateId);
+      hash.add(seat).add(chosenSlot).add(revision);
       addLegal(legal);
       count++;
     }

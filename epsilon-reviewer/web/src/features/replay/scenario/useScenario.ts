@@ -13,6 +13,7 @@ import type { Playback } from "../usePlayback.ts";
 import {
   NO_EDITS,
   applyEdits,
+  canRevert,
   listChanges,
   revert,
   setDora,
@@ -102,6 +103,8 @@ export interface Scenario {
   setScore(seat: number, score: number): void;
   setSticks(kind: "honba" | "kyotaku", count: number): void;
   revert(target: ScenarioTarget): void;
+  /** 元の牌に戻すと見えている牌が物理牌の数を超える所は戻せない。 */
+  canRevert(target: ScenarioTarget): boolean;
   revertAll(): void;
 }
 
@@ -348,6 +351,7 @@ export function useScenario(
     setSticks: (kind, count) =>
       edit((edits) => setSticks(edits, snapshot, kind, count)),
     revert: (target) => edit((edits) => revert(edits, snapshot, target)),
+    canRevert: (target) => canRevert(edited, snapshot, seat, target),
     revertAll: () => edit(() => NO_EDITS),
   };
 }

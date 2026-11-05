@@ -1,5 +1,8 @@
 package com.epsilon.reviewer.engine;
 
+import static com.epsilon.reviewer.engine.TestEdits.dora;
+import static com.epsilon.reviewer.engine.TestEdits.rivers;
+
 import com.epsilon.core.Action;
 import com.epsilon.core.Tile;
 import com.epsilon.replay.ReplayEvent.StartKyoku;
@@ -20,10 +23,14 @@ import com.epsilon.reviewer.engine.view.TileCode;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToIntBiFunction;
+import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -32,6 +39,13 @@ import org.testng.annotations.Test;
  * 立たない変更を断ることを確かめる。判断は天鳳の牌譜の、他家のリーチの後の打牌の判断を使う。
  */
 public class ScenarioEditTest {
+  /** 37 の牌の記号。 */
+  static final List<String> TILES =
+      IntStream.range(0, Tile.NUM_TILES)
+          .mapToObj(id -> TileCode.of(Tile.typeOf(id), Tile.isAka(id)))
+          .distinct()
+          .toList();
+
   private static final String[] RARE_TILES = {"E", "S", "W", "N", "P", "F", "C", "1m", "9m", "1p"};
 
   /** リーチしていない席の打牌の判断で、宣言牌の後にも打牌した（棒を出した）他家の河に、鳴かれていない牌が 3 枚以上ある。 */
@@ -65,13 +79,13 @@ public class ScenarioEditTest {
     int index = decision.player().river().size() - 1;
     RiverTile old = decision.player().river().get(index);
     PlayerState own = decision.table().players().get(decision.step().actor());
-    int[] visible = visible(decision.table(), decision.step().actor());
+    Map<String, Integer> visible = visible(decision.table(), decision.step().actor());
     String tile = null;
     for (String honor : List.of("E", "S", "W", "N", "P", "F", "C"))
       if (tile == null
           && !own.hand().contains(honor)
           && !honor.equals(old.tile())
-          && visible[TileCode.type(honor)] < Tile.TILES_PER_TYPE) tile = honor;
+          && visible.getOrDefault(honor, 0) < copies(honor)) tile = honor;
     var edit = new RiverEdit(decision.opponent(), index, tile, old.tsumogiri());
     var policy = new RecordingPolicy();
     ScenarioAnswer answer =
@@ -190,9 +204,7 @@ public class ScenarioEditTest {
     String tile =
         rareTile(decision.table(), decision.step().actor(), decision.table().dora().getFirst());
     Answer base = decision.answer(TestEdits.NONE);
-    Answer edited =
-        decision.answer(
-            new ScenarioEdits(null, List.of(new DoraEdit(0, tile)), null, null, null, null));
+    Answer edited = decision.answer(dora(new DoraEdit(0, tile)));
     List<Integer> indicators = new ArrayList<>(base.input().indicators());
     indicators.set(0, TileCode.type(tile));
     Assert.assertEquals(edited.input().indicators(), indicators);
@@ -299,16 +311,14 @@ public class ScenarioEditTest {
           rivers(new RiverEdit(opponent, first, code, false)),
           "edits.rivers[0]",
           "invalid tile code");
-    var hiddenDora = new DoraEdit(decision.table().dora().size(), "E");
     rejected(
         decision,
-        new ScenarioEdits(null, List.of(hiddenDora), null, null, null, null),
+        dora(new DoraEdit(decision.table().dora().size(), "E")),
         "edits.dora[0]",
         "no dora indicator");
     rejected(
         decision,
-        new ScenarioEdits(
-            null, List.of(new DoraEdit(0, "E"), new DoraEdit(0, "S")), null, null, null, null),
+        dora(new DoraEdit(0, "E"), new DoraEdit(0, "S")),
         "edits.dora[1]",
         "edited twice");
     List<Integer> scores = decision.table().players().stream().map(PlayerState::score).toList();
@@ -333,41 +343,32 @@ public class ScenarioEditTest {
         "deposited");
   }
 
+  /** 写しの数（4・3・1 枚）ごとに最も多く見えている牌を、写しの数を 1 枚超えるまで他家の河に置く変更は、最初の変更を名指して断る。 */
   @Test
-  public void editsThatShowTooManyCopiesOrRedFivesAreRejected() {
+  public void editsThatShowMoreCopiesThanTheSetAreRejected() {
     Decision decision = AFTER_RIICHI;
     int seat = decision.step().actor();
-    int[] visible = visible(decision.table(), seat);
-    int kind = 0;
-    for (int type = 0; type < Tile.NUM_TILE_TYPES; type++)
-      if (visible[type] > visible[kind] && !Tile.canBeAka(type)) kind = type;
-    String tile = TileCode.of(kind, false);
-    List<RiverEdit> copies = new ArrayList<>();
-    for (RiverEdit slot : opponentSlots(decision.table(), seat)) {
-      if (copies.size() == Tile.TILES_PER_TYPE + 1 - visible[kind]) break;
-      String old = decision.table().players().get(slot.seat()).river().get(slot.index()).tile();
-      if (!old.equals(tile)) copies.add(new RiverEdit(slot.seat(), slot.index(), tile, false));
+    Map<String, Integer> visible = visible(decision.table(), seat);
+    for (int count : new int[] {4, 3, 1}) {
+      String tile =
+          TILES.stream()
+              .filter(code -> copies(code) == count)
+              .max(Comparator.comparingInt(code -> visible.getOrDefault(code, 0)))
+              .orElseThrow();
+      int needed = count + 1 - visible.getOrDefault(tile, 0);
+      List<RiverEdit> edits = new ArrayList<>();
+      for (RiverEdit slot : opponentSlots(decision.table(), seat)) {
+        if (edits.size() == needed) break;
+        String old = decision.table().players().get(slot.seat()).river().get(slot.index()).tile();
+        if (!old.equals(tile)) edits.add(new RiverEdit(slot.seat(), slot.index(), tile, false));
+      }
+      Assert.assertEquals(edits.size(), needed, "opponent river tiles to change to " + tile);
+      rejected(
+          decision,
+          new ScenarioEdits(edits, null, null, null, null, null),
+          "edits.rivers[0]",
+          "more copies of " + tile + " would be visible than the " + count + " in the set.");
     }
-    rejected(
-        decision,
-        new ScenarioEdits(List.copyOf(copies), null, null, null, null, null),
-        "edits.rivers[0]",
-        "more than 4 copies of " + tile);
-    int five = Tile.M5;
-    for (int type : new int[] {Tile.P5, Tile.S5}) if (visible[type] < visible[five]) five = type;
-    String plain = TileCode.of(five, false);
-    List<RiverEdit> reds = new ArrayList<>();
-    for (RiverEdit slot : opponentSlots(decision.table(), seat)) {
-      if (reds.size() == 2 - visibleReds(decision.table(), seat, five)) break;
-      String old = decision.table().players().get(slot.seat()).river().get(slot.index()).tile();
-      if (!old.startsWith(plain))
-        reds.add(new RiverEdit(slot.seat(), slot.index(), TileCode.of(five, true), false));
-    }
-    rejected(
-        decision,
-        new ScenarioEdits(List.copyOf(reds), null, null, null, null, null),
-        "edits.rivers[0]",
-        "more than one red " + plain);
   }
 
   @Test
@@ -388,10 +389,6 @@ public class ScenarioEditTest {
     Assert.assertEquals(failure.code().status(), 400, failure.getMessage());
     Assert.assertTrue(failure.getMessage().startsWith(name + ":"), failure.getMessage());
     Assert.assertTrue(failure.getMessage().contains(reason), failure.getMessage());
-  }
-
-  private static ScenarioEdits rivers(RiverEdit... edits) {
-    return new ScenarioEdits(List.of(edits), null, null, null, null, null);
   }
 
   private static ScenarioEdits scores(List<Integer> shown, int seat, int score) {
@@ -441,24 +438,24 @@ public class ScenarioEditTest {
 
   /** 判断の席に見える牌の数が少なく、元の牌と違う種類の牌。 */
   static String rareTile(TableState table, int seat, String old) {
-    int[] visible = visible(table, seat);
+    Map<String, Integer> visible = visible(table, seat);
     for (String tile : RARE_TILES)
-      if (visible[TileCode.type(tile)] <= 2 && TileCode.type(tile) != TileCode.type(old))
+      if (visible.getOrDefault(tile, 0) <= 2 && TileCode.type(tile) != TileCode.type(old))
         return tile;
     throw new AssertionError("No rare tile in the fixture position.");
   }
 
-  static int[] visible(TableState table, int seat) {
-    int[] copies = new int[Tile.NUM_TILE_TYPES];
-    for (String tile : visibleTiles(table, seat)) copies[TileCode.type(tile)]++;
-    return copies;
+  /** 牌の記号の写しの数（赤の 5 は 1 枚、ほかの 5 は 3 枚、ほかは 4 枚）。 */
+  static int copies(String tile) {
+    if (TileCode.red(tile)) return 1;
+    return Tile.canBeAka(TileCode.type(tile)) ? 3 : 4;
   }
 
-  private static int visibleReds(TableState table, int seat, int type) {
-    return (int)
-        visibleTiles(table, seat).stream()
-            .filter(tile -> TileCode.red(tile) && TileCode.type(tile) == type)
-            .count();
+  /** 判断の席に見える牌の、牌の記号ごとの数。 */
+  static Map<String, Integer> visible(TableState table, int seat) {
+    Map<String, Integer> counts = new HashMap<>();
+    for (String tile : visibleTiles(table, seat)) counts.merge(tile, 1, Integer::sum);
+    return counts;
   }
 
   private static List<String> visibleTiles(TableState table, int seat) {

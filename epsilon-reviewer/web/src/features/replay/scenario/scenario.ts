@@ -5,6 +5,7 @@ import type {
   ScenarioEdits,
 } from "../../../../../protocol/model.ts";
 import {
+  tileCopies,
   tileOrder,
   type RiverTile,
   type TableState,
@@ -70,10 +71,6 @@ const TILE_ROWS: readonly (readonly string[])[] = [
   ["1s", "2s", "3s", "4s", "5s", "5sr", "6s", "7s", "8s", "9s"],
   ["E", "S", "W", "N", "P", "F", "C"],
 ];
-
-const isRed = (tile: string) => tile.endsWith("r");
-/** 赤を区別しない牌の種類。 */
-const tileKind = (tile: string) => (isRed(tile) ? tile.slice(0, 2) : tile);
 
 export const targetKey = (target: ScenarioTarget) =>
   target.kind === "river"
@@ -421,21 +418,16 @@ export function canEditHand(
 }
 
 /**
- * 見ている席から見えている牌を数える（自分の手牌とツモ、全員の河と副露、ドラ表示牌）。
+ * 見ている席から見えている牌を牌の記号ごとに数える（自分の手牌とツモ、全員の河と副露、ドラ表示牌）。
  * サーバの検証と同じ範囲。変える所の牌は数えない。
  */
 function visibleTiles(
   board: EditedBoard,
   viewSeat: number,
   skip: ScenarioTarget,
-) {
+): ReadonlyMap<string, number> {
   const counts = new Map<string, number>();
-  const reds = new Set<string>();
-  const add = (tile: string) => {
-    const kind = tileKind(tile);
-    counts.set(kind, (counts.get(kind) ?? 0) + 1);
-    if (isRed(tile)) reds.add(kind);
-  };
+  const add = (tile: string) => counts.set(tile, (counts.get(tile) ?? 0) + 1);
   const { snapshot, handOrigins } = board;
   const viewer = snapshot.players[viewSeat]!;
   const skipped = skip.kind === "hand" ? skip.index : -1;
@@ -457,7 +449,7 @@ function visibleTiles(
   snapshot.dora.forEach((tile, index) => {
     if (!(skip.kind === "dora" && skip.index === index)) add(tile);
   });
-  return { counts, reds };
+  return counts;
 }
 
 /** 変える所の今の牌。 */
@@ -472,34 +464,76 @@ function currentTile(board: EditedBoard, viewSeat: number, target: TileTarget) {
     : viewer.hand[handOrigins.indexOf(target.index)]!;
 }
 
+/** 変える所の、判断の局面の牌。 */
+function originalTile(
+  original: Snapshot,
+  viewSeat: number,
+  target: TileTarget,
+) {
+  if (target.kind === "river")
+    return original.players[target.seat]!.river[target.index]!.tile;
+  if (target.kind === "dora") return original.dora[target.index]!;
+  return handTile(original.players[viewSeat]!, target.index);
+}
+
+/**
+ * 変える所に牌を置けるか。今の牌のほかは、変える所を除いて見えている枚数が物理牌の数より少ない牌だけ
+ * （サーバが断る牌と同じ決まり）。
+ */
+function fits(
+  tile: string,
+  current: string,
+  counts: ReadonlyMap<string, number>,
+) {
+  return tile === current || (counts.get(tile) ?? 0) < tileCopies(tile);
+}
+
 export interface TileChoice {
   readonly tile: string;
-  /** 変える所の牌を除いて、見えている同じ種類の枚数。 */
+  /** 変える所の牌を除いて、見えている同じ記号の牌の枚数。 */
   readonly visible: number;
   readonly current: boolean;
   readonly disabled: boolean;
 }
-/** 牌の一覧。1 種 4 枚・赤 5 は 1 枚を超える牌は選べない。 */
+/** 牌の一覧。見えている枚数が物理牌の数に達した牌は選べない（今の牌は選び直せる）。 */
 export function tileChoices(
   board: EditedBoard,
   viewSeat: number,
   target: TileTarget,
 ): readonly (readonly TileChoice[])[] {
   const current = currentTile(board, viewSeat, target);
-  const { counts, reds } = visibleTiles(board, viewSeat, target);
+  const counts = visibleTiles(board, viewSeat, target);
   return TILE_ROWS.map((row) =>
-    row.map((tile) => {
-      const kind = tileKind(tile);
-      const visible = counts.get(kind) ?? 0;
-      const full = visible >= 4 || (isRed(tile) && reds.has(kind));
-      return {
-        tile,
-        visible,
-        current: tile === current,
-        disabled: tile !== current && full,
-      };
-    }),
+    row.map((tile) => ({
+      tile,
+      visible: counts.get(tile) ?? 0,
+      current: tile === current,
+      disabled: !fits(tile, current, counts),
+    })),
   );
+}
+
+/** 変えた所を元に戻せるか。牌は、元の牌を牌の一覧で選べる時だけ戻せる。 */
+export function canRevert(
+  board: EditedBoard,
+  original: Snapshot,
+  viewSeat: number,
+  target: ScenarioTarget,
+): boolean {
+  switch (target.kind) {
+    case "river":
+    case "dora":
+    case "hand":
+      return fits(
+        originalTile(original, viewSeat, target),
+        currentTile(board, viewSeat, target),
+        visibleTiles(board, viewSeat, target),
+      );
+    case "score":
+    case "honba":
+    case "kyotaku":
+      return true;
+  }
 }
 
 const candidateKey = (candidate: Candidate) =>

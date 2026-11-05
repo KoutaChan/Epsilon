@@ -1,5 +1,7 @@
 package com.epsilon.reviewer.engine;
 
+import static com.epsilon.reviewer.engine.TestEdits.hand;
+
 import com.epsilon.core.Action;
 import com.epsilon.core.Tile;
 import com.epsilon.replay.ReplayEvent;
@@ -24,7 +26,7 @@ import org.testng.annotations.Test;
 
 /**
  * 判断の席の手牌の入れ替えが、席の目の再生を変えた配牌とツモで作り直し、手と合法な打牌・前の窓の振聴・鳴いた後の打牌を変えること、同じ牌は
- * どの位置を指しても同じ 1 枚を替えること、リーチの後・見える牌の上限・使っていない写しの無さを断ることを確かめる。
+ * どの位置を指しても同じ 1 枚を替えること、リーチの後と見える牌の上限を断ることを確かめる。
  */
 public class HandEditTest {
   private static final int[] SCORES = {25000, 25000, 25000, 25000};
@@ -123,13 +125,7 @@ public class HandEditTest {
         3,
         hand(new HandEdit(0, "W")),
         "edits.hand[0]",
-        "more than 4 copies of W would be visible.");
-    rejected(
-        VISIBLE_ROUND,
-        3,
-        hand(new HandEdit(0, "W"), new HandEdit(1, "W")),
-        "edits.hand[1]",
-        "no unused copy of W is left in this round.");
+        "more copies of W would be visible than the 4 in the set.");
   }
 
   @Test
@@ -190,10 +186,6 @@ public class HandEditTest {
         ScenarioEngine.evaluate(record, new ScenarioQuery(0, eventIndex, 0, edits, null), policy);
     Assert.assertEquals(policy.inputs.size(), 1);
     return new Answer(policy.inputs.getFirst(), answer);
-  }
-
-  private static ScenarioEdits hand(HandEdit... edits) {
-    return new ScenarioEdits(null, null, List.of(edits), null, null, null);
   }
 
   private static int discard(String tile) {

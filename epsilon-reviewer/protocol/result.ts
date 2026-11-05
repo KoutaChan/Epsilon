@@ -348,6 +348,15 @@ export function tileOrder(tile: string): number {
   return type * 2 + (red ? 0 : 1);
 }
 
+/**
+ * 牌の記号の物理牌の数（Java の TileCopies.count と同じ）。各色の 5 は 4 枚のうち 1 枚が赤なので、
+ * 赤の 5 は 1 枚、赤でない 5 は 3 枚、ほかは 4 枚。
+ */
+export function tileCopies(tile: string): number {
+  if (tile.length === 3) return 1;
+  return tile[0] === "5" ? 3 : 4;
+}
+
 /** 書き出した解析結果のファイルの名前。 */
 export function resultFileName(resultId: string): string {
   return `${resultId}.epsilon-reviewer.json.gz`;

@@ -6,6 +6,7 @@ import {
   applyEdits,
   canEditHand,
   canEditRiver,
+  canRevert,
   compareCandidates,
   handOrigin,
   isCall,
@@ -84,6 +85,59 @@ function position() {
 }
 const find = (choices, tile) =>
   choices.flat().find((choice) => choice.tile === tile);
+/** 席 3 の河の 1 番（C）の牌の一覧。 */
+const riverChoices = (original, edits) =>
+  tileChoices(applyEdits(original, edits, VIEWER), VIEWER, {
+    kind: "river",
+    seat: 3,
+    index: 1,
+  });
+
+/** 河を「牌 牌* …」（* はツモ切り）から作る。 */
+const river = (text) =>
+  text
+    .split(" ")
+    .map((tile) =>
+      tile.endsWith("*")
+        ? discard(tile.slice(0, -1), { tsumogiri: true })
+        : discard(tile),
+    );
+const SWAPPER = 3;
+const swapSpot = (index) => ({ kind: "river", seat: SWAPPER, index });
+
+// 席 3 の手番の局面。8 萬は席 0 の河の 2 枚と席 3 の河の 6 番・13 番で 4 枚とも見えている。
+function swapPosition() {
+  return {
+    ...position(),
+    actor: SWAPPER,
+    activeSeat: SWAPPER,
+    players: [
+      playerSnapshot(0, { river: river("8m 8m") }),
+      playerSnapshot(1, { river: river("5m") }),
+      playerSnapshot(2),
+      playerSnapshot(SWAPPER, {
+        river: river("W 1p C 1m 9p 7s 8m* 2s 1m* 1m* W* 5m* 8p 8m"),
+        hand: [
+          "2m",
+          "3m",
+          "4m",
+          "5mr",
+          "6m",
+          "2p",
+          "3p",
+          "4p",
+          "6s",
+          "7s",
+          "8s",
+          "N",
+          "N",
+        ],
+        draw: "P",
+      }),
+    ],
+    dora: ["3s"],
+  };
+}
 
 test("edits apply to a copy and leave the shared snapshot untouched", () => {
   const original = position();
@@ -309,32 +363,123 @@ test("the hand changes only at a decision of the viewer before riichi", () => {
   assert.equal(canEditHand(original, 3, { decision: true, actor: 3 }), false);
 });
 
-test("tile choices stop at four visible copies and one red five", () => {
+test("tile choices stop at three plain fives and one red five of a suit", () => {
   const original = position();
-  const board = applyEdits(original, NO_EDITS, VIEWER);
-  const target = { kind: "river", seat: 3, index: 1 };
-  const choices = tileChoices(board, VIEWER, target);
+  // 赤でない 5 萬の 3 枚が手にあり、赤の 5 萬は見えていない。
+  let choices = riverChoices(original, NO_EDITS);
   assert.deepEqual(find(choices, "5m"), {
     tile: "5m",
     visible: 3,
     current: false,
+    disabled: true,
+  });
+  assert.deepEqual(find(choices, "5mr"), {
+    tile: "5mr",
+    visible: 0,
+    current: false,
     disabled: false,
   });
+  // 手にある赤の 5 筒は、赤でない 5 筒と別に数える。
   assert.equal(find(choices, "5pr").disabled, true);
-  assert.equal(find(choices, "5p").disabled, false);
+  assert.deepEqual(find(choices, "5p"), {
+    tile: "5p",
+    visible: 0,
+    current: false,
+    disabled: false,
+  });
+  // 手の 5 萬の 1 枚を赤にすると、赤の 5 萬は選べず、赤でない 5 萬は選べる。
+  choices = riverChoices(
+    original,
+    setHand(NO_EDITS, original, VIEWER, 0, "5mr"),
+  );
+  assert.deepEqual(find(choices, "5mr"), {
+    tile: "5mr",
+    visible: 1,
+    current: false,
+    disabled: true,
+  });
+  assert.deepEqual(find(choices, "5m"), {
+    tile: "5m",
+    visible: 2,
+    current: false,
+    disabled: false,
+  });
+});
+
+test("other tiles stop at four copies and a called tile counts once", () => {
+  const original = position();
+  const choices = riverChoices(original, NO_EDITS);
   // 鳴かれた 2s は副露の側だけで数える。
   assert.equal(find(choices, "2s").visible, 1);
   assert.equal(find(choices, "C").current, true);
-  const crowded = applyEdits(
-    original,
-    setDora(NO_EDITS, original, 0, "5m"),
-    VIEWER,
+  // 手の西 2 枚に、ドラ表示牌と上家の河の 1 枚を足すと 4 枚になる。
+  let edits = setDora(NO_EDITS, original, 0, "W");
+  assert.equal(find(riverChoices(original, edits), "W").disabled, false);
+  // ドラ表示牌の所は、その所の西を数えず、今の牌として選び直せる。
+  const dora = tileChoices(applyEdits(original, edits, VIEWER), VIEWER, {
+    kind: "dora",
+    index: 0,
+  });
+  assert.deepEqual(find(dora, "W"), {
+    tile: "W",
+    visible: 2,
+    current: true,
+    disabled: false,
+  });
+  edits = setRiver(edits, original, 1, 0, { tile: "W" });
+  assert.deepEqual(find(riverChoices(original, edits), "W"), {
+    tile: "W",
+    visible: 4,
+    current: false,
+    disabled: true,
+  });
+});
+
+test("own discards can swap a tile whose four copies are all visible", () => {
+  const original = swapPosition();
+  const choices = (edits, index) =>
+    tileChoices(applyEdits(original, edits, SWAPPER), SWAPPER, swapSpot(index));
+  // 元の局面では 8 萬が 4 枚とも見えているので、11 番の 5 萬を 8 萬にはできない。
+  assert.equal(find(choices(NO_EDITS, 11), "8m").disabled, true);
+  assert.equal(find(choices(NO_EDITS, 13), "5m").disabled, false);
+  // 13 番の 8 萬を 5 萬にした局面では見えている 8 萬が 3 枚になり、11 番を 8 萬にできる。
+  let edits = setRiver(NO_EDITS, original, SWAPPER, 13, { tile: "5m" });
+  assert.deepEqual(find(choices(edits, 11), "8m"), {
+    tile: "8m",
+    visible: 3,
+    current: false,
+    disabled: false,
+  });
+  edits = setRiver(edits, original, SWAPPER, 11, { tile: "8m" });
+  assert.deepEqual(edits.rivers, [
+    { seat: SWAPPER, index: 11, tile: "8m", tsumogiri: true },
+    { seat: SWAPPER, index: 13, tile: "5m", tsumogiri: false },
+  ]);
+});
+
+test("a spot is restored only when its original tile can be chosen again", () => {
+  const original = swapPosition();
+  const restorable = (edits, target) =>
+    canRevert(applyEdits(original, edits, SWAPPER), original, SWAPPER, target);
+  let edits = setRiver(NO_EDITS, original, SWAPPER, 13, { tile: "5m" });
+  edits = setRiver(edits, original, SWAPPER, 11, { tile: "8m" });
+  // 入れ替えた後は、13 番だけを 8 萬に戻すと 8 萬が 5 枚見えるので戻せず、11 番の 5 萬は戻せる。
+  assert.equal(restorable(edits, swapSpot(13)), false);
+  assert.equal(restorable(edits, swapSpot(11)), true);
+  assert.equal(restorable(edits, { kind: "score", seat: 0 }), true);
+  // 11 番を戻した後は、13 番も戻せる。
+  edits = revert(edits, original, swapSpot(11));
+  assert.equal(restorable(edits, swapSpot(13)), true);
+  // 手牌も同じ。手の 5 萬を 8 萬にして河に赤でない 5 萬を足すと、戻す 5 萬の写しが残らない。
+  const base = position();
+  const hand = setRiver(setHand(NO_EDITS, base, VIEWER, 0, "8m"), base, 3, 1, {
+    tile: "5m",
+  });
+  const spot = { kind: "hand", index: 0 };
+  assert.equal(
+    canRevert(applyEdits(base, hand, VIEWER), base, VIEWER, spot),
+    false,
   );
-  assert.equal(find(tileChoices(crowded, VIEWER, target), "5m").disabled, true);
-  // 変える所の牌そのものは数えないので、今の牌は選び直せる。
-  const own = tileChoices(crowded, VIEWER, { kind: "dora", index: 0 });
-  assert.equal(find(own, "5m").current, true);
-  assert.equal(find(own, "5m").disabled, false);
 });
 
 test("tile choices for the hand skip the edited spot and count the edited hand", () => {
@@ -360,18 +505,18 @@ test("tile choices for the hand skip the edited spot and count the edited hand",
   const draw = tileChoices(board, VIEWER, { kind: "hand", index: 13 });
   assert.equal(find(draw, "6p").current, true);
   assert.equal(find(draw, "6p").visible, 0);
-  const fourth = applyEdits(
-    original,
-    setHand(NO_EDITS, original, VIEWER, 12, "5m"),
-    VIEWER,
-  );
-  assert.equal(
-    find(
-      tileChoices(fourth, VIEWER, { kind: "river", seat: 3, index: 1 }),
-      "5m",
-    ).disabled,
-    true,
-  );
+  // 手の 5 萬の所は、ほかの 2 枚だけを数えるので 5 萬のまま選べる。
+  const five = tileChoices(board, VIEWER, { kind: "hand", index: 0 });
+  assert.deepEqual(find(five, "5m"), {
+    tile: "5m",
+    visible: 2,
+    current: true,
+    disabled: false,
+  });
+  // ほかの所からは変えた手牌も数え、赤でない 5 萬は 3 枚とも手にあるので置けない。
+  const other = tileChoices(board, VIEWER, { kind: "hand", index: 3 });
+  assert.equal(find(other, "1m").visible, 2);
+  assert.equal(find(other, "5m").disabled, true);
 });
 
 test("a returned table keeps the decision and the player names", () => {

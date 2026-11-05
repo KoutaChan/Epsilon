@@ -1,7 +1,6 @@
 package com.epsilon.reviewer.engine.scenario;
 
 import com.epsilon.core.GameState;
-import com.epsilon.core.Tile;
 import com.epsilon.replay.ReplayEvent;
 import com.epsilon.replay.ReplayEvent.Ankan;
 import com.epsilon.replay.ReplayEvent.Chi;
@@ -12,7 +11,7 @@ import com.epsilon.replay.ReplayEvent.Kakan;
 import com.epsilon.replay.ReplayEvent.Pon;
 import com.epsilon.replay.ReplayEvent.StartKyoku;
 import com.epsilon.replay.ReplayEvent.Tsumo;
-import com.epsilon.replay.TileNotation;
+import com.epsilon.reviewer.engine.scenario.VisibleTileCount.Placement;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
 import com.epsilon.reviewer.engine.view.TableState;
@@ -21,8 +20,10 @@ import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -33,8 +34,10 @@ import java.util.function.Function;
  * <p>変更は判断の時点の表示で指す。河はその席の打牌の順、ドラは開いた順（0 は局の始め、1 からは槓ドラ）、手牌は hand[] の位置（hand.length
  * はツモ牌）。点と供託は判断の時点の値で受け取り、判断までのリーチの支払いを保つよう局の始めの値を同じ差だけ動かす。
  *
- * <p>判断の席の牌（手牌と河）は、その牌が入った所（配牌かツモ）の物理牌を新しい牌の使っていない物理牌に替え、席の目の再生が判断の手を作り
- * 直す。他家の打牌は牌の種類だけが見えるので、代表の物理牌に替える。
+ * <p>牌を替えた河と手牌の物理牌は、見える牌の数を確かめてから割り当てる。替えた牌の物理牌を全て空け、新しい牌それぞれにその記号の空いている
+ * 写しを割り当てて、元の物理牌を書いた所（打牌と、判断の席の牌が手に入った配牌の位置かツモ）へ書く。判断より前の出来事で判断の席に見える牌
+ * （その席の配牌とツモ、全ての打牌、副露と槓の牌）の物理牌は、どれも判断の時点の表示に見える牌なので（ドラ表示は物理牌を持たない）、見える牌の
+ * 数が通れば写しは足りる。
  */
 public final class RoundRewriter {
   private final LocatedDecision decision;
@@ -56,14 +59,22 @@ public final class RoundRewriter {
   /** 判断の席の伏せた手の物理牌（手に入った順）。手牌の変更が替えた牌は外す。 */
   private final List<Integer> concealed;
 
-  /** 使えない物理牌（判断より前に局に現れた牌と、変更が使った牌）。 */
-  private final Set<Integer> used = new HashSet<>();
+  /** 判断より前の出来事で判断の席に見える牌の物理牌（他家の伏せた配牌とツモは数えない）。 */
+  private final TileCopies copies = new TileCopies();
+
+  /** 判断の席の手に入った物理牌ごとの、入った所。 */
+  private final Map<Integer, Slot> entries = new HashMap<>();
 
   /** 席ごとの、判断より前の打牌の出来事の位置（河の順）。 */
   private final List<List<Integer>> discards = new ArrayList<>();
 
   /** 判断より前に槓ドラを開いた出来事の位置（開いた順）。 */
   private final List<Integer> reveals = new ArrayList<>();
+
+  /** 牌を替えた変更（当てた順）。 */
+  private final List<Placement> placements = new ArrayList<>();
+
+  private final List<Replacement> replacements = new ArrayList<>();
 
   private RoundRewriter(List<ReplayEvent> record, LocatedDecision decision) {
     this.decision = decision;
@@ -107,37 +118,40 @@ public final class RoundRewriter {
     }
   }
 
-  /** 判断より前の出来事を読み、打牌と槓ドラの位置、局に現れた物理牌を覚える（他家のツモは判断の席に見えない）。 */
+  /**
+   * 判断より前の出来事を読み、打牌と槓ドラの位置、判断の席の牌が手に入った所、判断の席に見える牌の物理牌を覚える。鳴いた牌は打牌の物理牌なので、
+   * 副露は手から出した牌だけを数える。
+   */
   private void scan(int position) {
     switch (events.get(position)) {
-      case StartKyoku begin -> use(begin.initialHandPhysicalTileIds()[seat]);
-      case Tsumo drawn when drawn.actor() == seat -> use(drawn.physicalTileId());
+      case StartKyoku ignored -> {
+        for (int index = 0; index < deal[seat].length; index++)
+          enter(deal[seat][index], new Slot.Dealt(index));
+      }
+      case Tsumo drawn when drawn.actor() == seat ->
+          enter(drawn.physicalTileId(), new Slot.Drawn(position));
       case Dahai discard -> {
         discards.get(discard.actor()).add(position);
-        use(discard.physicalTileId());
+        copies.use(discard.physicalTileId());
       }
       case Dora ignored -> reveals.add(position);
-      case Chi call -> useCall(call.calledPhysicalTileId(), call.consumedPhysicalTileIds());
-      case Pon call -> useCall(call.calledPhysicalTileId(), call.consumedPhysicalTileIds());
-      case Daiminkan call -> useCall(call.calledPhysicalTileId(), call.consumedPhysicalTileIds());
-      case Ankan kan -> use(kan.consumedPhysicalTileIds());
-      case Kakan kan -> use(kan.addedPhysicalTileId());
+      case Chi call -> copies.use(call.consumedPhysicalTileIds());
+      case Pon call -> copies.use(call.consumedPhysicalTileIds());
+      case Daiminkan call -> copies.use(call.consumedPhysicalTileIds());
+      case Ankan kan -> copies.use(kan.consumedPhysicalTileIds());
+      case Kakan kan -> copies.use(kan.addedPhysicalTileId());
       default -> {}
     }
   }
 
-  private void use(int... physicalTileIds) {
-    for (int id : physicalTileIds) used.add(id);
-  }
-
-  private void useCall(int called, int[] consumed) {
-    use(called);
-    use(consumed);
+  private void enter(int physicalTileId, Slot slot) {
+    copies.use(physicalTileId);
+    entries.put(physicalTileId, slot);
   }
 
   /**
-   * 河の 1 枚（鳴かれた牌は変えない）。他家の打牌は牌とツモ切りの印を替える。判断の席の打牌は牌だけを替え、その牌が入った所と打牌を同じ
-   * 新しい物理牌にする（打牌は判断より前に手を出たので、判断の手は変わらない）。
+   * 河の 1 枚（鳴かれた牌は変えない）。他家の打牌は牌とツモ切りの印を替える。判断の席の打牌は牌だけを替え、その牌が手に入った所も同じ物理牌に
+   * する（打牌は判断より前に手を出たので、判断の手は変わらない）。
    */
   private void river(RiverEdit edit, String name) {
     if (edit.seat() < 0 || edit.seat() >= GameState.NUM_PLAYERS)
@@ -151,14 +165,15 @@ public final class RoundRewriter {
     boolean own = edit.seat() == seat;
     if (own && edit.tsumogiri() != old.tsumogiri())
       throw invalidEdit(name + ": a discard of the deciding seat keeps its recorded tsumogiri.");
-    if (edit.tile().equals(old.tile()) && edit.tsumogiri() == old.tsumogiri()) return;
     int position = discards.get(edit.seat()).get(edit.index());
     var discard = (Dahai) events.get(position);
-    int id =
-        own
-            ? replaceInHand(discard.physicalTileId(), edit.tile(), name)
-            : representative(edit.tile());
-    events.set(position, new Dahai(edit.seat(), id, edit.tsumogiri(), discard.inferred()));
+    int id = discard.physicalTileId();
+    if (edit.tsumogiri() != old.tsumogiri())
+      events.set(position, new Dahai(edit.seat(), id, edit.tsumogiri(), discard.inferred()));
+    if (!edit.tile().equals(old.tile())) {
+      Slot discarded = new Slot.Discarded(position);
+      replace(name, id, edit.tile(), own ? List.of(discarded, entry(id)) : List.of(discarded));
+    }
     players.set(
         edit.seat(),
         player.withRiverTile(edit.index(), old.withTile(edit.tile(), edit.tsumogiri())));
@@ -169,6 +184,8 @@ public final class RoundRewriter {
     if (edit.index() < 0 || edit.index() >= dora.size())
       throw invalidEdit(name + ": no dora indicator is revealed at this index at the decision.");
     requireTile(edit.tile(), name);
+    if (edit.tile().equals(dora.get(edit.index()))) return;
+    placements.add(new Placement(name, edit.tile()));
     dora.set(edit.index(), edit.tile());
     if (edit.index() > 0)
       events.set(
@@ -191,61 +208,35 @@ public final class RoundRewriter {
     requireTile(edit.tile(), name);
     String old = drawn ? shown.draw() : shown.hand().get(edit.index());
     if (edit.tile().equals(old)) return;
-    replaceInHand(drawn ? decision.drawn() : takeNewest(old), edit.tile(), name);
+    int id = drawn ? decision.drawn() : takeNewest(old);
+    replace(name, id, edit.tile(), List.of(entry(id)));
     if (drawn) draw = edit.tile();
     else hand.set(edit.index(), edit.tile());
   }
 
+  /** 河か手牌の牌を替えた変更。物理牌 removed を書いた所 slots へ、新しい牌の物理牌を後で書く。 */
+  private void replace(String name, int removed, String tile, List<Slot> slots) {
+    placements.add(new Placement(name, tile));
+    replacements.add(new Replacement(removed, tile, slots));
+  }
+
   /** 伏せた手の牌 code のうち、最も後に手に入った物理牌を取り出す。 */
   private int takeNewest(String code) {
-    for (int i = concealed.size() - 1; i >= 0; i--) {
-      int id = concealed.get(i);
-      if (Tile.typeOf(id) == TileCode.type(code) && Tile.isAka(id) == TileCode.red(code))
-        return concealed.remove(i);
-    }
+    for (int i = concealed.size() - 1; i >= 0; i--)
+      if (TileCopies.isCopy(concealed.get(i), code)) return concealed.remove(i);
     throw new IllegalStateException("The hand of seat " + seat + " does not hold " + code);
   }
 
-  /**
-   * 判断の席の手に物理牌 old が入った所（配牌の位置か、判断より前のその席のツモ）を、牌 code の使っていない物理牌に替える。
-   *
-   * @return 替えた物理牌
-   */
-  private int replaceInHand(int old, String code, String name) {
-    int id = unusedCopy(code, name);
-    int[] dealt = deal[seat];
-    for (int slot = 0; slot < dealt.length; slot++)
-      if (dealt[slot] == old) {
-        dealt[slot] = id;
-        return id;
-      }
-    for (int position = 1; position < decision.target(); position++)
-      if (events.get(position) instanceof Tsumo drawn
-          && drawn.actor() == seat
-          && drawn.physicalTileId() == old) {
-        events.set(position, new Tsumo(seat, id, drawn.inferred()));
-        return id;
-      }
-    throw new IllegalStateException("Tile " + old + " never entered the hand of seat " + seat);
+  /** 判断の席の手に物理牌が入った所（配牌の位置か、判断より前のその席のツモ）。 */
+  private Slot entry(int physicalTileId) {
+    Slot slot = entries.get(physicalTileId);
+    if (slot == null)
+      throw new IllegalStateException(
+          "Tile " + physicalTileId + " never entered the hand of seat " + seat);
+    return slot;
   }
 
-  /** 牌 code の写しのうち、局でまだ使っていない一番小さい物理牌を使う。 */
-  private int unusedCopy(String code, String name) {
-    int type = TileCode.type(code);
-    boolean red = TileCode.red(code);
-    for (int id = type * Tile.TILES_PER_TYPE; id < (type + 1) * Tile.TILES_PER_TYPE; id++)
-      if (Tile.isAka(id) == red && used.add(id)) return id;
-    throw invalidEdit(name + ": no unused copy of " + code + " is left in this round.");
-  }
-
-  /** 他家の打牌の物理牌。牌の種類と赤だけが見えるので、代表の写しを使う。 */
-  private int representative(String code) {
-    int id = TileNotation.representativeTileId(code);
-    used.add(id);
-    return id;
-  }
-
-  /** 判断の席の手を並べ、点・本場・供託を写して局の始めを作り直し、見える牌の数を確かめる。 */
+  /** 判断の席の手を並べ、点・本場・供託を写し、見える牌の数を確かめてから物理牌を割り当て、局の始めを作り直す。 */
   private RewrittenRound finish(ScenarioEdits edits) {
     hand.sort(Comparator.comparingInt(TileCode::order));
     players.set(seat, players.get(seat).withHand(List.copyOf(hand), draw));
@@ -255,6 +246,10 @@ public final class RoundRewriter {
     int deposited = shown.kyotaku() - start.kyotaku();
     int kyotaku =
         edits.kyotaku() == null ? shown.kyotaku() : requireKyotaku(edits.kyotaku(), deposited);
+    var table =
+        new TableState(players, dora, honba, kyotaku, shown.remaining(), shown.activeSeat());
+    VisibleTileCount.require(table, seat, placements);
+    assign();
     String indicator = dora.getFirst();
     events.set(
         0,
@@ -268,10 +263,37 @@ public final class RoundRewriter {
             deal,
             scores,
             TileCode.red(indicator)));
-    var table =
-        new TableState(players, dora, honba, kyotaku, shown.remaining(), shown.activeSeat());
-    VisibleTileCount.require(table, seat, edits);
     return new RewrittenRound(events, table);
+  }
+
+  /**
+   * 替えた牌の物理牌を全て空けてから、新しい牌それぞれに空いている写しを割り当てて書く。結果が変更の順に依らないよう、空ける物理牌の順に
+   * 割り当てる。
+   */
+  private void assign() {
+    replacements.sort(Comparator.comparingInt(Replacement::removed));
+    for (Replacement replacement : replacements) copies.free(replacement.removed());
+    for (Replacement replacement : replacements) {
+      int id = copies.take(replacement.tile());
+      for (Slot slot : replacement.slots()) write(slot, id);
+    }
+  }
+
+  /** 物理牌を書く。出来事はほかの値を保つ。 */
+  private void write(Slot slot, int physicalTileId) {
+    switch (slot) {
+      case Slot.Dealt(int index) -> deal[seat][index] = physicalTileId;
+      case Slot.Drawn(int position) -> {
+        var drawn = (Tsumo) events.get(position);
+        events.set(position, new Tsumo(drawn.actor(), physicalTileId, drawn.inferred()));
+      }
+      case Slot.Discarded(int position) -> {
+        var discard = (Dahai) events.get(position);
+        events.set(
+            position,
+            new Dahai(discard.actor(), physicalTileId, discard.tsumogiri(), discard.inferred()));
+      }
+    }
   }
 
   /** 判断の時点の点を受け取り、局の始めの点を同じ差だけ動かす。 */
@@ -316,4 +338,25 @@ public final class RoundRewriter {
   private static ReviewerException invalidEdit(String message) {
     return new ReviewerException(ErrorCode.INVALID_EDIT, message);
   }
+
+  /** 物理牌を書く所。 */
+  private sealed interface Slot {
+    /** 判断の席の配牌の位置。 */
+    record Dealt(int index) implements Slot {}
+
+    /** 判断の席のツモの出来事の位置。 */
+    record Drawn(int position) implements Slot {}
+
+    /** 打牌の出来事の位置。 */
+    record Discarded(int position) implements Slot {}
+  }
+
+  /**
+   * 物理牌を替える牌。
+   *
+   * @param removed 局から外す物理牌
+   * @param tile 新しい牌
+   * @param slots removed を書いた所。新しい牌の物理牌に書き換える
+   */
+  private record Replacement(int removed, String tile, List<Slot> slots) {}
 }

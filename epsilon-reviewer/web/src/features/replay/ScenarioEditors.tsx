@@ -64,7 +64,7 @@ function EditorFrame({
       {children}
       <button
         className="em-scenario-restore"
-        disabled={!edited}
+        disabled={!edited || !scenario.canRevert(target)}
         onClick={() => scenario.revert(target)}
       >
         {t("scenario.restore")}

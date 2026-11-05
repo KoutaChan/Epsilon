@@ -1,5 +1,7 @@
 # Epsilon-Prism の同梱既定設定。同梱値 < 選択した TOML（--settings）< 明示上書き（-Depsilon.*）の順に適用する。
 # 省略した項目は同梱値を使う。[epsilon.prism] の同梱値は本番の系譜の値で、run の TOML にはその run に固有の値だけを書く。
+# ただし device と推論の道（collectDevices・inferBatch・inference・learnerDevice）の同梱値は、GPU の無い PC でも動く CPU の値。
+# GPU で集める・学ぶときは collectDevices = "gpu0,gpu1"・inferBatch = 2048・inference = "HIP"・learnerDevice = "gpu1,gpu0" のように書く。
 
 [epsilon.devices]
 
@@ -38,18 +40,19 @@ iterations = 1000
 utility = "TENHOU"
 
 # 収集。device は cpu か gpu0,gpu1 のような GPU の列
-collectDevices = "gpu0,gpu1"
+collectDevices = "cpu"
 maxActiveGames = 8192
 advanceWorkers = 28
 encoders = 20
 slots = 2
 readyBatches = 4
-inferBatch = 2048
+# 1 回の推論の行の上限。CPU の eager は行の数に比例して一時の配列が大きくなるので小さくする（GPU は 2048）
+inferBatch = 8
 batchWaitMicros = 100000
 rowWriters = 4
 # 網の推論の道: "HIP"（自前の HIP の実行系。-Pnative-hip で組み立てた jar が要り、libprism_hip.so が読めなければ方策を開くときに止まる）か
 # "EAGER"（DJL の eager）。HIP でも CPU・前線の腕・HIP の特化のない幅（H ≠ 256）の網は eager で打つ
-inference = "HIP"
+inference = "EAGER"
 
 # 行動方策 b: 凍結した π_t の貪欲（s の argmax）に一様の床 ε_b（全席）
 epsilonB = 0.005
@@ -87,7 +90,7 @@ priorAlpha = 4.0
 priorGamma = 0.05
 
 # 網。learnerDevice は先頭が正本で、残りはデータ並列の複製
-learnerDevice = "gpu1,gpu0"
+learnerDevice = "cpu"
 # バージョン 1 の白紙の網の形: 背骨の層の数（2 か 3。幅は H 256・F 512・G 256）と、前線の腕（候補層が前線の特徴も読む）か
 depth = 2
 frontier = false

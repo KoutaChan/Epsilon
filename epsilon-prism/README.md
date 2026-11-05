@@ -42,7 +42,7 @@ HIPでの推論と自己対戦の収集には、自前のHIPの実行系を使�
 
 NVIDIA GPUでは自前のHIPの実行系は使えません。`-Pcuda`で組み立て（[プロジェクト共通の手順](../BUILDING.md)）、設定の`inference`を`"EAGER"`にすると、DJLで推論と学習を行います。
 
-CPUだけで動かす場合も、設定の`inference`を`"EAGER"`にします（DJLで推論します）。
+同梱設定の既定はCPU（`collectDevices = "cpu"`・`inference = "EAGER"`）で、GPUが無くてもそのまま動きます。
 
 ## 設定と保存先
 
@@ -92,7 +92,7 @@ every = 8
 from = 1
 ```
 
-既定値は、GPU2枚で収集（`collectDevices`）と学習（`learnerDevice`）を行う前提です。環境に合わせて変更してください。
+既定値はCPUです。GPU 2枚で収集と学習を行う場合は、`collectDevices = "gpu0,gpu1"`・`learnerDevice = "gpu1,gpu0"`・`inferBatch = 2048`・`inference = "HIP"`（AMD GPU。CUDAでは`"EAGER"`）を設定してください。
 
 ## 学習したモデルを評価する
 

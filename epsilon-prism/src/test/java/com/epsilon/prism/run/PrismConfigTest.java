@@ -57,7 +57,7 @@ public class PrismConfigTest {
     Assert.assertEquals(defaults.seed(), 20261010L);
     Assert.assertEquals(defaults.gamesPerCohort(), 65536);
     Assert.assertEquals(defaults.iterations(), 1000);
-    Assert.assertEquals(defaults.inferBatch(), 2048);
+    Assert.assertEquals(defaults.inferBatch(), 8);
     Assert.assertEquals(defaults.epsilonB(), 0.005);
     Assert.assertEquals(defaults.holdoutFraction(), 0.05);
     Assert.assertEquals(defaults.labelRateCommit(), 0.104);
@@ -271,15 +271,15 @@ public class PrismConfigTest {
     Assert.assertTrue(sampling.eventLedger());
   }
 
-  /** 網の推論の道: 既定は HIP、EAGER を選べ、名前の間違いは拒む。 */
+  /** 網の推論の道: 既定は CPU で動く EAGER、HIP を選べ、名前の間違いは拒む。 */
   @Test
-  public void inferenceDefaultsToHip() {
+  public void inferenceDefaultsToEager() {
     PrismConfig defaults = PrismConfig.fromSettings(EpsilonSettings.defaults());
-    Assert.assertEquals(defaults.inference(), InferencePath.HIP);
-    PrismConfig eager = config("inference", "EAGER");
-    eager.validate();
-    Assert.assertEquals(eager.inference(), InferencePath.EAGER);
-    Assert.assertEquals(PrismConfig.read(new Gson().toJson(eager)), eager);
+    Assert.assertEquals(defaults.inference(), InferencePath.EAGER);
+    PrismConfig hip = config("inference", "HIP");
+    hip.validate();
+    Assert.assertEquals(hip.inference(), InferencePath.HIP);
+    Assert.assertEquals(PrismConfig.read(new Gson().toJson(hip)), hip);
     Assert.assertThrows(IllegalArgumentException.class, () -> config("inference", "hip"));
     Assert.assertThrows(IllegalArgumentException.class, () -> config("inference", "CUDA"));
   }

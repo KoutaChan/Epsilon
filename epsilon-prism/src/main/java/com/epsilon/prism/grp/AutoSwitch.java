@@ -10,57 +10,45 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * grpSwitch = AUTO の切り替え（学習の錠を持って呼ぶ）: 取り置き h で作った候補は反復 h + grpSwitchLag で効く。その反復が始まる前に READY なら
- * phi.jsonl に effectiveFrom = h + L の項目を足し（{@link PhiHistory#append}）、そうでなければ refits.jsonl に SKIPPED_NOT_READY を書いて遅れて
- * 切り替えはしない（同じ設定なら同じ Φ の歴史になる）。候補の学習の始めにした項目（parent）が phi.jsonl の最後の項目でなくなった候補（巻き戻しや
- * 手動の切り替えの後）と、最後の項目より前に効くはずだった候補も SKIPPED_NOT_READY にする。
+ * grpSwitch = AUTO の切り替え（学習の JVM が反復 t の始め、Φ を決める前に呼ぶ）: READY でまだ phi.jsonl に入っていない候補のうち、学習の
+ * 始めにした項目（parent）が phi.jsonl の最後の項目のものの一番新しい候補（取り置きが最も後、同じなら後の試行）を effectiveFrom = t で入れる
+ * （{@link PhiHistory#appendAtIterationStart}）。parent が最後の項目でない候補（巻き戻しや手動の切り替えの後）と、入れた候補より古い候補は
+ * refits.jsonl に STALE を書いて入れない。最後の項目が t より後に効く（巻き戻しの行が先の反復に書かれている）ときは何も入れず、候補は次の
+ * 反復に残す。
  */
 public final class AutoSwitch {
   private AutoSwitch() {}
 
   /**
-   * 候補 1 つの扱い。
-   *
-   * @param record 候補の READY の行
-   * @param effectiveFrom 効く反復 h + L
-   * @param skip 入れない理由（入れるなら null）
-   */
-  record Step(RefitRecord record, int effectiveFrom, String skip) {}
-
-  /**
-   * 効く時期の来た候補を入れる。
+   * 反復 t の始めに候補を入れる。
    *
    * @return 足した項目（なければ空）
    * @throws IOException 記録が読めないか書けないとき
    */
-  public static Optional<PhiEntry> apply(GrpFiles files, PrismConfig config) throws IOException {
+  public static Optional<PhiEntry> apply(GrpFiles files, PrismConfig config, int t) throws IOException {
     if (config.grpSwitch() != GrpSwitch.AUTO) return Optional.empty();
-    List<PhiEntry> history = new ArrayList<>(PhiHistory.read(files));
-    Optional<PhiEntry> added = Optional.empty();
-    for (RefitRecord candidate : pending(RefitRecord.readAll(files), history)) {
-      Step step = step(candidate, history, config.grpSwitchLag());
-      String skip = step.skip();
-      if (skip == null) {
-        try {
-          PhiEntry entry =
-              PhiHistory.append(
-                  files,
-                  candidate.entry(
-                      step.effectiveFrom(),
-                      "AUTO: " + candidate.id() + " at holdout + " + config.grpSwitchLag()));
-          history.add(entry);
-          added = Optional.of(entry);
-          continue;
-        } catch (IllegalArgumentException late) {
-          skip = "iteration " + step.effectiveFrom() + " has started: " + late.getMessage();
-        }
-      }
-      skipped(candidate, skip).append(files);
+    List<PhiEntry> history = PhiHistory.read(files);
+    if (history.isEmpty() || history.getLast().effectiveFrom() > t) return Optional.empty();
+    String last = history.getLast().id();
+    List<RefitRecord> pending = pending(RefitRecord.readAll(files), history);
+    RefitRecord chosen = null;
+    for (RefitRecord candidate : pending)
+      if (candidate.parent().equals(last)) chosen = candidate;
+    for (RefitRecord candidate : pending) {
+      if (candidate == chosen) continue;
+      String why =
+          candidate.parent().equals(last)
+              ? "superseded by " + chosen.id()
+              : "trained against " + candidate.parent() + ", but the last entry is " + last;
+      candidate.withStatus(RefitStatus.STALE, why).append(files);
     }
-    return added;
+    if (chosen == null) return Optional.empty();
+    PhiEntry entry = chosen.entry(t, "AUTO: " + chosen.id() + " at iteration " + t);
+    PhiHistory.appendAtIterationStart(files, entry);
+    return Optional.of(entry);
   }
 
-  /** まだ phi.jsonl に入っていない READY の候補（取り置きの順。同じ id の行は最後の行）。 */
+  /** まだ phi.jsonl に入っていない READY の候補（取り置きの順、同じ取り置きは書いた順。同じ id の行は最後の行）。 */
   static List<RefitRecord> pending(List<RefitRecord> records, List<PhiEntry> history) {
     Map<String, RefitRecord> latest = new LinkedHashMap<>();
     for (RefitRecord record : records) latest.put(record.id(), record);
@@ -70,39 +58,5 @@ public final class AutoSwitch {
           && history.stream().noneMatch(entry -> entry.id().equals(record.id()))) ready.add(record);
     ready.sort(Comparator.comparingInt(record -> record.window().holdout()));
     return ready;
-  }
-
-  /** 候補 1 つを入れるか（phi.jsonl の始まった反復の確かめは {@link PhiHistory#append}）。 */
-  static Step step(RefitRecord candidate, List<PhiEntry> history, int lag) {
-    int effectiveFrom = candidate.window().holdout() + lag;
-    if (history.isEmpty()) return new Step(candidate, effectiveFrom, "phi.jsonl has no entries");
-    PhiEntry last = history.getLast();
-    if (!candidate.parent().equals(last.id()))
-      return new Step(
-          candidate,
-          effectiveFrom,
-          "trained against " + candidate.parent() + ", but the last entry is " + last.id());
-    if (effectiveFrom <= last.effectiveFrom())
-      return new Step(
-          candidate,
-          effectiveFrom,
-          "iteration " + effectiveFrom + " is not after " + last.id() + " (" + last.effectiveFrom() + ")");
-    return new Step(candidate, effectiveFrom, null);
-  }
-
-  /** 候補を入れなかった行（候補のパスと sha は READY の行だけが持つ）。 */
-  static RefitRecord skipped(RefitRecord candidate, String detail) {
-    return new RefitRecord(
-        candidate.id(),
-        RefitStatus.SKIPPED_NOT_READY,
-        candidate.cause(),
-        candidate.window(),
-        candidate.init(),
-        candidate.parent(),
-        "",
-        "",
-        candidate.gate(),
-        detail,
-        candidate.seconds());
   }
 }

@@ -40,7 +40,7 @@ public final class PhiHistory {
   /** phi.jsonl の錠の名前。 */
   private static final String PHI_LOCK = "phi";
 
-  /** 学習の JVM の印の錠を取るまで待つ上限と間隔（裏の作業と grp-switch の探り {@link #trainingRunning} は一瞬で外す）。 */
+  /** 学習の JVM の印の錠を取るまで待つ上限と間隔（grp-switch などの別のプロセスの探り {@link #trainingRunning} は一瞬で外す）。 */
   static final Duration TRAINING_LOCK_WAIT = Duration.ofSeconds(30), TRAINING_LOCK_POLL = Duration.ofMillis(100);
 
   /** jsonl の 1 行（NaN と無限大はそのまま書く）。 */
@@ -168,10 +168,10 @@ public final class PhiHistory {
   }
 
   /**
-   * 学習の JVM が反復 t の始めに、境目の点検で拒んだ候補の代わりに前の項目を反復 t から効かせる行を足す（反復 t はまだ何も集めていないので
-   * 効き始めの決まりは掛けない）。
+   * 学習の JVM が反復 t の始めに、反復 t から効く行を足す（AUTO の切り替えと、境目の点検で拒んだ候補の代わりに前の項目を効かせ直す行）。
+   * 反復 t はまだ何も集めていないので効き始めの決まり（{@link #firstOpenIteration}）は掛けない。
    */
-  static void appendFallback(GrpFiles files, PhiEntry entry) throws IOException {
+  static void appendAtIterationStart(GrpFiles files, PhiEntry entry) throws IOException {
     synchronized (PhiHistory.class) {
       try (Locked locked = lock(files, PHI_LOCK)) {
         appendChecked(files, entry);
@@ -217,7 +217,7 @@ public final class PhiHistory {
   }
 
   /**
-   * 学習の JVM の印の錠を取る（{@link PhiResolver} が開いているあいだ持つ）。裏の作業や grp-switch の探り（{@link #trainingRunning}）が一瞬
+   * 学習の JVM の印の錠を取る（{@link PhiResolver} が開いているあいだ持つ）。grp-switch などの別のプロセスの探り（{@link #trainingRunning}）が一瞬
    * 持っていることがあるので、{@link #TRAINING_LOCK_POLL} ごとに {@link #TRAINING_LOCK_WAIT} まで試す（学習の JVM が 1 つだけなのは走らせ役の
    * 錠が守る）。
    *

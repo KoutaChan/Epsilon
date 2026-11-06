@@ -183,7 +183,7 @@ public final class RollbackCheck {
     return checked;
   }
 
-  /** rollback.jsonl に 1 行足す（書き手は学習の錠を持つ裏の作業だけ）。 */
+  /** rollback.jsonl に 1 行足す（書き手は学習の JVM の {@link GrpBackground} だけ）。 */
   private static void record(GrpFiles files, Line line) throws IOException {
     PhiHistory.write(file(files), GSON.toJson(line));
   }

@@ -14,13 +14,15 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
  * GRP の学習 1 回（偽の学習器と関門で）: 合格すれば試行の名前で staging → candidates へ rename し、見本と READY の行を書く。関門に落ちれば
- * REJECTED、学習器の失敗は FAILED、締め切りは TIMEOUT で、どれも候補を残さず系譜を止めない。使用中が点数だけの Φ なら白紙から学び信頼の関門
- * を通す。窓は clamp(⌈h/4⌉, 4, 8)、試行の番号は続き、候補の形（順位分布の和）が崩れれば関門に知らせる。grp-refit は要求を書くだけ。
+ * REJECTED、学習器の失敗は FAILED、締め切りは TIMEOUT で、どれも候補を残さず系譜を止めない。止める合図で止まった試行は捨て、行も書かない。
+ * 使用中が点数だけの Φ なら白紙から学び、同じ関門の最初の置き換えの列（FIRST_REPLACEMENT）を通す。窓は clamp(⌈h/4⌉, 4, 8)、試行の番号は
+ * 続き、候補の形（順位分布の和）が崩れれば関門に知らせる。grp-refit は要求を書くだけ。
  */
 public class GrpRefitterTest {
   private static final int NEXT = 10, HOLDOUT = 9;
@@ -28,12 +30,11 @@ public class GrpRefitterTest {
   /** 偽の部品（呼ばれた引数を覚える）。 */
   private static final class FakeSteps implements GrpRefitter.Steps {
     GateResult result = GateResult.PASS;
-    boolean failTraining, timeOut, malformed, trustLate;
-    Duration trustRemaining;
+    boolean failTraining, timeOut, stopped, malformed;
     Path start;
-    List<RecordedGame> training, validation, trustWindow;
+    List<RecordedGame> training, validation;
+    BooleanSupplier stop;
     GateInput gateInput;
-    PhiEntryKind trustActive;
     int trained;
 
     @Override
@@ -45,23 +46,35 @@ public class GrpRefitterTest {
 
     @Override
     public GrpTrainingPlan plan(GrpInit init, long seed) {
-      return new GrpTrainingPlan(init, 128, 2e-4, 3, 4, seed, Duration.ofMinutes(10));
+      return new GrpTrainingPlan(init, 128, 2e-4, 3, seed, Duration.ofMinutes(10));
     }
 
     @Override
     public GrpGameTrainer.Trained train(
-        Path start, List<RecordedGame> training, List<RecordedGame> validation, GrpTrainingPlan plan, Path out)
+        Path start,
+        List<RecordedGame> training,
+        List<RecordedGame> validation,
+        GrpTrainingPlan plan,
+        BooleanSupplier stop,
+        Path out)
         throws IOException {
       trained++;
       this.start = start;
       this.training = training;
       this.validation = validation;
+      this.stop = stop;
       Assert.assertFalse(Files.exists(out), "the trainer writes a new directory");
       if (failTraining) throw new IOException("trainer exploded");
-      if (timeOut) return new GrpGameTrainer.Trained(out, "", 1, 3, 0.5, Double.NaN, 10, true);
+      if (timeOut) return unfinished(GrpGameTrainer.Ending.TIMED_OUT);
+      if (stopped) return unfinished(GrpGameTrainer.Ending.STOPPED);
       Files.createDirectories(out);
       Files.writeString(out.resolve("grp-0000.params"), "weights " + out.getFileName());
-      return new GrpGameTrainer.Trained(out, sha256(out), 3, 30, 0.5, 0.6, 100, false);
+      return new GrpGameTrainer.Trained(out, sha256(out), 3, 30, 0.5, 0.6, 100, GrpGameTrainer.Ending.COMPLETED);
+    }
+
+    /** 締め切りか止める合図で止めた学習（本物と同じく何も書かない）。 */
+    private static GrpGameTrainer.Trained unfinished(GrpGameTrainer.Ending ending) {
+      return new GrpGameTrainer.Trained(null, "", 1, 3, 0.5, Double.NaN, 10, ending);
     }
 
     @Override
@@ -89,27 +102,9 @@ public class GrpRefitterTest {
     }
 
     @Override
-    public GateReport refitGate(GateInput input, EpsilonUtilityProfile profile) {
+    public GateReport gate(GateInput input, EpsilonUtilityProfile profile) {
       gateInput = input;
-      GateResult outcome = input.candidateValid() ? result : GateResult.INVALID_OUTPUT;
-      return report(GateMode.REFIT, outcome);
-    }
-
-    @Override
-    public GateReport firstReplacementGate(
-        PrismConfig config,
-        List<RecordedGame> window,
-        List<RecordedGame> holdout,
-        Path candidate,
-        PhiEntryKind active,
-        EpsilonUtilityProfile profile,
-        Duration remaining)
-        throws IOException {
-      trustWindow = window;
-      trustActive = active;
-      trustRemaining = remaining;
-      if (trustLate) throw new TrustCriteria.DeadlinePassed("the parity twin even ran past the attempt deadline");
-      return report(GateMode.FIRST_REPLACEMENT, result);
+      return report(input.mode(), input.candidateValid() ? result : GateResult.INVALID_OUTPUT);
     }
   }
 
@@ -153,7 +148,8 @@ public class GrpRefitterTest {
     try {
       var steps = new FakeSteps();
       PrismConfig config = GrpFixtures.grpStart(Path.of("/human"));
-      RefitRecord record = GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, steps);
+      RefitRecord record =
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, () -> false, steps).orElseThrow();
       Assert.assertEquals(record.status(), RefitStatus.READY, record.detail());
       Assert.assertEquals(record.id(), "g009-a1");
       Assert.assertEquals(record.window(), new RefitWindow(5, 8, 9));
@@ -169,7 +165,6 @@ public class GrpRefitterTest {
       }
       Assert.assertEquals(steps.gateInput.mode(), GateMode.REFIT);
       Assert.assertTrue(steps.gateInput.candidateValid());
-      Assert.assertNull(steps.gateInput.twin());
       Assert.assertEquals(steps.gateInput.windowGames(), 160);
       Assert.assertEquals(steps.gateInput.holdout().size(), 40);
       // 公開: candidates に現れ、staging に残らず、見本と READY の行がある
@@ -191,13 +186,15 @@ public class GrpRefitterTest {
       Assert.assertEquals(entry.temperatures(), "");
       Assert.assertEquals(entry.calibration(), "");
       // 同じ取り置きの次の試行は次の番号
-      Assert.assertEquals(GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, steps).id(), "g009-a2");
+      Assert.assertEquals(
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, () -> false, steps).orElseThrow().id(),
+          "g009-a2");
     } finally {
       Snapshot.deleteTree(files.run());
     }
   }
 
-  /** 検証の分け方は偶奇に依らない: 偶数だけ・奇数だけの半分の窓でも、それぞれ約 1/16 が検証になる（信頼の条件の双子）。 */
+  /** 検証の分け方は偶奇に依らない: 偶数だけ・奇数だけの半分の窓でも、それぞれ約 1/16 が検証になる。 */
   @Test
   public void eachParityHalfKeepsAValidationShare() {
     List<RecordedGame> games = GrpFixtures.games(0, 3200, 7);
@@ -216,26 +213,33 @@ public class GrpRefitterTest {
       PrismConfig config = GrpFixtures.grpStart(Path.of("/human"));
       var rejected = new FakeSteps();
       rejected.result = GateResult.NOT_BETTER;
-      RefitRecord gate = GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, rejected);
+      RefitRecord gate =
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, () -> false, rejected).orElseThrow();
       Assert.assertEquals(gate.status(), RefitStatus.REJECTED);
       Assert.assertEquals(gate.gate().result(), GateResult.NOT_BETTER);
       var failing = new FakeSteps();
       failing.failTraining = true;
-      RefitRecord failed = GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, failing);
+      RefitRecord failed =
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, () -> false, failing).orElseThrow();
       Assert.assertEquals(failed.status(), RefitStatus.FAILED);
       Assert.assertTrue(failed.detail().contains("trainer exploded"), failed.detail());
       var slow = new FakeSteps();
       slow.timeOut = true;
-      Assert.assertEquals(GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, slow).status(), RefitStatus.TIMEOUT);
+      Assert.assertEquals(
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, () -> false, slow).orElseThrow().status(),
+          RefitStatus.TIMEOUT);
       var malformed = new FakeSteps();
       malformed.malformed = true;
-      RefitRecord invalid = GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, malformed);
+      RefitRecord invalid =
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, () -> false, malformed).orElseThrow();
       Assert.assertEquals(invalid.status(), RefitStatus.REJECTED);
       Assert.assertFalse(malformed.gateInput.candidateValid());
       Assert.assertEquals(invalid.gate().result(), GateResult.INVALID_OUTPUT);
       // 記録のない取り置きは学習しない
       var unrecorded = new FakeSteps();
-      Assert.assertEquals(GrpRefitter.refit(files, config, 12, RefitCause.MANUAL, unrecorded).status(), RefitStatus.FAILED);
+      Assert.assertEquals(
+          GrpRefitter.refit(files, config, 12, RefitCause.MANUAL, () -> false, unrecorded).orElseThrow().status(),
+          RefitStatus.FAILED);
       Assert.assertEquals(unrecorded.trained, 0);
       List<RefitRecord> records = RefitRecord.readAll(files);
       Assert.assertEquals(
@@ -250,34 +254,62 @@ public class GrpRefitterTest {
     }
   }
 
+  /** 止める合図: 学習が止まっても、学習の後・関門の前に立っても、試行を捨てて行も候補・書きかけ・見本も残さない。 */
   @Test
-  public void aScoreOnlyPhiTrainsFromScratchThroughTheTrustGate() throws Exception {
+  public void aStopSignalDiscardsTheAttempt() throws Exception {
+    GrpFiles files = run(grpStart());
+    try {
+      PrismConfig config = GrpFixtures.grpStart(Path.of("/human"));
+      RefitRecord ready =
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.MANUAL, () -> false, new FakeSteps()).orElseThrow();
+      BooleanSupplier stop = () -> true;
+      var stopped = new FakeSteps();
+      stopped.stopped = true;
+      Assert.assertTrue(GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, stop, stopped).isEmpty());
+      Assert.assertSame(stopped.stop, stop, "the trainer sees the stop signal");
+      Assert.assertNull(stopped.gateInput, "no gate after a stopped training");
+      // 学習を終えた後に立った合図は関門の前で見る
+      var finished = new FakeSteps();
+      Assert.assertTrue(GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, stop, finished).isEmpty());
+      Assert.assertEquals(finished.trained, 1);
+      Assert.assertNull(finished.gateInput, "no gate after the stop signal");
+      Assert.assertEquals(RefitRecord.readAll(files).stream().map(RefitRecord::id).toList(), List.of(ready.id()));
+      Assert.assertTrue(Files.exists(files.candidate(ready.id())), "the published candidate stays");
+      Assert.assertFalse(Files.exists(files.candidate("g009-a2")));
+      Assert.assertFalse(Files.exists(files.staging().resolve("g009-a2")));
+      Assert.assertFalse(Files.exists(files.boundary("g009-a2")));
+    } finally {
+      Snapshot.deleteTree(files.run());
+    }
+  }
+
+  @Test
+  public void aScoreOnlyPhiTrainsFromScratchThroughTheFirstReplacementGate() throws Exception {
     GrpFiles files = run(scoreStart());
     try {
       var steps = new FakeSteps();
       PrismConfig config = GrpFixtures.scoreStart();
-      RefitRecord record = GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, steps);
+      RefitRecord record =
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, () -> false, steps).orElseThrow();
       Assert.assertEquals(record.status(), RefitStatus.READY, record.detail());
       Assert.assertEquals(record.init(), GrpInit.SCRATCH);
       Assert.assertNull(steps.start);
-      Assert.assertEquals(steps.trustActive, PhiEntryKind.SCORE_RANK);
-      Assert.assertEquals(steps.trustWindow.size(), 160);
-      Assert.assertNull(steps.gateInput);
-      // 双子は試行の締め切りの残りで学ぶ
-      Assert.assertTrue(
-          !steps.trustRemaining.isNegative() && steps.trustRemaining.compareTo(Duration.ofMinutes(10)) <= 0,
-          steps.trustRemaining.toString());
-      var late = new FakeSteps();
-      late.trustLate = true;
-      RefitRecord timedOut = GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, late);
-      Assert.assertEquals(timedOut.status(), RefitStatus.TIMEOUT);
-      Assert.assertFalse(Files.exists(files.candidate(timedOut.id())));
-      // 信頼の関門を通っても形が崩れていれば入れない
+      // 同じ関門の最初の置き換えの列に、窓の全ての半荘の数と信頼の半荘の数を渡す
+      Assert.assertEquals(steps.gateInput.mode(), GateMode.FIRST_REPLACEMENT);
+      Assert.assertEquals(steps.gateInput.windowGames(), 160);
+      Assert.assertEquals(steps.gateInput.trustGames(), config.grpTrustGames());
+      Assert.assertEquals(steps.gateInput.holdout().size(), 40);
+      Assert.assertEquals(record.gate().mode(), GateMode.FIRST_REPLACEMENT);
+      // 最初の置き換えでも形が崩れていれば関門が拒む
       var malformed = new FakeSteps();
       malformed.malformed = true;
-      RefitRecord invalid = GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, malformed);
+      RefitRecord invalid =
+          GrpRefitter.refit(files, config, HOLDOUT, RefitCause.SCHEDULE, () -> false, malformed).orElseThrow();
       Assert.assertEquals(invalid.status(), RefitStatus.REJECTED);
+      Assert.assertFalse(malformed.gateInput.candidateValid());
+      Assert.assertEquals(invalid.gate().mode(), GateMode.FIRST_REPLACEMENT);
       Assert.assertEquals(invalid.gate().result(), GateResult.INVALID_OUTPUT);
+      Assert.assertFalse(Files.exists(files.candidate(invalid.id())));
     } finally {
       Snapshot.deleteTree(files.run());
     }

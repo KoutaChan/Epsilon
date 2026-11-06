@@ -70,17 +70,12 @@ public record GrpFiles(Path run) {
     return directory().resolve("boundary").resolve(id + ".bin");
   }
 
-  /** 手動の学習の要求（grp-refit が書き、裏の作業が読んで消す）。 */
+  /** 手動の学習の要求（grp-refit が書き、学習の JVM の {@link GrpBackground} が読んで消す）。 */
   public Path refitRequest() {
     return directory().resolve("refit-request.json");
   }
 
-  /** 裏の作業の心拍（錠の種類ごと。長い学習の最中に、採点だけの次の作業が学習の心拍を上書きしない）。 */
-  public Path heartbeat(WorkerLock.Kind kind) {
-    return directory().resolve("worker-" + kind.fileName() + ".heartbeat");
-  }
-
-  /** 裏の作業の錠のファイル。 */
+  /** 記録のファイルの錠（{@link PhiHistory}。phi.jsonl・refits.jsonl の書き手と学習の JVM の印）。 */
   public Path lock(String name) {
     return directory().resolve(name + ".lock");
   }

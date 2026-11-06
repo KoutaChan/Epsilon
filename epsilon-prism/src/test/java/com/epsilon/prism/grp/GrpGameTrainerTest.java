@@ -25,11 +25,10 @@ import org.testng.annotations.Test;
 
 /**
  * trainGames: 1 半荘の全ての接頭辞をまとめた順伝播のロジットと損失は、接頭辞ごとの {@link EpsilonGrpNetwork#forwardLogits} と一致する
- * （損失は 1e-6 以内）。学習は損失を下げ、正確なディレクトリに読める checkpoint を書き、同じ種なら同じ重みになる（1 スレッド）。
+ * （損失は 1e-6 以内）。学習は損失を下げ、正確なディレクトリに読める checkpoint を書き、同じ種なら同じ重みになる。締め切りか止める合図で
+ * 止まったら何も書かない。
  */
 public class GrpGameTrainerTest {
-  private static final int THREADS = 1;
-
   @Test(groups = "native")
   public void gameForwardMatchesPerPrefixForward() {
     List<RecordedGame> games = games(new SplittableRandom(2), 24);
@@ -59,16 +58,17 @@ public class GrpGameTrainerTest {
     List<RecordedGame> games = games(new SplittableRandom(3), 400);
     Path root = Files.createTempDirectory("grp-train");
     List<Double> losses = new ArrayList<>();
-    GrpTrainingPlan plan = new GrpTrainingPlan(GrpInit.SCRATCH, 32, 1e-3, 4, THREADS, 7, Duration.ofMinutes(10));
+    GrpTrainingPlan plan = new GrpTrainingPlan(GrpInit.SCRATCH, 32, 1e-3, 4, 7, Duration.ofMinutes(10));
     GrpGameTrainer.Trained trained =
         GrpGameTrainer.train(
             null,
             games.subList(0, 320),
             games.subList(320, 400),
             plan,
+            () -> false,
             root.resolve("scratch"),
             (epoch, trainLoss, validationLoss, model) -> losses.add(trainLoss));
-    Assert.assertFalse(trained.timedOut());
+    Assert.assertEquals(trained.ending(), GrpGameTrainer.Ending.COMPLETED);
     Assert.assertTrue(losses.getLast() < losses.getFirst(), "training NLL " + losses);
     Assert.assertTrue(EpsilonGrpCheckpointManager.isValidCheckpoint(trained.directory()));
     Assert.assertEquals(trained.sha256(), EpsilonGrpCheckpointManager.checkpointSha256(trained.directory()));
@@ -84,37 +84,45 @@ public class GrpGameTrainerTest {
             trained.directory(),
             games.subList(0, 320),
             List.of(),
-            new GrpTrainingPlan(GrpInit.WARM, 32, 2e-4, 1, THREADS, 7, Duration.ofMinutes(10)),
+            new GrpTrainingPlan(GrpInit.WARM, 32, 2e-4, 1, 7, Duration.ofMinutes(10)),
+            () -> false,
             root.resolve("warm"));
     Assert.assertEquals(warm.epochs(), 1);
     Assert.assertTrue(Double.isNaN(warm.validationLoss()));
     Assert.assertNotEquals(warm.sha256(), trained.sha256());
     // 同じ種・同じ入力なら同じ重み
     GrpGameTrainer.Trained again =
-        GrpGameTrainer.train(null, games.subList(0, 320), games.subList(320, 400), plan, root.resolve("again"));
+        GrpGameTrainer.train(null, games.subList(0, 320), games.subList(320, 400), plan, () -> false, root.resolve("again"));
     Assert.assertEquals(again.sha256(), trained.sha256());
   }
 
   @Test(groups = "native")
-  public void refusesAnExistingOutputAndStopsAtTheDeadline() throws IOException {
+  public void refusesAnExistingOutputAndStopsAtTheDeadlineOrTheStopSignal() throws IOException {
     List<RecordedGame> games = games(new SplittableRandom(4), 64);
     Path root = Files.createTempDirectory("grp-train");
     Path existing = Files.createDirectory(root.resolve("taken"));
-    GrpTrainingPlan plan = new GrpTrainingPlan(GrpInit.SCRATCH, 16, 1e-3, 2, THREADS, 1, Duration.ofMinutes(10));
-    Assert.assertThrows(IOException.class, () -> GrpGameTrainer.train(null, games, List.of(), plan, existing));
+    GrpTrainingPlan plan = new GrpTrainingPlan(GrpInit.SCRATCH, 16, 1e-3, 2, 1, Duration.ofMinutes(10));
+    Assert.assertThrows(IOException.class, () -> GrpGameTrainer.train(null, games, List.of(), plan, () -> false, existing));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> GrpGameTrainer.train(existing, games, List.of(), plan, root.resolve("x")));
+        () -> GrpGameTrainer.train(existing, games, List.of(), plan, () -> false, root.resolve("x")));
     GrpGameTrainer.Trained late =
         GrpGameTrainer.train(
             null,
             games,
             List.of(),
-            new GrpTrainingPlan(GrpInit.SCRATCH, 16, 1e-3, 2, THREADS, 1, Duration.ZERO),
+            new GrpTrainingPlan(GrpInit.SCRATCH, 16, 1e-3, 2, 1, Duration.ZERO),
+            () -> false,
             root.resolve("late"));
-    Assert.assertTrue(late.timedOut());
+    Assert.assertEquals(late.ending(), GrpGameTrainer.Ending.TIMED_OUT);
     Assert.assertNull(late.directory());
     Assert.assertFalse(Files.exists(root.resolve("late")));
+    GrpGameTrainer.Trained stopped =
+        GrpGameTrainer.train(null, games, List.of(), plan, () -> true, root.resolve("stopped"));
+    Assert.assertEquals(stopped.ending(), GrpGameTrainer.Ending.STOPPED);
+    Assert.assertNull(stopped.directory());
+    Assert.assertFalse(Files.exists(root.resolve("stopped")));
+    Assert.assertFalse(Files.exists(root.resolve(".stopped.training")));
   }
 
   /** 接頭辞ごとの {@link EpsilonGrpNetwork#forwardLogits}（詰め物と長さ付きの 1 つのバッチ）。 */

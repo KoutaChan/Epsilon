@@ -119,11 +119,13 @@ public class PrismConfigTest {
     Assert.assertEquals(defaults.grpInit(), GrpInit.WARM);
     Assert.assertEquals(defaults.phiDrift(), PhiDrift.REPORT);
     Assert.assertEquals(defaults.phiShadowReference(), PhiShadowReference.SELF_ONLY);
-    Assert.assertEquals(defaults.grpSwitchLag(), 2);
     Assert.assertEquals(defaults.grpSwitchSettle(), 0.60);
-    Assert.assertEquals(defaults.grpRetryCooldown(), 8);
-    Assert.assertEquals(defaults.grpMaxFailures(), 3);
+    Assert.assertEquals(defaults.grpThreads(), 4);
     Assert.assertEquals(defaults.phiDriftK(), 4.0);
+    Assert.assertEquals(defaults.phiDriftMargin(), 0.5);
+    Assert.assertEquals(defaults.phiDriftSlopeZ(), 8.0);
+    Assert.assertEquals(defaults.phiDriftConsecutive(), 3);
+    Assert.assertEquals(defaults.grpDriftSpacing(), 4);
     Assert.assertEquals(defaults.grpWindow(), 8);
     Assert.assertEquals(defaults.grpTrustGames(), 131072);
     Assert.assertFalse(defaults.scoreOnlyPhi());
@@ -190,13 +192,15 @@ public class PrismConfigTest {
       with(self, "grpRefit", "SCHEDULE", "phiDrift", "REFIT"),
       with(self, "phiMonitor", "RECORD"),
       {"phiMonitor", "OFF"},
-      with(self, "grpSwitchLag", "0"),
       with(self, "grpSwitchSettle", "1"),
-      with(self, "grpRetryCooldown", "-1"),
-      with(self, "grpMaxFailures", "0"),
       with(self, "phiDriftK", "0"),
+      with(self, "phiDriftMargin", "-0.1"),
+      with(self, "phiDriftSlopeZ", "0"),
+      with(self, "phiDriftConsecutive", "0"),
+      with(self, "grpDriftSpacing", "0"),
       with(self, "grpWindow", "0"),
       with(self, "grpTrustGames", "0"),
+      with(self, "grpThreads", "0"),
     };
     for (String[] pairs : wrong) {
       PrismConfig config = config(pairs);

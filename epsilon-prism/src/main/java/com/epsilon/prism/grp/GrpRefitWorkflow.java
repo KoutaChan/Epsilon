@@ -19,8 +19,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 手動の GRP の学習の要求（grp-refit）。run の config.json を読み、grp/refit-request.json に取り置き h（既定は対局の記録がある最新の封印済みの
- * コホート）を {@code {"holdout": h}} で書くだけで、学習は次に起動した裏の作業（{@link GrpWorkerMain}）が学習の錠を取って行う（学習の JVM と
- * 同じ主クラスで重い計算をしない）。前の要求がまだ読まれていなければ置き換える。phiSource = SELF_GRP の run だけ。
+ * コホート）を {@code {"holdout": h}} で書くだけで、学習は学習の JVM の GRP の裏の作業（{@link GrpBackground}）が次に頼まれたとき（次の封印の
+ * 後か起動の初め）に行う。前の要求がまだ読まれていなければ置き換える。phiSource = SELF_GRP の run だけ。
  */
 public final class GrpRefitWorkflow implements CommandWorkflow<Integer> {
   private static final Logger LOG = LoggerFactory.getLogger(GrpRefitWorkflow.class);

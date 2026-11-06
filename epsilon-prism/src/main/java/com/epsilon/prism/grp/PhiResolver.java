@@ -20,8 +20,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 学習の JVM の SELF_GRP の Φ（{@code TrainingResources} が持つ）。反復の始めに phi.jsonl を 1 回読み、効く項目が開いている項目と違えば新しい
- * {@link GrpPhi} を作る（GrpPhi のメモは接頭辞だけで引くので、推論だけを差し替えると古い値を返す）。GRP は項目の正確なパスと sha で読む。
+ * 学習の JVM の SELF_GRP の Φ（{@code TrainingResources} が持つ）。反復の始めに AUTO の切り替えを入れてから phi.jsonl を 1 回読み、効く項目が
+ * 開いている項目と違えば新しい {@link GrpPhi} を作る（GrpPhi のメモは接頭辞だけで引くので、推論だけを差し替えると古い値を返す）。GRP は項目の
+ * 正確なパスと sha で読む。
  * 順伝播の行の数と GrpPhi の引数は FIXED_GRP と同じなので、g000 = 元の GRP ＋ 表のラベルは FIXED_GRP とビットで同じ。
  *
  * <p>失敗の扱い: 反復 t で初めて効く自己対局の候補が読めない・sha が違う・READY でない・境目の点検（{@link BoundaryCheck}）に落ちるなら、
@@ -88,11 +89,17 @@ public final class PhiResolver implements AutoCloseable {
   }
 
   /**
-   * 反復 t の Φ。項目が変わったら前の GrpPhi を閉じて作り直す。
+   * 反復 t の Φ。grpSwitch = AUTO なら先に合格済みの候補を反復 t から入れ（{@link AutoSwitch}）、項目が変わったら前の GrpPhi を閉じて作り直す。
    *
    * @throws IOException 既に効いたことのある項目の GRP が読めないとき（系譜を止める）
    */
   public ActivePhi resolve(int t) throws IOException {
+    AutoSwitch.apply(files, config, t).ifPresent(entry -> LOG.info("t={} AUTO switch to {}", t, entry));
+    return resolveEffective(t);
+  }
+
+  /** 反復 t に効く項目の Φ（境目の点検で拒んだら、前の項目を効かせ直してもう一度）。 */
+  private ActivePhi resolveEffective(int t) throws IOException {
     List<PhiEntry> entries = PhiHistory.readLocked(files);
     PhiEntry current =
         PhiHistory.effectiveAt(entries, t)
@@ -106,7 +113,7 @@ public final class PhiResolver implements AutoCloseable {
         if (!fresh)
           throw new IOException("Φ entry " + current.id() + " in effect at iteration " + t + " cannot be opened", failure);
         reject(entries, current, t, failure);
-        return resolve(t);
+        return resolveEffective(t);
       }
       if (opened != null) opened.close();
       opened = next;
@@ -204,7 +211,7 @@ public final class PhiResolver implements AutoCloseable {
         LOG.warn("t={} could not write the REJECTED line of {}: {}", t, candidate.id(), unwritable.toString());
       }
     }
-    PhiHistory.appendFallback(files, previous.from(t, "rejected " + candidate.id() + " at iteration " + t));
+    PhiHistory.appendAtIterationStart(files, previous.from(t, "rejected " + candidate.id() + " at iteration " + t));
     LOG.warn("t={} rejected Φ candidate {} and kept {}: {}", t, candidate.id(), previous.id(), failure.toString());
   }
 

@@ -9,7 +9,7 @@ public enum PhiMonitor {
   /** 主経路の対局を grp/games/c&lt;t&gt;.bin.gz に記録する（{@link GameLogObserver}）。 */
   RECORD,
 
-  /** 記録し、使用中の Φ と影の Φ で採点して reports/phimon.jsonl に書く（{@link PhiScoring}）。 */
+  /** 記録し、使用中の Φ と影の Φ で採点して reports/phimon.jsonl に書く（{@link GrpBackground}）。 */
   SCORE;
 
   /** 主経路の対局を記録するなら true。 */

@@ -120,15 +120,18 @@ import java.util.Set;
  * @param grpSwitch 合格した候補の入れ方（{@link GrpSwitch}。AUTO は予定表の学習のときだけ、SELF_GRP でなければ PROPOSE）
  * @param grpInit 使用中が GRP のときの学習の始め（{@link GrpInit}）
  * @param grpRefitSchedule 学習の間隔の段: 「始めの反復:間隔」を読点で区切り始めの昇順（{@link #refitInterval}）
- * @param grpSwitchLag AUTO の候補が効く反復 h + L の L（1 以上）
  * @param grpSwitchSettle 切り替えの後、警報で学習しない期間を決める TEMPO の吸収の割合（(0, 1)）
- * @param grpRetryCooldown 関門に落ちた後に次の学習を待つ反復の数（0 以上）
- * @param grpMaxFailures 予定表を止める連続の失敗の数（1 以上）
+ * @param grpDriftSpacing 警報で前倒しする学習を前の試行の取り置きから空ける反復の数（1 以上）
  * @param phiDrift ずれの警報の使い方（{@link PhiDrift}。REFIT ⇔ grpRefit = SCHEDULE_AND_DRIFT、OFF でなければ phiMonitor = SCORE）
- * @param phiDriftK 警報の線の EWMA の標準偏差の倍数 k（正）
+ * @param phiDriftK 警報の ON の線の統計の幅（EWMA の標準偏差）の倍数 k（正）
+ * @param phiDriftMargin 警報の ON の線の床からの割合の下限（0 以上。ON の線 = 床 + max(k·幅, 割合·床)）
+ * @param phiDriftSlopeZ 警報が越えたとみなす区分の傾きの基準からの |z|（正）
+ * @param phiDriftConsecutive 警報を ON にする連続の数（1 以上）
  * @param phiShadowReference 影として採点する Φ（{@link PhiShadowReference}。WITH_ORIGINAL は grpCheckpoint が要る）
  * @param grpWindow 学習の窓のコホートの数の上限（1 以上。{@link RefitWindow}）
  * @param grpTrustGames 点数だけの Φ から最初に置き換えるのに要る窓の半荘の数（1 以上）
+ * @param grpThreads GRP の学習の間の torch の演算スレッドの数（1 以上。プロセス全体に効くので、学習の間は収集の CPU の GRP の推論も
+ *     この数で動く）
  * @param evaluations 系譜の中の評価（{@link Evaluation}。設定の {@code [epsilon.prism.evaluation.<名前>]}、名前の順）
  */
 public record PrismConfig(
@@ -216,15 +219,17 @@ public record PrismConfig(
     GrpSwitch grpSwitch,
     GrpInit grpInit,
     String grpRefitSchedule,
-    int grpSwitchLag,
     double grpSwitchSettle,
-    int grpRetryCooldown,
-    int grpMaxFailures,
+    int grpDriftSpacing,
     PhiDrift phiDrift,
     double phiDriftK,
+    double phiDriftMargin,
+    double phiDriftSlopeZ,
+    int phiDriftConsecutive,
     PhiShadowReference phiShadowReference,
     int grpWindow,
     int grpTrustGames,
+    int grpThreads,
     // 評価
     List<Evaluation> evaluations) {
 
@@ -579,14 +584,18 @@ public record PrismConfig(
         throw new IllegalArgumentException("Invalid grpRefitSchedule " + grpRefitSchedule);
       previous = step.from();
     }
-    if (grpSwitchLag < 1
-        || !(grpSwitchSettle > 0 && grpSwitchSettle < 1)
-        || grpRetryCooldown < 0
-        || grpMaxFailures < 1
+    if (!(grpSwitchSettle > 0 && grpSwitchSettle < 1)
+        || grpDriftSpacing < 1
         || !(phiDriftK > 0)
         || !Double.isFinite(phiDriftK)
+        || !(phiDriftMargin >= 0)
+        || !Double.isFinite(phiDriftMargin)
+        || !(phiDriftSlopeZ > 0)
+        || !Double.isFinite(phiDriftSlopeZ)
+        || phiDriftConsecutive < 1
         || grpWindow < 1
-        || grpTrustGames < 1)
+        || grpTrustGames < 1
+        || grpThreads < 1)
       throw new IllegalArgumentException("Invalid GRP self-play settings");
   }
 

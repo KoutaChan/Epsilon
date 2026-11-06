@@ -21,9 +21,9 @@ import com.epsilon.prism.eval.PlayStats;
 import com.epsilon.prism.grp.ActivePhi;
 import com.epsilon.prism.grp.GameLog;
 import com.epsilon.prism.grp.GameLogObserver;
+import com.epsilon.prism.grp.GrpBackground;
 import com.epsilon.prism.grp.GrpFiles;
 import com.epsilon.prism.grp.PhiEntry;
-import com.epsilon.prism.grp.PhiScoring;
 import com.epsilon.prism.learn.AnchorScores;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
@@ -61,13 +61,13 @@ import org.slf4j.LoggerFactory;
  * 網の系譜（train）。バージョンの網で集めた行で次のバージョンの網を育てる。反復 t ごとに
  *
  * <ol>
- *   <li>Φ: 反復 t の局末の値（{@link TrainingResources#phi}。SELF_GRP なら phi.jsonl の効く項目）。Φ の種類が点数だけの Φ から GRP に変わる
- *       反復では、運の精算の R² を持ち越さない（K′_t = K_t）。
+ *   <li>Φ: 反復 t の局末の値（{@link TrainingResources#phi}。SELF_GRP なら phi.jsonl の効く項目で、grpSwitch = AUTO なら合格済みの候補を
+ *       反復 t から入れてから決める）。Φ の種類が点数だけの Φ から GRP に変わる反復では、運の精算の R² を持ち越さない（K′_t = K_t）。
  *   <li>収集（{@link #collect}）: バージョン t の collectWith の網（{@link NetworkPolicy}）の貪欲に床 ε_b を混ぜた b で全席が
  *       打ち、ラベル行（MAIN・ROLLIN）と根の記録（ROOT）を rows-v2/&lt;t&gt; に書いて封印する。封印済みなら使い回す。phiMonitor が OFF で
  *       なければ、封印の前に主経路の対局を grp/games に記録する（{@link GameLogObserver}。記録はラベル行を変えず、失敗しても系譜を止めない）。
- *       phiMonitor = SCORE なら、封印の後（そこで止まらなければ）採点を頼む（{@link PhiScoring}。裏のスレッドで、待たない。
- *       止まった反復のコホートは次の起動の初めに頼む）。
+ *       封印の後（そこで止まらなければ）GRP の裏の作業を頼む（{@link GrpBackground}。採点と、SELF_GRP なら GRP の学習。裏のスレッドで、
+ *       待たない。止まった反復のコホートは次の起動の初めに頼む）。
  *   <li>運の精算: 生徒の行（コホート t の TRAIN のラベル行と根の記録、{@link Selection#LABELS_AND_ROOTS}）の帳簿で、半荘の偶奇で交差適合
  *       した β_c を当てる（{@link LedgerFit}）。和は収集の書き手が行を書くときに作り（{@link LedgerFit.Stream}）、使い回したコホートでは
  *       読み直して作る（どちらも同じ行を同じ順に足すので、β はビットで同じ）。
@@ -173,21 +173,21 @@ public final class Lineage {
   }
 
   /**
-   * 反復を回す。資源（{@link TrainingResources}）と採点のスレッド（{@link PhiScoring}）は反復をまたいで 1 つずつ持つ。起動の初めに未採点の
+   * 反復を回す。資源（{@link TrainingResources}）と GRP の裏の作業（{@link GrpBackground}）は反復をまたいで 1 つずつ持つ。起動の初めに未採点の
    * コホートの採点を頼み、測っていない評価を測る。報告は 1 反復で 1 行。
    */
   private int loop(int stopAfter) throws Exception {
     State state = loadOrInitialize();
     RunFiles.removeFinishedWork(root.resolve("work"), state.next());
     try (var resources = TrainingResources.open(config, profile, root);
-        var scoring = PhiScoring.start(grpFiles, config)) {
-      scoring.request();
+        var background = GrpBackground.start(grpFiles, config)) {
+      background.request();
       if (!measurePending(state.next(), resources)) return 0;
       for (int done = 0;
           state.next() <= config.iterations() && done < stopAfter && !stop.requested();
           done++) {
         int t = state.next();
-        state = iterate(state, resources, scoring);
+        state = iterate(state, resources, background);
         if (state == null || stop.stopsAt(SafePoint.ITERATED, t)) break;
         if (!measurePending(state.next(), resources)) break;
       }
@@ -196,13 +196,13 @@ public final class Lineage {
   }
 
   /**
-   * 反復 t（クラスの説明の Φ〜評価）。コホートの封印の後に止まる合図が立っていれば、採点を頼まず運の精算の前に止まる（{@link
+   * 反復 t（クラスの説明の Φ〜評価）。コホートの封印の後に止まる合図が立っていれば、裏の作業を頼まず運の精算の前に止まる（{@link
    * SafePoint#SEALED}。再開では封印したコホートを使い回す）。
    *
    * @param state 反復の前の state.json（next = t）
    * @return 反復の後の state.json（封印の後で止まったときは null）
    */
-  private State iterate(State state, TrainingResources resources, PhiScoring scoring)
+  private State iterate(State state, TrainingResources resources, GrpBackground background)
       throws Exception {
     int t = state.next();
     long started = System.nanoTime();
@@ -219,7 +219,7 @@ public final class Lineage {
     // 1. 収集（バージョン t の b）と封印
     Collected collected = collect(t, resources, phi, report);
     if (stop.stopsAt(SafePoint.SEALED, t)) return null;
-    scoring.request();
+    background.request();
     long totalRows = state.totalRows() + collected.rows();
     report.put("collectSeconds", (System.nanoTime() - started) / 1e9);
     report.put("totalRows", totalRows);

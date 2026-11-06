@@ -18,11 +18,12 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 学習の時期（裏の作業が学習の錠を持って呼ぶ）。手動の要求（grp/refit-request.json）が最優先。grpRefit が予定表なら、最新の封印済みの
- * コホート h が前の試行の取り置きから {@link PrismConfig#refitInterval} 以上進んだときに学習する。SCHEDULE_AND_DRIFT なら警報（{@link
- * DriftAlarm}）が ON で、前の切り替えが grpSwitchSettle まで入っていれば前倒しする。関門に落ちた後は grpRetryCooldown 反復待ち、連続の失敗が
- * grpMaxFailures に届いたら予定表を止める（手動の要求だけ受ける）。使用中が点数だけの Φ なら、窓の半荘が grpTrustGames に届くまで学習しない
- * （{@link TrustCriteria#ready}）。
+ * 学習の時期（学習の JVM の {@link GrpBackground} のスレッドが呼ぶ）。手動の要求（grp/refit-request.json）が最優先。grpRefit が予定表なら、
+ * 最新の封印済みのコホート h が前の試行の取り置きから {@link PrismConfig#refitInterval} 以上進んだときに学習する。SCHEDULE_AND_DRIFT なら
+ * 警報（{@link DriftAlarm}）が ON で、前の切り替えが grpSwitchSettle まで入り、前の試行の取り置きから grpDriftSpacing 反復空いていれば
+ * 前倒しする。関門に落ちても待たず、予定表も止めない
+ * （落ちたのは使用中より当たらなかっただけで、次の時期か警報でまた学ぶ）。使用中が点数だけの Φ なら、窓の半荘が grpTrustGames に届くまで
+ * 学習しない。
  *
  * <p>切り替えの吸収: 項目が効き始めた反復 e から反復 t までの TEMPO の吸収の割合 1 − Π_{s=e}^{t} (1 − K′_s)。K′_s は iterations.jsonl の
  * filter.gain（記録のない反復は 0 と数える）。最初の項目（切り替えのない系譜）は吸収済み。
@@ -54,7 +55,8 @@ public final class RefitScheduler {
    * @param lastSealed 対局の記録がある最新の封印済みのコホート h
    * @param attempts 試行（最初に現れた順）
    * @param active 反復 h + 1 に効く項目（FIXED_GRP の系譜では null）
-   * @param pendingSwitch AUTO で、READY の候補がまだ phi.jsonl に入っていなければ true
+   * @param pendingSwitch AUTO で、READY の候補がまだ phi.jsonl に入っていなければ true（入るまで予定表でも警報でも学習しない。次の候補は
+   *     入る前の項目を相手に学ぶことになる）
    * @param driftOn 警報が ON なら true
    * @param absorbed active の吸収の割合
    * @param windowGames 取り置き h の窓の、対局の記録がある半荘の数
@@ -123,27 +125,20 @@ public final class RefitScheduler {
    */
   static Optional<Decision> schedule(PrismConfig config, Inputs in) {
     int h = in.lastSealed();
-    if (!config.grpRefit().scheduled() || !in.holdoutRecorded()) return Optional.empty();
+    if (!config.grpRefit().scheduled() || !in.holdoutRecorded() || in.pendingSwitch()) return Optional.empty();
     int interval = config.refitInterval(h);
     if (interval == 0 || RefitWindow.ending(h, config.grpWindow()).isEmpty()) return Optional.empty();
     boolean scoreOnly = in.active() != null && in.active().kind().scoreBased();
-    if (scoreOnly && !TrustCriteria.ready(config, in.windowGames())) return Optional.empty();
-    if (failureStreak(in.attempts()) >= config.grpMaxFailures()) return Optional.empty();
+    if (scoreOnly && in.windowGames() < config.grpTrustGames()) return Optional.empty();
     Attempt last = in.attempts().isEmpty() ? null : in.attempts().getLast();
     if (last != null && h <= last.holdout()) return Optional.empty();
-    if (last != null && last.status().failure()) {
-      // 落ちた後は待ちだけで決め、警報でも前倒ししない
-      return h >= last.holdout() + Math.max(1, config.grpRetryCooldown())
-          ? Optional.of(new Decision(h, RefitCause.SCHEDULE))
-          : Optional.empty();
-    }
     if (last == null || h - last.holdout() >= interval)
       return Optional.of(new Decision(h, RefitCause.SCHEDULE));
     if (config.grpRefit().drift()
         && in.driftOn()
         && !scoreOnly
-        && !in.pendingSwitch()
-        && in.absorbed() >= config.grpSwitchSettle())
+        && in.absorbed() >= config.grpSwitchSettle()
+        && (last == null || h - last.holdout() >= config.grpDriftSpacing()))
       return Optional.of(new Decision(h, RefitCause.DRIFT));
     return Optional.empty();
   }
@@ -166,13 +161,6 @@ public final class RefitScheduler {
     double remaining = 1;
     for (int t = from; t <= to; t++) remaining *= 1 - gains.getOrDefault(t, 0.0);
     return 1 - remaining;
-  }
-
-  /** 末尾から続く失敗の数。 */
-  static int failureStreak(List<Attempt> attempts) {
-    int streak = 0;
-    for (int i = attempts.size() - 1; i >= 0 && attempts.get(i).status().failure(); i--) streak++;
-    return streak;
   }
 
   /** refits.jsonl の行を試行ごとにまとめる（最初に現れた順、状態は最後の行）。 */

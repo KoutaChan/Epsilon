@@ -12,9 +12,10 @@ import java.util.Map;
 import java.util.SplittableRandom;
 
 /**
- * 候補の GRP の関門。線はコードの定数（設定の鍵にしない）。REFIT の列は良くなった・順位の当てはまり・変化の幅・単調・傾き・形、
- * FIRST_REPLACEMENT の列は絶対の較正（局 × Φ 区間の残差の重み付き RMS が雑音の床 + 余裕以下で、大きい升目がない）・安定（偶奇の 2 候補の
- * ΔΦ の RMS）・単調・形・窓の半荘の数。
+ * 候補の GRP の関門。線はコードの定数（設定の鍵にしない）。入れるかは、取り置きで候補が使用中の Φ より当たる（対の MSE）・単調・形（最初の
+ * 置き換えでは加えて窓の半荘の数）だけで決める。変化の幅・差の変化・傾き・順位の当てはまり（NLL・4 位の ECE）・絶対の較正（局 × Φ 区間の
+ * 残差の重み付き RMS と雑音の床、大きい升目の数）は記録だけする（変化の大きさで拒むと、ずれた GRP ほど直せなくなる）。最初の置き換えでは
+ * 点数だけの Φ の順位分布が 0/1 なので NLL と ECE を測らない。
  *
  * <p>点を動かす調べ（{@link Probe}）: 取り置きから決まった種で選んだ局末で、次局の点数を席 j から i へ δ ∈ {1000, 4000, 12000} 点動かした
  * 公開系列（最後の局境界だけを替える）を評価する。逆に動くのは Φ_i が下がるか Φ_j が上がること（{@value #MONOTONIC_TOLERANCE} を超えて）。
@@ -24,26 +25,11 @@ public final class GateEvaluator {
   /** 良くなった: 対の MSE の差がこの SE の倍数より下。 */
   static final double BETTER_SE = 2;
 
-  /** 順位の当てはまり: NLL の悪化の上限（対の差の SE の倍数）と 4 位の ECE の悪化の上限。 */
-  static final double NLL_SE = 1, FOURTH_ECE_WORSENING = 0.005;
-
-  /** 変化の幅: 席局あたりの平均 |ΔΦ|、局ごとの平均 |ΔΦ|、局ごとの 99% 点、差の変化の上限。 */
-  static final double MEAN_SHIFT = 0.03, GROUP_MEAN_SHIFT = 0.05, GROUP_P99_SHIFT = 0.20, DIFF_SHIFT = 0.02;
-
   /** 単調: 逆に動く率の上限 max(倍率 × 使用中, 床)。点数だけの Φ からは床だけ。 */
   static final double MONOTONIC_FACTOR = 1.5, MONOTONIC_FLOOR = 0.005;
 
-  /** 傾き: 4000 点の傾きの比の範囲。 */
-  static final double SLOPE_LOW = 0.67, SLOPE_HIGH = 1.5;
-
-  /** 絶対の較正: 重み付き RMS の雑音の床からの余裕、大きいとみなす升目の |r| と z。 */
-  static final double CALIBRATION_MARGIN = 0.005, CELL_LIMIT = 0.03, CELL_Z = 3;
-
-  /** 安定: 偶奇の 2 候補の ΔΦ の RMS の上限。 */
-  static final double TWIN_RMS = 0.015;
-
-  /** 安定の数値の名前（{@link TrustCriteria#merge} が 2 回目の関門から読む）。 */
-  static final String TWIN_RMS_MEASURE = "twinRms";
+  /** 絶対の較正の記録: 大きいとみなす升目の |r| と z。 */
+  static final double CELL_LIMIT = 0.03, CELL_Z = 3;
 
   /** 逆に動いたとみなす Φ の変化の大きさ（float の丸めより大きく）。 */
   static final double MONOTONIC_TOLERANCE = 1e-6;
@@ -59,12 +45,9 @@ public final class GateEvaluator {
    * 関門を通す。取り置きに半荘が続く局末がなければ NOT_ENOUGH_DATA だけを返す（測りは空、active・candidate は null）。
    *
    * @throws IOException Φ が評価できないとき
-   * @throws IllegalArgumentException FIRST_REPLACEMENT で twin が null のとき
    */
   public static GateReport evaluate(GateInput input, EpsilonUtilityProfile profile)
       throws IOException {
-    if (input.mode() == GateMode.FIRST_REPLACEMENT && input.twin() == null)
-      throw new IllegalArgumentException("FIRST_REPLACEMENT needs the twin candidate");
     List<RecordedGame> holdout = input.holdout().stream().filter(game -> game.continuingHandEnds() > 0).toList();
     if (holdout.isEmpty())
       return new GateReport(
@@ -112,28 +95,18 @@ public final class GateEvaluator {
         measures.put("monotonicLine", monotonicLine);
         measures.put("slopeRatio", slopeRatio);
         if (!(mse.mseDifference() < -BETTER_SE * mse.standardError())) failures.add(GateResult.NOT_BETTER);
-        if (!(nll.mseDifference() <= NLL_SE * nll.standardError()) || !(eceWorsening <= FOURTH_ECE_WORSENING))
-          failures.add(GateResult.RANK_FIT_WORSE);
-        if (!(shift.mean <= MEAN_SHIFT)
-            || !(shift.maxGroupMean <= GROUP_MEAN_SHIFT)
-            || !(shift.maxGroupP99 <= GROUP_P99_SHIFT)
-            || !(diffShift <= DIFF_SHIFT)) failures.add(GateResult.SHIFT_TOO_LARGE);
         if (!(monotonic <= monotonicLine)) failures.add(GateResult.MONOTONIC_VIOLATIONS);
-        if (!(slopeRatio >= SLOPE_LOW && slopeRatio <= SLOPE_HIGH)) failures.add(GateResult.SLOPE_OUT_OF_RANGE);
       }
       case FIRST_REPLACEMENT -> {
+        CellStats.Paired mse = CellStats.paired(holdout, active, candidate, profile);
         CellStats.Absolute calibration = CellStats.absolute(holdout, candidate, profile, CELL_LIMIT, CELL_Z);
-        PhiValues twin = finite(input.twin(), holdout);
-        double twinRms = twin == null ? Double.NaN : rms(candidate, twin);
+        measures.put("mseDifference", mse.mseDifference());
+        measures.put("mseDifferenceSe", mse.standardError());
         measures.put("calibrationRms", calibration.rms());
         measures.put("calibrationFloor", calibration.floor());
         measures.put("calibrationFlagged", (double) calibration.flagged());
-        measures.put(TWIN_RMS_MEASURE, twinRms);
         measures.put("monotonicLine", MONOTONIC_FLOOR);
-        if (twin == null) failures.add(GateResult.INVALID_OUTPUT);
-        if (!(calibration.rms() <= calibration.floor() + CALIBRATION_MARGIN) || calibration.flagged() > 0)
-          failures.add(GateResult.RANK_FIT_WORSE);
-        if (!(twinRms <= TWIN_RMS)) failures.add(GateResult.UNSTABLE);
+        if (!(mse.mseDifference() < -BETTER_SE * mse.standardError())) failures.add(GateResult.NOT_BETTER);
         if (!(monotonic <= MONOTONIC_FLOOR)) failures.add(GateResult.MONOTONIC_VIOLATIONS);
         if (input.windowGames() < input.trustGames()) failures.add(GateResult.NOT_ENOUGH_DATA);
       }

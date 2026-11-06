@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * grp/refits.jsonl の 1 行: GRP の学習の試行 1 回か、その候補の扱いの変化（境目の点検の REJECTED、AUTO の SKIPPED_NOT_READY）。同じ id の後の
+ * grp/refits.jsonl の 1 行: GRP の学習の試行 1 回か、その候補の扱いの変化（境目の点検の REJECTED、AUTO の STALE）。同じ id の後の
  * 行が前の行に勝つ（{@link #latest}）。
  *
  * @param id 試行の id（g&lt;k&gt;-a&lt;n&gt;。k は窓の取り置きのコホート、n は試行の番号）

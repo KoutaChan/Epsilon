@@ -65,22 +65,13 @@ public class RefitSchedulerTest {
     List<RefitRecord> records = new ArrayList<>();
     records.add(record("g100-a1", RefitStatus.READY, window));
     records.add(record("g108-a1", RefitStatus.REJECTED, new RefitWindow(100, 107, 108)));
-    records.add(record("g100-a1", RefitStatus.SKIPPED_NOT_READY, window));
+    records.add(record("g100-a1", RefitStatus.STALE, window));
     List<RefitScheduler.Attempt> attempts = RefitScheduler.attempts(records);
     Assert.assertEquals(
         attempts,
         List.of(
-            new RefitScheduler.Attempt("g100-a1", 100, RefitStatus.SKIPPED_NOT_READY),
+            new RefitScheduler.Attempt("g100-a1", 100, RefitStatus.STALE),
             new RefitScheduler.Attempt("g108-a1", 108, RefitStatus.REJECTED)));
-    Assert.assertEquals(RefitScheduler.failureStreak(attempts), 1);
-    Assert.assertEquals(
-        RefitScheduler.failureStreak(
-            List.of(
-                attempt(1, RefitStatus.FAILED),
-                attempt(2, RefitStatus.READY),
-                attempt(3, RefitStatus.TIMEOUT),
-                attempt(4, RefitStatus.REJECTED))),
-        2);
   }
 
   @Test
@@ -91,6 +82,9 @@ public class RefitSchedulerTest {
     RefitScheduler.Attempt ready = attempt(100, RefitStatus.READY);
     Assert.assertEquals(RefitScheduler.schedule(config, inputs(107, GRP, false, 1, ready)), Optional.empty());
     Assert.assertEquals(RefitScheduler.schedule(config, inputs(108, GRP, false, 1, ready)), decision(108, RefitCause.SCHEDULE));
+    // 合格した候補がまだ入っていなければ、入るまで学ばない
+    var waiting = new RefitScheduler.Inputs(108, List.of(ready), GRP, true, false, 1, 1L << 20, true);
+    Assert.assertEquals(RefitScheduler.schedule(config, waiting), Optional.empty());
     // 反復 120 以降は 48 ごと
     RefitScheduler.Attempt late = attempt(500, RefitStatus.READY);
     Assert.assertEquals(RefitScheduler.schedule(config, inputs(547, GRP, false, 1, late)), Optional.empty());
@@ -108,31 +102,35 @@ public class RefitSchedulerTest {
   }
 
   @Test
-  public void failuresWaitForTheCooldownAndStopTheSchedule() {
+  public void failuresNeitherWaitNorStopTheSchedule() {
     PrismConfig config = config(DRIFT);
     RefitScheduler.Attempt failed = attempt(100, RefitStatus.REJECTED);
-    Assert.assertEquals(RefitScheduler.schedule(config, inputs(107, GRP, true, 1, failed)), Optional.empty());
-    Assert.assertEquals(RefitScheduler.schedule(config, inputs(108, GRP, true, 1, failed)), decision(108, RefitCause.SCHEDULE));
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(107, GRP, false, 1, failed)), Optional.empty());
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(108, GRP, false, 1, failed)), decision(108, RefitCause.SCHEDULE));
+    // 落ちた後も警報なら時期の前に学ぶ（前の試行から grpDriftSpacing = 4 反復空けて）
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(103, GRP, true, 1, failed)), Optional.empty());
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(104, GRP, true, 1, failed)), decision(104, RefitCause.DRIFT));
+    // 何度続けて落ちても予定表は止まらない（反復 120 以降は 48 ごと）
     RefitScheduler.Attempt[] three = {
       attempt(100, RefitStatus.REJECTED), attempt(108, RefitStatus.TIMEOUT), attempt(116, RefitStatus.FAILED)
     };
-    Assert.assertEquals(RefitScheduler.schedule(config, inputs(300, GRP, true, 1, three)), Optional.empty());
-    PrismConfig noCooldown = config(with(SCHEDULED, "grpRetryCooldown", "0"));
-    Assert.assertEquals(
-        RefitScheduler.schedule(noCooldown, inputs(101, GRP, false, 1, failed)), decision(101, RefitCause.SCHEDULE));
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(163, GRP, false, 1, three)), Optional.empty());
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(164, GRP, false, 1, three)), decision(164, RefitCause.SCHEDULE));
   }
 
   @Test
   public void driftBringsTheRefitForwardOnlyWhenSettled() {
     PrismConfig config = config(DRIFT);
     RefitScheduler.Attempt ready = attempt(100, RefitStatus.READY);
-    Assert.assertEquals(RefitScheduler.schedule(config, inputs(103, GRP, true, 0.7, ready)), decision(103, RefitCause.DRIFT));
-    Assert.assertEquals(RefitScheduler.schedule(config, inputs(103, GRP, true, 0.5, ready)), Optional.empty());
-    Assert.assertEquals(RefitScheduler.schedule(config, inputs(103, GRP, false, 0.7, ready)), Optional.empty());
-    var pending = new RefitScheduler.Inputs(103, List.of(ready), GRP, true, true, 0.7, 1L << 20, true);
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(104, GRP, true, 0.7, ready)), decision(104, RefitCause.DRIFT));
+    // 前の試行から grpDriftSpacing 反復空いていなければ前倒ししない
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(103, GRP, true, 0.7, ready)), Optional.empty());
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(104, GRP, true, 0.5, ready)), Optional.empty());
+    Assert.assertEquals(RefitScheduler.schedule(config, inputs(104, GRP, false, 0.7, ready)), Optional.empty());
+    var pending = new RefitScheduler.Inputs(104, List.of(ready), GRP, true, true, 0.7, 1L << 20, true);
     Assert.assertEquals(RefitScheduler.schedule(config, pending), Optional.empty());
     // SCHEDULE だけなら警報は前倒ししない
-    Assert.assertEquals(RefitScheduler.schedule(config(SCHEDULED), inputs(103, GRP, true, 0.7, ready)), Optional.empty());
+    Assert.assertEquals(RefitScheduler.schedule(config(SCHEDULED), inputs(104, GRP, true, 0.7, ready)), Optional.empty());
   }
 
   @Test

@@ -6,7 +6,6 @@ import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
-import ai.djl.pytorch.jni.JniUtils;
 import ai.djl.training.DefaultTrainingConfig;
 import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
@@ -29,6 +28,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,7 +60,7 @@ public final class GrpGameTrainer {
    * @param trainLoss 最後の epoch の学習の NLL（局末あたり）
    * @param validationLoss 検証の半荘の NLL（局末あたり。検証がなければ NaN）
    * @param gamesPerSecond 学習の歩だけの速さ（半荘/秒。検証と保存の時間は入れない）
-   * @param timedOut 締め切りで止めたなら true（directory は書かない）
+   * @param ending 学習の終わり方（COMPLETED のときだけ directory を書く）
    */
   public record Trained(
       Path directory,
@@ -70,7 +70,19 @@ public final class GrpGameTrainer {
       double trainLoss,
       double validationLoss,
       double gamesPerSecond,
-      boolean timedOut) {}
+      Ending ending) {}
+
+  /** 学習の終わり方。 */
+  public enum Ending {
+    /** epoch の上限か早めの打ち切りまで回して保存した。 */
+    COMPLETED,
+
+    /** 締め切りを過ぎて止めた。 */
+    TIMED_OUT,
+
+    /** 止める合図で止めた。 */
+    STOPPED
+  }
 
   /** epoch の終わりの通知。 */
   @FunctionalInterface
@@ -93,6 +105,7 @@ public final class GrpGameTrainer {
    * @param start 温めの始めの GRP の正確なディレクトリ（SCRATCH なら null）
    * @param training 学習の半荘
    * @param validation 早めの打ち切りに使う検証の半荘（空なら epoch の上限まで回す）
+   * @param stop 止める合図（毎歩の前に見る。立てば締め切りと同じく out を書かずに止める）
    * @throws IOException 始めの GRP が読めないか、保存できないとき
    */
   public static Trained train(
@@ -100,20 +113,19 @@ public final class GrpGameTrainer {
       List<RecordedGame> training,
       List<RecordedGame> validation,
       GrpTrainingPlan plan,
+      BooleanSupplier stop,
       Path out)
       throws IOException {
-    return train(start, training, validation, plan, out, EpochListener.NONE);
+    return train(start, training, validation, plan, stop, out, EpochListener.NONE);
   }
 
-  /**
-   * {@link #train(Path, List, List, GrpTrainingPlan, Path)} に epoch ごとの通知を足したもの。torch の演算スレッドは学習のあいだだけ
-   * plan.threads() にし、終わったら元に戻す。
-   */
+  /** {@link #train(Path, List, List, GrpTrainingPlan, BooleanSupplier, Path)} に epoch ごとの通知を足したもの。 */
   public static Trained train(
       Path start,
       List<RecordedGame> training,
       List<RecordedGame> validation,
       GrpTrainingPlan plan,
+      BooleanSupplier stop,
       Path out,
       EpochListener listener)
       throws IOException {
@@ -125,8 +137,6 @@ public final class GrpGameTrainer {
     if (games.isEmpty()) throw new IllegalArgumentException("No GRP training game has a continuing hand end");
     Path staging = out.resolveSibling("." + out.getFileName() + ".training");
     deleteTree(staging);
-    int threads = JniUtils.getNumThreads();
-    JniUtils.setNumThreads(plan.threads());
     try {
       Engine.getEngine("PyTorch").setRandomSeed(Long.hashCode(plan.seed()));
       try (Model model =
@@ -137,10 +147,9 @@ public final class GrpGameTrainer {
           Trainer trainer = model.newTrainer(configuration(model, plan));
           EpsilonGrpTrainer saver =
               new EpsilonGrpTrainer(model, plan.batchGames(), (float) plan.learningRate(), WEIGHT_DECAY, GRAD_CLIP)) {
-        return loop(model, trainer, saver, games, held, plan, staging, out, listener);
+        return loop(model, trainer, saver, games, held, plan, stop, staging, out, listener);
       }
     } finally {
-      JniUtils.setNumThreads(threads);
       deleteTree(staging);
     }
   }
@@ -152,6 +161,7 @@ public final class GrpGameTrainer {
       List<RecordedGame> games,
       List<RecordedGame> held,
       GrpTrainingPlan plan,
+      BooleanSupplier stop,
       Path staging,
       Path out,
       EpochListener listener)
@@ -164,15 +174,19 @@ public final class GrpGameTrainer {
     double best = Double.POSITIVE_INFINITY, trainLoss = Double.NaN;
     int epochs = 0, stale = 0;
     long steps = 0, seen = 0, stepNanos = 0;
-    boolean timedOut = false;
+    Ending ending = Ending.COMPLETED;
     training:
     for (int epoch = 1; epoch <= plan.maxEpochs(); epoch++) {
       Collections.shuffle(order, shuffle);
       double sum = 0;
       long rows = 0;
       for (int from = 0; from < order.size(); from += plan.batchGames()) {
+        if (stop.getAsBoolean()) {
+          ending = Ending.STOPPED;
+          break training;
+        }
         if (System.nanoTime() > deadline) {
-          timedOut = true;
+          ending = Ending.TIMED_OUT;
           break training;
         }
         List<RecordedGame> batch = order.subList(from, Math.min(order.size(), from + plan.batchGames()));
@@ -209,8 +223,8 @@ public final class GrpGameTrainer {
       }
     }
     double speed = seen / (stepNanos / 1e9);
-    if (timedOut)
-      return new Trained(null, "", epochs, steps, trainLoss, held.isEmpty() ? Double.NaN : best, speed, true);
+    if (ending != Ending.COMPLETED)
+      return new Trained(null, "", epochs, steps, trainLoss, held.isEmpty() ? Double.NaN : best, speed, ending);
     if (held.isEmpty()) EpsilonGrpCheckpointManager.save(model, saver, staging, (int) steps, 0);
     Files.move(staging, out, StandardCopyOption.ATOMIC_MOVE);
     return new Trained(
@@ -221,7 +235,7 @@ public final class GrpGameTrainer {
         trainLoss,
         held.isEmpty() ? Double.NaN : best,
         speed,
-        false);
+        Ending.COMPLETED);
   }
 
   /** 半荘の列の局末あたりの最終順位の NLL（学習の損失と同じ式、勾配なし）。 */

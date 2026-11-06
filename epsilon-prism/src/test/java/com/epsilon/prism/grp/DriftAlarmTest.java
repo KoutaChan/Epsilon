@@ -11,7 +11,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class DriftAlarmTest {
-  private static final double K = 4;
+  /** 統計の線だけの緩い線（割合の下限なし、傾きの |z| 3.2、連続 2）。 */
+  private static final DriftAlarm.Lines K = new DriftAlarm.Lines(4, 0, 3.2, 2);
   private static final DriftAlarm.Baseline PRODUCTION = DriftAlarm.Baseline.PRODUCTION;
 
   private static PhiMonitorLine line(int cohort, String phi, double dSpg, double slopeZ, long games) {
@@ -28,12 +29,42 @@ public class DriftAlarmTest {
   }
 
   @Test
+  public void theMarginKeepsSmallDriftsQuiet() {
+    var strict = new DriftAlarm.Lines(4, 0.5, 8, 3);
+    double drifted = DriftAlarm.FLOOR * 1.25;
+    DriftAlarm.State loose = null, held = null;
+    for (int t = 1; t <= 40; t++) {
+      loose = DriftAlarm.next(loose, line(t, drifted), K, PRODUCTION, true);
+      held = DriftAlarm.next(held, line(t, drifted), strict, PRODUCTION, true);
+    }
+    Assert.assertTrue(loose.on(), "the statistical line alone turns on at +25%");
+    Assert.assertFalse(held.on(), "a +25% drift stays under the 50% margin");
+    Assert.assertEquals(held.onLine(), DriftAlarm.FLOOR * 1.5, 1e-15);
+    Assert.assertEquals(held.offLine(), DriftAlarm.FLOOR * 1.25, 1e-15);
+  }
+
+  @Test
+  public void theSlopeLineAndTheStreakComeFromTheSettings() {
+    var strict = new DriftAlarm.Lines(4, 0.5, 8, 3);
+    DriftAlarm.State tilted = null;
+    for (int t = 1; t <= 2; t++)
+      tilted = DriftAlarm.next(tilted, line(t, "g000", DriftAlarm.FLOOR, 9, 65536), strict, PRODUCTION, true);
+    Assert.assertFalse(tilted.on(), "two tilted cohorts are not enough");
+    tilted = DriftAlarm.next(tilted, line(3, "g000", DriftAlarm.FLOOR, 9, 65536), strict, PRODUCTION, true);
+    Assert.assertTrue(tilted.on(), "the third tilted cohort turns it on");
+    DriftAlarm.State mild = null;
+    for (int t = 1; t <= 5; t++)
+      mild = DriftAlarm.next(mild, line(t, "g000", DriftAlarm.FLOOR, 7, 65536), strict, PRODUCTION, true);
+    Assert.assertEquals(mild.streak(), 0, "|z| 7 is within the slope line 8");
+  }
+
+  @Test
   public void linesFollowTheEwmaVariance() {
     double sd = DriftAlarm.COHORT_SD;
     DriftAlarm.State first = DriftAlarm.next(null, line(10, 9e-5), K, PRODUCTION, true);
     Assert.assertEquals(first.dSpgEwma(), 9e-5, 0);
     Assert.assertEquals(first.offLine(), DriftAlarm.FLOOR + 2 * sd, 1e-15);
-    Assert.assertEquals(first.onLine(), DriftAlarm.FLOOR + K * sd, 1e-15);
+    Assert.assertEquals(first.onLine(), DriftAlarm.FLOOR + K.k() * sd, 1e-15);
     DriftAlarm.State second = DriftAlarm.next(first, line(11, 7e-5), K, PRODUCTION, true);
     double lambda = PhiMonitorLine.EWMA_WEIGHT;
     Assert.assertEquals(second.dSpgEwma(), (1 - lambda) * 9e-5 + lambda * 7e-5, 1e-18);
@@ -126,7 +157,7 @@ public class DriftAlarmTest {
     Assert.assertEquals(state.maxSlopeZ(), 0, 1e-9);
     // 傾きが基準から離れれば数える
     DriftAlarm.State tilted = DriftAlarm.next(state, selfLine(41, 1.3e-4, 1.02, 0.002), K, baseline, true);
-    Assert.assertTrue(tilted.maxSlopeZ() > DriftAlarm.SLOPE_Z, String.valueOf(tilted.maxSlopeZ()));
+    Assert.assertTrue(tilted.maxSlopeZ() > K.slopeZ(), String.valueOf(tilted.maxSlopeZ()));
     Assert.assertEquals(tilted.streak(), 1);
     // 床から大きく離れれば ON
     DriftAlarm.State high = state;
@@ -147,7 +178,7 @@ public class DriftAlarmTest {
   public void updateAppendsOneLinePerCohort() throws IOException {
     Path run = Files.createTempDirectory("drift");
     GrpFiles files = new GrpFiles(run);
-    PrismConfig fixed = RefitSchedulerTest.config();
+    PrismConfig fixed = RefitSchedulerTest.config("phiDriftConsecutive", "2");
     Assert.assertFalse(DriftAlarm.isOn(files));
     DriftAlarm.update(files, fixed, line(5, "fixed", 1e-3, 0, 65536));
     DriftAlarm.State second = DriftAlarm.update(files, fixed, line(6, "fixed", 1e-3, 0, 65536));

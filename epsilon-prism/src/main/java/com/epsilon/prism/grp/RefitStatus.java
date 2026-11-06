@@ -15,11 +15,6 @@ public enum RefitStatus {
   /** 学習か公開が例外で失敗した。 */
   FAILED,
 
-  /** AUTO の候補が効く反復 h + L の時点で READY でなかったので入れなかった。 */
-  SKIPPED_NOT_READY;
-
-  /** 予定表の連続の失敗（grpMaxFailures）に数えるなら true。 */
-  public boolean failure() {
-    return this == REJECTED || this == TIMEOUT || this == FAILED;
-  }
+  /** 候補を学んだ後に phi.jsonl の最後の項目が変わった（巻き戻し・手動の切り替え・より新しい候補）ので、AUTO が入れなかった。 */
+  STALE
 }

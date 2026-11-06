@@ -45,7 +45,6 @@ public class GrpStudyBench {
   private static final String GRP_PROPERTY = "prism.grp.study.grp";
   private static final String OUT_PROPERTY = "prism.grp.study.out";
   private static final String GAMES_PROPERTY = "prism.grp.study.games";
-  private static final String THREADS_PROPERTY = "prism.grp.study.threads";
   private static final String SCORE_ONLY_PROPERTY = "prism.grp.study.scoreOnly";
   private static final EpsilonUtilityProfile PROFILE = EpsilonUtilityProfile.TENHOU;
   private static final GrpGameTrainer.EpochListener NONE = GrpGameTrainer.EpochListener.NONE;
@@ -76,7 +75,6 @@ public class GrpStudyBench {
 
   private final JsonObject results = new JsonObject();
   private Path out;
-  private int threads;
 
   @Test
   public void study() throws Exception {
@@ -84,7 +82,6 @@ public class GrpStudyBench {
     Path calibrationFile = required(CALIBRATION_PROPERTY);
     Path grp = required(GRP_PROPERTY);
     out = required(OUT_PROPERTY);
-    threads = Integer.parseInt(System.getProperty(THREADS_PROPERTY, "4"));
     Files.createDirectories(out);
     long started = System.nanoTime();
     AuditCsvGames audit = AuditCsvGames.read(csv);
@@ -94,8 +91,8 @@ public class GrpStudyBench {
     List<RecordedGame> even = games.stream().filter(game -> game.gameId() % 2 == 0).toList();
     List<RecordedGame> odd = games.stream().filter(game -> game.gameId() % 2 != 0).toList();
     int handEnds = handEnds(games);
-    line("data", "games %d hand ends %d (even %d odd %d) torch threads %s training threads %d",
-        games.size(), handEnds, even.size(), odd.size(), System.getProperty("ai.djl.pytorch.num_threads"), threads);
+    line("data", "games %d hand ends %d (even %d odd %d) torch threads %s",
+        games.size(), handEnds, even.size(), odd.size(), System.getProperty("ai.djl.pytorch.num_threads"));
 
     PhiValues a;
     try (CheckpointPhi original = CheckpointPhi.open(grp, new double[0], null, PROFILE)) {
@@ -392,17 +389,29 @@ public class GrpStudyBench {
       fromOdd = oddPhi.gameValues(games);
       diff = probe.diffShifts(probe.respond(evenPhi), probe.respond(oddPhi));
     }
-    double rms = GateEvaluator.rms(fromEven, fromOdd);
+    double rms = rms(fromEven, fromOdd);
     PhiValues cross = merge(games, subset(games, fromOdd, true), subset(games, fromEven, false));
     report(name, games, cross);
-    line("record", "%s odd/even ΔΦ RMS %.5f (stability line %.3f); difference-change"
-            + " floor δ=1000 %.5f δ=4000 %.5f δ=12000 %.5f (line %.3f)",
-        name, rms, GateEvaluator.TWIN_RMS, diff[0], diff[1], diff[2], GateEvaluator.DIFF_SHIFT);
+    line("record", "%s odd/even ΔΦ RMS %.5f; difference-change floor δ=1000 %.5f δ=4000 %.5f δ=12000 %.5f",
+        name, rms, diff[0], diff[1], diff[2]);
     results.addProperty("twinRms" + name, rms);
     JsonArray floors = new JsonArray();
     for (double value : diff) floors.add(value);
     results.add("diffShiftFloor" + name, floors);
     return new Pair(name, cross);
+  }
+
+  /** 席局あたりの ΔΦ の RMS。 */
+  private static double rms(PhiValues a, PhiValues b) {
+    double squares = 0;
+    long n = 0;
+    for (int h = 0; h < a.size(); h++)
+      for (int seat = 0; seat < 4; seat++) {
+        double d = a.utilities()[h][seat] - b.utilities()[h][seat];
+        squares += d * d;
+        n++;
+      }
+    return Math.sqrt(squares / n);
   }
 
   /** 学んだ腕。 */
@@ -423,15 +432,16 @@ public class GrpStudyBench {
     List<RecordedGame> training = fold.subList(0, Math.min(limit, fold.size() - VALIDATION));
     Path directory = out.resolve("grp-" + name);
     deleteTree(directory);
-    GrpTrainingPlan plan = new GrpTrainingPlan(init, 128, learningRate, epochs, threads, seed, Duration.ofHours(3));
+    GrpTrainingPlan plan = new GrpTrainingPlan(init, 128, learningRate, epochs, seed, Duration.ofHours(3));
     long t = System.nanoTime();
-    GrpGameTrainer.Trained trained = GrpGameTrainer.train(start, training, validation, plan, directory, listener);
+    GrpGameTrainer.Trained trained =
+        GrpGameTrainer.train(start, training, validation, plan, () -> false, directory, listener);
     double perGame = handEnds(training) / (double) training.size();
     Arm arm = new Arm(name, trained, training.size(), trained.gamesPerSecond() * perGame);
     line("train", "%s %s lr %.0e on %d games: %d epochs %d steps, train NLL %.5f validation NLL"
-            + " %.5f, %.0f games/s %.0f sequences/s (%d threads), %.0f s, sha %s",
+            + " %.5f, %.0f games/s %.0f sequences/s, %.0f s, sha %s",
         name, init, learningRate, training.size(), trained.epochs(), trained.steps(), trained.trainLoss(),
-        trained.validationLoss(), trained.gamesPerSecond(), arm.sequencesPerSecond, threads, seconds(t),
+        trained.validationLoss(), trained.gamesPerSecond(), arm.sequencesPerSecond, seconds(t),
         trained.sha256().substring(0, 16));
     JsonObject json = new JsonObject();
     json.addProperty("init", init.name());
@@ -445,7 +455,7 @@ public class GrpStudyBench {
     json.addProperty("seconds", seconds(t));
     json.addProperty("sha256", trained.sha256());
     results.add("train-" + name, json);
-    Assert.assertFalse(trained.timedOut(), name + " timed out");
+    Assert.assertEquals(trained.ending(), GrpGameTrainer.Ending.COMPLETED, name);
     return arm;
   }
 
@@ -456,13 +466,11 @@ public class GrpStudyBench {
     for (int run = 0; run < 2; run++) {
       Path directory = out.resolve("grp-repeat-" + run);
       deleteTree(directory);
-      GrpTrainingPlan plan = new GrpTrainingPlan(GrpInit.WARM, 128, 2e-4, 1, threads, 7, Duration.ofHours(1));
-      shas[run] = GrpGameTrainer.train(grp, slice, List.of(), plan, directory).sha256();
+      GrpTrainingPlan plan = new GrpTrainingPlan(GrpInit.WARM, 128, 2e-4, 1, 7, Duration.ofHours(1));
+      shas[run] = GrpGameTrainer.train(grp, slice, List.of(), plan, () -> false, directory).sha256();
     }
-    line("record", "two trainings with the same seed (%d"
-            + " threads): sha %s / %s -> %s",
-        threads, shas[0].substring(0, 16),
-        shas[1].substring(0, 16), shas[0].equals(shas[1]) ? "same" : "different");
+    line("record", "two trainings with the same seed: sha %s / %s -> %s",
+        shas[0].substring(0, 16), shas[1].substring(0, 16), shas[0].equals(shas[1]) ? "same" : "different");
     results.addProperty("sameSha", shas[0].equals(shas[1]));
   }
 

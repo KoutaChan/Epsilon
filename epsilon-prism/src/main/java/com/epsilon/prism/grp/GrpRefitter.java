@@ -13,10 +13,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -24,12 +24,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * GRP の学習 1 回（裏の作業の中、学習の錠を持って呼ぶ）: 取り置き h の窓（{@link RefitWindow}）の対局の記録で GRP を学習し（{@link
- * GrpGameTrainer}。使用中が GRP なら grpInit、点数だけの Φ なら白紙）、取り置きのコホートで関門を通し（使用中が GRP なら {@link
- * GateEvaluator}、点数だけの Φ なら {@link TrustCriteria}）、合格なら候補を公開する: 試行ごとの名前で staging に保存 → fsync → candidates へ
- * rename → 境目の点検の見本（{@link BoundaryCheck}）→ refits.jsonl に READY。同じ名前の再試行はしない（保存は既存を拒む）。締め切り（{@link
- * GrpTrainingPlan#deadline}）は試行 1 回の上限で、信頼の条件の双子の学習も残りの時間で回す。過ぎたら止めて TIMEOUT を書く。失敗は全て
- * refits.jsonl の行にし、系譜は止めない。
+ * GRP の学習 1 回（学習の JVM の {@link GrpBackground} のスレッドで呼ぶ）: 取り置き h の窓（{@link RefitWindow}）の対局の記録で GRP を学習し
+ * （{@link GrpGameTrainer}。使用中が GRP なら grpInit、点数だけの Φ なら白紙）、取り置きのコホートで関門を通し（{@link GateEvaluator}。列は
+ * 使用中の種類の {@link GateMode}）、合格なら候補を公開する: 試行ごとの名前で staging に保存 → fsync → candidates へ rename → 境目の点検の
+ * 見本（{@link BoundaryCheck}）→ refits.jsonl に READY。同じ名前の再試行はしない（保存は既存を拒む）。締め切り（{@link
+ * GrpTrainingPlan#deadline}）を過ぎたら止めて TIMEOUT を書く。失敗は全て refits.jsonl の行にし、系譜は止めない。止める合図が立てば試行を
+ * 捨て（書きかけの候補と見本を消す）、refits.jsonl には何も書かない。
  *
  * <p>使用中の項目は phi.jsonl の次の反復（state.json の次のコホート）に効く項目。窓の半荘の 1/{@value #VALIDATION_MODULUS}（半荘 ID で決まる。
  * {@link Split}）は学習の早めの打ち切りの検証に回し、取り置きのコホートは学習にも検証にも使わない。候補の形は、checkpoint の構造が grp-epsilon-v3 で、境目の
@@ -49,8 +49,8 @@ public final class GrpRefitter {
   private GrpRefitter() {}
 
   /**
-   * 学習と早めの打ち切りの検証に分けた半荘（候補と信頼の条件の双子で同じ規則）。半荘 ID を 1 つ右にずらした値を {@value #VALIDATION_MODULUS}
-   * で割った余りが最後の値の半荘を検証に回す（ずらすので、偶奇の半分ずつの窓でもそれぞれ約 1/{@value #VALIDATION_MODULUS} が検証になる）。
+   * 学習と早めの打ち切りの検証に分けた半荘。半荘 ID を 1 つ右にずらした値を {@value #VALIDATION_MODULUS} で割った余りが最後の値の半荘を
+   * 検証に回す。
    *
    * @param training 学習の半荘
    * @param validation 検証の半荘
@@ -68,11 +68,13 @@ public final class GrpRefitter {
    * 取り置き h で 1 回学習する。
    *
    * @param holdout 取り置きのコホート h（封印済みで対局の記録があること）
-   * @return 書いた refits.jsonl の行
+   * @param stop 止める合図（学習の毎歩の前と関門の前に見る）
+   * @return 書いた refits.jsonl の行（止める合図で捨てたら空）
    * @throws IOException refits.jsonl が書けないとき
    */
-  public static RefitRecord refit(GrpFiles files, PrismConfig config, int holdout, RefitCause cause) throws IOException {
-    return refit(files, config, holdout, cause, Steps.PRODUCTION);
+  public static Optional<RefitRecord> refit(
+      GrpFiles files, PrismConfig config, int holdout, RefitCause cause, BooleanSupplier stop) throws IOException {
+    return refit(files, config, holdout, cause, stop, Steps.PRODUCTION);
   }
 
   /** 試行の id（g&lt;k&gt;-a&lt;n&gt;）。 */
@@ -97,9 +99,14 @@ public final class GrpRefitter {
 
           @Override
           public GrpGameTrainer.Trained train(
-              Path start, List<RecordedGame> training, List<RecordedGame> validation, GrpTrainingPlan plan, Path out)
+              Path start,
+              List<RecordedGame> training,
+              List<RecordedGame> validation,
+              GrpTrainingPlan plan,
+              BooleanSupplier stop,
+              Path out)
               throws IOException {
-            return GrpGameTrainer.train(start, training, validation, plan, out);
+            return GrpGameTrainer.train(start, training, validation, plan, stop, out);
           }
 
           @Override
@@ -122,21 +129,8 @@ public final class GrpRefitter {
           }
 
           @Override
-          public GateReport refitGate(GateInput input, EpsilonUtilityProfile profile) throws IOException {
+          public GateReport gate(GateInput input, EpsilonUtilityProfile profile) throws IOException {
             return GateEvaluator.evaluate(input, profile);
-          }
-
-          @Override
-          public GateReport firstReplacementGate(
-              PrismConfig config,
-              List<RecordedGame> window,
-              List<RecordedGame> holdout,
-              Path candidate,
-              PhiEntryKind active,
-              EpsilonUtilityProfile profile,
-              Duration remaining)
-              throws IOException {
-            return TrustCriteria.gate(config, window, holdout, candidate, active, profile, remaining);
           }
         };
 
@@ -148,7 +142,12 @@ public final class GrpRefitter {
     GrpTrainingPlan plan(GrpInit init, long seed);
 
     GrpGameTrainer.Trained train(
-        Path start, List<RecordedGame> training, List<RecordedGame> validation, GrpTrainingPlan plan, Path out)
+        Path start,
+        List<RecordedGame> training,
+        List<RecordedGame> validation,
+        GrpTrainingPlan plan,
+        BooleanSupplier stop,
+        Path out)
         throws IOException;
 
     HandEndPhi open(PhiEntry entry, EpsilonUtilityProfile profile) throws IOException;
@@ -157,20 +156,11 @@ public final class GrpRefitter {
 
     String sha256(Path checkpoint) throws IOException;
 
-    GateReport refitGate(GateInput input, EpsilonUtilityProfile profile) throws IOException;
-
-    GateReport firstReplacementGate(
-        PrismConfig config,
-        List<RecordedGame> window,
-        List<RecordedGame> holdout,
-        Path candidate,
-        PhiEntryKind active,
-        EpsilonUtilityProfile profile,
-        Duration remaining)
-        throws IOException;
+    GateReport gate(GateInput input, EpsilonUtilityProfile profile) throws IOException;
   }
 
-  static RefitRecord refit(GrpFiles files, PrismConfig config, int holdout, RefitCause cause, Steps steps)
+  static Optional<RefitRecord> refit(
+      GrpFiles files, PrismConfig config, int holdout, RefitCause cause, BooleanSupplier stop, Steps steps)
       throws IOException {
     long started = System.nanoTime();
     var profile = EpsilonUtilityProfile.valueOf(config.utility());
@@ -180,28 +170,35 @@ public final class GrpRefitter {
     Path staging = files.staging().resolve(id);
     Path candidate = files.candidate(id);
     var draft = new Draft(id, cause, window, config.grpInit(), started);
-    RefitRecord record;
+    Optional<RefitRecord> outcome;
     try {
-      record = attempt(files, config, holdout, profile, steps, draft, staging, candidate, attempt);
+      outcome = attempt(files, config, holdout, profile, stop, steps, draft, staging, candidate, attempt);
     } catch (IOException | RuntimeException failure) {
       LOG.warn("GRP refit {} failed: {}", id, failure.toString(), failure);
-      record = draft.record(RefitStatus.FAILED, "", "", null, failure.toString());
+      outcome = Optional.of(draft.record(RefitStatus.FAILED, "", "", null, failure.toString()));
     }
-    if (record.status() != RefitStatus.READY) {
+    if (outcome.map(record -> record.status() != RefitStatus.READY).orElse(true)) {
       deleteQuietly(staging);
       deleteQuietly(candidate);
       deleteQuietly(files.boundary(id));
     }
+    if (outcome.isEmpty()) {
+      LOG.info("GRP refit {} stopped after {}s", id, String.format("%.1f", (System.nanoTime() - started) / 1e9));
+      return outcome;
+    }
+    RefitRecord record = outcome.get();
     record.append(files);
     LOG.info("GRP refit {} {} in {}s: {}", id, record.status(), String.format("%.1f", record.seconds()), record.detail());
-    return record;
+    return outcome;
   }
 
-  private static RefitRecord attempt(
+  /** 試行の本体（止める合図で捨てたら空）。 */
+  private static Optional<RefitRecord> attempt(
       GrpFiles files,
       PrismConfig config,
       int holdout,
       EpsilonUtilityProfile profile,
+      BooleanSupplier stop,
       Steps steps,
       Draft draft,
       Path staging,
@@ -214,9 +211,10 @@ public final class GrpRefitter {
     draft.parent = active.id();
     draft.init = active.kind().scoreBased() ? GrpInit.SCRATCH : config.grpInit();
     if (draft.window == null)
-      return draft.record(RefitStatus.FAILED, "", "", null, "no usable cohort before holdout " + holdout);
+      return Optional.of(draft.record(RefitStatus.FAILED, "", "", null, "no usable cohort before holdout " + holdout));
     if (!recorded(files, holdout))
-      return draft.record(RefitStatus.FAILED, "", "", null, "holdout " + holdout + " is not sealed with a game log");
+      return Optional.of(
+          draft.record(RefitStatus.FAILED, "", "", null, "holdout " + holdout + " is not sealed with a game log"));
     List<RecordedGame> held = steps.games(files.games(holdout)).games();
     List<RecordedGame> window = new ArrayList<>();
     for (int c = draft.window.first(); c <= draft.window.last(); c++) {
@@ -224,18 +222,30 @@ public final class GrpRefitter {
       else LOG.warn("GRP refit {}: cohort {} has no sealed game log and is left out", draft.id, c);
     }
     if (window.isEmpty() || held.isEmpty())
-      return draft.record(RefitStatus.FAILED, "", "", null, "no recorded games in window " + draft.window);
+      return Optional.of(draft.record(RefitStatus.FAILED, "", "", null, "no recorded games in window " + draft.window));
     Split split = Split.of(window);
     long seed = SeedMixer.derive(config.seed(), 0x67727066L, holdout, attempt);
     GrpTrainingPlan plan = steps.plan(draft.init, seed);
     Files.createDirectories(files.staging());
-    long trainingStarted = System.nanoTime();
     GrpGameTrainer.Trained trained =
         steps.train(
-            draft.init == GrpInit.WARM ? Path.of(active.path()) : null, split.training(), split.validation(), plan, staging);
-    if (trained.timedOut())
-      return draft.record(
-          RefitStatus.TIMEOUT, "", "", null, "deadline " + plan.deadline() + " after " + trained.epochs() + " epochs");
+            draft.init == GrpInit.WARM ? Path.of(active.path()) : null,
+            split.training(),
+            split.validation(),
+            plan,
+            stop,
+            staging);
+    switch (trained.ending()) {
+      case STOPPED -> {
+        return Optional.empty();
+      }
+      case TIMED_OUT -> {
+        return Optional.of(
+            draft.record(
+                RefitStatus.TIMEOUT, "", "", null, "deadline " + plan.deadline() + " after " + trained.epochs() + " epochs"));
+      }
+      case COMPLETED -> {}
+    }
     var probe =
         new PhiEntry(
             draft.id, PhiEntryKind.SELF_CHECKPOINT, trained.directory().toString(), trained.sha256(), "", "", 1, active.id(), "staging");
@@ -247,29 +257,17 @@ public final class GrpRefitter {
       valid = steps.grpEpsilonV3(trained.directory()) && wellFormed(values);
       boundary = new BoundaryCheck(inputs, values.utilities());
     }
+    if (stop.getAsBoolean()) return Optional.empty();
     GateReport gate;
-    if (active.kind().scoreBased()) {
-      Duration remaining = plan.deadline().minusNanos(System.nanoTime() - trainingStarted);
-      try {
-        gate =
-            steps.firstReplacementGate(
-                config, window, held, trained.directory(), active.kind(), profile, remaining.isNegative() ? Duration.ZERO : remaining);
-      } catch (TrustCriteria.DeadlinePassed late) {
-        return draft.record(RefitStatus.TIMEOUT, "", "", null, "deadline " + plan.deadline() + ": " + late.getMessage());
-      }
-      if (!valid && gate.passed())
-        gate =
-            new GateReport(
-                gate.mode(), GateResult.INVALID_OUTPUT, List.of(GateResult.INVALID_OUTPUT), gate.measures(), gate.active(), gate.candidate());
-    } else {
-      try (HandEndPhi used = steps.open(active, profile);
-          HandEndPhi proposed = steps.open(probe, profile)) {
-        gate =
-            steps.refitGate(
-                new GateInput(GateMode.REFIT, held, used, proposed, null, valid, window.size(), config.grpTrustGames()), profile);
-      }
+    try (HandEndPhi used = steps.open(active, profile);
+        HandEndPhi proposed = steps.open(probe, profile)) {
+      gate =
+          steps.gate(
+              new GateInput(
+                  GateMode.of(active.kind()), held, used, proposed, valid, window.size(), config.grpTrustGames()),
+              profile);
     }
-    if (!gate.passed()) return draft.record(RefitStatus.REJECTED, "", "", gate, "gate " + gate.result());
+    if (!gate.passed()) return Optional.of(draft.record(RefitStatus.REJECTED, "", "", gate, "gate " + gate.result()));
     // 公開: fsync → rename → 見本 → READY（学習の JVM は READY の行の候補しか読まない）
     syncTree(trained.directory());
     Files.createDirectories(files.candidates());
@@ -279,14 +277,20 @@ public final class GrpRefitter {
     if (!sha.equals(trained.sha256()))
       throw new IOException("Candidate " + candidate + " has sha " + sha + " after the rename, not " + trained.sha256());
     boundary.write(files.boundary(draft.id));
-    return draft.record(
-        RefitStatus.READY,
-        candidate.toAbsolutePath().normalize().toString(),
-        sha,
-        gate,
-        String.format(
-            "epochs=%d steps=%d trainLoss=%.6f validationLoss=%.6f games/s=%.1f window=%d",
-            trained.epochs(), trained.steps(), trained.trainLoss(), trained.validationLoss(), trained.gamesPerSecond(), window.size()));
+    return Optional.of(
+        draft.record(
+            RefitStatus.READY,
+            candidate.toAbsolutePath().normalize().toString(),
+            sha,
+            gate,
+            String.format(
+                "epochs=%d steps=%d trainLoss=%.6f validationLoss=%.6f games/s=%.1f window=%d",
+                trained.epochs(),
+                trained.steps(),
+                trained.trainLoss(),
+                trained.validationLoss(),
+                trained.gamesPerSecond(),
+                window.size())));
   }
 
   /** コホート c が封印済みで対局の記録があるなら true。 */

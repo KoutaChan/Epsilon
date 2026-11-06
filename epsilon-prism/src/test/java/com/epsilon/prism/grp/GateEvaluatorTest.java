@@ -27,14 +27,17 @@ public class GateEvaluatorTest {
   }
 
   @Test
-  public void refitRejectsEachFailure() throws IOException {
+  public void refitDecidesOnAccuracyAndRecordsTheRest() throws IOException {
     Assert.assertEquals(refit(new PlackettLuce(5700), new PlackettLuce(5700)).result(), GateResult.NOT_BETTER);
-    // 効用は真の値、順位分布だけ自信過剰
-    Assert.assertEquals(
-        refit(new PlackettLuce(5700), new PlackettLuce(TRUTH, 1500, 0)).result(), GateResult.RANK_FIT_WORSE);
-    Assert.assertEquals(refit(new PlackettLuce(3000), new PlackettLuce(TRUTH)).result(), GateResult.SHIFT_TOO_LARGE);
-    Assert.assertTrue(
-        refit(new PlackettLuce(5700), new PlackettLuce(12000)).failures().contains(GateResult.SLOPE_OUT_OF_RANGE));
+    Assert.assertEquals(refit(new PlackettLuce(5700), new PlackettLuce(12000)).result(), GateResult.NOT_BETTER);
+    // 効用は真の値で順位分布だけ自信過剰: 当たるので入れ、順位の当てはまりは記録だけ
+    GateReport overconfident = refit(new PlackettLuce(5700), new PlackettLuce(TRUTH, 1500, 0));
+    Assert.assertEquals(overconfident.result(), GateResult.PASS, overconfident.failures() + " " + overconfident.measures());
+    Assert.assertTrue(overconfident.measures().containsKey("nllDifference"));
+    // 使用中から大きく変わっても当たるなら入れ、変化の幅と傾きは記録だけ
+    GateReport far = refit(new PlackettLuce(3000), new PlackettLuce(TRUTH));
+    Assert.assertEquals(far.result(), GateResult.PASS, far.failures() + " " + far.measures());
+    Assert.assertTrue(far.measures().containsKey("diffShift") && far.measures().containsKey("slopeRatio"));
     Assert.assertTrue(
         refit(new PlackettLuce(5700), new PlackettLuce(TRUTH, TRUTH, 0.08))
             .failures()
@@ -48,41 +51,39 @@ public class GateEvaluatorTest {
     Assert.assertEquals(refit(new PlackettLuce(5700), broken).result(), GateResult.INVALID_OUTPUT);
     GateReport invalid =
         GateEvaluator.evaluate(
-            new GateInput(GateMode.REFIT, HOLDOUT, new PlackettLuce(5700), new PlackettLuce(TRUTH), null, false, 1, 1),
+            new GateInput(GateMode.REFIT, HOLDOUT, new PlackettLuce(5700), new PlackettLuce(TRUTH), false, 1, 1),
             PROFILE);
     Assert.assertEquals(invalid.result(), GateResult.INVALID_OUTPUT);
     GateReport empty =
         GateEvaluator.evaluate(
-            new GateInput(GateMode.REFIT, List.of(), new PlackettLuce(5700), new PlackettLuce(TRUTH), null, true, 1, 1),
+            new GateInput(GateMode.REFIT, List.of(), new PlackettLuce(5700), new PlackettLuce(TRUTH), true, 1, 1),
             PROFILE);
     Assert.assertEquals(empty.result(), GateResult.NOT_ENOUGH_DATA);
   }
 
   @Test
-  public void firstReplacementChecksCalibrationStabilityAndData() throws IOException {
+  public void firstReplacementComparesWithTheScoreOnlyPhi() throws IOException {
     HandEndPhi truth = new PlackettLuce(TRUTH);
-    GateReport pass = first(truth, truth, 200_000, 131_072);
+    GateReport pass = first(truth, 200_000, 131_072);
     Assert.assertEquals(pass.result(), GateResult.PASS, pass.failures() + " " + pass.measures());
-    HandEndPhi sharp = new PlackettLuce(2000);
-    Assert.assertEquals(first(sharp, sharp, 200_000, 131_072).result(), GateResult.RANK_FIT_WORSE);
-    Assert.assertEquals(first(truth, new PlackettLuce(7500), 200_000, 131_072).result(), GateResult.UNSTABLE);
+    Assert.assertTrue(pass.measures().get("mseDifference") < 0, pass.measures().toString());
+    Assert.assertTrue(pass.measures().containsKey("calibrationRms"), "the calibration is recorded");
+    // 外れた GRP でも、較正は記録だけで落とさない（点数だけの Φ より当たれば通る）
+    GateReport sharp = first(new PlackettLuce(7500), 200_000, 131_072);
+    Assert.assertEquals(sharp.result(), GateResult.PASS, sharp.failures() + " " + sharp.measures());
+    Assert.assertEquals(first(score(), 200_000, 131_072).result(), GateResult.NOT_BETTER);
     HandEndPhi saw = new PlackettLuce(TRUTH, TRUTH, 0.08);
-    Assert.assertEquals(first(saw, saw, 200_000, 131_072).result(), GateResult.MONOTONIC_VIOLATIONS);
-    Assert.assertEquals(first(truth, truth, 100_000, 131_072).result(), GateResult.NOT_ENOUGH_DATA);
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            GateEvaluator.evaluate(
-                new GateInput(GateMode.FIRST_REPLACEMENT, HOLDOUT, score(), truth, null, true, 1, 1), PROFILE));
+    Assert.assertTrue(first(saw, 200_000, 131_072).failures().contains(GateResult.MONOTONIC_VIOLATIONS));
+    Assert.assertEquals(first(truth, 100_000, 131_072).result(), GateResult.NOT_ENOUGH_DATA);
   }
 
   private static GateReport refit(HandEndPhi active, HandEndPhi candidate) throws IOException {
-    return GateEvaluator.evaluate(new GateInput(GateMode.REFIT, HOLDOUT, active, candidate, null, true, 0, 1), PROFILE);
+    return GateEvaluator.evaluate(new GateInput(GateMode.REFIT, HOLDOUT, active, candidate, true, 0, 1), PROFILE);
   }
 
-  private static GateReport first(HandEndPhi candidate, HandEndPhi twin, long window, int trust) throws IOException {
+  private static GateReport first(HandEndPhi candidate, long window, int trust) throws IOException {
     return GateEvaluator.evaluate(
-        new GateInput(GateMode.FIRST_REPLACEMENT, HOLDOUT, score(), candidate, twin, true, window, trust), PROFILE);
+        new GateInput(GateMode.FIRST_REPLACEMENT, HOLDOUT, score(), candidate, true, window, trust), PROFILE);
   }
 
   private static HandEndPhi score() {

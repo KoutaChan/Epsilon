@@ -10,11 +10,12 @@ import java.util.Optional;
 
 /**
  * ずれの警報（phiDrift が OFF でないとき、採点の行ごとに進める）。使用中の項目の基準（{@link Baseline}）からの増分で決める: ON の線 = F_E +
- * phiDriftK·W、OFF の線 = F_E + 2·W、W = √(SD_EWMA² + SD(F_E)²)。F_E は項目の D_SPG の床、SD_EWMA は 1 コホートの SD(D_SPG) を EWMA（λ =
- * {@link PhiMonitorLine#EWMA_WEIGHT}）で縮めた分。D_SPG の EWMA が ON の線以上か、区分の傾きの基準からの z が {@value #SLOPE_Z} を越えた
- * 状態が {@value #CONSECUTIVE} 回連続し、前の切り替えが grpSwitchSettle まで入っていれば ON（{@link RefitScheduler#settled}）。D_SPG の EWMA
- * が OFF の線以下で傾きも線の内に戻るまで ON。使用中の項目が変わったら EWMA と連続の数を初めからやり直す。使用中が点数だけの Φ なら出さない。
- * 状態は grp/drift.jsonl に書く。
+ * max(phiDriftK·W, phiDriftMargin·F_E)、OFF の線 = F_E + (ON の線 − F_E)/2、W = √(SD_EWMA² + SD(F_E)²)。F_E は項目の D_SPG の床、SD_EWMA は
+ * 1 コホートの SD(D_SPG) を EWMA（λ = {@link PhiMonitorLine#EWMA_WEIGHT}）で縮めた分。W は 1 コホート 6.5 万半荘では床の数 % しかなく、打ち方の
+ * 小さな変化でも越えるので、割合の下限で意味のある悪化だけを拾う。D_SPG の EWMA が ON の線以上か、区分の傾きの基準からの |z| が
+ * phiDriftSlopeZ を越えた状態が phiDriftConsecutive 回連続し、前の切り替えが grpSwitchSettle まで入っていれば ON（{@link
+ * RefitScheduler#settled}）。D_SPG の EWMA が OFF の線以下で傾きも線の内に戻るまで ON。使用中の項目が変わったら EWMA と連続の数を初めから
+ * やり直す。使用中が点数だけの Φ なら出さない。状態は grp/drift.jsonl に書く。
  *
  * <p>基準は、本番の Φ（元の GRP ＋ 較正の表）なら床 {@value #FLOOR}・傾き 1、自己対局で学んだ項目なら公開のときに取り置きのコホートで測った
  * その候補の D_SPG・区分の傾きと SE（学んだ GRP の床は本番より大きいことがあり、大域の床で比べると切り替えた瞬間から ON になるため）。基準の
@@ -31,15 +32,24 @@ public final class DriftAlarm {
   /** COHORT_SD を測った半荘の数。 */
   static final double REFERENCE_GAMES = 65_536;
 
-  /** 傾きの z の線（8 区分のボンフェローニ、両側で約 1%）。 */
-  static final double SLOPE_Z = 3.2;
-
-  /** ON にする連続の数。 */
-  static final int CONSECUTIVE = 2;
-
   private static final Gson GSON = new GsonBuilder().serializeSpecialFloatingPointValues().create();
 
   private DriftAlarm() {}
+
+  /**
+   * 警報の線（設定の phiDriftK・phiDriftMargin・phiDriftSlopeZ・phiDriftConsecutive）。
+   *
+   * @param k ON の線の統計の幅 W の倍数
+   * @param margin ON の線の床からの割合の下限
+   * @param slopeZ 越えたとみなす区分の傾きの基準からの |z|
+   * @param consecutive ON にする連続の数
+   */
+  record Lines(double k, double margin, double slopeZ, int consecutive) {
+    static Lines of(PrismConfig config) {
+      return new Lines(
+          config.phiDriftK(), config.phiDriftMargin(), config.phiDriftSlopeZ(), config.phiDriftConsecutive());
+    }
+  }
 
   /**
    * 項目の基準（警報はここからの増分で決める）。
@@ -104,7 +114,7 @@ public final class DriftAlarm {
     if (previous.isPresent() && line.cohort() <= previous.get().cohort()) return previous.get();
     Baseline baseline = baseline(config, files, line).orElse(null);
     boolean settled = baseline == null || RefitScheduler.settled(files, config, line.cohort());
-    State next = next(previous.orElse(null), line, config.phiDriftK(), baseline, settled);
+    State next = next(previous.orElse(null), line, Lines.of(config), baseline, settled);
     PhiHistory.write(files.drift(), GSON.toJson(next));
     return next;
   }
@@ -118,11 +128,11 @@ public final class DriftAlarm {
    * 警報を 1 コホート進める（ファイルに依らない本体）。
    *
    * @param previous 前の状態（なければ null）
-   * @param k ON の線の倍数 phiDriftK
+   * @param lines 警報の線
    * @param baseline 使用中の項目の基準（null なら警報を出さない: 点数だけの Φ か、基準の見つからない候補）
    * @param settled 前の切り替えが grpSwitchSettle まで入っていれば true
    */
-  static State next(State previous, PhiMonitorLine line, double k, Baseline baseline, boolean settled) {
+  static State next(State previous, PhiMonitorLine line, Lines lines, Baseline baseline, boolean settled) {
     double maxZ = maxSlopeZ(line.active(), baseline == null ? Baseline.PRODUCTION : baseline);
     if (baseline == null)
       return new State(
@@ -146,13 +156,14 @@ public final class DriftAlarm {
     }
     double ewmaSd = Math.sqrt(variance);
     double width = Math.hypot(ewmaSd, baseline.floorSd());
-    double onLine = baseline.floor() + k * width;
-    double offLine = baseline.floor() + 2 * width;
-    boolean slopeOut = maxZ > SLOPE_Z;
+    double excess = Math.max(lines.k() * width, lines.margin() * baseline.floor());
+    double onLine = baseline.floor() + excess;
+    double offLine = baseline.floor() + excess / 2;
+    boolean slopeOut = maxZ > lines.slopeZ();
     boolean exceeded = ewma >= onLine || slopeOut;
     int streak = exceeded ? (restart ? 1 : previous.streak() + 1) : 0;
     boolean on =
-        !restart && previous.on() ? ewma > offLine || slopeOut : streak >= CONSECUTIVE && settled;
+        !restart && previous.on() ? ewma > offLine || slopeOut : streak >= lines.consecutive() && settled;
     return new State(
         line.cohort(), line.phiId(), on, ewma, ewmaSd, baseline.floor(), onLine, offLine, maxZ, streak);
   }

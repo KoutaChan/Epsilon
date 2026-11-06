@@ -152,36 +152,44 @@ grpCheckpoint = ""
 grpDevice = "cpu"
 grpBatch = 256
 
-# GRP の自己対局。phiMonitor: 主経路の対局を grp/games に記録するか（"OFF"・"RECORD"）、裏の作業がそれを使用中の Φ で採点もするか（"SCORE"）。
+# GRP の自己対局。phiMonitor: 主経路の対局を grp/games に記録するか（"OFF"・"RECORD"）、学習の JVM の GRP の裏のスレッドがそれを使用中の Φ で
+# 採点もするか（"SCORE"）。
 # SELF_GRP では OFF にできない。記録はラベル行を変えない
 phiMonitor = "SCORE"
 # 学習の時期: "MANUAL"（grp-refit の要求だけ）、"SCHEDULE"（grpRefitSchedule の間隔）、"SCHEDULE_AND_DRIFT"（加えてずれの警報で前倒し。
 # phiDrift = "REFIT" と組む）。SELF_GRP でなければ MANUAL
 grpRefit = "MANUAL"
-# 関門に合格した候補を入れる方法: "PROPOSE"（手動の grp-switch）か "AUTO"（コホート h までで作った候補を反復 h + grpSwitchLag で入れる。
+# 関門に合格した候補を入れる方法: "PROPOSE"（手動の grp-switch）か "AUTO"（合格した後に始まる最初の反復から入れる。
 # grpRefit が SCHEDULE か SCHEDULE_AND_DRIFT のときだけ）。SELF_GRP でなければ PROPOSE
 grpSwitch = "PROPOSE"
 # 使用中が GRP のときの学習の始め: "WARM"（使用中の GRP の重みから）か "SCRATCH"（白紙）。使用中が点数だけの Φ なら常に白紙
 grpInit = "WARM"
 # 学習の間隔の段: 「始めの反復:間隔」を読点で区切り始めの昇順（反復 t は始めが t 以下で最も後の段の間隔。最初の段より前は学習しない）
 grpRefitSchedule = "1:2,40:8,120:48,800:56"
-# AUTO の候補が効く反復 h + L の L（1 以上）。その時点で READY でない候補は SKIPPED_NOT_READY になる
-grpSwitchLag = 2
 # 切り替えの後、前の切り替えが TEMPO の実際のゲインでこの割合まで入るまでは、警報で学習しない（(0, 1)）
 grpSwitchSettle = 0.60
-# 関門に落ちた後に次の学習を待つ反復の数（0 以上）と、予定表を止める連続の失敗の数（1 以上）
-grpRetryCooldown = 8
-grpMaxFailures = 3
+# 警報で前倒しする学習は、前の試行の取り置きからこの反復の数だけ空ける（1 以上）
+grpDriftSpacing = 4
 # ずれの警報: "OFF"、"REPORT"（記録だけ）、"REFIT"（学習の前倒しにも使う。grpRefit = "SCHEDULE_AND_DRIFT" と組む）。OFF でなければ
-# phiMonitor = "SCORE" が要る。警報の線は 床 + phiDriftK × EWMA の標準偏差（phiDriftK > 0）
+# phiMonitor = "SCORE" が要る
 phiDrift = "REPORT"
+# 警報の線: D_SPG の EWMA が 床 + max(phiDriftK × 統計の幅, phiDriftMargin × 床) 以上（OFF の線は床からその半分）か、区分の傾きの基準からの
+# |z| が phiDriftSlopeZ を越えた状態が phiDriftConsecutive 回続けば ON。統計の幅は 1 コホート 6.5 万半荘では床の 5% ほどしかなく、打ち方の
+# 小さな変化でも越えるので、割合の下限で意味のある悪化だけを拾う（phiDriftK > 0、phiDriftMargin ≥ 0、phiDriftSlopeZ > 0、
+# phiDriftConsecutive ≥ 1）
 phiDriftK = 4.0
+phiDriftMargin = 0.5
+phiDriftSlopeZ = 8.0
+phiDriftConsecutive = 3
 # 影として採点する Φ: "SELF_ONLY"（自己対局の候補だけ）か "WITH_ORIGINAL"（grpCheckpoint の元の GRP も。grpCheckpoint が要る）
 phiShadowReference = "SELF_ONLY"
 # 学習の窓のコホートの数の上限（実際は clamp(⌈h/4⌉, min(4, grpWindow), grpWindow)、コホート 1〜2 は使わない。1 以上）
 grpWindow = 8
 # 点数だけの Φ から最初に置き換えるのに要る窓の半荘の数（1 以上）
 grpTrustGames = 131072
+# GRP の学習の間の torch の演算スレッドの数（1 以上）。プロセス全体に効くので、学習の間は収集の CPU の GRP の推論もこの数で動く
+# （値が ulp の幅で変わりうる。収集をビットで再現したいなら 1）
+grpThreads = 4
 
 # 評価: [epsilon.prism.evaluation.<名前>]（名前は英数字）ごとに、バージョンの打つ網 1 席対 opponent 3 席を games 局打つ（全員貪欲。牌山と半荘 ID は
 # 全ての評価で同じ）。バージョンが every の倍数（from 以上。every = 0 なら測らない）のたびに系譜の中で反復の後に測り、run の reports/evaluations に

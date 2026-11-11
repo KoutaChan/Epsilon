@@ -135,7 +135,7 @@ public final class RiichiSession {
     this.variant = Objects.requireNonNull(variant, "variant");
     this.decider = Objects.requireNonNull(decider, "decider");
     this.validation = validation;
-    set = variant.tiles();
+    this.set = variant.tiles();
   }
 
   /** 対局が始まって席が決まったなら true。 */

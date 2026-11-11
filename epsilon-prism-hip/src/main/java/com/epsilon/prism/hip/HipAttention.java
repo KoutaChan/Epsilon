@@ -9,16 +9,16 @@ import ai.djl.pytorch.engine.PtStream;
 import java.util.Objects;
 
 /**
- * {@link TrainingKernels} と {@link RelationCodes} の GPU の演算（{@code t1_attention.hip}・{@code t2_norm.hip}・{@code t0_relation.hip}）。
- * DJL の GPU の配列を写さずに読み書きし、ストリームの順で前後の DJL の演算とそろう。注意の内積・softmax・p·v と勾配、RMSNorm の統計と
- * 勾配は FP32 で、出力と入力の勾配は BF16 に 1 回丸める。q・kv・出力・RMSNorm の入出力とそれらの勾配は BF16、関係の属性は UINT8、ほかは
- * FP32・INT32・INT16 で、配列は全て連続（演算の結果か、その先頭からの切り出し）で同じ GPU にあること。
+ * {@link TrainingKernels} と {@link RelationCodes} の GPU 実装（{@code t1_attention.hip}・{@code t2_norm.hip}・{@code t0_relation.hip}）。
+ * DJL の GPU の配列をコピーせずに直接読み書きする。DJL と同じストリームに積むので、前後の DJL の演算と順序がそろう。
+ * Attention の内積・softmax・p·v とその勾配、RMSNorm の統計とその勾配は FP32 で計算し、出力と入力の勾配だけを BF16 に 1 回丸める。
+ * 型は、q・kv・出力・RMSNorm の入出力とそれらの勾配が BF16、関係の属性が UINT8、ほかが FP32・INT32・INT16。配列は全て連続していて
+ * （演算の結果か、その先頭からの切り出し）、同じ GPU にあること。
  */
 public final class HipAttention implements TrainingKernels, RelationCodes {
 
-  /** native に渡す要素の型（native の TensorElement と同じ順）。 */
+  /** native に渡す要素の型。並びは native の TensorElement と同じ。 */
   private enum Element {
-    BOOL,
     INT16,
     INT32,
     BFLOAT16,
@@ -27,7 +27,6 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
 
     static Element of(DataType type) {
       return switch (type) {
-        case BOOLEAN -> BOOL;
         case INT16 -> INT16;
         case INT32 -> INT32;
         case BFLOAT16 -> BFLOAT16;
@@ -47,11 +46,11 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
   }
 
   /**
-   * GPU のストリームに積む演算を作る。
+   * 演算を GPU のストリームに積む実装を作る。
    *
    * @param library 読み込み済みの libprism_hip.so
-   * @param stream 積むストリーム（呼び手の DJL の演算と同じストリーム）
-   * @return 演算
+   * @param stream 演算を積むストリーム（呼び出し元の DJL の演算と同じもの）
+   * @return 作った実装
    * @throws IllegalArgumentException ストリームが GPU のものでないとき
    */
   public static HipAttention on(HipLibrary library, PtStream stream) {
@@ -211,7 +210,7 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
     return new Shape(d.rows(), d.keys(), 2L * d.width());
   }
 
-  /** 形・型・デバイスを照らして、配列のデータのデバイスのアドレスを返す。 */
+  /** 配列の形・型・デバイスを照合し、データが置かれた GPU のアドレスを返す。 */
   private long address(NDArray array, Shape shape, DataType type) {
     if (!array.getShape().equals(shape)) {
       throw new IllegalArgumentException(
@@ -220,7 +219,7 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
     return deviceAddress(array, type);
   }
 
-  /** RMSNorm の行の配列（最後の軸が width で、要素が rows·width）のアドレスを返す。 */
+  /** RMSNorm の行の配列のアドレスを返す。最後の軸の長さが幅に等しく、要素の数が行数 × 幅であること。 */
   private long rowsAddress(NDArray array, NormShape d, DataType type) {
     Shape shape = array.getShape();
     if (shape.dimension() == 0
@@ -232,7 +231,7 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
     return deviceAddress(array, type);
   }
 
-  /** 型・デバイスを照らして、配列のデータのデバイスのアドレスを返す。 */
+  /** 配列の型・デバイスを照合し、データが置かれた GPU のアドレスを返す。 */
   private long deviceAddress(NDArray array, DataType type) {
     if (array.getDataType() != type) {
       throw new IllegalArgumentException(

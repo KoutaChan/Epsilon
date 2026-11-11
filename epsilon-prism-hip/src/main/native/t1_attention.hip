@@ -1,39 +1,45 @@
-// 学習の注意（関係の偏りつき、相対の値なし）の順伝播と逆伝播（WMMA、FlashAttention-2 の形）。GPU の学習で、eager の EncoderLayer の
-// packedRelationScaledDotProductAttention（djl-rocm）の代わりに使う。数式は同じ:
+// 学習用の Attention（関係のバイアスつき、バリューには相対の項を足さない）の順伝播と逆伝播。WMMA を使い、FlashAttention-2 と同じ形で
+// 計算する。GPU で学習するとき、eager の EncoderLayer が呼ぶ packedRelationScaledDotProductAttention（djl-rocm）の代わりに使う。数式は同じ:
 //
-//   ℓ_ij = (q_i·k_j)·scale + Σ_s ρ[entries·s + c_s(i, j), h]（鍵 j が在るときだけ）、p_i = softmax_j(ℓ_i)、o_i = Σ_j p_ij v_j
+//   ℓ_ij = (q_i·k_j)·scale + Σ_s ρ[entries·s + c_s(i, j), h]（キー j が有効なときだけ）、p_i = softmax_j(ℓ_i)、o_i = Σ_j p_ij v_j
 //
-// 内側は ℓ₂ = ℓ·log₂e の単位で計算する（exp2）。偏りは区画 2 つずつ前もって足した組の表 τ_t[a + 16b] = (ρ(2t, a) + ρ(2t + 1, b))·log₂e
-// を符号の byte t で 4 回引き、((τ₀ + τ₁) + τ₂) + τ₃ と足す。作業群は頭の ρ の列（区画 × 値の 128 個、範囲外は 0）をスレッドで分けて
-// 1 回で LDS に置き、その LDS から表を作る（表の 1 項ごとに全体メモリを読まない）。順伝播と逆伝播は同じ式なので ℓ₂ はビットで同じ。
+// 内側の計算は ℓ₂ = ℓ·log₂e の単位で行う（exp2 を使う）。バイアスは、セグメント 2 つずつを先に足した組の表
+// τ_t[a + 16b] = (ρ(2t, a) + ρ(2t + 1, b))·log₂e をコードのバイト t で 4 回引き、((τ₀ + τ₁) + τ₂) + τ₃ の順に足す。ワークグループは、
+// ヘッドの ρ の列（セグメント × 値の 128 個、範囲外は 0）をスレッドで分担して 1 回で LDS に置き、表はその LDS から作る（表の 1 項ごとに
+// グローバルメモリを読まない）。順伝播と逆伝播は同じ式なので、ℓ₂ はビットまで同じになる。
 //
-// WMMA に入る P・dS は FP32 を BF16 の 3 項 hi + mid + lo（どれも上位 16 bit の切り捨て）に分けて 3 回掛ける。3 項の和は元の FP32 と
-// 等しく、BF16 の q・k・v・do との積も FP32 で正確なので、変わるのは FP32 の和の順だけ。q·k と do·v は BF16 どうしの積で、そのまま掛ける。
+// WMMA に入れる P と dS は、FP32 を BF16 の 3 項 hi + mid + lo（どれも上位 16 bit を切り捨てた値）に分けて 3 回掛ける。3 項の和は元の
+// FP32 と等しく、BF16 の q・k・v・do との積も FP32 で正確なので、変わるのは FP32 で足す順だけ。q·k と do·v は BF16 どうしの積なので、
+// そのまま掛ける。
 //
-// 順伝播（作業群は頭の対 × 1 行、波は問い合わせの塊 16 個。K2 の核と同じ形）:
-//   S^T = K·Qᵀ、ℓ₂ = S^T·scale·log₂e + τ、オンラインの softmax、O^T += V^T·P^T。o は BF16 に 1 回丸め、逆伝播のために FP32 の o と
+// 順伝播（ワークグループは 1 行のヘッド 2 つを受け持ち、ウェーブはクエリのタイル（16 個）を 1 つ受け持つ。K2 のカーネルと同じ形）:
+//   S^T = K·Qᵀ、ℓ₂ = S^T·scale·log₂e + τ、オンラインの softmax、O^T += V^T·P^T。o は BF16 に 1 回丸める。逆伝播のために、FP32 の o と
 //   log Σ exp = (m₂ + log₂ Σ)·ln 2 も書く。
-// 逆伝播（作業群は 1 頭 × 1 行。問い合わせの塊ごとに 2 段で、段の間は作業群の待ち合わせ）:
-//   段 A（波 = 鍵の塊 kt。lane が鍵、8 つの問い合わせ）: S = Q·Kᵀ、dP = dO·Vᵀ、P = 2^(ℓ₂ − lse₂)、dS = P·(dP − δ)、
-//        dV^T += dO^T·P、dK^T += Q^T·dS。dS と符号を LDS の問い合わせの塊の行に置く。
-//   段 B: 波 0〜3 が区画 2 つずつ ρ の勾配を lane ごとの部分和に足し（原子的な加算なし）、波 4 が dQ^T = K^T·dS^T（鍵の塊の順）を
-//        書いて、次の問い合わせの塊の Q^T・dO^T を LDS に置く（全体メモリの読みは dQ の前に出し、待ちを dQ に重ねる）。
-//   dS と符号の LDS の行の刻みは 64 を法として 36 語: 段 B の 16 行 × 2 つの半分の 16 バイトの読みが 2-way（最小）、段 A の 2 つの半分の
-//   書き込みは bank が重ならない。
-//   δ_i = Σ_d do_id·o_id（FP32 の o）。dq・dk・dv は FP32 で作り、ちょうど 0 の和を +0 にそろえて（positiveZero）BF16 に最近接偶数で 1 回
-//   丸める（c10 の型の変換と同じビット）。ρ の勾配は作業群（行 × 頭）ごとの部分和を FP32 で書き、呼び手が行で足す（決まった順の縮約）。
-//   生きた問い合わせ（i < queries で do_i の 16 値に 0 でない値がある）だけを回す: do_i = 0 なら dP_i = δ_i = 0、dS_i = 0 で、dk・dv・dq・
-//   ρ の勾配への寄与はちょうど 0（近似ではない）。死んだ問い合わせは問い合わせの外と同じに扱い（Q^T・dO^T は 0、P = +0、dS = +0、
-//   ρ の勾配に足さない、dq は +0）、生きた問い合わせを含む最後の塊より後ろの塊は回さない。
-// 縮約は全て作業群の中で順が決まっている（WMMA の累積、鍵の塊の順、lane の部分和の和の順）。在る鍵の dk・dv に入る WMMA は、詰め物の
-// 問い合わせ（出力の勾配がちょうど 0）を足しても同じ順で、A・B・C がビットで同じ（詰め物の q は WMMA に入らない。0 の積でも
-// gfx1100 の WMMA は A の値で実の積の丸めを変えうる）。よって結果は行ごとに塊の組み方と詰め物の幅に依らずビットで同じ（詰め物の
-// 出力の勾配がちょうど 0 であることが約束）。
-// 全体メモリの位置は一様な行の先頭と lane の 32 bit の位置に分ける（読み書きが SGPR の先頭と VGPR の位置になる）。
-// 検査つきの組み立てでは行の区画と lane の位置の両方を照らす（全ての全体メモリの読み書き）。
-// 範囲外の符号（区画 s < segments の値が entries 以上）は止める。照らすのは在る鍵を 1 つでも含む鍵の塊の全ての符号（塊の中の在らない
-// 鍵と寄せた問い合わせの外の行を含む。全く在らない塊は読まない）。T0 は詰め物の組にも範囲内の符号を書き、entries = 16 なら照らす処理は
-// 一様な分岐で飛ぶ。
+// 逆伝播（ワークグループは 1 行のヘッド 1 つを受け持つ。クエリのタイルごとに 2 段で計算し、段の間にワークグループのバリアを置く）:
+//   段 A（ウェーブ kt がキーのタイル kt を受け持ち、lane はキー 1 つとクエリ 8 つを持つ）: S = Q·Kᵀ、dP = dO·Vᵀ、P = 2^(ℓ₂ − lse₂)、
+//        dS = P·(dP − δ)、dV^T += dO^T·P、dK^T += Q^T·dS。dS とコードは、LDS にクエリのタイルの行として置く。
+//   段 B: ウェーブ 0〜3 は、セグメント 2 つずつ ρ の勾配を lane ごとの部分和に足す（アトミックな加算は使わない）。ウェーブ 4 は
+//        dQ^T = K^T·dS^T（キーのタイルの順）を書き、次のクエリのタイルの Q^T・dO^T を LDS に置く。グローバルメモリの読み込みは dQ の前に
+//        出し、待ち時間を dQ の計算で隠す。
+//   dS とコードの LDS の行のストライドは、64 を法として 36 ワードにする。こうすると、段 B で 16 行 × 2 つの半分を 16 バイトずつ読むときの
+//   バンク競合は 2-way（最小）になり、段 A で 2 つの半分を書くときはバンクが重ならない。
+//   δ_i = Σ_d do_id·o_id（o は FP32）。dq・dk・dv は FP32 で作り、ちょうど 0 になった和を +0 にそろえてから（positiveZero）、BF16 に
+//   最近接偶数で 1 回丸める（c10 の型変換と同じビット）。ρ の勾配はワークグループ（行 × ヘッド）ごとの部分和を FP32 で書き、呼び出し元が
+//   行について足し合わせる（順の決まったリダクション）。
+//   計算するのは生きたクエリ（i < queries で、do_i の 16 値に 0 でない値があるもの）だけ。do_i = 0 なら dP_i = δ_i = 0、dS_i = 0 なので、
+//   dk・dv・dq・ρ の勾配への寄与はちょうど 0 になる（近似ではない）。死んだクエリは範囲外のクエリと同じに扱い（Q^T・dO^T は 0、P = +0、
+//   dS = +0、ρ の勾配に足さない、dq は +0）、生きたクエリを含む最後のタイルより後ろのタイルは計算しない。
+// リダクションの順は、全てワークグループの中で決まっている（WMMA の累積、キーのタイルの順、lane の部分和を足す順）。有効なキーの dk・dv に
+// 入る WMMA は、パディングのクエリ（出力の勾配がちょうど 0）を足しても同じ順で、A・B・C もビットで同じ（パディングの q は WMMA に入れない。
+// gfx1100 の WMMA は、積が 0 でも A の値で積の丸めが変わりうるため）。よって結果は、行ごとに、バッチの組み方とパディングの幅に
+// 依らずビットで同じになる。前提は、パディングの出力の勾配がちょうど 0 であること。
+// グローバルメモリのアドレスは、一様な行の先頭と lane ごとの 32 bit のオフセットに分ける（読み書きが SGPR の先頭と VGPR の
+// オフセットになる）。
+// 検査つきのビルドでは、全てのグローバルメモリの読み書きについて、行の範囲が配列の中にあることと、lane のオフセットが行の範囲の中にある
+// ことの両方を確かめる。
+// 範囲外のコード（セグメント s < segments の値が entries 以上）が来たら止める。検査するのは、有効なキーを 1 つでも含むキーのタイルの全ての
+// コード（タイルの中の無効なキーと、範囲外のクエリの行も含む。範囲外のクエリは最後の行を読む。有効なキーが無いタイルは読まない）。T0 は
+// パディングの組にも範囲内のコードを書く。entries = 16 なら、この検査は一様な分岐で飛ばす。
 #include <algorithm>
 #include <stdexcept>
 #include <string>
@@ -46,11 +52,11 @@ namespace prism {
 namespace {
 
 constexpr int kF = kAttentionFeatures;
-constexpr int kTables = 4;                   // 組の表（符号の byte t ごと、区画 2t と 2t + 1）
-constexpr int kTableEntries = 256;           // 組の表の項（byte の値）
-constexpr int kRhoEntries = kAttentionMaxSegments * kAttentionMaxEntries;  // LDS の頭の ρ の列（区画 × 値）
-constexpr int kScatterWaves = 4;             // 段 B で ρ の勾配を足す波（区画 2 つずつ）
-constexpr int kServiceWave = kScatterWaves;  // 段 B で dQ と次の Q^T・dO^T を受け持つ波
+constexpr int kTables = 4;                   // 組の表（コードのバイト t ごとに 1 つ。セグメント 2t と 2t + 1）
+constexpr int kTableEntries = 256;           // 組の表の項の数（バイトの値の数）
+constexpr int kRhoEntries = kAttentionMaxSegments * kAttentionMaxEntries;  // LDS に置くヘッドの ρ の列（セグメント × 値）
+constexpr int kScatterWaves = 4;             // 段 B で ρ の勾配を足すウェーブ（セグメント 2 つずつ）
+constexpr int kServiceWave = kScatterWaves;  // 段 B で dQ と次の Q^T・dO^T を受け持つウェーブ
 constexpr int kMinBackwardWaves = kServiceWave + 1;
 constexpr float kLog2e = 1.4426950408889634f;
 constexpr float kLn2 = 0.6931471805599453f;
@@ -58,36 +64,37 @@ static_assert(2 * kScatterWaves == kAttentionMaxSegments, "the scatter waves cov
 static_assert(2 * kTables == kAttentionMaxSegments, "the pair tables cover every segment of a code word");
 static_assert(kAttentionMaxEntries == 16, "a segment code is one nibble");
 
-// 鍵の塊の上限の段（LDS の大きさ。S ≤ 16·kBlocks）。
+// キーのタイルの数の上限。カーネルはこの 3 段のどれかで作り、選んだ段で LDS の大きさが決まる（S ≤ 16·kBlocks）。
 constexpr int kSmallBlocks = 5;
 constexpr int kMediumBlocks = 8;
 constexpr int kLargeBlocks = kAttentionMaxTokens / 16;
 
-// 次元 d を A の断片の行 r(d) = 2(d & 7) + (d >> 3) に置くと、C の断片の行 2v + half が次元 v + 8·half になる（lane が続いた 8 次元を
-// 持ち、16 バイトで書ける）。
+// 次元 d を A のフラグメントの行 r(d) = 2(d & 7) + (d >> 3) に置くと、C のフラグメントの行 2v + half が次元 v + 8·half になる（lane が
+// 連続する 8 次元を持ち、16 バイトで書ける）。
 __device__ __forceinline__ int featureRow(int d) {
   return 2 * (d & 7) + (d >> 3);
 }
 
-// C の断片の行 m = 2v + half の値を B の断片の K の位置 κ(m) = v + 8·half に置く（lane の 8 値と相方の 8 値を続けるだけで B の断片になる）。
+// C のフラグメントの行 m = 2v + half の値を、B のフラグメントの K の位置 κ(m) = v + 8·half に置く（lane の 8 値と、対になる lane の 8 値を
+// 並べるだけで B のフラグメントになる）。
 __device__ __forceinline__ int fragmentColumn(int m) {
   return (m >> 1) + 8 * (m & 1);
 }
 
-// 作業群の待ち合わせ（LDS の順序だけ。t1 はカーネルの中で全体メモリに書いた値を読まない）。
+// ワークグループのバリア（LDS の順序だけを保証する。t1 はカーネルの中でグローバルメモリに書いた値を読まない）。
 __device__ __forceinline__ void barrier() {
   __builtin_amdgcn_fence(__ATOMIC_RELEASE, "workgroup", "local");
   __builtin_amdgcn_s_barrier();
   __builtin_amdgcn_fence(__ATOMIC_ACQUIRE, "workgroup", "local");
 }
 
-// 2 つの FP32 の上位 16 bit を 1 語に詰める（a が下、b が上）。
+// 2 つの FP32 の上位 16 bit を 1 ワードに詰める（a が下位、b が上位）。
 __device__ __forceinline__ uint32_t upperHalves(uint32_t a, uint32_t b) {
   return __builtin_amdgcn_perm(b, a, 0x07060302u);
 }
 
-// B の断片を lane の 8 値（16 バイト）から作る: 下の 16 lane が K の 0〜7、上の 16 lane が 8〜15 を持つとき、どの lane も
-// [lane & 15 の 8 値, lane | 16 の 8 値] を得る（ds_swizzle の bit の型は LDS の crossbar を通るだけで bank に触れない）。
+// lane の 8 値（16 バイト）から B のフラグメントを作る。下の 16 lane が K の 0〜7、上の 16 lane が 8〜15 を持つとき、どの lane も
+// [lane & 15 の 8 値, lane | 16 の 8 値] を得る（ds_swizzle のビットパターンのモードは LDS の crossbar を通るだけで、バンクには触れない）。
 __device__ __forceinline__ bf16x16 joinHalves(u32x4 own) {
   u32x4 first;
   u32x4 second;
@@ -99,8 +106,9 @@ __device__ __forceinline__ bf16x16 joinHalves(u32x4 own) {
   return __builtin_bit_cast(bf16x16, __builtin_shufflevector(first, second, 0, 1, 2, 3, 4, 5, 6, 7));
 }
 
-// lane の 8 つの FP32 を BF16 の 3 項 hi + mid + lo（どれも上位 16 bit の切り捨て）に分け、相方の 8 値と合わせて B の断片 3 つにする。
-// hi が仮数の上位 8 bit、mid が残りの上位 8 bit、lo が残り（8 bit 以下）を持つので、3 項の和は元の値と等しい（BF16 の正規数の範囲）。
+// lane の 8 つの FP32 を BF16 の 3 項 hi + mid + lo（どれも上位 16 bit を切り捨てた値）に分け、対になる lane の 8 値と合わせて B の
+// フラグメント 3 つにする。hi が仮数の上位 8 bit、mid が残りの上位 8 bit、lo が残り（8 bit 以下）を持つので、3 項の和は元の値と
+// 等しい（BF16 の正規数の範囲で）。
 __device__ __forceinline__ void splitFragments(const float (&x)[8], bf16x16 (&terms)[3]) {
   u32x4 own[3];
 #pragma unroll
@@ -122,7 +130,7 @@ __device__ __forceinline__ void splitFragments(const float (&x)[8], bf16x16 (&te
   }
 }
 
-// acc += A·(lo + mid + hi)（小さい項から）。
+// acc += A·(lo + mid + hi)（小さい項から足す）。
 __device__ __forceinline__ f32x8 mma3(bf16x16 a, const bf16x16 (&terms)[3], f32x8 acc) {
   acc = mma(a, terms[2], acc);
   acc = mma(a, terms[1], acc);
@@ -139,8 +147,8 @@ __device__ __forceinline__ void unpackEight(V first, V second, T (&values)[8]) {
   }
 }
 
-// 頭 head の ρ の列を LDS の rho[16s + c] に置く（s < segments かつ c < entries のときだけ表の値、ほかは 0）。作業群のスレッドが
-// 添字を分けて 1 回で読む。
+// 指定したヘッドの ρ の列を LDS の rho[16s + c] に置く（s < segments かつ c < entries のときだけ表の値、ほかは 0）。ワークグループの
+// スレッドで添字を分担し、1 回で読む。
 __device__ __forceinline__ void stageRho(float* rho, const AttentionShape& shape, Span<const float> table, int head,
                                          int tid, int threads, Bounds& bounds) {
   for (int e = tid; e < kRhoEntries; e += threads) {
@@ -155,7 +163,7 @@ __device__ __forceinline__ void stageRho(float* rho, const AttentionShape& shape
   }
 }
 
-// 組の表の項 τ_t[a + 16b] = (ρ(2t, a) + ρ(2t + 1, b))·log₂e（e = 256t + a + 16b。rho は stageRho の列）。
+// 組の表の項 τ_t[a + 16b] = (ρ(2t, a) + ρ(2t + 1, b))·log₂e（e = 256t + a + 16b。rho は stageRho が置いた列）。
 __device__ __forceinline__ float pairEntry(const float* rho, int e) {
   const int t = e / kTableEntries;
   const float first = rho[kAttentionMaxEntries * (2 * t) + (e & 15)];
@@ -163,14 +171,14 @@ __device__ __forceinline__ float pairEntry(const float* rho, int e) {
   return (first + second) * kLog2e;
 }
 
-// 符号 code の偏り ((τ₀ + τ₁) + τ₂) + τ₃（×log₂e）。
+// コードのバイアス ((τ₀ + τ₁) + τ₂) + τ₃（log₂e を掛けた値）。
 __device__ __forceinline__ float pairBias(uint32_t code, const float* table) {
   return ((table[code & 0xffu] + table[kTableEntries + ((code >> 8) & 0xffu)]) +
           table[2 * kTableEntries + ((code >> 16) & 0xffu)]) +
          table[3 * kTableEntries + (code >> 24)];
 }
 
-// 2 頭の表から（頭ごとに pairBias と同じ順）。
+// ヘッド 2 つ分の表から引く（ヘッドごとに、上の pairBias と同じ順で足す）。
 __device__ __forceinline__ float2 pairBias(uint32_t code, const float2* table) {
   const float2 t0 = table[code & 0xffu];
   const float2 t1 = table[kTableEntries + ((code >> 8) & 0xffu)];
@@ -179,9 +187,9 @@ __device__ __forceinline__ float2 pairBias(uint32_t code, const float2* table) {
   return make_float2(((t0.x + t1.x) + t2.x) + t3.x, ((t0.y + t1.y) + t2.y) + t3.y);
 }
 
-// 範囲外の符号（区画 s < segments の値が entries 以上）は djl-rocm の演算と同じく止める。4 bit の値を 8 bit の欄 2 つ（偶数・奇数の
-// 区画）に分けて 128 − entries を足すと、欄の最上位 bit が「値 ≥ entries」になる。entries が 16 なら全て範囲内なので、呼び手は塊ごとに
-// 1 回の一様な分岐で飛ばす（内側の輪を 1 つの基本塊のまま保つ）。
+// 範囲外のコード（セグメント s < segments の値が entries 以上）は、djl-rocm の演算と同じく止める。4 bit の値を 8 bit のフィールド
+// 2 つ（偶数と奇数のセグメント）に分けて 128 − entries を足すと、フィールドの最上位 bit が「値 ≥ entries」を表す。entries が
+// 16 なら全て範囲内なので、呼び出し元はタイルごとに 1 回の一様な分岐でこの検査を飛ばす（内側のループを 1 つの基本ブロックのまま保つ）。
 __device__ __forceinline__ void checkCodes(const uint32_t (&code)[8], int segments, int entries) {
   const uint32_t bias = static_cast<uint32_t>(128 - entries) * 0x01010101u;
   uint32_t even = 0;
@@ -201,7 +209,7 @@ __device__ __forceinline__ void checkCodes(const uint32_t (&code)[8], int segmen
   }
 }
 
-// 検査つきの組み立ての上限つきの配列（AttentionForward・AttentionBackward と同じ並び。codes は 1 組 1 語）。
+// 検査つきのビルドで使う、上限つきの配列（AttentionForward・AttentionBackward と同じ並び。codes は 1 組 1 ワード）。
 struct ForwardArgs {
   AttentionShape shape;
   Span<const uint16_t> query;
@@ -229,9 +237,10 @@ struct BackwardArgs {
   Span<float> gradTable;
 };
 
-// 行の区画: 一様な先頭のアドレスと、lane の 32 bit の位置の読み書き（全体メモリの読み書きが SGPR の先頭と VGPR の 32 bit のバイトの
-// 位置になる）。検査つきの組み立てでは、rowOf が区画 [first, first + size) を span の中か照らし、at が読み書きのたびに lane の
-// [offset, offset + count) を区画の中か照らす（lane の位置は寄せた添字から作るので、通常は収まる）。通常の組み立てでは size は消える。
+// 行の範囲。一様な先頭のアドレスと、lane ごとの 32 bit のオフセットで読み書きする（グローバルメモリの読み書きが、SGPR の先頭と VGPR の
+// 32 bit のバイトオフセットになる）。検査つきのビルドでは、範囲 [first, first + size) が span の中にあるかを rowOf が確かめ、
+// 読み書きのたびに lane の [offset, offset + count) が範囲の中にあるかを at が確かめる（lane のオフセットは範囲に収めた添字から作るので、
+// ふつうは収まる）。通常のビルドでは size は最適化で消える。
 template <class T>
 struct Row {
   T* data;
@@ -244,14 +253,14 @@ struct Row {
   }
 };
 
-// span の [first, first + size) の区画。
+// span の [first, first + size) の範囲。
 template <class T>
 __device__ __forceinline__ Row<T> rowOf(Span<T> span, size_t first, size_t size, Bounds& bounds) {
   return Row<T>{span.data + bounds.index(first, size, span.limit), size};
 }
 
-// 鍵の塊 kt の在否の 16 bit（鍵 16kt + m が bit m。在否の 0 でない鍵で、keys より後ろは在らない）を LDS の keyBits[kt] に置く（波で
-// 塊を分け、ballot の下の 16 bit）。
+// キーのタイル kt の有効・無効を表す 16 bit（キー 16kt + m が bit m。マスクが 0 でないキーが有効で、keys より後ろは無効）を LDS の
+// keyBits[kt] に置く（タイルをウェーブで分け、ballot の下位 16 bit を使う）。
 __device__ __forceinline__ void stageKeyBits(uint32_t* keyBits, Row<const float> maskRow, int keys, int wave, int waves,
                                              int lane, Bounds& bounds) {
   const int blocks = (keys + 15) / 16;
@@ -265,13 +274,13 @@ __device__ __forceinline__ void stageKeyBits(uint32_t* keyBits, Row<const float>
   }
 }
 
-// LDS。V^T は K2 と同じ並び: 頭 h の行 16h + r(d)、鍵 16kt + m は列 16kt + κ(m)（在らない鍵は 0）。符号の写しは波ごとの鍵の塊 1 つで、
-// 問い合わせ n の行の列 κ(m) に鍵 m の符号（lane が持つ 8 鍵 2v + half が 8·half から続く）。
+// LDS。V^T は K2 と同じ並び: ヘッド h の行 16h + r(d)、キー 16kt + m は列 16kt + κ(m)（無効なキーは 0）。コードの写しはウェーブごとにキーの
+// タイル 1 つ分で、クエリ n の行の列 κ(m) にキー m のコードを置く（lane が持つ 8 キー 2v + half が 8·half から続く）。
 template <int kBlocks>
 struct alignas(16) ForwardShared {
   uint16_t valueT[2 * kF][16 * kBlocks + 8];
-  float rho[2][kRhoEntries];             // 2 頭の ρ の列（stageRho）
-  float2 bias[kTables * kTableEntries];  // 2 頭の組の表
+  float rho[2][kRhoEntries];             // 2 ヘッドの ρ の列（stageRho）
+  float2 bias[kTables * kTableEntries];  // 2 ヘッドの組の表
   uint32_t codes[kBlocks][16][16];
   uint32_t keyBits[kBlocks];
 };
@@ -289,15 +298,15 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
   const int waves = threads / kWave;
   const int lane = tid % kWave;
   const int wave = __builtin_amdgcn_readfirstlane(tid / kWave);
-  const int column = lane & 15;  // A・B の断片の行、C の断片の列
-  const int half = lane >> 4;    // C の断片で奇数の行を持つ lane
+  const int column = lane & 15;  // A・B のフラグメントの行、C のフラグメントの列
+  const int half = lane >> 4;    // C のフラグメントで奇数の行を持つ lane
   const int width = shape.heads * kF;
   const int keys = shape.keys;
   const int queries = shape.queries;
   const int blocks = (keys + 15) / 16;
   const float scale = shape.scale * kLog2e;
   Bounds bounds;
-  // 行の区画（問い合わせ・鍵と値は頭の対の列から行の終わりまで）。
+  // 行の範囲（クエリとキー・バリューは、ヘッドの対の列から行の終わりまで）。
   const int columns = 2 * pair * kF;
   const Row<const uint16_t> queryRow =
       rowOf(args.query, static_cast<size_t>(row) * queries * width + columns, queries * width - columns, bounds);
@@ -308,7 +317,8 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
             static_cast<size_t>(shape.codeQueries) * keys, bounds);
   const Row<const float> maskRow = rowOf(args.mask, static_cast<size_t>(row) * keys, keys, bounds);
 
-  // 0. 2 頭の ρ の列、鍵の塊の在否、V^T（鍵の塊と頭の組を波で分ける）。待ち合わせの後に ρ の列から 2 頭の組の表。
+  // 0. 2 ヘッドの ρ の列、キーのタイルの有効・無効、V^T を置く（キーのタイルとヘッドの組をウェーブで分ける）。バリアの後に、ρ の列から
+  //    2 ヘッドの組の表を作る。
 #pragma unroll
   for (int h = 0; h < 2; ++h) {
     stageRho(shared.rho[h], shape, args.table, 2 * pair + h, tid, threads, bounds);
@@ -336,8 +346,8 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
   }
   barrier();
 
-  // 1. 問い合わせの塊 qt = 波。lane は問い合わせ 16qt + column の鍵 16kt + 2v + half（v < 8）を持つ。符号（行 2t + half、鍵 column の
-  //    16 lane で 64 バイト続く）と K の行は、次の鍵の塊の分を前もって読む。
+  // 1. ウェーブ qt がクエリのタイル qt を受け持つ。lane はクエリ 16qt + column のキー 16kt + 2v + half（v < 8）を持つ。コード（行
+  //    2t + half。キー column の 16 lane で 64 バイト続く）と K の行は、次のキーのタイルの分を先読みする。
   const int qt = wave;
   const int query = 16 * qt + column;
   bf16x16 queryFragment[2];
@@ -379,7 +389,7 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
     if (keyBits == 0) {
       continue;
     }
-    // 符号を問い合わせの行に並べ替える（波の中の LDS の写し）。
+    // コードをクエリの行に並べ替える（ウェーブの中で LDS を通す）。
 #pragma unroll
     for (int t = 0; t < 8; ++t) {
       shared.codes[wave][2 * t + half][fragmentColumn(column)] = staged[t];
@@ -400,7 +410,7 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
     float logit[2][8];
 #pragma unroll
     for (int v = 0; v < 8; ++v) {
-      // 在らない鍵は −∞。表を引く読みを条件の枝に沈めないよう、選ぶのは WMMA の値と定数だけで、−∞ は足して付ける。
+      // 無効なキーは −∞。表を引く読み込みを分岐の中に入れないよう、条件で選ぶのは WMMA の値と定数だけにして、−∞ は足して付ける。
       const bool present = ((keyBits >> (2 * v + half)) & 1u) != 0;
       const float floor = present ? 0.0f : -INFINITY;
       const float2 bias = pairBias(code[v], shared.bias);
@@ -436,8 +446,8 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
     }
   }
 
-  // 2. 出力: lane は問い合わせ query の次元 8·half〜8·half + 7（BF16 は 16 バイト、FP32 は 32 バイト）。半分どうしの Σ の和
-  //    （permlanex16）は波の全 lane が在る分岐の外で取る。
+  // 2. 出力。lane はクエリ query の次元 8·half〜8·half + 7 を書く（BF16 は 16 バイト、FP32 は 32 バイト）。半分どうしで Σ を
+  //    足す処理（permlanex16）は、ウェーブの全 lane がそろっている分岐の外で行う。
   float sums[2];
 #pragma unroll
   for (int h = 0; h < 2; ++h) {
@@ -471,20 +481,20 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
   bounds.trap();
 }
 
-// dS と符号の LDS の行の刻み（語）: 16·blocks 以上で 64 を法として 36（100 / 164 / 164）。64 bank のとき、段 B の 16 バイトの読み
-// （lane が行 column の 8·half から）は 16 行 × 2 つの半分が 2-way（最小）、段 A の書き込み（行 2v + half の 16 列）は 2 つの半分の
-// bank が重ならない。行は 16 バイトにそろう。
+// dS とコードの LDS の行のストライド（ワード）: 16·blocks 以上で、64 を法として 36（100 / 164 / 164）。バンクが 64 のとき、段 B の
+// 16 バイトの読み込み（lane が行 column の 8·half から読む）は 16 行 × 2 つの半分で 2-way（最小）になり、段 A の書き込み（行 2v + half の
+// 16 列）は 2 つの半分のバンクが重ならない。行の先頭は 16 バイトにそろう。
 constexpr int scoreStride(int blocks) {
   return 16 * blocks + ((36 - 16 * blocks) % 64 + 64) % 64;
 }
 static_assert(scoreStride(kSmallBlocks) == 100 && scoreStride(kMediumBlocks) == 164 && scoreStride(kLargeBlocks) == 164,
               "the score rows are 36 words apart modulo 64 banks");
 
-// LDS。dS と符号は問い合わせの塊の行 [問い合わせ][鍵]（行の刻みは scoreStride）。ρ の列は stageRho。K^T は鍵の塊ごとの
-// A の断片（行 r(d)、鍵は自然の順）、Q^T・dO^T は問い合わせの塊の A の断片（行 r(d)、問い合わせ m は列 κ(m)）で、
-// 在らない鍵と生きていない問い合わせは 0。lse₂・δ は問い合わせの塊ごとに列 κ(m)（生きていない問い合わせは 0）。queryBits は塊ごとの
-// 生きた問い合わせの 16 bit（列 κ(m) の bit が問い合わせ m）。ρ の勾配の部分和は波 w の区画 2w + p の符号 c を lane ごとに
-// （区画が segments 以上の欄は書かない）。
+// LDS。dS とコードは、クエリのタイルの行 [クエリ][キー] に置く（行のストライドは scoreStride）。ρ の列は stageRho が置く。K^T はキーの
+// タイルごとの A のフラグメント（行 r(d)、キーは自然な順）、Q^T・dO^T はクエリのタイルの A のフラグメント（行 r(d)、クエリ m は列
+// κ(m)）で、無効なキーと生きていないクエリは 0。lse₂・δ はクエリのタイルごとに列 κ(m) に置く（生きていないクエリは 0）。queryBits は
+// タイルごとの生きたクエリを表す 16 bit（列 κ(m) の bit がクエリ m）。ρ の勾配の部分和は、ウェーブ w が、セグメント 2w + p の
+// コード c ごとに lane ごとに持つ（セグメントが segments 以上のフィールドは書き出さない）。
 template <int kBlocks>
 struct alignas(16) BackwardShared {
   float gradScore[16][scoreStride(kBlocks)];
@@ -501,13 +511,14 @@ struct alignas(16) BackwardShared {
   uint32_t queryBits[kBlocks];
 };
 
-// 問い合わせの塊の生きた bits（queryBits）で、列 κ の問い合わせが生きているか。
+// 列 κ のクエリが生きていれば true。bits はクエリのタイルごとの生きたクエリの bit（queryBits）。
 __device__ __forceinline__ bool liveQuery(uint32_t bits, int k) {
   return ((bits >> k) & 1u) != 0;
 }
 
-// 波の 2 区画の部分和 bins[p][c][lane] に、lane の続いた 2 鍵の dS を足す。区画ごとに順に足し（同じ符号なら 2 つ目は 1 つ目の結果に
-// 足す。1 つずつ読み書きするのとビットで同じ）、2 区画の 4 つの読みの待ちを重ねる。shift は区画 2w の符号の bit の位置。
+// ウェーブの 2 セグメントの部分和 bins[p][c][lane] に、lane が持つ連続する 2 キーの dS を足す。セグメントごとに順に足し（コードが同じなら
+// 2 つ目は 1 つ目の結果に足す。1 つずつ読み書きするのとビットで同じ）、2 セグメント分の 4 つの読み込みはまとめて出して待ち時間を重ねる。
+// shift はセグメント 2w のコードが始まる bit の位置。
 __device__ __forceinline__ void accumulatePair(float (*bins)[kAttentionMaxEntries][kWave], int lane, int shift,
                                                uint32_t first, uint32_t second, float x0, float x1) {
   uint32_t c0[2];
@@ -530,30 +541,32 @@ __device__ __forceinline__ void accumulatePair(float (*bins)[kAttentionMaxEntrie
   }
 }
 
-// 勾配の 0 の符号を +0 にそろえる: x + (+0) は −0 だけを +0 に写し、ほかの値（非正規数も）は変えない（IEEE の和。nsz の最適化は
-// 使っていないので畳まれない。積に付けると fma(x, scale, +0) の 1 命令）。在らない鍵の dk・dv は全ての積が 0 の和で、その 0 の符号は
-// 和に入る 0 の符号（WMMA の結果）で決まる。そろえると、ちょうど 0 の和は常に +0 で書かれる。−0 が全く出ないわけではない: 0 でない
-// 和の積 x·scale が下に溢れると fma は符号つきの 0 を返し、pack8 は負の小さな値を BF16 の −0 に丸める。その和は塊に依らず同じ値なので、
-// 行の独立は保たれる。
+// 勾配の 0 の符号を +0 にそろえる。x + (+0) は −0 だけを +0 にし、ほかの値（非正規数も）は変えない（IEEE の加算。nsz の最適化は
+// 使っていないので消されない。積に付けると fma(x, scale, +0) の 1 命令になる）。無効なキーの dk・dv は積が全て 0 の和で、その 0 の符号は
+// 和に入る 0 の符号（WMMA の結果）で決まる。そろえると、ちょうど 0 の和は常に +0 で書かれる。ただし −0 が全く出ないわけではない。
+// 0 でない和の積 x·scale がアンダーフローすると fma は符号つきの 0 を返し、pack8 は絶対値の小さい負の値を BF16 の −0 に丸める。この和は
+// バッチの組み方に依らず同じ値なので、行どうしの独立は保たれる。
 __device__ __forceinline__ float positiveZero(float x) {
   return x + 0.0f;
 }
 
-// 段 A の 1 つの問い合わせの塊の全体メモリの入力（lane の鍵の 8 つの問い合わせの符号、Q・dO の行の断片）。次の塊の分を前もって読む。
+// 段 A でクエリのタイル 1 つに使う、グローバルメモリからの入力（lane のキーに対する 8 クエリのコードと、Q・dO の行のフラグメント）。次の
+// タイルの分を先読みする。
 struct QueryBlockInputs {
   uint32_t code[8];
   bf16x16 query;
   bf16x16 gradOut;
 };
 
-// 問い合わせの塊の Q^T・dO^T の元（波 1 つ。lane は問い合わせ 16qt + (lane & 15) の次元 8·half〜+7 を q と do で 1 つずつ持つ）。
+// クエリのタイルの Q^T・dO^T の元（ウェーブ 1 つ分。lane はクエリ 16qt + (lane & 15) の次元 8·half〜+7 を、q と do で 1 つずつ持つ）。
 struct QueryRows {
   u32x4 query;
   u32x4 gradOut;
 };
 
-// 問い合わせの塊 qt の q・do の行を読む（全体メモリ。q も do も一様な行の先頭と lane の 32 bit の位置で読む）。問い合わせの外は寄せた
-// 最後の行を読み、生きていない問い合わせを 0 にするのは storeQueries なので、読みと LDS に置く間に挟んだ仕事に全体メモリの待ちが重なる。
+// クエリのタイル qt の q・do の行をグローバルメモリから読む（どちらも一様な行の先頭と lane の 32 bit のオフセットで読む）。範囲外のクエリは
+// 最後の行を読み、生きていないクエリを 0 にするのは storeQueries が行う。こうすると、読み込みと LDS に置く処理の間に挟んだ計算で、
+// グローバルメモリの待ち時間を隠せる。
 __device__ __forceinline__ QueryRows loadQueries(Row<const uint16_t> queryRow, Row<const uint16_t> gradOutRow,
                                                  int queries, int width, int qt, int lane, Bounds& bounds) {
   const uint32_t at = static_cast<uint32_t>(min(16 * qt + (lane & 15), queries - 1) * width + 8 * (lane >> 4));
@@ -561,8 +574,9 @@ __device__ __forceinline__ QueryRows loadQueries(Row<const uint16_t> queryRow, R
                    *reinterpret_cast<const u32x4*>(gradOutRow.at(at, 8, bounds))};
 }
 
-// loadQueries の行を LDS の Q^T・dO^T に置く（行 r(d)、問い合わせ m は列 κ(m)。生きていない問い合わせ（外を含む。queryBits の
-// bit が 0）は q も do も 0 にする: dk^T += Q^T·dS の K の位置で、dS = +0 の相手の q がどの S でも同じ +0 になる）。
+// loadQueries で読んだ行を LDS の Q^T・dO^T に置く（行 r(d)、クエリ m は列 κ(m)）。生きていないクエリ（範囲外を含む。queryBits の bit が
+// 0）は q も do も 0 にする。dk^T += Q^T·dS の K の位置で、dS = +0 の相手の q が、トークンの軸の長さ S に依らず同じ
+// +0 になるようにするため。
 template <int kBlocks>
 __device__ __forceinline__ void storeQueries(BackwardShared<kBlocks>& shared, QueryRows rows, int qt, int lane) {
   const int m = lane & 15;
@@ -600,7 +614,7 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
   const int queryBlocks = (queries + 15) / 16;
   const float scale = shape.scale * kLog2e;
   Bounds bounds;
-  // 行の区画（問い合わせ・鍵と値は頭の列から行の終わりまで）。
+  // 行の範囲（クエリとキー・バリューは、ヘッドの列から行の終わりまで）。
   const int columns = head * kF;
   const size_t queryFirst = static_cast<size_t>(row) * queries * width + columns;
   const size_t querySize = static_cast<size_t>(queries) * width - columns;
@@ -618,17 +632,18 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
   const Row<const float> maskRow = rowOf(args.mask, static_cast<size_t>(row) * keys, keys, bounds);
   const Row<uint16_t> gradQueryRow = rowOf(args.gradQuery, queryFirst, querySize, bounds);
 
-  // 0. ρ の列、部分和の 0、生きた問い合わせの bits と lse₂・δ（生きていない問い合わせは 0）、鍵の塊の在否、K^T（波 = 鍵の塊）、
-  //    最初の q・do の行の読み。待ち合わせの後に最初の Q^T・dO^T（生きた bits を使う）と ρ の列から組の表。
+  // 0. ρ の列、部分和の 0 クリア、生きたクエリの bit と lse₂・δ（生きていないクエリは 0）、キーのタイルの有効・無効、K^T（ウェーブごとに
+  //    キーのタイル 1 つ）を置き、最初の q・do の行を読む。バリアの後に、最初の Q^T・dO^T（生きたクエリの bit を使う）を置き、ρ の列から組の表を作る。
   stageRho(shared.rho, shape, args.table, head, tid, threads, bounds);
   for (int e = tid; e < kScatterWaves * 2 * kAttentionMaxEntries * kWave; e += threads) {
     (&shared.bins[0][0][0][0])[e] = 0.0f;
   }
-  // e の lane は e mod 32（threads は 32 の倍数）なので、波の下の 16 lane が塊 e >> 4 の列 κ = 0〜15、上の 16 lane が次の塊を持つ。
+  // e の lane は e mod 32（threads は 32 の倍数）なので、ウェーブの下の 16 lane がタイル e >> 4 の列 κ = 0〜15 を、上の 16 lane が次の
+  // タイルを持つ。
   for (int e = tid; e < 16 * queryBlocks; e += threads) {
     const int qt = e >> 4;
     const int k = e & 15;
-    const int query = 16 * qt + 2 * (k & 7) + (k >> 3);  // κ(m) = k の問い合わせ m
+    const int query = 16 * qt + 2 * (k & 7) + (k >> 3);  // κ(m) = k になるクエリ m
     float lse = 0.0f;
     float delta = 0.0f;
     uint32_t bits = 0;  // do の BF16 のビットの OR（符号を除いて 0 でなければ生きている。NaN・Inf も生きている）
@@ -651,7 +666,7 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
     }
   }
   stageKeyBits(shared.keyBits, maskRow, keys, wave, threads / kWave, lane, bounds);
-  // 段 A の波（kt = 波）の鍵の行: S・dP の B の断片（レジスタに残す）と K^T。
+  // 段 A のウェーブ（kt = ウェーブの番号）のキーの行: S・dP の B のフラグメント（レジスタに残す）と K^T。
   const int kt = wave;
   const int key = 16 * kt + column;
   const uint32_t keyAt = static_cast<uint32_t>(min(key, keys - 1) * 2 * width);
@@ -696,8 +711,8 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
   for (int e = tid; e < kTables * kTableEntries; e += threads) {
     shared.bias[e] = pairEntry(shared.rho, e);
   }
-  // 回す問い合わせの塊は生きた問い合わせを含む最後の塊まで（一様。後ろの塊を落とすだけなので、段 A の次の塊の前もった読みと段 B の
-  // 次の Q^T・dO^T の流れはそのまま）。
+  // 計算するクエリのタイルは、生きたクエリを含む最後のタイルまで（ワークグループで一様な値。後ろのタイルを落とすだけなので、段 A の次の
+  // タイルの先読みと、段 B の次の Q^T・dO^T の流れは変わらない）。
   int liveBlocks = 0;
   for (int qt = 0; qt < queryBlocks; ++qt) {
     liveBlocks = shared.queryBits[qt] != 0 ? qt + 1 : liveBlocks;
@@ -710,7 +725,7 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
   f32x8 gradValueT = {};
   for (int qt = 0; qt < liveBlocks; ++qt) {
     const uint32_t liveBits = shared.queryBits[qt];
-    // 段 A: lane は鍵 key の問い合わせ 16qt + 2v + half（v < 8。列 κ = v + 8·half）を持つ。
+    // 段 A: lane はキー key のクエリ 16qt + 2v + half（v < 8。列 κ = v + 8·half）を持つ。
     if (ownsKeys) {
       const QueryBlockInputs in = next;
       if (qt + 1 < liveBlocks) {
@@ -734,8 +749,8 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
       float gradScore[8];
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
-        // 在らない鍵と生きていない問い合わせは P = +0、dS = +0·(0 − 0) = +0（順伝播と同じく −∞ を足して付け、表を引く読みを枝に
-        // 沈めない）。
+        // 無効なキーと生きていないクエリは P = +0、dS = +0·(0 − 0) = +0（順伝播と同じく −∞ を足して付け、表を引く読み込みを分岐の中に
+        // 入れない）。
         const bool valid = keyPresent && liveQuery(liveBits, v + 8 * half);
         const float floor = valid ? 0.0f : -INFINITY;
         const float logit = fmaf(valid ? score[v] : 0.0f, scale, pairBias(in.code[v], shared.bias));
@@ -757,8 +772,8 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
 
     // 段 B。
     if (wave < kScatterWaves) {
-      // lane は問い合わせ 16qt + column の鍵 16k + 8·half〜+7 を、区画 2·波 と 2·波 + 1 の部分和（lane ごと）に足す（生きた
-      // 問い合わせだけ）。区画が segments 以上の部分和も足すが書かない（本体を分岐なしに保つ）。
+      // lane はクエリ 16qt + column のキー 16k + 8·half〜+7 の dS を、セグメント 2w と 2w + 1（w はウェーブの番号）の部分和（lane ごと）に
+      // 足す。足すのは生きたクエリだけ。セグメントが segments 以上の部分和にも足すが、書き出さない（本体を分岐なしに保つため）。
       if (liveQuery(liveBits, fragmentColumn(column))) {
         for (int k = 0; k < keyBlocks; ++k) {
           if (shared.keyBits[k] == 0) {
@@ -778,13 +793,13 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
         }
       }
     } else if (wave == kServiceWave) {
-      // 次の問い合わせの塊の q・do の行は dQ の前に読み（全体メモリの待ちを dQ に重ねる）、dQ の後で LDS に置く。
+      // 次のクエリのタイルの q・do の行は dQ の前に読み（グローバルメモリの待ち時間を dQ の計算で隠す）、dQ の後で LDS に置く。
       const bool stagesNext = qt + 1 < liveBlocks;
       QueryRows nextRows = {};
       if (stagesNext) {
         nextRows = loadQueries(queryRow, gradOutRow, queries, width, qt + 1, lane, bounds);
       }
-      // dQ^T = K^T·dS^T（鍵の塊の順）: lane は問い合わせ 16qt + column の次元 8·half〜+7。
+      // dQ^T = K^T·dS^T（キーのタイルの順）: lane はクエリ 16qt + column の次元 8·half〜+7 を持つ。
       f32x8 gradQueryT = {};
       for (int k = 0; k < keyBlocks; ++k) {
         if (shared.keyBits[k] == 0) {
@@ -797,7 +812,7 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
         splitFragments(own, terms);
         gradQueryT = mma3(fragment(&shared.keyT[k][column][0]), terms, gradQueryT);
       }
-      // 死んだ問い合わせの dq はちょうど 0（dS = 0）なので +0 を書く。
+      // 死んだクエリの dq はちょうど 0（dS = 0）なので +0 を書く。
       const int query = 16 * qt + column;
       if (query < queries) {
         const bool live = liveQuery(liveBits, fragmentColumn(column));
@@ -815,15 +830,15 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
     }
     barrier();
   }
-  // 回さなかった後ろの塊の問い合わせ（全て死んでいる）の dq は +0（1 つの問い合わせは 16 バイトの 2 つ）。
+  // 計算しなかった後ろのタイルのクエリ（全て死んでいる）の dq は +0（クエリ 1 つは 16 バイトの書き込み 2 つ）。
   for (int e = tid; e < 2 * (queries - 16 * liveBlocks); e += threads) {
     const int query = 16 * liveBlocks + (e >> 1);
     *reinterpret_cast<u32x4*>(gradQueryRow.at(static_cast<uint32_t>(query * width + 8 * (e & 1)), 8, bounds)) =
         u32x4{0u, 0u, 0u, 0u};
   }
 
-  // 3. dk・dv（波 = 鍵の塊。lane は鍵 key の次元 8·half〜+7。在らない鍵の塊は 0 を書く）と ρ の勾配の部分和（区画 2·波 + half の
-  //    符号 column を 32 lane の順に足す）。
+  // 3. dk・dv と ρ の勾配の部分和を書く。dk・dv はウェーブ kt がキーのタイル kt を受け持ち、lane はキー key の次元 8·half〜+7 を書く
+  //    （無効なキーのタイルは 0 を書く）。ρ の勾配は、セグメント 2w + half（w はウェーブの番号）のコード column の部分和を、32 lane の順に足す。
   if (kt < keyBlocks && key < keys) {
     float gradKey[8];
     float gradValue[8];
@@ -911,7 +926,7 @@ void attentionForward(const AttentionShape& shape, const AttentionForward& array
   args.logSumExp = {arrays.logSumExp, rows * shape.heads * shape.queries};
   const int queryBlocks = (shape.queries + 15) / 16;
   const int keyBlocks = (shape.keys + 15) / 16;
-  // 同じ行の頭の対が隣どうしで走る（行の符号と k・v を L2 で使い回す）。波は問い合わせの塊の数。
+  // 同じ行のヘッドの対が隣どうしで走る（行のコードと k・v を L2 で使い回す）。ウェーブの数はクエリのタイルの数。
   const dim3 grid(shape.heads / 2, shape.rows);
   const dim3 block(kWave * queryBlocks);
   switch (blockBucket(std::max(queryBlocks, keyBlocks))) {
@@ -947,7 +962,7 @@ void attentionBackward(const AttentionShape& shape, const AttentionBackward& arr
   args.gradTable = {arrays.gradTable, rows * shape.heads * shape.segments * shape.entries};
   const int queryBlocks = (shape.queries + 15) / 16;
   const int keyBlocks = (shape.keys + 15) / 16;
-  // 同じ行の頭が隣どうしで走る。波は鍵の塊の数（段 B の 5 波より少なくしない）。
+  // 同じ行のヘッドが隣どうしで走る。ウェーブの数はキーのタイルの数（段 B に必要な 5 ウェーブより少なくしない）。
   const dim3 grid(shape.heads, shape.rows);
   const dim3 block(kWave * std::max(keyBlocks, kMinBackwardWaves));
   switch (blockBucket(std::max(queryBlocks, keyBlocks))) {

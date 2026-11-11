@@ -1,18 +1,22 @@
-// K7（value_graph）: 16 行の作業群（256 スレッド = 8 波）。eager の ValueGraphHead.scores（推論。錨の勾配の扱いは学習だけなので無い）。
+// K7（value_graph）: eager の ValueGraphHead.scores と同じ値を推論用に計算する。アンカーの勾配は学習でしか使わないので扱わない。
+// ワークグループは 16 行を受け持つ（256 スレッド = 8 ウェーブ）。
 //
-//   e_a  = Σ_t softmax_t(B(t)/τ)·z_t（手の代表の遷移の上、FP32。遷移が 1 つなら z_t）
+//   e_a  = Σ_t softmax_t(B(t)/τ)·z_t（手の代表の遷移について FP32 で計算する。遷移が 1 つなら z_t）
 //   基準 = ダマ x の遷移（立直）、PASS の遷移（応答・槍槓）、ē = Σ_代表の打牌 softmax(B/τ)·z（手番の暗槓・加槓・九種・ツモ）
-//   u    = float(⌊[⌊N(e_a)⌉; ⌊N(基準)⌉; h]·W_gᵀ + c⌉) + β_k + U_k·x^G     （門の行列積は WMMA、門を 16 ずつ）
+//   u    = float(⌊[⌊N(e_a)⌉; ⌊N(基準)⌉; h]·W_gᵀ + c⌉) + β_k + U_k·x^G     （ゲートの行列積は WMMA で、ゲートを 16 個ずつ）
 //   Δ    = Σ_g silu(u_g)·w_k,g + b_k + u_k·x^G
-//   s    = B（打牌）、B(ダマ) + Δ（立直）、Δ（応答）、M + Δ（手番の門、M は打牌と立直の s の最大）、0（PASS）
+//   s    = B（打牌）、B(ダマ) + Δ（立直）、Δ（応答）、M + Δ（手番のゲート。M は打牌と立直の s の最大値）、0（PASS）
 //
-// s は 0 に足して（−0 を +0 にして）要求の順に scores へ書く（eager の合成と同じ値。NaN は 0x7FC00000 の 1 つにそろえる）。縮約は全て
-// 手か行の中で、同じ行の s は塊の組み方に依らずビットで同じ。
+// s には 0 を足して −0 を +0 にそろえ、要求の順に scores へ書く。値は eager の合成と同じで、NaN は 0x7FC00000 の 1 つにそろえる。
+// リダクションは全て手か行の中で閉じるので、同じ行の s はバッチの組み方によらずビットまで同じ。
 //
-// 待ちを減らす形: 門の行列積は W_g の断片を kGateDepth 歩ぶん環に持って読み込みを飛ばし続け（gateProduct）、行列積に
-// 依らない c・β_k・w_k,g の読み込みは行列積の前に出し、U_k·x^G は x を外の輪にして 8 行ぶんの読み込みを一度に飛ばす。合成は
-// スレッドが 1 手を受け持ち、手番の門だけが LDS の s から行の M を手の順に取る。作業群の待ち合わせは LDS の順序だけ（tile::barrier）:
-// K7 が全体メモリに書くのは scores だけで、カーネルの中では読まない。
+// 待ち時間を減らす工夫:
+// - ゲートの行列積では、W_g のフラグメントを kGateDepth ステップ分リングに持ち、読み込みを常に先行させる（gateProduct）。
+// - 行列積に依らない c・β_k・w_k,g の読み込みは、行列積の前に発行する。
+// - U_k·x^G は x を外側のループにして、8 行分の読み込みを一度に発行する。
+// - 合成ではスレッドが 1 手を受け持つ。手番のゲートだけが、LDS に置いた s から行の M を手の順に求める。
+// ワークグループのバリアは LDS の順序だけを保証すればよい（tile::barrier）。K7 がグローバルメモリに書くのは scores だけで、
+// カーネルの中では読まないため。
 #include "prism_hip_mlp.h"
 
 namespace prism {
@@ -21,50 +25,51 @@ namespace {
 constexpr int kThreads = 256;
 constexpr int kWaves = kThreads / kWave;
 constexpr int kRowsPerGroup = 16;
-constexpr int kMaxActionsPerRow = 32;  // 合法手の上限（Limits.MAX_LEGAL_ACTIONS）
+constexpr int kMaxActionsPerRow = 32;  // 1 行の合法手の上限（Limits.MAX_LEGAL_ACTIONS）
 constexpr int kMaxActions = kRowsPerGroup * kMaxActionsPerRow;
 constexpr int kGateTile = 16;
 constexpr int kMaxExact = 16;
-constexpr int kGateDepth = 12;  // 門の行列積で読み込みが飛んでいる歩（環の B の断片）
+constexpr int kGateDepth = 12;  // ゲートの行列積で読み込みを先行させるステップ数（リングに持つ B のフラグメントの数）
 
 template <int H>
 struct alignas(16) ValueGraphShared {
   uint16_t input[kGateTile][3 * H + 8];
   float delta[kMaxActions];
-  float score[kMaxActions];  // 合成の s（手番の門の M のため）
+  float score[kMaxActions];  // 合成した s（手番のゲートの M を求めるのに使う）
   float exact[kGateTile][kMaxExact];
   float partial[kWaves][kGateTile];
   int kind[kGateTile];
   short gateAction[kMaxActions];
-  uint8_t composition[kMaxActions];  // 手の作り方（Composition）
+  uint8_t composition[kMaxActions];  // 手の値の作り方（Composition）
   int gateCount;
 };
 
-// 行列の値を読む小さな道具（検査つきの組み立ての上限つき）。
+// 表の値を 1 つ読むヘルパー（範囲検査つきのビルドでは上限を確かめる）。
 __device__ __forceinline__ int cell(const Span<const int32_t>& table, int width, int index, int field, Bounds& bounds) {
   return table.data[bounds.index(static_cast<size_t>(index) * width + field, 1, table.limit)];
 }
 
-// 手の役割（範囲の外は検査つきの組み立てで止め、通常の組み立てでは表の外を引かないように詰める）。
+// 手の種類（role）を返す。範囲の外の値は、範囲検査つきのビルドでは止め、通常のビルドでは表の外を引かないように範囲の端に寄せる。
 __device__ __forceinline__ int roleOf(const ValueGraphArgs& args, int action, Bounds& bounds) {
   const int role = cell(args.actionColumn, args.actionWidth, action, args.actionRole, bounds);
   (void)bounds.index(static_cast<size_t>(role), 1, static_cast<size_t>(args.roles));
   return min(max(role, 0), kMaxRoles - 1);
 }
 
-// M に入る手（打牌と立直）。
+// M の対象になる手（打牌と立直）か。
 __device__ __forceinline__ bool pivotal(int composition) {
   return composition == static_cast<int>(Composition::kDiscardValue) ||
          composition == static_cast<int>(Composition::kRiichiGate);
 }
 
-// scores に書く値。K7 の FP32 の演算（WMMA・和・最大）が作る NaN は符号と中身が決まらない（x − NaN は 0xFFC00000 になりうる）ので、
-// 呼び手に見える NaN は 0x7FC00000 の 1 つにそろえる（NaN でない値はそのまま）。
+// scores に書く値。K7 の FP32 の演算（WMMA・和・最大値）が作る NaN は符号と中身が決まらない（x − NaN は 0xFFC00000 になりうる）ので、
+// 呼び出し元に見える NaN は 0x7FC00000 の 1 つにそろえる（NaN でない値はそのまま）。
 __device__ __forceinline__ float canonicalScore(float score) {
   return __builtin_isnan(score) ? __builtin_bit_cast(float, 0x7fc00000u) : score;
 }
 
-// lane が持つ 8 列について、遷移 [first, first + count) の softmax(B/τ) で z を集める（FP32、遷移の順。積と和は分けて丸める）。
+// lane が持つ 8 列について、遷移 [first, first + count) の z を softmax(B/τ) で重み付けして足す。FP32 で遷移の順に足し、積と和は
+// 別々に丸める。
 template <int H>
 __device__ __forceinline__ void aggregate(const ValueGraphArgs& args, int first, int count, int col0, float (&e)[8],
                                           Bounds& bounds) {
@@ -105,7 +110,7 @@ __device__ __forceinline__ void aggregate(const ValueGraphArgs& args, int first,
   }
 }
 
-// ⌊N(e)⌉ を門の入力の行 dst に書く（波の 32 lane が 8 列ずつ。統計・利得は FP32）。
+// ⌊N(e)⌉ をゲートの入力の行に書く。ウェーブの 32 lane が 8 列ずつ受け持ち、二乗平均とゲインの掛け算は FP32 で行う。
 template <int H>
 __device__ __forceinline__ void normalizeInto(uint16_t* dst, const float (&e)[8], int col0, const ValueGraphArgs& args,
                                               Bounds& bounds) {
@@ -125,10 +130,10 @@ __device__ __forceinline__ void normalizeInto(uint16_t* dst, const float (&e)[8]
   *reinterpret_cast<u32x4*>(dst + col0) = pack8(values);
 }
 
-// 門の行列積 A·W_g[unit]ᵀ（A は LDS の門の入力 16 行、lane は行 lanes を読む）。W_g の B の断片を kGateDepth 歩ぶん環に持ち、歩 k の積の
-// 直後に同じ枠へ歩 k + kGateDepth の断片を読む（K の外に出る分は最後の歩に寄せて分岐をなくし、使わない）。sched_barrier で読み込みを
-// 積の直後に留め（無いと輪の中に vmcnt(0) が入る）、外の輪は畳む（全て展開すると spill する）。積は K の順のままなので、1 歩ずつ
-// 掛けたものとビットで同じ。
+// ゲートの行列積 A·W_g[unit]ᵀ。A は LDS に置いたゲートの入力 16 行で、各 lane は lane & 15 の行を読む。W_g の B のフラグメントを
+// kGateDepth ステップ分リングに持ち、ステップ k の積の直後に、同じ位置へステップ k + kGateDepth のフラグメントを読む。K の外に出る分は
+// 最後のステップを読み直して分岐をなくし、その値は使わない。sched_barrier で読み込みを積の直後に留める（無いとループの中に vmcnt(0) が
+// 入る）。外側のループは展開しない（全て展開すると spill する）。積は K の順のままなので、1 ステップずつ掛けた結果とビットまで同じ。
 template <int H>
 __device__ __forceinline__ f32x8 gateProduct(const uint16_t (*input)[3 * H + 8], const ValueGraphArgs& args, int unit,
                                              int lanes, Bounds& bounds) {
@@ -178,7 +183,7 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
   const int actionCount = min(endAction - firstAction, kMaxActions);
   (void)bounds.index(static_cast<size_t>(endAction - firstAction), 0, kMaxActions);
 
-  // 1. 門の手を手の順に並べる（波 0 が 32 手ずつ、ballot の前置和）。
+  // 1. ゲートを使う手を、手の順に並べる。ウェーブ 0 が 32 手ずつ見て、ballot の累積和で位置を求める。
   if (wave == 0) {
     int running = 0;
     for (int base = 0; base < actionCount; base += kWave) {
@@ -202,7 +207,7 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
   tile::barrier();
   const int gateCount = shared.gateCount;
 
-  // 2. 門を 16 ずつ: 入力の行を作り（波が 2 行）、W_g を WMMA で掛け、Δ を出す。
+  // 2. ゲートを 16 個ずつ処理する。ウェーブごとに入力の行を 2 行作り、W_g を WMMA で掛けて Δ を求める。
   for (int tile0 = 0; tile0 < gateCount; tile0 += kGateTile) {
     for (int gr = 2 * wave; gr < 2 * wave + 2; ++gr) {
       uint16_t* dst = shared.input[gr];
@@ -234,7 +239,7 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
       // 基準
       const int row = cell(args.actionColumn, args.actionWidth, action, args.actionRow, bounds);
       if (composition == static_cast<int>(Composition::kTurnGate)) {
-        // ē: 行の代表の打牌（手の順）の softmax(B/τ) で z を集める。
+        // ē: 行の中の代表の打牌について、z を softmax(B/τ) で重み付けして足す（手の順）。
         const int rowFirst = cell(args.rowColumn, args.rowWidth, row, args.rowFirstAction, bounds);
         const int rowCount = cell(args.rowColumn, args.rowWidth, row, args.rowActions, bounds);
         float maximum = -INFINITY;
@@ -274,7 +279,7 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
           }
         }
       } else {
-        // 立直はダマ x、応答は PASS（基準の手の代表の最初の遷移）。
+        // 立直の基準はダマ x、応答の基準は PASS。基準の手の代表について、最初の遷移を使う。
         const int base = cell(args.actionColumn, args.actionWidth, action, args.actionBase, bounds);
         const int baseRepresentative =
             cell(args.actionColumn, args.actionWidth, max(base, 0), args.actionRepresentative, bounds);
@@ -306,7 +311,8 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
     }
     tile::barrier();
 
-    // u と silu(u)·w の和。波は G の列の断片 n = wave, wave + 8, … を受け持つ。C の断片の行 v は門 2v + half。
+    // u を求め、silu(u)·w を足す。各ウェーブは G の列のフラグメントを、自分の番号から 8 個おきに受け持つ。C のフラグメントの要素 v は、
+    // ゲート 2v + (lane >> 4) の値。
     float rowSum[8];
 #pragma unroll
     for (int v = 0; v < 8; ++v) {
@@ -314,7 +320,7 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
     }
     for (int n = wave; n < args.gate / 16; n += kWaves) {
       const int unit = n * 16 + lanes;
-      // 行列積に依らない c・β_k・w_k,g の読み込みは先に出す（積の間に届く）。
+      // 行列積に依らない c・β_k・w_k,g の読み込みは先に発行する（積を計算する間に届く）。
       int kinds[8];
       float offsets[8];
       float outputs[8];
@@ -326,7 +332,7 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
       }
       const float bias = tile::load(args.gateHiddenBias.data, args.gateHiddenBias.limit, unit, bounds);
       const f32x8 acc = gateProduct<H>(shared.input, args, unit, lanes, bounds);
-      // U_k·x^G: x を外の輪にして 8 行の読み込みを一度に飛ばす（行ごとの和は x の順のまま）。
+      // U_k·x^G: x を外側のループにして、8 行分の読み込みを一度に発行する（行ごとの和は x の順のまま）。
       float projected[8];
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
@@ -378,8 +384,8 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
     tile::barrier();
   }
 
-  // 3. 合成（スレッドが 1 手）。手番の門のほかは s を書き、s と作り方を LDS に置く。手番の門は行の手を手の順に見て M（打牌と立直の
-  //    s の最大）を取る（fmaxf を掛ける順は 1 スレッドが行を回したときと同じ）。
+  // 3. 合成。スレッドが 1 手ずつ受け持つ。手番のゲート以外の手は s を scores に書き、どの手も s と作り方を LDS に置く。手番のゲートは
+  //    行の手を手の順に見て、M（打牌と立直の s の最大値）を求める。fmaxf を取る順は、1 スレッドが行を順に見たときと同じ。
   for (int local = tid; local < actionCount; local += kThreads) {
     const int a = firstAction + local;
     const int composition = args.composition[roleOf(args, a, bounds)];

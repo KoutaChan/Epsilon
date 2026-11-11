@@ -1,6 +1,6 @@
 package com.epsilon.prism.hip;
 
-/** 実行系が読み書きする要素の型。 */
+/** HIP のランタイムが読み書きする要素の型。 */
 public enum HipElement {
   U8(1),
   /** bfloat16（最近接偶数で丸めた値）。 */

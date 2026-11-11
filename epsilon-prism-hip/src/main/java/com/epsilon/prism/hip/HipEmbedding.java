@@ -5,32 +5,33 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * K1 の 1 つの型の埋め込み（BF16 にした W と E の積を FP32 で畳んだ組の表の和）。
+ * K1 が 1 つの型のトークンを埋め込む方法。フィールドの値の組ごとに、BF16 にした W と E の積を FP32 で前もって計算して表にしておき
+ * （組の表）、その表を引いて足す。
  *
  * <pre>
- * x = ⌊acc⌉、acc = Σ_表 T[Σ_i 値(列_i)·刻み_i] + Σ_k W_d[k]·特徴_k + b
+ * x = ⌊acc⌉、acc = Σ_表 T[Σ_i 値(列_i)·ストライド_i] + Σ_k W_d[k]·特徴_k + b
  * </pre>
  *
- * 表 T は FP32 の {@code [行, H]}、W_d は 2 値の欄・数値・厳密な欄を Linear の入力の順に並べた BF16 の {@code [特徴, H]}（転置）、
- * b は BF16 に丸めた偏りを FP32 で持つ。位置は全て WeightPack の中のバイトの位置。
+ * 表 T は FP32 の {@code [行, H]}。W_d は、2 値のフィールド・数値・厳密な値を Linear の入力の順に並べた BF16 の {@code [特徴, H]}（転置）。
+ * b は BF16 に丸めたバイアスを FP32 で持つ。位置は全て WeightPack の中のバイト位置。
  *
- * <p>局・席・牌・出来事の型は、層 0 の注意の q・k・v を畳んだ表も持つ（L0-FOLD。遷移の型は持たず、位置は −1）:
+ * <p>局・席・牌・イベントの型は、層 0 の Attention の q・k・v を折り込んだ表も持つ（遷移の型は持たず、位置は −1）:
  *
  * <pre>
  * qkv0 = ⌊r·(Σ_表 T'[行] + Σ_k W'_d[k]·特徴_k + b') + b_qkv⌉、r = 1/√(mean(acc²) + ε)
  * </pre>
  *
  * T' = T·diag(g0)·W_qkv0ᵀ（表ごとに FP32 の {@code [行, 3A]}）、W'_d = W_d·diag(g0)·W_qkv0ᵀ（FP32 の {@code [特徴, 3A]}）、b' と
- * b_qkv（FP32 の {@code [2, 3A]}）。列は頭の対の並び（{@link #foldColumn}）。
+ * b_qkv（FP32 の {@code [2, 3A]}）。列はヘッドの対ごとに並べる（{@link #foldColumn}）。
  *
- * @param category 欄の区画
- * @param scalar 数値の区画（BF16、なければ null）
- * @param exact 厳密な区画（FP32 を BF16 に丸めて読む、なければ null）
- * @param tables 畳んだ組の表（{@link #MAX_TABLES} 以下）
- * @param dense 表に畳まない特徴（{@link #MAX_DENSE} 以下、Linear の入力の順）
+ * @param category カテゴリの領域
+ * @param scalar 数値の領域（BF16。なければ null）
+ * @param exact 厳密な値の領域（FP32 を BF16 に丸めて読む。なければ null）
+ * @param tables 折り込んだ組の表（{@link #MAX_TABLES} 個以下）
+ * @param dense 表に折り込まない特徴（{@link #MAX_DENSE} 個以下、Linear の入力の順）
  * @param denseOffset W_d の位置（特徴がなければ 0）
  * @param biasOffset b の位置
- * @param foldOffset W'_d に続く b' と b_qkv の位置（層 0 の QKV に畳まない型は −1）
+ * @param foldOffset W'_d の位置。後ろに b' と b_qkv が続く（層 0 の QKV を折り込まない型は −1）
  */
 public record HipEmbedding(
     HipSection category,
@@ -42,72 +43,74 @@ public record HipEmbedding(
     int biasOffset,
     int foldOffset) {
 
-  /** 1 トークンが引く表の上限。 */
+  /** 1 つのトークンが引く表の数の上限。 */
   public static final int MAX_TABLES = 8;
 
-  /** 1 つの表に畳む欄の上限。 */
+  /** 1 つの表に折り込むフィールドの数の上限。 */
   public static final int MAX_MEMBERS = 8;
 
-  /** 表に畳まない特徴の上限。 */
+  /** 表に折り込まない特徴の数の上限。 */
   public static final int MAX_DENSE = 24;
 
-  /** 1 つの表の int の数（位置・行・欄の数・列・刻み・T' の位置）。 */
+  /** 1 つの表を書くのに使う int の数（位置・行の数・フィールドの数・列・ストライド・T' の位置）。 */
   public static final int TABLE_INTS = 4 + 2 * MAX_MEMBERS;
 
-  /** 1 つの型の int の数（native の {@code EmbeddingSpec} と同じ）。 */
+  /** 1 つの型を書くのに使う int の数（native の {@code EmbeddingSpec} と同じ）。 */
   public static final int INTS = 8 + MAX_TABLES * TABLE_INTS + MAX_DENSE;
 
-  /** 置き場（native の順と同じ）。出力はトークンの型の区画（局・席・牌・出来事）か遷移の静的な部分。 */
+  /** 埋め込みの書き先。並びは native と同じ。トークンの型ごとの領域（局・席・牌・イベント）か、遷移の静的な部分に書く。 */
   public enum Slot {
-    /** 局のトークン → 残差の流れの局の区画。 */
+    /** 局のトークン → 残差ストリームの局の領域。 */
     ROUND,
-    /** 席のトークン → 席の区画。 */
+    /** 席のトークン → 席の領域。 */
     SEAT,
-    /** 牌のトークン → 牌の区画。 */
+    /** 牌のトークン → 牌の領域。 */
     TILE,
-    /** 出来事のトークン → 出来事の区画。 */
+    /** イベントのトークン → イベントの領域。 */
     EVENT,
     /** 遷移 → 遷移の静的な部分。 */
     TRANSITION
   }
 
-  /** 表に畳まない特徴の元。 */
+  /** 表に折り込まない特徴の読み元。 */
   public enum Source {
-    /** 欄の区画の列（2 値）。 */
+    /** カテゴリの領域の列（2 値）。 */
     FLAG,
-    /** 数値の区画の列（BF16）。 */
+    /** 数値の領域の列（BF16）。 */
     SCALAR,
-    /** 厳密な区画の列（FP32 を BF16 に丸める）。 */
+    /** 厳密な値の領域の列（FP32 を BF16 に丸める）。 */
     EXACT
   }
 
   /**
-   * 層 0 の QKV の列 column（q・k・v の {@code [3A]} の並び）の、畳んだ表の頭の対ごとの並びの位置（native の foldColumn と同じ）。頭の対
-   * p の q・k・v の 32 列（頭 2p・2p + 1 の 16 次元ずつ）が 96p から続き、K2 の頭の対の作業群は 1 トークンの 192 バイトの続いた所を読む。
+   * 層 0 の QKV の列が、折り込んだ表の中でどの位置に来るかを返す（native の foldColumn と同じ）。折り込んだ表はヘッドの対ごとに列を
+   * 並べる。対 p の q・k・v の 32 列ずつ（ヘッド 2p と 2p + 1 の 16 次元ずつ）が 96p から続くので、K2 でヘッドの対を受け持つ
+   * ワークグループは、1 トークンにつき連続した 192 バイトを読む。
    *
-   * @param column q・k・v の並びの列（{@code < 3A}）
-   * @param attention 注意の幅 A
-   * @return 頭の対の並びの位置
+   * @param column q・k・v を {@code [3A]} に並べたときの列（{@code < 3A}）
+   * @param attention Attention の幅 A
+   * @return ヘッドの対ごとの並びでの位置
    */
   public static int foldColumn(int column, int attention) {
     return 96 * ((column % attention) / 32) + 32 * (column / attention) + column % 32;
   }
 
   /**
-   * 畳んだ組の表。
+   * 折り込んだ組の表。
    *
    * @param offset 表の位置（FP32 の {@code [rows, H]}）
-   * @param rows 行の数（欄の語彙の積）
-   * @param columns 欄の列
-   * @param strides 欄ごとの刻み（行 = Σ 値·刻み）
-   * @param foldOffset T' の位置（FP32 の {@code [rows, 3A]}、層 0 の QKV に畳まない型は −1）
+   * @param rows 行の数（フィールドごとの語彙の大きさの積）
+   * @param columns フィールドの列
+   * @param strides フィールドごとのストライド（行 = Σ 値·ストライド）
+   * @param foldOffset T' の位置（FP32 の {@code [rows, 3A]}。層 0 の QKV を折り込まない型は −1）
    */
   public record Table(int offset, int rows, int[] columns, int[] strides, int foldOffset) {
 
     /**
      * 形を確かめる。
      *
-     * @throws IllegalArgumentException 欄の数が合わないか、範囲を外れるとき
+     * @throws IllegalArgumentException 位置が負か、行の数が 0 以下か、T' の位置が −1 より小さいとき。フィールドが 0 個か
+     *     {@link #MAX_MEMBERS} 個を超えるとき。列とストライドの数が違うとき
      */
     public Table {
       if (offset < 0 || rows <= 0 || columns.length == 0 || columns.length > MAX_MEMBERS || foldOffset < -1) {
@@ -153,17 +156,17 @@ public record HipEmbedding(
   }
 
   /**
-   * 表に畳まない特徴。
+   * 表に折り込まない特徴。
    *
-   * @param source 元
-   * @param index 元の区画の列
+   * @param source 読み元
+   * @param index 読み元の領域の列
    */
   public record Dense(Source source, int index) {
 
     /**
      * 形を確かめる。
      *
-     * @throws IllegalArgumentException 列が負か大きすぎるとき
+     * @throws IllegalArgumentException 列が負か 0xFFFF を超えるとき
      */
     public Dense {
       Objects.requireNonNull(source, "source");
@@ -176,7 +179,8 @@ public record HipEmbedding(
   /**
    * 形を確かめる。
    *
-   * @throws IllegalArgumentException 上限を超えるか、元の区画がない特徴があるとき
+   * @throws IllegalArgumentException 表が 0 個か上限を超えるとき、特徴が上限を超えるとき、読み元の領域がない特徴があるとき、位置が
+   *     負のとき（W'_d の位置は −1 より小さいとき）。また、表の T' と W'_d の片方だけに位置があるとき
    */
   public HipEmbedding {
     Objects.requireNonNull(category, "category");
@@ -205,9 +209,9 @@ public record HipEmbedding(
   }
 
   /**
-   * native の {@code EmbeddingSpec} の並びで書く。
+   * native の {@code EmbeddingSpec} と同じ並びで書く。
    *
-   * @param into 頭の int の列
+   * @param into 書き先のヘッダーの int の列
    * @param at 書き始める位置
    */
   void encode(int[] into, int at) {

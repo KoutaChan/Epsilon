@@ -25,10 +25,22 @@ public class HipLibraryTest {
   private static final Path HIP = TORCH.resolve("libamdhip64.so");
   private static final BuildInfo BUILD = new BuildInfo("2.11.0", "rocm7.2", "gfx1100");
 
-  /** 読み込みの照らし: 揃った事実は通し、別の HIP の実行系・別の libtorch・版の違い・頭の大きさの違いは英語の例外で止める。 */
+  /**
+   * 読み込んだライブラリの照合: そろった情報は通す。別の HIP のランタイム・別の libtorch・バージョンの違い・形の記述やヘッダーの大きさの
+   * 違いは、英語のメッセージの例外で止める。
+   */
   @Test
   public void verifyRejectsMismatchedRuntimes() {
     HipLibrary.verify(BUILD, runtime(List.of(HIP), TORCH, 70253211, HipPack.HEADER_INTS), "2.11.0", TORCH, false);
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            HipLibrary.verify(
+                BUILD,
+                runtime(List.of(HIP), TORCH, 70253211, HipArchitecture.INTS + 1, HipPack.HEADER_INTS),
+                "2.11.0",
+                TORCH,
+                false));
 
     assertThrows(
         IllegalStateException.class,
@@ -63,12 +75,18 @@ public class HipLibraryTest {
                 BUILD, runtime(List.of(HIP), TORCH, 70253211, HipPack.HEADER_INTS + 1), "2.11.0", TORCH, false));
   }
 
-  /** WeightPack の頭は native の並び（magic・int の数・入力の約束・区画の幅・役割・重みの位置・埋め込み）で書かれる。 */
+  /**
+   * WeightPack のヘッダーは native の並び（形の記述・入力の列の決まり・領域の幅・手の扱いごとの作り方とゲート・重みの位置・埋め込み）で
+   * 書かれ、形の記述から始まる。重みの位置は、重みごとの引き方の項目の数だけ続く。
+   */
   @Test
   public void headerEncodesInNativeOrder() {
+    HipArchitecture architecture = TestPack.architecture(512, TestPack.FOUR_PLAYERS);
     HipPack.Header header =
-        TestPack.header()
+        TestPack.header(architecture)
             .weight(HipWeight.QKV, 1, 4096)
+            .weight(HipWeight.UP, HipWeight.ffnEntry(1, TokenGroup.ALL), 8192)
+            .weight(HipWeight.UP, HipWeight.CANDIDATE_FFN, 12288)
             .role(3, HipComposition.TURN_GATE, 2)
             .embedding(
                 HipEmbedding.Slot.TILE,
@@ -84,20 +102,32 @@ public class HipLibraryTest {
     ByteBuffer pack = TestPack.direct(HipPack.HEADER_BYTES);
     header.write(pack);
     ByteBuffer ints = pack.duplicate().order(ByteOrder.LITTLE_ENDIAN);
-    int schemaAt = 2;
+    int architectureAt = 0;
+    int schemaAt = architectureAt + HipArchitecture.INTS;
     int sectionsAt = schemaAt + HipSchema.values().length;
     int rolesAt = sectionsAt + HipSection.values().length;
-    int gatesAt = rolesAt + HipPack.MAX_ROLES;
-    int weightsAt = gatesAt + HipPack.MAX_ROLES;
-    int embeddingsAt = weightsAt + HipWeight.values().length * HipShape.MAX_DEPTH;
-    assertEquals(ints.getInt(0), HipPack.MAGIC);
-    assertEquals(ints.getInt(4), HipPack.HEADER_INTS);
-    assertEquals(ints.getInt((schemaAt + HipSchema.TILES.ordinal()) * 4), 34);
-    assertEquals(ints.getInt((sectionsAt + HipSection.TRANSITION_CODE.ordinal()) * 4), TestPack.FIXED);
+    int gatesAt = rolesAt + HipArchitecture.MAX_ROLES;
+    int weightsAt = gatesAt + HipArchitecture.MAX_ROLES;
+    int entries = 0;
+    for (HipWeight weight : HipWeight.values()) {
+      entries += weight.index().entries();
+    }
+    int embeddingsAt = weightsAt + entries;
+    assertEquals(entries, HipWeight.ENTRIES);
+    assertEquals(embeddingsAt + HipEmbedding.Slot.values().length * HipEmbedding.INTS, HipPack.HEADER_INTS);
+    int[] encoded = architecture.encode();
+    for (int i = 0; i < encoded.length; i++) {
+      assertEquals(ints.getInt((architectureAt + i) * 4), encoded[i], "architecture int " + i);
+    }
+    assertEquals(ints.getInt((schemaAt + HipSchema.RELATION_ROWS.ordinal()) * 4), 112);
+    assertEquals(
+        ints.getInt((sectionsAt + HipSection.TRANSITION_CODE.ordinal()) * 4), architecture.counts().fixed());
     assertEquals(ints.getInt((rolesAt + 3) * 4), HipComposition.TURN_GATE.ordinal());
     assertEquals(ints.getInt((gatesAt + 3) * 4), 2);
-    assertEquals(ints.getInt((weightsAt + HipWeight.QKV.ordinal() * HipShape.MAX_DEPTH + 1) * 4), 4096);
-    assertEquals(ints.getInt((weightsAt + HipWeight.QKV.ordinal() * HipShape.MAX_DEPTH) * 4), -1);
+    assertEquals(ints.getInt((weightsAt + HipWeight.QKV.firstEntry() + 1) * 4), 4096);
+    assertEquals(ints.getInt((weightsAt + HipWeight.QKV.firstEntry()) * 4), -1);
+    assertEquals(ints.getInt((weightsAt + HipWeight.UP.firstEntry() + 3) * 4), 8192);
+    assertEquals(ints.getInt((weightsAt + HipWeight.UP.firstEntry() + 9) * 4), 12288);
     int tile = embeddingsAt + HipEmbedding.Slot.TILE.ordinal() * HipEmbedding.INTS;
     assertEquals(ints.getInt(tile * 4), HipSection.TILE_CATEGORY.ordinal());
     assertEquals(ints.getInt((tile + 1) * 4), -1);
@@ -112,7 +142,7 @@ public class HipLibraryTest {
     assertTrue(HipPack.HEADER_BYTES >= HipPack.HEADER_INTS * 4 && HipPack.HEADER_BYTES % HipPack.ALIGNMENT == 0);
   }
 
-  /** サーバの CPU（GPU を隠す）で、DJL の ROCm の libtorch と同じプロセスに読み込め、HIP の実行系が 1 つに揃う。 */
+  /** DJL の ROCm の libtorch と同じプロセスに読み込め、HIP のランタイムが 1 つにそろう。 */
   @Test(groups = "native")
   public void loadsBesideDjl() {
     if (HipLibrary.class.getResource("/native/linux-x86_64/libprism_hip.so") == null) {
@@ -128,6 +158,11 @@ public class HipLibraryTest {
   }
 
   private static RuntimeInfo runtime(List<Path> hipLoaded, Path torchDirectory, int hipRuntime, int headerInts) {
+    return runtime(hipLoaded, torchDirectory, hipRuntime, HipArchitecture.INTS, headerInts);
+  }
+
+  private static RuntimeInfo runtime(
+      List<Path> hipLoaded, Path torchDirectory, int hipRuntime, int architectureInts, int headerInts) {
     return new RuntimeInfo(
         70253211,
         hipRuntime,
@@ -139,6 +174,7 @@ public class HipLibraryTest {
         false,
         HipKernel.values().length,
         HipRegion.values().length,
+        architectureInts,
         headerInts,
         "gfx1100");
   }

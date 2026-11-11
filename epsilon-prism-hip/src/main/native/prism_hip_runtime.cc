@@ -30,7 +30,7 @@ bool startsWith(const std::string& text, const char* prefix) {
   return text.compare(0, std::strlen(prefix), prefix) == 0;
 }
 
-// プロセスに読み込まれた共有の物の実のパス（重なりは除く）。
+// プロセスに読み込まれた共有ライブラリの実体のパス（重複は除く）。
 std::vector<std::string> loadedObjects() {
   std::vector<std::string> objects;
   dl_iterate_phdr(
@@ -91,6 +91,7 @@ std::vector<std::string> runtimeInfo() {
   info.push_back(std::string("checked=") + (PRISM_HIP_CHECKED ? "true" : "false"));
   info.push_back("kernels=" + std::to_string(kKernels));
   info.push_back("regions=" + std::to_string(kRegions));
+  info.push_back("architecture=" + std::to_string(kArchitectureInts));
   info.push_back("header=" + std::to_string(kHeaderInts));
   info.push_back("arch=" PRISM_HIP_ARCH);
   return info;

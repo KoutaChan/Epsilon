@@ -1,6 +1,7 @@
 package com.epsilon.prism.hip;
 
 /**
- * 学習で DJL の自動微分の外に置く背骨の演算の組: 関係の偏りつきの注意と RMSNorm。GPU は {@link HipAttention}。
+ * 学習のとき DJL の自動微分の外で計算するバックボーンの演算。関係のバイアスつきの Attention と RMSNorm をまとめる。GPU の実装は
+ * {@link HipAttention}。
  */
 public interface TrainingKernels extends RelationAttention, RmsNormKernels {}

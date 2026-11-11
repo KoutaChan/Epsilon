@@ -1,6 +1,6 @@
-// DJL の配列のデバイスのアドレス。サーバに libtorch のヘッダがないので、libtorch が公開する
-// at::TensorBase::const_data_ptr<T>() const を dlsym で引いて呼ぶ（DJL が先に読んだ libtorch_cpu.so を soname で使い回す）。
-// const_data_ptr は記憶の先頭に storage_offset を足したアドレスを返し、型が合わなければ c10::Error（std::exception）を投げる。
+// DJL の配列のデータがあるデバイスメモリのアドレスを求める。libtorch が公開する
+// at::TensorBase::const_data_ptr<T>() const を dlsym で引いて呼ぶ（DJL が先に読み込んだ libtorch_cpu.so を soname で使い回す）。
+// const_data_ptr はストレージの先頭に storage_offset を足したアドレスを返し、型が合わなければ c10::Error（std::exception）を投げる。
 #include <dlfcn.h>
 
 #include <array>
@@ -17,11 +17,10 @@ namespace {
 // 非 virtual の const のメンバー関数（Itanium の ABI では this が最初の引数）。
 using DataAccessor = const void* (*)(const void* tensor);
 
-constexpr int kElements = 6;
+constexpr int kElements = 5;
 
-// TensorElement の順の記号（c++filt: at::TensorBase::const_data_ptr<T, 0>() const）。
+// TensorElement の順に並べたシンボル（c++filt: at::TensorBase::const_data_ptr<T, 0>() const）。
 constexpr std::array<const char*, kElements> kSymbols = {
-    "_ZNK2at10TensorBase14const_data_ptrIbLi0EEEPKT_v",
     "_ZNK2at10TensorBase14const_data_ptrIsLi0EEEPKT_v",
     "_ZNK2at10TensorBase14const_data_ptrIiLi0EEEPKT_v",
     "_ZNK2at10TensorBase14const_data_ptrIN3c108BFloat16ELi0EEEPKT_v",

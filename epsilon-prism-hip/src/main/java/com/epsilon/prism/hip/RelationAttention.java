@@ -3,40 +3,41 @@ package com.epsilon.prism.hip;
 import ai.djl.ndarray.NDArray;
 
 /**
- * 関係の偏りつきの注意の、順伝播と逆伝播の演算（学習で DJL の自動微分の外に置く演算）。GPU は {@link HipAttention}。
+ * 関係のバイアスつきの Attention の順伝播と逆伝播。学習のとき DJL の自動微分の外で計算する。GPU の実装は {@link HipAttention}。
  *
- * <p>数式: ℓ_ij = (q_i·k_j)·scale + Σ_s ρ[entries·s + c_s(i, j), h]（鍵 j が在るときだけ）、o_i = Σ_j softmax_j(ℓ_i) v_j。区画 s の符号
- * c_s は、組の語 s/4 の 4(s%4) ビット目から 4 ビット。逆伝播は出力の勾配から q・kv・ρ の勾配を作る（q・kv の勾配は FP32 で作って q・kv の
- * 型に最近接偶数で 1 回丸める。ρ は作業群（行 × 頭）ごとの部分和で、呼び手が行で足す）。配列の形は {@link Dimensions} の約束どおり。
+ * <p>数式: ℓ_ij = (q_i·k_j)·scale + Σ_s ρ[entries·s + c_s(i, j), h]（キー j があるときだけ）、o_i = Σ_j softmax_j(ℓ_i) v_j。区分 s の
+ * コード c_s は 4 ビットで、1 組のコードのうちワード s/4 のビット 4(s%4) から入っている。逆伝播は出力の勾配から q・kv・ρ の勾配を作る。q・kv の
+ * 勾配は FP32 で計算し、q・kv の型へ最近接偶数で 1 回丸める。ρ の勾配はワークグループ（行 × ヘッド）ごとの部分和で、呼び出し元が行に
+ * ついて足す。配列の形は {@link Dimensions} に書いたとおり。
  */
 public interface RelationAttention {
 
-  /** 行のトークンの上限（native の kAttentionMaxTokens）。 */
+  /** 1 行のトークンの数の上限（native の kAttentionMaxTokens）。 */
   int MAX_TOKENS = 160;
 
-  /** 頭の幅（native の kAttentionFeatures）。 */
+  /** ヘッドの幅（native の kAttentionFeatures）。 */
   int FEATURES = 16;
 
-  /** 関係の区画の上限（native の kAttentionMaxSegments）。 */
+  /** 関係の区分の数の上限（native の kAttentionMaxSegments）。 */
   int MAX_SEGMENTS = 8;
 
-  /** 区画あたりの値の上限（4 ビットの符号）。 */
+  /** 1 つの区分がとる値の数の上限（コードが 4 ビットのため）。 */
   int MAX_ENTRIES = 16;
 
   /**
-   * 注意の数。配列の形: q・out・outFloat・gradOut・gradQuery は [rows, queries, width]、kv・gradKeyValue は [rows, keys, 2·width]
-   * （鍵の後に値）、mask は [rows, keys]、codes は [rows, codeQueries, keys, words]（先頭の queries 個を読む）、ρ は
-   * [tableRows, heads]、logSumExp は [rows, heads, queries]、gradTable は [rows·heads, tableRows]。
+   * Attention の次元。配列の形は、q・out・outFloat・gradOut・gradQuery が [rows, queries, width]、kv・gradKeyValue が
+   * [rows, keys, 2·width]（キーの後にバリュー）、mask が [rows, keys]、codes が [rows, codeQueries, keys, words]（先頭の queries 個を
+   * 読む）、ρ が [tableRows, heads]、logSumExp が [rows, heads, queries]、gradTable が [rows·heads, tableRows]。
    *
    * @param rows 行の数
-   * @param queries 問い合わせの数
-   * @param keys 鍵の数
-   * @param codeQueries 関係の符号の問い合わせの軸の長さ
-   * @param heads 頭の数（幅は heads·{@value #FEATURES}。GPU の順伝播は頭の対で作業群を作るので偶数）
-   * @param words 1 組の符号の INT16 の語の数（{@link RelationCodes#WORDS}。GPU は 1 組の符号を 32 bit の 1 語として読む）
-   * @param segments 関係の区画の数
-   * @param entries 区画あたりの値の数（ρ の行は segments·entries）
-   * @param scale 内積の倍率
+   * @param queries クエリの数
+   * @param keys キーの数
+   * @param codeQueries 関係のコードの配列で、クエリの軸の長さ
+   * @param heads ヘッドの数（幅は heads·{@value #FEATURES}。GPU の順伝播はヘッドの対ごとにワークグループを作るので偶数）
+   * @param words 1 組のコードを入れる INT16 のワードの数（{@link RelationCodes#WORDS}。GPU は 1 組のコードを 32 bit の 1 ワードとして読む）
+   * @param segments 関係の区分の数
+   * @param entries 1 つの区分がとる値の数（ρ の行は segments·entries）
+   * @param scale 内積に掛ける倍率
    */
   record Dimensions(
       int rows,
@@ -50,9 +51,9 @@ public interface RelationAttention {
       float scale) {
 
     /**
-     * 数を確かめる。
+     * 次元を確かめる。
      *
-     * @throws IllegalArgumentException 範囲の外か、頭の数が奇数か、語の数が {@link RelationCodes#WORDS} でないとき
+     * @throws IllegalArgumentException 値が範囲の外のとき、ヘッドの数が奇数のとき、ワードの数が {@link RelationCodes#WORDS} でないとき
      */
     public Dimensions {
       if (rows <= 0
@@ -69,11 +70,14 @@ public interface RelationAttention {
           || entries <= 0
           || entries > MAX_ENTRIES
           || !(scale > 0)) {
-        throw new IllegalArgumentException("invalid relation attention dimensions " + this);
+        throw new IllegalArgumentException(
+            "invalid relation attention dimensions: rows=" + rows + " queries=" + queries + " keys=" + keys
+                + " codeQueries=" + codeQueries + " heads=" + heads + " words=" + words + " segments=" + segments
+                + " entries=" + entries + " scale=" + scale);
       }
     }
 
-    /** 問い合わせ・出力の幅。 */
+    /** クエリと出力の幅。 */
     public int width() {
       return heads * FEATURES;
     }
@@ -87,15 +91,15 @@ public interface RelationAttention {
   /**
    * 順伝播。
    *
-   * @param d 数
-   * @param query 問い合わせ
-   * @param keyValue 鍵と値
-   * @param mask 鍵の在否（0 でなければ在る）
-   * @param codes 関係の符号（INT16）
+   * @param d 次元
+   * @param query クエリ
+   * @param keyValue キーとバリュー
+   * @param mask キーがあるか（0 でなければある）
+   * @param codes 関係のコード（INT16）
    * @param table ρ（FP32）
-   * @param out 出力（問い合わせと同じ型、書く）
-   * @param outFloat 逆伝播のための FP32 の出力（書く）
-   * @param logSumExp 逆伝播のための log Σ exp（FP32、書く）
+   * @param out 出力の書き先（クエリと同じ型）
+   * @param outFloat 逆伝播で使う FP32 の出力の書き先
+   * @param logSumExp 逆伝播で使う log Σ exp の書き先（FP32）
    */
   void forward(
       Dimensions d,
@@ -111,18 +115,18 @@ public interface RelationAttention {
   /**
    * 逆伝播。
    *
-   * @param d 数
-   * @param query 順伝播の問い合わせ
-   * @param keyValue 順伝播の鍵と値
-   * @param mask 順伝播の鍵の在否
-   * @param codes 順伝播の関係の符号
+   * @param d 次元
+   * @param query 順伝播のクエリ
+   * @param keyValue 順伝播のキーとバリュー
+   * @param mask 順伝播で使った、キーがあるかの印
+   * @param codes 順伝播の関係のコード
    * @param table 順伝播の ρ
    * @param outFloat 順伝播の FP32 の出力
    * @param logSumExp 順伝播の log Σ exp
    * @param gradOut 出力の勾配（出力と同じ型）
-   * @param gradQuery 問い合わせの勾配（問い合わせと同じ型、書く）
-   * @param gradKeyValue 鍵と値の勾配（鍵と値と同じ型、書く）
-   * @param gradTable ρ の勾配の部分和（FP32、書く）
+   * @param gradQuery クエリの勾配の書き先（クエリと同じ型）
+   * @param gradKeyValue キーとバリューの勾配の書き先（キーとバリューと同じ型）
+   * @param gradTable ρ の勾配の部分和の書き先（FP32）
    */
   void backward(
       Dimensions d,

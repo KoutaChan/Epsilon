@@ -1,18 +1,17 @@
-// prism_hip_bench: JVM の外で Plan を直に回す台。rocprofv3 は surefire の JVM の下では落ちるので、カーネルの計数と kernel-trace は
-// この実行ファイルで取る。材料は epsilon-prism の HipCaseBench が書く場所（case.txt・weights.bin・input.bin、GPU で書けば
-// scores.bin も）。jar の .so には入らず、既定の組み立てにも入らない（CMakeLists.txt の prism_hip_bench）。
+// prism_hip_bench: JVM の外で Plan を直接回すベンチ。入力は epsilon-prism の HipCaseBench が書いたディレクトリ（case.txt・weights.bin・input.bin、GPU で書けば
+// scores.bin も）。jar の .so には入らず、既定のビルドにも入らない（CMakeLists.txt の prism_hip_bench）。
 //
-// 1 つの GPU に計画を --lanes 個作り（本番の実行枠と同じく計画ごとに自分のストリーム）、どの計画にも同じ重みと塊を置く。
-//   既定      : 各レーンは前の塊の終わりを待って次を積む（本番の slot と同じく 1 レーンに塊 1 つ）。レーンどうしは同時に走る。
-//   --serial  : レーンを 1 つずつ回す（積んで待つ）。他の計画は同じ GPU に置かれているだけ。
-//   --kernel K: 最初に forward を 1 回回して作業域を満たし、その後は K だけを Plan::run で繰り返す（K が自分の書いた区画を読み直す
-//               ので値は回ごとに変わるが、測るのは時間だけ）。
-// どの forward の s も最初の s とビットで同じでなければならない（HIP の推論はビットで再現し、塊の組に依らない）。
-// --dry-run は引数と材料を読んで照らすだけで、HIP の関数を 1 つも呼ばない。
+// 1 つの GPU に Plan を --lanes 個作り（本番のスロットと同じく、Plan ごとに自分のストリームを持つ）、どの Plan にも同じ重みとバッチを置く。
+//   既定      : 各レーンは前のバッチの終わりを待ってから次を積む（本番のスロットと同じく、1 レーンにバッチ 1 つ）。レーンどうしは同時に走る。
+//   --serial  : レーンを 1 つずつ回す（積んで待つ）。ほかの Plan は同じ GPU に置かれているだけ。
+//   --kernel K: 最初に forward を 1 回回して作業領域を満たし、その後は K だけを Plan::run で繰り返す。K は自分が書いた領域を読み直す
+//               ので値は回ごとに変わるが、測るのは時間だけ。
+// どの forward の s も、最初の s とビットまで同じでなければならない（HIP の推論はビットまで再現し、バッチの組み方に依らない）。
+// --dry-run は引数と入力のファイルを読んで確かめるだけで、HIP の関数を 1 つも呼ばない。
 //
-// 標準出力の行の頭は "PRISM-HIP-BENCH"。speed の行は HipForwardTest#measureSpeed の PRISM-HIP-SPEED と同じ書き方（ms と µs/判断、
-// 計時した回の中央値。層ごとに回すカーネルは層の和）で、壁の時間は計時した回の全体 ÷（レーン × 回）。
-// 終了コード: 0 成功、1 HIP の失敗、2 引数か材料の誤り、3 s の不一致。
+// 標準出力の行は "PRISM-HIP-BENCH" で始まる。speed の行は HipForwardTest#measureSpeed の PRISM-HIP-SPEED と同じ書き方で、ms と
+// µs/判断は計時した回の中央値（層ごとに回すカーネルは層の和）。経過時間は、計時した回の全体を（レーン数 × 回数）で割った値。
+// 終了コード: 0 成功、1 HIP の失敗、2 引数か入力のファイルの誤り、3 s の不一致。
 #include <hip/hip_runtime.h>
 
 #include <algorithm>
@@ -21,7 +20,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -44,10 +42,10 @@ using prism::PlanShape;
 
 // Java の HipKernel の名前（prism::Kernel の順）。
 constexpr std::array<const char*, kKernels> kKernelNames = {
-    "EMBED", "RELATION", "ATTENTION0", "MLP0", "ATTENTION1", "MLP1_KV", "CANDIDATE", "VALUE_GRAPH"};
+    "EMBED",    "RELATION",         "ATTENTION_ALL", "MLP_ALL", "ATTENTION_FIXED", "MLP_FIXED",
+    "MLP_LAST", "REREAD_KEY_VALUE", "CANDIDATE",     "REREAD",  "VALUE_GRAPH"};
 
 constexpr int kMaxLanes = 8;
-constexpr int kMaxIdleStreams = 16;
 
 // s の不一致（終了コード 3）。
 struct ScoreMismatch : std::runtime_error {
@@ -58,12 +56,9 @@ struct Options {
   std::string directory;
   int device = 0;
   int lanes = 1;
-  int idleStreams = 0;
   int warmup = 5;
   int iterations = 20;
   int kernel = -1;  // −1 は forward
-  size_t padBefore = 0;
-  size_t padAfter = 0;
   bool profile = false;
   bool serial = false;
   bool dryRun = false;
@@ -71,7 +66,7 @@ struct Options {
   std::string compareWith;
 };
 
-// HipCaseBench が書いた 1 塊。
+// HipCaseBench が書いたバッチ 1 つ。
 struct Case {
   PlanShape plan{};
   BatchShape batch{};
@@ -83,9 +78,8 @@ struct Case {
 
 void usage() {
   std::fprintf(stderr,
-               "usage: prism_hip_bench --case DIR [--device N] [--lanes N] [--idle-streams N] [--warmup N]\n"
-               "                       [--iterations N] [--kernel NAME] [--serial] [--profile] [--pad-before BYTES]\n"
-               "                       [--pad-after BYTES] [--scores FILE] [--compare FILE] [--dry-run]\n");
+               "usage: prism_hip_bench --case DIR [--device N] [--lanes N] [--warmup N] [--iterations N]\n"
+               "                       [--kernel NAME] [--serial] [--profile] [--scores FILE] [--compare FILE] [--dry-run]\n");
 }
 
 long long number(const std::string& name, const std::string& text, long long low, long long high) {
@@ -109,7 +103,7 @@ int kernelOf(const std::string& name) {
       return k;
     }
   }
-  throw std::invalid_argument("unknown kernel '" + name + "' (expected a HipKernel name such as MLP0)");
+  throw std::invalid_argument("unknown kernel '" + name + "' (expected a HipKernel name such as MLP_ALL)");
 }
 
 Options parse(int argc, char** argv) {
@@ -128,18 +122,12 @@ Options parse(int argc, char** argv) {
       options.device = static_cast<int>(number(flag, value(), 0, 63));
     } else if (flag == "--lanes") {
       options.lanes = static_cast<int>(number(flag, value(), 1, kMaxLanes));
-    } else if (flag == "--idle-streams") {
-      options.idleStreams = static_cast<int>(number(flag, value(), 0, kMaxIdleStreams));
     } else if (flag == "--warmup") {
       options.warmup = static_cast<int>(number(flag, value(), 0, 100000));
     } else if (flag == "--iterations") {
       options.iterations = static_cast<int>(number(flag, value(), 1, 1000000));
     } else if (flag == "--kernel") {
       options.kernel = kernelOf(value());
-    } else if (flag == "--pad-before") {
-      options.padBefore = static_cast<size_t>(number(flag, value(), 0, 1LL << 34));
-    } else if (flag == "--pad-after") {
-      options.padAfter = static_cast<size_t>(number(flag, value(), 0, 1LL << 34));
     } else if (flag == "--profile") {
       options.profile = true;
     } else if (flag == "--serial") {
@@ -181,7 +169,7 @@ void writeFile(const std::string& path, const void* data, size_t bytes) {
   }
 }
 
-// case.txt の "名前=値" の行（空行と # で始まる行は飛ばす）。
+// case.txt の "名前=値" の行を読む。空行と # で始まる行は飛ばす。
 std::map<std::string, std::string> readDescription(const std::string& path) {
   std::ifstream in(path);
   if (!in) {
@@ -220,13 +208,29 @@ Case readCase(const Options& options) {
   constexpr long long kInt = 0x7fffffffLL;
   Case result;
   PlanShape& plan = result.plan;
-  plan.hidden = static_cast<int>(field("hidden", 1, kInt));
-  plan.ffn = static_cast<int>(field("ffn", 1, kInt));
-  plan.gate = static_cast<int>(field("gate", 1, kInt));
-  plan.depth = static_cast<int>(field("depth", 1, kInt));
-  const uint32_t epsilonBits = static_cast<uint32_t>(field("epsilonBits", 0, 0xffffffffLL));
-  std::memcpy(&plan.epsilon, &epsilonBits, sizeof(float));
-  plan.fixedTokens = static_cast<int>(field("fixedTokens", 1, kInt));
+  // 形の記述。Java の HipArchitecture.encode の int を、符号つきの 10 進でカンマ区切りに並べたもの。
+  const auto architecture = fields.find("architecture");
+  if (architecture == fields.end()) {
+    throw std::invalid_argument("case.txt has no field 'architecture'");
+  }
+  {
+    std::stringstream list(architecture->second);
+    std::string item;
+    int32_t ints[prism::kArchitectureInts];
+    int count = 0;
+    while (std::getline(list, item, ',')) {
+      if (count == prism::kArchitectureInts) {
+        throw std::invalid_argument("case.txt architecture has more than " + std::to_string(prism::kArchitectureInts) +
+                                    " ints");
+      }
+      ints[count++] = static_cast<int32_t>(number("case.txt architecture", item, -kInt - 1, kInt));
+    }
+    if (count != prism::kArchitectureInts) {
+      throw std::invalid_argument("case.txt architecture has " + std::to_string(count) + " ints, expected " +
+                                  std::to_string(prism::kArchitectureInts));
+    }
+    std::memcpy(&plan.architecture, ints, sizeof(plan.architecture));
+  }
   plan.rows = static_cast<int>(field("capacityRows", 1, kInt));
   plan.events = static_cast<int>(field("capacityEvents", 0, kInt));
   plan.transitions = static_cast<int>(field("capacityTransitions", 1, kInt));
@@ -252,7 +256,7 @@ Case readCase(const Options& options) {
     if (count == prism::kSections) {
       throw std::invalid_argument("case.txt lists more than " + std::to_string(prism::kSections) + " sections");
     }
-    // 区画の先頭は blob の内で、K1 の 16 バイトの読み込みにそろう（Java の HipBatch と同じ約束）。
+    // 領域の先頭は blob の中にあり、K1 の 16 バイトの読み込みに合わせて 16 バイト境界にそろう（Java の HipBatch と同じ取り決め）。
     const long long offset = number("case.txt sections", item, 0, static_cast<long long>(batch.bytes));
     if (offset % 16 != 0) {
       throw std::invalid_argument("section " + std::to_string(count) + " offset " + item + " is not 16-byte aligned");
@@ -269,10 +273,8 @@ Case readCase(const Options& options) {
     throw std::invalid_argument("weights.bin holds " + std::to_string(result.weights.size()) +
                                 " bytes; the plan takes a header and at most " + std::to_string(plan.weightBytes));
   }
-  int32_t magic = 0;
-  std::memcpy(&magic, result.weights.data(), sizeof(magic));
-  if (magic != prism::kPackMagic) {
-    throw std::invalid_argument("weights.bin does not start with the weight pack magic");
+  if (std::memcmp(result.weights.data(), &plan.architecture, sizeof(plan.architecture)) != 0) {
+    throw std::invalid_argument("weights.bin was built for another network architecture than case.txt");
   }
   result.input = readFile(dir + "input.bin");
   if (result.input.size() != batch.bytes) {
@@ -289,12 +291,15 @@ Case readCase(const Options& options) {
   return result;
 }
 
-// --kernel で回す層（HipKernel#acceptsLayer と同じ: K2・K3 は最初の層、K4・K5 は最後の層、ほかは 0）。
-int layerOf(int kernel, int depth) {
+// --kernel で回す層を返す。HipKernel#acceptsLayer が受ける最初の層で、全トークンの層の K2・K3 は層 0、局・席・牌の層の K4・K3 は
+// 最初の局・席・牌の層、K5 は最後の層、ほかは 0。
+int layerOf(int kernel, const prism::Architecture& architecture) {
   switch (static_cast<Kernel>(kernel)) {
-    case Kernel::kAttention1:
-    case Kernel::kMlp1Kv:
-      return depth - 1;
+    case Kernel::kAttentionFixed:
+    case Kernel::kMlpFixed:
+      return architecture.allTokenLayers();
+    case Kernel::kMlpLast:
+      return architecture.depth - 1;
     default:
       return 0;
   }
@@ -305,7 +310,7 @@ double median(std::vector<double> values) {
   return values[values.size() / 2];
 }
 
-// 1 つの計画と、そのストリーム・ページ固定の入力と s。
+// Plan 1 つと、そのストリーム、ページ固定した入力と s。
 struct Lane {
   hipStream_t stream = nullptr;
   std::unique_ptr<Plan> plan;
@@ -314,7 +319,7 @@ struct Lane {
   std::vector<std::array<float, kKernels>> millis;  // 計時した回ごとのカーネルの時間
 };
 
-// GPU の上の全ての資源。壊すときは計画 → ストリーム → ホストのメモリの順に返す（計画はストリームより先に死ぬ）。
+// GPU の上の全てのリソース。破棄するときは Plan → ストリーム → ホストのメモリの順に解放する（Plan はストリームより先に破棄する）。
 class Bench {
  public:
   Bench(const Options& options, const Case& material) : options_(options), case_(material) {}
@@ -335,12 +340,6 @@ class Bench {
         (void)hipHostFree(lane.scores);
       }
     }
-    for (hipStream_t stream : idle_) {
-      (void)hipStreamDestroy(stream);
-    }
-    for (void* block : blocks_) {
-      (void)hipFree(block);
-    }
   }
 
   Bench(const Bench&) = delete;
@@ -350,26 +349,7 @@ class Bench {
     PRISM_HIP(hipSetDevice(options_.device));
     hipDeviceProp_t properties;
     PRISM_HIP(hipGetDeviceProperties(&properties, options_.device));
-    const char* queues = std::getenv("GPU_MAX_HW_QUEUES");
-    // PCI の番地は、時計と電力の記録（sysfs の hwmon）をこの GPU に結び付けるため。
-    std::printf("PRISM-HIP-BENCH device %d %s %s pci %04x:%02x:%02x.0 GPU_MAX_HW_QUEUES=%s\n", options_.device,
-                properties.name, properties.gcnArchName, static_cast<unsigned>(properties.pciDomainID),
-                static_cast<unsigned>(properties.pciBusID), static_cast<unsigned>(properties.pciDeviceID),
-                queues == nullptr ? "(unset)" : queues);
-    pad(options_.padBefore);
-    // 本番の 1 装置には、収集中は空いているストリームもある。一度使って HW の queue に結び付けてから、レーンのストリームを作る。
-    if (options_.idleStreams > 0) {
-      void* touch = nullptr;
-      PRISM_HIP(hipMalloc(&touch, sizeof(uint32_t)));
-      blocks_.push_back(touch);
-      for (int s = 0; s < options_.idleStreams; ++s) {
-        hipStream_t stream = nullptr;
-        PRISM_HIP(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
-        idle_.push_back(stream);
-        PRISM_HIP(hipMemsetAsync(touch, 0, sizeof(uint32_t), stream));
-        PRISM_HIP(hipStreamSynchronize(stream));
-      }
-    }
+    std::printf("PRISM-HIP-BENCH device %d %s %s\n", options_.device, properties.name, properties.gcnArchName);
     const size_t scoreBytes = static_cast<size_t>(case_.batch.actions) * sizeof(float);
     lanes_.resize(options_.lanes);
     for (Lane& lane : lanes_) {
@@ -381,14 +361,13 @@ class Bench {
       PRISM_HIP(hipHostMalloc(&lane.scores, scoreBytes, hipHostMallocDefault));
       std::memcpy(lane.input, case_.input.data(), case_.batch.bytes);
     }
-    pad(options_.padAfter);
   }
 
-  // 全ての回を回し、計時した回の壁の時間（秒）を返す。
+  // 全ての回を回し、計時した回の経過時間（秒）を返す。
   double run() {
     const int total = options_.warmup + options_.iterations;
     const bool kernelOnly = options_.kernel >= 0;
-    // --kernel は forward 1 回で作業域を満たしてから。同時に走らせる forward は回 0 を先に全てのレーンに積む。
+    // --kernel では、先に forward を 1 回回して作業領域を満たす。レーンを同時に走らせる forward では、回 0 を先に全てのレーンに積む。
     for (Lane& lane : lanes_) {
       if (kernelOnly) {
         submitForward(lane);
@@ -405,7 +384,7 @@ class Bench {
       const bool timed = it >= options_.warmup;
       for (Lane& lane : lanes_) {
         if (kernelOnly) {
-          lane.plan->run(static_cast<Kernel>(options_.kernel), layerOf(options_.kernel, case_.plan.depth),
+          lane.plan->run(static_cast<Kernel>(options_.kernel), layerOf(options_.kernel, case_.plan.architecture),
                          case_.batch);
           if (options_.serial) {
             finishKernel(lane, timed);
@@ -414,7 +393,7 @@ class Bench {
           submitForward(lane);
           finish(lane, timed);
         } else {
-          // forward の回 it はもう積んである。終わりを待って照らし、次の回を積む。
+          // forward の回 it はもう積んである。終わりを待って s を照合し、次の回を積む。
           finish(lane, timed);
           if (it + 1 < total) {
             submitForward(lane);
@@ -436,19 +415,11 @@ class Bench {
   long long batches() const { return batches_; }
 
  private:
-  void pad(size_t bytes) {
-    if (bytes > 0) {
-      void* block = nullptr;
-      PRISM_HIP(hipMalloc(&block, bytes));
-      blocks_.push_back(block);
-    }
-  }
-
   void submitForward(Lane& lane) {
     lane.plan->forward(lane.input, case_.batch, lane.scores, case_.version);
   }
 
-  // forward の終わりを待ち、s を最初の s と照らす。
+  // forward の終わりを待ち、s を最初の s と照合する。
   void finish(Lane& lane, bool timed) {
     lane.plan->synchronize();
     const size_t bytes = static_cast<size_t>(case_.batch.actions) * sizeof(float);
@@ -484,13 +455,11 @@ class Bench {
   const Options& options_;
   const Case& case_;
   std::vector<Lane> lanes_;
-  std::vector<hipStream_t> idle_;
-  std::vector<void*> blocks_;  // --pad-before・--pad-after の確保と、空のストリームに一度使わせる 4 バイト
   std::vector<char> reference_;
   long long batches_ = 0;
 };
 
-// カーネルごとの中央値（ms）の行。samples は計時した回ごとの時間。
+// カーネルごとの中央値（ms）を並べた行を返す。samples は計時した回ごとの時間で、sum には中央値の和を書く。
 std::string kernelLine(const std::vector<std::array<float, kKernels>>& samples, int rows, double* sum) {
   std::string line;
   *sum = 0.0;
@@ -528,8 +497,8 @@ void report(const Options& options, const Case& material, const Bench& bench, do
     std::printf(
         "PRISM-HIP-BENCH speed depth %d lanes %d%s rows %d tokens/row %.1f transitions/row %.1f actions/row %.1f:%s"
         " kernels=%.3fms (%.3f us/decision) wall=%.3fms (%.3f us/decision)\n",
-        material.plan.depth, options.lanes, options.serial ? " serial" : "", batch.rows,
-        (static_cast<double>(material.plan.fixedTokens) * rows + batch.events) / rows, batch.transitions / rows,
+        material.plan.architecture.depth, options.lanes, options.serial ? " serial" : "", batch.rows,
+        (static_cast<double>(material.plan.architecture.fixed()) * rows + batch.events) / rows, batch.transitions / rows,
         batch.actions / rows, line.c_str(), sum, sum * 1e3 / rows, wallMs, wallMs * 1e3 / rows);
     if (options.lanes > 1) {
       for (size_t i = 0; i < bench.lanes().size(); ++i) {
@@ -540,7 +509,7 @@ void report(const Options& options, const Case& material, const Bench& bench, do
     }
   } else {
     std::printf("PRISM-HIP-BENCH wall depth %d lanes %d%s rows %d: %.3fms per batch (%.3f us/decision)\n",
-                material.plan.depth, options.lanes, options.serial ? " serial" : "", batch.rows, wallMs,
+                material.plan.architecture.depth, options.lanes, options.serial ? " serial" : "", batch.rows, wallMs,
                 wallMs * 1e3 / rows);
   }
 }
@@ -550,12 +519,11 @@ int bench(const Options& options) {
   const BatchShape& batch = material.batch;
   std::printf(
       "PRISM-HIP-BENCH case %s: depth %d rows %d events %d transitions %d actions %d bytes %zu weights %zu"
-      " version %lld; lanes %d idle streams %d warmup %d iterations %d mode %s%s%s pads %zu/%zu\n",
-      options.directory.c_str(), material.plan.depth, batch.rows, batch.events, batch.transitions, batch.actions,
-      batch.bytes, material.weights.size(), static_cast<long long>(material.version), options.lanes,
-      options.idleStreams, options.warmup, options.iterations,
-      options.kernel >= 0 ? kKernelNames[options.kernel] : "forward", options.serial ? " serial" : "",
-      options.profile ? " profile" : "", options.padBefore, options.padAfter);
+      " version %lld; lanes %d warmup %d iterations %d mode %s%s%s\n",
+      options.directory.c_str(), material.plan.architecture.depth, batch.rows, batch.events, batch.transitions, batch.actions,
+      batch.bytes, material.weights.size(), static_cast<long long>(material.version), options.lanes, options.warmup,
+      options.iterations, options.kernel >= 0 ? kKernelNames[options.kernel] : "forward", options.serial ? " serial" : "",
+      options.profile ? " profile" : "");
   if (options.dryRun) {
     std::printf("PRISM-HIP-BENCH dry run: arguments and case files are valid; no HIP call was made\n");
     return 0;

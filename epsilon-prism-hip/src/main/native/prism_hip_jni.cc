@@ -1,4 +1,4 @@
-// com.epsilon.prism.hip.PrismHip の JNI の口。C++ の例外は Java の例外に替える（引数の誤りは IllegalArgumentException、
+// com.epsilon.prism.hip.PrismHip の JNI の実装。C++ の例外は Java の例外に変える（引数の誤りは IllegalArgumentException、
 // それ以外は IllegalStateException）。
 #include <jni.h>
 
@@ -60,7 +60,7 @@ prism::Kernel kernel(jint value) {
   return static_cast<prism::Kernel>(value);
 }
 
-// 直の ByteBuffer の [position, position + bytes) のアドレス。
+// direct ByteBuffer の [position, position + bytes) の先頭アドレスを返す。
 char* direct(JNIEnv* env, jobject buffer, jint position, size_t bytes) {
   char* address = static_cast<char*>(env->GetDirectBufferAddress(buffer));
   const jlong capacity = env->GetDirectBufferCapacity(buffer);
@@ -82,7 +82,7 @@ size_t size(jlong bytes) {
   return static_cast<size_t>(bytes);
 }
 
-// Java が HipAttention で引いたデバイスのアドレス。
+// Java が HipAttention で配列から取り出したデバイスのアドレスを、型付きのポインタにする。
 template <class T>
 T* device(jlong address) {
   if (address == 0) {
@@ -138,13 +138,25 @@ JNIEXPORT jstring JNICALL Java_com_epsilon_prism_hip_PrismHip_deviceArch(JNIEnv*
 }
 
 JNIEXPORT jlong JNICALL Java_com_epsilon_prism_hip_PrismHip_newPlan(JNIEnv* env, jclass, jint device, jlong stream,
-                                                                    jint hidden, jint ffn, jint gate, jint depth,
-                                                                    jfloat epsilon, jint fixedTokens, jint rows,
-                                                                    jint events, jint transitions, jint actions,
-                                                                    jlong inputBytes, jlong weightBytes) {
+                                                                    jintArray architecture, jint rows, jint events,
+                                                                    jint transitions, jint actions, jlong inputBytes,
+                                                                    jlong weightBytes) {
   return guarded(env, [&]() -> jlong {
-    const prism::PlanShape shape{hidden, ffn,   gate,        depth,   epsilon,          fixedTokens,
-                                 rows,   events, transitions, actions, size(inputBytes), size(weightBytes)};
+    if (architecture == nullptr || env->GetArrayLength(architecture) != prism::kArchitectureInts) {
+      throw std::invalid_argument("expected an architecture of " + std::to_string(prism::kArchitectureInts) + " ints");
+    }
+    prism::PlanShape shape{};
+    static_assert(sizeof(jint) == sizeof(int32_t), "the architecture is a sequence of int32");
+    env->GetIntArrayRegion(architecture, 0, prism::kArchitectureInts, reinterpret_cast<jint*>(&shape.architecture));
+    if (env->ExceptionCheck()) {
+      throw std::invalid_argument("cannot read the architecture");
+    }
+    shape.rows = rows;
+    shape.events = events;
+    shape.transitions = transitions;
+    shape.actions = actions;
+    shape.inputBytes = size(inputBytes);
+    shape.weightBytes = size(weightBytes);
     return reinterpret_cast<jlong>(new Plan(device, reinterpret_cast<hipStream_t>(stream), shape));
   });
 }

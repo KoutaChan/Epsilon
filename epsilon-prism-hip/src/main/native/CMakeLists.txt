@@ -1,6 +1,6 @@
 # libprism_hip.so: PRISM の HIP の実行系。網を知らない JNI と自前のカーネルだけを持つ。
 #
-# libtorch のヘッダは使わない（サーバに libtorch 2.11.0+rocm7.2 のヘッダがない）。学習の演算が DJL の配列のアドレスを引くときだけ、
+# libtorch のヘッダは使わない。学習の演算が DJL の配列のアドレスを引くときだけ、
 # libtorch が公開する at::TensorBase::const_data_ptr<T>() を dlsym で呼ぶ（prism_hip_torch.cc）。繋がるのは HIP の実行系（libamdhip64.so.7）だけで、
 # DJL が先に読んだものを soname で使い回す。ストリームは PtStream.getId()、ホストのメモリは直の ByteBuffer で受け、デバイスの
 # メモリは計画（newPlan）が一度だけ取る。RPATH は付けない。
@@ -30,24 +30,28 @@ if(NOT PRISM_ARCH_COUNT EQUAL 1)
 endif()
 set(PRISM_HIP_ARCH ${CMAKE_HIP_ARCHITECTURES})
 
-set(PRISM_SOURCES
-  prism_hip_jni.cc
-  prism_hip_plan.cc
-  prism_hip_runtime.cc
-  prism_hip_torch.cc
+set(PRISM_KERNELS
   k0_relation.hip
   k1_embed.hip
   k2_attention.hip
   k3_mlp.hip
   k6_candidate.hip
   k7_value_graph.hip
+  k8_key_value.hip
+  k9_reread.hip)
+set(PRISM_SOURCES
+  prism_hip_jni.cc
+  prism_hip_plan.cc
+  prism_hip_runtime.cc
+  prism_hip_torch.cc
+  ${PRISM_KERNELS}
   t0_relation.hip
   t1_attention.hip
   t2_norm.hip)
 # 全ての翻訳単位を HIP として 7.2.2 の clang に通す（HIP の実行系のヘッダと定義をそろえる）。
 set_source_files_properties(prism_hip_jni.cc prism_hip_plan.cc prism_hip_runtime.cc prism_hip_torch.cc PROPERTIES LANGUAGE HIP)
-# 注意と学習の RMSNorm のカーネルは、レジスタ・scratch・LDS・占有を組み立ての記録に出す。
-set_source_files_properties(k0_relation.hip k2_attention.hip t1_attention.hip t2_norm.hip
+# 全てのカーネルは、レジスタ・scratch・LDS・占有を組み立ての記録に出す。
+set_source_files_properties(${PRISM_KERNELS} t0_relation.hip t1_attention.hip t2_norm.hip
   PROPERTIES COMPILE_OPTIONS "-Rpass-analysis=kernel-resource-usage")
 
 function(prism_hip_library name checked)
@@ -73,16 +77,11 @@ prism_hip_library(prism_hip OFF)
 prism_hip_library(prism_hip_check ON)
 
 # prism_hip_bench: JVM の外で Plan を直に回す台（rocprofv3 の計数と kernel-trace）。jar の .so とは別の実行ファイルで、既定の組み立て
-# にも入らない（cmake --build <dir> --target prism_hip_bench）。推論の道の翻訳単位を、通常の .so と同じ定義と旗で翻訳し直す。
+# にも入らない。推論の道の翻訳単位を、通常の .so と同じ定義と旗で翻訳し直す。
 add_executable(prism_hip_bench EXCLUDE_FROM_ALL
   prism_hip_bench.cc
   prism_hip_plan.cc
-  k0_relation.hip
-  k1_embed.hip
-  k2_attention.hip
-  k3_mlp.hip
-  k6_candidate.hip
-  k7_value_graph.hip)
+  ${PRISM_KERNELS})
 set_source_files_properties(prism_hip_bench.cc PROPERTIES LANGUAGE HIP)
 target_include_directories(prism_hip_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(prism_hip_bench PRIVATE PRISM_HIP_ARCH="${PRISM_HIP_ARCH}" PRISM_HIP_CHECKED=0)

@@ -1,32 +1,35 @@
-// K1（embed）: トークンの埋め込みと遷移の静的な部分（BF16 にした W と E の積を FP32 で畳んだ組の表の和）。
+// K1（embed）: トークンの埋め込みと、遷移の静的な部分を作る。フィールドの値の組ごとに、BF16 にした W と E の積を FP32 で前もって
+// 計算した表（組の表）を引いて足す。
 //
-//   x = ⌊acc⌉、acc = Σ_表 T[Σ_i 値(列_i)·刻み_i] + Σ_k W_d[k]·特徴_k + b
+//   x = ⌊acc⌉、acc = Σ_表 T[Σ_i 値(列_i)·ストライド_i] + Σ_k W_d[k]·特徴_k + b
 //
-// 表 T は FP32 の [行, H]（WeightPack の中で W·E を畳んだもの）、W_d は表に畳まない特徴（2 値の欄・数値・厳密な欄を BF16 にしたもの）の
-// BF16 の [特徴, H]、b は BF16 に丸めた偏り。BF16 どうしの積は FP32 で厳密なので、eager の Linear との差は和の順だけ。和は 0 から
-// 表の順、特徴の順、b の順に FP32 で足す（トークンの中で固定）。
+// 表 T は FP32 の [行, H]（WeightPack の中で W·E を折り込んだもの）。W_d は表に折り込まない特徴（2 値のフィールド・数値・厳密な値を
+// BF16 にしたもの）の重みで、BF16 の [特徴, H]。b は BF16 に丸めたバイアス。BF16 どうしの積は FP32 で厳密なので、eager の Linear との
+// 差は足す順だけ。和は 0 から始めて、表の順、特徴の順、b の順に FP32 で足す（どのトークンでも同じ順）。
 //
-// 局・席・牌・出来事のトークンは、層 0 の注意の q・k・v も畳んだ表から作って QKV0 へ書く（L0-FOLD。K2 の層 0 は射影をせずに読む）:
+// 局・席・牌・イベントのトークンは、層 0 の Attention の q・k・v も折り込んだ表から作って QKV0 へ書く（K2 の層 0 は射影をせずにこれを読む）:
 //
 //   qkv0 = ⌊r·(Σ_表 T'[行] + Σ_k W'_d[k]·特徴_k + b') + b_qkv⌉、r = 1/√(mean(acc²) + ε)
 //
-// T' = T·diag(g0)·W_qkv0ᵀ、W'_d = W_d·diag(g0)·W_qkv0ᵀ、b' = b·diag(g0)·W_qkv0ᵀ は重みの公開のときに FP64 で作って FP32 に丸めたもの
-// （WeightPack。列は頭の対の並び foldColumn）。r は丸める前の acc から取るので、x と n の BF16 の丸めは qkv0 の道に入らない（残差の x は
-// 今までどおり丸めて書く）。和は 0 から表の順、特徴の順（fma）、b' の順に FP32 で足し、r との積と b_qkv との和は別々に丸める（fma に
-// しない）。r は lane の 8 列の acc² を順に fma で足して波の 32 lane を xor の木（waveSum）で足し、平均と ε の和・平方根・割り算を
-// IEEE の丸めで求める（rsqrt の近似は使わない）。CPU の参照（HipReference）は同じ順で同じ値を作る。
+// T' = T·diag(g0)·W_qkv0ᵀ、W'_d = W_d·diag(g0)·W_qkv0ᵀ、b' = b·diag(g0)·W_qkv0ᵀ は、重みを公開するときに FP64 で計算して FP32 に丸めた
+// もの（WeightPack。列はヘッドの対ごとの並び foldColumn）。r は丸める前の acc から求めるので、x と n の BF16 の丸めは qkv0 の計算に
+// 入らない（残差の x は丸めて書く）。和は 0 から始めて、表の順、特徴の順（fma）、b' の順に FP32 で足し、r との積と b_qkv との和は別々に
+// 丸める（fma にしない）。r は、lane の 8 列の acc² を順に fma で足し、ウェーブの 32 lane を xor のツリー（waveSum）で足して、平均と ε の
+// 和・平方根・割り算を IEEE の丸めで求める（rsqrt の近似は使わない）。CPU の参照実装（HipReference）は同じ順で同じ値を作る。
 //
-// 作業群は 1 つの型の 64 トークン（波ごとに 8 トークン、lane は x の H/32 列と qkv0 の 3A/32 列）。型の作業群は EmbedArgs.blockStart の
-// 順に並ぶ。作業群の始めに型の約束と W_d・W'_d を LDS へ 1 回写す（全体メモリの約束は組み立て器から見ると出力と重なりうるので、
-// そのまま読むとトークンごとに読み直しになる）。W_d・W'_d の LDS は動的で、大きさは全ての型の最大（embedSharedBytes）。
-// 波は lane t に表 t の位置・欄の列と刻みを、lane k に特徴 k の元を持ち、トークンごとに
-//   1. lane t は表 t の欄のバイトを全て、lane k は特徴 k を同時に読む（全体メモリの 1 往復）
-//   2. lane t が表 t の行の先頭を作り、全ての表の行をまとめて読んで（1 往復。畳む型は 4 表ずつ）、表の順に足す
-//   3. W_d（LDS から 8 特徴ずつ、畳む型は 4 特徴ずつまとめて読む）と特徴の積を k の順に足し、b を足して x を書く
-//   4. 畳む型は、2 の後に読み始めた T' の行（4 表ずつ）を表の順に足し、W'_d（LDS）と特徴の積、b' を足して r を掛け、b_qkv を足して書く
-// lane の qkv0 の列は 4 列の塊 c（< 3）ごとに 128c + 4·lane からの 4 列で、T'・W'_d・b' の読みと qkv0 の書きは波で 512 バイト・
-// 256 バイトの続いた所になる。全体メモリの位置は区画の中の 32 bit のバイトの位置で作る（重みの束と入力の区画は 2 GiB 未満と計画が
-// 確かめる）。行の先頭は SGPR、lane の列だけが VGPR なので、lane ごとの 64 bit の位置をトークンの輪の外に持たない。
+// ワークグループは 1 つの型の 64 トークンを受け持つ（ウェーブごとに 8 トークン。lane は x の H/32 列と qkv0 の 3A/32 列を持つ）。型ごとの
+// ワークグループは EmbedArgs.blockStart の順に並ぶ。ワークグループの始めに、型の仕様と W_d・W'_d を LDS へ 1 回コピーする（グローバル
+// メモリにある仕様は、コンパイラから見ると出力と重なりうるので、そのまま読むとトークンごとに読み直しになる）。W_d・W'_d の LDS は動的に確保し、
+// 大きさは全ての型の最大（embedSharedBytes）。ウェーブでは lane t が表 t の位置・フィールドの列とストライドを、lane k が特徴 k の読み元を
+// 持ち、トークンごとに次の順で計算する。
+//   1. lane t は表 t のフィールドのバイトを全て、lane k は特徴 k を同時に読む（グローバルメモリの 1 往復）
+//   2. lane t が表 t の行の先頭を求める。全ての表の行をまとめて読み（1 往復。折り込む型は 4 表ずつ）、表の順に足す
+//   3. W_d（LDS から 8 特徴ずつ。折り込む型は 4 特徴ずつまとめて読む）と特徴の積を k の順に足し、b を足して x を書く
+//   4. 折り込む型は、2 の後に読み始めた T' の行（4 表ずつ）を表の順に足す。W'_d（LDS）と特徴の積、b' を足して r を掛け、b_qkv を足して書く
+// lane が持つ qkv0 の列は、4 列のチャンク c（< 3）ごとに 128c + 4·lane からの 4 列。T'・W'_d・b' の読み込みと qkv0 の書き込みは、
+// ウェーブ全体でそれぞれ連続した 512 バイト・256 バイトになる。グローバルメモリの位置は、領域の中の 32 bit のバイト位置で計算する（重みの
+// パックと入力の領域が 2 GiB 未満であることは計画が確かめる）。行の先頭は SGPR、lane の列だけが VGPR なので、lane ごとの 64 bit の
+// 位置をトークンのループの外に持たない。
 #include <algorithm>
 #include <type_traits>
 
@@ -41,12 +44,12 @@ constexpr int kWaves = kThreads / kWave;
 constexpr int kTokens = 64;
 constexpr int kTokensPerWave = kTokens / kWaves;
 constexpr int kSpecInts = static_cast<int>(sizeof(EmbeddingSpec) / sizeof(int32_t));
-constexpr int kDensePasses = kMaxDense / kWaves;  // W_d・W'_d を写す回（波 w は特徴 w + 8·pass の行を受け持つ）
-constexpr int kDenseGroup = 8;                    // W_d の LDS の読みをまとめる特徴の数（遷移の型）
-constexpr int kFoldColumns = 4;                   // lane の qkv0 の塊の列（FP32 の 16 バイト、BF16 の 8 バイト）
-// 畳む型の読みのまとめ方。T・T' の行は 4 表ずつ（局は 4 表、牌・出来事は 3 表で 1 往復、席の 6 表だけ 2 往復）、W_d は 4 特徴ずつ、
-// W'_d は 2 特徴ずつ読み、b'・b_qkv はトークンごとに読む（全体メモリの同じ 3 KB）。どれも読みの VGPR を抑えて、遷移の型と同じ
-// 10 波/SIMD に収めるため。
+constexpr int kDensePasses = kMaxDense / kWaves;  // W_d・W'_d を LDS へコピーする回数（ウェーブ w は特徴 w + 8·pass の行を受け持つ）
+constexpr int kDenseGroup = 8;                    // LDS から W_d をまとめて読む特徴の数（遷移の型）
+constexpr int kFoldColumns = 4;                   // lane が持つ qkv0 の 1 チャンクの列の数（FP32 で 16 バイト、BF16 で 8 バイト）
+// 折り込む型の読み込みのまとめ方。T・T' の行は 4 表ずつ（局は 4 表、牌・イベントは 3 表で 1 往復、席だけは 6 表で 2 往復）、W_d は
+// 4 特徴ずつ、W'_d は 2 特徴ずつ読み、b'・b_qkv はトークンごとに読む（グローバルメモリの同じ 3 KB）。どれも読み込みに使う VGPR を抑えて、
+// 遷移の型と同じ 10 ウェーブ/SIMD に収めるため。
 constexpr int kFoldTables = 4;
 constexpr int kFoldWeightGroup = 4;
 constexpr int kFoldDenseGroup = 2;
@@ -56,25 +59,26 @@ static_assert(kDenseGroup % kFoldWeightGroup == 0 && kMaxDense % kFoldDenseGroup
 static_assert(kMaxTables <= kWave && kMaxDense <= kWave, "lane t holds table t and lane k dense feature k");
 static_assert(kMaxTables % kFoldTables == 0, "T and T' rows are read in whole groups of tables");
 
-// 動的な LDS（16 バイトの単位）。型ごとに、W_d が [特徴][lane]（lane の 8 列の BF16）で 8 特徴の組の分の行、続いて畳む型は W'_d が
-// [特徴][塊][lane]（lane の 4 列の FP32）。波の b128 の読みは 512 バイトの連続になる。組の中の特徴の外の W_d の行は写さず（読むが
-// 掛けない）、W'_d は特徴の内の行だけを読む。
+// 動的な LDS（16 バイト単位）。型ごとに、まず W_d を [特徴][lane]（lane の 8 列の BF16）で 8 特徴の組の分の行だけ置き、折り込む型は
+// 続けて W'_d を [特徴][チャンク][lane]（lane の 4 列の FP32）で置く。ウェーブの b128 の読み込みは連続した 512 バイトになる。組の中で
+// 特徴の数を超える W_d の行はコピーしない（読むが掛けない）。W'_d は特徴の数の内の行だけを読む。
 constexpr int denseRows(int dense) {
   return (dense + kDenseGroup - 1) / kDenseGroup * kDenseGroup;
 }
 
-// lane の qkv0 の 4 列の塊の数。
+// lane が持つ qkv0 の 4 列のチャンクの数。
 template <int H>
 constexpr int foldChunks() {
   return 3 * (H / 2) / (kFoldColumns * kWave);
 }
 
-// 波で一様な値を SGPR に移す。約束の欄では表・特徴の輪の分岐がスカラーになり、トークンでは行の先頭がスカラーの命令で作られる。
+// ウェーブで一様な値を SGPR に移す。仕様のフィールドに使うと表・特徴のループの分岐がスカラーになり、トークンに使うと行の先頭をスカラー
+// 命令で計算できる。
 __device__ __forceinline__ int uniform(int value) {
   return __builtin_amdgcn_readfirstlane(value);
 }
 
-// 波の lane 番目の lane が持つ value（波で一様）。
+// ウェーブの中で lane 番目の lane が持つ value を返す（結果はウェーブで一様）。
 __device__ __forceinline__ uint32_t readLane(uint32_t value, int lane) {
   return __builtin_amdgcn_readlane(value, lane);
 }
@@ -83,7 +87,8 @@ __device__ __forceinline__ float readLane(float value, int lane) {
   return __builtin_bit_cast(float, readLane(__builtin_bit_cast(uint32_t, value), lane));
 }
 
-// 特徴の値（bits は元の区画から元の幅のまま読んだもの）。2 値の欄はバイト、数値は BF16、厳密な欄は FP32 を BF16 に丸めて使う。
+// 特徴の値。bits は読み元の領域から元の幅のまま読んだもの。2 値のフィールドはバイト、数値は BF16 として使い、厳密な値は FP32 を
+// BF16 に丸めて使う。
 __device__ __forceinline__ float featureValue(int kind, uint32_t bits) {
   if (kind == static_cast<int>(DenseSource::kScalar)) {
     return bf16Float(static_cast<uint16_t>(bits));
@@ -94,13 +99,13 @@ __device__ __forceinline__ float featureValue(int kind, uint32_t bits) {
   return static_cast<float>(bits);
 }
 
-// r·s + b を積と和の 2 回の丸めで（fma にしない。CPU の参照と同じ式）。
+// r·s + b を、積と和で 2 回丸めて計算する（fma にしない。CPU の参照実装と同じ式）。
 __device__ __forceinline__ float scaleAdd(float r, float s, float b) {
 #pragma clang fp contract(off)
   return r * s + b;
 }
 
-// 1/√(total/H + ε) を IEEE の丸めの割り算・和・平方根・割り算で（rsqrt の近似を使わない。CPU の参照と同じ値）。
+// 1/√(total/H + ε) を、IEEE の丸めの割り算・和・平方根・割り算で計算する（rsqrt の近似は使わない。CPU の参照実装と同じ値）。
 template <int H>
 __device__ __forceinline__ float inverseRms(float total, float epsilon) {
 #pragma clang fp contract(off)
@@ -114,7 +119,7 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
   constexpr int kFoldWidth = 3 * (H / 2);
   constexpr uint32_t kRowBytes = H * sizeof(float);
   constexpr uint32_t kFoldRowBytes = kFoldWidth * sizeof(float);
-  constexpr uint32_t kChunkBytes = kFoldColumns * kWave * sizeof(float);  // 波の 1 塊（T'・W'_d・b' の 512 バイト）
+  constexpr uint32_t kChunkBytes = kFoldColumns * kWave * sizeof(float);  // ウェーブの 1 チャンク（T'・W'_d・b' の 512 バイト）
   static_assert(kPerLane == 8, "one lane holds 8 columns (16 bytes of BF16, 32 bytes of FP32)");
   static_assert(kChunks * kFoldColumns * kWave == kFoldWidth, "the lanes hold every qkv0 column in chunks of 4");
   __shared__ EmbeddingSpec spec;
@@ -129,16 +134,16 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
   const int lane = tid % kWave;
   const int wave = tid / kWave;
   const int col0 = lane * kPerLane;
-  const uint32_t laneOffset = col0 * sizeof(float);  // 表の行の中の lane の 8 列のバイトの位置
-  const uint32_t foldLane = lane * kFoldColumns * static_cast<uint32_t>(sizeof(float));  // 塊の中の lane の 4 列のバイトの位置
+  const uint32_t laneOffset = col0 * sizeof(float);  // 表の行の中で lane の 8 列が始まるバイト位置
+  const uint32_t foldLane = lane * kFoldColumns * static_cast<uint32_t>(sizeof(float));  // チャンクの中で lane の 4 列が始まるバイト位置
   const int count = args.count[slot];
   const uint8_t* input = args.input.data;
   const uint8_t* pack = args.pack.data;
   Bounds bounds;
 
-  // 0. 約束を int32 ずつ、W_d を [特徴][lane] の 16 バイトずつ、畳む型は W'_d を [特徴][塊][lane] の 16 バイトずつ LDS へ写す。読みを
-  //    全て出してから書くので全体メモリの 1 往復で済む（特徴の数と位置は全体メモリの約束から直に読む）。表・欄・特徴の数は計画が重みの
-  //    公開のときに上限の内と確かめている。
+  // 0. 仕様を int32 ずつ、W_d を [特徴][lane] の 16 バイトずつ、折り込む型は W'_d を [特徴][チャンク][lane] の 16 バイトずつ LDS へ
+  //    コピーする。読み込みを全て発行してから書くので、グローバルメモリの 1 往復で済む（特徴の数と位置はグローバルメモリの仕様から直接
+  //    読む）。表・フィールド・特徴の数が上限の内にあることは、重みを公開するときに計画が確かめている。
   {
     const EmbeddingSpec& globalSpec = args.spec[slot];
     const int features = globalSpec.dense;
@@ -190,7 +195,7 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
   const int exact = uniform(spec.exact);
   const int tables = uniform(spec.tables);
   const int features = uniform(spec.dense);
-  const int foldBase = denseRows(features) * kWave;  // W'_d の LDS の先頭（16 バイトの単位）
+  const int foldBase = denseRows(features) * kWave;  // LDS の中の W'_d の先頭（16 バイト単位）
   const uint32_t categoryBase = static_cast<uint32_t>(args.section[category]);
   const uint32_t scalarBase = scalar >= 0 ? static_cast<uint32_t>(args.section[scalar]) : 0u;
   const uint32_t exactBase = exact >= 0 ? static_cast<uint32_t>(args.section[exact]) : 0u;
@@ -198,8 +203,9 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
   const int scalarWidth = scalar >= 0 ? args.sectionWidth[scalar] : 0;
   const int exactWidth = exact >= 0 ? args.sectionWidth[exact] : 0;
 
-  // lane t（< 表の数）は表 t の位置・T' の位置・行の数・欄の列と刻み（使わない欄は列 0・刻み 0 で行の番号に効かない。表を持たない
-  // lane は位置 0・行の番号 0）、lane k（< 特徴の数）は特徴 k の元と列（特徴を持たない lane は元 −1）。
+  // lane t（< 表の数）は表 t の位置・T' の位置・行の数・フィールドの列とストライドを持つ（使わないフィールドは列 0・ストライド 0 なので
+  // 行の番号に効かない。表を持たない lane は位置 0・行の番号 0）。lane k（< 特徴の数）は特徴 k の読み元と列を持つ（特徴を持たない lane
+  // は読み元 −1）。
   const EmbeddingTable& table = spec.table[min(lane, kMaxTables - 1)];
   const bool tableLane = lane < tables;
   const uint32_t tableOffset = tableLane ? static_cast<uint32_t>(table.offset) : 0u;
@@ -221,21 +227,21 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
   const f32x4 b0 = *reinterpret_cast<const f32x4*>(pack + biasAt);
   const f32x4 b1 = *reinterpret_cast<const f32x4*>(pack + biasAt + 16);
 
-  // 波の受け持ちのトークンを回す。kFold は層 0 の q・k・v も作る型（局・席・牌・出来事）。
+  // ウェーブが受け持つトークンを順に処理する。kFold は層 0 の q・k・v も作る型（局・席・牌・イベント）。
   const auto embedTokens = [&](auto fold) {
     constexpr bool kFold = decltype(fold)::value;
     constexpr int kTableGroup = kFold ? kFoldTables : kMaxTables;
     constexpr int kWeightGroup = kFold ? kFoldWeightGroup : kDenseGroup;
-    // b' の行（続いて b_qkv の行）のバイトの位置（畳む型だけ）。
+    // b' の行のバイト位置（後ろに b_qkv の行が続く。折り込む型だけ使う）。
     [[maybe_unused]] const uint32_t biasRow = static_cast<uint32_t>(uniform(spec.foldOffset)) + features * kFoldRowBytes;
     for (int i = 0; i < kTokensPerWave; ++i) {
-      // トークンは波で一様（SGPR。行の先頭はスカラーの命令で作る）。
+      // トークンはウェーブで一様（SGPR に置き、行の先頭はスカラー命令で計算する）。
       const int token =
           uniform((static_cast<int>(blockIdx.x) - args.blockStart[slot]) * kTokens + wave * kTokensPerWave + i);
       if (token >= count) {
         break;
       }
-      // 1. lane t は表 t の行の番号、lane k は特徴 k の値。読みは全て同時に出す。
+      // 1. lane t は表 t の行の番号を、lane k は特徴 k の値を求める。読み込みは全て同時に発行する。
       const uint32_t categoryRow = categoryBase + static_cast<uint32_t>(token) * categoryWidth;
       const uint32_t scalarRow = scalarBase + static_cast<uint32_t>(token) * scalarWidth * 2;
       const uint32_t exactRow = exactBase + static_cast<uint32_t>(token) * exactWidth * 4;
@@ -244,8 +250,8 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
       for (int m = 0; m < kMaxMembers; ++m) {
         entry += input[bounds.index(categoryRow + memberColumn[m], 1, args.input.limit)] * memberStride[m];
       }
-      // 特徴は元ごとに別のレジスタへ読む（1 つの変数に読むと 3 つの読みが同じレジスタにまとまり、読みごとに前の戻りを待つ）。lane の
-      // 元は 1 つなので、読まなかった 2 つは 0 のままで、論理和が読んだ値になる。
+      // 特徴は読み元ごとに別のレジスタへ読む（1 つの変数に読むと 3 つの読み込みが同じレジスタにまとまり、読み込みのたびに前の結果を
+      // 待つ）。lane の読み元は 1 つなので、読まなかった 2 つは 0 のままで、論理和が読んだ値になる。
       uint32_t flagBits = 0;
       uint32_t scalarBits = 0;
       uint32_t exactBits = 0;
@@ -262,8 +268,8 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
       }
       const float feature = featureValue(featureKind, flagBits | scalarBits | exactBits);
 
-      // 2. lane t は表 t の行の先頭（バイトの位置）を作る。表の行をまとめて読み（畳む型は 4 表ずつ）、0 から表の順に足す。
-      // 行の番号は語彙の中（書き手が確かめる）。検査つきの組み立ては表の行の数でも照らす。
+      // 2. lane t は表 t の行の先頭（バイト位置）を求める。表の行をまとめて読み（折り込む型は 4 表ずつ）、0 から始めて表の順に足す。
+      // 行の番号が語彙の中にあることは、入力を書く側が確かめる。範囲検査つきのビルドでは、表の行の数とも照合する。
       (void)bounds.index(static_cast<size_t>(entry), 1, static_cast<size_t>(tableRows));
       const uint32_t rowStart = tableOffset + static_cast<uint32_t>(entry) * kRowBytes;
       float acc[kPerLane];
@@ -298,7 +304,7 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
         }
       }
 
-      // 4 の前半: 最初の 4 表の T' の行を読み始める（3 の W_d の積と x の書きの間に戻りを待つ）。
+      // 4 の前半: 最初の 4 表の T' の行を読み始める（3 で W_d を掛けて x を書く間に、読み込みの結果を待つ）。
       [[maybe_unused]] const uint32_t foldStart = tableFoldOffset + static_cast<uint32_t>(entry) * kFoldRowBytes;
       [[maybe_unused]] f32x4 part[kFoldTables][kChunks];
       if constexpr (kFold) {
@@ -314,8 +320,8 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
         }
       }
 
-      // 3. W_d[k]·特徴_k を k の順に足す（W_d は 8 特徴（畳む型は 4 特徴）の組ごとにまとめて LDS から読む。組の中の特徴の外の行は
-      //    掛けない）。
+      // 3. W_d[k]·特徴_k を k の順に足す（W_d は 8 特徴（折り込む型は 4 特徴）の組ごとに LDS からまとめて読む。組の中で特徴の数を
+      //    超える行は掛けない）。
 #pragma unroll
       for (int k0 = 0; k0 < kMaxDense; k0 += kWeightGroup) {
         if (k0 < features) {
@@ -355,7 +361,7 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
           square = fmaf(acc[c], acc[c], square);
         }
         const float r = inverseRms<H>(waveSum(square), args.epsilon);
-        // T' の行を 0 から表の順に足す（5 表目からは前の 4 表を足した後に読む）。
+        // T' の行を 0 から始めて表の順に足す（5 表目からは、前の 4 表を足した後に読む）。
         float sum[kChunks][kFoldColumns];
 #pragma unroll
         for (int c = 0; c < kChunks; ++c) {
@@ -394,7 +400,7 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
             }
           }
         }
-        // W'_d[k]·特徴_k を k の順に足す（2 特徴ずつ LDS から読む。組の中の特徴の外は最後の特徴の行を読み直して掛けない）。
+        // W'_d[k]·特徴_k を k の順に足す（LDS から 2 特徴ずつ読む。組の中で特徴の数を超える分は、最後の特徴の行を読み直すが掛けない）。
 #pragma unroll
         for (int k0 = 0; k0 < kMaxDense; k0 += kFoldDenseGroup) {
           if (k0 < features) {
@@ -422,7 +428,7 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
             }
           }
         }
-        // b' を足し、r を掛けて b_qkv を足し、BF16 に丸めて塊ごとに 8 バイトを書く。
+        // b' を足し、r を掛けて b_qkv を足し、BF16 に丸めてチャンクごとに 8 バイトを書く。
         const Span<uint16_t> qkv0 = args.qkv0[slot];
         const size_t row = bounds.index(static_cast<size_t>(token) * kFoldWidth, kFoldWidth, qkv0.limit);
 #pragma unroll

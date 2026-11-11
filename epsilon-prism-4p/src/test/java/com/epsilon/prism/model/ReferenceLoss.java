@@ -68,7 +68,7 @@ final class ReferenceLoss {
 
   /**
    * 差分整合の和 Σ w·ℓ_PRISM を返す。κ = 0 で、基準は C の上の一様分布（log p0_C = −log |C|）。教師はホストで [行, 容量] に並べる。
-   * C の上の softmax は C の外の手を where で除き、安定させるために引く行の最大値には勾配を流さない。
+   * C の上の softmax は C の外の手を where で除き、安定させるために引く行の最大値には勾配を流さない。重みの下限の項も足す。
    */
   private static NDArray value(NDManager scope, Outputs outputs, List<ValueLabel> labels) {
     int rows = outputs.actions().length;
@@ -112,12 +112,24 @@ final class ReferenceLoss {
     NDArray sum = e.sum(ACTIONS, true).add(nonEmpty.neg().add(1f));
     NDArray pi = e.div(sum);
     NDArray logPi = shifted.sub(sum.log()).mul(maskF);
+    NDArray target = scope.create(targets, shape);
     NDArray rowLoss =
-        pi.mul(scope.create(targets, shape))
+        pi.mul(target)
             .sum(ACTIONS, true)
             .neg()
-            .add(pi.mul(logPi.sub(scope.create(logPrior, shape))).sum(ACTIONS, true).mul(lambda));
+            .add(pi.mul(logPi.sub(scope.create(logPrior, shape))).sum(ACTIONS, true).mul(lambda))
+            .add(weightFloor(scope, outputs.scores(), target, mask, maskF).div(lambda));
     return rowLoss.mul(scope.create(rowWeights, column)).sum();
+  }
+
+  /** 重みの下限の項を λ で割る前の値 (ε/2)·(1/|C|)·Σ_C (e_a − ē_C)²。e = s − Y、ē_C は C の上の e の平均。 */
+  private static NDArray weightFloor(
+      NDManager scope, NDArray scores, NDArray target, NDArray mask, NDArray maskF) {
+    NDArray zeros = scope.zeros(scores.getShape(), DataType.FLOAT32);
+    NDArray count = maskF.sum(ACTIONS, true).maximum(1f);
+    NDArray error = NDArrays.where(mask, scores.sub(target), zeros);
+    NDArray centered = NDArrays.where(mask, error.sub(error.sum(ACTIONS, true).div(count)), zeros);
+    return centered.square().sum(ACTIONS, true).div(count).mul(PrismLoss.WEIGHT_FLOOR / 2);
   }
 
   /** 行の平均のアンカーの和。行ごとに、測った打牌の s の平均を 2 乗して行の重みを掛ける。 */

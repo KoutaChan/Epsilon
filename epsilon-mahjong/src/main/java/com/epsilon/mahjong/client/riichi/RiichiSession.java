@@ -32,8 +32,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * RiichiLab の 1 つの接続での対局（四人打ち）。サーバの JSON のメッセージを受け、観測に入った mjai のイベントを LiveTable に書く。
- * 行動を求められたら、Decider が選んだ手を返す。席は起家を 0 とする絶対席で、mjai と同じ。
+ * RiichiLab の 1 つの接続での対局。サーバの JSON のメッセージを受け、観測に入った mjai のイベントを LiveTable に書く。
+ * 行動を求められたら、Decider が選んだ手を返す。席は起家を 0 とする絶対席で、mjai と同じ。席の数・牌の組・局の番号と親は、
+ * 渡したルールに従う。三人打ちでは、北抜き（mjai の {@code kita}）を受けて卓に書き、北抜きを求められたら選べる手に入れる。
  *
  * <p>合法手は、エンジンの合法手のうち、要求の {@code _legal_actions} にある手に絞る。返すメッセージは、選んだ手に当たる
  * {@code possible_actions} の要素に、{@code request_id} と {@code actor} を足したもの。打牌には {@code tsumogiri} を、鳴き・
@@ -50,8 +51,6 @@ public final class RiichiSession {
 
   private static final Logger log = LoggerFactory.getLogger(RiichiSession.class);
 
-  private static final Variant VARIANT = Variant.TENHOU_4P;
-
   /**
    * 行動の種類。{@code _legal_actions} の {@code action_type} と、それに当たる mjai の {@code type}
    * （{@code possible_actions} で使う）を持つ。
@@ -67,7 +66,8 @@ public final class RiichiSession {
     TSUMO("Tsumo", "hora"),
     RON("Ron", "hora"),
     PASS("Pass", "none"),
-    KYUSHU_KYUHAI("KyushuKyuhai", "ryukyoku");
+    KYUSHU_KYUHAI("KyushuKyuhai", "ryukyoku"),
+    KITA("Kita", "kita");
 
     private final String actionType;
     private final String mjai;
@@ -100,9 +100,10 @@ public final class RiichiSession {
     }
   }
 
+  private final Variant variant;
   private final Decider decider;
   private final boolean validation;
-  private final TileSet set = VARIANT.tiles();
+  private final TileSet set;
 
   /** 行動の番号 → 返す {@code possible_actions} の要素。要求のたびに作り直す。 */
   private final Map<Integer, JsonObject> wires = new LinkedHashMap<>();
@@ -126,12 +127,15 @@ public final class RiichiSession {
   private boolean riichiAccepted;
 
   /**
+   * @param variant 打つルール（四人打ちか三人打ちか）
    * @param decider 手を選ぶもの
    * @param validation 検証の接続なら true。検証の接続は {@code validation_result} が届くまで続く
    */
-  public RiichiSession(Decider decider, boolean validation) {
+  public RiichiSession(Variant variant, Decider decider, boolean validation) {
+    this.variant = Objects.requireNonNull(variant, "variant");
     this.decider = Objects.requireNonNull(decider, "decider");
     this.validation = validation;
+    this.set = variant.tiles();
   }
 
   /** 対局が始まって席が決まったなら true。 */
@@ -191,7 +195,7 @@ public final class RiichiSession {
   }
 
   private void assignSeat(int id) {
-    if (id < 0 || id >= VARIANT.seats() || seat != TurnEvent.NONE && seat != id) {
+    if (id < 0 || id >= variant.seats() || seat != TurnEvent.NONE && seat != id) {
       throw new IllegalArgumentException("RiichiLab assigns seat " + id + " to the player of seat " + seat);
     }
     if (seat == TurnEvent.NONE) {
@@ -372,6 +376,7 @@ public final class RiichiSession {
       case RON -> Action.code(Type.RON_AGARI);
       case PASS -> Action.code(Type.PASS);
       case KYUSHU_KYUHAI -> Action.code(Type.KYUSHU_KYUHAI);
+      case KITA -> Action.code(Type.NUKI);
       case RIICHI -> throw new IllegalArgumentException("A riichi declaration names no discard");
     };
   }
@@ -424,6 +429,10 @@ public final class RiichiSession {
           table().closedKan(event.get("actor").getAsInt(), faces(event.getAsJsonArray("consumed")).get(0).kind());
       case "kakan" ->
           table().addedKan(event.get("actor").getAsInt(), Face.parse(event.get("pai").getAsString()).kind());
+      case "kita" -> {
+        int actor = event.get("actor").getAsInt();
+        table().nuki(actor, actor == seat ? held(Face.parse(event.get("pai").getAsString())) : TurnEvent.NONE);
+      }
       case "dora" -> table().dora(representative(Face.parse(event.get("dora_marker").getAsString())));
       case "reach" -> {
         int actor = event.get("actor").getAsInt();
@@ -441,18 +450,18 @@ public final class RiichiSession {
   private void startRound(JsonObject event) {
     JsonArray hands = event.getAsJsonArray("tehais");
     int[] scores = integers(event.getAsJsonArray("scores"));
-    if (hands.size() != VARIANT.seats() || scores.length != VARIANT.seats()) {
-      throw new IllegalArgumentException("RiichiLab plays " + hands.size() + " seats, not " + VARIANT.seats());
+    if (hands.size() != variant.seats() || scores.length != variant.seats()) {
+      throw new IllegalArgumentException("RiichiLab plays " + hands.size() + " seats, not " + variant.seats());
     }
     int wind = Face.parse(event.get("bakaze").getAsString()).kind() - Tiles.TON;
-    int round = wind * VARIANT.seats() + event.get("kyoku").getAsInt() - 1;
+    int round = wind * variant.seats() + event.get("kyoku").getAsInt() - 1;
     RoundStart start =
-        new RoundStart(VARIANT, round, event.get("honba").getAsInt(), event.get("kyotaku").getAsInt(), scores);
-    if (event.get("oya").getAsInt() != VARIANT.dealer(round)) {
+        new RoundStart(variant, round, event.get("honba").getAsInt(), event.get("kyotaku").getAsInt(), scores);
+    if (event.get("oya").getAsInt() != variant.dealer(round)) {
       throw new IllegalArgumentException("RiichiLab names dealer " + event.get("oya") + " in round " + round);
     }
     if (live == null) {
-      live = new LiveTable(VARIANT, seat, decider);
+      live = new LiveTable(variant, seat, decider);
     }
     List<Face> faces = faces(hands.get(seat).getAsJsonArray());
     int[] hand = new int[faces.size()];
@@ -472,7 +481,7 @@ public final class RiichiSession {
     Meld meld =
         Meld.call(
             type,
-            Meld.RelativeSource.of(actor, event.get("target").getAsInt(), VARIANT.seats()),
+            Meld.RelativeSource.of(actor, event.get("target").getAsInt(), variant.seats()),
             Face.parse(event.get("pai").getAsString()),
             faces(event.getAsJsonArray("consumed")));
     table().call(actor, meld.id());
@@ -511,6 +520,11 @@ public final class RiichiSession {
   /** 自分の手に入る牌の物理 id。同じ表記のうち、まだ持っていない最初の 1 枚。 */
   private int free(Face face) {
     return copy(face, live.view()::holds);
+  }
+
+  /** 自分の手から抜く牌（北抜きの北）の物理 id。同じ表記のうち、持っている最初の 1 枚。 */
+  private int held(Face face) {
+    return copy(face, tile -> !live.view().holds(tile));
   }
 
   /** 自分の手に加わらない牌（打牌・表示牌）の物理 id。同じ表記の最初の 1 枚。 */

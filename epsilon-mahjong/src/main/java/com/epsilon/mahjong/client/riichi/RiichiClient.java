@@ -3,6 +3,7 @@ package com.epsilon.mahjong.client.riichi;
 import com.epsilon.mahjong.client.Decider;
 import com.epsilon.mahjong.client.Transport;
 import com.epsilon.mahjong.client.WebSocketTransport;
+import com.epsilon.mahjong.rules.Variant;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
@@ -12,6 +13,7 @@ import java.net.URI;
 import java.net.http.WebSocketHandshakeException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -19,7 +21,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * RiichiLab で対局を続けて打つ。トークンでランク戦に接続し、接続ごとに新しい Decider で対局を進める。対局の前に認証を拒まれたら、
- * 検証の対局を 1 回だけ打ってからランク戦に戻る。
+ * 検証の対局を 1 回だけ打ってからランク戦に戻る。接続先は四人打ちと三人打ちで同じ。対局は渡したルールで読み、卓の席の数がルールと
+ * 違えばプロトコルのエラーとして止める。
  *
  * <p>接続が切れたら、待ってからつなぎ直す。待ち時間は 1 秒から倍にしていき、上限は 30 秒。続けて 12 回切れたら止める。つなぎ直しても
  * 直らない拒否や、プロトコルのエラーでも止める。エラーメッセージに出たトークンは伏せる。サーバのメッセージが 30 秒届かないたびに
@@ -95,13 +98,16 @@ public final class RiichiClient {
 
   private final String token;
   private final Map<String, String> headers;
+  private final Variant variant;
   private final Supplier<? extends Decider> deciders;
   private final Connector connector;
   private final Sleeper sleeper;
 
-  private RiichiClient(String token, Supplier<? extends Decider> deciders, Connector connector, Sleeper sleeper) {
+  private RiichiClient(
+      String token, Variant variant, Supplier<? extends Decider> deciders, Connector connector, Sleeper sleeper) {
     this.token = token;
     headers = Map.of("Authorization", "Bearer " + token);
+    this.variant = variant;
     this.deciders = deciders;
     this.connector = connector;
     this.sleeper = sleeper;
@@ -111,14 +117,16 @@ public final class RiichiClient {
    * ランク戦を続けて打つ。
    *
    * @param token RiichiLab のトークン
+   * @param variant 打つルール（四人打ちか三人打ちか）
    * @param games 打つ対局の数。0 なら止められるまで打つ
    * @param deciders 接続ごとに新しい Decider を作るもの
    * @return 完走した対局の数と、途中で接続が切れた対局の数
    */
-  public static Result play(String token, int games, Supplier<? extends Decider> deciders)
+  public static Result play(String token, Variant variant, int games, Supplier<? extends Decider> deciders)
       throws IOException, InterruptedException {
     return play(
         token,
+        variant,
         games,
         deciders,
         (uri, headers) -> WebSocketTransport.connect(uri, headers, PING_INTERVAL),
@@ -126,9 +134,14 @@ public final class RiichiClient {
   }
 
   static Result play(
-      String token, int games, Supplier<? extends Decider> deciders, Connector connector, Sleeper sleeper)
+      String token,
+      Variant variant,
+      int games,
+      Supplier<? extends Decider> deciders,
+      Connector connector,
+      Sleeper sleeper)
       throws IOException, InterruptedException {
-    return new RiichiClient(token, deciders, connector, sleeper).run(games);
+    return new RiichiClient(token, Objects.requireNonNull(variant, "variant"), deciders, connector, sleeper).run(games);
   }
 
   private Result run(int games) throws IOException, InterruptedException {
@@ -137,7 +150,7 @@ public final class RiichiClient {
     int failures = 0;
     boolean validated = false;
     while (games == 0 || completed < games) {
-      RiichiSession session = new RiichiSession(deciders.get(), false);
+      RiichiSession session = new RiichiSession(variant, deciders.get(), false);
       try {
         connect(RANKED, session);
         completed++;
@@ -172,7 +185,7 @@ public final class RiichiClient {
   /** 検証の対局を 1 回打つ。通らないか切れたら、ランク戦で拒まれた理由も添えて TerminalFailure を投げる。 */
   private void validate(Rejection rejection) throws IOException, InterruptedException {
     log.info("RiichiLab ranked authentication rejected; trying the validation game once");
-    RiichiSession session = new RiichiSession(deciders.get(), true);
+    RiichiSession session = new RiichiSession(variant, deciders.get(), true);
     try {
       connect(VALIDATION, session);
       if (!session.validationPassed()) {

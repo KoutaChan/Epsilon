@@ -89,7 +89,7 @@ public class ThreePlayerFinalRoundTest {
     Assert.assertEquals(p[RankPermutations.of(THREE).index(new int[] {2, 0, 1})], 1, 1e-12);
     double[] phi = new double[3];
     round.phi(west3, RankUtility.TENHOU, workspace, phi);
-    double[] utilities = {2, 0, -2};
+    double[] utilities = {1, 0, -1};
     for (int seat = 0; seat < 3; seat++) {
       Assert.assertEquals(phi[seat], utilities[seat], 1e-12, "seat " + seat);
     }

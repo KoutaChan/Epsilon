@@ -11,7 +11,7 @@ public class RankUtilityTest {
     Assert.assertEquals(RankUtility.TENHOU.name(), "TENHOU");
     Assert.assertSame(RankUtility.valueOf("TENHOU"), RankUtility.TENHOU);
     assertValues(RankUtility.TENHOU, Variant.TENHOU_4P, 2.0 / 3, 1.0 / 3, 0, -1);
-    assertValues(RankUtility.TENHOU, Variant.TENHOU_3P, 2, 0, -2);
+    assertValues(RankUtility.TENHOU, Variant.TENHOU_3P, 1, 0, -1);
   }
 
   @Test

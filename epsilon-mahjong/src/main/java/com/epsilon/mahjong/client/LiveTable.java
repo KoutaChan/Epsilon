@@ -107,6 +107,7 @@ public final class LiveTable {
    * @param tile ツモった牌の物理 id。他家のツモなら {@code TurnEvent.NONE}
    */
   public void draw(int seat, int tile) {
+    reveal();
     table.draw(seat, tile, ws);
     if (seat == table.seat()) {
       drawn = tile;
@@ -178,10 +179,16 @@ public final class LiveTable {
     reveal();
   }
 
-  /** めくったドラ表示牌（物理 id）を受ける。SeatTable がまだ受けられなければ、受けられるようになるまで取っておく。 */
+  /**
+   * めくったドラ表示牌（物理 id）を受ける。SeatTable がまだ受けられなければ、受けられるようになるまで取っておく。自分の判断が出ている
+   * 間も取っておき、次のツモの前に渡す。加槓か北抜きへの応答を求められているときに表示牌を渡すと、SeatTable はその応答を締めるので、
+   * 応答を聞く前に表示牌を送るサーバでも、槍槓と北へのロンを選べるようにする。
+   */
   public void dora(int tile) {
     early.addLast(tile);
-    reveal();
+    if (table.decisions().size() == 0) {
+      reveal();
+    }
   }
 
   /** 立直の宣言を受ける。その席の次の打牌が宣言牌になる。 */

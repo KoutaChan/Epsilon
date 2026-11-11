@@ -25,7 +25,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 損失を 2 つの面から確かめる（CPU の FP32）。
+ * 損失を 3 つの面から確かめる（CPU の FP32）。
  *
  * <ul>
  *   <li>順伝播の前に送る教師（{@link LossInputs}）で求めた損失と、s・補助のヘッドの出力への勾配が、損失の中で教師を作る参照の経路
@@ -33,6 +33,7 @@ import org.testng.annotations.Test;
  *       GPU は {@link PrismLossGpuTest}。
  *   <li>詰めたバッチ 1 つを分けた部分が、元のバッチの分母と割合を持てば、補助の項の和が元のバッチの項とヘッドごとに相対 1e-6 で同じになる。
  *       差分整合・行の平均のアンカー・1 ステップの損失も同じ（違うのは FP32 の和の順だけ）。
+ *   <li>重みの下限の項は、softmax の重みが 0 に張り付いた手にも Y の向きの勾配を出し、s = Y + 定数 の行では勾配を出さない（最適を動かさない）。
  * </ul>
  */
 public class PrismLossTest {
@@ -71,6 +72,78 @@ public class PrismLossTest {
       assertStagedLossMatchesTheReference(
           network, manager, Precision.FLOAT32, batch, labels, Batches.auxiliary(batch, 13));
       assertStagedLossMatchesTheReference(network, manager, Precision.FLOAT32, batch, labels, null);
+    }
+  }
+
+  /**
+   * ゲートが誤った側に張り付いた行（s = {−5, 0}、Y = {0.02, 0}、λ = 0.02）。softmax の項の勾配は FP32 でちょうど 0 になり、勾配は重みの
+   * 下限の項の (ε/(λ·|C|))·(e_a − ē_C) だけになる。張り付いた手には、s を上げる向き（Y の向き）の勾配が出る。
+   */
+  @Test
+  public void aSaturatedActionStillGetsTheFloorGradient() {
+    PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+      Shape shape = new Shape(1, 2);
+      NDArray scores = manager.create(new float[] {-5f, 0f}, shape);
+      scores.setRequiresGradient(true);
+      Outputs outputs =
+          new Outputs(
+              scores,
+              manager.create(new boolean[] {true, true}, shape),
+              new int[] {2},
+              new boolean[] {false, true},
+              null);
+      List<ValueLabel> labels = List.of(new ValueLabel(new float[] {0.02f, 0f}, 0.02f, 1f));
+      try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
+        collector.backward(loss.value(manager, outputs, labels));
+      }
+      float[] gradient = scores.getGradient().toFloatArray();
+      // e = {−5.02, 0}、ē_C = −2.51
+      float expected = PrismLoss.WEIGHT_FLOOR / (0.02f * 2) * -2.51f;
+      Assert.assertEquals(gradient[0], expected, 1e-5f * Math.abs(expected), "the saturated action");
+      Assert.assertEquals(gradient[1], -expected, 1e-5f * Math.abs(expected), "the other action");
+    }
+  }
+
+  /**
+   * s = Y + 定数 の行では、softmax の項と重みの下限の項のどちらの勾配も 0 になる。|C|・λ・定数は行ごとに変え、C の外の手には Y と
+   * 関係のない値を置く。
+   */
+  @Test
+  public void theFloorKeepsTheOptimum() {
+    PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
+    Random random = new Random(5);
+    int rows = 6;
+    int capacity = 5;
+    float[] values = new float[rows * capacity];
+    List<ValueLabel> labels = new ArrayList<>(rows);
+    for (int r = 0; r < rows; r++) {
+      float shift = (float) random.nextGaussian();
+      float[] y = new float[capacity];
+      for (int a = 0; a < capacity; a++) {
+        boolean measured = a < 2 + r % 4;
+        y[a] = measured ? random.nextFloat() - 0.5f : Float.NaN;
+        values[r * capacity + a] = measured ? y[a] + shift : (float) random.nextGaussian();
+      }
+      labels.add(new ValueLabel(y, LAMBDAS[r % LAMBDAS.length], 1f));
+    }
+    int[] actions = new int[rows];
+    Arrays.fill(actions, capacity);
+    boolean[] legal = new boolean[rows * capacity];
+    Arrays.fill(legal, true);
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+      Shape shape = new Shape(rows, capacity);
+      NDArray scores = manager.create(values, shape);
+      scores.setRequiresGradient(true);
+      Outputs outputs =
+          new Outputs(scores, manager.create(legal, shape), actions, new boolean[rows * capacity], null);
+      try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
+        collector.backward(loss.value(manager, outputs, labels));
+      }
+      float[] gradient = scores.getGradient().toFloatArray();
+      for (int i = 0; i < gradient.length; i++) {
+        Assert.assertEquals(gradient[i], 0f, 1e-4f, "gradient " + i);
+      }
     }
   }
 

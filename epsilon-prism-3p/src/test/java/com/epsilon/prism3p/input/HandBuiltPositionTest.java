@@ -49,7 +49,7 @@ import org.testng.annotations.Test;
 /**
  * 手で作った局面で、三人打ちの入力を手で計算した値と照合する。見るのは、トークンの形、抜いた北の数とドラの数、北を抜く手と抜いた後の遷移、
  * 抜いた北への応答、西入の見込み、筒子と索子だけの色の入れ替え、副露の色、鳴きはポンだけで遷移が鳴いた後の打牌ごとになること（チーは無い）、残りのツモの数、
- * ツモ損の点の見積もり（抜きドラの翻を含む）、オーラスの効用 [2, 0, −2]、北を抜いた後の立直がダブル立直にならないこと。
+ * ツモ損の点の見積もり（抜きドラの翻を含む）、オーラスの効用 [1, 0, −1]、北を抜いた後の立直がダブル立直にならないこと。
  */
 public class HandBuiltPositionTest {
 
@@ -332,7 +332,7 @@ public class HandBuiltPositionTest {
     assertEquals(r.winExact(tsumo, WinExact.RANK_1), 1f, "the winner leads");
   }
 
-  /** 西 3 局は必ず半荘が終わるので、トップがロン和了したときの効用は三人打ちの 1 位の +2。点は 2 翻 40 符の子のロンで 2,600 点。 */
+  /** 西 3 局は必ず半荘が終わるので、トップがロン和了したときの効用は三人打ちの 1 位の +1。点は 2 翻 40 符の子のロンで 2,600 点。 */
   @Test
   public void theFinalRoundUsesTheThreePlayerUtility() {
     PlayedScene scene =
@@ -349,7 +349,7 @@ public class HandBuiltPositionTest {
     assertEquals(r.column(ron, ActionColumn.ROLE), ActionRole.RON.ordinal());
     assertEquals(r.column(ron, ActionColumn.BASE), action(o, Action.Type.PASS));
     assertEquals(r.winExact(ron, WinExact.ENDS), 1f);
-    assertEquals(r.winExact(ron, WinExact.UTILITY), 2f);
+    assertEquals(r.winExact(ron, WinExact.UTILITY), 1f);
     assertEquals(r.winExact(ron, WinExact.RANK_1), 1f);
     assertEquals(r.winExact(ron, WinExact.RANK_2), 0f);
     assertEquals(r.winExact(ron, WinExact.RANK_3), 0f);

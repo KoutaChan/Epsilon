@@ -17,7 +17,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 三人打ちの物差しの区分と、三人打ちの効用 [2, 0, −2] での Φ を確かめる。区分は終わった局で決め、東 1〜3 局、南 1・2 局と、
+ * 三人打ちの物差しの区分と、三人打ちの効用 [1, 0, −1] での Φ を確かめる。区分は終わった局で決め、東 1〜3 局、南 1・2 局と、
  * 南 3 局以降（西入を含む）をまとめた S3+ の 6 つ。終盤の 2 区分は S2 と S3+。どの Φ の項目でも、席ごとの値は効用の最小と最大の
  * 間にあり、席の和は効用の和（0）になる。
  */
@@ -109,8 +109,8 @@ public class ThreePlayerGroupsTest {
     double lowest = UTILITY.value(THREE, 2);
     double highest = UTILITY.value(THREE, 0);
     double sum = UTILITY.value(THREE, 0) + UTILITY.value(THREE, 1) + UTILITY.value(THREE, 2);
-    Assert.assertEquals(lowest, -2.0);
-    Assert.assertEquals(highest, 2.0);
+    Assert.assertEquals(lowest, -1.0);
+    Assert.assertEquals(highest, 1.0);
     Assert.assertEquals(sum, 0.0);
     for (Map.Entry<String, Phi> entry : phis.entrySet()) {
       HandEndValues values = HandEndValues.of(ends, entry.getValue());

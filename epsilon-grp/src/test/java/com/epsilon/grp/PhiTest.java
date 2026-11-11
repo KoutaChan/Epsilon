@@ -46,7 +46,7 @@ public class PhiTest {
         Phi.of(GrpFixtures.network(GrpFixtures.shape(Variant.TENHOU_3P, 8, false), 2, 1.0), RankUtility.TENHOU);
     double[] threeValues = new double[3];
     threePhi.values(finish(three, ron), threeValues);
-    Assert.assertEquals(threeValues, new double[] {2, -2, 0});
+    Assert.assertEquals(threeValues, new double[] {1, -1, 0});
     assertUntouched(threePhi.memo());
   }
 

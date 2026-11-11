@@ -18,8 +18,8 @@ public class ThreePlayerFingerprintTest {
 
   @Test
   public void formatFingerprintsStayTheSame() {
-    Assert.assertEquals(InputSchema.fingerprint(), "7b659396bb437ca3");
-    Assert.assertEquals(InputSchema.FORMAT.fingerprint(), "7b659396bb437ca3");
+    Assert.assertEquals(InputSchema.fingerprint(), "f22b982987b2d084");
+    Assert.assertEquals(InputSchema.FORMAT.fingerprint(), "f22b982987b2d084");
     Assert.assertEquals(TargetSchema.of(Variant.TENHOU_3P).fingerprint(), "396d676ebb8abdb3");
     Assert.assertEquals(ObservationSchema.of(Variant.TENHOU_3P).fingerprint(), "66529273ed75ef58");
     Assert.assertEquals(OutcomeCodec.of(Variant.TENHOU_3P).fingerprint(), "758353849c4267c2");
@@ -31,12 +31,12 @@ public class ThreePlayerFingerprintTest {
     Assert.assertNotEquals(InputSchema.fingerprint(), "eeeb4f583cd2b92a");
   }
 
-  /** 順位の効用は天鳳の表（三人打ちで +2・0・−2）を使う。効用は入力の値（待ちの射影と、ゲートに直接渡す値）に入るので、フィンガープリントにも入る。 */
+  /** 順位の効用は天鳳の表（三人打ちで +1・0・−1）を使う。効用は入力の値（待ちの射影と、ゲートに直接渡す値）に入るので、フィンガープリントにも入る。 */
   @Test
   public void theUtilityValuesAreTheOwnerTable() {
     Assert.assertSame(InputSchema.UTILITY, RankUtility.TENHOU);
-    Assert.assertEquals(RankUtility.TENHOU.value(Variant.TENHOU_3P, 0), 2.0);
+    Assert.assertEquals(RankUtility.TENHOU.value(Variant.TENHOU_3P, 0), 1.0);
     Assert.assertEquals(RankUtility.TENHOU.value(Variant.TENHOU_3P, 1), 0.0);
-    Assert.assertEquals(RankUtility.TENHOU.value(Variant.TENHOU_3P, 2), -2.0);
+    Assert.assertEquals(RankUtility.TENHOU.value(Variant.TENHOU_3P, 2), -1.0);
   }
 }

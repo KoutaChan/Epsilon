@@ -283,8 +283,8 @@ public class ThreePlayerGrpCommandsTest {
     double sd = Double.parseDouble(held.group(5));
     Assert.assertEquals(Integer.parseInt(held.group(6)), 400);
     Assert.assertTrue(games > 50 && games < 200, "held-out games " + games);
-    // 点数の順位の MSE は 16/3、候補は 8/3 に近いはず。差は −8/3 のまわり
-    Assert.assertTrue(difference < -1, first.out());
+    // 点数の順位の MSE は 4/3、候補は 2/3 に近いはず。差は −2/3 のまわり
+    Assert.assertTrue(difference < -0.25, first.out());
     Matcher judgment = JUDGMENT.matcher(first.out());
     Assert.assertTrue(judgment.find(), first.out());
     double line = games * Math.pow(2 * sd / difference, 2);

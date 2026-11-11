@@ -5,8 +5,8 @@ package com.epsilon.mahjong.rules;
  * 値を変えたいときは新しい定数を足す。値は席の数ごとに 1 列あり、列の長さは席の数と同じ。
  */
 public enum RankUtility {
-  /** 四人打ちは [2/3, 1/3, 0, −1]。三人打ちは [2, 0, −2]（三麻の七段の段位 pt の比 +135 : 0 : −135）。 */
-  TENHOU(new double[] {2.0 / 3, 1.0 / 3, 0, -1}, new double[] {2, 0, -2}),
+  /** 四人打ちは [2/3, 1/3, 0, −1]。三人打ちは [1, 0, −1]（三麻の七段の段位 pt の比 +135 : 0 : −135）。 */
+  TENHOU(new double[] {2.0 / 3, 1.0 / 3, 0, -1}, new double[] {1, 0, -1}),
   /** u_r = 1 − 2r/(S − 1)。S は席の数。 */
   AVERAGE_RANK(new double[] {1, 1.0 / 3, -1.0 / 3, -1}, new double[] {1, 0, -1});
 

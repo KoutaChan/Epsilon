@@ -319,11 +319,11 @@ public class JobComparisonTest {
 
     JobComparison comparison = JobComparison.of(TABLE, run, 2, run, 3);
     Assert.assertEquals(comparison.walls(), WALLS);
-    // 差の平均 −3 × (2/3) / 12 = −1/6、偏差の平方和 3 × (1/2)² + 9 × (1/6)² = 1 なので標準誤差は √(1 / 11 / 12)。効用は −2 倍
+    // 差の平均 −3 × (2/3) / 12 = −1/6、偏差の平方和 3 × (1/2)² + 9 × (1/6)² = 1 なので標準誤差は √(1 / 11 / 12)。効用は −1 倍
     Assert.assertEquals(comparison.rank().mean(), -1 / 6.0, 1e-12);
     Assert.assertEquals(comparison.rank().error(), Math.sqrt(1 / 132.0), 1e-12);
-    Assert.assertEquals(comparison.utility().mean(), 1 / 3.0, 1e-12);
-    Assert.assertEquals(comparison.utility().error(), 2 * Math.sqrt(1 / 132.0), 1e-12);
+    Assert.assertEquals(comparison.utility().mean(), 1 / 6.0, 1e-12);
+    Assert.assertEquals(comparison.utility().error(), Math.sqrt(1 / 132.0), 1e-12);
     double[] firstRank = rank(first, WALLS);
     double[] secondRank = rank(second, WALLS);
     assertValue(comparison.rank(), minus(secondRank, firstRank), "rank difference");

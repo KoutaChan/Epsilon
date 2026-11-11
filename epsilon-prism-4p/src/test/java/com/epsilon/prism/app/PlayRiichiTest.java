@@ -82,7 +82,10 @@ public class PlayRiichiTest {
         Settings.section(PlayRiichi.class, "play-riichi", List.of(plain)).value().policy(), PolicyOptions.defaults());
   }
 
-  /** バージョンを開いてウォームアップし、新しいエンジンの半荘で合法手が 2 つ以上ある判断 12 個に、席が合法手の番号で答える（CPU は FP32 の eager）。 */
+  /**
+   * 四人打ちのバージョンは四人打ちで打つ。バージョンを開いてウォームアップし、新しいエンジンの半荘で合法手が 2 つ以上ある判断 12 個に、
+   * 席が合法手の番号で答える（CPU は FP32 の eager）。
+   */
   @Test(timeOut = 300_000)
   public void clientSeatAnswersRealDecisions() throws Exception {
     Path root = Files.createTempDirectory("prism-riichi");
@@ -91,6 +94,7 @@ public class PlayRiichiTest {
       try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
         Snapshot.write(snapshot, HipFixtures.network(manager, 2, 17), PolicyParams.of(1));
       }
+      Assert.assertEquals(PlayRiichi.variant(snapshot), TENHOU_4P);
       int[] answered = new int[1];
       try (Policy policy = ModelFamily.of(Series.PRISM).open(snapshot, TENHOU_4P, PolicyOptions.defaults())) {
         PlayRiichi.warmUp(policy);

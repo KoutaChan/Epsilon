@@ -1,10 +1,14 @@
 package com.epsilon.mahjong.client.riichi;
 
+import static com.epsilon.mahjong.rules.Variant.TENHOU_3P;
+import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+
 import com.epsilon.mahjong.action.Action;
 import com.epsilon.mahjong.action.Action.Type;
 import com.epsilon.mahjong.client.Decider;
 import com.epsilon.mahjong.engine.Decisions;
 import com.epsilon.mahjong.engine.SeatView;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.tile.Tiles;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -29,6 +33,14 @@ public class RiichiSessionTest {
   private static final String WAITING =
       "\"1m\",\"2m\",\"3m\",\"1p\",\"2p\",\"3p\",\"1s\",\"2s\",\"3s\",\"E\",\"E\",\"E\",\"S\"";
 
+  /** 三人打ちの手: 1m9m 1p2p3p4p6p7p8p 1s2s3s N（北を 1 枚持つ）。 */
+  private static final String NORTH_HAND =
+      "\"1m\",\"9m\",\"1p\",\"2p\",\"3p\",\"4p\",\"6p\",\"7p\",\"8p\",\"1s\",\"2s\",\"3s\",\"N\"";
+
+  /** 三人打ちの手: 1m9m 1p2p3p4p6p7p 1s2s3s WW（西の対子）。 */
+  private static final String PON_HAND =
+      "\"1m\",\"9m\",\"1p\",\"2p\",\"3p\",\"4p\",\"6p\",\"7p\",\"1s\",\"2s\",\"3s\",\"W\",\"W\"";
+
   /** 引いた南（南の 4 枚のうち番号 1 の牌）。手にある南と合わせて 2 枚になる。 */
   private static final int SECOND_SOUTH = Tiles.physicalId(Tiles.NAN, 1);
 
@@ -43,6 +55,7 @@ public class RiichiSessionTest {
     AtomicInteger decisions = new AtomicInteger();
     RiichiSession session =
         new RiichiSession(
+            TENHOU_4P,
             (view, slots, slot) -> {
               Assert.assertEquals(view.seat(), seat);
               Assert.assertEquals(handSize(view), 14);
@@ -68,6 +81,7 @@ public class RiichiSessionTest {
     AtomicInteger decisions = new AtomicInteger();
     RiichiSession session =
         new RiichiSession(
+            TENHOU_4P,
             (view, slots, slot) -> {
               Assert.assertEquals(handSize(view), 14);
               decisions.incrementAndGet();
@@ -123,6 +137,7 @@ public class RiichiSessionTest {
     List<Boolean> furiten = new ArrayList<>();
     RiichiSession session =
         new RiichiSession(
+            TENHOU_4P,
             (view, slots, slot) -> {
               furiten.add(view.furiten());
               return 0;
@@ -175,6 +190,7 @@ public class RiichiSessionTest {
     List<List<Type>> seen = new ArrayList<>();
     RiichiSession session =
         new RiichiSession(
+            TENHOU_4P,
             (view, slots, slot) -> {
               seen.add(types(slots, slot));
               return 0;
@@ -200,6 +216,7 @@ public class RiichiSessionTest {
 
     RiichiSession passing =
         new RiichiSession(
+            TENHOU_4P,
             (view, slots, slot) -> {
               throw new AssertionError("Only a pass is offered");
             },
@@ -226,14 +243,14 @@ public class RiichiSessionTest {
 
   @Test(dataProvider = "rejections")
   public void aRejectedActionEndsTheSession(String status) {
-    RiichiSession session = new RiichiSession(first(), false);
+    RiichiSession session = new RiichiSession(TENHOU_4P, first(), false);
     Assert.assertThrows(
         IllegalArgumentException.class, () -> session.handle(acknowledge(1, status), System.nanoTime()));
   }
 
   @Test
   public void validationWaitsForItsResultAfterTheGameEnds() {
-    RiichiSession session = new RiichiSession(first(), true);
+    RiichiSession session = new RiichiSession(TENHOU_4P, first(), true);
     session.handle("{\"type\":\"start_game\",\"id\":2}", 0);
     Assert.assertTrue(session.started());
     session.handle("{\"type\":\"end_game\",\"scores\":[25000,25000,25000,25000]}", 0);
@@ -242,6 +259,181 @@ public class RiichiSessionTest {
     session.handle("{\"type\":\"validation_result\",\"passed\":true}", 0);
     Assert.assertTrue(session.ended());
     Assert.assertTrue(session.validationPassed());
+  }
+
+  /**
+   * 三人打ち: 親（席 0）が北を持って 9s を引くと、Decider には、サーバが選べるとしたツモ切りと北抜きだけを見せる。北抜きを選ぶと
+   * kita の要素を返す。次の要求の観測で北抜きと嶺上牌のツモを卓に書くと、手の北が抜きドラになり、手は 14 枚に戻る。
+   */
+  @Test
+  public void aThreePlayerSeatAnswersAKitaRequestAndTakesTheNorthOut() {
+    List<List<Type>> seen = new ArrayList<>();
+    List<Integer> nuki = new ArrayList<>();
+    RiichiSession session =
+        new RiichiSession(
+            TENHOU_3P,
+            (view, slots, slot) -> {
+              seen.add(types(slots, slot));
+              nuki.add(view.nuki(0));
+              Assert.assertEquals(handSize(view), 14);
+              return indexOf(slots, slot, Type.NUKI);
+            },
+            false);
+    int nineSou = Tiles.physicalId(Tiles.S9, 0);
+    int north = Tiles.physicalId(Tiles.PEI, 0);
+    JsonObject kita =
+        object(
+            session.handle(
+                request(
+                    1,
+                    0,
+                    nineSou,
+                    "[{\"action_type\":\"Discard\",\"tile\":" + nineSou + ",\"consume_tiles\":[]},"
+                        + "{\"action_type\":\"Kita\",\"tile\":" + north + ",\"consume_tiles\":[]}]",
+                    "[{\"type\":\"dahai\",\"pai\":\"9s\"},{\"type\":\"kita\",\"pai\":\"N\"}]",
+                    startRound(TENHOU_3P, 0, NORTH_HAND, 0),
+                    draw(0, "9s")),
+                System.nanoTime()));
+    Assert.assertEquals(kita.get("type").getAsString(), "kita");
+    Assert.assertEquals(kita.get("pai").getAsString(), "N");
+    Assert.assertEquals(kita.get("actor").getAsInt(), 0);
+    Assert.assertEquals(kita.get("request_id").getAsLong(), 1L);
+    Assert.assertFalse(kita.has("target"));
+    Assert.assertFalse(kita.has("tsumogiri"));
+
+    int sevenSou = Tiles.physicalId(Tiles.S7, 0);
+    JsonObject discard =
+        object(
+            session.handle(
+                request(
+                    2,
+                    0,
+                    sevenSou,
+                    discardAction(sevenSou),
+                    dahai("7s"),
+                    "{\"type\":\"kita\",\"actor\":0,\"pai\":\"N\"}",
+                    draw(0, "7s")),
+                System.nanoTime()));
+    Assert.assertEquals(discard.get("type").getAsString(), "dahai");
+    Assert.assertTrue(discard.get("tsumogiri").getAsBoolean());
+    Assert.assertEquals(seen, List.of(List.of(Type.NUKI, Type.DAHAI), List.of(Type.DAHAI)));
+    Assert.assertEquals(nuki, List.of(0, 1));
+  }
+
+  /**
+   * 三人打ち: 親（席 2）が北を抜き、嶺上牌をツモって西を手出しする。下家の席 0 が西をポンする。席 0 から見て席 2 は上家なので、返す
+   * ポンの target は 2 で、観測のポンのイベントも上家からの面子として卓に書ける。北抜きは席 2 の抜きドラとして席 0 の卓にも載る。
+   */
+  @Test
+  public void aThreePlayerSeatPonsFromTheSeatAcrossTheWrap() {
+    List<List<Type>> seen = new ArrayList<>();
+    List<Integer> sizes = new ArrayList<>();
+    RiichiSession session =
+        new RiichiSession(
+            TENHOU_3P,
+            (view, slots, slot) -> {
+              seen.add(types(slots, slot));
+              sizes.add(handSize(view));
+              Assert.assertEquals(view.nuki(2), 1);
+              return indexOf(slots, slot, Type.PON);
+            },
+            false);
+    JsonObject pon =
+        object(
+            session.handle(
+                request(
+                    1,
+                    0,
+                    -1,
+                    "[{\"action_type\":\"Pon\",\"tile\":" + Tiles.physicalId(Tiles.SHA, 2) + ",\"consume_tiles\":["
+                        + Tiles.physicalId(Tiles.SHA, 0) + "," + Tiles.physicalId(Tiles.SHA, 1) + "]},"
+                        + "{\"action_type\":\"Pass\",\"tile\":null,\"consume_tiles\":[]}]",
+                    "[{\"type\":\"pon\",\"pai\":\"W\",\"consumed\":[\"W\",\"W\"]},{\"type\":\"none\"}]",
+                    startRound(TENHOU_3P, 0, PON_HAND, 2),
+                    "{\"type\":\"tsumo\",\"actor\":2,\"pai\":\"?\"}",
+                    "{\"type\":\"kita\",\"actor\":2,\"pai\":\"N\"}",
+                    "{\"type\":\"tsumo\",\"actor\":2,\"pai\":\"?\"}",
+                    "{\"type\":\"dahai\",\"actor\":2,\"pai\":\"W\",\"tsumogiri\":false}"),
+                System.nanoTime()));
+    Assert.assertEquals(pon.get("type").getAsString(), "pon");
+    Assert.assertEquals(pon.get("actor").getAsInt(), 0);
+    Assert.assertEquals(pon.get("target").getAsInt(), 2);
+
+    int oneMan = Tiles.physicalId(Tiles.M1, 0);
+    JsonObject discard =
+        object(
+            session.handle(
+                request(
+                    2,
+                    0,
+                    -1,
+                    discardAction(oneMan),
+                    dahai("1m"),
+                    "{\"type\":\"pon\",\"actor\":0,\"target\":2,\"pai\":\"W\",\"consumed\":[\"W\",\"W\"]}"),
+                System.nanoTime()));
+    Assert.assertEquals(discard.get("type").getAsString(), "dahai");
+    Assert.assertEquals(discard.get("pai").getAsString(), "1m");
+    Assert.assertFalse(discard.get("tsumogiri").getAsBoolean());
+    Assert.assertEquals(seen, List.of(List.of(Type.PON, Type.PASS), List.of(Type.DAHAI)));
+    Assert.assertEquals(sizes, List.of(13, 11));
+  }
+
+  /**
+   * 三人打ち: 席 2 が大明槓の嶺上で北を抜き、サーバはロンを聞く前に保留の槓ドラを送る（kita → dora）。北の単騎（一気通貫）で待つ
+   * 席 0 には、表示牌を受けた後もロンと見送りが残り、ロンを選ぶと target が席 2 の hora を返す。
+   */
+  @Test
+  public void aRonOnKitaSurvivesTheKanDoraSentBeforeIt() {
+    List<List<Type>> seen = new ArrayList<>();
+    RiichiSession session =
+        new RiichiSession(
+            TENHOU_3P,
+            (view, slots, slot) -> {
+              seen.add(types(slots, slot));
+              return indexOf(slots, slot, Type.RON_AGARI);
+            },
+            false);
+    String hand = "\"1p\",\"2p\",\"3p\",\"4p\",\"5p\",\"6p\",\"7p\",\"8p\",\"9p\",\"1s\",\"1s\",\"1s\",\"N\"";
+    JsonObject ron =
+        object(
+            session.handle(
+                request(
+                    1,
+                    0,
+                    -1,
+                    "[{\"action_type\":\"Ron\",\"tile\":" + Tiles.physicalId(Tiles.PEI, 1) + ",\"consume_tiles\":[]},"
+                        + "{\"action_type\":\"Pass\",\"tile\":null,\"consume_tiles\":[]}]",
+                    "[{\"type\":\"hora\"},{\"type\":\"none\"}]",
+                    startRound(TENHOU_3P, 0, hand, 1),
+                    "{\"type\":\"tsumo\",\"actor\":1,\"pai\":\"?\"}",
+                    "{\"type\":\"dahai\",\"actor\":1,\"pai\":\"9s\",\"tsumogiri\":false}",
+                    "{\"type\":\"daiminkan\",\"actor\":2,\"target\":1,\"pai\":\"9s\",\"consumed\":[\"9s\",\"9s\",\"9s\"]}",
+                    "{\"type\":\"tsumo\",\"actor\":2,\"pai\":\"?\"}",
+                    "{\"type\":\"kita\",\"actor\":2,\"pai\":\"N\"}",
+                    "{\"type\":\"dora\",\"dora_marker\":\"1s\"}"),
+                System.nanoTime()));
+    Assert.assertEquals(seen, List.of(List.of(Type.RON_AGARI, Type.PASS)));
+    Assert.assertEquals(ron.get("type").getAsString(), "hora");
+    Assert.assertEquals(ron.get("target").getAsInt(), 2);
+  }
+
+  /** セッションは自分のルールの卓だけを打つ。席の数の違う局の始まりと、席の数を超える席の番号は、プロトコルのエラーにする。 */
+  @Test
+  public void aSessionPlaysOnlyItsOwnVariant() {
+    RiichiSession four = new RiichiSession(TENHOU_4P, first(), false);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> four.handle(discard(1, 0, startRound(TENHOU_3P, 0, NORTH_HAND, 0), draw(0, "S")), System.nanoTime()));
+    RiichiSession three = new RiichiSession(TENHOU_3P, first(), false);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> three.handle(discard(1, 0, startRound(0, WAITING), draw(0, "S")), System.nanoTime()));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> new RiichiSession(TENHOU_3P, first(), false).handle("{\"type\":\"start_game\",\"id\":3}", 0));
+    RiichiSession seated = new RiichiSession(TENHOU_3P, first(), false);
+    seated.handle("{\"type\":\"start_game\",\"id\":2}", 0);
+    Assert.assertTrue(seated.started());
   }
 
   /** 席 1 の手は 2m 2m 3m 4m 1p 2p 3p 1s 2s 3s E S W。親（席 0）がツモって、2m（4 枚のうち番号 2 の牌）を手出しする。 */
@@ -257,6 +449,7 @@ public class RiichiSessionTest {
   /** 引いた南をツモ切りして立直するセッション。 */
   private static RiichiSession riichiPlayer(AtomicInteger decisions) {
     return new RiichiSession(
+        TENHOU_4P,
         (view, slots, slot) -> {
           decisions.incrementAndGet();
           List<Integer> codes = codes(slots, slot);
@@ -329,24 +522,38 @@ public class RiichiSessionTest {
   }
 
   /**
-   * 東場の局を始めるイベント。手は指定した席にだけ配る。
+   * 四人打ちの東場の局を始めるイベント。手は指定した席にだけ配る。
    *
    * @param seat 手を配る席
    * @param hand 手の牌（mjai の牌の名前を並べたもの）
    * @param dealer 親の席
    */
   private static String startRound(int seat, String hand, int dealer) {
+    return startRound(TENHOU_4P, seat, hand, dealer);
+  }
+
+  /**
+   * 東場の局を始めるイベント。席の数と持ち点はルールのもの。手は指定した席にだけ配る。
+   *
+   * @param variant ルール
+   * @param seat 手を配る席
+   * @param hand 手の牌（mjai の牌の名前を並べたもの）
+   * @param dealer 親の席
+   */
+  private static String startRound(Variant variant, int seat, String hand, int dealer) {
     JsonObject event =
         object(
-            "{\"type\":\"start_kyoku\",\"bakaze\":\"E\",\"honba\":0,\"kyotaku\":0,\"dora_marker\":\"9p\","
-                + "\"scores\":[25000,25000,25000,25000]}");
+            "{\"type\":\"start_kyoku\",\"bakaze\":\"E\",\"honba\":0,\"kyotaku\":0,\"dora_marker\":\"9p\"}");
     event.addProperty("kyoku", dealer + 1);
     event.addProperty("oya", dealer);
     JsonArray hands = new JsonArray();
-    for (int each = 0; each < 4; each++) {
+    JsonArray scores = new JsonArray();
+    for (int each = 0; each < variant.seats(); each++) {
       hands.add(JsonParser.parseString(each == seat ? "[" + hand + "]" : "[]"));
+      scores.add(variant.startPoints());
     }
     event.add("tehais", hands);
+    event.add("scores", scores);
     return event.toString();
   }
 
@@ -387,6 +594,17 @@ public class RiichiSessionTest {
       }
     }
     return types;
+  }
+
+  /** 合法手のうち、その種類の最初の手の番号。その種類の手が無ければ 0。 */
+  private static int indexOf(Decisions decisions, int slot, Type type) {
+    List<Integer> codes = codes(decisions, slot);
+    for (int index = 0; index < codes.size(); index++) {
+      if (Action.of(codes.get(index)).type() == type) {
+        return index;
+      }
+    }
+    return 0;
   }
 
   private static Decider first() {

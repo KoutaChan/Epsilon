@@ -19,7 +19,8 @@ import com.epsilon.mahjong.engine.Decisions;
 import com.epsilon.mahjong.engine.DrawOrder;
 import com.epsilon.mahjong.engine.Engine;
 import com.epsilon.mahjong.engine.RuleWorkspace;
-import com.epsilon.prism.FourPlayerFormat;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.run.Snapshot;
 import com.epsilon.prism.settings.PrismSettings;
 import java.io.IOException;
@@ -31,7 +32,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 公開したバージョンで RiichiLab のランク戦を打つ（{@link RiichiClient}）。手は、バージョンの s が最も大きい手を選ぶ
- * （{@link ClientSeat}）。接続の前に新しい半荘の最初の判断を 1 回打っておき、最初の手の遅れが対局に入らないようにする。
+ * （{@link ClientSeat}）。ルール（四人打ちか三人打ちか）は、バージョンのネットワークが読む入力の形式で決まる。接続の前に新しい半荘の
+ * 最初の判断を 1 回打っておき、最初の手の遅れが対局に入らないようにする。
  *
  * @param model 打つバージョンのディレクトリか、run のディレクトリ（その最新のバージョンで打つ）
  * @param games 打ち終える対局の数（0 なら止めるまで打つ）
@@ -55,10 +57,11 @@ public record PlayRiichi(
           List.of("Set play-riichi.token in the settings file before play-riichi"));
     }
     Path snapshot = snapshot(model);
-    try (Policy opened = ModelFamily.of(Series.PRISM).open(snapshot, FourPlayerFormat.VARIANT, policy)) {
+    Variant variant = variant(snapshot);
+    try (Policy opened = ModelFamily.of(Series.PRISM).open(snapshot, variant, policy)) {
       warmUp(opened);
-      LOG.info("RiichiLab snapshot {} ready: games={}", snapshot, games);
-      RiichiClient.Result result = RiichiClient.play(token, games, () -> new ClientSeat(opened));
+      LOG.info("RiichiLab snapshot {} ready: variant={} games={}", snapshot, variant, games);
+      RiichiClient.Result result = RiichiClient.play(token, variant, games, () -> new ClientSeat(opened));
       return Outcome.ok(
           "snapshot=" + snapshot + " completedGames=" + result.completedGames() + " interruptedGames="
               + result.interruptedGames());
@@ -71,6 +74,11 @@ public record PlayRiichi(
       return directory;
     }
     return RunFiles.latestSnapshot(directory, Snapshot.POLICY);
+  }
+
+  /** バージョンの打つネットワークが読む入力の形式のルール（四人打ちか三人打ちか）を返す。 */
+  static Variant variant(Path snapshot) throws IOException {
+    return PrismNetwork.readFormat(Snapshot.model(snapshot)).variant();
   }
 
   /** 新しい半荘の最初の判断（親の第一打）を 1 回打つ。 */

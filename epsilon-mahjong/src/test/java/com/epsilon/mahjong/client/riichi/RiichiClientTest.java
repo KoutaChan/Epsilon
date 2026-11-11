@@ -2,6 +2,7 @@ package com.epsilon.mahjong.client.riichi;
 
 import com.epsilon.mahjong.client.Decider;
 import com.epsilon.mahjong.client.FakeTransport;
+import com.epsilon.mahjong.rules.Variant;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -94,6 +95,7 @@ public class RiichiClientTest {
         () ->
             RiichiClient.play(
                 TOKEN,
+                Variant.TENHOU_4P,
                 0,
                 RiichiClientTest::unused,
                 (uri, headers) -> transport,
@@ -101,6 +103,24 @@ public class RiichiClientTest {
                   throw new InterruptedException("stop");
                 }));
     Assert.assertTrue(transport.closed());
+  }
+
+  /** 三人打ちのランク戦は四人打ちと同じ接続先で打ち、席 2 の対局を完走する。三人打ちに無い席 3 は、つなぎ直さずに止める。 */
+  @Test
+  public void threePlayerGamesUseTheSameEndpointAndThreeSeats() throws Exception {
+    Script script =
+        new Script(
+            Variant.TENHOU_3P,
+            transport("{\"type\":\"start_game\",\"id\":2}", "{\"type\":\"end_game\",\"scores\":[35000,35000,35000]}"));
+    Assert.assertEquals(script.play(1), new RiichiClient.Result(1, 0));
+    Assert.assertEquals(script.uris, List.of(RiichiClient.RANKED));
+    script.assertAllClosed();
+
+    Script fourth = new Script(Variant.TENHOU_3P, transport("{\"type\":\"start_game\",\"id\":3}"));
+    IOException error = Assert.expectThrows(IOException.class, () -> fourth.play(1));
+    Assert.assertTrue(error.getMessage().contains("protocol error"), error.getMessage());
+    Assert.assertTrue(fourth.delays.isEmpty());
+    fourth.assertAllClosed();
   }
 
   @Test
@@ -126,18 +146,25 @@ public class RiichiClientTest {
   /** 用意した接続を順に渡し、接続先、再接続までの待ち時間、作った Decider の数を記録する。 */
   private static final class Script {
 
+    private final Variant variant;
     private final List<FakeTransport> transports;
     private final List<URI> uris = new ArrayList<>();
     private final List<Long> delays = new ArrayList<>();
     private final AtomicInteger deciders = new AtomicInteger();
 
     Script(FakeTransport... transports) {
+      this(Variant.TENHOU_4P, transports);
+    }
+
+    Script(Variant variant, FakeTransport... transports) {
+      this.variant = variant;
       this.transports = List.of(transports);
     }
 
     RiichiClient.Result play(int games) throws IOException, InterruptedException {
       return RiichiClient.play(
           TOKEN,
+          variant,
           games,
           () -> {
             deciders.incrementAndGet();

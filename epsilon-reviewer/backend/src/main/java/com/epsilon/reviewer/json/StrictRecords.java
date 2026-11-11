@@ -17,10 +17,11 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * JsonObject を record へ厳密に読む。知らない欄・型の違い・正確でない整数は invalid_request（欄の道の英語）。null は欄を省いたのと同じ。
+ * JsonObject を record へ厳密に読む。知らないフィールド、型の違い、整数に正確に直せない数は invalid_request にする（メッセージは
+ * フィールドのパスを含む英語）。null はフィールドを省いたのと同じに扱う。
  *
- * <p>欄の型は String・int・boolean（必須）と Integer・Boolean・List&lt;…&gt;・入れ子の record（省いてよく、無ければ null）。List の
- * 要素は必須。record の短い構築子が既定値と欄をまたぐ確かめを持つ。
+ * <p>フィールドの型は、必須の String・int・boolean と、省いてよい Integer・Boolean・List&lt;…&gt;・入れ子の record（無ければ null）。
+ * List の要素は省けない。既定値と、複数のフィールドにまたがる検査は、record のコンパクトコンストラクターが受け持つ。
  */
 public final class StrictRecords {
   private static final ClassValue<Shape> SHAPES =
@@ -125,7 +126,7 @@ public final class StrictRecords {
     return new ReviewerException(ErrorCode.INVALID_REQUEST, message);
   }
 
-  /** record の欄と標準の構築子（型ごとに 1 回だけ調べる）。 */
+  /** record のフィールドと標準コンストラクター（型ごとに 1 回だけ調べる）。 */
   private record Shape(
       RecordComponent[] components, Constructor<?> constructor, Set<String> names) {}
 }

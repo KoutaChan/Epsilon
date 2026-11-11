@@ -14,8 +14,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * protocol/commands.ts の COMMANDS と protocol/errors.ts の SERVER_ERROR_CODES を読み、Command と
- * ErrorCode が同じことを確かめる。
+ * protocol/commands.ts の COMMANDS と protocol/errors.ts の SERVER_ERROR_CODES を読み、Java の Command と
+ * ErrorCode と、並びの順も中身も一致することを確かめる。
  */
 public class ProtocolContractTest {
   private static final Path PROTOCOL = Path.of("..", "protocol");
@@ -64,7 +64,7 @@ public class ProtocolContractTest {
         codes, Arrays.stream(ErrorCode.values()).map(ErrorCode::code).toList());
   }
 
-  /** COMMANDS の塊（1 つの操作 = 1 つの塊、各行は決まった書き方）。 */
+  /** COMMANDS の表を読む。1 つのコマンドが 1 つのブロックで、ブロックの各行は決まった書き方に従う。知らない行があれば失敗にする。 */
   private static List<Spec> commands() throws IOException {
     List<String> lines = Files.readAllLines(PROTOCOL.resolve("commands.ts"));
     int start = lines.indexOf("export const COMMANDS = {");

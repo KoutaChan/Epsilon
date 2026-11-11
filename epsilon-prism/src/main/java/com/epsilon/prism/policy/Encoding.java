@@ -1,13 +1,11 @@
 package com.epsilon.prism.policy;
 
+import com.epsilon.agent.observe.Observation;
 import com.epsilon.prism.input.BatchPlan;
-import com.epsilon.prism.input.FrontierFeatures;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
-import com.epsilon.prism.input.InputSchema.Axis;
-import com.epsilon.prism.input.InputWriter;
-import com.epsilon.prism.input.Tokenizer;
-import com.epsilon.prism.observe.Observation;
+import com.epsilon.prism.input.InputBlob.Axis;
+import com.epsilon.prism.input.InputFormat;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -15,36 +13,38 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * 1 回の受け付けの問い合わせを網の入力にした作業域（{@link BatchEncoder} の池で使い回す）。
+ * 1 回の受付の要求を、ネットワークの入力にするための作業領域。{@link BatchEncoder} のプールで使い回す。
  *
- * <p>入力は問い合わせが運ぶ記録 O だけ（{@link PolicyRequest#capture}。出す側が自分のスレッドで捕捉し、答えを書き終えるまで書き換えない）。符号化の
- * スレッドは公開の観測にも局面にも触れない。O の読み手は行ごとに 1 つ持ち、受け付けごとに 1 回だけ付ける（節の位置と合法手を読んだまま、計画と
- * 符号化で使う）。読み手は池に返しても残し、次の受け付けで付け替える。
+ * <p>入力は要求が運ぶ記録 O だけ。O は要求を出す側が自分のスレッドで取り込み、答えを書き終えるまで書き換えない。符号化のスレッドは、
+ * 公開の観測にも局面にも触れない。O のリーダーは行ごとに 1 つ持ち、受付ごとに 1 回だけ O に付ける。付けたときに読んだセクションの位置と
+ * 合法手は、計画と符号化でそのまま使う。リーダーはプールに返しても残し、次の受付で付け替える。
  *
  * <ol>
- *   <li>付け（{@link #bind}）: 行ごとに読み手を問い合わせの O に付ける。範囲ごとに 1 つのスレッドから呼ぶ。
- *   <li>計画（{@link #plan}）: 1 回の順伝播の詰めたトークン（行の数 × 最も長い行の S）が上限に収まれば、問い合わせの順のまま 1 つの塊にする。
- *       収まらなければ S の順に並べ、上限と塊の容量に収まるだけ詰めた塊に分ける（行は切らない）。
- *   <li>符号化（{@link #tokenize}）: {@link Tokenizer} が塊の行の位置へ直に書く。
- *   <li>答え（{@link #answer}）: 塊の順に塊の手の順の s をつないだ出力から、問い合わせごとに s・p0・σ を書く（{@link GreedyAnswer}）。
+ *   <li>付ける（{@link #bind}）: 行ごとに、リーダーを要求の O に付ける。範囲ごとに 1 つのスレッドから呼ぶ。
+ *   <li>計画（{@link #plan}）: 1 回の順伝播で扱うトークン数（パディング込みで、行の数 × 最も長い行の S）が上限に収まり、バッチの容量にも
+ *       入れば、要求の順のまま 1 つのバッチにする。そうでなければ S の順に並べ、上限とバッチの容量に収まるだけ詰めたバッチに分ける
+ *       （行は切らない）。
+ *   <li>符号化（{@link #tokenize}）: 入力の形式の 1 行のライターが、バッチの行の位置へ直に書く。
+ *   <li>答え（{@link #answer}）: s をバッチの順・手の順につないだ出力から、要求ごとに s・p0・σ を書く（{@link GreedyAnswer}）。
  * </ol>
  *
- * <p>計画の位置 p は塊の順に続き、塊 c は位置 {@link Chunk#first} から塊の行の数だけを持つ。位置 p の問い合わせは {@code planned[p]}。
+ * <p>計画の位置 p はバッチの順に続き、バッチ c は位置 {@link Chunk#first} からバッチの行の数だけを持つ。位置 p の要求は {@code planned[p]}。
  */
 final class Encoding {
 
   /**
-   * 1 回の順伝播の塊。
+   * 1 回の順伝播で扱うバッチ。
    *
-   * @param batch 計画を封じた入力
-   * @param first 塊の最初の行の計画の位置
+   * @param batch 計画を確定した入力
+   * @param first バッチの最初の行の位置（計画の中の位置）
    */
   record Chunk(HostInputs batch, int first) {}
 
+  private final InputFormat format;
   private final List<Chunk> chunks = new ArrayList<>();
   private List<PolicyRequest> rows;
 
-  /** 行ごとの O の読み手（{@link #bind} で付け、{@link #rows} の行の数だけ使う）。 */
+  /** 行ごとの O のリーダー。{@link #bind} で付け、{@link #rows} の行の数だけ使う。 */
   private Observation[] observations = new Observation[0];
 
   private int[] planned = new int[0];
@@ -52,10 +52,19 @@ final class Encoding {
   private long paddedTokens;
 
   /**
-   * 問い合わせの並びに付け替える（池から借りたときに 1 回）。
+   * 空の作業領域を作る。
    *
-   * @param requests 問い合わせ（1 つ以上。結果を書き終えるまで借りる）
-   * @throws IllegalArgumentException 問い合わせがないとき
+   * @param format 入力の形式。O のルール（四人打ちか三人打ち）と、行ごとの局・席・牌のトークンの数を持つ
+   */
+  Encoding(InputFormat format) {
+    this.format = format;
+  }
+
+  /**
+   * 新しい要求の並びに付け替える。プールから借りたときに 1 回呼ぶ。
+   *
+   * @param requests 方策の要求（1 つ以上。結果を書き終えるまで借りる）
+   * @throws IllegalArgumentException 要求が無いとき
    */
   void reset(List<PolicyRequest> requests) {
     if (requests.isEmpty()) {
@@ -69,35 +78,35 @@ final class Encoding {
       int had = observations.length;
       observations = Arrays.copyOf(observations, count);
       for (int row = had; row < count; row++) {
-        observations[row] = new Observation();
+        observations[row] = new Observation(format.variant());
       }
       planned = new int[count];
       keys = new long[count];
     }
   }
 
-  /** 問い合わせと塊を手放す（池に返す前）。 */
+  /** 要求とバッチへの参照を外す。プールに返す前に呼ぶ。 */
   void clear() {
     rows = null;
     chunks.clear();
   }
 
-  /** 問い合わせの並び。 */
+  /** 要求の並び。 */
   List<PolicyRequest> rows() {
     return rows;
   }
 
-  /** 塊（計画の順）。 */
+  /** バッチの並び（計画の順）。 */
   List<Chunk> chunks() {
     return chunks;
   }
 
-  /** 全ての塊の詰めたトークンの和（デバイスの仕事の見積もり）。 */
+  /** 全てのバッチで扱うトークン数（パディング込み）の合計。デバイスの処理量の見積もりに使う。 */
   long paddedTokens() {
     return paddedTokens;
   }
 
-  /** 全ての塊の手の数（出力の s の数）。 */
+  /** 全てのバッチの手の数（出力の s の数）。 */
   int actions() {
     int actions = 0;
     for (Chunk chunk : chunks) {
@@ -107,11 +116,11 @@ final class Encoding {
   }
 
   /**
-   * 範囲の問い合わせの読み手を、問い合わせが運ぶ O に付ける。範囲ごとに 1 つのスレッドから呼ぶ。
+   * 範囲の各行で、リーダーを要求が運ぶ O に付ける。範囲ごとに 1 つのスレッドから呼ぶ。
    *
-   * @param from 最初の問い合わせ
-   * @param to 最後の問い合わせの次
-   * @throws IllegalStateException O を運ばない問い合わせがあるとき
+   * @param from 最初の要求の位置
+   * @param to 最後の要求の次の位置
+   * @throws IllegalStateException O を運ばない要求があるとき
    */
   void bind(int from, int to) {
     for (int row = from; row < to; row++) {
@@ -121,16 +130,16 @@ final class Encoding {
   }
 
   /**
-   * 塊を計画して封じる（付けの後に 1 つのスレッドで）。
+   * バッチを計画して確定する。リーダーを付けた後に、1 つのスレッドで呼ぶ。
    *
-   * @param batches 空の塊を借りる口
-   * @param budget 1 回の順伝播の詰めたトークンの上限
+   * @param batches 空のバッチを借りる先
+   * @param budget 1 回の順伝播で扱うトークン数（パディング込み）の上限
    */
   void plan(Supplier<HostInputs> batches, int budget) {
     int count = rows.size();
     int widest = 0;
     for (int row = 0; row < count; row++) {
-      int tokens = BatchPlan.FIXED_TOKENS + observations[row].publicEvents();
+      int tokens = format.fixedTokens() + observations[row].publicEvents();
       keys[row] = (long) tokens << Integer.SIZE | row;
       widest = Math.max(widest, tokens);
     }
@@ -150,7 +159,7 @@ final class Encoding {
       int row = (int) keys[position];
       int tokens = (int) (keys[position] >>> Integer.SIZE);
       Observation o = observations[row];
-      // 並べた後の行の S は塊の中で最も長いので、詰めたトークンは（行の数）× S
+      // S の順に並べたので、この行の S がバッチの中で最も長い。パディング込みのトークン数は（行の数）× S
       if (batch == null
           || (long) (position - first + 1) * tokens > budget
           || batch.plan().add(o) < 0) {
@@ -169,7 +178,7 @@ final class Encoding {
     seal(batch, first, (int) (keys[count - 1] >>> Integer.SIZE));
   }
 
-  /** 問い合わせの順のまま塊に入れる（塊の容量を超えたら false）。 */
+  /** 要求の順のままバッチに入れる。バッチの容量を超えたら false を返す。 */
   private boolean fill(HostInputs batch) {
     for (int row = 0; row < rows.size(); row++) {
       if (batch.plan().add(observations[row]) < 0) {
@@ -187,16 +196,13 @@ final class Encoding {
   }
 
   /**
-   * 計画の位置の範囲の行を塊に書く。範囲ごとに 1 つのスレッドから呼ぶ。
+   * 計画の位置の範囲にある行を、バッチに書く。範囲ごとに 1 つのスレッドから呼ぶ。
    *
    * @param from 最初の位置
    * @param to 最後の位置の次
-   * @param tokenizer このスレッドの Tokenizer
-   * @param writer このスレッドの書き手
-   * @param frontier このスレッドの前線の書き手（前線のない網は null）
+   * @param writer このスレッドの 1 行のライター
    */
-  void tokenize(
-      int from, int to, Tokenizer tokenizer, InputWriter writer, FrontierFeatures frontier) {
+  void tokenize(int from, int to, InputFormat.RowWriter writer) {
     int chunk = 0;
     while (chunk + 1 < chunks.size() && chunks.get(chunk + 1).first() <= from) {
       chunk++;
@@ -208,17 +214,14 @@ final class Encoding {
       Chunk target = chunks.get(chunk);
       Observation o = observations[planned[position]];
       int row = position - target.first();
-      tokenizer.write(o, writer.bind(target.batch().input(), row));
-      if (frontier != null) {
-        frontier.write(o, target.batch().frontier(), row);
-      }
+      writer.write(o, target.batch(), row);
     }
   }
 
   /**
-   * 問い合わせごとに s・p0・σ を書く。
+   * 要求ごとに s・p0・σ を書く。
    *
-   * @param output 塊の順に、塊の手の順の s を詰めてつないだもの（位置 0 から読む。HIP の推論の出力と同じ並び）
+   * @param output 合法手の s を、バッチの順、バッチの中では手の順に詰めてつないだもの（位置 0 から読む。HIP の推論の出力と同じ並び）
    * @param settings p0 の係数
    */
   void answer(FloatBuffer output, PriorSettings settings) {
@@ -227,7 +230,7 @@ final class Encoding {
       BatchPlan plan = target.batch().plan();
       for (int row = 0; row < plan.rows(); row++) {
         PolicyRequest request = rows.get(planned[target.first() + row]);
-        int actions = request.legal().size();
+        int actions = request.legalCount();
         if (actions != plan.actions(row)) {
           throw new IllegalStateException(
               "row holds " + plan.actions(row) + " actions, the request " + actions);
@@ -245,10 +248,10 @@ final class Encoding {
     }
   }
 
-  /** p0（特徴は Tokenizer が作った打牌の後の向聴と受け入れの枚数）。 */
+  /** p0 を作る。特徴は、ライターが書いた打牌の後の向聴数と受け入れの枚数。 */
   private static float[] prior(
       PolicyRequest request, HostBatch batch, int firstAction, PriorSettings settings) {
-    int actions = request.legal().size();
+    int actions = request.legalCount();
     float[] shanten = new float[actions];
     float[] ukeire = new float[actions];
     for (int action = 0; action < actions; action++) {

@@ -2,10 +2,11 @@
   "models": [
     {
       "modelId": "epsilon-prism-v2",
-      "revision": "prism-v2b-v551",
+      "revision": "prism-v2b-v551-20261108",
       "displayName": "Epsilon-Prism-v2",
       "version": "prism-v2b v551",
       "series": "epsilon-prism",
+      "variant": "TENHOU_4P",
       "checkpoint": "models/prism-v2b-v551",
       "options": {
         "device": "cpu"
@@ -14,11 +15,24 @@
     },
     {
       "modelId": "epsilon-nano",
-      "revision": "nano-ppo17-20260910",
+      "revision": "nano-ppo17-20261108",
       "displayName": "Epsilon-Nano",
       "version": "PPO 17",
       "series": "epsilon-nano",
+      "variant": "TENHOU_4P",
       "checkpoint": "models/nano-ppo17",
+      "options": {
+        "device": "gpu0"
+      }
+    },
+    {
+      "modelId": "epsilon-major",
+      "revision": "major-macro614-20261108",
+      "displayName": "Epsilon-Major",
+      "version": "macro 614",
+      "series": "epsilon",
+      "variant": "TENHOU_4P",
+      "checkpoint": "models/major-macro614",
       "options": {
         "device": "cpu"
       }
@@ -26,6 +40,6 @@
   ],
   "defaultModel": {
     "modelId": "epsilon-prism-v2",
-    "revision": "prism-v2b-v551"
+    "revision": "prism-v2b-v551-20261108"
   }
 }

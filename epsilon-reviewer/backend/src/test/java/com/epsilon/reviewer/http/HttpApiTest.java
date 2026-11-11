@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.http;
 
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.TestFiles;
 import com.epsilon.reviewer.TestReviewer;
 import com.epsilon.reviewer.engine.Format6;
@@ -18,7 +19,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-/** HTTP の道を持つ全ての操作を試験のモデルで端から端まで通す（状態・本文・頭）。 */
+/** HTTP のパスがある全ての操作を、テスト用のモデルで端から端まで通し、ステータス・本文・ヘッダーを確かめる。 */
 public class HttpApiTest {
   private static final OwnerId OWNER = TestReviewer.OWNER;
   private TestServer server;
@@ -44,7 +45,7 @@ public class HttpApiTest {
     Assert.assertEquals(
         catalog.getAsJsonArray("models").get(0).getAsJsonObject().toString(),
         "{\"modelId\":\"fixture\",\"revision\":\"r1\",\"displayName\":\"Fixture\","
-            + "\"version\":\"1\",\"available\":true}");
+            + "\"version\":\"1\",\"seats\":4,\"available\":true}");
     Assert.assertEquals(
         catalog.getAsJsonObject("defaultModel").toString(),
         "{\"modelId\":\"fixture\",\"revision\":\"r1\"}");
@@ -54,7 +55,7 @@ public class HttpApiTest {
             server
                 .request("/api/records", OWNER)
                 .header("Content-Type", "application/octet-stream")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(TestFiles.golden("kakan-a"))));
+                .POST(HttpRequest.BodyPublishers.ofByteArray(TestFiles.played(Variant.TENHOU_4P, 0))));
     Assert.assertEquals(imported.statusCode(), 200, imported.body());
     JsonObject record = TestServer.body(imported);
     Assert.assertEquals(record.getAsJsonObject("record").get("source").getAsString(), "tenhou");
@@ -177,7 +178,7 @@ public class HttpApiTest {
                 .POST(HttpRequest.BodyPublishers.ofString("{\"format\":6,\"resultId\":\"x\"}"))),
         422,
         "invalid_record");
-    // 長さを書かない本文（chunked）で上限 + 1 バイトを送り、サーバが読み切ってから断る。
+    // 長さを書かない本文（chunked）で、上限より 1 バイト多く送る。サーバは本文を読み切ってから断る。
     TestServer.assertError(
         server.send(
             server
@@ -240,7 +241,7 @@ public class HttpApiTest {
         "result_not_found");
   }
 
-  /** 候補が 2 つ以上ある最初の打牌の判断。 */
+  /** 候補が 2 つ以上ある打牌の判断のうち、最初のもの。 */
   static Format6.Located firstChoice(Format6.Document document) {
     return document.decisions().stream()
         .filter(located -> located.step().candidates().size() > 1)

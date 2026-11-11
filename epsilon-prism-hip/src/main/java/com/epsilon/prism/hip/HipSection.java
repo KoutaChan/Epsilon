@@ -1,10 +1,12 @@
 package com.epsilon.prism.hip;
 
 /**
- * 塊の入力（UINT8 の blob 1 本）の区画。名前・並び・軸・要素の型は網の入力の転送の形（{@code InputSchema.Tensor}）と同じで、網の側
- * （{@code HipBackend}）が名前で照らす。区画の幅（1 個あたりの要素の数）は WeightPack の頭が持つ（{@link HipPack}）。
+ * バッチの入力（UINT8 の blob 1 本）の中の領域。名前・並び・軸・要素の型は、ネットワークが入力を送るときの形
+ * （{@code InputSchema.Tensor}）と同じで、ネットワークの側（{@code HipBackend}）が名前で照合する。領域の幅（1 行あたりの要素の数）は
+ * WeightPack のヘッダーが持つ（{@link HipPack}）。
  *
- * <p>トークンの軸は型ごとの区画を続けたもの（局 R・席 4R・牌 34R・出来事 N_E）。作業域の残差の流れも同じ並びにする。
+ * <p>トークンの軸は、型ごとの領域をつなげたもの（局 R・席 S·R・牌 T·R・イベント N_E。S・T は形の記述にある席と牌の数）。作業領域の
+ * 残差ストリームも同じ並びにする。
  */
 public enum HipSection {
   ROUND_CATEGORY(Axis.ROW, HipElement.U8),
@@ -18,18 +20,18 @@ public enum HipSection {
   RELATION(Axis.TOKEN, HipElement.U8),
   TRANSITION_CATEGORY(Axis.TRANSITION, HipElement.U8),
   TRANSITION_SCALAR(Axis.TRANSITION, HipElement.BF16),
-  /** 遷移ごとの鍵の符号。 */
+  /** 遷移ごとに、局・席・牌の各キーに付けるコード。 */
   TRANSITION_CODE(Axis.TRANSITION, HipElement.U8),
-  /** B の道（FP32）。 */
+  /** 打牌の値 B のヘッドが FP32 のまま読むフィールド。 */
   DISCARD_EXACT(Axis.TRANSITION, HipElement.FP32),
-  /** 手の索引。 */
+  /** 手のインデックス。 */
   ACTION_COLUMN(Axis.ACTION, HipElement.I32),
-  /** 門の道（FP32）。 */
+  /** ゲートのヘッドが FP32 のまま読むフィールド。 */
   ACTION_EXACT(Axis.ACTION, HipElement.FP32),
-  /** 行の索引。 */
+  /** 行のインデックス。 */
   ROW_COLUMN(Axis.ROW, HipElement.I32);
 
-  /** 区画の行の軸。 */
+  /** 領域の 1 行が何に当たるか。 */
   public enum Axis {
     /** 判断の行。 */
     ROW,
@@ -38,7 +40,7 @@ public enum HipSection {
     /** 行ごとの牌。 */
     TILE,
     EVENT,
-    /** 局・席・牌・出来事の全てのトークン。 */
+    /** 局・席・牌・イベントの全てのトークン。 */
     TOKEN,
     TRANSITION,
     /** 合法手。 */
@@ -62,9 +64,9 @@ public enum HipSection {
   }
 
   /**
-   * 塊の中のこの区画の行の数。
+   * バッチの中で、この領域が持つ行の数を返す。
    *
-   * @param batch 塊の数
+   * @param batch バッチ
    * @param seats 行ごとの席の数
    * @param tiles 行ごとの牌の数
    * @return 行の数

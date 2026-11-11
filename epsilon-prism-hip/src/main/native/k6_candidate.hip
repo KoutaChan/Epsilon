@@ -1,35 +1,49 @@
-// K6（candidate）: 48 遷移の作業群（256 スレッド = 8 波）。eager の CandidateLayer（静的な部分 t_s は K1）と DiscardValue。
+// K6（candidate）: ワークグループ（256 スレッド = 8 ウェーブ）が 48 遷移を受け持つ。eager の CandidateLayer に当たる（静的な部分 t_s は
+// K1 が作る）。行のキーの数 F（局・席・牌）はテンプレート引数で、31 と 39 のカーネルを持つ。打牌の値 B を書くかもテンプレート引数で
+// 決める。1 段の形は z の後に B（prism_hip_value.h）を書き、2 段目のある形は z を 1 段目の出力 z1 として書いて終わる（B は K9 が書く）。
 //
 //   t0 = ⌊t_s + ⌊y_T[τ]·W_Eᵀ⌉⌉                  τ = 鳴いた後に捨てる牌、なければ主牌、なければ項なし
 //   q  = ⌊⌊N_q(t0)⌉·W_qᵀ + b_q⌉
-//   o  = ⌊Σ_j softmax_j((q·K_j + q·E_k[c_j])·¼)·(V_j + E_v[c_j])⌉   j は行の局・席・牌、FP32
+//   o  = ⌊Σ_j softmax_j((q·K_j + q·E_k[c_j])·¼)·(V_j + E_v[c_j])⌉   j は行の局・席・牌の F 個、FP32
 //   z  = mlpStage(t0, o)                           （K3 と同じ式、候補の重み）
-//   B  = Σ_g silu(⌊⌊N_B(z)⌉·W_Bᵀ + c_B⌉)·wB_g + Σ_k x^B_k·uBx_k   （FP32）
 //
-// 縮約は全て遷移の中（交差注意は鍵の順、B の和は列の決まった順）で、同じ遷移の z と B は塊の組み方に依らずビットで同じ。
-// 塊は K3 と同じ 48 行（64 行より LDS が小さく、1 WGP に載る作業群が多い）。
-// 遷移ごとの縮約の順（行列積の K の歩、RMSNorm の 4 スレッドの木、B の halfSum と波の順の和）は塊の行の数に依らない。交差注意は
-// (頭, 遷移) の項目をスレッドに配る（attendPipelined）。RMSNorm の受け持ち（4 スレッドで 1 行）は 64 行ぶんあるので、段 3 は行 48
-// 以上（波 6・7）を飛ばす（normalizeTile と同じ）。
-// 行列積は全て段ずらし（tileEntry・query・discardHidden は gemmTile、mlpStage は計画の断片の順の写しを読む gemmFragmentsFrom。
-// prism_hip_mlp.h）。t_s を最初に読み、t0 の epilogue を 1/rms と同じ受け持ちの 1 回に畳むので、tileEntry の段ずらしも
-// spill しない。交差注意は鍵を kAhead 個先まで生の buffer で読む段ずらしの輪（attendPipelined）。FFN の h と B の silu は siluFast、
-// 活性の丸めは bf16RoundActivation（NaN の選択なし）、待ち合わせは全て tile::barrier（LDS だけ。読む区画と書く区画が別という約束）。
-#include "prism_hip_mlp.h"
+// リダクションは全て遷移の中で閉じる（Cross-Attention はキーの順、B の和は列の決まった順）ので、同じ遷移の z と B は、タイルの組み方に
+// 依らずビットで同じ。タイルは K3 と同じ 48 行（64 行より LDS が小さく、1 WGP に載るワークグループが多い）。
+// 遷移ごとのリダクションの順（行列積の K のステップ、RMSNorm の 4 スレッドのツリー、B の halfSum とウェーブの順の和）は、タイルの行の
+// 数に依らない。Cross-Attention は (ヘッド, 遷移) の項目をスレッドに配る（attendPipelined）。RMSNorm の受け持ち（4 スレッドで 1 行）は
+// 64 行ぶんあるので、段 3 は行 48 以上（ウェーブ 6・7）を飛ばす（normalizeTile と同じ）。
+// 行列積は全てソフトウェアパイプラインで回す（tileEntry・query・discardHidden は gemmTile、mlpStage は、計画が作ったフラグメントの順の
+// コピーを読む gemmFragmentsFrom。prism_hip_mlp.h）。t_s を最初に読み、t0 の epilogue を 1/rms と同じ受け持ちの 1 回にまとめるので、
+// tileEntry のパイプラインも spill しない。Cross-Attention は、キーを kAhead 個先まで生の buffer で読むパイプラインのループ
+// （attendPipelined）。FFN の h と B の silu は siluFast、活性値の丸めは bf16RoundActivation（NaN の選択なし）。バリアは全て
+// tile::barrier で、LDS の順序だけをそろえる（読む領域と書く領域が別であることが前提）。
+#include "prism_hip_candidate.h"
+#include "prism_hip_value.h"
 
 namespace prism {
 namespace {
 
+using candidate::KeySlot;
 using tile::kChunk;
 using tile::kThreads;
 using tile::kWaves;
 
-constexpr int kTile = 48;            // 作業群の遷移（MLP の段の行）
+constexpr int kTile = 48;            // ワークグループが受け持つ遷移の数（MLP の段の行）
 constexpr int kRowTiles = kTile / 16;
-constexpr int kKeys = 39;            // 行の局・席・牌（入力の約束 1 + 4 + 34。起動のときに照らす）
-constexpr int kAhead = 3;            // 交差注意で読み込みを先に出す鍵の数（5 にすると spill する）
-constexpr int kMaxDiscardExact = 8;  // B の道の幅の上限（DiscardExact の 8 欄。起動のときに照らす）
-static_assert(kKeys > 32 && kKeys <= 48, "the key codes are read as three 16-byte pieces");
+constexpr int kAhead = 3;            // Cross-Attention で読み込みを先に出すキーの数（5 にすると spill する）
+
+// 遷移のキーのコード F バイトを、16 バイトずつ何回で読むか（最後の 1 回は末尾に寄せて [F − 16, F) を読む）。
+template <int F>
+constexpr int codePieces() {
+  static_assert(F >= 16 && F <= kMaxFixedTokens, "the key codes are read as 16-byte pieces");
+  return (F + 15) / 16;
+}
+
+// コードを 16 バイトずつ読むとき、p 回目に読む先頭のバイト位置。
+template <int F>
+constexpr int codePieceStart(int p) {
+  return p < codePieces<F>() - 1 ? 16 * p : F - 16;
+}
 
 template <int H>
 struct alignas(16) CandidateShared {
@@ -40,96 +54,41 @@ struct alignas(16) CandidateShared {
   int tile[kTile];
 };
 
-// 交差注意の鍵 1 つの読み込み: 行の鍵の頭の 16 次元（K か V、BF16、b128 × 2）と、その符号の E_k か E_v の頭の 16 次元（FP32、
-// b128 × 4）。
-struct KeySlot {
-  u32x4 key[2];
-  f32x4 code[4];
-
-  // 読み込みを出す。lane ごとに違う位置は行の鍵の先頭 rowByte と符号の E の行 codeRow（どちらも項目の頭の位置を含む。VGPR）、波で
-  // 一様な位置は鍵の中の memoryByte（soffset）。
-  __device__ __forceinline__ void issue(__amdgpu_buffer_rsrc_t memory, uint32_t rowByte, int memoryByte,
-                                        __amdgpu_buffer_rsrc_t table, uint32_t codeRow) {
-    key[0] = __builtin_amdgcn_raw_buffer_load_b128(memory, rowByte, memoryByte, 0);
-    key[1] = __builtin_amdgcn_raw_buffer_load_b128(memory, rowByte, memoryByte + 16, 0);
-#pragma unroll
-    for (int w = 0; w < 4; ++w) {
-      code[w] = __builtin_bit_cast(f32x4, __builtin_amdgcn_raw_buffer_load_b128(table, codeRow, 16 * w, 0));
-    }
-  }
-
-  // q·K（v_dot2_f32_bf16: BF16 の対の積を FP32 で 1 本の鎖に足す）。
-  __device__ __forceinline__ float keyDot(const u32x4 (&query)[2]) const {
-    float dot = 0.0f;
-#pragma unroll
-    for (int half = 0; half < 2; ++half) {
-#pragma unroll
-      for (int w = 0; w < 4; ++w) {
-        dot = __builtin_amdgcn_fdot2_f32_bf16(asPair(query[half][w]), asPair(key[half][w]), dot, false);
-      }
-    }
-    return dot;
-  }
-
-  // q·E_k（FMA の 1 本の鎖）。
-  __device__ __forceinline__ float codeDot(const float (&query)[2][8]) const {
-    float dot = 0.0f;
-#pragma unroll
-    for (int d = 0; d < 16; ++d) {
-      dot = fmaf(query[d >> 3][d & 7], code[d >> 2][d & 3], dot);
-    }
-    return dot;
-  }
-
-  // value += p·(V + E_v)（16 次元、次元ごとに鍵の順の FMA の鎖）。
-  __device__ __forceinline__ void accumulate(float p, float (&value)[2][8]) const {
-    float v[2][8];
-    unpack8(key[0], v[0]);
-    unpack8(key[1], v[1]);
-#pragma unroll
-    for (int half = 0; half < 2; ++half) {
-#pragma unroll
-      for (int d = 0; d < 8; ++d) {
-        value[half][d] = fmaf(p, v[half][d] + code[2 * half + (d >> 2)][d & 3], value[half][d]);
-      }
-    }
-  }
-};
-
-// 鍵 j の符号の E の行（A 個の FP32）のバイトの位置。符号の 39 バイトは [0, 16)・[16, 32)・[39 − 16, 39) の 3 つの 16 バイトに
-// 読んである。E の行ごとに照らす。
-template <int A>
-__device__ __forceinline__ uint32_t codeRow(const u32x4 (&codes)[3], int j, size_t limit, Bounds& bounds) {
-  const int part = j < 16 ? 0 : j < 32 ? 1 : 2;
-  const int byte = j - (part == 0 ? 0 : part == 1 ? 16 : kKeys - 16);
-  const uint32_t code = (codes[part][byte >> 2] >> (8 * (byte & 3))) & 0xffu;
-  return static_cast<uint32_t>(bounds.index(static_cast<size_t>(code) * A, A, limit) * sizeof(float));
+// キー j のコードが指す E の行（A 個の FP32）のバイト位置。コードの F バイトは、codePieces 個の 16 バイトに分けて読んである
+// （F = 39 なら [0, 16)・[16, 32)・[23, 39)、F = 31 なら [0, 16)・[15, 31)）。範囲は E の行ごとに確かめる。
+template <int A, int F>
+__device__ __forceinline__ uint32_t codeRow(const u32x4 (&codes)[codePieces<F>()], int j, size_t limit,
+                                            Bounds& bounds) {
+  const int part = j / 16 < codePieces<F>() - 1 ? j / 16 : codePieces<F>() - 1;
+  return candidate::codeTableRow<A>(codes[part], j - codePieceStart<F>(part), limit, bounds);
 }
 
-// 段 5: 交差注意。(頭, 遷移) の kHeads·kTile 個の項目を item = tid + 256u（u = 0, 1）で配り、項目は頭 h = item / kTile、遷移
-// i = item % kTile（波 0〜3 が 2 項目、波 4〜7 が 1 項目）。
-//   ℓ_j = (q·K_j + q·E_k[c_j])·scale·log2e（v_dot2 の鎖と FMA の鎖）、p_j = 2^(ℓ_j − max)·(1 / Σ_j 2^(ℓ_j − max))、
+// 段 5: Cross-Attention。(ヘッド, 遷移) の kHeads·kTile 個の項目を item = tid + 256u（u = 0, 1）でスレッドに配る。項目 item は
+// ヘッド h = item / kTile と遷移 i = item % kTile を受け持つ（ウェーブ 0〜3 は 2 項目、ウェーブ 4〜7 は 1 項目）。
+//   ℓ_j = (q·K_j + q·E_k[c_j])·scale·log2e（v_dot2 の連鎖と FMA の連鎖）、p_j = 2^(ℓ_j − max)·(1 / Σ_j 2^(ℓ_j − max))、
 //   o = ⌊Σ_j p_j·(V_j + E_v[c_j])⌉
-// 項目の式と縮約の順は受け持ちに依らない。h は lane ごとに違うので、鍵の中の頭は rowByte に、E の行の中の頭は codeRow に足す（VGPR）。
-// 鍵 j + kAhead の読み込みを出してから鍵 j を使う段ずらしの輪（kAhead + 1 の場所を回す。sched_barrier で区切らないと組み立て器が
-// 読み込みを使う直前へ寄せる）。読み込みは生の buffer で、鍵ごとの 64 bit の番地を作らない（作ると LLVM が 39 組を項目の輪の外へ
-// 持ち出して spill する）。項目の本体は別の関数に分けない: 分けると先に展開された鍵の符号の行の位置を LLVM が項目の輪の外へ持ち出し、
-// ℓ の輪と o の輪で共有して spill する。
-template <int H>
+// 項目の式とリダクションの順は受け持ちに依らない。h は lane ごとに違うので、キーの中のヘッドの位置は rowByte に、E の行の中のヘッドの
+// 位置は codeRow の結果に足す（VGPR）。キー j + kAhead の読み込みを出してからキー j を使うパイプラインのループで、kAhead + 1 個の
+// スロットを回す（sched_barrier で区切らないと、コンパイラが読み込みを使う直前へ寄せてしまう）。読み込みは生の buffer で行い、キーごとの
+// 64 bit のアドレスを作らない（作ると LLVM が 39 組のアドレスを項目のループの外へ持ち出して spill する）。項目の本体は別の関数に分けない。
+// 分けると、先に展開されたキーのコードの行の位置を LLVM が項目のループの外へ持ち出し、ℓ のループと o のループで共有して spill する。
+template <int H, int F>
 __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, CandidateShared<H>& shared, int t0, int rows,
                                                 int tid, Bounds& bounds) {
   constexpr int A = H / 2;
   constexpr int kHeads = A / 16;
   constexpr int kItems = kHeads * kTile;
   constexpr int kRounds = (kItems + kThreads - 1) / kThreads;
-  constexpr int kKeyBytes = 2 * A * sizeof(uint16_t);   // MEMORY の鍵 1 つ（K と V）
-  constexpr int kValueBytes = A * sizeof(uint16_t);     // 鍵の中の V
-  constexpr int kHeadKeyBytes = 16 * sizeof(uint16_t);  // 鍵の K・V の中の頭 1 つ
-  constexpr int kHeadCodeBytes = 16 * sizeof(float);    // E の行の中の頭 1 つ
+  constexpr int kKeyBytes = 2 * A * sizeof(uint16_t);   // MEMORY のキー 1 つ（K と V）
+  constexpr int kValueBytes = A * sizeof(uint16_t);     // キーの中の V
+  constexpr int kHeadKeyBytes = 16 * sizeof(uint16_t);  // キーの K・V の中のヘッド 1 つ
+  constexpr int kHeadCodeBytes = 16 * sizeof(float);    // E の行の中のヘッド 1 つ
   constexpr int kSlots = kAhead + 1;
+  constexpr int kKeys = F;
+  constexpr int kPieces = codePieces<F>();
   static_assert(kItems % kWave == 0, "a wave either has an item in a round or not");
   auto& inner = shared.mlp.inner;
-  const float logitScale = args.scale * 1.4426950408889634f;  // softmax は exp2 で取る
+  const float logitScale = args.scale * 1.4426950408889634f;  // softmax は exp2 で計算する
   const __amdgpu_buffer_rsrc_t memory = bufferResource(args.memory.data);
   const __amdgpu_buffer_rsrc_t codeKey = bufferResource(args.codeKey.data);
   const __amdgpu_buffer_rsrc_t codeValue = bufferResource(args.codeValue.data);
@@ -141,17 +100,18 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
       continue;
     }
     const int h = item / kTile;
-    // 行の kKeys 個の鍵（K と V）は 1 つの区画として照らし、鍵の中の頭の位置を足す。
+    // 行の kKeys 個のキー（K と V）は 1 つの領域として範囲を確かめ、キーの中のヘッドの位置を足す。
     const size_t keyAt =
         bounds.index(static_cast<size_t>(shared.row[i]) * kKeys * (2 * A), kKeys * (2 * A), args.memory.limit);
     const uint32_t rowByte = static_cast<uint32_t>(keyAt * sizeof(uint16_t)) + h * kHeadKeyBytes;
-    // 鍵の符号（揃わない 16 バイトの読みを 3 つ。どれも遷移の欄の中）。
+    // キーのコード（アラインしていない 16 バイトの読み込みを kPieces 回。どれもその遷移のフィールドの中）。
     const size_t codeAt = static_cast<size_t>(t0 + i) * kKeys;
-    u32x4 codes[3];
-    codes[0] = loadUnaligned16(args.code.data + bounds.index(codeAt, 16, args.code.limit));
-    codes[1] = loadUnaligned16(args.code.data + bounds.index(codeAt + 16, 16, args.code.limit));
-    codes[2] = loadUnaligned16(args.code.data + bounds.index(codeAt + kKeys - 16, 16, args.code.limit));
-    const uint32_t tableLane = h * kHeadCodeBytes;  // E の行の中の頭
+    u32x4 codes[kPieces];
+#pragma unroll
+    for (int p = 0; p < kPieces; ++p) {
+      codes[p] = loadUnaligned16(args.code.data + bounds.index(codeAt + codePieceStart<F>(p), 16, args.code.limit));
+    }
+    const uint32_t tableLane = h * kHeadCodeBytes;  // E の行の中のヘッドの位置
     u32x4 query[2];
     query[0] = *reinterpret_cast<const u32x4*>(&inner[i][h * 16]);
     query[1] = *reinterpret_cast<const u32x4*>(&inner[i][h * 16 + 8]);
@@ -159,11 +119,11 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
     unpack8(query[0], q[0]);
     unpack8(query[1], q[1]);
 
-    // ℓ と最大。
+    // ℓ とその最大値。
     KeySlot ring[kSlots];
 #pragma unroll
     for (int j = 0; j < kAhead; ++j) {
-      ring[j].issue(memory, rowByte, j * kKeyBytes, codeKey, codeRow<A>(codes, j, args.codeKey.limit, bounds) + tableLane);
+      ring[j].issue(memory, rowByte, j * kKeyBytes, codeKey, codeRow<A, F>(codes, j, args.codeKey.limit, bounds) + tableLane);
     }
     float logits[kKeys];
     float maximum = -INFINITY;
@@ -172,7 +132,7 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
       const int ahead = j + kAhead;
       if (ahead < kKeys) {
         ring[ahead % kSlots].issue(memory, rowByte, ahead * kKeyBytes, codeKey,
-                                   codeRow<A>(codes, ahead, args.codeKey.limit, bounds) + tableLane);
+                                   codeRow<A, F>(codes, ahead, args.codeKey.limit, bounds) + tableLane);
       }
       __builtin_amdgcn_sched_barrier(0);
       const KeySlot& slot = ring[j % kSlots];
@@ -192,7 +152,7 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
 #pragma unroll
     for (int j = 0; j < kAhead; ++j) {
       ring[j].issue(memory, rowByte, j * kKeyBytes + kValueBytes, codeValue,
-                    codeRow<A>(codes, j, args.codeValue.limit, bounds) + tableLane);
+                    codeRow<A, F>(codes, j, args.codeValue.limit, bounds) + tableLane);
     }
     float value[2][8];
 #pragma unroll
@@ -207,7 +167,7 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
       const int ahead = j + kAhead;
       if (ahead < kKeys) {
         ring[ahead % kSlots].issue(memory, rowByte, ahead * kKeyBytes + kValueBytes, codeValue,
-                                   codeRow<A>(codes, ahead, args.codeValue.limit, bounds) + tableLane);
+                                   codeRow<A, F>(codes, ahead, args.codeValue.limit, bounds) + tableLane);
       }
       __builtin_amdgcn_sched_barrier(0);
       ring[j % kSlots].accumulate(logits[j] * inverse, value);
@@ -218,11 +178,12 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
   }
 }
 
-template <int H>
+// kValue は B を書くかどうか（1 段の形で true）。
+template <int H, int F, bool kValue>
 __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) {
   constexpr int A = H / 2;
   constexpr int kColumns = H / 16 / kWaves;
-  constexpr int kParts = H / 32;  // RMSNorm の受け持ち（4 スレッドで 1 行、H/4 列）の 16 バイトの数
+  constexpr int kParts = H / 32;  // RMSNorm でスレッドが受け持つ H/4 列（4 スレッドで 1 行）に含まれる 16 バイトの数
   static_assert(A == kChunk, "the query and the attention output are staged in the hidden buffer");
   static_assert(H % kChunk == 0, "the query projection reads the stream in chunks");
   static_assert(sizeof(CandidateShared<H>) <= 64 * 1024, "LDS of one work group is 64 KiB");
@@ -240,8 +201,8 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
   const TokenLayout layout = args.layout;
   Bounds bounds;
 
-  // 段 3 の t_s は最初に読んでおく（RMSNorm の受け持ち。塊の外の行は最後の行に寄せて読み、使わない）。受け持ちは 64 行ぶんあり、
-  // 行 kTile 以上（波 6・7）に仕事はない。
+  // 段 3 で使う t_s を最初に読んでおく（RMSNorm と同じ受け持ち。タイルの外の行は最後の行に寄せて読み、使わない）。受け持ちは 64 行
+  // ぶんあり、行 kTile 以上（ウェーブ 6・7）には処理がない。
   const int normRow = tid >> 2;
   const int normCol = (tid & 3) * (H / 4);
   u32x4 staticPart[kParts];
@@ -254,36 +215,21 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
     }
   }
 
-  // 0. 遷移の行（行の最初の遷移の 2 分探索）と牌 τ（ID、0 はなし）。
+  // 0. 遷移ごとの行の番号と牌 τ の ID（0 は牌なし）を LDS に置く。
   if (tid < kTile) {
     int row = 0;
     int tileId = 0;
     if (tid < rows) {
       const int t = t0 + tid;
-      int lo = 0;
-      int hi = layout.rows - 1;
-      while (lo < hi) {
-        const int mid = (lo + hi + 1) >> 1;
-        const int first = args.rowColumn.data[bounds.index(
-            static_cast<size_t>(mid) * args.rowWidth + args.rowFirstTransition, 1, args.rowColumn.limit)];
-        if (first <= t) {
-          lo = mid;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      row = lo;
-      const size_t at = static_cast<size_t>(t) * args.categoryWidth;
-      const int callDiscard = args.category.data[bounds.index(at + args.callDiscard, 1, args.category.limit)];
-      const int mainTile = args.category.data[bounds.index(at + args.mainTile, 1, args.category.limit)];
-      tileId = callDiscard > 0 ? callDiscard : mainTile;
+      row = candidate::transitionRow(args.rowColumn, args.rowWidth, args.rowFirstTransition, layout.rows, t, bounds);
+      tileId = candidate::discardTile(args.category, args.categoryWidth, args.callDiscard, args.mainTile, t, bounds);
     }
     shared.row[tid] = row;
     shared.tile[tid] = tileId;
   }
   tile::barrier();
 
-  // 1. y_T[τ] を stream へ（τ がない遷移と塊の外は 0）。読み込みは τ がなければ y の先頭の行に寄せ、分岐なしで一度に飛ばす。
+  // 1. y_T[τ] を stream へ置く（τ がない遷移とタイルの外は 0）。τ がなければ y の先頭の行を読み、読み込みを分岐なしで一度に出す。
   {
     constexpr int kVectors = H / 8;
     constexpr int kPasses = kTile * kVectors / kThreads;
@@ -307,7 +253,7 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
   }
   tile::barrier();
 
-  // 2. ⌊y_T·W_Eᵀ⌉（偏りなし）を C の断片の並びのまま stream へ。
+  // 2. ⌊y_T·W_Eᵀ⌉（バイアスなし）を、C のフラグメントの並びのまま stream へ書く。
   int output[kColumns];
 #pragma unroll
   for (int j = 0; j < kColumns; ++j) {
@@ -337,8 +283,8 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
   }
   tile::barrier();
 
-  // 3. t0 = ⌊t_s + ⌊E⌉⌉ を RMSNorm の受け持ちでその場で作り（塊の外の行は t_s を 0 とする）、そのまま 1/rms(t0) を inverse へ。
-  //    行 kTile 以上の受け持ちは飛ばす（4 スレッドの組ごとに飛ぶので inverseRms の木は欠けない）。
+  // 3. t0 = ⌊t_s + ⌊E⌉⌉ を RMSNorm の受け持ちでその場で作り（タイルの外の行は t_s を 0 とする）、続けて 1/rms(t0) を inverse へ
+  //    書く。行 kTile 以上の受け持ちは飛ばす（4 スレッドの組ごとに飛ぶので、inverseRms のツリーは欠けない）。
   if (normRow < kTile) {
     const bool real = normRow < rows;
     u32x4 part[kParts];
@@ -362,7 +308,7 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
   }
   tile::barrier();
 
-  // 4. q = ⌊⌊N_q(t0)⌉·W_qᵀ + b_q⌉。正規化した t0 を 128 列ずつ inner に置き、K の順に累積する。
+  // 4. q = ⌊⌊N_q(t0)⌉·W_qᵀ + b_q⌉。正規化した t0 を 128 列ずつ inner に置き、K の順に足し込む。
   {
     f32x8 q[kRowTiles][1];
 #pragma unroll
@@ -402,81 +348,30 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
   }
   tile::barrier();
 
-  // 5. 交差注意。⌊o⌉ を q の上に書く。
-  attendPipelined<H>(args, shared, t0, rows, tid, bounds);
+  // 5. Cross-Attention。⌊o⌉ を q に上書きする。
+  attendPipelined<H, F>(args, shared, t0, rows, tid, bounds);
   tile::barrier();
 
   // 6. z = mlpStage(t0, o)（候補の O 射影と FFN）を書く。
   tile::mlpStage<H>(shared.mlp, args.weights, args.ffn, args.epsilon, bounds);
   tile::storeTile<H>(args.transition.data, args.transition.limit, stream, t0, rows, tid, bounds);
-  tile::barrier();
 
-  // 7. B。z を ⌊N_B(z)⌉ にその場で替え、G を 16 列ずつ波に配る。和は lane の列 → 16 lane の木 → 波の順。
-  tile::normalizeTile<H>(stream, args.discardNorm.data, args.discardNorm.limit, args.epsilon, tid, bounds);
-  tile::barrier();
-  float rowSum[kRowTiles][8];
-#pragma unroll
-  for (int m = 0; m < kRowTiles; ++m) {
-#pragma unroll
-    for (int v = 0; v < 8; ++v) {
-      rowSum[m][v] = 0.0f;
-    }
-  }
-  for (int n = wave; n < args.gate / 16; n += kWaves) {
-    f32x8 u[kRowTiles][1];
-#pragma unroll
-    for (int m = 0; m < kRowTiles; ++m) {
-      u[m][0] = f32x8{};
-    }
-    const int units[1] = {n * 16 + column};
-    tile::gemmTile<1, H>(u, stream, args.discardHidden.data, args.discardHidden.limit, H, 0, units, column, bounds);
-    const float bias = tile::load(args.discardHiddenBias.data, args.discardHiddenBias.limit, units[0], bounds);
-    const float weight = tile::load(args.discardOutput.data, args.discardOutput.limit, units[0], bounds);
-#pragma unroll
-    for (int m = 0; m < kRowTiles; ++m) {
-#pragma unroll
-      for (int v = 0; v < 8; ++v) {
-        rowSum[m][v] += siluFast(bf16Float(bf16RoundActivation(u[m][0][v] + bias))) * weight;
-      }
-    }
-  }
-#pragma unroll
-  for (int m = 0; m < kRowTiles; ++m) {
-#pragma unroll
-    for (int v = 0; v < 8; ++v) {
-      const float sum = halfSum(rowSum[m][v]);
-      if (column == 0) {
-        shared.partial[wave][m * 16 + 2 * v + half] = sum;
-      }
-    }
-  }
-  tile::barrier();
-  if (tid < rows) {
-    float value = 0.0f;
-#pragma unroll
-    for (int w = 0; w < kWaves; ++w) {
-      value += shared.partial[w][tid];
-    }
-    // Σ_k x^B_k·uBx_k（k の順）。読み込みは kMaxDiscardExact 個を一度に飛ばす（幅の外は列 0 に寄せて読み、足さない）。
-    const size_t exactAt = static_cast<size_t>(t0 + tid) * args.discardExactWidth;
-    float features[kMaxDiscardExact];
-    float weights[kMaxDiscardExact];
-#pragma unroll
-    for (int k = 0; k < kMaxDiscardExact; ++k) {
-      const int at = k < args.discardExactWidth ? k : 0;
-      features[k] = args.discardExact.data[bounds.index(exactAt + at, 1, args.discardExact.limit)];
-      weights[k] = tile::load(args.discardWeights.data, args.discardWeights.limit, at, bounds);
-    }
-    float exact = 0.0f;
-#pragma unroll
-    for (int k = 0; k < kMaxDiscardExact; ++k) {
-      if (k < args.discardExactWidth) {
-        exact += features[k] * weights[k];
-      }
-    }
-    args.value.data[bounds.index(t0 + tid, 1, args.value.limit)] = value + exact;
+  // 7. B を書く（1 段の形だけ）。
+  if constexpr (kValue) {
+    tile::barrier();
+    discard::value<H>(stream, shared.partial, args.discard, args.discardExact, args.discardExactWidth, args.gate,
+                      args.epsilon, args.value, t0, rows, bounds);
   }
   bounds.trap();
+}
+
+template <int F>
+void launchKeys(const CandidateArgs& args, dim3 grid, hipStream_t stream) {
+  if (args.writeValue) {
+    hipLaunchKernelGGL((candidateKernel<256, F, true>), grid, dim3(kThreads), 0, stream, args);
+  } else {
+    hipLaunchKernelGGL((candidateKernel<256, F, false>), grid, dim3(kThreads), 0, stream, args);
+  }
 }
 
 }  // namespace
@@ -485,22 +380,28 @@ void launchCandidate(int hidden, const CandidateArgs& args, hipStream_t stream) 
   if (args.transitions <= 0) {
     return;
   }
-  if (args.layout.fixed() != kKeys) {
-    throw std::invalid_argument("K6 is built for " + std::to_string(kKeys) + " keys per row, the schema has " +
+  if (args.layout.fixed() != args.keys) {
+    throw std::invalid_argument("K6 got " + std::to_string(args.keys) + " keys per row but the layout has " +
                                 std::to_string(args.layout.fixed()));
   }
-  if (args.discardExactWidth > kMaxDiscardExact) {
-    throw std::invalid_argument("K6 reads at most " + std::to_string(kMaxDiscardExact) +
+  if (args.writeValue && args.discardExactWidth > discard::kMaxExact) {
+    throw std::invalid_argument("K6 reads at most " + std::to_string(discard::kMaxExact) +
                                 " B path features per transition, the schema has " +
                                 std::to_string(args.discardExactWidth));
   }
+  if (hidden != 256) {
+    throw std::invalid_argument("K6 has no specialisation for hidden " + std::to_string(hidden));
+  }
   const dim3 grid((args.transitions + kTile - 1) / kTile);
-  switch (hidden) {
-    case 256:
-      hipLaunchKernelGGL(candidateKernel<256>, grid, dim3(kThreads), 0, stream, args);
+  switch (args.keys) {
+    case 39:
+      launchKeys<39>(args, grid, stream);
+      break;
+    case 31:
+      launchKeys<31>(args, grid, stream);
       break;
     default:
-      throw std::invalid_argument("K6 has no specialisation for hidden " + std::to_string(hidden));
+      throw std::invalid_argument("K6 is built for 31 or 39 keys per row, got " + std::to_string(args.keys));
   }
   PRISM_HIP(hipGetLastError());
 }

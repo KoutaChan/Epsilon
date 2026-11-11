@@ -8,7 +8,7 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
 
-/** もしもの答えを解析の判断と同じ CandidateSet の形で書く（局面の draw の null も書く）。読まない。 */
+/** もしもの答えを、解析の判断と同じ CandidateSet の形で書く（局面の draw が null でも書く）。読み込みはしない。 */
 final class ScenarioAnswerJson extends TypeAdapter<ScenarioAnswer> {
   @Override
   public void write(JsonWriter out, ScenarioAnswer answer) throws IOException {

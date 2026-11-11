@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { EngineProcess, engineLaunch } from "../src/engine/process.ts";
 
@@ -11,8 +12,8 @@ const FAKE_ENGINE = fileURLToPath(
 );
 
 /**
- * 偽のエンジン（node fake-engine.mjs）を本物と同じ環境で起こす EngineProcess。state.mode は起こす度に読む。
- * 試験の後に止めてから一時のフォルダーを消す（子プロセスの作業のフォルダーは動いている間消せない）。
+ * 偽のエンジン（node fake-engine.mjs）を本物と同じ環境で起動する EngineProcess を作る。state.mode は起動のたびに
+ * 読む。テストの後は、エンジンを止めてから一時フォルダーを消す（子プロセスの作業フォルダーは、動いている間は消せない）。
  */
 async function fixture(t, stopGraceMs) {
   const root = await mkdtemp(path.join(os.tmpdir(), "reviewer-engine-"));
@@ -106,8 +107,13 @@ test("a failed start is answered without respawning until restart", async (t) =>
     error: locked,
   });
   assert.equal(state.spawns, 1);
+  // 起動の失敗は、子プロセスが終わったときに覚える。
+  const deadline = performance.now() + 5000;
+  while (!process_.failed && performance.now() < deadline) await delay(5);
+  assert.equal(process_.failed, true);
   state.mode = "ready";
   await process_.restart();
+  assert.equal(process_.failed, false);
   assert.equal((await process_.request("models", {})).ok, true);
   assert.equal(state.spawns, 2);
 });

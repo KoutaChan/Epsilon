@@ -5,24 +5,24 @@ import { useResource } from "../../hooks/useResource";
 import { errorKey } from "../../language/catalog";
 import { LanguageSelect } from "../../language/LanguageSelect";
 import { useLanguage } from "../../language/LanguageProvider";
-import { isAvailable } from "../models/availability";
+import { scenarioAvailable } from "../models/availability";
 import { ReviewView } from "../replay/ReviewView";
 import "./sharing.css";
 
 const goHome = () => window.location.assign("./");
 
-/** 共有リンクの閲覧。Cookie を送らず、持ち主の画面（取り込み・履歴）は出さない。 */
+/** 共有リンクで開く解析結果の画面。Cookie を送らず、オーナー向けの画面（取り込み・履歴）は出さない。 */
 export function SharedReview({ resultId }: { resultId: string }) {
   const { t } = useLanguage();
   const { state, reload } = useResource(
     async (signal) => {
       const [document, catalog] = await Promise.all([
         api.sharedResult(resultId, signal),
-        // カタログを読めなければ、もしもを使えないだけで解析結果は開く。
+        // モデルの一覧を読めなくても、もしもが使えないだけで解析結果は開く。
         api.models(signal).catch(() => null),
       ]);
       const scenario =
-        catalog !== null && isAvailable(catalog, document.model)
+        catalog !== null && scenarioAvailable(catalog, document.model)
           ? api.scenarioClient(resultId, "share")
           : null;
       return { document, scenario };

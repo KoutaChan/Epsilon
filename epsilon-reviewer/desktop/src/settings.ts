@@ -5,8 +5,9 @@ import type { DesktopSettings } from "../../protocol/bridge.ts";
 import { isFields } from "./values.ts";
 
 /**
- * <userData>/settings.json。無ければ既定の値を使い（書かない）、読めない・形が違えば既定の値で書き直す。
- * 変更は 1 つずつ行い、ファイルへ確定してから記憶の値を替える。
+ * <userData>/settings.json に置くデスクトップ版の設定。ファイルが無ければ既定の値を使い、ファイルは書かない。
+ * 読めないときや形が違うときは、既定の値でファイルを書き直す。
+ * 変更は 1 つずつ順に行い、ファイルへの書き込みが済んでからメモリ上の値を替える。
  */
 export class SettingsStore {
   readonly #file: string;
@@ -18,7 +19,7 @@ export class SettingsStore {
     this.#value = value;
   }
 
-  /** @param isLanguage 言語の id が language/ のフォルダーにあるか */
+  /** @param isLanguage 言語の id が language/ の下のフォルダーにあるかを返す関数 */
   static async open(
     file: string,
     defaults: DesktopSettings,
@@ -50,7 +51,10 @@ export class SettingsStore {
   }
 }
 
-/** 形が正しければその値、違えば null。欄は resultsDirectory（絶対パス）と language だけ。 */
+/**
+ * 設定の JSON を読む。形が正しければその値を、違えば null を返す。認める項目は resultsDirectory（絶対パス）と
+ * language だけ。
+ */
 function parseSettings(
   text: string,
   isLanguage: (language: string) => boolean,
@@ -76,7 +80,7 @@ function isMissing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
-/** 同じフォルダーの一時ファイルへ書いて fsync し、置き換える。 */
+/** 同じフォルダーの一時ファイルへ書いて fsync し、rename で元のファイルと置き換える。 */
 async function writeJsonAtomically(
   file: string,
   value: unknown,

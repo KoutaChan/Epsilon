@@ -21,7 +21,7 @@ import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 
-/** Gson の設定（record・null の欄を書かない・HTML を逃がさない）と、厳密な読み。 */
+/** Gson の設定（record も書き、null のフィールドは書かず、HTML をエスケープしない）と、厳密な読み込み。 */
 public final class Json {
   public static final Gson GSON =
       new GsonBuilder()
@@ -31,7 +31,7 @@ public final class Json {
 
   private Json() {}
 
-  /** UTF-8 の JSON。JsonElement の木は null の欄もそのまま書く（局面の draw）。 */
+  /** 値を UTF-8 の JSON にする。null のフィールドは書かないが、{@code JsonElement} の木だけは null も書く（局面の draw を null のまま出すため）。 */
   public static byte[] write(Object value) {
     var bytes = new ByteArrayOutputStream();
     try (JsonWriter writer =
@@ -47,9 +47,9 @@ public final class Json {
   }
 
   /**
-   * 1 つの JSON の物を厳密に読む（RFC 8259 のとおり。後ろに続く値も断る）。
+   * JSON のオブジェクトを 1 つ厳密に読む（RFC 8259 のとおりで、後ろに値が続いても断る）。
    *
-   * @param limit 受け付けるバイト数
+   * @param limit 受け付ける最大のバイト数
    * @throws ReviewerException invalid_request
    */
   public static JsonObject readObject(byte[] utf8, int limit) {

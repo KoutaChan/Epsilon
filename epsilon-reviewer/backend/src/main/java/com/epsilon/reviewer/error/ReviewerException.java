@@ -1,10 +1,10 @@
 package com.epsilon.reviewer.error;
 
-/** engine から入口までの唯一の失敗。符号と英語の文を持つ。 */
+/** エンジンから入口（HTTP・stdio）まで失敗を伝える、ただ 1 つの例外。エラーコードと英語のメッセージを持つ。 */
 public final class ReviewerException extends RuntimeException {
   private final ErrorCode code;
 
-  /** 符号の既定の文で作る。 */
+  /** エラーコードの既定のメッセージで作る。 */
   public ReviewerException(ErrorCode code) {
     this(code, code.message());
   }

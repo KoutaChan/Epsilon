@@ -1,4 +1,4 @@
-// 牌の絵は public/tiles/Regular/<名前>.svg（FluffyStuff）。DOM の牌と卓の牌の絵の両方がここで名前を引く。
+// 牌の絵は public/tiles/Regular/<名前>.svg（FluffyStuff）を使う。DOM の牌も卓の牌も、絵の名前はここで決める。
 
 const HONORS: Readonly<Record<string, string>> = {
   E: "Ton",
@@ -15,7 +15,7 @@ const SUITS: Readonly<Record<string, string>> = {
   s: "Sou",
 };
 
-/** 絵のある 37 の牌の記号（字牌、萬・筒・索の 1..9 と赤の 5）。 */
+/** 絵のある 37 種の牌の記号（字牌と、萬・筒・索の 1〜9 と赤 5）。 */
 export const ASSET_TILES: readonly string[] = [
   ...Object.keys(HONORS),
   ...Object.keys(SUITS).flatMap((suit) => [
@@ -24,7 +24,7 @@ export const ASSET_TILES: readonly string[] = [
   ]),
 ];
 
-/** 牌の記号の絵の名前。赤の 5 は <種類>5-Dora。 */
+/** 牌の記号から絵の名前を返す。赤 5 の名前は <種類>5-Dora。 */
 export function tileAssetName(tile: string): string {
   return (
     HONORS[tile] ??

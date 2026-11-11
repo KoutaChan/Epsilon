@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.epsilon</groupId>
+    <artifactId>epsilon-base</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <relativePath>../epsilon-base/pom.xml</relativePath>
+  </parent>
+  <artifactId>epsilon-classic</artifactId>
+  <name>Epsilon classic</name>
+  <dependencies>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-agent</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- 価値の事前分布と、牌譜からの GRP の学習。 -->
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-grp</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- ネットワーク（model）が使う。版は epsilon-base が決める。 -->
+    <dependency>
+      <groupId>ai.djl</groupId>
+      <artifactId>api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ai.djl.pytorch</groupId>
+      <artifactId>pytorch-engine</artifactId>
+    </dependency>
+    <!-- 試験の集計の行を出す SLF4J の実装。 -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <!-- 試験の道具（小さな乱数の checkpoint を書く RandomCheckpoints）をほかのモジュールの試験から使うため、試験の jar も作る。 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

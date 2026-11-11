@@ -1,157 +1,181 @@
 package com.epsilon.prism.hip;
 
 /**
- * カーネルが読む重みの置き場（native の順と同じ）。行列は BF16 で DJL の Linear と同じ {@code [out, in]}、偏りは FP32（eager の
- * Linear に合わせて BF16 に丸めた値）、利得・関係の偏り・符号の表・頭の最後の層は FP32 のまま。
+ * カーネルが読む重みの種類。並びは native と同じ。行列は BF16 で、DJL の Linear と同じ {@code [out, in]}。バイアスは FP32 で持つが、
+ * 値は eager の Linear に合わせて BF16 に丸めてある。ゲイン・関係のバイアス・コードの表・ヘッドの最後の層は、FP32 のまま持つ。
  *
- * <p>層ごとの置き場（{@link #layered()}）は背骨の層ごとに 1 つずつ持つ。埋め込みの表と型ごとの Linear は畳んだ組の表として
- * {@link HipEmbedding} が置き場を持つ。
+ * <p>重みごとに引き方（{@link Index}）があり、引き方の項目ごとに 1 つの位置を WeightPack のヘッダーに持つ。埋め込みの表と型ごとの
+ * Linear は、組ごとに折り込んだ表として {@link HipEmbedding} が持つ。
  */
 public enum HipWeight {
-  /** 牌の関係の類 {@code [34·34]}（UINT8、MahjongTileRelation の ordinal）。 */
-  TILE_RELATION(HipElement.U8, false),
-  /** 注意の前の RMSNorm の利得 {@code [H]}。 */
-  ATTENTION_NORM(HipElement.FP32, true),
-  /** q・k・v の射影 {@code [3A, H]}（q・k・v の塊を頭の順に）。 */
-  QKV(HipElement.BF16, true),
-  /** q・k・v の偏り {@code [3A]}。 */
-  QKV_BIAS(HipElement.FP32, true),
-  /** 関係の偏りの表 ρ {@code [112, 頭]}。 */
-  RELATION_BIAS(HipElement.FP32, true),
+  /** 牌どうしの関係の種類 {@code [牌·牌]}（UINT8。MahjongTileRelation の ordinal）。 */
+  TILE_RELATION(HipElement.U8, Index.SINGLE),
+  /** Attention の前の RMSNorm のゲイン {@code [H]}。 */
+  ATTENTION_NORM(HipElement.FP32, Index.LAYER),
+  /** q・k・v の射影 {@code [3A, H]}（行は q・k・v の順で、それぞれの中はヘッドの順）。 */
+  QKV(HipElement.BF16, Index.LAYER),
+  /** q・k・v のバイアス {@code [3A]}。 */
+  QKV_BIAS(HipElement.FP32, Index.LAYER),
+  /** 関係のバイアスの表 {@code [112, ヘッド]}。 */
+  RELATION_BIAS(HipElement.FP32, Index.LAYER),
   /** O 射影 {@code [H, A]}。 */
-  OUTPUT(HipElement.BF16, true),
-  /** O 射影の偏り {@code [H]}。 */
-  OUTPUT_BIAS(HipElement.FP32, true),
-  /** FFN の前の RMSNorm の利得 {@code [H]}。 */
-  FFN_NORM(HipElement.FP32, true),
-  /** 上り {@code [F, H]}。 */
-  UP(HipElement.BF16, true),
-  /** 上りの偏り {@code [F]}。 */
-  UP_BIAS(HipElement.FP32, true),
-  /** 下り {@code [H, F]}。 */
-  DOWN(HipElement.BF16, true),
-  /** 下りの偏り {@code [H]}。 */
-  DOWN_BIAS(HipElement.FP32, true),
-  /** 最後の RMSNorm の利得 {@code [H]}。 */
-  FINAL_NORM(HipElement.FP32, false),
-  /** 候補の牌の項 W_E {@code [H, H]}（偏りなし）。 */
-  TILE_ENTRY(HipElement.BF16, false),
-  /** 候補の問い合わせの前の RMSNorm の利得 {@code [H]}。 */
-  QUERY_NORM(HipElement.FP32, false),
-  /** 候補の問い合わせ {@code [A, H]}。 */
-  QUERY(HipElement.BF16, false),
-  /** 候補の問い合わせの偏り {@code [A]}。 */
-  QUERY_BIAS(HipElement.FP32, false),
-  /** 交差注意の鍵と値の射影 {@code [2A, H]}。 */
-  KEY_VALUE(HipElement.BF16, false),
-  /** 交差注意の鍵と値の偏り {@code [2A]}。 */
-  KEY_VALUE_BIAS(HipElement.FP32, false),
-  /** 鍵の符号の鍵の差分 E_k {@code [符号, A]}。 */
-  CODE_KEY(HipElement.FP32, false),
-  /** 鍵の符号の値の差分 E_v {@code [符号, A]}。 */
-  CODE_VALUE(HipElement.FP32, false),
+  OUTPUT(HipElement.BF16, Index.LAYER),
+  /** O 射影のバイアス {@code [H]}。 */
+  OUTPUT_BIAS(HipElement.FP32, Index.LAYER),
+  /** FFN の前の RMSNorm のゲイン {@code [H]}（バックボーンの層と組の対ごとに 1 つと、候補層に 1 つ）。 */
+  FFN_NORM(HipElement.FP32, Index.FFN),
+  /** FFN の上り射影 {@code [F, H]}（F はその項目の FFN の幅）。 */
+  UP(HipElement.BF16, Index.FFN),
+  /** 上り射影のバイアス {@code [F]}。 */
+  UP_BIAS(HipElement.FP32, Index.FFN),
+  /** FFN の下り射影 {@code [H, F]}。 */
+  DOWN(HipElement.BF16, Index.FFN),
+  /** 下り射影のバイアス {@code [H]}。 */
+  DOWN_BIAS(HipElement.FP32, Index.FFN),
+  /** 最後の RMSNorm のゲイン {@code [H]}（組ごと）。 */
+  FINAL_NORM(HipElement.FP32, Index.GROUP),
+  /** 候補の牌の項 {@code [H, H]}（バイアスなし）。 */
+  TILE_ENTRY(HipElement.BF16, Index.SINGLE),
+  /** 候補のクエリの前の RMSNorm のゲイン {@code [H]}。 */
+  QUERY_NORM(HipElement.FP32, Index.SINGLE),
+  /** 候補のクエリの射影 {@code [A, H]}。 */
+  QUERY(HipElement.BF16, Index.SINGLE),
+  /** 候補のクエリのバイアス {@code [A]}。 */
+  QUERY_BIAS(HipElement.FP32, Index.SINGLE),
+  /** 候補の Cross-Attention のキーとバリューの射影 {@code [2A, H]}。 */
+  KEY_VALUE(HipElement.BF16, Index.SINGLE),
+  /** 候補の Cross-Attention のキーとバリューのバイアス {@code [2A]}。 */
+  KEY_VALUE_BIAS(HipElement.FP32, Index.SINGLE),
+  /** キーに付けるコードごとに、キーに足す差分 {@code [コード, A]}。 */
+  CODE_KEY(HipElement.FP32, Index.SINGLE),
+  /** キーに付けるコードごとに、バリューに足す差分 {@code [コード, A]}。 */
+  CODE_VALUE(HipElement.FP32, Index.SINGLE),
   /** 候補の O 射影 {@code [H, A]}。 */
-  CANDIDATE_OUTPUT(HipElement.BF16, false),
-  /** 候補の O 射影の偏り {@code [H]}。 */
-  CANDIDATE_OUTPUT_BIAS(HipElement.FP32, false),
-  /** 候補の FFN の前の RMSNorm の利得 {@code [H]}。 */
-  CANDIDATE_FFN_NORM(HipElement.FP32, false),
-  /** 候補の上り {@code [F, H]}。 */
-  CANDIDATE_UP(HipElement.BF16, false),
-  /** 候補の上りの偏り {@code [F]}。 */
-  CANDIDATE_UP_BIAS(HipElement.FP32, false),
-  /** 候補の下り {@code [H, F]}。 */
-  CANDIDATE_DOWN(HipElement.BF16, false),
-  /** 候補の下りの偏り {@code [H]}。 */
-  CANDIDATE_DOWN_BIAS(HipElement.FP32, false),
-  /** B の RMSNorm の利得 {@code [H]}。 */
-  DISCARD_NORM(HipElement.FP32, false),
-  /** B の隠れ W_B {@code [G, H]}。 */
-  DISCARD_HIDDEN(HipElement.BF16, false),
-  /** B の隠れの偏り c_B {@code [G]}。 */
-  DISCARD_HIDDEN_BIAS(HipElement.FP32, false),
-  /** B の最後の層 wB {@code [G]}。 */
-  DISCARD_OUTPUT(HipElement.FP32, false),
-  /** B の道の係数 uBx {@code [B の道]}。 */
-  DISCARD_EXACT(HipElement.FP32, false),
-  /** 門の RMSNorm の利得 {@code [H]}（e_a と e_base で共通）。 */
-  GATE_NORM(HipElement.FP32, false),
-  /** 門の隠れ W_g {@code [G, 3H]}。 */
-  GATE_HIDDEN(HipElement.BF16, false),
-  /** 門の隠れの偏り c {@code [G]}。 */
-  GATE_HIDDEN_BIAS(HipElement.FP32, false),
-  /** 門の種類ごとの偏り β {@code [種類, G]}。 */
-  GATE_KIND_OFFSET(HipElement.FP32, false),
-  /** 門の道の射影 U {@code [種類, G, 門の道]}。 */
-  GATE_EXACT_PROJECTION(HipElement.FP32, false),
-  /** 門の最後の層 w {@code [種類, G]}。 */
-  GATE_OUTPUT(HipElement.FP32, false),
-  /** 門の最後の偏り b {@code [種類]}。 */
-  GATE_OUTPUT_BIAS(HipElement.FP32, false),
-  /** 門の道の係数 u {@code [種類, 門の道]}。 */
-  GATE_EXACT_OUTPUT(HipElement.FP32, false);
+  CANDIDATE_OUTPUT(HipElement.BF16, Index.SINGLE),
+  /** 候補の O 射影のバイアス {@code [H]}。 */
+  CANDIDATE_OUTPUT_BIAS(HipElement.FP32, Index.SINGLE),
+  /** 2 段目のクエリの前の RMSNorm のゲイン {@code [H]}。 */
+  REREAD_QUERY_NORM(HipElement.FP32, Index.SINGLE),
+  /** 2 段目のクエリの射影 {@code [A, H]}。 */
+  REREAD_QUERY(HipElement.BF16, Index.SINGLE),
+  /** 2 段目のクエリのバイアス {@code [A]}。 */
+  REREAD_QUERY_BIAS(HipElement.FP32, Index.SINGLE),
+  /** 2 段目がイベントのキーとバリューを作る前にかける RMSNorm のゲイン {@code [H]}。 */
+  REREAD_EVENT_NORM(HipElement.FP32, Index.SINGLE),
+  /** 2 段目のキーとバリューの射影 {@code [2A, H]}（局・席・牌とイベントで共通）。 */
+  REREAD_KEY_VALUE(HipElement.BF16, Index.SINGLE),
+  /** 2 段目のキーとバリューのバイアス {@code [2A]}。 */
+  REREAD_KEY_VALUE_BIAS(HipElement.FP32, Index.SINGLE),
+  /** 2 段目のコードごとに、キーに足す差分 {@code [2 段目のコード, A]}。 */
+  REREAD_CODE_KEY(HipElement.FP32, Index.SINGLE),
+  /** 2 段目のコードごとに、バリューに足す差分 {@code [2 段目のコード, A]}。 */
+  REREAD_CODE_VALUE(HipElement.FP32, Index.SINGLE),
+  /** 2 段目の出力の射影 {@code [H, A]}。 */
+  REREAD_OUTPUT(HipElement.BF16, Index.SINGLE),
+  /** 2 段目の出力の射影のバイアス {@code [H]}。 */
+  REREAD_OUTPUT_BIAS(HipElement.FP32, Index.SINGLE),
+  /** 打牌の値のヘッドの RMSNorm のゲイン {@code [H]}。 */
+  DISCARD_NORM(HipElement.FP32, Index.SINGLE),
+  /** 打牌の値のヘッドの隠れ層 {@code [G, H]}。 */
+  DISCARD_HIDDEN(HipElement.BF16, Index.SINGLE),
+  /** 打牌の値のヘッドの隠れ層のバイアス {@code [G]}。 */
+  DISCARD_HIDDEN_BIAS(HipElement.FP32, Index.SINGLE),
+  /** 打牌の値のヘッドの最後の層 {@code [G]}。 */
+  DISCARD_OUTPUT(HipElement.FP32, Index.SINGLE),
+  /** 打牌の値のヘッドが FP32 のまま読むフィールドの係数 {@code [フィールド]}。 */
+  DISCARD_EXACT(HipElement.FP32, Index.SINGLE),
+  /** ゲートのヘッドの RMSNorm のゲイン {@code [H]}（手の表現と基準の手の表現で共通）。 */
+  GATE_NORM(HipElement.FP32, Index.SINGLE),
+  /** ゲートの隠れ層 {@code [G, 3H]}。 */
+  GATE_HIDDEN(HipElement.BF16, Index.SINGLE),
+  /** ゲートの隠れ層のバイアス {@code [G]}。 */
+  GATE_HIDDEN_BIAS(HipElement.FP32, Index.SINGLE),
+  /** ゲートの種類ごとのバイアス {@code [種類, G]}。 */
+  GATE_KIND_OFFSET(HipElement.FP32, Index.SINGLE),
+  /** ゲートが FP32 のまま読むフィールドの射影 {@code [種類, G, フィールド]}。 */
+  GATE_EXACT_PROJECTION(HipElement.FP32, Index.SINGLE),
+  /** ゲートの最後の層 {@code [種類, G]}。 */
+  GATE_OUTPUT(HipElement.FP32, Index.SINGLE),
+  /** ゲートの最後の層のバイアス {@code [種類]}。 */
+  GATE_OUTPUT_BIAS(HipElement.FP32, Index.SINGLE),
+  /** ゲートが FP32 のまま読むフィールドの係数 {@code [種類, フィールド]}。 */
+  GATE_EXACT_OUTPUT(HipElement.FP32, Index.SINGLE);
+
+  /** 重みの引き方。並びは native の WeightIndex と同じ。 */
+  public enum Index {
+    /** 項目は 1 つ。 */
+    SINGLE(1),
+    /** バックボーンの層ごと（項目は層の番号）。 */
+    LAYER(HipArchitecture.MAX_DEPTH),
+    /** バックボーンの層と組の対ごと、それに候補層（項目は {@link #ffnEntry} か {@link #CANDIDATE_FFN}）。 */
+    FFN(HipArchitecture.MAX_DEPTH * TokenGroup.values().length + 1),
+    /** 組ごと（項目は組の ordinal）。 */
+    GROUP(TokenGroup.values().length);
+
+    private final int entries;
+
+    Index(int entries) {
+      this.entries = entries;
+    }
+
+    /** 項目の数。 */
+    public int entries() {
+      return entries;
+    }
+  }
+
+  /** 候補層の FFN の項目。 */
+  public static final int CANDIDATE_FFN = HipArchitecture.MAX_DEPTH * TokenGroup.values().length;
+
+  /** 全ての重みの項目の数（WeightPack のヘッダーにある位置の表の長さ）。 */
+  public static final int ENTRIES = firstEntry(values().length);
 
   private final HipElement element;
-  private final boolean layered;
+  private final Index index;
 
-  HipWeight(HipElement element, boolean layered) {
+  HipWeight(HipElement element, Index index) {
     this.element = element;
-    this.layered = layered;
+    this.index = index;
   }
 
   public HipElement element() {
     return element;
   }
 
-  /** 背骨の層ごとに置き場を持つなら true。 */
-  public boolean layered() {
-    return layered;
+  public Index index() {
+    return index;
   }
 
-  public long elements(HipDimensions d) {
-    long h = d.hidden();
-    long a = d.attention();
-    long f = d.ffn();
-    long g = d.gate();
-    long kinds = d.gateKinds();
-    return switch (this) {
-      case TILE_RELATION -> (long) d.tiles() * d.tiles();
-      case ATTENTION_NORM,
-          OUTPUT_BIAS,
-          FFN_NORM,
-          DOWN_BIAS,
-          FINAL_NORM,
-          QUERY_NORM,
-          CANDIDATE_OUTPUT_BIAS,
-          CANDIDATE_FFN_NORM,
-          CANDIDATE_DOWN_BIAS,
-          DISCARD_NORM,
-          GATE_NORM -> h;
-      case QKV -> 3 * a * h;
-      case QKV_BIAS -> 3 * a;
-      case RELATION_BIAS -> (long) d.relationRows() * d.heads();
-      case OUTPUT, CANDIDATE_OUTPUT -> h * a;
-      case UP, CANDIDATE_UP -> f * h;
-      case UP_BIAS, CANDIDATE_UP_BIAS -> f;
-      case DOWN, CANDIDATE_DOWN -> h * f;
-      case TILE_ENTRY -> h * h;
-      case QUERY -> a * h;
-      case QUERY_BIAS -> a;
-      case KEY_VALUE -> 2 * a * h;
-      case KEY_VALUE_BIAS -> 2 * a;
-      case CODE_KEY, CODE_VALUE -> d.codes() * a;
-      case DISCARD_HIDDEN -> g * h;
-      case DISCARD_HIDDEN_BIAS, DISCARD_OUTPUT, GATE_HIDDEN_BIAS -> g;
-      case DISCARD_EXACT -> d.discardExact();
-      case GATE_HIDDEN -> g * 3 * h;
-      case GATE_KIND_OFFSET, GATE_OUTPUT -> kinds * g;
-      case GATE_EXACT_PROJECTION -> kinds * g * d.actionExact();
-      case GATE_OUTPUT_BIAS -> kinds;
-      case GATE_EXACT_OUTPUT -> kinds * d.actionExact();
-    };
+  /** 候補層の 2 段目の重みなら true。2 段目のない形は、この重みを持たない。 */
+  public boolean reread() {
+    return name().startsWith("REREAD_");
   }
 
-  public long bytes(HipDimensions d) {
-    return elements(d) * element.bytes();
+  /**
+   * バックボーンの層と組に当たる FFN の項目を返す。
+   *
+   * @param layer 層の番号
+   * @param group 組
+   * @return 項目
+   */
+  public static int ffnEntry(int layer, TokenGroup group) {
+    return layer * TokenGroup.values().length + group.ordinal();
+  }
+
+  /**
+   * WeightPack のヘッダーにある位置の表で、この重みの最初の項目が何番目かを返す。
+   *
+   * @return 位置
+   */
+  public int firstEntry() {
+    return firstEntry(ordinal());
+  }
+
+  private static int firstEntry(int ordinal) {
+    int first = 0;
+    for (int w = 0; w < ordinal; w++) {
+      first += values()[w].index.entries();
+    }
+    return first;
   }
 }

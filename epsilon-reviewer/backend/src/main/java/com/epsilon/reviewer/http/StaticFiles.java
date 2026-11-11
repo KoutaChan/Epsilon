@@ -17,9 +17,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 画面の web/dist。起動時に 1 回だけ索引を作り（シンボリックリンクは読まない）、中身と事前に圧縮した .br・.gz の写しを記憶に持つ（入れ替えた
- * 画面は起動し直すと読む）。強い ETag で 304、/assets/* は変わらない物、/tiles/* は 1 週間、他は no-cache。点の無い道で見つからなければ
- * index.html（SPA）、点のある道は 404。
+ * 画面のファイル（web/dist）を配る。起動時に 1 回だけインデックスを作り、中身と、事前に圧縮した .br・.gz をメモリに持つ。シンボリック
+ * リンクはたどらない。強い ETag が合えば 304 を返す。キャッシュは、/assets/* を中身の
+ * 変わらないもの（immutable）、/tiles/* を 1 週間とし、ほかは no-cache にする。ファイルが見つからないとき、パスに点が無ければ
+ * index.html を返し（SPA）、点があれば 404 にする。
  */
 final class StaticFiles {
   private static final Logger LOG = LoggerFactory.getLogger(StaticFiles.class);
@@ -36,7 +37,7 @@ final class StaticFiles {
 
   private final boolean configured;
 
-  /** '/' で区切る相対のパス → 中身。 */
+  /** '/' で区切った相対パスから中身への表。 */
   private final Map<String, Asset> assets;
 
   private StaticFiles(boolean configured, Map<String, Asset> assets) {
@@ -44,7 +45,7 @@ final class StaticFiles {
     this.assets = assets;
   }
 
-  /** @param directory web/dist。無ければ null（画面の道は 404） */
+  /** @param directory 画面のファイルのフォルダー（web/dist）。無ければ null で、画面のパスは全て 404 になる */
   static StaticFiles index(Path directory) throws IOException {
     if (directory == null) return new StaticFiles(false, Map.of());
     Path root = directory.toAbsolutePath().normalize();
@@ -121,7 +122,7 @@ final class StaticFiles {
         : TYPES.getOrDefault(name.substring(dot), "application/octet-stream");
   }
 
-  /** 事前に圧縮した写し。本体より古い写しは前の組み上げの残りなので使わない。 */
+  /** 事前に圧縮したファイルを読む。本体より古いものは前のビルドの残りなので使わない。 */
   private static Representation compressed(Path file, Path body, String hash, String encoding)
       throws IOException {
     if (file == null) return null;
@@ -133,7 +134,7 @@ final class StaticFiles {
     return new Representation(Files.readAllBytes(file), tag, encoding);
   }
 
-  /** 中身の SHA-256 の頭 8 バイトの 16 進（強い ETag）。 */
+  /** 中身の SHA-256 の先頭 8 バイトを 16 進で書いたもの（強い ETag に使う）。 */
   private static String hash(byte[] body) {
     try {
       byte[] digest = MessageDigest.getInstance("SHA-256").digest(body);
@@ -144,10 +145,10 @@ final class StaticFiles {
   }
 
   /**
-   * 1 つのファイルと圧縮の写し。
+   * 1 つのファイルと、その圧縮版。
    *
-   * @param brotli .br の写し。無ければ null
-   * @param gzip .gz の写し。無ければ null
+   * @param brotli .br の圧縮版。無ければ null
+   * @param gzip .gz の圧縮版。無ければ null
    */
   private record Asset(
       String type, Representation plain, Representation brotli, Representation gzip) {
@@ -158,6 +159,6 @@ final class StaticFiles {
     }
   }
 
-  /** @param encoding Content-Encoding。圧縮しない写しは null */
+  /** @param encoding Content-Encoding。圧縮していないものは null */
   private record Representation(byte[] body, String etag, String encoding) {}
 }

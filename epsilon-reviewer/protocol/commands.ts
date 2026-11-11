@@ -11,37 +11,41 @@ import type {
 } from "./model.ts";
 import type { ResultDocument } from "./result.ts";
 
-// 操作の表。Java の Command と同じ名前・道・入口を持ち、Web の HTTP とデスクトップの stdio の両方がこの表で操作を送る。
-// Java の試験がこのファイルを読んで突き合わせるので、1 つの操作は下の書き方のまま 1 つの塊に書く。
+// 操作の一覧。名前、HTTP のパス、stdio や画面から呼べるか、呼べる相手は Java の Command と同じにする。
+// Web の HTTP もデスクトップ版の stdio も、この一覧に従って操作を送る。Java のテストがこのファイルを読んで
+// 突き合わせるので、1 つの操作は下と同じ書き方で 1 つのブロックに書く。
 
 /**
- * 誰が呼べるか。public は Cookie を読まない公開の道、owner は Cookie の持ち主、share は共有リンク
- * （id を知る誰でも）、local はデスクトップの Java の子プロセス。
+ * 誰が呼べるか。public は Cookie を読まない公開の API、owner は Cookie で決まるオーナー、share は共有リンク
+ * （id を知っていれば誰でも）、local はデスクトップ版の Java の子プロセス。
  */
 export type Access = "public" | "owner" | "share" | "local";
 
-/** 要求の本文。none は道の欄だけ、json は道の欄を除いた欄の JSON、binary は牌譜のバイト列。 */
+/**
+ * 要求の本文。none はパスに入る値だけで本文なし、json はパスに入る値を除いたフィールドの JSON、
+ * binary は牌譜のバイト列。
+ */
 export type RequestBody = "none" | "json" | "binary";
 
 /**
- * 応答の本文。json は JSON、empty は本文なし（HTTP は 204）、document は gzip の解析結果の文書
- * （HTTP は Content-Encoding: gzip で、stdio は gzip のバイト列の本文で送る）、attachment は HTTP の
+ * 応答の本文。json は JSON、empty は本文なし（HTTP では 204）、document は gzip した解析結果の文書
+ * （HTTP では Content-Encoding: gzip で、stdio では gzip のバイト列を本文にして送る）、attachment は HTTP の
  * ダウンロード。
  */
 export type ResponseBody = "json" | "empty" | "document" | "attachment";
 
 export interface HttpRoute {
   method: "GET" | "POST" | "DELETE";
-  /** {名前} は要求の同じ名前の欄（encodeURIComponent して埋める）。 */
+  /** {名前} の所には、要求の同じ名前のフィールドを encodeURIComponent して入れる。 */
   path: string;
 }
 
 export interface CommandSpec {
-  /** HTTP の道。デスクトップだけの操作は null。 */
+  /** HTTP のメソッドとパス。デスクトップ版だけの操作では null。 */
   http: HttpRoute | null;
   /** stdio で Java が受けるか。 */
   stdio: boolean;
-  /** デスクトップの画面が橋渡しで直接呼べるか（false はメインプロセスだけが呼ぶ）。 */
+  /** デスクトップ版の画面がブリッジから直接呼べるか（false ならメインプロセスだけが呼ぶ）。 */
   renderer: boolean;
   access: readonly Access[];
   request: RequestBody;
@@ -55,7 +59,7 @@ export interface JobRef {
   jobId: string;
 }
 export interface FileImportRequest {
-  /** 絶対パス。Java が 16 MiB まで読む。 */
+  /** 牌譜のファイルの絶対パス。Java が 16 MiB まで読む。 */
   path: string;
 }
 export interface TenhouImportRequest {
@@ -240,34 +244,27 @@ export const COMMANDS = {
 
 type Table = typeof COMMANDS;
 
-/** HTTP の道を持つ操作。 */
-export type HttpCommandName = {
-  [N in CommandName]: Table[N]["http"] extends null ? never : N;
-}[CommandName];
-
 /** stdio で Java が受ける操作。 */
 export type StdioCommandName = {
   [N in CommandName]: Table[N]["stdio"] extends true ? N : never;
 }[CommandName];
 
-/** デスクトップの画面が橋渡しで呼べる操作。 */
+/** デスクトップ版の画面がブリッジから呼べる操作。 */
 export type RendererCommandName = {
   [N in CommandName]: Table[N]["renderer"] extends true ? N : never;
 }[CommandName];
 
-/** 牌譜の大きさの上限（アップロード・ファイル・天鳳の本文）。 */
+/** 牌譜のサイズの上限（バイト）。アップロード、ファイル、天鳳から取った本文のどれにも使う。 */
 export const RECORD_SIZE_LIMIT = 16 * 1024 * 1024;
 
-/** JSON の要求の本文の上限（HTTP）。 */
-export const JSON_BODY_LIMIT = 16 * 1024;
-
-/** 解析の進みを聞き直す間隔。応答が来てからこれだけ待つ。 */
+/** 解析の進み具合を聞き直す間隔（ミリ秒）。応答が来てから、これだけ待って次を聞く。 */
 export const JOB_POLL_INTERVAL_MS = 750;
 
 /**
- * HTTP の道の {名前} を要求の欄で埋め、残りの欄を返す（json の本文。残りが無ければ null）。
+ * HTTP のパスの {名前} を要求のフィールドで埋め、パスと、残ったフィールドを返す。残ったフィールドは json の本文に
+ * なり、何も残らなければ null。
  *
- * @throws TypeError 道の欄が文字列でない
+ * @throws TypeError パスに入れるフィールドが文字列でないとき
  */
 export function httpTarget(
   route: HttpRoute,

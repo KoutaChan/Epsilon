@@ -25,18 +25,20 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * 学習の RMSNorm の HIP の演算（{@link HipAttention}、{@code t2_norm.hip}）の確かめ（rocm の組。GPU 1 枚）。BF16 の乱数の入力
- * （{@link ReferenceNormTest#generate}）で次を見る。
+ * 学習で使う RMSNorm の HIP の演算（{@link HipAttention}、{@code t2_norm.hip}）をテストする（rocm のグループ、GPU 1 枚）。BF16 で
+ * 表せる乱数の入力（{@link ReferenceNormTest#generate}）で、次を確かめる。
  *
  * <ul>
- *   <li>FP64 の参照（{@link ReferenceAttention}）と GPU の eager の道（cast → rms_norm（FP32）→ cast と自動微分）に対して、
- *       {@link ReferenceNormTest#assertWithin} の門。eager の道と FP64 の参照の差も同じ行に出す（HIP の差がその程度であることの目安）。
- *   <li>同じ入力の 2 回の順伝播・逆伝播が全ての出力（y・r・dx・利得の勾配の部分和）でビットで同じこと。
- *   <li>先頭の行だけの塊で、その行の y・r・dx が元の塊とビットで同じこと（行の値は塊の組み方に依らない）。
+ *   <li>FP64 の参照（{@link ReferenceAttention}）と、GPU の eager のパス（cast → rms_norm（FP32）→ cast と自動微分）の両方との差が、
+ *       {@link ReferenceNormTest#assertWithin} のしきい値に収まること。eager のパスと FP64 の参照の差も同じ行に出し、HIP の差が
+ *       その程度に収まっているかの目安にする。
+ *   <li>同じ入力で順伝播・逆伝播を 2 回行い、全ての出力（y・r・dx・ゲインの勾配の部分和）がビットまで同じこと。
+ *   <li>先頭の行だけのバッチでも、その行の y・r・dx が元のバッチとビットまで同じこと（行の値はバッチの組み方に依らない）。
  * </ul>
  *
- * 幅は lane の塊 1〜4 つ（96・256・320・1024）、行は利得の塊の境目を含む。{@link #measureSpeed} は背骨の正規化 1 回の大きさ
- * （18 万行 × 256）で、eager の道と HIP の演算の順伝播・逆伝播の ms を出す。
+ * 幅は、レーンのタイル 1〜4 つ分の 96・256・320・1024。行の数には、ゲインの勾配を部分和で足すタイルの境界をまたぐものも含める。
+ * {@link #measureSpeed} は、バックボーンの正規化 1 回分の大きさ（18 万行 × 256）で、eager のパスと HIP の演算の順伝播・逆伝播に
+ * かかる時間を ms で出す。
  */
 public class HipNormGpuTest {
   private static final Logger log = LoggerFactory.getLogger(HipNormGpuTest.class);
@@ -49,7 +51,7 @@ public class HipNormGpuTest {
   private static final int WARMUP = 3;
   private static final int LAUNCHES = 20;
 
-  /** 1 回の HIP の実行の全ての出力（ホストの FP32）。 */
+  /** HIP の演算を 1 回実行したときの全ての出力（ホストに読み出した FP32）。 */
   private record Run(float[] out, float[] inverseRms, float[] gradInput, float[] partials) {}
 
   @FunctionalInterface
@@ -124,7 +126,7 @@ public class HipNormGpuTest {
         });
   }
 
-  /** 背骨の正規化 1 回の大きさで、eager の道と HIP の演算の順伝播・逆伝播の 1 回あたりの ms を出す。 */
+  /** バックボーンの正規化 1 回分の大きさで、eager のパスと HIP の演算それぞれの順伝播・逆伝播 1 回にかかる時間を ms で出す。 */
   @Test(groups = "rocm")
   public void measureSpeed() {
     withKernels(
@@ -174,7 +176,7 @@ public class HipNormGpuTest {
     return result;
   }
 
-  /** eager の順伝播と逆伝播（入力と利得の勾配まで。測りの損失 Σ y·dy の積と和とその逆伝播も含む）。 */
+  /** eager のパスで順伝播と逆伝播（入力とゲインの勾配まで）を行う。測る時間には、損失 Σ y·dy を作る積と和と、その逆伝播も入る。 */
   private static void eagerStep(NDManager scope, NDArray x, NDArray gain, NDArray dy, NormShape d) {
     try (NDManager step = scope.newSubManager();
         GradientCollector collector = step.getEngine().newGradientCollector()) {
@@ -237,7 +239,7 @@ public class HipNormGpuTest {
     return true;
   }
 
-  /** 演算を温めてから {@value #LAUNCHES} 回積み、ストリームの終わりを待つまでの 1 回あたりの ms。 */
+  /** 演算をウォームアップしてから {@value #LAUNCHES} 回積み、ストリームが終わるまでの時間を 1 回あたりの ms で返す。 */
   private static double millis(PtEvent event, Runnable launch) {
     for (int i = 0; i < WARMUP; i++) {
       launch.run();

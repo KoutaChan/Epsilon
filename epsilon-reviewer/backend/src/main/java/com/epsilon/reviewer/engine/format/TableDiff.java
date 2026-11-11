@@ -8,13 +8,13 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 前の局面からの差（protocol/result.ts の StateDelta）。変わった席だけを席の順に書き、配列は前後の同じ並びを除いた 1 か所の置き換え
- * [位置, 消す数, ...値] にする。draw の null はツモ牌が無くなったこと。
+ * 前の局面との差分（protocol/result.ts の StateDelta）。変わった席だけを席順に書く。配列の差分は、前後で同じ部分を除いた 1 か所の置き換え
+ * [位置, 消す数, ...値] で表す。draw が null なら、ツモ牌が無くなったことを表す。
  */
 public final class TableDiff {
   private TableDiff() {}
 
-  /** 差を delta の欄として書く。同じ局面なら何も書かない。 */
+  /** 差分を delta のフィールドに書く。局面が同じなら何も書かない。 */
   public static void write(JsonWriter json, TableState before, TableState after)
       throws IOException {
     if (before.equals(after)) return;

@@ -8,7 +8,6 @@
   </parent>
   <artifactId>epsilon-prism-hip</artifactId>
   <name>Epsilon Prism HIP</name>
-  <description>PRISM の HIP の実行系（網を知らない薄い JNI と自前のカーネル）</description>
   <properties>
     <!-- ROCm の根（HIP の実行系とヘッダ。DJL の libtorch 2.11.0+rocm7.2 と同じ 7.2 系）。 -->
     <prism.hip.rocm>/opt/rocm-7.2.2</prism.hip.rocm>
@@ -20,7 +19,7 @@
     <prism.hip.build>${project.build.directory}/native-build</prism.hip.build>
   </properties>
   <profiles>
-    <!-- native の組み立て。サーバ（ROCm と cmake がある所）で -Pnative-hip のときだけ。既定の組み立ては Java の部分だけで、
+    <!-- native の組み立て。-Pnative-hip のときだけで、ROCm と cmake が要る。既定の組み立ては Java の部分だけで、
          jar に .so が入らないので HipLibrary.load() は英語の例外で止まる。 -->
     <profile>
       <id>native-hip</id>

@@ -1,57 +1,56 @@
 package com.epsilon.prism.grp;
 
-import com.epsilon.nano.ai.grp.EpsilonGrpCheckpointManager;
+import com.epsilon.agent.run.RunDirectory;
+import com.epsilon.agent.run.TrainLock;
 import com.epsilon.prism.rows.CohortWriter;
-import com.epsilon.prism.run.PrismConfig;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Φ の切り替えの記録 grp/phi.jsonl（追記だけ、1 行 1 {@link PhiEntry}）。反復 t の Φ は {@link #effectiveAt} で決まり、時計に依らない。
- * 追記はファイルの錠の中で、effectiveFrom が {@link #firstOpenIteration} より前なら拒む（走っている反復の過去を書き換えない）。
+ * Φ の切り替えの記録 grp/phi.jsonl と、モードの切り替えの記録 grp/mode.jsonl を読み書きする。どちらも追記だけのファイルで、phi.jsonl は
+ * 1 行に 1 つの {@link PhiEntry}、mode.jsonl は 1 行に 1 つの {@link ModeLine} を書く。反復 t の Φ は、{@link #effectiveAt} で選んだ
+ * 項目に {@link ModeLine#effectiveAt} のモードを当てたもので、時刻には依らない。
  *
- * <p>学習の JVM が動いているかは、{@link PhiResolver} が開いているあいだ持つ錠 grp/{@value #TRAINING_LOCK}.lock で決める（プロセスが死ねば
- * カーネルが外す）。最後の改行のない行は書きかけとして読まず、次の追記で切り捨てる。refits.jsonl（{@link RefitRecord}）も同じ書き方。
+ * <p>2 つのファイルは同じロックの中で書き、学習の JVM も同じロックの中で続けて読む。追記はファイルのロックの中で行い、効き始めの反復が
+ * {@link #firstOpenIteration} より前なら拒む（走っている反復の過去は書き換えない）。
  *
- * <p>ファイルの錠は JVM ごとなので、同じ JVM の中の追記はクラスの監視で 1 つずつにする。
+ * <p>学習の JVM が動いているかは、run の学習のロック（{@link TrainLock}）で決める。プロセスが死ねば OS がロックを外す。改行で終わっていない
+ * 最後の行は書きかけとみなして読まず、次の追記で切り捨てる。refits.jsonl（{@link RefitRecord}）も同じ書き方をする。
+ *
+ * <p>ファイルのロックは JVM ごとに効くので、同じ JVM の中の追記はクラスで {@code synchronized} して 1 つずつ行う。
  */
 public final class PhiHistory {
   private PhiHistory() {}
 
-  /** 学習の JVM が開いているあいだ持つ錠の名前（{@link GrpFiles#lock}）。 */
-  static final String TRAINING_LOCK = "training";
-
-  /** phi.jsonl の錠の名前。 */
+  /** phi.jsonl と mode.jsonl のロックの名前。 */
   private static final String PHI_LOCK = "phi";
 
-  /** 学習の JVM の印の錠を取るまで待つ上限と間隔（grp-switch などの別のプロセスの探り {@link #trainingRunning} は一瞬で外す）。 */
-  static final Duration TRAINING_LOCK_WAIT = Duration.ofSeconds(30), TRAINING_LOCK_POLL = Duration.ofMillis(100);
-
-  /** jsonl の 1 行（NaN と無限大はそのまま書く）。 */
+  /** jsonl の 1 行を読み書きする Gson。NaN と無限大もそのまま書く。 */
   static final Gson LINES = new GsonBuilder().serializeSpecialFloatingPointValues().create();
 
-  /** この JVM が持つ学習の錠のファイル（同じ JVM では錠を試さずに動いているとみなす。試すと POSIX の錠が外れる）。 */
-  private static final Set<Path> HELD = ConcurrentHashMap.newKeySet();
+  /**
+   * phi.jsonl と mode.jsonl の全ての行。どちらも書いた順に並ぶ。
+   *
+   * @param entries phi.jsonl の行
+   * @param modes mode.jsonl の行
+   */
+  record Lines(List<PhiEntry> entries, List<ModeLine> modes) {}
 
   /**
-   * phi.jsonl の全ての行（書いた順）。ファイルがなければ空。
+   * phi.jsonl の全ての行を、書いた順に読む。
    *
+   * @return 読んだ項目。ファイルが無ければ空
    * @throws IOException 読めないか、行が壊れているとき
    */
   public static List<PhiEntry> read(GrpFiles files) throws IOException {
@@ -67,16 +66,55 @@ public final class PhiHistory {
     return entries;
   }
 
-  /** 錠の中で phi.jsonl の全ての行を読む（学習の JVM が反復の始めに読む。書き手の効き始めの確かめと重ならない）。 */
-  static List<PhiEntry> readLocked(GrpFiles files) throws IOException {
+  /**
+   * mode.jsonl の全ての行を、書いた順に読む。
+   *
+   * @return 読んだモードの行。ファイルが無ければ空
+   * @throws IOException 読めないか、行が壊れているとき
+   */
+  public static List<ModeLine> readModes(GrpFiles files) throws IOException {
+    List<ModeLine> modes = new ArrayList<>();
+    List<String> lines = lines(files.modeHistory());
+    for (int i = 0; i < lines.size(); i++) {
+      try {
+        modes.add(LINES.fromJson(lines.get(i), ModeLine.class));
+      } catch (RuntimeException broken) {
+        throw new IOException("Broken line " + (i + 1) + " of " + files.modeHistory(), broken);
+      }
+    }
+    return modes;
+  }
+
+  /**
+   * ロックの中で、phi.jsonl と mode.jsonl の全ての行を続けて読む。学習の JVM が反復の始めに呼ぶ。ロックの中で読むので、追記する側が
+   * 効き始めの反復を確かめている間とは重ならない。grp のディレクトリが無ければ、ロックを取らずに空を返す。
+   */
+  static Lines readLocked(GrpFiles files) throws IOException {
+    if (!Files.isDirectory(files.directory())) return new Lines(List.of(), List.of());
     synchronized (PhiHistory.class) {
       try (Locked locked = lock(files, PHI_LOCK)) {
-        return read(files);
+        return new Lines(read(files), readModes(files));
       }
     }
   }
 
-  /** 反復 t に効く項目（effectiveFrom ≤ t の行のうち effectiveFrom が最も大きい行、同じなら後の行。なければ空）。 */
+  /**
+   * 反復 t で使った Φ の前に使っていた、別の値の Φ を返す。反復 t − 1 から 1 つずつさかのぼり、反復 t の項目と
+   * {@link PhiEntry#sameValue} で値が違う最初の項目を返す。反復 t に効く項目が無いとき、さかのぼる途中で効く項目が無くなったとき、
+   * 見つからないときは空。
+   */
+  public static Optional<PhiEntry> previousAt(List<PhiEntry> entries, int t) {
+    PhiEntry used = effectiveAt(entries, t).orElse(null);
+    if (used == null) return Optional.empty();
+    for (int earlier = t - 1; earlier >= 1; earlier--) {
+      PhiEntry before = effectiveAt(entries, earlier).orElse(null);
+      if (before == null) return Optional.empty();
+      if (!before.sameValue(used)) return Optional.of(before);
+    }
+    return Optional.empty();
+  }
+
+  /** 反復 t に効く項目を返す。効き始めが t 以下の行のうち、効き始めが最も遅い行を選び、同じなら後に書いた行を選ぶ。無ければ空。 */
   public static Optional<PhiEntry> effectiveAt(List<PhiEntry> entries, int t) {
     PhiEntry effective = null;
     for (PhiEntry entry : entries)
@@ -86,71 +124,121 @@ public final class PhiHistory {
   }
 
   /**
-   * SELF_GRP の最初の項目 g000 を phi.jsonl の 1 行目に書く（既にあれば読むだけで、設定と食い違えば拒む）。種類は phiStart、GRP_CHECKPOINT なら
-   * grpCheckpoint の正確なディレクトリ（一番新しい子。以後は書いたパスだけを読む）・sha・phiTemperatures・phiCalibration を持ち、effectiveFrom は
-   * 1（それまでの反復が同じ Φ で集めたとみなす。効き始めの決まりは掛けない）。
+   * 自分の GRP の最初の項目 g000 を、phi.jsonl の 1 行目に書く。既にあれば読むだけで、設定と食い違えば拒む。g000 は反復 1 から効く。
+   * 元の GRP から始めるときは、GRP と q のディレクトリの絶対パスとそれぞれの sha、PhiTable のパスとその sha を持つ。続けて、
+   * 初めの LATE の行を書く（{@link #initializeModes} と同じ）。
    *
    * @return g000
    * @throws IOException 書けないか、既にある g000 が設定と食い違うとき
    */
-  public static PhiEntry initialize(GrpFiles files, PrismConfig config) throws IOException {
-    PhiEntryKind kind = config.phiStart().kind();
+  public static PhiEntry initialize(GrpFiles files, PhiSetup setup) throws IOException {
     synchronized (PhiHistory.class) {
       try (Locked locked = lock(files, PHI_LOCK)) {
         List<PhiEntry> entries = read(files);
-        if (!entries.isEmpty()) return requireInitialMatches(files, entries.getFirst(), config);
         PhiEntry initial;
-        if (kind.scoreBased()) {
-          initial = new PhiEntry(PhiEntry.INITIAL_ID, kind, "", "", "", "", 1, "", "phiStart = " + config.phiStart());
+        if (entries.isEmpty()) {
+          initial = initialEntry(setup);
+          write(files.phiHistory(), LINES.toJson(initial));
         } else {
-          Path exact = EpsilonGrpCheckpointManager.resolveExisting(grpRoot(config));
-          if (exact == null) throw new IOException("GRP checkpoint does not exist at " + grpRoot(config));
-          exact = exact.toAbsolutePath().normalize();
-          initial =
-              new PhiEntry(
-                  PhiEntry.INITIAL_ID,
-                  kind,
-                  exact.toString(),
-                  EpsilonGrpCheckpointManager.checkpointSha256(exact),
-                  config.phiTemperatures(),
-                  config.phiCalibration(),
-                  1,
-                  "",
-                  "phiStart = " + config.phiStart());
+          initial = requireInitialMatches(files, entries.getFirst(), setup);
         }
-        write(files.phiHistory(), LINES.toJson(initial));
+        writeInitialMode(files, setup.selfGrp().late());
         return initial;
       }
     }
   }
 
   /**
-   * phi.jsonl の 1 行目が設定の g000（phiStart の種類、GRP なら grpCheckpoint の下の checkpoint・phiTemperatures・phiCalibration）と合うかを
-   * 確かめる（学習の JVM の起動と check-config で同じ判定）。
+   * LATE のモードを使い始める反復（{@link LateSettings#from}）が正で、mode.jsonl にまだ行が無ければ、その反復から効く LATE の行を書く。
+   * 学習の JVM が run を開くときと、固定の GRP の run でモードの行を手で足す前に呼ぶ。こうして設定から作る行が、手で足す行より先に並ぶ。
+   * 効き始めの反復の確かめ（{@link #firstOpenIteration}）はしない。
    *
-   * @return first
+   * @throws IOException 読めないか書けないとき
+   */
+  public static void initializeModes(GrpFiles files, LateSettings late) throws IOException {
+    if (late.from() == 0) return;
+    synchronized (PhiHistory.class) {
+      try (Locked locked = lock(files, PHI_LOCK)) {
+        writeInitialMode(files, late);
+      }
+    }
+  }
+
+  /** 初めの LATE の行を書く。呼び出し元がロックを持つこと。使い始める反復が 0 か、既に行があれば何もしない。 */
+  private static void writeInitialMode(GrpFiles files, LateSettings late) throws IOException {
+    if (late.from() == 0 || !readModes(files).isEmpty()) return;
+    write(files.modeHistory(), LINES.toJson(ModeLine.late(late.cutoff(), late.from(), "phi.late.from = " + late.from())));
+  }
+
+  /**
+   * モードの行を 1 行足す。ロックの中で効き始めの反復を確かめてから書き、fsync する。
+   *
+   * @return 足した行
+   * @throws IllegalArgumentException 効き始めの反復が、既に始まった反復以前のとき（{@link #firstOpenIteration}）
+   * @throws IOException 書けないとき
+   */
+  public static ModeLine appendMode(GrpFiles files, ModeLine line) throws IOException {
+    synchronized (PhiHistory.class) {
+      try (Locked locked = lock(files, PHI_LOCK)) {
+        int open = firstOpenIteration(files);
+        if (line.effectiveFrom() < open)
+          throw new IllegalArgumentException(
+              "Mode line " + line.mode() + " effectiveFrom " + line.effectiveFrom()
+                  + " is not after the last started iteration (the first open iteration is " + open + ")");
+        write(files.modeHistory(), LINES.toJson(line));
+        return line;
+      }
+    }
+  }
+
+  /** 設定から g000 を作る。GRP から始めるときは、チェックポイント・表・q の sha を今のファイルから求める。 */
+  static PhiEntry initialEntry(PhiSetup setup) throws IOException {
+    PhiStartSettings start = setup.selfGrp().start();
+    String reason = "phi start = " + start.kind();
+    if (start instanceof PhiStartSettings.GrpCheckpoint checkpoint)
+      return HandEndPhi.checkpointEntry(
+          PhiEntry.INITIAL_ID, setup.variant(), checkpoint.grp(), table(checkpoint), checkpoint.outcomes(), 1, "", reason);
+    return new PhiEntry(PhiEntry.INITIAL_ID, start.kind(), setup.variant(), "", "", "", "", "", "", 1, "", reason);
+  }
+
+  /** g000 で元の GRP に重ねる表のパス。表が無ければ空文字列。 */
+  private static String table(PhiStartSettings.GrpCheckpoint checkpoint) {
+    return checkpoint.table() == null ? "" : checkpoint.table().toString();
+  }
+
+  /** g000 の q のディレクトリの絶対パス。無ければ空文字列。 */
+  private static String outcomes(PhiStartSettings.GrpCheckpoint checkpoint) {
+    return checkpoint.outcomes() == null ? "" : checkpoint.outcomes().toAbsolutePath().normalize().toString();
+  }
+
+  /**
+   * phi.jsonl の 1 行目が設定の g000 と合うかを確かめる。確かめるのは、id が g000 であることと、種類とルール（四人打ちか三人打ちか）。
+   * GRP から始めるときは、元の GRP のディレクトリ・PhiTable・q のディレクトリも比べる。学習の JVM の起動と設定の確かめで、同じ判定を使う。
+   *
+   * @return 渡した 1 行目の項目
    * @throws IOException 食い違うとき
    */
-  static PhiEntry requireInitialMatches(GrpFiles files, PhiEntry first, PrismConfig config) throws IOException {
-    PhiEntryKind kind = config.phiStart().kind();
+  static PhiEntry requireInitialMatches(GrpFiles files, PhiEntry first, PhiSetup setup) throws IOException {
+    PhiStartSettings start = setup.selfGrp().start();
     if (!first.id().equals(PhiEntry.INITIAL_ID)
-        || first.kind() != kind
-        || (!kind.scoreBased()
-            && (!Path.of(first.path()).startsWith(grpRoot(config))
-                || !first.temperatures().equals(config.phiTemperatures())
-                || !first.calibration().equals(config.phiCalibration()))))
+        || first.kind() != start.kind()
+        || first.variant() != setup.variant()
+        || (start instanceof PhiStartSettings.GrpCheckpoint checkpoint
+            && (!Path.of(first.path()).equals(checkpoint.grp().toAbsolutePath().normalize())
+                || !first.table().equals(table(checkpoint))
+                || !first.outcomes().equals(outcomes(checkpoint)))))
       throw new IOException(
-          "The first entry of " + files.phiHistory() + " does not match phiStart = " + config.phiStart()
+          "The first entry of " + files.phiHistory() + " does not match the phi start " + start.kind()
               + " and the GRP settings: " + first);
     return first;
   }
 
   /**
-   * 項目を 1 行足す（錠の中で effectiveFrom を確かめてから fsync する）。
+   * 項目を 1 行足す。ロックの中で効き始めの反復を確かめてから書き、fsync する。
    *
    * @return 足した項目
-   * @throws IllegalArgumentException effectiveFrom が既に始まった反復以前のとき（{@link #firstOpenIteration}）、同じ id の行が別の Φ を持つとき、
-   *     まだ g000 がないとき
+   * @throws IllegalArgumentException 効き始めの反復が既に始まった反復以前のとき（{@link #firstOpenIteration}）、同じ id の行が別の Φ を
+   *     持つとき、まだ g000 が無いとき
    * @throws IOException 書けないとき
    */
   public static PhiEntry append(GrpFiles files, PhiEntry entry) throws IOException {
@@ -168,10 +256,11 @@ public final class PhiHistory {
   }
 
   /**
-   * 学習の JVM が反復 t の始めに、反復 t から効く行を足す（AUTO の切り替えと、境目の点検で拒んだ候補の代わりに前の項目を効かせ直す行）。
-   * 反復 t はまだ何も集めていないので効き始めの決まり（{@link #firstOpenIteration}）は掛けない。
+   * 学習の JVM が、まだ始めていない反復から効く行を足す。足すのは AUTO の切り替え、監視による戻し、開けなかった候補の代わりに前の項目を
+   * 効かせ直す行。書くのは次の反復を始める前に止まっている学習の JVM だけなので、効き始めの反復の確かめ（{@link #firstOpenIteration}）は
+   * しない。
    */
-  static void appendAtIterationStart(GrpFiles files, PhiEntry entry) throws IOException {
+  static void appendUnstarted(GrpFiles files, PhiEntry entry) throws IOException {
     synchronized (PhiHistory.class) {
       try (Locked locked = lock(files, PHI_LOCK)) {
         appendChecked(files, entry);
@@ -180,18 +269,22 @@ public final class PhiHistory {
   }
 
   /**
-   * 新しく効かせられる最初の反復: state.json の次のコホート t（なければ 1）。学習の JVM が動いているか、コホート t が封印済み（当てはめの途中で
-   * 落ちた反復。再開は前の Φ で集めた行を使い回す）なら、反復 t は始まっているので + 1。
+   * 新しい行を効かせられる最初の反復を返す。基本は state.json の次のコホート t（無ければ 1）。ただし反復 t が既に始まっていれば t + 1
+   * を返す。始まっているとみなすのは、学習の JVM が動いているとき、反復 t の設定を固定したファイルがあるとき、コホート t が確定済みのとき。
+   * コホートが確定済みなのは学習の途中で落ちた反復で、再開すると前の Φ で集めた行を使い回す。
    *
    * @throws IOException state.json が読めないとき
    */
   public static int firstOpenIteration(GrpFiles files) throws IOException {
     int next = nextIteration(files);
-    boolean started = trainingRunning(files) || Files.exists(files.cohort(next).resolve(CohortWriter.MANIFEST));
+    boolean started =
+        trainingRunning(files)
+            || Files.exists(new RunDirectory(files.run()).iterationFile(next))
+            || Files.exists(files.cohort(next).resolve(CohortWriter.MANIFEST));
     return next + (started ? 1 : 0);
   }
 
-  /** state.json の次に集めるコホート（なければ 1）。 */
+  /** state.json に書かれた、次に集めるコホートの番号。ファイルが無ければ 1。 */
   static int nextIteration(GrpFiles files) throws IOException {
     if (!Files.exists(files.state())) return 1;
     try {
@@ -201,59 +294,9 @@ public final class PhiHistory {
     }
   }
 
-  /** SELF_GRP の学習の JVM が run を開いているなら true（その錠が取れない）。 */
+  /** 段とジョブを回す JVM が run を開いていれば true。run の学習のロックが取れないことで見分ける。 */
   static boolean trainingRunning(GrpFiles files) throws IOException {
-    Path path = files.lock(TRAINING_LOCK).toAbsolutePath().normalize();
-    if (HELD.contains(path)) return true;
-    if (!Files.exists(path)) return false;
-    try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) {
-      FileLock lock = channel.tryLock();
-      if (lock == null) return true;
-      lock.release();
-      return false;
-    } catch (OverlappingFileLockException held) {
-      return true;
-    }
-  }
-
-  /**
-   * 学習の JVM の印の錠を取る（{@link PhiResolver} が開いているあいだ持つ）。grp-switch などの別のプロセスの探り（{@link #trainingRunning}）が一瞬
-   * 持っていることがあるので、{@link #TRAINING_LOCK_POLL} ごとに {@link #TRAINING_LOCK_WAIT} まで試す（学習の JVM が 1 つだけなのは走らせ役の
-   * 錠が守る）。
-   *
-   * @throws IOException 待っても取れないとき（ほかの学習の JVM が同じ run を開いている）
-   */
-  static Locked holdTraining(GrpFiles files) throws IOException {
-    Path path = files.lock(TRAINING_LOCK).toAbsolutePath().normalize();
-    if (!HELD.add(path)) throw new IOException("Another training JVM holds " + path);
-    try {
-      Files.createDirectories(path.getParent());
-      FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-      try {
-        long deadline = System.nanoTime() + TRAINING_LOCK_WAIT.toNanos();
-        while (true) {
-          FileLock lock;
-          try {
-            lock = channel.tryLock();
-          } catch (OverlappingFileLockException probing) {
-            lock = null;
-          }
-          if (lock != null) return new Locked(channel, () -> HELD.remove(path));
-          if (System.nanoTime() >= deadline) throw new IOException("Another training JVM holds " + path);
-          Thread.sleep(TRAINING_LOCK_POLL.toMillis());
-        }
-      } catch (InterruptedException interrupted) {
-        Thread.currentThread().interrupt();
-        channel.close();
-        throw new IOException("Interrupted while waiting for " + path, interrupted);
-      } catch (IOException | RuntimeException failure) {
-        channel.close();
-        throw failure;
-      }
-    } catch (IOException | RuntimeException failure) {
-      HELD.remove(path);
-      throw failure;
-    }
+    return TrainLock.running(new RunDirectory(files.run()).trainLock());
   }
 
   private static void appendChecked(GrpFiles files, PhiEntry entry) throws IOException {
@@ -266,7 +309,7 @@ public final class PhiHistory {
     write(files.phiHistory(), LINES.toJson(entry));
   }
 
-  /** file の改行で終わる行（空行を除く）。最後の改行のない部分は書きかけとして読まない。ファイルがなければ空。 */
+  /** ファイルの中の、改行で終わる行を返す（空行は除く）。改行で終わっていない最後の部分は書きかけとみなして読まない。ファイルが無ければ空。 */
   static List<String> lines(Path file) throws IOException {
     if (!Files.exists(file)) return List.of();
     String text = Files.readString(file, StandardCharsets.UTF_8);
@@ -277,7 +320,7 @@ public final class PhiHistory {
     return lines;
   }
 
-  /** file に 1 行足して fsync する（呼び手が錠を持つ）。書きかけの最後の行があれば先に切り捨てる。 */
+  /** ファイルに 1 行足して fsync する。呼び出し元がロックを持つこと。書きかけの最後の行があれば、先に切り捨てる。 */
   static void write(Path file, String line) throws IOException {
     Files.createDirectories(file.getParent());
     try (FileChannel channel =
@@ -298,7 +341,7 @@ public final class PhiHistory {
     }
   }
 
-  /** grp/&lt;name&gt;.lock の排他の錠（待つ）。 */
+  /** grp/&lt;name&gt;.lock の排他ロックを取る。取れるまで待つ。 */
   static Locked lock(GrpFiles files, String name) throws IOException {
     Path path = files.lock(name);
     Files.createDirectories(path.getParent());
@@ -309,30 +352,20 @@ public final class PhiHistory {
       channel.close();
       throw failure;
     }
-    return new Locked(channel, () -> {});
+    return new Locked(channel);
   }
 
-  private static Path grpRoot(PrismConfig config) {
-    return Path.of(config.grpCheckpoint()).resolve("grp").toAbsolutePath().normalize();
-  }
-
-  /** 持っている錠（閉じると外す）。 */
+  /** 取ったロック。閉じると外れる。 */
   static final class Locked implements AutoCloseable {
     private final FileChannel channel;
-    private final Runnable released;
 
-    private Locked(FileChannel channel, Runnable released) {
+    private Locked(FileChannel channel) {
       this.channel = channel;
-      this.released = released;
     }
 
     @Override
     public void close() throws IOException {
-      try {
-        channel.close();
-      } finally {
-        released.run();
-      }
+      channel.close();
     }
   }
 }

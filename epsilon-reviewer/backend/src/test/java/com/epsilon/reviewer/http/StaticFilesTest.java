@@ -16,7 +16,10 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-/** 画面のファイル: 事前圧縮の写しの選びと古い写し、キャッシュの頭、ETag と 304、SPA、点のある道の 404、HEAD、シンボリックリンク。 */
+/**
+ * 画面のファイルを配るテスト。確かめるのは、事前に圧縮した写しの選び方と古い写しの扱い、キャッシュのヘッダー、ETag と 304、SPA、
+ * 点を含むパスの 404、HEAD、シンボリックリンク。
+ */
 public class StaticFilesTest {
   private static final String SCRIPT = "console.log('epsilon');".repeat(100);
   private Path web;
@@ -92,7 +95,7 @@ public class StaticFilesTest {
         200);
   }
 
-  /** 前の組み上げの写しが残っていても、本体より古ければ送らない。 */
+  /** 前のビルドの写しが残っていても、元のファイルより古ければ送らない。 */
   @Test
   public void copiesOlderThanTheirFileAreIgnored() {
     var response =

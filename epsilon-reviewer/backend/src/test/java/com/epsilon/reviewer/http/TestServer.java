@@ -14,12 +14,12 @@ import java.nio.file.Path;
 import java.util.Map;
 import org.testng.Assert;
 
-/** 試験のモデルの Reviewer を 127.0.0.1 の空いたポートで出す HTTP のサーバ。 */
+/** テスト用のモデルを使う Reviewer を、127.0.0.1 の空いたポートで動かす HTTP のサーバ。 */
 final class TestServer implements AutoCloseable {
-  /** TestReviewer.OWNER の Cookie。 */
+  /** {@code TestReviewer.OWNER} の Cookie。 */
   static final String OWNER_COOKIE = OwnerCookie.NAME + "=" + "A".repeat(43);
 
-  /** TestReviewer.OTHER の Cookie。 */
+  /** {@code TestReviewer.OTHER} の Cookie。 */
   static final String OTHER_COOKIE = OwnerCookie.NAME + "=" + "B".repeat(43);
 
   static final Map<OwnerId, String> COOKIES =
@@ -38,14 +38,14 @@ final class TestServer implements AutoCloseable {
     return start(URI.create("http://127.0.0.1:0"), null);
   }
 
-  /** @param web 画面のフォルダー。無ければ null */
+  /** @param web 画面のファイルを置いたフォルダー。無ければ null */
   static TestServer start(URI origin, Path web) {
     TestReviewer reviewer = TestReviewer.open();
     try {
       return new TestServer(
           reviewer,
           HttpReviewer.start(
-              new ServerConfig("127.0.0.1", 0, origin, null, null, web), reviewer.reviewer));
+              new ServerConfig("127.0.0.1", 0, origin, web), reviewer.reviewer));
     } catch (IOException failure) {
       reviewer.close();
       throw new UncheckedIOException(failure);
@@ -56,7 +56,7 @@ final class TestServer implements AutoCloseable {
     return URI.create("http://127.0.0.1:" + server.port());
   }
 
-  /** @param owner Cookie を付ける持ち主。無ければ null */
+  /** @param owner Cookie を付けるオーナー。無ければ null */
   HttpRequest.Builder request(String path, OwnerId owner) {
     var request = HttpRequest.newBuilder(base().resolve(path));
     if (owner != null) request.header("Cookie", COOKIES.get(owner));

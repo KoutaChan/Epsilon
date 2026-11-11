@@ -2,8 +2,9 @@ import * as THREE from "three";
 import { projectPoint, screenHull } from "./projection.ts";
 import type { HandPiece, RiverPiece } from "./tiles.ts";
 import type { ScreenPoint, TableTargets } from "./types.ts";
+import { displaySeats } from "../model/seats.ts";
 
-// もしもで押せる所を、卓と同じカメラで画面の多角形にする。DOM の当たり枠はこの形に重ねる。
+// もしもで押せる所を卓と同じカメラで写し、画面上の多角形にする。DOM の当たり判定はこの形に合わせて重ねる。
 
 const corner = new THREE.Vector3();
 const rounded = ([x, y]: readonly [number, number]): ScreenPoint => [
@@ -11,7 +12,7 @@ const rounded = ([x, y]: readonly [number, number]): ScreenPoint => [
   Math.round(y * 10) / 10,
 ];
 
-/** 牌の輪郭を目から遠い牌から並べ、近い牌の当たり枠が上に重なるようにする。 */
+/** 牌の輪郭をカメラから遠い順に並べる。近い牌の当たり判定が上に重なる。 */
 function outlines<P extends { readonly group: THREE.Object3D }>(
   pieces: readonly P[],
   camera: THREE.Camera,
@@ -40,7 +41,7 @@ export function riverTargets(
   }));
 }
 
-/** 見ている席の手牌の輪郭。手の場面のカメラで写す。 */
+/** 見ている席の手牌の輪郭。手牌用のカメラで写す。 */
 export function handTargets(
   pieces: readonly HandPiece[],
   handCamera: THREE.Camera,
@@ -52,7 +53,7 @@ export function handTargets(
   );
 }
 
-// paintDisplay が点数を描く枠。768 四方の絵の中心から見た、席を回す前の座標（下向きの y）。
+// 中央の表示で点数を描く枠の 4 隅（表示を描くときと同じ位置）。座標は 768 px 四方の canvas の中心が原点で、席の向きに回す前のもの（y は下向き）。
 const SCORE_CORNERS = [
   [-177, 210],
   [177, 210],
@@ -60,19 +61,23 @@ const SCORE_CORNERS = [
   [-177, 296],
 ] as const;
 const CANVAS = 768;
-/** 中央の表示の点数の枠（4 隅）。並びは見ている席から反時計回り（自家・下家・対面・上家）。 */
+/**
+ * 卓の中央の表示にある、席ごとの点数の枠（4 隅）。並びは見ている席から反時計回り（自家・下家・対面・上家）。三人打ちでは対面の枠が無い。
+ */
 export function scoreTargets(
   display: THREE.Mesh<THREE.PlaneGeometry>,
   camera: THREE.Camera,
   width: number,
   height: number,
   viewSeat: number,
+  seats: number,
 ): TableTargets["scores"] {
   display.updateWorldMatrix(true, false);
   const size = display.geometry.parameters.width;
-  return [0, 1, 2, 3].map((offset) => {
-    // 席ごとに -90° ずつ回して描いている。
-    const angle = (-offset * Math.PI) / 2;
+  return displaySeats(seats).flatMap((offset, position) => {
+    if (offset === null) return [];
+    // 点数は表示の位置ごとに -90° ずつ回して描いてある。
+    const angle = (-position * Math.PI) / 2;
     const points = SCORE_CORNERS.map(([x, y]) => {
       const cx = x * Math.cos(angle) - y * Math.sin(angle);
       const cy = x * Math.sin(angle) + y * Math.cos(angle);
@@ -85,7 +90,7 @@ export function scoreTargets(
       );
       return rounded([p.x, p.y]);
     });
-    return { seat: (viewSeat + offset) % 4, points };
+    return [{ seat: (viewSeat + offset) % seats, points }];
   });
 }
 
@@ -117,7 +122,7 @@ function sameShapes<S extends { readonly points: readonly ScreenPoint[] }>(
   return true;
 }
 
-/** 当たり枠が同じ形か（数で比べる）。 */
+/** 2 つの当たり判定が同じか。指す牌や席と、座標の数値で比べる。 */
 export function sameTargets(
   a: TableTargets | null,
   b: TableTargets | null,

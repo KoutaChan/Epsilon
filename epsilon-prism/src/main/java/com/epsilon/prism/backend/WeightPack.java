@@ -6,11 +6,12 @@ import ai.djl.nn.Parameter;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.util.Pair;
 import ai.djl.util.PairList;
-import com.epsilon.ai.model.MahjongTileRelation;
-import com.epsilon.network.NetworkRuntime;
-import com.epsilon.prism.codec.Bfloat16;
+import com.epsilon.agent.facts.MahjongTileRelation;
+import com.epsilon.agent.observe.codec.Bfloat16;
+import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.hip.HipEmbedding;
 import com.epsilon.prism.hip.HipWeight;
+import com.epsilon.prism.input.TileTokens;
 import com.epsilon.prism.model.PrismNetwork;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -22,15 +23,16 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * HIP のカーネルが読む推論の重みの束。公開のたびに網の FP32 の正本から作り、網のバージョン番号を持つ（forward で照らし、古い写しが
- * 残る穴を作りから塞ぐ）。中身は {@link WeightLayout} の並びの直の ByteBuffer（little-endian、頭つき）。
+ * HIP のカーネルが読む推論の重みの束。ネットワークを公開するたびに FP32 のマスターの重みから作り、ネットワークのバージョン番号を持つ。
+ * 推論のたびにこの番号を照合するので、古い重みが残ったまま推論することはない。中身は {@link WeightLayout} の並びに置いた direct の
+ * ByteBuffer（little-endian、ヘッダーつき）。
  *
- * <p>埋め込みの畳んだ組の表は、BF16 に丸めた W と E の積を FP32 で足したもの（欄ごとに P_m[c] = W_m·E[off_m + c] を作り、組の行は
- * Σ_m P_m[c_m] を欄の順に）。eager の Linear との差は和の順だけ。
+ * <p>埋め込みの組の表は、BF16 に丸めた W と E の積を FP32 で足したもの。列ごとに P_m[c] = W_m·E[off_m + c] を作り、組の各行には
+ * Σ_m P_m[c_m] を列の順に足して置く。eager の Linear との違いは足す順だけ。
  *
- * <p>局・席・牌・出来事の型は、層 0 の注意の QKV の射影もその表へ畳む（L0-FOLD）: 書いた束の T・W_d・b（BF16 の値）と層 0 の g・W_qkv
- * （BF16 の値）から T' = T·diag(g)·W_qkvᵀ、W'_d = W_d·diag(g)·W_qkvᵀ、b' = b·diag(g)·W_qkvᵀ を FP64 で作り、FP32 に丸めて置く。b_qkv
- * （BF16 に丸めた値）を b' の後ろに写す。列は頭の対の並び（{@link HipEmbedding#foldColumn}）。
+ * <p>局・席・牌・イベントの型では、層 0 の Attention の QKV の射影もこの表へ折り込む。書いた束の T・W_d・b（BF16 の値）と層 0 の
+ * g・W_qkv（BF16 の値）から、T' = T·diag(g)·W_qkvᵀ、W'_d = W_d·diag(g)·W_qkvᵀ、b' = b·diag(g)·W_qkvᵀ を FP64 で求め、FP32 に
+ * 丸めて置く。b' の後ろには b_qkv（BF16 に丸めた値）を写す。列はヘッドの対の並び（{@link HipEmbedding#foldColumn}）。
  */
 public final class WeightPack {
 
@@ -45,12 +47,13 @@ public final class WeightPack {
   }
 
   /**
-   * 保存した網から作る。重みを CPU に FP32 で読み、表と束を作ってから網を捨てる（束と表は網の配列を参照しない）。
+   * 保存したネットワークから作る。重みを CPU に FP32 で読み、表と束を作ってからネットワークを捨てる。束と表はネットワークの配列を
+   * 参照しない。
    *
-   * @param model 網のディレクトリ（weights.bin と model.json）
-   * @param version 網のバージョン番号（0 以上）
+   * @param model ネットワークのディレクトリ（weights.bin と model.json）
+   * @param version ネットワークのバージョン番号（0 以上）
    * @return 重みの束（表は {@link #layout()}）
-   * @throws IOException 読めないか、形式・指紋・重みが合わないとき
+   * @throws IOException 読めないとき。形式・フィンガープリント・重みが合わないとき
    */
   public static WeightPack load(Path model, long version) throws IOException {
     NetworkRuntime.initialize();
@@ -61,11 +64,11 @@ public final class WeightPack {
   }
 
   /**
-   * 網の今の重みから作る。
+   * ネットワークの今の重みから作る。
    *
-   * @param layout 網の表（同じ形・同じ名前の網から作ったもの）
-   * @param network 網（推論の重みの束を読む。どのデバイスでもよい）
-   * @param version 網のバージョン番号（0 以上）
+   * @param layout 表（形とパラメーターの名前が同じネットワークから作ったもの）
+   * @param network ネットワーク（推論の重みの束を読む。どのデバイスにあってもよい）
+   * @param version ネットワークのバージョン番号（0 以上）
    * @return 重みの束
    */
   public static WeightPack build(WeightLayout layout, PrismNetwork network, long version) {
@@ -73,13 +76,15 @@ public final class WeightPack {
   }
 
   /**
-   * 推論の重みの束から作る。
+   * 推論の重みの束から作る。牌の関係の種類は、表の入力の形式から作る。中身は牌のトークンの対ごとの {@link MahjongTileRelation} の
+   * ordinal で、形は [牌, 牌]（{@link TileTokens#relations()}）。
    *
    * @param layout 表
    * @param parameters 推論の重みの束（{@link PrismNetwork#inferenceParameters()}）
-   * @param version 網のバージョン番号（0 以上）
+   * @param version ネットワークのバージョン番号（0 以上）
    * @return 重みの束
-   * @throws IllegalArgumentException 表にないパラメーターがあるか、値が有限でないとき
+   * @throws IllegalArgumentException 表にあるパラメーターが束に無いとき。値が有限でないとき。牌の関係の表の大きさが、形の記述の牌の数の
+   *     2 乗でないとき
    */
   public static WeightPack build(WeightLayout layout, PairList<String, Parameter> parameters, long version) {
     Objects.requireNonNull(layout, "layout");
@@ -108,7 +113,8 @@ public final class WeightPack {
     writeTileRelations(
         buffer,
         layout.header().weight(HipWeight.TILE_RELATION, 0),
-        HipWeight.TILE_RELATION.elements(layout.dimensions()));
+        layout.header().elements(HipWeight.TILE_RELATION, 0),
+        layout.format().tileTokens().relations());
     return new WeightPack(layout, buffer, version);
   }
 
@@ -116,17 +122,17 @@ public final class WeightPack {
     return layout;
   }
 
-  /** 網のバージョン番号。 */
+  /** ネットワークのバージョン番号。 */
   public long version() {
     return version;
   }
 
-  /** 中身（位置 0 から {@link WeightLayout#bytes()} バイト。写しの view、little-endian）。 */
+  /** 中身を返す。位置 0 から {@link WeightLayout#bytes()} バイトを見る、新しく作った little-endian のビュー。 */
   public ByteBuffer buffer() {
     return buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(0).limit(Math.toIntExact(layout.bytes()));
   }
 
-  /** float を BF16 に丸めた値（有限でなければ例外）。 */
+  /** float を BF16 に丸めた値を返す。有限でない値には例外を投げる。 */
   static float round(float value) {
     return Bfloat16.toFloat(Bfloat16.fromFloat(value));
   }
@@ -163,11 +169,11 @@ public final class WeightPack {
     }
   }
 
-  /** 1 つの型の埋め込み: 畳んだ組の表・表に畳まない特徴の W（BF16、転置）・偏り（BF16 に丸めた値）を書く。 */
+  /** 1 つの型の埋め込みを書く。組の表、表に折り込まない特徴の W（BF16、転置）、バイアス（BF16 に丸めた値）を書く。 */
   private static void fold(
       ByteBuffer buffer, WeightLayout layout, WeightLayout.Embedding embedding, Map<String, float[]> values) {
     EmbeddingSource source = embedding.source();
-    int hidden = layout.shape().hidden();
+    int hidden = layout.architecture().hidden();
     int dimension = embedding.dimension();
     int inputs = source.embeddedCount() * dimension + source.denseCount();
     float[] table = require(values, embedding.table());
@@ -230,11 +236,11 @@ public final class WeightPack {
   }
 
   /**
-   * 層 0 の M = diag(g)·W_qkvᵀ（FP64 の {@code [H, 3A]}、列は頭の対の並び）。g は FP32、W_qkv は書いた束の BF16 の値。
+   * 層 0 の M = diag(g)·W_qkvᵀ を FP64 の {@code [H, 3A]} で返す。列はヘッドの対の並び。g は FP32、W_qkv は書いた束の BF16 の値を使う。
    */
   private static double[] layer0Projection(ByteBuffer buffer, WeightLayout layout) {
-    int hidden = layout.shape().hidden();
-    int attention = layout.shape().attention();
+    int hidden = layout.architecture().hidden();
+    int attention = layout.architecture().attention();
     int width = 3 * attention;
     int gain = Math.toIntExact(layout.header().weight(HipWeight.ATTENTION_NORM, 0));
     int qkv = Math.toIntExact(layout.header().weight(HipWeight.QKV, 0));
@@ -250,12 +256,13 @@ public final class WeightPack {
   }
 
   /**
-   * 1 つの型の層 0 の QKV に畳んだ表: 書いた束の T・W_d・b を FP64 で M に掛けて FP32 に丸め、T'・W'_d・b' を置き、b_qkv を写す。
+   * 1 つの型について、層 0 の QKV まで折り込んだ表を書く。書いた束の T・W_d・b に FP64 で M を掛け、FP32 に丸めた T'・W'_d・b' を置く。
+   * その後ろに b_qkv を写す。
    */
   private static void foldLayer0(
       ByteBuffer buffer, WeightLayout layout, WeightLayout.Embedding embedding, double[] projection) {
-    int hidden = layout.shape().hidden();
-    int attention = layout.shape().attention();
+    int hidden = layout.architecture().hidden();
+    int attention = layout.architecture().attention();
     int width = 3 * attention;
     double[] source = new double[hidden];
     double[] projected = new double[width];
@@ -311,16 +318,15 @@ public final class WeightPack {
     }
   }
 
-  /** 牌の関係の類（MahjongTileRelation の ordinal、[34·34] の UINT8）。 */
-  private static void writeTileRelations(ByteBuffer buffer, long offset, long elements) {
-    long[] relations = MahjongTileRelation.relationIds();
+  /** 牌の関係の種類を書く。値は MahjongTileRelation の ordinal で、[牌, 牌] の UINT8 で置く。 */
+  private static void writeTileRelations(ByteBuffer buffer, long offset, long elements, int[] relations) {
     if (relations.length != elements) {
-      throw new IllegalStateException(
-          "tile relations hold " + relations.length + " classes but the HIP slot holds " + elements);
+      throw new IllegalArgumentException(
+          "tile relations hold " + relations.length + " classes but the architecture's tiles need " + elements);
     }
     int at = Math.toIntExact(offset);
     for (int i = 0; i < relations.length; i++) {
-      buffer.put(at + i, (byte) Math.toIntExact(relations[i]));
+      buffer.put(at + i, (byte) relations[i]);
     }
   }
 }

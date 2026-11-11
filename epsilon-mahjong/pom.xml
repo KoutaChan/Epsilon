@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <!-- epsilon-parent の DJL・PyTorch・zstd・logback を継がないため、親は epsilon-base（依存は slf4j-api だけ）。 -->
+  <parent>
+    <groupId>com.epsilon</groupId>
+    <artifactId>epsilon-base</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <relativePath>../epsilon-base/pom.xml</relativePath>
+  </parent>
+  <artifactId>epsilon-mahjong</artifactId>
+  <name>Epsilon Mahjong</name>
+  <dependencies>
+    <!-- mjai と雀魂の牌譜（io）と、天鳳・RiichiLab のライブの文（client）だけが使う。 -->
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>2.11.0</version>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <!-- 試験の道具（牌山を置く Scenes・読まれていない位置を並べ替えて打ち直す WallReplay・半荘の歩き手 RandomGames）を他のモジュールの試験から使うため、試験の jar も作る。 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

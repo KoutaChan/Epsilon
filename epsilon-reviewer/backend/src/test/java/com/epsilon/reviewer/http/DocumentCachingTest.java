@@ -10,12 +10,12 @@ import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 文書の ETag と 304、gzip の交渉（Accept-Encoding の q と *）、ダウンロードの頭。 */
+/** 文書の ETag と 304、gzip のネゴシエーション（Accept-Encoding の q と *）、ダウンロードのヘッダーを確かめる。 */
 public class DocumentCachingTest {
   @Test
   public void documentsAreSentAsStoredOrInflatedAndRevalidatedByTheResultId() throws Exception {
     try (var server = TestServer.start()) {
-      ResultId id = server.reviewer.analyze(TestReviewer.OWNER, "kakan-a", TestReviewer.FIXTURE);
+      ResultId id = server.reviewer.analyze(TestReviewer.OWNER, TestReviewer.FIXTURE);
       Path file =
           server.reviewer.directory.resolve(
               Path.of("data", "results", id.value(), "result.json.gz"));

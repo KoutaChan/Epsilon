@@ -1,100 +1,90 @@
 package com.epsilon.prism.auxiliary;
 
-import com.epsilon.calculate.scoring.HandScoreBuffer;
-import com.epsilon.calculate.scoring.HandScoreEvaluator;
-import com.epsilon.calculate.scoring.WinConditions;
-import com.epsilon.calculate.scoring.WinMethod;
-import com.epsilon.calculate.shape.HandShapeAnalyzer;
-import com.epsilon.core.GameState;
-import com.epsilon.core.Hand;
-import com.epsilon.core.Tile;
-import com.epsilon.core.TurnEvent;
-import com.epsilon.engine.WinLegality;
-import com.epsilon.engine.WinPointDeltas;
+import com.epsilon.mahjong.engine.FullView;
+import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.mahjong.engine.SeatView;
+import com.epsilon.mahjong.rules.ScoreMath;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.score.WinScore;
+import com.epsilon.mahjong.shape.HandShape;
+import com.epsilon.mahjong.shape.ShapeAnalyzer;
+import com.epsilon.mahjong.tile.Tiles;
 import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * 判断の時点の全ての状態（commit の前、4 人の手）から神託（{@link OracleCodec}）を作る。行に残す判断の record の中で呼ぶ。進行ワーカーに
- * 1 つ持ち、作業域（解析器・採点器・下書き・打牌の出来事）は中に持つ。
+ * 判断の時点の全ての状態（commit の前で、全員の手が見える）から Oracle の記録（{@link OracleCodec}）を作る。行に残す判断で呼ぶ。作業用の
+ * オブジェクトはスレッドごと・ルールごとに持ち、新しく割り当てるのは返す配列だけ。
  *
- * <p>相手ごとに、最小の向聴と形の待ちを出し、聴牌なら待ちの牌ごとに「判断の席が今その牌を捨てたらロンできるか」をエンジンの判定
- * （{@link WinLegality#canRon}）で確かめる。ロンできる牌は待ちの牌に限られるので、待ちの外は確かめない。ロンできる牌は、そのロンの和了の
- * 点（裏ドラなし。条件は捨てた時点の局況で、一発・河底を含む）を基本点から {@link WinPointDeltas} で作る。打牌の出来事は席 × 牌の
- * 136 個を前もって作り、捕捉のたびに割り当てない（割り当てるのは返す神託の配列だけ）。
+ * <p>相手ごとに、最小の向聴数と形だけで見た待ちを求める。待ちの牌ごとに、判断した席が今その牌の赤でない 1 枚を捨てたらロンされるかを、
+ * エンジンの判定で確かめる。相手が手牌と面子で 4 枚とも持つ牌は、5 枚目がなく和了れないので確かめない。ロンされる牌では、その和了の点を
+ * 基本点から求める。裏ドラ・本場・供託・包は含めない。
  */
 public final class OracleCapture {
 
-  /** 前もって作る打牌の出来事の数（判断の席 × 牌）。 */
-  private static final int DISCARDS = GameState.NUM_PLAYERS * Tile.NUM_TILE_TYPES;
+  /** 赤でない牌の写しの番号。赤は 0 番の写し。 */
+  private static final int PLAIN_COPY = Tiles.RED_COPY + 1;
 
-  private final HandShapeAnalyzer shapes = new HandShapeAnalyzer();
-  private final HandScoreEvaluator scores = new HandScoreEvaluator();
-  private final HandScoreBuffer score = new HandScoreBuffer();
-  private final int[] deltas = new int[GameState.NUM_PLAYERS];
-  private final long[] draft = new long[OracleCodec.MAX_LONGS];
-  private final TurnEvent.Discard[] discards = new TurnEvent.Discard[DISCARDS];
+  private static final ThreadLocal<OracleCapture[]> CAPTURES =
+      ThreadLocal.withInitial(() -> new OracleCapture[Variant.values().length]);
 
-  public OracleCapture() {
-    for (int seat = 0; seat < GameState.NUM_PLAYERS; seat++) {
-      for (int tile = 0; tile < Tile.NUM_TILE_TYPES; tile++) {
-        discards[seat * Tile.NUM_TILE_TYPES + tile] = new TurnEvent.Discard(seat, tile, false);
-      }
-    }
+  private final OracleCodec codec;
+  private final ShapeAnalyzer shapes;
+  private final HandShape hand = new HandShape();
+  private final WinScore score = new WinScore();
+  private final long[] draft;
+
+  private OracleCapture(Variant variant) {
+    codec = OracleCodec.of(variant);
+    shapes = new ShapeAnalyzer(variant);
+    draft = new long[codec.maxLongs()];
   }
 
   /**
-   * 神託を作る。
+   * Oracle の記録を作る。
    *
-   * @param state 判断の時点の局面（全員の手を読む。変えない）
-   * @param seat 判断の席（絶対席）
-   * @return 神託（{@link OracleCodec#longs} の長さ）
-   * @throws IllegalStateException 相手の手が 13 枚でないか、ロンできる牌に役がないとき
+   * @param full 判断の時点の全ての状態（変えない）
+   * @param seat 判断した席（絶対席）
+   * @param ws ルールの判定に使う作業領域
+   * @return Oracle の記録。長さは {@link OracleCodec#longs} の値
+   * @throws IllegalStateException 相手の手が 13 枚相当でないとき
    */
-  public long[] capture(GameState state, int seat) {
-    Objects.checkIndex(seat, GameState.NUM_PLAYERS);
-    Arrays.fill(draft, 0L);
-    int dangers = 0;
-    for (int opponent = 1; opponent < GameState.NUM_PLAYERS; opponent++) {
-      int player = (seat + opponent) % GameState.NUM_PLAYERS;
-      Hand hand = state.hand(player);
-      if (hand.effectiveTileCount() != 13) {
-        throw new IllegalStateException(
-            "opponent " + player + " holds " + hand.effectiveTileCount() + " tiles at a decision");
-      }
-      int shanten = shapes.calculateMinimum(hand);
-      long waits = shanten == 0 ? shapes.agariTileTypeMask(hand) : 0L;
-      long danger = 0L;
-      for (long rest = waits; rest != 0L; rest &= rest - 1) {
-        int tile = Long.numberOfTrailingZeros(rest);
-        TurnEvent.Discard discard = discards[seat * Tile.NUM_TILE_TYPES + tile];
-        if (WinLegality.canRon(state, player, discard, scores, shapes)) {
-          danger |= 1L << tile;
-          OracleCodec.writePoints(draft, 0, dangers++, ronPoints(state, player, seat, discard));
-        }
-      }
-      OracleCodec.writeOpponent(draft, 0, opponent, shanten, waits, danger);
+  public static long[] capture(FullView full, int seat, RuleWorkspace ws) {
+    Variant variant = full.variant();
+    OracleCapture[] all = CAPTURES.get();
+    OracleCapture capture = all[variant.ordinal()];
+    if (capture == null) {
+      capture = new OracleCapture(variant);
+      all[variant.ordinal()] = capture;
     }
-    return Arrays.copyOf(draft, OracleCodec.longs(draft, 0));
+    return capture.run(full, seat, ws);
   }
 
-  /** 席 {@code winner} が {@code discard} をロンしたときの和了の点（裏ドラ・本場・供託なし）。 */
-  private int ronPoints(GameState state, int winner, int seat, TurnEvent.Discard discard) {
-    Hand hand = state.hand(winner);
-    boolean scored =
-        scores.scoreAfterAdding(
-            hand,
-            discard.tileType(),
-            WinMethod.RON,
-            WinConditions.fromGameState(state, winner, discard),
-            state.doraState(),
-            false,
-            hand.ownedAkaMask(),
-            score);
-    if (!scored) {
-      throw new IllegalStateException("legal ron of seat " + winner + " has no yaku");
+  private long[] run(FullView full, int seat, RuleWorkspace ws) {
+    int seats = full.variant().seats();
+    Objects.checkIndex(seat, seats);
+    SeatView table = full.seat(seat);
+    Arrays.fill(draft, 0L);
+    int dangers = 0;
+    for (int relative = 1; relative < seats; relative++) {
+      int player = (seat + relative) % seats;
+      full.copyHand(player, hand);
+      if (hand.size() != HandShape.MAX_SIZE - 1) {
+        throw new IllegalStateException("Opponent " + player + " holds " + hand.size() + " tiles at a decision");
+      }
+      int shanten = shapes.shanten(hand);
+      long waits = full.waits(player);
+      long danger = 0L;
+      boolean dealer = player == table.dealer();
+      for (long rest = waits & ~TenpaiProbe.fullyHeld(table, player, hand); rest != 0L; rest &= rest - 1) {
+        int kind = Long.numberOfTrailingZeros(rest);
+        if (full.ronScore(player, Tiles.physicalId(kind, PLAIN_COPY), seat, ws, score)) {
+          danger |= Tiles.bit(kind);
+          codec.writePoints(draft, 0, dangers++, ScoreMath.ron(score.base(), dealer));
+        }
+      }
+      codec.writeOpponent(draft, 0, relative, shanten, waits, danger);
     }
-    WinPointDeltas.settleInto(score.basePoints(), winner, seat, state.getOya(), 0, 0, deltas);
-    return deltas[winner];
+    return Arrays.copyOf(draft, codec.longs(draft, 0));
   }
 }

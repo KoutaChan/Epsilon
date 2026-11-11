@@ -1,7 +1,7 @@
 package com.epsilon.prism.policy;
 
 /**
- * 打牌の規則による事前分布のロジット。向聴を減らし受け入れを増やす打牌を優先する。
+ * ルールベースの事前分布のロジットを求める。打牌では、向聴を減らし受け入れを増やす手を優先する。
  *
  * <pre>
  * q(a) = −α·shanten(a) + γ·ukeire(a)                                  （a ∈ D: 打牌のまとまり {@link ActionGroups#DISCARD}）
@@ -10,20 +10,22 @@ package com.epsilon.prism.policy;
  * p0 = softmax(z)                                                     （{@link Prior}）
  * </pre>
  *
- * 正規化により Σ_{a∈D} e^{prior(a)} = |D| となり、事前分布は打牌のまとまりの中の配分だけを変える。まとまりの総確率は基準測度で決まる（打牌全体・鳴き全体・
- * ほかの 1 手ごとに等しい）。打牌でない手は自分のまとまりの中で一様。特徴は記録 O から作る打牌の後の向聴と受け入れの枚数（{@link Prior}）。
+ * 正規化で Σ_{a∈D} e^{prior(a)} = |D| になるので、この事前分布は打牌のまとまりの中の配分だけを変える。各まとまりの確率の合計は基準測度で
+ * 決まり、打牌全体、鳴き全体、ほかの手 1 つずつが同じ重みになる。打牌でない手は、自分のまとまりの中で一様。使う特徴は、記録 O から求めた
+ * 打牌の後の向聴と受け入れの枚数（{@link Prior}）。
  */
 public final class RulePrior {
   private RulePrior() {}
 
   /**
-   * ロジット z を書く（内部は FP64）。
+   * ロジット z を求めて書く。計算は FP64 で行う。
    *
+   * @param settings 係数
    * @param n 合法手の数
-   * @param shanten 打牌後の向聴（打牌でない位置は読まない）
-   * @param ukeire 打牌後の受け入れ枚数（打牌でない位置は読まない）
-   * @param group 手のまとまり（{@link ActionGroups#fill}）
-   * @param z 長さ n 以上の出力
+   * @param shanten 合法手ごとの、打牌した後の向聴（打牌でない手の値は読まない）
+   * @param ukeire 合法手ごとの、打牌した後の受け入れの枚数（打牌でない手の値は読まない）
+   * @param group 合法手ごとのまとまり（{@link ActionGroups#fill}）
+   * @param z 書く先（長さ n 以上）
    */
   public static void logits(
       PriorSettings settings, int n, float[] shanten, float[] ukeire, byte[] group, double[] z) {
@@ -45,7 +47,7 @@ public final class RulePrior {
       for (int a = 0; a < n; a++)
         if (group[a] == ActionGroups.DISCARD)
           sum += Math.exp(-alpha * shanten[a] + gamma * ukeire[a] - max);
-      // 打牌のまとまりの中で e^{prior} の和が |D| になるように引く（まとまりの総確率は基準測度だけで決まる）
+      // 打牌のまとまりの中で e^{prior} の和が |D| になるように引く。これでまとまりの確率の合計は基準測度だけで決まる
       double normalizer = max + Math.log(sum) - Math.log(count);
       for (int a = 0; a < n; a++)
         if (group[a] == ActionGroups.DISCARD)

@@ -1,22 +1,23 @@
 import path from "node:path";
 
-/** アプリが読み書きする場所。 */
+/** アプリが読み書きするフォルダーとファイル。 */
 export interface AppPaths {
   userData: string;
-  /** web/dist（epsilon-reviewer://app の中身）。 */
+  /** web/dist。epsilon-reviewer://app で返す画面のファイルが入る。 */
   web: string;
-  /** language/<id>/。 */
+  /** 言語ごとの language/<id>/ を並べたフォルダー。 */
   language: string;
-  /** Java のエンジン（runtime・lib・native・models）。 */
+  /** Java のエンジンのフォルダー。runtime・lib・native・models が入る。 */
   engine: string;
   icon: string;
   preload: string;
 }
 
 /**
- * 梱包では resources の下、未梱包では epsilon-reviewer の作業の木（../web/dist・../language・desktop/engine）。
+ * アプリが使う場所を返す。パッケージしたアプリでは resources の下を使う。パッケージしていないときは
+ * epsilon-reviewer の作業ツリー（../web/dist・../language・desktop/engine）を使う。
  *
- * @param appPath app.getAppPath()（未梱包は desktop、梱包は resources/app.asar）
+ * @param appPath app.getAppPath() の値（パッケージしていなければ desktop、していれば resources/app.asar）
  */
 export function appPaths(
   packaged: boolean,

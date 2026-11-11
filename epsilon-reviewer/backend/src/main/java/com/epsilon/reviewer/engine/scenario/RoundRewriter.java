@@ -1,16 +1,9 @@
 package com.epsilon.reviewer.engine.scenario;
 
-import com.epsilon.core.GameState;
-import com.epsilon.replay.ReplayEvent;
-import com.epsilon.replay.ReplayEvent.Ankan;
-import com.epsilon.replay.ReplayEvent.Chi;
-import com.epsilon.replay.ReplayEvent.Dahai;
-import com.epsilon.replay.ReplayEvent.Daiminkan;
-import com.epsilon.replay.ReplayEvent.Dora;
-import com.epsilon.replay.ReplayEvent.Kakan;
-import com.epsilon.replay.ReplayEvent.Pon;
-import com.epsilon.replay.ReplayEvent.StartKyoku;
-import com.epsilon.replay.ReplayEvent.Tsumo;
+import com.epsilon.mahjong.record.RecordEditor;
+import com.epsilon.mahjong.record.RecordEvent;
+import com.epsilon.mahjong.record.RecordedRound;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.scenario.VisibleTileCount.Placement;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
@@ -25,87 +18,116 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
- * もしもの変更を確かめ、判断のある局の出来事と判断の表示の局面へ写す。河 → ドラ → 手牌 → 点 → 本場 → 供託 → 見える牌の数の順に確かめる。
+ * もしもの変更を確かめて、判断のある局に反映する。反映する先は、判断する席から見た局の記録と、判断の時点の表示用の局面。確かめる順は
+ * 河 → ドラ → 手牌 → 点 → 本場 → 供託 → 見える牌の数。
  *
- * <p>変更は判断の時点の表示で指す。河はその席の打牌の順、ドラは開いた順（0 は局の始め、1 からは槓ドラ）、手牌は hand[] の位置（hand.length
- * はツモ牌）。点と供託は判断の時点の値で受け取り、判断までのリーチの支払いを保つよう局の始めの値を同じ差だけ動かす。
+ * <p>変更する牌は、判断の時点の表示での位置で指す。河はその席の打牌の順、ドラはめくった順（0 は局の始め、1 から先は槓ドラ）、手牌は
+ * {@code hand[]} の位置（{@code hand.length} はツモ牌）で指す。点と供託は判断の時点の値で受け取る。判断までの立直の支払いが変わらない
+ * よう、局の始めの値を同じ差だけ動かす。
  *
- * <p>牌を替えた河と手牌の物理牌は、見える牌の数を確かめてから割り当てる。替えた牌の物理牌を全て空け、新しい牌それぞれにその記号の空いている
- * 写しを割り当てて、元の物理牌を書いた所（打牌と、判断の席の牌が手に入った配牌の位置かツモ）へ書く。判断より前の出来事で判断の席に見える牌
- * （その席の配牌とツモ、全ての打牌、副露と槓の牌）の物理牌は、どれも判断の時点の表示に見える牌なので（ドラ表示は物理牌を持たない）、見える牌の
- * 数が通れば写しは足りる。
+ * <p>河・ドラ・手牌で牌を替えたときの物理牌は、見える牌の数を確かめてから割り当てる。まず替えた牌の物理牌を全て空ける。次に新しい牌
+ * ごとに、その牌の空いている写しのうち番号の最も小さいものを割り当て、元の物理牌があった所へ書く。書く所は、打牌、ドラ表示牌、または
+ * 判断する席にその牌が入った所（配牌の位置かツモ）。判断する席に見える物理牌（その席の配牌とツモ、全ての打牌、ドラ表示牌）は、どれも
+ * 判断の時点の表示に見える牌なので、見える牌の数の確かめを通れば写しは足りる。鳴きの記録は手から出した物理牌を持たないので、他家の
+ * 面子の物理牌は数えない（席から見える卓も読まない）。
  */
 public final class RoundRewriter {
+  private final Variant variant;
+  private final int seats;
   private final LocatedDecision decision;
   private final int seat;
-  private final List<ReplayEvent> events;
-  private final StartKyoku start;
-
-  /** 配牌の写し。判断の席の行を書き換える。 */
-  private final int[][] deal;
-
+  private final RecordedRound recorded;
+  private final RecordEditor editor;
   private final List<PlayerState> players;
   private final List<String> dora;
 
-  /** 判断の席の手牌。判断の hand[] の位置のまま書き換え、最後に並べる。 */
+  /** 判断する席の手牌。判断の局面の {@code hand[]} の位置のまま書き換え、最後に並べ直す。 */
   private final List<String> hand;
 
   private String draw;
 
-  /** 判断の席の伏せた手の物理牌（手に入った順）。手牌の変更が替えた牌は外す。 */
+  /** 判断する席の伏せた手牌の物理牌（手に入った順）。手牌の変更で替えた牌は外す。 */
   private final List<Integer> concealed;
 
-  /** 判断より前の出来事で判断の席に見える牌の物理牌（他家の伏せた配牌とツモは数えない）。 */
-  private final TileCopies copies = new TileCopies();
+  /** 判断する席に見える物理牌。 */
+  private final TileCopies copies;
 
-  /** 判断の席の手に入った物理牌ごとの、入った所。 */
-  private final Map<Integer, Slot> entries = new HashMap<>();
+  /** 判断する席の手に入った物理牌ごとに、どこから入ったか。 */
+  private final Map<Integer, Entry> entries = new HashMap<>();
 
-  /** 席ごとの、判断より前の打牌の出来事の位置（河の順）。 */
+  /** 席ごとに、判断より前の打牌のイベントの位置（河の順）。 */
   private final List<List<Integer>> discards = new ArrayList<>();
 
-  /** 判断より前に槓ドラを開いた出来事の位置（開いた順）。 */
-  private final List<Integer> reveals = new ArrayList<>();
+  /** めくったドラ表示牌の物理牌（めくった順。0 は局の始め）。 */
+  private final List<Integer> indicators = new ArrayList<>();
 
-  /** 牌を替えた変更（当てた順）。 */
+  /** ツモ切りの印を替えた他家の打牌の位置と、新しい印。 */
+  private final Map<Integer, Boolean> tsumogiri = new TreeMap<>();
+
+  /** 牌を替えた変更（適用した順）。 */
   private final List<Placement> placements = new ArrayList<>();
 
   private final List<Replacement> replacements = new ArrayList<>();
 
-  private RoundRewriter(List<ReplayEvent> record, LocatedDecision decision) {
+  private RoundRewriter(RecordedRound recorded, LocatedDecision decision) {
+    variant = recorded.start().variant();
+    seats = variant.seats();
     this.decision = decision;
     seat = decision.seat();
-    events = new ArrayList<>(record.subList(decision.start(), decision.end()));
-    start = (StartKyoku) events.getFirst();
-    deal = start.initialHandPhysicalTileIds().clone();
-    deal[seat] = deal[seat].clone();
+    this.recorded = recorded;
+    editor = new RecordEditor(recorded, decision.position(), seat);
+    copies = new TileCopies(variant);
     players = new ArrayList<>(decision.table().players());
     dora = new ArrayList<>(decision.table().dora());
     hand = new ArrayList<>(players.get(seat).hand());
     draw = players.get(seat).draw();
     concealed = new ArrayList<>(decision.concealed());
-    for (int player = 0; player < GameState.NUM_PLAYERS; player++) discards.add(new ArrayList<>());
-    for (int position = 0; position < decision.target(); position++) scan(position);
-    for (int player = 0; player < GameState.NUM_PLAYERS; player++)
+    for (int player = 0; player < seats; player++) discards.add(new ArrayList<>());
+    for (int index = 0; index < Variant.HAND; index++)
+      enter(recorded.deal(seat, index), new Entry.Dealt(index));
+    reveal(recorded.indicator());
+    List<RecordEvent> events = recorded.events();
+    for (int position = 0; position < decision.position(); position++) {
+      switch (events.get(position)) {
+        case RecordEvent.Draw drawn when drawn.seat() == seat ->
+            enter(drawn.tile(), new Entry.Drawn(position));
+        case RecordEvent.Discard discard -> {
+          discards.get(discard.seat()).add(position);
+          copies.use(discard.tile());
+        }
+        case RecordEvent.DoraReveal revealed -> reveal(revealed.tile());
+        default -> {}
+      }
+    }
+    for (int player = 0; player < seats; player++)
       if (discards.get(player).size() != players.get(player).river().size())
         throw new IllegalStateException("The river of seat " + player + " differs from the round");
   }
 
-  /** @param record 牌譜の全ての出来事 */
+  /**
+   * @param recorded 判断のある局
+   * @throws ReviewerException invalid_request（点の数が席の数と違う）、または invalid_edit（変更が正しくない）
+   */
   public static RewrittenRound apply(
-      List<ReplayEvent> record, LocatedDecision decision, ScenarioEdits edits) {
-    var round = new RoundRewriter(record, decision);
+      RecordedRound recorded, LocatedDecision decision, ScenarioEdits edits) {
+    int seats = recorded.start().variant().seats();
+    if (!edits.scores().isEmpty() && edits.scores().size() != seats)
+      throw new ReviewerException(
+          ErrorCode.INVALID_REQUEST,
+          "edits.scores must contain " + (seats == 3 ? "three" : "four") + " scores.");
+    var round = new RoundRewriter(recorded, decision);
     each(edits.rivers(), "edits.rivers", edit -> List.of(edit.seat(), edit.index()), round::river);
     each(edits.dora(), "edits.dora", DoraEdit::index, round::dora);
     each(edits.hand(), "edits.hand", HandEdit::index, round::hand);
     return round.finish(edits);
   }
 
-  /** 変更を順に当てる。同じ所の 2 つ目の変更は断る。 */
+  /** 変更を順に適用する。同じ所を 2 回変えようとしたら断る。 */
   private static <E> void each(
       List<E> edits, String field, Function<E, Object> place, BiConsumer<E, String> apply) {
     Set<Object> places = new HashSet<>();
@@ -118,84 +140,54 @@ public final class RoundRewriter {
     }
   }
 
-  /**
-   * 判断より前の出来事を読み、打牌と槓ドラの位置、判断の席の牌が手に入った所、判断の席に見える牌の物理牌を覚える。鳴いた牌は打牌の物理牌なので、
-   * 副露は手から出した牌だけを数える。
-   */
-  private void scan(int position) {
-    switch (events.get(position)) {
-      case StartKyoku ignored -> {
-        for (int index = 0; index < deal[seat].length; index++)
-          enter(deal[seat][index], new Slot.Dealt(index));
-      }
-      case Tsumo drawn when drawn.actor() == seat ->
-          enter(drawn.physicalTileId(), new Slot.Drawn(position));
-      case Dahai discard -> {
-        discards.get(discard.actor()).add(position);
-        copies.use(discard.physicalTileId());
-      }
-      case Dora ignored -> reveals.add(position);
-      case Chi call -> copies.use(call.consumedPhysicalTileIds());
-      case Pon call -> copies.use(call.consumedPhysicalTileIds());
-      case Daiminkan call -> copies.use(call.consumedPhysicalTileIds());
-      case Ankan kan -> copies.use(kan.consumedPhysicalTileIds());
-      case Kakan kan -> copies.use(kan.addedPhysicalTileId());
-      default -> {}
-    }
+  private void enter(int physicalId, Entry entry) {
+    copies.use(physicalId);
+    entries.put(physicalId, entry);
   }
 
-  private void enter(int physicalTileId, Slot slot) {
-    copies.use(physicalTileId);
-    entries.put(physicalTileId, slot);
+  private void reveal(int physicalId) {
+    copies.use(physicalId);
+    indicators.add(physicalId);
   }
 
   /**
-   * 河の 1 枚（鳴かれた牌は変えない）。他家の打牌は牌とツモ切りの印を替える。判断の席の打牌は牌だけを替え、その牌が手に入った所も同じ物理牌に
-   * する（打牌は判断より前に手を出たので、判断の手は変わらない）。
+   * 河の牌を 1 枚替える（鳴かれた牌は替えない）。他家の打牌なら、牌とツモ切りの印を替える。判断する席の打牌なら牌だけを替え、その牌が
+   * 手に入った所も同じ物理牌にする。打牌は判断より前に手から出ているので、判断の時点の手牌は変わらない。
    */
   private void river(RiverEdit edit, String name) {
-    if (edit.seat() < 0 || edit.seat() >= GameState.NUM_PLAYERS)
-      throw invalidEdit(name + ": seat must be between 0 and 3.");
+    if (edit.seat() < 0 || edit.seat() >= seats)
+      throw invalidEdit(name + ": seat must be between 0 and " + (seats - 1) + ".");
     PlayerState player = players.get(edit.seat());
     if (edit.index() < 0 || edit.index() >= player.river().size())
       throw invalidEdit(name + ": the river has no tile at this index at the decision.");
     RiverTile old = player.river().get(edit.index());
     if (old.called()) throw invalidEdit(name + ": a called tile cannot be edited.");
     requireTile(edit.tile(), name);
-    boolean own = edit.seat() == seat;
-    if (own && edit.tsumogiri() != old.tsumogiri())
+    if (edit.seat() == seat && edit.tsumogiri() != old.tsumogiri())
       throw invalidEdit(name + ": a discard of the deciding seat keeps its recorded tsumogiri.");
     int position = discards.get(edit.seat()).get(edit.index());
-    var discard = (Dahai) events.get(position);
-    int id = discard.physicalTileId();
-    if (edit.tsumogiri() != old.tsumogiri())
-      events.set(position, new Dahai(edit.seat(), id, edit.tsumogiri(), discard.inferred()));
-    if (!edit.tile().equals(old.tile())) {
-      Slot discarded = new Slot.Discarded(position);
-      replace(name, id, edit.tile(), own ? List.of(discarded, entry(id)) : List.of(discarded));
-    }
+    var discard = (RecordEvent.Discard) recorded.events().get(position);
+    if (edit.tsumogiri() != old.tsumogiri()) tsumogiri.put(position, edit.tsumogiri());
+    if (!edit.tile().equals(old.tile()))
+      replace(name, discard.tile(), edit.tile(), new Slot.Discarded(position));
     players.set(
         edit.seat(),
         player.withRiverTile(edit.index(), old.withTile(edit.tile(), edit.tsumogiri())));
   }
 
-  /** 開いているドラ表示牌の 1 枚。局の始めの表示は局の始めの出来事に、槓ドラはそれを開いた出来事に写す。 */
+  /** めくられているドラ表示牌を 1 枚替える。 */
   private void dora(DoraEdit edit, String name) {
     if (edit.index() < 0 || edit.index() >= dora.size())
       throw invalidEdit(name + ": no dora indicator is revealed at this index at the decision.");
     requireTile(edit.tile(), name);
     if (edit.tile().equals(dora.get(edit.index()))) return;
-    placements.add(new Placement(name, edit.tile()));
+    replace(name, indicators.get(edit.index()), edit.tile(), new Slot.Indicator(edit.index()));
     dora.set(edit.index(), edit.tile());
-    if (edit.index() > 0)
-      events.set(
-          reveals.get(edit.index() - 1),
-          new Dora(TileCode.type(edit.tile()), TileCode.red(edit.tile())));
   }
 
   /**
-   * 判断の席の手牌かツモ牌の 1 枚。同じ牌が手に複数あれば、どの位置を指しても最も後に手に入った 1 枚（同じ組の次の変更は次に新しい 1 枚）を
-   * 替える。
+   * 判断する席の手牌かツモ牌を 1 枚替える。同じ牌が手に何枚かあれば、どの位置を指しても、最も後に手に入った 1 枚を替える。同じ牌を
+   * もう 1 枚替えると、その次に新しい 1 枚を替える。
    */
   private void hand(HandEdit edit, String name) {
     if (decision.riichi())
@@ -209,96 +201,98 @@ public final class RoundRewriter {
     String old = drawn ? shown.draw() : shown.hand().get(edit.index());
     if (edit.tile().equals(old)) return;
     int id = drawn ? decision.drawn() : takeNewest(old);
-    replace(name, id, edit.tile(), List.of(entry(id)));
+    replace(name, id, edit.tile(), new Slot.Held(id));
     if (drawn) draw = edit.tile();
     else hand.set(edit.index(), edit.tile());
   }
 
-  /** 河か手牌の牌を替えた変更。物理牌 removed を書いた所 slots へ、新しい牌の物理牌を後で書く。 */
-  private void replace(String name, int removed, String tile, List<Slot> slots) {
+  /** 河・ドラ・手牌で牌を替える変更を控えておく。新しい牌の物理牌は、外す物理牌があった所へ後で書く。 */
+  private void replace(String name, int removed, String tile, Slot slot) {
     placements.add(new Placement(name, tile));
-    replacements.add(new Replacement(removed, tile, slots));
+    replacements.add(new Replacement(removed, tile, slot));
   }
 
-  /** 伏せた手の牌 code のうち、最も後に手に入った物理牌を取り出す。 */
+  /** 伏せた手牌にある指定の牌のうち、最も後に手に入った物理牌を取り出す。 */
   private int takeNewest(String code) {
     for (int i = concealed.size() - 1; i >= 0; i--)
-      if (TileCopies.isCopy(concealed.get(i), code)) return concealed.remove(i);
+      if (copies.isCopy(concealed.get(i), code)) return concealed.remove(i);
     throw new IllegalStateException("The hand of seat " + seat + " does not hold " + code);
   }
 
-  /** 判断の席の手に物理牌が入った所（配牌の位置か、判断より前のその席のツモ）。 */
-  private Slot entry(int physicalTileId) {
-    Slot slot = entries.get(physicalTileId);
-    if (slot == null)
-      throw new IllegalStateException(
-          "Tile " + physicalTileId + " never entered the hand of seat " + seat);
-    return slot;
-  }
-
-  /** 判断の席の手を並べ、点・本場・供託を写し、見える牌の数を確かめてから物理牌を割り当て、局の始めを作り直す。 */
+  /** 判断する席の手牌を並べ直し、点・本場・供託を反映する。見える牌の数を確かめてから物理牌を割り当て、局の始まりを作り直す。 */
   private RewrittenRound finish(ScenarioEdits edits) {
     hand.sort(Comparator.comparingInt(TileCode::order));
     players.set(seat, players.get(seat).withHand(List.copyOf(hand), draw));
     TableState shown = decision.table();
     int[] scores = scores(edits.scores());
-    int honba = edits.honba() == null ? start.honba() : requireHonba(edits.honba());
-    int deposited = shown.kyotaku() - start.kyotaku();
+    int honba = edits.honba() == null ? recorded.start().honba() : requireHonba(edits.honba());
+    int deposited = shown.kyotaku() - recorded.start().kyotaku();
     int kyotaku =
         edits.kyotaku() == null ? shown.kyotaku() : requireKyotaku(edits.kyotaku(), deposited);
     var table =
-        new TableState(players, dora, honba, kyotaku, shown.remaining(), shown.activeSeat());
-    VisibleTileCount.require(table, seat, placements);
-    assign();
-    String indicator = dora.getFirst();
-    events.set(
-        0,
-        new StartKyoku(
-            start.wind(),
-            start.kyoku(),
+        new TableState(
+            List.copyOf(players),
+            List.copyOf(dora),
             honba,
-            kyotaku - deposited,
-            start.oya(),
-            TileCode.type(indicator),
-            deal,
-            scores,
-            TileCode.red(indicator)));
-    return new RewrittenRound(events, table);
+            kyotaku,
+            shown.remaining(),
+            shown.activeSeat());
+    VisibleTileCount.require(variant, table, seat, placements);
+    assign();
+    editor.replaceStart(honba, kyotaku - deposited, scores);
+    List<RecordEvent> events = new ArrayList<>(editor.events());
+    tsumogiri.forEach(
+        (position, value) -> {
+          var discard = (RecordEvent.Discard) events.get(position);
+          events.set(
+              position,
+              new RecordEvent.Discard(discard.seat(), discard.tile(), value, discard.riichi()));
+        });
+    return new RewrittenRound(
+        editor.round(),
+        editor.honba(),
+        editor.kyotaku(),
+        editor.scores(),
+        editor.hand(),
+        editor.indicator(),
+        List.copyOf(events),
+        table);
   }
 
   /**
-   * 替えた牌の物理牌を全て空けてから、新しい牌それぞれに空いている写しを割り当てて書く。結果が変更の順に依らないよう、空ける物理牌の順に
-   * 割り当てる。
+   * 替えた牌の物理牌を全て空けてから、新しい牌ごとに空いている写しを割り当てて書く。結果が変更の順に左右されないよう、空ける物理牌の
+   * 番号の順に割り当てる。
    */
   private void assign() {
     replacements.sort(Comparator.comparingInt(Replacement::removed));
     for (Replacement replacement : replacements) copies.free(replacement.removed());
     for (Replacement replacement : replacements) {
       int id = copies.take(replacement.tile());
-      for (Slot slot : replacement.slots()) write(slot, id);
-    }
-  }
-
-  /** 物理牌を書く。出来事はほかの値を保つ。 */
-  private void write(Slot slot, int physicalTileId) {
-    switch (slot) {
-      case Slot.Dealt(int index) -> deal[seat][index] = physicalTileId;
-      case Slot.Drawn(int position) -> {
-        var drawn = (Tsumo) events.get(position);
-        events.set(position, new Tsumo(drawn.actor(), physicalTileId, drawn.inferred()));
-      }
-      case Slot.Discarded(int position) -> {
-        var discard = (Dahai) events.get(position);
-        events.set(
-            position,
-            new Dahai(discard.actor(), physicalTileId, discard.tsumogiri(), discard.inferred()));
+      switch (replacement.slot()) {
+        case Slot.Discarded(int position) -> editor.replaceDiscarded(position, id);
+        case Slot.Indicator(int index) -> editor.replaceIndicator(index, id);
+        case Slot.Held(int removed) -> {
+          switch (entry(removed)) {
+            case Entry.Dealt(int index) -> editor.replaceDealt(index, id);
+            case Entry.Drawn(int position) -> editor.replaceDrawn(position, id);
+          }
+        }
       }
     }
   }
 
-  /** 判断の時点の点を受け取り、局の始めの点を同じ差だけ動かす。 */
+  /** 判断する席の手にその物理牌が入った所（配牌の位置か、判断より前のその席のツモ）を返す。 */
+  private Entry entry(int physicalId) {
+    Entry entry = entries.get(physicalId);
+    if (entry == null)
+      throw new IllegalStateException(
+          "Tile " + physicalId + " never entered the hand of seat " + seat);
+    return entry;
+  }
+
+  /** 判断の時点の持ち点を受け取り、局の始まりの持ち点を同じ差だけ動かす。 */
   private int[] scores(List<Integer> edits) {
-    int[] scores = start.scores().clone();
+    int[] scores = recorded.start().scores();
     for (int player = 0; player < edits.size(); player++) {
       int score = edits.get(player);
       String name = "edits.scores[" + player + "]";
@@ -319,14 +313,15 @@ public final class RoundRewriter {
     return honba;
   }
 
-  /** 判断の時点の供託は、判断までにこの局で出たリーチの棒より少なくできない。 */
-  private static int requireKyotaku(int kyotaku, int deposited) {
-    if (kyotaku < deposited || kyotaku > ScenarioLimits.MAX_KYOTAKU)
+  /** 判断の時点の供託は、この局で判断までに出た立直棒の数より少なくできない。 */
+  private int requireKyotaku(int kyotaku, int deposited) {
+    int max = ScenarioLimits.maxKyotaku(variant);
+    if (kyotaku < deposited || kyotaku > max)
       throw invalidEdit(
           "edits.kyotaku: kyotaku must be between "
               + deposited
               + " (riichi sticks deposited in this round) and "
-              + ScenarioLimits.MAX_KYOTAKU
+              + max
               + ".");
     return kyotaku;
   }
@@ -339,24 +334,33 @@ public final class RoundRewriter {
     return new ReviewerException(ErrorCode.INVALID_EDIT, message);
   }
 
-  /** 物理牌を書く所。 */
+  /** 新しい物理牌を書く所。 */
   private sealed interface Slot {
-    /** 判断の席の配牌の位置。 */
-    record Dealt(int index) implements Slot {}
-
-    /** 判断の席のツモの出来事の位置。 */
-    record Drawn(int position) implements Slot {}
-
-    /** 打牌の出来事の位置。 */
+    /** 打牌のイベントの位置。 */
     record Discarded(int position) implements Slot {}
+
+    /** ドラ表示牌の番号（0 は局の始め）。 */
+    record Indicator(int index) implements Slot {}
+
+    /** 判断する席の手にある物理牌（その牌が手に入った所へ書く）。 */
+    record Held(int physicalId) implements Slot {}
+  }
+
+  /** 判断する席の手に物理牌が入った所。 */
+  private sealed interface Entry {
+    /** 配牌の位置。 */
+    record Dealt(int index) implements Entry {}
+
+    /** ツモのイベントの位置。 */
+    record Drawn(int position) implements Entry {}
   }
 
   /**
-   * 物理牌を替える牌。
+   * 物理牌を替える 1 枚。
    *
    * @param removed 局から外す物理牌
    * @param tile 新しい牌
-   * @param slots removed を書いた所。新しい牌の物理牌に書き換える
+   * @param slot 新しい牌の物理牌を書く所
    */
-  private record Replacement(int removed, String tile, List<Slot> slots) {}
+  private record Replacement(int removed, String tile, Slot slot) {}
 }

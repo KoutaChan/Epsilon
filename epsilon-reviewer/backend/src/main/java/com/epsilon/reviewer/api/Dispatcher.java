@@ -12,21 +12,21 @@ import java.net.URI;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 
-/** 操作と要求の record から Reviewer を呼ぶ（Command の網羅の switch）。HTTP と stdio が同じ振り分けを使う。 */
+/** 操作と要求を受けて、Reviewer の対応するメソッドを呼ぶ。switch は Command の全ての操作を網羅する。HTTP と stdio は同じ振り分けを使う。 */
 public final class Dispatcher {
   private final Reviewer reviewer;
   private final URI shareOrigin;
 
-  /** @param shareOrigin 共有リンクの主（scheme://authority）。stdio は null（共有の操作は道に無い） */
+  /** @param shareOrigin 共有リンクの origin（scheme://authority）。stdio からは共有の操作を呼べないので、stdio では null */
   public Dispatcher(Reviewer reviewer, URI shareOrigin) {
     this.reviewer = reviewer;
     this.shareOrigin = shareOrigin;
   }
 
   /**
-   * @param request command.requestType() の要求
-   * @param body importBytes の牌譜。他は null
-   * @return JSON の応答の record。文書と添付は StoredDocument、本文の無い操作は null
+   * @param request {@code command.requestType()} の型の要求
+   * @param body バイト列で牌譜を取り込む操作（{@code importBytes}）で送られた牌譜。ほかの操作では null
+   * @return JSON で返す応答の record。文書と添付を返す操作では StoredDocument、本文の無い操作では null
    */
   public Object dispatch(Command command, Caller caller, Record request, byte[] body) {
     return switch (command) {

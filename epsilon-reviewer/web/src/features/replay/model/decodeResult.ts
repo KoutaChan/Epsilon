@@ -5,6 +5,7 @@ import type {
 import {
   CALL_TYPES,
   EVENT_KINDS,
+  MAXIMUM_ACTION_ID,
   RESULT_FORMAT,
   actionOf,
   isTileCode,
@@ -25,7 +26,8 @@ import type {
   ReplayStep,
 } from "./types.ts";
 
-// 解析結果の文書を 1 回だけ流して確かめ、手順に牌譜の位置と局面の番号を付ける。局面はここでは作らない。
+// 解析結果の文書を先頭から 1 回だけ読んで中身を確かめ、各手順に牌譜の位置と局面の番号を付ける。局面はここでは作らない。
+// 席の数（4 人か 3 人）は、牌譜にある名前の数で決まる。席の番号と局面の席の数が、その数に合うかも確かめる。
 
 type Fields = Readonly<Record<string, unknown>>;
 interface Lengths {
@@ -40,10 +42,14 @@ const MELD_SIZES: Readonly<Record<Meld["type"], number>> = {
   DAIMINKAN: 4,
   ANKAN: 4,
   KAKAN: 4,
+  NUKI: 1,
 };
-const MAXIMUM_ACTION_ID = 371;
 
-/** @throws ReviewFormatError 解析結果の文書として読めない */
+/**
+ * 解析結果の文書を確かめて、再生用のモデルに直す。
+ *
+ * @throws ReviewFormatError 解析結果の文書として読めないとき
+ */
 export function decodeResult(value: unknown): ReplayModel {
   const document = object(value);
   if (document.format !== RESULT_FORMAT) fail("Unsupported result format.");
@@ -53,14 +59,16 @@ export function decodeResult(value: unknown): ReplayModel {
       : positive(document.temperature);
   const rounds = array(document.rounds);
   if (rounds.length === 0) fail("The result has no rounds.");
+  const record = recordSummary(document.record);
+  const seats = record.names.length;
   return {
     resultId: text(document.resultId),
     createdAt: text(document.createdAt),
     model: modelInfo(document.model),
-    record: recordSummary(document.record),
+    record,
     temperature,
     rounds: rounds.map((round, index) =>
-      decodeRound(round, index, temperature !== undefined),
+      decodeRound(round, index, temperature !== undefined, seats),
     ),
   };
 }
@@ -69,10 +77,11 @@ function decodeRound(
   value: unknown,
   index: number,
   valued: boolean,
+  seats: number,
 ): ReplayRound {
   const round = object(value);
   const firstEvent = count(round.firstEvent);
-  const start = tableState(round.start);
+  const start = tableState(round.start, seats);
   const lengths: Lengths = {
     players: start.players.map((player) => ({
       hand: player.hand.length,
@@ -91,10 +100,10 @@ function decodeRound(
     for (; position < source.length; position++) {
       const step = object(source[position]);
       if (step.delta !== undefined)
-        deltas.push(stateDelta(step.delta, lengths));
+        deltas.push(stateDelta(step.delta, lengths, seats));
       if (step.event !== undefined) {
         steps.push(
-          eventStep(step, position, firstEvent + events, deltas.length),
+          eventStep(step, position, firstEvent + events, deltas.length, seats),
         );
         events++;
       } else {
@@ -107,6 +116,7 @@ function decodeRound(
             firstEvent + events - 1,
             deltas.length,
             valued,
+            seats,
           ),
         );
       }
@@ -120,7 +130,8 @@ function decodeRound(
     index,
     roundIndex: count(round.roundIndex),
     honba: count(round.honba),
-    dealer: seat(round.dealer),
+    dealer: seat(round.dealer, seats),
+    seats,
     start,
     deltas,
     steps,
@@ -132,17 +143,18 @@ function eventStep(
   index: number,
   eventIndex: number,
   frame: number,
+  seats: number,
 ): EventStep {
   if (step.seat !== undefined)
     fail("A step cannot be both an event and a decision.");
   const eventType = eventKind(step.event);
   const outcome =
-    step.outcome === undefined ? null : roundOutcome(step.outcome);
+    step.outcome === undefined ? null : roundOutcome(step.outcome, seats);
   const settles = eventType === "hora" || eventType === "ryukyoku";
   if (settles ? outcome?.type !== eventType : outcome !== null)
     fail("Only hora and ryukyoku events carry their own outcome.");
-  const actor = step.actor === undefined ? -1 : seat(step.actor);
-  // 種類と結果の組は上で確かめた。
+  const actor = step.actor === undefined ? -1 : seat(step.actor, seats);
+  // イベントの種類と結果の組み合わせは、上で確かめてある。
   return {
     index,
     decision: false,
@@ -161,8 +173,9 @@ function decisionStep(
   lastEvent: number,
   frame: number,
   valued: boolean,
+  seats: number,
 ): DecisionStep {
-  const actor = seat(step.seat);
+  const actor = seat(step.seat, seats);
   const cause = step.cause === undefined ? lastEvent : count(step.cause);
   if (cause < firstEvent || cause > lastEvent)
     fail("A decision cause must be an earlier event of its round.");
@@ -206,36 +219,40 @@ function candidateRow(value: unknown, valued: boolean): void {
     fail("A call candidate has no tiles.");
 }
 
-function tableState(value: unknown): TableState {
+function tableState(value: unknown, seats: number): TableState {
   const table = object(value);
   const players = array(table.players);
-  if (players.length !== 4) fail("A table must have four players.");
-  for (const player of players) playerState(player);
+  if (players.length !== seats) fail("A table must have a player for every seat.");
+  for (const player of players) playerState(player, seats);
   tileList(table.dora);
   count(table.honba);
   count(table.kyotaku);
   count(table.remaining);
-  seat(table.activeSeat);
+  seat(table.activeSeat, seats);
   return value as TableState;
 }
 
-function playerState(value: unknown): void {
+function playerState(value: unknown, seats: number): void {
   const player = object(value);
   integer(player.score);
   boolean(player.riichi);
   tileList(player.hand);
   if (player.draw !== null) tile(player.draw);
   for (const discard of array(player.river)) riverTile(discard);
-  for (const entry of array(player.melds)) meld(entry);
+  for (const entry of array(player.melds)) meld(entry, seats);
 }
 
-function stateDelta(value: unknown, lengths: Lengths): StateDelta {
+function stateDelta(
+  value: unknown,
+  lengths: Lengths,
+  seats: number,
+): StateDelta {
   const delta = object(value);
   if (delta.players !== undefined) {
     let previous = -1;
     for (const entry of array(delta.players)) {
       const change = object(entry);
-      const at = seat(change.seat);
+      const at = seat(change.seat, seats);
       if (at <= previous)
         fail("Player changes must follow the seat order once each.");
       previous = at;
@@ -248,7 +265,9 @@ function stateDelta(value: unknown, lengths: Lengths): StateDelta {
       if (change.river !== undefined)
         length.river = splice(change.river, length.river, riverTile);
       if (change.melds !== undefined)
-        length.melds = splice(change.melds, length.melds, meld);
+        length.melds = splice(change.melds, length.melds, (entry) =>
+          meld(entry, seats),
+        );
     }
   }
   if (delta.dora !== undefined)
@@ -256,11 +275,11 @@ function stateDelta(value: unknown, lengths: Lengths): StateDelta {
   if (delta.honba !== undefined) count(delta.honba);
   if (delta.kyotaku !== undefined) count(delta.kyotaku);
   if (delta.remaining !== undefined) count(delta.remaining);
-  if (delta.activeSeat !== undefined) seat(delta.activeSeat);
+  if (delta.activeSeat !== undefined) seat(delta.activeSeat, seats);
   return value as StateDelta;
 }
 
-/** 範囲を前の配列の長さで確かめ、置き換えた後の長さを返す。 */
+/** 差し替える範囲が前の配列の中に収まるかを確かめ、差し替えた後の配列の長さを返す。 */
 function splice(
   value: unknown,
   length: number,
@@ -285,7 +304,7 @@ function riverTile(value: unknown): RiverTile {
   return value as RiverTile;
 }
 
-function meld(value: unknown): Meld {
+function meld(value: unknown, seats: number): Meld {
   const entry = object(value);
   const type = entry.type;
   if (typeof type !== "string" || !Object.hasOwn(MELD_SIZES, type))
@@ -296,9 +315,9 @@ function meld(value: unknown): Meld {
   const called = integer(entry.calledIndex);
   const added = integer(entry.addedIndex);
   if (
-    type === "ANKAN"
+    type === "ANKAN" || type === "NUKI"
       ? from !== -1 || called !== -1
-      : from < 0 || from > 3 || called < 0 || called >= size
+      : from < 0 || from >= seats || called < 0 || called >= size
   )
     fail("Invalid called tile of a meld.");
   if (
@@ -310,12 +329,12 @@ function meld(value: unknown): Meld {
   return value as Meld;
 }
 
-function roundOutcome(value: unknown): RoundOutcome {
+function roundOutcome(value: unknown, seats: number): RoundOutcome {
   const outcome = object(value);
   if (outcome.type === "ryukyoku") return value as RoundOutcome;
   if (outcome.type !== "hora") fail("Unsupported round outcome.");
-  seat(outcome.actor);
-  seat(outcome.target);
+  seat(outcome.actor, seats);
+  seat(outcome.target, seats);
   tile(outcome.winningTile);
   if (outcome.details !== undefined) {
     const details = object(outcome.details);
@@ -348,11 +367,13 @@ function recordSummary(value: unknown): RecordSummary {
   const record = object(value);
   text(record.source);
   const names = array(record.names);
-  if (names.length !== 4) fail("The record must name four players.");
+  if (names.length !== 3 && names.length !== 4)
+    fail("The record must name three or four players.");
   for (const name of names) text(name);
   if (record.finalScores !== undefined) {
     const scores = array(record.finalScores);
-    if (scores.length !== 4) fail("The record must have four final scores.");
+    if (scores.length !== names.length)
+      fail("The record must have a final score for every seat.");
     for (const score of scores) integer(score);
   }
   count(record.roundCount);
@@ -376,13 +397,13 @@ function tile(value: unknown): string {
   return value;
 }
 
-function seat(value: unknown): number {
-  if (value !== 0 && value !== 1 && value !== 2 && value !== 3)
-    fail("A seat must be 0 to 3.");
-  return value;
+function seat(value: unknown, seats: number): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) >= seats)
+    fail(`A seat must be 0 to ${seats - 1}.`);
+  return value as number;
 }
 
-/** 0 以上の整数（数・配列の位置・行動 ID）。 */
+/** 0 以上の整数（個数・配列の位置・行動 ID）であることを確かめて返す。 */
 function count(value: unknown): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0)
     fail("A count or position must be a non-negative integer.");

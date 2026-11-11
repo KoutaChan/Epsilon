@@ -5,14 +5,15 @@ import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtNDManager;
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.agent.runtime.PinnedUploads;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
+import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.model.PrismLoss;
-import com.epsilon.prism.model.PrismShape;
-import com.epsilon.prism.model.UploadRegion;
 import com.epsilon.prism.model.ValueLabel;
-import com.epsilon.prism.observe.Observation;
 import com.epsilon.prism.rows.Row;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -33,54 +34,55 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 学習の 1 歩分の行を、デバイスごとの微小バッチにする（ホストの仕事。学習のスレッドと重ねる）。
+ * 学習の 1 ステップ分の行を、デバイスごとのマイクロバッチにする。ホストで行う処理で、学習のスレッドと並行して進める。
  *
  * <ol>
- *   <li>行を貯蔵から読む（作業のスレッドで並列）。
- *   <li>行をトークンの数 S（局・席・牌の 39 ＋ 公開の出来事）の順に並べ、S の近い行から塊に詰める（参照の分け方）。詰めた
- *       トークン（行の数 × 最も長い行の S）は計画の上限まで。本当のトークンで塊の数をデバイスの数の倍数に見積もり、1 つの塊のトークンを
- *       ほぼ同じにするが、詰めたトークンの上限が先に効くと塊が 1 つ増えることがある。行を並べるので網の詰め物（出来事の数を最も長い行に
- *       そろえる分）が小さい。
- *   <li>塊をデバイスに置く。重い塊から、仕事の見積もり（{@link StepCost}）の少ないデバイスへ置く。塊の数がデバイスの数の倍数で
- *       なければ、最後の塊（S の最も長い行）はほかの塊を置いた後に、デバイスの見積もりの最大が最も小さくなる続いた部分に分けて置く（1 つの
- *       デバイスだけが塊を 1 つ多く持つ偏りを小さくする）。部分は元の塊の行の割合と補助の頭の分母を持つので（{@link Microbatch#ofPiece}）、
- *       1 歩の損失は分けないときと同じ（FP32 の和の順の違いだけ）。
- *   <li>置いた塊ごとに Tokenizer（前線の腕なら前線も）で書き、教師を作る（作業のスレッドで並列。{@link Teacher}。錨の s は行の貯蔵の
- *       番号で引いて混ぜる）。
- *   <li>微小バッチごとに、網の入力・索引・損失の入力をページ固定の領域（{@link UploadRegion}）に並べる（作業のスレッドで並列。
- *       {@link Microbatch#staged}）。学習のレーンはそれを非同期の写しで送るだけにする。
+ *   <li>行のストアから行を読む（作業スレッドで並列）。
+ *   <li>行をトークン数 S（局・席・牌のトークンと公開のイベント）の順に並べ、S の近い行からバッチに詰める（分ける前の詰め方）。パディングを
+ *       含むトークン数（行数 × 最も長い行の S）は、計画の上限を超えない。パディングを除いたトークン数で、バッチの数がデバイスの数の倍数に
+ *       なるように見積もり、どのバッチのトークン数もほぼ同じにする。ただし、パディングを含むトークン数の上限が先に効くと、バッチが 1 つ
+ *       増えることがある。行を並べるので、ネットワークのパディング（イベントの数を最も長い行にそろえる分）は小さい。
+ *   <li>バッチをデバイスに割り当てる。重いバッチから順に、時間の見積もり（{@link StepCost}）の少ないデバイスへ割り当てる。バッチの数が
+ *       デバイスの数の倍数でなければ、最後のバッチ（S の最も長い行）は、ほかのバッチを割り当てた後で連続した部分に分け、デバイスの見積もりの
+ *       最大が最も小さくなるように割り当てる。1 つのデバイスだけがバッチを 1 つ多く持つ偏りを小さくするためである。部分は元のバッチの行の
+ *       割合と補助のヘッドの分母を持つので（{@link Microbatch#ofPiece}）、1 ステップの損失は分けないときと同じになる（違うのは FP32 で足す
+ *       順だけ）。
+ *   <li>割り当てたバッチごとに、入力の形式の行のライターで行を書き、教師を作る（作業スレッドで並列。{@link Teacher}）。アンカーの s は、
+ *       行のストアの番号で引いて混ぜる。
+ *   <li>マイクロバッチごとに、ネットワークの入力・インデックス・損失の入力をページ固定のバッファ（{@link PinnedUploads}）に並べる（作業
+ *       スレッドで並列。{@link Microbatch#staged}）。学習のレーンは、それを非同期に転送するだけにする。
  * </ol>
  *
- * <p>塊と領域は使い回す（{@link #release} で返す）。足りなければ新しく取るので、同時に作る歩の数だけ増えて止まる。塊の blob はページ固定の
- * 領域に取る。領域は前の写しの終わりを待ってから書き直す（{@link UploadRegion#await}）。前線の腕（網の形の
- * {@link PrismShape#frontier()}）では、塊ごとに前線の塊も取る。歩はここで 1 つずつ順に作る。
+ * <p>バッチとバッファは使い回す（{@link #release} で返す）。足りなければ新しく取るので、同時に作るステップの数の分だけ増えて止まる。バッチの
+ * blob はページ固定の領域に取る。バッファは前の転送が終わるのを待ってから書き直す（{@link PinnedUploads#await}）。ステップはここで 1 つずつ
+ * 順に作る。
  */
 final class StepFeed implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StepFeed.class);
 
-  /** 閉じるときに、先読みと作業のスレッドがそれぞれの書きかけの仕事を終えるまで待つ上限。 */
+  /** 閉じるときに、先読みのスレッドと作業スレッドがそれぞれ書きかけの処理を終えるまで待つ時間の上限（秒）。 */
   private static final long STOP_SECONDS = 60;
 
-  /** 1 塊の遷移と手の上限は、トークンの上限のこの分の 1（1 行あたりの平均は約 10 で、超える塊は分ける）。 */
+  /** 1 バッチの遷移と手の数の上限は、トークンの上限をこの値で割ったもの（1 行あたりの平均は約 10。上限を超えるバッチは分ける）。 */
   private static final int TOKENS_PER_TRANSITION = 4;
 
   /**
-   * 1 歩分の微小バッチ。
+   * 1 ステップ分のマイクロバッチ。
    *
-   * @param lanes デバイスの順の微小バッチ（空のデバイスもある）
-   * @param rows 1 歩の行の数
-   * @param denominator 差分整合の分母 B_C（|C| ≥ 2 の行の数、なければ 1）
-   * @param batches 使った塊（学習の後に {@link #release} で返す）
+   * @param lanes デバイスの順に並べたマイクロバッチ（マイクロバッチの無いデバイスもある）
+   * @param rows 1 ステップの行数
+   * @param denominator 差分整合の分母 B_C（|C| ≥ 2 の行の数。無ければ 1）
+   * @param batches 使ったバッチ（学習の後に {@link #release} で返す）
    */
   record Step(List<List<Microbatch>> lanes, int rows, int denominator, List<HostInputs> batches) {}
 
   /**
-   * 詰め方を決めた塊（符号化の前）。
+   * 詰め方を決めたバッチ（符号化の前）。
    *
-   * @param batch 封じた塊
+   * @param batch 計画を確定したバッチ
    * @param rows 行（S の順）
-   * @param ids 行と同じ順の行の貯蔵の番号
+   * @param ids 行と同じ順に並べた、行のストアの番号
    * @param tokens 行ごとの S（昇順）
    */
   private record Piece(HostInputs batch, List<Row> rows, int[] ids, int[] tokens) {
@@ -92,10 +94,10 @@ final class StepFeed implements AutoCloseable {
   }
 
   /**
-   * デバイスに置いた塊。
+   * デバイスに割り当てたバッチ。
    *
-   * @param part 塊（参照の分け方の塊か、その部分）
-   * @param reference 参照の分け方の塊の番号
+   * @param part バッチ（分ける前のバッチか、その部分）
+   * @param reference 分ける前のバッチの番号
    * @param lane デバイス
    */
   private record Placement(Piece part, int reference, int lane) {}
@@ -104,47 +106,33 @@ final class StepFeed implements AutoCloseable {
   private final int lanes;
   private final int budget;
   private final int threads;
-  private final boolean frontier;
-  private final boolean balanced;
+  private final InputFormat format;
   private final BatchPlan.Capacity capacity;
   private final ExecutorService coordinator;
   private final ExecutorService workers;
   private final ThreadLocal<Encoder> encoders;
-  private final Observation observation = new Observation();
+  private final Observation observation;
   private final ConcurrentLinkedQueue<HostInputs> free = new ConcurrentLinkedQueue<>();
 
-  /** 空いた領域。 */
-  private final ConcurrentLinkedQueue<UploadRegion> freeRegions = new ConcurrentLinkedQueue<>();
+  /** 空いたバッファ。 */
+  private final ConcurrentLinkedQueue<PinnedUploads> freeRegions = new ConcurrentLinkedQueue<>();
 
-  /** 取った全ての領域（閉じるときに写しの終わりを待って返す）。 */
-  private final ConcurrentLinkedQueue<UploadRegion> regions = new ConcurrentLinkedQueue<>();
+  /** 取った全てのバッファ（閉じるときに転送が終わるのを待って返す）。 */
+  private final ConcurrentLinkedQueue<PinnedUploads> regions = new ConcurrentLinkedQueue<>();
 
   private final PtNDManager pinned;
   private final LongAdder nanos = new LongAdder();
   private final LongAdder uneven = new LongAdder();
 
   /**
-   * 歩の作り手を作る（塊の数がデバイスの数の倍数でない歩は、最後の塊をデバイスの数までの部分に分ける）。
+   * バッチの数がデバイスの数の倍数でないステップでは、最後のバッチをデバイスの数までの部分に分ける。
    *
-   * @param store 行の貯蔵
-   * @param plan 当てはめの計画
+   * @param store 行のストア
+   * @param plan 学習の計画
    * @param lanes デバイスの数
    * @param threads 読み出しと符号化のスレッドの数
    */
   StepFeed(CohortStore store, FitPlan plan, int lanes, int threads) {
-    this(store, plan, lanes, threads, true);
-  }
-
-  /**
-   * 歩の作り手を作る。最後の塊を分けない作り手は、分けた歩と 1 歩の損失を比べる試験の参照。
-   *
-   * @param store 行の貯蔵
-   * @param plan 当てはめの計画
-   * @param lanes デバイスの数
-   * @param threads 読み出しと符号化のスレッドの数
-   * @param balanced 塊の数がデバイスの数の倍数でない歩の最後の塊を、デバイスの数までの部分に分けるなら true
-   */
-  StepFeed(CohortStore store, FitPlan plan, int lanes, int threads, boolean balanced) {
     if (lanes < 1 || threads < 1) {
       throw new IllegalArgumentException(
           "lanes and threads must be positive: " + lanes + ", " + threads);
@@ -152,31 +140,32 @@ final class StepFeed implements AutoCloseable {
     this.store = store;
     this.lanes = lanes;
     this.threads = threads;
-    this.balanced = balanced;
-    frontier = plan.shape().frontier();
     budget = plan.tokenBudget();
-    capacity = capacity(budget);
+    Variant variant = store.variant();
+    format = InputFormat.of(variant);
+    capacity = capacity(format, budget);
     pinned = (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME);
     coordinator = Executors.newSingleThreadExecutor(daemons("prism-feed-"));
     workers = Executors.newFixedThreadPool(threads, daemons("prism-lrn-"));
-    encoders = ThreadLocal.withInitial(() -> new Encoder(plan));
+    observation = new Observation(variant);
+    encoders = ThreadLocal.withInitial(() -> new Encoder(plan, variant));
   }
 
   /**
-   * 1 歩分の行の微小バッチを、先読みのスレッドで作り始める。
+   * 1 ステップ分の行からマイクロバッチを作る処理を、先読みのスレッドで始める。
    *
    * @param rows 行の番号
    * @param teacher 教師の作り方
-   * @return 1 歩分
+   * @return 1 ステップ分
    */
   CompletableFuture<Step> prepare(int[] rows, Teacher teacher) {
     return CompletableFuture.supplyAsync(() -> step(rows, teacher), coordinator);
   }
 
   /**
-   * 学習を終えた歩の塊を返す。
+   * 学習を終えたステップのバッチとバッファを返す。
    *
-   * @param step 歩
+   * @param step ステップ
    */
   void release(Step step) {
     free.addAll(step.batches());
@@ -188,18 +177,18 @@ final class StepFeed implements AutoCloseable {
   }
 
   /**
-   * 歩を作るのにかかった秒数の和を返す。
+   * ステップを作るのにかかった秒数の和を返す。
    *
-   * @return 秒
+   * @return 秒数
    */
   double seconds() {
     return nanos.sum() / 1e9;
   }
 
   /**
-   * 参照の分け方の塊の数がデバイスの数の倍数でなかった歩の数を返す（分けるかに依らず数える）。
+   * 分ける前のバッチの数がデバイスの数の倍数でなかったステップの数を返す（最後のバッチが 1 つの部分のままになったステップも数える）。
    *
-   * @return 歩の数
+   * @return ステップの数
    */
   int unevenSteps() {
     return uneven.intValue();
@@ -258,11 +247,11 @@ final class StepFeed implements AutoCloseable {
     return step;
   }
 
-  /** 微小バッチのデバイスへの入力を、作業のスレッドで領域に並べる（領域は先読みのスレッドで借りる）。 */
+  /** マイクロバッチのデバイスへの入力を、作業スレッドでバッファに並べる（バッファは先読みのスレッドで借りる）。 */
   private List<Microbatch> stage(List<Microbatch> microbatches) {
     List<CompletableFuture<Microbatch>> staging = new ArrayList<>(microbatches.size());
     for (Microbatch microbatch : microbatches) {
-      UploadRegion region = region();
+      PinnedUploads region = region();
       staging.add(CompletableFuture.supplyAsync(() -> microbatch.staged(region), workers));
     }
     List<Microbatch> staged = new ArrayList<>(staging.size());
@@ -272,28 +261,30 @@ final class StepFeed implements AutoCloseable {
     return staged;
   }
 
-  /** 空いた領域を借りる（なければ新しく取る）。 */
-  private UploadRegion region() {
-    UploadRegion region = freeRegions.poll();
+  /** 空いたバッファを借りる（無ければ新しく取る）。 */
+  private PinnedUploads region() {
+    PinnedUploads region = freeRegions.poll();
     if (region == null) {
-      region = UploadRegion.on(pinned);
+      region = PinnedUploads.on(pinned);
       regions.add(region);
     }
     return region;
   }
 
-  /** 微小バッチを書く。 */
+  /** バッチの行を書いて、マイクロバッチを作る。 */
   private Microbatch encode(Piece piece, Teacher teacher) {
     return encoders.get().encode(piece.batch(), piece.rows(), piece.ids(), teacher);
   }
 
-  /** 行を S の順に並べて塊に詰め、塊の計画を封じる（参照の分け方。ids は rows と同じ順の行の貯蔵の番号）。 */
+  /**
+   * 行を S の順に並べてバッチに詰め、バッチの計画を確定する（分ける前の詰め方）。{@code ids} は {@code rows} と同じ順に並べた、行のストアの
+   * 番号。
+   */
   private List<Piece> pack(Row[] rows, int[] ids) {
     long[] keys = new long[rows.length];
     long total = 0;
     for (int index = 0; index < rows.length; index++) {
-      int tokens =
-          BatchPlan.FIXED_TOKENS + observation.bind(rows[index].observation(), 0).publicEvents();
+      int tokens = format.fixedTokens() + observation.bind(rows[index].observation(), 0).publicEvents();
       keys[index] = (long) tokens << Integer.SIZE | index;
       total += tokens;
     }
@@ -352,18 +343,17 @@ final class StepFeed implements AutoCloseable {
   }
 
   /**
-   * 参照の分け方の塊をデバイスに置く。重い塊から、見積もりの和の最も小さいデバイス（同じなら番号の小さい方）へ置く。塊の数がデバイスの数の
-   * 倍数でない歩を数え、分けるなら最後の塊（S の最も長い行の塊）だけはほかの塊の後に {@link #split} で置く。
+   * 分ける前のバッチをデバイスに割り当てる。重いバッチから順に、見積もりの和が最も小さいデバイス（同じなら番号の小さい方）へ割り当てる。
+   * バッチの数がデバイスの数の倍数でないステップを数え、そのステップでは最後のバッチ（S の最も長い行のバッチ）だけを、ほかのバッチの後に
+   * {@link #split} で割り当てる。
    *
-   * @return 置いた塊（デバイスごとの微小バッチの順はこの順）
+   * @return 割り当てたバッチ（デバイスごとのマイクロバッチはこの順に並ぶ）
    */
   private List<Placement> place(List<Piece> pieces) {
     int whole = pieces.size();
     if (whole % lanes != 0) {
       uneven.increment();
-      if (balanced) {
-        whole--;
-      }
+      whole--;
     }
     Integer[] heavyFirst = new Integer[whole];
     for (int reference = 0; reference < whole; reference++) {
@@ -389,14 +379,15 @@ final class StepFeed implements AutoCloseable {
   }
 
   /**
-   * 塊の行（S の順）を続いた部分に分けて置き、デバイスの見積もりの最大を最も小さくする。デバイスを見積もりの少ない順に並べ、それぞれが残りの
-   * 行の頭から、見積もりの和が上限 T を超えない所まで取る（取らないデバイスもある）。全ての行が入る最小の T（ns）を二分探索で
-   * 求める（T を上げると各デバイスの取る所は後ろへしか動かないので、入るかは T で単調）。部分が 1 つなら元の塊のまま置き、2 つ以上なら元の
-   * 塊は返して部分ごとに塊を取る（どの部分も元の塊の計画に収まった行の一部なので空の塊に入る）。
+   * バッチの行（S の順）を連続した部分に分けて割り当て、デバイスの見積もりの最大を最も小さくする。デバイスを見積もりの少ない順に並べ、
+   * それぞれが残りの行の先頭から、見積もりの和が上限 T を超えない所まで取る（取らないデバイスもある）。全ての行が入る最小の T（ns）を
+   * 二分探索で求める。T を上げると各デバイスが取る範囲の終わりは後ろへしか動かないので、全ての行が入るかどうかは T について単調である。
+   * 部分が 1 つなら元のバッチのまま割り当てる。2 つ以上なら元のバッチは返し、部分ごとにバッチを取る。どの部分も元のバッチの計画に収まった
+   * 行の一部なので、空のバッチに入る。
    *
-   * @param piece 塊
-   * @param reference 参照の分け方の塊の番号
-   * @param load デバイスごとの、ほかの塊の見積もりの和（ns）
+   * @param piece バッチ
+   * @param reference 分ける前のバッチの番号
+   * @param load デバイスごとの、ほかのバッチの見積もりの和（ns）
    * @param placements 部分を足す先
    */
   private void split(Piece piece, int reference, long[] load, List<Placement> placements) {
@@ -454,13 +445,13 @@ final class StepFeed implements AutoCloseable {
   }
 
   /**
-   * 上限 T で、並べたデバイスが順に残りの行の頭から取る所を決める。
+   * 上限 T のもとで、並べたデバイスが順に、残りの行の先頭から取る範囲を決める。
    *
    * @param tokens 行ごとの S（昇順）
    * @param order デバイスの順
    * @param load デバイスごとの見積もりの和（ns）
    * @param limit 上限 T（ns）
-   * @return 順の i 番目のデバイスが取る行の終わり（取る行は前の終わりから）。全ての行が入らなければ null
+   * @return 順に i 番目のデバイスが取る行の終わり（取る行は前のデバイスの終わりから）。全ての行が入らなければ null
    */
   private static int[] cut(int[] tokens, Integer[] order, long[] load, long limit) {
     int[] ends = new int[order.length];
@@ -477,11 +468,11 @@ final class StepFeed implements AutoCloseable {
     return start == tokens.length ? ends : null;
   }
 
-  /** 空いた塊を借りる（なければ新しく取る）。計画は空にして渡す。 */
+  /** 空いたバッチを借りる（無ければ新しく取る）。計画は空にして渡す。 */
   private HostInputs acquire() {
     HostInputs batch = free.poll();
     if (batch == null) {
-      batch = HostInputs.allocate(capacity, frontier, this::pinnedBlob);
+      batch = HostInputs.allocate(format, capacity, this::pinnedBlob);
     }
     batch.plan().clear();
     return batch;
@@ -491,11 +482,11 @@ final class StepFeed implements AutoCloseable {
     return pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer();
   }
 
-  /** トークンの上限から 1 塊の上限を決める（行は全て出来事のない行でも入る数）。 */
-  static BatchPlan.Capacity capacity(int budget) {
+  /** トークンの上限から 1 バッチの上限を決める。行数の上限は、全ての行がイベントの無い行でも入る数にする。 */
+  static BatchPlan.Capacity capacity(InputFormat format, int budget) {
     int transitions = Math.max(Limits.MAX_TRANSITIONS, budget / TOKENS_PER_TRANSITION);
     int actions = Math.max(Limits.MAX_LEGAL_ACTIONS, budget / TOKENS_PER_TRANSITION);
-    return new BatchPlan.Capacity(budget / BatchPlan.FIXED_TOKENS, budget, transitions, actions);
+    return new BatchPlan.Capacity(budget / format.fixedTokens(), budget, transitions, actions);
   }
 
   private static ThreadFactory daemons(String prefix) {
@@ -508,9 +499,9 @@ final class StepFeed implements AutoCloseable {
   }
 
   /**
-   * 先読みを止めてから、領域の最後の写しの終わりを待って塊と領域のページ固定のメモリを返す（学習のレーンを閉じた後に呼ぶ）。先読みの歩は
-   * 作業のスレッドの仕事を待つので、先読みが終わるまで作業のスレッドを止めない。どちらかが上限の間に終わらないか、写しの終わりを待てなければ
-   * （デバイスの失敗）、書きかけの塊や写しが読むかもしれない領域を壊さないようにメモリを返さずに残す。
+   * 先読みを止め、バッファの最後の転送が終わるのを待ってから、バッチとバッファのページ固定のメモリを返す（学習のレーンを閉じた後に呼ぶ）。
+   * 先読みのステップは作業スレッドの処理を待つので、先読みが終わるまで作業スレッドを止めない。どちらかが上限の時間内に終わらないか、転送の
+   * 終わりを待てなければ（デバイスの失敗）、メモリを返さずに残す。書きかけのバッチや、転送が読むかもしれないバッファを壊さないためである。
    */
   @Override
   public void close() {
@@ -526,7 +517,7 @@ final class StepFeed implements AutoCloseable {
           STOP_SECONDS);
       return;
     }
-    for (UploadRegion region : regions) {
+    for (PinnedUploads region : regions) {
       try {
         region.close();
       } catch (RuntimeException failure) {

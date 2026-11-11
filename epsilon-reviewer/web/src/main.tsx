@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { LanguageProvider } from "./language/LanguageProvider";
-// 共通の規則は画面の部品の CSS（sharing.css）の後に置く。同じ強さの規則（.dialog-body p と .share-error p）は後が勝つ。
+// 共通のスタイルは、画面の部品の CSS（sharing.css など）より後に読み込む。詳細度が同じルール（.dialog-body p と .share-error p）では、後に読み込んだ方が優先される。
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(

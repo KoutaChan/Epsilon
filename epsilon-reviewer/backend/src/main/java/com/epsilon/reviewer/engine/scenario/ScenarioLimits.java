@@ -1,13 +1,22 @@
 package com.epsilon.reviewer.engine.scenario;
 
-/** もしもの編集の限界。どのモデル系列の入力にも入る値の幅（Prism の点の欄は 100 点単位の 16 bit の符号つき）。 */
-final class ScenarioLimits {
-  static final int POINT_UNIT = 100;
+import com.epsilon.agent.observe.ObservationSchema;
+import com.epsilon.mahjong.rules.Variant;
 
+/** もしもで変えられる値の範囲。O のフィールドに書ける範囲と同じ。範囲を外れた値は、O を書く前に、変更を確かめるところで断る。 */
+final class ScenarioLimits {
+  static final int POINT_UNIT = ObservationSchema.POINT_UNIT;
+
+  /** 点のフィールド（符号つき 16 bit、点の単位で数える）で表せる範囲。 */
   static final int MIN_SCORE = Short.MIN_VALUE * POINT_UNIT;
+
   static final int MAX_SCORE = Short.MAX_VALUE * POINT_UNIT;
-  static final int MAX_HONBA = 255;
-  static final int MAX_KYOTAKU = 100;
+  static final int MAX_HONBA = ObservationSchema.MAX_HONBA;
 
   private ScenarioLimits() {}
+
+  /** 供託の本数の上限（席の数 × 配給原点 / 供託 1 本の点）。O の供託のフィールドに書ける範囲と同じ。 */
+  static int maxKyotaku(Variant variant) {
+    return variant.seats() * variant.startPoints() / Variant.DEPOSIT;
+  }
 }

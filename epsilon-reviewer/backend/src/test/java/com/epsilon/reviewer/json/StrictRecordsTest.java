@@ -9,7 +9,10 @@ import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 厳密な読み: 知らない欄・型の違い・正確でない整数・入れ子・省いた欄・null・JSON の形。 */
+/**
+ * JSON の厳密な読み取りを確かめる。見るのは、知らないフィールド、型の違い、整数として受け取れない数（小数・範囲外）、入れ子、
+ * 省いたフィールド、null、JSON の形。
+ */
 public class StrictRecordsTest {
   record Item(int index, String tile) {}
 

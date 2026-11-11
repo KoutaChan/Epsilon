@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 1 席の表示の局面。
+ * 1 つの席の表示用の局面。
  *
  * @param hand 伏せた手牌（ツモ牌を除く）。{@link TileCode#order} の順
  * @param draw 見えているツモ牌。無ければ null
@@ -20,7 +20,7 @@ public record PlayerState(
     return new PlayerState(score, riichi, hand, draw, river, melds);
   }
 
-  /** @param hand {@link TileCode#order} の順 */
+  /** @param hand 伏せた手牌。{@link TileCode#order} の順 */
   public PlayerState withHand(List<String> hand, String draw) {
     return new PlayerState(score, riichi, hand, draw, river, melds);
   }

@@ -1,66 +1,40 @@
 package com.epsilon.prism.model;
 
-import com.epsilon.core.GameState;
-import com.epsilon.core.Tile;
-import com.epsilon.prism.input.InputSchema.KeyBlock;
-import com.epsilon.prism.input.InputSchema.Tensor;
+import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.input.InputFormat;
 
 /**
- * 背骨のトークンの型。行の中の並びは宣言の順で、局 1・席 4（相対席の順）・牌 34（正準の色の番号の順）の後に出来事が公開の順に続く。
- * 局・席・牌の 39 個は全ての行にあり、候補層の鍵（{@link KeyBlock} の順）と同じ並び。
+ * バックボーンのトークンの型。行の中のトークンは宣言の順に並ぶ。局が 1 個、席が S 個（相対席の順）、牌が T 個（正準の色の順）で、
+ * その後にイベントが公開された順に続く。S と T は入力の形式が決める。局・席・牌のトークンは全ての行にあり、候補の層のキー
+ * （{@link InputFormat.Keys} の順）と同じ順に並ぶ。
  */
 enum TokenType {
   /** 局（行に 1 個）。埋め込みは 16 次元。 */
-  ROUND(FieldPack.ROUND, Tensor.ROUND_CATEGORY, Tensor.ROUND_SCALAR, 16, 1),
-  /** 席（行に 4 個）。埋め込みは 16 次元。 */
-  SEAT(FieldPack.SEAT, Tensor.SEAT_CATEGORY, Tensor.SEAT_SCALAR, 16, GameState.NUM_PLAYERS),
-  /** 牌（行に 34 個）。埋め込みは 8 次元。 */
-  TILE(FieldPack.TILE, Tensor.TILE_CATEGORY, null, 8, Tile.NUM_TILE_TYPES),
-  /** 出来事（行に 0 個以上）。埋め込みは 8 次元。 */
-  EVENT(FieldPack.EVENT, Tensor.EVENT_CATEGORY, Tensor.EVENT_SCALAR, 8, 0);
+  ROUND(Tensor.ROUND_CATEGORY, Tensor.ROUND_SCALAR, 16),
+  /** 席（行に S 個）。埋め込みは 16 次元。 */
+  SEAT(Tensor.SEAT_CATEGORY, Tensor.SEAT_SCALAR, 16),
+  /** 牌（行に T 個）。埋め込みは 8 次元。 */
+  TILE(Tensor.TILE_CATEGORY, null, 8),
+  /** イベント（行に 0 個以上）。埋め込みは 8 次元。 */
+  EVENT(Tensor.EVENT_CATEGORY, Tensor.EVENT_SCALAR, 8);
 
-  /** 全ての行にあるトークン（局・席・牌）の数。 */
-  static final int FIXED_TOKENS;
+  private static final TokenType[] VALUES = values();
 
-  private static final int[] FIRST;
-
-  static {
-    TokenType[] types = values();
-    FIRST = new int[types.length];
-    int position = 0;
-    for (TokenType type : types) {
-      FIRST[type.ordinal()] = position;
-      position += type.perRow;
-    }
-    FIXED_TOKENS = position;
-    if (FIXED_TOKENS != KeyBlock.KEY_COUNT) {
-      throw new IllegalStateException("fixed tokens must match the candidate keys");
-    }
-  }
-
-  private final FieldPack pack;
   private final Tensor category;
   private final Tensor scalar;
   private final int dimension;
-  private final int perRow;
 
-  TokenType(FieldPack pack, Tensor category, Tensor scalar, int dimension, int perRow) {
-    this.pack = pack;
+  TokenType(Tensor category, Tensor scalar, int dimension) {
     this.category = category;
     this.scalar = scalar;
     this.dimension = dimension;
-    this.perRow = perRow;
-  }
-
-  FieldPack pack() {
-    return pack;
   }
 
   Tensor category() {
     return category;
   }
 
-  /** 数値の区画（牌は null）。 */
+  /** 数値の入力が入る領域（牌には無いので null）。 */
   Tensor scalar() {
     return scalar;
   }
@@ -69,19 +43,34 @@ enum TokenType {
     return dimension;
   }
 
-  /** 行あたりの個数（出来事は 0）。 */
-  int perRow() {
-    return perRow;
+  /** この型のフィールドの並べ方。 */
+  FieldPack pack(InputFormat format) {
+    return FieldPack.of(format).of(this);
   }
 
-  /** 行の中の最初の位置。 */
-  int first() {
-    return FIRST[ordinal()];
+  /** 1 行あたりの決まった個数（イベントは数が決まらないので 0）。 */
+  int perRow(InputFormat format) {
+    return switch (this) {
+      case ROUND -> 1;
+      case SEAT -> format.seats();
+      case TILE -> format.tiles();
+      case EVENT -> 0;
+    };
+  }
+
+  /** 行の中で、この型の最初のトークンがある位置。 */
+  int first(InputFormat format) {
+    return switch (this) {
+      case ROUND -> 0;
+      case SEAT -> 1;
+      case TILE -> 1 + format.seats();
+      case EVENT -> format.fixedTokens();
+    };
   }
 
   /** 型ごとの Linear の入力の幅。 */
-  int inputWidth() {
-    return pack.inputWidth(dimension, scalar == null ? 0 : scalar.width());
+  int inputWidth(InputFormat format) {
+    return pack(format).inputWidth(dimension, scalar == null ? 0 : format.width(scalar));
   }
 
   /** パラメーターの名前の接尾辞。 */
@@ -95,18 +84,18 @@ enum TokenType {
   }
 
   /**
-   * 行の中の位置の型を返す。
+   * 行の中のある位置にあるトークンの型を返す。
    *
-   * @param position 位置
-   * @return 型
+   * @param format 入力の形式
+   * @param position 行の中の位置
+   * @return その位置のトークンの型
    */
-  static TokenType at(int position) {
-    if (position < SEAT.first()) {
-      return ROUND;
+  static TokenType at(InputFormat format, int position) {
+    for (int type = VALUES.length - 1; type > 0; type--) {
+      if (position >= VALUES[type].first(format)) {
+        return VALUES[type];
+      }
     }
-    if (position < TILE.first()) {
-      return SEAT;
-    }
-    return position < EVENT.first() ? TILE : EVENT;
+    return ROUND;
   }
 }

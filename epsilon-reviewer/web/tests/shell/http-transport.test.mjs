@@ -8,7 +8,8 @@ const id = "82b7a497-06a6-42a1-8700-8b4b65e83273";
 const query = { round: 1, eventIndex: 40, seat: 2, edits: { honba: 3 } };
 const record = new Blob(["<mjloggm/>"]);
 
-// 操作ごとの HTTP の道。json は本文の JSON、binary は本文が牌譜そのもの、share は Cookie を送らない。
+// コマンドごとに送るはずの HTTP のメソッドとパス。json があれば本文はその JSON になる。
+// binary なら本文は牌譜のバイト列そのまま。share なら Cookie を送らない。
 const ROUTES = {
   models: { request: {}, method: "GET", path: "/api/models" },
   history: { request: {}, method: "GET", path: "/api/history" },

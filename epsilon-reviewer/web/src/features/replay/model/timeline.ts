@@ -10,12 +10,12 @@ export type ReplayStage = "table" | "round-result" | "match-result";
 export interface ReplayPosition {
   readonly kind: ReplayStage;
   readonly event: EventStep;
-  /** 卓に出す局面の手順（判断があれば最初の判断）。 */
+  /** 卓に出す局面の手順（判断があれば、最初の判断の手順）。 */
   readonly snapshot: ReplayStep;
   readonly decisions: readonly DecisionStep[];
   readonly outcomeEvents: readonly EventStep[];
 }
-/** 局ごとの再生の位置。 */
+/** 再生の位置の列を、局ごとに並べたもの。 */
 export type Timelines = readonly (readonly ReplayPosition[])[];
 
 interface OpenPosition {
@@ -26,14 +26,14 @@ interface OpenPosition {
   outcomeEvents: EventStep[];
 }
 
-/** 全ての局の位置。対局の結果の位置は最後の局だけに付ける。 */
+/** 全ての局について再生の位置を作る。対局の結果の位置は、最後の局にだけ付ける。 */
 export function buildTimelines(model: ReplayModel): Timelines {
   return model.rounds.map((round, index) =>
     buildPlaybackPositions(round.steps, index === model.rounds.length - 1),
   );
 }
 
-// 保存された盤面・判断を借用し、同じ和了機会の複数ロンも一つの精算にまとめる。
+// 保存された局面と判断は、写さずにそのまま使う。同じ牌へのダブロン・トリロンは、1 つの精算の位置にまとめる。
 export function buildPlaybackPositions(
   steps: readonly ReplayStep[],
   includeMatchResult = false,
@@ -93,9 +93,12 @@ export function buildPlaybackPositions(
         continue;
       case "reach_accepted":
       case "dora":
-        // 判断後のドラ・得点変化を、変化前の選択率と同じ盤面にしない。
+        // 今の位置にまだ判断が無ければ、立直の成立やドラの表示をその位置の局面に入れる。
+        // 判断があれば新しい位置を作る。変わる前の選択率と、変わった後の局面を同じ画面に出さないため。
+        // 入れたイベントをきっかけにする判断（大明槓・加槓の後の打牌でめくったドラの次の応答）も、その位置に置く。
         if (current.decisions.length === 0) {
           current.snapshot = step;
+          positionsByEvent.set(step.eventIndex, current);
           continue;
         }
     }

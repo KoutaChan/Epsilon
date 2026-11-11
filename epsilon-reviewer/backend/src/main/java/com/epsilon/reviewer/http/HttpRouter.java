@@ -23,13 +23,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 1 つの handler。守り → API か静的ファイル → 道の表 → 本文の読み → Dispatcher → 応答。owner の道だけが守りの後に Cookie を読み・発行する。
- * 共有の道の失敗の記録は例外の種類の名前だけ（共有の id を残さない）。
+ * 全てのリクエストを受けるハンドラー。ヘッダーを確かめてから、API と静的ファイルに振り分ける。API はルートの表で操作を探し、本文を
+ * 読んで Dispatcher に渡し、応答を書く。Cookie を読む（無ければ発行する）のはオーナーのルートだけで、ヘッダーを確かめた後に行う。
+ * 共有リンクの API で失敗したときは、共有の id を残さないよう、ログには例外のクラス名だけを書く。
  */
 final class HttpRouter implements HttpHandler {
   private static final Logger LOG = LoggerFactory.getLogger(HttpRouter.class);
 
-  /** JSON の要求の本文の上限（バイト）。 */
+  /** JSON のリクエスト本文の上限（バイト）。 */
   static final int JSON_LIMIT = 16 * 1024;
 
   private final Dispatcher dispatcher;
@@ -124,7 +125,7 @@ final class HttpRouter implements HttpHandler {
       throw new ReviewerException(ErrorCode.INVALID_REQUEST, "Expected " + type + " content.");
   }
 
-  /** 本文を上限まで読む。Content-Length があればその大きさの配列へ 1 回で読む。 */
+  /** 本文を上限まで読む。Content-Length があれば、その大きさの配列へ一度に読む。上限を超えたら {@code tooLarge} の例外を投げる。 */
   private static byte[] read(HttpExchange exchange, int limit, ErrorCode tooLarge)
       throws IOException {
     String declared = exchange.getRequestHeaders().getFirst("Content-Length");

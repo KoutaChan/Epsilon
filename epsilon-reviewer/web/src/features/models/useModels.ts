@@ -6,15 +6,20 @@ import type {
 } from "../../../../protocol/model.ts";
 import { api } from "../../api/platform";
 import { useResource, type ResourceState } from "../../hooks/useResource";
-import { availableModel, initialChoice, isAvailable } from "./availability";
+import {
+  availableModel,
+  initialChoice,
+  scenarioAvailable,
+} from "./availability";
 
 export interface Models {
   state: ResourceState<ModelCatalog>;
-  /** 選んだモデル。カタログを読む前と、選んだモデルが使えない時は undefined。 */
+  /** 選んだモデル。カタログを読む前と、選んだモデルが使えないときは undefined。 */
   selected: CatalogModel | undefined;
-  /** modelKey の値で選ぶ。カタログを読む前に選べば、読んだ後も使える限り残る。 */
+  /** モデルをキー（modelKey の値）で選ぶ。カタログを読む前に選んでも、読んだ後にそのモデルが使えれば選択は残る。 */
   select(key: string): void;
-  isAvailable(model: ModelKey): boolean;
+  /** そのバージョンのモデルで作った解析結果の、もしもを解析できるか。カタログを読む前は false。 */
+  scenarioAvailable(written: ModelKey): boolean;
   reload(): void;
 }
 
@@ -27,14 +32,15 @@ export function useModels(): Models {
   }, []);
   const catalog = state.status === "ready" ? state.value : null;
   const available = useCallback(
-    (model: ModelKey) => catalog !== null && isAvailable(catalog, model),
+    (written: ModelKey) =>
+      catalog !== null && scenarioAvailable(catalog, written),
     [catalog],
   );
   return {
     state,
     selected: catalog ? availableModel(catalog, choice) : undefined,
     select,
-    isAvailable: available,
+    scenarioAvailable: available,
     reload,
   };
 }

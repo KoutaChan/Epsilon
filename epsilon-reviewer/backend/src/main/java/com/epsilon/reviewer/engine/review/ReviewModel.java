@@ -1,15 +1,23 @@
 package com.epsilon.reviewer.engine.review;
 
-import com.epsilon.core.Action;
-import com.epsilon.core.PublicObservation;
-import com.epsilon.spi.ReviewEvaluation;
-import java.util.List;
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.agent.policy.Evaluation;
+import com.epsilon.mahjong.rules.Variant;
 
-/** 判断を評価するモデル。model の貸し出しが実装する（engine は model に依らない）。 */
+/**
+ * 判断を評価するモデル。model パッケージの {@code ModelLease} が実装する。このインターフェースを挟むので、engine パッケージは
+ * model パッケージに依存しない。
+ */
 public interface ReviewModel {
-  /** 1 判断を評価する。観測と合法手は呼出中だけ貸す。 */
-  ReviewEvaluation evaluate(PublicObservation observation, List<Action> legal);
+  /** 1 つの判断を評価する。渡す O は呼び出しの間だけ有効。 */
+  Evaluation evaluate(Observation observation);
 
-  /** 価値の評価から表示の確率を作る温度（正）。 */
+  /** 評価が手の価値を持つか。方策を呼ばずに候補を作るとき、値を損失にするか確率にするかもこれで決まる。 */
+  boolean valued();
+
+  /** 価値から表示する確率を作るときの温度（正の値）。 */
   double temperature();
+
+  /** モデルが対応する牌譜のルール（四人打ちか三人打ち）。 */
+  Variant variant();
 }

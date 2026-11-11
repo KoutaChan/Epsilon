@@ -70,7 +70,7 @@ export function Replay({
         : 23;
   const style = {
     "--em-pc-ui-scale": String(viewport.width / 1440),
-    // 候補欄は左家の名札の下から画面の下までに収めるので、横長で縦の短い画面では高さに合わせて小さくする。
+    // 候補欄は、上家（画面の左）の名札の下から画面の下端までに収める。横長で高さの低い画面では、高さに合わせて縮める。
     "--em-pc-candidate-scale": String(
       Math.min(viewport.width / 1440, viewport.height / 760),
     ),
@@ -110,7 +110,7 @@ export function Replay({
             backLabel={backLabel}
             onShare={share}
           />
-          {/* 縦の画面では卓の下の一覧に、もしもの操作を先頭に置き、編集の間は候補の代わりに編集を出す。 */}
+          {/* 縦の画面では、卓の下の一覧の先頭にもしもの操作を置く。編集している間は、候補の代わりに編集の欄を出す。 */}
           {layout === "portrait" && (
             <aside
               className="em-review-detail"
@@ -168,7 +168,7 @@ export function Replay({
             targets={targets}
             layout={layout}
           />
-          {/* 横の画面の編集は卓の外の層に浮かべ、手牌の上の再生の操作より前に出す。 */}
+          {/* 横の画面では、編集の吹き出しを卓の外の層に浮かべ、手牌の上にある再生の操作より手前に出す。 */}
           {stage === "table" &&
             layout !== "portrait" &&
             scenario.editing &&

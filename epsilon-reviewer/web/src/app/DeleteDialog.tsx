@@ -2,7 +2,7 @@ import { Dialog } from "../components/Dialog";
 import { errorKey } from "../language/catalog";
 import { useLanguage } from "../language/LanguageProvider";
 
-/** 解析結果を消す確かめ。開いている間、操作の失敗は知らせの帯でなくこの窓に出す。 */
+/** 解析結果を消す前の確認のダイアログ。開いている間は、操作の失敗をトーストではなくこのダイアログに出す。 */
 export function DeleteDialog({
   busy,
   error,
@@ -12,7 +12,7 @@ export function DeleteDialog({
 }: {
   busy: boolean;
   error: unknown;
-  /** 共有リンクも使えなくなることを書く（Web）。 */
+  /** 共有リンクも使えなくなることを書き添えるか。Web で使う。 */
   shareable: boolean;
   onCancel: () => void;
   onDelete: () => void;

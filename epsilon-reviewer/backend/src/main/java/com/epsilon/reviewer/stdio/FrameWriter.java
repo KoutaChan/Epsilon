@@ -7,7 +7,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 
-/** 枠を書く（FrameReader と同じ形）。答えは仮想スレッドごとに来るので 1 つの書き手で直列にする。 */
+/** フレームを書く（形は FrameReader と同じ）。応答は要求を処理するスレッドごとに届くので、書き込みは synchronized で 1 つずつ行う。 */
 public final class FrameWriter {
   private static final byte[] NO_BODY = new byte[0];
   private final DataOutputStream out;
@@ -18,7 +18,7 @@ public final class FrameWriter {
 
   /**
    * @param body 本文。無ければ null
-   * @throws IllegalArgumentException 頭か本文が上限を超える（何も書かない）
+   * @throws IllegalArgumentException ヘッダーか本文が上限を超える。このときは何も書かない
    */
   public synchronized void write(JsonObject header, byte[] body) throws IOException {
     byte[] json = Json.write(header);

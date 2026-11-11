@@ -1,160 +1,113 @@
 package com.epsilon.prism.collect;
 
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.prism.core.ClassTables;
 import com.epsilon.prism.core.DecisionClass;
-import com.epsilon.prism.eval.Arena;
+import com.epsilon.prism.core.Openness;
+import com.epsilon.prism.noise.NoiseSettings;
+import com.epsilon.prism.noise.RateSettings;
+import com.epsilon.prism.settings.LabelSettings;
+import com.epsilon.prism.settings.PrismSettings;
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
- * 収集の率。評価（{@link Arena}）は {@link #OFF}（行も写しも作らない）。
+ * 収集の率。率の表は判断のクラスの番号の順に並べる。{@link #OFF} は行も写しも作らない率。
  *
- * @param holdoutFraction 保留（HOLDOUT）にする半荘の割合
- * @param labelRateDiscardEarly 脅威のない序盤の打牌のラベル行の率 ρ
- * @param labelRateDiscardMid 脅威のない中盤の打牌のラベル行の率 ρ
- * @param labelRateDiscardLate 脅威のない終盤の打牌のラベル行の率 ρ
- * @param labelRateCommit 確約の類（{@link DecisionClass#commitment()}）のラベル行の率 ρ（{@link DecisionClass#FINAL_END} のほか）
- * @param labelRateFinalEnd オーラスの和了（{@link DecisionClass#FINAL_END}）のラベル行の率 ρ
- * @param maxCandidates 候補集合 C(o) の大きさの上限（双子をまとめた後）
- * @param measureAllDiscards 打牌の類（脅威のない序盤・中盤・終盤）では候補集合を全ての合法手（双子をまとめた代表）にするか
- * @param epsilonC 候補集合に一様な 1 手を足す確率 ε_C
- * @param rollinRateDiscard 打牌の類の中立ロールインの率 β
- * @param rollinRateCommit 確約の類の中立ロールインの率 β
- * @param epsilonQ 逸脱の分布 q の一様な床 ε_q
- * @param rhoBranch 写しの中の逸脱した席の判断をラベル行にする率 ρ_br
- * @param maxCopyLabels 写しごとのラベル行の上限
- * @param rollinOverrides 類（{@link DecisionClass} の番号）ごとの中立ロールインの率の上書き（NaN の類は rollinRateDiscard か
- *     rollinRateCommit。続きの罠が出た鳴きの類だけ写しを厚くするため）
- * @param eventLedger 分岐と主経路のラベルの枠ごとに運の精算の帳簿（{@link EventLedger}）を付けて行に書くか（false なら行は帳簿なし）
+ * @param holdoutFraction ホールドアウト（HOLDOUT）にする半荘の割合
+ * @param labelRates 主経路のラベル行の率 ρ。判断する席の手の形の番号ごとに、クラスの番号の順の表を持つ
+ * @param measureAll クラスごとに、候補集合を全ての合法手（同値な手はまとめて代表 1 つ）にするか
+ * @param maxCandidates 候補集合 C(o) の大きさの上限（同値な手をまとめた後）
+ * @param epsilonC 候補集合に一様に引いた 1 手を足す確率 ε_C
+ * @param rollIn 根の判断のクラスごとの中立ロールイン（クラスの番号の順）
  */
 public record Sampling(
     double holdoutFraction,
-    double labelRateDiscardEarly,
-    double labelRateDiscardMid,
-    double labelRateDiscardLate,
-    double labelRateCommit,
-    double labelRateFinalEnd,
+    double[][] labelRates,
+    boolean[] measureAll,
     int maxCandidates,
-    boolean measureAllDiscards,
     double epsilonC,
-    double rollinRateDiscard,
-    double rollinRateCommit,
-    double epsilonQ,
-    double rhoBranch,
-    int maxCopyLabels,
-    double[] rollinOverrides,
-    boolean eventLedger) {
+    RollInRule[] rollIn) {
   /** 行も写しも作らない（評価）。 */
-  public static final Sampling OFF = new Sampling(0, 0, 0, 0, 0, 0, 2, false, 0, 0, 0, 0, 0, 0);
+  public static final Sampling OFF = off();
 
   public Sampling {
     if (!(holdoutFraction >= 0 && holdoutFraction < 1))
       throw new IllegalArgumentException("holdoutFraction " + holdoutFraction);
-    for (double rate :
-        new double[] {
-          labelRateDiscardEarly,
-          labelRateDiscardMid,
-          labelRateDiscardLate,
-          labelRateCommit,
-          labelRateFinalEnd,
-          epsilonC,
-          rollinRateDiscard,
-          rollinRateCommit,
-          epsilonQ,
-          rhoBranch
-        })
-      if (!(rate >= 0 && rate <= 1)) throw new IllegalArgumentException("Invalid rate " + rate);
-    if (maxCandidates < 2 || maxCandidates > 32 || maxCopyLabels < 0)
-      throw new IllegalArgumentException("Invalid candidate or copy limits");
-    if (rollinOverrides.length != DecisionClass.COUNT)
-      throw new IllegalArgumentException("rollinOverrides needs one rate per class");
-    for (double rate : rollinOverrides)
-      if (!Double.isNaN(rate) && !(rate >= 0 && rate <= 1))
-        throw new IllegalArgumentException("Invalid roll-in rate " + rate);
-    rollinOverrides = rollinOverrides.clone();
+    if (labelRates.length != Openness.COUNT
+        || measureAll.length != DecisionClass.COUNT
+        || rollIn.length != DecisionClass.COUNT)
+      throw new IllegalArgumentException("The class tables need one entry per class");
+    double[][] rates = new double[Openness.COUNT][];
+    for (int hand = 0; hand < Openness.COUNT; hand++) {
+      if (labelRates[hand].length != DecisionClass.COUNT)
+        throw new IllegalArgumentException("The class tables need one entry per class");
+      for (double rate : labelRates[hand]) requireRate(rate);
+      rates[hand] = labelRates[hand].clone();
+    }
+    requireRate(epsilonC);
+    for (RollInRule rule : rollIn) Objects.requireNonNull(rule, "rollIn");
+    if (maxCandidates < 2 || maxCandidates > 32)
+      throw new IllegalArgumentException("Invalid candidate limit " + maxCandidates);
+    labelRates = rates;
+    measureAll = measureAll.clone();
+    rollIn = rollIn.clone();
   }
 
-  /** 類ごとの上書きがなく、帳簿を付けない率。 */
-  public Sampling(
-      double holdoutFraction,
-      double labelRateDiscardEarly,
-      double labelRateDiscardMid,
-      double labelRateDiscardLate,
-      double labelRateCommit,
-      double labelRateFinalEnd,
-      int maxCandidates,
-      boolean measureAllDiscards,
-      double epsilonC,
-      double rollinRateDiscard,
-      double rollinRateCommit,
-      double epsilonQ,
-      double rhoBranch,
-      int maxCopyLabels) {
-    this(
-        holdoutFraction,
-        labelRateDiscardEarly,
-        labelRateDiscardMid,
-        labelRateDiscardLate,
-        labelRateCommit,
-        labelRateFinalEnd,
-        maxCandidates,
-        measureAllDiscards,
-        epsilonC,
-        rollinRateDiscard,
-        rollinRateCommit,
-        epsilonQ,
-        rhoBranch,
-        maxCopyLabels,
-        noOverrides(),
-        false);
+  /** 率が全て 0 で、候補集合の上限が 2、中立ロールインが全て {@link RollInRule#OFF} の率。 */
+  private static Sampling off() {
+    RollInRule[] rollIn = new RollInRule[DecisionClass.COUNT];
+    Arrays.fill(rollIn, RollInRule.OFF);
+    return new Sampling(0, new double[Openness.COUNT][DecisionClass.COUNT], new boolean[DecisionClass.COUNT], 2, 0, rollIn);
   }
 
-  /** この率の、運の精算の帳簿を付けるかだけを替えた写し。 */
-  public Sampling withEventLedger(boolean eventLedger) {
+  /**
+   * 設定から収集の率を作る。主経路のラベル行の率は noise.rates から取り、倍率を掛け、副露している席には open の率を使う。全ての合法手を
+   * 測るクラスは noise.rates の allActions から、中立ロールインは labels から取る。根の判断のクラスごとの写しの設定は、書いたキーだけが
+   * セクションの値を上書きする。そのルール（四人打ち・三人打ち）に無いクラスでは、ラベル行も写しも作らない。
+   */
+  public static Sampling of(PrismSettings settings) {
+    Variant variant = settings.run().variant();
+    LabelSettings labels = settings.labels();
+    NoiseSettings noise = settings.noise();
+    RateSettings rates = noise.rates();
+    double[][] labelRates = new double[Openness.COUNT][DecisionClass.COUNT];
+    boolean[] measureAll = new boolean[DecisionClass.COUNT];
+    RollInRule[] rollIn = new RollInRule[DecisionClass.COUNT];
+    Arrays.fill(rollIn, RollInRule.OFF);
+    for (DecisionClass c : ClassTables.classes(variant)) {
+      for (Openness hand : Openness.values()) labelRates[hand.ordinal()][c.ordinal()] = rates.rate(c, hand);
+      measureAll[c.ordinal()] = rates.allActions().contains(c);
+      double[] later = new double[DecisionClass.COUNT];
+      for (DecisionClass next : DecisionClass.values()) later[next.ordinal()] = labels.copyLabelRate(c, next);
+      rollIn[c.ordinal()] =
+          new RollInRule(labels.rollin().get(c), labels.deviationFloor(c), labels.deviation(c), later, labels.maxCopyLabels(c));
+    }
     return new Sampling(
-        holdoutFraction,
-        labelRateDiscardEarly,
-        labelRateDiscardMid,
-        labelRateDiscardLate,
-        labelRateCommit,
-        labelRateFinalEnd,
-        maxCandidates,
-        measureAllDiscards,
-        epsilonC,
-        rollinRateDiscard,
-        rollinRateCommit,
-        epsilonQ,
-        rhoBranch,
-        maxCopyLabels,
-        rollinOverrides,
-        eventLedger);
+        labels.holdout(), labelRates, measureAll, labels.maxCandidates(), labels.uniformCandidate(), rollIn);
   }
 
-  /** 全ての類で上書きしない表（NaN）。 */
-  public static double[] noOverrides() {
-    double[] rates = new double[DecisionClass.COUNT];
-    Arrays.fill(rates, Double.NaN);
-    return rates;
-  }
-
-  /** 類 c の判断で全ての合法手を測るか（measureAllDiscards のときの打牌の類）。 */
+  /** クラス {@code c} の判断で全ての合法手を測るか。 */
   public boolean measuresAll(DecisionClass c) {
-    return measureAllDiscards && !c.commitment();
+    return measureAll[c.ordinal()];
   }
 
-  /** 類 c のラベル行の率 ρ_c。 */
-  public double labelRate(DecisionClass c) {
-    return switch (c) {
-      case DISCARD_EARLY -> labelRateDiscardEarly;
-      case DISCARD_MID -> labelRateDiscardMid;
-      case DISCARD_LATE -> labelRateDiscardLate;
-      case THREAT, RIICHI, CALL, KAN, END -> labelRateCommit;
-      case FINAL_END -> labelRateFinalEnd;
-    };
+  /**
+   * 主経路の判断のラベル行の率 ρ。
+   *
+   * @param c 判断のクラス
+   * @param hand 判断する席の手の形
+   */
+  public double labelRate(DecisionClass c, Openness hand) {
+    return labelRates[hand.ordinal()][c.ordinal()];
   }
 
-  /** 類 c の中立ロールインの率 β_c。 */
-  public double rollinRate(DecisionClass c) {
-    double override = rollinOverrides[c.ordinal()];
-    if (!Double.isNaN(override)) return override;
-    return c.commitment() ? rollinRateCommit : rollinRateDiscard;
+  /** 根の判断のクラス {@code root} の中立ロールイン。 */
+  public RollInRule rollIn(DecisionClass root) {
+    return rollIn[root.ordinal()];
+  }
+
+  private static void requireRate(double rate) {
+    if (!(rate >= 0 && rate <= 1)) throw new IllegalArgumentException("Invalid rate " + rate);
   }
 }

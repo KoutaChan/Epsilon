@@ -15,9 +15,10 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 学習の RMSNorm の式（{@link RmsNormKernels}。参照の実装 {@link ReferenceAttention} は FP64）が、eager の道（{@link Context#norm} と同じ
- * cast → rms_norm（FP32）→ cast と自動微分）と同じ値と勾配になること（CPU）。利得の勾配は塊の部分和を足した値で比べる。行の数は利得の
- * 塊の境目を含み、行ごとに大きさを変え、全てが 0 の行を含む。比べ方と入力は {@link HipNormGpuTest} と共にする。
+ * 学習で使う RMSNorm の式（{@link RmsNormKernels}）を CPU でテストする。FP64 で計算する参照実装 {@link ReferenceAttention} が、eager の
+ * パス（{@link Context#norm} と同じ cast → rms_norm（FP32）→ cast と自動微分）と同じ値と勾配になることを確かめる。ゲインの勾配は、
+ * 行のタイルごとの部分和を足した値で比べる。行の数には、タイルの境界をまたぐものも含める。行ごとに値の大きさを変え、全ての値が 0 の行も
+ * 入れる。比べ方と入力は {@link HipNormGpuTest} と共通にする。
  */
 public class ReferenceNormTest {
   private static final Logger log = LoggerFactory.getLogger(ReferenceNormTest.class);
@@ -29,13 +30,13 @@ public class ReferenceNormTest {
   };
   private static final int[] WIDTHS = {32, 256};
 
-  /** 入力（x・dy は配列の型で表せる値）。 */
+  /** 入力。x と dy は、比べる配列の型で表せる値にしてある。 */
   record Inputs(NormShape shape, float[] input, float[] gain, float[] gradOut) {}
 
-  /** 出力（ホストの FP32）。gradGain は塊の部分和を足した [width]。 */
+  /** ホストに読み出した FP32 の出力。{@code gradGain} は、行のタイルごとの部分和を足した [width]。 */
   record Outputs(float[] out, float[] gradInput, float[] gradGain) {}
 
-  /** 比べた差: BF16 は出力と入力の勾配のビットの一致の割合と最大の ulp、全ての型で相対の L2 の差。 */
+  /** 2 つのパスの差。BF16 では、出力と入力の勾配について、値が一致する割合と ulp の差の最大を見る。相対 L2 の差はどの型でも見る。 */
   record Difference(
       double outEqual,
       int outUlps,
@@ -85,8 +86,9 @@ public class ReferenceNormTest {
   }
 
   /**
-   * 両方の道の差の門。BF16: 出力は 99.9% 以上がビットで同じで差は 1 ulp まで、入力の勾配（打ち消しのある式）は 99% 以上が同じで相対の
-   * L2 の差 1e-3 まで、利得の勾配は FP32 の和の順の幅 1e-5 まで。FP32: 全てを相対の差で見る。
+   * 2 つのパスの差がしきい値に収まることを確かめる。BF16 では、出力は 99.9% 以上の要素が同じ値で、差は 1 ulp まで。入力の勾配は
+   * 桁落ちのある式なので、99% 以上が同じ値で、相対 L2 の差が 1e-3 まで。FP32 では、出力（1e-6 まで）と入力の勾配（1e-5 まで）を
+   * 相対の差で見る。ゲインの勾配はどちらの型でも、FP32 の和の順の違いで生じる相対の差 1e-5 まで。
    */
   static void assertWithin(Difference d, DataType type, String label) {
     if (type == DataType.BFLOAT16) {
@@ -102,8 +104,8 @@ public class ReferenceNormTest {
   }
 
   /**
-   * 乱数の入力。行 i の x は N(0, 1) に行の大きさ 10^u（u は −2〜1 の一様）を掛け、行 0 は全てが 0（r = 1/√ε）。dy は N(0, 1)、利得は
-   * 1 + 0.3·N(0, 1)。x と dy は型 type に丸めた値。
+   * 入力を乱数で作る。行 i の x は、N(0, 1) に行ごとの大きさ 10^u（u は −2〜1 の一様分布）を掛けた値。行 0 は全てが 0 で、r = 1/√ε に
+   * なる。dy は N(0, 1)、ゲインは 1 + 0.3·N(0, 1)。x と dy は型 {@code type} に丸める。
    */
   static Inputs generate(NormShape shape, DataType type, long seed) {
     Random random = new Random(seed);
@@ -125,7 +127,7 @@ public class ReferenceNormTest {
     return new Inputs(shape, x, gain, dy);
   }
 
-  /** eager の道: x を FP32 に変換 → rms_norm（FP32 の利得）→ 型に変換し、Σ y·dy から自動微分で勾配を取る。 */
+  /** eager のパスで計算する。x を FP32 に変換し、rms_norm（ゲインは FP32）を通して元の型に戻す。勾配は Σ y·dy から自動微分で求める。 */
   static Outputs eager(NDManager manager, Inputs in, DataType type) {
     try (NDManager scope = manager.newSubManager();
         GradientCollector collector = scope.getEngine().newGradientCollector()) {
@@ -144,7 +146,7 @@ public class ReferenceNormTest {
     }
   }
 
-  /** 演算の道: 順伝播と逆伝播を演算で行い、利得の勾配の部分和を塊の順に足す（{@link AttentionTape} と同じ）。 */
+  /** 演算のパスで計算する。順伝播と逆伝播を {@code kernels} で行い、ゲインの勾配の部分和をタイルの順に足す（{@link AttentionTape} と同じ）。 */
   static Outputs kernels(NDManager manager, RmsNormKernels kernels, Inputs in, DataType type) {
     try (NDManager scope = manager.newSubManager()) {
       NormShape d = in.shape();
@@ -173,7 +175,7 @@ public class ReferenceNormTest {
         relative(expected.gradGain(), actual.gradGain()));
   }
 
-  /** ビットで同じ要素の割合（+0 と −0 は同じとみなす）。 */
+  /** 値が等しい要素の割合。== で比べるので、+0 と −0 は等しいとみなす。 */
   static double equal(float[] expected, float[] actual) {
     int same = 0;
     for (int i = 0; i < expected.length; i++) {
@@ -185,7 +187,7 @@ public class ReferenceNormTest {
     return (double) same / expected.length;
   }
 
-  /** BF16 の値どうしの最大の ulp の差（BF16 の 16 bit を符号つきの順序の整数にして比べる）。 */
+  /** BF16 の値どうしの ulp の差の最大。BF16 の 16 bit を、値の大小と同じ順に並ぶ符号付きの整数に直して比べる。 */
   static int ulps(float[] expected, float[] actual) {
     int worst = 0;
     for (int i = 0; i < expected.length; i++) {

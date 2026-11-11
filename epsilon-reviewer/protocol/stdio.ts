@@ -1,52 +1,41 @@
-import type { StdioCommandName } from "./commands.ts";
 import type { ErrorBody } from "./errors.ts";
 
-// Electron のメインプロセスと Java の子プロセス（1 つ）の間の枠。HTTP もポートも使わない。
-// 1 枠 = [頭の長さ u32 BE][頭: UTF-8 の JSON][本文の長さ u32 BE][本文のバイト列]。本文が無い枠は本文の長さ 0。
-// stdin は Electron → Java、stdout は Java → Electron で、stdout には枠だけを流す（Java の記録はファイルへ）。
-// Java は stdin の終わりで解析を止め、モデルを閉じて終わる（終了の状態 0）。
+// Electron のメインプロセスと Java の子プロセス（1 つ）がやり取りするフレームの形。HTTP もポートも使わない。
+// 1 フレーム = [ヘッダーの長さ u32 BE][ヘッダー: UTF-8 の JSON][本文の長さ u32 BE][本文のバイト列]。
+// 本文が無いフレームは、本文の長さを 0 にする。
+// Electron から Java へは stdin、Java から Electron へは stdout で送る。stdout にはフレームしか書かない（Java のログはファイルへ書く）。
+// Java は stdin が閉じたら解析を止め、モデルを閉じて終了する（終了コード 0）。
 
-/** 頭の JSON の上限（バイト）。history の答えは結果の数だけ伸びる。 */
+/** ヘッダーの JSON の上限（バイト）。履歴の応答は、解析結果が多いほど長くなる。 */
 export const FRAME_HEADER_LIMIT = 16 * 1024 * 1024;
 
 /** 本文の上限（バイト）。牌譜は 16 MiB まで。 */
 export const FRAME_BODY_LIMIT = 32 * 1024 * 1024;
 
 /**
- * Electron → Java の要求。id は Electron が付ける正の整数で、子プロセスの間は重ならない。本文は importBytes の
- * 牌譜のバイト列だけ。
- */
-export interface StdioRequest {
-  id: number;
-  command: StdioCommandName;
-  request: object;
-}
-
-/**
- * Java → Electron の答え。答えの順は要求の順と限らない。document の操作（result）は response を持たず、
- * 本文が保存した gzip の文書。empty の操作は response を持たない。
+ * Java から Electron への応答。応答は要求の順に返るとは限らない。本文の種類が document の操作（result）は、
+ * 応答に response が無く、保存した gzip の文書が本文になる。本文の種類が empty の操作も、応答に response が無い。
  */
 export type StdioReply =
   | { id: number; ok: true; response?: unknown }
   | { id: number; ok: false; error: ErrorBody };
 
 /**
- * Java → Electron の知らせ。ready は保存先とカタログを開いた後に 1 回（モデルはまだ開かない）。failed は起動に
- * 失敗した時に 1 回だけ送り、状態 1 で終わる。
+ * Java から Electron へのイベント。ready は、保存先とカタログを開いた後に 1 回だけ送る（モデルはまだ開いていない）。
+ * failed は、起動に失敗したときに 1 回だけ送り、その後は終了コード 1 で終了する。
  */
 export type StdioEvent =
   { event: "ready" } | { event: "failed"; error: ErrorBody };
 
-export type StdioMessage = StdioReply | StdioEvent;
-
 /**
- * 子プロセスへ渡す環境変数の名前。パスは日本語を含み得るので引数でなく環境変数で渡し、引数は ASCII に保つ。
+ * 子プロセスへ渡す環境変数の名前。パスには日本語が入りうるので、パスはコマンドラインの引数ではなく環境変数で渡し、
+ * 引数は ASCII だけにする。
  */
 export const ENGINE_ENV = {
-  /** 解析結果の保存先のフォルダー（デスクトップの「保存先」）。 */
+  /** 解析結果を保存するフォルダー（デスクトップ版の「保存先」）。 */
   data: "EPSILON_REVIEWER_DATA",
-  /** 同梱の models.json。 */
+  /** 同梱の models.json のパス。 */
   models: "EPSILON_REVIEWER_MODELS",
-  /** Java の記録のフォルダー。 */
+  /** Java がログを書くフォルダー。 */
   logs: "EPSILON_REVIEWER_LOGS",
 } as const;

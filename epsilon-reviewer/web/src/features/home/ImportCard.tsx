@@ -4,11 +4,11 @@ import { useLanguage } from "../../language/LanguageProvider";
 import { ModelSelect } from "../models/ModelSelect";
 import type { Models } from "../models/useModels";
 
-/** 選べる牌譜のファイル（mjai・天鳳 XML・雀魂。gzip も可）。 */
+/** ファイルの選択で選べる牌譜の拡張子（mjai・天鳳の XML・雀魂。gzip で圧縮したものも選べる）。 */
 const RECORD_FILE_TYPES =
   ".jsonl,.mjson,.mjai,.gz,.xml,.json,.bin,.dat,.majsoul";
 
-/** 天鳳の URL（モデルが要る）か牌譜のファイル（選ぶ・落とす）で取り込む。 */
+/** 牌譜を取り込むカード。天鳳の URL（モデルを選んでいるときだけ）か、牌譜のファイル（選ぶかドロップする）から取り込む。 */
 export function ImportCard({
   models,
   busy,

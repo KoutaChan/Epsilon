@@ -13,7 +13,7 @@ import {
 import type { Scenario } from "./scenario/useScenario.ts";
 import type { Playback } from "./usePlayback.ts";
 
-/** 押せる所の共通の印。変えた所は薄紫、選んでいる所は白の縁。編集の吹き出しは data-scenario-key で位置を合わせる。 */
+/** 押せる所に共通の属性。変えた所は薄紫、選んでいる所は白の縁で示す。編集の吹き出しは、data-scenario-key の属性を目印に位置を合わせる。 */
 function useTargetState(
   scenario: Scenario,
   target: ScenarioTarget,
@@ -93,8 +93,9 @@ function TargetShape({
 }
 
 /**
- * 3D の卓の上に、中央の点数・河の牌・自分の手牌の輪郭を当たり枠として重ねる。形は描画が送る。手牌は卓の上に
- * 描くので最後に重ねる。
+ * 3D の卓の上に、中央の点数・河の牌・自分の手牌の輪郭を、当たり判定として重ねる。輪郭の形は描画から受け取る。
+ * 手牌は卓の絵より手前に描くので、手牌の輪郭もいちばん後に重ねる。
+ * 位置や席を変えた最初の描画では、形はまだ前の局面のものなので、今の局面に牌の無い形は出さない。
  */
 export function ScenarioTargets({
   scenario,
@@ -128,7 +129,7 @@ export function ScenarioTargets({
           label={label(
             t("scenario.score", {
               name: name(shape.seat),
-              seat: seatName(shape.seat, round.dealer, t),
+              seat: seatName(shape.seat, round, t),
             }),
             t("scenario.points", {
               points:
@@ -162,8 +163,9 @@ export function ScenarioTargets({
             />
           );
         })}
-      {canEditHand(snapshot, seat, decision) &&
-        targets.hands.map((shape) => {
+      {targets.hands
+        .filter((shape) => canEditHand(snapshot, seat, decision, shape.index))
+        .map((shape) => {
           const draw = shape.index === viewer.hand.length;
           return (
             <TargetShape

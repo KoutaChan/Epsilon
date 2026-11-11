@@ -5,7 +5,7 @@ import type { EventSnapshot, PlayerSnapshot, Snapshot } from "./types.ts";
 export interface RecentReplayEvent {
   readonly kind: ReplayStage;
   readonly event: EventSnapshot;
-  /** 加槓の直前の局面。他の出来事は null。 */
+  /** 加槓の直前の局面。ほかのイベントでは null。 */
   readonly previous: Snapshot | null;
 }
 
@@ -25,7 +25,7 @@ const EVENT_MESSAGES = {
   ryukyoku: "event.ryukyoku",
 } as const satisfies Record<string, MessageKey>;
 
-// 表示する実イベントから牌を取り出す。加槓は直前の局面と比較して対象の副露を特定する。
+// 表示するイベントから牌を取り出す。加槓では、直前の局面と比べて、どの副露に牌を足したかを調べる。
 export function describeReplayEvent(
   step: EventSnapshot,
   previous: Snapshot | null,
@@ -67,11 +67,14 @@ export function describeReplayEvent(
     case "pon":
     case "daiminkan":
     case "ankan":
+      // 抜いた北は副露の列で面子より後ろに並ぶので、北を除いた最後の副露が新しい面子になる。
       return {
         player,
         action: `action.${step.eventType}`,
-        tiles: player!.melds.at(-1)!.tiles,
+        tiles: player!.melds.filter((meld) => meld.type !== "NUKI").at(-1)!.tiles,
       };
+    case "kita":
+      return { player, action: "action.nuki", tiles: ["N"] };
     case "kakan": {
       const before = previous!.players[step.actor]!.melds;
       const meld = player!.melds.find(

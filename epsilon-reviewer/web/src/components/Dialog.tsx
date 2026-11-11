@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { useLanguage } from "../language/LanguageProvider";
 
-/** モーダルの窓。開いた時に showModal し、閉じたら前のフォーカスへ戻す。Esc と背景の押下は onClose。 */
+/** モーダルのダイアログ。表示したときに showModal で開き、閉じたらフォーカスを元の要素へ戻す。Esc と背景のクリックでは onClose を呼ぶ。 */
 export function Dialog({
   title,
   children,

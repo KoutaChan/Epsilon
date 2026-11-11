@@ -1,15 +1,17 @@
-// 学習の RMSNorm の順伝播と逆伝播（BF16 の入出力、FP32 の統計・利得・勾配）。GPU の学習で、eager の EncoderLayer・RmsNorm の
+// 学習用の RMSNorm の順伝播と逆伝播（入出力は BF16、統計・ゲイン・勾配は FP32）。GPU で学習するとき、eager の EncoderLayer・RmsNorm が行う
 // cast → rms_norm（FP32）→ cast の 3 段の代わりに使う。数式は同じ（⌊·⌉ は BF16 への最近接偶数の 1 回の丸め。c10::BFloat16 と同じ）:
 //
 //   r_i = rsqrt(Σ_j x_ij² / width + ε)、y_ij = ⌊(x_ij·r_i)·g_j⌉
 //   x̂_ij = x_ij·r_i、m_i = Σ_j (dy_ij·g_j)·x̂_ij / width、dx_ij = ⌊r_i·(dy_ij·g_j − x̂_ij·m_i)⌉、dg_j = Σ_i dy_ij·x̂_ij
 //
-// 1 つの波が 1 行を受け持ち、lane l は 8 列の塊 l + 32k（k < kChunks、列 8(l + 32k) < width のものだけ）を 16 バイトで読み書きする。
-// 行の和（Σx² と m）は lane の中を塊・列の順に足してから波の xor の木（waveSum）で足すので、行の中で順が決まり、行の値（y・r・dx）は
-// 塊の組み方と行の数に依らない。
-// 逆伝播の作業群は kNormGainRows 行の塊を受け持ち、波 w が塊の行 w, w + 8, … を順に回して dg の lane の部分和を持つ。波の部分和は LDS で
-// 波の順に足し、塊ごとの部分和 [塊, width] に書く（呼び手が塊の順に足す。原子的な加算なしの決まった順の 2 段の和）。
-// 検査つきの組み立てでは全ての全体メモリの読み書きを照らす。
+// 1 つのウェーブが 1 行を受け持ち、lane l は 8 列のチャンク l + 32k（k < kChunks。列 8(l + 32k) < width のものだけ）を
+// 16 バイトずつ読み書きする。
+// 行の和（Σx² と m）は、lane の中でチャンク・列の順に足してから、ウェーブの xor の木（waveSum）で足す。行の中で足す順が決まるので、行の
+// 値（y・r・dx）はバッチの組み方と行の数に依らない。
+// 逆伝播のワークグループは kNormGainRows 行のブロックを受け持ち、ウェーブ w がブロックの行 w, w + 8, … を順に回して、dg の lane ごとの
+// 部分和を持つ。ウェーブの部分和は LDS でウェーブの順に足し、ブロックごとの部分和 [ブロック, width] に書く。呼び出し元はそれをブロックの
+// 順に足す（アトミックな加算を使わない、順の決まった 2 段の和）。
+// 検査つきのビルドでは、全てのグローバルメモリの読み書きが配列の範囲の中にあるかを確かめる。
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -22,12 +24,12 @@ namespace {
 
 constexpr int kThreads = 256;
 constexpr int kWaves = kThreads / kWave;
-constexpr int kChunk = 8;                                        // lane が一度に読み書きする列（BF16 の 16 バイト）
-constexpr int kMaxChunks = kNormMaxWidth / (kWave * kChunk);     // lane あたりの塊の上限
+constexpr int kChunk = 8;                                        // lane が一度に読み書きする列の数（BF16 の 16 バイト）
+constexpr int kMaxChunks = kNormMaxWidth / (kWave * kChunk);     // lane あたりのチャンクの数の上限
 static_assert(kMaxChunks * kWave * kChunk == kNormMaxWidth, "the widest row is a whole number of chunks per lane");
 static_assert(kNormGainRows % kWaves == 0, "every wave walks the same number of rows of a full gain block");
 
-// 検査つきの組み立ての上限つきの配列（NormForward・NormBackward と同じ並び）。
+// 検査つきのビルドで使う、上限つきの配列（NormForward・NormBackward と同じ並び）。
 struct ForwardArgs {
   NormShape shape;
   Span<const uint16_t> input;
@@ -46,12 +48,12 @@ struct BackwardArgs {
   Span<float> gradGain;
 };
 
-// lane の塊 k の先頭の列。
+// lane のチャンク k の先頭の列。
 __device__ __forceinline__ int column(int lane, int k) {
   return kChunk * (lane + kWave * k);
 }
 
-// lane の塊 k が行の中にあれば true（width は 8 の倍数なので、塊は丸ごと中か丸ごと外）。
+// lane のチャンク k が行の中にあれば true（width は 8 の倍数なので、チャンクは丸ごと中か丸ごと外）。
 __device__ __forceinline__ bool owns(int lane, int k, int width) {
   return column(lane, k) < width;
 }
@@ -66,7 +68,7 @@ __device__ __forceinline__ void store8(Span<uint16_t> span, size_t at, const flo
   *reinterpret_cast<u32x4*>(span.data + bounds.index(at, kChunk, span.limit)) = pack8(values);
 }
 
-// 利得の 8 列 [col, col + 8)。
+// ゲインの 8 列 [col, col + 8) を読む。
 __device__ __forceinline__ void loadGain(Span<const float> gain, int col, float (&values)[8], Bounds& bounds) {
   const size_t at = bounds.index(col, kChunk, gain.limit);
   const f32x4 lo = *reinterpret_cast<const f32x4*>(gain.data + at);
@@ -78,7 +80,7 @@ __device__ __forceinline__ void loadGain(Span<const float> gain, int col, float 
   }
 }
 
-// 順伝播（作業群は 8 行、波が 1 行）。
+// 順伝播（ワークグループは 8 行、ウェーブは 1 行を受け持つ）。
 template <int kChunks>
 __global__ __launch_bounds__(kThreads) void normForwardKernel(ForwardArgs args) {
   Bounds bounds;
@@ -125,7 +127,8 @@ __global__ __launch_bounds__(kThreads) void normForwardKernel(ForwardArgs args) 
   bounds.trap();
 }
 
-// 逆伝播（作業群は kNormGainRows 行の塊、波は塊の行を 8 行おきに）。dy·g は m の和と dx で同じ式を 2 回計算する（同じビット）。
+// 逆伝播（ワークグループは kNormGainRows 行のブロックを受け持ち、ウェーブはブロックの行を 8 行おきに回す）。dy·g は m の和と dx の 2 か所で
+// 同じ式で計算する（ビットで同じ値になる）。
 template <int kChunks>
 __global__ __launch_bounds__(kThreads) void normBackwardKernel(BackwardArgs args) {
   __shared__ float partial[kWaves][kChunks * kWave * kChunk];

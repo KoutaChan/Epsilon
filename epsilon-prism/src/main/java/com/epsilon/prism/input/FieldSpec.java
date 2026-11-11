@@ -1,96 +1,116 @@
 package com.epsilon.prism.input;
 
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.rules.Vocabulary;
+import com.epsilon.prism.FourPlayerFormat;
 import java.util.Objects;
 
 /**
- * 入力の欄の書き方・語彙・繰り返し。値 0 は常に「なし・0 個・偽」。
+ * 入力のフィールドの値の書き方・語彙・繰り返し。値 0 は常に「なし・0 個・偽」を表す。
  *
- * @param coding 値の書き方（書き手が {@link Ids} のどの変換を通すか）。指紋に入るので、語彙が同じでも書き方を変えれば指紋が変わる
- * @param vocabulary 値の数（0 を含む）
- * @param repeats 同じ語彙を並べる数（席・牌ごと）。繰り返しごとに別の名前空間を持つ
- * @param values 値の enum（{@link Coding#ENUM} の欄だけ。ほかは null）。指紋はここから値の enum の名前と順を集めるので、一覧を手で書かない
+ * @param coding 値の書き方（ライターが {@link Ids} のどの変換を通すか）。フィンガープリントに入るので、語彙が同じでも書き方を変えれば
+ *     フィンガープリントが変わる
+ * @param vocabulary 取りうる値の数（0 を含む）
+ * @param repeats 同じ語彙を並べる数（席ごと・牌ごとなど）。繰り返しごとに別の名前空間を持つ
+ * @param values 値の語彙（{@link Coding#ENUM} のフィールドだけ。ほかは null）。フィンガープリントは値の enum の名前と並びをここから集める
+ *     ので、一覧を手で書かない
  */
-public record FieldSpec(Coding coding, int vocabulary, int repeats, Class<? extends Enum<?>> values) {
+public record FieldSpec(Coding coding, int vocabulary, int repeats, Vocabulary<?> values) {
+
+  /** 語彙の上限。値は u8 で送るので、語彙はこれ以下にする。 */
+  public static final int MAX_VOCABULARY = 256;
+
+  /** 語彙で値の範囲が決まるフィールド（埋め込むフィールドと、関係の属性）。 */
+  public interface BoundedField {
+
+    /**
+     * 語彙と繰り返しを返す。
+     *
+     * @return 語彙と繰り返し
+     */
+    FieldSpec spec();
+  }
 
   /** 値の書き方。 */
   public enum Coding {
-    /** 2 値（0 は偽、1 は真）。 */
+    /** 真偽の 2 値（0 は偽、1 は真）。 */
     FLAG,
-    /** 0〜max の数え上げ（値はそのまま、0 は 0 個）。 */
+    /** 0〜max の個数（値はそのまま書き、0 は 0 個）。 */
     COUNT,
-    /** n 種の 0 始まりの番号（{@link Ids#tile}・{@link Ids#seat}・{@link Ids#index} で番号 + 1、0 はなし）。 */
+    /** n 種類の 0 始まりの番号（{@link Ids#tile}・{@link Ids#seat}・{@link Ids#index} で番号 + 1 を書き、0 はなし）。 */
     ID,
-    /** enum の値（{@link Ids#of} で ordinal + 1、0 はなし）。 */
+    /** enum の値（{@link Ids#of} で語彙の中の位置 + 1 を書き、0 はなし）。 */
     ENUM
   }
 
   /**
-   * 書き方・語彙・繰り返しを確かめる。
+   * 書き方・語彙・繰り返しが正しいか確かめる。
    *
-   * @throws IllegalArgumentException 語彙が 2〜{@link InputSchema#MAX_VOCABULARY} の外か、繰り返しが 1 未満か、2 値の語彙が 2 でない
-   *     か、値の enum が enum の欄だけにないか、値の enum の定数の数と語彙が合わないとき
+   * @throws IllegalArgumentException 語彙が 2〜{@link #MAX_VOCABULARY} の外のとき、繰り返しが 1 未満のとき、真偽の 2 値なのに語彙が
+   *     2 でないとき、enum のフィールドなのに値の語彙が無いか enum でないのに値の語彙があるとき、または値の語彙の大きさが語彙と
+   *     合わないとき
    */
   public FieldSpec {
     Objects.requireNonNull(coding, "coding");
-    if (vocabulary < 2 || vocabulary > InputSchema.MAX_VOCABULARY || repeats < 1) {
+    if (vocabulary < 2 || vocabulary > MAX_VOCABULARY || repeats < 1) {
       throw new IllegalArgumentException("invalid field spec: " + vocabulary + " x " + repeats);
     }
     if (coding == Coding.FLAG && vocabulary != 2) {
       throw new IllegalArgumentException("flag vocabulary must be 2: " + vocabulary);
     }
     if ((coding == Coding.ENUM) != (values != null)) {
-      throw new IllegalArgumentException("value enum must be given exactly for enum fields");
+      throw new IllegalArgumentException("value vocabulary must be given exactly for enum fields");
     }
-    if (values != null && values.getEnumConstants().length + 1 != vocabulary) {
-      throw new IllegalArgumentException("vocabulary does not match " + values.getName());
+    if (values != null && values.size() + 1 != vocabulary) {
+      throw new IllegalArgumentException("vocabulary does not match " + values.type().getName());
     }
   }
 
-  /**
-   * 2 値の欄（0 は偽、1 は真）。
-   *
-   * @return 語彙 2
-   */
+  /** 真偽の 2 値のフィールド（語彙 2）。 */
   public static FieldSpec flag() {
     return new FieldSpec(Coding.FLAG, 2, 1, null);
   }
 
-  /**
-   * 0〜max の数え上げ（値はそのまま、0 は 0 個）。
-   *
-   * @param max 最大の数
-   * @return 語彙 max + 1
-   */
+  /** 0〜max の個数のフィールド（語彙 max + 1）。 */
   public static FieldSpec count(int max) {
     return new FieldSpec(Coding.COUNT, max + 1, 1, null);
   }
 
-  /**
-   * n 種の番号（値は番号 + 1、0 はなし）。牌・席・出来事の番号・向聴に使う。
-   *
-   * @param kinds 番号の種類の数
-   * @return 語彙 kinds + 1
-   */
+  /** n 種類の番号のフィールド（値は番号 + 1、0 はなし。語彙は種類の数 + 1）。牌・席・イベントの番号・向聴に使う。 */
   public static FieldSpec ids(int kinds) {
     return new FieldSpec(Coding.ID, kinds + 1, 1, null);
   }
 
   /**
-   * enum の値（ordinal + 1、0 はなし）。
+   * 四人打ちの語彙で値を書く enum のフィールドを返す。フィールドの enum の初期化から呼ばれるので、入力の形式のクラスの初期化には頼らない
+   * （頼ると、フィールドの enum を先に使ったときに初期化が循環する）。
    *
    * @param type 値の enum
-   * @return 語彙は定数の数 + 1
+   * @return フィールドの仕様
    */
-  public static FieldSpec of(Class<? extends Enum<?>> type) {
-    return new FieldSpec(Coding.ENUM, type.getEnumConstants().length + 1, 1, type);
+  public static FieldSpec oneOf(Class<? extends Enum<?>> type) {
+    return of(FourPlayerFormat.values(type));
   }
 
   /**
-   * 同じ語彙を count 回並べる。
+   * ルールごとの語彙で値を書く enum のフィールドを返す。語彙は、そのルールにある定数だけを宣言の順に並べたもの。フィールドの enum の
+   * 初期化から呼んでよい。
    *
-   * @param count 繰り返しの数
-   * @return 繰り返しだけを替えた欄
+   * @param type 値の enum
+   * @param variant ルール（四人打ち・三人打ち）
+   * @return フィールドの仕様
    */
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  public static FieldSpec oneOf(Class<? extends Enum<?>> type, Variant variant) {
+    return of(Vocabulary.of((Class) type, variant));
+  }
+
+  /** enum の値のフィールド（値は語彙の中の位置 + 1、0 はなし。語彙は定数の数 + 1）。 */
+  public static FieldSpec of(Vocabulary<?> values) {
+    return new FieldSpec(Coding.ENUM, values.size() + 1, 1, values);
+  }
+
+  /** 同じ語彙を {@code count} 回並べた仕様を返す。 */
   public FieldSpec times(int count) {
     return new FieldSpec(coding, vocabulary, count, values);
   }

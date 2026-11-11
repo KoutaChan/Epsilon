@@ -3,18 +3,18 @@ package com.epsilon.prism.model;
 import java.util.List;
 
 /**
- * 差分整合の 1 行の教師。KL の基準は C の上の一様分布に固定するので、p0 は持たない。
+ * 差分整合の損失に使う、1 行分の教師。KL の基準は C の上の一様分布に固定するので、p0 は持たない。
  *
- * @param values 行の手ごとの Y（入力の手の順。測っていない手は NaN、測った手が C）
- * @param lambda 行の類の温度 λ_c
- * @param weight 行の損失の重み（Horvitz–Thompson の重み。普通は 1）
+ * @param values 手ごとの Y（入力の手の順）。測っていない手は NaN にする。測った手の集まりが C
+ * @param lambda この行の判断のクラスの温度 λ_c
+ * @param weight この行の損失の重み（Horvitz–Thompson の重み。ふつうは 1）
  */
 public record ValueLabel(float[] values, float lambda, float weight) {
 
   /**
    * 値を確かめる。
    *
-   * @throws IllegalArgumentException λ が正でないか、重みが負か、Y が無限のとき
+   * @throws IllegalArgumentException λ が正の有限値でないとき、重みが負か有限でないとき、Y に無限大があるとき
    */
   public ValueLabel {
     if (!(lambda > 0) || !Float.isFinite(lambda)) {
@@ -46,10 +46,10 @@ public record ValueLabel(float[] values, float lambda, float weight) {
   }
 
   /**
-   * 行の並びの C の印を、塊の手の順につないで返す（{@link Pass#training} に渡す）。
+   * 各行の手が C に入るかを、バッチの手の順につないで返す。{@link Pass#training} に渡す。
    *
-   * @param labels 塊の行の順の教師
-   * @return 塊の手ごとの C の印
+   * @param labels バッチの行の順に並べた教師
+   * @return バッチの手ごとに、C に入るなら true
    */
   public static boolean[] measured(List<ValueLabel> labels) {
     int total = 0;

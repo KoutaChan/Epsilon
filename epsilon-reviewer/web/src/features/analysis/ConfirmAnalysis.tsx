@@ -5,7 +5,7 @@ import { useLanguage } from "../../language/LanguageProvider";
 import { ModelSelect } from "../models/ModelSelect";
 import type { Models } from "../models/useModels";
 
-/** 解析の前の確かめ。席の名前は親を東家とした風（解析は 4 人全員）。 */
+/** 解析を始める前の確認の画面。席は、親を東家としたときの風で呼ぶ（解析するのは全員）。モデルは、その人数の牌譜を読めるものだけを選べる。 */
 export function ConfirmAnalysis({
   record,
   seat,
@@ -25,6 +25,7 @@ export function ConfirmAnalysis({
 }) {
   const { t } = useLanguage();
   const { record: summary } = record;
+  const seats = summary.names.length;
   return (
     <section className="content-card confirm-card">
       <button className="text-button" disabled={busy} onClick={onBack}>
@@ -38,7 +39,7 @@ export function ConfirmAnalysis({
           count: summary.roundCount,
         })}
       </p>
-      <ModelSelect models={models} id="confirm-model" />
+      <ModelSelect models={models} id="confirm-model" seats={seats} />
       <fieldset className="player-options">
         <legend>{t("confirm.view")}</legend>
         <div>
@@ -49,7 +50,7 @@ export function ConfirmAnalysis({
               aria-pressed={seat === index}
               onClick={() => onSeat(index)}
             >
-              <span>{seatName(index, 0, t)}</span>
+              <span>{seatName(index, { dealer: 0, seats }, t)}</span>
               <strong>{playerName(name, index, t)}</strong>
               {seat === index && <Check />}
             </button>
@@ -62,7 +63,7 @@ export function ConfirmAnalysis({
         <button
           className="button primary"
           onClick={onStart}
-          disabled={busy || !models.selected}
+          disabled={busy || models.selected?.seats !== seats}
         >
           {busy ? (
             <LoaderCircle className="spin" />

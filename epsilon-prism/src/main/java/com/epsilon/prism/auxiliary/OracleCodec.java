@@ -1,170 +1,215 @@
 package com.epsilon.prism.auxiliary;
 
-import com.epsilon.core.GameState;
-import com.epsilon.core.Tile;
+import com.epsilon.agent.observe.ObservationSchema;
+import com.epsilon.agent.observe.codec.BitField;
+import com.epsilon.agent.observe.codec.BitLayout;
+import com.epsilon.agent.observe.codec.SchemaDigest;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.prism.Limits;
-import com.epsilon.prism.codec.BitField;
-import com.epsilon.prism.codec.BitLayout;
-import com.epsilon.prism.codec.SchemaDigest;
-import com.epsilon.prism.observe.ObservationSchema;
 import java.util.Objects;
 
 /**
- * 神託（判断の時点の全員の手から作る読みの頭の教師。{@link OracleCapture}）を {@code long[]} に詰めて解く。詰めと解きはこのクラスだけが行い、
- * 配置は欄の enum から {@link BitLayout} が作る。
+ * Oracle の記録を {@code long[]} に詰め、またそこから読み出す。Oracle の記録は、判断の時点の全員の手から {@link OracleCapture} が作る
+ * 読みのヘッドの教師。詰めるのも読むのもこのクラスだけが行い、配置はフィールドの enum からルールごとに {@link BitLayout} が作る。
  *
- * <p>先頭に相手 3 席（判断の席から見た下家・対面・上家の順）の記録（{@link OpponentBits}: 形の待ち 34 bit・最小の向聴・放銃 34 bit）を置き、
- * その後に放銃の牌ごとの点（{@link PointBits}）を、相手の順・相手の中は牌の順に、放銃の牌の数だけ並べる。長さは放銃の牌の数で決まり、
- * {@link #longs} で出す。
+ * <p>先頭に相手ごとの記録（{@link OpponentBits}: 形だけで見た待ち 34 bit、最小の向聴数、放銃牌 34 bit）を、判断した席から見て下家から
+ * 順に、席の数 − 1 席分置く。その後に放銃牌ごとの点（{@link PointBits}）を、放銃牌の数だけ並べる。並びは相手の順で、同じ相手の中では
+ * 牌の順。長さは放銃牌の数で決まり、{@link #longs} で求める。
  *
- * <p>放銃は「判断の席が今その牌（赤でない牌）を捨てたら、その相手がロンできる」（役・振聴・5 枚目まで見るエンジンの判定）。点はそのロンの
- * 和了の点（和了者が受け取る点。裏ドラ・本場・供託を含まず、包の分け方も含まない）で、{@link ObservationSchema#POINT_UNIT} 点単位で書く。
+ * <p>放銃牌は、判断した席が今その牌（赤でない牌）を捨てたら、その相手がロンできる牌。判定はエンジンが行い、役・振聴・5 枚目の有無まで
+ * 見る。点はそのロンで和了者が受け取る点で、裏ドラ・本場・供託は含まず、包による払いの分け方も考えない。点は
+ * {@link ObservationSchema#POINT_UNIT} 点単位で書く。形式はルールごとに 1 つで、どのスレッドからも使える。
  */
 public final class OracleCodec {
 
-  /** 相手の数（下家・対面・上家）。 */
-  private static final int OPPONENTS = GameState.NUM_PLAYERS - 1;
+  private static final OracleCodec[] CODECS = new OracleCodec[Variant.values().length];
+
+  static {
+    for (Variant variant : Variant.values()) {
+      CODECS[variant.ordinal()] = new OracleCodec(variant);
+    }
+  }
+
+  private final Variant variant;
+
+  /** 相手の数（席の数 − 1）。 */
+  private final int opponents;
 
   /** 相手の記録の配置（相手 1 席に 1 記録）。 */
-  static final BitLayout<OpponentBits> OPPONENT = BitLayout.of(OpponentBits.class, Long.SIZE);
+  private final BitLayout<OpponentBits> opponent;
 
-  /** 放銃の点の配置（放銃の牌 1 つに 1 記録）。 */
-  static final BitLayout<PointBits> POINT = BitLayout.of(PointBits.class, Short.SIZE);
+  /** 放銃牌の点の配置（放銃牌 1 つに 1 記録）。 */
+  private final BitLayout<PointBits> point;
 
-  /** 放銃の点の先頭（{@code long} の添字）。 */
-  private static final int POINTS_START = OPPONENT.longs(OPPONENTS);
+  /** 放銃牌の点が始まる位置（{@code long} の添字）。 */
+  private final int pointsStart;
 
-  /** 神託の {@code long} の最大（相手 3 席が全て国士の 13 面待ちで、全ての待ちでロンできる）。 */
-  public static final int MAX_LONGS = POINTS_START + POINT.longs(OPPONENTS * Limits.MAX_WAIT_KINDS);
+  private final int maxLongs;
+  private final String fingerprint;
 
-  private OracleCodec() {}
+  private OracleCodec(Variant variant) {
+    this.variant = variant;
+    opponents = variant.seats() - 1;
+    opponent = BitLayout.of(OpponentBits.class, Long.SIZE, variant);
+    point = BitLayout.of(PointBits.class, Short.SIZE, variant);
+    pointsStart = opponent.longs(opponents);
+    maxLongs = pointsStart + point.longs(opponents * Limits.MAX_WAIT_KINDS);
+    fingerprint =
+        SchemaDigest.named("epsilon-prism-v2-oracle")
+            .layout(opponent)
+            .layout(point)
+            .with("opponents", opponents)
+            .with("tiles", Tiles.KINDS)
+            .with("pointUnit", ObservationSchema.POINT_UNIT)
+            .hex();
+  }
 
   /**
-   * 神託の {@code long} の数を返す（放銃の牌の数から出す）。
+   * ルールごとの Oracle の記録の形式を返す。
    *
-   * @param words 神託を置いた配列
-   * @param base 神託の先頭
+   * @param variant ルール
+   * @return そのルールの形式
+   */
+  public static OracleCodec of(Variant variant) {
+    return CODECS[variant.ordinal()];
+  }
+
+  public Variant variant() {
+    return variant;
+  }
+
+  /** 相手の数（席の数 − 1）を返す。 */
+  public int opponents() {
+    return opponents;
+  }
+
+  /** Oracle の記録の {@code long} の数の最大を返す。全ての相手が国士の 13 面待ちで、全ての待ちでロンできるときの長さ。 */
+  public int maxLongs() {
+    return maxLongs;
+  }
+
+  /**
+   * Oracle の記録の {@code long} の数を、放銃牌の数から求めて返す。
+   *
+   * @param words Oracle の記録を置いた配列
+   * @param base 記録の先頭の位置
    * @return {@code long} の数
    * @throws IndexOutOfBoundsException 相手の記録が配列に収まらないとき
    */
-  public static int longs(long[] words, int base) {
-    Objects.checkFromIndexSize(base, POINTS_START, words.length);
+  public int longs(long[] words, int base) {
+    Objects.checkFromIndexSize(base, pointsStart, words.length);
     int dangers = 0;
-    for (int opponent = 1; opponent <= OPPONENTS; opponent++) {
-      dangers += Long.bitCount(danger(words, base, opponent));
+    for (int relative = 1; relative <= opponents; relative++) {
+      dangers += Long.bitCount(danger(words, base, relative));
     }
-    return POINTS_START + POINT.longs(dangers);
+    return pointsStart + point.longs(dangers);
   }
 
   /**
-   * 相手の最小の向聴を返す。
+   * 相手の最小の向聴数を返す。
    *
-   * @param words 神託を置いた配列
-   * @param base 神託の先頭
-   * @param opponent 相手の相対席（下家 1・対面 2・上家 3）
-   * @return 最小の向聴（0 は聴牌）
+   * @param words Oracle の記録を置いた配列
+   * @param base 記録の先頭の位置
+   * @param relative 相手の相対席（下家が 1）
+   * @return 最小の向聴数（0 は聴牌）
    */
-  public static int shanten(long[] words, int base, int opponent) {
-    return OPPONENT.get(words, base, record(opponent), OpponentBits.SHANTEN);
+  public int shanten(long[] words, int base, int relative) {
+    return opponent.get(words, base, record(relative), OpponentBits.SHANTEN);
   }
 
   /**
-   * 相手の形の待ちを返す。
+   * 相手の、形だけで見た待ちを返す。
    *
-   * @param words 神託を置いた配列
-   * @param base 神託の先頭
-   * @param opponent 相手の相対席（下家 1・対面 2・上家 3）
-   * @return 待ちの牌のマスク（ビットは牌。聴牌でなければ 0）
+   * @param words Oracle の記録を置いた配列
+   * @param base 記録の先頭の位置
+   * @param relative 相手の相対席（下家が 1）
+   * @return 待ちの牌のマスク。ビットは牌で、聴牌でなければ 0
    */
-  public static long waits(long[] words, int base, int opponent) {
-    return tiles(words, base, record(opponent), OpponentBits.WAIT);
+  public long waits(long[] words, int base, int relative) {
+    return tiles(words, base, record(relative), OpponentBits.WAIT);
   }
 
   /**
-   * 判断の席が今捨てたら相手がロンできる牌を返す。
+   * 判断した席が今捨てたら、相手がロンできる牌を返す。
    *
-   * @param words 神託を置いた配列
-   * @param base 神託の先頭
-   * @param opponent 相手の相対席（下家 1・対面 2・上家 3）
-   * @return 放銃の牌のマスク（ビットは牌）
+   * @param words Oracle の記録を置いた配列
+   * @param base 記録の先頭の位置
+   * @param relative 相手の相対席（下家が 1）
+   * @return 放銃牌のマスク（ビットは牌）
    */
-  public static long danger(long[] words, int base, int opponent) {
-    return tiles(words, base, record(opponent), OpponentBits.DANGER);
+  public long danger(long[] words, int base, int relative) {
+    return tiles(words, base, record(relative), OpponentBits.DANGER);
   }
 
   /**
-   * 放銃の点を返す。
+   * 放銃牌でロンされたときの点を返す。
    *
-   * @param words 神託を置いた配列
-   * @param base 神託の先頭
-   * @param index 放銃の牌の番号（相手の順・相手の中は牌の順に、全ての相手の放銃の牌を数えた 0 始まりの番号）
-   * @return そのロンの和了の点
+   * @param words Oracle の記録を置いた配列
+   * @param base 記録の先頭の位置
+   * @param index 放銃牌の番号。全ての相手の放銃牌を、相手の順に、同じ相手の中では牌の順に数えた 0 始まりの番号
+   * @return そのロンで和了者が受け取る点
    */
-  public static int points(long[] words, int base, int index) {
-    return POINT.get(words, base + POINTS_START, index, PointBits.POINTS)
-        * ObservationSchema.POINT_UNIT;
+  public int points(long[] words, int base, int index) {
+    return point.get(words, base + pointsStart, index, PointBits.POINTS) * ObservationSchema.POINT_UNIT;
   }
 
   /**
-   * 神託の記録の指紋を返す。行の目録に書き、読むときに照らす。
+   * Oracle の記録の形式のフィンガープリントを返す。行のマニフェストに書き、読むときに照合する。
    *
-   * @return SHA-256 の先頭 8 B の 16 進
+   * @return SHA-256 の先頭 8 B を 16 進で書いた文字列
    */
-  public static String fingerprint() {
-    return Fingerprint.VALUE;
+  public String fingerprint() {
+    return fingerprint;
   }
 
-  /** 相手の記録を書く（神託は 0 で始まる前提）。 */
-  static void writeOpponent(
-      long[] words, int base, int opponent, int shanten, long waits, long danger) {
-    int record = record(opponent);
-    OPPONENT.put(words, base, record, OpponentBits.SHANTEN, shanten);
+  /** 相手の記録を書く。Oracle の記録は先に 0 で埋めておくこと。 */
+  void writeOpponent(long[] words, int base, int relative, int shanten, long waits, long danger) {
+    int record = record(relative);
+    opponent.put(words, base, record, OpponentBits.SHANTEN, shanten);
     writeTiles(words, base, record, OpponentBits.WAIT, waits);
     writeTiles(words, base, record, OpponentBits.DANGER, danger);
   }
 
-  /** {@code index} 番目の放銃の点を書く。 */
-  static void writePoints(long[] words, int base, int index, int points) {
+  /** {@code index} 番目の放銃牌の点を書く。 */
+  void writePoints(long[] words, int base, int index, int points) {
     if (points % ObservationSchema.POINT_UNIT != 0) {
-      throw new IllegalStateException(
-          "points are not a multiple of " + ObservationSchema.POINT_UNIT + ": " + points);
+      throw new IllegalStateException("Points are not a multiple of " + ObservationSchema.POINT_UNIT + ": " + points);
     }
-    POINT.put(
-        words, base + POINTS_START, index, PointBits.POINTS, points / ObservationSchema.POINT_UNIT);
+    point.put(words, base + pointsStart, index, PointBits.POINTS, points / ObservationSchema.POINT_UNIT);
   }
 
-  private static int record(int opponent) {
-    return Objects.checkIndex(opponent - 1, OPPONENTS);
+  private int record(int relative) {
+    return Objects.checkIndex(relative - 1, opponents);
   }
 
-  private static long tiles(long[] words, int base, int record, OpponentBits field) {
+  private long tiles(long[] words, int base, int record, OpponentBits field) {
     long mask = 0L;
-    for (int tile = 0; tile < Tile.NUM_TILE_TYPES; tile++) {
-      if (OPPONENT.get(words, base, record, field, tile) != 0) {
-        mask |= 1L << tile;
+    for (int tile = 0; tile < Tiles.KINDS; tile++) {
+      if (opponent.get(words, base, record, field, tile) != 0) {
+        mask |= Tiles.bit(tile);
       }
     }
     return mask;
   }
 
-  private static void writeTiles(
-      long[] words, int base, int record, OpponentBits field, long mask) {
-    if ((mask >>> Tile.NUM_TILE_TYPES) != 0L) {
+  private void writeTiles(long[] words, int base, int record, OpponentBits field, long mask) {
+    if ((mask & ~Tiles.ALL_KINDS) != 0L) {
       throw new IllegalArgumentException(field + " mask has bits beyond the tiles: " + mask);
     }
     for (long rest = mask; rest != 0L; rest &= rest - 1) {
-      OPPONENT.put(words, base, record, field, Long.numberOfTrailingZeros(rest), 1);
+      opponent.put(words, base, record, field, Long.numberOfTrailingZeros(rest), 1);
     }
   }
 
-  /** 相手 1 席の記録の欄。 */
+  /** 相手 1 席の記録のフィールド。 */
   enum OpponentBits implements BitField {
-    /** 形の待ち（繰り返しの番号は牌）。聴牌でなければ全て 0。 */
-    WAIT(1, Tile.NUM_TILE_TYPES),
-    /** 最小の向聴（0 は聴牌）。 */
+    /** 形だけで見た待ち。繰り返しの番号は牌で、聴牌でなければ全て 0。 */
+    WAIT(1, Tiles.KINDS),
+    /** 最小の向聴数（0 は聴牌）。 */
     SHANTEN(Limits.MAX_SHANTEN, 1),
-    /** 判断の席が今その牌を捨てたら、この相手がロンできる（繰り返しの番号は牌）。 */
-    DANGER(1, Tile.NUM_TILE_TYPES);
+    /** 判断した席が今その牌を捨てたら、この相手がロンできるなら 1。繰り返しの番号は牌。 */
+    DANGER(1, Tiles.KINDS);
 
     private final int max;
     private final int count;
@@ -175,37 +220,24 @@ public final class OracleCodec {
     }
 
     @Override
-    public int max() {
+    public int max(Variant variant) {
       return max;
     }
 
     @Override
-    public int count() {
+    public int count(Variant variant) {
       return count;
     }
   }
 
-  /** 放銃の牌 1 つの点の欄。 */
+  /** 放銃牌 1 つの点のフィールド。 */
   enum PointBits implements BitField {
-    /** そのロンの和了の点（{@link ObservationSchema#POINT_UNIT} 点単位）。 */
+    /** そのロンで和了者が受け取る点（{@link ObservationSchema#POINT_UNIT} 点単位）。 */
     POINTS;
 
     @Override
-    public int max() {
+    public int max(Variant variant) {
       return Limits.MAX_WIN_POINTS / ObservationSchema.POINT_UNIT;
     }
-  }
-
-  /** 遅延で作る（初期化の順の罠を避ける）。 */
-  private static final class Fingerprint {
-
-    private static final String VALUE =
-        SchemaDigest.named("epsilon-prism-v2-oracle")
-            .layout(OPPONENT)
-            .layout(POINT)
-            .with("opponents", OPPONENTS)
-            .with("tiles", Tile.NUM_TILE_TYPES)
-            .with("pointUnit", ObservationSchema.POINT_UNIT)
-            .hex();
   }
 }

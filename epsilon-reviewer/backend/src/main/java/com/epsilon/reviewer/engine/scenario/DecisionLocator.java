@@ -1,129 +1,134 @@
 package com.epsilon.reviewer.engine.scenario;
 
-import com.epsilon.core.Action;
-import com.epsilon.core.GameState;
-import com.epsilon.core.TurnEvent;
-import com.epsilon.replay.ReplayDecision;
-import com.epsilon.replay.ReplayEngine;
-import com.epsilon.replay.ReplayEvent;
-import com.epsilon.replay.ReplayEvent.Ankan;
-import com.epsilon.replay.ReplayEvent.Chi;
-import com.epsilon.replay.ReplayEvent.Dahai;
-import com.epsilon.replay.ReplayEvent.Daiminkan;
-import com.epsilon.replay.ReplayEvent.Kakan;
-import com.epsilon.replay.ReplayEvent.Pon;
-import com.epsilon.replay.ReplayEvent.StartKyoku;
-import com.epsilon.replay.ReplayEvent.Tsumo;
-import com.epsilon.replay.ReplayObserver;
-import com.epsilon.replay.ReplayRecord;
+import com.epsilon.mahjong.engine.Boundary;
+import com.epsilon.mahjong.engine.Decisions;
+import com.epsilon.mahjong.engine.Engine;
+import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.mahjong.engine.SeatView;
+import com.epsilon.mahjong.record.RecordEvent;
+import com.epsilon.mahjong.record.RecordedRound;
+import com.epsilon.mahjong.record.ReplayDriver;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
-import com.epsilon.reviewer.engine.scenario.LocatedDecision.Kind;
-import com.epsilon.reviewer.engine.view.TableProjector;
+import com.epsilon.reviewer.engine.view.RecordTable;
 import com.epsilon.reviewer.engine.view.TableState;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 
 /**
- * 解析の 1 判断を探す。牌譜のその局だけを通常の全情報の再生で進め（局は開始点を持つので、局だけの再生でも状態は同じ）、席と出来事の位置の
- * 合う最初の判断を写す。
+ * 解析した 1 つの判断を探す。牌譜のその局だけを牌譜の手のとおりにエンジンで進め、目当ての判断とその時点の局面を取り出す。局の
+ * 記録は局の始まりの状態を持つので、その局だけを再生しても、対局の始めから再生したときと同じ状態になる。
  */
 public final class DecisionLocator {
   private DecisionLocator() {}
 
   /**
-   * @param round 局の位置
-   * @param eventIndex 判断が解く出来事の位置
-   * @throws ReviewerException decision_not_found
+   * その席が局の中で何番目にした判断かで探す。見つけた判断の合法手の集合が、文書の候補と同じかも確かめる。
+   *
+   * @param ordinal その席の判断を局の始めから数えて何番目か（0 から）
+   * @param candidates 文書にある候補の行動の番号（順は問わない）。確かめなければ null
+   * @throws ReviewerException 判断が見つからないか、合法手が候補と違うとき（decision_not_found）
    */
-  public static LocatedDecision find(LoadedRecord record, int round, int eventIndex, int seat) {
-    if (round < 0 || round >= record.roundStarts().length) throw notFound();
-    int start = record.roundStarts()[round];
-    int end = record.roundEnd(round);
-    if (eventIndex <= start || eventIndex > end) throw notFound();
-    ReplayRecord replay = record.replay();
-    int[][] walls =
-        replay.walls() != null && round < replay.walls().length
-            ? new int[][] {replay.walls()[round]}
-            : null;
-    var search = new Search(eventIndex - start, seat);
-    ReplayEngine.replay(
-        new ReplayRecord(
-            replay.events().subList(start, end), replay.metadata(), walls, replay.completion()),
-        search);
-    if (search.table == null) throw notFound();
-    return new LocatedDecision(
-        start,
-        end,
-        eventIndex,
-        seat,
-        search.kind,
-        search.table,
-        search.recorded,
-        search.concealed,
-        search.drawn);
+  public static LocatedDecision findNth(
+      LoadedRecord record, int round, int seat, int ordinal, int[] candidates) {
+    if (round < 0 || round >= record.rounds().size() || ordinal < 0) throw notFound();
+    return search(record, round, seat, ordinal, candidates);
   }
 
   private static ReviewerException notFound() {
     return new ReviewerException(ErrorCode.DECISION_NOT_FOUND);
   }
 
-  /** 局の再生から判断を写し、判断の席の手を記録の物理牌で追う（再生の手は同じ牌の写しを区別しない）。 */
-  private static final class Search implements ReplayObserver {
-    private final int target;
-    private final int seat;
-
-    /** 判断の席の手にある物理牌（手に入った順）。 */
-    private final Set<Integer> hand = new LinkedHashSet<>();
-
-    private Kind kind;
-    private TableState table;
-    private Action recorded;
-    private List<Integer> concealed;
-    private int drawn = -1;
-
-    Search(int target, int seat) {
-      this.target = target;
-      this.seat = seat;
+  /**
+   * 局を目当ての判断まで進めて、その判断と局面を取り出す。
+   *
+   * @param ordinal その席の判断を局の始めから数えて何番目か（0 から）
+   * @param candidates 確かめる候補。確かめなければ null
+   */
+  private static LocatedDecision search(
+      LoadedRecord record, int round, int seat, int ordinal, int[] candidates) {
+    Variant variant = record.game().variant();
+    if (seat < 0 || seat >= variant.seats()) throw notFound();
+    RecordedRound recorded = record.rounds().get(round);
+    List<RecordEvent> events = recorded.events();
+    var driver = new ReplayDriver(variant);
+    var ws = new RuleWorkspace(variant);
+    var table = new RecordTable(recorded);
+    int applied = 0;
+    int seen = 0;
+    Boundary boundary = driver.start(recorded, ws);
+    while (boundary == Boundary.DECISIONS) {
+      int cursor = driver.cursor();
+      for (; applied < cursor; applied++) table.apply(events.get(applied));
+      int slot = driver.engine().decisions().slotOf(seat);
+      if (slot >= 0 && seen++ == ordinal)
+        return located(driver, round, seat, slot, cursor, table.state(), recorded, candidates);
+      boundary = driver.step(ws);
     }
+    throw notFound();
+  }
 
-    @Override
-    public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {
-      if (table != null || decision.seat() != seat || decision.resolveIndex() != target) return;
-      kind =
-          switch (decision.kind()) {
-            case RESPONSE, CHANKAN -> Kind.RESPONSE;
-            case TURN, POST_CALL_DAHAI -> Kind.TURN;
-          };
-      table = TableProjector.table(state);
-      recorded = decision.chosenSlot() < 0 ? null : legal.get(decision.chosenSlot());
-      if (table.players().get(seat).draw() != null)
-        drawn = ((TurnEvent.Draw) state.turnEvent()).physicalTileId();
-      concealed = hand.stream().filter(id -> id != drawn).toList();
-    }
+  private static LocatedDecision located(
+      ReplayDriver driver,
+      int round,
+      int seat,
+      int slot,
+      int position,
+      TableState table,
+      RecordedRound recorded,
+      int[] candidates) {
+    Engine engine = driver.engine();
+    Decisions decisions = engine.decisions();
+    int[] legal = new int[decisions.legalCount(slot)];
+    for (int index = 0; index < legal.length; index++) legal[index] = decisions.legal(slot, index);
+    if (candidates != null && !sameSet(legal, candidates)) throw notFound();
+    int choice = driver.choice(slot);
+    int recordedCode = choice == ReplayDriver.UNOBSERVED ? -1 : legal[choice];
+    int drawn = table.players().get(seat).draw() == null ? -1 : lastDraw(recorded, position, seat);
+    return new LocatedDecision(
+        round,
+        position,
+        seat,
+        LocatedDecision.Kind.of(decisions.kind(slot)),
+        table,
+        recordedCode,
+        legal,
+        concealed(engine.view(seat), recorded, position, seat, drawn),
+        drawn);
+  }
 
-    @Override
-    public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
-      if (table != null) return;
-      switch (event) {
-        case StartKyoku start -> {
-          for (int id : start.initialHandPhysicalTileIds()[seat]) hand.add(id);
-        }
-        case Tsumo draw when draw.actor() == seat -> hand.add(draw.physicalTileId());
-        case Dahai discard when discard.actor() == seat -> hand.remove(discard.physicalTileId());
-        case Chi call when call.actor() == seat -> remove(call.consumedPhysicalTileIds());
-        case Pon call when call.actor() == seat -> remove(call.consumedPhysicalTileIds());
-        case Daiminkan call when call.actor() == seat -> remove(call.consumedPhysicalTileIds());
-        case Ankan kan when kan.actor() == seat -> remove(kan.consumedPhysicalTileIds());
-        case Kakan kan when kan.actor() == seat -> hand.remove(kan.addedPhysicalTileId());
-        default -> {}
-      }
+  /** 判断する席の伏せた手牌の物理牌を、手に入った順（配牌、続いてツモ）に並べる。表示するツモ牌は除く。 */
+  private static List<Integer> concealed(
+      SeatView view, RecordedRound recorded, int position, int seat, int drawn) {
+    List<Integer> hand = new ArrayList<>(Variant.HAND + 1);
+    for (int index = 0; index < Variant.HAND; index++) {
+      int tile = recorded.deal(seat, index);
+      if (tile != drawn && view.holds(tile)) hand.add(tile);
     }
+    for (int at = 0; at < position; at++)
+      if (recorded.events().get(at) instanceof RecordEvent.Draw draw
+          && draw.seat() == seat
+          && draw.tile() != drawn
+          && view.holds(draw.tile())) hand.add(draw.tile());
+    return List.copyOf(hand);
+  }
 
-    private void remove(int[] physicalTileIds) {
-      for (int physicalTileId : physicalTileIds) hand.remove(physicalTileId);
-    }
+  /** 判断する席が、判断の時点より前に最後にツモった物理牌。 */
+  private static int lastDraw(RecordedRound recorded, int position, int seat) {
+    for (int at = position - 1; at >= 0; at--)
+      if (recorded.events().get(at) instanceof RecordEvent.Draw draw && draw.seat() == seat)
+        return draw.tile();
+    throw new IllegalStateException("Seat " + seat + " shows a drawn tile without a draw");
+  }
+
+  private static boolean sameSet(int[] legal, int[] candidates) {
+    int[] a = legal.clone();
+    int[] b = candidates.clone();
+    Arrays.sort(a);
+    Arrays.sort(b);
+    return Arrays.equals(a, b);
   }
 }

@@ -12,7 +12,7 @@ export interface Viewport {
   readonly height: number;
 }
 
-/** 幅 680 以下の縦長は縦、高さ 540 以下の横長は横、他は PC の配置。 */
+/** 幅 680px 以下で縦長なら縦、高さ 540px 以下で横長なら横、それ以外は PC の配置にする。 */
 function layoutOf({ width, height }: Viewport): Layout {
   return width <= 680 && height > width
     ? "portrait"
@@ -22,8 +22,8 @@ function layoutOf({ width, height }: Viewport): Layout {
 }
 
 /**
- * 画面の大きさを測って配置を決め、卓の描画を作って局面を渡す。snapshot は卓に描く局面（もしもの写しの
- * ことがある）、targets はもしもの当たり枠を受け取るか。
+ * 画面の大きさを測って配置を決め、卓の描画を作って局面を渡す。渡す局面は卓に描く局面で、もしもの写しの
+ * こともある。もしもの当たり判定を求めている間は、その形を描画から受け取る。
  */
 export function useTableRenderer(
   elements: TableElements,
@@ -88,7 +88,7 @@ export function useTableRenderer(
     }),
     [t, round],
   );
-  // 卓は画面と同じ局面を借用し、React の DOM から対局状態を戻さない。
+  // 卓は、画面と同じ局面のオブジェクトをそのまま使って描く。対局の状態を React の DOM から読み取ることはしない。
   useEffect(() => {
     renderer.current?.update({
       snapshot,
@@ -118,7 +118,7 @@ export function useTableRenderer(
   return {
     viewport,
     layout,
-    /** 当たり枠の形。当たり枠を求めていない間は null。 */
+    /** もしもの当たり判定の形。当たり判定を求めていない間は null。 */
     targets: targets ? tableTargets : null,
     error,
     retry: () => {

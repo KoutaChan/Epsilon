@@ -63,7 +63,7 @@ const yakuMessageKeys = {
   YAKUHAI_ROUND_N: "yaku.YAKUHAI_ROUND_N",
 } as const satisfies Record<string, MessageKey>;
 
-/** 牌譜の役の符号の文言。知らない符号は outcome.unknownYaku。 */
+/** 牌譜の役のコードに対応する文言を返す。知らないコードなら outcome.unknownYaku の文言。 */
 export function yakuLabel(code: string, t: Translate): string {
   return t(
     Object.hasOwn(yakuMessageKeys, code)

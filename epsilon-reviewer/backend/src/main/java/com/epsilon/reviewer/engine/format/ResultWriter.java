@@ -1,11 +1,11 @@
 package com.epsilon.reviewer.engine.format;
 
-import com.epsilon.replay.WinDetails;
 import com.epsilon.reviewer.engine.load.RecordSummary;
 import com.epsilon.reviewer.engine.review.EvaluatedDecision;
 import com.epsilon.reviewer.engine.view.EventKind;
 import com.epsilon.reviewer.engine.view.RoundOutcome;
 import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.WinDetails;
 import com.google.gson.stream.JsonWriter;
 import java.io.Closeable;
 import java.io.IOException;
@@ -15,10 +15,10 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 
 /**
- * 解析結果の文書（protocol/result.ts）を流して書く。文書の全体を記憶に作らない。
+ * 解析結果の文書（protocol/result.ts）をストリームで書く。文書の全体をメモリに作らない。
  *
- * <p>局の手順は牌譜の順で、判断はそれが解く出来事の前に呼ぶ。出来事の手順の位置は局の firstEvent から 1 つずつ続く。判断の cause は直前の
- * 出来事の位置、resolve は cause + 1 のとき書かない。局面は前の手順と同じなら渡さない（null）。
+ * <p>局の手順は牌譜の順に書く。判断は、その判断が決まるイベントより前に書く。イベントの位置は、局の {@code firstEvent} から 1 つずつ増える。
+ * 判断の {@code cause} は直前のイベントの位置なら省き、{@code resolve} は {@code cause + 1} なら省く。局面が前の手順と変わらなければ null を渡す。
  */
 public final class ResultWriter implements Closeable {
   public static final int FORMAT = 6;
@@ -31,10 +31,13 @@ public final class ResultWriter implements Closeable {
   private int lastEvent;
   private TableState previous;
 
-  /** 書いた判断が損失か。判断がまだ無ければ null。 */
+  /** 書いた判断の値が損失（価値を返すモデルの評価）なら true、確率なら false。判断をまだ書いていなければ null。 */
   private Boolean valued;
 
-  /** @param createdAt 解析した時刻（ISO-8601、UTC） */
+  /**
+   * @param createdAt 解析した時刻（ISO-8601、UTC）
+   * @param record 解析する牌譜の概要。読み込んだ牌譜のものなので、最終の持ち点を持つ
+   */
   public ResultWriter(
       OutputStream out, String resultId, String createdAt, ModelInfo model, RecordSummary record)
       throws IOException {
@@ -52,11 +55,9 @@ public final class ResultWriter implements Closeable {
     json.name("source").value(record.source());
     json.name("names");
     TableJson.strings(json, record.names());
-    if (record.finalScores() != null) {
-      json.name("finalScores").beginArray();
-      for (int score : record.finalScores()) json.value(score);
-      json.endArray();
-    }
+    json.name("finalScores").beginArray();
+    for (int score : record.finalScores()) json.value(score);
+    json.endArray();
     json.name("roundCount").value(record.roundCount());
     json.endObject().name("rounds").beginArray();
   }
@@ -79,10 +80,10 @@ public final class ResultWriter implements Closeable {
   }
 
   /**
-   * @param actor 席を持たない種類では読まない
+   * @param actor 動いた席。席を持たない種類のイベントでは読まない
    * @param table 変わった局面。前の手順と同じなら null
-   * @param outcome hora・ryukyoku の結果。他は null
-   * @throws IllegalStateException 出来事の位置が続かない
+   * @param outcome 和了（hora）か流局（ryukyoku）のイベントなら、局の結果。ほかのイベントでは null
+   * @throws IllegalStateException イベントの位置が、前のイベントの次になっていない
    */
   public void event(
       int eventIndex, EventKind kind, int actor, TableState table, RoundOutcome outcome)
@@ -105,13 +106,11 @@ public final class ResultWriter implements Closeable {
   }
 
   /**
-   * @param cause 判断を起こした出来事の位置
-   * @param resolve 判断が解かれた出来事の位置（牌譜の終わりで開いた窓は出来事の数）
-   * @param table 変わった局面。前の手順と同じなら null
-   * @throws IllegalStateException 価値のある評価と無い評価が混ざる
+   * @param cause 判断のきっかけになったイベントの位置
+   * @param resolve 判断が決まったイベントの位置。牌譜の終わりまで決まらなかった判断では、イベントの数
+   * @throws IllegalStateException 価値を返すモデルの評価と、返さないモデルの評価が混ざった
    */
-  public void decision(
-      int seat, int cause, int resolve, EvaluatedDecision decision, TableState table)
+  public void decision(int seat, int cause, int resolve, EvaluatedDecision decision)
       throws IOException {
     requireRound();
     if (events == 0) throw new IllegalStateException("A round must start with an event step.");
@@ -122,15 +121,14 @@ public final class ResultWriter implements Closeable {
     if (cause != lastEvent) json.name("cause").value(cause);
     if (resolve != cause + 1) json.name("resolve").value(resolve);
     CandidateJson.write(json, decision);
-    delta(table);
     json.endObject();
   }
 
   /**
-   * 文書を閉じる。
+   * 文書を最後まで書く。
    *
-   * @param temperature 価値のある評価の表示の温度。価値の無いモデルは null
-   * @throws IllegalStateException 温度の有無が評価と合わない
+   * @param temperature 損失から表示の確率を作るときの温度。価値を返さないモデルでは null
+   * @throws IllegalStateException 温度の有無が、書いた評価の種類と合わない
    */
   public void finish(Double temperature) throws IOException {
     if (valued != null && valued != (temperature != null))
@@ -142,7 +140,7 @@ public final class ResultWriter implements Closeable {
     json.endObject().flush();
   }
 
-  /** 下の流れを閉じる。finish の前に閉じた文書は途中で切れる（捨てる保存で使う）。 */
+  /** 書き込み先のストリームを閉じる。finish の前に閉じると、文書は途中で切れる。保存せずに捨てるときは、finish を呼ばずに閉じる。 */
   @Override
   public void close() throws IOException {
     text.close();
@@ -166,41 +164,35 @@ public final class ResultWriter implements Closeable {
         json.name("actor").value(hora.actor());
         json.name("target").value(hora.target());
         json.name("winningTile").value(hora.winningTile());
-        if (hora.details() != null) details(hora.details());
+        details(hora.details());
       }
       case RoundOutcome.Ryukyoku ignored -> json.name("type").value("ryukyoku");
     }
     json.endObject();
   }
 
-  /** 和了の内訳。分からない欄は書かない（uraIndicators の空の配列は「見た記録があり 0 枚」）。 */
+  /** 和了の内訳。役満では符を書かず、裏ドラの表示牌は立直の和了のときだけ書く。 */
   private void details(WinDetails details) throws IOException {
     json.name("details").beginObject();
-    optional("han", details.han());
-    optional("fu", details.fu());
-    optional("points", details.points());
-    optional("yakuman", details.yakuman());
-    if (details.yaku() != null) {
-      json.name("yaku").beginArray();
-      for (WinDetails.Yaku yaku : details.yaku())
-        json.beginObject()
-            .name("code")
-            .value(yaku.code())
-            .name("han")
-            .value(yaku.han())
-            .name("yakuman")
-            .value(yaku.yakuman())
-            .endObject();
-      json.endArray();
-    }
-    if (details.uraIndicators() != null) {
+    json.name("han").value(details.han());
+    if (details.yakuman() == 0) json.name("fu").value(details.fu());
+    json.name("points").value(details.points());
+    json.name("yakuman").value(details.yakuman());
+    json.name("yaku").beginArray();
+    for (WinDetails.Yaku yaku : details.yaku())
+      json.beginObject()
+          .name("code")
+          .value(yaku.code())
+          .name("han")
+          .value(yaku.han())
+          .name("yakuman")
+          .value(yaku.yakuman())
+          .endObject();
+    json.endArray();
+    if (!details.uraIndicators().isEmpty()) {
       json.name("uraIndicators");
       TableJson.strings(json, details.uraIndicators());
     }
     json.endObject();
-  }
-
-  private void optional(String name, Integer value) throws IOException {
-    if (value != null) json.name(name).value(value.intValue());
   }
 }

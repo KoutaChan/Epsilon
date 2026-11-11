@@ -18,7 +18,10 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-/** 手元の HTTP の主で牌譜を取る: 状態の写し、gzip の展開、転送の決まり、本文の上限、繋がらない主。 */
+/**
+ * 手元で動かす HTTP のホストから牌譜を取るテスト。確かめるのは、ステータスからエラーコードへの対応、gzip の展開、リダイレクトの扱い、
+ * 本文の上限、繋がらないホスト。
+ */
 public class TenhouFetcherTest {
   private static final String PREFIX = "2026091512gm-0089-0000-0000000";
   private static final byte[] RECORD = "<mjloggm ver=\"2.3\"/>".getBytes(StandardCharsets.UTF_8);
@@ -76,7 +79,7 @@ public class TenhouFetcherTest {
     }
   }
 
-  /** 牌譜の id の最後の数字で応答を選ぶ。 */
+  /** 牌譜の id の最後の数字で、返す応答を選ぶ。 */
   private void answer(HttpExchange exchange) throws IOException {
     String query = exchange.getRequestURI().getRawQuery();
     int kind = Character.digit(query.charAt(query.length() - 1), 16);
@@ -100,7 +103,7 @@ public class TenhouFetcherTest {
           byte[] chunk = new byte[1024 * 1024];
           for (int i = 0; i <= 16; i++) out.write(chunk);
         } catch (IOException ignored) {
-          // 取る側が上限で切る。
+          // 取得する側が上限に達した所で接続を切る。
         }
       }
       default -> {

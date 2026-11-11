@@ -1,108 +1,137 @@
 package com.epsilon.prism.grp;
 
-import com.epsilon.prism.run.PrismConfig;
+import com.epsilon.mahjong.rules.Variant;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
- * grp/phi.jsonl の 1 行（{@link PhiHistory}）。反復 t の Φ は effectiveFrom ≤ t の行のうち effectiveFrom が最も大きい行（同じなら後の行）。
- * 巻き戻しも新しい行を足すだけ。同じ id の行は何度あってもよいが、Φ の中身（{@link #sameValue}）は同じでなければならない。
+ * grp/phi.jsonl の 1 行（{@link PhiHistory}）。反復 t で効くのは、効き始めが t 以下の行のうち効き始めが最も遅い行（同じなら後に書いた行）。
+ * 前の項目に戻すときも新しい行を足すだけにする。同じ id の行が何度出てもよいが、Φ の中身（{@link #sameValue}）は同じでなければならない。
  *
- * <p>種類ごとの形: 点数だけの Φ は path・sha256・temperatures・calibration が全て空。GRP の項目は path と sha256 が要り、自己対局で学んだ
- * 項目（SELF_CHECKPOINT）は温度も較正の表も重ねない（空）。
+ * <p>sha を持つのは run の外から来たファイル（g000 と固定の GRP のチェックポイント・表・q）で、開くたびに照合する
+ * （{@link HandEndPhi}）。run が書いた候補とその q は書き直さないので、sha を持たず、id で見分ける。
  *
- * @param id 項目の id（g000、g&lt;k&gt;-a&lt;n&gt;。固定の出どころは {@value #FIXED_ID}・{@value #SCORE_RANK_ID}・{@value #SCORE_SMOOTH_ID}）
+ * <p>種類ごとの決まり: 点数だけの Φ では、チェックポイント・表・q のパスと sha が全て空。NETWORK ではチェックポイントのパスが要り、
+ * 候補でない項目はその sha も要る。表は中身が GruSinkhorn のときだけ重ね、表のパスと sha は両方あるか両方空かのどちらか（空なら重ねない）。
+ * 自己対局で学んだ候補（id が g&lt;k&gt;-a&lt;n&gt;）は表を重ねない。q（局の結果のネットワーク）は LATE のモードで最後の局を数え上げる
+ * ときだけ読む。候補でない項目の q は sha を持ち、候補の q は run の外の q を引き継いだときだけ sha を持つ。数え上げの葉は GrpNetwork
+ * なので、q を持つ項目は表を重ねない。q のパスが無い行は、q を持たない行として読む。id にはモードの別名（{@link PhiMode#alias}）を
+ * 使えない。
+ *
+ * @param id 項目の id（g000 か g&lt;k&gt;-a&lt;n&gt;。固定の出どころなら {@value #FIXED_ID}・{@value #SCORE_RANK_ID}・{@value #SCORE_SMOOTH_ID}）
  * @param kind Φ の種類
- * @param path GRP の checkpoint の正確なディレクトリ（点数だけの Φ は空）
- * @param sha256 その checkpoint の sha（{@code EpsilonGrpCheckpointManager.checkpointSha256}。点数だけの Φ は空）
- * @param temperatures 局番号ごとの温度（phiTemperatures の書き方。FIXED_CHECKPOINT だけ、ほかは空）
- * @param calibration 較正の表のパス（FIXED_CHECKPOINT だけ、ほかは空）
+ * @param variant ルール（収集のルールと違えば開けない）
+ * @param path GRP のチェックポイントそのもののディレクトリ（点数だけの Φ では空）
+ * @param sha256 そのチェックポイントの sha（点数だけの Φ と、run が書いた候補では空）
+ * @param table 重ねる PhiTable のファイル（重ねなければ空）
+ * @param tableSha256 そのファイルの sha（重ねなければ空）
+ * @param outcomes q のチェックポイントそのもののディレクトリ（持たなければ空）
+ * @param outcomesSha256 その q の sha（q を持たないときと、run が書いた q では空）
  * @param effectiveFrom 効き始める反復（1 以上）
- * @param parent 学習の始めにした項目の id（白紙と g000 は空）
- * @param reason 書いた理由（g000・grp-switch・AUTO・巻き戻し・境目の点検の拒否など）
+ * @param parent 関門で比べた相手の項目の id（自己対局の候補だけ。ほかは空）
+ * @param reason 書いた理由（g000・grp-switch・AUTO・戻し・開けなかった候補の代わりなど）
  */
 public record PhiEntry(
     String id,
     PhiEntryKind kind,
+    Variant variant,
     String path,
     String sha256,
-    String temperatures,
-    String calibration,
+    String table,
+    String tableSha256,
+    String outcomes,
+    String outcomesSha256,
     int effectiveFrom,
     String parent,
     String reason) {
 
-  /** phiSource = FIXED_GRP の項目の id。 */
+  /** Φ の出どころが固定の GRP のときの項目の id。 */
   public static final String FIXED_ID = "fixed";
 
-  /** phiSource = SCORE_RANK の項目の id。 */
+  /** Φ の出どころが点数の順位のときの項目の id。 */
   public static final String SCORE_RANK_ID = "score-rank";
 
-  /** phiSource = SCORE_SMOOTH の項目の id。 */
+  /** Φ の出どころが点数のなめらかな関数のときの項目の id。 */
   public static final String SCORE_SMOOTH_ID = "score-smooth";
 
-  /** SELF_GRP の最初の項目の id。 */
+  /** 自分の GRP の最初の項目の id。 */
   public static final String INITIAL_ID = "g000";
+
+  /** 戻しの行で、理由の先頭に付ける文字列。 */
+  static final String ROLLBACK = "rollback:";
+
+  /** 自己対局で学んだ候補の id の形（g&lt;学び直した時点&gt;-a&lt;試行の番号&gt;）。 */
+  static final Pattern CANDIDATE = Pattern.compile("g(\\d+)-a(\\d+)");
 
   public PhiEntry {
     Objects.requireNonNull(kind, "kind");
-    for (String text : new String[] {id, path, sha256, temperatures, calibration, parent, reason})
+    Objects.requireNonNull(variant, "variant");
+    outcomes = Objects.requireNonNullElse(outcomes, "");
+    outcomesSha256 = Objects.requireNonNullElse(outcomesSha256, "");
+    for (String text : new String[] {id, path, sha256, table, tableSha256, parent, reason})
       Objects.requireNonNull(text, "Φ entry fields must not be null");
     if (id.isBlank()) throw new IllegalArgumentException("Φ entry without an id");
+    if (PhiMode.byAlias(id).isPresent()) throw new IllegalArgumentException("Φ entry id " + id + " names a mode");
     if (effectiveFrom < 1)
       throw new IllegalArgumentException("Φ entry " + id + " effectiveFrom must be positive: " + effectiveFrom);
+    if (table.isEmpty() != tableSha256.isEmpty())
+      throw new IllegalArgumentException("A Φ table needs its sha and the sha needs a table: " + id);
+    if (outcomes.isEmpty() && !outcomesSha256.isEmpty())
+      throw new IllegalArgumentException("An outcome network sha needs the network: " + id);
     if (kind.scoreBased()) {
-      if (!path.isEmpty() || !sha256.isEmpty() || !temperatures.isEmpty() || !calibration.isEmpty())
-        throw new IllegalArgumentException("A score-only Φ entry takes no checkpoint, temperatures or table: " + id);
-    } else {
-      if (path.isEmpty() || sha256.isEmpty())
-        throw new IllegalArgumentException("A GRP Φ entry needs the exact checkpoint and its sha: " + id);
-      if (kind == PhiEntryKind.SELF_CHECKPOINT && (!temperatures.isEmpty() || !calibration.isEmpty()))
-        throw new IllegalArgumentException("A self-play GRP takes no temperatures or table: " + id);
+      if (!path.isEmpty() || !sha256.isEmpty() || !table.isEmpty() || !outcomes.isEmpty())
+        throw new IllegalArgumentException("A score-only Φ entry takes no checkpoint, table or outcome network: " + id);
+    } else if (path.isEmpty()) {
+      throw new IllegalArgumentException("A GRP Φ entry needs the exact checkpoint: " + id);
+    } else if (!CANDIDATE.matcher(id).matches()
+        && (sha256.isEmpty() || outcomes.isEmpty() != outcomesSha256.isEmpty())) {
+      throw new IllegalArgumentException("An outside GRP Φ entry needs the sha of its checkpoint and q: " + id);
     }
+    if (!outcomes.isEmpty() && !table.isEmpty())
+      throw new IllegalArgumentException("An entry with an outcome network takes no table: " + id);
+  }
+
+  /** Φ の出どころが点数だけで決まる固定の Φ のときの項目。phi.jsonl には書かず、全ての反復で効く。 */
+  public static PhiEntry scoreOnly(PhiEntryKind kind, Variant variant) {
+    String id = switch (kind) {
+      case SCORE_RANK -> SCORE_RANK_ID;
+      case SCORE_SMOOTH -> SCORE_SMOOTH_ID;
+      case NETWORK -> throw new IllegalArgumentException("Not a score-only kind: " + kind);
+    };
+    return new PhiEntry(id, kind, variant, "", "", "", "", "", "", 1, "", "phi.source = " + kind);
+  }
+
+  /** 自己対局で学んだ候補なら true。 */
+  public boolean candidate() {
+    return CANDIDATE.matcher(id).matches();
+  }
+
+  /** 戻しの行なら true。 */
+  public boolean rollback() {
+    return reason.startsWith(ROLLBACK);
+  }
+
+  /** q（局の結果のネットワーク）を持つなら true。 */
+  public boolean hasOutcomes() {
+    return !outcomes.isEmpty();
   }
 
   /**
-   * phiSource = FIXED_GRP の項目（phi.jsonl には書かない。全ての反復で効く）。
-   *
-   * @param grp 開いた元の GRP の正確なディレクトリ
-   * @param sha256 その sha
+   * 同じ Φ を表すなら true。種類・ルール・チェックポイントのパスと sha・表の sha・q の sha を比べ、sha を持たない q（run が書いた q）は
+   * パスで比べる。id・効き始め・親・理由・表のパス・sha を持つ q のパスは見ない。
    */
-  public static PhiEntry fixed(PrismConfig config, String grp, String sha256) {
-    return new PhiEntry(
-        FIXED_ID,
-        PhiEntryKind.FIXED_CHECKPOINT,
-        grp,
-        sha256,
-        config.phiTemperatures(),
-        config.phiCalibration(),
-        1,
-        "",
-        "phiSource = FIXED_GRP");
-  }
-
-  /** phiSource = SCORE_RANK の項目（phi.jsonl には書かない。全ての反復で効く）。 */
-  public static PhiEntry scoreRank() {
-    return new PhiEntry(
-        SCORE_RANK_ID, PhiEntryKind.SCORE_RANK, "", "", "", "", 1, "", "phiSource = SCORE_RANK");
-  }
-
-  /** phiSource = SCORE_SMOOTH の項目（phi.jsonl には書かない。全ての反復で効く）。 */
-  public static PhiEntry scoreSmooth() {
-    return new PhiEntry(
-        SCORE_SMOOTH_ID, PhiEntryKind.SCORE_SMOOTH, "", "", "", "", 1, "", "phiSource = SCORE_SMOOTH");
-  }
-
-  /** 同じ Φ（種類・checkpoint・sha・温度・較正の表が同じ。id・効き始め・親・理由は見ない）なら true。 */
   public boolean sameValue(PhiEntry other) {
     return kind == other.kind
+        && variant == other.variant
         && path.equals(other.path)
         && sha256.equals(other.sha256)
-        && temperatures.equals(other.temperatures)
-        && calibration.equals(other.calibration);
+        && tableSha256.equals(other.tableSha256)
+        && outcomesSha256.equals(other.outcomesSha256)
+        && (!outcomesSha256.isEmpty() || outcomes.equals(other.outcomes));
   }
 
-  /** 同じ項目を反復 from から効かせる行（巻き戻しと、境目の点検で拒んだ候補の代わり）。 */
+  /** 同じ項目（q も同じ）を反復 {@code from} から効かせる行を作る。前の項目に戻すときと、開けなかった候補の代わりに使う。 */
   public PhiEntry from(int from, String why) {
-    return new PhiEntry(id, kind, path, sha256, temperatures, calibration, from, parent, why);
+    return new PhiEntry(id, kind, variant, path, sha256, table, tableSha256, outcomes, outcomesSha256, from, parent, why);
   }
 }

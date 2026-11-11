@@ -13,7 +13,7 @@ import type {
 import { ApiError } from "./errors.ts";
 import type { CallOptions, DesktopTransport } from "./transport.ts";
 
-/** 橋渡しの invoke を操作の名前ごとの型でなく 1 つの形で呼ぶ（呼ぶ前に renderer の操作か確かめる）。 */
+/** ブリッジの invoke を、操作ごとの型を使わずに 1 つのシグネチャで呼ぶための型。呼ぶ前に、画面（renderer）から呼べる操作かを確かめておく。 */
 interface Invoker {
   invoke(
     command: RendererCommandName,
@@ -22,7 +22,7 @@ interface Invoker {
   ): Promise<InvokeReply>;
 }
 
-/** デスクトップの橋渡しで送る。IPC は ArrayBuffer だけを運ぶので Blob の本文はここで読む。 */
+/** デスクトップのブリッジを通して操作を送る。IPC では ArrayBuffer しか送れないので、Blob の本文はここで ArrayBuffer に読み込む。 */
 export function bridgeTransport(bridge: ReviewerBridge): DesktopTransport {
   const invoker: Invoker = bridge;
   return {
@@ -65,7 +65,7 @@ function isRendererCommand(
   return COMMANDS[command].renderer;
 }
 
-/** 保存の gzip の文書を画面の中で 1 回だけ解いて読む。 */
+/** 保存された gzip の文書を、画面の中で 1 回だけ展開して JSON として読む。本文が無いか読めなければ invalid_response の ApiError を投げる。 */
 async function readDocument(body: ArrayBuffer | undefined): Promise<unknown> {
   if (body === undefined)
     throw new ApiError("invalid_response", "The document reply has no body.");

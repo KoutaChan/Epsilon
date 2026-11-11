@@ -6,7 +6,7 @@ import { FRAME_BODY_LIMIT } from "../../protocol/stdio.ts";
 import { EngineClient } from "../src/engine/client.ts";
 import { encodeFrame, FrameDecoder } from "../src/engine/frames.ts";
 
-/** 偽の stdin・stdout の上の EngineClient。requests は Java が受けた枠。 */
+/** 偽の stdin・stdout につないだ EngineClient を作る。requests には Java の側が受けたフレームが入る。 */
 function harness() {
   const input = new PassThrough();
   const output = new PassThrough();

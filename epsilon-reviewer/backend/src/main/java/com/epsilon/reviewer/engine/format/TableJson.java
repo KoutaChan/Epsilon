@@ -9,8 +9,8 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * 局面の JSON（protocol/result.ts の TableState）。全欄を書き、draw は無ければ null、河の印は真のときだけ書く。
- * 書き手は null を書く設定にする。
+ * 局面の JSON（protocol/result.ts の TableState）。全てのフィールドを書く。draw は、ツモ牌が無ければ null を書く。河の牌の印（ツモ切り・立直・
+ * 鳴かれた）は、真のときだけ書く。渡す JsonWriter は、null も書く設定にしておくこと。
  */
 public final class TableJson {
   private TableJson() {}

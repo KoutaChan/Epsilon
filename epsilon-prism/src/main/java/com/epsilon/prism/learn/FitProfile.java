@@ -2,10 +2,11 @@ package com.epsilon.prism.learn;
 
 import ai.djl.pytorch.engine.PtEvent;
 import ai.djl.pytorch.engine.PtStream;
-import com.epsilon.prism.model.FitProbe;
+import com.epsilon.agent.learn.DataParallelGroup;
 import com.epsilon.prism.model.FitProbe.Stage;
+import com.epsilon.prism.model.FitProbe;
 import com.epsilon.prism.model.PrismShape;
-import com.epsilon.training.DataParallelGroup;
+import com.epsilon.prism.settings.DiagnosticProperty;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -18,49 +19,51 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 当てはめの計測（系の性質 {@value #PROPERTY}={@code sync:K:W}。既定は無効で、学習の道は何も変えない）。温めの W 歩の後の歩を 0 から
- * 数え、番号が K の倍数の歩を同期する歩、残りをホストだけの歩にする（{@link Timing}）。
+ * 学習の計測。システムプロパティ {@value #PROPERTY}={@code sync:K:W} で有効にする。既定は無効で、学習の処理は何も変えない。
+ * ウォームアップの W ステップの後のステップを 0 から数え、番号が K の倍数のステップを同期するステップに、残りをホストだけのステップにする
+ * （{@link Timing}）。
  *
  * <ul>
- *   <li>同期する歩: レーンの段の印（{@link FitProbe#mark}）ごとにレーンの計算ストリームを待つので、段の時間はその段だけの「ホストの
- *       積み込みとデバイスの計算の長い方」になる。歩の始め・レーンの仕事の後・最適化の後に全てのレーンを待つ
- *       （{@link DataParallelGroup#awaitParameterUpdates}）ので、最適化の窓も最適化だけの時間になる。
- *   <li>ホストだけの歩: 印は時計を読むだけ（本番と同じ段取り）。ホストが待つ所（錨・配列の作成・損失の回収・最適化の検査）に前の仕事の
- *       残りが入るので、同期する歩との差がその所で吸った待ちになる。
+ *   <li>同期するステップ: 段の区切りの印（{@link FitProbe#mark}）ごとにレーンの計算ストリームを待つ。だから段の時間は、その段だけの
+ *       「ホストが処理を積む時間とデバイスの計算時間の長い方」になる。ステップの始め、レーンの処理の後、最適化の後に全てのレーンを待つ
+ *       （{@link DataParallelGroup#awaitParameterUpdates}）ので、最適化の区間も最適化だけの時間になる。
+ *   <li>ホストだけのステップ: 印ではタイマーを読むだけ（本番と同じ流れ）。ホストが待つ所（アンカー・配列の作成・損失の回収・最適化の検査）に
+ *       前の処理の残りが入るので、同期するステップとの差が、そこで吸収した待ち時間になる。
  * </ul>
  *
- * <p>計測のときは頭の中・埋め込みの計測の葉も作り（{@link FitProbe#cuts}。温めの歩を含むどの歩でも同じ木）、逆伝播を頭の中と埋め込みの段に
- * 分ける（背骨の出力は注意の記録の正規化の葉なので、頭の側と背骨の側にはいつも分かれる）。当てはめの終わりに、段ごとの歩あたりの ms
- * （レーンごとと、歩ごとに忙しい時間の長い方のレーン「遅いレーン」の、同期する歩とホストだけの歩）、歩の窓（レーンの仕事・最適化）、
- * レーンの微小バッチの形（歩あたり）の表を記録に出す（{@link #log}）。
+ * <p>計測するときは、ヘッドの中と埋め込みを計測するための葉も作る（{@link FitProbe#cuts}。ウォームアップのステップを含め、どのステップでも
+ * 同じ木）。そして逆伝播を、ヘッドの中と埋め込みの段に分ける（バックボーンの出力は Attention の記録の正規化の葉なので、ヘッドの側と
+ * バックボーンの側にはいつも分かれる）。学習の終わりに、段ごとのステップあたりの ms、ステップの区間（レーンの処理・最適化）、レーンの
+ * マイクロバッチの形（ステップあたり）の表をログに出す（{@link #log}）。段ごとの ms は、レーンごとと「遅いレーン」（ステップごとに忙しい
+ * 時間が長い方のレーン）について、同期するステップとホストだけのステップに分けて出す。
  */
 final class FitProfile {
 
-  /** 計測を選ぶ系の性質。 */
-  static final String PROPERTY = "prism.fitProfile";
+  /** 計測を選ぶシステムプロパティ。 */
+  static final String PROPERTY = DiagnosticProperty.FIT_TIMING.property();
 
-  /** 系の性質の値の形（sync:K:W）。 */
+  /** システムプロパティの値の形（sync:K:W）。 */
   private static final Pattern SETTING = Pattern.compile("sync:(\\d{1,6}):(\\d{1,6})");
 
-  /** 段と層の組の数（層の段は背骨の層の上限まで数える）。 */
+  /** 段と層の組の数（層ごとの段は、バックボーンの層の上限まで数える）。 */
   private static final int SLOTS = Stage.values().length * PrismShape.MAX_DEPTH;
 
-  /** 表の行の頭。 */
+  /** 表の各行の先頭に付ける文字列。 */
   private static final String PREFIX = "fit profile ";
 
   private static final Logger LOG = LoggerFactory.getLogger(FitProfile.class);
 
-  /** 歩の計り方。 */
+  /** ステップの計り方。 */
   enum Timing {
-    /** 計らない（計測しない当てはめと、温めの歩）。 */
+    /** 計らない（計測しない学習と、ウォームアップのステップ）。 */
     OFF,
-    /** 印は時計を読むだけ（本番の段取り）。 */
+    /** 印ではタイマーを読むだけ（本番と同じ流れ）。 */
     HOST,
     /** 印ごとにレーンの計算ストリームを待つ。 */
     SYNCED;
 
     /**
-     * 同期する歩なら、全てのレーンの積んだ仕事の終わりを待つ。
+     * 同期するステップなら、全てのレーンに積んだ処理が終わるのを待つ。
      *
      * @param group 学習のレーン
      */
@@ -71,21 +74,21 @@ final class FitProfile {
     }
   }
 
-  /** レーンの微小バッチの形（歩ごとの値を足す）。 */
+  /** レーンのマイクロバッチの形（ステップごとの値を足す）。 */
   private enum Measure {
-    /** 塊（微小バッチ）の数。 */
+    /** マイクロバッチの数。 */
     PIECES,
     /** 行の数。 */
     ROWS,
-    /** 最も長い行の S（レーンの塊で最大）。 */
+    /** いちばん長い行の S（レーンのマイクロバッチの中で最大）。 */
     WIDEST_S,
-    /** 詰めたトークン（Σ 行 × S）。 */
+    /** パディングを含むトークンの数（Σ 行 × S）。 */
     PADDED_TOKENS,
-    /** 詰めた組（Σ 行 × S²。注意の手間の目安）。 */
+    /** パディングを含むトークンの組の数（Σ 行 × S²。Attention の計算量の目安）。 */
     PADDED_PAIRS
   }
 
-  /** 1 つの計り方の歩の和（ns）。 */
+  /** 1 つの計り方について、ステップの時間の和（ns）。 */
   private static final class Tally {
 
     private int steps;
@@ -95,10 +98,10 @@ final class FitProfile {
     /** [レーン][段と層の組]。 */
     private final long[][] lanes;
 
-    /** レーンの忙しい時間（仕事の始めから最後の印まで）。 */
+    /** レーンの忙しい時間（処理の始めから最後の印まで）。 */
     private final long[] busy;
 
-    /** 歩ごとの遅いレーンの [段と層の組] と忙しい時間。 */
+    /** ステップごとの遅いレーンの、[段と層の組] ごとの時間と忙しい時間。 */
     private final long[] slowest = new long[SLOTS];
 
     private long slowestBusy;
@@ -117,7 +120,7 @@ final class FitProfile {
   private final List<Clock> clocks = new ArrayList<>();
   private final Map<Timing, Tally> tallies = new EnumMap<>(Timing.class);
 
-  /** [レーン][形]（計る歩の和。最初の計る歩で作る）。 */
+  /** [レーン][形]（計るステップの和。最初に計るステップで作る）。 */
   private long[][] shapes;
 
   private int measured;
@@ -129,9 +132,9 @@ final class FitProfile {
   }
 
   /**
-   * 系の性質 {@value #PROPERTY} から作る。
+   * システムプロパティ {@value #PROPERTY} から作る。
    *
-   * @return 計測（性質がなければ無効）
+   * @return 計測（プロパティがなければ無効）
    */
   static FitProfile configured() {
     return of(System.getProperty(PROPERTY));
@@ -140,7 +143,7 @@ final class FitProfile {
   /**
    * 設定から作る。
    *
-   * @param setting sync:K:W（K ≥ 1 歩に 1 歩を同期、温め W 歩）。null か空なら無効
+   * @param setting sync:K:W（K ステップに 1 回同期する。K ≥ 1。ウォームアップは W ステップ）。null か空なら無効
    * @return 計測
    * @throws IllegalArgumentException 形が違うとき
    */
@@ -162,10 +165,10 @@ final class FitProfile {
   }
 
   /**
-   * 歩の計り方を返す。
+   * ステップの計り方を返す。
    *
-   * @param step 歩の番号（1 から）
-   * @return 計り方（無効か温めの歩なら {@link Timing#OFF}）
+   * @param step ステップの番号（1 から）
+   * @return 計り方（無効か、ウォームアップのステップなら {@link Timing#OFF}）
    */
   Timing timing(int step) {
     if (!enabled() || step <= warmup) {
@@ -175,10 +178,10 @@ final class FitProfile {
   }
 
   /**
-   * レーンの時計を作る（作る順がレーンの番号）。
+   * レーンのタイマーを作る。作った順がレーンの番号になる。
    *
    * @param stream レーンの計算ストリーム（CPU のレーンは null）
-   * @return 時計（閉じるのはレーン）
+   * @return タイマー（閉じるのはレーン）
    */
   Clock clock(PtStream stream) {
     Clock clock = new Clock(enabled() && stream != null ? stream.newEvent() : null);
@@ -187,12 +190,12 @@ final class FitProfile {
   }
 
   /**
-   * 計る歩の時間と微小バッチの形を足す（ほかの歩は何もしない）。全てのレーンの仕事が返った後に学習のスレッドで呼ぶ。
+   * 計るステップの時間とマイクロバッチの形を足す。ほかのステップでは何もしない。全てのレーンの処理が返った後に、学習のスレッドで呼ぶ。
    *
-   * @param timing 歩の計り方
-   * @param step 歩の微小バッチ
-   * @param compute レーンの仕事の窓（ns）
-   * @param optimizer 最適化の窓（ns）
+   * @param timing ステップの計り方
+   * @param step ステップのマイクロバッチ
+   * @param compute レーンの処理の区間（ns）
+   * @param optimizer 最適化の区間（ns）
    */
   void record(Timing timing, StepFeed.Step step, long compute, long optimizer) {
     if (timing == Timing.OFF) {
@@ -205,7 +208,7 @@ final class FitProfile {
     Clock slowest = null;
     for (int lane = 0; lane < clocks.size(); lane++) {
       Clock clock = clocks.get(lane);
-      // 微小バッチのないレーンはこの歩の仕事を始めていない
+      // マイクロバッチのないレーンは、このステップの処理を始めていない
       if (clock.timing != Timing.OFF) {
         tally.busy[lane] += clock.busy();
         add(tally.lanes[lane], clock.nanos);
@@ -230,7 +233,7 @@ final class FitProfile {
     measured++;
   }
 
-  /** 表を記録に出す（計る歩がなければ何もしない）。 */
+  /** 表をログに出す。計るステップがなければ何もしない。 */
   void log() {
     for (String line : report()) {
       LOG.info(line);
@@ -238,10 +241,10 @@ final class FitProfile {
   }
 
   /**
-   * 表の行を返す: 見出し、歩の窓（同期する歩・ホストだけの歩）、レーンの微小バッチの形、段ごとの ms（どこかの列が 0 でない段と層だけ）。
-   * 数は全て計り方の歩あたり。
+   * 表の行を返す。順に、見出し、ステップの区間（同期するステップ・ホストだけのステップ）、レーンのマイクロバッチの形、段ごとの ms
+   * （どれかの列が 0 でない段と層だけ）。数は全て、その計り方のステップあたり。
    *
-   * @return 行（計る歩がなければ空）
+   * @return 行（計るステップがなければ空）
    */
   List<String> report() {
     List<String> lines = new ArrayList<>();
@@ -320,7 +323,7 @@ final class FitProfile {
     return stage.ordinal() * PrismShape.MAX_DEPTH + layer;
   }
 
-  /** レーンの歩の微小バッチの形を足す（S は詰めたトークン / 行）。 */
+  /** レーンの 1 ステップ分のマイクロバッチの形を足す（S はパディングを含むトークン数 / 行数）。 */
   private static void addShapes(long[] sums, List<Microbatch> parts) {
     long widest = 0;
     for (Microbatch part : parts) {
@@ -344,7 +347,7 @@ final class FitProfile {
     return tally == null ? 0 : tally.steps;
   }
 
-  /** 計り方の歩あたりの ms（その計り方の歩がなければ NaN）。 */
+  /** その計り方のステップあたりの ms（その計り方のステップがなければ NaN）。 */
   private static double millis(Tally tally, ToLongFunction<Tally> nanos) {
     return tally == null ? Double.NaN : nanos.applyAsLong(tally) / 1e6 / tally.steps;
   }
@@ -366,15 +369,15 @@ final class FitProfile {
   }
 
   /**
-   * 1 レーンの段の時計（{@link FitProbe}）。印を付けるのはレーンのスレッドだけで、歩の終わりに学習のスレッドが読む（レーンの仕事が返るのを
-   * 待ってから読むので、その待ちが読み書きの順を決める）。
+   * 1 つのレーンの段ごとのタイマー（{@link FitProbe}）。印を付けるのはレーンのスレッドだけで、ステップの終わりに学習のスレッドが読む。
+   * 学習のスレッドはレーンの処理が返るのを待ってから読むので、その待ちが読み書きの順序を保証する。
    */
   final class Clock implements FitProbe, AutoCloseable {
 
-    /** 同期する歩でレーンの計算ストリームに置いて待つ印（GPU のレーンを計測するときだけ。ほかは null）。 */
+    /** 同期するステップで、レーンの計算ストリームに置いて待つイベント（GPU のレーンを計測するときだけ。ほかは null）。 */
     private final PtEvent event;
 
-    /** 今の歩の段と層の組ごとの時間（ns）。 */
+    /** 今のステップの、段と層の組ごとの時間（ns）。 */
     private final long[] nanos = new long[SLOTS];
 
     private Timing timing = Timing.OFF;
@@ -386,9 +389,9 @@ final class FitProfile {
     }
 
     /**
-     * 歩のレーンの仕事を始める。同期する歩は前の仕事の終わりを待ってから時計を始める。
+     * このステップでのレーンの処理を始める。同期するステップでは、前の処理が終わるのを待ってからタイマーを始める。
      *
-     * @param step 歩の計り方
+     * @param step ステップの計り方
      */
     void begin(Timing step) {
       timing = step;
@@ -416,12 +419,12 @@ final class FitProfile {
       return enabled();
     }
 
-    /** 歩の仕事の始めから最後の印までの時間（ns）。 */
+    /** ステップの処理の始めから最後の印までの時間（ns）。 */
     private long busy() {
       return last - begun;
     }
 
-    /** 同期する歩なら、レーンの計算ストリームに積んだ仕事の終わりを待つ。 */
+    /** 同期するステップなら、レーンの計算ストリームに積んだ処理が終わるのを待つ。 */
     private void settle() {
       if (timing == Timing.SYNCED && event != null) {
         event.record();

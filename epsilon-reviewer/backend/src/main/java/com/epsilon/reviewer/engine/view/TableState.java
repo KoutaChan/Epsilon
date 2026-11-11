@@ -3,10 +3,12 @@ package com.epsilon.reviewer.engine.view;
 import java.util.List;
 
 /**
- * 表示の局面。players の位置が絶対の席。
+ * 画面に出す局面。
  *
- * @param dora 開いたドラ表示牌（開いた順）
- * @param kyotaku 卓の上の供託の本数
+ * @param players 席ごとの状態（絶対席の順）
+ * @param dora めくったドラ表示牌（めくった順）
+ * @param honba 本場の数
+ * @param kyotaku 卓に出ている供託の本数
  * @param remaining 残りのツモの数
  * @param activeSeat 手番の席
  */

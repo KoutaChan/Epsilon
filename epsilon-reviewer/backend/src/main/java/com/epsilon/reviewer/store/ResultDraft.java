@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
 
-/** 保存の途中の 1 件（staging/&lt;resultId&gt;/）。文書と牌譜を書き、{@link ResultStore#commit} で確定する。 */
+/** 保存している途中の 1 件（staging/&lt;resultId&gt;/）。文書と牌譜を書いてから、{@link ResultStore#commit} で確定する。 */
 public final class ResultDraft implements Closeable {
   private final ResultId id;
   private final Path directory;
@@ -22,14 +22,14 @@ public final class ResultDraft implements Closeable {
     return id;
   }
 
-  /** 文書の流れ（1 回だけ開く）。gzip（水準 9）で書き、閉じると終わりを書いて同期する。 */
+  /** 文書を書くストリームを開く。開けるのは 1 回だけ。gzip（レベル 9）で書き、閉じると gzip の末尾を書いてディスクに同期する。 */
   public OutputStream document() throws IOException {
     if (document != null) throw new IllegalStateException("The document is already open.");
     document = SyncedGzipFile.create(directory.resolve(StoreLayout.DOCUMENT.fileName()));
     return document;
   }
 
-  /** 元の牌譜を書く。gzip（1f 8b で始まる）ならそのまま、他は gzip の水準 9 にする。 */
+  /** 元の牌譜を書く。gzip（先頭が 1f 8b）ならそのまま書き、それ以外はレベル 9 の gzip で圧縮して書く。 */
   public void record(byte[] original) throws IOException {
     Path path = directory.resolve(StoreLayout.RECORD.fileName());
     if (original.length >= 2 && (original[0] & 0xff) == 0x1f && (original[1] & 0xff) == 0x8b)
@@ -41,7 +41,7 @@ public final class ResultDraft implements Closeable {
     recorded = true;
   }
 
-  /** 確定の前に文書を閉じる。 */
+  /** 確定の前に文書を閉じ、この 1 件のフォルダーを返す。文書と牌譜をまだ書いていなければ IllegalStateException を投げる。 */
   Path seal() throws IOException {
     if (document == null || !recorded)
       throw new IllegalStateException("The document and the record must be written first.");
@@ -53,7 +53,7 @@ public final class ResultDraft implements Closeable {
     committed = true;
   }
 
-  /** 確定していなければ書いた物を捨てる。 */
+  /** 確定していなければ、書いたものを捨てる。 */
   @Override
   public void close() {
     if (committed) return;
@@ -61,7 +61,7 @@ public final class ResultDraft implements Closeable {
       try {
         document.close();
       } catch (IOException ignored) {
-        // 捨てる文書の終わりを書けなくても、フォルダーごと消す。
+        // 捨てる文書の末尾を書けなくても、フォルダーごと消す。
       }
     ResultStore.discard(directory);
   }

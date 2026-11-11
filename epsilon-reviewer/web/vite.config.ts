@@ -4,19 +4,19 @@ import { promisify } from "node:util";
 import { brotliCompress, constants, gzip } from "node:zlib";
 import { defineConfig, type Plugin } from "vite";
 
-// サーバの Content-Security-Policy の頭から frame-ancestors を除いたもの（meta では効かない）。
+// サーバが返す Content-Security-Policy ヘッダーから、frame-ancestors を除いたもの（frame-ancestors は meta では効かない）。
 const CONTENT_SECURITY_POLICY =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'";
 const API_TARGET = process.env.EPSILON_REVIEWER_API ?? "http://127.0.0.1:8080";
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
 const COMPRESSIBLE = /\.(?:js|css|html|svg|json)$/;
-/** これ以下の大きさのファイルは圧縮した写しを作らない（バイト）。 */
+/** この大きさ（バイト）以下のファイルは、圧縮版を作らない。 */
 const COMPRESS_THRESHOLD = 1024;
 
 const compressBrotli = promisify(brotliCompress);
 const compressGzip = promisify(gzip);
 
-/** 作った index.html の頭に CSP の meta を入れる。 */
+/** ビルドした index.html の head の先頭に CSP の meta を入れる。 */
 function contentSecurityPolicy(): Plugin {
   return {
     name: "epsilon-content-security-policy",
@@ -34,7 +34,10 @@ function contentSecurityPolicy(): Plugin {
   };
 }
 
-/** dist の 1 KiB を超える js・css・html・svg・json の横に .br（品質 11）と .gz（水準 9）を書く。サーバは起動時に読む。 */
+/**
+ * dist の下にある js・css・html・svg・json のうち 1 KiB を超えるファイルごとに、同じ場所へ .br（品質 11）と
+ * .gz（レベル 9）を書く。サーバは起動時にこれらを読む。
+ */
 function precompress(): Plugin {
   return {
     name: "epsilon-precompress",
@@ -81,7 +84,7 @@ export default defineConfig({
         configure(proxy) {
           const origin = new URL(API_TARGET).origin;
           proxy.on("proxyReq", (outgoing, incoming) => {
-            // 手元の Vite から来た要求だけ、Origin を中継先に揃える（サーバは同じ origin だけを受ける）。
+            // 手元の Vite の開発サーバから来た要求だけ、Origin をプロキシ先に書き換える（サーバは同じ origin からの要求しか受けない）。
             const host = incoming.headers.host;
             if (
               host &&

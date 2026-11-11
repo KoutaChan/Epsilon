@@ -14,7 +14,7 @@ import { WinningDetails } from "./WinningDetails";
 import { WinningHandRow } from "./WinningHand";
 import "./outcome.css";
 
-/** 局の精算（和了の手・点数の増減）と、対局の結果（順位）。 */
+/** 局の精算（和了の手・点数の増減）と、対局の結果（順位）を見せる画面。 */
 export function OutcomeScreen({
   playback,
   onBack,
@@ -138,7 +138,7 @@ export function OutcomeScreen({
                       <div className="em-winning-heading">
                         <h2>
                           <span>
-                            {seatName(winner.player.seat, round.dealer, t)}
+                            {seatName(winner.player.seat, round, t)}
                           </span>
                           {name(winner.player.seat)}
                         </h2>
@@ -184,7 +184,7 @@ export function OutcomeScreen({
                         >
                           <th scope="row">
                             <span className="em-score-wind">
-                              {seatName(player.seat, round.dealer, t)}
+                              {seatName(player.seat, round, t)}
                             </span>
                             <span>{name(player.seat)}</span>
                           </th>

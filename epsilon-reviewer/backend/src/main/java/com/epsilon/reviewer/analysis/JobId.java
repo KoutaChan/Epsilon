@@ -5,12 +5,12 @@ import com.epsilon.reviewer.error.ReviewerException;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
-/** 解析の仕事の id。小文字の UUID。 */
+/** 解析ジョブの id。小文字の UUID。 */
 public record JobId(String value) {
   private static final Pattern FORM =
       Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
 
-  /** @throws ReviewerException job_not_found（形が違う） */
+  /** @throws ReviewerException 小文字の UUID の形でない（job_not_found） */
   public static JobId parse(String text) {
     if (text == null || !FORM.matcher(text).matches())
       throw new ReviewerException(ErrorCode.JOB_NOT_FOUND);

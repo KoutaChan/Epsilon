@@ -8,6 +8,7 @@ import type { ResultDocument } from "../../../../protocol/result.ts";
 import { errorKey, type MessageKey } from "../../language/catalog";
 import { modelLabel, sourceLabel } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
+import { jobEnded } from "./jobEnd.ts";
 import { useAnalysisJob } from "./useAnalysisJob";
 
 const STATUS_KEYS = {
@@ -19,7 +20,7 @@ const STATUS_KEYS = {
   cancelled: "progress.cancellation",
 } as const satisfies Record<JobStatus, MessageKey>;
 
-/** 解析の進み。戻るのは失敗か取り消しで終わった時だけ。 */
+/** 解析の進み具合の画面。最初の画面へ戻れるのは、解析が結果を出さずに終わったとき（失敗・取り消し・ジョブが無い）だけ。 */
 export function AnalysisProgress({
   jobId,
   record,
@@ -38,7 +39,7 @@ export function AnalysisProgress({
     jobId,
     onComplete,
   );
-  const ended = job.status === "failed" || job.status === "cancelled";
+  const ended = jobEnded(job.status, error);
   const title: MessageKey =
     error !== null
       ? "progress.disconnected"

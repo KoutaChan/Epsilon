@@ -5,12 +5,12 @@ import { actionMessageKeys } from "../../language/actionMessages";
 import { useLanguage } from "../../language/LanguageProvider";
 import type { WinningHand } from "./model/outcomeSummary.ts";
 
-/** 牌の間（牌の幅を 1 とする）。 */
+/** 牌と牌の間隔（牌の幅を 1 とした比）。 */
 const RESULT_TILE_GAP = 0.025;
-/** 手牌・和了牌・副露の組の間。 */
+/** 手牌・和了牌・副露のまとまりどうしの間隔（牌の幅を 1 とした比）。 */
 const RESULT_GROUP_GAP = 0.35;
 
-/** 和了の手。伏せた手牌、和了牌、副露（新しい順）の一列。 */
+/** 和了した手を 1 列に並べる。左から、鳴いていない手牌、和了牌、副露（新しい順）と置く。 */
 export function WinningHandRow({ winner }: { winner: WinningHand }) {
   const { t } = useLanguage();
   const {
@@ -81,7 +81,7 @@ function WinningMeld({ meld }: { meld: Meld }) {
       {meld.tiles.map((tile, index) => {
         if (meld.type === "KAKAN" && index === meld.addedIndex) return null;
         const sideways = index === meld.calledIndex;
-        // 暗槓は両端を伏せ、赤の 5 は 2 枚目に見せる。
+        // 暗槓は両端の 2 枚を伏せる。赤 5 を含むときは、2 枚目を赤 5 にして見せる。
         const value = concealedKan
           ? index === 0 || index === meld.tiles.length - 1
             ? "back"

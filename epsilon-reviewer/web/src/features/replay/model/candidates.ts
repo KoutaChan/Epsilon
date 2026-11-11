@@ -10,8 +10,8 @@ import type { Candidate } from "./types.ts";
 const cache = new WeakMap<CandidateSet, readonly Candidate[]>();
 
 /**
- * 判断の候補の行を表示の候補にする。同じ判断（CandidateSet の物）は初めて見た時に 1 回だけ作る。
- * temperature は文書の温度で、その文書の判断ともしもの答えだけを渡す。
+ * 判断の候補の行を、表示用の候補に直す。同じ判断（同じ CandidateSet のオブジェクト）の候補は、初めて見たときに 1 回だけ作って覚える。
+ * 温度には解析結果の文書の温度を渡す。覚えた候補は温度で区別しないので、渡す判断はその文書の判断ともしもの答えに限る。
  */
 export function readCandidates(
   set: CandidateSet,
@@ -37,12 +37,12 @@ export function readCandidates(
   return candidates;
 }
 
-/** 候補の欄に出す上位の件数。 */
+/** 候補欄に出す上位の件数。 */
 const LISTED = 3;
 
 /**
- * 候補の欄に出す行。上位 3 件と、上位にない実際の選択（本来の順位で末尾に区切って出す）。もしもの比べの間は実際の選択を
- * 出さない（元の局面の手で、比べの行で高くなった欄を画面に収める）。
+ * 候補欄に出す行を返す。上位 3 件と、上位に入らなかった実際の選択（本来の順位のまま、区切って末尾に出す）。
+ * もしもの比較の間は、実際の選択を出さない。実際の選択は元の局面での手で、もしもの局面の手ではないため。出さない分、比較の行で高くなった欄も画面に収まる。
  */
 export function listedCandidates(
   candidates: readonly Candidate[],

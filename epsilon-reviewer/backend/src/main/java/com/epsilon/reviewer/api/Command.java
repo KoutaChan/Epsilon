@@ -10,8 +10,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 操作の表。protocol/commands.ts の COMMANDS と同じ名前・並び・HTTP の道・stdio・入口・本文の種類
- * （ProtocolContractTest が突き合わせる）。HTTP の道の {名前} は要求の record の同じ名前の欄。
+ * 操作の一覧。名前・並び・HTTP のパス・stdio で呼べるか・呼べる相手・本文の種類は、protocol/commands.ts の COMMANDS と同じにする
+ * （ProtocolContractTest で突き合わせる）。HTTP のパスの {名前} の部分は、要求の record の同じ名前のフィールドに入る。
  */
 public enum Command {
   MODELS(
@@ -23,7 +23,7 @@ public enum Command {
       RequestBody.NONE,
       ResponseBody.JSON,
       NoRequest.class),
-  /** 持ち主の履歴（新しい順）。 */
+  /** オーナーの履歴（新しい順）。 */
   HISTORY(
       "history",
       "GET",
@@ -42,7 +42,7 @@ public enum Command {
       RequestBody.BINARY,
       ResponseBody.JSON,
       NoRequest.class),
-  /** デスクトップのファイルの取り込み（絶対パス）。 */
+  /** デスクトップで牌譜のファイルを取り込む。ファイルは絶対パスで指定する。 */
   IMPORT_FILE(
       "importFile",
       null,
@@ -61,7 +61,7 @@ public enum Command {
       RequestBody.JSON,
       ResponseBody.JSON,
       TenhouImportRequest.class),
-  /** 保存した結果の元の牌譜の取り込み（解析し直し）。 */
+  /** 解析し直すために、保存した解析結果から元の牌譜を取り込み直す。 */
   IMPORT_STORED(
       "importStored",
       "POST",
@@ -80,7 +80,7 @@ public enum Command {
       RequestBody.JSON,
       ResponseBody.JSON,
       AnalysisRequest.class),
-  /** 解析の進み。 */
+  /** 解析の進み具合。 */
   JOB(
       "job",
       "GET",
@@ -108,7 +108,7 @@ public enum Command {
       RequestBody.NONE,
       ResponseBody.DOCUMENT,
       ResultRequest.class),
-  /** 解析結果の削除（共有も止まる）。 */
+  /** 解析結果を消す。共有も止まる。 */
   DELETE_RESULT(
       "deleteResult",
       "DELETE",
@@ -118,7 +118,7 @@ public enum Command {
       RequestBody.NONE,
       ResponseBody.EMPTY,
       ResultRequest.class),
-  /** 解析結果のダウンロード（Web の書き出し）。 */
+  /** Web で解析結果を書き出す（ダウンロード）。 */
   DOWNLOAD_RESULT(
       "downloadResult",
       "GET",
@@ -128,7 +128,7 @@ public enum Command {
       RequestBody.NONE,
       ResponseBody.ATTACHMENT,
       ResultRequest.class),
-  /** デスクトップの解析結果の書き出し（メインプロセスだけが呼ぶ）。 */
+  /** デスクトップで解析結果を書き出す。呼ぶのはメインプロセスだけ。 */
   EXPORT_RESULT(
       "exportResult",
       null,
@@ -165,7 +165,7 @@ public enum Command {
       RequestBody.JSON,
       ResponseBody.JSON,
       ScenarioRequest.class),
-  /** 共有リンクのもしも（保存の牌譜をサーバで評価し、牌譜は閲覧者へ送らない）。 */
+  /** 共有リンクでのもしも。保存した牌譜をサーバで評価し、牌譜そのものは閲覧者へ送らない。 */
   SHARED_SCENARIO(
       "sharedScenario",
       "POST",
@@ -212,22 +212,22 @@ public enum Command {
     return wireName;
   }
 
-  /** HTTP の方法。デスクトップだけの操作は null。 */
+  /** HTTP のメソッド。デスクトップだけの操作は null。 */
   public String httpMethod() {
     return httpMethod;
   }
 
-  /** HTTP の道の型（{名前} は要求の欄）。デスクトップだけの操作は null。 */
+  /** HTTP のパスのテンプレート。{名前} の部分には要求のフィールドが入る。デスクトップだけの操作は null。 */
   public String httpPath() {
     return httpPath;
   }
 
-  /** stdio で受けるか。 */
+  /** stdio で受け付けるか。 */
   public boolean stdio() {
     return stdio;
   }
 
-  /** 入口（並びは Access の宣言の順）。 */
+  /** この操作を呼べる相手。並びは Access で宣言した順。 */
   public Set<Access> access() {
     return access;
   }

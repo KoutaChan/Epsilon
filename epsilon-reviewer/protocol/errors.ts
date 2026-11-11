@@ -1,8 +1,8 @@
-// 失敗の符号は Web・デスクトップ・Java で同じ文字列を使い、画面は errors.<符号> の文言だけを出す。
+// エラーコードは Web 版・デスクトップ版・Java で同じ文字列を使う。画面に出すのは errors.<コード> の文言だけ。
 
 /**
- * Java の解析の側が返す失敗の符号。並びと文字列は Java の ErrorCode と同じ（HTTP の状態は Java の側が持つ）。
- * 文言は language/<言語>/errors.json の errors.<符号>。
+ * Java の解析側が返すエラーコード。並び順と文字列は Java の ErrorCode と同じ（HTTP のステータスは Java 側で決める）。
+ * 文言は language/<言語>/errors.json の errors.<コード> にある。
  */
 export const SERVER_ERROR_CODES = [
   "not_found",
@@ -34,7 +34,7 @@ export const SERVER_ERROR_CODES = [
   "decision_not_found",
 ] as const;
 
-/** 画面とデスクトップのアプリの中だけで作る失敗の符号。Java は返さない。 */
+/** 画面とデスクトップ版のアプリの中だけで作るエラーコード。Java は返さない。 */
 export const CLIENT_ERROR_CODES = [
   "connection_failed",
   "invalid_response",
@@ -48,15 +48,10 @@ export type ServerErrorCode = (typeof SERVER_ERROR_CODES)[number];
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];
 export type ErrorCode = ServerErrorCode | ClientErrorCode;
 
-/** 失敗の中身。message は英語で、画面には出さない（記録と調べ物のため）。 */
+/** エラーの中身。message は英語で、画面には出さない（ログと調査のためのもの）。 */
 export interface ErrorBody {
   code: ErrorCode;
   message: string;
-}
-
-/** HTTP の 2xx 以外の本文。 */
-export interface ErrorEnvelope {
-  error: ErrorBody;
 }
 
 const KNOWN: ReadonlySet<string> = new Set<string>([

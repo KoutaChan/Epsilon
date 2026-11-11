@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.engine.scenario;
 
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.view.Meld;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
@@ -11,20 +12,24 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 判断の席に見える牌（自分の手とツモ牌、全ての河、全ての副露、ドラ表示）を牌の記号ごとに数え、変更が置いた牌がどれもその記号の写しの数
- * （{@link TileCopies#count}）を超えないことを確かめる。鳴かれた河の牌は副露の牌として数える。超えたら、その牌を置いた最初の変更を名指す。
+ * 判断する席に見える牌（自分の手牌とツモ牌、全ての河、全ての副露、ドラ表示牌）を牌の記号ごとに数え、変更で置いた牌がどれも、その
+ * 牌の写しの数（ルールの牌の集合から求める）を超えないことを確かめる。鳴かれた河の牌は副露の牌として数える。超えたら、その牌を
+ * 置いた最初の変更を名指しして断る。
  */
 final class VisibleTileCount {
+  private final Variant variant;
   private final Map<String, Integer> counts = new HashMap<>();
 
-  private VisibleTileCount() {}
+  private VisibleTileCount(Variant variant) {
+    this.variant = variant;
+  }
 
   /**
-   * @param table 変更を写した判断の局面
-   * @param placements 牌を替えた変更（当てた順）
+   * @param table 変更を反映した判断の局面
+   * @param placements 牌を替えた変更（適用した順）
    */
-  static void require(TableState table, int seat, List<Placement> placements) {
-    var visible = new VisibleTileCount();
+  static void require(Variant variant, TableState table, int seat, List<Placement> placements) {
+    var visible = new VisibleTileCount(variant);
     PlayerState own = table.players().get(seat);
     own.hand().forEach(visible::count);
     if (own.draw() != null) visible.count(own.draw());
@@ -42,7 +47,7 @@ final class VisibleTileCount {
 
   private void requireWithin(Placement placement) {
     String tile = placement.tile();
-    int copies = TileCopies.count(tile);
+    int copies = TileCopies.count(variant, tile);
     if (counts.getOrDefault(tile, 0) > copies)
       throw new ReviewerException(
           ErrorCode.INVALID_EDIT,

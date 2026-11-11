@@ -6,16 +6,15 @@ JDK 21を用意し、`JAVA_HOME`を設定してください。Mavenは同梱のW
 .\mvnw.cmd package
 ```
 
-Linux・macOSでは`./mvnw package`を使います。特定の系列だけをビルドする場合は、例えばNanoなら`.\mvnw.cmd -pl epsilon-nano -am package`を実行します。
+Linux・macOSでは`./mvnw package`を使います。特定のモジュールだけをビルドする場合は、例えばPRISMなら`.\mvnw.cmd -pl epsilon-prism-4p -am package`を実行します。
 
 実行用JARは、それぞれのモジュールの`target/`に生成されます。
 
-| 系列           | 実行用JAR                                                  |
-|--------------|---------------------------------------------------------|
-| Epsilon-Pico | `epsilon-pico/target/epsilon-pico-1.0-SNAPSHOT-all.jar` |
-| Epsilon-Nano | `epsilon-nano/target/epsilon-nano-1.0-SNAPSHOT-all.jar` |
-| Epsilon      | `epsilon/target/epsilon-1.0-SNAPSHOT-all.jar`           |
-| Epsilon-Prism | `epsilon-prism/target/epsilon-prism-1.0-SNAPSHOT-all.jar` |
+| 用途 | 実行用JAR |
+| --- | --- |
+| Epsilon-Prism | `epsilon-prism-4p/target/epsilon-prism-4p-1.0-SNAPSHOT-all.jar` |
+| Epsilon-Prism（三人打ち） | `epsilon-prism-3p/target/epsilon-prism-3p-1.0-SNAPSHOT-all.jar` |
+| Epsilon AI レビュアー | `epsilon-reviewer/backend/target/epsilon-reviewer-1.0-SNAPSHOT-all.jar` |
 
 <details>
 <summary>AMD GPUを使う場合（Linux / ROCm）</summary>

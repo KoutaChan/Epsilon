@@ -17,7 +17,7 @@ interface ReadReplay {
   readonly timelines: Timelines;
 }
 
-/** 文書を 1 回だけ読んで再生の位置まで作る。読めなければ ReviewFormatError を返す。 */
+/** 解析結果の文書を 1 回だけ読み、再生のモデルとタイムラインを作る。読めなければ ReviewFormatError を返す。 */
 function readReplay(document: ResultDocument): ReadReplay | ReviewFormatError {
   try {
     const model = decodeResult(document);

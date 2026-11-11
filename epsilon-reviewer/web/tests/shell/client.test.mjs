@@ -6,7 +6,7 @@ import { ApiError } from "../../src/api/errors.ts";
 
 const id = "82b7a497-06a6-42a1-8700-8b4b65e83273";
 
-/** 送った操作を覚え、respond の答えを返す輸送。 */
+/** テスト用のトランスポート。送ったコマンドを記録し、渡した応答の関数（`respond`）の戻り値をそのまま返す。 */
 function fakeTransport(platform, respond = () => undefined, desktop = {}) {
   const calls = [];
   return {

@@ -1,0 +1,49 @@
+# 全体の流れを数分で通すための小さな設定。評価のジョブも通す。CPU の推論は呼び出したスレッド 1 本で回るので、コホートは 2 半荘にする。
+# ラベル行とロールインの率、候補の数は本番より小さくし、推論のバッチは待たない。評価の牌山の数は、三人打ちと四人打ちの席の数の両方の倍数にする。
+[schedule]
+iterations = 2
+cohorts = [{from = 1, games = 2}]
+
+[fit]
+maxSteps = 8
+batch = 16
+
+[table]
+activeGames = 64
+batchWaitMicros = 1000
+
+[labels]
+maxCandidates = 3
+copyLabelRate = 0.2
+
+[labels.rollin]
+DISCARD_EARLY = 0.001
+DISCARD_MID = 0.001
+DISCARD_LATE = 0.001
+THREAT = 0.015
+RIICHI = 0.015
+CALL = 0.015
+KAN = 0.015
+END = 0.015
+FINAL_END = 0.015
+
+[noise.rates.table]
+DISCARD_EARLY = 0.003
+DISCARD_MID = 0.003
+DISCARD_LATE = 0.003
+THREAT = 0.015
+RIICHI = 0.015
+CALL = 0.015
+KAN = 0.015
+END = 0.015
+
+[evaluation.tables.smoke]
+opponent = "heuristic"
+seating = "BY_GAME"
+draws = "SEAT_STREAMS"
+wallSet = "FIXED"
+walls = 12
+stop = "FIXED"
+score = "RANK"
+every = 1
+from = 1

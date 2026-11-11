@@ -38,12 +38,12 @@ const SCREEN_SIZES = [
   [360, 800, "portrait"],
 ];
 
-// 操作の帯の大きさは table.css の値をそのまま読む（もしもの押し釦を含む）。
+// 操作バーの大きさは table.css の値をそのまま読む（もしものボタンを含む）。
 const css = readFileSync(
   new URL("../../src/features/replay/table.css", import.meta.url),
   "utf8",
 ).replace(/\/\*[\s\S]*?\*\//g, "");
-/** 選択子（空白をまとめた形）の規則の宣言を、後の規則が勝つ順で合わせる。 */
+/** セレクターが一致する CSS のルールの宣言を集める。セレクターの空白はまとめてから比べ、同じプロパティは後のルールの値で上書きする。 */
 function style(selector) {
   const result = {};
   for (const [, selectors, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
@@ -61,7 +61,7 @@ function style(selector) {
 }
 const layoutRule = (layout, part) =>
   style(`#epsilon-review-material .em-device[data-layout="${layout}"] ${part}`);
-/** calc(Npx * var(--em-pc-ui-scale)) の N。 */
+/** calc(Npx * var(--em-pc-ui-scale)) の N を返す。 */
 const scaled = (value) =>
   Number(/^calc\(([\d.]+)px \* var\(--em-pc-ui-scale\)\)$/.exec(value)[1]);
 const pixels = (value) => Number(/^([\d.]+)px$/.exec(value)[1]);
@@ -529,7 +529,7 @@ function makeComposition(rowWidth = PLAYER_ROW_WIDTH) {
   return {
     table,
     composition,
-    /** 当てはめて、操作の帯の画面の矩形を返す。 */
+    /** カメラを合わせて、操作バーの画面上の矩形を返す。 */
     fit(width, height, mode) {
       if (mode === "desktop") {
         const w = Math.round((DESKTOP_BAR.units * width) / 1440),
@@ -552,7 +552,7 @@ function makeComposition(rowWidth = PLAYER_ROW_WIDTH) {
 function makeTileProjectionFixture(rowWidth = PLAYER_ROW_WIDTH) {
   const fixture = makeComposition(rowWidth),
     previousDocument = globalThis.document;
-  // 形の試験は影の絵の canvas とツモの札だけを用意し、GPU では描かない。
+  // 形のテストでは影の画像の canvas とツモのラベルだけを用意し、GPU では描かない。
   globalThis.document = {
     createElement: () => ({
       getContext: () => ({ beginPath() {}, roundRect() {}, fill() {} }),
@@ -767,7 +767,7 @@ test("initial tile positions along every seat stay centered across record widths
                 assert.equal(hand.length, 13 + Number(hasDraw));
                 const axis = local(seat, 1, 0);
                 for (const [index, group] of hand.entries()) {
-                  // 卓の半径とカメラは対局の幅ごとに違ってよい。
+                  // 卓の半径とカメラは、牌の列の幅（牌譜ごとに違う）に合わせて変わってよい。
                   const alongSeat =
                     (group.position.x * axis.x + group.position.y * axis.y) /
                     group.scale.x;
@@ -1013,7 +1013,7 @@ test("foreground hands and melds avoid rivers, other players and controls throug
 function traceGlyphInterior(glyph, camera, renderedTiles, raycaster) {
   const origin = camera.getWorldPosition(new THREE.Vector3());
   const samples = [];
-  // 二つの三角形の境目を避けて、図柄の内側を見る。
+  // 2 つの三角形の境目を避けて、図柄の内側を見る。
   for (const x of [-0.38, 0.017, 0.36])
     for (const y of [-0.34, 0.029, 0.4]) {
       const target = new THREE.Vector3(x * 0.9, y * 1.2, 0).applyMatrix4(
@@ -1156,7 +1156,7 @@ test("all called and added kan glyphs remain unoccluded at every seat and screen
           }
           const position = added.position.clone();
           try {
-            // 加槓牌を上に重ねる積み方をこの試験の中だけで作り、鳴いた牌の図柄が隠れるのを見つけられることを確かめる。
+            // このテストの中だけで加槓牌を真上に重ねて置き、鳴いた牌の図柄が隠れたら見つけられることを確かめる。
             added.position.copy(called.position);
             added.position.z += 0.61 * added.scale.z;
             parent.updateWorldMatrix(true, true);
@@ -1573,7 +1573,7 @@ test("only the seats whose player, last-discard mark or view changed are rebuilt
   }
 });
 
-/** 点を含む最後の（上に重なる）多角形の位置。凸の多角形だけを扱う。 */
+/** 点を含む多角形のうち、最後のもの（いちばん上に重なるもの）の位置を返す。凸の多角形だけを扱う。 */
 function topmostShape(shapes, x, y) {
   for (let index = shapes.length - 1; index >= 0; index--) {
     const points = shapes[index].points;
@@ -1611,7 +1611,7 @@ test("hand targets pick the same tile as a ray from the hand camera", () => {
         piece.group.traverse((object) => pieceOf.set(object, piece.index));
       const xs = shapes.flatMap((shape) => shape.points.map(([x]) => x)),
         ys = shapes.flatMap((shape) => shape.points.map(([, y]) => y));
-      // 画面の画素ごとに、光線が最初に当たる牌と、上に重なる当たり枠の牌を比べる。
+      // 画面のピクセルごとに、光線が最初に当たる牌と、いちばん上に重なる当たり判定の牌を比べる。
       let tiles = 0,
         outside = 0,
         neighbor = 0;
@@ -1639,7 +1639,7 @@ test("hand targets pick the same tile as a ray from the hand camera", () => {
           if (truth >= 0 && picked >= 0) neighbor++;
           else outside++;
         }
-      // 外れてよいのは、牌の丸めた角と縁の 1 画素ほどだけ。
+      // 外れてよいのは、牌の角の丸みと縁の 1 ピクセルほどだけ。
       const size = `${width}x${height}`;
       assert.ok(outside / tiles < 0.03, `${size}: ${outside} of ${tiles}`);
       assert.ok(neighbor / tiles < 0.01, `${size}: ${neighbor} of ${tiles}`);

@@ -24,7 +24,7 @@ import { usePlaybackInput } from "./usePlaybackInput.ts";
 
 type Menu = "round" | "seat" | "options";
 
-/** 再生の操作の帯。局・視点・設定の 3 つのメニューと、戻る・再生・進む・もしもの押し釦。 */
+/** 再生の操作バー。局・視点・設定の 3 つのメニューと、戻る・再生・進む・もしものボタンを並べる。 */
 export function PlaybackControls({
   elements,
   playback,
@@ -56,7 +56,7 @@ export function PlaybackControls({
     togglePlay,
   } = playback;
   const [menu, setMenu] = useState<Menu | null>(null);
-  // メニューを閉じたら、開いた札へ戻る。
+  // メニューを閉じたら、そのメニューを開いたボタンへフォーカスを戻す。
   const opener = useRef<HTMLElement | null>(null);
   const close = useCallback(() => {
     if (menu) opener.current?.focus();
@@ -86,12 +86,12 @@ export function PlaybackControls({
   useEffect(() => {
     if (stage !== "table") setMenu(null);
   }, [stage]);
-  // 押せないときは理由を出す。
+  // もしものボタンを押せないときは、押せない理由を出す。
   const scenarioReason =
     scenario.active || scenario.canStart
       ? undefined
       : scenario.available
-        ? t("scenario.noTurn", { seat: seatName(seat, round.dealer, t) })
+        ? t("scenario.noTurn", { seat: seatName(seat, round, t) })
         : t("scenario.unavailableModel");
   const currentPlayer = snapshot.players[seat]!;
   return (
@@ -140,18 +140,19 @@ export function PlaybackControls({
           className="em-seat-trigger"
           onClick={toggle("seat")}
           aria-label={t("replay.chooseSeat", {
-            seat: seatName(seat, round.dealer, t),
+            seat: seatName(seat, round, t),
             name: playerName(currentPlayer.name, seat, t),
           })}
         >
           <span className="em-seat-label">
-            {seatName(seat, round.dealer, t)}
+            {seatName(seat, round, t)}
           </span>
           <ChevronDown />
         </summary>
         <div className="em-seat-menu">
-          {[0, 1, 2, 3].map((offset) => {
-            const player = snapshot.players[(round.dealer + offset) % 4]!;
+          {snapshot.players.map((_, offset) => {
+            const player =
+              snapshot.players[(round.dealer + offset) % round.seats]!;
             return (
               <button
                 key={player.seat}
@@ -162,7 +163,7 @@ export function PlaybackControls({
                 }}
               >
                 <span className="em-seat-option-wind">
-                  {seatName(player.seat, round.dealer, t)}
+                  {seatName(player.seat, round, t)}
                 </span>
                 <span className="em-seat-option-name">
                   {playerName(player.name, player.seat, t)}

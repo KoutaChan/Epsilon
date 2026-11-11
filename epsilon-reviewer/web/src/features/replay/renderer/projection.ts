@@ -23,14 +23,14 @@ export interface TableDimensions {
   readonly opponentScale: number;
   readonly opponentRadius: number;
 }
-/** 正規化した画面の範囲（-1..1）。 */
+/** 正規化した画面座標（-1..1）での範囲。 */
 export interface Bounds {
   readonly minX: number;
   readonly minY: number;
   readonly maxX: number;
   readonly maxY: number;
 }
-/** 卓の左上から見た画面の矩形（CSS の px）。 */
+/** 卓の左上から測った、画面上の矩形（CSS の px）。 */
 export interface ScreenRect {
   readonly x: number;
   readonly y: number;
@@ -68,7 +68,7 @@ export function tableDimensions(
   };
 }
 
-/** 席から見た座標（x は右、y は奥）を卓の座標にする。angle はその席の向き。 */
+/** 席から見た座標（x は右、y は奥）を卓の座標に直す。その席の向き（ラジアン）も一緒に返す。 */
 export function local(seat: SeatSlot, x: number, y: number) {
   const a = angles[seat];
   return {
@@ -128,9 +128,11 @@ export function projectPoint(
 }
 
 /**
- * 物の画面の輪郭（凸包）と、カメラの位置から中心までの距離。物を作る箱ごとの 8 隅を、その箱の向きのまま写す。
- * 傾けて立てた手牌も、世界の軸にそろえた箱と違って牌の外の角を含まない。並んだ牌の輪郭が重なる所では、
- * 目に近い牌が隣の牌の側面を隠すので、距離の近い方を上にすれば見えている牌を指す（手牌は奥行きが全て同じ）。
+ * オブジェクトが画面に映る輪郭（凸包）と、カメラからその中心までの距離を返す。輪郭は、メッシュごとの
+ * バウンディングボックスの 8 隅を、箱の向きのまま画面に写して求める。そのため、傾けて立てた手牌でも、
+ * ワールド座標の軸にそろえた箱と違って牌の外の角を含まない。
+ * 並んだ牌の輪郭が重なる所では、目に近い牌が隣の牌の側面を隠す。手牌はどれも奥行きが同じなので、距離の近い方を
+ * 上に重ねれば、見えている牌を指せる。
  */
 export function screenHull(
   object: THREE.Object3D,
@@ -164,7 +166,7 @@ export function screenHull(
   return { points: convexHull(points), distance };
 }
 
-// 単調鎖法。点は時計回り（画面の y は下向き）に並ぶ。
+// 単調鎖法で凸包を求める。返す点は時計回り（画面の y は下向き）に並ぶ。
 function convexHull(points: [number, number][]): [number, number][] {
   const sorted = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const cross = (

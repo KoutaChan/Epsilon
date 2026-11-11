@@ -3,29 +3,28 @@ package com.epsilon.prism.model;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
-import com.epsilon.prism.input.InputSchema.ActionColumn;
-import com.epsilon.prism.input.InputSchema.ActionRole;
-import com.epsilon.prism.input.InputSchema.RowColumn;
-import com.epsilon.prism.model.ValueGraphHead.Composition;
+import com.epsilon.agent.runtime.PinnedUploads;
+import com.epsilon.prism.input.InputBlob.ActionColumn;
+import com.epsilon.prism.input.InputBlob.Composition;
+import com.epsilon.prism.input.InputBlob.RowColumn;
+import com.epsilon.prism.input.InputFormat.Role;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * 1 回の順伝播の損失の入力。差分整合の教師（Y・C の印・log p0_C・λ・行の重み）、行の平均の錨（D の印・|D|・行の重み）、補助の頭の教師と
- * 条件の印（{@link AuxiliaryLoss.Inputs}）を、ホストで全て並べてから型ごとに 1 本の配列でデバイスへ送る（各区画はその切り出し。
- * {@link BatchIndex} と同じ送り方）。{@link PrismLoss} は送った配列を読むだけにする。
+ * 1 回の順伝播で使う損失の入力。差分整合の教師（Y・C の印・log p0_C・λ・行の重み）、行の平均のアンカー（D の印・|D|・行の重み）、
+ * 補助のヘッドの教師と条件の印（{@link AuxiliaryLoss.Inputs}）を持つ。これらはホストで全て並べてから、型ごとに 1 本の配列にまとめて
+ * デバイスへ送る。各部分はその配列の切り出しで、送り方は {@link BatchIndex} と同じ。{@link PrismLoss} は送った配列を読むだけ。
  *
- * <p>学習では歩の作り手が前もって並べ（教師は錨を混ぜた後）、網の入力・索引と一緒に網の順伝播の前に非同期で送る（{@link StagedBatch}）。
- * 配列の値・型・形は損失がその場で作っていたものと同じ（差分整合の κ = 0・一様の基準の配列）で、損失の演算も同じ順なので、損失と勾配は
- * ビットで同じ。
+ * <p>学習では、ステップを組み立てる側が前もって並べておき（教師はアンカーを混ぜた後の値）、ネットワークの入力・インデックスと一緒に、
+ * 順伝播の前に非同期で送る（{@link StagedBatch}）。配列の値・型・形は、損失がその場で作っていたもの（差分整合の κ = 0、一様の基準の配列）
+ * と同じで、損失の演算の順も同じなので、損失と勾配はビット単位で一致する。
  *
- * <p>行の手の数・手の容量・打牌の印（{@link Outputs#actions}・{@link Outputs#discards}）は網の入力の索引のホストの写しから {@link BatchIndex}
- * と同じ決まりで作り、損失は網の出力と照らす（{@link #check}）。
+ * <p>行ごとの手の数・手の容量・打牌の印（{@link Outputs#actions}・{@link Outputs#discards}）は、ネットワークの入力のインデックスをホストに
+ * 写したものから {@link BatchIndex} と同じ決まりで作る。損失はこれをネットワークの出力と照合する（{@link #check}）。
  */
 public final class LossInputs {
-
-  private static final ActionRole[] ROLES = ActionRole.values();
 
   private final int[] actions;
   private final boolean[] discards;
@@ -41,11 +40,11 @@ public final class LossInputs {
   private final AuxiliaryLoss.Inputs auxiliary;
 
   /**
-   * 教師をホストで並べて載せる（送るのは staging の持ち主）。
+   * 教師をホストで並べて {@code staging} に載せる。デバイスへ送るのは {@code staging} の所有者。
    *
    * <ul>
    *   <li>差分整合: [行, 容量] の C の印・Y（C の外は 0）・log p0_C（C の外は 0）と、[行, 1] の λ・行の重み（|C| &lt; 2 の行は 0）。
-   *   <li>行の平均の錨: [行, 容量] の D の印（測った打牌）と、[行] の |D|（D が空の行は 1）・行の重み（D が空の行は 0）。
+   *   <li>行の平均のアンカー: [行, 容量] の D の印（測った打牌）と、[行] の |D|（D が空の行は 1）・行の重み（D が空の行は 0）。
    * </ul>
    */
   private LossInputs(
@@ -126,15 +125,16 @@ public final class LossInputs {
   }
 
   /**
-   * 塊の索引のホストの写しと教師から作って載せる（学習の歩の作り手の口。送るのは staging の持ち主）。
+   * バッチのインデックスをホストに写したものと教師から損失の入力を作り、{@code staging} に載せる。学習でステップを組み立てる側が呼ぶ。デバイスへ
+   * 送るのは {@code staging} の所有者。
    *
-   * @param inputs 塊の数と索引のホストの写し
-   * @param labels 行の順の教師
-   * @param auxiliary 補助の頭の教師（補助の頭を計算しないなら null）
-   * @param denominators 補助の頭の平均の分母（教師があるときだけ。詰め方の 1 塊を分けた部分には元の塊の数）
-   * @param staging 区画を載せる組
+   * @param inputs バッチの件数とインデックスをホストに写したもの
+   * @param labels 行の順に並べた教師
+   * @param auxiliary 補助のヘッドの教師（補助のヘッドを計算しないなら null）
+   * @param denominators 補助のヘッドの平均の分母（教師があるときだけ渡す。1 つのバッチを分けて詰めた部分には、元のバッチの件数を使う）
+   * @param staging 各部分を載せる先
    * @return 損失の入力
-   * @throws IllegalArgumentException 行の数か行の手の数が入力と合わないか、補助の教師と分母の片方だけがあるとき
+   * @throws IllegalArgumentException 行の数か行ごとの手の数が入力と合わないとき、または補助の教師と分母の片方だけがあるとき
    */
   static LossInputs stage(
       HostColumns inputs,
@@ -149,30 +149,31 @@ public final class LossInputs {
       actions[row] = inputs.row(row, RowColumn.ACTIONS);
       capacity = Math.max(capacity, actions[row]);
     }
-    // 値を B が出す打牌の手（BatchIndex の discardValueSlots と同じ決まり）
+    // B が値を出す打牌の手に印を付ける（BatchIndex の discardValueSlots と同じ決まり）
+    List<? extends Role> roles = inputs.format().roles();
     boolean[] discards = new boolean[rows * capacity];
     for (int row = 0; row < rows; row++) {
       int first = inputs.row(row, RowColumn.FIRST_ACTION);
       for (int k = 0; k < actions[row]; k++) {
-        ActionRole role =
-            ROLES[Objects.checkIndex(inputs.action(first + k, ActionColumn.ROLE), ROLES.length)];
-        discards[row * capacity + k] = Composition.of(role) == Composition.DISCARD_VALUE;
+        int roleIndex = inputs.action(first + k, ActionColumn.ROLE);
+        Role role = roles.get(Objects.checkIndex(roleIndex, roles.size()));
+        discards[row * capacity + k] = role.composition() == Composition.DISCARD_VALUE;
       }
     }
     return new LossInputs(actions, discards, capacity, labels, auxiliary, denominators, staging);
   }
 
   /**
-   * 網の出力の行の手の数・打牌の印と教師から作って送る（網の出力が既にあるときの口。試験と点検が使い、送り出しの置き場は管理元に付けて
-   * 作る）。
+   * ネットワークの出力にある行ごとの手の数・打牌の印と教師から損失の入力を作り、デバイスへ送る。ネットワークの出力が既にあるときに使い、
+   * テストと点検が呼ぶ。送るためのバッファはマネージャーに付けて作る。
    *
-   * @param manager 配列と送り出しの置き場を付ける管理元
-   * @param outputs 網の出力
-   * @param labels 行の順の教師
-   * @param auxiliary 補助の頭の教師（補助の項を足さないなら null）
-   * @param denominators 補助の頭の平均の分母（教師があるときだけ）
+   * @param manager 配列と、送るためのバッファを付けるマネージャー
+   * @param outputs ネットワークの出力
+   * @param labels 行の順に並べた教師
+   * @param auxiliary 補助のヘッドの教師（補助の項を足さないなら null）
+   * @param denominators 補助のヘッドの平均の分母（教師があるときだけ渡す）
    * @return 損失の入力
-   * @throws IllegalArgumentException 行の数か行の手の数が出力と合わないか、補助の教師と分母の片方だけがあるとき
+   * @throws IllegalArgumentException 行の数か行ごとの手の数が出力と合わないとき、または補助の教師と分母の片方だけがあるとき
    */
   static LossInputs of(
       NDManager manager,
@@ -190,7 +191,7 @@ public final class LossInputs {
             auxiliary,
             denominators,
             staging);
-    staging.send(Uploads.on(manager), manager);
+    staging.send(PinnedUploads.on(manager), manager);
     return inputs;
   }
 
@@ -209,9 +210,9 @@ public final class LossInputs {
   }
 
   /**
-   * 網の出力が、送った教師と同じ行の手の数・打牌の印・手の容量であることを確かめる。
+   * ネットワークの出力の行ごとの手の数・打牌の印・手の容量が、送った教師と同じであることを確かめる。
    *
-   * @param outputs 網の出力
+   * @param outputs ネットワークの出力
    * @throws IllegalArgumentException 合わないとき
    */
   void check(Outputs outputs) {
@@ -222,7 +223,7 @@ public final class LossInputs {
     }
   }
 
-  /** 送った配列の管理元（損失の配列もここに作る）。 */
+  /** 送った配列のマネージャー。損失の配列もここに作る。 */
   NDManager manager() {
     return lambda.array().getManager();
   }
@@ -262,12 +263,12 @@ public final class LossInputs {
     return discardCounts.array();
   }
 
-  /** 行の平均の錨の行の重み [行]（D が空の行は 0）。 */
+  /** 行の平均のアンカーで使う行の重み [行]（D が空の行は 0）。 */
   NDArray discardWeights() {
     return discardWeights.array();
   }
 
-  /** 補助の頭の教師と条件の印（補助の項を足さないなら null）。 */
+  /** 補助のヘッドの教師と条件の印（補助の項を足さないなら null）。 */
   AuxiliaryLoss.Inputs auxiliary() {
     return auxiliary;
   }

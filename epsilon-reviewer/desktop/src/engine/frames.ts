@@ -3,24 +3,24 @@ import {
   FRAME_HEADER_LIMIT,
 } from "../../../protocol/stdio.ts";
 
-// 枠: [頭の長さ u32 BE][頭: UTF-8 の JSON][本文の長さ u32 BE][本文]（protocol/stdio.ts）。
+// フレームの形は [ヘッダーの長さ u32 BE][ヘッダー: UTF-8 の JSON][本文の長さ u32 BE][本文]（protocol/stdio.ts）。
 
-/** 長さの欄のバイト数。 */
+/** 長さのフィールドのバイト数。 */
 const LENGTH_BYTES = 4;
 
 const UTF8 = new TextDecoder();
 
-/** 読んだ 1 枠。body は本文（無ければ null）で、本文ちょうどの大きさの ArrayBuffer。 */
+/** 読んだ 1 つのフレーム。body は本文と同じサイズの ArrayBuffer で、本文が無ければ null。 */
 export interface Frame {
   header: unknown;
   body: ArrayBuffer | null;
 }
 
 /**
- * 枠を書く順のバイト列にする。本文は写さずに最後の 1 つとしてそのまま渡す。
+ * フレームを、書き出す順に並べたバイト列の配列にする。本文はコピーせず、配列の最後の要素としてそのまま渡す。
  *
- * @throws RangeError 頭か本文が上限を超える
- * @throws TypeError 頭を JSON にできない
+ * @throws RangeError ヘッダーか本文が上限を超えるとき
+ * @throws TypeError ヘッダーを JSON にできないとき
  */
 export function encodeFrame(header: object, body?: ArrayBuffer): Uint8Array[] {
   const json = JSON.stringify(header);
@@ -44,24 +44,25 @@ export function encodeFrame(header: object, body?: ArrayBuffer): Uint8Array[] {
 type Part = "headerLength" | "header" | "bodyLength" | "body";
 
 /**
- * 子プロセスの出力の塊から枠を組む。塊はつながない。1 つの塊に収まる長さと頭はその場で読み、塊をまたぐ部分だけを
- * その部分の大きさの置き場へ写す。本文は常に本文ちょうどの ArrayBuffer へ 1 回だけ写す（そのまま IPC へ渡せる）。
- * 壊れた枠で例外を投げ、その後は使えない。
+ * 子プロセスの出力のチャンクからフレームを組み立てる。チャンク同士は連結しない。1 つのチャンクに収まる長さと
+ * ヘッダーはその場で読み、チャンクをまたぐ部分だけを、その部分のサイズのバッファへコピーする。本文は必ず、
+ * 本文と同じサイズの ArrayBuffer へ 1 回だけコピーする（そのまま IPC へ渡せる）。
+ * 壊れたフレームを受けると例外を投げ、その後は使えない。
  */
 export class FrameDecoder {
   #part: Part = "headerLength";
   #size = LENGTH_BYTES;
   #filled = 0;
-  /** 塊をまたぐ部分の置き場。 */
+  /** チャンクをまたぐ部分を貯めるバッファ。 */
   #pending: Uint8Array | null = null;
   readonly #length = new Uint8Array(LENGTH_BYTES);
   #header: unknown = null;
   #body: ArrayBuffer | null = null;
 
   /**
-   * 塊を読み、揃った枠を順に返す。
+   * チャンクを読み、そろったフレームを順に返す。
    *
-   * @throws Error 長さが上限を超える、または頭が JSON でない
+   * @throws Error 長さが上限を超えるとき、またはヘッダーが JSON でないとき
    */
   push(chunk: Uint8Array): Frame[] {
     const frames: Frame[] = [];
@@ -86,7 +87,7 @@ export class FrameDecoder {
     return frames;
   }
 
-  /** 揃った部分を読んで次の部分へ進む。枠が揃えば返す。 */
+  /** そろった部分を読み、次の部分へ進む。フレームがそろえばそれを返し、まだなら null を返す。 */
   #complete(bytes: Uint8Array): Frame | null {
     this.#filled = 0;
     this.#pending = null;

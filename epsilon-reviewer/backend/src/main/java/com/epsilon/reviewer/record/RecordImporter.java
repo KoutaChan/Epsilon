@@ -16,11 +16,11 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 
 /**
- * 牌譜の取り込み。バイト列 → 読みと確かめの再生（RecordLoader）→ 読み込んだ牌譜（PreparedRecords）。解析結果の文書（gzip を含む）は共通の
- * 読み手が断るので invalid_record。ファイル名は受け取らない。
+ * 牌譜を取り込む。バイト列を RecordLoader で読み、再生して確かめてから PreparedRecords に預ける。解析結果の文書を渡すと
+ * （gzip で圧縮したものも）共通のリーダーが断るので、invalid_record になる。ファイル名は受け取らない。
  */
 public final class RecordImporter {
-  /** 牌譜の大きさの上限（ちょうど 16,777,216 バイトは可）。 */
+  /** 牌譜のサイズの上限。ちょうど 16,777,216 バイトまでは受け取る。 */
   public static final int RECORD_LIMIT = 16 * 1024 * 1024;
 
   private final PreparedRecords records;
@@ -40,7 +40,7 @@ public final class RecordImporter {
   }
 
   /**
-   * デスクトップのファイル（絶対パスの普通のファイル、16 MiB まで）。
+   * デスクトップ版で、手元のファイルを取り込む。受け取るのは絶対パスで指定した通常のファイルで、16 MiB までに限る。
    *
    * @throws ReviewerException invalid_request・record_too_large・invalid_record・too_many_records
    */
@@ -57,13 +57,13 @@ public final class RecordImporter {
     return importBytes(owner, bytes);
   }
 
-  /** @throws ReviewerException TenhouLogId と TenhouFetcher の失敗・invalid_record・too_many_records */
+  /** @throws ReviewerException TenhouLogId と TenhouFetcher が投げるもの・invalid_record・too_many_records */
   public ImportedRecord importTenhou(OwnerId owner, String url) {
     return prepare(owner, tenhou.fetch(TenhouLogId.parse(url)));
   }
 
   /**
-   * 保存した結果の元の牌譜を読み込み直す（解析し直し）。
+   * 保存した結果から、元の牌譜を読み込み直す。解析をやり直すときに使う。
    *
    * @throws ReviewerException result_not_found・too_many_records
    */

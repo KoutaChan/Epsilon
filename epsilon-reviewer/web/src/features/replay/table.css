@@ -1,4 +1,4 @@
-/* 卓の座標はrendererが所有し、CSSは画像と操作UIを各端末の寸法で表示する。 */
+/* 卓の上の座標は描画（renderer）が決める。CSS は、絵と操作の UI を端末ごとの寸法で並べる。 */
 #epsilon-review-material {
   position: relative;
   width: 100%;
@@ -15,7 +15,7 @@
   --em-container: #172d41;
   --em-outline: #466076;
   --em-backing: #72c4df;
-  /* もしもで変えた所の色。最善〜悪手の色（緑・水色・黄・桃）と混ぜない。 */
+  /* もしもで変えた所の色。最善〜悪手の色（緑・水色・黄・桃）と見分けやすい色にする。 */
   --em-scenario: #b8a3ff;
 }
 #epsilon-review-material * {
@@ -68,7 +68,7 @@
 #epsilon-review-material .em-scene-labels {
   z-index: 2;
 }
-/* 卓の読み上げの文（今の出来事・手牌・河・副露）。見た目からは隠す。 */
+/* 卓の読み上げ用の文（今のイベント・手牌・河・副露）。画面には出さない。 */
 #epsilon-review-material .em-sr-only {
   position: absolute;
   width: 1px;
@@ -91,7 +91,7 @@
   white-space: nowrap;
 }
 
-/* SVGの図柄には照明や色フィルターをかけない。 */
+/* SVG の牌の絵には、照明や色のフィルターをかけない。 */
 #epsilon-review-material .em-face {
   display: block;
   position: relative;
@@ -506,7 +506,7 @@
   margin-bottom: 0;
 }
 
-/* プレイヤー名の位置と衝突回避はrendererが計算する。 */
+/* 名札の位置は描画（renderer）が求め、名札が重なるときのずらしも描画が行う。 */
 #epsilon-review-material .em-player-label {
   position: absolute;
   z-index: 3;
@@ -539,7 +539,7 @@
   visibility: hidden;
 }
 
-/* AI候補は横画面の左側、縦画面は卓の下へ配置する。 */
+/* AI の候補は、横の画面では左側、縦の画面では卓の下に置く。 */
 #epsilon-review-material .em-action-candidates {
   position: absolute;
   z-index: 3;
@@ -607,7 +607,7 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* 行動名の幅を確保し、牌と選択率をその下の同じ行へ配置する。 */
+/* 行動名の幅を取り、牌と選択率はその下の 1 行に並べる。 */
 #epsilon-review-material .em-action-row .em-review-copy {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -732,7 +732,7 @@
   color: #9dafbf;
   margin-left: 3px;
 }
-/* 価値の損失は等級で色分けし、推奨度をその下に小さく添える。 */
+/* 価値の損失は等級ごとに色を変え、推奨度をその下に小さく添える。 */
 #epsilon-review-material
   :is(.em-grade-best, .em-grade-near, .em-grade-inaccuracy, .em-grade-mistake) {
   text-align: right;
@@ -757,7 +757,7 @@
   line-height: 14px;
   color: #a9bfd0;
 }
-/* 上位外の実際の選択は点線で区切る。 */
+/* 上位に入らなかった実際の選択は、点線で区切る。 */
 #epsilon-review-material .is-outside {
   margin-top: 4px;
   border-top: 1px dashed var(--em-outline);
@@ -832,7 +832,7 @@
   gap: 6px;
 }
 
-/* PC: 卓と前景手牌の間に、一列の操作を置く。 */
+/* PC: 卓と手前の手牌の間に、操作を横一列に並べる。 */
 #epsilon-review-material .em-device[data-layout="desktop"] .em-playback {
   height: calc(62px * var(--em-pc-ui-scale));
   border-radius: 7px;
@@ -962,11 +962,11 @@
 #epsilon-review-material
   .em-device[data-layout="desktop"]
   .em-action-candidates {
-  /* 候補欄の中は縦の短い画面でも収まる大きさで描く。 */
+  /* 候補欄の中身は、高さの低い画面でも収まる大きさで描く。 */
   --em-pc-ui-scale: var(--em-pc-candidate-scale);
   left: calc(20px * var(--em-pc-ui-scale));
   top: var(--em-action-candidates-top, 35%);
-  /* 牌四枚と損失、「打牌（ツモ切り）」を一行に収める幅。 */
+  /* 牌 4 枚と損失、「打牌（ツモ切り）」を 1 行に収める幅。 */
   width: calc(184px * var(--em-pc-ui-scale));
 }
 #epsilon-review-material .em-device[data-layout="desktop"] .em-action-heading {
@@ -1023,7 +1023,7 @@
   height: calc(28px * var(--em-pc-ui-scale));
 }
 
-/* スマホの操作。横は一段、縦は右上の二段へ配置する。 */
+/* スマホの操作。横の画面では一段、縦の画面では右上に二段で置く。 */
 #epsilon-review-material .em-device:not([data-layout="desktop"]) .em-playback {
   left: auto;
   transform: none;
@@ -1112,7 +1112,7 @@
   left: auto;
   right: 0;
 }
-/* 横画面は操作を一段にまとめ、その下を手牌の全幅に使う。 */
+/* 横の画面では操作を一段にまとめ、その下の全幅を手牌に使う。 */
 #epsilon-review-material .em-device[data-layout="landscape"] .em-playback {
   right: 8px;
 }
@@ -1227,7 +1227,7 @@
   color: #edf3f8;
 }
 
-/* もしも: 入り口のボタン。押している間は薄紫にする。 */
+/* もしも: もしもを始めるボタン。もしもの間は薄紫にする。 */
 #epsilon-review-material .em-scenario-toggle {
   color: #dcd2ff;
 }
@@ -1248,7 +1248,7 @@
 #epsilon-review-material .em-device[data-layout="landscape"] .em-playback-meta {
   grid-area: 1 / 7;
 }
-/* 縦の画面は二段目の空いている枠に置き、背景は選ぶボタンと同じにする。 */
+/* 縦の画面では二段目の空いている所に置き、背景は局と視点を選ぶボタンと同じにする。 */
 #epsilon-review-material
   .em-device[data-layout="portrait"]
   .em-scenario-toggle {
@@ -1261,7 +1261,7 @@
   color: #f4f0ff;
 }
 
-/* もしも: 卓の上の当たり枠。形は描画が 3D の牌と中央の表示から求めた輪郭。 */
+/* もしも: 卓の上の当たり判定。形は、3D の牌と中央の表示から描画が求めた輪郭。 */
 #epsilon-review-material .em-scenario-targets {
   position: absolute;
   inset: 0;
@@ -1325,7 +1325,7 @@
     0 0 12px 3px #a3dff1aa;
 }
 
-/* もしも: 右上の操作。ドラ表示（.em-dora-hud）と左右対称に置き、同じ幅・同じ地にする。大きさは変えない。 */
+/* もしも: 右上の操作。ドラ表示（.em-dora-hud）と左右対称に置き、幅と背景もそろえる。中身が変わっても大きさは変えない。 */
 #epsilon-review-material .em-scenario-panel {
   --w: calc(1px * max(0.85, var(--em-pc-ui-scale)));
   position: absolute;
@@ -1434,8 +1434,8 @@
 }
 
 /*
- * もしも: 編集の吹き出し。設定のメニュー（.em-info-content）と同じ地で、押した所のそばに浮かべる。
- * 卓の外の層に置き、手牌のすぐ上の再生の操作（z-index 8）より前に出す。
+ * もしも: 編集の吹き出し。設定のメニュー（.em-info-content）と同じ背景にし、押した所のそばに浮かべる。
+ * 卓の外の層に置き、手牌のすぐ上にある再生の操作（z-index 8）より手前に出す。
  */
 #epsilon-review-material .em-scenario-editor {
   --w: calc(1px * max(0.85, var(--em-pc-ui-scale)));
@@ -1613,8 +1613,8 @@
   background: #ffffff12;
 }
 
-/* もしも: 候補の欄。見出しに札を付け、元の局面との比べを札の下に 1 行足す。 */
-/* 見出しは語の途中で折らず、もしもの札が入らなければ見出しの下の行へ送る（英語の見出しは長い）。 */
+/* もしも: 候補欄。見出しにバッジを付け、その下に元の局面との比較を 1 行足す。 */
+/* 見出しは単語の途中で折り返さない。英語の見出しは長いので、もしものバッジが入らなければ次の行へ送る。 */
 #epsilon-review-material .em-action-title {
   display: inline-flex;
   flex-wrap: wrap;
@@ -1634,7 +1634,7 @@
   line-height: 1.45;
   white-space: nowrap;
 }
-/* 元の値と順位の動きは 1 行に並べ、順位の動きを右端に置く。 */
+/* 元の値と順位の変化は 1 行に並べ、順位の変化を右端に置く。 */
 #epsilon-review-material .em-scenario-compare {
   grid-column: 1 / -1;
   display: flex;
@@ -1672,13 +1672,13 @@
   font-size: calc(12px * var(--em-pc-ui-scale));
   line-height: 1.4;
 }
-/* 解析の間は元の候補を薄くして、古い数字と取り違えさせない。 */
+/* 解析の結果を待つ間は元の候補を薄くして、古い数字と取り違えないようにする。 */
 #epsilon-review-material
   [data-scenario="loading"]
   :is(.em-action-list, .em-review-list) {
   opacity: 0.4;
 }
-/* もしも: チー・ポンの行は押すと鳴いた後の打牌へ進む。形は変えず、印は名前の横の小さな矢印だけ。 */
+/* もしも: チー・ポンの行を押すと、鳴いた後の打牌へ進む。行の形は変えず、押せる目印は名前の横の小さな矢印だけにする。 */
 #epsilon-review-material .is-callable {
   pointer-events: auto;
   cursor: pointer;

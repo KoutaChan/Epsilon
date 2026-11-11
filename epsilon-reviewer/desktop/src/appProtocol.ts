@@ -7,7 +7,7 @@ export const APP_SCHEME = "epsilon-reviewer";
 export const APP_HOST = "app";
 export const APP_URL = `${APP_SCHEME}://${APP_HOST}/`;
 
-/** アプリの準備（ready）の前に呼ぶ。 */
+/** アプリのスキームを特権付きで登録する。アプリが ready になる前に呼ぶ。 */
 export function registerAppScheme(): void {
   protocol.registerSchemesAsPrivileged([
     {
@@ -22,7 +22,11 @@ export function registerAppScheme(): void {
   ]);
 }
 
-/** epsilon-reviewer://app/ で webRoot のファイルを出す。GET だけ、"/" は index.html、webRoot の外は 403。 */
+/**
+ * epsilon-reviewer://app/ の下にある画面のファイルを返す。受けるのは GET だけで、"/" には index.html を返す。
+ * ほかのホスト、GET 以外、画面のフォルダーの外を指す要求には 403 を、パスを読めなければ 400 を、ファイルが無ければ
+ * 404 を返す。
+ */
 export function registerAppProtocol(webRoot: string): void {
   protocol.handle(APP_SCHEME, async (request) => {
     const url = new URL(request.url);

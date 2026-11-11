@@ -1,43 +1,65 @@
 package com.epsilon.prism.hip;
 
 /**
- * 計画の作業域の区画（native の順と同じ）。段の境目で全体メモリに残すものだけを持つ。トークンの区画の並びは入力のトークンの軸と
- * 同じ（局 R・席 4R・牌 34R・出来事 N_E）。
+ * 計画の作業領域を区切った領域。並びは native と同じ。カーネルとカーネルの間でグローバルメモリに残す値だけを置く。トークンを持つ領域では、
+ * トークンの並びは入力のトークンの軸と同じ（局・席・牌・イベントの順）。
  */
 public enum HipRegion {
-  /** 入力の blob（UINT8）。forward は H2D をここへ 1 回。 */
+  /** 入力の blob（UINT8）。forward はホストからここへ 1 回だけ写す（H2D）。 */
   INPUT(HipElement.U8),
-  /** 残差の流れ x {@code [トークン, H]}（BF16）。K1 が書き、K3・K5 が読み、K3 が上書きする。 */
+  /**
+   * 残差ストリーム {@code [トークン, H]}（BF16）。K1 が書き、K3 が上書きする。最後の全トークンの層の K3 と、局・席・牌の層の K3・K5 は、
+   * 先頭の局・席・牌の分だけを書く。最後の全トークンの層より後には、イベントの残差を読む所がないので書かない。
+   */
   RESIDUAL(HipElement.BF16),
   /**
-   * 次の層の注意の入力 n = ⌊(x·r)·g⌉ {@code [トークン, H]}（BF16、RMSNorm をかけた残差の流れ）。K3 が次の層の分を書き、K2（層 1 から）・
-   * K4 が A の断片として読む。
+   * 次の層の Attention の入力 {@code [トークン, H]}（BF16。残差ストリームに RMSNorm をかけたもの）。K3 が次の層の分を書く。
+   * 全トークンの層の K3 は全てのトークンを、局・席・牌の層の K3 は局・席・牌だけを書く。K2（層 1 から）と K4 が、行列積の A の
+   * フラグメントとして読む。
    */
   NORMALIZED(HipElement.BF16),
   /**
-   * 層 0 の注意の q・k・v {@code [トークン, 3A]}（BF16、列は頭の対の並び {@link HipEmbedding#foldColumn}）。K1 が層 0 の QKV に畳んだ表から
-   * 書き（L0-FOLD）、K2 の層 0 が射影をせずに読む。
+   * 層 0 の Attention の q・k・v {@code [トークン, 3A]}（BF16。列はヘッドの対の並びで、{@link HipEmbedding#foldColumn} のとおり）。K1 が、
+   * 層 0 の QKV まで折り込んだ表から書く。K2 の層 0 は射影をせずにそのまま読む。
    */
   QKV0(HipElement.BF16),
-  /** 注意の出力 o {@code [トークン, A]}（BF16）。K2・K4 が書き、K3・K5 が読む。 */
+  /** Attention の出力 {@code [トークン, A]}（BF16）。K2・K4 が書き、K3・K5 が読む。 */
   ATTENTION(HipElement.BF16),
   /**
-   * 関係の符号 {@code [行, 塊, 塊, 256]}（7 区画を 1 語に詰めた INT32。行ごとに {@link HipShape#RELATION_CODE_WORDS} 語で、16 トークンの
-   * 塊の対ごとに 256 語）。K0 が書き、K2・K4 が読む。
+   * 関係のコード {@code [行, タイル, タイル, 256]}（7 つの区分を 1 ワードに詰めた INT32）。タイルは 16 トークンで、1 行に
+   * {@link HipCounts#codeBlocks()} 個ある。タイルの対ごとに 16 × 16 ワード。K0 が書き、K2・K4 が読む。
    */
   RELATION_CODE(HipElement.I32),
-  /** 最後の正規化の後の局・席・牌 y {@code [39R, H]}（BF16、トークンの軸の先頭 39R と同じ並び）。K5 が書き、K6（牌）・K7（局）が読む。 */
+  /**
+   * 最後の RMSNorm をかけた後の局・席・牌のトークン {@code [局・席・牌のトークン, H]}（BF16。並びはトークンの軸の先頭の
+   * 局・席・牌と同じ）。K5 が書き、K6（牌）と K7（局）が読む。
+   */
   STATE(HipElement.BF16),
-  /** 候補層の交差注意の鍵と値 {@code [R, 39, 2A]}（BF16、行ごとに局・席・牌の順）。K5 が書き、K6 が読む。 */
+  /** 候補層の Cross-Attention のキーとバリュー {@code [行, 局・席・牌, 2A]}（BF16。行ごとに局・席・牌の順）。K5 が書き、K6 が読む。 */
   MEMORY(HipElement.BF16),
-  /** 遷移の静的な部分 t_s = ⌊W_X·pack + b_X⌉ {@code [遷移, H]}（BF16）。K1 が書き、K6 が読む。 */
+  /** 遷移の表現のうち、遷移のフィールドだけから線形に作る部分 {@code [遷移, H]}（BF16）。K1 が書き、K6 が読む。 */
   STATIC(HipElement.BF16),
-  /** 遷移の表現 z {@code [遷移, H]}（BF16）。K6 が書き、K7 が読む。 */
+  /**
+   * 遷移の表現 {@code [遷移, H]}（BF16）。K6 が書き、K7 が読む。2 段目がある形では、K6 が 1 段目の表現を書き、K9 がそれを
+   * 2 段目の表現で上書きする。
+   */
   TRANSITION(HipElement.BF16),
-  /** 打牌の値 B {@code [遷移]}（FP32）。K6 が書き、K7 が読む。 */
+  /** 打牌の値 {@code [遷移]}（FP32）。K6 が書き（2 段目がある形では K9）、K7 が読む。 */
   VALUE(HipElement.FP32),
-  /** s {@code [手]}（FP32、要求の順）。K7 が書き、forward は D2H をここから 1 回。 */
-  SCORES(HipElement.FP32);
+  /** 手のスコア {@code [手]}（FP32。要求の順）。K7 が書き、forward はここからホストへ 1 回だけ写す（D2H）。 */
+  SCORES(HipElement.FP32),
+  /**
+   * 2 つ目以降の局・席・牌の層が読む、イベントのキーとバリュー {@code [層, イベント, 2A]}（BF16。イベントごとに [k(A) | v(A)]）。
+   * 層はバッチのイベントの数ずつ続き、層 l の分は {@code fixedIndex(l) − 1} 番目に置く。最後の全トークンの層の K3 がイベントの残差から
+   * 書き、K4 は自分の層の分を写して使う。最初の局・席・牌の層の K4 は RMSNorm をかけた入力から自分で射影するので、その分はここに置かない。
+   */
+  EVENT_KEY_VALUE(HipElement.BF16),
+  /**
+   * 候補層の 2 段目が読むキーとバリュー（BF16。2 段目がある形だけ）。先頭に局・席・牌の {@code [行, 局・席・牌, 2A]}（行ごと）、続けてイベントの
+   * {@code [イベント, 2A]} を置く。局・席・牌の分は K8 が最後の RMSNorm をかけた後の局・席・牌のトークンから、イベントの分は
+   * 最後の全トークンの層の K3 が書き、K9 が読む。
+   */
+  REREAD_MEMORY(HipElement.BF16);
 
   private final HipElement element;
 
@@ -49,38 +71,38 @@ public enum HipRegion {
     return element;
   }
 
-  /** 計画の容量でのバイト数。 */
+  /** 計画の容量いっぱいのときのバイト数。 */
   public long capacityBytes(HipShape shape) {
     HipShape.Capacity capacity = shape.capacity();
-    return switch (this) {
-      case INPUT -> capacity.inputBytes();
-      case RESIDUAL, NORMALIZED -> shape.tokens() * shape.hidden() * element.bytes();
-      case QKV0 -> shape.tokens() * 3L * shape.attention() * element.bytes();
-      case ATTENTION -> shape.tokens() * shape.attention() * element.bytes();
-      case RELATION_CODE -> (long) capacity.rows() * HipShape.RELATION_CODE_WORDS * element.bytes();
-      case STATE -> shape.fixedTokenCapacity() * shape.hidden() * element.bytes();
-      case MEMORY -> shape.fixedTokenCapacity() * 2L * shape.attention() * element.bytes();
-      case STATIC, TRANSITION -> (long) capacity.transitions() * shape.hidden() * element.bytes();
-      case VALUE -> (long) capacity.transitions() * element.bytes();
-      case SCORES -> (long) capacity.actions() * element.bytes();
-    };
+    return bytes(shape, capacity.rows(), capacity.events(), capacity.transitions(), capacity.actions(),
+        capacity.inputBytes());
   }
 
-  /** 塊が使うバイト数（区画の先頭から）。 */
+  /** バッチが使うバイト数（領域の先頭から数える）。 */
   public long bytes(HipShape shape, HipBatch batch) {
-    long fixed = (long) shape.fixedTokens() * batch.rows();
-    long tokens = fixed + batch.events();
+    return bytes(shape, batch.rows(), batch.events(), batch.transitions(), batch.actions(), batch.bytes());
+  }
+
+  private long bytes(HipShape shape, int rows, int events, int transitions, int actions, long input) {
+    HipArchitecture architecture = shape.architecture();
+    long hidden = architecture.hidden();
+    long attention = architecture.attention();
+    long fixed = (long) shape.fixedTokens() * rows;
+    long tokens = fixed + events;
+    long pairs = (long) architecture.counts().codeBlocks() * HipCounts.CODE_BLOCK;
     return switch (this) {
-      case INPUT -> batch.bytes();
-      case RESIDUAL, NORMALIZED -> tokens * shape.hidden() * element.bytes();
-      case QKV0 -> tokens * 3L * shape.attention() * element.bytes();
-      case ATTENTION -> tokens * shape.attention() * element.bytes();
-      case RELATION_CODE -> (long) batch.rows() * HipShape.RELATION_CODE_WORDS * element.bytes();
-      case STATE -> fixed * shape.hidden() * element.bytes();
-      case MEMORY -> fixed * 2L * shape.attention() * element.bytes();
-      case STATIC, TRANSITION -> (long) batch.transitions() * shape.hidden() * element.bytes();
-      case VALUE -> (long) batch.transitions() * element.bytes();
-      case SCORES -> (long) batch.actions() * element.bytes();
+      case INPUT -> input;
+      case RESIDUAL, NORMALIZED -> tokens * hidden * element.bytes();
+      case QKV0 -> tokens * 3 * attention * element.bytes();
+      case ATTENTION -> tokens * attention * element.bytes();
+      case RELATION_CODE -> rows * pairs * pairs * element.bytes();
+      case STATE -> fixed * hidden * element.bytes();
+      case MEMORY -> fixed * 2 * attention * element.bytes();
+      case STATIC, TRANSITION -> transitions * hidden * element.bytes();
+      case VALUE -> (long) transitions * element.bytes();
+      case SCORES -> (long) actions * element.bytes();
+      case EVENT_KEY_VALUE -> architecture.copiedEventLayers() * events * 2 * attention * element.bytes();
+      case REREAD_MEMORY -> architecture.reread() ? tokens * 2 * attention * element.bytes() : 0;
     };
   }
 }

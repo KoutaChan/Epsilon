@@ -1,51 +1,34 @@
 <?xml version='1.0' encoding='utf-8'?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.epsilon</groupId>
+  <parent>
+    <groupId>com.epsilon</groupId>
+    <artifactId>epsilon-base</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <relativePath>epsilon-base/pom.xml</relativePath>
+  </parent>
   <artifactId>epsilon-parent</artifactId>
-  <version>1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Epsilon - Mahjong AI</name>
   <description>Japanese Riichi Mahjong AI</description>
+  <!-- djl.version と DJL の置き場（djl-rocm）、gson・DJL・logback の版は epsilon-base が持ち、ここは継ぐ。 -->
   <properties>
-    <java.version>21</java.version>
-    <maven.compiler.source>${java.version}</maven.compiler.source>
-    <maven.compiler.target>${java.version}</maven.compiler.target>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <djl.version>0.40.4-rocm-SNAPSHOT</djl.version>
     <pytorch.native.version>2.11.0</pytorch.native.version>
     <pytorch.linux.flavor>cpu</pytorch.linux.flavor>
     <pytorch.windows.flavor>cpu</pytorch.windows.flavor>
-    <surefire.excludedGroups>native,rocm,legacy</surefire.excludedGroups>
-    <testng.version>7.11.0</testng.version>
   </properties>
-  <repositories>
-    <repository>
-      <id>github</id>
-      <url>https://maven.pkg.github.com/KoutaChan/djl-rocm</url>
-      <releases>
-        <enabled>true</enabled>
-      </releases>
-      <snapshots>
-        <enabled>true</enabled>
-      </snapshots>
-    </repository>
-  </repositories>
   <dependencies>
     <dependency>
       <groupId>ai.djl</groupId>
       <artifactId>api</artifactId>
-      <version>${djl.version}</version>
     </dependency>
     <dependency>
       <groupId>ai.djl.pytorch</groupId>
       <artifactId>pytorch-engine</artifactId>
-      <version>${djl.version}</version>
     </dependency>
     <dependency>
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
-      <version>2.11.0</version>
     </dependency>
     <dependency>
       <groupId>com.github.luben</groupId>
@@ -53,38 +36,11 @@
       <version>1.5.6-8</version>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
-      <version>1.7.36</version>
-    </dependency>
-    <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-      <version>1.2.13</version>
-    </dependency>
-    <dependency>
-      <groupId>org.testng</groupId>
-      <artifactId>testng</artifactId>
-      <version>${testng.version}</version>
-      <scope>test</scope>
     </dependency>
   </dependencies>
   <build>
-    <resources>
-      <resource>
-        <directory>${project.basedir}/src/main/resources</directory>
-        <filtering>false</filtering>
-      </resource>
-      <resource>
-        <directory>${maven.multiModuleProjectDirectory}</directory>
-        <targetPath>META-INF</targetPath>
-        <filtering>false</filtering>
-        <includes>
-          <include>LICENSE</include>
-          <include>LICENSES/**</include>
-        </includes>
-      </resource>
-    </resources>
     <pluginManagement>
       <plugins>
         <plugin>
@@ -135,25 +91,6 @@
         </plugin>
       </plugins>
     </pluginManagement>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.11.0</version>
-        <configuration>
-          <source>21</source>
-          <target>21</target>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.2.5</version>
-        <configuration>
-          <excludedGroups>${surefire.excludedGroups}</excludedGroups>
-        </configuration>
-      </plugin>
-    </plugins>
   </build>
   <profiles>
     <profile>
@@ -225,28 +162,18 @@
         <pytorch.windows.flavor>${pytorch.cuda.flavor}</pytorch.windows.flavor>
       </properties>
     </profile>
-    <profile>
-      <id>native-tests</id>
-      <properties>
-        <surefire.excludedGroups>rocm,legacy</surefire.excludedGroups>
-      </properties>
-    </profile>
-    <profile>
-      <id>rocm-tests</id>
-      <properties>
-        <surefire.excludedGroups>legacy</surefire.excludedGroups>
-      </properties>
-    </profile>
   </profiles>
   <modules>
-    <module>epsilon-common</module>
-    <module>epsilon-nano</module>
+    <module>epsilon-base</module>
+    <module>epsilon-mahjong</module>
+    <module>epsilon-agent</module>
+    <module>epsilon-grp</module>
+    <module>epsilon-classic</module>
     <!-- PRISM の HIP の実行系。Java の部分はどこでも組み立て、native（libprism_hip.so）は -Pnative-hip のときだけ作る。 -->
     <module>epsilon-prism-hip</module>
     <module>epsilon-prism</module>
-    <module>epsilon-pico</module>
-    <module>epsilon</module>
-    <module>epsilon-arena</module>
+    <module>epsilon-prism-4p</module>
+    <module>epsilon-prism-3p</module>
     <module>epsilon-reviewer/backend</module>
   </modules>
 </project>

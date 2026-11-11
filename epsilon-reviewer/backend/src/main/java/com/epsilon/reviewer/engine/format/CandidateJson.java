@@ -5,13 +5,13 @@ import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
 
 /**
- * 判断の候補（protocol/result.ts の CandidateSet）。行は [行動 ID, 値] か、鳴き・槓だけ [行動 ID, 値, 牌]。値は float32 の最短の十進
- * （{@link Float#toString}）で、損失は丸めない。
+ * 判断の候補（protocol/result.ts の CandidateSet）。各行は [行動 ID, 値] で、鳴きと槓の行だけは [行動 ID, 値, 牌] になる。値は float32 を
+ * 最短の十進表記（{@link Float#toString}）で書く。損失も丸めない。
  */
 public final class CandidateJson {
   private CandidateJson() {}
 
-  /** candidates・chosen・probabilities の欄を書く（chosen と probabilities は無ければ書かない）。 */
+  /** candidates と chosen のフィールドを書く。chosen は、牌譜に無い判断では書かない。 */
   public static void write(JsonWriter json, EvaluatedDecision decision) throws IOException {
     json.name("candidates").beginArray();
     for (int i = 0; i < decision.size(); i++) {
@@ -26,10 +26,5 @@ public final class CandidateJson {
     }
     json.endArray();
     if (decision.chosen() >= 0) json.name("chosen").value(decision.chosen());
-    if (decision.probabilities() != null) {
-      json.name("probabilities").beginArray();
-      for (float probability : decision.probabilities()) json.value(probability);
-      json.endArray();
-    }
   }
 }

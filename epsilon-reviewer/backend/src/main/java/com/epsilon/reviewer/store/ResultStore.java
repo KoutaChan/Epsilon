@@ -30,20 +30,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 解析結果の保存（results/&lt;resultId&gt;/ に文書・牌譜・meta.json）。索引は起動時に meta.json を 1 回ずつ読んで記憶に作り、保存と削除で
- * 更新する。読みと削除・確定は読み書きの鍵で分ける。
+ * 解析結果を保存する。1 件ごとに results/&lt;resultId&gt;/ に文書・牌譜・meta.json を置く。インデックスはメモリに持ち、起動時に
+ * 各結果の meta.json を 1 回ずつ読んで作り、保存と削除のたびに更新する。ファイルの読み込みと、削除・確定は、読み書きのロックで分ける。
  */
 public final class ResultStore implements AutoCloseable {
   private static final Logger LOG = LoggerFactory.getLogger(ResultStore.class);
 
-  /** meta.json の大きさの上限（バイト）。 */
+  /** meta.json のサイズの上限（バイト）。 */
   private static final int META_LIMIT = 64 * 1024;
 
-  /** 1 件のフォルダーに保存が書くファイル。消す時もこれだけを消す。 */
+  /** 保存で 1 件のフォルダーに書くファイル。消すときもこれだけを消す。 */
   private static final List<StoreLayout> ENTRY_FILES =
       List.of(StoreLayout.DOCUMENT, StoreLayout.RECORD, StoreLayout.META);
 
-  /** ディレクトリの同期は Linux だけが持つ（Windows はディレクトリを開けない）。 */
+  /** ディレクトリを同期するのは Linux だけ（Windows ではディレクトリを開けない）。 */
   private static final boolean SYNC_DIRECTORIES =
       System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux");
 
@@ -58,10 +58,10 @@ public final class ResultStore implements AutoCloseable {
   private final Path trash;
   private final ReentrantReadWriteLock files = new ReentrantReadWriteLock();
 
-  /** resultId → 索引の 1 件。files の鍵で守る。 */
+  /** resultId からインデックスの 1 件を引く表。{@code files} のロックで守る。 */
   private final Map<String, Indexed> byId = new HashMap<>();
 
-  /** 持ち主 → 新しい順の索引。files の鍵で守る。 */
+  /** オーナーから、新しい順に並べたインデックスを引く表。{@code files} のロックで守る。 */
   private final Map<String, List<Indexed>> byOwner = new HashMap<>();
 
   private ResultStore(Path directory, DataDirectoryLock lock) {
@@ -72,8 +72,8 @@ public final class ResultStore implements AutoCloseable {
   }
 
   /**
-   * 鍵を取り、staging と trash に残った 1 件を消し、索引を作る。読めない・形が違う項目は記録に 1 行残して飛ばす。どのフォルダーでも UUID でない
-   * 名前は読まず消さない。
+   * 保存先を開く。ロックを取り、staging と trash に残っている結果を消してから、インデックスを作る。読めない結果や形の違う結果は、
+   * 警告のログを 1 行書いて飛ばす。どのフォルダーでも、名前が UUID でないものは読まず、消さない。
    *
    * @throws ReviewerException data_locked
    */
@@ -94,7 +94,7 @@ public final class ResultStore implements AutoCloseable {
     }
   }
 
-  /** 持ち主の結果（createdAt の新しい順）。 */
+  /** オーナーの結果を、createdAt の新しい順に返す。時刻が同じなら resultId の昇順に並べる。 */
   public List<ResultMeta> history(OwnerId owner) {
     files.readLock().lock();
     try {
@@ -107,7 +107,7 @@ public final class ResultStore implements AutoCloseable {
     }
   }
 
-  /** @throws ReviewerException result_not_found（無い・他の持ち主） */
+  /** @throws ReviewerException result_not_found（結果が無い、またはオーナーが違う） */
   public ResultMeta find(OwnerId owner, ResultId id) {
     files.readLock().lock();
     try {
@@ -133,9 +133,9 @@ public final class ResultStore implements AutoCloseable {
   }
 
   /**
-   * 保存した gzip の文書の全体。
+   * 保存した文書を、gzip のまま全て読む。
    *
-   * @throws NoSuchFileException 探した後に消された
+   * @throws NoSuchFileException 結果を見つけた後に消された
    */
   public byte[] readDocument(ResultMeta meta) throws IOException {
     files.readLock().lock();
@@ -148,9 +148,9 @@ public final class ResultStore implements AutoCloseable {
   }
 
   /**
-   * 元の牌譜（展開したバイト列）。
+   * 元の牌譜を、展開したバイト列で読む。
    *
-   * @throws NoSuchFileException 探した後に消された
+   * @throws NoSuchFileException 結果を見つけた後に消された
    */
   public byte[] readRecord(ResultMeta meta) throws IOException {
     files.readLock().lock();
@@ -164,15 +164,21 @@ public final class ResultStore implements AutoCloseable {
     }
   }
 
-  /** 保存を始める（staging/&lt;id&gt;/）。 */
+  /** 保存を始める。書いている途中のファイルは staging/&lt;id&gt;/ に置く。 */
   public ResultDraft draft(ResultId id) throws IOException {
     return new ResultDraft(id, Files.createDirectory(staging.resolve(id.value())));
   }
 
-  /** 文書・牌譜の後に meta.json を書いて同期し、results/ へ原子的に移して索引に足す。 */
+  /**
+   * 1 件を確定する。文書を閉じ、meta.json を書いて同期してから、フォルダーを results/ へアトミックに移してインデックスに足す。文書と牌譜を
+   * 書き終えていなければ IllegalStateException を投げる。meta.json が起動時にインデックスへ読める大きさを超えるなら、何も確定せずに
+   * IOException を投げる。
+   */
   public ResultMeta commit(ResultDraft draft, ResultMeta meta) throws IOException {
     Path directory = draft.seal();
-    writeFile(directory.resolve(StoreLayout.META.fileName()), Json.write(meta));
+    byte[] json = Json.write(meta);
+    if (json.length > META_LIMIT) throw new IOException("meta.json is too large.");
+    writeFile(directory.resolve(StoreLayout.META.fileName()), json);
     var entry = new Indexed(meta, Instant.parse(meta.createdAt()));
     files.writeLock().lock();
     try {
@@ -186,7 +192,10 @@ public final class ResultStore implements AutoCloseable {
     return meta;
   }
 
-  /** 索引から外し（すぐ見えなくなり共有も止まる）、trash へ移して消す。消せなかった物は掃除が続ける。 */
+  /**
+   * 結果をインデックスから外し、trash へ移して消す。外した時点で履歴から見えなくなり、共有も止まる。消しきれなかったものは
+   * {@link #sweep} が消す。結果が無いか、オーナーが違えば result_not_found で断る。
+   */
   public void delete(OwnerId owner, ResultId id) throws IOException {
     Path removed = trash.resolve(UUID.randomUUID().toString());
     files.writeLock().lock();
@@ -206,10 +215,10 @@ public final class ResultStore implements AutoCloseable {
   }
 
   /**
-   * 文書を新しい一時ファイル（&lt;target&gt;.&lt;UUID&gt;.tmp）へ写して &lt;target&gt; と置き換える（デスクトップの書き出し）。
-   * 選ばれた target の他に既にあるファイルは書き換えない。
+   * デスクトップ版で、文書をファイルに書き出す。新しい一時ファイル（&lt;target&gt;.&lt;UUID&gt;.tmp）へコピーしてから
+   * &lt;target&gt; と置き換える。書き換えるのは選ばれたファイルだけで、ほかの既にあるファイルには触れない。
    *
-   * @param target 既にあるフォルダーの中の絶対パス
+   * @param target 書き出すファイルの絶対パス。フォルダーは既にあること
    * @throws ReviewerException result_not_found・invalid_request
    */
   public void export(OwnerId owner, ResultId id, Path target) throws IOException {
@@ -236,7 +245,7 @@ public final class ResultStore implements AutoCloseable {
     }
   }
 
-  /** 消しきれなかった trash の 1 件を消す。 */
+  /** trash に残った、消しきれなかった結果を消す。 */
   public void sweep() {
     discardEntries(trash);
   }
@@ -280,7 +289,7 @@ public final class ResultStore implements AutoCloseable {
     return meta;
   }
 
-  /** files の書きの鍵の中か、起動の索引作りで呼ぶ。 */
+  /** {@code files} の書き込みのロックを取った中か、起動時にインデックスを作るときに呼ぶ。 */
   private void add(Indexed entry) {
     byId.put(entry.meta().resultId(), entry);
     List<Indexed> entries =
@@ -298,8 +307,8 @@ public final class ResultStore implements AutoCloseable {
   }
 
   /**
-   * staging か trash に残った 1 件（UUID の名前の、リンクでないフォルダー）を消す。保存先は利用者が選んだフォルダーのこともあるので、他の名前の物は
-   * 読まず消さない。
+   * staging か trash に残った結果（名前が UUID で、リンクでないフォルダー）を消す。保存先はユーザーが選んだフォルダーのこともあるので、
+   * ほかの名前のものは読まず、消さない。
    */
   private static void discardEntries(Path directory) {
     try (DirectoryStream<Path> entries =
@@ -314,7 +323,7 @@ public final class ResultStore implements AutoCloseable {
     }
   }
 
-  /** 新しいファイルへ書いてディスクへ同期する。 */
+  /** 新しいファイルを作って書き、ディスクに同期する。 */
   static void writeFile(Path path, byte[] bytes) throws IOException {
     try (FileChannel channel =
         FileChannel.open(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
@@ -324,7 +333,10 @@ public final class ResultStore implements AutoCloseable {
     }
   }
 
-  /** 1 件の保存のファイルを消し、空になったフォルダーを消す。他のファイルがあればフォルダーは残す（保存が書いていない物は消さない）。 */
+  /**
+   * 1 件のフォルダーから保存で書いたファイルを消し、空になったフォルダーも消す。保存で書いていないファイルは消さないので、それが残っていれば
+   * フォルダーも残る。消せなくても警告のログを書くだけで、例外は投げない。
+   */
   static void discard(Path entry) {
     try {
       for (StoreLayout file : ENTRY_FILES) Files.deleteIfExists(entry.resolve(file.fileName()));
@@ -341,6 +353,6 @@ public final class ResultStore implements AutoCloseable {
     }
   }
 
-  /** 索引の 1 件と、並べ替えのために読んだ時刻。 */
+  /** インデックスの 1 件。並べ替えには、createdAt を読んで Instant にした時刻を使う。 */
   private record Indexed(ResultMeta meta, Instant created) {}
 }

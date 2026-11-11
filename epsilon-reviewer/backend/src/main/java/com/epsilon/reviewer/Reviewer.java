@@ -1,5 +1,6 @@
 package com.epsilon.reviewer;
 
+import com.epsilon.agent.settings.SettingsException;
 import com.epsilon.reviewer.analysis.AnalysisJobs;
 import com.epsilon.reviewer.analysis.AnalysisStarted;
 import com.epsilon.reviewer.analysis.JobId;
@@ -10,9 +11,9 @@ import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.epsilon.reviewer.model.CatalogView;
 import com.epsilon.reviewer.model.ModelCatalog;
+import com.epsilon.reviewer.model.ModelFamilies;
 import com.epsilon.reviewer.model.ModelKey;
 import com.epsilon.reviewer.model.ModelRegistry;
-import com.epsilon.reviewer.model.PolicyProviders;
 import com.epsilon.reviewer.record.ImportedRecord;
 import com.epsilon.reviewer.record.PreparedRecord;
 import com.epsilon.reviewer.record.PreparedRecords;
@@ -36,14 +37,14 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** 組み立ての根。サービスを作り、閉じる順を決める。1 つの操作 = 1 つのメソッド（api.Command と同じ並び）。 */
+/** 全てのサービスを作って持ち、閉じる順を決める。操作ごとにメソッドが 1 つあり、並びは {@code api.Command} と同じ。 */
 public final class Reviewer implements AutoCloseable {
   private static final Logger LOG = LoggerFactory.getLogger(Reviewer.class);
 
-  /** 使わないモデルを閉じるまでの時間。 */
+  /** 使われていないモデルを閉じるまでの時間。 */
   static final Duration MODEL_IDLE = Duration.ofMinutes(10);
 
-  /** 掃除の間隔（最初は 1 間隔の後）。 */
+  /** 掃除の間隔。最初の掃除も、起動からこの間隔だけ待ってから行う。 */
   static final Duration SWEEP_INTERVAL = Duration.ofMinutes(1);
 
   private final ResultStore store;
@@ -63,31 +64,31 @@ public final class Reviewer implements AutoCloseable {
           });
 
   private Reviewer(
-      ResultStore store, ModelCatalog catalog, PolicyProviders providers, int maxOpenModels) {
+      ResultStore store, ModelCatalog catalog, ModelFamilies families, ReviewerSettings settings) {
     this.store = store;
     this.catalog = catalog;
-    models = new ModelRegistry(catalog, providers, maxOpenModels, MODEL_IDLE);
+    models = new ModelRegistry(catalog, families, settings.server().maxOpenModels(), MODEL_IDLE);
     importer = new RecordImporter(records, tenhou, store);
-    analyses = new AnalysisJobs(records, models, store);
+    analyses = new AnalysisJobs(records, models, store, settings.analysis());
     scenarios = new ScenarioService(catalog, models, store);
     long interval = SWEEP_INTERVAL.toMillis();
     sweeper.scheduleWithFixedDelay(this::sweep, interval, interval, TimeUnit.MILLISECONDS);
   }
 
   /**
-   * カタログを読み、保存先を開く（モデルは開かない）。
+   * カタログを読み、保存先を開く。モデルはまだ開かない。
    *
-   * @throws ReviewerException data_locked
-   * @throws IOException models.json か保存先が読めない
+   * @throws ReviewerException 保存先を別の Reviewer が使っていて、ロックを取れない（data_locked）
+   * @throws SettingsException models.json の書き方が誤っている
+   * @throws IOException models.json か保存先を読めない
    */
   public static Reviewer open(ReviewerConfig config) throws IOException {
-    PolicyProviders providers = PolicyProviders.load();
     ModelCatalog catalog =
         config.models() == null
             ? ModelCatalog.empty()
-            : ModelCatalog.load(config.models(), providers);
+            : ModelCatalog.load(config.models(), config.families());
     ResultStore store = ResultStore.open(config.data());
-    return new Reviewer(store, catalog, providers, config.maxOpenModels());
+    return new Reviewer(store, catalog, config.families(), config.settings());
   }
 
   public CatalogView models() {
@@ -114,7 +115,7 @@ public final class Reviewer implements AutoCloseable {
     return importer.importStored(owner, id);
   }
 
-  /** 読み込んだ牌譜を取り、カタログで確かめて仕事にする。受け付けられなければ牌譜を戻す。 */
+  /** 読み込んだ牌譜を取り出し、モデルがカタログにあるかを確かめてジョブにする。受け付けられなければ、牌譜を元に戻す。 */
   public AnalysisStarted startAnalysis(OwnerId owner, RecordId record, ModelKey model) {
     PreparedRecord prepared = records.take(owner, record);
     try {
@@ -137,7 +138,7 @@ public final class Reviewer implements AutoCloseable {
     return document(store.find(owner, id), id, ErrorCode.RESULT_NOT_FOUND);
   }
 
-  /** 索引から外し、もしもの写しも外す。 */
+  /** 解析結果をインデックスから外して消す。もしもの評価のために持っている写しも捨てる。 */
   public void deleteResult(OwnerId owner, ResultId id) {
     try {
       store.delete(owner, id);
@@ -155,7 +156,7 @@ public final class Reviewer implements AutoCloseable {
     }
   }
 
-  /** 持ち主の確かめだけ（共有リンクの URL は HTTP が作る）。 */
+  /** 結果のオーナーかを確かめるだけで、何も変えない。共有リンクの URL は HTTP の側で作る。 */
   public ResultId shareable(OwnerId owner, ResultId id) {
     store.find(owner, id);
     return id;
@@ -173,7 +174,7 @@ public final class Reviewer implements AutoCloseable {
     return scenarios.evaluate(store.findShared(id), query);
   }
 
-  /** 掃除（走っている回を待つ）→ 解析（取り消して待つ）→ モデル → 保存（鍵を放す）→ 天鳳の順に閉じる。 */
+  /** 掃除（実行中の掃除が終わるのを待つ）→ 解析（取り消して待つ）→ モデル → 保存先（ロックを放す）→ 天鳳の取得の順に閉じる。 */
   @Override
   public void close() {
     sweeper.shutdownNow();

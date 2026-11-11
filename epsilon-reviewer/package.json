@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace web",
-    "server": "java -jar backend/target/epsilon-reviewer-1.0-SNAPSHOT-all.jar --host 127.0.0.1 --port 8080 --origin http://127.0.0.1:8080 --models models.local.json --data-dir .data --web-dir web/dist",
+    "server": "java -jar backend/target/epsilon-reviewer-1.0-SNAPSHOT-all.jar serve --host 127.0.0.1 --port 8080 --origin http://127.0.0.1:8080 --models models.local.json --data-dir .data --web-dir web/dist",
     "build": "npm run check:language && npm run build --workspace web && npm run build --workspace desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "desktop": "npm run start --workspace desktop",

@@ -23,12 +23,12 @@ const ANALYSE_KEYS: Record<ScenarioStatus, MessageKey> = {
   done: "scenario.analysed",
   stale: "scenario.reanalyse",
 };
-/** 吹き出しと押した所の間。 */
+/** 吹き出しと押した所との間隔（px）。 */
 const EDITOR_GAP = 12;
-/** 吹き出しと卓の縁の間。 */
+/** 吹き出しと卓の縁との最小の間隔（px）。 */
 const EDITOR_MARGIN = 8;
 
-/** 右上の操作。ドラ表示と同じ幅・同じ作りで、中身が変わっても大きさを変えない。 */
+/** 右上に置くもしもの操作。ドラ表示と同じ幅・同じ作りにし、中身が変わっても大きさは変えない。 */
 export function ScenarioControls({
   elements,
   scenario,
@@ -40,7 +40,7 @@ export function ScenarioControls({
 }) {
   const { t } = useLanguage();
   const { decision, changes, status } = scenario;
-  const viewer = seatName(playback.seat, playback.round.dealer, t);
+  const viewer = seatName(playback.seat, playback.round, t);
   const error = decision !== null && scenario.error !== null;
   const state =
     decision === null
@@ -109,8 +109,8 @@ export function ScenarioControls({
 }
 
 /**
- * 選んだ所の編集。横長の画面では押した所のそばに浮かべ、ほかの欄を動かさない。
- * 縦の画面では卓の下の一覧の場所に置く。外を押すか Esc で閉じる。
+ * 選んだ所を編集する吹き出し。横長の画面では、押した所のそばに浮かべ、ほかの欄は動かさない。
+ * 縦長の画面では、卓の下の一覧の場所に置く。吹き出しの外を押すか Esc を押すと閉じる。
  */
 export function ScenarioEditor({
   scenario,
@@ -128,7 +128,7 @@ export function ScenarioEditor({
     null,
   );
   const { select } = scenario;
-  // 手牌は横一列なので上に、ほかは横（右、入らなければ左）に置き、画面からはみ出さないようにする。
+  // 手牌は横一列に並ぶので、手牌の吹き出しは上に置く。ほかの吹き出しは右に置き、入らなければ左に置く。どれも画面からはみ出させない。
   useLayoutEffect(() => {
     if (!floating) return;
     const editor = element.current!;

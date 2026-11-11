@@ -2,15 +2,19 @@ package com.epsilon.prism.collect;
 
 import com.epsilon.prism.auxiliary.HandEndFacts;
 import com.epsilon.prism.auxiliary.OutcomeCodec;
+import com.epsilon.prism.core.DecisionClass;
+import com.epsilon.prism.luck.LedgerColumn;
+import com.epsilon.prism.luck.LedgerTracker;
 import java.util.Arrays;
 
 /**
- * 写しの根の記録（ROOT）。主経路の判断 o で、打った手 played の枠（主経路の局末の値 y_main）と逸脱 d の枠（写しの局末の値
- * y_br）を待つ。d = played なら写しを作らず played の 1 枠だけ（y_br = y_main）。
+ * 写しの根の記録（ROOT）。主経路の判断 o で、打った手 played の値（主経路の局末の値 y_main）と、逸脱 d の値（写しの局末の値 y_br）を
+ * 待つ。d = played なら写しを作らず、played の値 1 つだけを待つ（y_br = y_main）。
  *
- * <p>そろったら行にして受け口へ渡す: values は played と d の枠だけ、deviation = d、deviationProbability = q(d|o)、propensity = β_c(o)·q(d|o)
- * （どれも下書き {@link RowDraft} が持つ）。全ての枠はドライバのスレッドで受け取る。帳簿を付ける収集では、played と d の運の精算の帳簿
- * （{@link EventLedger}）もラベル行と同じ丸めで書く。played と d の局末の 3 語も集める（{@link CollectContext#write}）。
+ * <p>値がそろったら行にして書き出し先へ渡す。values には played と d の値だけが入り、deviation = d、deviationProbability = q(d|o)、
+ * propensity = β_c(o)·q(d|o) になる（どれも下書き {@link RowDraft} が持つ）。全ての値はドライバのスレッドで受け取る。帳簿を付ける収集
+ * では、played と d の運の精算の帳簿（{@link LedgerTracker}）も、ラベル行と同じ丸め方で書く。played と d の局末の 3 ワードも集める
+ * （{@link CollectContext#write}）。
  */
 final class RootRecord implements Pending {
   private final CollectContext context;
@@ -18,10 +22,13 @@ final class RootRecord implements Pending {
 
   private final float[] values;
 
-  /** 手ごとの運の精算の帳簿（{@link PendingLabel} と同じ形。帳簿を付けない収集は null）。 */
+  /** 手ごとの運の精算の帳簿。形は {@link PendingLabel} と同じ。帳簿を付けない収集では null。 */
   private final float[] ledger;
 
-  /** 手ごとの局末の 3 語（{@link PendingLabel} と同じ形）。 */
+  /** 行の帳簿を丸める乱数のキー（{@link PendingLabel#roundingKey}）。 */
+  private final long roundingKey;
+
+  /** 手ごとの局末の 3 ワード。形は {@link PendingLabel} と同じ。 */
   private final long[] outcomes;
 
   private int remaining;
@@ -31,13 +38,14 @@ final class RootRecord implements Pending {
     this.draft = draft;
     values = new float[draft.actions()];
     Arrays.fill(values, Float.NaN);
-    ledger = context.eventLedger ? new float[draft.actions() * EventLedger.FEATURES] : null;
+    ledger = context.ledger == null ? null : new float[draft.actions() * LedgerColumn.COUNT];
     if (ledger != null) Arrays.fill(ledger, Float.NaN);
+    roundingKey = PendingLabel.roundingKey(context, draft, ledger);
     outcomes = new long[draft.actions() * OutcomeCodec.WORDS];
     remaining = sameAsPlayed() ? 1 : 2;
   }
 
-  /** d = played（写しを作らない）か。 */
+  /** d = played か。そのときは写しを作らない。 */
   boolean sameAsPlayed() {
     return draft.deviation() == draft.played();
   }
@@ -48,8 +56,13 @@ final class RootRecord implements Pending {
   }
 
   @Override
+  public DecisionClass decisionClass() {
+    return draft.decisionClass();
+  }
+
+  @Override
   public void acceptLedger(int action, double[] terms) {
-    PendingLabel.write(context, draft, ledger, action, terms);
+    PendingLabel.write(ledger, roundingKey, action, terms);
   }
 
   @Override

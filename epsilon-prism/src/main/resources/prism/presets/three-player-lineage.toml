@@ -1,0 +1,88 @@
+# 三人打ちの系譜の設定（ネットワークの形・自分の GRP・評価の卓）。推論と学習のデバイスは書かないので、GPU で回すときは production と重ねる。
+# 評価の卓の席の分け方は候補と相手で 3 席なので、四人打ちの run に使うと設定の検査で拒まれる。
+[network]
+shape = "V2"
+depth = 2
+
+# 系譜の始めは方策が最も速く変わるので、GRP を反復ごとに学び直し（K 1）、コホートの重みの半減期を 1 コホートにする（τ 1）。
+# trustGames は学び直しの範囲の半荘の数で、grp-trust がコホート 1 つを測って勧める値にする。候補を学習した半荘の数以上で最小の 2 の冪で、
+# 1 コホートの半荘の数と同じ。検出力 95% で 2 SE の判定をするのに関門に要る半荘は、関門が比べる次のコホートの半荘より少ない。
+[phi]
+source = "SELF_GRP"
+start = "SCORE_RANK"
+
+[phi.grp]
+refit = "SCHEDULE"
+switching = "AUTO"
+halfLife = 1.0
+trustGames = 8192
+
+# 尺度は、基準の卓（reference）の相手を 0 として当てはめる。2×R と基準の卓では、王者が同じ卓・同じ牌山で打った結果と対にした差が
+# 悪い向きに z 3 を超えたら、低下のアラートを書く。基準の卓では、差が 0.01 以上悪いときだけ書く。王者との決闘で候補の方が悪いという
+# 判定が 2 回続いたら、アラートを書いて run は続ける。
+[evaluation]
+anchor = "reference"
+alarmZ = 3.0
+dropMargin = 0.01
+onWorse = {kind = "REPORT", streak = 2}
+
+# ルールベースの打ち手が 2 席に座る卓（2×R）。全てのバージョンが同じ牌山を、候補 1 席の全ての席の割り当てで打つ。
+[evaluation.tables.rx2]
+opponent = "heuristic"
+seating = {kind = "EVERY_PLACEMENT", splits = ["1v2"]}
+draws = "SEAT_STREAMS"
+wallSet = "FIXED"
+walls = 16384
+stop = {kind = "PRECISION", error = 0.005, alpha = 0.01, checkEvery = 1024}
+score = "RANK"
+every = 1
+from = 1
+
+# 王者との決闘。王者の保存先が空なら、打たずに測るバージョンを最初の王者にする。候補の方が良ければ、候補を新しい王者にする。
+[evaluation.tables.champion]
+opponent = "champion"
+seating = {kind = "EVERY_PLACEMENT", splits = ["1v2", "2v1"]}
+draws = "SEAT_STREAMS"
+wallSet = "FRESH"
+walls = 4096
+stop = {kind = "TEST", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote = true}
+score = "RANK"
+every = 1
+from = 2
+
+# 基準の卓。系譜の強さを見るときの主な数になる。相手はバージョン 32 で、全てのバージョンが同じ牌山を打つ。昇格したバージョンも測る。
+[evaluation.tables.reference]
+opponent = "version:32"
+seating = {kind = "EVERY_PLACEMENT", splits = ["1v2", "2v1"]}
+draws = "SEAT_STREAMS"
+wallSet = "FIXED"
+walls = 8192
+stop = {kind = "PRECISION", error = 0.005, alpha = 0.01, checkEvery = 512}
+score = "RANK"
+onPromotion = true
+every = 8
+from = 40
+
+# 8 バージョン前と 32 バージョン前を相手にするラダー。席の決め方・ツモの順・判定に使う量が基準の卓と同じなので、相手が基準の卓の相手と
+# 同じバージョンになる回（ladder8 はバージョン 40、ladder32 はバージョン 64）は打たずに、基準の卓の結果を使う。
+[evaluation.tables.ladder8]
+opponent = "version:-8"
+seating = {kind = "EVERY_PLACEMENT", splits = ["1v2", "2v1"]}
+draws = "SEAT_STREAMS"
+wallSet = "FRESH"
+walls = 8192
+stop = {kind = "PRECISION", error = 0.005, alpha = 0.01, checkEvery = 512}
+score = "RANK"
+every = 8
+from = 16
+
+[evaluation.tables.ladder32]
+opponent = "version:-32"
+seating = {kind = "EVERY_PLACEMENT", splits = ["1v2", "2v1"]}
+draws = "SEAT_STREAMS"
+wallSet = "FRESH"
+walls = 8192
+stop = {kind = "PRECISION", error = 0.005, alpha = 0.01, checkEvery = 512}
+score = "RANK"
+every = 8
+from = 40

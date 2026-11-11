@@ -10,7 +10,7 @@ import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 持ち主の Cookie の読みと発行、持ち主の id、owner の道だけが Cookie を扱うこと。 */
+/** オーナーの Cookie の読み取りと発行、オーナーの id を確かめる。Cookie を扱うのがオーナー用のパスだけであることも確かめる。 */
 public class OwnerCookieTest {
   private static final String VALID = "A".repeat(43);
 

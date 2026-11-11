@@ -1,7 +1,7 @@
 import { createRef, type RefCallback, type RefObject } from "react";
 import type { SeatSlot, TableHost } from "./renderer/types.ts";
 
-/** 描画が読む要素の ref。画面の部品が付け、useTableRenderer が描画に渡す。 */
+/** 卓の描画が使う要素の ref。画面の部品が要素に付け、useTableRenderer が描画に渡す。 */
 export interface TableElements {
   readonly root: RefObject<HTMLDivElement | null>;
   readonly device: RefObject<HTMLDivElement | null>;
@@ -11,9 +11,9 @@ export interface TableElements {
   readonly dora: RefObject<HTMLDivElement | null>;
   readonly panel: RefObject<HTMLElement | null>;
   readonly candidates: RefObject<HTMLElement | null>;
-  /** 名札が避ける再生の操作。 */
+  /** 再生の操作の要素。名札はこれと重ならないように置く。 */
   readonly controls: ReadonlySet<Element>;
-  /** 再生の操作に付ける ref。外れた要素は controls から外す。 */
+  /** 再生の操作の要素に付ける ref。要素が外れたら、その要素を上の集合から除く。 */
   readonly control: RefCallback<Element>;
 }
 
@@ -50,7 +50,7 @@ function mounted<T>(ref: RefObject<T | null>): T {
   return ref.current;
 }
 
-/** 付いた要素から描画の host を作る。描画を作る時（要素が付いた後）に呼ぶ。 */
+/** 付いた要素から、描画に渡すホストを作る。要素が付いた後、描画を作るときに呼ぶ。 */
 export function tableHost(elements: TableElements): TableHost {
   const { labels } = elements;
   return {

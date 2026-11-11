@@ -34,7 +34,7 @@ type Analysis =
   | { status: "loading"; key: string }
   | { status: "done"; key: string; candidates: readonly Candidate[] }
   | { status: "error"; key: string; error: unknown };
-/** 応答の判断で鳴いたとした後の打牌の解析。call は鳴いたとするチー・ポンの候補。 */
+/** 打牌への応答でチー・ポンしたとして、その後の打牌を解析した結果。`call` はそのチー・ポンの候補。 */
 export type ScenarioBranch =
   | { call: Candidate; status: "loading" }
   | {
@@ -47,7 +47,7 @@ interface Draft {
   edits: ScenarioEdits;
   analysis: Analysis | null;
   branch: ScenarioBranch | null;
-  /** 鳴いた後の解析が失敗した理由。元の候補に戻して、右上に出す。 */
+  /** 鳴いた後の解析が失敗した理由。候補は元に戻し、理由を右上に出す。 */
   callError: unknown;
 }
 const EMPTY: Draft = {
@@ -56,21 +56,21 @@ const EMPTY: Draft = {
   branch: null,
   callError: null,
 };
-/** 変更も鳴きの枝も失敗も無い下書きは持たない（解析の結果は変更が無ければ出さない）。 */
+/** 変更も鳴いた後の分岐も失敗も無い下書きは捨てる。変更が無ければ解析の結果は出さないので、残しても使わない。 */
 const isEmpty = (draft: Draft) =>
   draft.edits === NO_EDITS && draft.branch === null && draft.callError === null;
 
 export interface Scenario {
-  /** 結果のモデルが使えるか（使えなければもしもは押せない）。 */
+  /** 解析結果を出したモデルで、もしもを解析できるか。できなければ、もしもは押せない。 */
   readonly available: boolean;
   readonly active: boolean;
-  /** 見ている席の手番の局面でだけ始められる。 */
+  /** もしもを始められるか。見ている席が判断する局面でだけ始められる。 */
   readonly canStart: boolean;
   toggle(): void;
   readonly decision: DecisionStep | null;
   readonly board: ScenarioBoard;
   showBoard(board: ScenarioBoard): void;
-  /** 卓の上の当たり枠を出すか。元の局面と鳴いた後の局面を出している間は変えさせない。 */
+  /** 卓の上に当たり判定を出して編集できるか。元の局面や鳴いた後の局面を見ている間は編集させない。 */
   readonly editing: boolean;
   readonly selection: ScenarioTarget | null;
   select(target: ScenarioTarget | null): void;
@@ -82,16 +82,16 @@ export interface Scenario {
   readonly status: ScenarioStatus;
   readonly error: unknown;
   analyse(): void;
-  /** 鳴いた後の打牌を見ている間の鳴き（読み込み中を含む）。 */
+  /** 鳴いた後の打牌を見ている間の、そのチー・ポンと解析の状態（読み込み中を含む）。見ていなければ null。 */
   readonly branch: ScenarioBranch | null;
-  /** 応答の判断のチー・ポンの候補から、鳴いた後の打牌へ進む。進めないときは null。 */
+  /** 応答の判断で、チー・ポンの候補から鳴いた後の打牌へ進む。進めないときは null。 */
   readonly branchTo: ((call: Candidate) => void) | null;
   leaveBranch(): void;
-  /** 候補の欄の読み込み中の印。 */
+  /** 候補の欄に出す状態（読み込み中かどうかなど）。 */
   readonly listStatus: ScenarioStatus;
   /** 候補の欄に出す候補。解析が今の変更に合うときだけ、もしもの候補にする。 */
   readonly candidates: readonly Candidate[];
-  /** もしもの候補を出しているときの元の候補。鳴いた後の打牌には元がない。 */
+  /** もしもの候補を出しているときの、比べる元の候補。鳴いた後の打牌には元が無いので null。 */
   readonly comparison: readonly Candidate[] | null;
   setRiver(
     seat: number,
@@ -103,12 +103,12 @@ export interface Scenario {
   setScore(seat: number, score: number): void;
   setSticks(kind: "honba" | "kyotaku", count: number): void;
   revert(target: ScenarioTarget): void;
-  /** 元の牌に戻すと見えている牌が物理牌の数を超える所は戻せない。 */
+  /** 元に戻せるか。元の牌に戻すと、見えている枚数が物理牌の数を超える所は戻せない。 */
   canRevert(target: ScenarioTarget): boolean;
   revertAll(): void;
 }
 
-// 変更と解析の結果は判断（局・出来事・席）ごとに画面の中だけで覚える。
+// 変更と解析の結果は、判断（局・イベント・席）ごとに画面の中だけで覚えておく。
 export function useScenario(
   playback: Playback,
   client: ScenarioClient | null,
@@ -122,6 +122,14 @@ export function useScenario(
   );
   const requests = useRef(new Map<string, AbortController>());
   const key = decision && `${roundIndex}:${decision.eventIndex}:${seat}`;
+  // 選んでいる所と、元の局面を見ているかは、その判断だけのもの。別の判断へ移ったら、その描画のうちに初めへ戻す
+  // （前の選択のままでは何も描かない）。
+  const [viewed, setViewed] = useState(key);
+  if (viewed !== key) {
+    setViewed(key);
+    setSelection(null);
+    setBoard("edited");
+  }
   const draft = (key !== null && drafts.get(key)) || EMPTY;
   const { branch } = draft;
   const edited = useMemo(
@@ -140,7 +148,6 @@ export function useScenario(
     [draft.edits, snapshot, seat],
   );
   const editsKey = JSON.stringify(draft.edits);
-  useEffect(() => setSelection(null), [key]);
   useEffect(() => {
     const pending = requests.current;
     return () => {
@@ -158,7 +165,7 @@ export function useScenario(
       }),
     [],
   );
-  // 編集の吹き出しが外のクリックを見張るので、同じ関数を渡し続ける。
+  // 編集の吹き出しは外のクリックを監視しているので、いつも同じ関数を渡す。
   const select = useCallback((target: ScenarioTarget | null) => {
     setSelection(target);
     if (target) setBoard("edited");
@@ -167,7 +174,7 @@ export function useScenario(
     requests.current.get(slot)?.abort();
     requests.current.delete(slot);
   };
-  // 局面を変えたら、鳴いた後の解析は前の局面のものなので外す。
+  // 局面を変えたら、鳴いた後の解析は前の局面に対するものなので捨てる。
   const edit = (change: (edits: ScenarioEdits) => ScenarioEdits) => {
     if (key === null) return;
     cancel(`${key}:call`);
@@ -179,7 +186,7 @@ export function useScenario(
     }));
     setBoard("edited");
   };
-  /** 解析を頼む。同じ判断の同じ種類（局面・鳴き）の前の要求は取り消す。 */
+  /** サーバに解析を要求する。同じ判断で同じ種類（局面・鳴き）の前の要求は取り消す。 */
   const send = (
     slot: string,
     query: ScenarioQuery,

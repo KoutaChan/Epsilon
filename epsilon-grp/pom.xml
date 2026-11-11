@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.epsilon</groupId>
+    <artifactId>epsilon-base</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <relativePath>../epsilon-base/pom.xml</relativePath>
+  </parent>
+  <artifactId>epsilon-grp</artifactId>
+  <name>Epsilon GRP</name>
+  <dependencies>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-mahjong</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+    </dependency>
+    <!-- 学習（com.epsilon.grp.train の GrpTrainer）だけが使う。推論だけを使うモジュールには伝わらない。 -->
+    <dependency>
+      <groupId>ai.djl</groupId>
+      <artifactId>api</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>ai.djl.pytorch</groupId>
+      <artifactId>pytorch-engine</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <!-- 試験とベンチのログ（*Bench の結果の行）を出す SLF4J の実装。 -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

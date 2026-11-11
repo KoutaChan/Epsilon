@@ -13,7 +13,7 @@ export interface MeldPlacement {
   readonly meld: Meld;
   readonly index: number;
   readonly x: number;
-  /** 加槓の牌だけが中央へ寄る。 */
+  /** 卓の中央の側へのずれ。ずれるのは加槓で足した牌だけで、ほかの牌は 0。 */
   readonly y: number;
   readonly added: boolean;
   readonly sideways: boolean;
@@ -46,9 +46,14 @@ function meldWidth(meld: Meld): number {
   return width;
 }
 
+/** 副露のうち、手牌を 3 枚減らすものの数（抜いた北は数えない）。 */
+function sets(melds: readonly Meld[]): number {
+  return melds.filter((meld) => meld.type !== "NUKI").length;
+}
+
 export function measurePlayerRowWidth(melds: readonly Meld[]): number {
   return (
-    (13 - 3 * melds.length) * HAND_PITCH +
+    (13 - 3 * sets(melds)) * HAND_PITCH +
     1 +
     DRAW_GAP +
     (melds.length ? HAND_MELD_GAP : 0) +
@@ -57,15 +62,15 @@ export function measurePlayerRowWidth(melds: readonly Meld[]): number {
   );
 }
 
-// 対局全体の右端へ最初の副露を固定し、新しい組を左へ足す。組の中の牌順は保つ。
+// 最初の副露は対局を通して同じ右端に置き、後の副露はその左へ足していく。副露の中の牌の順は変えない。
 export function layoutPlayerRow(
   melds: readonly Meld[],
   rowWidth = PLAYER_ROW_WIDTH,
 ): PlayerRow {
   const width = measurePlayerRowWidth(melds);
-  const handWidth = (13 - 3 * melds.length) * HAND_PITCH + 1 + DRAW_GAP;
+  const handWidth = (13 - 3 * sets(melds)) * HAND_PITCH + 1 + DRAW_GAP;
   const right = PLAYER_ROW_CENTER + rowWidth / 2;
-  // 手牌はツモ枠込みで中央に置き、副露に重なる場合だけ必要な分を左へ寄せる。
+  // 手牌はツモ枠を含めて中央に置く。副露に重なるときだけ、重なる分を左へずらす。
   const left = Math.min(PLAYER_ROW_CENTER - handWidth / 2, right - width);
   const placements: MeldPlacement[] = [];
   let end = right;
@@ -78,7 +83,7 @@ export function layoutPlayerRow(
       const tileWidth = meldTileWidth(meld, index);
       const x = added ? calledX : start + offset + tileWidth / 2;
       if (index === meld.calledIndex) calledX = x;
-      // 加槓牌は元の横向き牌の奥へ並べ、両方の牌面を見せる。
+      // 加槓で足した牌は鳴いた横向きの牌の奥に置き、両方の牌面が見えるようにする。
       placements.push({
         meld,
         index,

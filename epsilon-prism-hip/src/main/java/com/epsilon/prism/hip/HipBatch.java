@@ -3,24 +3,26 @@ package com.epsilon.prism.hip;
 import java.util.Arrays;
 
 /**
- * 1 塊の入力の形: 数と、blob の中の区画の位置。HostBatch の計画（BatchPlan）から網の側が作る。
+ * 1 つのバッチの入力の形。行・イベント・遷移・合法手の数と、blob の中の各領域の位置を持つ。ネットワークの側が HostBatch の計画
+ * （BatchPlan）から作る。
  *
  * @param rows 行の数
- * @param events 出来事のトークンの数
+ * @param events イベントのトークンの数
  * @param transitions 遷移の数
  * @param actions 合法手の数
- * @param bytes 使う blob のバイト数（H2D はこの大きさを 1 回）
- * @param sections 区画ごとの先頭のバイトの位置（{@link HipSection} の順）
+ * @param bytes 使う blob のバイト数（H2D のコピーはこの大きさで 1 回）
+ * @param sections 領域ごとの先頭のバイト位置（{@link HipSection} の順）
  */
 public record HipBatch(int rows, int events, int transitions, int actions, long bytes, long[] sections) {
 
-  /** 区画の先頭のそろえ（native の 16 バイトの読み込みに要る下限）。 */
+  /** 領域の先頭のアラインメント（バイト）。native が 16 バイト単位で読むのに要る下限。 */
   public static final int SECTION_ALIGNMENT = 16;
 
   /**
    * 数と位置を確かめる。
    *
-   * @throws IllegalArgumentException 数が負か、行が 0 か、区画の数・そろえが合わないとき
+   * @throws IllegalArgumentException 行の数かバイト数が 0 以下、イベントの数が負、遷移か合法手が行より少ないとき。また、領域の数が
+   *     {@link HipSection} と合わないか、領域の先頭が blob の外にあるかアラインメントに合わないとき
    */
   public HipBatch {
     if (rows <= 0 || events < 0 || transitions < rows || actions < rows || bytes <= 0) {

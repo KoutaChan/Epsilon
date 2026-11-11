@@ -1,28 +1,43 @@
 package com.epsilon.reviewer.engine.view;
 
-import com.epsilon.core.GameState;
-import com.epsilon.core.TurnEvent;
-import com.epsilon.replay.ReplayEvent;
-import com.epsilon.replay.ReplayEvent.Hora;
-import com.epsilon.replay.ReplayEvent.Ryukyoku;
+import com.epsilon.mahjong.engine.RoundEnd;
+import com.epsilon.mahjong.record.RoundResult;
+import com.epsilon.mahjong.rules.EndKind;
+import com.epsilon.mahjong.score.ScoringYaku;
+import com.epsilon.mahjong.score.WinScore;
+import java.util.ArrayList;
+import java.util.List;
 
-/** 局の結果。和了の牌は適用の直後に残る手番の出来事（ツモ・打牌・槍槓の加槓）の物理牌から取り、赤と複数のロンを保つ。 */
+/** 局の結果を作る。和了した席と放銃した席は牌譜の結果から、採点はエンジンの局末から、和了牌は表示用の卓の物理牌から取る。 */
 public final class OutcomeProjector {
   private OutcomeProjector() {}
 
-  /** hora・ryukyoku でない出来事は null。 */
-  public static RoundOutcome of(ReplayEvent event, GameState state) {
-    return switch (event) {
-      case Hora hora -> {
-        var source = (TurnEvent.TileEvent) state.turnEvent();
-        yield new RoundOutcome.Hora(
-            hora.actor(),
-            hora.target(),
-            TileCode.of(source.tileType(), source.isAkaTile()),
-            hora.details());
-      }
-      case Ryukyoku ignored -> new RoundOutcome.Ryukyoku();
-      default -> null;
-    };
+  /**
+   * 和了 1 つ分の結果を作る。裏ドラの表示牌は、立直した和了にだけ付ける。
+   *
+   * @param table 局の最後のイベントまで進めた表示用の卓
+   * @param result 牌譜の局の結果
+   * @param end エンジンの局末（和了は結果と同じ順）
+   * @param index 何番目の和了か
+   */
+  public static RoundOutcome.Hora win(
+      RecordTable table, RoundResult result, RoundEnd end, int index) {
+    int winner = result.wins().get(index).seat();
+    int target = result.kind() == EndKind.TSUMO ? winner : result.loser();
+    WinScore score = end.score(index);
+    List<String> ura = new ArrayList<>(result.uraCount());
+    if (score.has(ScoringYaku.RIICHI) || score.has(ScoringYaku.DOUBLE_RIICHI))
+      for (int i = 0; i < result.uraCount(); i++)
+        ura.add(TileCode.of(table.variant().tiles(), result.ura(i)));
+    return new RoundOutcome.Hora(
+        winner,
+        target,
+        table.winningTile(),
+        WinDetails.of(table.variant(), table.round(), end.outcome(), index, score, ura));
+  }
+
+  /** 流局の結果を作る。 */
+  public static RoundOutcome.Ryukyoku draw() {
+    return new RoundOutcome.Ryukyoku();
   }
 }

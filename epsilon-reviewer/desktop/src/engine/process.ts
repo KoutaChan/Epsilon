@@ -8,8 +8,8 @@ import { ENGINE_ENV } from "../../../protocol/stdio.ts";
 import { ENGINE_STOPPED, EngineClient } from "./client.ts";
 
 /**
- * Java の引数。Windows の java.exe は引数を ANSI の符号で読むので ASCII だけにし、パスは環境変数で渡す。
- * -cp は作業のフォルダー（engine）からの相対、logback の設定は jar の中の名前。
+ * Java に渡す引数。Windows の java.exe は引数を ANSI のコードページで読むので、引数は ASCII だけにし、
+ * パスは環境変数で渡す。-cp は作業フォルダー（engine）からの相対パスで、logback の設定は jar の中のファイル名。
  */
 const JAVA_ARGUMENTS = [
   "-Xms32m",
@@ -22,29 +22,29 @@ const JAVA_ARGUMENTS = [
   "com.epsilon.reviewer.StdioMain",
 ] as const;
 
-/** 起こす時に stderr の記録がこれを超えていれば空にする（バイト）。 */
+/** stderr のログの上限（バイト）。起動するときにこれを超えていれば、ログを空にする。 */
 const STDERR_LOG_LIMIT = 1024 * 1024;
 
-/** stdin を閉じてから kill するまでの待ち（ミリ秒）。 */
+/** stdin を閉じてから kill するまでに待つ時間（ミリ秒）。 */
 const STOP_GRACE_MS = 5000;
 
-/** 子プロセスの起こし方。 */
+/** 子プロセスを起動するための設定。 */
 export interface EngineLaunch {
   command: string;
   args: readonly string[];
   cwd: string;
   env: NodeJS.ProcessEnv;
-  /** stderr を足していくファイル。 */
+  /** stderr を追記していくファイル。 */
   stderrLog: string;
 }
 
 /**
- * 同梱のエンジンの起こし方。パスは環境変数（ENGINE_ENV と DJL の変数）で渡す。DJL は同梱の libtorch の CPU 版を
- * 使い、ダウンロードと利用の記録の送信をしない。
+ * 同梱のエンジンを起動するための設定を作る。パスは環境変数（ENGINE_ENV と DJL の変数）で渡す。DJL には同梱の
+ * libtorch の CPU 版を使わせ、ダウンロードも利用状況の送信もさせない。
  *
- * @param engine resources/engine（未梱包は desktop/engine）
- * @param userData Electron の userData
- * @param resultsDirectory 保存先のフォルダー
+ * @param engine エンジンのフォルダー（resources/engine。パッケージしていなければ desktop/engine）
+ * @param userData Electron の userData のフォルダー
+ * @param resultsDirectory 結果の保存先のフォルダー
  */
 export function engineLaunch(
   engine: string,
@@ -54,7 +54,7 @@ export function engineLaunch(
   const logs = path.join(userData, "logs");
   const cache = path.join(userData, "djl");
   const env: NodeJS.ProcessEnv = { ...process.env };
-  // 利用者の環境の JVM の選択肢を混ぜない（引数は上の固定のものだけ）。
+  // 利用者の環境にある JVM のオプションを混ぜない。JVM に渡すのは上の決まった引数だけ。
   delete env.JAVA_TOOL_OPTIONS;
   delete env._JAVA_OPTIONS;
   delete env.JDK_JAVA_OPTIONS;
@@ -84,13 +84,14 @@ export function engineLaunch(
 interface Running {
   child: ChildProcess;
   client: EngineClient;
-  /** 子プロセスが終わり、待ちの要求を断った後に解ける。 */
+  /** 子プロセスが終わり、応答を待っていた要求を断った後に resolve する。 */
   closed: Promise<void>;
 }
 
 /**
- * Java の子プロセス 1 つ。落ちれば次の要求で起こし直す。起動の失敗（failed の知らせ、例えば data_locked）は
- * restart（保存先の変更）まで答え続ける。restart と stop は順に 1 つずつ行い、要求はその後に送る。
+ * Java の子プロセスを 1 つ動かす。子プロセスが落ちたら、次の要求で起動し直す。起動の失敗（failed のイベント。
+ * data_locked など）を受けたら、restart（保存先の変更）まではどの要求にもそのエラーを返す。restart と stop は
+ * 1 つずつ順に行い、要求はそれが済んでから送る。
  */
 export class EngineProcess {
   readonly #launch: () => EngineLaunch;
@@ -100,13 +101,13 @@ export class EngineProcess {
   #stopped = false;
   #transition: Promise<void> = Promise.resolve();
 
-  /** @param launch 起こす度に呼ぶ（その時の保存先を読む） */
+  /** @param launch 起動のたびに呼ぶ関数（その時点の保存先を読む） */
   constructor(launch: () => EngineLaunch, stopGraceMs = STOP_GRACE_MS) {
     this.#launch = launch;
     this.#stopGraceMs = stopGraceMs;
   }
 
-  /** 動いていなければ起こす。 */
+  /** 子プロセスが動いていなければ起動する。起動に失敗した後や stop の後は何もしない。 */
   start(): void {
     if (this.#failure === null && !this.#stopped) this.#ensure();
   }
@@ -125,7 +126,12 @@ export class EngineProcess {
       : running.client.request(command, request, body);
   }
 
-  /** 止めて、その時の設定で起こし直す。起動の失敗も忘れる。 */
+  /** 起動に失敗したままか。true の間は、restart するまでどの要求も断る。 */
+  get failed(): boolean {
+    return this.#failure !== null;
+  }
+
+  /** 子プロセスを止め、その時点の設定で起動し直す。覚えていた起動の失敗も忘れる。 */
   restart(): Promise<void> {
     return this.#serialize(async () => {
       await this.#halt();
@@ -134,7 +140,7 @@ export class EngineProcess {
     });
   }
 
-  /** アプリの終わり。以後の要求は断る。 */
+  /** アプリを終えるときに呼び、子プロセスを止める。この後の要求は断る。 */
   stop(): Promise<void> {
     this.#stopped = true;
     return this.#serialize(() => this.#halt());
@@ -146,7 +152,7 @@ export class EngineProcess {
     return next;
   }
 
-  /** stdin を閉じ、終わりを待つ。待ちきれなければ kill する。 */
+  /** stdin を閉じて子プロセスが終わるのを待つ。決まった時間を過ぎたら kill する。 */
   async #halt(): Promise<void> {
     const running = this.#running;
     if (running === null) return;
@@ -156,7 +162,7 @@ export class EngineProcess {
     clearTimeout(timer);
   }
 
-  /** 動いている子プロセス。起こせなければ（記録の場所が作れないなど）null。 */
+  /** 動いている子プロセスを返す。無ければ起動し、起動できなければ（ログのフォルダーを作れないときなど）null。 */
   #ensure(): Running | null {
     if (this.#running === null) {
       try {
@@ -185,7 +191,7 @@ export class EngineProcess {
     const { stdin, stdout } = child;
     if (stdin === null || stdout === null)
       throw new Error("The engine process has no stdio pipes.");
-    // 終わった子プロセスへの書き込みの失敗は close で扱う。
+    // 終わった子プロセスへ書き込んで失敗しても、ここでは無視する。後始末は close で行う。
     stdin.on("error", () => undefined);
     child.on("error", (error) =>
       console.error("The analysis engine process failed:", error),
@@ -194,7 +200,7 @@ export class EngineProcess {
     const running: Running = {
       child,
       client,
-      // close は起こせなかった時（ENOENT など）も出る。
+      // close のイベントは、起動できなかったとき（ENOENT など）にも来る。
       closed: new Promise((resolve) => {
         child.once("close", () => {
           client.close();
@@ -208,7 +214,7 @@ export class EngineProcess {
   }
 }
 
-/** stderr の記録を開いて子プロセスへ渡す fd を返す。大きくなっていれば空にしてから書く。 */
+/** stderr のログを開き、子プロセスへ渡す fd を返す。ログが上限より大きければ、空にしてから書く。 */
 function openStderrLog(file: string): number {
   mkdirSync(path.dirname(file), { recursive: true });
   const size = statSync(file, { throwIfNoEntry: false })?.size ?? 0;

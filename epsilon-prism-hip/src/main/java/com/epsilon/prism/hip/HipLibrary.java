@@ -20,27 +20,28 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * {@code libprism_hip.so} を読み込み、DJL が読んだ libtorch と同じ HIP の実行系に繋がったことを確かめる。
+ * {@code libprism_hip.so} を読み込み、DJL が読んだ libtorch と同じ HIP のランタイムに繋がったことを確かめる。
  *
- * <p>先に DJL の PyTorch のエンジンを初期化し（libtorch と HIP の実行系が読まれる）、その後に jar の中の .so を
+ * <p>先に DJL の PyTorch のエンジンを初期化して、libtorch と HIP のランタイムを読ませる。その後に jar の中の .so を
  * {@code ~/.cache/epsilon/prism-hip/<sha>/} に取り出して {@link System#load} する。
  *
- * <p>libprism_hip.so は libtorch のヘッダを使わず（DJL の配列のアドレスだけは libtorch が公開する記号を dlsym で引く）、HIP の
- * 実行系（{@code libamdhip64.so.7}）だけに繋がる。サーバに libtorch 2.11.0+rocm7.2 のヘッダがないためで、ストリームは
- * {@code PtStream.getId()}、ホストのメモリは直の ByteBuffer で受け、デバイスのメモリは計画が一度だけ取る。そのため照らすのは次の
- * 事実で、arch は計画を作るときに GPU ごとに照らす。
+ * <p>libprism_hip.so は libtorch のヘッダーを使わず、HIP のランタイム
+ * （{@code libamdhip64.so.7}）だけに繋がる。DJL の配列のアドレスだけは、libtorch が公開するシンボルを dlsym で引く。ストリームは
+ * {@code PtStream.getId()} の値で、ホストのメモリは direct な ByteBuffer で受け取る。デバイスのメモリは計画が一度だけ確保する。
+ * そのため、読み込むときには次のことを照合する。arch は、計画を作るときに GPU ごとに照合する。
  *
  * <ul>
- *   <li>DJL の torch の版と、組み立てたときの版
+ *   <li>DJL の torch のバージョンが、ビルドしたときのバージョンと同じこと
  *   <li>{@code libtorch_hip.so} が DJL の libtorch の場所から読まれていること
- *   <li>プロセスの HIP の実行系が 1 つだけで、libprism_hip.so がそれに繋がったこと
- *   <li>HIP の実行系の版（major.minor）と、組み立てたときの HIP・libtorch の flavor
- *   <li>CXX11 ABI、検査つきの組み立てか、Java と native の enum の数と WeightPack の頭の大きさ
+ *   <li>プロセスの HIP のランタイムが 1 つだけで、libprism_hip.so がそれに繋がったこと
+ *   <li>HIP のランタイムのバージョン（major.minor）が、ビルドしたときの HIP と libtorch の flavor に合うこと
+ *   <li>CXX11 ABI でビルドされていて、検査つきのビルドかどうかが求めたとおりであること
+ *   <li>Java と native で、enum の数と、形の記述・WeightPack のヘッダーの大きさが同じこと
  * </ul>
  */
 public final class HipLibrary {
 
-  /** 検査つきの組み立て（{@code -DPRISM_HIP_CHECK}、全体メモリの添字を照らす）を読むときに true にするシステム属性。 */
+  /** 検査つきのビルド（{@code -DPRISM_HIP_CHECK}。グローバルメモリの添字を検査する）を読み込むときに true にするシステムプロパティ。 */
   public static final String CHECKED_PROPERTY = "epsilon.prism.hip.checked";
 
   private static final String RESOURCES = "/native/linux-x86_64/";
@@ -59,7 +60,7 @@ public final class HipLibrary {
     this.runtime = runtime;
   }
 
-  /** 読み込む（2 回目からは同じものを返す）。検査つきの組み立ては {@link #CHECKED_PROPERTY} で選ぶ。 */
+  /** 読み込む。2 回目からは同じものを返す。検査つきのビルドを読むかは {@link #CHECKED_PROPERTY} で選ぶ。 */
   public static synchronized HipLibrary load() {
     if (loaded == null) {
       loaded = open(Boolean.getBoolean(CHECKED_PROPERTY));
@@ -68,23 +69,19 @@ public final class HipLibrary {
   }
 
   /**
-   * {@link #load} が読む .so（{@link #CHECKED_PROPERTY} で選ぶ方）をこの組み立てが同梱しているか（-Pnative-hip で組み立てた jar なら true）。
-   * 読み込めて DJL の libtorch と HIP の実行系に合うかは {@link #load} が確かめる。
+   * {@link #load} が読む .so（{@link #CHECKED_PROPERTY} で選んだ方）が、この jar に同梱されているかを返す。-Pnative-hip を付けて
+   * ビルドした jar なら true。読み込めるか、DJL の libtorch と HIP のランタイムに合うかは、{@link #load} が確かめる。
    */
   public static boolean bundled() {
     String name = Boolean.getBoolean(CHECKED_PROPERTY) ? CHECKED_LIBRARY : RELEASE_LIBRARY;
     return HipLibrary.class.getResource(RESOURCES + name) != null;
   }
 
-  public BuildInfo build() {
-    return build;
-  }
-
   public RuntimeInfo runtime() {
     return runtime;
   }
 
-  /** GPU {@code device} が組み立てたときの arch であることを確かめる。 */
+  /** 指定した GPU の arch が、ビルドしたときの arch と合うことを確かめる。 */
   void requireArchitecture(int device) {
     String arch = PrismHip.deviceArch(device);
     String expected = build.architecture();
@@ -110,11 +107,13 @@ public final class HipLibrary {
   }
 
   /**
-   * 組み立ての条件と読み込まれた事実を照らし、違えば英語の例外にする。
+   * ビルドの条件と、実際に読み込まれたものを照合する。合わなければ {@code IllegalStateException} を投げる。
    *
-   * @param torchVersion DJL が読んだ PyTorch の版
-   * @param libtorchDirectory DJL が読んだ libtorch の場所（実のパス）
-   * @param checked 検査つきの組み立てを求めたか
+   * @param build ビルドの条件
+   * @param runtime 実際に読み込まれたライブラリの情報
+   * @param torchVersion DJL が読んだ PyTorch のバージョン
+   * @param libtorchDirectory DJL が読んだ libtorch のディレクトリ（実パス）
+   * @param checked 検査つきのビルドを求めたか
    */
   static void verify(
       BuildInfo build, RuntimeInfo runtime, String torchVersion, Path libtorchDirectory, boolean checked) {
@@ -173,25 +172,30 @@ public final class HipLibrary {
     }
     if (runtime.kernels() != HipKernel.values().length
         || runtime.regions() != HipRegion.values().length
+        || runtime.architectureInts() != HipArchitecture.INTS
         || runtime.headerInts() != HipPack.HEADER_INTS) {
       throw new IllegalStateException(
           "libprism_hip.so has "
               + runtime.kernels()
               + " kernels, "
               + runtime.regions()
-              + " regions and a "
+              + " regions, a "
+              + runtime.architectureInts()
+              + "-int architecture and a "
               + runtime.headerInts()
               + "-int weight pack header but Java expects "
               + HipKernel.values().length
               + ", "
               + HipRegion.values().length
+              + ", "
+              + HipArchitecture.INTS
               + " and "
               + HipPack.HEADER_INTS
               + "; rebuild epsilon-prism-hip");
     }
   }
 
-  /** HIP の版の major·100 + minor（HIP_VERSION = major·10⁷ + minor·10⁵ + patch）。 */
+  /** HIP のバージョンを major·100 + minor にして返す（HIP_VERSION = major·10⁷ + minor·10⁵ + patch）。 */
   private static int release(int hipVersion) {
     return hipVersion / 100_000;
   }
@@ -246,11 +250,11 @@ public final class HipLibrary {
   }
 
   /**
-   * libprism_hip.so を組み立てた条件（{@code prism-hip.properties}）。
+   * libprism_hip.so をビルドした条件（{@code prism-hip.properties} から読む）。
    *
-   * @param torchVersion 合わせた PyTorch の版（DJL の版と同じこと）
-   * @param torchFlavor 合わせた libtorch の flavor（{@code rocm<major>.<minor>}）
-   * @param architecture GPU の arch
+   * @param torchVersion ビルドで合わせた PyTorch のバージョン（DJL のバージョンと同じであること）
+   * @param torchFlavor ビルドで合わせた libtorch の flavor（{@code rocm<major>.<minor>}）
+   * @param architecture ビルドの対象の GPU の arch
    */
   public record BuildInfo(String torchVersion, String torchFlavor, String architecture) {
 
@@ -278,20 +282,21 @@ public final class HipLibrary {
   }
 
   /**
-   * 読み込まれた事実（native の {@code runtimeInfo()}）。パスは実のパス。
+   * 実際に読み込まれたライブラリの情報（native の {@code runtimeInfo()} が返す）。パスは全て実パス。
    *
-   * @param hipCompiled 組み立てたときの HIP_VERSION
-   * @param hipRuntime 実行系の版（取れなければ −1）
-   * @param hipError 実行系の版が取れなかった理由（取れたら空）
+   * @param hipCompiled ビルドしたときの HIP_VERSION
+   * @param hipRuntime ランタイムのバージョン（取れなければ −1）
+   * @param hipError ランタイムのバージョンが取れなかった理由（取れたら空）
    * @param hipLibrary libprism_hip.so が繋がった libamdhip64
    * @param hipLoaded プロセスにある全ての libamdhip64
    * @param torchLoaded プロセスにある libtorch*・libc10*
-   * @param cxx11Abi CXX11 ABI で組み立てたか
-   * @param checked 検査つきの組み立てか
+   * @param cxx11Abi CXX11 ABI でビルドしたか
+   * @param checked 検査つきのビルドか
    * @param kernels native のカーネルの数
-   * @param regions native の作業域の区画の数
-   * @param headerInts native の WeightPack の頭の int の数
-   * @param architecture 組み立てた arch
+   * @param regions native が作業領域の中に持つ領域の数
+   * @param architectureInts native の形の記述の int の数
+   * @param headerInts native の WeightPack のヘッダーの int の数
+   * @param architecture ビルドの対象の arch
    */
   public record RuntimeInfo(
       int hipCompiled,
@@ -304,6 +309,7 @@ public final class HipLibrary {
       boolean checked,
       int kernels,
       int regions,
+      int architectureInts,
       int headerInts,
       String architecture) {
 
@@ -332,6 +338,7 @@ public final class HipLibrary {
           Boolean.parseBoolean(required(values, "checked")),
           Integer.parseInt(required(values, "kernels")),
           Integer.parseInt(required(values, "regions")),
+          Integer.parseInt(required(values, "architecture")),
           Integer.parseInt(required(values, "header")),
           required(values, "arch"));
     }

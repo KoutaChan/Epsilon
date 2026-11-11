@@ -9,12 +9,12 @@ import com.epsilon.prism.rows.RowCodec;
 import org.testng.annotations.Test;
 
 /**
- * 学習の行の選び: どちらも TRAIN のラベル行で |C| ≥ 2 の行を選ぶ。根は LABELS_AND_ROOTS だけが足し、足すのは TRAIN の根で 2 手の値がある行
- * （保留の根と d = played の根は入らない）。
+ * 学習に使う行の選び方のテスト。どちらの選び方も、学習用（TRAIN）のラベルの行のうち |C| ≥ 2 の行を選ぶ。根の行を足すのは
+ * {@code LABELS_AND_ROOTS} だけで、足すのは学習用の根のうち 2 手の値がある行（ホールドアウトの根と、d = played の根は入らない）。
  */
 public class SelectionTest {
   private static RowCodec.Index index(Row.Purpose purpose, Row.Source source, int measured) {
-    return new RowCodec.Index(40, purpose, Row.Group.A, source, DecisionClass.CALL, measured);
+    return new RowCodec.Index(40, purpose, source, DecisionClass.CALL, measured);
   }
 
   @Test

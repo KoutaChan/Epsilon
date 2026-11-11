@@ -5,14 +5,10 @@ import static com.epsilon.reviewer.engine.TestEdits.hand;
 import static com.epsilon.reviewer.engine.TestEdits.merge;
 import static com.epsilon.reviewer.engine.TestEdits.rivers;
 
-import com.epsilon.core.Tile;
-import com.epsilon.replay.ReplayEvent;
-import com.epsilon.replay.ReplayEvent.Dahai;
-import com.epsilon.replay.ReplayEvent.StartGame;
-import com.epsilon.replay.ReplayEvent.StartKyoku;
-import com.epsilon.replay.ReplayEvent.Tsumo;
+import com.epsilon.mahjong.record.RecordEvent;
+import com.epsilon.mahjong.record.RecordEvent.Discard;
+import com.epsilon.mahjong.record.RecordEvent.Draw;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
-import com.epsilon.reviewer.engine.scenario.DecisionLocator;
 import com.epsilon.reviewer.engine.scenario.DoraEdit;
 import com.epsilon.reviewer.engine.scenario.HandEdit;
 import com.epsilon.reviewer.engine.scenario.LocatedDecision;
@@ -20,7 +16,6 @@ import com.epsilon.reviewer.engine.scenario.RewrittenRound;
 import com.epsilon.reviewer.engine.scenario.RiverEdit;
 import com.epsilon.reviewer.engine.scenario.RoundRewriter;
 import com.epsilon.reviewer.engine.scenario.ScenarioEdits;
-import com.epsilon.reviewer.engine.scenario.ScenarioEngine;
 import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
@@ -40,14 +35,15 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * もしもの変更が置く牌は、変えた局面に見える数が牌の写しの数（赤の 5 は 1 枚、ほかの 5 は 3 枚、ほかは 4 枚）までなら通り、変更が外した牌の
- * 写しはほかの変更が順に依らず使えることを確かめる。通った変更は物理牌を割り当てて判断まで再生でき、判断より前の出来事で判断の席に見える牌の
- * 物理牌は重ならない。
+ * もしもの変更で置く牌の枚数のテスト。変えた局面で見える枚数が、その牌の写しの数（赤の 5 は 1 枚、赤でない 5 は 3 枚、ほかは 4 枚）
+ * 以内なら変更は通る。ある変更が外した牌の写しは、変更の並び順によらず、ほかの変更が使える。通った変更には物理牌を割り当て、判断まで
+ * 再生できる。判断より前のイベントで判断する席に見える牌どうしは、物理牌が重ならない。新しく置く牌には、空いている写しのうち番号の
+ * 最も小さいものを割り当てる。判断する席から見えない写しも、空いている写しに数える。
  */
 public class ScenarioCopyTest {
   private static final int SEAT = 0;
 
-  /** 配牌。席 2 の赤の 5p は判断まで伏せたまま。 */
+  /** 配牌。席 2 の赤の 5p は判断まで伏せたまま。席 3 は W を 2 枚（116・117）伏せている。 */
   private static final int[][] DEAL = {
     {0, 4, 8, 53, 54, 72, 76, 80, 108, 109, 28, 29, 120},
     {30, 55, 36, 40, 44, 48, 56, 60, 68, 84, 92, 96, 104},
@@ -55,9 +51,13 @@ public class ScenarioCopyTest {
     {88, 1, 5, 9, 13, 21, 37, 41, 45, 116, 117, 125, 129}
   };
 
+  /** ドラ表示牌の 9s。 */
+  private static final int INDICATOR = 105;
+
   /**
-   * 打牌の順の {席, ツモ, 打牌}（同じ牌ならツモ切り）。判断は最後の席 0（親）の打牌で、その時点の席 0 の手は 1m 2m 3m 8m 5p 5p 1s 2s 3s E E
-   * N N とツモの C、河は 5m（ツモ切り）と 8m（手出し）。8m は 4 枚とも、赤でない 5p は 3 枚とも見え、赤の 5s は席 3 の河にある。ドラ表示は 9s。
+   * 打った順に並べた {席, ツモ, 打牌}。ツモと打牌が同じ牌ならツモ切り。判断は最後にある席 0（親）の打牌。その時点の席 0 の手牌は
+   * 1m 2m 3m 8m 5p 5p 1s 2s 3s E E N N とツモの C で、河は 5m（ツモ切り）と 8m（手出し）。8m は 4 枚とも、赤でない 5p は 3 枚とも
+   * 見えていて、赤の 5s は席 3 の河にある。
    */
   private static final int[][] TURNS = {
     {0, 17, 17}, {1, 33, 30}, {2, 65, 31}, {3, 14, 88},
@@ -65,28 +65,32 @@ public class ScenarioCopyTest {
     {0, 133, 133}
   };
 
-  /** 判断の席がツモ切りした 5m。 */
+  /** 判断する席がツモ切りした 5m。 */
   private static final int DISCARDED_5M = 17;
 
-  /** 判断の席が手から打った 8m。 */
+  /** 判断する席が手出しした 8m。 */
   private static final int DISCARDED_8M = 28;
 
   /** 席 1 が打った 8m。 */
   private static final int OPPONENT_8M = 30;
 
-  /** 判断の席の手で最も後に手に入った E。 */
+  /** 判断する席の手牌の E のうち、最も後に入った 1 枚。 */
   private static final int NEWEST_E = 109;
+
+  /** 席 3 が伏せている W のうち番号の小さい方。判断する席から見えないので、W に替えた牌に割り当てる。 */
+  private static final int HIDDEN_W = 116;
 
   /** 牌山に残っている W。 */
   private static final int UNSEEN_W = 119;
 
-  /** 判断の出来事の位置（対局の始めと局の始めの後に、巡ごとのツモと打牌が続く）。 */
-  private static final int DECISION = 1 + 2 * TURNS.length;
+  /** 判断が決まる記録のイベントの位置（最後の打牌）。 */
+  private static final int POSITION = 2 * TURNS.length - 1;
 
   private static final LoadedRecord ROUND = round(Map.of());
-  private static final LocatedDecision LOCATED = DecisionLocator.find(ROUND, 0, DECISION, SEAT);
+  private static final int DECISION = ROUND.step(0, POSITION);
+  private static final LocatedDecision LOCATED = Scenarios.find(ROUND, 0, DECISION, SEAT);
 
-  /** 判断の席の河のツモ切りの 5m と手出しの 8m を入れ替える。どちらの順でも、5m と 8m を逆に打った局と同じになる。 */
+  /** 判断する席の河で、ツモ切りの 5m と手出しの 8m を入れ替える。変更をどちらの順に並べても、5m と 8m を逆の順に打った局と同じになる。 */
   @Test
   public void swappingOwnDiscardsReusesTheCopiesTheyFree() {
     var eight = new RiverEdit(SEAT, 0, "8m", true);
@@ -96,11 +100,14 @@ public class ScenarioCopyTest {
     assertSameAs(swapped, rivers(five, eight));
   }
 
-  /** 判断の席の手出しの 8m を W に替えて空いた写しを、手牌の E を 8m に替える変更が使う。 */
+  /**
+   * 判断する席が手出しした 8m を W に替えると、8m の写しが 1 つ空き、手牌の E を 8m に替える変更がそれを使う。局を作り直すときは、
+   * 席 3 が伏せている W を河の W に回し、席 3 には牌山に残っている W を持たせる。
+   */
   @Test
   public void handEditReusesTheCopyAnOwnDiscardEditFrees() {
     assertSameAs(
-        Map.of(NEWEST_E, DISCARDED_8M, DISCARDED_8M, UNSEEN_W),
+        Map.of(NEWEST_E, DISCARDED_8M, DISCARDED_8M, HIDDEN_W, HIDDEN_W, UNSEEN_W),
         merge(
             rivers(new RiverEdit(SEAT, 1, "W", false)), hand(new HandEdit(handIndex("E"), "8m"))));
   }
@@ -109,11 +116,11 @@ public class ScenarioCopyTest {
   @Test
   public void handEditReusesTheCopyAnOpponentDiscardEditFrees() {
     assertSameAs(
-        Map.of(NEWEST_E, OPPONENT_8M, OPPONENT_8M, UNSEEN_W),
+        Map.of(NEWEST_E, OPPONENT_8M, OPPONENT_8M, HIDDEN_W, HIDDEN_W, UNSEEN_W),
         merge(rivers(new RiverEdit(1, 0, "W", false)), hand(new HandEdit(handIndex("E"), "8m"))));
   }
 
-  /** 写しの数を超えたら、その牌を置いた最初の変更を名指す。ツモ切りの印だけを変えた河の牌は、牌を置いていない。 */
+  /** 写しの数を超えたときは、その牌を置いた最初の変更を名指す。ツモ切りの印だけを変えた河の牌は、牌を置いたことにならない。 */
   @Test
   public void theFirstEditThatPlacesTheTileIsNamed() {
     rejected(
@@ -127,8 +134,8 @@ public class ScenarioCopyTest {
   }
 
   /**
-   * 判断の局面の変えられる所の全てで、37 の牌のどれかに替える変更と、2 つの所の牌を入れ替える変更。見える数が写しの数を超える変更だけを断り、
-   * ほかは物理牌を割り当てて判断まで再生できる。
+   * 判断の局面で変えられる全ての所について、37 種の牌のどれかに替える変更と、2 つの所の牌を入れ替える変更を試す。見える枚数が写しの数を
+   * 超える変更だけを断り、ほかは物理牌を割り当てて判断まで再生できる。
    */
   @Test
   public void everyEditWithinTheCopiesIsAssigned() {
@@ -152,14 +159,14 @@ public class ScenarioCopyTest {
   }
 
   /**
-   * 変更が、物理牌を relabel で付け替えた局（変えた牌をそう打った局）の判断と同じ方策の入力と局面になり、判断より前の出来事で判断の席に見える
-   * 牌の物理牌が重ならないこと。
+   * 変更したもしもが、物理牌を {@code relabel} で付け替えた局（変えた牌を実際に打った局）の判断と同じ O と局面になることを確かめる。
+   * 判断より前のイベントで判断する席に見える牌どうしの物理牌が、重ならないことも確かめる。
    */
   private static void assertSameAs(Map<Integer, Integer> relabel, ScenarioEdits edits) {
     LoadedRecord played = round(relabel);
-    Assert.assertNull(PolicyInput.difference(input(played, TestEdits.NONE), input(ROUND, edits)));
+    Assert.assertEquals(input(ROUND, edits), input(played, TestEdits.NONE));
     RewrittenRound rewritten = rewrite(edits);
-    Assert.assertEquals(rewritten.table(), DecisionLocator.find(played, 0, DECISION, SEAT).table());
+    Assert.assertEquals(rewritten.table(), Scenarios.find(played, 0, DECISION, SEAT).table());
     assertDistinctTiles(rewritten);
   }
 
@@ -183,8 +190,8 @@ public class ScenarioCopyTest {
   }
 
   /**
-   * 判断より前の出来事で、判断の席に見える牌（その席の配牌とツモ、他家の打牌）の物理牌が重ならず、判断の席の打牌がその席の手にある牌であること。
-   * 他家の配牌とツモは判断の席に見えないので比べない（この局に鳴きは無い）。
+   * 判断より前のイベントで判断する席に見える牌（その席の配牌とツモ、他家の打牌、表示牌）の物理牌が重ならないことと、判断する席の打牌が
+   * その席の手にある牌であることを確かめる。他家の配牌とツモは判断する席から見えないので比べない（この局に鳴きは無い）。
    */
   private static void assertDistinctTiles(RewrittenRound round) {
     Set<Integer> seen = new HashSet<>();
@@ -194,63 +201,61 @@ public class ScenarioCopyTest {
           Assert.assertTrue(seen.add(id), "tile " + id + " is seen twice");
           held.add(id);
         };
-    for (ReplayEvent event : round.events().subList(0, LOCATED.target()))
+    Assert.assertTrue(seen.add(round.indicator()), "indicator " + round.indicator());
+    Arrays.stream(round.hand()).forEach(enter);
+    for (RecordEvent event : round.events())
       switch (event) {
-        case StartKyoku start ->
-            Arrays.stream(start.initialHandPhysicalTileIds()[SEAT]).forEach(enter);
-        case Tsumo draw when draw.actor() == SEAT -> enter.accept(draw.physicalTileId());
-        case Dahai discard when discard.actor() == SEAT ->
-            Assert.assertTrue(held.remove(discard.physicalTileId()), "not in the hand: " + event);
-        case Dahai discard ->
-            Assert.assertTrue(seen.add(discard.physicalTileId()), "seen twice: " + event);
+        case Draw draw when draw.seat() == SEAT -> enter.accept(draw.tile());
+        case Discard discard when discard.seat() == SEAT ->
+            Assert.assertTrue(held.remove(discard.tile()), "not in the hand: " + event);
+        case Discard discard ->
+            Assert.assertTrue(seen.add(discard.tile()), "seen twice: " + event);
         default -> {}
       }
   }
 
-  private static PolicyInput input(LoadedRecord record, ScenarioEdits edits) {
+  /** 判断で方策が受け取った O の写し。 */
+  private static long[] input(LoadedRecord record, ScenarioEdits edits) {
     var policy = new RecordingPolicy();
-    ScenarioEngine.evaluate(record, new ScenarioQuery(0, DECISION, SEAT, edits, null), policy);
+    Scenarios.evaluate(record, new ScenarioQuery(0, DECISION, SEAT, edits, null), policy);
     Assert.assertEquals(policy.inputs.size(), 1);
     return policy.inputs.getFirst();
   }
 
   private static RewrittenRound rewrite(ScenarioEdits edits) {
-    return RoundRewriter.apply(ROUND.replay().events(), LOCATED, edits);
+    return RoundRewriter.apply(ROUND.rounds().getFirst(), LOCATED, edits);
   }
 
-  /** 物理牌を relabel で付け替えた局（席の目に見えない所も同じに付け替えるので、牌譜として成り立つ）。 */
+  /** 物理牌を {@code relabel} で付け替えた局。席から見えない所も同じように付け替えるので、牌譜として成り立つ。 */
   private static LoadedRecord round(Map<Integer, Integer> relabel) {
     IntUnaryOperator id = tile -> relabel.getOrDefault(tile, tile);
     int[][] deal =
         Arrays.stream(DEAL)
             .map(hand -> Arrays.stream(hand).map(id).toArray())
             .toArray(int[][]::new);
-    int[] scores = {25000, 25000, 25000, 25000};
-    List<ReplayEvent> events = new ArrayList<>();
-    events.add(new StartGame());
-    events.add(new StartKyoku(Tile.TON, 1, 0, 0, 0, Tile.S9, deal, scores));
+    List<RecordEvent> events = new ArrayList<>();
     for (int[] turn : TURNS) {
-      events.add(new Tsumo(turn[0], id.applyAsInt(turn[1])));
-      events.add(new Dahai(turn[0], id.applyAsInt(turn[2]), turn[1] == turn[2]));
+      events.add(new Draw(turn[0], id.applyAsInt(turn[1])));
+      events.add(new Discard(turn[0], id.applyAsInt(turn[2]), turn[1] == turn[2], false));
     }
-    return ScenarioReplayTest.synthetic(events);
+    return TestRounds.round(deal, INDICATOR, events.toArray(RecordEvent[]::new));
   }
 
-  /** 判断の局面の手牌での、牌 tile の最初の位置。 */
+  /** 判断の局面の手牌で、{@code tile} が最初に現れる位置。 */
   private static int handIndex(String tile) {
     return LOCATED.table().players().get(SEAT).hand().indexOf(tile);
   }
 
   /**
-   * 判断の局面の変えられる所。
+   * 判断の局面で変えられる所 1 つ。
    *
-   * @param field 変更の欄の名前
-   * @param tile 判断の時点の牌
-   * @param editTo 牌を替える変更（河の牌はツモ切りの印を保つ）
+   * @param field 変更のフィールドの名前
+   * @param tile 判断の時点でそこにある牌
+   * @param editTo 牌を受け取り、そこをその牌に替える変更を作る関数（河の牌はツモ切りの印を保つ）
    */
   private record Place(String field, String tile, Function<String, ScenarioEdits> editTo) {}
 
-  /** 判断の席の手牌とツモ牌、全ての河の牌（この局に鳴きは無い）、ドラ表示。 */
+  /** 変えられる所を並べる。判断する席の手牌とツモ牌、全ての河の牌（この局に鳴きは無い）、ドラ表示牌。 */
   private static List<Place> places(TableState table) {
     List<Place> places = new ArrayList<>();
     PlayerState own = table.players().get(SEAT);

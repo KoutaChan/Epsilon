@@ -29,6 +29,7 @@
   "model.select": "モデルを選択",
   "model.unavailableOption": "{model} — 利用不可",
   "model.empty": "利用できる解析モデルがありません。",
+  "model.otherSeats": "選んだモデルは、この牌譜の人数の対局を解析できません。",
   "model.hint": "利用できるモデルから選択してください。",
   "history.title": "解析履歴",
   "history.local": "このPCの履歴",

@@ -1,9 +1,10 @@
 package com.epsilon.reviewer.model;
 
+import com.epsilon.agent.checkpoint.CheckpointFiles;
+import com.epsilon.agent.policy.ModelFamily;
+import com.epsilon.agent.policy.Policy;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
-import com.epsilon.spi.ReviewPolicy;
-import com.epsilon.spi.ReviewPolicyProvider;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Duration;
@@ -20,40 +21,44 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * (modelId, revision) ごとに 1 つの方策を開き、解析ともしもが共有する。チェックポイントは写さない。評価はモデルごとの公平な鍵で 1 つずつ
- * 行う（解析は判断ごとに鍵を取るので、もしもは解析の 1 判断より長く待たない）。
+ * モデルのバージョン（名前と revision の組）ごとに方策を 1 つだけ開き、解析ともしもで共有する。チェックポイントはコピーしない。
+ * 評価は、モデルごとの公平なロックで 1 つずつ行う。解析は判断ごとにロックを取るので、もしもが待つのは長くても解析の 1 判断の分になる。
  *
- * <p>開く時は起動時の印と比べ、models.json の sha256 があれば初めて開く時に 1 回だけ中身のハッシュも比べる。違えば以後そのモデルを使えなく
- * する。同時に開くのは maxOpen まで（超えれば貸していない一番古いものを閉じ、閉じられなければ掃除が減らす）。idle の間使わなければ閉じる。
+ * <p>開くときは、起動時のフィンガープリントと比べる。models.json に sha256 があれば、初めて開くときに 1 回だけ中身のハッシュも比べる。
+ * 違えば、以後そのモデルを使えなくする。同時に開いておくのは {@code maxOpen} 個まで。超えたら、貸し出していないモデルを、最後に
+ * 使ってからの時間が長い順に閉じる。閉じられるモデルが無ければ、後の返却や {@link #sweep} のときに減らす。{@code idle} より長く
+ * 使われなかったモデルは閉じる。
  */
 public final class ModelRegistry implements AutoCloseable {
   private static final Logger LOG = LoggerFactory.getLogger(ModelRegistry.class);
 
   private final ModelCatalog catalog;
-  private final PolicyProviders providers;
+  private final ModelFamilies families;
   private final int maxOpen;
   private final long idleNanos;
 
-  /** 開いた・開いている途中のモデル。this の監視で守る。 */
+  /** 開いたモデルと、開いている途中のモデル。読み書きは this で同期する。 */
   private final Map<ModelKey, OpenModel> open = new HashMap<>();
 
-  /** sha256 の比べを済ませたモデル。 */
+  /** sha256 の比較を済ませたモデル。 */
   private final Set<ModelKey> verified = ConcurrentHashMap.newKeySet();
 
   private boolean closed;
 
   public ModelRegistry(
-      ModelCatalog catalog, PolicyProviders providers, int maxOpen, Duration idle) {
+      ModelCatalog catalog, ModelFamilies families, int maxOpen, Duration idle) {
     this.catalog = catalog;
-    this.providers = providers;
+    this.families = families;
     this.maxOpen = maxOpen;
     idleNanos = idle.toNanos();
   }
 
   /**
-   * モデルを借りる。開いていなければ開く（同じ鍵の同時の開きは 1 回を待つ）。
+   * モデルを借りる。開いていなければ開く。同じモデルを同時に借りようとしたときは、最初に来た呼び出しが開き、ほかはそれを待つ。
    *
-   * @throws ReviewerException model_unavailable・shutting_down
+   * @param key 借りるモデルのバージョン
+   * @return 貸し出し。使い終わったら閉じる
+   * @throws ReviewerException model_unavailable か shutting_down
    */
   public ModelLease acquire(ModelKey key) {
     OpenModel model;
@@ -83,7 +88,7 @@ public final class ModelRegistry implements AutoCloseable {
     return new ModelLease(this, model);
   }
 
-  /** 遊休のモデルを閉じ、開きすぎを減らす。 */
+  /** {@code idle} より長く使われていないモデルを閉じ、開きすぎた分を減らす。 */
   public void sweep() {
     long now = System.nanoTime();
     List<OpenModel> idle = new ArrayList<>();
@@ -112,7 +117,7 @@ public final class ModelRegistry implements AutoCloseable {
     models.forEach(ModelRegistry::closePolicy);
   }
 
-  /** 貸し出しを返し、開きすぎを減らす。 */
+  /** 貸し出しを返し、開きすぎた分を減らす。 */
   void release(OpenModel model) {
     synchronized (this) {
       model.leases--;
@@ -132,12 +137,39 @@ public final class ModelRegistry implements AutoCloseable {
     }
   }
 
-  private ReviewPolicy openPolicy(ModelEntry entry) {
+  private Policy openPolicy(ModelEntry entry) {
+    if (entry.checkpoint() != null) verifyCheckpoint(entry);
+    ModelFamily family =
+        families
+            .find(entry.series())
+            .orElseThrow(() -> new ReviewerException(ErrorCode.MODEL_UNAVAILABLE));
+    try {
+      long started = System.nanoTime();
+      Policy policy = family.open(entry.checkpoint(), entry.variant(), entry.options());
+      LOG.info(
+          "Opened model {} {} in {} ms.",
+          entry.key().modelId(),
+          entry.key().revision(),
+          (System.nanoTime() - started) / 1_000_000);
+      return policy;
+    } catch (IOException | RuntimeException | LinkageError failure) {
+      LOG.warn(
+          "Could not open the model {} {}.",
+          entry.key().modelId(),
+          entry.key().revision(),
+          failure);
+      throw new ReviewerException(ErrorCode.MODEL_UNAVAILABLE);
+    }
+  }
+
+  /** チェックポイントを起動時のフィンガープリントと比べる。sha256 があれば、初めて開くときに 1 回だけ中身のハッシュも比べる。 */
+  private void verifyCheckpoint(ModelEntry entry) {
     try {
       if (!CheckpointFingerprint.of(entry.checkpoint()).equals(catalog.fingerprint(entry.key())))
         throw changed(entry);
       if (entry.sha256() != null && !verified.contains(entry.key())) {
-        if (!CheckpointDigest.of(entry.checkpoint()).equals(entry.sha256())) throw changed(entry);
+        if (!CheckpointFiles.sha256(entry.checkpoint()).equals(entry.sha256()))
+          throw changed(entry);
         verified.add(entry.key());
       }
     } catch (IOException | UncheckedIOException failure) {
@@ -148,27 +180,6 @@ public final class ModelRegistry implements AutoCloseable {
           failure.toString());
       throw new ReviewerException(ErrorCode.MODEL_UNAVAILABLE);
     }
-    ReviewPolicyProvider provider =
-        providers
-            .find(entry.series())
-            .orElseThrow(() -> new ReviewerException(ErrorCode.MODEL_UNAVAILABLE));
-    try {
-      long started = System.nanoTime();
-      ReviewPolicy policy = provider.openReview(entry.checkpoint(), entry.options());
-      LOG.info(
-          "Opened model {} {} in {} ms.",
-          entry.key().modelId(),
-          entry.key().revision(),
-          (System.nanoTime() - started) / 1_000_000);
-      return policy;
-    } catch (RuntimeException | LinkageError failure) {
-      LOG.warn(
-          "Could not open the model {} {}.",
-          entry.key().modelId(),
-          entry.key().revision(),
-          failure);
-      throw new ReviewerException(ErrorCode.MODEL_UNAVAILABLE);
-    }
   }
 
   private ReviewerException changed(ModelEntry entry) {
@@ -177,7 +188,7 @@ public final class ModelRegistry implements AutoCloseable {
         ErrorCode.MODEL_UNAVAILABLE, "The checkpoint changed after it was registered.");
   }
 
-  /** maxOpen を超えた分を、貸していない一番古いものから閉じる。 */
+  /** 開いたモデルが {@code maxOpen} 個を超えたら、貸し出していないモデルを、最後に使ってからの時間が長い順に閉じる。 */
   private void trim() {
     List<OpenModel> closing = new ArrayList<>();
     synchronized (this) {
@@ -205,11 +216,11 @@ public final class ModelRegistry implements AutoCloseable {
     }
   }
 
-  /** 開いた 1 モデル。leases と lastUsed は registry の監視で守る。 */
+  /** 開いたモデル 1 つ。{@code leases} と {@code lastUsed} の読み書きは、レジストリで同期する。 */
   static final class OpenModel {
     final ModelEntry entry;
     final ReentrantLock evaluation = new ReentrantLock(true);
-    final CompletableFuture<ReviewPolicy> policy = new CompletableFuture<>();
+    final CompletableFuture<Policy> policy = new CompletableFuture<>();
     int leases;
     long lastUsed = System.nanoTime();
 

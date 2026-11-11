@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { CLIENT_ERROR_CODES, SERVER_ERROR_CODES } from "../protocol/errors.ts";
 
-// language/<言語>/<ファイル>.json を確かめる。ja が元で、どの言語も同じファイル・同じ鍵・同じ {名前} を持つ。
-// 鍵の頭の語はファイルの持ち主を表し、別のファイルの頭の語は使えない。errors.json は失敗の符号と 1 対 1。
+// language/<言語>/<ファイル>.json を確かめる。ja を基準に、どの言語にも同じファイルと同じキーがあり、文言の {名前} もそろっていること。
+// キーの先頭の語で、そのキーを置くファイルが決まる。ほかのファイルの語で始まるキーは置けない。errors.json のキーはエラーコードと 1 対 1 に対応する。
 const OWNERS = {
   "shell.json": [
     "language",

@@ -1,4 +1,4 @@
-/** 読めない解析結果。code で画面の errors.invalid_result の文言になる。message は英語（記録のため）。 */
+/** 解析結果が読めないときのエラー。画面には、エラーコードに対応する文言（errors.invalid_result）を出す。メッセージは記録用で、英語で書く。 */
 export class ReviewFormatError extends Error {
   readonly code = "invalid_result";
 }

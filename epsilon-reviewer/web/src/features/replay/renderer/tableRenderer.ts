@@ -22,12 +22,12 @@ import type {
   TableTargets,
 } from "./types.ts";
 
-/** ツモ牌が届く動きの長さ。 */
+/** ツモ牌が届くアニメーションの長さ（ms）。 */
 const ARRIVAL_MS = 300;
-/** 描く画素の上限（縦 × 横）。 */
+/** 描画するピクセル数の上限（縦 × 横）。 */
 const PIXEL_BUDGET = 12000000;
 
-// 局面は借用し、GPU 資源と表示の枠だけをこの描画が持つ。
+// 局面は呼び出し元から受け取ったものを書き換えずに使う。ここで持つのは GPU のリソースと表示用の canvas だけ。
 export function createTableRenderer(
   host: TableHost,
   rowWidth: number,
@@ -73,7 +73,7 @@ export function createTableRenderer(
     arrival: THREE.Group | null = null,
     arrivalStart = 0;
   let densityQuery: MediaQueryList;
-  // もしもの欄の大きさが変わったら、名札を避け直す。
+  // もしもの欄の大きさが変わったら、名札を置き直して欄を避ける。
   const panelObserver = new ResizeObserver(schedule);
   let observedPanel: HTMLElement | null = null,
     emittedTargets: TableTargets | null = null;
@@ -107,7 +107,7 @@ export function createTableRenderer(
       if (progress < 1) raf = requestAnimationFrame(render);
       else {
         arrival = null;
-        // 届いた後の位置で、手牌の当たり枠を作り直す。
+        // ツモ牌が届いた位置で、手牌の当たり判定を作り直す。
         emitTargets();
       }
     }
@@ -180,7 +180,7 @@ export function createTableRenderer(
     const frame = tiles.update(current);
     tileFrame = frame;
     if (frame.rebuilt) {
-      // 前の到着の途中で作り直した席の牌は消えている。残った牌は届いた位置に置く。
+      // 前のツモ牌がまだ届く途中なら、届いた位置に置く。その席を作り直したなら、その牌はもう消えている。
       if (arrival) positionDrawArrival(arrival, 0);
       arrival = frame.arrival;
       arrivalStart = performance.now();
@@ -210,7 +210,7 @@ export function createTableRenderer(
     observedPanel = panel;
   }
 
-  // 画面は形が変わったときだけ受け取る。
+  // 当たり判定は、形が変わったときだけ送る。
   function emitTargets() {
     if (!current || !tileFrame) return;
     const targets: TableTargets | null = current.targets
@@ -223,6 +223,7 @@ export function createTableRenderer(
             width,
             height,
             current.viewSeat,
+            current.snapshot.players.length,
           ),
         }
       : null;

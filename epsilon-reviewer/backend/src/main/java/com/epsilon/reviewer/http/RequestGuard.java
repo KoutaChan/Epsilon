@@ -10,11 +10,12 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * 全ての応答の安全の頭と、全ての道（静的ファイルも）の Host・Origin・Sec-Fetch-Site の確かめ（頭だけを見る）。
+ * 全ての応答にセキュリティのヘッダーを付け、静的ファイルを含む全てのパスで Host・Origin・Sec-Fetch-Site を確かめる。
+ * 確かめるときに見るのは、ヘッダーと、相手が loopback かどうかだけ。
  *
- * <p>Host は公開の権威と完全に一致（相手が loopback なら localhost・127.0.0.1・[::1] の同じポートも可）。
- * Origin があれば &lt;scheme&gt;://&lt;Host&gt;。Sec-Fetch-Site があれば same-origin か none。他のサイトからの
- * 共有リンクの移動（GET / の share の問い、Sec-Fetch-Mode: navigate、Sec-Fetch-Dest: document）だけは
+ * <p>Host は公開のホストとポートに完全に一致すること（相手が loopback なら、同じポートの localhost・127.0.0.1・[::1] も認める）。
+ * Origin があれば &lt;scheme&gt;://&lt;Host&gt; であること。Sec-Fetch-Site があれば same-origin か none であること。ただし、
+ * 他のサイトのリンクから共有ページを開くとき（share のクエリを持つ GET /、Sec-Fetch-Mode: navigate、Sec-Fetch-Dest: document）だけは
  * Sec-Fetch-Site を見ない（Host と Origin は見る）。
  */
 final class RequestGuard {
@@ -30,8 +31,8 @@ final class RequestGuard {
   private final int port;
 
   /**
-   * @param authority 公開の権威（:0 は結んだポートに読み替えた物）
-   * @param port 結んだポート
+   * @param authority 公開のホストとポート（:0 はバインドしたポートに読み替えたもの）
+   * @param port バインドしたポート
    */
   RequestGuard(String scheme, String authority, int port) {
     this.scheme = scheme;
@@ -39,7 +40,7 @@ final class RequestGuard {
     this.port = port;
   }
 
-  /** 安全の頭を置く。/?share= と /api/shares/* は検索に載せない。 */
+  /** セキュリティのヘッダーを置く。/?share= と /api/shares/* には、検索エンジンに載せない指定（noindex）も付ける。 */
   void writeHeaders(URI uri, Headers response) {
     response.set("X-Content-Type-Options", "nosniff");
     response.set("Referrer-Policy", "no-referrer");
@@ -48,8 +49,8 @@ final class RequestGuard {
   }
 
   /**
-   * @param loopback 相手が loopback の番地か
-   * @throws ReviewerException host_not_allowed・origin_not_allowed
+   * @param loopback 相手が loopback のアドレスなら true
+   * @throws ReviewerException host_not_allowed か origin_not_allowed
    */
   void require(String method, URI uri, Headers request, boolean loopback) {
     String host = request.getFirst("Host");
@@ -78,7 +79,7 @@ final class RequestGuard {
     return path.equals("/api/shares") || path.startsWith("/api/shares/");
   }
 
-  /** 画面の / で、問いに URL を戻した鍵が share の欄がある（値は見ない）。 */
+  /** 画面の / へのリクエストで、クエリに share というキーがあるか（キーは URL デコードして比べ、値は見ない）。 */
   static boolean isSharePage(URI uri) {
     if (!uri.getPath().equals("/") || uri.getRawQuery() == null) return false;
     for (String parameter : uri.getRawQuery().split("&")) {
@@ -86,7 +87,7 @@ final class RequestGuard {
       try {
         if (URLDecoder.decode(key, StandardCharsets.UTF_8).equals("share")) return true;
       } catch (IllegalArgumentException ignored) {
-        // 戻せない鍵は share でない。
+        // デコードできないキーは share ではない。
       }
     }
     return false;

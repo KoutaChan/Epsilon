@@ -8,10 +8,11 @@ import ai.djl.ndarray.NDManager;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtNDArray;
 import ai.djl.pytorch.engine.PtStream;
+import com.epsilon.agent.runtime.DecisionDevicePipeline;
+import com.epsilon.agent.runtime.PinnedUploads;
+import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.model.FrozenNetwork;
 import com.epsilon.prism.model.NetworkInputs;
-import com.epsilon.prism.model.Uploads;
-import com.epsilon.runtime.DecisionDevicePipeline;
 import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.nio.file.Path;
@@ -20,36 +21,37 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * eager の推論の道（1 つのデバイス）。保存した網を凍結して持ち（{@link FrozenNetwork}。GPU は BF16 の丸め、CPU は FP32）、
- * 実行枠の仕事を足す。
+ * eager で推論するバックエンド（デバイス 1 つ分）。保存したネットワークを凍結して持ち（{@link FrozenNetwork}。計算の精度は開くときに
+ * 選ぶ）、スロットで行うジョブを作る。
  *
- * <p>実行枠では、入力を共通の H2D のストリームで作り、順伝播を実行枠ごとの計算のストリームで出す（網の索引の転送が同期するので、ほかの実行枠の
- * 計算を待たないため）。出力の D2H は共通のパイプラインが受け持つ（{@code Slot.prepareOutput}）。実行枠の計算のストリームは提出のスレッドだけが
- * 作り、使う。
+ * <p>スロットでは、入力を共通の H2D ストリームで作り、順伝播をスロットごとの計算ストリームで出す。ネットワークのインデックスの転送は
+ * 同期するので、こうするとほかのスロットの計算を待たずに済む。出力の D2H は共通のパイプラインが受け持つ（{@code Slot.prepareOutput}）。
+ * スロットの計算ストリームは、提出のスレッドだけが作って使う。
  *
- * <p>1 回の仕事は索引の送り出しの置き場（{@link Uploads}）を池から借り、終わると返す（呼び手のスレッドがいくつあっても、置き場は同時に 1 つの
- * 仕事だけが使う）。
+ * <p>1 回のジョブは、インデックスを送るバッファ（{@link PinnedUploads}）をプールから借り、終わったら返す。呼び出し元のスレッドがいくつ
+ * あっても、1 つのバッファを同時に使うのは 1 つのジョブだけ。
  */
 final class EagerInference implements DeviceInference {
 
   private final FrozenNetwork network;
   private final Map<DecisionDevicePipeline.Slot, PtStream> streams = new IdentityHashMap<>();
-  private final ConcurrentLinkedQueue<Uploads> uploads = new ConcurrentLinkedQueue<>();
+  private final ConcurrentLinkedQueue<PinnedUploads> uploads = new ConcurrentLinkedQueue<>();
 
   private EagerInference(FrozenNetwork network) {
     this.network = network;
   }
 
   /**
-   * 保存した網を読む。
+   * 保存したネットワークを読む。
    *
-   * @param model 網のディレクトリ（weights.bin と model.json）
+   * @param model ネットワークのディレクトリ（weights.bin と model.json）
    * @param device デバイス
-   * @return 推論の道
-   * @throws IOException 読めないか、形式・指紋・重みが合わないとき
+   * @param precision 順伝播の計算の精度
+   * @return 推論のバックエンド
+   * @throws IOException 読めないか、形式・フィンガープリント・重みが合わないとき
    */
-  static EagerInference load(Path model, Device device) throws IOException {
-    return new EagerInference(FrozenNetwork.load(model, device));
+  static EagerInference load(Path model, Device device, Precision precision) throws IOException {
+    return new EagerInference(FrozenNetwork.load(model, device, precision));
   }
 
   @Override
@@ -57,31 +59,31 @@ final class EagerInference implements DeviceInference {
     return network.device();
   }
 
-  /** 1 回の仕事の配列を付ける管理元。 */
+  /** 1 回のジョブで作る配列を持たせるマネージャーを作る。 */
   NDManager newScope() {
     return network.newScope();
   }
 
-  /** 自動微分を記録しない区間（順伝播と出力の整形をこの中で行う）。 */
+  /** 自動微分を記録しない区間。順伝播と出力の整形はこの中で行う。 */
   InferenceMode inference() {
     return network.inference();
   }
 
-  /** 1 回の仕事の送り出しの置き場を借りる（池が空なら網に付けて作る）。{@link #releaseUploads} で返す。 */
-  Uploads acquireUploads() {
-    Uploads borrowed = uploads.poll();
+  /** 1 回のジョブで送り出しに使うバッファを借りる（プールが空なら、ネットワークに付けて作る）。{@link #releaseUploads} で返す。 */
+  PinnedUploads acquireUploads() {
+    PinnedUploads borrowed = uploads.poll();
     return borrowed == null ? network.newUploads() : borrowed;
   }
 
-  /** 借りた置き場を池に返す（送った区画の写しは同期で終わっているので、次の仕事がすぐ使える）。 */
-  void releaseUploads(Uploads borrowed) {
+  /** 借りたバッファをプールに返す。送った領域のコピーは同期して終わっているので、次のジョブがすぐに使える。 */
+  void releaseUploads(PinnedUploads borrowed) {
     uploads.add(borrowed);
   }
 
   /**
-   * 1 つの塊の s を出す。順伝播の配列は入力の管理元に付く。
+   * 1 つのバッチの s を出す。順伝播の配列は入力のマネージャーに付く。
    *
-   * @param inputs 塊の入力
+   * @param inputs バッチの入力
    * @return s [行, 手の容量]（FP32。列 k は行の k 番目の手）
    */
   NDArray scores(NetworkInputs inputs) {
@@ -101,7 +103,7 @@ final class EagerInference implements DeviceInference {
     return new Work(encoding);
   }
 
-  /** 実行枠の計算のストリーム（初めて使うときに作る）。 */
+  /** スロットの計算ストリームを返す。初めて使うときに作る。 */
   private synchronized PtStream stream(DecisionDevicePipeline.Slot slot) {
     return streams.computeIfAbsent(
         slot, ignored -> ((PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME)).newStream(device()));
@@ -140,7 +142,7 @@ final class EagerInference implements DeviceInference {
     }
   }
 
-  /** 実行枠の 1 回の受け付け: 入力を H2D のストリームで作り、順伝播を実行枠の計算のストリームで出す。 */
+  /** スロットで行う 1 回の受付。入力を H2D ストリームで作り、順伝播をスロットの計算ストリームで出す。 */
   private final class Work implements SlotWork {
     private final Encoding encoding;
     private EagerPass pass;
@@ -179,7 +181,7 @@ final class EagerInference implements DeviceInference {
       }
     }
 
-    /** 失敗した提出でも、積んだ転送と順伝播の後に印を残す（回収で待てるように）。 */
+    /** 提出が途中で失敗しても、積んだ転送と順伝播の後に印を記録する。回収のときに待てるようにするため。 */
     private void recordLatestCompletion(DecisionDevicePipeline.Slot slot, Throwable problem) {
       if (h2dStarted && !h2dRecorded) {
         try (var ignored = slot.h2dStream().openScope()) {

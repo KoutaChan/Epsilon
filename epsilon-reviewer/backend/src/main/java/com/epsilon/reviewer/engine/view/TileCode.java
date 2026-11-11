@@ -1,61 +1,64 @@
 package com.epsilon.reviewer.engine.view;
 
-import com.epsilon.core.Tile;
+import com.epsilon.mahjong.tile.Face;
+import com.epsilon.mahjong.tile.TileSet;
+import com.epsilon.mahjong.tile.Tiles;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 牌の記号。萬・筒・索は数字と m・p・s、赤の 5 は後ろに r、字牌は E S W N P F C。34 の牌種と 3 枚の赤の 37 の記号を定数で持ち、
- * 局面・候補・副露の写しは新しい文字列を作らない。
+ * mjai の表記で書いた牌の記号。萬子・筒子・索子は数字に m・p・s を付け、赤の 5 は後ろに r を付ける。字牌は E S W N P F C。
+ * 読むのはこの 37 種類だけで、雀魂の表記（0p・1z など）は受け付けない。局面・候補・副露に書く記号は {@link Face} が持つ文字列を使い回し、新しく作らない。
  */
 public final class TileCode {
-  private static final String HONORS = "ESWNPFC";
-  private static final String SUITS = "mps";
-  private static final String[] PLAIN = new String[Tile.NUM_TILE_TYPES];
-  private static final String[] RED = new String[SUITS.length()];
+  /** 記号から、手牌に並べるときの順番への表。 */
+  private static final Map<String, Integer> ORDER = new HashMap<>();
 
-  /** 記号 → 牌種 × 2 + 赤でない（赤は偶数）。37 の記号だけを持つ。 */
-  private static final Map<String, Integer> CODES = new HashMap<>();
+  /** 記号から牌の種類と赤（{@link Face}）への表。 */
+  private static final Map<String, Face> FACES = new HashMap<>();
 
   static {
-    for (int type = 0; type < Tile.NUM_TILE_TYPES; type++) {
-      PLAIN[type] =
-          type >= Tile.TON
-              ? String.valueOf(HONORS.charAt(type - Tile.TON))
-              : (type % Tile.TILE_TYPES_PER_SUIT + 1) + String.valueOf(SUITS.charAt(type / 9));
-      CODES.put(PLAIN[type], type * 2 + 1);
-    }
-    for (int suit = 0; suit < RED.length; suit++) {
-      RED[suit] = "5" + SUITS.charAt(suit) + "r";
-      CODES.put(RED[suit], (suit * Tile.TILE_TYPES_PER_SUIT + 4) * 2);
+    for (Face face : Face.values()) {
+      ORDER.put(face.mjai(), face.kind() * 2 + (face.red() ? 0 : 1));
+      FACES.put(face.mjai(), face);
     }
   }
 
   private TileCode() {}
 
-  /** 牌種と赤の記号。赤は 5 だけ。 */
-  public static String of(int type, boolean red) {
-    if (!red) return PLAIN[type];
-    if (!Tile.canBeAka(type)) throw new IllegalArgumentException("Only fives can be red: " + type);
-    return RED[Tile.suitOf(type)];
+  /** 牌の種類と赤かどうかから記号を返す。赤になるのは 5 だけ。 */
+  public static String of(int kind, boolean red) {
+    return Face.of(kind, red).mjai();
   }
 
-  /** 37 の記号のどれかか（[1-9][mps]、赤は 5 だけ r 付き、字牌は ESWNPFC）。 */
+  /** 物理牌の記号を返す。赤かどうかは、渡した牌の集合で決まる。 */
+  public static String of(TileSet tiles, int physicalId) {
+    return of(Tiles.kind(physicalId), tiles.red(physicalId));
+  }
+
+  /** 37 種類の記号のどれかなら true。 */
   public static boolean isValid(String code) {
-    return code != null && CODES.containsKey(code);
+    return code != null && FACES.containsKey(code);
   }
 
-  public static int type(String code) {
-    return order(code) / 2;
+  /** @throws IllegalArgumentException 37 種類の記号のどれでもないとき */
+  public static Face face(String code) {
+    Face face = code == null ? null : FACES.get(code);
+    if (face == null) throw new IllegalArgumentException("Invalid tile code: " + code);
+    return face;
+  }
+
+  public static int kind(String code) {
+    return face(code).kind();
   }
 
   public static boolean red(String code) {
-    return order(code) % 2 == 0;
+    return face(code).red();
   }
 
-  /** 手牌の並びの順の値（protocol/result.ts の tileOrder と同じ）。牌種の順で、赤の 5 は同じ 5 の前。 */
+  /** 手牌に並べるときの順番（protocol/result.ts の tileOrder と同じ）。牌の種類の順で、赤の 5 は同じ種類の 5 の前に来る。 */
   public static int order(String code) {
-    Integer order = CODES.get(code);
+    Integer order = code == null ? null : ORDER.get(code);
     if (order == null) throw new IllegalArgumentException("Invalid tile code: " + code);
     return order;
   }

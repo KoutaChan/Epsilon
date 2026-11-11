@@ -1,144 +1,78 @@
 package com.epsilon.prism.run;
 
-import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.config.settings.InferenceBatchingSettings;
-import com.epsilon.nano.ai.grp.EpsilonGrpCheckpointManager;
-import com.epsilon.nano.ai.grp.EpsilonGrpTrainingSession;
-import com.epsilon.prism.collect.CollectionDriver;
-import com.epsilon.prism.collect.GrpPhi;
-import com.epsilon.prism.collect.HandValue;
-import com.epsilon.prism.collect.PhiCalibration;
+import ai.djl.Device;
+import com.epsilon.agent.play.TableLoop;
+import com.epsilon.agent.runtime.InferenceSettings;
+import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.grp.ActivePhi;
 import com.epsilon.prism.grp.GrpFiles;
-import com.epsilon.prism.grp.PhiEntry;
-import com.epsilon.prism.grp.PhiEntryKind;
 import com.epsilon.prism.grp.PhiResolver;
-import com.epsilon.prism.grp.PhiSource;
-import com.epsilon.prism.grp.ScorePhi;
-import com.epsilon.runtime.DecisionExecutionContext;
-import com.epsilon.spi.PolicyExecutionContext;
+import com.epsilon.prism.grp.PhiSettings;
+import com.epsilon.prism.grp.PhiSetup;
+import com.epsilon.prism.grp.PhiValue;
+import com.epsilon.prism.settings.PrismSettings;
 import java.io.IOException;
 import java.nio.file.Path;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
- * train の系譜（{@link Lineage}）が反復をまたいで 1 つずつ持つ収集・学習・評価の資源: 符号化と GPU の実行の資源、学習器のストリーム、収集の
- * ドライバ、Φ（{@link
- * PhiSource}: FIXED_GRP は固定の GRP、SCORE_RANK・SCORE_SMOOTH は GRP を開かずに局末の点数の順位かなめらかな関数とみなす代用で、どれも全ての
- * 反復で同じ。SELF_GRP は反復ごとに phi.jsonl の項目を解決する {@link PhiResolver}）。閉じる順は開いた順の逆。
+ * 系譜の JVM が反復をまたいで 1 つずつ持つ、収集・学習・評価のリソース。符号化と GPU で実行するリソース、学習器のストリーム、卓の
+ * コア、Φ（反復ごとに GRP の項目とモードを決める {@link PhiResolver}）を持つ。Φ は純 Java で、局末を作った進行のスレッドがその場で
+ * 呼ぶ。閉じる順は開いた順の逆。
  */
 public final class TrainingResources implements AutoCloseable {
-  private static final Logger LOG = LoggerFactory.getLogger(TrainingResources.class);
 
-  /** Φ のメモの上限。 */
-  private static final int PHI_MEMO = 1 << 16;
-
-  private final PolicyExecutionContext execution;
+  /** 収集と評価を実行するリソース（符号化のプールと GPU の推論のパイプライン）。 */
+  private final NetworkRuntime runtime;
 
   /**
-   * 学習器のストリーム（{@link com.epsilon.prism.learn.Fit#prepare}）。PyTorch のキャッシュはストリームごとなので、反復をまたいで同じストリームで当てて前の反復の
-   * 作業域のキャッシュを使い回す（反復ごとに借り直すと、使われないキャッシュが反復ごとに 1 回分ずつ GPU に残る）。
+   * 学習器にストリームを貸すリソース（{@link com.epsilon.prism.learn.Fit#prepare}）。PyTorch のキャッシュはストリームごとにあるので、
+   * JVM が動いている間は同じストリームで学習し、前の反復の作業領域のキャッシュを使い回す。反復ごとに作り直すと、使われないキャッシュが
+   * 反復ごとに 1 回分ずつ GPU に残る。GPU のストリームは、開くときに評価と収集より先に取る。ストリームは最後に返されたものから貸し直される
+   * ので、最初の学習のときに取ると、収集が返したばかりのスロットのストリームをキャッシュごと持っていってしまう。そうなると、次の評価と
+   * 収集は新しいストリームでキャッシュを作り直すことになる。
    */
-  private final DecisionExecutionContext learning;
+  private final NetworkRuntime learning;
 
-  private final CollectionDriver driver;
+  /** 収集と評価の卓のコア。 */
+  private final TableLoop table;
 
-  /** 固定の GRP（FIXED_GRP だけ）。 */
-  private final EpsilonGrpTrainingSession grp;
-
-  /** 全ての反復で同じ Φ（FIXED_GRP・SCORE_RANK・SCORE_SMOOTH。SELF_GRP は null）。 */
-  private final ActivePhi phi;
-
-  /** 反復ごとの Φ（SELF_GRP だけ）。 */
+  /** 反復ごとの Φ を決める。 */
   private final PhiResolver resolver;
 
-  private TrainingResources(
-      PolicyExecutionContext execution,
-      DecisionExecutionContext learning,
-      CollectionDriver driver,
-      EpsilonGrpTrainingSession grp,
-      ActivePhi phi,
-      PhiResolver resolver) {
-    this.execution = execution;
+  private TrainingResources(NetworkRuntime runtime, NetworkRuntime learning, TableLoop table, PhiResolver resolver) {
+    this.runtime = runtime;
     this.learning = learning;
-    this.driver = driver;
-    this.grp = grp;
-    this.phi = phi;
+    this.table = table;
     this.resolver = resolver;
   }
 
   /**
-   * run の設定から資源を開く（途中で失敗したら開いた分を閉じる）。
+   * run の設定からリソースを開く。途中で失敗したら、開いた分を閉じる。
    *
-   * @param profile 順位効用（Φ と半荘末の効用）
-   * @param root run のディレクトリ（SELF_GRP の phi.jsonl）
-   * @throws IOException GRP か Φ の較正の表か phi.jsonl が読めないとき
+   * @param root run のディレクトリ（phi.jsonl と mode.jsonl を置く）
+   * @throws IOException phi.jsonl か mode.jsonl が読めないか書けないとき
    */
-  public static TrainingResources open(PrismConfig config, EpsilonUtilityProfile profile, Path root)
-      throws IOException {
-    var execution =
-        new PolicyExecutionContext(config.encoders(), config.slots(), config.readyBatches());
-    var learning = new DecisionExecutionContext();
-    CollectionDriver driver = null;
-    EpsilonGrpTrainingSession grp = null;
-    HandValue value = null;
+  public static TrainingResources open(PrismSettings settings, Path root) throws IOException {
+    InferenceSettings inference = settings.inference();
+    var runtime = new NetworkRuntime(inference.encoders(), inference.slots(), inference.readyBatches());
+    var learning = NetworkRuntime.forLearning();
+    TableLoop table = null;
     PhiResolver resolver = null;
     try {
-      driver =
-          new CollectionDriver(
-              new CollectionDriver.Settings(
-                  config.maxActiveGames(),
-                  config.advanceWorkers(),
-                  new InferenceBatchingSettings(config.batchWaitMicros())));
-      ActivePhi phi = null;
-      switch (config.phiSource()) {
-        case FIXED_GRP -> {
-          Path checkpoint = Path.of(config.grpCheckpoint());
-          grp =
-              EpsilonGrpTrainingSession.openInferenceOnly(
-                  checkpoint, PrismConfig.device(config.grpDevice()));
-          value =
-              new GrpPhi(
-                  grp.inference(),
-                  profile,
-                  driver.executor(),
-                  config.grpBatch(),
-                  PHI_MEMO,
-                  config.phiTemperatureTable(),
-                  config.hasPhiCalibration()
-                      ? PhiCalibration.load(Path.of(config.phiCalibration()))
-                      : null);
-          // openInferenceOnly が読んだのと同じ子（一番新しい有効な checkpoint）と、その時に計算した sha
-          Path exact = EpsilonGrpCheckpointManager.resolveExisting(checkpoint.resolve("grp"));
-          phi =
-              new ActivePhi(
-                  PhiEntry.fixed(config, exact.toString(), grp.identity().checkpointSha256()),
-                  value,
-                  false);
+      for (Device device : settings.learner().networkDevices()) {
+        if (device.isGpu()) {
+          learning.streams(device);
         }
-        case SCORE_RANK -> {
-          value = HandValue.scoreRank(profile);
-          phi = new ActivePhi(PhiEntry.scoreRank(), value, false);
-          LOG.warn(
-              "phiSource = SCORE_RANK: hand ends are valued by the final score ranking, not a GRP");
-        }
-        case SCORE_SMOOTH -> {
-          value = ScorePhi.handValue(PhiEntryKind.SCORE_SMOOTH, profile);
-          phi = new ActivePhi(PhiEntry.scoreSmooth(), value, false);
-          LOG.warn(
-              "phiSource = SCORE_SMOOTH: hand ends are valued by a smooth function of the scores, not a GRP");
-        }
-        case SELF_GRP ->
-            resolver = PhiResolver.open(config, profile, driver.executor(), new GrpFiles(root));
       }
-      return new TrainingResources(execution, learning, driver, grp, phi, resolver);
+      table = new TableLoop(settings.table());
+      resolver =
+          PhiResolver.open(
+              new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed()), new GrpFiles(root));
+      return new TrainingResources(runtime, learning, table, resolver);
     } catch (IOException | RuntimeException | Error failure) {
-      try (execution;
+      try (runtime;
           learning;
-          CollectionDriver openedDriver = driver;
-          EpsilonGrpTrainingSession openedGrp = grp;
-          HandValue openedValue = value;
+          TableLoop openedTable = table;
           PhiResolver openedResolver = resolver) {
         // 開いた分を逆の順に閉じる
       } catch (RuntimeException | Error closing) {
@@ -148,38 +82,46 @@ public final class TrainingResources implements AutoCloseable {
     }
   }
 
-  /** 符号化と GPU の実行の資源。 */
-  public PolicyExecutionContext execution() {
-    return execution;
+  /** 収集と評価を実行するリソース。 */
+  public NetworkRuntime runtime() {
+    return runtime;
   }
 
-  /** 学習器のストリームを借りる実行の文脈（反復をまたいで同じ）。 */
-  public DecisionExecutionContext learning() {
+  /** 学習器にストリームを貸すリソース（反復をまたいで同じもの）。 */
+  public NetworkRuntime learning() {
     return learning;
   }
 
-  /** 収集のドライバ（評価もこれで打つ）。 */
-  public CollectionDriver driver() {
-    return driver;
+  /** 収集と評価の卓のコア。 */
+  public TableLoop table() {
+    return table;
   }
 
   /**
-   * 反復 t の局末の値 Φ（SELF_GRP 以外は全ての反復で同じ）。
+   * 反復 t の局末の値 Φ を決める（{@link PhiResolver#resolve}）。
    *
-   * @throws IOException SELF_GRP で既に効いている項目の GRP が読めないとき
+   * @param iteration 反復に固定した設定の行の、Φ のセクション（固定の GRP は、この行のチェックポイントと q で開く）
+   * @throws IOException 既に使っている項目か、固定の GRP が開けないとき
    */
-  public ActivePhi phi(int t) throws IOException {
-    return resolver == null ? phi : resolver.resolve(t);
+  public ActivePhi phi(int t, PhiSettings iteration) throws IOException {
+    return resolver.resolve(t, iteration);
   }
 
-  /** Φ・GRP・ドライバ・学習器のストリーム・実行の資源の順に閉じる（どれかが失敗しても残りを閉じる）。 */
+  /**
+   * 記録した値のとおりの Φ を開く（Φ の段の完了マーカーに書いた値で集め直すとき）。最後に開いた値と同じなら、それを使う。
+   *
+   * @throws IOException 値のチェックポイント・表・q のどれかが読めないか、sha が合わないとき
+   */
+  public ActivePhi phi(PhiValue value) throws IOException {
+    return resolver.reopen(value);
+  }
+
+  /** Φ・卓のコア・学習器のストリーム・実行のリソースの順に閉じる（どれかが失敗しても残りを閉じる）。 */
   @Override
   public void close() {
-    try (execution;
+    try (runtime;
          learning;
-         driver;
-         grp;
-         HandValue value = phi == null ? null : phi.value();
+         table;
          resolver) {
       // 宣言の逆の順に閉じる
     }

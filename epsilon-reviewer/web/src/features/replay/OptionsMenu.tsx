@@ -7,7 +7,7 @@ import { summarizePlayerDecisions } from "./model/decisionStats.ts";
 import type { TableElements } from "./tableElements.ts";
 import type { Playback } from "./usePlayback.ts";
 
-/** 再生の設定のメニュー。席の解析の指標・全員の手牌・再生の位置・言語・モデル・共有と戻る。 */
+/** 再生の画面の設定メニュー。見ている席の解析の指標、全員の手牌の表示、再生の位置、言語、モデル、共有のボタン、戻るボタンを並べる。 */
 export function OptionsMenu({
   elements,
   playback,
@@ -52,7 +52,7 @@ export function OptionsMenu({
       : formats.percent.format(count / playerStats.reviewed);
   const noDecisions =
     playerStats.reviewed === 0 ? t("replay.noDecisions") : undefined;
-  // 価値を推定したモデルの判断は損失の基準で数えるため、説明も切り替える。
+  // 価値を推定したモデルでは判断を損失で数えるので、説明の文も切り替える。
   const valued = playerStats.meanLoss !== null;
   return (
     <details className="em-info" open={open}>

@@ -1,99 +1,125 @@
 package com.epsilon.prism.input;
 
-import com.epsilon.core.GameState;
-import com.epsilon.engine.HanchanProgression;
-import com.epsilon.engine.WinPointDeltas;
-import com.epsilon.engine.WinSettlementProjection.SettlementAssumption;
-import com.epsilon.prism.input.InputSchema.WinExact;
-import com.epsilon.prism.observe.Observation;
-import java.util.Arrays;
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.mahjong.engine.WinSettlementProjection.SettlementAssumption;
+import com.epsilon.mahjong.rules.DealerOutcome;
+import com.epsilon.mahjong.rules.Progression;
+import com.epsilon.mahjong.rules.RankUtility;
+import com.epsilon.mahjong.rules.Variant;
 
 /**
- * RON・TSUMO の門の道（{@link WinExact}）。O が写したエンジンの即時の和了の判定（点の移動・包・裏の資格・和了の後の順位）から作る。
+ * ロン・ツモの手について、厳密な入力の元になる事実を作る。元にするのは、エンジンがその場で出した和了の判定（点の移動、包、裏ドラの
+ * 対象か、和了の後の順位）で、判断の記録に写してある。四人打ち・三人打ちの入力の形式は、この事実を厳密な入力の列に写す。
  *
- * <p>和了の後の点は O の点の移動に本場を足したもの（O のロンの点の移動は本場を含まない。本場の 300 点は {@link WinPointDeltas} の差から取り、包で
- * 放銃者のほかにも払う席があればその席、なければ放銃者が払う。ツモの点の移動は本場を含む）。終局はその点（供託を受け取る前）で
- * {@link HanchanProgression#shouldFinishAfterSingleWin} が決め、順位は O の和了の後の順位（供託を受け取った後）を使う。得点は判断の時点からの
- * 自分の点の変化（本場・供託を含み、裏ドラを含まない）。連荘は親の和了で半荘が続くとき。
+ * <p>和了の後の点は、今の点に判断の記録の点の移動と本場を足したもの。ツモの点の移動は本場を含むが、ロンの点の移動は本場を含まないので、
+ * ロンでは本場の分（{@link Variant#ronHonba} × 本場）を足す。ロンの本場を払うのは、包で放銃者のほかにも払う席があればその席、なければ
+ * 放銃者。終局かどうかは、その点に場の供託を和了者の分として足した精算の後の点で、{@link Progression#finishes} が決める。順位には判断の
+ * 記録にある和了の後の順位を使う。得点は判断の時点からの自分の点の変化（本場・供託を含み、裏ドラを含まない）。連荘は、親の和了で半荘が
+ * 続くとき。
  */
-final class WinFacts {
+public final class WinFacts {
 
-  private static final int SEATS = GameState.NUM_PLAYERS;
-  private static final WinExact[] RANKS = {
-    WinExact.RANK_1, WinExact.RANK_2, WinExact.RANK_3, WinExact.RANK_4
-  };
-
-  private final float[] values = new float[WinExact.values().length];
-  private final int[] after = new int[SEATS];
-  private final int[] absolute = new int[SEATS];
-  private final int[] deltas = new int[SEATS];
+  private final RankUtility utility;
+  private int[] after = new int[0];
+  private int[] absolute = new int[0];
+  private boolean ends;
+  private float endUtility;
+  private int rank;
+  private int points;
+  private boolean renchan;
+  private boolean pao;
+  private boolean uraEligible;
 
   /**
-   * 和了 1 つの門の道を作る。
+   * 終局の効用を渡して作る。
+   *
+   * @param utility 終局の効用
+   */
+  public WinFacts(RankUtility utility) {
+    this.utility = utility;
+  }
+
+  /**
+   * 和了 1 つについて事実を作る。
    *
    * @param o 判断の記録
-   * @param win O の和了の番号
+   * @param win 判断の記録の中で何番目の和了か
    */
-  void load(Observation o, int win) {
-    Arrays.fill(values, 0f);
-    for (int seat = 0; seat < SEATS; seat++) {
+  public void load(Observation o, int win) {
+    Variant variant = o.variant();
+    int seats = variant.seats();
+    if (after.length != seats) {
+      after = new int[seats];
+      absolute = new int[seats];
+    }
+    for (int seat = 0; seat < seats; seat++) {
       after[seat] = o.score(seat) + o.winPayment(win, seat);
     }
     if (o.winSettlement(win) == SettlementAssumption.SOLE_RON && o.honba() > 0) {
-      addRonHonba(o, win);
+      addRonHonba(o, win, variant.ronHonba() * o.honba());
     }
+    int deposits = o.kyotaku() * Variant.DEPOSIT;
     int observer = o.observer();
-    for (int seat = 0; seat < SEATS; seat++) {
-      absolute[(observer + seat) % SEATS] = after[seat];
+    for (int seat = 0; seat < seats; seat++) {
+      absolute[(observer + seat) % seats] = after[seat] + (seat == 0 ? deposits : 0);
     }
-    boolean ends =
-        HanchanProgression.shouldFinishAfterSingleWin(
-            o.kyoku(),
-            o.absoluteSeat(o.dealer()),
-            observer,
-            absolute[0],
-            absolute[1],
-            absolute[2],
-            absolute[3]);
-    int rank = o.winRank(win, 0);
-    int gain = after[0] + o.kyotaku() * HanchanProgression.RIICHI_COST - o.score(0);
-    set(WinExact.ENDS, ends);
-    values[WinExact.UTILITY.ordinal()] = ends ? InputSchema.UTILITY.utilityForRank(rank) : 0f;
-    set(RANKS[rank], true);
-    values[WinExact.POINTS.ordinal()] = gain;
-    set(WinExact.RENCHAN, o.dealer() == 0 && !ends);
-    set(WinExact.PAO, o.winPao(win));
-    set(WinExact.URA_ELIGIBLE, o.winUraEligible(win));
+    boolean dealer = o.dealer() == 0;
+    ends =
+        Progression.finishes(
+            variant, o.kyoku(), absolute, dealer ? DealerOutcome.CONTINUES : DealerOutcome.PASSES);
+    rank = o.winRank(win, 0);
+    points = after[0] + deposits - o.score(0);
+    endUtility = ends ? (float) utility.value(variant, rank) : 0f;
+    renchan = dealer && !ends;
+    pao = o.winPao(win);
+    uraEligible = o.winUraEligible(win);
   }
 
-  /** 作った欄の値（正規化の前）。 */
-  float value(WinExact field) {
-    return values[field.ordinal()];
+  /** この和了で半荘が終わるか。 */
+  public boolean ends() {
+    return ends;
   }
 
-  /** 和了の後、供託を受け取る前の相対席の点（終局を決める点）。 */
-  int scoreAfter(int seat) {
-    return after[seat];
+  /** 半荘が終わるときの効用（続くなら 0）。 */
+  public float utility() {
+    return endUtility;
   }
 
-  /** ロンの本場を、和了者と払う席（包で放銃者のほかにも払う席があればその席、なければ放銃者）に足す。 */
-  private void addRonHonba(Observation o, int win) {
-    WinPointDeltas.settleInto(1, 0, 1, 2, o.honba(), 0, deltas);
-    int gain = deltas[0];
-    WinPointDeltas.settleInto(1, 0, 1, 2, 0, 0, deltas);
-    int honba = gain - deltas[0];
+  /** 和了の後の自分の順位（0 始まり）。 */
+  public int rank() {
+    return rank;
+  }
+
+  /** 得点（判断の時点からの自分の点の変化。本場・供託を含み、裏ドラを含まない）。 */
+  public int points() {
+    return points;
+  }
+
+  /** 親の和了で、半荘が続くか（連荘）。 */
+  public boolean renchan() {
+    return renchan;
+  }
+
+  /** 包が成り立つか。 */
+  public boolean pao() {
+    return pao;
+  }
+
+  /** 裏ドラの対象になるか（立直しているか）。 */
+  public boolean uraEligible() {
+    return uraEligible;
+  }
+
+  /** ロンの本場を和了者に足し、払う席から引く。払うのは、包で放銃者のほかにも払う席があればその席、なければ放銃者。 */
+  private void addRonHonba(Observation o, int win, int honba) {
     int discarder = o.lastEventSeat();
     int payer = discarder;
-    for (int seat = 1; seat < SEATS; seat++) {
+    for (int seat = 1; seat < after.length; seat++) {
       if (seat != discarder && o.winPayment(win, seat) < 0) {
         payer = seat;
       }
     }
     after[0] += honba;
     after[payer] -= honba;
-  }
-
-  private void set(WinExact field, boolean value) {
-    values[field.ordinal()] = value ? 1f : 0f;
   }
 }

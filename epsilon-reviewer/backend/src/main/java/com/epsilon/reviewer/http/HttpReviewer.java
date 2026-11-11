@@ -11,7 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** JDK の HTTP のサーバ（要求のスレッド 8 本 reviewer-http-&lt;n&gt;、backlog 64）。 */
+/** JDK の HTTP サーバ（リクエストを処理するスレッドは reviewer-http-&lt;n&gt; の 8 本、backlog は 64）。 */
 public final class HttpReviewer implements AutoCloseable {
   private static final int THREADS = 8;
   private static final int BACKLOG = 64;
@@ -24,7 +24,7 @@ public final class HttpReviewer implements AutoCloseable {
     this.requests = requests;
   }
 
-  /** 静的ファイルの索引を作り、結んで受け始める。 */
+  /** 静的ファイルのインデックスを作り、ポートにバインドして受け付けを始める。 */
   public static HttpReviewer start(ServerConfig config, Reviewer reviewer) throws IOException {
     StaticFiles files = StaticFiles.index(config.webDir());
     HttpServer server =
@@ -51,12 +51,12 @@ public final class HttpReviewer implements AutoCloseable {
     return new HttpReviewer(server, requests);
   }
 
-  /** 結んだポート。 */
+  /** バインドしたポート。 */
   public int port() {
     return server.getAddress().getPort();
   }
 
-  /** 受けるのを止め、走る要求を待つ。 */
+  /** 受け付けを止め、処理中のリクエストが終わるのを待つ。 */
   @Override
   public void close() {
     server.stop(1);

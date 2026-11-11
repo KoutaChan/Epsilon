@@ -28,7 +28,7 @@ interface EditorProps<T extends ScenarioTarget> {
   playback: Playback;
 }
 
-/** 編集の中身の枠。見出し・元の値・閉じる、中身、元に戻す。 */
+/** 編集の吹き出しに共通の枠。上に見出し・元の値・閉じるボタンを、その下に中身を、いちばん下に「元に戻す」ボタンを置く。 */
 function EditorFrame({
   title,
   was,
@@ -148,7 +148,7 @@ export function RiverEditor({
     t,
   );
   const turn = t("scenario.turn", { name, turn: target.index + 1 });
-  // 自分の打牌の手出し・ツモ切りは、その牌が入った所（配牌かツモ）で決まるので変えない。
+  // 自分の打牌が手出しかツモ切りかは、その牌が配牌とツモのどちらで来たかで決まる。だから、ここでは変えさせない。
   const ownRiver = target.seat === playback.seat;
   return (
     <EditorFrame
@@ -225,7 +225,7 @@ export function DoraEditor({
   );
 }
 
-/** 自分の手牌の 1 枚。見出しは今の並びの何枚目か、ツモ牌。 */
+/** 自分の手牌の 1 枚を選び直す。見出しには、今の並びで何枚目か（ツモ牌ならツモ牌）を出す。 */
 export function HandEditor({
   target,
   scenario,
@@ -274,7 +274,7 @@ export function ScoreEditor({
           target.seat,
           t,
         ),
-        seat: seatName(target.seat, playback.round.dealer, t),
+        seat: seatName(target.seat, playback.round, t),
       })}
       was={original.toLocaleString(locale)}
       target={target}
@@ -310,7 +310,7 @@ export function SticksEditor({
 }: EditorProps<Extract<ScenarioTarget, { kind: "honba" | "kyotaku" }>>) {
   const { t } = useLanguage();
   const value = scenario.edited.snapshot[target.kind];
-  // この局で判断までに出た立直の棒は供託から外せない（局の始めの供託を負にしない）。
+  // 供託は、この局で判断までに出た立直棒の分より減らせない（局の始めの供託が負にならないように）。
   const minimum =
     target.kind === "kyotaku"
       ? scenario.original.kyotaku - playback.roundStart.kyotaku

@@ -1,13 +1,13 @@
 package com.epsilon.reviewer.model;
 
-import com.epsilon.core.Action;
-import com.epsilon.core.PublicObservation;
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.agent.policy.Evaluation;
+import com.epsilon.agent.policy.Series;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.format.ModelInfo;
 import com.epsilon.reviewer.engine.review.ReviewModel;
-import com.epsilon.spi.ReviewEvaluation;
-import java.util.List;
 
-/** 開いたモデルの貸し出し。評価はモデルごとの公平な鍵で 1 つずつ行う。閉じると返す。 */
+/** 開いたモデルの貸し出し。評価は、モデルごとの公平なロックで 1 つずつ行う。閉じると、モデルをレジストリに返す。 */
 public final class ModelLease implements ReviewModel, AutoCloseable {
   private final ModelRegistry registry;
   private final ModelRegistry.OpenModel model;
@@ -22,16 +22,41 @@ public final class ModelLease implements ReviewModel, AutoCloseable {
     return model.entry.info();
   }
 
+  /** 価値を出すのは PRISM の系列だけ。ほかの系列の評価は確率だけを持つ。 */
+  @Override
+  public boolean valued() {
+    return model.entry.series() == Series.PRISM;
+  }
+
+  /**
+   * 表示の確率を作る温度。models.json で上書きしていればその値を、無ければ方策の温度を返す。
+   *
+   * @throws IllegalStateException 上書きが無く、方策も温度を持たないとき（価値を出さない系列では呼ばない）
+   */
   @Override
   public double temperature() {
-    return model.entry.temperature();
+    Double written = model.entry.temperature();
+    if (written != null) return written;
+    return model
+        .policy
+        .resultNow()
+        .temperature()
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "Model " + model.entry.key().modelId() + " has no display temperature."));
   }
 
   @Override
-  public ReviewEvaluation evaluate(PublicObservation observation, List<Action> legal) {
+  public Variant variant() {
+    return model.entry.variant();
+  }
+
+  @Override
+  public Evaluation evaluate(Observation observation) {
     model.evaluation.lock();
     try {
-      return model.policy.resultNow().evaluate(observation, legal);
+      return model.policy.resultNow().evaluate(observation);
     } finally {
       model.evaluation.unlock();
     }

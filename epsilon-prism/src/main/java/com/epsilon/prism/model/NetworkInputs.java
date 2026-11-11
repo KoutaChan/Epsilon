@@ -4,16 +4,15 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
+import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.prism.input.BatchPlan;
-import com.epsilon.prism.input.FrontierBatch;
-import com.epsilon.prism.input.FrontierField;
 import com.epsilon.prism.input.HostBatch;
-import com.epsilon.prism.input.InputSchema;
-import com.epsilon.prism.input.InputSchema.ActionColumn;
-import com.epsilon.prism.input.InputSchema.Axis;
-import com.epsilon.prism.input.InputSchema.Element;
-import com.epsilon.prism.input.InputSchema.RowColumn;
-import com.epsilon.prism.input.InputSchema.Tensor;
+import com.epsilon.prism.input.InputBlob.ActionColumn;
+import com.epsilon.prism.input.InputBlob.Axis;
+import com.epsilon.prism.input.InputBlob.Element;
+import com.epsilon.prism.input.InputBlob.RowColumn;
+import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.input.InputFormat;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Collections;
@@ -22,87 +21,87 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 網の入力の 1 塊。{@link Tensor} の区画ごとの NDArray（同じ管理元・同じデバイス）と、前線の腕なら前線の区画、行・手の索引のホストの写しを
- * 持つ。索引（{@link BatchIndex}）は、その場で作って送る置き場（{@link Uploads}。入力を作ったスレッドの物）か、前もって作って入力と一緒に
- * 送った索引（{@link StagedBatch}）のどちらか一方を持つ。
+ * ネットワークに渡す入力の 1 バッチ。{@link Tensor} の領域ごとの NDArray（どれも同じマネージャー・同じデバイス）と、行と手のインデックスの
+ * ホスト側の写しを持つ。インデックス（{@link BatchIndex}）は次のどちらか一方で用意する。
+ * その場で作ってバッファ（{@link PinnedUploads}。入力を作ったスレッドのもの）から送るか、前もって作って入力と一緒に送っておく
+ * （{@link StagedBatch}）。
  *
- * <p>並びの約束（Tokenizer・HostBatch・HIP と共有する）:
+ * <p>並び方の契約（入力のライター・HostBatch・HIP と共通）:
  *
  * <ul>
- *   <li>行の軸（局の欄と数値、行の索引）は行の順。席は行ごとに相対席の順の 4 個、牌は行ごとに正準の色の番号 0〜33 の順の 34 個。
- *   <li>出来事は行ごとに公開の順に続け、行 r の出来事は {@link RowColumn#FIRST_EVENT} から {@link RowColumn#EVENTS} 個。
- *   <li>関係の属性（{@link Axis#TOKEN}）は書き手（BatchPlan）と同じく、型ごとの区画を局 R・席 4R・牌 34R・出来事の順に続ける。行 r の
- *       局は r、席は R + 4r から、牌は 5R + 34r から、出来事は 39R + FIRST_EVENT(r) から。
- *   <li>遷移と手は行ごとに連続。手の索引の {@link ActionColumn#ROW}・{@link ActionColumn#FIRST_TRANSITION}・{@link ActionColumn#BASE}・
- *       {@link ActionColumn#REPRESENTATIVE} は塊の中の通し番号（なしは −1）。行の手はラベルの合法手の順に並べ、出力 s の列 k は行の k
- *       番目の手。
- *   <li>遷移の鍵の符号は {@link InputSchema.KeyBlock} の順の 39 列。
+ *   <li>行の軸（局のフィールドと数値、行のインデックス）は行の順に並ぶ。席は行ごとに相対席の順で S 個、牌のトークンは行ごとに正準の色の順で
+ *       T 個並ぶ（S と T は入力の形式が決める席と牌のトークンの数）。
+ *   <li>イベントは行ごとに公開された順に続く。行 r のイベントは {@link RowColumn#FIRST_EVENT} 番目から {@link RowColumn#EVENTS} 個。
+ *   <li>関係の属性（{@link Axis#TOKEN}）はライター（BatchPlan）と同じく、型ごとの領域を局 R 個・席 S·R 個・牌 T·R 個・イベントの順に続ける。
+ *       行 r の局は r 番目、席は R + S·r 番目から、牌は (1 + S)·R + T·r 番目から、イベントは (1 + S + T)·R + FIRST_EVENT(r) 番目から始まる。
+ *   <li>遷移と手は行ごとに連続して並ぶ。手のインデックスの {@link ActionColumn#ROW}・{@link ActionColumn#FIRST_TRANSITION}・
+ *       {@link ActionColumn#BASE}・{@link ActionColumn#REPRESENTATIVE} はバッチの中の通し番号（無ければ −1）。行の手はラベルの合法手の順に
+ *       並び、出力 s の列 k は行の k 番目の手を指す。
+ *   <li>遷移のキーのコードは {@link InputFormat.Keys} の順に 1 + S + T 列ある。
  * </ul>
  *
- * <p>数値の区画（BF16）は scale で割ってから丸めた値、厳密な区画（FP32）は ExactField の scale で割った値。前線の区画は遷移の区画と同じ
- * 並びの {@link FrontierField} の列（BF16）で、前線の腕の網（{@link PrismShape#frontier()}）だけが読む。
+ * <p>数値の領域（BF16）は scale で割ってから丸めた値を持ち、厳密な領域（FP32）は ExactField の scale で割った値を持つ。
  *
- * @param tensors 区画ごとの配列。形は [軸の個数, {@link Tensor#width()}]
- * @param frontier 前線の区画 [遷移, {@link FrontierField#WIDTH}]（前線のない入力は null）
+ * @param format 入力の形式
+ * @param tensors 領域ごとの配列。形は [軸の個数, {@link InputFormat#width}]
  * @param rows 行の数
- * @param events 出来事のトークンの数
+ * @param events イベントのトークンの数
  * @param transitions 遷移の数
  * @param actions 手の数
- * @param rowColumns 行の索引のホストの写し（[行, {@link RowColumn}] を平らに）
- * @param actionColumns 手の索引のホストの写し（[手, {@link ActionColumn}] を平らに）
- * @param uploads 索引（{@link BatchIndex}）をその場で作って送る置き場（前もって送った索引を持つなら null）
- * @param staged 前もって作って送った索引（その場で作るなら null）
+ * @param rowColumns 行のインデックスのホスト側の写し（[行, {@link RowColumn}] を 1 列に並べたもの）
+ * @param actionColumns 手のインデックスのホスト側の写し（[手, {@link ActionColumn}] を 1 列に並べたもの）
+ * @param uploads インデックス（{@link BatchIndex}）をその場で作って送るバッファ（前もって送ったインデックスを持つなら null）
+ * @param staged 前もって作って送ったインデックス（その場で作るなら null）
  */
 public record NetworkInputs(
+    InputFormat format,
     Map<Tensor, NDArray> tensors,
-    NDArray frontier,
     int rows,
     int events,
     int transitions,
     int actions,
     int[] rowColumns,
     int[] actionColumns,
-    Uploads uploads,
+    PinnedUploads uploads,
     BatchIndex staged)
     implements HostColumns {
 
   static {
-    // HostBatch はリトルエンディアン、網の入口はネイティブの順で区画を読む
+    // HostBatch はリトルエンディアンで書き、ネットワークの入口はネイティブのバイト順で領域を読む
     if (ByteOrder.nativeOrder() != ByteOrder.LITTLE_ENDIAN) {
       throw new IllegalStateException("PRISM host batches need a little-endian machine");
     }
   }
 
-  /** 行の索引の列の数。 */
+  /** 行のインデックスの列の数。 */
   static final int ROW_WIDTH = RowColumn.values().length;
 
-  /** 手の索引の列の数。 */
+  /** 手のインデックスの列の数。 */
   static final int ACTION_WIDTH = ActionColumn.values().length;
 
   /**
-   * 形を確かめる。
+   * 数と形を確かめる。
    *
-   * @throws IllegalArgumentException 区画が欠けるか、形が数と合わないか、置き場と前もって送った索引がちょうど一方でないとき
+   * @throws IllegalArgumentException 行が 0 以下か、イベントの数が負か、遷移か手が行より少ないとき。領域が欠けているか、形が数と
+   *     合わないとき。バッファと前もって送ったインデックスの両方を持つか、どちらも持たないとき
    */
   public NetworkInputs {
     if (rows <= 0 || events < 0 || transitions < rows || actions < rows) {
       throw new IllegalArgumentException(
           "invalid batch counts: rows=" + rows + " transitions=" + transitions + " actions=" + actions);
     }
+    Objects.requireNonNull(format, "format");
     EnumMap<Tensor, NDArray> copy = new EnumMap<>(Tensor.class);
     for (Tensor tensor : Tensor.values()) {
       NDArray array = Objects.requireNonNull(tensors.get(tensor), tensor.name());
-      Shape expected = new Shape(count(tensor.axis(), rows, events, transitions, actions), tensor.width());
+      Shape expected =
+          new Shape(count(format, tensor.axis(), rows, events, transitions, actions), format.width(tensor));
       if (!array.getShape().equals(expected)) {
         throw new IllegalArgumentException(tensor + " has shape " + array.getShape() + ", expected " + expected);
       }
       copy.put(tensor, array);
     }
     tensors = Collections.unmodifiableMap(copy);
-    if (frontier != null && !frontier.getShape().equals(new Shape(transitions, FrontierField.WIDTH))) {
-      throw new IllegalArgumentException(
-          "frontier has shape " + frontier.getShape() + " for " + transitions + " transitions");
-    }
     if (rowColumns.length != rows * ROW_WIDTH || actionColumns.length != actions * ACTION_WIDTH) {
       throw new IllegalArgumentException("row or action columns do not match the counts");
     }
@@ -112,111 +111,67 @@ public record NetworkInputs(
   }
 
   /**
-   * Tokenizer が書いた塊から、前線のない入力を作る（{@link #of(NDManager, Uploads, HostBatch, FrontierBatch)} の前線なし）。
+   * 入力のライターが書いたバッチから作る。領域を切り出して
+   * {@link #of(NDManager, PinnedUploads, InputFormat, int, int, int, int, Map)} に渡す。CPU では配列がバッチのメモリをそのまま指すので、
+   * 配列を閉じるまでバッチを使い回さないこと。
    *
-   * @param manager 配列を作る管理元（デバイスもここで決まる）
-   * @param uploads 索引と損失の入力を送る置き場（呼び手のスレッドの物）
-   * @param batch 計画を封じた塊
+   * @param manager 配列を作るマネージャー（デバイスもこれで決まる）
+   * @param uploads インデックスと損失の入力を送るバッファ（呼び出し元のスレッドのもの）
+   * @param batch 計画を確定したバッチ
    * @return 入力
    */
-  public static NetworkInputs of(NDManager manager, Uploads uploads, HostBatch batch) {
-    return of(manager, uploads, batch, null);
-  }
-
-  /**
-   * Tokenizer が書いた塊（と前線の腕なら前線の書き手が書いた塊）から作る。区画を切り出して
-   * {@link #of(NDManager, Uploads, int, int, int, int, Map, ByteBuffer)} に渡す。CPU では配列が塊の領域を指すので、配列を閉じるまで
-   * 塊を使い回さない。
-   *
-   * @param manager 配列を作る管理元（デバイスもここで決まる）
-   * @param uploads 索引と損失の入力を送る置き場（呼び手のスレッドの物）
-   * @param batch 計画を封じた塊
-   * @param frontier 前線の塊（前線のない入力は null）
-   * @return 入力
-   */
-  public static NetworkInputs of(
-      NDManager manager, Uploads uploads, HostBatch batch, FrontierBatch frontier) {
+  public static NetworkInputs of(NDManager manager, PinnedUploads uploads, HostBatch batch) {
     BatchPlan plan = batch.plan();
+    InputFormat format = plan.format();
     Map<Tensor, ByteBuffer> sections = new EnumMap<>(Tensor.class);
     for (Tensor tensor : Tensor.values()) {
-      int bytes = plan.count(tensor.axis()) * tensor.width() * tensor.element().bytes();
+      int bytes = plan.count(tensor.axis()) * format.width(tensor) * tensor.element().bytes();
       sections.put(
           tensor, batch.blob().slice(plan.offset(tensor), bytes).order(ByteOrder.LITTLE_ENDIAN));
     }
     return of(
         manager,
         uploads,
+        format,
         plan.rows(),
         plan.count(Axis.EVENT),
         plan.count(Axis.TRANSITION),
         plan.count(Axis.ACTION),
-        sections,
-        frontier == null
-            ? null
-            : frontier.blob().slice(0, frontier.bytes()).order(ByteOrder.LITTLE_ENDIAN));
+        sections);
   }
 
   /**
-   * ホストの区画（転送の符号のまま、ネイティブのバイト順）から、前線のない入力を作る。HostBatch の blob の区画を切り出して渡す口。
+   * ホスト側の領域（転送用の符号化のまま、ネイティブのバイト順）から作る。HostBatch の blob から領域を切り出して渡すときに使う。
    *
-   * @param manager 配列を作る管理元（デバイスもここで決まる）
-   * @param uploads 索引と損失の入力を送る置き場（呼び手のスレッドの物）
+   * @param manager 配列を作るマネージャー（デバイスもこれで決まる）
+   * @param uploads インデックスと損失の入力を送るバッファ（呼び出し元のスレッドのもの）
+   * @param format 入力の形式
    * @param rows 行の数
-   * @param events 出来事のトークンの数
+   * @param events イベントのトークンの数
    * @param transitions 遷移の数
    * @param actions 手の数
-   * @param sections 区画ごとのバイト列（位置 0 から形の分だけ読む）
+   * @param sections 領域ごとのバイト列（位置 0 から形の分だけ読む）
    * @return 入力
    */
   public static NetworkInputs of(
       NDManager manager,
-      Uploads uploads,
+      PinnedUploads uploads,
+      InputFormat format,
       int rows,
       int events,
       int transitions,
       int actions,
       Map<Tensor, ByteBuffer> sections) {
-    return of(manager, uploads, rows, events, transitions, actions, sections, null);
-  }
-
-  /**
-   * ホストの区画と前線の区画から作る。前線の腕では、同じ塊の FrontierBatch の blob の先頭を渡す。
-   *
-   * @param manager 配列を作る管理元（デバイスもここで決まる）
-   * @param uploads 索引と損失の入力を送る置き場（呼び手のスレッドの物）
-   * @param rows 行の数
-   * @param events 出来事のトークンの数
-   * @param transitions 遷移の数
-   * @param actions 手の数
-   * @param sections 区画ごとのバイト列（位置 0 から形の分だけ読む）
-   * @param frontier 前線の区画（位置 0 から [遷移, {@link FrontierField#WIDTH}] の BF16 を読む。前線のない入力は null）
-   * @return 入力
-   */
-  public static NetworkInputs of(
-      NDManager manager,
-      Uploads uploads,
-      int rows,
-      int events,
-      int transitions,
-      int actions,
-      Map<Tensor, ByteBuffer> sections,
-      ByteBuffer frontier) {
     EnumMap<Tensor, NDArray> arrays = new EnumMap<>(Tensor.class);
     for (Tensor tensor : Tensor.values()) {
       ByteBuffer section = Objects.requireNonNull(sections.get(tensor), tensor.name());
-      Shape shape = new Shape(count(tensor.axis(), rows, events, transitions, actions), tensor.width());
+      Shape shape =
+          new Shape(count(format, tensor.axis(), rows, events, transitions, actions), format.width(tensor));
       arrays.put(tensor, manager.create(section.duplicate(), shape, type(tensor.element())));
     }
-    NDArray frontierArray =
-        frontier == null
-            ? null
-            : manager.create(
-                frontier.duplicate(),
-                new Shape(transitions, FrontierField.WIDTH),
-                type(FrontierField.ELEMENT));
     return new NetworkInputs(
+        format,
         arrays,
-        frontierArray,
         rows,
         events,
         transitions,
@@ -228,33 +183,27 @@ public record NetworkInputs(
   }
 
   /**
-   * 軸の個数を返す。
+   * 軸の個数を返す（{@link BatchPlan#count(InputFormat, Axis, int, int, int, int)} と同じ）。
    *
+   * @param format 入力の形式
    * @param axis 軸
    * @param rows 行の数
-   * @param events 出来事の数
+   * @param events イベントの数
    * @param transitions 遷移の数
    * @param actions 手の数
    * @return 個数
    */
-  public static int count(Axis axis, int rows, int events, int transitions, int actions) {
-    return switch (axis) {
-      case ROW -> rows;
-      case SEAT -> rows * TokenType.SEAT.perRow();
-      case TILE -> rows * TokenType.TILE.perRow();
-      case EVENT -> events;
-      case TOKEN -> rows * TokenType.FIXED_TOKENS + events;
-      case TRANSITION -> transitions;
-      case ACTION -> actions;
-    };
+  public static int count(InputFormat format, Axis axis, int rows, int events, int transitions, int actions) {
+    return BatchPlan.count(format, axis, rows, events, transitions, actions);
   }
 
   /**
-   * 順伝播の索引を返す。前もって送った索引があればそれ（同じ C の印と補助の頭の教師で作ったもの）、なければその場で作って送る。
+   * 順伝播で使うインデックスを返す。前もって送ったインデックスがあれば、それを返す。そのインデックスは、順伝播の種類と同じ C の印と
+   * 補助のヘッドの教師で作ってあること。無ければ、その場で作って送る。
    *
    * @param pass 順伝播の種類
-   * @return 索引
-   * @throws IllegalArgumentException 前もって送った索引が別の C の印か補助の頭の教師で作ったものであるとき
+   * @return インデックス
+   * @throws IllegalArgumentException 前もって送ったインデックスが、別の C の印か補助のヘッドの教師で作ったものであるとき
    */
   BatchIndex index(Pass pass) {
     if (staged == null) {
@@ -280,7 +229,7 @@ public record NetworkInputs(
     return actionColumns[action * ACTION_WIDTH + column.ordinal()];
   }
 
-  /** 配列の管理元（作業の管理元にする）。 */
+  /** 配列のマネージャー。作業用のマネージャーとしても使う。 */
   NDManager manager() {
     return tensors.get(Tensor.ROW_COLUMN).getManager();
   }

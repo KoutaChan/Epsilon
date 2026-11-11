@@ -8,6 +8,7 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
 import ai.djl.training.ParameterStore;
+import com.epsilon.agent.runtime.Precision;
 import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,11 +16,12 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * 診断: eager の BF16 の Linear（{@link Context#linear}）が偏りを足して 1 回丸めるか。入力の階（[行, S, H] と [N, H]）ごとに、FP32 の
- * 積和を 1 回丸めた値（約束）と、BF16 の積を丸めてから偏りを足して丸めた値（2 回）のどちらと同じかを数えて書く。HIP は約束の 1 回で
- * 丸める。CPU は既定の組、GPU は rocm の組。
+ * 診断用。eager の BF16 の Linear（{@link Context#linear}）が、バイアスを足してから 1 回だけ丸めるかを調べる。入力の階数（[行, S, H] と
+ * [N, H]）ごとに、結果を 2 つの値と比べ、食い違う要素の数をログに書く。1 つは FP32 の積和を 1 回だけ丸めた値（契約どおり）、もう 1 つは
+ * BF16 の積を丸めてからバイアスを足し、もう一度丸めた値（2 回丸め）。HIP は契約どおり 1 回で丸める。CPU は既定のグループ、GPU は rocm の
+ * グループで動かす。
  *
- * <p>背骨（[行, S, H]）と候補の鍵・値（[行, 39, H]）の Linear が 3 階の入力に当たる。
+ * <p>3 階の入力になるのは、バックボーン（[行, S, H]）と、候補のキー・バリュー（[行, 39, H]）の Linear。
  */
 public class LinearRoundingProbe {
   private static final Logger log = LoggerFactory.getLogger(LinearRoundingProbe.class);

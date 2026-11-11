@@ -4,7 +4,7 @@ export interface Task {
   busy: boolean;
   error: unknown;
   clearError(): void;
-  /** 前の run を置き換える。結果・失敗・busy は最後に始めた run だけが、画面の寿命の間だけ当てる。 */
+  /** 前の実行を置き換えて実行する。結果・失敗・実行中かどうかを反映するのは最後に始めた実行だけで、画面が消えた後は何も反映しない。 */
   run<T>(
     operation: () => Promise<T>,
     complete: (value: T) => void,

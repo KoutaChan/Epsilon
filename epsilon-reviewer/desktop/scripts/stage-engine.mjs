@@ -1,20 +1,19 @@
-// desktop/engine を組む。electron-builder が resources/engine へそのまま写す（asar の外。Java は asar を読めない）。
-// jar と実行環境は先に作っておき、ここでは写しと確かめだけをする。
+// desktop/engine に、デスクトップ版で動かすエンジン一式を並べる。electron-builder はこれを resources/engine へ
+// そのままコピーする（asar の外に置く。Java は asar の中を読めない）。
+// このスクリプトはコピーと検証だけをする。
 //
 //   node desktop/scripts/stage-engine.mjs --runtime <dir> --jar <file> --models <models.json>
 //     [--libtorch <dir>] [--jni <jar>] [--out <dir>]
 //
-// --runtime  Windows の JDK の jmods から jlink で作った Windows x64 の実行環境（bin/java.exe）。
-// --jar      backend の desktop の jar（mvnw -pl epsilon-reviewer/backend -am package -DskipTests
-//            "-P!linux-native,desktop" が作る epsilon-reviewer-1.0-SNAPSHOT-desktop.jar）。
-// --models   入れるモデルの models.json（backend/models.example.json と同じ形。checkpoint はこのファイルの
-//            フォルダーからの相対か絶対）。系列ごとの推論のファイルだけを写す。
-// --libtorch libtorch 2.11.0 CPU の DLL（既定 %USERPROFILE%\.djl.ai\pytorch\2.11.0-cpu-win-x86_64）。
-// --jni      djl_torch.dll を取り出す jar（既定 ~/.m2 の pytorch-jni-cpu-win-x86_64-2.11.0-0.40.4-rocm-SNAPSHOT.jar）。
-// --out      既定 desktop/engine。
+// --runtime  Windows の JDK の jmods から jlink で作った Windows x64 のランタイム（bin/java.exe を含む）。
+// --jar      backend のデスクトップ版の jar（epsilon-reviewer-1.0-SNAPSHOT-desktop.jar）。
+// --models   入れるモデルを並べた models.json（形は backend/models.example.json と同じ。checkpoint は
+//            絶対パスか、このファイルのあるフォルダーからの相対パス）。コピーするのは、系列ごとに決めた推論用のファイルだけ。
+// --libtorch libtorch 2.11.0 CPU 版の DLL のフォルダー（既定は %USERPROFILE%\.djl.ai\pytorch\2.11.0-cpu-win-x86_64）。
+// --jni      djl_torch.dll を取り出す jar（既定は ~/.m2 の pytorch-jni-cpu-win-x86_64-2.11.0-0.40.7-rocm-SNAPSHOT.jar）。
+// --out      出力先（既定は desktop/engine）。
 //
-// 7 つの DLL が scripts/native-files.json の大きさと SHA-256 に合わなければ止まる。その後に desktop で
-// npx electron-builder --dir（web の dist を先に作る）。
+// 7 つの DLL のサイズか SHA-256 が scripts/native-files.json と違えば、エラーで止まる。
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
@@ -38,17 +37,13 @@ const NATIVE_FILES = JSON.parse(
 );
 const JNI_FILE = "djl_torch.dll";
 const JNI_ENTRY = "jnilib/win-x86_64/cpu/djl_torch.dll";
-const DECISION_FILES = [
-  "manifest.json",
-  "architecture.id",
-  "decision-0000.params",
-];
-/** 系列ごとの推論のファイル（学習の副ファイル campaign-state.json などは入れない）。 */
+/** classic（Nano・Major）のチェックポイントのファイル。model.json はモデルの構成、weights.bin は重み。 */
+const CLASSIC_FILES = ["model.json", "weights.bin"];
+/** 系列ごとに、推論に要るファイル。学習だけで使うファイル（campaign-state.json など）は入れない。 */
 const INFERENCE_FILES = {
   "epsilon-prism": ["policy.json", "m0/model.json", "m0/weights.bin"],
-  "epsilon-nano": DECISION_FILES,
-  "epsilon-pico": DECISION_FILES,
-  epsilon: DECISION_FILES,
+  "epsilon-nano": CLASSIC_FILES,
+  epsilon: CLASSIC_FILES,
 };
 const MODEL_FIELDS = [
   "modelId",
@@ -56,6 +51,7 @@ const MODEL_FIELDS = [
   "displayName",
   "version",
   "series",
+  "variant",
   "checkpoint",
 ];
 const PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -78,8 +74,8 @@ const { values: options } = parseArgs({
       type: "string",
       default: path.join(
         os.homedir(),
-        ".m2/repository/ai/djl/pytorch/pytorch-jni-cpu-win-x86_64/2.11.0-0.40.4-rocm-SNAPSHOT",
-        "pytorch-jni-cpu-win-x86_64-2.11.0-0.40.4-rocm-SNAPSHOT.jar",
+        ".m2/repository/ai/djl/pytorch/pytorch-jni-cpu-win-x86_64/2.11.0-0.40.7-rocm-SNAPSHOT",
+        "pytorch-jni-cpu-win-x86_64-2.11.0-0.40.7-rocm-SNAPSHOT.jar",
       ),
     },
     out: {
@@ -104,7 +100,7 @@ for (const part of ["runtime", "lib", "native", "models"])
     `${part.padEnd(8)}${(await treeSize(path.join(out, part))).toLocaleString("en-US")} B`,
   );
 
-/** 6 つは libtorch のフォルダーから、djl_torch.dll は JNI の jar から。全て固定の大きさと SHA-256 で確かめる。 */
+/** ネイティブの DLL を置く。6 つは libtorch のフォルダーから、djl_torch.dll は JNI の jar から取り、どれもサイズと SHA-256 が決まった値か確かめる。 */
 async function stageNative(target) {
   await mkdir(target);
   for (const { name, size, sha256 } of NATIVE_FILES) {
@@ -123,7 +119,10 @@ async function stageNative(target) {
   }
 }
 
-/** 推論のファイルを models/<modelId>/<revision>/ へ写し、相対パス・CPU・sha256 の models.json を書く。 */
+/**
+ * 推論に要るファイルを models/<modelId>/<revision>/ へコピーし、新しい models.json を書く。
+ * 新しい models.json では checkpoint を相対パスにし、デバイスを CPU にし、sha256 を足す。
+ */
 async function stageModels(source, target) {
   const catalog = JSON.parse(await readFile(source, "utf8"));
   const models = [];
@@ -147,13 +146,14 @@ async function stageModels(source, target) {
       await mkdir(path.dirname(path.join(to, file)), { recursive: true });
       await copyFile(path.join(from, file), path.join(to, file));
     }
-    const { modelId, revision, displayName, version, series } = entry;
+    const { modelId, revision, displayName, version, series, variant } = entry;
     models.push({
       modelId,
       revision,
       displayName,
       version,
       series,
+      variant,
       checkpoint,
       options: { device: "cpu" },
       sha256: await checkpointDigest(to),
@@ -176,8 +176,9 @@ async function stageModels(source, target) {
 }
 
 /**
- * チェックポイントのフォルダーの SHA-256（Java の CheckpointDigest と同じ）: 普通のファイルを
- * "/" でつないだ相対パスの UTF-8 のバイト順に、パス・0x00・大きさ（8 バイト BE）・中身。
+ * チェックポイントのフォルダーの SHA-256 を返す。求め方は Java の CheckpointDigest と同じ。
+ * フォルダーの下の通常のファイルを、"/" でつないだ相対パスの UTF-8 のバイト順に並べ、
+ * ファイルごとにパス、0x00、サイズ（8 バイト BE）、中身の順にハッシュへ入れる。
  */
 async function checkpointDigest(directory) {
   const names = (
@@ -210,7 +211,7 @@ async function fileDigest(file) {
   return hash.digest("hex");
 }
 
-/** zip（jar）の 1 項目を取り出す。ZIP64 でない小さな jar だけを読む。 */
+/** zip（jar）から 1 つのエントリーを取り出す。読めるのは ZIP64 でない小さな jar だけ。 */
 function zipEntry(zip, name) {
   const end = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
   if (end < 0) throw new Error("The JNI jar is not a zip file.");

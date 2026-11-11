@@ -35,19 +35,19 @@ import { measurePlayerRowWidth } from "./renderer/tileLayout.ts";
 
 const AUTOPLAY_INTERVAL_MS = 850;
 
-/** 今の位置で画面が読む局面。位置（局・手順・席）が変わった時だけ作る。 */
+/** 今の位置で画面が使う局面とイベント。位置（局・手順・席）が変わったときだけ作り直す。 */
 interface PositionView {
   readonly stage: ReplayStage;
-  /** 卓に出す局面（判断があれば最初の判断の局面）。 */
+  /** 卓に出す局面（判断があれば、最初の判断の局面）。 */
   readonly snapshot: Snapshot;
   readonly event: EventSnapshot;
-  /** 加槓の直前の局面。 */
+  /** 加槓の直前の局面。加槓でなければ null。 */
   readonly eventPrevious: Snapshot | null;
   readonly roundStart: Snapshot;
   readonly outcomeEvents: readonly EventSnapshot[];
-  /** 局の直近 3 つの位置。 */
+  /** この局の直近 3 つの位置（今の位置を含む）のイベント。 */
   readonly recentEvents: readonly RecentReplayEvent[];
-  /** 見ている席の判断。 */
+  /** 見ている席の判断。無ければ null。 */
   readonly decision: DecisionStep | null;
   readonly candidates: readonly Candidate[];
 }
@@ -57,7 +57,7 @@ export interface Playback extends PlaybackState, PositionView {
   readonly round: ReplayRound;
   readonly nextRound: ReplayRound | undefined;
   readonly positions: readonly ReplayPosition[];
-  /** 対局全体の席の列の幅（カメラを固定する）。 */
+  /** 対局全体で、席の列が最も広くなるときの幅。カメラを固定するのに使う。 */
   readonly rowWidth: number;
   readonly last: number;
   readonly canPrevious: boolean;
@@ -145,7 +145,7 @@ function readPosition(
   const position = positions[stepIndex]!;
   const read = <S extends ReplayStep>(step: S) =>
     reader.readSnapshot(round.index, step);
-  // 加槓は直前の手順の局面と比べて、どの副露が槓になったかを見る。
+  // 加槓では、どの副露に牌を足したかを調べるため、直前の手順の局面も読む。
   const previous = (event: ReplayPosition["event"]) =>
     event.eventType === "kakan" ? read(round.steps[event.index - 1]!) : null;
   const decision =

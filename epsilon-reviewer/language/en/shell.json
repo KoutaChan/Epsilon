@@ -29,6 +29,7 @@
   "model.select": "Select a model",
   "model.unavailableOption": "{model} (unavailable)",
   "model.empty": "No analysis models are available.",
+  "model.otherSeats": "The selected model cannot analyze games with this number of players.",
   "model.hint": "Choose an available model.",
   "history.title": "Analysis history",
   "history.local": "History on this computer",

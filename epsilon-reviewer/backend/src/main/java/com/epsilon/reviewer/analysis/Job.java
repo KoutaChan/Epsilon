@@ -6,8 +6,8 @@ import com.epsilon.reviewer.store.OwnerId;
 import java.time.Instant;
 
 /**
- * 1 つの解析の仕事の状態。状態の遷移と取り消しは監視で直列にし、進みと取り消しの印は解析の途中に鍵なしで読む。終わってからも 24 時間覚えるので、
- * 牌譜とモデルは持たない（worker に渡す手だけが持ち、走り終われば放す）。
+ * 1 つの解析ジョブの状態。状態の遷移と取り消しは synchronized で 1 つずつ行う。進み具合と取り消しのフラグは、解析の途中にロックなしで読む。
+ * 終わった後も設定の時間だけ覚えておくので、牌譜とモデルは持たない。それらを持つのは worker に渡すタスクだけで、実行が終われば解放する。
  */
 final class Job implements JobControl {
   final JobId id = JobId.random();
@@ -45,17 +45,17 @@ final class Job implements JobControl {
     return finishedAt;
   }
 
-  /** 待ちか走りの仕事だけを取り消す（保存の後は効かない）。 */
+  /** 待ち中か実行中のジョブだけを取り消す。保存が始まった後は効かない。 */
   synchronized void requestCancel() {
     if (status == JobStatus.QUEUED || status == JobStatus.RUNNING) cancelRequested = true;
   }
 
-  /** @return 取り消されていれば false（cancelled にする） */
+  /** @return 取り消しが要求されていれば false（状態を cancelled にする） */
   synchronized boolean begin() {
     return advance(JobStatus.RUNNING);
   }
 
-  /** @return 取り消されていれば false（cancelled にする。書きかけは捨てる） */
+  /** @return 取り消しが要求されていれば false。状態を cancelled にし、呼び出し元は書きかけの文書を確定せずに捨てる */
   synchronized boolean save() {
     return advance(JobStatus.SAVING);
   }

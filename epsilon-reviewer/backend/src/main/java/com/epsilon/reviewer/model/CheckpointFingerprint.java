@@ -8,13 +8,14 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * チェックポイントの印（相対のパス・大きさ・更新時刻）。中身を読まずに作る。
+ * チェックポイントのフィンガープリント（ファイルごとの相対パス・大きさ・更新時刻）。中身を読まずに作る。
  *
- * @param files '/' で区切る相対のパス（Files.walk の並べ替えの順）
+ * @param files '/' で区切った相対パス（{@code Files.walk} の結果を並べ替えた順）
+ * @param sizes ファイルの大きさ（バイト）
  * @param modified 更新時刻（ミリ秒）
  */
 public record CheckpointFingerprint(List<String> files, long[] sizes, long[] modified) {
-  /** @throws IOException 普通のフォルダーでない・シンボリックリンクを含む・ファイルが無い */
+  /** @throws IOException ふつうのフォルダーでないか、シンボリックリンクを含むか、ファイルが 1 つも無いとき */
   static CheckpointFingerprint of(Path directory) throws IOException {
     List<Path> paths = files(directory);
     List<String> names = new ArrayList<>(paths.size());
@@ -29,7 +30,7 @@ public record CheckpointFingerprint(List<String> files, long[] sizes, long[] mod
     return new CheckpointFingerprint(List.copyOf(names), sizes, modified);
   }
 
-  /** チェックポイントの普通のファイル（並べ替えた順）。 */
+  /** チェックポイントの中のふつうのファイルを、並べ替えた順で返す。 */
   static List<Path> files(Path directory) throws IOException {
     if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory))
       throw new IOException("Checkpoint must be a regular directory.");

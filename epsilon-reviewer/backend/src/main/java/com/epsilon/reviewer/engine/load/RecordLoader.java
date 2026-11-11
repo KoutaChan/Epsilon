@@ -1,48 +1,36 @@
 package com.epsilon.reviewer.engine.load;
 
-import com.epsilon.replay.RecordMetadata;
-import com.epsilon.replay.ReplayEngine;
-import com.epsilon.replay.ReplayRecord;
-import com.epsilon.replay.ReplayRecordReader;
+import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.mahjong.io.RecordFiles;
+import com.epsilon.mahjong.record.RecordedGame;
+import com.epsilon.mahjong.record.ReplayDriver;
 import java.util.Arrays;
+import java.util.Locale;
 
-/** 牌譜のバイト列を共通の読み手で読む。取り込みは確かめの再生で記録の手の合法性を推論の前に確かめる。 */
+/**
+ * 牌譜のバイト列を読む。推論の前に全体を 1 回再生して、記録の手が合法か、局末が記録と合うかを確かめる。取り込むときも、保存した牌譜を
+ * 読み直すときも同じ手順で読む。そのため、ルールが変わって再生できなくなった牌譜はここで見つかる。
+ */
 public final class RecordLoader {
+  /** 牌譜を読むときに渡す id。Reviewer は牌譜を id で区別しないので、決まった値を渡す。 */
+  private static final String RECORD_ID = "reviewer";
+
   private RecordLoader() {}
 
-  /**
-   * 読み、全体を 1 回再生して確かめる。最終点が牌譜に無ければ、全ての精算から復元できる時だけ再生の点を使う。
-   *
-   * @throws IllegalArgumentException 読めない・再生できない（文は英語）
-   */
+  /** @throws IllegalArgumentException 読めない、再生できない、または再生の結果が記録と食い違う */
   public static LoadedRecord load(byte[] bytes) {
-    ReplayRecord replay = ReplayRecordReader.readRecord(bytes);
-    int[] reconstructed;
+    RecordedGame game = RecordFiles.read(bytes, RECORD_ID);
     try {
-      reconstructed = ReplayEngine.replay(replay, (decision, state, legal) -> {});
+      new ReplayDriver(game.variant()).replay(game, new RuleWorkspace(game.variant()));
     } catch (RuntimeException failure) {
       throw new IllegalArgumentException("Record replay failed: " + failure.getMessage(), failure);
     }
-    RecordMetadata metadata = replay.metadata();
-    int[] finalScores = metadata.finalScores();
-    if (finalScores == null && replay.hasKnownFinalScores()) finalScores = reconstructed;
-    int[] starts = LoadedRecord.roundStarts(replay.events());
     var summary =
         new RecordSummary(
-            metadata.format().sourceId(),
-            metadata.names(),
-            finalScores == null ? null : Arrays.stream(finalScores).boxed().toList(),
-            starts.length);
-    return new LoadedRecord(summary, replay, starts);
-  }
-
-  /**
-   * 保存した牌譜を確かめの再生なしで読み直す（取り込みの時に確かめた）。
-   *
-   * @param summary 保存の時の概要
-   */
-  public static LoadedRecord reload(byte[] bytes, RecordSummary summary) {
-    ReplayRecord replay = ReplayRecordReader.readRecord(bytes);
-    return new LoadedRecord(summary, replay, LoadedRecord.roundStarts(replay.events()));
+            game.meta().source().name().toLowerCase(Locale.ROOT),
+            game.meta().names(),
+            Arrays.stream(game.finalScores()).boxed().toList(),
+            game.rounds().size());
+    return new LoadedRecord(summary, game);
   }
 }

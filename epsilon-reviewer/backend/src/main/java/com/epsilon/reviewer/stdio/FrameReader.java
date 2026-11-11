@@ -10,11 +10,12 @@ import java.io.InputStream;
 import java.util.Optional;
 
 /**
- * 枠を読む: [頭の長さ u32 BE][頭: UTF-8 の JSON][本文の長さ u32 BE][本文]。頭は 16 MiB、本文は 32 MiB まで
- * （protocol/stdio.ts）。上限を超えた枠は読まない（子プロセスを壊れたものとして扱う）。
+ * フレームを読む。フレームの形は [ヘッダーの長さ u32 BE][ヘッダー: UTF-8 の JSON][本文の長さ u32 BE][本文] で、ヘッダーは
+ * 16 MiB まで、本文は 32 MiB まで（protocol/stdio.ts と同じ）。上限を超えたフレームは中身を読まず、子プロセスとのやり取りが
+ * 壊れたものとして扱う。
  */
 public final class FrameReader {
-  /** 頭の上限（バイト）。history の答えは結果の数だけ伸びるので、5 万件まで入る大きさにする。 */
+  /** ヘッダーの上限（バイト）。history の応答は結果の数だけ長くなるので、結果が 5 万件あっても入る大きさにする。 */
   public static final int HEADER_LIMIT = 16 * 1024 * 1024;
 
   /** 本文の上限（バイト）。 */
@@ -27,9 +28,10 @@ public final class FrameReader {
   }
 
   /**
-   * 次の枠。流れが枠の境で終われば empty。
+   * 次のフレームを読む。
    *
-   * @throws IOException 枠が途中で切れた・上限を超えた・頭が JSON の物でない
+   * @return 読んだフレーム。ストリームがフレームの切れ目で終わっていれば empty
+   * @throws IOException フレームが途中で切れた・上限を超えた・ヘッダーが JSON のオブジェクトでない
    */
   public Optional<Frame> read() throws IOException {
     int first = in.read();

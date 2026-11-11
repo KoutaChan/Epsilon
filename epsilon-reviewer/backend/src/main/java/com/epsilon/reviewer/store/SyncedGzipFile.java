@@ -9,7 +9,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.zip.Deflater;
 import java.util.zip.GZIPOutputStream;
 
-/** 新しいファイルへ gzip（Deflater の水準 9）で書き、閉じる時に終わりを書いてディスクへ同期する。 */
+/** 新しいファイルに gzip（Deflater のレベル 9）で書く。閉じるときに gzip の末尾を書き、ディスクに同期する。 */
 final class SyncedGzipFile extends GZIPOutputStream {
   private static final int BUFFER = 64 * 1024;
   private final FileChannel channel;

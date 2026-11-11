@@ -5,9 +5,9 @@ export interface Disposable {
 }
 
 export interface Resources {
-  /** 破棄をこの持ち主に任せる。 */
+  /** 渡したリソースを、後でまとめて破棄する対象に加え、そのまま返す。 */
   keep<T extends Disposable>(resource: T): T;
-  /** 角の丸い箱。形は寸法ごとに 1 つを使い回し、影を落として受ける。 */
+  /** 角の丸い箱を作って親に加える。形は寸法ごとに 1 つ作って使い回す。箱は影を落とし、影を受ける。 */
   mesh(
     w: number,
     h: number,
@@ -23,7 +23,7 @@ export interface Resources {
   dispose(): void;
 }
 
-// 描画に使う共有 geometry / material / texture は生成元が一度だけ破棄する。
+// 描画で共有するジオメトリ・マテリアル・テクスチャはここでまとめて持ち、最後に 1 回だけ破棄する。
 export function createResources(): Resources {
   const owned = new Set<Disposable>();
   const geometry = new Map<string, THREE.ExtrudeGeometry>();

@@ -9,13 +9,13 @@ import type { TableScene } from "./scene.ts";
 import { PLAYER_ROW_CENTER, PLAYER_ROW_WIDTH } from "./tileLayout.ts";
 import type { Layout } from "./types.ts";
 
-/** 当てはめた卓の位置。.em-device の CSS 変数（px）になる。 */
+/** 卓を画面に収めた後の各部の位置。それぞれ .em-device の CSS 変数（px）に書く。 */
 export interface Anchors {
-  /** --em-hand-top: 前景の手牌の上端。 */
+  /** --em-hand-top: 手前の手牌の上端。 */
   readonly handTop: number;
-  /** --em-playback-top: 操作の帯の上端。 */
+  /** --em-playback-top: 操作バーの上端。 */
   readonly playbackTop: number;
-  /** --em-review-top: 縦の画面の一覧の上端。 */
+  /** --em-review-top: 縦長の画面で、卓の下の一覧の上端。 */
   readonly reviewTop: number;
   /** --em-hud-top: ドラ表示ともしもの欄の上端。 */
   readonly hudTop: number;
@@ -25,7 +25,7 @@ export interface Composition {
   readonly cameraEnvelope: THREE.Group;
   readonly handEnvelope: THREE.Mesh;
   readonly rowWidth: number;
-  /** 卓と手牌のカメラを画面に収める。大きさ・配置・操作の帯の高さが前と同じなら何もしない。 */
+  /** 卓と手牌のカメラを画面に収め、各部の位置を返す。画面の大きさ・配置・操作バーの高さが前と同じなら、何もせず前の位置を返す。 */
   fit(
     width: number,
     height: number,
@@ -58,7 +58,7 @@ export function createComposition(
     anchors: Anchors;
   } | null = null;
   const cameraEnvelope = new THREE.Group();
-  // 河・手牌と加槓牌の奥行き、ツモの高さを局面に依存しない範囲で予約する。
+  // カメラに収める範囲は局面によらず決めておく。河・手牌・加槓牌の奥行きと、ツモ牌の高さが入る箱を先に置く。
   for (let i = 0; i < 4; i++)
     cameraEnvelope.add(
       new THREE.Mesh(
@@ -91,7 +91,7 @@ export function createComposition(
     width = w;
     height = h;
     landscapeFrame.visible = mode !== "portrait";
-    // 一列の手牌・副露が卓の縁にかからないよう、牌と同じ比率で卓面を広げる。
+    // 手牌と副露を一列に並べても卓の縁にかからないよう、牌の列の幅に合わせて卓面を広げる。
     const tableExpansion =
       tableDimensions(mode, rowWidth).opponentRadius / 13.048233333333334;
     landscapeFrame.scale.set(tableExpansion, tableExpansion, 1);
@@ -178,7 +178,7 @@ export function createComposition(
       handCamera.updateProjectionMatrix();
       return pointBounds([handEnvelope], handCamera);
     };
-    // 卓と手牌を同じ調整で収め、画面寸法だけで手前の牌が大きくならないようにする。
+    // 卓と手牌のカメラを一緒に合わせて収める。手前の牌の大きさは河の牌から決め、画面が大きいだけでは大きくしない。
     for (let i = 0; i < 400; i++) {
       b = setTable();
       const riverLeft = riverEdge
@@ -188,7 +188,7 @@ export function createComposition(
         .set(dimensions.riverWidth / 2, nearRiverY, riverFaceZ)
         .project(camera).x;
       const riverPixels = ((riverRight - riverLeft) * width) / 2;
-      // 自河より一段大きい牌幅にして、立った手牌を読みやすくする。
+      // 手前の手牌は自分の河より一回り大きい牌幅にして、立てた牌を読みやすくする。
       const handPixels = Math.min(
         availableHandWidth,
         rowWidth * Math.max(40, riverPixels * 1.37),

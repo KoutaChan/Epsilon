@@ -1,12 +1,12 @@
 package com.epsilon.reviewer.engine.scenario;
 
 /**
- * もしもの 1 判断。
+ * もしもで評価し直す 1 つの判断。
  *
- * @param round 解析結果の rounds の位置
- * @param eventIndex 判断の resolve（解かれた出来事の位置）
- * @param seat 判断の席
- * @param call 応答の判断で鳴いたとするチー・ポンの行動 ID。鳴かなければ null
+ * @param round 解析結果の {@code rounds} の何番目か
+ * @param eventIndex 判断を決める手順の位置（文書の resolve）
+ * @param seat 判断する席
+ * @param call 応答の判断で鳴いたとするチー・ポンの行動の番号。鳴かなければ null
  */
 public record ScenarioQuery(
     int round, int eventIndex, int seat, ScenarioEdits edits, Integer call) {}

@@ -14,15 +14,15 @@ import type { ScenarioClient } from "../review-entry.ts";
 import { ApiError } from "./errors.ts";
 import type { DesktopTransport, Transport } from "./transport.ts";
 
-/** 画面が覚えておく解析結果の文書の数（開き直しは送らない）。 */
+/** 画面に残しておく文書（解析結果）の数。残っている文書は、開き直しても読み込み直さない。 */
 const DOCUMENT_CACHE_SIZE = 2;
-/** ダウンロードの blob の URL を返すまでの時間。 */
+/** ダウンロードを始めてから blob の URL を解放するまでの時間（ms）。 */
 const DOWNLOAD_URL_LIFETIME_MS = 1000;
-/** 共有の id（= 解析結果の id）の形。 */
+/** 共有の id の形式。解析結果の id と同じ UUID。 */
 const RESULT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** 書き出しの結果。downloaded は Web のダウンロードの開始、saved と cancelled はデスクトップの保存の画面。 */
+/** 書き出しの結果。downloaded は Web でダウンロードを始めたことを、saved と cancelled はデスクトップの保存ダイアログで保存したか取り消したかを表す。 */
 export type ExportOutcome = "downloaded" | "saved" | "cancelled";
 
 export type DesktopSettingsAccess = Pick<
@@ -32,7 +32,7 @@ export type DesktopSettingsAccess = Pick<
 
 export interface ReviewerApi {
   readonly platform: Transport["platform"];
-  /** デスクトップの設定の手。Web は null。 */
+  /** デスクトップの設定を読み書きする操作。Web では null。 */
   readonly desktop: DesktopSettingsAccess | null;
   models(signal?: AbortSignal): Promise<ModelCatalog>;
   history(signal?: AbortSignal): Promise<HistoryList>;
@@ -47,12 +47,12 @@ export interface ReviewerApi {
   export(resultId: string): Promise<ExportOutcome>;
   shareLink(resultId: string, signal?: AbortSignal): Promise<ShareLink>;
   sharedResult(resultId: string, signal?: AbortSignal): Promise<ResultDocument>;
-  /** もしもの評価の先。share は共有リンクの閲覧、owner は持ち主（デスクトップも）。 */
+  /** もしもを評価するクライアントを作る。共有リンクで見ているときは share を、オーナー（デスクトップも含む）は owner を渡す。 */
   scenarioClient(resultId: string, access: "owner" | "share"): ScenarioClient;
 }
 
 export function createApi(transport: Transport): ReviewerApi {
-  // 最近開いた順。Map の挿入順の先頭が一番古い。
+  // 最後に開いたのが古い文書から順に並ぶ（Map の挿入順）。開き直した文書は末尾へ移すので、先頭がいちばん長く開いていない文書。
   const documents = new Map<string, ResultDocument>();
   const remember = (resultId: string, document: ResultDocument) => {
     documents.delete(resultId);

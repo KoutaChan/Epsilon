@@ -24,8 +24,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.zip.GZIPInputStream;
 
 /**
- * 天鳳の牌譜を取る。転送先は天鳳の主だけ（同じ主とポートの転送を 3 回まで）で、名前を引いた番地が公開の番地であることを確かめる。gzip を頼んで
- * 展開し、本文は受け取る途中でも 16 MiB で止め、全体を 30 秒で切る。
+ * 天鳳から牌譜を取ってくる。接続するのは天鳳のホストだけで、リダイレクトは同じホストとポートへのものだけを 3 回まで追う。DNS で引いた
+ * アドレスが公開のアドレス（ループバック・リンクローカル・プライベート・マルチキャストでない）であることも確かめる。gzip での
+ * 転送を求め、届いた本文を展開する。本文は受け取る途中でも 16 MiB を超えたら止め、1 回の要求は 30 秒で打ち切る。
  */
 public final class TenhouFetcher implements AutoCloseable {
   private static final int LIMIT = RecordImporter.RECORD_LIMIT;
@@ -48,8 +49,8 @@ public final class TenhouFetcher implements AutoCloseable {
   }
 
   /**
-   * @param origin 牌譜の主（scheme://host[:port]）。試験は手元の HTTP の主を渡す
-   * @param publicAddressesOnly 名前を引いた番地が公開の番地であることを確かめる
+   * @param origin 牌譜を取るホスト（scheme://host[:port]）。テストでは手元の HTTP サーバを渡す
+   * @param publicAddressesOnly DNS で引いたアドレスが公開のアドレスであることを確かめるなら true
    */
   TenhouFetcher(URI origin, boolean publicAddressesOnly) {
     this.origin = origin;
@@ -58,7 +59,7 @@ public final class TenhouFetcher implements AutoCloseable {
 
   /**
    * @throws ReviewerException record_not_found（404）・record_access_denied（401・403）・fetch_failed
-   *     （転送・DNS・TLS・転送先・その他の状態）・fetch_timeout・record_too_large
+   *     （リダイレクト・DNS・TLS・接続先・その他のステータス）・fetch_timeout・record_too_large
    */
   public byte[] fetch(TenhouLogId id) {
     URI download = id.downloadUri();
@@ -162,7 +163,7 @@ public final class TenhouFetcher implements AutoCloseable {
     return new ReviewerException(ErrorCode.FETCH_FAILED, message);
   }
 
-  /** 受け取る途中で上限を超えたら止める本文。 */
+  /** 本文を受け取り、途中で上限を超えたら受け取りを止める。 */
   private static final class BoundedBody implements HttpResponse.BodySubscriber<byte[]> {
     private final int limit;
     private final ByteArrayOutputStream received = new ByteArrayOutputStream();

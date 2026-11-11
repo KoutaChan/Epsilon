@@ -7,6 +7,7 @@ import {
 } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import { CandidateList } from "./CandidateList";
+import { displaySeats } from "./model/seats.ts";
 import type { Layout, TableTargets } from "./renderer/types.ts";
 import { ScenarioControls } from "./ScenarioPanel";
 import { ScenarioPick, ScenarioTargets } from "./ScenarioTargets";
@@ -16,7 +17,7 @@ import type { Playback } from "./usePlayback.ts";
 
 const SLOTS = ["south", "east", "north", "west"] as const;
 
-/** 卓の上の DOM（ドラ表示・名札・候補の欄・もしもの操作と当たり枠）と、読み上げの文。 */
+/** 卓に重ねる DOM（ドラ表示・名札・候補欄・もしもの操作と当たり判定）と、画面の読み上げに使う文を出す。 */
 export function TableOverlay({
   elements,
   playback,
@@ -32,7 +33,7 @@ export function TableOverlay({
 }) {
   const { t, locale } = useLanguage();
   const { round, seat, reveal, stage } = playback;
-  // 卓の文字も、もしもの局面を出している間はその局面で書く。
+  // もしもの局面を出している間は、卓の上の文字もその局面に合わせる。
   const snapshot = scenario.display;
   const { candidates, comparison, editing } = scenario;
   const list = (tiles: readonly string[]) =>
@@ -121,10 +122,26 @@ export function TableOverlay({
             playback={playback}
           />
         )}
-        {SLOTS.map((slot, offset) => {
-          const player = snapshot.players[(seat + offset) % 4]!,
+        {SLOTS.map((slot, position) => {
+          const offset = displaySeats(round.seats)[position];
+          // 三人打ちでも対面の名札は空のまま置いておく。描画が名札の位置を決めるときに使うため。
+          if (offset === null)
+            return (
+              <div
+                key={slot}
+                ref={elements.labels[slot]}
+                className="em-player-label"
+                data-player-label={slot}
+                hidden
+              />
+            );
+          const player = snapshot.players[(seat + offset) % round.seats]!,
             name = playerName(player.name, player.seat, t),
-            wind = windName((player.seat - round.dealer + 4) % 4, t, true);
+            wind = windName(
+              (player.seat - round.dealer + round.seats) % round.seats,
+              t,
+              true,
+            );
           return (
             <div
               key={slot}
@@ -133,7 +150,7 @@ export function TableOverlay({
               data-player-label={slot}
               data-active={player.seat === snapshot.activeSeat}
               title={t("replay.playerTitle", {
-                seat: seatName(player.seat, round.dealer, t),
+                seat: seatName(player.seat, round, t),
                 name,
                 score: player.score.toLocaleString(locale),
               })}

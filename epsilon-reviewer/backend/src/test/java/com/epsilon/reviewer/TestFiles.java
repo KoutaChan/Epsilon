@@ -1,13 +1,18 @@
 package com.epsilon.reviewer;
 
+import com.epsilon.mahjong.io.tenhou.TenhouXml;
+import com.epsilon.mahjong.record.RecordedGames;
+import com.epsilon.mahjong.rules.Variant;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.zip.GZIPOutputStream;
 
-/** 試験の一時のフォルダーと資源。 */
+/** テストで使う一時フォルダーと牌譜を扱うヘルパー。 */
 public final class TestFiles {
   private TestFiles() {}
 
@@ -29,14 +34,20 @@ public final class TestFiles {
     }
   }
 
-  /** epsilon-common の試験の天鳳の牌譜（pom の testResources、例 kakan-a）。 */
-  public static byte[] golden(String name) {
-    String file = "/com/epsilon/engine/golden/" + name + ".xml.gz";
-    try (InputStream input = TestFiles.class.getResourceAsStream(file)) {
-      if (input == null) throw new IllegalStateException("Missing golden record: " + file);
-      return input.readAllBytes();
+  /**
+   * エンジンで打った半荘（epsilon-mahjong のテスト用の jar の {@code RecordedGames}）を天鳳の XML に書き、gzip にした牌譜のバイト列。
+   * 牌譜 id は played-種、打ち手の名前は空。
+   *
+   * @param seed 半荘を打つ乱数の種
+   */
+  public static byte[] played(Variant variant, long seed) {
+    String xml = TenhouXml.write(RecordedGames.play(variant, seed, "played-" + seed));
+    var out = new ByteArrayOutputStream();
+    try (var gzip = new GZIPOutputStream(out)) {
+      gzip.write(xml.getBytes(StandardCharsets.UTF_8));
     } catch (IOException failure) {
       throw new UncheckedIOException(failure);
     }
+    return out.toByteArray();
   }
 }

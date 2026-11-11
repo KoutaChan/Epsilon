@@ -51,15 +51,21 @@ test("the chosen seat travels from confirmation through progress to the review",
   });
 });
 
-test("back goes from progress to confirmation, and from confirmation or review home", () => {
-  const started = run(
+// 解析に渡した牌譜は、解析が失敗や取り消しで終わっても外れていて、もう解析を始められない。
+test("back goes home from confirmation, progress and review", () => {
+  const confirmation = run(
     { type: "imported", record },
     { type: "seatChosen", seat: 1 },
-    { type: "started", started: { jobId: "job", model } },
   );
-  const confirmation = navigate(started, { type: "back" });
-  assert.deepEqual(confirmation.screen, confirm(1));
   assert.deepEqual(navigate(confirmation, { type: "back" }).screen, {
+    name: "home",
+  });
+  const started = navigate(confirmation, {
+    type: "started",
+    started: { jobId: "job", model },
+  });
+  assert.deepEqual(started.screen, progress(1));
+  assert.deepEqual(navigate(started, { type: "back" }).screen, {
     name: "home",
   });
   const review = run({ type: "opened", document });

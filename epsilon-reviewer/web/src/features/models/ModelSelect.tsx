@@ -2,11 +2,23 @@ import { ChevronDown, Cpu, RefreshCw } from "lucide-react";
 import { errorKey } from "../../language/catalog";
 import { modelKey, modelLabel } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
+import type { CatalogModel } from "../../../../protocol/model.ts";
 import type { Models } from "./useModels";
 
-export function ModelSelect({ models, id }: { models: Models; id: string }) {
+/** モデルを選ぶ欄。使えないモデルは選べない。人数（seats）を渡すと、その人数の牌譜を読めないモデルも選べない。 */
+export function ModelSelect({
+  models,
+  id,
+  seats,
+}: {
+  models: Models;
+  id: string;
+  seats?: number;
+}) {
   const { t } = useLanguage();
   const { state, selected, select, reload } = models;
+  const usable = (model: CatalogModel) =>
+    model.available && (seats === undefined || model.seats === seats);
   return (
     <div className="model-control">
       <label className="filled-field">
@@ -28,9 +40,9 @@ export function ModelSelect({ models, id }: { models: Models; id: string }) {
                 <option
                   key={modelKey(model)}
                   value={modelKey(model)}
-                  disabled={!model.available}
+                  disabled={!usable(model)}
                 >
-                  {model.available
+                  {usable(model)
                     ? modelLabel(model)
                     : t("model.unavailableOption", {
                         model: modelLabel(model),
@@ -54,9 +66,10 @@ export function ModelSelect({ models, id }: { models: Models; id: string }) {
               {t("common.retry")}
             </button>
           </>
-        ) : state.status === "ready" &&
-          !state.value.models.some((model) => model.available) ? (
+        ) : state.status === "ready" && !state.value.models.some(usable) ? (
           t("model.empty")
+        ) : state.status === "ready" && selected && !usable(selected) ? (
+          t("model.otherSeats")
         ) : state.status === "ready" && !selected ? (
           t("model.hint")
         ) : (

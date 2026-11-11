@@ -9,8 +9,9 @@ import {
   layoutPlayerRow,
 } from "./tileLayout.ts";
 import type { Layout, SeatSlot, TableFrame } from "./types.ts";
+import { displaySeats } from "../model/seats.ts";
 
-/** 牌の組（Group）の userData。 */
+/** 牌 1 枚の Group に付ける userData。 */
 export interface TileData {
   readonly seat: SeatSlot;
   readonly foreground: boolean;
@@ -19,18 +20,18 @@ export interface TileData {
   readonly baseZ: number;
 }
 
-/** ツモ牌の札（DOM）と、その牌。 */
+/** ツモ牌に付けるラベル（DOM の要素）と、その牌。 */
 export interface DrawAnnotation {
   readonly group: THREE.Group;
   readonly element: HTMLElement;
 }
-/** 河の 1 枚。seat は絶対の席、index は river[] の位置（鳴かれた牌も数える）。 */
+/** 河の牌 1 枚。`seat` は絶対の席、`index` は河の中の位置（0 から数え、鳴かれた牌も数える）。 */
 export interface RiverPiece {
   readonly group: THREE.Group;
   readonly seat: number;
   readonly index: number;
 }
-/** 見ている席の手牌の 1 枚。index は表示の位置で、ツモ牌は hand.length。 */
+/** 見ている席の手牌 1 枚。`index` は表示の並びでの位置（0 から数える）で、ツモ牌は手牌の枚数（`hand.length`）になる。 */
 export interface HandPiece {
   readonly group: THREE.Group;
   readonly index: number;
@@ -39,7 +40,7 @@ export interface HandPiece {
 export interface TileFrame {
   /** この更新で作り直した席があるか。 */
   readonly rebuilt: boolean;
-  /** 作り直した席で、今届いたツモ牌。 */
+  /** 作り直した席に今届いたツモ牌。無ければ null。 */
   readonly arrival: THREE.Group | null;
   readonly annotations: readonly DrawAnnotation[];
   readonly river: readonly RiverPiece[];
@@ -60,7 +61,7 @@ interface TileOptions {
   kind: TileData["kind"];
 }
 
-/** 1 席ぶんの描いた物。player が同じ物で描き方も同じなら作り直さない。 */
+/** 1 席ぶんの描画のオブジェクト。席の状態（`player`）が同じオブジェクトのままで、描き方も変わらなければ作り直さない。 */
 interface SeatTiles {
   readonly player: PlayerState;
   /** 最後の打牌の印を付けたか。 */
@@ -76,7 +77,7 @@ const SEATS = ["south", "east", "north", "west"] as const;
 
 export const tileData = (group: THREE.Object3D) => group.userData as TileData;
 
-// 自家は操作バーへ持ち上げず手前から入れ、他家は卓上で持ち上げる。
+// ツモ牌が届く途中の位置。自家の牌は操作バーの側へ持ち上げずに手前から入れ、他家の牌は卓の上で持ち上げてから置く。
 export function positionDrawArrival(group: THREE.Object3D, remaining: number) {
   const { foreground, baseY, baseZ } = tileData(group);
   const offset = remaining ** 2 * 0.5;
@@ -84,7 +85,7 @@ export function positionDrawArrival(group: THREE.Object3D, remaining: number) {
   group.position.z = baseZ + (foreground ? 0 : offset);
 }
 
-// 手牌は文書の時点で理牌済み。局面の配列を借用し、複製や再ソートを行わない。
+// 手牌は解析結果の時点で理牌してある。局面の配列はそのまま使い、コピーも並べ替えもしない。
 export function createTileLayer(
   overlay: HTMLElement,
   scene: TableScene,
@@ -131,7 +132,7 @@ export function createTileLayer(
       toneMapped: false,
     }),
   );
-  /** 見ている席から数えた席ごとの描いた物。 */
+  /** 席ごとの描画のオブジェクト。見ている席から数えた順。 */
   const seats: (SeatTiles | null)[] = [null, null, null, null];
   let drawn: { viewSeat: number; reveal: boolean; layout: Layout } | null =
     null;
@@ -195,7 +196,7 @@ export function createTileLayer(
       body.add(glyph);
     }
     if (standing) {
-      // 自家は立った形を保ちつつ牌面をカメラへ向け、副露の俯角と両立させる。
+      // 自家の牌は立てたまま牌面をカメラへ向け、副露を見下ろすカメラの角度と合わせる。
       const angle = foreground ? (68 * Math.PI) / 180 : Math.PI / 2;
       body.rotation.x = back ? -angle : angle;
       body.position.set(
@@ -302,7 +303,7 @@ export function createTileLayer(
       sidewaysOffset = 0,
       pendingRiichiMarker = false;
     for (const [riverIndex, discarded] of player.river.entries()) {
-      // 宣言牌が鳴かれた場合は、次に河へ残る牌を横向きにする。
+      // 立直の宣言牌が鳴かれたときは、次に河に残る牌を横に曲げる。
       pendingRiichiMarker ||= discarded.riichi === true;
       if (discarded.called) continue;
       const sideways = pendingRiichiMarker;
@@ -336,7 +337,7 @@ export function createTileLayer(
         dimensions.riverWidth,
         landscape ? 1.4 : 1,
       );
-      // もしもの当たり枠は river[] の位置（鳴かれた牌も数える）と絶対の席で牌を指す。
+      // もしもの当たり判定は、絶対の席と河の中の位置（鳴かれた牌も数える）で牌を指す。
       river.push({ group, seat: seatIndex, index: riverIndex });
       if (landscape) {
         const contact = new THREE.Mesh(contactGeometry, contactMaterial);
@@ -394,7 +395,7 @@ export function createTileLayer(
     entry.annotation?.element.remove();
   }
 
-  /** 局面を描く。player の物・最後の打牌の印・視点・全員の手牌・配置が変わった席だけ作り直す。 */
+  /** 局面を描く。作り直すのは、席の状態のオブジェクトか最後の打牌の印が変わった席だけ。視点・全員の手牌を見せるか・配置のどれかが変わったときは、全ての席を作り直す。 */
   function update(frame: TableFrame): TileFrame {
     const { snapshot, event, viewSeat, reveal, layout } = frame;
     const all =
@@ -407,8 +408,16 @@ export function createTileLayer(
     const dimensions = tableDimensions(layout, rowWidth);
     let rebuilt = false;
     let arrival: THREE.Group | null = null;
+    const seatCount = snapshot.players.length;
+    const positions = displaySeats(seatCount);
     for (let relativeSeat = 0; relativeSeat < 4; relativeSeat++) {
-      const seatIndex = (viewSeat + relativeSeat) % 4;
+      const offset = positions[relativeSeat];
+      if (offset === null) {
+        if (seats[relativeSeat]) remove(seats[relativeSeat]!);
+        seats[relativeSeat] = null;
+        continue;
+      }
+      const seatIndex = (viewSeat + offset) % seatCount;
       const player = snapshot.players[seatIndex]!;
       const marked = event.eventType === "dahai" && event.actor === seatIndex;
       const current = seats[relativeSeat];
@@ -432,7 +441,7 @@ export function createTileLayer(
       rebuilt = true;
       arrival ??= next.arrival;
     }
-    const built = seats as readonly SeatTiles[];
+    const built = seats.filter((entry) => entry !== null);
     return {
       rebuilt,
       arrival,

@@ -1,5 +1,6 @@
-// メインプロセスと preload をそれぞれ 1 つの CommonJS にまとめる（electron は外。protocol の .ts は中へ）。
-// 使い方: node desktop/scripts/build.mjs（どのフォルダーからでもよい）。
+// メインプロセスと preload を、それぞれ 1 つの CommonJS のファイルにバンドルする。electron はバンドルに含めず、
+// protocol の .ts は含める。
+// 使い方: node desktop/scripts/build.mjs（どのフォルダーから実行してもよい）。
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";

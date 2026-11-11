@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Command の HTTP の道を起動時に節へ分けておき、方法と道から操作と道の欄を探す。 */
+/** 起動時に、操作（{@link Command}）ごとの HTTP のパスを / で区切っておく。リクエストのメソッドとパスから、操作と、パスに埋めた引数を探す。 */
 final class RouteTable {
   private final List<Template> templates = new ArrayList<>();
 
@@ -21,7 +21,7 @@ final class RouteTable {
       }
   }
 
-  /** @param rawPath URL を戻す前の道（欄の値だけを戻す） */
+  /** @param rawPath URL デコードする前のパス（デコードするのはパスに埋めた引数の値だけ） */
   Optional<Route> match(String method, String rawPath) {
     String[] segments = rawPath.substring(1).split("/", -1);
     for (Template template : templates) {
@@ -40,7 +40,7 @@ final class RouteTable {
     return Optional.empty();
   }
 
-  /** 道の節を戻す（+ はそのまま）。戻せない節は形の違う id として扱われるのでそのまま返す。 */
+  /** / で区切ったパスの 1 区間を URL デコードする（+ はそのまま残す）。デコードできなければそのまま返し、形の正しくない id として扱わせる。 */
   private static String decode(String segment) {
     try {
       return URLDecoder.decode(segment.replace("+", "%2B"), StandardCharsets.UTF_8);
@@ -49,7 +49,7 @@ final class RouteTable {
     }
   }
 
-  /** 見つけた道。 */
+  /** 見つけたルート。 */
   record Route(Command command, Map<String, String> parameters) {}
 
   private record Template(Command command, String method, String[] segments) {}

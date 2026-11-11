@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createResources, type Resources } from "./resources.ts";
 import type { TableFrame } from "./types.ts";
+import { displaySeats } from "../model/seats.ts";
 
 export interface TableMaterials {
   readonly ivory: THREE.MeshPhysicalMaterial;
@@ -16,16 +17,16 @@ export interface TableScene {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly table: THREE.Group;
-  /** 卓の上の牌（他家の列・全員の河）。 */
+  /** 卓の上の牌（他家の手牌の列と、全員の河）。 */
   readonly pieces: THREE.Group;
   readonly handScene: THREE.Scene;
   readonly handCamera: THREE.PerspectiveCamera;
   /** 見ている席の手牌と副露。 */
   readonly handGroup: THREE.Group;
   readonly materials: TableMaterials;
-  /** 横の画面の河の牌の面と側面。 */
+  /** 横長の画面で河の牌に使う、牌面と側面のマテリアル。 */
   readonly riverBody: THREE.Material[];
-  /** ツモ切りの牌の面と側面。 */
+  /** ツモ切りの牌に使う、牌面と側面のマテリアル。 */
   readonly tsumogiriBody: THREE.Material[];
   readonly landscapeFrame: THREE.Group;
   readonly feltSurface: THREE.Mesh;
@@ -38,7 +39,7 @@ export interface TableScene {
   ): void;
 }
 
-// 卓面と前景手牌は照明を共有せず、同じ牌形状をそれぞれのカメラで描く。
+// 卓と手前の手牌は別のシーンで、照明も別々に持つ。牌の形は共有し、それぞれのカメラで描く。
 export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
   const resources = createResources();
   const { keep } = resources;
@@ -62,7 +63,7 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
   }
   scene.add(table, pieces);
   camera.up.set(0, 0, 1);
-  // 前景の手牌は牌の形と材質を共有し、携帯でも牌面が読めるよう専用の近いカメラで描く。
+  // 手前の手牌は、牌の形とマテリアルを卓と共有し、専用の近いカメラで描く。スマホでも牌面が読めるようにするため。
   const handScene = new THREE.Scene(),
     handCamera = new THREE.PerspectiveCamera(32, 1, 0.1, 100),
     handGroup = new THREE.Group();
@@ -183,7 +184,7 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
     }),
   );
   const riverBody = [riverFace, riverSide];
-  // ツモ切りは牌本体をグレーにし、図柄と赤牌の色はそのまま保つ。
+  // ツモ切りの牌は本体だけをグレーにし、絵柄と赤牌の色はそのまま残す。
   const tsumogiriBody = [
     keep(
       new THREE.MeshPhysicalMaterial({
@@ -246,7 +247,7 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
     }),
   );
   const feltSurface = mesh(28.05, 40.05, 0.1, 0.4, 0.018, felt, 0, -6, -0.025);
-  // 横の画面の卓面と枠は、手前と奥の縁をそろえる。
+  // 横長の画面の枠。手前と奥の縁の位置を卓面とそろえる。
   const landscapeFrame = new THREE.Group();
   table.add(landscapeFrame);
   mesh(
@@ -382,8 +383,10 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
     dc.strokeStyle = "#8b969e";
     dc.lineWidth = 2;
     dc.strokeRect(4, 4, 760, 760);
-    [0, 1, 2, 3].forEach((offset, i) => {
-      const seat = (viewSeat + offset) % 4;
+    const seats = snapshot.players.length;
+    displaySeats(seats).forEach((offset, i) => {
+      if (offset === null) return;
+      const seat = (viewSeat + offset) % seats;
       const player = snapshot.players[seat]!;
       dc.save();
       dc.translate(384, 384);
@@ -393,7 +396,7 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
       dc.fillStyle = active === seat ? "#112c40" : "#e1e8ec";
       dc.font = "bold 56px sans-serif";
       dc.textAlign = "center";
-      dc.fillText(labels.winds[(seat - dealer + 4) % 4]!, -279, 287);
+      dc.fillText(labels.winds[(seat - dealer + seats) % seats]!, -279, 287);
       dc.fillStyle = "#081322";
       dc.fillRect(-177, 210, 354, 86);
       dc.fillStyle = "#f3d35e";

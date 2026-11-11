@@ -6,9 +6,9 @@ import type {
 } from "../../../protocol/model.ts";
 import type { ResultDocument } from "../../../protocol/result.ts";
 
-// 持ち主の画面の遷移。URL は使わず、読み込み直すと最初の画面へ戻る。
+// オーナーの画面の遷移。URL は使わないので、読み込み直すと最初の画面へ戻る。
 
-/** 画面。review はシェル（頭・知らせ・窓）を全て置き換える。 */
+/** 画面の種類。解析結果の画面（review）だけは、シェル（ヘッダー・トースト・ダイアログ）ごと置き換えて表示する。 */
 export type Screen =
   | { name: "home" }
   | { name: "confirm"; record: ImportedRecord; seat: number }
@@ -17,12 +17,12 @@ export type Screen =
       record: ImportedRecord;
       seat: number;
       jobId: string;
-      /** 解析を受けた側が返したモデル。 */
+      /** 解析を受け付けた側が返したモデル。 */
       model: ModelInfo;
     }
   | { name: "review"; document: ResultDocument; seat: number };
 
-/** 共有の窓の対象。履歴の項目と解析結果の文書のどちらでもよい。 */
+/** 共有ダイアログの対象。履歴の項目でも解析結果の文書でもよい。 */
 export type ShareTarget = Pick<HistoryEntry, "resultId" | "record">;
 
 export type Modal =
@@ -37,17 +37,17 @@ export interface Navigation {
 }
 
 export type NavigationAction =
-  /** 牌譜を読み込んだ（最初に見る席は 0）。 */
+  /** 牌譜を取り込んだ。確認の画面へ進み、最初に見る席は 0 にする。 */
   | { type: "imported"; record: ImportedRecord }
   | { type: "seatChosen"; seat: number }
   | { type: "started"; started: AnalysisStarted }
-  /** 解析が終わり文書を読んだ。解析の画面にいる時だけ、その席で開く。 */
+  /** 解析が終わり、文書を読んだ。解析中の画面にいるときだけ、選んでいた席で解析結果を開く。 */
   | { type: "completed"; document: ResultDocument }
-  /** 履歴から開いた。 */
+  /** 履歴から解析結果を開いた。最初に見る席は 0。 */
   | { type: "opened"; document: ResultDocument }
-  /** 解析の画面は確かめへ、確かめと解析結果は最初の画面へ。 */
+  /** 戻る。どの画面からも最初の画面へ戻る。解析に渡した牌譜は解析が終わると外れるので、解析中の画面から確認の画面へは戻らない。 */
   | { type: "back" }
-  /** デスクトップの保存先を変えた。読み込んだ牌譜と解析の仕事は前の保存先のもの。 */
+  /** デスクトップの保存先を変えた。読み込んだ牌譜と解析のジョブは前の保存先のものなので、確認・解析中の画面からは最初の画面へ戻る。 */
   | { type: "folderChanged" }
   | { type: "modalOpened"; modal: Modal }
   | { type: "modalClosed" };
@@ -101,13 +101,7 @@ export function navigate(
         modal: null,
       };
     case "back":
-      return {
-        ...state,
-        screen:
-          screen.name === "progress"
-            ? { name: "confirm", record: screen.record, seat: screen.seat }
-            : HOME,
-      };
+      return { ...state, screen: HOME };
     case "folderChanged":
       return screen.name === "confirm" || screen.name === "progress"
         ? { ...state, screen: HOME }

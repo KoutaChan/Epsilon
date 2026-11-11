@@ -3,7 +3,7 @@ import { tileAsset } from "../components/Tile";
 import { LanguageSelect } from "../language/LanguageSelect";
 import { useLanguage } from "../language/LanguageProvider";
 
-/** 頭の帯。onSettings はデスクトップだけ（Web は null で設定のボタンを出さない）。 */
+/** 画面上部のヘッダー。設定を開く処理（onSettings）はデスクトップだけで渡し、Web では null にして設定のボタンを出さない。 */
 export function AppHeader({
   busy,
   onSettings,

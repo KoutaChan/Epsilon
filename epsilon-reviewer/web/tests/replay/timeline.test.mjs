@@ -135,6 +135,34 @@ test("dora announced before a draw decision updates that draw without a blank st
   );
 });
 
+// 大明槓・加槓の後の打牌では、エンジンが打牌の直後にドラをめくってから応答を求める。
+// 書く側は、応答の判断のきっかけ（直前のイベント＝ドラの表示）を省く。
+test("a response to the discard after a kan follows the dora announced on that discard", () => {
+  const { model, steps } = decode([
+    event("start_kyoku"),
+    event("daiminkan", { actor: 0 }),
+    event("tsumo", { actor: 0 }),
+    choose(0),
+    event("dahai", { actor: 0 }),
+    event("dora", { delta: doraDelta }),
+    pass(1),
+    ron(2),
+    event("tsumo", { actor: 1 }),
+  ]);
+  const positions = buildPlaybackPositions(steps);
+  assert.deepEqual(
+    positions.map((p) => p.event.eventType),
+    ["start_kyoku", "daiminkan", "tsumo", "dahai", "tsumo"],
+  );
+  assert.equal(positions[3].event, steps[4]);
+  assert.deepEqual(positions[3].decisions, [steps[6], steps[7]]);
+  assert.equal(positions[3].snapshot, steps[6]);
+  assert.deepEqual(
+    createStateReader(model).readSnapshot(0, positions[3].snapshot).dora,
+    ["1m", "2p"],
+  );
+});
+
 test("round settlement and final match scores have distinct stops without bookkeeping screens", () => {
   const { steps } = decode([
     event("start_kyoku"),

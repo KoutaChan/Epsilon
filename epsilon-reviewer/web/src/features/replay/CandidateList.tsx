@@ -9,8 +9,8 @@ import type { Candidate } from "./model/types.ts";
 import { compareCandidates, isCall } from "./scenario/scenario.ts";
 
 /**
- * comparison は、もしもの候補を出すときの元の局面の候補。onCall があればチー・ポンの行を押して鳴いた後の打牌へ進め、
- * afterCall はその鳴き（見出しに出して戻れるようにする）。
+ * 候補の一覧。元の局面の候補（comparison）を渡すと、もしもの候補と比べて順位の動きを出す。onCall を渡すと、チー・ポンの行を押して鳴いた後の打牌へ進める。
+ * 選んだチー・ポン（afterCall）は見出しに出し、鳴く前の候補へ戻れるようにする。
  */
 export function CandidateList({
   candidates,
@@ -70,7 +70,7 @@ export function CandidateList({
           const rank = candidates.indexOf(candidate) + 1;
           const action = actionName(candidate);
           const rate = (candidate.probability * 100).toFixed(1);
-          // 価値を推定したモデルは損失を主に示し、確率は推奨度として添える。
+          // 価値を推定したモデルでは損失を主に見せ、確率は推奨度として添える。
           const loss = candidate.valueLoss ?? 0;
           const grade = valued ? gradeLoss(loss) : null;
           const description = grade
@@ -98,9 +98,9 @@ export function CandidateList({
           const chosen = candidate.chosen && (
             <span className="em-choice-tail">{t("candidate.chosen")}</span>
           );
-          // 横の一覧は牌があれば実際の選択を牌と損失の下の段に分けて候補欄の幅を抑え、牌のない見送りや和了は牌の位置に置く。
+          // 横の一覧では、牌のある候補の「実際の選択」を牌と損失の下の段へ分けて置き、候補欄の幅を抑える。牌の無い見送りや和了では、牌の位置に置く。
           const below = !portrait && candidate.tiles.length > 0;
-          // 損失は局面ごとの最善との差なので、元の値は添えるだけにして、順位の動きで比べる。
+          // 損失は局面ごとの最善手との差で、局面が違うとそのまま比べられない。元の局面の値は添えるだけにして、順位の動きで比べる。
           const entry = compared && (compared.get(candidate) ?? null);
           const move = !entry
             ? null

@@ -33,6 +33,7 @@
   "tile.red": "赤{tile}",
   "action.riichi": "リーチ",
   "action.kyushu": "九種九牌",
+  "action.nuki": "北抜き",
   "mahjong.roundShort": "{wind}{number}",
   "action.dahaiTsumogiri": "打牌（ツモ切り）",
   "action.riichiTsumogiri": "リーチ（ツモ切り）",

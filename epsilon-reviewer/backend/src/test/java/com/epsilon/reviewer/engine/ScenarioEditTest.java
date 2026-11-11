@@ -3,17 +3,16 @@ package com.epsilon.reviewer.engine;
 import static com.epsilon.reviewer.engine.TestEdits.dora;
 import static com.epsilon.reviewer.engine.TestEdits.rivers;
 
-import com.epsilon.core.Action;
-import com.epsilon.core.Tile;
-import com.epsilon.replay.ReplayEvent.StartKyoku;
+import com.epsilon.mahjong.action.Action;
+import com.epsilon.mahjong.record.TileCopies;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.tile.Face;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
-import com.epsilon.reviewer.engine.scenario.DecisionLocator;
 import com.epsilon.reviewer.engine.scenario.DoraEdit;
 import com.epsilon.reviewer.engine.scenario.RiverEdit;
 import com.epsilon.reviewer.engine.scenario.RoundRewriter;
 import com.epsilon.reviewer.engine.scenario.ScenarioAnswer;
 import com.epsilon.reviewer.engine.scenario.ScenarioEdits;
-import com.epsilon.reviewer.engine.scenario.ScenarioEngine;
 import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
 import com.epsilon.reviewer.engine.view.Meld;
 import com.epsilon.reviewer.engine.view.PlayerState;
@@ -23,6 +22,7 @@ import com.epsilon.reviewer.engine.view.TileCode;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -30,25 +30,20 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToIntBiFunction;
-import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * もしもの変更の種類ごとに、方策の入力の該当する値だけが変わり、ほかの値と変更を写した局面のほかの部分が変わらないこと、局面に照らして成り
- * 立たない変更を断ることを確かめる。判断は天鳳の牌譜の、他家のリーチの後の打牌の判断を使う。
+ * もしもの変更の種類ごとに、O のうちその変更に当たる値だけが変わることを確かめる。ほかの値も、変更を当てた局面のほかの部分も変わらない。
+ * 局面と合わない変更は、決まった順に確かめ、決まったメッセージで断る。判断には主に、天鳳の牌譜で他家が立直した後の打牌の判断を使う。
  */
 public class ScenarioEditTest {
-  /** 37 の牌の記号。 */
-  static final List<String> TILES =
-      IntStream.range(0, Tile.NUM_TILES)
-          .mapToObj(id -> TileCode.of(Tile.typeOf(id), Tile.isAka(id)))
-          .distinct()
-          .toList();
+  /** 37 種の牌の記号。 */
+  static final List<String> TILES = Arrays.stream(Face.values()).map(Face::mjai).toList();
 
   private static final String[] RARE_TILES = {"E", "S", "W", "N", "P", "F", "C", "1m", "9m", "1p"};
 
-  /** リーチしていない席の打牌の判断で、宣言牌の後にも打牌した（棒を出した）他家の河に、鳴かれていない牌が 3 枚以上ある。 */
+  /** 立直していない席の打牌の判断。立直した他家が宣言牌の後にも打牌していて（立直棒を出していて）、その河に鳴かれていない牌が 3 枚以上ある。 */
   private static final Decision AFTER_RIICHI =
       Decision.find(
           ScenarioEditTest::discards,
@@ -69,10 +64,11 @@ public class ScenarioEditTest {
           ScenarioEditTest::discards,
           (table, step) -> opponent(table, step, player -> calledIndex(player) >= 0));
 
-  /** ポンできる他家の打牌への応答の判断。変える他家は打牌した席。 */
+  /** 他家の打牌にポンできる応答の判断。変える他家は、その牌を打った席。 */
   private static final Decision PON_OFFER =
       Decision.find(step -> step.offers(Action.Type.PON), (table, step) -> table.activeSeat());
 
+  /** 判断する席が応答する他家の打牌を、その席が鳴けない字牌に替える。候補は見送りだけになり、方策は呼ばれない。 */
   @Test
   public void editingTheAnsweredDiscardRegeneratesTheResponses() {
     Decision decision = PON_OFFER;
@@ -89,7 +85,7 @@ public class ScenarioEditTest {
     var edit = new RiverEdit(decision.opponent(), index, tile, old.tsumogiri());
     var policy = new RecordingPolicy();
     ScenarioAnswer answer =
-        ScenarioEngine.evaluate(
+        Scenarios.evaluate(
             decision.record(),
             new ScenarioQuery(
                 decision.round(),
@@ -100,12 +96,10 @@ public class ScenarioEditTest {
             policy);
     boolean passed = decision.step().chosenType().equals("PASS");
     Assert.assertEquals(answer.decision().size(), 1);
-    Assert.assertEquals(
-        Action.fromIndex(answer.decision().actionIds()[0]).type(), Action.Type.PASS);
+    Assert.assertEquals(Action.of(answer.decision().actionIds()[0]).type(), Action.Type.PASS);
     Assert.assertEquals(answer.decision().chosen() == 0, passed);
-    Assert.assertEquals(
-        policy.inputs.getFirst().turn(),
-        "discard " + decision.opponent() + " " + TileCode.type(tile) + " false");
+    Assert.assertEquals(answer.decision().values()[0], 0f);
+    Assert.assertTrue(policy.inputs.isEmpty(), "a pass-only response does not call the policy");
   }
 
   @Test
@@ -118,26 +112,23 @@ public class ScenarioEditTest {
     Answer base = decision.answer(TestEdits.NONE);
     Answer edited = decision.answer(rivers(edit));
     String event = onlyChangedEvent(base.input(), edited.input());
-    Assert.assertEquals(field(event, 2), Integer.toString(TileCode.type(tile)));
+    Assert.assertEquals(field(event, 1), Integer.toString(decision.opponent()));
+    Assert.assertEquals(field(event, 2), Integer.toString(TileCode.kind(tile)));
     assertUnchanged(
         base.input(),
         edited.input(),
-        PolicyInput::hand,
-        PolicyInput::melds,
-        PolicyInput::seats,
-        PolicyInput::scores,
-        PolicyInput::honba,
-        PolicyInput::kyotaku,
-        PolicyInput::indicators,
-        PolicyInput::dora,
-        PolicyInput::turn,
-        PolicyInput::legal,
-        PolicyInput::round);
+        ObservedInput::hand,
+        ObservedInput::riichi,
+        ObservedInput::scores,
+        ObservedInput::honba,
+        ObservedInput::kyotaku,
+        ObservedInput::indicators,
+        ObservedInput::legal);
     Assert.assertEquals(
         edited.table(), withRiverTile(base.table(), edit, old.riichi()), "table outside the edit");
   }
 
-  /** 配牌から来た牌もツモから来た牌も、入った所ごと替わるので、判断の手は変わらない。 */
+  /** 自分の河の牌を替えると、その牌が手に入った所（配牌かツモ）で替わる。そのため、判断の時点の手牌は変わらない。 */
   @Test
   public void ownRiverTileEditChangesOnlyThatDiscardAndKeepsTheHand() {
     Decision decision = AFTER_RIICHI;
@@ -156,18 +147,15 @@ public class ScenarioEditTest {
       Answer edited = decision.answer(rivers(edit));
       String event = onlyChangedEvent(base.input(), edited.input());
       Assert.assertEquals(field(event, 1), Integer.toString(seat));
-      Assert.assertEquals(field(event, 2), Integer.toString(TileCode.type(edit.tile())));
+      Assert.assertEquals(field(event, 2), Integer.toString(TileCode.kind(edit.tile())));
       assertUnchanged(
           base.input(),
           edited.input(),
-          PolicyInput::hand,
-          PolicyInput::melds,
-          PolicyInput::scores,
-          PolicyInput::indicators,
-          PolicyInput::dora,
-          PolicyInput::turn,
-          PolicyInput::legal,
-          PolicyInput::round);
+          ObservedInput::hand,
+          ObservedInput::handAka,
+          ObservedInput::scores,
+          ObservedInput::indicators,
+          ObservedInput::legal);
       Assert.assertEquals(edited.table(), withRiverTile(base.table(), edit, old.riichi()));
     }
   }
@@ -185,16 +173,12 @@ public class ScenarioEditTest {
     assertUnchanged(
         base.input(),
         edited.input(),
-        PolicyInput::hand,
-        PolicyInput::melds,
-        PolicyInput::seats,
-        PolicyInput::scores,
-        PolicyInput::indicators,
-        PolicyInput::dora,
-        PolicyInput::turn,
-        PolicyInput::legal,
-        PolicyInput::round,
-        PolicyInput::furiten);
+        ObservedInput::hand,
+        ObservedInput::riichi,
+        ObservedInput::scores,
+        ObservedInput::indicators,
+        ObservedInput::legal,
+        ObservedInput::furiten);
     Assert.assertEquals(edited.table(), withRiverTile(base.table(), edit, old.riichi()));
   }
 
@@ -206,22 +190,18 @@ public class ScenarioEditTest {
     Answer base = decision.answer(TestEdits.NONE);
     Answer edited = decision.answer(dora(new DoraEdit(0, tile)));
     List<Integer> indicators = new ArrayList<>(base.input().indicators());
-    indicators.set(0, TileCode.type(tile));
+    indicators.set(0, TileCode.kind(tile));
     Assert.assertEquals(edited.input().indicators(), indicators);
     assertUnchanged(
         base.input(),
         edited.input(),
-        PolicyInput::events,
-        PolicyInput::rivers,
-        PolicyInput::hand,
-        PolicyInput::melds,
-        PolicyInput::seats,
-        PolicyInput::scores,
-        PolicyInput::honba,
-        PolicyInput::kyotaku,
-        PolicyInput::turn,
-        PolicyInput::legal,
-        PolicyInput::round);
+        ObservedInput::events,
+        ObservedInput::hand,
+        ObservedInput::riichi,
+        ObservedInput::scores,
+        ObservedInput::honba,
+        ObservedInput::kyotaku,
+        ObservedInput::legal);
     List<String> dora = new ArrayList<>(base.table().dora());
     dora.set(0, tile);
     TableState table = base.table();
@@ -253,17 +233,12 @@ public class ScenarioEditTest {
     assertUnchanged(
         base.input(),
         edited.input(),
-        PolicyInput::events,
-        PolicyInput::rivers,
-        PolicyInput::hand,
-        PolicyInput::melds,
-        PolicyInput::seats,
-        PolicyInput::indicators,
-        PolicyInput::dora,
-        PolicyInput::turn,
-        PolicyInput::legal,
-        PolicyInput::round,
-        PolicyInput::furiten);
+        ObservedInput::events,
+        ObservedInput::hand,
+        ObservedInput::riichi,
+        ObservedInput::indicators,
+        ObservedInput::legal,
+        ObservedInput::furiten);
     TableState table = base.table();
     List<PlayerState> players = new ArrayList<>();
     for (int seat = 0; seat < table.players().size(); seat++)
@@ -281,6 +256,7 @@ public class ScenarioEditTest {
         decision.deposited());
   }
 
+  /** 確かめる順は河 → ドラ → 手牌 → 点 → 本場 → 供託。前のフィールドの誤りを先に名指す。 */
   @Test
   public void editsThatContradictThePositionAreRejected() {
     Decision decision = AFTER_RIICHI;
@@ -293,6 +269,11 @@ public class ScenarioEditTest {
         rivers(new RiverEdit(seat, 0, own.tile(), !own.tsumogiri())),
         "edits.rivers[0]",
         "recorded tsumogiri");
+    rejected(
+        decision,
+        rivers(new RiverEdit(4, 0, "E", false)),
+        "edits.rivers[0]",
+        "seat must be between 0 and 3.");
     rejected(
         decision,
         rivers(new RiverEdit(opponent, player.river().size(), "E", false)),
@@ -335,15 +316,36 @@ public class ScenarioEditTest {
         decision,
         new ScenarioEdits(null, null, null, null, null, 101),
         "edits.kyotaku",
-        "kyotaku");
+        "and 100.");
     rejected(
         decision,
         new ScenarioEdits(null, null, null, null, null, decision.deposited() - 1),
         "edits.kyotaku",
         "deposited");
+    // 河の誤りは、後のフィールド（ドラ・点）の誤りより先に名指される。
+    rejected(
+        decision,
+        new ScenarioEdits(
+            List.of(new RiverEdit(opponent, player.river().size(), "E", false)),
+            List.of(new DoraEdit(decision.table().dora().size(), "E")),
+            null,
+            scores(scores, 0, 25050).scores(),
+            null,
+            null),
+        "edits.rivers[0]",
+        "no tile at this index");
+    ReviewerException count =
+        Assert.expectThrows(
+            ReviewerException.class,
+            () -> decision.answer(new ScenarioEdits(null, null, null, scores.subList(0, 3), null, null)));
+    Assert.assertEquals(count.code(), ErrorCode.INVALID_REQUEST);
+    Assert.assertEquals(count.getMessage(), "edits.scores must contain four scores.");
   }
 
-  /** 写しの数（4・3・1 枚）ごとに最も多く見えている牌を、写しの数を 1 枚超えるまで他家の河に置く変更は、最初の変更を名指して断る。 */
+  /**
+   * 写しの数（4・3・1 枚）ごとに、その数の牌のうち最も多く見えている牌を選び、写しの数より 1 枚多く見えるまで他家の河に置く。この変更は、
+   * 最初の変更を名指して断られる。
+   */
   @Test
   public void editsThatShowMoreCopiesThanTheSetAreRejected() {
     Decision decision = AFTER_RIICHI;
@@ -397,8 +399,8 @@ public class ScenarioEditTest {
     return new ScenarioEdits(null, null, null, List.copyOf(scores), null, null);
   }
 
-  /** 変更で変わった出来事がただ 1 つであることを確かめ、その出来事を返す。 */
-  private static String onlyChangedEvent(PolicyInput base, PolicyInput edited) {
+  /** 変更で変わったイベントがただ 1 つであることを確かめ、そのイベントを返す。 */
+  private static String onlyChangedEvent(ObservedInput base, ObservedInput edited) {
     Assert.assertEquals(edited.events().size(), base.events().size());
     List<String> changed = new ArrayList<>();
     for (int event = 0; event < base.events().size(); event++)
@@ -410,8 +412,8 @@ public class ScenarioEditTest {
 
   @SafeVarargs
   static void assertUnchanged(
-      PolicyInput base, PolicyInput edited, Function<PolicyInput, ?>... values) {
-    for (Function<PolicyInput, ?> value : values)
+      ObservedInput base, ObservedInput edited, Function<ObservedInput, ?>... values) {
+    for (Function<ObservedInput, ?> value : values)
       Assert.assertEquals(value.apply(edited), value.apply(base));
   }
 
@@ -436,22 +438,21 @@ public class ScenarioEditTest {
         table.activeSeat());
   }
 
-  /** 判断の席に見える牌の数が少なく、元の牌と違う種類の牌。 */
+  /** 判断する席に見えている枚数が少なく、元の牌と種類が違う牌。 */
   static String rareTile(TableState table, int seat, String old) {
     Map<String, Integer> visible = visible(table, seat);
     for (String tile : RARE_TILES)
-      if (visible.getOrDefault(tile, 0) <= 2 && TileCode.type(tile) != TileCode.type(old))
+      if (visible.getOrDefault(tile, 0) <= 2 && TileCode.kind(tile) != TileCode.kind(old))
         return tile;
     throw new AssertionError("No rare tile in the fixture position.");
   }
 
-  /** 牌の記号の写しの数（赤の 5 は 1 枚、ほかの 5 は 3 枚、ほかは 4 枚）。 */
+  /** 牌の記号ごとの写しの数（赤の 5 は 1 枚、赤でない 5 は 3 枚、ほかは 4 枚）。 */
   static int copies(String tile) {
-    if (TileCode.red(tile)) return 1;
-    return Tile.canBeAka(TileCode.type(tile)) ? 3 : 4;
+    return TileCopies.copies(Variant.TENHOU_4P, TileCode.face(tile));
   }
 
-  /** 判断の席に見える牌の、牌の記号ごとの数。 */
+  /** 判断する席に見える牌を、牌の記号ごとに数える。 */
   static Map<String, Integer> visible(TableState table, int seat) {
     Map<String, Integer> counts = new HashMap<>();
     for (String tile : visibleTiles(table, seat)) counts.merge(tile, 1, Integer::sum);
@@ -469,7 +470,7 @@ public class ScenarioEditTest {
     return tiles;
   }
 
-  /** 他家の鳴かれていない河の牌の位置。 */
+  /** 他家の河で、鳴かれていない牌の位置。 */
   private static List<RiverEdit> opponentSlots(TableState table, int seat) {
     List<RiverEdit> slots = new ArrayList<>();
     for (int opponent = 0; opponent < table.players().size(); opponent++)
@@ -492,7 +493,7 @@ public class ScenarioEditTest {
     return -1;
   }
 
-  /** 記録された手が打牌の判断（手番か鳴いた後）。 */
+  /** 記録された手が打牌か。手番の打牌と、鳴いた後の打牌の両方を数える。 */
   static boolean discards(Format6.Step step) {
     return step.chosenType().equals("DAHAI");
   }
@@ -503,12 +504,12 @@ public class ScenarioEditTest {
     return -1;
   }
 
-  record Answer(PolicyInput input, TableState table) {}
+  record Answer(ObservedInput input, TableState table) {}
 
   /**
-   * 試験の判断と、変える他家。
+   * テストに使う判断と、変える他家。
    *
-   * @param deposited 判断までにこの局で出たリーチの棒
+   * @param deposited 判断までにこの局で出た立直棒の本数
    */
   record Decision(
       LoadedRecord record,
@@ -521,39 +522,34 @@ public class ScenarioEditTest {
       return table.players().get(opponent);
     }
 
-    /** 変更を当てた方策の入力と、変更を写した判断の局面。 */
+    /** 変更を当てたときに方策が受け取る O と、変更を当てた判断の局面。 */
     Answer answer(ScenarioEdits edits) {
       var policy = new RecordingPolicy();
-      ScenarioEngine.evaluate(
+      Scenarios.evaluate(
           record, new ScenarioQuery(round, step.eventIndex(), step.actor(), edits, null), policy);
       Assert.assertEquals(policy.inputs.size(), 1);
-      return new Answer(policy.inputs.getFirst(), edited(edits));
+      return new Answer(policy.input(0), edited(edits));
     }
 
-    /** RoundRewriter が写した局面（もしもの答えは鳴く時だけ局面を返すので、場所を探して写し直す）。 */
+    /** RoundRewriter で変更を当てた局面。もしもの答えが局面を返すのは鳴くときだけなので、判断の場所を探して変更を当て直す。 */
     private TableState edited(ScenarioEdits edits) {
       return RoundRewriter.apply(
-              record.replay().events(),
-              DecisionLocator.find(record, round, step.eventIndex(), step.actor()),
+              record.rounds().get(round),
+              Scenarios.find(record, round, step.eventIndex(), step.actor()),
               edits)
           .table();
     }
 
     /**
-     * 牌譜 kakan-a の判断のうち、変える他家が見つかる最初の判断。
+     * エンジンで打った四人打ちの半荘（種 0）の判断のうち、変える他家が見つかる最初の判断を返す。
      *
-     * @param wanted 判断の種類
-     * @param opponent 判断の局面から変える他家を選ぶ（いなければ -1）
+     * @param wanted 使う判断を選ぶ条件
+     * @param opponent 判断の局面から変える他家を選ぶ関数（いなければ -1 を返す）
      */
     static Decision find(
         Predicate<Format6.Step> wanted, ToIntBiFunction<TableState, Format6.Step> opponent) {
-      LoadedRecord record = GoldenRecords.read("kakan-a");
+      LoadedRecord record = PlayedRecords.read(Variant.TENHOU_4P, 0);
       Format6.Document document = Format6.analyze(record, new RecordingPolicy());
-      List<StartKyoku> starts =
-          record.replay().events().stream()
-              .filter(StartKyoku.class::isInstance)
-              .map(StartKyoku.class::cast)
-              .toList();
       for (Format6.Located located : document.decisions()) {
         Format6.Step step = located.step();
         if (!wanted.test(step)) continue;
@@ -566,7 +562,7 @@ public class ScenarioEditTest {
               step,
               table,
               seat,
-              table.kyotaku() - starts.get(located.round()).kyotaku());
+              table.kyotaku() - record.rounds().get(located.round()).start().kyotaku());
       }
       throw new AssertionError("No such decision in the fixture.");
     }

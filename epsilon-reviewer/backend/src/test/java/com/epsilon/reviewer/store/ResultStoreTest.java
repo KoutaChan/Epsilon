@@ -5,6 +5,7 @@ import com.epsilon.reviewer.engine.format.ModelInfo;
 import com.epsilon.reviewer.engine.load.RecordSummary;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
+import com.epsilon.reviewer.json.Json;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -20,7 +21,11 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-/** 原子の保存、再起動の後の索引、持ち主の分け、削除ですぐ消える、壊れた meta を飛ばす、staging と trash の掃除（保存が書いた物だけ）、書き出し、鍵。 */
+/**
+ * 結果の保存先を確かめる。保存した結果は新しい順に並び、再起動の後も残り、オーナーごとに分かれる。削除した結果は
+ * すぐ見えなくなり、ファイルも残らない。読めない meta は飛ばし、staging と trash の掃除では保存先が書いた物だけを消す。
+ * ほかに、書き出し、捨てた下書き、同じフォルダーのロックも確かめる。
+ */
 public class ResultStoreTest {
   private static final OwnerId OWNER = OwnerId.fromCookieKey("A".repeat(43));
   private static final OwnerId OTHER = OwnerId.fromCookieKey("B".repeat(43));
@@ -120,6 +125,38 @@ public class ResultStoreTest {
     }
   }
 
+  /**
+   * meta.json は、起動時にインデックスへ読める大きさまでしか保存しない。ちょうど上限の大きさの結果は再起動の後も残る。1 バイトでも超える
+   * 結果は確定で断り、フォルダーを残さない。
+   */
+  @Test
+  public void aMetaTooLargeToIndexIsRefusedAtCommit() throws IOException {
+    int limit = 64 * 1024;
+    ResultId kept = ResultId.random();
+    ResultId refused = ResultId.random();
+    String filling = "x".repeat(limit - Json.write(meta(kept, "")).length);
+    Assert.assertEquals(Json.write(meta(kept, filling)).length, limit);
+    try (ResultStore store = ResultStore.open(directory)) {
+      try (ResultDraft draft = draft(store, kept)) {
+        store.commit(draft, meta(kept, filling));
+      }
+      try (ResultDraft draft = draft(store, refused)) {
+        IOException failure =
+            Assert.expectThrows(
+                IOException.class, () -> store.commit(draft, meta(refused, filling + "x")));
+        Assert.assertEquals(failure.getMessage(), "meta.json is too large.");
+      }
+      refused(() -> store.find(OWNER, refused), ErrorCode.RESULT_NOT_FOUND);
+      assertHistory(store, kept);
+    }
+    Assert.assertEquals(names(directory.resolve("results")), List.of(kept.value()));
+    Assert.assertEquals(names(directory.resolve("staging")), List.of());
+    try (ResultStore store = ResultStore.open(directory)) {
+      assertHistory(store, kept);
+      Assert.assertEquals(store.find(OWNER, kept).record().names().getFirst(), filling);
+    }
+  }
+
   @Test
   public void exportReplacesTheTargetAndDraftsAreDiscarded() throws IOException {
     try (ResultStore store = ResultStore.open(directory)) {
@@ -182,7 +219,28 @@ public class ResultStoreTest {
     return id;
   }
 
-  /** 保存が作る形の 1 件（UUID の名前のフォルダーと保存のファイル 1 つ）。 */
+  /** 文書と牌譜を書き終えた下書き。 */
+  private static ResultDraft draft(ResultStore store, ResultId id) throws IOException {
+    ResultDraft draft = store.draft(id);
+    try (var document = draft.document()) {
+      document.write("{\"format\":6}".getBytes(StandardCharsets.UTF_8));
+    }
+    draft.record(bytes("record"));
+    return draft;
+  }
+
+  /** 1 人目の名前だけを変えた meta。 */
+  private static ResultMeta meta(ResultId id, String name) {
+    return new ResultMeta(
+        6,
+        id.value(),
+        OWNER.value(),
+        "2026-11-04T00:00:00Z",
+        new ModelInfo("fixture", "r1", "Fixture", "1"),
+        new RecordSummary("tenhou", List.of(name, "B", "C", "D"), null, 1));
+  }
+
+  /** 保存先が作るのと同じ形の 1 件を置く。UUID の名前のフォルダーに、保存のファイルが 1 つ入る。 */
   private Path entry(String folder, String file) throws IOException {
     Path entry =
         Files.createDirectories(directory.resolve(Path.of(folder, ResultId.random().value())));

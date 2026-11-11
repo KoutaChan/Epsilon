@@ -9,7 +9,7 @@ import {
 import { useLanguage } from "../../language/LanguageProvider";
 import { HistoryMenu, type MenuAction } from "./HistoryMenu";
 
-/** 履歴の 1 項目。最終の点数は高い順、点の無い席は最後。 */
+/** 履歴の 1 項目のカード。席は最終の点数が高い順に並べ、点数の無い席は最後に置く。 */
 export function HistoryCard({
   entry,
   busy,

@@ -2,12 +2,12 @@ package com.epsilon.reviewer.api;
 
 /** 誰が操作を呼べるか（protocol/commands.ts の Access）。 */
 public enum Access {
-  /** Cookie を読まず発行もしない公開の道。 */
+  /** Cookie を読まず、発行もしない公開のパス。 */
   PUBLIC,
-  /** Cookie の持ち主（無ければ発行する）。 */
+  /** Cookie で見分けたオーナー（Cookie が無ければ発行する）。 */
   OWNER,
-  /** 共有リンク（id を知る誰でも、Cookie を読まない）。 */
+  /** 共有リンク。id を知っていれば誰でも呼べる。Cookie は読まない。 */
   SHARE,
-  /** デスクトップの Java の子プロセス（stdio だけ）。 */
+  /** デスクトップアプリが、Java の子プロセスの stdio を通して呼ぶ。stdio からしか呼べない。 */
   LOCAL
 }

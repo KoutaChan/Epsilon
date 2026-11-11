@@ -11,7 +11,7 @@ const names = ["Man", "Pin", "Sou"].flatMap((suit) => [
   ...Array.from({ length: 9 }, (_, i) => `${suit}${i + 1}`),
   `${suit}5-Dora`,
 ]);
-names.push("Ton", "Nan", "Shaa", "Pei", "Haku", "Hatsu", "Chun", "Blank");
+names.push("Ton", "Nan", "Shaa", "Pei", "Haku", "Hatsu", "Chun");
 await mkdir(path.join(destination, "Regular"), { recursive: true });
 const hashes = {};
 const pending = [...names];

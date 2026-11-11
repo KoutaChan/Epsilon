@@ -1,7 +1,7 @@
 import type { ActionType } from "../../../protocol/result.ts";
 import type { MessageKey } from "./catalog.ts";
 
-// 行動の種類と表示文言の対応を、型検査できる一覧で定義する。
+// 行動の種類と表示する文言の対応を、型で検査できる一覧で定義する。
 export const actionMessageKeys = {
   DAHAI: "action.dahai",
   CHI: "action.chi",
@@ -14,4 +14,5 @@ export const actionMessageKeys = {
   RON_AGARI: "action.ron",
   PASS: "action.pass",
   KYUSHU_KYUHAI: "action.kyushu",
+  NUKI: "action.nuki",
 } as const satisfies Record<ActionType, MessageKey>;

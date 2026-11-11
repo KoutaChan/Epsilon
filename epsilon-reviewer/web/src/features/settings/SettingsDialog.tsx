@@ -7,7 +7,7 @@ import { useTask } from "../../hooks/useTask";
 import { errorKey } from "../../language/catalog";
 import { useLanguage } from "../../language/LanguageProvider";
 
-/** デスクトップの保存先。変えるとすぐ保存され、解析の側が新しいフォルダーで開き直す。 */
+/** デスクトップ版の保存先の設定。変えるとすぐ保存され、解析を行う側は新しいフォルダーで開き直す。 */
 export function SettingsDialog({
   desktop,
   onClose,

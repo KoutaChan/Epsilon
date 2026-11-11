@@ -26,46 +26,48 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 解析の仕事。1 本の worker（reviewer-analysis）と 16 の待ちで、持ち主ごとに終わっていない仕事は 1 つ。終わった仕事は 24 時間覚える。
+ * 解析ジョブを管理する。worker のスレッド（reviewer-analysis-&lt;n&gt;）の数、待たせておけるジョブの数、終わったジョブを覚えておく時間は設定で決める。
+ * 終わっていないジョブはオーナーごとに 1 つまで。
  *
- * <p>worker: running → モデルを借りる → 文書を流して書く（出来事と判断ごとに取り消しを見る）→ saving → 牌譜と meta を書いて確定 →
- * completed。読み込んだ牌譜は worker に渡す手だけが持ち、仕事の終わりに必ず放す。
+ * <p>worker では次の順に進む。running → モデルを借りる → 文書をストリームで書く（イベントと判断ごとに取り消しを確かめる）→ saving → 牌譜と meta
+ * を書いて確定する → completed。読み込んだ牌譜を持つのは worker に渡すタスクだけで、ジョブが終われば必ず解放する。
  */
 public final class AnalysisJobs implements AutoCloseable {
   private static final Logger LOG = LoggerFactory.getLogger(AnalysisJobs.class);
 
-  /** 走りの外の待ちの数。 */
-  static final int QUEUE = 16;
-
-  /** 終わった仕事を覚える時間。 */
-  static final Duration RETENTION = Duration.ofHours(24);
-
   private final PreparedRecords records;
   private final ModelRegistry models;
   private final ResultStore store;
+  private final Duration retention;
   private final Map<JobId, Job> jobs = new ConcurrentHashMap<>();
-  private final ThreadPoolExecutor worker =
-      new ThreadPoolExecutor(
-          1,
-          1,
-          0,
-          TimeUnit.SECONDS,
-          new ArrayBlockingQueue<>(QUEUE),
-          task -> new Thread(task, "reviewer-analysis"));
+  private final ThreadPoolExecutor worker;
 
-  public AnalysisJobs(PreparedRecords records, ModelRegistry models, ResultStore store) {
+  public AnalysisJobs(
+      PreparedRecords records, ModelRegistry models, ResultStore store, AnalysisSettings settings) {
     this.records = records;
     this.models = models;
     this.store = store;
+    retention = Duration.ofHours(settings.keepHours());
+    AtomicInteger threads = new AtomicInteger();
+    worker =
+        new ThreadPoolExecutor(
+            settings.workers(),
+            settings.workers(),
+            0,
+            TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(settings.queue()),
+            task -> new Thread(task, "reviewer-analysis-" + threads.incrementAndGet()));
   }
 
   /**
-   * @param record take した牌譜（失敗した時は呼び出し側が restore する）
-   * @throws ReviewerException analysis_active・queue_full・shutting_down
+   * @param record 取り出した牌譜。受け付けられなければ、呼び出し元が元に戻す
+   * @throws ReviewerException オーナーの終わっていないジョブがある（analysis_active）、待ちがいっぱい（queue_full）、または閉じている途中
+   *     （shutting_down）
    */
   public synchronized AnalysisStarted submit(
       OwnerId owner, PreparedRecord record, ModelEntry model) {
@@ -84,26 +86,26 @@ public final class AnalysisJobs implements AutoCloseable {
     return new AnalysisStarted(job.id.value(), model.info());
   }
 
-  /** @throws ReviewerException job_not_found（無い・他の持ち主・終わってから 24 時間後） */
+  /** @throws ReviewerException ジョブが無い、オーナーが違う、または覚えておく時間を過ぎた（job_not_found） */
   public JobSnapshot snapshot(OwnerId owner, JobId id) {
     return owned(owner, id).snapshot();
   }
 
-  /** 待ちか走りなら取り消しを頼む（状態は worker が変える）。 */
+  /** 待ち中か実行中のジョブなら、取り消しを要求する。状態は worker が変える。 */
   public JobSnapshot cancel(OwnerId owner, JobId id) {
     Job job = owned(owner, id);
     job.requestCancel();
     return job.snapshot();
   }
 
-  /** 終わってから 24 時間たった仕事を忘れる。 */
+  /** 覚えておく時間を過ぎたジョブを捨てる。 */
   public void sweep() {
-    Instant limit = Instant.now().minus(RETENTION);
+    Instant limit = Instant.now().minus(retention);
     jobs.values()
         .removeIf(job -> job.finishedAt() != null && job.finishedAt().isBefore(limit));
   }
 
-  /** 全ての仕事を取り消し、走る仕事が止まるのを待つ。 */
+  /** 全てのジョブを取り消し、実行中のジョブが止まるのを待つ。 */
   @Override
   public void close() {
     synchronized (this) {

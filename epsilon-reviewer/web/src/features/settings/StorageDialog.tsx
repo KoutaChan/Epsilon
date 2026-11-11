@@ -2,7 +2,7 @@ import { api } from "../../api/platform";
 import { Dialog } from "../../components/Dialog";
 import { useLanguage } from "../../language/LanguageProvider";
 
-/** 保存する情報の説明。保存先と送るものの文は Web とデスクトップで違う。 */
+/** 保存する情報の説明。保存先と送信するものの説明文は、Web 版とデスクトップ版で違う。 */
 export function StorageDialog({ onClose }: { onClose: () => void }) {
   const { t } = useLanguage();
   const desktop = api.platform === "desktop";

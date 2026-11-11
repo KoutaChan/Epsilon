@@ -11,20 +11,20 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 読み込んだ牌譜。解析を待つ物（WAITING）は 30 分、解析の待ちと走りに入った物（QUEUED）は解析が終わるまで持つ。数と大きさは 2 つの状態の和で
- * 数える。
+ * 読み込んだ牌譜を、解析が終わるまで預かる。解析を待つ牌譜（WAITING）は 30 分で消し、解析のキューに入ったか解析中の牌譜（QUEUED）は
+ * 解析が終わるまで残す。件数と大きさの上限は、2 つの状態を合わせて数える。
  */
 public final class PreparedRecords {
-  /** 持ち主ごとの数。 */
+  /** オーナーごとの件数の上限。 */
   static final int PER_OWNER = 4;
 
-  /** 全体の数。 */
+  /** 全体の件数の上限。 */
   static final int TOTAL = 64;
 
-  /** 元のバイト列の合計（バイト）。 */
+  /** 元のバイト列の合計の上限（バイト）。 */
   static final long BYTES = 128L * 1024 * 1024;
 
-  /** WAITING の寿命。 */
+  /** WAITING の牌譜を預かる時間。 */
   static final Duration LIFETIME = Duration.ofMinutes(30);
 
   private final Clock clock;
@@ -39,7 +39,7 @@ public final class PreparedRecords {
     this.clock = clock;
   }
 
-  /** @throws ReviewerException too_many_records（持ち主 4・全体 64・128 MiB） */
+  /** @throws ReviewerException too_many_records（オーナーごとに 4 件、全体で 64 件、合計 128 MiB を超える） */
   public synchronized PreparedRecord add(OwnerId owner, LoadedRecord record, byte[] source) {
     expire();
     long owned =
@@ -53,9 +53,9 @@ public final class PreparedRecords {
   }
 
   /**
-   * WAITING の牌譜を解析へ渡す（QUEUED）。
+   * WAITING の牌譜を解析に渡し、QUEUED にする。
    *
-   * @throws ReviewerException record_expired（無い・期限切れ・他の持ち主・既に渡した）
+   * @throws ReviewerException record_expired（牌譜が無い、期限が切れた、オーナーが違う、既に渡した）
    */
   public synchronized PreparedRecord take(OwnerId owner, RecordId id) {
     expire();
@@ -66,7 +66,7 @@ public final class PreparedRecords {
     return entry.record;
   }
 
-  /** 解析を受けられなかった時に WAITING へ戻す。 */
+  /** 解析が牌譜を受け付けられなかったとき、WAITING に戻す。 */
   public synchronized void restore(PreparedRecord record) {
     Entry entry = entries.get(record.id());
     if (entry != null) entry.queued = false;
@@ -77,7 +77,7 @@ public final class PreparedRecords {
     if (entries.remove(record.id()) != null) bytes -= record.source().length;
   }
 
-  /** 期限を過ぎた WAITING を外す。 */
+  /** 期限を過ぎた WAITING の牌譜を外す。 */
   public synchronized void sweep() {
     expire();
   }

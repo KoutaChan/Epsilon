@@ -2,7 +2,7 @@ import { tileAssetName } from "../features/replay/tileAssets.ts";
 import type { MessageKey, Translate } from "../language/catalog";
 import { useLanguage } from "../language/LanguageProvider";
 
-/** 伏せた牌（文書の牌の記号ではない）。 */
+/** 伏せた牌の画像の名前。文書で使う牌の記号ではない。 */
 const BACK = "back";
 const HONOR_NAMES: Readonly<Record<string, MessageKey>> = {
   E: "tile.E",

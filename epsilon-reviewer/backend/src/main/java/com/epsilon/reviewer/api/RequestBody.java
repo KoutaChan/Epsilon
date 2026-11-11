@@ -2,9 +2,9 @@ package com.epsilon.reviewer.api;
 
 /** 要求の本文（protocol/commands.ts の RequestBody）。 */
 public enum RequestBody {
-  /** 道の欄だけ。 */
+  /** 本文なし。要求のフィールドは HTTP のパスにあるものだけ。 */
   NONE,
-  /** 道の欄を除いた欄の JSON。 */
+  /** パスにあるフィールドを除いた、残りのフィールドの JSON。 */
   JSON,
   /** 牌譜のバイト列。 */
   BINARY

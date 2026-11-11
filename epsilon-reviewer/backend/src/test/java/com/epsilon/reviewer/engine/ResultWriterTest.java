@@ -1,25 +1,22 @@
 package com.epsilon.reviewer.engine;
 
-import com.epsilon.core.Action;
-import com.epsilon.core.GameState;
-import com.epsilon.core.Tile;
-import com.epsilon.replay.ReplayDecision;
-import com.epsilon.replay.ReplayEngine;
-import com.epsilon.replay.ReplayEvent;
-import com.epsilon.replay.ReplayEvent.Dahai;
-import com.epsilon.replay.ReplayEvent.Hora;
-import com.epsilon.replay.ReplayEvent.None;
-import com.epsilon.replay.ReplayEvent.StartGame;
-import com.epsilon.replay.ReplayEvent.StartKyoku;
-import com.epsilon.replay.ReplayEvent.Tsumo;
-import com.epsilon.replay.ReplayObserver;
+import com.epsilon.mahjong.action.Action;
+import com.epsilon.mahjong.engine.Boundary;
+import com.epsilon.mahjong.engine.Decisions;
+import com.epsilon.mahjong.engine.RoundEnd;
+import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.mahjong.record.RecordEvent;
+import com.epsilon.mahjong.record.RecordedRound;
+import com.epsilon.mahjong.record.ReplayDriver;
+import com.epsilon.mahjong.record.RoundResult;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.reviewer.FixtureFamily;
 import com.epsilon.reviewer.engine.format.ResultWriter;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
-import com.epsilon.reviewer.engine.load.RecordLoader;
 import com.epsilon.reviewer.engine.load.RecordSummary;
 import com.epsilon.reviewer.engine.review.EvaluatedDecision;
 import com.epsilon.reviewer.engine.view.EventKind;
-import com.epsilon.reviewer.engine.view.TableProjector;
+import com.epsilon.reviewer.engine.view.RecordTable;
 import com.epsilon.reviewer.engine.view.TableState;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -32,7 +29,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -46,29 +42,26 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * ResultWriter が書いた文書を、書き手の部品を使わない試験の読み手（Format6）で戻して確かめる。全ての手順の局面が TableProjector の局面と一致し、出来事の
- * 位置・判断の cause と resolve が再生と一致し、候補の行・chosen・probabilities・null の欄が決まりどおり。double-ron-a の文書を
- * target/format6/double-ron-a.json に書き残す（組み上げで画面の読み手に通す）。
+ * ResultWriter が書いた文書を、ライターのコードを使わないテスト用のリーダー（Format6）で読み戻して確かめる。どの手順の局面も、
+ * 記録の手でエンジンを進めながら、同時に表示の卓も進めたときの局面と一致する。イベントの位置と、判断の cause・resolve は、
+ * 読み込みのときに作ったインデックスと一致する。候補の行・chosen・null のフィールドは、決まりどおりに書くか省く。
+ * 最初の牌譜の文書は target/format6/&lt;牌譜の名前&gt;.json に残す。
  */
 public class ResultWriterTest {
   private static final Logger LOG = LoggerFactory.getLogger(ResultWriterTest.class);
-  private static final Set<String> CALLS = Set.of("CHI", "PON", "DAIMINKAN", "ANKAN", "KAKAN");
-  private static final Set<EventKind> ACTORLESS =
-      EnumSet.of(
-          EventKind.START_KYOKU,
-          EventKind.DORA,
-          EventKind.RYUKYOKU,
-          EventKind.END_KYOKU,
-          EventKind.END_GAME);
+  private static final Set<Action.Type> CALLS =
+      Set.of(
+          Action.Type.CHI,
+          Action.Type.PON,
+          Action.Type.DAIMINKAN,
+          Action.Type.ANKAN,
+          Action.Type.KAKAN);
 
   @Test
-  public void everyStepRestoresTheProjectedTableAndTheReplayPositions() throws IOException {
-    Map<String, LoadedRecord> records = new LinkedHashMap<>();
-    for (String name : GoldenRecords.NAMES) records.put(name, GoldenRecords.read(name));
-    records.put(
-        "river.mjai",
-        RecordLoader.load(AnalysisTest.riverFixture().getBytes(StandardCharsets.UTF_8)));
-    records.put("chankan round", ScenarioReplayTest.chankanRound());
+  public void everyStepRestoresTheTableAndTheIndexedPositions() throws IOException {
+    Map<String, LoadedRecord> records = new LinkedHashMap<>(PlayedRecords.fourPlayer());
+    records.put("chankan round", TestRounds.chankanRound());
+    String sample = records.keySet().iterator().next();
     for (Map.Entry<String, LoadedRecord> entry : records.entrySet()) {
       String name = entry.getKey();
       List<Expected> expected = expected(entry.getValue());
@@ -96,72 +89,46 @@ public class ResultWriterTest {
           raw.length,
           gzip(raw).length,
           document.decisions().size());
-      if (name.equals("double-ron-a")) {
+      if (name.equals(sample)) {
         Path target = Files.createDirectories(Path.of("target", "format6"));
-        Files.write(target.resolve("double-ron-a.json"), raw);
+        Files.write(target.resolve(name + ".json"), raw);
       }
     }
   }
 
   @Test
   public void eventStepsMustBeContiguousAndEvaluationsMustNotMix() throws IOException {
-    LoadedRecord record = GoldenRecords.read("kakan-a");
+    LoadedRecord record = PlayedRecords.read(Variant.TENHOU_4P, 0);
     TableState table = expected(record).getFirst().table();
     try (var writer = writer()) {
-      writer.startRound(0, 0, 0, 1, table);
-      writer.event(1, EventKind.START_KYOKU, -1, null, null);
+      writer.startRound(0, 0, 0, 0, table);
+      writer.event(0, EventKind.START_KYOKU, -1, null, null);
       Assert.expectThrows(
-          IllegalStateException.class, () -> writer.event(3, EventKind.TSUMO, 0, null, null));
-      writer.event(2, EventKind.TSUMO, 0, null, null);
-      writer.decision(0, 2, 3, decision(true), null);
+          IllegalStateException.class, () -> writer.event(2, EventKind.TSUMO, 0, null, null));
+      writer.event(1, EventKind.TSUMO, 0, null, null);
+      writer.decision(0, 1, 2, decision(true));
       Assert.expectThrows(
-          IllegalStateException.class, () -> writer.decision(0, 2, 3, decision(false), null));
+          IllegalStateException.class, () -> writer.decision(0, 1, 2, decision(false)));
       Assert.expectThrows(IllegalStateException.class, () -> writer.finish(null));
     }
     try (var writer = writer()) {
       Assert.expectThrows(
-          IllegalStateException.class, () -> writer.event(1, EventKind.TSUMO, 0, null, null));
-      writer.startRound(0, 0, 0, 1, table);
+          IllegalStateException.class, () -> writer.event(0, EventKind.TSUMO, 0, null, null));
+      writer.startRound(0, 0, 0, 0, table);
       Assert.expectThrows(
-          IllegalStateException.class, () -> writer.decision(0, 1, 2, decision(true), null));
+          IllegalStateException.class, () -> writer.decision(0, 0, 1, decision(true)));
     }
-  }
-
-  /** 席 1・2 が席 0 の白でロンでき、席 2 のロンの後に席 1 が見送りを明示する（mjai の none）。 */
-  @Test
-  public void aPassAfterARonIsWrittenAfterTheRonInRecordOrder() {
-    int[][] hands = {
-      {12, 13, 14, 16, 20, 48, 52, 56, 84, 88, 92, 112, 116},
-      {0, 4, 8, 36, 40, 44, 72, 76, 80, 108, 109, 110, 124},
-      {24, 28, 32, 60, 64, 68, 96, 100, 104, 132, 133, 134, 125},
-      {5, 6, 9, 17, 21, 29, 41, 49, 57, 77, 85, 113, 120}
-    };
-    List<ReplayEvent> events =
-        List.of(
-            new StartGame(),
-            new StartKyoku(
-                Tile.TON, 1, 0, 0, 0, Tile.HATSU, hands, new int[] {25000, 25000, 25000, 25000}),
-            new Tsumo(0, 126),
-            new Dahai(0, 126, true),
-            new Hora(2, 0, Tile.HAKU, new int[] {-3000, 0, 3000, 0}),
-            new None(1));
-    Format6.Document document =
-        Format6.analyze(ScenarioReplayTest.synthetic(events), new RecordingPolicy());
-    List<String> written = new ArrayList<>();
-    for (Format6.Step step : document.rounds().getFirst().steps())
-      if (!step.decision()) written.add(step.event());
-    Assert.assertEquals(written, List.of("start_kyoku", "tsumo", "dahai", "hora", "none"));
   }
 
   @Test
   public void policyOnlyDocumentsHaveNoTemperature() throws IOException {
-    LoadedRecord record = GoldenRecords.read("kakan-a");
+    LoadedRecord record = PlayedRecords.read(Variant.TENHOU_4P, 0);
     var out = new ByteArrayOutputStream();
     try (var writer =
         new ResultWriter(out, "id", "2026-11-04T00:00:00Z", Format6.MODEL, record.summary())) {
-      writer.startRound(0, 0, 0, 1, expected(record).getFirst().table());
-      writer.event(1, EventKind.START_KYOKU, -1, null, null);
-      writer.decision(0, 1, 2, decision(false), null);
+      writer.startRound(0, 0, 0, 0, expected(record).getFirst().table());
+      writer.event(0, EventKind.START_KYOKU, -1, null, null);
+      writer.decision(0, 0, 1, decision(false));
       writer.finish(null);
     }
     JsonObject json =
@@ -174,36 +141,36 @@ public class ResultWriterTest {
         step.toString(), "{\"seat\":0,\"candidates\":[[5,0.75],[371,0.25]],\"chosen\":1}");
   }
 
-  /** 候補の行・chosen・probabilities・actor・null の書き分け。 */
+  /** 候補の行・chosen・actor・null を、どの手順で書き、どの手順で省くかを確かめる。 */
   private static void assertOmissions(String name, Format6.Document document) {
     JsonObject json = document.json();
     Assert.assertEquals(json.get("format").getAsInt(), 6, name);
-    Assert.assertEquals(json.get("temperature").getAsDouble(), 0.002, name);
+    Assert.assertEquals(
+        json.get("temperature").getAsDouble(), FixtureFamily.TEMPERATURE, name);
     assertNullsOnlyForDraws(json, null);
     for (Format6.Round round : document.rounds())
       for (Format6.Step step : round.steps()) {
         JsonObject object = step.json();
         if (!step.decision()) {
           EventKind kind = EventKind.valueOf(step.event().toUpperCase(Locale.ROOT));
-          Assert.assertEquals(object.has("actor"), !ACTORLESS.contains(kind), name + " " + object);
+          Assert.assertEquals(object.has("actor"), kind.hasActor(), name + " " + object);
           Assert.assertEquals(
               object.has("outcome"),
               kind == EventKind.HORA || kind == EventKind.RYUKYOKU,
               name + " " + object);
           continue;
         }
-        Assert.assertFalse(object.has("probabilities"), "RecordingPolicy probabilities derive");
         if (object.has("chosen"))
           Assert.assertTrue(step.chosen() < step.candidates().size(), name + " " + object);
         for (JsonElement row : step.candidates()) {
           JsonArray candidate = row.getAsJsonArray();
-          String type = Action.fromIndex(candidate.get(0).getAsInt()).type().name();
+          Action.Type type = Action.of(candidate.get(0).getAsInt()).type();
           Assert.assertEquals(candidate.size(), CALLS.contains(type) ? 3 : 2, name + " " + row);
         }
       }
   }
 
-  /** null は局面のツモ牌（draw）だけ。 */
+  /** null が現れるのは局面のツモ牌（draw）だけであることを確かめる。 */
   private static void assertNullsOnlyForDraws(JsonElement element, String key) {
     if (element.isJsonNull()) Assert.assertEquals(key, "draw");
     else if (element.isJsonArray())
@@ -213,42 +180,83 @@ public class ResultWriterTest {
         assertNullsOnlyForDraws(entry.getValue(), entry.getKey());
   }
 
-  /** 再生の通知の順の手順（start_game と最初の局より前は除く）と、その時の表示の局面。 */
+  /**
+   * 期待する手順と局面を作る。記録の手でエンジンを進めて判断の時点を求め、同時に記録のイベントを表示の卓に当てて局面を作る。
+   * 手順の位置は 0 から数え、読み込みのときのインデックス（局の最初の手順、イベントの最初の手順、手順の数）と照合する。
+   */
   private static List<Expected> expected(LoadedRecord record) {
-    List<Expected> steps = new ArrayList<>();
-    ReplayEngine.replay(
-        record.replay(),
-        new ReplayObserver() {
-          private boolean started;
+    var steps = new Steps();
+    var variant = record.game().variant();
+    var driver = new ReplayDriver(variant);
+    var ws = new RuleWorkspace(variant);
+    for (int index = 0; index < record.rounds().size(); index++) {
+      RecordedRound round = record.rounds().get(index);
+      var table = new RecordTable(round);
+      Assert.assertEquals(record.firstStep(index), steps.next);
+      steps.event("start_kyoku", -1, table.state());
+      List<RecordEvent> events = round.events();
+      int applied = 0;
+      Boundary boundary = driver.start(round, ws);
+      while (boundary == Boundary.DECISIONS) {
+        int cursor = driver.cursor();
+        for (; applied < cursor; applied++) apply(record, index, applied, table, steps);
+        Decisions decisions = driver.engine().decisions();
+        for (int slot = 0; slot < decisions.size(); slot++)
+          steps.list.add(
+              new Expected(
+                  true,
+                  null,
+                  decisions.seat(slot),
+                  record.step(index, cursor),
+                  steps.next - 1,
+                  table.state()));
+        boundary = driver.step(ws);
+      }
+      for (; applied < events.size(); applied++) apply(record, index, applied, table, steps);
+      Assert.assertEquals(record.step(index, events.size()), steps.next);
+      RoundResult result = round.result();
+      RoundEnd end = driver.engine().roundEnd();
+      if (result.win())
+        for (int win = 0; win < result.wins().size(); win++) {
+          table.settleWin(end, win);
+          steps.event("hora", result.wins().get(win).seat(), table.state());
+        }
+      else {
+        table.settleDraw(end);
+        steps.event("ryukyoku", -1, table.state());
+      }
+      steps.event("end_kyoku", -1, table.state());
+    }
+    steps.event("end_game", -1, steps.list.getLast().table());
+    Assert.assertEquals(record.stepCount(), steps.next);
+    return steps.list;
+  }
 
-          @Override
-          public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {
-            steps.add(
-                new Expected(
-                    true,
-                    null,
-                    decision.seat(),
-                    decision.resolveIndex(),
-                    decision.causeIndex(),
-                    TableProjector.table(state)));
-          }
+  /**
+   * 記録のイベントを表示の卓に当てる。立直の宣言牌の打牌では、その前に立直の宣言の手順を置く。
+   *
+   * @param position 局の中のイベントの位置
+   */
+  private static void apply(
+      LoadedRecord record, int round, int position, RecordTable table, Steps steps) {
+    Assert.assertEquals(record.step(round, position), steps.next);
+    RecordEvent event = record.rounds().get(round).events().get(position);
+    int actor = EventKind.actor(event);
+    if (EventKind.declaresRiichi(event))
+      steps.event(EventKind.REACH.wireName(), actor, steps.list.getLast().table());
+    table.apply(event);
+    EventKind kind = EventKind.of(event);
+    steps.event(kind.wireName(), kind.hasActor() ? actor : -1, table.state());
+  }
 
-          @Override
-          public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
-            if (event instanceof StartGame) return;
-            started |= event instanceof StartKyoku;
-            if (!started) return;
-            steps.add(
-                new Expected(
-                    false,
-                    EventKind.of(event).wireName(),
-                    EventKind.actor(event),
-                    index,
-                    -1,
-                    TableProjector.table(state)));
-          }
-        });
-    return steps;
+  /** 期待する手順の並びと、次のイベントの手順の位置。判断の手順は位置を持たず、位置を進めない。 */
+  private static final class Steps {
+    final List<Expected> list = new ArrayList<>();
+    int next;
+
+    void event(String name, int actor, TableState table) {
+      list.add(new Expected(false, name, actor, next++, -1, table));
+    }
   }
 
   private static ResultWriter writer() throws IOException {
@@ -257,17 +265,16 @@ public class ResultWriterTest {
         "id",
         "2026-11-04T00:00:00Z",
         Format6.MODEL,
-        new RecordSummary("mjai", List.of("A", "B", "C", "D"), null, 1));
+        new RecordSummary("mjai", List.of("A", "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1));
   }
 
-  /** 打牌 1m と九種九牌の 2 候補の判断。 */
+  /** 候補が 2 つの判断。手の番号に意味は無く、書き分けを見るためだけに使う。 */
   private static EvaluatedDecision decision(boolean valued) {
     return new EvaluatedDecision(
         new int[] {5, 371},
         valued ? new float[] {0f, 0.001f} : new float[] {0.75f, 0.25f},
         new String[2][],
         1,
-        null,
         valued);
   }
 
@@ -284,7 +291,7 @@ public class ResultWriterTest {
     return out.toByteArray();
   }
 
-  /** 再生が知らせた 1 手順。cause は判断だけ。 */
+  /** 期待する手順 1 つ。cause を持つのは判断だけ。 */
   private record Expected(
       boolean decision, String event, int actor, int eventIndex, int cause, TableState table) {}
 }

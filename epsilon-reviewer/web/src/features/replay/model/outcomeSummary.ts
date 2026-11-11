@@ -12,7 +12,7 @@ export interface WinningHand {
   readonly target: number;
   readonly hand: readonly string[];
   readonly winningTile: string;
-  /** 牌譜に採点の内訳が無ければ null。 */
+  /** 採点の内訳。牌譜に内訳が無ければ null。 */
   readonly details: WinDetails | null;
 }
 
@@ -36,7 +36,7 @@ export function collectWinningHands(
   });
 }
 
-// リーチ棒の支払いを含む局全体の増減と、和了単体の収支を区別する。
+// 局の始めから精算の後までの点数の増減を、席ごとに返す。立直棒の支払いも含むので、和了の収支だけとは合わない。
 export function roundScoreChanges(
   start: Snapshot,
   settled: Snapshot,
@@ -46,11 +46,12 @@ export function roundScoreChanges(
   );
 }
 
+/** 最終の点数の高い順に並べ、1 から順位を付ける。同点は起家に近い席（席の番号の小さい方）を上にし、順位は重ねない。 */
 export function rankFinalPlayers(
   players: readonly PlayerSnapshot[],
   finalScores: readonly number[] | undefined,
 ) {
-  const ordered = players
+  return players
     .map((player) => ({
       player,
       score: finalScores?.[player.seat] ?? player.score,
@@ -58,11 +59,8 @@ export function rankFinalPlayers(
     .sort(
       (left, right) =>
         right.score - left.score || left.player.seat - right.player.seat,
-    );
-  return ordered.map((entry) => ({
-    ...entry,
-    rank: ordered.findIndex((other) => other.score === entry.score) + 1,
-  }));
+    )
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
 
 export function hasRecordedMatchEnd(model: ReplayModel): boolean {

@@ -6,7 +6,7 @@ public enum ResponseBody {
   JSON,
   /** 本文なし（HTTP は 204）。 */
   EMPTY,
-  /** 保存した gzip の解析結果の文書（HTTP は Content-Encoding: gzip、stdio は枠の本文）。 */
+  /** 解析結果の文書を、保存した gzip のまま返す。HTTP では Content-Encoding: gzip を付け、stdio ではフレームの本文にする。 */
   DOCUMENT,
   /** HTTP のダウンロード（application/gzip の添付）。 */
   ATTACHMENT

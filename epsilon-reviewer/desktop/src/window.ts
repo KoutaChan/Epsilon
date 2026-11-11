@@ -8,7 +8,7 @@ export interface WindowOptions {
   preload: string;
 }
 
-/** 主の窓。新しい窓と移動は拒む。 */
+/** メインウィンドウを作る。新しいウィンドウを開くことと、ほかのページへの移動は断る。 */
 export function createMainWindow({
   title,
   icon,
@@ -35,7 +35,7 @@ export function createMainWindow({
   return window;
 }
 
-/** 既定のセッションの権限の求めと確かめを全て断る。 */
+/** 既定のセッションで、権限の要求と権限の確認を全て断る。 */
 export function denyPermissions(): void {
   session.defaultSession.setPermissionRequestHandler(
     (_contents, _permission, callback) => callback(false),
@@ -44,9 +44,9 @@ export function denyPermissions(): void {
 }
 
 /**
- * EPSILON_REVIEWER_DEV_URL（開発の Vite）。無ければ null。
+ * 開発用の Vite の URL（EPSILON_REVIEWER_DEV_URL の値）を確かめて返す。設定されていなければ null。
  *
- * @throws Error localhost か 127.0.0.1 の http でない
+ * @throws Error localhost か 127.0.0.1 を指す http の URL でないとき
  */
 export function developmentUrl(value: string | undefined): string | null {
   if (!value) return null;
@@ -58,8 +58,8 @@ export function developmentUrl(value: string | undefined): string | null {
 }
 
 /**
- * IPC の送り手を確かめる。主の窓の主の枠で、epsilon-reviewer://app か開発の URL の origin なら null、
- * 違えば失敗の中身。
+ * IPC の送信元を確かめる。メインウィンドウのメインフレームから来ていて、その origin が epsilon-reviewer://app か
+ * 開発用の URL なら null を返す。そうでなければ返すエラーの中身を返す。
  */
 export function untrustedSender(
   window: BrowserWindow | null,

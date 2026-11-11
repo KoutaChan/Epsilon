@@ -31,7 +31,7 @@ function decision(actor, entries) {
 }
 const policy = (...rounds) => ({ temperature: undefined, rounds });
 const valued = (...rounds) => ({ temperature: 0.002, rounds });
-const round = (...steps) => ({ steps });
+const round = (...steps) => ({ seats: 4, steps });
 
 const empty = { reviewed: 0, matched: 0, badMoves: 0, meanLoss: null };
 

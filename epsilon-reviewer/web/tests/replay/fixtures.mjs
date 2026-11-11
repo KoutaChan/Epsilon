@@ -1,4 +1,4 @@
-// 解析結果の文書を試験のために組み立てる。局面は局の始めの全体と、手順ごとの Splice の差分で書く。
+// テスト用の解析結果を組み立てる。局面は局の始めに全体を書き、その後は手順ごとに Splice の差分で書く。
 
 const HONORS = ["E", "S", "W", "N", "P", "F", "C"];
 const RED_FIVES = ["5mr", "5pr", "5sr"];
@@ -27,12 +27,12 @@ export function table(fields = {}) {
   };
 }
 
-/** 局面の 1 席（stateReader が作る形。名前と席を持つ）。 */
+/** 局面の 1 席ぶんを作る。stateReader が作るのと同じ形で、名前と席を持つ。 */
 export function playerSnapshot(seat, fields = {}) {
   return { ...player(fields), seat, name: `Player ${seat + 1}` };
 }
 
-/** 出来事の手順とその局面（Snapshot の形）。局の結果は hora と ryukyoku だけが持つ。 */
+/** イベントの手順とその局面を Snapshot の形で作る。局の結果を持つのは和了（hora）と流局（ryukyoku）だけ。 */
 export function snapshot(eventType, actor = -1, fields = {}) {
   return {
     index: 0,
@@ -57,7 +57,7 @@ export function snapshot(eventType, actor = -1, fields = {}) {
   };
 }
 
-/** 河の 1 枚。印は真のときだけ書く。 */
+/** 河の牌 1 枚を作る。印（ツモ切り・リーチ・鳴かれた）は true のときだけ書く。 */
 export function discard(tile, marks = {}) {
   const value = { tile };
   for (const mark of ["tsumogiri", "riichi", "called"])
@@ -116,7 +116,7 @@ export function resultDocument(rounds, fields = {}) {
   };
 }
 
-/** 局面の並びから局を作る。entries は {step, table} で、各手順の差分を前の局面から作る。 */
+/** 局面の並びから局を作る。並びの要素は {step, table} で、手順ごとの差分は 1 つ前の局面との違いから作る。 */
 export function roundFromTables(entries, fields = {}) {
   return round(
     entries.map(({ step, table: current }, index) => {
@@ -130,7 +130,7 @@ export function roundFromTables(entries, fields = {}) {
 
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
-/** 前の配列から今の配列への 1 か所の置き換え。同じなら null。 */
+/** 前の配列を今の配列にする、1 か所の置き換えを返す。2 つが同じなら null。 */
 export function splice(previous, current) {
   let index = 0;
   while (
@@ -185,7 +185,7 @@ function tileType(tile) {
     : "mps".indexOf(tile[1]) * 9 + Number(tile[0]) - 1;
 }
 
-/** 打牌の行動 ID（Action.java の配置）。riichi はリーチの打牌。 */
+/** 打牌の行動 ID を返す（Action.java の並びに従う）。リーチの打牌なら `riichi` を true にする。 */
 export function discardAction(
   tile,
   { tsumogiri = false, riichi = false } = {},
@@ -198,7 +198,7 @@ export function discardAction(
   return (riichi ? 294 : 0) + offset;
 }
 
-/** 牌を書かない手と鳴きの行動 ID。鳴きは variant で別の ID にする。 */
+/** 牌を指定しない手と鳴きの行動 ID。鳴きは、鳴き方の番号（`variant`）ごとに別の ID になる。 */
 export const ACTIONS = {
   chi: (variant = 0) => 74 + variant,
   pon: (variant = 0) => 155 + variant,

@@ -4,8 +4,8 @@ import type replay from "../../../language/ja/replay.json";
 import type shell from "../../../language/ja/shell.json";
 import { isErrorCode } from "../../../protocol/errors.ts";
 
-// 画面の文言は language/<言語>/ の shell・replay・mahjong・errors（desktop.json はメインプロセスだけが読む）。
-// 鍵の型は ja のファイルで、どの言語も同じ鍵を持つことは tools/check-language.mjs が確かめる。
+// 画面の文言は language/<言語>/ の shell・replay・mahjong・errors にある（desktop.json はメインプロセスだけが読む）。
+// キーの型は ja のファイルから作る。どの言語も同じキーを持つことは tools/check-language.mjs が確かめる。
 
 export type MessageKey =
   | keyof typeof shell
@@ -13,7 +13,7 @@ export type MessageKey =
   | keyof typeof mahjong
   | keyof typeof errors;
 
-/** 文言の {名前} を values で置き換える。値の無い {名前} はそのまま残す。 */
+/** 文言の中の {名前} を、渡した値で置き換える。値の無い {名前} はそのまま残す。 */
 export type Translate = (
   key: MessageKey,
   values?: Record<string, string | number>,
@@ -31,7 +31,7 @@ for (const [path, messages] of Object.entries(files)) {
   catalogs.set(id, Object.assign(catalogs.get(id) ?? {}, messages));
 }
 
-/** 選べる言語（language/ のフォルダーの順）。name は language.name の文言。 */
+/** 選べる言語（language/ のフォルダーの順）。名前には、その言語の language.name の文言を使う。 */
 export const languages: readonly { id: string; name: string }[] = [
   ...catalogs,
 ].map(([id, messages]) => ({ id, name: messages["language.name"]! }));
@@ -44,7 +44,7 @@ export function isLanguage(id: string): boolean {
   return translators.has(id);
 }
 
-/** 言語ごとに 1 回だけ作った Translate。 */
+/** その言語の Translate を返す。Translate は言語ごとに 1 回だけ作る。 */
 export function translator(language: string): Translate {
   const translate = translators.get(language);
   if (translate === undefined)
@@ -54,7 +54,7 @@ export function translator(language: string): Translate {
 
 function translatorOf(messages: Readonly<Record<string, string>>): Translate {
   return (key, values) => {
-    // 鍵は型で決まるが、牌譜の値から作る鍵が文言に無くても画面を落とさない。
+    // キーは型で決まるが、牌譜の値から作ったキーは文言に無いことがある。そのときも画面を落とさず、キーをそのまま出す。
     const message = messages[key] ?? key;
     if (values === undefined) return message;
     return message.replace(PLACEHOLDER, (token, name: string) =>
@@ -63,7 +63,7 @@ function translatorOf(messages: Readonly<Record<string, string>>): Translate {
   };
 }
 
-/** 失敗の文言の鍵。符号を持たない・知らない符号は errors.operation_failed。 */
+/** エラーを表す文言のキーを返す。エラーコードが無いか、知らないコードなら errors.operation_failed。 */
 export function errorKey(error: unknown): MessageKey {
   const code =
     typeof error === "object" && error !== null && "code" in error

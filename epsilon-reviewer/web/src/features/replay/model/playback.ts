@@ -33,7 +33,7 @@ export function playbackReducer(
       let stepIndex = state.stepIndex;
       const direction = Math.sign(action.delta);
       for (let remaining = Math.abs(action.delta); remaining > 0; remaining--) {
-        // 精算画面の確認後は手動で次へ進める。
+        // 自動再生は精算の画面や対局の結果の画面で止め、その先は手で進めてもらう。
         if (
           action.automatic &&
           timelines[roundIndex]![stepIndex]!.kind !== "table"

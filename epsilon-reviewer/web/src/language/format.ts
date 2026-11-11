@@ -14,7 +14,7 @@ const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 };
 const dateFormats = new Map<string, Intl.DateTimeFormat>();
 
-/** モデルの版の鍵（select の値・比べ方）。 */
+/** モデルとリビジョンを区別するキー（select の値や比較に使う）。 */
 export function modelKey(model: ModelKey): string {
   return JSON.stringify([model.modelId, model.revision]);
 }
@@ -27,35 +27,40 @@ export function sourceLabel(source: RecordSource, t: Translate): string {
   return t(`source.${source}`);
 }
 
-/** 名前の無い席は「プレイヤー n」。 */
+/** 対局者名を返す。名前の無い席は「プレイヤー n」（n は席の番号 + 1）。 */
 export function playerName(name: string, seat: number, t: Translate): string {
   return name || t("common.player", { number: seat + 1 });
 }
 
-/** 風の名前。wind は 0 が東。 */
+/** 風の名前。風の番号は 0 が東。 */
 export function windName(wind: number, t: Translate, short = false): string {
   const name = WINDS[wind % 4]!;
   return t(short ? `mahjong.${name}Short` : `mahjong.${name}`);
 }
 
-/** 親から数えた席の風（東家…北家）。 */
-export function seatName(seat: number, dealer: number, t: Translate): string {
-  return t("mahjong.seat", { wind: windName((seat - dealer + 4) % 4, t) });
+/** 親から数えた席の風（東家〜北家。三人打ちは西家まで）。 */
+export function seatName(
+  seat: number,
+  round: { dealer: number; seats: number },
+  t: Translate,
+): string {
+  const wind = (seat - round.dealer + round.seats) % round.seats;
+  return t("mahjong.seat", { wind: windName(wind, t) });
 }
 
-/** 局の名前。roundIndex は (場風) × 4 + (局 − 1)。 */
+/** 局の名前。局の番号（`roundIndex`）は (場風) × 席の数 + (局 − 1)。 */
 export function roundName(
-  round: { roundIndex: number },
+  round: { roundIndex: number; seats: number },
   t: Translate,
   short = false,
 ): string {
   return t(short ? "mahjong.roundShort" : "mahjong.round", {
-    wind: windName(Math.floor(round.roundIndex / 4), t, short),
-    number: (round.roundIndex % 4) + 1,
+    wind: windName(Math.floor(round.roundIndex / round.seats), t, short),
+    number: (round.roundIndex % round.seats) + 1,
   });
 }
 
-/** 月日と時刻。読めない日時は common.unknownDate。書式は言語ごとに 1 つ作り置く。 */
+/** 月日と時刻の表示。読めない日時は common.unknownDate の文言にする。書式はロケールごとに 1 つ作って使い回す。 */
 export function dateLabel(date: string, locale: string, t: Translate): string {
   const value = new Date(date);
   if (Number.isNaN(value.getTime())) return t("common.unknownDate");

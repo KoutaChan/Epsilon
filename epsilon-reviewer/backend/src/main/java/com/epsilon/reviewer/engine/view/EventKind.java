@@ -1,25 +1,12 @@
 package com.epsilon.reviewer.engine.view;
 
-import com.epsilon.replay.ReplayEvent;
-import com.epsilon.replay.ReplayEvent.Ankan;
-import com.epsilon.replay.ReplayEvent.Chi;
-import com.epsilon.replay.ReplayEvent.Dahai;
-import com.epsilon.replay.ReplayEvent.Daiminkan;
-import com.epsilon.replay.ReplayEvent.Dora;
-import com.epsilon.replay.ReplayEvent.EndGame;
-import com.epsilon.replay.ReplayEvent.EndKyoku;
-import com.epsilon.replay.ReplayEvent.Hora;
-import com.epsilon.replay.ReplayEvent.Kakan;
-import com.epsilon.replay.ReplayEvent.None;
-import com.epsilon.replay.ReplayEvent.Pon;
-import com.epsilon.replay.ReplayEvent.Reach;
-import com.epsilon.replay.ReplayEvent.ReachAccepted;
-import com.epsilon.replay.ReplayEvent.Ryukyoku;
-import com.epsilon.replay.ReplayEvent.StartGame;
-import com.epsilon.replay.ReplayEvent.StartKyoku;
-import com.epsilon.replay.ReplayEvent.Tsumo;
+import com.epsilon.mahjong.action.Meld;
+import com.epsilon.mahjong.record.RecordEvent;
 
-/** 手順になる出来事の種類（mjai の名前、protocol/result.ts の EVENT_KINDS）。start_game は手順にならない。 */
+/**
+ * 手順に書くイベントの種類。名前は mjai のもので、protocol/result.ts の EVENT_KINDS と同じ。立直の宣言牌の打牌では、その前に立直の
+ * 宣言を 1 つの手順として書く。和了・流局・局の始めと終わり・終局は牌譜のイベントではないので、局の始まりと結果から書く。
+ */
 public enum EventKind {
   /** 局の始め。席を持たない。 */
   START_KYOKU("start_kyoku", false),
@@ -30,11 +17,13 @@ public enum EventKind {
   DAIMINKAN("daiminkan", true),
   ANKAN("ankan", true),
   KAKAN("kakan", true),
-  /** リーチの宣言。 */
+  /** 三人打ちの北抜き。名前は RiichiEnv の mjai に合わせる。 */
+  NUKI("kita", true),
+  /** 立直の宣言。 */
   REACH("reach", true),
-  /** リーチの成立（供託の支払い）。 */
+  /** 立直の成立（供託の支払い）。 */
   REACH_ACCEPTED("reach_accepted", true),
-  /** 槓ドラ。席を持たない。 */
+  /** 槓ドラの表示。席を持たない。 */
   DORA("dora", false),
   HORA("hora", true),
   /** 流局。席を持たない。 */
@@ -42,9 +31,7 @@ public enum EventKind {
   /** 局の終わり。席を持たない。 */
   END_KYOKU("end_kyoku", false),
   /** 対局の終わり。席を持たない。 */
-  END_GAME("end_game", false),
-  /** 明示の見送り。 */
-  NONE("none", true);
+  END_GAME("end_game", false);
 
   private final String wireName;
   private final boolean hasActor;
@@ -58,49 +45,47 @@ public enum EventKind {
     return wireName;
   }
 
-  /** 文書に actor を書くか。 */
+  /** 結果の文書に {@code actor} を書くか。 */
   public boolean hasActor() {
     return hasActor;
   }
 
-  /** @throws IllegalArgumentException 対局の始め（手順にならない） */
-  public static EventKind of(ReplayEvent event) {
+  /** 牌譜のイベントの種類を返す。立直の宣言牌も打牌として扱う。 */
+  public static EventKind of(RecordEvent event) {
     return switch (event) {
-      case StartGame ignored -> throw new IllegalArgumentException("start_game is not a step.");
-      case StartKyoku ignored -> START_KYOKU;
-      case Tsumo ignored -> TSUMO;
-      case Dahai ignored -> DAHAI;
-      case Chi ignored -> CHI;
-      case Pon ignored -> PON;
-      case Daiminkan ignored -> DAIMINKAN;
-      case Ankan ignored -> ANKAN;
-      case Kakan ignored -> KAKAN;
-      case Reach ignored -> REACH;
-      case ReachAccepted ignored -> REACH_ACCEPTED;
-      case Dora ignored -> DORA;
-      case Hora ignored -> HORA;
-      case Ryukyoku ignored -> RYUKYOKU;
-      case EndKyoku ignored -> END_KYOKU;
-      case EndGame ignored -> END_GAME;
-      case None ignored -> NONE;
+      case RecordEvent.Draw ignored -> TSUMO;
+      case RecordEvent.Discard ignored -> DAHAI;
+      case RecordEvent.Call call ->
+          switch (Meld.of(call.meld()).type()) {
+            case CHI -> CHI;
+            case PON -> PON;
+            case DAIMINKAN -> DAIMINKAN;
+            case ANKAN, KAKAN -> throw new IllegalArgumentException("Not a call: " + call);
+          };
+      case RecordEvent.ClosedKan ignored -> ANKAN;
+      case RecordEvent.AddedKan ignored -> KAKAN;
+      case RecordEvent.DoraReveal ignored -> DORA;
+      case RecordEvent.RiichiAccepted ignored -> REACH_ACCEPTED;
+      case RecordEvent.Nuki ignored -> NUKI;
     };
   }
 
-  /** 出来事の席。席を持たない出来事は -1。 */
-  public static int actor(ReplayEvent event) {
+  /** イベントを起こした席。席を持たないイベントは -1。 */
+  public static int actor(RecordEvent event) {
     return switch (event) {
-      case Tsumo e -> e.actor();
-      case Dahai e -> e.actor();
-      case Chi e -> e.actor();
-      case Pon e -> e.actor();
-      case Daiminkan e -> e.actor();
-      case Ankan e -> e.actor();
-      case Kakan e -> e.actor();
-      case Reach e -> e.actor();
-      case ReachAccepted e -> e.actor();
-      case Hora e -> e.actor();
-      case None e -> e.actor();
-      default -> -1;
+      case RecordEvent.Draw e -> e.seat();
+      case RecordEvent.Discard e -> e.seat();
+      case RecordEvent.Call e -> e.seat();
+      case RecordEvent.ClosedKan e -> e.seat();
+      case RecordEvent.AddedKan e -> e.seat();
+      case RecordEvent.Nuki e -> e.seat();
+      case RecordEvent.RiichiAccepted e -> e.seat();
+      case RecordEvent.DoraReveal ignored -> -1;
     };
+  }
+
+  /** その前に立直の宣言を手順として書くイベント（立直の宣言牌の打牌）か。 */
+  public static boolean declaresRiichi(RecordEvent event) {
+    return event instanceof RecordEvent.Discard discard && discard.riichi();
   }
 }

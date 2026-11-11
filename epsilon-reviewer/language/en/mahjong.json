@@ -33,6 +33,7 @@
   "tile.red": "Red {tile}",
   "action.riichi": "Riichi",
   "action.kyushu": "Nine Terminals",
+  "action.nuki": "Kita",
   "mahjong.roundShort": "{wind}{number}",
   "action.dahaiTsumogiri": "Discard (tsumogiri)",
   "action.riichiTsumogiri": "Riichi (tsumogiri)",

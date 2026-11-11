@@ -24,17 +24,24 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * stdio の操作。読みの輪は呼んだスレッドで回し、要求ごとに仮想スレッドで Dispatcher を呼んで答えを書く（答えの順は要求の順と限らない）。
- * stdin の終わりで、答えている途中の要求を待ってから Reviewer を閉じる。
+ * stdio で要求を受けて応答する。要求を読むループは呼び出したスレッドで回し、要求は reviewer-stdio-&lt;n&gt; の 8 本のスレッドで
+ * Dispatcher を呼んで応答を書く。応答の順は、要求の順と同じとは限らない。stdin が終わったら、処理中の要求を待ってから Reviewer を閉じる。
  *
- * <p>要求 {id, command, request}（importBytes だけ本文が牌譜）。答え {id, ok: true, response?}（result は
- * response なしで本文が保存の gzip）か {id, ok: false, error}。
+ * <p>要求は {id, command, request} の形で、本文を持てるのは importBytes（本文が牌譜）だけ。応答は、成功なら
+ * {id, ok: true, response?}、失敗なら {id, ok: false, error}。result の応答は response を持たず、保存した gzip を本文で返す。
  */
 public final class StdioHost {
   private static final Logger LOG = LoggerFactory.getLogger(StdioHost.class);
   private static final Caller LOCAL = new Caller.Owner(OwnerId.LOCAL);
+
+  /**
+   * 要求を処理するスレッドの数。Nano・Major の方策は、評価を呼んだスレッドごとに作業領域（ページ固定のバッファを含む）を作り、方策を
+   * 閉じるまで持つ。そこで、要求ごとにスレッドを作らず、決まった数のスレッドを使い回す。
+   */
+  static final int THREADS = 8;
+
   private static final ThreadFactory REQUEST_THREADS =
-      Thread.ofVirtual().name("reviewer-stdio-", 1).factory();
+      Thread.ofPlatform().name("reviewer-stdio-", 1).factory();
 
   private final Reviewer reviewer;
   private final Dispatcher dispatcher;
@@ -49,13 +56,13 @@ public final class StdioHost {
   }
 
   /**
-   * stdin の終わりまで要求を受け、答えている途中の要求を待ってから Reviewer を閉じる（待ちの解析を取り消し、走る解析を止め、モデルを閉じ、
-   * 鍵を放す）。
+   * stdin が終わるまで要求を受け、処理中の要求を待ってから Reviewer を閉じる。閉じるときは、待っている解析を取り消し、実行中の解析を止め、
+   * モデルを閉じ、ロックを解放する。
    *
-   * @throws IOException 壊れた枠（上限を超えた・途中で切れた・id の無い頭）
+   * @throws IOException 壊れたフレームを受けた（上限を超えた・途中で切れた・ヘッダーに id が無い）
    */
   public void run() throws IOException {
-    try (var requests = Executors.newThreadPerTaskExecutor(REQUEST_THREADS)) {
+    try (var requests = Executors.newFixedThreadPool(THREADS, REQUEST_THREADS)) {
       for (Optional<Frame> frame = in.read(); frame.isPresent(); frame = in.read()) {
         Frame request = frame.get();
         long id = id(request.header());
@@ -103,14 +110,14 @@ public final class StdioHost {
       try {
         out.write(failure(id, ErrorBody.of(ErrorCode.SERVER_ERROR)), null);
       } catch (IOException ignored) {
-        // 書けない stdout は次の読みか Electron の側で終わりに気づく。
+        // stdout に書けなければ、次の読み込みか Electron の側で、やり取りが終わったことに気づく。
       }
     } catch (IOException failure) {
       LOG.error("Could not write the reply to {}.", id, failure);
     }
   }
 
-  /** @throws ReviewerException invalid_request（知らない操作・stdio で受けない操作） */
+  /** @throws ReviewerException invalid_request（知らないコマンド、または stdio では受けないコマンド） */
   private static Command command(JsonObject header) {
     JsonElement name = header.get("command");
     String text =
@@ -131,14 +138,14 @@ public final class StdioHost {
     return StrictRecords.read(fields, command.requestType());
   }
 
-  /** @throws IOException id が正の整数でない（答えを返せないので枠の決まりの違反として止める） */
+  /** @throws IOException id が正の整数でない。応答を返す先が無いので、やり取りの決まりに反したものとして止める */
   private static long id(JsonObject header) throws IOException {
     if (header.get("id") instanceof JsonPrimitive id && id.isNumber())
       try {
         long value = id.getAsBigDecimal().longValueExact();
         if (value > 0) return value;
       } catch (ArithmeticException ignored) {
-        // 下で断る。
+        // この後で断る。
       }
     throw new IOException("A request frame has no positive integer id.");
   }

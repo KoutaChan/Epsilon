@@ -10,7 +10,7 @@ import { isErrorCode } from "../../../protocol/errors.ts";
 import { ApiError } from "./errors.ts";
 import type { CallOptions, WebTransport } from "./transport.ts";
 
-/** COMMANDS の HTTP の道へ fetch で送る。共有リンクの操作だけ Cookie を送らない。 */
+/** 操作の表（COMMANDS）にある HTTP のパスへ、fetch で操作を送る。共有リンクの操作だけは Cookie を付けない。 */
 export function httpTransport(): WebTransport {
   return {
     platform: "web",
@@ -52,7 +52,7 @@ export function httpTransport(): WebTransport {
   };
 }
 
-/** 2xx の本文。document はブラウザーが Content-Encoding の gzip を解き、ETag の 304 も扱う。 */
+/** 2xx の応答の本文を読む。文書の gzip（Content-Encoding）の展開と、ETag による 304 はブラウザーに任せる。 */
 async function decode(
   kind: ResponseBody,
   response: Response,
@@ -73,7 +73,7 @@ async function decode(
   }
 }
 
-/** 2xx 以外の本文 {error:{code,message}}。形が違えば invalid_response。 */
+/** 2xx 以外の応答の本文 {error:{code,message}} から ApiError を作る。本文の形が違えば invalid_response の ApiError にする。 */
 async function failure(
   response: Response,
   signal: AbortSignal | undefined,

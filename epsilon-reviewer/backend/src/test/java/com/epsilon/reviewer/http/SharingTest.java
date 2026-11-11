@@ -19,14 +19,14 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 共有の道は Cookie を読まず発行せず、持ち主の権利を与えない。削除で 404 になり、他のサイトからの共有リンクの移動だけを通し、Host と Origin の
- * 守りは緩めない。共有リンクのもしもはサーバの保存の牌譜で答える。
+ * 共有のパスは Cookie を読まず、発行もせず、オーナーの権利を与えない。共有を削除すると 404 になる。他のサイトからの移動は、共有リンクへの
+ * ものだけを通す。それでも Host と Origin の確かめは緩めない。共有リンクのもしもは、サーバに保存した牌譜で答える。
  */
 public class SharingTest {
   @Test
   public void sharesNeitherReadNorSetTheCookieAndGrantNoOwnerRights() {
     try (var server = TestServer.start()) {
-      ResultId id = server.reviewer.analyze(TestReviewer.OWNER, "kakan-a", TestReviewer.FIXTURE);
+      ResultId id = server.reviewer.analyze(TestReviewer.OWNER, TestReviewer.FIXTURE);
       String path = "/api/shares/" + id.value();
       var original = server.send(server.request("/api/results/" + id.value(), TestReviewer.OWNER));
       for (OwnerId viewer : new OwnerId[] {null, TestReviewer.OTHER}) {
@@ -103,7 +103,7 @@ public class SharingTest {
     Path web = TestFiles.directory("reviewer-web-");
     Files.writeString(web.resolve("index.html"), "<main>Shared review fixture</main>");
     try (var server = TestServer.start(URI.create("http://127.0.0.1:0"), web)) {
-      ResultId id = server.reviewer.analyze(TestReviewer.OWNER, "kakan-a", TestReviewer.FIXTURE);
+      ResultId id = server.reviewer.analyze(TestReviewer.OWNER, TestReviewer.FIXTURE);
       for (String query :
           List.of(
               "share=" + id.value(),
@@ -168,7 +168,7 @@ public class SharingTest {
   @Test
   public void shareLinksUseTheConfiguredOrigin() {
     try (var server = TestServer.start(URI.create("http://reviewer.example:8080"), null)) {
-      ResultId id = server.reviewer.analyze(TestReviewer.OWNER, "kakan-a", TestReviewer.FIXTURE);
+      ResultId id = server.reviewer.analyze(TestReviewer.OWNER, TestReviewer.FIXTURE);
       var link =
           server.send(
               server.request("/api/results/" + id.value() + "/share", TestReviewer.OWNER));

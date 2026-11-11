@@ -19,7 +19,7 @@ import { HistoryCard } from "./HistoryCard";
 import type { MenuAction } from "./HistoryMenu";
 
 export interface HistoryActions {
-  /** 共有の窓を開く（Web）。デスクトップは null。 */
+  /** 共有ダイアログを開く。Web だけで使い、デスクトップでは null。 */
   share: ((entry: HistoryEntry) => void) | null;
   open(entry: HistoryEntry): void;
   export(entry: HistoryEntry): void;
@@ -27,7 +27,7 @@ export interface HistoryActions {
   delete(entry: HistoryEntry): void;
 }
 
-/** 履歴。検索は牌譜の種類（元の値と表示）・対局者名・モデルの表示を UI の言語で小文字にして探す。 */
+/** 履歴の一覧。検索では、牌譜の種類（元の値と表示名）・対局者名・モデルの表示名を、画面の言語に合わせて小文字にそろえて比べる。 */
 export function HistoryList({
   history,
   busy,

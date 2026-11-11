@@ -213,7 +213,7 @@ for (const [name, mutate] of [
   ],
   [
     "an action ID out of range",
-    (d) => (d.rounds[0].steps[2].candidates[0][0] = 372),
+    (d) => (d.rounds[0].steps[2].candidates[0][0] = 373),
   ],
   ["a call without tiles", (d) => d.rounds[0].steps[4].candidates[0].pop()],
   [

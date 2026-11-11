@@ -1,17 +1,17 @@
 import * as THREE from "three";
 import { ASSET_TILES, tileAssetName } from "../tileAssets.ts";
 
-/** 1 枚の絵を待つ時間。 */
+/** 牌の画像 1 枚の読み込みを待つ時間（ms）。 */
 const TEXTURE_TIMEOUT_MS = 12000;
 
 export interface TileTextures {
-  /** 牌の記号の絵の材質。全ての絵を読み終えた後だけ呼ぶ。 */
+  /** 牌の記号に対応する、画像のマテリアルを返す。全ての画像を読み終えた後にだけ呼ぶこと。 */
   get(tile: string): THREE.MeshBasicMaterial;
   readonly pending: number;
   dispose(): void;
 }
 
-// 全牌を一度だけ読み込む。途中局面への移動で画像ロードやカメラ再配置を起こさない。
+// 全ての牌の画像を最初に一度だけ読み込む。途中の局面へ移っても、画像を読み直したりカメラを置き直したりしない。
 export function loadTileTextures(
   renderer: THREE.WebGLRenderer,
   changed: () => void,

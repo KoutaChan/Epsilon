@@ -31,7 +31,7 @@ if (profileValid)
   );
 registerAppScheme();
 
-/** 起動の失敗の窓の文言。言語を読む前の失敗は英語の失敗の文をそのまま出す。 */
+/** 起動に失敗したときのダイアログの文言を引く関数。言語を読む前に失敗したら null のままで、英語のエラーメッセージをそのまま出す。 */
 let message: ((key: MessageKey) => string) | null = null;
 let engine: EngineProcess | null = null;
 let window: BrowserWindow | null = null;
@@ -62,7 +62,7 @@ async function start(): Promise<void> {
   const text = (key: MessageKey): string =>
     languages.message(settings.value.language, key);
   message = text;
-  // Java は窓と並べて起こす（JVM の起動と保存先・カタログの読み込みを窓の読み込みに重ねる）。
+  // Java はウィンドウと並行して起動する。JVM の起動と保存先・カタログの読み込みを、ウィンドウの読み込みと同時に進めるため。
   const engineProcess = new EngineProcess(() =>
     engineLaunch(paths.engine, paths.userData, settings.value.resultsDirectory),
   );
@@ -147,7 +147,7 @@ else {
     if (window === null && openWindow !== null)
       openWindow().catch(startupFailed);
   });
-  // 終わりの前に Java を止める（stdin を閉じて 5 秒待ち、終わらなければ kill）。
+  // アプリを終える前に Java を止める。stdin を閉じて 5 秒待ち、終わらなければ kill する。
   app.on("will-quit", (event) => {
     if (engine === null || engineStopped) return;
     event.preventDefault();

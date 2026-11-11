@@ -7,13 +7,13 @@ export type ResourceState<T> =
 
 export interface Resource<T> {
   state: ResourceState<T>;
-  /** もう一度読む。読みかけは中止する。 */
+  /** もう一度読み込む。読み込み中のものは中止する。 */
   reload(): void;
 }
 
 /**
- * deps が変わるたび・reload のたびに load を呼ぶ。前の読みは中止し、中止した読みの結果は当てない。
- * load は deps の値だけを使う。
+ * 依存の値（`deps`）が変わったときと、読み込み直しを求められたときに読み込む。前の読み込みは中止し、中止した読み込みの
+ * 結果は状態に反映しない。読み込む関数は `deps` の値だけを使うこと。
  */
 export function useResource<T>(
   load: (signal: AbortSignal) => Promise<T>,

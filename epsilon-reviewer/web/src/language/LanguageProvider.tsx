@@ -15,10 +15,10 @@ const DEFAULT_LANGUAGE = "ja";
 
 export interface LanguageState {
   language: string;
-  /** Intl の書式の言語（言語の id と同じ）。 */
+  /** Intl の書式に使うロケール（言語の id と同じ）。 */
   locale: string;
   t: Translate;
-  /** デスクトップは設定に保存してから切り替える（失敗は投げる）。 */
+  /** 言語を切り替える。デスクトップ版は設定に保存してから切り替え、保存に失敗したら Promise を reject する。 */
   setLanguage(id: string): Promise<void>;
 }
 
@@ -29,7 +29,7 @@ function storedLanguage(): string {
     const value = localStorage.getItem(STORAGE_KEY);
     if (value !== null && isLanguage(value)) return value;
   } catch {
-    // ストレージを使えない窓（プライベートの窓など）は既定の言語で動く。
+    // ストレージを使えないウィンドウ（プライベートウィンドウなど）では既定の言語で動く。
   }
   return DEFAULT_LANGUAGE;
 }
@@ -56,7 +56,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(STORAGE_KEY, language);
     } catch {
-      // 覚えられなくても今の画面の言語は変わる。
+      // 保存できなくても、今の画面の言語は切り替わる。
     }
     document.documentElement.lang = language;
     document.title = translator(language)("app.title");

@@ -85,7 +85,7 @@ function position() {
 }
 const find = (choices, tile) =>
   choices.flat().find((choice) => choice.tile === tile);
-/** 席 3 の河の 1 番（C）の牌の一覧。 */
+/** 席 3 の河の位置 1（2 枚目。今の牌は C）に置ける牌の一覧。 */
 const riverChoices = (original, edits) =>
   tileChoices(applyEdits(original, edits, VIEWER), VIEWER, {
     kind: "river",
@@ -105,7 +105,7 @@ const river = (text) =>
 const SWAPPER = 3;
 const swapSpot = (index) => ({ kind: "river", seat: SWAPPER, index });
 
-// 席 3 の手番の局面。8 萬は席 0 の河の 2 枚と席 3 の河の 6 番・13 番で 4 枚とも見えている。
+// 席 3 の手番の局面。8 萬は、席 0 の河の 2 枚と席 3 の河の 6 番・13 番で 4 枚とも見えている。
 function swapPosition() {
   return {
     ...position(),
@@ -192,7 +192,7 @@ test("edits keep one canonical form and vanish when restored", () => {
       { seat: 3, index: 1, tile: "F", tsumogiri: true },
     ],
   });
-  // 同じ局面は同じ JSON になり、解析の結果の取り違えを防ぐ。
+  // 同じ局面は同じ JSON になるので、解析の結果を取り違えない。
   const reordered = setRiver(
     setRiver(NO_EDITS, original, 0, 0, { tsumogiri: true }),
     original,
@@ -346,7 +346,7 @@ test("the viewer's own river keeps the recorded discard style and counts as seen
     board.snapshot.players[VIEWER].hand,
     original.players[VIEWER].hand,
   );
-  // 自分の河の牌も、ほかの所の牌の一覧で見えている牌として数える。
+  // 自分の河の牌も、ほかの所の牌の一覧では見えている牌として数える。
   const choices = tileChoices(board, VIEWER, {
     kind: "river",
     seat: 0,
@@ -358,9 +358,35 @@ test("the viewer's own river keeps the recorded discard style and counts as seen
 
 test("the hand changes only at a decision of the viewer before riichi", () => {
   const original = position();
-  assert.equal(canEditHand(original, VIEWER, DECISION), true);
-  assert.equal(canEditHand(original, VIEWER, null), false);
-  assert.equal(canEditHand(original, 3, { decision: true, actor: 3 }), false);
+  assert.equal(canEditHand(original, VIEWER, DECISION, 0), true);
+  assert.equal(canEditHand(original, VIEWER, null, 0), false);
+  assert.equal(
+    canEditHand(original, 3, { decision: true, actor: 3 }, 0),
+    false,
+  );
+});
+
+// 当たり判定の形は、位置を動かした最初の描画では前の位置のままなので、今の局面に牌の無い位置は変えられない。
+test("a hand position without a tile cannot change", () => {
+  const original = position();
+  assert.equal(canEditHand(original, VIEWER, DECISION, 12), true);
+  assert.equal(canEditHand(original, VIEWER, DECISION, 13), true);
+  assert.equal(canEditHand(original, VIEWER, DECISION, 14), false);
+  // 応答の判断（ツモ牌なし）と、鳴いた後の打牌の判断（手牌 11 枚）。
+  const viewer = original.players[VIEWER];
+  const withHand = (hand) => ({
+    ...original,
+    players: original.players.map((player) =>
+      player === viewer ? { ...viewer, hand, draw: null } : player,
+    ),
+  });
+  const response = withHand(HAND);
+  assert.equal(canEditHand(response, VIEWER, DECISION, 12), true);
+  assert.equal(canEditHand(response, VIEWER, DECISION, 13), false);
+  const afterCall = withHand(HAND.slice(0, 11));
+  assert.equal(canEditHand(afterCall, VIEWER, DECISION, 10), true);
+  assert.equal(canEditHand(afterCall, VIEWER, DECISION, 11), false);
+  assert.equal(canEditHand(afterCall, VIEWER, DECISION, 12), false);
 });
 
 test("tile choices stop at three plain fives and one red five of a suit", () => {
@@ -412,10 +438,10 @@ test("other tiles stop at four copies and a called tile counts once", () => {
   // 鳴かれた 2s は副露の側だけで数える。
   assert.equal(find(choices, "2s").visible, 1);
   assert.equal(find(choices, "C").current, true);
-  // 手の西 2 枚に、ドラ表示牌と上家の河の 1 枚を足すと 4 枚になる。
+  // 手の西 2 枚とドラ表示牌に、上家（席 1）の河の 1 枚を足すと 4 枚になる。
   let edits = setDora(NO_EDITS, original, 0, "W");
   assert.equal(find(riverChoices(original, edits), "W").disabled, false);
-  // ドラ表示牌の所は、その所の西を数えず、今の牌として選び直せる。
+  // ドラ表示牌の所では、そこにある西は数えず、今の牌として選び直せる。
   const dora = tileChoices(applyEdits(original, edits, VIEWER), VIEWER, {
     kind: "dora",
     index: 0,
@@ -470,7 +496,7 @@ test("a spot is restored only when its original tile can be chosen again", () =>
   // 11 番を戻した後は、13 番も戻せる。
   edits = revert(edits, original, swapSpot(11));
   assert.equal(restorable(edits, swapSpot(13)), true);
-  // 手牌も同じ。手の 5 萬を 8 萬にして河に赤でない 5 萬を足すと、戻す 5 萬の写しが残らない。
+  // 手牌も同じ。手の 5 萬を 8 萬にして河に赤でない 5 萬を足すと、戻すための 5 萬が残っていない。
   const base = position();
   const hand = setRiver(setHand(NO_EDITS, base, VIEWER, 0, "8m"), base, 3, 1, {
     tile: "5m",
@@ -493,7 +519,7 @@ test("tile choices for the hand skip the edited spot and count the edited hand",
   assert.equal(find(spot, "1m").current, true);
   assert.equal(find(spot, "1m").visible, 1);
   assert.equal(find(spot, "P").visible, 0);
-  // 赤の 5 は今の牌なら選び直せ、ほかの所からは選べない。
+  // 赤の 5 筒は、今の牌なら選び直せるが、ほかの所からは選べない。
   const red = tileChoices(board, VIEWER, { kind: "hand", index: 5 });
   assert.equal(find(red, "5pr").current, true);
   assert.equal(find(red, "5pr").disabled, false);
@@ -513,7 +539,7 @@ test("tile choices for the hand skip the edited spot and count the edited hand",
     current: true,
     disabled: false,
   });
-  // ほかの所からは変えた手牌も数え、赤でない 5 萬は 3 枚とも手にあるので置けない。
+  // ほかの所からは変えた手牌も数える。赤でない 5 萬は 3 枚とも手にあるので置けない。
   const other = tileChoices(board, VIEWER, { kind: "hand", index: 3 });
   assert.equal(find(other, "1m").visible, 2);
   assert.equal(find(other, "5m").disabled, true);

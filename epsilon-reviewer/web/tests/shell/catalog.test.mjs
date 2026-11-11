@@ -8,7 +8,7 @@ import {
   SERVER_ERROR_CODES,
 } from "../../../protocol/errors.ts";
 
-// catalog.ts は import.meta.glob で言語のファイルを集めるので、Vite の読み手で開く。
+// catalog.ts は import.meta.glob で言語のファイルを集めるので、Vite のモジュールランナーで読み込む。
 const web = fileURLToPath(new URL("../../", import.meta.url));
 const { module: catalog } = await runnerImport("/src/language/catalog.ts", {
   root: web,

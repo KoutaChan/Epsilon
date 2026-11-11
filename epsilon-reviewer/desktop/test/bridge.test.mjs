@@ -13,7 +13,10 @@ const LANGUAGES = Languages.load(
   fileURLToPath(new URL("../../language/", import.meta.url)),
 );
 
-/** 偽の ipcMain・エンジン・窓の上のブリッジ。call は IPC の呼び出し（送り手は host.trusted で決まる）。 */
+/**
+ * 偽の ipcMain・エンジン・ウィンドウにつないだブリッジを作る。call で IPC を呼び出す。送信元を信用するかは
+ * host.trusted で決まる。
+ */
 async function bridge(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "reviewer-bridge-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -25,6 +28,7 @@ async function bridge(t) {
   const engine = {
     calls: [],
     restarts: 0,
+    failed: false,
     replies: {},
     async request(command, request, body) {
       this.calls.push(
@@ -217,6 +221,25 @@ test("a job the renderer stopped polling is checked again, and a cancelled dialo
     command: "job",
     request: { jobId: "j2" },
   });
+});
+
+// 取り込んだ牌譜は Java のメモリにだけある。同じフォルダーを選び直しただけで起動し直すと、画面に残る牌譜が使えなくなる。
+test("choosing the current folder again restarts the engine only after a failed start", async (t) => {
+  const { settings, engine, host, call } = await bridge(t);
+  const before = settings.value;
+  host.directory = before.resultsDirectory;
+  assert.deepEqual(await call(BRIDGE_CHANNELS.directory), {
+    ok: true,
+    value: before,
+  });
+  assert.equal(host.dialogs, 1);
+  assert.equal(engine.restarts, 0);
+  engine.failed = true;
+  assert.deepEqual(await call(BRIDGE_CHANNELS.directory), {
+    ok: true,
+    value: before,
+  });
+  assert.equal(engine.restarts, 1);
 });
 
 test("setLanguage checks the id, saves it and retitles the window", async (t) => {

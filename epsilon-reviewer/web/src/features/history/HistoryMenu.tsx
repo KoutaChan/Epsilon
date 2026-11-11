@@ -9,7 +9,7 @@ import { useLanguage } from "../../language/LanguageProvider";
 
 export type MenuAction = "share" | "export" | "reanalyse" | "delete";
 
-/** 項目の「…」の menu。開閉は HistoryList が持つ（開くのは 1 つだけ）。 */
+/** 履歴の項目の「…」メニュー。開いているかどうかは HistoryList が持ち、同時に開けるのは 1 つだけ。 */
 export function HistoryMenu({
   source,
   open,
@@ -18,7 +18,7 @@ export function HistoryMenu({
   onToggle,
   onChoose,
 }: {
-  /** 牌譜の種類の表示（ボタンの名前に使う）。 */
+  /** 牌譜の種類の表示名（ボタンの名前に使う）。 */
   source: string;
   open: boolean;
   busy: boolean;

@@ -1,5 +1,5 @@
-// 試験の偽の Java のエンジン。protocol/stdio.ts の枠で答える。FAKE_ENGINE=locked は起動の失敗、
-// FAKE_IGNORE_EOF は stdin の終わりを無視する（kill の試験）。
+// テストで Java のエンジンの代わりに動く偽物。protocol/stdio.ts のフレームで応答する。FAKE_ENGINE=locked なら
+// 起動に失敗し、FAKE_IGNORE_EOF を付けると stdin が閉じても終わらない（kill のテストに使う）。
 import { encodeFrame, FrameDecoder } from "../src/engine/frames.ts";
 
 const DOCUMENT = new Uint8Array([0x1f, 0x8b, 8, 0, 1, 2, 3]);

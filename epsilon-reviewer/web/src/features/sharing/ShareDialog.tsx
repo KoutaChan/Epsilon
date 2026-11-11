@@ -8,7 +8,7 @@ import { playerName } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import "./sharing.css";
 
-/** 共有リンクの窓。写せなければ欄を選んで手で写してもらう。 */
+/** 共有リンクのダイアログ。コピーできなければ入力欄を選択して、手でコピーしてもらう。 */
 export function ShareDialog({
   resultId,
   names,
@@ -38,7 +38,7 @@ export function ShareDialog({
         await navigator.clipboard.writeText(url);
         status = "copied";
       } catch {
-        // HTTP の接続やブラウザーの権限で写せなければ手で写してもらう。
+        // HTTP の接続やブラウザーの権限のためにコピーできなければ、手でコピーしてもらう。
       }
     }
     if (input.current !== field || field.value !== url) return;

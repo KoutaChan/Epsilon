@@ -18,24 +18,26 @@ import type { Languages } from "./language.ts";
 import type { SettingsStore } from "./settings.ts";
 import { errorMessage, isFields, type Fields } from "./values.ts";
 
-/** ブリッジが使う Java の口（EngineProcess）。 */
+/** ブリッジから Java のエンジンを呼ぶためのインターフェース。実装は EngineProcess。 */
 export interface Engine {
   request(
     command: StdioCommandName,
     request: object,
     body?: ArrayBuffer,
   ): Promise<InvokeReply>;
-  /** 保存先を変えた後に、その保存先で開き直す。 */
+  /** 起動に失敗したままか（data_locked など）。true の間は、restart するまでどの要求も断る。 */
+  readonly failed: boolean;
+  /** 保存先を変えた後に呼び、新しい保存先でエンジンを起動し直す。 */
   restart(): Promise<void>;
 }
 
-/** 窓とダイアログ（main.ts が Electron で作る）。 */
+/** ブリッジが使うウィンドウとダイアログ。main.ts が Electron で実装する。 */
 export interface BridgeHost {
-  /** 信用できない送り手なら失敗の中身、信用できれば null。 */
+  /** IPC の送信元を確かめる。信用できれば null を、信用できなければ返すエラーの中身を返す。 */
   checkSender(event: IpcMainInvokeEvent): ErrorBody | null;
-  /** 保存先のフォルダーを選ぶ。やめたら null。 */
+  /** 保存先のフォルダーを選ばせる。キャンセルされたら null。 */
   chooseDirectory(current: string): Promise<string | null>;
-  /** 書き出すファイルを選ぶ。やめたら null。 */
+  /** 書き出し先のファイルを選ばせる。キャンセルされたら null。 */
   chooseExportPath(resultId: string): Promise<string | null>;
   setTitle(title: string): void;
 }
@@ -52,7 +54,7 @@ type Listener = (
   ...args: unknown[]
 ) => Promise<unknown>;
 
-/** ipcMain の handle（試験は偽の表を渡す）。 */
+/** ipcMain のうち、ブリッジが使う handle だけを抜き出したもの。テストでは偽物を渡す。 */
 export interface IpcHandlers {
   handle(channel: string, listener: Listener): void;
 }
@@ -66,8 +68,9 @@ const FINISHED: ReadonlySet<string> = new Set<JobStatus>([
 ]);
 
 /**
- * BRIDGE_CHANNELS の手を登録する。どの手も送り手を確かめ、BridgeReply か InvokeReply を返す（例外は IPC の
- * 向こうへ投げると符号を失うので、予期しない失敗も operation_failed の答えにする）。
+ * BRIDGE_CHANNELS の全てのチャンネルにハンドラーを登録する。どのハンドラーも送信元を確かめ、BridgeReply か
+ * InvokeReply を返す。例外を IPC の向こうへ投げるとエラーコードが消えるので、予期しない失敗も
+ * operation_failed の応答にして返す。
  */
 export function registerBridge(
   ipc: IpcHandlers,
@@ -136,10 +139,11 @@ export function registerBridge(
           code: "analysis_active",
           message: "An analysis is already queued or running.",
         });
-      const directory = await host.chooseDirectory(
-        settings.value.resultsDirectory,
-      );
-      if (directory === null) return accept(settings.value);
+      const current = settings.value.resultsDirectory;
+      const directory = await host.chooseDirectory(current);
+      // 今と同じフォルダーを選び直したときは、起動に失敗したままのときだけ起動し直す。起動し直すと、取り込んだ牌譜が消える。
+      if (directory === null || (directory === current && !engine.failed))
+        return accept(settings.value);
       const next = await settings.update({ resultsDirectory: directory });
       await engine.restart();
       return accept(next);
@@ -163,13 +167,13 @@ export function registerBridge(
 }
 
 /**
- * 画面が始めた解析のうち、終わりの状態（completed・failed・cancelled）をまだ見ていない仕事。保存先の変更は
- * Java を起こし直すので、走る解析がある間は断る。
+ * 画面が始めた解析のジョブのうち、終わった状態（completed・failed・cancelled）をまだ受け取っていないものを覚える。
+ * 保存先を変えると Java を起動し直すので、動いている解析がある間は保存先の変更を断る。
  */
 class ActiveAnalyses {
   readonly #jobs = new Set<string>();
 
-  /** 画面の呼び出しの答えを見る。 */
+  /** 画面からの呼び出しとその応答を見て、ジョブを覚えるか忘れる。 */
   observe(
     command: RendererCommandName,
     request: Fields,
@@ -190,14 +194,20 @@ class ActiveAnalyses {
     }
   }
 
-  /** 覚えている仕事を Java に聞き直し、終わっていない仕事があるか（画面が聞くのをやめた仕事も確かめる）。 */
+  /**
+   * 覚えているジョブの状態を Java に聞き直し、終わっていないジョブがあれば true を返す。
+   * 画面が状態を聞かなくなったジョブも、ここで確かめる。
+   */
   async running(engine: Engine): Promise<boolean> {
     for (const jobId of [...this.#jobs])
       this.#settle(jobId, await engine.request("job", { jobId }));
     return this.#jobs.size > 0;
   }
 
-  /** 走っている仕事の答えでなければ忘れる。失敗の答えは、子プロセスが替わって仕事が無いこと。 */
+  /**
+   * 応答が終わった状態か、状態の無い応答（失敗の応答など）なら、そのジョブを忘れる。失敗の応答は、子プロセスが
+   * 起動し直してジョブが無くなったことを表す。
+   */
   #settle(jobId: string, reply: InvokeReply): void {
     const status =
       reply.ok && isFields(reply.response) ? reply.response.status : undefined;

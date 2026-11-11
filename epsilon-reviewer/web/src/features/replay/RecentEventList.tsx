@@ -8,7 +8,7 @@ import {
   type ReplayEventDetails,
 } from "./model/recentEvents.ts";
 
-/** 読み上げの 1 行（行った人と行動、牌）。 */
+/** 画面の読み上げに使う 1 行を返す（動いた席の名前と行動、牌）。 */
 export function replayEventText(
   details: ReplayEventDetails,
   t: Translate,

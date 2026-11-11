@@ -12,7 +12,7 @@ import java.util.Optional;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 枠の往復と上限: [頭の長さ u32 BE][頭][本文の長さ u32 BE][本文]。 */
+/** フレームを書いて読み戻せること、壊れたフレームで読むのが止まること、サイズの上限を確かめる。フレームの形は [ヘッダーの長さ u32 BE][ヘッダー][本文の長さ u32 BE][本文]。 */
 public class FrameCodecTest {
   @Test
   public void framesRoundTripWithTheirBodies() throws IOException {
@@ -62,7 +62,7 @@ public class FrameCodecTest {
     return new ByteArrayInputStream(bytes);
   }
 
-  /** 頭と、本文の長さと実際の本文のバイト数を書いた枠。 */
+  /** ヘッダー、宣言する本文の長さ、実際の本文のバイト数を別々に指定してフレームを作る。 */
   private static byte[] raw(String header, int declaredBody, int body) throws IOException {
     var bytes = new ByteArrayOutputStream();
     var out = new DataOutputStream(bytes);

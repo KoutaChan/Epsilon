@@ -4,9 +4,9 @@ import com.epsilon.reviewer.engine.format.ModelInfo;
 import com.epsilon.reviewer.engine.load.RecordSummary;
 
 /**
- * meta.json（索引の 1 件）。
+ * meta.json の中身。結果のインデックスの 1 件になる。
  *
- * @param owner 持ち主の id（{@link OwnerId#value()}）
+ * @param owner オーナーの id（{@link OwnerId#value()}）
  * @param createdAt 解析した時刻（ISO-8601、UTC、ミリ秒まで）
  */
 public record ResultMeta(

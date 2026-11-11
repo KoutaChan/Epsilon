@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.record;
 
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.TestFiles;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
 import com.epsilon.reviewer.engine.load.RecordLoader;
@@ -13,11 +14,14 @@ import java.time.ZoneOffset;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 読み込んだ牌譜の上限（持ち主 4・全体 64・128 MiB、待ちの解析も数える）と期限（WAITING だけ 30 分）。 */
+/**
+ * 読み込んだ牌譜の上限と期限を確かめる。上限はオーナーごとに 4 件、全体で 64 件・128 MiB で、解析を待っている牌譜も数える。期限が
+ * あるのは WAITING の牌譜だけで、30 分。
+ */
 public class PreparedRecordsTest {
   private static final OwnerId OWNER = OwnerId.fromCookieKey("A".repeat(43));
   private static final OwnerId OTHER = OwnerId.fromCookieKey("B".repeat(43));
-  private static final byte[] BYTES = TestFiles.golden("kakan-a");
+  private static final byte[] BYTES = TestFiles.played(Variant.TENHOU_4P, 0);
   private static final LoadedRecord RECORD = RecordLoader.load(BYTES);
 
   @Test

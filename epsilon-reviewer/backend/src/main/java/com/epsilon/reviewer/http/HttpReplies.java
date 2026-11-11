@@ -12,7 +12,7 @@ import java.io.OutputStream;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
 
-/** 1 つの応答の書き（JSON・空・文書・添付・失敗）。送り始めたら失敗を書かない（記録して接続を閉じる）。 */
+/** リクエスト 1 つへの応答を書く（JSON・空・文書・添付・エラー）。送り始めた後はエラーを書かない（呼び出し元がログに残して接続を閉じる）。 */
 final class HttpReplies {
   private static final String JSON_TYPE = "application/json; charset=utf-8";
 
@@ -23,7 +23,7 @@ final class HttpReplies {
     this.exchange = exchange;
   }
 
-  /** 状態の行を送ったか。 */
+  /** ステータス行を送り始めたなら true。 */
   boolean committed() {
     return committed;
   }
@@ -42,8 +42,8 @@ final class HttpReplies {
   }
 
   /**
-   * 解析結果の文書。文書は id ごとに変わらないので ETag は W/"&lt;id&gt;" で、合えば中身を読まずに 304。gzip を受ける相手には保存のまま、
-   * 受けない相手には展開して送る。
+   * 解析結果の文書を送る。文書は id ごとに変わらないので ETag は W/"&lt;id&gt;" とし、合えば中身を読まずに 304 を返す。
+   * gzip を受け付ける相手には保存した gzip のまま送り、受け付けない相手には展開して送る。
    */
   void document(StoredDocument document) throws IOException {
     Headers request = exchange.getRequestHeaders();
@@ -76,7 +76,7 @@ final class HttpReplies {
     headers.set("Vary", "Accept-Encoding");
   }
 
-  /** Web の書き出しのダウンロード（保存の gzip のまま）。読めなければ添付の頭を付けずに失敗を返す。 */
+  /** Web 用の書き出しをダウンロードさせる（保存した gzip のまま）。中身を読めなければ、添付のヘッダーを付けずにエラーを返す。 */
   void attachment(StoredDocument document) throws IOException {
     byte[] gzip = document.gzip().get();
     Headers headers = exchange.getResponseHeaders();
@@ -89,9 +89,9 @@ final class HttpReplies {
   }
 
   /**
-   * 失敗の本文 {"error":{code, message}}。送り始めていれば書かない。
+   * エラーの本文 {"error":{code, message}} を送る。送り始めた後なら書かない。
    *
-   * @return 書いたか
+   * @return 書いたなら true
    */
   boolean error(ErrorCode code, String message) throws IOException {
     if (committed) return false;
@@ -102,7 +102,7 @@ final class HttpReplies {
     return true;
   }
 
-  /** @param head 本文を送らず長さだけ書く（HEAD） */
+  /** @param head true なら本文を送らず、長さだけを書く（HEAD） */
   void send(int status, byte[] body, boolean head) throws IOException {
     committed = true;
     if (head) {
@@ -123,8 +123,9 @@ final class HttpReplies {
   }
 
   /**
-   * Accept-Encoding が coding を受けるか。全ての頭と項目の coding;q=x を読み、coding と * の最後の q を取り
-   * （形の違う q は 0）、coding の q があればそれ、無ければ * の q を使い、0 &lt; q ≤ 1 なら受ける。
+   * 相手がその圧縮形式（{@code coding}）を受け付けるかを、Accept-Encoding から決める。全ての Accept-Encoding ヘッダーの
+   * 全ての項目を読み、その形式と * のそれぞれについて最後に出た q を取る（q が無ければ 1、形の正しくない q は 0）。その形式の
+   * q があればそれを、無ければ * の q を使い、0 &lt; q ≤ 1 なら受け付ける。
    */
   static boolean accepts(Headers request, String coding) {
     Double named = null;
@@ -152,7 +153,7 @@ final class HttpReplies {
     return quality != null && quality > 0 && quality <= 1;
   }
 
-  /** If-None-Match が tag と合うか（弱い比べ、* は全て）。 */
+  /** If-None-Match が {@code tag} と合うか（弱い比較で、* は何とでも合う）。 */
   static boolean notModified(Headers request, String tag) {
     String opaque = opaque(tag);
     for (String header : request.getOrDefault("If-None-Match", List.of()))
@@ -167,6 +168,6 @@ final class HttpReplies {
     return tag.startsWith("W/") ? tag.substring(2) : tag;
   }
 
-  /** HTTP の失敗の封筒。 */
+  /** HTTP のエラー応答の JSON（{"error": ...}）。 */
   private record Envelope(ErrorBody error) {}
 }

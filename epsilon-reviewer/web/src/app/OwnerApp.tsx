@@ -34,8 +34,8 @@ const EXPORT_TOASTS: Record<ExportOutcome, MessageKey | null> = {
 };
 
 /**
- * 持ち主の画面（Web の Cookie の持ち主とデスクトップ）。取り込み・開く・書き出し・解析し直し・解析の開始・削除は
- * 1 つの useTask を使い、後から始めた操作が前の操作の結果を捨てる。
+ * オーナーの画面（Cookie を持つ Web のオーナーと、デスクトップ）。取り込み・開く・書き出し・解析し直し・解析の開始・削除は
+ * 1 つのタスク（useTask）を共有する。後から操作を始めると、前の操作の結果は捨てる。
  */
 export function OwnerApp() {
   const models = useModels();
@@ -216,7 +216,7 @@ export function OwnerApp() {
   );
 }
 
-/** 解析結果の画面。もしもは結果のモデルが今のカタログで使える時だけ、共有は Web だけ。 */
+/** 解析結果の画面。もしもは、解析に使ったモデルか、そのモデルの今のバージョンが使えるときだけ出す。共有は Web だけで出す。 */
 function OwnerReview({
   document,
   seat,
@@ -233,7 +233,7 @@ function OwnerReview({
   onBack: () => void;
 }) {
   const { resultId } = document;
-  const available = models.isAvailable(document.model);
+  const available = models.scenarioAvailable(document.model);
   const scenario = useMemo(
     () => (available ? api.scenarioClient(resultId, "owner") : null),
     [available, resultId],

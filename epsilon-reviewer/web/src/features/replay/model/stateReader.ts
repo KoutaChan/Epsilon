@@ -11,17 +11,17 @@ import type {
   TableSnapshot,
 } from "./types.ts";
 
-/** 局面を作っておく局の数。 */
+/** 局面を作って覚えておく局の数。 */
 export const CACHED_ROUNDS = 3;
 
 export interface StateReader {
-  /** 手順とその時の局面。局面（席と配列）は局が写しから外れるまで同じ物を返す。 */
+  /** 手順と、そのときの局面を返す。局がキャッシュから外れるまでは、同じ手順を何度読んでも、局面の席と配列は同じオブジェクトになる。 */
   readSnapshot<S extends ReplayStep>(round: number, step: S): S & TableSnapshot;
 }
 
 /**
- * 局の局面を初めて見た時に全て作り、最近見た CACHED_ROUNDS 局だけ持つ。変わらない席と配列は前の局面と
- * 同じ物を使う。見ない局の手牌・河は作らない。
+ * 局面は、その局を初めて見たときに局の分を全て作り、最近見た {@link CACHED_ROUNDS} 局だけをキャッシュに持つ。変わらない席と
+ * 配列は、前の局面と同じオブジェクトを使い回す。見ていない局の手牌・河は作らない。
  */
 export function createStateReader(model: ReplayModel): StateReader {
   const names = model.record.names;
@@ -97,7 +97,7 @@ function applyDelta(state: TableSnapshot, delta: StateDelta): TableSnapshot {
   };
 }
 
-/** 置き換えの無い配列はそのまま返す。 */
+/** 差し替えを適用した配列を返す。差し替えが無ければ、元の配列をそのまま返す。 */
 function applySplice<T>(
   values: readonly T[],
   splice: Splice<T> | undefined,
@@ -113,7 +113,7 @@ function applySplice<T>(
 }
 
 /**
- * 対局全体の席の列の最大の幅（副露だけを見る）に余白 0.4 を足す。両方のカメラを対局の間ずっと固定する。
+ * 対局全体で最も広い席の列の幅（副露だけで測る）に、余白 0.4 を足して返す。両方のカメラは、対局の間ずっとこの幅で固定する。
  */
 export function maximumPlayerRowWidth(
   model: ReplayModel,

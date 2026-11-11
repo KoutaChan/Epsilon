@@ -11,7 +11,7 @@ import {
   windName,
 } from "../../src/language/format.ts";
 
-/** 鍵と値をそのまま見せる Translate。 */
+/** テスト用の Translate。訳さずに、キーの後ろに値の JSON をつないで返す（値が無ければキーだけ）。 */
 const t = (key, values) => (values ? `${key}${JSON.stringify(values)}` : key);
 
 test("model keys and labels", () => {
@@ -37,15 +37,29 @@ test("sources and players", () => {
 test("winds, seats relative to the dealer and rounds", () => {
   assert.equal(windName(0, t), "mahjong.east");
   assert.equal(windName(5, t, true), "mahjong.southShort");
-  assert.equal(seatName(0, 0, t), 'mahjong.seat{"wind":"mahjong.east"}');
-  assert.equal(seatName(1, 2, t), 'mahjong.seat{"wind":"mahjong.north"}');
+  const four = { dealer: 2, seats: 4 };
+  const three = { dealer: 2, seats: 3 };
   assert.equal(
-    roundName({ roundIndex: 5 }, t),
+    seatName(0, { dealer: 0, seats: 4 }, t),
+    'mahjong.seat{"wind":"mahjong.east"}',
+  );
+  assert.equal(seatName(1, four, t), 'mahjong.seat{"wind":"mahjong.north"}');
+  assert.equal(seatName(1, three, t), 'mahjong.seat{"wind":"mahjong.west"}');
+  assert.equal(
+    roundName({ roundIndex: 5, seats: 4 }, t),
     'mahjong.round{"wind":"mahjong.south","number":2}',
   );
   assert.equal(
-    roundName({ roundIndex: 3 }, t, true),
+    roundName({ roundIndex: 3, seats: 4 }, t, true),
     'mahjong.roundShort{"wind":"mahjong.eastShort","number":4}',
+  );
+  assert.equal(
+    roundName({ roundIndex: 5, seats: 3 }, t),
+    'mahjong.round{"wind":"mahjong.south","number":3}',
+  );
+  assert.equal(
+    roundName({ roundIndex: 6, seats: 3 }, t),
+    'mahjong.round{"wind":"mahjong.west","number":1}',
   );
 });
 

@@ -9,7 +9,7 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-/** 同じ保存先を 2 つのレビュアーが更新することを防ぐ OS の鍵。 */
+/** 2 つのレビュアーが同じ保存先を書き換えないようにする、OS のファイルロック。 */
 public final class DataDirectoryLock implements AutoCloseable {
   private final FileChannel channel;
   private final FileLock lock;
@@ -19,7 +19,7 @@ public final class DataDirectoryLock implements AutoCloseable {
     this.lock = lock;
   }
 
-  /** @throws ReviewerException data_locked（他のレビュアーが鍵を持つ） */
+  /** @throws ReviewerException data_locked（ほかのレビュアーがロックを持っている。同じプロセスの中のものも含む） */
   public static DataDirectoryLock acquire(Path directory) throws IOException {
     FileChannel channel =
         FileChannel.open(

@@ -17,11 +17,11 @@ import type {
   Snapshot,
 } from "../model/types.ts";
 
-// もしもの変更は判断の局面の上の差分として持ち、卓の写しもサーバへの要求もここから作る。
+// もしもの変更は、判断の局面からの差分として持つ。卓に描く写しも、サーバへの要求もこの差分から作る。
 
 /**
- * 変えられる所。席は絶対の席、index は river[]・dora[] の位置。手牌の index は判断の局面の hand[] の位置で、
- * hand.length はツモ牌。
+ * 変えられる所。席は絶対の席。`index` は河・ドラ・手牌の中の位置で、0 から数える。手牌の位置は判断の局面でのもので、
+ * 手牌の枚数（`hand.length`）ならツモ牌。
  */
 export type ScenarioTarget =
   | { kind: "river"; seat: number; index: number }
@@ -44,15 +44,15 @@ export type ScenarioChange =
   | { kind: "score"; seat: number; from: number; to: number }
   | { kind: "honba"; from: number; to: number }
   | { kind: "kyotaku"; from: number; to: number };
-/** 牌の一覧で選び直す所。 */
+/** 牌の一覧から牌を選び直す所。 */
 export type TileTarget = Extract<
   ScenarioTarget,
   { kind: "river" | "dora" | "hand" }
 >;
 
 /**
- * 変更を当てた局面。手牌は tileOrder の順に並べ直し、handOrigins が表示の位置ごとの判断の局面の hand[] の
- * 位置を持つ（ツモ牌はツモ牌のまま）。
+ * 変更を反映した局面。手牌は牌の並び順（`tileOrder`）に並べ直す。`handOrigins` は表示の並びの位置ごとに、
+ * その牌が判断の局面で手牌のどこにあったかを持つ（ツモ牌はツモ牌のまま）。
  */
 export interface EditedBoard {
   readonly snapshot: Snapshot;
@@ -81,16 +81,16 @@ export const targetKey = (target: ScenarioTarget) =>
         ? `score:${target.seat}`
         : target.kind;
 
-/** 表示の手牌の位置の、判断の局面の hand[] の位置。ツモ牌の位置はそのまま。 */
+/** 表示の並びで指定した位置にある手牌が、判断の局面で手牌のどこにあったかを返す。ツモ牌の位置はそのまま返す。 */
 export const handOrigin = (origins: readonly number[], position: number) =>
   origins[position] ?? position;
 
-/** 判断の局面の手牌の位置の牌（hand.length はツモ牌）。 */
+/** 判断の局面で、手牌の指定した位置にある牌を返す。位置が手牌の枚数ならツモ牌を返す。 */
 function handTile(player: PlayerSnapshot, index: number): string {
   return index === player.hand.length ? player.draw! : player.hand[index]!;
 }
 
-/** 変更の並びと省き方を決めた形にする。同じ局面は同じ JSON になる。手牌の変更は元と違うものだけを渡す。 */
+/** 変更を決まった順に並べ、元と同じ所を省く。同じ局面なら同じ JSON になる。手牌の変更は、元と違うものだけを渡すこと。 */
 function normalize(
   original: Snapshot,
   rivers: readonly RiverEdit[],
@@ -166,7 +166,7 @@ export function setDora(
   );
 }
 
-/** 判断の席の手牌の 1 枚を入れ替える。index は判断の局面の hand[] の位置（hand.length はツモ牌）。 */
+/** 判断する席の手牌を 1 枚入れ替える。手牌の位置は判断の局面でのもので、手牌の枚数ならツモ牌。 */
 export function setHand(
   edits: ScenarioEdits,
   original: Snapshot,
@@ -281,7 +281,7 @@ function editedDiscard(base: RiverTile, edit: RiverEdit): RiverTile {
 const sequence = (length: number) =>
   Array.from({ length }, (_, index) => index);
 
-/** 変更を当てた局面の写しを作る。読み込みの局面は共有なので書き換えず、変わらない席と配列はそのまま使う。 */
+/** 変更を反映した局面の写しを作る。読み込んだ局面はほかでも使っているので書き換えない。変わらない席と配列は、元のものをそのまま使う。 */
 export function applyEdits(
   snapshot: Snapshot,
   edits: ScenarioEdits,
@@ -338,7 +338,7 @@ export function applyEdits(
   };
 }
 
-/** サーバが返した局面（鳴いた後など）を、判断の局面の名前と手番の情報を持つ卓の局面にする。 */
+/** サーバが返した局面（鳴いた後など）を、卓に描く局面にする。返った局面に無い情報と対局者名は判断の局面から引き継ぐ。 */
 export function tableSnapshot(base: Snapshot, table: TableState): Snapshot {
   return {
     ...base,
@@ -351,7 +351,7 @@ export function tableSnapshot(base: Snapshot, table: TableState): Snapshot {
   };
 }
 
-/** 鳴いた後の打牌を見られる候補（チー・ポン）。大明槓は嶺上のツモが分からないので含めない。 */
+/** 鳴いた後の打牌を見られる候補か（チー・ポン）。大明槓は嶺上のツモが分からないので含めない。 */
 export const isCall = (candidate: Candidate) =>
   candidate.type === "CHI" || candidate.type === "PON";
 
@@ -408,18 +408,29 @@ export function canEditRiver(
   return tile !== undefined && tile.called !== true;
 }
 
-/** 見ている席の手牌を変えられるか。その席の判断があり、判断の局面でリーチしていない時だけ。 */
+/**
+ * 見ている席の手牌の、表示の並びで index の位置（hand.length ならツモ牌）を変えられるか。その席が判断する局面で、
+ * まだリーチしておらず、その位置に牌があるときだけ変えられる。
+ */
 export function canEditHand(
   snapshot: Snapshot,
   viewSeat: number,
   decision: DecisionStep | null,
+  index: number,
 ): boolean {
-  return decision !== null && !snapshot.players[viewSeat]!.riichi;
+  const viewer = snapshot.players[viewSeat]!;
+  return (
+    decision !== null &&
+    !viewer.riichi &&
+    (index === viewer.hand.length
+      ? viewer.draw !== null
+      : index < viewer.hand.length)
+  );
 }
 
 /**
- * 見ている席から見えている牌を牌の記号ごとに数える（自分の手牌とツモ、全員の河と副露、ドラ表示牌）。
- * サーバの検証と同じ範囲。変える所の牌は数えない。
+ * 見ている席から見える牌を、牌の記号ごとに数える（自分の手牌とツモ牌、全員の河と副露、ドラ表示牌）。
+ * 数える範囲はサーバの検証と同じ。変える所にある牌は数えない。
  */
 function visibleTiles(
   board: EditedBoard,
@@ -452,7 +463,7 @@ function visibleTiles(
   return counts;
 }
 
-/** 変える所の今の牌。 */
+/** 変える所に今ある牌を返す。 */
 function currentTile(board: EditedBoard, viewSeat: number, target: TileTarget) {
   const { snapshot, handOrigins } = board;
   if (target.kind === "river")
@@ -464,7 +475,7 @@ function currentTile(board: EditedBoard, viewSeat: number, target: TileTarget) {
     : viewer.hand[handOrigins.indexOf(target.index)]!;
 }
 
-/** 変える所の、判断の局面の牌。 */
+/** 変える所に判断の局面であった牌を返す。 */
 function originalTile(
   original: Snapshot,
   viewSeat: number,
@@ -477,15 +488,18 @@ function originalTile(
 }
 
 /**
- * 変える所に牌を置けるか。今の牌のほかは、変える所を除いて見えている枚数が物理牌の数より少ない牌だけ
- * （サーバが断る牌と同じ決まり）。
+ * 変える所にその牌を置けるか。今の牌は置ける。ほかの牌は、変える所を除いて見えている枚数が物理牌の数より
+ * 少ないときだけ置ける（サーバが断る牌と同じ決まり）。
  */
 function fits(
   tile: string,
   current: string,
   counts: ReadonlyMap<string, number>,
+  seats: number,
 ) {
-  return tile === current || (counts.get(tile) ?? 0) < tileCopies(tile);
+  return (
+    tile === current || (counts.get(tile) ?? 0) < tileCopies(tile, seats)
+  );
 }
 
 export interface TileChoice {
@@ -495,25 +509,31 @@ export interface TileChoice {
   readonly current: boolean;
   readonly disabled: boolean;
 }
-/** 牌の一覧。見えている枚数が物理牌の数に達した牌は選べない（今の牌は選び直せる）。 */
+/**
+ * 変える所に置く牌の一覧。見えている枚数が物理牌の数に達した牌は選べない（今の牌は選び直せる）。
+ * 卓に無い牌（三人打ちの 2〜8 萬と赤の 5 萬）は出さない。
+ */
 export function tileChoices(
   board: EditedBoard,
   viewSeat: number,
   target: TileTarget,
 ): readonly (readonly TileChoice[])[] {
+  const seats = board.snapshot.players.length;
   const current = currentTile(board, viewSeat, target);
   const counts = visibleTiles(board, viewSeat, target);
   return TILE_ROWS.map((row) =>
-    row.map((tile) => ({
-      tile,
-      visible: counts.get(tile) ?? 0,
-      current: tile === current,
-      disabled: !fits(tile, current, counts),
-    })),
+    row
+      .filter((tile) => tileCopies(tile, seats) > 0)
+      .map((tile) => ({
+        tile,
+        visible: counts.get(tile) ?? 0,
+        current: tile === current,
+        disabled: !fits(tile, current, counts, seats),
+      })),
   );
 }
 
-/** 変えた所を元に戻せるか。牌は、元の牌を牌の一覧で選べる時だけ戻せる。 */
+/** 変えた所を元に戻せるか。牌は、元の牌を牌の一覧で選べるときだけ戻せる。 */
 export function canRevert(
   board: EditedBoard,
   original: Snapshot,
@@ -528,6 +548,7 @@ export function canRevert(
         originalTile(original, viewSeat, target),
         currentTile(board, viewSeat, target),
         visibleTiles(board, viewSeat, target),
+        board.snapshot.players.length,
       );
     case "score":
     case "honba":
@@ -538,12 +559,12 @@ export function canRevert(
 
 const candidateKey = (candidate: Candidate) =>
   `${candidate.type}|${candidate.tiles.join(",")}|${candidate.tsumogiri}`;
-/** もしもの候補ごとの元の候補と順位（1 から）。元にない候補は null。 */
+/** もしもの候補ごとに、対応する元の候補とその順位（1 から）。元に無い候補は null。 */
 export type CandidateComparison = ReadonlyMap<
   Candidate,
   { previous: Candidate; rank: number } | null
 >;
-/** もしもの候補を、同じ行動（種類・牌・ツモ切り）の元の候補と並べる。 */
+/** もしもの候補を、同じ行動（種類・牌・ツモ切り）の元の候補と対応させる。 */
 export function compareCandidates(
   original: readonly Candidate[],
   edited: readonly Candidate[],

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>com.epsilon</groupId>
@@ -9,30 +9,70 @@
   </parent>
   <artifactId>epsilon-reviewer</artifactId>
   <name>Epsilon AI Reviewer server</name>
-  <properties><epsilon.mainClass>com.epsilon.reviewer.Main</epsilon.mainClass></properties>
+  <properties>
+    <epsilon.mainClass>com.epsilon.reviewer.Main</epsilon.mainClass>
+  </properties>
   <dependencies>
-    <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-common</artifactId><version>${project.version}</version></dependency>
-    <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-prism</artifactId><version>${project.version}</version></dependency>
-    <dependency><groupId>com.epsilon</groupId><artifactId>epsilon</artifactId><version>${project.version}</version></dependency>
-    <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-nano</artifactId><version>${project.version}</version></dependency>
-    <dependency><groupId>com.epsilon</groupId><artifactId>epsilon-pico</artifactId><version>${project.version}</version></dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-agent</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Nano・Major・規則の打ち手の ModelFamily。Reviewer は classic を import せず、実行時に ServiceLoader で見つける。 -->
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-classic</artifactId>
+      <version>${project.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- PRISM の ModelFamily と、四人打ち・三人打ちの入力の形式。classic と同じく実行時に ServiceLoader で見つける。 -->
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism</artifactId>
+      <version>${project.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism-4p</artifactId>
+      <version>${project.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism-3p</artifactId>
+      <version>${project.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- 試験の牌譜をエンジンで打つ道具（RecordedGames・Scenes）と、小さな乱数の checkpoint を書く道具。 -->
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-mahjong</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-classic</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
   <build>
     <finalName>epsilon-reviewer</finalName>
-    <!-- もしもの再生の試験は、epsilon-common の試験が持つ天鳳の牌譜（GoldenGames）を写さずに使う。 -->
-    <testResources>
-      <testResource><directory>${project.basedir}/src/test/resources</directory></testResource>
-      <testResource>
-        <directory>${project.basedir}/../../epsilon-common/src/test/resources</directory>
-        <includes><include>com/epsilon/engine/golden/*.xml.gz</include></includes>
-      </testResource>
-    </testResources>
-    <plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId></plugin></plugins>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+      </plugin>
+    </plugins>
   </build>
   <profiles>
     <!--
-      デスクトップの jar（target/epsilon-reviewer-1.0-SNAPSHOT-desktop.jar）。"-P!linux-native,desktop" で組む（ROCm の JNI を
-      入れない）。Windows x64 のアプリが読まない他の OS のネイティブ（zstd-jni・JNA の win amd64 以外、jnilib）を除く。
+      デスクトップの jar（target/epsilon-reviewer-1.0-SNAPSHOT-desktop.jar）。Windows x64 のアプリが読まない他の OS のネイティブ
+      （zstd-jni・JNA の win amd64 以外、jnilib）を除く。
     -->
     <profile>
       <id>desktop</id>
@@ -45,7 +85,9 @@
               <execution>
                 <id>desktop</id>
                 <phase>package</phase>
-                <goals><goal>shade</goal></goals>
+                <goals>
+                  <goal>shade</goal>
+                </goals>
                 <configuration>
                   <shadedArtifactAttached>true</shadedArtifactAttached>
                   <shadedClassifierName>desktop</shadedClassifierName>

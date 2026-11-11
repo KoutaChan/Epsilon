@@ -8,8 +8,9 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * 持ち主の Cookie（epsilon_reviewer_owner、32 バイトの乱数の base64url のパディングなし 43 字）。全ての Cookie の頭の最後の正しい値を使い、
- * 無ければ発行する。持ち主の id は鍵の SHA-256。owner の道でだけ、守りの後に呼ぶ。
+ * オーナーの Cookie（epsilon_reviewer_owner）。値は 32 バイトの乱数を base64url でパディングなしに書いた 43 文字。全ての Cookie ヘッダーの
+ * うち最後に出てくる正しい形の値を使い、無ければ発行する。オーナーの id はこの値の SHA-256。ヘッダーを確かめた後に、オーナーの
+ * ルートでだけ呼ぶ。
  */
 final class OwnerCookie {
   static final String NAME = "epsilon_reviewer_owner";
@@ -19,7 +20,7 @@ final class OwnerCookie {
   private final boolean secure;
   private final SecureRandom random = new SecureRandom();
 
-  /** @param secure origin が https なら Secure を付ける */
+  /** @param secure true なら Secure を付ける（origin が https のとき） */
   OwnerCookie(boolean secure) {
     this.secure = secure;
   }
@@ -37,7 +38,7 @@ final class OwnerCookie {
     return OwnerId.fromCookieKey(key);
   }
 
-  /** Cookie の頭の最後の正しい鍵。無ければ null。 */
+  /** Cookie ヘッダーから、最後に出てくる正しい形の値を返す。無ければ null。 */
   static String key(List<String> headers) {
     String key = null;
     for (String header : headers)

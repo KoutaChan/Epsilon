@@ -1,27 +1,23 @@
 package com.epsilon.reviewer.engine;
 
-import ai.djl.Device;
-import ai.djl.Model;
-import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.core.Action;
-import com.epsilon.core.AkaTileMask;
-import com.epsilon.core.GameState;
-import com.epsilon.core.PublicObservation;
-import com.epsilon.core.Tile;
-import com.epsilon.nano.ai.decision.input.DecisionBatchBuilder;
-import com.epsilon.nano.ai.decision.runtime.EpsilonDecisionInferenceServer;
-import com.epsilon.nano.ai.decision.training.EpsilonDecisionCheckpointManager;
-import com.epsilon.nano.ai.network.NetworkFactory;
-import com.epsilon.replay.ReplayDecision;
-import com.epsilon.replay.ReplayEngine;
-import com.epsilon.replay.ReplayEvent;
-import com.epsilon.replay.ReplayEvent.Dahai;
-import com.epsilon.replay.ReplayEvent.Dora;
-import com.epsilon.replay.ReplayEvent.Pon;
-import com.epsilon.replay.ReplayEvent.StartGame;
-import com.epsilon.replay.ReplayEvent.StartKyoku;
-import com.epsilon.replay.ReplayEvent.Tsumo;
-import com.epsilon.replay.ReplayObserver;
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.agent.policy.Evaluation;
+import com.epsilon.agent.policy.Policy;
+import com.epsilon.agent.policy.PolicyOptions;
+import com.epsilon.classic.Architecture;
+import com.epsilon.classic.ClassicFamily;
+import com.epsilon.classic.RandomCheckpoints;
+import com.epsilon.mahjong.engine.Boundary;
+import com.epsilon.mahjong.engine.Decisions;
+import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.mahjong.io.RecordFiles;
+import com.epsilon.mahjong.io.majsoul.MajSoulReaderTest;
+import com.epsilon.mahjong.io.mjai.MjaiCodec;
+import com.epsilon.mahjong.record.RecordedGame;
+import com.epsilon.mahjong.record.RecordedRound;
+import com.epsilon.mahjong.record.ReplayDriver;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.reviewer.FixtureFamily;
 import com.epsilon.reviewer.TestFiles;
 import com.epsilon.reviewer.engine.format.ResultWriter;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
@@ -29,17 +25,15 @@ import com.epsilon.reviewer.engine.load.RecordLoader;
 import com.epsilon.reviewer.engine.review.Analysis;
 import com.epsilon.reviewer.engine.review.JobControl;
 import com.epsilon.reviewer.engine.review.ReviewModel;
-import com.epsilon.reviewer.engine.view.TableProjector;
-import com.epsilon.reviewer.engine.view.TableState;
-import com.epsilon.reviewer.engine.view.TileCode;
-import com.epsilon.reviewer.model.PolicyProviders;
-import com.epsilon.spi.ReviewEvaluation;
-import com.epsilon.spi.ReviewPolicy;
-import com.google.gson.Gson;
+import com.epsilon.reviewer.error.ErrorCode;
+import com.epsilon.reviewer.error.ReviewerException;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -48,282 +42,195 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.function.Function;
+import java.util.stream.IntStream;
+import java.util.zip.GZIPInputStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 各牌譜形式の読み、最終点の根拠、赤牌と副露の表示、候補の並べ替え、取り消しと進み、保存したモデルを使った解析を確かめる。 */
+/**
+ * 牌譜の読み込み（天鳳・mjai・雀魂の形式と、断る牌譜）、候補の並べ替え、取り消しと進み具合、ランダムな重みで作った classic の
+ * チェックポイントでの解析を確かめる。
+ */
 public class AnalysisTest {
+  /** 解析する、エンジンで打った四人打ちの半荘の乱数の種。 */
+  private static final long SEED = 0;
+
   @Test
-  public void loadResolvesDuplicateMjaiTilesAndKeepsNamesAndFinalScores() {
-    LoadedRecord record = RecordLoader.load(mjai(true).getBytes(StandardCharsets.UTF_8));
-    // 日本語の名前は UTF-8 の読みを通す。
+  public void tenhouRecordsReadGzipBomAndUrlEncodedNames() {
+    LoadedRecord record = played();
+    RecordedGame game = record.game();
+    Assert.assertEquals(record.summary().source(), "tenhou");
+    Assert.assertEquals(record.summary().roundCount(), game.rounds().size());
     Assert.assertEquals(
-        record.summary().names(),
-        List.of(
-            "みなと",
-            "こはく",
-            "あおい",
-            "つばめ"));
-    Assert.assertEquals(record.summary().finalScores(), List.of(32600, 28400, 21500, 17500));
+        record.summary().finalScores(), Arrays.stream(game.finalScores()).boxed().toList());
+    String xml =
+        gunzip(TestFiles.played(Variant.TENHOU_4P, SEED))
+            .replaceFirst(" n0=\"[^\"]*\"", " n0=\"%E3%81%BF%E3%81%AA%E3%81%A8\"");
+    LoadedRecord renamed = RecordLoader.load(("\uFEFF" + xml).getBytes(StandardCharsets.UTF_8));
+    Assert.assertEquals(renamed.summary().names().getFirst(), "みなと");
+    Assert.assertEquals(renamed.summary().names().subList(1, 4), record.summary().names().subList(1, 4));
+    Assert.assertEquals(renamed.rounds(), record.rounds());
+  }
+
+  @Test
+  public void mjaiRecordsReadAsLinesOrAnArray() {
+    LoadedRecord tenhou = played();
+    String lines = MjaiCodec.write(tenhou.game());
+    LoadedRecord record = load(lines);
     Assert.assertEquals(record.summary().source(), "mjai");
+    Assert.assertEquals(record.summary().names(), tenhou.summary().names());
+    Assert.assertEquals(record.summary().finalScores(), tenhou.summary().finalScores());
+    Assert.assertEquals(record.summary().roundCount(), tenhou.summary().roundCount());
+    JsonArray array = new JsonArray();
+    for (String line : lines.split("\n")) if (!line.isBlank()) array.add(JsonParser.parseString(line));
+    Assert.assertEquals(load(array.toString()).game(), record.game());
+  }
+
+  @Test
+  public void decodedMahjongSoulRecordKeepsItsSource() {
+    LoadedRecord record = load(MajSoulReaderTest.RECORD);
+    Assert.assertEquals(record.summary().source(), "majsoul");
+    Assert.assertEquals(record.summary().names(), List.of("East", "", "West", ""));
+    Assert.assertEquals(record.summary().finalScores(), List.of(24000, 21000, 31000, 24000));
     Assert.assertEquals(record.summary().roundCount(), 1);
-    var start = (StartKyoku) record.replay().events().get(record.roundStarts()[0]);
-    Set<Integer> ids = new HashSet<>();
-    for (int[] hand : start.initialHandPhysicalTileIds())
-      for (int id : hand)
-        Assert.assertTrue(ids.add(id), "Duplicate physical tile in the initial hands");
-    Assert.assertEquals(ids.size(), 52);
+    Assert.assertEquals(record.firstStep(0), 0);
   }
 
   @Test
-  public void loadDoesNotInventTerminalPointsForAFragmentAndRejectsHiddenHands() {
-    var partial = RecordLoader.load(mjai(false).getBytes(StandardCharsets.UTF_8));
-    Assert.assertNull(partial.summary().finalScores());
-    String unknown = mjai(false).replaceFirst("\\\"7m\\\"", "\\\"?\\\"");
-    Assert.expectThrows(
-        IllegalArgumentException.class,
-        () -> RecordLoader.load(unknown.getBytes(StandardCharsets.UTF_8)));
-  }
-
-  @Test
-  public void tenhouKeepsRecordedNamesAndRequiresOwariForFinalScores() {
-    String prefix =
-        "<mjloggm><GO type=\"169\"/><UN n0=\"%E3%81%BF%E3%81%AA%E3%81%A8\" n1=\"B\" n2=\"C\""
-            + " n3=\"D\"/>"
-            + xmlInit();
-    var fragment = RecordLoader.load((prefix + "</mjloggm>").getBytes(StandardCharsets.UTF_8));
-    Assert.assertNull(fragment.summary().finalScores());
-    var complete =
-        RecordLoader.load(
-            (prefix
-                    + "<RYUUKYOKU sc=\"250,0,250,0,250,0,250,0\""
-                    + " owari=\"326,52.6,284,8.4,215,-18.5,175,-42.5\"/></mjloggm>")
-                .getBytes(StandardCharsets.UTF_8));
-    Assert.assertEquals(complete.summary().names().getFirst(), "みなと");
-    Assert.assertEquals(complete.summary().finalScores(), List.of(32600, 28400, 21500, 17500));
-    Assert.assertEquals(complete.summary().source(), "tenhou");
-  }
-
-  @Test
-  public void tablesKeepTheDrawSeparateAndShowTheCalledRiverAndMeldSource() {
-    List<ReplayEvent> events =
-        List.of(
-            new StartGame(),
-            new StartKyoku(
-                Tile.TON, 1, 0, 0, 1, Tile.HAKU, hands(), new int[] {25000, 25000, 25000, 25000}),
-            new Tsumo(1, 25),
-            new Dahai(1, 25, true),
-            new Pon(0, 1, 25, new int[] {24, 26}),
-            new Dora(Tile.P6));
-    List<TableState> frames = new ArrayList<>();
-    List<String> choices = new ArrayList<>();
-    ReplayEngine.replay(
-        ScenarioReplayTest.synthetic(events).replay(),
-        new ReplayObserver() {
-          @Override
-          public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {
-            int chosen = decision.chosenSlot();
-            choices.add(
-                decision.seat() + ":" + (chosen < 0 ? "UNOBSERVED" : legal.get(chosen).type()));
-          }
-
-          @Override
-          public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
-            if (!(event instanceof StartGame)) frames.add(TableProjector.table(state));
-          }
-        });
-    Assert.assertEquals(choices, List.of("1:DAHAI", "2:UNOBSERVED", "0:PON"));
-    Assert.assertEquals(frames.get(1).players().get(1).draw(), "7m");
-    Assert.assertEquals(frames.get(1).players().get(1).hand().size(), 13);
-    var called = frames.get(3);
-    Assert.assertTrue(called.players().get(1).river().getFirst().called());
-    Assert.assertEquals(called.players().get(0).melds().getFirst().from(), 1);
-    Assert.assertEquals(
-        called.players().get(0).melds().getFirst().tiles(), List.of("7m", "7m", "7m"));
-    Assert.assertEquals(frames.getLast().dora(), List.of("P", "6p"));
-    // 後の出来事が前の局面を変えない。
-    Assert.assertFalse(frames.get(2).players().get(1).river().getFirst().called());
-  }
-
-  @Test
-  public void redDoraRemainsRedThroughMjaiParsingReplayAndProjection() {
-    JsonArray events = JsonParser.parseString(mjai(false)).getAsJsonArray();
-    events.get(1).getAsJsonObject().addProperty("dora_marker", "5pr");
-    events.add(JsonParser.parseString("{\"type\":\"dora\",\"dora_marker\":\"5p\"}"));
-    var record = RecordLoader.load(events.toString().getBytes(StandardCharsets.UTF_8));
-    List<List<String>> indicators = new ArrayList<>();
-    ReplayEngine.replay(
-        record.replay(),
-        new ReplayObserver() {
-          @Override
-          public void onDecision(ReplayDecision decision, GameState state, List<Action> legal) {}
-
-          @Override
-          public void onEventApplied(int index, int revision, ReplayEvent event, GameState state) {
-            if (event instanceof StartGame) return;
-            indicators.add(TableProjector.table(state).dora());
-            Assert.assertTrue(
-                AkaTileMask.containsTile(state.doraState().visibleIndicatorAkaMask(), Tile.P5));
-          }
-        });
-    Assert.assertEquals(indicators.getFirst(), List.of("5pr"));
-    Assert.assertEquals(indicators.getLast(), List.of("5pr", "5p"));
-  }
-
-  @Test
-  public void decodedMahjongSoulArrayUsesTheSameValidatedReplayAndKeepsItsSource() {
-    JsonObject start =
-        JsonParser.parseString(
-                "{\"chang\":0,\"ju\":0,\"ben\":0,\"liqibang\":0,\"dora\":\"7z\","
-                    + "\"scores\":[25000,25000,25000,25000]}")
-            .getAsJsonObject();
-    for (int seat = 0; seat < 4; seat++) {
-      JsonArray tiles = new JsonArray();
-      for (int id : hands()[seat]) {
-        int type = Tile.typeOf(id);
-        tiles.add(
-            type >= 27
-                ? (type - 26) + "z"
-                : (Tile.isAka(id) ? "0" + "mps".charAt(type / 9) : TileCode.of(type, false)));
-      }
-      start.add("tiles" + seat, tiles);
-    }
-    start.add(
-        "tiles0",
-        new Gson()
-            .toJsonTree(
-                List.of(
-                    "1m", "9m", "1p", "9p", "1s", "9s", "1z", "2z", "3z", "2m", "3m", "4m", "5m",
-                    "7z")));
-    JsonObject first = new JsonObject();
-    first.addProperty("name", ".lq.RecordNewRound");
-    first.add("data", start);
-    JsonObject last =
-        JsonParser.parseString(
-                "{\"name\":\".lq.RecordLiuJu\",\"data\":{\"type\":1,"
-                    + "\"gameend\":{\"scores\":[25000,25000,25000,25000]}}}")
-            .getAsJsonObject();
-    JsonArray records = new JsonArray();
-    records.add(first);
-    records.add(last);
-    var loaded = RecordLoader.load(records.toString().getBytes(StandardCharsets.UTF_8));
-    Assert.assertEquals(loaded.summary().source(), "majsoul");
-    Assert.assertEquals(loaded.summary().finalScores(), List.of(25000, 25000, 25000, 25000));
-    Assert.assertEquals(loaded.summary().roundCount(), 1);
+  public void recordsThatCannotBeReviewedAreRejected() {
+    LoadedRecord record = played();
+    List<String> lines = List.of(MjaiCodec.write(record.game()).split("\n"));
+    rejected(Format6.text(record, new RecordingPolicy()), "An analysis result is not a record");
+    rejected(new byte[RecordFiles.MAX_BYTES + 1], "16 MiB");
+    rejected("[".repeat(RecordFiles.MAX_NESTING + 1) + "]".repeat(RecordFiles.MAX_NESTING + 1), "nests");
+    int events = record.rounds().stream().mapToInt(round -> round.events().size()).sum();
+    List<String> many = new ArrayList<>(List.of(lines.getFirst()));
+    for (int copy = 0; copy <= RecordFiles.MAX_EVENTS / events; copy++)
+      many.addAll(lines.subList(1, lines.size() - 1));
+    many.add(lines.getLast());
+    rejected(String.join("\n", many), "more than " + RecordFiles.MAX_EVENTS);
+    rejected(String.join("\n", riichiBeforeTheFirstDiscard(lines)), "Record replay failed");
+    rejected(String.join("\n", negatedFirstWin(lines)), "Record replay failed");
+    rejected(String.join("\n", lines.subList(0, lines.size() - 1)), "ends before the game does");
   }
 
   @Test(groups = "native")
-  public void restoredNanoCheckpointReviewsEverySeatWithTheActualNormalizedPolicy()
+  public void randomClassicCheckpointReviewsEverySeatWithNormalizedProbabilities()
       throws Exception {
     Path directory = TestFiles.directory("reviewer-native-");
     Path checkpoint = directory.resolve("checkpoint");
-    LoadedRecord record = RecordLoader.load(mjai(true).getBytes(StandardCharsets.UTF_8));
-    try (Model source =
-        NetworkFactory.createDecisionModel(Device.cpu(), false, 32, EpsilonUtilityProfile.TOP)) {
-      EpsilonDecisionCheckpointManager.saveInitial(source, checkpoint);
-      try (ReviewPolicy policy =
-          PolicyProviders.load()
-              .find("epsilon-nano")
-              .orElseThrow()
-              .openReview(checkpoint, Map.of("device", "cpu"))) {
-        ReviewModel model = model(policy);
-        Format6.Document document = Format6.analyze(record, model);
+    try {
+      RandomCheckpoints.write(checkpoint, Architecture.NANO, Variant.TENHOU_4P, 7);
+      try (Policy policy =
+          new ClassicFamily.Nano()
+              .open(
+                  checkpoint,
+                  Variant.TENHOU_4P,
+                  PolicyOptions.defaults())) {
+        Format6.Document document = Format6.analyze(played(), model(policy));
         Assert.assertFalse(document.json().has("temperature"), "Nano has no value head");
         Set<Integer> seats = new HashSet<>();
-        List<Format6.Step> decisions = steps(document);
-        for (Format6.Step step : decisions) {
+        for (Format6.Located located : document.decisions()) {
+          Format6.Step step = located.step();
           seats.add(step.actor());
-          Assert.assertTrue(step.chosen() >= 0);
           double sum = 0;
-          for (int i = 0; i < step.candidates().size(); i++) sum += value(step, i);
-          Assert.assertEquals(sum, 1.0, 0.0001);
+          for (int i = 0; i < step.candidates().size(); i++) {
+            if (i > 0) Assert.assertTrue(value(step, i - 1) >= value(step, i));
+            sum += value(step, i);
+          }
+          Assert.assertEquals(sum, 1.0, 1e-4);
         }
         Assert.assertEquals(seats, Set.of(0, 1, 2, 3));
-        List<float[]> direct = new ArrayList<>();
-        try (var server = EpsilonDecisionInferenceServer.forFrozenModel(source, 1)) {
-          ReplayEngine.replay(
-              record.replay(),
-              (decision, state, legal) -> {
-                var builder =
-                    DecisionBatchBuilder.inference(
-                        1, DecisionBatchBuilder.selectInferenceBucket(legal));
-                builder.encodeObservedInferenceRow(
-                    0, state.publicObservation(decision.seat()), legal);
-                float[] probabilities =
-                    server
-                        .evaluateBatch(builder.buildEncodedInferenceRows())
-                        .getFirst()
-                        .policyProbabilities();
-                float[] byAction = new float[Action.ACTION_SPACE_SIZE];
-                for (int i = 0; i < legal.size(); i++)
-                  byAction[legal.get(i).toIndex()] = probabilities[i];
-                direct.add(byAction);
-              });
-        }
-        Assert.assertEquals(decisions.size(), direct.size());
-        for (int d = 0; d < decisions.size(); d++)
-          for (int i = 0; i < decisions.get(d).candidates().size(); i++)
-            Assert.assertEquals(
-                value(decisions.get(d), i), direct.get(d)[decisions.get(d).actionId(i)], 0.00001f);
-        Assert.expectThrows(
-            CancellationException.class,
-            () -> run(record, model, cancelledAfter(0, new ArrayList<>())));
       }
     } finally {
       TestFiles.delete(directory);
     }
   }
 
+  /**
+   * 価値は行動の番号 2 つごとに同じ値にし、確率は番号が大きいほど高くする。候補は価値の損失が小さい順に並ぶ。損失が同じ候補は、モデルが
+   * 貪欲に選ぶ手（確率の最も高い手）が先で、ほかは合法手の順のまま残る。牌譜で選んだ手は、並べ替えた後も選んだ手として残る。
+   */
   @Test
-  public void valuedPolicySortsByValueLossThenProbabilityAndKeepsTheChosenAction() {
-    LoadedRecord record = record();
-    List<Integer> chosen = new ArrayList<>();
-    ReplayEngine.replay(
-        record.replay(),
-        (decision, state, legal) ->
-            chosen.add(
-                decision.chosenSlot() < 0 ? -1 : legal.get(decision.chosenSlot()).toIndex()));
-    // 価値は actionId の 2 つずつで同じにし、同じ価値の中は確率（actionId が大きいほど高い）の順になることも確かめる。
+  public void valuedPolicySortsByValueLossAndKeepsTheRecordedChoice() {
+    LoadedRecord record = played();
+    List<List<Integer>> legal = new ArrayList<>();
     Format6.Document document =
         Format6.analyze(
             record,
             fake(
-                legal -> {
-                  float[] values = new float[legal.size()];
-                  float[] logits = new float[legal.size()];
-                  for (int i = 0; i < legal.size(); i++) {
-                    values[i] = -0.001f * (legal.get(i).toIndex() / 2);
-                    logits[i] = 0.001f * legal.get(i).toIndex();
+                true,
+                observation -> {
+                  List<Integer> codes = codes(observation);
+                  legal.add(codes);
+                  float[] values = new float[codes.size()];
+                  float[] logits = new float[codes.size()];
+                  for (int i = 0; i < codes.size(); i++) {
+                    values[i] = -0.001f * (codes.get(i) / 2);
+                    logits[i] = 0.05f * codes.get(i);
                   }
-                  return ReviewEvaluation.valued(values, ReviewEvaluation.softmax(logits, 0.02));
+                  return evaluation(softmax(logits), values);
                 }));
-    Assert.assertEquals(document.json().get("temperature").getAsDouble(), 0.002);
+    Assert.assertEquals(
+        document.json().get("temperature").getAsDouble(), FixtureFamily.TEMPERATURE);
     List<Format6.Step> decisions = steps(document);
-    Assert.assertEquals(decisions.size(), chosen.size());
+    List<Integer> recorded = recordedCodes(record);
+    Assert.assertEquals(decisions.size(), recorded.size());
+    Assert.assertEquals(legal.size(), recorded.size());
     Assert.assertTrue(decisions.stream().anyMatch(step -> step.candidates().size() > 2));
     for (int s = 0; s < decisions.size(); s++) {
       Format6.Step step = decisions.get(s);
       List<Integer> ids = new ArrayList<>();
       for (int i = 0; i < step.candidates().size(); i++) ids.add(step.actionId(i));
-      int best = ids.stream().mapToInt(id -> id / 2).min().orElseThrow();
+      int greedy = Collections.max(legal.get(s));
       List<Integer> expected =
-          ids.stream()
-              .sorted(
-                  Comparator.<Integer>comparingInt(id -> id / 2)
-                      .thenComparing(Comparator.reverseOrder()))
+          legal.get(s).stream()
+              .sorted(Comparator.comparingInt((Integer id) -> id / 2).thenComparing(id -> id != greedy))
               .toList();
       Assert.assertEquals(ids, expected);
-      Assert.assertEquals(value(step, 0), 0f);
+      int best = ids.getFirst() / 2;
       for (int i = 0; i < ids.size(); i++)
         Assert.assertEquals(value(step, i), 0.001f * (ids.get(i) / 2 - best), 1e-5f);
-      Assert.assertEquals(ids.get(step.chosen()).intValue(), chosen.get(s).intValue());
-      // 確率は価値から導けない（別の温度の softmax）ので、候補が 2 つ以上なら確率を書く。
-      Assert.assertEquals(step.json().has("probabilities"), ids.size() > 1);
+      int chosen = step.chosen() < 0 ? -1 : ids.get(step.chosen());
+      Assert.assertEquals(chosen, recorded.get(s).intValue());
+    }
+  }
+
+  /**
+   * 価値が全て同じなら、モデルが貪欲に選ぶ手を先にし、ほかは合法手の順に並べる（PRISM は同値な打牌のうち切る方の手を貪欲にするので、
+   * その手が先に来る）。
+   */
+  @Test
+  public void equalCandidatesPutTheGreedyActionFirst() {
+    List<List<Integer>> legal = new ArrayList<>();
+    Format6.Document document =
+        Format6.analyze(
+            played(),
+            fake(
+                true,
+                observation -> {
+                  List<Integer> codes = codes(observation);
+                  legal.add(codes);
+                  int n = codes.size();
+                  float[] probabilities = new float[n];
+                  Arrays.fill(probabilities, 1f / n);
+                  return new Evaluation(probabilities, new float[n], n - 1);
+                }));
+    List<Format6.Step> decisions = steps(document);
+    Assert.assertEquals(decisions.size(), legal.size());
+    Assert.assertTrue(decisions.stream().anyMatch(step -> step.candidates().size() > 2));
+    for (int s = 0; s < decisions.size(); s++) {
+      Format6.Step step = decisions.get(s);
+      List<Integer> ids = new ArrayList<>();
+      for (int i = 0; i < step.candidates().size(); i++) ids.add(step.actionId(i));
+      List<Integer> codes = legal.get(s);
+      List<Integer> expected = new ArrayList<>(codes.size());
+      expected.add(codes.getLast());
+      expected.addAll(codes.subList(0, codes.size() - 1));
+      Assert.assertEquals(ids, expected);
     }
   }
 
@@ -331,13 +238,14 @@ public class AnalysisTest {
   public void probabilityOnlyPolicyHasNoTemperatureAndSortsByProbability() {
     Format6.Document document =
         Format6.analyze(
-            record(),
+            played(),
             fake(
-                legal -> {
-                  float[] logits = new float[legal.size()];
-                  for (int i = 0; i < legal.size(); i++)
-                    logits[i] = 0.001f * legal.get(i).toIndex();
-                  return ReviewEvaluation.policy(ReviewEvaluation.softmax(logits, 0.02));
+                false,
+                observation -> {
+                  List<Integer> codes = codes(observation);
+                  float[] logits = new float[codes.size()];
+                  for (int i = 0; i < codes.size(); i++) logits[i] = 0.05f * codes.get(i);
+                  return evaluation(softmax(logits), null);
                 }));
     Assert.assertFalse(document.json().has("temperature"));
     List<Format6.Step> decisions = steps(document);
@@ -345,8 +253,6 @@ public class AnalysisTest {
     for (Format6.Step step : decisions) {
       for (int i = 1; i < step.candidates().size(); i++)
         Assert.assertTrue(value(step, i - 1) >= value(step, i));
-      Assert.assertTrue(step.chosen() >= 0);
-      Assert.assertFalse(step.json().has("probabilities"));
     }
   }
 
@@ -356,18 +262,49 @@ public class AnalysisTest {
         IllegalStateException.class,
         () ->
             Format6.analyze(
-                record(),
+                played(),
                 fake(
-                    legal -> {
-                      float[] probabilities = new float[legal.size() + 1];
+                    false,
+                    observation -> {
+                      float[] probabilities = new float[observation.legalActions() + 1];
                       Arrays.fill(probabilities, 1f / probabilities.length);
-                      return ReviewEvaluation.policy(probabilities);
+                      return evaluation(probabilities, null);
                     })));
   }
 
   @Test
+  public void aModelOfAnotherVariantIsUnavailable() {
+    ReviewModel threePlayer =
+        new ReviewModel() {
+          @Override
+          public Evaluation evaluate(Observation observation) {
+            throw new AssertionError("The model is not called.");
+          }
+
+          @Override
+          public boolean valued() {
+            return false;
+          }
+
+          @Override
+          public double temperature() {
+            return FixtureFamily.TEMPERATURE;
+          }
+
+          @Override
+          public Variant variant() {
+            return Variant.TENHOU_3P;
+          }
+        };
+    ReviewerException refused =
+        Assert.expectThrows(
+            ReviewerException.class, () -> Format6.analyze(played(), threePlayer));
+    Assert.assertEquals(refused.code(), ErrorCode.MODEL_UNAVAILABLE);
+  }
+
+  @Test
   public void cancellationStopsAtTheNextEventAndProgressStaysBelowTheEnd() throws Exception {
-    LoadedRecord record = record();
+    LoadedRecord record = played();
     List<Integer> progress = new ArrayList<>();
     Assert.expectThrows(
         CancellationException.class,
@@ -380,15 +317,83 @@ public class AnalysisTest {
       Assert.assertTrue(complete.get(i - 1) <= complete.get(i));
   }
 
-  @Test
-  public void completedGameCannotBeFollowedByAnotherRoundOrAnotherGame() {
-    JsonArray games = JsonParser.parseString(mjai(true)).getAsJsonArray();
-    games.addAll(JsonParser.parseString(mjai(false)).getAsJsonArray());
+  /** 解析する牌譜（エンジンで打った四人打ちの半荘）。 */
+  private static LoadedRecord played() {
+    return PlayedRecords.read(Variant.TENHOU_4P, SEED);
+  }
+
+  private static void rejected(String text, String message) {
+    rejected(text.getBytes(StandardCharsets.UTF_8), message);
+  }
+
+  private static void rejected(byte[] bytes, String message) {
     IllegalArgumentException refused =
-        Assert.expectThrows(
-            IllegalArgumentException.class,
-            () -> RecordLoader.load(games.toString().getBytes(StandardCharsets.UTF_8)));
-    Assert.assertTrue(refused.getMessage().contains("end_game"), refused.getMessage());
+        Assert.expectThrows(IllegalArgumentException.class, () -> RecordLoader.load(bytes));
+    Assert.assertTrue(refused.getMessage().contains(message), refused.getMessage());
+  }
+
+  /** 最初の局の最初の打牌の前に立直の宣言を、打牌の後に立直の成立を置く。手は配牌のままで聴牌していないので、この立直は合法でない。 */
+  private static List<String> riichiBeforeTheFirstDiscard(List<String> lines) {
+    List<String> edited = new ArrayList<>(lines);
+    for (int index = 0; index < edited.size(); index++) {
+      JsonObject event = JsonParser.parseString(edited.get(index)).getAsJsonObject();
+      if (!event.get("type").getAsString().equals("dahai")) continue;
+      int actor = event.get("actor").getAsInt();
+      edited.add(index + 1, "{\"type\":\"reach_accepted\",\"actor\":" + actor + "}");
+      edited.add(index, "{\"type\":\"reach\",\"actor\":" + actor + "}");
+      return edited;
+    }
+    throw new AssertionError("The record has no discard.");
+  }
+
+  /** 最初の和了で動く点数の正負を逆にする。局末の点数が記録と合わなくなる。 */
+  private static List<String> negatedFirstWin(List<String> lines) {
+    List<String> edited = new ArrayList<>(lines);
+    for (int index = 0; index < edited.size(); index++) {
+      JsonObject event = JsonParser.parseString(edited.get(index)).getAsJsonObject();
+      if (!event.get("type").getAsString().equals("hora")) continue;
+      JsonArray negated = new JsonArray();
+      for (var delta : event.getAsJsonArray("deltas")) negated.add(-delta.getAsInt());
+      event.add("deltas", negated);
+      edited.set(index, event.toString());
+      return edited;
+    }
+    throw new AssertionError("The record has no win.");
+  }
+
+  private static LoadedRecord load(String text) {
+    return RecordLoader.load(text.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static String gunzip(byte[] bytes) {
+    try (var in = new GZIPInputStream(new ByteArrayInputStream(bytes))) {
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException failure) {
+      throw new UncheckedIOException(failure);
+    }
+  }
+
+  /**
+   * 牌譜どおりにエンジンを進め、判断の時点ごとに、牌譜で選んだ手の行動の番号を、判断する席の順に並べる。牌譜に記録されていない応答は
+   * -1 にする。
+   */
+  private static List<Integer> recordedCodes(LoadedRecord record) {
+    var variant = record.game().variant();
+    var driver = new ReplayDriver(variant);
+    var ws = new RuleWorkspace(variant);
+    List<Integer> codes = new ArrayList<>();
+    for (RecordedRound round : record.rounds()) {
+      Boundary boundary = driver.start(round, ws);
+      while (boundary == Boundary.DECISIONS) {
+        Decisions decisions = driver.engine().decisions();
+        for (int slot = 0; slot < decisions.size(); slot++) {
+          int choice = driver.choice(slot);
+          codes.add(choice == ReplayDriver.UNOBSERVED ? -1 : decisions.legal(slot, choice));
+        }
+        boundary = driver.step(ws);
+      }
+    }
+    return codes;
   }
 
   private static void run(LoadedRecord record, ReviewModel model, JobControl control)
@@ -404,7 +409,7 @@ public class AnalysisTest {
     }
   }
 
-  /** 進みを count 回知らされた後に取り消す。 */
+  /** 進み具合を {@code count} 回知らされた後で取り消す。 */
   private static JobControl cancelledAfter(int count, List<Integer> progress) {
     return new JobControl() {
       @Override
@@ -427,125 +432,59 @@ public class AnalysisTest {
     return step.candidates().get(candidate).getAsJsonArray().get(1).getAsFloat();
   }
 
-  private static LoadedRecord record() {
-    return RecordLoader.load(mjai(true).getBytes(StandardCharsets.UTF_8));
+  private static List<Integer> codes(Observation observation) {
+    return IntStream.range(0, observation.legalActions())
+        .mapToObj(i -> observation.action(i).code())
+        .toList();
   }
 
-  /** 合法手だけから評価する偽のモデル。 */
-  private static ReviewModel fake(Function<List<Action>, ReviewEvaluation> evaluator) {
+  private static float[] softmax(float[] logits) {
+    double max = Double.NEGATIVE_INFINITY;
+    for (float logit : logits) max = Math.max(max, logit);
+    double[] weights = new double[logits.length];
+    double sum = 0;
+    for (int i = 0; i < logits.length; i++) {
+      weights[i] = Math.exp(logits[i] - max);
+      sum += weights[i];
+    }
+    float[] probabilities = new float[logits.length];
+    for (int i = 0; i < logits.length; i++) probabilities[i] = (float) (weights[i] / sum);
+    return probabilities;
+  }
+
+  private static Evaluation evaluation(float[] probabilities, float[] values) {
+    int greedy = 0;
+    for (int i = 1; i < probabilities.length; i++)
+      if (probabilities[i] > probabilities[greedy]) greedy = i;
+    return new Evaluation(probabilities, values, greedy);
+  }
+
+  /** 観測の合法手だけを見て評価する、偽のモデル（四人打ち）。 */
+  private static ReviewModel fake(boolean valued, Function<Observation, Evaluation> evaluator) {
     return new ReviewModel() {
       @Override
-      public ReviewEvaluation evaluate(PublicObservation observation, List<Action> legal) {
-        return evaluator.apply(legal);
+      public Evaluation evaluate(Observation observation) {
+        return evaluator.apply(observation);
+      }
+
+      @Override
+      public boolean valued() {
+        return valued;
       }
 
       @Override
       public double temperature() {
-        return ReviewEvaluation.DISPLAY_TEMPERATURE;
-      }
-    };
-  }
-
-  private static ReviewModel model(ReviewPolicy policy) {
-    return new ReviewModel() {
-      @Override
-      public ReviewEvaluation evaluate(PublicObservation observation, List<Action> legal) {
-        return policy.evaluate(observation, legal);
+        return FixtureFamily.TEMPERATURE;
       }
 
       @Override
-      public double temperature() {
-        return ReviewEvaluation.DISPLAY_TEMPERATURE;
+      public Variant variant() {
+        return Variant.TENHOU_4P;
       }
     };
   }
 
-  static String mjai(boolean complete) {
-    JsonArray events = new JsonArray();
-    events.add(
-        JsonParser.parseString(
-            "{\"type\":\"start_game\",\"names\":[\"みなと\",\"こはく\",\"あおい\",\"つばめ\"]}"));
-    JsonObject start =
-        JsonParser.parseString(
-                "{\"type\":\"start_kyoku\",\"bakaze\":\"E\",\"kyoku\":1,\"honba\":0,"
-                    + "\"kyotaku\":0,\"oya\":0,\"dora_marker\":\"C\","
-                    + "\"scores\":[25000,25000,25000,25000]}")
-            .getAsJsonObject();
-    JsonArray tehais = new JsonArray();
-    for (int[] hand : hands()) {
-      JsonArray tiles = new JsonArray();
-      for (int id : hand) tiles.add(TileCode.of(Tile.typeOf(id), Tile.isAka(id)));
-      tehais.add(tiles);
-    }
-    start.add("tehais", tehais);
-    events.add(start);
-    for (int seat = 0; seat < 4; seat++) {
-      events.add(
-          JsonParser.parseString("{\"type\":\"tsumo\",\"actor\":" + seat + ",\"pai\":\"F\"}"));
-      events.add(
-          JsonParser.parseString(
-              "{\"type\":\"dahai\",\"actor\":" + seat + ",\"pai\":\"F\",\"tsumogiri\":true}"));
-    }
-    if (complete) {
-      events.add(
-          JsonParser.parseString("{\"type\":\"ryukyoku\",\"deltas\":[7600,3400,-3500,-7500]}"));
-      events.add(JsonParser.parseString("{\"type\":\"end_kyoku\"}"));
-      events.add(
-          JsonParser.parseString("{\"type\":\"end_game\",\"scores\":[32600,28400,21500,17500]}"));
-    }
-    return events.toString();
-  }
-
-  /** 14 巡の河を持つ mjai の 1 局（全員がツモ切り）。 */
-  static String riverFixture() {
-    JsonArray original = JsonParser.parseString(mjai(false)).getAsJsonArray();
-    JsonArray events = new JsonArray();
-    events.add(original.get(0));
-    events.add(original.get(1));
-    Set<Integer> used = new HashSet<>();
-    used.add(132);
-    for (int[] hand : hands()) for (int id : hand) used.add(id);
-    List<Integer> wall = new ArrayList<>();
-    for (int id = 0; id < 136; id++) if (!used.contains(id)) wall.add(id);
-    Collections.shuffle(wall, new Random(419));
-    for (int i = 0; i < 56; i++) {
-      int id = wall.get(i);
-      int seat = i % 4;
-      String tile = TileCode.of(Tile.typeOf(id), Tile.isAka(id));
-      JsonObject draw = new JsonObject();
-      draw.addProperty("type", "tsumo");
-      draw.addProperty("actor", seat);
-      draw.addProperty("pai", tile);
-      events.add(draw);
-      JsonObject discard = new JsonObject();
-      discard.addProperty("type", "dahai");
-      discard.addProperty("actor", seat);
-      discard.addProperty("pai", tile);
-      discard.addProperty("tsumogiri", true);
-      events.add(discard);
-    }
-    return events.toString();
-  }
-
-  private static String xmlInit() {
-    StringBuilder xml =
-        new StringBuilder("<INIT seed=\"0,0,0,0,0,132\" ten=\"250,250,250,250\" oya=\"0\"");
-    int seat = 0;
-    for (int[] hand : hands())
-      xml.append(" hai")
-          .append(seat++)
-          .append("=\"")
-          .append(String.join(",", Arrays.stream(hand).mapToObj(Integer::toString).toList()))
-          .append("\"");
-    return xml.append("/>").toString();
-  }
-
-  private static int[][] hands() {
-    return new int[][] {
-      {24, 26, 3, 5, 9, 13, 17, 21, 28, 32, 36, 56, 60},
-      {0, 1, 2, 4, 8, 12, 40, 44, 48, 76, 80, 84, 124},
-      {6, 10, 14, 18, 22, 29, 33, 37, 41, 45, 49, 53, 57},
-      {7, 11, 15, 19, 23, 30, 34, 38, 42, 46, 50, 54, 58}
-    };
+  private static ReviewModel model(Policy policy) {
+    return fake(false, policy::evaluate);
   }
 }

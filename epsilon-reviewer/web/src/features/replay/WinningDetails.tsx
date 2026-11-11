@@ -3,7 +3,7 @@ import { Tile } from "../../components/Tile";
 import { useLanguage } from "../../language/LanguageProvider";
 import { yakuLabel } from "../../language/yakuMessages";
 
-/** 点数・翻符か役満・役の一覧と、ドラ・裏ドラの表示牌。内訳の無い和了は表示牌だけ。 */
+/** 点数、翻・符（役満なら役満）、役の一覧と、ドラ・裏ドラの表示牌を出す。採点の内訳が無い和了では、表示牌だけを出す。 */
 export function WinningDetails({
   details,
   dora,

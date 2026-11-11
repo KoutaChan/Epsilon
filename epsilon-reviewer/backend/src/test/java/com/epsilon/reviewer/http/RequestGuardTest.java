@@ -11,7 +11,7 @@ import java.util.Locale;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** Host・Origin・Sec-Fetch-Site の確かめ、共有リンクの移動の例外、安全の頭。 */
+/** Host・Origin・Sec-Fetch-Site の検査と、他のサイトから共有リンクへ移るときの例外、セキュリティのヘッダーをテストする。 */
 public class RequestGuardTest {
   private static final RequestGuard GUARD = new RequestGuard("http", "reviewer.example:8080", 8080);
 

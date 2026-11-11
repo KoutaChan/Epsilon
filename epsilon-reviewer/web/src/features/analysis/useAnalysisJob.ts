@@ -7,15 +7,15 @@ import { api } from "../../api/platform";
 
 export interface AnalysisJob {
   job: JobSnapshot;
-  /** 進みか結果を読めなかった失敗。refresh で読み直す。 */
+  /** 進み具合か結果を読めなかったときの失敗。refresh を呼ぶと読み直す。 */
   error: unknown;
-  /** 取り消しを頼んだ後、仕事が終わるまで真。 */
+  /** 取り消しを要求してから、ジョブが終わるまで true。 */
   cancelling: boolean;
   cancel(): Promise<void>;
   refresh(): void;
 }
 
-/** 解析の仕事を応答のたびに JOB_POLL_INTERVAL_MS 待って聞き直し、終われば文書を読んで onComplete を呼ぶ。 */
+/** 解析のジョブの状態を繰り返し取り直す。前の応答が返ってから JOB_POLL_INTERVAL_MS（ms）待って、次を取る。完了したら文書を読んで onComplete を呼ぶ。失敗か取り消しで終わったら、そこで取り直しをやめる。 */
 export function useAnalysisJob(
   jobId: string,
   onComplete: (document: ResultDocument) => void,

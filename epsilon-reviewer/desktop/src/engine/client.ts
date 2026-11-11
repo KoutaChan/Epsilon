@@ -5,15 +5,16 @@ import { isErrorCode, type ErrorBody } from "../../../protocol/errors.ts";
 import { errorMessage, isFields, type Fields } from "../values.ts";
 import { encodeFrame, FrameDecoder, type Frame } from "./frames.ts";
 
-/** 子プロセスが止まった・起こせない時に待ちの要求へ返す失敗。 */
+/** 子プロセスが止まったときや起動できないときに、応答を待っている要求へ返すエラー。 */
 export const ENGINE_STOPPED: ErrorBody = {
   code: "engine_failed",
   message: "The analysis engine stopped.",
 };
 
 /**
- * Java の子プロセスの stdin・stdout の上の要求と答え。id は 1 から増やし、答えは id で対応させる（順は問わない）。
- * failed の知らせの失敗を覚え、子プロセスが終われば待ちの要求をその失敗か engine_failed で断る。
+ * Java の子プロセスと stdin・stdout で要求と応答をやり取りする。要求の id は 1 から順に振り、応答は id で
+ * 要求と結び付ける（応答の順は問わない）。failed のイベントで届いたエラーを覚えておき、子プロセスが終わったら
+ * 応答を待っている要求をそのエラーか engine_failed で断る。
  */
 export class EngineClient {
   readonly #input: Writable;
@@ -24,19 +25,19 @@ export class EngineClient {
   #failure: ErrorBody | null = null;
   #closed: ErrorBody | null = null;
 
-  /** @param onBroken 壊れた枠を受けた時に呼ぶ（子プロセスを止める） */
+  /** @param onBroken 壊れたフレームを受けたときに呼ぶ関数（子プロセスを止める） */
   constructor(input: Writable, output: Readable, onBroken: () => void) {
     this.#input = input;
     this.#onBroken = onBroken;
     output.on("data", (chunk: Buffer) => this.#receive(chunk));
   }
 
-  /** failed の知らせで受けた起動の失敗。 */
+  /** failed のイベントで受けた、起動の失敗のエラー。 */
   get failure(): ErrorBody | null {
     return this.#failure;
   }
 
-  /** 要求を送る。答えは失敗も含めて解決で返す（拒否しない）。 */
+  /** 要求を送る。失敗の応答も含めて、Promise は必ず応答で resolve し、reject はしない。 */
   request(
     command: StdioCommandName,
     request: object,
@@ -60,7 +61,10 @@ export class EngineClient {
     });
   }
 
-  /** 子プロセスが終わった。待ちの要求と以後の要求を failed の失敗か engine_failed で断る。 */
+  /**
+   * 子プロセスが終わったときに呼ぶ。応答を待っている要求と、この後に来る要求を、failed のイベントで受けた
+   * エラーか engine_failed で断る。
+   */
   close(): void {
     if (this.#closed !== null) return;
     const error = this.#failure ?? ENGINE_STOPPED;
@@ -100,7 +104,7 @@ export class EngineClient {
   }
 }
 
-/** @throws Error 答えの形が違う */
+/** @throws Error 応答の形が違うとき */
 function replyOf(header: Fields, body: ArrayBuffer | null): InvokeReply {
   if (header.ok === false) {
     if (!isErrorBody(header.error))

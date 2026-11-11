@@ -168,7 +168,8 @@ test("round score change includes riichi deposits and final settlement rather th
   assert.equal(riichi.players[0].score, 24000);
 });
 
-test("final score overrides determine ranking and tied scores retain a shared rank without mutating players", () => {
+// 天鳳の順位は重ならない。同点は起家に近い席（席の番号の小さい方）が上。
+test("final score overrides determine ranking and tied scores rank in seat order without mutating players", () => {
   const players = Object.freeze([
     makePlayer(0, { score: 34000 }),
     makePlayer(1, { score: 26000 }),
@@ -181,7 +182,7 @@ test("final score overrides determine ranking and tied scores retain a shared ra
     ranking.map(({ player, score, rank }) => [player.seat, score, rank]),
     [
       [1, 38000, 1],
-      [2, 38000, 1],
+      [2, 38000, 2],
       [0, 24000, 3],
       [3, 0, 4],
     ],

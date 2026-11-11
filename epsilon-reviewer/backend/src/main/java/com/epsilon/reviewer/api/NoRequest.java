@@ -1,4 +1,4 @@
 package com.epsilon.reviewer.api;
 
-/** 要求の欄の無い操作。 */
+/** フィールドを持たない操作の要求。 */
 public record NoRequest() {}

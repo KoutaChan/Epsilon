@@ -12,9 +12,13 @@ import { tileData, type DrawAnnotation } from "./tiles.ts";
 import type { Layout, SeatSlot, TableHost } from "./types.ts";
 
 export interface Labels {
-  /** ツモ牌の札を牌に合わせる（ツモの到着の間は毎フレーム）。 */
+  /** ツモ牌のラベルを牌の位置に合わせる。ツモ牌が届く動きの間は毎フレーム呼ぶ。 */
   animate(): void;
-  /** ツモ牌の札・名札・候補の欄の上端を置く。handTop は前景の手牌の上端（px）。 */
+  /**
+   * ツモ牌のラベルと名札を置き、候補欄の上端を決める。
+   *
+   * @param handTop 手前の手牌の上端（px）
+   */
   update(
     width: number,
     height: number,
@@ -48,7 +52,7 @@ export function createLabels(
   ) {
     let x = rect.x + rect.w / 2,
       y = rect.y + rect.h + 5;
-    // ツモ牌の手前へ置き、同じ列の副露とラベルを離す。
+    // ラベルはツモ牌の手前に置き、同じ列の副露から離す。
     if (seat === "north") {
       x = rect.x - labelWidth / 2 - 5;
       y = rect.y + (rect.h - labelHeight) / 2;
@@ -98,7 +102,7 @@ export function createLabels(
         h: b.height,
       };
     };
-    // 名札の位置は実際の残り牌数に依存させず、最大の河とツモ枠を予約する。
+    // 名札が避ける場所は、今の牌の枚数によらず、河とツモ枠が最も広がったときの範囲で取る。
     const projectedBox = (
       w: number,
       h: number,
@@ -164,7 +168,7 @@ export function createLabels(
     for (const { element } of annotations) blocked.push(domBox(element));
     blocked.push(domBox(doraElement));
     for (const element of host.controls) blocked.push(domBox(element));
-    // もしもの欄は開いている間だけあるので、配置のたびに探す。
+    // もしもの欄は開いている間しか無いので、配置のたびに探す。
     const panel = host.panel();
     if (panel) blocked.push(domBox(panel));
     const intersects = (a: ScreenRect, b: ScreenRect) =>
@@ -246,7 +250,7 @@ export function createLabels(
                 [b.x + b.w + 10, b.y + b.h / 2 - labelH / 2],
                 [b.x + b.w + 10, b.y + b.h * 0.75 - labelH / 2],
                 [b.x + b.w + 10, b.y + b.h * 0.25 - labelH / 2],
-                // 右がもしもの欄でふさがるときは、手牌の列の下か上へ置く。
+                // 右がもしもの欄でふさがっているときは、手牌の列の下か上に置く。
                 [b.x + b.w / 2 - labelW / 2, b.y + b.h + 8],
                 [b.x + b.w / 2 - labelW / 2, b.y - labelH - 8],
               ];
@@ -280,8 +284,8 @@ export function createLabels(
       el.style.top = chosen.y + "px";
       blocked.push(chosen);
     }
-    // 候補欄は左家の名札より下へ置き、卓の投影は変えない。横の小さな画面で手牌の上に入らない高さの時も、
-    // 見出しは画面の上に切らない。
+    // 候補欄は上家（左の席）の名札より下に置き、卓の投影は動かさない。横長の小さな画面で手牌の上に十分な高さが
+    // 無いときも、見出しが画面の上で切れないようにする。
     if (mode !== "portrait") {
       const name = domBox(playerLabels.west),
         top =

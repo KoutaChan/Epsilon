@@ -1,78 +1,171 @@
 package com.epsilon.prism.input;
 
-import com.epsilon.core.GameState;
-import com.epsilon.core.Meld;
-import com.epsilon.core.RoundLimits;
-import com.epsilon.prism.Limits;
-import com.epsilon.prism.input.InputSchema.PublicEvent;
-import com.epsilon.prism.observe.Observation;
-import com.epsilon.prism.observe.ObservationSchema.EventKind;
+import com.epsilon.agent.facts.SeatFacts;
+import com.epsilon.agent.facts.TileCounts;
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.mahjong.action.Meld;
+import com.epsilon.mahjong.rules.RuleFlag;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.rules.VariantScoped;
+import com.epsilon.mahjong.score.WinContext;
+import com.epsilon.mahjong.tile.Tiles;
 import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * 記録 O の公開の出来事を、Tokenizer が何度も読む形にほどく。判断ごとに 1 回だけ O を読み（出来事ごとに記録を 1 回、
- * {@link Observation#readEvent}）、出来事ごとの値と、席ごとの打牌・立直・今の副露と、槓ドラの表示を挟んだ公開の位置を持つ。割り当てをしない。
+ * 判断の記録にある公開のイベントを、入力のライターが何度も読める形に展開する。記録は判断ごとに 1 回だけ読む（イベントごとに
+ * {@link Observation#readEvent} を 1 回）。持つのは、イベントごとの値、席ごとの打牌・立直・今の副露、槓ドラの表示を挟んだ公開の位置。
+ * メモリを割り当てない。
  *
- * <p>番号は 2 種類ある。O の出来事の番号（打牌・副露・加槓。エンジンの公開の出来事の番号）と、公開の位置（O の出来事の間に槓ドラの表示を
- * {@link Observation#kanDoraEvent} の決まりで挟んだ順。入力の出来事トークンの順）。席は観測席から見た相対席。
+ * <p>番号は 2 種類ある。1 つは記録のイベントの番号で、打牌・副露・加槓・北抜きに振られる（エンジンの公開のイベントの番号と同じ）。もう 1 つは
+ * 公開の位置で、記録のイベントの間に槓ドラの表示を {@link Observation#kanDoraEvent} の決まりで挟んだ順になる（入力のイベントのトークンの順）。
+ * 席は自分から見た相対の席で表す。加槓の元になったポンのイベントの番号を持つために、席ごとの面子もここで数える。
  */
-final class EventTable {
+public final class EventTable {
 
-  private static final int SEATS = GameState.NUM_PLAYERS;
-  private static final int KAN_DORA = Limits.MAX_INDICATORS - 1;
+  /** 公開のイベントの種類。四人打ち・三人打ちの語彙は、そのルールで起きる種類だけを宣言の順に並べる。 */
+  public enum PublicEvent implements VariantScoped {
+    DISCARD,
+    CHI(RuleFlag.CHI),
+    PON,
+    DAIMINKAN,
+    ANKAN,
+    KAKAN,
+    /** 北抜き（牌は北）。 */
+    NUKI(RuleFlag.NUKI),
+    /**
+     * 槓ドラの表示。めくられた位置に置く（暗槓は槓の直後、大明槓・加槓は槓をした席の次の打牌か次の槓の後）。最初のドラ表示はイベントに
+     * しない。
+     */
+    DORA_INDICATOR;
+
+    private final RuleFlag requires;
+
+    PublicEvent() {
+      this(null);
+    }
+
+    PublicEvent(RuleFlag requires) {
+      this.requires = requires;
+    }
+
+    @Override
+    public RuleFlag requires() {
+      return requires;
+    }
+  }
+
   private static final int NONE = -1;
   private static final PublicEvent[] MELD_EVENTS = meldEvents();
 
-  private final PublicEvent[] kind = new PublicEvent[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final int[] author = new int[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final int[] tile = new int[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final boolean[] aka = new boolean[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final boolean[] tsumogiri = new boolean[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final boolean[] riichi = new boolean[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final int[] calledBy = new int[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final int[] discardIndex = new int[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final Meld[] meld = new Meld[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final int[] link = new int[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final int[] position = new int[RoundLimits.MAX_PUBLIC_EVENTS];
-  private final int[] entity = new int[Limits.MAX_EVENT_TOKENS];
-  private final int[] kanEvent = new int[RoundLimits.MAX_KANS];
-  private final int[] indicatorAfter = new int[KAN_DORA];
-  private final int[] discards = new int[SEATS];
-  private final int[] lastDiscard = new int[SEATS];
-  private final int[] riichiDeclaration = new int[SEATS];
-  private final int[] meldCount = new int[SEATS];
-  private final Meld[] melds = new Meld[SEATS * RoundLimits.MAX_MELDS];
-  private final int[] meldEvent = new int[SEATS * RoundLimits.MAX_MELDS];
+  private final PublicEvent[] kind;
+  private final int[] author;
+  private final int[] tile;
+  private final boolean[] aka;
+  private final boolean[] tsumogiri;
+  private final boolean[] riichi;
+  private final int[] calledBy;
+  private final int[] discardIndex;
+  private final Meld[] meld;
+  private final int[] link;
+  private final int[] position;
+  private final int[] entity;
+  private final int[] kanEvent = new int[Variant.MAX_KANS];
+  private final int[] indicatorAfter = new int[WinContext.MAX_INDICATORS - 1];
+  private final int[] discards;
+  private final int[] lastDiscard;
+  private final int[] riichiDeclaration;
+  private final int[] meldCount;
+  private final Meld[] melds;
+  private final int[] meldEvent;
   private final Observation.EventRecord record = new Observation.EventRecord();
   private int events;
   private int kans;
   private int indicators;
   private int publicEvents;
 
+  public EventTable(Variant variant) {
+    int seats = variant.seats();
+    int capacity = variant.maxPublicEvents();
+    kind = new PublicEvent[capacity];
+    author = new int[capacity];
+    tile = new int[capacity];
+    aka = new boolean[capacity];
+    tsumogiri = new boolean[capacity];
+    riichi = new boolean[capacity];
+    calledBy = new int[capacity];
+    discardIndex = new int[capacity];
+    meld = new Meld[capacity];
+    link = new int[capacity];
+    position = new int[capacity];
+    entity = new int[capacity + indicatorAfter.length];
+    discards = new int[seats];
+    lastDiscard = new int[seats];
+    riichiDeclaration = new int[seats];
+    meldCount = new int[seats];
+    melds = new Meld[seats * Variant.MAX_MELDS];
+    meldEvent = new int[seats * Variant.MAX_MELDS];
+  }
+
   /**
-   * O の出来事を読む。
+   * 判断の記録のイベントを読む。
    *
    * @param o 判断の記録
-   * @throws IllegalStateException O が出来事の決まり（加槓の元のポン、槓ドラの表示の順）と合わないとき
+   * @throws IllegalStateException 記録がイベントの決まりに合わないとき（加槓の元のポンが無い、槓ドラの表示の順がおかしいなど）
    */
-  void load(Observation o) {
+  public void load(Observation o) {
+    begin(o);
+    for (int e = 0; e < events; e++) {
+      read(o, e);
+    }
+    placeIndicators(o);
+  }
+
+  /**
+   * 判断の記録のイベントを読み、同じ 1 回の読み取りで牌の枚数と席ごとの公開情報も作る。作る値は、それぞれの {@code load} と同じ。
+   *
+   * @param o 判断の記録
+   * @param tiles 作り直す牌の枚数
+   * @param seats 作り直す席ごとの公開情報
+   * @throws IllegalStateException 記録がイベントの決まりに合わないとき（加槓の元のポンが無い、槓ドラの表示の順がおかしいなど）、または
+   *     枚数・面子が上限を超えるとき
+   */
+  public void load(Observation o, TileCounts tiles, SeatFacts seats) {
+    begin(o);
+    tiles.begin(o);
+    seats.begin(o);
+    for (int e = 0; e < events; e++) {
+      read(o, e);
+      tiles.add(record);
+      seats.add(record);
+    }
+    tiles.finish(o);
+    seats.finish(o);
+    placeIndicators(o);
+  }
+
+  private void begin(Observation o) {
     events = o.events();
     kans = 0;
     Arrays.fill(discards, 0);
     Arrays.fill(lastDiscard, NONE);
     Arrays.fill(riichiDeclaration, NONE);
     Arrays.fill(meldCount, 0);
-    for (int e = 0; e < events; e++) {
-      o.readEvent(e, record);
-      int who = record.author();
-      author[e] = who;
-      if (record.kind() == EventKind.DISCARD) {
-        readDiscard(e, who);
-      } else {
-        readMeld(e, who);
-      }
+  }
+
+  private void read(Observation o, int e) {
+    o.readEvent(e, record);
+    int who = record.author();
+    author[e] = who;
+    switch (record.kind()) {
+      case DISCARD -> readDiscard(e, who);
+      case MELD -> readMeld(e, who);
+      case NUKI -> readNuki(e);
     }
+  }
+
+  /** 槓ドラの表示を、めくられた公開の位置に挟む。 */
+  private void placeIndicators(Observation o) {
     indicators = o.kanDoraIndicators();
     if (indicators > kans) {
       throw new IllegalStateException(indicators + " kan dora indicators for " + kans + " kans");
@@ -112,10 +205,22 @@ final class EventTable {
     }
   }
 
+  private void readNuki(int e) {
+    kind[e] = PublicEvent.NUKI;
+    tile[e] = Tiles.PEI;
+    aka[e] = false;
+    tsumogiri[e] = false;
+    riichi[e] = false;
+    calledBy[e] = NONE;
+    discardIndex[e] = NONE;
+    meld[e] = null;
+    link[e] = NONE;
+  }
+
   private void readMeld(int e, int who) {
     Meld created = record.meld();
     kind[e] = MELD_EVENTS[created.type().ordinal()];
-    tile[e] = created.baseTileType();
+    tile[e] = created.base();
     aka[e] = false;
     tsumogiri[e] = false;
     riichi[e] = false;
@@ -123,138 +228,133 @@ final class EventTable {
     discardIndex[e] = NONE;
     meld[e] = created;
     if (created.type() == Meld.Type.KAKAN) {
-      int slot = ponSlot(who, created.baseTileType());
+      int slot = ponSlot(who, created.base());
       link[e] = meldEvent[slot];
       melds[slot] = created;
     } else {
-      int slot = who * RoundLimits.MAX_MELDS + meldCount[who]++;
+      int slot = who * Variant.MAX_MELDS + meldCount[who]++;
       melds[slot] = created;
       meldEvent[slot] = e;
-      // チー・ポン・大明槓は鳴かれた打牌の直後の番号（O の決まり）。暗槓は繋がる出来事がない。
+      // 記録では、チー・ポン・大明槓は鳴かれた打牌のすぐ次の番号になる。暗槓には繋がるイベントがない。
       link[e] = created.type() == Meld.Type.ANKAN ? NONE : e - 1;
     }
-    if (created.isKan()) {
+    if (created.type().kan()) {
       kanEvent[kans++] = e;
     }
   }
 
-  private int ponSlot(int who, int baseTile) {
-    for (int slot = who * RoundLimits.MAX_MELDS, end = slot + meldCount[who]; slot < end; slot++) {
-      if (melds[slot].type() == Meld.Type.PON && melds[slot].baseTileType() == baseTile) {
+  private int ponSlot(int who, int base) {
+    for (int slot = who * Variant.MAX_MELDS, end = slot + meldCount[who]; slot < end; slot++) {
+      if (melds[slot].type() == Meld.Type.PON && melds[slot].base() == base) {
         return slot;
       }
     }
-    throw new IllegalStateException("kakan without its pon: tile " + baseTile);
+    throw new IllegalStateException("kakan without its pon: tile " + base);
   }
 
-  /** O の出来事の数。 */
-  int events() {
+  /** 記録のイベントの数。 */
+  public int events() {
     return events;
   }
 
-  /** 公開の出来事の数（O の出来事 ＋ 槓ドラの表示）。 */
-  int publicEvents() {
+  /** 公開のイベントの数（記録のイベント ＋ 槓ドラの表示）。 */
+  public int publicEvents() {
     return publicEvents;
   }
 
   /** 成立した槓の数。 */
-  int kans() {
+  public int kans() {
     return kans;
   }
 
-  /** 槓ドラの表示の数（初めのドラ表示を除く）。 */
-  int indicators() {
+  /** 槓ドラの表示の数（最初のドラ表示は数えない）。 */
+  public int indicators() {
     return indicators;
   }
 
-  /** O の出来事 e の種類。 */
-  PublicEvent kind(int e) {
+  /** 記録のイベント {@code e} の種類。 */
+  public PublicEvent kind(int e) {
     return kind[Objects.checkIndex(e, events)];
   }
 
-  /** O の出来事 e の作者の相対席。 */
-  int author(int e) {
+  /** 記録のイベント {@code e} を起こした席（相対の席）。 */
+  public int author(int e) {
     return author[Objects.checkIndex(e, events)];
   }
 
-  /** O の出来事 e の牌（打牌の牌、副露の最小の牌）。 */
-  int tile(int e) {
+  /** 記録のイベント {@code e} の牌（打牌は捨てた牌、副露は最も小さい牌、北抜きは北）。 */
+  public int tile(int e) {
     return tile[Objects.checkIndex(e, events)];
   }
 
-  /** 打牌が赤（副露は false）。 */
-  boolean aka(int e) {
+  /** 打牌が赤か（副露と北抜きは false）。 */
+  public boolean aka(int e) {
     return aka[Objects.checkIndex(e, events)];
   }
 
-  /** 打牌がツモ切り（副露は false）。 */
-  boolean tsumogiri(int e) {
+  /** 打牌がツモ切りか（副露と北抜きは false）。 */
+  public boolean tsumogiri(int e) {
     return tsumogiri[Objects.checkIndex(e, events)];
   }
 
-  /** 打牌が立直の宣言牌（副露は false）。 */
-  boolean riichi(int e) {
+  /** 打牌が立直の宣言牌か（副露と北抜きは false）。 */
+  public boolean riichi(int e) {
     return riichi[Objects.checkIndex(e, events)];
   }
 
-  /** 打牌を鳴いた相対席（鳴かれていない打牌と副露は −1）。 */
-  int calledBy(int e) {
+  /** 打牌を鳴いた席（相対の席）。鳴かれていない打牌と、副露・北抜きは −1。 */
+  public int calledBy(int e) {
     return calledBy[Objects.checkIndex(e, events)];
   }
 
-  /** 打牌の作者の何打目か（0 始まり。副露は −1）。 */
-  int discardIndex(int e) {
+  /** 打牌が、その席の何打目か（0 始まり）。副露と北抜きは −1。 */
+  public int discardIndex(int e) {
     return discardIndex[Objects.checkIndex(e, events)];
   }
 
-  /** 副露・加槓の出来事の時点の面子（打牌は null）。 */
-  Meld meld(int e) {
+  /** 副露・加槓のイベントでできた面子（打牌と北抜きは null）。 */
+  public Meld meld(int e) {
     return meld[Objects.checkIndex(e, events)];
   }
 
-  /** 繋がる O の出来事（チー・ポン・大明槓は鳴かれた打牌、加槓は元のポン。ほかは −1）。 */
-  int link(int e) {
+  /** 繋がる記録のイベント。チー・ポン・大明槓は鳴かれた打牌、加槓は元のポンで、ほかは −1。 */
+  public int link(int e) {
     return link[Objects.checkIndex(e, events)];
   }
 
-  /** O の出来事 e の公開の位置（e が −1 なら −1）。 */
-  int position(int e) {
+  /** 記録のイベント {@code e} の公開の位置（{@code e} が −1 なら −1）。 */
+  public int position(int e) {
     return e == NONE ? NONE : position[Objects.checkIndex(e, events)];
   }
 
-  /** 公開の位置 p の出来事。O の出来事なら番号（0 以上）、槓ドラの表示 k なら −1 − k。 */
-  int entity(int p) {
+  /** 公開の位置 {@code p} にあるもの。記録のイベントならその番号（0 以上）、k 番目の槓ドラの表示なら −1 − k。 */
+  public int entity(int p) {
     return entity[Objects.checkIndex(p, publicEvents)];
   }
 
-  /** k 番目（0 始まり、出来事の順）の槓の O の出来事。 */
-  int kanEvent(int k) {
+  /** k 番目（0 始まり、起きた順）の槓の、記録のイベントの番号。 */
+  public int kanEvent(int k) {
     return kanEvent[Objects.checkIndex(k, kans)];
   }
 
-  /** 席の打牌の数。 */
-  int discards(int seat) {
+  /** その席が打牌した数。 */
+  public int discards(int seat) {
     return discards[seat];
   }
 
-  /** 席の最後の打牌の O の出来事（なしは −1）。 */
-  int lastDiscard(int seat) {
+  /** その席の最後の打牌の、記録のイベントの番号（無ければ −1）。 */
+  public int lastDiscard(int seat) {
     return lastDiscard[seat];
   }
 
-  /** 席の立直宣言の打牌の O の出来事（なしは −1）。 */
-  int riichiDeclaration(int seat) {
+  /** その席の立直の宣言牌の、記録のイベントの番号（無ければ −1）。 */
+  public int riichiDeclaration(int seat) {
     return riichiDeclaration[seat];
   }
 
-  /** 席の今の副露の数（暗槓を含み、加槓はポンを置き換える）。 */
-  int meldCount(int seat) {
+  /** その席の今の副露の数（暗槓を含む。加槓はポンを置き換えるので数は増えない）。 */
+  public int meldCount(int seat) {
     return meldCount[seat];
-  }
-
-  /** 席の今の副露の index 番目（成立の順。加槓したポンは加槓）。 */
-  Meld meld(int seat, int index) {
-    return melds[seat * RoundLimits.MAX_MELDS + Objects.checkIndex(index, meldCount[seat])];
   }
 
   private static PublicEvent[] meldEvents() {

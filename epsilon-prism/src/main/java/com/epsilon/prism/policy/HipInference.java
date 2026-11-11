@@ -8,13 +8,13 @@ import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtEvent;
 import ai.djl.pytorch.engine.PtNDManager;
 import ai.djl.pytorch.engine.PtStream;
+import com.epsilon.agent.runtime.DecisionDevicePipeline;
 import com.epsilon.prism.backend.HipBackend;
 import com.epsilon.prism.backend.WeightPack;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
-import com.epsilon.prism.input.InputSchema.Axis;
-import com.epsilon.runtime.DecisionDevicePipeline;
+import com.epsilon.prism.input.InputBlob.Axis;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -22,49 +22,52 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
- * HIP の推論の道（1 つのデバイス）。網の重みの束（{@link WeightPack}）を実行枠ごとの道具（{@link Lane}: 計算ストリームと計画）に写し、
- * 塊ごとに blob の H2D 1 回 → K1〜K7 → s の D2H 1 回を積む。s は道具ごとのページ固定の置き場に、塊の順に塊の手の順で詰める。
+ * HIP で推論するバックエンド（デバイス 1 つ分）。ネットワークの重み（{@link WeightPack}）をスロットごとのレーン（{@link Lane}: 計算
+ * ストリームと実行計画）にコピーし、バッチごとに blob の H2D 1 回 → K1〜K7 → s の D2H 1 回を積む。s はレーンごとのページ固定のバッファに、
+ * バッチの順に、バッチの中では手の順に詰める。
  *
- * <p>道具は開くときに実行枠の数だけ作って重みを写し（作業域の確保と写しの同期は準備のときだけ）、実行枠には初めて使うときに 1 つずつ結ぶ。実行枠
- * ごとにストリームと作業域が別なので、片方の転送ともう片方の順伝播が重なる。順伝播には毎回方策のバージョン番号を渡し、道具の写しのバージョンと照らす（古い写し
- * が残る穴を塞ぐ）。
+ * <p>レーンは開くときにスロットの数だけ作り、重みをコピーする。作業領域の確保とコピーの同期は、この準備のときだけ行う。スロットには、初めて
+ * 使うときにレーンを 1 つずつ割り当てる。スロットごとにストリームと作業領域が別なので、一方の転送ともう一方の順伝播が重なる。順伝播には毎回
+ * 方策のバージョン番号を渡し、レーンが持つ重みのバージョンと照合する。これで古い重みのまま推論することを防ぐ。
  */
 final class HipInference implements DeviceInference {
 
-  /** 1 つの実行枠の HIP の順伝播（本番は GPU の計算ストリームと計画、試験は CPU の参照）。スレッド安全でない。 */
+  /**
+   * スロット 1 つ分の HIP の順伝播。本番では GPU の計算ストリームと実行計画を使い、テストでは CPU の参照実装を使う。スレッドセーフではない。
+   */
   interface Lane extends AutoCloseable {
 
     /**
-     * 1 塊の順伝播を積む: blob の H2D → K1〜K7 → s の D2H。
+     * バッチ 1 つの順伝播を積む: blob の H2D → K1〜K7 → s の D2H。
      *
-     * @param batch 封じた塊（blob はページ固定の直の ByteBuffer）
-     * @param out s を書く先（位置 0 から塊の手の数の FP32、little-endian の直の ByteBuffer）
-     * @param version 期待する網のバージョン（写したバージョンと違えば例外）
+     * @param batch 確定したバッチ（blob はページ固定の direct ByteBuffer）
+     * @param out s を書く先（位置 0 から、バッチの手の数だけの FP32 を書く。little-endian の direct ByteBuffer）
+     * @param version 期待するネットワークのバージョン（コピーした重みのバージョンと違えば例外）
      */
     void submit(HostBatch batch, ByteBuffer out, long version);
 
     /**
-     * 積んだ仕事の後に印を記録する。
+     * 積んだ処理の後にイベントを記録する。
      *
-     * @param event 印
+     * @param event 記録するイベント
      */
     void record(PtEvent event);
 
-    /** 積んだ仕事が終わるのを待つ。 */
+    /** 積んだ処理が終わるのを待つ。 */
     void synchronize();
 
     @Override
     void close();
   }
 
-  /** 重みの束を写した道具を作る口。 */
+  /** 重みをコピーしたレーンを作るファクトリ。 */
   @FunctionalInterface
   interface Lanes {
 
     /**
      * @param device デバイス
-     * @param pack 写す重みの束
-     * @return 重みを写した道具
+     * @param pack コピーする重み
+     * @return 重みをコピーしたレーン
      */
     Lane open(Device device, WeightPack pack);
   }
@@ -93,14 +96,14 @@ final class HipInference implements DeviceInference {
   }
 
   /**
-   * 道具を作り、重みを写す。
+   * レーンを作り、重みをコピーする。
    *
    * @param device デバイス
-   * @param pack 重みの束（バージョン番号は方策のバージョン）
-   * @param count 道具の数（GPU は実行枠の数。呼び出しスレッドの口だけなら 1）
-   * @param capacity 1 回の受け付けの s の数の上限
-   * @param lanes 道具を作る口
-   * @return 推論の道
+   * @param pack 重み（バージョン番号は方策のバージョン）
+   * @param count レーンの数（GPU ではスロットの数。呼び出しスレッドから直接呼ぶだけなら 1）
+   * @param capacity 1 回の受付で返す s の数の上限
+   * @param lanes レーンを作るファクトリ
+   * @return HIP の推論のバックエンド
    */
   static HipInference open(Device device, WeightPack pack, int count, int capacity, Lanes lanes) {
     if (count < 1 || capacity < 1) {
@@ -136,11 +139,11 @@ final class HipInference implements DeviceInference {
   }
 
   /**
-   * GPU の計画の道具を作る口。libprism_hip.so を読み込み、道具ごとに計算ストリームを作って、その上に計画を作り重みを写す。
+   * GPU のレーンを作るファクトリを返す。libprism_hip.so を読み込む。レーンごとに計算ストリームを作り、その上に実行計画を作って重みをコピーする。
    *
-   * @param capacity 塊の容量（入力の符号化の塊と同じ）
-   * @return 口
-   * @throws IllegalStateException libprism_hip.so が読めないか、DJL の libtorch・HIP の実行系と合わないとき
+   * @param capacity バッチの容量（入力を符号化するときのバッチと同じ）
+   * @return レーンを作るファクトリ
+   * @throws IllegalStateException libprism_hip.so が読めないか、DJL の libtorch や HIP のランタイムと合わないとき
    */
   static Lanes gpu(BatchPlan.Capacity capacity) {
     HipLibrary library;
@@ -162,7 +165,7 @@ final class HipInference implements DeviceInference {
     return device;
   }
 
-  /** 呼び出しスレッドの口は最初の道具を使う（呼び出しを 1 つずつ通す）。 */
+  /** 呼び出しスレッドから直接呼ぶときは最初のレーンを使い、呼び出しを 1 つずつ通す。 */
   @Override
   public synchronized FloatBuffer score(Encoding encoding) {
     enqueue(0, encoding);
@@ -177,7 +180,7 @@ final class HipInference implements DeviceInference {
     return new Work(encoding);
   }
 
-  /** 塊ごとの順伝播を道具に積む（s は塊の順に詰める）。 */
+  /** バッチごとの順伝播をレーンに積む。s はバッチの順に詰める。 */
   private void enqueue(int lane, Encoding encoding) {
     int offset = 0;
     for (Encoding.Chunk chunk : encoding.chunks()) {
@@ -193,7 +196,7 @@ final class HipInference implements DeviceInference {
     }
   }
 
-  /** 実行枠に結んだ道具の番号（初めての実行枠には次の道具を結ぶ）。 */
+  /** スロットに割り当てたレーンの番号を返す。初めてのスロットには、まだ使っていない次のレーンを割り当てる。 */
   private synchronized int bind(DecisionDevicePipeline.Slot slot) {
     Integer lane = bound.get(slot);
     if (lane == null) {
@@ -207,7 +210,7 @@ final class HipInference implements DeviceInference {
     return lane;
   }
 
-  /** 道具（計画が先、そのストリームが後）とページ固定の置き場を返す。 */
+  /** レーンとページ固定のバッファを解放する。レーンは実行計画を先に、そのストリームを後に閉じる。 */
   @Override
   public void close() {
     Throwable failure = null;
@@ -239,7 +242,7 @@ final class HipInference implements DeviceInference {
     }
   }
 
-  /** 実行枠の 1 回の受け付け: 塊ごとの順伝播を、実行枠に結んだ道具のストリームに積む（H2D も同じストリーム）。 */
+  /** スロットで行う 1 回の受付。バッチごとの順伝播を、スロットに割り当てたレーンのストリームに積む（H2D も同じストリーム）。 */
   private final class Work implements SlotWork {
     private final Encoding encoding;
     private int lane = -1;
@@ -255,7 +258,7 @@ final class HipInference implements DeviceInference {
       try {
         enqueue(lane, encoding);
       } catch (RuntimeException | Error problem) {
-        // 先の塊の仕事は積まれているので、その後に印を残してから投げる
+        // 前のバッチの処理はもう積まれているので、その後にイベントを記録してから投げる
         try {
           lanes[lane].record(slot.computeReady());
           recorded = true;
@@ -292,12 +295,12 @@ final class HipInference implements DeviceInference {
       return scores[lane];
     }
 
-    /** 道具は実行枠に結んだまま使い回すので、受け付けごとに返すものはない。 */
+    /** レーンはスロットに割り当てたまま使い回すので、受付ごとに解放するものはない。 */
     @Override
     public void close() {}
   }
 
-  /** GPU の実行枠の道具: 自分の計算ストリームと、その上の計画（作業域と重みの写し）。閉じるのは計画が先。 */
+  /** GPU のレーン。自分の計算ストリームと、その上の実行計画（作業領域と重みのコピー）を持つ。閉じるときは実行計画が先。 */
   private record GpuLane(PtStream stream, HipBackend backend) implements Lane {
 
     static GpuLane open(

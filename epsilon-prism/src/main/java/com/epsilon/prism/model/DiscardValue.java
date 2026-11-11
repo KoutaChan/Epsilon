@@ -3,19 +3,19 @@ package com.epsilon.prism.model;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
-import com.epsilon.prism.input.InputSchema.DiscardExact;
-import com.epsilon.prism.model.WidthPlan.Axis;
-import com.epsilon.prism.model.WidthPlan.Role;
+import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.input.InputFormat;
 
 /**
- * 打牌の値 B（HIP の K6 の最後）。
+ * 打牌の値 B。HIP では K6 カーネルの最後で計算する。
  *
  * <pre>
- * u^B  = W_B·N_B(z_t) + c_B                         （計算の型の出力を FP32 にする）
- * B(t) = Σ_g wB_g·silu(u^B_g) + Σ_k uBx_k·x^B_t,k   （FP32。x^B は B の道 DiscardExact）
+ * u^B  = W_B·N_B(z_t) + c_B                         （計算の型で求めて FP32 に変える）
+ * B(t) = Σ_g wB_g·silu(u^B_g) + Σ_k uBx_k·x^B_t,k   （FP32。x^B は B 用の厳密な入力の列）
  * </pre>
  *
- * <p>wB・uBx は 0 で始める FP32 の最後の層。b_B は持たない（sg の下では損失に効かないまま漂うため）。
+ * <p>wB と uBx は FP32 の最後の層で、0 で初期化する。バイアス b_B は持たない。持っても、sg（勾配を止める演算）の下では
+ * 損失に効かず、値が漂うだけになる。
  */
 final class DiscardValue extends Module {
 
@@ -29,28 +29,25 @@ final class DiscardValue extends Module {
   /**
    * パラメーターを登録する。
    *
-   * @param shape 網の形
+   * @param shape ネットワークの形
+   * @param format 入力の形式（B 用の厳密な列の数をここから読む）
    */
-  DiscardValue(PrismShape shape) {
+  DiscardValue(PrismShape shape, InputFormat format) {
     epsilon = shape.epsilon();
     norm = gain("norm", shape.hidden());
-    hidden =
-        weight(
-            "hidden",
-            new Shape(shape.gate(), shape.hidden()),
-            Axis.of(Role.INNER_OUT),
-            Axis.of(Role.STREAM_IN));
-    hiddenBias = bias("hiddenBias", shape.gate(), Axis.of(Role.INNER_OUT));
-    output = zeros("output", new Shape(shape.gate()), Axis.of(Role.INNER_IN));
-    exact = zeros("exact", new Shape(DiscardExact.values().length), Axis.of(Role.FIXED));
+    hidden = weight("hidden", new Shape(shape.gate(), shape.hidden()));
+    hiddenBias = bias("hiddenBias", shape.gate());
+    output = zeros("output", new Shape(shape.gate()));
+    int exacts = format.width(Tensor.DISCARD_EXACT);
+    exact = zeros("exact", new Shape(exacts));
   }
 
   /**
    * B を計算する。
    *
-   * @param context 文脈
+   * @param context 計算の文脈
    * @param transitions 遷移の表現 z [遷移, H]（計算の型）
-   * @param discardExact B の道 [遷移, 8]（FP32）
+   * @param discardExact B 用の厳密な入力 [遷移, 列]（FP32）
    * @return B [遷移]（FP32）
    */
   NDArray forward(Context context, NDArray transitions, NDArray discardExact) {

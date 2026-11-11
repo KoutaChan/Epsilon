@@ -9,39 +9,49 @@
   <artifactId>epsilon-prism</artifactId>
   <name>Epsilon Prism</name>
   <description>PRISM: Posterior-start Roll-in Information-Set Matching for Riichi Mahjong</description>
-  <properties>
-    <epsilon.mainClass>com.epsilon.prism.Main</epsilon.mainClass>
-  </properties>
   <dependencies>
-    <dependency>
-      <groupId>com.epsilon</groupId>
-      <artifactId>epsilon-common</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.epsilon</groupId>
-      <artifactId>epsilon-common</artifactId>
-      <version>${project.version}</version>
-      <type>test-jar</type>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.epsilon</groupId>
-      <artifactId>epsilon-nano</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <dependency>
       <groupId>com.epsilon</groupId>
       <artifactId>epsilon-prism-hip</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-grp</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-agent</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-classic</artifactId>
+      <version>${project.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-mahjong</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
   <build>
-    <finalName>epsilon-prism</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

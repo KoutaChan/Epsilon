@@ -1,157 +1,113 @@
 package com.epsilon.prism.input;
 
-import com.epsilon.calculate.scoring.HandScoreBatchBuffer;
-import com.epsilon.calculate.scoring.HandScoreBuffer;
-import com.epsilon.calculate.scoring.HandScoreEvaluator;
-import com.epsilon.calculate.scoring.RiichiState;
-import com.epsilon.calculate.scoring.WinConditions;
-import com.epsilon.calculate.scoring.WinMethod;
-import com.epsilon.core.AkaTileMask;
-import com.epsilon.prism.Limits;
+import com.epsilon.agent.facts.TileCounts;
+import com.epsilon.agent.facts.WaitScores;
+import com.epsilon.agent.facts.WaitScores.Method;
+import com.epsilon.agent.facts.WaitScores.WinningTile;
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.score.RiichiState;
+import com.epsilon.mahjong.score.WinContext;
+import com.epsilon.mahjong.score.WinScore;
 
 /**
- * 聴牌の後の手の待ちごとの採点。待ちごとに、ロン・ツモ ×（立直なし・その遷移の立直の状態）×（赤でない和了牌・赤の 5 の和了牌）の役の有無・
- * 翻・符・基本点を、1 回の分解で求める（{@link HandScoreEvaluator} の表ドラを基本型で受ける口。裏ドラは数えない）。
+ * 手を選んだ後に聴牌している手を、待ちごとに採点する。待ちごとに、（ロン・ツモ）×（ダマ・その遷移の立直）×（赤でない和了牌・
+ * 赤 5 の和了牌）の点を {@link WaitScores} で求める（裏ドラは数えない）。採点の条件はダマと立直で 1 つずつ持ち、立直の条件で採点するのは
+ * 立直する遷移だけ。
  *
- * <p>条件はエンジンの判断の解析と同じ公開の条件（自風・場風・立直だけ。一発・海底などは数えない）。赤でない和了牌の値は、エンジンの
- * {@code analyzeTransitionWaits} の待ちの点と同じになる。赤の 5 の和了牌は、その色の赤がまだ見えていない 5 の待ちだけ採点する。割り当てを
- * しない。
+ * <p>採点の条件は公開された情報だけで作る（自風・場風・ドラ表示牌・立直。一発・海底などは数えない）。赤 5 の和了牌で採点するのは、
+ * その色の赤がまだ見えていない 5 の待ちだけ。メモリを割り当てない。
  */
-final class WaitScoring {
+public final class WaitScoring {
 
-  /** 立直の構え。 */
-  enum Stance {
+  /** ダマか立直か。 */
+  public enum Stance {
     DAMA,
-    /** その遷移の立直の状態（立直・ダブル立直。立直していない遷移では採点しない）。 */
+    /** その遷移の立直の状態（立直・ダブル立直）。立直しない遷移では採点しない。 */
     RIICHI
   }
 
-  enum WinningTile {
-    /** 赤でない牌。 */
-    PLAIN,
-    /** 赤の 5。 */
-    AKA
-  }
-
-  private static final WinMethod[] METHODS = WinMethod.values();
-  private static final int STANCES = Stance.values().length;
-  private static final int TILES = WinningTile.values().length;
-  private static final int RESULTS = STANCES * METHODS.length * TILES;
-
-  private final HandScoreEvaluator evaluator = new HandScoreEvaluator();
-  private final HandScoreBatchBuffer batch = new HandScoreBatchBuffer(RESULTS);
-  private final int[] waitTile = new int[Limits.MAX_WAIT_KINDS];
-  private final int[] basePoints = new int[Limits.MAX_WAIT_KINDS * RESULTS];
-  private final int[] han = new int[Limits.MAX_WAIT_KINDS * RESULTS];
-  private final int[] fu = new int[Limits.MAX_WAIT_KINDS * RESULTS];
-  private int waits;
+  private final WaitScores dama;
+  private final WaitScores declared;
   private boolean riichi;
+
+  public WaitScoring(Variant variant) {
+    dama = new WaitScores(variant);
+    declared = new WaitScores(variant);
+  }
 
   /**
    * 待ちを採点する。
    *
-   * @param hand 後の手（13 枚相当で聴牌）
-   * @param waitMask 形の待ち
-   * @param tiles 牌ごとの枚数（表ドラと見えた赤を読む）
-   * @param seatWind 自風の牌
-   * @param roundWind 場風の牌
+   * @param hand 手を選んだ後の手（13 枚相当で聴牌）
+   * @param waitMask 形の上の待ち
+   * @param tiles 種類ごとの枚数（見えていない赤を読む）
+   * @param o 判断の記録（ドラ表示牌を読む）
+   * @param seatWind 自風の牌の種類
    * @param transitionRiichi その遷移の立直の状態
    */
-  void score(
+  public void score(
       AfterHand hand,
       long waitMask,
       TileCounts tiles,
+      Observation o,
       int seatWind,
-      int roundWind,
       RiichiState transitionRiichi) {
     riichi = transitionRiichi != RiichiState.NONE;
-    int stances = riichi ? STANCES : 1;
-    int plainSlots = stances * METHODS.length;
-    WinConditions dama = WinConditions.publicDecision(seatWind, roundWind, RiichiState.NONE);
-    WinConditions declared =
-        riichi ? WinConditions.publicDecision(seatWind, roundWind, transitionRiichi) : dama;
-    int owned = hand.ownedAkaMask();
-    waits = 0;
-    for (long rest = waitMask; rest != 0L; rest &= rest - 1) {
-      int tile = Long.numberOfTrailingZeros(rest);
-      boolean aka = tiles.akaUnseen(tile);
-      for (int stance = 0; stance < stances; stance++) {
-        WinConditions conditions = stance == Stance.DAMA.ordinal() ? dama : declared;
-        for (WinMethod method : METHODS) {
-          int slot = stance * METHODS.length + method.ordinal();
-          batch.configure(slot, method, conditions, owned);
-          if (aka) {
-            batch.configure(plainSlots + slot, method, conditions, AkaTileMask.includeTile(owned, tile));
-          }
-        }
-      }
-      batch.size(aka ? 2 * plainSlots : plainSlots);
-      evaluator.scoreAfterAddingBatch(
-          hand.shape(), hand, tile, tiles.doraPacked(), tiles.indicators(), batch);
-      int wait = waits++;
-      waitTile[wait] = tile;
-      for (int result = 0; result < RESULTS; result++) {
-        basePoints[wait * RESULTS + result] = 0;
-      }
-      for (int slot = 0, size = batch.size(); slot < size; slot++) {
-        HandScoreBuffer score = batch.result(slot);
-        if (!score.available()) {
-          continue;
-        }
-        int variant = slot / plainSlots;
-        int stance = slot % plainSlots / METHODS.length;
-        int method = slot % METHODS.length;
-        int at = wait * RESULTS + index(stance, method, variant);
-        basePoints[at] = score.basePoints();
-        han[at] = score.han();
-        fu[at] = score.fu();
-      }
+    load(dama, hand, waitMask, tiles, o, seatWind, RiichiState.NONE);
+    if (riichi) {
+      load(declared, hand, waitMask, tiles, o, seatWind, transitionRiichi);
     }
   }
 
   /** 採点した待ちの数。 */
-  int waits() {
-    return waits;
+  public int waits() {
+    return dama.waits();
   }
 
-  /** wait 番目の待ちの牌（牌の番号の小さい順）。 */
-  int waitTile(int wait) {
-    return waitTile[wait];
+  /** {@code wait} 番目の待ち牌（牌の番号の小さい順）。 */
+  public int waitTile(int wait) {
+    return dama.wait(wait);
   }
 
-  /** 立直の構え（{@link Stance#RIICHI}）を採点した。 */
-  boolean riichi() {
-    return riichi;
-  }
-
-  /** 和了できる（役がある）。 */
-  boolean available(int wait, Stance stance, WinMethod method, WinningTile tile) {
+  /** 和了できるか（役があるか）。 */
+  public boolean available(int wait, Stance stance, Method method, WinningTile tile) {
     return basePoints(wait, stance, method, tile) > 0;
   }
 
   /** 基本点（役がなければ 0）。 */
-  int basePoints(int wait, Stance stance, WinMethod method, WinningTile tile) {
-    return basePoints[at(wait, stance, method, tile)];
+  public int basePoints(int wait, Stance stance, Method method, WinningTile tile) {
+    return score(wait, stance, method, tile).base();
   }
 
-  /** 翻（裏なし。役満は 0）。 */
-  int han(int wait, Stance stance, WinMethod method, WinningTile tile) {
-    return han[at(wait, stance, method, tile)];
+  /** 翻数（裏ドラなし。役満は 0）。 */
+  public int han(int wait, Stance stance, Method method, WinningTile tile) {
+    return score(wait, stance, method, tile).han();
   }
 
-  /** 符（役満は 0）。 */
-  int fu(int wait, Stance stance, WinMethod method, WinningTile tile) {
-    return fu[at(wait, stance, method, tile)];
-  }
-
-  private int at(int wait, Stance stance, WinMethod method, WinningTile tile) {
+  private WinScore score(int wait, Stance stance, Method method, WinningTile tile) {
     if (stance == Stance.RIICHI && !riichi) {
       throw new IllegalStateException("riichi stance was not scored");
     }
-    return wait * RESULTS + index(stance.ordinal(), method.ordinal(), tile.ordinal());
+    return (stance == Stance.DAMA ? dama : declared).score(wait, method, tile);
   }
 
-  private static int index(int stance, int method, int tile) {
-    return (stance * METHODS.length + method) * TILES + tile;
+  private static void load(
+      WaitScores scores,
+      AfterHand hand,
+      long waitMask,
+      TileCounts tiles,
+      Observation o,
+      int seatWind,
+      RiichiState riichi) {
+    WinContext context = scores.context();
+    context.clear();
+    hand.writeTo(context);
+    context.setWinds(seatWind, o.roundWindTile());
+    for (int index = 0; index < o.indicators(); index++) {
+      context.addIndicator(o.indicatorTile(index));
+    }
+    context.setRiichi(riichi, false);
+    scores.load(waitMask, tiles.unseenRed());
   }
 }

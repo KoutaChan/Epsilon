@@ -1,10 +1,17 @@
 package com.epsilon.prism.model;
 
-import com.epsilon.prism.input.InputSchema.ActionColumn;
-import com.epsilon.prism.input.InputSchema.RowColumn;
+import com.epsilon.prism.input.InputBlob.ActionColumn;
+import com.epsilon.prism.input.InputBlob.RowColumn;
+import com.epsilon.prism.input.InputFormat;
 
-/** 1 塊の数と、行・手の索引のホストの写し（索引 {@link BatchIndex} と損失の入力 {@link LossInputs} をホストで作る元）。 */
+/**
+ * 1 つのバッチの件数と、行・手の列をホストに写したもの。インデックス（{@link BatchIndex}）と損失の入力（{@link LossInputs}）を
+ * ホストで作るときに読む。
+ */
 interface HostColumns {
+
+  /** バッチの入力の形式。 */
+  InputFormat format();
 
   int rows();
 

@@ -1,5 +1,8 @@
 package com.epsilon.prism.grp;
 
+import com.epsilon.grp.train.GrpReport;
+import com.epsilon.grp.train.LateReport;
+import com.epsilon.grp.train.OutcomeCalibration;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
@@ -19,40 +22,43 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * reports/phimon.jsonl の 1 行: コホート 1 つを使用中の Φ と影の Φ で採点した結果（{@link PhiScorer}）。EWMA（λ = 1/8）は使用中の項目が
- * 変わるごとに初めからやり直す。
+ * reports/phimon.jsonl の 1 行。コホート 1 つを {@link PhiScorer} で採点した結果を持つ。採点には、使ったモードの値、同じ GRP の項目の
+ * もう一方のモードの値、影の Φ を使う。もう一方のモードの採点・終盤の報告・q の較正は、項目が q を持つときだけ入る。
  *
  * @param cohort コホート t
- * @param phiId 使用中の項目の id（コホートの記録の先頭のもの）
- * @param phiSha256 その sha
- * @param active 使用中の Φ の測り
- * @param shadows 影の Φ の測り（項目か試行の id → 測り。元の GRP は {@value PhiEntry#FIXED_ID}）
- * @param dSpgEwma 使用中の D_SPG の EWMA
- * @param ewmaCohorts EWMA に入ったコホートの数（項目が変わってから）
- * @param seconds 採点の秒数
+ * @param phiId 使った GRP の項目の id（コホートの記録の先頭に書いたもの）
+ * @param mode 使ったモード
+ * @param cutoff LATE の打ち切りの値。GRP のモードでは null
+ * @param active 使ったモードの値で採点した結果
+ * @param other 同じ項目のもう一方のモードの値で採点した結果。項目が q を持たないか、もう一方のモードの値を開けなければ null
+ * @param late LATE が数え上げる局末で、LATE の値と GRP のモードの値を比べた報告。もう一方のモードの採点が無ければ null
+ * @param outcomeCalibration 数のファイルの局のうち、LATE が数え上げる局で測った項目の q の較正。項目が q を持たないか、数のファイルが
+ *     無ければ null
+ * @param shadows 影の Φ ごとに、使ったモードの値で採点した結果。キーは項目か試行の id で、元の GRP は {@value PhiEntry#FIXED_ID}
+ * @param seconds 採点にかかった秒数
  */
 public record PhiMonitorLine(
     int cohort,
     String phiId,
-    String phiSha256,
-    CellReport active,
-    Map<String, CellReport> shadows,
-    double dSpgEwma,
-    int ewmaCohorts,
+    PhiMode mode,
+    Double cutoff,
+    GrpReport active,
+    GrpReport other,
+    LateReport late,
+    OutcomeCalibration.Check outcomeCalibration,
+    Map<String, GrpReport> shadows,
     double seconds) {
 
   private static final Logger LOG = LoggerFactory.getLogger(PhiMonitorLine.class);
 
-  /** EWMA の重み λ。 */
-  public static final double EWMA_WEIGHT = 1.0 / 8;
-
-  /** 1 行 1 物（NaN の測りもそのまま書いて読む）。 */
+  /** 1 行に JSON を 1 つ書く Gson。NaN の値もそのまま書き、そのまま読む。 */
   private static final Gson LINES =
       new GsonBuilder().serializeSpecialFloatingPointValues().setStrictness(Strictness.LENIENT).create();
 
   /**
-   * phimon.jsonl の全ての行（書いた順。ファイルがなければ空）。壊れた行は、最後の行でなくても書きかけの残り（次の {@link #append} が改行で
-   * 閉じる）として読み飛ばす。
+   * phimon.jsonl の全ての行を書いた順に返す。ファイルが無ければ空。壊れた行は、最後の行でなくても書きかけで止まった行とみなして
+   * 読み飛ばす（そうした行は次の {@link #append} が改行で閉じる）。モード・打ち切りの値・もう一方のモードの採点・終盤の報告・q の較正の
+   * フィールドが無い行も読み、無いフィールドは null になる。
    */
   public static List<PhiMonitorLine> readAll(GrpFiles files) throws IOException {
     Path path = files.monitor();
@@ -77,7 +83,7 @@ public record PhiMonitorLine(
     Files.createDirectories(path.getParent());
     try (FileChannel channel =
         FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
-      // 書きかけで止まった最後の行があれば改行で閉じてから足す（読み手はその行を飛ばす）
+      // 最後の行が書きかけで止まっていれば、改行で閉じてから足す。読む側はその行を飛ばす
       long size = channel.size();
       String prefix = "";
       if (size > 0) {
@@ -91,46 +97,44 @@ public record PhiMonitorLine(
   }
 
   /**
-   * 走らせ役の要約の行（phi[t] D=… B4=… S3=… z=…）。D は D_SPG とその EWMA（コホートの数）、B4 は今 4 位の席の残差の E2〜S2 の平均、S3 は
-   * 南 3 の同じ量、z は傾きの z の絶対値が最大の区分とその z。
+   * ログに書く 1 行の要約を返す。並ぶのは順に、phi[t]、id、mse、D、終盤の 1 つ手前の区分の傾きとその z、僅差のセルの
+   * |実測 − 予測| の最大（ポイント）、使ったモード、LATE が数え上げる局末での対の MSE の差（LATE − GRP のモード）とその z、影の数、
+   * 秒数。
    */
   public String summary() {
-    double b4 = 0;
-    int groups = 0;
-    for (HandGroup group : List.of(HandGroup.E2, HandGroup.E3, HandGroup.E4, HandGroup.S1, HandGroup.S2)) {
-      double value = active.b4()[group.ordinal()];
-      if (Double.isNaN(value)) continue;
-      b4 += value;
-      groups++;
-    }
-    HandGroup widest = null;
-    for (HandGroup group : HandGroup.values()) {
-      double z = active.slopeZ()[group.ordinal()];
-      if (!Double.isNaN(z) && (widest == null || Math.abs(z) > Math.abs(active.slopeZ()[widest.ordinal()])))
-        widest = group;
-    }
+    List<GrpReport.Fit> groups = active.groups();
+    GrpReport.Fit penultimate = groups.size() >= 2 ? groups.get(groups.size() - 2) : null;
     return String.format(
         Locale.ROOT,
-        "phi[%d] %s D=%.3e ewma=%.3e(%d) B4=%+.4f S3=%+.4f z=%s mse=%.5f shadows=%d %.0fs",
+        "phi[%d] %s mse=%.5f D=%.3e slope=%.3f z=%+.1f close=%.2fpp mode=%s late=%s shadows=%d %.0fs",
         cohort,
         phiId,
-        active.dSpg(),
-        dSpgEwma,
-        ewmaCohorts,
-        groups == 0 ? Double.NaN : b4 / groups,
-        active.b4()[HandGroup.S3.ordinal()],
-        widest == null ? "nan" : String.format(Locale.ROOT, "%s:%+.1f", widest, active.slopeZ()[widest.ordinal()]),
         active.mse(),
+        active.dSpg(),
+        penultimate == null ? Double.NaN : penultimate.slope(),
+        penultimate == null ? Double.NaN : penultimate.slopeZ(),
+        100 * widestCloseGap(active),
+        mode,
+        late == null ? "-" : String.format(Locale.ROOT, "%+.3e(z=%+.1f)", late.mse().mean(), late.mse().z()),
         shadows.size(),
         seconds);
   }
 
-  /** 1 行を読む（欄が欠けた行は拒む）。 */
+  /** 僅差のセルの |実測 − 予測| の最大。測れないセルは除き、どのセルも測れなければ NaN。 */
+  private static double widestCloseGap(GrpReport report) {
+    double widest = Double.NaN;
+    for (GrpReport.CloseCell cell : report.closeCells()) {
+      double gap = Math.abs(cell.keepGap());
+      if (Double.isFinite(gap) && !(gap <= widest)) widest = gap;
+    }
+    return widest;
+  }
+
+  /** 1 行を読む。項目の id・使ったモードの採点・影の採点のどれかが欠けた行は拒む。 */
   static PhiMonitorLine parse(String text) {
     PhiMonitorLine line = LINES.fromJson(text, PhiMonitorLine.class);
     if (line == null || line.phiId() == null || line.active() == null || line.shadows() == null)
       throw new JsonParseException("Incomplete phimon line");
     return line;
   }
-
 }

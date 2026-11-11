@@ -1,24 +1,20 @@
 package com.epsilon.prism;
 
-import com.epsilon.config.settings.SettingsLoader;
-import com.epsilon.prism.config.settings.EpsilonSettings;
-import com.epsilon.workflow.CommandLine;
-import com.epsilon.workflow.StartupSettings;
-import java.io.IOException;
+import com.epsilon.agent.app.App;
+import com.epsilon.prism.app.PrismApp;
 
-/** epsilon-prism を起動し、今回の実行で使用する設定を読み込んで保持する。 */
+/** epsilon-prism を起動する。 */
 public final class Main {
+
   private Main() {}
 
-  public static int run(String[] arguments) throws IOException {
-    StartupSettings startup =
-        StartupSettings.read("epsilon-prism", EpsilonSettings.DEFAULT_RESOURCE, arguments);
-    SettingsLoader settings = EpsilonSettings.load(startup.path(), startup.overrides());
-    return CommandLine.run(startup.arguments(), Workflows.create(), settings);
+  /** コマンドを 1 つ実行して終了コードを返す。シグナルのハンドラーは登録しない。 */
+  public static int run(String[] arguments) {
+    return App.run(PrismApp.application(), arguments);
   }
 
-  /** 終わりに必ず System.exit を呼ぶ（残ったスレッドで JVM が終われなくならないように）。 */
-  public static void main(String[] arguments) throws IOException {
-    System.exit(run(arguments));
+  /** コマンドを 1 つ実行して、その終了コードで JVM を終える。 */
+  public static void main(String[] arguments) {
+    App.main(PrismApp.application(), arguments);
   }
 }

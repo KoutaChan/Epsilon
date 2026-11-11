@@ -3,11 +3,12 @@ package com.epsilon.prism.backend;
 import java.util.Locale;
 
 /**
- * 2 つの値の列の差: 相対 RMS、1 ulp 以内の割合（BF16 の値なら BF16 の ulp、FP32 なら FP32 の ulp）、最大の絶対差。
+ * 2 つの値の列の差。相対 RMS、1 ulp 以内に収まる要素の割合、絶対差の最大を持つ。ulp は、BF16 の値なら BF16 の ulp で、FP32 の値なら
+ * FP32 の ulp で数える。
  *
- * @param relativeRms √(Σ(a − e)² / Σe²)
- * @param withinOneUlp 1 ulp 以内の割合
- * @param maxAbs 最大の |a − e|
+ * @param relativeRms √(Σ(a − e)² / Σe²)。期待値が全て 0 なら √Σ(a − e)²
+ * @param withinOneUlp 1 ulp 以内に収まる要素の割合（要素が無ければ 1）
+ * @param maxAbs |a − e| の最大
  * @param count 要素の数
  */
 record Diff(double relativeRms, double withinOneUlp, double maxAbs, int count) {
@@ -59,7 +60,7 @@ record Diff(double relativeRms, double withinOneUlp, double maxAbs, int count) {
     return bits < 0 ? -(long) (bits & 0x7fffffff) : bits;
   }
 
-  /** 1 行の要約。 */
+  /** ラベルを付けた 1 行の要約を返す。 */
   String line(String label) {
     return String.format(
         Locale.ROOT,

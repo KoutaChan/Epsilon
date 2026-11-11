@@ -4,6 +4,7 @@ import ai.djl.Device;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
+import com.epsilon.agent.runtime.PinnedUploads;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
@@ -11,16 +12,21 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * {@link Staging} と {@link Uploads}・{@link UploadRegion}: 送った区画が DJL のホストの配列から作る配列とバイトで同じこと（型・形・同じ型の
- * 区画の位置）、置き場や領域を使い回しても前に送った配列が変わらないこと（足りないバッファの取り直しを含む）、組の境目の揃え方、誤った区画を
- * 拒むこと。
+ * {@link Staging} と、ページ固定の転送用のバッファ（{@link PinnedUploads}）をテストする。確かめるのは次のこと。
+ *
+ * <ul>
+ *   <li>送った領域が、DJL でホストの値から作った配列とバイトまで同じ（型・形・同じ型の領域の位置）。
+ *   <li>同期でも非同期でも、バッファを使い回したときに前に送った配列が変わらない（足りないバッファを取り直す場合も含む）。
+ *   <li>領域の組の先頭を、アロケーターの境界にそろえる。
+ *   <li>誤った領域を拒む。
+ * </ul>
  */
 public class StagingTest {
 
   @Test(timeOut = 120_000)
   public void sectionsMatchArraysMadeFromHostValues() {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      Uploads uploads = Uploads.on(manager);
+      PinnedUploads uploads = PinnedUploads.on(manager);
       long[] longs = {Long.MIN_VALUE, -1, 0, 7, Long.MAX_VALUE, 1L << 40};
       int[] ints = {Integer.MIN_VALUE, -3, 0, 5, Integer.MAX_VALUE, 123_456};
       float[] floats = {Float.NaN, -0f, Float.MIN_VALUE, -1.5f, Float.MAX_VALUE, 3.25f};
@@ -44,7 +50,7 @@ public class StagingTest {
   @Test(timeOut = 120_000)
   public void reusedBuffersKeepEarlierArrays() {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      Uploads uploads = Uploads.on(manager);
+      PinnedUploads uploads = PinnedUploads.on(manager);
       float[] small = {1f, 2f, 3f};
       float[] large = new float[4096];
       for (int i = 0; i < large.length; i++) {
@@ -52,7 +58,7 @@ public class StagingTest {
       }
       float[] again = {9f, 8f, 7f};
       NDArray first = send(uploads, manager, small, new Shape(3));
-      // 長い区画はバッファを取り直し、次の短い区画は取り直したバッファの先頭を書き直す
+      // 長い領域ではバッファを取り直し、次の短い領域は取り直したバッファの先頭に書く
       NDArray second = send(uploads, manager, large, new Shape(64, 64));
       NDArray third = send(uploads, manager, again, new Shape(3));
       Assert.assertEquals(first.toFloatArray(), small);
@@ -64,7 +70,7 @@ public class StagingTest {
   @Test(timeOut = 120_000)
   public void regionSectionsMatchArraysMadeFromHostValues() {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-        UploadRegion region = UploadRegion.on(manager)) {
+        PinnedUploads region = PinnedUploads.on(manager)) {
       long[] longs = {Long.MIN_VALUE, -1, 0, 7};
       float[] floats = {Float.NaN, -0f, 2.5f};
       float[] targets = {1f, 2f, 3f, 4f};
@@ -83,7 +89,7 @@ public class StagingTest {
       assertSameBytes(second.array(), manager.create(floats));
       Assert.assertEquals(third.array().toByteBuffer(), raw);
       assertSameBytes(fourth.array(), manager.create(targets).reshape(2, 2));
-      // 送り直しは領域に書き直してから。長い組は領域のバッファを取り直す
+      // 送り直す前にバッファへ書き直す。長い組ではバッファを取り直す
       staging.write(region);
       staging.enqueue(manager, null);
       assertSameBytes(fourth.array(), manager.create(targets).reshape(2, 2));
@@ -118,7 +124,8 @@ public class StagingTest {
     Assert.assertNull(staging.addLongs(List.of()));
   }
 
-  private static NDArray send(Uploads uploads, NDManager manager, float[] values, Shape shape) {
+  private static NDArray send(
+      PinnedUploads uploads, NDManager manager, float[] values, Shape shape) {
     Staging staging = new Staging();
     Staging.Section section = staging.add(values, shape);
     staging.send(uploads, manager);

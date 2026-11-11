@@ -1,39 +1,49 @@
 package com.epsilon.prism.backend;
 
+import com.epsilon.prism.hip.HipArchitecture;
 import com.epsilon.prism.hip.HipComposition;
 import com.epsilon.prism.hip.HipEmbedding;
 import com.epsilon.prism.hip.HipPack;
 import com.epsilon.prism.hip.HipSchema;
 import com.epsilon.prism.hip.HipSection;
-import com.epsilon.prism.hip.HipShape;
 import com.epsilon.prism.hip.HipWeight;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * 書いた WeightPack を native の頭の並び（prism_hip_format.h の PackHeader）で読み直す試験の道具。HipPack.Header の書き方を、native と
- * 同じ添字の計算で照らす。
+ * 書き出した WeightPack を、native のヘッダーの並び（prism_hip_format.h の PackHeader）で読み直すテスト用のヘルパー。HipPack.Header の
+ * 書き方を、native と同じインデックスの計算で照合する。
  */
 final class PackView {
 
-  private static final int SCHEMA_AT = 2;
+  private static final int ARCHITECTURE_AT = 0;
+  private static final int SCHEMA_AT = ARCHITECTURE_AT + HipArchitecture.INTS;
   private static final int SECTIONS_AT = SCHEMA_AT + HipSchema.values().length;
   private static final int ROLES_AT = SECTIONS_AT + HipSection.values().length;
-  private static final int GATES_AT = ROLES_AT + HipPack.MAX_ROLES;
-  private static final int WEIGHTS_AT = GATES_AT + HipPack.MAX_ROLES;
-  private static final int EMBEDDINGS_AT = WEIGHTS_AT + HipWeight.values().length * HipShape.MAX_DEPTH;
+  private static final int GATES_AT = ROLES_AT + HipArchitecture.MAX_ROLES;
+  private static final int WEIGHTS_AT = GATES_AT + HipArchitecture.MAX_ROLES;
+  private static final int EMBEDDINGS_AT = WEIGHTS_AT + HipWeight.ENTRIES;
 
   final ByteBuffer bytes;
 
   PackView(ByteBuffer pack) {
     bytes = pack.duplicate().order(ByteOrder.LITTLE_ENDIAN);
-    if (integer(0) != HipPack.MAGIC || integer(1) != HipPack.HEADER_INTS) {
-      throw new IllegalStateException("not a PRISM HIP weight pack");
+    if (bytes.limit() < HipPack.HEADER_BYTES) {
+      throw new IllegalStateException("a weight pack of " + bytes.limit() + " bytes has no room for the header");
     }
   }
 
   int integer(int index) {
     return bytes.getInt(index * Integer.BYTES);
+  }
+
+  /** ヘッダーにある形の記述（int の列）。 */
+  int[] architecture() {
+    int[] ints = new int[HipArchitecture.INTS];
+    for (int i = 0; i < ints.length; i++) {
+      ints[i] = integer(ARCHITECTURE_AT + i);
+    }
+    return ints;
   }
 
   int schema(HipSchema field) {
@@ -52,29 +62,35 @@ final class PackView {
     return integer(GATES_AT + role);
   }
 
-  int weight(HipWeight weight, int layer) {
-    int offset = integer(WEIGHTS_AT + weight.ordinal() * HipShape.MAX_DEPTH + (weight.layered() ? layer : 0));
+  /** 重みの項目の位置（項目は {@link HipWeight.Index} の番号）。項目が無ければ例外を投げる。 */
+  int weight(HipWeight weight, int entry) {
+    int offset = integer(WEIGHTS_AT + weight.firstEntry() + entry);
     if (offset < 0) {
-      throw new IllegalStateException(weight + " layer " + layer + " is absent");
+      throw new IllegalStateException(weight + " entry " + entry + " is absent");
     }
     return offset;
   }
 
-  float f32(HipWeight weight, int layer, int index) {
-    return bytes.getFloat(weight(weight, layer) + index * Float.BYTES);
+  /** 重みの項目の位置（項目が無ければ −1）。 */
+  int weightOrAbsent(HipWeight weight, int entry) {
+    return integer(WEIGHTS_AT + weight.firstEntry() + entry);
   }
 
-  float bf16(HipWeight weight, int layer, int index) {
-    return Float.intBitsToFloat((bytes.getShort(weight(weight, layer) + index * Short.BYTES) & 0xFFFF) << 16);
+  float f32(HipWeight weight, int entry, int index) {
+    return bytes.getFloat(weight(weight, entry) + index * Float.BYTES);
   }
 
-  int u8(HipWeight weight, int layer, int index) {
-    return bytes.get(weight(weight, layer) + index) & 0xFF;
+  float bf16(HipWeight weight, int entry, int index) {
+    return Float.intBitsToFloat((bytes.getShort(weight(weight, entry) + index * Short.BYTES) & 0xFFFF) << 16);
+  }
+
+  int u8(HipWeight weight, int entry, int index) {
+    return bytes.get(weight(weight, entry) + index) & 0xFF;
   }
 
   /**
-   * 1 つの型の埋め込み（native の EmbeddingSpec の並び）。tableFold は表ごとの T' の位置、fold は W'_d に続く b' と b_qkv の位置（層 0 の
-   * QKV に畳まない型は −1）。
+   * 1 つの型の埋め込み（native の EmbeddingSpec の並び）。{@code tableFold} は表ごとの T' の位置、{@code fold} は W'_d とそれに続く b'・b_qkv
+   * の位置（層 0 の QKV に折り込まない型では −1）。
    */
   record Spec(
       int category,

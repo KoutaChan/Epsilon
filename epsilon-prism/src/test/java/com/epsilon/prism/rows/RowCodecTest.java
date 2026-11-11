@@ -1,17 +1,20 @@
 package com.epsilon.prism.rows;
 
+import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
-import com.epsilon.prism.DecisionWalk;
+import com.epsilon.agent.observe.ObservationBatch;
+import com.epsilon.agent.observe.ObservationWriter;
+import com.epsilon.mahjong.engine.Decisions;
+import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.auxiliary.OracleCapture;
 import com.epsilon.prism.auxiliary.OutcomeCodec;
 import com.epsilon.prism.core.DecisionClass;
-import com.epsilon.prism.observe.ObservationArena;
-import com.epsilon.prism.observe.ObservationSchema;
-import com.epsilon.prism.observe.ObservationWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -26,20 +29,26 @@ import java.util.SplittableRandom;
 import org.testng.annotations.Test;
 
 /**
- * 行の直列化とコホートの書き手。
+ * 行の直列化と、コホートのライターのテスト。
  *
- * <p>GREEDY の固定の種の判断の記録 O と神託に、値・p0・候補集合・根の欄・帳簿・局末の記録を乱数で入れた行が、フレームを通って全ての欄で元に
- * 戻る（NaN の位置と ±0 も）。CRC の破れを例外で捕まえ、書けない行（帳簿の欄の数の違い、fp16 で表せない帳簿）を書く前に止める。書き手は
- * 目録に記録の指紋と帳簿の欄の数を書き、索引の順にフレームを読むと元の行に戻る。指紋の違う目録は読む前に止める。
+ * <p>テストの行は、GREEDY で乱数の種を固定して打った判断の記録 O と Oracle に、乱数で作った値・p0・候補集合・根のフィールド・帳簿・
+ * 局末の記録を組み合わせたもの。確かめるのは次のこと。
+ *
+ * <ul>
+ *   <li>行をフレームにして読み戻すと、全てのフィールドが元に戻る（NaN の位置と ±0 も）。
+ *   <li>CRC が合わないフレームは例外で検出する。書けない行（帳簿の特徴の数が違う行、fp16 で表せない帳簿）は書く前に止める。
+ *   <li>ライターはマニフェストに記録のフィンガープリントと帳簿の特徴の数を書く。インデックスの順にフレームを読むと元の行に戻る。
+ *   <li>フィンガープリントの違うマニフェストは、読む前に止める。
+ * </ul>
  */
 public class RowCodecTest {
 
-  /** 帳簿の欄の数。 */
+  /** 帳簿の特徴の数。 */
   private static final int FEATURES = 17;
 
   @Test
   public void framesRoundTrip() throws IOException {
-    RowCodec codec = new RowCodec(FEATURES);
+    RowCodec codec = new RowCodec(FEATURES, TENHOU_4P);
     for (Row row : rows(300)) {
       ByteBuffer frame = ByteBuffer.wrap(codec.encode(row));
       assertRow(codec.decode(frame), row);
@@ -49,21 +58,22 @@ public class RowCodecTest {
 
   @Test
   public void brokenFramesAndUnwritableRowsAreRejected() {
-    RowCodec codec = new RowCodec(FEATURES);
+    RowCodec codec = new RowCodec(FEATURES, TENHOU_4P);
     Row row = rows(1).get(0);
     byte[] frame = codec.encode(row);
 
-    // 索引の組（頭の最後から 4 バイト目）を A と B で入れ替える。索引としては正しい値なので CRC だけが捕まえる。
-    byte[] group = frame.clone();
-    group[RowCodec.FRAME_HEADER - 4] ^= 1;
+    // インデックスにも入る半荘の用途（ヘッダーの末尾から 4 バイト目）を、学習とホールドアウトで入れ替える。インデックスとしては正しい値なので、
+    // CRC でしか検出できない。
+    byte[] purpose = frame.clone();
+    purpose[RowCodec.FRAME_HEADER - 4] ^= 1;
     IOException mismatch =
-        expectThrows(IOException.class, () -> codec.decode(ByteBuffer.wrap(group)));
+        expectThrows(IOException.class, () -> codec.decode(ByteBuffer.wrap(purpose)));
     assertTrue(mismatch.getMessage().contains("CRC"), mismatch.getMessage());
     byte[] body = frame.clone();
     body[body.length - 1] ^= 0x5A;
     expectThrows(IOException.class, () -> codec.decode(ByteBuffer.wrap(body)));
 
-    expectThrows(IllegalArgumentException.class, () -> new RowCodec(FEATURES + 1).encode(row));
+    expectThrows(IllegalArgumentException.class, () -> new RowCodec(FEATURES + 1, TENHOU_4P).encode(row));
     float[] ledger = row.ledger().clone();
     ledger[row.played() * FEATURES] = 0.1f;
     expectThrows(IllegalArgumentException.class, () -> codec.encode(withLedger(row, ledger)));
@@ -73,7 +83,7 @@ public class RowCodecTest {
   public void cohortWriterRecordsFingerprintsAndFrames() throws IOException {
     Path directory = Files.createTempDirectory("prism-rows");
     List<Row> rows = rows(120);
-    try (CohortWriter writer = new CohortWriter(directory, 3, FEATURES, 2, CohortWriter.Tap.NONE)) {
+    try (CohortWriter writer = new CohortWriter(directory, TENHOU_4P, 3, FEATURES, 2, CohortWriter.Tap.NONE)) {
       for (Row row : rows) {
         writer.accept(row);
       }
@@ -83,13 +93,16 @@ public class RowCodecTest {
     assertEquals(manifest.iteration(), 3);
     assertEquals(manifest.rows(), rows.size());
     assertEquals(manifest.ledgerFeatures(), FEATURES);
-    assertEquals(manifest.fingerprints(), CohortWriter.Fingerprints.current());
+    assertEquals(manifest.fingerprints(), CohortWriter.Fingerprints.of(TENHOU_4P));
+    assertEquals(
+        manifest.fingerprints(),
+        new CohortWriter.Fingerprints("bb3db98cb8b5b43a", "a71ba8e0c3e8c105", "77275bf2f7b5ae35"));
 
     Map<Long, Row> written = new HashMap<>();
     for (Row row : rows) {
       written.put(row.decisionId(), row);
     }
-    RowCodec codec = new RowCodec(manifest.ledgerFeatures());
+    RowCodec codec = new RowCodec(manifest.ledgerFeatures(), TENHOU_4P);
     int read = 0;
     long bytes = 0;
     for (CohortWriter.Shard shard : manifest.shards()) {
@@ -100,7 +113,7 @@ public class RowCodecTest {
       while (index.hasRemaining()) {
         int length = index.getInt();
         RowCodec.Index entry =
-            RowCodec.index(length, index.get(), index.get(), index.get(), index.get(), index.get());
+            RowCodec.index(length, index.get(), index.get(), index.get(), index.get());
         int start = frames.position();
         Row row = codec.decode(frames);
         assertEquals(frames.position() - start, length);
@@ -116,42 +129,47 @@ public class RowCodecTest {
 
     Path path = directory.resolve(CohortWriter.MANIFEST);
     Files.writeString(
-        path, Files.readString(path).replace(OutcomeCodec.fingerprint(), "0000000000000000"));
+        path, Files.readString(path).replace(OutcomeCodec.of(TENHOU_4P).fingerprint(), "0000000000000000"));
+    expectThrows(IOException.class, () -> CohortWriter.readManifest(directory));
+
+    // O のフィンガープリントは四人打ちなのに、局末の記録のフィンガープリントが三人打ちのマニフェストは、ルールが食い違うので読む前に止める
+    Files.writeString(
+        path,
+        Files.readString(path)
+            .replace("0000000000000000", OutcomeCodec.of(Variant.TENHOU_3P).fingerprint()));
     expectThrows(IOException.class, () -> CohortWriter.readManifest(directory));
   }
 
-  /** GREEDY の固定の種の判断ごとに、O と神託を実際に捕まえ、ほかの欄を乱数で入れた行（神託は 5 行に 1 行なし）。 */
+  /** GREEDY で乱数の種を固定して打ち、判断ごとに行を 1 つ作る。O と Oracle は実際に取り込み、ほかのフィールドは乱数で入れる（5 行に 1 行は Oracle なし）。 */
   private static List<Row> rows(int count) {
     List<Row> rows = new ArrayList<>();
-    ObservationWriter writer = new ObservationWriter();
-    ObservationArena arena = new ObservationArena(256);
-    OracleCapture oracles = new OracleCapture();
+    ObservationWriter writer = new ObservationWriter(TENHOU_4P);
+    ObservationBatch batch = new ObservationBatch(TENHOU_4P, 1 << 12);
+    RuleWorkspace ws = new RuleWorkspace(TENHOU_4P);
     SplittableRandom random = new SplittableRandom(7);
-    new DecisionWalk(DecisionWalk.Policy.GREEDY)
+    new TableWalk(TENHOU_4P, TableWalk.Policy.GREEDY)
         .run(
             500,
             3,
-            (engine, point, round) -> {
+            (engine, slot) -> {
               if (rows.size() == count) {
                 return;
               }
-              int seat = point.player();
-              arena.clear();
-              int base =
-                  writer.capture(
-                      engine.observation(seat), point.kind(), point.legalActions(), arena);
-              long[] words = arena.words();
+              Decisions decisions = engine.decisions();
+              int seat = decisions.seat(slot);
+              batch.clear();
+              int index = writer.capture(engine.view(seat), decisions, slot, batch);
               long[] observation =
-                  Arrays.copyOfRange(words, base, base + ObservationSchema.longs(words, base));
+                  Arrays.copyOfRange(batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
               long[] oracle =
-                  rows.size() % 5 == 0 ? new long[0] : oracles.capture(engine.getState(), seat);
-              rows.add(row(rows.size(), point.legalActions().size(), observation, oracle, random));
+                  rows.size() % 5 == 0 ? new long[0] : OracleCapture.capture(engine.full(), seat, ws);
+              rows.add(row(rows.size(), decisions.legalCount(slot), observation, oracle, random));
             });
     assertEquals(rows.size(), count);
     return rows;
   }
 
-  /** 行の番号 {@code id} の行。行の種類・類・用途・組は番号で回し、測った手は打った手と乱数で選んだ手。 */
+  /** 番号 {@code id} の行を作る。行の種類・判断のクラス・用途は番号で順に回す。値を測った手は、打った手と乱数で選んだ手にする。 */
   private static Row row(
       int id, int actions, long[] observation, long[] oracle, SplittableRandom random) {
     Row.Source source = Row.Source.values()[id % Row.Source.values().length];
@@ -187,7 +205,6 @@ public class RowCodecTest {
         id * 31L + 7,
         DecisionClass.of(id % DecisionClass.COUNT),
         id % 5 == 0 ? Row.Purpose.HOLDOUT : Row.Purpose.TRAIN,
-        (id / 2 & 1) == 0 ? Row.Group.A : Row.Group.B,
         source,
         played,
         values,
@@ -209,7 +226,6 @@ public class RowCodecTest {
         row.decisionId(),
         row.decisionClass(),
         row.purpose(),
-        row.group(),
         row.source(),
         row.played(),
         row.values(),
@@ -225,14 +241,13 @@ public class RowCodecTest {
         row.observation());
   }
 
-  /** 全ての欄が同じ（浮動小数はビットで比べるので、NaN の位置と ±0 も同じ）。 */
+  /** 全てのフィールドが同じことを確かめる（浮動小数点数はビットで比べるので、NaN の位置と ±0 も同じ）。 */
   private static void assertRow(Row actual, Row expected) {
     String where = "row " + expected.gameId();
     assertEquals(actual.gameId(), expected.gameId(), where);
     assertEquals(actual.decisionId(), expected.decisionId(), where);
     assertEquals(actual.decisionClass(), expected.decisionClass(), where);
     assertEquals(actual.purpose(), expected.purpose(), where);
-    assertEquals(actual.group(), expected.group(), where);
     assertEquals(actual.source(), expected.source(), where);
     assertEquals(actual.played(), expected.played(), where);
     assertTrue(Arrays.equals(actual.values(), expected.values()), where);

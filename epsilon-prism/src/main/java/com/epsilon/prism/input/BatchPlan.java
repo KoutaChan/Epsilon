@@ -1,33 +1,34 @@
 package com.epsilon.prism.input;
 
-import com.epsilon.core.GameState;
-import com.epsilon.core.Tile;
+import com.epsilon.agent.observe.Observation;
 import com.epsilon.prism.Limits;
-import com.epsilon.prism.input.InputSchema.Axis;
-import com.epsilon.prism.input.InputSchema.Tensor;
-import com.epsilon.prism.observe.Observation;
+import com.epsilon.prism.input.InputBlob.Axis;
+import com.epsilon.prism.input.InputBlob.Tensor;
 import java.util.Objects;
 
 /**
- * 1 塊の行の位置と、blob の中の区画の位置を決める。行は記録 O の形の数（出来事・遷移・手）の前置和で並べ、区画は {@link Tensor} の順に
- * {@link InputSchema#TENSOR_ALIGNMENT} B にそろえて、実際の数で詰める。だから使う部分は blob の先頭から続き、送るのは {@link #bytes} B だけになる。
+ * 1 つのバッチについて、行の位置と、blob の中の各テンソルの領域の位置を決める。行の位置は、判断の記録にあるイベント・遷移・合法手の数の
+ * 累積和で決める。領域は {@link Tensor} の順に並べ、先頭を {@link #TENSOR_ALIGNMENT} B にそろえて、実際の数の分だけ詰める。そのため使う部分は
+ * blob の先頭から切れ目なく続き、送るのは {@link #bytes} B だけで済む。
  *
- * <p>軸 {@link Axis#TOKEN} は、局・席・牌・出来事のトークンの区画を {@link Axis} の宣言の順に続けたもの（局 R 個、席 4R 個、牌 34R 個、出来事
- * N_E 個）。行 r の局・席・牌のトークンの位置は行番号で決まり、出来事のトークンの位置は {@link #firstEvent} で決まる。
+ * <p>トークンの軸（{@link Axis#TOKEN}）には、局・席・牌・イベントのトークンの領域が {@link Axis} の宣言の順に続く。数は局が R 個、席が S·R 個、
+ * 牌が T·R 個、イベントが N_E 個（S と T は入力の形式が決める行ごとの席と牌のトークンの数）。局・席・牌のトークンの位置は行の番号で決まり、
+ * イベントのトークンの位置は {@link #firstEvent} で決まる。
  *
- * <p>使い方は {@link #clear} → 行ごとに {@link #add} → {@link #seal}。封じた後は位置を読むだけで、行を足せない。受付のスレッドが作り、符号化の
- * スレッドは封じた後に読むだけにする。
+ * <p>{@link #clear} の後に行ごとに {@link #add} を呼び、最後に {@link #seal} で確定する。確定した後は位置を読むだけで、行は足せない。
+ * 受付のスレッドが作り、符号化のスレッドは確定した後に読むだけにする。
  */
 public final class BatchPlan {
 
-  /** 行ごとの局・席・牌のトークンの数。 */
-  public static final int FIXED_TOKENS = 1 + GameState.NUM_PLAYERS + Tile.NUM_TILE_TYPES;
+  /** バッチの中で、各テンソルの領域の先頭をそろえるバイト数。HostBatch と HIP 側の表はこの値を使う。 */
+  public static final int TENSOR_ALIGNMENT = 256;
 
   private static final Tensor[] TENSORS = Tensor.values();
   private static final Axis[] AXES = Axis.values();
-  private static final int[] ROW_BYTES = rowBytes();
   private static final int OPEN = -1;
 
+  private final InputFormat format;
+  private final int[] rowBytes;
   private final Capacity capacity;
   private final int[] firstEvent;
   private final int[] firstTransition;
@@ -37,24 +38,26 @@ public final class BatchPlan {
   private int bytes = OPEN;
 
   /**
-   * 1 塊の上限。区画の大きさの上限はここから決まり、{@link HostBatch} はこの大きさの blob を持つ。1 行は必ず入るように、規則の上限より
-   * 小さい値は受け付けない。
+   * 1 つのバッチの上限。各領域の大きさの上限はここから決まり、{@link HostBatch} はこの大きさの blob を持つ。どんな行でも 1 行は必ず入るように、
+   * ルールで決まる 1 行の上限より小さい値は受け付けない。
    *
    * @param rows 行の数
-   * @param events 出来事トークンの数（全ての行の和）
+   * @param events イベントのトークンの数（全ての行の和）
    * @param transitions 遷移の数（全ての行の和）
    * @param actions 合法手の数（全ての行の和）
    */
   public record Capacity(int rows, int events, int transitions, int actions) {
 
-    /** 既定の上限（行 4096、トークン 393,216、遷移 98,304、手 131,072）。出来事はトークンから局・席・牌の分を引いた数。 */
-    public static final Capacity DEFAULT =
-        new Capacity(4096, 393_216 - FIXED_TOKENS * 4096, 98_304, 131_072);
+    /** 推論での既定の行の上限。 */
+    private static final int ROWS = 4096;
+
+    /** 推論での既定のトークンの上限（局・席・牌・イベントのトークンの和）。 */
+    private static final int TOKENS = 393_216;
 
     /**
      * 上限を確かめる。
      *
-     * @throws IllegalArgumentException 1 行が入らない上限のとき
+     * @throws IllegalArgumentException 上限が小さく、1 行が入りきらないことがあるとき
      */
     public Capacity {
       if (rows < 1
@@ -73,33 +76,63 @@ public final class BatchPlan {
                 + " actions");
       }
     }
+
+    /**
+     * 推論での既定の上限（行 4096、トークン 393,216、遷移 98,304、合法手 131,072）を返す。イベントの上限は、トークンの上限から局・席・牌の
+     * トークンの分を引いた数にする。
+     *
+     * @param format 入力の形式
+     * @return 上限
+     */
+    public static Capacity standard(InputFormat format) {
+      return new Capacity(ROWS, TOKENS - format.fixedTokens() * ROWS, 98_304, 131_072);
+    }
   }
 
   /**
    * 空の計画を作る。
    *
-   * @param capacity 1 塊の上限
+   * @param format 入力の形式（各テンソルの幅と、行ごとの席と牌のトークンの数）
+   * @param capacity 1 つのバッチの上限
    */
-  public BatchPlan(Capacity capacity) {
+  public BatchPlan(InputFormat format, Capacity capacity) {
+    this.format = Objects.requireNonNull(format, "format");
     this.capacity = Objects.requireNonNull(capacity, "capacity");
+    rowBytes = rowBytes(format);
     firstEvent = new int[capacity.rows() + 1];
     firstTransition = new int[capacity.rows() + 1];
     firstAction = new int[capacity.rows() + 1];
   }
 
   /**
-   * 上限の行・出来事・遷移・手で詰めたときの blob の大きさを返す。{@link HostBatch} の blob はこれ以上にする。
+   * 行・イベント・遷移・合法手を上限まで詰めたときの blob の大きさを返す。{@link HostBatch} の blob はこれ以上の大きさにする。
    *
-   * @param capacity 1 塊の上限
+   * @param format 入力の形式
+   * @param capacity 1 つのバッチの上限
    * @return バイト数
    */
-  public static int maxBytes(Capacity capacity) {
+  public static int maxBytes(InputFormat format, Capacity capacity) {
     return layout(
-        capacity.rows(), capacity.events(), capacity.transitions(), capacity.actions(), null);
+        format,
+        rowBytes(format),
+        capacity.rows(),
+        capacity.events(),
+        capacity.transitions(),
+        capacity.actions(),
+        null);
   }
 
   /**
-   * 1 塊の上限を返す。
+   * 入力の形式を返す。
+   *
+   * @return 形式
+   */
+  public InputFormat format() {
+    return format;
+  }
+
+  /**
+   * 1 つのバッチの上限を返す。
    *
    * @return 上限
    */
@@ -116,9 +149,9 @@ public final class BatchPlan {
   /**
    * 行を足す。
    *
-   * @param o 行の記録 O（頭の形の数だけを読む）
-   * @return 行の番号。上限を超えるなら −1（行は足さず、呼び手は次の塊に回す）
-   * @throws IllegalStateException 封じた後のとき
+   * @param o 行の判断の記録（ヘッダーにあるイベント・遷移・合法手の数だけを読む）
+   * @return 行の番号。上限を超えるなら −1（行は足さないので、呼び出し元はその行を次のバッチに回す）
+   * @throws IllegalStateException 確定した後のとき
    */
   public int add(Observation o) {
     requireOpen();
@@ -138,24 +171,26 @@ public final class BatchPlan {
   }
 
   /**
-   * 行を足し終え、区画の位置を決める。
+   * 行を足し終えて確定し、各テンソルの領域の位置を決める。
    *
    * @return 使う blob のバイト数
-   * @throws IllegalStateException 封じた後か、行がないとき
+   * @throws IllegalStateException 確定した後のとき、または行が 1 つもないとき
    */
   public int seal() {
     requireOpen();
     if (rows == 0) {
       throw new IllegalStateException("batch plan has no rows");
     }
-    bytes = layout(rows, firstEvent[rows], firstTransition[rows], firstAction[rows], offsets);
+    bytes =
+        layout(
+            format, rowBytes, rows, firstEvent[rows], firstTransition[rows], firstAction[rows], offsets);
     return bytes;
   }
 
   /**
-   * 封じたかを返す。
+   * 確定したかを返す。
    *
-   * @return 封じたなら true
+   * @return 確定したなら true
    */
   public boolean sealed() {
     return bytes != OPEN;
@@ -165,7 +200,7 @@ public final class BatchPlan {
    * 使う blob のバイト数を返す。
    *
    * @return バイト数
-   * @throws IllegalStateException 封じる前のとき
+   * @throws IllegalStateException 確定する前のとき
    */
   public int bytes() {
     requireSealed();
@@ -173,11 +208,11 @@ public final class BatchPlan {
   }
 
   /**
-   * 区画の先頭を返す。
+   * テンソルの領域の先頭を返す。
    *
    * @param tensor テンソル
-   * @return blob の中のバイトの位置
-   * @throws IllegalStateException 封じる前のとき
+   * @return blob の先頭からのバイトの位置
+   * @throws IllegalStateException 確定する前のとき
    */
   public int offset(Tensor tensor) {
     requireSealed();
@@ -200,15 +235,15 @@ public final class BatchPlan {
    * @return 要素の数
    */
   public int count(Axis axis) {
-    return count(axis, rows, firstEvent[rows], firstTransition[rows], firstAction[rows]);
+    return count(format, axis, rows, firstEvent[rows], firstTransition[rows], firstAction[rows]);
   }
 
   /**
-   * トークンの軸の中で、型ごとの区画の先頭を返す。
+   * トークンの軸の中で、その種類のトークンの領域が始まる位置を返す。
    *
-   * @param axis トークンの型の軸（{@link Axis#ROW} は局、{@link Axis#SEAT}・{@link Axis#TILE}・{@link Axis#EVENT}）
-   * @return トークンの軸の位置
-   * @throws IllegalArgumentException トークンの型の軸でないとき
+   * @param axis トークンの種類を表す軸（{@link Axis#ROW} は局、ほかは {@link Axis#SEAT}・{@link Axis#TILE}・{@link Axis#EVENT}）
+   * @return トークンの軸での位置
+   * @throws IllegalArgumentException トークンの種類を表す軸でないとき
    */
   public int tokenStart(Axis axis) {
     if (axis.ordinal() >= Axis.TOKEN.ordinal()) {
@@ -222,20 +257,20 @@ public final class BatchPlan {
   }
 
   /**
-   * 行の最初の出来事トークンの番号を返す。
+   * 行の最初のイベントのトークンの番号を返す。
    *
    * @param row 行の番号
-   * @return 出来事の軸の位置
+   * @return イベントの軸での位置
    */
   public int firstEvent(int row) {
     return firstEvent[Objects.checkIndex(row, rows)];
   }
 
   /**
-   * 行の出来事トークンの数を返す。
+   * 行のイベントのトークンの数を返す。
    *
    * @param row 行の番号
-   * @return 出来事の数
+   * @return イベントの数
    */
   public int events(int row) {
     return firstEvent[Objects.checkIndex(row, rows) + 1] - firstEvent[row];
@@ -245,7 +280,7 @@ public final class BatchPlan {
    * 行の最初の遷移の番号を返す。
    *
    * @param row 行の番号
-   * @return 遷移の軸の位置
+   * @return 遷移の軸での位置
    */
   public int firstTransition(int row) {
     return firstTransition[Objects.checkIndex(row, rows)];
@@ -265,7 +300,7 @@ public final class BatchPlan {
    * 行の最初の合法手の番号を返す。
    *
    * @param row 行の番号
-   * @return 手の軸の位置
+   * @return 合法手の軸での位置
    */
   public int firstAction(int row) {
     return firstAction[Objects.checkIndex(row, rows)];
@@ -275,48 +310,61 @@ public final class BatchPlan {
    * 行の合法手の数を返す。
    *
    * @param row 行の番号
-   * @return 手の数
+   * @return 合法手の数
    */
   public int actions(int row) {
     return firstAction[Objects.checkIndex(row, rows) + 1] - firstAction[row];
   }
 
-  /** 区画を宣言の順にそろえて詰め、終わりの位置を返す。offsets が null でなければ区画の先頭を書く。 */
-  private static int layout(int rows, int events, int transitions, int actions, int[] offsets) {
+  /** 各テンソルの領域を宣言の順に、先頭をそろえて詰め、末尾の位置を返す。{@code offsets} が null でなければ、各領域の先頭をそこに書く。 */
+  private static int layout(
+      InputFormat format, int[] rowBytes, int rows, int events, int transitions, int actions, int[] offsets) {
     int cursor = 0;
     for (Tensor tensor : TENSORS) {
       cursor = align(cursor);
       if (offsets != null) {
         offsets[tensor.ordinal()] = cursor;
       }
-      int elements = count(tensor.axis(), rows, events, transitions, actions);
-      cursor = Math.addExact(cursor, Math.multiplyExact(elements, ROW_BYTES[tensor.ordinal()]));
+      int elements = count(format, tensor.axis(), rows, events, transitions, actions);
+      cursor = Math.addExact(cursor, Math.multiplyExact(elements, rowBytes[tensor.ordinal()]));
     }
     return cursor;
   }
 
-  private static int count(Axis axis, int rows, int events, int transitions, int actions) {
+  /**
+   * 軸の要素の数を返す。
+   *
+   * @param format 入力の形式
+   * @param axis 軸
+   * @param rows 行の数
+   * @param events イベントのトークンの数
+   * @param transitions 遷移の数
+   * @param actions 合法手の数
+   * @return 要素の数
+   */
+  public static int count(
+      InputFormat format, Axis axis, int rows, int events, int transitions, int actions) {
     return switch (axis) {
       case ROW -> rows;
-      case SEAT -> GameState.NUM_PLAYERS * rows;
-      case TILE -> Tile.NUM_TILE_TYPES * rows;
+      case SEAT -> format.seats() * rows;
+      case TILE -> format.tiles() * rows;
       case EVENT -> events;
-      case TOKEN -> FIXED_TOKENS * rows + events;
+      case TOKEN -> format.fixedTokens() * rows + events;
       case TRANSITION -> transitions;
       case ACTION -> actions;
     };
   }
 
   private static int align(int offset) {
-    int alignment = InputSchema.TENSOR_ALIGNMENT;
+    int alignment = TENSOR_ALIGNMENT;
     return Math.addExact(offset, alignment - 1) / alignment * alignment;
   }
 
-  /** テンソルの軸 1 つあたりのバイト数（準備のときに一度だけ作る）。 */
-  private static int[] rowBytes() {
+  /** テンソルごとの、軸の要素 1 つあたりのバイト数。 */
+  private static int[] rowBytes(InputFormat format) {
     int[] bytes = new int[TENSORS.length];
     for (Tensor tensor : TENSORS) {
-      bytes[tensor.ordinal()] = tensor.width() * tensor.element().bytes();
+      bytes[tensor.ordinal()] = format.width(tensor) * tensor.element().bytes();
     }
     return bytes;
   }

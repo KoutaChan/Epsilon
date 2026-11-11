@@ -3,20 +3,19 @@ package com.epsilon.prism.model;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.nn.Parameter;
 import ai.djl.util.PairList;
-import com.epsilon.prism.run.Averaging;
 
-/**
- * 同じ形の網の重みの混ぜ方（方策の記憶 {@link Averaging}。{@link
- * PrismNetwork#mixIn}）。
- */
+/** 同じ形の 2 つのネットワークの重みを混ぜる（方策の記憶に使う。{@link PrismNetwork#mixIn}）。 */
 public final class ParameterMix {
   private ParameterMix() {}
 
   /**
-   * target の重みを source の重みと混ぜる: w ← (1 − eta)·w + eta·w_source（要素ごと、FP32）。eta = 1 なら source の写し。パラメーターは名前で
-   * 突き合わせる。
+   * 混ぜ先の重みに、混ぜ元の重みを割合 η で混ぜる。要素ごとに FP32 で w ← (1 − η)·w + η·w_混ぜ元 とし、η = 1 なら混ぜ元をそのまま写す。
+   * パラメーターは名前で突き合わせる。
    *
-   * @throws IllegalArgumentException eta が (0, 1] の外か、パラメーターの名前か形が違う
+   * @param target 混ぜ先のパラメーター（書き換える）
+   * @param source 混ぜ元のパラメーター
+   * @param eta 混ぜ元の割合 η
+   * @throws IllegalArgumentException η が (0, 1] の外のとき、またはパラメーターの名前か形が 2 つのネットワークで違うとき
    */
   public static void mix(
       PairList<String, Parameter> target, PairList<String, Parameter> source, double eta) {

@@ -1,21 +1,21 @@
 package com.epsilon.prism.policy;
 
-import com.epsilon.core.Action;
-import java.util.List;
+import com.epsilon.mahjong.action.Action;
+import com.epsilon.mahjong.action.Action.TileSelection;
+import com.epsilon.mahjong.action.Action.Type;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/** 規則事前 p0 の決め手の性質（和 1・全て正、まとまりの基準測度、打牌どうしの比）。 */
+/** ルールベースの事前分布 p0 の大事な性質をテストする（全ての値が正で和が 1、手のまとまりごとの基準測度、打牌どうしの比）。 */
 public class PriorTest {
   private static final PriorSettings SETTINGS = new PriorSettings(4.0, 0.05);
 
-  private static float[] prior(List<Action> legal, float[] shanten, float[] ukeire) {
-    int n = legal.size();
-    byte[] group = new byte[n];
-    ActionGroups.fill(legal, group);
-    double[] z = new double[n];
-    RulePrior.logits(SETTINGS, n, shanten, ukeire, group, z);
-    return Prior.softmax(z, n);
+  private static int dahai(int kind) {
+    return Action.discard(kind, false, false, false);
+  }
+
+  private static float[] prior(int[] legal, float[] shanten, float[] ukeire) {
+    return Prior.compute(legal, shanten, ukeire, SETTINGS);
   }
 
   private static void assertDistribution(float[] p) {
@@ -29,13 +29,12 @@ public class PriorTest {
 
   @Test
   public void discardRatiosFollowShantenAndUkeire() {
-    List<Action> legal =
-        List.of(Action.dahai(0), Action.dahai(5), Action.riichiDahai(9), Action.tsumoAgari());
+    int[] legal = {dahai(0), dahai(5), Action.discard(9, false, false, true), Action.code(Type.TSUMO_AGARI)};
     float[] p = prior(legal, new float[] {1, 2, 1, 0}, new float[] {20, 40, 10, 0});
     assertDistribution(p);
     Assert.assertEquals(Math.log(p[0] / (double) p[1]), -4.0 * (1 - 2) + 0.05 * (20 - 40), 1e-4);
     Assert.assertEquals(Math.log(p[0] / (double) p[2]), 0.05 * (20 - 10), 1e-4);
-    // 打牌のまとまり全体とツモ和了は半々
+    // 打牌のまとまり全体とツモ和了で半々に分ける
     Assert.assertEquals(p[0] + p[1] + p[2], p[3], 1e-6);
   }
 
@@ -43,7 +42,9 @@ public class PriorTest {
   public void groupsAreUniformWithoutDiscardChoice() {
     float[] p =
         prior(
-            List.of(Action.dahai(3), Action.ankan(3), Action.tsumoAgari()),
+            new int[] {
+              dahai(3), Action.code(Type.ANKAN, 3, TileSelection.NOT_APPLICABLE), Action.code(Type.TSUMO_AGARI)
+            },
             new float[] {0, 0, 0},
             new float[] {30, 0, 0});
     assertDistribution(p);
@@ -51,7 +52,12 @@ public class PriorTest {
 
     float[] calls =
         prior(
-            List.of(Action.chiSequence(0, 2), Action.chiSequence(1, 2), Action.pon(2), Action.pass()),
+            new int[] {
+              Action.chi(0, 2, false),
+              Action.chi(1, 2, false),
+              Action.code(Type.PON, 2, TileSelection.NON_AKA),
+              Action.code(Type.PASS)
+            },
             new float[4],
             new float[4]);
     assertDistribution(calls);
@@ -61,8 +67,13 @@ public class PriorTest {
 
   @Test
   public void onlyDiscardsKeepTheirRuleShares() {
-    float[] p = prior(List.of(Action.dahai(0), Action.dahai(1)), new float[] {0, 1}, new float[] {10, 10});
+    float[] p = prior(new int[] {dahai(0), dahai(1)}, new float[] {0, 1}, new float[] {10, 10});
     assertDistribution(p);
     Assert.assertEquals(p[0] / (double) p[1], Math.exp(4.0), 1e-3 * Math.exp(4.0));
+  }
+
+  @Test
+  public void oneLegalActionIsCertain() {
+    Assert.assertEquals(prior(new int[] {dahai(0)}, new float[1], new float[1]), new float[] {1f});
   }
 }

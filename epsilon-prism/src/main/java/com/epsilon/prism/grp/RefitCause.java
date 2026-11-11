@@ -1,14 +1,11 @@
 package com.epsilon.prism.grp;
 
-/** GRP を学習した理由（refits.jsonl の cause）。 */
+/** GRP を学び直した理由（refits.jsonl の cause）。 */
 public enum RefitCause {
 
-  /** grp-refit の要求。 */
+  /** grp-refit で要求された。 */
   MANUAL,
 
-  /** grpRefitSchedule の間隔。 */
-  SCHEDULE,
-
-  /** ずれの警報による前倒し。 */
-  DRIFT
+  /** 反復ごとの予定どおりに学び直した。 */
+  SCHEDULE
 }

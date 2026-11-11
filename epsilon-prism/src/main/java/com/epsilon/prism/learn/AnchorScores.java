@@ -7,11 +7,11 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtNDManager;
 import ai.djl.pytorch.engine.PtStream;
-import com.epsilon.network.NetworkDevices;
-import com.epsilon.network.NetworkRuntime;
+import com.epsilon.agent.runtime.NetworkDevices;
+import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
-import com.epsilon.prism.model.PrismNetwork;
+import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.rows.Row;
 import java.io.IOException;
@@ -29,77 +29,80 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 当てはめの全ての行の錨の s（ホストに置く）。錨の網で当てはめの前に 1 度だけ出し（{@link #compute}）、符号化のスレッドが行の貯蔵の番号で
- * 引いて教師に混ぜる（{@link Teacher#values}）。
+ * 学習に使う全ての行について、アンカーの s をホストのメモリに持つ。s はアンカーのネットワークで学習の前に 1 度だけ求め
+ * （{@link #compute}）、エンコードのスレッドが行のストアの番号で引いて教師に混ぜる（{@link Teacher#values}）。
  *
- * <p>行の入力は生徒の微小バッチと同じ書き手（{@link Encoder.Inputs}）で書き、錨は学習のレーンと同じ道と同じ塊の容量で開く（{@link Anchor}）。
- * HIP の推論の行の s は塊の組み方に依らないので、HIP の錨の s は微小バッチの中で出した s とビットで同じ。eager の錨の s は塊の詰め物で
- * 丸めの違いが出る。
+ * <p>行の入力は、生徒のマイクロバッチと同じライター（{@link Encoder.Inputs}）で書く。アンカーを開くときは、推論のバックエンドと
+ * バッチの容量を学習のレーンにそろえる（{@link Anchor}）。HIP の推論では行の s がバッチの組み方に依らないので、HIP のアンカーの s は、マイクロバッチの中で
+ * 求めた s とビット単位で一致する。eager のアンカーの s は、バッチのパディングによって丸めが変わることがある。
  *
- * <p>錨の網は重みの指紋（{@link PrismNetwork#weightsFingerprint}）で表し、使う側が {@link #requireNetwork} で照らす。
+ * <p>アンカーのネットワークはバージョンで見分け、使う側が {@link #requireVersion} で照合する。
  */
 public final class AnchorScores {
 
   private static final Logger LOG = LoggerFactory.getLogger(AnchorScores.class);
 
-  /** 1 つの仕事で読む行の数（貯蔵の番号の昇順で続いた行。s の置き場もこの単位）。 */
+  /** 書き込みスレッドが 1 度に取る区間の行の数。区間は行のストアの番号の昇順に続く行で、s のバッファもこの単位で持つ。 */
   private static final int SLICE = 1024;
 
   /**
-   * 1 デバイスあたりの書き手のスレッドの上限。書き手は行の読み出し・展開・符号化をしてから、デバイスの錨を順番に使う。符号化は錨の推論より
-   * 1 行あたり重いので、1 デバイスに数本の書き手を回してデバイスを埋める。書き手ごとにページ固定の塊を 1 つ持つ。
+   * 1 デバイスあたりの書き込みスレッドの上限。書き込みスレッドは行を読み出して展開・エンコードし、デバイスのアンカーを順番に使う。
+   * 1 行あたりではエンコードのほうがアンカーの推論より重いので、1 デバイスに数本の書き込みスレッドを回してデバイスを休ませない。
+   * 書き込みスレッドは、それぞれページ固定のバッチを 1 つ持つ。
    */
   private static final int WRITERS_PER_DEVICE = 8;
 
-  private final String network;
+  /** s を求めたアンカーのネットワークのバージョン。 */
+  private final int version;
 
-  /** s を持つ行の貯蔵の番号（昇順）。 */
+  /** s を持つ行の、行のストアでの番号（昇順）。 */
   private final int[] rows;
 
-  /** {@link #SLICE} 行ごとの s（行の順に手の s を並べる）。 */
+  /** {@link #SLICE} 行ごとの s。行の順に、各行の手の s を並べる。 */
   private final float[][] values;
 
-  /** {@link #SLICE} 行ごとの行の先頭（長さは行の数 + 1）。 */
+  /** {@link #SLICE} 行ごとの、各行の s の開始位置（長さは行の数 + 1）。 */
   private final int[][] starts;
 
-  private AnchorScores(String network, int[] rows, float[][] values, int[][] starts) {
-    this.network = network;
+  private AnchorScores(int version, int[] rows, float[][] values, int[][] starts) {
+    this.version = version;
     this.rows = rows;
     this.values = values;
     this.starts = starts;
   }
 
   /**
-   * 行の錨の s を出す。行を {@link #SLICE} 行ずつ書き手のスレッドで読んで塊に書き、デバイスごとの錨で s を出す。錨とストリームは返す前に
-   * 閉じる。
+   * 行ごとにアンカーの s を求める。行を {@link #SLICE} 行ずつ書き込みスレッドで読んでバッチに書き、デバイスごとのアンカーで s を求める。
+   * アンカーとストリームは返す前に閉じる。
    *
-   * @param store 行の貯蔵
-   * @param rows 行の貯蔵の番号（当てはめの行）
-   * @param directory 錨の網のディレクトリ
-   * @param path 推論の道（設定の inference。GPU・前線なし・特化した幅のときだけ HIP になる）
-   * @param devices 錨を開くデバイス
-   * @param threads 書き手のスレッドの上限（{@link #WRITERS_PER_DEVICE} × デバイスの数も超えない）
-   * @return s
-   * @throws IOException 錨の網か行を読めないとき
+   * @param store 行のストア
+   * @param rows 学習に使う行の、行のストアでの番号
+   * @param directory アンカーのネットワークのディレクトリ
+   * @param version アンカーのネットワークのバージョン
+   * @param path 推論のバックエンド（設定の inference）。HIP になるのは、GPU で、HIP のカーネルがその幅に特化しているときだけ
+   * @param devices アンカーを開くデバイス
+   * @param threads 書き込みスレッドの上限（{@link #WRITERS_PER_DEVICE} × デバイスの数も超えない）
+   * @return 行ごとの s
+   * @throws IOException アンカーのネットワークか行を読めないとき
    */
   public static AnchorScores compute(
       CohortStore store,
       int[] rows,
       Path directory,
+      int version,
       InferencePath path,
       NetworkDevices devices,
       int threads)
       throws IOException {
     long started = System.nanoTime();
     NetworkRuntime.initialize();
-    String network = PrismNetwork.weightsFingerprint(directory);
-    boolean frontier = PrismNetwork.readShape(directory).frontier();
     int[] sorted = rows.clone();
     Arrays.sort(sorted);
     int slices = Math.ceilDiv(sorted.length, SLICE);
     float[][] values = new float[slices][];
     int[][] starts = new int[slices][];
-    BatchPlan.Capacity capacity = StepFeed.capacity(FitPlan.TOKEN_BUDGET);
+    InputFormat format = InputFormat.of(store.variant());
+    BatchPlan.Capacity capacity = StepFeed.capacity(format, FitPlan.TOKEN_BUDGET);
     int writers = Math.max(1, Math.min(threads, WRITERS_PER_DEVICE * devices.size()));
     Slices job = new Slices(store, sorted, values, starts, new AtomicInteger());
     List<Lane> lanes = new ArrayList<>(devices.size());
@@ -115,10 +118,8 @@ public final class AnchorScores {
             Lane lane = lanes.get(writer % lanes.size());
             HostInputs batch =
                 HostInputs.allocate(
-                    capacity,
-                    frontier,
-                    bytes -> pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer());
-            work.add(pool.submit(() -> job.write(batch, new Encoder.Inputs(frontier), lane)));
+                    format, capacity, bytes -> pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer());
+            work.add(pool.submit(() -> job.write(batch, new Encoder.Inputs(store.variant()), lane)));
           }
           for (Future<?> future : work) {
             await(future);
@@ -139,39 +140,27 @@ public final class AnchorScores {
         devices.size(),
         writers,
         String.format("%.1f", (System.nanoTime() - started) / 1e9));
-    return new AnchorScores(network, sorted, values, starts);
+    return new AnchorScores(version, sorted, values, starts);
   }
 
   /**
-   * 錨の網の重みの指紋を返す。
+   * s を求めたアンカーのネットワークが、使う側のアンカーと同じバージョンかを確かめる。
    *
-   * @return {@link PrismNetwork#weightsFingerprint} の値
+   * @param version 使う側のアンカーのネットワークのバージョン
+   * @throws IllegalStateException バージョンが違うとき
    */
-  public String network() {
-    return network;
-  }
-
-  /**
-   * s を出した錨の網が directory の網と同じ重みであることを確かめる。
-   *
-   * @param directory 使う側の錨の網のディレクトリ
-   * @throws IOException 重みを読めないとき
-   * @throws IllegalStateException 重みの指紋が違うとき
-   */
-  public void requireNetwork(Path directory) throws IOException {
-    String expected = PrismNetwork.weightsFingerprint(directory);
-    if (!expected.equals(network)) {
+  public void requireVersion(int version) {
+    if (version != this.version) {
       throw new IllegalStateException(
-          "anchor scores came from the network " + network + " but the anchor " + directory
-              + " is " + expected);
+          "anchor scores came from version " + this.version + " but the anchor is version " + version);
     }
   }
 
   /**
-   * 行の錨の s（合法手の順）。
+   * 行のアンカーの s を、合法手の順で返す。
    *
-   * @param row 行の貯蔵の番号
-   * @return s の写し
+   * @param row 行のストアでの番号
+   * @return s のコピー
    * @throws IllegalArgumentException この行の s がないとき
    */
   float[] scores(int row) {
@@ -185,18 +174,19 @@ public final class AnchorScores {
   }
 
   /**
-   * 書き手たちが分け合う仕事: 昇順の行を {@link #SLICE} 行の区間に分け、空いた書き手が次の区間を取って s を置き場に書く。
+   * 書き込みスレッドが分け合うジョブ。昇順の行を {@link #SLICE} 行ずつの区間に分け、空いた書き込みスレッドが次の区間を取って
+   * s をバッファに書く。
    *
-   * @param store 行の貯蔵
-   * @param rows 行の貯蔵の番号（昇順）
-   * @param values 区間ごとの s の置き場
-   * @param starts 区間ごとの行の先頭の置き場
+   * @param store 行のストア
+   * @param rows 行のストアでの番号（昇順）
+   * @param values 区間ごとの s のバッファ
+   * @param starts 区間ごとの、各行の s の開始位置のバッファ
    * @param next 次に取る区間
    */
   private record Slices(
       CohortStore store, int[] rows, float[][] values, int[][] starts, AtomicInteger next) {
 
-    /** 区間がなくなるまで取って書く。失敗した書き手は、ほかの書き手に残りの区間を取らせない。 */
+    /** 区間がなくなるまで取って書く。失敗した書き込みスレッドは、ほかのスレッドにも残りの区間を取らせない。 */
     Void write(HostInputs batch, Encoder.Inputs inputs, Lane lane) {
       try {
         for (int slice = next.getAndIncrement();
@@ -223,7 +213,8 @@ public final class AnchorScores {
   }
 
   /**
-   * 行を塊に足せるだけ足して錨に通し、行ごとの s を scores の行の先頭（offsets）から写す。塊に入らなくなったら次の塊にする。
+   * 行をバッチに入るだけ足してアンカーに通し、各行の s を {@code scores} の、その行の開始位置（{@code offsets}）からコピーする。
+   * バッチに入らなくなったら、次のバッチに移る。
    */
   private static void score(
       Row[] read,
@@ -269,7 +260,7 @@ public final class AnchorScores {
     }
   }
 
-  /** 書き手の完了を待つ。書き手の例外は包みを外して投げる。 */
+  /** 書き込みスレッドの完了を待つ。書き込みスレッドで起きた例外は、包んだ例外から取り出して投げる。 */
   private static void await(Future<?> future) throws IOException {
     try {
       future.get();
@@ -309,12 +300,12 @@ public final class AnchorScores {
     }
   }
 
-  /** 1 つのデバイスの錨（書き手が順番に使う）と、GPU ならそのストリーム。 */
+  /** 1 つのデバイスのアンカー（書き込みスレッドが順番に使う）と、GPU ならそのストリーム。 */
   private static final class Lane implements AutoCloseable {
 
     private final Anchor anchor;
 
-    /** HIP の錨の計算ストリーム（CPU と eager の錨は null）。 */
+    /** GPU のデバイスで作る計算ストリーム。HIP のアンカーが使い、eager のアンカーは使わない。CPU では null。 */
     private final PtStream stream;
 
     private Lane(Anchor anchor, PtStream stream) {
@@ -323,8 +314,8 @@ public final class AnchorScores {
     }
 
     /**
-     * デバイスに錨を開く。eager の錨は背骨の注意を djl-rocm の演算にする（自前の演算は専用のストリームに積むので、eager の配列と同じ流れに
-     * 乗らない）。
+     * デバイスにアンカーを開く。eager のアンカーでは、バックボーンの Attention に djl-rocm の演算を使う。自前のカーネルは専用の
+     * ストリームに積むので、eager の配列と同じストリームに乗らないからである。
      */
     static Lane open(Path directory, InferencePath path, Device device, BatchPlan.Capacity capacity)
         throws IOException {

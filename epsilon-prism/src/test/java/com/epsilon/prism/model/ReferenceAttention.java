@@ -6,10 +6,11 @@ import com.epsilon.prism.hip.RmsNormKernels;
 import com.epsilon.prism.hip.TrainingKernels;
 
 /**
- * {@link TrainingKernels} の参照の実装（試験だけ）。配列をホストに写し、式をそのまま書いた繰り返しで計算して、配列の型で書き戻す（CPU の
- * FP32 でも GPU の BF16 でも使える）。{@link AttentionTape} のつなぎを自前の HIP の演算と切り離して確かめるために使う。注意の softmax は
- * 最大を引く 2 回の繰り返し、逆伝播は ds_ij = p_ij·(do_i·v_j − δ_i)。RMSNorm は {@link RmsNormKernels} の式を FP64 で計算し（r は
- * 逆伝播でも入力から計算し直す）、利得の勾配は同じ塊の部分和にする。
+ * テストだけで使う {@link TrainingKernels} の参照実装。配列をホストに写し、式をそのまま書いたループで計算して、元の配列の型で書き戻す。
+ * CPU の FP32 の配列にも、GPU の BF16 の配列にも使える。{@link AttentionTape} のつなぎ方を、自前の HIP の演算と切り離して確かめるために
+ * 使う。Attention の softmax は、最大を引いてから 2 回のループで求める。逆伝播は ds_ij = p_ij·(do_i·v_j − δ_i)。RMSNorm は
+ * {@link RmsNormKernels} の式を FP64 で計算し、r は逆伝播でも入力から計算し直す。ゲインの勾配は、HIP の演算と同じく行のタイルごとの
+ * 部分和にする。
  */
 final class ReferenceAttention implements TrainingKernels {
 
@@ -161,7 +162,7 @@ final class ReferenceAttention implements TrainingKernels {
     write(gradGain, partials);
   }
 
-  /** 行 i の 1/rms（FP64）。 */
+  /** 行 i の 1/rms を FP64 で求める。 */
   private static double inverseRms(NormShape d, float[] x, int i) {
     double sum = 0;
     for (int j = 0; j < d.width(); j++) {
@@ -171,7 +172,7 @@ final class ReferenceAttention implements TrainingKernels {
     return 1 / Math.sqrt(sum / d.width() + d.epsilon());
   }
 
-  /** 値を配列の型にして書く（GPU の BF16 の配列にも書ける）。 */
+  /** 値を {@code target} の型に変換して書き込む（GPU の BF16 の配列にも書ける）。 */
   private static void write(NDArray target, float[] values) {
     try (NDArray source = target.getManager().create(values, target.getShape())) {
       if (target.getDataType() == DataType.FLOAT32) {
@@ -184,7 +185,7 @@ final class ReferenceAttention implements TrainingKernels {
     }
   }
 
-  /** 入力をホストの配列にしたもの。 */
+  /** ホストの配列に写した入力。 */
   private static final class Inputs {
     private final Dimensions d;
     private final float[] q;
@@ -223,7 +224,7 @@ final class ReferenceAttention implements TrainingKernels {
       return (word >> ((s % 4) * 4)) & 15;
     }
 
-    /** 問い合わせ (r, h, i) の確率（在る鍵だけ）。末尾に log Σ exp を置く。 */
+    /** 行 r・ヘッド h・クエリ i の、キーごとの確率を返す（無効なキーは 0）。末尾の要素は log Σ exp（有効なキーが無ければ 0）。 */
     double[] probabilities(int r, int h, int i) {
       double[] p = new double[d.keys() + 1];
       double maximum = Double.NEGATIVE_INFINITY;

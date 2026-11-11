@@ -8,7 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * バージョンの係数（policy.json）。網の出力 s(o, a) から σ への写像は貪欲（s の argmax、同点は p0。{@link GreedyAnswer}）だけなので、バージョンが持つのは番号だけ。
+ * 方策のバージョンごとの係数（policy.json）。ネットワークの出力 s(o, a) から σ を作る方法は、貪欲の 1 つだけ（s の argmax。同点は
+ * p0 で決める。{@link GreedyAnswer}）。そのため、持つのはバージョン番号だけ。
  *
  * @param version 方策のバージョン。反復番号と同じ
  */

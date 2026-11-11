@@ -7,39 +7,39 @@ import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
+import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
-import com.epsilon.prism.input.InputSchema.Axis;
+import com.epsilon.prism.input.InputBlob.Axis;
 import com.epsilon.prism.model.NetworkInputs;
 import com.epsilon.prism.model.Staging;
-import com.epsilon.prism.model.Uploads;
 
 /**
- * eager の 1 回の受け付けのデバイスの仕事: 塊ごとの入力の転送（{@link #upload}）と順伝播（{@link #forward}）。GPU では転送を H2D のストリーム
- * の中で、順伝播を計算のストリームの中で呼ぶ。
+ * eager の 1 回の受付で行うデバイスの処理。バッチごとに入力を転送し（{@link #upload}）、順伝播する（{@link #forward}）。GPU では、転送を
+ * H2D ストリームの中で、順伝播を計算ストリームの中で呼ぶ。
  *
- * <p>出力は塊の順に、塊の手の順の s（FP32）を詰めてつないだもの（HIP の推論の出力と同じ並び）。網の s [行, 手の容量] から合法手の枠だけを
- * デバイスの上で集める（枠の位置は入力と一緒に送る）。
+ * <p>出力は合法手の s（FP32）を、バッチの順、バッチの中では手の順に詰めてつないだもの（HIP の推論の出力と同じ並び）。ネットワークの s
+ * [行, 手の容量] から、合法手の位置の値だけをデバイスの上で集める（位置は入力と一緒に送る）。
  *
- * <p>入力の配列・枠の位置・出力は仕事の管理元に付けて、{@link #close} まで持つ（H2D のストリームで取った領域なので、計算が終わるまで捨てない。
- * CPU では入力の配列が塊の領域を指す）。塊ごとの順伝播の途中の配列は、その塊の順伝播を出した直後に捨てる。計算のストリームで取った領域は、同じ
- * ストリームの後の確保だけが使い回すので、計算が終わる前に捨ててよい。索引と枠の位置は網から借りた置き場（{@link Uploads}）から送り、
- * {@link #close} で返す。
+ * <p>入力の配列・合法手の位置・出力はジョブのマネージャーに付け、{@link #close} まで持つ。これらは H2D ストリームで確保した領域なので、
+ * 計算が終わるまで解放しない（CPU では入力の配列がバッチの領域を指す）。バッチごとの順伝播の途中の配列は、そのバッチの順伝播を出した
+ * 直後に解放する。計算ストリームで確保した領域は、同じストリームの後の確保だけが使い回すので、計算が終わる前に解放してよい。
+ * インデックスと合法手の位置は、ネットワークから借りたバッファ（{@link PinnedUploads}）から送り、{@link #close} で返す。
  */
 final class EagerPass implements AutoCloseable {
 
   private final EagerInference network;
   private final Encoding encoding;
   private final NDManager work;
-  private final Uploads uploads;
+  private final PinnedUploads uploads;
   private final NDManager[] scopes;
   private final NetworkInputs[] inputs;
   private final NDArray[] slots;
   private final int[] widths;
 
   /**
-   * @param network 網
-   * @param encoding 符号化を終えた作業域
+   * @param network eager の推論のバックエンド
+   * @param encoding 符号化を終えた作業領域
    */
   EagerPass(EagerInference network, Encoding encoding) {
     this.network = network;
@@ -53,13 +53,13 @@ final class EagerPass implements AutoCloseable {
     widths = new int[chunks];
   }
 
-  /** 塊ごとの入力と、合法手の枠の位置を網のデバイスに作る。 */
+  /** バッチごとの入力と合法手の位置を、ネットワークのデバイスに作る。 */
   void upload() {
     for (int chunk = 0; chunk < inputs.length; chunk++) {
       BatchPlan plan = encoding.chunks().get(chunk).batch().plan();
       scopes[chunk] = work.newSubManager();
       HostInputs batch = encoding.chunks().get(chunk).batch();
-      inputs[chunk] = NetworkInputs.of(scopes[chunk], uploads, batch.input(), batch.frontier());
+      inputs[chunk] = NetworkInputs.of(scopes[chunk], uploads, batch.input());
       int width = 0;
       for (int row = 0; row < plan.rows(); row++) {
         width = Math.max(width, plan.actions(row));
@@ -70,10 +70,10 @@ final class EagerPass implements AutoCloseable {
   }
 
   /**
-   * 塊ごとに順伝播し、合法手の s を塊の順につなぐ。
+   * バッチごとに順伝播し、合法手の s をバッチの順につなぐ。
    *
-   * @return FP32 の 1 次元の配列（塊 c の行 j の手 k は、塊 c の先頭から firstAction(j) + k）
-   * @throws IllegalStateException 網の手の容量が塊の行の手の数の最大と違うとき
+   * @return FP32 の 1 次元の配列。バッチ c の行 j の手 k は、バッチ c の部分の先頭から firstAction(j) + k 番目
+   * @throws IllegalStateException ネットワークの手の容量が、バッチの行の手の数の最大と違うとき
    */
   NDArray forward() {
     NDList packed = new NDList(inputs.length);
@@ -97,7 +97,7 @@ final class EagerPass implements AutoCloseable {
     }
   }
 
-  /** 塊の手ごとの、s [行, 幅] を平らにした中の位置（INT64）。 */
+  /** バッチの手ごとに、s [行, 幅] を平らにした配列の中の位置（INT64）を作る。 */
   private NDArray slots(BatchPlan plan, int width) {
     int actions = plan.count(Axis.ACTION);
     long[] positions = new long[actions];

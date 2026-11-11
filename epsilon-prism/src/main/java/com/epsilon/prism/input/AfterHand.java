@@ -1,203 +1,230 @@
 package com.epsilon.prism.input;
 
-import com.epsilon.calculate.shape.HandShapeState;
-import com.epsilon.core.Action;
-import com.epsilon.core.AkaTileMask;
-import com.epsilon.core.HandView;
-import com.epsilon.core.Meld;
-import com.epsilon.core.RoundLimits;
-import com.epsilon.core.Tile;
-import com.epsilon.prism.Limits;
-import com.epsilon.prism.observe.Observation;
+import com.epsilon.agent.facts.SeatFacts;
+import com.epsilon.agent.facts.TileCounts;
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.mahjong.action.Action;
+import com.epsilon.mahjong.action.Meld;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.score.WinContext;
+import com.epsilon.mahjong.shape.HandShape;
+import com.epsilon.mahjong.tile.Tiles;
 import java.util.Objects;
 
 /**
- * 手を打った後の自分の手（34 の枚数・赤・副露）。判断の時点の手（{@link #loadCurrent}）を写し、手と鳴いた後の打牌を当てて作る。形の解析と
- * 待ちの採点にそのまま渡せるように {@link HandView} を実装する。割り当てをしない。
+ * 手を打った後の自分の手（純手牌の形・赤・面子）。判断の時点の手（{@link #loadCurrent}）を写し、選んだ手と鳴いた後の打牌を反映して作る。
+ * 形を調べるときは {@link #shape} を使い、採点するときは {@link #writeTo} で採点の条件に手を書く。メモリを割り当てない。
  *
- * <p>手の当て方はエンジンの射影（{@code ActionEffect}）と同じ決まりにする: 打牌は赤を選ぶか赤しかないときに赤を捨てる、チー・ポンは手の赤を
- * 選ぶか通常の牌が足りないときに赤を使う、大明槓・暗槓は手の赤を先に使う、加槓は手の赤があれば赤を足す。副露の元と赤の由来は直前の打牌
- * （O の直前の出来事）から決める。和了・九種九牌・見送りは手を変えない。副露は成立の順に持ち、加槓はポンを置き換える。
+ * <p>手の動かし方はエンジンと同じにする。打牌は、赤を選んだときか赤しか残っていないときに赤を捨てる。チー・ポンは、赤を選んだときか普通の牌が
+ * 足りないときに手の赤を使う。大明槓・暗槓は手の赤を先に使う。加槓は、手に赤があれば赤を足す。北抜きは手の北を 1 枚抜く。面子の鳴き元と赤の
+ * 出どころは、直前の打牌（判断の記録の直前のイベント）から決める。和了・九種九牌・見送りは手を変えない。面子は鳴いた順に持ち、加槓はポンを
+ * 置き換える。抜いた北は面子に数えず、枚数だけを持つ。
  *
- * <p>副露の牌の表ドラは、判断の時点の手で 1 回数え、副露を足すときにその副露の分だけ足す（遷移ごとに数え直さない）。
+ * <p>面子の牌の表ドラは、判断の時点の手で 1 回数え、その後は面子を足すときにその面子の分だけ足す（手を動かすたびに数え直さない）。
  */
-final class AfterHand implements HandView {
+public final class AfterHand {
 
-  private static final int MELD_ID_BITS =
-      Integer.SIZE - Integer.numberOfLeadingZeros(Limits.MELD_IDS - 1);
-
-  private final HandShapeState shape = new HandShapeState();
-  private final int[] counts = new int[Tile.NUM_TILE_TYPES];
-  private final Meld[] melds = new Meld[RoundLimits.MAX_MELDS];
+  private final HandShape shape = new HandShape();
+  private final Meld[] melds = new Meld[Variant.MAX_MELDS];
+  private int meldCount;
+  private int seats;
   private TileCounts tiles;
-  private int concealedAka;
-  private int ownedAka;
-  private int kans;
+
+  /** 純手牌にある赤の 5 の種類。 */
+  private long concealedRed;
+
+  /** 純手牌と面子にある赤の 5 の種類。 */
+  private long ownedRed;
+
   private int meldDora;
-  private long signature;
   private boolean menzen;
+
+  /** 抜いた北の数。 */
+  private int nuki;
 
   /**
    * 判断の時点の自分の手にする。
    *
-   * @param o 判断の記録（手の赤を読む）
-   * @param tiles 牌ごとの枚数（手の枚数とドラの倍率を読む。この判断の間、この手と写した手が使う）
-   * @param events O の出来事（自分の今の副露を読む）
+   * @param o 判断の記録（席の数を読む）
+   * @param tiles 種類ごとの枚数（手の枚数・赤・ドラの数を読む。この判断の間、この手とここから写した手が参照し続ける）
+   * @param seatFacts 席ごとの公開情報（自分の今の面子を読む）
    */
-  void loadCurrent(Observation o, TileCounts tiles, EventTable events) {
+  public void loadCurrent(Observation o, TileCounts tiles, SeatFacts seatFacts) {
     this.tiles = tiles;
-    for (int tile = 0; tile < Tile.NUM_TILE_TYPES; tile++) {
-      counts[tile] = tiles.hand(tile);
+    seats = o.variant().seats();
+    shape.clear();
+    for (int kind = 0; kind < Tiles.KINDS; kind++) {
+      for (int copy = tiles.hand(kind); copy > 0; copy--) {
+        shape.add(kind);
+      }
     }
-    int meldCount = events.meldCount(0);
-    shape.load(counts, 0);
-    concealedAka = o.handAkaMask();
-    ownedAka = concealedAka;
-    kans = 0;
+    meldCount = 0;
+    concealedRed = tiles.handRed();
+    ownedRed = concealedRed;
     meldDora = 0;
-    signature = 0L;
     menzen = true;
-    for (int index = 0; index < meldCount; index++) {
-      addMeld(events.meld(0, index));
+    nuki = o.nuki(0);
+    for (int index = 0, count = seatFacts.meldCount(0); index < count; index++) {
+      addMeld(seatFacts.meld(0, index));
     }
   }
 
-  /**
-   * 別の手を写す。
-   *
-   * @param source 写す元
-   */
-  void copyFrom(AfterHand source) {
-    source.shape.copyShapeInto(shape);
-    System.arraycopy(source.melds, 0, melds, 0, RoundLimits.MAX_MELDS);
+  /** 別の手の中身をこの手に写す。 */
+  public void copyFrom(AfterHand source) {
+    shape.copyFrom(source.shape);
+    System.arraycopy(source.melds, 0, melds, 0, source.meldCount);
+    meldCount = source.meldCount;
+    seats = source.seats;
     tiles = source.tiles;
-    concealedAka = source.concealedAka;
-    ownedAka = source.ownedAka;
-    kans = source.kans;
+    concealedRed = source.concealedRed;
+    ownedRed = source.ownedRed;
     meldDora = source.meldDora;
-    signature = source.signature;
     menzen = source.menzen;
+    nuki = source.nuki;
   }
 
   /**
-   * 合法手を当てる。チー・ポンの後の打牌は {@link #discard} で別に当てる。
+   * 合法手を打った後の手にする。チー・ポンの後の打牌は {@link #discard} で別に反映する。
    *
    * @param action 合法手
-   * @param o 判断の記録（鳴く打牌の席・牌・赤を直前の出来事から読む）
+   * @param o 判断の記録（鳴く牌を出した席・その牌・赤かどうかを、直前のイベントから読む）
    */
-  void apply(Action action, Observation o) {
-    int tile = action.tileType();
+  public void apply(Action action, Observation o) {
+    int tile = action.tile();
     switch (action.type()) {
       case DAHAI, RIICHI_DAHAI -> discard(action);
       case CHI -> chi(action, o.lastEventTile(), o.lastEventAka());
-      case PON -> pon(tile, action.usesAkaTileFromHand(), o.lastEventSeat(), o.lastEventAka());
+      case PON -> pon(tile, action.selection().red(), o.lastEventSeat(), o.lastEventAka());
       case DAIMINKAN -> daiminkan(tile, o.lastEventSeat(), o.lastEventAka());
       case ANKAN -> ankan(tile);
       case KAKAN -> kakan(tile);
+      case NUKI -> {
+        shape.remove(Tiles.PEI);
+        nuki++;
+      }
       case TSUMO_AGARI, RON_AGARI, KYUSHU_KYUHAI, PASS -> {}
     }
   }
 
-  /**
-   * 打牌を当てる（赤を選ぶか、赤しかないときに赤を捨てる）。
-   *
-   * @param discard 打牌の手
-   */
-  void discard(Action discard) {
-    int tile = discard.tileType();
-    if (hasAkaTile(tile) && (discard.usesAkaTileFromHand() || !hasNonAkaTile(tile))) {
-      removeAka(tile);
+  /** 打牌を反映する。赤を選んだときか、赤しか残っていないときに赤を捨てる。 */
+  public void discard(Action discard) {
+    int tile = discard.tile();
+    if (hasRed(tile) && (discard.selection().red() || plain(tile) == 0)) {
+      removeRed(tile);
     } else {
       shape.remove(tile);
     }
   }
 
-  /**
-   * 手の枚数だけの形（副露の数を含む）を返す。形の解析と採点には、この具体の型を渡す（手の型ごとに分かれた呼び出しを避ける）。
-   *
-   * @return 形（読むだけ）
-   */
-  HandShapeState shape() {
+  /** 純手牌の形（面子の数を含む）。読むだけにし、書き換えない。 */
+  public HandShape shape() {
     return shape;
   }
 
-  /**
-   * 手と副露のドラ（表ドラと赤、裏なし）を返す。
-   *
-   * @return ドラの数
-   */
-  int dora() {
-    int dora = Integer.bitCount(ownedAka) + meldDora;
-    for (long rest = shape.concealedTileTypeMask() & tiles.doraTiles(); rest != 0L; rest &= rest - 1) {
-      int tile = Long.numberOfTrailingZeros(rest);
-      dora += shape.count(tile) * tiles.dora(tile);
+  /** 面子を 3 枚と数えた手の枚数（純手牌 ＋ 3 × 面子の数）。 */
+  public int effectiveTileCount() {
+    return shape.size();
+  }
+
+  /** 純手牌にあるその種類の牌の枚数。 */
+  public int count(int kind) {
+    return shape.count(kind);
+  }
+
+  /** 純手牌にある種類のマスク。 */
+  public long concealedKinds() {
+    return shape.kinds();
+  }
+
+  public int meldCount() {
+    return meldCount;
+  }
+
+  public Meld meld(int index) {
+    return melds[Objects.checkIndex(index, meldCount)];
+  }
+
+  /** 門前か（暗槓のほかに面子がない）。 */
+  public boolean isMenzen() {
+    return menzen;
+  }
+
+  /** 抜いた北の数。 */
+  public int nuki() {
+    return nuki;
+  }
+
+  /** 手・面子・抜いた北にあるドラの数（表ドラ・赤・抜きドラ。裏ドラは数えない）。抜いた北は 1 枚につき、1 と北を指す表示の数を足す。 */
+  public int dora() {
+    int dora = Long.bitCount(ownedRed) + meldDora + nuki * (1 + tiles.dora(Tiles.PEI));
+    for (long rest = shape.kinds() & tiles.doraKinds(); rest != 0L; rest &= rest - 1) {
+      int kind = Long.numberOfTrailingZeros(rest);
+      dora += shape.count(kind) * tiles.dora(kind);
     }
     return dora;
   }
 
+  /** 採点の条件に、純手牌・面子・純手牌の赤・抜いた北を書く。呼ぶ前に、採点の条件の手と面子を空にしておく。 */
+  public void writeTo(WinContext context) {
+    context.hand().copyFrom(shape);
+    for (int index = 0; index < meldCount; index++) {
+      context.addMeld(melds[index]);
+    }
+    context.setRedFives(concealedRed);
+    context.setNuki(nuki);
+  }
+
   private void chi(Action action, int calledTile, boolean calledAka) {
-    int base = action.chiSequenceBaseTileType();
+    int base = action.base();
     boolean consumedAka = false;
-    for (int tile = base; tile <= base + 2; tile++) {
+    for (int tile = base; tile < base + Meld.Type.CHI.tiles(); tile++) {
       if (tile == calledTile) {
         continue;
       }
-      if (hasAkaTile(tile) && (action.usesAkaTileFromHand() || !hasNonAkaTile(tile))) {
-        removeAka(tile);
+      if (hasRed(tile) && (action.selection().red() || plain(tile) == 0)) {
+        removeRed(tile);
         consumedAka = true;
       } else {
         shape.remove(tile);
       }
     }
-    addMeld(Meld.chi(base, calledTile, Meld.AkaSource.forCall(calledAka, consumedAka)));
+    addMeld(Meld.chi(base, calledTile, akaSource(calledAka, consumedAka)));
   }
 
   private void pon(int tile, boolean usesAka, int source, boolean calledAka) {
-    boolean consumedAka = hasAkaTile(tile) && (usesAka || !hasMultipleNonAkaTiles(tile));
+    boolean consumedAka = hasRed(tile) && (usesAka || plain(tile) < 2);
     if (consumedAka) {
-      removeAka(tile);
+      removeRed(tile);
     } else {
       shape.remove(tile);
     }
     shape.remove(tile);
-    addMeld(
-        Meld.pon(
-            tile,
-            Meld.RelativeSource.fromPlayerOffset(source),
-            Meld.AkaSource.forCall(calledAka, consumedAka)));
+    addMeld(Meld.pon(tile, relative(source), akaSource(calledAka, consumedAka)));
   }
 
   private void daiminkan(int tile, int source, boolean calledAka) {
-    boolean consumedAka = removeCopies(tile, 3);
-    addMeld(
-        Meld.daiminkan(
-            tile,
-            Meld.RelativeSource.fromPlayerOffset(source),
-            Meld.AkaSource.forCall(calledAka, consumedAka)));
+    boolean consumedAka = removeCopies(tile, Meld.Type.DAIMINKAN.tiles() - 1);
+    addMeld(Meld.daiminkan(tile, relative(source), akaSource(calledAka, consumedAka)));
   }
 
   private void ankan(int tile) {
-    addMeld(Meld.ankan(tile, removeCopies(tile, Tile.TILES_PER_TYPE)));
+    addMeld(Meld.ankan(tile, removeCopies(tile, Tiles.COPIES)));
   }
 
   private void kakan(int tile) {
-    boolean addedAka = hasAkaTile(tile);
+    boolean addedAka = hasRed(tile);
     if (addedAka) {
-      removeAka(tile);
+      removeRed(tile);
     } else {
       shape.remove(tile);
     }
-    for (int index = 0, meldCount = meldCount(); index < meldCount; index++) {
+    for (int index = 0; index < meldCount; index++) {
       Meld pon = melds[index];
-      if (pon.type() == Meld.Type.PON && pon.baseTileType() == tile) {
-        Meld kakan = Meld.kakan(pon, addedAka);
-        melds[index] = kakan;
-        long mask = ((1L << MELD_ID_BITS) - 1) << (index * MELD_ID_BITS);
-        signature = signature & ~mask | (long) kakan.canonicalId() << (index * MELD_ID_BITS);
-        kans++;
+      if (pon.type() == Meld.Type.PON && pon.base() == tile) {
+        melds[index] = Meld.kakan(pon, addedAka);
         meldDora += tiles.dora(tile);
         if (addedAka) {
-          ownedAka = AkaTileMask.includeTile(ownedAka, tile);
+          ownedRed |= Tiles.bit(tile);
         }
         return;
       }
@@ -205,11 +232,24 @@ final class AfterHand implements HandView {
     throw new IllegalStateException("kakan without its pon: tile " + tile);
   }
 
-  /** 手の赤を先に使って copies 枚を除き、赤を使ったなら true を返す。 */
+  /** 鳴いた牌を出した席から、面子の鳴き元（自分から見た相対の席）を求める。 */
+  private Meld.RelativeSource relative(int source) {
+    return Meld.RelativeSource.of(0, source, seats);
+  }
+
+  /** 赤の出どころ。鳴いた牌が赤なら鳴いた牌、手の赤を使ったなら手の牌、どちらでもなければ赤なし。 */
+  private static Meld.AkaSource akaSource(boolean calledAka, boolean consumedAka) {
+    if (calledAka) {
+      return Meld.AkaSource.CALLED_TILE;
+    }
+    return consumedAka ? Meld.AkaSource.CONSUMED_HAND_TILE : Meld.AkaSource.NONE;
+  }
+
+  /** 手の赤を先に使って、その牌を {@code copies} 枚除く。赤を使ったなら true を返す。 */
   private boolean removeCopies(int tile, int copies) {
-    boolean aka = hasAkaTile(tile);
+    boolean aka = hasRed(tile);
     if (aka) {
-      removeAka(tile);
+      removeRed(tile);
       copies--;
     }
     for (int copy = 0; copy < copies; copy++) {
@@ -218,104 +258,31 @@ final class AfterHand implements HandView {
     return aka;
   }
 
-  private void removeAka(int tile) {
+  private boolean hasRed(int tile) {
+    return Tiles.contains(concealedRed, tile);
+  }
+
+  /** 純手牌にある、その種類の赤でない牌の枚数。 */
+  private int plain(int tile) {
+    return shape.count(tile) - (hasRed(tile) ? 1 : 0);
+  }
+
+  private void removeRed(int tile) {
     shape.remove(tile);
-    concealedAka = AkaTileMask.excludeTile(concealedAka, tile);
-    ownedAka = AkaTileMask.excludeTile(ownedAka, tile);
+    long bit = Tiles.bit(tile);
+    concealedRed &= ~bit;
+    ownedRed &= ~bit;
   }
 
   private void addMeld(Meld meld) {
-    int index = meldCount();
-    melds[index] = meld;
-    signature |= (long) meld.canonicalId() << (index * MELD_ID_BITS);
-    shape.setMeldCount(index + 1);
-    menzen &= meld.preservesMenzen();
-    kans += meld.isKan() ? 1 : 0;
+    melds[meldCount++] = meld;
+    shape.addMeld();
+    menzen &= meld.type().concealed();
     for (int tile = 0, size = meld.size(); tile < size; tile++) {
-      meldDora += tiles.dora(meld.tileAt(tile));
+      meldDora += tiles.dora(meld.tile(tile));
     }
-    if (meld.containsAkaTile()) {
-      ownedAka = AkaTileMask.includeTile(ownedAka, meld.akaTileType());
+    if (meld.red()) {
+      ownedRed |= meld.kinds() & Tiles.FIVES;
     }
-  }
-
-  @Override
-  public void copyShapeInto(HandShapeState destination) {
-    shape.copyShapeInto(destination);
-  }
-
-  @Override
-  public void copyTileCountsInto(HandShapeState.TileCountBuffer destination) {
-    shape.copyTileCountsInto(destination);
-  }
-
-  @Override
-  public int count(int tileType) {
-    return shape.count(tileType);
-  }
-
-  @Override
-  public int concealedTileCount() {
-    return shape.concealedTileCount();
-  }
-
-  @Override
-  public int meldCount() {
-    return shape.meldCount();
-  }
-
-  @Override
-  public long concealedTileTypeMask() {
-    return shape.concealedTileTypeMask();
-  }
-
-  @Override
-  public long concealedPairTileTypeMask() {
-    return shape.concealedPairTileTypeMask();
-  }
-
-  @Override
-  public boolean hasAkaTile(int tileType) {
-    return AkaTileMask.containsTile(concealedAka, tileType);
-  }
-
-  @Override
-  public int concealedAkaMask() {
-    return concealedAka;
-  }
-
-  @Override
-  public int ownedAkaMask() {
-    return ownedAka;
-  }
-
-  @Override
-  public Meld meld(int meldIndex) {
-    return melds[Objects.checkIndex(meldIndex, meldCount())];
-  }
-
-  @Override
-  public int meldCallAfterRiverIndex(int meldIndex) {
-    return -1;
-  }
-
-  @Override
-  public int meldKanAfterRiverIndex(int meldIndex) {
-    return -1;
-  }
-
-  @Override
-  public boolean isMenzen() {
-    return menzen;
-  }
-
-  @Override
-  public int kanCount() {
-    return kans;
-  }
-
-  @Override
-  public long canonicalMeldSignature() {
-    return signature;
   }
 }

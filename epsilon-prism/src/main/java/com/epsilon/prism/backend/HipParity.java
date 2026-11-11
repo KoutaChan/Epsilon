@@ -2,22 +2,26 @@ package com.epsilon.prism.backend;
 
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
-import com.epsilon.prism.input.InputSchema.ActionColumn;
-import com.epsilon.prism.input.InputSchema.ActionRole;
-import com.epsilon.prism.input.InputSchema.Axis;
-import com.epsilon.prism.input.InputSchema.RowColumn;
-import com.epsilon.prism.input.InputSchema.Tensor;
+import com.epsilon.prism.input.InputBlob.ActionColumn;
+import com.epsilon.prism.input.InputBlob.Axis;
+import com.epsilon.prism.input.InputBlob.RowColumn;
+import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.input.InputFormat.Role;
+import com.epsilon.prism.input.InputFormat;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.EnumMap;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
- * HIP と eager の s の一致。同じ網・同じ塊の 2 つの s（塊の手の順）を比べ、差の中央値・p99・最大、手の役割ごとの符号つきの平均、
- * argmax の一致率（全ての行と、上位 2 手の差が {@link #CONFIDENT_GAP} 以上の行）を出す。
+ * HIP と eager で計算した s が一致するかを測る。同じネットワーク・同じバッチで出した 2 つの s（バッチの手の順に並ぶ）を比べ、差の
+ * 中央値・p99・最大と、手の種類（{@link Role}）ごとの符号つきの差の平均と、argmax の一致率を出す。一致率は、全ての行と、上位 2 手の差が
+ * {@link #CONFIDENT_GAP} 以上の行の 2 つについて出す。
  */
 public final class HipParity {
 
@@ -27,7 +31,7 @@ public final class HipParity {
   /** |Δs| の p99 の上限。 */
   public static final double P99_LIMIT = 3e-3;
 
-  /** 役割ごとの符号つきの平均の絶対値の上限。 */
+  /** 手の種類ごとに出した符号つきの差の平均について、絶対値の上限。 */
   public static final double MEAN_LIMIT = 1e-4;
 
   /** 全ての行の argmax の一致率の下限。 */
@@ -36,33 +40,37 @@ public final class HipParity {
   /** 上位 2 手の差が大きい行の argmax の一致率の下限。 */
   public static final double CONFIDENT_LIMIT = 0.999;
 
-  /** 「上位 2 手の差が大きい」の閾値（参照の s で測る）。 */
+  /** 上位 2 手の差が大きいとみなすしきい値。参照の s で測る。 */
   public static final double CONFIDENT_GAP = 5e-3;
+
+  /** 手の種類を enum の宣言の順に並べる。 */
+  private static final Comparator<Role> BY_ORDINAL = Comparator.comparingInt(Role::ordinal);
 
   private HipParity() {}
 
   /**
-   * 塊の手の形。
+   * バッチの手の並び。行ごとの手の範囲と、手ごとの種類を持つ。
    *
-   * @param rowFirst 行の最初の手
-   * @param rowCount 行の手の数
-   * @param roles 手の役割（塊の手の順）
+   * @param rowFirst 行ごとの最初の手の番号
+   * @param rowCount 行ごとの手の数
+   * @param roles 手の種類（バッチの手の順）
    */
-  public record Actions(int[] rowFirst, int[] rowCount, ActionRole[] roles) {
+  public record Actions(int[] rowFirst, int[] rowCount, Role[] roles) {
 
     /**
-     * 封じた塊の索引から読む。
+     * 確定したバッチのインデックスから読む。手の種類は、バッチの入力の形式が持つ一覧から引く。
      *
-     * @param batch 封じた塊
-     * @return 手の形
+     * @param batch 確定したバッチ
+     * @return 手の並び
      */
     public static Actions of(HostBatch batch) {
       BatchPlan plan = batch.plan();
       ByteBuffer blob = batch.blob().duplicate().order(ByteOrder.LITTLE_ENDIAN);
       int rows = plan.rows();
       int actions = plan.count(Axis.ACTION);
-      int rowWidth = Tensor.ROW_COLUMN.width();
-      int actionWidth = Tensor.ACTION_COLUMN.width();
+      InputFormat format = plan.format();
+      int rowWidth = format.width(Tensor.ROW_COLUMN);
+      int actionWidth = format.width(Tensor.ACTION_COLUMN);
       int[] first = new int[rows];
       int[] count = new int[rows];
       for (int r = 0; r < rows; r++) {
@@ -70,11 +78,11 @@ public final class HipParity {
         first[r] = blob.getInt(at + RowColumn.FIRST_ACTION.ordinal() * Integer.BYTES);
         count[r] = blob.getInt(at + RowColumn.ACTIONS.ordinal() * Integer.BYTES);
       }
-      ActionRole[] roles = new ActionRole[actions];
-      ActionRole[] values = ActionRole.values();
+      Role[] roles = new Role[actions];
+      List<? extends Role> values = format.roles();
       for (int a = 0; a < actions; a++) {
         int at = plan.offset(Tensor.ACTION_COLUMN) + (a * actionWidth + ActionColumn.ROLE.ordinal()) * Integer.BYTES;
-        roles[a] = values[blob.getInt(at)];
+        roles[a] = values.get(blob.getInt(at));
       }
       return new Actions(first, count, roles);
     }
@@ -87,26 +95,26 @@ public final class HipParity {
    * @param median |Δs| の中央値
    * @param p99 |Δs| の p99
    * @param max |Δs| の最大
-   * @param signedMean 役割ごとの Δs の平均（HIP − 参照）
-   * @param counts 役割ごとの手の数
+   * @param signedMean 手の種類ごとの Δs（HIP − 参照）の平均
+   * @param counts 手の種類ごとの手の数
    * @param rows 行の数
    * @param argmaxAgreement argmax の一致率
    * @param confidentRows 上位 2 手の差が大きい行の数
-   * @param confidentAgreement その行の argmax の一致率（行がなければ 1）
+   * @param confidentAgreement その行の argmax の一致率。行がなければ 1
    */
   public record Report(
       int actions,
       double median,
       double p99,
       double max,
-      Map<ActionRole, Double> signedMean,
-      Map<ActionRole, Integer> counts,
+      Map<Role, Double> signedMean,
+      Map<Role, Integer> counts,
       int rows,
       double argmaxAgreement,
       int confidentRows,
       double confidentAgreement) {
 
-    /** HipParity の上限と下限を全て満たすか。 */
+    /** このクラスの上限と下限を全て満たせば true を返す。 */
     public boolean passes() {
       boolean means = true;
       for (double mean : signedMean.values()) {
@@ -119,10 +127,10 @@ public final class HipParity {
           && confidentAgreement >= CONFIDENT_LIMIT;
     }
 
-    /** 1 行の要約。 */
+    /** 1 行の要約を返す。 */
     public String summary() {
       StringBuilder means = new StringBuilder();
-      for (Map.Entry<ActionRole, Double> entry : signedMean.entrySet()) {
+      for (Map.Entry<Role, Double> entry : signedMean.entrySet()) {
         means.append(String.format(Locale.ROOT, " %s=%+.2e(n=%d)", entry.getKey(), entry.getValue(), counts.get(entry.getKey())));
       }
       return String.format(
@@ -143,10 +151,10 @@ public final class HipParity {
   /**
    * 2 つの s を比べる。
    *
-   * @param hip HIP の s（塊の手の順）
+   * @param hip HIP の s（バッチの手の順）
    * @param reference 参照の s（同じ並び）
-   * @param actions 手の形
-   * @return 結果
+   * @param actions 手の並び
+   * @return 比べた結果
    */
   public static Report compare(float[] hip, float[] reference, Actions actions) {
     int n = actions.roles().length;
@@ -154,8 +162,8 @@ public final class HipParity {
       throw new IllegalArgumentException("score arrays are shorter than the " + n + " actions");
     }
     double[] errors = new double[n];
-    Map<ActionRole, Double> sums = new EnumMap<>(ActionRole.class);
-    Map<ActionRole, Integer> counts = new EnumMap<>(ActionRole.class);
+    Map<Role, Double> sums = new TreeMap<>(BY_ORDINAL);
+    Map<Role, Integer> counts = new TreeMap<>(BY_ORDINAL);
     double max = 0;
     for (int a = 0; a < n; a++) {
       double delta = (double) hip[a] - reference[a];
@@ -165,8 +173,8 @@ public final class HipParity {
       counts.merge(actions.roles()[a], 1, Integer::sum);
     }
     Arrays.sort(errors);
-    Map<ActionRole, Double> means = new EnumMap<>(ActionRole.class);
-    for (Map.Entry<ActionRole, Double> entry : sums.entrySet()) {
+    Map<Role, Double> means = new TreeMap<>(BY_ORDINAL);
+    for (Map.Entry<Role, Double> entry : sums.entrySet()) {
       means.put(entry.getKey(), entry.getValue() / counts.get(entry.getKey()));
     }
     int rows = actions.rowFirst().length;
@@ -198,11 +206,11 @@ public final class HipParity {
   }
 
   /**
-   * 2 つの s がビットで同じか（−0 と +0 も区別する）。
+   * 2 つの s がビット単位で同じなら true を返す。−0 と +0 も区別する。
    *
-   * @param a s
-   * @param b s
-   * @return ビットで同じなら true
+   * @param a 比べる s
+   * @param b もう一方の s
+   * @return ビット単位で同じなら true
    */
   public static boolean bitwiseEqual(float[] a, float[] b) {
     if (a.length != b.length) {
@@ -216,7 +224,7 @@ public final class HipParity {
     return true;
   }
 
-  /** 行の argmax（同点は先の手）。 */
+  /** 行の argmax を返す。同点なら先の手。 */
   private static int argmax(float[] scores, int first, int count) {
     int best = first;
     for (int a = first + 1; a < first + count; a++) {
@@ -227,7 +235,7 @@ public final class HipParity {
     return best;
   }
 
-  /** 行の上位 2 手の差（手が 1 つなら無限大）。 */
+  /** 行の上位 2 手の差を返す。手が 1 つなら無限大。 */
   private static double gap(float[] scores, int first, int count) {
     double top = Double.NEGATIVE_INFINITY;
     double second = Double.NEGATIVE_INFINITY;

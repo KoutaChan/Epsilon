@@ -7,26 +7,29 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.nn.Parameter;
 import ai.djl.pytorch.engine.PtEngine;
+import ai.djl.pytorch.engine.PtMemoryStats;
 import ai.djl.pytorch.engine.PtStream;
 import ai.djl.pytorch.engine.PtStreamScope;
 import ai.djl.pytorch.jni.JniUtils;
 import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.util.Pair;
-import com.epsilon.network.NetworkDevices;
+import com.epsilon.agent.runtime.NetworkDevices;
+import com.epsilon.agent.runtime.PinnedUploads;
+import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.input.InputSchema.Axis;
+import com.epsilon.prism.input.InputBlob.Axis;
+import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.model.AttentionTape;
 import com.epsilon.prism.model.AuxiliaryLoss;
 import com.epsilon.prism.model.Outputs;
 import com.epsilon.prism.model.Pass;
-import com.epsilon.prism.model.Precision;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.ShapeArm;
 import com.epsilon.prism.model.StagedBatch;
-import com.epsilon.prism.model.Uploads;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -37,17 +40,21 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * 学習の歩の時間の測り（通常の試験には入れず、サーバの GPU で {@code -Dtest=FitStepGpuBench -Dprism.bench.rows=<rows-v2/t>} で回す）。
- * 本物の行を本番の詰め方（{@link StepFeed}、トークンの上限 {@link FitPlan#TOKEN_BUDGET}）で微小バッチにする。測る範囲は
- * {@code -Dprism.bench.mode}（{@link Mode}。既定 all）。
+ * 学習の 1 ステップの時間を測るベンチ（行のコホートは {@code -Dprism.bench.rows=<rows/t>} で渡す）。本物の行を、本番と同じ詰め方
+ * （{@link StepFeed}、トークンの上限 {@link FitPlan#TOKEN_BUDGET}）でマイクロバッチにする。測る範囲は {@code -Dprism.bench.mode} で選ぶ
+ * （{@link Mode}。既定は all）。
  *
  * <ol>
- *   <li>{@link Fit#run}（4096 行の歩、深さ 2 と 3、GPU 1 枚と全部）の行/秒と、段ごとの秒。当てはめは本番と同じ（最後の塊を分け、背骨の注意は
- *       同梱した libprism_hip.so の演算）で、系の性質 {@value FitProfile#PROPERTY} があれば段の時計の表を当てはめの終わりに出す。
- *   <li>GPU 1 枚で、歩の行の数ごとの「順伝播だけ」と「順伝播・損失・逆伝播」（djl-rocm の注意と自前の HIP の注意）の ms と、詰めた
- *       トークンと本当のトークンの比。
- *   <li>{@code -Dprism.bench.trace=<file>} があれば、4096 行の 2 歩の演算ごとの記録（PyTorch の legacy profiler、GPU の時間つき）を書く。
+ *   <li>{@link Fit#run}（1 ステップ 4096 行、深さ 2 と 3、GPU 1 枚と全部）の行/秒と、段ごとの秒。学習の仕方は本番と同じ（最後のバッチを分け、
+ *       バックボーンの Attention は同梱した libprism_hip.so の演算を使う）。システムプロパティ {@value FitProfile#PROPERTY} があれば、学習の
+ *       終わりに段ごとのタイマーの表を出す。
+ *   <li>GPU 1 枚で、1 ステップの行の数ごとに「順伝播だけ」と「順伝播・損失・逆伝播」（djl-rocm の Attention と自前の HIP の Attention）の ms
+ *       と、詰めたトークンと本当のトークンの比を出す。
+ *   <li>{@code -Dprism.bench.trace=<file>} があれば、4096 行の 2 ステップについて演算ごとの記録（PyTorch の legacy profiler、GPU の時間つき）を書く。
  * </ol>
+ *
+ * <p>VRAM のピークは、PyTorch のキャッシュアロケーターの記録から読む（測るステップの前にピークを今の値に戻し、測った後に読む）。確保した量と、
+ * キャッシュが取った量を GB で出す。
  */
 public class FitStepGpuBench {
   private static final Logger log = LoggerFactory.getLogger(FitStepGpuBench.class);
@@ -62,10 +69,15 @@ public class FitStepGpuBench {
   private enum Mode {
     /** 全部（上の 1〜3）。 */
     ALL,
-    /** 本番の形（深さ 2・GPU 全部）の {@link Fit#run} だけ（2 GPU の分け方や当てはめの計測を比べる）。 */
+    /** 本番の形（深さ 2・GPU 全部）の {@link Fit#run} だけ。 */
     FIT,
-    /** GPU 1 枚で 4096 行の歩を自前の注意で温めの後 5 歩だけ（rocprofv3 でカーネルの時間を取る）。 */
-    QUICK;
+    /** GPU 1 枚・1 ステップ 4096 行・自前の Attention で、ウォームアップの後 5 ステップだけ回す。 */
+    QUICK,
+    /**
+     * 形のアーム（{@link ShapeArm}。v2 は深さ 2）ごとに、GPU 1 枚・1 ステップ 4096 行で「順伝播・損失・逆伝播」（djl-rocm の Attention と
+     * 自前の HIP の Attention）の ms と VRAM のピークを測る。続けて、GPU 1 枚の {@link Fit#run} の ms/ステップと VRAM のピークを測る。
+     */
+    ARMS;
 
     static Mode configured() {
       return valueOf(System.getProperty("prism.bench.mode", "all").strip().toUpperCase(Locale.ROOT));
@@ -83,25 +95,32 @@ public class FitStepGpuBench {
     try (CohortStore store = new CohortStore()) {
       store.addCohort(Path.of(directory));
       int cohort = store.cohorts().get(0);
+      InputFormat format = InputFormat.of(store.variant());
       int[] rows = Fit.shuffle(store.select(cohort, cohort, Selection.LABELS), 5);
-      log.info("PRISM-BENCH cohort={} rows={} mode={}", cohort, rows.length, mode);
+      log.info("PRISM-BENCH cohort={} variant={} rows={} mode={}", cohort, store.variant(), rows.length, mode);
       Device[] all = new Device[gpus];
       for (int gpu = 0; gpu < gpus; gpu++) {
         all[gpu] = Device.gpu(gpu);
       }
       if (mode == Mode.FIT) {
-        fit(store, rows, PrismShape.standard(), all);
+        fit(store, rows, format, PrismShape.standard(), all, "v2");
+        return;
+      }
+      if (mode == Mode.ARMS) {
+        for (ShapeArm arm : ShapeArm.values()) {
+          arm(store, rows, format, arm, all[0]);
+        }
         return;
       }
       for (int depth = PrismShape.MIN_DEPTH; mode == Mode.ALL && depth <= PrismShape.MAX_DEPTH; depth++) {
-        fit(store, rows, PrismShape.standard(depth), new Device[] {all[0]});
+        fit(store, rows, format, PrismShape.standard(depth), new Device[] {all[0]}, "v2");
         if (gpus > 1) {
-          fit(store, rows, PrismShape.standard(depth), all);
+          fit(store, rows, format, PrismShape.standard(depth), all, "v2");
         }
       }
       boolean quick = mode == Mode.QUICK;
       FitPlan plan = plan(PrismShape.standard(), 1);
-      try (Model model = Fit.blank(plan.shape(), all[0], plan.seed());
+      try (Model model = Fit.blank(format, plan.shape(), all[0], plan.seed());
           PtStream stream = ((PtEngine) model.getNDManager().getEngine()).newStream(all[0]);
           PtStream copies = ((PtEngine) model.getNDManager().getEngine()).newStream(all[0]);
           PtStreamScope ignored = stream.openScope()) {
@@ -111,16 +130,16 @@ public class FitStepGpuBench {
         HipAttention attention = HipAttention.on(HipLibrary.load(), stream);
         int from = 0;
         for (int stepRows : quick ? new int[0] : new int[] {1024, 2048, 4096, 8192}) {
-          from = steps(store, rows, from, plan, model, stream, copies, stepRows, false, null, null);
-          from = steps(store, rows, from, plan, model, stream, copies, stepRows, true, null, null);
-          from = steps(store, rows, from, plan, model, stream, copies, stepRows, true, attention, null);
+          from = steps(store, rows, from, plan, model, copies, stepRows, false, null, null, "v2");
+          from = steps(store, rows, from, plan, model, copies, stepRows, true, null, null, "v2");
+          from = steps(store, rows, from, plan, model, copies, stepRows, true, attention, null, "v2");
         }
         if (quick) {
-          steps(store, rows, from, plan, model, stream, copies, STEP_ROWS, true, attention, null);
+          steps(store, rows, from, plan, model, copies, STEP_ROWS, true, attention, null, "v2");
         }
         String trace = System.getProperty("prism.bench.trace");
         if (trace != null) {
-          steps(store, rows, from, plan, model, stream, copies, STEP_ROWS, true, attention, trace);
+          steps(store, rows, from, plan, model, copies, STEP_ROWS, true, attention, trace, "v2");
         }
       }
     }
@@ -135,31 +154,56 @@ public class FitStepGpuBench {
         3);
   }
 
-  /** Fit.run の歩を測る（短い当てはめで温めてから）。 */
-  private static void fit(CohortStore store, int[] rows, PrismShape shape, Device[] devices) {
+  /** アームの形（v2 は深さ 2、v3 は深さ 3）を GPU 1 枚で測る。djl-rocm と自前の Attention で 4096 行のステップを回し、続けて Fit.run を回す。 */
+  private static void arm(CohortStore store, int[] rows, InputFormat format, ShapeArm arm, Device device) {
+    PrismShape shape = arm.shape(arm == ShapeArm.V2 ? PrismShape.DEFAULT_DEPTH : ShapeArm.V3_DEPTH);
+    String name = arm.name().toLowerCase(Locale.ROOT);
+    FitPlan plan = plan(shape, 1);
+    try (Model model = Fit.blank(format, shape, device, plan.seed());
+        PtStream stream = ((PtEngine) model.getNDManager().getEngine()).newStream(device);
+        PtStream copies = ((PtEngine) model.getNDManager().getEngine()).newStream(device);
+        PtStreamScope ignored = stream.openScope()) {
+      for (Pair<String, Parameter> pair : model.getBlock().getParameters()) {
+        pair.getValue().getArray().setRequiresGradient(true);
+      }
+      HipAttention attention = HipAttention.on(HipLibrary.load(), stream);
+      int from = steps(store, rows, 0, plan, model, copies, STEP_ROWS, true, null, null, name);
+      steps(store, rows, from, plan, model, copies, STEP_ROWS, true, attention, null, name);
+    }
+    fit(store, rows, format, shape, new Device[] {device}, name);
+  }
+
+  /** Fit.run のステップを測る（短い学習でウォームアップしてから）。VRAM のピークは、測る学習の間に先頭のデバイスで記録した値。 */
+  private static void fit(
+      CohortStore store, int[] rows, InputFormat format, PrismShape shape, Device[] devices, String name) {
     FitPlan warm = plan(shape, 3);
     FitPlan plan = plan(shape, FIT_STEPS);
-    try (Model model = Fit.blank(shape, devices[0], plan.seed())) {
+    try (Model model = Fit.blank(format, shape, devices[0], plan.seed())) {
       Fit.run(store, rows, model, warm, Teacher.RAW, NetworkDevices.of(devices), THREADS);
+      PtEngine engine = (PtEngine) model.getNDManager().getEngine();
+      engine.resetPeakMemoryStats(devices[0]);
       FitResult result = Fit.run(store, rows, model, plan, Teacher.RAW, NetworkDevices.of(devices), THREADS);
       log.info(
-          "PRISM-BENCH fit depth={} devices={} ms/step={} rows/s={} cohort(3.6M rows)={}s"
-              + " stages{feed,transfer,compute,optimizer}={} loss {} -> {}",
+          "PRISM-BENCH fit depth={} devices={} ms/step={} rows/s={} 1M rows={}s"
+              + " stages{feed,transfer,compute,optimizer}={} loss {} -> {} {} shape={}",
           shape.depth(),
           devices.length,
           String.format("%.1f", result.seconds() * 1e3 / result.steps()),
           String.format("%.0f", result.steps() * (double) STEP_ROWS / result.seconds()),
-          String.format("%.0f", 3.6e6 * result.seconds() / (result.steps() * (double) STEP_ROWS)),
+          String.format("%.0f", 1e6 * result.seconds() / (result.steps() * (double) STEP_ROWS)),
           Arrays.toString(result.stageSeconds()),
           String.format("%.4f", result.firstLoss()),
-          String.format("%.4f", result.lastLoss()));
+          String.format("%.4f", result.lastLoss()),
+          vram(engine.getMemoryStats(devices[0])),
+          name);
     }
   }
 
   /**
-   * GPU 1 枚で歩を回して測る（同期は歩の終わりに値を 1 つ読む）。逆伝播の歩は、前もって並べた入力を copies に非同期で写し、stream は
-   * 順伝播の前に写しの終わりを待つ（学習器と違い次の微小バッチの写しを先に積まない）。attention があれば背骨の注意を自前の HIP の
-   * 演算にする。trace があれば温めの後の 2 歩を記録する。
+   * GPU 1 枚でステップを回して測る（同期は、ステップの終わりに値を 1 つ読んで取る）。逆伝播のステップでは、前もって並べた入力をコピー用の
+   * ストリームで非同期に送り、計算のストリームは順伝播の前にコピーの終わりを待つ（学習器と違い、次のマイクロバッチのコピーを先に積まない）。
+   * {@code attention} があれば、バックボーンの Attention を自前の HIP の演算にする。{@code trace} があれば、ウォームアップの後の 2 ステップを
+   * 記録する。VRAM のピークは、ウォームアップの後のステップのピーク。
    *
    * @return 次に使う行の位置
    */
@@ -169,14 +213,16 @@ public class FitStepGpuBench {
       int from,
       FitPlan plan,
       Model model,
-      PtStream stream,
       PtStream copies,
       int stepRows,
       boolean backward,
       HipAttention attention,
-      String trace) {
+      String trace,
+      String name) {
     PrismNetwork network = (PrismNetwork) model.getBlock();
     NDManager manager = model.getNDManager();
+    PtEngine engine = (PtEngine) manager.getEngine();
+    Device device = manager.getDevice();
     Parameter probe = network.getParameters().valueAt(0);
     PrismLoss loss = new PrismLoss(plan.auxiliary());
     int measured = trace == null ? MEASURED : 2;
@@ -192,8 +238,11 @@ public class FitStepGpuBench {
         StepFeed.Step prepared = feed.prepare(Arrays.copyOfRange(rows, from, from + stepRows), Teacher.RAW).join();
         from += stepRows;
         boolean counted = step >= WARMUP;
-        if (counted && step == WARMUP && trace != null) {
-          JniUtils.startProfile(true, true, false);
+        if (counted && step == WARMUP) {
+          engine.resetPeakMemoryStats(device);
+          if (trace != null) {
+            JniUtils.startProfile(true, true, false);
+          }
         }
         long started = System.nanoTime();
         List<Microbatch> lane = prepared.lanes().get(0);
@@ -224,7 +273,7 @@ public class FitStepGpuBench {
               network
                   .forward(
                       new ParameterStore(scope, false),
-                      part.inputs(scope, Uploads.on(scope)),
+                      part.inputs(scope, PinnedUploads.on(scope)),
                       Pass.inference(Precision.BFLOAT16))
                   .scores()
                   .toFloatArray();
@@ -247,7 +296,7 @@ public class FitStepGpuBench {
       double ms = nanos / 1e6 / measured;
       log.info(
           "PRISM-BENCH step rows={} {} ms/step={} rows/s={} microbatches/step={}"
-              + " tokens/row real={} padded={} (padding x{}) feed={}s{}",
+              + " tokens/row real={} padded={} (padding x{}) feed={}s {} shape={}{}",
           stepRows,
           backward ? (attention == null ? "train-djl" : "train-hip") : "forward",
           String.format("%.1f", ms),
@@ -257,8 +306,17 @@ public class FitStepGpuBench {
           String.format("%.1f", padded / (double) measured / stepRows),
           String.format("%.2f", padded / (double) real),
           String.format("%.2f", feed.seconds()),
+          vram(engine.getMemoryStats(device)),
+          name,
           trace == null ? "" : " trace=" + trace);
     }
     return from;
+  }
+
+  /** VRAM のピーク（確保した量と、キャッシュが取った量。GB）。 */
+  private static String vram(PtMemoryStats stats) {
+    return String.format(
+        "vram peak allocated=%.2fGB reserved=%.2fGB",
+        stats.getPeakAllocatedBytes() / 1e9, stats.getPeakReservedBytes() / 1e9);
   }
 }

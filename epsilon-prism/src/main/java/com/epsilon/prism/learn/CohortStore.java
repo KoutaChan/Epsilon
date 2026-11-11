@@ -1,5 +1,6 @@
 package com.epsilon.prism.learn;
 
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.rows.RowCodec;
@@ -22,19 +23,20 @@ import java.util.concurrent.Executor;
 import java.util.function.Predicate;
 
 /**
- * 封印済みのコホート（rows-v2/&lt;t&gt;。{@link CohortWriter} の目録と .idx）の行を読む。索引
- * （位置・長さ・用途・組・種類・類・測った手の数）だけをメモリに持ち、行の本体は位置指定で読む。行はコホートを読み込んだ順に続けて並び、{@link #select} で
- * コホートの範囲と索引の条件（{@link Selection}）から選ぶ。
+ * 確定済みのコホート（rows/&lt;t&gt;。{@link CohortWriter} のマニフェストと .idx）の行を読む。メモリに持つのはインデックス
+ * （位置・長さ・用途・種類・クラス・測った手の数）だけで、行の本体は位置を指定して読む。行の番号は、コホートを読み込んだ順に続けて振る。
+ * {@link #select} で、コホートの範囲とインデックスの条件（{@link Selection}）から行を選ぶ。
  *
- * <p>帳簿の欄の数は全てのコホートで同じでなければならない（行の直列化が目録の値で決まるため）。
+ * <p>行をどう直列化するかはマニフェストの値で決まる。だから帳簿の特徴量の数とルールは、全てのコホートで同じでなければならない。
+ * ルールは、マニフェストにある記録 O のフィンガープリントで決まる。
  */
 public final class CohortStore implements AutoCloseable {
 
-  /** スレッドごとの読み込みの領域。復号は圧縮部分を新しい配列へ写すので、使い回してよい。 */
+  /** スレッドごとの読み込み用バッファ。復号は圧縮部分を新しい配列へ写すので、使い回してよい。 */
   private static final ThreadLocal<ByteBuffer> BUFFERS =
       ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(1 << 16));
 
-  /** スレッドごとの直列化（O を読む作業域を持つ）。帳簿の欄の数が違えば作り直す。 */
+  /** スレッドごとのコーデック（記録 O を読む作業領域を持つ）。帳簿の特徴量の数かルールが違えば作り直す。 */
   private static final ThreadLocal<RowCodec> CODECS = new ThreadLocal<>();
 
   /** 読み込んだコホートと、その行の範囲 [first, end)。 */
@@ -43,16 +45,18 @@ public final class CohortStore implements AutoCloseable {
   private final List<FileChannel> files = new ArrayList<>();
   private final List<Cohort> cohorts = new ArrayList<>();
   private int ledgerFeatures = -1;
+  private Variant variant;
   private int size;
   private int[] file = new int[0];
   private long[] offset = new long[0];
   private RowCodec.Index[] index = new RowCodec.Index[0];
 
   /**
-   * 封印済みのコホートの全ての行を索引に載せる。
+   * 確定済みのコホートの全ての行をインデックスに載せる。
    *
    * @param directory コホートのディレクトリ
-   * @throws IOException 封印されていないか、記録の指紋・帳簿の欄の数・シャードが合わないか、同じコホートを既に読んだとき
+   * @throws IOException 確定していないとき、記録のフィンガープリント・ルール・帳簿の特徴量の数・シャードが合わないとき、
+   *     または同じコホートを既に読んだとき
    */
   public synchronized void addCohort(Path directory) throws IOException {
     CohortWriter.Manifest manifest = CohortWriter.readManifest(directory);
@@ -71,15 +75,20 @@ public final class CohortStore implements AutoCloseable {
               + " ledger features, the store "
               + ledgerFeatures);
     }
+    Variant cohortVariant = manifest.variant();
+    if (variant != null && cohortVariant != variant) {
+      throw new IOException("Cohort " + directory + " holds " + cohortVariant + " rows, the store " + variant);
+    }
     int first = size;
     for (CohortWriter.Shard shard : manifest.shards()) {
       addShard(directory.resolve(shard.file()), shard);
     }
     ledgerFeatures = manifest.ledgerFeatures();
+    variant = cohortVariant;
     cohorts.add(new Cohort(manifest.iteration(), first, size));
   }
 
-  /** シャードの .idx を頭から読み、行の位置を載せる。 */
+  /** シャードの .idx を先頭から読み、行の位置を載せる。 */
   private void addShard(Path path, CohortWriter.Shard shard) throws IOException {
     FileChannel channel = FileChannel.open(path, StandardOpenOption.READ);
     try {
@@ -111,13 +120,7 @@ public final class CohortStore implements AutoCloseable {
         }
         int frameLength = entries.getInt();
         RowCodec.Index entry =
-            RowCodec.index(
-                frameLength,
-                entries.get(),
-                entries.get(),
-                entries.get(),
-                entries.get(),
-                entries.get());
+            RowCodec.index(frameLength, entries.get(), entries.get(), entries.get(), entries.get());
         append(fileIndex, position, entry);
         position += frameLength;
         counted++;
@@ -163,16 +166,30 @@ public final class CohortStore implements AutoCloseable {
     return result;
   }
 
+  /**
+   * 載せたコホートのルールを返す。
+   *
+   * @return ルール（記録 O のフィンガープリントで決まる）
+   * @throws IllegalStateException コホートを 1 つも載せていないとき
+   */
+  public synchronized Variant variant() {
+    if (variant == null) {
+      throw new IllegalStateException("The store holds no cohort");
+    }
+    return variant;
+  }
+
   public synchronized RowCodec.Index index(int row) {
     return index[row];
   }
 
   /**
-   * コホート from..to（両端を含む。読み込んでいないものは飛ばす）の、索引が filter に合う行を、コホートの番号の順に返す。本体は展開しない。
+   * 指定した範囲のコホートから、インデックスが条件に合う行を、コホートの番号の順に返す。読み込んでいないコホートは飛ばす。
+   * 行の本体は展開しない。
    *
-   * @param from 最初のコホート
-   * @param to 最後のコホート
-   * @param filter 索引の条件
+   * @param from 最初のコホート（含む）
+   * @param to 最後のコホート（含む）
+   * @param filter インデックスの条件
    * @return 行の番号
    */
   public synchronized int[] select(int from, int to, Predicate<RowCodec.Index> filter) {
@@ -194,10 +211,10 @@ public final class CohortStore implements AutoCloseable {
   }
 
   /**
-   * 1 行を展開する。位置指定の読み出しなので、どのスレッドからでも並行に呼べる。
+   * 1 行を展開する。位置を指定して読むので、どのスレッドからでも並行に呼べる。
    *
-   * @param row 行
-   * @return 行
+   * @param row 行の番号
+   * @return 読んだ行
    * @throws IOException 読めないか、フレームが壊れているとき
    */
   public Row read(int row) throws IOException {
@@ -205,11 +222,13 @@ public final class CohortStore implements AutoCloseable {
     long position;
     int bytes;
     int features;
+    Variant rowVariant;
     synchronized (this) {
       channel = files.get(file[row]);
       position = offset[row];
       bytes = index[row].frameLength();
       features = ledgerFeatures;
+      rowVariant = variant;
     }
     ByteBuffer buffer = BUFFERS.get();
     if (buffer.capacity() < bytes) {
@@ -224,8 +243,8 @@ public final class CohortStore implements AutoCloseable {
     }
     buffer.flip();
     RowCodec codec = CODECS.get();
-    if (codec == null || codec.ledgerFeatures() != features) {
-      codec = new RowCodec(features);
+    if (codec == null || codec.ledgerFeatures() != features || codec.variant() != rowVariant) {
+      codec = new RowCodec(features, rowVariant);
       CODECS.set(codec);
     }
     Row decoded = codec.decode(buffer);
@@ -236,12 +255,12 @@ public final class CohortStore implements AutoCloseable {
   }
 
   /**
-   * 行をまとめて展開する。行を parts 個の続いた区間に分け、executor で並列に読む（呼んだスレッドは終わるまで待つ）。
+   * 行をまとめて展開する。行を続いた区間に分けて並列に読む。呼んだスレッドは読み終わるまで待つ。
    *
-   * @param rows 行
-   * @param executor 読むスレッド
+   * @param rows 行の番号
+   * @param executor 読むのに使うスレッド
    * @param parts 区間の数
-   * @return 行（rows の順）
+   * @return 読んだ行（渡した番号の順）
    * @throws IOException どれかの行が読めないとき
    */
   public Row[] read(int[] rows, Executor executor, int parts) throws IOException {
@@ -283,14 +302,15 @@ public final class CohortStore implements AutoCloseable {
   }
 
   /**
-   * 行を順に読む列を返す（運の精算の当てはめのように、全ての行を 1 度ずつ見る読み手のため）。chunk 行ずつ {@link #read(int[], Executor, int)} で
-   * 並列に読み、メモリには 1 塊だけを持つ。読めない行は {@link UncheckedIOException} で止まる。
+   * 行を順に読む {@link Iterable} を返す。運の精算の当てはめのように、全ての行を 1 度ずつ見る処理に使う。決まった行数ずつ
+   * {@link #read(int[], Executor, int)} で並列に読み、メモリには 1 回に読んだ分だけを持つ。読めない行があると
+   * {@link UncheckedIOException} を投げて止まる。
    *
-   * @param rows 行
+   * @param rows 行の番号
    * @param chunk 1 度に読む行の数
-   * @param executor 読むスレッド
-   * @param parts 1 塊を分ける区間の数
-   * @return rows の順の行の列（列を回すたびに読み直す）
+   * @param executor 読むのに使うスレッド
+   * @param parts 1 度に読む分を分ける区間の数
+   * @return 渡した番号の順に行を返す {@link Iterable}（回すたびに読み直す）
    */
   public Iterable<Row> iterate(int[] rows, int chunk, Executor executor, int parts) {
     if (chunk < 1) {
@@ -344,6 +364,7 @@ public final class CohortStore implements AutoCloseable {
     files.clear();
     cohorts.clear();
     size = 0;
+    variant = null;
     if (failure != null) {
       throw failure;
     }

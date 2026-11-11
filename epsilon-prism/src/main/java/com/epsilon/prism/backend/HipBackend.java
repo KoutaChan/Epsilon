@@ -2,22 +2,25 @@ package com.epsilon.prism.backend;
 
 import ai.djl.pytorch.engine.PtStream;
 import com.epsilon.prism.hip.HipBatch;
+import com.epsilon.prism.hip.HipKernel;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.hip.HipPlan;
 import com.epsilon.prism.hip.HipSection;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
-import com.epsilon.prism.input.InputSchema.Axis;
-import com.epsilon.prism.input.InputSchema.Tensor;
+import com.epsilon.prism.input.InputBlob.Axis;
+import com.epsilon.prism.input.InputBlob.Tensor;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
 
 /**
- * 網の HIP の推論（1 つの slot）。網に依る部分（重みの並び・入力の区画の写し）をここに置き、網を知らない {@link HipPlan} を回す。
+ * ネットワークの HIP の推論を、1 つのスロットで行う。ネットワークに依る部分（重みの並びと、入力の領域から HIP の領域への対応）を
+ * ここに置き、ネットワークを知らない {@link HipPlan} を動かす。
  *
- * <p>1 塊は HostBatch の blob の H2D 1 回 → K1〜K7 → s の D2H 1 回。s は要求の順（塊の手の順）の FP32。
- * {@link #submit} はストリームに積むだけで、終わりはストリームの印か {@link #synchronize()} で待つ。スレッド安全ではない。
+ * <p>1 バッチの処理は、HostBatch の blob を H2D で 1 回送り、形の記述の順にカーネル（{@link HipKernel}）を流し、s を D2H で 1 回読む。
+ * s はバッチの手の順（要求の順）に並ぶ FP32。{@link #submit} はストリームに積むだけなので、終わりはストリームのイベントか
+ * {@link #synchronize()} で待つ。スレッドセーフではない。
  */
 public final class HipBackend implements AutoCloseable {
 
@@ -34,13 +37,13 @@ public final class HipBackend implements AutoCloseable {
   }
 
   /**
-   * slot の計画を作る（作業域と重みの置き場を一度だけ取る）。
+   * スロットの計画を作る。作業領域と重みのバッファは、ここで 1 回だけ確保する。
    *
    * @param library 読み込み済みの libprism_hip.so
-   * @param stream slot の計算ストリーム（GPU）
-   * @param layout 網の表
-   * @param capacity 塊の容量
-   * @return 推論の道
+   * @param stream スロットの計算ストリーム（GPU）
+   * @param layout ネットワークの重みの並びを決める表
+   * @param capacity バッチの容量
+   * @return 推論のバックエンド
    */
   public static HipBackend open(
       HipLibrary library, PtStream stream, WeightLayout layout, BatchPlan.Capacity capacity) {
@@ -52,7 +55,7 @@ public final class HipBackend implements AutoCloseable {
     return new HipBackend(layout, plan, scores);
   }
 
-  /** 網を知らない計画（カーネルごとの試験と測りで使う）。 */
+  /** ネットワークを知らない計画を返す。カーネルごとのテストと計測で使う。 */
   public HipPlan plan() {
     return plan;
   }
@@ -61,13 +64,13 @@ public final class HipBackend implements AutoCloseable {
     return layout;
   }
 
-  /** 写した重みのバージョン（まだなら −1）。 */
+  /** デバイスに送った重みのバージョンを返す。まだ送っていなければ −1。 */
   public long weightsVersion() {
     return plan.weightsVersion();
   }
 
   /**
-   * 重みを公開する（デバイスへ写し、ストリームを同期する）。
+   * 重みを公開する。デバイスへ送り、ストリームを同期する。別の表で作った重みを渡すと IllegalArgumentException を投げる。
    *
    * @param pack 同じ表で作った重みの束
    */
@@ -79,22 +82,22 @@ public final class HipBackend implements AutoCloseable {
   }
 
   /**
-   * 1 塊の順伝播をストリームに積む。
+   * 1 バッチの順伝播をストリームに積む。
    *
-   * @param batch 封じた塊（blob は直の ByteBuffer。推論ではページ固定）
-   * @param out s を書く先（位置 0 から手の数の FP32、直の ByteBuffer）
-   * @param version 期待する網のバージョン（写したバージョンと違えば例外）
+   * @param batch 確定したバッチ（blob はダイレクトバッファ。推論ではページ固定）
+   * @param out s を書く先のダイレクトバッファ（位置 0 から手の数だけ FP32 を書く）
+   * @param version 期待するネットワークのバージョン（送ったバージョンと違えば例外）
    */
   public void submit(HostBatch batch, ByteBuffer out, long version) {
     plan.forward(batch.blob().duplicate().position(0), batchOf(batch), out.duplicate().position(0), version);
   }
 
   /**
-   * 1 塊の s を計算して返す（積んで、待って、読む）。
+   * 1 バッチの s を計算して返す。ストリームに積み、終わるのを待ってから読む。
    *
-   * @param batch 封じた塊
-   * @param version 期待する網のバージョン
-   * @return s（塊の手の順）
+   * @param batch 確定したバッチ
+   * @param version 期待するネットワークのバージョン
+   * @return s（バッチの手の順）
    */
   public float[] forward(HostBatch batch, long version) {
     submit(batch, scores, version);
@@ -104,7 +107,7 @@ public final class HipBackend implements AutoCloseable {
     return result;
   }
 
-  /** ストリームの仕事が終わるのを待つ。 */
+  /** ストリームに積んだ処理が全て終わるのを待つ。 */
   public void synchronize() {
     plan.synchronize();
   }
@@ -115,10 +118,10 @@ public final class HipBackend implements AutoCloseable {
   }
 
   /**
-   * 封じた塊の数と区画の位置（入力の区画 → HIP の区画は名前で写す）。
+   * 確定したバッチの行・イベント・遷移・手の数と領域ごとの位置を、HIP のバッチの形にして返す。入力の領域と HIP の領域は名前で対応させる。
    *
-   * @param batch 封じた塊
-   * @return HIP の塊
+   * @param batch 確定したバッチ
+   * @return HIP のバッチ
    */
   public static HipBatch batchOf(HostBatch batch) {
     BatchPlan plan = batch.plan();
@@ -135,7 +138,7 @@ public final class HipBackend implements AutoCloseable {
         offsets);
   }
 
-  /** 入力の区画ごとの HIP の区画（名前・軸・要素の型が同じこと）。 */
+  /** 入力の領域ごとに、同じ名前の HIP の領域を返す。軸の名前と要素のバイト数も同じでなければならない。 */
   private static HipSection[] sections() {
     Tensor[] tensors = Tensor.values();
     if (tensors.length != HipSection.values().length) {

@@ -31,24 +31,27 @@ import org.testng.annotations.Test;
 import org.testng.asserts.SoftAssert;
 
 /**
- * 自前の HIP の注意の演算（{@link HipAttention}）の確かめ（rocm の組。GPU 1 枚）。{@link Case} の形ごとに、乱数の
- * q・kv・出力の勾配（BF16）・在否・関係の符号・ρ で次を見る。
+ * HIP で自前に書いた Attention の演算（{@link HipAttention}）をテストする（rocm のグループ、GPU 1 枚）。{@link Case} の形ごとに、
+ * 乱数で作った q・kv・出力の勾配（BF16）・マスク・関係のコード・ρ を入れて、次を確かめる。
  *
  * <ul>
- *   <li>djl-rocm の packedRelationScaledDotProductAttention と自動微分: 出力は BF16 の一致の割合と最大の差、勾配（q・kv は BF16、ρ は
- *       行で足した FP32）はテンソルごとの相対の L2 の差。
- *   <li>FP64 の参照（BF16 の入力をそのまま広げ、数式どおりの二重の輪）: BF16 の出力・勾配は FP64 を BF16 に丸めた値とビットが同じ割合。
- *       要素ごとには、出力は FP32 の出力を 1 回丸めた値で、FP32 の出力が消し合いの幅 c·2⁻²⁴·Σ p|v| の内（{@link #assertOutputElements}）、
- *       勾配は 1 ulp と rms·slack の幅か、消し合いの幅の内（{@link #assertGradientElements}）。どちらも尺度で割った比の分位を出す。
- *       FP32 の出力・ρ の勾配（行 × 頭の部分和）は相対の差、lse は絶対の差。
- *   <li>1 つの検査の外れで残りの検査と形を止めない（全ての形の全ての行を出してから、外れた検査を形ごとにまとめて失敗にする）。
- *   <li>同じ入力の 2 回の順伝播・逆伝播が全ての出力でビットで同じこと。出力ごとの CRC32 を出し、別のプロセスの実行の行とも比べる。
+ *   <li>djl-rocm の packedRelationScaledDotProductAttention と自動微分との比較: 出力は BF16 の一致の割合と差の最大、勾配（q・kv は
+ *       BF16、ρ は行で足した FP32）はテンソルごとの相対 L2 の差を見る。
+ *   <li>FP64 の参照（BF16 の入力をそのまま広げ、数式どおりの二重ループで計算する）との比較: BF16 の出力と勾配は、FP64 を BF16 に丸めた
+ *       値とビットが同じ割合を見る。要素ごとには、出力が FP32 の出力を 1 回丸めた値で、FP32 の出力が桁落ちの幅 c·2⁻²⁴·Σ p|v| に収まる
+ *       ことを見る（{@link #assertOutputElements}）。勾配は、1 ulp と rms·slack の幅か、桁落ちの幅に収まることを見る
+ *       （{@link #assertGradientElements}）。どちらも尺度で割った比の分位を出す。FP32 の出力と ρ の勾配（行 × ヘッドの部分和）は相対の差、
+ *       lse は絶対の差を見る。
+ *   <li>1 つの検査が外れても、残りの検査と形は続ける。全ての形のログを出してから、外れた検査を形ごとにまとめて失敗にする。
+ *   <li>同じ入力で順伝播・逆伝播を 2 回行い、全ての出力がビットまで同じこと。出力ごとの CRC32 もログに出し、別のプロセスで実行したログと
+ *       比べられるようにする。
  * </ul>
  *
- * 在否は先頭からの長さのほかに、鍵の塊の中の穴（行 {@value #HOLE_ROW}）、途中の鍵の塊が丸ごと無い（行 {@value #GAP_ROW}）、在る鍵が
- * 無い（行 {@value #EMPTY_ROW}。出力・lse・勾配が 0）を含む。{@link #rowsAreIndependentOfTheBatch} は行の一部だけの塊と、詰め物で S
- * を広げた塊が、元の塊の行とビットで同じことを見る。{@link #deadQueriesContributeNothing} は出力の勾配が 0 の問い合わせが q に依らず
- * 何にも寄与せず、問い合わせの外と同じに扱われることを見る。
+ * マスクには先頭からの長さのほかに、キーのタイルの中の穴（行 {@value #HOLE_ROW}）、途中のキーのタイルが丸ごと無い行（行
+ * {@value #GAP_ROW}）、有効なキーが 1 つも無い行（行 {@value #EMPTY_ROW}。出力・lse・勾配が 0）を含む。
+ * {@link #rowsAreIndependentOfTheBatch} は、一部の行だけのバッチや、パディングで S を広げたバッチでも、各行の結果が元のバッチとビットまで
+ * 同じことを見る。{@link #deadQueriesContributeNothing} は、出力の勾配が 0 のクエリが q に依らず何にも寄与せず、クエリの範囲の外に
+ * 出したときと同じ結果になることを見る。
  */
 public class HipAttentionGpuTest {
   private static final Logger log = LoggerFactory.getLogger(HipAttentionGpuTest.class);
@@ -65,42 +68,46 @@ public class HipAttentionGpuTest {
   private static final int EMPTY_ROW = 2;
   private static final int SUBSET_ROWS = 13;
   private static final int[] PADDED_TOKENS = {70, 80, 121, 160};
-  /** {@link #deadQueriesContributeNothing} の途中の死んだ問い合わせ [DEAD_FIRST, DEAD_END) と、生きた問い合わせの数。 */
+  /**
+   * {@link #deadQueriesContributeNothing} で使う。途中に置く死んだクエリ（出力の勾配が 0 のクエリ）の範囲 [DEAD_FIRST, DEAD_END) と、
+   * 先頭から数えた生きたクエリの数（これより後ろのクエリも死んだクエリにする）。
+   */
   private static final int DEAD_FIRST = 36;
   private static final int DEAD_END = 44;
   private static final int LIVE_QUERIES = 60;
   private static final double FLOAT_UNIT = 0x1p-24;
 
   /**
-   * FP32 の出力の幅 c（{@link #assertOutputElements}）。和の側: 項 p_j v_j が t1 の和で通る丸めは多くて 4B + 6 回（鍵の塊 B ≤ 10 ごとに
-   * WMMA 3 回と α の掛け算 1 回、WMMA の中の 5 段、最後の 1/Σ）で、1 回は切り捨てでも 2⁻²³ の相対なので、線形の上限は 92·2⁻²⁴·A。
-   * ℓ の側: ℓ₂ の丸め δ_j は p_j を相対で ln2·δ_j 動かし、o を Σ p_j (v_j − o)·ln2·δ_j（|·| ≤ 2A·ln2·max δ）動かす。この試験の大きさ
-   * （|ℓ₂| ≲ 10、Σ|τ| ≈ 4）では max δ ≈ 48·2⁻²⁴ で、線形の上限は約 66·2⁻²⁴·A。誤差は独立なので実際はずっと小さく、c = 128 は 2 つの
-   * 線形の上限の和（約 158）より下で、t1 の順の FP32 の和の誤差より十分に大きい。鍵 1 つの落ち（p_j|v_j| > 128·2⁻²⁴·A ≈ 7.6e-6·A）や
-   * P の誤りは外れ、|o| ≈ A の要素では BF16 の ulp の 1/500 ほどの幅。c は上限の門で、分位（p99・p99.99）も記録に出す。勾配も同じ c を
-   * 勾配の尺度（{@link Reference}）に使う（dS の 1 段と鍵・問い合わせの塊の和で丸めは 7 回ほど増え、線形の上限は約 172）。
+   * FP32 の出力に許す誤差の幅の係数 c（{@link #assertOutputElements}）。和の側: 項 p_j v_j が t1 の和で通る丸めは多くて 4B + 6 回（B ≤ 10 個の
+   * キーのタイルごとに WMMA 3 回と α の掛け算 1 回、WMMA の中の 5 段、最後の 1/Σ）。1 回の丸めは切り捨てでも相対 2⁻²³ なので、線形の
+   * 上限は 92·2⁻²⁴·A。ℓ の側: ℓ₂ の丸め δ_j は p_j を相対で ln2·δ_j 動かし、o を Σ p_j (v_j − o)·ln2·δ_j だけ動かす
+   * （|·| ≤ 2A·ln2·max δ）。このテストの大きさ（|ℓ₂| ≲ 10、Σ|τ| ≈ 4）では max δ ≈ 48·2⁻²⁴ で、線形の上限は約 66·2⁻²⁴·A。誤差は
+   * 独立なので、実際はずっと小さい。c = 128 は 2 つの線形の上限の和（約 158）より小さく、t1 の順で足した FP32 の和の誤差より十分に大きい。
+   * キーが 1 つ抜ける誤り（p_j|v_j| > 128·2⁻²⁴·A ≈ 7.6e-6·A）や P の誤りは幅を外れる。|o| ≈ A の要素では、幅は BF16 の ulp の 1/500
+   * ほど。c は上限のしきい値で、分位（p99・p99.99）もログに出す。勾配も同じ c を勾配の尺度（{@link Reference}）に使う（dS の 1 段と、
+   * キー・クエリのタイルの和で丸めは 7 回ほど増え、線形の上限は約 172）。
    */
   private static final int CANCELLATION = 128;
 
-  /** 比べる形（問い合わせ・鍵・区画・区画あたりの値）。背骨の層は全てのトークンが問い合わせ、最後の層は先頭の 39 個。 */
+  /** 比べる形（クエリの数・キーの数・セグメントの数・セグメントあたりの値の数）。バックボーンの層は全てのトークンが、最後の層は先頭の 39 個だけがクエリになる。 */
   private enum Case {
-    /** 背骨の層、S = 70（鍵の塊 5）。 */
+    /** バックボーンの層、S = 70（キーのタイル 5 つ）。 */
     LAYER0_S70(70, 70, 7, 16),
     /** 最後の層、S = 70。 */
     LAYER1_S70(LAST_QUERIES, 70, 7, 16),
-    /** 鍵の塊 1 つ（逆伝播の作業群は段 B の 5 波）。 */
+    /** キーのタイル 1 つ（逆伝播のワークグループは、キーのタイルの数より多い 5 ウェーブになる。t1 の段 B に 5 ウェーブ要るため）。 */
     LAYER0_S16(16, 16, 7, 16),
-    /** 鍵の塊 6（LDS の段 8）。 */
+    /** キーのタイル 6 つ（キーのタイルの上限が 8 のカーネルを使い、LDS もその大きさになる）。 */
     LAYER0_S81(81, 81, 7, 16),
-    /** 鍵の塊 8（段 8 の上限）。 */
+    /** キーのタイル 8 つ（上限が 8 のカーネルでいちばん大きい形）。 */
     LAYER0_S120(120, 120, 7, 16),
     /** 最後の層、S = 120。 */
     LAYER1_S120(LAST_QUERIES, 120, 7, 16),
-    /** 行の上限（段 10）。 */
+    /** 行の長さの上限（キーのタイルの上限が 10 のカーネルを使う）。 */
     LAYER0_S160(160, 160, 7, 16),
-    /** 最後の層、行の上限。 */
+    /** 最後の層、行の長さの上限。 */
     LAYER1_S160(LAST_QUERIES, 160, 7, 16),
-    /** 8 区画・値 12（範囲の検査の道を止めずに通る）。 */
+    /** 8 セグメント・値 12 個（範囲を検査するコードパスを、外れずに通る）。 */
     SEGMENTS8_ENTRIES12(50, 50, 8, 12);
 
     private final int queries;
@@ -120,11 +127,11 @@ public class HipAttentionGpuTest {
     }
   }
 
-  /** 詰めた問い合わせの q（出力の勾配は 0 なので、どれでも実の行の出力は同じ）。 */
+  /** パディングしたクエリに入れる q。出力の勾配が 0 なので、どれを選んでも実際の行の出力は変わらない。 */
   private enum Padding {
-    /** 乱数（符号が混じる）。 */
+    /** 正規乱数（正負が混じる）。 */
     GAUSSIAN,
-    /** 乱数の絶対値。 */
+    /** 正規乱数の絶対値。 */
     POSITIVE,
     ZERO
   }
@@ -140,8 +147,8 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * 演算の入力。q・kv・出力の勾配は BF16 の値を FP32 に広げた値、codes は組ごとの INT16 の語（[rows, codeQueries, keys, words]）、
-   * table は ρ [segments·entries, heads]。
+   * 演算の入力。q・kv・出力の勾配は、BF16 の値を FP32 に広げて持つ。{@code codes} はクエリとキーの組ごとの INT16 のワード
+   * （[rows, codeQueries, keys, words]）で、{@code table} は ρ（[segments·entries, heads]）。
    */
   private record Inputs(
       RelationAttention.Dimensions d,
@@ -153,13 +160,13 @@ public class HipAttentionGpuTest {
       float[] gradOut) {}
 
   /**
-   * FP64 の参照の出力と、要素ごとの消し合いの尺度（FP32 の和の誤差は項の絶対値の和に比例する）: OUT は A = Σ_j p_j |v_j|。勾配は
-   * |dS|ₐ = p_j·(Σ_d |do_d||v_jd| + Σ_d |do_d|·A_d)（dP − δ の両方の項の絶対値。δ の o の誤差も A に比例する）から、
+   * FP64 の参照の出力と、桁落ちを見るための要素ごとの尺度（FP32 の和の誤差は、項の絶対値の和に比例する）。OUT の尺度は A = Σ_j p_j |v_j|。
+   * 勾配の尺度は |dS|ₐ = p_j·(Σ_d |do_d||v_jd| + Σ_d |do_d|·A_d)（dP − δ の両方の項の絶対値。δ の中の o の誤差も A に比例する）から求め、
    * dq は scale·Σ_j |dS|ₐ |k_j|、dk は scale·Σ_i |dS|ₐ |q_i|、dv は Σ_i p_ij |do_i|。
    */
   private record Reference(Map<Output, double[]> values, Map<Output, double[]> magnitudes) {}
 
-  /** 実行の出力と、比べる行（入力の行の添字）。 */
+  /** 1 回の実行の出力と、比べる行（入力の何行目か）。 */
   private record Placed(Map<Output, float[]> outputs, RelationAttention.Dimensions d, int[] rows) {}
 
   @FunctionalInterface
@@ -198,9 +205,10 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * 行は塊の組み方に依らない: S = 70 の塊の 13 行だけの塊と、同じ行を詰め物で S = 80・121・160 に広げた塊（詰めた鍵は在らず、詰めた
-   * 問い合わせの出力の勾配は 0。q は {@link Padding} のそれぞれ）が、実の位置で全ての出力（ρ の勾配は行 × 頭の部分和）を元の塊とビットで
-   * 同じに出すこと。S = 80 は詰めた問い合わせが塊 4 の中だけ、121・160 は後ろに詰め物だけの塊が続く。
+   * 行の結果はバッチの組み方に依らない。S = 70 のバッチから 13 行だけを取ったバッチと、同じ行をパディングで S = 80・121・160 に広げた
+   * バッチを作る。パディングしたキーは無効にし、パディングしたクエリは出力の勾配を 0、q を {@link Padding} のそれぞれにする。どのバッチも、
+   * 実際の位置の全ての出力（ρ の勾配は行 × ヘッドの部分和）が元のバッチとビットまで同じであること。S = 80 ではパディングしたクエリが
+   * タイル 4 の中だけにあり、121・160 では後ろにパディングだけのタイルが続く。
    */
   @Test(groups = "rocm")
   public void rowsAreIndependentOfTheBatch() {
@@ -233,14 +241,15 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * 死んだ問い合わせ（頭の出力の勾配が全て 0）は何にも寄与しない。LAYER0_S70 の全ての行で問い合わせ [{@value #DEAD_FIRST},
-   * {@value #DEAD_END})（塊 2 の中）と {@value #LIVE_QUERIES} 以降（塊 3 の後ろと塊 4）の出力の勾配を 0 にした塊が:
+   * 死んだクエリ（ヘッドの出力の勾配が全て 0）は何にも寄与しない。LAYER0_S70 の全ての行で、クエリ [{@value #DEAD_FIRST},
+   * {@value #DEAD_END})（タイル 2 の中）と {@value #LIVE_QUERIES} 以降（タイル 3 の後ろとタイル 4）の出力の勾配を 0 にしたバッチが、
+   * 次を満たす。
    *
    * <ul>
-   *   <li>死んだ問い合わせの q を 0 にした塊と、全ての勾配がビットで同じ。
-   *   <li>問い合わせを先頭の {@value #LIVE_QUERIES} 個にした塊（後ろの死んだ問い合わせを外に出す）と、実の位置の全ての出力がビットで
-   *       同じ。
-   *   <li>死んだ問い合わせの dq が +0（ビットで 0）。
+   *   <li>死んだクエリの q を 0 にしたバッチと、全ての勾配がビットまで同じ。
+   *   <li>クエリを先頭の {@value #LIVE_QUERIES} 個にしたバッチ（後ろの死んだクエリを範囲の外に出す）と、実際の位置の全ての出力が
+   *       ビットまで同じ。
+   *   <li>死んだクエリの dq が +0（ビットまで 0）。
    * </ul>
    */
   @Test(groups = "rocm")
@@ -326,7 +335,7 @@ public class HipAttentionGpuTest {
     Assert.assertTrue(failures.isEmpty(), "dead queries contribute:" + failures);
   }
 
-  /** GPU 1 枚のストリームで演算を作って渡す（GPU が無ければ飛ばす）。 */
+  /** GPU 0 のストリームの上で演算を作り、{@code body} に渡す。GPU が無ければテストを飛ばす。 */
   private static void withAttention(AttentionBody body) {
     if (Engine.getInstance().getGpuCount() == 0) {
       throw new SkipException("no GPU");
@@ -339,7 +348,7 @@ public class HipAttentionGpuTest {
     }
   }
 
-  /** 形 shape の乱数の入力（種は形で決まる）。 */
+  /** 形 {@code shape} の入力を乱数で作る。乱数の種は形で決まる。 */
   private static Inputs generate(Case shape) {
     Random random = new Random(17 + shape.ordinal());
     RelationAttention.Dimensions d = shape.dimensions(ROWS);
@@ -357,7 +366,7 @@ public class HipAttentionGpuTest {
           };
       Arrays.fill(mask, r * keys, r * keys + tokens, 1f);
     }
-    // 鍵の塊 0 の中の穴と、後ろに塊のある塊 1 が丸ごと無い行
+    // 穴の行はキーのタイル 0 の中に穴を空け、抜けたタイルの行は後ろのタイルを残したままタイル 1 を丸ごと無効にする
     Arrays.fill(mask, HOLE_ROW * keys + 5, HOLE_ROW * keys + 10, 0f);
     if (keys >= 48) {
       Arrays.fill(mask, GAP_ROW * keys + 16, GAP_ROW * keys + 32, 0f);
@@ -383,8 +392,8 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * whole の行 rows を、鍵（背骨の層なら問い合わせも）を tokens 個に詰めて並べた入力。詰めた鍵は在らず（値は乱数、符号は 0）、詰めた
-   * 問い合わせは padding の q と 0 の出力の勾配。
+   * {@code whole} から行 {@code rows} を取り出し、キー（バックボーンの層ならクエリも）を {@code tokens} 個までパディングして並べた入力を
+   * 作る。パディングしたキーは無効で、値は乱数、コードは 0。パディングしたクエリは q が {@code padding} の値で、出力の勾配が 0。
    */
   private static Inputs pad(Inputs whole, int[] rows, int tokens, Padding padding) {
     RelationAttention.Dimensions w = whole.d();
@@ -425,7 +434,7 @@ public class HipAttentionGpuTest {
     return new Inputs(d, query, keyValue, mask, codes, whole.table(), gradOut);
   }
 
-  /** 自前の演算の順伝播と逆伝播。 */
+  /** 自前の演算で順伝播と逆伝播を行い、全ての出力を返す。 */
   private static Map<Output, float[]> run(NDManager manager, HipAttention attention, Inputs in) {
     RelationAttention.Dimensions d = in.d();
     Shape queries = new Shape(d.rows(), d.queries(), WIDTH);
@@ -468,8 +477,9 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * djl-rocm の演算（相対の値は 0）と自動微分。在る鍵が無い行は演算が扱わないので、鍵 0 を在ることにして出力の勾配を 0 にする（その行の
-   * 勾配の寄与は 0 で、自前の演算の P = 0 と同じ。出力だけ比べない）。ρ の勾配は [segments·entries, heads]。
+   * djl-rocm の演算を自動微分で動かす（関係の表のうち、値に足す側の列は 0 にする）。有効なキーが無い行は djl の演算が扱えないので、
+   * キー 0 を有効にし、出力の勾配を 0 にする。その行の勾配の寄与は 0 になり、自前の演算の P = 0 と同じになる。その行の出力だけは比べない。
+   * ρ の勾配は [segments·entries, heads]。
    */
   private static Map<Output, float[]> djl(NDManager manager, Inputs in) {
     RelationAttention.Dimensions d = in.d();
@@ -507,9 +517,9 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * FP64 の参照（数式どおり。BF16 の入力をそのまま広げる）: ℓ_ij = (q_i·k_j)·scale + Σ_s ρ[entries·s + c_s(i, j), h]（在る鍵だけ）、
-   * p = softmax(ℓ)、o = Σ p v、lse = log Σ exp ℓ、δ_i = do_i·o_i、ds_ij = p_ij·(do_i·v_j − δ_i)、dq = scale·Σ ds k、
-   * dk = scale·Σ ds q、dv = Σ p do、ρ の勾配は行 × 頭ごとの Σ ds。在る鍵が無い問い合わせは o = 0、lse = 0、勾配 0。
+   * FP64 の参照（数式どおり。BF16 の入力をそのまま広げる）: ℓ_ij = (q_i·k_j)·scale + Σ_s ρ[entries·s + c_s(i, j), h]（有効なキー
+   * だけ）、p = softmax(ℓ)、o = Σ p v、lse = log Σ exp ℓ、δ_i = do_i·o_i、ds_ij = p_ij·(do_i·v_j − δ_i)、dq = scale·Σ ds k、
+   * dk = scale·Σ ds q、dv = Σ p do、ρ の勾配は行 × ヘッドごとの Σ ds。有効なキーが無いクエリは o = 0、lse = 0、勾配 0。
    */
   private static Reference reference(Inputs in) {
     RelationAttention.Dimensions d = in.d();
@@ -620,7 +630,7 @@ public class HipAttentionGpuTest {
     return new Reference(outputs, magnitudes);
   }
 
-  /** 行 r の組 (i, j) の区画 s の符号。 */
+  /** 行 r でクエリ i とキー j を組にしたときの、セグメント s のコードを返す。 */
   private static int code(Inputs in, int r, int i, int j, int s) {
     RelationAttention.Dimensions d = in.d();
     int word = in.codes()[((r * d.codeQueries() + i) * d.keys() + j) * WORDS + s / 4] & 0xffff;
@@ -628,10 +638,10 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * djl-rocm の演算と比べる（出力は在る鍵が無い行を除く）。式の取り違えの粗い検査で、精度は FP64 の参照と要素ごとに見る
-   * （{@link #compareWithReference}）。BF16 の一致の門は 0.999（FP64 の門と同じ）: 同じほどの精度の 2 つの FP32 の和の順は、BF16 の
-   * 丸めの境の近くの要素で食い違い、その割合は鍵の数とともに育つ。行には FP64 を BF16 に丸めた値との三角（hip だけ違う・djl だけ違う・
-   * 両方違う）も出す。
+   * djl-rocm の演算と比べる（出力は、有効なキーが無い行を除いて比べる）。式の取り違えを見つける粗い検査で、精度は FP64 の参照と要素ごとに見る
+   * （{@link #compareWithReference}）。BF16 の一致のしきい値は 0.999（FP64 と比べるときと同じ）。精度が同じくらいの 2 つの FP32 の和
+   * でも、足す順が違うと BF16 の丸めの境界に近い要素で食い違い、その割合はキーの数とともに増える。ログの行には、FP64 を BF16 に丸めた
+   * 値との食い違いの内訳（hip だけ違う・djl だけ違う・両方違う）も出す。
    */
   private static void compareWithDjl(
       SoftAssert checks,
@@ -694,7 +704,7 @@ public class HipAttentionGpuTest {
     checks.assertTrue(tableError <= 5e-6, shape + " relation table gradient " + tableError);
   }
 
-  /** FP64 の参照と比べ、在る鍵が無い行は出力・lse・勾配が 0 で、どの出力にも NaN・Inf が無いこと。 */
+  /** FP64 の参照と比べる。有効なキーが無い行は出力・lse・勾配が 0 で、どの出力にも NaN・Inf が無いことも確かめる。 */
   private static void compareWithReference(
       SoftAssert checks, Case shape, Inputs in, Map<Output, float[]> actual, Reference fp64) {
     RelationAttention.Dimensions d = in.d();
@@ -748,7 +758,7 @@ public class HipAttentionGpuTest {
         checks, shape, Output.GRAD_KEY_VALUE, actual.get(Output.GRAD_KEY_VALUE), keyFirst, d.keys() * 2 * WIDTH);
   }
 
-  /** 在る鍵が無い行の出力 output の [first, first + length) が 0 であること。 */
+  /** 有効なキーが無い行で、出力 {@code output} の [first, first + length) が 0 であることを確かめる。 */
   private static void assertZero(
       SoftAssert checks, Case shape, Output output, float[] values, int first, int length) {
     int nonzero = 0;
@@ -759,17 +769,17 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * 出力の要素ごとの検査。o は FP32 の和の結果 o₃₂（OUT_FLOAT）を BF16 に 1 回丸めた値なので、2 つに分けて見る。
+   * 出力を要素ごとに検査する。o は FP32 の和の結果 o₃₂（OUT_FLOAT）を BF16 に 1 回丸めた値なので、2 つに分けて見る。
    *
    * <ul>
-   *   <li>1 回の丸め: OUT が bf16(OUT_FLOAT) とビットで同じ。
+   *   <li>1 回の丸め: OUT が bf16(OUT_FLOAT) とビットまで同じ。
    *   <li>FP32 の和の幅: |o₃₂ − o₆₄| ≤ c·2⁻²⁴·A、A = Σ_j p_j |v_j|（c = {@value #CANCELLATION}）。和の丸めの誤差は項の絶対値の和に
-   *       比例するので、消し合いで |o| ≪ A の要素（例 |o| ≈ 2e-5、A ≈ 0.96）でも FP32 と同じ精度かを見られる。
+   *       比例するので、桁落ちで |o| ≪ A になる要素（例: |o| ≈ 2e-5、A ≈ 0.96）でも、FP32 と同じ精度かを見られる。
    * </ul>
    *
-   * 2 つから |o − o₆₄| ≤ c·2⁻²⁴·A + o₃₂ の BF16 の半 ulp。比 |o₃₂ − o₆₄|/(2⁻²⁴·A) の分位（A > 0 の要素）を全体と、行の種類（穴・
-   * 抜けた塊）・在る鍵の塊の数 B ごとに出す（c より下の小さな系統の誤り、例えば塊の数とともに育つ α の順の誤りを分位で見る）。外れた
-   * 要素は検査に記録する前に全て数え、先頭の幾つかを A と一緒に出す。
+   * 2 つを合わせると |o − o₆₄| ≤ c·2⁻²⁴·A +（o₃₂ の BF16 の半 ulp）。比 |o₃₂ − o₆₄|/(2⁻²⁴·A) の分位（A > 0 の要素）を、全体と、行の
+   * 種類（穴・抜けたタイル）ごと、有効なキーを含むタイルの数 B ごとに出す（c より下の小さな系統誤差、例えばタイルの数とともに増える
+   * α の順の誤りを分位で見る）。外れた要素は検査に記録する前に全て数え、先頭の幾つかを A と一緒に出す。
    */
   private static void assertOutputElements(
       SoftAssert checks, Case shape, Inputs in, Map<Output, float[]> actual, double[] expected, double[] magnitude) {
@@ -839,7 +849,7 @@ public class HipAttentionGpuTest {
     checks.assertEquals(outside, 0, shape + " FP32 output outside c·2^-24·sum p|v| of FP64:" + first);
   }
 
-  /** 行の層: 穴の行は 0、抜けた塊の行は 1、ほかは在る鍵を含む鍵の塊の数 B に 2 を足した値（在る鍵が無い行は 2）。 */
+  /** 分位を分けて出すための行の種類。穴の行は 0、抜けたタイルの行は 1、ほかは有効なキーを含むキーのタイルの数 B に 2 を足した値（有効なキーが無い行は 2）。 */
   private static int[] rowStrata(Inputs in) {
     RelationAttention.Dimensions d = in.d();
     int[] strata = new int[ROWS];
@@ -871,9 +881,9 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * 比の分位（p50・p99・p99.9・p99.99・最大。添字は (int)(n·q)）。
+   * 比の分位（p50・p99・p99.9・p99.99・最大）を 1 行の文字列にする。分位 q の値は、並べ替えた列の (int)(n·q) 番目の要素。
    *
-   * @param ratios 比（並べ替える）
+   * @param ratios 比の列。この配列そのものを並べ替える
    */
   private static String quantiles(double[] ratios) {
     int n = ratios.length;
@@ -886,7 +896,7 @@ public class HipAttentionGpuTest {
         n, ratios[n / 2], ratios[(int) (n * 0.99)], ratios[(int) (n * 0.999)], ratios[(int) (n * 0.9999)], ratios[n - 1]);
   }
 
-  /** BF16 の出力が FP64 の参照を BF16 に丸めた値（FP64 → FP32 → BF16 の最近接偶数）とビットで同じ割合。 */
+  /** BF16 の出力のうち、FP64 の参照を BF16 に丸めた値（FP64 → FP32 → BF16 の最近接偶数）とビットまで同じ要素の割合。 */
   private static double bfloat16Share(float[] values, double[] expected) {
     int same = 0;
     for (int i = 0; i < values.length; i++) {
@@ -896,19 +906,20 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * BF16 の勾配 output の要素ごとの検査。g は FP32 の和 g₃₂ を BF16 に最近接偶数で 1 回丸めた値なので |g − g₃₂| ≤ g の BF16 の半 ulp で、
-   * 超えた分 e = |g − g₆₄| − ½ulp(g) は FP32 の和の誤差の下限。要素は次のどちらかなら内:
+   * BF16 の勾配 {@code output} を要素ごとに検査する。g は FP32 の和 g₃₂ を BF16 に最近接偶数で 1 回丸めた値なので、|g − g₃₂| は g の
+   * BF16 の半 ulp 以下になる。それを超えた分 e = |g − g₆₄| − ½ulp(g) は、FP32 の和の誤差の下限になる。要素は次のどちらかを満たせば
+   * 幅に収まる。
    *
    * <ul>
-   *   <li>1 ulp と rms·slack の幅: |g − g₆₄| ≤ ulp(g₆₄) + slack·rms(g₆₄)（消し合いの無い要素の元の規則）。
-   *   <li>消し合いの幅: e ≤ c·2⁻²⁴·M（M は {@link Reference} の勾配の尺度、c = {@value #CANCELLATION}）。dS の行の和は 0 なので
-   *       dq = scale·Σ_j dS_ij k_j は作りから消し合い、|g| ≪ M の要素では FP32 でも元の規則の絶対の幅を超えうる。
+   *   <li>1 ulp と rms·slack の幅: |g − g₆₄| ≤ ulp(g₆₄) + slack·rms(g₆₄)。桁落ちの無い要素はこの幅で見る。
+   *   <li>桁落ちの幅: e ≤ c·2⁻²⁴·M（M は {@link Reference} の勾配の尺度、c = {@value #CANCELLATION}）。dS の行の和は 0 なので、
+   *       dq = scale·Σ_j dS_ij k_j は必ず桁落ちする。|g| ≪ M の要素では、FP32 でも 1 つ目の幅を超えうる。
    * </ul>
    *
-   * 比 e/(2⁻²⁴·M) の分位と、それぞれの規則の外の数を出し、両方の外の要素を検査に記録する前に全て数えて先頭の幾つかを M と
-   * 一緒に出す。
+   * 比 e/(2⁻²⁴·M) の分位と、それぞれの幅を外れた要素の数をログに出す。両方を外れた要素は、検査に記録する前に全て数え、先頭の幾つかを
+   * M と一緒に出す。
    *
-   * @return FP64 の参照を BF16 に丸めた値とビットで同じ割合
+   * @return FP64 の参照を BF16 に丸めた値とビットまで同じ要素の割合
    */
   private static double assertGradientElements(
       SoftAssert checks, Case shape, Output output, Map<Output, float[]> actual, Reference fp64, double slack) {
@@ -953,8 +964,9 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * 2 つの実行 first・second の出力 outputs を実の位置（問い合わせは先頭の queries 個、鍵は先頭の keys 個）で比べる。全てビットで
-   * 同じなら PRISM-HIPATTN-&lt;kind&gt; の行を、違う出力ごとに -DIFF の行を出して failures に足す。
+   * 2 つの実行 {@code first}・{@code second} の出力 {@code outputs} を、実際の位置（クエリは先頭の {@code queries} 個、キーは先頭の
+   * {@code keys} 個）で比べる。全てビットまで同じなら PRISM-HIPATTN-&lt;kind&gt; の行をログに出す。違う出力があれば、出力ごとに -DIFF の
+   * 行を出し、{@code failures} に足す。
    */
   private static void compareRealPositions(
       String kind,
@@ -982,8 +994,8 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * 実の位置の 2 つの出力の違い: 違う要素の数、そのうち ±0 だけの違いの数（kv は dk・dv に分けた数も）、先頭の 8 個（添字・位置・
-   * 2 つの値・ビット）。
+   * 実際の位置での 2 つの出力の違いを文字列にする。違う要素の数、そのうち ±0 だけが違う数（kv は dk・dv に分けた数も）、先頭の 8 個
+   * （添字・位置・2 つの値・ビット）を書く。
    */
   private static String differences(Output output, float[] want, float[] got, int queries, int keys, int tableRows) {
     int differing = 0;
@@ -1008,7 +1020,7 @@ public class HipAttentionGpuTest {
         want.length, got.length, differing, signedZeros, split, first);
   }
 
-  /** {@link #realPositions} の並びの添字 index の位置（並べた行の番号 n と、問い合わせか鍵・頭・次元。ρ の勾配は頭と表の行）。 */
+  /** {@link #realPositions} の並びの {@code index} 番目が指す位置を文字列にする（並べた行の番号 n と、クエリかキー・ヘッド・次元。ρ の勾配はヘッドと表の行）。 */
   private static String position(Output output, int index, int queries, int keys, int tableRows) {
     return switch (output) {
       case OUT, OUT_FLOAT, GRAD_QUERY -> {
@@ -1051,7 +1063,7 @@ public class HipAttentionGpuTest {
     return true;
   }
 
-  /** 出力ごとの CRC32（別のプロセスの実行の行と比べる）。 */
+  /** 出力ごとの CRC32 をログに出す。別のプロセスで実行したログと比べるために使う。 */
   private static void printChecksums(Case shape, Map<Output, float[]> outputs) {
     StringBuilder line = new StringBuilder("PRISM-HIPATTN-CRC case=").append(shape);
     for (Output output : Output.values()) {
@@ -1068,8 +1080,8 @@ public class HipAttentionGpuTest {
   }
 
   /**
-   * 出力 output の行 rows の実の位置（問い合わせは先頭の queries 個、鍵は先頭の keys 個、ρ の勾配は行 × 頭の部分和の全て）を決まった
-   * 順に並べる。
+   * 出力 {@code output} から、行 {@code rows} の実際の位置の値を決まった順に並べて返す。実際の位置は、クエリなら先頭の {@code queries}
+   * 個、キーなら先頭の {@code keys} 個、ρ の勾配なら行 × ヘッドの部分和の全て。
    */
   private static float[] realPositions(
       Output output, float[] values, RelationAttention.Dimensions d, int[] rows, int queries, int keys) {
@@ -1097,14 +1109,14 @@ public class HipAttentionGpuTest {
     return real;
   }
 
-  /** 添字 0〜n − 1 の行。 */
+  /** 行 0〜n − 1 を順に並べた配列。 */
   private static int[] identity(int n) {
     int[] rows = new int[n];
     Arrays.setAll(rows, i -> i);
     return rows;
   }
 
-  /** 行 × 頭ごとの ρ の勾配 [rows·heads, tableRows] を行で足して [tableRows, heads] にする（FP64 で足す）。 */
+  /** 行 × ヘッドごとの ρ の勾配 [rows·heads, tableRows] を行で足して、[tableRows, heads] にする（FP64 で足す）。 */
   private static float[] rowSum(float[] gradTable, RelationAttention.Dimensions d) {
     double[] sum = new double[d.tableRows() * HEADS];
     for (int r = 0; r < d.rows(); r++) {
@@ -1144,7 +1156,7 @@ public class HipAttentionGpuTest {
     return values;
   }
 
-  /** BF16 で表せる乱数（FP32 の乱数を BF16 に丸めた値）。 */
+  /** BF16 で表せる正規乱数（FP32 の正規乱数を BF16 に丸めた値）。 */
   private static float[] bfloat16Gaussian(Random random, int size, float scale) {
     float[] values = gaussian(random, size, scale);
     for (int i = 0; i < size; i++) {
@@ -1194,7 +1206,7 @@ public class HipAttentionGpuTest {
     return Math.sqrt(error / Math.max(norm, 1e-30));
   }
 
-  /** 要素の最大の差（参照の最大の絶対値に対する比）。 */
+  /** 要素ごとの差の最大を、参照の絶対値の最大で割った比。 */
   private static double worst(double[] expected, float[] actual) {
     double largest = 0;
     double error = 0;

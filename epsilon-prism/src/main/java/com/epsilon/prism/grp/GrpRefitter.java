@@ -1,397 +1,362 @@
 package com.epsilon.prism.grp;
 
-import com.epsilon.ai.decision.EpsilonUtilityProfile;
-import com.epsilon.ai.grp.EpsilonGrpNetwork;
-import com.epsilon.nano.ai.grp.EpsilonGrpCheckpointManager;
-import com.epsilon.prism.rows.CohortWriter;
-import com.epsilon.prism.run.PrismConfig;
-import com.epsilon.prism.run.Snapshot;
-import com.epsilon.util.SeedMixer;
+import com.epsilon.agent.learn.GrpTraining;
+import com.epsilon.grp.FinalRound;
+import com.epsilon.grp.GrpCheckpoint;
+import com.epsilon.grp.GrpField;
+import com.epsilon.grp.GrpModel;
+import com.epsilon.grp.GrpNetwork;
+import com.epsilon.grp.GrpShape;
+import com.epsilon.grp.OutcomeNetwork;
+import com.epsilon.grp.OutcomeShape;
+import com.epsilon.grp.train.CountFile;
+import com.epsilon.grp.train.CountedHands;
+import com.epsilon.grp.train.GameRecordCodec;
+import com.epsilon.grp.train.GateCohort;
+import com.epsilon.grp.train.GrpInit;
+import com.epsilon.grp.train.GrpRows;
+import com.epsilon.grp.train.GrpTrained;
+import com.epsilon.grp.train.GrpTrainer;
+import com.epsilon.grp.train.GrpTrainingRule;
+import com.epsilon.grp.train.OutcomeRows;
+import com.epsilon.grp.train.OutcomeTrained;
+import com.epsilon.grp.train.OutcomeTrainer;
+import com.epsilon.grp.train.RecencyWindow;
+import com.epsilon.grp.train.TrainingEnding;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.util.SeedMixer;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * GRP の学習 1 回（学習の JVM の {@link GrpBackground} のスレッドで呼ぶ）: 取り置き h の窓（{@link RefitWindow}）の対局の記録で GRP を学習し
- * （{@link GrpGameTrainer}。使用中が GRP なら grpInit、点数だけの Φ なら白紙）、取り置きのコホートで関門を通し（{@link GateEvaluator}。列は
- * 使用中の種類の {@link GateMode}）、合格なら候補を公開する: 試行ごとの名前で staging に保存 → fsync → candidates へ rename → 境目の点検の
- * 見本（{@link BoundaryCheck}）→ refits.jsonl に READY。同じ名前の再試行はしない（保存は既存を拒む）。締め切り（{@link
- * GrpTrainingPlan#deadline}）を過ぎたら止めて TIMEOUT を書く。失敗は全て refits.jsonl の行にし、系譜は止めない。止める合図が立てば試行を
- * 捨て（書きかけの候補と見本を消す）、refits.jsonl には何も書かない。
+ * 時点 n の学び直しを 1 回行う。学習の JVM の {@link GrpBackground} のスレッドから呼ぶ。n までの範囲（{@link RecencyWindow}）の半荘の
+ * 記録でネットワークを学び、候補を grp/candidates に書いて、refits.jsonl に TRAINED の行を書く。候補は、コホート n ＋ 1 が確定した後に
+ * {@link GrpLifecycle} が関門に通す。停止のフラグが立てば試行を捨てて何も書かず、再起動の後に同じ乱数の種でやり直す。失敗したら
+ * FAILED の行を書く。
  *
- * <p>使用中の項目は phi.jsonl の次の反復（state.json の次のコホート）に効く項目。窓の半荘の 1/{@value #VALIDATION_MODULUS}（半荘 ID で決まる。
- * {@link Split}）は学習の早めの打ち切りの検証に回し、取り置きのコホートは学習にも検証にも使わない。候補の形は、checkpoint の構造が grp-epsilon-v3 で、境目の
- * 見本の局末で順位分布が有限・席ごとと順位ごとの和が 1（{@value #MARGINAL_SUM_ERROR} 以内）であること。
+ * <p>範囲の半減期 τ は設定の値を使う。ただし Φ の構造を入れ替えた直後の 8 反復は 1 にし、監視が τ を 2 倍にしている間は 2 倍にする。始め方も設定の
+ * 値を使うが、WARM でも、n ＋ 1 に使うと決まった項目が同じ形のネットワークでなければゼロから学ぶ。n ＋ 1 に使う項目が点数だけの Φ なら、
+ * 範囲の半荘の数が設定の {@code trustGames} に届くまで学ばない。
+ *
+ * <p>ネットワークを学んだ後、同じ範囲・同じ半荘の分け方・同じ学び方で、q（局の結果のネットワーク）を学ぶ。q の学習に使うのは、数の
+ * ファイルが覆う局（{@link FinalRound#covers}）だけで、数のファイルの無いコホートは外す。ウォームスタートの決まりもネットワークと同じで、
+ * 使う項目が自己対局の候補で、同じ形の q を持つときだけ、その q から続けて学ぶ。候補は &lt;id&gt;、&lt;id&gt;.q の順に書き、最後に
+ * TRAINED の行を書く。q を学べなくても試行は失敗にせず、q を持たない候補にする。
  */
 public final class GrpRefitter {
   private static final Logger LOG = LoggerFactory.getLogger(GrpRefitter.class);
 
-  /** 半荘 ID をこれで割った余りが最後の値の半荘を検証に回す。 */
-  static final int VALIDATION_MODULUS = 16;
+  /**
+   * 学び直すネットワークの形を返す。入力のフィールドは局・本場・供託・点数・順位・点差で、隠れ層の幅は 128。出力層は段階ごとに分けない。
+   *
+   * @param variant ルール
+   * @return 形
+   */
+  public static GrpShape shape(Variant variant) {
+    return new GrpShape(
+        variant,
+        EnumSet.of(GrpField.ROUND, GrpField.HONBA, GrpField.KYOTAKU, GrpField.SCORE, GrpField.RANK, GrpField.GAP),
+        128,
+        false);
+  }
 
-  /** 順位分布の席ごと・順位ごとの和の 1 からのずれの上限（{@code EpsilonGrpValidationGate} と同じ）。 */
-  static final double MARGINAL_SUM_ERROR = 1e-5;
+  /**
+   * 学び直す q の形を返す。入力のフィールドと隠れ層の幅は、学び直すネットワークと同じ。
+   *
+   * @param variant ルール
+   * @return 形
+   */
+  public static OutcomeShape outcomeShape(Variant variant) {
+    GrpShape network = shape(variant);
+    return new OutcomeShape(variant, network.fields(), network.hidden());
+  }
 
-  private static final Pattern ATTEMPT = Pattern.compile("g(\\d+)-a(\\d+)");
+  /** 構造を入れ替えた直後に τ を 1 にする反復の数。監視で戻した後、戻した項目とも比べる関門を使う反復の数も同じ。 */
+  static final int FAST_ITERATIONS = 8;
+
+  private static final long SEED_SALT = 0x67727066L;
+
+  private static final long OUTCOME_SALT = 0x71726566L;
 
   private GrpRefitter() {}
 
   /**
-   * 学習と早めの打ち切りの検証に分けた半荘。半荘 ID を 1 つ右にずらした値を {@value #VALIDATION_MODULUS} で割った余りが最後の値の半荘を
-   * 検証に回す。
+   * 学び直し 1 回の学び方を作る。重み減衰は掛けない。
    *
-   * @param training 学習の半荘
-   * @param validation 検証の半荘
+   * @param training 自分の GRP を運用する設定にある学び方
    */
-  record Split(List<RecordedGame> training, List<RecordedGame> validation) {
-    static Split of(List<RecordedGame> games) {
-      List<RecordedGame> training = new ArrayList<>(), validation = new ArrayList<>();
-      for (RecordedGame game : games)
-        (Math.floorMod(game.gameId() >> 1, VALIDATION_MODULUS) == VALIDATION_MODULUS - 1 ? validation : training).add(game);
-      return new Split(training, validation);
-    }
+  static GrpTrainingRule rule(GrpTraining training, GrpInit init, long seed) {
+    boolean warm = init == GrpInit.WARM;
+    return new GrpTrainingRule(
+        init,
+        warm ? training.warmRate() : training.scratchRate(),
+        0,
+        warm ? training.warmEpochs() : training.scratchEpochs(),
+        training.batchRows(),
+        training.clipNorm(),
+        training.halvingPatience(),
+        training.stopPatience(),
+        seed);
+  }
+
+  /** 試行の id（g&lt;時点&gt;-a&lt;試行の番号&gt;）。 */
+  static String attemptId(int slot, int attempt) {
+    return String.format("g%03d-a%d", slot, attempt);
   }
 
   /**
-   * 取り置き h で 1 回学習する。
+   * 時点 {@code slot} の候補を学ぶ。その時点に試行が既にあるか、その時点のコホートに半荘の記録が無ければ何もしない。
    *
-   * @param holdout 取り置きのコホート h（封印済みで対局の記録があること）
-   * @param stop 止める合図（学習の毎歩の前と関門の前に見る）
-   * @return 書いた refits.jsonl の行（止める合図で捨てたら空）
-   * @throws IOException refits.jsonl が書けないとき
+   * @param stop 停止のフラグ（学習の各ステップの前に見る）
+   * @return 書いた refits.jsonl の行（学ばなかったか、止めたなら空）
+   * @throws IOException refits.jsonl か phi.jsonl が読めないか書けないとき
    */
-  public static Optional<RefitRecord> refit(
-      GrpFiles files, PrismConfig config, int holdout, RefitCause cause, BooleanSupplier stop) throws IOException {
-    return refit(files, config, holdout, cause, stop, Steps.PRODUCTION);
-  }
-
-  /** 試行の id（g&lt;k&gt;-a&lt;n&gt;）。 */
-  static String attemptId(int holdout, int attempt) {
-    return String.format("g%03d-a%d", holdout, attempt);
-  }
-
-  /** 学習の部品（試験で差し替える）。 */
-  interface Steps {
-    /** 本番の部品。 */
-    Steps PRODUCTION =
-        new Steps() {
-          @Override
-          public CohortGames games(Path file) throws IOException {
-            return GameLog.read(file);
-          }
-
-          @Override
-          public GrpTrainingPlan plan(GrpInit init, long seed) {
-            return GrpTrainingPlan.of(init, seed);
-          }
-
-          @Override
-          public GrpGameTrainer.Trained train(
-              Path start,
-              List<RecordedGame> training,
-              List<RecordedGame> validation,
-              GrpTrainingPlan plan,
-              BooleanSupplier stop,
-              Path out)
-              throws IOException {
-            return GrpGameTrainer.train(start, training, validation, plan, stop, out);
-          }
-
-          @Override
-          public HandEndPhi open(PhiEntry entry, EpsilonUtilityProfile profile) throws IOException {
-            return HandEndPhi.of(entry, profile);
-          }
-
-          @Override
-          public boolean grpEpsilonV3(Path checkpoint) {
-            try {
-              return EpsilonGrpCheckpointManager.loadManifest(checkpoint).architecture.startsWith(ARCHITECTURE);
-            } catch (IOException invalid) {
-              return false;
-            }
-          }
-
-          @Override
-          public String sha256(Path checkpoint) throws IOException {
-            return EpsilonGrpCheckpointManager.checkpointSha256(checkpoint);
-          }
-
-          @Override
-          public GateReport gate(GateInput input, EpsilonUtilityProfile profile) throws IOException {
-            return GateEvaluator.evaluate(input, profile);
-          }
-        };
-
-    /** GRP の構造の名前の頭。 */
-    String ARCHITECTURE = EpsilonGrpNetwork.architectureSummary().split(" ")[0];
-
-    CohortGames games(Path file) throws IOException;
-
-    GrpTrainingPlan plan(GrpInit init, long seed);
-
-    GrpGameTrainer.Trained train(
-        Path start,
-        List<RecordedGame> training,
-        List<RecordedGame> validation,
-        GrpTrainingPlan plan,
-        BooleanSupplier stop,
-        Path out)
-        throws IOException;
-
-    HandEndPhi open(PhiEntry entry, EpsilonUtilityProfile profile) throws IOException;
-
-    boolean grpEpsilonV3(Path checkpoint);
-
-    String sha256(Path checkpoint) throws IOException;
-
-    GateReport gate(GateInput input, EpsilonUtilityProfile profile) throws IOException;
-  }
-
-  static Optional<RefitRecord> refit(
-      GrpFiles files, PrismConfig config, int holdout, RefitCause cause, BooleanSupplier stop, Steps steps)
+  static Optional<RefitRecord> refit(GrpFiles files, PhiSetup setup, int slot, RefitCause cause, BooleanSupplier stop)
       throws IOException {
+    GrpOperations operations = setup.selfGrp().grp();
+    List<RefitRecord> records = RefitRecord.readAll(files);
+    if (RefitRecord.latestAt(records, slot).isPresent() || !files.recorded(slot)) return Optional.empty();
+    List<PhiEntry> history = PhiHistory.read(files);
+    PhiEntry used = PhiHistory.effectiveAt(history, slot + 1).orElse(null);
+    if (used == null) return Optional.empty();
+    RecencyWindow window =
+        new RecencyWindow(
+            slot,
+            halfLife(operations, history, SwitchWatchRecord.state(SwitchWatchRecord.readAll(files)), slot),
+            operations.window());
+    if (window.cohorts() == 0) return Optional.empty();
     long started = System.nanoTime();
-    var profile = EpsilonUtilityProfile.valueOf(config.utility());
-    int attempt = nextAttempt(files, RefitRecord.readAll(files), holdout);
-    String id = attemptId(holdout, attempt);
-    RefitWindow window = RefitWindow.ending(holdout, config.grpWindow()).orElse(null);
-    Path staging = files.staging().resolve(id);
-    Path candidate = files.candidate(id);
-    var draft = new Draft(id, cause, window, config.grpInit(), started);
-    Optional<RefitRecord> outcome;
+    GrpRows.Builder builder = GrpRows.builder(setup.variant(), window, GateCohort.NEXT);
+    long games = 0;
+    for (int cohort = window.first(); cohort <= slot; cohort++) {
+      if (!files.recorded(cohort)) {
+        LOG.warn("GRP refit at {}: cohort {} has no game records and is left out", slot, cohort);
+        continue;
+      }
+      var recorded = GameRecordCodec.read(files.records(cohort)).games();
+      builder.add(cohort, recorded);
+      games += recorded.size();
+    }
+    if (used.kind().scoreBased() && games < operations.trustGames()) {
+      LOG.info("GRP refit at {} waits: {} games in {}, {} needed", slot, games, window, operations.trustGames());
+      return Optional.empty();
+    }
+    GrpNetwork start = operations.init() == GrpInit.WARM ? warmStart(used, setup.variant()) : null;
+    GrpInit init = start == null ? GrpInit.SCRATCH : GrpInit.WARM;
+    int attempt = nextAttempt(files, records, slot);
+    String id = attemptId(slot, attempt);
+    var draft =
+        new RefitRecord(id, slot, RefitStatus.FAILED, cause, window, init, used.id(), "", "", "", null, null, "", 0);
+    RefitRecord record;
     try {
-      outcome = attempt(files, config, holdout, profile, stop, steps, draft, staging, candidate, attempt);
-    } catch (IOException | RuntimeException failure) {
-      LOG.warn("GRP refit {} failed: {}", id, failure.toString(), failure);
-      outcome = Optional.of(draft.record(RefitStatus.FAILED, "", "", null, failure.toString()));
-    }
-    if (outcome.map(record -> record.status() != RefitStatus.READY).orElse(true)) {
-      deleteQuietly(staging);
-      deleteQuietly(candidate);
-      deleteQuietly(files.boundary(id));
-    }
-    if (outcome.isEmpty()) {
-      LOG.info("GRP refit {} stopped after {}s", id, String.format("%.1f", (System.nanoTime() - started) / 1e9));
-      return outcome;
-    }
-    RefitRecord record = outcome.get();
-    record.append(files);
-    LOG.info("GRP refit {} {} in {}s: {}", id, record.status(), String.format("%.1f", record.seconds()), record.detail());
-    return outcome;
-  }
-
-  /** 試行の本体（止める合図で捨てたら空）。 */
-  private static Optional<RefitRecord> attempt(
-      GrpFiles files,
-      PrismConfig config,
-      int holdout,
-      EpsilonUtilityProfile profile,
-      BooleanSupplier stop,
-      Steps steps,
-      Draft draft,
-      Path staging,
-      Path candidate,
-      int attempt)
-      throws IOException {
-    PhiEntry active =
-        PhiHistory.effectiveAt(PhiHistory.read(files), PhiHistory.nextIteration(files))
-            .orElseThrow(() -> new IOException("No Φ entry in " + files.phiHistory()));
-    draft.parent = active.id();
-    draft.init = active.kind().scoreBased() ? GrpInit.SCRATCH : config.grpInit();
-    if (draft.window == null)
-      return Optional.of(draft.record(RefitStatus.FAILED, "", "", null, "no usable cohort before holdout " + holdout));
-    if (!recorded(files, holdout))
-      return Optional.of(
-          draft.record(RefitStatus.FAILED, "", "", null, "holdout " + holdout + " is not sealed with a game log"));
-    List<RecordedGame> held = steps.games(files.games(holdout)).games();
-    List<RecordedGame> window = new ArrayList<>();
-    for (int c = draft.window.first(); c <= draft.window.last(); c++) {
-      if (recorded(files, c)) window.addAll(steps.games(files.games(c)).games());
-      else LOG.warn("GRP refit {}: cohort {} has no sealed game log and is left out", draft.id, c);
-    }
-    if (window.isEmpty() || held.isEmpty())
-      return Optional.of(draft.record(RefitStatus.FAILED, "", "", null, "no recorded games in window " + draft.window));
-    Split split = Split.of(window);
-    long seed = SeedMixer.derive(config.seed(), 0x67727066L, holdout, attempt);
-    GrpTrainingPlan plan = steps.plan(draft.init, seed);
-    Files.createDirectories(files.staging());
-    GrpGameTrainer.Trained trained =
-        steps.train(
-            draft.init == GrpInit.WARM ? Path.of(active.path()) : null,
-            split.training(),
-            split.validation(),
-            plan,
-            stop,
-            staging);
-    switch (trained.ending()) {
-      case STOPPED -> {
+      GrpRows.Split rows = builder.build();
+      long seed = SeedMixer.derive(setup.seed(), SEED_SALT, slot, attempt);
+      GrpTrained trained =
+          GrpTrainer.train(
+              shape(setup.variant()),
+              start,
+              rows.train(),
+              rows.stop(),
+              rule(operations.training(), init, seed),
+              operations.threads(),
+              stop);
+      if (trained.ending() == TrainingEnding.STOPPED) {
+        LOG.info("GRP refit {} stopped after {}s", id, seconds(started));
         return Optional.empty();
       }
-      case TIMED_OUT -> {
-        return Optional.of(
-            draft.record(
-                RefitStatus.TIMEOUT, "", "", null, "deadline " + plan.deadline() + " after " + trained.epochs() + " epochs"));
+      Outcomes outcomes = learnOutcomes(files, setup, used, window, attempt, stop);
+      if (outcomes == null) {
+        LOG.info("GRP refit {} stopped after {}s", id, seconds(started));
+        return Optional.empty();
       }
-      case COMPLETED -> {}
+      Path candidate = files.candidate(id);
+      GrpCheckpoint.write(trained.network(), candidate);
+      outcomes = outcomes.write(files.candidateOutcomes(id));
+      record =
+          new RefitRecord(
+              id,
+              slot,
+              RefitStatus.TRAINED,
+              cause,
+              window,
+              init,
+              used.id(),
+              candidate.toAbsolutePath().normalize().toString(),
+              outcomes.path(),
+              "",
+              null,
+              null,
+              String.format(
+                  "games=%d rows=%d stopRows=%d halfEpochs=%d stopNll=%.6f clipped=%d; %s",
+                  games,
+                  rows.train().size(),
+                  rows.stop().size(),
+                  trained.halfEpochs(),
+                  trained.stopNll(),
+                  trained.clippedSteps(),
+                  outcomes.detail()),
+              seconds(started));
+    } catch (IOException | RuntimeException failure) {
+      LOG.warn("GRP refit {} failed: {}", id, failure.toString(), failure);
+      record = draft.with(RefitStatus.FAILED, null, failure.toString(), seconds(started));
     }
-    var probe =
-        new PhiEntry(
-            draft.id, PhiEntryKind.SELF_CHECKPOINT, trained.directory().toString(), trained.sha256(), "", "", 1, active.id(), "staging");
-    List<HandEndInput> inputs = BoundaryCheck.inputs(held, seed);
-    BoundaryCheck boundary;
-    boolean valid;
-    try (HandEndPhi phi = steps.open(probe, profile)) {
-      PhiValues values = phi.values(inputs);
-      valid = steps.grpEpsilonV3(trained.directory()) && wellFormed(values);
-      boundary = new BoundaryCheck(inputs, values.utilities());
-    }
-    if (stop.getAsBoolean()) return Optional.empty();
-    GateReport gate;
-    try (HandEndPhi used = steps.open(active, profile);
-        HandEndPhi proposed = steps.open(probe, profile)) {
-      gate =
-          steps.gate(
-              new GateInput(
-                  GateMode.of(active.kind()), held, used, proposed, valid, window.size(), config.grpTrustGames()),
-              profile);
-    }
-    if (!gate.passed()) return Optional.of(draft.record(RefitStatus.REJECTED, "", "", gate, "gate " + gate.result()));
-    // 公開: fsync → rename → 見本 → READY（学習の JVM は READY の行の候補しか読まない）
-    syncTree(trained.directory());
-    Files.createDirectories(files.candidates());
-    Files.move(trained.directory(), candidate, StandardCopyOption.ATOMIC_MOVE);
-    syncDirectory(files.candidates());
-    String sha = steps.sha256(candidate);
-    if (!sha.equals(trained.sha256()))
-      throw new IOException("Candidate " + candidate + " has sha " + sha + " after the rename, not " + trained.sha256());
-    boundary.write(files.boundary(draft.id));
-    return Optional.of(
-        draft.record(
-            RefitStatus.READY,
-            candidate.toAbsolutePath().normalize().toString(),
-            sha,
-            gate,
-            String.format(
-                "epochs=%d steps=%d trainLoss=%.6f validationLoss=%.6f games/s=%.1f window=%d",
-                trained.epochs(),
-                trained.steps(),
-                trained.trainLoss(),
-                trained.validationLoss(),
-                trained.gamesPerSecond(),
-                window.size())));
+    record.append(files);
+    LOG.info("GRP refit {} {} in {}s ({}): {}", id, record.status(), String.format("%.1f", record.seconds()), window, record.detail());
+    return Optional.of(record);
   }
 
-  /** コホート c が封印済みで対局の記録があるなら true。 */
-  static boolean recorded(GrpFiles files, int c) {
-    return Files.exists(files.cohort(c).resolve(CohortWriter.MANIFEST)) && Files.exists(files.games(c));
+  /**
+   * 時点 {@code slot} の範囲の半減期を返す。設定の τ を使うが、Φ の構造を入れ替えた直後の {@value #FAST_ITERATIONS} 反復は 1 にし、
+   * 監視で τ を 2 倍にしている間は 2 倍にする。構造を入れ替えた行とは、自己対局の候補の行のうち、親が自己対局の候補でない
+   * （点数だけの Φ か g000 の）もの。戻しの行は含めない。
+   */
+  static double halfLife(GrpOperations operations, List<PhiEntry> history, SwitchWatchRecord.State watch, int slot) {
+    double halfLife = operations.halfLife();
+    for (PhiEntry entry : history)
+      if (entry.candidate()
+          && !entry.rollback()
+          && !PhiEntry.CANDIDATE.matcher(entry.parent()).matches()
+          && entry.effectiveFrom() <= slot
+          && slot < entry.effectiveFrom() + FAST_ITERATIONS) halfLife = 1;
+    return watch.widened() ? 2 * halfLife : halfLife;
   }
 
-  /** 見本の局末の Φ と順位分布が有限で、順位分布の席ごと・順位ごとの和が 1 なら true。 */
-  static boolean wellFormed(PhiValues values) {
-    for (int i = 0; i < values.size(); i++) {
-      double[] probabilities = values.rankProbabilities()[i];
-      double[] utilities = values.utilities()[i];
-      if (probabilities.length != 16 || utilities.length != 4) return false;
-      for (double utility : utilities) if (!Double.isFinite(utility)) return false;
-      for (int a = 0; a < 4; a++) {
-        double seat = 0, rank = 0;
-        for (int b = 0; b < 4; b++) {
-          double p = probabilities[4 * a + b], q = probabilities[4 * b + a];
-          if (!Double.isFinite(p) || p < 0 || p > 1) return false;
-          seat += p;
-          rank += q;
+  /** ウォームスタートの重み。使う項目が自己対局の候補で、同じ形のネットワークならその重みを返す。それ以外は null（ゼロから学ぶ）。 */
+  private static GrpNetwork warmStart(PhiEntry used, Variant variant) throws IOException {
+    if (!used.candidate()) return null;
+    GrpModel model = GrpCheckpoint.read(Path.of(used.path()));
+    return model instanceof GrpNetwork network && network.shape().equals(shape(variant)) ? network : null;
+  }
+
+  /**
+   * 範囲の数のファイルが覆う局で q を学ぶ。学び直す時点は、範囲の最新のコホート。q の失敗で試行を失敗にはしないので、数のファイルや
+   * 使う項目の q が読めないときも、学習が失敗したときも例外は投げず、q を持たない結果を返す。
+   *
+   * @param attempt 試行の番号（乱数の種に混ぜる）
+   * @return 学んだ q（まだ書いていない）。停止のフラグで止めたら null
+   */
+  private static Outcomes learnOutcomes(
+      GrpFiles files, PhiSetup setup, PhiEntry used, RecencyWindow window, int attempt, BooleanSupplier stop) {
+    long started = System.nanoTime();
+    GrpOperations operations = setup.selfGrp().grp();
+    int slot = window.newest();
+    try {
+      OutcomeRows.Builder builder = OutcomeRows.builder(setup.variant(), window, GateCohort.NEXT, FinalRound::covers);
+      long games = 0;
+      for (int cohort = window.first(); cohort <= slot; cohort++) {
+        if (!files.counted(cohort)) {
+          LOG.warn("GRP refit at {}: cohort {} has no count file and is left out of the outcome rows", slot, cohort);
+          continue;
         }
-        if (Math.abs(seat - 1) > MARGINAL_SUM_ERROR || Math.abs(rank - 1) > MARGINAL_SUM_ERROR) return false;
+        CountedHands counted = CountFile.read(files.counts(cohort));
+        builder.add(cohort, counted);
+        games += counted.games();
       }
+      OutcomeRows.Split rows = builder.build();
+      if (rows.train().size() == 0 || rows.stop().size() == 0)
+        return Outcomes.none("no TRAIN or STOP rows in " + games + " counted games of " + window);
+      OutcomeNetwork start = operations.init() == GrpInit.WARM ? warmOutcomes(used, setup.variant()) : null;
+      GrpInit init = start == null ? GrpInit.SCRATCH : GrpInit.WARM;
+      long seed = SeedMixer.derive(setup.seed(), OUTCOME_SALT, slot, attempt);
+      OutcomeTrained trained =
+          OutcomeTrainer.train(
+              outcomeShape(setup.variant()),
+              start,
+              rows.train(),
+              rows.stop(),
+              rule(operations.training(), init, seed),
+              operations.threads(),
+              stop);
+      if (trained.ending() == TrainingEnding.STOPPED) return null;
+      return new Outcomes(
+          trained.network(),
+          "",
+          String.format(
+              "q init=%s games=%d rows=%d stopRows=%d excluded=%d unexplained=%d halfEpochs=%d stopNll=%.6f clipped=%d"
+                  + " seconds=%.1f",
+              init,
+              games,
+              rows.train().size(),
+              rows.stop().size(),
+              rows.train().excluded() + rows.stop().excluded(),
+              rows.train().unexplained() + rows.stop().unexplained(),
+              trained.halfEpochs(),
+              trained.stopNll(),
+              trained.clippedSteps(),
+              seconds(started)));
+    } catch (IOException | RuntimeException failure) {
+      LOG.warn("GRP refit at {} learned no outcome network: {}", slot, failure.toString(), failure);
+      return Outcomes.none(failure.toString());
     }
-    return true;
   }
 
-  /** 取り置き h の次の試行の番号（refits.jsonl と候補・書きかけ・見本の名前で使った番号の次）。 */
-  private static int nextAttempt(GrpFiles files, List<RefitRecord> records, int holdout) throws IOException {
+  /** q のウォームスタートの重み。使う項目が自己対局の候補で、同じ形の q を持てばその重みを返す。それ以外は null（ゼロから学ぶ）。 */
+  private static OutcomeNetwork warmOutcomes(PhiEntry used, Variant variant) throws IOException {
+    if (!used.candidate() || !used.hasOutcomes()) return null;
+    OutcomeNetwork network = HandEndPhi.outcomes(used);
+    return network.shape().equals(outcomeShape(variant)) ? network : null;
+  }
+
+  /**
+   * 学び直した q。
+   *
+   * @param network 学んだ q（学べなかったら null）
+   * @param path 書いた q のチェックポイントのディレクトリの絶対パス（書く前と、q を持たないときは空）
+   * @param detail q の学習の要約（半荘や行の数など）か、q を持たない理由
+   */
+  private record Outcomes(OutcomeNetwork network, String path, String detail) {
+
+    static Outcomes none(String why) {
+      return new Outcomes(null, "", "q none: " + why);
+    }
+
+    /** q を書き、書いた先を持つ結果を返す。書けなければ q を持たない結果にする（試行は失敗にしない）。 */
+    Outcomes write(Path directory) {
+      if (network == null) return this;
+      try {
+        GrpCheckpoint.write(network, directory);
+        return new Outcomes(network, directory.toAbsolutePath().normalize().toString(), detail);
+      } catch (IOException | RuntimeException failure) {
+        LOG.warn("GRP refit could not write the outcome network {}: {}", directory, failure.toString(), failure);
+        return none("not written: " + failure);
+      }
+    }
+  }
+
+  /** 時点 {@code slot} の次の試行の番号。refits.jsonl と候補のディレクトリの名前で使った最大の番号に 1 を足す。 */
+  private static int nextAttempt(GrpFiles files, List<RefitRecord> records, int slot) throws IOException {
     int last = 0;
-    for (RefitRecord record : records) last = Math.max(last, attemptOf(record.id(), holdout));
-    for (Path directory : List.of(files.candidates(), files.staging(), files.boundary("x").getParent())) {
-      if (!Files.isDirectory(directory)) continue;
-      try (Stream<Path> names = Files.list(directory)) {
+    for (RefitRecord record : records) last = Math.max(last, attemptOf(record.id(), slot));
+    Path candidates = files.candidate("x").getParent();
+    if (Files.isDirectory(candidates)) {
+      try (Stream<Path> names = Files.list(candidates)) {
         for (Path name : names.toList()) {
           String text = name.getFileName().toString();
+          // 書きかけの一時ディレクトリ（.名前.writing）の番号も、使った番号に数える
+          if (text.startsWith(".")) text = text.substring(1);
           int dot = text.indexOf('.');
-          last = Math.max(last, attemptOf(dot < 0 ? text : text.substring(0, dot), holdout));
+          last = Math.max(last, attemptOf(dot < 0 ? text : text.substring(0, dot), slot));
         }
       }
     }
     return last + 1;
   }
 
-  private static int attemptOf(String id, int holdout) {
-    Matcher matcher = ATTEMPT.matcher(id);
-    return matcher.matches() && Integer.parseInt(matcher.group(1)) == holdout ? Integer.parseInt(matcher.group(2)) : 0;
+  private static int attemptOf(String id, int slot) {
+    Matcher matcher = PhiEntry.CANDIDATE.matcher(id);
+    return matcher.matches() && Integer.parseInt(matcher.group(1)) == slot ? Integer.parseInt(matcher.group(2)) : 0;
   }
 
-  /** ディレクトリの中のファイルとディレクトリ自身を fsync する。 */
-  private static void syncTree(Path directory) throws IOException {
-    try (Stream<Path> paths = Files.walk(directory)) {
-      for (Path path : paths.toList()) {
-        if (Files.isRegularFile(path)) {
-          try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) {
-            channel.force(true);
-          }
-        }
-      }
-    }
-    syncDirectory(directory);
-  }
-
-  /** ディレクトリの項目を fsync する（開けない系では何もしない）。 */
-  private static void syncDirectory(Path directory) {
-    try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
-      channel.force(true);
-    } catch (IOException unsupported) {
-      // ディレクトリを開けない系（Windows）では rename の永続化を系に任せる
-    }
-  }
-
-  private static void deleteQuietly(Path path) {
-    try {
-      if (Files.exists(path)) Snapshot.deleteTree(path);
-    } catch (IOException failure) {
-      LOG.warn("could not delete {}: {}", path, failure.toString());
-    }
-  }
-
-  /** 試行の共通の欄（使用中の項目が分かれば parent と init を埋める）。 */
-  private static final class Draft {
-    final String id;
-    final RefitCause cause;
-    final RefitWindow window;
-    final long started;
-    GrpInit init;
-    String parent = "";
-
-    Draft(String id, RefitCause cause, RefitWindow window, GrpInit init, long started) {
-      this.id = id;
-      this.cause = cause;
-      this.window = window;
-      this.init = init;
-      this.started = started;
-    }
-
-    RefitRecord record(RefitStatus status, String path, String sha256, GateReport gate, String detail) {
-      return new RefitRecord(
-          id, status, cause, window, init, parent, path, sha256, gate, detail, (System.nanoTime() - started) / 1e9);
-    }
+  private static double seconds(long started) {
+    return (System.nanoTime() - started) / 1e9;
   }
 }

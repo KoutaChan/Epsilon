@@ -1,0 +1,10 @@
+# 本番のサーバ（GPU 2 枚）で回すときの設定。
+[inference]
+devices = ["gpu0", "gpu1"]
+precision = "BFLOAT16"
+kernels = "NATIVE"
+maxBatch = 2048
+
+[learner]
+devices = ["gpu1", "gpu0"]
+precision = "BFLOAT16"

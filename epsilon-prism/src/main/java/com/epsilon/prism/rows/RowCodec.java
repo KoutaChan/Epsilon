@@ -1,9 +1,10 @@
 package com.epsilon.prism.rows;
 
+import com.epsilon.agent.observe.Observation;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.auxiliary.OracleCodec;
 import com.epsilon.prism.auxiliary.OutcomeCodec;
 import com.epsilon.prism.core.DecisionClass;
-import com.epsilon.prism.observe.Observation;
 import com.github.luben.zstd.Zstd;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -12,121 +13,123 @@ import java.util.Arrays;
 import java.util.zip.CRC32C;
 
 /**
- * 行（{@link Row}）の直列化。1 行を 1 フレームにし、行ごとに zstd（level 1）で圧縮して CRC32C を掛ける。行ごとなので、学習側は
- * 索引から任意の行を独立に展開できる。
+ * 行（{@link Row}）の直列化。1 行を 1 フレームにし、行ごとに zstd（level 1）で圧縮して CRC32C を付ける。行ごとに圧縮するので、学習側は
+ * インデックスから好きな行を、ほかの行と関係なく展開できる。
  *
  * <pre>
- * frame = [i32 本体の圧縮後の長さ][i32 展開後の長さ][i32 CRC32C(索引 ‖ 展開後の本体)][索引][zstd 本体]
- * 索引   = [u8 purpose][u8 group][u8 source][u8 class][u8 measured]
- *          （{@link Index}。行を選ぶ値で、本体には重ねない）
- * 本体   = [u16 O の long の数][i64 × O]
- *          [i64 gameId][i64 decisionId][u8 played]
- *          [f32 values × A][f32 prior × A][i32 support]
- *          [i8 deviation][f32 deviationProbability][f32 propensity][i64 rootDecisionId]
- *          測った手（位置の昇順）ごとに [f16 帳簿 × F][i64 局末の記録 × {@link OutcomeCodec#WORDS}]
- *          [u8 神託の long の数][i64 × 神託]
+ * frame = [i32 本体の圧縮後の長さ][i32 展開後の長さ][i32 CRC32C(インデックス ‖ 展開後の本体)][インデックス][zstd 本体]
+ * インデックス = [u8 purpose][u8 source][u8 class][u8 measured]
+ *                （{@link Index}。行を選ぶための値で、本体には重ねて書かない）
+ * 本体         = [u16 O の long の数][i64 × O]
+ *                [i64 gameId][i64 decisionId][u8 played]
+ *                [f32 values × A][f32 prior × A][i32 support]
+ *                [i8 deviation][f32 deviationProbability][f32 propensity][i64 rootDecisionId]
+ *                測った手（位置の昇順）ごとに [f16 帳簿 × F][i64 局末の記録 × {@link OutcomeCodec#WORDS}]
+ *                [u8 Oracle の long の数][i64 × Oracle]
  * </pre>
  *
- * <p>A（合法手の数）は O が持ち、F（帳簿の欄の数）はコホートの目録が持つので、本体には書かない。列挙は番号で、数は little endian で書く。
- * 帳簿は fp16 で厳密に表せる値だけを書き（収集が確率的丸めで作る値）、表せない値は例外にする。読むときは CRC を照らしてから、O の長さ、
- * 測った手の数（索引）、神託の長さを照らす。
+ * <p>A（合法手の数）は O が持ち、F（帳簿の列の数）はコホートのマニフェストが持つので、本体には書かない。列挙型は番号で書き、数値は little
+ * endian で書く。帳簿には fp16 で厳密に表せる値だけを書く（収集が確率的な丸めで作る値）。表せない値は例外にする。読むときは、まず CRC を
+ * 照合し、次に O の長さ、測った手の数（インデックスの値）、Oracle の長さを照合する。
  *
- * <p>O を読んで合法手の数を出すので、書くスレッド・読むスレッドごとに 1 つ持つ。
+ * <p>O を読んで合法手の数を求めるので、スレッドの間で共有しない。書くスレッドと読むスレッドがそれぞれ 1 つずつ持つ。
  */
 public final class RowCodec {
 
-  private static final int INDEX_BYTES = 5;
+  private static final int INDEX_BYTES = 4;
 
-  /** フレームの頭の索引の位置（長さ 2 つと CRC の後）。 */
+  /** フレームのヘッダーの中で、インデックスが始まる位置（長さ 2 つと CRC の後）。 */
   private static final int INDEX_OFFSET = 3 * Integer.BYTES;
 
-  /** フレームの頭の CRC の位置。 */
+  /** フレームのヘッダーの中で、CRC が始まる位置。 */
   private static final int CRC_OFFSET = 2 * Integer.BYTES;
 
-  /** フレームの頭のバイト数。 */
+  /** フレームのヘッダーのバイト数。 */
   public static final int FRAME_HEADER = INDEX_OFFSET + INDEX_BYTES;
 
   private static final int MAX_LEDGER_FEATURES = 64;
 
-  /** 展開後の本体の長さの上限（壊れた頭で大きな配列を作らない）。 */
+  /** 展開後の本体の長さの上限。壊れたヘッダーを読んで大きな配列を作らないようにする。 */
   private static final int MAX_RAW = 1 << 20;
 
   private static final int LEVEL = 1;
 
   private static final Row.Purpose[] PURPOSES = Row.Purpose.values();
-  private static final Row.Group[] GROUPS = Row.Group.values();
   private static final Row.Source[] SOURCES = Row.Source.values();
 
   private final int ledgerFeatures;
-  private final Observation observation = new Observation();
+  private final Observation observation;
+  private final OracleCodec oracles;
 
   /**
-   * 本体を展開せずに読める行の索引（行を選ぶのに要る値。フレームの頭の索引と、シャードの索引のファイル {@link CohortWriter#index} の
-   * 1 件が持つ）。
+   * 行のインデックス。行を選ぶのに要る値で、本体を展開せずに読める。フレームのヘッダーと、シャードのインデックスのファイル
+   * （{@link CohortWriter#index}）の 1 件は、同じ値を持つ。
    *
    * @param frameLength フレーム全体の長さ
    * @param purpose 半荘の用途
-   * @param group 半荘の組
    * @param source 行の種類
-   * @param decisionClass 判断の類
-   * @param measured 測った手（values が NaN でない手）の数
+   * @param decisionClass 判断のクラス
+   * @param measured 測った手（値が NaN でない手）の数
    */
   public record Index(
       int frameLength,
       Row.Purpose purpose,
-      Row.Group group,
       Row.Source source,
       DecisionClass decisionClass,
       int measured) {}
 
   /**
-   * 直列化を作る。
+   * 行の直列化を作る。
    *
-   * @param ledgerFeatures 帳簿の欄の数（コホートの目録の値）
+   * @param ledgerFeatures 帳簿の列の数（コホートのマニフェストの値）
+   * @param variant 行の O のルール（コホートのマニフェストにあるフィンガープリントから決まる）
    */
-  public RowCodec(int ledgerFeatures) {
+  public RowCodec(int ledgerFeatures, Variant variant) {
     if (ledgerFeatures < 0 || ledgerFeatures > MAX_LEDGER_FEATURES) {
       throw new IllegalArgumentException("ledger features out of range: " + ledgerFeatures);
     }
     this.ledgerFeatures = ledgerFeatures;
+    observation = new Observation(variant);
+    oracles = OracleCodec.of(variant);
   }
 
   public int ledgerFeatures() {
     return ledgerFeatures;
   }
 
+  /** 行の O のルール。 */
+  public Variant variant() {
+    return observation.variant();
+  }
+
   /**
-   * 行の索引を作る。
+   * 行のインデックスを作る。
    *
    * @param row 行
    * @param frameLength フレーム全体の長さ
-   * @return 索引
+   * @return インデックス
    */
   public static Index index(Row row, int frameLength) {
     return new Index(
         frameLength,
         row.purpose(),
-        row.group(),
         row.source(),
         row.decisionClass(),
         row.measuredCount());
   }
 
   /**
-   * 索引の 5 バイト（purpose・group・source・class・measured）から索引を作る。
+   * インデックスの 4 バイト（purpose・source・class・measured）からインデックスを作る。
    *
    * @param frameLength フレーム全体の長さ
-   * @return 索引
-   * @throws IOException フレームの長さが頭より短いか、列挙の番号が範囲の外のとき
+   * @return インデックス
+   * @throws IOException フレームの長さがヘッダーより短いか、列挙の番号が範囲の外のとき
    */
-  public static Index index(
-      int frameLength, byte purpose, byte group, byte source, byte decisionClass, byte measured)
+  public static Index index(int frameLength, byte purpose, byte source, byte decisionClass, byte measured)
       throws IOException {
     if (frameLength < FRAME_HEADER
         || purpose < 0
         || purpose >= PURPOSES.length
-        || group < 0
-        || group >= GROUPS.length
         || source < 0
         || source >= SOURCES.length
         || decisionClass < 0
@@ -136,7 +139,6 @@ public final class RowCodec {
     return new Index(
         frameLength,
         PURPOSES[purpose],
-        GROUPS[group],
         SOURCES[source],
         DecisionClass.of(decisionClass),
         Byte.toUnsignedInt(measured));
@@ -147,7 +149,7 @@ public final class RowCodec {
    *
    * @param row 行
    * @return フレーム
-   * @throws IllegalArgumentException 帳簿の欄の数・O・神託の長さが合わないか、帳簿の値が fp16 で表せないとき
+   * @throws IllegalArgumentException 帳簿の列の数・O・Oracle の長さが合わないか、帳簿の値が fp16 で表せないとき
    */
   public byte[] encode(Row row) {
     if (row.ledgerFeatures() != ledgerFeatures) {
@@ -167,7 +169,7 @@ public final class RowCodec {
               + " actions");
     }
     long[] oracle = row.oracle();
-    if (oracle.length != 0 && OracleCodec.longs(oracle, 0) != oracle.length) {
+    if (oracle.length != 0 && oracles.longs(oracle, 0) != oracle.length) {
       throw new IllegalArgumentException("oracle of " + oracle.length + " longs is malformed");
     }
     int actions = row.actions();
@@ -211,11 +213,11 @@ public final class RowCodec {
   }
 
   /**
-   * フレームを展開して行に戻す。{@code source} の位置はフレームの先頭で、読んだ分だけ進む。
+   * フレームを展開して行に戻す。バイト列の今の位置がフレームの先頭で、読んだ分だけ位置を進める。
    *
    * @param source フレームを含むバイト列
    * @return 行
-   * @throws IOException フレームが壊れているか、CRC・O・測った手の数・神託の長さが合わないとき
+   * @throws IOException フレームが壊れているか、CRC・O・測った手の数・Oracle の長さが合わないとき
    */
   public Row decode(ByteBuffer source) throws IOException {
     if (source.remaining() < FRAME_HEADER) {
@@ -251,8 +253,7 @@ public final class RowCodec {
     if ((int) crc.getValue() != expected) {
       throw new IOException("Row frame CRC mismatch");
     }
-    Index entry =
-        index(FRAME_HEADER + compressedLength, index[0], index[1], index[2], index[3], index[4]);
+    Index entry = index(FRAME_HEADER + compressedLength, index[0], index[1], index[2], index[3]);
     try {
       return body(ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN), entry);
     } catch (RuntimeException corrupt) {
@@ -298,7 +299,7 @@ public final class RowCodec {
           "Row measures " + measured + " actions but its index says " + index.measured());
     }
     long[] oracle = getLongs(in, Byte.toUnsignedInt(in.get()));
-    if (oracle.length != 0 && OracleCodec.longs(oracle, 0) != oracle.length) {
+    if (oracle.length != 0 && oracles.longs(oracle, 0) != oracle.length) {
       throw new IOException("Oracle length mismatch");
     }
     if (in.hasRemaining()) {
@@ -309,7 +310,6 @@ public final class RowCodec {
         decisionId,
         index.decisionClass(),
         index.purpose(),
-        index.group(),
         index.source(),
         played,
         values,
@@ -325,14 +325,13 @@ public final class RowCodec {
         o);
   }
 
-  /** 圧縮して頭を付け、CRC を索引と展開後の本体に掛ける。 */
+  /** 本体を圧縮してヘッダーを付ける。CRC はインデックスと展開後の本体から求める。 */
   private static byte[] frame(byte[] body, Row row, int measured) {
     byte[] compressed = Zstd.compress(body, LEVEL);
     ByteBuffer frame =
         ByteBuffer.allocate(FRAME_HEADER + compressed.length).order(ByteOrder.LITTLE_ENDIAN);
     frame.putInt(compressed.length).putInt(body.length).putInt(0);
     frame.put((byte) row.purpose().ordinal());
-    frame.put((byte) row.group().ordinal());
     frame.put((byte) row.source().ordinal());
     frame.put((byte) row.decisionClass().ordinal());
     frame.put((byte) measured);
@@ -364,7 +363,7 @@ public final class RowCodec {
         + Long.BYTES * oracleLongs;
   }
 
-  /** fp16 で厳密に表せる帳簿の値を fp16 にする。 */
+  /** 帳簿の値を fp16 にする。fp16 で厳密に表せない値は例外にする。 */
   private static short half(float value) {
     short half = Float.floatToFloat16(value);
     if (Float.floatToRawIntBits(Float.float16ToFloat(half)) != Float.floatToRawIntBits(value)) {

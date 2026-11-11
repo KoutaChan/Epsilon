@@ -3,11 +3,11 @@ package com.epsilon.prism.learn;
 import ai.djl.Device;
 import ai.djl.Model;
 import ai.djl.nn.Parameter;
-import com.epsilon.network.NetworkDevices;
-import com.epsilon.network.NetworkRuntime;
+import com.epsilon.agent.runtime.NetworkDevices;
+import com.epsilon.agent.runtime.NetworkRuntime;
+import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
-import com.epsilon.runtime.DecisionExecutionContext;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -19,25 +19,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 網の当てはめ（refit の single・replay と、系譜の single・filter の生徒）。行を {@link #shuffle}（種は計画の種）で
- * 並べ替え、バッチの行ずつ順に取って（足りなければ巡回）計画の歩数だけ当てる。行の読み出し・微小バッチへの詰め・符号化・教師（{@link Teacher}）は
- * 先読みのスレッドで {@link #PREFETCH} 歩先まで作り（{@link StepFeed}）、学習のスレッドはデバイスの計算だけを回す（{@link Learner}）。
- * デバイスが 2 つ以上なら、詰めた塊の数がデバイスの数の倍数でなかった歩の数を記録する（その歩の最後の塊はデバイスの数の部分に分ける）。
- * 系の性質 {@value FitProfile#PROPERTY} があれば、段の時計の計測の表を当てはめの終わりに記録に出す（{@link FitProfile}）。
+ * ネットワークを学習する（refit の single・replay と、系譜の single・filter の生徒）。行を {@link #shuffle} で並べ替え（乱数の種は
+ * 計画の種）、先頭から 1 バッチ分ずつ取って、計画のステップ数だけ学習する。最後まで取ったら先頭に戻る。行の読み出し、マイクロバッチへの
+ * 詰め込み、エンコード、教師（{@link Teacher}）は、先読みのスレッドが {@link #PREFETCH} ステップ先まで作る（{@link StepFeed}）。
+ * 学習のスレッドは、デバイスの計算だけを回す（{@link Learner}）。デバイスが 2 つ以上なら、詰めたマイクロバッチの数がデバイスの数の
+ * 倍数にならなかったステップの数をログに出す（そのステップの最後のマイクロバッチは、全てのレーンに分けて載せる）。
+ * システムプロパティ {@value FitProfile#PROPERTY} があれば、段ごとの時間の表を学習の終わりにログに出す（{@link FitProfile}）。
  *
- * <p>系譜は教師が決まる前（運の精算の当てはめの間）に {@link #prepare} で生徒を読み、学習器を温めておく（{@link Learner#rehearse}）。温めは
- * 重みにも最適化の状態にも歩の数にも触れないので、温めてから当てた重みは {@link #run} で当てた重みとビットで同じ。学習器のストリームは
- * {@link #prepare} では呼び手の実行の文脈から借り（系譜は反復をまたいで同じ文脈を渡す）、{@link #run} はその場で作って閉じる。
+ * <p>系譜では、教師が決まる前（運の精算の当てはめの間）に {@link #prepare} で生徒を読み、学習器をウォームアップしておく
+ * （{@link Learner#rehearse}）。ウォームアップは重みにも最適化の状態にもステップ数にも触れないので、ウォームアップを挟んで学習した重みは、
+ * {@link #run} だけで学習した重みとビット単位で一致する。学習器のストリームは、{@link #prepare} では呼び出し元の実行のリソースから借りる
+ * （系譜は JVM が動いている間、同じリソースを渡す）。{@link #run} では、その場で作って閉じる。
  */
 public final class Fit {
 
-  /** 先に作っておく歩の数。 */
+  /** 先に作っておくステップの数。 */
   static final int PREFETCH = 2;
 
-  /** 進みを記録する歩の間隔（GPU で損失を回収する歩に重なる）。 */
+  /** 進み具合をログに出すステップの間隔（GPU で損失を回収するステップと重なる）。 */
   private static final int PROGRESS_EVERY = 1000;
 
-  /** 並べ替えの塊の長さ。塊の中は元の順（貯蔵の索引の順 = shard の位置の順）のまま。 */
+  /** 並べ替えの単位の行の数。単位の中は元の順（行のストアの番号の順 = シャードの中の位置の順）のまま。 */
   static final int BLOCK = 64;
 
   private static final Logger LOG = LoggerFactory.getLogger(Fit.class);
@@ -45,19 +47,20 @@ public final class Fit {
   private Fit() {}
 
   /**
-   * 白紙の網のモデルを作る。初期値は種で決まる（エンジンの乱数の種を決めてから作る）。
+   * 初期化したままのネットワークのモデルを作る。初期値は乱数の種で決まる（エンジンの乱数の種を決めてから作る）。
    *
-   * @param shape 網の形
+   * @param format 読む入力の形式
+   * @param shape ネットワークの形
    * @param device デバイス（学習のデバイスの先頭）
-   * @param seed 初期値の種
-   * @return モデル（ブロックは {@link PrismNetwork}。閉じるのは呼び手）
+   * @param seed 初期値の乱数の種
+   * @return モデル（ブロックは {@link PrismNetwork}。閉じるのは呼び出し元）
    */
-  public static Model blank(PrismShape shape, Device device, long seed) {
-    // エンジンを初めて取る前に、全モデル共通の実行既定値（PyTorch の CPU スレッド数）を決める
+  public static Model blank(InputFormat format, PrismShape shape, Device device, long seed) {
+    // エンジンを初めて取る前に、全てのモデルに共通の実行時の既定値（PyTorch の CPU スレッド数）を決める
     NetworkRuntime.initialize();
     Model model = Model.newInstance("epsilon-prism-v2", device, "PyTorch");
     try {
-      PrismNetwork network = new PrismNetwork(shape);
+      PrismNetwork network = new PrismNetwork(format, shape);
       model.setBlock(network);
       synchronized (Fit.class) {
         model.getNDManager().getEngine().setRandomSeed(Long.hashCode(seed));
@@ -71,12 +74,13 @@ public final class Fit {
   }
 
   /**
-   * 保存した網を学習用のモデルに読む（系譜の生徒の温め込み）。読み込んだ重みは勾配を要求しないので、要求させる。
+   * 保存したネットワークを学習用のモデルに読む（系譜の生徒のウォームスタート）。読み込んだ重みは勾配を要求しないので、要求するように
+   * 変える。
    *
-   * @param directory 網のディレクトリ（{@link PrismNetwork#save} の形）
+   * @param directory ネットワークのディレクトリ（{@link PrismNetwork#save} の形）
    * @param device デバイス（学習のデバイスの先頭）
-   * @return モデル（ブロックは {@link PrismNetwork}。閉じるのは呼び手）
-   * @throws IOException 読めないか、形式・指紋・重みが合わないとき
+   * @return モデル（ブロックは {@link PrismNetwork}。閉じるのは呼び出し元）
+   * @throws IOException 読めないか、形式・フィンガープリント・重みが合わないとき
    */
   public static Model load(Path directory, Device device) throws IOException {
     NetworkRuntime.initialize();
@@ -96,16 +100,16 @@ public final class Fit {
   }
 
   /**
-   * 網を当てる。重みはモデルの網に残る（保存は呼び手）。
+   * ネットワークを学習する。重みはモデルのネットワークに残る（保存するのは呼び出し元）。
    *
-   * @param store 行の貯蔵
-   * @param rows 学ぶ行（{@link CohortStore#select} で選んだもの）
-   * @param model 網のモデル（ブロックは {@link PrismNetwork}、デバイスは devices の先頭）
-   * @param plan 当てはめの計画
+   * @param store 行のストア
+   * @param rows 学習する行（{@link CohortStore#select} で選んだもの）
+   * @param model ネットワークのモデル（ブロックは {@link PrismNetwork}、デバイスは {@code devices} の先頭）
+   * @param plan 学習の計画
    * @param teacher 教師の作り方（replay は {@link Teacher#RAW}）
-   * @param devices 学習のデバイス（先頭が正本で、残りはデータ並列の複製）
-   * @param threads 行の読み出しと符号化のスレッドの数
-   * @return 記録（stageSeconds は {歩を作る, 入力と損失の教師の転送, 順伝播と逆伝播, 最適化}）
+   * @param devices 学習のデバイス（先頭がマスターで、残りはデータ並列のレプリカ）
+   * @param threads 行の読み出しとエンコードのスレッドの数
+   * @return 記録（{@code stageSeconds} は {ステップを作る, 入力と損失の教師の転送, 順伝播と逆伝播, 最適化}）
    */
   public static FitResult run(
       CohortStore store,
@@ -119,17 +123,17 @@ public final class Fit {
   }
 
   /**
-   * 計測を渡して網を当てる（{@link #run(CohortStore, int[], Model, FitPlan, Teacher, NetworkDevices, int)} の本体。計る歩があれば表を
-   * 終わりに記録に出す）。
+   * 計測を渡してネットワークを学習する。{@link #run(CohortStore, int[], Model, FitPlan, Teacher, NetworkDevices, int)} の本体で、
+   * 計測するステップがあれば、学習の終わりに表をログに出す。
    *
-   * @param store 行の貯蔵
-   * @param rows 学ぶ行
-   * @param model 網のモデル
-   * @param plan 当てはめの計画
+   * @param store 行のストア
+   * @param rows 学習する行
+   * @param model ネットワークのモデル
+   * @param plan 学習の計画
    * @param teacher 教師の作り方
    * @param devices 学習のデバイス
-   * @param threads 行の読み出しと符号化のスレッドの数
-   * @param profile 当てはめの計測
+   * @param threads 行の読み出しとエンコードのスレッドの数
+   * @param profile 学習の計測
    * @return 記録
    */
   static FitResult run(
@@ -145,27 +149,28 @@ public final class Fit {
     if (rows.length == 0 || plan.learner().steps() <= 0) {
       return FitResult.empty(rows.length);
     }
-    try (var execution = new DecisionExecutionContext()) {
-      return new Session(store, rows, model, plan, teacher.gain(), devices, threads, profile, execution)
+    try (NetworkRuntime runtime = NetworkRuntime.forLearning()) {
+      return new Session(store, rows, model, plan, teacher.gain(), devices, threads, profile, runtime)
           .run(teacher, started);
     }
   }
 
   /**
-   * 生徒を読み、学習器を温める（{@link Learner#rehearse}: レーンと複製を作り、核を読み込み、最初の歩の行の微小バッチを 1 つずつ通して勾配を
-   * 捨てる）。温めの微小バッチの教師は生の Y（補正と錨は当てはめの教師で決まるが、捨てる勾配の値は何でもよい）。
+   * 生徒を読み、学習器をウォームアップする（{@link Learner#rehearse}）。レーンとレプリカを作ってカーネルを読み込み、最初のステップの行の
+   * マイクロバッチを 1 つずつ通して、勾配を捨てる。ウォームアップのマイクロバッチの教師は生の Y にする。補正とアンカーは学習の教師で
+   * 決まるが、捨てる勾配の値は何でもよいからである。
    *
-   * @param store 行の貯蔵
-   * @param rows 学ぶ行
-   * @param start 生徒の始めの網のディレクトリ
-   * @param plan 当てはめの計画（歩数は 1 以上）
-   * @param gain 補助の頭の項に掛けるゲイン K′（当てはめの教師と同じ）
+   * @param store 行のストア
+   * @param rows 学習する行
+   * @param start 生徒の始めのネットワークのディレクトリ
+   * @param plan 学習の計画（ステップ数は 1 以上）
+   * @param gain 補助のヘッドの項に掛けるゲイン K′（学習の教師と同じ値）
    * @param devices 学習のデバイス
-   * @param threads 行の読み出しと符号化のスレッドの数
-   * @param execution 学習器のストリームを借りる実行の文脈（閉じるのは呼び手。温めた当てはめを閉じるまで開いておく）
-   * @return 温めた当てはめ（閉じるのは呼び手）
-   * @throws IOException 生徒の網を読めないとき
-   * @throws IllegalArgumentException 行がないか歩数が 0 のとき
+   * @param threads 行の読み出しとエンコードのスレッドの数
+   * @param runtime 学習器のストリームを借りる実行のリソース（閉じるのは呼び出し元。返した準備を閉じるまで開いておく）
+   * @return ウォームアップを済ませた学習の準備（閉じるのは呼び出し元）
+   * @throws IOException 生徒のネットワークを読めないとき
+   * @throws IllegalArgumentException 行がないか、ステップ数が 0 以下のとき
    */
   public static Prepared prepare(
       CohortStore store,
@@ -175,7 +180,7 @@ public final class Fit {
       float gain,
       NetworkDevices devices,
       int threads,
-      DecisionExecutionContext execution)
+      NetworkRuntime runtime)
       throws IOException {
     if (rows.length == 0 || plan.learner().steps() <= 0) {
       throw new IllegalArgumentException(
@@ -185,7 +190,7 @@ public final class Fit {
     Model model = load(start, devices.primary());
     try {
       Session session =
-          new Session(store, rows, model, plan, gain, devices, threads, FitProfile.configured(), execution);
+          new Session(store, rows, model, plan, gain, devices, threads, FitProfile.configured(), runtime);
       try {
         session.rehearse();
       } catch (RuntimeException | Error failure) {
@@ -201,7 +206,7 @@ public final class Fit {
     }
   }
 
-  /** 温めた当てはめ（{@link #prepare}）。生徒のモデルを持ち、閉じるときに閉じる。 */
+  /** ウォームアップを済ませた学習の準備（{@link #prepare} が返す）。生徒のモデルを持ち、閉じるときに一緒に閉じる。 */
   public static final class Prepared implements AutoCloseable {
 
     private final Model model;
@@ -213,26 +218,26 @@ public final class Fit {
     }
 
     /**
-     * 生徒の網（当てた後の重みを保存するのは呼び手）。
+     * 生徒のネットワークを返す（学習した後の重みを保存するのは呼び出し元）。
      *
-     * @return 網
+     * @return ネットワーク
      */
     public PrismNetwork network() {
       return (PrismNetwork) model.getBlock();
     }
 
     /**
-     * 網を当てる（1 度だけ）。秒数はこの呼び出しから学習器を閉じるまで（読み込みと温めは含めない）。
+     * ネットワークを学習する（呼べるのは 1 度だけ）。秒数は、この呼び出しから学習器を閉じるまで（読み込みとウォームアップは含めない）。
      *
-     * @param teacher 教師の作り方（ゲインは温めたときと同じ）
+     * @param teacher 教師の作り方（ゲインはウォームアップしたときと同じ）
      * @return 記録
-     * @throws IllegalArgumentException 教師のゲインが温めたときと違うとき
+     * @throws IllegalArgumentException 教師のゲインがウォームアップしたときと違うとき
      */
     public FitResult fit(Teacher teacher) {
       return session.run(teacher, System.nanoTime());
     }
 
-    /** 当てていなければ学習器と先読みを閉じ、生徒のモデルを閉じる。 */
+    /** まだ学習していなければ学習器と先読みを閉じ、生徒のモデルを閉じる。 */
     @Override
     public void close() {
       try {
@@ -243,7 +248,7 @@ public final class Fit {
     }
   }
 
-  /** 1 回の当てはめの先読みと学習器（並べ替えた行の順を持つ）。{@link #run} の終わりか {@link #close} で閉じる。 */
+  /** 1 回の学習の先読みと学習器（並べ替えた行の順を持つ）。{@link #run} の終わりか {@link #close} で閉じる。 */
   private static final class Session implements AutoCloseable {
 
     private final int[] order;
@@ -264,7 +269,7 @@ public final class Fit {
         NetworkDevices devices,
         int threads,
         FitProfile profile,
-        DecisionExecutionContext execution) {
+        NetworkRuntime runtime) {
       order = shuffle(rows, plan.seed());
       this.plan = plan;
       this.gain = gain;
@@ -272,14 +277,14 @@ public final class Fit {
       this.profile = profile;
       feed = new StepFeed(store, plan, devices.size(), threads);
       try {
-        learner = new Learner(model, devices, plan, gain, profile, execution);
+        learner = new Learner(model, devices, plan, gain, profile, runtime);
       } catch (RuntimeException | Error failure) {
         feed.close();
         throw failure;
       }
     }
 
-    /** 最初の歩の行で学習器を温める（教師は生の Y）。 */
+    /** 最初のステップの行で学習器をウォームアップする（教師は生の Y）。 */
     void rehearse() {
       int[] rows = batch(order, 0, plan.learner().batchSize());
       StepFeed.Step step = await(feed.prepare(rows, new Teacher(null, null, 0, gain)));
@@ -290,7 +295,7 @@ public final class Fit {
       }
     }
 
-    /** 計画の歩数だけ当てて閉じる。秒数は started から学習器を閉じる（更新の完了を待つ）まで。 */
+    /** 計画のステップ数だけ学習して閉じる。秒数は {@code started} から、学習器を閉じる（更新の完了を待つ）まで。 */
     FitResult run(Teacher teacher, long started) {
       if (closed) {
         throw new IllegalStateException("the fit already ran");
@@ -370,7 +375,7 @@ public final class Fit {
           stages);
     }
 
-    /** 学習器を閉じ（更新の完了を待つ）、先読みを止める（2 度目からは何もしない）。 */
+    /** 学習器を閉じ（更新の完了を待つ）、先読みを止める。2 度目からは何もしない。 */
     @Override
     public void close() {
       if (closed) {
@@ -384,7 +389,7 @@ public final class Fit {
       }
     }
 
-    /** 失敗の後に閉じる（閉じるときの例外は失敗に添える）。 */
+    /** 失敗の後に閉じる。閉じるときに起きた例外は、元の失敗に添える。 */
     void closeQuietly(Throwable failure) {
       try {
         close();
@@ -395,12 +400,12 @@ public final class Fit {
   }
 
   /**
-   * rows を {@link #BLOCK} 行ずつの塊で seed で並べ替えた写し。塊の中は元の順なので、1 バッチの読み出しが shard の連続した位置の読みになり、
-   * 1 行ずつのランダム読みが先読みの効く順次読みになる。塊は同じ半荘の判断を含むので、バッチの独立な半荘の数は
-   * 行数 / BLOCK 程度に減る（歩数が多いので平均で薄まる）。
+   * 行を {@link #BLOCK} 行ずつのまとまりに分け、まとまりの順を乱数で並べ替えたコピーを返す。まとまりの中は元の順なので、1 バッチの
+   * 読み出しはシャードの中の続いた位置を読むことになり、1 行ずつのランダムな読みが、先読みの効く順次の読みになる。まとまりは同じ半荘の
+   * 判断を含むので、バッチの中の独立な半荘の数は、バッチの行数 / BLOCK 程度に減る（ステップ数が多いので、平均すれば薄まる）。
    *
-   * @param rows 行（貯蔵の索引の昇順）
-   * @param seed 並べ替えの種
+   * @param rows 行（行のストアの番号の昇順）
+   * @param seed 並べ替えの乱数の種
    * @return 並べ替えた行
    */
   public static int[] shuffle(int[] rows, long seed) {
@@ -426,12 +431,12 @@ public final class Fit {
     return order;
   }
 
-  /** order の [from, from + size) の部分（末尾で切る）。 */
+  /** {@code order} の [from, from + size) の部分。末尾を越える分は切り捨てる。 */
   private static int[] batch(int[] order, int from, int size) {
     return Arrays.copyOfRange(order, from, Math.min(order.length, from + size));
   }
 
-  /** 先読みの完了を待つ。先読みのスレッドの例外は包みを外して投げる。 */
+  /** 先読みの完了を待つ。先読みのスレッドで起きた例外は、包んだ例外から取り出して投げる。 */
   private static <T> T await(CompletableFuture<T> future) {
     try {
       return future.join();

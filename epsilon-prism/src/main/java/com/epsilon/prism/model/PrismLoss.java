@@ -20,6 +20,11 @@ import java.util.Objects;
  * <p>ℓ_PRISM は κ = 0 の差分整合の損失で、KL の基準は C の上の一様分布にする（{@link ValueLabel} は p0 を持たない）。教師は順伝播の
  * 前に送る（2 段で取る理由は下に書く）。
  *
+ * <p>ℓ_PRISM のはじめの 2 項の s_a への勾配は (π_C(a)/λ)·(e_a − ē_π) になる（e = s − Y、ē_π は π_C で重みを付けた e の平均）。π_C(a) が
+ * 0 か 1 に張り付いた手には、誤差がいくら大きくても勾配が届かない。ゲート Δ のように行によらずほぼ同じ値を出す手は、全ての行で同時に
+ * 張り付くと戻れない。そこで 3 番目の項で、測った全ての手に重みの下限 ε/|C| を足す。この項は Y について線形なので、ラベルの雑音の平均が
+ * 0 なら偏らない。最適もはじめの 2 項と同じ s_a − s_b = Y_a − Y_b なので、学ぶ値は変えずに、張り付いた手を戻す勾配だけを足す。
+ *
  * <p>ℓ_PRISM は s の行ごとの定数に依らない。そのため、これだけでは行の定数が学習の間にずれていき、|s| が大きくなると BF16 の丸めで手の差が
  * 消える。行の定数は打牌の値 B が決める（立直・槓・ツモ・九種は B から作る M にゲート Δ を足し、応答の行は s[PASS] = 0 で定数が決まる）。
  * そこで、行の平均のアンカー η·s̄_D² は測った打牌 D だけで取る。この項は D の全ての手を同じだけ動かすので、手の差（ℓ_PRISM の最適）にも
@@ -38,6 +43,9 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
 
   /** 行の平均のアンカーの重み η。 */
   static final float ROW_MEAN = 1f;
+
+  /** 測った手の重みの下限 ε。C の手ひとつあたりの下限は ε/|C|。 */
+  static final float WEIGHT_FLOOR = 0.05f;
 
   /** 手の軸。 */
   private static final int[] ACTIONS = {1};
@@ -149,10 +157,10 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
   }
 
   /**
-   * 差分整合の行の損失の和 Σ w·ℓ_PRISM。z = s/λ、π_C = softmax_C(z) として、行の損失は次の式。
+   * 差分整合の行の損失の和 Σ w·ℓ_PRISM。z = s/λ、π_C = softmax_C(z)、e = s − Y、ē_C は C の上の e の平均として、行の損失は次の式。
    *
    * <pre>
-   * ℓ = − Σ_{a∈C} π_C(a)·Y_a + λ·Σ_{a∈C} π_C(a)·(log π_C(a) − log p0_C(a))
+   * ℓ = − Σ_{a∈C} π_C(a)·Y_a + λ·Σ_{a∈C} π_C(a)·(log π_C(a) − log p0_C(a)) + (ε/2λ)·(1/|C|)·Σ_{a∈C} (e_a − ē_C)²
    * </pre>
    */
   private static NDArray valueSum(NDManager scope, NDArray scores, LossInputs inputs) {
@@ -163,8 +171,26 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
             .mul(inputs.targets())
             .sum(ACTIONS, true)
             .neg()
-            .add(c.pi().mul(c.logPi().sub(inputs.logPrior())).sum(ACTIONS, true).mul(lambda));
+            .add(c.pi().mul(c.logPi().sub(inputs.logPrior())).sum(ACTIONS, true).mul(lambda))
+            .add(weightFloor(scope, scores, inputs.targets(), inputs.measured()).div(lambda));
     return rowLoss.mul(inputs.weights()).sum();
+  }
+
+  /**
+   * 重みの下限の項を λ で割る前の値 (ε/2)·(1/|C|)·Σ_{a∈C} (e_a − ē_C)² [行, 1]。C の外の手とパディングは where で外し、C が空の行は 0。
+   *
+   * @param scope 作った配列を持たせるマネージャー
+   * @param scores s [行, 手の容量]
+   * @param targets Y [行, 手の容量]（C の外は 0）
+   * @param mask C [行, 手の容量]
+   * @return 行ごとの値
+   */
+  private static NDArray weightFloor(NDManager scope, NDArray scores, NDArray targets, NDArray mask) {
+    NDArray zeros = scope.zeros(scores.getShape(), DataType.FLOAT32);
+    NDArray count = mask.toType(DataType.FLOAT32, false).sum(ACTIONS, true).maximum(1f);
+    NDArray error = NDArrays.where(mask, scores.sub(targets), zeros);
+    NDArray centered = NDArrays.where(mask, error.sub(error.sum(ACTIONS, true).div(count)), zeros);
+    return centered.square().sum(ACTIONS, true).div(count).mul(WEIGHT_FLOOR / 2);
   }
 
   /** 行の平均のアンカーの和 Σ_{|D|≥1} w·s̄_D²。D の外の手とパディングは where で外す。 */

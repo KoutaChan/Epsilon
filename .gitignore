@@ -35,9 +35,7 @@ Thumbs.db
 .project
 .settings/
 
-# DeepLearning4J / DL4J
-data/models/
-*.nd4j
+# Archives
 *.zip
 
 # OS
@@ -64,10 +62,6 @@ models/
 *.pb
 *.h5
 *.pt
-
-# Kiro automation helpers (local only, never commit)
-.askpass.bat
-.remote-launch-phase1.sh
 
 # Per-series local configuration and generated training artifacts
 /config/

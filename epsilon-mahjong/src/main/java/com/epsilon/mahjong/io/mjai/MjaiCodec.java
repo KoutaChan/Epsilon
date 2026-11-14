@@ -53,10 +53,12 @@ import java.util.Objects;
  * 一部だけを持つ hora は IllegalArgumentException を投げる。ダブロンの和了は、放銃者から手番の近い順に並べる。
  *
  * <p>裏ドラ表示牌は、uradora_markers か ura_markers のうち空でない最初のものを使う（立直していない和了者に空の配列を書く記録がある）。
- * 局の点の移動は、hora・ryukyoku の deltas を足し、この局で成立した立直の供託を引いて求める。包の席は hora の pao から読み、pao が
- * 無ければ包は無い。ryukyoku の終わり方は reason で決める（天鳳の名前などの別名も読む）。荒牌なら tenpais で聴牌の席を決め、荒牌の
- * 精算が deltas と一致する席の組を流し満貫の席にする。reason が無いか、荒牌なのに tenpais が無い ryukyoku は、終わり方を持たない
- * 流局にする。end_game に scores が無ければ、最後の局の始まりの点に点の移動を足し、場に残った供託をトップに渡して終局の点を求める。
+ * 局の点の移動は、hora・ryukyoku の deltas を足し、この局で成立した立直の供託を引いて求める。ただし ryukyoku の deltas の和が、この局で
+ * 成立した立直の供託の和の負なら、その deltas は供託を含めて書いたものとして読む（流局の精算は和が 0 なので見分けられる。精算の無い
+ * 流局で、局の前後の点の差を書く記録がある）。包の席は hora の pao から読み、pao が無ければ包は無い。ryukyoku の終わり方は reason で
+ * 決める（天鳳の名前などの別名も読む）。荒牌なら tenpais で聴牌の席を決め、荒牌の精算が deltas と一致する席の組を流し満貫の席にする。
+ * reason が無いか、荒牌なのに tenpais が無い ryukyoku は、終わり方を持たない流局にする。end_game に scores が無ければ、最後の局の
+ * 始まりの点に点の移動を足し、場に残った供託をトップに渡して終局の点を求める。
  *
  * <p>書くときも同じ形で書き、記録に無い内訳は書かない。大明槓・加槓の後めくりの dora は、mjai の並びのとおり打牌の前に書く。
  * 三人打ちの和了では、ドラの翻のうち、和了者がその局で抜いた北の数を nukidora に分けて書く。
@@ -683,7 +685,8 @@ public final class MjaiCodec {
 
     /**
      * ryukyoku の終わり方を読む。reason が途中流局ならその流局にし、荒牌なら tenpais から聴牌の席を読む。reason が無いか、荒牌なのに
-     * tenpais が無ければ、終わり方を持たない流局にする（局の終わり方は null のまま）。
+     * tenpais が無ければ、終わり方を持たない流局にする（局の終わり方は null のまま）。deltas の和が、この局で成立した立直の供託の和の
+     * 負なら、deltas は供託を含むものとして、立直した席に供託を足し戻してから足す。
      */
     private void draw(JsonObject event) {
       if (ended) {
@@ -707,7 +710,15 @@ public final class MjaiCodec {
           tenpaiMask |= seatsTenpai.get(seat).getAsBoolean() ? 1 << seat : 0;
         }
       }
-      add(integers(event, "deltas", seats));
+      int[] deltas = integers(event, "deltas", seats);
+      if (accepted != 0 && Arrays.stream(deltas).sum() == -Variant.DEPOSIT * Integer.bitCount(accepted)) {
+        for (int seat = 0; seat < seats; seat++) {
+          if ((accepted & 1 << seat) != 0) {
+            deltas[seat] += Variant.DEPOSIT;
+          }
+        }
+      }
+      add(deltas);
     }
 
     private void add(int[] deltas) {

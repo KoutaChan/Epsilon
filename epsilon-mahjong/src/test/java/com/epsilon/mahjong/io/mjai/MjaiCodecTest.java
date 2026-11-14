@@ -16,6 +16,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -236,6 +237,41 @@ public class MjaiCodecTest {
     String text = MjaiCodec.write(RecordedGames.play(VARIANT, 0, "self-0"));
     String none = "{\"type\":\"none\"}\n";
     Assert.assertEquals(MjaiCodec.read(none + text.replace("\n", "\n" + none), "none"), MjaiCodec.read(text, "none"));
+  }
+
+  /**
+   * ryukyoku の deltas に、この局で成立した立直の供託を含めて書いた記録も、含めない記録と同じ半荘に読む。自己対局の半荘の、立直の
+   * 成立した局の ryukyoku の deltas から、立直した席の供託を引いて書き直す。
+   */
+  @Test
+  public void drawDeltasThatIncludeTheRoundsDepositsReadTheSame() {
+    int rewritten = 0;
+    for (int seed = 0; seed < 30; seed++) {
+      String id = "self-" + seed;
+      String text = MjaiCodec.write(RecordedGames.play(VARIANT, seed, id));
+      StringJoiner lines = new StringJoiner("\n", "", "\n");
+      int riichi = 0;
+      for (String line : text.split("\n")) {
+        JsonObject event = JsonParser.parseString(line).getAsJsonObject();
+        switch (event.get("type").getAsString()) {
+          case "start_kyoku" -> riichi = 0;
+          case "reach_accepted" -> riichi |= 1 << event.get("actor").getAsInt();
+          case "ryukyoku" -> {
+            JsonArray deltas = event.getAsJsonArray("deltas");
+            for (int seat = 0; seat < deltas.size(); seat++) {
+              if ((riichi & 1 << seat) != 0) {
+                deltas.set(seat, new JsonPrimitive(deltas.get(seat).getAsInt() - Variant.DEPOSIT));
+              }
+            }
+            rewritten += riichi != 0 ? 1 : 0;
+          }
+          default -> {}
+        }
+        lines.add(event.toString());
+      }
+      Assert.assertEquals(MjaiCodec.read(lines.toString(), id), MjaiCodec.read(text, id), id);
+    }
+    Assert.assertTrue(rewritten > 0, "no draw after a riichi was rewritten");
   }
 
   /**

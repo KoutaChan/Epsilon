@@ -39,9 +39,9 @@ import java.util.StringJoiner;
  * 打ち手の名前は、UN の n0〜n3 を URL エンコードとして復号したもの。牌譜の途中の UN（切断から戻ったとき）は、書いてある席の名前だけを
  * 替える。
  *
- * <p>書くときは、SHUFFLE・段位・レート・サイコロを書かない。名前は UTF-8 の各バイトを %XX にして UN に書く。鳴きで手から出す物理牌は、
- * 手の中の同じ種類の牌から、何枚目かの小さい順に選ぶ（手の赤を使う面子では赤を先に選ぶ）。大明槓・加槓の後めくりの表示牌は、天鳳の
- * 並びのとおり打牌の前に書く。和了の m には、天鳳と同じく面子と北抜きのコードを新しい順に並べる（加槓は元のポンの位置に置く）。
+ * <p>書くときは、SHUFFLE・段位・レート・サイコロを書かない。名前は UTF-8 の各バイトを %XX にして UN に書く。大明槓・加槓の後めくりの
+ * 表示牌は、天鳳の並びのとおり打牌の前に書く。和了の m には、天鳳と同じく面子と北抜きのコードを新しい順に並べる（加槓は元のポンの
+ * 位置に置く）。
  */
 public final class TenhouXml {
 
@@ -276,7 +276,7 @@ public final class TenhouXml {
                     "Seat " + who + " makes " + meld + " on tile " + code.called() + ", but the last discard is "
                         + lastDiscard + " of seat " + lastDiscarder);
               }
-              yield new RecordEvent.Call(who, meld.id());
+              yield new RecordEvent.Call(who, meld.id(), Arrays.stream(code.hand()).boxed().toList());
             }
             case ANKAN -> new RecordEvent.ClosedKan(who, meld.base());
             case KAKAN -> new RecordEvent.AddedKan(who, meld.base());
@@ -479,22 +479,14 @@ public final class TenhouXml {
 
     private void call(RecordEvent.Call call) {
       int seat = call.seat();
-      Meld meld = Meld.of(call.meld());
-      int[] hand = new int[meld.size() - 1];
-      boolean red = meld.aka() == Meld.AkaSource.CONSUMED_HAND_TILE;
-      boolean calledSkipped = false;
-      int size = 0;
-      for (int index = 0; index < meld.size(); index++) {
-        int kind = meld.tile(index);
-        if (!calledSkipped && kind == meld.called()) {
-          calledSkipped = true;
-          continue;
+      int[] hand = call.consumed().stream().mapToInt(Integer::intValue).toArray();
+      for (int tile : hand) {
+        if (!held[seat][tile]) {
+          throw new IllegalArgumentException("Seat " + seat + " does not hold tile " + tile + " to call with");
         }
-        int tile = take(seat, kind, red);
-        red &= !set.red(tile);
-        hand[size++] = tile;
+        held[seat][tile] = false;
       }
-      meld(seat, new TenhouMeldCode(meld, claimable, hand));
+      meld(seat, new TenhouMeldCode(Meld.of(call.meld()), claimable, hand));
       openMask |= 1 << seat;
     }
 

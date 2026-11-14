@@ -115,18 +115,26 @@ final class Transitions {
    * 判断する席ごとに選んだ手から実際に行う手を決めて行い、次の判断の時点か局末まで進める。
    *
    * @param choices 席ごとに選んだ手（合法手の何番目か。範囲は呼ぶ側が確かめる）
-   * @param tile 手番の席が打つか抜く物理 id（{@link Engine#commit(int[], int, RuleWorkspace)}）。エンジンが選ぶなら
-   *     {@link TurnEvent#NONE}
+   * @param tiles 行われる手が手から出す物理 id（{@link Engine#commit(int[], int[], int, RuleWorkspace)}）。先頭から
+   *     {@code count} 枚だけを読む
+   * @param count 指定した牌の枚数。エンジンが選ぶなら 0
    */
-  Boundary commit(int[] choices, int tile, RuleWorkspace ws) {
+  Boundary commit(int[] choices, int[] tiles, int count, RuleWorkspace ws) {
     EngineDecisionKind kind = decisions.kind(0);
-    if (tile != TurnEvent.NONE && kind != EngineDecisionKind.TURN && kind != EngineDecisionKind.POST_CALL_DAHAI) {
-      throw new IllegalArgumentException("A " + kind + " decision plays no tile of its own, not tile " + tile);
-    }
     return switch (kind) {
-      case TURN, POST_CALL_DAHAI -> act(choices[0], tile, ws);
-      case RESPONSE -> afterDiscard(window.close(state, hands, decisions, choices, resolution), ws);
-      case CHANKAN, NUKI_RESPONSE -> afterKanOrNuki(window.close(state, hands, decisions, choices, resolution), ws);
+      case TURN, POST_CALL_DAHAI -> act(choices[0], tiles, count, ws);
+      case RESPONSE -> {
+        if (count > 0) {
+          requireCallTiles(choices, tiles, count);
+        }
+        yield afterDiscard(window.close(state, hands, decisions, choices, resolution), tiles, count, ws);
+      }
+      case CHANKAN, NUKI_RESPONSE -> {
+        if (count > 0) {
+          throw new IllegalArgumentException("A " + kind + " decision takes no tile out of a hand, not " + count);
+        }
+        yield afterKanOrNuki(window.close(state, hands, decisions, choices, resolution), ws);
+      }
     };
   }
 
@@ -158,12 +166,17 @@ final class Transitions {
   /**
    * 手番か、チー・ポンの後の打牌で、判断する 1 席が選んだ手を行う。
    *
-   * @param tile 打つか抜く物理 id。エンジンが選ぶなら {@link TurnEvent#NONE}
+   * @param tiles 打つか抜く物理 id（先頭の 1 枚）
+   * @param count 指定した牌の枚数。エンジンが選ぶなら 0
    */
-  private Boundary act(int choice, int tile, RuleWorkspace ws) {
+  private Boundary act(int choice, int[] tiles, int count, RuleWorkspace ws) {
     int seat = decisions.seat(0);
     EngineDecisionKind kind = decisions.kind(0);
     Action action = Action.of(decisions.legal(0, choice));
+    if (count > 1) {
+      throw new IllegalArgumentException(action + " takes at most one tile out of the hand, not " + count);
+    }
+    int tile = count == 0 ? TurnEvent.NONE : tiles[0];
     int played =
         switch (action.type()) {
           case DAHAI, RIICHI_DAHAI -> steps.tileOf(seat, action, tile);
@@ -235,23 +248,64 @@ final class Transitions {
       return Boundary.DECISIONS;
     }
     steps.pass();
-    return afterDiscard(Window.Outcome.PASS, ws);
+    return afterDiscard(Window.Outcome.PASS, null, 0, ws);
   }
 
-  /** 打牌への応答が締まった後。ロンも途中流局も無ければ、鳴いた席か打った席の次の席へ進む。 */
-  private Boundary afterDiscard(Window.Outcome outcome, RuleWorkspace ws) {
+  /**
+   * 打牌への応答で指定した牌を、通る鳴きで手から面子へ移す牌として確かめる。牌を指定できるのは、ロンを選んだ席が無く、鳴きを選んだ
+   * 席がちょうど 1 つのとき（その鳴きが通る）だけ。指定できないときと、牌がその鳴きに合わないときは IllegalArgumentException を投げる。
+   *
+   * @param tiles 手から面子へ移す物理 id（先頭から {@code count} 枚）
+   */
+  private void requireCallTiles(int[] choices, int[] tiles, int count) {
+    Action call = null;
+    int caller = TurnEvent.NONE;
+    for (int slot = 0; slot < decisions.size(); slot++) {
+      Action chosen = Action.of(decisions.legal(slot, choices[slot]));
+      int seat = decisions.seat(slot);
+      switch (chosen.type()) {
+        case RON_AGARI ->
+            throw new IllegalArgumentException("Seat " + seat + " rons, so no call takes the given tiles");
+        case CHI, PON, DAIMINKAN -> {
+          if (call != null) {
+            throw new IllegalArgumentException("Seats " + caller + " and " + seat + " both call, not one");
+          }
+          call = chosen;
+          caller = seat;
+        }
+        default -> {}
+      }
+    }
+    if (call == null) {
+      throw new IllegalArgumentException("No seat calls, so no seat takes the given tiles");
+    }
+    steps.requireCalled(caller, steps.meldOf(caller, call), tiles, count);
+  }
+
+  /**
+   * 打牌への応答が締まった後。ロンも途中流局も無ければ、鳴いた席か打った席の次の席へ進む。
+   *
+   * @param tiles 通った鳴きで手から面子へ移す物理 id（先頭から {@code count} 枚）
+   * @param count 指定した牌の枚数。エンジンが選ぶなら 0
+   */
+  private Boundary afterDiscard(Window.Outcome outcome, int[] tiles, int count, RuleWorkspace ws) {
     AbortiveDraw abort = steps.abort();
     return switch (outcome) {
       case RON -> ron(ws);
       case TRIPLE_RON -> abortive(AbortiveDraw.TRIPLE_RON, ws);
-      case CALL -> call(window.caller(), Action.of(window.call()), ws);
+      case CALL -> call(window.caller(), Action.of(window.call()), tiles, count, ws);
       case PASS -> abort == null ? draw((state.last().seat() + 1) % seats, ws) : abortive(abort, ws);
     };
   }
 
-  /** 直前の打牌へのチー・ポン・大明槓。チー・ポンは鳴いた後の打牌の判断へ、大明槓は嶺上のツモへ進む。 */
-  private Boundary call(int caller, Action action, RuleWorkspace ws) {
-    steps.call(caller, steps.meldOf(caller, action));
+  /**
+   * 直前の打牌へのチー・ポン・大明槓。チー・ポンは鳴いた後の打牌の判断へ、大明槓は嶺上のツモへ進む。
+   *
+   * @param tiles 手から面子へ移す物理 id（先頭から {@code count} 枚）
+   * @param count 指定した牌の枚数。エンジンが選ぶなら 0
+   */
+  private Boundary call(int caller, Action action, int[] tiles, int count, RuleWorkspace ws) {
+    steps.call(caller, steps.meldOf(caller, action), tiles, count);
     if (action.type() == Action.Type.DAIMINKAN) {
       return rinshan(caller, ws);
     }

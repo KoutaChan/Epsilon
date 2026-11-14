@@ -31,8 +31,8 @@ import java.util.Objects;
 /**
  * 牌譜の局を、自己対局と同じ {@code Engine} で、記録の手のとおりに進める。始めに、記録の配牌・表示牌・ツモ・裏ドラ表示牌をエンジンの
  * 牌山の位置（{@code Wall} の位置の式）に置き、残りの位置を記録に無い牌で埋める。判断の時点ごとに、記録の手が合法手にあるかを確かめる。
- * 打牌と北抜きでは記録の物理牌をエンジンの手から出すので、同じ種類の牌を何枚も持つ手でも、エンジンの手の物理牌は記録と同じになる
- * （チー・ポンで手から出す牌は記録に無いので、エンジンが選ぶ）。局末ごとに、局の結果・和了の点・点の移動が記録と合うかを確かめる。
+ * 打牌・北抜き・チー・ポン・大明槓では記録の物理牌をエンジンの手から出すので、同じ種類の牌を何枚も持つ手でも、エンジンの手の物理牌は
+ * 記録と同じになる。局末ごとに、局の結果・和了の点・点の移動が記録と合うかを確かめる。
  * 半荘を再生するときは、局末の後の卓が次局の始まり（最後の局
  * なら終局の点）と合うかも確かめる。記録が内訳を持たない結果（点を持たない和了、終わり方を持たない流局）は、和了者・放銃者と点の
  * 移動だけを照合し、内訳はエンジンの局末から読む。
@@ -61,6 +61,9 @@ public final class ReplayDriver {
 
   /** 手が合法手に無いことを表す。 */
   private static final int ABSENT = -1;
+
+  /** エンジンに出させる物理牌の数の上限（大明槓で手から面子へ移す 3 枚）。 */
+  private static final int MAX_PLAYED = Meld.Type.DAIMINKAN.tiles() - 1;
 
   /** 応答の手の優先順位。後の定数ほど優先が高い。通った手より低い手は、選ばれていても消える。 */
   private enum Precedence {
@@ -98,10 +101,12 @@ public final class ReplayDriver {
   private final int[] recorded;
 
   /**
-   * 手番の判断で、記録の打牌か北抜きが手から出す物理牌。{@code commit} に渡し、エンジンに同じ物理牌を出させる。ほかの判断では
-   * {@link TurnEvent#NONE}。
+   * 判断の時点で、記録の手が手から出す物理牌（先頭から {@link #playedCount} 枚）。手番の判断では打牌か北抜きの 1 枚、他家の応答では
+   * 鳴いた席が手から面子へ移す牌。{@code commit} に渡し、エンジンに同じ物理牌を出させる。
    */
-  private int played = TurnEvent.NONE;
+  private final int[] played = new int[MAX_PLAYED];
+
+  private int playedCount;
 
   private RecordedRound round;
 
@@ -148,7 +153,7 @@ public final class ReplayDriver {
 
   /** 記録が選んだ手をエンジンに渡し（記録から分からない席は見送る）、次の判断の時点まで進める。記録と食い違えば IllegalStateException。 */
   public Boundary step(RuleWorkspace ws) {
-    arrive(engine.commit(choices, played, ws));
+    arrive(engine.commit(choices, played, playedCount, ws));
     return boundary;
   }
 
@@ -188,7 +193,7 @@ public final class ReplayDriver {
     for (int index = 0; index < rounds.size(); index++) {
       begin(rounds.get(index), ws);
       while (boundary == Boundary.DECISIONS) {
-        arrive(engine.commit(choices, played, ws));
+        arrive(engine.commit(choices, played, playedCount, ws));
       }
       checkNext(game, index);
     }
@@ -292,9 +297,10 @@ public final class ReplayDriver {
     if (index == ABSENT) {
       throw fault(Action.of(code) + " is not legal for seat " + seat);
     }
-    played = playedTile(event);
-    if (played != TurnEvent.NONE && !engine.view(seat).holds(played)) {
-      throw fault("Seat " + seat + " does not hold tile " + played + " of " + event);
+    playedCount = 0;
+    int tile = playedTile(event);
+    if (tile != TurnEvent.NONE) {
+      play(seat, tile, event);
     }
     choices[0] = index;
     recorded[0] = index;
@@ -314,6 +320,14 @@ public final class ReplayDriver {
     }
     boolean kyushu = result.abortive() == AbortiveDraw.NINE_TERMINALS || result.kind() == null;
     return kyushu ? KYUSHU_CODE : NO_ACTION;
+  }
+
+  /** 記録の手が手から出す物理牌を、エンジンに出させる牌に足す。その席が持っていなければ食い違いとする。 */
+  private void play(int seat, int tile, RecordEvent event) {
+    if (!engine.view(seat).holds(tile)) {
+      throw fault("Seat " + seat + " does not hold tile " + tile + " of " + event);
+    }
+    played[playedCount++] = tile;
   }
 
   /** 記録の手番のイベントが手から出す物理牌。打牌と北抜きのほかは {@link TurnEvent#NONE}。 */
@@ -345,7 +359,7 @@ public final class ReplayDriver {
    * {@link #UNOBSERVED} にする。
    */
   private void matchResponses(Decisions decisions) {
-    played = TurnEvent.NONE;
+    playedCount = 0;
     int actor = engine.view(decisions.seat(0)).last().seat();
     for (int slot = 0; slot < decisions.size(); slot++) {
       recorded[slot] = indexOf(decisions, slot, PASS_CODE);
@@ -370,6 +384,7 @@ public final class ReplayDriver {
 
   /**
    * 記録の鳴きを、鳴いた席が選ぶ手にする。鳴きが合うのは、応答を求めた打牌を鳴いていて、鳴いた牌の赤かどうかが打牌と同じときだけ。
+   * 手から面子へ移す牌は、記録の物理牌をエンジンにも出させる。
    */
   private void matchCall(Decisions decisions, RecordEvent.Call call, int actor) {
     Meld meld = Meld.of(call.meld());
@@ -381,6 +396,9 @@ public final class ReplayDriver {
     int index = fits ? indexOf(decisions, slot, Action.call(meld)) : ABSENT;
     if (index == ABSENT) {
       throw fault("Seat " + call.seat() + " cannot make " + meld);
+    }
+    for (int i = 0; i < call.consumed().size(); i++) {
+      play(call.seat(), call.consumed().get(i), call);
     }
     recorded[slot] = index;
     read++;

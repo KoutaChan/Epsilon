@@ -67,7 +67,7 @@ final class TestRounds {
         ron,
         new Draw(0, 129),
         new Discard(0, 55, false, false),
-        new Call(1, pon),
+        new Call(1, pon, List.of(53, 54)),
         new Discard(1, 120, false, false),
         new Draw(2, 49),
         new Discard(2, 49, true, false),

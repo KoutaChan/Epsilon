@@ -39,7 +39,8 @@ import java.util.Random;
  * せずに残し、北で待つ手を作る（抜いた北への応答を起こすため）。
  *
  * <p>イベントは RecordedRound が決めた並びで書く。判断の時点から次の判断の時点までは、他家の応答が出そろって成立した立直 → 公開の
- * イベント → 表示牌 → 応答を求めずに通った打牌で成立した立直 → ツモの順。打牌と北抜きの物理牌は、その席の手から消えた牌。
+ * イベント → 表示牌 → 応答を求めずに通った打牌で成立した立直 → ツモの順。打牌・北抜き・鳴きで手から出した物理牌は、その席の手から
+ * 消えた牌。
  */
 public final class RecordedGames {
 
@@ -52,8 +53,8 @@ public final class RecordedGames {
   private final HandShape shape = new HandShape();
   private final Random random;
 
-  /** 手番の席が手を選ぶ前に持っていた物理牌（物理 id ごとの印）。 */
-  private final boolean[] held = new boolean[Tiles.PHYSICAL_IDS];
+  /** 判断の時点で、席ごとに持っていた物理牌（物理 id ごとの印）。 */
+  private final boolean[][] held;
 
   private final List<RecordEvent> events = new ArrayList<>();
   private final List<Integer> ura = new ArrayList<>();
@@ -75,6 +76,7 @@ public final class RecordedGames {
     ws = new RuleWorkspace(variant);
     analyzer = new ShapeAnalyzer(variant);
     random = new Random(seed);
+    held = new boolean[seats][Tiles.PHYSICAL_IDS];
     this.picks = picks;
   }
 
@@ -159,9 +161,9 @@ public final class RecordedGames {
       EngineDecisionKind kind = decisions.kind(0);
       boolean window = kind != EngineDecisionKind.TURN && kind != EngineDecisionKind.POST_CALL_DAHAI;
       int actor = window ? TurnEvent.NONE : decisions.seat(0);
-      if (!window) {
+      for (int seat = 0; seat < seats; seat++) {
         for (int tile = 0; tile < Tiles.PHYSICAL_IDS; tile++) {
-          held[tile] = engine.view(actor).holds(tile);
+          held[seat][tile] = engine.view(seat).holds(tile);
         }
       }
       int[] choices = new int[decisions.size()];
@@ -225,7 +227,7 @@ public final class RecordedGames {
         Meld meld = Meld.of(log.meld(event));
         yield meld.type() == Meld.Type.ANKAN
             ? new RecordEvent.ClosedKan(seat, meld.base())
-            : new RecordEvent.Call(seat, meld.id());
+            : new RecordEvent.Call(seat, meld.id(), consumed(seat));
       }
       case KAKAN -> new RecordEvent.AddedKan(seat, Meld.of(log.meld(event)).base());
       case NUKI -> new RecordEvent.Nuki(seat, removed(seat, actor));
@@ -238,11 +240,22 @@ public final class RecordedGames {
       throw new AssertionError("Seat " + seat + " gives up a tile outside its turn");
     }
     for (int tile = 0; tile < Tiles.PHYSICAL_IDS; tile++) {
-      if (held[tile] && !engine.view(seat).holds(tile)) {
+      if (held[seat][tile] && !engine.view(seat).holds(tile)) {
         return tile;
       }
     }
     throw new AssertionError("No tile left the hand of seat " + seat);
+  }
+
+  /** 鳴いた席の手から面子へ移った物理牌を、物理 id の昇順に返す。 */
+  private List<Integer> consumed(int seat) {
+    List<Integer> consumed = new ArrayList<>();
+    for (int tile = 0; tile < Tiles.PHYSICAL_IDS; tile++) {
+      if (held[seat][tile] && !engine.view(seat).holds(tile)) {
+        consumed.add(tile);
+      }
+    }
+    return consumed;
   }
 
   private RoundResult result() {

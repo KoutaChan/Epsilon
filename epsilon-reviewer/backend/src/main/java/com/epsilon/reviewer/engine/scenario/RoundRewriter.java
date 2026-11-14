@@ -32,9 +32,8 @@ import java.util.function.Function;
  *
  * <p>河・ドラ・手牌で牌を替えたときの物理牌は、見える牌の数を確かめてから割り当てる。まず替えた牌の物理牌を全て空ける。次に新しい牌
  * ごとに、その牌の空いている写しのうち番号の最も小さいものを割り当て、元の物理牌があった所へ書く。書く所は、打牌、ドラ表示牌、または
- * 判断する席にその牌が入った所（配牌の位置かツモ）。判断する席に見える物理牌（その席の配牌とツモ、全ての打牌、ドラ表示牌）は、どれも
- * 判断の時点の表示に見える牌なので、見える牌の数の確かめを通れば写しは足りる。鳴きの記録は手から出した物理牌を持たないので、他家の
- * 面子の物理牌は数えない（席から見える卓も読まない）。
+ * 判断する席にその牌が入った所（配牌の位置かツモ）。判断する席に見える物理牌（その席の配牌とツモ、全ての打牌、鳴きで手から面子へ
+ * 移した牌、ドラ表示牌）は、どれも判断の時点の表示に見える牌なので、見える牌の数の確かめを通れば写しは足りる。
  */
 public final class RoundRewriter {
   private final Variant variant;
@@ -100,6 +99,7 @@ public final class RoundRewriter {
           discards.get(discard.seat()).add(position);
           copies.use(discard.tile());
         }
+        case RecordEvent.Call call -> call.consumed().forEach(copies::use);
         case RecordEvent.DoraReveal revealed -> reveal(revealed.tile());
         default -> {}
       }

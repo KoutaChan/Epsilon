@@ -492,10 +492,11 @@ public final class MajSoulReader {
       }
       Meld.Type type = Meld.Type.valueOf(callType(integer(data, "type")).name());
       Meld meld = Meld.call(type, Meld.RelativeSource.of(seat, target, seats), called, consumed);
+      List<Integer> taken = new ArrayList<>(consumed.size());
       for (Face face : consumed) {
-        copies.meld(seat, face);
+        taken.add(copies.meld(seat, face));
       }
-      events.add(new RecordEvent.Call(seat, meld.id()));
+      events.add(new RecordEvent.Call(seat, meld.id(), taken));
     }
 
     private void kan(JsonObject data) {

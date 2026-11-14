@@ -136,7 +136,7 @@ public class MajSoulReaderTest {
         List.of(
             new RecordEvent.Draw(3, Tiles.physicalId(Tiles.P8, 0)),
             new RecordEvent.Discard(3, Tiles.physicalId(Tiles.P3, 3), false, false),
-            new RecordEvent.Call(1, pon.id()),
+            new RecordEvent.Call(1, pon.id(), List.of(Tiles.physicalId(Tiles.P3, 0), Tiles.physicalId(Tiles.P3, 1))),
             new RecordEvent.Discard(1, Tiles.physicalId(Tiles.S6, 0), false, false)));
     RoundResult.Win win =
         new RoundResult.Win(

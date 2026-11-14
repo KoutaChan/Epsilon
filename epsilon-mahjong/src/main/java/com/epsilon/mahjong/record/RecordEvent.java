@@ -5,6 +5,7 @@ import com.epsilon.mahjong.engine.RuleWorkspace;
 import com.epsilon.mahjong.engine.SeatTable;
 import com.epsilon.mahjong.engine.TurnEvent;
 import com.epsilon.mahjong.tile.Tiles;
+import java.util.List;
 
 /**
  * 牌譜の局のイベント。牌譜の形式には依らない。席は起家を 0 とする絶対席で、牌は物理 id で表す。和了と流局はイベントにせず、
@@ -50,23 +51,53 @@ public sealed interface RecordEvent {
   }
 
   /**
-   * 直前の打牌へのチー・ポン・大明槓。
+   * 直前の打牌へのチー・ポン・大明槓。1 つの席から見た卓は、手から出した物理牌を使わない。自分の鳴きでも、手から出す牌は卓が自分の
+   * 手から選ぶ。
    *
    * @param meld 面子を表す番号（{@code Meld.id}）
+   * @param consumed 手から面子へ移した物理牌（物理 id の昇順に並べ直して持つ）。チー・ポンは 2 枚、大明槓は 3 枚で、面子の鳴いた
+   *     牌のほかの牌と 1 枚ずつ同じ種類
    */
-  record Call(int seat, int meld) implements RecordEvent {
+  record Call(int seat, int meld, List<Integer> consumed) implements RecordEvent {
 
     public Call {
       requireSeat(seat);
-      Meld.Type type = Meld.of(meld).type();
-      if (type == Meld.Type.ANKAN || type == Meld.Type.KAKAN) {
-        throw new IllegalArgumentException("Not a call: " + Meld.of(meld));
+      Meld made = Meld.of(meld);
+      if (made.type() == Meld.Type.ANKAN || made.type() == Meld.Type.KAKAN) {
+        throw new IllegalArgumentException("Not a call: " + made);
+      }
+      consumed = consumed.stream().sorted().toList();
+      if (!fromHand(made, consumed)) {
+        throw new IllegalArgumentException(made + " is not made with tiles " + consumed + " from the hand");
       }
     }
 
     @Override
     public void applyTo(SeatTable table, RuleWorkspace ws) {
       table.call(seat, meld);
+    }
+
+    /** 昇順の物理牌が重ならず、面子の鳴いた牌のほかの牌と 1 枚ずつ同じ種類か。 */
+    private static boolean fromHand(Meld meld, List<Integer> consumed) {
+      if (consumed.size() != meld.size() - 1) {
+        return false;
+      }
+      int next = 0;
+      boolean calledSkipped = false;
+      for (int index = 0; index < meld.size(); index++) {
+        int kind = meld.tile(index);
+        if (!calledSkipped && kind == meld.called()) {
+          calledSkipped = true;
+          continue;
+        }
+        int tile = consumed.get(next);
+        requireTile(tile);
+        if (Tiles.kind(tile) != kind || next > 0 && tile == consumed.get(next - 1)) {
+          return false;
+        }
+        next++;
+      }
+      return true;
     }
   }
 

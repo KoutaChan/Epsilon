@@ -1,6 +1,8 @@
 package com.epsilon.mahjong.io.tenhou;
 
+import com.epsilon.mahjong.engine.EngineDecisionKind;
 import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.mahjong.record.RecordEvent;
 import com.epsilon.mahjong.record.RecordedGame;
 import com.epsilon.mahjong.record.RecordedGames;
 import com.epsilon.mahjong.record.ReplayDriver;
@@ -54,9 +56,46 @@ public class TenhouXmlTest {
       <PROF lobby="0" type="169" add="101.3,1,0,0,0,0,1,1,2,0,1"/>\
       </mjloggm>""";
 
+  /**
+   * 天鳳が書く形の南 4 局（親は席 3）。席 1 は 7p を 2 枚（60・63）持ち、上家の席 0 が打った 6p（59）を、番号の大きい 63 と 8p（66）で
+   * チーする。続けて手に残した 60 を打ち、席 2 が平和・断幺九でロンして終局する。
+   */
+  private static final String CHI_WITH_THE_HIGHER_COPY =
+      """
+      <mjloggm ver="2.3"><GO type="169" lobby="0"/><TAIKYOKU oya="0"/>\
+      <INIT seed="7,0,0,1,2,106" ten="310,250,250,190" oya="3" \
+      hai0="0,13,17,32,36,44,68,77,92,104,108,112,116" hai1="1,33,60,63,66,73,105,109,113,117,121,125,129" \
+      hai2="4,8,12,20,24,28,53,56,76,80,84,100,101" hai3="5,9,18,25,34,41,49,64,81,89,96,107,126"/>\
+      <W132/><G132/><T59/><D59/><N who="1" m="37247"/><E60/>\
+      <AGARI ba="0,0" hai="4,8,12,20,24,28,53,56,60,76,80,84,100,101" machi="60" ten="30,2000,0" \
+      yaku="7,1,8,1" doraHai="106" who="2" fromWho="1" sc="310,0,250,-20,250,20,190,0" \
+      owari="310,41.0,230,-17.0,270,7.0,190,-31.0"/>\
+      </mjloggm>""";
+
+  /**
+   * 天鳳が書く形の南 4 局（親は席 3）。席 1 は 7p を 3 枚（60・62・63）持ち、対面の席 3 が打った 7p（61）を、番号の大きい 62・63 で
+   * ポンする。ポンの直後は喰い替えになる 7p を打てないので、次の手番で手に残した 60 を打ち、席 2 が平和・断幺九でロンして終局する。
+   */
+  private static final String PON_WITH_THE_HIGHER_COPIES =
+      """
+      <mjloggm ver="2.3"><GO type="169" lobby="0"/><TAIKYOKU oya="0"/>\
+      <INIT seed="7,0,0,1,2,106" ten="310,250,250,190" oya="3" \
+      hai0="0,13,17,32,36,44,68,77,92,104,108,112,116" hai1="1,33,60,62,63,73,105,109,113,117,121,125,129" \
+      hai2="4,8,12,20,24,28,37,53,56,76,80,84,100" hai3="5,9,18,25,34,41,49,64,81,89,96,107,126"/>\
+      <W61/><G61/><N who="1" m="23050"/><E121/><V101/><F37/><W132/><G132/><T130/><D130/><U69/><E60/>\
+      <AGARI ba="0,0" hai="4,8,12,20,24,28,53,56,60,76,80,84,100,101" machi="60" ten="30,2000,0" \
+      yaku="7,1,8,1" doraHai="106" who="2" fromWho="1" sc="310,0,250,-20,250,20,190,0" \
+      owari="310,41.0,230,-17.0,270,7.0,190,-31.0"/>\
+      </mjloggm>""";
+
   @DataProvider
   public static Object[][] variants() {
     return new Object[][] {{Variant.TENHOU_4P}, {Variant.TENHOU_3P}};
+  }
+
+  @DataProvider
+  public static Object[][] callsWithTheHigherCopies() {
+    return new Object[][] {{CHI_WITH_THE_HIGHER_COPY, List.of(63, 66)}, {PON_WITH_THE_HIGHER_COPIES, List.of(62, 63)}};
   }
 
   /** 自己対局の記録（鳴き・槓・立直・途中流局を広く含む。三人打ちは北抜きも）を書いて読み直すと同じ半荘になり、再生も記録と合う。 */
@@ -103,6 +142,34 @@ public class TenhouXmlTest {
         game.rounds().get(1).result(),
         new RoundResult(EndKind.RON, null, List.of(ron), 1, 0, 0, new int[] {48_300, -48_300, 0, 0}, new int[0]));
     new ReplayDriver(VARIANT).replay(game, new RuleWorkspace(VARIANT));
+  }
+
+  /**
+   * 鳴きは、天鳳の牌譜の m が示す物理牌で手から出す。席 1 が 7p の番号の大きい写しで鳴き、手に残した 60 を後で打つ牌譜も、記録どおりに
+   * 再生できる。鳴いた直後のエンジンの手には 60 が残り、鳴きに使った牌は無い。書いて読み直すと同じ半荘になる。
+   */
+  @Test(dataProvider = "callsWithTheHigherCopies")
+  public void aCallTakesTheCopiesTheLogNames(String xml, List<Integer> consumed) {
+    RecordedGame game = TenhouXml.read(xml, "higher-copies");
+    RecordEvent.Call call =
+        game.rounds().get(0).events().stream()
+            .filter(RecordEvent.Call.class::isInstance)
+            .map(RecordEvent.Call.class::cast)
+            .findFirst()
+            .orElseThrow();
+    Assert.assertEquals(call.consumed(), consumed);
+    ReplayDriver driver = new ReplayDriver(VARIANT);
+    RuleWorkspace ws = new RuleWorkspace(VARIANT);
+    driver.start(game.rounds().get(0), ws);
+    while (driver.engine().decisions().kind(0) != EngineDecisionKind.POST_CALL_DAHAI) {
+      driver.step(ws);
+    }
+    Assert.assertTrue(driver.engine().view(1).holds(60), "the copy the log keeps");
+    for (int tile : consumed) {
+      Assert.assertFalse(driver.engine().view(1).holds(tile), "the copy the log melds: " + tile);
+    }
+    driver.replay(game, ws);
+    Assert.assertEquals(TenhouXml.read(TenhouXml.write(game), "higher-copies"), game);
   }
 
   /**

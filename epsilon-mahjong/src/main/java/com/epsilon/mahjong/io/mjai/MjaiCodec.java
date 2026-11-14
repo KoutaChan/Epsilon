@@ -540,13 +540,14 @@ public final class MjaiCodec {
       }
       List<Face> consumed = faces(event, "consumed");
       Meld meld = Meld.call(type, Meld.RelativeSource.of(actor, target, seats), called, consumed);
+      List<Integer> taken = new ArrayList<>(consumed.size());
       for (Face face : consumed) {
-        copies.meld(actor, face);
+        taken.add(copies.meld(actor, face));
       }
       for (int index = 0; index < meld.size(); index++) {
         melded[actor][meld.tile(index)]++;
       }
-      events.add(new RecordEvent.Call(actor, meld.id()));
+      events.add(new RecordEvent.Call(actor, meld.id(), taken));
     }
 
     /** 北抜きを読む。pai が無ければ北を抜いたものとする。 */

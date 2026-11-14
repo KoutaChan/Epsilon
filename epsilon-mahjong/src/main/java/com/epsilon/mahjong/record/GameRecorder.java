@@ -24,8 +24,8 @@ import java.util.Objects;
  * {@link #advanced} を呼ぶ。局末には {@link #roundEnded} を、終局には {@link #gameEnded} を呼ぶ。どの打ち手が打っても使える。
  *
  * <p>止まるたびに、前に止まった時点より後に起きた公開のイベント・表示牌・立直の成立・ツモを足し、局末に RecordedRound の契約どおりの
- * 順に並べ直す（{@link RecordedRound#contractOrder}）。打牌と北抜きの物理牌は、その席の手から消えた牌で決める。局の結果と裏ドラ表示牌は
- * エンジンの局末の情報から作る。1 つの半荘は 1 つのスレッドで書き取る。
+ * 順に並べ直す（{@link RecordedRound#contractOrder}）。打牌・北抜き・鳴きで手から出した物理牌は、その席の手から消えた牌で決める。局の
+ * 結果と裏ドラ表示牌はエンジンの局末の情報から作る。1 つの半荘は 1 つのスレッドで書き取る。
  */
 public final class GameRecorder {
 
@@ -66,7 +66,7 @@ public final class GameRecorder {
    * 前の時点からのイベントを足す。
    *
    * @throws IllegalArgumentException ほかのルールのビューを渡したとき
-   * @throws IllegalStateException 打牌か北抜きの物理牌が手から決まらないとき
+   * @throws IllegalStateException 打牌・北抜き・鳴きで手から出した物理牌が、手の変わり方から決まらないとき
    */
   public void advanced(FullView full) {
     requireVariant(full);
@@ -183,38 +183,37 @@ public final class GameRecorder {
   private RecordEvent publicEvent(FullView full, EventLog log, int event) {
     int seat = log.seat(event);
     return switch (log.kind(event)) {
-      case DISCARD -> new RecordEvent.Discard(seat, removed(full, seat), log.tsumogiri(event), log.riichi(event));
+      case DISCARD ->
+          new RecordEvent.Discard(seat, removed(full, seat, 1).getFirst(), log.tsumogiri(event), log.riichi(event));
       case MELD -> {
         Meld meld = Meld.of(log.meld(event));
         yield meld.type() == Meld.Type.ANKAN
             ? new RecordEvent.ClosedKan(seat, meld.base())
-            : new RecordEvent.Call(seat, meld.id());
+            : new RecordEvent.Call(seat, meld.id(), removed(full, seat, meld.size() - 1));
       }
       case KAKAN -> new RecordEvent.AddedKan(seat, Meld.of(log.meld(event)).base());
-      case NUKI -> new RecordEvent.Nuki(seat, removed(full, seat));
+      case NUKI -> new RecordEvent.Nuki(seat, removed(full, seat, 1).getFirst());
     };
   }
 
   /**
-   * 前に止まった時点では席の手にあり、いまは無い物理牌（打った牌か抜いた北）を返す。そういう牌がちょうど 1 枚でなければ
-   * IllegalStateException を投げる。
+   * 前に止まった時点では席の手にあり、いまは無い物理牌（打った牌、抜いた北、鳴きで面子へ移した牌）を物理 id の昇順で返す。そういう牌が
+   * ちょうど {@code count} 枚でなければ IllegalStateException を投げる。
    */
-  private int removed(FullView full, int seat) {
+  private List<Integer> removed(FullView full, int seat, int count) {
     SeatView view = full.seat(seat);
-    int removed = -1;
+    List<Integer> removed = new ArrayList<>(count);
     for (int index = 0; index < set.size(); index++) {
       int tile = set.physicalId(index);
       if (held[seat][tile] && !view.holds(tile)) {
-        if (removed >= 0) {
-          throw new IllegalStateException("Seat " + seat + " gave up more than one tile in one step");
-        }
-        removed = tile;
+        removed.add(tile);
+        held[seat][tile] = false;
       }
     }
-    if (removed < 0) {
-      throw new IllegalStateException("No tile left the hand of seat " + seat);
+    if (removed.size() != count) {
+      throw new IllegalStateException(
+          "Seat " + seat + " gave up " + removed.size() + " tiles in one step, not " + count);
     }
-    held[seat][removed] = false;
     return removed;
   }
 

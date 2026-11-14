@@ -91,12 +91,15 @@ final class RoundBuilder {
   /** 席が直前の打牌を、手の中の赤でない 2 枚でポンする。 */
   RoundBuilder pon(int seat) {
     int kind = Tiles.kind(discarded);
+    List<Integer> consumed = new ArrayList<>();
     for (int taken = 0; taken < 2; taken++) {
-      hands.get(seat).remove(Integer.valueOf(held(seat, kind * 2)));
+      int tile = held(seat, kind * 2);
+      hands.get(seat).remove(Integer.valueOf(tile));
+      consumed.add(tile);
     }
     Meld.AkaSource aka = set.red(discarded) ? Meld.AkaSource.CALLED_TILE : Meld.AkaSource.NONE;
     Meld meld = Meld.pon(kind, Meld.RelativeSource.of(seat, discarder, seats), aka);
-    events.add(new RecordEvent.Call(seat, meld.id()));
+    events.add(new RecordEvent.Call(seat, meld.id(), consumed));
     return this;
   }
 

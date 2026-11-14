@@ -143,7 +143,7 @@ public class ReplayDriverTest {
     int missing = Tiles.physicalId(Tiles.kind(kept), 2);
     Assert.expectThrows(
         IllegalArgumentException.class,
-        () -> driver.engine().commit(new int[] {driver.choice(0)}, missing, ws));
+        () -> driver.engine().commit(new int[] {driver.choice(0)}, new int[] {missing}, 1, ws));
 
     Assert.assertEquals(driver.step(ws), Boundary.DECISIONS);
     Assert.assertEquals(driver.engine().decisions().seat(0), 1);
@@ -180,6 +180,53 @@ public class ReplayDriverTest {
     Assert.assertEquals(driver.engine().decisions().kind(0), EngineDecisionKind.TURN);
     Assert.assertTrue(driver.engine().view(0).holds(kept), "the north the record keeps");
     Assert.assertFalse(driver.engine().view(0).holds(taken), "the north the record takes out");
+  }
+
+  /**
+   * 南 4 局（{@link #ponOverChi}）: 席 3 の 3p を、席 0 がチーでき、席 1 が 33p でポンする。応答で手から出す牌を指定できるのは、鳴きを
+   * 選んだ席がちょうど 1 つのときで、牌はその席が持つものに限る。エンジンは合わない指定を受け付けず、変わらないので、記録どおりに進められる。
+   */
+  @Test
+  public void theEngineTakesOnlyHeldTilesForTheOneCallThatPasses() {
+    ReplayDriver driver = new ReplayDriver(VARIANT);
+    RuleWorkspace ws = new RuleWorkspace(VARIANT);
+    driver.start(ponOverChi().round(ponOverChiResult()), ws);
+    Assert.assertEquals(driver.step(ws), Boundary.DECISIONS);
+    Decisions decisions = driver.engine().decisions();
+    int chi = decisions.slotOf(0);
+    int pon = decisions.slotOf(1);
+    Assert.assertEquals(Action.of(decisions.legal(chi, 0)).type(), Action.Type.CHI);
+    int[] recorded = new int[decisions.size()];
+    recorded[chi] = decisions.legalCount(chi) - 1;
+    recorded[pon] = driver.choice(pon);
+    Assert.assertEquals(Action.of(decisions.legal(chi, recorded[chi])).type(), Action.Type.PASS);
+    int[] chiToo = recorded.clone();
+    chiToo[chi] = 0;
+    int[] held = {Tiles.physicalId(Tiles.P3, 1), Tiles.physicalId(Tiles.P3, 2)};
+    int[] notHeld = {Tiles.physicalId(Tiles.P3, 1), Tiles.physicalId(Tiles.P3, 3)};
+    Assert.expectThrows(IllegalArgumentException.class, () -> driver.engine().commit(recorded, notHeld, 2, ws));
+    Assert.expectThrows(IllegalArgumentException.class, () -> driver.engine().commit(recorded, held, 1, ws));
+    Assert.expectThrows(IllegalArgumentException.class, () -> driver.engine().commit(chiToo, held, 2, ws));
+
+    Assert.assertEquals(driver.step(ws), Boundary.DECISIONS);
+    Assert.assertEquals(chosen(driver, 0), "DAHAI(6s)");
+    for (int tile : held) {
+      Assert.assertFalse(driver.engine().view(1).holds(tile), "the pon takes tile " + tile);
+    }
+  }
+
+  /** 鳴いた席が持っていない物理牌で鳴く記録は、記録との食い違いになる。 */
+  @Test
+  public void aCallWithATileTheCallerDoesNotHoldIsRejected() {
+    RoundBuilder builder = ponOverChi();
+    List<RecordEvent> events = builder.events();
+    RecordEvent.Call pon = (RecordEvent.Call) events.get(2);
+    Assert.assertEquals(pon.consumed(), List.of(Tiles.physicalId(Tiles.P3, 1), Tiles.physicalId(Tiles.P3, 2)));
+    int elsewhere = Tiles.physicalId(Tiles.P3, 3);
+    events.set(2, new RecordEvent.Call(1, pon.meld(), List.of(pon.consumed().getFirst(), elsewhere)));
+    assertRejected(
+        game("call-without-the-tile", builder.round(events, ponOverChiResult()), 24_000, 21_000, 31_000, 24_000),
+        "Seat 1 does not hold tile " + elsewhere);
   }
 
   /**

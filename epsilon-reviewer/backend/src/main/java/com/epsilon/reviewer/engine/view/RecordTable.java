@@ -1,6 +1,5 @@
 package com.epsilon.reviewer.engine.view;
 
-import com.epsilon.mahjong.action.Meld.AkaSource;
 import com.epsilon.mahjong.action.Meld.Type;
 import com.epsilon.mahjong.engine.RoundEnd;
 import com.epsilon.mahjong.engine.SeatView;
@@ -19,9 +18,6 @@ import java.util.List;
  * 牌譜の 1 局をイベントの順に進める、表示用の卓。牌譜の記録だけで動く。全ての席の手牌（物理牌）、河の牌と印（ツモ切り・立直の
  * 宣言牌・鳴かれた牌）、面子、抜いた北、ドラ表示牌、点・本場・供託、残りのツモの数、手番を持つ。どの席の伏せた牌も持つので、推論には
  * 渡さない。抜いた北は、副露の後に 1 枚ずつ並べて見せる。
- *
- * <p>鳴きの記録は手から出した物理牌を持たない。そこで、手の赤 5 を使う鳴きでは赤の写しを、それ以外では赤でない写しのうち番号の最も
- * 小さいものを手から出す。
  */
 public final class RecordTable {
   private final Variant variant;
@@ -135,15 +131,7 @@ public final class RecordTable {
       case RecordEvent.Call call -> {
         var meld = com.epsilon.mahjong.action.Meld.of(call.meld());
         markCalled(meld.source().seat(call.seat(), seats));
-        List<Integer> consumed = new ArrayList<>(meld.size());
-        for (int index = 0; index < meld.size(); index++) consumed.add(meld.tile(index));
-        consumed.remove(Integer.valueOf(meld.called()));
-        boolean redFromHand = meld.aka() == AkaSource.CONSUMED_HAND_TILE;
-        for (int kind : consumed) {
-          boolean red = redFromHand && Tiles.contains(Tiles.FIVES, kind);
-          release(call.seat(), red ? Tiles.physicalId(kind, Tiles.RED_COPY) : plain(call.seat(), kind));
-          redFromHand &= !red;
-        }
+        for (int tile : call.consumed()) release(call.seat(), tile);
         melds.get(call.seat()).add(call.meld());
         current = call.seat();
         clearDraw();
@@ -330,15 +318,6 @@ public final class RecordTable {
     if (!hands[seat][tile])
       throw new IllegalArgumentException("Seat " + seat + " does not hold tile " + tile);
     hands[seat][tile] = false;
-  }
-
-  /** 手にあるその種類の赤でない写しのうち、番号の最も小さいもの。 */
-  private int plain(int seat, int kind) {
-    for (int copy = 0; copy < Tiles.COPIES; copy++) {
-      int tile = Tiles.physicalId(kind, copy);
-      if (hands[seat][tile] && !tiles.red(tile)) return tile;
-    }
-    throw new IllegalArgumentException("Seat " + seat + " holds no plain tile of kind " + kind);
   }
 
   /** 手にあるその種類の牌（加槓で足す 1 枚）。 */

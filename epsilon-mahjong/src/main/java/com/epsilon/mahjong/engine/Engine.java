@@ -107,21 +107,26 @@ public final class Engine {
    * @return 止まった時点
    */
   public Boundary commit(int[] choices, RuleWorkspace ws) {
-    return commit(choices, TurnEvent.NONE, ws);
+    return commit(choices, null, 0, ws);
   }
 
   /**
-   * 判断する席ごとに選んだ手で答え、次の判断の時点か局末まで進める。手番の打牌・立直の打牌・北抜きでは、手から出す物理牌を指定する。
-   * 牌譜の再生が、記録と同じ物理牌を手から出すために使う（同じ種類の牌のどれを打ったかは、手の指定からは決まらない）。
+   * 判断する席ごとに選んだ手で答え、次の判断の時点か局末まで進める。行われる手が手から出す物理牌を指定する。牌譜の再生が、記録と
+   * 同じ物理牌を手から出すために使う（同じ種類の牌のどれを出したかは、手の指定からは決まらない）。他家の応答で牌を指定できるのは、
+   * ロンを選んだ席が無く、鳴きを選んだ席がちょうど 1 つのとき（その鳴きが通る）だけ。
    *
    * @param choices 席ごとに選んだ手（合法手の何番目か）。先頭から判断する席の数だけを読む
-   * @param tile 手番の席が打つか抜く物理 id。選んだ手と種類・赤かどうかが合い、手にあり、ツモ切りの手ならツモった牌、手出しならほかの
-   *     牌であること。エンジンに選ばせるなら {@link TurnEvent#NONE}
+   * @param tiles 行われる手が手から出す物理 id。手番の打牌・立直の打牌・北抜きは打つか抜く 1 枚で、選んだ手と種類・赤かどうかが合い、
+   *     ツモ切りの手ならツモった牌、手出しならほかの牌であること。他家の応答のチー・ポン・大明槓は手から面子へ移す牌（チー・ポンは
+   *     2 枚、大明槓は 3 枚）を物理 id の昇順に並べ、種類と赤かどうかが面子と合うこと。どれも手にあること。先頭から {@code count}
+   *     枚だけを読む
+   * @param count 指定する牌の枚数。0 ならエンジンが選び、{@code tiles} を読まない
    * @param ws ルールの作業領域
    * @return 止まった時点
-   * @throws IllegalArgumentException 指定した牌が選んだ手に合わないとき、または牌を出さない手か他家の応答に牌を指定したとき
+   * @throws IllegalArgumentException 指定した牌が行われる手に合わないとき、または牌を出さない手に牌を指定したとき。このときエンジンは
+   *     変わらない
    */
-  public Boundary commit(int[] choices, int tile, RuleWorkspace ws) {
+  public Boundary commit(int[] choices, int[] tiles, int count, RuleWorkspace ws) {
     requireStage(Stage.DECISIONS);
     requireWorkspace(ws);
     Decisions decisions = round.decisions();
@@ -135,7 +140,7 @@ public final class Engine {
                 + slot);
       }
     }
-    return arrive(round.commit(choices, tile, ws));
+    return arrive(round.commit(choices, tiles, count, ws));
   }
 
   /** 判断の時点で、判断する席ごとの合法手。判断の時点でだけ読め、次に進める呼び出しまで有効。 */

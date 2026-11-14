@@ -8,6 +8,7 @@ import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.score.RiichiState;
 import com.epsilon.mahjong.tile.TileSet;
 import com.epsilon.mahjong.tile.Tiles;
+import java.util.Arrays;
 
 /**
  * 局の公開イベントを、公開情報と手に書き込む手順。エンジンの遷移と、1 席から見た卓（{@link SeatTable}）が同じ手順を使う。
@@ -240,19 +241,72 @@ final class Steps {
   }
 
   /**
-   * 直前の打牌を、チー・ポン・大明槓の面子で鳴く。面子が直前の打牌を鳴いたものでなければ、手を変えずに例外を投げる。純手牌が分かる
-   * 席は、鳴きに使う牌を手から除く。赤の由来が手の牌なら赤の 5 を 1 枚、ほかは赤でない牌のうち物理 id が最も小さいものを除く
-   * （大明槓なら手の 3 枚を全て除く）。全員の一発を消し、大明槓なら表示牌を後めくりにする。
+   * 純手牌が分かる席が鳴きで手から面子へ移す牌として、指定した牌を確かめる。枚数が面子の手の牌の数と同じで、物理 id の昇順に並び、
+   * どれも手にあり、面子の鳴いた牌のほかの牌と 1 枚ずつ同じ種類であること。赤の 5 は、赤の由来が手の牌の面子なら 1 枚含み、ほかの
+   * 面子なら含まないこと。
+   *
+   * @param caller 鳴く席
+   * @param meldId 面子の正準の番号
+   * @param tiles 手から面子へ移す物理 id。先頭から {@code count} 枚だけを読む
+   * @throws IllegalArgumentException 指定した牌が合わないとき
+   */
+  void requireCalled(int caller, int meldId, int[] tiles, int count) {
+    Meld meld = Meld.of(meldId);
+    Hand hand = hands[caller];
+    boolean fits = count == meld.size() - 1;
+    boolean red = false;
+    boolean calledSkipped = false;
+    int next = 0;
+    for (int index = 0; fits && index < meld.size(); index++) {
+      int kind = meld.tile(index);
+      if (!calledSkipped && kind == meld.called()) {
+        calledSkipped = true;
+        continue;
+      }
+      int tile = tiles[next];
+      fits = hand.holds(tile) && Tiles.kind(tile) == kind && (next == 0 || tile > tiles[next - 1]);
+      red |= fits && set.red(tile);
+      next++;
+    }
+    if (!fits || red != (meld.aka() == Meld.AkaSource.CONSUMED_HAND_TILE)) {
+      throw new IllegalArgumentException(
+          "Seat " + caller + " cannot make " + meld + " with tiles " + Arrays.toString(Arrays.copyOf(tiles, count)));
+    }
+  }
+
+  /**
+   * 直前の打牌を、チー・ポン・大明槓の面子で鳴く。手から除く牌は、{@link #call(int, int, int[], int)} で牌を指定しないときと同じく
+   * 選ぶ。
    *
    * @param caller 鳴く席
    * @param meldId 面子の正準の番号
    */
   void call(int caller, int meldId) {
+    call(caller, meldId, null, 0);
+  }
+
+  /**
+   * 直前の打牌を、チー・ポン・大明槓の面子で鳴く。面子が直前の打牌を鳴いたものでなければ、手を変えずに例外を投げる。純手牌が分かる
+   * 席は、鳴きに使う牌を手から除く。牌を指定すればその牌を除く。指定しなければ、赤の由来が手の牌なら赤の 5 を 1 枚、ほかは赤でない
+   * 牌のうち物理 id が最も小さいものを除く（大明槓なら手の 3 枚を全て除く）。全員の一発を消し、大明槓なら表示牌を後めくりにする。
+   *
+   * @param caller 鳴く席
+   * @param meldId 面子の正準の番号
+   * @param tiles 手から除く物理 id（{@link #requireCalled} で確かめた牌）。先頭から {@code count} 枚だけを読む
+   * @param count 指定した牌の枚数。0 なら手から除く牌を選び、{@code tiles} を読まない
+   */
+  void call(int caller, int meldId, int[] tiles, int count) {
     state.call(caller, meldId);
     Meld meld = Meld.of(meldId);
     Hand hand = hands[caller];
     if (known(caller)) {
-      takeCalled(hand, meld);
+      if (count == 0) {
+        takeCalled(hand, meld);
+      } else {
+        for (int index = 0; index < count; index++) {
+          hand.take(tiles[index]);
+        }
+      }
     }
     hand.addMeld(meldId);
     state.clearIppatsu();

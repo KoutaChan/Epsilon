@@ -1,5 +1,6 @@
 package com.epsilon.mahjong.io;
 
+import com.epsilon.mahjong.io.majsoul.MajSoulProtoTest;
 import com.epsilon.mahjong.io.majsoul.MajSoulReader;
 import com.epsilon.mahjong.io.majsoul.MajSoulReaderTest;
 import com.epsilon.mahjong.io.mjai.MjaiCodec;
@@ -24,7 +25,8 @@ public class RecordFilesTest {
 
   /**
    * どの形式も、その形式のリーダーと同じ半荘に読む。試すのは、自己対局の半荘を書いた天鳳の XML（gzip と、BOM と空白の付いた平文）、
-   * mjai（1 行 1 イベント、配列、gzip、{@code type} が先頭のフィールドでないイベント）、雀魂の JSON。
+   * mjai（1 行 1 イベント、配列、gzip、{@code type} が先頭のフィールドでないイベント）、雀魂の JSON と、同じ半荘の雀魂の牌譜を取る
+   * API の応答の protobuf（そのままと gzip）。
    */
   @Test
   public void everyFormatReadsLikeItsOwnReader() {
@@ -47,6 +49,8 @@ public class RecordFilesTest {
     RecordedGame soul = MajSoulReader.read(MajSoulReaderTest.RECORD, "soul");
     Assert.assertEquals(soul.meta().source(), RecordedGame.Source.MAJSOUL);
     Assert.assertEquals(RecordFiles.read(utf8(MajSoulReaderTest.RECORD), "soul"), soul);
+    Assert.assertEquals(RecordFiles.read(MajSoulProtoTest.response(true), "soul"), soul);
+    Assert.assertEquals(RecordFiles.read(gzip(MajSoulProtoTest.response(true)), "soul"), soul);
   }
 
   /**

@@ -17,13 +17,15 @@ import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
 /**
- * 牌譜のファイルを読む入口。gzip なら展開し、UTF-8 として読んで、前後の空白と先頭の BOM を除く。形式を見分けて、その形式のリーダーに渡す。
+ * 牌譜のファイルを読む入口。gzip なら展開する。展開した中身が雀魂の牌譜を取る API の応答の protobuf（ResGameRecord を包んだ
+ * lq.Wrapper）なら、雀魂のリーダーに渡す。ほかは UTF-8 として読んで、前後の空白と先頭の BOM を除き、形式を見分けて、その形式の
+ * リーダーに渡す。
  *
- * <p>形式は先頭の文字で見分ける。'&lt;' なら天鳳の XML。'{' か '[' なら JSON で、最初の object に文字列の type があれば mjai とする
+ * <p>文字の形式は先頭の文字で見分ける。'&lt;' なら天鳳の XML。'{' か '[' なら JSON で、最初の object に文字列の type があれば mjai とする
  * （1 行に 1 つのイベントか、イベントの配列）。JSON が配列でなく、先頭の object に head か records があれば、復号した雀魂の JSON とする。
  *
- * <p>解析結果の文書（先頭の object に formatVersion・resultId・rounds のどれかがあるもの）は読まない。雀魂の protobuf や base64、
- * records だけの配列など、ほかの形も読まない。
+ * <p>解析結果の文書（先頭の object に formatVersion・resultId・rounds のどれかがあるもの）は読まない。base64 や、雀魂の records だけの
+ * 配列、GameDetailRecords だけの protobuf など、ほかの形も読まない。
  */
 public final class RecordFiles {
 
@@ -65,15 +67,17 @@ public final class RecordFiles {
     if (bytes.length == 0 || bytes.length > MAX_BYTES) {
       throw new IllegalArgumentException("A record holds between 1 byte and 16 MiB, got " + bytes.length + " bytes");
     }
-    String text = text(unpack(bytes));
-    RecordedGame.Source source = source(text);
+    byte[] content = unpack(bytes);
+    boolean response = MajSoulReader.isResponse(content);
+    String text = response ? null : text(content);
+    RecordedGame.Source source = response ? RecordedGame.Source.MAJSOUL : source(text);
     RecordedGame game;
     try {
       game =
           switch (source) {
             case TENHOU -> TenhouXml.read(text, id);
             case MJAI -> MjaiCodec.read(text, id);
-            case MAJSOUL -> MajSoulReader.read(text, id);
+            case MAJSOUL -> response ? MajSoulReader.read(content, id) : MajSoulReader.read(text, id);
           };
     } catch (IllegalArgumentException failure) {
       throw failure;

@@ -30,7 +30,8 @@ import java.util.Objects;
 /**
  * 雀魂の牌譜（四人打ち）を読む。復号した JSON のうち、head.result.players の各席の part_point_1（終局の点）、head.accounts の
  * 各席の nickname（打ち手の名前）、records の各要素 {name: ".lq.RecordNewRound" など, data: {...}} を読む。キーの名前は
- * snake_case でも lowerCamelCase でもよい。ルールは、局の始まりの scores の席の数で決める。三人打ちの牌譜は読まない。
+ * snake_case でも lowerCamelCase でもよい。牌譜を取る API の応答の protobuf（ResGameRecord を包んだ lq.Wrapper）は、
+ * {@link MajSoulProto} で同じ形の JSON に直してから読む。ルールは、局の始まりの scores の席の数で決める。三人打ちの牌譜は読まない。
  *
  * <p>牌の表記から TileCopies の割り当て方で物理 id を決め、イベントは RecordedRound の契約の順に並べ直す。親の配牌 14 枚の
  * 最後の 1 枚は最初のツモにする。立直の成立は、宣言牌の後の記録が持つ liqi（failed でないもの）で知る。表示牌は、doras の列で
@@ -200,7 +201,27 @@ public final class MajSoulReader {
    * @return 読んだ半荘
    */
   public static RecordedGame read(String json, String id) {
-    JsonObject document = JsonParser.parseString(json).getAsJsonObject();
+    return read(JsonParser.parseString(json).getAsJsonObject(), id);
+  }
+
+  /**
+   * 雀魂の牌譜を取る API の応答の protobuf（ResGameRecord を包んだ lq.Wrapper）を読む。読めない牌譜には IllegalArgumentException を
+   * 投げる。
+   *
+   * @param response 応答のバイト列
+   * @param id 牌譜の id
+   * @return 読んだ半荘
+   */
+  public static RecordedGame read(byte[] response, String id) {
+    return read(MajSoulProto.document(response), id);
+  }
+
+  /** バイト列が、雀魂の牌譜を取る API の応答の protobuf（ResGameRecord を包んだ lq.Wrapper）か。先頭の name で見分ける。 */
+  public static boolean isResponse(byte[] bytes) {
+    return MajSoulProto.isResponse(bytes);
+  }
+
+  private static RecordedGame read(JsonObject document, String id) {
     Reader reader = new Reader(id);
     for (JsonElement record : field(document, "records").getAsJsonArray()) {
       reader.accept(record.getAsJsonObject());
@@ -259,7 +280,7 @@ public final class MajSoulReader {
    *
    * @param upper true なら UpperCamelCase、false なら lowerCamelCase
    */
-  private static String camel(String snake, boolean upper) {
+  static String camel(String snake, boolean upper) {
     StringBuilder camel = new StringBuilder();
     boolean start = upper;
     for (char c : snake.toCharArray()) {

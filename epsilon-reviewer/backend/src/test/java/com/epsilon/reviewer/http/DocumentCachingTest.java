@@ -1,6 +1,7 @@
 package com.epsilon.reviewer.http;
 
 import com.epsilon.reviewer.TestReviewer;
+import com.epsilon.reviewer.engine.format.ResultWriter;
 import com.epsilon.reviewer.store.ResultId;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -21,7 +22,7 @@ public class DocumentCachingTest {
               Path.of("data", "results", id.value(), "result.json.gz"));
       byte[] stored = Files.readAllBytes(file);
       byte[] inflated = HttpApiTest.gunzip(stored).getBytes(StandardCharsets.UTF_8);
-      String tag = "W/\"" + id.value() + "\"";
+      String tag = "W/\"" + ResultWriter.FORMAT + "-" + id.value() + "\"";
       for (String path : List.of("/api/results/" + id.value(), "/api/shares/" + id.value())) {
         var owner = path.startsWith("/api/shares/") ? null : TestReviewer.OWNER;
         for (String encoding : List.of("gzip", "br, gzip;q=0.5", "*;q=1", "GZIP")) {
@@ -46,15 +47,17 @@ public class DocumentCachingTest {
           Assert.assertFalse(response.headers().firstValue("Content-Length").isPresent());
           Assert.assertEquals(header(response, "Vary"), "Accept-Encoding");
         }
-        for (String condition : List.of(tag, "\"" + id.value() + "\"", "*", "\"x\", " + tag)) {
+        for (String condition : List.of(tag, tag.substring(2), "*", "\"x\", " + tag)) {
           var response =
               server.bytes(server.request(path, owner).header("If-None-Match", condition));
           Assert.assertEquals(response.statusCode(), 304, condition);
           Assert.assertEquals(response.body().length, 0);
           Assert.assertEquals(response.headers().firstValue("ETag").orElseThrow(), tag);
         }
-        var changed = server.request(path, owner).header("If-None-Match", "W/\"other\"");
-        Assert.assertEquals(server.bytes(changed).statusCode(), 200);
+        for (String other : List.of("W/\"other\"", "W/\"" + id.value() + "\"")) {
+          var changed = server.request(path, owner).header("If-None-Match", other);
+          Assert.assertEquals(server.bytes(changed).statusCode(), 200, other);
+        }
       }
       for (String encoding : List.of("identity", "gzip")) {
         var download =

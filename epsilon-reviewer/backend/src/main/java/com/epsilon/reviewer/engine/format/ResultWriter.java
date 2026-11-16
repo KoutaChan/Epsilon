@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
  * 判断の {@code cause} は直前のイベントの位置なら省き、{@code resolve} は {@code cause + 1} なら省く。局面が前の手順と変わらなければ null を渡す。
  */
 public final class ResultWriter implements Closeable {
-  public static final int FORMAT = 6;
+  public static final int FORMAT = 7;
 
   private final Writer text;
   private final JsonWriter json;

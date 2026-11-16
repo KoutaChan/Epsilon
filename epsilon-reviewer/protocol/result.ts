@@ -5,7 +5,7 @@ import type { ModelInfo, RecordSummary } from "./model.ts";
 // 例外は TableState（全てのフィールドを書く）と PlayerDelta.draw（null は「ツモ牌が無くなった」の意味）。
 
 /** 文書の形式の番号。これ以外の番号の文書は開かない。 */
-export const RESULT_FORMAT = 6;
+export const RESULT_FORMAT = 7;
 
 export interface ResultDocument {
   format: typeof RESULT_FORMAT;
@@ -135,8 +135,10 @@ export interface PlayerState {
   /** 見えているツモ牌。他家の牌が見えない局面では、他家の値は null。 */
   draw: string | null;
   river: readonly RiverTile[];
-  /** 副露を並べ、その後に三人打ちで抜いた北を 1 枚ずつ（NUKI）並べる。 */
+  /** 副露と暗槓（鳴いた順）。 */
   melds: readonly Meld[];
+  /** 三人打ちで抜いた北の数。四人打ちでは 0。 */
+  nuki: number;
 }
 
 /** 河の 1 枚。印のフィールドは true のときだけ書く。 */
@@ -150,12 +152,12 @@ export interface RiverTile {
 }
 
 export interface Meld {
-  type: "CHI" | "PON" | "DAIMINKAN" | "ANKAN" | "KAKAN" | "NUKI";
-  /** チー・ポンは 3 枚、槓は 4 枚、抜いた北（NUKI）は 1 枚。表示する順に並ぶ。 */
+  type: "CHI" | "PON" | "DAIMINKAN" | "ANKAN" | "KAKAN";
+  /** チー・ポンは 3 枚、槓は 4 枚。表示する順に並ぶ。 */
   tiles: readonly string[];
-  /** 鳴いた牌を出した席の番号。暗槓と抜いた北では -1。 */
+  /** 鳴いた牌を出した席の番号。暗槓では -1。 */
   from: number;
-  /** 横に倒す牌の位置。暗槓と抜いた北では -1。 */
+  /** 横に倒す牌の位置。暗槓では -1。 */
   calledIndex: number;
   /** 加槓で加えた牌の位置（3）。加槓以外では -1。 */
   addedIndex: number;
@@ -191,6 +193,8 @@ export interface PlayerDelta {
   draw?: string | null;
   river?: Splice<RiverTile>;
   melds?: Splice<Meld>;
+  /** 抜いた北の新しい数。 */
+  nuki?: number;
 }
 
 /** 局の結果。流局の理由と点の移動は持たない（画面は持ち点の差を表示する）。 */

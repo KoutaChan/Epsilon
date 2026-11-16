@@ -143,7 +143,7 @@ test("desktop-only commands have no HTTP route", async () => {
 
 test("responses decode by the command's response kind", async (t) => {
   const transport = httpTransport();
-  const document = { format: 6, resultId: id, rounds: [] };
+  const document = { format: 7, resultId: id, rounds: [] };
   const fetch = t.mock.method(globalThis, "fetch", async () =>
     Response.json(document),
   );

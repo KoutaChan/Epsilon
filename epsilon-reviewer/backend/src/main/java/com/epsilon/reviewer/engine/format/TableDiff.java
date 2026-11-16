@@ -33,6 +33,7 @@ public final class TableDiff {
       if (!Objects.equals(old.draw(), next.draw())) json.name("draw").value(next.draw());
       splice(json, "river", old.river(), next.river(), TableJson::riverTile);
       splice(json, "melds", old.melds(), next.melds(), TableJson::meld);
+      if (old.nuki() != next.nuki()) json.name("nuki").value(next.nuki());
       json.endObject();
     }
     if (players) json.endArray();

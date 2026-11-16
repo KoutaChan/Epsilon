@@ -87,7 +87,7 @@ test("error replies become ApiError with the code and message", async () => {
 
 test("documents arrive as gzip bytes and are inflated in the page", async () => {
   const document = {
-    format: 6,
+    format: 7,
     resultId: id,
     record: { names: ["東", "南", "西", "北"] },
   };

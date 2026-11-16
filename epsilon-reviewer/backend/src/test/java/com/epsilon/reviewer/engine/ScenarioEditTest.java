@@ -465,6 +465,7 @@ public class ScenarioEditTest {
     for (PlayerState player : table.players()) {
       for (RiverTile tile : player.river()) if (!tile.called()) tiles.add(tile.tile());
       for (Meld meld : player.melds()) tiles.addAll(meld.tiles());
+      for (int index = 0; index < player.nuki(); index++) tiles.add("N");
     }
     tiles.addAll(table.dora());
     return tiles;

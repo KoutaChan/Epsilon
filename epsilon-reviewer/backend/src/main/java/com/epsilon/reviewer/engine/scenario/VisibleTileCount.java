@@ -1,10 +1,12 @@
 package com.epsilon.reviewer.engine.scenario;
 
 import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.reviewer.engine.view.Meld;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
 import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TileCode;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import java.util.HashMap;
@@ -12,11 +14,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 判断する席に見える牌（自分の手牌とツモ牌、全ての河、全ての副露、ドラ表示牌）を牌の記号ごとに数え、変更で置いた牌がどれも、その
+ * 判断する席に見える牌（自分の手牌とツモ牌、全ての河、全ての副露、抜いた北、ドラ表示牌）を牌の記号ごとに数え、変更で置いた牌がどれも、その
  * 牌の写しの数（ルールの牌の集合から求める）を超えないことを確かめる。鳴かれた河の牌は副露の牌として数える。超えたら、その牌を
  * 置いた最初の変更を名指しして断る。
  */
 final class VisibleTileCount {
+  private static final String NORTH = TileCode.of(Tiles.PEI, false);
+
   private final Variant variant;
   private final Map<String, Integer> counts = new HashMap<>();
 
@@ -36,6 +40,7 @@ final class VisibleTileCount {
     for (PlayerState player : table.players()) {
       for (RiverTile tile : player.river()) if (!tile.called()) visible.count(tile.tile());
       for (Meld meld : player.melds()) meld.tiles().forEach(visible::count);
+      for (int index = 0; index < player.nuki(); index++) visible.count(NORTH);
     }
     table.dora().forEach(visible::count);
     placements.forEach(visible::requireWithin);

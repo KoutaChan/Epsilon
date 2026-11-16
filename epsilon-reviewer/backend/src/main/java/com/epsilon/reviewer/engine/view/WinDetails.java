@@ -33,14 +33,14 @@ public record WinDetails(
   /**
    * 内訳に並べる役 1 つ。
    *
-   * @param code 役のコード。{@link ScoringYaku} の名前で、自風と場風の役牌には風を付ける（YAKUHAI_SEAT_E など）。ドラは DORA・AKADORA・URADORA
+   * @param code 役のコード。{@link ScoringYaku} の名前で、自風と場風の役牌には風を付ける（YAKUHAI_SEAT_E など）。ドラは DORA・AKADORA・URADORA・NUKIDORA
    * @param han 翻。役満の役なら 0
    * @param yakuman 役満の倍率。役満でない役は 0
    */
   public record Yaku(String code, int han, int yakuman) {}
 
   /**
-   * 局末の和了 1 つの内訳を作る。役は {@link ScoringYaku} の順に並べ、役満でなければ後ろにドラ・赤ドラ・裏ドラを足す。
+   * 局末の和了 1 つの内訳を作る。役は {@link ScoringYaku} の順に並べ、役満でなければ後ろにドラ・赤ドラ・裏ドラ・抜きドラを足す。
    *
    * @param variant ルール（四人打ちか三人打ちか）
    * @param round 局の通し番号
@@ -69,6 +69,7 @@ public record WinDetails(
       addDora(yaku, "DORA", score.dora());
       addDora(yaku, "AKADORA", score.aka());
       addDora(yaku, "URADORA", score.ura());
+      addDora(yaku, "NUKIDORA", score.nuki());
     }
     return new WinDetails(
         score.han(),

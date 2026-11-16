@@ -240,6 +240,14 @@ export function TableOverlay({
                       .join(t("replay.meldSeparator")),
                   })}
                 </p>
+                {player.nuki > 0 && (
+                  <p>
+                    {t("replay.labelValue", {
+                      label: t("replay.nuki", { name }),
+                      value: list(Array<string>(player.nuki).fill("N")),
+                    })}
+                  </p>
+                )}
               </section>
             );
           })}

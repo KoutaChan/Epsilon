@@ -10,15 +10,18 @@ const RESULT_TILE_GAP = 0.025;
 /** 手牌・和了牌・副露のまとまりどうしの間隔（牌の幅を 1 とした比）。 */
 const RESULT_GROUP_GAP = 0.35;
 
-/** 和了した手を 1 列に並べる。左から、鳴いていない手牌、和了牌、副露（新しい順）と置く。 */
+/**
+ * 和了した手を 1 列に並べる。左から、鳴いていない手牌、和了牌、副露（新しい順）と置き、三人打ちで抜いた北は副露から離して右端に置く。
+ */
 export function WinningHandRow({ winner }: { winner: WinningHand }) {
   const { t } = useLanguage();
   const {
     hand,
     winningTile,
-    player: { melds },
+    player: { melds, nuki },
   } = winner;
-  const groupCount = Number(hand.length > 0) + 1 + melds.length;
+  const groupCount =
+    Number(hand.length > 0) + 1 + melds.length + Number(nuki > 0);
   let widthUnits =
     hand.length +
     1 +
@@ -31,6 +34,8 @@ export function WinningHandRow({ winner }: { winner: WinningHand }) {
       Number(meld.calledIndex >= 0) / 3 +
       (tileCount - 1) * RESULT_TILE_GAP;
   }
+  if (nuki > 0)
+    widthUnits += nuki + (nuki - 1) * RESULT_TILE_GAP + RESULT_GROUP_GAP;
   const style = {
     "--em-result-width-units": widthUnits,
     "--em-result-tile-gap-units": RESULT_TILE_GAP,
@@ -60,6 +65,16 @@ export function WinningHandRow({ winner }: { winner: WinningHand }) {
             const meldIndex = melds.length - 1 - index;
             return <WinningMeld key={meldIndex} meld={melds[meldIndex]!} />;
           })}
+        </div>
+      )}
+      {nuki > 0 && (
+        <div className="em-result-nuki" role="group">
+          <div>
+            {Array.from({ length: nuki }, (_, index) => (
+              <Tile key={index} tile="N" />
+            ))}
+          </div>
+          <span>{t("outcome.nuki")}</span>
         </div>
       )}
     </div>

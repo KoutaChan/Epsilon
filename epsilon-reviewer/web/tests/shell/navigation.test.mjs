@@ -13,7 +13,7 @@ const model = {
   version: "v2",
 };
 const document = {
-  format: 6,
+  format: 7,
   resultId: "82b7a497-06a6-42a1-8700-8b4b65e83273",
 };
 const entry = {

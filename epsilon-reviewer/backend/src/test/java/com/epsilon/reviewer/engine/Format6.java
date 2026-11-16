@@ -201,7 +201,8 @@ public final class Format6 {
         strings(json.getAsJsonArray("hand")),
         json.get("draw").isJsonNull() ? null : json.get("draw").getAsString(),
         river,
-        melds);
+        melds,
+        json.get("nuki").getAsInt());
   }
 
   private static RiverTile riverTile(JsonElement element) {
@@ -247,7 +248,8 @@ public final class Format6 {
                 splice(old.hand(), update, "hand", JsonElement::getAsString),
                 draw,
                 splice(old.river(), update, "river", Format6::riverTile),
-                splice(old.melds(), update, "melds", Format6::meld)));
+                splice(old.melds(), update, "melds", Format6::meld),
+                update.has("nuki") ? update.get("nuki").getAsInt() : old.nuki()));
       }
     return new TableState(
         players,

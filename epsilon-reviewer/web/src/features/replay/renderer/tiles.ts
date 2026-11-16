@@ -7,6 +7,7 @@ import {
   PLAYER_ROW_WIDTH,
   concealedTileX,
   layoutPlayerRow,
+  nukiTilePosition,
 } from "./tileLayout.ts";
 import type { Layout, SeatSlot, TableFrame } from "./types.ts";
 import { displaySeats } from "../model/seats.ts";
@@ -15,7 +16,7 @@ import { displaySeats } from "../model/seats.ts";
 export interface TileData {
   readonly seat: SeatSlot;
   readonly foreground: boolean;
-  readonly kind: "hand" | "river" | "meld";
+  readonly kind: "hand" | "river" | "meld" | "nuki";
   readonly baseY: number;
   readonly baseZ: number;
 }
@@ -356,6 +357,32 @@ export function createTileLayer(
         marker.rotation.z = group.rotation.z;
         marker.scale.set(dimensions.riverWidth, dimensions.riverWidth, 1);
         place(pieces, marker, objects);
+      }
+    }
+
+    // 抜いた北は副露・手牌の列に入れず、自家も他家も卓の上で河の右に、河の牌と同じ大きさで並べる。
+    for (let index = 0; index < player.nuki; index++) {
+      const { x, y } = nukiTilePosition(index, dimensions);
+      const position = local(seat, x, y);
+      const group = tile(
+        { value: "N", ...position, river: true, kind: "nuki", seat },
+        objects,
+      );
+      group.scale.set(
+        dimensions.riverWidth,
+        dimensions.riverWidth,
+        landscape ? 1.4 : 1,
+      );
+      if (landscape) {
+        const contact = new THREE.Mesh(contactGeometry, contactMaterial);
+        contact.rotation.z = group.rotation.z;
+        contact.position.set(
+          group.position.x + 0.025,
+          group.position.y - 0.035,
+          0.075,
+        );
+        contact.scale.set(dimensions.riverWidth, dimensions.riverWidth, 1);
+        place(pieces, contact, objects);
       }
     }
 

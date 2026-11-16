@@ -64,7 +64,7 @@ public class ResultStoreTest {
           Files.readAllBytes(directory.resolve(Path.of("results", newer.value(), "record.gz"))),
           gzip("gzip record"));
       Assert.assertEquals(
-          new String(gunzip(store.readDocument(meta)), StandardCharsets.UTF_8), "{\"format\":6}");
+          new String(gunzip(store.readDocument(meta)), StandardCharsets.UTF_8), "{\"format\":7}");
       Assert.assertEquals(store.findShared(older), meta);
       refused(() -> store.find(OTHER, older), ErrorCode.RESULT_NOT_FOUND);
       refused(() -> store.findShared(ResultId.random()), ErrorCode.SHARE_NOT_FOUND);
@@ -203,13 +203,13 @@ public class ResultStoreTest {
     ResultId id = ResultId.random();
     try (ResultDraft draft = store.draft(id)) {
       try (var document = draft.document()) {
-        document.write("{\"format\":6}".getBytes(StandardCharsets.UTF_8));
+        document.write("{\"format\":7}".getBytes(StandardCharsets.UTF_8));
       }
       draft.record(record);
       store.commit(
           draft,
           new ResultMeta(
-              6,
+              7,
               id.value(),
               owner.value(),
               createdAt,
@@ -223,7 +223,7 @@ public class ResultStoreTest {
   private static ResultDraft draft(ResultStore store, ResultId id) throws IOException {
     ResultDraft draft = store.draft(id);
     try (var document = draft.document()) {
-      document.write("{\"format\":6}".getBytes(StandardCharsets.UTF_8));
+      document.write("{\"format\":7}".getBytes(StandardCharsets.UTF_8));
     }
     draft.record(bytes("record"));
     return draft;
@@ -232,7 +232,7 @@ public class ResultStoreTest {
   /** 1 人目の名前だけを変えた meta。 */
   private static ResultMeta meta(ResultId id, String name) {
     return new ResultMeta(
-        6,
+        7,
         id.value(),
         OWNER.value(),
         "2026-11-04T00:00:00Z",

@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * 牌譜の 1 局をイベントの順に進める、表示用の卓。牌譜の記録だけで動く。全ての席の手牌（物理牌）、河の牌と印（ツモ切り・立直の
  * 宣言牌・鳴かれた牌）、面子、抜いた北、ドラ表示牌、点・本場・供託、残りのツモの数、手番を持つ。どの席の伏せた牌も持つので、推論には
- * 渡さない。抜いた北は、副露の後に 1 枚ずつ並べて見せる。
+ * 渡さない。
  */
 public final class RecordTable {
   private final Variant variant;
@@ -217,9 +217,8 @@ public final class RecordTable {
         if (seat == drawSeat && tile == drawTile) draw = TileCode.of(tiles, tile);
         else hand.add(TileCode.of(tiles, tile));
       }
-      List<Meld> shown = new ArrayList<>(melds.get(seat).size() + nuki[seat]);
+      List<Meld> shown = new ArrayList<>(melds.get(seat).size());
       for (int id : melds.get(seat)) shown.add(MeldLayout.of(id, seat, seats));
-      for (int index = 0; index < nuki[seat]; index++) shown.add(MeldLayout.nuki());
       players.add(
           new PlayerState(
               scores[seat],
@@ -227,7 +226,8 @@ public final class RecordTable {
               List.copyOf(hand),
               draw,
               List.copyOf(rivers.get(seat)),
-              List.copyOf(shown)));
+              List.copyOf(shown),
+              nuki[seat]));
     }
     List<String> dora = new ArrayList<>(indicators.size());
     for (int tile : indicators) dora.add(TileCode.of(tiles, tile));
@@ -252,10 +252,9 @@ public final class RecordTable {
       int tile = tiles.physicalId(index);
       if (view.holds(tile)) hand.add(TileCode.of(tiles, tile));
     }
-    List<Meld> shownMelds = new ArrayList<>(view.meldCount(seat) + view.nuki(seat));
+    List<Meld> shownMelds = new ArrayList<>(view.meldCount(seat));
     for (int index = 0; index < view.meldCount(seat); index++)
       shownMelds.add(MeldLayout.of(view.meld(seat, index), seat, seats));
-    for (int index = 0; index < view.nuki(seat); index++) shownMelds.add(MeldLayout.nuki());
     int called = view.meld(seat, view.meldCount(seat) - 1);
     int from = com.epsilon.mahjong.action.Meld.of(called).source().seat(seat, seats);
     List<PlayerState> players = new ArrayList<>(seats);
@@ -265,7 +264,13 @@ public final class RecordTable {
     players.set(
         seat,
         new PlayerState(
-            own.score(), own.riichi(), List.copyOf(hand), null, own.river(), List.copyOf(shownMelds)));
+            own.score(),
+            own.riichi(),
+            List.copyOf(hand),
+            null,
+            own.river(),
+            List.copyOf(shownMelds),
+            view.nuki(seat)));
     PlayerState discarder = players.get(from);
     int last = discarder.river().size() - 1;
     RiverTile tile = discarder.river().get(last);

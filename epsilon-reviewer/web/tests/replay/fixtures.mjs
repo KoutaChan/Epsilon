@@ -11,6 +11,7 @@ export function player(fields = {}) {
     draw: null,
     river: [],
     melds: [],
+    nuki: 0,
     ...fields,
   };
 }
@@ -97,7 +98,7 @@ export function round(steps, fields = {}) {
 
 export function resultDocument(rounds, fields = {}) {
   return {
-    format: 6,
+    format: 7,
     resultId: "00000000-0000-4000-8000-000000000001",
     createdAt: "2026-11-04T00:00:00.000Z",
     model: {
@@ -168,6 +169,7 @@ export function stateDelta(previous, current) {
       if (patch) change[field] = patch;
     }
     if (before.draw !== after.draw) change.draw = after.draw;
+    if (before.nuki !== after.nuki) change.nuki = after.nuki;
     if (Object.keys(change).length > 0) players.push({ seat, ...change });
   }
   if (players.length > 0) delta.players = players;

@@ -429,7 +429,7 @@ export function canEditHand(
 }
 
 /**
- * 見ている席から見える牌を、牌の記号ごとに数える（自分の手牌とツモ牌、全員の河と副露、ドラ表示牌）。
+ * 見ている席から見える牌を、牌の記号ごとに数える（自分の手牌とツモ牌、全員の河と副露と抜いた北、ドラ表示牌）。
  * 数える範囲はサーバの検証と同じ。変える所にある牌は数えない。
  */
 function visibleTiles(
@@ -456,6 +456,7 @@ function visibleTiles(
       if (!tile.called && !river) add(tile.tile);
     });
     for (const meld of player.melds) meld.tiles.forEach(add);
+    for (let index = 0; index < player.nuki; index++) add("N");
   }
   snapshot.dora.forEach((tile, index) => {
     if (!(skip.kind === "dora" && skip.index === index)) add(tile);

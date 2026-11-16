@@ -42,7 +42,6 @@ const MELD_SIZES: Readonly<Record<Meld["type"], number>> = {
   DAIMINKAN: 4,
   ANKAN: 4,
   KAKAN: 4,
-  NUKI: 1,
 };
 
 /**
@@ -240,6 +239,7 @@ function playerState(value: unknown, seats: number): void {
   if (player.draw !== null) tile(player.draw);
   for (const discard of array(player.river)) riverTile(discard);
   for (const entry of array(player.melds)) meld(entry, seats);
+  nuki(player.nuki);
 }
 
 function stateDelta(
@@ -268,6 +268,7 @@ function stateDelta(
         length.melds = splice(change.melds, length.melds, (entry) =>
           meld(entry, seats),
         );
+      if (change.nuki !== undefined) nuki(change.nuki);
     }
   }
   if (delta.dora !== undefined)
@@ -315,7 +316,7 @@ function meld(value: unknown, seats: number): Meld {
   const called = integer(entry.calledIndex);
   const added = integer(entry.addedIndex);
   if (
-    type === "ANKAN" || type === "NUKI"
+    type === "ANKAN"
       ? from !== -1 || called !== -1
       : from < 0 || from >= seats || called < 0 || called >= size
   )
@@ -327,6 +328,11 @@ function meld(value: unknown, seats: number): Meld {
   )
     fail("Invalid added tile of a meld.");
   return value as Meld;
+}
+
+/** 抜いた北の数（0..4）。 */
+function nuki(value: unknown): void {
+  if (count(value) > 4) fail("A seat sets aside at most four norths.");
 }
 
 function roundOutcome(value: unknown, seats: number): RoundOutcome {

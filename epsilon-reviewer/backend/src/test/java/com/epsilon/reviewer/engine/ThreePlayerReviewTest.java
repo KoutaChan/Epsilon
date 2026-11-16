@@ -16,6 +16,7 @@ import com.epsilon.reviewer.engine.scenario.ScenarioAnswer;
 import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
 import com.epsilon.reviewer.engine.view.Meld;
 import com.epsilon.reviewer.engine.view.PlayerState;
+import com.epsilon.reviewer.engine.view.TableState;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import java.io.IOException;
@@ -31,11 +32,12 @@ import org.testng.annotations.Test;
 /**
  * 三人打ちの牌譜の読み込み・解析・もしものテスト。牌譜は、エンジンで打った三人打ちの半荘と、それを mjai に書いて読み直した同じ半荘を
  * 使う。自己対局では起きにくい槍槓と抜いた北へのロンは、牌山を手で並べた局で足す。解析の文書は 3 席の局面と北抜きの手順（kita）を持つ。
- * 抜いた北は副露の後に並べる。北抜きの手と、抜いた北への応答も評価する。変更の無いもしもは、全ての判断で解析と同じ O と候補になる。
- * 四人打ちのモデルは三人打ちの牌譜を読めない。ルールベースの打ち手は三人打ちの牌譜を解析できる。
+ * 抜いた北は副露に入れず、席ごとの数で持つ。北抜きの手と、抜いた北への応答も評価する。変更の無いもしもは、全ての判断で解析と同じ O と
+ * 候補になる。四人打ちのモデルは三人打ちの牌譜を読めない。ルールベースの打ち手は三人打ちの牌譜を解析できる。
  */
 public class ThreePlayerReviewTest {
   private static final Variant VARIANT = Variant.TENHOU_3P;
+  private static final Set<String> MELD_TYPES = Set.of("CHI", "PON", "DAIMINKAN", "ANKAN", "KAKAN");
 
   @Test
   public void threePlayerTenhouAndMjaiRecordsLoadWithThreeSeats() {
@@ -57,6 +59,9 @@ public class ThreePlayerReviewTest {
   @Test
   public void theDocumentShowsThreeSeatsNukiAndTheirDecisions() {
     int kita = 0;
+    int severalKita = 0;
+    int kitaWithMelds = 0;
+    int ronOnKita = 0;
     int nukiCandidates = 0;
     int nukiResponses = 0;
     Map<String, LoadedRecord> records = new LinkedHashMap<>(PlayedRecords.threePlayer());
@@ -66,14 +71,30 @@ public class ThreePlayerReviewTest {
       Format6.Document document = Format6.analyze(entry.getValue(), new RecordingPolicy(VARIANT));
       for (Format6.Round round : document.rounds()) {
         Map<Integer, String> events = new HashMap<>();
+        TableState previous = null;
         for (Format6.Step step : round.steps()) {
           Assert.assertEquals(step.table().players().size(), 3, name);
+          for (PlayerState player : step.table().players()) requireRealMelds(player, name);
           if (!step.decision()) {
             events.put(step.eventIndex(), step.event());
             if (step.event().equals("kita")) {
               kita++;
-              Assert.assertTrue(nukiShown(step.table().players().get(step.actor())), name);
+              PlayerState before = previous.players().get(step.actor());
+              PlayerState after = step.table().players().get(step.actor());
+              Assert.assertEquals(after.nuki(), before.nuki() + 1, name);
+              Assert.assertEquals(after.melds(), before.melds(), name);
+              severalKita += after.nuki() >= 2 ? 1 : 0;
+              kitaWithMelds += after.melds().isEmpty() ? 0 : 1;
             }
+            if (step.event().equals("hora")
+                && "kita".equals(events.get(step.eventIndex() - 1))) {
+              ronOnKita++;
+              var outcome = step.json().getAsJsonObject("outcome");
+              Assert.assertEquals(outcome.get("winningTile").getAsString(), "N", name);
+              int target = outcome.get("target").getAsInt();
+              Assert.assertTrue(step.table().players().get(target).nuki() > 0, name);
+            }
+            previous = step.table();
             continue;
           }
           nukiCandidates += step.offers(Action.Type.NUKI) ? 1 : 0;
@@ -85,6 +106,9 @@ public class ThreePlayerReviewTest {
       }
     }
     Assert.assertTrue(kita > 0, "no kita step");
+    Assert.assertTrue(severalKita > 0, "no seat set aside a second north");
+    Assert.assertTrue(kitaWithMelds > 0, "no seat set aside a north beside its melds");
+    Assert.assertTrue(ronOnKita > 0, "no ron on a north");
     Assert.assertTrue(nukiCandidates > 0, "no nuki candidate");
     Assert.assertTrue(nukiResponses > 0, "no response to a nuki");
   }
@@ -190,10 +214,16 @@ public class ThreePlayerReviewTest {
     Assert.assertEquals(decision, review.inputs.size(), name);
   }
 
-  private static boolean nukiShown(PlayerState player) {
+  /**
+   * 副露には面子だけがあり、手牌とツモ牌の数は面子の数だけで決まる（抜いた北の数によらない）ことを確かめる。手番でなければ 13 − 3 ×
+   * 面子、ツモの後か鳴いた後なら 1 枚多い。
+   */
+  private static void requireRealMelds(PlayerState player, String name) {
     for (Meld meld : player.melds())
-      if (meld.type().equals("NUKI") && meld.tiles().equals(List.of("N"))) return true;
-    return false;
+      Assert.assertTrue(MELD_TYPES.contains(meld.type()), name + ": " + meld.type());
+    int tiles = player.hand().size() + (player.draw() == null ? 0 : 1);
+    int closed = 13 - 3 * player.melds().size();
+    Assert.assertTrue(tiles == closed || tiles == closed + 1, name + ": " + player);
   }
 
   /** 方策の出力をそのまま評価に使うモデル（価値は推定しない）。 */

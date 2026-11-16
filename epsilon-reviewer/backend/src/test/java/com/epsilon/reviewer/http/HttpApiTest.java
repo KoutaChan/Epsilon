@@ -92,7 +92,7 @@ public class HttpApiTest {
     Assert.assertEquals(result.statusCode(), 200);
     Assert.assertEquals(result.headers().firstValue("Content-Encoding").orElseThrow(), "gzip");
     JsonObject document = JsonParser.parseString(gunzip(result.body())).getAsJsonObject();
-    Assert.assertEquals(document.get("format").getAsInt(), 6);
+    Assert.assertEquals(document.get("format").getAsInt(), 7);
     Assert.assertEquals(document.get("resultId").getAsString(), id);
 
     var restored = server.send(server.json("/api/results/" + id + "/record", OWNER, ""));
@@ -175,7 +175,7 @@ public class HttpApiTest {
             server
                 .request("/api/records", OWNER)
                 .header("Content-Type", "application/octet-stream")
-                .POST(HttpRequest.BodyPublishers.ofString("{\"format\":6,\"resultId\":\"x\"}"))),
+                .POST(HttpRequest.BodyPublishers.ofString("{\"format\":7,\"resultId\":\"x\"}"))),
         422,
         "invalid_record");
     // 長さを書かない本文（chunked）で、上限より 1 バイト多く送る。サーバは本文を読み切ってから断る。

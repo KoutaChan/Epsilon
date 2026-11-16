@@ -1,6 +1,7 @@
 package com.epsilon.reviewer.http;
 
 import com.epsilon.reviewer.StoredDocument;
+import com.epsilon.reviewer.engine.format.ResultWriter;
 import com.epsilon.reviewer.error.ErrorBody;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.json.Json;
@@ -42,12 +43,12 @@ final class HttpReplies {
   }
 
   /**
-   * 解析結果の文書を送る。文書は id ごとに変わらないので ETag は W/"&lt;id&gt;" とし、合えば中身を読まずに 304 を返す。
-   * gzip を受け付ける相手には保存した gzip のまま送り、受け付けない相手には展開して送る。
+   * 解析結果の文書を送る。文書は形式の番号と id ごとに変わらないので ETag は W/"&lt;形式&gt;-&lt;id&gt;" とし、合えば中身を読まずに
+   * 304 を返す。gzip を受け付ける相手には保存した gzip のまま送り、受け付けない相手には展開して送る。
    */
   void document(StoredDocument document) throws IOException {
     Headers request = exchange.getRequestHeaders();
-    String tag = "W/\"" + document.id().value() + "\"";
+    String tag = "W/\"" + ResultWriter.FORMAT + "-" + document.id().value() + "\"";
     if (notModified(request, tag)) {
       documentHeaders(tag);
       notModified();

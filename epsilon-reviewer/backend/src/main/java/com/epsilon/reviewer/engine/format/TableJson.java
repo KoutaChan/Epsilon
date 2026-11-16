@@ -38,7 +38,8 @@ public final class TableJson {
     for (RiverTile tile : player.river()) riverTile(json, tile);
     json.endArray().name("melds").beginArray();
     for (Meld meld : player.melds()) meld(json, meld);
-    json.endArray().endObject();
+    json.endArray().name("nuki").value(player.nuki());
+    json.endObject();
   }
 
   static void riverTile(JsonWriter json, RiverTile tile) throws IOException {

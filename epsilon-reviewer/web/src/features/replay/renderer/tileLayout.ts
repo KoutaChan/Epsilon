@@ -1,4 +1,5 @@
 import type { Meld } from "../../../../../protocol/result.ts";
+import type { TableDimensions } from "./projection.ts";
 
 export const PLAYER_ROW_WIDTH = 23;
 export const PLAYER_ROW_CENTER = 0.24;
@@ -8,6 +9,8 @@ const HAND_MELD_GAP = 0.6;
 const TILE_GAP = 0.025;
 const MELD_GAP = 0.45;
 const ADDED_KAN_OFFSET = 1 + TILE_GAP;
+/** 河の右端の横向きの牌の分に足す、抜いた北までの間隔（河の牌の幅を 1 とした比）。 */
+const NUKI_GAP = 0.5;
 
 export interface MeldPlacement {
   readonly meld: Meld;
@@ -33,6 +36,28 @@ export function concealedTileX(
   return handLeft + index * HAND_PITCH + (drawn ? DRAW_GAP : 0);
 }
 
+/**
+ * 抜いた北の index 枚目（0 から）の中心。席から見た座標（x は右、y は奥）で返す。北は副露・手牌の列とは別に卓の上に置き、その席の
+ * 河と下家の河の間の隅に、河の 3 段目と同じ奥行きで、河の牌の間隔で右へ並べる。河の右端からは、横向きの立直の宣言牌の分と間隔を
+ * 空ける。
+ */
+export function nukiTilePosition(
+  index: number,
+  river: Pick<
+    TableDimensions,
+    "riverStart" | "pitchX" | "pitchY" | "riverWidth" | "riverRadius"
+  >,
+): { x: number; y: number } {
+  const riverRight = river.riverStart + 5 * river.pitchX + river.riverWidth / 2;
+  return {
+    x:
+      riverRight +
+      river.riverWidth * (1 / 3 + NUKI_GAP + 1 / 2) +
+      index * river.pitchX,
+    y: -river.riverRadius - 2 * river.pitchY,
+  };
+}
+
 function meldTileWidth(meld: Meld, index: number): number {
   if (meld.type === "KAKAN" && index === meld.addedIndex) return 0;
   return index === meld.calledIndex ? 4 / 3 : 1;
@@ -46,14 +71,9 @@ function meldWidth(meld: Meld): number {
   return width;
 }
 
-/** 副露のうち、手牌を 3 枚減らすものの数（抜いた北は数えない）。 */
-function sets(melds: readonly Meld[]): number {
-  return melds.filter((meld) => meld.type !== "NUKI").length;
-}
-
 export function measurePlayerRowWidth(melds: readonly Meld[]): number {
   return (
-    (13 - 3 * sets(melds)) * HAND_PITCH +
+    (13 - 3 * melds.length) * HAND_PITCH +
     1 +
     DRAW_GAP +
     (melds.length ? HAND_MELD_GAP : 0) +
@@ -68,7 +88,7 @@ export function layoutPlayerRow(
   rowWidth = PLAYER_ROW_WIDTH,
 ): PlayerRow {
   const width = measurePlayerRowWidth(melds);
-  const handWidth = (13 - 3 * sets(melds)) * HAND_PITCH + 1 + DRAW_GAP;
+  const handWidth = (13 - 3 * melds.length) * HAND_PITCH + 1 + DRAW_GAP;
   const right = PLAYER_ROW_CENTER + rowWidth / 2;
   // 手牌はツモ枠を含めて中央に置く。副露に重なるときだけ、重なる分を左へずらす。
   const left = Math.min(PLAYER_ROW_CENTER - handWidth / 2, right - width);

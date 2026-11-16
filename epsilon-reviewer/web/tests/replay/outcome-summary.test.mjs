@@ -48,6 +48,20 @@ function makeWin(actor, target, winningTile, overrides = {}, details) {
   });
 }
 
+test("a ron on a set-aside north keeps the winner's norths apart from its melds", () => {
+  const pon = { type: "PON", tiles: ["P", "P", "P"], from: 2, calledIndex: 0, addedIndex: -1 };
+  const win = makeWin(0, 1, "N", {
+    0: { hand: concealed.slice(0, 10), melds: [pon], nuki: 2 },
+    1: { nuki: 1 },
+  });
+  const [winner] = collectWinningHands([win]);
+  assert.equal(winner.method, "ron");
+  assert.equal(winner.winningTile, "N");
+  assert.deepEqual(winner.player.melds, [pon]);
+  assert.equal(winner.player.nuki, 2);
+  assert.equal(win.players[winner.target].nuki, 1);
+});
+
 test("recorded ron identifies its source and winning tile without consulting prior events", () => {
   const win = makeWin(0, 1, "8p");
   const [winner] = collectWinningHands([win]);

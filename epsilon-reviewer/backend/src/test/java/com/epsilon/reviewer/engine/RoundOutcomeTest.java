@@ -120,8 +120,7 @@ public class RoundOutcomeTest {
         Assert.assertEquals(hora.target(), hora.actor());
         Assert.assertTrue(win.last() instanceof RecordEvent.Draw, win.last().toString());
         Assert.assertEquals(winner.draw(), tile);
-        long sets = winner.melds().stream().filter(meld -> !meld.type().equals("NUKI")).count();
-        Assert.assertEquals(winner.hand().size() + 3 * sets, 13);
+        Assert.assertEquals(winner.hand().size() + 3 * winner.melds().size(), 13);
         if (TileCode.red(tile)) {
           redTsumo++;
           Assert.assertFalse(winner.hand().contains(tile), "the red draw stays apart");
@@ -145,6 +144,7 @@ public class RoundOutcomeTest {
         case RecordEvent.Nuki nuki -> {
           Assert.assertEquals(nuki.seat(), hora.target());
           Assert.assertEquals(TileCode.of(win.variant().tiles(), nuki.tile()), tile);
+          Assert.assertTrue(win.before().players().get(hora.target()).nuki() > 0);
         }
         default -> Assert.fail("A ron after " + win.last());
       }
@@ -188,11 +188,10 @@ public class RoundOutcomeTest {
         Assert.assertEquals(details.fu(), result.fu());
         Assert.assertEquals(count(details, "AKADORA"), result.aka());
         Assert.assertEquals(count(details, "URADORA"), result.ura());
-        if (win.variant() == Variant.TENHOU_4P) {
-          Assert.assertEquals(
-              details.yaku().stream().mapToInt(WinDetails.Yaku::han).sum(), details.han());
-          Assert.assertEquals(count(details, "DORA"), result.dora());
-        }
+        Assert.assertEquals(
+            details.yaku().stream().mapToInt(WinDetails.Yaku::han).sum(), details.han());
+        Assert.assertEquals(count(details, "DORA") + count(details, "NUKIDORA"), result.dora());
+        if (win.variant() == Variant.TENHOU_4P) Assert.assertEquals(count(details, "NUKIDORA"), 0);
       }
       for (ScoringYaku yaku : ScoringYaku.values()) {
         boolean has = (result.yaku() & yaku.bit()) != 0;

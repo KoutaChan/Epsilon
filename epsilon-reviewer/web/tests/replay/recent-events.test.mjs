@@ -69,6 +69,24 @@ for (const [type, tiles] of [
   });
 }
 
+test("a call after set-aside norths shows the new meld, and a kita shows one north", () => {
+  const pon = meld("PON", ["P", "P", "P"]);
+  const call = describeReplayEvent(
+    playerEvent("pon", { melds: [pon], nuki: 2 }),
+    null,
+    false,
+    0,
+  );
+  assert.equal(call.tiles, pon.tiles);
+  const kita = describeReplayEvent(
+    playerEvent("kita", { melds: [pon], nuki: 3 }),
+    null,
+    false,
+    0,
+  );
+  assert.deepEqual([kita.action, kita.tiles], ["action.nuki", ["N"]]);
+});
+
 test("added kan identifies the upgraded pon even before an older kan in the meld list", () => {
   const olderKan = meld("KAKAN", ["2p", "2p", "2p", "2p"]);
   const before = playerEvent("tsumo", {

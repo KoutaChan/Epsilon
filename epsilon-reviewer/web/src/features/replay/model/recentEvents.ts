@@ -67,11 +67,10 @@ export function describeReplayEvent(
     case "pon":
     case "daiminkan":
     case "ankan":
-      // 抜いた北は副露の列で面子より後ろに並ぶので、北を除いた最後の副露が新しい面子になる。
       return {
         player,
         action: `action.${step.eventType}`,
-        tiles: player!.melds.filter((meld) => meld.type !== "NUKI").at(-1)!.tiles,
+        tiles: player!.melds.at(-1)!.tiles,
       };
     case "kita":
       return { player, action: "action.nuki", tiles: ["N"] };

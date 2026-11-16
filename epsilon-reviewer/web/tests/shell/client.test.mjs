@@ -29,7 +29,7 @@ function fakeTransport(platform, respond = () => undefined, desktop = {}) {
   };
 }
 
-const documentOf = (resultId) => ({ format: 6, resultId });
+const documentOf = (resultId) => ({ format: 7, resultId });
 
 test("result keeps the two most recently opened documents", async () => {
   const transport = fakeTransport("web", (_command, { resultId }) =>

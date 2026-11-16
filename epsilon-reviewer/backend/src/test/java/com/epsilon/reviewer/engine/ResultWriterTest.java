@@ -144,7 +144,7 @@ public class ResultWriterTest {
   /** 候補の行・chosen・actor・null を、どの手順で書き、どの手順で省くかを確かめる。 */
   private static void assertOmissions(String name, Format6.Document document) {
     JsonObject json = document.json();
-    Assert.assertEquals(json.get("format").getAsInt(), 6, name);
+    Assert.assertEquals(json.get("format").getAsInt(), 7, name);
     Assert.assertEquals(
         json.get("temperature").getAsDouble(), FixtureFamily.TEMPERATURE, name);
     assertNullsOnlyForDraws(json, null);

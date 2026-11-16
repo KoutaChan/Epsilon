@@ -10,15 +10,10 @@ import java.util.List;
 /**
  * 副露を表示するときの牌の並び。横向きの牌は、上家から鳴いたら位置 0、対面からなら 1、下家からなら最後に置き、暗槓には無い。
  * 加槓で加えた牌は、元の 3 枚の後（位置 3）に置く。赤にする牌は、手から出した牌が赤なら鳴いた牌を除いた最初の 5、鳴いた牌が赤なら
- * その牌、加槓で足した牌が赤ならその牌。三人打ちで抜いた北は、1 枚ずつ副露の後に並べる。
+ * その牌、加槓で足した牌が赤ならその牌。
  */
 public final class MeldLayout {
   private MeldLayout() {}
-
-  /** 抜いた北 1 枚の表示を作る。 */
-  public static Meld nuki() {
-    return new Meld("NUKI", List.of(TileCode.of(Tiles.PEI, false)), -1, -1, -1);
-  }
 
   /**
    * 面子の表示を作る。mahjong の Meld はこのパッケージの Meld と名前が重なるので、var で受けて型名を書かない。

@@ -83,6 +83,7 @@ function applyDelta(state: TableSnapshot, delta: StateDelta): TableSnapshot {
         draw: change.draw === undefined ? player.draw : change.draw,
         river: applySplice(player.river, change.river),
         melds: applySplice(player.melds, change.melds),
+        nuki: change.nuki ?? player.nuki,
       } satisfies PlayerSnapshot;
     }
     players = changed;

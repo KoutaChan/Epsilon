@@ -37,11 +37,11 @@ public class ThreePlayerAttentionTapeTest {
 
   /** 型ごとの FFN の小さな形（CPU で速く実行できる）。 */
   private static final PrismShape TYPED =
-      new PrismShape(64, 128, 64, 3, new PrismShape.Typed(128, 256, 128, true));
+      new PrismShape.V3(64, 128, 64, 128, 256, 128, true);
 
   /** 型ごとの FFN の小さな形のうち、候補層の 2 段目がない形。 */
   private static final PrismShape TYPED_ONE_STAGE =
-      new PrismShape(64, 128, 64, 3, new PrismShape.Typed(128, 256, 128, false));
+      new PrismShape.V3(64, 128, 64, 128, 256, 128, false);
 
   private HostBatch batch;
 
@@ -54,7 +54,7 @@ public class ThreePlayerAttentionTapeTest {
 
   /** v2 の小さな形。 */
   private static PrismShape small(int depth) {
-    return new PrismShape(64, 128, 64, depth, null);
+    return new PrismShape.V2(64, 128, 64, depth);
   }
 
   @DataProvider

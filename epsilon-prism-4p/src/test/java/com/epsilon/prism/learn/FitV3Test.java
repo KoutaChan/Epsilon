@@ -49,7 +49,7 @@ public class FitV3Test {
   private static final Logger log = LoggerFactory.getLogger(FitV3Test.class);
 
   private static final PrismShape SHAPE =
-      new PrismShape(64, 128, 64, 3, new PrismShape.Typed(128, 256, 128, true));
+      new PrismShape.V3(64, 128, 64, 128, 256, 128, true);
   private static final int STEPS = 16;
 
   /** GPU の学習器のステップ数。損失は {@code METRIC_EVERY} ステップおきに回収するので、最初と最後の損失が別のステップになる数にする。 */

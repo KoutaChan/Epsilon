@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
 public class RowIndependenceTest {
   private static final Logger log = LoggerFactory.getLogger(RowIndependenceTest.class);
 
-  private static final PrismShape SHAPE = new PrismShape(64, 128, 64, 2, null);
+  private static final PrismShape SHAPE = new PrismShape.V2(64, 128, 64, 2);
 
   @Test(timeOut = 600_000)
   public void scoresDoNotDependOnTheOtherRowsInTheBatch() {

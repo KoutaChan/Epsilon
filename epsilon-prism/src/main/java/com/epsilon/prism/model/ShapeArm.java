@@ -9,18 +9,19 @@ public enum ShapeArm {
   /** 型ごとの FFN を持たない形（H 256・F 512・G 256、深さは選べる）。 */
   V2(null),
   /** 型ごとの FFN を持つ形（局・席の FFN 1536、候補層の 2 段目あり）。 */
-  V3(new PrismShape.Typed(768, 1536, 1024, true)),
+  V3(new PrismShape.V3(256, 512, 512, 768, 1536, 1024, true)),
   /** V3 から候補層の 2 段目を外した形。 */
-  V3_ONE_STAGE(new PrismShape.Typed(768, 1536, 1024, false)),
+  V3_ONE_STAGE(new PrismShape.V3(256, 512, 512, 768, 1536, 1024, false)),
   /** V3 の局・席の FFN を 512 にした形。 */
-  V3_CONTEXT_512(new PrismShape.Typed(768, 512, 1024, true));
+  V3_CONTEXT_512(new PrismShape.V3(256, 512, 512, 768, 512, 1024, true));
 
   /** V3 で始まるアームの深さ。 */
-  public static final int V3_DEPTH = 3;
+  public static final int V3_DEPTH = PrismShape.V3.DEPTH;
 
-  private final PrismShape.Typed typed;
+  /** V3 で始まるアームの形（V2 では null）。 */
+  private final PrismShape.V3 typed;
 
-  ShapeArm(PrismShape.Typed typed) {
+  ShapeArm(PrismShape.V3 typed) {
     this.typed = typed;
   }
 
@@ -38,6 +39,6 @@ public enum ShapeArm {
     if (depth != V3_DEPTH) {
       throw new IllegalArgumentException(this + " needs depth " + V3_DEPTH + ", got " + depth);
     }
-    return new PrismShape(256, 512, 512, V3_DEPTH, typed);
+    return typed;
   }
 }

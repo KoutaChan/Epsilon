@@ -42,7 +42,7 @@ final class Batches {
 
   /** テスト用の小さな形（CPU で速く回す）。 */
   static PrismShape small(int depth) {
-    return new PrismShape(64, 128, 64, depth, null);
+    return new PrismShape.V2(64, 128, 64, depth);
   }
 
   /**

@@ -69,7 +69,7 @@ public class WeightPackRoundTripTest {
       Assert.assertEquals(WeightPack.build(WeightLayout.of(network), network, 11).buffer(), built, "a second build");
 
       WeightLayout given =
-          WeightLayout.of(InputSchema.FORMAT, shape.architecture(InputSchema.FORMAT), network.inferenceParameters());
+          WeightLayout.of(InputSchema.FORMAT, shape.hip(InputSchema.FORMAT), network.inferenceParameters());
       Assert.assertEquals(given.architecture(), layout.architecture());
       Assert.assertEquals(given.bytes(), layout.bytes());
       ByteBuffer expected = copy(WeightPack.build(given, network, 11).buffer());
@@ -94,7 +94,7 @@ public class WeightPackRoundTripTest {
     Assert.assertEquals(PrismNetwork.readShape(model), PrismShape.standard());
     WeightPack pack = WeightPack.load(model, 760);
     WeightLayout layout = pack.layout();
-    Assert.assertEquals(layout.architecture(), PrismShape.standard().architecture(InputSchema.FORMAT));
+    Assert.assertEquals(layout.architecture(), PrismShape.standard().hip(InputSchema.FORMAT));
     Assert.assertEquals(new PackView(pack.buffer()).architecture(), layout.architecture().encode());
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = PrismNetwork.load(model, manager);

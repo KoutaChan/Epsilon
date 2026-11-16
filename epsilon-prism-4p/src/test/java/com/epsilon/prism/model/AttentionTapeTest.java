@@ -32,11 +32,11 @@ public class AttentionTapeTest {
 
   /** 型ごとの FFN の小さな形（CPU で速く回す）。 */
   private static final PrismShape TYPED =
-      new PrismShape(64, 128, 64, 3, new PrismShape.Typed(128, 256, 128, true));
+      new PrismShape.V3(64, 128, 64, 128, 256, 128, true);
 
   /** 型ごとの FFN の小さな形で、候補層の 2 段目のない形。 */
   private static final PrismShape TYPED_ONE_STAGE =
-      new PrismShape(64, 128, 64, 3, new PrismShape.Typed(128, 256, 128, false));
+      new PrismShape.V3(64, 128, 64, 128, 256, 128, false);
 
   @DataProvider
   public Object[][] shapes() {

@@ -190,12 +190,12 @@ public class NetworkPolicyHipTest {
     assertEquals(InferencePath.HIP.resolve(Device.gpu(0), standard), InferencePath.HIP);
     assertEquals(InferencePath.HIP.resolve(Device.gpu(1), PrismShape.standard(3)), InferencePath.HIP);
     assertEquals(InferencePath.HIP.resolve(Device.cpu(), standard), InferencePath.EAGER);
-    assertEquals(InferencePath.HIP.resolve(Device.gpu(0), new PrismShape(384, 512, 256, 2, null)), InferencePath.EAGER);
+    assertEquals(InferencePath.HIP.resolve(Device.gpu(0), new PrismShape.V2(384, 512, 256, 2)), InferencePath.EAGER);
     assertEquals(InferencePath.EAGER.resolve(Device.gpu(0), standard), InferencePath.EAGER);
     Path root = Files.createTempDirectory("prism-hip-cpu");
     try {
       Path snapshot = root.resolve("1");
-      NetworkPolicyTest.write(snapshot, new PrismShape(64, 128, 64, 2, null), false);
+      NetworkPolicyTest.write(snapshot, new PrismShape.V2(64, 128, 64, 2), false);
       PrismSettings settings = TestSettings.of("inference.kernels=NATIVE");
       InferencePath inference = InferencePath.of(settings.inference().kernels());
       assertEquals(inference, InferencePath.HIP);

@@ -56,7 +56,7 @@ public class PrismV3Test {
 
   /** CPU で速く回す小さな v3 の形。 */
   private static final PrismShape SMALL =
-      new PrismShape(64, 128, 64, 3, new PrismShape.Typed(128, 256, 128, true));
+      new PrismShape.V3(64, 128, 64, 128, 256, 128, true);
 
   @Test
   public void armsHaveTheDesignedParameterCounts() {
@@ -163,7 +163,7 @@ public class PrismV3Test {
   @Test
   public void blankSecondStageKeepsTheOneStageFunction() {
     PrismShape oneStage =
-        new PrismShape(64, 128, 64, 3, new PrismShape.Typed(128, 256, 128, false));
+        new PrismShape.V3(64, 128, 64, 128, 256, 128, false);
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
         NDManager scope = manager.newSubManager()) {
       manager.getEngine().setRandomSeed(11);

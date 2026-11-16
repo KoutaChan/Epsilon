@@ -173,7 +173,7 @@ public final class WeightLayout {
    */
   public static WeightLayout of(PrismNetwork network) {
     InputFormat format = network.format();
-    return of(format, network.shape().architecture(format), network.inferenceParameters());
+    return of(format, network.shape().hip(format), network.inferenceParameters());
   }
 
   /**

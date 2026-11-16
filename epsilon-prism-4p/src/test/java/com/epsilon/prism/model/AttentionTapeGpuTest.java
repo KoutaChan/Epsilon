@@ -198,7 +198,11 @@ public class AttentionTapeGpuTest {
         Outcome kept = run(network, manager, batch, attention, Precision.BFLOAT16, Context.Intermediates.KEEP);
         Outcome closed = run(network, manager, batch, attention, Precision.BFLOAT16, Context.Intermediates.CLOSE);
         Outcome again = run(network, manager, batch, attention, Precision.BFLOAT16, Context.Intermediates.CLOSE);
-        String label = shape.typed() == null ? "depth=2" : "typed";
+        String label =
+            switch (shape) {
+              case PrismShape.V2 v2 -> "depth=2";
+              case PrismShape.V3 v3 -> "typed";
+            };
         double difference = report(label, "keep-vs-close", kept, closed);
         double wobble = report(label, "close-vs-close", closed, again);
         log.info(
@@ -349,7 +353,11 @@ public class AttentionTapeGpuTest {
 
   private static void compare(PrismShape shape, Precision precision) {
     Device gpu = Device.gpu(0);
-    String label = shape.typed() == null ? "depth=" + shape.depth() : "typed=" + shape.typed();
+    String label =
+        switch (shape) {
+          case PrismShape.V2 v2 -> "depth=" + v2.depth();
+          case PrismShape.V3 v3 -> "typed=" + v3;
+        };
     try (NDManager manager = NDManager.newBaseManager(gpu, "PyTorch");
         PtStream stream = ((PtEngine) manager.getEngine()).newStream(gpu);
         PtStreamScope ignored = stream.openScope()) {

@@ -147,7 +147,7 @@ public class WeightLayoutTest {
 
   @Test
   public void networkConstantsMatch() {
-    HipArchitecture architecture = PrismShape.standard().architecture(InputSchema.FORMAT);
+    HipArchitecture architecture = PrismShape.standard().hip(InputSchema.FORMAT);
     Assert.assertEquals(architecture.tau(), EagerStages.tau());
     Assert.assertEquals((double) architecture.scale(), EagerStages.scale(), 0.0);
     Assert.assertEquals((double) architecture.epsilon(), (float) PrismShape.standard().epsilon(), 0.0);
@@ -160,7 +160,7 @@ public class WeightLayoutTest {
   @Test(dataProvider = "typedArms")
   public void typedArmsPlaceEveryParameter(ShapeArm arm) {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      PrismShape shape = arm.shape(ShapeArm.V3_DEPTH);
+      PrismShape.V3 shape = (PrismShape.V3) arm.shape(ShapeArm.V3_DEPTH);
       PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, shape);
       network.initialize(manager);
       WeightLayout layout = WeightLayout.of(network);
@@ -172,14 +172,14 @@ public class WeightLayoutTest {
       for (int layer = 1; layer < 3; layer++) {
         Assert.assertEquals(
             header.elements(HipWeight.UP, HipWeight.ffnEntry(layer, TokenGroup.CONTEXT)),
-            (long) shape.typed().context() * shape.hidden());
+            (long) shape.context() * shape.hidden());
         Assert.assertEquals(
             header.elements(HipWeight.UP, HipWeight.ffnEntry(layer, TokenGroup.TILE)),
-            (long) shape.typed().tile() * shape.hidden());
+            (long) shape.tile() * shape.hidden());
         Assert.assertTrue(header.weight(HipWeight.FFN_NORM, HipWeight.ffnEntry(layer, TokenGroup.ALL)) < 0);
       }
       Assert.assertEquals(
-          header.elements(HipWeight.UP, HipWeight.CANDIDATE_FFN), (long) shape.typed().candidate() * shape.hidden());
+          header.elements(HipWeight.UP, HipWeight.CANDIDATE_FFN), (long) shape.candidate() * shape.hidden());
       Assert.assertTrue(header.weight(HipWeight.FINAL_NORM, TokenGroup.CONTEXT.ordinal()) >= 0);
       Assert.assertTrue(header.weight(HipWeight.FINAL_NORM, TokenGroup.TILE.ordinal()) >= 0);
       Assert.assertEquals(header.weight(HipWeight.REREAD_OUTPUT, 0) >= 0, shape.reread());

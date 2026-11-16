@@ -54,7 +54,7 @@ import org.testng.annotations.Test;
 public class StepFeedTest {
   private static final Logger log = LoggerFactory.getLogger(StepFeedTest.class);
 
-  private static final PrismShape SHAPE = new PrismShape(64, 128, 64, 2, null);
+  private static final PrismShape SHAPE = new PrismShape.V2(64, 128, 64, 2);
   private static final int LANES = 2;
   private static final int STEP_ROWS = 160;
 

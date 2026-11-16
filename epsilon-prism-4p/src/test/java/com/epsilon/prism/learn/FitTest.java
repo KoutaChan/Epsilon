@@ -73,7 +73,7 @@ import org.testng.annotations.Test;
 public class FitTest {
   private static final Logger log = LoggerFactory.getLogger(FitTest.class);
 
-  private static final PrismShape SHAPE = new PrismShape(64, 128, 64, 2, null);
+  private static final PrismShape SHAPE = new PrismShape.V2(64, 128, 64, 2);
   private static final int STEPS = 16;
   private static final int BUDGET = 6_000;
   private static final BatchPlan.Capacity ONE_ROW =

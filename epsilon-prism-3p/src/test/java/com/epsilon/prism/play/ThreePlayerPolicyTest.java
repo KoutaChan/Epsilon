@@ -53,7 +53,7 @@ public class ThreePlayerPolicyTest {
 
   @Test(timeOut = 300_000)
   public void aV3SnapshotEvaluatesRealDecisions() throws Exception {
-    evaluate(new PrismShape(64, 128, 64, 3, new PrismShape.Typed(128, 256, 128, true)));
+    evaluate(new PrismShape.V3(64, 128, 64, 128, 256, 128, true));
   }
 
   /**

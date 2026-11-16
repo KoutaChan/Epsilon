@@ -44,7 +44,7 @@ public class ShapeArchitectureTest {
       {PrismShape.standard(2), List.of(ALL_512, fixed(new HipFfn.Shared(512))), 512, CandidateStages.ONE, 256},
       {PrismShape.standard(3), List.of(ALL_512, ALL_512, fixed(new HipFfn.Shared(512))), 512, CandidateStages.ONE, 256},
       {
-        new PrismShape(256, 768, 256, 2, null),
+        new PrismShape.V2(256, 768, 256, 2),
         List.of(
             new HipLayer(LayerRole.ALL_TOKENS, new HipFfn.Shared(768)), fixed(new HipFfn.Shared(768))),
         768,
@@ -60,20 +60,13 @@ public class ShapeArchitectureTest {
         CandidateStages.REREAD,
         512
       },
-      {
-        new PrismShape(256, 512, 256, 2, new PrismShape.Typed(768, 1536, 512, false)),
-        List.of(ALL_512, v3Fixed),
-        512,
-        CandidateStages.ONE,
-        256
-      },
     };
   }
 
   @Test(dataProvider = "shapes")
   public void everyShapeDescribesItsLayersCandidateAndHeads(
       PrismShape shape, List<HipLayer> layers, int candidateFfn, CandidateStages stages, int gate) {
-    HipArchitecture architecture = shape.architecture(InputSchema.FORMAT);
+    HipArchitecture architecture = shape.hip(InputSchema.FORMAT);
     Assert.assertEquals(shape.layers(), layers);
     Assert.assertEquals(architecture.layers(), layers);
     Assert.assertEquals(architecture.depth(), shape.depth());
@@ -91,15 +84,15 @@ public class ShapeArchitectureTest {
     Assert.assertEquals(architecture.counts().fixed(), InputSchema.FORMAT.fixedTokens());
     Assert.assertEquals(architecture.counts().keyCodes(), InputSchema.FORMAT.keys().codes());
     Assert.assertEquals(architecture.allTokenLayers() + architecture.fixedLayers(), shape.depth());
-    Assert.assertEquals(architecture.encode(), shape.architecture(InputSchema.FORMAT).encode());
+    Assert.assertEquals(architecture.encode(), shape.hip(InputSchema.FORMAT).encode());
     Assert.assertTrue(WeightLayout.supports(shape));
   }
 
   /** H が 256 でない形は記述を作らない（HIP のカーネルは H 256 に特化している）。 */
   @Test
   public void otherWidthsHaveNoDescription() {
-    PrismShape narrow = new PrismShape(128, 512, 256, 2, null);
-    Assert.assertThrows(IllegalArgumentException.class, () -> narrow.architecture(InputSchema.FORMAT));
+    PrismShape narrow = new PrismShape.V2(128, 512, 256, 2);
+    Assert.assertThrows(IllegalArgumentException.class, () -> narrow.hip(InputSchema.FORMAT));
     Assert.assertFalse(WeightLayout.supports(narrow));
   }
 
@@ -176,6 +169,6 @@ public class ShapeArchitectureTest {
 
   private static HipShape plan(PrismShape shape, int rows, int events, int transitions, int actions, long input) {
     return new HipShape(
-        shape.architecture(InputSchema.FORMAT), new HipShape.Capacity(rows, events, transitions, actions, input), 1);
+        shape.hip(InputSchema.FORMAT), new HipShape.Capacity(rows, events, transitions, actions, input), 1);
   }
 }

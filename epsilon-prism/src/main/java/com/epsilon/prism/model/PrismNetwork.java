@@ -55,11 +55,66 @@ import java.util.Set;
  */
 public final class PrismNetwork extends AbstractBlock {
 
-  /** model.json に書くネットワークの形式。 */
-  public static final String ARCHITECTURE = "epsilon-prism-v2";
-
   /** model.json の中身。 */
-  private record Metadata(String architecture, String inputSchema, String headSchema, PrismShape shape) {}
+  private record Metadata(String architecture, String inputSchema, String headSchema, SavedShape shape) {}
+
+  /**
+   * model.json の形。型ごとの FFN を持たない形では typed を書かない。
+   *
+   * @param hidden 隠れ状態の幅 H
+   * @param ffn FFN の幅 F
+   * @param gate ヘッドの隠れ層の幅 G
+   * @param depth バックボーンの層の数 L
+   * @param typed 型ごとの FFN の幅（持たない形では null）
+   */
+  private record SavedShape(int hidden, int ffn, int gate, int depth, SavedTyped typed) {
+
+    static SavedShape of(PrismShape shape) {
+      return switch (shape) {
+        case PrismShape.V2 v2 -> new SavedShape(v2.hidden(), v2.ffn(), v2.gate(), v2.depth(), null);
+        case PrismShape.V3 v3 ->
+            new SavedShape(
+                v3.hidden(),
+                v3.ffn(),
+                v3.gate(),
+                v3.depth(),
+                new SavedTyped(v3.tile(), v3.context(), v3.candidate(), v3.reread()));
+      };
+    }
+
+    /**
+     * 形式の名前と合わせて形を作る。{@link PrismArchitecture#V2} の名前で型ごとの FFN を持つ形は、{@link PrismShape.V3} として読む。
+     *
+     * @param architecture model.json の architecture
+     * @return 形
+     * @throws IllegalArgumentException 名前がどの形式でもないとき、{@link PrismArchitecture#V3} の名前で型ごとの FFN が無いとき、
+     *     型ごとの FFN を持つのに深さが {@link PrismShape.V3#DEPTH} でないとき、または幅が形の決まりを外れるとき
+     */
+    PrismShape shape(String architecture) {
+      PrismArchitecture named = PrismArchitecture.byId(architecture);
+      if (typed == null) {
+        if (named == PrismArchitecture.V3) {
+          throw new IllegalArgumentException(named.id() + " needs typed FFNs, but the shape has none");
+        }
+        return new PrismShape.V2(hidden, ffn, gate, depth);
+      }
+      if (depth != PrismShape.V3.DEPTH) {
+        throw new IllegalArgumentException(
+            "typed FFNs need depth " + PrismShape.V3.DEPTH + ", but the shape has depth " + depth);
+      }
+      return new PrismShape.V3(hidden, ffn, gate, typed.tile(), typed.context(), typed.candidate(), typed.reread());
+    }
+  }
+
+  /**
+   * model.json の型ごとの FFN の幅。
+   *
+   * @param tile 牌のトークンの FFN の幅
+   * @param context 局・席のトークンの FFN の幅
+   * @param candidate 候補層の FFN の幅
+   * @param reread 候補層の 2 段目を持つなら true
+   */
+  private record SavedTyped(int tile, int context, int candidate, boolean reread) {}
 
   /** 保存したネットワークの入力の形式と形。 */
   private record Header(InputFormat format, PrismShape shape) {}
@@ -337,8 +392,8 @@ public final class PrismNetwork extends AbstractBlock {
   }
 
   /**
-   * 重み（weights.bin）と model.json を、新しいディレクトリに書く。model.json には、ネットワークの形式、入力のフィンガープリント、
-   * ヘッドのフィンガープリント、形を書く。
+   * 重み（weights.bin）と model.json を、新しいディレクトリに書く。model.json には、ネットワークの形式（{@link PrismArchitecture}）、
+   * 入力のフィンガープリント、ヘッドのフィンガープリント、形を書く。
    *
    * @param directory 書く先（まだ無いこと）
    * @throws IOException 書けないとき、または書く先が既にあるとき
@@ -347,7 +402,11 @@ public final class PrismNetwork extends AbstractBlock {
     CheckpointFiles.write(
         directory,
         this,
-        new Metadata(ARCHITECTURE, format.fingerprint(), TargetSchema.of(format.variant()).fingerprint(), shape));
+        new Metadata(
+            shape.architecture().id(),
+            format.fingerprint(),
+            TargetSchema.of(format.variant()).fingerprint(),
+            SavedShape.of(shape)));
   }
 
   /**
@@ -375,8 +434,14 @@ public final class PrismNetwork extends AbstractBlock {
 
   private static Header header(Path directory) throws IOException {
     Metadata metadata = CheckpointFiles.readHeader(directory, Metadata.class);
-    if (metadata.shape() == null || !ARCHITECTURE.equals(metadata.architecture())) {
+    if (metadata.shape() == null || metadata.architecture() == null) {
       throw new IOException("Not a PRISM model: " + directory);
+    }
+    PrismShape shape;
+    try {
+      shape = metadata.shape().shape(metadata.architecture());
+    } catch (IllegalArgumentException e) {
+      throw new IOException("Not a readable PRISM model: " + directory + ": " + e.getMessage(), e);
     }
     InputFormat format = null;
     for (PrismVariant module : PrismVariant.all()) {
@@ -390,13 +455,6 @@ public final class PrismNetwork extends AbstractBlock {
     if (!TargetSchema.of(format.variant()).fingerprint().equals(metadata.headSchema())) {
       throw new IOException("PRISM head schema mismatch " + directory);
     }
-    PrismShape shape =
-        new PrismShape(
-            metadata.shape().hidden(),
-            metadata.shape().ffn(),
-            metadata.shape().gate(),
-            metadata.shape().depth(),
-            metadata.shape().typed());
     return new Header(format, shape);
   }
 

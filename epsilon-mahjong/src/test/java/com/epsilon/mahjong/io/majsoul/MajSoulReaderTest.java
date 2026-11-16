@@ -50,6 +50,32 @@ public class MajSoulReaderTest {
       """;
 
   /**
+   * 手で書いた三人打ちの 1 局だけの半荘（南 3 局、親は席 2、記録の JSON の形は四人打ちと同じで tiles3 が無い）。親が 7z をツモ切り、
+   * 席 0 が北をツモって抜き、嶺上の 8p を取って 6s を打ち、席 1 が断么九・平和でロンして 40000 点になり終局する
+   * （{@code MajSoulProtoTest} も読む）。
+   */
+  public static final String SANMA =
+      """
+      {"head": {"accounts": [], "result": {"players": [
+        {"seat": 0, "part_point_1": 31000}, {"seat": 1, "part_point_1": 40000},
+        {"seat": 2, "part_point_1": 34000}]}},
+       "records": [
+        {"name": ".lq.RecordNewRound", "data": {"chang": 1, "ju": 2, "ben": 0, "liqibang": 0,
+          "scores": [33000, 38000, 34000], "doras": ["5z"],
+          "tiles0": ["1m", "1m", "9m", "9m", "1p", "9p", "1s", "9s", "6s", "2z", "3z", "3z", "6z"],
+          "tiles1": ["2p", "3p", "4p", "5p", "6p", "7p", "2s", "3s", "4s", "7s", "8s", "4p", "4p"],
+          "tiles2": ["1m", "9m", "1p", "9p", "1s", "9s", "1z", "2z", "3z", "5z", "6z", "7z", "7z", "7z"]}},
+        {"name": ".lq.RecordDiscardTile", "data": {"seat": 2, "tile": "7z", "moqie": true}},
+        {"name": ".lq.RecordDealTile", "data": {"seat": 0, "tile": "4z"}},
+        {"name": ".lq.RecordBaBei", "data": {"seat": 0, "moqie": true}},
+        {"name": ".lq.RecordDealTile", "data": {"seat": 0, "tile": "8p"}},
+        {"name": ".lq.RecordDiscardTile", "data": {"seat": 0, "tile": "6s", "moqie": false}},
+        {"name": ".lq.RecordHule", "data": {"hules": [{"seat": 1, "hu_tile": "6s", "zimo": false,
+          "yiman": false, "count": 2, "fu": 30, "fans": [{"id": 12, "val": 1}, {"id": 14, "val": 1}]}],
+          "delta_scores": [-2000, 2000, 0]}}]}
+      """;
+
+  /**
    * 手で書いた大三元の 1 局だけの半荘（東 1 局、親は席 0）の、和了の前まで。席 0 が白と發を暗槓し、席 1 がツモ切った中をポンして、
    * 1p・4p 待ちになる。{@code %s} に、続きの記録を入れる。席 1 が 48000 点を払って飛ぶ。
    */
@@ -145,6 +171,31 @@ public class MajSoulReaderTest {
         round.result(),
         new RoundResult(EndKind.RON, null, List.of(win), 1, 0, 0, new int[] {0, -2_000, 2_000, 0}, new int[0]));
     new ReplayDriver(VARIANT).replay(game, new RuleWorkspace(VARIANT));
+  }
+
+  /** 三人打ちの牌譜は三人打ちのルールで読み、北抜きは手の北を抜く。記録どおりに再生できる。 */
+  @Test
+  public void aThreePlayerRoundWithANukiReadsAndReplays() {
+    Variant sanma = Variant.TENHOU_3P;
+    RecordedGame game = MajSoulReader.read(SANMA, "sanma");
+    Assert.assertEquals(game.variant(), sanma);
+    Assert.assertEquals(game.finalScores(), new int[] {31_000, 40_000, 34_000});
+    RecordedRound round = game.rounds().get(0);
+    Assert.assertEquals(round.start(), new RoundStart(sanma, 5, 0, 0, new int[] {33_000, 38_000, 34_000}));
+    int north = Tiles.physicalId(Tiles.PEI, 0);
+    Assert.assertEquals(
+        round.events(),
+        List.of(
+            new RecordEvent.Draw(2, Tiles.physicalId(Tiles.CHUN, 2)),
+            new RecordEvent.Discard(2, Tiles.physicalId(Tiles.CHUN, 2), true, false),
+            new RecordEvent.Draw(0, north),
+            new RecordEvent.Nuki(0, north),
+            new RecordEvent.Draw(0, Tiles.physicalId(Tiles.P8, 0)),
+            new RecordEvent.Discard(0, Tiles.physicalId(Tiles.S6, 0), false, false)));
+    Assert.assertEquals(round.result().kind(), EndKind.RON);
+    Assert.assertEquals(round.result().loser(), 0);
+    Assert.assertEquals(round.result().deltas(), new int[] {-2_000, 2_000, 0});
+    new ReplayDriver(sanma).replay(game, new RuleWorkspace(sanma));
   }
 
   /** 最後の打牌と違う牌を鳴いた記録は読まない。 */

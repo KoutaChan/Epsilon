@@ -31,6 +31,57 @@ public class MajSoulProtoTest {
     Assert.assertFalse(MajSoulReader.isResponse(MajSoulReaderTest.RECORD.getBytes(StandardCharsets.UTF_8)));
   }
 
+  /** 三人打ちの応答（北抜きの RecordBaBei を含む）は、{@link MajSoulReaderTest#SANMA} と同じ半荘に読む。 */
+  @Test
+  public void aThreePlayerResponseReadsLikeTheSameGamesJson() {
+    List<Proto> records =
+        List.of(
+            wrapper(
+                ".lq.RecordNewRound",
+                new Proto()
+                    .varint(1, 1)
+                    .varint(2, 2)
+                    .packed(5, 33_000, 38_000, 34_000)
+                    .strings(7, "1m", "1m", "9m", "9m", "1p", "9p", "1s", "9s", "6s", "2z", "3z", "3z", "6z")
+                    .strings(8, "2p", "3p", "4p", "5p", "6p", "7p", "2s", "3s", "4s", "7s", "8s", "4p", "4p")
+                    .strings(9, "1m", "9m", "1p", "9p", "1s", "9s", "1z", "2z", "3z", "5z", "6z", "7z", "7z", "7z")
+                    .strings(16, "5z")),
+            wrapper(".lq.RecordDiscardTile", new Proto().varint(1, 2).string(2, "7z").varint(5, 1)),
+            wrapper(".lq.RecordDealTile", new Proto().string(2, "4z")),
+            wrapper(".lq.RecordBaBei", new Proto().varint(8, 1)),
+            wrapper(".lq.RecordDealTile", new Proto().string(2, "8p")),
+            wrapper(".lq.RecordDiscardTile", new Proto().string(2, "6s")),
+            wrapper(
+                ".lq.RecordHule",
+                new Proto()
+                    .message(
+                        1,
+                        new Proto()
+                            .string(3, "6s")
+                            .varint(4, 1)
+                            .varint(11, 2)
+                            .message(12, new Proto().varint(2, 1).varint(3, 12))
+                            .message(12, new Proto().varint(2, 1).varint(3, 14))
+                            .varint(13, 30))
+                    .packed(3, -2_000, 2_000, 0)));
+    Proto details = new Proto();
+    for (Proto record : records) {
+      details.message(3, new Proto().varint(2, 1).message(3, record));
+    }
+    Proto head =
+        new Proto()
+            .message(
+                12,
+                new Proto()
+                    .message(1, new Proto().varint(3, 31_000))
+                    .message(1, new Proto().varint(1, 1).varint(3, 40_000))
+                    .message(1, new Proto().varint(1, 2).varint(3, 34_000)));
+    Proto response = new Proto().message(3, head).message(4, wrapper(".lq.GameDetailRecords", details));
+    Assert.assertEquals(
+        MajSoulReader.read(wrapper(".lq.ResGameRecord", response).bytes(), "sanma"),
+        MajSoulReader.read(MajSoulReaderTest.SANMA, "sanma"));
+  }
+
   /** 途中で切れた応答と、data の無い応答は、IllegalArgumentException を投げて読まない。 */
   @Test
   public void brokenResponsesAreRejected() {

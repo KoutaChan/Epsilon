@@ -28,16 +28,16 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 雀魂の牌譜（四人打ち）を読む。復号した JSON のうち、head.result.players の各席の part_point_1（終局の点）、head.accounts の
- * 各席の nickname（打ち手の名前）、records の各要素 {name: ".lq.RecordNewRound" など, data: {...}} を読む。キーの名前は
- * snake_case でも lowerCamelCase でもよい。牌譜を取る API の応答の protobuf（ResGameRecord を包んだ lq.Wrapper）は、
- * {@link MajSoulProto} で同じ形の JSON に直してから読む。ルールは、局の始まりの scores の席の数で決める。三人打ちの牌譜は読まない。
+ * 雀魂の牌譜（四人打ちと三人打ち）を読む。復号した JSON のうち、head.result.players の各席の part_point_1（終局の点）、
+ * head.accounts の各席の nickname（打ち手の名前）、records の各要素 {name: ".lq.RecordNewRound" など, data: {...}} を読む。
+ * キーの名前は snake_case でも lowerCamelCase でもよい。牌譜を取る API の応答の protobuf（ResGameRecord を包んだ lq.Wrapper）は、
+ * {@link MajSoulProto} で同じ形の JSON に直してから読む。ルールは、局の始まりの scores の席の数で決める。
  *
  * <p>牌の表記から TileCopies の割り当て方で物理 id を決め、イベントは RecordedRound の契約の順に並べ直す。親の配牌 14 枚の
- * 最後の 1 枚は最初のツモにする。立直の成立は、宣言牌の後の記録が持つ liqi（failed でないもの）で知る。表示牌は、doras の列で
- * 増えた分をめくる。
+ * 最後の 1 枚は最初のツモにする。北抜き（RecordBaBei）は手の北を 1 枚抜く。立直の成立は、宣言牌の後の記録が持つ liqi（failed
+ * でないもの）で知る。表示牌は、doras の列で増えた分をめくる。
  *
- * <p>和了は hules の fans・count・fu から作る。役満は yiman で示し、count が倍率になる。放銃者は、最後に打牌か加槓をした席。
+ * <p>和了は hules の fans・count・fu から作る。役満は yiman で示し、count が倍率になる。放銃者は、最後に打牌か加槓か北抜きをした席。
  * 包の席は、和了者の面子から決める（大三元なら 3 つ目の三元牌、大四喜なら 4 つ目の風牌の面子を鳴かせた席）。
  * 点の動きは delta_scores から作り（荒牌では scores の各要素が持つ delta_scores の和）、この局で成立した立直の供託を引く。
  * 流し満貫の席は、荒牌の精算が供託を引く前の点の動きと一致する席の組として決める。
@@ -56,7 +56,8 @@ public final class MajSoulReader {
     AN_GANG_ADD_GANG,
     HULE,
     NO_TILE,
-    LIU_JU;
+    LIU_JU,
+    BA_BEI;
 
     static Record parse(String name) {
       String bare = name.startsWith(NAMESPACE) ? name.substring(NAMESPACE.length()) : name;
@@ -315,7 +316,7 @@ public final class MajSoulReader {
     private int lastDiscarder;
     private int lastDiscard;
 
-    /** ロンされうる牌を最後に出した席（打牌か加槓をした席）。 */
+    /** ロンされうる牌を最後に出した席（打牌か加槓か北抜きをした席）。 */
     private int claimant;
 
     /** この局で立直が成立した席（席ごとのビット）。 */
@@ -356,6 +357,7 @@ public final class MajSoulReader {
           call(data);
         }
         case AN_GANG_ADD_GANG -> kan(data);
+        case BA_BEI -> nuki(data);
         case HULE -> win(data);
         case NO_TILE -> exhaustive(data);
         case LIU_JU -> {
@@ -409,9 +411,6 @@ public final class MajSoulReader {
                 .filter(each -> each.seats() == scores.length)
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(id + " has scores for " + scores.length + " seats"));
-        if (variant.has(RuleFlag.NUKI)) {
-          throw new IllegalArgumentException(id + " is a three-player game, which this reader does not read");
-        }
         seats = variant.seats();
         copies = new TileCopies(variant);
       }
@@ -516,6 +515,16 @@ public final class MajSoulReader {
         }
       }
       reveal(data);
+    }
+
+    /** 北抜き。抜いた北はロンされうる。 */
+    private void nuki(JsonObject data) {
+      int seat = seat(integer(data, "seat"));
+      if (!variant.has(RuleFlag.NUKI)) {
+        throw new IllegalArgumentException(id + ": seat " + seat + " takes out a north in " + variant);
+      }
+      events.add(new RecordEvent.Nuki(seat, copies.meld(seat, Face.of(Tiles.PEI, false))));
+      claimant = seat;
     }
 
     private void win(JsonObject data) {

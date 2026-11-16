@@ -149,7 +149,8 @@ final class MajSoulProto {
         bool(1, "liujumanguan"),
         messages(2, "players", NO_TILE_PLAYER_INFO),
         messages(3, "scores", NO_TILE_SCORE_INFO)),
-    RECORD_LIU_JU(uint(1, "type"), message(5, "liqi", LI_QI_SUCCESS));
+    RECORD_LIU_JU(uint(1, "type"), message(5, "liqi", LI_QI_SUCCESS)),
+    RECORD_BA_BEI(uint(1, "seat"));
 
     private final List<Field> fields;
 

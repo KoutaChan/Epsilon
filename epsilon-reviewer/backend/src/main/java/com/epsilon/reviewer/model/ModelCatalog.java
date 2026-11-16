@@ -24,7 +24,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 起動時に models.json から読んだモデルの一覧。ファイルの形は {@link ModelsFile} で、設定ファイルと同じ仕組みで読む。知らないフィールド、
- * 型や範囲の誤り、知らない系列やルール、重複、一覧に無い既定のモデルがあれば、誤りを全て集めてから起動を失敗させる。使えるかどうかは、
+ * 型や範囲の誤り、知らない系列やルール、重複、一覧に無い既定のモデル、1 つのルールに 2 つの既定のモデルがあれば、誤りを全て集めてから
+ * 起動を失敗させる。使えるかどうかは、
  * 中身のハッシュを作らずに決める。画面に出すカタログは作っておき、使えるかどうかが変わったときだけ作り直す。チェックポイントの
  * 相対パスは、models.json のあるフォルダーを起点にする。
  */
@@ -38,16 +39,19 @@ public final class ModelCatalog {
   private final Map<ModelKey, ModelEntry> entries;
 
   private final Map<ModelKey, CheckpointFingerprint> fingerprints;
-  private final ModelKey defaultModel;
+
+  /** ルールごとの既定のモデル（models.json の順）。 */
+  private final List<ModelKey> defaultModels;
+
   private volatile CatalogView view;
 
   private ModelCatalog(
       Map<ModelKey, ModelEntry> entries,
       Map<ModelKey, CheckpointFingerprint> fingerprints,
-      ModelKey defaultModel) {
+      List<ModelKey> defaultModels) {
     this.entries = entries;
     this.fingerprints = fingerprints;
-    this.defaultModel = defaultModel;
+    this.defaultModels = List.copyOf(defaultModels);
     view = buildView();
   }
 
@@ -105,13 +109,14 @@ public final class ModelCatalog {
               model.options().temperature(),
               available));
     }
-    ModelKey defaultModel = file.defaultModel() == null ? null : file.defaultModel().key();
-    return new ModelCatalog(entries, fingerprints, defaultModel);
+    List<ModelKey> defaultModels =
+        file.defaultModels().stream().map(ModelsFile.Reference::key).toList();
+    return new ModelCatalog(entries, fingerprints, defaultModels);
   }
 
   /** models.json を持たないサーバの、空のカタログ。 */
   public static ModelCatalog empty() {
-    return new ModelCatalog(new LinkedHashMap<>(), Map.of(), null);
+    return new ModelCatalog(new LinkedHashMap<>(), Map.of(), List.of());
   }
 
   /** 作っておいたカタログを返す（ハッシュは作らない）。 */
@@ -184,6 +189,6 @@ public final class ModelCatalog {
               entry.version(),
               entry.variant().seats(),
               entry.available()));
-    return new CatalogView(List.copyOf(models), defaultModel);
+    return new CatalogView(List.copyOf(models), defaultModels);
   }
 }

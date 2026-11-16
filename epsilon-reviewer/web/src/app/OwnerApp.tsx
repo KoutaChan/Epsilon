@@ -96,7 +96,6 @@ export function OwnerApp() {
         {screen.name === "home" && (
           <div className="home-layout">
             <ImportCard
-              models={models}
               busy={task.busy}
               onFile={(file) =>
                 void task.run(() => api.importFile(file), imported)
@@ -155,7 +154,7 @@ export function OwnerApp() {
             onSeat={(seat) => dispatch({ type: "seatChosen", seat })}
             onBack={home}
             onStart={() => {
-              const model = models.selected;
+              const model = models.selected(screen.record.record.names.length);
               if (model === undefined) return;
               void task.run(
                 () => api.start(screen.record.recordId, model),

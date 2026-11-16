@@ -5,7 +5,10 @@ import { useLanguage } from "../../language/LanguageProvider";
 import { ModelSelect } from "../models/ModelSelect";
 import type { Models } from "../models/useModels";
 
-/** 解析を始める前の確認の画面。席は、親を東家としたときの風で呼ぶ（解析するのは全員）。モデルは、その人数の牌譜を読めるものだけを選べる。 */
+/**
+ * 解析を始める前の確認の画面。席は、親を東家としたときの風で呼ぶ（解析するのは全員）。モデルは、その人数の牌譜を読めるものだけを
+ * 選べ、初めはその人数で前に選んだモデルか、その人数の既定のモデルを選んでおく。
+ */
 export function ConfirmAnalysis({
   record,
   seat,
@@ -63,7 +66,7 @@ export function ConfirmAnalysis({
         <button
           className="button primary"
           onClick={onStart}
-          disabled={busy || models.selected?.seats !== seats}
+          disabled={busy || models.selected(seats) === undefined}
         >
           {busy ? (
             <LoaderCircle className="spin" />

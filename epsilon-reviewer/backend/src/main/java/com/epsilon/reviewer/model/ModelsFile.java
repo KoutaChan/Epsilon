@@ -8,35 +8,49 @@ import com.epsilon.agent.settings.Presence;
 import com.epsilon.mahjong.rules.Variant;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
  * models.json の中身。起動時に設定ファイルと同じ仕組みで読み、知らないフィールド、型や範囲の誤りを全て集めてから起動を失敗させる。
- * 同じモデルのバージョンが 2 回出たときと、既定のモデルが一覧に無いときも誤りにする。
+ * 同じモデルのバージョンが 2 回出たとき、既定のモデルが一覧に無いとき、1 つのルールに既定のモデルが 2 つあるときも誤りにする。
  *
  * @param models モデルの一覧。画面に出す順
- * @param defaultModel 画面で最初に選ぶモデル。無ければ null
+ * @param defaultModels ルールごとの既定のモデル。牌譜を読んだとき、画面はその牌譜の人数のモデルの中からこれを選んでおく。1 つの
+ *     ルールに 1 つまで。無ければ空
  */
 public record ModelsFile(
     @Key(doc = "モデルの一覧（画面に出す順）", presence = Presence.REQUIRED, change = Change.MACHINE) List<Model> models,
-    @Key(doc = "画面で最初に選んでおくモデル", presence = Presence.ABSENT, change = Change.MACHINE) Reference defaultModel) {
+    @Key(doc = "ルールごとに、牌譜を読んだときに選んでおくモデル（1 つのルールに 1 つまで）", presence = Presence.ABSENT, change = Change.MACHINE)
+        List<Reference> defaultModels) {
 
   private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 
   public ModelsFile {
-    Set<ModelKey> keys = new HashSet<>();
+    Map<ModelKey, Variant> variants = new HashMap<>();
     for (int index = 0; index < models.size(); index++) {
-      ModelKey key = models.get(index).key();
-      if (!keys.add(key)) {
+      Model model = models.get(index);
+      if (variants.putIfAbsent(model.key(), model.variant()) != null) {
         throw new InvalidSetting(
-            "models", "models[" + index + "] repeats the model " + key.modelId() + " " + key.revision());
+            "models",
+            "models[" + index + "] repeats the model " + model.modelId() + " " + model.revision());
       }
     }
-    if (defaultModel != null && !keys.contains(defaultModel.key())) {
-      throw new InvalidSetting("defaultModel", "names no model of the catalog");
+    defaultModels = defaultModels == null ? List.of() : List.copyOf(defaultModels);
+    Set<Variant> ruled = EnumSet.noneOf(Variant.class);
+    for (int index = 0; index < defaultModels.size(); index++) {
+      Variant variant = variants.get(defaultModels.get(index).key());
+      if (variant == null) {
+        throw new InvalidSetting("defaultModels", "defaultModels[" + index + "] names no model of the catalog");
+      }
+      if (!ruled.add(variant)) {
+        throw new InvalidSetting(
+            "defaultModels", "defaultModels[" + index + "] is a second default model for " + variant);
+      }
     }
     models = List.copyOf(models);
   }

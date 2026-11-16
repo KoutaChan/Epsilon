@@ -159,20 +159,39 @@ async function stageModels(source, target) {
       sha256: await checkpointDigest(to),
     });
   }
-  const first = models[0];
-  if (first === undefined) throw new Error("models.json lists no models.");
-  const { modelId, revision } = catalog.defaultModel ?? first;
-  if (
-    !models.some(
-      (model) => model.modelId === modelId && model.revision === revision,
-    )
-  )
-    throw new Error(`defaultModel ${modelId}/${revision} is not in models.`);
+  if (models.length === 0) throw new Error("models.json lists no models.");
   await writeFile(
     path.join(target, "models.json"),
-    JSON.stringify({ models, defaultModel: { modelId, revision } }, null, 2) +
-      "\n",
+    JSON.stringify(
+      { models, defaultModels: defaultModels(catalog.defaultModels, models) },
+      null,
+      2,
+    ) + "\n",
   );
+}
+
+/**
+ * ルールごとの既定のモデルを決める。models.json の defaultModels に書いたモデルを使い、書いていないルールは一覧で最初のモデルにする。
+ * 一覧に無いモデルと、1 つのルールに 2 つ目の既定のモデルは誤りにする。
+ */
+function defaultModels(listed, models) {
+  const chosen = new Map();
+  for (const { modelId, revision } of listed ?? []) {
+    const model = models.find(
+      (entry) => entry.modelId === modelId && entry.revision === revision,
+    );
+    if (model === undefined)
+      throw new Error(`defaultModels names ${modelId}/${revision}, which is not in models.`);
+    if (chosen.has(model.variant))
+      throw new Error(`defaultModels has a second default model for ${model.variant}.`);
+    chosen.set(model.variant, model);
+  }
+  for (const model of models)
+    if (!chosen.has(model.variant)) chosen.set(model.variant, model);
+  return [...chosen.values()].map(({ modelId, revision }) => ({
+    modelId,
+    revision,
+  }));
 }
 
 /**

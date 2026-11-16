@@ -93,7 +93,7 @@ public class ModelCatalogTest {
                 + model("empty", "empty", SERIES, null)
                 + ","
                 + model("linked", link.toString().replace("\\", "\\\\"), SERIES, null)
-                + "],\"defaultModel\":{\"modelId\":\"ok\",\"revision\":\"r1\"}}");
+                + "],\"defaultModels\":[{\"modelId\":\"ok\",\"revision\":\"r1\"}]}");
     CatalogView view = catalog.view();
     Assert.assertEquals(
         view.models().stream().map(CatalogModel::modelId).toList(),
@@ -101,7 +101,7 @@ public class ModelCatalogTest {
     Assert.assertEquals(
         view.models().stream().map(CatalogModel::available).toList(),
         List.of(true, false, false, false, false));
-    Assert.assertEquals(view.defaultModel(), new ModelKey("ok", "r1"));
+    Assert.assertEquals(view.defaultModels(), List.of(new ModelKey("ok", "r1")));
     Assert.assertSame(catalog.view(), view, "the view is built once");
     ModelEntry ok = catalog.require(new ModelKey("ok", "r1"));
     Assert.assertEquals(ok.temperature(), 0.004);
@@ -150,7 +150,10 @@ public class ModelCatalogTest {
                 + model("cpu", "checkpoint", SERIES, "\"options\":{\"device\":\"cpu\"}")
                 + ","
                 + model("rules", null, Series.RULE_BOT.id(), null)
-                + "]}");
+                + "],\"defaultModels\":[{\"modelId\":\"gpu\",\"revision\":\"r1\"},"
+                + "{\"modelId\":\"default\",\"revision\":\"r1\"}]}");
+    Assert.assertEquals(
+        catalog.view().defaultModels(), List.of(new ModelKey("gpu", "r1"), new ModelKey("default", "r1")));
     ModelEntry plain = catalog.require(new ModelKey("default", "r1"));
     Assert.assertEquals(plain.series(), FixtureFamily.SERIES);
     Assert.assertEquals(plain.variant(), Variant.TENHOU_4P);
@@ -178,7 +181,10 @@ public class ModelCatalogTest {
             "{\"models\":[" + ok + "],\"extra\":1}",
             "{\"models\":[" + ok.replace("\"series\"", "\"note\":\"x\",\"series\"") + "]}",
             "{\"models\":[" + ok + "," + ok + "]}",
-            "{\"models\":[" + ok + "],\"defaultModel\":{\"modelId\":\"b\",\"revision\":\"r1\"}}",
+            "{\"models\":[" + ok + "],\"defaultModel\":{\"modelId\":\"a\",\"revision\":\"r1\"}}",
+            "{\"models\":[" + ok + "],\"defaultModels\":[{\"modelId\":\"b\",\"revision\":\"r1\"}]}",
+            "{\"models\":[" + ok + "," + model("c", "checkpoint", SERIES, null) + "],\"defaultModels\":["
+                + "{\"modelId\":\"a\",\"revision\":\"r1\"},{\"modelId\":\"c\",\"revision\":\"r1\"}]}",
             "{\"models\":[" + model("a", "checkpoint", SERIES, "\"sha256\":\"ABC\"") + "]}",
             "{\"models\":[" + options("{\"temperature\":-1}") + "]}",
             "{\"models\":[" + options("{\"temperature\":0}") + "]}",
@@ -310,7 +316,7 @@ public class ModelCatalogTest {
   @Test
   public void anEmptyCatalogHasNoModels() {
     Assert.assertTrue(ModelCatalog.empty().view().models().isEmpty());
-    Assert.assertNull(ModelCatalog.empty().view().defaultModel());
+    Assert.assertEquals(ModelCatalog.empty().view().defaultModels(), List.of());
   }
 
   /** 読めない models.json のエラーメッセージ（1 行に 1 つ）。 */

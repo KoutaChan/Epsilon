@@ -1,21 +1,17 @@
 import { useRef, useState } from "react";
 import { ArrowRight, Link, LoaderCircle, Upload } from "lucide-react";
 import { useLanguage } from "../../language/LanguageProvider";
-import { ModelSelect } from "../models/ModelSelect";
-import type { Models } from "../models/useModels";
 
 /** ファイルの選択で選べる牌譜の拡張子（mjai・天鳳の XML・雀魂。gzip で圧縮したものも選べる）。 */
 const RECORD_FILE_TYPES =
   ".jsonl,.mjson,.mjai,.gz,.xml,.json,.bin,.dat,.majsoul";
 
-/** 牌譜を取り込むカード。天鳳の URL（モデルを選んでいるときだけ）か、牌譜のファイル（選ぶかドロップする）から取り込む。 */
+/** 牌譜を取り込むカード。天鳳の URL か、牌譜のファイル（選ぶかドロップする）から取り込む。モデルは、読んだ牌譜の人数で後から選ぶ。 */
 export function ImportCard({
-  models,
   busy,
   onFile,
   onUrl,
 }: {
-  models: Models;
   busy: boolean;
   onFile: (file: File) => void;
   onUrl: (url: string) => void;
@@ -63,7 +59,7 @@ export function ImportCard({
         </label>
         <button
           className="button primary import-submit"
-          disabled={busy || !url.trim() || !models.selected}
+          disabled={busy || !url.trim()}
         >
           {busy ? (
             <LoaderCircle className="spin" />
@@ -97,7 +93,6 @@ export function ImportCard({
           }}
         />
       </div>
-      <ModelSelect models={models} id="home-model" />
     </section>
   );
 }

@@ -36,10 +36,28 @@
       "options": {
         "device": "cpu"
       }
+    },
+    {
+      "modelId": "epsilon-prism-3p",
+      "revision": "prism3p-u3-v355",
+      "displayName": "Epsilon-Prism 3P",
+      "version": "u3-v355",
+      "series": "epsilon-prism",
+      "variant": "TENHOU_3P",
+      "checkpoint": "models/prism3p-u3-v355",
+      "options": {
+        "device": "cpu"
+      }
     }
   ],
-  "defaultModel": {
-    "modelId": "epsilon-prism-v2",
-    "revision": "prism-v2b-v551-20261108"
-  }
+  "defaultModels": [
+    {
+      "modelId": "epsilon-prism-v2",
+      "revision": "prism-v2b-v551-20261108"
+    },
+    {
+      "modelId": "epsilon-prism-3p",
+      "revision": "prism3p-u3-v355"
+    }
+  ]
 }

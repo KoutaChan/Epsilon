@@ -47,8 +47,8 @@ public class HttpApiTest {
         "{\"modelId\":\"fixture\",\"revision\":\"r1\",\"displayName\":\"Fixture\","
             + "\"version\":\"1\",\"seats\":4,\"available\":true}");
     Assert.assertEquals(
-        catalog.getAsJsonObject("defaultModel").toString(),
-        "{\"modelId\":\"fixture\",\"revision\":\"r1\"}");
+        catalog.getAsJsonArray("defaultModels").toString(),
+        "[{\"modelId\":\"fixture\",\"revision\":\"r1\"}]");
 
     var imported =
         server.send(

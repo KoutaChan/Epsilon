@@ -75,7 +75,7 @@ public final class TestReviewer implements AutoCloseable {
          "series":"%1$s","variant":"TENHOU_4P","checkpoint":"checkpoint-hold"},
         {"modelId":"fixture-broken","revision":"r1","displayName":"Fixture","version":"1",
          "series":"%1$s","variant":"TENHOU_4P","checkpoint":"checkpoint-broken"}],
-         "defaultModel":{"modelId":"fixture","revision":"r1"}}
+         "defaultModels":[{"modelId":"fixture","revision":"r1"}]}
         """
             .formatted(FixtureFamily.SERIES.id()));
     return new ReviewerConfig(directory.resolve("data"), models, SETTINGS, FixtureFamily.families());

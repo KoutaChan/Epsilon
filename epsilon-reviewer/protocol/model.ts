@@ -25,7 +25,8 @@ export interface CatalogModel extends ModelInfo {
 export interface ModelCatalog {
   /** models.json に書いた順。 */
   models: readonly CatalogModel[];
-  defaultModel?: ModelKey;
+  /** ルールごとの既定のモデル（1 つのルールに 1 つまで）。牌譜を読んだとき、その人数のモデルの中からこれを選んでおく。 */
+  defaultModels: readonly ModelKey[];
 }
 
 /** 牌譜の形式。 */

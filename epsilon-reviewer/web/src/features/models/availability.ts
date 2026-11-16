@@ -32,9 +32,28 @@ export function scenarioAvailable(
   return current?.available === true;
 }
 
-/** カタログを読んだ後に選ぶモデルのキー。前に選んでいたモデル、既定のモデルの順に見て、使える方を返す。どちらも使えなければ空文字列を返す。 */
-export function initialChoice(catalog: ModelCatalog, previous: string): string {
-  if (availableModel(catalog, previous)) return previous;
-  const fallback = catalog.defaultModel ? modelKey(catalog.defaultModel) : "";
-  return availableModel(catalog, fallback) ? fallback : "";
+/**
+ * その人数の牌譜で選ぶモデル。使える、その人数のモデルの中から、利用者が選んだモデル（新しく選んだ順）、その人数の既定のモデル
+ * （defaultModels の順）、一覧で最初のモデルの順に探す。どれも無ければ undefined を返す。
+ *
+ * @param choices 利用者が選んだモデルのキー（modelKey の値、新しく選んだ順）
+ */
+export function modelFor(
+  catalog: ModelCatalog,
+  seats: number,
+  choices: readonly string[],
+): CatalogModel | undefined {
+  const usable = (key: string) => {
+    const model = availableModel(catalog, key);
+    return model?.seats === seats ? model : undefined;
+  };
+  for (const key of choices) {
+    const model = usable(key);
+    if (model) return model;
+  }
+  for (const key of catalog.defaultModels) {
+    const model = usable(modelKey(key));
+    if (model) return model;
+  }
+  return catalog.models.find((model) => model.available && model.seats === seats);
 }

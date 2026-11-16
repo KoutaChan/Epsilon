@@ -5,7 +5,7 @@ import { useLanguage } from "../../language/LanguageProvider";
 import type { CatalogModel } from "../../../../protocol/model.ts";
 import type { Models } from "./useModels";
 
-/** モデルを選ぶ欄。使えないモデルは選べない。人数（seats）を渡すと、その人数の牌譜を読めないモデルも選べない。 */
+/** その人数（seats）の牌譜を解析するモデルを選ぶ欄。使えないモデルと、その人数の牌譜を読めないモデルは選べない。 */
 export function ModelSelect({
   models,
   id,
@@ -13,12 +13,13 @@ export function ModelSelect({
 }: {
   models: Models;
   id: string;
-  seats?: number;
+  seats: number;
 }) {
   const { t } = useLanguage();
-  const { state, selected, select, reload } = models;
+  const { state, select, reload } = models;
+  const selected = models.selected(seats);
   const usable = (model: CatalogModel) =>
-    model.available && (seats === undefined || model.seats === seats);
+    model.available && model.seats === seats;
   return (
     <div className="model-control">
       <label className="filled-field">
@@ -68,10 +69,6 @@ export function ModelSelect({
           </>
         ) : state.status === "ready" && !state.value.models.some(usable) ? (
           t("model.empty")
-        ) : state.status === "ready" && selected && !usable(selected) ? (
-          t("model.otherSeats")
-        ) : state.status === "ready" && !selected ? (
-          t("model.hint")
         ) : (
           ""
         )}

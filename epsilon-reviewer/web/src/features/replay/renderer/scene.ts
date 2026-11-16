@@ -402,12 +402,6 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
       dc.fillStyle = "#f3d35e";
       dc.font = "bold 76px monospace";
       dc.fillText(String(player.score), 0, 280);
-      dc.strokeStyle = "#242e38";
-      dc.lineWidth = 4;
-      dc.beginPath();
-      dc.moveTo(-375, 375);
-      dc.lineTo(-177, 177);
-      dc.stroke();
       dc.restore();
     });
     dc.fillStyle = "#222c39";

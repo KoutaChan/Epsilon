@@ -82,6 +82,11 @@ public enum Face {
     return red;
   }
 
+  /** 手牌に並べる順。種類が同じなら赤を先に置く。 */
+  public int order() {
+    return kind * 2 + (red ? 0 : 1);
+  }
+
   public String mjai() {
     return mjai;
   }
@@ -163,7 +168,8 @@ public enum Face {
       for (String text : new String[] {face.mjai, face.majsoul}) {
         Face previous = faces.put(text, face);
         if (previous != null && previous != face) {
-          throw new IllegalStateException("Tile notation " + text + " names both " + previous + " and " + face);
+          throw new IllegalStateException(
+              "Tile notation " + text + " names both " + previous + " and " + face);
         }
       }
     }

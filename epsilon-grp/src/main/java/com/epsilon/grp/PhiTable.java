@@ -1,5 +1,6 @@
 package com.epsilon.grp;
 
+import com.epsilon.base.io.AtomicFiles;
 import com.epsilon.mahjong.rules.Variant;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -47,7 +48,8 @@ public final class PhiTable {
   /** 終わった局と区間ごとの補正。添字は [終わった局][区間]。 */
   private final double[][] corrections;
 
-  private PhiTable(Variant variant, double[] temperatures, double low, double high, double[][] corrections) {
+  private PhiTable(
+      Variant variant, double[] temperatures, double low, double high, double[][] corrections) {
     this.variant = variant;
     this.temperatures = temperatures;
     this.low = low;
@@ -62,11 +64,13 @@ public final class PhiTable {
    * @param low 補正の区間の下端
    * @param high 補正の区間の上端
    */
-  public static PhiTable of(Variant variant, double[] temperatures, double low, double high, double[][] corrections) {
+  public static PhiTable of(
+      Variant variant, double[] temperatures, double low, double high, double[][] corrections) {
     Objects.requireNonNull(variant, "variant");
     for (double temperature : temperatures) {
       if (!(temperature > 0) || !Double.isFinite(temperature)) {
-        throw new IllegalArgumentException("Temperatures must be positive and finite: " + temperature);
+        throw new IllegalArgumentException(
+            "Temperatures must be positive and finite: " + temperature);
       }
     }
     double[][] copy = new double[corrections.length][];
@@ -90,7 +94,8 @@ public final class PhiTable {
   /** JSON のファイルから読む。読めないときや形が合わないときは IOException を投げる。 */
   public static PhiTable read(Path file) throws IOException {
     try {
-      JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+      JsonObject root =
+          JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
       JsonArray stages = root.getAsJsonArray(CORRECTIONS);
       double[][] corrections = new double[stages.size()][];
       for (int stage = 0; stage < corrections.length; stage++) {
@@ -103,7 +108,8 @@ public final class PhiTable {
           root.get(HIGH).getAsDouble(),
           corrections);
     } catch (RuntimeException malformed) {
-      throw new IOException("Malformed Phi table " + file + ": " + malformed.getMessage(), malformed);
+      throw new IOException(
+          "Malformed Phi table " + file + ": " + malformed.getMessage(), malformed);
     }
   }
 
@@ -118,14 +124,17 @@ public final class PhiTable {
       stages.add(array(stage));
     }
     root.add(CORRECTIONS, stages);
-    DurableFiles.replace(
-        file, (new GsonBuilder().setPrettyPrinting().create().toJson(root) + "\n").getBytes(StandardCharsets.UTF_8));
+    byte[] json =
+        (new GsonBuilder().setPrettyPrinting().create().toJson(root) + "\n")
+            .getBytes(StandardCharsets.UTF_8);
+    AtomicFiles.replace(file, stream -> stream.write(json));
   }
 
   /** ファイルの中身の SHA-256 を小文字の 16 進で返す。Φ の項目で、表が同じものかを照合するのに使う。 */
   public static String sha256(Path file) throws IOException {
     try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+      return HexFormat.of()
+          .formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
     } catch (NoSuchAlgorithmException missing) {
       throw new IllegalStateException(missing);
     }
@@ -145,7 +154,8 @@ public final class PhiTable {
     int seats = variant.seats();
     requireRound(nextRound);
     if (marginals.length != seats * seats) {
-      throw new IllegalArgumentException(variant + " needs " + seats * seats + " marginals, got " + marginals.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + seats * seats + " marginals, got " + marginals.length);
     }
     if (temperatures.length == 0) {
       return;
@@ -159,7 +169,8 @@ public final class PhiTable {
       double total = 0;
       for (int rank = 0; rank < seats; rank++) {
         // StrictMath.pow は呼ぶたびに作業用の配列を確保するので、exp(log(p)·指数) で求める。
-        marginals[row + rank] = StrictMath.exp(StrictMath.log(Math.max(marginals[row + rank], FLOOR)) * exponent);
+        marginals[row + rank] =
+            StrictMath.exp(StrictMath.log(Math.max(marginals[row + rank], FLOOR)) * exponent);
         total += marginals[row + rank];
       }
       for (int rank = 0; rank < seats; rank++) {
@@ -178,7 +189,8 @@ public final class PhiTable {
     int seats = variant.seats();
     requireRound(endedRound);
     if (phi.length != seats) {
-      throw new IllegalArgumentException(variant + " needs " + seats + " values, got " + phi.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + seats + " values, got " + phi.length);
     }
     if (corrections.length == 0) {
       return;

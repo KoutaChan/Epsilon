@@ -3,20 +3,15 @@ package com.epsilon.grp.train;
 import com.epsilon.grp.GrpState;
 import com.epsilon.mahjong.rules.Variant;
 import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 /**
  * GameCohort を 1 つのファイル（gzip で圧縮）に読み書きする。中身は DataOutputStream（ビッグエンディアン）で次の順に並べる:
@@ -31,7 +26,6 @@ import java.util.zip.GZIPOutputStream;
  */
 public final class GameRecordCodec {
 
-  private static final int BUFFER = 1 << 16;
   private static final int MAX_UNSIGNED_BYTE = 0xFF;
   private static final int MAX_UNSIGNED_SHORT = 0xFFFF;
 
@@ -39,28 +33,16 @@ public final class GameRecordCodec {
 
   /** u8・u16 のフィールドに収まらない値があれば IllegalArgumentException を投げ、ファイルは変えない。 */
   public static void write(Path file, GameCohort cohort) throws IOException {
-    Path absolute = file.toAbsolutePath();
-    Files.createDirectories(absolute.getParent());
-    Path temporary = absolute.resolveSibling(absolute.getFileName() + ".tmp");
-    try {
-      try (DataOutputStream out = new DataOutputStream(
-          new BufferedOutputStream(new GZIPOutputStream(Files.newOutputStream(temporary), BUFFER), BUFFER))) {
-        encode(out, cohort);
-      }
-      try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
-        channel.force(true);
-      }
-    } catch (IOException | RuntimeException failure) {
-      Files.deleteIfExists(temporary);
-      throw failure;
-    }
-    Files.move(temporary, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    CompressedRecords.write(file, out -> encode(out, cohort));
   }
 
   /** 読めないとき、途中で切れているとき、中身が卓として正しくないときは IOException を投げる。 */
   public static GameCohort read(Path file) throws IOException {
-    try (DataInputStream in = new DataInputStream(
-        new BufferedInputStream(new GZIPInputStream(Files.newInputStream(file), BUFFER), BUFFER))) {
+    try (DataInputStream in =
+        new DataInputStream(
+            new BufferedInputStream(
+                new GZIPInputStream(Files.newInputStream(file), CompressedRecords.BUFFER),
+                CompressedRecords.BUFFER))) {
       GameCohort cohort = decode(in);
       if (in.read() != -1) {
         throw new IOException("Trailing bytes after the last game of " + file);
@@ -69,7 +51,8 @@ public final class GameRecordCodec {
     } catch (EOFException truncated) {
       throw new IOException("Truncated game records " + file, truncated);
     } catch (IllegalArgumentException malformed) {
-      throw new IOException("Malformed game records " + file + ": " + malformed.getMessage(), malformed);
+      throw new IOException(
+          "Malformed game records " + file + ": " + malformed.getMessage(), malformed);
     }
   }
 
@@ -81,7 +64,8 @@ public final class GameRecordCodec {
     for (GameRecord game : cohort.games()) {
       out.writeLong(game.gameId());
       List<GrpState> handEnds = game.handEnds();
-      out.writeShort(bounded(handEnds.size(), MAX_UNSIGNED_SHORT, "hand ends of game " + game.gameId()));
+      out.writeShort(
+          bounded(handEnds.size(), MAX_UNSIGNED_SHORT, "hand ends of game " + game.gameId()));
       for (GrpState state : handEnds) {
         out.writeByte(bounded(state.round(), MAX_UNSIGNED_BYTE, "round"));
         out.writeShort(bounded(state.honba(), MAX_UNSIGNED_SHORT, "honba"));

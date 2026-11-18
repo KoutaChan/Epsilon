@@ -597,7 +597,11 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
 
   /** 手 {@code action} を打った経路の局末の値を {@code target} に渡す受け取り先。帳簿を付ける収集なら空の帳簿を付ける。 */
   private Slot slot(Pending target, int action) {
-    return new Slot(target, action, context.ledger == null ? null : new double[LedgerColumn.COUNT]);
+    return new Slot(
+        target,
+        action,
+        context.ledger == null ? null : new double[LedgerColumn.COUNT],
+        target.seat());
   }
 
   /** 方策の貪欲の手。σ が最大の手で、同点なら番号の小さい手。ネットワークの方策の σ は one-hot。 */

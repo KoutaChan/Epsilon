@@ -93,7 +93,8 @@ final class RowRecorder {
     long started = System.nanoTime();
     ObservationBatch batch = request.records();
     long[] observation = new long[batch.longs(request.record())];
-    System.arraycopy(batch.words(), batch.start(request.record()), observation, 0, observation.length);
+    System.arraycopy(
+        batch.words(), batch.start(request.record()), observation, 0, observation.length);
     int events = o.events();
     int targets = 0;
     for (int action = 0, actions = o.legalActions(); action < actions; action++) {
@@ -101,7 +102,8 @@ final class RowRecorder {
         targets |= 1 << action;
       }
     }
-    Decision decision = new Decision(observation, OracleCapture.capture(full, request.seat(), ws), events, targets);
+    Decision decision =
+        new Decision(observation, OracleCapture.capture(full, request.seat(), ws), events, targets);
     add(Step.ORACLE, started);
     return decision;
   }
@@ -168,7 +170,7 @@ final class RowRecorder {
   private static int seats(List<Slot> targets) {
     int seats = 0;
     for (int index = 0, size = targets.size(); index < size; index++) {
-      int seat = targets.get(index).target().seat();
+      int seat = targets.get(index).seat();
       if (seat >= 0) {
         seats |= 1 << seat;
       }

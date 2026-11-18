@@ -41,7 +41,9 @@ public final class LedgerTracker {
 
   /** 自分の受け入れの列（一向聴・二向聴・三向聴以上の順）。 */
   private static final int[] OWN_IMPROVE = {
-    LedgerColumn.OWN_IMPROVE_1.ordinal(), LedgerColumn.OWN_IMPROVE_2.ordinal(), LedgerColumn.OWN_IMPROVE_3.ordinal()
+    LedgerColumn.OWN_IMPROVE_1.ordinal(),
+    LedgerColumn.OWN_IMPROVE_2.ordinal(),
+    LedgerColumn.OWN_IMPROVE_3.ordinal()
   };
 
   private static final int OWN_TSUMO = LedgerColumn.OWN_TSUMO.ordinal(),
@@ -60,7 +62,11 @@ public final class LedgerTracker {
       POLICY_OPPONENT = LedgerColumn.POLICY_OPPONENT.ordinal();
 
   /** 全てのルールのうち、最も多い席の数。 */
-  private static final int MAX_SEATS = Arrays.stream(Variant.values()).mapToInt(Variant::seats).max().orElseThrow();
+  private static final int MAX_SEATS =
+      Arrays.stream(Variant.values()).mapToInt(Variant::seats).max().orElseThrow();
+
+  /** 形の上の待ちが無い席の栄和の表（栄和できる種類は無い）。全ての経路で共有し、中身は変えない。 */
+  private static final SeatTable NO_RON = new SeatTable(0, 0, new int[Tiles.KINDS]);
 
   /** 栄和の表を作るときに、打たれたとみなす牌の写しの番号（赤でない写し）。 */
   private static final int PLAIN_COPY = Tiles.RED_COPY + 1;
@@ -77,6 +83,7 @@ public final class LedgerTracker {
 
   /** 席ごとの栄和の表。 */
   private final SeatTable[] seatTables;
+
   private final ChanceBatch batch;
 
   /** 計算する組のビット集合（組の番号の位置にビットを立てる）。写しと分岐は親と同じ値を持つ。 */
@@ -204,19 +211,31 @@ public final class LedgerTracker {
    * @param n 手の数
    * @param targets 経路の受け取り先
    */
-  public void policy(int decider, float[] scores, float[] p, int chosen, int n, List<? extends LedgerTarget> targets) {
+  public void policy(
+      int decider,
+      float[] scores,
+      float[] p,
+      int chosen,
+      int n,
+      List<? extends LedgerTarget> targets) {
     if (scores == null || !computes(LedgerGroup.POLICY)) return;
-    if (seats(targets) == 0) return;
-    long started = System.nanoTime();
-    if (policyCounts(scores, p, n)) {
-      double value = policyDelta(scores, p, chosen, n, policyClip);
-      for (LedgerTarget target : targets) {
-        double[] ledger = target.ledger();
-        int seat = target.seat();
-        if (ledger == null || seat < 0) continue;
-        add(ledger, seat == decider ? POLICY_SELF : POLICY_OPPONENT, value);
+    // 帳簿を持つ受け取り先が 1 つでもあれば、最初の受け取り先で項を求め、全ての受け取り先に同じ項を足す
+    long started = 0;
+    boolean counted = false;
+    double value = 0;
+    for (LedgerTarget target : targets) {
+      double[] ledger = target.ledger();
+      int seat = target.seat();
+      if (ledger == null || seat < 0) continue;
+      if (!counted) {
+        counted = true;
+        started = System.nanoTime();
+        if (!policyCounts(scores, p, n)) break;
+        value = policyDelta(scores, p, chosen, n, policyClip);
       }
+      add(ledger, seat == decider ? POLICY_SELF : POLICY_OPPONENT, value);
     }
+    if (!counted) return;
     nanos += System.nanoTime() - started;
     calls++;
   }
@@ -239,11 +258,13 @@ public final class LedgerTracker {
     for (int index = batch.position(); index < size; index++) {
       switch (log.kind(index)) {
         case INDICATOR -> {
-          if (uras > 0) throw new IllegalStateException("Indicator " + index + " follows the ura indicators");
+          if (uras > 0)
+            throw new IllegalStateException("Indicator " + index + " follows the ura indicators");
         }
         case URA -> uras++;
         case DRAW, RINSHAN ->
-            throw new IllegalStateException("Draw " + index + " after the last decision of the round");
+            throw new IllegalStateException(
+                "Draw " + index + " after the last decision of the round");
       }
     }
     RoundOutcome outcome = end.outcome();
@@ -269,7 +290,8 @@ public final class LedgerTracker {
       if (full.seat(winner).riichi(winner) == RiichiState.NONE) continue;
       tables.winningHand(full, winner, work.scratch, counts);
       double realized = 0, expected = 0;
-      for (int index = first; index < size; index++) realized += counts[doraOf[Tiles.kind(log.tile(index))]];
+      for (int index = first; index < size; index++)
+        realized += counts[doraOf[Tiles.kind(log.tile(index))]];
       for (long bits = tables.kinds; bits != 0; bits &= bits - 1) {
         int kind = Long.numberOfTrailingZeros(bits);
         expected += pool[kind] * counts[doraOf[kind]];
@@ -303,8 +325,10 @@ public final class LedgerTracker {
     HandShape before = work.before;
     full.copyHand(drawer, before);
     before.remove(drawn);
-    int shanten = work.shapes.shanten(before);
-    long accepting = work.shapes.improving(before);
+    ShapeAnalyzer.Analysis analysis = work.analysis;
+    work.shapes.analyze(before, analysis);
+    int shanten = analysis.shanten();
+    long accepting = analysis.improving();
     boolean improve = computes(LedgerGroup.IMPROVE), points = computes(LedgerGroup.POINTS);
     // ツモの和了（聴牌のときだけ）: 引いた牌を同じ種類の赤でない牌に替えて採点する。プールにない種類は引けず、増分に効かないので
     // 採点しない
@@ -328,20 +352,27 @@ public final class LedgerTracker {
     SeatTable[] seen = work.seen;
     for (int seat = 0; seat < count; seat++)
       seen[seat] =
-          points && seat != drawer && (everyone || (seats & (1 << seat)) != 0) ? table(full, ws, work, seat) : null;
+          points && seat != drawer && (everyone || (seats & (1 << seat)) != 0)
+              ? table(full, ws, work, seat)
+              : null;
     double[] values = work.values;
     for (int seat = 0; seat < count; seat++) {
       if ((seats & (1 << seat)) == 0) continue;
       double[] row = delta[seat];
       if (seat == drawer) {
         if (improve && shanten >= 1)
-          add(row, OWN_IMPROVE[Math.min(shanten, OWN_IMPROVE.length) - 1], indicator(accepting, drawn, pool, total));
+          add(
+              row,
+              OWN_IMPROVE[Math.min(shanten, OWN_IMPROVE.length) - 1],
+              indicator(accepting, drawn, pool, total));
         if (!points) continue;
         if (tsumo != 0) {
           for (long bits = tsumo; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
             values[tile] =
-                thousands(tsumoGain(variant, work.tsumoBase[tile], drawer, dealer, honba, sticks), pointClip);
+                thousands(
+                    tsumoGain(variant, work.tsumoBase[tile], drawer, dealer, honba, sticks),
+                    pointClip);
           }
           add(row, OWN_TSUMO, centred(tsumo, values, drawn, pool, total));
         }
@@ -355,19 +386,30 @@ public final class LedgerTracker {
             double loss = 0;
             for (int other = 0; other < count; other++)
               if (other != drawer && (seen[other].ron() & (1L << tile)) != 0)
-                loss += thousands(ronPayment(variant, seen[other].ronBase()[tile], other, dealer, honba), pointClip);
+                loss +=
+                    thousands(
+                        ronPayment(variant, seen[other].ronBase()[tile], other, dealer, honba),
+                        pointClip);
             values[tile] = -loss;
           }
-          add(row, riichi ? OWN_FORCED_DEAL_IN : OWN_DRAWN_DANGER, centred(ron, values, drawn, pool, total));
+          add(
+              row,
+              riichi ? OWN_FORCED_DEAL_IN : OWN_DRAWN_DANGER,
+              centred(ron, values, drawn, pool, total));
         }
       } else {
         if (improve && shanten >= 1)
-          add(row, shanten == 1 ? OPP_IMPROVE_1 : OPP_IMPROVE_2, indicator(accepting, drawn, pool, total));
+          add(
+              row,
+              shanten == 1 ? OPP_IMPROVE_1 : OPP_IMPROVE_2,
+              indicator(accepting, drawn, pool, total));
         if (!points) continue;
         if (tsumo != 0) {
           for (long bits = tsumo; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
-            values[tile] = -thousands(tsumoPayment(work.tsumoBase[tile], drawer, seat, dealer, honba), pointClip);
+            values[tile] =
+                -thousands(
+                    tsumoPayment(work.tsumoBase[tile], drawer, seat, dealer, honba), pointClip);
           }
           add(row, OPP_TSUMO, centred(tsumo, values, drawn, pool, total));
         }
@@ -376,10 +418,15 @@ public final class LedgerTracker {
         if (gain != 0) {
           for (long bits = gain; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
-            int gained = ronPayment(variant, own.ronBase()[tile], seat, dealer, honba) + Variant.DEPOSIT * sticks;
+            int gained =
+                ronPayment(variant, own.ronBase()[tile], seat, dealer, honba)
+                    + Variant.DEPOSIT * sticks;
             values[tile] = thousands(gained, pointClip);
           }
-          add(row, riichi ? OPP_FORCED_TO_SELF : OPP_DRAWN_CHANCE, centred(gain, values, drawn, pool, total));
+          add(
+              row,
+              riichi ? OPP_FORCED_TO_SELF : OPP_DRAWN_CHANCE,
+              centred(gain, values, drawn, pool, total));
         }
         if (riichi) {
           long ron = 0;
@@ -392,7 +439,10 @@ public final class LedgerTracker {
               double paid = 0;
               for (int other = 0; other < count; other++)
                 if (other != drawer && other != seat && (seen[other].ron() & (1L << tile)) != 0)
-                  paid += thousands(ronPayment(variant, seen[other].ronBase()[tile], other, dealer, honba), pointClip);
+                  paid +=
+                      thousands(
+                          ronPayment(variant, seen[other].ronBase()[tile], other, dealer, honba),
+                          pointClip);
               values[tile] = paid;
             }
             add(row, OPP_FORCED_TO_OTHER, centred(ron, values, drawn, pool, total));
@@ -403,10 +453,11 @@ public final class LedgerTracker {
   }
 
   /**
-   * 席の栄和の表を返す。stamp が前の表と同じなら使い回し、違えば新しい表を作って入れ替える（前の表は変えない）。打つ席は表に効かないので、
-   * その席の下家が打ったとして採点する。
+   * 席の栄和の表を返す。栄和できる種類は形の上の待ちの中にしかないので、待ちが無ければ栄和の無い表を返す。待ちがあれば、stamp が前の表と
+   * 同じなら使い回し、違えば新しい表を作って入れ替える（前の表は変えない）。打つ席は表に効かないので、その席の下家が打ったとして採点する。
    */
   private SeatTable table(FullView full, RuleWorkspace ws, Workspace work, int seat) {
+    if (full.waits(seat) == 0) return NO_RON;
     LedgerTables tables = work.tables;
     long stamp = stamp(full, work, seat);
     SeatTable table = seatTables[seat];
@@ -450,9 +501,11 @@ public final class LedgerTracker {
       if (view.holds(Tiles.physicalId(kind, Tiles.RED_COPY))) red |= 1L << kind;
     }
     long melds = view.meldCount(seat);
-    for (int m = 0; m < view.meldCount(seat); m++) melds = SeedMixer.mix64(melds ^ view.meld(seat, m));
+    for (int m = 0; m < view.meldCount(seat); m++)
+      melds = SeedMixer.mix64(melds ^ view.meld(seat, m));
     long dora = view.indicatorCount();
-    for (int k = 0; k < view.indicatorCount(); k++) dora = (dora << 6) | Tiles.kind(view.indicator(k));
+    for (int k = 0; k < view.indicatorCount(); k++)
+      dora = (dora << 6) | Tiles.kind(view.indicator(k));
     EventLog events = view.events();
     long flags =
         view.riichi(seat).ordinal()
@@ -494,7 +547,8 @@ public final class LedgerTracker {
   /** 増分を足す。値が有限でなければ帳簿の計算の誤りなので、NaN を黙って行に入れずに例外を投げる。 */
   static void add(double[] delta, int column, double value) {
     if (!Double.isFinite(value))
-      throw new IllegalStateException("Non-finite ledger term " + BY_ORDINAL[column].reportName() + " = " + value);
+      throw new IllegalStateException(
+          "Non-finite ledger term " + BY_ORDINAL[column].reportName() + " = " + value);
     delta[column] += value;
   }
 
@@ -551,7 +605,8 @@ public final class LedgerTracker {
   }
 
   /** 席ごとの増分の列 [from, to) を、その席の全ての受け取り先の帳簿に足す。 */
-  private static void apply(double[][] delta, List<? extends LedgerTarget> targets, int from, int to) {
+  private static void apply(
+      double[][] delta, List<? extends LedgerTarget> targets, int from, int to) {
     for (LedgerTarget target : targets) {
       double[] ledger = target.ledger();
       int seat = target.seat();
@@ -563,7 +618,8 @@ public final class LedgerTracker {
 
   private static int total(LedgerTables tables, int[] pool) {
     int total = 0;
-    for (long bits = tables.kinds; bits != 0; bits &= bits - 1) total += pool[Long.numberOfTrailingZeros(bits)];
+    for (long bits = tables.kinds; bits != 0; bits &= bits - 1)
+      total += pool[Long.numberOfTrailingZeros(bits)];
     return total;
   }
 
@@ -596,7 +652,8 @@ public final class LedgerTracker {
    * 槓ドラの表示 1 回分の増分を足す。{@code pool} は表示の前のプール、{@code indicator} は表示牌の種類 u。自分のドラの列には
    * own_i(ドラ(u)) の、他家のドラの列には Σ_{w≠i} own_w(ドラ(u)) の、プールの上の平均からのずれを足す。
    */
-  private static void reveal(Workspace work, int[] pool, int indicator, int seats, double[][] delta) {
+  private static void reveal(
+      Workspace work, int[] pool, int indicator, int seats, double[][] delta) {
     LedgerTables tables = work.tables;
     int total = total(tables, pool);
     if (total <= 0) throw new IllegalStateException("Empty pool before a dora reveal");
@@ -615,7 +672,8 @@ public final class LedgerTracker {
     for (int seat = 0; seat < tables.seats; seat++) {
       if ((seats & (1 << seat)) == 0) continue;
       double others = 0;
-      for (int other = 0; other < tables.seats; other++) if (other != seat) others += deviation[other];
+      for (int other = 0; other < tables.seats; other++)
+        if (other != seat) others += deviation[other];
       add(delta[seat], DORA_SELF, deviation[seat]);
       add(delta[seat], DORA_OPPONENTS, others);
     }
@@ -624,7 +682,8 @@ public final class LedgerTracker {
   /** 指示関数の増分 [d ∈ mask] − Σ_{t∈mask} n_t / N を返す。 */
   private static double indicator(long mask, int drawn, int[] pool, int total) {
     int live = 0;
-    for (long bits = mask; bits != 0; bits &= bits - 1) live += pool[Long.numberOfTrailingZeros(bits)];
+    for (long bits = mask; bits != 0; bits &= bits - 1)
+      live += pool[Long.numberOfTrailingZeros(bits)];
     return ((mask >>> drawn) & 1) - (double) live / total;
   }
 
@@ -701,6 +760,9 @@ public final class LedgerTracker {
 
     /** ツモった席の、ツモの前の手牌。 */
     final HandShape before = new HandShape();
+
+    /** ツモの前の手牌の向聴と有効牌。 */
+    final ShapeAnalyzer.Analysis analysis = new ShapeAnalyzer.Analysis();
 
     /** 席の手牌を読み出す写し。 */
     final HandShape scratch = new HandShape();

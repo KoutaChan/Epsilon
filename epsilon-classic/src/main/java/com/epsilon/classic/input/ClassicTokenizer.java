@@ -207,23 +207,28 @@ public final class ClassicTokenizer {
    * @throws IllegalArgumentException ルールかアーキテクチャが合わないとき、判断が書き込み先の区分に収まらないとき、または事前分布の
    *     要素の数か値が正しくないとき
    */
-  public void write(Observation o, ClassicExtras extras, float[] grpPrior, ClassicInputs into, int row) {
+  public void write(
+      Observation o, ClassicExtras extras, float[] grpPrior, ClassicInputs into, int row) {
     Objects.requireNonNull(grpPrior, "grpPrior");
     if (grpPrior.length != BoundaryFloat.GRP_RANK.count()) {
-      throw new IllegalArgumentException("A GRP prior holds " + BoundaryFloat.GRP_RANK.count() + " values");
+      throw new IllegalArgumentException(
+          "A GRP prior holds " + BoundaryFloat.GRP_RANK.count() + " values");
     }
     for (float probability : grpPrior) {
       if (!(probability >= 0) || !Float.isFinite(probability)) {
-        throw new IllegalArgumentException("GRP prior values must be finite and non-negative: " + probability);
+        throw new IllegalArgumentException(
+            "GRP prior values must be finite and non-negative: " + probability);
       }
     }
     encode(o, extras, grpPrior, into, row);
   }
 
-  private void encode(Observation o, ClassicExtras extras, float[] grpPrior, ClassicInputs into, int row) {
+  private void encode(
+      Observation o, ClassicExtras extras, float[] grpPrior, ClassicInputs into, int row) {
     Objects.requireNonNull(extras, "extras");
     if (o.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + o.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + o.variant());
     }
     if (into.schema() != schema) {
       throw new IllegalArgumentException(
@@ -233,7 +238,11 @@ public final class ClassicTokenizer {
     int maxTransitions = Buckets.maxTransitions(o);
     if (!into.bucket().fits(legal, maxTransitions)) {
       throw new IllegalArgumentException(
-          legal + " actions with up to " + maxTransitions + " transitions do not fit " + into.bucket());
+          legal
+              + " actions with up to "
+              + maxTransitions
+              + " transitions do not fit "
+              + into.bucket());
     }
     bind(into, row);
     tiles.load(o);
@@ -310,12 +319,20 @@ public final class ClassicTokenizer {
     flag(base, roundInt, RoundInt.LAST_LIVE_TILE, o.remainingWall() == 0);
     category(base, roundInt, RoundInt.EVENT_TYPE, eventType(last).ordinal() + 1);
     TurnEvent.KanKind kan = o.lastKanKind();
-    category(base, roundInt, RoundInt.EVENT_KAN_KIND, kan == null ? 0 : VocabularyCodec.kanKind(kan).ordinal() + 1);
+    category(
+        base,
+        roundInt,
+        RoundInt.EVENT_KAN_KIND,
+        kan == null ? 0 : VocabularyCodec.kanKind(kan).ordinal() + 1);
     category(base, roundInt, RoundInt.EVENT_PLAYER_RELATIVE_SEAT, last == null ? 0 : lastSeat + 1);
     category(base, roundInt, RoundInt.EVENT_TILE, o.lastEventTile() + 1);
     flag(base, roundInt, RoundInt.EVENT_IS_AKA, o.lastEventAka());
     DrawSource source = o.lastEventRinshan() ? DrawSource.RINSHAN : DrawSource.WALL;
-    category(base, roundInt, RoundInt.EVENT_DRAW_SOURCE, last == LastEvent.DRAW ? source.ordinal() + 1 : 0);
+    category(
+        base,
+        roundInt,
+        RoundInt.EVENT_DRAW_SOURCE,
+        last == LastEvent.DRAW ? source.ordinal() + 1 : 0);
     flag(base, roundInt, RoundInt.EVENT_RINSHAN, o.lastEventRinshan());
     flag(base, roundInt, RoundInt.EVENT_DEFERRED_DORA, o.deferredDora());
 
@@ -342,7 +359,8 @@ public final class ClassicTokenizer {
   }
 
   private void writePlayers(Observation o) {
-    int categories = stateCategories + schema.stateStart(StateToken.PLAYER, Tensor.Slab.CATEGORICAL);
+    int categories =
+        stateCategories + schema.stateStart(StateToken.PLAYER, Tensor.Slab.CATEGORICAL);
     int numbers = stateNumerics + schema.stateStart(StateToken.PLAYER, Tensor.Slab.NUMERIC);
     long ownRiver = seats.riverKinds(0);
     for (int seat = 0; seat < SEATS; seat++) {
@@ -353,11 +371,19 @@ public final class ClassicTokenizer {
       category(base, playerInt, PlayerInt.RELATIVE_SEAT, seat + 1);
       category(base, playerInt, PlayerInt.ABSOLUTE_SEAT, absolute + 1);
       category(base, playerInt, PlayerInt.JIKAZE, variant.seatWind(o.kyoku(), absolute) + 1);
-      category(base, playerInt, PlayerInt.RIICHI_STATUS, VocabularyCodec.riichiStatus(riichi(o, seat)).ordinal() + 1);
+      category(
+          base,
+          playerInt,
+          PlayerInt.RIICHI_STATUS,
+          VocabularyCodec.riichiStatus(riichi(o, seat)).ordinal() + 1);
       flag(base, playerInt, PlayerInt.IPPATSU, o.ippatsu(seat) || pending(o, seat));
       flag(base, playerInt, PlayerInt.BEFORE_FIRST_DISCARD, o.beforeFirstDiscard(seat));
       flag(base, playerInt, PlayerInt.SELF_TEMPORARY_FURITEN, self && o.furitenTemporary());
-      flag(base, playerInt, PlayerInt.SELF_PERMANENT_FURITEN, self && (current.waits() & ownRiver) != 0);
+      flag(
+          base,
+          playerInt,
+          PlayerInt.SELF_PERMANENT_FURITEN,
+          self && (current.waits() & ownRiver) != 0);
       flag(base, playerInt, PlayerInt.MENZEN, scan.openMelds(seat) == 0);
       category(base, playerInt, PlayerInt.RANK, seats.rank(seat) + 1);
       category(base, playerInt, PlayerInt.MELD_COUNT, scan.meldCount(seat));
@@ -365,7 +391,11 @@ public final class ClassicTokenizer {
       category(base, playerInt, PlayerInt.KAN_COUNT, scan.kans(seat));
       category(base, playerInt, PlayerInt.RIVER_COUNT, Math.min(scan.riverSize(seat), RIVER));
       category(base, playerInt, PlayerInt.RIICHI_DECLARATION_INDEX, riverPlace(declaration));
-      category(base, playerInt, PlayerInt.DISCARDS_AFTER_RIICHI, Math.min(scan.afterRiichi(seat), RIVER));
+      category(
+          base,
+          playerInt,
+          PlayerInt.DISCARDS_AFTER_RIICHI,
+          Math.min(scan.afterRiichi(seat), RIVER));
       int tsumogiri = Math.min(scan.tsumogiriAfterRiichi(seat), RIVER);
       category(base, playerInt, PlayerInt.POST_RIICHI_TSUMOGIRI_COUNT, tsumogiri);
 
@@ -374,7 +404,11 @@ public final class ClassicTokenizer {
       number(values, playerFloat, PlayerFloat.SCORE_FROM_SELF, o.score(seat) - o.score(0));
       number(values, playerFloat, PlayerFloat.RIVER_PROGRESS, scan.riverSize(seat));
       number(values, playerFloat, PlayerFloat.OPEN_MELD_FRACTION, scan.openMelds(seat));
-      number(values, playerFloat, PlayerFloat.RIICHI_DECLARATION_PROGRESS, declaration < 0 ? 0 : declaration + 1);
+      number(
+          values,
+          playerFloat,
+          PlayerFloat.RIICHI_DECLARATION_PROGRESS,
+          declaration < 0 ? 0 : declaration + 1);
       number(values, playerFloat, PlayerFloat.DEALER, seat == o.dealer() ? 1 : 0);
     }
   }
@@ -455,8 +489,13 @@ public final class ClassicTokenizer {
         category(base, meldInt, MeldInt.TYPE, VocabularyCodec.meldType(meld.type()).ordinal() + 1);
         category(base, meldInt, MeldInt.BASE_TILE, meld.base() + 1);
         category(base, meldInt, MeldInt.CALLED_TILE, meld.called() + 1);
-        category(base, meldInt, MeldInt.SOURCE, VocabularyCodec.meldSource(meld.source()).ordinal() + 1);
-        category(base, meldInt, MeldInt.AKA_SOURCE, VocabularyCodec.meldAkaSource(meld.aka()).ordinal() + 1);
+        category(
+            base, meldInt, MeldInt.SOURCE, VocabularyCodec.meldSource(meld.source()).ordinal() + 1);
+        category(
+            base,
+            meldInt,
+            MeldInt.AKA_SOURCE,
+            VocabularyCodec.meldAkaSource(meld.aka()).ordinal() + 1);
         category(base, meldInt, MeldInt.SIZE, meld.size());
         category(base, meldInt, MeldInt.CALL_AFTER_RIVER, riverPlace(call));
         category(base, meldInt, MeldInt.KAN_AFTER_RIVER, riverPlace(kan));
@@ -484,7 +523,10 @@ public final class ClassicTokenizer {
           open = Math.max(open, scan.meldEvent(query, index));
         }
         if (type.kan()) {
-          int kanEvent = type == Meld.Type.KAKAN ? scan.kakanEvent(query, index) : scan.meldEvent(query, index);
+          int kanEvent =
+              type == Meld.Type.KAKAN
+                  ? scan.kakanEvent(query, index)
+                  : scan.meldEvent(query, index);
           kan = Math.max(kan, kanEvent);
         }
       }
@@ -493,13 +535,21 @@ public final class ClassicTokenizer {
         int relative = Math.floorMod(author - query, SEATS);
         for (int index = 0; index < scan.riverTokens(author); index++) {
           int packed =
-              PublicHistory.pack(scan.riverEvent(author, index), PublicHistory.ABSENT, riichi, open, kan, relative);
+              PublicHistory.pack(
+                  scan.riverEvent(author, index),
+                  PublicHistory.ABSENT,
+                  riichi,
+                  open,
+                  kan,
+                  relative);
           history(tokens, author * RIVER + index, packed);
         }
         for (int index = 0; index < scan.meldCount(author); index++) {
           int kakan = scan.kakanEvent(author, index);
           int update = kakan == EventScan.NONE ? PublicHistory.ABSENT : kakan;
-          int packed = PublicHistory.pack(scan.meldEvent(author, index), update, riichi, open, kan, relative);
+          int packed =
+              PublicHistory.pack(
+                  scan.meldEvent(author, index), update, riichi, open, kan, relative);
           history(tokens, SEATS * RIVER + author * MELDS + index, packed);
         }
       }
@@ -517,7 +567,8 @@ public final class ClassicTokenizer {
     int base = boundaryContext;
     int prior = base + boundary.offset(BoundaryFloat.GRP_RANK);
     for (int index = 0; index < BoundaryFloat.GRP_RANK.count(); index++) {
-      numeric[prior + index] = grpPrior == null ? UNIFORM_RANK : grpPrior[index] / BoundaryFloat.GRP_RANK.scale();
+      numeric[prior + index] =
+          grpPrior == null ? UNIFORM_RANK : grpPrior[index] / BoundaryFloat.GRP_RANK.scale();
     }
     if (grpPrior == null) {
       return;
@@ -558,7 +609,8 @@ public final class ClassicTokenizer {
       int riichi = riichiSlots[identity];
       int representative = dama >= 0 ? dama : riichi;
       int base = actionRoutes + action * actionRoute.stride();
-      flag(base, actionRoute, ActionRoute.DISCARD_IDENTITY_REPRESENTATIVE, action == representative);
+      flag(
+          base, actionRoute, ActionRoute.DISCARD_IDENTITY_REPRESENTATIVE, action == representative);
       category(base, actionRoute, ActionRoute.DISCARD_REPRESENTATIVE_SLOT, representative + 1);
       category(base, actionRoute, ActionRoute.DAMA_SLOT, dama + 1);
       category(base, actionRoute, ActionRoute.RIICHI_SLOT, riichi + 1);
@@ -605,24 +657,34 @@ public final class ClassicTokenizer {
     }
   }
 
-  private void writeAction(Observation o, int action, Action legal, ActionType type, RiichiState riichi, Meld meld) {
+  private void writeAction(
+      Observation o, int action, Action legal, ActionType type, RiichiState riichi, Meld meld) {
     int base = actionCategories + action * actionInt.stride();
     category(base, actionInt, ActionInt.ID, VocabularyCodec.actionIndex(legal) + 1);
     category(base, actionInt, ActionInt.TYPE, type.ordinal() + 1);
     category(base, actionInt, ActionInt.GROUP, type.group().ordinal() + 1);
     category(base, actionInt, ActionInt.PRIMARY_TILE, legal.tile() + 1);
-    category(base, actionInt, ActionInt.TILE_SELECTION, VocabularyCodec.tileSelection(legal.selection()).ordinal() + 1);
+    category(
+        base,
+        actionInt,
+        ActionInt.TILE_SELECTION,
+        VocabularyCodec.tileSelection(legal.selection()).ordinal() + 1);
     if (type == ActionType.CHI) {
       category(base, actionInt, ActionInt.CHI_BASE, legal.base() + 1);
       category(base, actionInt, ActionInt.CHI_CALLED_POSITION, legal.tile() - legal.base() + 1);
     }
-    category(base, actionInt, ActionInt.DISCARD_IDENTITY, VocabularyCodec.discardIdentity(legal) + 1);
+    category(
+        base, actionInt, ActionInt.DISCARD_IDENTITY, VocabularyCodec.discardIdentity(legal) + 1);
     category(
         base,
         actionInt,
         ActionInt.RESULTING_MELD_AKA_SOURCE,
         meld == null ? 0 : VocabularyCodec.meldAkaSource(meld.aka()).ordinal() + 1);
-    category(base, actionInt, ActionInt.RESULTING_RIICHI_STATUS, VocabularyCodec.riichiStatus(riichi).ordinal() + 1);
+    category(
+        base,
+        actionInt,
+        ActionInt.RESULTING_RIICHI_STATUS,
+        VocabularyCodec.riichiStatus(riichi).ordinal() + 1);
     category(base, actionInt, ActionInt.WIN_CONTEXT, winConditions(o, type).ordinal() + 1);
     int win = o.winOf(action);
     if (win >= 0) {
@@ -673,7 +735,11 @@ public final class ClassicTokenizer {
     int fu = decodeFu(o.winFuCode(win));
     number(base, actionFloat, ActionFloat.NORMALIZED_VISIBLE_HAN_WITHOUT_URA, han);
     number(base, actionFloat, ActionFloat.NORMALIZED_VISIBLE_FU, fu);
-    number(base, actionFloat, ActionFloat.NORMALIZED_VISIBLE_BASE_POINTS, ScoreMath.base(han, fu, o.winYakuman(win)));
+    number(
+        base,
+        actionFloat,
+        ActionFloat.NORMALIZED_VISIBLE_BASE_POINTS,
+        ScoreMath.base(han, fu, o.winYakuman(win)));
     number(base, actionFloat, ActionFloat.NORMALIZED_URA_INDICATOR_COUNT, o.winUraIndicators(win));
     for (int seat = 0; seat < SEATS; seat++) {
       afterWin[seat] = o.score(seat) + o.winPayment(win, seat);
@@ -697,10 +763,21 @@ public final class ClassicTokenizer {
   }
 
   private void writeTransition(
-      Observation o, int index, ActionType type, Action discard, long river, RonFuritenKind ronFuriten, long called) {
+      Observation o,
+      int index,
+      ActionType type,
+      Action discard,
+      long river,
+      RonFuritenKind ronFuriten,
+      long called) {
     int base = transitionCategories + index * transitionInt.stride();
-    category(base, transitionInt, ActionTransitionInt.KIND, transitionKind(type, discard).ordinal() + 1);
-    category(base, transitionInt, ActionTransitionInt.DISCARD_CONTEXT, discardContext(o, type, discard).ordinal() + 1);
+    category(
+        base, transitionInt, ActionTransitionInt.KIND, transitionKind(type, discard).ordinal() + 1);
+    category(
+        base,
+        transitionInt,
+        ActionTransitionInt.DISCARD_CONTEXT,
+        discardContext(o, type, discard).ordinal() + 1);
     if (discard != null) {
       int dama = VocabularyCodec.actionIndex(dama(discard));
       category(base, transitionInt, ActionTransitionInt.DISCARD_ACTION_ID, dama + 1);
@@ -711,8 +788,16 @@ public final class ClassicTokenizer {
           ActionTransitionInt.TILE_SELECTION,
           VocabularyCodec.tileSelection(discard.selection()).ordinal() + 1);
     }
-    flag(base, transitionInt, ActionTransitionInt.RESULTING_DISCARD_FURITEN, (after.waits() & river) != 0);
-    category(base, transitionInt, ActionTransitionInt.RESULTING_RON_FURITEN_KIND, ronFuriten.ordinal() + 1);
+    flag(
+        base,
+        transitionInt,
+        ActionTransitionInt.RESULTING_DISCARD_FURITEN,
+        (after.waits() & river) != 0);
+    category(
+        base,
+        transitionInt,
+        ActionTransitionInt.RESULTING_RON_FURITEN_KIND,
+        ronFuriten.ordinal() + 1);
     flag(base, transitionInt, ActionTransitionInt.SPECIAL_HANDS_AVAILABLE, after.special());
     flag(base, transitionInt, ActionTransitionInt.PRESENT, true);
     writeTransitionNumbers(index, discard);
@@ -725,23 +810,54 @@ public final class ClassicTokenizer {
     long improving = after.improving();
     long waits = after.waits();
     int acceptance = tiles.live(improving);
-    number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_MIN_SHANTEN, after.shanten() + 1);
-    number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_NORMAL_SHANTEN, after.standardShanten() + 1);
+    number(
+        base, transitionFloat, ActionTransitionFloat.NORMALIZED_MIN_SHANTEN, after.shanten() + 1);
+    number(
+        base,
+        transitionFloat,
+        ActionTransitionFloat.NORMALIZED_NORMAL_SHANTEN,
+        after.standardShanten() + 1);
     if (after.special()) {
-      number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_CHIITOI_SHANTEN, after.chiitoitsuShanten() + 1);
-      number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_KOKUSHI_SHANTEN, after.kokushiShanten() + 1);
+      number(
+          base,
+          transitionFloat,
+          ActionTransitionFloat.NORMALIZED_CHIITOI_SHANTEN,
+          after.chiitoitsuShanten() + 1);
+      number(
+          base,
+          transitionFloat,
+          ActionTransitionFloat.NORMALIZED_KOKUSHI_SHANTEN,
+          after.kokushiShanten() + 1);
     }
     number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_UKEIRE_COUNT, acceptance);
-    number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_UKEIRE_KINDS, OwnHand.liveKinds(tiles, improving));
-    number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_SHAPE_WAIT_KINDS, Long.bitCount(waits));
+    number(
+        base,
+        transitionFloat,
+        ActionTransitionFloat.NORMALIZED_UKEIRE_KINDS,
+        OwnHand.liveKinds(tiles, improving));
+    number(
+        base,
+        transitionFloat,
+        ActionTransitionFloat.NORMALIZED_SHAPE_WAIT_KINDS,
+        Long.bitCount(waits));
     int unseen = tiles.totalUnseen();
     float once = hit(acceptance, unseen, 1);
     float twice = hit(acceptance, unseen, 2);
     float thrice = hit(acceptance, unseen, 3);
-    number(base, transitionFloat, ActionTransitionFloat.CURRENT_UKEIRE_HIT_WITHIN_1_SELF_DRAW, once);
-    number(base, transitionFloat, ActionTransitionFloat.CURRENT_UKEIRE_HIT_WITHIN_2_SELF_DRAWS, twice);
-    number(base, transitionFloat, ActionTransitionFloat.CURRENT_UKEIRE_HIT_WITHIN_3_SELF_DRAWS, thrice);
-    number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_LIVE_SHAPE_WAIT_COPIES, tiles.live(waits));
+    number(
+        base, transitionFloat, ActionTransitionFloat.CURRENT_UKEIRE_HIT_WITHIN_1_SELF_DRAW, once);
+    number(
+        base, transitionFloat, ActionTransitionFloat.CURRENT_UKEIRE_HIT_WITHIN_2_SELF_DRAWS, twice);
+    number(
+        base,
+        transitionFloat,
+        ActionTransitionFloat.CURRENT_UKEIRE_HIT_WITHIN_3_SELF_DRAWS,
+        thrice);
+    number(
+        base,
+        transitionFloat,
+        ActionTransitionFloat.NORMALIZED_LIVE_SHAPE_WAIT_COPIES,
+        tiles.live(waits));
     kindsAndCopies(
         base,
         after.intrinsicRon(),
@@ -777,7 +893,11 @@ public final class ClassicTokenizer {
         discard == null ? 0 : tiles.unseen(discard.tile()));
     number(base, transitionFloat, ActionTransitionFloat.MENZEN, hand.menzen() ? 1 : 0);
     number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_MELD_COUNT, hand.meldCount());
-    number(base, transitionFloat, ActionTransitionFloat.NORMALIZED_CONCEALED_TILE_COUNT, hand.concealed());
+    number(
+        base,
+        transitionFloat,
+        ActionTransitionFloat.NORMALIZED_CONCEALED_TILE_COUNT,
+        hand.concealed());
   }
 
   /** 遷移の後の手について、牌の種類ごとのコードを書く。 */
@@ -826,19 +946,27 @@ public final class ClassicTokenizer {
     if (has(Tensor.WAIT_YAKUS)) {
       long yaku = VocabularyCodec.yaku(score.yaku());
       for (int chunk = 0; chunk < ClassicSchema.YAKU_CHUNKS; chunk++) {
-        categorical[waitYakus + pair * ClassicSchema.YAKU_CHUNKS + chunk] = (short) yakuChunk(yaku, chunk);
+        categorical[waitYakus + pair * ClassicSchema.YAKU_CHUNKS + chunk] =
+            (short) yakuChunk(yaku, chunk);
       }
     }
     if (has(Tensor.WAIT_SCORES)) {
       int values = waitScores + slot * waitFloat.stride();
       if (winType == WaitWinType.RON) {
-        number(values, waitFloat, ActionTransitionWaitFloat.RON_NORMALIZED_VISIBLE_HAN, score.han());
+        number(
+            values, waitFloat, ActionTransitionWaitFloat.RON_NORMALIZED_VISIBLE_HAN, score.han());
         number(values, waitFloat, ActionTransitionWaitFloat.RON_NORMALIZED_FU, score.fu());
-        number(values, waitFloat, ActionTransitionWaitFloat.RON_NORMALIZED_BASE_POINTS, score.base());
+        number(
+            values, waitFloat, ActionTransitionWaitFloat.RON_NORMALIZED_BASE_POINTS, score.base());
       } else {
-        number(values, waitFloat, ActionTransitionWaitFloat.TSUMO_NORMALIZED_VISIBLE_HAN, score.han());
+        number(
+            values, waitFloat, ActionTransitionWaitFloat.TSUMO_NORMALIZED_VISIBLE_HAN, score.han());
         number(values, waitFloat, ActionTransitionWaitFloat.TSUMO_NORMALIZED_FU, score.fu());
-        number(values, waitFloat, ActionTransitionWaitFloat.TSUMO_NORMALIZED_BASE_POINTS, score.base());
+        number(
+            values,
+            waitFloat,
+            ActionTransitionWaitFloat.TSUMO_NORMALIZED_BASE_POINTS,
+            score.base());
       }
     }
     if (has(Tensor.WAIT_WIN_FACTS) && score.base() > 0) {
@@ -856,14 +984,15 @@ public final class ClassicTokenizer {
     if (meld != null) {
       return meld.kinds();
     }
-    boolean afterCall = type == ActionType.DAHAI && o.decisionKind() == EngineDecisionKind.POST_CALL_DAHAI;
+    boolean afterCall =
+        type == ActionType.DAHAI && o.decisionKind() == EngineDecisionKind.POST_CALL_DAHAI;
     return afterCall ? current.hand().lastMeld().kinds() : 0;
   }
 
   /** 行動の後の自分の立直の状態。立直の打牌で、自分がまだ打牌しておらず局に副露も無ければダブル立直になる。 */
   private static RiichiState resultingRiichi(Observation o, ActionType type) {
     if (type == ActionType.RIICHI_DAHAI) {
-      return RoundRules.declaration(o.beforeFirstDiscard(0), o.callMade());
+      return o.declaration();
     }
     return o.riichi(0);
   }
@@ -906,7 +1035,8 @@ public final class ClassicTokenizer {
    *
    * @param meld この手が作る面子（作らない手は null）
    */
-  private static RonFuritenKind ronFuriten(Observation o, ActionType type, boolean ronLegal, Meld meld) {
+  private static RonFuritenKind ronFuriten(
+      Observation o, ActionType type, boolean ronLegal, Meld meld) {
     if (type == ActionType.RON_AGARI || !(ronLegal || o.furitenTemporary())) {
       return RonFuritenKind.NONE;
     }
@@ -945,7 +1075,9 @@ public final class ClassicTokenizer {
         if (o.decisionKind() != EngineDecisionKind.POST_CALL_DAHAI) {
           yield DiscardContext.TURN;
         }
-        yield current.hand().lastMeld().type() == Meld.Type.CHI ? DiscardContext.AFTER_CHI : DiscardContext.AFTER_PON;
+        yield current.hand().lastMeld().type() == Meld.Type.CHI
+            ? DiscardContext.AFTER_CHI
+            : DiscardContext.AFTER_PON;
       }
     };
   }
@@ -990,7 +1122,8 @@ public final class ClassicTokenizer {
     return riichi(o, seat) != RiichiState.NONE ? seats.safe(seat) : 0;
   }
 
-  private void kindsAndCopies(int base, long kinds, ActionTransitionFloat count, ActionTransitionFloat copies) {
+  private void kindsAndCopies(
+      int base, long kinds, ActionTransitionFloat count, ActionTransitionFloat copies) {
     number(base, transitionFloat, count, Long.bitCount(kinds));
     number(base, transitionFloat, copies, tiles.live(kinds));
   }
@@ -1074,24 +1207,34 @@ public final class ClassicTokenizer {
   }
 
   /** 整数のフィールドに書く。アーキテクチャに無いフィールドは書かない。値が幅を外れると IllegalStateException を投げる。 */
-  private <E extends Enum<E> & CategoricalField> void category(int base, FieldLayout<E> layout, E field, int value) {
+  private <E extends Enum<E> & CategoricalField> void category(
+      int base, FieldLayout<E> layout, E field, int value) {
     int offset = layout.offset(field);
     if (offset < 0) {
       return;
     }
     if (value < 0 || value >= field.width()) {
-      throw new IllegalStateException(field.getDeclaringClass().getSimpleName() + "." + field + " is " + value
-          + ", outside [0, " + field.width() + ")");
+      throw new IllegalStateException(
+          field.getDeclaringClass().getSimpleName()
+              + "."
+              + field
+              + " is "
+              + value
+              + ", outside [0, "
+              + field.width()
+              + ")");
     }
     categorical[base + offset] = (short) value;
   }
 
-  private <E extends Enum<E> & CategoricalField> void flag(int base, FieldLayout<E> layout, E field, boolean value) {
+  private <E extends Enum<E> & CategoricalField> void flag(
+      int base, FieldLayout<E> layout, E field, boolean value) {
     category(base, layout, field, value ? 1 : 0);
   }
 
   /** 実数のフィールドに、量を尺度で割った値を書く。アーキテクチャに無いフィールドは書かない。 */
-  private <E extends Enum<E> & NumericField> void number(int base, FieldLayout<E> layout, E field, float value) {
+  private <E extends Enum<E> & NumericField> void number(
+      int base, FieldLayout<E> layout, E field, float value) {
     int offset = layout.offset(field);
     if (offset >= 0) {
       numeric[base + offset] = value / field.scale();

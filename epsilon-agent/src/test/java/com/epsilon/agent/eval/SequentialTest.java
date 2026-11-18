@@ -15,7 +15,9 @@ import org.testng.annotations.Test;
 public class SequentialTest {
 
   /** 有意水準 0.01・消費関数の指数 3・判定 8 回の臨界値。Simpson の公式（6,001 点）で 1e-11 まで収束させ、小数 4 桁に丸めた。 */
-  private static final double[] CONVERGED_RHO3_8 = {4.2702, 3.8075, 3.5263, 3.3115, 3.1325, 2.9765, 2.8366, 2.7087};
+  private static final double[] CONVERGED_RHO3_8 = {
+    4.2702, 3.8075, 3.5263, 3.3115, 3.1325, 2.9765, 2.8366, 2.7087
+  };
 
   /** 両側 0.01 の固定の臨界値 z(0.995)。 */
   private static final double FIXED_99 = 2.5758293035489004;
@@ -23,18 +25,27 @@ public class SequentialTest {
   @DataProvider
   public static Object[][] plans() {
     return new Object[][] {
-      {0.01, 1.0, 8}, {0.01, 2.0, 8}, {0.01, 3.0, 4}, {0.01, 3.0, 8}, {0.01, 3.0, 16}, {0.05, 3.0, 8},
-      {0.2, 0.5, 32}, {0.01, 4.0, 2}, {0.01, 3.0, 1}
+      {0.01, 1.0, 8},
+      {0.01, 2.0, 8},
+      {0.01, 3.0, 4},
+      {0.01, 3.0, 8},
+      {0.01, 3.0, 16},
+      {0.05, 3.0, 8},
+      {0.2, 0.5, 32},
+      {0.01, 4.0, 2},
+      {0.01, 3.0, 1}
     };
   }
 
   @Test(dataProvider = "plans")
-  public void spentAlphaFollowsThePowerSpendingAndAddsUpToAlpha(double alpha, double spending, int looks) {
+  public void spentAlphaFollowsThePowerSpendingAndAddsUpToAlpha(
+      double alpha, double spending, int looks) {
     double[] critical = new Sequential(alpha, spending, 1).boundaries(looks);
-    double[] crossing = Sequential.crossings(critical);
+    double[] crossing = crossings(critical);
     double spent = 0;
     for (int k = 0; k < looks; k++) {
-      double planned = alpha * (Math.pow((k + 1.0) / looks, spending) - Math.pow((double) k / looks, spending));
+      double planned =
+          alpha * (Math.pow((k + 1.0) / looks, spending) - Math.pow((double) k / looks, spending));
       assertEquals(crossing[k], planned, 1e-6, "look " + k);
       spent += crossing[k];
     }
@@ -69,8 +80,8 @@ public class SequentialTest {
     assertTable(3, 3.781, 3.254, 2.919, 2.655);
     assertTable(3, 4.270, 3.808, 3.526, 3.312, 3.133, 2.977, 2.837, 2.710);
     assertTable(
-        3, 4.713, 4.296, 4.051, 3.867, 3.717, 3.587, 3.473, 3.370, 3.275, 3.187, 3.106, 3.028, 2.955, 2.886, 2.820,
-        2.756);
+        3, 4.713, 4.296, 4.051, 3.867, 3.717, 3.587, 3.473, 3.370, 3.275, 3.187, 3.106, 3.028,
+        2.955, 2.886, 2.820, 2.756);
   }
 
   @Test
@@ -93,9 +104,9 @@ public class SequentialTest {
   /** 固定の 99% 区間を等間隔に何度も見ると、どこかで 0 を外れる確率は 8 回で約 0.042、16 回で約 0.058 になり、有意水準を超える。 */
   @Test
   public void repeatedFixedIntervalsSpendMoreThanAlpha() {
-    assertEquals(sum(Sequential.crossings(constant(8, FIXED_99))), 0.042, 0.002);
-    assertEquals(sum(Sequential.crossings(constant(16, FIXED_99))), 0.058, 0.002);
-    assertEquals(sum(Sequential.crossings(constant(1, FIXED_99))), 0.01, 1e-9);
+    assertEquals(sum(crossings(constant(8, FIXED_99))), 0.042, 0.002);
+    assertEquals(sum(crossings(constant(16, FIXED_99))), 0.058, 0.002);
+    assertEquals(sum(crossings(constant(1, FIXED_99))), 0.01, 1e-9);
   }
 
   @Test
@@ -104,20 +115,23 @@ public class SequentialTest {
     assertThrows(IllegalArgumentException.class, () -> new Sequential(1, 3, 512));
     assertThrows(IllegalArgumentException.class, () -> new Sequential(Double.NaN, 3, 512));
     assertThrows(IllegalArgumentException.class, () -> new Sequential(0.01, 0, 512));
-    assertThrows(IllegalArgumentException.class, () -> new Sequential(0.01, Double.POSITIVE_INFINITY, 512));
+    assertThrows(
+        IllegalArgumentException.class, () -> new Sequential(0.01, Double.POSITIVE_INFINITY, 512));
     assertThrows(IllegalArgumentException.class, () -> new Sequential(0.01, 3, 0));
     Sequential sequential = new Sequential(0.01, 3, 512);
     assertThrows(IllegalArgumentException.class, () -> sequential.looks(4000));
     assertThrows(IllegalArgumentException.class, () -> sequential.looks(0));
     assertThrows(IllegalArgumentException.class, () -> sequential.boundaries(256));
-    assertThrows(IllegalArgumentException.class, () -> Sequential.crossings(new double[] {3, 0}));
-    assertThrows(IllegalArgumentException.class, () -> Sequential.crossings(new double[] {Double.NaN}));
   }
 
   private static void assertTable(double spending, double... expected) {
     double[] critical = new Sequential(0.01, spending, 1).boundaries(expected.length);
     for (int k = 0; k < expected.length; k++) {
-      assertEquals(critical[k], expected[k], 0.0025, "rho " + spending + " with " + expected.length + " looks, look " + k);
+      assertEquals(
+          critical[k],
+          expected[k],
+          0.0025,
+          "rho " + spending + " with " + expected.length + " looks, look " + k);
     }
   }
 
@@ -133,5 +147,16 @@ public class SequentialTest {
       sum += value;
     }
     return sum;
+  }
+
+  private static double[] crossings(double[] critical) {
+    double[] crossing = new double[critical.length];
+    var continuation = new Sequential.Continuation();
+    for (int k = 0; k < critical.length; k++) {
+      double time = (double) (k + 1) / critical.length;
+      crossing[k] = continuation.crossing(time, critical[k]);
+      continuation.advance(time, critical[k]);
+    }
+    return crossing;
   }
 }

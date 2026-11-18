@@ -6,7 +6,7 @@ import static org.testng.Assert.expectThrows;
 import com.epsilon.agent.observe.ObservationSchema.HeaderBits;
 import com.epsilon.mahjong.engine.Boundary;
 import com.epsilon.mahjong.engine.Decisions;
-import com.epsilon.mahjong.engine.DrawOrder;
+import com.epsilon.mahjong.engine.Scenes;
 import com.epsilon.mahjong.engine.Engine;
 import com.epsilon.mahjong.engine.RuleWorkspace;
 import com.epsilon.mahjong.engine.SeatView;
@@ -86,8 +86,7 @@ public class ObservationWriterTest {
 
   private static Engine firstDecision(RoundStart start) {
     Engine engine = new Engine(VARIANT);
-    engine.startAt(start, 7, 1, DrawOrder.WALL_ORDER);
-    assertEquals(engine.advance(new RuleWorkspace(VARIANT)), Boundary.DECISIONS);
+    assertEquals(new Scenes(start).start(engine, new RuleWorkspace(VARIANT)), Boundary.DECISIONS);
     return engine;
   }
 }

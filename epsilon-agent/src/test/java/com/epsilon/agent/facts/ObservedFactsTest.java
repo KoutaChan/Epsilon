@@ -120,12 +120,14 @@ public class ObservedFactsTest {
       int unseen = SET.copies(kind) - view.visible(kind) - view.count(kind);
       assertEquals(tiles.unseen(kind), unseen);
       total += unseen;
-      assertEquals(tiles.dora(kind), view.doraWeight(kind), "dora " + kind);
+      int weight = 0;
       int shown = 0;
       for (int index = 0; index < view.indicatorCount(); index++) {
+        weight += SET.doraOf(Tiles.kind(view.indicator(index))) == kind ? 1 : 0;
         shown += Tiles.kind(view.indicator(index)) == kind ? 1 : 0;
       }
       assertEquals(tiles.indicators(kind), shown);
+      assertEquals(tiles.dora(kind), weight, "dora " + kind);
     }
     assertEquals(tiles.totalUnseen(), total);
     assertEquals(tiles.handRed(), heldRed(view));

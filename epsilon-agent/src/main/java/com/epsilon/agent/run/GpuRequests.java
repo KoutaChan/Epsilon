@@ -71,7 +71,8 @@ public final class GpuRequests {
       }
       String command = fields.length > 2 ? fields[2] : "";
       try {
-        return Optional.of(new Request(name, Long.parseLong(fields[0]), Long.parseLong(fields[1]), command));
+        return Optional.of(
+            new Request(name, Long.parseLong(fields[0]), Long.parseLong(fields[1]), command));
       } catch (NumberFormatException unreadable) {
         return Optional.empty();
       }
@@ -85,7 +86,8 @@ public final class GpuRequests {
     }
     List<Path> files;
     try (Stream<Path> listed = Files.list(directory)) {
-      files = listed.filter(path -> !path.getFileName().toString().startsWith(".")).sorted().toList();
+      files =
+          listed.filter(path -> !path.getFileName().toString().startsWith(".")).sorted().toList();
     }
     List<Request> alive = new ArrayList<>();
     for (Path file : files) {
@@ -114,18 +116,5 @@ public final class GpuRequests {
   public static boolean leaseHeld() {
     String lease = System.getenv(LEASE);
     return lease != null && !lease.isEmpty();
-  }
-
-  /**
-   * GPU の使用権を持つことを確かめる。GPU を長く使う処理が、GPU のデバイスを開く前に呼ぶ。
-   *
-   * @param what 処理の名前（エラーメッセージに書く）
-   * @throws IllegalStateException GPU の使用権を示す環境変数が無いか空のとき
-   */
-  public static void requireLease(String what) {
-    if (!leaseHeld()) {
-      throw new IllegalStateException(
-          what + " uses the GPUs: run it under a process that holds the GPU lease and sets " + LEASE);
-    }
   }
 }

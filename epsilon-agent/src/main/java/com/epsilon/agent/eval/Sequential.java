@@ -31,7 +31,8 @@ public record Sequential(double alpha, double spending, int checkEvery) {
    */
   public int looks(int walls) {
     if (walls < checkEvery || walls % checkEvery != 0) {
-      throw new IllegalArgumentException(walls + " walls are not a positive multiple of the check interval " + checkEvery);
+      throw new IllegalArgumentException(
+          walls + " walls are not a positive multiple of the check interval " + checkEvery);
     }
     return walls / checkEvery;
   }
@@ -56,31 +57,10 @@ public record Sequential(double alpha, double spending, int checkEvery) {
   }
 
   /**
-   * 真の差が 0 のとき、区間がその時点で初めて 0 を外れる確率。時点は等間隔とする。テストが {@link #boundaries} の α の配り方を
-   * 確かめるのに使う。
-   *
-   * @param critical 時点ごとの臨界値（正）
-   * @return 時点ごとの確率。和は、どこかの時点で 0 を外れる確率
-   */
-  static double[] crossings(double[] critical) {
-    double[] crossing = new double[critical.length];
-    Continuation continuation = new Continuation();
-    for (int k = 0; k < critical.length; k++) {
-      if (!(critical[k] > 0 && Double.isFinite(critical[k]))) {
-        throw new IllegalArgumentException("Invalid critical value at look " + k + ": " + critical[k]);
-      }
-      double time = (double) (k + 1) / critical.length;
-      crossing[k] = continuation.crossing(time, critical[k]);
-      continuation.advance(time, critical[k]);
-    }
-    return crossing;
-  }
-
-  /**
    * 牌山ごとの値の和を標準化した過程（真の差が 0 なら標準ブラウン運動 B(t)）のうち、これまでのどの時点でも境界 ±c·√t を越えていない部分の
    * 密度。等間隔の格子の上に、Simpson の重みを掛けた値で持つ。密度は原点について対称なので、格子と密度を厳密に対称に作る。
    */
-  private static final class Continuation {
+  static final class Continuation {
 
     private static final int GRID = 1001;
     private static final double SEARCH_LIMIT = 40;

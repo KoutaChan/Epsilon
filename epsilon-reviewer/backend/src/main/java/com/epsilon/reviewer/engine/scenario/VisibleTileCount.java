@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.engine.scenario;
 
+import com.epsilon.mahjong.record.TileCopies;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.reviewer.engine.view.Meld;
@@ -52,7 +53,7 @@ final class VisibleTileCount {
 
   private void requireWithin(Placement placement) {
     String tile = placement.tile();
-    int copies = TileCopies.count(variant, tile);
+    int copies = TileCopies.copies(variant, TileCode.face(tile));
     if (counts.getOrDefault(tile, 0) > copies)
       throw new ReviewerException(
           ErrorCode.INVALID_EDIT,

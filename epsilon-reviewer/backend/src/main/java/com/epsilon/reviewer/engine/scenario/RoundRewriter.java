@@ -3,6 +3,7 @@ package com.epsilon.reviewer.engine.scenario;
 import com.epsilon.mahjong.record.RecordEditor;
 import com.epsilon.mahjong.record.RecordEvent;
 import com.epsilon.mahjong.record.RecordedRound;
+import com.epsilon.mahjong.record.TileCopies;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.scenario.VisibleTileCount.Placement;
 import com.epsilon.reviewer.engine.view.PlayerState;
@@ -215,7 +216,7 @@ public final class RoundRewriter {
   /** 伏せた手牌にある指定の牌のうち、最も後に手に入った物理牌を取り出す。 */
   private int takeNewest(String code) {
     for (int i = concealed.size() - 1; i >= 0; i--)
-      if (copies.isCopy(concealed.get(i), code)) return concealed.remove(i);
+      if (copies.matches(concealed.get(i), TileCode.face(code))) return concealed.remove(i);
     throw new IllegalStateException("The hand of seat " + seat + " does not hold " + code);
   }
 
@@ -265,9 +266,9 @@ public final class RoundRewriter {
    */
   private void assign() {
     replacements.sort(Comparator.comparingInt(Replacement::removed));
-    for (Replacement replacement : replacements) copies.free(replacement.removed());
+    for (Replacement replacement : replacements) copies.release(replacement.removed());
     for (Replacement replacement : replacements) {
-      int id = copies.take(replacement.tile());
+      int id = copies.reveal(TileCode.face(replacement.tile()));
       switch (replacement.slot()) {
         case Slot.Discarded(int position) -> editor.replaceDiscarded(position, id);
         case Slot.Indicator(int index) -> editor.replaceIndicator(index, id);

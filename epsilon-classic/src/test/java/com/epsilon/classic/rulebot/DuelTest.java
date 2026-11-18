@@ -20,7 +20,7 @@ import org.testng.annotations.Test;
  * ルールベースの打ち手どうしの決闘。両方の打ち手をルールベースの打ち手にすると、四人打ち・三人打ちの全ての席の分け方と両方のツモの順で、
  * どの牌山でも両者の差（順位・効用と、席の分け方ごとの値）が丸めなしに 0 になる。
  */
-public class RuleBotDuelTest {
+public class DuelTest {
 
   private static final long SEED = 8_088L, BASE = 1L << 40;
   private static final int WALLS = 12;
@@ -62,8 +62,12 @@ public class RuleBotDuelTest {
                       Assert.assertEquals(score.rank(), 0.0, label + " rank of wall " + wall);
                       Assert.assertEquals(score.utility(), 0.0, label + " utility of wall " + wall);
                       for (int split = 0; split < splits.size(); split++) {
-                        Assert.assertEquals(score.rank(split), 0.0, label + " split " + split + " of wall " + wall);
-                        Assert.assertEquals(score.utility(split), 0.0, label + " split " + split + " of wall " + wall);
+                        Assert.assertEquals(
+                            score.rank(split), 0.0, label + " split " + split + " of wall " + wall);
+                        Assert.assertEquals(
+                            score.utility(split),
+                            0.0,
+                            label + " split " + split + " of wall " + wall);
                       }
                       return true;
                     },

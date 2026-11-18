@@ -69,7 +69,8 @@ public class ClassicPolicyTest {
 
   private static final Variant VARIANT = SampleDecisions.VARIANT;
   private static final PolicyOptions CPU = PolicyOptions.defaults();
-  private static final PolicyOptions GPU = new PolicyOptions("gpu0", Precision.BFLOAT16, 8, Kernels.EAGER);
+  private static final PolicyOptions GPU =
+      new PolicyOptions("gpu0", Precision.BFLOAT16, 8, Kernels.EAGER);
   private static final int PER_KIND = 4;
   private static final int STEPS = 400_000;
   private static final long GPU_WAIT_SECONDS = 60;
@@ -116,7 +117,8 @@ public class ClassicPolicyTest {
       Path checkpoint = checkpoints.get(architecture);
       try (Policy policy = ModelFamily.of(architecture.series()).open(checkpoint, VARIANT, CPU)) {
         assertTrue(policy instanceof ClassicPolicy.Inline, policy.getClass().getName());
-        assertEquals(policy.label(), architecture.series().prefix() + ":" + checkpoint.getFileName());
+        assertEquals(
+            policy.label(), architecture.series().prefix() + ":" + checkpoint.getFileName());
         assertEquals(policy.variant(), VARIANT);
         InlinePolicy inline = (InlinePolicy) policy;
         for (int row = 0; row < samples.size(); row++) {
@@ -124,13 +126,16 @@ public class ClassicPolicyTest {
           Evaluation evaluation = policy.evaluate(o);
           assertEquals(evaluation.probabilities().length, o.legalActions());
           assertNull(evaluation.values());
-          assertTrue(evaluation.probabilities()[evaluation.greedy()] > 0, architecture + " row " + row);
+          assertTrue(
+              evaluation.probabilities()[evaluation.greedy()] > 0, architecture + " row " + row);
           assertEquals(inline.act(o), evaluation.greedy(), architecture + " row " + row);
         }
       }
     }
     try (NetworkRuntime runtime = new NetworkRuntime(1, 1, 1);
-        Policy policy = ModelFamily.of(Series.NANO).open(checkpoints.get(Architecture.NANO), VARIANT, CPU, runtime)) {
+        Policy policy =
+            ModelFamily.of(Series.NANO)
+                .open(checkpoints.get(Architecture.NANO), VARIANT, CPU, runtime)) {
       assertTrue(policy instanceof ClassicPolicy.Inline, policy.getClass().getName());
     }
   }
@@ -141,7 +146,9 @@ public class ClassicPolicyTest {
     ExecutorService callers = Executors.newFixedThreadPool(CALLERS);
     try {
       for (Architecture architecture : Architecture.values()) {
-        try (Policy opened = ModelFamily.of(architecture.series()).open(checkpoints.get(architecture), VARIANT, CPU)) {
+        try (Policy opened =
+            ModelFamily.of(architecture.series())
+                .open(checkpoints.get(architecture), VARIANT, CPU)) {
           ClassicPolicy policy = (ClassicPolicy) opened;
           Observation o = new Observation(VARIANT);
           float[] row = new float[ClassicSchema.MAX_LEGAL];
@@ -204,11 +211,13 @@ public class ClassicPolicyTest {
       int[] chosen = {-1};
       policy.choose(batch, chosen, attempt.ingress()).join();
       assertTrue(chosen[0] >= 0 && chosen[0] < o.legalActions(), "choice " + chosen[0]);
-      expectThrows(IllegalStateException.class, () -> policy.choose(batch, chosen, attempt.ingress()));
+      expectThrows(
+          IllegalStateException.class, () -> policy.choose(batch, chosen, attempt.ingress()));
       DecisionInferenceIngress foreign = other.tryAcquire(0).ingress();
       expectThrows(IllegalArgumentException.class, () -> policy.choose(batch, chosen, foreign));
       AtomicInteger released = new AtomicInteger();
-      DecisionInferenceIngress counted = new DecisionInferenceIngress(policy, null, released::incrementAndGet);
+      DecisionInferenceIngress counted =
+          new DecisionInferenceIngress(policy, null, released::incrementAndGet);
       ObservationBatch empty = new ObservationBatch(VARIANT, 16);
       expectThrows(IllegalArgumentException.class, () -> policy.choose(empty, chosen, counted));
       assertEquals(released.get(), 1);
@@ -242,7 +251,8 @@ public class ClassicPolicyTest {
         }
         for (int action = 0; action < legal; action++) {
           float clamped = Math.min(1f, Math.max(0f, probabilities[action]));
-          assertEquals(evaluation.probabilities()[action], (float) (clamped / sum), 1e-6f, "row " + index);
+          assertEquals(
+              evaluation.probabilities()[action], (float) (clamped / sum), 1e-6f, "row " + index);
         }
         int admission = batched.admission(o);
         batches.computeIfAbsent(admission, ignored -> new ObservationBatch(VARIANT, 1_024)).add(o);
@@ -258,16 +268,22 @@ public class ClassicPolicyTest {
         batched.probabilities(batch, written, reserve(batched, entry.getKey())).join();
         for (int index = 0; index < written.length; index++) {
           for (int action = 0; action < written[index].length; action++) {
-            assertEquals(written[index][action], rows.get(index)[action], 1e-5f, "admission " + entry.getKey());
+            assertEquals(
+                written[index][action],
+                rows.get(index)[action],
+                1e-5f,
+                "admission " + entry.getKey());
           }
         }
       }
       ObservationBatch one = new ObservationBatch(VARIANT, 1_024);
       one.add(samples.bind(o, 0));
       AtomicInteger released = new AtomicInteger();
-      DecisionInferenceIngress counted = new DecisionInferenceIngress(batched, null, released::incrementAndGet);
+      DecisionInferenceIngress counted =
+          new DecisionInferenceIngress(batched, null, released::incrementAndGet);
       float[][] wrong = {new float[o.legalActions() + 1]};
-      expectThrows(IllegalArgumentException.class, () -> batched.probabilities(one, wrong, counted));
+      expectThrows(
+          IllegalArgumentException.class, () -> batched.probabilities(one, wrong, counted));
       assertEquals(released.get(), 1);
     }
   }
@@ -363,7 +379,8 @@ public class ClassicPolicyTest {
       batched.choose(batch, chosen, reserve(batched, entry.getKey())).join();
       for (int index = 0; index < batch.size(); index++) {
         o.bind(batch, index);
-        assertTrue(chosen[index] >= 0 && chosen[index] < o.legalActions(), "choice " + chosen[index]);
+        assertTrue(
+            chosen[index] >= 0 && chosen[index] < o.legalActions(), "choice " + chosen[index]);
         int expected = reference.act(o);
         if (chosen[index] != expected) {
           int row = rows.get(entry.getKey()).get(index);
@@ -381,7 +398,8 @@ public class ClassicPolicyTest {
    * @param greedy 判断ごとの、1 つのスレッドで求めた手
    * @param expected 判断ごとの、1 つのスレッドで求めた合法手の確率
    */
-  private List<String> mismatches(ClassicPolicy policy, int first, int[] greedy, float[][] expected) {
+  private List<String> mismatches(
+      ClassicPolicy policy, int first, int[] greedy, float[][] expected) {
     Observation o = new Observation(VARIANT);
     float[] row = new float[ClassicSchema.MAX_LEGAL];
     List<String> mismatches = new ArrayList<>();
@@ -417,7 +435,8 @@ public class ClassicPolicyTest {
   }
 
   /** パラメーターを CPU に置いて、まとめて推論する方策を作る。パラメーターのマネージャーは方策が閉じる。 */
-  private static ClassicPolicy.Batched cpuBatched(Path checkpoint, String label) throws IOException {
+  private static ClassicPolicy.Batched cpuBatched(Path checkpoint, String label)
+      throws IOException {
     NDManager manager = NDManager.newBaseManager(Device.cpu(), "PyTorch");
     try {
       ClassicNetwork network = ClassicCheckpoint.read(checkpoint, VARIANT, manager);
@@ -425,6 +444,20 @@ public class ClassicPolicyTest {
     } catch (IOException | RuntimeException failure) {
       manager.close();
       throw failure;
+    }
+  }
+
+  @Test
+  public void nativeKernelsAreRefusedBeforeTheCheckpointIsRead() {
+    PolicyOptions nativeKernels = new PolicyOptions("cpu", Precision.BFLOAT16, 8, Kernels.NATIVE);
+    for (Architecture architecture : Architecture.values()) {
+      IllegalArgumentException refused =
+          expectThrows(
+              IllegalArgumentException.class,
+              () ->
+                  ModelFamily.of(architecture.series())
+                      .open(Path.of("no-such-checkpoint"), Variant.TENHOU_4P, nativeKernels));
+      assertTrue(refused.getMessage().contains("has no native kernels"), refused.getMessage());
     }
   }
 }

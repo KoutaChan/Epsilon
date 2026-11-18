@@ -32,6 +32,7 @@ import com.epsilon.agent.settings.RecordFile;
 import com.epsilon.mahjong.engine.DrawOrder;
 import com.epsilon.mahjong.rules.RankUtility;
 import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.mahjong.util.SeedMixer;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -45,7 +46,7 @@ import org.testng.annotations.Test;
  * 判定の時点でルールベースの打ち手のほうが強いと決まり、記録にはその時点までの牌山だけが残る。ルールベースの打ち手どうしでは、どの牌山でも
  * 差が 0 で、最初の判定の時点で互角と決まる。
  */
-public class RuleBotDuelJobTest {
+public class DuelJobTest {
 
   /** 決闘の設定で打ち手を指す名前。 */
   private static final String RULES = "heuristic", RANDOM = "random";
@@ -76,8 +77,10 @@ public class RuleBotDuelJobTest {
       for (int seat = 0; seat < variant.seats(); seat++) {
         state = mix(state, o.score(seat));
       }
+      int[] counts = new int[Tiles.KINDS];
+      o.handCounts(counts);
       for (int kind = 0; kind < 34; kind++) {
-        state = mix(state, o.handCount(kind) * 64L + kind);
+        state = mix(state, counts[kind] * 64L + kind);
       }
       int n = o.legalActions();
       for (int a = 0; a < n; a++) {
@@ -133,7 +136,11 @@ public class RuleBotDuelJobTest {
     public JobWork open(JobFile job, Path directory) throws IOException {
       DuelSetup setup = RecordFile.read(DuelSetup.class, job.plan()).value();
       return Duel.open(
-          job.name(), table, setup, policy(setup.candidate(), setup.variant()), policy(setup.opponent(), setup.variant()),
+          job.name(),
+          table,
+          setup,
+          policy(setup.candidate(), setup.variant()),
+          policy(setup.opponent(), setup.variant()),
           directory);
     }
 
@@ -145,7 +152,8 @@ public class RuleBotDuelJobTest {
   /**
    * @return 終わったジョブの結果
    */
-  private static DuelResult duel(TableLoop table, Path root, Table definition, int games) throws Exception {
+  private static DuelResult duel(TableLoop table, Path root, Table definition, int games)
+      throws Exception {
     Jobs jobs = new Jobs(root.resolve("jobs"), root.resolve("evaluations.jsonl"));
     JobFile job = JobFile.pending(1, "duel", 0, 1, RecordFile.tree(definition));
     jobs.create(job);
@@ -170,7 +178,11 @@ public class RuleBotDuelJobTest {
         int seats = variant.seats();
         List<String> splits = List.of("1v" + (seats - 1), (seats - 1) + "v1");
         DuelResult result =
-            duel(table, root.resolve(variant.name()), new Table(variant, RULES, RANDOM, splits), 2 * seats);
+            duel(
+                table,
+                root.resolve(variant.name()),
+                new Table(variant, RULES, RANDOM, splits),
+                2 * seats);
         String where = variant + " " + result.summary();
         assertEquals(result.verdict(), Verdict.BETTER, where);
         assertTrue(result.rank().high() < 0, where);
@@ -191,7 +203,8 @@ public class RuleBotDuelJobTest {
   public void theRuleBotAgainstItselfIsEvenAtTheFirstLook() throws Exception {
     Path root = Files.createTempDirectory("rulebot-even");
     try (TableLoop table = new TableLoop(new TableSettings(64, 8, 1000L, 4))) {
-      DuelResult result = duel(table, root, new Table(Variant.TENHOU_4P, RULES, RULES, List.of("1v3", "3v1")), 8);
+      DuelResult result =
+          duel(table, root, new Table(Variant.TENHOU_4P, RULES, RULES, List.of("1v3", "3v1")), 8);
       assertEquals(result.verdict(), Verdict.EVEN, result.summary());
       assertEquals(result.rank().mean(), 0.0);
       assertEquals(result.rank().error(), 0.0);

@@ -187,7 +187,10 @@ final class RandomRound {
     boolean fromDraw = drawn != TurnEvent.NONE && (inRiichi || random.nextInt(4) == 0);
     int tile = fromDraw ? drawn : randomHeld(random, hand);
     boolean declares =
-        !inRiichi && concealed(hand) && state.score(seat) >= Variant.DEPOSIT && random.nextInt(16) == 0;
+        !inRiichi
+            && concealed(hand)
+            && state.score(seat) >= Variant.DEPOSIT
+            && random.nextInt(16) == 0;
     decisions.clear();
     decisions.open(seat, EngineDecisionKind.TURN);
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
@@ -199,14 +202,18 @@ final class RandomRound {
       nextId++;
     }
     resolution.clear();
-    Resolution.Role role = decisions.legalCount(0) == 1 ? Resolution.Role.FORCED : Resolution.Role.CAUSAL;
+    Resolution.Role role =
+        decisions.legalCount(0) == 1 ? Resolution.Role.FORCED : Resolution.Role.CAUSAL;
     resolution.add(decisions.id(0), true, role);
     hand.discard(tile);
     state.discard(seat, tile, tile == drawn, declares);
     drawn = TurnEvent.NONE;
     hand.setMissedRon(random.nextInt(8) == 0);
     if (declares) {
-      state.riichi(seat, state.events().interruptions() == 0 && state.events().riverSize(seat) == 1);
+      state.riichi(
+          seat,
+          RiichiState.declaration(
+              state.events().riverSize(seat) == 1, state.events().interruptions() > 0));
     }
     revealPending();
     return tile;
@@ -249,7 +256,10 @@ final class RandomRound {
     resolution.clear();
     for (int slot = 0; slot < decisions.size(); slot++) {
       boolean executed = caller < 0 || decisions.seat(slot) == caller;
-      resolution.add(decisions.id(slot), executed, executed ? Resolution.Role.CAUSAL : Resolution.Role.PREEMPTED);
+      resolution.add(
+          decisions.id(slot),
+          executed,
+          executed ? Resolution.Role.CAUSAL : Resolution.Role.PREEMPTED);
     }
     kanCall = caller >= 0 && Meld.of(meld).type().kan();
     if (caller >= 0) {
@@ -264,7 +274,8 @@ final class RandomRound {
 
   private int daiminkan(int seat, int kind) {
     Hand hand = hands[seat];
-    int meld = meldOf(Action.code(Action.Type.DAIMINKAN, kind, Action.TileSelection.NOT_APPLICABLE), seat);
+    int meld =
+        meldOf(Action.code(Action.Type.DAIMINKAN, kind, Action.TileSelection.NOT_APPLICABLE), seat);
     for (int copy = 0; copy < Tiles.COPIES; copy++) {
       int physicalId = Tiles.physicalId(kind, copy);
       if (hand.holds(physicalId)) {
@@ -281,7 +292,8 @@ final class RandomRound {
     boolean handRed = set.red(redId) && hand.holds(redId);
     int plain = hand.count(kind) - (handRed ? 1 : 0);
     boolean useRed = handRed && (plain < 2 || random.nextBoolean());
-    Action.TileSelection selection = useRed ? Action.TileSelection.AKA : Action.TileSelection.NON_AKA;
+    Action.TileSelection selection =
+        useRed ? Action.TileSelection.AKA : Action.TileSelection.NON_AKA;
     int meld = meldOf(Action.code(Action.Type.PON, kind, selection), seat);
     hand.take(useRed ? redId : hand.pick(kind, false));
     hand.take(hand.pick(kind, false));
@@ -296,7 +308,9 @@ final class RandomRound {
       return -1;
     }
     Hand hand = hands[seat];
-    for (int base = Math.max(suit.first(), kind - 2); base <= Math.min(kind, suit.last() - 2); base++) {
+    for (int base = Math.max(suit.first(), kind - 2);
+        base <= Math.min(kind, suit.last() - 2);
+        base++) {
       int first = base == kind ? base + 1 : base;
       int second = base + 2 == kind ? base + 1 : base + 2;
       if (hand.count(first) == 0 || hand.count(second) == 0) {

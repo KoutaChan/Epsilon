@@ -137,7 +137,8 @@ final class PublicState {
    */
   void start(TableState table) {
     if (table.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + table.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + table.variant());
     }
     if (table.gameOver()) {
       throw new IllegalArgumentException("No round starts from a finished game: " + table);
@@ -262,13 +263,13 @@ final class PublicState {
   }
 
   /** 立直の成立を書く。供託を 1 本払い、一発が付く。既に立直している席なら IllegalStateException を投げる。 */
-  void riichi(int seat, boolean doubleRiichi) {
+  void riichi(int seat, RiichiState declaration) {
     int bit = 1 << Objects.checkIndex(seat, scores.length);
     if ((riichiMask & bit) != 0) {
       throw new IllegalStateException("Seat " + seat + " is already in riichi");
     }
     riichiMask |= bit;
-    if (doubleRiichi) {
+    if (declaration == RiichiState.DOUBLE_RIICHI) {
       doubleRiichiMask |= bit;
     }
     ippatsuMask |= bit;
@@ -286,7 +287,8 @@ final class PublicState {
 
   void copyFrom(PublicState other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     events.copyFrom(other.events);
     dora.copyFrom(other.dora);
@@ -310,7 +312,8 @@ final class PublicState {
   /** その種類の見えている枚数を 1 増やす。ルールで決まる枚数を超えるなら、同じ牌を 2 度数えたので IllegalStateException を投げる。 */
   private void see(int kind) {
     if (visible[kind] == variant.tiles().copies(kind)) {
-      throw new IllegalStateException("More than " + visible[kind] + " tiles of kind " + kind + " are visible");
+      throw new IllegalStateException(
+          "More than " + visible[kind] + " tiles of kind " + kind + " are visible");
     }
     visible[kind]++;
   }

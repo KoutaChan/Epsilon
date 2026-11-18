@@ -6,14 +6,17 @@
   <version>1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Epsilon base</name>
-  <!-- 依存は slf4j-api と TestNG（試験）だけ。gson・DJL・logback の版と DJL の置き場はここで決め、使うモジュールが依存に書く。PyTorch の JNI と zstd は epsilon-parent が持つ。 -->
+  <!-- 依存は slf4j-api と TestNG（テスト）だけ。gson・DJL・logback のバージョンと DJL の置き場はここで決め、使うモジュールが依存に書く。PyTorch の JNI と zstd は epsilon-parent が持つ。 -->
+  <modules>
+    <module>io</module>
+  </modules>
   <properties>
     <java.version>21</java.version>
     <maven.compiler.source>${java.version}</maven.compiler.source>
     <maven.compiler.target>${java.version}</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <surefire.excludedGroups>native,rocm</surefire.excludedGroups>
-    <!-- 時間のかかる試験（slow の組）は普段は外し、-Pslow-tests を付けたときだけ流す -->
+    <!-- 時間のかかるテスト（slow の組）は普段は外し、-Pslow-tests を付けたときだけ流す -->
     <surefire.excludedSlow>,slow</surefire.excludedSlow>
     <testng.version>7.11.0</testng.version>
     <djl.version>0.40.7-rocm-SNAPSHOT</djl.version>

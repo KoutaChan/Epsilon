@@ -132,11 +132,6 @@ final class SeatReader implements SeatView {
   }
 
   @Override
-  public int doraWeight(int kind) {
-    return state.dora().weight(kind);
-  }
-
-  @Override
   public RiichiState riichi(int seat) {
     return state.riichi(seat);
   }

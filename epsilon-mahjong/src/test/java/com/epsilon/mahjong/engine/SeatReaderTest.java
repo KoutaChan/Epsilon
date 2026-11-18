@@ -57,11 +57,13 @@ public class SeatReaderTest {
     round.decisions.add(Action.code(Action.Type.RON_AGARI));
     round.decisions.close(1);
     Assert.assertEquals(
-        new SeatReader(round.state, round.hands, round.decisions, 2).kind(), EngineDecisionKind.NUKI_RESPONSE);
+        new SeatReader(round.state, round.hands, round.decisions, 2).kind(),
+        EngineDecisionKind.NUKI_RESPONSE);
     SeatReader without = new SeatReader(round.state, round.hands, round.decisions, 1);
     Assert.assertThrows(IllegalStateException.class, without::kind);
     Assert.assertThrows(
-        IndexOutOfBoundsException.class, () -> new SeatReader(round.state, round.hands, round.decisions, 3));
+        IndexOutOfBoundsException.class,
+        () -> new SeatReader(round.state, round.hands, round.decisions, 3));
   }
 
   private static void assertView(RandomRound round, SeatView view) {
@@ -78,7 +80,6 @@ public class SeatReaderTest {
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
       Assert.assertEquals(view.count(kind), own.count(kind));
       Assert.assertEquals(view.visible(kind), state.visible(kind));
-      Assert.assertEquals(view.doraWeight(kind), state.dora().weight(kind));
     }
     for (int physicalId = 0; physicalId < Tiles.PHYSICAL_IDS; physicalId++) {
       Assert.assertEquals(view.holds(physicalId), own.holds(physicalId));

@@ -62,19 +62,6 @@ public final class Engine {
   }
 
   /**
-   * 与えた局の始まりの卓から半荘を始める。最初の局の牌山は種と epoch で作り、局ごとに epoch が 1 進む。
-   *
-   * @param start 局の始まりの卓
-   * @param seed 牌山の種
-   * @param epoch 最初の局の牌山の epoch
-   * @param drawOrder 半荘の全ての局のツモの順
-   */
-  public void startAt(RoundStart start, long seed, int epoch, DrawOrder drawOrder) {
-    table.set(start);
-    begin(seed, epoch, drawOrder);
-  }
-
-  /**
    * 与えた卓の 1 局を、牌譜の牌山で始める。席別ツモ列は使わない。局末の後に {@link #advance} を呼ぶと IllegalStateException を
    * 投げる。
    *
@@ -94,7 +81,8 @@ public final class Engine {
     if (stage == Stage.ROUND_END && !recorded) {
       table.copyFrom(round.end().next());
     } else if (stage != Stage.DEAL) {
-      throw new IllegalStateException("Nothing to deal at " + stage + (recorded ? " of a recorded round" : ""));
+      throw new IllegalStateException(
+          "Nothing to deal at " + stage + (recorded ? " of a recorded round" : ""));
     }
     return arrive(round.deal(table, !recorded, ws));
   }
@@ -131,12 +119,17 @@ public final class Engine {
     requireWorkspace(ws);
     Decisions decisions = round.decisions();
     if (choices.length < decisions.size()) {
-      throw new IllegalArgumentException(decisions.size() + " decisions need choices, got " + choices.length);
+      throw new IllegalArgumentException(
+          decisions.size() + " decisions need choices, got " + choices.length);
     }
     for (int slot = 0; slot < decisions.size(); slot++) {
       if (choices[slot] < 0 || choices[slot] >= decisions.legalCount(slot)) {
         throw new IllegalArgumentException(
-            "Choice " + choices[slot] + " is outside the " + decisions.legalCount(slot) + " legal actions of slot "
+            "Choice "
+                + choices[slot]
+                + " is outside the "
+                + decisions.legalCount(slot)
+                + " legal actions of slot "
                 + slot);
       }
     }
@@ -248,7 +241,8 @@ public final class Engine {
 
   private void requireWorkspace(RuleWorkspace ws) {
     if (ws.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + ws.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + ws.variant());
     }
   }
 }

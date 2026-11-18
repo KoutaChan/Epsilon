@@ -75,9 +75,6 @@ public interface SeatView {
    */
   int indicatorEvent(int index);
 
-  /** めくった表示牌のうち、その種類をドラにするものの数。 */
-  int doraWeight(int kind);
-
   RiichiState riichi(int seat);
 
   boolean ippatsu(int seat);

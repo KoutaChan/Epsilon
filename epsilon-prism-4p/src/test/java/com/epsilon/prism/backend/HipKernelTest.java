@@ -1,5 +1,6 @@
 package com.epsilon.prism.backend;
 
+import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.hip.HipArchitecture;
 import com.epsilon.prism.hip.HipKernel;
 import com.epsilon.prism.hip.HipPack;
@@ -7,6 +8,7 @@ import com.epsilon.prism.hip.HipRegion;
 import com.epsilon.prism.hip.HipWeight;
 import com.epsilon.prism.hip.LayerRole;
 import com.epsilon.prism.hip.TokenGroup;
+import com.epsilon.prism.model.PrismShape;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -69,31 +71,40 @@ public class HipKernelTest {
 
   public void embed() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      c.putInput();
-      run(c, HipKernel.EMBED, 0);
-      HipReference reference = c.reference();
-      reference.embed(c.input(reference));
-      float[] x = c.getBf16(HipRegion.RESIDUAL, c.tokens() * hidden(c));
-      float[] statics = c.getBf16(HipRegion.STATIC, c.stages.statics().length);
-      float[] qkv0 = c.getBf16(HipRegion.QKV0, c.tokens() * 3 * attention(c));
-      eager(failures, c, "K1 x", c.stages.embedded(), x);
-      eager(failures, c, "K1 t_s", c.stages.statics(), statics);
-      bitwise(failures, c, "K1 qkv0 vs reference", reference.layer0Qkv(), qkv0);
-      bitwise(failures, c, "K1 x vs reference", reference.residual, x);
-      check(failures, c, "K1 t_s vs reference", Diff.bf16(reference.statics, statics), REFERENCE_LIMIT);
-    });
+    eachCase(
+        failures,
+        c -> {
+          c.putInput();
+          run(c, HipKernel.EMBED, 0);
+          HipReference reference = c.reference();
+          reference.embed(c.input(reference));
+          float[] x = c.getBf16(HipRegion.RESIDUAL, c.tokens() * hidden(c));
+          float[] statics = c.getBf16(HipRegion.STATIC, c.stages.statics().length);
+          float[] qkv0 = c.getBf16(HipRegion.QKV0, c.tokens() * 3 * attention(c));
+          eager(failures, c, "K1 x", c.stages.embedded(), x);
+          eager(failures, c, "K1 t_s", c.stages.statics(), statics);
+          bitwise(failures, c, "K1 qkv0 vs reference", reference.layer0Qkv(), qkv0);
+          bitwise(failures, c, "K1 x vs reference", reference.residual, x);
+          check(
+              failures,
+              c,
+              "K1 t_s vs reference",
+              Diff.bf16(reference.statics, statics),
+              REFERENCE_LIMIT);
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
   /** 全トークンの層の Attention（K2）を確かめる。層 0 には K1 の qkv0 を、ほかの層には前の層の x の n を入れる。 */
   public void attentionAll() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      for (int layer = 0; layer < c.architecture.allTokenLayers(); layer++) {
-        attentionAll(failures, c, layer);
-      }
-    });
+    eachCase(
+        failures,
+        c -> {
+          for (int layer = 0; layer < c.architecture.allTokenLayers(); layer++) {
+            attentionAll(failures, c, layer);
+          }
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
@@ -105,7 +116,8 @@ public class HipKernelTest {
     List<String> failures = new ArrayList<>();
     List<long[]> rows = HipFixtures.longMixedRows();
     for (HipFixtures.Arm arm : HipFixtures.Arm.selected()) {
-      try (GpuCase c = HipFixtures.gpuCase("long " + arm.label(), arm.shape(), 45 + arm.ordinal(), rows)) {
+      try (GpuCase c =
+          HipFixtures.gpuCase("long " + arm.label(), arm.shape(), 45 + arm.ordinal(), rows)) {
         for (int layer = 0; layer < c.architecture.depth(); layer++) {
           if (c.architecture.layer(layer).role() == LayerRole.ALL_TOKENS) {
             attentionAll(failures, c, layer);
@@ -127,31 +139,46 @@ public class HipKernelTest {
    */
   public void mlpAll() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      HipArchitecture architecture = c.architecture;
-      for (int layer = 0; layer < architecture.allTokenLayers(); layer++) {
-        float[] input = layer == 0 ? c.stages.embedded() : c.stages.layers().get(layer - 1);
-        boolean last = architecture.layer(layer + 1).role() == LayerRole.FIXED_TOKENS;
-        int written = last ? c.fixedTokens() * hidden(c) : input.length;
-        c.putBf16(HipRegion.RESIDUAL, input);
-        c.putBf16(HipRegion.ATTENTION, c.stages.attention().get(layer));
-        run(c, HipKernel.MLP_ALL, layer);
-        float[] x = c.getBf16(HipRegion.RESIDUAL, written);
-        float[] n = c.getBf16(HipRegion.NORMALIZED, input.length);
-        HipReference reference = c.reference();
-        reference.residual = input.clone();
-        reference.attentionOut = c.stages.attention().get(layer).clone();
-        reference.mlp(c.input(reference), layer);
-        eager(failures, c, "K3 x layer " + layer, Arrays.copyOf(c.stages.layers().get(layer), written), x);
-        check(failures, c, "K3 x layer " + layer + " vs reference",
-            Diff.bf16(Arrays.copyOf(reference.residual, written), x), REFERENCE_LIMIT);
-        check(failures, c, "K3 n layer " + layer + " vs reference",
-            Diff.bf16(reference.attentionInput(reference.residual, layer + 1), n), REFERENCE_LIMIT);
-        if (last) {
-          eventKeyValues(failures, c, reference);
-        }
-      }
-    });
+    eachCase(
+        failures,
+        c -> {
+          HipArchitecture architecture = c.architecture;
+          for (int layer = 0; layer < architecture.allTokenLayers(); layer++) {
+            float[] input = layer == 0 ? c.stages.embedded() : c.stages.layers().get(layer - 1);
+            boolean last = architecture.layer(layer + 1).role() == LayerRole.FIXED_TOKENS;
+            int written = last ? c.fixedTokens() * hidden(c) : input.length;
+            c.putBf16(HipRegion.RESIDUAL, input);
+            c.putBf16(HipRegion.ATTENTION, c.stages.attention().get(layer));
+            run(c, HipKernel.MLP_ALL, layer);
+            float[] x = c.getBf16(HipRegion.RESIDUAL, written);
+            float[] n = c.getBf16(HipRegion.NORMALIZED, input.length);
+            HipReference reference = c.reference();
+            reference.residual = input.clone();
+            reference.attentionOut = c.stages.attention().get(layer).clone();
+            reference.mlp(c.input(reference), layer);
+            eager(
+                failures,
+                c,
+                "K3 x layer " + layer,
+                Arrays.copyOf(c.stages.layers().get(layer), written),
+                x);
+            check(
+                failures,
+                c,
+                "K3 x layer " + layer + " vs reference",
+                Diff.bf16(Arrays.copyOf(reference.residual, written), x),
+                REFERENCE_LIMIT);
+            check(
+                failures,
+                c,
+                "K3 n layer " + layer + " vs reference",
+                Diff.bf16(reference.attentionInput(reference.residual, layer + 1), n),
+                REFERENCE_LIMIT);
+            if (last) {
+              eventKeyValues(failures, c, reference);
+            }
+          }
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
@@ -165,161 +192,248 @@ public class HipKernelTest {
     HipArchitecture architecture = c.architecture;
     int events = c.hipBatch.events();
     int width = 2 * attention(c);
-    float[] keyValues = c.getBf16(HipRegion.EVENT_KEY_VALUE, architecture.copiedEventLayers() * events * width);
+    float[] keyValues =
+        c.getBf16(HipRegion.EVENT_KEY_VALUE, architecture.copiedEventLayers() * events * width);
     reference.eventKeyValue(c.input(reference));
     for (int f = 1; f < architecture.fixedLayers(); f++) {
       int layer = architecture.allTokenLayers() + f;
       float[] actual = Arrays.copyOfRange(keyValues, (f - 1) * events * width, f * events * width);
       eager(failures, c, "K3 event kv layer " + layer, c.stages.eventKeyValues().get(f), actual);
-      check(failures, c, "K3 event kv layer " + layer + " vs reference", Diff.bf16(reference.eventKeyValues[f], actual),
+      check(
+          failures,
+          c,
+          "K3 event kv layer " + layer + " vs reference",
+          Diff.bf16(reference.eventKeyValues[f], actual),
           REFERENCE_LIMIT);
     }
     if (c.reread()) {
       int from = c.fixedTokens() * width;
       float[] memory = c.getBf16(HipRegion.REREAD_MEMORY, from + events * width);
       float[] actual = Arrays.copyOfRange(memory, from, memory.length);
-      eager(failures, c, "K3 reread events", Arrays.copyOfRange(c.stages.rereadMemory(), from, memory.length), actual);
-      check(failures, c, "K3 reread events vs reference",
-          Diff.bf16(Arrays.copyOfRange(reference.rereadMemory, from, memory.length), actual), REFERENCE_LIMIT);
+      eager(
+          failures,
+          c,
+          "K3 reread events",
+          Arrays.copyOfRange(c.stages.rereadMemory(), from, memory.length),
+          actual);
+      check(
+          failures,
+          c,
+          "K3 reread events vs reference",
+          Diff.bf16(Arrays.copyOfRange(reference.rereadMemory, from, memory.length), actual),
+          REFERENCE_LIMIT);
     }
   }
 
   /** 局・席・牌の層の Attention（K4）を確かめる。 */
   public void attentionFixed() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      for (int layer = c.architecture.allTokenLayers(); layer < c.architecture.depth(); layer++) {
-        attentionFixed(failures, c, layer);
-      }
-    });
+    eachCase(
+        failures,
+        c -> {
+          for (int layer = c.architecture.allTokenLayers();
+              layer < c.architecture.depth();
+              layer++) {
+            attentionFixed(failures, c, layer);
+          }
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
   /** 最後でない局・席・牌の層の MLP（K3 の MLP_FIXED）を確かめる。型ごとの FFN なら、局・席と牌の 2 区間に分けて計算する。 */
   public void mlpFixed() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      HipArchitecture architecture = c.architecture;
-      for (int layer = architecture.allTokenLayers(); layer + 1 < architecture.depth(); layer++) {
-        int fixedValues = c.fixedTokens() * hidden(c);
-        float[] input = Arrays.copyOf(c.stages.layers().get(layer - 1), fixedValues);
-        c.putBf16(HipRegion.RESIDUAL, input);
-        c.putBf16(HipRegion.ATTENTION, c.stages.attention().get(layer));
-        run(c, HipKernel.MLP_FIXED, layer);
-        float[] x = c.getBf16(HipRegion.RESIDUAL, fixedValues);
-        float[] n = c.getBf16(HipRegion.NORMALIZED, fixedValues);
-        HipReference reference = c.reference();
-        System.arraycopy(input, 0, reference.residual, 0, fixedValues);
-        float[] attended = c.stages.attention().get(layer);
-        System.arraycopy(attended, 0, reference.attentionOut, 0, attended.length);
-        reference.mlp(c.input(reference), layer);
-        float[] expected = Arrays.copyOf(reference.residual, fixedValues);
-        eager(failures, c, "K3 fixed x layer " + layer, c.stages.layers().get(layer), x);
-        check(failures, c, "K3 fixed x layer " + layer + " vs reference", Diff.bf16(expected, x), REFERENCE_LIMIT);
-        check(failures, c, "K3 fixed n layer " + layer + " vs reference",
-            Diff.bf16(reference.attentionInput(expected, layer + 1), n), REFERENCE_LIMIT);
-      }
-    });
+    eachCase(
+        failures,
+        c -> {
+          HipArchitecture architecture = c.architecture;
+          for (int layer = architecture.allTokenLayers();
+              layer + 1 < architecture.depth();
+              layer++) {
+            int fixedValues = c.fixedTokens() * hidden(c);
+            float[] input = Arrays.copyOf(c.stages.layers().get(layer - 1), fixedValues);
+            c.putBf16(HipRegion.RESIDUAL, input);
+            c.putBf16(HipRegion.ATTENTION, c.stages.attention().get(layer));
+            run(c, HipKernel.MLP_FIXED, layer);
+            float[] x = c.getBf16(HipRegion.RESIDUAL, fixedValues);
+            float[] n = c.getBf16(HipRegion.NORMALIZED, fixedValues);
+            HipReference reference = c.reference();
+            System.arraycopy(input, 0, reference.residual, 0, fixedValues);
+            float[] attended = c.stages.attention().get(layer);
+            System.arraycopy(attended, 0, reference.attentionOut, 0, attended.length);
+            reference.mlp(c.input(reference), layer);
+            float[] expected = Arrays.copyOf(reference.residual, fixedValues);
+            eager(failures, c, "K3 fixed x layer " + layer, c.stages.layers().get(layer), x);
+            check(
+                failures,
+                c,
+                "K3 fixed x layer " + layer + " vs reference",
+                Diff.bf16(expected, x),
+                REFERENCE_LIMIT);
+            check(
+                failures,
+                c,
+                "K3 fixed n layer " + layer + " vs reference",
+                Diff.bf16(reference.attentionInput(expected, layer + 1), n),
+                REFERENCE_LIMIT);
+          }
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
   /** 最後の層の MLP（K5）を確かめる。出力は最後の正規化の y（型ごとの形ならグループごとのゲイン）と、Cross-Attention のキーとバリュー。 */
   public void mlpLast() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      int last = c.architecture.depth() - 1;
-      int fixedValues = c.fixedTokens() * hidden(c);
-      float[] input = Arrays.copyOf(c.stages.layers().get(last - 1), fixedValues);
-      c.putBf16(HipRegion.RESIDUAL, input);
-      c.putBf16(HipRegion.ATTENTION, c.stages.attention().get(last));
-      run(c, HipKernel.MLP_LAST, last);
-      float[] state = c.getBf16(HipRegion.STATE, c.stages.states().length);
-      float[] memory = c.getBf16(HipRegion.MEMORY, c.stages.memory().length);
-      HipReference reference = c.reference();
-      System.arraycopy(input, 0, reference.residual, 0, fixedValues);
-      float[] attended = c.stages.attention().get(last);
-      System.arraycopy(attended, 0, reference.attentionOut, 0, attended.length);
-      reference.mlpLast(c.input(reference), last);
-      eager(failures, c, "K5 y", c.stages.states(), state);
-      eager(failures, c, "K5 KV", c.stages.memory(), memory);
-      check(failures, c, "K5 y vs reference", Diff.bf16(reference.state, state), REFERENCE_LIMIT);
-      check(failures, c, "K5 KV vs reference", Diff.bf16(reference.memory, memory), REFERENCE_LIMIT);
-    });
+    eachCase(
+        failures,
+        c -> {
+          int last = c.architecture.depth() - 1;
+          int fixedValues = c.fixedTokens() * hidden(c);
+          float[] input = Arrays.copyOf(c.stages.layers().get(last - 1), fixedValues);
+          c.putBf16(HipRegion.RESIDUAL, input);
+          c.putBf16(HipRegion.ATTENTION, c.stages.attention().get(last));
+          run(c, HipKernel.MLP_LAST, last);
+          float[] state = c.getBf16(HipRegion.STATE, c.stages.states().length);
+          float[] memory = c.getBf16(HipRegion.MEMORY, c.stages.memory().length);
+          HipReference reference = c.reference();
+          System.arraycopy(input, 0, reference.residual, 0, fixedValues);
+          float[] attended = c.stages.attention().get(last);
+          System.arraycopy(attended, 0, reference.attentionOut, 0, attended.length);
+          reference.mlpLast(c.input(reference), last);
+          eager(failures, c, "K5 y", c.stages.states(), state);
+          eager(failures, c, "K5 KV", c.stages.memory(), memory);
+          check(
+              failures, c, "K5 y vs reference", Diff.bf16(reference.state, state), REFERENCE_LIMIT);
+          check(
+              failures,
+              c,
+              "K5 KV vs reference",
+              Diff.bf16(reference.memory, memory),
+              REFERENCE_LIMIT);
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
-  /** K8 の REREAD_KEY_VALUE を確かめる。y から、2 段目で使う局・席・牌のキーとバリュー [R, F, 2A] を作る。 */
-  public void rereadKeyValue() {
+  /** K8 が使う射影元と、固定トークン・イベントの書き先を照合する。 */
+  @Test(dataProvider = "rereadShapes", dataProviderClass = HipFixtures.class)
+  public void rereadKeyValue(PrismShape shape) {
+    List<long[]> rows =
+        new ArrayList<>(HipFixtures.observations(71, 1, TableWalk.Policy.GREEDY, 1));
+    rows.addAll(HipFixtures.longRows(2));
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      if (!c.reread()) {
-        return;
-      }
-      int count = c.fixedTokens() * 2 * attention(c);
-      c.putBf16(HipRegion.STATE, c.stages.states());
+    try (GpuCase c = HipFixtures.gpuCase(shape.toString(), shape, 47, rows)) {
+      Assert.assertEquals(c.batch.plan().events(0), 0);
+      Assert.assertTrue(c.batch.plan().events(1) > 0);
+      float[] states = c.stages.states();
+      float[] entry = c.stages.embedded();
+      c.putBf16(HipRegion.STATE, states);
+      c.putBf16(HipRegion.RESIDUAL, entry);
+      int fixed = c.fixedTokens() * 2 * attention(c);
+      int count = fixed;
+      c.putBf16(HipRegion.REREAD_MEMORY, new float[count]);
       run(c, HipKernel.REREAD_KEY_VALUE, 0);
-      float[] memory = c.getBf16(HipRegion.REREAD_MEMORY, count);
+      float[] actual = c.getBf16(HipRegion.REREAD_MEMORY, count);
       HipReference reference = c.reference();
-      reference.state = c.stages.states().clone();
+      reference.state = states;
+      reference.residual = entry;
       reference.rereadKeyValue(c.input(reference));
-      eager(failures, c, "K8 reread fixed", Arrays.copyOf(c.stages.rereadMemory(), count), memory);
-      check(failures, c, "K8 reread fixed vs reference", Diff.bf16(Arrays.copyOf(reference.rereadMemory, count), memory),
-          REFERENCE_LIMIT);
-    });
+      float[] expected = c.stages.rereadMemory();
+      int from = 0;
+      for (int end : new int[] {fixed}) {
+        String part = from == 0 ? "K8 fixed" : "K8 events";
+        float[] observed = Arrays.copyOfRange(actual, from, end);
+        eager(failures, c, part, Arrays.copyOfRange(expected, from, end), observed);
+        check(
+            failures,
+            c,
+            part + " vs reference",
+            Diff.bf16(Arrays.copyOfRange(reference.rereadMemory, from, end), observed),
+            REFERENCE_LIMIT);
+        from = end;
+      }
+    }
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
   /** K6 を確かめる。出力は候補層の 1 段目の z（2 段目のある形では z1）で、1 段の形では B も比べる。 */
   public void candidate() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      c.putInput();
-      c.putBf16(HipRegion.STATIC, c.stages.statics());
-      c.putBf16(HipRegion.STATE, c.stages.states());
-      c.putBf16(HipRegion.MEMORY, c.stages.memory());
-      run(c, HipKernel.CANDIDATE, 0);
-      float[] z = c.getBf16(HipRegion.TRANSITION, c.stages.candidates().length);
-      HipReference reference = c.reference();
-      reference.statics = c.stages.statics().clone();
-      reference.state = c.stages.states().clone();
-      reference.memory = c.stages.memory().clone();
-      reference.candidate(c.input(reference));
-      String label = c.reread() ? "K6 z1" : "K6 z";
-      eager(failures, c, label, c.stages.candidates(), z);
-      check(failures, c, label + " vs reference", Diff.bf16(reference.transitions, z), REFERENCE_LIMIT);
-      if (!c.reread()) {
-        float[] values = c.getFloats(HipRegion.VALUE, c.stages.values().length);
-        eagerFp32(failures, c, "K6 B", c.stages.values(), values);
-        check(failures, c, "K6 B vs reference", Diff.fp32(reference.values, values), REFERENCE_LIMIT);
-      }
-    });
+    eachCase(
+        failures,
+        c -> {
+          c.putInput();
+          c.putBf16(HipRegion.STATIC, c.stages.statics());
+          c.putBf16(HipRegion.STATE, c.stages.states());
+          c.putBf16(HipRegion.MEMORY, c.stages.memory());
+          run(c, HipKernel.CANDIDATE, 0);
+          float[] z = c.getBf16(HipRegion.TRANSITION, c.stages.candidates().length);
+          HipReference reference = c.reference();
+          reference.statics = c.stages.statics().clone();
+          reference.state = c.stages.states().clone();
+          reference.memory = c.stages.memory().clone();
+          reference.candidate(c.input(reference));
+          String label = c.reread() ? "K6 z1" : "K6 z";
+          eager(failures, c, label, c.stages.candidates(), z);
+          check(
+              failures,
+              c,
+              label + " vs reference",
+              Diff.bf16(reference.transitions, z),
+              REFERENCE_LIMIT);
+          if (!c.reread()) {
+            float[] values = c.getFloats(HipRegion.VALUE, c.stages.values().length);
+            eagerFp32(failures, c, "K6 B", c.stages.values(), values);
+            check(
+                failures,
+                c,
+                "K6 B vs reference",
+                Diff.fp32(reference.values, values),
+                REFERENCE_LIMIT);
+          }
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
   /** K9 を確かめる。出力は候補層の 2 段目の z と B。z − z1（2 段目が足した分）の一致もログに出す。 */
   public void reread() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      if (!c.reread()) {
-        return;
-      }
-      c.putInput();
-      c.putBf16(HipRegion.TRANSITION, c.stages.candidates());
-      c.putBf16(HipRegion.REREAD_MEMORY, c.stages.rereadMemory());
-      run(c, HipKernel.REREAD, 0);
-      float[] z = c.getBf16(HipRegion.TRANSITION, c.stages.transitions().length);
-      float[] values = c.getFloats(HipRegion.VALUE, c.stages.values().length);
-      HipReference reference = c.reference();
-      reference.transitions = c.stages.candidates().clone();
-      reference.rereadMemory = c.stages.rereadMemory().clone();
-      reference.reread(c.input(reference));
-      eager(failures, c, "K9 z", c.stages.transitions(), z);
-      eagerFp32(failures, c, "K9 B", c.stages.values(), values);
-      check(failures, c, "K9 z vs reference", Diff.bf16(reference.transitions, z), REFERENCE_LIMIT);
-      check(failures, c, "K9 B vs reference", Diff.fp32(reference.values, values), REFERENCE_LIMIT);
-      report(c, "K9 z - z1 vs reference",
-          Diff.fp32(minus(reference.transitions, c.stages.candidates()), minus(z, c.stages.candidates())));
-    });
+    eachCase(
+        failures,
+        c -> {
+          if (!c.reread()) {
+            return;
+          }
+          c.putInput();
+          c.putBf16(HipRegion.TRANSITION, c.stages.candidates());
+          c.putBf16(HipRegion.REREAD_MEMORY, c.stages.rereadMemory());
+          run(c, HipKernel.REREAD, 0);
+          float[] z = c.getBf16(HipRegion.TRANSITION, c.stages.transitions().length);
+          float[] values = c.getFloats(HipRegion.VALUE, c.stages.values().length);
+          HipReference reference = c.reference();
+          reference.transitions = c.stages.candidates().clone();
+          reference.rereadMemory = c.stages.rereadMemory().clone();
+          reference.reread(c.input(reference));
+          eager(failures, c, "K9 z", c.stages.transitions(), z);
+          eagerFp32(failures, c, "K9 B", c.stages.values(), values);
+          check(
+              failures,
+              c,
+              "K9 z vs reference",
+              Diff.bf16(reference.transitions, z),
+              REFERENCE_LIMIT);
+          check(
+              failures,
+              c,
+              "K9 B vs reference",
+              Diff.fp32(reference.values, values),
+              REFERENCE_LIMIT);
+          report(
+              c,
+              "K9 z - z1 vs reference",
+              Diff.fp32(
+                  minus(reference.transitions, c.stages.candidates()),
+                  minus(z, c.stages.candidates())));
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
@@ -355,7 +469,8 @@ public class HipKernelTest {
         Diff zExact = Diff.bf16(exact.transitions, z);
         Diff bExact = Diff.fp32(exact.values, values);
         log.info(
-            "PRISM-HIP-K {} K6 precision draw {}: z vs FP64 attention {} (within 1 ulp {}), B vs FP64 attention {}",
+            "PRISM-HIP-K {} K6 precision draw {}: z vs FP64 attention {} (within 1 ulp {}), B vs"
+                + " FP64 attention {}",
             c.name,
             draw,
             String.format(Locale.ROOT, "%.4e", zExact.relativeRms()),
@@ -374,7 +489,9 @@ public class HipKernelTest {
       for (int k = 0; k < labels.length; k++) {
         double mean = sums[k][0] / PRECISION_DRAWS;
         double variance =
-            Math.max(0, sums[k][1] / PRECISION_DRAWS - mean * mean) * PRECISION_DRAWS / (PRECISION_DRAWS - 1);
+            Math.max(0, sums[k][1] / PRECISION_DRAWS - mean * mean)
+                * PRECISION_DRAWS
+                / (PRECISION_DRAWS - 1);
         log.info(
             "PRISM-HIP-K {} K6 precision {}: relative RMS mean {}, se {} ({} draws)",
             c.name,
@@ -392,7 +509,10 @@ public class HipKernelTest {
    */
   private static void dumpDraw(Path file, int draw, float[] z, float[] values) throws IOException {
     ByteBuffer bytes =
-        ByteBuffer.allocate((draw == 0 ? 3 * Integer.BYTES : 0) + z.length * Short.BYTES + values.length * Float.BYTES)
+        ByteBuffer.allocate(
+                (draw == 0 ? 3 * Integer.BYTES : 0)
+                    + z.length * Short.BYTES
+                    + values.length * Float.BYTES)
             .order(ByteOrder.LITTLE_ENDIAN);
     if (draw == 0) {
       Files.createDirectories(file.getParent());
@@ -422,21 +542,28 @@ public class HipKernelTest {
 
   public void valueGraph() {
     List<String> failures = new ArrayList<>();
-    eachCase(failures, c -> {
-      c.putInput();
-      c.putBf16(HipRegion.TRANSITION, c.stages.transitions());
-      c.putFloats(HipRegion.VALUE, c.stages.values());
-      c.putBf16(HipRegion.STATE, c.stages.states());
-      run(c, HipKernel.VALUE_GRAPH, 0);
-      float[] scores = c.getFloats(HipRegion.SCORES, c.stages.scores().length);
-      HipReference reference = c.reference();
-      reference.transitions = c.stages.transitions().clone();
-      reference.values = c.stages.values().clone();
-      reference.state = c.stages.states().clone();
-      reference.valueGraph(c.input(reference));
-      eagerFp32(failures, c, "K7 s", c.stages.scores(), scores);
-      check(failures, c, "K7 s vs reference", Diff.fp32(reference.scores, scores), SCORE_REFERENCE_LIMIT);
-    });
+    eachCase(
+        failures,
+        c -> {
+          c.putInput();
+          c.putBf16(HipRegion.TRANSITION, c.stages.transitions());
+          c.putFloats(HipRegion.VALUE, c.stages.values());
+          c.putBf16(HipRegion.STATE, c.stages.states());
+          run(c, HipKernel.VALUE_GRAPH, 0);
+          float[] scores = c.getFloats(HipRegion.SCORES, c.stages.scores().length);
+          HipReference reference = c.reference();
+          reference.transitions = c.stages.transitions().clone();
+          reference.values = c.stages.values().clone();
+          reference.state = c.stages.states().clone();
+          reference.valueGraph(c.input(reference));
+          eagerFp32(failures, c, "K7 s", c.stages.scores(), scores);
+          check(
+              failures,
+              c,
+              "K7 s vs reference",
+              Diff.fp32(reference.scores, scores),
+              SCORE_REFERENCE_LIMIT);
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
@@ -470,24 +597,34 @@ public class HipKernelTest {
           if (offset < 0 || !newSlot(weight, entry)) {
             continue;
           }
-          ByteBuffer broken = ByteBuffer.allocateDirect(c.pack.buffer().remaining()).order(ByteOrder.LITTLE_ENDIAN);
+          ByteBuffer broken =
+              ByteBuffer.allocateDirect(c.pack.buffer().remaining()).order(ByteOrder.LITTLE_ENDIAN);
           broken.put(c.pack.buffer()).flip();
-          int middle = Math.toIntExact(offset + header.elements(weight, entry) / 2 * weight.element().bytes());
+          int middle =
+              Math.toIntExact(
+                  offset + header.elements(weight, entry) / 2 * weight.element().bytes());
           switch (weight.element()) {
             case FP32 -> broken.putInt(middle, 0x7fc00000);
             case BF16 -> broken.putShort(middle, (short) 0x7fc0);
             default -> throw new IllegalStateException(weight + " holds no floating point values");
           }
           String named = "weight slot " + weight.ordinal() + " entry " + entry + " contains NaN";
-          RuntimeException failure = Assert.expectThrows(RuntimeException.class, () -> c.plan().uploadWeights(broken, 2));
-          Assert.assertTrue(String.valueOf(failure.getMessage()).contains(named),
+          RuntimeException failure =
+              Assert.expectThrows(RuntimeException.class, () -> c.plan().uploadWeights(broken, 2));
+          Assert.assertTrue(
+              String.valueOf(failure.getMessage()).contains(named),
               weight + " entry " + entry + ": " + failure.getMessage());
           checked++;
         }
       }
-      Assert.assertTrue(HipParity.bitwiseEqual(before, c.forward()), c.name + ": a rejected publish changed the scores");
-      log.info("PRISM-HIP-K {} NaN in each of {} entries of the new weight slots stops the publish naming the slot; the plan"
-          + " keeps its weights", c.name, checked);
+      Assert.assertTrue(
+          HipParity.bitwiseEqual(before, c.forward()),
+          c.name + ": a rejected publish changed the scores");
+      log.info(
+          "PRISM-HIP-K {} NaN in each of {} entries of the new weight slots stops the publish"
+              + " naming the slot; the plan keeps its weights",
+          c.name,
+          checked);
     }
   }
 
@@ -495,7 +632,9 @@ public class HipKernelTest {
   private static boolean newSlot(HipWeight weight, int entry) {
     return switch (weight.index()) {
       case SINGLE, LAYER -> weight.reread();
-      case FFN -> entry != HipWeight.CANDIDATE_FFN && entry % TokenGroup.values().length != TokenGroup.ALL.ordinal();
+      case FFN ->
+          entry != HipWeight.CANDIDATE_FFN
+              && entry % TokenGroup.values().length != TokenGroup.ALL.ordinal();
       case GROUP -> entry != TokenGroup.ALL.ordinal();
     };
   }
@@ -518,7 +657,12 @@ public class HipKernelTest {
     reference.residual = input.clone();
     reference.attention(in, layer);
     eager(failures, c, "K2 o layer " + layer, c.stages.attention().get(layer), o);
-    check(failures, c, "K2 o layer " + layer + " vs reference", Diff.bf16(reference.attentionOut, o), REFERENCE_LIMIT);
+    check(
+        failures,
+        c,
+        "K2 o layer " + layer + " vs reference",
+        Diff.bf16(reference.attentionOut, o),
+        REFERENCE_LIMIT);
   }
 
   /**
@@ -538,17 +682,24 @@ public class HipKernelTest {
     reference.eventKeyValue(in);
     System.arraycopy(input, 0, reference.residual, 0, fixedValues);
     boolean first = c.architecture.fixedIndex(layer) == 0;
-    c.putBf16(HipRegion.NORMALIZED, reference.attentionInput(first ? reference.residual : input, layer));
+    c.putBf16(
+        HipRegion.NORMALIZED, reference.attentionInput(first ? reference.residual : input, layer));
     if (c.architecture.copiedEventLayers() > 0) {
-      c.putBf16(HipRegion.EVENT_KEY_VALUE,
-          concatenate(Arrays.asList(reference.eventKeyValues).subList(1, reference.eventKeyValues.length)));
+      c.putBf16(
+          HipRegion.EVENT_KEY_VALUE,
+          concatenate(
+              Arrays.asList(reference.eventKeyValues).subList(1, reference.eventKeyValues.length)));
     }
     run(c, HipKernel.ATTENTION_FIXED, layer);
     float[] o = c.getBf16(HipRegion.ATTENTION, c.fixedTokens() * attention(c));
     reference.attention(in, layer);
     eager(failures, c, "K4 o layer " + layer, c.stages.attention().get(layer), o);
-    check(failures, c, "K4 o layer " + layer + " vs reference",
-        Diff.bf16(Arrays.copyOf(reference.attentionOut, o.length), o), REFERENCE_LIMIT);
+    check(
+        failures,
+        c,
+        "K4 o layer " + layer + " vs reference",
+        Diff.bf16(Arrays.copyOf(reference.attentionOut, o.length), o),
+        REFERENCE_LIMIT);
   }
 
   private static void run(GpuCase c, HipKernel kernel, int layer) {
@@ -559,23 +710,31 @@ public class HipKernelTest {
   }
 
   /** 参照とビット単位で同じことを求める（違う要素の数もログの行に出す）。 */
-  private static void bitwise(List<String> failures, GpuCase c, String label, float[] expected, float[] actual) {
+  private static void bitwise(
+      List<String> failures, GpuCase c, String label, float[] expected, float[] actual) {
     int differ = 0;
     for (int i = 0; i < expected.length; i++) {
       differ += Float.floatToRawIntBits(expected[i]) != Float.floatToRawIntBits(actual[i]) ? 1 : 0;
     }
-    log.info("PRISM-HIP-K {} {}, bits differ {}", c.name, Diff.bf16(expected, actual).line(label), differ);
+    log.info(
+        "PRISM-HIP-K {} {}, bits differ {}",
+        c.name,
+        Diff.bf16(expected, actual).line(label),
+        differ);
     if (differ != 0) {
-      failures.add(c.name + " " + label + " differs in " + differ + " of " + expected.length + " values");
+      failures.add(
+          c.name + " " + label + " differs in " + differ + " of " + expected.length + " values");
     }
   }
 
   /** eager の BF16 の段と比べる。 */
-  private static void eager(List<String> failures, GpuCase c, String label, float[] expected, float[] actual) {
+  private static void eager(
+      List<String> failures, GpuCase c, String label, float[] expected, float[] actual) {
     check(failures, c, label + " vs eager", Diff.bf16(expected, actual), EAGER_LIMIT);
   }
 
-  private static void eagerFp32(List<String> failures, GpuCase c, String label, float[] expected, float[] actual) {
+  private static void eagerFp32(
+      List<String> failures, GpuCase c, String label, float[] expected, float[] actual) {
     check(failures, c, label + " vs eager", Diff.fp32(expected, actual), EAGER_LIMIT);
   }
 
@@ -606,7 +765,8 @@ public class HipKernelTest {
     return c.architecture.attention();
   }
 
-  private static void check(List<String> failures, GpuCase c, String label, Diff diff, double limit) {
+  private static void check(
+      List<String> failures, GpuCase c, String label, Diff diff, double limit) {
     report(c, label, diff);
     if (!(diff.relativeRms() <= limit)) {
       failures.add(c.name + " " + label + " " + diff.relativeRms());

@@ -11,6 +11,8 @@ import com.epsilon.prism.hip.HipShape;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.model.PrismNetwork;
+import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.ShapeArm;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
@@ -21,7 +23,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.SkipException;
@@ -30,7 +34,8 @@ import org.testng.annotations.Test;
 /**
  * JVM の外のベンチ（epsilon-prism-hip の prism_hip_bench）に渡す、1 バッチぶんの材料を書く。ネットワーク・行・容量・バージョンは
  * {@link HipForwardTest#measureSpeed} の同じアームとそろえてあるので、ベンチで測ったカーネルの時間は、そのテストが記録した行とそのまま
- * 比べられる。形はシステムプロパティ {@value #ARM_PROPERTY} で選ぶ（{@link HipFixtures.Arm} の名前、既定は v2 の本番の形）。
+ * 比べられる。形はシステムプロパティ {@value #ARM_PROPERTY} で選ぶ（{@link HipFixtures.Arm} または
+ * {@link ShapeArm} の名前、既定は v2 の本番の形）。
  *
  * <p>書く先は {@code -Dprism.hip.case=<dir>} で、無ければテストを飛ばす。書くファイルは case.txt（計画の形、バッチの行・イベント・遷移・
  * 合法手の数、領域の位置、バージョンを "名前=値" で書く）、weights.bin（ヘッダーを含む WeightPack の全体）、input.bin（blob の先頭
@@ -63,19 +68,34 @@ public class HipCaseBench {
   public void writeScores() {
     Path directory = directory();
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-        PtStream stream = ((PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME)).newStream(Device.gpu(0))) {
+        PtStream stream =
+            ((PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME)).newStream(Device.gpu(0))) {
       Case material = Case.build(manager);
       material.write(directory);
       float[] scores;
-      try (HipBackend backend = HipBackend.open(HipLibrary.load(), stream, material.layout(), material.capacity())) {
+      try (HipBackend backend =
+          HipBackend.open(HipLibrary.load(), stream, material.layout(), material.capacity())) {
         backend.publish(material.pack());
         scores = backend.forward(material.host(), VERSION);
       }
       ByteBuffer bytes =
-          ByteBuffer.allocate(Math.multiplyExact(scores.length, Float.BYTES)).order(ByteOrder.LITTLE_ENDIAN);
+          ByteBuffer.allocate(Math.multiplyExact(scores.length, Float.BYTES))
+              .order(ByteOrder.LITTLE_ENDIAN);
       bytes.asFloatBuffer().put(scores);
       write(directory.resolve("scores.bin"), bytes);
       log.info("PRISM-HIP-CASE wrote {} scores to {}", scores.length, directory);
+    }
+  }
+
+  /** 同じ入力を持つ形ごとの束を作る。 */
+  @Test
+  public void writeMidCases() {
+    Path base = directory();
+    HostBatch batch = HipFixtures.encode(HipFixtures.simulatedRows(ROWS, ROW_SEED));
+    for (ShapeArm arm : List.of(ShapeArm.V3, ShapeArm.V4_S, ShapeArm.V4_M)) {
+      try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+        Case.build(manager, arm.shape(), 72, batch).write(base.resolve(arm.name()));
+      }
     }
   }
 
@@ -90,7 +110,10 @@ public class HipCaseBench {
   private static void write(Path file, ByteBuffer content) {
     try (FileChannel channel =
         FileChannel.open(
-            file, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+            file,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING,
+            StandardOpenOption.WRITE)) {
       while (content.hasRemaining()) {
         channel.write(content);
       }
@@ -118,13 +141,32 @@ public class HipCaseBench {
       HipBatch batch) {
 
     static Case build(NDManager manager) {
-      HipFixtures.Arm arm = HipFixtures.Arm.valueOf(System.getProperty(ARM_PROPERTY, HipFixtures.Arm.V2_DEPTH_2.name()));
-      PrismNetwork network = HipFixtures.network(manager, arm.shape(), 70 + arm.ordinal());
+      String name = System.getProperty(ARM_PROPERTY, HipFixtures.Arm.V2_DEPTH_2.name());
+      for (HipFixtures.Arm arm : HipFixtures.Arm.values()) {
+        if (arm.name().equals(name)) {
+          return build(
+              manager,
+              arm.shape(),
+              70 + arm.ordinal(),
+              HipFixtures.encode(HipFixtures.simulatedRows(ROWS, ROW_SEED)));
+        }
+      }
+      ShapeArm arm = ShapeArm.valueOf(name);
+      PrismShape shape = arm.shape();
+      return build(
+          manager,
+          shape,
+          70 + arm.ordinal(),
+          HipFixtures.encode(HipFixtures.simulatedRows(ROWS, ROW_SEED), shape));
+    }
+
+    static Case build(NDManager manager, PrismShape shape, long seed, HostBatch host) {
+      PrismNetwork network = HipFixtures.network(manager, shape, seed);
       WeightLayout layout = WeightLayout.of(network);
       WeightPack pack = WeightPack.build(layout, network, VERSION);
       BatchPlan.Capacity capacity = GpuCase.capacity(ROWS);
-      HostBatch host = HipFixtures.encode(HipFixtures.simulatedRows(ROWS, ROW_SEED));
-      return new Case(layout, pack, capacity, layout.hipShape(capacity), host, HipBackend.batchOf(host));
+      return new Case(
+          layout, pack, capacity, layout.hipShape(capacity), host, HipBackend.batchOf(host));
     }
 
     void write(Path directory) {
@@ -143,11 +185,8 @@ public class HipCaseBench {
     private List<String> description() {
       HipShape.Capacity planned = shape.capacity();
       List<String> lines = new ArrayList<>();
-      StringBuilder architecture = new StringBuilder();
-      for (int value : shape.architecture().encode()) {
-        architecture.append(architecture.isEmpty() ? "" : ",").append(value);
-      }
-      lines.add("architecture=" + architecture);
+      lines.add("architecture=" + csv(shape.architecture().encode()));
+      lines.add("planOptions=" + csv(layout.planOptions().encode()));
       lines.add("capacityRows=" + planned.rows());
       lines.add("capacityEvents=" + planned.events());
       lines.add("capacityTransitions=" + planned.transitions());
@@ -166,6 +205,10 @@ public class HipCaseBench {
       }
       lines.add("sections=" + sections);
       return lines;
+    }
+
+    private static String csv(int[] values) {
+      return Arrays.stream(values).mapToObj(Integer::toString).collect(Collectors.joining(","));
     }
   }
 }

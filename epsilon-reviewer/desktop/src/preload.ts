@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import { BRIDGE_CHANNELS, type ReviewerBridge } from "../../protocol/bridge.ts";
+import {
+  BRIDGE_CHANNELS,
+  type ReviewerBridge,
+} from "@epsilon-reviewer/protocol/bridge";
 
 const bridge: ReviewerBridge = {
   invoke: (command, request, body) =>

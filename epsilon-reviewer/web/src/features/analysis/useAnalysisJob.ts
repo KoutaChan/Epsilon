@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { JOB_POLL_INTERVAL_MS } from "../../../../protocol/commands.ts";
-import type { JobSnapshot } from "../../../../protocol/model.ts";
-import type { ResultDocument } from "../../../../protocol/result.ts";
+import { JOB_POLL_INTERVAL_MS } from "@epsilon-reviewer/protocol/commands";
+import type { JobSnapshot } from "@epsilon-reviewer/protocol/model";
+import type { ResultDocument } from "@epsilon-reviewer/protocol/result";
 import { ApiError } from "../../api/errors";
 import { api } from "../../api/platform";
 

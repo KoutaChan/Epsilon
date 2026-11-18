@@ -1,7 +1,7 @@
 import {
   FRAME_BODY_LIMIT,
   FRAME_HEADER_LIMIT,
-} from "../../../protocol/stdio.ts";
+} from "@epsilon-reviewer/protocol/stdio";
 
 // フレームの形は [ヘッダーの長さ u32 BE][ヘッダー: UTF-8 の JSON][本文の長さ u32 BE][本文]（protocol/stdio.ts）。
 

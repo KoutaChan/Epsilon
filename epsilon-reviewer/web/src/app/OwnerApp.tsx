@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useReducer, type Dispatch } from "react";
-import type { ImportedRecord } from "../../../protocol/model.ts";
-import type { ResultDocument } from "../../../protocol/result.ts";
+import type { ImportedRecord } from "@epsilon-reviewer/protocol/model";
+import type { ResultDocument } from "@epsilon-reviewer/protocol/result";
 import type { ExportOutcome } from "../api/client";
 import { api } from "../api/platform";
 import { AnalysisProgress } from "../features/analysis/AnalysisProgress";

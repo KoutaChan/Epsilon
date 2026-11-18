@@ -1,4 +1,4 @@
-import type { JobStatus } from "../../../../protocol/model.ts";
+import type { JobStatus } from "@epsilon-reviewer/protocol/model";
 import { ApiError } from "../../api/errors.ts";
 
 /**

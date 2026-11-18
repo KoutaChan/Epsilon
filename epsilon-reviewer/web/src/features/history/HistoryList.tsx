@@ -9,7 +9,7 @@ import {
 import type {
   HistoryEntry,
   HistoryList as HistoryData,
-} from "../../../../protocol/model.ts";
+} from "@epsilon-reviewer/protocol/model";
 import { api } from "../../api/platform";
 import type { Resource } from "../../hooks/useResource";
 import { errorKey } from "../../language/catalog";

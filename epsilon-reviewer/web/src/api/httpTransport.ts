@@ -1,12 +1,12 @@
-import { COMMANDS, httpTarget } from "../../../protocol/commands.ts";
+import { COMMANDS, httpTarget } from "@epsilon-reviewer/protocol/commands";
 import type {
   CommandName,
   CommandRequest,
   CommandResponse,
   CommandSpec,
   ResponseBody,
-} from "../../../protocol/commands.ts";
-import { isErrorCode } from "../../../protocol/errors.ts";
+} from "@epsilon-reviewer/protocol/commands";
+import { isErrorCode } from "@epsilon-reviewer/protocol/errors";
 import { ApiError } from "./errors.ts";
 import type { CallOptions, WebTransport } from "./transport.ts";
 

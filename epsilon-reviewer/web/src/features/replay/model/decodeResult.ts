@@ -1,22 +1,9 @@
 import type {
   ModelInfo,
   RecordSummary,
-} from "../../../../../protocol/model.ts";
-import {
-  CALL_TYPES,
-  EVENT_KINDS,
-  MAXIMUM_ACTION_ID,
-  RESULT_FORMAT,
-  actionOf,
-  isTileCode,
-  type CandidateSet,
-  type EventKind,
-  type Meld,
-  type RiverTile,
-  type RoundOutcome,
-  type StateDelta,
-  type TableState,
-} from "../../../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/model";
+import { CALL_TYPES, EVENT_KINDS, MAXIMUM_ACTION_ID, RESULT_FORMAT, actionOf, type CandidateSet, type EventKind, type Meld, type RiverTile, type RoundOutcome, type StateDelta, type TableState } from "@epsilon-reviewer/protocol/result";
+import { isTileCode } from "@epsilon-reviewer/protocol/tiles";
 import { ReviewFormatError } from "./formatError.ts";
 import type {
   DecisionStep,

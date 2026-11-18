@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { displayProbabilities } from "../../../protocol/result.ts";
+import { displayProbabilities } from "@epsilon-reviewer/protocol/result";
 import {
   listedCandidates,
   readCandidates,

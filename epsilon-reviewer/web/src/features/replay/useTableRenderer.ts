@@ -1,3 +1,4 @@
+import { DESKTOP_REFERENCE_WIDTH } from "./renderer/tableMetrics.ts";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { roundName, windName } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
@@ -42,7 +43,7 @@ export function useTableRenderer(
   const [tableTargets, setTableTargets] = useState<TableTargets | null>(null);
   const renderer = useRef<TableRenderer | null>(null);
   const layout = layoutOf(viewport);
-  const uiScale = viewport.width / 1440;
+  const uiScale = viewport.width / DESKTOP_REFERENCE_WIDTH;
   useLayoutEffect(() => {
     const element = elements.root.current!;
     const observer = new ResizeObserver(() => {

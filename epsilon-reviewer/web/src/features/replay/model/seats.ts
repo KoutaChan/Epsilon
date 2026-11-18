@@ -1,5 +1,8 @@
 // 卓の席の数（4 人か 3 人）と、画面での席の位置。
 
+export const SEAT_SLOTS = ["south", "east", "north", "west"] as const;
+export type SeatSlot = (typeof SEAT_SLOTS)[number];
+
 const FOUR_SEATS = [0, 1, 2, 3] as const;
 const THREE_SEATS = [0, 1, null, 2] as const;
 

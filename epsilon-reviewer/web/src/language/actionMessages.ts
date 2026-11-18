@@ -1,4 +1,4 @@
-import type { ActionType } from "../../../protocol/result.ts";
+import type { ActionType } from "@epsilon-reviewer/protocol/result";
 import type { MessageKey } from "./catalog.ts";
 
 // 行動の種類と表示する文言の対応を、型で検査できる一覧で定義する。

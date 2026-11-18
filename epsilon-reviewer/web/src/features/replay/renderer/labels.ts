@@ -1,3 +1,4 @@
+import { TILE_BASE_Z, TILE_DEPTH, LANDSCAPE_RIVER_SCALE } from "./tableMetrics.ts";
 import * as THREE from "three";
 import type { Composition } from "./composition.ts";
 import {
@@ -88,9 +89,9 @@ export function createLabels(
       screenBounds(objects, cam, width, height);
     const boxes: Record<SeatSlot, ScreenRect> = {
       south: bounds([handEnvelope], handCamera),
-      north: bounds([cameraEnvelope.children[1]!]),
-      west: bounds([cameraEnvelope.children[2]!]),
-      east: bounds([cameraEnvelope.children[3]!]),
+      north: bounds([cameraEnvelope.north]),
+      west: bounds([cameraEnvelope.west]),
+      east: bounds([cameraEnvelope.east]),
     };
     const hostRect = board.getBoundingClientRect();
     const domBox = (el: Element): ScreenRect => {
@@ -137,23 +138,23 @@ export function createLabels(
           projectedBox(
             dimensions.riverWidth,
             (dimensions.riverWidth * 4) / 3,
-            0.61 * (mode === "landscape" ? 1.4 : 1),
+            TILE_DEPTH * (mode === "landscape" ? LANDSCAPE_RIVER_SCALE : 1),
             seat,
             dimensions.riverStart + (i % 6) * dimensions.pitchX,
             -dimensions.riverRadius - Math.floor(i / 6) * dimensions.pitchY,
-            0.085,
+            TILE_BASE_Z,
           ),
         );
       if (seat !== "south")
         for (const lift of [0, 0.5]) {
           const b = projectedBox(
             dimensions.opponentScale,
-            0.61 * dimensions.opponentScale,
+            TILE_DEPTH * dimensions.opponentScale,
             (4 / 3) * dimensions.opponentScale,
             seat,
             7.058 * dimensions.opponentScale,
             -dimensions.opponentRadius,
-            0.085 + lift,
+            TILE_BASE_Z + lift,
           );
           const p = drawLabelPosition(b, seat, 42, 22);
           blocked.push({ x: p.x - 21, y: p.y, w: 42, h: 22 });

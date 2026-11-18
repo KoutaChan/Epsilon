@@ -1,3 +1,4 @@
+import { CENTER_CANVAS_SIZE } from "./tableMetrics.ts";
 import * as THREE from "three";
 import { projectPoint, screenHull } from "./projection.ts";
 import type { HandPiece, RiverPiece } from "./tiles.ts";
@@ -60,7 +61,6 @@ const SCORE_CORNERS = [
   [177, 296],
   [-177, 296],
 ] as const;
-const CANVAS = 768;
 /**
  * 卓の中央の表示にある、席ごとの点数の枠（4 隅）。並びは見ている席から反時計回り（自家・下家・対面・上家）。三人打ちでは対面の枠が無い。
  */
@@ -81,7 +81,7 @@ export function scoreTargets(
     const points = SCORE_CORNERS.map(([x, y]) => {
       const cx = x * Math.cos(angle) - y * Math.sin(angle);
       const cy = x * Math.sin(angle) + y * Math.cos(angle);
-      corner.set((cx / CANVAS) * size, (-cy / CANVAS) * size, 0);
+      corner.set((cx / CENTER_CANVAS_SIZE) * size, (-cy / CENTER_CANVAS_SIZE) * size, 0);
       const p = projectPoint(
         display.localToWorld(corner),
         camera,

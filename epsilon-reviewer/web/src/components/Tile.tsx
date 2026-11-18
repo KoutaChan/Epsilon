@@ -1,35 +1,17 @@
-import { tileAssetName } from "../features/replay/tileAssets.ts";
-import type { MessageKey, Translate } from "../language/catalog";
+import { BACK, tileAsset } from "./tileAssets.ts";
+import { HONOR_CODES, SUITS } from "@epsilon-reviewer/protocol/tiles";
+import type { Translate } from "../language/catalog";
 import { useLanguage } from "../language/LanguageProvider";
-
-/** 伏せた牌の画像の名前。文書で使う牌の記号ではない。 */
-const BACK = "back";
-const HONOR_NAMES: Readonly<Record<string, MessageKey>> = {
-  E: "tile.E",
-  S: "tile.S",
-  W: "tile.W",
-  N: "tile.N",
-  P: "tile.P",
-  F: "tile.F",
-  C: "tile.C",
-};
-const SUIT_NAMES: Readonly<Record<string, MessageKey>> = {
-  m: "tile.m",
-  p: "tile.p",
-  s: "tile.s",
-};
 
 export function tileName(tile: string, t: Translate): string {
   if (tile === BACK) return t("tile.back");
-  const honor = HONOR_NAMES[tile];
-  if (honor) return t(honor);
+  const honor = HONOR_CODES.find((code) => code === tile);
+  if (honor) return t(`tile.${honor}`);
   const red = tile.length === 3;
-  const name = t(SUIT_NAMES[tile[1]!]!, { number: red ? 5 : tile[0]! });
+  const name = t(`tile.${tile[1] as (typeof SUITS)[number]}`, {
+    number: red ? 5 : tile[0]!,
+  });
   return red ? t("tile.red", { tile: name }) : name;
-}
-
-export function tileAsset(tile: string): string {
-  return `./tiles/Regular/${tileAssetName(tile)}.svg`;
 }
 
 export function Tile({

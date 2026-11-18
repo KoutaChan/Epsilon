@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { RECORD_SIZE_LIMIT } from "../../../protocol/commands.ts";
+import { RECORD_SIZE_LIMIT } from "@epsilon-reviewer/protocol/commands";
 import { createApi } from "../../src/api/client.ts";
 import { ApiError } from "../../src/api/errors.ts";
 

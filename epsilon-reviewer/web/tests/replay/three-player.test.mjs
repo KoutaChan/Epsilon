@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { actionOf, tileCopies } from "../../../protocol/result.ts";
+import { actionOf } from "@epsilon-reviewer/protocol/result";
+import { tileCopies } from "@epsilon-reviewer/protocol/tiles";
 import { decodeResult } from "../../src/features/replay/model/decodeResult.ts";
 import { ReviewFormatError } from "../../src/features/replay/model/formatError.ts";
 import { displaySeats } from "../../src/features/replay/model/seats.ts";

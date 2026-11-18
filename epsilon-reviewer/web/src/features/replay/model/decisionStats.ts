@@ -2,7 +2,7 @@ import {
   actionOf,
   candidateProbabilities,
   type CandidateRow,
-} from "../../../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/result";
 import { gradeLoss, gradeProbability } from "./decisionGrade.ts";
 import type { ReplayModel } from "./types.ts";
 

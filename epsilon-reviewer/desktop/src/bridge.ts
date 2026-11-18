@@ -5,15 +5,15 @@ import {
   type BridgeReply,
   type DesktopSettings,
   type InvokeReply,
-} from "../../protocol/bridge.ts";
+} from "@epsilon-reviewer/protocol/bridge";
 import {
   COMMANDS,
   type CommandName,
   type RendererCommandName,
   type StdioCommandName,
-} from "../../protocol/commands.ts";
-import type { ErrorBody } from "../../protocol/errors.ts";
-import type { JobStatus } from "../../protocol/model.ts";
+} from "@epsilon-reviewer/protocol/commands";
+import type { ErrorBody } from "@epsilon-reviewer/protocol/errors";
+import type { JobStatus } from "@epsilon-reviewer/protocol/model";
 import type { Languages } from "./language.ts";
 import type { SettingsStore } from "./settings.ts";
 import { errorMessage, isFields, type Fields } from "./values.ts";

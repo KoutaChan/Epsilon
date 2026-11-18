@@ -1,9 +1,5 @@
-import type { WinDetails } from "../../../../../protocol/result.ts";
-import type {
-  EventSnapshot,
-  PlayerSnapshot,
-  Snapshot,
-} from "./types.ts";
+import type { WinDetails } from "@epsilon-reviewer/protocol/result";
+import type { EventSnapshot, PlayerSnapshot, Snapshot } from "./types.ts";
 
 export interface WinningHand {
   readonly player: PlayerSnapshot;

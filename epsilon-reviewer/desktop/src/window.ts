@@ -1,5 +1,5 @@
 import { BrowserWindow, session, type IpcMainInvokeEvent } from "electron";
-import type { ErrorBody } from "../../protocol/errors.ts";
+import type { ErrorBody } from "@epsilon-reviewer/protocol/errors";
 import { APP_HOST, APP_SCHEME } from "./appProtocol.ts";
 
 export interface WindowOptions {

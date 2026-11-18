@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
-import type { DesktopSettings } from "../../protocol/bridge.ts";
+import type { DesktopSettings } from "@epsilon-reviewer/protocol/bridge";
 import { isFields } from "./values.ts";
 
 /**

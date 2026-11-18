@@ -1,5 +1,6 @@
+import { meldFace } from "../../components/tileAssets.ts";
 import type { CSSProperties } from "react";
-import type { Meld } from "../../../../protocol/result.ts";
+import type { Meld } from "@epsilon-reviewer/protocol/result";
 import { Tile } from "../../components/Tile";
 import { actionMessageKeys } from "../../language/actionMessages";
 import { useLanguage } from "../../language/LanguageProvider";
@@ -83,34 +84,22 @@ export function WinningHandRow({ winner }: { winner: WinningHand }) {
 
 function WinningMeld({ meld }: { meld: Meld }) {
   const { t } = useLanguage();
-  const concealedKan = meld.type === "ANKAN";
-  const redTile = concealedKan
-    ? meld.tiles.find((tile) => tile.includes("r"))
-    : undefined;
   return (
     <div
       className="em-result-meld"
       role="group"
       aria-label={t(actionMessageKeys[meld.type])}
     >
-      {meld.tiles.map((tile, index) => {
+      {meld.tiles.map((_, index) => {
         if (meld.type === "KAKAN" && index === meld.addedIndex) return null;
         const sideways = index === meld.calledIndex;
-        // 暗槓は両端の 2 枚を伏せる。赤 5 を含むときは、2 枚目を赤 5 にして見せる。
-        const value = concealedKan
-          ? index === 0 || index === meld.tiles.length - 1
-            ? "back"
-            : index === 1 && redTile
-              ? redTile
-              : tile.replace("r", "")
-          : tile;
         return (
           <span
             className="em-result-meld-tile"
             data-sideways={sideways}
             key={index}
           >
-            <Tile tile={value} />
+            <Tile tile={meldFace(meld, index)} />
             {sideways && meld.type === "KAKAN" && (
               <span className="em-result-added-tile">
                 <Tile tile={meld.tiles[meld.addedIndex]!} />

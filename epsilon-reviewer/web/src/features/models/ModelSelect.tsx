@@ -2,7 +2,7 @@ import { ChevronDown, Cpu, RefreshCw } from "lucide-react";
 import { errorKey } from "../../language/catalog";
 import { modelKey, modelLabel } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
-import type { CatalogModel } from "../../../../protocol/model.ts";
+import type { CatalogModel } from "@epsilon-reviewer/protocol/model";
 import type { Models } from "./useModels";
 
 /** その人数（seats）の牌譜を解析するモデルを選ぶ欄。使えないモデルと、その人数の牌譜を読めないモデルは選べない。 */

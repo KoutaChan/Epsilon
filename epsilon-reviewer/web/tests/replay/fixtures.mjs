@@ -1,7 +1,6 @@
 // テスト用の解析結果を組み立てる。局面は局の始めに全体を書き、その後は手順ごとに Splice の差分で書く。
 
-const HONORS = ["E", "S", "W", "N", "P", "F", "C"];
-const RED_FIVES = ["5mr", "5pr", "5sr"];
+import { HONOR_CODES as HONORS, RED_FIVES } from "@epsilon-reviewer/protocol/tiles";
 
 export function player(fields = {}) {
   return {

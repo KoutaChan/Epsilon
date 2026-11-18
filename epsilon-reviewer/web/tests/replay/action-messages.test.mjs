@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import { ACTION_TYPES } from "../../../protocol/result.ts";
+import { ACTION_TYPES } from "@epsilon-reviewer/protocol/result";
 import { actionMessageKeys } from "../../src/language/actionMessages.ts";
 
 const languageDirectory = new URL("../../../language/", import.meta.url);

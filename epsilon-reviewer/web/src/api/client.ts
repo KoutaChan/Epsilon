@@ -1,4 +1,4 @@
-import { RECORD_SIZE_LIMIT } from "../../../protocol/commands.ts";
+import { RECORD_SIZE_LIMIT } from "@epsilon-reviewer/protocol/commands";
 import type {
   AnalysisStarted,
   HistoryList,
@@ -7,9 +7,9 @@ import type {
   ModelCatalog,
   ModelKey,
   ShareLink,
-} from "../../../protocol/model.ts";
-import { resultFileName } from "../../../protocol/result.ts";
-import type { ResultDocument } from "../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/model";
+import { resultFileName } from "@epsilon-reviewer/protocol/result";
+import type { ResultDocument } from "@epsilon-reviewer/protocol/result";
 import type { ScenarioClient } from "../review-entry.ts";
 import { ApiError } from "./errors.ts";
 import type { DesktopTransport, Transport } from "./transport.ts";

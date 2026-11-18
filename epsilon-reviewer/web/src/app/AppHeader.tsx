@@ -1,5 +1,5 @@
 import { Info, Settings } from "lucide-react";
-import { tileAsset } from "../components/Tile";
+import { tileAsset } from "../components/tileAssets.ts";
 import { LanguageSelect } from "../language/LanguageSelect";
 import { useLanguage } from "../language/LanguageProvider";
 

@@ -2,7 +2,7 @@ import type {
   CatalogModel,
   ModelCatalog,
   ModelKey,
-} from "../../../../protocol/model.ts";
+} from "@epsilon-reviewer/protocol/model";
 import { modelKey } from "../../language/format.ts";
 
 /** カタログから、使えるモデルをキー（modelKey の値）で探す。使えるモデルが見つからなければ undefined を返す。 */

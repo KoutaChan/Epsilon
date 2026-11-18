@@ -1,3 +1,4 @@
+import { BACK } from "../../../components/tileAssets.ts";
 import type { MessageKey } from "../../../language/catalog.ts";
 import type { ReplayStage } from "./timeline.ts";
 import type { EventSnapshot, PlayerSnapshot, Snapshot } from "./types.ts";
@@ -47,7 +48,7 @@ export function describeReplayEvent(
       return {
         player,
         action: "replay.draw",
-        tiles: [reveal || step.actor === seat ? player!.draw! : "back"],
+        tiles: [reveal || step.actor === seat ? player!.draw! : BACK],
       };
     case "dahai": {
       const discard = player!.river.at(-1)!;

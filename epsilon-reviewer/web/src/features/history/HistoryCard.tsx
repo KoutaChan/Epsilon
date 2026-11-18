@@ -1,5 +1,5 @@
 import { FolderOpen } from "lucide-react";
-import type { HistoryEntry } from "../../../../protocol/model.ts";
+import type { HistoryEntry } from "@epsilon-reviewer/protocol/model";
 import {
   dateLabel,
   modelLabel,

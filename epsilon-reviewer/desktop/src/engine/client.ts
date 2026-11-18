@@ -1,7 +1,7 @@
 import type { Readable, Writable } from "node:stream";
-import type { InvokeReply } from "../../../protocol/bridge.ts";
-import type { StdioCommandName } from "../../../protocol/commands.ts";
-import { isErrorCode, type ErrorBody } from "../../../protocol/errors.ts";
+import type { InvokeReply } from "@epsilon-reviewer/protocol/bridge";
+import type { StdioCommandName } from "@epsilon-reviewer/protocol/commands";
+import { isErrorCode, type ErrorBody } from "@epsilon-reviewer/protocol/errors";
 import { errorMessage, isFields, type Fields } from "../values.ts";
 import { encodeFrame, FrameDecoder, type Frame } from "./frames.ts";
 

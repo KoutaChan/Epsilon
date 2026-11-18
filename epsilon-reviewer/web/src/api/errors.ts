@@ -1,4 +1,4 @@
-import type { ErrorCode } from "../../../protocol/errors.ts";
+import type { ErrorCode } from "@epsilon-reviewer/protocol/errors";
 
 /** 操作の失敗。画面にはエラーコードに対応する文言（errors.<code>）だけを出す。message は原因を調べるための英語のメッセージ。 */
 export class ApiError extends Error {

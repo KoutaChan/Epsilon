@@ -2,14 +2,14 @@ import type {
   BridgeReply,
   InvokeReply,
   ReviewerBridge,
-} from "../../../protocol/bridge.ts";
-import { COMMANDS } from "../../../protocol/commands.ts";
+} from "@epsilon-reviewer/protocol/bridge";
+import { COMMANDS } from "@epsilon-reviewer/protocol/commands";
 import type {
   CommandName,
   CommandRequest,
   CommandResponse,
   RendererCommandName,
-} from "../../../protocol/commands.ts";
+} from "@epsilon-reviewer/protocol/commands";
 import { ApiError } from "./errors.ts";
 import type { CallOptions, DesktopTransport } from "./transport.ts";
 

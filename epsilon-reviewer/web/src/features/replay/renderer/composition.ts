@@ -1,3 +1,4 @@
+import { TILE_BASE_Z, TILE_DEPTH, LANDSCAPE_RIVER_SCALE, SURFACE_REFERENCE_RADIUS, DESKTOP_REFERENCE_WIDTH } from "./tableMetrics.ts";
 import * as THREE from "three";
 import {
   local,
@@ -7,7 +8,7 @@ import {
 } from "./projection.ts";
 import type { TableScene } from "./scene.ts";
 import { PLAYER_ROW_CENTER, PLAYER_ROW_WIDTH } from "./tileLayout.ts";
-import type { Layout } from "./types.ts";
+import type { Layout, SeatSlot } from "./types.ts";
 
 /** 卓を画面に収めた後の各部の位置。それぞれ .em-device の CSS 変数（px）に書く。 */
 export interface Anchors {
@@ -22,7 +23,7 @@ export interface Anchors {
 }
 
 export interface Composition {
-  readonly cameraEnvelope: THREE.Group;
+  readonly cameraEnvelope: Readonly<Record<SeatSlot, THREE.Mesh>>;
   readonly handEnvelope: THREE.Mesh;
   readonly rowWidth: number;
   /** 卓と手牌のカメラを画面に収め、各部の位置を返す。画面の大きさ・配置・操作バーの高さが前と同じなら、何もせず前の位置を返す。 */
@@ -57,20 +58,17 @@ export function createComposition(
     playbackHeight: number;
     anchors: Anchors;
   } | null = null;
-  const cameraEnvelope = new THREE.Group();
-  // カメラに収める範囲は局面によらず決めておく。河・手牌・加槓牌の奥行きと、ツモ牌の高さが入る箱を先に置く。
-  for (let i = 0; i < 4; i++)
-    cameraEnvelope.add(
-      new THREE.Mesh(
-        keep(new THREE.BoxGeometry(1, 1, 1)),
-        tableScene.materials.black,
-      ),
-    );
+  // 各席の河・手牌・加槓牌・ツモ牌を収める箱。
+  const geometry = keep(new THREE.BoxGeometry(1, 1, 1));
+  const envelope = () => new THREE.Mesh(geometry, tableScene.materials.black);
+  const cameraEnvelope = {
+    south: envelope(), east: envelope(), north: envelope(), west: envelope(),
+  };
   const handEnvelope = new THREE.Mesh(
     keep(new THREE.BoxGeometry(rowWidth, 1.78, 1.48)),
     tableScene.materials.black,
   );
-  handEnvelope.position.set(PLAYER_ROW_CENTER, -0.2, 0.74 + 0.085);
+  handEnvelope.position.set(PLAYER_ROW_CENTER, -0.2, 0.74 + TILE_BASE_Z);
   function positionProjection(
     cam: THREE.PerspectiveCamera,
     b: Bounds,
@@ -93,7 +91,7 @@ export function createComposition(
     landscapeFrame.visible = mode !== "portrait";
     // 手牌と副露を一列に並べても卓の縁にかからないよう、牌の列の幅に合わせて卓面を広げる。
     const tableExpansion =
-      tableDimensions(mode, rowWidth).opponentRadius / 13.048233333333334;
+      tableDimensions(mode, rowWidth).opponentRadius / SURFACE_REFERENCE_RADIUS;
     landscapeFrame.scale.set(tableExpansion, tableExpansion, 1);
     feltSurface.position.y = -6 * tableExpansion;
     feltSurface.scale.set(
@@ -109,8 +107,8 @@ export function createComposition(
       centerScale = dimensions.centerWidth / 5.65;
     centerGroup.scale.set(centerScale, centerScale, 1);
     const s = dimensions.opponentScale,
-      riverDepth = 0.61 * (mode === "landscape" ? 1.4 : 1),
-      front = cameraEnvelope.children[0]!;
+      riverDepth = TILE_DEPTH * (mode === "landscape" ? LANDSCAPE_RIVER_SCALE : 1),
+      front = cameraEnvelope.south;
     front.scale.set(
       5 * dimensions.pitchX + dimensions.riverWidth,
       2 * dimensions.pitchY + (4 / 3) * dimensions.riverWidth,
@@ -119,15 +117,15 @@ export function createComposition(
     front.position.set(
       dimensions.riverStart + 2.5 * dimensions.pitchX,
       -dimensions.riverRadius - dimensions.pitchY,
-      0.085 + riverDepth / 2,
+      TILE_BASE_Z + riverDepth / 2,
     );
-    (["north", "west", "east"] as const).forEach((seat, i) => {
-      const m = cameraEnvelope.children[i + 1]!,
+    (["north", "west", "east"] as const).forEach((seat) => {
+      const m = cameraEnvelope[seat],
         p = local(seat, PLAYER_ROW_CENTER * s, -dimensions.opponentRadius),
         depth = (4 / 3) * s + 0.5;
       m.scale.set(rowWidth * s, (4 / 3) * s, depth);
       m.rotation.z = p.angle;
-      m.position.set(p.x, p.y, 0.085 + depth / 2);
+      m.position.set(p.x, p.y, TILE_BASE_Z + depth / 2);
     });
     const elevation =
       ((mode === "portrait" ? 68 : mode === "landscape" ? 44 : 48) * Math.PI) /
@@ -146,7 +144,7 @@ export function createComposition(
         ? 98
         : mode === "landscape"
           ? 28
-          : Math.max(28, (26 * width) / 1440 + 8);
+          : Math.max(28, (26 * width) / DESKTOP_REFERENCE_WIDTH + 8);
     const bottomSafe =
       mode === "portrait" ? 300 : mode === "landscape" ? 26 : 40;
     const between =
@@ -155,7 +153,7 @@ export function createComposition(
         : playbackHeight + (mode === "landscape" ? 12 : 16);
     const availableHandWidth = width - (mode === "desktop" ? width * 0.1 : 24),
       nearRiverY = -dimensions.riverRadius - 2 * dimensions.pitchY,
-      riverFaceZ = 0.085 + 0.61 * (mode === "landscape" ? 1.4 : 1);
+      riverFaceZ = TILE_BASE_Z + TILE_DEPTH * (mode === "landscape" ? LANDSCAPE_RIVER_SCALE : 1);
     const setTable = () => {
       camera.position.set(
         0,
@@ -165,7 +163,7 @@ export function createComposition(
       camera.lookAt(0, -1, 0);
       camera.updateMatrixWorld();
       camera.updateProjectionMatrix();
-      return pointBounds(cameraEnvelope.children, camera);
+      return pointBounds(Object.values(cameraEnvelope), camera);
     };
     const setHand = () => {
       handCamera.position.set(
@@ -202,7 +200,7 @@ export function createComposition(
         hb = setHand();
       }
       if (mode === "landscape") {
-        const west = pointBounds([cameraEnvelope.children[2]!], camera);
+        const west = pointBounds([cameraEnvelope.west], camera);
         const centeredLeft =
           ((west.minX + 1 - (b.minX + b.maxX) / 2) * width) / 2;
         tableShift = Math.min(6, centeredLeft - 156);

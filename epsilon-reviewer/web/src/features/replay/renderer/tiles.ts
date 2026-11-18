@@ -1,5 +1,7 @@
+import { TILE_BASE_Z, TILE_DEPTH, LANDSCAPE_RIVER_SCALE } from "./tableMetrics.ts";
+import { BACK, meldFace } from "../../../components/tileAssets.ts";
 import * as THREE from "three";
-import type { PlayerState } from "../../../../../protocol/result.ts";
+import type { PlayerState } from "@epsilon-reviewer/protocol/result";
 import { local, tableDimensions, type TableDimensions } from "./projection.ts";
 import type { TableScene } from "./scene.ts";
 import type { TileTextures } from "./textures.ts";
@@ -10,7 +12,7 @@ import {
   nukiTilePosition,
 } from "./tileLayout.ts";
 import type { Layout, SeatSlot, TableFrame } from "./types.ts";
-import { displaySeats } from "../model/seats.ts";
+import { displaySeats, SEAT_SLOTS } from "../model/seats.ts";
 
 /** 牌 1 枚の Group に付ける userData。 */
 export interface TileData {
@@ -74,7 +76,6 @@ interface SeatTiles {
   readonly hand: readonly HandPiece[];
 }
 
-const SEATS = ["south", "east", "north", "west"] as const;
 
 export const tileData = (group: THREE.Object3D) => group.userData as TileData;
 
@@ -144,7 +145,7 @@ export function createTileLayer(
       value,
       x = 0,
       y = 0,
-      z = 0.085,
+      z = TILE_BASE_Z,
       angle = 0,
       standing = false,
       river = false,
@@ -155,10 +156,10 @@ export function createTileLayer(
     }: TileOptions,
     objects: THREE.Object3D[],
   ) {
-    const back = value === "back";
+    const back = value === BACK;
     const group = new THREE.Group(),
       body = new THREE.Group();
-    const depth = 0.61,
+    const depth = TILE_DEPTH,
       split = back ? 0.43 : 0.17;
     group.add(body);
     mesh(
@@ -256,7 +257,7 @@ export function createTileLayer(
     dimensions: TableDimensions,
   ): SeatTiles {
     const { event, reveal, labels, animateDraw } = frame;
-    const seat = SEATS[relativeSeat]!,
+    const seat = SEAT_SLOTS[relativeSeat]!,
       foreground = relativeSeat === 0;
     const objects: THREE.Object3D[] = [];
     const river: RiverPiece[] = [];
@@ -273,7 +274,7 @@ export function createTileLayer(
       const group = tile(
         {
           value: concealed
-            ? "back"
+            ? BACK
             : drawnTile
               ? player.draw!
               : player.hand[i]!,
@@ -336,7 +337,7 @@ export function createTileLayer(
       group.scale.set(
         dimensions.riverWidth,
         dimensions.riverWidth,
-        landscape ? 1.4 : 1,
+        landscape ? LANDSCAPE_RIVER_SCALE : 1,
       );
       // もしもの当たり判定は、絶対の席と河の中の位置（鳴かれた牌も数える）で牌を指す。
       river.push({ group, seat: seatIndex, index: riverIndex });
@@ -371,7 +372,7 @@ export function createTileLayer(
       group.scale.set(
         dimensions.riverWidth,
         dimensions.riverWidth,
-        landscape ? 1.4 : 1,
+        landscape ? LANDSCAPE_RIVER_SCALE : 1,
       );
       if (landscape) {
         const contact = new THREE.Mesh(contactGeometry, contactMaterial);
@@ -394,11 +395,7 @@ export function createTileLayer(
         : local(seat, x * scale, -dimensions.opponentRadius + y * scale);
       const group = tile(
         {
-          value:
-            meld.type === "ANKAN" &&
-            (index === 0 || index === meld.tiles.length - 1)
-              ? "back"
-              : meld.tiles[index]!,
+          value: meldFace(meld, index),
           ...position,
           angle: position.angle + (sideways ? Math.PI / 2 : 0),
           seat,
@@ -437,8 +434,7 @@ export function createTileLayer(
     let arrival: THREE.Group | null = null;
     const seatCount = snapshot.players.length;
     const positions = displaySeats(seatCount);
-    for (let relativeSeat = 0; relativeSeat < 4; relativeSeat++) {
-      const offset = positions[relativeSeat];
+    for (const [relativeSeat, offset] of positions.entries()) {
       if (offset === null) {
         if (seats[relativeSeat]) remove(seats[relativeSeat]!);
         seats[relativeSeat] = null;

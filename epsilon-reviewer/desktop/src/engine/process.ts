@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, mkdirSync, openSync, statSync } from "node:fs";
 import path from "node:path";
-import type { InvokeReply } from "../../../protocol/bridge.ts";
-import type { StdioCommandName } from "../../../protocol/commands.ts";
-import type { ErrorBody } from "../../../protocol/errors.ts";
-import { ENGINE_ENV } from "../../../protocol/stdio.ts";
+import type { InvokeReply } from "@epsilon-reviewer/protocol/bridge";
+import type { StdioCommandName } from "@epsilon-reviewer/protocol/commands";
+import type { ErrorBody } from "@epsilon-reviewer/protocol/errors";
+import { ENGINE_ENV } from "@epsilon-reviewer/protocol/stdio";
 import { ENGINE_STOPPED, EngineClient } from "./client.ts";
 
 /**

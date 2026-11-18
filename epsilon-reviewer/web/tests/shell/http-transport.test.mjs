@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COMMANDS } from "../../../protocol/commands.ts";
+import { COMMANDS } from "@epsilon-reviewer/protocol/commands";
 import { ApiError } from "../../src/api/errors.ts";
 import { httpTransport } from "../../src/api/httpTransport.ts";
 

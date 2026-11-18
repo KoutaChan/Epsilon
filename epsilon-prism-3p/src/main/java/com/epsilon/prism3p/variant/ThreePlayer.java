@@ -1,5 +1,7 @@
 package com.epsilon.prism3p.variant;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import com.epsilon.agent.app.Command;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.eval.OpponentRules;
@@ -9,7 +11,6 @@ import com.epsilon.prism.learn.TargetWriter;
 import com.epsilon.prism.model.AuxiliaryLoss;
 import com.epsilon.prism.variant.PrismVariant;
 import com.epsilon.prism3p.eval.ThreePlayerOpponents;
-import com.epsilon.prism3p.input.InputSchema;
 import java.util.List;
 
 /** 天鳳の三人打ちの PRISM のモジュール。三人打ちだけのコマンドは持たない。 */
@@ -24,7 +25,7 @@ public final class ThreePlayer implements PrismVariant {
 
   @Override
   public InputFormat input() {
-    return InputSchema.FORMAT;
+    return THREE_PLAYER;
   }
 
   @Override

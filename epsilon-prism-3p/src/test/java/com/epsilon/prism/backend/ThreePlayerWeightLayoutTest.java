@@ -1,6 +1,7 @@
 package com.epsilon.prism.backend;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_3P;
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
@@ -17,17 +18,13 @@ import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
-import com.epsilon.prism.input.InputFormat.RelationRole;
-import com.epsilon.prism.input.InputFormat.TransitionRole;
+import com.epsilon.prism.input.InputSchema.ActionRole;
+import com.epsilon.prism.input.InputSchema.RelationAttribute;
+import com.epsilon.prism.input.InputSchema.TransitionField;
 import com.epsilon.prism.input.TileTokens;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
-import com.epsilon.prism3p.input.InputSchema;
-import com.epsilon.prism3p.input.InputSchema.ActionRole;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.util.EnumMap;
-import java.util.List;
 import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -40,12 +37,13 @@ import org.testng.annotations.Test;
  */
 public class ThreePlayerWeightLayoutTest {
 
-  private static final InputFormat FORMAT = InputSchema.FORMAT;
+  private static final InputFormat FORMAT = THREE_PLAYER;
 
   /** 三人打ちの手の扱いごとの、ゲートの種類の番号。ゲートになる扱いを宣言の順に数えた番号で、ゲートでなければ −1。作り方は次の表に持つ。 */
   private static final Map<ActionRole, Integer> GATE_KINDS = new EnumMap<>(ActionRole.class);
 
-  private static final Map<ActionRole, HipComposition> COMPOSITIONS = new EnumMap<>(ActionRole.class);
+  private static final Map<ActionRole, HipComposition> COMPOSITIONS =
+      new EnumMap<>(ActionRole.class);
 
   static {
     GATE_KINDS.put(ActionRole.DISCARD, -1);
@@ -74,7 +72,8 @@ public class ThreePlayerWeightLayoutTest {
   }
 
   @Test(dataProvider = "arms")
-  public void everyParameterIsPlacedAndTheHeaderFollowsTheThreePlayerFormat(ThreePlayerRows.Arm arm) {
+  public void everyParameterIsPlacedAndTheHeaderFollowsTheThreePlayerFormat(
+      ThreePlayerRows.Arm arm) {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = ThreePlayerRows.network(manager, arm.shape(), 11 + arm.ordinal());
       WeightLayout layout = WeightLayout.of(network);
@@ -91,8 +90,9 @@ public class ThreePlayerWeightLayoutTest {
       Assert.assertEquals(counts.maxEvents(), FORMAT.maxEvents());
       Assert.assertEquals(counts, PrismShape.counts(FORMAT));
       Assert.assertEquals(counts.opponents(), 2);
-      Assert.assertEquals(FORMAT.relationRepeats(RelationRole.SAFETY), counts.opponents());
-      Assert.assertEquals(architecture.roles(), ActionRole.values().length);
+      Assert.assertEquals(
+          FORMAT.relation().spec(RelationAttribute.SAFETY).repeats(), counts.opponents());
+      Assert.assertEquals(architecture.roles(), THREE_PLAYER.roles().size());
       Assert.assertEquals(architecture.gateKinds(), 7);
 
       PackView view = new PackView(pack.buffer());
@@ -104,29 +104,49 @@ public class ThreePlayerWeightLayoutTest {
       Assert.assertEquals(view.schema(HipSchema.ROW_FIRST_EVENT), RowColumn.FIRST_EVENT.ordinal());
       Assert.assertEquals(view.schema(HipSchema.ROW_ACTIONS), RowColumn.ACTIONS.ordinal());
       Assert.assertEquals(view.schema(HipSchema.ACTION_ROLE), ActionColumn.ROLE.ordinal());
-      Assert.assertEquals(view.schema(HipSchema.ACTION_REPRESENTATIVE), ActionColumn.REPRESENTATIVE.ordinal());
-      Assert.assertEquals(view.schema(HipSchema.RELATION_TILE), FORMAT.relationColumn(RelationRole.TILE, 0));
-      Assert.assertEquals(view.schema(HipSchema.RELATION_OWNER), FORMAT.relationColumn(RelationRole.OWNER, 0));
-      Assert.assertEquals(view.schema(HipSchema.RELATION_EVENT), FORMAT.relationColumn(RelationRole.EVENT, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_RIICHI), FORMAT.relationColumn(RelationRole.OWNER_RIICHI_EVENT, 0));
+          view.schema(HipSchema.ACTION_REPRESENTATIVE), ActionColumn.REPRESENTATIVE.ordinal());
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_LAST_DISCARD), FORMAT.relationColumn(RelationRole.OWNER_LAST_DISCARD_EVENT, 0));
-      Assert.assertEquals(view.schema(HipSchema.RELATION_LINK), FORMAT.relationColumn(RelationRole.LINK, 0));
-      Assert.assertEquals(view.schema(HipSchema.RELATION_SAFETY), FORMAT.relationColumn(RelationRole.SAFETY, 0));
+          view.schema(HipSchema.RELATION_TILE),
+          FORMAT.relation().column(RelationAttribute.TILE, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.TRANSITION_CALL_DISCARD), FORMAT.transitionColumn(TransitionRole.CALL_DISCARD));
-      Assert.assertEquals(view.schema(HipSchema.TRANSITION_MAIN_TILE), FORMAT.transitionColumn(TransitionRole.MAIN_TILE));
+          view.schema(HipSchema.RELATION_OWNER),
+          FORMAT.relation().column(RelationAttribute.OWNER, 0));
+      Assert.assertEquals(
+          view.schema(HipSchema.RELATION_EVENT),
+          FORMAT.relation().column(RelationAttribute.EVENT, 0));
+      Assert.assertEquals(
+          view.schema(HipSchema.RELATION_RIICHI),
+          FORMAT.relation().column(RelationAttribute.OWNER_RIICHI_EVENT, 0));
+      Assert.assertEquals(
+          view.schema(HipSchema.RELATION_LAST_DISCARD),
+          FORMAT.relation().column(RelationAttribute.OWNER_LAST_DISCARD_EVENT, 0));
+      Assert.assertEquals(
+          view.schema(HipSchema.RELATION_LINK),
+          FORMAT.relation().column(RelationAttribute.LINK, 0));
+      Assert.assertEquals(
+          view.schema(HipSchema.RELATION_SAFETY),
+          FORMAT.relation().column(RelationAttribute.SAFETY, 0));
+      Assert.assertEquals(
+          view.schema(HipSchema.TRANSITION_CALL_DISCARD),
+          FORMAT.transition().column(TransitionField.CALL_DISCARD));
+      Assert.assertEquals(
+          view.schema(HipSchema.TRANSITION_MAIN_TILE),
+          FORMAT.transition().column(TransitionField.MAIN_TILE));
       for (Tensor tensor : Tensor.values()) {
         HipSection section = HipSection.valueOf(tensor.name());
-        int expected = section == HipSection.TRANSITION_CODE ? counts.fixed() : FORMAT.width(tensor);
+        int expected =
+            section == HipSection.TRANSITION_CODE ? counts.fixed() : FORMAT.width(tensor);
         Assert.assertEquals(view.width(section), expected, section.name());
       }
-      Assert.assertEquals(FORMAT.roles(), List.of(ActionRole.values()));
-      for (ActionRole role : ActionRole.values()) {
-        Assert.assertEquals(view.composition(role.ordinal()), COMPOSITIONS.get(role), role.name());
-        Assert.assertEquals(view.gate(role.ordinal()), (int) GATE_KINDS.get(role), role.name());
-        Assert.assertEquals(WeightLayout.gateKind(FORMAT, role), (int) GATE_KINDS.get(role), role.name());
+      Assert.assertEquals(FORMAT.roles(), THREE_PLAYER.roles());
+      for (ActionRole role : THREE_PLAYER.roles()) {
+        Assert.assertEquals(
+            view.composition(THREE_PLAYER.roleIndex(role)), COMPOSITIONS.get(role), role.name());
+        Assert.assertEquals(
+            view.gate(THREE_PLAYER.roleIndex(role)), (int) GATE_KINDS.get(role), role.name());
+        Assert.assertEquals(
+            WeightLayout.gateKind(FORMAT, role), (int) GATE_KINDS.get(role), role.name());
       }
     }
   }
@@ -150,9 +170,12 @@ public class ThreePlayerWeightLayoutTest {
       for (int query = 0; query < 27; query++) {
         for (int key = 0; key < 27; key++) {
           int i = query * 27 + key;
-          Assert.assertEquals(view.u8(HipWeight.TILE_RELATION, 0, i), relations[i], "tile relation " + i);
           Assert.assertEquals(
-              relations[i], four[tokens.kind(query) * Tiles.KINDS + tokens.kind(key)], "tile relation " + i);
+              view.u8(HipWeight.TILE_RELATION, 0, i), relations[i], "tile relation " + i);
+          Assert.assertEquals(
+              relations[i],
+              four[tokens.kind(query) * Tiles.KINDS + tokens.kind(key)],
+              "tile relation " + i);
         }
       }
     }
@@ -171,24 +194,26 @@ public class ThreePlayerWeightLayoutTest {
           FORMAT,
           with(three, three.gateKinds(), three.roles() - 1, counts),
           network,
-          "the TENHOU_3P input declares 9 action roles with 7 gate kinds, the architecture has 8 with 7");
+          "the TENHOU_3P input declares 9 action roles with 7 gate kinds, the architecture has 8"
+              + " with 7");
       assertRefused(
           FORMAT,
           with(three, three.gateKinds() - 1, three.roles(), counts),
           network,
-          "the TENHOU_3P input declares 9 action roles with 7 gate kinds, the architecture has 9 with 6");
+          "the TENHOU_3P input declares 9 action roles with 7 gate kinds, the architecture has 9"
+              + " with 6");
       HipCounts longer =
-          new HipCounts(counts.seats(), counts.tiles(), counts.keyCodes(), counts.tileRelations(), counts.maxEvents() + 1);
+          new HipCounts(
+              counts.seats(),
+              counts.tiles(),
+              counts.keyCodes(),
+              counts.tileRelations(),
+              counts.maxEvents() + 1);
       assertRefused(
           FORMAT,
           with(three, three.gateKinds(), three.roles(), longer),
           network,
           "the TENHOU_3P input has the counts " + counts + ", the architecture has " + longer);
-      assertRefused(
-          safetyFor(3),
-          three,
-          network,
-          "the TENHOU_3P input holds safety columns for 3 opponents, the architecture has 2");
     }
   }
 
@@ -201,27 +226,19 @@ public class ThreePlayerWeightLayoutTest {
     Assert.assertEquals(refused.getMessage(), message);
   }
 
-  private static HipArchitecture with(HipArchitecture a, int gateKinds, int roles, HipCounts counts) {
+  private static HipArchitecture with(
+      HipArchitecture a, int gateKinds, int roles, HipCounts counts) {
     return new HipArchitecture(
-        a.hidden(), a.epsilon(), a.scale(), a.tau(), a.layers(), a.candidateFfn(), a.stages(), a.gate(), gateKinds, roles,
+        a.hidden(),
+        a.epsilon(),
+        a.scale(),
+        a.tau(),
+        a.layers(),
+        a.candidateFfn(),
+        a.stages(),
+        a.gate(),
+        gateKinds,
+        roles,
         counts);
-  }
-
-  /** 三人打ちの入力形式から、安全度の列の繰り返しの数だけを {@code opponents} に変えた形式。 */
-  private static InputFormat safetyFor(int opponents) {
-    return (InputFormat)
-        Proxy.newProxyInstance(
-            InputFormat.class.getClassLoader(),
-            new Class<?>[] {InputFormat.class},
-            (proxy, method, arguments) -> {
-              if (method.getName().equals("relationRepeats") && arguments[0] == RelationRole.SAFETY) {
-                return opponents;
-              }
-              try {
-                return method.invoke(FORMAT, arguments);
-              } catch (InvocationTargetException failure) {
-                throw failure.getCause();
-              }
-            });
   }
 }

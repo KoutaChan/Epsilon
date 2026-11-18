@@ -1,5 +1,7 @@
 package com.epsilon.prism.learn;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDManager;
@@ -11,7 +13,6 @@ import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism3p.input.InputSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -55,7 +56,7 @@ public class ThreePlayerAnchorGpuTest {
     HostBatch batch = ThreePlayerRows.encode(rows);
     HostInputs inputs = new HostInputs(batch);
     BatchPlan plan = batch.plan();
-    BatchPlan.Capacity capacity = StepFeed.capacity(InputSchema.FORMAT, FitPlan.TOKEN_BUDGET);
+    BatchPlan.Capacity capacity = StepFeed.capacity(THREE_PLAYER, FitPlan.TOKEN_BUDGET);
     Device gpu = Device.gpu(0);
     PtEngine engine = (PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME);
     List<String> failures = new ArrayList<>();
@@ -68,22 +69,27 @@ public class ThreePlayerAnchorGpuTest {
         Path directory = root.resolve("model");
         try {
           try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-            ThreePlayerRows.network(manager, arm.shape(), 91 + 2L * seed + arm.ordinal()).save(directory);
+            ThreePlayerRows.network(manager, arm.shape(), 91 + 2L * seed + arm.ordinal())
+                .save(directory);
           }
           float[] hip;
           float[] eager;
           float[] truth;
           try (PtStream stream = engine.newStream(gpu);
               Anchor fast = Anchor.open(directory, InferencePath.HIP, gpu, stream, null, capacity);
-              Anchor slow = Anchor.open(directory, InferencePath.EAGER, gpu, stream, null, capacity);
-              Anchor exact = Anchor.open(directory, InferencePath.EAGER, Device.cpu(), null, null, capacity)) {
+              Anchor slow =
+                  Anchor.open(directory, InferencePath.EAGER, gpu, stream, null, capacity);
+              Anchor exact =
+                  Anchor.open(directory, InferencePath.EAGER, Device.cpu(), null, null, capacity)) {
             Assert.assertTrue(fast instanceof Anchor.Hip, arm.label() + ": HIP path on the GPU");
-            Assert.assertTrue(slow instanceof Anchor.Eager, arm.label() + ": eager path on request");
+            Assert.assertTrue(
+                slow instanceof Anchor.Eager, arm.label() + ": eager path on request");
             hip = ordered(fast.scores(inputs), plan);
             eager = ordered(slow.scores(inputs), plan);
             truth = ordered(exact.scores(inputs), plan);
           }
-          Assert.assertTrue(squared(truth) > 0, arm.label() + ": anchor scores must be non-trivial");
+          Assert.assertTrue(
+              squared(truth) > 0, arm.label() + ": anchor scores must be non-trivial");
           double pair = relative(eager, hip);
           double hipError = relative(truth, hip);
           double eagerError = relative(truth, eager);
@@ -91,8 +97,9 @@ public class ThreePlayerAnchorGpuTest {
           hipRounding += hipError / SEEDS;
           eagerRounding += eagerError / SEEDS;
           log.info(
-              "PRISM-3P-ANCHOR {} seed={} {} scores in {} rows: HIP vs eager BF16 relative RMS {}, from CPU FP32 HIP {}"
-                  + " eager BF16 {}, argmax agreement HIP vs eager BF16 {} HIP vs FP32 {} eager BF16 vs FP32 {}",
+              "PRISM-3P-ANCHOR {} seed={} {} scores in {} rows: HIP vs eager BF16 relative RMS {},"
+                  + " from CPU FP32 HIP {} eager BF16 {}, argmax agreement HIP vs eager BF16 {} HIP"
+                  + " vs FP32 {} eager BF16 vs FP32 {}",
               arm.label(),
               seed,
               hip.length,
@@ -108,7 +115,8 @@ public class ThreePlayerAnchorGpuTest {
         }
       }
       log.info(
-          "PRISM-3P-ANCHOR-SUMMARY {} seeds={} mean HIP vs eager BF16 {} (limit {}), mean from CPU FP32 HIP {} eager BF16 {}",
+          "PRISM-3P-ANCHOR-SUMMARY {} seeds={} mean HIP vs eager BF16 {} (limit {}), mean from CPU"
+              + " FP32 HIP {} eager BF16 {}",
           arm.label(),
           SEEDS,
           String.format(Locale.ROOT, "%.3e", between),
@@ -120,7 +128,12 @@ public class ThreePlayerAnchorGpuTest {
       }
       if (!(hipRounding <= ROUNDING * eagerRounding)) {
         failures.add(
-            arm.label() + " HIP is further from FP32 (" + hipRounding + ") than eager BF16 (" + eagerRounding + ")");
+            arm.label()
+                + " HIP is further from FP32 ("
+                + hipRounding
+                + ") than eager BF16 ("
+                + eagerRounding
+                + ")");
       }
     }
     Assert.assertEquals(failures, List.of());
@@ -131,7 +144,8 @@ public class ThreePlayerAnchorGpuTest {
     Assert.assertEquals(scores.starts().length, plan.rows());
     float[] out = new float[plan.firstAction(plan.rows() - 1) + plan.actions(plan.rows() - 1)];
     for (int row = 0; row < plan.rows(); row++) {
-      System.arraycopy(scores.values(), scores.starts()[row], out, plan.firstAction(row), plan.actions(row));
+      System.arraycopy(
+          scores.values(), scores.starts()[row], out, plan.firstAction(row), plan.actions(row));
     }
     return out;
   }

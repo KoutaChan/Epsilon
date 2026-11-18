@@ -1,5 +1,7 @@
 package com.epsilon.prism.eval;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
 import com.epsilon.agent.app.Exit;
@@ -20,7 +22,6 @@ import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism3p.input.InputSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -51,7 +52,9 @@ public class ThreePlayerHipDuelTest {
 
   @DataProvider
   public Object[][] shapes() {
-    return new Object[][] {{"v2", PrismShape.standard(2)}, {"v3", ShapeArm.V3.shape(ShapeArm.V3_DEPTH)}};
+    return new Object[][] {
+      {"v2", PrismShape.standard(2)}, {"v3", ShapeArm.V3.shape(ShapeArm.V3_DEPTH)}
+    };
   }
 
   @Test(groups = "rocm", dataProvider = "shapes", timeOut = 600_000)
@@ -60,18 +63,30 @@ public class ThreePlayerHipDuelTest {
     try {
       Path snapshot = root.resolve("1");
       try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-        Snapshot.write(snapshot, PerturbedNetwork.of(manager, InputSchema.FORMAT, shape, 71), PolicyParams.of(1));
+        Snapshot.write(
+            snapshot, PerturbedNetwork.of(manager, THREE_PLAYER, shape, 71), PolicyParams.of(1));
       }
       InferenceSettings settings = ThreePlayerSettings.of().inference();
-      try (var runtime = new NetworkRuntime(settings.encoders(), settings.slots(), settings.readyBatches());
+      try (var runtime =
+              new NetworkRuntime(settings.encoders(), settings.slots(), settings.readyBatches());
           NetworkPolicy policy =
-              Snapshot.open(snapshot, List.of(Device.gpu(0)), runtime, 64, Precision.BFLOAT16, InferencePath.HIP)) {
-        Assert.assertEquals(policy.inference(), InferencePath.HIP, label + ": the three-player version opens on HIP");
+              Snapshot.open(
+                  snapshot,
+                  List.of(Device.gpu(0)),
+                  runtime,
+                  64,
+                  Precision.BFLOAT16,
+                  InferencePath.HIP)) {
+        Assert.assertEquals(
+            policy.inference(),
+            InferencePath.HIP,
+            label + ": the three-player version opens on HIP");
       }
       for (String draws : List.of("SEAT_STREAMS", "WALL_ORDER")) {
         String table = draws.equals("SEAT_STREAMS") ? "streams" : "order";
         Path out = root.resolve(table);
-        Assert.assertEquals(Main.run(arguments(snapshot, out, table, draws)), Exit.OK.code(), label + " " + table);
+        Assert.assertEquals(
+            Main.run(arguments(snapshot, out, table, draws)), Exit.OK.code(), label + " " + table);
         Path job = out.resolve("jobs").resolve(RunDirectory.jobName(Evaluate.MODEL_VERSION, table));
         DuelResult result = Jobs.result(job, DuelResult.class);
         Map<String, Double> deltas = new TreeMap<>();
@@ -89,7 +104,8 @@ public class ThreePlayerHipDuelTest {
               }
             });
         log.info(
-            "PRISM-3P-HIP-DUEL {} {}: {} games on {} walls, identical {}, walls with a nonzero delta {}",
+            "PRISM-3P-HIP-DUEL {} {}: {} games on {} walls, identical {}, walls with a nonzero"
+                + " delta {}",
             label,
             table,
             result.games(),
@@ -99,7 +115,8 @@ public class ThreePlayerHipDuelTest {
         Assert.assertEquals(result.games(), WALLS * GAMES_PER_WALL, label + " " + table);
         Assert.assertEquals(lines.size(), WALLS * GAMES_PER_WALL, label + " " + table);
         Assert.assertEquals(deltas.size(), WALLS, label + " " + table);
-        Assert.assertTrue(nonzero.isEmpty(), label + " " + table + " walls with a nonzero delta: " + nonzero);
+        Assert.assertTrue(
+            nonzero.isEmpty(), label + " " + table + " walls with a nonzero delta: " + nonzero);
         Assert.assertEquals(result.identical(), 1.0, label + " " + table);
       }
     } finally {
@@ -113,7 +130,13 @@ public class ThreePlayerHipDuelTest {
     List<String> arguments =
         new ArrayList<>(
             List.of(
-                "evaluate", "--model", snapshot.toString(), "--table", table, "--out", out.toString()));
+                "evaluate",
+                "--model",
+                snapshot.toString(),
+                "--table",
+                table,
+                "--out",
+                out.toString()));
     for (String assignment :
         List.of(
             "run.variant=TENHOU_3P",

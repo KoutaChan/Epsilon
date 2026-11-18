@@ -1,6 +1,7 @@
 package com.epsilon.prism.app;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_3P;
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
@@ -16,7 +17,6 @@ import com.epsilon.prism.backend.PerturbedNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism3p.input.InputSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.testng.Assert;
@@ -35,14 +35,17 @@ public class ThreePlayerPlayRiichiTest {
       Path snapshot = RunFiles.snapshot(root, 4);
       try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
         Snapshot.write(
-            snapshot, PerturbedNetwork.of(manager, InputSchema.FORMAT, PrismShape.standard(2), 23), PolicyParams.of(4));
+            snapshot,
+            PerturbedNetwork.of(manager, THREE_PLAYER, PrismShape.standard(2), 23),
+            PolicyParams.of(4));
       }
       Path chosen = PlayRiichi.snapshot(root);
       Assert.assertEquals(chosen, snapshot);
       Assert.assertEquals(PlayRiichi.variant(chosen), TENHOU_3P);
       int[] answered = new int[1];
       try (Policy policy =
-          ModelFamily.of(Series.PRISM).open(chosen, PlayRiichi.variant(chosen), PolicyOptions.defaults())) {
+          ModelFamily.of(Series.PRISM)
+              .open(chosen, PlayRiichi.variant(chosen), PolicyOptions.defaults())) {
         Assert.assertEquals(policy.variant(), TENHOU_3P);
         PlayRiichi.warmUp(policy);
         var seat = new ClientSeat(policy);
@@ -55,9 +58,11 @@ public class ThreePlayerPlayRiichiTest {
                     return;
                   }
                   Decisions decisions = engine.decisions();
-                  int chosenAction = seat.decide(engine.view(decisions.seat(slot)), decisions, slot);
+                  int chosenAction =
+                      seat.decide(engine.view(decisions.seat(slot)), decisions, slot);
                   Assert.assertTrue(
-                      chosenAction >= 0 && chosenAction < decisions.legalCount(slot), "chosen " + chosenAction);
+                      chosenAction >= 0 && chosenAction < decisions.legalCount(slot),
+                      "chosen " + chosenAction);
                   if (decisions.legalCount(slot) > 1) {
                     answered[0]++;
                   }

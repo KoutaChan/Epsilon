@@ -1,5 +1,7 @@
 package com.epsilon.prism.run;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import com.epsilon.agent.app.Exit;
 import com.epsilon.agent.run.Ending;
 import com.epsilon.agent.run.JobOutputs;
@@ -18,7 +20,6 @@ import com.epsilon.prism.grp.GrpFiles;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.settings.PrismSettings;
-import com.epsilon.prism3p.input.InputSchema;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
@@ -65,7 +66,12 @@ public class ThreePlayerLineageSmokeTest {
         JsonObject steps = iterations.get(t - 1).getAsJsonObject("steps");
         long rows = steps.getAsJsonObject(PrismStep.COLLECT.name()).get("rows").getAsLong();
         Assert.assertTrue(rows > 0, "rows of cohort " + t);
-        int fitSteps = steps.getAsJsonObject(PrismStep.LEARN.name()).getAsJsonObject("fit").get("steps").getAsInt();
+        int fitSteps =
+            steps
+                .getAsJsonObject(PrismStep.LEARN.name())
+                .getAsJsonObject("fit")
+                .get("steps")
+                .getAsInt();
         Assert.assertTrue(fitSteps > 0 && fitSteps <= 8, "steps " + fitSteps);
         Path cohort = CohortWriter.directory(run, t);
         Assert.assertTrue(Files.exists(cohort.resolve(CohortWriter.MANIFEST)), cohort.toString());
@@ -85,7 +91,12 @@ public class ThreePlayerLineageSmokeTest {
         Assert.assertEquals(counts.exploreTemperature(), created.behaviour().exploreTemperature());
         Assert.assertEquals(counts.phi().mode(), "GRP");
         Assert.assertTrue(Double.isNaN(counts.phi().cutoff()), "the GRP mode has no cutoff");
-        String used = steps.getAsJsonObject(PrismStep.PHI.name()).getAsJsonObject("value").get("mode").getAsString();
+        String used =
+            steps
+                .getAsJsonObject(PrismStep.PHI.name())
+                .getAsJsonObject("value")
+                .get("mode")
+                .getAsString();
         Assert.assertEquals(counts.phi().mode(), used);
       }
       Assert.assertTrue(nuki, "no decision was classed as NUKI");
@@ -93,11 +104,15 @@ public class ThreePlayerLineageSmokeTest {
       for (int version = 2; version <= 3; version++) {
         Path model = directory.snapshot(version).resolve(Snapshot.MODEL);
         Assert.assertEquals(PrismNetwork.readShape(model), created.network().shape());
-        JsonObject written = JsonParser.parseString(Files.readString(model.resolve("model.json"))).getAsJsonObject();
-        Assert.assertEquals(written.get("inputSchema").getAsString(), InputSchema.fingerprint());
-        Assert.assertEquals(written.get("headSchema").getAsString(), TargetSchema.of(Variant.TENHOU_3P).fingerprint());
+        JsonObject written =
+            JsonParser.parseString(Files.readString(model.resolve("model.json"))).getAsJsonObject();
+        Assert.assertEquals(written.get("inputSchema").getAsString(), THREE_PLAYER.fingerprint());
+        Assert.assertEquals(
+            written.get("headSchema").getAsString(),
+            TargetSchema.of(Variant.TENHOU_3P).fingerprint());
       }
-      Assert.assertFalse(Arrays.equals(weights(directory, 1), weights(directory, 2)), "version 2 learned nothing");
+      Assert.assertFalse(
+          Arrays.equals(weights(directory, 1), weights(directory, 2)), "version 2 learned nothing");
       for (int version = 1; version <= 3; version++) {
         Path job = directory.job(RunDirectory.jobName(version, "smoke"));
         Assert.assertTrue(Files.exists(job.resolve(Jobs.RESULT)), job.toString());
@@ -110,13 +125,22 @@ public class ThreePlayerLineageSmokeTest {
       Path refit = Files.createTempDirectory("prism-3p-refit");
       try {
         String[] arguments = {
-          "fit-cohorts", "--run", run.toString(), "--cohorts", "1..2", "--out", refit.toString(), "--max-rows", "32"
+          "fit-cohorts",
+          "--run",
+          run.toString(),
+          "--cohorts",
+          "1..2",
+          "--out",
+          refit.toString(),
+          "--max-rows",
+          "32"
         };
         Assert.assertEquals(Main.run(arguments), Exit.OK.code());
         Path model = refit.resolve(FitCohorts.SNAPSHOT).resolve(Snapshot.MODEL);
         Assert.assertEquals(PrismNetwork.readFormat(model).variant(), Variant.TENHOU_3P);
-        JsonObject written = JsonParser.parseString(Files.readString(model.resolve("model.json"))).getAsJsonObject();
-        Assert.assertEquals(written.get("inputSchema").getAsString(), InputSchema.fingerprint());
+        JsonObject written =
+            JsonParser.parseString(Files.readString(model.resolve("model.json"))).getAsJsonObject();
+        Assert.assertEquals(written.get("inputSchema").getAsString(), THREE_PLAYER.fingerprint());
       } finally {
         Snapshot.deleteTree(refit);
       }
@@ -126,7 +150,8 @@ public class ThreePlayerLineageSmokeTest {
   }
 
   private static byte[] weights(RunDirectory directory, int version) throws Exception {
-    return Files.readAllBytes(directory.snapshot(version).resolve(Snapshot.MODEL).resolve("weights.bin"));
+    return Files.readAllBytes(
+        directory.snapshot(version).resolve(Snapshot.MODEL).resolve("weights.bin"));
   }
 
   private static JsonObject state(Path run) throws Exception {

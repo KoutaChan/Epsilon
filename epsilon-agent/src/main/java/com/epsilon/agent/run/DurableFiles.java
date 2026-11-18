@@ -3,14 +3,12 @@ package com.epsilon.agent.run;
 import com.epsilon.agent.settings.Json;
 import com.epsilon.agent.settings.Node;
 import com.epsilon.agent.settings.RecordFile;
+import com.epsilon.base.io.AtomicFiles;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -35,15 +33,7 @@ import java.util.stream.Stream;
  */
 public final class DurableFiles {
 
-  private static final boolean POSIX = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
-
   private DurableFiles() {}
-
-  /** 中身を書く。渡されたストリームは閉じない。 */
-  @FunctionalInterface
-  public interface Writer {
-    void write(OutputStream stream) throws IOException;
-  }
 
   public static void write(Path target, byte[] bytes) throws IOException {
     write(target, stream -> stream.write(bytes));
@@ -59,23 +49,8 @@ public final class DurableFiles {
     write(target, RecordFile.json(record) + "\n");
   }
 
-  public static void write(Path target, Writer writer) throws IOException {
-    Path destination = target.toAbsolutePath().normalize();
-    Path directory = destination.getParent();
-    createDirectories(directory);
-    Path temporary = Files.createTempFile(directory, "." + destination.getFileName() + ".", ".tmp");
-    try {
-      try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
-        OutputStream stream = Channels.newOutputStream(channel);
-        writer.write(stream);
-        stream.flush();
-        channel.force(true);
-      }
-      Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-    } finally {
-      Files.deleteIfExists(temporary);
-    }
-    syncDirectory(directory);
+  public static void write(Path target, AtomicFiles.Writer writer) throws IOException {
+    AtomicFiles.replace(target, writer);
   }
 
   /**
@@ -88,7 +63,8 @@ public final class DurableFiles {
    */
   public static void seal(Path part, Path done) throws IOException {
     if (Files.exists(done, LinkOption.NOFOLLOW_LINKS)) {
-      throw new FileAlreadyExistsException(done.toString(), part.toString(), "the output is already sealed");
+      throw new FileAlreadyExistsException(
+          done.toString(), part.toString(), "the output is already sealed");
     }
     syncTree(part);
     Files.move(part, done, StandardCopyOption.ATOMIC_MOVE);
@@ -108,7 +84,11 @@ public final class DurableFiles {
     createDirectories(absolute.getParent());
     boolean created = !Files.exists(absolute);
     try (FileChannel channel =
-        FileChannel.open(absolute, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+        FileChannel.open(
+            absolute,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.READ,
+            StandardOpenOption.WRITE)) {
       long keep = lineStart(channel, channel.size());
       if (keep < channel.size()) {
         channel.truncate(keep);
@@ -133,7 +113,8 @@ public final class DurableFiles {
    * @param line 足す行
    * @return 足したら true
    */
-  public static boolean appendOnce(Path file, String key, Node value, Node.Table line) throws IOException {
+  public static boolean appendOnce(Path file, String key, Node value, Node.Table line)
+      throws IOException {
     List<String> lines = lines(file);
     for (int index = 0; index < lines.size(); index++) {
       if (value.equals(Json.read(lines.get(index), file + ":" + (index + 1)).get(key))) {
@@ -150,7 +131,8 @@ public final class DurableFiles {
    *
    * @return 足したら true
    */
-  public static boolean appendAfterLast(Path file, String key, Node value, Node.Table line) throws IOException {
+  public static boolean appendAfterLast(Path file, String key, Node value, Node.Table line)
+      throws IOException {
     Optional<String> last = lastLine(file);
     if (last.isPresent() && value.equals(Json.read(last.get(), file.toString()).get(key))) {
       return false;
@@ -201,18 +183,7 @@ public final class DurableFiles {
 
   /** ディレクトリを作る。新しく作ったディレクトリごとに、その親のディレクトリを fsync する。 */
   public static void createDirectories(Path directory) throws IOException {
-    Path absolute = directory.toAbsolutePath().normalize();
-    if (Files.isDirectory(absolute)) {
-      return;
-    }
-    Path existing = absolute;
-    while (existing != null && !Files.exists(existing)) {
-      existing = existing.getParent();
-    }
-    Files.createDirectories(absolute);
-    for (Path created = absolute; created != null && !created.equals(existing); created = created.getParent()) {
-      syncDirectory(created.getParent());
-    }
+    AtomicFiles.createDirectories(directory);
   }
 
   /** ファイルかディレクトリを中身ごと消す。シンボリックリンクはたどらず、リンクを消す。無ければ何もしない。 */
@@ -231,7 +202,7 @@ public final class DurableFiles {
   /** ファイルかディレクトリの中の全てのファイルとディレクトリを fsync する。 */
   public static void syncTree(Path path) throws IOException {
     if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-      syncFile(path);
+      AtomicFiles.syncFile(path);
       return;
     }
     try (Stream<Path> walk = Files.walk(path)) {
@@ -239,7 +210,7 @@ public final class DurableFiles {
         if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {
           syncDirectory(entry);
         } else if (Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
-          syncFile(entry);
+          AtomicFiles.syncFile(entry);
         }
       }
     }
@@ -247,18 +218,7 @@ public final class DurableFiles {
 
   /** ディレクトリを fsync し、その中での作成・rename・削除をディスクに書き出す。POSIX でないファイルシステムでは何もしない。 */
   public static void syncDirectory(Path directory) throws IOException {
-    if (!POSIX) {
-      return;
-    }
-    try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
-      channel.force(true);
-    }
-  }
-
-  private static void syncFile(Path file) throws IOException {
-    try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
-      channel.force(true);
-    }
+    AtomicFiles.syncDirectory(directory);
   }
 
   /**

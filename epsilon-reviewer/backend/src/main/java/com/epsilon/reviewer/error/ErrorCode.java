@@ -53,6 +53,8 @@ public enum ErrorCode {
   ANALYSIS_FAILED("analysis_failed", 500, "The analysis failed."),
   /** 解析結果が無い（知らない id、別のオーナーの結果、削除済み）。 */
   RESULT_NOT_FOUND("result_not_found", 404, "The analysis result was not found."),
+  /** 保存結果の内容が形式に合わない。 */
+  INVALID_RESULT("invalid_result", 422, "The analysis result is invalid."),
   /** 共有リンクで指した解析結果が無い。 */
   SHARE_NOT_FOUND("share_not_found", 404, "The shared analysis was not found."),
   /** もしもの変更が判断の局面に合わない。メッセージは変更したフィールドのパスで始まる。 */

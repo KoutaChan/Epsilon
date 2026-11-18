@@ -1,3 +1,4 @@
+import { resultErrorDetail } from "../api/errors";
 import { CircleAlert } from "lucide-react";
 import { errorKey } from "../language/catalog";
 import { useLanguage } from "../language/LanguageProvider";
@@ -13,7 +14,9 @@ export function ErrorBanner({
   return (
     <div className="error-banner" role="alert">
       <CircleAlert />
-      <span>{t(errorKey(error))}</span>
+      <span>
+        {t(errorKey(error))} {resultErrorDetail(error)}
+      </span>
       <button className="text-button" onClick={onClose}>
         {t("common.close")}
       </button>

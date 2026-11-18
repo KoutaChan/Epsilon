@@ -13,9 +13,10 @@ import java.util.List;
 public record RecordSummary(
     String source, List<String> names, List<Integer> finalScores, int roundCount) {
   public RecordSummary {
-    if (finalScores == null || finalScores.size() != names.size())
-      throw new IllegalArgumentException("record.finalScores must contain a final score for every seat.");
     names = List.copyOf(names);
+    if (finalScores == null || finalScores.size() != names.size())
+      throw new IllegalArgumentException(
+          "record.finalScores must contain a final score for every seat.");
     finalScores = List.copyOf(finalScores);
   }
 }

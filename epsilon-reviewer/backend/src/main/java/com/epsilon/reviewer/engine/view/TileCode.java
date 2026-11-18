@@ -52,7 +52,7 @@ public final class TileCode {
     return face(code).red();
   }
 
-  /** 手牌に並べるときの順番（protocol/result.ts の tileOrder と同じ）。牌の種類の順で、赤の 5 は同じ種類の 5 の前に来る。 */
+  /** 手牌に並べるときの順番（protocol/tiles.ts の tileOrder と同じ）。牌の種類の順で、赤の 5 は同じ種類の 5 の前に来る。 */
   public static int order(String code) {
     return face(code).order();
   }

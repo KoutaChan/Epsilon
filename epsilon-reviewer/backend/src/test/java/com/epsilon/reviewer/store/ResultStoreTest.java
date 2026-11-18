@@ -6,6 +6,7 @@ import com.epsilon.reviewer.engine.load.RecordSummary;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.epsilon.reviewer.json.Json;
+import com.google.gson.JsonParser;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -68,6 +69,28 @@ public class ResultStoreTest {
       Assert.assertEquals(store.findShared(older), meta);
       refused(() -> store.find(OTHER, older), ErrorCode.RESULT_NOT_FOUND);
       refused(() -> store.findShared(ResultId.random()), ErrorCode.SHARE_NOT_FOUND);
+    }
+  }
+
+  @Test
+  public void invalidResultMetadataReportsTheMissingFieldToAuthorizedReaders() throws IOException {
+    ResultId id;
+    try (ResultStore store = ResultStore.open(directory)) {
+      id = save(store, OWNER, "2026-11-04T00:00:00Z", bytes("record"));
+    }
+    Path path = directory.resolve(Path.of("results", id.value(), "meta.json"));
+    var json = JsonParser.parseString(Files.readString(path)).getAsJsonObject();
+    json.getAsJsonObject("record").remove("finalScores");
+    Files.writeString(path, json.toString());
+    try (ResultStore store = ResultStore.open(directory)) {
+      for (var read :
+          List.<Assert.ThrowingRunnable>of(
+              () -> store.find(OWNER, id), () -> store.findShared(id))) {
+        var error = Assert.expectThrows(ReviewerException.class, read);
+        Assert.assertEquals(error.code(), ErrorCode.INVALID_RESULT);
+        Assert.assertTrue(error.getMessage().contains("record.finalScores"), error.getMessage());
+      }
+      refused(() -> store.find(OTHER, id), ErrorCode.RESULT_NOT_FOUND);
     }
   }
 
@@ -166,8 +189,7 @@ public class ResultStoreTest {
       Path userTemporary = directory.resolve("export.epsilon-reviewer.json.gz.tmp");
       Files.writeString(userTemporary, "mine");
       store.export(OWNER, id, target);
-      Assert.assertEquals(
-          Files.readAllBytes(target), store.readDocument(store.find(OWNER, id)));
+      Assert.assertEquals(Files.readAllBytes(target), store.readDocument(store.find(OWNER, id)));
       Assert.assertEquals(Files.readString(userTemporary), "mine");
       Assert.assertEquals(
           names(directory),
@@ -214,7 +236,8 @@ public class ResultStoreTest {
               owner.value(),
               createdAt,
               new ModelInfo("fixture", "r1", "Fixture", "1"),
-              new RecordSummary("tenhou", List.of("A", "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1)));
+              new RecordSummary(
+                  "tenhou", List.of("A", "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1)));
     }
     return id;
   }
@@ -237,7 +260,8 @@ public class ResultStoreTest {
         OWNER.value(),
         "2026-11-04T00:00:00Z",
         new ModelInfo("fixture", "r1", "Fixture", "1"),
-        new RecordSummary("tenhou", List.of(name, "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1));
+        new RecordSummary(
+            "tenhou", List.of(name, "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1));
   }
 
   /** 保存先が作るのと同じ形の 1 件を置く。UUID の名前のフォルダーに、保存のファイルが 1 つ入る。 */

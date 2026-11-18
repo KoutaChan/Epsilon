@@ -5,6 +5,7 @@ import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.epsilon.reviewer.json.Json;
 import com.epsilon.reviewer.json.StrictRecords;
+import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -61,6 +62,9 @@ public final class ResultStore implements AutoCloseable {
   /** resultId からインデックスの 1 件を引く表。{@code files} のロックで守る。 */
   private final Map<String, Indexed> byId = new HashMap<>();
 
+  /** 所有者と ID を確認できた、読み込めない結果。開いたときに形式のエラーを伝える。 */
+  private final Map<String, Unreadable> unreadable = new HashMap<>();
+
   /** オーナーから、新しい順に並べたインデックスを引く表。{@code files} のロックで守る。 */
   private final Map<String, List<Indexed>> byOwner = new HashMap<>();
 
@@ -112,7 +116,8 @@ public final class ResultStore implements AutoCloseable {
     files.readLock().lock();
     try {
       Indexed entry = byId.get(id.value());
-      if (entry == null || !entry.meta().owner().equals(owner.value()))
+      if (entry == null) throw missing(id, owner, ErrorCode.RESULT_NOT_FOUND);
+      if (!entry.meta().owner().equals(owner.value()))
         throw new ReviewerException(ErrorCode.RESULT_NOT_FOUND);
       return entry.meta();
     } finally {
@@ -125,11 +130,18 @@ public final class ResultStore implements AutoCloseable {
     files.readLock().lock();
     try {
       Indexed entry = byId.get(id.value());
-      if (entry == null) throw new ReviewerException(ErrorCode.SHARE_NOT_FOUND);
+      if (entry == null) throw missing(id, null, ErrorCode.SHARE_NOT_FOUND);
       return entry.meta();
     } finally {
       files.readLock().unlock();
     }
+  }
+
+  private ReviewerException missing(ResultId id, OwnerId owner, ErrorCode absent) {
+    Unreadable invalid = unreadable.get(id.value());
+    if (invalid != null && (owner == null || owner.value().equals(invalid.owner())))
+      return new ReviewerException(ErrorCode.INVALID_RESULT, invalid.message());
+    return new ReviewerException(absent);
   }
 
   /**
@@ -227,8 +239,7 @@ public final class ResultStore implements AutoCloseable {
     if (!target.isAbsolute() || folder == null || !Files.isDirectory(folder))
       throw new ReviewerException(
           ErrorCode.INVALID_REQUEST, "path must be an absolute file path in an existing folder.");
-    Path temporary =
-        target.resolveSibling(target.getFileName() + "." + UUID.randomUUID() + ".tmp");
+    Path temporary = target.resolveSibling(target.getFileName() + "." + UUID.randomUUID() + ".tmp");
     try {
       files.readLock().lock();
       try {
@@ -274,18 +285,31 @@ public final class ResultStore implements AutoCloseable {
     }
   }
 
-  private static ResultMeta readMeta(Path path, String name) throws IOException {
+  private ResultMeta readMeta(Path path, String name) throws IOException {
     if (Files.size(path) > META_LIMIT) throw new IOException("meta.json is too large.");
-    ResultMeta meta =
-        StrictRecords.read(
-            Json.readObject(Files.readAllBytes(path), META_LIMIT), ResultMeta.class);
+    JsonObject json = Json.readObject(Files.readAllBytes(path), META_LIMIT);
+    if (!json.has("resultId")
+        || !json.get("resultId").isJsonPrimitive()
+        || !name.equals(json.get("resultId").getAsString()))
+      throw new IllegalArgumentException("meta.json names another result.");
+    var ownerField = json.get("owner");
+    String owner =
+        ownerField != null && ownerField.isJsonPrimitive() ? ownerField.getAsString() : null;
+    if (!OwnerId.isValid(owner)) throw new IllegalArgumentException("Invalid owner ID.");
+    try {
+      return parseMeta(json);
+    } catch (IllegalArgumentException | ReviewerException invalid) {
+      unreadable.put(name, new Unreadable(owner, invalid.getMessage()));
+      throw invalid;
+    }
+  }
+
+  private static ResultMeta parseMeta(JsonObject json) {
+    ResultMeta meta = StrictRecords.read(json, ResultMeta.class);
     if (meta.format() != ResultWriter.FORMAT)
       throw new IllegalArgumentException("Unsupported format " + meta.format() + ".");
-    if (!meta.resultId().equals(name))
-      throw new IllegalArgumentException("meta.json names another result.");
     if (meta.model() == null || meta.record() == null)
       throw new IllegalArgumentException("meta.json has no model or record.");
-    if (!OwnerId.isValid(meta.owner())) throw new IllegalArgumentException("Invalid owner ID.");
     return meta;
   }
 
@@ -352,6 +376,9 @@ public final class ResultStore implements AutoCloseable {
       channel.force(true);
     }
   }
+
+  /** 形式が合わず読めなかった結果の持ち主と、読めなかった理由。その結果を開こうとしたときのエラーに使う。 */
+  private record Unreadable(String owner, String message) {}
 
   /** インデックスの 1 件。並べ替えには、createdAt を読んで Instant にした時刻を使う。 */
   private record Indexed(ResultMeta meta, Instant created) {}

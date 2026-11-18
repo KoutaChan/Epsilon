@@ -44,7 +44,9 @@ export function ReviewView({
     return (
       <div className="replay-loading" role="alert">
         <CircleAlert aria-hidden="true" />
-        <span>{t("errors.invalid_result")}</span>
+        <span>
+          {t("errors.invalid_result")} {replay.message}
+        </span>
         <button className="button" onClick={onBack}>
           <ArrowLeft aria-hidden="true" />
           {backLabel}

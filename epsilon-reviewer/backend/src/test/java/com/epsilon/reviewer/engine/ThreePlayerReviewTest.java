@@ -14,9 +14,9 @@ import com.epsilon.reviewer.engine.load.LoadedRecord;
 import com.epsilon.reviewer.engine.review.ReviewModel;
 import com.epsilon.reviewer.engine.scenario.ScenarioAnswer;
 import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
-import com.epsilon.reviewer.engine.view.Meld;
+import com.epsilon.reviewer.engine.view.MeldView;
 import com.epsilon.reviewer.engine.view.PlayerState;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import java.io.IOException;
@@ -71,7 +71,7 @@ public class ThreePlayerReviewTest {
       Format6.Document document = Format6.analyze(entry.getValue(), new RecordingPolicy(VARIANT));
       for (Format6.Round round : document.rounds()) {
         Map<Integer, String> events = new HashMap<>();
-        TableState previous = null;
+        TableView previous = null;
         for (Format6.Step step : round.steps()) {
           Assert.assertEquals(step.table().players().size(), 3, name);
           for (PlayerState player : step.table().players()) requireRealMelds(player, name);
@@ -219,7 +219,7 @@ public class ThreePlayerReviewTest {
    * 面子、ツモの後か鳴いた後なら 1 枚多い。
    */
   private static void requireRealMelds(PlayerState player, String name) {
-    for (Meld meld : player.melds())
+    for (MeldView meld : player.melds())
       Assert.assertTrue(MELD_TYPES.contains(meld.type()), name + ": " + meld.type());
     int tiles = player.hand().size() + (player.draw() == null ? 0 : 1);
     int closed = 13 - 3 * player.melds().size();

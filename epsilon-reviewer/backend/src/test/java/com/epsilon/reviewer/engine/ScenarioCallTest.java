@@ -9,7 +9,7 @@ import com.epsilon.reviewer.engine.scenario.ScenarioEdits;
 import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.google.gson.JsonObject;
@@ -59,7 +59,7 @@ public class ScenarioCallTest {
     int minScore = -3_276_800;
     LoadedRecord record = PlayedRecords.read(Variant.TENHOU_4P, RIICHI_TILE_SEED);
     for (Decision response : decisions(record)) {
-      TableState shown = response.step().table();
+      TableView shown = response.step().table();
       int declarer = shown.activeSeat();
       List<RiverTile> river = shown.players().get(declarer).river();
       int call = call(response.step());

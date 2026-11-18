@@ -11,4 +11,5 @@ import java.util.List;
  * @param calledIndex 横向きの牌の位置。暗槓は -1
  * @param addedIndex 加槓で加えた牌の位置（常に 3）。加槓でなければ -1
  */
-public record Meld(String type, List<String> tiles, int from, int calledIndex, int addedIndex) {}
+public record MeldView(
+    String type, List<String> tiles, int from, int calledIndex, int addedIndex) {}

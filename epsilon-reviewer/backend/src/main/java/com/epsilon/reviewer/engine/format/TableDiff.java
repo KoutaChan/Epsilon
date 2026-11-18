@@ -1,7 +1,7 @@
 package com.epsilon.reviewer.engine.format;
 
 import com.epsilon.reviewer.engine.view.PlayerState;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
 import java.util.List;
@@ -15,8 +15,7 @@ public final class TableDiff {
   private TableDiff() {}
 
   /** 差分を delta のフィールドに書く。局面が同じなら何も書かない。 */
-  public static void write(JsonWriter json, TableState before, TableState after)
-      throws IOException {
+  public static void write(JsonWriter json, TableView before, TableView after) throws IOException {
     if (before.equals(after)) return;
     json.name("delta").beginObject();
     boolean players = false;

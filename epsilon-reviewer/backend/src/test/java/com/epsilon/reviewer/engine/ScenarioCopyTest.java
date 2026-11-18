@@ -19,7 +19,7 @@ import com.epsilon.reviewer.engine.scenario.ScenarioEdits;
 import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import java.util.ArrayList;
@@ -256,7 +256,7 @@ public class ScenarioCopyTest {
   private record Place(String field, String tile, Function<String, ScenarioEdits> editTo) {}
 
   /** 変えられる所を並べる。判断する席の手牌とツモ牌、全ての河の牌（この局に鳴きは無い）、ドラ表示牌。 */
-  private static List<Place> places(TableState table) {
+  private static List<Place> places(TableView table) {
     List<Place> places = new ArrayList<>();
     PlayerState own = table.players().get(SEAT);
     for (int i = 0; i <= own.hand().size(); i++) {

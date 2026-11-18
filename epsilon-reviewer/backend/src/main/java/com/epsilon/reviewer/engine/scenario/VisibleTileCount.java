@@ -3,10 +3,10 @@ package com.epsilon.reviewer.engine.scenario;
 import com.epsilon.mahjong.record.TileCopies;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.tile.Tiles;
-import com.epsilon.reviewer.engine.view.Meld;
+import com.epsilon.reviewer.engine.view.MeldView;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.engine.view.TileCode;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
@@ -33,14 +33,14 @@ final class VisibleTileCount {
    * @param table 変更を反映した判断の局面
    * @param placements 牌を替えた変更（適用した順）
    */
-  static void require(Variant variant, TableState table, int seat, List<Placement> placements) {
+  static void require(Variant variant, TableView table, int seat, List<Placement> placements) {
     var visible = new VisibleTileCount(variant);
     PlayerState own = table.players().get(seat);
     own.hand().forEach(visible::count);
     if (own.draw() != null) visible.count(own.draw());
     for (PlayerState player : table.players()) {
       for (RiverTile tile : player.river()) if (!tile.called()) visible.count(tile.tile());
-      for (Meld meld : player.melds()) meld.tiles().forEach(visible::count);
+      for (MeldView meld : player.melds()) meld.tiles().forEach(visible::count);
       for (int index = 0; index < player.nuki(); index++) visible.count(NORTH);
     }
     table.dora().forEach(visible::count);

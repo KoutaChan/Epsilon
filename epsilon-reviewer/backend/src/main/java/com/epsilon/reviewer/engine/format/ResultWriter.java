@@ -2,9 +2,9 @@ package com.epsilon.reviewer.engine.format;
 
 import com.epsilon.reviewer.engine.load.RecordSummary;
 import com.epsilon.reviewer.engine.review.EvaluatedDecision;
-import com.epsilon.reviewer.engine.view.EventKind;
-import com.epsilon.reviewer.engine.view.RoundOutcome;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.EventKindView;
+import com.epsilon.reviewer.engine.view.OutcomeView;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.engine.view.WinDetails;
 import com.google.gson.stream.JsonWriter;
 import java.io.Closeable;
@@ -29,7 +29,7 @@ public final class ResultWriter implements Closeable {
   private int firstEvent;
   private int events;
   private int lastEvent;
-  private TableState previous;
+  private TableView previous;
 
   /** 書いた判断の値が損失（価値を返すモデルの評価）なら true、確率なら false。判断をまだ書いていなければ null。 */
   private Boolean valued;
@@ -63,7 +63,7 @@ public final class ResultWriter implements Closeable {
   }
 
   /** @param start 局の最初の手順（start_kyoku）の局面 */
-  public void startRound(int roundIndex, int honba, int dealer, int firstEvent, TableState start)
+  public void startRound(int roundIndex, int honba, int dealer, int firstEvent, TableView start)
       throws IOException {
     if (inRound) json.endArray().endObject();
     json.beginObject().name("roundIndex").value(roundIndex);
@@ -86,7 +86,7 @@ public final class ResultWriter implements Closeable {
    * @throws IllegalStateException イベントの位置が、前のイベントの次になっていない
    */
   public void event(
-      int eventIndex, EventKind kind, int actor, TableState table, RoundOutcome outcome)
+      int eventIndex, EventKindView kind, int actor, TableView table, OutcomeView outcome)
       throws IOException {
     requireRound();
     if (eventIndex != firstEvent + events)
@@ -150,23 +150,23 @@ public final class ResultWriter implements Closeable {
     if (!inRound) throw new IllegalStateException("No round has started.");
   }
 
-  private void delta(TableState table) throws IOException {
+  private void delta(TableView table) throws IOException {
     if (table == null) return;
     TableDiff.write(json, previous, table);
     previous = table;
   }
 
-  private void outcome(RoundOutcome outcome) throws IOException {
+  private void outcome(OutcomeView outcome) throws IOException {
     json.name("outcome").beginObject();
     switch (outcome) {
-      case RoundOutcome.Hora hora -> {
+      case OutcomeView.Hora hora -> {
         json.name("type").value("hora");
         json.name("actor").value(hora.actor());
         json.name("target").value(hora.target());
         json.name("winningTile").value(hora.winningTile());
         details(hora.details());
       }
-      case RoundOutcome.Ryukyoku ignored -> json.name("type").value("ryukyoku");
+      case OutcomeView.Ryukyoku ignored -> json.name("type").value("ryukyoku");
     }
     json.endObject();
   }

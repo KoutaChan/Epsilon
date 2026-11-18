@@ -8,7 +8,7 @@ import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.scenario.VisibleTileCount.Placement;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.engine.view.TileCode;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
@@ -224,14 +224,14 @@ public final class RoundRewriter {
   private RewrittenRound finish(ScenarioEdits edits) {
     hand.sort(Comparator.comparingInt(TileCode::order));
     players.set(seat, players.get(seat).withHand(List.copyOf(hand), draw));
-    TableState shown = decision.table();
+    TableView shown = decision.table();
     int[] scores = scores(edits.scores());
     int honba = edits.honba() == null ? recorded.start().honba() : requireHonba(edits.honba());
     int deposited = shown.kyotaku() - recorded.start().kyotaku();
     int kyotaku =
         edits.kyotaku() == null ? shown.kyotaku() : requireKyotaku(edits.kyotaku(), deposited);
     var table =
-        new TableState(
+        new TableView(
             List.copyOf(players),
             List.copyOf(dora),
             honba,

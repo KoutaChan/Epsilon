@@ -14,10 +14,10 @@ import com.epsilon.reviewer.engine.scenario.RoundRewriter;
 import com.epsilon.reviewer.engine.scenario.ScenarioAnswer;
 import com.epsilon.reviewer.engine.scenario.ScenarioEdits;
 import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
-import com.epsilon.reviewer.engine.view.Meld;
+import com.epsilon.reviewer.engine.view.MeldView;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.engine.view.TileCode;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
@@ -204,10 +204,10 @@ public class ScenarioEditTest {
         ObservedInput::legal);
     List<String> dora = new ArrayList<>(base.table().dora());
     dora.set(0, tile);
-    TableState table = base.table();
+    TableView table = base.table();
     Assert.assertEquals(
         edited.table(),
-        new TableState(
+        new TableView(
             table.players(),
             dora,
             table.honba(),
@@ -239,13 +239,13 @@ public class ScenarioEditTest {
         ObservedInput::indicators,
         ObservedInput::legal,
         ObservedInput::furiten);
-    TableState table = base.table();
+    TableView table = base.table();
     List<PlayerState> players = new ArrayList<>();
     for (int seat = 0; seat < table.players().size(); seat++)
       players.add(table.players().get(seat).withScore(scores.get(seat)));
     Assert.assertEquals(
         edited.table(),
-        new TableState(
+        new TableView(
             players, table.dora(), honba, kyotaku, table.remaining(), table.activeSeat()));
     Assert.assertTrue(decision.deposited() > 0, "the decision follows a deposited riichi stick");
     Assert.assertEquals(
@@ -421,7 +421,7 @@ public class ScenarioEditTest {
     return event.split(" ")[index];
   }
 
-  private static TableState withRiverTile(TableState table, RiverEdit edit, boolean riichi) {
+  private static TableView withRiverTile(TableView table, RiverEdit edit, boolean riichi) {
     List<PlayerState> players = new ArrayList<>(table.players());
     players.set(
         edit.seat(),
@@ -429,7 +429,7 @@ public class ScenarioEditTest {
             .get(edit.seat())
             .withRiverTile(
                 edit.index(), new RiverTile(edit.tile(), edit.tsumogiri(), riichi, false)));
-    return new TableState(
+    return new TableView(
         players,
         table.dora(),
         table.honba(),
@@ -439,7 +439,7 @@ public class ScenarioEditTest {
   }
 
   /** 判断する席に見えている枚数が少なく、元の牌と種類が違う牌。 */
-  static String rareTile(TableState table, int seat, String old) {
+  static String rareTile(TableView table, int seat, String old) {
     Map<String, Integer> visible = visible(table, seat);
     for (String tile : RARE_TILES)
       if (visible.getOrDefault(tile, 0) <= 2 && TileCode.kind(tile) != TileCode.kind(old))
@@ -453,18 +453,18 @@ public class ScenarioEditTest {
   }
 
   /** 判断する席に見える牌を、牌の記号ごとに数える。 */
-  static Map<String, Integer> visible(TableState table, int seat) {
+  static Map<String, Integer> visible(TableView table, int seat) {
     Map<String, Integer> counts = new HashMap<>();
     for (String tile : visibleTiles(table, seat)) counts.merge(tile, 1, Integer::sum);
     return counts;
   }
 
-  private static List<String> visibleTiles(TableState table, int seat) {
+  private static List<String> visibleTiles(TableView table, int seat) {
     List<String> tiles = new ArrayList<>(table.players().get(seat).hand());
     if (table.players().get(seat).draw() != null) tiles.add(table.players().get(seat).draw());
     for (PlayerState player : table.players()) {
       for (RiverTile tile : player.river()) if (!tile.called()) tiles.add(tile.tile());
-      for (Meld meld : player.melds()) tiles.addAll(meld.tiles());
+      for (MeldView meld : player.melds()) tiles.addAll(meld.tiles());
       for (int index = 0; index < player.nuki(); index++) tiles.add("N");
     }
     tiles.addAll(table.dora());
@@ -472,7 +472,7 @@ public class ScenarioEditTest {
   }
 
   /** 他家の河で、鳴かれていない牌の位置。 */
-  private static List<RiverEdit> opponentSlots(TableState table, int seat) {
+  private static List<RiverEdit> opponentSlots(TableView table, int seat) {
     List<RiverEdit> slots = new ArrayList<>();
     for (int opponent = 0; opponent < table.players().size(); opponent++)
       if (opponent != seat)
@@ -499,13 +499,13 @@ public class ScenarioEditTest {
     return step.chosenType().equals("DAHAI");
   }
 
-  private static int opponent(TableState table, Format6.Step step, Predicate<PlayerState> wanted) {
+  private static int opponent(TableView table, Format6.Step step, Predicate<PlayerState> wanted) {
     for (int seat = 0; seat < table.players().size(); seat++)
       if (seat != step.actor() && wanted.test(table.players().get(seat))) return seat;
     return -1;
   }
 
-  record Answer(ObservedInput input, TableState table) {}
+  record Answer(ObservedInput input, TableView table) {}
 
   /**
    * テストに使う判断と、変える他家。
@@ -516,7 +516,7 @@ public class ScenarioEditTest {
       LoadedRecord record,
       int round,
       Format6.Step step,
-      TableState table,
+      TableView table,
       int opponent,
       int deposited) {
     PlayerState player() {
@@ -533,7 +533,7 @@ public class ScenarioEditTest {
     }
 
     /** RoundRewriter で変更を当てた局面。もしもの答えが局面を返すのは鳴くときだけなので、判断の場所を探して変更を当て直す。 */
-    private TableState edited(ScenarioEdits edits) {
+    private TableView edited(ScenarioEdits edits) {
       return RoundRewriter.apply(
               record.rounds().get(round),
               Scenarios.find(record, round, step.eventIndex(), step.actor()),
@@ -548,13 +548,13 @@ public class ScenarioEditTest {
      * @param opponent 判断の局面から変える他家を選ぶ関数（いなければ -1 を返す）
      */
     static Decision find(
-        Predicate<Format6.Step> wanted, ToIntBiFunction<TableState, Format6.Step> opponent) {
+        Predicate<Format6.Step> wanted, ToIntBiFunction<TableView, Format6.Step> opponent) {
       LoadedRecord record = PlayedRecords.read(Variant.TENHOU_4P, 0);
       Format6.Document document = Format6.analyze(record, new RecordingPolicy());
       for (Format6.Located located : document.decisions()) {
         Format6.Step step = located.step();
         if (!wanted.test(step)) continue;
-        TableState table = step.table();
+        TableView table = step.table();
         int seat = opponent.applyAsInt(table, step);
         if (seat >= 0)
           return new Decision(

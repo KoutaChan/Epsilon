@@ -7,7 +7,7 @@ import com.epsilon.mahjong.record.RecordEvent;
  * 手順に書くイベントの種類。名前は mjai のもので、protocol/result.ts の EVENT_KINDS と同じ。立直の宣言牌の打牌では、その前に立直の
  * 宣言を 1 つの手順として書く。和了・流局・局の始めと終わり・終局は牌譜のイベントではないので、局の始まりと結果から書く。
  */
-public enum EventKind {
+public enum EventKindView {
   /** 局の始め。席を持たない。 */
   START_KYOKU("start_kyoku", false),
   TSUMO("tsumo", true),
@@ -36,7 +36,7 @@ public enum EventKind {
   private final String wireName;
   private final boolean hasActor;
 
-  EventKind(String wireName, boolean hasActor) {
+  EventKindView(String wireName, boolean hasActor) {
     this.wireName = wireName;
     this.hasActor = hasActor;
   }
@@ -51,7 +51,7 @@ public enum EventKind {
   }
 
   /** 牌譜のイベントの種類を返す。立直の宣言牌も打牌として扱う。 */
-  public static EventKind of(RecordEvent event) {
+  public static EventKindView of(RecordEvent event) {
     return switch (event) {
       case RecordEvent.Draw ignored -> TSUMO;
       case RecordEvent.Discard ignored -> DAHAI;

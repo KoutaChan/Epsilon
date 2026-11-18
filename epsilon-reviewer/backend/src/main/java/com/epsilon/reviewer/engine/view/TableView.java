@@ -12,7 +12,7 @@ import java.util.List;
  * @param remaining 残りのツモの数
  * @param activeSeat 手番の席
  */
-public record TableState(
+public record TableView(
     List<PlayerState> players,
     List<String> dora,
     int honba,

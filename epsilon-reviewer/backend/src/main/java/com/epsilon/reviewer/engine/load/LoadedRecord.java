@@ -3,7 +3,7 @@ package com.epsilon.reviewer.engine.load;
 import com.epsilon.mahjong.record.RecordEvent;
 import com.epsilon.mahjong.record.RecordedGame;
 import com.epsilon.mahjong.record.RecordedRound;
-import com.epsilon.reviewer.engine.view.EventKind;
+import com.epsilon.reviewer.engine.view.EventKindView;
 import java.util.List;
 
 /**
@@ -34,7 +34,7 @@ public final class LoadedRecord {
       step++;
       for (int index = 0; index < events.size(); index++) {
         positions[index] = step;
-        step += EventKind.declaresRiichi(events.get(index)) ? 2 : 1;
+        step += EventKindView.declaresRiichi(events.get(index)) ? 2 : 1;
       }
       positions[events.size()] = step;
       step += outcomeSteps(recorded) + 1;

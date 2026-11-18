@@ -1,7 +1,7 @@
 package com.epsilon.reviewer.engine.view;
 
 /** 局の終わり方。hora と ryukyoku のイベントだけが持つ。点の移動と流局の理由は持たない。 */
-public sealed interface RoundOutcome {
+public sealed interface OutcomeView {
   /**
    * 和了。
    *
@@ -10,7 +10,7 @@ public sealed interface RoundOutcome {
    * @param details 採点の内訳
    */
   record Hora(int actor, int target, String winningTile, WinDetails details)
-      implements RoundOutcome {}
+      implements OutcomeView {}
 
-  record Ryukyoku() implements RoundOutcome {}
+  record Ryukyoku() implements OutcomeView {}
 }

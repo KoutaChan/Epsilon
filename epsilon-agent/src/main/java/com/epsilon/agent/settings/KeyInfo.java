@@ -9,7 +9,7 @@ package com.epsilon.agent.settings;
  * @param value 既定値のリテラル。無ければ空
  * @param presence キーが無いときの扱い
  * @param range 数の範囲（{@code [1, 4]}、{@code >= 1}）。無ければ空
- * @param change 変えてよい時期。親に従うキーは親の時期になる。コマンドのセクションでは INHERIT のままのことがある
+ * @param change 変えてよい時期。親に従うキーは親の時期になる。単独のセクションで親の時期が分からなければ null
  * @param secret 秘密のキーか
  * @param condition 種類を選ぶセクションの中のキーなら、その種類を選ぶキーと値（{@code memory.scheme=EMA}）。ほかは空
  */

@@ -27,22 +27,40 @@ final class Template {
    * @param written 設定ファイルとコマンドラインの層だけを重ねた木
    * @param presets 先頭に書くプリセットの名前
    */
-  static String write(RecordCodec root, Node.Table merged, Node.Table written, List<String> presets) {
+  static String write(
+      RecordCodec root, Node.Table merged, Node.Table written, List<String> presets) {
     Template template = new Template();
     if (!presets.isEmpty()) {
       List<Node> names = presets.stream().map(name -> (Node) new Node.Text(name, "")).toList();
-      template.out.append(Layer.PRESETS).append(" = ").append(Toml.inline(new Node.Array(names, ""))).append('\n');
+      template
+          .out
+          .append(Layer.PRESETS)
+          .append(" = ")
+          .append(Toml.inline(new Node.Array(names, "")))
+          .append('\n');
     }
     template.section(root, merged, written, "", null, false);
     return template.out.toString();
   }
 
   private void section(
-      RecordCodec codec, Node.Table merged, Node.Table written, String path, Change change, boolean commented) {
+      RecordCodec codec,
+      Node.Table merged,
+      Node.Table written,
+      String path,
+      Change change,
+      boolean commented) {
     for (Component component : codec.components()) {
       if (Schema.inline(component.codec())) {
-        Change resolved = resolve(component, change, path);
-        line(component, entry(merged, component), entry(written, component), resolved, change, commented);
+        Change resolved =
+            Change.required(component.key(), change, Keys.join(path, component.name()));
+        line(
+            component,
+            entry(merged, component),
+            entry(written, component),
+            resolved,
+            change,
+            commented);
       }
     }
     for (Component component : codec.components()) {
@@ -50,14 +68,16 @@ final class Template {
         continue;
       }
       String child = Keys.join(path, component.name());
-      Change resolved = resolve(component, change, path);
+      Change resolved = Change.required(component.key(), change, child);
       switch (component.codec()) {
         case RecordCodec record -> {
           header(child, component, resolved, commented);
           Node.Table mergedSection = table(entry(merged, component));
-          section(record, mergedSection, table(entry(written, component)), child, resolved, commented);
+          section(
+              record, mergedSection, table(entry(written, component)), child, resolved, commented);
         }
-        case ChoiceCodec choice -> choice(component, choice, merged, written, child, resolved, commented);
+        case ChoiceCodec choice ->
+            choice(component, choice, merged, written, child, resolved, commented);
         case MapCodec map -> names(component, map, merged, written, child, resolved, commented);
         default -> throw new IllegalStateException("Unexpected section " + child);
       }
@@ -120,7 +140,13 @@ final class Template {
     }
   }
 
-  private void line(Component component, Node value, Node written, Change change, Change table, boolean commented) {
+  private void line(
+      Component component,
+      Node value,
+      Node written,
+      Change change,
+      Change table,
+      boolean commented) {
     Key key = component.key();
     out.append("# ").append(doc(component, change, table, true)).append('\n');
     Node shown = Merge.withDefault(component, value);
@@ -130,7 +156,10 @@ final class Template {
       return;
     }
     boolean comment = commented || written == null;
-    out.append(comment ? "# " : "").append(name).append(" = ").append(key.secret() ? "\"\"" : Toml.inline(shown));
+    out.append(comment ? "# " : "")
+        .append(name)
+        .append(" = ")
+        .append(key.secret() ? "\"\"" : Toml.inline(shown));
     origin(shown, comment);
   }
 
@@ -151,8 +180,9 @@ final class Template {
 
   /** セクションの見出しの上に書く説明。キーの説明に、変えてよい時期を添える。 */
   static String sectionDoc(Component component, Change change) {
-    String label = label(change);
-    return component.key().doc() + (label.isEmpty() ? "" : "（" + label + "）");
+    return change == null
+        ? component.key().doc()
+        : component.key().doc() + "（" + change.label() + "）";
   }
 
   /**
@@ -172,22 +202,13 @@ final class Template {
     if (component.codec() instanceof ScalarCodec scalar && scalar.range() != null) {
       parts.add(Schema.bounds(scalar.range(), scalar.kind().integral()));
     }
-    if (template) {
-      switch (component.key().presence()) {
-        case REQUIRED -> parts.add("必須");
-        case ABSENT -> parts.add("省略できる");
-        case DEFAULT -> {}
-      }
+    if (template && component.key().presence().label() != null) {
+      parts.add(component.key().presence().label());
     }
     if (component.key().secret()) {
       parts.add("秘密。設定のファイルにだけ書く");
     }
-    if (change != table) {
-      String label = label(change);
-      if (!label.isEmpty()) {
-        parts.add(label);
-      }
-    }
+    if (change != null && change != table) parts.add(change.label());
     String doc = component.key().doc();
     return parts.isEmpty() ? doc : doc + "（" + String.join("、", parts) + "）";
   }
@@ -199,32 +220,10 @@ final class Template {
    */
   static String kindDoc(ChoiceCodec codec, String path) {
     if (codec.doc().isEmpty()) {
-      throw new IllegalStateException("Setting " + Keys.join(path, codec.key()) + " has no doc in its @Choice");
+      throw new IllegalStateException(
+          "Setting " + Keys.join(path, codec.key()) + " has no doc in its @Choice");
     }
     return codec.doc() + "（" + Schema.choices(codec) + "）";
-  }
-
-  private static String label(Change change) {
-    if (change == null) {
-      return "";
-    }
-    return switch (change) {
-      case FIXED -> "run の間は変えない";
-      case COLLECT -> "次の反復の収集から効く";
-      case FIT -> "次の反復の当てはめから効く";
-      case MACHINE -> "次の起動から効く";
-      case SCHEDULE -> "次に公開するバージョンの仕事から効く";
-      case INHERIT -> "";
-    };
-  }
-
-  private static Change resolve(Component component, Change parent, String path) {
-    Change change = component.key().change() == Change.INHERIT ? parent : component.key().change();
-    if (change == null) {
-      throw new IllegalStateException(
-          "Top-level setting " + Keys.join(path, component.name()) + " must say when it may change");
-    }
-    return change;
   }
 
   private static Node entry(Node.Table table, Component component) {

@@ -98,11 +98,16 @@ final class Binder {
 
   /** 1 つの値を、変えてよい時期を見ずに結び付ける。既定値と、層を選ぶキーを確かめるのに使う。 */
   Bound value(Codec codec, Node node, String path) {
-    return value(codec, node, path, Change.INHERIT, false);
+    return value(codec, node, path, Change.FIXED, false);
   }
 
   private Bound record(
-      RecordCodec codec, Node.Table table, String path, Change change, ChoiceCodec choice, String chosen) {
+      RecordCodec codec,
+      Node.Table table,
+      String path,
+      Change change,
+      ChoiceCodec choice,
+      String chosen) {
     List<Component> components = codec.components();
     Object[] arguments = new Object[components.size()];
     Map<String, Node> effective = new LinkedHashMap<>();
@@ -114,10 +119,7 @@ final class Binder {
       if (mode == Mode.SETTINGS && key == null) {
         throw new IllegalStateException("Setting " + child + " has no @Key");
       }
-      Change childChange = key == null || key.change() == Change.INHERIT ? change : key.change();
-      if (childChange == null) {
-        throw new IllegalStateException("Top-level setting " + child + " must say when it may change");
-      }
+      Change childChange = Change.required(key, change, child);
       Node node = table.get(component.name());
       if (node == null) {
         if (key != null && key.presence() == Presence.ABSENT) {
@@ -126,7 +128,11 @@ final class Binder {
         node = key == null || key.presence() == Presence.REQUIRED ? null : component.fallback();
         if (node == null) {
           problems.add(
-              "Missing " + noun() + " " + child + (mode == Mode.RECORD ? " in " + table.origin() : ""));
+              "Missing "
+                  + noun()
+                  + " "
+                  + child
+                  + (mode == Mode.RECORD ? " in " + table.origin() : ""));
           failed = true;
           continue;
         }
@@ -167,13 +173,25 @@ final class Binder {
         String key = path.isEmpty() ? invalid.component() : path + "." + invalid.component();
         Node value = Keys.find(node, Arrays.asList(invalid.component().split("\\.")));
         problems.add(
-            "Invalid " + noun() + " " + key + (value == null ? "" : "=" + Keys.text(value)) + " at "
-                + (value == null ? node.origin() : value.origin()) + ": " + invalid.getMessage());
+            "Invalid "
+                + noun()
+                + " "
+                + key
+                + (value == null ? "" : "=" + Keys.text(value))
+                + " at "
+                + (value == null ? node.origin() : value.origin())
+                + ": "
+                + invalid.getMessage());
         return null;
       }
       if (cause instanceof RuntimeException runtime) {
         problems.add(
-            "Invalid " + noun() + (path.isEmpty() ? "s" : " " + path) + " at " + node.origin() + ": "
+            "Invalid "
+                + noun()
+                + (path.isEmpty() ? "s" : " " + path)
+                + " at "
+                + node.origin()
+                + ": "
                 + runtime.getMessage());
         return null;
       }
@@ -186,14 +204,21 @@ final class Binder {
     }
   }
 
-  private void unknown(RecordCodec codec, String path, String name, Node node, ChoiceCodec choice, String chosen) {
+  private void unknown(
+      RecordCodec codec, String path, String name, Node node, ChoiceCodec choice, String chosen) {
     String child = Keys.join(path, name);
     if (choice != null) {
       for (RecordCodec other : choice.cases().values()) {
         if (other.component(name) != null) {
           problems.add(
-              "Setting " + child + " at " + node.origin() + " does not apply to "
-                  + Keys.join(path, choice.key()) + "=" + chosen);
+              "Setting "
+                  + child
+                  + " at "
+                  + node.origin()
+                  + " does not apply to "
+                  + Keys.join(path, choice.key())
+                  + "="
+                  + chosen);
           return;
         }
       }
@@ -212,12 +237,19 @@ final class Binder {
   /** 知らないテーブルの中の葉を、1 つずつ知らないキーとして知らせる。 */
   private void unknownLeaves(String path, Node node, List<String> candidates) {
     if (node instanceof Node.Table table && !table.entries().isEmpty()) {
-      table.entries().forEach((key, child) -> unknownLeaves(Keys.join(path, key), child, candidates));
+      table
+          .entries()
+          .forEach((key, child) -> unknownLeaves(Keys.join(path, key), child, candidates));
       return;
     }
     String similar = candidates.isEmpty() ? null : Keys.similar(path, candidates);
     problems.add(
-        "Unknown " + noun() + " " + path + " at " + node.origin()
+        "Unknown "
+            + noun()
+            + " "
+            + path
+            + " at "
+            + node.origin()
             + (similar == null ? "" : " (did you mean " + similar + "?)"));
   }
 
@@ -233,9 +265,12 @@ final class Binder {
       case MapCodec map -> map(map, node, path, change);
       case TreeCodec tree -> {
         if (mode == Mode.SETTINGS) {
-          throw new IllegalStateException("Setting " + path + " holds a raw tree, which only program files may hold");
+          throw new IllegalStateException(
+              "Setting " + path + " holds a raw tree, which only program files may hold");
         }
-        yield !tree.table() || node instanceof Node.Table ? new Bound(node, node) : invalid(path, node, "a table");
+        yield !tree.table() || node instanceof Node.Table
+            ? new Bound(node, node)
+            : invalid(path, node, "a table");
       }
     };
   }
@@ -245,7 +280,8 @@ final class Binder {
         switch (codec.kind()) {
           case INT -> integer(node, path, codec.range(), true);
           case LONG -> integer(node, path, codec.range(), false);
-          case FLOAT, DOUBLE -> decimal(node, path, codec.range(), codec.kind() == Schema.Scalar.FLOAT);
+          case FLOAT, DOUBLE ->
+              decimal(node, path, codec.range(), codec.kind() == Schema.Scalar.FLOAT);
           case BOOLEAN ->
               node instanceof Node.Bool bool
                   ? bool.value()
@@ -263,7 +299,8 @@ final class Binder {
       return new Bound(value, new Node.Text(MASK, node.origin()));
     }
     boolean text = codec.kind() == Schema.Scalar.STRING || codec.kind() == Schema.Scalar.PATH;
-    return new Bound(value, text ? new Node.Text((String) string(node, path), node.origin()) : node);
+    return new Bound(
+        value, text ? new Node.Text((String) string(node, path), node.origin()) : node);
   }
 
   /** @param small int なら true、long なら false */
@@ -276,8 +313,10 @@ final class Binder {
       return fail(path, node, expected + quoted(node, Node.Numeral.class));
     }
     BigInteger value = new BigInteger(numeral.literal());
-    if (value.compareTo(BigInteger.valueOf(min)) < 0 || value.compareTo(BigInteger.valueOf(max)) > 0) {
-      return fail(path, node, bounds.isEmpty() ? "an integer in [" + min + ", " + max + "]" : expected);
+    if (value.compareTo(BigInteger.valueOf(min)) < 0
+        || value.compareTo(BigInteger.valueOf(max)) > 0) {
+      return fail(
+          path, node, bounds.isEmpty() ? "an integer in [" + min + ", " + max + "]" : expected);
     }
     if (!inRange(range, new BigDecimal(value))) {
       return fail(path, node, expected);
@@ -291,7 +330,8 @@ final class Binder {
     if (!(node instanceof Node.Numeral numeral)) {
       return fail(path, node, expected + quoted(node, Node.Numeral.class));
     }
-    double value = single ? Float.parseFloat(numeral.literal()) : Double.parseDouble(numeral.literal());
+    double value =
+        single ? Float.parseFloat(numeral.literal()) : Double.parseDouble(numeral.literal());
     if (!Double.isFinite(value)) {
       return fail(path, node, "a finite number");
     }
@@ -313,7 +353,9 @@ final class Binder {
       return "";
     }
     try {
-      return wanted.isInstance(Toml.value(text.value(), node.origin())) ? " (written as a string: drop the quotes)" : "";
+      return wanted.isInstance(Toml.value(text.value(), node.origin()))
+          ? " (written as a string: drop the quotes)"
+          : "";
     } catch (SettingsException unreadable) {
       return "";
     }
@@ -380,7 +422,10 @@ final class Binder {
   }
 
   private static String names(Class<?> type) {
-    return Arrays.stream(type.getEnumConstants()).map(constant -> ((Enum<?>) constant).name()).toList().toString();
+    return Arrays.stream(type.getEnumConstants())
+        .map(constant -> ((Enum<?>) constant).name())
+        .toList()
+        .toString();
   }
 
   private Object instant(Node node, String path) {
@@ -431,7 +476,9 @@ final class Binder {
     insideList++;
     try {
       for (int index = 0; index < array.items().size(); index++) {
-        Bound bound = value(codec.element(), array.items().get(index), path + "[" + index + "]", change, false);
+        Bound bound =
+            value(
+                codec.element(), array.items().get(index), path + "[" + index + "]", change, false);
         if (bound == null) {
           failed = true;
         } else {
@@ -453,12 +500,22 @@ final class Binder {
     for (int index = 0; index < values.size(); index++) {
       if (!distinct.add(values.get(index))) {
         problems.add(
-            "Invalid " + noun() + " " + path + "=" + Keys.text(array) + " at " + array.origin() + ": "
-                + Keys.text(array.items().get(index)) + " appears twice");
+            "Invalid "
+                + noun()
+                + " "
+                + path
+                + "="
+                + Keys.text(array)
+                + " at "
+                + array.origin()
+                + ": "
+                + Keys.text(array.items().get(index))
+                + " appears twice");
         return null;
       }
     }
-    return new Bound(Collections.unmodifiableSet(distinct), new Node.Array(effective, array.origin()));
+    return new Bound(
+        Collections.unmodifiableSet(distinct), new Node.Array(effective, array.origin()));
   }
 
   private Bound map(MapCodec codec, Node node, String path, Change change) {
@@ -474,8 +531,15 @@ final class Binder {
       Object key = named ? entry.getKey() : enumKey(codec.keys(), entry.getKey());
       if (key == null) {
         problems.add(
-            "Unknown " + noun() + " " + child + " at " + entry.getValue().origin() + " (expected a key in "
-                + names(codec.keys()) + ")");
+            "Unknown "
+                + noun()
+                + " "
+                + child
+                + " at "
+                + entry.getValue().origin()
+                + " (expected a key in "
+                + names(codec.keys())
+                + ")");
         failed = true;
         continue;
       }
@@ -491,8 +555,10 @@ final class Binder {
       return null;
     }
     Map<String, Node> effective = new LinkedHashMap<>();
-    nodes.forEach((key, value) -> effective.put(named ? (String) key : ((Enum<?>) key).name(), value));
-    return new Bound(Collections.unmodifiableMap(values), new Node.Table(effective, table.origin()));
+    nodes.forEach(
+        (key, value) -> effective.put(named ? (String) key : ((Enum<?>) key).name(), value));
+    return new Bound(
+        Collections.unmodifiableMap(values), new Node.Table(effective, table.origin()));
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
@@ -518,7 +584,16 @@ final class Binder {
 
   private Object fail(String path, Node node, String expected) {
     problems.add(
-        "Invalid " + noun() + " " + path + "=" + Keys.text(node) + " at " + node.origin() + ": expected " + expected);
+        "Invalid "
+            + noun()
+            + " "
+            + path
+            + "="
+            + Keys.text(node)
+            + " at "
+            + node.origin()
+            + ": expected "
+            + expected);
     return FAILED;
   }
 

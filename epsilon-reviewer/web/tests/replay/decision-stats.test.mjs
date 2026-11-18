@@ -355,18 +355,6 @@ test("value decisions match only the best value and grade mistakes at the thresh
   }
 });
 
-test("value decisions ignore the display probabilities", () => {
-  const input = valued(
-    round(decision(0, [dahai("1m", 0.001), dahai("2m", 0, true)])),
-  );
-  input.rounds[0].steps[0].set.probabilities = [0.99, 0.01];
-  assert.deepEqual(summarizePlayerDecisions(input)[0], {
-    reviewed: 1,
-    matched: 1,
-    badMoves: 0,
-    meanLoss: 0,
-  });
-});
 
 for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
   test(`${type} value takes the better of drawn and held copies of the chosen tile`, () => {

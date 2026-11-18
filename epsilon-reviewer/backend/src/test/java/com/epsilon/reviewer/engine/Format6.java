@@ -143,8 +143,8 @@ public final class Format6 {
       int lastEvent = -1;
       for (JsonElement item : round.getAsJsonArray("steps")) {
         JsonObject step = item.getAsJsonObject();
-        if (step.has("delta")) table = apply(table, step.getAsJsonObject("delta"));
         if (step.has("event")) {
+          if (step.has("delta")) table = apply(table, step.getAsJsonObject("delta"));
           lastEvent = firstEvent + events++;
           int actor = step.has("actor") ? step.get("actor").getAsInt() : -1;
           steps.add(new Step(step.get("event").getAsString(), actor, lastEvent, -1, step, table));

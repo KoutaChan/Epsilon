@@ -98,14 +98,15 @@ function decodeRound(
   try {
     for (; position < source.length; position++) {
       const step = object(source[position]);
-      if (step.delta !== undefined)
-        deltas.push(stateDelta(step.delta, lengths, seats));
       if (step.event !== undefined) {
+        if (step.delta !== undefined)
+          deltas.push(stateDelta(step.delta, lengths, seats));
         steps.push(
           eventStep(step, position, firstEvent + events, deltas.length, seats),
         );
         events++;
       } else {
+        if ("delta" in step) fail("A decision cannot carry delta. Record the state change on its event.");
         if (events === 0) fail("A round must start with an event.");
         steps.push(
           decisionStep(
@@ -197,12 +198,7 @@ function candidateSet(set: Fields, valued: boolean): void {
   for (const row of rows) candidateRow(row, valued);
   if (set.chosen !== undefined && count(set.chosen) >= rows.length)
     fail("The chosen candidate is out of range.");
-  if (set.probabilities !== undefined) {
-    const probabilities = array(set.probabilities);
-    if (probabilities.length !== rows.length)
-      fail("The probabilities do not match the candidates.");
-    for (const probability of probabilities) unit(probability);
-  }
+  if ("probabilities" in set) fail("Unsupported probabilities field. Supply values in candidates.");
 }
 
 function candidateRow(value: unknown, valued: boolean): void {
@@ -376,12 +372,9 @@ function recordSummary(value: unknown): RecordSummary {
   if (names.length !== 3 && names.length !== 4)
     fail("The record must name three or four players.");
   for (const name of names) text(name);
-  if (record.finalScores !== undefined) {
-    const scores = array(record.finalScores);
-    if (scores.length !== names.length)
-      fail("The record must have a final score for every seat.");
-    for (const score of scores) integer(score);
-  }
+  if (!Array.isArray(record.finalScores) || record.finalScores.length !== names.length)
+    fail("record.finalScores must contain a final score for every seat.");
+  for (const score of record.finalScores) integer(score);
   count(record.roundCount);
   return value as RecordSummary;
 }

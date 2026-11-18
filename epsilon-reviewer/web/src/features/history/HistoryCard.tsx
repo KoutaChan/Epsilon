@@ -34,9 +34,9 @@ export function HistoryCard({
     .map((name, seat) => ({
       seat,
       name: playerName(name, seat, t),
-      points: record.finalScores?.[seat],
+      points: record.finalScores[seat]!,
     }))
-    .sort((a, b) => (b.points ?? -Infinity) - (a.points ?? -Infinity));
+    .sort((a, b) => b.points - a.points);
   return (
     <article className="history-card">
       <div className="history-card-top">
@@ -66,14 +66,8 @@ export function HistoryCard({
               <div key={player.seat}>
                 <dt>{player.name}</dt>
                 <dd>
-                  {player.points === undefined ? (
-                    t("common.unknown")
-                  ) : (
-                    <>
-                      {player.points.toLocaleString(locale)}
-                      <small>{t("common.points")}</small>
-                    </>
-                  )}
+                  {player.points.toLocaleString(locale)}
+                  <small>{t("common.points")}</small>
                 </dd>
               </div>
             ))}

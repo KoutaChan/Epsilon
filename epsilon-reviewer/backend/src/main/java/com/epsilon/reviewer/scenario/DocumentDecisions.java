@@ -12,7 +12,7 @@ import java.util.zip.GZIPInputStream;
 /**
  * 保存した文書から判断を探すためのインデックス。局と席ごとに、判断を文書に出てくる順に並べる。各判断には、判断が決まるイベントの位置と、
  * 候補の行動の番号を持たせる。もしもの座標（局・判断が決まる位置・席）は、その局でその席が何番目に行った判断かに読み替える。
- * 前のバージョンのエンジンが書いた文書では、イベントの位置が今の牌譜とずれることがある。そのため位置は文書の中でだけ使う。
+ * イベントの位置は文書内での位置を表す。牌譜を読み直したときの位置とは異なることがある。
  */
 final class DocumentDecisions {
   /** [局][席] ごとに、文書に出てくる順に並べた判断。 */
@@ -35,8 +35,7 @@ final class DocumentDecisions {
     try (var json =
         new JsonReader(
             new InputStreamReader(
-                new GZIPInputStream(new ByteArrayInputStream(document)),
-                StandardCharsets.UTF_8))) {
+                new GZIPInputStream(new ByteArrayInputStream(document)), StandardCharsets.UTF_8))) {
       json.beginObject();
       while (json.hasNext()) {
         if (!json.nextName().equals("rounds")) {

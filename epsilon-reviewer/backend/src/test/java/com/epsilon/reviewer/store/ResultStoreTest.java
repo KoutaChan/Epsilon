@@ -214,7 +214,7 @@ public class ResultStoreTest {
               owner.value(),
               createdAt,
               new ModelInfo("fixture", "r1", "Fixture", "1"),
-              new RecordSummary("tenhou", List.of("A", "B", "C", "D"), null, 1)));
+              new RecordSummary("tenhou", List.of("A", "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1)));
     }
     return id;
   }
@@ -237,7 +237,7 @@ public class ResultStoreTest {
         OWNER.value(),
         "2026-11-04T00:00:00Z",
         new ModelInfo("fixture", "r1", "Fixture", "1"),
-        new RecordSummary("tenhou", List.of(name, "B", "C", "D"), null, 1));
+        new RecordSummary("tenhou", List.of(name, "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1));
   }
 
   /** 保存先が作るのと同じ形の 1 件を置く。UUID の名前のフォルダーに、保存のファイルが 1 つ入る。 */

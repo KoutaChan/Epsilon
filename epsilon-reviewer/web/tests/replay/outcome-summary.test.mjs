@@ -1,18 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decodeResult } from "../../src/features/replay/model/decodeResult.ts";
 import {
   collectWinningHands,
-  hasRecordedMatchEnd,
   rankFinalPlayers,
   roundScoreChanges,
 } from "../../src/features/replay/model/outcomeSummary.ts";
 import {
-  event,
   hora,
   playerSnapshot,
-  resultDocument,
-  round,
   snapshot,
 } from "./fixtures.mjs";
 
@@ -211,72 +206,4 @@ test("final score overrides determine ranking and tied scores rank in seat order
   );
   assert.equal(ranking[0].player, players[1]);
   assert.deepEqual(finalScores, [24000, 38000, 38000, 0]);
-});
-
-test("final ranking uses settled scores when the imported record has no final score override", () => {
-  const players = Object.freeze([
-    makePlayer(0, { score: -1200 }),
-    makePlayer(1, { score: 37100 }),
-    makePlayer(2, { score: 43000 }),
-    makePlayer(3, { score: 21100 }),
-  ]);
-  assert.deepEqual(
-    rankFinalPlayers(players, undefined).map(({ player, score, rank }) => [
-      player.seat,
-      score,
-      rank,
-    ]),
-    [
-      [2, 43000, 1],
-      [1, 37100, 2],
-      [3, 21100, 3],
-      [0, -1200, 4],
-    ],
-  );
-});
-
-function recordedMatch(kinds, finalScores) {
-  const document = resultDocument([
-    round(
-      kinds.map((kind) =>
-        kind === "hora"
-          ? event(kind, { actor: 0, outcome: hora(0, 0) })
-          : kind === "ryukyoku"
-            ? event(kind, { outcome: { type: "ryukyoku" } })
-            : event(kind),
-      ),
-    ),
-  ]);
-  if (finalScores) document.record.finalScores = finalScores;
-  return decodeResult(document);
-}
-
-test("a recorded final score establishes the match ending even without an end_game step", () => {
-  assert.equal(
-    hasRecordedMatchEnd(
-      recordedMatch(
-        ["start_kyoku", "hora", "end_kyoku"],
-        [35000, 28000, 22000, 15000],
-      ),
-    ),
-    true,
-  );
-});
-
-test("an explicit end_game establishes the match ending when the record has no final scores", () => {
-  assert.equal(
-    hasRecordedMatchEnd(
-      recordedMatch(["start_kyoku", "hora", "end_kyoku", "end_game"]),
-    ),
-    true,
-  );
-});
-
-test("a final stored round settlement alone does not establish that the match ended", () => {
-  assert.equal(
-    hasRecordedMatchEnd(
-      recordedMatch(["start_kyoku", "ryukyoku", "end_kyoku"]),
-    ),
-    false,
-  );
 });

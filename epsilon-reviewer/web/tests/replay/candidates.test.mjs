@@ -80,25 +80,6 @@ test("value losses derive the display probabilities from the document temperatur
   assert.ok(candidates.every((candidate) => !candidate.chosen));
 });
 
-test("written probabilities replace the derived ones", () => {
-  const set = {
-    candidates: [
-      [discardAction("1m"), 0],
-      [discardAction("2m"), 0.01],
-    ],
-    probabilities: [0.6, 0.4],
-    chosen: 1,
-  };
-  const candidates = readCandidates(set, 0.002);
-  assert.deepEqual(
-    candidates.map((candidate) => [candidate.probability, candidate.valueLoss]),
-    [
-      [0.6, 0],
-      [0.4, 0.01],
-    ],
-  );
-  assert.equal(candidates[1].chosen, true);
-});
 
 test("the list shows the top three and the actual choice below them, except while comparing a scenario", () => {
   const set = {

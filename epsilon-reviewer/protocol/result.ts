@@ -64,8 +64,6 @@ export interface DecisionStep extends CandidateSet {
    * イベントの数。
    */
   resolve?: number;
-  /** 直前の手順の局面からの差分。前のバージョンが書いた文書にだけある。無ければ局面は変わらない。 */
-  delta?: StateDelta;
 }
 
 /** 判断の候補。もしもの結果も同じ形。 */
@@ -76,11 +74,6 @@ export interface CandidateSet {
    * 手）。
    */
   chosen?: number;
-  /**
-   * 表示する確率（候補の順）。前のバージョンが、温度から作れない評価にだけ書いた。あれば、温度から作らずに
-   * これを使う。
-   */
-  probabilities?: readonly number[];
 }
 
 /**
@@ -319,8 +312,7 @@ export function candidateTiles(row: CandidateRow): readonly string[] {
 
 /**
  * 損失から表示する確率を作る: p_i = exp(-loss_i / temperature) / Σ_j exp(-loss_j / temperature)。
- * 和は候補の順に binary64 で足し、各値を float32 に丸める。probabilities を持つのは前のバージョンが書いた
- * 文書だけで、方策の確率とこの値の差が 1e-6 を超える判断に書いてある。
+ * 和は候補の順に binary64 で足し、各値を float32 に丸める。
  */
 export function displayProbabilities(
   losses: readonly number[],
@@ -337,7 +329,6 @@ export function candidateProbabilities(
   set: CandidateSet,
   temperature: number | undefined,
 ): readonly number[] {
-  if (set.probabilities) return set.probabilities;
   const values = set.candidates.map((row) => row[1]);
   return temperature === undefined
     ? values

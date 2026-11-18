@@ -110,6 +110,7 @@ export function resultDocument(rounds, fields = {}) {
     record: {
       source: "mjai",
       names: ["Player 1", "Player 2", "Player 3", "Player 4"],
+      finalScores: [25000, 25000, 25000, 25000],
       roundCount: rounds.length,
     },
     rounds,

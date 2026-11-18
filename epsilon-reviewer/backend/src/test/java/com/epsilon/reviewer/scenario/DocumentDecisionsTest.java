@@ -20,7 +20,7 @@ public class DocumentDecisionsTest {
         {"event":"tsumo","actor":0},
         {"seat":0,"candidates":[[29,0.0],[33,0.5]],"chosen":0},
         {"event":"dahai","actor":0},
-        {"seat":1,"candidates":[[40,0.0,["1m","2m"]],[71,0.25]],"probabilities":[0.5,0.5]},
+        {"seat":1,"candidates":[[40,0.0,["1m","2m"]],[71,0.25]]},
         {"seat":2,"cause":11,"resolve":14,"candidates":[[71,0.0]]},
         {"event":"tsumo","actor":1},
         {"event":"dahai","actor":1},
@@ -61,13 +61,14 @@ public class DocumentDecisionsTest {
 
   @Test
   public void aDecisionWithoutCandidatesIsRefused() {
-    String broken = DOCUMENT.replace("{\"seat\":2,\"cause\":11,\"resolve\":14,\"candidates\":[[71,0.0]]}", "{\"seat\":2}");
+    String broken =
+        DOCUMENT.replace(
+            "{\"seat\":2,\"cause\":11,\"resolve\":14,\"candidates\":[[71,0.0]]}", "{\"seat\":2}");
     Assert.assertNotEquals(broken, DOCUMENT);
     Assert.expectThrows(
         IllegalArgumentException.class,
         () ->
-            DocumentDecisions.read(
-                StoredResults.gzip(broken.getBytes(StandardCharsets.UTF_8)), 4));
+            DocumentDecisions.read(StoredResults.gzip(broken.getBytes(StandardCharsets.UTF_8)), 4));
   }
 
   private static DocumentDecisions read() throws IOException {

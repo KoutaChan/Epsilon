@@ -72,6 +72,19 @@ function sample() {
   );
 }
 
+test("obsolete and incomplete results identify the unsupported or missing field", () => {
+  for (const [field, edit] of [
+    ["finalScores", (d) => delete d.record.finalScores],
+    ["probabilities", (d) => { d.rounds[0].steps[2].probabilities = [0.75, 0.25]; }],
+    ["delta", (d) => { d.rounds[0].steps[2].delta = {}; }],
+  ]) {
+    const document = sample();
+    edit(document);
+    assert.throws(() => decodeResult(document), (e) =>
+      e instanceof ReviewFormatError && e.message.includes(field));
+  }
+});
+
 const invalid = (error) =>
   error instanceof ReviewFormatError && error.code === "invalid_result";
 
@@ -208,7 +221,7 @@ for (const [name, mutate] of [
   ["no candidates", (d) => (d.rounds[0].steps[2].candidates = [])],
   ["a chosen candidate out of range", (d) => (d.rounds[0].steps[2].chosen = 2)],
   [
-    "probabilities of another length",
+    "the unsupported probabilities field",
     (d) => (d.rounds[0].steps[2].probabilities = [1]),
   ],
   [

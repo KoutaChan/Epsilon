@@ -1,12 +1,23 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import ai.djl.Device;
+import ai.djl.Model;
 import ai.djl.ndarray.NDManager;
 import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.backend.ThreePlayerRows;
 import com.epsilon.prism.input.HostBatch;
+import com.epsilon.prism.input.HostInputs;
+import com.epsilon.prism.input.InputSamples;
+import com.epsilon.prism.learn.Fit;
+import com.epsilon.prism.run.Snapshot;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -36,8 +47,7 @@ public class ThreePlayerAttentionTapeTest {
   private static final int LONG_ROWS = 2;
 
   /** 型ごとの FFN の小さな形（CPU で速く実行できる）。 */
-  private static final PrismShape TYPED =
-      new PrismShape.V3(64, 128, 64, 128, 256, 128, true);
+  private static final PrismShape TYPED = new PrismShape.V3(64, 128, 64, 128, 256, 128, true);
 
   /** 型ごとの FFN の小さな形のうち、候補層の 2 段目がない形。 */
   private static final PrismShape TYPED_ONE_STAGE =
@@ -68,28 +78,84 @@ public class ThreePlayerAttentionTapeTest {
     };
   }
 
+  @DataProvider
+  public Object[][] precisions() {
+    return Arrays.stream(Precision.values())
+        .map(precision -> new Object[] {precision})
+        .toArray(Object[][]::new);
+  }
+
+  @DataProvider
+  public Object[][] coreSizes() {
+    return new Object[][] {
+      {ShapeArm.V4_S, 1977519L, 1804654L}, {ShapeArm.V4_M, 4087407L, 3831854L}
+    };
+  }
+
+  @Test(dataProvider = "coreSizes")
+  public void trainedCoreReloadsWithIdenticalScores(ShapeArm arm, long total, long inference)
+      throws IOException {
+    Path root = Files.createTempDirectory("prism-3p-core");
+    try (Model model = Fit.blank(THREE_PLAYER, arm.shape(), Device.cpu(), 337)) {
+      PrismNetwork network = (PrismNetwork) model.getBlock();
+      Assert.assertEquals(
+          network.getParameters().values().stream().mapToLong(p -> p.getArray().size()).sum(),
+          total);
+      Assert.assertEquals(
+          network.inferenceParameters().values().stream().mapToLong(p -> p.getArray().size()).sum(),
+          inference);
+      HostBatch inputs =
+          InputSamples.encode(
+              HostInputs.allocate(
+                  network.format(), InputSamples.CAPACITY, ByteBuffer::allocateDirect));
+      BlankNetworkChecks.update(model, inputs, Precision.FLOAT32);
+      Path directory = root.resolve("trained");
+      network.save(directory);
+      var manager = model.getNDManager();
+      var loaded = PrismNetwork.load(directory, manager);
+      Assert.assertEquals(loaded.shape(), arm.shape());
+      var rows = NetworkInputs.of(manager, PinnedUploads.on(manager), inputs);
+      var pass = Pass.inference(Precision.FLOAT32);
+      var store = new ParameterStore(manager, false);
+      var expected = network.forward(store, rows, pass).scores();
+      Assert.assertTrue(expected.abs().max().getFloat() > 0f);
+      Assert.assertEquals(
+          loaded.forward(store, rows, pass).scores().toByteBuffer(), expected.toByteBuffer());
+    } finally {
+      Snapshot.deleteTree(root);
+    }
+  }
+
   @Test(timeOut = 600_000, dataProvider = "shapes")
   public void tapeKeepsTheGradients(PrismShape shape) {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = ThreePlayerRows.network(manager, shape, 3);
       ThreePlayerSteps.Outcome reference =
-          ThreePlayerSteps.run(network, manager, batch, null, Precision.FLOAT32, Context.Intermediates.CLOSE);
+          ThreePlayerSteps.run(
+              network, manager, batch, null, Precision.FLOAT32, Context.Intermediates.CLOSE);
       ThreePlayerSteps.Outcome tape =
           ThreePlayerSteps.run(
-              network, manager, batch, new ReferenceAttention(), Precision.FLOAT32, Context.Intermediates.CLOSE);
+              network,
+              manager,
+              batch,
+              new ReferenceAttention(),
+              Precision.FLOAT32,
+              Context.Intermediates.CLOSE);
       double scoreError = ThreePlayerSteps.relative(reference.scores(), tape.scores());
       List<Map.Entry<String, Double>> ratios = new ArrayList<>();
       for (Map.Entry<String, float[]> entry : reference.gradients().entrySet()) {
         float[] expected = entry.getValue();
         double norm = Math.sqrt(ThreePlayerSteps.squared(expected));
-        double error = Math.sqrt(ThreePlayerSteps.difference(expected, tape.gradients().get(entry.getKey())));
+        double error =
+            Math.sqrt(ThreePlayerSteps.difference(expected, tape.gradients().get(entry.getKey())));
         ratios.add(Map.entry(entry.getKey(), norm > 1e-12 ? error / norm : error));
       }
       ratios.sort(Map.Entry.<String, Double>comparingByValue().reversed());
       String worstName = ratios.getFirst().getKey();
       double worst = ratios.getFirst().getValue();
       log.info(
-          "PRISM-3P-TAPE-CPU shape={} rows={} loss {} vs {} scores rel={} gradients rel={} worst tensors {}",
+          "PRISM-3P-TAPE-CPU shape={} rows={} loss {} vs {} scores rel={} gradients rel={} worst"
+              + " tensors {}",
           shape,
           batch.plan().rows(),
           String.format("%.7f", reference.loss()),
@@ -99,12 +165,18 @@ public class ThreePlayerAttentionTapeTest {
           ratios.subList(0, Math.min(8, ratios.size())).stream()
               .map(entry -> entry.getKey() + "=" + String.format("%.3g", entry.getValue()))
               .toList());
-      Assert.assertTrue(ThreePlayerSteps.maxAbs(reference.scores()) > 1e-3f, "scores must be non-trivial");
-      Assert.assertEquals(tape.loss(), reference.loss(), 1e-5f * Math.abs(reference.loss()), shape + " loss");
+      Assert.assertTrue(
+          ThreePlayerSteps.maxAbs(reference.scores()) > 1e-3f, "scores must be non-trivial");
+      Assert.assertEquals(
+          tape.loss(), reference.loss(), 1e-5f * Math.abs(reference.loss()), shape + " loss");
       Assert.assertTrue(scoreError <= 1e-5, shape + " scores rel " + scoreError);
       Assert.assertTrue(worst <= 1e-4, shape + " gradient " + worstName + " rel " + worst);
-      Assert.assertEquals(ThreePlayerSteps.silent(reference), List.of(), shape + " djl gradients that are all zero");
-      Assert.assertEquals(ThreePlayerSteps.silent(tape), List.of(), shape + " tape gradients that are all zero");
+      Assert.assertEquals(
+          ThreePlayerSteps.silent(reference),
+          List.of(),
+          shape + " djl gradients that are all zero");
+      Assert.assertEquals(
+          ThreePlayerSteps.silent(tape), List.of(), shape + " tape gradients that are all zero");
     }
   }
 
@@ -114,9 +186,11 @@ public class ThreePlayerAttentionTapeTest {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = ThreePlayerRows.network(manager, shape, 5);
       float[] reference = infer(network, manager, null);
-      float[] kernels = infer(network, manager, AttentionTape.forwardOnly(new ReferenceAttention()));
+      float[] kernels =
+          infer(network, manager, AttentionTape.forwardOnly(new ReferenceAttention()));
       double error = ThreePlayerSteps.relative(reference, kernels);
-      log.info("PRISM-3P-TAPE-INFERENCE shape={} scores rel={}", shape, String.format("%.3g", error));
+      log.info(
+          "PRISM-3P-TAPE-INFERENCE shape={} scores rel={}", shape, String.format("%.3g", error));
       Assert.assertTrue(ThreePlayerSteps.maxAbs(reference) > 1e-3f, "scores must be non-trivial");
       Assert.assertTrue(error <= 1e-5, shape + " scores rel " + error);
     }
@@ -164,7 +238,9 @@ public class ThreePlayerAttentionTapeTest {
               String.format("%.7f", closed.loss()),
               String.format("%.7f", kept.loss()));
           Assert.assertEquals(
-              Float.floatToRawIntBits(closed.loss()), Float.floatToRawIntBits(kept.loss()), label + " loss");
+              Float.floatToRawIntBits(closed.loss()),
+              Float.floatToRawIntBits(kept.loss()),
+              label + " loss");
           Assert.assertTrue(Arrays.equals(closed.scores(), kept.scores()), label + " scores");
           for (Map.Entry<String, float[]> entry : kept.gradients().entrySet()) {
             Assert.assertTrue(

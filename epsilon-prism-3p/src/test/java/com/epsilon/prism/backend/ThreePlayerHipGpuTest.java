@@ -12,6 +12,8 @@ import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputFormat.Role;
 import com.epsilon.prism.model.EagerStages;
 import com.epsilon.prism.model.PrismNetwork;
+import com.epsilon.prism.model.ShapeArm;
+import com.epsilon.prism.play.PublishedModel;
 import com.epsilon.prism.run.Snapshot;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,6 +27,7 @@ import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -59,6 +62,14 @@ public class ThreePlayerHipGpuTest {
   /** 推論に渡す重みのバージョン。 */
   private static final long VERSION = 1;
 
+  @Test(
+      groups = "rocm",
+      dataProvider = "threePlayerModels",
+      dataProviderClass = PublishedModel.class)
+  public void publishedHipScores(PublishedModel model) throws IOException {
+    model.assertHipScores();
+  }
+
   /**
    * K0 の関係のコードを、CPU の参照（{@link HipReference#relationCodes}）とワードごとに比べる。全ての行で、行のトークンを覆うクエリと
    * キーのタイルの全ての組を比べる。ふつうのバッチと長い行のバッチで確かめる。
@@ -92,7 +103,11 @@ public class ThreePlayerHipGpuTest {
             }
           }
         }
-        log.info("PRISM-3P-HIP-K0 {}: {} words checked, {} differ from the CPU reference", c.name, checked, wrong);
+        log.info(
+            "PRISM-3P-HIP-K0 {}: {} words checked, {} differ from the CPU reference",
+            c.name,
+            checked,
+            wrong);
         Assert.assertEquals(wrong, 0L, c.name + ": K0 words that differ from the CPU reference");
       }
     }
@@ -116,7 +131,9 @@ public class ThreePlayerHipGpuTest {
           try (NDManager scope = c.manager.newSubManager()) {
             full =
                 EagerStages.run(
-                    c.network, new ParameterStore(c.manager, false), EagerStages.inputs(scope, c.batch),
+                    c.network,
+                    new ParameterStore(c.manager, false),
+                    EagerStages.inputs(scope, c.batch),
                     Precision.FLOAT32);
           }
           kernels(failures, c, c.stages, "eager BF16", true);
@@ -138,7 +155,11 @@ public class ThreePlayerHipGpuTest {
    * @param withReference 同じ入力の CPU の参照とも比べるなら true
    */
   private static void kernels(
-      List<String> failures, GpuCase c, EagerStages.Stages e, String against, boolean withReference) {
+      List<String> failures,
+      GpuCase c,
+      EagerStages.Stages e,
+      String against,
+      boolean withReference) {
     Checks checks = new Checks(failures, c.name + " vs " + against + " ", withReference);
     HipArchitecture a = c.architecture;
     int hidden = a.hidden();
@@ -175,7 +196,8 @@ public class ThreePlayerHipGpuTest {
       checks.eager("K2 o layer " + layer, Diff.bf16(e.attention().get(layer), o));
       reference.residual = input.clone();
       reference.attention(in, layer);
-      checks.reference("K2 o layer " + layer, Diff.bf16(Arrays.copyOf(reference.attentionOut, o.length), o));
+      checks.reference(
+          "K2 o layer " + layer, Diff.bf16(Arrays.copyOf(reference.attentionOut, o.length), o));
 
       boolean last = a.layer(layer + 1).role() == LayerRole.FIXED_TOKENS;
       int written = last ? fixedValues : input.length;
@@ -188,25 +210,35 @@ public class ThreePlayerHipGpuTest {
       reference.residual = input.clone();
       reference.attentionOut = e.attention().get(layer).clone();
       reference.mlp(in, layer);
-      checks.eager("K3 x layer " + layer, Diff.bf16(Arrays.copyOf(e.layers().get(layer), written), x));
-      checks.reference("K3 x layer " + layer, Diff.bf16(Arrays.copyOf(reference.residual, written), x));
+      checks.eager(
+          "K3 x layer " + layer, Diff.bf16(Arrays.copyOf(e.layers().get(layer), written), x));
+      checks.reference(
+          "K3 x layer " + layer, Diff.bf16(Arrays.copyOf(reference.residual, written), x));
       if (last) {
         int events = c.hipBatch.events();
         int width = 2 * attention;
-        float[] keyValues = c.getBf16(HipRegion.EVENT_KEY_VALUE, a.copiedEventLayers() * events * width);
+        float[] keyValues =
+            c.getBf16(HipRegion.EVENT_KEY_VALUE, a.copiedEventLayers() * events * width);
         reference.eventKeyValue(in);
         for (int f = 1; f < a.fixedLayers(); f++) {
-          float[] actual = Arrays.copyOfRange(keyValues, (f - 1) * events * width, f * events * width);
-          checks.eager("K3 event kv layer " + (allTokens + f), Diff.bf16(e.eventKeyValues().get(f), actual));
-          checks.reference("K3 event kv layer " + (allTokens + f), Diff.bf16(reference.eventKeyValues[f], actual));
+          float[] actual =
+              Arrays.copyOfRange(keyValues, (f - 1) * events * width, f * events * width);
+          checks.eager(
+              "K3 event kv layer " + (allTokens + f), Diff.bf16(e.eventKeyValues().get(f), actual));
+          checks.reference(
+              "K3 event kv layer " + (allTokens + f),
+              Diff.bf16(reference.eventKeyValues[f], actual));
         }
         if (a.reread()) {
           int from = c.fixedTokens() * width;
           float[] memory = c.getBf16(HipRegion.REREAD_MEMORY, from + events * width);
           float[] actual = Arrays.copyOfRange(memory, from, memory.length);
-          checks.eager("K3 reread events", Diff.bf16(Arrays.copyOfRange(e.rereadMemory(), from, memory.length), actual));
+          checks.eager(
+              "K3 reread events",
+              Diff.bf16(Arrays.copyOfRange(e.rereadMemory(), from, memory.length), actual));
           checks.reference(
-              "K3 reread events", Diff.bf16(Arrays.copyOfRange(reference.rereadMemory, from, memory.length), actual));
+              "K3 reread events",
+              Diff.bf16(Arrays.copyOfRange(reference.rereadMemory, from, memory.length), actual));
         }
       }
     }
@@ -222,17 +254,22 @@ public class ThreePlayerHipGpuTest {
       reference.eventKeyValue(in);
       System.arraycopy(input, 0, reference.residual, 0, fixedValues);
       boolean first = a.fixedIndex(layer) == 0;
-      c.putBf16(HipRegion.NORMALIZED, reference.attentionInput(first ? reference.residual : input, layer));
+      c.putBf16(
+          HipRegion.NORMALIZED,
+          reference.attentionInput(first ? reference.residual : input, layer));
       if (a.copiedEventLayers() > 0) {
         c.putBf16(
             HipRegion.EVENT_KEY_VALUE,
-            concatenate(Arrays.asList(reference.eventKeyValues).subList(1, reference.eventKeyValues.length)));
+            concatenate(
+                Arrays.asList(reference.eventKeyValues)
+                    .subList(1, reference.eventKeyValues.length)));
       }
       run(c, HipKernel.ATTENTION_FIXED, layer);
       float[] o = c.getBf16(HipRegion.ATTENTION, c.fixedTokens() * attention);
       reference.attention(in, layer);
       checks.eager("K4 o layer " + layer, Diff.bf16(e.attention().get(layer), o));
-      checks.reference("K4 o layer " + layer, Diff.bf16(Arrays.copyOf(reference.attentionOut, o.length), o));
+      checks.reference(
+          "K4 o layer " + layer, Diff.bf16(Arrays.copyOf(reference.attentionOut, o.length), o));
 
       float[] attended = e.attention().get(layer);
       c.putBf16(HipRegion.RESIDUAL, input);
@@ -246,7 +283,9 @@ public class ThreePlayerHipGpuTest {
         x = c.getBf16(HipRegion.RESIDUAL, fixedValues);
         reference.mlp(in, layer);
         checks.eager("K3 fixed x layer " + layer, Diff.bf16(e.layers().get(layer), x));
-        checks.reference("K3 fixed x layer " + layer, Diff.bf16(Arrays.copyOf(reference.residual, fixedValues), x));
+        checks.reference(
+            "K3 fixed x layer " + layer,
+            Diff.bf16(Arrays.copyOf(reference.residual, fixedValues), x));
       } else {
         run(c, HipKernel.MLP_LAST, layer);
         float[] state = c.getBf16(HipRegion.STATE, e.states().length);
@@ -268,7 +307,8 @@ public class ThreePlayerHipGpuTest {
       reference.state = e.states().clone();
       reference.rereadKeyValue(c.input(reference));
       checks.eager("K8 reread fixed", Diff.bf16(Arrays.copyOf(e.rereadMemory(), count), memory));
-      checks.reference("K8 reread fixed", Diff.bf16(Arrays.copyOf(reference.rereadMemory, count), memory));
+      checks.reference(
+          "K8 reread fixed", Diff.bf16(Arrays.copyOf(reference.rereadMemory, count), memory));
     }
 
     c.putInput();
@@ -346,11 +386,19 @@ public class ThreePlayerHipGpuTest {
     }
   }
 
+  @DataProvider
+  public Object[][] tokenArms() {
+    return new Object[][] {
+      {ShapeArm.V2, 50}, {ShapeArm.V3, 51},
+    };
+  }
+
   /**
    * 通しの s を比べる。{@value #BATCHES} 個のふつうのバッチと長い行のバッチで、HIP の s を eager（GPU の BF16、CPU の FP32）と CPU の
    * 参照と比べる。argmax は、全ての行と自信のある行の一致をログに出し、eager 自身の BF16 の丸めで順位が変わらない行の一致を確かめる。
    */
-  public void scoresMatchEager() throws IOException {
+  @Test(dataProvider = "tokenArms")
+  public void scoresMatchEager(ShapeArm arm, int seed) throws IOException {
     List<HostBatch> batches = new ArrayList<>();
     for (int b = 0; b < BATCHES; b++) {
       batches.add(ThreePlayerRows.encode(ThreePlayerRows.mixedRows(GpuCase.ROWS, 600 + 13L * b)));
@@ -359,30 +407,28 @@ public class ThreePlayerHipGpuTest {
     longRows.addAll(ThreePlayerRows.longRows(LONG_ROWS));
     HostBatch longBatch = ThreePlayerRows.encode(longRows);
     List<String> failures = new ArrayList<>();
-    for (ThreePlayerRows.Arm arm : ThreePlayerRows.Arm.values()) {
-      Path directory = Files.createTempDirectory("prism-3p-hip");
-      try (GpuCase c =
-              new GpuCase(
-                  arm.label(),
-                  manager -> ThreePlayerRows.network(manager, arm.shape(), 50 + arm.ordinal()),
-                  batches.getFirst());
-          NDManager gpu = NDManager.newBaseManager(Device.gpu(0))) {
-        Path model = directory.resolve("model");
-        c.network.save(model);
-        PrismNetwork onGpu = PrismNetwork.load(model, gpu);
-        Scores scores = new Scores();
-        Scores longScores = new Scores();
-        for (HostBatch batch : batches) {
-          scores.add(c, onGpu, gpu, batch);
-        }
-        longScores.add(c, onGpu, gpu, longBatch);
-        scores.check(failures, arm.label());
-        longScores.check(failures, "long " + arm.label());
-      } catch (RuntimeException failure) {
-        failures.add(arm.label() + " stopped: " + failure);
-      } finally {
-        Snapshot.deleteTree(directory);
+    Path directory = Files.createTempDirectory("prism-3p-hip");
+    try (GpuCase c =
+            new GpuCase(
+                arm.name(),
+                manager -> ThreePlayerRows.network(manager, arm.shape(), seed),
+                batches.getFirst());
+        NDManager gpu = NDManager.newBaseManager(Device.gpu(0))) {
+      Path model = directory.resolve("model");
+      c.network.save(model);
+      PrismNetwork onGpu = PrismNetwork.load(model, gpu);
+      Scores scores = new Scores();
+      Scores longScores = new Scores();
+      for (HostBatch batch : batches) {
+        scores.add(c, onGpu, gpu, batch);
       }
+      longScores.add(c, onGpu, gpu, longBatch);
+      scores.check(failures, arm.name());
+      longScores.check(failures, "long " + arm.name());
+    } catch (RuntimeException failure) {
+      failures.add(arm.name() + " stopped: " + failure);
+    } finally {
+      Snapshot.deleteTree(directory);
     }
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
@@ -400,11 +446,14 @@ public class ThreePlayerHipGpuTest {
     for (ThreePlayerRows.Arm arm : ThreePlayerRows.Arm.values()) {
       try (GpuCase c =
           new GpuCase(
-              arm.label(), manager -> ThreePlayerRows.network(manager, arm.shape(), 61 + arm.ordinal()), first)) {
+              arm.label(),
+              manager -> ThreePlayerRows.network(manager, arm.shape(), 61 + arm.ordinal()),
+              first)) {
         float[] a = c.backend.forward(first, VERSION);
         float[] b = c.backend.forward(second, VERSION);
         float[] again = c.backend.forward(first, VERSION);
-        Assert.assertTrue(HipParity.bitwiseEqual(a, again), arm.label() + ": two runs of one batch differ");
+        Assert.assertTrue(
+            HipParity.bitwiseEqual(a, again), arm.label() + ": two runs of one batch differ");
         int compared = 0;
         for (int r = 0; r < rows.size(); r++) {
           int s = prefixed.indexOf(rows.get(r));
@@ -417,7 +466,10 @@ public class ThreePlayerHipGpuTest {
             compared++;
           }
         }
-        log.info("PRISM-3P-HIP-T5 rebatch arm {}: {} scores bitwise equal, two runs bitwise equal", arm.label(), compared);
+        log.info(
+            "PRISM-3P-HIP-T5 rebatch arm {}: {} scores bitwise equal, two runs bitwise equal",
+            arm.label(),
+            compared);
       }
     }
   }
@@ -435,12 +487,18 @@ public class ThreePlayerHipGpuTest {
       try (NDManager scope = gpu.newSubManager()) {
         bf16.add(
             EagerStages.scores(
-                onGpu, new ParameterStore(gpu, false), EagerStages.inputs(scope, batch), Precision.BFLOAT16));
+                onGpu,
+                new ParameterStore(gpu, false),
+                EagerStages.inputs(scope, batch),
+                Precision.BFLOAT16));
       }
       try (NDManager scope = c.manager.newSubManager()) {
         fp32.add(
             EagerStages.scores(
-                c.network, new ParameterStore(c.manager, false), EagerStages.inputs(scope, batch), Precision.FLOAT32));
+                c.network,
+                new ParameterStore(c.manager, false),
+                EagerStages.inputs(scope, batch),
+                Precision.FLOAT32));
       }
       reference.add(new HipReference(c.pack).forward(batch));
       actions.add(HipParity.Actions.of(batch));
@@ -454,16 +512,27 @@ public class ThreePlayerHipGpuTest {
       float[] f = concatenate(fp32);
       float[] r = concatenate(reference);
       HipParity.Report half = HipParity.compare(h, b, joined);
-      log.info("PRISM-3P-HIP-T5 {} HIP vs eager GPU BF16: {} passes={}", label, half.summary(), half.passes());
-      log.info("PRISM-3P-HIP-T5 {} HIP vs eager CPU FP32: {}", label, HipParity.compare(h, f, joined).summary());
-      log.info("PRISM-3P-HIP-T5 {} HIP vs CPU reference: {}", label, HipParity.compare(h, r, joined).summary());
+      log.info(
+          "PRISM-3P-HIP-T5 {} HIP vs eager GPU BF16: {} passes={}",
+          label,
+          half.summary(),
+          half.passes());
+      log.info(
+          "PRISM-3P-HIP-T5 {} HIP vs eager CPU FP32: {}",
+          label,
+          HipParity.compare(h, f, joined).summary());
+      log.info(
+          "PRISM-3P-HIP-T5 {} HIP vs CPU reference: {}",
+          label,
+          HipParity.compare(h, r, joined).summary());
       line(failures, label, "s vs eager GPU BF16", Diff.fp32(b, h), SCORE_LIMIT);
       line(failures, label, "s vs eager CPU FP32", Diff.fp32(f, h), SCORE_LIMIT);
       line(failures, label, "s vs CPU reference", Diff.fp32(r, h), SCORE_REFERENCE_LIMIT);
       argmax(failures, label, h, b, f, joined);
     }
 
-    private static void line(List<String> failures, String label, String name, Diff diff, double limit) {
+    private static void line(
+        List<String> failures, String label, String name, Diff diff, double limit) {
       log.info("PRISM-3P-HIP-T5 {} {}", label, diff.line(name));
       if (!(diff.relativeRms() <= limit)) {
         failures.add(label + " " + name + " " + diff.relativeRms());
@@ -478,7 +547,12 @@ public class ThreePlayerHipGpuTest {
    * argmax が eager の FP32 と一致する割合が {@value HipParity#ARGMAX_LIMIT} 以上であることを確かめる。そういう行が 1 つも無ければ失敗にする。
    */
   private static void argmax(
-      List<String> failures, String label, float[] hip, float[] bf16, float[] fp32, HipParity.Actions actions) {
+      List<String> failures,
+      String label,
+      float[] hip,
+      float[] bf16,
+      float[] fp32,
+      HipParity.Actions actions) {
     HipParity.Report half = HipParity.compare(hip, bf16, actions);
     int decided = 0;
     int agree = 0;
@@ -499,8 +573,9 @@ public class ThreePlayerHipGpuTest {
     }
     double rate = decided == 0 ? 1 : (double) agree / decided;
     log.info(
-        "PRISM-3P-HIP-T5 {} argmax vs eager GPU BF16 {} on all {} rows (line {} {}), confident {} on {} rows; vs eager"
-            + " FP32 {} on {} rows that eager's own BF16 rounding does not reorder",
+        "PRISM-3P-HIP-T5 {} argmax vs eager GPU BF16 {} on all {} rows (line {} {}), confident {}"
+            + " on {} rows; vs eager FP32 {} on {} rows that eager's own BF16 rounding does not"
+            + " reorder",
         label,
         String.format(Locale.ROOT, "%.5f", half.argmaxAgreement()),
         half.rows(),
@@ -511,7 +586,13 @@ public class ThreePlayerHipGpuTest {
         String.format(Locale.ROOT, "%.5f", rate),
         decided);
     if (decided == 0 || rate < HipParity.ARGMAX_LIMIT) {
-      failures.add(label + " argmax on rows that BF16 rounding does not reorder " + rate + " (" + decided + " rows)");
+      failures.add(
+          label
+              + " argmax on rows that BF16 rounding does not reorder "
+              + rate
+              + " ("
+              + decided
+              + " rows)");
     }
   }
 

@@ -1,6 +1,10 @@
 // テスト用の解析結果を組み立てる。局面は局の始めに全体を書き、その後は手順ごとに Splice の差分で書く。
 
-import { HONOR_CODES as HONORS, RED_FIVES } from "@epsilon-reviewer/protocol/tiles";
+import { RESULT_FORMAT } from "@epsilon-reviewer/protocol/result";
+import {
+  HONOR_CODES as HONORS,
+  RED_FIVES,
+} from "@epsilon-reviewer/protocol/tiles";
 
 export function player(fields = {}) {
   return {
@@ -15,9 +19,11 @@ export function player(fields = {}) {
   };
 }
 
-export function table(fields = {}) {
+export function table(fields = {}, seats = 4) {
   return {
-    players: [0, 1, 2, 3].map(() => player()),
+    players: Array.from({ length: seats }, () =>
+      player({ score: seats === 3 ? 35000 : 25000 }),
+    ),
     dora: ["1m"],
     honba: 0,
     kyotaku: 0,
@@ -95,9 +101,9 @@ export function round(steps, fields = {}) {
   };
 }
 
-export function resultDocument(rounds, fields = {}) {
+export function resultDocument(rounds, fields = {}, seats = 4) {
   return {
-    format: 7,
+    format: RESULT_FORMAT,
     resultId: "00000000-0000-4000-8000-000000000001",
     createdAt: "2026-11-04T00:00:00.000Z",
     model: {
@@ -108,8 +114,11 @@ export function resultDocument(rounds, fields = {}) {
     },
     record: {
       source: "mjai",
-      names: ["Player 1", "Player 2", "Player 3", "Player 4"],
-      finalScores: [25000, 25000, 25000, 25000],
+      names: Array.from(
+        { length: seats },
+        (_, index) => "Player " + (index + 1),
+      ),
+      finalScores: Array(seats).fill(seats === 3 ? 35000 : 25000),
       roundCount: rounds.length,
     },
     rounds,
@@ -212,3 +221,60 @@ export const ACTIONS = {
   pass: 370,
   kyushu: 371,
 };
+
+export function meld(
+  type,
+  tiles,
+  { from = 2, calledIndex = 0, addedIndex = -1 } = {},
+) {
+  return Object.freeze({
+    type,
+    tiles: Object.freeze(tiles),
+    from,
+    calledIndex,
+    addedIndex,
+  });
+}
+
+/** 席 1 がポンしてから北を 2 回抜き、2 回目の北に席 2 がロンできる局。 */
+export function northExtractionDocument(fields = {}) {
+  return resultDocument(
+    [
+      round(
+        [
+          event("start_kyoku"),
+          event("pon", {
+            actor: 1,
+            delta: {
+              players: [
+                { seat: 1, melds: [0, 0, meld("PON", ["P", "P", "P"])] },
+              ],
+            },
+          }),
+          event("kita", {
+            actor: 1,
+            delta: { players: [{ seat: 1, nuki: 1 }] },
+          }),
+          event("kita", {
+            actor: 1,
+            delta: { players: [{ seat: 1, nuki: 2 }] },
+          }),
+          {
+            seat: 2,
+            candidates: [
+              [369, 0.5],
+              [370, 0.5],
+            ],
+          },
+          event("hora", {
+            actor: 2,
+            outcome: { type: "hora", actor: 2, target: 1, winningTile: "N" },
+          }),
+        ],
+        { roundIndex: 6, dealer: 0, start: table({}, 3) },
+      ),
+    ],
+    fields,
+    3,
+  );
+}

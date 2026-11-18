@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { displayProbabilities } from "@epsilon-reviewer/protocol/result";
+import {
+  displayProbabilities,
+  actionOf,
+} from "@epsilon-reviewer/protocol/result";
 import {
   listedCandidates,
   readCandidates,
@@ -80,7 +83,6 @@ test("value losses derive the display probabilities from the document temperatur
   assert.ok(candidates.every((candidate) => !candidate.chosen));
 });
 
-
 test("the list shows the top three and the actual choice below them, except while comparing a scenario", () => {
   const set = {
     candidates: ["1m", "2m", "3m", "4m", "5m"].map((tile, index) => [
@@ -110,4 +112,13 @@ test("each decision builds its candidates once", () => {
     readCandidates({ candidates: [[ACTIONS.pass, 1]] }, undefined),
     first,
   );
+});
+
+test("the north extraction is action 372", () => {
+  assert.deepEqual(actionOf(372), {
+    type: "NUKI",
+    tsumogiri: false,
+    tile: null,
+  });
+  assert.throws(() => actionOf(373), RangeError);
 });

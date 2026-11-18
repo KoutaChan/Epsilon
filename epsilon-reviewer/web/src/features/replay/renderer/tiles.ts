@@ -1,4 +1,8 @@
-import { TILE_BASE_Z, TILE_DEPTH, LANDSCAPE_RIVER_SCALE } from "./tableMetrics.ts";
+import {
+  TILE_BASE_Z,
+  TILE_DEPTH,
+  LANDSCAPE_RIVER_SCALE,
+} from "./tableMetrics.ts";
 import { BACK, meldFace } from "../../../components/tileAssets.ts";
 import * as THREE from "three";
 import type { PlayerState } from "@epsilon-reviewer/protocol/result";
@@ -12,7 +16,7 @@ import {
   nukiTilePosition,
 } from "./tileLayout.ts";
 import type { Layout, SeatSlot, TableFrame } from "./types.ts";
-import { displaySeats, SEAT_SLOTS } from "../model/seats.ts";
+import { displaySeats, SEAT_SLOTS, seatAt } from "../model/seats.ts";
 
 /** 牌 1 枚の Group に付ける userData。 */
 export interface TileData {
@@ -75,7 +79,6 @@ interface SeatTiles {
   readonly river: readonly RiverPiece[];
   readonly hand: readonly HandPiece[];
 }
-
 
 export const tileData = (group: THREE.Object3D) => group.userData as TileData;
 
@@ -273,11 +276,7 @@ export function createTileLayer(
       const x = concealedTileX(i, drawnTile, row.handLeft);
       const group = tile(
         {
-          value: concealed
-            ? BACK
-            : drawnTile
-              ? player.draw!
-              : player.hand[i]!,
+          value: concealed ? BACK : drawnTile ? player.draw! : player.hand[i]!,
           ...(foreground
             ? { x, y: 0 }
             : local(seat, x * scale, -dimensions.opponentRadius)),
@@ -440,7 +439,7 @@ export function createTileLayer(
         seats[relativeSeat] = null;
         continue;
       }
-      const seatIndex = (viewSeat + offset) % seatCount;
+      const seatIndex = seatAt(viewSeat, offset, seatCount);
       const player = snapshot.players[seatIndex]!;
       const marked = event.eventType === "dahai" && event.actor === seatIndex;
       const current = seats[relativeSeat];

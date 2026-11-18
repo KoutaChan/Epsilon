@@ -1,3 +1,4 @@
+import { meld } from "./fixtures.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -5,11 +6,7 @@ import {
   rankFinalPlayers,
   roundScoreChanges,
 } from "../../src/features/replay/model/outcomeSummary.ts";
-import {
-  hora,
-  playerSnapshot,
-  snapshot,
-} from "./fixtures.mjs";
+import { hora, playerSnapshot, snapshot } from "./fixtures.mjs";
 
 const concealed = Object.freeze([
   "1m",
@@ -44,7 +41,7 @@ function makeWin(actor, target, winningTile, overrides = {}, details) {
 }
 
 test("a ron on a set-aside north keeps the winner's norths apart from its melds", () => {
-  const pon = { type: "PON", tiles: ["P", "P", "P"], from: 2, calledIndex: 0, addedIndex: -1 };
+  const pon = meld("PON", ["P", "P", "P"]);
   const win = makeWin(0, 1, "N", {
     0: { hand: concealed.slice(0, 10), melds: [pon], nuki: 2 },
     1: { nuki: 1 },

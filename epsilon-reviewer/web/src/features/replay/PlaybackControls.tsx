@@ -1,3 +1,4 @@
+import { seatAt } from "./model/seats.ts";
 import { useDismiss } from "../../components/useDismiss";
 import {
   useCallback,
@@ -141,15 +142,13 @@ export function PlaybackControls({
             name: playerName(currentPlayer.name, seat, t),
           })}
         >
-          <span className="em-seat-label">
-            {seatName(seat, round, t)}
-          </span>
+          <span className="em-seat-label">{seatName(seat, round, t)}</span>
           <ChevronDown />
         </summary>
         <div className="em-seat-menu">
           {snapshot.players.map((_, offset) => {
             const player =
-              snapshot.players[(round.dealer + offset) % round.seats]!;
+              snapshot.players[seatAt(round.dealer, offset, round.seats)]!;
             return (
               <button
                 key={player.seat}

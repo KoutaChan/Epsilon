@@ -18,7 +18,7 @@ const action = (id, value, chosen = false, tiles) => ({
 });
 const discardOf = { DAHAI: dahai, RIICHI_DAHAI: riichi };
 
-function decision(actor, entries) {
+function decisionSnapshot(actor, entries) {
   const chosen = entries.findIndex((entry) => entry.chosen);
   return {
     decision: true,
@@ -31,7 +31,7 @@ function decision(actor, entries) {
 }
 const policy = (...rounds) => ({ temperature: undefined, rounds });
 const valued = (...rounds) => ({ temperature: 0.002, rounds });
-const round = (...steps) => ({ seats: 4, steps });
+const reviewedRound = (...steps) => ({ seats: 4, steps });
 
 const empty = { reviewed: 0, matched: 0, badMoves: 0, meanLoss: null };
 
@@ -40,8 +40,8 @@ for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
     const discard = discardOf[type];
     for (const drawnChosen of [false, true]) {
       const input = policy(
-        round(
-          decision(0, [
+        reviewedRound(
+          decisionSnapshot(0, [
             discard("1m", 0.4),
             discard("2m", 0.31, !drawnChosen),
             discard("2m", 0.29, drawnChosen, true),
@@ -61,8 +61,8 @@ for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
 test("discard aggregation uses candidates beyond the first three", () => {
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [
+      reviewedRound(
+        decisionSnapshot(0, [
           dahai("1m", 0.35),
           dahai("2m", 0.25),
           dahai("3m", 0.2, true),
@@ -82,8 +82,8 @@ test("discard aggregation uses candidates beyond the first three", () => {
 test("a recorded choice below the first three candidates is still reviewed", () => {
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [
+      reviewedRound(
+        decisionSnapshot(0, [
           dahai("1m", 0.4),
           dahai("2m", 0.3),
           dahai("3m", 0.26),
@@ -108,8 +108,8 @@ test("only a mismatching choice strictly below five percent is a bad move", () =
   ]) {
     const counts = summarizePlayerDecisions(
       policy(
-        round(
-          decision(0, [
+        reviewedRound(
+          decisionSnapshot(0, [
             dahai("1m", 1 - probability),
             dahai("2m", probability, true),
           ]),
@@ -129,8 +129,8 @@ test("split five-percent probability is not a bad move because of addition round
   assert.ok(0.005 + 0.045 < 0.05);
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [
+      reviewedRound(
+        decisionSnapshot(0, [
           dahai("1m", 0.95),
           dahai("2m", 0.005),
           dahai("2m", 0.045, true, true),
@@ -150,8 +150,8 @@ test("a best tied choice matches despite binary64 addition rounding", () => {
   assert.ok(0.1 + 0.2 > 0.3);
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [
+      reviewedRound(
+        decisionSnapshot(0, [
           dahai("1m", 0.1),
           dahai("1m", 0.2, false, true),
           dahai("2m", 0.3, true),
@@ -172,8 +172,11 @@ test("a best tied choice matches despite binary64 addition rounding", () => {
 test("a genuine probability difference is not rounded into a tie", () => {
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [dahai("1m", 0.5 + 1e-10), dahai("2m", 0.5 - 1e-10, true)]),
+      reviewedRound(
+        decisionSnapshot(0, [
+          dahai("1m", 0.5 + 1e-10),
+          dahai("2m", 0.5 - 1e-10, true),
+        ]),
       ),
     ),
   );
@@ -204,7 +207,9 @@ test("a tied maximum below five percent is not a bad move", () => {
   const entries = tiles.map((tile) => dahai(tile, 0.04));
   for (let index = 0; index < 12; index++)
     entries.push(riichi(tiles[index], 0.04, index === 11));
-  const counts = summarizePlayerDecisions(policy(round(decision(0, entries))));
+  const counts = summarizePlayerDecisions(
+    policy(reviewedRound(decisionSnapshot(0, entries))),
+  );
   assert.deepEqual(counts[0], {
     reviewed: 1,
     matched: 1,
@@ -216,9 +221,9 @@ test("a tied maximum below five percent is not a bad move", () => {
 test("forced choices are excluded after discard aggregation", () => {
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [action(ACTIONS.pass, 1, true)]),
-        decision(0, [dahai("5mr", 0.6), dahai("5mr", 0.4, true, true)]),
+      reviewedRound(
+        decisionSnapshot(0, [action(ACTIONS.pass, 1, true)]),
+        decisionSnapshot(0, [dahai("5mr", 0.6), dahai("5mr", 0.4, true, true)]),
       ),
     ),
   );
@@ -228,9 +233,9 @@ test("forced choices are excluded after discard aggregation", () => {
 test("unobserved decisions and applied events do not contribute", () => {
   const counts = summarizePlayerDecisions(
     policy(
-      round(
+      reviewedRound(
         { decision: false, actor: 0 },
-        decision(2, [dahai("1m", 0.98), dahai("2m", 0.02)]),
+        decisionSnapshot(2, [dahai("1m", 0.98), dahai("2m", 0.02)]),
       ),
     ),
   );
@@ -240,9 +245,9 @@ test("unobserved decisions and applied events do not contribute", () => {
 test("red tiles and riichi discards remain distinct choices", () => {
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [dahai("5m", 0.96), dahai("5mr", 0.04, true)]),
-        decision(0, [dahai("5mr", 0.96), riichi("5mr", 0.04, true)]),
+      reviewedRound(
+        decisionSnapshot(0, [dahai("5m", 0.96), dahai("5mr", 0.04, true)]),
+        decisionSnapshot(0, [dahai("5mr", 0.96), riichi("5mr", 0.04, true)]),
       ),
     ),
   );
@@ -257,8 +262,8 @@ test("red tiles and riichi discards remain distinct choices", () => {
 test("different chii sequences and passing remain separate choices", () => {
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [
+      reviewedRound(
+        decisionSnapshot(0, [
           action(ACTIONS.chi(0), 0.04, true, ["3m", "4m", "5mr"]),
           action(ACTIONS.chi(1), 0.7, false, ["4m", "5mr", "6m"]),
           action(ACTIONS.pass, 0.26),
@@ -277,8 +282,8 @@ test("different chii sequences and passing remain separate choices", () => {
 test("pon choices retain red-tile consumption and remain separate from passing", () => {
   const counts = summarizePlayerDecisions(
     policy(
-      round(
-        decision(0, [
+      reviewedRound(
+        decisionSnapshot(0, [
           action(ACTIONS.pon(0), 0.04, true, ["5m", "5mr", "5m"]),
           action(ACTIONS.pon(1), 0.7, false, ["5m", "5m", "5m"]),
           action(ACTIONS.pass, 0.26),
@@ -301,7 +306,7 @@ test("winning and abortive-draw choices remain separate from passing or discardi
     [action(ACTIONS.kyushu, 0.04, true), dahai("E", 0.96)],
   ]) {
     const counts = summarizePlayerDecisions(
-      policy(round(decision(0, entries))),
+      policy(reviewedRound(decisionSnapshot(0, entries))),
     );
     assert.deepEqual(counts[0], {
       reviewed: 1,
@@ -314,16 +319,19 @@ test("winning and abortive-draw choices remain separate from passing or discardi
 
 test("all seats accumulate independently across rounds", () => {
   const match = (seat) =>
-    decision(seat, [action(ACTIONS.pass, 0.6, true), action(ACTIONS.ron, 0.4)]);
+    decisionSnapshot(seat, [
+      action(ACTIONS.pass, 0.6, true),
+      action(ACTIONS.ron, 0.4),
+    ]);
   const mistake = (seat) =>
-    decision(seat, [
+    decisionSnapshot(seat, [
       action(ACTIONS.pass, 0.97),
       action(ACTIONS.ron, 0.03, true),
     ]);
   const counts = summarizePlayerDecisions(
     policy(
-      round(match(0), mistake(1), match(3)),
-      round(mistake(0), match(2), match(3)),
+      reviewedRound(match(0), mistake(1), match(3)),
+      reviewedRound(mistake(0), match(2), match(3)),
     ),
   );
   assert.deepEqual(counts, [
@@ -344,7 +352,11 @@ test("value decisions match only the best value and grade mistakes at the thresh
     [0.005, 0, 1],
   ]) {
     const counts = summarizePlayerDecisions(
-      valued(round(decision(0, [dahai("1m", 0), dahai("2m", loss, true)]))),
+      valued(
+        reviewedRound(
+          decisionSnapshot(0, [dahai("1m", 0), dahai("2m", loss, true)]),
+        ),
+      ),
     );
     assert.deepEqual(counts[0], {
       reviewed: 1,
@@ -355,15 +367,14 @@ test("value decisions match only the best value and grade mistakes at the thresh
   }
 });
 
-
 for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
   test(`${type} value takes the better of drawn and held copies of the chosen tile`, () => {
     const discard = discardOf[type];
     for (const drawnChosen of [false, true]) {
       const counts = summarizePlayerDecisions(
         valued(
-          round(
-            decision(0, [
+          reviewedRound(
+            decisionSnapshot(0, [
               discard("1m", 0.002),
               discard("2m", 0.03, !drawnChosen),
               discard("2m", 0, drawnChosen, true),
@@ -384,8 +395,8 @@ for (const type of ["DAHAI", "RIICHI_DAHAI"]) {
 test("value decisions keep red fives distinct from plain fives", () => {
   const counts = summarizePlayerDecisions(
     valued(
-      round(
-        decision(0, [
+      reviewedRound(
+        decisionSnapshot(0, [
           dahai("5m", 0),
           dahai("5mr", 0.025, true),
           dahai("5mr", 0.03, false, true),
@@ -404,8 +415,11 @@ test("value decisions keep red fives distinct from plain fives", () => {
 test("forced value decisions are excluded after discard aggregation", () => {
   const counts = summarizePlayerDecisions(
     valued(
-      round(
-        decision(0, [dahai("5m", 0, true), dahai("5m", 0.01, false, true)]),
+      reviewedRound(
+        decisionSnapshot(0, [
+          dahai("5m", 0, true),
+          dahai("5m", 0.01, false, true),
+        ]),
       ),
     ),
   );
@@ -415,16 +429,16 @@ test("forced value decisions are excluded after discard aggregation", () => {
 test("mean loss covers only the value decisions of a valued model", () => {
   const counts = summarizePlayerDecisions(
     valued(
-      round(
-        decision(0, [
+      reviewedRound(
+        decisionSnapshot(0, [
           action(ACTIONS.pass, 0),
           action(ACTIONS.ron, 0.004, true),
         ]),
-        decision(0, [
+        decisionSnapshot(0, [
           action(ACTIONS.pass, 0, true),
           action(ACTIONS.ron, 0.002),
         ]),
-        decision(1, [
+        decisionSnapshot(1, [
           action(ACTIONS.pass, 0),
           action(ACTIONS.ron, 0.006, true),
         ]),

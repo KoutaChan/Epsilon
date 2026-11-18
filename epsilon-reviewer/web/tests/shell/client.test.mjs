@@ -1,3 +1,4 @@
+import { RESULT_FORMAT } from "@epsilon-reviewer/protocol/result";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { RECORD_SIZE_LIMIT } from "@epsilon-reviewer/protocol/commands";
@@ -29,7 +30,7 @@ function fakeTransport(platform, respond = () => undefined, desktop = {}) {
   };
 }
 
-const documentOf = (resultId) => ({ format: 7, resultId });
+const documentOf = (resultId) => ({ format: RESULT_FORMAT, resultId });
 
 test("result keeps the two most recently opened documents", async () => {
   const transport = fakeTransport("web", (_command, { resultId }) =>

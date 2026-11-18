@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { projectPoint, screenHull } from "./projection.ts";
 import type { HandPiece, RiverPiece } from "./tiles.ts";
 import type { ScreenPoint, TableTargets } from "./types.ts";
-import { displaySeats } from "../model/seats.ts";
+import { displaySeats, seatAt } from "../model/seats.ts";
 
 // もしもで押せる所を卓と同じカメラで写し、画面上の多角形にする。DOM の当たり判定はこの形に合わせて重ねる。
 
@@ -90,7 +90,7 @@ export function scoreTargets(
       );
       return rounded([p.x, p.y]);
     });
-    return [{ seat: (viewSeat + offset) % seats, points }];
+    return [{ seat: seatAt(viewSeat, offset, seats), points }];
   });
 }
 

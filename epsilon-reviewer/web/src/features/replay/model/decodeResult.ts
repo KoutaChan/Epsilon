@@ -3,7 +3,21 @@ import type {
   ModelInfo,
   RecordSummary,
 } from "@epsilon-reviewer/protocol/model";
-import { CALL_TYPES, EVENT_KINDS, MAXIMUM_ACTION_ID, RESULT_FORMAT, actionOf, type CandidateSet, type EventKind, type Meld, type RiverTile, type RoundOutcome, type StateDelta, type TableState } from "@epsilon-reviewer/protocol/result";
+import {
+  CALL_TYPES,
+  EVENT_KINDS,
+  MAXIMUM_ACTION_ID,
+  RESULT_FORMAT,
+  actionOf,
+  type CandidateSet,
+  type DecisionStep as WireDecision,
+  type EventKind,
+  type Meld,
+  type RiverTile,
+  type RoundOutcome,
+  type StateDelta,
+  type TableState,
+} from "@epsilon-reviewer/protocol/result";
 import { isTileCode } from "@epsilon-reviewer/protocol/tiles";
 import { ReviewFormatError } from "./formatError.ts";
 import type {
@@ -16,6 +30,14 @@ import type {
 
 // 解析結果の文書を先頭から 1 回だけ読んで中身を確かめ、各手順に牌譜の位置と局面の番号を付ける。局面はここでは作らない。
 // 席の数（4 人か 3 人）は、牌譜にある名前の数で決まる。席の番号と局面の席の数が、その数に合うかも確かめる。
+
+const decisionFields = {
+  seat: true,
+  cause: true,
+  resolve: true,
+  candidates: true,
+  chosen: true,
+} satisfies Record<keyof WireDecision, true>;
 
 interface Lengths {
   readonly players: { hand: number; river: number; melds: number }[];
@@ -93,7 +115,6 @@ function decodeRound(
         );
         events++;
       } else {
-        if ("delta" in step) fail("A decision cannot carry delta. Record the state change on its event.");
         if (events === 0) fail("A round must start with an event.");
         steps.push(
           decisionStep(
@@ -162,6 +183,10 @@ function decisionStep(
   valued: boolean,
   seats: number,
 ): DecisionStep {
+  for (const field of Object.keys(step)) {
+    if (!Object.hasOwn(decisionFields, field))
+      fail("Unexpected decision field: " + field);
+  }
   const actor = seat(step.seat, seats);
   const cause = step.cause === undefined ? lastEvent : count(step.cause);
   if (cause < firstEvent || cause > lastEvent)
@@ -180,12 +205,13 @@ function decisionStep(
 }
 
 function candidateSet(set: Fields, valued: boolean): void {
-  const rows = array(set.candidates);
+  if (!Array.isArray(set.candidates))
+    fail("A decision must have a candidates array.");
+  const rows = set.candidates;
   if (rows.length === 0) fail("A decision has no candidates.");
   for (const row of rows) candidateRow(row, valued);
   if (set.chosen !== undefined && count(set.chosen) >= rows.length)
     fail("The chosen candidate is out of range.");
-  if ("probabilities" in set) fail("Unsupported probabilities field. Supply values in candidates.");
 }
 
 function candidateRow(value: unknown, valued: boolean): void {
@@ -204,7 +230,8 @@ function candidateRow(value: unknown, valued: boolean): void {
 function tableState(value: unknown, seats: number): TableState {
   const table = object(value);
   const players = array(table.players);
-  if (players.length !== seats) fail("A table must have a player for every seat.");
+  if (players.length !== seats)
+    fail("A table must have a player for every seat.");
   for (const player of players) playerState(player, seats);
   tileList(table.dora);
   count(table.honba);
@@ -359,7 +386,10 @@ function recordSummary(value: unknown): RecordSummary {
   if (names.length !== 3 && names.length !== 4)
     fail("The record must name three or four players.");
   for (const name of names) text(name);
-  if (!Array.isArray(record.finalScores) || record.finalScores.length !== names.length)
+  if (
+    !Array.isArray(record.finalScores) ||
+    record.finalScores.length !== names.length
+  )
     fail("record.finalScores must contain a final score for every seat.");
   for (const score of record.finalScores) integer(score);
   count(record.roundCount);
@@ -384,7 +414,11 @@ function tile(value: unknown): string {
 }
 
 function seat(value: unknown, seats: number): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) >= seats)
+  if (
+    !Number.isSafeInteger(value) ||
+    (value as number) < 0 ||
+    (value as number) >= seats
+  )
     fail(`A seat must be 0 to ${seats - 1}.`);
   return value as number;
 }
@@ -427,8 +461,7 @@ function text(value: unknown): string {
 }
 
 function object(value: unknown): Fields {
-  if (!isFields(value))
-    fail("Expected an object.");
+  if (!isFields(value)) fail("Expected an object.");
   return value;
 }
 

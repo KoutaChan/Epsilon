@@ -13,6 +13,7 @@ import {
   resultDocument,
   round,
   table,
+  northExtractionDocument,
 } from "./fixtures.mjs";
 
 function sample() {
@@ -75,13 +76,20 @@ function sample() {
 test("obsolete and incomplete results identify the unsupported or missing field", () => {
   for (const [field, edit] of [
     ["finalScores", (d) => delete d.record.finalScores],
-    ["probabilities", (d) => { d.rounds[0].steps[2].probabilities = [0.75, 0.25]; }],
-    ["delta", (d) => { d.rounds[0].steps[2].delta = {}; }],
+    [
+      "extraField",
+      (d) => {
+        d.rounds[0].steps[2].extraField = true;
+      },
+    ],
+    ["candidates", (d) => delete d.rounds[0].steps[2].candidates],
   ]) {
     const document = sample();
     edit(document);
-    assert.throws(() => decodeResult(document), (e) =>
-      e instanceof ReviewFormatError && e.message.includes(field));
+    assert.throws(
+      () => decodeResult(document),
+      (e) => e instanceof ReviewFormatError && e.message.includes(field),
+    );
   }
 });
 
@@ -221,10 +229,6 @@ for (const [name, mutate] of [
   ["no candidates", (d) => (d.rounds[0].steps[2].candidates = [])],
   ["a chosen candidate out of range", (d) => (d.rounds[0].steps[2].chosen = 2)],
   [
-    "the unsupported probabilities field",
-    (d) => (d.rounds[0].steps[2].probabilities = [1]),
-  ],
-  [
     "an action ID out of range",
     (d) => (d.rounds[0].steps[2].candidates[0][0] = 373),
   ],
@@ -312,5 +316,46 @@ test("failures inside a round name the round and the step", () => {
     (error) =>
       invalid(error) &&
       error.message === "rounds[0].steps[4]: A decision has no candidates.",
+  );
+});
+
+test("a three-player document rejects a fourth seat, a north written as a meld and impossible counts", () => {
+  const document = northExtractionDocument();
+  document.rounds[0].steps[4].seat = 3;
+  assert.throws(() => decodeResult(document), ReviewFormatError);
+  const fourTables = northExtractionDocument();
+  fourTables.rounds[0].start = table();
+  assert.throws(() => decodeResult(fourTables), ReviewFormatError);
+  const meld = northExtractionDocument();
+  meld.rounds[0].steps[2].delta = {
+    players: [
+      {
+        seat: 1,
+        melds: [
+          1,
+          0,
+          {
+            type: "NUKI",
+            tiles: ["N"],
+            from: -1,
+            calledIndex: -1,
+            addedIndex: -1,
+          },
+        ],
+      },
+    ],
+  };
+  assert.throws(() => decodeResult(meld), /Unsupported meld/);
+  for (const nuki of [5, -1, 1.5, "1"]) {
+    const count = northExtractionDocument();
+    count.rounds[0].steps[2].delta.players[0].nuki = nuki;
+    assert.throws(() => decodeResult(count), ReviewFormatError, String(nuki));
+  }
+  const missing = northExtractionDocument();
+  delete missing.rounds[0].start.players[0].nuki;
+  assert.throws(() => decodeResult(missing), ReviewFormatError);
+  assert.throws(
+    () => decodeResult(northExtractionDocument({ format: 6 })),
+    /Unsupported result format/,
   );
 });

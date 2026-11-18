@@ -2,7 +2,7 @@ import { CENTER_CANVAS_SIZE } from "./tableMetrics.ts";
 import * as THREE from "three";
 import { createResources, type Resources } from "./resources.ts";
 import type { TableFrame } from "./types.ts";
-import { displaySeats } from "../model/seats.ts";
+import { displaySeats, seatAt, seatOffset } from "../model/seats.ts";
 
 export interface TableMaterials {
   readonly ivory: THREE.MeshPhysicalMaterial;
@@ -387,7 +387,7 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
     const seats = snapshot.players.length;
     displaySeats(seats).forEach((offset, i) => {
       if (offset === null) return;
-      const seat = (viewSeat + offset) % seats;
+      const seat = seatAt(viewSeat, offset, seats);
       const player = snapshot.players[seat]!;
       dc.save();
       dc.translate(CENTER_CANVAS_SIZE / 2, CENTER_CANVAS_SIZE / 2);
@@ -397,7 +397,7 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
       dc.fillStyle = active === seat ? "#112c40" : "#e1e8ec";
       dc.font = "bold 56px sans-serif";
       dc.textAlign = "center";
-      dc.fillText(labels.winds[(seat - dealer + seats) % seats]!, -279, 287);
+      dc.fillText(labels.winds[seatOffset(dealer, seat, seats)]!, -279, 287);
       dc.fillStyle = "#081322";
       dc.fillRect(-177, 210, 354, 86);
       dc.fillStyle = "#f3d35e";

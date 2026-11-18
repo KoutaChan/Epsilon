@@ -8,14 +8,13 @@ import {
 } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import { CandidateList } from "./CandidateList";
-import { displaySeats, SEAT_SLOTS } from "./model/seats.ts";
+import { displaySeats, SEAT_SLOTS, seatAt, seatOffset } from "./model/seats.ts";
 import type { Layout, TableTargets } from "./renderer/types.ts";
 import { ScenarioControls } from "./ScenarioPanel";
 import { ScenarioPick, ScenarioTargets } from "./ScenarioTargets";
 import type { Scenario } from "./scenario/useScenario.ts";
 import type { TableElements } from "./tableElements.ts";
 import type { Playback } from "./usePlayback.ts";
-
 
 /** 卓に重ねる DOM（ドラ表示・名札・候補欄・もしもの操作と当たり判定）と、画面の読み上げに使う文を出す。 */
 export function TableOverlay({
@@ -135,10 +134,10 @@ export function TableOverlay({
                 hidden
               />
             );
-          const player = snapshot.players[(seat + offset) % round.seats]!,
+          const player = snapshot.players[seatAt(seat, offset, round.seats)]!,
             name = playerName(player.name, player.seat, t),
             wind = windName(
-              (player.seat - round.dealer + round.seats) % round.seats,
+              seatOffset(round.dealer, player.seat, round.seats),
               t,
               true,
             );

@@ -23,7 +23,7 @@ import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.epsilon.reviewer.model.CatalogModel;
 import com.epsilon.reviewer.model.ModelCatalog;
-import com.epsilon.reviewer.model.ModelFamilies;
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.reviewer.model.ModelKey;
 import com.epsilon.reviewer.model.ModelLease;
 import com.epsilon.reviewer.model.ModelRegistry;

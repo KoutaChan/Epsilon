@@ -1,5 +1,6 @@
 package com.epsilon.reviewer;
 
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.agent.settings.SettingsException;
 import com.epsilon.reviewer.analysis.AnalysisJobs;
 import com.epsilon.reviewer.analysis.AnalysisStarted;
@@ -11,7 +12,6 @@ import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.epsilon.reviewer.model.CatalogView;
 import com.epsilon.reviewer.model.ModelCatalog;
-import com.epsilon.reviewer.model.ModelFamilies;
 import com.epsilon.reviewer.model.ModelKey;
 import com.epsilon.reviewer.model.ModelRegistry;
 import com.epsilon.reviewer.record.ImportedRecord;

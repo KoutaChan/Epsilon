@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.model;
 
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.agent.policy.Series;
 import com.epsilon.agent.settings.Json;
 import com.epsilon.agent.settings.Layer;
@@ -64,18 +65,22 @@ public final class ModelCatalog {
   public static ModelCatalog load(Path modelsJson, ModelFamilies families) throws IOException {
     if (Files.size(modelsJson) > FILE_LIMIT)
       throw new SettingsException(
-          List.of("Model catalog " + modelsJson + " exceeds the limit of " + FILE_LIMIT + " bytes"));
+          List.of(
+              "Model catalog " + modelsJson + " exceeds the limit of " + FILE_LIMIT + " bytes"));
     String origin = modelsJson.toString();
     Node.Table tree = Json.read(Files.readString(modelsJson, StandardCharsets.UTF_8), origin);
     ModelsFile file =
-        Settings.bind(ModelsFile.class, List.of(new Layer(origin, Layer.Source.FILE, tree, List.of()))).value();
+        Settings.bind(
+                ModelsFile.class, List.of(new Layer(origin, Layer.Source.FILE, tree, List.of())))
+            .value();
     Path base = modelsJson.toAbsolutePath().getParent();
     Map<ModelKey, ModelEntry> entries = new LinkedHashMap<>();
     Map<ModelKey, CheckpointFingerprint> fingerprints = new HashMap<>();
     for (ModelsFile.Model model : file.models()) {
       ModelKey key = model.key();
       Series series = Series.ofId(model.series());
-      Path checkpoint = model.checkpoint() == null ? null : base.resolve(model.checkpoint()).normalize();
+      Path checkpoint =
+          model.checkpoint() == null ? null : base.resolve(model.checkpoint()).normalize();
       boolean available = true;
       if (families.find(series).isEmpty()) {
         available = false;

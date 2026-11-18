@@ -14,7 +14,7 @@ import com.epsilon.prism.run.Snapshot;
 import com.epsilon.reviewer.TestFiles;
 import com.epsilon.reviewer.engine.review.ReviewModel;
 import com.epsilon.reviewer.model.ModelCatalog;
-import com.epsilon.reviewer.model.ModelFamilies;
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.reviewer.model.ModelKey;
 import com.epsilon.reviewer.model.ModelLease;
 import com.epsilon.reviewer.model.ModelRegistry;

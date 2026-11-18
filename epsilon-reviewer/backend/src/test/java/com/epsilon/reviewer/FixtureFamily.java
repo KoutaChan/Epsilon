@@ -3,13 +3,13 @@ package com.epsilon.reviewer;
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.policy.Evaluation;
 import com.epsilon.agent.policy.InlinePolicy;
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.agent.policy.ModelFamily;
 import com.epsilon.agent.policy.Policy;
 import com.epsilon.agent.policy.PolicyOptions;
 import com.epsilon.agent.policy.Series;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.mahjong.rules.Variant;
-import com.epsilon.reviewer.model.ModelFamilies;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,7 +63,8 @@ public final class FixtureFamily implements ModelFamily {
   }
 
   @Override
-  public Policy open(Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime)
+  public Policy open(
+      Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime)
       throws IOException {
     Path broken = checkpoint.resolve(BROKEN);
     if (Files.exists(broken))

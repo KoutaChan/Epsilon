@@ -1,4 +1,4 @@
-import { CENTER_CANVAS_SIZE } from "./tableMetrics.ts";
+import { CENTER_CANVAS_SIZE, SCORE_BOX } from "./tableMetrics.ts";
 import * as THREE from "three";
 import { createResources, type Resources } from "./resources.ts";
 import type { TableFrame } from "./types.ts";
@@ -399,7 +399,7 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
       dc.textAlign = "center";
       dc.fillText(labels.winds[seatOffset(dealer, seat, seats)]!, -279, 287);
       dc.fillStyle = "#081322";
-      dc.fillRect(-177, 210, 354, 86);
+      dc.fillRect(SCORE_BOX.x, SCORE_BOX.y, SCORE_BOX.width, SCORE_BOX.height);
       dc.fillStyle = "#f3d35e";
       dc.font = "bold 76px monospace";
       dc.fillText(String(player.score), 0, 280);

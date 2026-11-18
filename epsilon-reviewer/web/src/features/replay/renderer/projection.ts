@@ -1,5 +1,9 @@
 import * as THREE from "three";
-import { PLAYER_ROW_CENTER, PLAYER_ROW_WIDTH } from "./tileLayout.ts";
+import {
+  layoutPlayerRow,
+  PLAYER_ROW_CENTER,
+  PLAYER_ROW_WIDTH,
+} from "./tileLayout.ts";
 import type { Layout, SeatSlot } from "./types.ts";
 
 const angles: Readonly<Record<SeatSlot, number>> = {
@@ -38,12 +42,24 @@ export interface ScreenRect {
   readonly h: number;
 }
 
+const LANDSCAPE_RIVER_WIDTH = 1.55;
+
+function opponentRowRadius(rowWidth: number, scale: number): number {
+  return (PLAYER_ROW_CENTER + rowWidth / 2 + 2 / 3) * scale + 0.3;
+}
+
+/** 卓面のメッシュは、副露の無い横長表示の手牌を基準にしている。 */
+export const SURFACE_REFERENCE_RADIUS = opponentRowRadius(
+  layoutPlayerRow([]).width,
+  LANDSCAPE_RIVER_WIDTH,
+);
+
 export function tableDimensions(
   mode: Layout,
   rowWidth = PLAYER_ROW_WIDTH,
 ): TableDimensions {
   const landscape = mode === "landscape",
-    riverWidth = landscape ? 1.55 : 1.4,
+    riverWidth = landscape ? LANDSCAPE_RIVER_WIDTH : 1.4,
     pitchX = landscape ? 1.575 : 1.425,
     pitchY = landscape ? 2.115 : 1.915;
   const centerWidth = 6 * riverWidth,
@@ -53,7 +69,7 @@ export function tableDimensions(
     opponentScale = riverWidth,
     opponentRadius = Math.max(
       riverOuter + (2 / 3) * opponentScale + (landscape ? 1.25 : 0.35),
-      (PLAYER_ROW_CENTER + rowWidth / 2 + 2 / 3) * opponentScale + 0.3,
+      opponentRowRadius(rowWidth, opponentScale),
     );
   return {
     riverWidth,

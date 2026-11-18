@@ -1,7 +1,13 @@
-import { TILE_BASE_Z, TILE_DEPTH, LANDSCAPE_RIVER_SCALE, SURFACE_REFERENCE_RADIUS, DESKTOP_REFERENCE_WIDTH } from "./tableMetrics.ts";
+import {
+  TILE_BASE_Z,
+  TILE_DEPTH,
+  LANDSCAPE_RIVER_SCALE,
+  DESKTOP_REFERENCE_WIDTH,
+} from "./tableMetrics.ts";
 import * as THREE from "three";
 import {
   local,
+  SURFACE_REFERENCE_RADIUS,
   pointBounds,
   tableDimensions,
   type Bounds,
@@ -62,7 +68,10 @@ export function createComposition(
   const geometry = keep(new THREE.BoxGeometry(1, 1, 1));
   const envelope = () => new THREE.Mesh(geometry, tableScene.materials.black);
   const cameraEnvelope = {
-    south: envelope(), east: envelope(), north: envelope(), west: envelope(),
+    south: envelope(),
+    east: envelope(),
+    north: envelope(),
+    west: envelope(),
   };
   const handEnvelope = new THREE.Mesh(
     keep(new THREE.BoxGeometry(rowWidth, 1.78, 1.48)),
@@ -90,8 +99,8 @@ export function createComposition(
     height = h;
     landscapeFrame.visible = mode !== "portrait";
     // 手牌と副露を一列に並べても卓の縁にかからないよう、牌の列の幅に合わせて卓面を広げる。
-    const tableExpansion =
-      tableDimensions(mode, rowWidth).opponentRadius / SURFACE_REFERENCE_RADIUS;
+    const dimensions = tableDimensions(mode, rowWidth);
+    const tableExpansion = dimensions.opponentRadius / SURFACE_REFERENCE_RADIUS;
     landscapeFrame.scale.set(tableExpansion, tableExpansion, 1);
     feltSurface.position.y = -6 * tableExpansion;
     feltSurface.scale.set(
@@ -103,11 +112,11 @@ export function createComposition(
       mode === "portrait" ? 12 : 3,
       mode === "portrait" ? 18 : 3,
     );
-    const dimensions = tableDimensions(mode, rowWidth),
-      centerScale = dimensions.centerWidth / 5.65;
+    const centerScale = dimensions.centerWidth / 5.65;
     centerGroup.scale.set(centerScale, centerScale, 1);
     const s = dimensions.opponentScale,
-      riverDepth = TILE_DEPTH * (mode === "landscape" ? LANDSCAPE_RIVER_SCALE : 1),
+      riverDepth =
+        TILE_DEPTH * (mode === "landscape" ? LANDSCAPE_RIVER_SCALE : 1),
       front = cameraEnvelope.south;
     front.scale.set(
       5 * dimensions.pitchX + dimensions.riverWidth,
@@ -153,7 +162,9 @@ export function createComposition(
         : playbackHeight + (mode === "landscape" ? 12 : 16);
     const availableHandWidth = width - (mode === "desktop" ? width * 0.1 : 24),
       nearRiverY = -dimensions.riverRadius - 2 * dimensions.pitchY,
-      riverFaceZ = TILE_BASE_Z + TILE_DEPTH * (mode === "landscape" ? LANDSCAPE_RIVER_SCALE : 1);
+      riverFaceZ =
+        TILE_BASE_Z +
+        TILE_DEPTH * (mode === "landscape" ? LANDSCAPE_RIVER_SCALE : 1);
     const setTable = () => {
       camera.position.set(
         0,

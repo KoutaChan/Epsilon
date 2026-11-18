@@ -1,4 +1,8 @@
-import { TILE_BASE_Z, TILE_DEPTH, LANDSCAPE_RIVER_SCALE } from "./tableMetrics.ts";
+import {
+  TILE_BASE_Z,
+  TILE_DEPTH,
+  LANDSCAPE_RIVER_SCALE,
+} from "./tableMetrics.ts";
 import * as THREE from "three";
 import type { Composition } from "./composition.ts";
 import {
@@ -10,7 +14,10 @@ import {
 } from "./projection.ts";
 import type { TableScene } from "./scene.ts";
 import { tileData, type DrawAnnotation } from "./tiles.ts";
+import { concealedTileX, layoutPlayerRow } from "./tileLayout.ts";
 import type { Layout, SeatSlot, TableHost } from "./types.ts";
+
+const closedHandDrawX = concealedTileX(13, true, layoutPlayerRow([]).handLeft);
 
 export interface Labels {
   /** ツモ牌のラベルを牌の位置に合わせる。ツモ牌が届く動きの間は毎フレーム呼ぶ。 */
@@ -152,7 +159,7 @@ export function createLabels(
             TILE_DEPTH * dimensions.opponentScale,
             (4 / 3) * dimensions.opponentScale,
             seat,
-            7.058 * dimensions.opponentScale,
+            closedHandDrawX * dimensions.opponentScale,
             -dimensions.opponentRadius,
             TILE_BASE_Z + lift,
           );
@@ -269,15 +276,17 @@ export function createLabels(
         .flatMap(([x, y]) =>
           [0, -8, 8, -16, 16, -24, 24].map((dy) => [x, y + dy] as const),
         )
-        .map(([x, y]): ScreenRect => ({
-          x: Math.max(
-            vertical ? 2 : 6,
-            Math.min(width - labelW - (vertical ? 2 : 6), x),
-          ),
-          y: Math.max(4, Math.min(height - labelH - 4, y)),
-          w: labelW,
-          h: labelH,
-        }));
+        .map(
+          ([x, y]): ScreenRect => ({
+            x: Math.max(
+              vertical ? 2 : 6,
+              Math.min(width - labelW - (vertical ? 2 : 6), x),
+            ),
+            y: Math.max(4, Math.min(height - labelH - 4, y)),
+            w: labelW,
+            h: labelH,
+          }),
+        );
       const chosen =
         candidates.find((p) => !blocked.some((b) => intersects(p, b))) ||
         candidates[0]!;

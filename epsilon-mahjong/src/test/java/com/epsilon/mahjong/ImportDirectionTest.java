@@ -1,15 +1,9 @@
-package com.epsilon.mahjong.action;
+package com.epsilon.mahjong;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Stream;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
@@ -21,7 +15,8 @@ import org.testng.annotations.Test;
 public class ImportDirectionTest {
 
   private static final List<String> LAYERS =
-      List.of("util", "tile", "rules", "action", "shape", "score", "engine", "record", "io", "client");
+      List.of(
+          "util", "tile", "rules", "action", "shape", "score", "engine", "record", "io", "client");
   private static final String MAHJONG = "com.epsilon.mahjong.";
 
   /** gson を import してよい層。 */
@@ -29,8 +24,6 @@ public class ImportDirectionTest {
 
   private static final String GSON = "com.google.gson.";
   private static final Path SOURCES = Path.of("src", "main", "java", "com", "epsilon", "mahjong");
-  private static final Pattern IMPORT =
-      Pattern.compile("^import\\s+(?:static\\s+)?([\\w.]+?)(\\.\\*)?;", Pattern.MULTILINE);
 
   /**
    * 親の pom（epsilon-parent）が持つライブラリ（DJL・PyTorch・zstd・logback）から 1 つずつ選んだクラス。どれかがテストの
@@ -45,33 +38,18 @@ public class ImportDirectionTest {
 
   @Test
   public void layersImportOnlyDownward() throws IOException {
-    Assert.assertTrue(Files.isDirectory(SOURCES), "run from the epsilon-mahjong directory");
-    List<String> violations = new ArrayList<>();
-    for (int layer = 0; layer < LAYERS.size(); layer++) {
-      try (Stream<Path> files = Files.walk(SOURCES.resolve(LAYERS.get(layer)))) {
-        for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
-          Matcher matcher = IMPORT.matcher(Files.readString(file));
-          while (matcher.find()) {
-            String problem = problem(layer, matcher.group(1), matcher.group(2) != null);
-            if (problem != null) {
-              violations.add(file + ": " + matcher.group() + " (" + problem + ")");
-            }
-          }
-        }
-      }
+    for (String layer : LAYERS) {
+      int level = LAYERS.indexOf(layer);
+      ModuleDependencies.checkImports(SOURCES.resolve(layer), name -> problem(level, name) != null);
     }
-    Assert.assertEquals(violations, List.of());
   }
 
   @Test
   public void classpathHoldsNoInheritedLibrary() {
-    Assert.assertEquals(FOREIGN_CLASSES.stream().filter(ImportDirectionTest::loadable).toList(), List.of());
+    ModuleDependencies.absentClasses(FOREIGN_CLASSES);
   }
 
-  private static String problem(int layer, String imported, boolean wildcard) {
-    if (wildcard) {
-      return "wildcard";
-    }
+  private static String problem(int layer, String imported) {
     if (imported.startsWith("java.") || imported.startsWith("org.slf4j.")) {
       return null;
     }
@@ -84,14 +62,5 @@ public class ImportDirectionTest {
     String target = imported.substring(MAHJONG.length()).split("\\.")[0];
     int targetLayer = LAYERS.indexOf(target);
     return targetLayer < 0 || targetLayer > layer ? "upward" : null;
-  }
-
-  private static boolean loadable(String className) {
-    try {
-      Class.forName(className, false, ImportDirectionTest.class.getClassLoader());
-      return true;
-    } catch (ClassNotFoundException absent) {
-      return false;
-    }
   }
 }

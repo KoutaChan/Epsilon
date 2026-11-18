@@ -2,13 +2,17 @@ package com.epsilon.reviewer.engine;
 
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.policy.Evaluation;
+import com.epsilon.agent.policy.ModelFamily;
 import com.epsilon.agent.policy.Policy;
 import com.epsilon.agent.policy.PolicyOptions;
+import com.epsilon.agent.policy.Series;
 import com.epsilon.classic.Architecture;
 import com.epsilon.classic.ClassicFamily;
 import com.epsilon.classic.RandomCheckpoints;
+import com.epsilon.mahjong.action.Action;
 import com.epsilon.mahjong.engine.Boundary;
 import com.epsilon.mahjong.engine.Decisions;
+import com.epsilon.mahjong.engine.EngineDecisionKind;
 import com.epsilon.mahjong.engine.RuleWorkspace;
 import com.epsilon.mahjong.io.RecordFiles;
 import com.epsilon.mahjong.io.majsoul.MajSoulReaderTest;
@@ -25,6 +29,11 @@ import com.epsilon.reviewer.engine.load.RecordLoader;
 import com.epsilon.reviewer.engine.review.Analysis;
 import com.epsilon.reviewer.engine.review.JobControl;
 import com.epsilon.reviewer.engine.review.ReviewModel;
+import com.epsilon.reviewer.engine.scenario.ScenarioAnswer;
+import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
+import com.epsilon.reviewer.engine.view.MeldView;
+import com.epsilon.reviewer.engine.view.PlayerState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.google.gson.JsonArray;
@@ -40,8 +49,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.function.Function;
@@ -71,7 +84,8 @@ public class AnalysisTest {
             .replaceFirst(" n0=\"[^\"]*\"", " n0=\"%E3%81%BF%E3%81%AA%E3%81%A8\"");
     LoadedRecord renamed = RecordLoader.load(("\uFEFF" + xml).getBytes(StandardCharsets.UTF_8));
     Assert.assertEquals(renamed.summary().names().getFirst(), "みなと");
-    Assert.assertEquals(renamed.summary().names().subList(1, 4), record.summary().names().subList(1, 4));
+    Assert.assertEquals(
+        renamed.summary().names().subList(1, 4), record.summary().names().subList(1, 4));
     Assert.assertEquals(renamed.rounds(), record.rounds());
   }
 
@@ -85,7 +99,8 @@ public class AnalysisTest {
     Assert.assertEquals(record.summary().finalScores(), tenhou.summary().finalScores());
     Assert.assertEquals(record.summary().roundCount(), tenhou.summary().roundCount());
     JsonArray array = new JsonArray();
-    for (String line : lines.split("\n")) if (!line.isBlank()) array.add(JsonParser.parseString(line));
+    for (String line : lines.split("\n"))
+      if (!line.isBlank()) array.add(JsonParser.parseString(line));
     Assert.assertEquals(load(array.toString()).game(), record.game());
   }
 
@@ -105,7 +120,8 @@ public class AnalysisTest {
     List<String> lines = List.of(MjaiCodec.write(record.game()).split("\n"));
     rejected(Format6.text(record, new RecordingPolicy()), "An analysis result is not a record");
     rejected(new byte[RecordFiles.MAX_BYTES + 1], "16 MiB");
-    rejected("[".repeat(RecordFiles.MAX_NESTING + 1) + "]".repeat(RecordFiles.MAX_NESTING + 1), "nests");
+    rejected(
+        "[".repeat(RecordFiles.MAX_NESTING + 1) + "]".repeat(RecordFiles.MAX_NESTING + 1), "nests");
     int events = record.rounds().stream().mapToInt(round -> round.events().size()).sum();
     List<String> many = new ArrayList<>(List.of(lines.getFirst()));
     for (int copy = 0; copy <= RecordFiles.MAX_EVENTS / events; copy++)
@@ -125,11 +141,7 @@ public class AnalysisTest {
     try {
       RandomCheckpoints.write(checkpoint, Architecture.NANO, Variant.TENHOU_4P, 7);
       try (Policy policy =
-          new ClassicFamily.Nano()
-              .open(
-                  checkpoint,
-                  Variant.TENHOU_4P,
-                  PolicyOptions.defaults())) {
+          new ClassicFamily.Nano().open(checkpoint, Variant.TENHOU_4P, PolicyOptions.defaults())) {
         Format6.Document document = Format6.analyze(played(), model(policy));
         Assert.assertFalse(document.json().has("temperature"), "Nano has no value head");
         Set<Integer> seats = new HashSet<>();
@@ -162,6 +174,7 @@ public class AnalysisTest {
         Format6.analyze(
             record,
             fake(
+                Variant.TENHOU_4P,
                 true,
                 observation -> {
                   List<Integer> codes = codes(observation);
@@ -188,7 +201,8 @@ public class AnalysisTest {
       int greedy = Collections.max(legal.get(s));
       List<Integer> expected =
           legal.get(s).stream()
-              .sorted(Comparator.comparingInt((Integer id) -> id / 2).thenComparing(id -> id != greedy))
+              .sorted(
+                  Comparator.comparingInt((Integer id) -> id / 2).thenComparing(id -> id != greedy))
               .toList();
       Assert.assertEquals(ids, expected);
       int best = ids.getFirst() / 2;
@@ -210,6 +224,7 @@ public class AnalysisTest {
         Format6.analyze(
             played(),
             fake(
+                Variant.TENHOU_4P,
                 true,
                 observation -> {
                   List<Integer> codes = codes(observation);
@@ -240,6 +255,7 @@ public class AnalysisTest {
         Format6.analyze(
             played(),
             fake(
+                Variant.TENHOU_4P,
                 false,
                 observation -> {
                   List<Integer> codes = codes(observation);
@@ -264,6 +280,7 @@ public class AnalysisTest {
             Format6.analyze(
                 played(),
                 fake(
+                    Variant.TENHOU_4P,
                     false,
                     observation -> {
                       float[] probabilities = new float[observation.legalActions() + 1];
@@ -297,8 +314,7 @@ public class AnalysisTest {
           }
         };
     ReviewerException refused =
-        Assert.expectThrows(
-            ReviewerException.class, () -> Format6.analyze(played(), threePlayer));
+        Assert.expectThrows(ReviewerException.class, () -> Format6.analyze(played(), threePlayer));
     Assert.assertEquals(refused.code(), ErrorCode.MODEL_UNAVAILABLE);
   }
 
@@ -459,8 +475,9 @@ public class AnalysisTest {
     return new Evaluation(probabilities, values, greedy);
   }
 
-  /** 観測の合法手だけを見て評価する、偽のモデル（四人打ち）。 */
-  private static ReviewModel fake(boolean valued, Function<Observation, Evaluation> evaluator) {
+  /** 観測の合法手だけを見て評価する、テスト用のモデル。 */
+  private static ReviewModel fake(
+      Variant variant, boolean valued, Function<Observation, Evaluation> evaluator) {
     return new ReviewModel() {
       @Override
       public Evaluation evaluate(Observation observation) {
@@ -479,12 +496,212 @@ public class AnalysisTest {
 
       @Override
       public Variant variant() {
-        return Variant.TENHOU_4P;
+        return variant;
       }
     };
   }
 
   private static ReviewModel model(Policy policy) {
-    return fake(false, policy::evaluate);
+    return fake(policy.variant(), false, policy::evaluate);
+  }
+
+  private static final Variant VARIANT = Variant.TENHOU_3P;
+  private static final Set<String> MELD_TYPES = Set.of("CHI", "PON", "DAIMINKAN", "ANKAN", "KAKAN");
+
+  @Test
+  public void threePlayerTenhouAndMjaiRecordsLoadWithThreeSeats() {
+    for (Map.Entry<String, LoadedRecord> entry : PlayedRecords.threePlayer().entrySet()) {
+      String name = entry.getKey();
+      LoadedRecord tenhou = entry.getValue();
+      Assert.assertEquals(tenhou.game().variant(), VARIANT, name);
+      Assert.assertEquals(tenhou.summary().source(), "tenhou", name);
+      Assert.assertEquals(tenhou.summary().names().size(), 3, name);
+      Assert.assertEquals(tenhou.summary().finalScores().size(), 3, name);
+      LoadedRecord mjai = PlayedRecords.mjai(tenhou);
+      Assert.assertEquals(mjai.game().variant(), VARIANT, name);
+      Assert.assertEquals(mjai.summary().source(), "mjai", name);
+      Assert.assertEquals(mjai.summary().finalScores(), tenhou.summary().finalScores(), name);
+      Assert.assertEquals(mjai.summary().roundCount(), tenhou.summary().roundCount(), name);
+    }
+  }
+
+  @Test
+  public void theDocumentShowsThreeSeatsNukiAndTheirDecisions() {
+    int kita = 0;
+    int severalKita = 0;
+    int kitaWithMelds = 0;
+    int ronOnKita = 0;
+    int nukiCandidates = 0;
+    int nukiResponses = 0;
+    Map<String, LoadedRecord> records = new LinkedHashMap<>(PlayedRecords.threePlayer());
+    records.putAll(PlayedRecords.threePlayerScenes());
+    for (Map.Entry<String, LoadedRecord> entry : records.entrySet()) {
+      String name = entry.getKey();
+      Format6.Document document = Format6.analyze(entry.getValue(), new RecordingPolicy(VARIANT));
+      for (Format6.Round round : document.rounds()) {
+        Map<Integer, String> events = new HashMap<>();
+        TableView previous = null;
+        for (Format6.Step step : round.steps()) {
+          Assert.assertEquals(step.table().players().size(), 3, name);
+          for (PlayerState player : step.table().players()) requireRealMelds(player, name);
+          if (!step.decision()) {
+            events.put(step.eventIndex(), step.event());
+            if (step.event().equals("kita")) {
+              kita++;
+              PlayerState before = previous.players().get(step.actor());
+              PlayerState after = step.table().players().get(step.actor());
+              Assert.assertEquals(after.nuki(), before.nuki() + 1, name);
+              Assert.assertEquals(after.melds(), before.melds(), name);
+              severalKita += after.nuki() >= 2 ? 1 : 0;
+              kitaWithMelds += after.melds().isEmpty() ? 0 : 1;
+            }
+            if (step.event().equals("hora") && "kita".equals(events.get(step.eventIndex() - 1))) {
+              ronOnKita++;
+              var outcome = step.json().getAsJsonObject("outcome");
+              Assert.assertEquals(outcome.get("winningTile").getAsString(), "N", name);
+              int target = outcome.get("target").getAsInt();
+              Assert.assertTrue(step.table().players().get(target).nuki() > 0, name);
+            }
+            previous = step.table();
+            continue;
+          }
+          nukiCandidates += step.offers(Action.Type.NUKI) ? 1 : 0;
+          if ("kita".equals(events.get(step.cause()))) {
+            nukiResponses++;
+            Assert.assertTrue(step.offers(Action.Type.PASS), name);
+          }
+        }
+      }
+    }
+    Assert.assertTrue(kita > 0, "no kita step");
+    Assert.assertTrue(severalKita > 0, "no seat set aside a second north");
+    Assert.assertTrue(kitaWithMelds > 0, "no seat set aside a north beside its melds");
+    Assert.assertTrue(ronOnKita > 0, "no ron on a north");
+    Assert.assertTrue(nukiCandidates > 0, "no nuki candidate");
+    Assert.assertTrue(nukiResponses > 0, "no response to a nuki");
+  }
+
+  @Test
+  public void unchangedScenarioGivesThePolicyTheReviewInputAtEveryDecision() {
+    Map<String, LoadedRecord> records = new LinkedHashMap<>();
+    PlayedRecords.threePlayer()
+        .forEach(
+            (name, record) -> {
+              records.put(name, record);
+              records.put(name + " mjai", PlayedRecords.mjai(record));
+            });
+    records.putAll(PlayedRecords.threePlayerScenes());
+    Set<EngineDecisionKind> kinds = EnumSet.noneOf(EngineDecisionKind.class);
+    records.forEach((name, record) -> compareEveryDecision(name, record, kinds));
+    Assert.assertEquals(kinds, EnumSet.allOf(EngineDecisionKind.class));
+  }
+
+  @Test
+  public void aFourPlayerModelCannotReadAThreePlayerRecord() {
+    LoadedRecord record = PlayedRecords.read(VARIANT, 0);
+    ReviewerException analysis =
+        Assert.expectThrows(
+            ReviewerException.class, () -> Format6.analyze(record, new RecordingPolicy()));
+    Assert.assertEquals(analysis.code(), ErrorCode.MODEL_UNAVAILABLE);
+    Format6.Located first =
+        Format6.analyze(record, new RecordingPolicy(VARIANT)).decisions().getFirst();
+    ReviewerException scenario =
+        Assert.expectThrows(
+            ReviewerException.class,
+            () ->
+                Scenarios.evaluate(
+                    record,
+                    new ScenarioQuery(
+                        first.round(),
+                        first.step().eventIndex(),
+                        first.step().actor(),
+                        TestEdits.NONE,
+                        null),
+                    new RecordingPolicy()));
+    Assert.assertEquals(scenario.code(), ErrorCode.MODEL_UNAVAILABLE);
+  }
+
+  /**
+   * ルールベースの打ち手は、全ての判断で選んだ手の確率を 1 にする。北を抜けて、ツモ和了はできない手番では北を抜く。もしもでも同じ答えに
+   * なる。
+   */
+  @Test
+  public void theRuleBotAnalysesAThreePlayerRecord() throws IOException {
+    LoadedRecord record = PlayedRecords.read(VARIANT, 0);
+    try (Policy bot =
+        ModelFamily.of(Series.RULE_BOT).open(null, VARIANT, PolicyOptions.defaults())) {
+      ReviewModel model = model(bot);
+      List<Format6.Located> decisions = Format6.analyze(record, model).decisions();
+      Assert.assertFalse(decisions.isEmpty());
+      int nuki = 0;
+      for (Format6.Located located : decisions) {
+        Format6.Step step = located.step();
+        Assert.assertEquals(step.candidates().get(0).getAsJsonArray().get(1).getAsFloat(), 1f);
+        if (step.offers(Action.Type.NUKI) && !step.offers(Action.Type.TSUMO_AGARI)) {
+          nuki++;
+          Assert.assertEquals(step.type(0), Action.Type.NUKI);
+        }
+      }
+      Assert.assertTrue(nuki > 0, "no nuki decision");
+      Format6.Step step = decisions.getFirst().step();
+      ScenarioAnswer answer =
+          Scenarios.evaluate(
+              record,
+              new ScenarioQuery(
+                  decisions.getFirst().round(),
+                  step.eventIndex(),
+                  step.actor(),
+                  TestEdits.NONE,
+                  null),
+              model);
+      Assert.assertEquals(Format6.candidateSet(answer), step.candidateSet());
+    }
+  }
+
+  private static void compareEveryDecision(
+      String name, LoadedRecord record, Set<EngineDecisionKind> kinds) {
+    var review = new RecordingPolicy(VARIANT);
+    Format6.Document document = Format6.analyze(record, review);
+    int decision = 0;
+    for (Format6.Located located : document.decisions()) {
+      Format6.Step step = located.step();
+      String where =
+          name
+              + " round "
+              + located.round()
+              + " event "
+              + step.eventIndex()
+              + " seat "
+              + step.actor();
+      var scenario = new RecordingPolicy(VARIANT);
+      ScenarioAnswer answer =
+          Scenarios.evaluate(
+              record,
+              new ScenarioQuery(
+                  located.round(), step.eventIndex(), step.actor(), TestEdits.NONE, null),
+              scenario);
+      Assert.assertEquals(scenario.inputs.size(), 1, where);
+      Assert.assertEquals(scenario.inputs.getFirst(), review.inputs.get(decision), where);
+      Assert.assertEquals(Format6.candidateSet(answer), step.candidateSet(), where);
+      Assert.assertEquals(
+          Scenarios.find(record, located.round(), step.eventIndex(), step.actor()).table(),
+          step.table(),
+          where);
+      kinds.add(review.input(decision).kind());
+      decision++;
+    }
+    Assert.assertEquals(decision, review.inputs.size(), name);
+  }
+
+  /**
+   * 副露には面子だけがあり、手牌とツモ牌の数は面子の数だけで決まる（抜いた北の数によらない）ことを確かめる。手番でなければ 13 − 3 ×
+   * 面子、ツモの後か鳴いた後なら 1 枚多い。
+   */
+  private static void requireRealMelds(PlayerState player, String name) {
+    for (MeldView meld : player.melds())
+      Assert.assertTrue(MELD_TYPES.contains(meld.type()), name + ": " + meld.type());
+    int tiles = player.hand().size() + (player.draw() == null ? 0 : 1);
+    int closed = 13 - 3 * player.melds().size();
+    Assert.assertTrue(tiles == closed || tiles == closed + 1, name + ": " + player);
   }
 }

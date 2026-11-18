@@ -3,6 +3,8 @@ package com.epsilon.mahjong.score;
 import static com.epsilon.mahjong.score.WinCase.four;
 
 import com.epsilon.mahjong.rules.ScoreMath;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.rules.Vocabulary;
 import com.epsilon.mahjong.score.WinContext.Source;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -18,7 +20,12 @@ public class YakuTest {
     return new Object[][] {
       row(four(KANCHAN).riichi().ron("2s"), 1, 40, ScoringYaku.RIICHI),
       row(four(KANCHAN).doubleRiichi().ron("2s"), 2, 40, ScoringYaku.DOUBLE_RIICHI),
-      row(four(KANCHAN).riichi().ippatsu().ron("2s"), 2, 40, ScoringYaku.RIICHI, ScoringYaku.IPPATSU),
+      row(
+          four(KANCHAN).riichi().ippatsu().ron("2s"),
+          2,
+          40,
+          ScoringYaku.RIICHI,
+          ScoringYaku.IPPATSU),
       row(four(KANCHAN).tsumo("2s"), 1, 30, ScoringYaku.MENZEN_TSUMO),
       row(four("123m456p789p55s23s").ron("1s"), 1, 30, ScoringYaku.PINFU),
       row(four("567m345p66p78s").chi("234m").ron("6s"), 1, 30, ScoringYaku.TANYAO),
@@ -40,7 +47,12 @@ public class YakuTest {
           ScoringYaku.MENZEN_TSUMO,
           ScoringYaku.RINSHAN),
       row(four(KANCHAN).win("2s", Source.CHANKAN), 1, 40, ScoringYaku.CHANKAN),
-      row(four(KANCHAN).win("2s", Source.HAITEI), 2, 30, ScoringYaku.MENZEN_TSUMO, ScoringYaku.HAITEI),
+      row(
+          four(KANCHAN).win("2s", Source.HAITEI),
+          2,
+          30,
+          ScoringYaku.MENZEN_TSUMO,
+          ScoringYaku.HAITEI),
       row(four(KANCHAN).win("2s", Source.HOUTEI), 1, 40, ScoringYaku.HOUTEI),
       row(four("112233m456p79s55s").ron("8s"), 1, 40, ScoringYaku.IPEIKOU),
       row(four("123m123p13s456s99m").ron("2s"), 2, 40, ScoringYaku.SANSHOKU),
@@ -51,10 +63,19 @@ public class YakuTest {
       row(four("444s99m77s").pon("2m").pon("8p").ron("7s"), 2, 30, ScoringYaku.TOITOI),
       row(four("111m333p555s789m9p").ron("9p"), 2, 50, ScoringYaku.SANANKOU),
       // 暗槓も暗刻に数える（暗刻 2 ＋ 暗槓 1）。符は 20 ＋ 10 ＋ 8 ＋ 4 ＋ 暗槓 16 ＋ 単騎 2。
-      row(four("111m333p789s9p").ankan("4s").riichi().ron("9p"), 3, 60, ScoringYaku.RIICHI, ScoringYaku.SANANKOU),
+      row(
+          four("111m333p789s9p").ankan("4s").riichi().ron("9p"),
+          3,
+          60,
+          ScoringYaku.RIICHI,
+          ScoringYaku.SANANKOU),
       // 刻子 3 つの読み（2 翻 50 符）が、同じ順子 3 つの読み（一盃口で 1 翻 40 符）より高いので採られる。
       row(four("111222333m456p7s").ron("7s"), 2, 50, ScoringYaku.SANANKOU),
-      row(four("567m9p").daiminkan("2m").daiminkan("3p").ankan("4s").ron("9p"), 2, 60, ScoringYaku.SANKANTSU),
+      row(
+          four("567m9p").daiminkan("2m").daiminkan("3p").ankan("4s").ron("9p"),
+          2,
+          60,
+          ScoringYaku.SANKANTSU),
       row(
           four("123m77z45p").pon("5z").pon("6z").ron("3p"),
           4,
@@ -62,8 +83,18 @@ public class YakuTest {
           ScoringYaku.YAKUHAI_HAKU,
           ScoringYaku.YAKUHAI_HATSU,
           ScoringYaku.SHOUSANGEN),
-      row(four("111s99s11z").pon("1m").pon("9p").ron("9s"), 4, 50, ScoringYaku.TOITOI, ScoringYaku.HONROUTOU),
-      row(four("1199m1199p11s11z2z").ron("2z"), 4, 25, ScoringYaku.HONROUTOU, ScoringYaku.CHIITOITSU),
+      row(
+          four("111s99s11z").pon("1m").pon("9p").ron("9s"),
+          4,
+          50,
+          ScoringYaku.TOITOI,
+          ScoringYaku.HONROUTOU),
+      row(
+          four("1199m1199p11s11z2z").ron("2z"),
+          4,
+          25,
+          ScoringYaku.HONROUTOU,
+          ScoringYaku.CHIITOITSU),
       row(four("123m789p999s11z12s").ron("3s"), 2, 50, ScoringYaku.CHANTA),
       row(four("789p999s11z12s").chi("123m").ron("3s"), 1, 40, ScoringYaku.CHANTA),
       row(four("223344m556677p8s").ron("8s"), 4, 40, ScoringYaku.TANYAO, ScoringYaku.RYANPEIKOU),
@@ -94,10 +125,15 @@ public class YakuTest {
       row(four("111p999s1s").pon("1m").pon("9m").ron("1s"), ScoringYaku.CHINROUTOU),
       row(four("333z444z9m").pon("1z").pon("2z").ron("9m"), ScoringYaku.DAISUUSHII),
       row(four("333z44z23m").pon("1z").pon("2z").ron("1m"), ScoringYaku.SHOUSUUSHII),
-      row(four("9p").ankan("1m").daiminkan("2p").ankan("3s").kakan("4s").ron("9p"), ScoringYaku.SUUKANTSU),
+      row(
+          four("9p").ankan("1m").daiminkan("2p").ankan("3s").kakan("4s").ron("9p"),
+          ScoringYaku.SUUKANTSU),
       row(four("123m456p789s11z23s").dealer().firstDraw().tsumo("1s"), ScoringYaku.TENHOU),
       row(four("123m456p789s11z23s").firstDraw().tsumo("1s"), ScoringYaku.CHIIHOU),
-      row(four("19m19p19s1234567z").dealer().firstDraw().tsumo("7z"), ScoringYaku.KOKUSHI, ScoringYaku.TENHOU),
+      row(
+          four("19m19p19s1234567z").dealer().firstDraw().tsumo("7z"),
+          ScoringYaku.KOKUSHI,
+          ScoringYaku.TENHOU),
       row(four("555z666z777z2z").pon("1z").ron("2z"), ScoringYaku.DAISANGEN, ScoringYaku.TSUUIISOU),
       row(
           four("111z222z333z444z5z").ron("5z"),
@@ -147,7 +183,8 @@ public class YakuTest {
   @Test
   public void aShanponRonTurnsFourConcealedTripletsIntoThree() {
     WinScore score = four("111m333p555s77z99s").ron("9s").score();
-    Assert.assertEquals(score.yaku(), bits(ScoringYaku.TOITOI, ScoringYaku.SANANKOU), score.toString());
+    Assert.assertEquals(
+        score.yaku(), bits(ScoringYaku.TOITOI, ScoringYaku.SANANKOU), score.toString());
     Assert.assertEquals(score.han(), 4);
     Assert.assertEquals(score.fu(), 60);
     Assert.assertEquals(score.base(), 2_000);
@@ -157,9 +194,11 @@ public class YakuTest {
   public void handsWithoutYakuDoNotWin() {
     WinScore out = new WinScore();
     Assert.assertFalse(four(KANCHAN).ron("2s").scores(out));
-    Assert.assertFalse(four("123m456p22s78s").pon("3z").ron("9s").scores(out), "a guest wind triplet");
+    Assert.assertFalse(
+        four("123m456p22s78s").pon("3z").ron("9s").scores(out), "a guest wind triplet");
     Assert.assertFalse(four("123m456p79s55s").chi("123m").ron("8s").scores(out), "an open ipeikou");
-    Assert.assertFalse(four("456m789m55p13s").chi("123p").ron("2s").scores(out), "a broken straight");
+    Assert.assertFalse(
+        four("456m789m55p13s").chi("123p").ron("2s").scores(out), "a broken straight");
   }
 
   /** 門前限定の役は 8 つ、喰い下がり（鳴くと 1 翻減る）の役は 6 つで、ほかの役は鳴いても翻が同じ。役満は 12 個で、翻を持たない。 */
@@ -192,7 +231,8 @@ public class YakuTest {
       }
       int closed = yaku.han(true);
       Assert.assertTrue(closed > 0, yaku.name());
-      int open = (closedOnly & yaku.bit()) != 0 ? 0 : (kuisagari & yaku.bit()) != 0 ? closed - 1 : closed;
+      int open =
+          (closedOnly & yaku.bit()) != 0 ? 0 : (kuisagari & yaku.bit()) != 0 ? closed - 1 : closed;
       Assert.assertEquals(yaku.han(false), open, yaku.name());
     }
     Assert.assertEquals(yakuman, 12);
@@ -212,5 +252,44 @@ public class YakuTest {
       bits |= each.bit();
     }
     return bits;
+  }
+
+  private static final String YAKU =
+      "[RIICHI, DOUBLE_RIICHI, IPPATSU, MENZEN_TSUMO, PINFU, TANYAO, YAKUHAI_HAKU, YAKUHAI_HATSU,"
+          + " YAKUHAI_CHUN, YAKUHAI_SEAT, YAKUHAI_ROUND, RINSHAN, CHANKAN, HAITEI, HOUTEI, IPEIKOU,"
+          + " SANSHOKU, SANSHOKU_DOUKOU, ITTSU, TOITOI, SANANKOU, SANKANTSU, SHOUSANGEN, HONROUTOU,"
+          + " CHANTA, RYANPEIKOU, JUNCHAN, HONITSU, CHINITSU, CHIITOITSU, KOKUSHI, SUUANKOU,"
+          + " CHUUREN, DAISANGEN, TSUUIISOU, RYUUIISOU, CHINROUTOU, DAISUUSHII, SHOUSUUSHII,"
+          + " SUUKANTSU, TENHOU, CHIIHOU]";
+
+  @Test
+  public void bothVariantsKeepTheVocabularyText() {
+    for (Variant variant : Variant.values()) {
+      Assert.assertEquals(
+          Vocabulary.of(ScoringYaku.class, variant).toString(), YAKU, variant.name());
+      Assert.assertEquals(
+          Vocabulary.of(RiichiState.class, variant).toString(),
+          "[NONE, RIICHI, DOUBLE_RIICHI]",
+          variant.name());
+    }
+    Assert.assertEquals(ScoringYaku.values().length, 42);
+  }
+
+  /** 役のビットの位置は定数の順番（ordinal）で決まり、教師の列の k 番目は順番が k の役に当たる。 */
+  @Test
+  public void yakuBitsFollowTheOrdinal() {
+    for (ScoringYaku yaku : ScoringYaku.values()) {
+      Assert.assertEquals(yaku.bit(), 1L << yaku.ordinal(), yaku.name());
+    }
+  }
+
+  @Test
+  public void digestNamesAreTopLevel() {
+    Assert.assertEquals(digestName(ScoringYaku.class), "ScoringYaku");
+    Assert.assertEquals(digestName(RiichiState.class), "RiichiState");
+  }
+
+  private static String digestName(Class<?> type) {
+    return type.getName().substring(type.getPackageName().length() + 1);
   }
 }

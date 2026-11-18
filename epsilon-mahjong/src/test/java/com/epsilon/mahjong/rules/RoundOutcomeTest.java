@@ -2,6 +2,7 @@ package com.epsilon.mahjong.rules;
 
 import static com.epsilon.mahjong.rules.RoundOutcome.NO_SEAT;
 
+import com.epsilon.mahjong.util.AllocationProbe;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -87,7 +88,8 @@ public class RoundOutcomeTest {
     RoundOutcome three = new RoundOutcome(Variant.TENHOU_3P);
     three.setRon(2_000, 1, 0, NO_SEAT, 0);
     three.addRonWinner(2_000, 2, NO_SEAT);
-    Assert.assertThrows(IllegalArgumentException.class, () -> three.addRonWinner(2_000, 0, NO_SEAT));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> three.addRonWinner(2_000, 0, NO_SEAT));
   }
 
   /** 包の席が放銃したロンは、包の無いロンとして書く。放銃者と包の席が同じロンは拒み、前の結果をそのまま残す。 */
@@ -144,15 +146,19 @@ public class RoundOutcomeTest {
   public void valuesOutsideTheVariantOrTheRulesAreRejected() {
     RoundOutcome three = new RoundOutcome(Variant.TENHOU_3P);
     Assert.assertThrows(IllegalArgumentException.class, () -> three.setTsumo(1_000, 0, NO_SEAT, 0));
-    Assert.assertThrows(IndexOutOfBoundsException.class, () -> three.setTsumo(2_000, 3, NO_SEAT, 0));
-    Assert.assertThrows(IndexOutOfBoundsException.class, () -> three.setRon(2_000, 0, 3, NO_SEAT, 0));
+    Assert.assertThrows(
+        IndexOutOfBoundsException.class, () -> three.setTsumo(2_000, 3, NO_SEAT, 0));
+    Assert.assertThrows(
+        IndexOutOfBoundsException.class, () -> three.setRon(2_000, 0, 3, NO_SEAT, 0));
     Assert.assertThrows(IndexOutOfBoundsException.class, () -> three.setTsumo(8_000, 0, 3, 0));
     Assert.assertThrows(IllegalArgumentException.class, () -> three.setTsumo(8_000, 0, 0, 0));
     Assert.assertThrows(IllegalArgumentException.class, () -> three.setTsumo(2_000, 0, 1, 0));
-    Assert.assertThrows(IllegalArgumentException.class, () -> three.setTsumo(2_000, 0, NO_SEAT, 0b1000));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> three.setTsumo(2_000, 0, NO_SEAT, 0b1000));
     Assert.assertThrows(IllegalArgumentException.class, () -> three.setExhaustive(0b1000, 0, 0));
     Assert.assertThrows(IllegalArgumentException.class, () -> three.setExhaustive(0, 0b1000, 0));
-    Assert.assertThrows(IllegalArgumentException.class, () -> three.setAbortive(AbortiveDraw.FOUR_KANS, -1));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> three.setAbortive(AbortiveDraw.FOUR_KANS, -1));
   }
 
   @Test
@@ -181,7 +187,8 @@ public class RoundOutcomeTest {
     RoundOutcome outcome = new RoundOutcome(Variant.TENHOU_4P);
     outcome.setRon(2_000, 1, 0, NO_SEAT, 0b0001);
     Assert.assertThrows(IllegalArgumentException.class, () -> outcome.setTsumo(2_000, 2, 2, 0));
-    Assert.assertThrows(IllegalArgumentException.class, () -> outcome.addRonWinner(2_000, 1, NO_SEAT));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> outcome.addRonWinner(2_000, 1, NO_SEAT));
     Assert.assertEquals(outcome.kind(), EndKind.RON);
     Assert.assertEquals(outcome.winnerCount(), 1);
     Assert.assertEquals(outcome.winner(0), 1);
@@ -201,6 +208,57 @@ public class RoundOutcomeTest {
     Assert.assertNull(copy.abortive());
     Assert.assertEquals(copy.winner(1), 2);
     Assert.assertEquals(copy.pao(1), 1);
-    Assert.assertThrows(IllegalArgumentException.class, () -> copy.copyFrom(new RoundOutcome(Variant.TENHOU_3P)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> copy.copyFrom(new RoundOutcome(Variant.TENHOU_3P)));
+  }
+
+  private static final int WARM_UP = 50_000;
+  private static final int MEASURED = 200_000;
+
+  @Test
+  public void writingSettlingAndAdvancingDoNotAllocate() {
+    TableState start =
+        RoundFixtures.table(Variant.TENHOU_4P, 7, 1, 1, 31_000, 20_000, 26_000, 22_000);
+    TableState next = new TableState(Variant.TENHOU_4P);
+    RoundOutcome outcome = new RoundOutcome(Variant.TENHOU_4P);
+    int[] delta = new int[Variant.TENHOU_4P.seats()];
+    int[] judged = new int[Variant.TENHOU_4P.seats()];
+    AllocationProbe.assertNoAllocation(
+        WARM_UP, MEASURED, count -> run(count, start, outcome, delta, judged, next));
+  }
+
+  private static long run(
+      int count,
+      TableState start,
+      RoundOutcome outcome,
+      int[] delta,
+      int[] judged,
+      TableState next) {
+    long checksum = 0;
+    for (int i = 0; i < count; i++) {
+      switch (i & 3) {
+        case 0 ->
+            outcome.setTsumo(
+                ScoreMath.base(1 + (i >> 2) % 4, 30, 0), (i >> 2) % 4, NO_SEAT, 0b0001);
+        case 1 -> {
+          outcome.setRon(2_000, 1, 2, NO_SEAT, 0);
+          outcome.addRonWinner(8_000, 3, 0);
+        }
+        case 2 -> outcome.setExhaustive((i >> 2) & 0b1111, 0, 0b0010);
+        default -> outcome.setAbortive(AbortiveDraw.FOUR_WINDS, 0);
+      }
+      Settlement.apply(start.variant(), start, outcome, delta);
+      Progression.next(start, outcome, delta, next);
+      checksum +=
+          next.score(0) + next.round() + (Progression.finishes(next, DealerOutcome.PASSES) ? 1 : 0);
+      for (int seat = 0; seat < judged.length; seat++) {
+        judged[seat] = Progression.judgedScore(start, delta, seat);
+      }
+      checksum +=
+          Progression.finishes(start.variant(), start.round(), judged, DealerOutcome.CONTINUES)
+              ? 1
+              : 0;
+    }
+    return checksum;
   }
 }

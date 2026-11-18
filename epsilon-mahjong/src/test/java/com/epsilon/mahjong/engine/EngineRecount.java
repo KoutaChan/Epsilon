@@ -25,9 +25,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Factory;
-import org.testng.annotations.Test;
 
 /**
  * 自己対局（四人打ちと三人打ち）の全ての判断の時点で、状態を数え直した値と照合する。どの物理牌もちょうど 1 か所にある。点と供託の
@@ -39,7 +36,7 @@ import org.testng.annotations.Test;
  * <p>打ち手はランダムに選ぶ。和了・槓・北抜き・鳴き・立直が選べれば決まった確率で選び、打牌は向聴数がいちばん小さくなる牌から選ぶ。
  * 和了と途中流局を十分な数だけ起こすためである。
  */
-public class EngineFuzzTest {
+final class EngineRecount {
 
   private static final int GAMES = 200;
 
@@ -69,6 +66,7 @@ public class EngineFuzzTest {
 
   /** 直前に確定した判断で、判断した席と選んだ手の種類。先頭から、判断した席の数だけが有効。 */
   private final int[] pickedSeats;
+
   private final Action.Type[] picked;
 
   private long nextId;
@@ -83,8 +81,7 @@ public class EngineFuzzTest {
   /** いまの局で北を抜かない席のビットマスク。北を手に残して北待ちの手を作り、抜いた北への応答を起こすため。 */
   private int keepNorths;
 
-  @Factory(dataProvider = "variants")
-  public EngineFuzzTest(Variant variant) {
+  EngineRecount(Variant variant) {
     this.variant = variant;
     seats = variant.seats();
     engine = new Engine(variant);
@@ -96,13 +93,7 @@ public class EngineFuzzTest {
     picked = new Action.Type[seats - 1];
   }
 
-  @DataProvider
-  public static Object[][] variants() {
-    return new Object[][] {{Variant.TENHOU_4P}, {Variant.TENHOU_3P}};
-  }
-
-  @Test
-  public void everyBoundaryMatchesARecount() {
+  void checkGames() {
     Random random = new Random(7);
     for (int game = 0; game < GAMES; game++) {
       streams = game % 2 == 0;
@@ -127,13 +118,33 @@ public class EngineFuzzTest {
     List<String> expected =
         variant.has(RuleFlag.NUKI)
             ? List.of(
-                "TSUMO", "RON", "EXHAUSTIVE", "NINE_TERMINALS", "PON", "DAIMINKAN", "ANKAN", "KAKAN", "NUKI",
-                "NUKI_RESPONSE", "RON_ON_NUKI", "RIICHI_DAHAI")
+                "TSUMO",
+                "RON",
+                "EXHAUSTIVE",
+                "NINE_TERMINALS",
+                "PON",
+                "DAIMINKAN",
+                "ANKAN",
+                "KAKAN",
+                "NUKI",
+                "NUKI_RESPONSE",
+                "RON_ON_NUKI",
+                "RIICHI_DAHAI")
             : List.of(
-                "TSUMO", "RON", "EXHAUSTIVE", "NINE_TERMINALS", "CHI", "PON", "DAIMINKAN", "ANKAN", "KAKAN",
+                "TSUMO",
+                "RON",
+                "EXHAUSTIVE",
+                "NINE_TERMINALS",
+                "CHI",
+                "PON",
+                "DAIMINKAN",
+                "ANKAN",
+                "KAKAN",
                 "RIICHI_DAHAI");
     for (String seen : expected) {
-      Assert.assertTrue(coverage.getOrDefault(seen, 0) > 0, variant + ": " + seen + " never happened: " + coverage);
+      Assert.assertTrue(
+          coverage.getOrDefault(seen, 0) > 0,
+          variant + ": " + seen + " never happened: " + coverage);
     }
   }
 
@@ -153,7 +164,9 @@ public class EngineFuzzTest {
     int[] choices = new int[size];
     actor = engine.view(decisions.seat(0)).last().seat();
     int current =
-        kind == EngineDecisionKind.TURN || kind == EngineDecisionKind.POST_CALL_DAHAI ? decisions.seat(0) : actor;
+        kind == EngineDecisionKind.TURN || kind == EngineDecisionKind.POST_CALL_DAHAI
+            ? decisions.seat(0)
+            : actor;
     for (int seat = 0; seat < seats; seat++) {
       Assert.assertEquals(engine.view(seat).current(), current, "the seat on turn at " + kind);
     }
@@ -178,7 +191,8 @@ public class EngineFuzzTest {
       if (kind == EngineDecisionKind.TURN || kind == EngineDecisionKind.POST_CALL_DAHAI) {
         Assert.assertTrue(resolution.executed(slot));
         Assert.assertEquals(
-            resolution.role(slot), counts[slot] == 1 ? Resolution.Role.FORCED : Resolution.Role.CAUSAL);
+            resolution.role(slot),
+            counts[slot] == 1 ? Resolution.Role.FORCED : Resolution.Role.CAUSAL);
       }
     }
     return boundary;
@@ -310,7 +324,8 @@ public class EngineFuzzTest {
       for (int seat = 0; seat < seats; seat++) {
         held += full.seat(seat).count(kind);
       }
-      Assert.assertEquals(full.unseen(kind), set.copies(kind) - held - visible[kind] - ura[kind], "unseen " + kind);
+      Assert.assertEquals(
+          full.unseen(kind), set.copies(kind) - held - visible[kind] - ura[kind], "unseen " + kind);
     }
 
     for (int seat = 0; seat < seats; seat++) {
@@ -324,7 +339,8 @@ public class EngineFuzzTest {
         river |= Tiles.bit(events.tile(events.river(seat, index)));
       }
       Assert.assertEquals(table.riverKinds(seat), river, "river of seat " + seat);
-      Assert.assertEquals(table.riichiSafe(seat), riichiSafe(table, seat), "riichi-safe kinds of seat " + seat);
+      Assert.assertEquals(
+          table.riichiSafe(seat), riichiSafe(table, seat), "riichi-safe kinds of seat " + seat);
       Assert.assertEquals(table.nuki(seat), nukis(events, seat), "nuki of seat " + seat);
     }
     checkTiles(full);
@@ -445,7 +461,8 @@ public class EngineFuzzTest {
         }
       }
       Assert.assertEquals(red + publicRed[kind], redCopies, "red tiles of kind " + kind);
-      Assert.assertEquals(plain + publicPlain[kind], Tiles.COPIES - redCopies, "plain tiles of kind " + kind);
+      Assert.assertEquals(
+          plain + publicPlain[kind], Tiles.COPIES - redCopies, "plain tiles of kind " + kind);
     }
   }
 
@@ -459,7 +476,8 @@ public class EngineFuzzTest {
     for (int index = 0; index < count; index++) {
       Action action = Action.of(decisions.legal(slot, index));
       long key = key(decisions.kind(slot), action, decisions.seat(slot));
-      Assert.assertTrue(key > previous, "legal actions out of order at " + action + " in slot " + slot);
+      Assert.assertTrue(
+          key > previous, "legal actions out of order at " + action + " in slot " + slot);
       previous = key;
     }
     EngineDecisionKind kind = decisions.kind(slot);
@@ -573,7 +591,8 @@ public class EngineFuzzTest {
       total += end.next().score(seat);
     }
     Fields.assertSameFields(next, end.next());
-    Assert.assertEquals(total, seats * variant.startPoints(), "points and deposits after the round");
+    Assert.assertEquals(
+        total, seats * variant.startPoints(), "points and deposits after the round");
   }
 
   /**
@@ -631,7 +650,8 @@ public class EngineFuzzTest {
    * @return 包の席。包が無ければ {@code RoundOutcome.NO_SEAT}
    */
   private static int pao(EventLog events, int winner, int loser, WinScore score) {
-    long group = score.has(ScoringYaku.DAISANGEN) ? DRAGONS : score.has(ScoringYaku.DAISUUSHII) ? WINDS : 0;
+    long group =
+        score.has(ScoringYaku.DAISANGEN) ? DRAGONS : score.has(ScoringYaku.DAISUUSHII) ? WINDS : 0;
     int sets = 0;
     for (int event = 0; event < events.size(); event++) {
       if (events.kind(event) != EventKind.MELD || events.seat(event) != winner) {
@@ -639,7 +659,10 @@ public class EngineFuzzTest {
       }
       Meld meld = Meld.of(events.meld(event));
       if (Tiles.contains(group, meld.base()) && ++sets == Long.bitCount(group)) {
-        int fed = meld.source() == Meld.RelativeSource.NONE ? RoundOutcome.NO_SEAT : events.seat(event - 1);
+        int fed =
+            meld.source() == Meld.RelativeSource.NONE
+                ? RoundOutcome.NO_SEAT
+                : events.seat(event - 1);
         return fed == loser ? RoundOutcome.NO_SEAT : fed;
       }
     }
@@ -650,7 +673,8 @@ public class EngineFuzzTest {
   private static boolean nagashi(EventLog events, int seat) {
     for (int index = 0; index < events.riverSize(seat); index++) {
       int event = events.river(seat, index);
-      if (events.calledBy(event) != EventLog.NONE || !Tiles.contains(Tiles.TERMINALS_AND_HONORS, events.tile(event))) {
+      if (events.calledBy(event) != EventLog.NONE
+          || !Tiles.contains(Tiles.TERMINALS_AND_HONORS, events.tile(event))) {
         return false;
       }
     }

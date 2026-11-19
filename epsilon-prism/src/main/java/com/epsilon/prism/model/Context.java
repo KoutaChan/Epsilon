@@ -114,6 +114,10 @@ public final class Context {
     return tape;
   }
 
+  AttentionTape backboneTape() {
+    return tape != null && tape.backbone() ? tape : null;
+  }
+
   /** 段ごとの時間の計測点（計測しないなら {@link FitProbe#NONE}）。 */
   FitProbe probe() {
     return probe;
@@ -128,7 +132,11 @@ public final class Context {
    * @return 葉（同じ値）か {@code source}
    */
   NDArray cut(NDArray source, Stage stage, int layer) {
-    return tape == null ? source : tape.cut(working, source, stage, layer);
+    return backboneTape() == null ? source : tape.cut(working, source, stage, layer);
+  }
+
+  NDArray cutCandidateInput(NDArray source, Stage stage) {
+    return tape.cut(working, source, stage, 0);
   }
 
   /**
@@ -188,6 +196,16 @@ public final class Context {
       }
       return output;
     }
+  }
+
+  boolean training() {
+    return training;
+  }
+
+  NDArray candidateCount(NDArray projected, Parameter gate, NDArray rows, NDArray ids) {
+    return tape == null || projected.getDataType() != DataType.BFLOAT16
+        ? null
+        : tape.count(working, projected, fp32(gate), rows, ids);
   }
 
   public DataType compute() {
@@ -318,7 +336,7 @@ public final class Context {
    * @return 正規化した値（計算の型）
    */
   NDArray backboneNorm(NDArray input, Parameter gain, double epsilon, Stage stage, int layer) {
-    return tape == null
+    return backboneTape() == null
         ? norm(input, gain, epsilon)
         : tape.norm(working, input, fp32(gain), (float) epsilon, stage, layer);
   }

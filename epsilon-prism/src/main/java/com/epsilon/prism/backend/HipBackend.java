@@ -1,6 +1,7 @@
 package com.epsilon.prism.backend;
 
 import ai.djl.pytorch.engine.PtStream;
+import com.epsilon.agent.runtime.EventCacheSettings;
 import com.epsilon.prism.hip.HipBatch;
 import com.epsilon.prism.hip.HipKernel;
 import com.epsilon.prism.hip.HipLibrary;
@@ -10,6 +11,7 @@ import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputBlob.Axis;
 import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.input.PublishedEventStore;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
@@ -18,7 +20,8 @@ import java.util.Objects;
  * ネットワークの HIP の推論を、1 つのスロットで行う。ネットワークに依る部分（重みの並びと、入力の領域から HIP の領域への対応）を
  * ここに置き、ネットワークを知らない {@link HipPlan} を動かす。
  *
- * <p>1 バッチの処理は、HostBatch の blob を H2D で 1 回送り、形の記述の順にカーネル（{@link HipKernel}）を流し、s を D2H で 1 回読む。
+ * <p>通常の提出は入力全体を一度に転送する。公開順を共有する提出は、GPU に無いイベントと各遷移の基本符号を送り、残りの入力を
+ * デバイスで復元する。その後、形の記述の順にカーネル（{@link HipKernel}）を流し、スコアをホストへ読み出す。
  * s はバッチの手の順（要求の順）に並ぶ FP32。{@link #submit} はストリームに積むだけなので、終わりはストリームのイベントか
  * {@link #synchronize()} で待つ。スレッドセーフではない。
  */
@@ -29,6 +32,26 @@ public final class HipBackend implements AutoCloseable {
   private final WeightLayout layout;
   private final HipPlan plan;
   private final ByteBuffer scores;
+  private EventPages.Resident resident;
+  private volatile boolean pagesInvalid;
+  private boolean noPageCapacity;
+  private Runnable releaseHistory;
+
+  /** 全レーンの重みを用意した後、このレーンに割り当てられる VRAM から保存件数を決める。 */
+  public HipPlan.EventMemory configureEventPages(int remaining, EventCacheSettings settings) {
+    var memory =
+        plan.configureEventPages(remaining, settings.eventsPerLane(), settings.reserveFraction());
+    if (releaseHistory != null) releaseHistory.run();
+    releaseHistory = PublishedEventStore.register(layout.format(), memory.slots());
+    noPageCapacity = memory.slots() == 0;
+    if (!noPageCapacity) resident = new EventPages.Resident(memory.slots());
+    return memory;
+  }
+
+  /** 準備済みの後続バッチが、途中で提出に失敗したページを読むことを防ぐ。 */
+  public void invalidatePages() {
+    pagesInvalid = true;
+  }
 
   private HipBackend(WeightLayout layout, HipPlan plan, ByteBuffer scores) {
     this.layout = layout;
@@ -48,11 +71,20 @@ public final class HipBackend implements AutoCloseable {
   public static HipBackend open(
       HipLibrary library, PtStream stream, WeightLayout layout, BatchPlan.Capacity capacity) {
     Objects.requireNonNull(layout, "layout");
-    HipPlan plan = HipPlan.create(library, stream, layout.hipShape(capacity));
-    ByteBuffer scores =
-        ByteBuffer.allocateDirect(Math.multiplyExact(capacity.actions(), Float.BYTES))
-            .order(ByteOrder.LITTLE_ENDIAN);
-    return new HipBackend(layout, plan, scores);
+    HipPlan plan = HipPlan.create(library, stream, layout.hipShape(capacity), layout.planOptions());
+    try {
+      ByteBuffer scores =
+          ByteBuffer.allocateDirect(Math.multiplyExact(capacity.actions(), Float.BYTES))
+              .order(ByteOrder.LITTLE_ENDIAN);
+      return new HipBackend(layout, plan, scores);
+    } catch (RuntimeException | Error failure) {
+      try {
+        plan.close();
+      } catch (RuntimeException | Error closing) {
+        failure.addSuppressed(closing);
+      }
+      throw failure;
+    }
   }
 
   /** ネットワークを知らない計画を返す。カーネルごとのテストと計測で使う。 */
@@ -78,7 +110,13 @@ public final class HipBackend implements AutoCloseable {
     if (pack.layout() != layout) {
       throw new IllegalArgumentException("the weight pack was built for another layout");
     }
+    if (resident != null) resident.clear();
     plan.uploadWeights(pack.buffer(), pack.version());
+    var codes = layout.format().candidateCodes();
+    if (layout.reusableEventPrefix() && !codes.slots().isEmpty()) {
+      plan.configureCandidateInput(codes.restoration(layout.format()));
+    }
+    pagesInvalid = false;
   }
 
   /**
@@ -89,7 +127,66 @@ public final class HipBackend implements AutoCloseable {
    * @param version 期待するネットワークのバージョン（送ったバージョンと違えば例外）
    */
   public void submit(HostBatch batch, ByteBuffer out, long version) {
-    plan.forward(batch.blob().duplicate().position(0), batchOf(batch), out.duplicate().position(0), version);
+    submit(batch, out, version, null);
+  }
+
+  public void submit(HostBatch batch, ByteBuffer out, long version, EventPages pages) {
+    prepare(batch, out, version, pages).run();
+  }
+
+  /** ホスト上で配置表と転送の引数を確定する。返した処理は、準備した順で同じストリームに積む。 */
+  public Runnable prepare(HostBatch batch, ByteBuffer out, long version, EventPages pages) {
+    if (batch.plan().format() != layout.format()) {
+      throw new IllegalArgumentException(
+          "the batch input format does not match the inference plan");
+    }
+    var input = batch.storage().duplicate().position(0);
+    var output = out.duplicate().position(0);
+    var shape = batchOf(batch);
+    if (pages == null || pagesInvalid || noPageCapacity)
+      return () -> forwardFull(batch, input, shape, output, version);
+    if (!layout.reusableEventPrefix())
+      throw new IllegalArgumentException("event prefix is not reusable");
+    if (resident == null) {
+      // 方策を介さずバックエンドを直接使うときは、最大 1 バッチ分を確保する。
+      resident = new EventPages.Resident(plan.shape().capacity().events());
+    }
+    if (shape.events() > resident.slots())
+      return () -> forwardFull(batch, input, shape, output, version);
+    try {
+      int misses = pages.pack(batch.plan(), resident);
+      int transferBytes = pages.stage(batch, misses);
+      return () -> {
+        if (pagesInvalid) {
+          forwardFull(batch, input, shape, output, version);
+        } else {
+          try {
+            plan.forward(
+                input,
+                shape,
+                output,
+                version,
+                pages.map(),
+                misses,
+                resident.slots(),
+                transferBytes);
+          } catch (RuntimeException | Error failure) {
+            invalidatePages();
+            throw failure;
+          }
+        }
+      };
+    } catch (RuntimeException | Error failure) {
+      invalidatePages();
+      throw failure;
+    }
+  }
+
+  /** ページを利用できない受付は列を標準位置にそろえ、提出時に確定したバッファ先頭から読む。 */
+  private void forwardFull(
+      HostBatch batch, ByteBuffer input, HipBatch shape, ByteBuffer output, long version) {
+    batch.materializeEvents();
+    plan.forward(input, shape, output, version);
   }
 
   /**
@@ -114,6 +211,11 @@ public final class HipBackend implements AutoCloseable {
 
   @Override
   public void close() {
+    if (resident != null) resident.clear();
+    if (releaseHistory != null) {
+      releaseHistory.run();
+      releaseHistory = null;
+    }
     plan.close();
   }
 

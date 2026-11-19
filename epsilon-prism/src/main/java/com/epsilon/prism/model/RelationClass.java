@@ -9,10 +9,11 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import com.epsilon.agent.facts.MahjongTileRelation;
 import com.epsilon.prism.hip.RelationCodes;
+import com.epsilon.prism.hip.RelationSegment;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
-import com.epsilon.prism.input.InputFormat.RelationRole;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.InputSchema.RelationAttribute;
 import java.util.function.Supplier;
 
 /**
@@ -44,10 +45,10 @@ import java.util.function.Supplier;
 final class RelationClass {
 
   /** セグメントの数。 */
-  static final int SEGMENTS = 7;
+  static final int SEGMENTS = RelationSegment.values().length;
 
   /** 1 セグメントあたりの表の行数。 */
-  static final int ENTRIES = 16;
+  static final int ENTRIES = RelationSegment.ENTRIES;
 
   /** 関係のバイアスの表の行数。 */
   static final int ROWS = SEGMENTS * ENTRIES;
@@ -64,7 +65,7 @@ final class RelationClass {
   private static final int EVENT = TokenType.EVENT.ordinal();
 
   /** 自分の席を表す持ち主の ID（相対席 0 に 1 を足した値）。これより大きい ID は相手。 */
-  private static final int SELF = 1;
+  static final int SELF = 1;
 
   static {
     if (MahjongTileRelation.values().length > FIRST_HALF + ENTRIES - 1) {
@@ -86,38 +87,52 @@ final class RelationClass {
         RowColumn.FIRST_EVENT.ordinal(),
         RowColumn.EVENTS.ordinal(),
         format.relation().width(),
-        format.relationColumn(RelationRole.TILE, 0),
-        format.relationColumn(RelationRole.OWNER, 0),
-        format.relationColumn(RelationRole.EVENT, 0),
-        format.relationColumn(RelationRole.OWNER_RIICHI_EVENT, 0),
-        format.relationColumn(RelationRole.OWNER_LAST_DISCARD_EVENT, 0),
-        format.relationColumn(RelationRole.LINK, 0),
-        format.relationColumn(RelationRole.SAFETY, 0),
-        format.relationRepeats(RelationRole.SAFETY));
+        format.relation().column(RelationAttribute.TILE, 0),
+        format.relation().column(RelationAttribute.OWNER, 0),
+        format.relation().column(RelationAttribute.EVENT, 0),
+        format.relation().column(RelationAttribute.OWNER_RIICHI_EVENT, 0),
+        format.relation().column(RelationAttribute.OWNER_LAST_DISCARD_EVENT, 0),
+        format.relation().column(RelationAttribute.LINK, 0),
+        format.relation().column(RelationAttribute.SAFETY, 0),
+        format.relation().spec(RelationAttribute.SAFETY).repeats());
+  }
+
+  /** 指定した関係属性をトークンの位置に並べる。[行, S] の INT32 で、パディングは 0。 */
+  static NDArray attribute(NetworkInputs inputs, BatchIndex index, RelationAttribute role) {
+    int column = inputs.format().relation().column(role, 0);
+    NDArray values =
+        inputs.get(Tensor.RELATION).get(new NDIndex(":, {}", column)).toType(DataType.INT32, false);
+    return NDArrays.scatterRows(values, index.tokenSlots.array(), (long) index.rows * index.tokens)
+        .reshape(index.rows, index.tokens);
   }
 
   /**
-   * コードを eager で作る（CPU、djl-rocm の Attention、推論で使う）。入力の関係の属性を [行, S] の位置へ散らしてから
-   * {@link #codes(InputFormat, NDArray, NDArray, NDArray)} に渡す（パディングの位置の属性は 0）。
-   *
-   * @param inputs 入力
-   * @param index 順伝播のインデックス
-   * @return 詰めたコード [行, S, S, 2]（INT16。入力のマネージャーに付く）
+   * 先頭の {@code queries} 個を問い、全トークンをキーとしてコード [行, queries, S, 2] を作る。
+   * パディングの属性は 0。結果の INT16 配列だけを入力のマネージャーに残す。
    */
-  static NDArray codes(NetworkInputs inputs, BatchIndex index) {
-    int rows = inputs.rows();
+  static NDArray codes(NetworkInputs inputs, BatchIndex index, int queries) {
     InputFormat format = inputs.format();
-    NDArray attributes =
-        NDArrays.scatterRows(
-                inputs.get(Tensor.RELATION).toType(DataType.INT32, false),
-                index.tokenSlots.array(),
-                (long) rows * index.tokens)
-            .reshape(rows, index.tokens, format.relation().width());
-    return codes(format, attributes, index.tokenTypes.array(), index.tileRelations.array());
+    NDArray packed = inputs.get(Tensor.RELATION);
+    NDArray tokenTypes = index.tokenTypes.array();
+    NDArray tileRelations = index.tileRelations.array();
+    try (NDManager temporary = inputs.manager().newSubManager()) {
+      packed.tempAttach(temporary);
+      tokenTypes.tempAttach(temporary);
+      tileRelations.tempAttach(temporary);
+      NDArray attributes =
+          NDArrays.scatterRows(
+                  packed.toType(DataType.INT32, false),
+                  index.tokenSlots.array(),
+                  (long) index.rows * index.tokens)
+              .reshape(index.rows, index.tokens, format.relation().width());
+      NDArray codes = new Pairs(format, attributes, tokenTypes, tileRelations, queries).codes();
+      codes.attach(inputs.manager());
+      return codes;
+    }
   }
 
   /**
-   * コードを自前のカーネルで作る（GPU の学習で使う）。結果は {@link #codes(NetworkInputs, BatchIndex)} とビット単位で一致する。
+   * コードを自前のカーネルで作る（GPU の学習で使う）。全トークンを問いとし、eager とビット単位で一致する。
    *
    * @param kernel コードを作るカーネル（学習のレーンの計算ストリームに積む）
    * @param inputs 入力
@@ -140,34 +155,9 @@ final class RelationClass {
   }
 
   /**
-   * コードを作る。途中の配列は一時のマネージャーに付け、コードを作ったら捨てる（DJL はマネージャーを閉じるまで配列を持ち続ける）。
+   * 先頭 Q 個を問い、全 S 個をキーとしてコードを作る。問いの属性は [行, Q, 1]、キーの属性は [行, 1, S]。
    *
-   * @param format 入力形式（属性の列・席の数・牌のトークンの数を決める）
-   * @param attributes 関係の属性 [行, S, 属性]（INT32）
-   * @param tokenTypes 位置ごとのトークンの型 [S]（INT32）
-   * @param tileRelations 牌の関係のクラス [T·T]（INT32）
-   * @return 詰めたコード [行, S, S, 2]（INT16。属性のマネージャーに付く）
-   */
-  static NDArray codes(InputFormat format, NDArray attributes, NDArray tokenTypes, NDArray tileRelations) {
-    NDManager owner = attributes.getManager();
-    try (NDManager temporary = owner.newSubManager()) {
-      attributes.tempAttach(temporary);
-      tokenTypes.tempAttach(temporary);
-      tileRelations.tempAttach(temporary);
-      NDArray codes = new Pairs(format, attributes, tokenTypes, tileRelations).codes();
-      codes.attach(owner);
-      return codes;
-    }
-  }
-
-  /**
-   * 1 つのバッチのコードを、セグメントごとにワードへ足して作る。クエリの側 [行, S, 1] とキーの側 [行, 1, S] の属性、位置ごとの型、
-   * 牌の関係の表を持つ。
-   *
-   * <p>セグメントの値 [行, S, S] はセグメントごとのマネージャーで作り、ワードに足したら、セグメントの中で作った配列と一緒に捨てる。
-   * セグメントの中で作る [行, S, S] の配列は合わせて百を超える。コードができるまで全てを持つと、コードの数十倍のメモリをデバイスに置くことに
-   * なる。セグメントごとに捨てれば、同時に持つのは下位と上位の 2 ワードと 1 セグメント分だけで済む。作ったばかりでほかから読まない
-   * [行, S, S] の配列には、その場で書き換える演算を使う（値は新しい配列に書くときと同じになる）。
+   * <p>各セグメントの [行, Q, S] の配列はワードに足した時点で捨てる。同時に持つのは下位・上位のワードと 1 セグメント分だけでよい。
    */
   private static final class Pairs {
     private final InputFormat format;
@@ -201,44 +191,51 @@ final class RelationClass {
      * @param attributes 関係の属性 [行, S, 属性]（INT32）
      * @param tokenTypes 位置ごとのトークンの型 [S]（INT32）
      * @param tileRelations 牌の関係のクラス [T·T]（INT32）
+     * @param queries 問いにする先頭のトークンの数
      */
-    Pairs(InputFormat format, NDArray attributes, NDArray tokenTypes, NDArray tileRelations) {
+    Pairs(
+        InputFormat format,
+        NDArray attributes,
+        NDArray tokenTypes,
+        NDArray tileRelations,
+        int queries) {
       this.format = format;
       seats = format.seats();
       tiles = format.tiles();
       manager = attributes.getManager();
       long rows = attributes.getShape().get(0);
       long tokens = attributes.getShape().get(1);
-      pair = new Shape(rows, tokens, tokens);
-      typeQ = side(tokenTypes.reshape(1, tokens, 1));
+      pair = new Shape(rows, queries, tokens);
+      typeQ = side(query(tokenTypes.reshape(1, tokens)));
       typeK = side(tokenTypes.reshape(1, 1, tokens));
       keyEvent = side(typeK.eq(EVENT));
       queryEvent = side(typeQ.eq(EVENT));
       bothEvents = side(queryEvent.logicalAnd(keyEvent));
-      NDArray tile = column(attributes, RelationRole.TILE, 0);
+      NDArray tile = column(attributes, RelationAttribute.TILE, 0);
       tileQ = side(query(tile));
       tileK = side(key(tile));
-      NDArray owner = column(attributes, RelationRole.OWNER, 0);
+      NDArray owner = column(attributes, RelationAttribute.OWNER, 0);
       ownerQ = side(query(owner));
       ownerK = side(key(owner));
-      NDArray event = column(attributes, RelationRole.EVENT, 0);
+      NDArray event = column(attributes, RelationAttribute.EVENT, 0);
       eventQ = side(query(event));
       eventK = side(key(event));
-      riichiK = side(key(column(attributes, RelationRole.OWNER_RIICHI_EVENT, 0)));
-      discardQ = side(query(column(attributes, RelationRole.OWNER_LAST_DISCARD_EVENT, 0)));
-      NDArray link = column(attributes, RelationRole.LINK, 0);
+      riichiK = side(key(column(attributes, RelationAttribute.OWNER_RIICHI_EVENT, 0)));
+      discardQ = side(query(column(attributes, RelationAttribute.OWNER_LAST_DISCARD_EVENT, 0)));
+      NDArray link = column(attributes, RelationAttribute.LINK, 0);
       linkQ = side(query(link));
       linkK = side(key(link));
       now =
           side(
               attributes
-                  .get(new NDIndex(":, 0, {}", format.relationColumn(RelationRole.EVENT, 0)))
+                  .get(
+                      new NDIndex(":, 0, {}", format.relation().column(RelationAttribute.EVENT, 0)))
                   .reshape(rows, 1, 1));
-      int opponents = format.relationRepeats(RelationRole.SAFETY);
+      int opponents = format.relation().spec(RelationAttribute.SAFETY).repeats();
       safetyQ = new NDArray[opponents];
       safetyK = new NDArray[opponents];
       for (int opponent = 0; opponent < opponents; opponent++) {
-        NDArray safety = column(attributes, RelationRole.SAFETY, opponent);
+        NDArray safety = column(attributes, RelationAttribute.SAFETY, opponent);
         safetyQ[opponent] = side(query(safety));
         safetyK[opponent] = side(key(safety));
       }
@@ -330,20 +327,17 @@ final class RelationClass {
     /** セグメント 6: 繋がり・安全度。 */
     private NDArray safety() {
       NDArray forward = linkQ.gt(0).logicalAnd(linkQ.eq(eventK));
-      NDArray backward =
-          linkK.gt(0).logicalAnd(linkK.eq(eventQ)).logicalAnd(forward.logicalNot());
+      NDArray backward = linkK.gt(0).logicalAnd(linkK.eq(eventQ)).logicalAnd(forward.logicalNot());
       NDArray code = integer(bothEvents.logicalAnd(forward));
       try (NDArray linked = integer(bothEvents.logicalAnd(backward))) {
         code.addi(linked.muli(2));
       }
       try (NDArray key = opponentSafety(ownerQ, safetyK).addi(3)) {
-        NDArray seatToTile =
-            typeQ.eq(SEAT).logicalAnd(typeK.eq(TILE)).logicalAnd(ownerQ.gt(SELF));
+        NDArray seatToTile = typeQ.eq(SEAT).logicalAnd(typeK.eq(TILE)).logicalAnd(ownerQ.gt(SELF));
         code.addi(keep(seatToTile, key));
       }
       try (NDArray query = opponentSafety(ownerK, safetyQ).addi(7)) {
-        NDArray tileToSeat =
-            typeQ.eq(TILE).logicalAnd(typeK.eq(SEAT)).logicalAnd(ownerK.gt(SELF));
+        NDArray tileToSeat = typeQ.eq(TILE).logicalAnd(typeK.eq(SEAT)).logicalAnd(ownerK.gt(SELF));
         code.addi(keep(tileToSeat, query));
       }
       return code;
@@ -364,15 +358,17 @@ final class RelationClass {
       return array;
     }
 
-    /** 属性の列 [行, S]。 */
-    private NDArray column(NDArray attributes, RelationRole field, int repeat) {
-      return attributes.get(new NDIndex(":, :, {}", format.relationColumn(field, repeat)));
+    /** 問いに使う先頭の Q 個 [行, Q, 1]。 */
+    private NDArray query(NDArray column) {
+      long queries = pair.get(1);
+      NDArray prefix = queries == pair.get(2) ? column : column.get(new NDIndex(":, :{}", queries));
+      return prefix.expandDims(2);
     }
-  }
 
-  /** クエリの側 [行, S, 1]。 */
-  private static NDArray query(NDArray column) {
-    return column.expandDims(2);
+    /** 属性の列 [行, S]。 */
+    private NDArray column(NDArray attributes, RelationAttribute field, int repeat) {
+      return attributes.get(new NDIndex(":, :, {}", format.relation().column(field, repeat)));
+    }
   }
 
   /** キーの側 [行, 1, S]。 */

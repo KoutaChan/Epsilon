@@ -86,9 +86,7 @@ final class EagerPass implements AutoCloseable {
         }
         NDArray values = NDArrays.gatherRows(scores.reshape(-1, 1), slots[chunk]).reshape(-1);
         values.attach(work);
-        for (NDArray input : inputs[chunk].tensors().values()) {
-          input.attach(work);
-        }
+        inputs[chunk].attachTensors(work);
         scopes[chunk].close();
         scopes[chunk] = null;
         packed.add(values);

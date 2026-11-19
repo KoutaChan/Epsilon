@@ -7,6 +7,7 @@ import com.epsilon.agent.play.Query;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.core.Greedy;
 import com.epsilon.prism.core.Kind;
+import com.epsilon.prism.input.EventHistory;
 
 /**
  * PRISM の方策に出す、1 判断の問い合わせ。卓の問い合わせ（{@link Query}）に、判断の種別とクラス、行を作る判断かどうかを足し、答えとして
@@ -20,6 +21,7 @@ public final class PolicyRequest extends Query {
   private final Kind kind;
   private final DecisionClass decisionClass;
   private final boolean retain;
+  private EventHistory history;
 
   /**
    * 合法手ごとのルールベースの事前分布 p0（{@link Prior}。和は 1）。ネットワークの方策は、{@code retain} の問い合わせと、s の最大が同点の
@@ -67,5 +69,21 @@ public final class PolicyRequest extends Query {
   /** 行を作る判断か。ラベル行か根の記録を書く判断で、方策は p0 も書く。 */
   public boolean retain() {
     return retain;
+  }
+
+  /**
+   * 要求を出した経路・観測席の、前の判断のイベントの符号化（{@link EventHistory}）を付ける。符号化はこの続きから書く。付けなければ
+   * 全てを書く。
+   *
+   * @return この要求
+   */
+  public PolicyRequest history(EventHistory history) {
+    this.history = history;
+    return this;
+  }
+
+  /** 付けた履歴（無ければ null）。 */
+  public EventHistory history() {
+    return history;
   }
 }

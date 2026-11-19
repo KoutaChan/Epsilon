@@ -6,8 +6,8 @@ import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.Axis;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
-import com.epsilon.prism.input.InputFormat.Role;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.InputFormat.Role;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
@@ -81,7 +81,9 @@ public final class HipParity {
       Role[] roles = new Role[actions];
       List<? extends Role> values = format.roles();
       for (int a = 0; a < actions; a++) {
-        int at = plan.offset(Tensor.ACTION_COLUMN) + (a * actionWidth + ActionColumn.ROLE.ordinal()) * Integer.BYTES;
+        int at =
+            plan.offset(Tensor.ACTION_COLUMN)
+                + (a * actionWidth + ActionColumn.ROLE.ordinal()) * Integer.BYTES;
         roles[a] = values.get(blob.getInt(at));
       }
       return new Actions(first, count, roles);
@@ -131,11 +133,18 @@ public final class HipParity {
     public String summary() {
       StringBuilder means = new StringBuilder();
       for (Map.Entry<Role, Double> entry : signedMean.entrySet()) {
-        means.append(String.format(Locale.ROOT, " %s=%+.2e(n=%d)", entry.getKey(), entry.getValue(), counts.get(entry.getKey())));
+        means.append(
+            String.format(
+                Locale.ROOT,
+                " %s=%+.2e(n=%d)",
+                entry.getKey(),
+                entry.getValue(),
+                counts.get(entry.getKey())));
       }
       return String.format(
           Locale.ROOT,
-          "actions=%d median=%.3e p99=%.3e max=%.3e argmax=%.5f (rows %d) confident=%.5f (rows %d) mean:%s",
+          "actions=%d median=%.3e p99=%.3e max=%.3e argmax=%.5f (rows %d) confident=%.5f (rows %d)"
+              + " mean:%s",
           actions,
           median,
           p99,
@@ -249,6 +258,84 @@ public final class HipParity {
       }
     }
     return top - second;
+  }
+
+  /** FP32 と BF16 の差で行ごとの丸めの幅を測る。上位二手の差がその二倍を超える行だけで順位を比べる。 */
+  public record Rounding(
+      double squaredError,
+      double squaredReference,
+      double maximum,
+      int actions,
+      int rows,
+      int stable,
+      int agreed) {
+    public double relativeRms() {
+      return squaredReference == 0
+          ? (squaredError == 0 ? 0 : Double.POSITIVE_INFINITY)
+          : Math.sqrt(squaredError / squaredReference);
+    }
+
+    public Rounding plus(Rounding other) {
+      return new Rounding(
+          squaredError + other.squaredError,
+          squaredReference + other.squaredReference,
+          Math.max(maximum, other.maximum),
+          actions + other.actions,
+          rows + other.rows,
+          stable + other.stable,
+          agreed + other.agreed);
+    }
+  }
+
+  @FunctionalInterface
+  interface Disagreement {
+    void accept(int row, int eagerAction, int hipAction, double gap, double noise);
+  }
+
+  public static Rounding rounding(float[] hip, float[] bf16, float[] fp32, Actions actions) {
+    return rounding(hip, bf16, fp32, actions, (row, eager, actual, gap, noise) -> {});
+  }
+
+  static Rounding rounding(
+      float[] hip, float[] bf16, float[] fp32, Actions actions, Disagreement disagreement) {
+    int n = actions.roles().length;
+    if (hip.length != n || bf16.length != n || fp32.length != n) {
+      throw new IllegalArgumentException("score counts differ from the legal action count " + n);
+    }
+    double squaredError = 0;
+    double squaredReference = 0;
+    double maximum = 0;
+    int stable = 0;
+    int agreed = 0;
+    for (int r = 0; r < actions.rowFirst().length; r++) {
+      int first = actions.rowFirst()[r];
+      int count = actions.rowCount()[r];
+      double noise = 0;
+      for (int i = first; i < first + count; i++) {
+        if (!Float.isFinite(hip[i]) || !Float.isFinite(bf16[i]) || !Float.isFinite(fp32[i])) {
+          throw new IllegalArgumentException("non-finite score at action " + i);
+        }
+        double delta = (double) hip[i] - bf16[i];
+        squaredError += delta * delta;
+        squaredReference += (double) bf16[i] * bf16[i];
+        maximum = Math.max(maximum, Math.abs(delta));
+        noise = Math.max(noise, Math.abs((double) bf16[i] - fp32[i]));
+      }
+      if (count < 2) continue;
+      double margin = gap(bf16, first, count);
+      if (margin > 2 * noise) {
+        stable++;
+        int actual = argmax(hip, first, count);
+        int eager = argmax(bf16, first, count);
+        if (actual == eager) {
+          agreed++;
+        } else {
+          disagreement.accept(r, eager - first, actual - first, margin, noise);
+        }
+      }
+    }
+    return new Rounding(
+        squaredError, squaredReference, maximum, n, actions.rowFirst().length, stable, agreed);
   }
 
   private static double quantile(double[] sorted, double q) {

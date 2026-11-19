@@ -1,5 +1,6 @@
 package com.epsilon.prism.backend;
 
+import com.epsilon.prism.hip.CandidateStages;
 import com.epsilon.prism.hip.HipArchitecture;
 import com.epsilon.prism.hip.HipBatch;
 import com.epsilon.prism.hip.HipComposition;
@@ -7,6 +8,7 @@ import com.epsilon.prism.hip.HipCounts;
 import com.epsilon.prism.hip.HipEmbedding;
 import com.epsilon.prism.hip.HipFfn;
 import com.epsilon.prism.hip.HipPack;
+import com.epsilon.prism.hip.HipPlanOptions;
 import com.epsilon.prism.hip.HipSchema;
 import com.epsilon.prism.hip.HipSection;
 import com.epsilon.prism.hip.HipWeight;
@@ -25,9 +27,8 @@ import java.util.List;
 import java.util.function.ToIntFunction;
 
 /**
- * HIP の K0〜K9 を CPU で計算する参照の実装。WeightPack（ヘッダーを native の並びで読み直す）と入力の blob だけを読む。式と丸める所は
- * カーネルと同じにし、積和は素朴な FP32 で計算する。形はヘッダーにある形の記述から読む（層の種類、型ごとの FFN の 2 区間、候補層の 2 段目、
- * 数）。四人打ち・三人打ちごとの入力の形式は読まない（領域の幅もヘッダーかバッチから取る）。
+ * HIP の K0〜K9 を CPU で計算する参照の実装。重みの束、推論計画の機能記述、入力の blob を読み、カーネルと同じ箇所で丸める。
+ * 層と候補の形、席と牌の数を束のヘッダーから読み、候補の追加表と因果注意を推論計画の記述から読む。
  *
  * <p>和の順がカーネルと違うのは、行列積（WMMA）と 1/rms だけ。ほかの所（K1、Attention の softmax と p·v、候補の Cross-Attention、集約、
  * 合成）はカーネルと同じ順で足す。層 0 の q・k・v は K1 と同じ L0-FOLD の式と同じ FP32 の順で作るので、K1 の x と qkv0 はカーネルと
@@ -39,6 +40,8 @@ import java.util.function.ToIntFunction;
 public final class HipReference {
 
   final PackView pack;
+  private final HipPlanOptions options;
+  private final ByteBuffer packedWeights;
   final HipArchitecture architecture;
   final int hidden;
   final int attention;
@@ -86,7 +89,9 @@ public final class HipReference {
    * @param weights 重みの束（ヘッダーを native の並びで読み直す）
    */
   public HipReference(WeightPack weights) {
-    pack = new PackView(weights.buffer());
+    packedWeights = weights.buffer();
+    pack = new PackView(packedWeights);
+    options = weights.layout().planOptions();
     architecture = weights.layout().architecture();
     hidden = architecture.hidden();
     attention = architecture.attention();
@@ -167,8 +172,9 @@ public final class HipReference {
     }
 
     private int at(Tensor tensor, int row, int column, int bytes) {
-      return Math.toIntExact(offsets[HipSection.valueOf(tensor.name()).ordinal()]
-          + ((long) row * widths[tensor.ordinal()] + column) * bytes);
+      return Math.toIntExact(
+          offsets[HipSection.valueOf(tensor.name()).ordinal()]
+              + ((long) row * widths[tensor.ordinal()] + column) * bytes);
     }
 
     int u8(Tensor tensor, int row, int column) {
@@ -176,7 +182,8 @@ public final class HipReference {
     }
 
     float bf16(Tensor tensor, int row, int column) {
-      return Float.intBitsToFloat((blob.getShort(at(tensor, row, column, Short.BYTES)) & 0xFFFF) << 16);
+      return Float.intBitsToFloat(
+          (blob.getShort(at(tensor, row, column, Short.BYTES)) & 0xFFFF) << 16);
     }
 
     float f32(Tensor tensor, int row, int column) {
@@ -298,7 +305,7 @@ public final class HipReference {
         trace.layers.add(Arrays.copyOf(residual, fixedTokens * hidden));
       }
     }
-    if (architecture.reread()) {
+    if (architecture.stages() == CandidateStages.REREAD) {
       rereadKeyValue(in);
     }
     candidate(in);
@@ -392,7 +399,9 @@ public final class HipReference {
           for (int h = 0; h < hidden; h++) {
             float weight =
                 Float.intBitsToFloat(
-                    (pack.bytes.getShort(spec.denseOffset() + (k * hidden + h) * Short.BYTES) & 0xFFFF) << 16);
+                    (pack.bytes.getShort(spec.denseOffset() + (k * hidden + h) * Short.BYTES)
+                            & 0xFFFF)
+                        << 16);
             acc[h] = Math.fma(weight, feature, acc[h]);
           }
         }
@@ -436,13 +445,18 @@ public final class HipReference {
     for (int o = 0; o < width; o++) {
       float s = 0f;
       for (int table = 0; table < entries.length; table++) {
-        s += pack.bytes.getFloat(spec.tableFold()[table] + (entries[table] * width + o) * Float.BYTES);
+        s +=
+            pack.bytes.getFloat(
+                spec.tableFold()[table] + (entries[table] * width + o) * Float.BYTES);
       }
       for (int k = 0; k < dense; k++) {
-        s = Math.fma(pack.bytes.getFloat(spec.fold() + (k * width + o) * Float.BYTES), features[k], s);
+        s =
+            Math.fma(
+                pack.bytes.getFloat(spec.fold() + (k * width + o) * Float.BYTES), features[k], s);
       }
       s += pack.bytes.getFloat(spec.fold() + (dense * width + o) * Float.BYTES);
-      layer0Qkv[at + o] = bf(r * s + pack.bytes.getFloat(spec.fold() + ((dense + 1) * width + o) * Float.BYTES));
+      layer0Qkv[at + o] =
+          bf(r * s + pack.bytes.getFloat(spec.fold() + ((dense + 1) * width + o) * Float.BYTES));
     }
   }
 
@@ -450,7 +464,8 @@ public final class HipReference {
   float[] attentionInput(float[] x, int layer) {
     float[] out = new float[x.length];
     for (int t = 0; t < x.length / hidden; t++) {
-      System.arraycopy(normalize(x, t * hidden, HipWeight.ATTENTION_NORM, layer), 0, out, t * hidden, hidden);
+      System.arraycopy(
+          normalize(x, t * hidden, HipWeight.ATTENTION_NORM, layer), 0, out, t * hidden, hidden);
     }
     return out;
   }
@@ -491,7 +506,8 @@ public final class HipReference {
             if (col < attention && p >= queries) {
               continue;
             }
-            qkv[p][col] = layer0Qkv[global[p] * 3 * attention + HipEmbedding.foldColumn(col, attention)];
+            qkv[p][col] =
+                layer0Qkv[global[p] * 3 * attention + HipEmbedding.foldColumn(col, attention)];
           }
           continue;
         }
@@ -501,12 +517,16 @@ public final class HipReference {
           System.arraycopy(eventKeyValue, event * 2 * attention, qkv[p], attention, 2 * attention);
           continue;
         }
-        float[] normalized = normalize(residual, global[p] * hidden, HipWeight.ATTENTION_NORM, layer);
+        float[] normalized =
+            normalize(residual, global[p] * hidden, HipWeight.ATTENTION_NORM, layer);
         for (int col = 0; col < 3 * attention; col++) {
           if (col < attention && p >= queries) {
             continue;
           }
-          qkv[p][col] = bf(dot(normalized, HipWeight.QKV, layer, col) + weight(HipWeight.QKV_BIAS, layer, col));
+          qkv[p][col] =
+              bf(
+                  dot(normalized, HipWeight.QKV, layer, col)
+                      + weight(HipWeight.QKV_BIAS, layer, col));
         }
       }
       int now = attributes[0][columnEvent];
@@ -515,13 +535,29 @@ public final class HipReference {
         int[][] pairs = new int[tokens][];
         for (int j = 0; j < tokens; j++) {
           pairs[j] =
-              segments(typeQ, type(j), attributes[i], attributes[j], now, columnTile, columnOwner, columnEvent,
-                  columnRiichi, columnDiscard, columnLink, columnSafety, safeties);
+              segments(
+                  typeQ,
+                  type(j),
+                  attributes[i],
+                  attributes[j],
+                  now,
+                  columnTile,
+                  columnOwner,
+                  columnEvent,
+                  columnRiichi,
+                  columnDiscard,
+                  columnLink,
+                  columnSafety,
+                  safeties);
         }
         for (int h = 0; h < heads; h++) {
           float[] logits = new float[tokens];
           float maximum = Float.NEGATIVE_INFINITY;
           for (int j = 0; j < tokens; j++) {
+            if (options.causal() && i >= fixed && (j < fixed || j > i)) {
+              logits[j] = Float.NEGATIVE_INFINITY;
+              continue;
+            }
             int[] segments = pairs[j];
             float dot = 0f;
             for (int d = 0; d < 16; d++) {
@@ -593,7 +629,11 @@ public final class HipReference {
     int tileK = k[columnTile];
     boolean bothTiles = tileQ > 0 && tileK > 0;
     int relation =
-        (int) weight(HipWeight.TILE_RELATION, 0, Math.max(tileQ - 1, 0) * tiles + Math.max(tileK - 1, 0));
+        (int)
+            weight(
+                HipWeight.TILE_RELATION,
+                0,
+                Math.max(tileQ - 1, 0) * tiles + Math.max(tileK - 1, 0));
     segment[1] = bothTiles && relation < 15 ? relation + 1 : 0;
     segment[2] = bothTiles && relation >= 15 ? relation - 14 : 0;
     int ownerQ = q[columnOwner];
@@ -618,10 +658,16 @@ public final class HipReference {
     boolean bothEvents = queryEvent && keyEvent;
     int delta = eventK - eventQ;
     int magnitude = Math.abs(delta);
-    int step = (magnitude >= 1 ? 1 : 0) + (magnitude >= 2 ? 1 : 0) + (magnitude >= 4 ? 1 : 0) + (magnitude >= 8 ? 1 : 0);
+    int step =
+        (magnitude >= 1 ? 1 : 0)
+            + (magnitude >= 2 ? 1 : 0)
+            + (magnitude >= 4 ? 1 : 0)
+            + (magnitude >= 8 ? 1 : 0);
     int age = now - eventK;
     int ageStep = 10 + (age >= 5 ? 1 : 0) + (age >= 9 ? 1 : 0) + (age >= 17 ? 1 : 0);
-    segment[5] = (bothEvents ? Integer.signum(delta) * step + 5 : 0) + (!queryEvent && keyEvent ? ageStep : 0);
+    segment[5] =
+        (bothEvents ? Integer.signum(delta) * step + 5 : 0)
+            + (!queryEvent && keyEvent ? ageStep : 0);
     int linkQ = q[columnLink];
     int linkK = k[columnLink];
     boolean forward = linkQ > 0 && linkQ == eventK;
@@ -688,8 +734,20 @@ public final class HipReference {
             word =
                 i < tokens
                     ? code(
-                        segments(type(i), type(j), attributes[i], attributes[j], now, columnTile, columnOwner,
-                            columnEvent, columnRiichi, columnDiscard, columnLink, columnSafety, safeties))
+                        segments(
+                            type(i),
+                            type(j),
+                            attributes[i],
+                            attributes[j],
+                            now,
+                            columnTile,
+                            columnOwner,
+                            columnEvent,
+                            columnRiichi,
+                            columnDiscard,
+                            columnLink,
+                            columnSafety,
+                            safeties))
                     : 0;
           }
           words[queryBlock][keyBlock * 256 + t] = word;
@@ -732,11 +790,20 @@ public final class HipReference {
     for (int t = 0; t < tokens; t++) {
       float[] x = layerStage(in, layer, t);
       System.arraycopy(x, 0, residual, t * hidden, hidden);
-      TokenGroup group = architecture.finalGroups().contains(TokenGroup.ALL) ? TokenGroup.ALL : contextOrTile(in, t);
+      TokenGroup group =
+          architecture.finalGroups().contains(TokenGroup.ALL)
+              ? TokenGroup.ALL
+              : contextOrTile(in, t);
       float[] y = normalize(x, 0, HipWeight.FINAL_NORM, group.ordinal());
       System.arraycopy(y, 0, state, t * hidden, hidden);
       int[] located = locate(in.rows, t);
-      project(y, HipWeight.KEY_VALUE, HipWeight.KEY_VALUE_BIAS, 0, 2 * attention, memory,
+      project(
+          y,
+          HipWeight.KEY_VALUE,
+          HipWeight.KEY_VALUE_BIAS,
+          0,
+          2 * attention,
+          memory,
           (located[0] * fixed + located[1]) * 2 * attention);
     }
   }
@@ -745,8 +812,14 @@ public final class HipReference {
   private float[] layerStage(Input in, int layer, int t) {
     HipFfn ffn = architecture.layer(layer).ffn();
     TokenGroup group = ffn instanceof HipFfn.Typed ? contextOrTile(in, t) : TokenGroup.ALL;
-    return mlpStage(slice(residual, t * hidden, hidden), slice(attentionOut, t * attention, attention),
-        HipWeight.OUTPUT, HipWeight.OUTPUT_BIAS, layer, HipWeight.ffnEntry(layer, group));
+    float[] x =
+        addAttention(
+            slice(residual, t * hidden, hidden),
+            slice(attentionOut, t * attention, attention),
+            HipWeight.OUTPUT,
+            HipWeight.OUTPUT_BIAS,
+            layer);
+    return feedForward(x, HipWeight.ffnEntry(layer, group));
   }
 
   /** 局・席・牌のトークン（トークンの軸の番号）が属する組。局・席は先頭の (1 + S)·R 個で、牌はその後。 */
@@ -767,14 +840,22 @@ public final class HipReference {
         float[] n = normalize(residual, (first + e) * hidden, HipWeight.ATTENTION_NORM, layer);
         for (int c = 0; c < 2 * attention; c++) {
           out[e * 2 * attention + c] =
-              bf(dot(n, HipWeight.QKV, layer, attention + c) + weight(HipWeight.QKV_BIAS, layer, attention + c));
+              bf(
+                  dot(n, HipWeight.QKV, layer, attention + c)
+                      + weight(HipWeight.QKV_BIAS, layer, attention + c));
         }
       }
     }
-    if (architecture.reread()) {
+    if (architecture.stages() == CandidateStages.REREAD) {
       for (int e = 0; e < in.events; e++) {
         float[] n = normalize(residual, (first + e) * hidden, HipWeight.REREAD_EVENT_NORM, 0);
-        project(n, HipWeight.REREAD_KEY_VALUE, HipWeight.REREAD_KEY_VALUE_BIAS, 0, 2 * attention, rereadMemory,
+        project(
+            n,
+            HipWeight.REREAD_KEY_VALUE,
+            HipWeight.REREAD_KEY_VALUE_BIAS,
+            0,
+            2 * attention,
+            rereadMemory,
             (first + e) * 2 * attention);
       }
     }
@@ -782,15 +863,25 @@ public final class HipReference {
 
   /** K8 の REREAD_KEY_VALUE。最後の正規化の後の y から、2 段目の局・席・牌のキーとバリューを [行, 位置, 2A] に書く（ここでは正規化しない）。 */
   void rereadKeyValue(Input in) {
-    for (int t = 0; t < fixed * in.rows; t++) {
+    int fixedCount = fixed * in.rows;
+    for (int t = 0; t < fixedCount; t++) {
       int[] located = locate(in.rows, t);
-      project(slice(state, t * hidden, hidden), HipWeight.REREAD_KEY_VALUE, HipWeight.REREAD_KEY_VALUE_BIAS, 0,
-          2 * attention, rereadMemory, (located[0] * fixed + located[1]) * 2 * attention);
+      int row = located[0] * fixed + located[1];
+      float[] token = slice(state, t * hidden, hidden);
+      project(
+          token,
+          HipWeight.REREAD_KEY_VALUE,
+          HipWeight.REREAD_KEY_VALUE_BIAS,
+          0,
+          2 * attention,
+          rereadMemory,
+          row * 2 * attention);
     }
   }
 
   /** out[at + c] = ⌊v·W[c]ᵀ + b[c]⌉（c < width、W の行は H 列）。 */
-  private void project(float[] v, HipWeight weight, HipWeight bias, int entry, int width, float[] out, int at) {
+  private void project(
+      float[] v, HipWeight weight, HipWeight bias, int entry, int width, float[] out, int at) {
     for (int c = 0; c < width; c++) {
       out[at + c] = bf(dot(v, weight, entry, c) + weight(bias, entry, c));
     }
@@ -805,9 +896,9 @@ public final class HipReference {
     return acc;
   }
 
-  /** K3 の式: x1 = ⌊x + ⌊o·W_Oᵀ + b_O⌉⌉、x1 + ⌊W_d·⌊silu(⌊W_u·N(x1) + b_u⌉)⌉ + b_d⌉（積の和はそれぞれ 1 回だけ丸める）。 */
-  private float[] mlpStage(float[] x, float[] o, HipWeight outWeight, HipWeight outBias, int outEntry, int entry) {
-    int ffn = architecture.ffnWidth(entry);
+  /** 注意の出力を射影し、残差に足す。 */
+  private float[] addAttention(
+      float[] x, float[] o, HipWeight outWeight, HipWeight outBias, int outEntry) {
     float[] x1 = new float[hidden];
     for (int i = 0; i < hidden; i++) {
       float acc = 0f;
@@ -816,6 +907,12 @@ public final class HipReference {
       }
       x1[i] = bf(x[i] + bf(acc + weight(outBias, outEntry, i)));
     }
+    return x1;
+  }
+
+  /** 残差を正規化して FFN に通し、出力を足す。 */
+  private float[] feedForward(float[] x1, int entry) {
+    int ffn = architecture.ffnWidth(entry);
     float[] n = normalize(x1, 0, HipWeight.FFN_NORM, entry);
     float[] h = new float[ffn];
     for (int j = 0; j < ffn; j++) {
@@ -855,20 +952,20 @@ public final class HipReference {
       for (int c = 0; c < attention; c++) {
         query[c] = bf(dot(normalized, HipWeight.QUERY, 0, c) + weight(HipWeight.QUERY_BIAS, 0, c));
       }
+      float[] offsets = candidateOffsets(in, t);
       float[] attended = new float[attention];
       for (int h = 0; h < heads; h++) {
         if (exactCrossAttention) {
-          crossAttentionExact(in, t, row, h, query, attended);
+          crossAttentionExact(offsets, row, h, query, attended);
           continue;
         }
         float[] logits = new float[keys];
         float maximum = Float.NEGATIVE_INFINITY;
         for (int j = 0; j < keys; j++) {
-          int code = in.u8(Tensor.TRANSITION_CODE, t, j);
           int base = (row * keys + j) * 2 * attention + 16 * h;
           float dot = 0f;
           for (int d = 0; d < 16; d++) {
-            float key = memory[base + d] + weight(HipWeight.CODE_KEY, 0, code * attention + 16 * h + d);
+            float key = memory[base + d] + offsets[j * 2 * attention + 16 * h + d];
             dot = Math.fma(query[16 * h + d], key, dot);
           }
           logits[j] = dot * scale;
@@ -882,10 +979,9 @@ public final class HipReference {
         float[] value = new float[16];
         for (int j = 0; j < keys; j++) {
           float p = logits[j] / total;
-          int code = in.u8(Tensor.TRANSITION_CODE, t, j);
           int base = (row * keys + j) * 2 * attention + attention + 16 * h;
           for (int d = 0; d < 16; d++) {
-            float v = memory[base + d] + weight(HipWeight.CODE_VALUE, 0, code * attention + 16 * h + d);
+            float v = memory[base + d] + offsets[j * 2 * attention + attention + 16 * h + d];
             value[d] = Math.fma(p, v, value[d]);
           }
         }
@@ -893,9 +989,11 @@ public final class HipReference {
           attended[16 * h + d] = bf(value[d]);
         }
       }
-      float[] z =
-          mlpStage(start, attended, HipWeight.CANDIDATE_OUTPUT, HipWeight.CANDIDATE_OUTPUT_BIAS, 0,
-              HipWeight.CANDIDATE_FFN);
+      float[] residual =
+          addAttention(
+              start, attended, HipWeight.CANDIDATE_OUTPUT, HipWeight.CANDIDATE_OUTPUT_BIAS, 0);
+      if (options.count() != null) addCount(in, row, t, residual);
+      float[] z = feedForward(residual, HipWeight.CANDIDATE_FFN);
       System.arraycopy(z, 0, transitions, t * hidden, hidden);
       if (!architecture.reread()) {
         values[t] = discardValue(in, t, z);
@@ -903,17 +1001,88 @@ public final class HipReference {
     }
   }
 
+  /** キーごとに、基本と各区分の表からキー・バリューの補正を作る。 */
+  private float[] candidateOffsets(Input in, int transition) {
+    int width = 2 * attention;
+    float[] offsets = new float[fixed * width];
+    for (int key = 0; key < fixed; key++) {
+      int code = in.u8(Tensor.TRANSITION_CODE, transition, key);
+      System.arraycopy(
+          cache[HipWeight.CODE_KEY.ordinal()][0],
+          code * attention,
+          offsets,
+          key * width,
+          attention);
+      System.arraycopy(
+          cache[HipWeight.CODE_VALUE.ordinal()][0],
+          code * attention,
+          offsets,
+          key * width + attention,
+          attention);
+    }
+    var segments = options.segments();
+    if (segments != null) {
+      int start = Math.toIntExact(segments.offset());
+      for (var span : segments.layout().spans()) {
+        for (int tile = 0; tile < tiles; tile++) {
+          int code = in.u8(Tensor.TRANSITION_CODE, transition, span.column() + tile);
+          int source = (span.firstRow() + code) * width;
+          int target = (fixed - tiles + tile) * width;
+          for (int d = 0; d < width; d++) {
+            offsets[target + d] += packedWeights.getFloat(start + (source + d) * Float.BYTES);
+          }
+        }
+      }
+    }
+    return offsets;
+  }
+
+  /** 遷移の牌コードで各牌の射影を重み付けし、合計の射影を候補の残差に足す。 */
+  private void addCount(Input in, int row, int transition, float[] residual) {
+    var count = options.count();
+    int width = count.width();
+    int gateAt = Math.toIntExact(count.offset());
+    int tileAt =
+        gateAt + (architecture.counts().keyCodes() - count.firstCode()) * width * Float.BYTES;
+    int outAt = tileAt + width * hidden * Short.BYTES;
+    float[] sum = new float[width];
+    for (int tile = 0; tile < tiles; tile++) {
+      int code =
+          in.u8(Tensor.TRANSITION_CODE, transition, fixed - tiles + tile) - count.firstCode();
+      int at = ((1 + seats) * in.rows + row * tiles + tile) * hidden;
+      for (int d = 0; d < width; d++) {
+        float projected = 0f;
+        for (int h = 0; h < hidden; h++) {
+          projected += state[at + h] * packedBfloat(tileAt, d * hidden + h);
+        }
+        float gate = packedWeights.getFloat(gateAt + (code * width + d) * Float.BYTES);
+        sum[d] += bf(projected) / (1f + expf(-gate));
+      }
+    }
+    for (int h = 0; h < hidden; h++) {
+      float delta = 0f;
+      for (int d = 0; d < width; d++) {
+        delta += bf(sum[d]) * packedBfloat(outAt, h * width + d);
+      }
+      residual[h] = bf(residual[h] + bf(delta));
+    }
+  }
+
+  private float packedBfloat(int offset, int index) {
+    return Float.intBitsToFloat(packedWeights.getShort(offset + index * Short.BYTES) << 16);
+  }
+
   /** 1 つの遷移・1 つのヘッドの Cross-Attention を FP64 で計算し、o を BF16 に 1 回だけ丸めて結果の配列に書く。 */
-  private void crossAttentionExact(Input in, int t, int row, int h, float[] query, float[] attended) {
+  private void crossAttentionExact(
+      float[] offsets, int row, int h, float[] query, float[] attended) {
     int keys = fixed;
     double[] logits = new double[keys];
     double maximum = Double.NEGATIVE_INFINITY;
     for (int j = 0; j < keys; j++) {
-      int code = in.u8(Tensor.TRANSITION_CODE, t, j);
       int base = (row * keys + j) * 2 * attention + 16 * h;
       double dot = 0;
       for (int d = 0; d < 16; d++) {
-        double key = (double) memory[base + d] + weight(HipWeight.CODE_KEY, 0, code * attention + 16 * h + d);
+        double key = (double) memory[base + d] + offsets[j * 2 * attention + 16 * h + d];
         dot += query[16 * h + d] * key;
       }
       logits[j] = dot * scale;
@@ -927,10 +1096,10 @@ public final class HipReference {
     double[] value = new double[16];
     for (int j = 0; j < keys; j++) {
       double p = logits[j] / total;
-      int code = in.u8(Tensor.TRANSITION_CODE, t, j);
       int base = (row * keys + j) * 2 * attention + attention + 16 * h;
       for (int d = 0; d < 16; d++) {
-        value[d] += p * ((double) memory[base + d] + weight(HipWeight.CODE_VALUE, 0, code * attention + 16 * h + d));
+        value[d] +=
+            p * ((double) memory[base + d] + offsets[j * 2 * attention + attention + 16 * h + d]);
       }
     }
     for (int d = 0; d < 16; d++) {
@@ -964,7 +1133,10 @@ public final class HipReference {
       float[] normalized = normalize(z1, 0, HipWeight.REREAD_QUERY_NORM, 0);
       float[] query = new float[attention];
       for (int c = 0; c < attention; c++) {
-        query[c] = bf(dot(normalized, HipWeight.REREAD_QUERY, 0, c) + weight(HipWeight.REREAD_QUERY_BIAS, 0, c));
+        query[c] =
+            bf(
+                dot(normalized, HipWeight.REREAD_QUERY, 0, c)
+                    + weight(HipWeight.REREAD_QUERY_BIAS, 0, c));
       }
       int[] codes = new int[keys];
       int[] bases = new int[keys];
@@ -977,7 +1149,10 @@ public final class HipReference {
           int eventTile = in.u8(Tensor.RELATION, eventBase + event, tileColumn);
           codes[j] =
               discard > 0 && eventTile > 0
-                  ? keyCodes + 1 + (int) weight(HipWeight.TILE_RELATION, 0, (discard - 1) * tiles + eventTile - 1)
+                  ? keyCodes
+                      + 1
+                      + (int)
+                          weight(HipWeight.TILE_RELATION, 0, (discard - 1) * tiles + eventTile - 1)
                   : keyCodes;
           bases[j] = (eventBase + event) * width;
         }
@@ -990,7 +1165,9 @@ public final class HipReference {
           float dot = 0f;
           for (int d = 0; d < 16; d++) {
             int column = 16 * h + d;
-            float key = rereadMemory[bases[j] + column] + weight(HipWeight.REREAD_CODE_KEY, 0, codes[j] * attention + column);
+            float key =
+                rereadMemory[bases[j] + column]
+                    + weight(HipWeight.REREAD_CODE_KEY, 0, codes[j] * attention + column);
             dot = Math.fma(query[column], key, dot);
           }
           logits[j] = dot * scale;
@@ -1021,7 +1198,8 @@ public final class HipReference {
         for (int k = 0; k < attention; k++) {
           acc += attended[k] * weight(HipWeight.REREAD_OUTPUT, 0, i * attention + k);
         }
-        transitions[t * hidden + i] = bf(z1[i] + bf(acc + weight(HipWeight.REREAD_OUTPUT_BIAS, 0, i)));
+        transitions[t * hidden + i] =
+            bf(z1[i] + bf(acc + weight(HipWeight.REREAD_OUTPUT_BIAS, 0, i)));
       }
       values[t] = discardValue(in, t, slice(transitions, t * hidden, hidden));
     }
@@ -1029,8 +1207,11 @@ public final class HipReference {
 
   /** 遷移の τ。鳴いた後に捨てる牌で、無ければ主牌（牌の番号 + 1。どちらも無ければ 0）。 */
   private int discardTile(Input in, int t) {
-    int callDiscard = in.u8(Tensor.TRANSITION_CATEGORY, t, pack.schema(HipSchema.TRANSITION_CALL_DISCARD));
-    return callDiscard > 0 ? callDiscard : in.u8(Tensor.TRANSITION_CATEGORY, t, pack.schema(HipSchema.TRANSITION_MAIN_TILE));
+    int callDiscard =
+        in.u8(Tensor.TRANSITION_CATEGORY, t, pack.schema(HipSchema.TRANSITION_CALL_DISCARD));
+    return callDiscard > 0
+        ? callDiscard
+        : in.u8(Tensor.TRANSITION_CATEGORY, t, pack.schema(HipSchema.TRANSITION_MAIN_TILE));
   }
 
   /** B = Σ_g silu(⌊W_B·N_B(z) + c_B⌉)·wB + Σ uBx·B（後ろの和は厳密な特徴の経路。K6 と K9 に共通の式）。 */
@@ -1038,7 +1219,8 @@ public final class HipReference {
     float[] n = normalize(z, 0, HipWeight.DISCARD_NORM, 0);
     float sum = 0f;
     for (int g = 0; g < gate; g++) {
-      float u = bf(dot(n, HipWeight.DISCARD_HIDDEN, 0, g) + weight(HipWeight.DISCARD_HIDDEN_BIAS, 0, g));
+      float u =
+          bf(dot(n, HipWeight.DISCARD_HIDDEN, 0, g) + weight(HipWeight.DISCARD_HIDDEN_BIAS, 0, g));
       sum += silu(u) * weight(HipWeight.DISCARD_OUTPUT, 0, g);
     }
     float exact = 0f;
@@ -1060,7 +1242,8 @@ public final class HipReference {
       HipComposition composition = pack.composition(role);
       int representative = in.action(a, ActionColumn.REPRESENTATIVE);
       float[] chosen =
-          aggregate(in.action(representative, ActionColumn.FIRST_TRANSITION),
+          aggregate(
+              in.action(representative, ActionColumn.FIRST_TRANSITION),
               in.action(representative, ActionColumn.TRANSITIONS));
       int row = in.action(a, ActionColumn.ROW);
       float[] base;
@@ -1069,7 +1252,11 @@ public final class HipReference {
       } else {
         int baseAction = in.action(a, ActionColumn.BASE);
         int baseRepresentative = in.action(baseAction, ActionColumn.REPRESENTATIVE);
-        base = slice(transitions, in.action(baseRepresentative, ActionColumn.FIRST_TRANSITION) * hidden, hidden);
+        base =
+            slice(
+                transitions,
+                in.action(baseRepresentative, ActionColumn.FIRST_TRANSITION) * hidden,
+                hidden);
       }
       float[] input = new float[3 * hidden];
       System.arraycopy(normalize(chosen, 0, HipWeight.GATE_NORM, 0), 0, input, 0, hidden);
@@ -1088,13 +1275,16 @@ public final class HipReference {
                   * in.f32(Tensor.ACTION_EXACT, a, x);
         }
         float u =
-            (bf(acc + weight(HipWeight.GATE_HIDDEN_BIAS, 0, g)) + weight(HipWeight.GATE_KIND_OFFSET, 0, kind * gate + g))
+            (bf(acc + weight(HipWeight.GATE_HIDDEN_BIAS, 0, g))
+                    + weight(HipWeight.GATE_KIND_OFFSET, 0, kind * gate + g))
                 + projected;
         sum += silu(u) * weight(HipWeight.GATE_OUTPUT, 0, kind * gate + g);
       }
       float direct = 0f;
       for (int x = 0; x < exactWidth; x++) {
-        direct += in.f32(Tensor.ACTION_EXACT, a, x) * weight(HipWeight.GATE_EXACT_OUTPUT, 0, kind * exactWidth + x);
+        direct +=
+            in.f32(Tensor.ACTION_EXACT, a, x)
+                * weight(HipWeight.GATE_EXACT_OUTPUT, 0, kind * exactWidth + x);
       }
       delta[a] = (sum + weight(HipWeight.GATE_OUTPUT_BIAS, 0, kind)) + direct;
     }
@@ -1112,7 +1302,8 @@ public final class HipReference {
             score = values[in.action(representative, ActionColumn.FIRST_TRANSITION)];
           }
           case RIICHI_GATE -> {
-            int representative = in.action(in.action(a, ActionColumn.BASE), ActionColumn.REPRESENTATIVE);
+            int representative =
+                in.action(in.action(a, ActionColumn.BASE), ActionColumn.REPRESENTATIVE);
             score = values[in.action(representative, ActionColumn.FIRST_TRANSITION)] + delta[a];
           }
           case RESPONSE_GATE -> score = delta[a];
@@ -1123,7 +1314,8 @@ public final class HipReference {
         }
         score = 0f + score;
         scores[a] = score;
-        if (composition == HipComposition.DISCARD_VALUE || composition == HipComposition.RIICHI_GATE) {
+        if (composition == HipComposition.DISCARD_VALUE
+            || composition == HipComposition.RIICHI_GATE) {
           pivot = havePivot ? Math.max(pivot, score) : score;
           havePivot = true;
         }
@@ -1275,10 +1467,13 @@ public final class HipReference {
   static float bf(double value) {
     float single = (float) value;
     int bits = Float.floatToRawIntBits(single);
-    if ((bits & 0xffff) != 0x8000 || value == single || Float.isNaN(single) || Float.isInfinite(single)) {
+    if ((bits & 0xffff) != 0x8000
+        || value == single
+        || Float.isNaN(single)
+        || Float.isInfinite(single)) {
       return bf(single);
     }
-    int upper = bits >>> 16;  // 符号と BF16 の上位ビット。1 足すと絶対値の大きい側になる
+    int upper = bits >>> 16; // 符号と BF16 の上位ビット。1 足すと絶対値の大きい側になる
     return Float.intBitsToFloat((Math.abs(value) > Math.abs(single) ? upper + 1 : upper) << 16);
   }
 

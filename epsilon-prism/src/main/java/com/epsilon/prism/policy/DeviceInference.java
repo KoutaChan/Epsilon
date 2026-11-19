@@ -38,6 +38,9 @@ sealed interface DeviceInference extends AutoCloseable permits EagerInference, H
    */
   interface SlotWork extends AutoCloseable {
 
+    /** GPU の提出順で、ホスト上の配置と転送の引数を用意する。 */
+    default void prepare(DecisionDevicePipeline.Slot slot) {}
+
     /**
      * 入力の転送と順伝播をスロットに積み、積んだ全ての処理の後に {@code slot.computeReady()} を記録する。途中で投げるときも、積んだ処理の後に
      * 印を記録してから投げる（記録できなければ {@link #settle} が false を返す）。

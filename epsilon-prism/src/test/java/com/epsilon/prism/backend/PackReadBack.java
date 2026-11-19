@@ -33,7 +33,8 @@ public final class PackReadBack {
    * @param pack 表から作った重みの束
    * @param parameters 束を作る元にした推論の重み
    */
-  public static void assertReadsBack(WeightLayout layout, WeightPack pack, PairList<String, Parameter> parameters) {
+  public static void assertReadsBack(
+      WeightLayout layout, WeightPack pack, PairList<String, Parameter> parameters) {
     ByteBuffer bytes = pack.buffer();
     Assert.assertEquals(bytes.remaining(), layout.bytes());
     HipPack.Header header = layout.header();
@@ -49,9 +50,13 @@ public final class PackReadBack {
       float[] source = values.get(name);
       Assert.assertNotNull(source, name);
       Assert.assertTrue(placed.add(name), name + " is placed twice");
-      Assert.assertTrue(entries.add(placement.weight() + "/" + placement.entry()), placement + " shares an entry");
-      Assert.assertEquals(header.weight(placement.weight(), placement.entry()), placement.offset(), name);
-      Assert.assertEquals(header.elements(placement.weight(), placement.entry()), source.length, name);
+      Assert.assertTrue(
+          entries.add(placement.weight() + "/" + placement.entry()),
+          placement + " shares an entry");
+      Assert.assertEquals(
+          header.weight(placement.weight(), placement.entry()), placement.offset(), name);
+      Assert.assertEquals(
+          header.elements(placement.weight(), placement.entry()), source.length, name);
       int at = Math.toIntExact(placement.offset());
       for (int i = 0; i < source.length; i++) {
         switch (placement.conversion()) {
@@ -67,13 +72,18 @@ public final class PackReadBack {
             }
           }
           case FP32 -> {
-            if (Float.floatToRawIntBits(bytes.getFloat(at + i * Float.BYTES)) != Float.floatToRawIntBits(source[i])) {
+            if (Float.floatToRawIntBits(bytes.getFloat(at + i * Float.BYTES))
+                != Float.floatToRawIntBits(source[i])) {
               Assert.fail(name + "[" + i + "] does not read back as FP32");
             }
           }
         }
       }
-      extents.add(new long[] {placement.offset(), placement.offset() + header.bytes(placement.weight(), placement.entry())});
+      extents.add(
+          new long[] {
+            placement.offset(),
+            placement.offset() + header.bytes(placement.weight(), placement.entry())
+          });
     }
     for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
       for (String name : List.of(embedding.table(), embedding.projection(), embedding.bias())) {
@@ -88,7 +98,8 @@ public final class PackReadBack {
         boolean held = layout.architecture().holds(weight, entry);
         Assert.assertEquals(header.weight(weight, entry) >= 0, held, weight + " " + entry);
         if (held && weight != HipWeight.TILE_RELATION) {
-          Assert.assertTrue(entries.contains(weight + "/" + entry), weight + " " + entry + " has no parameter");
+          Assert.assertTrue(
+              entries.contains(weight + "/" + entry), weight + " " + entry + " has no parameter");
         }
       }
     }
@@ -96,14 +107,16 @@ public final class PackReadBack {
     int[] relations = layout.format().tileTokens().relations();
     Assert.assertEquals(header.elements(HipWeight.TILE_RELATION, 0), relations.length);
     for (int i = 0; i < relations.length; i++) {
-      Assert.assertEquals(bytes.get(Math.toIntExact(tiles) + i) & 0xFF, relations[i], "tile relation " + i);
+      Assert.assertEquals(
+          bytes.get(Math.toIntExact(tiles) + i) & 0xFF, relations[i], "tile relation " + i);
     }
     extents.add(new long[] {tiles, tiles + relations.length});
 
     extents.sort(Comparator.comparingLong(extent -> extent[0]));
     long end = HipPack.HEADER_BYTES;
     for (long[] extent : extents) {
-      Assert.assertTrue(extent[0] >= end, "weight at " + extent[0] + " overlaps the one ending at " + end);
+      Assert.assertTrue(
+          extent[0] >= end, "weight at " + extent[0] + " overlaps the one ending at " + end);
       Assert.assertEquals(extent[0] % HipPack.ALIGNMENT, 0);
       end = extent[1];
     }

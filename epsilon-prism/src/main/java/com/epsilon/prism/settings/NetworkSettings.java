@@ -3,6 +3,7 @@ package com.epsilon.prism.settings;
 import com.epsilon.agent.settings.Case;
 import com.epsilon.agent.settings.Choice;
 import com.epsilon.agent.settings.Key;
+import com.epsilon.agent.settings.Presence;
 import com.epsilon.agent.settings.Range;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
@@ -21,7 +22,9 @@ public sealed interface NetworkSettings {
    */
   @Case("V2")
   record V2(
-      @Key(doc = "バックボーンの層の数", value = "2") @Range(min = PrismShape.MIN_DEPTH, max = PrismShape.MAX_DEPTH) int depth)
+      @Key(doc = "バックボーンの層の数", value = "2")
+          @Range(min = PrismShape.MIN_DEPTH, max = PrismShape.MAX_DEPTH)
+          int depth)
       implements NetworkSettings {
 
     @Override
@@ -57,6 +60,40 @@ public sealed interface NetworkSettings {
     @Override
     public PrismShape shape() {
       return ShapeArm.V3_CONTEXT_512.shape(ShapeArm.V3_DEPTH);
+    }
+  }
+
+  /** 既定の S から幅・層 0 の FFN・深さを指定する。 */
+  @Case("V4_CORE")
+  record V4Core(
+      @Key(doc = "隠れ状態の幅（256・384・512）", value = "256") int hidden,
+      @Key(doc = "最初の層の FFN 幅（省略時は隠れ状態の幅の 2 倍）", presence = Presence.ABSENT) Integer layer0Ffn,
+      @Key(doc = "幹の層数", value = "2") @Range(min = PrismShape.MIN_DEPTH, max = PrismShape.MAX_DEPTH)
+          int depth,
+      @Key(doc = "イベント同士が読める範囲", value = "CAUSAL") PrismShape.EventAttention eventAttention)
+      implements NetworkSettings {
+    @Override
+    public PrismShape.V4 shape() {
+      return new PrismShape.V4(
+          hidden, layer0Ffn == null ? 2 * hidden : layer0Ffn, depth, eventAttention);
+    }
+  }
+
+  /** S・因果注意の試験台用設定。 */
+  @Case("V4_S")
+  record V4Small() implements NetworkSettings {
+    @Override
+    public PrismShape shape() {
+      return ShapeArm.V4_S.shape();
+    }
+  }
+
+  /** M・因果注意の試験台用設定。 */
+  @Case("V4_M")
+  record V4Medium() implements NetworkSettings {
+    @Override
+    public PrismShape shape() {
+      return ShapeArm.V4_M.shape();
     }
   }
 }

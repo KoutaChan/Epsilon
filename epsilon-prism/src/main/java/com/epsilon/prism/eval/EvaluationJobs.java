@@ -143,7 +143,8 @@ public final class EvaluationJobs implements JobRunner {
    * @param runtime 打ち手を載せる実行のリソース
    * @param table 卓のコア（ジョブの間は、ほかでは使わない）
    */
-  public EvaluationJobs(RunDirectory run, PrismSettings machine, NetworkRuntime runtime, TableLoop table) {
+  public EvaluationJobs(
+      RunDirectory run, PrismSettings machine, NetworkRuntime runtime, TableLoop table) {
     this(
         run,
         run,
@@ -176,7 +177,8 @@ public final class EvaluationJobs implements JobRunner {
       NetworkRuntime runtime,
       TableLoop table) {
     if ((versions == null) == (model == null)) {
-      throw new IllegalArgumentException("An evaluation measures the versions of a run or one model");
+      throw new IllegalArgumentException(
+          "An evaluation measures the versions of a run or one model");
     }
     return new EvaluationJobs(
         out, versions, model, false, row -> settings, settings.inference(), device, runtime, table);
@@ -193,10 +195,13 @@ public final class EvaluationJobs implements JobRunner {
           "{} plays no walls: the champion store is empty, so {} becomes the first champion",
           job.name(),
           candidate.label());
-      return RecordFile.tree(new EvaluationPlan(candidate, null, jar(), settings.behaviour().twinDiscard()));
+      return RecordFile.tree(
+          new EvaluationPlan(candidate, null, jar(), settings.behaviour().twinDiscard()));
     }
     long wallSeed =
-        table.wallSet() == WallSet.FIXED ? Arena.EVALUATION_SEED : Arena.freshSeed(settings.run().seed(), job.name());
+        table.wallSet() == WallSet.FIXED
+            ? Arena.EVALUATION_SEED
+            : Arena.freshSeed(settings.run().seed(), job.name());
     DuelSetup duel =
         DuelSetup.of(
             settings.run().variant(),
@@ -219,7 +224,8 @@ public final class EvaluationJobs implements JobRunner {
         opponent.label(),
         wallSeed,
         duel.looks().size());
-    return RecordFile.tree(new EvaluationPlan(candidate, duel, jar(), settings.behaviour().twinDiscard()));
+    return RecordFile.tree(
+        new EvaluationPlan(candidate, duel, jar(), settings.behaviour().twinDiscard()));
   }
 
   @Override
@@ -238,7 +244,8 @@ public final class EvaluationJobs implements JobRunner {
             launched.maxBatch(),
             launched.encoders(),
             launched.slots(),
-            launched.readyBatches());
+            launched.readyBatches(),
+            launched.eventCache());
     PolicyOptions options =
         new PolicyOptions(
             device != null ? device : settings.module().opponents().defaultDevice(),
@@ -249,10 +256,13 @@ public final class EvaluationJobs implements JobRunner {
     EvaluationTable.verify(duel.opponent());
     TwinDiscard twinDiscard = plan.twinDiscard();
     Policy candidate =
-        EvaluationTable.open(duel.candidate().spec(), duel.variant(), inference, twinDiscard, options, runtime);
+        EvaluationTable.open(
+            duel.candidate().spec(), duel.variant(), inference, twinDiscard, options, runtime);
     Policy opponent;
     try {
-      opponent = EvaluationTable.open(duel.opponent().spec(), duel.variant(), inference, twinDiscard, options, runtime);
+      opponent =
+          EvaluationTable.open(
+              duel.opponent().spec(), duel.variant(), inference, twinDiscard, options, runtime);
     } catch (IOException | RuntimeException | Error failure) {
       candidate.close();
       throw failure;
@@ -297,7 +307,8 @@ public final class EvaluationJobs implements JobRunner {
     TableSpec.Opponent kind = TableSpec.kind(table.opponent());
     if (kind == TableSpec.Opponent.CHAMPION && table.stop() instanceof StopSettings.Test test) {
       settleDuel(job, duel, test.promote(), outcome.verdict(), better, alarms);
-    } else if (kind == TableSpec.Opponent.DISTANCE && !(table.stop() instanceof StopSettings.Test)) {
+    } else if (kind == TableSpec.Opponent.DISTANCE
+        && !(table.stop() instanceof StopSettings.Test)) {
       alarms.write(alarms.ladder(job.name(), job.version(), better));
     } else if (kind == TableSpec.Opponent.VERSION) {
       settleBaseline(job, plan, outcome, better, alarms);
@@ -311,7 +322,9 @@ public final class EvaluationJobs implements JobRunner {
     Optional<Paired> paired = paired(job, plan);
     if (paired.isPresent()) {
       Paired pair = paired.get();
-      alarms.write(alarms.anchor(job.name(), job.version(), pair.champion(), pair.current(), pair.championValues()));
+      alarms.write(
+          alarms.anchor(
+              job.name(), job.version(), pair.champion(), pair.current(), pair.championValues()));
     }
   }
 
@@ -321,7 +334,8 @@ public final class EvaluationJobs implements JobRunner {
    * 1 席だけの分け方の δ が、2 つ目の基準の卓を足すしきい値（{@link Baseline#SECOND_LINE}）を下回り、もっと新しいバージョンを相手にする基準の卓が
    * 設定に無ければ、ログで知らせる。卓を足すには設定を変える。
    */
-  private void settleBaseline(JobFile job, EvaluationPlan plan, DuelResult outcome, Estimate better, Alarms alarms)
+  private void settleBaseline(
+      JobFile job, EvaluationPlan plan, DuelResult outcome, Estimate better, Alarms alarms)
       throws IOException {
     EvaluationSettings evaluation = settings(job).evaluation();
     if (lineage && !evaluation.coveredLadders(job.table(), job.version()).isEmpty()) {
@@ -330,7 +344,9 @@ public final class EvaluationJobs implements JobRunner {
     Optional<Paired> paired = paired(job, plan);
     if (paired.isPresent()) {
       Paired pair = paired.get();
-      alarms.write(alarms.baseline(job.name(), job.version(), pair.champion(), pair.current(), pair.championValues()));
+      alarms.write(
+          alarms.baseline(
+              job.name(), job.version(), pair.champion(), pair.current(), pair.championValues()));
     }
     int base = table(job).opponentVersion(job.version());
     boolean later =
@@ -345,8 +361,8 @@ public final class EvaluationJobs implements JobRunner {
           && split.split().equals(oneVsRest)
           && Baseline.needsSecond(split.rank().mean(), Baseline.SECOND_LINE)) {
         LOG.warn(
-            "{}: the {} rank {} is below {}; add a second baseline table against the current champion to keep the main"
-                + " number sensitive",
+            "{}: the {} rank {} is below {}; add a second baseline table against the current"
+                + " champion to keep the main number sensitive",
             job.name(),
             oneVsRest,
             String.format(Locale.ROOT, "%.4f", split.rank().mean()),
@@ -379,10 +395,15 @@ public final class EvaluationJobs implements JobRunner {
     String name = RunDirectory.jobName(champion.version(), job.table());
     Path home = run.job(name);
     if (!Files.exists(home.resolve(Jobs.RESULT))) {
-      LOG.info("{} is not paired: champion {} has no finished {} job", job.name(), champion.label(), job.table());
+      LOG.info(
+          "{} is not paired: champion {} has no finished {} job",
+          job.name(),
+          champion.label(),
+          job.table());
       return Optional.empty();
     }
-    EvaluationPlan other = plan(RecordFile.read(JobFile.class, home.resolve(Jobs.JOB)).value().plan());
+    EvaluationPlan other =
+        plan(RecordFile.read(JobFile.class, home.resolve(Jobs.JOB)).value().plan());
     if (other.crowns() || !other.duel().pairsWith(plan.duel())) {
       LOG.info(
           "{} is not paired: {} of champion {} played another opponent or other walls",
@@ -428,7 +449,8 @@ public final class EvaluationJobs implements JobRunner {
     }
     if (state != null && settledLater(state.regression(), job.version())) {
       LOG.warn(
-          "{} is not applied to the champion or the worse streak: the duel {} of a later version is already applied",
+          "{} is not applied to the champion or the worse streak: the duel {} of a later version is"
+              + " already applied",
           job.name(),
           state.regression().lastDuel());
       return;
@@ -451,22 +473,32 @@ public final class EvaluationJobs implements JobRunner {
     Regression next = regression.after(job.name(), streak);
     int start = state.start();
     List<Alarm> raised =
-        alarms.championDuel(job.name(), job.version(), verdict, better, streak, regression.rollbacks());
+        alarms.championDuel(
+            job.name(), job.version(), verdict, better, streak, regression.rollbacks());
     for (Alarm alarm : raised) {
       switch (alarm.handling()) {
         case PAUSE -> {
           store.append(new StoreEvent.Paused(job.name()));
           new ControlRequests(run).submit(new Request.Pause(null));
-          LOG.warn("{}: the champion duels were worse {} times in a row; the run pauses", job.name(), streak);
+          LOG.warn(
+              "{}: the champion duels were worse {} times in a row; the run pauses",
+              job.name(),
+              streak);
         }
         case ROLLBACK -> {
-          Champion champion = store.current()
-              .orElseThrow(() -> new IllegalStateException(job.name() + " rolls back, but the store has no champion"));
+          Champion champion =
+              store
+                  .current()
+                  .orElseThrow(
+                      () ->
+                          new IllegalStateException(
+                              job.name() + " rolls back, but the store has no champion"));
           store.append(new StoreEvent.RolledBack(champion, job.name()));
           next = regression.rolledBack(job.name(), streak, job.version());
           start = champion.version();
           LOG.warn(
-              "{}: the champion duels were worse {} times in a row; the next iteration starts from version {}",
+              "{}: the champion duels were worse {} times in a row; the next iteration starts from"
+                  + " version {}",
               job.name(),
               streak,
               start);
@@ -483,7 +515,8 @@ public final class EvaluationJobs implements JobRunner {
     String last = regression.lastDuel();
     return last != null
         && RunDirectory.parseJobName(last)
-                .orElseThrow(() -> new IllegalStateException("Not the name of a table job: " + last))
+                .orElseThrow(
+                    () -> new IllegalStateException("Not the name of a table job: " + last))
                 .version()
             > version;
   }
@@ -501,7 +534,9 @@ public final class EvaluationJobs implements JobRunner {
       if (Boolean.TRUE.equals(table.onPromotion())
           && job.version() > table.opponentVersion(job.version())
           && !table.scheduled(job.version())) {
-        JobFile added = JobFile.pending(job.version(), entry.getKey(), order, job.row(), RecordFile.tree(table));
+        JobFile added =
+            JobFile.pending(
+                job.version(), entry.getKey(), order, job.row(), RecordFile.tree(table));
         if (jobs.create(added)) {
           LOG.info("{} adds the job {} to measure the promoted version", job.name(), added.name());
         }
@@ -532,7 +567,8 @@ public final class EvaluationJobs implements JobRunner {
           yield null;
         }
         Champion current = champion.get();
-        yield new DuelSetup.Entrant("prism:" + current.checkpoint(), current.label(), current.version(), null);
+        yield new DuelSetup.Entrant(
+            "prism:" + current.checkpoint(), current.label(), current.version(), null);
       }
     };
   }
@@ -549,7 +585,10 @@ public final class EvaluationJobs implements JobRunner {
    */
   private Path published(int version) throws IOException {
     if (versions == null) {
-      throw new IOException("Version " + version + " needs the run of its lineage, but this evaluation measures one model");
+      throw new IOException(
+          "Version "
+              + version
+              + " needs the run of its lineage, but this evaluation measures one model");
     }
     Path snapshot = versions.snapshot(version);
     if (!Files.isDirectory(snapshot)) {
@@ -565,9 +604,11 @@ public final class EvaluationJobs implements JobRunner {
    */
   private static Champion champion(DuelSetup.Entrant entrant) {
     if (entrant.version() == null) {
-      throw new IllegalStateException(entrant.label() + " is not a version of the lineage, so it cannot be a champion");
+      throw new IllegalStateException(
+          entrant.label() + " is not a version of the lineage, so it cannot be a champion");
     }
-    return Champion.of(entrant.label(), EvaluationTable.spec(entrant.spec()).checkpoint(), entrant.version());
+    return Champion.of(
+        entrant.label(), EvaluationTable.spec(entrant.spec()).checkpoint(), entrant.version());
   }
 
   /** 卓の止め方を、牌山ごとの値の止め方に直す。 */
@@ -578,7 +619,9 @@ public final class EvaluationJobs implements JobRunner {
           new StopRule.Precision(precision.error(), precision.alpha(), precision.checkEvery());
       case StopSettings.Test test ->
           new StopRule.Test(
-              new Sequential(test.alpha(), test.spending(), test.checkEvery()), test.evenMargin(), test.evenMargin());
+              new Sequential(test.alpha(), test.spending(), test.checkEvery()),
+              test.evenMargin(),
+              test.evenMargin());
     };
   }
 

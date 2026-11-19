@@ -27,6 +27,7 @@ public final class AfterHand {
   private final HandShape shape = new HandShape();
   private final Meld[] melds = new Meld[Variant.MAX_MELDS];
   private int meldCount;
+  private long removedKinds;
   private int seats;
   private TileCounts tiles;
 
@@ -36,6 +37,7 @@ public final class AfterHand {
   /** 純手牌と面子にある赤の 5 の種類。 */
   private long ownedRed;
 
+  private int concealedDora;
   private int meldDora;
   private boolean menzen;
 
@@ -51,10 +53,14 @@ public final class AfterHand {
    */
   public void loadCurrent(Observation o, TileCounts tiles, SeatFacts seatFacts) {
     this.tiles = tiles;
+    removedKinds = 0;
     seats = o.variant().seats();
     shape.clear();
+    concealedDora = 0;
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
-      for (int copy = tiles.hand(kind); copy > 0; copy--) {
+      int copies = tiles.hand(kind);
+      concealedDora += copies * tiles.dora(kind);
+      for (int copy = copies; copy > 0; copy--) {
         shape.add(kind);
       }
     }
@@ -72,6 +78,7 @@ public final class AfterHand {
   /** 別の手の中身をこの手に写す。 */
   public void copyFrom(AfterHand source) {
     shape.copyFrom(source.shape);
+    removedKinds = source.removedKinds;
     System.arraycopy(source.melds, 0, melds, 0, source.meldCount);
     meldCount = source.meldCount;
     seats = source.seats;
@@ -79,6 +86,7 @@ public final class AfterHand {
     concealedRed = source.concealedRed;
     ownedRed = source.ownedRed;
     meldDora = source.meldDora;
+    concealedDora = source.concealedDora;
     menzen = source.menzen;
     nuki = source.nuki;
   }
@@ -99,7 +107,7 @@ public final class AfterHand {
       case ANKAN -> ankan(tile);
       case KAKAN -> kakan(tile);
       case NUKI -> {
-        shape.remove(Tiles.PEI);
+        remove(Tiles.PEI);
         nuki++;
       }
       case TSUMO_AGARI, RON_AGARI, KYUSHU_KYUHAI, PASS -> {}
@@ -112,8 +120,19 @@ public final class AfterHand {
     if (hasRed(tile) && (discard.selection().red() || plain(tile) == 0)) {
       removeRed(tile);
     } else {
-      shape.remove(tile);
+      remove(tile);
     }
+  }
+
+  /** 判断の時点から純手牌の枚数が減った種類。 */
+  long removedKinds() {
+    return removedKinds;
+  }
+
+  private void remove(int tile) {
+    shape.remove(tile);
+    concealedDora -= tiles.dora(tile);
+    removedKinds |= Tiles.bit(tile);
   }
 
   /** 純手牌の形（面子の数を含む）。読むだけにし、書き換えない。 */
@@ -156,12 +175,7 @@ public final class AfterHand {
 
   /** 手・面子・抜いた北にあるドラの数（表ドラ・赤・抜きドラ。裏ドラは数えない）。抜いた北は 1 枚につき、1 と北を指す表示の数を足す。 */
   public int dora() {
-    int dora = Long.bitCount(ownedRed) + meldDora + nuki * (1 + tiles.dora(Tiles.PEI));
-    for (long rest = shape.kinds() & tiles.doraKinds(); rest != 0L; rest &= rest - 1) {
-      int kind = Long.numberOfTrailingZeros(rest);
-      dora += shape.count(kind) * tiles.dora(kind);
-    }
-    return dora;
+    return concealedDora + Long.bitCount(ownedRed) + meldDora + nuki * (1 + tiles.dora(Tiles.PEI));
   }
 
   /** 採点の条件に、純手牌・面子・純手牌の赤・抜いた北を書く。呼ぶ前に、採点の条件の手と面子を空にしておく。 */
@@ -185,7 +199,7 @@ public final class AfterHand {
         removeRed(tile);
         consumedAka = true;
       } else {
-        shape.remove(tile);
+        remove(tile);
       }
     }
     addMeld(Meld.chi(base, calledTile, akaSource(calledAka, consumedAka)));
@@ -196,9 +210,9 @@ public final class AfterHand {
     if (consumedAka) {
       removeRed(tile);
     } else {
-      shape.remove(tile);
+      remove(tile);
     }
-    shape.remove(tile);
+    remove(tile);
     addMeld(Meld.pon(tile, relative(source), akaSource(calledAka, consumedAka)));
   }
 
@@ -216,7 +230,7 @@ public final class AfterHand {
     if (addedAka) {
       removeRed(tile);
     } else {
-      shape.remove(tile);
+      remove(tile);
     }
     for (int index = 0; index < meldCount; index++) {
       Meld pon = melds[index];
@@ -253,7 +267,7 @@ public final class AfterHand {
       copies--;
     }
     for (int copy = 0; copy < copies; copy++) {
-      shape.remove(tile);
+      remove(tile);
     }
     return aka;
   }
@@ -268,7 +282,7 @@ public final class AfterHand {
   }
 
   private void removeRed(int tile) {
-    shape.remove(tile);
+    remove(tile);
     long bit = Tiles.bit(tile);
     concealedRed &= ~bit;
     ownedRed &= ~bit;

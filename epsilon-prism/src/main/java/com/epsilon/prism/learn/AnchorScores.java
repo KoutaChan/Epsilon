@@ -12,6 +12,7 @@ import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.rows.Row;
 import java.io.IOException;
@@ -101,7 +102,12 @@ public final class AnchorScores {
     int slices = Math.ceilDiv(sorted.length, SLICE);
     float[][] values = new float[slices][];
     int[][] starts = new int[slices][];
-    InputFormat format = InputFormat.of(store.variant());
+    var header = PrismNetwork.readHeader(directory);
+    InputFormat format = header.format();
+    if (format.variant() != store.variant()) {
+      throw new IOException(
+          "Anchor variant " + format.variant() + " differs from cohort variant " + store.variant());
+    }
     BatchPlan.Capacity capacity = StepFeed.capacity(format, FitPlan.TOKEN_BUDGET);
     int writers = Math.max(1, Math.min(threads, WRITERS_PER_DEVICE * devices.size()));
     Slices job = new Slices(store, sorted, values, starts, new AtomicInteger());
@@ -118,8 +124,10 @@ public final class AnchorScores {
             Lane lane = lanes.get(writer % lanes.size());
             HostInputs batch =
                 HostInputs.allocate(
-                    format, capacity, bytes -> pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer());
-            work.add(pool.submit(() -> job.write(batch, new Encoder.Inputs(store.variant()), lane)));
+                    format,
+                    capacity,
+                    bytes -> pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer());
+            work.add(pool.submit(() -> job.write(batch, new Encoder.Inputs(format), lane)));
           }
           for (Future<?> future : work) {
             await(future);
@@ -152,7 +160,10 @@ public final class AnchorScores {
   public void requireVersion(int version) {
     if (version != this.version) {
       throw new IllegalStateException(
-          "anchor scores came from version " + this.version + " but the anchor is version " + version);
+          "anchor scores came from version "
+              + this.version
+              + " but the anchor is version "
+              + version);
     }
   }
 

@@ -29,7 +29,8 @@ final class PackView {
   PackView(ByteBuffer pack) {
     bytes = pack.duplicate().order(ByteOrder.LITTLE_ENDIAN);
     if (bytes.limit() < HipPack.HEADER_BYTES) {
-      throw new IllegalStateException("a weight pack of " + bytes.limit() + " bytes has no room for the header");
+      throw new IllegalStateException(
+          "a weight pack of " + bytes.limit() + " bytes has no room for the header");
     }
   }
 
@@ -81,7 +82,8 @@ final class PackView {
   }
 
   float bf16(HipWeight weight, int entry, int index) {
-    return Float.intBitsToFloat((bytes.getShort(weight(weight, entry) + index * Short.BYTES) & 0xFFFF) << 16);
+    return Float.intBitsToFloat(
+        (bytes.getShort(weight(weight, entry) + index * Short.BYTES) & 0xFFFF) << 16);
   }
 
   int u8(HipWeight weight, int entry, int index) {
@@ -133,7 +135,17 @@ final class PackView {
       sources[k] = integer(at + 8 + HipEmbedding.MAX_TABLES * HipEmbedding.TABLE_INTS + k);
     }
     return new Spec(
-        integer(at), integer(at + 1), integer(at + 2), offsets, rows, columns, strides, folds, sources, integer(at + 5),
-        integer(at + 6), integer(at + 7));
+        integer(at),
+        integer(at + 1),
+        integer(at + 2),
+        offsets,
+        rows,
+        columns,
+        strides,
+        folds,
+        sources,
+        integer(at + 5),
+        integer(at + 6),
+        integer(at + 7));
   }
 }

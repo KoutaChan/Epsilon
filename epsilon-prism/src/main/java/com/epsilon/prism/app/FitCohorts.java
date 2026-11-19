@@ -67,14 +67,14 @@ import org.slf4j.LoggerFactory;
  * 倍率を前のコホートの R² から決める。ステップ数は {@code fit.steps} で決める。
  *
  * <p>始めのネットワークは、{@code --start} があれば、そのバージョンの重みにする（バージョンの形は学ぶ形と同じであること）。無ければゼロから
- * 学ぶ。形は {@code --shape} のアーム（{@code --depth} と一緒に渡す）にし、無ければ run の network の形にする。
+ * 学ぶ。{@code --shape} で深さを選べる腕を指定する場合は、{@code --depth} で深さも指定する。形を省くと run の network の形を使う。
  *
  * @param run 行を読む run のディレクトリ
  * @param cohorts 学ぶコホートの範囲（a..b）
  * @param out 書き出すディレクトリ
  * @param teacher 教師の作り方
  * @param shape 形のアーム（無ければ run の network の形）
- * @param depth 形のアームのバックボーンの層の数（V2 のアームでは必須、v3 のアームは 3 だけ）
+ * @param depth バックボーンの層の数。深さを選べる腕では必須。深さが固定の腕では省略するか、その深さを指定する
  * @param start 始めのネットワークのバージョンのディレクトリ（無ければゼロから学ぶ）
  * @param maxRows 学ぶ行の数の上限（試しに学ぶときに使い、選んだ行の先頭から取る。無ければ全ての行）
  * @param appliedR2 前のコホートで教師に掛けた補正の R²。LINEAGE の最初のコホートの K′ を決めるのに使う（無ければ持ち越さない）
@@ -83,19 +83,45 @@ import org.slf4j.LoggerFactory;
 @Named(value = "fit-cohorts", doc = "Refit a network on saved cohorts")
 public record FitCohorts(
     @Key(doc = "Run directory to read the rows from", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Range of cohorts to learn from (a..b)", presence = Presence.REQUIRED) String cohorts,
+    @Key(doc = "Range of cohorts to learn from (a..b)", presence = Presence.REQUIRED)
+        String cohorts,
     @Key(doc = "Output directory", presence = Presence.REQUIRED) Path out,
-    @Key(doc = "How to build the teacher (RAW: learn the raw Y for fit.epochs epochs; LINEAGE: replay the lineage updates cohort by cohort)", value = "RAW") Mode teacher,
-    @Key(doc = "Shape arm (default: the run's network shape)", presence = Presence.ABSENT) ShapeArm shape,
-    @Key(doc = "Backbone layer count of the shape arm (required for V2 arms; v3 arms take only 3)", presence = Presence.ABSENT)
+    @Key(
+            doc =
+                "How to build the teacher (RAW: learn the raw Y for fit.epochs epochs; LINEAGE:"
+                    + " replay the lineage updates cohort by cohort)",
+            value = "RAW")
+        Mode teacher,
+    @Key(doc = "Shape arm (default: the run's network shape)", presence = Presence.ABSENT)
+        ShapeArm shape,
+    @Key(
+            doc =
+                "Backbone layer count of the shape arm (required for arms with selectable depth;"
+                    + " optional for fixed-depth arms)",
+            presence = Presence.ABSENT)
         @Range(min = PrismShape.MIN_DEPTH, max = PrismShape.MAX_DEPTH)
         Integer depth,
-    @Key(doc = "Version directory of the starting network (default: learn from scratch)", presence = Presence.ABSENT) Path start,
-    @Key(doc = "Cap on the rows to learn (for trial fits; takes the first selected rows)", presence = Presence.ABSENT) @Range(min = 1) Integer maxRows,
-    @Key(doc = "R² of the teacher correction on the previous cohort; sets K′ of LINEAGE's first cohort (default: no carry-over)", presence = Presence.ABSENT)
+    @Key(
+            doc = "Version directory of the starting network (default: learn from scratch)",
+            presence = Presence.ABSENT)
+        Path start,
+    @Key(
+            doc = "Cap on the rows to learn (for trial fits; takes the first selected rows)",
+            presence = Presence.ABSENT)
+        @Range(min = 1)
+        Integer maxRows,
+    @Key(
+            doc =
+                "R² of the teacher correction on the previous cohort; sets K′ of LINEAGE's first"
+                    + " cohort (default: no carry-over)",
+            presence = Presence.ABSENT)
         @Range(min = 0, max = 1)
         Double appliedR2,
-    @Key(doc = "Replica number of the arm (changes the network init and the row shuffle seed)", value = "0") @Range(min = 0) int replicate)
+    @Key(
+            doc = "Replica number of the arm (changes the network init and the row shuffle seed)",
+            value = "0")
+        @Range(min = 0)
+        int replicate)
     implements PrismCommand {
 
   /** 教師の作り方。 */
@@ -125,11 +151,15 @@ public record FitCohorts(
     if (shape == null && depth != null) {
       throw new InvalidSetting("shape", "--depth shapes an arm: give --shape too");
     }
-    if (shape == ShapeArm.V2 && depth == null) {
-      throw new InvalidSetting("depth", "the V2 arm needs --depth");
+    if (shape != null && shape.selectableDepth() && depth == null) {
+      throw new InvalidSetting("depth", "the " + shape + " arm needs --depth");
     }
-    if (shape != null && shape != ShapeArm.V2 && depth != null && depth != ShapeArm.V3_DEPTH) {
-      throw new InvalidSetting("depth", "the " + shape + " arm has depth " + ShapeArm.V3_DEPTH + ", not " + depth);
+    if (depth != null) {
+      try {
+        shape.shape(depth);
+      } catch (IllegalArgumentException e) {
+        throw new InvalidSetting("depth", e.getMessage());
+      }
     }
     if (teacher == Mode.RAW && appliedR2 != null) {
       throw new InvalidSetting("appliedR2", "--applied-r2 applies to the LINEAGE teacher only");
@@ -154,14 +184,23 @@ public record FitCohorts(
         store.addCohort(CohortWriter.directory(run, cohort));
       }
       try (Model model =
-          Fit.blank(InputFormat.of(store.variant()), network, devices.primary(), seed(settings, span.last()))) {
+          Fit.blank(
+              InputFormat.of(store.variant()),
+              network,
+              devices.primary(),
+              seed(settings, span.last()))) {
         PrismNetwork fitted = (PrismNetwork) model.getBlock();
         if (start != null) {
           try (NDManager manager = NDManager.newBaseManager(devices.primary())) {
             PrismNetwork first = PrismNetwork.load(Snapshot.model(start), manager);
             if (!first.shape().equals(network)) {
               throw new IllegalArgumentException(
-                  "--start " + start + " has the shape " + first.shape() + ", the fit learns " + network);
+                  "--start "
+                      + start
+                      + " has the shape "
+                      + first.shape()
+                      + ", the fit learns "
+                      + network);
             }
             LOG.info("fit-cohorts starts from {} ({})", start, network);
             fitted.mixIn(first, 1);
@@ -176,7 +215,13 @@ public record FitCohorts(
             snapshot,
             fitted,
             PolicyParams.of(span.last() + 1),
-            new Snapshot.FitRecord(run.toString(), span.first(), span.last(), replicate, result.plan(), result.result()));
+            new Snapshot.FitRecord(
+                run.toString(),
+                span.first(),
+                span.last(),
+                replicate,
+                result.plan(),
+                result.result()));
         LOG.info(
             "fit-cohorts {} teacher={} steps={} loss {} -> {} clipped={} {}s -> {}",
             span,
@@ -197,15 +242,26 @@ public record FitCohorts(
 
   /** 範囲の全ての行を、生の Y でアンカーなしに {@code fit.epochs} エポック学ぶ。ステップ数は fit.maxSteps に依らない。 */
   private Fitted raw(
-      PrismSettings settings, CohortStore store, Span span, Model model, PrismShape network, NetworkDevices devices) {
+      PrismSettings settings,
+      CohortStore store,
+      Span span,
+      Model model,
+      PrismShape network,
+      NetworkDevices devices) {
     FittingSettings fitting = settings.fit();
     int[] rows = limit(store.select(span.first(), span.last(), Selection.LABELS_AND_ROOTS));
     if (rows.length == 0) {
       throw new IllegalStateException("No training rows in cohorts " + span + " of " + run);
     }
-    int steps = (int) Math.max(1, (long) Math.ceil(fitting.epochs() * rows.length / fitting.batch()));
+    int steps =
+        (int) Math.max(1, (long) Math.ceil(fitting.epochs() * rows.length / fitting.batch()));
     FitPlan plan =
-        new FitPlan(fitting.fit(steps, 1), network, fitting.auxiliary(), FitPlan.TOKEN_BUDGET, seed(settings, span.last()));
+        new FitPlan(
+            fitting.fit(steps, 1),
+            network,
+            fitting.auxiliary(),
+            FitPlan.TOKEN_BUDGET,
+            seed(settings, span.last()));
     LOG.info(
         "fit-cohorts {} raw rows={} steps={} shape={} auxiliary={} devices={}",
         span,
@@ -214,12 +270,14 @@ public record FitCohorts(
         network,
         fitting.auxiliary(),
         devices.devices());
-    FitResult result = Fit.run(store, rows, model, plan, Teacher.RAW, devices, settings.learner().decodeThreads());
+    FitResult result =
+        Fit.run(store, rows, model, plan, Teacher.RAW, devices, settings.learner().decodeThreads());
     return new Fitted(plan, result);
   }
 
   /** 系譜の更新をコホートごとに順にたどる。アンカーは各コホートを学ぶ前のネットワークで、out/{@value #ANCHOR} に置き、終わったら消す。 */
-  private Fitted lineage(PrismSettings settings, CohortStore store, Span span, Model model, NetworkDevices devices)
+  private Fitted lineage(
+      PrismSettings settings, CohortStore store, Span span, Model model, NetworkDevices devices)
       throws IOException {
     PrismNetwork network = (PrismNetwork) model.getBlock();
     FittingSettings fitting = settings.fit();
@@ -236,16 +294,25 @@ public record FitCohorts(
         LedgerOutcome ledger = LedgerOutcome.NONE;
         if (rows.length > 0) {
           try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
-            ledger = luck.learn(t, null, store.iterate(rows, fitting.batch(), readers, threads), rows.length);
+            ledger =
+                luck.learn(
+                    t, null, store.iterate(rows, fitting.batch(), readers, threads), rows.length);
           }
           if (ledger.report() != null) {
             int cohort = t;
-            var source = sourceSettings.stream().filter(row -> row.from() <= cohort).findFirst()
-                .orElseThrow(() -> new IOException("Missing settings for cohort " + cohort));
-            var recording = LedgerRecording.of(Settings.section(NoiseSettings.class, "noise",
-                List.of(source.layer())).value().ledger());
+            var source =
+                sourceSettings.stream()
+                    .filter(row -> row.from() <= cohort)
+                    .findFirst()
+                    .orElseThrow(() -> new IOException("Missing settings for cohort " + cohort));
+            var recording =
+                LedgerRecording.of(
+                    Settings.section(NoiseSettings.class, "noise", List.of(source.layer()))
+                        .value()
+                        .ledger());
             DurableFiles.write(
-                out.resolve(LEDGER).resolve(String.format(Locale.ROOT, "%05d.json", t)), ledger.report().full(recording));
+                out.resolve(LEDGER).resolve(String.format(Locale.ROOT, "%05d.json", t)),
+                ledger.report().full(recording));
           }
         }
         double gain = tempo.gain(t, r2);
@@ -256,7 +323,13 @@ public record FitCohorts(
           network.save(anchorDirectory);
           anchor =
               AnchorScores.compute(
-                  store, rows, anchorDirectory, t, InferencePath.of(settings.inference().kernels()), devices, threads);
+                  store,
+                  rows,
+                  anchorDirectory,
+                  t,
+                  InferencePath.of(settings.inference().kernels()),
+                  devices,
+                  threads);
           anchor.requireVersion(t);
         }
         FitPlan plan =
@@ -274,13 +347,15 @@ public record FitCohorts(
                     rows,
                     model,
                     plan,
-                    new Teacher(ledger.correction(), anchor, anchor == null ? 0 : 1 - gain, (float) gain),
+                    new Teacher(
+                        ledger.correction(), anchor, anchor == null ? 0 : 1 - gain, (float) gain),
                     devices,
                     threads);
         LOG.info(
             String.format(
                 Locale.ROOT,
-                "fit-cohorts t=%d lineage rows=%d steps=%d gain=%.4f lrScale=%.4f r2=%.4f loss %s -> %s %.1fs",
+                "fit-cohorts t=%d lineage rows=%d steps=%d gain=%.4f lrScale=%.4f r2=%.4f loss %s"
+                    + " -> %s %.1fs",
                 t,
                 rows.length,
                 result.steps(),
@@ -306,8 +381,7 @@ public record FitCohorts(
     if (shape == null) {
       return settings.network().shape();
     }
-    int layers = depth != null ? depth : ShapeArm.V3_DEPTH;
-    return shape.shape(layers);
+    return depth == null ? shape.shape() : shape.shape(depth);
   }
 
   /** 行を上限の数で切ったもの（上限が無ければそのまま）。 */
@@ -317,7 +391,8 @@ public record FitCohorts(
 
   /** ネットワークの初期値と、RAW の行の並べ替えに使う乱数の種。 */
   private long seed(PrismSettings settings, int lastCohort) {
-    return CrnSeeds.derive(settings.run().seed(), CrnSeeds.Domain.LEARN, lastCohort, ARM, replicate);
+    return CrnSeeds.derive(
+        settings.run().seed(), CrnSeeds.Domain.LEARN, lastCohort, ARM, replicate);
   }
 
   /**
@@ -339,7 +414,11 @@ public record FitCohorts(
     for (Difference difference : settings.since(recorded)) {
       if (difference.change() != Change.FIT) {
         refused.add(
-            "Setting " + difference.key() + " cannot change in fit-cohorts: it is a " + difference.change() + " key");
+            "Setting "
+                + difference.key()
+                + " cannot change in fit-cohorts: it is a "
+                + difference.change()
+                + " key");
       }
     }
     if (!refused.isEmpty()) {

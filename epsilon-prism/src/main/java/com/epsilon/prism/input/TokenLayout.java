@@ -1,5 +1,8 @@
 package com.epsilon.prism.input;
 
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.rules.Vocabulary;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -17,6 +20,8 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
 
   private final Class<E> type;
   private final E[] fields;
+  private final List<E> present;
+  private final FieldSpec[] specs;
   private final int[] firstColumn;
   private final int[] columnField;
   private final int[] columnVocabulary;
@@ -24,14 +29,17 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
   private final FieldSpec.Coding[] columnCoding;
   private final int tableSize;
 
-  private TokenLayout(Class<E> type) {
+  private TokenLayout(Class<E> type, Variant variant) {
     this.type = Objects.requireNonNull(type, "type");
     fields = type.getEnumConstants();
+    present = Vocabulary.of(type, variant).constants();
+    specs = new FieldSpec[fields.length];
     firstColumn = new int[fields.length];
     int columns = 0;
-    for (E field : fields) {
+    for (E field : present) {
+      specs[field.ordinal()] = field.spec(variant);
       firstColumn[field.ordinal()] = columns;
-      columns = Math.addExact(columns, field.spec().repeats());
+      columns = Math.addExact(columns, spec(field).repeats());
     }
     columnField = new int[columns];
     columnVocabulary = new int[columns];
@@ -39,8 +47,8 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
     columnCoding = new FieldSpec.Coding[columns];
     int column = 0;
     int offset = 0;
-    for (E field : fields) {
-      FieldSpec spec = field.spec();
+    for (E field : present) {
+      FieldSpec spec = spec(field);
       for (int repeat = 0; repeat < spec.repeats(); repeat++, column++) {
         columnField[column] = field.ordinal();
         columnVocabulary[column] = spec.vocabulary();
@@ -59,8 +67,9 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
    * @param <E> フィールドの enum
    * @return 配置
    */
-  public static <E extends Enum<E> & FieldSpec.BoundedField> TokenLayout<E> of(Class<E> type) {
-    return new TokenLayout<>(type);
+  public static <E extends Enum<E> & FieldSpec.BoundedField> TokenLayout<E> of(
+      Class<E> type, Variant variant) {
+    return new TokenLayout<>(type, variant);
   }
 
   /**
@@ -70,6 +79,16 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
    */
   public Class<E> type() {
     return type;
+  }
+
+  public List<E> fields() {
+    return present;
+  }
+
+  public FieldSpec spec(E field) {
+    var value = specs[field.ordinal()];
+    if (value == null) throw new IllegalArgumentException("Absent input field: " + field);
+    return value;
   }
 
   /**
@@ -98,7 +117,7 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
    * @throws IllegalArgumentException フィールドに繰り返しがあるとき（そのときは {@link #column(Enum, int)} を使う）
    */
   public int column(E field) {
-    if (field.spec().repeats() != 1) {
+    if (spec(field).repeats() != 1) {
       throw new IllegalArgumentException(type.getSimpleName() + "." + field.name() + " repeats");
     }
     return firstColumn[field.ordinal()];
@@ -112,7 +131,7 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
    * @return 列
    */
   public int column(E field, int index) {
-    return firstColumn[field.ordinal()] + Objects.checkIndex(index, field.spec().repeats());
+    return firstColumn[field.ordinal()] + Objects.checkIndex(index, spec(field).repeats());
   }
 
   /**

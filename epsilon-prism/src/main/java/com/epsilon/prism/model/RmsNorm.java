@@ -15,7 +15,7 @@ import com.epsilon.prism.model.FitProbe.Stage;
  * （統計とゲインは FP32、出力は計算に使う型、ε は {@link PrismShape#epsilon()}）。バックボーンの正規化なので、Attention の記録があれば
  * 記録用の演算で計算する（{@link Context#backboneNorm}）。
  *
- * <p>最後の層が型ごとの FFN を持つ形（{@link PrismShape#layers()}）では、局・席のトークンと牌のトークンがそれぞれのゲインを持つ。両者を
+ * <p>最後の層が型ごとの FFN を持つ形（{@link PrismShape.TokenTrunk#layers()}）では、局・席のトークンと牌のトークンがそれぞれのゲインを持つ。両者を
  * 別々に正規化してから並べる。
  */
 public final class RmsNorm extends Module {
@@ -36,7 +36,7 @@ public final class RmsNorm extends Module {
    *
    * @param shape ネットワークの形
    */
-  public RmsNorm(PrismShape shape) {
+  public RmsNorm(PrismShape.TokenTrunk shape) {
     if (shape.layers().getLast().ffn() instanceof HipFfn.Typed) {
       gain = null;
       contextGain = gain("contextGain", shape.hidden());
@@ -61,7 +61,8 @@ public final class RmsNorm extends Module {
    */
   public NDArray apply(Context context, NDArray input, int lastLayer) {
     if (gain == null) {
-      throw new IllegalStateException("the final RMSNorm has typed gains; pass the last layer's FixedTokens");
+      throw new IllegalStateException(
+          "the final RMSNorm has typed gains; pass the last layer's FixedTokens");
     }
     return context.backboneNorm(input, gain, epsilon, Stage.O_FFN_BACKWARD, lastLayer);
   }
@@ -91,7 +92,8 @@ public final class RmsNorm extends Module {
   /** 局・席のトークンと牌のトークンを、それぞれのゲインで正規化して並べる。 */
   private NDArray typed(Context context, TypedTokens tokens, int lastLayer) {
     NDArray seats =
-        context.backboneNorm(tokens.context(), contextGain, epsilon, Stage.O_FFN_BACKWARD, lastLayer);
+        context.backboneNorm(
+            tokens.context(), contextGain, epsilon, Stage.O_FFN_BACKWARD, lastLayer);
     NDArray tiles =
         context.backboneNorm(tokens.tiles(), tileGain, epsilon, Stage.O_FFN_BACKWARD, lastLayer);
     return NDArrays.concat(new NDList(seats, tiles), 1);

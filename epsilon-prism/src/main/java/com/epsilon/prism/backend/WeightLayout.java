@@ -4,25 +4,30 @@ import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
 import ai.djl.util.Pair;
 import ai.djl.util.PairList;
+import com.epsilon.prism.hip.CandidateStages;
 import com.epsilon.prism.hip.HipArchitecture;
+import com.epsilon.prism.hip.HipCapabilities;
 import com.epsilon.prism.hip.HipComposition;
 import com.epsilon.prism.hip.HipCounts;
 import com.epsilon.prism.hip.HipEmbedding;
 import com.epsilon.prism.hip.HipFfn;
 import com.epsilon.prism.hip.HipPack;
+import com.epsilon.prism.hip.HipPlanOptions;
 import com.epsilon.prism.hip.HipSchema;
 import com.epsilon.prism.hip.HipSection;
 import com.epsilon.prism.hip.HipShape;
 import com.epsilon.prism.hip.HipWeight;
 import com.epsilon.prism.hip.TokenGroup;
 import com.epsilon.prism.input.BatchPlan;
+import com.epsilon.prism.input.CandidateCodes;
 import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
-import com.epsilon.prism.input.InputFormat.RelationRole;
-import com.epsilon.prism.input.InputFormat.Role;
-import com.epsilon.prism.input.InputFormat.TransitionRole;
+import com.epsilon.prism.input.InputFeature;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.InputFormat.Role;
+import com.epsilon.prism.input.InputSchema.RelationAttribute;
+import com.epsilon.prism.input.InputSchema.TransitionField;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import java.util.ArrayList;
@@ -40,7 +45,7 @@ import java.util.Set;
  * ネットワークの推論の重みを、HIP のカーネルが読む並び（WeightPack）のどこに置くかを決めた表。形の記述、推論のパラメーターの名前と形、
  * 入力の宣言から一度だけ作るので、オフセットを手で並べることはない。席・牌・コード・ゲート・手の扱いの数と、層・FFN の幅は形の記述から読む。
  * 入力の列の並びは、ネットワークの入力の形式から読む。入力の形式が持つ数は、形の記述の数と同じでなければならない。比べるのは、席・牌・コード・
- * 牌の関係の種類・イベントの上限、相手ごとの安全度の列、手の扱い、ゲートの種類の数。
+ * 牌の関係の種類・イベントの上限、手の扱い、ゲートの種類の数。
  *
  * <ul>
  *   <li>行列は BF16 で置く。Linear のバイアスは BF16 に丸めた値を FP32 で置く。ゲイン・関係のバイアス・コードの表・ヘッドの最後の層は
@@ -76,7 +81,8 @@ public final class WeightLayout {
    * @param conversion 値の変換
    * @param offset WeightPack の中のバイトオフセット
    */
-  record Placement(String parameter, HipWeight weight, int entry, Conversion conversion, long offset) {}
+  record Placement(
+      String parameter, HipWeight weight, int entry, Conversion conversion, long offset) {}
 
   /**
    * 1 つの組の表。組に入る列の値の組み合わせごとに 1 行を持つ。
@@ -129,13 +135,16 @@ public final class WeightLayout {
           TokenGroup.TILE, FfnNames.of("tileNorm", "tileUp", "tileDown"));
 
   private static final Map<TokenGroup, String> FINAL_GAINS =
-      Map.of(TokenGroup.ALL, "gain", TokenGroup.CONTEXT, "contextGain", TokenGroup.TILE, "tileGain");
+      Map.of(
+          TokenGroup.ALL, "gain", TokenGroup.CONTEXT, "contextGain", TokenGroup.TILE, "tileGain");
 
   private final InputFormat format;
   private final HipArchitecture architecture;
   private final HipPack.Header header;
   private final List<Placement> placements;
   private final Map<HipEmbedding.Slot, Embedding> embeddings;
+  private final long countOffset;
+  private final long segmentsOffset;
   private final long bytes;
 
   private WeightLayout(
@@ -144,24 +153,27 @@ public final class WeightLayout {
       HipPack.Header header,
       List<Placement> placements,
       Map<HipEmbedding.Slot, Embedding> embeddings,
+      long countOffset,
+      long segmentsOffset,
       long bytes) {
     this.format = format;
     this.architecture = architecture;
     this.header = header;
     this.placements = placements;
     this.embeddings = embeddings;
+    this.countOffset = countOffset;
+    this.segmentsOffset = segmentsOffset;
     this.bytes = bytes;
   }
 
   /**
-   * HIP のカーネルがこの形のネットワークを動かせるかを返す。H は {@link HipArchitecture#HIDDEN} だけに対応する。F・G・深さの制約は
-   * ネットワークの形と同じ。
+   * HIP のカーネルがこの形のネットワークを動かせるかを返す。既存の幅と、V4 の幅 384 に対応する。
    *
    * @param shape ネットワークの形
    * @return 動かせるなら true
    */
   public static boolean supports(PrismShape shape) {
-    return shape.hidden() == HipArchitecture.HIDDEN;
+    return HipCapabilities.supports(shape.hidden(), shape.candidateSegments(), shape.reread());
   }
 
   /**
@@ -188,22 +200,57 @@ public final class WeightLayout {
    */
   public static WeightLayout of(
       InputFormat format, HipArchitecture architecture, PairList<String, Parameter> parameters) {
+    if (!HipCapabilities.supports(
+        architecture.hidden(),
+        format.has(InputFeature.CANDIDATE_SEGMENTS),
+        architecture.reread())) {
+      throw new IllegalArgumentException(
+          "HIP does not support the input format and candidate stages for this width");
+    }
     requireMatches(format, architecture);
     Map<String, long[]> shapes = new LinkedHashMap<>();
     for (Pair<String, Parameter> pair : parameters) {
       Shape parameterShape = pair.getValue().getShape();
       if (parameterShape == null) {
-        throw new IllegalArgumentException("parameter " + pair.getKey() + " has no shape (initialize the network)");
+        throw new IllegalArgumentException(
+            "parameter " + pair.getKey() + " has no shape (initialize the network)");
       }
       shapes.put(pair.getKey(), parameterShape.getShape());
     }
     return new Builder(format, architecture, shapes).build();
   }
 
+  boolean matchesFeatures(PrismNetwork network) {
+    boolean segments = network.format().has(InputFeature.CANDIDATE_SEGMENTS);
+    return format == network.format()
+        && (countOffset >= 0) == segments
+        && (segmentsOffset >= 0) == segments;
+  }
+
+  /** 層 0 で確定したイベントを、後のすべての層が読み取り専用のキーとバリューとして使えるか。 */
+  public boolean reusableEventPrefix() {
+    return format.eventsSettleOnPublication()
+        && architecture.allTokenLayers() == 1
+        && architecture.stages() == CandidateStages.ONE;
+  }
+
+  HipPlanOptions planOptions() {
+    var count =
+        countOffset < 0
+            ? null
+            : new HipPlanOptions.Count(
+                countOffset, format.tileKeyCode().first(), CandidateCodes.COUNT_WIDTH);
+    var segments =
+        segmentsOffset < 0
+            ? null
+            : new HipPlanOptions.Segments(segmentsOffset, format.candidateCodes().hip());
+    return new HipPlanOptions(format.eventsSettleOnPublication(), count, segments);
+  }
+
   /**
    * 入力の形式と形の記述で数が合うことを確かめる。
    *
-   * @throws IllegalArgumentException 席・牌・コード・牌の関係の種類・イベントの上限、相手ごとの安全度の列、手の扱い、ゲートの種類の
+   * @throws IllegalArgumentException 席・牌・コード・牌の関係の種類・イベントの上限、手の扱い、ゲートの種類の
    *     どれかの数が違うとき
    */
   private static void requireMatches(InputFormat format, HipArchitecture architecture) {
@@ -211,20 +258,27 @@ public final class WeightLayout {
     HipCounts declared = PrismShape.counts(format);
     if (!declared.equals(counts)) {
       throw new IllegalArgumentException(
-          "the " + format.variant() + " input has the counts " + declared + ", the architecture has " + counts);
-    }
-    int safeties = format.relationRepeats(RelationRole.SAFETY);
-    if (safeties != counts.opponents()) {
-      throw new IllegalArgumentException(
-          "the " + format.variant() + " input holds safety columns for " + safeties + " opponents, the architecture has "
-              + counts.opponents());
+          "the "
+              + format.variant()
+              + " input has the counts "
+              + declared
+              + ", the architecture has "
+              + counts);
     }
     int roles = format.roles().size();
     int gates = (int) format.roles().stream().filter(Role::gate).count();
     if (roles != architecture.roles() || gates != architecture.gateKinds()) {
       throw new IllegalArgumentException(
-          "the " + format.variant() + " input declares " + roles + " action roles with " + gates
-              + " gate kinds, the architecture has " + architecture.roles() + " with " + architecture.gateKinds());
+          "the "
+              + format.variant()
+              + " input declares "
+              + roles
+              + " action roles with "
+              + gates
+              + " gate kinds, the architecture has "
+              + architecture.roles()
+              + " with "
+              + architecture.gateKinds());
     }
   }
 
@@ -314,7 +368,8 @@ public final class WeightLayout {
         kind++;
       }
     }
-    throw new IllegalArgumentException(role.name() + " is not an action role of the " + format.variant() + " input");
+    throw new IllegalArgumentException(
+        role.name() + " is not an action role of the " + format.variant() + " input");
   }
 
   /** パラメーターの名前を、子ブロックの名前（登録の番号を除く）・層・子ブロックの中での名前に分ける。 */
@@ -332,6 +387,13 @@ public final class WeightLayout {
       if (child.startsWith(ENCODER)) {
         return new Name(ENCODER, Integer.parseInt(child.substring(ENCODER.length())), local);
       }
+      if (child.equals("candidateFeatures")
+          && local.indexOf('_') > 2
+          && Character.isDigit(local.charAt(0))
+          && Character.isDigit(local.charAt(1))) {
+        int nested = local.indexOf('_');
+        return new Name(child + "/" + local.substring(2, nested), 0, local.substring(nested + 1));
+      }
       return new Name(child, 0, local);
     }
   }
@@ -344,7 +406,8 @@ public final class WeightLayout {
     private final Map<String, String> byName = new LinkedHashMap<>();
     private final HipPack.Header header;
     private final List<Placement> placements = new ArrayList<>();
-    private final Map<HipEmbedding.Slot, Embedding> embeddings = new EnumMap<>(HipEmbedding.Slot.class);
+    private final Map<HipEmbedding.Slot, Embedding> embeddings =
+        new EnumMap<>(HipEmbedding.Slot.class);
     private final Set<String> used = new HashSet<>();
     private long cursor = HipPack.HEADER_BYTES;
 
@@ -379,7 +442,13 @@ public final class WeightLayout {
         }
       }
       for (TokenGroup group : architecture.finalGroups()) {
-        place("finalNorm", 0, FINAL_GAINS.get(group), HipWeight.FINAL_NORM, group.ordinal(), Conversion.FP32);
+        place(
+            "finalNorm",
+            0,
+            FINAL_GAINS.get(group),
+            HipWeight.FINAL_NORM,
+            group.ordinal(),
+            Conversion.FP32);
       }
       place("candidate", 0, "tileEntry", HipWeight.TILE_ENTRY, 0, Conversion.BF16);
       place("candidate", 0, "queryNorm", HipWeight.QUERY_NORM, 0, Conversion.FP32);
@@ -396,7 +465,8 @@ public final class WeightLayout {
         place("reread", 0, "queryNorm", HipWeight.REREAD_QUERY_NORM, 0, Conversion.FP32);
         place("reread", 0, "query", HipWeight.REREAD_QUERY, 0, Conversion.BF16);
         place("reread", 0, "queryBias", HipWeight.REREAD_QUERY_BIAS, 0, Conversion.ROUNDED);
-        place("reread", 0, "eventNorm", HipWeight.REREAD_EVENT_NORM, 0, Conversion.FP32);
+        String norm = "eventNorm";
+        place("reread", 0, norm, HipWeight.REREAD_EVENT_NORM, 0, Conversion.FP32);
         place("reread", 0, "keyValue", HipWeight.REREAD_KEY_VALUE, 0, Conversion.BF16);
         place("reread", 0, "keyValueBias", HipWeight.REREAD_KEY_VALUE_BIAS, 0, Conversion.ROUNDED);
         place("reread", 0, "codeKey", HipWeight.REREAD_CODE_KEY, 0, Conversion.FP32);
@@ -417,6 +487,29 @@ public final class WeightLayout {
       place("gates", 0, "output", HipWeight.GATE_OUTPUT, 0, Conversion.FP32);
       place("gates", 0, "outputBias", HipWeight.GATE_OUTPUT_BIAS, 0, Conversion.FP32);
       place("gates", 0, "exactOutput", HipWeight.GATE_EXACT_OUTPUT, 0, Conversion.FP32);
+      long countOffset = -1;
+      long segmentsOffset = -1;
+      final boolean core = format.has(InputFeature.CANDIDATE_SEGMENTS);
+      if (core) {
+        String child = "candidateFeatures/count";
+        int width = CandidateCodes.COUNT_WIDTH;
+        int codes = format.keys().codes() - format.tileKeyCode().first();
+        int hidden = architecture.hidden();
+        countOffset = cursor;
+        append(child, "gate", Conversion.FP32, codes, width);
+        append(child, "tile", Conversion.BF16, width, hidden);
+        append(child, "output", Conversion.BF16, hidden, width);
+        cursor = HipPack.align(cursor);
+      }
+      if (core) {
+        String child = "candidateFeatures/segments";
+        int width = 2 * architecture.attention();
+        segmentsOffset = cursor;
+        for (var slot : format.candidateCodes().slots()) {
+          append(child, slot.parameter(), Conversion.FP32, slot.rows(), width);
+        }
+        cursor = HipPack.align(cursor);
+      }
       List<String> unused = new ArrayList<>();
       for (String key : shapes.keySet()) {
         if (!used.contains(key)) {
@@ -432,6 +525,8 @@ public final class WeightLayout {
           header,
           Collections.unmodifiableList(placements),
           Collections.unmodifiableMap(embeddings),
+          countOffset,
+          segmentsOffset,
           cursor);
     }
 
@@ -451,20 +546,22 @@ public final class WeightLayout {
           .schema(HipSchema.ACTION_ROLE, ActionColumn.ROLE.ordinal())
           .schema(HipSchema.ACTION_BASE, ActionColumn.BASE.ordinal())
           .schema(HipSchema.ACTION_REPRESENTATIVE, ActionColumn.REPRESENTATIVE.ordinal())
-          .schema(HipSchema.RELATION_TILE, format.relationColumn(RelationRole.TILE, 0))
-          .schema(HipSchema.RELATION_OWNER, format.relationColumn(RelationRole.OWNER, 0))
-          .schema(HipSchema.RELATION_EVENT, format.relationColumn(RelationRole.EVENT, 0))
+          .schema(HipSchema.RELATION_TILE, format.relation().column(RelationAttribute.TILE, 0))
+          .schema(HipSchema.RELATION_OWNER, format.relation().column(RelationAttribute.OWNER, 0))
+          .schema(HipSchema.RELATION_EVENT, format.relation().column(RelationAttribute.EVENT, 0))
           .schema(
-              HipSchema.RELATION_RIICHI, format.relationColumn(RelationRole.OWNER_RIICHI_EVENT, 0))
+              HipSchema.RELATION_RIICHI,
+              format.relation().column(RelationAttribute.OWNER_RIICHI_EVENT, 0))
           .schema(
               HipSchema.RELATION_LAST_DISCARD,
-              format.relationColumn(RelationRole.OWNER_LAST_DISCARD_EVENT, 0))
-          .schema(HipSchema.RELATION_LINK, format.relationColumn(RelationRole.LINK, 0))
-          .schema(HipSchema.RELATION_SAFETY, format.relationColumn(RelationRole.SAFETY, 0))
+              format.relation().column(RelationAttribute.OWNER_LAST_DISCARD_EVENT, 0))
+          .schema(HipSchema.RELATION_LINK, format.relation().column(RelationAttribute.LINK, 0))
+          .schema(HipSchema.RELATION_SAFETY, format.relation().column(RelationAttribute.SAFETY, 0))
           .schema(
               HipSchema.TRANSITION_CALL_DISCARD,
-              format.transitionColumn(TransitionRole.CALL_DISCARD))
-          .schema(HipSchema.TRANSITION_MAIN_TILE, format.transitionColumn(TransitionRole.MAIN_TILE))
+              format.transition().column(TransitionField.CALL_DISCARD))
+          .schema(
+              HipSchema.TRANSITION_MAIN_TILE, format.transition().column(TransitionField.MAIN_TILE))
           .schema(HipSchema.RELATION_ROWS, Math.toIntExact(relation[0]));
       if (Tensor.values().length != HipSection.values().length) {
         throw new IllegalStateException("HIP sections do not match the input tensors");
@@ -472,14 +569,15 @@ public final class WeightLayout {
       for (Tensor tensor : Tensor.values()) {
         HipSection section = HipSection.valueOf(tensor.name());
         if (section.element().bytes() != tensor.element().bytes()) {
-          throw new IllegalStateException(tensor + " element differs from the HIP section " + section);
+          throw new IllegalStateException(
+              tensor + " element differs from the HIP section " + section);
         }
-        // キーのコードは遷移ごとに、行の局・席・牌のトークンの数だけあるので、幅は形の記述から読む
-        int width = section == HipSection.TRANSITION_CODE ? architecture.counts().fixed() : format.width(tensor);
+        // V4 の候補区分を含め、幅は保存した形が選ぶ入力形式で決まる。
+        int width = format.width(tensor);
         header.sectionWidth(section, width);
       }
       for (Role role : format.roles()) {
-        header.role(role.ordinal(), composition(role), gateKind(format, role));
+        header.role(format.roles().indexOf(role), composition(role), gateKind(format, role));
       }
     }
 
@@ -495,11 +593,19 @@ public final class WeightLayout {
       int inputs = source.embeddedCount() * dimension + source.denseCount();
       if (projection[0] != hidden || projection[1] != inputs) {
         throw new IllegalArgumentException(
-            projectionKey + " has shape " + Arrays.toString(projection) + ", expected [" + hidden + ", " + inputs + "]");
+            projectionKey
+                + " has shape "
+                + Arrays.toString(projection)
+                + ", expected ["
+                + hidden
+                + ", "
+                + inputs
+                + "]");
       }
       requireShape(biasKey, hidden);
       // 局・席・牌・イベントは、層 0 の QKV まで折り込んだ表（1 行に FP32 を 3A 個）を持つ。遷移は Attention に入らないので持たない。
-      boolean folding = source.slot() != HipEmbedding.Slot.TRANSITION;
+      boolean folding =
+          HipCapabilities.foldsLayerZero(hidden) && source.slot() != HipEmbedding.Slot.TRANSITION;
       long foldRow = 3L * architecture.attention() * Float.BYTES;
       List<Group> groups = new ArrayList<>();
       for (int[] members : groupColumns(source)) {
@@ -514,7 +620,9 @@ public final class WeightLayout {
         groups.add(new Group(members, strides, rows, offset, foldOffset));
       }
       long denseOffset =
-          source.denseCount() == 0 ? 0 : allocate((long) source.denseCount() * hidden * Short.BYTES);
+          source.denseCount() == 0
+              ? 0
+              : allocate((long) source.denseCount() * hidden * Short.BYTES);
       long biasOffset = allocate((long) hidden * Float.BYTES);
       long foldOffset = folding ? allocate((source.denseCount() + 2L) * foldRow) : -1;
       used.add(tableKey);
@@ -588,7 +696,8 @@ public final class WeightLayout {
           }
           int target = -1;
           for (int g = 0; g < groups.size(); g++) {
-            if ((long) products.get(g) * vocabulary <= cap && groups.get(g).size() < HipEmbedding.MAX_MEMBERS) {
+            if ((long) products.get(g) * vocabulary <= cap
+                && groups.get(g).size() < HipEmbedding.MAX_MEMBERS) {
               target = g;
               break;
             }
@@ -622,7 +731,8 @@ public final class WeightLayout {
       place(child, layer, names.downBias(), HipWeight.DOWN_BIAS, entry, Conversion.ROUNDED);
     }
 
-    private void place(String child, int layer, String local, HipWeight weight, int entry, Conversion conversion) {
+    private void place(
+        String child, int layer, String local, HipWeight weight, int entry, Conversion conversion) {
       String key = key(child, layer, local);
       long[] parameterShape = shapes.get(key);
       long elements = 1;
@@ -631,13 +741,21 @@ public final class WeightLayout {
       }
       if (elements != header.elements(weight, entry)) {
         throw new IllegalArgumentException(
-            key + " has " + elements + " elements but the HIP slot " + weight + " entry " + entry + " holds "
+            key
+                + " has "
+                + elements
+                + " elements but the HIP slot "
+                + weight
+                + " entry "
+                + entry
+                + " holds "
                 + header.elements(weight, entry));
       }
       long bytesNeeded =
           conversion == Conversion.BF16 ? elements * Short.BYTES : elements * Float.BYTES;
       if (bytesNeeded != header.bytes(weight, entry)) {
-        throw new IllegalStateException(weight + " conversion " + conversion + " does not match its element type");
+        throw new IllegalStateException(
+            weight + " conversion " + conversion + " does not match its element type");
       }
       long offset = allocate(bytesNeeded);
       header.weight(weight, entry, offset);
@@ -648,8 +766,20 @@ public final class WeightLayout {
     private void requireShape(String key, long... expected) {
       if (!Arrays.equals(shapes.get(key), expected)) {
         throw new IllegalArgumentException(
-            key + " has shape " + Arrays.toString(shapes.get(key)) + ", expected " + Arrays.toString(expected));
+            key
+                + " has shape "
+                + Arrays.toString(shapes.get(key))
+                + ", expected "
+                + Arrays.toString(expected));
       }
+    }
+
+    private void append(String child, String local, Conversion conversion, int rows, int columns) {
+      String key = key(child, 0, local);
+      requireShape(key, rows, columns);
+      placements.add(new Placement(key, null, 0, conversion, cursor));
+      cursor += (long) rows * columns * (conversion == Conversion.BF16 ? Short.BYTES : Float.BYTES);
+      used.add(key);
     }
 
     private long[] shape(String child, int layer, String local) {
@@ -659,7 +789,8 @@ public final class WeightLayout {
     private String key(String child, int layer, String local) {
       String key = byName.get(child + "/" + layer + "/" + local);
       if (key == null) {
-        throw new IllegalArgumentException("the network has no parameter " + child + layer + "." + local);
+        throw new IllegalArgumentException(
+            "the network has no parameter " + child + layer + "." + local);
       }
       return Objects.requireNonNull(key);
     }

@@ -7,6 +7,7 @@ import ai.djl.ndarray.types.Shape;
 import ai.djl.pytorch.engine.PtNDArray;
 import ai.djl.pytorch.jni.JniUtils;
 import ai.djl.training.GradientCollector;
+import com.epsilon.prism.hip.CandidateKernels;
 import com.epsilon.prism.hip.RelationAttention;
 import com.epsilon.prism.hip.RelationCodes;
 import com.epsilon.prism.hip.RmsNormKernels;
@@ -44,8 +45,8 @@ import java.util.Set;
  * <p>記録した配列（葉と葉の元、Attention の q・kv・出力・保存した値、正規化の入力・出力・保存した r）は逆伝播まで残す。順伝播のスコープ
  * （{@link Context#scoped}）の中で作った配列は、スコープを閉じる前に記録のマネージャーへ移す（{@link #adopt}）ので、スコープを閉じても
  * 配列は閉じない。記録のマネージャーは順伝播の作業用マネージャーの下に作り（{@link #open}）、それと一緒に閉じる。パラメーター（ρ・ゲイン）
- * と、順伝播の全体で共有する配列（トークンの有無・関係のコード）は移さない。自前の演算は配列を連続したメモリとして読むので、q・kv と正規化の
- * 入力は連続していなければならない。
+ * と、順伝播の全体で共有する配列（トークンの有無・関係のコード）は移さない。マスクを掛けた関係の表は逆伝播まで記録に残す。
+ * 自前の演算は配列を連続したメモリとして読むので、q・kv と正規化の入力は連続していなければならない。
  *
  * <p>逆伝播では、切れ目ごとに段の時間を計る印を付ける（{@link FitProbe}）。損失の逆伝播は {@link Stage#HEADS_BACKWARD} に入れる。
  * Attention は、自前の逆伝播の演算だけを {@link Stage#ATTENTION_BACKWARD} に入れる。正規化と葉は、注入にかかった時間を、積むときに
@@ -56,7 +57,14 @@ import java.util.Set;
  */
 public final class AttentionTape {
 
-  private sealed interface Step permits Cut, Attention, Norm {}
+  private sealed interface Step permits Cut, Attention, Norm, Count, CandidateAttention {}
+
+  private record Count(NDArray projected, NDArray gates, NDArray rows, NDArray ids, NDArray output)
+      implements Step {}
+
+  private record CandidateAttention(
+      CandidateKernels.CandidateInput input, NDArray output, NDArray probabilities)
+      implements Step {}
 
   /** 葉の元の値と、その葉。{@code stage} と {@code layer} は、葉の注入の時間を計る段。 */
   private record Cut(NDArray source, NDArray leaf, Stage stage, int layer) implements Step {}
@@ -90,8 +98,10 @@ public final class AttentionTape {
       implements Step {}
 
   private final TrainingKernels kernels;
+  private final CandidateKernels candidates;
   private final FitProbe probe;
   private final boolean recording;
+  private final boolean backbone;
   private final Deque<Step> steps = new ArrayDeque<>();
 
   /** 記録のマネージャー。{@link #open} で作り、記録しない形では作らない。 */
@@ -116,13 +126,16 @@ public final class AttentionTape {
    * @param probe 段の時間を計る印
    */
   public AttentionTape(TrainingKernels kernels, FitProbe probe) {
-    this(kernels, probe, true);
+    this(kernels, probe, true, true);
   }
 
-  private AttentionTape(TrainingKernels kernels, FitProbe probe, boolean recording) {
+  private AttentionTape(
+      TrainingKernels kernels, FitProbe probe, boolean recording, boolean backbone) {
     this.kernels = Objects.requireNonNull(kernels, "kernels");
+    this.candidates = kernels.candidateKernels();
     this.probe = Objects.requireNonNull(probe, "probe");
     this.recording = recording;
+    this.backbone = backbone;
   }
 
   /**
@@ -132,7 +145,16 @@ public final class AttentionTape {
    * @return 記録しない形
    */
   public static AttentionTape forwardOnly(TrainingKernels kernels) {
-    return new AttentionTape(kernels, FitProbe.NONE, false);
+    return new AttentionTape(kernels, FitProbe.NONE, false, true);
+  }
+
+  /** Use the FP32 candidate kernel with the eager encoder for numerical comparisons. */
+  public static AttentionTape candidateOnly(TrainingKernels kernels) {
+    return new AttentionTape(kernels, FitProbe.NONE, true, false);
+  }
+
+  boolean backbone() {
+    return backbone;
   }
 
   /** 逆伝播のために記録する形（学習）なら true。 */
@@ -192,7 +214,56 @@ public final class AttentionTape {
    * @return コードを作る演算。無ければ null で、呼び出し元は eager の {@link RelationClass} で作る
    */
   RelationCodes relationCodes() {
-    return recording && kernels instanceof RelationCodes codes ? codes : null;
+    return backbone && recording && kernels instanceof RelationCodes codes ? codes : null;
+  }
+
+  NDArray count(NDManager working, NDArray projected, NDArray gates, NDArray rows, NDArray ids) {
+    if (candidates == null) return null;
+    requireContiguous(projected, "V4 projected tiles");
+    requireContiguous(ids, "V4 count IDs");
+    NDArray output =
+        working.create(
+            new Shape(rows.getShape().size(), projected.getShape().get(2)), DataType.BFLOAT16);
+    candidates.count(projected, gates, rows, ids, output);
+    if (recording) {
+      output.setRequiresGradient(true);
+      steps.addLast(new Count(projected, gates, rows, ids, output));
+      keep(projected, gates, rows, ids, output);
+    }
+    return output;
+  }
+
+  boolean fusedCandidateAttention() {
+    return candidates != null;
+  }
+
+  NDArray candidateAttention(NDManager working, CandidateKernels.CandidateInput input) {
+    requireContiguous(input.query(), "V4 candidate query");
+    requireContiguous(input.memory(), "V4 candidate memory");
+    requireContiguous(input.codes(), "V4 candidate code IDs");
+    NDArray output = working.create(input.query().getShape(), DataType.FLOAT32);
+    NDArray probabilities = working.create(input.probabilities(), DataType.FLOAT32);
+    if (probe.detailed()) {
+      probe.mark(Stage.CANDIDATE_FORWARD_PREPARE);
+    }
+    candidates.candidateAttention(input, output, probabilities);
+    if (probe.detailed()) {
+      probe.mark(Stage.CANDIDATE_FORWARD_KERNEL);
+    }
+    if (recording) {
+      output.setRequiresGradient(true);
+      steps.addLast(new CandidateAttention(input, output, probabilities));
+      keep(
+          input.query(),
+          input.memory(),
+          input.base(),
+          input.weights(),
+          input.codes(),
+          input.groups(),
+          output,
+          probabilities);
+    }
+    return output;
   }
 
   /**
@@ -242,7 +313,8 @@ public final class AttentionTape {
       int heads,
       int entries,
       double scale,
-      int layer) {
+      int layer,
+      int causalFixedTokens) {
     requireContiguous(query, "attention query");
     requireContiguous(keyValue, "attention keys and values");
     Shape queries = query.getShape();
@@ -257,12 +329,14 @@ public final class AttentionTape {
             Math.toIntExact(pairs.get(3)),
             Math.toIntExact(table.getShape().get(0) / entries),
             entries,
-            (float) scale);
+            (float) scale,
+            causalFixedTokens);
     NDArray output = working.create(queries, query.getDataType());
     NDArray outFloat = working.create(queries, DataType.FLOAT32);
     NDArray logSumExp =
         working.create(
-            new Shape(dimensions.rows(), dimensions.heads(), dimensions.queries()), DataType.FLOAT32);
+            new Shape(dimensions.rows(), dimensions.heads(), dimensions.queries()),
+            DataType.FLOAT32);
     kernels.forward(dimensions, query, keyValue, mask, codes, table, output, outFloat, logSumExp);
     if (recording) {
       output.setRequiresGradient(true);
@@ -270,6 +344,9 @@ public final class AttentionTape {
           new Attention(
               dimensions, query, keyValue, mask, codes, table, output, outFloat, logSumExp, layer));
       keep(query, keyValue, output, outFloat, logSumExp);
+      if (table.getManager() == working) {
+        keep(table);
+      }
     }
     return output;
   }
@@ -316,13 +393,16 @@ public final class AttentionTape {
    */
   public void backward(GradientCollector collector, NDArray loss) {
     if (!recording) {
-      throw new IllegalStateException("a forward-only attention tape has nothing to back-propagate");
+      throw new IllegalStateException(
+          "a forward-only attention tape has nothing to back-propagate");
     }
     collector.backward(loss);
     probe.mark(Stage.HEADS_BACKWARD);
     while (!steps.isEmpty()) {
       switch (steps.removeLast()) {
         case Attention attention -> inject(attention);
+        case Count count -> inject(count);
+        case CandidateAttention attention -> inject(attention);
         case Norm norm -> {
           inject(norm);
           probe.mark(norm.stage(), norm.layer());
@@ -333,6 +413,51 @@ public final class AttentionTape {
         }
       }
     }
+  }
+
+  private void inject(Count c) {
+    NDManager manager = c.output().getManager();
+    NDArray projected = manager.create(c.projected().getShape(), DataType.BFLOAT16);
+    NDArray gates = manager.create(c.gates().getShape(), DataType.FLOAT32);
+    NDArray gradient = c.output().getGradient();
+    requireContiguous(gradient, "V4 count output gradient");
+    probe.mark(Stage.COUNT_BACKWARD_PREPARE);
+    candidates.countGradient(
+        c.projected(), c.gates(), c.rows(), c.ids(), gradient, projected, gates);
+    probe.mark(Stage.COUNT_BACKWARD_KERNEL);
+    inject(c.projected(), projected, false);
+    probe.mark(Stage.COUNT_PROJECTED_INJECT);
+    inject(c.gates(), gates, false);
+    probe.mark(Stage.COUNT_GATE_INJECT);
+  }
+
+  private void inject(CandidateAttention a) {
+    var input = a.input();
+    NDManager manager = a.output().getManager();
+    NDArray query = manager.create(input.query().getShape(), DataType.FLOAT32);
+    NDArray memory = manager.create(input.memory().getShape(), DataType.FLOAT32);
+    NDArray base = manager.create(input.base().getShape(), DataType.FLOAT32);
+    NDArray weights = manager.create(input.weights().getShape(), DataType.FLOAT32);
+    NDArray upstream = a.output().getGradient();
+    requireContiguous(upstream, "V4 candidate attention gradient");
+    candidates.candidateAttentionGradient(
+        input,
+        a.probabilities(),
+        upstream,
+        query,
+        memory,
+        base,
+        weights,
+        probe.detailed() ? () -> probe.mark(Stage.CANDIDATE_BACKWARD_PREPARE) : null);
+    probe.mark(Stage.CANDIDATE_BACKWARD_KERNEL);
+    inject(input.query(), query, false);
+    probe.mark(Stage.CANDIDATE_QUERY_INJECT);
+    inject(input.memory(), memory, false);
+    probe.mark(Stage.CANDIDATE_MEMORY_INJECT);
+    inject(input.base(), base, false);
+    probe.mark(Stage.CANDIDATE_BASE_INJECT);
+    inject(input.weights(), weights, false);
+    probe.mark(Stage.CANDIDATE_SEGMENTS_INJECT);
   }
 
   /** 記録した配列を、スコープを出るときに記録のマネージャーへ移せるように覚えておく。 */
@@ -349,7 +474,7 @@ public final class AttentionTape {
 
   /**
    * 自前の逆伝播で q・kv・ρ の勾配を作り、それぞれを根にして流す。q と kv は重みとバイアスの型変換のノードを共有するので、先に流す q では
-   * 木を残す。ρ はパラメーターの葉なので、勾配はその葉に直接溜まる。段の印は自前の逆伝播の演算の後に付ける。ρ の勾配の和と注入の時間は、
+   * 木を残す。ρ の勾配は有効な区分の行だけに流れる。段の印は自前の逆伝播の演算の後に付ける。ρ の勾配の和と注入の時間は、
    * 次の葉（Attention の前の正規化の出力）の段に入る。
    */
   private void inject(Attention a) {
@@ -379,6 +504,9 @@ public final class AttentionTape {
     inject(a.query(), gradQuery, true);
     inject(a.keyValue(), gradKeyValue, false);
     inject(a.table(), rho, false);
+    if (probe.detailed()) {
+      probe.mark(Stage.ATTENTION_BACKWARD_INJECT, a.layer());
+    }
   }
 
   /** 自前の逆伝播で dx とゲインの勾配の部分和を作る。部分和をタイルの順に足し、入力とゲインをそれぞれ根にして流す。 */
@@ -389,6 +517,9 @@ public final class AttentionTape {
     NDArray gradGain = manager.create(new Shape(d.partials(), d.width()), DataType.FLOAT32);
     kernels.backward(
         d, n.input(), n.gain(), n.inverseRms(), n.output().getGradient(), gradInput, gradGain);
+    if (probe.detailed()) {
+      probe.mark(Stage.NORM_BACKWARD_KERNEL, n.layer());
+    }
     inject(n.input(), gradInput, false);
     inject(n.gain(), gradGain.sum(new int[] {0}), false);
   }
@@ -402,7 +533,10 @@ public final class AttentionTape {
   private static void requireContiguous(NDArray array, String role) {
     if (!JniUtils.isContiguous((PtNDArray) array)) {
       throw new IllegalArgumentException(
-          "the attention tape reads the " + role + " as contiguous memory, got a strided " + array.getShape());
+          "the attention tape reads the "
+              + role
+              + " as contiguous memory, got a strided "
+              + array.getShape());
     }
   }
 }

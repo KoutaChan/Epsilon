@@ -9,6 +9,7 @@ import ai.djl.util.PairList;
 import com.epsilon.agent.facts.MahjongTileRelation;
 import com.epsilon.agent.observe.codec.Bfloat16;
 import com.epsilon.agent.runtime.NetworkRuntime;
+import com.epsilon.prism.hip.HipCapabilities;
 import com.epsilon.prism.hip.HipEmbedding;
 import com.epsilon.prism.hip.HipWeight;
 import com.epsilon.prism.input.TileTokens;
@@ -72,6 +73,10 @@ public final class WeightPack {
    * @return 重みの束
    */
   public static WeightPack build(WeightLayout layout, PrismNetwork network, long version) {
+    if (!layout.architecture().equals(network.shape().hip(network.format()))
+        || !layout.matchesFeatures(network)) {
+      throw new IllegalArgumentException("HIP weight layout does not match the network shape");
+    }
     return build(layout, network.inferenceParameters(), version);
   }
 
@@ -86,7 +91,8 @@ public final class WeightPack {
    * @throws IllegalArgumentException 表にあるパラメーターが束に無いとき。値が有限でないとき。牌の関係の表の大きさが、形の記述の牌の数の
    *     2 乗でないとき
    */
-  public static WeightPack build(WeightLayout layout, PairList<String, Parameter> parameters, long version) {
+  public static WeightPack build(
+      WeightLayout layout, PairList<String, Parameter> parameters, long version) {
     Objects.requireNonNull(layout, "layout");
     if (version < 0) {
       throw new IllegalArgumentException("weights version must not be negative: " + version);
@@ -104,10 +110,12 @@ public final class WeightPack {
     for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
       fold(buffer, layout, embedding, values);
     }
-    double[] projection = layer0Projection(buffer, layout);
-    for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
-      if (embedding.foldOffset() >= 0) {
-        foldLayer0(buffer, layout, embedding, projection);
+    if (HipCapabilities.foldsLayerZero(layout.architecture().hidden())) {
+      double[] projection = layer0Projection(buffer, layout);
+      for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
+        if (embedding.foldOffset() >= 0) {
+          foldLayer0(buffer, layout, embedding, projection);
+        }
       }
     }
     writeTileRelations(
@@ -129,7 +137,11 @@ public final class WeightPack {
 
   /** 中身を返す。位置 0 から {@link WeightLayout#bytes()} バイトを見る、新しく作った little-endian のビュー。 */
   public ByteBuffer buffer() {
-    return buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(0).limit(Math.toIntExact(layout.bytes()));
+    return buffer
+        .duplicate()
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .position(0)
+        .limit(Math.toIntExact(layout.bytes()));
   }
 
   /** float を BF16 に丸めた値を返す。有限でない値には例外を投げる。 */
@@ -171,7 +183,10 @@ public final class WeightPack {
 
   /** 1 つの型の埋め込みを書く。組の表、表に折り込まない特徴の W（BF16、転置）、バイアス（BF16 に丸めた値）を書く。 */
   private static void fold(
-      ByteBuffer buffer, WeightLayout layout, WeightLayout.Embedding embedding, Map<String, float[]> values) {
+      ByteBuffer buffer,
+      WeightLayout layout,
+      WeightLayout.Embedding embedding,
+      Map<String, float[]> values) {
     EmbeddingSource source = embedding.source();
     int hidden = layout.architecture().hidden();
     int dimension = embedding.dimension();
@@ -226,7 +241,8 @@ public final class WeightPack {
     for (int k = 0; k < source.denseCount(); k++) {
       for (int h = 0; h < hidden; h++) {
         buffer.putShort(
-            denseAt + (k * hidden + h) * Short.BYTES, Bfloat16.fromFloat(projection[h * inputs + embeddedWidth + k]));
+            denseAt + (k * hidden + h) * Short.BYTES,
+            Bfloat16.fromFloat(projection[h * inputs + embeddedWidth + k]));
       }
     }
     int biasAt = Math.toIntExact(embedding.biasOffset());
@@ -248,7 +264,9 @@ public final class WeightPack {
     for (int c = 0; c < width; c++) {
       int column = HipEmbedding.foldColumn(c, attention);
       for (int h = 0; h < hidden; h++) {
-        float weight = Float.intBitsToFloat((buffer.getShort(qkv + (c * hidden + h) * Short.BYTES) & 0xFFFF) << 16);
+        float weight =
+            Float.intBitsToFloat(
+                (buffer.getShort(qkv + (c * hidden + h) * Short.BYTES) & 0xFFFF) << 16);
         projection[h * width + column] = (double) buffer.getFloat(gain + h * Float.BYTES) * weight;
       }
     }
@@ -260,7 +278,10 @@ public final class WeightPack {
    * その後ろに b_qkv を写す。
    */
   private static void foldLayer0(
-      ByteBuffer buffer, WeightLayout layout, WeightLayout.Embedding embedding, double[] projection) {
+      ByteBuffer buffer,
+      WeightLayout layout,
+      WeightLayout.Embedding embedding,
+      double[] projection) {
     int hidden = layout.architecture().hidden();
     int attention = layout.architecture().attention();
     int width = 3 * attention;
@@ -286,7 +307,8 @@ public final class WeightPack {
       for (int h = 0; h < hidden; h++) {
         source[h] =
             k < dense
-                ? Float.intBitsToFloat((buffer.getShort(denseAt + (k * hidden + h) * Short.BYTES) & 0xFFFF) << 16)
+                ? Float.intBitsToFloat(
+                    (buffer.getShort(denseAt + (k * hidden + h) * Short.BYTES) & 0xFFFF) << 16)
                 : buffer.getFloat(Math.toIntExact(embedding.biasOffset()) + h * Float.BYTES);
       }
       project(source, projection, projected);
@@ -319,10 +341,14 @@ public final class WeightPack {
   }
 
   /** 牌の関係の種類を書く。値は MahjongTileRelation の ordinal で、[牌, 牌] の UINT8 で置く。 */
-  private static void writeTileRelations(ByteBuffer buffer, long offset, long elements, int[] relations) {
+  private static void writeTileRelations(
+      ByteBuffer buffer, long offset, long elements, int[] relations) {
     if (relations.length != elements) {
       throw new IllegalArgumentException(
-          "tile relations hold " + relations.length + " classes but the architecture's tiles need " + elements);
+          "tile relations hold "
+              + relations.length
+              + " classes but the architecture's tiles need "
+              + elements);
     }
     int at = Math.toIntExact(offset);
     for (int i = 0; i < relations.length; i++) {

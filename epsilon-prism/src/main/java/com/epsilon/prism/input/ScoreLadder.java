@@ -63,11 +63,17 @@ public final class ScoreLadder {
   /** ツモ和了で子が払う点。添字は [和了者が親か][格]。 */
   private final int[][] tsumoFromChild = new int[2][SCORED.length];
 
-  private final PassGrade[] grades;
+  private final PassGrade[][] gradesByObserver;
+  private final int[] tableScores;
+  private PassGrade[] grades;
+  private int scoredObservers;
+  private int tableDealer = -1;
   private final int[] scores;
   private final int[] absolute;
   private final int[] deltas;
   private int dealer;
+  private int lastHonba = -1;
+  private int lastKyotaku = -1;
   private int ronGainExtra;
   private int ronPayExtra;
   private int tsumoGainExtra;
@@ -81,7 +87,9 @@ public final class ScoreLadder {
   public ScoreLadder(Variant variant) {
     this.variant = variant;
     seats = variant.seats();
-    grades = new PassGrade[seats * PASSES.length];
+    gradesByObserver = new PassGrade[seats][seats * PASSES.length];
+    tableScores = new int[seats];
+    grades = gradesByObserver[0];
     scores = new int[seats];
     absolute = new int[seats];
     deltas = new int[seats];
@@ -109,13 +117,29 @@ public final class ScoreLadder {
    */
   public void load(Observation o) {
     if (o.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + o.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + o.variant());
     }
-    settle(o.honba(), o.kyotaku(), o.dealer());
+    int honba = o.honba();
+    int kyotaku = o.kyotaku();
+    int dealer = o.dealer();
+    int absoluteDealer = o.absoluteSeat(dealer);
+    boolean changed = honba != lastHonba || kyotaku != lastKyotaku || absoluteDealer != tableDealer;
+    settle(honba, kyotaku, dealer);
+    tableDealer = absoluteDealer;
     for (int seat = 0; seat < seats; seat++) {
-      scores[seat] = o.score(seat);
-      absolute[seat] = o.absoluteSeat(seat);
+      int points = o.score(seat);
+      int player = o.absoluteSeat(seat);
+      changed |= tableScores[player] != points;
+      tableScores[player] = scores[seat] = points;
+      absolute[seat] = player;
     }
+    if (changed) scoredObservers = 0;
+    int observer = o.observer();
+    grades = gradesByObserver[observer];
+    int bit = 1 << observer;
+    if ((scoredObservers & bit) != 0) return;
+    scoredObservers |= bit;
     for (int seat = 1; seat < seats; seat++) {
       for (Pass pass : PASSES) {
         grades[seat * PASSES.length + pass.ordinal()] =
@@ -166,8 +190,7 @@ public final class ScoreLadder {
                 : loser == dealer ? tsumoFromDealer[grade] : tsumoFromChild[CHILD][grade];
         loss = share + tsumoPayExtra;
       }
-      if (above(
-          scores[winner] + gain, absolute[winner], scores[loser] - loss, absolute[loser])) {
+      if (above(scores[winner] + gain, absolute[winner], scores[loser] - loss, absolute[loser])) {
         return SCORED[grade];
       }
     }
@@ -176,6 +199,10 @@ public final class ScoreLadder {
 
   /** 本場と供託による点の増減（格に依らない）を求め、親の席を覚える。 */
   private void settle(int honba, int kyotaku, int dealer) {
+    this.dealer = dealer;
+    if (honba == lastHonba && kyotaku == lastKyotaku) return;
+    lastHonba = honba;
+    lastKyotaku = kyotaku;
     int base = SCORED[0].basePoints();
     ron(base, 2, honba, kyotaku, deltas);
     ronGainExtra = deltas[0] - ronGain[CHILD][0];
@@ -183,7 +210,6 @@ public final class ScoreLadder {
     tsumo(base, 1, honba, kyotaku, deltas);
     tsumoGainExtra = deltas[0] - tsumoGain[CHILD][0];
     tsumoPayExtra = -deltas[2] - tsumoFromChild[CHILD][0];
-    this.dealer = dealer;
   }
 
   /** 席 0 が席 1 からロン和了したときの点の移動を {@code deltas} に書く。基本点は {@code base}、親は席 {@code dealer}。供託は席 0 が受け取る。 */

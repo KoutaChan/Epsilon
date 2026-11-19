@@ -142,7 +142,7 @@ final class StepFeed implements AutoCloseable {
     this.threads = threads;
     budget = plan.tokenBudget();
     Variant variant = store.variant();
-    format = InputFormat.of(variant);
+    format = plan.shape().inputFormat(InputFormat.of(variant));
     capacity = capacity(format, budget);
     pinned = (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME);
     coordinator = Executors.newSingleThreadExecutor(daemons("prism-feed-"));
@@ -284,7 +284,8 @@ final class StepFeed implements AutoCloseable {
     long[] keys = new long[rows.length];
     long total = 0;
     for (int index = 0; index < rows.length; index++) {
-      int tokens = format.fixedTokens() + observation.bind(rows[index].observation(), 0).publicEvents();
+      int tokens =
+          format.fixedTokens() + observation.bind(rows[index].observation(), 0).publicEvents();
       keys[index] = (long) tokens << Integer.SIZE | index;
       total += tokens;
     }

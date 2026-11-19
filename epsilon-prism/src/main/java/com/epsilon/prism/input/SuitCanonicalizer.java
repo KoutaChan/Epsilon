@@ -6,6 +6,7 @@ import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.input.EventTable.PublicEvent;
+import java.util.Arrays;
 
 /**
  * 数牌の色の正準の順を決め、牌・色・赤の写しを持つ。判断ごとに 1 回作り、牌を扱う全ての所（牌のトークンの順、イベント・遷移・キーの牌、
@@ -59,8 +60,31 @@ public final class SuitCanonicalizer {
   private final int[] firstEvent = new int[SUITS];
   private final int[] order = new int[SUITS];
   private final int[] canonical = new int[SUITS];
-  private final int[] tileMap = new int[Tiles.KINDS];
-  private final int[] inverse = new int[Tiles.KINDS];
+  private final TileOrder[][] orders = new TileOrder[SUITS][SUITS];
+  private TileOrder tileOrder;
+
+  /** 色の順が決まったときの物理牌、正準の牌、入力トークンの対応。 */
+  static final class TileOrder {
+    private final int[] canonical = new int[Tiles.KINDS];
+    private final int[] inverse = new int[Tiles.KINDS];
+    final int[] tokenOf = new int[Tiles.KINDS];
+    final int[] physicalOf;
+
+    TileOrder(TileTokens tokens, int[] suits) {
+      physicalOf = new int[tokens.count()];
+      Arrays.fill(tokenOf, -1);
+      for (int tile = 0; tile < Tiles.KINDS; tile++) {
+        int mapped = tile < NUMBER_TILES ? suits[tile / NUMBERS] * NUMBERS + tile % NUMBERS : tile;
+        canonical[tile] = mapped;
+        inverse[mapped] = tile;
+      }
+      for (int t = 0; t < physicalOf.length; t++) {
+        int physical = inverse[tokens.kind(t)];
+        physicalOf[t] = physical;
+        tokenOf[physical] = t;
+      }
+    }
+  }
 
   /** 入れ替える色（物理の色の番号の昇順）。 */
   private final int[] movable;
@@ -76,7 +100,16 @@ public final class SuitCanonicalizer {
    * @param variant ルール（四人打ちか三人打ち）
    */
   public SuitCanonicalizer(Variant variant) {
-    int suits = TileTokens.of(variant).movableSuits();
+    TileTokens tokens = TileTokens.of(variant);
+    int suits = tokens.movableSuits();
+    for (int man = 0; man < SUITS; man++) {
+      if (man != 0 && (suits & 1) == 0) continue;
+      for (int pin = 0; pin < SUITS; pin++) {
+        if (man != pin)
+          orders[man][pin] = new TileOrder(tokens, new int[] {man, pin, 3 - man - pin});
+      }
+    }
+    tileOrder = orders[0][1];
     movable = new int[Integer.bitCount(suits)];
     int index = 0;
     for (int suit = 0; suit < SUITS; suit++) {
@@ -126,22 +159,21 @@ public final class SuitCanonicalizer {
     for (int position = 0; position < movable.length; position++) {
       canonical[order[position]] = movable[position];
     }
-    for (int tile = 0; tile < Tiles.KINDS; tile++) {
-      int mapped =
-          tile < NUMBER_TILES ? canonical[tile / NUMBERS] * NUMBERS + tile % NUMBERS : tile;
-      tileMap[tile] = mapped;
-      inverse[mapped] = tile;
-    }
+    tileOrder = orders[canonical[0]][canonical[1]];
+  }
+
+  TileOrder tileOrder() {
+    return tileOrder;
   }
 
   /** 物理の牌を正準の牌にする（負の値はそのまま返す）。 */
   public int tile(int physicalTile) {
-    return physicalTile < 0 ? physicalTile : tileMap[physicalTile];
+    return physicalTile < 0 ? physicalTile : tileOrder.canonical[physicalTile];
   }
 
   /** 正準の牌を物理の牌に戻す。 */
   public int physical(int canonicalTile) {
-    return inverse[canonicalTile];
+    return tileOrder.inverse[canonicalTile];
   }
 
   /** 物理の色（萬子 0・筒子 1・索子 2）が正準の順で何番目かを返す（入れ替えない色はそのまま）。 */

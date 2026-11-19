@@ -88,16 +88,24 @@ public record NetworkInputs(
   public NetworkInputs {
     if (rows <= 0 || events < 0 || transitions < rows || actions < rows) {
       throw new IllegalArgumentException(
-          "invalid batch counts: rows=" + rows + " transitions=" + transitions + " actions=" + actions);
+          "invalid batch counts: rows="
+              + rows
+              + " transitions="
+              + transitions
+              + " actions="
+              + actions);
     }
     Objects.requireNonNull(format, "format");
     EnumMap<Tensor, NDArray> copy = new EnumMap<>(Tensor.class);
     for (Tensor tensor : Tensor.values()) {
       NDArray array = Objects.requireNonNull(tensors.get(tensor), tensor.name());
       Shape expected =
-          new Shape(count(format, tensor.axis(), rows, events, transitions, actions), format.width(tensor));
+          new Shape(
+              count(format, tensor.axis(), rows, events, transitions, actions),
+              format.width(tensor));
       if (!array.getShape().equals(expected)) {
-        throw new IllegalArgumentException(tensor + " has shape " + array.getShape() + ", expected " + expected);
+        throw new IllegalArgumentException(
+            tensor + " has shape " + array.getShape() + ", expected " + expected);
       }
       copy.put(tensor, array);
     }
@@ -166,7 +174,9 @@ public record NetworkInputs(
     for (Tensor tensor : Tensor.values()) {
       ByteBuffer section = Objects.requireNonNull(sections.get(tensor), tensor.name());
       Shape shape =
-          new Shape(count(format, tensor.axis(), rows, events, transitions, actions), format.width(tensor));
+          new Shape(
+              count(format, tensor.axis(), rows, events, transitions, actions),
+              format.width(tensor));
       arrays.put(tensor, manager.create(section.duplicate(), shape, type(tensor.element())));
     }
     return new NetworkInputs(
@@ -193,7 +203,8 @@ public record NetworkInputs(
    * @param actions 手の数
    * @return 個数
    */
-  public static int count(InputFormat format, Axis axis, int rows, int events, int transitions, int actions) {
+  public static int count(
+      InputFormat format, Axis axis, int rows, int events, int transitions, int actions) {
     return BatchPlan.count(format, axis, rows, events, transitions, actions);
   }
 
@@ -227,6 +238,11 @@ public record NetworkInputs(
   @Override
   public int action(int action, ActionColumn column) {
     return actionColumns[action * ACTION_WIDTH + column.ordinal()];
+  }
+
+  /** 転送ストリームで確保した入力の配列を、計算の完了まで持つマネージャーへ移す。 */
+  public void attachTensors(NDManager owner) {
+    for (NDArray tensor : tensors.values()) tensor.attach(owner);
   }
 
   /** 配列のマネージャー。作業用のマネージャーとしても使う。 */

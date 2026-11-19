@@ -24,6 +24,7 @@ import com.epsilon.prism.input.InputFormat;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -88,14 +89,16 @@ public final class EagerStages {
     for (Tensor tensor : Tensor.values()) {
       int count = NetworkInputs.count(format, tensor.axis(), rows, events, transitions, actions);
       int bytes = count * format.width(tensor) * tensor.element().bytes();
-      ByteBuffer copy = ByteBuffer.allocateDirect(Math.max(bytes, 1)).order(ByteOrder.nativeOrder());
+      ByteBuffer copy =
+          ByteBuffer.allocateDirect(Math.max(bytes, 1)).order(ByteOrder.nativeOrder());
       ByteBuffer source = batch.blob().duplicate();
       source.position(plan.offset(tensor)).limit(plan.offset(tensor) + bytes);
       copy.put(source.slice());
       copy.position(0);
       sections.put(tensor, copy);
     }
-    return NetworkInputs.of(manager, PinnedUploads.on(manager), format, rows, events, transitions, actions, sections);
+    return NetworkInputs.of(
+        manager, PinnedUploads.on(manager), format, rows, events, transitions, actions, sections);
   }
 
   /** ネットワークの部品。登録の順に子から拾う。 */
@@ -133,7 +136,8 @@ public final class EagerStages {
   }
 
   /** バッチの入力の形式と、行ごとのイベントの並び。値を型ごとの範囲の並びに直すために使う。 */
-  private record Rows(InputFormat format, int rows, int[] firstEvent, int[] events, int totalEvents) {
+  private record Rows(
+      InputFormat format, int rows, int[] firstEvent, int[] events, int totalEvents) {
 
     static Rows of(NetworkInputs inputs) {
       int rows = inputs.rows();
@@ -158,7 +162,11 @@ public final class EagerStages {
    * @param precision 計算の型
    * @return 段ごとの値
    */
-  public static Stages run(PrismNetwork network, ParameterStore store, NetworkInputs inputs, Precision precision) {
+  public static Stages run(
+      PrismNetwork network, ParameterStore store, NetworkInputs inputs, Precision precision) {
+    if (network.shape().eagerOnly()) {
+      throw new IllegalArgumentException("Stage inspection requires a HIP-compatible shape");
+    }
     InputFormat format = inputs.format();
     Pass pass = Pass.inference(precision);
     Context context = new Context(store, inputs.manager(), precision, false);
@@ -179,7 +187,8 @@ public final class EagerStages {
           NDArray events = parts.embedding().embed(context, inputs, index, type);
           typed.add(events);
           pieces.add(
-              NDArrays.scatterRows(events, index.eventSlots.array(), (long) rows.rows() * index.maxEvents)
+              NDArrays.scatterRows(
+                      events, index.eventSlots.array(), (long) rows.rows() * index.maxEvents)
                   .reshape(rows.rows(), index.maxEvents, hidden));
         }
       } else {
@@ -190,13 +199,8 @@ public final class EagerStages {
     }
     float[] embedded = floats(NDArrays.concat(typed, 0));
     NDArray tokens = NDArrays.concat(pieces, 1);
-    NDArray attributes =
-        NDArrays.scatterRows(
-                inputs.get(Tensor.RELATION).toType(DataType.INT32, false),
-                index.tokenSlots.array(),
-                (long) rows.rows() * index.tokens)
-            .reshape(rows.rows(), index.tokens, format.relation().width());
-    NDArray codes = RelationClass.codes(format, attributes, index.tokenTypes.array(), index.tileRelations.array());
+    NDArray inputTokens = tokens;
+    NDArray codes = RelationClass.codes(inputs, index, index.tokens);
     NDArray mask = index.tokenMask.array();
 
     // バックボーン: PrismNetwork と同じ層のメソッドで組む。全トークンの層は forward で、局・席・牌の層は fixed で局・席・牌を更新する。
@@ -240,33 +244,50 @@ public final class EagerStages {
 
     Map<String, Parameter> candidate = parameters(parts.candidate());
     NDArray packed =
-        FieldPack.of(format).transition().pack(
-            inputs.get(Tensor.TRANSITION_CATEGORY),
-            index.columns(FieldPack.of(format).transition()),
-            context.value(candidate.get("table")),
-            context.toCompute(inputs.get(Tensor.TRANSITION_SCALAR)),
-            context.toCompute(inputs.get(Tensor.DISCARD_EXACT)));
-    float[] statics = floats(context.linear(packed, candidate.get("project"), candidate.get("projectBias")));
-    float[] memory = floats(context.linear(states, candidate.get("keyValue"), candidate.get("keyValueBias")));
+        FieldPack.of(format)
+            .transition()
+            .pack(
+                inputs.get(Tensor.TRANSITION_CATEGORY),
+                index.columns(FieldPack.of(format).transition()),
+                context.value(candidate.get("table")),
+                context.toCompute(inputs.get(Tensor.TRANSITION_SCALAR)),
+                context.toCompute(inputs.get(Tensor.DISCARD_EXACT)));
+    float[] statics =
+        floats(context.linear(packed, candidate.get("project"), candidate.get("projectBias")));
+    float[] memory =
+        floats(context.linear(states, candidate.get("keyValue"), candidate.get("keyValueBias")));
     NDArray start = parts.candidate().forward(context, inputs, index, states);
     float[] candidates = floats(start);
     NDArray transitions = start;
     float[] rereadMemory = null;
     if (parts.reread() != null) {
-      rereadMemory = rereadMemory(context, shape, parameters(parts.reread()), states, events, rows, index.maxEvents);
-      transitions = parts.reread().forward(context, inputs, index, start, states, events);
+      NDArray source = parts.reread().encodedMemory(context, states, events);
+      int width = 2 * shape.attention();
+      float[] fixedMemory = floats(source.get(new NDIndex(":, :{}", fixed)));
+      rereadMemory = Arrays.copyOf(fixedMemory, fixedMemory.length + rows.totalEvents() * width);
+      float[] eventMemory = eventSection(floats(source), rows, index.tokens, fixed, width);
+      System.arraycopy(eventMemory, 0, rereadMemory, fixedMemory.length, eventMemory.length);
+      transitions = parts.reread().forward(context, inputs, index, start, source);
     }
-    NDArray values = parts.discardValue().forward(context, transitions, inputs.get(Tensor.DISCARD_EXACT));
+    NDArray values =
+        parts.discardValue().forward(context, transitions, inputs.get(Tensor.DISCARD_EXACT));
     NDArray decision = states.get(":, {}, :", TokenType.ROUND.first(format));
     NDArray scores =
         parts
             .gates()
-            .scores(context, index, context.toFloat(transitions), values, decision, inputs.get(Tensor.ACTION_EXACT));
+            .scores(
+                context,
+                index,
+                context.toFloat(transitions),
+                values,
+                decision,
+                inputs.get(Tensor.ACTION_EXACT));
     float[] dense = scores.toFloatArray();
     float[] forward = network.forward(store, inputs, pass).scores().toFloatArray();
     for (int i = 0; i < dense.length; i++) {
       if (Float.floatToRawIntBits(dense[i]) != Float.floatToRawIntBits(forward[i])) {
-        throw new IllegalStateException("eager stages diverged from PrismNetwork.forward at score " + i);
+        throw new IllegalStateException(
+            "eager stages diverged from PrismNetwork.forward at score " + i);
       }
     }
     float[] ordered = ordered(inputs, dense, index.actionCapacity);
@@ -295,7 +316,8 @@ public final class EagerStages {
    * @param precision 計算の型
    * @return s（バッチの手の順）
    */
-  public static float[] scores(PrismNetwork network, ParameterStore store, NetworkInputs inputs, Precision precision) {
+  public static float[] scores(
+      PrismNetwork network, ParameterStore store, NetworkInputs inputs, Precision precision) {
     NDArray scores = network.forward(store, inputs, Pass.inference(precision)).scores();
     return ordered(inputs, scores.toFloatArray(), Math.toIntExact(scores.getShape().get(1)));
   }
@@ -362,7 +384,8 @@ public final class EagerStages {
     NDArray table =
         context.own(
             bias.concat(
-                context.working().zeros(new Shape(RelationClass.ROWS, attention), DataType.FLOAT32), 1));
+                context.working().zeros(new Shape(RelationClass.ROWS, attention), DataType.FLOAT32),
+                1));
     return NDArrays.packedRelationScaledDotProductAttention(
         query,
         keyValue,
@@ -388,38 +411,9 @@ public final class EagerStages {
         context.slice(context.value(parameters.get("qkvBias")), attention, 3L * attention));
   }
 
-  /**
-   * 候補層の 2 段目のキーとバリューを計算する。局・席・牌は y を射影して [R, F, 2A] に、イベントは 2 段目のゲインで正規化してから射影して
-   * [イベント, 2A] にし、この順に並べて返す。
-   */
-  private static float[] rereadMemory(
-      Context context,
-      PrismShape shape,
-      Map<String, Parameter> parameters,
-      NDArray states,
-      NDArray events,
-      Rows rows,
-      int maxEvents) {
-    int width = 2 * shape.attention();
-    float[] fixed = floats(context.linear(states, parameters.get("keyValue"), parameters.get("keyValueBias")));
-    float[] out = new float[fixed.length + rows.totalEvents() * width];
-    System.arraycopy(fixed, 0, out, 0, fixed.length);
-    if (events != null) {
-      NDArray normalized = context.norm(events, parameters.get("eventNorm"), shape.epsilon());
-      float[] eventValues =
-          eventSection(
-              floats(context.linear(normalized, parameters.get("keyValue"), parameters.get("keyValueBias"))),
-              rows,
-              maxEvents,
-              0,
-              width);
-      System.arraycopy(eventValues, 0, out, fixed.length, eventValues.length);
-    }
-    return out;
-  }
-
   /** [行, n, w] の行ごとの並びを、型ごとの範囲の並び（局・席・牌・イベント）に直す。{@code fixedOnly} なら局・席・牌だけを並べる。 */
-  private static float[] sectioned(float[] values, Rows rows, int perRow, int width, boolean fixedOnly) {
+  private static float[] sectioned(
+      float[] values, Rows rows, int perRow, int width, boolean fixedOnly) {
     int seats = TokenType.SEAT.perRow(rows.format());
     int tiles = TokenType.TILE.perRow(rows.format());
     int fixed = rows.format().fixedTokens();
@@ -432,7 +426,12 @@ public final class EagerStages {
         copy(values, out, (r * perRow + 1 + s) * width, (count + seats * r + s) * width, width);
       }
       for (int t = 0; t < tiles; t++) {
-        copy(values, out, (r * perRow + 1 + seats + t) * width, ((1 + seats) * count + tiles * r + t) * width, width);
+        copy(
+            values,
+            out,
+            (r * perRow + 1 + seats + t) * width,
+            ((1 + seats) * count + tiles * r + t) * width,
+            width);
       }
     }
     if (!fixedOnly) {
@@ -443,11 +442,17 @@ public final class EagerStages {
   }
 
   /** [行, n, w] の行ごとのイベント（行の中の位置 {@code offset} から）を、イベントの範囲の並び [イベント, w] に直す。 */
-  private static float[] eventSection(float[] values, Rows rows, int perRow, int offset, int width) {
+  private static float[] eventSection(
+      float[] values, Rows rows, int perRow, int offset, int width) {
     float[] out = new float[rows.totalEvents() * width];
     for (int r = 0; r < rows.rows(); r++) {
       for (int e = 0; e < rows.events()[r]; e++) {
-        copy(values, out, (r * perRow + offset + e) * width, (rows.firstEvent()[r] + e) * width, width);
+        copy(
+            values,
+            out,
+            (r * perRow + offset + e) * width,
+            (rows.firstEvent()[r] + e) * width,
+            width);
       }
     }
     return out;

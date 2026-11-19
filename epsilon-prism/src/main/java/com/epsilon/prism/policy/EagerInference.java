@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Function;
 
 /**
  * eager で推論するバックエンド（デバイス 1 つ分）。保存したネットワークを凍結して持ち（{@link FrozenNetwork}。計算の精度は開くときに
@@ -34,11 +35,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 final class EagerInference implements DeviceInference {
 
   private final FrozenNetwork network;
+  private final Function<NetworkInputs, NDArray> forward;
   private final Map<DecisionDevicePipeline.Slot, PtStream> streams = new IdentityHashMap<>();
   private final ConcurrentLinkedQueue<PinnedUploads> uploads = new ConcurrentLinkedQueue<>();
 
-  private EagerInference(FrozenNetwork network) {
+  EagerInference(FrozenNetwork network, Function<NetworkInputs, NDArray> forward) {
     this.network = network;
+    this.forward = forward;
   }
 
   /**
@@ -51,7 +54,8 @@ final class EagerInference implements DeviceInference {
    * @throws IOException 読めないか、形式・フィンガープリント・重みが合わないとき
    */
   static EagerInference load(Path model, Device device, Precision precision) throws IOException {
-    return new EagerInference(FrozenNetwork.load(model, device, precision));
+    var network = FrozenNetwork.load(model, device, precision);
+    return new EagerInference(network, network::scores);
   }
 
   @Override
@@ -87,7 +91,7 @@ final class EagerInference implements DeviceInference {
    * @return s [行, 手の容量]（FP32。列 k は行の k 番目の手）
    */
   NDArray scores(NetworkInputs inputs) {
-    return network.scores(inputs);
+    return forward.apply(inputs);
   }
 
   @Override

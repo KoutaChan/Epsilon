@@ -1,6 +1,8 @@
 package com.epsilon.prism.policy;
 
+import com.epsilon.agent.observe.EventRecords.Prefix;
 import com.epsilon.agent.observe.Observation;
+import com.epsilon.prism.backend.EventPages;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
@@ -10,6 +12,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -37,9 +40,11 @@ final class Encoding {
    *
    * @param batch 計画を確定した入力
    * @param first バッチの最初の行の位置（計画の中の位置）
+   * @param pages このバッチのイベントの配置表。通常推論では {@code null}
    */
-  record Chunk(HostInputs batch, int first) {}
+  record Chunk(HostInputs batch, int first, EventPages pages) {}
 
+  private final Function<HostInputs, EventPages> pageBatches;
   private final InputFormat format;
   private final List<Chunk> chunks = new ArrayList<>();
   private List<PolicyRequest> rows;
@@ -55,8 +60,10 @@ final class Encoding {
    * 空の作業領域を作る。
    *
    * @param format 入力の形式。O のルール（四人打ちか三人打ち）と、行ごとの局・席・牌のトークンの数を持つ
+   * @param pageBatches バッチの配置表を返す関数。通常推論では {@code null}
    */
-  Encoding(InputFormat format) {
+  Encoding(InputFormat format, Function<HostInputs, EventPages> pageBatches) {
+    this.pageBatches = pageBatches;
     this.format = format;
   }
 
@@ -191,7 +198,9 @@ final class Encoding {
 
   private void seal(HostInputs batch, int first, int widest) {
     batch.plan().seal();
-    chunks.add(new Chunk(batch, first));
+    EventPages pages = pageBatches == null ? null : pageBatches.apply(batch);
+    if (pages != null) pages.bind(batch.input());
+    chunks.add(new Chunk(batch, first, pages));
     paddedTokens += (long) batch.plan().rows() * widest;
   }
 
@@ -214,7 +223,15 @@ final class Encoding {
       Chunk target = chunks.get(chunk);
       Observation o = observations[planned[position]];
       int row = position - target.first();
-      writer.write(o, target.batch(), row);
+      if (target.pages() == null) {
+        writer.write(o, target.batch(), row);
+      } else {
+        PolicyRequest request = rows.get(planned[position]);
+        Prefix prefix = request.records().eventPrefix(request.record());
+        target.batch().input().publishedPrefix(row, prefix);
+        writer.write(o, request.history(), target.batch(), row);
+        if (prefix == null) target.pages().observeSnapshot(row, o.events(), o.kanDoraIndicators());
+      }
     }
   }
 

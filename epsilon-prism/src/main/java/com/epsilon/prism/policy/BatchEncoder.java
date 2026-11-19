@@ -6,6 +6,7 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtNDManager;
 import com.epsilon.agent.runtime.NetworkRuntime;
+import com.epsilon.prism.backend.EventPages;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputFormat;
@@ -13,6 +14,7 @@ import com.epsilon.prism.learn.FitPlan;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.IntFunction;
@@ -66,6 +68,8 @@ final class BatchEncoder implements AutoCloseable {
     }
   }
 
+  final boolean eventPages;
+  private final ConcurrentHashMap<HostInputs, EventPages> pageBatches = new ConcurrentHashMap<>();
   private final InputFormat format;
   private final BatchPlan.Capacity capacity;
   private final int budget;
@@ -83,6 +87,14 @@ final class BatchEncoder implements AutoCloseable {
    * @throws IllegalArgumentException 最も長い 1 行が上限に入らないとき
    */
   BatchEncoder(InputFormat format, int budget, Memory memory) {
+    this(format, budget, memory, false);
+  }
+
+  BatchEncoder(InputFormat format, int budget, Memory memory, boolean eventPages) {
+    if (eventPages && !format.eventsSettleOnPublication()) {
+      throw new IllegalArgumentException("event pages require immutable public event columns");
+    }
+    this.eventPages = eventPages;
     if (budget < format.fixedTokens() + format.maxEvents()) {
       throw new IllegalArgumentException("token budget cannot hold the longest row: " + budget);
     }
@@ -110,7 +122,14 @@ final class BatchEncoder implements AutoCloseable {
   Encoding acquire(List<PolicyRequest> rows) {
     Encoding encoding = encodings.poll();
     if (encoding == null) {
-      encoding = new Encoding(format);
+      encoding =
+          new Encoding(
+              format,
+              eventPages
+                  ? batch ->
+                      pageBatches.computeIfAbsent(
+                          batch, ignored -> new EventPages(format, capacity, blobs))
+                  : null);
     }
     encoding.reset(rows);
     return encoding;
@@ -144,6 +163,10 @@ final class BatchEncoder implements AutoCloseable {
   /** 作業領域とバッチをプールに返す。バッチの blob を読む処理が全て終わった後に呼ぶ。 */
   void release(Encoding encoding) {
     for (Encoding.Chunk chunk : encoding.chunks()) {
+      if (chunk.pages() != null) {
+        chunk.pages().clear(chunk.batch().plan().rows());
+        chunk.batch().input().releaseEvents();
+      }
       batches.add(chunk.batch());
     }
     encoding.clear();
@@ -177,6 +200,7 @@ final class BatchEncoder implements AutoCloseable {
     HostInputs batch = batches.poll();
     if (batch == null) {
       batch = HostInputs.allocate(format, capacity, blobs);
+      if (eventPages) batch.input().enablePublishedEvents();
     }
     batch.plan().clear();
     return batch;
@@ -187,6 +211,7 @@ final class BatchEncoder implements AutoCloseable {
   public void close() {
     encodings.clear();
     batches.clear();
+    pageBatches.clear();
     if (pinned != null) {
       pinned.close();
     }

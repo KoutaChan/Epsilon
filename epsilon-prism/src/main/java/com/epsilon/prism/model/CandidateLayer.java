@@ -8,8 +8,8 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
 import com.epsilon.prism.input.InputBlob.Tensor;
-import com.epsilon.prism.input.InputFormat.TransitionRole;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.InputSchema.TransitionField;
 import com.epsilon.prism.model.FitProbe.Stage;
 
 /**
@@ -34,6 +34,38 @@ final class CandidateLayer extends Module {
   /** 遷移のフィールドの埋め込みの次元。 */
   static final int DIMENSION = 8;
 
+  /** 注意に渡すキー・値の補正表と、各遷移のキーから表を引くための行番号。 */
+  record Offsets(NDArray table, NDArray ids) {}
+
+  /** 遷移ごとの追加情報を、注意のキー・値または候補の残差に反映する。 */
+  interface Features {
+    default boolean fusedAttention(Context context) {
+      return false;
+    }
+
+    Features STANDARD = new Features() {};
+
+    default NDArray attention(
+        Context context,
+        NetworkInputs inputs,
+        BatchIndex index,
+        NDArray query,
+        NDArray memory,
+        NDArray base) {
+      return null;
+    }
+
+    default Offsets offsets(Context context, NetworkInputs inputs, NDArray base) {
+      return new Offsets(base, inputs.get(Tensor.TRANSITION_CODE).toType(DataType.INT32, false));
+    }
+
+    default NDArray add(
+        Context context, NetworkInputs inputs, BatchIndex index, NDArray states, NDArray residual) {
+      return residual;
+    }
+  }
+
+  private final Features features;
   private final InputFormat format;
   private final FieldPack pack;
   private final int attention;
@@ -64,7 +96,8 @@ final class CandidateLayer extends Module {
    * @param shape ネットワークの形
    * @param format 入力の形式
    */
-  CandidateLayer(PrismShape shape, InputFormat format) {
+  CandidateLayer(PrismShape shape, InputFormat format, Features features) {
+    this.features = features;
     this.format = format;
     pack = FieldPack.of(format).transition();
     int hidden = shape.hidden();
@@ -120,13 +153,18 @@ final class CandidateLayer extends Module {
     NDArray packed =
         pack.pack(category, index.columns(pack), context.value(table), scalars(context, inputs));
     // 計測のときは t0 と、Cross-Attention の FP32 の入力と出力を葉にして、逆伝播を段に分けて測る（Context#probeCut）
+    boolean fused = features.fusedAttention(context);
+    NDArray initial =
+        context
+            .linear(packed, project, projectBias)
+            .add(
+                context.linear(
+                    tileStates(context, format, category, index, states), tileEntry, null));
+    // A taped candidate attention and the residual both back-propagate through this value.
     NDArray start =
-        context.probeCut(
-            context
-                .linear(packed, project, projectBias)
-                .add(context.linear(tileStates(context, format, category, index, states), tileEntry, null)),
-            Stage.CANDIDATE_START_BACKWARD,
-            0);
+        fused
+            ? context.cutCandidateInput(initial, Stage.CANDIDATE_START_BACKWARD)
+            : context.probeCut(initial, Stage.CANDIDATE_START_BACKWARD, 0);
 
     NDArray queries =
         context
@@ -134,24 +172,29 @@ final class CandidateLayer extends Module {
             .reshape(transitions, heads, PrismShape.HEAD_WIDTH);
     NDArray memory = context.linear(states, keyValue, keyValueBias);
     NDArray codes = context.own(context.fp32(codeKey).concat(context.fp32(codeValue), 1));
-    NDManager working = context.working();
-    NDArray attended =
-        context.probeCut(
-            NDArrays.mappedGroupedIndexedScaledDotProductAttention(
-                context.probeCut(context.toFloat(queries), Stage.CROSS_PROJECTION_BACKWARD, 0),
-                context.probeCut(context.toFloat(memory), Stage.CROSS_PROJECTION_BACKWARD, 0),
-                index.transitionRows.array(),
-                codes,
-                inputs.get(Tensor.TRANSITION_CODE).toType(DataType.INT32, false),
-                working.zeros(new Shape(transitions, 1, 2L * attention), DataType.FLOAT32),
-                working.zeros(new Shape(transitions, 1), DataType.INT32),
-                EncoderLayer.SCALE),
-            Stage.CROSS_ATTENTION_BACKWARD,
-            0);
+    NDArray attentionResult;
+    if (fused) {
+      attentionResult = features.attention(context, inputs, index, queries, memory, codes);
+    } else {
+      Offsets offsets = features.offsets(context, inputs, codes);
+      NDManager working = context.working();
+      attentionResult =
+          NDArrays.mappedGroupedIndexedScaledDotProductAttention(
+              context.probeCut(context.toFloat(queries), Stage.CROSS_PROJECTION_BACKWARD, 0),
+              context.probeCut(context.toFloat(memory), Stage.CROSS_PROJECTION_BACKWARD, 0),
+              index.transitionRows.array(),
+              offsets.table(),
+              offsets.ids(),
+              working.zeros(new Shape(transitions, 1, 2L * attention), DataType.FLOAT32),
+              working.zeros(new Shape(transitions, 1), DataType.INT32),
+              EncoderLayer.SCALE);
+    }
+    NDArray attended = context.probeCut(attentionResult, Stage.CROSS_ATTENTION_BACKWARD, 0);
     NDArray residual =
         start.add(
             context.linear(
                 context.toCompute(attended.reshape(transitions, attention)), output, outputBias));
+    residual = features.add(context, inputs, index, states, residual);
     NDArray hidden =
         Context.silu(context.linear(context.norm(residual, ffnNorm, epsilon), up, upBias));
     return residual.add(context.linear(hidden, down, downBias));
@@ -174,8 +217,9 @@ final class CandidateLayer extends Module {
   static NDArray discardTiles(InputFormat format, NDArray category) {
     NDArray values = category.toType(DataType.INT32, false);
     NDArray callDiscard =
-        values.get(new NDIndex(":, {}", format.transitionColumn(TransitionRole.CALL_DISCARD)));
-    NDArray mainTile = values.get(new NDIndex(":, {}", format.transitionColumn(TransitionRole.MAIN_TILE)));
+        values.get(new NDIndex(":, {}", format.transition().column(TransitionField.CALL_DISCARD)));
+    NDArray mainTile =
+        values.get(new NDIndex(":, {}", format.transition().column(TransitionField.MAIN_TILE)));
     return NDArrays.where(callDiscard.gt(0), callDiscard, mainTile);
   }
 

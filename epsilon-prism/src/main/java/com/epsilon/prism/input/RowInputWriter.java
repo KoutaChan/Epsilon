@@ -1,5 +1,6 @@
 package com.epsilon.prism.input;
 
+import com.epsilon.agent.observe.EventRecords.Prefix;
 import com.epsilon.agent.observe.codec.Bfloat16;
 import com.epsilon.agent.observe.codec.UnsignedBytes;
 import com.epsilon.mahjong.engine.EngineDecisionKind;
@@ -11,19 +12,27 @@ import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.Axis;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.input.InputSchema.ActionRole;
+import com.epsilon.prism.input.InputSchema.EventField;
+import com.epsilon.prism.input.InputSchema.KeyBlock;
+import com.epsilon.prism.input.InputSchema.RelationAttribute;
+import com.epsilon.prism.input.InputSchema.RoundField;
+import com.epsilon.prism.input.InputSchema.SeatField;
+import com.epsilon.prism.input.InputSchema.TileField;
+import com.epsilon.prism.input.InputSchema.TransitionField;
+import com.epsilon.prism.input.InputSchema.WinExact;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * 1 行分のネットワークの入力を {@link HostBatch} に書く、型つきのライター。フィールドの型（局・席・牌・イベント・遷移のフィールドの enum と、
- * 関係の属性の enum）は型引数で決まる。ルールごとのモジュールは、フィールドの型だけを決めてこのクラスを継ぐ。{@link #bind} でバッチの別の行に
- * 付け替えて使い回し、書くときにメモリを確保しない。エンコードのスレッドごとに 1 つ持つ。
+ * 入力形式の各フィールドを1行分の下書きに書く。{@link #bind} でバッチの行に結び付けて使い回す。
  *
  * <p>全てのテンソルの 1 行分を下書きに書き、{@link #commit} でバッチの領域へまとめて写す。写す前に行ごとに 1 回、キーのコードがキーの範囲に
  * 収まるかを確かめる。下書きは付け替えのときに行の分を 0 にするので、書かなかった要素は 0 になり、使い回したバッチに前の値は残らない。途中で
@@ -36,20 +45,9 @@ import java.util.Objects;
  * フィールドは {@link InputFormat.Exact#scale} で割ってから書く。席・牌・イベント・遷移・手の番号は行の中の番号で、バッチの中の位置には
  * このライターが {@link BatchPlan} を見て直す。
  *
- * @param <R> 局のフィールド
- * @param <S> 席のフィールド
- * @param <T> 牌のフィールド
- * @param <E> イベントのフィールド
- * @param <X> 遷移のフィールド
- * @param <L> 関係の属性
  */
-public class RowInputWriter<
-    R extends Enum<R> & BoundedField,
-    S extends Enum<S> & BoundedField,
-    T extends Enum<T> & BoundedField,
-    E extends Enum<E> & BoundedField,
-    X extends Enum<X> & BoundedField,
-    L extends Enum<L> & BoundedField> {
+public final class RowInputWriter {
+  private final InputFormat schema;
 
   private static final int NONE = -1;
   private static final Axis[] AXES = Axis.values();
@@ -66,10 +64,12 @@ public class RowInputWriter<
   private final int actionColumnWidth;
   private final int rowColumnWidth;
   private final int keys;
-  private final long allKeys;
-
-  /** 関係の属性の下書きでの、型ごとの最初のトークンの位置（局・席・牌・イベントの順。イベントより前の型はトークンの数が決まっている）。 */
-  private final int[] relationStart;
+  private final byte[][] initialCodes;
+  private final int tileStart;
+  private final byte[] handCodes;
+  private final int handColumn;
+  private int nextCodeRow;
+  private int tileCodeStart;
 
   /** コードの下書きの位置ごとに、そのキーの範囲の最初のコード（キーの並びを遷移の数だけ繰り返す）。 */
   private final byte[] codeFloor;
@@ -77,18 +77,20 @@ public class RowInputWriter<
   /** 同じく、キーの範囲の最後のコード。 */
   private final byte[] codeCeiling;
 
-  private final TokenWriter<R> round;
-  private final TokenWriter<S> seat;
-  private final TokenWriter<T> tile;
-  private final TokenWriter<E> event;
-  private final TokenWriter<X> transition;
-  private final TokenWriter<L> relation;
+  private final TokenWriter<RoundField> round;
+  private final TokenWriter<SeatField> seat;
+  private final TokenWriter<TileField> tile;
+  private final TokenWriter<EventField> event;
+  private final TokenWriter<TransitionField> transition;
+  private final TokenWriter<RelationAttribute> relation;
+  private final InputColumn[] columns;
+  private final InputSchema.RowScalar[] scalarColumns;
+  private final short[] eventAgeValues;
   private final short[] roundScalars;
   private final short[] seatScalars;
   private final short[] eventScalars;
   private final short[] transitionScalars;
   private final byte[] codes;
-  private final long[] keysWritten = new long[Limits.MAX_TRANSITIONS];
   private final float[] discardExact;
   private final float[] actionExact;
   private final int[] actionColumns;
@@ -102,43 +104,21 @@ public class RowInputWriter<
   private FloatBuffer floats;
   private IntBuffer ints;
   private BatchPlan plan;
+  private final int transitionCodeWidth;
+  private final CandidateWriter candidate;
   private int row = NONE;
   private int events;
   private int transitions;
   private int actions;
   private long actionsWritten;
+  private int eventPrefix;
+  private boolean published;
 
-  /**
-   * 入力形式のフィールドの配置で、ライターを作る。
-   *
-   * @param format 入力形式
-   * @param roundLayout 局のフィールドの配置（入力形式の {@link InputFormat#round()} と同じもの）
-   * @param seatLayout 席のフィールドの配置
-   * @param tileLayout 牌のフィールドの配置
-   * @param eventLayout イベントのフィールドの配置
-   * @param transitionLayout 遷移のフィールドの配置
-   * @param relationLayout 関係の属性の配置
-   * @param blocks キーの範囲（キーの順）
-   * @throws IllegalArgumentException 配置が入力形式のものでないとき、キーが 64 個を超えるとき、または範囲のキーの数の合計が入力形式のキーの数と
-   *     合わないとき
-   */
-  protected RowInputWriter(
-      InputFormat format,
-      TokenLayout<R> roundLayout,
-      TokenLayout<S> seatLayout,
-      TokenLayout<T> tileLayout,
-      TokenLayout<E> eventLayout,
-      TokenLayout<X> transitionLayout,
-      TokenLayout<L> relationLayout,
-      List<? extends InputFormat.KeyRange> blocks) {
-    if (roundLayout != format.round()
-        || seatLayout != format.seat()
-        || tileLayout != format.tile()
-        || eventLayout != format.event()
-        || transitionLayout != format.transition()
-        || relationLayout != format.relation()) {
-      throw new IllegalArgumentException("the writer layouts are not the " + format.variant() + " input layouts");
-    }
+  /** 入力形式に合わせて各軸の下書きを確保する。 */
+  public RowInputWriter(InputFormat format) {
+    schema = format;
+    transitionCodeWidth = format.width(Tensor.TRANSITION_CODE);
+    candidate = format.has(InputFeature.CANDIDATE_SEGMENTS) ? new CandidateWriter(format) : null;
     seats = format.seats();
     tiles = format.tiles();
     decisionKinds = Vocabulary.of(EngineDecisionKind.class, format.variant());
@@ -151,20 +131,45 @@ public class RowInputWriter<
     actionColumnWidth = format.width(Tensor.ACTION_COLUMN);
     rowColumnWidth = format.width(Tensor.ROW_COLUMN);
     keys = format.keys().count();
-    if (keys > Long.SIZE) {
-      throw new IllegalArgumentException("more than " + Long.SIZE + " keys: " + keys);
+    tileStart = format.block(KeyBlock.TILE).firstKey();
+    handCodes = new byte[tiles];
+    handColumn = format.tile().column(TileField.HAND);
+    initialCodes = new byte[seats + 1][tileStart];
+    for (int source = -1; source < seats; source++) {
+      byte[] row = initialCodes[source + 1];
+      row[format.block(KeyBlock.ROUND).firstKey()] =
+          (byte) format.block(KeyBlock.ROUND).firstCode();
+      for (int seat = 0; seat < seats; seat++) {
+        row[format.block(KeyBlock.SEAT).firstKey() + seat] =
+            (byte) format.seatCode(seat, seat == source);
+      }
     }
-    allKeys = keys == Long.SIZE ? -1L : (1L << keys) - 1;
-    relationStart = relationStarts();
-    codeFloor = codeBounds(blocks, false);
-    codeCeiling = codeBounds(blocks, true);
+    codeFloor = codeBounds(false);
+    codeCeiling = codeBounds(true);
     int maxEvents = format.maxEvents();
-    round = new TokenWriter<>(roundLayout, 1);
-    seat = new TokenWriter<>(seatLayout, seats);
-    tile = new TokenWriter<>(tileLayout, tiles);
-    event = new TokenWriter<>(eventLayout, maxEvents);
-    transition = new TokenWriter<>(transitionLayout, Limits.MAX_TRANSITIONS);
-    relation = new TokenWriter<>(relationLayout, format.fixedTokens() + maxEvents);
+    round = new TokenWriter<>(format.round(), 1);
+    seat = new TokenWriter<>(format.seat(), seats);
+    tile = new TokenWriter<>(format.tile(), tiles);
+    event = new TokenWriter<>(format.event(), maxEvents);
+    transition = new TokenWriter<>(format.transition(), Limits.MAX_TRANSITIONS);
+    relation = new TokenWriter<>(format.relation(), format.fixedTokens() + maxEvents);
+    List<InputColumn> columns = new ArrayList<>();
+    bindColumns(columns, format.round(), round);
+    bindColumns(columns, format.tile(), tile);
+    bindColumns(columns, format.event(), event);
+    bindColumns(columns, format.relation(), relation);
+    this.columns = columns.toArray(InputColumn[]::new);
+    List<InputSchema.RowScalar> scalars = new ArrayList<>();
+    scalars.addAll(Arrays.asList(InputSchema.RoundScalar.values()));
+    scalars.addAll(Arrays.asList(InputSchema.SeatScalar.values()));
+    scalars.addAll(Arrays.asList(InputSchema.EventScalar.values()));
+    scalarColumns = scalars.toArray(InputSchema.RowScalar[]::new);
+    eventAgeValues = new short[maxEvents];
+    float ageScale = InputSchema.EventScalar.AGE.scale(format.variant());
+    for (int age = 0; age < maxEvents; age++) {
+      eventAgeValues[format.has(InputFeature.PUBLIC_ORDER_EVENTS) ? age : maxEvents - 1 - age] =
+          Bfloat16.fromFloat(age / ageScale);
+    }
     roundScalars = new short[roundScalarWidth];
     seatScalars = new short[seats * seatScalarWidth];
     eventScalars = new short[maxEvents * eventScalarWidth];
@@ -176,6 +181,30 @@ public class RowInputWriter<
     rowColumns = new int[rowColumnWidth];
   }
 
+  private <F extends Enum<F> & InputColumn.Field> void bindColumns(
+      List<InputColumn> columns, TokenLayout<F> layout, TokenWriter<F> writer) {
+    for (F field : layout.fields()) {
+      columns.add(
+          new InputColumn(
+              field.source(schema),
+              writer.draft,
+              layout.column(field, 0),
+              layout.width(),
+              layout.spec(field)));
+    }
+  }
+
+  void writeColumns(RowFacts facts) {
+    for (InputColumn column : columns) column.write(facts);
+    for (InputSchema.RowScalar column : scalarColumns) column.write(facts, this);
+  }
+
+  void eventAges(int count) {
+    int start = published ? eventPrefix : 0;
+    int first = schema.has(InputFeature.PUBLIC_ORDER_EVENTS) ? 0 : eventAgeValues.length - count;
+    System.arraycopy(eventAgeValues, first + start, eventScalars, start, count - start);
+  }
+
   /**
    * バッチの中の行に付け替え、その行の分の下書きを 0 にする。
    *
@@ -183,17 +212,24 @@ public class RowInputWriter<
    * @param row バッチの中の行の番号
    * @return このライター
    * @throws IllegalStateException バッチの計画が確定していないとき
-   * @throws IllegalArgumentException 行のイベントの数が入力形式の上限を超えるとき
+   * @throws IllegalArgumentException バッチの形式が異なるとき、または行のイベントの数が上限を超えるとき
    */
-  public RowInputWriter<R, S, T, E, X, L> bind(HostBatch batch, int row) {
+  public RowInputWriter bind(HostBatch batch, int row) {
     BatchPlan target = batch.plan();
     if (!target.sealed()) {
       throw new IllegalStateException("batch plan must be sealed before writing rows");
     }
     if (batch != this.batch) {
+      if (target.format() != schema) {
+        throw new IllegalArgumentException(
+            "Writer format "
+                + schema.fingerprint()
+                + " does not match batch format "
+                + target.format().fingerprint());
+      }
       // バッチが替わったときだけ、このスレッド用にバッファの複製を作る（書き込みは全て絶対位置で行う）。
       this.batch = batch;
-      bytes = batch.blob().duplicate().clear().order(ByteOrder.LITTLE_ENDIAN);
+      bytes = batch.storage().duplicate().clear().order(ByteOrder.LITTLE_ENDIAN);
       shorts = bytes.asShortBuffer();
       floats = bytes.asFloatBuffer();
       ints = bytes.asIntBuffer();
@@ -213,22 +249,66 @@ public class RowInputWriter<
     Arrays.fill(seatScalars, (short) 0);
     Arrays.fill(eventScalars, 0, events * eventScalarWidth, (short) 0);
     Arrays.fill(transitionScalars, 0, transitions * transitionScalarWidth, (short) 0);
-    Arrays.fill(keysWritten, 0, transitions, 0L);
+    nextCodeRow = 0;
     Arrays.fill(discardExact, 0, transitions * discardExactWidth, 0f);
     Arrays.fill(actionExact, 0, actions * actionExactWidth, 0f);
     Arrays.fill(priorShanten, 0, actions, 0f);
     Arrays.fill(priorUkeire, 0, actions, 0f);
     actionsWritten = 0L;
+    eventPrefix = 0;
+    published = false;
+    batch.bindEvents(row, null);
     return this;
   }
 
   /**
-   * 局のトークンのフィールドを書くライターを返す。
+   * 履歴の確定した公開の位置までの、イベントの行と関係のイベントの行を下書きに写す。付け替えの後、列を書く前に呼ぶ。
    *
-   * @return 局のトークンに付けたライター
+   * @param positions 写す公開の位置の数（履歴の確定した位置の数と同じこと）
    */
-  public TokenWriter<R> round() {
-    return round.at(0);
+  void restoreEvents(EventHistory history, int positions) {
+    if (positions != history.positions()) {
+      throw new IllegalStateException(
+          "history holds " + history.positions() + " settled positions, not " + positions);
+    }
+    System.arraycopy(history.eventRows(), 0, event.draft, 0, positions * event.width);
+    System.arraycopy(
+        history.relationRows(),
+        0,
+        relation.draft,
+        schema.fixedTokens() * relation.width,
+        positions * relation.width);
+    eventPrefix = positions;
+  }
+
+  /** 既に公開したトークンは CPU の下書きにも戻さず、新しい位置だけを同じ列のライターで符号化する。 */
+  void writePublished(RowFacts facts, EventHistory.Bytes previous, Prefix prefix) {
+    published = true;
+    eventPrefix = facts.fromPosition;
+    writeColumns(facts);
+    batch.bindEvents(
+        row,
+        EventHistory.Bytes.publish(
+            schema, previous, prefix, event.draft, eventScalars, relation.draft));
+  }
+
+  /** 列を書き終えた下書きの、確定した公開の位置 {@code to} までの行を履歴に写す。 */
+  void saveEvents(EventHistory history, int to) {
+    history.saveRows(
+        event.draft,
+        event.width,
+        relation.draft,
+        schema.fixedTokens() * relation.width,
+        relation.width,
+        to);
+  }
+
+  void prepareCodes(RowFacts facts) {
+    for (int token = 0; token < tiles; token++) {
+      int count = tile.draft[token * tile.width + handColumn];
+      handCodes[token] = (byte) schema.tileCode(count, false, null, false);
+    }
+    if (candidate != null) candidate.prepare(facts, tile.draft, seat.draft, handCodes);
   }
 
   /**
@@ -237,28 +317,8 @@ public class RowInputWriter<
    * @param relativeSeat 観測者から見た相対席
    * @return その席のトークンに付けたライター
    */
-  public TokenWriter<S> seat(int relativeSeat) {
+  public TokenWriter<SeatField> seat(int relativeSeat) {
     return seat.at(relativeSeat);
-  }
-
-  /**
-   * 牌のトークンのフィールドを書くライターを返す。
-   *
-   * @param token 色を正規化した順での、牌のトークンの番号
-   * @return その牌のトークンに付けたライター
-   */
-  public TokenWriter<T> tile(int token) {
-    return tile.at(token);
-  }
-
-  /**
-   * イベントのトークンのフィールドを書くライターを返す。
-   *
-   * @param position 公開イベントの順の番号
-   * @return そのイベントのトークンに付けたライター
-   */
-  public TokenWriter<E> event(int position) {
-    return event.at(position);
   }
 
   /**
@@ -267,21 +327,8 @@ public class RowInputWriter<
    * @param transition 行の中の遷移の番号
    * @return その遷移に付けたライター
    */
-  public TokenWriter<X> transition(int transition) {
+  public TokenWriter<TransitionField> transition(int transition) {
     return this.transition.at(transition);
-  }
-
-  /**
-   * トークンの関係の属性を書くライターを返す。
-   *
-   * @param type トークンの型（局は {@link Axis#ROW}、ほかは {@link Axis#SEAT}・{@link Axis#TILE}・{@link Axis#EVENT}）
-   * @param index その型の中のトークンの番号
-   * @return そのトークンに付けたライター
-   * @throws IllegalArgumentException トークンの型でないとき
-   */
-  public TokenWriter<L> relation(Axis type, int index) {
-    int count = rowTokens(type);
-    return relation.at(relationStart[type.ordinal()] + Objects.checkIndex(index, count));
   }
 
   /**
@@ -295,7 +342,7 @@ public class RowInputWriter<
     if (field.tensor() != Tensor.ROUND_SCALAR) {
       throw new IllegalArgumentException(field + " is not a round scalar");
     }
-    roundScalars[field.ordinal()] = Bfloat16.fromFloat(value / field.scale());
+    roundScalars[field.ordinal()] = Bfloat16.fromFloat(value / field.scale(schema.variant()));
   }
 
   /**
@@ -307,16 +354,21 @@ public class RowInputWriter<
    * @throws IllegalArgumentException 席・イベント・遷移の数値のフィールドでないとき
    */
   public void scalar(int index, InputFormat.Scalar field, float value) {
-    short normalized = Bfloat16.fromFloat(value / field.scale());
+    short normalized = Bfloat16.fromFloat(value / field.scale(schema.variant()));
     switch (field.tensor()) {
       case SEAT_SCALAR ->
-          seatScalars[Objects.checkIndex(index, seats) * seatScalarWidth + field.ordinal()] = normalized;
-      case EVENT_SCALAR ->
-          eventScalars[Objects.checkIndex(index, events) * eventScalarWidth + field.ordinal()] = normalized;
-      case TRANSITION_SCALAR ->
-          transitionScalars[Objects.checkIndex(index, transitions) * transitionScalarWidth + field.ordinal()] =
+          seatScalars[Objects.checkIndex(index, seats) * seatScalarWidth + field.ordinal()] =
               normalized;
-      default -> throw new IllegalArgumentException(field + " is not a seat, event or transition scalar");
+      case EVENT_SCALAR ->
+          eventScalars[Objects.checkIndex(index, events) * eventScalarWidth + field.ordinal()] =
+              normalized;
+      case TRANSITION_SCALAR ->
+          transitionScalars[
+                  Objects.checkIndex(index, transitions) * transitionScalarWidth
+                      + field.ordinal()] =
+              normalized;
+      default ->
+          throw new IllegalArgumentException(field + " is not a seat, event or transition scalar");
     }
   }
 
@@ -333,30 +385,36 @@ public class RowInputWriter<
     float normalized = finite(value / field.scale());
     switch (field.tensor()) {
       case DISCARD_EXACT ->
-          discardExact[Objects.checkIndex(index, transitions) * discardExactWidth + field.ordinal()] = normalized;
+          discardExact[
+                  Objects.checkIndex(index, transitions) * discardExactWidth + field.ordinal()] =
+              normalized;
       case ACTION_EXACT ->
-          actionExact[Objects.checkIndex(index, actions) * actionExactWidth + field.ordinal()] = normalized;
+          actionExact[
+                  Objects.checkIndex(index, actions) * actionExactWidth
+                      + (field instanceof WinExact win
+                          ? schema.winFields().index(win)
+                          : field.ordinal())] =
+              normalized;
       default -> throw new IllegalArgumentException(field + " is not an exact field");
     }
   }
 
-  /**
-   * 1 つの遷移について、1 つのキーの範囲に入る全てのキーのコードを書く。{@link #commit} は、全ての遷移で全てのキーが書かれたことと、コードがキーの
-   * 範囲に収まることを確かめる。
-   *
-   * @param transition 行の中の遷移の番号
-   * @param block キーの範囲
-   * @param blockCodes 範囲のキーの順に並べたコード（長さは範囲のキーの数）
-   * @throws IllegalArgumentException 長さが範囲のキーの数と違うとき
-   */
-  public void codes(int transition, InputFormat.KeyRange block, byte[] blockCodes) {
-    int count = block.keys();
-    if (blockCodes.length != count) {
-      throw new IllegalArgumentException(block + " has " + count + " keys: " + blockCodes.length);
+  /** 鳴き元の席に応じた局・席・牌の初期コードを次の遷移に書く。 */
+  void startCodes(int transition, int source) {
+    if (transition != nextCodeRow || transition >= transitions) {
+      throw new IllegalStateException("Unexpected transition code row: " + transition);
     }
-    System.arraycopy(
-        blockCodes, 0, codes, Objects.checkIndex(transition, transitions) * keys + block.firstKey(), count);
-    keysWritten[transition] |= ((1L << count) - 1) << block.firstKey();
+    int start = transition * keys;
+    System.arraycopy(initialCodes[source + 1], 0, codes, start, tileStart);
+    tileCodeStart = start + tileStart;
+    System.arraycopy(handCodes, 0, codes, tileCodeStart, tiles);
+    if (candidate != null) candidate.start(transition);
+    nextCodeRow++;
+  }
+
+  void tileCode(int tile, int code) {
+    codes[tileCodeStart + Objects.checkIndex(tile, tiles)] = (byte) code;
+    if (candidate != null) candidate.mark(nextCodeRow - 1, tile, code);
   }
 
   /**
@@ -372,7 +430,7 @@ public class RowInputWriter<
    */
   public void action(
       int action,
-      InputFormat.Role role,
+      ActionRole role,
       int firstTransition,
       int transitionCount,
       int base,
@@ -384,7 +442,7 @@ public class RowInputWriter<
     actionColumns[at + ActionColumn.FIRST_TRANSITION.ordinal()] =
         plan.firstTransition(row) + firstTransition;
     actionColumns[at + ActionColumn.TRANSITIONS.ordinal()] = transitionCount;
-    actionColumns[at + ActionColumn.ROLE.ordinal()] = role.ordinal();
+    actionColumns[at + ActionColumn.ROLE.ordinal()] = schema.roleIndex(role);
     actionColumns[at + ActionColumn.BASE.ordinal()] =
         base == NONE ? NONE : plan.firstAction(row) + Objects.checkIndex(base, actions);
     actionColumns[at + ActionColumn.REPRESENTATIVE.ordinal()] =
@@ -415,10 +473,9 @@ public class RowInputWriter<
     if (row == NONE) {
       throw new IllegalStateException("writer is not bound to a row");
     }
-    for (int index = 0; index < transitions; index++) {
-      if (keysWritten[index] != allKeys) {
-        throw new IllegalStateException("transition " + index + " lacks key codes");
-      }
+    if (nextCodeRow != transitions) {
+      throw new IllegalStateException(
+          "Missing transition code rows: " + nextCodeRow + " of " + transitions);
     }
     if (actionsWritten != (1L << actions) - 1) {
       throw new IllegalStateException("actions lack index columns: " + actionsWritten);
@@ -442,7 +499,8 @@ public class RowInputWriter<
     round.copyTo(bytes, plan.offset(Tensor.ROUND_CATEGORY), row, 0, 1);
     seat.copyTo(bytes, plan.offset(Tensor.SEAT_CATEGORY), seats * row, 0, seats);
     tile.copyTo(bytes, plan.offset(Tensor.TILE_CATEGORY), tiles * row, 0, tiles);
-    event.copyTo(bytes, plan.offset(Tensor.EVENT_CATEGORY), firstEvent, 0, events);
+    int from = published ? eventPrefix : 0;
+    event.copyTo(bytes, plan.offset(Tensor.EVENT_CATEGORY), firstEvent + from, from, events - from);
     transition.copyTo(
         bytes, plan.offset(Tensor.TRANSITION_CATEGORY), firstTransition, 0, transitions);
     int relations = plan.offset(Tensor.RELATION);
@@ -450,19 +508,29 @@ public class RowInputWriter<
     for (int type = 0; type < Axis.TOKEN.ordinal(); type++) {
       Axis axis = AXES[type];
       int count = rowTokens(axis);
-      relation.copyTo(bytes, relations, plan.tokenStart(axis) + rowTokenStart(axis), token, count);
+      int skip = axis == Axis.EVENT ? from : 0;
+      relation.copyTo(
+          bytes,
+          relations,
+          plan.tokenStart(axis) + rowTokenStart(axis) + skip,
+          token + skip,
+          count - skip);
       token += count;
     }
-    bytes.put(
-        plan.offset(Tensor.TRANSITION_CODE) + firstTransition * keys, codes, 0, transitions * keys);
+    int codeStart = plan.offset(Tensor.TRANSITION_CODE) + firstTransition * transitionCodeWidth;
+    if (candidate == null) {
+      bytes.put(codeStart, codes, 0, codeCount);
+    } else {
+      batch.writeBasicCodes(firstTransition, codes, codeCount);
+      candidate.write(bytes, codeStart, codes, transitions);
+    }
     put(shorts, Tensor.ROUND_SCALAR, row * roundScalarWidth, roundScalars, roundScalarWidth);
     put(shorts, Tensor.SEAT_SCALAR, seats * row * seatScalarWidth, seatScalars, seatScalars.length);
-    put(
-        shorts,
-        Tensor.EVENT_SCALAR,
-        firstEvent * eventScalarWidth,
+    shorts.put(
+        element(Tensor.EVENT_SCALAR) + (firstEvent + from) * eventScalarWidth,
         eventScalars,
-        events * eventScalarWidth);
+        from * eventScalarWidth,
+        (events - from) * eventScalarWidth);
     put(
         shorts,
         Tensor.TRANSITION_SCALAR,
@@ -485,6 +553,7 @@ public class RowInputWriter<
         0,
         actions * actionColumnWidth);
     ints.put(element(Tensor.ROW_COLUMN) + row * rowColumnWidth, rowColumns, 0, rowColumnWidth);
+    batch.eventPrefix(row, eventPrefix);
     for (int action = 0; action < actions; action++) {
       batch.prior(firstAction + action, priorShanten[action], priorUkeire[action]);
     }
@@ -507,18 +576,11 @@ public class RowInputWriter<
     };
   }
 
-  private int[] relationStarts() {
-    int[] starts = new int[Axis.TOKEN.ordinal()];
-    for (int type = 1; type < starts.length; type++) {
-      starts[type] = starts[type - 1] + fixedTokens(AXES[type - 1]);
-    }
-    return starts;
-  }
-
-  private byte[] codeBounds(List<? extends InputFormat.KeyRange> blocks, boolean ceiling) {
+  private byte[] codeBounds(boolean ceiling) {
     byte[] bounds = new byte[Limits.MAX_TRANSITIONS * keys];
     int covered = 0;
-    for (InputFormat.KeyRange block : blocks) {
+    for (KeyBlock kind : KeyBlock.values()) {
+      var block = schema.block(kind);
       int bound = block.firstCode() + (ceiling ? block.codes() - 1 : 0);
       for (int key = block.firstKey(); key < block.firstKey() + block.keys(); key++) {
         for (int at = key; at < bounds.length; at += keys) {
@@ -538,7 +600,12 @@ public class RowInputWriter<
       int code = codes[at] & 0xFF;
       if (code < (codeFloor[at] & 0xFF) || code > (codeCeiling[at] & 0xFF)) {
         return new IllegalStateException(
-            "transition " + at / keys + " key " + at % keys + " has a code outside its block: " + code);
+            "transition "
+                + at / keys
+                + " key "
+                + at % keys
+                + " has a code outside its block: "
+                + code);
       }
     }
     throw new AssertionError("no key code is out of range");
@@ -600,8 +667,8 @@ public class RowInputWriter<
       kinds = new int[fields.length];
       firstColumn = new int[fields.length];
       repeats = new int[fields.length];
-      for (F field : fields) {
-        FieldSpec spec = field.spec();
+      for (F field : layout.fields()) {
+        FieldSpec spec = layout.spec(field);
         int f = field.ordinal();
         coding[f] = spec.coding();
         singleCoding[f] = spec.repeats() == 1 ? spec.coding() : null;
@@ -663,7 +730,8 @@ public class RowInputWriter<
      * @param value フィールドの値の enum の定数（null なら無し）
      */
     public void value(F field, Enum<?> value) {
-      draft[base + column(field, Coding.ENUM)] = (byte) Ids.of(values[field.ordinal()], checked(field, value));
+      draft[base + column(field, Coding.ENUM)] =
+          (byte) Ids.of(values[field.ordinal()], checked(field, value));
     }
 
     /**
@@ -713,8 +781,13 @@ public class RowInputWriter<
 
     private IllegalArgumentException wrongPort(F field, Coding expected) {
       return new IllegalArgumentException(
-          field + " is a " + coding[field.ordinal()] + " field with " + repeats[field.ordinal()]
-              + " repeats, written as " + expected);
+          field
+              + " is a "
+              + coding[field.ordinal()]
+              + " field with "
+              + repeats[field.ordinal()]
+              + " repeats, written as "
+              + expected);
     }
 
     private Enum<?> checked(F field, Enum<?> value) {

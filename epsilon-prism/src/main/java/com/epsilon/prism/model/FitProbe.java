@@ -46,6 +46,11 @@ public interface FitProbe {
    */
   boolean cuts();
 
+  /** 段の中に追加の印を置き、準備・演算・注入を分けるか。 */
+  default boolean detailed() {
+    return false;
+  }
+
   /** 段。マイクロバッチ 1 つの中で実行する順に並ぶ。層ごとの段は、バックボーンの層ごとに別に数える。 */
   enum Stage {
     /**
@@ -69,6 +74,14 @@ public interface FitProbe {
     FINAL_NORM(false),
     /** 遷移ごとの Cross-Attention（候補層）。 */
     CANDIDATE(false),
+    /** K の順伝播で読む FP32 入力・表・出力の準備。 */
+    CANDIDATE_FORWARD_PREPARE(false),
+    /** K の順伝播。 */
+    CANDIDATE_FORWARD_KERNEL(false),
+    /** ΣC が読む INT32 の牌コードの作成。 */
+    COUNT_FORWARD_CODES(false),
+    /** ΣC の順伝播。 */
+    COUNT_FORWARD_KERNEL(false),
     /** 打牌の値と価値グラフのヘッド（s）。 */
     VALUE_GRAPH(false),
     /** 補助のヘッド（候補の結果と読み）。 */
@@ -82,6 +95,26 @@ public interface FitProbe {
     HEADS_BACKWARD(false),
     /** 逆伝播のうち、候補層の Cross-Attention の演算だけ（出力の葉へ勾配を注入する。q と K/V の FP32 の入力も葉にする）。 */
     CROSS_ATTENTION_BACKWARD(false),
+    /** ΣC の出力勾配と書き出し先の準備。 */
+    COUNT_BACKWARD_PREPARE(false),
+    /** ΣC の HIP 逆伝播。 */
+    COUNT_BACKWARD_KERNEL(false),
+    /** ΣC の牌への勾配の注入。 */
+    COUNT_PROJECTED_INJECT(false),
+    /** ΣC のゲートへの勾配の注入。 */
+    COUNT_GATE_INJECT(false),
+    /** K の出力勾配・作業領域・JNI の引数の準備。 */
+    CANDIDATE_BACKWARD_PREPARE(false),
+    /** K の HIP 逆伝播。 */
+    CANDIDATE_BACKWARD_KERNEL(false),
+    /** K の q への勾配の注入。 */
+    CANDIDATE_QUERY_INJECT(false),
+    /** K の K/V への勾配の注入。 */
+    CANDIDATE_MEMORY_INJECT(false),
+    /** K の基本コード表への勾配の注入。 */
+    CANDIDATE_BASE_INJECT(false),
+    /** K の追加コード表への勾配の注入。 */
+    CANDIDATE_SEGMENTS_INJECT(false),
     /** 逆伝播のうち、Cross-Attention の q（t0 の正規化と射影）と K/V（バックボーンの出力の射影）。FP32 への型の変換も含む。 */
     CROSS_PROJECTION_BACKWARD(false),
     /** 逆伝播のうち、候補層の t0（遷移のフィールドを並べる処理、W_X・W_E、τ の有無の掛け算）。 */
@@ -95,7 +128,11 @@ public interface FitProbe {
     O_FFN_BACKWARD(true),
     /** 逆伝播のうち、層の Attention の自前の逆伝播（t1 の演算だけ）。 */
     ATTENTION_BACKWARD(true),
-    /** 逆伝播のうち、ρ の部分和の合計、q・kv・ρ への勾配の注入（q と kv の射影）、Attention の前の正規化。 */
+    /** 幹の Attention の ρ の部分和の合計と q・kv・ρ への勾配の注入。 */
+    ATTENTION_BACKWARD_INJECT(true),
+    /** 詳細計測で分けた RMSNorm の逆伝播カーネル。 */
+    NORM_BACKWARD_KERNEL(true),
+    /** Attention の前の正規化の逆伝播。通常計測では Attention の勾配注入も含む。 */
     NORM_QKV_BACKWARD(true),
     /** 逆伝播のうち、埋め込み（型ごとの Linear、イベントの行への並べ替え、トークンの連結）。フィールドを並べる処理は次の段に入る。 */
     EMBED_BACKWARD(false),

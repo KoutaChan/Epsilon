@@ -9,6 +9,8 @@ import ai.djl.pytorch.engine.PtEvent;
 import ai.djl.pytorch.engine.PtNDManager;
 import ai.djl.pytorch.engine.PtStream;
 import com.epsilon.agent.runtime.DecisionDevicePipeline;
+import com.epsilon.agent.runtime.EventCacheSettings;
+import com.epsilon.prism.backend.EventPages;
 import com.epsilon.prism.backend.HipBackend;
 import com.epsilon.prism.backend.WeightPack;
 import com.epsilon.prism.hip.HipLibrary;
@@ -20,17 +22,20 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * HIP で推論するバックエンド（デバイス 1 つ分）。ネットワークの重み（{@link WeightPack}）をスロットごとのレーン（{@link Lane}: 計算
- * ストリームと実行計画）にコピーし、バッチごとに blob の H2D 1 回 → K1〜K7 → s の D2H 1 回を積む。s はレーンごとのページ固定のバッファに、
+ * ストリームと実行計画）にコピーし、バッチごとに blob の H2D 1 回 → K1〜K7 → s の D2H 1 回を積む。s はスロットごとのページ固定のバッファに、
  * バッチの順に、バッチの中では手の順に詰める。
  *
- * <p>レーンは開くときにスロットの数だけ作り、重みをコピーする。作業領域の確保とコピーの同期は、この準備のときだけ行う。スロットには、初めて
- * 使うときにレーンを 1 つずつ割り当てる。スロットごとにストリームと作業領域が別なので、一方の転送ともう一方の順伝播が重なる。順伝播には毎回
- * 方策のバージョン番号を渡し、レーンが持つ重みのバージョンと照合する。これで古い重みのまま推論することを防ぐ。
+ * <p>レーンを開くときに作業領域を確保し、重みをコピーする。通常はスロットごとに別のレーンを使う。
+ * イベントを保存するときは、卓の受付区分でレーンを選ぶ。同じレーンの準備順と提出順は等しい。
+ * スコアの出力先と完了イベントは受付スロットが持つため、その前の受付の結果を返す前にも次の受付を積める。
  */
 final class HipInference implements DeviceInference {
+  private static final Logger LOG = LoggerFactory.getLogger(HipInference.class);
 
   /**
    * スロット 1 つ分の HIP の順伝播。本番では GPU の計算ストリームと実行計画を使い、テストでは CPU の参照実装を使う。スレッドセーフではない。
@@ -45,6 +50,16 @@ final class HipInference implements DeviceInference {
      * @param version 期待するネットワークのバージョン（コピーした重みのバージョンと違えば例外）
      */
     void submit(HostBatch batch, ByteBuffer out, long version);
+
+    default void submit(HostBatch batch, ByteBuffer out, long version, EventPages pages) {
+      submit(batch, out, version);
+    }
+
+    default Runnable prepare(HostBatch batch, ByteBuffer out, long version, EventPages pages) {
+      return () -> submit(batch, out, version, pages);
+    }
+
+    default void invalidatePages() {}
 
     /**
      * 積んだ処理の後にイベントを記録する。
@@ -77,17 +92,26 @@ final class HipInference implements DeviceInference {
   private final int capacity;
   private final NDManager pinned;
   private final Lane[] lanes;
+  private final EventCacheSettings eventCache;
+  private volatile int configuredLanes;
   private final ByteBuffer[] outputs;
   private final FloatBuffer[] scores;
   private final Map<DecisionDevicePipeline.Slot, Integer> bound = new IdentityHashMap<>();
 
   private HipInference(
-      Device device, long version, int capacity, NDManager pinned, Lane[] lanes, ByteBuffer[] outputs) {
+      Device device,
+      long version,
+      int capacity,
+      NDManager pinned,
+      Lane[] lanes,
+      ByteBuffer[] outputs,
+      EventCacheSettings eventCache) {
     this.device = device;
     this.version = version;
     this.capacity = capacity;
     this.pinned = pinned;
     this.lanes = lanes;
+    this.eventCache = eventCache;
     this.outputs = outputs;
     scores = new FloatBuffer[outputs.length];
     for (int lane = 0; lane < outputs.length; lane++) {
@@ -103,11 +127,19 @@ final class HipInference implements DeviceInference {
    * @param count レーンの数（GPU ではスロットの数。呼び出しスレッドから直接呼ぶだけなら 1）
    * @param capacity 1 回の受付で返す s の数の上限
    * @param lanes レーンを作るファクトリ
+   * @param eventCache 履歴の設定。保存しない方策は null
    * @return HIP の推論のバックエンド
    */
-  static HipInference open(Device device, WeightPack pack, int count, int capacity, Lanes lanes) {
+  static HipInference open(
+      Device device,
+      WeightPack pack,
+      int count,
+      int capacity,
+      Lanes lanes,
+      EventCacheSettings eventCache) {
     if (count < 1 || capacity < 1) {
-      throw new IllegalArgumentException("HIP inference needs lanes and scores: " + count + ", " + capacity);
+      throw new IllegalArgumentException(
+          "HIP inference needs lanes and scores: " + count + ", " + capacity);
     }
     PtNDManager pinned = (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME);
     Lane[] opened = new Lane[count];
@@ -115,10 +147,14 @@ final class HipInference implements DeviceInference {
     try {
       for (int lane = 0; lane < count; lane++) {
         outputs[lane] =
-            pinned.allocatePinned(capacity, DataType.FLOAT32).getByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+            pinned
+                .allocatePinned(capacity, DataType.FLOAT32)
+                .getByteBuffer()
+                .order(ByteOrder.LITTLE_ENDIAN);
         opened[lane] = lanes.open(device, pack);
       }
-      return new HipInference(device, pack.version(), capacity, pinned, opened, outputs);
+      return new HipInference(
+          device, pack.version(), capacity, pinned, opened, outputs, eventCache);
     } catch (RuntimeException | Error failure) {
       for (Lane lane : opened) {
         if (lane != null) {
@@ -168,7 +204,7 @@ final class HipInference implements DeviceInference {
   /** 呼び出しスレッドから直接呼ぶときは最初のレーンを使い、呼び出しを 1 つずつ通す。 */
   @Override
   public synchronized FloatBuffer score(Encoding encoding) {
-    enqueue(0, encoding);
+    for (Runnable command : prepare(0, 0, encoding)) command.run();
     lanes[0].synchronize();
     float[] copy = new float[encoding.actions()];
     scores[0].get(0, copy);
@@ -180,8 +216,11 @@ final class HipInference implements DeviceInference {
     return new Work(encoding);
   }
 
-  /** バッチごとの順伝播をレーンに積む。s はバッチの順に詰める。 */
-  private void enqueue(int lane, Encoding encoding) {
+  /** 順伝播を提出するための引数をバッチごとに用意する。スコアの出力先は受付内のバッチ順に並ぶ。 */
+  private Runnable[] prepare(int lane, int outputSlot, Encoding encoding) {
+    if (eventCache != null && configuredLanes < lanes.length) configurePages();
+    Runnable[] commands = new Runnable[encoding.chunks().size()];
+    int index = 0;
     int offset = 0;
     for (Encoding.Chunk chunk : encoding.chunks()) {
       HostBatch batch = chunk.batch().input();
@@ -190,13 +229,35 @@ final class HipInference implements DeviceInference {
         throw new IllegalStateException("a policy batch holds more than " + capacity + " actions");
       }
       ByteBuffer out =
-          outputs[lane].slice(offset * Float.BYTES, actions * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
-      lanes[lane].submit(batch, out, version);
+          outputs[outputSlot]
+              .slice(offset * Float.BYTES, actions * Float.BYTES)
+              .order(ByteOrder.LITTLE_ENDIAN);
+      commands[index++] = lanes[lane].prepare(batch, out, version, chunk.pages());
       offset += actions;
+    }
+    return commands;
+  }
+
+  /** 最初の受付で空き容量を分ける。対戦などで一緒に開いた方策の重みと作業領域も、この時点では確保済み。 */
+  private synchronized void configurePages() {
+    while (configuredLanes < lanes.length) {
+      int lane = configuredLanes;
+      if (lanes[lane] instanceof GpuLane gpu) {
+        var memory = gpu.backend.configureEventPages(lanes.length - lane, eventCache);
+        LOG.info(
+            "Event cache GPU {} lane {} slots={} freeBefore={} freeAfter={} total={}",
+            device.getDeviceId(),
+            lane,
+            memory.slots(),
+            memory.freeBefore(),
+            memory.freeAfter(),
+            memory.total());
+      }
+      configuredLanes++;
     }
   }
 
-  /** スロットに割り当てたレーンの番号を返す。初めてのスロットには、まだ使っていない次のレーンを割り当てる。 */
+  /** スロットに割り当てた出力バッファの番号を返す。通常推論では同じ番号のレーンも使う。 */
   private synchronized int bind(DecisionDevicePipeline.Slot slot) {
     Integer lane = bound.get(slot);
     if (lane == null) {
@@ -242,10 +303,12 @@ final class HipInference implements DeviceInference {
     }
   }
 
-  /** スロットで行う 1 回の受付。バッチごとの順伝播を、スロットに割り当てたレーンのストリームに積む（H2D も同じストリーム）。 */
+  /** スロットで行う 1 回の受付。バッチごとの順伝播を、その受付のレーンのストリームに積む（H2D も同じストリーム）。 */
   private final class Work implements SlotWork {
     private final Encoding encoding;
     private int lane = -1;
+    private int outputSlot;
+    private Runnable[] commands;
     private boolean recorded;
 
     Work(Encoding encoding) {
@@ -253,11 +316,27 @@ final class HipInference implements DeviceInference {
     }
 
     @Override
-    public void submit(DecisionDevicePipeline.Slot slot) {
-      lane = bind(slot);
+    public void prepare(DecisionDevicePipeline.Slot slot) {
+      outputSlot = bind(slot);
+      lane =
+          encoding.chunks().getFirst().pages() == null
+              ? outputSlot
+              : encoding.rows().getFirst().admission() % lanes.length;
       try {
-        enqueue(lane, encoding);
+        commands = HipInference.this.prepare(lane, outputSlot, encoding);
+      } catch (RuntimeException | Error failure) {
+        lanes[lane].invalidatePages();
+        throw failure;
+      }
+    }
+
+    @Override
+    public void submit(DecisionDevicePipeline.Slot slot) {
+      if (commands == null) prepare(slot);
+      try {
+        for (Runnable command : commands) command.run();
       } catch (RuntimeException | Error problem) {
+        lanes[lane].invalidatePages();
         // 前のバッチの処理はもう積まれているので、その後にイベントを記録してから投げる
         try {
           lanes[lane].record(slot.computeReady());
@@ -292,7 +371,7 @@ final class HipInference implements DeviceInference {
 
     @Override
     public FloatBuffer scores(DecisionDevicePipeline.Slot slot) {
-      return scores[lane];
+      return scores[outputSlot];
     }
 
     /** レーンはスロットに割り当てたまま使い回すので、受付ごとに解放するものはない。 */
@@ -304,7 +383,11 @@ final class HipInference implements DeviceInference {
   private record GpuLane(PtStream stream, HipBackend backend) implements Lane {
 
     static GpuLane open(
-        HipLibrary library, PtEngine engine, Device device, WeightPack pack, BatchPlan.Capacity capacity) {
+        HipLibrary library,
+        PtEngine engine,
+        Device device,
+        WeightPack pack,
+        BatchPlan.Capacity capacity) {
       PtStream stream = engine.newStream(device);
       try {
         HipBackend backend = HipBackend.open(library, stream, pack.layout(), capacity);
@@ -332,6 +415,21 @@ final class HipInference implements DeviceInference {
     @Override
     public void submit(HostBatch batch, ByteBuffer out, long version) {
       backend.submit(batch, out, version);
+    }
+
+    @Override
+    public void submit(HostBatch batch, ByteBuffer out, long version, EventPages pages) {
+      backend.submit(batch, out, version, pages);
+    }
+
+    @Override
+    public Runnable prepare(HostBatch batch, ByteBuffer out, long version, EventPages pages) {
+      return backend.prepare(batch, out, version, pages);
+    }
+
+    @Override
+    public void invalidatePages() {
+      backend.invalidatePages();
     }
 
     @Override

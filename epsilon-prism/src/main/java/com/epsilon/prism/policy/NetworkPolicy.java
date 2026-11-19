@@ -4,6 +4,7 @@ import ai.djl.Device;
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.runtime.DecisionDevicePipeline;
 import com.epsilon.agent.runtime.DecisionInferenceIngress;
+import com.epsilon.agent.runtime.EventCacheSettings;
 import com.epsilon.agent.runtime.InferenceDispatcher;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.agent.runtime.Precision;
@@ -30,7 +31,7 @@ import org.slf4j.LoggerFactory;
  * 1 つのバージョンの方策。要求が運ぶ記録 O（要求を出す側が取り込む）から、入力の形式の 1 行のライターで入力のバッチを作る
  * （{@link BatchEncoder}）。ネットワークの s は推論のバックエンド（{@link InferencePath}: eager か HIP、{@link DeviceInference}）で出す。
  * σ は s が最大の手に確率 1 を置く（同点は p0 で決める）。p0 は、{@code retain} の要求と、s の最大が同点の要求にだけ書く
- * （{@link GreedyAnswer}。p0 の特徴はライターが作る）。受付の区分は 1 つで、鳴きの行も同じ受付に入る（{@link #admission}）。
+ * （{@link GreedyAnswer}。p0 の特徴はライターが作る）。イベントを保存する場合は受付を卓ごとに振り分ける。鳴きの行も同じ卓の受付に入る。
  *
  * <p>GPU では、Nano と共通の受付・予約・デバイスパイプラインに載せる。GPU が複数あれば、それぞれに同じバージョンのネットワークを置く。
  * 符号化は符号化のプールで進み、順伝播はスロットごとの計算ストリームで出す。そのため、次の受付の符号化と 2 つのスロットの順伝播が重なる。
@@ -79,7 +80,8 @@ public final class NetworkPolicy implements PolicyService {
   private final int maxBatch;
   private final BatchEncoder encoder;
   private final List<DecisionDevicePipeline.Lease> leases = new ArrayList<>();
-  private final InferenceDispatcher.Registration<Batch, Void> registration;
+  private final List<InferenceDispatcher.Registration<Batch, Void>> registrations =
+      new ArrayList<>();
   private final Set<CompletableFuture<Void>> returning = ConcurrentHashMap.newKeySet();
   private final LongAdder decisions = new LongAdder();
   private final LongAdder batches = new LongAdder();
@@ -88,7 +90,7 @@ public final class NetworkPolicy implements PolicyService {
   private final AtomicLong last = new AtomicLong(UNSET);
   private boolean closed;
 
-  private NetworkPolicy(
+  NetworkPolicy(
       InputFormat format,
       PolicyParams params,
       PriorSettings prior,
@@ -106,7 +108,6 @@ public final class NetworkPolicy implements PolicyService {
     this.maxBatch = maxBatch;
     this.encoder = encoder;
     if (!devices.getFirst().device().isGpu()) {
-      registration = null;
       return;
     }
     try {
@@ -116,8 +117,14 @@ public final class NetworkPolicy implements PolicyService {
         leases.add(lease);
         backends.add(new GpuBackend(lease, device));
       }
-      registration = runtime.dispatcher().register(backends);
+      if (encoder.eventPages) {
+        for (GpuBackend backend : backends)
+          registrations.add(runtime.dispatcher().register(List.of(backend)));
+      } else {
+        registrations.add(runtime.dispatcher().register(backends));
+      }
     } catch (RuntimeException | Error failure) {
+      for (var registration : registrations) registration.close();
       for (var lease : leases) {
         try {
           lease.close();
@@ -159,8 +166,9 @@ public final class NetworkPolicy implements PolicyService {
     Objects.requireNonNull(inference, "inference");
     // エンジンを初めて取る前に、全てのモデルに共通する実行の既定値（PyTorch の CPU スレッド数）を決める
     NetworkRuntime.initialize();
-    PrismShape shape = PrismNetwork.readShape(model);
-    InputFormat format = PrismNetwork.readFormat(model);
+    var header = PrismNetwork.readHeader(model);
+    PrismShape shape = header.shape();
+    InputFormat format = header.format();
     InferencePath path = inference.resolve(devices.getFirst(), shape);
     if (path != inference) {
       LOG.info(
@@ -184,7 +192,8 @@ public final class NetworkPolicy implements PolicyService {
               BatchEncoder.eagerBudget(devices.getFirst(), runtime));
       case HIP -> {
         if (precision != Precision.BFLOAT16) {
-          throw new IllegalArgumentException("PRISM's native kernels compute in BFLOAT16, not " + precision);
+          throw new IllegalArgumentException(
+              "PRISM's native kernels compute in BFLOAT16, not " + precision);
         }
         yield hip(
             params,
@@ -216,7 +225,8 @@ public final class NetworkPolicy implements PolicyService {
       PriorSettings prior,
       int tokenBudget)
       throws IOException {
-    InputFormat format = PrismNetwork.readFormat(model);
+    var header = PrismNetwork.readHeader(model);
+    InputFormat format = header.format();
     return assemble(
         format,
         params,
@@ -249,6 +259,10 @@ public final class NetworkPolicy implements PolicyService {
     WeightPack pack = WeightPack.load(model, params.version());
     InputFormat format = PrismNetwork.readFormat(model);
     int scores = Math.multiplyExact(maxBatch, Limits.MAX_LEGAL_ACTIONS);
+    boolean reuse =
+        devices.stream().allMatch(Device::isGpu)
+            && pack.layout().reusableEventPrefix()
+            && runtime.eventCache().mode() == EventCacheSettings.Mode.CAUSAL;
     return assemble(
         format,
         params,
@@ -257,10 +271,15 @@ public final class NetworkPolicy implements PolicyService {
         devices,
         runtime,
         maxBatch,
-        new BatchEncoder(format, tokenBudget, BatchEncoder.Memory.PINNED),
+        new BatchEncoder(format, tokenBudget, BatchEncoder.Memory.PINNED, reuse),
         device ->
             HipInference.open(
-                device, pack, device.isGpu() ? runtime.slots() : 1, scores, lanes));
+                device,
+                pack,
+                device.isGpu() ? runtime.slots() : 1,
+                scores,
+                lanes,
+                reuse ? runtime.eventCache() : null));
   }
 
   /** デバイスごとに推論のバックエンドを開いて、方策を組み立てる。失敗したら、開いたバックエンドと作業領域・バッチのプールを閉じる。 */
@@ -280,7 +299,8 @@ public final class NetworkPolicy implements PolicyService {
       for (Device device : devices) {
         opened.add(opener.open(device));
       }
-      return new NetworkPolicy(format, params, prior, inference, opened, runtime, maxBatch, encoder);
+      return new NetworkPolicy(
+          format, params, prior, inference, opened, runtime, maxBatch, encoder);
     } catch (IOException | RuntimeException | Error failure) {
       for (DeviceInference device : opened) {
         try {
@@ -296,6 +316,11 @@ public final class NetworkPolicy implements PolicyService {
       }
       throw failure;
     }
+  }
+
+  @Override
+  public boolean reuseEventPrefix() {
+    return encoder.eventPages;
   }
 
   @Override
@@ -334,16 +359,24 @@ public final class NetworkPolicy implements PolicyService {
   }
 
   @Override
+  public int admission(Observation observation, long wall) {
+    return encoder.eventPages ? Math.floorMod(wall, devices.size() * runtime.slots()) : 0;
+  }
+
+  @Override
   public boolean needsWork() {
-    return registration == null || registration.needsWork();
+    if (registrations.isEmpty()) return true;
+    for (var registration : registrations) if (registration.needsWork()) return true;
+    return false;
   }
 
   @Override
   public synchronized DecisionInferenceIngress.Attempt tryAcquireIngress(int admission) {
-    if (registration == null) {
+    if (registrations.isEmpty()) {
       return DecisionInferenceIngress.Attempt.acquired(DecisionInferenceIngress.direct(this));
     }
-    var attempt = registration.tryReserve();
+    var attempt =
+        registrations.get(encoder.eventPages ? admission / runtime.slots() : 0).tryReserve();
     if (!attempt.acquired()) {
       return DecisionInferenceIngress.Attempt.blocked(attempt.available());
     }
@@ -354,10 +387,11 @@ public final class NetworkPolicy implements PolicyService {
 
   @Override
   @SuppressWarnings("unchecked")
-  public CompletableFuture<Void> submit(List<PolicyRequest> rows, DecisionInferenceIngress ingress) {
+  public CompletableFuture<Void> submit(
+      List<PolicyRequest> rows, DecisionInferenceIngress ingress) {
     var ownership = ingress.handoff(this);
     first.compareAndSet(UNSET, System.nanoTime());
-    if (registration == null) {
+    if (registrations.isEmpty()) {
       ownership.move();
       return submitDirect(rows);
     }
@@ -433,8 +467,7 @@ public final class NetworkPolicy implements PolicyService {
     long start = first.get();
     long end = last.get();
     double seconds = start == UNSET || end == UNSET ? 0 : Math.max(0, end - start) / 1e9;
-    return new Throughput(
-        decisions.sum(), batches.sum(), chunks.sum(), seconds, encoder.seconds());
+    return new Throughput(decisions.sum(), batches.sum(), chunks.sum(), seconds, encoder.seconds());
   }
 
   @Override
@@ -445,9 +478,7 @@ public final class NetworkPolicy implements PolicyService {
     closed = true;
     Throwable failure = null;
     try {
-      if (registration != null) {
-        registration.close();
-      }
+      for (var registration : registrations) registration.close();
     } catch (RuntimeException | Error problem) {
       failure = problem;
     }
@@ -560,13 +591,18 @@ public final class NetworkPolicy implements PolicyService {
       return new DecisionDevicePipeline.BatchMetadata(rows, rows);
     }
 
-    /** 入力は提出のときに推論のバックエンドが転送するので、ここでは何もしない。 */
+    /** 前のバッチが GPU で動いている間に、次のバッチの配置と転送の引数を用意する。 */
     @Override
-    public void stage(DecisionDevicePipeline.Slot slot) {}
+    public void stage(DecisionDevicePipeline.Slot slot) {
+      if (encoder.eventPages) {
+        work = device.work(batch.encoding());
+        work.prepare(slot);
+      }
+    }
 
     @Override
     public void submit(DecisionDevicePipeline.Slot slot) {
-      work = device.work(batch.encoding());
+      if (work == null) work = device.work(batch.encoding());
       work.submit(slot);
     }
 

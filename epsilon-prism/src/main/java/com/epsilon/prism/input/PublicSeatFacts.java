@@ -5,8 +5,7 @@ import com.epsilon.agent.facts.TileCounts;
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.mahjong.action.Meld;
 import com.epsilon.mahjong.tile.Tiles;
-import com.epsilon.prism.input.EventTable.PublicEvent;
-import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * 席ごとの公開の事実のうち、PRISM の入力だけが使うもの（副露の色・公開の役牌の翻・副露のドラ・断么・対々・流し満貫）。順位・槓の数・門前と
@@ -28,7 +27,7 @@ public final class PublicSeatFacts {
   private final int[] openDora;
   private final boolean[] tanyao;
   private final boolean[] triplets;
-  private final boolean[] nagashi;
+  private int nagashiSeats;
 
   /**
    * 席の数だけの配列を確保して作る。
@@ -41,7 +40,6 @@ public final class PublicSeatFacts {
     openDora = new int[seats];
     tanyao = new boolean[seats];
     triplets = new boolean[seats];
-    nagashi = new boolean[seats];
   }
 
   /**
@@ -57,13 +55,7 @@ public final class PublicSeatFacts {
     for (int seat = 0; seat < openSuit.length; seat++) {
       loadMelds(seat, seats, tiles, seatWindTile(o, seat), roundWind);
     }
-    Arrays.fill(nagashi, true);
-    for (int e = 0, count = events.events(); e < count; e++) {
-      if (events.kind(e) == PublicEvent.DISCARD
-          && (events.calledBy(e) >= 0 || !Tiles.contains(Tiles.TERMINALS_AND_HONORS, events.tile(e)))) {
-        nagashi[events.author(e)] = false;
-      }
-    }
+    nagashiSeats = events.nagashiSeats();
   }
 
   private void loadMelds(int seat, SeatFacts seats, TileCounts tiles, int seatWind, int roundWind) {
@@ -152,6 +144,6 @@ public final class PublicSeatFacts {
 
   /** 流し満貫の形が残っている（打牌が全て么九牌で、鳴かれていない）。 */
   public boolean nagashi(int seat) {
-    return nagashi[seat];
+    return (nagashiSeats & (1 << Objects.checkIndex(seat, openSuit.length))) != 0;
   }
 }

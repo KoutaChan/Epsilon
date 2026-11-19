@@ -70,7 +70,8 @@ final class GpuCase implements AutoCloseable {
     hipBatch = HipBackend.batchOf(batch);
     blob = batch.blob();
     try (NDManager scope = manager.newSubManager()) {
-      stages = EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.BFLOAT16);
+      stages =
+          EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.BFLOAT16);
     }
     stream = newStream();
     backend = HipBackend.open(HipLibrary.load(), stream, layout, capacity(ROWS * 4));
@@ -115,7 +116,8 @@ final class GpuCase implements AutoCloseable {
 
   /** 1 バッチの順伝播で s を求める（キューに積み、終わるのを待ってから読む）。 */
   float[] forward() {
-    ByteBuffer scores = ByteBuffer.allocateDirect(hipBatch.actions() * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+    ByteBuffer scores =
+        ByteBuffer.allocateDirect(hipBatch.actions() * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
     plan().forward(blob.duplicate().position(0), hipBatch, scores, pack.version());
     plan().synchronize();
     float[] values = new float[hipBatch.actions()];
@@ -125,7 +127,8 @@ final class GpuCase implements AutoCloseable {
 
   /** 領域へ値を BF16 で書き込む。最も近い BF16 に丸めるので、float に入れた BF16 の値はそのまま書かれる。 */
   void putBf16(HipRegion region, float[] values) {
-    ByteBuffer buffer = ByteBuffer.allocateDirect(values.length * Short.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+    ByteBuffer buffer =
+        ByteBuffer.allocateDirect(values.length * Short.BYTES).order(ByteOrder.LITTLE_ENDIAN);
     for (float value : values) {
       buffer.putShort(Bfloat16.fromFloat(value));
     }
@@ -135,7 +138,8 @@ final class GpuCase implements AutoCloseable {
 
   /** 領域へ FP32 の値を書き込む。 */
   void putFloats(HipRegion region, float[] values) {
-    ByteBuffer buffer = ByteBuffer.allocateDirect(values.length * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+    ByteBuffer buffer =
+        ByteBuffer.allocateDirect(values.length * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
     buffer.asFloatBuffer().put(values);
     plan().copyIn(region, buffer, buffer.capacity());
   }
@@ -147,9 +151,14 @@ final class GpuCase implements AutoCloseable {
 
   /** 領域の先頭から、指定した個数の BF16 を float にして読む（同期する）。 */
   float[] getBf16(HipRegion region, int count) {
-    ByteBuffer buffer = ByteBuffer.allocateDirect(count * Short.BYTES).order(ByteOrder.LITTLE_ENDIAN);
-    plan().copyOut(region, buffer, buffer.capacity());
-    plan().synchronize();
+    return getBf16(plan(), region, count);
+  }
+
+  static float[] getBf16(HipPlan plan, HipRegion region, int count) {
+    ByteBuffer buffer =
+        ByteBuffer.allocateDirect(count * Short.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+    plan.copyOut(region, buffer, buffer.capacity());
+    plan.synchronize();
     float[] values = new float[count];
     for (int i = 0; i < count; i++) {
       values[i] = Float.intBitsToFloat((buffer.getShort(i * Short.BYTES) & 0xFFFF) << 16);
@@ -159,7 +168,8 @@ final class GpuCase implements AutoCloseable {
 
   /** 領域の先頭から、指定した個数の FP32 を読む（同期する）。 */
   float[] getFloats(HipRegion region, int count) {
-    ByteBuffer buffer = ByteBuffer.allocateDirect(count * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+    ByteBuffer buffer =
+        ByteBuffer.allocateDirect(count * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
     plan().copyOut(region, buffer, buffer.capacity());
     plan().synchronize();
     float[] values = new float[count];
@@ -169,7 +179,8 @@ final class GpuCase implements AutoCloseable {
 
   /** 領域の先頭から、指定した個数の INT32 を読む（同期する）。 */
   int[] getInts(HipRegion region, int count) {
-    ByteBuffer buffer = ByteBuffer.allocateDirect(count * Integer.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+    ByteBuffer buffer =
+        ByteBuffer.allocateDirect(count * Integer.BYTES).order(ByteOrder.LITTLE_ENDIAN);
     plan().copyOut(region, buffer, buffer.capacity());
     plan().synchronize();
     int[] values = new int[count];

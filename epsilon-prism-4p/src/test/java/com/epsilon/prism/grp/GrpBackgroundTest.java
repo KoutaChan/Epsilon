@@ -51,7 +51,8 @@ public class GrpBackgroundTest {
     Snapshot.deleteTree(run);
   }
 
-  private static final PhiEntry SCORE_RANK = PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT);
+  private static final PhiEntry SCORE_RANK =
+      PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT);
 
   /** 記録と採点のキーは自前の GRP の設定の中にしかないので、Φ の出どころがほかの run では何もしない。 */
   @Test
@@ -62,7 +63,8 @@ public class GrpBackgroundTest {
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
       background.request();
       background.request();
-      Assert.assertTrue(background.awaitBoundary(3, Duration.ZERO), "only SELF_GRP waits for boundaries");
+      Assert.assertTrue(
+          background.awaitBoundary(3, Duration.ZERO), "only SELF_GRP waits for boundaries");
     }
     Assert.assertFalse(Files.exists(files.monitor()), "nothing is scored");
     Assert.assertFalse(Files.exists(files.switchWatch()));
@@ -89,7 +91,8 @@ public class GrpBackgroundTest {
     PhiSetup setup = GrpFixtures.scoreStart();
     GrpFixtures.writeState(run, 4);
     PhiEntry initial = PhiHistory.initialize(files, setup);
-    for (int t = 1; t <= 3; t++) GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 20, t));
+    for (int t = 1; t <= 3; t++)
+      GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 20, t));
     // 確定したが半荘の記録の無いコホートは、区切りを済ませても監視の行を持たない
     GrpFixtures.seal(files, 4);
     GrpFixtures.writeState(run, 4);
@@ -98,7 +101,8 @@ public class GrpBackgroundTest {
       Assert.assertTrue(background.awaitBoundary(4, Duration.ofSeconds(100)));
     }
     List<SwitchWatchRecord> watch = SwitchWatchRecord.readAll(files);
-    Assert.assertEquals(watch.stream().map(SwitchWatchRecord::cohort).toList(), List.of(1, 2, 3, 4));
+    Assert.assertEquals(
+        watch.stream().map(SwitchWatchRecord::cohort).toList(), List.of(1, 2, 3, 4));
     for (SwitchWatchRecord record : watch) Assert.assertNull(record.line());
     Assert.assertEquals(PhiHistory.read(files), List.of(initial));
     // もう一度回しても、済んだ区切りは済ませ直さない
@@ -117,15 +121,20 @@ public class GrpBackgroundTest {
     PhiSetup setup = GrpFixtures.scoreStart();
     GrpFixtures.writeState(run, 3);
     PhiEntry initial = PhiHistory.initialize(files, setup);
-    for (int t = 1; t <= 3; t++) GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 20, t));
+    for (int t = 1; t <= 3; t++)
+      GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 20, t));
     Files.move(files.records(3), files.unmovedRecords(3));
     Assert.assertFalse(files.sealed(3));
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
       background.request();
       Assert.assertTrue(background.awaitBoundary(2, Duration.ofSeconds(100)));
-      Assert.assertFalse(background.awaitBoundary(3, Duration.ofSeconds(1)), "the cohort with unmoved records waits");
+      Assert.assertFalse(
+          background.awaitBoundary(3, Duration.ofSeconds(1)),
+          "the cohort with unmoved records waits");
     }
-    Assert.assertEquals(SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(), List.of(1, 2));
+    Assert.assertEquals(
+        SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(),
+        List.of(1, 2));
     Files.move(files.unmovedRecords(3), files.records(3));
     Assert.assertTrue(files.sealed(3));
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
@@ -133,7 +142,8 @@ public class GrpBackgroundTest {
       Assert.assertTrue(background.awaitBoundary(3, Duration.ofSeconds(100)));
     }
     Assert.assertEquals(
-        SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(), List.of(1, 2, 3));
+        SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(),
+        List.of(1, 2, 3));
   }
 
   /** 止めた run に grp-refit で置いた頼みには、次の起動の裏の作業が 1 回だけ従い、control/done に移す。 */
@@ -142,7 +152,8 @@ public class GrpBackgroundTest {
     PhiSetup setup = recordedRun(4);
     ControlRequests requests = new ControlRequests(new RunDirectory(run));
     requests.markStopped("Stopped at ITERATION by a signal");
-    Assert.assertEquals(PhiControlTest.prism("grp-refit", "--run", run.toString(), "--slot", "3"), Exit.OK.code());
+    Assert.assertEquals(
+        PhiControlTest.prism("grp-refit", "--run", run.toString(), "--slot", "3"), Exit.OK.code());
     ControlRequest placed = requests.pending().getFirst();
     Assert.assertEquals(placed.request(), new Request.GrpRefit(3));
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
@@ -152,7 +163,8 @@ public class GrpBackgroundTest {
       background.pass();
     }
     Assert.assertEquals(retiredRequests(), List.of(placed));
-    Assert.assertTrue(RefitRecord.readAll(files).isEmpty(), "the score-only Φ waits for trustGames games");
+    Assert.assertTrue(
+        RefitRecord.readAll(files).isEmpty(), "the score-only Φ waits for trustGames games");
   }
 
   /** 頼みは従うまで control に残る。時点のコホートが確定するまで待ち、閉じ始めた起動で従えなかった頼みには次の起動で従う。 */
@@ -168,7 +180,8 @@ public class GrpBackgroundTest {
     GrpFixtures.record(files, 4, PhiHistory.read(files).getFirst(), GrpFixtures.games(400, 20, 4));
     GrpFixtures.writeState(run, 5);
     var closing = new AtomicReference<GrpBackground>();
-    try (GrpBackground background = GrpBackground.start(files, setup, () -> closing.get().close())) {
+    try (GrpBackground background =
+        GrpBackground.start(files, setup, () -> closing.get().close())) {
       closing.set(background);
       background.pass();
     }
@@ -185,8 +198,11 @@ public class GrpBackgroundTest {
   public void aCancelledRequestIsNotObeyed() throws Exception {
     PhiSetup setup = recordedRun(4);
     String directory = run.toString();
-    Assert.assertEquals(PhiControlTest.prism("grp-refit", "--run", directory, "--slot", "3"), Exit.OK.code());
-    Assert.assertEquals(PhiControlTest.prism("control", "cancel", "--run", directory, "--request", "1"), Exit.OK.code());
+    Assert.assertEquals(
+        PhiControlTest.prism("grp-refit", "--run", directory, "--slot", "3"), Exit.OK.code());
+    Assert.assertEquals(
+        PhiControlTest.prism("control", "cancel", "--run", directory, "--request", "1"),
+        Exit.OK.code());
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
       background.pass();
     }
@@ -203,7 +219,8 @@ public class GrpBackgroundTest {
     PhiSetup setup = GrpFixtures.scoreStart("phi.grp.trustGames=10", "phi.grp.threads=1");
     GrpFixtures.writeState(run, 5);
     PhiEntry initial = PhiHistory.initialize(files, setup);
-    for (int t = 1; t <= 4; t++) GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 40, t));
+    for (int t = 1; t <= 4; t++)
+      GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 40, t));
     ControlRequests requests = new ControlRequests(new RunDirectory(run));
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
       background.pass();
@@ -214,12 +231,14 @@ public class GrpBackgroundTest {
     }
     Assert.assertEquals(requests.pending(), List.of(), "the request is obeyed");
     List<RefitRecord> records = RefitRecord.readAll(files);
-    Assert.assertEquals(records.stream().map(RefitRecord::id).distinct().toList(), List.of("g003-a1"));
+    Assert.assertEquals(
+        records.stream().map(RefitRecord::id).distinct().toList(), List.of("g003-a1"));
     Assert.assertEquals(records.getFirst().status(), RefitStatus.TRAINED);
     Assert.assertEquals(records.getFirst().cause(), RefitCause.MANUAL);
     RefitRecord gated = records.getLast();
     Assert.assertTrue(
-        gated.status() == RefitStatus.READY || gated.status() == RefitStatus.REJECTED, gated.status().toString());
+        gated.status() == RefitStatus.READY || gated.status() == RefitStatus.REJECTED,
+        gated.status().toString());
     Assert.assertNotNull(gated.gate());
     Assert.assertEquals(PhiHistory.read(files), List.of(initial), "PROPOSE does not switch");
   }
@@ -234,7 +253,8 @@ public class GrpBackgroundTest {
     setup = GrpFixtures.grpStart(bad, "phi.grp.switching=AUTO");
     GrpFixtures.writeState(run, 3);
     PhiEntry initial = PhiHistory.initialize(files, setup);
-    for (int t = 1; t <= 2; t++) GrpFixtures.record(files, t, initial, GrpFixtures.games(10_000L * t, 60, t));
+    for (int t = 1; t <= 2; t++)
+      GrpFixtures.record(files, t, initial, GrpFixtures.games(10_000L * t, 60, t));
     return initial;
   }
 
@@ -243,8 +263,20 @@ public class GrpBackgroundTest {
     String id = GrpRefitter.attemptId(1, 1);
     Path candidate = GrpFixtures.network(files.candidate(id), 1, 0);
     new RefitRecord(
-            id, 1, RefitStatus.TRAINED, RefitCause.MANUAL, new RecencyWindow(1, 2, 64), GrpInit.SCRATCH,
-            PhiEntry.INITIAL_ID, candidate.toString(), "", "", null, null, "", 1)
+            id,
+            1,
+            RefitStatus.TRAINED,
+            RefitCause.MANUAL,
+            new RecencyWindow(1, 2, 64),
+            GrpInit.SCRATCH,
+            PhiEntry.INITIAL_ID,
+            candidate.toString(),
+            "",
+            "",
+            null,
+            null,
+            "",
+            1)
         .append(files);
   }
 
@@ -254,7 +286,9 @@ public class GrpBackgroundTest {
   }
 
   private RefitStatus candidateStatus() throws IOException {
-    return RefitRecord.latest(RefitRecord.readAll(files), GrpRefitter.attemptId(1, 1)).orElseThrow().status();
+    return RefitRecord.latest(RefitRecord.readAll(files), GrpRefitter.attemptId(1, 1))
+        .orElseThrow()
+        .status();
   }
 
   /** 区切りの後にできた候補は、次の反復がまだ Φ を決めていなければ、その反復から使う。 */
@@ -321,13 +355,15 @@ public class GrpBackgroundTest {
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
       background.pass();
       Assert.assertEquals(
-          SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(), List.of(1));
+          SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(),
+          List.of(1));
       Assert.assertTrue(background.awaitBoundary(2, Duration.ZERO), "iteration 3 decides its Φ");
       Files.move(kept, files.records(2), StandardCopyOption.REPLACE_EXISTING);
       background.pass();
     }
     Assert.assertEquals(
-        SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(), List.of(1, 2));
+        SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(),
+        List.of(1, 2));
     Assert.assertEquals(candidateStatus(), RefitStatus.READY);
     Assert.assertEquals(PhiHistory.read(files), List.of(initial), "iteration 3 collects with g000");
   }
@@ -347,8 +383,12 @@ public class GrpBackgroundTest {
       background.pass();
     }
     Assert.assertEquals(
-        SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(), List.of(1, 2));
-    Assert.assertEquals(candidateStatus(), RefitStatus.TRAINED, "the gate of boundary 2 failed after its watch line");
+        SwitchWatchRecord.readAll(files).stream().map(SwitchWatchRecord::cohort).toList(),
+        List.of(1, 2));
+    Assert.assertEquals(
+        candidateStatus(),
+        RefitStatus.TRAINED,
+        "the gate of boundary 2 failed after its watch line");
     Files.move(kept, candidate);
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
       background.pass();
@@ -373,7 +413,8 @@ public class GrpBackgroundTest {
             "phi.grp.training.stopPatience=1000000000");
     GrpFixtures.writeState(run, 5);
     PhiEntry initial = PhiHistory.initialize(files, setup);
-    for (int t = 1; t <= 4; t++) GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 40, t));
+    for (int t = 1; t <= 4; t++)
+      GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 40, t));
     ControlRequests requests = new ControlRequests(new RunDirectory(run));
     ControlRequest placed = requests.submit(new Request.GrpRefit(3));
     GrpBackground background = GrpBackground.start(files, setup, () -> {});
@@ -413,7 +454,8 @@ public class GrpBackgroundTest {
     try (GrpBackground background = GrpBackground.start(files, setup, () -> {})) {
       background.pass();
       // 半荘の数が int の最大の記録: 読むと、数の分の半荘が無いままファイルが終わる
-      try (DataOutputStream out = new DataOutputStream(new GZIPOutputStream(Files.newOutputStream(files.records(3))))) {
+      try (DataOutputStream out =
+          new DataOutputStream(new GZIPOutputStream(Files.newOutputStream(files.records(3))))) {
         out.writeUTF(GrpFixtures.VARIANT.name());
         out.writeInt(3);
         out.writeUTF("");
@@ -437,7 +479,8 @@ public class GrpBackgroundTest {
     PhiSetup setup = GrpFixtures.scoreStart();
     GrpFixtures.writeState(run, last + 1);
     PhiEntry initial = PhiHistory.initialize(files, setup);
-    for (int t = 1; t <= last; t++) GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 20, t));
+    for (int t = 1; t <= last; t++)
+      GrpFixtures.record(files, t, initial, GrpFixtures.games(100L * t, 20, t));
     return setup;
   }
 
@@ -447,7 +490,8 @@ public class GrpBackgroundTest {
     if (!Files.isDirectory(done)) return List.of();
     List<ControlRequest> requests = new ArrayList<>();
     try (Stream<Path> listed = Files.list(done)) {
-      for (Path file : listed.filter(path -> path.getFileName().toString().endsWith(".json")).toList())
+      for (Path file :
+          listed.filter(path -> path.getFileName().toString().endsWith(".json")).toList())
         requests.add(RecordFile.read(ControlRequest.class, file).value());
     }
     requests.sort(Comparator.comparingInt(ControlRequest::number));

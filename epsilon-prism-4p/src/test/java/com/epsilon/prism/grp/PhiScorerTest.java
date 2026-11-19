@@ -66,7 +66,8 @@ public class PhiScorerTest {
     Path a = GrpFixtures.network(run.resolve("a"), 1);
     Path b = GrpFixtures.network(run.resolve("b"), 2);
     Path c = GrpFixtures.network(run.resolve("c"), 3);
-    PhiEntry first = GrpFixtures.ready(files, "g001-a1", 1, a).entry(GrpFixtures.VARIANT, 5, "test");
+    PhiEntry first =
+        GrpFixtures.ready(files, "g001-a1", 1, a).entry(GrpFixtures.VARIANT, 5, "test");
     GrpFixtures.ready(files, "g002-a1", 2, b);
     GrpFixtures.ready(files, "g003-a1", 3, c);
     PhiHistory.append(files, first);
@@ -80,7 +81,19 @@ public class PhiScorerTest {
     Assert.assertEquals(line.active(), measure(initial, ends));
     Assert.assertEquals(line.active().games(), 20);
     PhiEntry shadow =
-        new PhiEntry("g003-a1", PhiEntryKind.NETWORK, GrpFixtures.VARIANT, c.toString(), "", "", "", "", "", 1, "", "x");
+        new PhiEntry(
+            "g003-a1",
+            PhiEntryKind.NETWORK,
+            GrpFixtures.VARIANT,
+            c.toString(),
+            "",
+            "",
+            "",
+            "",
+            "",
+            1,
+            "",
+            "x");
     Assert.assertEquals(line.shadows().get("g003-a1"), measure(shadow, ends));
     // 使用中の候補は影から外す
     PhiMonitorLine second = PhiScorer.score(files, setup, 5).orElseThrow();
@@ -89,7 +102,8 @@ public class PhiScorerTest {
     Assert.assertEquals(second.active(), measure(first, ends(5)));
     List<PhiMonitorLine> lines = PhiMonitorLine.readAll(files);
     Assert.assertEquals(lines, List.of(line, second), "the lines survive the round trip");
-    Assert.assertTrue(lines.get(1).summary().startsWith("phi[5] g001-a1 mse="), lines.get(1).summary());
+    Assert.assertTrue(
+        lines.get(1).summary().startsWith("phi[5] g001-a1 mse="), lines.get(1).summary());
   }
 
   @Test
@@ -120,7 +134,11 @@ public class PhiScorerTest {
     write(3, initial, 3);
     PhiScorer.score(files, setup, 2);
     // 書きかけで止まった、改行の無い行
-    Files.writeString(files.monitor(), "{\"cohort\":3,\"phiId\":\"sc", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    Files.writeString(
+        files.monitor(),
+        "{\"cohort\":3,\"phiId\":\"sc",
+        StandardCharsets.UTF_8,
+        StandardOpenOption.APPEND);
     Assert.assertEquals(PhiMonitorLine.readAll(files).size(), 1);
     PhiScorer.score(files, setup, 3);
     List<PhiMonitorLine> lines = PhiMonitorLine.readAll(files);
@@ -143,10 +161,12 @@ public class PhiScorerTest {
   }
 
   private HandEnds ends(int t) throws IOException {
-    return HandEnds.of(GrpFixtures.VARIANT, GrpFixtures.UTILITY, GameRecordCodec.read(files.records(t)).games());
+    return HandEnds.of(
+        GrpFixtures.VARIANT, GrpFixtures.UTILITY, GameRecordCodec.read(files.records(t)).games());
   }
 
   private static GrpReport measure(PhiEntry entry, HandEnds ends) throws IOException {
-    return GrpMetrics.measure(ends, HandEndValues.of(ends, HandEndPhi.open(entry, GrpFixtures.UTILITY)));
+    return GrpMetrics.measure(
+        ends, HandEndValues.of(ends, HandEndPhi.open(entry, GrpFixtures.UTILITY)));
   }
 }

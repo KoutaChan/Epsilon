@@ -47,8 +47,10 @@ public class ModeHistoryTest {
     Assert.assertNull(ModeLine.grp(3, "test").cutoff());
     Assert.assertEquals((double) ModeLine.late(0, 1, "test").cutoff(), 0.0);
     for (Double cutoff : new Double[] {null, -1e-9, 1.0, Double.NaN})
-      Assert.assertThrows(IllegalArgumentException.class, () -> new ModeLine(PhiMode.LATE, cutoff, 3, "test"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new ModeLine(PhiMode.GRP, 1e-5, 3, "test"));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> new ModeLine(PhiMode.LATE, cutoff, 3, "test"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new ModeLine(PhiMode.GRP, 1e-5, 3, "test"));
     Assert.assertThrows(IllegalArgumentException.class, () -> ModeLine.grp(0, "test"));
     Assert.assertThrows(NullPointerException.class, () -> new ModeLine(null, null, 3, "test"));
     Assert.assertEquals(PhiMode.LATE.alias(), "late");
@@ -89,33 +91,42 @@ public class ModeHistoryTest {
     Assert.assertFalse(Files.exists(fixed.directory()));
     PhiHistory.initializeModes(fixed, new LateSettings(3, 1e-4, 16_384));
     PhiHistory.initializeModes(fixed, new LateSettings(3, 1e-4, 16_384));
-    Assert.assertEquals(PhiHistory.readModes(fixed), List.of(ModeLine.late(1e-4, 3, "phi.late.from = 3")));
+    Assert.assertEquals(
+        PhiHistory.readModes(fixed), List.of(ModeLine.late(1e-4, 3, "phi.late.from = 3")));
   }
 
   @Test
   public void appendedLinesStartAfterTheLastStartedIteration() throws IOException {
     GrpFixtures.writeState(run, 5);
     PhiHistory.initialize(files, GrpFixtures.scoreStart());
-    Assert.assertThrows(IllegalArgumentException.class, () -> PhiHistory.appendMode(files, ModeLine.late(1e-5, 4, "x")));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> PhiHistory.appendMode(files, ModeLine.late(1e-5, 4, "x")));
     PhiHistory.appendMode(files, ModeLine.late(1e-5, 5, "switch: late"));
     try (TrainLock training = TrainLock.hold(new RunDirectory(run).trainLock())) {
-      Assert.assertThrows(IllegalArgumentException.class, () -> PhiHistory.appendMode(files, ModeLine.grp(5, "x")));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> PhiHistory.appendMode(files, ModeLine.grp(5, "x")));
       PhiHistory.appendMode(files, ModeLine.grp(6, "switch: grp"));
     }
     // コホート 6 を確定した後は、反復 6 も始まっているとみなす
     GrpFixtures.writeState(run, 6);
     GrpFixtures.seal(files, 6);
-    Assert.assertThrows(IllegalArgumentException.class, () -> PhiHistory.appendMode(files, ModeLine.grp(6, "x")));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> PhiHistory.appendMode(files, ModeLine.grp(6, "x")));
     PhiHistory.appendMode(files, ModeLine.late(0, 7, "switch: late"));
     Assert.assertEquals(
         PhiHistory.readModes(files),
-        List.of(ModeLine.late(1e-5, 5, "switch: late"), ModeLine.grp(6, "switch: grp"), ModeLine.late(0, 7, "switch: late")));
+        List.of(
+            ModeLine.late(1e-5, 5, "switch: late"),
+            ModeLine.grp(6, "switch: grp"),
+            ModeLine.late(0, 7, "switch: late")));
 
     // GRP の行には打ち切りのフィールドを書かない
     List<String> lines = Files.readAllLines(files.modeHistory());
     JsonObject grp = JsonParser.parseString(lines.get(1)).getAsJsonObject();
     Assert.assertFalse(grp.has("cutoff"), lines.get(1));
-    Assert.assertEquals(JsonParser.parseString(lines.get(0)).getAsJsonObject().get("cutoff").getAsDouble(), 1e-5);
+    Assert.assertEquals(
+        JsonParser.parseString(lines.get(0)).getAsJsonObject().get("cutoff").getAsDouble(), 1e-5);
 
     PhiHistory.Lines both = PhiHistory.readLocked(files);
     Assert.assertEquals(both.entries(), PhiHistory.read(files));
@@ -128,12 +139,18 @@ public class ModeHistoryTest {
     GrpFixtures.writeState(run, 1);
     PhiHistory.initialize(files, GrpFixtures.scoreStart("phi.late.from=2"));
     // 改行の無い最後の行は、書きかけとみなして読まず、次の追記で切り捨てる
-    Files.writeString(files.modeHistory(), "{\"mode\":\"GRP\"", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    Files.writeString(
+        files.modeHistory(),
+        "{\"mode\":\"GRP\"",
+        StandardCharsets.UTF_8,
+        StandardOpenOption.APPEND);
     Assert.assertEquals(PhiHistory.readModes(files).size(), 1);
     PhiHistory.appendMode(files, ModeLine.grp(3, "switch: grp"));
     Assert.assertEquals(PhiHistory.readModes(files).getLast(), ModeLine.grp(3, "switch: grp"));
     Files.writeString(
-        files.modeHistory(), "{\"mode\":\"LATE\",\"effectiveFrom\":4,\"reason\":\"x\"}\n", StandardCharsets.UTF_8,
+        files.modeHistory(),
+        "{\"mode\":\"LATE\",\"effectiveFrom\":4,\"reason\":\"x\"}\n",
+        StandardCharsets.UTF_8,
         StandardOpenOption.APPEND);
     IOException broken = Assert.expectThrows(IOException.class, () -> PhiHistory.readModes(files));
     Assert.assertTrue(broken.getMessage().startsWith("Broken line 3 of"), broken.getMessage());
@@ -145,6 +162,7 @@ public class ModeHistoryTest {
     PhiHistory.Lines lines = PhiHistory.readLocked(files);
     Assert.assertEquals(lines.entries(), List.of());
     Assert.assertEquals(lines.modes(), List.of());
-    Assert.assertFalse(Files.exists(files.directory()), "reading takes no lock and creates nothing");
+    Assert.assertFalse(
+        Files.exists(files.directory()), "reading takes no lock and creates nothing");
   }
 }

@@ -22,20 +22,25 @@ public class CarryKeyTest {
   /** 設定から作るキー。{@link CarryKey#of} と同じ値で、Φ は点数だけの Φ とする。 */
   private static CarryKey key(String... assignments) {
     PrismSettings settings = TestSettings.of(assignments);
-    return new CarryKey(LuckSettlement.of(settings.noise(), settings.run().variant()).meaning(), true);
+    return new CarryKey(
+        LuckSettlement.of(settings.noise(), settings.run().variant()).meaning(), true);
   }
 
   @Test
   public void theSameLedgerKeepsTheCarryThroughTheState() {
     List<String[]> runs =
-        List.of(new String[0], new String[] {"noise.ledger.mode=OFF", NO_GAIN}, new String[] {"noise.ledger.mode=AUDIT", NO_GAIN});
+        List.of(
+            new String[0],
+            new String[] {"noise.ledger.mode=OFF", NO_GAIN},
+            new String[] {"noise.ledger.mode=AUDIT", NO_GAIN});
     for (String[] settings : runs) {
       String label = String.join(" ", settings);
       CarryKey key = key(settings);
       Assert.assertEquals(key(settings), key, label);
       Assert.assertNull(key(settings).resetReason(key, true), label);
       PrismCarry carry = new PrismCarry(0.25, key);
-      PrismCarry back = RecordFile.read(PrismCarry.class, RecordFile.json(carry), "state.json").value();
+      PrismCarry back =
+          RecordFile.read(PrismCarry.class, RecordFile.json(carry), "state.json").value();
       Assert.assertEquals(back, carry, label);
       Assert.assertNull(key(settings).resetReason(back.key(), true), label);
     }
@@ -47,7 +52,10 @@ public class CarryKeyTest {
     Object[][] changes = {
       {
         "compute",
-        new String[] {"noise.ledger.compute=[IMPROVE, POINTS, DORA, POLICY]", "noise.ledger.apply=[IMPROVE, POINTS, DORA, POLICY]"}
+        new String[] {
+          "noise.ledger.compute=[IMPROVE, POINTS, DORA, POLICY]",
+          "noise.ledger.apply=[IMPROVE, POINTS, DORA, POLICY]"
+        }
       },
       {"pointClip", new String[] {"noise.ledger.pointClip=16"}},
       {"policyClip", new String[] {"noise.ledger.policyClip=4"}},

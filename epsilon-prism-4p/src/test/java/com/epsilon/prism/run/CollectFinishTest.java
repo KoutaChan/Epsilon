@@ -37,13 +37,15 @@ public class CollectFinishTest {
 
   @Test
   public void theFilesLiveInTheCohortAndMoveUnderGrp() {
-    Assert.assertEquals(grp.cohort(3), run.rows(3), "the collect step seals its part directory as rows/<t>");
+    Assert.assertEquals(
+        grp.cohort(3), run.rows(3), "the collect step seals its part directory as rows/<t>");
     Assert.assertEquals(grp.unmovedRecords(3), run.rows(3).resolve(GrpFiles.UNMOVED_RECORDS));
     Assert.assertEquals(grp.unmovedCounts(3), run.rows(3).resolve(GrpFiles.UNMOVED_COUNTS));
     Assert.assertNotEquals(GrpFiles.UNMOVED_COUNTS, GrpFiles.UNMOVED_RECORDS);
     Assert.assertEquals(grp.counts(3).getFileName().toString(), "c00003.bin");
     Assert.assertEquals(grp.counts(3).getParent().getFileName().toString(), "counts");
-    Assert.assertEquals(grp.counts(3).getParent().getParent(), grp.records(3).getParent().getParent());
+    Assert.assertEquals(
+        grp.counts(3).getParent().getParent(), grp.records(3).getParent().getParent());
     Assert.assertNotEquals(grp.counts(3), grp.records(3));
   }
 

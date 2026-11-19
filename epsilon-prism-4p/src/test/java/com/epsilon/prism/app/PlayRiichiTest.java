@@ -63,7 +63,8 @@ public class PlayRiichiTest {
     Assert.assertTrue(failure.getMessage().contains("play-riichi.token"), failure.getMessage());
     // 秘密のキーはコマンドラインから受け付けない
     Assert.assertEquals(
-        Main.run(new String[] {"play-riichi", "--model", "/runs/x", "--token", "abc"}), Exit.USAGE.code());
+        Main.run(new String[] {"play-riichi", "--model", "/runs/x", "--token", "abc"}),
+        Exit.USAGE.code());
   }
 
   @Test
@@ -72,14 +73,20 @@ public class PlayRiichiTest {
         Layer.parse(
             "riichi.toml",
             Layer.Source.FILE,
-            "[play-riichi]\nmodel = \"/runs/x\"\ntoken = \"abc\"\n\n[play-riichi.policy]\ndevice = \"gpu1\"\n");
+            "[play-riichi]\n"
+                + "model = \"/runs/x\"\n"
+                + "token = \"abc\"\n\n"
+                + "[play-riichi.policy]\n"
+                + "device = \"gpu1\"\n");
     PlayRiichi command = Settings.section(PlayRiichi.class, "play-riichi", List.of(file)).value();
     Assert.assertEquals(command.policy().device(), "gpu1");
     Assert.assertEquals(command.policy().precision(), Precision.FLOAT32);
     Assert.assertEquals(command.token(), "abc");
-    Layer plain = Layer.parse("plain.toml", Layer.Source.FILE, "[play-riichi]\nmodel = \"/runs/x\"\n");
+    Layer plain =
+        Layer.parse("plain.toml", Layer.Source.FILE, "[play-riichi]\nmodel = \"/runs/x\"\n");
     Assert.assertEquals(
-        Settings.section(PlayRiichi.class, "play-riichi", List.of(plain)).value().policy(), PolicyOptions.defaults());
+        Settings.section(PlayRiichi.class, "play-riichi", List.of(plain)).value().policy(),
+        PolicyOptions.defaults());
   }
 
   /**
@@ -96,7 +103,8 @@ public class PlayRiichiTest {
       }
       Assert.assertEquals(PlayRiichi.variant(snapshot), TENHOU_4P);
       int[] answered = new int[1];
-      try (Policy policy = ModelFamily.of(Series.PRISM).open(snapshot, TENHOU_4P, PolicyOptions.defaults())) {
+      try (Policy policy =
+          ModelFamily.of(Series.PRISM).open(snapshot, TENHOU_4P, PolicyOptions.defaults())) {
         PlayRiichi.warmUp(policy);
         var seat = new ClientSeat(policy);
         new TableWalk(TENHOU_4P, TableWalk.Policy.GREEDY)
@@ -109,7 +117,8 @@ public class PlayRiichiTest {
                   }
                   Decisions decisions = engine.decisions();
                   int chosen = seat.decide(engine.view(decisions.seat(slot)), decisions, slot);
-                  Assert.assertTrue(chosen >= 0 && chosen < decisions.legalCount(slot), "chosen " + chosen);
+                  Assert.assertTrue(
+                      chosen >= 0 && chosen < decisions.legalCount(slot), "chosen " + chosen);
                   if (decisions.legalCount(slot) > 1) answered[0]++;
                 });
       }

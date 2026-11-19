@@ -34,8 +34,10 @@ public class PhiControlTest {
       GrpFixtures.writeSettings(run, GrpFixtures.scoreStartAssignments());
       GrpFixtures.writeState(run, 8);
       // g000 は学習の JVM が書く。書かれる前は切り替えられない
-      Assert.assertThrows(IllegalStateException.class, () -> PhiControl.switchTo(run, "g000", null, "test"));
-      Assert.assertEquals(prism("grp-switch", "--run", run.toString(), "--to", "g000"), Exit.FAILED.code());
+      Assert.assertThrows(
+          IllegalStateException.class, () -> PhiControl.switchTo(run, "g000", null, "test"));
+      Assert.assertEquals(
+          prism("grp-switch", "--run", run.toString(), "--to", "g000"), Exit.FAILED.code());
       PhiHistory.initialize(files, GrpFixtures.scoreStart());
       Path first = GrpFixtures.network(run.resolve("first"), 1);
       Path second = GrpFixtures.network(run.resolve("second"), 2);
@@ -44,7 +46,8 @@ public class PhiControlTest {
       RefitRecord rejected = GrpFixtures.ready(files, "g007-a3", 7, second);
       rejected.with(RefitStatus.REJECTED, null, "gate", 0).append(files);
 
-      Assert.assertEquals(prism("grp-switch", "--run", run.toString(), "--to", "g007-a1"), Exit.OK.code());
+      Assert.assertEquals(
+          prism("grp-switch", "--run", run.toString(), "--to", "g007-a1"), Exit.OK.code());
       PhiEntry switched = PhiHistory.read(files).getLast();
       Assert.assertEquals(switched.id(), "g007-a1");
       Assert.assertEquals(switched.kind(), PhiEntryKind.NETWORK);
@@ -52,40 +55,67 @@ public class PhiControlTest {
       Assert.assertEquals(switched.parent(), PhiEntry.INITIAL_ID);
       // 同じ Φ が効いていれば何も足さない。することが無くても終了コードは 0
       Assert.assertTrue(PhiControl.switchTo(run, "g007-a1", null, "test").isEmpty());
-      Assert.assertEquals(prism("grp-switch", "--run", run.toString(), "--to", "g007-a1"), Exit.OK.code());
+      Assert.assertEquals(
+          prism("grp-switch", "--run", run.toString(), "--to", "g007-a1"), Exit.OK.code());
       Assert.assertEquals(PhiHistory.read(files).size(), 2);
       // 学習の JVM が動いていれば、1 反復先から効く
       try (TrainLock training = TrainLock.hold(new RunDirectory(run).trainLock())) {
         Assert.assertTrue(PhiControl.switchTo(run, "g007-a2", null, "manual").isPresent());
         Assert.assertEquals(PhiHistory.read(files).getLast().effectiveFrom(), 9);
-        Assert.assertThrows(IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g000", 8, "test"));
+        Assert.assertThrows(
+            IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g000", 8, "test"));
       }
-      Assert.assertThrows(IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g007-a2", 7, "test"));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g007-a2", 7, "test"));
       // 巻き戻し
       Assert.assertEquals(
-          prism("grp-switch", "--run", run.toString(), "--to", "g000", "--from", "12", "--reason", "x1n3"), Exit.OK.code());
+          prism(
+              "grp-switch",
+              "--run",
+              run.toString(),
+              "--to",
+              "g000",
+              "--from",
+              "12",
+              "--reason",
+              "x1n3"),
+          Exit.OK.code());
       PhiEntry back = PhiHistory.read(files).getLast();
       Assert.assertEquals(back.id(), PhiEntry.INITIAL_ID);
       Assert.assertEquals(back.kind(), PhiEntryKind.SCORE_RANK);
       Assert.assertEquals(back.reason(), "rollback: x1n3");
       Assert.assertTrue(back.rollback());
-      Assert.assertEquals(PhiHistory.effectiveAt(PhiHistory.read(files), 11).orElseThrow().id(), "g007-a2");
-      Assert.assertEquals(PhiHistory.effectiveAt(PhiHistory.read(files), 12).orElseThrow().id(), PhiEntry.INITIAL_ID);
-      // 関門に落ちた候補と知らない id は拒む
-      Assert.assertThrows(IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g007-a3", 13, "test"));
-      Assert.assertThrows(IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g099-a1", 13, "test"));
       Assert.assertEquals(
-          prism("grp-switch", "--run", run.toString(), "--to", "g099-a1", "--from", "13"), Exit.FAILED.code());
+          PhiHistory.effectiveAt(PhiHistory.read(files), 11).orElseThrow().id(), "g007-a2");
+      Assert.assertEquals(
+          PhiHistory.effectiveAt(PhiHistory.read(files), 12).orElseThrow().id(),
+          PhiEntry.INITIAL_ID);
+      // 関門に落ちた候補と知らない id は拒む
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g007-a3", 13, "test"));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g099-a1", 13, "test"));
+      Assert.assertEquals(
+          prism("grp-switch", "--run", run.toString(), "--to", "g099-a1", "--from", "13"),
+          Exit.FAILED.code());
       Assert.assertEquals(PhiHistory.read(files).size(), 4);
       // 自前の GRP でない run では切り替えない
       Files.delete(new RunDirectory(run).settings());
       GrpFixtures.writeSettings(run, "phi.source=SCORE_RANK");
       Assert.assertEquals(
-          prism("grp-switch", "--run", run.toString(), "--to", "g007-a2", "--from", "13"), Exit.USAGE.code());
+          prism("grp-switch", "--run", run.toString(), "--to", "g007-a2", "--from", "13"),
+          Exit.USAGE.code());
       Assert.assertEquals(PhiHistory.read(files).size(), 4);
       // run の記録を読むコマンドは --set を受け付けない
       Assert.assertEquals(
-          prism("grp-switch", "--run", run.toString(), "--to", "g007-a2", "--set", "phi.source=SELF_GRP"),
+          prism(
+              "grp-switch",
+              "--run",
+              run.toString(),
+              "--to",
+              "g007-a2",
+              "--set",
+              "phi.source=SELF_GRP"),
           Exit.USAGE.code());
     } finally {
       Snapshot.deleteTree(run);
@@ -114,15 +144,26 @@ public class PhiControlTest {
       PhiControl.switchTo(run, PhiEntry.INITIAL_ID, 10, "test").orElseThrow();
       // 重みの大きさが形に合わないチェックポイントには戻さない
       Files.writeString(
-          first.resolve(GrpCheckpoint.WEIGHTS_FILE), "x", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
-      Assert.assertThrows(IllegalStateException.class, () -> PhiControl.switchTo(run, "g007-a1", 13, "test"));
+          first.resolve(GrpCheckpoint.WEIGHTS_FILE),
+          "x",
+          StandardCharsets.UTF_8,
+          StandardOpenOption.APPEND);
+      Assert.assertThrows(
+          IllegalStateException.class, () -> PhiControl.switchTo(run, "g007-a1", 13, "test"));
       Assert.assertEquals(
-          prism("grp-switch", "--run", run.toString(), "--to", "g007-a1", "--from", "13"), Exit.FAILED.code());
+          prism("grp-switch", "--run", run.toString(), "--to", "g007-a1", "--from", "13"),
+          Exit.FAILED.code());
       // q が開けない項目にも戻さない
-      Files.writeString(q.resolve(GrpCheckpoint.WEIGHTS_FILE), "x", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
-      Assert.assertThrows(IllegalStateException.class, () -> PhiControl.switchTo(run, "g007-a2", 13, "test"));
+      Files.writeString(
+          q.resolve(GrpCheckpoint.WEIGHTS_FILE),
+          "x",
+          StandardCharsets.UTF_8,
+          StandardOpenOption.APPEND);
+      Assert.assertThrows(
+          IllegalStateException.class, () -> PhiControl.switchTo(run, "g007-a2", 13, "test"));
       // チェックポイントの無い候補には切り替えない
-      Assert.assertThrows(IllegalStateException.class, () -> PhiControl.switchTo(run, "g007-a3", 13, "test"));
+      Assert.assertThrows(
+          IllegalStateException.class, () -> PhiControl.switchTo(run, "g007-a3", 13, "test"));
       Assert.assertEquals(PhiHistory.read(files).size(), 4);
     } finally {
       Snapshot.deleteTree(run);
@@ -151,14 +192,17 @@ public class PhiControlTest {
       Files.write(weights, changed);
       IllegalStateException refused =
           Assert.expectThrows(
-              IllegalStateException.class, () -> PhiControl.switchTo(run, PhiEntry.INITIAL_ID, 6, "test"));
+              IllegalStateException.class,
+              () -> PhiControl.switchTo(run, PhiEntry.INITIAL_ID, 6, "test"));
       Assert.assertTrue(refused.getMessage().startsWith("GRP checkpoint "), refused.getMessage());
       Assert.assertEquals(
-          prism("grp-switch", "--run", run.toString(), "--to", PhiEntry.INITIAL_ID, "--from", "6"), Exit.FAILED.code());
+          prism("grp-switch", "--run", run.toString(), "--to", PhiEntry.INITIAL_ID, "--from", "6"),
+          Exit.FAILED.code());
       Assert.assertEquals(PhiHistory.read(files).size(), 2);
       Files.write(weights, original);
       Assert.assertEquals(
-          prism("grp-switch", "--run", run.toString(), "--to", PhiEntry.INITIAL_ID, "--from", "6"), Exit.OK.code());
+          prism("grp-switch", "--run", run.toString(), "--to", PhiEntry.INITIAL_ID, "--from", "6"),
+          Exit.OK.code());
       Assert.assertEquals(PhiHistory.read(files).getLast().id(), PhiEntry.INITIAL_ID);
       Assert.assertEquals(PhiHistory.read(files).size(), 3);
     } finally {

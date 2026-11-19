@@ -48,7 +48,12 @@ public class ContextTest {
       tape.open(working);
       Context context =
           new Context(
-              new ParameterStore(manager, false), working, Precision.FLOAT32, true, tape, FitProbe.NONE);
+              new ParameterStore(manager, false),
+              working,
+              Precision.FLOAT32,
+              true,
+              tape,
+              FitProbe.NONE);
       NDArray carried = working.create(new float[] {1, 2, 3});
       NDArray[] arrays = new NDArray[3];
       NDArray output =

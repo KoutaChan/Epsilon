@@ -94,7 +94,8 @@ public class EvaluationJobsTest {
 
   @Test
   public void worseDuelsReportThenRollBackThenPause() throws Exception {
-    EvaluationJobs jobs = jobs("evaluation.onWorse={kind = \"ROLLBACK\", streak = 2, maxRollbacks = 1, span = 10}");
+    EvaluationJobs jobs =
+        jobs("evaluation.onWorse={kind = \"ROLLBACK\", streak = 2, maxRollbacks = 1, span = 10}");
     crown(2);
     // 1 回目の悪い結果: アラートだけ
     settleTwice(jobs, duel(3, true), Verdict.WORSE);
@@ -108,16 +109,23 @@ public class EvaluationJobsTest {
     Assert.assertEquals(
         alarms(),
         List.of(
-            "v00003-duel:CHAMPION_WORSE/REPORT", "v00004-duel:CHAMPION_WORSE/REPORT", "v00004-duel:WORSE_STREAK/ROLLBACK"));
+            "v00003-duel:CHAMPION_WORSE/REPORT",
+            "v00004-duel:CHAMPION_WORSE/REPORT",
+            "v00004-duel:WORSE_STREAK/ROLLBACK"));
     ChampionStore store = ChampionStore.open(run.champion());
-    Assert.assertTrue(store.history().getLast().event() instanceof StoreEvent.RolledBack, store.history().toString());
-    Assert.assertEquals(store.current().orElseThrow().version(), 2, "a rollback keeps the champion");
+    Assert.assertTrue(
+        store.history().getLast().event() instanceof StoreEvent.RolledBack,
+        store.history().toString());
+    Assert.assertEquals(
+        store.current().orElseThrow().version(), 2, "a rollback keeps the champion");
     Assert.assertEquals(new ControlRequests(run).pending(), List.of());
     // 決めた反復の数（span）の中で巻き戻しの上限を使い切った後の悪い結果: 一時停止を要求する
     settleTwice(jobs, duel(5, true), Verdict.WORSE);
     Assert.assertEquals(state().regression(), new Regression(3, "v00005-duel", List.of(4)));
     Assert.assertEquals(alarms().getLast(), "v00005-duel:WORSE_STREAK/PAUSE");
-    Assert.assertTrue(ChampionStore.open(run.champion()).history().getLast().event() instanceof StoreEvent.Paused);
+    Assert.assertTrue(
+        ChampionStore.open(run.champion()).history().getLast().event()
+            instanceof StoreEvent.Paused);
     List<ControlRequest> pending = new ControlRequests(run).pending();
     Assert.assertEquals(pending.size(), 1, pending.toString());
     Assert.assertTrue(pending.getFirst().request() instanceof Request.Pause, pending.toString());
@@ -132,7 +140,8 @@ public class EvaluationJobsTest {
    */
   @Test
   public void aDuelSettledAfterTheDuelOfALaterVersionChangesNothing() throws Exception {
-    EvaluationJobs jobs = jobs("evaluation.onWorse={kind = \"ROLLBACK\", streak = 2, maxRollbacks = 1, span = 10}");
+    EvaluationJobs jobs =
+        jobs("evaluation.onWorse={kind = \"ROLLBACK\", streak = 2, maxRollbacks = 1, span = 10}");
     crown(2);
     // バージョン 3 と 4 の決闘は、王者がバージョン 2 の間に計画を決めたまま、決着していない
     JobFile third = duel(3, true);
@@ -141,7 +150,10 @@ public class EvaluationJobsTest {
     Assert.assertEquals(ChampionStore.open(run.champion()).current().orElseThrow().version(), 5);
     jobs.settle(third, measured(Verdict.BETTER));
     ChampionStore store = ChampionStore.open(run.champion());
-    Assert.assertEquals(store.current().orElseThrow().version(), 5, "an older version does not replace the champion");
+    Assert.assertEquals(
+        store.current().orElseThrow().version(),
+        5,
+        "an older version does not replace the champion");
     Assert.assertEquals(store.history().size(), 2, store.history().toString());
     Assert.assertEquals(state().regression(), new Regression(0, "v00005-duel", List.of()));
 
@@ -149,7 +161,9 @@ public class EvaluationJobsTest {
     Assert.assertEquals(state().regression(), new Regression(1, "v00006-duel", List.of()));
     jobs.settle(fourth, measured(Verdict.WORSE));
     Assert.assertEquals(
-        state().regression(), new Regression(1, "v00006-duel", List.of()), "an older duel does not extend the streak");
+        state().regression(),
+        new Regression(1, "v00006-duel", List.of()),
+        "an older duel does not extend the streak");
     Assert.assertEquals(state().start(), 5, "an older duel does not roll back");
     Assert.assertEquals(alarms(), List.of("v00006-duel:CHAMPION_WORSE/REPORT"));
     Assert.assertEquals(ChampionStore.open(run.champion()).history().size(), 2);
@@ -179,13 +193,16 @@ public class EvaluationJobsTest {
             root,
             "phi.source=SCORE_RANK",
             "evaluation.tables." + TABLE + ".opponent=champion",
-            "evaluation.tables." + TABLE + ".seating={kind = \"EVERY_PLACEMENT\", splits = [\"1v3\", \"3v1\"]}",
+            "evaluation.tables."
+                + TABLE
+                + ".seating={kind = \"EVERY_PLACEMENT\", splits = [\"1v3\", \"3v1\"]}",
             "evaluation.tables." + TABLE + ".draws=SEAT_STREAMS",
             "evaluation.tables." + TABLE + ".wallSet=FRESH",
             "evaluation.tables." + TABLE + ".walls=1024",
-            "evaluation.tables." + TABLE
-                + ".stop={kind = \"TEST\", evenMargin = 0.05, alpha = 0.05, spending = 1.0, checkEvery = 512,"
-                + " promote = true}",
+            "evaluation.tables."
+                + TABLE
+                + ".stop={kind = \"TEST\", evenMargin = 0.05, alpha = 0.05, spending = 1.0,"
+                + " checkEvery = 512, promote = true}",
             "evaluation.tables." + TABLE + ".score=RANK",
             "evaluation.tables." + TABLE + ".every=1",
             "evaluation.tables." + TABLE + ".from=2",
@@ -217,11 +234,13 @@ public class EvaluationJobsTest {
     JobFile pending = JobFile.pending(version, TABLE, 0, 1, RecordFile.tree(table));
     DuelSetup.Entrant candidate =
         new DuelSetup.Entrant("prism:" + run.snapshot(version), label(version), version, null);
-    EvaluationPlan plan = new EvaluationPlan(candidate, null, Jars.CLASSES, settings.behaviour().twinDiscard());
+    EvaluationPlan plan =
+        new EvaluationPlan(candidate, null, Jars.CLASSES, settings.behaviour().twinDiscard());
     if (againstChampion) {
       Champion champion = ChampionStore.open(run.champion()).current().orElseThrow();
       DuelSetup.Entrant opponent =
-          new DuelSetup.Entrant("prism:" + champion.checkpoint(), champion.label(), champion.version(), null);
+          new DuelSetup.Entrant(
+              "prism:" + champion.checkpoint(), champion.label(), champion.version(), null);
       plan =
           new EvaluationPlan(
               candidate,
@@ -281,7 +300,8 @@ public class EvaluationJobsTest {
             new Estimate(0, 0, 0, 0),
             List.of(),
             List.of(
-                new DuelResult.SlotValue("candidate", 2.5 - better.mean(), better.error(), 0, 0, shares),
+                new DuelResult.SlotValue(
+                    "candidate", 2.5 - better.mean(), better.error(), 0, 0, shares),
                 new DuelResult.SlotValue("v00002", 2.5, 0, 0, 0, shares)),
             new PlayStats.Rates(0, 0, 0, 0, 0),
             0,

@@ -39,7 +39,9 @@ public class RollInChangeLineageTest {
     Path run = Files.createTempDirectory("prism-rollin-lineage");
     try {
       TestSettings.create(
-          run, TestSettings.cpuLineage("phi.source=SCORE_RANK", "schedule.iterations=2", "labels.rollin.CALL=0"));
+          run,
+          TestSettings.cpuLineage(
+              "phi.source=SCORE_RANK", "schedule.iterations=2", "labels.rollin.CALL=0"));
       Assert.assertEquals(PrismRun.runner(run, 1, () -> false).train(), Ending.LIMIT);
 
       Path apply = run.resolve("call-arm.toml");
@@ -56,14 +58,29 @@ public class RollInChangeLineageTest {
           StandardCharsets.UTF_8);
       Assert.assertEquals(
           Main.run(
-              new String[] {"settings", "change", "--run", run.toString(), "--apply", apply.toString(), "--reason", "test"}),
+              new String[] {
+                "settings",
+                "change",
+                "--run",
+                run.toString(),
+                "--apply",
+                apply.toString(),
+                "--reason",
+                "test"
+              }),
           Exit.OK.code());
       SettingsRow row = new SettingsRows(new RunDirectory(run)).read().getLast();
       Assert.assertEquals(row.row(), 2);
       Assert.assertEquals(row.from(), 2);
-      for (String key : List.of("labels.rollin.CALL", "labels.copies.CALL.copyLabelRate", "labels.copies.CALL.maxCopyLabels"))
+      for (String key :
+          List.of(
+              "labels.rollin.CALL",
+              "labels.copies.CALL.copyLabelRate",
+              "labels.copies.CALL.maxCopyLabels"))
         Assert.assertTrue(
-            row.changes().stream().anyMatch(changed -> changed.key().equals(key) && changed.change() == Change.COLLECT),
+            row.changes().stream()
+                .anyMatch(
+                    changed -> changed.key().equals(key) && changed.change() == Change.COLLECT),
             key + " in " + row.changes());
 
       Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
@@ -77,7 +94,8 @@ public class RollInChangeLineageTest {
       Assert.assertTrue(copies > 0, after.toString());
       JsonObject callLabels = after.getAsJsonObject("copyLabels").getAsJsonObject("CALL");
       long labels = 0;
-      if (callLabels != null) for (String c : callLabels.keySet()) labels += callLabels.get(c).getAsLong();
+      if (callLabels != null)
+        for (String c : callLabels.keySet()) labels += callLabels.get(c).getAsLong();
       Assert.assertTrue(labels <= 4 * copies, labels + " labels in " + copies + " copies");
 
       Assert.assertEquals(callCopyRows(CohortWriter.directory(run, 1)).size(), 0);
@@ -92,7 +110,10 @@ public class RollInChangeLineageTest {
 
   /** 反復の記録から、収集の段の内訳を返す。 */
   private static JsonObject breakdown(JsonObject iteration) {
-    return iteration.getAsJsonObject("steps").getAsJsonObject(PrismStep.COLLECT.name()).getAsJsonObject("breakdown");
+    return iteration
+        .getAsJsonObject("steps")
+        .getAsJsonObject(PrismStep.COLLECT.name())
+        .getAsJsonObject("breakdown");
   }
 
   private static long count(JsonObject breakdown, String table, String c) {
@@ -104,7 +125,8 @@ public class RollInChangeLineageTest {
   private static Map<String, Integer> callCopyRows(Path cohort) throws Exception {
     List<Row> rows = cohortRows(cohort);
     Map<String, Row> roots = new HashMap<>();
-    for (Row row : rows) if (row.source() == Row.Source.ROOT) roots.put(row.gameId() + ":" + row.decisionId(), row);
+    for (Row row : rows)
+      if (row.source() == Row.Source.ROOT) roots.put(row.gameId() + ":" + row.decisionId(), row);
     Map<String, Integer> perCopy = new HashMap<>();
     for (Row row : rows) {
       if (row.source() != Row.Source.ROLLIN) continue;

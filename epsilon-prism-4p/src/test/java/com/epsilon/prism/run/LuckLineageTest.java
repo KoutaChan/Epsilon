@@ -83,10 +83,12 @@ public class LuckLineageTest {
         JsonObject learn = learn(run, 1);
         Assert.assertFalse(learn.has("ledger"), run.toString());
         Assert.assertEquals(learn.get("appliedR2").getAsDouble(), 0.0);
-        Assert.assertFalse(Files.exists(new RunDirectory(run).report(LearnReport.LEDGER_LINES)), run.toString());
+        Assert.assertFalse(
+            Files.exists(new RunDirectory(run).report(LearnReport.LEDGER_LINES)), run.toString());
         JsonObject noise = lines(new RunDirectory(run).report(NoiseLine.FILE)).get(0);
         Assert.assertFalse(noise.has("maxAbsZ"), noise.toString());
-        Assert.assertTrue(!noise.has("biased") || noise.getAsJsonArray("biased").size() == 0, noise.toString());
+        Assert.assertTrue(
+            !noise.has("biased") || noise.getAsJsonArray("biased").size() == 0, noise.toString());
         Assert.assertEquals(carry(run).get("ledgerR2").getAsDouble(), 0.0);
       }
     } finally {
@@ -106,7 +108,8 @@ public class LuckLineageTest {
       none = finished("prism-ura-none", lineage("RECORD", "noise.ura.sample=0"));
       all = finished("prism-ura-all", lineage("RECORD", "noise.ura.sample=1"));
       Assert.assertEquals(encoded(cohort(all, 1)), encoded(cohort(none, 1)));
-      JsonObject off = collect(none, 1).getAsJsonObject("ura"), on = collect(all, 1).getAsJsonObject("ura");
+      JsonObject off = collect(none, 1).getAsJsonObject("ura"),
+          on = collect(all, 1).getAsJsonObject("ura");
       Assert.assertTrue(off.get("handEnds").getAsLong() > 0, off.toString());
       Assert.assertEquals(on.get("handEnds"), off.get("handEnds"));
       Assert.assertEquals(on.get("riichiWins"), off.get("riichiWins"));
@@ -145,7 +148,8 @@ public class LuckLineageTest {
       Assert.assertEquals(carry(run).get("ledgerR2").getAsDouble(), 0.0);
 
       Path refit = out.resolve("refit");
-      Assert.assertEquals(Main.run(fitCohorts(run, refit, 1, "--ledger-r2", "0.1")), Exit.USAGE.code());
+      Assert.assertEquals(
+          Main.run(fitCohorts(run, refit, 1, "--ledger-r2", "0.1")), Exit.USAGE.code());
       Assert.assertEquals(Main.run(fitCohorts(run, refit, 1, "--applied-r2", "0")), Exit.OK.code());
       Assert.assertEquals(refitLedger(refit, 1), withoutSeconds(full));
     } finally {
@@ -179,14 +183,17 @@ public class LuckLineageTest {
       Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
       JsonObject second = learn(run, 2);
       Assert.assertTrue(second.has("carryReset"), second.toString());
-      Assert.assertTrue(second.get("carryReset").getAsString().startsWith("the ledger apply changed"), second.toString());
+      Assert.assertTrue(
+          second.get("carryReset").getAsString().startsWith("the ledger apply changed"),
+          second.toString());
       Assert.assertEquals(second.getAsJsonObject("tempo").get("r2").getAsDouble(), 0.0);
       JsonObject later = ledgerLine(run, 2);
       JsonObject beta = later.getAsJsonObject("all").getAsJsonObject("beta");
       Set<String> applied = Set.of("POINTS", "POLICY");
       for (LedgerColumn column : LedgerColumn.values())
         if (!applied.contains(column.group().name()))
-          Assert.assertEquals(beta.get(column.reportName()).getAsDouble(), 0.0, 0.0, column.reportName());
+          Assert.assertEquals(
+              beta.get(column.reportName()).getAsDouble(), 0.0, 0.0, column.reportName());
 
       out = Files.createTempDirectory("prism-luck-refit");
       Path refit = out.resolve("refit");
@@ -235,7 +242,8 @@ public class LuckLineageTest {
       JsonObject learn = learn(run, 1);
       Assert.assertEquals(learn.get("rows").getAsLong(), labels);
       JsonObject summary = learn.getAsJsonObject("ledger");
-      Assert.assertEquals(summary.get("rows").getAsLong() + summary.get("skippedRows").getAsLong(), labels);
+      Assert.assertEquals(
+          summary.get("rows").getAsLong() + summary.get("skippedRows").getAsLong(), labels);
     } finally {
       delete(run);
     }
@@ -306,7 +314,8 @@ public class LuckLineageTest {
   }
 
   private static int change(Path run, String... assignments) {
-    List<String> arguments = new ArrayList<>(List.of("settings", "change", "--run", run.toString()));
+    List<String> arguments =
+        new ArrayList<>(List.of("settings", "change", "--run", run.toString()));
     for (String assignment : assignments) {
       arguments.add("--change");
       arguments.add(assignment);
@@ -393,13 +402,15 @@ public class LuckLineageTest {
 
   private static JsonObject step(Path run, int t, PrismStep step) throws Exception {
     for (JsonObject line : lines(new RunDirectory(run).report(RunDirectory.ITERATIONS)))
-      if (line.get("iteration").getAsInt() == t) return line.getAsJsonObject("steps").getAsJsonObject(step.name());
+      if (line.get("iteration").getAsInt() == t)
+        return line.getAsJsonObject("steps").getAsJsonObject(step.name());
     throw new AssertionError("no iteration " + t);
   }
 
   /** state.json の持ち越し。 */
   private static JsonObject carry(Path run) throws Exception {
-    JsonObject state = JsonParser.parseString(Files.readString(run.resolve("state.json"))).getAsJsonObject();
+    JsonObject state =
+        JsonParser.parseString(Files.readString(run.resolve("state.json"))).getAsJsonObject();
     return state.getAsJsonObject("carry");
   }
 

@@ -42,7 +42,9 @@ public class PrismSettingsDefaultsTest {
     List<Class<? extends Record>> files = new ArrayList<>();
     for (Class<?> origin : List.of(PrismSettings.class, FourPlayer.class)) {
       for (Class<? extends Record> type : annotatedRecords(origin)) {
-        boolean everyKey = Arrays.stream(type.getRecordComponents()).allMatch(c -> c.isAnnotationPresent(Key.class));
+        boolean everyKey =
+            Arrays.stream(type.getRecordComponents())
+                .allMatch(c -> c.isAnnotationPresent(Key.class));
         (everyKey ? settings : files).add(type);
       }
     }
@@ -68,11 +70,17 @@ public class PrismSettingsDefaultsTest {
       } catch (RuntimeException broken) {
         failures.add(type.getName() + ": " + broken);
       }
-      if (!used.contains(type) && !type.isAnnotationPresent(Case.class) && !Command.class.isAssignableFrom(type)) {
+      if (!used.contains(type)
+          && !type.isAnnotationPresent(Case.class)
+          && !Command.class.isAssignableFrom(type)) {
         topLevel.add(type.getName());
         for (RecordComponent component : type.getRecordComponents()) {
           if (component.getAnnotation(Key.class).change() == Change.INHERIT) {
-            failures.add(type.getName() + "." + component.getName() + " is a top-level key that inherits its change");
+            failures.add(
+                type.getName()
+                    + "."
+                    + component.getName()
+                    + " is a top-level key that inherits its change");
           }
         }
       }
@@ -118,7 +126,9 @@ public class PrismSettingsDefaultsTest {
         fail("Cannot load " + name, unloadable);
         continue;
       }
-      if (type.isRecord() && Arrays.stream(type.getRecordComponents()).anyMatch(c -> c.isAnnotationPresent(Key.class))) {
+      if (type.isRecord()
+          && Arrays.stream(type.getRecordComponents())
+              .anyMatch(c -> c.isAnnotationPresent(Key.class))) {
         records.add((Class<? extends Record>) type);
       }
     }
@@ -130,7 +140,8 @@ public class PrismSettingsDefaultsTest {
     if (Files.isDirectory(location)) {
       return classNames(location, location);
     }
-    try (FileSystem jar = FileSystems.newFileSystem(URI.create("jar:" + location.toUri()), Map.of())) {
+    try (FileSystem jar =
+        FileSystems.newFileSystem(URI.create("jar:" + location.toUri()), Map.of())) {
       return classNames(jar.getPath("/"), jar.getPath("/"));
     }
   }
@@ -139,7 +150,11 @@ public class PrismSettingsDefaultsTest {
     try (Stream<Path> walk = Files.walk(start)) {
       return walk.map(path -> root.relativize(path).toString())
           .filter(name -> name.endsWith(".class") && name.startsWith("com"))
-          .map(name -> name.substring(0, name.length() - ".class".length()).replace('/', '.').replace('\\', '.'))
+          .map(
+              name ->
+                  name.substring(0, name.length() - ".class".length())
+                      .replace('/', '.')
+                      .replace('\\', '.'))
           .filter(name -> !name.endsWith("module-info") && !name.endsWith("package-info"))
           .sorted()
           .toList();

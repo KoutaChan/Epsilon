@@ -52,7 +52,8 @@ public class UraCollectionTest {
 
   /** ラベル行、ロールイン、写しの中の行がどれも出るようにした抽出率（{@code CollectorTest} と同じ）。 */
   private static final Sampling SAMPLING =
-      TestSampling.grouped(0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
+      TestSampling.grouped(
+          0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
 
   /** 一様分布を ε_b = 0.05 だけ混ぜる行動方策。 */
   private static final Behaviour FLOOR = new Behaviour(0.05, 0, CrnScheme.SINGLE_RACE);
@@ -123,12 +124,15 @@ public class UraCollectionTest {
       TableState next = end.next();
       double[] values = new double[TENHOU_4P.seats()];
       if (next.gameOver()) {
-        for (int seat = 0; seat < values.length; seat++) values[seat] = UTILITY.value(TENHOU_4P, next.rank(seat));
+        for (int seat = 0; seat < values.length; seat++)
+          values[seat] = UTILITY.value(TENHOU_4P, next.rank(seat));
       } else {
         phi.values(null, next, values);
       }
       SeatView view = full.seat(0);
-      Assert.assertNull(hands.put(key(game.wall(), view.round(), view.honba()), new Former(values, next.gameOver())));
+      Assert.assertNull(
+          hands.put(
+              key(game.wall(), view.round(), view.honba()), new Former(values, next.gameOver())));
     }
 
     static String key(long gameId, int round, int honba) {
@@ -144,7 +148,8 @@ public class UraCollectionTest {
    * @param encoded 行の正準形（{@code CollectorTest.encoded}）
    * @param phiRequests 収集で Φ を呼んだ回数
    */
-  record Collected(Collector.Result result, List<Row> rows, List<String> encoded, long phiRequests) {}
+  record Collected(
+      Collector.Result result, List<Row> rows, List<String> encoded, long phiRequests) {}
 
   /** 半荘 600〜611 を、帳簿つきで、点数のなめらかな関数の Φ と {@link RiichiPolicy} で集める。 */
   private static Collected collect(UraSettings ura, int workers, GameObserver observer) {
@@ -155,8 +160,17 @@ public class UraCollectionTest {
         var temporary = new CollectorTest.TemporaryCohort(CollectorTest.LEDGER)) {
       var cohort =
           new Collector.Cohort(
-              TENHOU_4P, SEED, SEED * 17, ids, DrawOrder.SEAT_STREAMS, SAMPLING, CollectorTest.LEDGER, ura, FLOOR,
-              TwinDiscard.TSUMOGIRI, observer);
+              TENHOU_4P,
+              SEED,
+              SEED * 17,
+              ids,
+              DrawOrder.SEAT_STREAMS,
+              SAMPLING,
+              CollectorTest.LEDGER,
+              ura,
+              FLOOR,
+              TwinDiscard.TSUMOGIRI,
+              observer);
       var result = Collector.collect(table, cohort, new RiichiPolicy(), phi, temporary.sink);
       List<Row> rows = temporary.sealAndRead();
       return new Collected(result, rows, CollectorTest.encoded(rows), phi.stats().requests());
@@ -177,7 +191,8 @@ public class UraCollectionTest {
     Assert.assertEquals(sampled.encoded(), none.encoded(), "sample 0.05");
     Assert.assertEquals(all.encoded(), none.encoded(), "sample 1");
     Assert.assertEquals(serial.encoded(), none.encoded(), "sample 1, one worker");
-    Assert.assertNotEquals(expected.encoded(), none.encoded(), "learning the expected ura changed no row");
+    Assert.assertNotEquals(
+        expected.encoded(), none.encoded(), "learning the expected ura changed no row");
 
     // 主経路の（行, 手）（MAIN と ROOT の打った手）の Y は、局の後の卓から直接求めた局末の値を float にしたもの（終局も同じ）
     Observation observation = new Observation(TENHOU_4P);
@@ -185,20 +200,29 @@ public class UraCollectionTest {
     for (Row row : none.rows()) {
       if (row.source() != Row.Source.MAIN && row.source() != Row.Source.ROOT) continue;
       observation.bind(row.observation(), 0);
-      Former hand = former.hands.get(FormerValues.key(row.gameId(), observation.kyoku(), observation.honba()));
-      Assert.assertNotNull(hand, row.gameId() + " " + observation.kyoku() + " " + observation.honba());
+      Former hand =
+          former.hands.get(
+              FormerValues.key(row.gameId(), observation.kyoku(), observation.honba()));
+      Assert.assertNotNull(
+          hand, row.gameId() + " " + observation.kyoku() + " " + observation.honba());
       float y = (float) hand.values()[observation.observer()];
       Assert.assertEquals(
-          Float.floatToRawIntBits(row.values()[row.played()]), Float.floatToRawIntBits(y), row.source().toString());
+          Float.floatToRawIntBits(row.values()[row.played()]),
+          Float.floatToRawIntBits(y),
+          row.source().toString());
       compared++;
       if (hand.terminal()) terminal++;
     }
-    Assert.assertTrue(compared > 100 && terminal > 0, compared + " compared, " + terminal + " terminal");
+    Assert.assertTrue(
+        compared > 100 && terminal > 0, compared + " compared, " + terminal + " terminal");
 
-    UraAudit.Report off = none.result().ura(), on = all.result().ura(), few = sampled.result().ura();
+    UraAudit.Report off = none.result().ura(),
+        on = all.result().ura(),
+        few = sampled.result().ura();
     String counts = "off " + off.summary() + " on " + on.summary();
     Assert.assertTrue(off.handEnds() > 0 && off.riichiWins() > 0, counts);
-    for (UraAudit.Report report : List.of(few, on, serial.result().ura(), expected.result().ura())) {
+    for (UraAudit.Report report :
+        List.of(few, on, serial.result().ura(), expected.result().ura())) {
       Assert.assertEquals(report.handEnds(), off.handEnds(), counts);
       Assert.assertEquals(report.riichiWins(), off.riichiWins(), counts);
     }
@@ -213,7 +237,8 @@ public class UraCollectionTest {
     Assert.assertEquals(binned, on.averaged(), counts);
     Assert.assertFalse(on.cells().isEmpty(), counts);
     Assert.assertEquals(serial.result().ura().cells(), on.cells(), "cells by workers");
-    Assert.assertEquals(serial.result().ura().summary().cells(), on.summary().cells(), "cells by workers");
+    Assert.assertEquals(
+        serial.result().ura().summary().cells(), on.summary().cells(), "cells by workers");
     // 標準誤差は束が 2 つあれば求まる。要約の z は、束が足りる区分にだけ書く（この小さな収集では、どの区分も束が少ない）
     Assert.assertTrue(on.cells().stream().anyMatch(cell -> cell.standardError() > 0), counts);
     for (int index = 0; index < on.cells().size(); index++) {
@@ -222,18 +247,21 @@ public class UraCollectionTest {
       Assert.assertEquals(on.summary().cells().get(index).z() != null, enough, cell.toString());
     }
     // 監査は Φ を呼ぶ回数を増やすだけ。全ての立直の和了で期待値を求めると、回数は期待値で学ぶ収集と同じになる
-    Assert.assertTrue(all.phiRequests() > none.phiRequests(), all.phiRequests() + " vs " + none.phiRequests());
+    Assert.assertTrue(
+        all.phiRequests() > none.phiRequests(), all.phiRequests() + " vs " + none.phiRequests());
     Assert.assertEquals(expected.phiRequests(), all.phiRequests());
     Assert.assertEquals(serial.phiRequests(), all.phiRequests());
 
     CollectReport report = CollectReport.of(1, all.result(), all.rows().size(), 0);
     Assert.assertEquals(report.ura(), on.summary());
-    JsonObject json = JsonParser.parseString(RecordFile.json(report)).getAsJsonObject().getAsJsonObject("ura");
+    JsonObject json =
+        JsonParser.parseString(RecordFile.json(report)).getAsJsonObject().getAsJsonObject("ura");
     Assert.assertEquals(json.get("handEnds").getAsLong(), on.handEnds());
     Assert.assertEquals(json.get("riichiWins").getAsLong(), on.riichiWins());
     Assert.assertEquals(json.get("averaged").getAsLong(), on.averaged());
     Assert.assertEquals(json.getAsJsonArray("groups").size(), UraAudit.GROUP_BINS);
     Assert.assertEquals(json.getAsJsonArray("cells").size(), on.cells().size());
-    Assert.assertEquals(RecordFile.read(CollectReport.class, RecordFile.json(report), "test").value(), report);
+    Assert.assertEquals(
+        RecordFile.read(CollectReport.class, RecordFile.json(report), "test").value(), report);
   }
 }

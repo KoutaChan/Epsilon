@@ -93,9 +93,12 @@ public class ExplorationForkTest {
     private static long history(EventLog log, int events) {
       long hash = events;
       for (int event = 0; event < events; event++) {
-        int flags = (log.red(event) ? 1 : 0) | (log.tsumogiri(event) ? 2 : 0) | (log.riichi(event) ? 4 : 0);
-        for (long field : new long[] {log.kind(event).ordinal(), log.seat(event), log.tile(event), log.meld(event), flags})
-          hash = SeedMixer.mix64(hash * 31 + field);
+        int flags =
+            (log.red(event) ? 1 : 0) | (log.tsumogiri(event) ? 2 : 0) | (log.riichi(event) ? 4 : 0);
+        for (long field :
+            new long[] {
+              log.kind(event).ordinal(), log.seat(event), log.tile(event), log.meld(event), flags
+            }) hash = SeedMixer.mix64(hash * 31 + field);
       }
       return hash;
     }
@@ -120,7 +123,8 @@ public class ExplorationForkTest {
       Point point =
           points.computeIfAbsent(
               key(game.wall(), ids),
-              created -> new Point(log.size(), history(log, log.size()), seats, ids, new boolean[count]));
+              created ->
+                  new Point(log.size(), history(log, log.size()), seats, ids, new boolean[count]));
       point.called()[slot] = call(Action.of(decisions.legal(slot, choice)).type());
     }
 
@@ -151,7 +155,8 @@ public class ExplorationForkTest {
               case PASS -> 0f;
               case CHI, PON, DAIMINKAN -> -0.01f;
               case TSUMO_AGARI, RON_AGARI -> 10f;
-              case DAHAI -> (float) CrnSeeds.unit(SeedMixer.mix64(request.legal()[a] * 31L + request.seat()));
+              case DAHAI ->
+                  (float) CrnSeeds.unit(SeedMixer.mix64(request.legal()[a] * 31L + request.seat()));
               default -> -10f;
             };
         if (scores[a] > scores[best]) best = a;
@@ -196,9 +201,19 @@ public class ExplorationForkTest {
         var temporary = new CollectorTest.TemporaryCohort(null)) {
       var cohort =
           new Collector.Cohort(
-              TENHOU_4P, 7_001L, 41_017L, GAMES, DrawOrder.SEAT_STREAMS, SAMPLING, null, CollectorTest.URA, EXPLORING,
-              TwinDiscard.TSUMOGIRI, watcher);
-      Collector.collect(table, cohort, watcher, Phi.scoreRank(TENHOU_4P, RankUtility.TENHOU), temporary.sink);
+              TENHOU_4P,
+              7_001L,
+              41_017L,
+              GAMES,
+              DrawOrder.SEAT_STREAMS,
+              SAMPLING,
+              null,
+              CollectorTest.URA,
+              EXPLORING,
+              TwinDiscard.TSUMOGIRI,
+              watcher);
+      Collector.collect(
+          table, cohort, watcher, Phi.scoreRank(TENHOU_4P, RankUtility.TENHOU), temporary.sink);
       rows = temporary.sealAndRead();
     } catch (IOException failure) {
       throw new UncheckedIOException(failure);
@@ -227,10 +242,17 @@ public class ExplorationForkTest {
       exposed++;
       if (continuation.caller() >= 0 && continuation.caller() != deviator)
         violations.add(
-            "seat " + continuation.caller() + " called in a continuation of seat " + deviator + " at " + continuation.point());
+            "seat "
+                + continuation.caller()
+                + " called in a continuation of seat "
+                + deviator
+                + " at "
+                + continuation.point());
     }
     Collections.sort(violations);
-    Assert.assertTrue(exposed > 0, "no continuation left a point where the main path explored another seat's call");
+    Assert.assertTrue(
+        exposed > 0,
+        "no continuation left a point where the main path explored another seat's call");
     Assert.assertEquals(violations, List.of());
   }
 }

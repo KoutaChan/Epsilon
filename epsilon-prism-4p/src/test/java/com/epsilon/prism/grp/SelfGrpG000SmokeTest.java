@@ -49,7 +49,8 @@ public class SelfGrpG000SmokeTest {
 
   /** ラベル行、ロールイン、写しの中の行がどれも出るように、本番より高くした率。 */
   private static final Sampling SAMPLING =
-      TestSampling.grouped(0.25, 0.05, 0.05, 0.05, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
+      TestSampling.grouped(
+          0.25, 0.05, 0.05, 0.05, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
 
   private static final Behaviour FLOOR = new Behaviour(0.05, 0, CrnScheme.SINGLE_RACE);
 
@@ -77,7 +78,8 @@ public class SelfGrpG000SmokeTest {
       float[] scores = new float[n];
       int best = 0;
       for (int a = 0; a < n; a++) {
-        scores[a] = (float) CrnSeeds.unit(SeedMixer.mix64(request.legal()[a] * 31L + request.seat()));
+        scores[a] =
+            (float) CrnSeeds.unit(SeedMixer.mix64(request.legal()[a] * 31L + request.seat()));
         if (scores[a] > scores[best]) best = a;
       }
       float[] sigma = new float[n];
@@ -108,34 +110,53 @@ public class SelfGrpG000SmokeTest {
         Path file = work.resolve("table.json");
         double[][] corrections = new double[9][24];
         for (int stage = 0; stage < 9; stage++)
-          for (int bin = 0; bin < 24; bin++) corrections[stage][bin] = 0.001 * (stage + 1) * (12 - bin);
+          for (int bin = 0; bin < 24; bin++)
+            corrections[stage][bin] = 0.001 * (stage + 1) * (12 - bin);
         PhiTable.of(TENHOU_4P, new double[] {1.0, 1.1, 1.2}, -1, 2.0 / 3, corrections).write(file);
         table = file.toString();
       }
       String[] common = {
-        "inference.encoders=2", "inference.slots=1", "inference.readyBatches=2", "table.activeGames=8", "table.workers=2",
+        "inference.encoders=2",
+        "inference.slots=1",
+        "inference.readyBatches=2",
+        "table.activeGames=8",
+        "table.workers=2",
         "table.batchWaitMicros=1000"
       };
       PrismSettings fixed =
-          TestSettings.of(concat(common, "phi.source=FIXED_GRP", "phi.grp=" + checkpoint, "phi.table=" + table));
+          TestSettings.of(
+              concat(
+                  common, "phi.source=FIXED_GRP", "phi.grp=" + checkpoint, "phi.table=" + table));
       PrismSettings self =
           TestSettings.of(
               concat(
-                  common, "phi.source=SELF_GRP", "phi.start.kind=GRP_CHECKPOINT", "phi.start.grp=" + checkpoint,
-                  "phi.start.table=" + table, "phi.grp.monitor=RECORD", "phi.grp.refit=MANUAL", "phi.grp.switching=PROPOSE"));
+                  common,
+                  "phi.source=SELF_GRP",
+                  "phi.start.kind=GRP_CHECKPOINT",
+                  "phi.start.grp=" + checkpoint,
+                  "phi.start.table=" + table,
+                  "phi.grp.monitor=RECORD",
+                  "phi.grp.refit=MANUAL",
+                  "phi.grp.switching=PROPOSE"));
       for (PrismSettings settings : List.of(fixed, self))
         Assert.assertEquals(
-            PhiControl.problems(new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed())), List.of());
+            PhiControl.problems(
+                new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed())),
+            List.of());
       Collected expected = collect(fixed, work.resolve("fixed"));
       Collected actual = collect(self, work.resolve("self"));
       Assert.assertEquals(expected.entry().id(), PhiEntry.FIXED_ID);
       Assert.assertEquals(actual.entry().id(), PhiEntry.INITIAL_ID);
       Assert.assertEquals(actual.entry().kind(), PhiEntryKind.NETWORK);
-      Assert.assertTrue(actual.entry().sameValue(expected.entry()), actual.entry() + " vs " + expected.entry());
+      Assert.assertTrue(
+          actual.entry().sameValue(expected.entry()), actual.entry() + " vs " + expected.entry());
       Assert.assertTrue(expected.evaluated() > 0, "the GRP valued some hand ends");
       Assert.assertEquals(actual.evaluated(), expected.evaluated());
       Assert.assertTrue(expected.rows().size() > 0);
-      Assert.assertEquals(actual.rows(), expected.rows(), "SELF_GRP g000 must give the FIXED_GRP label rows bit for bit");
+      Assert.assertEquals(
+          actual.rows(),
+          expected.rows(),
+          "SELF_GRP g000 must give the FIXED_GRP label rows bit for bit");
       LOG.info(
           "g000 smoke: {} rows, {} hand ends valued by the GRP, sha {} — identical",
           expected.rows().size(),
@@ -160,9 +181,19 @@ public class SelfGrpG000SmokeTest {
       Phi value = phi.phi();
       var plan =
           new Collector.Cohort(
-              TENHOU_4P, SEED, SEED * 3, ids, DrawOrder.SEAT_STREAMS, SAMPLING, null, URA, FLOOR, TwinDiscard.TSUMOGIRI,
+              TENHOU_4P,
+              SEED,
+              SEED * 3,
+              ids,
+              DrawOrder.SEAT_STREAMS,
+              SAMPLING,
+              null,
+              URA,
+              FLOOR,
+              TwinDiscard.TSUMOGIRI,
               null);
-      Collector.collect(resources.table(), plan, new HashedScorePolicy(), value, new RowSink(writer));
+      Collector.collect(
+          resources.table(), plan, new HashedScorePolicy(), value, new RowSink(writer));
       writer.seal();
       CohortWriter.Manifest manifest = CohortWriter.readManifest(cohort);
       RowCodec codec = new RowCodec(manifest.ledgerFeatures(), TENHOU_4P);
@@ -171,7 +202,9 @@ public class SelfGrpG000SmokeTest {
         var frames = ByteBuffer.wrap(Files.readAllBytes(cohort.resolve(shard.file())));
         while (frames.hasRemaining()) {
           Row row = codec.decode(frames);
-          rows.add(Base64.getEncoder().encodeToString(new RowCodec(row.ledgerFeatures(), TENHOU_4P).encode(row)));
+          rows.add(
+              Base64.getEncoder()
+                  .encodeToString(new RowCodec(row.ledgerFeatures(), TENHOU_4P).encode(row)));
         }
       }
       Collections.sort(rows);

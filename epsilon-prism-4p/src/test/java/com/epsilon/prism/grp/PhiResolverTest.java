@@ -34,9 +34,12 @@ public class PhiResolverTest {
         ActivePhi first = resolver.resolve(1, phi);
         Assert.assertEquals(first.entry().kind(), PhiEntryKind.SCORE_RANK);
         Assert.assertEquals(first.phi().kind(), Phi.Kind.SCORE_RANK);
-        PhiHistory.append(files, GrpFixtures.ready(files, "g001-a1", 1, a).entry(GrpFixtures.VARIANT, 3, "test"));
-        PhiHistory.append(files, GrpFixtures.ready(files, "g003-a1", 3, b).entry(GrpFixtures.VARIANT, 5, "test"));
-        PhiHistory.append(files, PhiHistory.read(files).getFirst().from(6, PhiEntry.ROLLBACK + " test"));
+        PhiHistory.append(
+            files, GrpFixtures.ready(files, "g001-a1", 1, a).entry(GrpFixtures.VARIANT, 3, "test"));
+        PhiHistory.append(
+            files, GrpFixtures.ready(files, "g003-a1", 3, b).entry(GrpFixtures.VARIANT, 5, "test"));
+        PhiHistory.append(
+            files, PhiHistory.read(files).getFirst().from(6, PhiEntry.ROLLBACK + " test"));
         Assert.assertSame(resolver.resolve(2, phi).phi(), first.phi());
         ActivePhi third = resolver.resolve(3, phi);
         Assert.assertEquals(third.entry().id(), "g001-a1");

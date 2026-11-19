@@ -36,20 +36,24 @@ public class HipFoldReferenceTest {
       PrismNetwork network = HipFixtures.network(manager, DEPTH, SEED);
       WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 1);
       HipReference reference = new HipReference(pack);
-      HipReference.Input in = new HipReference.Input(HipFixtures.encode(HipFixtures.mixedRows(ROWS, SEED)));
+      HipReference.Input in =
+          new HipReference.Input(HipFixtures.encode(HipFixtures.mixedRows(ROWS, SEED)));
       reference.allocate(in);
       reference.embed(in);
       float[] expected = formD(reference, in);
       float[] actual = reference.layer0Qkv();
       int differ = 0;
       for (int i = 0; i < expected.length; i++) {
-        differ += Float.floatToRawIntBits(expected[i]) != Float.floatToRawIntBits(actual[i]) ? 1 : 0;
+        differ +=
+            Float.floatToRawIntBits(expected[i]) != Float.floatToRawIntBits(actual[i]) ? 1 : 0;
       }
       Diff diff = Diff.bf16(expected, actual);
       log.info("PRISM-HIP-FOLD {}, bits differ {}", diff.line("reference qkv0 vs D"), differ);
-      Assert.assertTrue(diff.withinOneUlp() == 1.0, "qkv0 values beyond 1 BF16 ulp of D: " + diff.line("qkv0"));
       Assert.assertTrue(
-          differ <= DIFFER_LIMIT * expected.length, differ + " of " + expected.length + " qkv0 values differ from D");
+          diff.withinOneUlp() == 1.0, "qkv0 values beyond 1 BF16 ulp of D: " + diff.line("qkv0"));
+      Assert.assertTrue(
+          differ <= DIFFER_LIMIT * expected.length,
+          differ + " of " + expected.length + " qkv0 values differ from D");
     }
   }
 
@@ -108,13 +112,17 @@ public class HipFoldReferenceTest {
             acc[h] += pack.bytes.getFloat(base + h * Float.BYTES);
           }
           float[] row =
-              folded.get(table).computeIfAbsent(entry, e -> {
-                double[] values = new double[hidden];
-                for (int h = 0; h < hidden; h++) {
-                  values[h] = pack.bytes.getFloat(base + h * Float.BYTES);
-                }
-                return project(values, projection, width);
-              });
+              folded
+                  .get(table)
+                  .computeIfAbsent(
+                      entry,
+                      e -> {
+                        double[] values = new double[hidden];
+                        for (int h = 0; h < hidden; h++) {
+                          values[h] = pack.bytes.getFloat(base + h * Float.BYTES);
+                        }
+                        return project(values, projection, width);
+                      });
           for (int c = 0; c < width; c++) {
             sum[c] += row[c];
           }
@@ -128,7 +136,11 @@ public class HipFoldReferenceTest {
                 case EXACT -> HipReference.bf(in.f32(exact, t, index));
               };
           for (int h = 0; h < hidden; h++) {
-            acc[h] = Math.fma(bf16(pack, spec.denseOffset() + (k * hidden + h) * Short.BYTES), feature, acc[h]);
+            acc[h] =
+                Math.fma(
+                    bf16(pack, spec.denseOffset() + (k * hidden + h) * Short.BYTES),
+                    feature,
+                    acc[h]);
           }
           for (int c = 0; c < width; c++) {
             sum[c] = Math.fma(dense[k][c], feature, sum[c]);

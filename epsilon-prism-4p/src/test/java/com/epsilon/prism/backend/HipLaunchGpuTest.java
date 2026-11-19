@@ -93,22 +93,42 @@ public class HipLaunchGpuTest {
               at(CANDIDATE), at(VALUE_GRAPH));
       case V2_DEPTH_3 ->
           List.of(
-              at(EMBED), at(RELATION),
-              at(ATTENTION_ALL, 0), at(MLP_ALL, 0), at(ATTENTION_ALL, 1), at(MLP_ALL, 1),
-              at(ATTENTION_FIXED, 2), at(MLP_LAST, 2),
-              at(CANDIDATE), at(VALUE_GRAPH));
+              at(EMBED),
+              at(RELATION),
+              at(ATTENTION_ALL, 0),
+              at(MLP_ALL, 0),
+              at(ATTENTION_ALL, 1),
+              at(MLP_ALL, 1),
+              at(ATTENTION_FIXED, 2),
+              at(MLP_LAST, 2),
+              at(CANDIDATE),
+              at(VALUE_GRAPH));
       case V3_ONE_STAGE ->
           List.of(
-              at(EMBED), at(RELATION),
-              at(ATTENTION_ALL, 0), at(MLP_ALL, 0),
-              at(ATTENTION_FIXED, 1), at(MLP_FIXED, 1), at(ATTENTION_FIXED, 2), at(MLP_LAST, 2),
-              at(CANDIDATE), at(VALUE_GRAPH));
+              at(EMBED),
+              at(RELATION),
+              at(ATTENTION_ALL, 0),
+              at(MLP_ALL, 0),
+              at(ATTENTION_FIXED, 1),
+              at(MLP_FIXED, 1),
+              at(ATTENTION_FIXED, 2),
+              at(MLP_LAST, 2),
+              at(CANDIDATE),
+              at(VALUE_GRAPH));
       case V3, V3_CONTEXT_512 ->
           List.of(
-              at(EMBED), at(RELATION),
-              at(ATTENTION_ALL, 0), at(MLP_ALL, 0),
-              at(ATTENTION_FIXED, 1), at(MLP_FIXED, 1), at(ATTENTION_FIXED, 2), at(MLP_LAST, 2),
-              at(REREAD_KEY_VALUE), at(CANDIDATE), at(REREAD), at(VALUE_GRAPH));
+              at(EMBED),
+              at(RELATION),
+              at(ATTENTION_ALL, 0),
+              at(MLP_ALL, 0),
+              at(ATTENTION_FIXED, 1),
+              at(MLP_FIXED, 1),
+              at(ATTENTION_FIXED, 2),
+              at(MLP_LAST, 2),
+              at(REREAD_KEY_VALUE),
+              at(CANDIDATE),
+              at(REREAD),
+              at(VALUE_GRAPH));
     };
   }
 

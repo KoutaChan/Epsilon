@@ -38,7 +38,8 @@ public class GrpSelfPlaySmokeBench {
 
   @Test(timeOut = 7_200_000)
   public void scoreRankStartRefitsOnTheSlotAndSwitchesToANetwork() throws Exception {
-    if (!Boolean.getBoolean(PROPERTY)) throw new SkipException("set -D" + PROPERTY + "=true to run the GRP self-play smoke");
+    if (!Boolean.getBoolean(PROPERTY))
+      throw new SkipException("set -D" + PROPERTY + "=true to run the GRP self-play smoke");
     Path run = Files.createTempDirectory("prism-grp-smoke");
     try {
       TestSettings.create(run, settings());
@@ -48,40 +49,54 @@ public class GrpSelfPlaySmokeBench {
       Assert.assertEquals(history.getFirst().id(), PhiEntry.INITIAL_ID);
       Assert.assertEquals(history.getFirst().kind(), PhiEntryKind.SCORE_RANK);
       List<JsonObject> iterations = iterations(run);
-      for (JsonObject iteration : iterations) Assert.assertTrue(step(iteration, "PHI").has("waitSeconds"), iteration.toString());
+      for (JsonObject iteration : iterations)
+        Assert.assertTrue(step(iteration, "PHI").has("waitSeconds"), iteration.toString());
       List<SwitchWatchRecord> watch = SwitchWatchRecord.readAll(files);
       Assert.assertTrue(watch.size() >= 4, watch.size() + " switch watch lines");
-      for (int index = 0; index < watch.size(); index++) Assert.assertEquals(watch.get(index).cohort(), index + 1);
+      for (int index = 0; index < watch.size(); index++)
+        Assert.assertEquals(watch.get(index).cohort(), index + 1);
       List<RefitRecord> records = RefitRecord.readAll(files);
-      line("refits %s", records.stream().map(record -> record.id() + ":" + record.status()).toList());
+      line(
+          "refits %s",
+          records.stream().map(record -> record.id() + ":" + record.status()).toList());
       RefitRecord trained = RefitRecord.latestAt(records, 3).orElseThrow();
       Assert.assertTrue(
-          trained.status() == RefitStatus.READY || trained.status() == RefitStatus.REJECTED, trained.toString());
+          trained.status() == RefitStatus.READY || trained.status() == RefitStatus.REJECTED,
+          trained.toString());
       Assert.assertNotNull(trained.gate());
       line("M(3) %s at c4: %s", trained.status(), trained.detail());
 
       // 関門に通した候補を READY にして、次の反復から使う
-      if (trained.status() != RefitStatus.READY) trained.with(RefitStatus.READY, trained.gate(), "smoke", 0).append(files);
-      Assert.assertEquals(PhiControlTest.prism("grp-switch", "--run", run.toString(), "--to", trained.id()), 0);
+      if (trained.status() != RefitStatus.READY)
+        trained.with(RefitStatus.READY, trained.gate(), "smoke", 0).append(files);
+      Assert.assertEquals(
+          PhiControlTest.prism("grp-switch", "--run", run.toString(), "--to", trained.id()), 0);
       PhiEntry switched = PhiHistory.read(files).getLast();
       Assert.assertEquals(switched.id(), trained.id());
       int t = switched.effectiveFrom();
       Assert.assertEquals(PrismRun.runner(run, 1, () -> false).train(), Ending.LIMIT);
       JsonObject used = iterations(run).get(t - 1);
       Assert.assertEquals(phiId(used), trained.id());
-      Assert.assertTrue(step(used, "LEARN").has("carryReset"), "a score-only to network switch resets the ledger R²");
+      Assert.assertTrue(
+          step(used, "LEARN").has("carryReset"),
+          "a score-only to network switch resets the ledger R²");
       Assert.assertEquals(GameRecordCodec.read(files.records(t)).phiId(), trained.id());
       // g000 に巻き戻す
       Assert.assertEquals(
-          PhiControlTest.prism("grp-switch", "--run", run.toString(), "--to", PhiEntry.INITIAL_ID, "--reason", "smoke"), 0);
+          PhiControlTest.prism(
+              "grp-switch",
+              "--run",
+              run.toString(),
+              "--to",
+              PhiEntry.INITIAL_ID,
+              "--reason",
+              "smoke"),
+          0);
       Assert.assertEquals(PrismRun.runner(run, 1, () -> false).train(), Ending.LIMIT);
       Assert.assertEquals(phiId(iterations(run).get(t)), PhiEntry.INITIAL_ID);
       line(
           "switched to %s at %d and rolled back at %d; switch watch %d lines",
-          trained.id(),
-          t,
-          t + 1,
-          SwitchWatchRecord.readAll(files).size());
+          trained.id(), t, t + 1, SwitchWatchRecord.readAll(files).size());
     } finally {
       Snapshot.deleteTree(run);
     }
@@ -93,17 +108,37 @@ public class GrpSelfPlaySmokeBench {
    */
   private static String[] settings() {
     return TestSettings.cpuLineage(
-        "memory.scheme=EMA", "memory.from=2", "schedule.cohorts=[{from = 1, games = 4}]", "schedule.iterations=20",
+        "memory.scheme=EMA",
+        "memory.from=2",
+        "schedule.cohorts=[{from = 1, games = 4}]",
+        "schedule.iterations=20",
         "phi.source=SELF_GRP",
-        "phi.start.kind=SCORE_RANK", "phi.grp.monitor=SCORE", "phi.grp.refit=SCHEDULE", "phi.grp.switching=PROPOSE",
-        "phi.grp.trustGames=1", "phi.grp.threads=1", "noise.rates.table.THREAT=0.005", "noise.rates.table.RIICHI=0.005",
-        "noise.rates.table.CALL=0.005", "noise.rates.table.KAN=0.005", "noise.rates.table.END=0.005",
-        "labels.maxCandidates=2", "labels.rollin.THREAT=0.005", "labels.rollin.RIICHI=0.005", "labels.rollin.CALL=0.005",
-        "labels.rollin.KAN=0.005", "labels.rollin.END=0.005", "labels.rollin.FINAL_END=0.005");
+        "phi.start.kind=SCORE_RANK",
+        "phi.grp.monitor=SCORE",
+        "phi.grp.refit=SCHEDULE",
+        "phi.grp.switching=PROPOSE",
+        "phi.grp.trustGames=1",
+        "phi.grp.threads=1",
+        "noise.rates.table.THREAT=0.005",
+        "noise.rates.table.RIICHI=0.005",
+        "noise.rates.table.CALL=0.005",
+        "noise.rates.table.KAN=0.005",
+        "noise.rates.table.END=0.005",
+        "labels.maxCandidates=2",
+        "labels.rollin.THREAT=0.005",
+        "labels.rollin.RIICHI=0.005",
+        "labels.rollin.CALL=0.005",
+        "labels.rollin.KAN=0.005",
+        "labels.rollin.END=0.005",
+        "labels.rollin.FINAL_END=0.005");
   }
 
   private static String phiId(JsonObject iteration) {
-    return step(iteration, "PHI").getAsJsonObject("value").getAsJsonObject("entry").get("id").getAsString();
+    return step(iteration, "PHI")
+        .getAsJsonObject("value")
+        .getAsJsonObject("entry")
+        .get("id")
+        .getAsString();
   }
 
   /** 反復の報告から、指定した段の報告を返す。 */
@@ -113,7 +148,8 @@ public class GrpSelfPlaySmokeBench {
 
   private static List<JsonObject> iterations(Path run) throws IOException {
     List<JsonObject> result = new ArrayList<>();
-    try (Stream<String> lines = Files.lines(run.resolve("reports/iterations.jsonl"), StandardCharsets.UTF_8)) {
+    try (Stream<String> lines =
+        Files.lines(run.resolve("reports/iterations.jsonl"), StandardCharsets.UTF_8)) {
       for (String line : lines.toList())
         if (!line.isBlank()) result.add(JsonParser.parseString(line).getAsJsonObject());
     }

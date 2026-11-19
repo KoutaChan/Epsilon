@@ -69,7 +69,8 @@ public final class MonotoneProbe {
             int[] scores = state.scores();
             scores[receiver] += points;
             scores[giver] -= points;
-            GrpState shifted = new GrpState(state.variant(), state.round(), state.honba(), state.sticks(), scores);
+            GrpState shifted =
+                new GrpState(state.variant(), state.round(), state.honba(), state.sticks(), scores);
             moves.add(new Move(handEnd, shifted, receiver, giver));
           }
         }
@@ -95,7 +96,8 @@ public final class MonotoneProbe {
    */
   public double violationRate(double[][] values) {
     if (values.length != moves.size()) {
-      throw new IllegalArgumentException(moves.size() + " tables need values, got " + values.length);
+      throw new IllegalArgumentException(
+          moves.size() + " tables need values, got " + values.length);
     }
     long violations = 0;
     long checks = 0;
@@ -124,7 +126,8 @@ public final class MonotoneProbe {
    */
   public double violationRate(Phi phi) {
     if (phi.variant() != ends.variant()) {
-      throw new IllegalArgumentException("A " + phi.variant() + " Φ for " + ends.variant() + " hand ends");
+      throw new IllegalArgumentException(
+          "A " + phi.variant() + " Φ for " + ends.variant() + " hand ends");
     }
     RoundHistory history = phi.needsHistory() ? new RoundHistory(ends.variant()) : null;
     double[][] values = new double[moves.size()][ends.seats()];
@@ -142,7 +145,8 @@ public final class MonotoneProbe {
   /** ネットワークの Φ が逆向きに動く割合。ネットワークのルールが局末と違えば IllegalArgumentException を投げる。 */
   public double violationRate(GrpNetwork network, GrpWorkspace workspace) {
     if (network.variant() != ends.variant()) {
-      throw new IllegalArgumentException("A " + network.variant() + " network for " + ends.variant() + " hand ends");
+      throw new IllegalArgumentException(
+          "A " + network.variant() + " network for " + ends.variant() + " hand ends");
     }
     double[][] values = new double[moves.size()][ends.seats()];
     for (int index = 0; index < values.length; index++) {

@@ -65,7 +65,8 @@ public final class GruSinkhorn implements GrpModel {
   public static GruSinkhorn of(GruShape shape, float[] weights) {
     int expected = GruTensor.count(shape);
     if (weights.length != expected) {
-      throw new IllegalArgumentException(shape + " needs " + expected + " weights, got " + weights.length);
+      throw new IllegalArgumentException(
+          shape + " needs " + expected + " weights, got " + weights.length);
     }
     for (int index = 0; index < weights.length; index++) {
       if (!Float.isFinite(weights[index])) {
@@ -95,14 +96,16 @@ public final class GruSinkhorn implements GrpModel {
    * @param history 終わった局までの、各局が始まったときの卓（1 局以上）
    * @param out 書き先（長さ S²。並びは [絶対席 × S ＋ 順位]）
    */
-  public void marginals(RoundHistory history, TableState table, GruWorkspace workspace, double[] out) {
+  public void marginals(
+      RoundHistory history, TableState table, GruWorkspace workspace, double[] out) {
     requireOutput(out, outputs);
     forward(history, table, workspace);
     System.arraycopy(workspace.marginals, 0, out, 0, outputs);
   }
 
   /** {@link #marginals(RoundHistory, TableState, GruWorkspace, double[])} と同じことを GrpState で行う。 */
-  public void marginals(RoundHistory history, GrpState state, GruWorkspace workspace, double[] out) {
+  public void marginals(
+      RoundHistory history, GrpState state, GruWorkspace workspace, double[] out) {
     requireOutput(out, outputs);
     forward(history, state, workspace);
     System.arraycopy(workspace.marginals, 0, out, 0, outputs);
@@ -113,14 +116,24 @@ public final class GruSinkhorn implements GrpModel {
    *
    * @param out 書き先（長さ S）
    */
-  public void phi(RoundHistory history, TableState table, RankUtility utility, GruWorkspace workspace, double[] out) {
+  public void phi(
+      RoundHistory history,
+      TableState table,
+      RankUtility utility,
+      GruWorkspace workspace,
+      double[] out) {
     requireOutput(out, seats);
     forward(history, table, workspace);
     expectedUtilities(variant(), workspace.marginals, utility, out);
   }
 
   /** {@link #phi(RoundHistory, TableState, RankUtility, GruWorkspace, double[])} と同じことを GrpState で行う。 */
-  public void phi(RoundHistory history, GrpState state, RankUtility utility, GruWorkspace workspace, double[] out) {
+  public void phi(
+      RoundHistory history,
+      GrpState state,
+      RankUtility utility,
+      GruWorkspace workspace,
+      double[] out) {
     requireOutput(out, seats);
     forward(history, state, workspace);
     expectedUtilities(variant(), workspace.marginals, utility, out);
@@ -132,7 +145,8 @@ public final class GruSinkhorn implements GrpModel {
    * @param marginals 周辺確率（並びは [絶対席 × S ＋ 順位]）
    * @param out 書き先（長さ S）
    */
-  static void expectedUtilities(Variant variant, double[] marginals, RankUtility utility, double[] out) {
+  static void expectedUtilities(
+      Variant variant, double[] marginals, RankUtility utility, double[] out) {
     int seats = variant.seats();
     for (int seat = 0; seat < seats; seat++) {
       double value = 0;
@@ -228,17 +242,29 @@ public final class GruSinkhorn implements GrpModel {
     for (int layer = 0; layer < layers; layer++) {
       float[] h = workspace.state[layer];
       Dense.affine(
-          weights, start(GruTensor.INPUT_WEIGHTS, layer), start(GruTensor.INPUT_BIAS, layer), x, width, fromInput,
+          weights,
+          start(GruTensor.INPUT_WEIGHTS, layer),
+          start(GruTensor.INPUT_BIAS, layer),
+          x,
+          width,
+          fromInput,
           gates);
       Dense.affine(
-          weights, start(GruTensor.STATE_WEIGHTS, layer), start(GruTensor.STATE_BIAS, layer), h, hidden, fromState,
+          weights,
+          start(GruTensor.STATE_WEIGHTS, layer),
+          start(GruTensor.STATE_BIAS, layer),
+          h,
+          hidden,
+          fromState,
           gates);
       // h' の各ユニットは自分の前の値しか読まず、ゲートは前の状態から計算済みなので、その場で書き換えてよい。
       for (int unit = 0; unit < hidden; unit++) {
         float reset = sigmoid(fromInput[unit] + fromState[unit]);
         float update = sigmoid(fromInput[hidden + unit] + fromState[hidden + unit]);
         float candidate =
-            (float) StrictMath.tanh(fromInput[2 * hidden + unit] + reset * fromState[2 * hidden + unit]);
+            (float)
+                StrictMath.tanh(
+                    fromInput[2 * hidden + unit] + reset * fromState[2 * hidden + unit]);
         h[unit] = (1f - update) * candidate + update * h[unit];
       }
       x = h;
@@ -298,7 +324,8 @@ public final class GruSinkhorn implements GrpModel {
     }
     for (double value : p) {
       if (!(value > 0) || !Double.isFinite(value)) {
-        throw new IllegalStateException("The column repair left a marginal of " + value + ": " + this);
+        throw new IllegalStateException(
+            "The column repair left a marginal of " + value + ": " + this);
       }
     }
   }

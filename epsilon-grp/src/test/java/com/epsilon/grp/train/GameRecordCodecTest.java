@@ -62,7 +62,8 @@ public class GameRecordCodecTest {
 
   @Test
   public void emptyGamesAndCohortsRoundTrip() throws IOException {
-    GameRecord flying = new GameRecord(Variant.TENHOU_3P, 5, List.of(), new int[] {70_000, 36_000, -1_000});
+    GameRecord flying =
+        new GameRecord(Variant.TENHOU_3P, 5, List.of(), new int[] {70_000, 36_000, -1_000});
     GameCohort cohort = new GameCohort(Variant.TENHOU_3P, 3, "", List.of(flying));
     Path file = root.resolve("one.bin.gz");
     GameRecordCodec.write(file, cohort);
@@ -74,8 +75,9 @@ public class GameRecordCodecTest {
 
   @Test
   public void truncatedFilesAndTrailingBytesAreRefused() throws IOException {
-    GameCohort cohort = new GameCohort(
-        Variant.TENHOU_4P, 9, "id", TrainFixtures.simulated(Variant.TENHOU_4P, 200, 0, 11));
+    GameCohort cohort =
+        new GameCohort(
+            Variant.TENHOU_4P, 9, "id", TrainFixtures.simulated(Variant.TENHOU_4P, 200, 0, 11));
     Path file = root.resolve("whole.bin.gz");
     GameRecordCodec.write(file, cohort);
     byte[] bytes = Files.readAllBytes(file);
@@ -96,8 +98,9 @@ public class GameRecordCodecTest {
 
   @Test
   public void gameCountBeyondTheFileIsRefused() throws IOException {
-    GameCohort cohort = new GameCohort(
-        Variant.TENHOU_4P, 9, "id", TrainFixtures.simulated(Variant.TENHOU_4P, 20, 0, 11));
+    GameCohort cohort =
+        new GameCohort(
+            Variant.TENHOU_4P, 9, "id", TrainFixtures.simulated(Variant.TENHOU_4P, 20, 0, 11));
     Path file = root.resolve("whole.bin.gz");
     GameRecordCodec.write(file, cohort);
     byte[] content = gunzip(Files.readAllBytes(file));
@@ -116,8 +119,11 @@ public class GameRecordCodecTest {
     Path file = root.resolve("kept.bin.gz");
     GameCohort kept = new GameCohort(Variant.TENHOU_4P, 1, "id", List.of());
     GameRecordCodec.write(file, kept);
-    GrpState deep = new GrpState(Variant.TENHOU_4P, 4, 70_000, 0, new int[] {25_000, 25_000, 25_000, 25_000});
-    GameRecord game = new GameRecord(Variant.TENHOU_4P, 1, List.of(deep), new int[] {40_000, 30_000, 20_000, 10_000});
+    GrpState deep =
+        new GrpState(Variant.TENHOU_4P, 4, 70_000, 0, new int[] {25_000, 25_000, 25_000, 25_000});
+    GameRecord game =
+        new GameRecord(
+            Variant.TENHOU_4P, 1, List.of(deep), new int[] {40_000, 30_000, 20_000, 10_000});
     GameCohort wide = new GameCohort(Variant.TENHOU_4P, 1, "id", List.of(game));
     Assert.assertThrows(IllegalArgumentException.class, () -> GameRecordCodec.write(file, wide));
     Assert.assertEquals(GameRecordCodec.read(file), kept);
@@ -130,7 +136,8 @@ public class GameRecordCodecTest {
       RankPermutations table = RankPermutations.of(Variant.TENHOU_4P);
       for (int handEnd = 0; handEnd < game.handEnds().size(); handEnd++) {
         GrpState state = game.handEnds().get(handEnd);
-        Assert.assertEquals(game.endedRound(handEnd), handEnd == 0 ? 0 : game.handEnds().get(handEnd - 1).round());
+        Assert.assertEquals(
+            game.endedRound(handEnd), handEnd == 0 ? 0 : game.handEnds().get(handEnd - 1).round());
         int permutation = game.realizedPermutation(handEnd);
         for (int relative = 0; relative < 4; relative++) {
           int seat = (state.dealer() + relative) % 4;
@@ -146,12 +153,16 @@ public class GameRecordCodecTest {
     GrpState three = new GrpState(Variant.TENHOU_3P, 0, 0, 0, new int[] {35_000, 35_000, 35_000});
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> new GameRecord(Variant.TENHOU_4P, 1, List.of(three), new int[] {25_000, 25_000, 25_000, 25_000}));
+        () ->
+            new GameRecord(
+                Variant.TENHOU_4P, 1, List.of(three), new int[] {25_000, 25_000, 25_000, 25_000}));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> new GameRecord(Variant.TENHOU_4P, 1, List.of(), new int[3]));
+        IllegalArgumentException.class,
+        () -> new GameRecord(Variant.TENHOU_4P, 1, List.of(), new int[3]));
     GameRecord four = new GameRecord(Variant.TENHOU_4P, 1, List.of(), new int[4]);
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> new GameCohort(Variant.TENHOU_3P, 1, "id", List.of(four)));
+        IllegalArgumentException.class,
+        () -> new GameCohort(Variant.TENHOU_3P, 1, "id", List.of(four)));
   }
 
   private static byte[] gunzip(byte[] bytes) throws IOException {

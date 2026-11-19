@@ -60,16 +60,39 @@ enum RoundField {
 
   /** 局が始まったときの卓を、指定した位置から 1 行書く。 */
   static void write(TableState table, int[] out, int at) {
-    write(table.variant(), table.round(), table.honba(), table.kyotaku(), table, TableState::score, out, at);
+    write(
+        table.variant(),
+        table.round(),
+        table.honba(),
+        table.kyotaku(),
+        table,
+        TableState::score,
+        out,
+        at);
   }
 
   /** 局が始まったときの卓を、指定した位置から 1 行書く。 */
   static void write(GrpState state, int[] out, int at) {
-    write(state.variant(), state.round(), state.honba(), state.sticks(), state, GrpState::score, out, at);
+    write(
+        state.variant(),
+        state.round(),
+        state.honba(),
+        state.sticks(),
+        state,
+        GrpState::score,
+        out,
+        at);
   }
 
   private static <T> void write(
-      Variant variant, int round, int honba, int kyotaku, T table, Scores<T> scores, int[] out, int at) {
+      Variant variant,
+      int round,
+      int honba,
+      int kyotaku,
+      T table,
+      Scores<T> scores,
+      int[] out,
+      int at) {
     for (RoundField field : FIELDS) {
       int base = at + field.offset(variant);
       switch (field) {

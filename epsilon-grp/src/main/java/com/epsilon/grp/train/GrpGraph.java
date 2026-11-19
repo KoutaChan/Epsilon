@@ -26,7 +26,8 @@ final class GrpGraph implements TrainingLoop.Graph<RowBatch>, AutoCloseable {
   private GrpGraph(GrpShape shape, float[] weights) {
     int[] starts = GrpTensor.starts(shape);
     if (weights.length != starts[TENSORS.length]) {
-      throw new IllegalArgumentException(shape + " needs " + starts[TENSORS.length] + " weights, got " + weights.length);
+      throw new IllegalArgumentException(
+          shape + " needs " + starts[TENSORS.length] + " weights, got " + weights.length);
     }
     parameters = new AdamParameters(weights, starts, forms(shape), hidden());
   }
@@ -47,8 +48,13 @@ final class GrpGraph implements TrainingLoop.Graph<RowBatch>, AutoCloseable {
   }
 
   @Override
-  public TrainingStep step(RowBatch batch, double learningRate, double hiddenDecay, double clipNorm) {
-    return parameters.step((scope, weights) -> loss(scope, batch, weights), batch.size, learningRate, hiddenDecay,
+  public TrainingStep step(
+      RowBatch batch, double learningRate, double hiddenDecay, double clipNorm) {
+    return parameters.step(
+        (scope, weights) -> loss(scope, batch, weights),
+        batch.size,
+        learningRate,
+        hiddenDecay,
         clipNorm);
   }
 
@@ -74,9 +80,15 @@ final class GrpGraph implements TrainingLoop.Graph<RowBatch>, AutoCloseable {
 
   /** 行ごとの w·(−Σ_π t(π)·log softmax(z)_π)。 */
   private static NDArray loss(NDManager scope, RowBatch batch, IntFunction<NDArray> weights) {
-    NDArray targets = AdamParameters.rows(scope, batch.targets, new Shape(batch.size, batch.outputs));
+    NDArray targets =
+        AdamParameters.rows(scope, batch.targets, new Shape(batch.size, batch.outputs));
     NDArray rowWeights = AdamParameters.rows(scope, batch.weights, new Shape(batch.size));
-    return logits(scope, batch, weights).logSoftmax(1).mul(targets).sum(ROWS_AXIS).neg().mul(rowWeights);
+    return logits(scope, batch, weights)
+        .logSoftmax(1)
+        .mul(targets)
+        .sum(ROWS_AXIS)
+        .neg()
+        .mul(rowWeights);
   }
 
   /** h1 = ReLU(x·W1 ＋ b1)、h2 = ReLU(h1·W2 ＋ b2)、z = Σ_k m_k ⊙ (h2·W3_k ＋ b3_k)。m は出力ヘッド k を選ぶ one-hot。 */
@@ -85,14 +97,21 @@ final class GrpGraph implements TrainingLoop.Graph<RowBatch>, AutoCloseable {
       throw new IllegalArgumentException("An empty batch");
     }
     NDArray x = AdamParameters.rows(scope, batch.inputs, new Shape(batch.size, batch.width));
-    NDArray heads = AdamParameters.rows(scope, batch.headMask, new Shape(batch.size, batch.headCount))
-        .transpose()
-        .expandDims(2);
-    NDArray first = Activation.relu(
-        x.matMul(weights.apply(GrpTensor.W1.ordinal())).add(weights.apply(GrpTensor.B1.ordinal())));
-    NDArray second = Activation.relu(
-        first.matMul(weights.apply(GrpTensor.W2.ordinal())).add(weights.apply(GrpTensor.B2.ordinal())));
-    return second.expandDims(0)
+    NDArray heads =
+        AdamParameters.rows(scope, batch.headMask, new Shape(batch.size, batch.headCount))
+            .transpose()
+            .expandDims(2);
+    NDArray first =
+        Activation.relu(
+            x.matMul(weights.apply(GrpTensor.W1.ordinal()))
+                .add(weights.apply(GrpTensor.B1.ordinal())));
+    NDArray second =
+        Activation.relu(
+            first
+                .matMul(weights.apply(GrpTensor.W2.ordinal()))
+                .add(weights.apply(GrpTensor.B2.ordinal())));
+    return second
+        .expandDims(0)
         .matMul(weights.apply(GrpTensor.W3.ordinal()))
         .add(weights.apply(GrpTensor.B3.ordinal()))
         .mul(heads)
@@ -102,12 +121,13 @@ final class GrpGraph implements TrainingLoop.Graph<RowBatch>, AutoCloseable {
   private static Shape[] forms(GrpShape shape) {
     Shape[] forms = new Shape[TENSORS.length];
     for (GrpTensor tensor : TENSORS) {
-      forms[tensor.ordinal()] = switch (tensor) {
-        case W1, W2 -> new Shape(tensor.rows(shape), tensor.columns(shape));
-        case B1, B2 -> new Shape(tensor.columns(shape));
-        case W3 -> new Shape(shape.heads(), tensor.rows(shape), tensor.columns(shape));
-        case B3 -> new Shape(shape.heads(), 1, tensor.columns(shape));
-      };
+      forms[tensor.ordinal()] =
+          switch (tensor) {
+            case W1, W2 -> new Shape(tensor.rows(shape), tensor.columns(shape));
+            case B1, B2 -> new Shape(tensor.columns(shape));
+            case W3 -> new Shape(shape.heads(), tensor.rows(shape), tensor.columns(shape));
+            case B3 -> new Shape(shape.heads(), 1, tensor.columns(shape));
+          };
     }
     return forms;
   }

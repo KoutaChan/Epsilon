@@ -36,10 +36,11 @@ public class OutcomeRowsTest {
   @Test
   public void onlyChosenHandEndsBecomeRows() {
     RecencyWindow window = new RecencyWindow(4, 1, 64);
-    OutcomeRows.Split covered = OutcomeRows.builder(OutcomeFixtures.FOUR, window, GateCohort.NEXT, FinalRound::covers)
-        .add(4, OutcomeFixtures.played(80, 0, 5))
-        .add(3, OutcomeFixtures.played(80, 1_000, 6))
-        .build();
+    OutcomeRows.Split covered =
+        OutcomeRows.builder(OutcomeFixtures.FOUR, window, GateCohort.NEXT, FinalRound::covers)
+            .add(4, OutcomeFixtures.played(80, 0, 5))
+            .add(3, OutcomeFixtures.played(80, 1_000, 6))
+            .build();
     Assert.assertTrue(covered.train().size() > 0);
     for (int row = 0; row < covered.train().size(); row++) {
       GrpState state = GrpState.ofKey(OutcomeFixtures.FOUR, covered.train().key(row));
@@ -59,7 +60,8 @@ public class OutcomeRowsTest {
     GameRecord game = new GameRecord(OutcomeFixtures.FOUR, 5, List.of(east2, east3), even);
     RecencyWindow window = new RecencyWindow(3, 1, 64);
     OutcomeRows.Split split =
-        OutcomeRows.builder(OutcomeFixtures.FOUR, window, GateCohort.NEXT, state -> state.round() == 1)
+        OutcomeRows.builder(
+                OutcomeFixtures.FOUR, window, GateCohort.NEXT, state -> state.round() == 1)
             .add(3, List.of(game))
             .build();
     OutcomeRows rows = split.train().size() == 1 ? split.train() : split.stop();

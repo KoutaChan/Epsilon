@@ -39,8 +39,17 @@ public final class CountedHands {
   private final long[] codes;
 
   private CountedHands(
-      Variant variant, int cohort, double exploreTemperature, PhiStamp phi, long[] gameIds, int[] firstHand,
-      int[] rounds, int[] honba, int[] kyotaku, int[] scores, long[] codes) {
+      Variant variant,
+      int cohort,
+      double exploreTemperature,
+      PhiStamp phi,
+      long[] gameIds,
+      int[] firstHand,
+      int[] rounds,
+      int[] honba,
+      int[] kyotaku,
+      int[] scores,
+      long[] codes) {
     this.variant = variant;
     this.cohort = cohort;
     this.exploreTemperature = exploreTemperature;
@@ -60,7 +69,8 @@ public final class CountedHands {
    * @param exploreTemperature 主経路の探索の温度（0 以上の有限の数）
    * @param phi 主経路の局末の値に使った Φ
    */
-  public static Builder builder(Variant variant, int cohort, double exploreTemperature, PhiStamp phi) {
+  public static Builder builder(
+      Variant variant, int cohort, double exploreTemperature, PhiStamp phi) {
     return new Builder(variant, cohort, exploreTemperature, phi);
   }
 
@@ -130,7 +140,11 @@ public final class CountedHands {
    */
   public void start(int hand, TableState into) {
     int seats = variant.seats();
-    into.set(rounds[hand], honba[hand], kyotaku[hand], Arrays.copyOfRange(scores, hand * seats, (hand + 1) * seats));
+    into.set(
+        rounds[hand],
+        honba[hand],
+        kyotaku[hand],
+        Arrays.copyOfRange(scores, hand * seats, (hand + 1) * seats));
   }
 
   /**
@@ -161,7 +175,9 @@ public final class CountedHands {
 
   /** 卓が、その局の始まりの卓と同じか。 */
   private boolean startsAt(int hand, TableState table) {
-    if (table.round() != rounds[hand] || table.honba() != honba[hand] || table.kyotaku() != kyotaku[hand]) {
+    if (table.round() != rounds[hand]
+        || table.honba() != honba[hand]
+        || table.kyotaku() != kyotaku[hand]) {
       return false;
     }
     int seats = variant.seats();
@@ -175,8 +191,19 @@ public final class CountedHands {
 
   @Override
   public String toString() {
-    return "CountedHands[" + variant + " cohort=" + cohort + " games=" + games() + " hands=" + hands()
-        + " exploreTemperature=" + exploreTemperature + " phi=" + phi + "]";
+    return "CountedHands["
+        + variant
+        + " cohort="
+        + cohort
+        + " games="
+        + games()
+        + " hands="
+        + hands()
+        + " exploreTemperature="
+        + exploreTemperature
+        + " phi="
+        + phi
+        + "]";
   }
 
   /**
@@ -207,8 +234,8 @@ public final class CountedHands {
     private Builder(Variant variant, int cohort, double exploreTemperature, PhiStamp phi) {
       this.variant = Objects.requireNonNull(variant, "variant");
       if (!(exploreTemperature >= 0 && Double.isFinite(exploreTemperature))) {
-        throw new IllegalArgumentException("The explore temperature must be finite and not negative: "
-            + exploreTemperature);
+        throw new IllegalArgumentException(
+            "The explore temperature must be finite and not negative: " + exploreTemperature);
       }
       this.cohort = cohort;
       this.exploreTemperature = exploreTemperature;
@@ -232,7 +259,8 @@ public final class CountedHands {
         throw new IllegalStateException("The counts were already built");
       }
       if (start.variant() != variant) {
-        throw new IllegalArgumentException("Variant mismatch: counts " + variant + ", table " + start.variant());
+        throw new IllegalArgumentException(
+            "Variant mismatch: counts " + variant + ", table " + start.variant());
       }
       if (start.gameOver()) {
         throw new IllegalArgumentException("A finished game starts no hand: " + start);
@@ -245,10 +273,12 @@ public final class CountedHands {
         total += start.score(seat);
       }
       if (total != (long) seats * variant.startPoints()) {
-        throw new IllegalArgumentException("Scores and deposits do not add up to the starting total: " + start);
+        throw new IllegalArgumentException(
+            "Scores and deposits do not add up to the starting total: " + start);
       }
       if (!HandResult.valid(code, scratch)) {
-        throw new IllegalArgumentException("Not a " + variant + " hand result: " + Long.toHexString(code));
+        throw new IllegalArgumentException(
+            "Not a " + variant + " hand result: " + Long.toHexString(code));
       }
       if (games == 0 || gameIds[games - 1] != gameId) {
         if (games == gameIds.length) {
@@ -293,7 +323,8 @@ public final class CountedHands {
       try {
         order = LongIndex.of(ids);
       } catch (IllegalArgumentException repeated) {
-        throw new IllegalStateException("A game was added in two separate runs: " + repeated.getMessage(), repeated);
+        throw new IllegalStateException(
+            "A game was added in two separate runs: " + repeated.getMessage(), repeated);
       }
       long[] sorted = ids.clone();
       Arrays.sort(sorted);
@@ -311,7 +342,8 @@ public final class CountedHands {
         first[game] = at;
         int count = to - from;
         if (count > MAX_COUNT) {
-          throw new IllegalStateException("Game " + sorted[game] + " has more hands than the count file holds: " + count);
+          throw new IllegalStateException(
+              "Game " + sorted[game] + " has more hands than the count file holds: " + count);
         }
         System.arraycopy(rounds, from, sortedRounds, at, count);
         System.arraycopy(honba, from, sortedHonba, at, count);
@@ -322,8 +354,17 @@ public final class CountedHands {
       }
       first[games] = at;
       return new CountedHands(
-          variant, cohort, exploreTemperature, phi, sorted, first, sortedRounds, sortedHonba, sortedKyotaku,
-          sortedScores, sortedCodes);
+          variant,
+          cohort,
+          exploreTemperature,
+          phi,
+          sorted,
+          first,
+          sortedRounds,
+          sortedHonba,
+          sortedKyotaku,
+          sortedScores,
+          sortedCodes);
     }
   }
 }

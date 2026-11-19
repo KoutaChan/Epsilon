@@ -31,14 +31,17 @@ public class GrpRowsTest {
       for (int cohort = window.first(); cohort <= window.newest(); cohort++) {
         boolean gateCohort = gate == GateCohort.GUARDED && cohort == window.newest();
         for (GameRecord game : cohorts.get(cohort)) {
-          GrpSlice slice = gateCohort ? GrpSlice.guarded(game.gameId()) : GrpSlice.of(game.gameId());
-          List<String> into = switch (slice) {
-            case TRAIN -> train;
-            case STOP -> cohort > window.newest() - GrpRows.STOP_COHORTS ? stop : null;
-            case GUARD -> null;
-          };
+          GrpSlice slice =
+              gateCohort ? GrpSlice.guarded(game.gameId()) : GrpSlice.of(game.gameId());
+          List<String> into =
+              switch (slice) {
+                case TRAIN -> train;
+                case STOP -> cohort > window.newest() - GrpRows.STOP_COHORTS ? stop : null;
+                case GUARD -> null;
+              };
           for (int handEnd = 0; into != null && handEnd < game.handEnds().size(); handEnd++) {
-            into.add(row(game.handEnds().get(handEnd).key(), game.realizedPermutation(handEnd), cohort));
+            into.add(
+                row(game.handEnds().get(handEnd).key(), game.realizedPermutation(handEnd), cohort));
           }
         }
       }
@@ -66,7 +69,8 @@ public class GrpRowsTest {
     for (GameRecord game : gate) {
       Assert.assertEquals(GrpSlice.guarded(game.gameId()), GrpSlice.GUARD);
     }
-    GrpRows.Split split = GrpRows.builder(VARIANT, window, GateCohort.GUARDED).add(9, games).build();
+    GrpRows.Split split =
+        GrpRows.builder(VARIANT, window, GateCohort.GUARDED).add(9, games).build();
     int guarded = 0;
     for (GameRecord game : gate) {
       guarded += game.handEnds().size();
@@ -84,11 +88,13 @@ public class GrpRowsTest {
     GrpState plain = new GrpState(VARIANT, 6, 0, 0, new int[] {30_000, 25_000, 25_000, 20_000});
     Assert.assertEquals(deep.key(), GrpKey.NONE);
     int[] finalScores = {40_000, 30_000, 20_000, 10_000};
-    GameRecord game = new GameRecord(VARIANT, idOf(GrpSlice.TRAIN), List.of(deep, plain), finalScores);
-    GrpRows rows = GrpRows.builder(VARIANT, new RecencyWindow(5, 1, 8), GateCohort.NEXT)
-        .add(5, List.of(game))
-        .build()
-        .train();
+    GameRecord game =
+        new GameRecord(VARIANT, idOf(GrpSlice.TRAIN), List.of(deep, plain), finalScores);
+    GrpRows rows =
+        GrpRows.builder(VARIANT, new RecencyWindow(5, 1, 8), GateCohort.NEXT)
+            .add(5, List.of(game))
+            .build()
+            .train();
     Assert.assertEquals(rows.size(), 1);
     Assert.assertEquals(rows.excluded(), 1);
     Assert.assertEquals(rows.key(0), plain.key());
@@ -106,7 +112,8 @@ public class GrpRowsTest {
     GameRecord three = new GameRecord(Variant.TENHOU_3P, 1, List.of(), new int[3]);
     Assert.assertThrows(IllegalArgumentException.class, () -> builder.add(9, List.of(three)));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> GrpRows.builder(VARIANT, new RecencyWindow(2, 1, 8), GateCohort.NEXT));
+        IllegalArgumentException.class,
+        () -> GrpRows.builder(VARIANT, new RecencyWindow(2, 1, 8), GateCohort.NEXT));
   }
 
   /** 範囲のコホートごとに 120 半荘を打ち、コホートの昇順に並べて返す。 */

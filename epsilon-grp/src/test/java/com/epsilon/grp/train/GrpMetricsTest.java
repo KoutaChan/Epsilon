@@ -58,13 +58,18 @@ public class GrpMetricsTest {
       Assert.assertEquals(report.groups().get(group).b4(), expected, 0.015, "b4 of group " + group);
     }
     Assert.assertTrue(Double.isNaN(report.groups().get(7).b4()), "group 7 has no hand ends");
-    Paired residual = GrpMetrics.residual(
-        ends, constant(ends, BIAS, 0), (group, rank, gap) -> group == BIASED_GROUP && rank == 3);
+    Paired residual =
+        GrpMetrics.residual(
+            ends,
+            constant(ends, BIAS, 0),
+            (group, rank, gap) -> group == BIASED_GROUP && rank == 3);
     Assert.assertEquals(residual.mean(), BIAS, 0.015);
-    GrpReport subset = GrpMetrics.measure(ends, constant(ends, BIAS, 0), h -> ends.group(h) == BIASED_GROUP);
+    GrpReport subset =
+        GrpMetrics.measure(ends, constant(ends, BIAS, 0), h -> ends.group(h) == BIASED_GROUP);
     Assert.assertEquals(subset.games(), GAMES);
     Assert.assertEquals(subset.seatHands(), (long) GAMES * 4);
-    Assert.assertEquals(subset.groups().get(BIASED_GROUP).b4(), report.groups().get(BIASED_GROUP).b4(), 1e-12);
+    Assert.assertEquals(
+        subset.groups().get(BIASED_GROUP).b4(), report.groups().get(BIASED_GROUP).b4(), 1e-12);
     Assert.assertEquals(subset.groups().get(BIASED_GROUP - 1).seatHands(), 0);
   }
 
@@ -76,7 +81,8 @@ public class GrpMetricsTest {
     Paired paired = GrpMetrics.pairedMse(ends, clean, biased);
     double difference = GrpMetrics.mse(ends, biased) - GrpMetrics.mse(ends, clean);
     Assert.assertEquals(paired.mean(), difference, 1e-12);
-    double reported = GrpMetrics.measure(ends, biased).mse() - GrpMetrics.measure(ends, clean).mse();
+    double reported =
+        GrpMetrics.measure(ends, biased).mse() - GrpMetrics.measure(ends, clean).mse();
     Assert.assertEquals(reported, difference, 1e-12);
     Assert.assertTrue(paired.standardError() > 0 && paired.z() > 10, paired.toString());
     Assert.assertEquals(GrpMetrics.wobble(ends, clean, constant(ends, 0, 0.1)), 0.1, 1e-12);
@@ -96,13 +102,17 @@ public class GrpMetricsTest {
     int[] handsPerPhase = {3, 2, 1, 0};
     for (GrpPhase phase : GrpPhase.values()) {
       GrpReport.Fit fit = report.phases().get(phase.ordinal());
-      Assert.assertEquals(fit.seatHands(), (long) GAMES * 4 * handsPerPhase[phase.ordinal()], phase.toString());
+      Assert.assertEquals(
+          fit.seatHands(), (long) GAMES * 4 * handsPerPhase[phase.ordinal()], phase.toString());
       if (handsPerPhase[phase.ordinal()] > 0) {
         Assert.assertEquals(fit.slope(), slope, 0.02, "slope of " + phase);
       }
     }
-    HandEnds few = HandEnds.of(Variant.TENHOU_4P, RankUtility.TENHOU,
-        TrainFixtures.uniform(Fits.MIN_SLOPE_GAMES - 1, HANDS, new SplittableRandom(3)));
+    HandEnds few =
+        HandEnds.of(
+            Variant.TENHOU_4P,
+            RankUtility.TENHOU,
+            TrainFixtures.uniform(Fits.MIN_SLOPE_GAMES - 1, HANDS, new SplittableRandom(3)));
     GrpReport small = GrpMetrics.measure(few, noisy(few, new SplittableRandom(5)));
     for (int group = 0; group < HANDS; group++) {
       Assert.assertTrue(Double.isNaN(small.groups().get(group).slopeSe()), "SE of group " + group);
@@ -112,8 +122,11 @@ public class GrpMetricsTest {
 
   @Test
   public void exactRanksHaveNoLoss() {
-    HandEnds ends = HandEnds.of(
-        Variant.TENHOU_4P, RankUtility.TENHOU, TrainFixtures.uniform(500, HANDS, new SplittableRandom(4)));
+    HandEnds ends =
+        HandEnds.of(
+            Variant.TENHOU_4P,
+            RankUtility.TENHOU,
+            TrainFixtures.uniform(500, HANDS, new SplittableRandom(4)));
     HandEndValues.Builder builder = HandEndValues.builder(ends);
     for (int h = 0; h < ends.handEnds(); h++) {
       double[] phi = new double[4];
@@ -139,7 +152,8 @@ public class GrpMetricsTest {
     GrpReport report = GrpMetrics.measure(ends, constant(ends, 0, 0));
     Assert.assertEquals(report.closeCells().size(), 8);
     for (GrpReport.CloseCell cell : report.closeCells()) {
-      Assert.assertTrue(cell.group() >= 6 && cell.rank() >= 2 && cell.seatHands() > 1_000, cell.toString());
+      Assert.assertTrue(
+          cell.group() >= 6 && cell.rank() >= 2 && cell.seatHands() > 1_000, cell.toString());
       Assert.assertTrue(Math.abs(cell.z()) < 4, cell.toString());
     }
     Assert.assertEquals(report.jumps().size(), 2 * 4 * 2);
@@ -155,11 +169,12 @@ public class GrpMetricsTest {
   public void aKeepStepShowsAsAJumpAndAMissedCell() {
     HandEnds ends = lateEnds(new SplittableRandom(9), true);
     GrpReport report = GrpMetrics.measure(ends, constant(ends, 0, 0));
-    GrpReport.JumpSeries leader = report.jumps().stream()
-        .filter(series -> series.group() == 6 && series.rank() == 0)
-        .filter(series -> series.measure() == GrpReport.JumpMeasure.KEEP)
-        .findFirst()
-        .orElseThrow();
+    GrpReport.JumpSeries leader =
+        report.jumps().stream()
+            .filter(series -> series.group() == 6 && series.rank() == 0)
+            .filter(series -> series.measure() == GrpReport.JumpMeasure.KEEP)
+            .findFirst()
+            .orElseThrow();
     Assert.assertTrue(leader.maxAbsZ() > 10 && !leader.within(), leader.toString());
     // 首位が 2 着を 12,000 点以上離した局末では、首位は必ず首位のまま終わる。そのため、最下位になる予測 1/4 は端の基準を外れる
     GrpReport.Tail leaderLast = report.tails().leaderLast();
@@ -181,10 +196,12 @@ public class GrpMetricsTest {
     Assert.assertEquals(under.predicted(), 0.048, 1e-9);
     Assert.assertEquals(under.realized(), 0.0035, 0.0015);
     Assert.assertFalse(under.within(), under.toString());
-    GrpReport.Tail over = GrpMetrics.measure(ends, leaderValues(ends, 0.999, 0.99, 8)).tails().highProbability();
+    GrpReport.Tail over =
+        GrpMetrics.measure(ends, leaderValues(ends, 0.999, 0.99, 8)).tails().highProbability();
     Assert.assertEquals(over.predicted(), 0.001, 1e-9);
     Assert.assertFalse(over.within(), over.toString());
-    GrpReport.Tail calibrated = GrpMetrics.measure(ends, leaderValues(ends, 0.97, 0.97, 9)).tails().highProbability();
+    GrpReport.Tail calibrated =
+        GrpMetrics.measure(ends, leaderValues(ends, 0.97, 0.97, 9)).tails().highProbability();
     Assert.assertTrue(calibrated.within(), calibrated.toString());
   }
 
@@ -203,11 +220,17 @@ public class GrpMetricsTest {
     Assert.assertTrue(new GrpReport.Fit(10, -0.004, 1.009, 0.001, 9).within());
     Assert.assertFalse(new GrpReport.Fit(10, -0.006, 1.0, 0.001, 0).within());
     Assert.assertFalse(new GrpReport.Fit(10, 0, 1.011, 0.001, 11).within());
-    Assert.assertTrue(new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.KEEP, 23, 1.4, 3.9, 1.9).within());
-    Assert.assertFalse(new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.KEEP, 23, 1.4, 4.1, 1.9).within());
-    Assert.assertFalse(new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.KEEP, 23, 1.6, 3.9, 1.9).within());
-    Assert.assertFalse(new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.KEEP, 23, 1.4, 3.9, 2.1).within());
-    Assert.assertTrue(new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.PHI, 23, 1.4, 3.9, Double.NaN).within());
+    Assert.assertTrue(
+        new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.KEEP, 23, 1.4, 3.9, 1.9).within());
+    Assert.assertFalse(
+        new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.KEEP, 23, 1.4, 4.1, 1.9).within());
+    Assert.assertFalse(
+        new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.KEEP, 23, 1.6, 3.9, 1.9).within());
+    Assert.assertFalse(
+        new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.KEEP, 23, 1.4, 3.9, 2.1).within());
+    Assert.assertTrue(
+        new GrpReport.JumpSeries(6, 0, GrpReport.JumpMeasure.PHI, 23, 1.4, 3.9, Double.NaN)
+            .within());
   }
 
   @Test
@@ -225,7 +248,9 @@ public class GrpMetricsTest {
         GrpState state = ends.state(h);
         network.phi(state, RankUtility.TENHOU, workspace, phi);
         for (int seat = 0; seat < seats; seat++) {
-          Assert.assertEquals(Double.doubleToRawLongBits(values.phi(h, seat)), Double.doubleToRawLongBits(phi[seat]));
+          Assert.assertEquals(
+              Double.doubleToRawLongBits(values.phi(h, seat)),
+              Double.doubleToRawLongBits(phi[seat]));
           double row = 0;
           double column = 0;
           for (int other = 0; other < seats; other++) {
@@ -236,7 +261,9 @@ public class GrpMetricsTest {
           Assert.assertEquals(column, 1, 1e-12);
         }
         Assert.assertEquals(
-            values.jointLog(h), network.logProbability(state, ends.permutation(h), workspace), 1e-9);
+            values.jointLog(h),
+            network.logProbability(state, ends.permutation(h), workspace),
+            1e-9);
       }
       GrpReport report = GrpMetrics.measure(ends, values);
       Assert.assertEquals(report.groups().size(), variant.lastRound() + 1);
@@ -251,7 +278,8 @@ public class GrpMetricsTest {
   public void tieJumpsOfAFlatNetworkAreZero() {
     List<GameRecord> games = TrainFixtures.simulated(Variant.TENHOU_4P, 5_000, 0, 23);
     HandEnds ends = HandEnds.of(Variant.TENHOU_4P, RankUtility.TENHOU, games);
-    GrpNetwork random = GrpFixtures.network(GrpFixtures.shape(Variant.TENHOU_4P, 8, false), 29, 1.0);
+    GrpNetwork random =
+        GrpFixtures.network(GrpFixtures.shape(Variant.TENHOU_4P, 8, false), 29, 1.0);
     float[] weights = random.weights();
     int[] starts = GrpTensor.starts(random.shape());
     Arrays.fill(weights, starts[GrpTensor.W3.ordinal()], starts[GrpTensor.W3.ordinal() + 1], 0f);
@@ -291,10 +319,11 @@ public class GrpMetricsTest {
     List<GameRecord> games = new ArrayList<>(GAMES);
     for (int game = 0; game < GAMES; game++) {
       int[] scores = wide(random);
-      List<GrpState> handEnds = List.of(
-          new GrpState(Variant.TENHOU_4P, 6, 0, 0, wide(random)),
-          new GrpState(Variant.TENHOU_4P, 7, 0, 0, scores),
-          new GrpState(Variant.TENHOU_4P, 8, 0, 0, scores));
+      List<GrpState> handEnds =
+          List.of(
+              new GrpState(Variant.TENHOU_4P, 6, 0, 0, wide(random)),
+              new GrpState(Variant.TENHOU_4P, 7, 0, 0, scores),
+              new GrpState(Variant.TENHOU_4P, 8, 0, 0, scores));
       int[] order = {0, 1, 2, 3};
       for (int index = 3; index > 0; index--) {
         int other = random.nextInt(index + 1);

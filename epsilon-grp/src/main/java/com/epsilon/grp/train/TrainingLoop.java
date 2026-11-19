@@ -59,7 +59,8 @@ public final class TrainingLoop {
    * @param clippedSteps 勾配を縮めたステップの数
    * @param ending 学習の終わり方
    */
-  public record Result(float[] weights, int halfEpochs, double stopNll, long clippedSteps, TrainingEnding ending) {}
+  public record Result(
+      float[] weights, int halfEpochs, double stopNll, long clippedSteps, TrainingEnding ending) {}
 
   private TrainingLoop() {}
 
@@ -84,7 +85,8 @@ public final class TrainingLoop {
       BooleanSupplier closing) {
     int rows = train.size();
     if (rows == 0 || stop.size() == 0) {
-      throw new IllegalArgumentException(name + " training needs TRAIN and STOP rows: " + train + ", " + stop);
+      throw new IllegalArgumentException(
+          name + " training needs TRAIN and STOP rows: " + train + ", " + stop);
     }
     float scale = (float) (rows / train.totalWeight());
     double best = stopNll(graph, batch, stop);
@@ -134,8 +136,16 @@ public final class TrainingLoop {
             learningRate /= 2;
           }
         }
-        LOG.info("{} half-epoch {}: TRAIN loss {}, STOP NLL {} (best {}), learning rate {}, clipped steps {}",
-            name, halfEpochs, trainLoss / trainSteps, nll, best, learningRate, clipped);
+        LOG.info(
+            "{} half-epoch {}: TRAIN loss {}, STOP NLL {} (best {}), learning rate {}, clipped"
+                + " steps {}",
+            name,
+            halfEpochs,
+            trainLoss / trainSteps,
+            nll,
+            best,
+            learningRate,
+            clipped);
         trainLoss = 0;
         trainSteps = 0;
         if (stale >= rule.stopPatience()) {
@@ -147,7 +157,8 @@ public final class TrainingLoop {
   }
 
   /** 早期終了用の検証の行で Σ w·NLL / Σ w を測る。行はバッチの容量ずつ詰める。 */
-  private static <R extends Rows, B extends Batch<R>> double stopNll(Graph<B> graph, B batch, R stop) {
+  private static <R extends Rows, B extends Batch<R>> double stopNll(
+      Graph<B> graph, B batch, R stop) {
     double sum = 0;
     for (int from = 0; from < stop.size(); from += batch.capacity()) {
       batch.clear();

@@ -36,7 +36,8 @@ public final class RuleCheck {
    * @param mismatches 外れの数
    * @param examples 外れの例。半荘の順に、先頭から上限の数まで
    */
-  public record Count(long transitions, long outcomes, long extras, long mismatches, List<Mismatch> examples) {}
+  public record Count(
+      long transitions, long outcomes, long extras, long mismatches, List<Mismatch> examples) {}
 
   private RuleCheck() {}
 
@@ -50,11 +51,13 @@ public final class RuleCheck {
     if (examples < 0) {
       throw new IllegalArgumentException("Negative example count " + examples);
     }
-    ThreadLocal<TransitionSearch> searches = ThreadLocal.withInitial(() -> new TransitionSearch(variant));
-    List<Count> counts = IntStream.range(0, games.size())
-        .parallel()
-        .mapToObj(index -> count(searches.get(), games.get(index), variant))
-        .toList();
+    ThreadLocal<TransitionSearch> searches =
+        ThreadLocal.withInitial(() -> new TransitionSearch(variant));
+    List<Count> counts =
+        IntStream.range(0, games.size())
+            .parallel()
+            .mapToObj(index -> count(searches.get(), games.get(index), variant))
+            .toList();
     long transitions = 0;
     long outcomes = 0;
     long extras = 0;
@@ -76,7 +79,8 @@ public final class RuleCheck {
 
   private static Count count(TransitionSearch search, GameRecord game, Variant variant) {
     if (game.variant() != variant) {
-      throw new IllegalArgumentException("A " + game.variant() + " game among " + variant + " games");
+      throw new IllegalArgumentException(
+          "A " + game.variant() + " game among " + variant + " games");
     }
     List<GrpState> handEnds = game.handEnds();
     long outcomes = 0;
@@ -97,8 +101,13 @@ public final class RuleCheck {
         extras++;
       } else {
         GrpState start = from != null ? from : first(variant);
-        mismatches.add(new Mismatch(
-            game.gameId(), hand, start, last ? null : handEnds.get(hand), last ? game.finalScores() : null));
+        mismatches.add(
+            new Mismatch(
+                game.gameId(),
+                hand,
+                start,
+                last ? null : handEnds.get(hand),
+                last ? game.finalScores() : null));
       }
     }
     return new Count(handEnds.size() + 1, outcomes, extras, mismatches.size(), mismatches);

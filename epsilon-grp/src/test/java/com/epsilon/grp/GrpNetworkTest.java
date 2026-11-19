@@ -66,7 +66,9 @@ public class GrpNetworkTest {
           network.phi(GrpFixtures.state(variant, random), utility, workspace, phi);
           double total = 0;
           for (double value : phi) {
-            Assert.assertTrue(value >= lowest - TOLERANCE && value <= highest + TOLERANCE, Double.toString(value));
+            Assert.assertTrue(
+                value >= lowest - TOLERANCE && value <= highest + TOLERANCE,
+                Double.toString(value));
             total += value;
           }
           Assert.assertEquals(total, sum, TOLERANCE);
@@ -92,9 +94,12 @@ public class GrpNetworkTest {
       for (int seat = 0; seat < 4; seat++) {
         double expected = 0;
         for (int permutation = 0; permutation < table.count(); permutation++) {
-          expected += probabilities[permutation] * RankUtility.TENHOU.value(variant, table.rank(permutation, seat));
+          expected +=
+              probabilities[permutation]
+                  * RankUtility.TENHOU.value(variant, table.rank(permutation, seat));
         }
-        Assert.assertEquals(phi[(state.dealer() + seat) % 4], expected, TOLERANCE, state + " seat " + seat);
+        Assert.assertEquals(
+            phi[(state.dealer() + seat) % 4], expected, TOLERANCE, state + " seat " + seat);
       }
     }
   }
@@ -112,12 +117,15 @@ public class GrpNetworkTest {
       network.permutations(state, workspace, probabilities);
       for (int permutation = 0; permutation < 24; permutation++) {
         double log = network.logProbability(state, permutation, workspace);
-        Assert.assertEquals(log, StrictMath.log(probabilities[permutation]), 1e-9, state + " " + permutation);
+        Assert.assertEquals(
+            log, StrictMath.log(probabilities[permutation]), 1e-9, state + " " + permutation);
       }
     }
     float[] weights = network.weights();
     int[] starts = GrpTensor.starts(shape);
-    for (int index = starts[GrpTensor.W3.ordinal()]; index < starts[GrpTensor.W3.ordinal() + 1]; index++) {
+    for (int index = starts[GrpTensor.W3.ordinal()];
+        index < starts[GrpTensor.W3.ordinal() + 1];
+        index++) {
       weights[index] = 0;
     }
     weights[starts[GrpTensor.B3.ordinal()] + 1] = -800f;
@@ -136,7 +144,9 @@ public class GrpNetworkTest {
     float[] weights = GrpFixtures.network(shape, 29, 1.0).weights();
     int[] starts = GrpTensor.starts(shape);
     int outputs = shape.outputs();
-    for (int index = starts[GrpTensor.W3.ordinal()]; index < starts[GrpTensor.W3.ordinal() + 1]; index++) {
+    for (int index = starts[GrpTensor.W3.ordinal()];
+        index < starts[GrpTensor.W3.ordinal() + 1];
+        index++) {
       weights[index] = 0;
     }
     GrpNetwork network = GrpNetwork.of(shape, weights);
@@ -146,12 +156,17 @@ public class GrpNetworkTest {
     for (GrpPhase phase : GrpPhase.values()) {
       int round = rounds[phase.ordinal()];
       Assert.assertEquals(GrpPhase.of(variant, round), phase);
-      GrpState state = new GrpState(variant, round, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000});
+      GrpState state =
+          new GrpState(variant, round, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000});
       network.permutations(state, workspace, probabilities);
       int bias = starts[GrpTensor.B3.ordinal()] + phase.ordinal() * outputs;
       for (int k = 1; k < outputs; k++) {
         double ratio = probabilities[k] / probabilities[0];
-        Assert.assertEquals(ratio, StrictMath.exp((double) weights[bias + k] - weights[bias]), 1e-9, phase + " " + k);
+        Assert.assertEquals(
+            ratio,
+            StrictMath.exp((double) weights[bias + k] - weights[bias]),
+            1e-9,
+            phase + " " + k);
       }
     }
   }
@@ -185,8 +200,11 @@ public class GrpNetworkTest {
     GrpShape shape = GrpFixtures.shape(Variant.TENHOU_4P, 8, false);
     GrpNetwork network = GrpFixtures.network(shape, 41, 1.0);
     GrpWorkspace other = GrpWorkspace.of(GrpFixtures.shape(Variant.TENHOU_4P, 9, false));
-    GrpState state = new GrpState(Variant.TENHOU_4P, 0, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000});
-    Assert.assertThrows(IllegalArgumentException.class, () -> network.phi(state, RankUtility.TENHOU, other, new double[4]));
+    GrpState state =
+        new GrpState(Variant.TENHOU_4P, 0, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000});
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> network.phi(state, RankUtility.TENHOU, other, new double[4]));
     GrpWorkspace equal = GrpWorkspace.of(GrpFixtures.shape(Variant.TENHOU_4P, 8, false));
     network.phi(state, RankUtility.TENHOU, equal, new double[4]);
     Assert.assertThrows(

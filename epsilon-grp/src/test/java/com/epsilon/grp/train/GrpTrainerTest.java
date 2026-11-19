@@ -151,7 +151,8 @@ public class GrpTrainerTest {
       double down = loss(shape, batch, point);
       point[index] = held;
       double expected = (up - down) / (2 * STEP);
-      Assert.assertEquals(gradient[index], expected, 5e-5 + 1e-3 * Math.abs(expected), "weight " + index);
+      Assert.assertEquals(
+          gradient[index], expected, 5e-5 + 1e-3 * Math.abs(expected), "weight " + index);
     }
   }
 
@@ -162,7 +163,8 @@ public class GrpTrainerTest {
     GrpRows.Split rows = rows(variant, window, 1_500);
     GrpShape shape = GrpFixtures.shape(variant, 16, false);
     GrpTrainingRule rule = new GrpTrainingRule(GrpInit.SCRATCH, 3e-3, 0, 6, 512, 10, 2, 4, 11);
-    GrpTrained trained = GrpTrainer.train(shape, null, rows.train(), rows.stop(), rule, () -> false);
+    GrpTrained trained =
+        GrpTrainer.train(shape, null, rows.train(), rows.stop(), rule, () -> false);
     Assert.assertEquals(trained.ending(), TrainingEnding.COMPLETED);
     Assert.assertTrue(trained.halfEpochs() >= 2 && trained.halfEpochs() <= 12, trained.toString());
     double base = baseRateNll(rows.train(), rows.stop());
@@ -170,8 +172,14 @@ public class GrpTrainerTest {
     Assert.assertEquals(learned, trained.stopNll(), 1e-3);
     Assert.assertTrue(learned < base - 0.1, "learned " + learned + " vs base rates " + base);
 
-    GrpTrained warmed = GrpTrainer.train(
-        shape, trained.network(), rows.train(), rows.stop(), defaults(GrpInit.WARM, 13), () -> false);
+    GrpTrained warmed =
+        GrpTrainer.train(
+            shape,
+            trained.network(),
+            rows.train(),
+            rows.stop(),
+            defaults(GrpInit.WARM, 13),
+            () -> false);
     Assert.assertEquals(warmed.ending(), TrainingEnding.COMPLETED);
     Assert.assertTrue(warmed.stopNll() <= trained.stopNll() + 1e-4, warmed + " after " + trained);
   }
@@ -183,7 +191,8 @@ public class GrpTrainerTest {
     GrpRows.Split rows = rows(variant, window, 200);
     GrpShape shape = GrpFixtures.shape(variant, 8, true);
     GrpTrainingRule rule = new GrpTrainingRule(GrpInit.SCRATCH, 1e-3, 1e-5, 1, 256, 10, 2, 4, 17);
-    GrpTrained trained = GrpTrainer.train(shape, null, rows.train(), rows.stop(), rule, () -> false);
+    GrpTrained trained =
+        GrpTrainer.train(shape, null, rows.train(), rows.stop(), rule, () -> false);
     Assert.assertEquals(trained.ending(), TrainingEnding.COMPLETED);
     Assert.assertEquals(trained.network().shape(), shape);
     Assert.assertTrue(Double.isFinite(trained.stopNll()));
@@ -194,8 +203,9 @@ public class GrpTrainerTest {
     Variant variant = Variant.TENHOU_3P;
     GrpRows.Split rows = rows(variant, new RecencyWindow(10, 1, 64), 100);
     GrpShape shape = GrpFixtures.shape(variant, 8, false);
-    GrpTrained stopped = GrpTrainer.train(
-        shape, null, rows.train(), rows.stop(), defaults(GrpInit.SCRATCH, 1), () -> true);
+    GrpTrained stopped =
+        GrpTrainer.train(
+            shape, null, rows.train(), rows.stop(), defaults(GrpInit.SCRATCH, 1), () -> true);
     Assert.assertEquals(stopped.ending(), TrainingEnding.STOPPED);
     Assert.assertNull(stopped.network());
     Assert.assertEquals(stopped.halfEpochs(), 0);
@@ -214,14 +224,28 @@ public class GrpTrainerTest {
     Engine.getEngine("PyTorch");
     int before = JniUtils.getNumThreads();
     int threads = before == 1 ? 2 : 1;
-    GrpTrained trained = GrpTrainer.train(
-        shape, null, rows.train(), rows.stop(), defaults(GrpInit.SCRATCH, 1), threads, () -> false);
+    GrpTrained trained =
+        GrpTrainer.train(
+            shape,
+            null,
+            rows.train(),
+            rows.stop(),
+            defaults(GrpInit.SCRATCH, 1),
+            threads,
+            () -> false);
     Assert.assertEquals(trained.ending(), TrainingEnding.COMPLETED);
     Assert.assertEquals(JniUtils.getNumThreads(), before);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> GrpTrainer.train(
-            shape, null, rows.train(), rows.stop(), defaults(GrpInit.SCRATCH, 1), 0, () -> false));
+        () ->
+            GrpTrainer.train(
+                shape,
+                null,
+                rows.train(),
+                rows.stop(),
+                defaults(GrpInit.SCRATCH, 1),
+                0,
+                () -> false));
   }
 
   private static void assertForwardMatches(GrpShape shape, GrpWorkspace workspace) {
@@ -241,7 +265,8 @@ public class GrpTrainerTest {
         network.permutations(states.get(row), workspace, expected);
         double[] actual = softmax(logits, row * shape.outputs(), shape.outputs());
         for (int k = 0; k < expected.length; k++) {
-          Assert.assertEquals(actual[k], expected[k], TOLERANCE, shape + " row " + row + " permutation " + k);
+          Assert.assertEquals(
+              actual[k], expected[k], TOLERANCE, shape + " row " + row + " permutation " + k);
         }
       }
     }
@@ -310,7 +335,8 @@ public class GrpTrainerTest {
       for (int j = 0; j < hidden; j++) {
         double sum = weights[at[GrpTensor.B1.ordinal()] + j];
         for (int i = 0; i < width; i++) {
-          sum += weights[at[GrpTensor.W1.ordinal()] + i * hidden + j] * batch.inputs[row * width + i];
+          sum +=
+              weights[at[GrpTensor.W1.ordinal()] + i * hidden + j] * batch.inputs[row * width + i];
         }
         first[j] = Math.max(sum, 0);
       }

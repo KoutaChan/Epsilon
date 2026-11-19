@@ -31,7 +31,8 @@ public class ThreePlayerGroupsTest {
 
   /** 区分の名前を作る。場の頭文字に局の番号を続け、最後の区分には + を付ける。 */
   private static String name(Variant variant, int group) {
-    String name = "ESW".charAt(group / variant.seats()) + Integer.toString(group % variant.seats() + 1);
+    String name =
+        "ESW".charAt(group / variant.seats()) + Integer.toString(group % variant.seats() + 1);
     return group == variant.lastRound() ? name + "+" : name;
   }
 
@@ -67,7 +68,8 @@ public class ThreePlayerGroupsTest {
   public void theReportUsesTheThreePlayerGroups() {
     List<GameRecord> games = TrainFixtures.simulated(THREE, 1_500, 0, 53);
     HandEnds ends = HandEnds.of(THREE, UTILITY, games);
-    GrpReport report = GrpMetrics.measure(ends, HandEndValues.of(ends, Phi.scoreRank(THREE, UTILITY)));
+    GrpReport report =
+        GrpMetrics.measure(ends, HandEndValues.of(ends, Phi.scoreRank(THREE, UTILITY)));
     Assert.assertEquals(report.groups().size(), NAMES.size());
     long[] counted = new long[NAMES.size()];
     for (int h = 0; h < ends.handEnds(); h++) {
@@ -90,7 +92,8 @@ public class ThreePlayerGroupsTest {
     }
     Assert.assertEquals(groups, Set.of("S2", "S3+"));
     Assert.assertEquals(ranks, Set.of(1, 2));
-    Assert.assertTrue(report.tails().minPhi() >= -2 && report.tails().maxPhi() <= 2, report.tails().toString());
+    Assert.assertTrue(
+        report.tails().minPhi() >= -2 && report.tails().maxPhi() <= 2, report.tails().toString());
   }
 
   /** 点数の順位、ネットワーク、終盤の数え上げのどの Φ も、三人打ちの効用では [−2, 2] に入り、席の和が 0 になる。 */
@@ -120,7 +123,8 @@ public class ThreePlayerGroupsTest {
         for (int seat = 0; seat < 3; seat++) {
           double phi = values.phi(h, seat);
           Assert.assertTrue(
-              phi >= lowest - 1e-12 && phi <= highest + 1e-12, entry.getKey() + " Φ " + phi + " at " + ends.state(h));
+              phi >= lowest - 1e-12 && phi <= highest + 1e-12,
+              entry.getKey() + " Φ " + phi + " at " + ends.state(h));
           seats += phi;
           double places = 0;
           double expected = 0;
@@ -129,7 +133,11 @@ public class ThreePlayerGroupsTest {
             expected += values.marginal(h, seat, place) * UTILITY.value(THREE, place);
           }
           Assert.assertEquals(places, 1, 1e-9, entry.getKey() + " marginals at " + ends.state(h));
-          Assert.assertEquals(phi, expected, 1e-9, entry.getKey() + " Φ is the expected utility at " + ends.state(h));
+          Assert.assertEquals(
+              phi,
+              expected,
+              1e-9,
+              entry.getKey() + " Φ is the expected utility at " + ends.state(h));
         }
         Assert.assertEquals(seats, sum, 1e-9, entry.getKey() + " ΣΦ at " + ends.state(h));
       }

@@ -18,7 +18,8 @@ import java.util.SplittableRandom;
  * @param bootstrapSd 差のブートストラップの標準偏差
  * @param resamples ブートストラップの回数
  */
-public record TrustGames(int games, long handEnds, Paired difference, double bootstrapSd, int resamples) {
+public record TrustGames(
+    int games, long handEnds, Paired difference, double bootstrapSd, int resamples) {
 
   /** 検出力 95% の片側の z。 */
   static final double POWER_Z = 1.6448536269514722;
@@ -62,7 +63,8 @@ public record TrustGames(int games, long handEnds, Paired difference, double boo
     GrpMetrics.requireValues(ends, used);
     GrpMetrics.requireValues(ends, candidate);
     if (resamples < 2) {
-      throw new IllegalArgumentException("The bootstrap needs at least two resamples: " + resamples);
+      throw new IllegalArgumentException(
+          "The bootstrap needs at least two resamples: " + resamples);
     }
     int seats = ends.seats;
     double[] sums = new double[ends.games()];
@@ -86,7 +88,8 @@ public record TrustGames(int games, long handEnds, Paired difference, double boo
       games++;
     }
     if (games < 2) {
-      throw new IllegalArgumentException("The bootstrap needs at least two games with hand ends, got " + games);
+      throw new IllegalArgumentException(
+          "The bootstrap needs at least two games with hand ends, got " + games);
     }
     SplittableRandom random = new SplittableRandom(seed);
     double mean = 0;

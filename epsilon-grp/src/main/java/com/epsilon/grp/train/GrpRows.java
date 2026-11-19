@@ -124,7 +124,8 @@ public final class GrpRows implements TrainingLoop.Rows {
 
     public Split build() {
       return new Split(
-          new GrpRows(variant, split.weights(), train), new GrpRows(variant, split.weights(), stop));
+          new GrpRows(variant, split.weights(), train),
+          new GrpRows(variant, split.weights(), stop));
     }
   }
 

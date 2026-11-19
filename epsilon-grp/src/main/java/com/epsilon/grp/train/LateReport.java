@@ -51,7 +51,12 @@ public record LateReport(
    * @param mse 対の MSE の差
    */
   public record Bin(
-      double low, double high, long handEnds, List<GrpReport.Fit> late, List<GrpReport.Fit> grp, Paired mse) {
+      double low,
+      double high,
+      long handEnds,
+      List<GrpReport.Fit> late,
+      List<GrpReport.Fit> grp,
+      Paired mse) {
 
     public Bin {
       late = List.copyOf(late);
@@ -92,13 +97,14 @@ public record LateReport(
       for (byte value : topBins) {
         count += value == chosen ? 1 : 0;
       }
-      bins.add(new Bin(
-          EDGES[bin],
-          EDGES[bin + 1],
-          count,
-          lateFits(covered, GrpMetrics.measure(covered, lateValues, inBin)),
-          lateFits(covered, GrpMetrics.measure(covered, grpValues, inBin)),
-          GrpMetrics.pairedMse(covered, grpValues, lateValues, inBin)));
+      bins.add(
+          new Bin(
+              EDGES[bin],
+              EDGES[bin + 1],
+              count,
+              lateFits(covered, GrpMetrics.measure(covered, lateValues, inBin)),
+              lateFits(covered, GrpMetrics.measure(covered, grpValues, inBin)),
+              GrpMetrics.pairedMse(covered, grpValues, lateValues, inBin)));
     }
     return new LateReport(
         covered.handEnds(),

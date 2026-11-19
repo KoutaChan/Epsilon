@@ -28,7 +28,11 @@ public final class GrpGate {
 
   /** 毎回の再学習の関門。 */
   public static GateReport refit(
-      HandEnds gate, HandEndValues used, HandEndValues candidate, double usedMonotone, double candidateMonotone) {
+      HandEnds gate,
+      HandEndValues used,
+      HandEndValues candidate,
+      double usedMonotone,
+      double candidateMonotone) {
     return judge(
         GateKind.REFIT,
         candidate.finite() && Double.isFinite(candidateMonotone),
@@ -61,7 +65,11 @@ public final class GrpGate {
 
   /** 最初の切り替えと、モデルの構造を入れ替えるときの関門。 */
   public static GateReport replacement(
-      HandEnds gate, HandEndValues used, HandEndValues candidate, double usedMonotone, double candidateMonotone) {
+      HandEnds gate,
+      HandEndValues used,
+      HandEndValues candidate,
+      double usedMonotone,
+      double candidateMonotone) {
     return judge(
         GateKind.REPLACEMENT,
         candidate.finite() && Double.isFinite(candidateMonotone),
@@ -98,6 +106,7 @@ public final class GrpGate {
     if (!(candidateMonotone <= line)) {
       failures.add(GateFailure.NOT_MONOTONE);
     }
-    return new GateReport(kind, List.copyOf(failures), versusUsed, versusAnchor, candidateMonotone, line);
+    return new GateReport(
+        kind, List.copyOf(failures), versusUsed, versusAnchor, candidateMonotone, line);
   }
 }

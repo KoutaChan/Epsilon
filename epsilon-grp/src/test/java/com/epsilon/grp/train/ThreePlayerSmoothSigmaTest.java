@@ -38,7 +38,8 @@ public class ThreePlayerSmoothSigmaTest {
     for (int game = 0; game < count; game++) {
       int[] finals = new int[seats];
       for (int seat = 0; seat < seats; seat++) {
-        finals[seat] = seats == FINALS.length ? FINALS[(seat + game) % seats] : 25_000 + 10_000 * (seat - 1);
+        finals[seat] =
+            seats == FINALS.length ? FINALS[(seat + game) % seats] : 25_000 + 10_000 * (seat - 1);
       }
       int hands = 1 + random.nextInt(8);
       List<GrpState> handEnds = new ArrayList<>(hands);
@@ -67,7 +68,9 @@ public class ThreePlayerSmoothSigmaTest {
     for (GameRecord game : games) {
       for (GrpState state : game.handEnds()) {
         for (int seat = 0; seat < 3; seat++) {
-          sum += (game.finalScore(seat) - state.score(seat)) / Math.sqrt(ScoreSmooth.remainingRounds(THREE, state.round()));
+          sum +=
+              (game.finalScore(seat) - state.score(seat))
+                  / Math.sqrt(ScoreSmooth.remainingRounds(THREE, state.round()));
         }
         seatHands += 3;
       }
@@ -78,14 +81,16 @@ public class ThreePlayerSmoothSigmaTest {
       for (GrpState state : game.handEnds()) {
         for (int seat = 0; seat < 3; seat++) {
           double value =
-              (game.finalScore(seat) - state.score(seat)) / Math.sqrt(ScoreSmooth.remainingRounds(THREE, state.round()));
+              (game.finalScore(seat) - state.score(seat))
+                  / Math.sqrt(ScoreSmooth.remainingRounds(THREE, state.round()));
           squares += (value - mean) * (value - mean);
         }
       }
     }
     Assert.assertEquals(sigma.seatHands(), seatHands);
     Assert.assertEquals(sigma.perHand(), Math.sqrt(squares / (seatHands - 1)), 1e-6);
-    Assert.assertEquals(sigma.perHand(), SIGMA, 4 * SIGMA / Math.sqrt(2.0 * seatHands), "sigma per hand");
+    Assert.assertEquals(
+        sigma.perHand(), SIGMA, 4 * SIGMA / Math.sqrt(2.0 * seatHands), "sigma per hand");
 
     // 次局ごと: 東 1 局から西 3 局まで全てそろう。残りの局の数は南 3 局までを数え、西入なら 1
     int[] remaining = {6, 5, 4, 3, 2, 1, 1, 1, 1};
@@ -94,7 +99,8 @@ public class ThreePlayerSmoothSigmaTest {
     for (SmoothSigma.Round round : sigma.rounds()) {
       Assert.assertEquals(round.remaining(), remaining[round.round()], "round " + round.round());
       double se = 4 / Math.sqrt(2.0 * round.seatHands());
-      Assert.assertEquals(round.spread() / (SIGMA * Math.sqrt(round.remaining())), 1, se, "spread of " + round);
+      Assert.assertEquals(
+          round.spread() / (SIGMA * Math.sqrt(round.remaining())), 1, se, "spread of " + round);
       Assert.assertEquals(round.perHand(), round.spread() / Math.sqrt(round.remaining()), 1e-9);
       Assert.assertEquals(round.perHand() / SIGMA, 1, se, "per hand of " + round);
       counted += round.seatHands();
@@ -113,7 +119,8 @@ public class ThreePlayerSmoothSigmaTest {
     SmoothSigma.Builder builder = SmoothSigma.builder(THREE).add(first);
     List<GameRecord> mixed = new ArrayList<>(moves(Variant.TENHOU_4P, SIGMA, 2, 0, 1));
     mixed.addAll(second);
-    IllegalArgumentException refused = Assert.expectThrows(IllegalArgumentException.class, () -> builder.add(mixed));
+    IllegalArgumentException refused =
+        Assert.expectThrows(IllegalArgumentException.class, () -> builder.add(mixed));
     Assert.assertEquals(refused.getMessage(), "A TENHOU_4P game among TENHOU_3P games");
     SmoothSigma inParts = builder.add(second).build();
     Assert.assertEquals(inParts, together);
@@ -134,7 +141,9 @@ public class ThreePlayerSmoothSigmaTest {
   @Test
   public void threePlayerScoreSmoothIsRefusedInEnglish() {
     IllegalArgumentException refused =
-        Assert.expectThrows(IllegalArgumentException.class, () -> Phi.scoreSmooth(THREE, RankUtility.TENHOU));
-    Assert.assertEquals(refused.getMessage(), "The score-smooth sigma is not measured for TENHOU_3P");
+        Assert.expectThrows(
+            IllegalArgumentException.class, () -> Phi.scoreSmooth(THREE, RankUtility.TENHOU));
+    Assert.assertEquals(
+        refused.getMessage(), "The score-smooth sigma is not measured for TENHOU_3P");
   }
 }

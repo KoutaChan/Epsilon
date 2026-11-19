@@ -66,7 +66,8 @@ public record GrpReport(
     /** 確率の端の基準を満たすか。稀な側の率で、予測が [実測 / 2 − 2 SE, 実測 × 2 ＋ 2 SE] に入れば満たす。行が無ければ問わない。 */
     public boolean within() {
       return rows == 0
-          || predicted >= realized / 2 - 2 * standardError && predicted <= realized * 2 + 2 * standardError;
+          || predicted >= realized / 2 - 2 * standardError
+              && predicted <= realized * 2 + 2 * standardError;
     }
   }
 
@@ -96,7 +97,13 @@ public record GrpReport(
    * @param keepGap 今の順位のままで終わる率の、実測 − 予測
    */
   public record CloseCell(
-      int group, int rank, int lowGap, int highGap, long seatHands, double keepGap, double standardError) {
+      int group,
+      int rank,
+      int lowGap,
+      int highGap,
+      long seatHands,
+      double keepGap,
+      double standardError) {
 
     public double z() {
       return keepGap / standardError;

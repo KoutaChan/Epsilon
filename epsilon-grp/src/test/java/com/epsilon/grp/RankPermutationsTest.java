@@ -21,7 +21,9 @@ public class RankPermutationsTest {
         int[] ranks = ranks(table, permutation, seats);
         Assert.assertEquals(table.index(ranks), permutation, Arrays.toString(ranks));
         if (previous != null) {
-          Assert.assertTrue(Arrays.compare(previous, ranks) < 0, Arrays.toString(previous) + Arrays.toString(ranks));
+          Assert.assertTrue(
+              Arrays.compare(previous, ranks) < 0,
+              Arrays.toString(previous) + Arrays.toString(ranks));
         }
         previous = ranks;
       }
@@ -47,7 +49,9 @@ public class RankPermutationsTest {
         for (int shift = 1; shift < seats; shift++) {
           int rotated = table.rotate(permutation, shift);
           for (int seat = 0; seat < seats; seat++) {
-            Assert.assertEquals(table.rank(rotated, seat), table.rank(permutation, Math.floorMod(seat - shift, seats)));
+            Assert.assertEquals(
+                table.rank(rotated, seat),
+                table.rank(permutation, Math.floorMod(seat - shift, seats)));
           }
           Assert.assertEquals(table.rotate(rotated, seats - shift), permutation);
         }
@@ -67,12 +71,17 @@ public class RankPermutationsTest {
   public void tiesGoToTheSeatNearestEastOne() {
     RankPermutations four = RankPermutations.of(Variant.TENHOU_4P);
     // 全員が同点なら絶対席の順。親が絶対席 2 なら相対席は絶対席 2・3・0・1。
-    Assert.assertEquals(four.realized(new int[] {25_000, 25_000, 25_000, 25_000}, 2), four.index(new int[] {2, 3, 0, 1}));
+    Assert.assertEquals(
+        four.realized(new int[] {25_000, 25_000, 25_000, 25_000}, 2),
+        four.index(new int[] {2, 3, 0, 1}));
     // 絶対席 1 と 3 が 30,000 点、0 と 2 が 20,000 点。順位は 1・3・0・2 の順で、親が絶対席 3 なら相対席は 3・0・1・2。
-    Assert.assertEquals(four.realized(new int[] {20_000, 30_000, 20_000, 30_000}, 3), four.index(new int[] {1, 2, 0, 3}));
+    Assert.assertEquals(
+        four.realized(new int[] {20_000, 30_000, 20_000, 30_000}, 3),
+        four.index(new int[] {1, 2, 0, 3}));
     RankPermutations three = RankPermutations.of(Variant.TENHOU_3P);
     // 絶対席 0 と 2 が同点のトップ。親が絶対席 1 なら相対席は 1・2・0。
-    Assert.assertEquals(three.realized(new int[] {40_000, 25_000, 40_000}, 1), three.index(new int[] {2, 1, 0}));
+    Assert.assertEquals(
+        three.realized(new int[] {40_000, 25_000, 40_000}, 1), three.index(new int[] {2, 1, 0}));
   }
 
   @Test
@@ -91,7 +100,10 @@ public class RankPermutationsTest {
         for (int seat = 0; seat < seats; seat++) {
           ranks[seat] = Placement.rank(scores, (dealer + seat) % seats);
         }
-        Assert.assertEquals(table.realized(scores, dealer), table.index(ranks), Arrays.toString(scores) + " " + dealer);
+        Assert.assertEquals(
+            table.realized(scores, dealer),
+            table.index(ranks),
+            Arrays.toString(scores) + " " + dealer);
       }
     }
   }
@@ -106,7 +118,8 @@ public class RankPermutationsTest {
     table.marginals(probabilities, marginals);
     for (int seat = 0; seat < 4; seat++) {
       for (int rank = 0; rank < 4; rank++) {
-        Assert.assertEquals(marginals[seat * 4 + rank], table.rank(permutation, seat) == rank ? 1.0 : 0.0, 0.0);
+        Assert.assertEquals(
+            marginals[seat * 4 + rank], table.rank(permutation, seat) == rank ? 1.0 : 0.0, 0.0);
       }
     }
   }
@@ -135,7 +148,9 @@ public class RankPermutationsTest {
         for (int seat = 0; seat < seats; seat++) {
           for (int rank = 0; rank < seats; rank++) {
             Assert.assertEquals(
-                absolute[Seats.absolute(dealer, seat, seats) * seats + rank], relative[seat * seats + rank], 0.0,
+                absolute[Seats.absolute(dealer, seat, seats) * seats + rank],
+                relative[seat * seats + rank],
+                0.0,
                 variant + " dealer " + dealer + " seat " + seat);
           }
         }

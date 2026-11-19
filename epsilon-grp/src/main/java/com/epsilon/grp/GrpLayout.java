@@ -96,13 +96,15 @@ public final class GrpLayout {
    */
   void write(TableState table, float[] out) {
     if (table.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: layout " + variant + ", table " + table.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: layout " + variant + ", table " + table.variant());
     }
     if (table.gameOver()) {
       throw new IllegalArgumentException("A finished game has no next hand: " + table);
     }
     if (out.length < width) {
-      throw new IllegalArgumentException("Input buffer " + out.length + " is shorter than " + width);
+      throw new IllegalArgumentException(
+          "Input buffer " + out.length + " is shorter than " + width);
     }
     Arrays.fill(out, 0, width, 0f);
     int seats = variant.seats();
@@ -115,7 +117,8 @@ public final class GrpLayout {
         case KYOTAKU -> out[base] = table.kyotaku() * Variant.DEPOSIT / POINTS;
         case SCORE -> {
           for (int seat = 0; seat < seats; seat++) {
-            out[base + seat] = (table.score(Seats.absolute(dealer, seat, seats)) - variant.startPoints()) / POINTS;
+            out[base + seat] =
+                (table.score(Seats.absolute(dealer, seat, seats)) - variant.startPoints()) / POINTS;
           }
         }
         case RANK -> {
@@ -146,7 +149,9 @@ public final class GrpLayout {
 
   @Override
   public boolean equals(Object other) {
-    return other instanceof GrpLayout layout && variant == layout.variant && fields.equals(layout.fields);
+    return other instanceof GrpLayout layout
+        && variant == layout.variant
+        && fields.equals(layout.fields);
   }
 
   @Override

@@ -20,10 +20,24 @@ public class MovedCountFileTest {
 
   /** ルール、乱数の種、局の数、gzip を解いた中身の SHA-256。 */
   private static final Object[][] EXPECTED = {
-    {Variant.TENHOU_4P, 71L, 457, "7414985e4f750dfaeec13b6f77b83e45cb4be6251545188f45bc516c611abac4"},
-    {Variant.TENHOU_4P, 7L, 491, "acadd47caf8268b8f5e84fc941b4c88c20b5382635769812041557f52cae3a76"},
-    {Variant.TENHOU_3P, 71L, 433, "697c4af90062b96f89895353d48a1dceb448a600160a0a7386615fcf75eaab8c"},
-    {Variant.TENHOU_3P, 7L, 473, "8cf8e1cffea00dbcbdba26349ad1f7423179ea7441e35dc59a308fe1514a9599"},
+    {
+      Variant.TENHOU_4P,
+      71L,
+      457,
+      "7414985e4f750dfaeec13b6f77b83e45cb4be6251545188f45bc516c611abac4"
+    },
+    {
+      Variant.TENHOU_4P, 7L, 491, "acadd47caf8268b8f5e84fc941b4c88c20b5382635769812041557f52cae3a76"
+    },
+    {
+      Variant.TENHOU_3P,
+      71L,
+      433,
+      "697c4af90062b96f89895353d48a1dceb448a600160a0a7386615fcf75eaab8c"
+    },
+    {
+      Variant.TENHOU_3P, 7L, 473, "8cf8e1cffea00dbcbdba26349ad1f7423179ea7441e35dc59a308fe1514a9599"
+    },
   };
 
   @Test
@@ -43,7 +57,8 @@ public class MovedCountFileTest {
   /** 数のファイルの、gzip を解いた中身の SHA-256（小文字の 16 進）。 */
   private static String contentSha256(Path file) throws Exception {
     try (InputStream in = new GZIPInputStream(Files.newInputStream(file))) {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(in.readAllBytes()));
+      return HexFormat.of()
+          .formatHex(MessageDigest.getInstance("SHA-256").digest(in.readAllBytes()));
     }
   }
 }

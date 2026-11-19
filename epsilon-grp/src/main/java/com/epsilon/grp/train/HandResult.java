@@ -92,8 +92,12 @@ public final class HandResult {
     int seats = variant.seats();
     int riichi = absolute((int) read(code, Part.RIICHI), dealer, seats);
     switch (ENDS[(int) read(code, Part.END)]) {
-      case TSUMO -> into.setTsumo(
-          base(code, Part.BASE), seat(code, Part.WINNER, dealer, seats), seat(code, Part.PAO, dealer, seats), riichi);
+      case TSUMO ->
+          into.setTsumo(
+              base(code, Part.BASE),
+              seat(code, Part.WINNER, dealer, seats),
+              seat(code, Part.PAO, dealer, seats),
+              riichi);
       case RON -> {
         into.setRon(
             base(code, Part.BASE),
@@ -108,10 +112,11 @@ public final class HandResult {
               seat(code, Part.SECOND_PAO, dealer, seats));
         }
       }
-      case EXHAUSTIVE -> into.setExhaustive(
-          absolute((int) read(code, Part.TENPAI), dealer, seats),
-          absolute((int) read(code, Part.NAGASHI), dealer, seats),
-          riichi);
+      case EXHAUSTIVE ->
+          into.setExhaustive(
+              absolute((int) read(code, Part.TENPAI), dealer, seats),
+              absolute((int) read(code, Part.NAGASHI), dealer, seats),
+              riichi);
       case ABORTIVE -> into.setAbortive(ABORTIVES[variant.ordinal()], riichi);
     }
   }
@@ -133,13 +138,17 @@ public final class HandResult {
    * @param scratch 試しに書き戻す先。その局の結果のルールで確かめる。中身は書き換わる
    */
   public static boolean valid(long code, RoundOutcome scratch) {
-    if (code < 0 || code >>> BITS != 0
-        || read(code, Part.BASE) >= BASES.length || read(code, Part.SECOND_BASE) >= BASES.length) {
+    if (code < 0
+        || code >>> BITS != 0
+        || read(code, Part.BASE) >= BASES.length
+        || read(code, Part.SECOND_BASE) >= BASES.length) {
       return false;
     }
     try {
       place(code, 0, scratch);
-    } catch (IllegalArgumentException | IllegalStateException | IndexOutOfBoundsException malformed) {
+    } catch (IllegalArgumentException
+        | IllegalStateException
+        | IndexOutOfBoundsException malformed) {
       return false;
     }
     return encode(scratch, 0) == code;
@@ -152,16 +161,18 @@ public final class HandResult {
     int riichi = relative(outcome.riichiMask(), dealer, seats);
     switch (outcome.kind()) {
       case TSUMO, RON -> {
-        code |= seatField(Part.WINNER, outcome.winner(0), dealer, seats)
-            | put(Part.BASE, BaseClass.of(outcome.base(0)).ordinal())
-            | seatField(Part.PAO, outcome.pao(0), dealer, seats);
+        code |=
+            seatField(Part.WINNER, outcome.winner(0), dealer, seats)
+                | put(Part.BASE, BaseClass.of(outcome.base(0)).ordinal())
+                | seatField(Part.PAO, outcome.pao(0), dealer, seats);
         if (outcome.kind() == EndKind.RON) {
           code |= seatField(Part.LOSER, outcome.loser(), dealer, seats);
         }
         if (outcome.winnerCount() > 1) {
-          code |= seatField(Part.SECOND, outcome.winner(1), dealer, seats)
-              | put(Part.SECOND_BASE, BaseClass.of(outcome.base(1)).ordinal())
-              | seatField(Part.SECOND_PAO, outcome.pao(1), dealer, seats);
+          code |=
+              seatField(Part.SECOND, outcome.winner(1), dealer, seats)
+                  | put(Part.SECOND_BASE, BaseClass.of(outcome.base(1)).ordinal())
+                  | seatField(Part.SECOND_PAO, outcome.pao(1), dealer, seats);
         }
       }
       case EXHAUSTIVE -> {

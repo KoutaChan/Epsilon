@@ -87,7 +87,8 @@ public class HandEndsTest {
   @Test
   public void selectedHandEndsMeasureLikeTheChosenHandEnds() {
     Variant variant = Variant.TENHOU_4P;
-    HandEnds ends = HandEnds.of(variant, RankUtility.TENHOU, TrainFixtures.simulated(variant, 600, 0, 31));
+    HandEnds ends =
+        HandEnds.of(variant, RankUtility.TENHOU, TrainFixtures.simulated(variant, 600, 0, 31));
     GrpNetwork leaf = GrpFixtures.network(GrpFixtures.shape(variant, 8, false), 13, 0.5);
     GrpNetwork other = GrpFixtures.network(GrpFixtures.shape(variant, 8, false), 17, 0.5);
     HandEndValues values = HandEndValues.of(ends, leaf, GrpWorkspace.of(leaf.shape()));
@@ -95,16 +96,22 @@ public class HandEndsTest {
 
     HandEnds all = ends.select(h -> true);
     Assert.assertEquals(all.handEnds(), ends.handEnds());
-    Assert.assertEquals(GrpMetrics.measure(all, values.select(all)), GrpMetrics.measure(ends, values));
+    Assert.assertEquals(
+        GrpMetrics.measure(all, values.select(all)), GrpMetrics.measure(ends, values));
     Assert.assertEquals(
         GrpMetrics.pairedMse(all, reference.select(all), values.select(all)),
         GrpMetrics.pairedMse(ends, reference, values));
 
     IntPredicate covers = h -> FinalRound.covers(ends.state(h));
     HandEnds covered = ends.select(covers);
-    Assert.assertTrue(covered.handEnds() > 100 && covered.handEnds() < ends.handEnds(), covered.handEnds() + " covered");
-    Assert.assertEquals(GrpMetrics.measure(covered, values.select(covered)), GrpMetrics.measure(ends, values, covers));
-    Assert.assertThrows(IllegalArgumentException.class, () -> values.select(covered.select(h -> true)));
+    Assert.assertTrue(
+        covered.handEnds() > 100 && covered.handEnds() < ends.handEnds(),
+        covered.handEnds() + " covered");
+    Assert.assertEquals(
+        GrpMetrics.measure(covered, values.select(covered)),
+        GrpMetrics.measure(ends, values, covers));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> values.select(covered.select(h -> true)));
 
     OutcomeShape outcomes = new OutcomeShape(variant, GrpFixtures.plainFields(), 8);
     FinalRound round = FinalRound.of(GrpFixtures.outcomes(outcomes, 11, 0.5), leaf, 1e-4);
@@ -115,13 +122,15 @@ public class HandEndsTest {
       GrpState state = ends.state(h);
       round.phi(state, RankUtility.TENHOU, workspace, phi);
       Assert.assertEquals(
-          Double.doubleToRawLongBits(enumerated.terminalMass(h)), Double.doubleToRawLongBits(workspace.terminalMass()),
+          Double.doubleToRawLongBits(enumerated.terminalMass(h)),
+          Double.doubleToRawLongBits(workspace.terminalMass()),
           state.toString());
       for (int seat = 0; seat < phi.length; seat++) {
         long bits = Double.doubleToRawLongBits(enumerated.phi(h, seat));
         Assert.assertEquals(bits, Double.doubleToRawLongBits(phi[seat]), state.toString());
         if (!FinalRound.covers(state)) {
-          Assert.assertEquals(bits, Double.doubleToRawLongBits(values.phi(h, seat)), state.toString());
+          Assert.assertEquals(
+              bits, Double.doubleToRawLongBits(values.phi(h, seat)), state.toString());
         }
       }
     }

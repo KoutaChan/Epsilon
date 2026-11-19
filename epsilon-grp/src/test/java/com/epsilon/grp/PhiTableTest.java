@@ -39,7 +39,8 @@ public class PhiTableTest {
       }
       Assert.assertEquals(total, 1, TOLERANCE);
     }
-    double softened = Math.sqrt(0.70) / (Math.sqrt(0.70) + Math.sqrt(0.20) + Math.sqrt(0.08) + Math.sqrt(0.02));
+    double softened =
+        Math.sqrt(0.70) / (Math.sqrt(0.70) + Math.sqrt(0.20) + Math.sqrt(0.08) + Math.sqrt(0.02));
     Assert.assertEquals(marginals[0], softened, TOLERANCE);
   }
 
@@ -59,7 +60,8 @@ public class PhiTableTest {
 
   @Test
   public void laterRoundsUseTheLastStage() {
-    PhiTable table = PhiTable.of(Variant.TENHOU_3P, new double[0], -1, 1, new double[][] {{0, 0}, {0.3, -0.3}});
+    PhiTable table =
+        PhiTable.of(Variant.TENHOU_3P, new double[0], -1, 1, new double[][] {{0, 0}, {0.3, -0.3}});
     double[] early = {0.8, 0.1, -0.9};
     table.calibrate(0, early);
     Assert.assertEquals(early, new double[] {0.8, 0.1, -0.9});
@@ -83,7 +85,12 @@ public class PhiTableTest {
   @Test
   public void tablesRoundTripThroughJson() throws IOException {
     PhiTable table =
-        PhiTable.of(Variant.TENHOU_4P, new double[] {1.07, 1.0 / 3}, -1, 2.0 / 3, new double[][] {{0.01, -0.02, 0.1 / 3}});
+        PhiTable.of(
+            Variant.TENHOU_4P,
+            new double[] {1.07, 1.0 / 3},
+            -1,
+            2.0 / 3,
+            new double[][] {{0.01, -0.02, 0.1 / 3}});
     Path file = Files.createTempFile("phi-table", ".json");
     try {
       table.write(file);
@@ -110,18 +117,21 @@ public class PhiTableTest {
     Path directory = Files.createTempDirectory("phi-table");
     Path file = directory.resolve("table.json");
     try {
-      PhiTable.of(Variant.TENHOU_4P, new double[] {1.1}, -1, 2.0 / 3, new double[][] {{0.01}}).write(file);
+      PhiTable.of(Variant.TENHOU_4P, new double[] {1.1}, -1, 2.0 / 3, new double[][] {{0.01}})
+          .write(file);
       String first = PhiTable.sha256(file);
-      PhiTable.of(Variant.TENHOU_4P, new double[] {0.9}, -1, 2.0 / 3, new double[][] {{0.02}}).write(file);
+      PhiTable.of(Variant.TENHOU_4P, new double[] {0.9}, -1, 2.0 / 3, new double[][] {{0.02}})
+          .write(file);
       String second = PhiTable.sha256(file);
       Assert.assertNotEquals(second, first);
       Assert.assertEquals(
           second,
-          HexFormat.of().formatHex(
-              MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))));
+          HexFormat.of()
+              .formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))));
       Assert.assertEquals(PhiTable.read(file).variant(), Variant.TENHOU_4P);
       try (var entries = Files.list(directory)) {
-        Assert.assertEquals(entries.map(path -> path.getFileName().toString()).toList(), List.of("table.json"));
+        Assert.assertEquals(
+            entries.map(path -> path.getFileName().toString()).toList(), List.of("table.json"));
       }
     } finally {
       Files.deleteIfExists(file);
@@ -132,9 +142,11 @@ public class PhiTableTest {
   @Test
   public void invalidTablesAreRefused() {
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> PhiTable.of(Variant.TENHOU_4P, new double[] {0}, 0, 1, new double[0][]));
+        IllegalArgumentException.class,
+        () -> PhiTable.of(Variant.TENHOU_4P, new double[] {0}, 0, 1, new double[0][]));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> PhiTable.of(Variant.TENHOU_4P, new double[0], 1, 0, new double[][] {{0}}));
+        IllegalArgumentException.class,
+        () -> PhiTable.of(Variant.TENHOU_4P, new double[0], 1, 0, new double[][] {{0}}));
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> PhiTable.of(Variant.TENHOU_4P, new double[0], 0, 1, new double[][] {{0, 1}, {0}}));

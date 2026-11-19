@@ -33,7 +33,8 @@ public final class LogGames {
     List<GrpState> handEnds = new ArrayList<>(rounds.size() - 1);
     for (int index = 1; index < rounds.size(); index++) {
       RoundStart next = rounds.get(index).start();
-      handEnds.add(new GrpState(game.variant(), next.round(), next.honba(), next.kyotaku(), next.scores()));
+      handEnds.add(
+          new GrpState(game.variant(), next.round(), next.honba(), next.kyotaku(), next.scores()));
     }
     return new GameRecord(game.variant(), gameId(game.meta().id()), handEnds, game.finalScores());
   }

@@ -43,6 +43,7 @@ final class TransitionSearch {
 
   /** 探す目標。半荘が終わるかどうかと、続くなら次の局の番号・本場・供託・点、終わるなら最終の点。 */
   private boolean targetOver;
+
   private int targetRound;
   private int targetHonba;
   private int targetSticks;
@@ -50,6 +51,7 @@ final class TransitionSearch {
 
   /** 見つけた結果。終わり方、打点の番号 2 つ（無ければ {@code NONE}）、立直した席のビット（相対席）。 */
   private int found;
+
   private int[] foundMain = new int[8];
   private int[] foundBase = new int[8];
   private int[] foundOther = new int[8];
@@ -82,7 +84,8 @@ final class TransitionSearch {
   /** 次の局の卓を目標にして、局の結果のネットワークが表せる結果を探す。見つけた数を返す。 */
   int next(GrpState next) {
     if (next.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: search " + variant + ", state " + next.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: search " + variant + ", state " + next.variant());
     }
     targetOver = false;
     targetRound = next.round();
@@ -97,7 +100,8 @@ final class TransitionSearch {
   /** 元の局で半荘が終わり、最終の点（残りの供託をトップに渡した後）が指定した点になる結果を探す。見つけた数を返す。 */
   int last(int[] finalScores) {
     if (finalScores.length != seats) {
-      throw new IllegalArgumentException(variant + " needs " + seats + " final scores, got " + finalScores.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + seats + " final scores, got " + finalScores.length);
     }
     targetOver = true;
     System.arraycopy(finalScores, 0, targetScores, 0, seats);
@@ -207,15 +211,24 @@ final class TransitionSearch {
         }
         switch (hands.section(main)) {
           case TSUMO, RON -> {
-            int base = bisect(main, riichi, NONE, Seats.absolute(dealer, hands.winner(main), seats), false);
+            int base =
+                bisect(
+                    main, riichi, NONE, Seats.absolute(dealer, hands.winner(main), seats), false);
             if (base != NONE && reproduces(recorded)) {
               record(main, base, NONE, relative);
             }
           }
           case DOUBLE_RON -> {
-            int base = bisect(main, riichi, 0, Seats.absolute(dealer, hands.winner(main), seats), false);
+            int base =
+                bisect(main, riichi, 0, Seats.absolute(dealer, hands.winner(main), seats), false);
             if (base != NONE) {
-              int other = bisect(main, riichi, base, Seats.absolute(dealer, hands.secondWinner(main), seats), true);
+              int other =
+                  bisect(
+                      main,
+                      riichi,
+                      base,
+                      Seats.absolute(dealer, hands.secondWinner(main), seats),
+                      true);
               if (other != NONE && reproduces(recorded)) {
                 record(main, base, other, relative);
               }
@@ -315,7 +328,9 @@ final class TransitionSearch {
       return false;
     }
     if (!targetOver
-        && (after.round() != targetRound || after.honba() != targetHonba || after.kyotaku() != targetSticks)) {
+        && (after.round() != targetRound
+            || after.honba() != targetHonba
+            || after.kyotaku() != targetSticks)) {
       return false;
     }
     for (int seat = 0; seat < seats; seat++) {
@@ -338,7 +353,8 @@ final class TransitionSearch {
       judged[seat] = Progression.judgedScore(start, delta, seat);
     }
     DealerOutcome dealerOutcome = Progression.dealerOutcome(outcome, start.dealer());
-    if (recordEnds(win ? outcome.winner(0) : RoundOutcome.NO_SEAT, deposits, dealerOutcome) != targetOver) {
+    if (recordEnds(win ? outcome.winner(0) : RoundOutcome.NO_SEAT, deposits, dealerOutcome)
+        != targetOver) {
       return false;
     }
     if (targetOver) {

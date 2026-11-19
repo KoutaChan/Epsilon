@@ -5,15 +5,22 @@ import { useLanguage } from "../../language/LanguageProvider";
 import type { CatalogModel } from "@epsilon-reviewer/protocol/model";
 import type { Models } from "./useModels";
 
-/** その人数（seats）の牌譜を解析するモデルを選ぶ欄。使えないモデルと、その人数の牌譜を読めないモデルは選べない。 */
+/**
+ * その人数（seats）の牌譜を解析するモデルを選ぶ欄。使えないモデルと、その人数の牌譜を読めないモデルは選べない。onlySeats なら、
+ * その人数のモデルだけを並べる。
+ */
 export function ModelSelect({
   models,
   id,
   seats,
+  label,
+  onlySeats = false,
 }: {
   models: Models;
   id: string;
   seats: number;
+  label?: string;
+  onlySeats?: boolean;
 }) {
   const { t } = useLanguage();
   const { state, select, reload } = models;
@@ -25,7 +32,7 @@ export function ModelSelect({
       <label className="filled-field">
         <Cpu aria-hidden="true" />
         <span>
-          <span className="field-label">{t("model.label")}</span>
+          <span className="field-label">{label ?? t("model.label")}</span>
           <select
             id={id}
             value={selected ? modelKey(selected) : ""}
@@ -37,19 +44,21 @@ export function ModelSelect({
               {t(state.status === "loading" ? "model.loading" : "model.select")}
             </option>
             {state.status === "ready" &&
-              state.value.models.map((model) => (
-                <option
-                  key={modelKey(model)}
-                  value={modelKey(model)}
-                  disabled={!usable(model)}
-                >
-                  {usable(model)
-                    ? modelLabel(model)
-                    : t("model.unavailableOption", {
-                        model: modelLabel(model),
-                      })}
-                </option>
-              ))}
+              state.value.models
+                .filter((model) => !onlySeats || model.seats === seats)
+                .map((model) => (
+                  <option
+                    key={modelKey(model)}
+                    value={modelKey(model)}
+                    disabled={!usable(model)}
+                  >
+                    {usable(model)
+                      ? modelLabel(model)
+                      : t("model.unavailableOption", {
+                          model: modelLabel(model),
+                        })}
+                  </option>
+                ))}
           </select>
         </span>
         <ChevronDown className="field-chevron" aria-hidden="true" />

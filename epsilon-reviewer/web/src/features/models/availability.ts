@@ -55,5 +55,21 @@ export function modelFor(
     const model = usable(modelKey(key));
     if (model) return model;
   }
-  return catalog.models.find((model) => model.available && model.seats === seats);
+  return catalog.models.find(
+    (model) => model.available && model.seats === seats,
+  );
+}
+
+/** 解析の前にモデルを選ばせる人数。その人数の使えるモデルが 2 つ以上ある人数を、多い順に返す。 */
+export function choosableSeats(catalog: ModelCatalog): number[] {
+  const counts = new Map<number, number>();
+  for (const model of catalog.models) {
+    if (model.available) {
+      counts.set(model.seats, (counts.get(model.seats) ?? 0) + 1);
+    }
+  }
+  return [...counts]
+    .filter(([, count]) => count > 1)
+    .map(([seats]) => seats)
+    .sort((a, b) => b - a);
 }

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  choosableSeats,
   modelFor,
   scenarioAvailable,
 } from "../../src/features/models/availability.ts";
@@ -15,7 +16,8 @@ const model = (modelId, revision, available, seats = 4) => ({
 });
 const catalog = (...models) => ({ models, defaultModels: [] });
 const written = (modelId, revision) => ({ modelId, revision });
-const key = (model) => (model ? `${model.modelId}@${model.revision}` : undefined);
+const key = (model) =>
+  model ? `${model.modelId}@${model.revision}` : undefined;
 // 画面がモデルを選ぶときのキー（modelKey と同じ形）。
 const choice = (modelId, revision) => JSON.stringify([modelId, revision]);
 
@@ -38,7 +40,10 @@ test("a model the user chose wins for its player count only, the newest choice f
   const choices = [choice("prism-3p", "u3-v300"), choice("nano", "ppo17")];
   assert.equal(key(modelFor(mixed, 3, choices)), "prism-3p@u3-v300");
   assert.equal(key(modelFor(mixed, 4, choices)), "nano@ppo17");
-  assert.equal(key(modelFor(mixed, 4, [choice("prism-3p", "u3-v300")])), "prism@v760");
+  assert.equal(
+    key(modelFor(mixed, 4, [choice("prism-3p", "u3-v300")])),
+    "prism@v760",
+  );
 });
 
 test("unavailable choices and defaults fall through to the first usable model of that player count", () => {
@@ -52,8 +57,24 @@ test("unavailable choices and defaults fall through to the first usable model of
   };
   assert.equal(key(modelFor(down, 4, [choice("prism", "v760")])), "nano@ppo17");
   assert.equal(modelFor(down, 3, []), undefined);
-  assert.equal(key(modelFor(catalog(model("nano", "ppo17", true)), 4, [])), "nano@ppo17");
+  assert.equal(
+    key(modelFor(catalog(model("nano", "ppo17", true)), 4, [])),
+    "nano@ppo17",
+  );
   assert.equal(modelFor(catalog(), 4, [choice("nano", "ppo17")]), undefined);
+});
+
+test("the home screen offers a choice only for player counts with more than one usable model", () => {
+  assert.deepEqual(choosableSeats(mixed), [4, 3]);
+  const single = catalog(
+    model("prism", "v760", true),
+    model("nano", "ppo17", false),
+    model("prism-3p", "u3-v355", true, 3),
+    model("prism-3p", "u3-v413", true, 3),
+  );
+  assert.deepEqual(choosableSeats(single), [3]);
+  assert.deepEqual(choosableSeats(catalog(model("prism", "v760", true))), []);
+  assert.deepEqual(choosableSeats(catalog()), []);
 });
 
 // Java は、解析を作ったバージョンが使えなければ、そのモデルの今のバージョン（models.json で最後のバージョン）でもしもに答える。

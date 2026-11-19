@@ -97,6 +97,7 @@ export function OwnerApp() {
           <div className="home-layout">
             <ImportCard
               busy={task.busy}
+              models={models}
               onFile={(file) =>
                 void task.run(() => api.importFile(file), imported)
               }

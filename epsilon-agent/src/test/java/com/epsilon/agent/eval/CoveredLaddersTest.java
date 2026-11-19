@@ -18,15 +18,26 @@ import org.testng.annotations.Test;
 public class CoveredLaddersTest {
 
   private static final String BOTH = "{kind = \"EVERY_PLACEMENT\", splits = [\"1v3\", \"3v1\"]}";
-  private static final String REVERSED = "{kind = \"EVERY_PLACEMENT\", splits = [\"3v1\", \"1v3\"]}";
+  private static final String REVERSED =
+      "{kind = \"EVERY_PLACEMENT\", splits = [\"3v1\", \"1v3\"]}";
   private static final String ONE = "{kind = \"EVERY_PLACEMENT\", splits = [\"1v3\"]}";
-  private static final String PRECISION = "{kind = \"PRECISION\", error = 0.005, alpha = 0.01, checkEvery = 512}";
-  private static final String COARSE = "{kind = \"PRECISION\", error = 0.01, alpha = 0.01, checkEvery = 1024}";
+  private static final String PRECISION =
+      "{kind = \"PRECISION\", error = 0.005, alpha = 0.01, checkEvery = 512}";
+  private static final String COARSE =
+      "{kind = \"PRECISION\", error = 0.01, alpha = 0.01, checkEvery = 1024}";
 
   /** 卓のキーを全て書いた上書き。 */
   private static List<String> table(
-      String name, String opponent, String seating, String draws, String wallSet, int walls, String stop, String score,
-      int every, int from) {
+      String name,
+      String opponent,
+      String seating,
+      String draws,
+      String wallSet,
+      int walls,
+      String stop,
+      String score,
+      int every,
+      int from) {
     String prefix = "evaluation.tables." + name + ".";
     return List.of(
         prefix + "opponent=" + opponent,
@@ -43,13 +54,25 @@ public class CoveredLaddersTest {
   /** v40 から 8 バージョンごとに v32 と打つ基準の卓。 */
   private static List<String> baseline(String name, String seating) {
     List<String> all =
-        new ArrayList<>(table(name, "version:32", seating, "SEAT_STREAMS", "FIXED", 8192, PRECISION, "RANK", 8, 40));
+        new ArrayList<>(
+            table(
+                name,
+                "version:32",
+                seating,
+                "SEAT_STREAMS",
+                "FIXED",
+                8192,
+                PRECISION,
+                "RANK",
+                8,
+                40));
     all.add("evaluation.tables." + name + ".onPromotion=true");
     return all;
   }
 
   /** v16 から 8 バージョンごとに 8 つ前と打つラダー。v40 で、相手が基準の卓の相手（v32）と同じになる。 */
-  private static List<String> ladder(String name, String seating, String draws, String stop, String score) {
+  private static List<String> ladder(
+      String name, String seating, String draws, String stop, String score) {
     return table(name, "version:-8", seating, draws, "FRESH", 8192, stop, score, 8, 16);
   }
 
@@ -69,7 +92,17 @@ public class CoveredLaddersTest {
     EvaluationSettings evaluation =
         bind(
             baseline("reference", BOTH),
-            table("ladder8", "version:-8", BOTH, "SEAT_STREAMS", "FRESH", 4096, COARSE, "RANK", 8, 16));
+            table(
+                "ladder8",
+                "version:-8",
+                BOTH,
+                "SEAT_STREAMS",
+                "FRESH",
+                4096,
+                COARSE,
+                "RANK",
+                8,
+                16));
     assertFalse(evaluation.scheduled(40).containsKey("ladder8"));
     assertTrue(evaluation.scheduled(40).containsKey("reference"));
     assertEquals(evaluation.coveredLadders("reference", 40), List.of("ladder8"));
@@ -117,8 +150,11 @@ public class CoveredLaddersTest {
             ladder("wall8", ONE, "WALL_ORDER", PRECISION, "RANK"));
     assertEquals(evaluation.coveredLadders("reference", 40), List.of("both8"));
     assertEquals(evaluation.coveredLadders("single", 40), List.of("single8"));
-    assertEquals(new ArrayList<>(evaluation.scheduled(40).keySet()), List.of("reference", "single", "wall8"));
     assertEquals(
-        new ArrayList<>(evaluation.scheduled(48).keySet()), List.of("both8", "reference", "single", "single8", "wall8"));
+        new ArrayList<>(evaluation.scheduled(40).keySet()),
+        List.of("reference", "single", "wall8"));
+    assertEquals(
+        new ArrayList<>(evaluation.scheduled(48).keySet()),
+        List.of("both8", "reference", "single", "single8", "wall8"));
   }
 }

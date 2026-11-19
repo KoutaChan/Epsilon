@@ -53,7 +53,8 @@ public final class TrainLock implements AutoCloseable {
     }
     try {
       DurableFiles.createDirectories(path.getParent());
-      FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+      FileChannel channel =
+          FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
       try {
         long deadline = System.nanoTime() + wait.toNanos();
         while (true) {

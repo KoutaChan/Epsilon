@@ -68,7 +68,16 @@ public class WaitScoresTest {
     context.clear();
     concealed(
         context.hand(),
-        Tiles.P5, Tiles.M1, Tiles.M2, Tiles.M3, Tiles.M4, Tiles.M5, Tiles.M6, Tiles.M7, Tiles.M8, Tiles.M9);
+        Tiles.P5,
+        Tiles.M1,
+        Tiles.M2,
+        Tiles.M3,
+        Tiles.M4,
+        Tiles.M5,
+        Tiles.M6,
+        Tiles.M7,
+        Tiles.M8,
+        Tiles.M9);
     meld(context, Meld.pon(Tiles.P5, Meld.RelativeSource.KAMICHA, Meld.AkaSource.NONE));
     context.setRedFives(Tiles.bit(Tiles.P5));
     expectExhausted(scores, Tiles.P5);
@@ -82,7 +91,16 @@ public class WaitScoresTest {
     context.clear();
     concealed(
         context.hand(),
-        Tiles.PEI, Tiles.P1, Tiles.P2, Tiles.P3, Tiles.P4, Tiles.P5, Tiles.P6, Tiles.S7, Tiles.S8, Tiles.S9);
+        Tiles.PEI,
+        Tiles.P1,
+        Tiles.P2,
+        Tiles.P3,
+        Tiles.P4,
+        Tiles.P5,
+        Tiles.P6,
+        Tiles.S7,
+        Tiles.S8,
+        Tiles.S9);
     meld(context, Meld.pon(Tiles.HAKU, Meld.RelativeSource.KAMICHA, Meld.AkaSource.NONE));
     context.setNuki(3);
     expectExhausted(scores, Tiles.PEI);
@@ -170,8 +188,10 @@ public class WaitScoresTest {
       context.addIndicator(kind(random, set, new int[Tiles.KINDS], 1));
     }
     int roundWinds = variant.roundWind(variant.finalRound()) - Tiles.TON + 1;
-    context.setWinds(Tiles.TON + random.nextInt(variant.seats()), Tiles.TON + random.nextInt(roundWinds));
-    RiichiState riichi = context.meldCount() == 0 ? RIICHI[random.nextInt(RIICHI.length)] : RiichiState.NONE;
+    context.setWinds(
+        Tiles.TON + random.nextInt(variant.seats()), Tiles.TON + random.nextInt(roundWinds));
+    RiichiState riichi =
+        context.meldCount() == 0 ? RIICHI[random.nextInt(RIICHI.length)] : RiichiState.NONE;
     context.setRiichi(riichi, riichi != RiichiState.NONE && random.nextBoolean());
     if (variant.has(RuleFlag.NUKI)) {
       context.setNuki(random.nextInt(Tiles.COPIES - used[Tiles.PEI] + 1));

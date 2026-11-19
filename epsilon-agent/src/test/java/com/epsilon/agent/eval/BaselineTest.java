@@ -64,9 +64,12 @@ public class BaselineTest {
     assertEquals(difference.walls(), 2);
     assertEquals(difference.mean(), 0.5, 0);
     assertEquals(difference.error(), 0.0, 0);
-    assertThrows(IllegalArgumentException.class, () -> PairedWalls.difference(new double[0], new double[] {1}));
     assertThrows(
-        IllegalArgumentException.class, () -> PairedWalls.difference(new double[] {Double.NaN}, new double[] {1}));
+        IllegalArgumentException.class,
+        () -> PairedWalls.difference(new double[0], new double[] {1}));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> PairedWalls.difference(new double[] {Double.NaN}, new double[] {1}));
   }
 
   /** 牌山の運が両方の卓に同じく効くとき、対の差の標準誤差は、別々に測った標準誤差の二乗和の平方根の 1 割より小さい。 */

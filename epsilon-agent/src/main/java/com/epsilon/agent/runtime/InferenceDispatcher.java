@@ -23,10 +23,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class InferenceDispatcher implements AutoCloseable {
 
-  private static final Executor DELIVERY = task -> Thread.ofVirtual().name("epsilon-inference-result").start(task);
+  private static final Executor DELIVERY =
+      task -> Thread.ofVirtual().name("epsilon-inference-result").start(task);
 
   private final ExecutorService pump =
-      Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("epsilon-inference-dispatch").factory());
+      Executors.newSingleThreadExecutor(
+          Thread.ofPlatform().daemon().name("epsilon-inference-dispatch").factory());
   private final AtomicBoolean scheduled = new AtomicBoolean();
   private final Map<Object, Lane> lanes = new LinkedHashMap<>();
   private final Set<Registration<?, ?>> registrations = new LinkedHashSet<>();
@@ -56,7 +58,8 @@ public final class InferenceDispatcher implements AutoCloseable {
         lanes.put(device.key(), new Lane(device));
         capacity += device.hostCapacity();
       } else if (lane.device != device) {
-        throw new IllegalArgumentException("Devices with one key must be one object: " + device.key());
+        throw new IllegalArgumentException(
+            "Devices with one key must be one object: " + device.key());
       }
     }
     Registration<B, R> registration = new Registration<>(this, List.copyOf(backends));
@@ -232,7 +235,8 @@ public final class InferenceDispatcher implements AutoCloseable {
         return true;
       }
       if (completion != null) {
-        completion.whenCompleteAsync((result, resultFailure) -> finish(reservation, result, resultFailure), pump);
+        completion.whenCompleteAsync(
+            (result, resultFailure) -> finish(reservation, result, resultFailure), pump);
         return true;
       }
       Lane lane = lanes.get(backend.device().key());

@@ -70,7 +70,9 @@ public class BitLayoutTest {
     Assert.assertEquals(
         BitLayout.following(threeHead, Body.class).describe(),
         "BitLayoutTest$Body{unit=16,units=2,WIDE:0..8191@16,FLAGS:0..1x3@29/30/31}");
-    Assert.assertThrows(IllegalArgumentException.class, () -> BitLayout.of(Body.class, Byte.SIZE, Variant.TENHOU_4P));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> BitLayout.of(Body.class, Byte.SIZE, Variant.TENHOU_4P));
   }
 
   @Test
@@ -86,13 +88,16 @@ public class BitLayoutTest {
       Assert.assertEquals(head.get(words, 1, record, Head.OPTIONAL), record - 1);
       long word = head.record(words, 1, record);
       Assert.assertEquals(head.get(word, Head.OPTIONAL), record - 1);
-      Assert.assertEquals(head.with(head.with(0L, Head.SEAT, record % 4), Head.OPTIONAL, record - 1), word);
+      Assert.assertEquals(
+          head.with(head.with(0L, Head.SEAT, record % 4), Head.OPTIONAL, record - 1), word);
     }
     Assert.assertEquals(words[0], 0L);
     Assert.assertEquals(head.get(new long[1], 0, 0, Head.OPTIONAL), -1);
     Assert.assertThrows(IllegalArgumentException.class, () -> head.put(words, 1, 0, Head.SEAT, 4));
-    Assert.assertThrows(IllegalArgumentException.class, () -> head.put(words, 1, 0, Head.OPTIONAL, -2));
-    Assert.assertThrows(IllegalArgumentException.class, () -> head.putRecord(words, 1, 0, 1L << Short.SIZE));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> head.put(words, 1, 0, Head.OPTIONAL, -2));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> head.putRecord(words, 1, 0, 1L << Short.SIZE));
   }
 
   @Test
@@ -104,16 +109,20 @@ public class BitLayoutTest {
     body.getAll(words, 0, 1, Body.FLAGS, flags);
     Assert.assertEquals(flags, new int[] {0, 0, 1, 0});
     Assert.assertThrows(IllegalArgumentException.class, () -> body.get(words, 0, 1, Body.FLAGS));
-    Assert.assertThrows(IndexOutOfBoundsException.class, () -> body.get(words, 0, 1, Body.FLAGS, 4));
+    Assert.assertThrows(
+        IndexOutOfBoundsException.class, () -> body.get(words, 0, 1, Body.FLAGS, 4));
   }
 
   /** 語彙が全ての定数を持つなら、その文字列は enum の {@code values()} を文字列にしたものと同じ。名前はパッケージを除いた Outer$Inner。 */
   @Test
   public void digestWritesVocabulariesLikeEnumValues() {
-    SchemaDigest digest = SchemaDigest.named("test").values(Vocabulary.of(Head.class, Variant.TENHOU_4P));
-    Assert.assertEquals(digest.toString(), "test;BitLayoutTest$Head=" + Arrays.toString(Head.values()));
+    SchemaDigest digest =
+        SchemaDigest.named("test").values(Vocabulary.of(Head.class, Variant.TENHOU_4P));
+    Assert.assertEquals(
+        digest.toString(), "test;BitLayoutTest$Head=" + Arrays.toString(Head.values()));
     Assert.assertEquals(digest.hex().length(), 16);
-    SchemaDigest three = SchemaDigest.named("test").values(Vocabulary.of(Head.class, Variant.TENHOU_3P));
+    SchemaDigest three =
+        SchemaDigest.named("test").values(Vocabulary.of(Head.class, Variant.TENHOU_3P));
     Assert.assertEquals(digest.hex(), three.hex());
     Assert.assertNotEquals(digest.hex(), SchemaDigest.named("test").with("x", 1).hex());
   }

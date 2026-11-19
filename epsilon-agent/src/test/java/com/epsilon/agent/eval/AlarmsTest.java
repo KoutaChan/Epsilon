@@ -70,10 +70,12 @@ public class AlarmsTest {
     for (int duel = 0; duel < verdicts.length; duel++) {
       int version = 10 + duel;
       streak = Alarms.streak(streak, verdicts[duel]);
-      List<Alarm> raised = alarms.championDuel(duel(version), version, verdicts[duel], BAD, streak, List.of());
+      List<Alarm> raised =
+          alarms.championDuel(duel(version), version, verdicts[duel], BAD, streak, List.of());
       assertEquals(raised.stream().map(Alarm::signal).toList(), expected.get(duel), "duel " + duel);
       for (Alarm alarm : raised) {
-        assertEquals(alarm, Alarm.of(duel(version), version, alarm.signal(), BAD, Handling.REPORT, null));
+        assertEquals(
+            alarm, Alarm.of(duel(version), version, alarm.signal(), BAD, Handling.REPORT, null));
       }
     }
   }
@@ -82,7 +84,8 @@ public class AlarmsTest {
   public void aPauseStreakAsksForAPause() {
     Alarms alarms = new Alarms(PAUSE, run);
     assertEquals(
-        handlings(alarms.championDuel(duel(5), 5, Verdict.WORSE, BAD, 1, List.of())), List.of(Handling.REPORT));
+        handlings(alarms.championDuel(duel(5), 5, Verdict.WORSE, BAD, 1, List.of())),
+        List.of(Handling.REPORT));
     assertEquals(
         handlings(alarms.championDuel(duel(6), 6, Verdict.WORSE, BAD, 2, List.of())),
         List.of(Handling.REPORT, Handling.PAUSE));
@@ -95,14 +98,16 @@ public class AlarmsTest {
     assertEquals(streakHandling(alarms, 5, List.of()), Handling.ROLLBACK);
     assertEquals(streakHandling(alarms, 5, List.of(4)), Handling.PAUSE);
     assertEquals(streakHandling(alarms, 13, List.of(4)), Handling.PAUSE);
-    assertEquals(streakHandling(alarms, 14, List.of(4)), Handling.ROLLBACK, "4 is not after 14 - 10");
+    assertEquals(
+        streakHandling(alarms, 14, List.of(4)), Handling.ROLLBACK, "4 is not after 14 - 10");
     assertEquals(streakHandling(alarms, 13, List.of(20)), Handling.ROLLBACK, "a later rollback");
     Alarms twice = new Alarms(new Watch(3, 0.01, new OnWorseSettings.Rollback(2, 2, 10)), run);
     assertEquals(streakHandling(twice, 13, List.of(4)), Handling.ROLLBACK);
     assertEquals(streakHandling(twice, 13, List.of(4, 9)), Handling.PAUSE);
     // 続いた回数が設定に届かなければ、戻しも一時停止もしない
     assertEquals(
-        handlings(alarms.championDuel(duel(5), 5, Verdict.WORSE, BAD, 1, List.of(4))), List.of(Handling.REPORT));
+        handlings(alarms.championDuel(duel(5), 5, Verdict.WORSE, BAD, 1, List.of(4))),
+        List.of(Handling.REPORT));
   }
 
   /** evaluate は悪いが続いた回数を数えないので、1 回で届く設定でも王者に悪いだけを出す。 */
@@ -127,7 +132,9 @@ public class AlarmsTest {
     String job = "v00005-ladder8";
     assertEquals(
         alarms.ladder(job, 5, below),
-        List.of(new Alarm(job + ":LADDER_WORSE", job, 5, Signal.LADDER_WORSE, below, Handling.REPORT, null)));
+        List.of(
+            new Alarm(
+                job + ":LADDER_WORSE", job, 5, Signal.LADDER_WORSE, below, Handling.REPORT, null)));
     assertTrue(alarms.ladder(job, 5, new Estimate(-0.013, 0.005, -0.026, 0)).isEmpty());
     assertTrue(alarms.ladder(job, 5, new Estimate(0, 0.005, -0.013, 0.013)).isEmpty());
   }
@@ -137,7 +144,9 @@ public class AlarmsTest {
   public void aBaselineDropIsJudgedOnThePairedDifference() throws Exception {
     double[] champion = luck(100);
     Alarm alarm =
-        new Alarms(REPORT, run).baseline("v00020-reference", 20, 9, shifted(champion, -0.03, 0.01), champion).getFirst();
+        new Alarms(REPORT, run)
+            .baseline("v00020-reference", 20, 9, shifted(champion, -0.03, 0.01), champion)
+            .getFirst();
     double error = 0.01 / Math.sqrt(99);
     assertEquals(alarm.alarm(), "v00020-reference:BASELINE_DROP");
     assertEquals(alarm.version(), 20);
@@ -155,9 +164,14 @@ public class AlarmsTest {
     double[] champion = luck(100);
     Alarms alarms = new Alarms(REPORT, run);
     String job = "v00020-reference";
-    assertTrue(alarms.baseline(job, 20, 9, shifted(champion, -0.005, 0.0001), champion).isEmpty(), "inside the margin");
-    assertTrue(alarms.baseline(job, 20, 9, shifted(champion, -0.03, 0.5), champion).isEmpty(), "below the line");
-    assertTrue(alarms.baseline(job, 20, 9, shifted(champion, 0.03, 0.0001), champion).isEmpty(), "better");
+    assertTrue(
+        alarms.baseline(job, 20, 9, shifted(champion, -0.005, 0.0001), champion).isEmpty(),
+        "inside the margin");
+    assertTrue(
+        alarms.baseline(job, 20, 9, shifted(champion, -0.03, 0.5), champion).isEmpty(),
+        "below the line");
+    assertTrue(
+        alarms.baseline(job, 20, 9, shifted(champion, 0.03, 0.0001), champion).isEmpty(), "better");
     assertEquals(alarms.baseline(job, 20, 9, shifted(champion, -0.03, 0.01), champion).size(), 1);
   }
 
@@ -166,10 +180,12 @@ public class AlarmsTest {
   public void anAnchorDropIgnoresTheMargin() throws Exception {
     double[] champion = luck(100);
     Alarms alarms = new Alarms(REPORT, run);
-    Alarm alarm = alarms.anchor("v00030-rx2", 30, 9, shifted(champion, -0.005, 0.0001), champion).getFirst();
+    Alarm alarm =
+        alarms.anchor("v00030-rx2", 30, 9, shifted(champion, -0.005, 0.0001), champion).getFirst();
     assertEquals(alarm.signal(), Signal.ANCHOR_DROP);
     assertEquals(alarm.estimate().mean(), -0.005, 1e-12);
-    assertTrue(alarms.anchor("v00030-rx2", 30, 9, shifted(champion, 0.005, 0.0001), champion).isEmpty());
+    assertTrue(
+        alarms.anchor("v00030-rx2", 30, 9, shifted(champion, 0.005, 0.0001), champion).isEmpty());
   }
 
   /** 長さの違う卓は、短い方の長さまでを対にする。 */
@@ -178,7 +194,8 @@ public class AlarmsTest {
     double[] champion = luck(100);
     double[] longer = Arrays.copyOf(shifted(champion, -0.03, 0.01), 150);
     Arrays.fill(longer, 100, 150, 5.0);
-    Alarm alarm = new Alarms(REPORT, run).baseline("v00020-reference", 20, 9, longer, champion).getFirst();
+    Alarm alarm =
+        new Alarms(REPORT, run).baseline("v00020-reference", 20, 9, longer, champion).getFirst();
     assertEquals(alarm.estimate().mean(), -0.03, 1e-12);
   }
 
@@ -193,14 +210,22 @@ public class AlarmsTest {
     Alarms alarms = new Alarms(REPORT, run);
     List<Alarm> first = alarms.baseline("v00020-reference", 20, 9, current, champion);
     assertEquals(first.size(), 1);
-    assertEquals(alarms.baseline("v00021-reference", 21, 9, current, champion).size(), 1, "not written yet");
+    assertEquals(
+        alarms.baseline("v00021-reference", 21, 9, current, champion).size(), 1, "not written yet");
     alarms.write(first);
 
     Alarms restarted = new Alarms(REPORT, run);
-    assertTrue(restarted.baseline("v00021-reference", 21, 9, current, champion).isEmpty(), "the same champion");
-    assertEquals(restarted.baseline("v00021-second", 21, 9, current, champion).size(), 1, "another table");
-    assertEquals(restarted.anchor("v00021-reference", 21, 9, current, champion).size(), 1, "another signal");
-    assertEquals(restarted.baseline("v00023-reference", 23, 12, current, champion).size(), 1, "a new champion");
+    assertTrue(
+        restarted.baseline("v00021-reference", 21, 9, current, champion).isEmpty(),
+        "the same champion");
+    assertEquals(
+        restarted.baseline("v00021-second", 21, 9, current, champion).size(), 1, "another table");
+    assertEquals(
+        restarted.anchor("v00021-reference", 21, 9, current, champion).size(), 1, "another signal");
+    assertEquals(
+        restarted.baseline("v00023-reference", 23, 12, current, champion).size(),
+        1,
+        "a new champion");
   }
 
   /** 名前ごとに 1 度だけ書き、読むと書いた順に戻る。低下の行だけが王者を持つ。 */
@@ -228,21 +253,28 @@ public class AlarmsTest {
     OnWorseSettings report = new OnWorseSettings.Report(2);
     assertThrows(IllegalArgumentException.class, () -> new Watch(0, 0.01, report));
     assertThrows(IllegalArgumentException.class, () -> new Watch(Double.NaN, 0.01, report));
-    assertThrows(IllegalArgumentException.class, () -> new Watch(Double.POSITIVE_INFINITY, 0.01, report));
+    assertThrows(
+        IllegalArgumentException.class, () -> new Watch(Double.POSITIVE_INFINITY, 0.01, report));
     assertThrows(IllegalArgumentException.class, () -> new Watch(3, -0.01, report));
     assertThrows(IllegalArgumentException.class, () -> new Watch(3, Double.NaN, report));
-    assertThrows(IllegalArgumentException.class, () -> new Watch(3, 0.01, new OnWorseSettings.Report(0)));
+    assertThrows(
+        IllegalArgumentException.class, () -> new Watch(3, 0.01, new OnWorseSettings.Report(0)));
     assertThrows(NullPointerException.class, () -> new Watch(3, 0.01, null));
     assertThrows(NullPointerException.class, () -> new Alarms(null, run));
     assertThrows(IllegalArgumentException.class, () -> Alarms.streak(-1, Verdict.WORSE));
     Alarms alarms = new Alarms(REPORT, run);
     assertThrows(
-        IllegalArgumentException.class, () -> alarms.championDuel(duel(1), 1, Verdict.WORSE, BAD, 0, List.of()));
+        IllegalArgumentException.class,
+        () -> alarms.championDuel(duel(1), 1, Verdict.WORSE, BAD, 0, List.of()));
     assertThrows(
-        IllegalArgumentException.class, () -> alarms.championDuel(duel(1), 1, Verdict.EVEN, BAD, 1, List.of()));
+        IllegalArgumentException.class,
+        () -> alarms.championDuel(duel(1), 1, Verdict.EVEN, BAD, 1, List.of()));
     double[] none = {};
-    assertThrows(IllegalArgumentException.class, () -> alarms.baseline("v00001-reference", 1, 0, none, none));
-    assertThrows(IllegalArgumentException.class, () -> alarms.anchor("rx2", 1, 0, luck(10), luck(10)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> alarms.baseline("v00001-reference", 1, 0, none, none));
+    assertThrows(
+        IllegalArgumentException.class, () -> alarms.anchor("rx2", 1, 0, luck(10), luck(10)));
   }
 
   private static String duel(int version) {
@@ -255,7 +287,8 @@ public class AlarmsTest {
 
   /** 悪いが 2 回続いた決闘の、悪いが続くの扱い。 */
   private static Handling streakHandling(Alarms alarms, int version, List<Integer> rollbacks) {
-    List<Alarm> raised = alarms.championDuel(duel(version), version, Verdict.WORSE, BAD, 2, rollbacks);
+    List<Alarm> raised =
+        alarms.championDuel(duel(version), version, Verdict.WORSE, BAD, 2, rollbacks);
     assertEquals(raised.size(), 2, raised.toString());
     assertEquals(raised.getLast().signal(), Signal.WORSE_STREAK);
     return raised.getLast().handling();

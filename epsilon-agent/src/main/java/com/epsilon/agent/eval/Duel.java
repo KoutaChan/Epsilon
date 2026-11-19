@@ -53,7 +53,13 @@ public final class Duel implements JobWork {
   /** 渡し終えた行に含まれる、打ち終えた牌山の数。 */
   private long walls;
 
-  private Duel(String name, TableLoop table, DuelPlan plan, Stopping stopping, int chunk, List<Policy> policies) {
+  private Duel(
+      String name,
+      TableLoop table,
+      DuelPlan plan,
+      Stopping stopping,
+      int chunk,
+      List<Policy> policies) {
     this.name = name;
     this.table = table;
     this.plan = plan;
@@ -76,7 +82,12 @@ public final class Duel implements JobWork {
    * @throws IllegalArgumentException 記録が計画と合わないとき
    */
   public static Duel open(
-      String name, TableLoop table, DuelSetup setup, Policy candidate, Policy opponent, Path directory)
+      String name,
+      TableLoop table,
+      DuelSetup setup,
+      Policy candidate,
+      Policy opponent,
+      Path directory)
       throws IOException {
     List<Policy> policies = List.of(candidate, opponent);
     try {
@@ -98,8 +109,15 @@ public final class Duel implements JobWork {
     int perWall = arena.gamesPerWall();
     if (games.size() % perWall != 0 || games.size() / perWall > arena.walls()) {
       throw new IllegalArgumentException(
-          "games.tsv of " + name + " holds " + games.size() + " games, not whole walls of " + perWall + " games within "
-              + arena.walls() + " walls");
+          "games.tsv of "
+              + name
+              + " holds "
+              + games.size()
+              + " games, not whole walls of "
+              + perWall
+              + " games within "
+              + arena.walls()
+              + " walls");
     }
     int done = games.size() / perWall;
     int[][] scores = new int[perWall][arena.variant().seats()];
@@ -117,14 +135,27 @@ public final class Duel implements JobWork {
             throw new IllegalArgumentException(
                 "games.tsv of " + name + " goes on after the duel was decided at look " + look);
           }
-          recorded = new Batch(done, List.of(), List.of(), tally.result(decision.get(), stopping.critical(look), 0), null);
+          recorded =
+              new Batch(
+                  done,
+                  List.of(),
+                  List.of(),
+                  tally.result(decision.get(), stopping.critical(look), 0),
+                  null);
         }
         look++;
       }
     }
     if (looks != look) {
       throw new IllegalArgumentException(
-          "looks.tsv of " + name + " holds " + looks + " looks, but its " + done + " walls reach " + look);
+          "looks.tsv of "
+              + name
+              + " holds "
+              + looks
+              + " looks, but its "
+              + done
+              + " walls reach "
+              + look);
     }
     walls = done;
     sink.look = look;
@@ -135,7 +166,8 @@ public final class Duel implements JobWork {
   @Override
   public Chunk next(long done, JobOutputs outputs) throws Exception {
     if (done != walls) {
-      throw new IllegalStateException("Duel " + name + " has written " + walls + " walls, the job " + done);
+      throw new IllegalStateException(
+          "Duel " + name + " has written " + walls + " walls, the job " + done);
     }
     Batch batch;
     if (recorded != null) {
@@ -209,7 +241,10 @@ public final class Duel implements JobWork {
           rest.wallBase() - plan.arena().wallBase(),
           String.format(Locale.ROOT, "%.1f", played.seconds()));
       if (!sink.finished && !sink.closing) {
-        hand(failed(new IllegalStateException("The table of " + name + " ended before the duel was decided")));
+        hand(
+            failed(
+                new IllegalStateException(
+                    "The table of " + name + " ended before the duel was decided")));
       }
     } catch (Throwable failure) {
       if (sink.finished || sink.closing) {
@@ -230,7 +265,8 @@ public final class Duel implements JobWork {
       batches.put(batch);
     } catch (InterruptedException interrupted) {
       Thread.currentThread().interrupt();
-      throw new IllegalStateException("The table of " + name + " was interrupted handing over a chunk", interrupted);
+      throw new IllegalStateException(
+          "The table of " + name + " was interrupted handing over a chunk", interrupted);
     }
   }
 
@@ -281,9 +317,13 @@ public final class Duel implements JobWork {
             look + 1,
             stopping.looks(),
             done,
-            decision.map(decided -> decided.verdict() + " " + decided.stopped()).orElse(DuelTally.CONTINUE));
+            decision
+                .map(decided -> decided.verdict() + " " + decided.stopped())
+                .orElse(DuelTally.CONTINUE));
         if (decision.isPresent()) {
-          result = tally.result(decision.get(), stopping.critical(look), (System.nanoTime() - started) / 1e9);
+          result =
+              tally.result(
+                  decision.get(), stopping.critical(look), (System.nanoTime() - started) / 1e9);
           finished = true;
         } else {
           look++;
@@ -317,7 +357,8 @@ public final class Duel implements JobWork {
    * @param result 決着したときの結果（続けるなら null）
    * @param failure 卓の失敗（あるときは、ほかのフィールドを使わない）
    */
-  private record Batch(long walls, List<String> games, List<String> looks, DuelResult result, Throwable failure) {}
+  private record Batch(
+      long walls, List<String> games, List<String> looks, DuelResult result, Throwable failure) {}
 
   private static Batch failed(Throwable failure) {
     return new Batch(0, List.of(), List.of(), null, failure);

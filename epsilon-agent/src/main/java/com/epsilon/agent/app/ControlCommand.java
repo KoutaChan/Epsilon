@@ -49,15 +49,24 @@ public sealed interface ControlCommand extends BuiltinCommand {
     static Outcome submit(RunDirectory directory, Request request) throws IOException {
       if (!Files.isRegularFile(directory.settings())) {
         throw new SettingsException(
-            List.of("The run " + directory.root() + " has no settings rows: create it with settings create"));
+            List.of(
+                "The run "
+                    + directory.root()
+                    + " has no settings rows: create it with settings create"));
       }
       ControlRequests requests = new ControlRequests(directory);
       if (request instanceof Request.Cancel cancel
-          && requests.pending().stream().noneMatch(pending -> pending.number() == cancel.request())) {
-        throw new SettingsException(List.of("No pending request " + cancel.request() + " in " + directory.control()));
+          && requests.pending().stream()
+              .noneMatch(pending -> pending.number() == cancel.request())) {
+        throw new SettingsException(
+            List.of("No pending request " + cancel.request() + " in " + directory.control()));
       }
       ControlRequest written = requests.submit(request);
-      log.info("Request {} ({}) waits in {}", written.number(), Status.describe(written.request()), directory.control());
+      log.info(
+          "Request {} ({}) waits in {}",
+          written.number(),
+          Status.describe(written.request()),
+          directory.control());
       return Outcome.ok("request " + written.number() + ": " + Status.describe(written.request()));
     }
   }
@@ -67,10 +76,17 @@ public sealed interface ControlCommand extends BuiltinCommand {
    *
    * @param at 止める時点
    */
-  @Named(value = "control stop", doc = "Request a stop at the next safe point, after the iteration closes, or after its jobs finish")
+  @Named(
+      value = "control stop",
+      doc =
+          "Request a stop at the next safe point, after the iteration closes, or after its jobs"
+              + " finish")
   record Stop(
       @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-      @Key(doc = "When to stop (STEP: the next safe point, ITERATION: after the iteration closes, JOBS: after all its jobs finish)",
+      @Key(
+              doc =
+                  "When to stop (STEP: the next safe point, ITERATION: after the iteration closes,"
+                      + " JOBS: after all its jobs finish)",
               presence = Presence.REQUIRED)
           Request.At at)
       implements ControlCommand {
@@ -86,10 +102,17 @@ public sealed interface ControlCommand extends BuiltinCommand {
    *
    * @param at 起動し直す時点
    */
-  @Named(value = "control restart", doc = "Request a restart at the next safe point or after the iteration closes")
+  @Named(
+      value = "control restart",
+      doc = "Request a restart at the next safe point or after the iteration closes")
   record Restart(
       @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-      @Key(doc = "When to restart (STEP: the next safe point, ITERATION: after the iteration closes)", presence = Presence.REQUIRED) Request.At at)
+      @Key(
+              doc =
+                  "When to restart (STEP: the next safe point, ITERATION: after the iteration"
+                      + " closes)",
+              presence = Presence.REQUIRED)
+          Request.At at)
       implements ControlCommand {
 
     public Restart {
@@ -109,10 +132,15 @@ public sealed interface ControlCommand extends BuiltinCommand {
    *
    * @param before この段の前でだけ待つ。指定しなければ次のセーフポイントで待つ
    */
-  @Named(value = "control pause", doc = "Request a pause at the next safe point or before a step (cleared by control resume)")
+  @Named(
+      value = "control pause",
+      doc = "Request a pause at the next safe point or before a step (cleared by control resume)")
   record Pause(
       @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-      @Key(doc = "Wait only before this step (without it, wait at the next safe point)", presence = Presence.ABSENT) String before)
+      @Key(
+              doc = "Wait only before this step (without it, wait at the next safe point)",
+              presence = Presence.ABSENT)
+          String before)
       implements ControlCommand {
 
     @Override
@@ -123,7 +151,8 @@ public sealed interface ControlCommand extends BuiltinCommand {
 
   /** 再開の要求。それより前に置いた一時停止の要求を消す。 */
   @Named(value = "control resume", doc = "Request that the earlier pause requests be cleared")
-  record Resume(@Key(doc = "Run directory", presence = Presence.REQUIRED) Path run) implements ControlCommand {
+  record Resume(@Key(doc = "Run directory", presence = Presence.REQUIRED) Path run)
+      implements ControlCommand {
 
     @Override
     public Request toRequest() {
@@ -139,7 +168,8 @@ public sealed interface ControlCommand extends BuiltinCommand {
   @Named(value = "control cancel", doc = "Request that one pending request be cancelled by number")
   record Cancel(
       @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-      @Key(doc = "Number of the request to cancel", presence = Presence.REQUIRED) @Range(min = 1) int request)
+      @Key(doc = "Number of the request to cancel", presence = Presence.REQUIRED) @Range(min = 1)
+          int request)
       implements ControlCommand {
 
     @Override

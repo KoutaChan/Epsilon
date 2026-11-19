@@ -51,7 +51,13 @@ public record Alarm(
    *
    * @param champion 低下の印で対にした王者のバージョン。ほかの印は null
    */
-  static Alarm of(String job, int version, Signal signal, Estimate estimate, Handling handling, Integer champion) {
+  static Alarm of(
+      String job,
+      int version,
+      Signal signal,
+      Estimate estimate,
+      Handling handling,
+      Integer champion) {
     return new Alarm(job + ":" + signal, job, version, signal, estimate, handling, champion);
   }
 }

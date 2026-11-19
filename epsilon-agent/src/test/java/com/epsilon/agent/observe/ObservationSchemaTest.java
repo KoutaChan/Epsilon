@@ -27,8 +27,8 @@ public class ObservationSchemaTest {
 
   /** 四人打ちの観測のスキーマの記述。フィンガープリントはこの文字列から作る。 */
   private static final String FOUR_PLAYER_DESCRIPTION =
-      "epsilon-prism-v2-observation"
-          + ";ObservationSchema$Section=[HEADER, SEAT, HAND, EVENT, LEGAL, CALL_DISCARD, WIN]"
+      "epsilon-prism-v2-observation;ObservationSchema$Section=[HEADER, SEAT, HAND, EVENT, LEGAL,"
+          + " CALL_DISCARD, WIN]"
           + ";ObservationSchema$HeaderBits{unit=64,units=2,DECISION_KIND:0..3@0,OBSERVER:0..3@2,DEALER:0..3@4,"
           + "KYOKU:0..11@6,HONBA:0..255@10,KYOTAKU:0..100@18,WALL:0..70@25,FURITEN_TEMPORARY:0..1@32,"
           + "LAST_EVENT:-1..2@33,LAST_EVENT_SEAT:-1..3@35,LAST_EVENT_TILE:-1..33@38,LAST_EVENT_AKA:0..1@44,"
@@ -40,27 +40,22 @@ public class ObservationSchemaTest {
           + "48/51/54/57/60/64/67/70/73/76/79/82/85/88/91/94/97/100}"
           + ";ObservationSchema$EventBits{unit=16,units=1,KIND:0..1@0,AUTHOR:0..3@1}"
           + ";ObservationSchema$DiscardBits{unit=16,units=1,TILE:0..33@3,AKA:0..1@9,TSUMOGIRI:0..1@10,RIICHI:0..1@11,"
-          + "CALLED_BY:-1..3@12}"
-          + ";ObservationSchema$MeldBits{unit=16,units=1,MELD:0..8159@3}"
+          + "CALLED_BY:-1..3@12};ObservationSchema$MeldBits{unit=16,units=1,MELD:0..8159@3}"
           + ";ObservationSchema$LegalBits{unit=16,units=1,ACTION:0..371@0,CALL_DISCARDS:0..11@9}"
           + ";ObservationSchema$CallDiscardBits{unit=16,units=1,ACTION:0..371@0}"
           + ";ObservationSchema$WinBits{unit=64,units=2,HAN:0..75@0,FU_CODE:0..11@7,YAKUMAN:0..12@11,PAO:0..1@15,"
           + "URA_ELIGIBLE:0..1@16,URA_INDICATORS:0..5@17,SETTLEMENT:0..1@20,RANK:0..3x4@21/23/25/27,"
-          + "PAYMENT:-32768..32767x4@29/45/64/80}"
-          + ";ObservationSchema$EventKind=[DISCARD, MELD]"
-          + ";EngineDecisionKind=[TURN, RESPONSE, CHANKAN, POST_CALL_DAHAI]"
-          + ";ObservationSchema$LastEvent=[DRAW, DISCARD, KAN_ATTEMPT]"
-          + ";TurnEvent$KanKind=[ANKAN, KAKAN, DAIMINKAN]"
-          + ";RiichiState=[NONE, RIICHI, DOUBLE_RIICHI]"
-          + ";WinSettlementProjection$SettlementAssumption=[EXACT_TSUMO, SOLE_RON]"
-          + ";Meld$Type=[CHI, PON, DAIMINKAN, ANKAN, KAKAN]"
-          + ";Meld$RelativeSource=[NONE, SHIMOCHA, TOIMEN, KAMICHA]"
-          + ";Meld$AkaSource=[NONE, CALLED_TILE, CONSUMED_HAND_TILE, ADDED_KAN_TILE]"
-          + ";meldIds=8160"
-          + ";Action$Type=[DAHAI, CHI, PON, DAIMINKAN, ANKAN, KAKAN, RIICHI_DAHAI, TSUMO_AGARI, RON_AGARI, PASS,"
-          + " KYUSHU_KYUHAI]"
-          + ";Action$TileSelection=[NOT_APPLICABLE, NON_AKA, AKA, TSUMOGIRI, TSUMOGIRI_AKA]"
-          + ";actions=372;tiles=34;pointUnit=100";
+          + "PAYMENT:-32768..32767x4@29/45/64/80};ObservationSchema$EventKind=[DISCARD,"
+          + " MELD];EngineDecisionKind=[TURN, RESPONSE, CHANKAN,"
+          + " POST_CALL_DAHAI];ObservationSchema$LastEvent=[DRAW, DISCARD,"
+          + " KAN_ATTEMPT];TurnEvent$KanKind=[ANKAN, KAKAN, DAIMINKAN];RiichiState=[NONE, RIICHI,"
+          + " DOUBLE_RIICHI];WinSettlementProjection$SettlementAssumption=[EXACT_TSUMO,"
+          + " SOLE_RON];Meld$Type=[CHI, PON, DAIMINKAN, ANKAN, KAKAN];Meld$RelativeSource=[NONE,"
+          + " SHIMOCHA, TOIMEN, KAMICHA];Meld$AkaSource=[NONE, CALLED_TILE, CONSUMED_HAND_TILE,"
+          + " ADDED_KAN_TILE];meldIds=8160;Action$Type=[DAHAI, CHI, PON, DAIMINKAN, ANKAN, KAKAN,"
+          + " RIICHI_DAHAI, TSUMO_AGARI, RON_AGARI, PASS,"
+          + " KYUSHU_KYUHAI];Action$TileSelection=[NOT_APPLICABLE, NON_AKA, AKA, TSUMOGIRI,"
+          + " TSUMOGIRI_AKA];actions=372;tiles=34;pointUnit=100";
 
   @Test
   public void fourPlayerFingerprintIsTheReaderContract() {
@@ -84,9 +79,12 @@ public class ObservationSchemaTest {
     assertEquals(schema.win.count(WinBits.RANK), 3);
     assertEquals(schema.win.max(WinBits.RANK), 2);
     assertEquals(schema.win.count(WinBits.PAYMENT), 3);
-    assertEquals(schema.eventKinds.constants(), List.of(EventKind.DISCARD, EventKind.MELD, EventKind.NUKI));
+    assertEquals(
+        schema.eventKinds.constants(), List.of(EventKind.DISCARD, EventKind.MELD, EventKind.NUKI));
     assertEquals(schema.lastEvents.size(), LastEvent.values().length);
-    assertEquals(ObservationSchema.of(Variant.TENHOU_4P).eventKinds.constants(), List.of(EventKind.DISCARD, EventKind.MELD));
+    assertEquals(
+        ObservationSchema.of(Variant.TENHOU_4P).eventKinds.constants(),
+        List.of(EventKind.DISCARD, EventKind.MELD));
     assertNotEquals(schema.fingerprint(), FOUR_PLAYER_FINGERPRINT);
   }
 
@@ -94,9 +92,12 @@ public class ObservationSchemaTest {
   @Test
   public void everyVariantIsFoundByItsFingerprint() {
     for (Variant variant : Variant.values()) {
-      assertEquals(ObservationSchema.variantOf(ObservationSchema.of(variant).fingerprint()), Optional.of(variant));
+      assertEquals(
+          ObservationSchema.variantOf(ObservationSchema.of(variant).fingerprint()),
+          Optional.of(variant));
     }
-    assertEquals(ObservationSchema.variantOf(FOUR_PLAYER_FINGERPRINT), Optional.of(Variant.TENHOU_4P));
+    assertEquals(
+        ObservationSchema.variantOf(FOUR_PLAYER_FINGERPRINT), Optional.of(Variant.TENHOU_4P));
     assertEquals(ObservationSchema.variantOf("0123456789abcdef"), Optional.empty());
     assertEquals(ObservationSchema.variantOf(""), Optional.empty());
   }
@@ -109,9 +110,14 @@ public class ObservationSchemaTest {
     assertEquals(ObservationSchema.MAX_CALL_DISCARDS, 11);
     for (Variant variant : Variant.values()) {
       ObservationSchema schema = ObservationSchema.of(variant);
-      assertEquals(schema.win.max(WinBits.FU_CODE), ObservationSchema.MAX_FU_CODE, variant.toString());
-      assertEquals(schema.win.max(WinBits.YAKUMAN), ObservationSchema.MAX_YAKUMAN, variant.toString());
-      assertEquals(schema.legal.max(LegalBits.CALL_DISCARDS), ObservationSchema.MAX_CALL_DISCARDS, variant.toString());
+      assertEquals(
+          schema.win.max(WinBits.FU_CODE), ObservationSchema.MAX_FU_CODE, variant.toString());
+      assertEquals(
+          schema.win.max(WinBits.YAKUMAN), ObservationSchema.MAX_YAKUMAN, variant.toString());
+      assertEquals(
+          schema.legal.max(LegalBits.CALL_DISCARDS),
+          ObservationSchema.MAX_CALL_DISCARDS,
+          variant.toString());
     }
   }
 

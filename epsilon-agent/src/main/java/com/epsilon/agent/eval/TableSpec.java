@@ -41,7 +41,8 @@ import java.util.regex.Pattern;
  * @param from 測る最初のバージョン
  */
 public record TableSpec(
-    @Key(doc = "相手（heuristic、nano:絶対パス、major:絶対パス、prism:絶対パス、champion、version:番号、version:-距離）",
+    @Key(
+            doc = "相手（heuristic、nano:絶対パス、major:絶対パス、prism:絶対パス、champion、version:番号、version:-距離）",
             presence = Presence.REQUIRED)
         String opponent,
     @Key(doc = "席の決め方", presence = Presence.REQUIRED) SeatingSettings seating,
@@ -53,7 +54,8 @@ public record TableSpec(
     @Key(doc = "王者との決闘で昇格したバージョンも測るか（相手が version:番号 の卓だけに書く）", presence = Presence.ABSENT)
         Boolean onPromotion,
     @Key(doc = "「良い」のときに打つ確かめの卓（王者を替える卓だけに書く）", presence = Presence.ABSENT) String confirm,
-    @Key(doc = "確かめの卓の幅（候補 − 王者の対の差の区間の下端が、この幅にマイナスを付けた値を上回れば昇格させる。確かめの卓だけに書く）",
+    @Key(
+            doc = "確かめの卓の幅（候補 − 王者の対の差の区間の下端が、この幅にマイナスを付けた値を上回れば昇格させる。確かめの卓だけに書く）",
             presence = Presence.ABSENT)
         @Range(min = 0)
         Double confirmMargin,
@@ -91,40 +93,48 @@ public record TableSpec(
     if (kind == Opponent.VERSION) {
       int version = versionNumber(opponent);
       if (version < 1 || version >= from) {
-        throw new InvalidSetting("opponent", "version:N needs 1 <= N < from = " + from + ": " + opponent);
+        throw new InvalidSetting(
+            "opponent", "version:N needs 1 <= N < from = " + from + ": " + opponent);
       }
     }
     if (kind == Opponent.DISTANCE) {
       int distance = versionNumber(opponent);
       if (distance < 1 || from - distance < 1) {
         throw new InvalidSetting(
-            "opponent", "version:-d needs d >= 1 and from - d >= 1 (from = " + from + "): " + opponent);
+            "opponent",
+            "version:-d needs d >= 1 and from - d >= 1 (from = " + from + "): " + opponent);
       }
     }
     if (stop instanceof StopSettings.Test && wallSet != WallSet.FRESH) {
       throw new InvalidSetting("wallSet", "a TEST table plays fresh walls for every job");
     }
     if (stop instanceof StopSettings.Test test && test.promote() && kind != Opponent.CHAMPION) {
-      throw new InvalidSetting("opponent", "a table that promotes plays the champion, not " + opponent);
+      throw new InvalidSetting(
+          "opponent", "a table that promotes plays the champion, not " + opponent);
     }
     int checkEvery = stop.checkEvery();
     if (checkEvery > 0) {
       if (walls % checkEvery != 0) {
-        throw new InvalidSetting("walls", "walls " + walls + " is not a multiple of checkEvery " + checkEvery);
+        throw new InvalidSetting(
+            "walls", "walls " + walls + " is not a multiple of checkEvery " + checkEvery);
       }
       if (walls / checkEvery > MAX_LOOKS) {
         throw new InvalidSetting(
-            "walls", "walls " + walls + " / checkEvery " + checkEvery + " exceeds " + MAX_LOOKS + " looks");
+            "walls",
+            "walls " + walls + " / checkEvery " + checkEvery + " exceeds " + MAX_LOOKS + " looks");
       }
     }
     if (score == Score.RANK && stop instanceof StopSettings.Test test && test.evenMargin() > 0.5) {
-      throw new InvalidSetting("stop.evenMargin", "a rank margin must not exceed 0.5: " + test.evenMargin());
+      throw new InvalidSetting(
+          "stop.evenMargin", "a rank margin must not exceed 0.5: " + test.evenMargin());
     }
     if (confirm != null && !(stop instanceof StopSettings.Test test && test.promote())) {
-      throw new InvalidSetting("confirm", "only a table that promotes the champion names a confirm table");
+      throw new InvalidSetting(
+          "confirm", "only a table that promotes the champion names a confirm table");
     }
     if (score == Score.RANK && confirmMargin != null && confirmMargin > 0.5) {
-      throw new InvalidSetting("confirmMargin", "a rank margin must not exceed 0.5: " + confirmMargin);
+      throw new InvalidSetting(
+          "confirmMargin", "a rank margin must not exceed 0.5: " + confirmMargin);
     }
     if (kind == Opponent.VERSION) {
       if (onPromotion == null) {
@@ -133,10 +143,12 @@ public record TableSpec(
       }
       if (wallSet != WallSet.FIXED) {
         throw new InvalidSetting(
-            "wallSet", "a version:N table is a baseline and plays the same walls for every version");
+            "wallSet",
+            "a version:N table is a baseline and plays the same walls for every version");
       }
     } else if (onPromotion != null) {
-      throw new InvalidSetting("onPromotion", "only a version:N table measures the promoted versions, not " + opponent);
+      throw new InvalidSetting(
+          "onPromotion", "only a version:N table measures the promoted versions, not " + opponent);
     }
   }
 
@@ -162,7 +174,9 @@ public record TableSpec(
     }
     throw new InvalidSetting(
         "opponent",
-        "expected heuristic, nano:/path, major:/path, prism:/path, champion, version:N or version:-d, not " + opponent);
+        "expected heuristic, nano:/path, major:/path, prism:/path, champion, version:N or"
+            + " version:-d, not "
+            + opponent);
   }
 
   private static boolean absolute(String path) {
@@ -204,7 +218,8 @@ public record TableSpec(
       case VERSION -> versionNumber(opponent);
       case DISTANCE -> version - versionNumber(opponent);
       case HEURISTIC, CHECKPOINT, CHAMPION ->
-          throw new IllegalStateException("The opponent " + opponent + " is not a fixed version of the lineage");
+          throw new IllegalStateException(
+              "The opponent " + opponent + " is not a fixed version of the lineage");
     };
   }
 
@@ -216,7 +231,9 @@ public record TableSpec(
   public List<Integer> versions(int latest) {
     List<Integer> versions = new ArrayList<>();
     if (every > 0) {
-      for (int version = Math.ceilDiv(Math.max(from, 1), every) * every; version <= latest; version += every) {
+      for (int version = Math.ceilDiv(Math.max(from, 1), every) * every;
+          version <= latest;
+          version += every) {
         versions.add(version);
       }
     }

@@ -58,7 +58,12 @@ public record DuelResult(
    * @param shares 着順ごとの割合（席の数だけ）
    */
   public record SlotValue(
-      String label, double meanRank, double rankError, double meanUtility, double utilityError, List<Double> shares) {
+      String label,
+      double meanRank,
+      double rankError,
+      double meanUtility,
+      double utilityError,
+      List<Double> shares) {
 
     public SlotValue {
       shares = List.copyOf(shares);
@@ -76,7 +81,9 @@ public record DuelResult(
     slots = List.copyOf(slots);
     if (slots.size() != 2) {
       throw new IllegalArgumentException(
-          "A duel result holds the slots of the candidate and the opponent, not " + slots.size() + " slot(s)");
+          "A duel result holds the slots of the candidate and the opponent, not "
+              + slots.size()
+              + " slot(s)");
     }
   }
 
@@ -85,9 +92,9 @@ public record DuelResult(
     SlotValue candidate = slots.get(0);
     return String.format(
         Locale.ROOT,
-        "candidate=%s opponent=%s walls=%d games=%d rank=%+.4f±%.4f [%+.4f,%+.4f] utility=%+.4f±%.4f verdict=%s"
-            + " stopped=%s meanRank=%.4f±%.4f win=%+.4f dealIn=%+.4f riichi=%+.4f open=%+.4f nuki=%+.4f"
-            + " identical=%.3f roundSpread=%.3f seconds=%.1f",
+        "candidate=%s opponent=%s walls=%d games=%d rank=%+.4f±%.4f [%+.4f,%+.4f]"
+            + " utility=%+.4f±%.4f verdict=%s stopped=%s meanRank=%.4f±%.4f win=%+.4f dealIn=%+.4f"
+            + " riichi=%+.4f open=%+.4f nuki=%+.4f identical=%.3f roundSpread=%.3f seconds=%.1f",
         candidate.label(),
         slots.get(1).label(),
         walls,

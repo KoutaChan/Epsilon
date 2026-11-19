@@ -95,7 +95,8 @@ public final class SeatFacts {
    */
   public void begin(Observation o) {
     if (o.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + o.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + o.variant());
     }
     Arrays.fill(meldCount, 0);
     Arrays.fill(openMelds, 0);
@@ -237,7 +238,8 @@ public final class SeatFacts {
       throw new IllegalStateException("Seat " + seat + " adds " + meld + " without its pon");
     }
     if (meldCount[seat] == Variant.MAX_MELDS) {
-      throw new IllegalStateException("Seat " + seat + " holds more than " + Variant.MAX_MELDS + " melds");
+      throw new IllegalStateException(
+          "Seat " + seat + " holds more than " + Variant.MAX_MELDS + " melds");
     }
     melds[first + meldCount[seat]++] = meld;
     if (!meld.type().concealed()) {

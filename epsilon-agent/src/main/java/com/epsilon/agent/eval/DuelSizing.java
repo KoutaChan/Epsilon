@@ -47,7 +47,8 @@ public final class DuelSizing {
    * @param difference 真の差（候補が良い向き）
    * @return 最後の判定の時点で区間の下端が 0 を超える確率 Φ(d√N / σ − c)
    */
-  public static double detection(Sequential sequential, int walls, double sigma, double difference) {
+  public static double detection(
+      Sequential sequential, int walls, double sigma, double difference) {
     requireSigma(sigma);
     double[] critical = sequential.boundaries(walls);
     return Normal.upper(critical[critical.length - 1] - difference * Math.sqrt(walls) / sigma);
@@ -73,11 +74,19 @@ public final class DuelSizing {
     long looks = Math.min(TableSpec.MAX_LOOKS, games / perLook);
     if (looks < 1) {
       throw new IllegalArgumentException(
-          "One look of " + sequential.checkEvery() + " walls plays " + perLook + " games, more than " + games);
+          "One look of "
+              + sequential.checkEvery()
+              + " walls plays "
+              + perLook
+              + " games, more than "
+              + games);
     }
     int walls = Math.toIntExact(looks * sequential.checkEvery());
     double[] critical = sequential.boundaries(walls);
-    double margin = (critical[critical.length - 1] + Normal.upperPoint(1 - POWER)) * sigma / (REACH * Math.sqrt(walls));
+    double margin =
+        (critical[critical.length - 1] + Normal.upperPoint(1 - POWER))
+            * sigma
+            / (REACH * Math.sqrt(walls));
     return new Choice(walls, margin);
   }
 

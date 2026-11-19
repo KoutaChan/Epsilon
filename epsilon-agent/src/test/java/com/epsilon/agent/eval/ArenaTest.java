@@ -98,7 +98,8 @@ public class ArenaTest {
       int best = 0;
       double top = -1;
       for (int a = 0; a < observation.legalActions(); a++) {
-        long bits = SeedMixer.mix64(observation.action(a).code() * 31L + observation.observer() + salt);
+        long bits =
+            SeedMixer.mix64(observation.action(a).code() * 31L + observation.observer() + salt);
         double score = (bits >>> 11) * 0x1.0p-53;
         if (score > top) {
           top = score;
@@ -143,7 +144,9 @@ public class ArenaTest {
     }
 
     final Hashed candidate, opponent;
-    final AtomicLong games = new AtomicLong(), rounds = new AtomicLong(), decisions = new AtomicLong();
+    final AtomicLong games = new AtomicLong(),
+        rounds = new AtomicLong(),
+        decisions = new AtomicLong();
     final AtomicLong candidateDecisions = new AtomicLong(), mismatches = new AtomicLong();
 
     Seated(Hashed candidate, Hashed opponent) {
@@ -192,14 +195,16 @@ public class ArenaTest {
       int seat = played.seatOf(0);
       Assert.assertEquals(seat, Math.floorMod(played.wall(), 4));
       Assert.assertEquals(played.placement(), seat);
-      for (int other = 0; other < 4; other++) Assert.assertEquals(played.slotOfSeat()[other], other == seat ? 0 : 1);
+      for (int other = 0; other < 4; other++)
+        Assert.assertEquals(played.slotOfSeat()[other], other == seat ? 0 : 1);
     }
     // 候補は牌山の番号を席の数で割った余りの席だけ、相手はほかの席だけを打つ
     Assert.assertTrue(watcher.candidateDecisions.get() > 0);
     Assert.assertEquals(watcher.mismatches.get(), 0);
     Assert.assertEquals(watcher.games.get(), GAMES);
     Assert.assertTrue(watcher.rounds.get() >= GAMES, "rounds " + watcher.rounds.get());
-    Assert.assertTrue(watcher.decisions.get() > watcher.rounds.get(), "decisions " + watcher.decisions.get());
+    Assert.assertTrue(
+        watcher.decisions.get() > watcher.rounds.get(), "decisions " + watcher.decisions.get());
     // 種と最初の牌山の番号が同じなら、同じ半荘になる
     List<Game> again = play(new Hashed(1), new Hashed(2), null);
     for (int game = 0; game < GAMES; game++) {
@@ -233,12 +238,14 @@ public class ArenaTest {
     }
 
     @Override
-    public CompletableFuture<Void> choose(ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
+    public CompletableFuture<Void> choose(
+        ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
       var ownership = reservation.handoff(this);
       return CompletableFuture.runAsync(
           () -> {
             Observation reader = new Observation(TENHOU_4P);
-            for (int row = 0; row < batch.size(); row++) chosen[row] = inner.act(reader.bind(batch, row));
+            for (int row = 0; row < batch.size(); row++)
+              chosen[row] = inner.act(reader.bind(batch, row));
             ownership.release();
           });
     }
@@ -298,7 +305,8 @@ public class ArenaTest {
   public void wallsAndResultsDoNotDependOnTheCandidateOrTheTable() {
     int games = 8;
     var deals = new Deals();
-    List<Game> reference = play(new TableSettings(1, 1, 1000L, 4), new Hashed(1), new Hashed(2), games, deals);
+    List<Game> reference =
+        play(new TableSettings(1, 1, 1000L, 4), new Hashed(1), new Hashed(2), games, deals);
     var otherDeals = new Deals();
     List<Game> other =
         play(new TableSettings(4, 2, 1000L, 4), new Hashed(9), new Hashed(2), games, otherDeals);
@@ -315,11 +323,21 @@ public class ArenaTest {
         reference,
         "8 games, 4 workers");
     assertSameGames(
-        play(new TableSettings(6, 3, 200L, 4), new Batched(new Hashed(1)), new Hashed(2), games, null),
+        play(
+            new TableSettings(6, 3, 200L, 4),
+            new Batched(new Hashed(1)),
+            new Hashed(2),
+            games,
+            null),
         reference,
         "batched candidate");
     assertSameGames(
-        play(new TableSettings(6, 3, 200L, 4), new Batched(new Hashed(1)), new Batched(new Hashed(2)), games, null),
+        play(
+            new TableSettings(6, 3, 200L, 4),
+            new Batched(new Hashed(1)),
+            new Batched(new Hashed(2)),
+            games,
+            null),
         reference,
         "batched seats");
   }

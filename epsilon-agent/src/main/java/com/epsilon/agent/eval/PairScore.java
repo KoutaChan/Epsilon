@@ -67,7 +67,8 @@ public final class PairScore {
    */
   public PairScore(Placements placements, RankUtility utility) {
     if (placements.slots() != 2) {
-      throw new IllegalArgumentException("A paired score compares two slots, not " + placements.slots());
+      throw new IllegalArgumentException(
+          "A paired score compares two slots, not " + placements.slots());
     }
     this.placements = placements;
     Variant variant = placements.variant();
@@ -104,7 +105,12 @@ public final class PairScore {
   public void measure(long wall, int[][] scores) {
     if (scores.length != placements.gamesPerWall()) {
       throw new IllegalArgumentException(
-          "Wall " + wall + " has " + scores.length + " games, the plan " + placements.gamesPerWall());
+          "Wall "
+              + wall
+              + " has "
+              + scores.length
+              + " games, the plan "
+              + placements.gamesPerWall());
     }
     Arrays.fill(rankSum, 0);
     Arrays.fill(places, 0);

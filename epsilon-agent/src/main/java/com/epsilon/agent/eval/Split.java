@@ -61,12 +61,20 @@ public record Split(List<Integer> seats) {
       seats.add(Integer.parseInt(part));
     }
     if (seats.size() != slots) {
-      throw new IllegalArgumentException("Split " + text + " has " + seats.size() + " slots, the table " + slots);
+      throw new IllegalArgumentException(
+          "Split " + text + " has " + seats.size() + " slots, the table " + slots);
     }
     Split split = new Split(seats);
     if (split.seatCount() != variant.seats()) {
       throw new IllegalArgumentException(
-          "Split " + text + " seats " + split.seatCount() + ", " + variant + " has " + variant.seats());
+          "Split "
+              + text
+              + " seats "
+              + split.seatCount()
+              + ", "
+              + variant
+              + " has "
+              + variant.seats());
     }
     return split;
   }

@@ -46,7 +46,8 @@ public final class RunReport {
   private static final String ORIGIN = "report";
 
   /** 反復の表の、どの run の種類にもある列。この後に段ごとの秒と、run の種類の列が並ぶ。 */
-  private static final List<String> ITERATION_HEADER = List.of("iteration", "version", "row", "seconds");
+  private static final List<String> ITERATION_HEADER =
+      List.of("iteration", "version", "row", "seconds");
 
   /** JSON の反復のキーのうち、表の見出しに無いもの。 */
   private static final List<String> ITERATION_KEYS = List.of("settingsRow", "rowChanged", "steps");
@@ -85,7 +86,8 @@ public final class RunReport {
         return NONE;
       }
       return new Cell(
-          new Node.Numeral(Double.toString(value), ORIGIN), String.format(Locale.ROOT, "%." + decimals + "f", value));
+          new Node.Numeral(Double.toString(value), ORIGIN),
+          String.format(Locale.ROOT, "%." + decimals + "f", value));
     }
 
     public static Cell text(String value) {
@@ -111,7 +113,8 @@ public final class RunReport {
     List<Cell> of(T row) {
       List<Cell> values = cells.apply(row);
       if (values.size() != names.size()) {
-        throw new IllegalStateException("The columns " + names + " got " + values.size() + " values");
+        throw new IllegalStateException(
+            "The columns " + names + " got " + values.size() + " values");
       }
       return values;
     }
@@ -148,11 +151,13 @@ public final class RunReport {
     }
 
     /** run の種類の段と持ち越しの型を使う形。 */
-    public static Layout of(RunKind<?, ?, ?, ?> kind, Columns<IterationReport> iterations, Columns<Node.Table> tables) {
+    public static Layout of(
+        RunKind<?, ?, ?, ?> kind, Columns<IterationReport> iterations, Columns<Node.Table> tables) {
       return new Layout(metrics(kind.steps()), kind.carry(), iterations, tables);
     }
 
-    private static <K extends Enum<K> & StepKind<?>> Map<String, Class<? extends Record>> metrics(Class<K> declared) {
+    private static <K extends Enum<K> & StepKind<?>> Map<String, Class<? extends Record>> metrics(
+        Class<K> declared) {
       Map<String, Class<? extends Record>> steps = new LinkedHashMap<>();
       for (K step : declared.getEnumConstants()) {
         steps.put(step.name(), step.metrics());
@@ -209,7 +214,12 @@ public final class RunReport {
   private final List<IterationLine> iterations;
   private final List<TableLine> tables;
 
-  private RunReport(RunDirectory run, Layout layout, int closed, List<IterationLine> iterations, List<TableLine> tables) {
+  private RunReport(
+      RunDirectory run,
+      Layout layout,
+      int closed,
+      List<IterationLine> iterations,
+      List<TableLine> tables) {
     this.run = run;
     this.layout = layout;
     this.closed = closed;
@@ -226,11 +236,13 @@ public final class RunReport {
    */
   public static RunReport read(RunDirectory run, Layout layout, Integer last) throws IOException {
     if (last != null && last < 1) {
-      throw new IllegalArgumentException("The number of iterations to show must be at least 1: " + last);
+      throw new IllegalArgumentException(
+          "The number of iterations to show must be at least 1: " + last);
     }
     if (!Files.isRegularFile(run.settings())) {
       throw new SettingsException(
-          List.of("The run " + run.root() + " has no settings rows: create it with settings create"));
+          List.of(
+              "The run " + run.root() + " has no settings rows: create it with settings create"));
     }
     Path file = run.report(RunDirectory.ITERATIONS);
     List<String> written = DurableFiles.lines(file);
@@ -243,7 +255,11 @@ public final class RunReport {
       if (previous != null && fixed.iteration() <= previous.iteration()) {
         throw new SettingsException(
             List.of(
-                "Iteration " + fixed.iteration() + " at " + line.origin() + " does not follow iteration "
+                "Iteration "
+                    + fixed.iteration()
+                    + " at "
+                    + line.origin()
+                    + " does not follow iteration "
                     + previous.iteration()));
       }
       if (index >= from) {
@@ -254,7 +270,11 @@ public final class RunReport {
       previous = fixed;
     }
     return new RunReport(
-        run, layout, written.size(), shown, latest(run.report(RunDirectory.EVALUATIONS), layout.tables()));
+        run,
+        layout,
+        written.size(),
+        shown,
+        latest(run.report(RunDirectory.EVALUATIONS), layout.tables()));
   }
 
   /** 閉じた反復の数（reports/iterations.jsonl の行の数）。 */
@@ -278,7 +298,10 @@ public final class RunReport {
    */
   public String text() {
     StringBuilder out = new StringBuilder();
-    out.append(run.root()).append(": ").append(closed).append(closed == 1 ? " closed iteration" : " closed iterations");
+    out.append(run.root())
+        .append(": ")
+        .append(closed)
+        .append(closed == 1 ? " closed iteration" : " closed iterations");
     if (iterations.size() < closed) {
       out.append(" (the last ").append(iterations.size()).append(" shown)");
     }
@@ -294,7 +317,10 @@ public final class RunReport {
         row.add(Cell.integer(report.iteration()));
         row.add(Cell.integer(report.version()));
         Cell settingsRow = Cell.integer(report.settingsRow());
-        row.add(line.rowChanged() ? new Cell(settingsRow.value(), settingsRow.text() + CHANGED) : settingsRow);
+        row.add(
+            line.rowChanged()
+                ? new Cell(settingsRow.value(), settingsRow.text() + CHANGED)
+                : settingsRow);
         row.add(Cell.decimal(report.seconds(), 1));
         for (String step : layout.steps().keySet()) {
           StepReport reported = report.steps().get(step);
@@ -392,7 +418,9 @@ public final class RunReport {
     }
     List<TableLine> latest = new ArrayList<>(heads.size());
     for (Map.Entry<String, Head> entry : heads.entrySet()) {
-      latest.add(new TableLine(entry.getKey(), entry.getValue().version(), columns.of(lines.get(entry.getKey()))));
+      latest.add(
+          new TableLine(
+              entry.getKey(), entry.getValue().version(), columns.of(lines.get(entry.getKey()))));
     }
     return latest;
   }

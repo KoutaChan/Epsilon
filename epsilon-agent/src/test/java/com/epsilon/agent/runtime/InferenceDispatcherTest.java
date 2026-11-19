@@ -99,11 +99,12 @@ public class InferenceDispatcherTest {
       var kept = dispatcher.register(List.of(new FakeBackend(new FakeDevice("gpu0", 2, 1))));
       var removed = dispatcher.register(List.of(new FakeBackend(new FakeDevice("gpu1", 2, 1))));
       try (kept) {
-        var reservations = List.of(
-            kept.tryReserve().reservation(),
-            kept.tryReserve().reservation(),
-            kept.tryReserve().reservation(),
-            kept.tryReserve().reservation());
+        var reservations =
+            List.of(
+                kept.tryReserve().reservation(),
+                kept.tryReserve().reservation(),
+                kept.tryReserve().reservation(),
+                kept.tryReserve().reservation());
         removed.close();
         assertEquals(dispatcher.metrics().hostCapacity(), 2);
         for (int index = 0; index < 3; index++) {
@@ -136,7 +137,8 @@ public class InferenceDispatcherTest {
           };
       try (var registration = dispatcher.register(List.of(backend))) {
         var result = registration.tryReserve().reservation().submit(51);
-        ExecutionException observed = expectThrows(ExecutionException.class, () -> result.get(5, TimeUnit.SECONDS));
+        ExecutionException observed =
+            expectThrows(ExecutionException.class, () -> result.get(5, TimeUnit.SECONDS));
         assertSame(observed.getCause(), failure);
         registration.tryReserve().reservation().close();
       }
@@ -154,7 +156,8 @@ public class InferenceDispatcherTest {
         assertNotNull(backend.attempts.poll(5, TimeUnit.SECONDS));
         RuntimeException failure = new RuntimeException("device failed");
         device.available.completeExceptionally(failure);
-        ExecutionException observed = expectThrows(ExecutionException.class, () -> result.get(5, TimeUnit.SECONDS));
+        ExecutionException observed =
+            expectThrows(ExecutionException.class, () -> result.get(5, TimeUnit.SECONDS));
         assertSame(observed.getCause(), failure);
         expectThrows(IllegalStateException.class, registration::tryReserve);
       }
@@ -281,7 +284,8 @@ public class InferenceDispatcherTest {
     }
   }
 
-  private record Flight(FakeDevice device, int value, Runnable handoff, CompletableFuture<Integer> result) {
+  private record Flight(
+      FakeDevice device, int value, Runnable handoff, CompletableFuture<Integer> result) {
     void handOff() {
       handoff.run();
     }

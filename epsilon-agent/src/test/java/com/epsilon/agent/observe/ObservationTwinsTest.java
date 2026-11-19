@@ -29,7 +29,8 @@ public class ObservationTwinsTest {
       for (int second = 0; second < ActionSection.SPACE; second++) {
         Action other = Action.of(second);
         boolean twins = Observation.twins(action, other);
-        assertEquals(action == other || twins, sameCandidate(action, other), action + " / " + other);
+        assertEquals(
+            action == other || twins, sameCandidate(action, other), action + " / " + other);
         if (twins && action != other) {
           pairs++;
         }
@@ -41,11 +42,15 @@ public class ObservationTwinsTest {
   @Test
   public void onlyTheTsumogiriMayDiffer() {
     Action handFive = Action.of(Action.discard(Tiles.M5, false, false, false));
-    assertTrue(Observation.twins(handFive, Action.of(Action.discard(Tiles.M5, false, true, false))));
+    assertTrue(
+        Observation.twins(handFive, Action.of(Action.discard(Tiles.M5, false, true, false))));
     assertTrue(Observation.twins(handFive, handFive));
-    assertFalse(Observation.twins(handFive, Action.of(Action.discard(Tiles.M5, true, true, false))));
-    assertFalse(Observation.twins(handFive, Action.of(Action.discard(Tiles.M5, false, true, true))));
-    assertFalse(Observation.twins(handFive, Action.of(Action.discard(Tiles.M6, false, true, false))));
+    assertFalse(
+        Observation.twins(handFive, Action.of(Action.discard(Tiles.M5, true, true, false))));
+    assertFalse(
+        Observation.twins(handFive, Action.of(Action.discard(Tiles.M5, false, true, true))));
+    assertFalse(
+        Observation.twins(handFive, Action.of(Action.discard(Tiles.M6, false, true, false))));
     Action redRiichi = Action.of(Action.discard(Tiles.P5, true, false, true));
     assertTrue(Observation.twins(redRiichi, Action.of(Action.discard(Tiles.P5, true, true, true))));
     Action pon = Action.of(Action.code(Action.Type.PON, Tiles.M5, Action.TileSelection.NON_AKA));
@@ -58,6 +63,9 @@ public class ObservationTwinsTest {
       return true;
     }
     boolean discard = x.type() == Action.Type.DAHAI || x.type() == Action.Type.RIICHI_DAHAI;
-    return discard && x.type() == y.type() && x.tile() == y.tile() && x.selection().red() == y.selection().red();
+    return discard
+        && x.type() == y.type()
+        && x.tile() == y.tile()
+        && x.selection().red() == y.selection().red();
   }
 }

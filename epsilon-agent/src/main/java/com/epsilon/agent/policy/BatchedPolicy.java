@@ -43,5 +43,6 @@ public non-sealed interface BatchedPolicy extends Policy {
    * @param reservation この方策の {@link #tryAcquire} で取った予約
    * @return 全ての手を書き終えたときに完了する
    */
-  CompletableFuture<Void> choose(ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation);
+  CompletableFuture<Void> choose(
+      ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation);
 }

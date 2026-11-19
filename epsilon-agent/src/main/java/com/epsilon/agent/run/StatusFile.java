@@ -184,7 +184,20 @@ public final class StatusFile implements AutoCloseable {
 
   private RunStatus snapshot() {
     return new RunStatus(
-        state, pid, pidStart, jar, iteration, step, job, since, updated, settingsRow, launchRow, pendingRestart,
-        pendingRequests, obeyed, reason);
+        state,
+        pid,
+        pidStart,
+        jar,
+        iteration,
+        step,
+        job,
+        since,
+        updated,
+        settingsRow,
+        launchRow,
+        pendingRestart,
+        pendingRequests,
+        obeyed,
+        reason);
   }
 }

@@ -22,7 +22,8 @@ public class SeriesTest {
         Arrays.stream(Series.values()).map(Series::id).toList(),
         List.of("epsilon-prism", "epsilon-nano", "epsilon", "rulebot"));
     assertEquals(
-        Arrays.stream(Series.values()).map(Series::prefix).toList(), List.of("prism", "nano", "major", "heuristic"));
+        Arrays.stream(Series.values()).map(Series::prefix).toList(),
+        List.of("prism", "nano", "major", "heuristic"));
   }
 
   @Test
@@ -38,7 +39,8 @@ public class SeriesTest {
     expectThrows(IllegalArgumentException.class, () -> Series.NANO.label(null));
     expectThrows(IllegalArgumentException.class, () -> Series.RULE_BOT.label(Path.of("ppo17")));
     expectThrows(IllegalArgumentException.class, () -> new Series.Spec(Series.MAJOR, null));
-    expectThrows(IllegalArgumentException.class, () -> new Series.Spec(Series.RULE_BOT, Path.of("ppo17")));
+    expectThrows(
+        IllegalArgumentException.class, () -> new Series.Spec(Series.RULE_BOT, Path.of("ppo17")));
   }
 
   @Test
@@ -56,12 +58,15 @@ public class SeriesTest {
   public void opponentsAreReadFromTheirSpec() {
     assertEquals(Series.parse("heuristic"), new Series.Spec(Series.RULE_BOT, null));
     assertEquals(
-        Series.parse("nano:/models/nano/ppo17"), new Series.Spec(Series.NANO, Path.of("/models/nano/ppo17")));
-    assertEquals(Series.parse("major:macro614"), new Series.Spec(Series.MAJOR, Path.of("macro614")));
+        Series.parse("nano:/models/nano/ppo17"),
+        new Series.Spec(Series.NANO, Path.of("/models/nano/ppo17")));
+    assertEquals(
+        Series.parse("major:macro614"), new Series.Spec(Series.MAJOR, Path.of("macro614")));
     Series.Spec snapshot = Series.parse("prism:runs/4p/snapshots/00760");
     assertEquals(snapshot, new Series.Spec(Series.PRISM, Path.of("runs/4p/snapshots/00760")));
     assertEquals(snapshot.series().label(snapshot.checkpoint()), "prism:00760");
-    for (String spec : List.of("", "nano", "nano:", "heuristic:ppo17", "rulebot", "snapshot:00760", ":ppo17")) {
+    for (String spec :
+        List.of("", "nano", "nano:", "heuristic:ppo17", "rulebot", "snapshot:00760", ":ppo17")) {
       expectThrows(IllegalArgumentException.class, () -> Series.parse(spec));
     }
   }

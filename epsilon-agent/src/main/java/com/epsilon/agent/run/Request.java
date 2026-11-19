@@ -63,7 +63,8 @@ public sealed interface Request {
    * @param before この名前の段の前でだけ待つ。無ければ次のセーフポイントで待つ
    */
   @Case("PAUSE")
-  record Pause(@Key(doc = "この名前の段の前でだけ待つ", presence = Presence.ABSENT) String before) implements Request {}
+  record Pause(@Key(doc = "この名前の段の前でだけ待つ", presence = Presence.ABSENT) String before)
+      implements Request {}
 
   /** 再開。これより前に置いた一時停止の要求を消す。 */
   @Case("RESUME")

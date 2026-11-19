@@ -58,11 +58,15 @@ public record DuelSetup(
 
     public Entrant {
       if (spec == null || spec.isBlank() || label == null || label.isBlank()) {
-        throw new IllegalArgumentException("A duel entrant needs a spec and a label: " + spec + ", " + label);
+        throw new IllegalArgumentException(
+            "A duel entrant needs a spec and a label: " + spec + ", " + label);
       }
       if (version != null && sha256 != null) {
         throw new IllegalArgumentException(
-            "Version " + version + " of the lineage is told apart by its version, not by a SHA-256: " + label);
+            "Version "
+                + version
+                + " of the lineage is told apart by its version, not by a SHA-256: "
+                + label);
       }
     }
   }
@@ -92,14 +96,24 @@ public record DuelSetup(
       Split.parse(split, 2, variant);
     }
     if (chunk != DuelPlan.chunk(stop, walls)) {
-      throw new IllegalArgumentException("A duel of " + walls + " walls plays chunks of " + DuelPlan.chunk(stop, walls)
-          + " walls, not " + chunk);
+      throw new IllegalArgumentException(
+          "A duel of "
+              + walls
+              + " walls plays chunks of "
+              + DuelPlan.chunk(stop, walls)
+              + " walls, not "
+              + chunk);
     }
     Stopping stopping = Stopping.recorded(stop, walls, criticals(looks));
     for (int look = 0; look < looks.size(); look++) {
       if (looks.get(look).walls() != stopping.wallsAt(look)) {
         throw new IllegalArgumentException(
-            "Look " + look + " comes after " + stopping.wallsAt(look) + " walls, not " + looks.get(look).walls());
+            "Look "
+                + look
+                + " comes after "
+                + stopping.wallsAt(look)
+                + " walls, not "
+                + looks.get(look).walls());
       }
     }
   }

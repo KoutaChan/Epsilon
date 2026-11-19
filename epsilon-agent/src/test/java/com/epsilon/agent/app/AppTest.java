@@ -67,7 +67,15 @@ public class AppTest {
   public void exitCodesFollowTheTable() {
     assertEquals(
         Arrays.stream(Exit.values()).map(exit -> exit.name() + "=" + exit.code()).toList(),
-        List.of("OK=0", "FAILED=1", "USAGE=2", "STOPPED=3", "PROBLEMS=4", "RESTART=75", "YIELD=76", "INTERRUPTED=130"));
+        List.of(
+            "OK=0",
+            "FAILED=1",
+            "USAGE=2",
+            "STOPPED=3",
+            "PROBLEMS=4",
+            "RESTART=75",
+            "YIELD=76",
+            "INTERRUPTED=130"));
   }
 
   @Test
@@ -76,7 +84,19 @@ public class AppTest {
     assertEquals(train.exit(), 0, train.logs().toString());
     assertEquals(train.out(), "train /r 3");
     Ran eval =
-        run("eval", "run", "--table", "a", "--mode", "SLOW", "--table", "b", "--out", "/o", "--set", "workers=3");
+        run(
+            "eval",
+            "run",
+            "--table",
+            "a",
+            "--mode",
+            "SLOW",
+            "--table",
+            "b",
+            "--out",
+            "/o",
+            "--set",
+            "workers=3");
     assertEquals(eval.exit(), 0, eval.logs().toString());
     assertEquals(eval.out(), "table=[a, b] mode=SLOW out=/o workers=3 rate=0.5 presets=[]");
     Ran preset = run("--preset", "fast", "eval", "run");
@@ -120,12 +140,15 @@ public class AppTest {
   public void commandNamesTakeTheLongestMatchOfOneOrTwoWords() {
     Ran one = run("eval");
     assertEquals(one.exit(), 2);
-    assertTrue(one.logged("Unknown command eval; run 'demo help' for the commands"), one.logs().toString());
+    assertTrue(
+        one.logged("Unknown command eval; run 'demo help' for the commands"),
+        one.logs().toString());
     Ran typo = run("settings", "chnage", "--run", "/r");
     assertEquals(typo.exit(), 2);
     assertTrue(
         typo.logged(
-            "Unknown command settings chnage (did you mean settings change?); run 'demo help' for the commands"),
+            "Unknown command settings chnage (did you mean settings change?); run 'demo help' for"
+                + " the commands"),
         typo.logs().toString());
     Ran none = run();
     assertEquals(none.exit(), 2);
@@ -158,14 +181,17 @@ public class AppTest {
   @Test
   public void aCommandThatDrivesARunRefusesLayers() {
     for (List<String> layer :
-        List.of(List.of("--set", "workers=3"), List.of("--preset", "fast"), List.of("--settings", "/x.toml"))) {
+        List.of(
+            List.of("--set", "workers=3"),
+            List.of("--preset", "fast"),
+            List.of("--settings", "/x.toml"))) {
       String[] args = new String[] {"train", "--run", "/r", layer.get(0), layer.get(1)};
       Ran refused = run(args);
       assertEquals(refused.exit(), 2, layer.toString());
       assertTrue(
           refused.logged(
-              "Use 'demo settings change --run DIR' to change a running lineage (train takes no --settings, --preset"
-                  + " or --set)"),
+              "Use 'demo settings change --run DIR' to change a running lineage (train takes no"
+                  + " --settings, --preset or --set)"),
           refused.logs().toString());
     }
   }
@@ -176,12 +202,15 @@ public class AppTest {
     assertTrue(train.logged("Command started: demo train --run /r"), train.logs().toString());
     assertTrue(
         train.logs().stream()
-            .anyMatch(line -> line.matches("Command finished: demo train OK in \\d+\\.\\d s: trained")),
+            .anyMatch(
+                line -> line.matches("Command finished: demo train OK in \\d+\\.\\d s: trained")),
         train.logs().toString());
     Ran secret = run("eval", "run", "--table", "a", "--set", "token=abc");
     assertTrue(
-        secret.logged("Command started: demo eval run --table a --set token=********"), secret.logs().toString());
-    assertFalse(secret.logs().stream().anyMatch(line -> line.contains("abc")), secret.logs().toString());
+        secret.logged("Command started: demo eval run --table a --set token=********"),
+        secret.logs().toString());
+    assertFalse(
+        secret.logs().stream().anyMatch(line -> line.contains("abc")), secret.logs().toString());
     assertEquals(secret.exit(), 2);
   }
 
@@ -189,7 +218,8 @@ public class AppTest {
   sealed interface Keyed extends Command<Demo> permits Login, RemoteLogin {}
 
   @Named(value = "login", doc = "秘密のキーを持つコマンド")
-  record Login(@Key(doc = "トークン", presence = Presence.ABSENT, secret = true) String token) implements Keyed {
+  record Login(@Key(doc = "トークン", presence = Presence.ABSENT, secret = true) String token)
+      implements Keyed {
     @Override
     public Outcome run(Context<Demo> context) {
       return Outcome.ok("never");
@@ -211,15 +241,19 @@ public class AppTest {
     List<Class<? extends Command<Demo>>> commands = List.of(Keyed.class);
     Application<Demo> application = Application.of("demo", Demo.class, commands);
     Ran one = run(application, new Signals(), "login", "--set", "login.token=abc");
-    assertTrue(one.logged("Command started: demo login --set login.token=********"), one.logs().toString());
+    assertTrue(
+        one.logged("Command started: demo login --set login.token=********"),
+        one.logs().toString());
     assertFalse(one.logs().stream().anyMatch(line -> line.contains("abc")), one.logs().toString());
     assertTrue(
-        one.logged("Setting login.token at --set is secret and is read only from the settings file"),
+        one.logged(
+            "Setting login.token at --set is secret and is read only from the settings file"),
         one.logs().toString());
     assertEquals(one.exit(), 2);
     Ran two = run(application, new Signals(), "remote", "login", "--set", "remote.login.token=abc");
     assertTrue(
-        two.logged("Command started: demo remote login --set remote.login.token=********"), two.logs().toString());
+        two.logged("Command started: demo remote login --set remote.login.token=********"),
+        two.logs().toString());
     assertFalse(two.logs().stream().anyMatch(line -> line.contains("abc")), two.logs().toString());
     assertEquals(two.exit(), 2);
   }
@@ -232,7 +266,9 @@ public class AppTest {
         boom.logs().stream()
             .anyMatch(
                 line ->
-                    line.matches("Command finished: demo boom FAILED in .* s: java.lang.IllegalStateException: boom")),
+                    line.matches(
+                        "Command finished: demo boom FAILED in .* s:"
+                            + " java.lang.IllegalStateException: boom")),
         boom.logs().toString());
     assertEquals(run("wait").exit(), 130);
     // 入口はスレッドの割り込みの状態を残す（テストのスレッドでは、ここで消しておく）
@@ -242,9 +278,11 @@ public class AppTest {
     signals.request("SIGTERM");
     Ran stopped = run(DemoApp.application(), signals, "halt");
     assertEquals(stopped.exit(), 3);
-    assertTrue(stopped.loggedStart("Command finished: demo halt STOPPED in "), stopped.logs().toString());
     assertTrue(
-        stopped.logs().stream().anyMatch(line -> line.endsWith("s: stopped by SIGTERM")), stopped.logs().toString());
+        stopped.loggedStart("Command finished: demo halt STOPPED in "), stopped.logs().toString());
+    assertTrue(
+        stopped.logs().stream().anyMatch(line -> line.endsWith("s: stopped by SIGTERM")),
+        stopped.logs().toString());
   }
 
   @Test
@@ -254,7 +292,8 @@ public class AppTest {
     Ran read = run("eval", "run", "--settings", file.toString());
     assertEquals(read.exit(), 0, read.logs().toString());
     assertEquals(read.out(), "table=[] mode=SLOW out=null workers=2 rate=0.25 presets=[fast]");
-    Ran overridden = run("eval", "run", "--settings", file.toString(), "--mode", "FAST", "--set", "rate=0.5");
+    Ran overridden =
+        run("eval", "run", "--settings", file.toString(), "--mode", "FAST", "--set", "rate=0.5");
     assertEquals(overridden.out(), "table=[] mode=FAST out=null workers=2 rate=0.5 presets=[fast]");
     Ran missing = run("eval", "run", "--settings", file.resolveSibling("none.toml").toString());
     assertEquals(missing.exit(), 2);
@@ -268,9 +307,11 @@ public class AppTest {
     Files.writeString(typo, "[settings.chnage]\nrun = \"/r\"\n");
     Ran section = run("help", "--settings", typo.toString());
     assertEquals(section.exit(), 2);
-    assertTrue(section.loggedStart("Unknown setting settings.chnage at "), section.logs().toString());
     assertTrue(
-        section.logs().stream().anyMatch(line -> line.endsWith("(did you mean [settings.change]?)")),
+        section.loggedStart("Unknown setting settings.chnage at "), section.logs().toString());
+    assertTrue(
+        section.logs().stream()
+            .anyMatch(line -> line.endsWith("(did you mean [settings.change]?)")),
         section.logs().toString());
   }
 
@@ -288,9 +329,12 @@ public class AppTest {
     assertEquals(first.bind(Demo.class).value().workers(), 4);
     Ran again = run("settings", "create", "--run", dir);
     assertEquals(again.exit(), 2);
-    assertTrue(again.logged("The run " + dir + " already has settings rows; change them with settings change"));
+    assertTrue(
+        again.logged(
+            "The run " + dir + " already has settings rows; change them with settings change"));
 
-    Ran change = run("settings", "change", "--run", dir, "--change", "workers=6", "--reason", "more");
+    Ran change =
+        run("settings", "change", "--run", dir, "--change", "workers=6", "--reason", "more");
     assertEquals(change.exit(), 0, change.logs().toString());
     SettingsRow second = rows.latest();
     assertEquals(second.row(), 2);
@@ -299,56 +343,91 @@ public class AppTest {
     assertEquals(second.changes().size(), 1);
     assertEquals(second.changes().getFirst().key(), "workers");
     assertEquals(second.changes().getFirst().change(), Change.MACHINE);
-    assertTrue(change.logged("Settings row 2 takes effect from iteration 1"), change.logs().toString());
+    assertTrue(
+        change.logged("Settings row 2 takes effect from iteration 1"), change.logs().toString());
     assertTrue(
         change.logged(
-            "  MACHINE: takes effect after restart: run 'demo control restart --run " + dir + " --at ITERATION'"),
+            "  MACHINE: takes effect after restart: run 'demo control restart --run "
+                + dir
+                + " --at ITERATION'"),
         change.logs().toString());
 
     // 反復 1 が始まった後に足した設定の行は、反復 2 から効く
     Files.writeString(run.resolve("state.json"), "{\"next\": 1}\n");
     Files.createDirectories(run.resolve("work").resolve("00001"));
     Files.writeString(run.resolve("work").resolve("00001").resolve("ITERATION.json"), "{}\n");
-    assertEquals(run("settings", "change", "--run", dir, "--change", "rate=0.75", "--reason", "rate").exit(), 0);
+    assertEquals(
+        run("settings", "change", "--run", dir, "--change", "rate=0.75", "--reason", "rate").exit(),
+        0);
     assertEquals(rows.latest().from(), 2);
 
     Ran fixed = run("settings", "change", "--run", dir, "--change", "seed=8", "--reason", "seed");
     assertEquals(fixed.exit(), 2);
     assertTrue(
-        fixed.loggedStart("Setting seed is fixed for the run: the run started with 7, "), fixed.logs().toString());
+        fixed.loggedStart("Setting seed is fixed for the run: the run started with 7, "),
+        fixed.logs().toString());
     Ran same = run("settings", "change", "--run", dir, "--change", "workers=6", "--reason", "same");
     assertEquals(same.exit(), 0);
-    assertTrue(same.logs().stream().anyMatch(line -> line.endsWith("s: no change to row 3")), same.logs().toString());
+    assertTrue(
+        same.logs().stream().anyMatch(line -> line.endsWith("s: no change to row 3")),
+        same.logs().toString());
     assertEquals(rows.read().size(), 3);
 
     Ran show = run("settings", "show", "--run", dir);
     assertEquals(show.exit(), 0, show.logs().toString());
-    assertTrue(show.out().startsWith("# settings row 3 of 3 (from iteration 2), written "), show.out());
+    assertTrue(
+        show.out().startsWith("# settings row 3 of 3 (from iteration 2), written "), show.out());
     assertTrue(show.out().contains("rate = 0.75  # settings row 3\n"), show.out());
     // 既定値と違う値には最後に変えた行を添え、既定値と同じ値（seed = 7）には何も添えない
     assertTrue(show.out().contains("workers = 6  # settings row 2\n"), show.out());
     assertTrue(show.out().contains("seed = 7\n"), show.out());
     Ran layered = run("settings", "show", "--run", dir, "--set", "workers=1");
     assertEquals(layered.exit(), 2);
-    assertTrue(layered.logged("This command reads the run's settings: drop --settings, --preset and --set"));
+    assertTrue(
+        layered.logged(
+            "This command reads the run's settings: drop --settings, --preset and --set"));
 
     Application<Demo> checked =
         DemoApp.application()
             .withCheck(
-                settings -> settings.workers() > 5 ? List.of("Too many workers: " + settings.workers()) : List.of());
+                settings ->
+                    settings.workers() > 5
+                        ? List.of("Too many workers: " + settings.workers())
+                        : List.of());
     Ran problems = run(checked, new Signals(), "settings", "check", "--run", dir);
     assertEquals(problems.exit(), 4);
     assertTrue(problems.logged("Too many workers: 6"), problems.logs().toString());
     Ran refused =
-        run(checked, new Signals(), "settings", "change", "--run", dir, "--change", "workers=7", "--reason", "x");
+        run(
+            checked,
+            new Signals(),
+            "settings",
+            "change",
+            "--run",
+            dir,
+            "--change",
+            "workers=7",
+            "--reason",
+            "x");
     assertEquals(refused.exit(), 4);
     assertEquals(rows.read().size(), 3);
     assertEquals(run("settings", "check", "--run", dir).exit(), 0);
 
     Path absent = run.resolveSibling("absent");
-    Ran nothing = run("settings", "change", "--run", absent.toString(), "--change", "workers=1", "--reason", "x");
+    Ran nothing =
+        run(
+            "settings",
+            "change",
+            "--run",
+            absent.toString(),
+            "--change",
+            "workers=1",
+            "--reason",
+            "x");
     assertEquals(nothing.exit(), 2);
-    assertTrue(nothing.logged("The run " + absent + " has no settings rows: create it with settings create"));
+    assertTrue(
+        nothing.logged(
+            "The run " + absent + " has no settings rows: create it with settings create"));
     assertFalse(Files.exists(absent));
     assertEquals(run("settings", "check", "--run", absent.toString()).exit(), 4);
     Ran empty = run("settings", "change", "--run", dir, "--reason", "x");
@@ -366,7 +445,8 @@ public class AppTest {
     // プリセットの名前だけを書いたファイルでも、プリセットの値で行が足される
     Path preset = run.resolveSibling("preset.toml");
     Files.writeString(preset, "presets = [\"fast\"]\n");
-    Ran applied = run("settings", "change", "--run", dir, "--apply", preset.toString(), "--reason", "preset");
+    Ran applied =
+        run("settings", "change", "--run", dir, "--apply", preset.toString(), "--reason", "preset");
     assertEquals(applied.exit(), 0, applied.logs().toString());
     SettingsRow second = rows.latest();
     assertEquals(second.row(), 2);
@@ -377,7 +457,8 @@ public class AppTest {
     // ファイルに書いたキーは、プリセットの値の後に重なる
     Path both = run.resolveSibling("both.toml");
     Files.writeString(both, "presets = [\"fast\"]\nworkers = 3\n");
-    Ran layered = run("settings", "change", "--run", dir, "--apply", both.toString(), "--reason", "file");
+    Ran layered =
+        run("settings", "change", "--run", dir, "--apply", both.toString(), "--reason", "file");
     assertEquals(layered.exit(), 0, layered.logs().toString());
     assertEquals(rows.latest().row(), 3);
     assertEquals(rows.latest().bind(Demo.class).value().workers(), 3);
@@ -478,9 +559,12 @@ public class AppTest {
 
   @Test
   public void badCommandDeclarationsAreRefusedWhenTheCatalogIsBuilt() {
-    assertEquals(declarationError(Unnamed.class), "The command " + NoName.class.getName() + " has no @Named");
     assertEquals(
-        declarationError(ThreeWords.class), "Invalid command name 'a b c' on " + Long3.class.getName());
+        declarationError(Unnamed.class),
+        "The command " + NoName.class.getName() + " has no @Named");
+    assertEquals(
+        declarationError(ThreeWords.class),
+        "Invalid command name 'a b c' on " + Long3.class.getName());
     assertEquals(declarationError(Unkeyed.class), "The argument Plain.x has no @Key");
     assertEquals(declarationError(Taken.class), "The argument --set of taken is taken");
     assertEquals(

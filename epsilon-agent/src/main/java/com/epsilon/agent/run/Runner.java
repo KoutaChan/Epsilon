@@ -48,7 +48,10 @@ import org.slf4j.LoggerFactory;
  * @param <K> 段の宣言
  */
 public final class Runner<
-    R extends Record, S extends Record & Progress, I extends Iteration, K extends Enum<K> & StepKind<I>> {
+    R extends Record,
+    S extends Record & Progress,
+    I extends Iteration,
+    K extends Enum<K> & StepKind<I>> {
 
   private static final Logger LOG = LoggerFactory.getLogger(Runner.class);
 
@@ -72,7 +75,8 @@ public final class Runner<
 
     /** 呼び出しの設定を作る。GPU の使用権を示す環境変数があるときだけ、~/.epsilon/gpu/requests の要求に GPU を譲る。 */
     public static Options of(String jar, Integer stopAfter, BooleanSupplier signalled) {
-      return new Options(jar, stopAfter, GpuRequests.leaseHeld() ? GpuRequests.standard() : null, signalled);
+      return new Options(
+          jar, stopAfter, GpuRequests.leaseHeld() ? GpuRequests.standard() : null, signalled);
     }
   }
 
@@ -96,7 +100,12 @@ public final class Runner<
    * @param checkInterval 一時停止している間と段の中で待つ間に、セーフポイントの確かめをやり直す間隔
    * @param heartbeat ハートビートの間隔
    */
-  Runner(RunDirectory run, RunKind<R, S, I, K> kind, Options options, Duration checkInterval, Duration heartbeat) {
+  Runner(
+      RunDirectory run,
+      RunKind<R, S, I, K> kind,
+      Options options,
+      Duration checkInterval,
+      Duration heartbeat) {
     this.run = run;
     this.kind = kind;
     this.options = options;
@@ -119,7 +128,8 @@ public final class Runner<
   /** @throws SettingsException run のディレクトリが無い（作らずに止まる） */
   private Ending held(boolean iterate) throws Exception {
     if (!Files.isDirectory(run.root())) {
-      throw new SettingsException(List.of("The run " + run.root() + " does not exist: create it with settings create"));
+      throw new SettingsException(
+          List.of("The run " + run.root() + " does not exist: create it with settings create"));
     }
     try (TrainLock lock = TrainLock.hold(run.trainLock());
         StatusFile status = new StatusFile(run, options.jar(), heartbeat)) {
@@ -135,7 +145,12 @@ public final class Runner<
   private Ending launch(StatusFile status, boolean iterate) throws Exception {
     RunControl control =
         new RunControl(
-            new ControlRequests(run), options.gpu(), status, stepNames(), options.signalled(), checkInterval);
+            new ControlRequests(run),
+            options.gpu(),
+            status,
+            stepNames(),
+            options.signalled(),
+            checkInterval);
     SettingsRow launchRow;
     R launchSettings;
     S state;
@@ -194,7 +209,8 @@ public final class Runner<
     }
   }
 
-  private Ending iterate(RunSession<R, S, I> session, RunControl control, StatusFile status, S start)
+  private Ending iterate(
+      RunSession<R, S, I> session, RunControl control, StatusFile status, S start)
       throws Exception {
     Pipeline<K, I> pipeline = new Pipeline<>(kind.steps(), control);
     S state = start;
@@ -254,7 +270,8 @@ public final class Runner<
    *
    * @throws SettingsException 行がこの jar の設定に結び付かないか、jar に依る段が済んだ反復を違う jar で続けようとした
    */
-  private Fixed<R> fix(RunSession<R, S, I> session, Pipeline<K, I> pipeline, S state, int t) throws IOException {
+  private Fixed<R> fix(RunSession<R, S, I> session, Pipeline<K, I> pipeline, S state, int t)
+      throws IOException {
     Path file = run.iterationFile(t);
     try (SettingsRows.Locked locked = rows.lock()) {
       if (Files.exists(file)) {
@@ -266,9 +283,15 @@ public final class Runner<
         }
         if (pipeline.jarBoundDone(session.iteration(fixed, settings, state)).isPresent()) {
           throw new SettingsException(
-              List.of("Iteration " + t + " started with jar " + fixed.jar() + "; restore that jar to finish it"));
+              List.of(
+                  "Iteration "
+                      + t
+                      + " started with jar "
+                      + fixed.jar()
+                      + "; restore that jar to finish it"));
         }
-        IterationFile refixed = new IterationFile(t, fixed.settingsRow(), options.jar(), fixed.started());
+        IterationFile refixed =
+            new IterationFile(t, fixed.settingsRow(), options.jar(), fixed.started());
         DurableFiles.write(file, refixed);
         LOG.info(
             "t={} continues with jar {} instead of {}: no step that depends on the jar is done",
@@ -283,8 +306,14 @@ public final class Runner<
       addedKeys(bound.tree(), row.settings(), "", bound, added);
       if (!added.isEmpty()) {
         String keys = added.stream().map(ChangedKey::key).collect(Collectors.joining(", "));
-        row = locked.append(t, options.jar(), "Jar " + options.jar() + " adds " + keys, added, bound.tree());
-        LOG.info("Settings row {} adds the keys of jar {} with their defaults: {}", row.row(), options.jar(), keys);
+        row =
+            locked.append(
+                t, options.jar(), "Jar " + options.jar() + " adds " + keys, added, bound.tree());
+        LOG.info(
+            "Settings row {} adds the keys of jar {} with their defaults: {}",
+            row.row(),
+            options.jar(),
+            keys);
       }
       IterationFile fixed = new IterationFile(t, row.row(), options.jar(), Instant.now());
       DurableFiles.write(file, fixed);
@@ -292,7 +321,8 @@ public final class Runner<
     }
   }
 
-  private S close(RunSession<R, S, I> session, I iteration, Fixed<R> fixed, S state, Map<K, StepReport> reports)
+  private S close(
+      RunSession<R, S, I> session, I iteration, Fixed<R> fixed, S state, Map<K, StepReport> reports)
       throws Exception {
     int t = iteration.number();
     Map<String, StepReport> steps = new LinkedHashMap<>();
@@ -300,7 +330,11 @@ public final class Runner<
     Closing<S> closing = session.close(iteration, state, steps);
     if (closing.state().next() != t + 1) {
       throw new IllegalStateException(
-          "Closing iteration " + t + " must move the state to iteration " + (t + 1) + ", not "
+          "Closing iteration "
+              + t
+              + " must move the state to iteration "
+              + (t + 1)
+              + ", not "
               + closing.state().next());
     }
     double seconds = steps.values().stream().mapToDouble(StepReport::seconds).sum();
@@ -316,10 +350,13 @@ public final class Runner<
             Resources.measure(session.vramMiB()),
             addedState);
     Node number = new Node.Numeral(Integer.toString(t), "iteration");
-    DurableFiles.appendAfterLast(run.report(RunDirectory.ITERATIONS), "iteration", number, report.tree());
+    DurableFiles.appendAfterLast(
+        run.report(RunDirectory.ITERATIONS), "iteration", number, report.tree());
     for (Map.Entry<String, Record> extra : closing.reports().entrySet()) {
-      if (extra.getKey().equals(RunDirectory.ITERATIONS) || extra.getKey().equals(RunDirectory.EVALUATIONS)) {
-        throw new IllegalStateException("A run kind must not add its own lines to " + extra.getKey());
+      if (extra.getKey().equals(RunDirectory.ITERATIONS)
+          || extra.getKey().equals(RunDirectory.EVALUATIONS)) {
+        throw new IllegalStateException(
+            "A run kind must not add its own lines to " + extra.getKey());
       }
       DurableFiles.appendAfterLast(
           run.report(extra.getKey()), "iteration", number, numbered(number, extra.getValue()));
@@ -360,9 +397,15 @@ public final class Runner<
       Optional<JobFile> fresh = recreated(name);
       if (fresh.isPresent()) {
         jobs.recreate(fresh.get());
-        LOG.warn("Recreated job {} from the table of settings row {}: it starts over", name, fresh.get().row());
+        LOG.warn(
+            "Recreated job {} from the table of settings row {}: it starts over",
+            name,
+            fresh.get().row());
       } else {
-        LOG.warn("Job {} has an unreadable job.json and no table to recreate it from, so it does not run", name);
+        LOG.warn(
+            "Job {} has an unreadable job.json and no table to recreate it from, so it does not"
+                + " run",
+            name);
       }
     }
   }
@@ -378,7 +421,8 @@ public final class Runner<
     List<JobSpec> specs = kind.jobs(version, bind(latest));
     for (int order = 0; order < specs.size(); order++) {
       if (specs.get(order).table().equals(table)) {
-        return Optional.of(JobFile.pending(version, table, order, latest.row(), specs.get(order).definition()));
+        return Optional.of(
+            JobFile.pending(version, table, order, latest.row(), specs.get(order).definition()));
       }
     }
     return Optional.empty();
@@ -432,7 +476,10 @@ public final class Runner<
       List<String> merged = new ArrayList<>(addedState);
       merged.addAll(fresh);
       addedState = List.copyOf(merged);
-      LOG.info("state.json takes the fields {} that jar {} adds, with their first values", fresh, options.jar());
+      LOG.info(
+          "state.json takes the fields {} that jar {} adds, with their first values",
+          fresh,
+          options.jar());
     }
     return loaded.value();
   }
@@ -440,7 +487,8 @@ public final class Runner<
   private static IterationFile readFixed(Path file, int t) throws IOException {
     IterationFile fixed = RecordFile.read(IterationFile.class, file).value();
     if (fixed.iteration() != t) {
-      throw new SettingsException(List.of(file + " holds iteration " + fixed.iteration() + ", not " + t));
+      throw new SettingsException(
+          List.of(file + " holds iteration " + fixed.iteration() + ", not " + t));
     }
     return fixed;
   }
@@ -456,7 +504,12 @@ public final class Runner<
     } catch (SettingsException unbound) {
       List<String> problems = new ArrayList<>();
       problems.add(
-          "Settings row " + row.row() + " (written by jar " + row.jar() + ") does not bind with jar " + options.jar());
+          "Settings row "
+              + row.row()
+              + " (written by jar "
+              + row.jar()
+              + ") does not bind with jar "
+              + options.jar());
       problems.addAll(unbound.problems());
       throw new SettingsException(problems);
     }
@@ -464,12 +517,22 @@ public final class Runner<
 
   /** 効いている設定の木にあって、行に書かれていない葉（jar が既定値で足したキー）を集める。 */
   private static void addedKeys(
-      Node.Table effective, Node.Table written, String path, Settings<?> bound, List<ChangedKey> added) {
+      Node.Table effective,
+      Node.Table written,
+      String path,
+      Settings<?> bound,
+      List<ChangedKey> added) {
     for (Map.Entry<String, Node> entry : effective.entries().entrySet()) {
-      String child = path.isEmpty() ? keyName(entry.getKey()) : path + "." + keyName(entry.getKey());
+      String child =
+          path.isEmpty() ? keyName(entry.getKey()) : path + "." + keyName(entry.getKey());
       Node before = written == null ? null : written.get(entry.getKey());
       if (entry.getValue() instanceof Node.Table table) {
-        addedKeys(table, before instanceof Node.Table writtenTable ? writtenTable : null, child, bound, added);
+        addedKeys(
+            table,
+            before instanceof Node.Table writtenTable ? writtenTable : null,
+            child,
+            bound,
+            added);
       } else if (before == null) {
         added.add(new ChangedKey(child, null, entry.getValue(), bound.change(child)));
       }
@@ -483,7 +546,11 @@ public final class Runner<
   }
 
   private static boolean bareChar(int c) {
-    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+    return (c >= 'A' && c <= 'Z')
+        || (c >= 'a' && c <= 'z')
+        || (c >= '0' && c <= '9')
+        || c == '_'
+        || c == '-';
   }
 
   private static Node.Table numbered(Node number, Record line) {
@@ -492,7 +559,10 @@ public final class Runner<
     for (Map.Entry<String, Node> entry : RecordFile.tree(line).entries().entrySet()) {
       if (entries.containsKey(entry.getKey())) {
         throw new IllegalStateException(
-            "The report line " + line.getClass().getName() + " has a component named " + entry.getKey());
+            "The report line "
+                + line.getClass().getName()
+                + " has a component named "
+                + entry.getKey());
       }
       entries.put(entry.getKey(), entry.getValue());
     }
@@ -500,12 +570,16 @@ public final class Runner<
   }
 
   private Set<String> stepNames() {
-    return Arrays.stream(kind.steps().getEnumConstants()).map(Enum::name).collect(Collectors.toSet());
+    return Arrays.stream(kind.steps().getEnumConstants())
+        .map(Enum::name)
+        .collect(Collectors.toSet());
   }
 
   private Ending refuse(StatusFile status, SettingsException refused) throws IOException {
     List<String> problems = refused.problems();
-    String reason = problems.getFirst() + (problems.size() > 1 ? " (and " + (problems.size() - 1) + " more)" : "");
+    String reason =
+        problems.getFirst()
+            + (problems.size() > 1 ? " (and " + (problems.size() - 1) + " more)" : "");
     status.state(State.FAILED, null, reason);
     LOG.error("The run cannot continue:\n{}", String.join("\n", problems));
     return Ending.REFUSED;

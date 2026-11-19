@@ -12,7 +12,11 @@ import java.util.List;
  */
 @Named(value = "help", doc = "List the commands, or show the arguments of one command")
 public record Help(
-    @Key(doc = "Command to show the arguments of (the name may be written in parts, as in help settings change)", presence = Presence.ABSENT)
+    @Key(
+            doc =
+                "Command to show the arguments of (the name may be written in parts, as in help"
+                    + " settings change)",
+            presence = Presence.ABSENT)
         String command)
     implements BuiltinCommand {
 
@@ -31,7 +35,10 @@ public record Help(
               "Unknown command "
                   + command
                   + Catalog.suggestion(
-                      command, catalog.entries().stream().map(Catalog.Entry::name).toList(), " (did you mean ", "?)")));
+                      command,
+                      catalog.entries().stream().map(Catalog.Entry::name).toList(),
+                      " (did you mean ",
+                      "?)")));
     }
     context.out().print(Usage.command(application, entry));
     return Outcome.ok(entry.arguments().size() + " arguments of " + entry.name());

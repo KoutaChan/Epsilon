@@ -30,7 +30,12 @@ import java.util.stream.Stream;
  * @param sets {@code --set} の「パス=値」。書いた順
  * @param arguments コマンドの引数。書いた順
  */
-record Invocation(List<String> words, Path settings, List<String> presets, List<String> sets, List<Argument> arguments) {
+record Invocation(
+    List<String> words,
+    Path settings,
+    List<String> presets,
+    List<String> sets,
+    List<Argument> arguments) {
 
   /** 伏せた値の代わりに書く文字列。 */
   static final String MASK = "********";
@@ -124,15 +129,19 @@ record Invocation(List<String> words, Path settings, List<String> presets, List<
                 + argument.name()
                 + " for "
                 + entry.name()
-                + Catalog.suggestion(argument.name(), entry.arguments().keySet(), " (did you mean --", "?)"));
+                + Catalog.suggestion(
+                    argument.name(), entry.arguments().keySet(), " (did you mean --", "?)"));
         continue;
       }
       String origin = "--" + argument.name();
       Type element = element(component);
       try {
         if (element != null) {
-          repeated.computeIfAbsent(component.getName(), name -> new ArrayList<>()).add(node(element, argument.value(), origin));
-        } else if (values.putIfAbsent(component.getName(), node(component.getGenericType(), argument.value(), origin))
+          repeated
+              .computeIfAbsent(component.getName(), name -> new ArrayList<>())
+              .add(node(element, argument.value(), origin));
+        } else if (values.putIfAbsent(
+                component.getName(), node(component.getGenericType(), argument.value(), origin))
             != null) {
           problems.add("Argument --" + argument.name() + " is given twice");
         }
@@ -140,7 +149,8 @@ record Invocation(List<String> words, Path settings, List<String> presets, List<
         problems.addAll(unreadable.problems());
       }
     }
-    repeated.forEach((name, items) -> values.put(name, new Node.Array(items, "--" + Catalog.argument(name))));
+    repeated.forEach(
+        (name, items) -> values.put(name, new Node.Array(items, "--" + Catalog.argument(name))));
     if (!problems.isEmpty()) {
       throw new SettingsException(problems);
     }
@@ -169,7 +179,10 @@ record Invocation(List<String> words, Path settings, List<String> presets, List<
     for (Argument argument : arguments) {
       RecordComponent component = entry.arguments().get(argument.name());
       boolean secret = component != null && component.getAnnotation(Key.class).secret();
-      out.append(" --").append(argument.name()).append(' ').append(secret ? MASK : argument.value());
+      out.append(" --")
+          .append(argument.name())
+          .append(' ')
+          .append(secret ? MASK : argument.value());
     }
     if (settings != null) {
       out.append(" --settings ").append(settings);
@@ -178,7 +191,8 @@ record Invocation(List<String> words, Path settings, List<String> presets, List<
     for (String set : sets) {
       int equals = set.indexOf('=');
       String key = equals < 0 ? set : set.substring(0, equals).strip();
-      out.append(" --set ").append(secretSets.stream().anyMatch(key::matches) ? key + "=" + MASK : set);
+      out.append(" --set ")
+          .append(secretSets.stream().anyMatch(key::matches) ? key + "=" + MASK : set);
     }
     return out.toString();
   }
@@ -192,7 +206,9 @@ record Invocation(List<String> words, Path settings, List<String> presets, List<
 
   /** record の秘密のキーのパスを、セクションのパスを先頭に付けて返す。 */
   private static Stream<String> secretPaths(Class<? extends Record> type, String prefix) {
-    return Settings.describe(type).stream().filter(info -> info.secret()).map(info -> prefix + info.path());
+    return Settings.describe(type).stream()
+        .filter(info -> info.secret())
+        .map(info -> prefix + info.path());
   }
 
   /** List か Set のコンポーネントなら、要素の型を返す。ほかのコンポーネントでは null。 */
@@ -219,13 +235,18 @@ record Invocation(List<String> words, Path settings, List<String> presets, List<
    * {@code Missing argument --run}）。
    */
   private static List<String> arguments(Catalog.Entry entry, List<String> problems) {
-    Pattern key = Pattern.compile("(Missing|Invalid) setting " + Pattern.quote(entry.section() + ".") + "(\\w+)");
+    Pattern key =
+        Pattern.compile(
+            "(Missing|Invalid) setting " + Pattern.quote(entry.section() + ".") + "(\\w+)");
     List<String> rewritten = new ArrayList<>(problems.size());
     for (String problem : problems) {
       Matcher matcher = key.matcher(problem);
       rewritten.add(
           matcher.lookingAt()
-              ? matcher.group(1) + " argument --" + Catalog.argument(matcher.group(2)) + problem.substring(matcher.end())
+              ? matcher.group(1)
+                  + " argument --"
+                  + Catalog.argument(matcher.group(2))
+                  + problem.substring(matcher.end())
               : problem);
     }
     return rewritten;

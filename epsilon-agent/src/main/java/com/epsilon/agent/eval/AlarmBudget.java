@@ -28,11 +28,14 @@ public record AlarmBudget(double promotions, Map<Signal, Double> alarms) {
     Map<Signal, Double> alarms = new EnumMap<>(Signal.class);
     alarms.put(Signal.CHAMPION_WORSE, exposure.championDuels() * duelSide);
     int streak = watch.onWorse().streak();
-    alarms.put(Signal.WORSE_STREAK, Math.max(0, exposure.championDuels() - streak + 1) * Math.pow(duelSide, streak));
+    alarms.put(
+        Signal.WORSE_STREAK,
+        Math.max(0, exposure.championDuels() - streak + 1) * Math.pow(duelSide, streak));
     alarms.put(Signal.LADDER_WORSE, exposure.ladders() * exposure.ladderAlpha() / 2);
     alarms.put(Signal.BASELINE_DROP, exposure.baselines() * alarmTail);
     alarms.put(Signal.ANCHOR_DROP, exposure.anchors() * alarmTail);
-    return new AlarmBudget(exposure.championDuels() * duelSide, Collections.unmodifiableMap(alarms));
+    return new AlarmBudget(
+        exposure.championDuels() * duelSide, Collections.unmodifiableMap(alarms));
   }
 
   /**
@@ -45,14 +48,28 @@ public record AlarmBudget(double promotions, Map<Signal, Double> alarms) {
    * @param baselines 基準の卓を王者と比べる回数
    * @param anchors ルールベースの打ち手との卓を王者と比べる回数
    */
-  public record Exposure(int championDuels, double championAlpha, int ladders, double ladderAlpha, int baselines, int anchors) {
+  public record Exposure(
+      int championDuels,
+      double championAlpha,
+      int ladders,
+      double ladderAlpha,
+      int baselines,
+      int anchors) {
     public Exposure {
       if (championDuels < 0 || ladders < 0 || baselines < 0 || anchors < 0) {
         throw new IllegalArgumentException(
-            "Counts must be non-negative: " + championDuels + ", " + ladders + ", " + baselines + ", " + anchors);
+            "Counts must be non-negative: "
+                + championDuels
+                + ", "
+                + ladders
+                + ", "
+                + baselines
+                + ", "
+                + anchors);
       }
       if (!(championAlpha > 0 && championAlpha < 1) || !(ladderAlpha > 0 && ladderAlpha < 1)) {
-        throw new IllegalArgumentException("Alpha must be in (0, 1): " + championAlpha + ", " + ladderAlpha);
+        throw new IllegalArgumentException(
+            "Alpha must be in (0, 1): " + championAlpha + ", " + ladderAlpha);
       }
     }
   }

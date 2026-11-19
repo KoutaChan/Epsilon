@@ -23,7 +23,8 @@ public class TrainLockTest {
         assertTrue(TrainLock.running(file));
       }
       assertEquals(probe(file, "running"), "true");
-      assertEquals(probe(file, "hold"), "refused: Another JVM holds " + file.toAbsolutePath().normalize());
+      assertEquals(
+          probe(file, "hold"), "refused: Another JVM holds " + file.toAbsolutePath().normalize());
     }
     assertEquals(probe(file, "running"), "false");
     assertEquals(probe(file, "hold"), "held");

@@ -14,7 +14,8 @@ import java.util.Objects;
  */
 public final class UnsignedBytes {
 
-  private static final VarHandle WORDS = MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+  private static final VarHandle WORDS =
+      MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
   private static final long HIGH_BITS = 0x8080808080808080L;
   private static final int BYTE_MASK = 0xFF;
 

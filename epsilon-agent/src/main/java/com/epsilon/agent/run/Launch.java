@@ -12,7 +12,8 @@ import java.util.Objects;
  * @param jar この JVM の jar の ID
  * @param <R> run 全体の設定
  */
-public record Launch<R extends Record>(RunDirectory run, RunControl control, int row, R settings, String jar) {
+public record Launch<R extends Record>(
+    RunDirectory run, RunControl control, int row, R settings, String jar) {
 
   public Launch {
     Objects.requireNonNull(run, "run");

@@ -13,7 +13,8 @@ import java.util.Objects;
  * @param reports reports の中のほかの jsonl に足す行（ファイルの名前ごと）。書くときは、反復の番号を行の先頭に足す
  * @param <S> state.json の record
  */
-public record Closing<S extends Record & Progress>(S state, Record carry, Map<String, Record> reports) {
+public record Closing<S extends Record & Progress>(
+    S state, Record carry, Map<String, Record> reports) {
 
   public Closing {
     Objects.requireNonNull(state, "state");

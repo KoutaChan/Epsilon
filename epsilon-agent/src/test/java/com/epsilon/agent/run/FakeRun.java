@@ -42,7 +42,8 @@ final class FakeRun {
       @Key(doc = "推論のバッチサイズ", value = "64", change = Change.MACHINE) int batch,
       @Key(doc = "評価に使う卓", value = "[\"x1n3\"]", change = Change.SCHEDULE) List<String> tables,
       @Key(doc = "ジョブ 1 つの牌山の数", value = "5", change = Change.SCHEDULE) @Range(min = 1) int walls,
-      @Key(doc = "チャンク 1 つの牌山の数", value = "2", change = Change.SCHEDULE) @Range(min = 1) int chunk) {}
+      @Key(doc = "チャンク 1 つの牌山の数", value = "2", change = Change.SCHEDULE) @Range(min = 1)
+          int chunk) {}
 
   /** state.json の中身。 @param value 最後に公開した値 */
   record State(int next, long value) implements Progress {}
@@ -76,7 +77,14 @@ final class FakeRun {
 
   /** 1 回の反復。 */
   record It(
-      int number, Path work, int settingsRow, String jar, int launchRow, Config settings, State state, FakeRun world)
+      int number,
+      Path work,
+      int settingsRow,
+      String jar,
+      int launchRow,
+      Config settings,
+      State state,
+      FakeRun world)
       implements Iteration {}
 
   /** 段の一覧。 */
@@ -183,7 +191,8 @@ final class FakeRun {
 
   /** 設定の木。 */
   static Node.Table tree(String... sets) {
-    List<Layer> layers = sets.length == 0 ? List.of() : List.of(Layer.assignments("--set", List.of(sets)));
+    List<Layer> layers =
+        sets.length == 0 ? List.of() : List.of(Layer.assignments("--set", List.of(sets)));
     return Settings.bind(Config.class, layers).tree();
   }
 
@@ -287,7 +296,13 @@ final class FakeRun {
         IterationReport.read(run.report(RunDirectory.ITERATIONS), metrics, Carry.class)) {
       StringBuilder line =
           new StringBuilder(
-              report.iteration() + " v" + report.version() + " row " + report.settingsRow() + " " + report.carry());
+              report.iteration()
+                  + " v"
+                  + report.version()
+                  + " row "
+                  + report.settingsRow()
+                  + " "
+                  + report.carry());
       report
           .steps()
           .forEach(
@@ -310,7 +325,9 @@ final class FakeRun {
       jobs.put(job.name(), job.state());
       for (String file : List.of(JobOutputs.GAMES, JobOutputs.LOOKS, Jobs.RESULT)) {
         Path path = run.job(job.name()).resolve(file);
-        outputs.put(job.name() + "/" + file, Files.exists(path) ? Files.readString(path, StandardCharsets.UTF_8) : "");
+        outputs.put(
+            job.name() + "/" + file,
+            Files.exists(path) ? Files.readString(path, StandardCharsets.UTF_8) : "");
       }
     }
     return new Outcome(
@@ -360,8 +377,12 @@ final class FakeRun {
             case PHI -> iteration.state().value() + t;
             case COLLECT -> {
               int[] calls = {0};
-              world.launch.control().await(SafePoint.waiting(kind.name()), timeout -> ++calls[0] > 1);
-              yield input(iteration, Steps.PHI) * iteration.settings().factor() + iteration.settings().seed();
+              world
+                  .launch
+                  .control()
+                  .await(SafePoint.waiting(kind.name()), timeout -> ++calls[0] > 1);
+              yield input(iteration, Steps.PHI) * iteration.settings().factor()
+                  + iteration.settings().seed();
             }
             case PUBLISH -> input(iteration, Steps.COLLECT) + 1;
           };
@@ -417,7 +438,9 @@ final class FakeRun {
       }
       for (String table : settings.tables()) {
         specs.add(
-            new JobSpec(table, RecordFile.tree(new JobDef(version, table, settings.walls(), settings.chunk()))));
+            new JobSpec(
+                table,
+                RecordFile.tree(new JobDef(version, table, settings.walls(), settings.chunk()))));
       }
       return specs;
     }
@@ -431,7 +454,8 @@ final class FakeRun {
   }
 
   /** テスト用の run のセッション。 */
-  private record Session(FakeRun world, Launch<Config> launch) implements RunSession<Config, State, It> {
+  private record Session(FakeRun world, Launch<Config> launch)
+      implements RunSession<Config, State, It> {
 
     @Override
     public State begin(Config settings) {
@@ -456,7 +480,8 @@ final class FakeRun {
       int t = iteration.number();
       world.fault(Point.CLOSE, t);
       long value = ((Metrics) steps.get(Steps.PUBLISH.name()).metrics()).output();
-      return new Closing<>(new State(t + 1, value), new Carry(value), Map.of("fake.jsonl", new Line(value, t)));
+      return new Closing<>(
+          new State(t + 1, value), new Carry(value), Map.of("fake.jsonl", new Line(value, t)));
     }
 
     @Override

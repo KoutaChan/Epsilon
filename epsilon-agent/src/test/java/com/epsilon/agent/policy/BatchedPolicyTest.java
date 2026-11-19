@@ -40,19 +40,22 @@ public class BatchedPolicyTest {
   public void theAdmissionsReservationGoesToChoose() {
     FirstLegalBatched policy = new FirstLegalBatched();
     InferenceAdmission<BatchedPolicy, Integer, Integer> admission =
-        new InferenceAdmission<>(0, BatchedPolicy::maxBatch, BatchedPolicy::tryAcquire, BatchedPolicy::needsWork);
+        new InferenceAdmission<>(
+            0, BatchedPolicy::maxBatch, BatchedPolicy::tryAcquire, BatchedPolicy::needsWork);
     Observation o = ModelFamilyTest.firstDecision();
     ObservationBatch batch = new ObservationBatch(VARIANT, 64);
     for (int row = 0; row < 3; row++) {
       admission.add(policy, policy.admission(o), batch.add(o), 0);
     }
-    InferenceAdmission.Admitted<BatchedPolicy, Integer, Integer> admitted = admission.admit(0, false);
+    InferenceAdmission.Admitted<BatchedPolicy, Integer, Integer> admitted =
+        admission.admit(0, false);
     assertEquals(admitted.rows().size(), 3);
     int[] chosen = {-1, -1, -1};
     policy.choose(batch, chosen, admitted.ingress()).join();
     admission.inferenceFinished();
     assertEquals(chosen, new int[] {0, 0, 0});
-    expectThrows(IllegalStateException.class, () -> policy.choose(batch, chosen, admitted.ingress()));
+    expectThrows(
+        IllegalStateException.class, () -> policy.choose(batch, chosen, admitted.ingress()));
   }
 
   /** 最初の合法手を選ぶ方策。予約には既定のメソッドだけを使う。 */
@@ -79,7 +82,8 @@ public class BatchedPolicyTest {
     }
 
     @Override
-    public CompletableFuture<Void> choose(ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
+    public CompletableFuture<Void> choose(
+        ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
       if (reservation.handoff(this).move() != null) {
         throw new IllegalStateException("A direct reservation has no executor to move to");
       }

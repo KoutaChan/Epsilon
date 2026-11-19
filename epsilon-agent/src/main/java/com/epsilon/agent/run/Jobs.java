@@ -48,7 +48,9 @@ public final class Jobs {
   private static final String NAME_KEY = "job", VERSION_KEY = "version", TABLE_KEY = "table";
 
   private static final Comparator<JobFile> ORDER =
-      Comparator.comparingInt(JobFile::version).thenComparingInt(JobFile::order).thenComparing(JobFile::name);
+      Comparator.comparingInt(JobFile::version)
+          .thenComparingInt(JobFile::order)
+          .thenComparing(JobFile::name);
 
   private final Path directory;
   private final Path evaluations;
@@ -248,7 +250,13 @@ public final class Jobs {
         JobWork.Chunk chunk = work.next(job.walls(), outputs);
         if (chunk.walls() < job.walls()) {
           throw new IllegalStateException(
-              "Job " + job.name() + " went back from " + job.walls() + " to " + chunk.walls() + " walls");
+              "Job "
+                  + job.name()
+                  + " went back from "
+                  + job.walls()
+                  + " to "
+                  + chunk.walls()
+                  + " walls");
         }
         outputs.sync();
         job = write(job.progressed(chunk.walls(), outputs.gamesBytes(), outputs.looksBytes()));
@@ -289,7 +297,8 @@ public final class Jobs {
    * @throws SettingsException フィールドが record に合わないとき
    */
   public static <R extends Record> R result(Node.Table line, Class<R> type) {
-    return RecordFile.read(type, line.without(NAME_KEY).without(VERSION_KEY).without(TABLE_KEY)).value();
+    return RecordFile.read(type, line.without(NAME_KEY).without(VERSION_KEY).without(TABLE_KEY))
+        .value();
   }
 
   /** result.json を書く。ジョブの名前・バージョン・卓に続けて、結果の record のフィールドを並べる（報告の行と同じ形）。 */
@@ -301,7 +310,10 @@ public final class Jobs {
     for (Map.Entry<String, Node> entry : RecordFile.tree(result).entries().entrySet()) {
       if (entries.containsKey(entry.getKey())) {
         throw new IllegalStateException(
-            "The job result " + result.getClass().getName() + " has a component named " + entry.getKey());
+            "The job result "
+                + result.getClass().getName()
+                + " has a component named "
+                + entry.getKey());
       }
       entries.put(entry.getKey(), entry.getValue());
     }

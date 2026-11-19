@@ -31,12 +31,22 @@ endif()
 set(PRISM_HIP_ARCH ${CMAKE_HIP_ARCHITECTURES})
 
 set(PRISM_KERNELS
+  event_pages.hip
   k0_relation.hip
   k1_embed.hip
+  v4/k1_v4_wide.hip
   k2_attention.hip
+  v4/k2_v4_causal.hip
+  v4/k2_v4_wide.hip
+  v4/k2_v4_wide_causal.hip
   k3_mlp.hip
+  v4/k3_v4_wide.hip
   k6_candidate.hip
+  v4/k6_v4_count.hip
+  v4/k6_v4_core.hip
+  v4/k6_v4_hot.hip
   k7_value_graph.hip
+  v4/k7_v4_wide.hip
   k8_key_value.hip
   k9_reread.hip)
 set(PRISM_SOURCES
@@ -44,26 +54,31 @@ set(PRISM_SOURCES
   prism_hip_plan.cc
   prism_hip_runtime.cc
   prism_hip_torch.cc
+  v4/prism_hip_hot_cache.cc
   ${PRISM_KERNELS}
   t0_relation.hip
   t1_attention.hip
-  t2_norm.hip)
+  t2_norm.hip
+  v4/t3_v4_count.hip
+  v4/t6_segment_attention.hip
+  v4/t5_v4_causal.hip)
 # 全ての翻訳単位を HIP として 7.2.2 の clang に通す（HIP の実行系のヘッダと定義をそろえる）。
-set_source_files_properties(prism_hip_jni.cc prism_hip_plan.cc prism_hip_runtime.cc prism_hip_torch.cc PROPERTIES LANGUAGE HIP)
+set_source_files_properties(prism_hip_jni.cc prism_hip_plan.cc prism_hip_runtime.cc prism_hip_torch.cc v4/prism_hip_hot_cache.cc
+  PROPERTIES LANGUAGE HIP)
 # 全てのカーネルは、レジスタ・scratch・LDS・占有を組み立ての記録に出す。
-set_source_files_properties(${PRISM_KERNELS} t0_relation.hip t1_attention.hip t2_norm.hip
+set_source_files_properties(${PRISM_KERNELS} t0_relation.hip t1_attention.hip t2_norm.hip v4/t3_v4_count.hip v4/t6_segment_attention.hip v4/t5_v4_causal.hip
   PROPERTIES COMPILE_OPTIONS "-Rpass-analysis=kernel-resource-usage")
 
 function(prism_hip_library name checked)
   add_library(${name} SHARED ${PRISM_SOURCES})
   target_include_directories(${name} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/v4
     ${PRISM_JAVA_HOME}/include
     ${PRISM_JAVA_HOME}/include/linux)
   target_compile_definitions(${name} PRIVATE
     PRISM_HIP_ARCH="${PRISM_HIP_ARCH}"
-    PRISM_HIP_CHECKED=$<BOOL:${checked}>
-    $<$<BOOL:${checked}>:PRISM_HIP_CHECK>)
+    PRISM_HIP_CHECKED=$<BOOL:${checked}>)
   target_compile_options(${name} PRIVATE -O3 -Wall -Wextra -fvisibility=hidden -fvisibility-inlines-hidden)
   # ROCm の clang の設定（rocm.cfg）は -frtlib-add-rpath で HIP の実行系の RUNPATH を足すので、ここで外す。
   target_link_options(${name} PRIVATE -fno-rtlib-add-rpath)
@@ -83,7 +98,8 @@ add_executable(prism_hip_bench EXCLUDE_FROM_ALL
   prism_hip_plan.cc
   ${PRISM_KERNELS})
 set_source_files_properties(prism_hip_bench.cc PROPERTIES LANGUAGE HIP)
-target_include_directories(prism_hip_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(prism_hip_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/v4)
 target_compile_definitions(prism_hip_bench PRIVATE PRISM_HIP_ARCH="${PRISM_HIP_ARCH}" PRISM_HIP_CHECKED=0)
 target_compile_options(prism_hip_bench PRIVATE -O3 -Wall -Wextra -fvisibility=hidden -fvisibility-inlines-hidden)
 set_target_properties(prism_hip_bench PROPERTIES HIP_ARCHITECTURES ${PRISM_HIP_ARCH} POSITION_INDEPENDENT_CODE ON)

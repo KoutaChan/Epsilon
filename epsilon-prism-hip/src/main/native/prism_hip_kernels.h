@@ -85,14 +85,14 @@ struct TokenLayout {
 
 // K1: 型ごとの埋め込み。ワークグループは 64 トークン（ウェーブごとに 8 トークン。lane は x の H/32 列と qkv0 の 3A/32 列を受け持つ）。
 struct EmbedArgs {
-  Span<const uint8_t> pack;             // WeightPack 全体（表・W_d・b・折り込んだ表はバイトの位置で引く）
-  const EmbeddingSpec* spec;            // 埋め込みの記述（デバイスに写した pack のヘッダーの中）
-  Span<const uint8_t> input;            // blob 全体
-  size_t section[kSections];            // 領域の先頭（バイト）
+  Span<const uint8_t> pack;   // WeightPack 全体（表・W_d・b・折り込んだ表はバイトの位置で引く）
+  const EmbeddingSpec* spec;  // 埋め込みの記述（デバイスに写した pack のヘッダーの中）
+  Span<const uint8_t> input;  // blob 全体
+  size_t section[kSections];  // 領域の先頭（バイト）
   int sectionWidth[kSections];
-  int count[kEmbeddingSlots];           // 型ごとのトークンの数
-  int blockStart[kEmbeddingSlots + 1];  // 型ごとの最初のワークグループ
-  Span<uint16_t> out[kEmbeddingSlots];  // 型ごとの出力 [count, H]
+  int count[kEmbeddingSlots];            // 型ごとのトークンの数
+  int blockStart[kEmbeddingSlots + 1];   // 型ごとの最初のワークグループ
+  Span<uint16_t> out[kEmbeddingSlots];   // 型ごとの出力 [count, H]
   Span<uint16_t> qkv0[kEmbeddingSlots];  // 型ごとの層 0 の q・k・v [count, 3A]（ヘッドの対の順。遷移の型には書かない）
   float epsilon;
 };
@@ -171,23 +171,25 @@ enum class EventKeys : int { kProjected, kCopied };
 // は読まない）。K4 は、eventKeys が kProjected なら全てのタイルを n から射影する。kCopied なら局・席・牌のタイルだけを射影し、イベントの
 // k・v は eventKeyValue から写す。
 struct AttentionArgs {
-  Span<const uint16_t> normalized;  // Attention の入力 n = ⌊(x·r)·g⌉ [トークン, H]（書くのは K3。写す側の K4 は局・席・牌だけを読む）
-  Span<uint16_t> o;                 // [トークン, A]
-  Span<const uint32_t> codes;       // 関係のコード [行, タイル, タイル, 256]（K0）
-  Span<const int32_t> rowColumn;    // 行のインデックス [行, 幅]
-  Span<const int32_t> rowOrder;     // 組の順に並べた行の番号 [行]（RowOrderArgs）
-  Span<const uint16_t> qkv;         // W_qkv をフラグメントの順に並べた写し（重みの公開のときに作る。QkvFragmentArgs::fragments）
-  Span<const float> qkvBias;        // [3A]
-  Span<const float> bias;           // その層のバイアスの表 [ヘッドの対, kBiasEntries, 2]（重みの公開のときに作る）
+  Span<const uint16_t>
+      normalized;    // Attention の入力 n = ⌊(x·r)·g⌉ [トークン, H]（書くのは K3。写す側の K4 は局・席・牌だけを読む）
+  Span<uint16_t> o;  // [トークン, A]
+  Span<const uint32_t> codes;     // 関係のコード [行, タイル, タイル, 256]（K0）
+  Span<const int32_t> rowColumn;  // 行のインデックス [行, 幅]
+  Span<const int32_t> rowOrder;   // 組の順に並べた行の番号 [行]（RowOrderArgs）
+  Span<const uint16_t>
+      qkv;  // W_qkv をフラグメントの順に並べた写し（重みの公開のときに作る。QkvFragmentArgs::fragments）
+  Span<const float> qkvBias;  // [3A]
+  Span<const float> bias;     // その層のバイアスの表 [ヘッドの対, kBiasEntries, 2]（重みの公開のときに作る）
   TokenLayout layout;
   int rowWidth;
   int rowFirstEvent;
   int rowEvents;
   int groupStart;  // この起動の組が rowOrder の何番目から始まるか（launchAttention が組ごとに入れる）
   float scale;
-  Span<const uint16_t> qkv0;           // 層 0 の q・k・v [トークン, 3A]（ヘッドの対の順。K1 が書き、読むのは K2 の層 0 だけ）
-  LayerRole role;                      // 全トークンの層は K2、局・席・牌の層は K4
-  EventKeys eventKeys;                 // K4 がイベントのキーとバリューをどう作るか
+  Span<const uint16_t> qkv0;  // 層 0 の q・k・v [トークン, 3A]（ヘッドの対の順。K1 が書き、読むのは K2 の層 0 だけ）
+  LayerRole role;             // 全トークンの層は K2、局・席・牌の層は K4
+  EventKeys eventKeys;        // K4 がイベントのキーとバリューをどう作るか
   Span<const uint16_t> eventKeyValue;  // その層のイベントのキーとバリュー [イベント, 2A]（読むのは kCopied の K4 だけ）
   int codeBlocks;                      // 1 行にある関係のコードのタイルの数
 };
@@ -228,7 +230,7 @@ struct MlpArgs {
   int normalizedTokens;  // n を書くのはトークンの軸の先頭からこの数まで
   int eventKeyValues;    // イベントのキーとバリューの組の数（持つのは最後の全トークンの層だけで、ほかは 0）
   EventKeyValue eventKeyValue[kMaxEventKeyValues];
-  int firstEvent;        // トークンの軸でイベントが始まる位置（F·R。組を持つときだけ読む）
+  int firstEvent;  // トークンの軸でイベントが始まる位置（F·R。組を持つときだけ読む）
   float epsilon;
 };
 
@@ -238,7 +240,7 @@ struct MlpKvArgs {
   Span<const uint16_t> o;  // [トークン, A]
   int segments;
   MlpSegment segment[2];
-  int blockStart[3];  // launchMlpKv が入れる
+  int blockStart[3];               // launchMlpKv が入れる
   Span<const uint16_t> keyValue;   // W_kv [2A, H] の写し（MlpWeights と同じ置き方）
   Span<const float> keyValueBias;  // [2A]
   Span<uint16_t> state;            // y [F·R, H]
@@ -304,22 +306,22 @@ struct CandidateArgs {
 
 // K9: 48 遷移。z1 を読み、局・席・牌とイベントを読み直した z を書き、B を書く。
 struct RereadArgs {
-  Span<uint16_t> transition;           // z1 を読み z を書く [遷移, H]
-  Span<float> value;                   // B [遷移]
-  Span<const uint16_t> memory;         // REREAD_MEMORY（[R, F, 2A] の後に [イベント, 2A]）
-  Span<const uint8_t> category;        // 遷移のフィールド [遷移, 幅]
-  Span<const uint8_t> code;            // 遷移のキーのコード [遷移, F]
-  Span<const uint8_t> relation;        // 関係の属性 [トークン, 幅]（イベントの牌）
-  Span<const float> discardExact;      // B に直接足す特徴 x^B [遷移, 幅]
-  Span<const int32_t> rowColumn;       // 行のインデックス [行, 幅]
-  Span<const uint8_t> tileRelation;    // 牌の関係のクラス [牌²]
-  Span<const float> queryNorm;         // [H]
-  Span<const uint16_t> query;          // [A, H]
-  Span<const float> queryBias;         // [A]
-  Span<const float> codeKey;           // [2 段目のコード, A]
-  Span<const float> codeValue;         // [2 段目のコード, A]
-  Span<const uint16_t> output;         // 出力の射影 W_O [H, A] をフラグメントの順に並べた写し
-  Span<const float> outputBias;        // [H]
+  Span<uint16_t> transition;         // z1 を読み z を書く [遷移, H]
+  Span<float> value;                 // B [遷移]
+  Span<const uint16_t> memory;       // REREAD_MEMORY（[R, F, 2A] の後に [イベント, 2A]）
+  Span<const uint8_t> category;      // 遷移のフィールド [遷移, 幅]
+  Span<const uint8_t> code;          // 遷移のキーのコード [遷移, F]
+  Span<const uint8_t> relation;      // 関係の属性 [トークン, 幅]（イベントの牌）
+  Span<const float> discardExact;    // B に直接足す特徴 x^B [遷移, 幅]
+  Span<const int32_t> rowColumn;     // 行のインデックス [行, 幅]
+  Span<const uint8_t> tileRelation;  // 牌の関係のクラス [牌²]
+  Span<const float> queryNorm;       // [H]
+  Span<const uint16_t> query;        // [A, H]
+  Span<const float> queryBias;       // [A]
+  Span<const float> codeKey;         // [2 段目のコード, A]
+  Span<const float> codeValue;       // [2 段目のコード, A]
+  Span<const uint16_t> output;       // 出力の射影 W_O [H, A] をフラグメントの順に並べた写し
+  Span<const float> outputBias;      // [H]
   DiscardValueWeights discard;
   TokenLayout layout;
   int transitions;
@@ -341,21 +343,21 @@ struct RereadArgs {
 
 // K7: 16 行。
 struct ValueGraphArgs {
-  Span<const uint16_t> transition;      // z [遷移, H]
-  Span<const float> value;              // B [遷移]
-  Span<const uint16_t> state;           // y [F·R, H]（局の領域の行 r が h）
-  Span<const int32_t> rowColumn;        // [行, 幅]
-  Span<const int32_t> actionColumn;     // [手, 幅]
-  Span<const float> actionExact;        // [手, 幅]
-  Span<const float> gateNorm;           // [H]
-  Span<const uint16_t> gateHidden;      // [G, 3H]
-  Span<const float> gateHiddenBias;     // [G]
-  Span<const float> kindOffset;         // [種類, G]
-  Span<const float> exactProjection;    // U_k [種類, G, x^G の特徴]
-  Span<const float> gateOutput;         // [種類, G]
-  Span<const float> gateOutputBias;     // [種類]
-  Span<const float> exactOutput;        // u_k [種類, x^G の特徴]
-  Span<float> scores;                   // [手]
+  Span<const uint16_t> transition;    // z [遷移, H]
+  Span<const float> value;            // B [遷移]
+  Span<const uint16_t> state;         // y [F·R, H]（局の領域の行 r が h）
+  Span<const int32_t> rowColumn;      // [行, 幅]
+  Span<const int32_t> actionColumn;   // [手, 幅]
+  Span<const float> actionExact;      // [手, 幅]
+  Span<const float> gateNorm;         // [H]
+  Span<const uint16_t> gateHidden;    // [G, 3H]
+  Span<const float> gateHiddenBias;   // [G]
+  Span<const float> kindOffset;       // [種類, G]
+  Span<const float> exactProjection;  // U_k [種類, G, x^G の特徴]
+  Span<const float> gateOutput;       // [種類, G]
+  Span<const float> gateOutputBias;   // [種類]
+  Span<const float> exactOutput;      // u_k [種類, x^G の特徴]
+  Span<float> scores;                 // [手]
   int rows;
   int rowWidth;
   int rowFirstAction;

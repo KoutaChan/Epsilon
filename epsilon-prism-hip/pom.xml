@@ -16,8 +16,22 @@
     <prism.hip.lld>/opt/rocm-7.2.2/llvm/bin</prism.hip.lld>
     <prism.hip.arch>gfx1100</prism.hip.arch>
     <prism.hip.jobs>8</prism.hip.jobs>
-    <prism.hip.build>${project.build.directory}/native-build</prism.hip.build>
+    <prism.hip.build>${project.build.directory}/native-unified</prism.hip.build>
   </properties>
+  <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <resource>
+        <directory>src/main/native</directory>
+        <includes>
+          <include>prism_hip_capabilities.def</include>
+          <include>prism_hip_limits.def</include>
+        </includes>
+      </resource>
+    </resources>
+  </build>
   <profiles>
     <!-- native の組み立て。-Pnative-hip のときだけで、ROCm と cmake が要る。既定の組み立ては Java の部分だけで、
          jar に .so が入らないので HipLibrary.load() は英語の例外で止まる。 -->
@@ -60,6 +74,9 @@
                       <arg value="--parallel" />
                       <arg value="${prism.hip.jobs}" />
                     </exec>
+                    <!-- A build over a split-library checkout can retain the old build outputs. -->
+                    <delete file="${project.build.outputDirectory}/native/linux-x86_64/libprism_hip_v4.so" />
+                    <delete file="${project.build.outputDirectory}/native/linux-x86_64/libprism_hip_v4_check.so" />
                   </target>
                 </configuration>
               </execution>

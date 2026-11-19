@@ -6,12 +6,10 @@ import static org.testng.Assert.assertTrue;
 
 import com.epsilon.prism.hip.HipLibrary.BuildInfo;
 import com.epsilon.prism.hip.HipLibrary.RuntimeInfo;
-
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.SkipException;
@@ -31,13 +29,15 @@ public class HipLibraryTest {
    */
   @Test
   public void verifyRejectsMismatchedRuntimes() {
-    HipLibrary.verify(BUILD, runtime(List.of(HIP), TORCH, 70253211, HipPack.HEADER_INTS), "2.11.0", TORCH, false);
+    HipLibrary.verify(
+        BUILD, runtime(List.of(HIP), TORCH, 70253211, HipPack.HEADER_INTS), "2.11.0", TORCH, false);
     assertThrows(
         IllegalStateException.class,
         () ->
             HipLibrary.verify(
                 BUILD,
-                runtime(List.of(HIP), TORCH, 70253211, HipArchitecture.INTS + 1, HipPack.HEADER_INTS),
+                runtime(
+                    List.of(HIP), TORCH, 70253211, HipArchitecture.INTS + 1, HipPack.HEADER_INTS),
                 "2.11.0",
                 TORCH,
                 false));
@@ -59,20 +59,38 @@ public class HipLibraryTest {
         IllegalStateException.class,
         () ->
             HipLibrary.verify(
-                BUILD, runtime(List.of(HIP), Path.of("/elsewhere"), 70253211, HipPack.HEADER_INTS), "2.11.0", TORCH, false));
-    assertThrows(
-        IllegalStateException.class,
-        () ->
-            HipLibrary.verify(BUILD, runtime(List.of(HIP), TORCH, 70253211, HipPack.HEADER_INTS), "2.10.0", TORCH, false));
-    assertThrows(
-        IllegalStateException.class,
-        () ->
-            HipLibrary.verify(BUILD, runtime(List.of(HIP), TORCH, 100000000, HipPack.HEADER_INTS), "2.11.0", TORCH, false));
+                BUILD,
+                runtime(List.of(HIP), Path.of("/elsewhere"), 70253211, HipPack.HEADER_INTS),
+                "2.11.0",
+                TORCH,
+                false));
     assertThrows(
         IllegalStateException.class,
         () ->
             HipLibrary.verify(
-                BUILD, runtime(List.of(HIP), TORCH, 70253211, HipPack.HEADER_INTS + 1), "2.11.0", TORCH, false));
+                BUILD,
+                runtime(List.of(HIP), TORCH, 70253211, HipPack.HEADER_INTS),
+                "2.10.0",
+                TORCH,
+                false));
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            HipLibrary.verify(
+                BUILD,
+                runtime(List.of(HIP), TORCH, 100000000, HipPack.HEADER_INTS),
+                "2.11.0",
+                TORCH,
+                false));
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            HipLibrary.verify(
+                BUILD,
+                runtime(List.of(HIP), TORCH, 70253211, HipPack.HEADER_INTS + 1),
+                "2.11.0",
+                TORCH,
+                false));
   }
 
   /**
@@ -94,7 +112,9 @@ public class HipLibraryTest {
                     HipSection.TILE_CATEGORY,
                     null,
                     null,
-                    List.of(new HipEmbedding.Table(8192, 700, new int[] {0, 1}, new int[] {1, 35}, 24576)),
+                    List.of(
+                        new HipEmbedding.Table(
+                            8192, 700, new int[] {0, 1}, new int[] {1, 35}, 24576)),
                     List.of(new HipEmbedding.Dense(HipEmbedding.Source.FLAG, 2)),
                     16384,
                     20480,
@@ -114,14 +134,16 @@ public class HipLibraryTest {
     }
     int embeddingsAt = weightsAt + entries;
     assertEquals(entries, HipWeight.ENTRIES);
-    assertEquals(embeddingsAt + HipEmbedding.Slot.values().length * HipEmbedding.INTS, HipPack.HEADER_INTS);
+    assertEquals(
+        embeddingsAt + HipEmbedding.Slot.values().length * HipEmbedding.INTS, HipPack.HEADER_INTS);
     int[] encoded = architecture.encode();
     for (int i = 0; i < encoded.length; i++) {
       assertEquals(ints.getInt((architectureAt + i) * 4), encoded[i], "architecture int " + i);
     }
     assertEquals(ints.getInt((schemaAt + HipSchema.RELATION_ROWS.ordinal()) * 4), 112);
     assertEquals(
-        ints.getInt((sectionsAt + HipSection.TRANSITION_CODE.ordinal()) * 4), architecture.counts().fixed());
+        ints.getInt((sectionsAt + HipSection.TRANSITION_CODE.ordinal()) * 4),
+        architecture.counts().fixed());
     assertEquals(ints.getInt((rolesAt + 3) * 4), HipComposition.TURN_GATE.ordinal());
     assertEquals(ints.getInt((gatesAt + 3) * 4), 2);
     assertEquals(ints.getInt((weightsAt + HipWeight.QKV.firstEntry() + 1) * 4), 4096);
@@ -138,8 +160,11 @@ public class HipLibraryTest {
     assertEquals(ints.getInt((tile + 11 + HipEmbedding.MAX_MEMBERS + 1) * 4), 35);
     assertEquals(ints.getInt((tile + 7) * 4), 32768);
     assertEquals(ints.getInt((tile + 11 + 2 * HipEmbedding.MAX_MEMBERS) * 4), 24576);
-    assertEquals(ints.getInt((tile + 8 + HipEmbedding.MAX_TABLES * HipEmbedding.TABLE_INTS) * 4), 2);
-    assertTrue(HipPack.HEADER_BYTES >= HipPack.HEADER_INTS * 4 && HipPack.HEADER_BYTES % HipPack.ALIGNMENT == 0);
+    assertEquals(
+        ints.getInt((tile + 8 + HipEmbedding.MAX_TABLES * HipEmbedding.TABLE_INTS) * 4), 2);
+    assertTrue(
+        HipPack.HEADER_BYTES >= HipPack.HEADER_INTS * 4
+            && HipPack.HEADER_BYTES % HipPack.ALIGNMENT == 0);
   }
 
   /** DJL の ROCm の libtorch と同じプロセスに読み込め、HIP のランタイムが 1 つにそろう。 */
@@ -152,17 +177,26 @@ public class HipLibraryTest {
     RuntimeInfo runtime = library.runtime();
     log.info(
         "libprism_hip.so: HIP runtime {} at {}, built with {}; libtorch {}; header {} ints",
-        runtime.hipRuntime(), runtime.hipLibrary(), runtime.hipCompiled(), runtime.torchLoaded(), runtime.headerInts());
+        runtime.hipRuntime(),
+        runtime.hipLibrary(),
+        runtime.hipCompiled(),
+        runtime.torchLoaded(),
+        runtime.headerInts());
     assertEquals(runtime.hipLoaded(), List.of(runtime.hipLibrary()));
     assertTrue(runtime.torchLoaded().stream().anyMatch(path -> path.endsWith("libtorch_hip.so")));
   }
 
-  private static RuntimeInfo runtime(List<Path> hipLoaded, Path torchDirectory, int hipRuntime, int headerInts) {
+  private static RuntimeInfo runtime(
+      List<Path> hipLoaded, Path torchDirectory, int hipRuntime, int headerInts) {
     return runtime(hipLoaded, torchDirectory, hipRuntime, HipArchitecture.INTS, headerInts);
   }
 
   private static RuntimeInfo runtime(
-      List<Path> hipLoaded, Path torchDirectory, int hipRuntime, int architectureInts, int headerInts) {
+      List<Path> hipLoaded,
+      Path torchDirectory,
+      int hipRuntime,
+      int architectureInts,
+      int headerInts) {
     return new RuntimeInfo(
         70253211,
         hipRuntime,

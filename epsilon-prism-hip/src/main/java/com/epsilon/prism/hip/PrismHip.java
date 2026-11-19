@@ -25,6 +25,7 @@ final class PrismHip {
       int device,
       long stream,
       int[] architecture,
+      int[] options,
       int rows,
       int events,
       int transitions,
@@ -34,8 +35,43 @@ final class PrismHip {
 
   static native void freePlan(long plan);
 
+  static native void countForward(
+      long stream,
+      int rows,
+      int transitions,
+      int tiles,
+      int codes,
+      int width,
+      long projected,
+      long gates,
+      long rowIndex,
+      long ids,
+      long output);
+
+  static native void countBackward(
+      long stream,
+      int rows,
+      int transitions,
+      int tiles,
+      int codes,
+      int width,
+      long projected,
+      long gates,
+      long rowIndex,
+      long ids,
+      long gradOutput,
+      long gradProjected,
+      long gradGate);
+
+  static native void segmentAttentionForward(
+      long stream, int[] dimensions, float scale, long[] inputs, long output, long probabilities);
+
+  static native void segmentAttentionBackward(
+      long stream, int[] dimensions, float scale, long[] inputs, long[] gradients);
+
   /** ヘッダーつきの WeightPack を読み、照合してからデバイスへ写す。ストリームを同期する。 */
-  static native void uploadWeights(long plan, ByteBuffer pack, int position, long bytes, long version);
+  static native void uploadWeights(
+      long plan, ByteBuffer pack, int position, long bytes, long version);
 
   static native void copyIn(long plan, int region, ByteBuffer source, int position, long bytes);
 
@@ -67,6 +103,29 @@ final class PrismHip {
       ByteBuffer scores,
       int scoresPosition,
       long version);
+
+  static native void forwardPaged(
+      long plan,
+      ByteBuffer input,
+      int inputPosition,
+      int rows,
+      int events,
+      int transitions,
+      int actions,
+      long bytes,
+      long[] sections,
+      ByteBuffer scores,
+      int scoresPosition,
+      long version,
+      ByteBuffer eventMap,
+      int misses,
+      int slots,
+      int transferBytes);
+
+  static native void configureCandidateInput(long handle, int[] descriptor);
+
+  static native long[] configureEventPages(
+      long handle, int remaining, int events, double reserveFraction);
 
   static native void profile(long plan, boolean enabled);
 
@@ -114,6 +173,7 @@ final class PrismHip {
       int segments,
       int entries,
       float scale,
+      int causalFixedTokens,
       long query,
       long keyValue,
       long mask,
@@ -135,6 +195,7 @@ final class PrismHip {
       int segments,
       int entries,
       float scale,
+      int causalFixedTokens,
       long query,
       long keyValue,
       long mask,
@@ -149,7 +210,14 @@ final class PrismHip {
 
   /** 学習の RMSNorm の順伝播を、ストリームに積む（アドレスは {@link #tensorAddress} で得る）。 */
   static native void normForward(
-      long stream, int rows, int width, float epsilon, long input, long gain, long out, long inverseRms);
+      long stream,
+      int rows,
+      int width,
+      float epsilon,
+      long input,
+      long gain,
+      long out,
+      long inverseRms);
 
   /** 学習の RMSNorm の逆伝播を、ストリームに積む。 */
   static native void normBackward(

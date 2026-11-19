@@ -1,3 +1,4 @@
+#include "prism_hip_capabilities.h"
 // K7（value_graph）: eager の ValueGraphHead.scores と同じ値を推論用に計算する。アンカーの勾配は学習でしか使わないので扱わない。
 // ワークグループは 16 行を受け持つ（256 スレッド = 8 ウェーブ）。
 //
@@ -18,6 +19,11 @@
 // ワークグループのバリアは LDS の順序だけを保証すればよい（tile::barrier）。K7 がグローバルメモリに書くのは scores だけで、
 // カーネルの中では読まないため。
 #include "prism_hip_mlp.h"
+
+#ifdef PRISM_V4_WIDE
+#define valueGraphKernel wideValueGraphKernel
+#define launchValueGraph launchV4WideValueGraph
+#endif
 
 namespace prism {
 namespace {
@@ -97,12 +103,13 @@ __device__ __forceinline__ void aggregate(const ValueGraphArgs& args, int first,
     e[c] = 0.0f;
   }
   for (int i = 0; i < count; ++i) {
-    const float weight = expf(args.value.data[bounds.index(first + i, 1, args.value.limit)] / args.tau - maximum) / total;
+    const float weight =
+        expf(args.value.data[bounds.index(first + i, 1, args.value.limit)] / args.tau - maximum) / total;
     float values[8];
-    unpack8(*reinterpret_cast<const u32x4*>(args.transition.data +
-                                             bounds.index(static_cast<size_t>(first + i) * H + col0, 8,
-                                                          args.transition.limit)),
-            values);
+    unpack8(
+        *reinterpret_cast<const u32x4*>(
+            args.transition.data + bounds.index(static_cast<size_t>(first + i) * H + col0, 8, args.transition.limit)),
+        values);
 #pragma unroll
     for (int c = 0; c < 8; ++c) {
       e[c] = __fadd_rn(e[c], __fmul_rn(weight, values[c]));
@@ -128,6 +135,31 @@ __device__ __forceinline__ void normalizeInto(uint16_t* dst, const float (&e)[8]
     values[c] = (e[c] * r) * args.gateNorm.data[g + c];
   }
   *reinterpret_cast<u32x4*>(dst + col0) = pack8(values);
+}
+
+template <int H>
+__device__ __forceinline__ void normalizeWide(uint16_t* dst, const float (&e)[2][8], int lane,
+                                              const ValueGraphArgs& args, Bounds& bounds) {
+  const bool extra = 8 * (lane + kWave) < H;
+  float sum = 0.0f;
+#pragma unroll
+  for (int c = 0; c < 8; ++c) sum += e[0][c] * e[0][c];
+  if (extra) {
+#pragma unroll
+    for (int c = 0; c < 8; ++c) sum += e[1][c] * e[1][c];
+  }
+  const float inverse = rsqrtf(waveSum(sum) / static_cast<float>(H) + args.epsilon);
+#pragma unroll
+  for (int part = 0; part < 2; ++part) {
+    if (part == 0 || extra) {
+      const int col = 8 * (lane + kWave * part);
+      const size_t gain = bounds.index(col, 8, args.gateNorm.limit);
+      float values[8];
+#pragma unroll
+      for (int c = 0; c < 8; ++c) values[c] = (e[part][c] * inverse) * args.gateNorm.data[gain + c];
+      *reinterpret_cast<u32x4*>(dst + col) = pack8(values);
+    }
+  }
 }
 
 // ゲートの行列積 A·W_g[unit]ᵀ。A は LDS に置いたゲートの入力 16 行で、各 lane は lane & 15 の行を読む。W_g の B のフラグメントを
@@ -162,7 +194,7 @@ __device__ __forceinline__ f32x8 gateProduct(const uint16_t (*input)[3 * H + 8],
 
 template <int H>
 __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args) {
-  static_assert(H / kWave == 8, "one lane holds 8 columns of a representation");
+  static_assert(H >= 8 * kWave && H <= 16 * kWave && H % 8 == 0, "one lane holds 8 or 16 columns of a representation");
   static_assert(sizeof(ValueGraphShared<H>) <= 64 * 1024, "LDS of one work group is 64 KiB");
   __shared__ ValueGraphShared<H> shared;
 
@@ -217,6 +249,11 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
 #pragma unroll
         for (int part = 0; part < 3; ++part) {
           *reinterpret_cast<u32x4*>(dst + part * H + col0) = zero;
+          if constexpr (H > 8 * kWave) {
+            if (col0 + 8 * kWave < H) {
+              *reinterpret_cast<u32x4*>(dst + part * H + col0 + 8 * kWave) = zero;
+            }
+          }
         }
         if (lane < kMaxExact) {
           shared.exact[gr][lane] = 0.0f;
@@ -229,75 +266,154 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
       const int action = firstAction + shared.gateAction[gi];
       const int role = roleOf(args, action, bounds);
       const int composition = args.composition[role];
-      const int representative =
-          cell(args.actionColumn, args.actionWidth, action, args.actionRepresentative, bounds);
-      float e[8];
-      aggregate<H>(args, cell(args.actionColumn, args.actionWidth, representative, args.actionFirstTransition, bounds),
-                   cell(args.actionColumn, args.actionWidth, representative, args.actionTransitions, bounds), col0, e,
-                   bounds);
-      normalizeInto<H>(dst, e, col0, args, bounds);
-      // 基準
-      const int row = cell(args.actionColumn, args.actionWidth, action, args.actionRow, bounds);
-      if (composition == static_cast<int>(Composition::kTurnGate)) {
-        // ē: 行の中の代表の打牌について、z を softmax(B/τ) で重み付けして足す（手の順）。
-        const int rowFirst = cell(args.rowColumn, args.rowWidth, row, args.rowFirstAction, bounds);
-        const int rowCount = cell(args.rowColumn, args.rowWidth, row, args.rowActions, bounds);
-        float maximum = -INFINITY;
-        for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
-          if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
-              cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
-            const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
-            maximum = fmaxf(maximum, args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau);
+      const int representative = cell(args.actionColumn, args.actionWidth, action, args.actionRepresentative, bounds);
+      if constexpr (H > 8 * kWave) {
+        const int row = cell(args.actionColumn, args.actionWidth, action, args.actionRow, bounds);
+        float candidate[2][8];
+        float baseValue[2][8];
+#pragma unroll
+        for (int part = 0; part < 2; ++part) {
+          const int col0 = 8 * (lane + part * kWave);
+          if (col0 < H) {
+            aggregate<H>(args,
+                         cell(args.actionColumn, args.actionWidth, representative, args.actionFirstTransition, bounds),
+                         cell(args.actionColumn, args.actionWidth, representative, args.actionTransitions, bounds),
+                         col0, candidate[part], bounds);
+            auto& e = baseValue[part];
+            if (composition == static_cast<int>(Composition::kTurnGate)) {
+              // ē: 行の中の代表の打牌について、z を softmax(B/τ) で重み付けして足す（手の順）。
+              const int rowFirst = cell(args.rowColumn, args.rowWidth, row, args.rowFirstAction, bounds);
+              const int rowCount = cell(args.rowColumn, args.rowWidth, row, args.rowActions, bounds);
+              float maximum = -INFINITY;
+              for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
+                if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
+                    cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
+                  const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
+                  maximum = fmaxf(maximum, args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau);
+                }
+              }
+              float total = 0.0f;
+              for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
+                if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
+                    cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
+                  const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
+                  total += expf(args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau - maximum);
+                }
+              }
+#pragma unroll
+              for (int c = 0; c < 8; ++c) {
+                e[c] = 0.0f;
+              }
+              for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
+                if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
+                    cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
+                  const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
+                  const float weight =
+                      expf(args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau - maximum) / total;
+                  float values[8];
+                  unpack8(*reinterpret_cast<const u32x4*>(
+                              args.transition.data +
+                              bounds.index(static_cast<size_t>(t) * H + col0, 8, args.transition.limit)),
+                          values);
+#pragma unroll
+                  for (int c = 0; c < 8; ++c) {
+                    e[c] = __fadd_rn(e[c], __fmul_rn(weight, values[c]));
+                  }
+                }
+              }
+            } else {
+              // 立直の基準はダマ x、応答の基準は PASS。基準の手の代表について、最初の遷移を使う。
+              const int base = cell(args.actionColumn, args.actionWidth, action, args.actionBase, bounds);
+              const int baseRepresentative =
+                  cell(args.actionColumn, args.actionWidth, max(base, 0), args.actionRepresentative, bounds);
+              const int t =
+                  cell(args.actionColumn, args.actionWidth, baseRepresentative, args.actionFirstTransition, bounds);
+              float values[8];
+              unpack8(
+                  *reinterpret_cast<const u32x4*>(
+                      args.transition.data + bounds.index(static_cast<size_t>(t) * H + col0, 8, args.transition.limit)),
+                  values);
+#pragma unroll
+              for (int c = 0; c < 8; ++c) {
+                e[c] = values[c];
+              }
+            }
+            *reinterpret_cast<u32x4*>(dst + 2 * H + col0) = *reinterpret_cast<const u32x4*>(
+                args.state.data + bounds.index(static_cast<size_t>(row) * H + col0, 8, args.state.limit));
           }
         }
-        float total = 0.0f;
-        for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
-          if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
-              cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
-            const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
-            total += expf(args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau - maximum);
-          }
-        }
-#pragma unroll
-        for (int c = 0; c < 8; ++c) {
-          e[c] = 0.0f;
-        }
-        for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
-          if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
-              cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
-            const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
-            const float weight = expf(args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau - maximum) / total;
-            float values[8];
-            unpack8(*reinterpret_cast<const u32x4*>(args.transition.data +
-                                                     bounds.index(static_cast<size_t>(t) * H + col0, 8,
-                                                                  args.transition.limit)),
-                    values);
-#pragma unroll
-            for (int c = 0; c < 8; ++c) {
-              e[c] = __fadd_rn(e[c], __fmul_rn(weight, values[c]));
+        normalizeWide<H>(dst, candidate, lane, args, bounds);
+        normalizeWide<H>(dst + H, baseValue, lane, args, bounds);
+      } else {
+        float e[8];
+        aggregate<H>(
+            args, cell(args.actionColumn, args.actionWidth, representative, args.actionFirstTransition, bounds),
+            cell(args.actionColumn, args.actionWidth, representative, args.actionTransitions, bounds), col0, e, bounds);
+        normalizeInto<H>(dst, e, col0, args, bounds);
+        // 基準
+        const int row = cell(args.actionColumn, args.actionWidth, action, args.actionRow, bounds);
+        if (composition == static_cast<int>(Composition::kTurnGate)) {
+          // ē: 行の中の代表の打牌について、z を softmax(B/τ) で重み付けして足す（手の順）。
+          const int rowFirst = cell(args.rowColumn, args.rowWidth, row, args.rowFirstAction, bounds);
+          const int rowCount = cell(args.rowColumn, args.rowWidth, row, args.rowActions, bounds);
+          float maximum = -INFINITY;
+          for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
+            if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
+                cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
+              const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
+              maximum = fmaxf(maximum, args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau);
             }
           }
-        }
-      } else {
-        // 立直の基準はダマ x、応答の基準は PASS。基準の手の代表について、最初の遷移を使う。
-        const int base = cell(args.actionColumn, args.actionWidth, action, args.actionBase, bounds);
-        const int baseRepresentative =
-            cell(args.actionColumn, args.actionWidth, max(base, 0), args.actionRepresentative, bounds);
-        const int t =
-            cell(args.actionColumn, args.actionWidth, baseRepresentative, args.actionFirstTransition, bounds);
-        float values[8];
-        unpack8(*reinterpret_cast<const u32x4*>(
-                    args.transition.data + bounds.index(static_cast<size_t>(t) * H + col0, 8, args.transition.limit)),
-                values);
+          float total = 0.0f;
+          for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
+            if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
+                cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
+              const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
+              total += expf(args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau - maximum);
+            }
+          }
 #pragma unroll
-        for (int c = 0; c < 8; ++c) {
-          e[c] = values[c];
+          for (int c = 0; c < 8; ++c) {
+            e[c] = 0.0f;
+          }
+          for (int a = rowFirst; a < rowFirst + rowCount; ++a) {
+            if (args.composition[roleOf(args, a, bounds)] == static_cast<int>(Composition::kDiscardValue) &&
+                cell(args.actionColumn, args.actionWidth, a, args.actionRepresentative, bounds) == a) {
+              const int t = cell(args.actionColumn, args.actionWidth, a, args.actionFirstTransition, bounds);
+              const float weight =
+                  expf(args.value.data[bounds.index(t, 1, args.value.limit)] / args.tau - maximum) / total;
+              float values[8];
+              unpack8(
+                  *reinterpret_cast<const u32x4*>(
+                      args.transition.data + bounds.index(static_cast<size_t>(t) * H + col0, 8, args.transition.limit)),
+                  values);
+#pragma unroll
+              for (int c = 0; c < 8; ++c) {
+                e[c] = __fadd_rn(e[c], __fmul_rn(weight, values[c]));
+              }
+            }
+          }
+        } else {
+          // 立直の基準はダマ x、応答の基準は PASS。基準の手の代表について、最初の遷移を使う。
+          const int base = cell(args.actionColumn, args.actionWidth, action, args.actionBase, bounds);
+          const int baseRepresentative =
+              cell(args.actionColumn, args.actionWidth, max(base, 0), args.actionRepresentative, bounds);
+          const int t =
+              cell(args.actionColumn, args.actionWidth, baseRepresentative, args.actionFirstTransition, bounds);
+          float values[8];
+          unpack8(*reinterpret_cast<const u32x4*>(
+                      args.transition.data + bounds.index(static_cast<size_t>(t) * H + col0, 8, args.transition.limit)),
+                  values);
+#pragma unroll
+          for (int c = 0; c < 8; ++c) {
+            e[c] = values[c];
+          }
         }
+        normalizeInto<H>(dst + H, e, col0, args, bounds);
+        // h = y_G[行]
+        *reinterpret_cast<u32x4*>(dst + 2 * H + col0) = *reinterpret_cast<const u32x4*>(
+            args.state.data + bounds.index(static_cast<size_t>(row) * H + col0, 8, args.state.limit));
       }
-      normalizeInto<H>(dst + H, e, col0, args, bounds);
-      // h = y_G[行]
-      *reinterpret_cast<u32x4*>(dst + 2 * H + col0) = *reinterpret_cast<const u32x4*>(
-          args.state.data + bounds.index(static_cast<size_t>(row) * H + col0, 8, args.state.limit));
       if (lane < kMaxExact) {
         shared.exact[gr][lane] =
             lane < args.actionExactWidth
@@ -373,10 +489,9 @@ __global__ __launch_bounds__(kThreads) void valueGraphKernel(ValueGraphArgs args
       }
       float direct = 0.0f;
       for (int x = 0; x < args.actionExactWidth; ++x) {
-        direct = __fadd_rn(
-            direct, __fmul_rn(shared.exact[tid][x],
-                              tile::load(args.exactOutput.data, args.exactOutput.limit,
-                                         kind * args.actionExactWidth + x, bounds)));
+        direct =
+            __fadd_rn(direct, __fmul_rn(shared.exact[tid][x], tile::load(args.exactOutput.data, args.exactOutput.limit,
+                                                                         kind * args.actionExactWidth + x, bounds)));
       }
       delta = (delta + tile::load(args.gateOutputBias.data, args.gateOutputBias.limit, kind, bounds)) + direct;
       shared.delta[shared.gateAction[tile0 + tid]] = delta;
@@ -445,9 +560,15 @@ void launchValueGraph(int hidden, const ValueGraphArgs& args, hipStream_t stream
   }
   const dim3 grid((args.rows + kRowsPerGroup - 1) / kRowsPerGroup);
   switch (hidden) {
-    case 256:
-      hipLaunchKernelGGL(valueGraphKernel<256>, grid, dim3(kThreads), 0, stream, args);
+#ifdef PRISM_V4_WIDE
+    case kWidthM.width:
+      hipLaunchKernelGGL(valueGraphKernel<kWidthM.width>, grid, dim3(kThreads), 0, stream, args);
       break;
+#else
+    case kWidthS.width:
+      hipLaunchKernelGGL(valueGraphKernel<kWidthS.width>, grid, dim3(kThreads), 0, stream, args);
+      break;
+#endif
     default:
       throw std::invalid_argument("K7 has no specialisation for hidden " + std::to_string(hidden));
   }

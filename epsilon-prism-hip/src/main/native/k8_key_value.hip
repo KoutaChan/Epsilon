@@ -1,3 +1,4 @@
+#include "prism_hip_capabilities.h"
 // K8（REREAD_KEY_VALUE）: ワークグループは局・席・牌のトークンを 48 個ずつ受け持つ（256 スレッド = 8 ウェーブ）。最後の正規化の後の
 // y から、候補層の 2 段目が使う局・席・牌のキーとバリューを作る。書く先は行ごとに局・席・牌の順に並べた [R, F, 2A] で、K9 が行ごとに
 // 読む並び:
@@ -54,8 +55,8 @@ void launchKeyValue(int hidden, const KeyValueArgs& args, hipStream_t stream) {
     return;
   }
   switch (hidden) {
-    case 256:
-      hipLaunchKernelGGL(keyValueKernel<256>, dim3(blocks), dim3(kThreads), 0, stream, args);
+    case kWidthS.width:
+      hipLaunchKernelGGL(keyValueKernel<kWidthS.width>, dim3(blocks), dim3(kThreads), 0, stream, args);
       break;
     default:
       throw std::invalid_argument("K8 has no specialisation for hidden " + std::to_string(hidden));

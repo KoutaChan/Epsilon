@@ -10,7 +10,7 @@ import ai.djl.ndarray.NDArray;
  * <ul>
  *   <li>順伝播: r_i = 1/√(Σ_j x_ij² / width + ε)、y_ij = ⌊(x_ij·r_i)·g_j⌉。
  *   <li>逆伝播: x̂_ij = x_ij·r_i、m_i = Σ_j (dy_ij·g_j)·x̂_ij / width、dx_ij = ⌊r_i·(dy_ij·g_j − x̂_ij·m_i)⌉。ゲインの勾配は
- *       {@value #GAIN_ROWS} 行ずつの部分和 Σ_i dy_ij·x̂_ij で返し、呼び出し元がそれを足す（決まった順に 2 段で足す）。
+ *       {@link #GAIN_ROWS} 行ずつの部分和 Σ_i dy_ij·x̂_ij で返し、呼び出し元がそれを足す（決まった順に 2 段で足す）。
  * </ul>
  *
  * 配列の形: 入力・出力とそれらの勾配は、最後の軸が width で要素の数が rows·width（連続）。ゲインは [width]（FP32）、r は [rows]（FP32）、
@@ -19,16 +19,16 @@ import ai.djl.ndarray.NDArray;
 public interface RmsNormKernels {
 
   /** 幅の上限（native の kNormMaxWidth）。 */
-  int MAX_WIDTH = 1024;
+  int MAX_WIDTH = HipCapabilities.limit("NormMaxWidth");
 
   /** ゲインの勾配の部分和 1 つが受け持つ行の数（native の kNormGainRows）。 */
-  int GAIN_ROWS = 128;
+  int GAIN_ROWS = HipCapabilities.limit("NormGainRows");
 
   /**
    * RMSNorm の次元。
    *
    * @param rows 行の数（正規化する軸以外の軸の長さの積）
-   * @param width 正規化する最後の軸の長さ（8 の倍数で {@value #MAX_WIDTH} 以下）
+   * @param width 正規化する最後の軸の長さ（8 の倍数で {@link #MAX_WIDTH} 以下）
    * @param epsilon ε（正）
    */
   record NormShape(int rows, int width, float epsilon) {
@@ -45,7 +45,7 @@ public interface RmsNormKernels {
       }
     }
 
-    /** ゲインの勾配の部分和の数 ⌈rows / {@value #GAIN_ROWS}⌉。 */
+    /** ゲインの勾配の部分和の数 ⌈rows / {@link #GAIN_ROWS}⌉。 */
     public int partials() {
       return (rows + GAIN_ROWS - 1) / GAIN_ROWS;
     }
@@ -71,7 +71,7 @@ public interface RmsNormKernels {
    * @param inverseRms 順伝播の r
    * @param gradOut 出力の勾配（出力と同じ型）
    * @param gradInput 入力の勾配の書き先（入力と同じ型）
-   * @param gradGain ゲインの勾配の、{@value #GAIN_ROWS} 行ずつの部分和の書き先（FP32）
+   * @param gradGain ゲインの勾配の、{@link #GAIN_ROWS} 行ずつの部分和の書き先（FP32）
    */
   void backward(
       NormShape d,

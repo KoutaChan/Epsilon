@@ -11,7 +11,7 @@
 namespace prism {
 
 // 学習用の Attention の 1 行のトークン数の上限（K2・K4 の kMaxRowTokens と同じ。Java の HipAttention.MAX_TOKENS）。
-constexpr int kAttentionMaxTokens = 160;
+constexpr int kAttentionMaxTokens = kMaxRowTokens;
 // ヘッドの幅（Java の HipAttention.FEATURES）。
 constexpr int kAttentionFeatures = 16;
 // 関係のコードのセグメントの数の上限と、セグメントあたりの値の数の上限（16 bit の 1 ワードに 4 ビットのコードを 4 つ詰める）。
@@ -106,10 +106,6 @@ void attentionForward(const AttentionShape& shape, const AttentionForward& array
 void attentionBackward(const AttentionShape& shape, const AttentionBackward& arrays, hipStream_t stream);
 
 // RMSNorm の幅の上限と、ゲインの勾配の部分和 1 つが受け持つ行の数（Java の RmsNormKernels.MAX_WIDTH・GAIN_ROWS）。
-constexpr int kNormMaxWidth = 1024;
-constexpr int kNormGainRows = 128;
-
-// RMSNorm の形。入力・出力とそれらの勾配は [rows, width]（BF16、連続、先頭は 16 バイトにそろう）、ゲインは [width]（FP32、
 // 16 バイトにそろう）。width は 8 の倍数で kNormMaxWidth 以下。
 struct NormShape {
   int rows;

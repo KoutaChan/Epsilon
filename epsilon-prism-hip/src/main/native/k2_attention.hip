@@ -13,7 +13,7 @@
 //      置く）。後の局・席・牌の層の K4 は局・席・牌のタイル（⌈F/16⌉ 個）だけを射影する。イベントの k・v は、最後の全トークンの層の K3
 //      がイベントの x から作った eventKeyValue を同じ置き方でコピーする（loadEventKeys）。局・席・牌とイベントが混ざるタイルは、射影の
 //      後に同じウェーブがイベントの位置をコピーし直す。
-//   2. 16 クエリのタイルごとに 1 ウェーブが 2 ヘッドを回す（K4 のクエリのタイルは 3 つ以下なので 3 ウェーブ以下）。16 キーのタイル
+//   2. 各クエリタイルの 2 ヘッドを 1 ウェーブで回す。固定注意で十分なウェーブがあればヘッドごとに分ける。16 キーのタイル
 //      ごとに次を計算する。
 //        S^T = K·Qᵀ（WMMA、BF16 の積を FP32 で累積）、ℓ = S·scale + Σ_s ρ[16s + c_s(i, j)]（c は K0 の関係のコード。ρ は、領域 2 つ
 //        ずつ前もって足した表を引く）、オンラインの softmax（exp2）、O^T += V^T·P^T（WMMA。P は FP32 の e を hi・lo の 2 つの BF16 に
@@ -39,9 +39,26 @@
 #include <utility>
 
 #include "prism_hip_relation.h"
+#include "prism_hip_v4_causal.h"
+#include "prism_hip_event_pages.h"
+
+#ifdef PRISM_V4_CAUSAL
+#define attentionKernel causalAttentionKernel
+#elif defined(PRISM_V4_WIDE)
+#define attentionKernel wideAttentionKernel
+#endif
+#ifdef PRISM_V4_WIDE
+#define qkvFragmentKernel wideQkvFragmentKernel
+#endif
 
 namespace prism {
 namespace {
+
+#ifdef PRISM_V4_CAUSAL
+constexpr bool kCausalEvents = true;
+#else
+constexpr bool kCausalEvents = false;
+#endif
 
 constexpr int kHeadWidth = 16;
 constexpr int kPairWidth = 2 * kHeadWidth;                 // ヘッドの対の q・k の列の数
@@ -49,9 +66,17 @@ constexpr int kFixedBlocks = (kMaxFixedTokens + 15) / 16;  // K4 のクエリの
 constexpr int kBiasChunks = kBiasEntries / 2;              // バイアスの表の 16 バイトのチャンクの数
 static_assert(kBiasEntries % 2 == 0, "the bias table is copied 16 bytes at a time");
 static_assert(sizeof(float2) == kBiasEntryBytes, "a code field holds the byte offset of a two-head bias entry");
-constexpr int kQkvThreads = 256;     // qkvFragmentKernel のワークグループのスレッド数
+#ifdef PRISM_V4_WIDE
+constexpr auto kAttentionWidth = kWidthM;
+#else
+constexpr auto kAttentionWidth = kWidthS;
+#endif
+
+constexpr int kQkvThreads = 256;  // qkvFragmentKernel のワークグループのスレッド数
+#if !defined(PRISM_V4_CAUSAL) && !defined(PRISM_V4_WIDE)
 constexpr int kOrderThreads = 1024;  // rowOrderKernel のワークグループ（1 つだけ）のスレッド数
 constexpr int kOrderWaves = kOrderThreads / kWave;
+#endif
 
 // 射影の重みのコピーの並び（上の説明）。
 constexpr int kFragmentBytes = 512;                 // フラグメント 1 つ（K の下の 8 要素が 16 行、上の 8 要素が 16 行）
@@ -319,6 +344,7 @@ struct HeadState {
 // キーのタイル 1 つ分、1 ヘッドを進める。タイルの最大で running を上げ、e = 2^(ℓ − running) を求める。Σe と O^T を
 // α = 2^(前の running − running) で縮めてから、O^T += V^T·P^T（hi・lo）を足す。sum は e[0] から始める（e ≥ +0 なので 0 + e[0] と
 // ビットで同じ）。value は V^T の行。
+template <bool kCausal>
 __device__ __forceinline__ void attendBlock(HeadState& s, const float (&logit)[8], const uint16_t* value) {
   float block = logit[0];
 #pragma unroll
@@ -327,14 +353,15 @@ __device__ __forceinline__ void attendBlock(HeadState& s, const float (&logit)[8
   }
   block = fmaxf(block, swapHalves(block));
   const float next = fmaxf(s.running, block);
-  const float alpha = fastExp2(s.running - next);
+  const float origin = kCausal && next == -INFINITY ? 0.0f : next;
+  const float alpha = fastExp2(s.running - origin);
   s.running = next;
   float e[8];
-  e[0] = fastExp2(logit[0] - next);
+  e[0] = fastExp2(logit[0] - origin);
   float sum = e[0];
 #pragma unroll
   for (int v = 1; v < 8; ++v) {
-    e[v] = fastExp2(logit[v] - next);
+    e[v] = fastExp2(logit[v] - origin);
     sum += e[v];
   }
   s.total = fmaf(s.total, alpha, sum);
@@ -350,12 +377,11 @@ __device__ __forceinline__ void attendBlock(HeadState& s, const float (&logit)[8
   s.out = mma(values, low, s.out);
 }
 
-// クエリのタイル qt の 2 ヘッドを、キーのタイル kt < blocks について回す。関係のコードの 8 ワードは 1 タイル先を読んでおく。
-template <class Shared>
-__device__ __forceinline__ void attendKeys(HeadState (&state)[2], const bf16x16 (&query)[2],
-                                           const Shared& shared, const AttentionArgs& args,
-                                           Bounds& bounds, int row, int qt, int blocks, int lane, int column,
-                                           float scale) {
+// クエリのタイル qt で受け持つヘッドを、キーのタイル kt < blocks について回す。関係のコードの 8 ワードは 1 タイル先を読んでおく。
+template <bool kCausal, int Heads, class Shared>
+__device__ __forceinline__ void attendKeys(HeadState (&state)[Heads], const bf16x16 (&query)[Heads],
+                                           const Shared& shared, const AttentionArgs& args, Bounds& bounds, int row,
+                                           int qt, int blocks, int lane, int column, float scale, int firstHead = 0) {
   const size_t codes = codeIndex(row, qt, 0, args.codeBlocks) + static_cast<size_t>(lane) * 8;
   u32x4 nextCodes[2];
   {
@@ -372,25 +398,98 @@ __device__ __forceinline__ void attendKeys(HeadState (&state)[2], const bf16x16 
       nextCodes[1] = *reinterpret_cast<const u32x4*>(args.codes.data + at + 4);
     }
     const int key = kt * 16 + column;
-    f32x8 score[2];
+    f32x8 score[Heads];
 #pragma unroll
-    for (int h = 0; h < 2; ++h) {
-      score[h] = mma(headFragment(shared.k, key, h), query[h], f32x8{});
+    for (int h = 0; h < Heads; ++h) {
+      score[h] = mma(headFragment(shared.k, key, firstHead + h), query[h], f32x8{});
     }
-    float logit[2][8];
+    float logit[Heads][8];
 #pragma unroll
     for (int v = 0; v < 8; ++v) {
       const uint32_t code = v < 4 ? code0[v] : code1[v - 4];
       const float2 bias = pairBias(shared.bias, code);
-      logit[0][v] = fmaf(score[0][v], scale, bias.x);
-      logit[1][v] = fmaf(score[1][v], scale, bias.y);
+#pragma unroll
+      for (int h = 0; h < Heads; ++h) {
+        logit[h][v] = fmaf(score[h][v], scale, firstHead + h == 0 ? bias.x : bias.y);
+        if constexpr (kCausal) {
+          const int keyToken = 16 * kt + 2 * v + (lane >> 4);
+          if (!v4::causalKey(true, args.layout.fixed(), 16 * qt + column, keyToken)) {
+            logit[h][v] = -INFINITY;
+          }
+        }
+      }
     }
 #pragma unroll
-    for (int h = 0; h < 2; ++h) {
-      attendBlock(state[h], logit[h], valueRow(shared.valueT, h, kt, column));
+    for (int h = 0; h < Heads; ++h) {
+      attendBlock<kCausal>(state[h], logit[h], valueRow(shared.valueT, firstHead + h, kt, column));
     }
   }
 }
+
+#ifdef PRISM_V4_CAUSAL
+// 最初のイベントを含むタイルからクエリのタイルまでを公開順に足す。
+// 全キーが見える中間タイルでは WMMA を使う。両端では各クエリが見えるキーだけを積和に入れる。
+template <class Shared>
+__device__ __forceinline__ void attendEventPrefix(HeadState (&state)[2], const bf16x16 (&query)[2],
+                                                  const Shared& shared, const AttentionArgs& args, Bounds& bounds,
+                                                  int row, int qt, int lane, float scale) {
+  const int fixed = args.layout.fixed();
+  const int column = lane & 15;
+  const int half = lane >> 4;
+  const int q = 16 * qt + column;
+  for (int kt = fixed / 16; kt <= qt; ++kt) {
+    const size_t at = bounds.index(codeIndex(row, qt, kt, args.codeBlocks) + lane * 8, 8, args.codes.limit);
+    const u32x4 code0 = *reinterpret_cast<const u32x4*>(args.codes.data + at);
+    const u32x4 code1 = *reinterpret_cast<const u32x4*>(args.codes.data + at + 4);
+    float2 bias[8];
+#pragma unroll
+    for (int v = 0; v < 8; ++v) bias[v] = pairBias(shared.bias, v < 4 ? code0[v] : code1[v - 4]);
+#pragma unroll
+    for (int h = 0; h < 2; ++h) {
+      const f32x8 dot = mma(headFragment(shared.k, 16 * kt + column, h), query[h], f32x8{});
+      float logit[8];
+#pragma unroll
+      for (int v = 0; v < 8; ++v) {
+        const int key = 16 * kt + 2 * v + half;
+        logit[v] = key >= fixed && key <= q ? fmaf(dot[v], scale, h ? bias[v].y : bias[v].x) : -INFINITY;
+      }
+      if (16 * kt >= fixed && kt < qt) {
+        attendBlock<true>(state[h], logit, valueRow(shared.valueT, h, kt, column));
+        continue;
+      }
+      HeadState& s = state[h];
+      float block = logit[0];
+#pragma unroll
+      for (int v = 1; v < 8; ++v) block = fmaxf(block, logit[v]);
+      const float next = fmaxf(s.running, fmaxf(block, swapHalves(block)));
+      const float origin = next == -INFINITY ? 0.0f : next;
+      const float alpha = fastExp2(s.running - origin);
+      s.running = next;
+      s.total *= alpha;
+#pragma unroll
+      for (int i = 0; i < 8; ++i) s.out[i] *= alpha;
+#pragma unroll
+      for (int v = 0; v < 8; ++v) {
+        const float weight = fastExp2(logit[v] - origin);
+        const float other = swapHalves(weight);
+        s.total += weight;
+        const int even = 16 * kt + 2 * v;
+#pragma unroll
+        for (int odd = 0; odd < 2; ++odd) {
+          if (even + odd >= fixed && even + odd <= q) {
+            const float w = half == odd ? weight : other;
+#pragma unroll
+            for (int i = 0; i < 8; ++i) {
+              const float value = bf16Float(shared.valueT[16 * h + 2 * i + half][16 * kt + 8 * odd + v]);
+              s.out[i] = fmaf(w, value, s.out[i]);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+#endif
 
 // 1 ヘッドの出力 O / Σe（相方の lane の Σe を足してから割る）を BF16 に 1 回丸める。クエリが行の中なら、o の位置 at（lane の次元
 // 8·half 〜 8·half + 7）へ 16 バイトを 1 回で書く。
@@ -408,6 +507,15 @@ __device__ __forceinline__ void storeHead(const HeadState& s, bool inside, size_
   }
 }
 
+#if defined(PRISM_V4_WIDE) && defined(PRISM_V4_CAUSAL)
+// 射影済みの K2 では、同じ入力を持つ代表トークンの Q・K・V を読む。
+struct RowAttentionArgs : AttentionArgs {
+  Span<const int> owners{};
+};
+#else
+using RowAttentionArgs = AttentionArgs;
+#endif
+
 // K2 の層 0 の段 1。ウェーブ m が受け持つタイル m の q・k・v を、K1 が書いた qkv0 からコピーする（qkv0 の列はヘッドの対ごとの並び
 // foldColumn で、トークンのヘッドの対 pair の 192 バイトが連続する）。lane（column, half）は、トークン 16m + column のヘッド h の次元
 // 8·half 〜 8·half + 7 を、q・k・v ごとに 16 バイトずつ読む（6 回の読み込みで 1 往復）。q は相方の lane と合わせてクエリの B の
@@ -415,7 +523,7 @@ __device__ __forceinline__ void storeHead(const HeadState& s, bool inside, size_
 // 読む（射影する場合と同じ）。置く値と位置は射影する場合の q・k・v と同じ形なので、段 2 は変わらない（qkv0 は K1 で丸めてあるので、
 // ここでは丸めない）。
 template <int H, class Shared>
-__device__ __forceinline__ void loadFolded(Shared& shared, bf16x16 (&query)[2], const AttentionArgs& args,
+__device__ __forceinline__ void loadFolded(Shared& shared, bf16x16 (&query)[2], const RowAttentionArgs& args,
                                            Bounds& bounds, int row, int firstEvent, int tokens, int pair, int m,
                                            int lane) {
   constexpr int A = H / 2;
@@ -424,15 +532,21 @@ __device__ __forceinline__ void loadFolded(Shared& shared, bf16x16 (&query)[2], 
   const int half = lane >> 4;
   const int key = 16 * m + column;
   const int token = min(key, tokens - 1);
-  const size_t base = bounds.index(static_cast<size_t>(args.layout.index(row, firstEvent, token)) * kWidth +
-                                       foldColumn(kPairWidth * pair, A),
+  const int index = args.layout.index(row, firstEvent, token);
+#if defined(PRISM_V4_WIDE) && defined(PRISM_V4_CAUSAL)
+  const int source = args.owners.data[bounds.index(index, 1, args.owners.limit)];
+#else
+  const int source = index;
+#endif
+  const size_t base = bounds.index(static_cast<size_t>(source) * kWidth + foldColumn(kPairWidth * pair, A),
                                    3 * kPairWidth, args.qkv0.limit);
   u32x4 part[3][2];
 #pragma unroll
   for (int j = 0; j < 3; ++j) {
 #pragma unroll
     for (int h = 0; h < 2; ++h) {
-      const int at = foldColumn(j * A + kPairWidth * pair + kHeadWidth * h + 8 * half, A) - foldColumn(kPairWidth * pair, A);
+      const int at =
+          foldColumn(j * A + kPairWidth * pair + kHeadWidth * h + 8 * half, A) - foldColumn(kPairWidth * pair, A);
       part[j][h] = *reinterpret_cast<const u32x4*>(args.qkv0.data + base + at);
     }
   }
@@ -458,9 +572,9 @@ __device__ __forceinline__ void loadFolded(Shared& shared, bf16x16 (&query)[2], 
 // ヘッド h の次元 8·half 〜 8·half + 7 を k・v ごとに 16 バイトずつ読み、loadFolded と同じ置き方で置く。行の外のキーは行の最後の
 // イベントを読む（射影する場合と同じ）。局・席・牌とイベントが混ざるタイルでは、同じウェーブが射影の後に呼ぶので、イベントの位置に
 // 射影した値を上書きする（同じウェーブの LDS の読み書きは順に行われる）。
-template <int H, class Shared>
-__device__ __forceinline__ void loadEventKeys(Shared& shared, const AttentionArgs& args, Bounds& bounds,
-                                              int firstEvent, int fixed, int tokens, int pair, int m, int lane) {
+template <int H, int Heads = 2, class Shared>
+__device__ __forceinline__ void loadEventKeys(Shared& shared, const AttentionArgs& args, Bounds& bounds, int firstEvent,
+                                              int fixed, int tokens, int pair, int m, int lane, int firstHead = 0) {
   constexpr int A = H / 2;
   const int column = lane & 15;
   const int half = lane >> 4;
@@ -469,28 +583,30 @@ __device__ __forceinline__ void loadEventKeys(Shared& shared, const AttentionArg
     return;
   }
   const int event = firstEvent + min(key, tokens - 1) - fixed;
-  const size_t base = bounds.index(static_cast<size_t>(event) * (2 * A) + kPairWidth * pair, A + kPairWidth,
-                                   args.eventKeyValue.limit);
-  u32x4 part[2][2];
+  const size_t base =
+      bounds.index(static_cast<size_t>(event) * (2 * A) + kPairWidth * pair, A + kPairWidth, args.eventKeyValue.limit);
+  u32x4 part[2][Heads];
 #pragma unroll
   for (int j = 0; j < 2; ++j) {
 #pragma unroll
-    for (int h = 0; h < 2; ++h) {
-      part[j][h] = *reinterpret_cast<const u32x4*>(args.eventKeyValue.data + base + j * A + kHeadWidth * h + 8 * half);
+    for (int h = 0; h < Heads; ++h) {
+      const int offset = j * A + kHeadWidth * (firstHead + h) + 8 * half;
+      part[j][h] = *reinterpret_cast<const u32x4*>(args.eventKeyValue.data + base + offset);
     }
   }
 #pragma unroll
-  for (int h = 0; h < 2; ++h) {
-    *reinterpret_cast<u32x4*>(&shared.k[key][8 * ((2 * h + half) ^ ((key >> 1) & 3))]) = part[0][h];
+  for (int h = 0; h < Heads; ++h) {
+    *reinterpret_cast<u32x4*>(&shared.k[key][8 * ((2 * (firstHead + h) + half) ^ ((key >> 1) & 3))]) = part[0][h];
   }
   // キー 16m + 2v + half' は V^T の列 16m + v + 8·half' に、次元 d = 8·half + i は行 r(d) = 2i + half に置く。
   const int value = 16 * m + (column >> 1) + 8 * (column & 1);
 #pragma unroll
-  for (int h = 0; h < 2; ++h) {
+  for (int h = 0; h < Heads; ++h) {
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
       const uint32_t word = part[1][h][i / 2];
-      shared.valueT[kHeadWidth * h + 2 * i + half][value] = static_cast<uint16_t>(i % 2 == 0 ? word : word >> 16);
+      shared.valueT[kHeadWidth * (firstHead + h) + 2 * i + half][value] =
+          static_cast<uint16_t>(i % 2 == 0 ? word : word >> 16);
     }
   }
 }
@@ -500,10 +616,10 @@ __device__ __forceinline__ void loadEventKeys(Shared& shared, const AttentionArg
 // 重みのフラグメントをタイルで共有するので、1 ステップの読み込みは重み 3 つ（q を作らなければ 2 つ）と n の kBlocks 個。バイアスも
 // タイルで共有して 1 回だけ読む。値は、タイルごとに 1 ヘッドを回す場合とビットで同じ（各 acc のオペランドと K の順、バイアスの足し方と
 // 丸めが同じ）。
-template <int H, int kBlocks, int kQueries, class Shared>
+template <int H, int kBlocks, int kQueries, bool keepQuery = false, class Shared>
 __device__ __forceinline__ void projectLast(Shared& shared, const AttentionArgs& args, Bounds& bounds,
                                             __amdgpu_buffer_rsrc_t weights, int row, int firstEvent, int tokens,
-                                            int pair, int h, int first, int lane) {
+                                            int pair, int h, int first, int lane, bf16x16* query = nullptr) {
   constexpr int A = H / 2;
   constexpr int kSets = kBlocks == 2 && kQueries > 0 ? 2 : 4;  // projectHead
   const int column = lane & 15;
@@ -537,8 +653,14 @@ __device__ __forceinline__ void projectLast(Shared& shared, const AttentionArgs&
       for (int v = 0; v < 8; ++v) {
         values[v] = acc[b][0][v] + bias[v];
       }
-      const int t = 16 * (first + b) + column;
-      *reinterpret_cast<u32x4*>(&shared.fixedQuery[t][8 * ((2 * h + half) ^ ((t >> 1) & 3))]) = pack8Activation(values);
+      const u32x4 rounded = pack8Activation(values);
+      if constexpr (keepQuery) {
+        static_assert(kQueries == 1);
+        *query = joinHalves(rounded);
+      } else {
+        const int t = 16 * (first + b) + column;
+        *reinterpret_cast<u32x4*>(&shared.fixedQuery[t][8 * ((2 * h + half) ^ ((t >> 1) & 3))]) = rounded;
+      }
     }
   }
   {
@@ -576,21 +698,27 @@ __device__ __forceinline__ void projectLast(Shared& shared, const AttentionArgs&
 // rowOrder[groupStart + blockIdx.y]。kLast は K4（局・席・牌の層）を表し、kEvents はその層のイベントのキーとバリューの作り方。kFolded は
 // K2 の層 0 を表す（段 1 で qkv0 をコピーする）。
 template <int H, bool kLast, bool kFolded, EventKeys kEvents, int kWaves>
-__global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs args) {
+__global__ __launch_bounds__(kWave* kWaves) void attentionKernel(RowAttentionArgs args) {
   constexpr int kThreads = kWave * kWaves;
   constexpr int kTokens = 16 * kWaves;
   constexpr int A = H / 2;
-  constexpr int kPairElements = (H / 16) * kStepBytes / static_cast<int>(sizeof(uint16_t));  // ヘッドの対 1 つ分の重みのコピーの要素数
+  constexpr int kPairElements =
+      (H / 16) * kStepBytes / static_cast<int>(sizeof(uint16_t));  // ヘッドの対 1 つ分の重みのコピーの要素数
   // イベントの k・v をコピーする K4（kCopied）は、局・席・牌のタイルだけを射影する。
   constexpr bool kCopied = kLast && kEvents == EventKeys::kCopied;
+  // 固定タイルの各ヘッドにウェーブを割り当てられる場合、射影から注意までを同じウェーブで行う。
+  constexpr bool kSplitHeads = kCopied && !kAttentionWidth.folded && kWaves >= 2 * kFixedBlocks;
   // 全てのタイルを射影する K4 のうち W ≥ 6 のグループは、射影で 1 ウェーブが 2 タイルの 1 ヘッドを作り、q を LDS に置く。W = 4 の
   // グループは 1 ウェーブが 1 タイルの 2 ヘッドを作り、q はレジスタに残す（q の 3 KB を LDS に足すと、そのグループの占有が 8 から 7 に
   // 下がる）。
   constexpr bool kPairedBlocks = kLast && !kCopied && kWaves > attentionWaves(0);
-  constexpr int kBiasCopies = (kBiasChunks + kThreads - 1) / kThreads;  // 1 スレッドがコピーするバイアスの表のチャンクの数
+  constexpr int kBiasCopies =
+      (kBiasChunks + kThreads - 1) / kThreads;  // 1 スレッドがコピーするバイアスの表のチャンクの数
   using Shared = AttentionShared<kTokens, kPairedBlocks>;
   static_assert(sizeof(Shared) <= 64 * 1024, "LDS of one work group is 64 KiB");
+#ifndef PRISM_V4_WIDE
   static_assert(H * sizeof(uint16_t) == 4 * 128, "an n row spans four 128-byte lines");
+#endif
   static_assert(!kLast || kFixedBlocks <= kWaves, "K4 gives every query block a wave");
   static_assert(!kPairedBlocks || kWaves % 2 == 0, "K4 pairs the waves of the two heads in the projection");
   static_assert(kThreads <= kBiasChunks, "every thread copies at least one chunk of the bias table");
@@ -607,12 +735,14 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
   const TokenLayout layout = args.layout;
   Bounds bounds;
 
-  const int row = args.rowOrder.data[bounds.index(static_cast<size_t>(args.groupStart) + blockIdx.y, 1,
-                                                  args.rowOrder.limit)];
-  const int firstEvent = args.rowColumn.data[bounds.index(
-      static_cast<size_t>(row) * args.rowWidth + args.rowFirstEvent, 1, args.rowColumn.limit)];
-  const int events = args.rowColumn.data[bounds.index(
-      static_cast<size_t>(row) * args.rowWidth + args.rowEvents, 1, args.rowColumn.limit)];
+  const int row =
+      args.rowOrder.data[bounds.index(static_cast<size_t>(args.groupStart) + blockIdx.y, 1, args.rowOrder.limit)];
+  const int firstEvent =
+      args.rowColumn
+          .data[bounds.index(static_cast<size_t>(row) * args.rowWidth + args.rowFirstEvent, 1, args.rowColumn.limit)];
+  const int events =
+      args.rowColumn
+          .data[bounds.index(static_cast<size_t>(row) * args.rowWidth + args.rowEvents, 1, args.rowColumn.limit)];
   const int fixed = layout.fixed();
   // トークンの数は、ルールの上限で行のコードのタイル（16·codeBlocks トークン）以下、グループの上限で 16W 以下。範囲外とグループの
   // 取り違えは範囲検査つきのビルドで止め、通常のビルドでも LDS の外には書かない（グループは attentionGroup が同じ切り詰めた T で
@@ -648,11 +778,35 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
   //    射影をしないので、コピーを読まない。
   const __amdgpu_buffer_rsrc_t weights = bufferResource(
       kFolded ? args.qkv.data
-              : args.qkv.data +
-                    bounds.index(static_cast<size_t>(pair) * kPairElements, kPairElements, args.qkv.limit));
-  bf16x16 keptQuery[2];  // クエリのタイル m の q（ヘッドごとの B のフラグメント。2 タイルの 1 ヘッドを作る K4 のグループは LDS に置く）
-  const int projected = kCopied ? (fixed + 15) / 16 : blocks;  // 射影するタイルの数（コピーする K4 は局・席・牌のタイルだけ）
-  if constexpr (kPairedBlocks) {
+              : args.qkv.data + bounds.index(static_cast<size_t>(pair) * kPairElements, kPairElements, args.qkv.limit));
+  bf16x16 keptQuery
+      [2];  // クエリのタイル m の q（ヘッドごとの B のフラグメント。2 タイルの 1 ヘッドを作る K4 のグループは LDS に置く）
+#ifdef PRISM_V4_CAUSAL
+  // 固定クエリか未計算のイベントを含むタイルだけ Q を作り、同じ判定で注意出力を書く。
+  const auto* queryMask = reinterpret_cast<const int*>(args.eventKeyValue.data);
+  const bool newEvents = !queryMask || (queryMask[row] & (1 << wave));
+  const bool needed = wave * 16 < fixed || newEvents;
+#else
+  constexpr bool needed = true;
+#endif
+  const int projected =
+      kCopied ? (fixed + 15) / 16 : blocks;  // 射影するタイルの数（コピーする K4 は局・席・牌のタイルだけ）
+  if constexpr (kSplitHeads) {
+    const int w = __builtin_amdgcn_readfirstlane(wave);
+    const int m = w / 2;
+    const int h = w % 2;
+    if (m < projected) {
+      projectLast<H, 1, 1, true>(shared, args, bounds, weights, row, firstEvent, fixed, pair, h, m, lane,
+                                 &keptQuery[0]);
+    }
+    // 固定とイベントの混在タイルでは、同じヘッドを射影したウェーブがイベントの列を上書きする。
+    for (int job = w; job < 2 * blocks; job += kWaves) {
+      const int tile = job / 2;
+      if (tokens > fixed && 16 * (tile + 1) > fixed) {
+        loadEventKeys<H, 1>(shared, args, bounds, firstEvent, fixed, tokens, pair, tile, lane, job % 2);
+      }
+    }
+  } else if constexpr (kPairedBlocks) {
     // 全てのタイルを射影する K4（W ≥ 6）: ウェーブ w はヘッド w & 1 について、タイルの対 2(w >> 1)・2(w >> 1) + 1 を作る
     //    （projectLast。行の最後のタイルが対の前の側なら 1 つだけ）。タイルは W 以下なので、対は全てのタイルを 1 回ずつ覆う。q を作るのは
     //    局・席・牌のタイル（16m < fixed）だけで、対の中では前のタイルから続く。ウェーブの番号は SGPR に置く（ヘッドは重みのコピーの
@@ -685,17 +839,19 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
   } else if (wave < projected) {
     // ウェーブ m（< 射影するタイルの数）が、16 トークンのタイル m についてヘッドごとに q・k・v の 3 つのフラグメントを作る。q はクエリの
     // タイル qt = m のものとしてレジスタに残す。フラグメントの組（projectHead）は K2 が 3 つ、K4 が 4 つ。
-    constexpr int kSets = kLast ? 4 : 3;
-    const uint32_t fragmentRow = static_cast<uint32_t>(column) * 16;  // コピーの半分の中の lane の行（lane 16〜31 は 0〜15 と同じ）
+    // 3 組で回す経路は、16 列のステップを 3 つずつ処理して最後に 1 つ残す。
+    constexpr int kSets = !kLast && (H / 16) % 3 == 1 ? 3 : 4;
+    const uint32_t fragmentRow =
+        static_cast<uint32_t>(column) * 16;  // コピーの半分の中の lane の行（lane 16〜31 は 0〜15 と同じ）
     const __amdgpu_buffer_rsrc_t inputs = bufferResource(args.normalized.data);
     const int m = wave;
     const int token = min(16 * m + column, (kCopied ? fixed : tokens) - 1);
     const uint32_t inputRow[1] = {
-        static_cast<uint32_t>(bounds.index(static_cast<size_t>(layout.index(row, firstEvent, token)) * H, H,
-                                           args.normalized.limit)) *
+        static_cast<uint32_t>(
+            bounds.index(static_cast<size_t>(layout.index(row, firstEvent, token)) * H, H, args.normalized.limit)) *
         static_cast<uint32_t>(sizeof(uint16_t))};
-    // K4 は局・席・牌より後のタイルで q を作らない。
-    const bool hasQuery = !kLast || 16 * m < fixed;
+    // K4 のクエリは局・席・牌まで。キャッシュに命中した K2 のタイルも K と V だけを作る。
+    const bool hasQuery = needed && (!kLast || 16 * m < fixed);
     // n の行（512 バイト）の 2〜4 本目の 128 バイトのライン（ステップ 4〜15 で読む）を 1 ワードずつ先に読み、MALL から引いておく。値は
     // 使わないが、2 ヘッドの射影の後の空の asm まで生かしておく（読み込みを消させず、その待ちも射影の後にだけ置かせる）。
     uint32_t touched[3];
@@ -748,7 +904,7 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
     }
     asm volatile("" ::"v"(touched[0]), "v"(touched[1]), "v"(touched[2]));
   }
-  if constexpr (kCopied) {
+  if constexpr (kCopied && !kSplitHeads) {
     // イベントの k・v をコピーする K4: イベントの位置を含むタイル（局・席・牌と混ざるタイルと、イベントだけのタイル）のキーを、K3 が
     // 作った k・v からコピーする。イベントのない行は、混ざるタイルのイベントの位置に、射影した値（最後の局・席・牌のトークン。有限）が
     // 残る。
@@ -758,14 +914,24 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
   }
   phaseBarrier();
 
-  // 2. Attention。ウェーブは自分の番号と同じクエリのタイル qt を受け持ち、2 ヘッドを同時に回す（クエリのタイルはキーのタイルより多く
-  //    ないので、全てのタイルにウェーブがある）。lane はクエリ query = 16qt + column に対するキー 16kt + 2v + half（v < 8）を持つ。クエリの
-  //    B のフラグメントは、射影で 2 タイルの 1 ヘッドを作る K4 のグループでは LDS に置いた q、ほかのグループでは段 1 でそのウェーブが
-  //    レジスタに残した q（ウェーブ qt がタイル qt を作った）。
+  // 2. Attention。キーのタイルは先頭から順に回す。射影したウェーブが同じなら q をレジスタから、異なるなら LDS から読む。
   const int queryBlocks = (queries + 15) / 16;
   const float scale = args.scale * kLog2e;
   const int qt = wave;
-  if (qt < queryBlocks) {
+  if constexpr (kSplitHeads) {
+    const int w = __builtin_amdgcn_readfirstlane(wave);
+    const int tile = w / 2;
+    const int h = w % 2;
+    if (tile < queryBlocks) {
+      const int q = 16 * tile + column;
+      HeadState state[1];
+      const bf16x16 fragment[1] = {keptQuery[0]};
+      attendKeys<false>(state, fragment, shared, args, bounds, row, tile, blocks, lane, column, scale, h);
+      const size_t at =
+          static_cast<size_t>(layout.index(row, firstEvent, q)) * A + kPairWidth * pair + kHeadWidth * h + 8 * half;
+      storeHead(state[0], q < queries, at, args, bounds);
+    }
+  } else if (qt < queryBlocks && needed) {
     const int query = qt * 16 + column;
     bf16x16 queryFragment[2];
     if constexpr (kPairedBlocks) {
@@ -775,17 +941,31 @@ __global__ __launch_bounds__(kWave * kWaves) void attentionKernel(AttentionArgs 
       queryFragment[0] = keptQuery[0];
       queryFragment[1] = keptQuery[1];
     }
-    HeadState state[2];
-    attendKeys(state, queryFragment, shared, args, bounds, row, qt, blocks, lane, column, scale);
-    const size_t at = static_cast<size_t>(layout.index(row, firstEvent, query)) * A + kPairWidth * pair + 8 * half;
+#ifdef PRISM_V4_CAUSAL
+    if (16 * (qt + 1) > fixed && newEvents) {
+      HeadState events[2];
+      attendEventPrefix(events, queryFragment, shared, args, bounds, row, qt, lane, scale);
+      const size_t at = static_cast<size_t>(layout.index(row, firstEvent, query)) * A + kPairWidth * pair + 8 * half;
 #pragma unroll
-    for (int h = 0; h < 2; ++h) {
-      storeHead(state[h], query < queries, at + kHeadWidth * h, args, bounds);
+      for (int h = 0; h < 2; ++h)
+        storeHead(events[h], query >= fixed && query < queries, at + kHeadWidth * h, args, bounds);
+    }
+#endif
+    // 混在するタイルでは WMMA に全 lane が参加し、固定クエリの結果だけを書く。
+    if (!kCausalEvents || qt * 16 < fixed) {
+      HeadState state[2];
+      attendKeys<kCausalEvents>(state, queryFragment, shared, args, bounds, row, qt, blocks, lane, column, scale);
+      const size_t at = static_cast<size_t>(layout.index(row, firstEvent, query)) * A + kPairWidth * pair + 8 * half;
+#pragma unroll
+      for (int h = 0; h < 2; ++h) {
+        storeHead(state[h], query < queries && (!kCausalEvents || query < fixed), at + kHeadWidth * h, args, bounds);
+      }
     }
   }
   bounds.trap();
 }
 
+#if !defined(PRISM_V4_CAUSAL) && !defined(PRISM_V4_WIDE)
 // K0 の後に、行の番号をグループの順に並べる（グループの中は行の順なので、並びはグループだけで決まる）。1 つのワークグループが 1024 行
 // ずつ、ウェーブの ballot でグループごとの順位を数えて書く。置いた行の数が、ホストが数えたグループの行の数と違えば、範囲検査つきの
 // ビルドで止める（行がグループの 16W を超えれば K2・K4 も止める）。
@@ -800,8 +980,9 @@ __global__ __launch_bounds__(kOrderThreads) void rowOrderKernel(RowOrderArgs arg
     const int row = first + tid;
     int group = -1;
     if (row < args.rows) {
-      const int events = args.rowColumn.data[bounds.index(
-          static_cast<size_t>(row) * args.rowWidth + args.rowEvents, 1, args.rowColumn.limit)];
+      const int events =
+          args.rowColumn
+              .data[bounds.index(static_cast<size_t>(row) * args.rowWidth + args.rowEvents, 1, args.rowColumn.limit)];
       group = attentionGroup(args.fixed, events);
     }
     int rank = 0;  // ウェーブの中で前の lane にある、同じグループの行の数
@@ -843,8 +1024,10 @@ __global__ __launch_bounds__(kOrderThreads) void rowOrderKernel(RowOrderArgs arg
 
 // グループ kGroup の行（rowOrder の start から rows 行）について起動し、start を次のグループの先頭へ進める。行の数が 0 のグループは
 // 起動しない。
+#endif
+
 template <int H, bool kLast, bool kFolded, EventKeys kEvents, int kGroup>
-void launchGroup(AttentionArgs args, int& start, int rows, int headPairs, hipStream_t stream) {
+void launchGroup(RowAttentionArgs args, int& start, int rows, int headPairs, hipStream_t stream) {
   constexpr int kWaves = attentionWaves(kGroup);
   if (rows > 0) {
     args.groupStart = start;
@@ -857,7 +1040,7 @@ void launchGroup(AttentionArgs args, int& start, int rows, int headPairs, hipStr
 }
 
 template <int H, bool kLast, bool kFolded, EventKeys kEvents, int... kGroups>
-void launchGroups(const AttentionArgs& args, const int (&groupRows)[kAttentionGroups], int headPairs,
+void launchGroups(const RowAttentionArgs& args, const int (&groupRows)[kAttentionGroups], int headPairs,
                   hipStream_t stream, std::integer_sequence<int, kGroups...>) {
   int start = 0;
   (launchGroup<H, kLast, kFolded, kEvents, kGroups>(args, start, groupRows[kGroups], headPairs, stream), ...);
@@ -890,6 +1073,25 @@ __global__ __launch_bounds__(kQkvThreads) void qkvFragmentKernel(QkvFragmentArgs
 
 }  // namespace
 
+#ifdef PRISM_V4_CAUSAL
+#ifdef PRISM_V4_WIDE
+void launchV4WideCausalAttention(const AttentionArgs& args,
+#else
+void launchV4CausalAttention(const AttentionArgs& args,
+#endif
+                                 int headPairs, const int (&groupRows)[kAttentionGroups], hipStream_t stream) {
+  if (args.layout.rows <= 0) {
+    return;
+  }
+  if (args.role != LayerRole::kAllTokens || args.layout.fixed() > kMaxFixedTokens || args.codeBlocks <= 0 ||
+      args.codeBlocks > kMaxRowTokens / 16) {
+    throw std::invalid_argument("invalid V4 causal layer zero layout");
+  }
+  launchGroups<kAttentionWidth.width, false, kAttentionWidth.folded, EventKeys::kProjected>(
+      RowAttentionArgs{args}, groupRows, headPairs, stream, std::make_integer_sequence<int, kAttentionGroups>{});
+}
+#else
+#ifndef PRISM_V4_WIDE
 void launchRowOrder(const RowOrderArgs& args, hipStream_t stream) {
   if (args.rows <= 0) {
     return;
@@ -898,8 +1100,13 @@ void launchRowOrder(const RowOrderArgs& args, hipStream_t stream) {
   PRISM_HIP(hipGetLastError());
 }
 
-void launchAttention(int hidden, bool folded, const AttentionArgs& args, int headPairs,
-                     const int (&groupRows)[kAttentionGroups], hipStream_t stream) {
+#endif
+#ifdef PRISM_V4_WIDE
+void launchV4WideAttention(int hidden, bool folded, const AttentionArgs& args,
+#else
+void launchAttention(int hidden, bool folded, const AttentionArgs& args,
+#endif
+                           int headPairs, const int (&groupRows)[kAttentionGroups], hipStream_t stream) {
   if (args.layout.rows <= 0) {
     return;
   }
@@ -918,32 +1125,36 @@ void launchAttention(int hidden, bool folded, const AttentionArgs& args, int hea
   constexpr auto groups = std::make_integer_sequence<int, kAttentionGroups>{};
   constexpr EventKeys kProjected = EventKeys::kProjected;
   constexpr EventKeys kCopied = EventKeys::kCopied;
-  switch (hidden) {
-    case 256:
-      if (last && args.eventKeys == kCopied) {
-        launchGroups<256, true, false, kCopied>(args, groupRows, headPairs, stream, groups);
-      } else if (last) {
-        launchGroups<256, true, false, kProjected>(args, groupRows, headPairs, stream, groups);
-      } else if (folded) {
-        launchGroups<256, false, true, kProjected>(args, groupRows, headPairs, stream, groups);
-      } else {
-        launchGroups<256, false, false, kProjected>(args, groupRows, headPairs, stream, groups);
+  if (hidden != kAttentionWidth.width || (folded && !kAttentionWidth.folded)) {
+    throw std::invalid_argument("unsupported K2/K4 width or folded projection");
+  }
+  if (last && args.eventKeys == kCopied) {
+    launchGroups<kAttentionWidth.width, true, false, kCopied>(args, groupRows, headPairs, stream, groups);
+  } else if (last) {
+    launchGroups<kAttentionWidth.width, true, false, kProjected>(args, groupRows, headPairs, stream, groups);
+  } else {
+    if constexpr (kAttentionWidth.folded) {
+      if (folded) {
+        launchGroups<kAttentionWidth.width, false, true, kProjected>(args, groupRows, headPairs, stream, groups);
+        return;
       }
-      break;
-    default:
-      throw std::invalid_argument("K2/K4 have no specialisation for hidden " + std::to_string(hidden));
+    }
+    launchGroups<kAttentionWidth.width, false, false, kProjected>(args, groupRows, headPairs, stream, groups);
   }
 }
 
+#ifdef PRISM_V4_WIDE
+void launchV4WideQkvFragments(int hidden, const QkvFragmentArgs& args, int headPairs, hipStream_t stream) {
+#else
 void launchQkvFragments(int hidden, const QkvFragmentArgs& args, int headPairs, hipStream_t stream) {
-  switch (hidden) {
-    case 256:
-      hipLaunchKernelGGL((qkvFragmentKernel<256>), dim3(headPairs), dim3(kQkvThreads), 0, stream, args);
-      break;
-    default:
-      throw std::invalid_argument("the QKV fragment copy has no specialisation for hidden " + std::to_string(hidden));
+#endif
+  if (hidden != kAttentionWidth.width) {
+    throw std::invalid_argument("the QKV fragment copy has no specialisation for hidden " + std::to_string(hidden));
   }
+  hipLaunchKernelGGL((qkvFragmentKernel<kAttentionWidth.width>), dim3(headPairs), dim3(kQkvThreads), 0, stream, args);
   PRISM_HIP(hipGetLastError());
 }
+
+#endif
 
 }  // namespace prism

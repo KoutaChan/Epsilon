@@ -43,8 +43,7 @@ __global__ __launch_bounds__(kThreads) void relationCodeKernel(RelationCodeArgs 
   Bounds bounds;
 
   const size_t rowAt = static_cast<size_t>(row) * args.shape.rowWidth;
-  const int firstEvent =
-      args.rowColumn.data[bounds.index(rowAt + args.shape.rowFirstEvent, 1, args.rowColumn.limit)];
+  const int firstEvent = args.rowColumn.data[bounds.index(rowAt + args.shape.rowFirstEvent, 1, args.rowColumn.limit)];
   const int events = args.rowColumn.data[bounds.index(rowAt + args.shape.rowEvents, 1, args.rowColumn.limit)];
   // 行のトークンは S 以下（超えたら検査つきのビルドで止める）。通常のビルドでも LDS の外には書かない。
   const int tokens = min(layout.fixed() + max(events, 0), length);
@@ -64,6 +63,9 @@ __global__ __launch_bounds__(kThreads) void relationCodeKernel(RelationCodeArgs 
     // 持ち主は 0（なし）か 1〜S（relationSegments が席のセグメントで前提にする範囲）。
     (void)bounds.index(attributes[columns.owner], 1, static_cast<size_t>(layout.seats) + 1);
     token[p] = relationToken(layout.type(p), attributes, now, columns);
+#if PRISM_HIP_CHECKED
+    checkRelationTile(token[p], layout.tiles, bounds);
+#endif
   }
   for (int e = tid; e < layout.tiles * layout.tiles; e += kThreads) {
     const int relation = args.tileRelation.data[bounds.index(e, 1, args.tileRelation.limit)];
@@ -112,9 +114,9 @@ void checkRelationCodeShape(const RelationCodeShape& shape) {
   require(shape.rowWidth > 0 && shape.rowFirstEvent >= 0 && shape.rowFirstEvent < shape.rowWidth &&
               shape.rowEvents >= 0 && shape.rowEvents < shape.rowWidth,
           "row column out of range");
-  require(c.width > 0 && c.width <= kMaxAttributes,
-          "relation attributes must be in 1.." + std::to_string(kMaxAttributes) + " columns, got " +
-              std::to_string(c.width));
+  require(c.width > 0 && c.width <= kMaxAttributes, "relation attributes must be in 1.." +
+                                                        std::to_string(kMaxAttributes) + " columns, got " +
+                                                        std::to_string(c.width));
   for (int column : {c.tile, c.owner, c.event, c.riichi, c.lastDiscard, c.link}) {
     require(column >= 0 && column < c.width, "relation column out of range");
   }

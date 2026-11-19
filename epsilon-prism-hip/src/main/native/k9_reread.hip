@@ -23,6 +23,7 @@
 //   キーの読み込みを発行する。
 // - 次のブロックのコードの材料（遷移のコードとイベントの牌）は、ブロックの初めに読み込みを発行し、キーの段の後に 16 バイトに詰める。
 // q2 の射影は K6 の段 4、出力の射影は mlpStage の段 1・2 と同じ形と丸め。バリアは全て tile::barrier（LDS だけ）。
+#include "prism_hip_capabilities.h"
 #include "prism_hip_candidate.h"
 #include "prism_hip_relation.h"
 #include "prism_hip_value.h"
@@ -35,7 +36,7 @@ using tile::kChunk;
 using tile::kThreads;
 using tile::kWaves;
 
-constexpr int kTile = 48;   // ワークグループが受け持つ遷移の数
+constexpr int kTile = 48;  // ワークグループが受け持つ遷移の数
 constexpr int kRowTiles = kTile / 16;
 constexpr int kBlock = 16;  // オンラインの softmax で 1 ブロックにまとめるキーの数
 constexpr int kAhead = 2;   // 読み込みを何段先まで発行するか
@@ -120,8 +121,8 @@ struct ItemKeys {
   __device__ __forceinline__ BlockSource source(int b, const RereadArgs& args, Bounds& bounds) const {
     BlockSource s;
     const int first = kBlock * b;
-    s.fixed = loadUnaligned16(args.code.data +
-                              bounds.index(static_cast<size_t>(codeAt) + min(first, F - kBlock), kBlock, args.code.limit));
+    s.fixed = loadUnaligned16(
+        args.code.data + bounds.index(static_cast<size_t>(codeAt) + min(first, F - kBlock), kBlock, args.code.limit));
 #pragma unroll
     for (int k = 0; k < kBlock; ++k) {
       const int event = min(max(first + k - F, 0), events - 1);
@@ -137,7 +138,8 @@ struct ItemKeys {
   // コンパイラが LDS の読み込みを分岐の中へ沈める）。
   __device__ __forceinline__ u32x4 codes(int b, const BlockSource& s, const uint8_t* table, int keyCodes, int tableSize,
                                          Bounds& bounds) const {
-    constexpr int kShift = (kBlock - F % kBlock) % kBlock;  // 混ざるブロックの最初のキーが、寄せて読んだ 16 バイトの何バイト目か
+    constexpr int kShift =
+        (kBlock - F % kBlock) % kBlock;  // 混ざるブロックの最初のキーが、寄せて読んだ 16 バイトの何バイト目か
     const int first = kBlock * b;
     const int fixedKeys = min(max(F - first, 0), kBlock);
     const uint32_t mixed = first + kBlock > F ? 0xffffffffu : 0u;
@@ -179,7 +181,7 @@ __device__ __forceinline__ void attend(const RereadArgs& args, RereadShared<H>& 
   constexpr int kValueBytes = A * sizeof(uint16_t);     // キーの中の V の位置
   constexpr int kHeadKeyBytes = 16 * sizeof(uint16_t);  // キーの K・V の中のヘッド 1 つ
   constexpr int kHeadCodeBytes = 16 * sizeof(float);    // E の行の中のヘッド 1 つ
-  constexpr int kSlots = 4;  // リングのスロットの数（同時に使うのは kAhead + 1 個）
+  constexpr int kSlots = 4;                             // リングのスロットの数（同時に使うのは kAhead + 1 個）
   constexpr int kSteps = 2 * kBlock;
   static_assert(kItems % kWave == 0, "a wave either has an item in a round or not");
   static_assert(kAhead < kSlots && kBlock % kSlots == 0, "every block starts at ring slot 0");
@@ -495,20 +497,13 @@ void launchReread(int hidden, const RereadArgs& args, hipStream_t stream) {
   if (args.keyCodes <= 0 || args.keyCodes > 255) {
     throw std::invalid_argument("K9 needs 1..255 transition key codes, got " + std::to_string(args.keyCodes));
   }
-  if (hidden != 256) {
+  if (hidden != kWidthS.width) {
     throw std::invalid_argument("K9 has no specialisation for hidden " + std::to_string(hidden));
   }
   const dim3 grid((args.transitions + kTile - 1) / kTile);
-  switch (args.layout.fixed()) {
-    case 39:
-      hipLaunchKernelGGL((rereadKernel<256, 39>), grid, dim3(kThreads), 0, stream, args);
-      break;
-    case 31:
-      hipLaunchKernelGGL((rereadKernel<256, 31>), grid, dim3(kThreads), 0, stream, args);
-      break;
-    default:
-      throw std::invalid_argument("K9 is built for 31 or 39 keys per row, got " + std::to_string(args.layout.fixed()));
-  }
+  forCandidateKeys(args.layout.fixed(), [&](auto keys) {
+    hipLaunchKernelGGL((rereadKernel<kWidthS.width, decltype(keys)::value>), grid, dim3(kThreads), 0, stream, args);
+  });
   PRISM_HIP(hipGetLastError());
 }
 

@@ -3,6 +3,8 @@
 // バイト列だけを受け取る。
 #pragma once
 
+#include "prism_hip_capabilities.h"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -10,12 +12,9 @@ namespace prism {
 
 constexpr size_t kPackAlignment = 256;
 constexpr int kMaxDepth = 3;
-constexpr int kMaxRoles = 16;
 constexpr int kMaxTables = 8;
 constexpr int kMaxMembers = 8;
 constexpr int kMaxDense = 24;
-constexpr int kMaxRowTokens = 160;   // 1 行のトークンの上限（K0・K2・K4 が LDS に置く。Java の HipArchitecture.MAX_ROW_TOKENS）
-constexpr int kMaxFixedTokens = 48;  // 1 行の局・席・牌のトークンの上限（K4・K6 のタイル。Java の HipArchitecture.MAX_FIXED_TOKENS）
 
 // バックボーンの層が、全てのトークンを扱うか局・席・牌のトークンだけを扱うか（Java の LayerRole）。
 enum class LayerRole : int32_t { kAllTokens, kFixedTokens };

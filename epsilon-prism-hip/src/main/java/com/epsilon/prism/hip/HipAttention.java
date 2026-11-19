@@ -15,7 +15,7 @@ import java.util.Objects;
  * 型は、q・kv・出力・RMSNorm の入出力とそれらの勾配が BF16、関係の属性が UINT8、ほかが FP32・INT32・INT16。配列は全て連続していて
  * （演算の結果か、その先頭からの切り出し）、同じ GPU にあること。
  */
-public final class HipAttention implements TrainingKernels, RelationCodes {
+public final class HipAttention implements TrainingKernels, RelationCodes, CandidateKernels {
 
   /** native に渡す要素の型。並びは native の TensorElement と同じ。 */
   private enum Element {
@@ -32,7 +32,9 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
         case BFLOAT16 -> BFLOAT16;
         case FLOAT32 -> FLOAT32;
         case UINT8 -> UINT8;
-        default -> throw new IllegalArgumentException("HIP training kernels do not take " + type + " arrays");
+        default ->
+            throw new IllegalArgumentException(
+                "HIP training kernels do not take " + type + " arrays");
       };
     }
   }
@@ -58,6 +60,7 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
     if (!stream.getDevice().isGpu()) {
       throw new IllegalArgumentException("HIP attention needs a GPU stream");
     }
+    library.requireArchitecture(stream.getDevice().getDeviceId());
     return new HipAttention(stream.getId(), stream.getDevice());
   }
 
@@ -90,7 +93,10 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
         layout.link(),
         layout.safety(),
         layout.safeties(),
-        address(relation, new Shape((long) rows * layout.fixed() + events, layout.width()), DataType.UINT8),
+        address(
+            relation,
+            new Shape((long) rows * layout.fixed() + events, layout.width()),
+            DataType.UINT8),
         address(rowColumn, new Shape(rows, layout.rowWidth()), DataType.INT32),
         address(tileRelations, new Shape((long) layout.tiles() * layout.tiles()), DataType.INT32),
         address(codes, new Shape(rows, tokens, tokens, WORDS), DataType.INT16));
@@ -118,6 +124,7 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
         d.segments(),
         d.entries(),
         d.scale(),
+        d.causalFixedTokens(),
         address(query, queryShape(d), DataType.BFLOAT16),
         address(keyValue, keyValueShape(d), DataType.BFLOAT16),
         address(mask, new Shape(d.rows(), d.keys()), DataType.FLOAT32),
@@ -153,6 +160,7 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
         d.segments(),
         d.entries(),
         d.scale(),
+        d.causalFixedTokens(),
         address(query, queryShape(d), DataType.BFLOAT16),
         address(keyValue, keyValueShape(d), DataType.BFLOAT16),
         address(mask, new Shape(d.rows(), d.keys()), DataType.FLOAT32),
@@ -163,12 +171,12 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
         address(gradOut, queryShape(d), DataType.BFLOAT16),
         address(gradQuery, queryShape(d), DataType.BFLOAT16),
         address(gradKeyValue, keyValueShape(d), DataType.BFLOAT16),
-        address(gradTable, new Shape((long) d.rows() * d.heads(), d.tableRows()), DataType.FLOAT32));
+        address(
+            gradTable, new Shape((long) d.rows() * d.heads(), d.tableRows()), DataType.FLOAT32));
   }
 
   @Override
-  public void forward(
-      NormShape d, NDArray input, NDArray gain, NDArray out, NDArray inverseRms) {
+  public void forward(NormShape d, NDArray input, NDArray gain, NDArray out, NDArray inverseRms) {
     PrismHip.normForward(
         stream,
         d.rows(),
@@ -206,6 +214,126 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
     return new Shape(d.rows(), d.queries(), d.width());
   }
 
+  @Override
+  public CandidateKernels candidateKernels() {
+    return this;
+  }
+
+  /** V4 candidate counting across tiles. The gate is FP32 and the two projections use BF16. */
+  @Override
+  public void count(NDArray projected, NDArray gates, NDArray rows, NDArray ids, NDArray output) {
+    int batch = Math.toIntExact(projected.getShape().get(0));
+    int tiles = Math.toIntExact(projected.getShape().get(1));
+    int width = Math.toIntExact(projected.getShape().get(2));
+    int transitions = Math.toIntExact(rows.getShape().size());
+    int codes = Math.toIntExact(gates.getShape().get(0));
+    PrismHip.countForward(
+        stream,
+        batch,
+        transitions,
+        tiles,
+        codes,
+        width,
+        address(projected, new Shape(batch, tiles, width), DataType.BFLOAT16),
+        address(gates, new Shape(codes, width), DataType.FLOAT32),
+        address(rows, new Shape(transitions), DataType.INT32),
+        address(ids, new Shape(transitions, tiles), DataType.INT32),
+        address(output, new Shape(transitions, width), DataType.BFLOAT16));
+  }
+
+  /** VJP of the count reduction. Accumulate in FP32 and write the projected-tile gradient in BF16. */
+  @Override
+  public void countGradient(
+      NDArray projected,
+      NDArray gates,
+      NDArray rows,
+      NDArray ids,
+      NDArray gradient,
+      NDArray gradProjected,
+      NDArray gradGate) {
+    int batch = Math.toIntExact(projected.getShape().get(0));
+    int tiles = Math.toIntExact(projected.getShape().get(1));
+    int width = Math.toIntExact(projected.getShape().get(2));
+    int transitions = Math.toIntExact(rows.getShape().size());
+    int codes = Math.toIntExact(gates.getShape().get(0));
+    PrismHip.countBackward(
+        stream,
+        batch,
+        transitions,
+        tiles,
+        codes,
+        width,
+        address(projected, new Shape(batch, tiles, width), DataType.BFLOAT16),
+        address(gates, new Shape(codes, width), DataType.FLOAT32),
+        address(rows, new Shape(transitions), DataType.INT32),
+        address(ids, new Shape(transitions, tiles), DataType.INT32),
+        address(gradient, new Shape(transitions, width), DataType.BFLOAT16),
+        address(gradProjected, new Shape(batch, tiles, width), DataType.BFLOAT16),
+        address(gradGate, new Shape(codes, width), DataType.FLOAT32));
+  }
+
+  @Override
+  public void candidateAttention(CandidateInput input, NDArray output, NDArray probabilities) {
+    int[] d = input.dimensions();
+    PrismHip.segmentAttentionForward(
+        stream,
+        d,
+        input.scale(),
+        candidateAddresses(input, d),
+        address(output, input.query().getShape(), DataType.FLOAT32),
+        address(probabilities, input.probabilities(), DataType.FLOAT32));
+  }
+
+  @Override
+  public void candidateAttentionGradient(
+      CandidateInput input,
+      NDArray probabilities,
+      NDArray upstream,
+      NDArray gradQuery,
+      NDArray gradMemory,
+      NDArray gradBase,
+      NDArray gradWeights,
+      Runnable beforeLaunch) {
+    int[] d = input.dimensions();
+    int buckets = d[4] + input.layout().tableRows();
+    var manager = gradQuery.getManager();
+    NDArray score = manager.create(input.probabilities(), DataType.FLOAT32);
+    NDArray partial = manager.create(new Shape(buckets, 32, d[5]), DataType.FLOAT32);
+    NDArray cursor = manager.create(new Shape(buckets), DataType.INT32);
+    NDArray offsets = manager.create(new Shape(buckets + 1), DataType.INT32);
+    long codeCount = (long) d[0] * input.layout().codeWidth();
+    NDArray occurrences = manager.create(new Shape(codeCount), DataType.INT32);
+    long[] gradients = {
+      address(probabilities, input.probabilities(), DataType.FLOAT32),
+      address(upstream, input.query().getShape(), DataType.FLOAT32),
+      address(gradQuery, input.query().getShape(), DataType.FLOAT32),
+      address(gradMemory, input.memory().getShape(), DataType.FLOAT32),
+      address(gradBase, input.base().getShape(), DataType.FLOAT32),
+      address(gradWeights, input.weights().getShape(), DataType.FLOAT32),
+      address(score, score.getShape(), DataType.FLOAT32),
+      address(partial, partial.getShape(), DataType.FLOAT32),
+      address(cursor, cursor.getShape(), DataType.INT32),
+      address(offsets, offsets.getShape(), DataType.INT32),
+      address(occurrences, occurrences.getShape(), DataType.INT32)
+    };
+    long[] inputs = candidateAddresses(input, d);
+    if (beforeLaunch != null) {
+      beforeLaunch.run();
+    }
+    PrismHip.segmentAttentionBackward(stream, d, input.scale(), inputs, gradients);
+  }
+
+  private long[] candidateAddresses(CandidateInput a, int[] d) {
+    return new long[] {
+      address(a.query(), new Shape(d[0], d[7], 16), DataType.FLOAT32),
+      address(a.memory(), new Shape(d[6], d[1], d[5]), DataType.FLOAT32),
+      address(a.base(), new Shape(d[4], d[5]), DataType.FLOAT32),
+      address(a.weights(), new Shape(a.layout().tableRows(), d[5]), DataType.FLOAT32),
+      address(a.codes(), new Shape(d[0], a.layout().codeWidth()), DataType.UINT8),
+      address(a.groups(), new Shape(d[0]), DataType.INT32)
+    };
+  }
+
   private static Shape keyValueShape(Dimensions d) {
     return new Shape(d.rows(), d.keys(), 2L * d.width());
   }
@@ -214,7 +342,12 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
   private long address(NDArray array, Shape shape, DataType type) {
     if (!array.getShape().equals(shape)) {
       throw new IllegalArgumentException(
-          "HIP training kernels expect " + type + shape + ", got " + array.getDataType() + array.getShape());
+          "HIP training kernels expect "
+              + type
+              + shape
+              + ", got "
+              + array.getDataType()
+              + array.getShape());
     }
     return deviceAddress(array, type);
   }
@@ -235,11 +368,16 @@ public final class HipAttention implements TrainingKernels, RelationCodes {
   private long deviceAddress(NDArray array, DataType type) {
     if (array.getDataType() != type) {
       throw new IllegalArgumentException(
-          "HIP training kernels expect " + type + ", got " + array.getDataType() + array.getShape());
+          "HIP training kernels expect "
+              + type
+              + ", got "
+              + array.getDataType()
+              + array.getShape());
     }
     if (!device.equals(array.getDevice()) || !(array instanceof PtNDArray tensor)) {
       throw new IllegalArgumentException("HIP training arrays must be PyTorch arrays on " + device);
     }
-    return PrismHip.tensorAddress(tensor.getHandle(), Element.of(type).ordinal(), device.getDeviceId());
+    return PrismHip.tensorAddress(
+        tensor.getHandle(), Element.of(type).ordinal(), device.getDeviceId());
   }
 }

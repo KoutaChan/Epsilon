@@ -48,15 +48,22 @@
 #include "prism_hip_common.h"
 #include "prism_hip_training.h"
 
+#ifdef PRISM_V4_CAUSAL
+#include "prism_hip_v4_causal.h"
+#define forwardKernel causalForwardKernel
+#define backwardKernel causalBackwardKernel
+#endif
+
 namespace prism {
 namespace {
 
 constexpr int kF = kAttentionFeatures;
-constexpr int kTables = 4;                   // 組の表（コードのバイト t ごとに 1 つ。セグメント 2t と 2t + 1）
-constexpr int kTableEntries = 256;           // 組の表の項の数（バイトの値の数）
-constexpr int kRhoEntries = kAttentionMaxSegments * kAttentionMaxEntries;  // LDS に置くヘッドの ρ の列（セグメント × 値）
-constexpr int kScatterWaves = 4;             // 段 B で ρ の勾配を足すウェーブ（セグメント 2 つずつ）
-constexpr int kServiceWave = kScatterWaves;  // 段 B で dQ と次の Q^T・dO^T を受け持つウェーブ
+constexpr int kTables = 4;          // 組の表（コードのバイト t ごとに 1 つ。セグメント 2t と 2t + 1）
+constexpr int kTableEntries = 256;  // 組の表の項の数（バイトの値の数）
+constexpr int kRhoEntries =
+    kAttentionMaxSegments * kAttentionMaxEntries;  // LDS に置くヘッドの ρ の列（セグメント × 値）
+constexpr int kScatterWaves = 4;                   // 段 B で ρ の勾配を足すウェーブ（セグメント 2 つずつ）
+constexpr int kServiceWave = kScatterWaves;        // 段 B で dQ と次の Q^T・dO^T を受け持つウェーブ
 constexpr int kMinBackwardWaves = kServiceWave + 1;
 constexpr float kLog2e = 1.4426950408889634f;
 constexpr float kLn2 = 0.6931471805599453f;
@@ -71,15 +78,11 @@ constexpr int kLargeBlocks = kAttentionMaxTokens / 16;
 
 // 次元 d を A のフラグメントの行 r(d) = 2(d & 7) + (d >> 3) に置くと、C のフラグメントの行 2v + half が次元 v + 8·half になる（lane が
 // 連続する 8 次元を持ち、16 バイトで書ける）。
-__device__ __forceinline__ int featureRow(int d) {
-  return 2 * (d & 7) + (d >> 3);
-}
+__device__ __forceinline__ int featureRow(int d) { return 2 * (d & 7) + (d >> 3); }
 
 // C のフラグメントの行 m = 2v + half の値を、B のフラグメントの K の位置 κ(m) = v + 8·half に置く（lane の 8 値と、対になる lane の 8 値を
 // 並べるだけで B のフラグメントになる）。
-__device__ __forceinline__ int fragmentColumn(int m) {
-  return (m >> 1) + 8 * (m & 1);
-}
+__device__ __forceinline__ int fragmentColumn(int m) { return (m >> 1) + 8 * (m & 1); }
 
 // ワークグループのバリア（LDS の順序だけを保証する。t1 はカーネルの中でグローバルメモリに書いた値を読まない）。
 __device__ __forceinline__ void barrier() {
@@ -220,6 +223,9 @@ struct ForwardArgs {
   Span<uint16_t> out;
   Span<float> outFloat;
   Span<float> logSumExp;
+#ifdef PRISM_V4_CAUSAL
+  int fixed;
+#endif
 };
 
 struct BackwardArgs {
@@ -235,6 +241,9 @@ struct BackwardArgs {
   Span<uint16_t> gradQuery;
   Span<uint16_t> gradKeyValue;
   Span<float> gradTable;
+#ifdef PRISM_V4_CAUSAL
+  int fixed;
+#endif
 };
 
 // 行の範囲。一様な先頭のアドレスと、lane ごとの 32 bit のオフセットで読み書きする（グローバルメモリの読み書きが、SGPR の先頭と VGPR の
@@ -286,7 +295,7 @@ struct alignas(16) ForwardShared {
 };
 
 template <int kBlocks>
-__global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs args) {
+__global__ __launch_bounds__(kWave* kBlocks) void forwardKernel(ForwardArgs args) {
   static_assert(sizeof(ForwardShared<kBlocks>) <= 64 * 1024, "LDS of one work group is 64 KiB");
   __shared__ ForwardShared<kBlocks> shared;
 
@@ -312,9 +321,8 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
       rowOf(args.query, static_cast<size_t>(row) * queries * width + columns, queries * width - columns, bounds);
   const Row<const uint16_t> keyRow =
       rowOf(args.keyValue, static_cast<size_t>(row) * keys * 2 * width + columns, keys * 2 * width - columns, bounds);
-  const Row<const uint32_t> codeRow =
-      rowOf(args.codes, static_cast<size_t>(row) * shape.codeQueries * keys,
-            static_cast<size_t>(shape.codeQueries) * keys, bounds);
+  const Row<const uint32_t> codeRow = rowOf(args.codes, static_cast<size_t>(row) * shape.codeQueries * keys,
+                                            static_cast<size_t>(shape.codeQueries) * keys, bounds);
   const Row<const float> maskRow = rowOf(args.mask, static_cast<size_t>(row) * keys, keys, bounds);
 
   // 0. 2 ヘッドの ρ の列、キーのタイルの有効・無効、V^T を置く（キーのタイルとヘッドの組をウェーブで分ける）。バリアの後に、ρ の列から
@@ -356,7 +364,7 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
     const uint32_t at = static_cast<uint32_t>(min(query, queries - 1) * width + h * kF);
     queryFragment[h] = fragment(queryRow.at(at, kF, bounds));
   }
-  auto loadBlock = [&](int kt, uint32_t (&code)[8], bf16x16 (&key)[2]) {
+  auto loadBlock = [&](int kt, uint32_t (&code)[8], bf16x16(&key)[2]) {
     const int j = min(16 * kt + column, keys - 1);
 #pragma unroll
     for (int t = 0; t < 8; ++t) {
@@ -386,9 +394,11 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
       loadBlock(kt + 1, nextCode, nextKey);
     }
     const uint32_t keyBits = shared.keyBits[kt];
+#ifndef PRISM_V4_CAUSAL
     if (keyBits == 0) {
       continue;
     }
+#endif
     // コードをクエリの行に並べ替える（ウェーブの中で LDS を通す）。
 #pragma unroll
     for (int t = 0; t < 8; ++t) {
@@ -411,7 +421,11 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
 #pragma unroll
     for (int v = 0; v < 8; ++v) {
       // 無効なキーは −∞。表を引く読み込みを分岐の中に入れないよう、条件で選ぶのは WMMA の値と定数だけにして、−∞ は足して付ける。
-      const bool present = ((keyBits >> (2 * v + half)) & 1u) != 0;
+      bool present = ((keyBits >> (2 * v + half)) & 1u) != 0;
+#ifdef PRISM_V4_CAUSAL
+      const int key = 16 * kt + 2 * v + half;
+      present = key < keys && v4::causalKey(present, args.fixed, query, key);
+#endif
       const float floor = present ? 0.0f : -INFINITY;
       const float2 bias = pairBias(code[v], shared.bias);
       logit[0][v] = fmaf(present ? score[0][v] : 0.0f, scale, bias.x) + floor;
@@ -426,13 +440,18 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
       }
       block = fmaxf(block, swapHalves(block));
       const float next = fmaxf(running[h], block);
-      const float alpha = __builtin_amdgcn_exp2f(running[h] - next);
+#ifdef PRISM_V4_CAUSAL
+      const float origin = next == -INFINITY ? 0.0f : next;
+#else
+      const float origin = next;
+#endif
+      const float alpha = __builtin_amdgcn_exp2f(running[h] - origin);
       running[h] = next;
       float e[8];
       float sum = 0.0f;
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
-        e[v] = __builtin_amdgcn_exp2f(logit[h][v] - next);
+        e[v] = __builtin_amdgcn_exp2f(logit[h][v] - origin);
         sum += e[v];
       }
       total[h] = fmaf(total[h], alpha, sum);
@@ -484,9 +503,7 @@ __global__ __launch_bounds__(kWave * kBlocks) void forwardKernel(ForwardArgs arg
 // dS とコードの LDS の行のストライド（ワード）: 16·blocks 以上で、64 を法として 36（100 / 164 / 164）。バンクが 64 のとき、段 B の
 // 16 バイトの読み込み（lane が行 column の 8·half から読む）は 16 行 × 2 つの半分で 2-way（最小）になり、段 A の書き込み（行 2v + half の
 // 16 列）は 2 つの半分のバンクが重ならない。行の先頭は 16 バイトにそろう。
-constexpr int scoreStride(int blocks) {
-  return 16 * blocks + ((36 - 16 * blocks) % 64 + 64) % 64;
-}
+constexpr int scoreStride(int blocks) { return 16 * blocks + ((36 - 16 * blocks) % 64 + 64) % 64; }
 static_assert(scoreStride(kSmallBlocks) == 100 && scoreStride(kMediumBlocks) == 164 && scoreStride(kLargeBlocks) == 164,
               "the score rows are 36 words apart modulo 64 banks");
 
@@ -512,9 +529,7 @@ struct alignas(16) BackwardShared {
 };
 
 // 列 κ のクエリが生きていれば true。bits はクエリのタイルごとの生きたクエリの bit（queryBits）。
-__device__ __forceinline__ bool liveQuery(uint32_t bits, int k) {
-  return ((bits >> k) & 1u) != 0;
-}
+__device__ __forceinline__ bool liveQuery(uint32_t bits, int k) { return ((bits >> k) & 1u) != 0; }
 
 // ウェーブの 2 セグメントの部分和 bins[p][c][lane] に、lane が持つ連続する 2 キーの dS を足す。セグメントごとに順に足し（コードが同じなら
 // 2 つ目は 1 つ目の結果に足す。1 つずつ読み書きするのとビットで同じ）、2 セグメント分の 4 つの読み込みはまとめて出して待ち時間を重ねる。
@@ -546,9 +561,7 @@ __device__ __forceinline__ void accumulatePair(float (*bins)[kAttentionMaxEntrie
 // 和に入る 0 の符号（WMMA の結果）で決まる。そろえると、ちょうど 0 の和は常に +0 で書かれる。ただし −0 が全く出ないわけではない。
 // 0 でない和の積 x·scale がアンダーフローすると fma は符号つきの 0 を返し、pack8 は絶対値の小さい負の値を BF16 の −0 に丸める。この和は
 // バッチの組み方に依らず同じ値なので、行どうしの独立は保たれる。
-__device__ __forceinline__ float positiveZero(float x) {
-  return x + 0.0f;
-}
+__device__ __forceinline__ float positiveZero(float x) { return x + 0.0f; }
 
 // 段 A でクエリのタイル 1 つに使う、グローバルメモリからの入力（lane のキーに対する 8 クエリのコードと、Q・dO の行のフラグメント）。次の
 // タイルの分を先読みする。
@@ -593,7 +606,7 @@ __device__ __forceinline__ void storeQueries(BackwardShared<kBlocks>& shared, Qu
 }
 
 template <int kBlocks>
-__global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs args) {
+__global__ __launch_bounds__(kWave* kBlocks) void backwardKernel(BackwardArgs args) {
   static_assert(kBlocks >= kMinBackwardWaves, "stage B needs the scatter waves and the service wave");
   static_assert(sizeof(BackwardShared<kBlocks>) <= 64 * 1024, "LDS of one work group is 64 KiB");
   __shared__ BackwardShared<kBlocks> shared;
@@ -626,9 +639,8 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
   const Row<const float> logSumExpRow =
       rowOf(args.logSumExp, (static_cast<size_t>(row) * shape.heads + head) * queries, queries, bounds);
   const Row<const uint16_t> keyRow = rowOf(args.keyValue, keyFirst, keySize, bounds);
-  const Row<const uint32_t> codeRow =
-      rowOf(args.codes, static_cast<size_t>(row) * shape.codeQueries * keys,
-            static_cast<size_t>(shape.codeQueries) * keys, bounds);
+  const Row<const uint32_t> codeRow = rowOf(args.codes, static_cast<size_t>(row) * shape.codeQueries * keys,
+                                            static_cast<size_t>(shape.codeQueries) * keys, bounds);
   const Row<const float> maskRow = rowOf(args.mask, static_cast<size_t>(row) * keys, keys, bounds);
   const Row<uint16_t> gradQueryRow = rowOf(args.gradQuery, queryFirst, querySize, bounds);
 
@@ -719,7 +731,11 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
   }
   liveBlocks = __builtin_amdgcn_readfirstlane(liveBlocks);
   barrier();
+#ifdef PRISM_V4_CAUSAL
+  const bool ownsKeys = kt < keyBlocks && (shared.keyBits[kt] != 0 || 16 * (kt + 1) > args.fixed);
+#else
   const bool ownsKeys = kt < keyBlocks && shared.keyBits[kt] != 0;
+#endif
 
   f32x8 gradKeyT = {};
   f32x8 gradValueT = {};
@@ -751,7 +767,12 @@ __global__ __launch_bounds__(kWave * kBlocks) void backwardKernel(BackwardArgs a
       for (int v = 0; v < 8; ++v) {
         // 無効なキーと生きていないクエリは P = +0、dS = +0·(0 − 0) = +0（順伝播と同じく −∞ を足して付け、表を引く読み込みを分岐の中に
         // 入れない）。
+#ifdef PRISM_V4_CAUSAL
+        const bool present = key < keys && v4::causalKey(keyPresent, args.fixed, 16 * qt + 2 * v + half, key);
+        const bool valid = present && liveQuery(liveBits, v + 8 * half);
+#else
         const bool valid = keyPresent && liveQuery(liveBits, v + 8 * half);
+#endif
         const float floor = valid ? 0.0f : -INFINITY;
         const float logit = fmaf(valid ? score[v] : 0.0f, scale, pairBias(in.code[v], shared.bias));
         probability[v] = __builtin_amdgcn_exp2f((logit - lse[v]) + floor);
@@ -885,6 +906,13 @@ const uint32_t* codeWords(const int16_t* codes) {
 
 }  // namespace
 
+#ifdef PRISM_V4_CAUSAL
+static void checkCausalFixed(const AttentionShape& shape, int fixed) {
+  if (fixed <= 0 || fixed > shape.keys || shape.queries != shape.keys) {
+    throw std::invalid_argument("invalid V4 causal attention prefix");
+  }
+}
+#else
 void checkAttentionShape(const AttentionShape& shape) {
   auto require = [](bool condition, const std::string& message) {
     if (!condition) {
@@ -892,12 +920,12 @@ void checkAttentionShape(const AttentionShape& shape) {
     }
   };
   require(shape.rows > 0, "attention needs rows, got " + std::to_string(shape.rows));
-  require(shape.queries > 0 && shape.queries <= kAttentionMaxTokens,
-          "attention queries must be in 1.." + std::to_string(kAttentionMaxTokens) + ", got " +
-              std::to_string(shape.queries));
-  require(shape.keys > 0 && shape.keys <= kAttentionMaxTokens,
-          "attention keys must be in 1.." + std::to_string(kAttentionMaxTokens) + ", got " +
-              std::to_string(shape.keys));
+  require(shape.queries > 0 && shape.queries <= kAttentionMaxTokens, "attention queries must be in 1.." +
+                                                                         std::to_string(kAttentionMaxTokens) +
+                                                                         ", got " + std::to_string(shape.queries));
+  require(
+      shape.keys > 0 && shape.keys <= kAttentionMaxTokens,
+      "attention keys must be in 1.." + std::to_string(kAttentionMaxTokens) + ", got " + std::to_string(shape.keys));
   require(shape.codeQueries >= shape.queries, "relation codes must cover the queries");
   require(shape.heads > 0 && shape.heads % 2 == 0,
           "attention needs an even number of heads, got " + std::to_string(shape.heads));
@@ -910,12 +938,23 @@ void checkAttentionShape(const AttentionShape& shape) {
   require(shape.scale > 0.0f, "attention scale must be positive");
 }
 
+#endif
+
+#ifdef PRISM_V4_CAUSAL
+void causalAttentionForward(const AttentionShape& shape, int fixed, const AttentionForward& arrays,
+                            hipStream_t stream) {
+  checkCausalFixed(shape, fixed);
+#else
 void attentionForward(const AttentionShape& shape, const AttentionForward& arrays, hipStream_t stream) {
+#endif
   checkAttentionShape(shape);
   const size_t rows = static_cast<size_t>(shape.rows);
   const size_t width = static_cast<size_t>(shape.heads) * kF;
   ForwardArgs args{};
   args.shape = shape;
+#ifdef PRISM_V4_CAUSAL
+  args.fixed = fixed;
+#endif
   args.query = {arrays.query, rows * shape.queries * width};
   args.keyValue = {arrays.keyValue, rows * shape.keys * 2 * width};
   args.mask = {arrays.mask, rows * shape.keys};
@@ -943,12 +982,21 @@ void attentionForward(const AttentionShape& shape, const AttentionForward& array
   PRISM_HIP(hipGetLastError());
 }
 
+#ifdef PRISM_V4_CAUSAL
+void causalAttentionBackward(const AttentionShape& shape, int fixed, const AttentionBackward& arrays,
+                             hipStream_t stream) {
+  checkCausalFixed(shape, fixed);
+#else
 void attentionBackward(const AttentionShape& shape, const AttentionBackward& arrays, hipStream_t stream) {
+#endif
   checkAttentionShape(shape);
   const size_t rows = static_cast<size_t>(shape.rows);
   const size_t width = static_cast<size_t>(shape.heads) * kF;
   BackwardArgs args{};
   args.shape = shape;
+#ifdef PRISM_V4_CAUSAL
+  args.fixed = fixed;
+#endif
   args.query = {arrays.query, rows * shape.queries * width};
   args.keyValue = {arrays.keyValue, rows * shape.keys * 2 * width};
   args.mask = {arrays.mask, rows * shape.keys};

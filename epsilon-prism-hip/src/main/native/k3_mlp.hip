@@ -1,3 +1,4 @@
+#include "prism_hip_capabilities.h"
 // K3（MLP_ALL・MLP_FIXED）と K5（MLP_LAST）。どちらもワークグループ（256 スレッド = 8 ウェーブ）が kMlpRows トークンを受け持ち、
 // MLP の段は prism_hip_mlp.h の mlpStage。重みを公開するときに、MLP の重みをフラグメントの順に並べ替えたコピーを作る
 // mlpFragmentKernel もここに置く（K3・K5・K6・K8・K9 が読む）。
@@ -19,13 +20,24 @@
 // 公開するときに計画が mlpFragmentKernel で作った、フラグメントの順のコピーから読む。
 #include "prism_hip_mlp.h"
 
+#ifdef PRISM_V4_WIDE
+#define mlpKernel wideMlpKernel
+#define mlpKvKernel wideMlpKvKernel
+#endif
+
 namespace prism {
 namespace {
 
 using tile::kThreads;
 
-// ワークグループが受け持つトークンの数。64 より LDS が小さく、1 SIMD に載るウェーブが多い。
-constexpr int kMlpRows = 48;
+#ifdef PRISM_V4_WIDE
+constexpr auto kMlpWidth = kWidthM;
+#else
+constexpr auto kMlpWidth = kWidthS;
+#endif
+constexpr int kMlpRows = kMlpWidth.mlpRows;
+template <int H>
+using MlpTile = tile::MlpShared<H, kMlpRows, kMlpWidth.ffnChunks>;
 
 // ワークグループが受け持つ、区間の中のトークン [token0, token0 + rows)。
 struct MlpBlock {
@@ -51,8 +63,8 @@ __device__ __forceinline__ MlpBlock mlpBlock(const Args& args) {
 // n_j を stream へ書く（n_j は、normalizeStore が同じゲインで書く n とビットで同じ）。[K V] = ⌊n_j·W_jᵀ + b_j⌉ は projectKeyValue で
 // 求める。局・席・牌とイベントが混ざるタイルは全ての行を射影し、イベントの行だけを書く。
 template <int H>
-__device__ __forceinline__ void eventKeyValues(tile::MlpShared<H, kMlpRows>& shared, const MlpArgs& args, int token0,
-                                               int rows, int tid, Bounds& bounds) {
+__device__ __forceinline__ void eventKeyValues(MlpTile<H>& shared, const MlpArgs& args, int token0, int rows, int tid,
+                                               Bounds& bounds) {
   constexpr int kVectors = H / 8;
   constexpr int kPasses = kMlpRows * kVectors / kThreads;
   __shared__ float inverse[kMlpRows];  // 行の r
@@ -69,11 +81,18 @@ __device__ __forceinline__ void eventKeyValues(tile::MlpShared<H, kMlpRows>& sha
       inverse[row] = r;
     }
   }
-  const int col = (tid % kVectors) * 8;
   u32x4 x[kPasses];
+#ifndef PRISM_V4_WIDE
+  const int col = (tid % kVectors) * 8;
+#endif
 #pragma unroll
   for (int pass = 0; pass < kPasses; ++pass) {
+#ifdef PRISM_V4_WIDE
+    const int index = tid + pass * kThreads;
+    x[pass] = *reinterpret_cast<const u32x4*>(&shared.stream[index / kVectors][index % kVectors * 8]);
+#else
     x[pass] = *reinterpret_cast<const u32x4*>(&shared.stream[tile::tileRow<H, kMlpRows>(pass, tid)][col]);
+#endif
   }
   const int first = max(args.firstEvent - token0, 0);  // タイルの中で最初のイベントの行
   for (int j = 0; j < args.eventKeyValues; ++j) {
@@ -83,7 +102,13 @@ __device__ __forceinline__ void eventKeyValues(tile::MlpShared<H, kMlpRows>& sha
     tile::barrier();
 #pragma unroll
     for (int pass = 0; pass < kPasses; ++pass) {
+#ifdef PRISM_V4_WIDE
+      const int index = tid + pass * kThreads;
+      const int at = index / kVectors;
+      const int col = index % kVectors * 8;
+#else
       const int at = tile::tileRow<H, kMlpRows>(pass, tid);
+#endif
       *reinterpret_cast<u32x4*>(&shared.stream[at][col]) =
           tile::normalize8(x[pass], keyValue.gain.data, keyValue.gain.limit, col, inverse[at], bounds);
     }
@@ -97,8 +122,8 @@ __device__ __forceinline__ void eventKeyValues(tile::MlpShared<H, kMlpRows>& sha
 template <int H>
 __global__ __launch_bounds__(kThreads) void mlpKernel(MlpArgs args) {
   constexpr int A = H / 2;
-  static_assert(sizeof(tile::MlpShared<H, kMlpRows>) <= 64 * 1024, "LDS of one work group is 64 KiB");
-  __shared__ tile::MlpShared<H, kMlpRows> shared;
+  static_assert(sizeof(MlpTile<H>) <= 64 * 1024, "LDS of one work group is 64 KiB");
+  __shared__ MlpTile<H> shared;
 
   const MlpBlock block = mlpBlock(args);
   const int tid = threadIdx.x;
@@ -119,8 +144,8 @@ __global__ __launch_bounds__(kThreads) void mlpKernel(MlpArgs args) {
   // 次の層の Attention の入力 n = ⌊(x·r)·g⌉ をレジスタから直接書く（K2・K4 が A のフラグメントとしてそのまま読む）。
   const int normalized = min(rows, args.normalizedTokens - token0);
   if (normalized > 0) {
-    tile::normalizeStore<H>(shared.stream, args.nextNorm.data, args.nextNorm.limit, args.epsilon,
-                            args.normalized.data, args.normalized.limit, token0, normalized, tid, bounds);
+    tile::normalizeStore<H>(shared.stream, args.nextNorm.data, args.nextNorm.limit, args.epsilon, args.normalized.data,
+                            args.normalized.limit, token0, normalized, tid, bounds);
   }
   // イベントのトークンを含むタイル（ワークグループで一様）は、最後の全トークンの層なら、後の層が読むイベントのキーとバリューを作る。
   if (args.eventKeyValues > 0 && token0 + rows > args.firstEvent) {
@@ -132,8 +157,8 @@ __global__ __launch_bounds__(kThreads) void mlpKernel(MlpArgs args) {
 template <int H>
 __global__ __launch_bounds__(kThreads) void mlpKvKernel(MlpKvArgs args) {
   constexpr int A = H / 2;
-  static_assert(sizeof(tile::MlpShared<H, kMlpRows>) <= 64 * 1024, "LDS of one work group is 64 KiB");
-  __shared__ tile::MlpShared<H, kMlpRows> shared;
+  static_assert(sizeof(MlpTile<H>) <= 64 * 1024, "LDS of one work group is 64 KiB");
+  __shared__ MlpTile<H> shared;
 
   const MlpBlock block = mlpBlock(args);
   const int tid = threadIdx.x;
@@ -162,6 +187,7 @@ __global__ __launch_bounds__(kThreads) void mlpKvKernel(MlpKvArgs args) {
 // 重みを公開するときに、行列 W [rows, columns] をフラグメントの順に並べ替えてコピーする（prism_hip_mlp.h の FragmentWeights）。
 // スレッドはコピー先の 16 バイト i（W の 1 行の K 方向の 8 要素）を 1 つずつ受け持つ。i = ((c·S + s)·2 + upper)·16 + r
 // （S = columns/16）は、W の行 16c + r の要素 16s + 8·upper から始まる 8 要素で、書き込みは i の順に連続する。
+#ifndef PRISM_V4_WIDE
 __global__ __launch_bounds__(kThreads) void mlpFragmentKernel(MlpFragmentArgs args) {
   const int steps = args.columns / 16;
   const int vectors = args.rows * args.columns / 8;
@@ -180,6 +206,7 @@ __global__ __launch_bounds__(kThreads) void mlpFragmentKernel(MlpFragmentArgs ar
   *reinterpret_cast<u32x4*>(args.fragments.data + to) = *reinterpret_cast<const u32x4*>(args.weight.data + from);
   bounds.trap();
 }
+#endif
 
 // 区間を確かめ、区間ごとの最初のワークグループの番号を区間のトークンの数から求めて blockStart に入れる。区間は 1 つか 2 つで、トークンの
 // 軸の 0 から隙間なく続き、重みのコピーとバイアスは区間の FFN の幅に合った形でなければならない（違えば invalid_argument）。最後の区間の
@@ -219,6 +246,7 @@ int segmentBlocks(int hidden, Args& args, const char* kernel) {
 
 }  // namespace
 
+#ifndef PRISM_V4_WIDE
 void launchMlpFragments(const MlpFragmentArgs& args, hipStream_t stream) {
   if (args.rows <= 0 || args.columns <= 0 || args.rows % 16 != 0 || args.columns % 16 != 0) {
     throw std::invalid_argument("the MLP fragment copy needs a positive multiple of 16 rows and columns, got " +
@@ -235,14 +263,21 @@ void launchMlpFragments(const MlpFragmentArgs& args, hipStream_t stream) {
   PRISM_HIP(hipGetLastError());
 }
 
+#endif
+
+#ifdef PRISM_V4_WIDE
+void launchV4WideMlp(int hidden, const MlpArgs& args, hipStream_t stream);
+void launchV4WideMlpKv(int hidden, const MlpKvArgs& args, hipStream_t stream);
+#define launchMlp launchV4WideMlp
+#define launchMlpKv launchV4WideMlpKv
+#endif
 void launchMlp(int hidden, const MlpArgs& args, hipStream_t stream) {
   MlpArgs launched = args;
   const int end = segmentBlocks(hidden, launched, "K3");
   if (args.residualTokens < 0 || args.residualTokens > end || args.normalizedTokens < 0 ||
       args.normalizedTokens > end) {
     throw std::invalid_argument("K3 writes back " + std::to_string(args.residualTokens) + " residual and " +
-                                std::to_string(args.normalizedTokens) + " normalized tokens of " +
-                                std::to_string(end));
+                                std::to_string(args.normalizedTokens) + " normalized tokens of " + std::to_string(end));
   }
   if (args.eventKeyValues < 0 || args.eventKeyValues > kMaxEventKeyValues) {
     throw std::invalid_argument("K3 makes zero to " + std::to_string(kMaxEventKeyValues) +
@@ -270,9 +305,15 @@ void launchMlp(int hidden, const MlpArgs& args, hipStream_t stream) {
     return;
   }
   switch (hidden) {
-    case 256:
-      hipLaunchKernelGGL(mlpKernel<256>, dim3(blocks), dim3(kThreads), 0, stream, launched);
+#ifdef PRISM_V4_WIDE
+    case kWidthM.width:
+      hipLaunchKernelGGL(mlpKernel<kWidthM.width>, dim3(blocks), dim3(kThreads), 0, stream, launched);
       break;
+#else
+    case kWidthS.width:
+      hipLaunchKernelGGL(mlpKernel<kWidthS.width>, dim3(blocks), dim3(kThreads), 0, stream, launched);
+      break;
+#endif
     default:
       throw std::invalid_argument("K3 has no specialisation for hidden " + std::to_string(hidden));
   }
@@ -297,9 +338,15 @@ void launchMlpKv(int hidden, const MlpKvArgs& args, hipStream_t stream) {
     return;
   }
   switch (hidden) {
-    case 256:
-      hipLaunchKernelGGL(mlpKvKernel<256>, dim3(blocks), dim3(kThreads), 0, stream, launched);
+#ifdef PRISM_V4_WIDE
+    case kWidthM.width:
+      hipLaunchKernelGGL(mlpKvKernel<kWidthM.width>, dim3(blocks), dim3(kThreads), 0, stream, launched);
       break;
+#else
+    case kWidthS.width:
+      hipLaunchKernelGGL(mlpKvKernel<kWidthS.width>, dim3(blocks), dim3(kThreads), 0, stream, launched);
+      break;
+#endif
     default:
       throw std::invalid_argument("K5 has no specialisation for hidden " + std::to_string(hidden));
   }

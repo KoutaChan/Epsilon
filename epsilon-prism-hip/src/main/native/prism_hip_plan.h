@@ -5,13 +5,20 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "prism_hip_common.h"
 #include "prism_hip_format.h"
 #include "prism_hip_kernels.h"
+#include "prism_hip_event_pages.h"
+#include "prism_hip_candidate_layout.h"
 
 namespace prism {
+
+namespace v4 {
+class HotOffsetCache;
+}
 
 // 作業領域を分けた各領域（Java の HipRegion と同じ順）。
 enum class Region : int {
@@ -51,6 +58,32 @@ enum class Kernel : int {
 constexpr int kRegions = static_cast<int>(Region::kCount);
 constexpr int kKernels = static_cast<int>(Kernel::kCount);
 
+// HipPlanOptions.encode() and the benchmark case use this host-only descriptor.
+struct PlanOptions {
+  enum Feature : int32_t { kCausal = 1, kCount = 2, kSegments = 4 };
+  int32_t features = 0;
+  int32_t countOffset = 0;
+  int32_t countFirstCode = 0;
+  int32_t countWidth = 0;
+  int32_t segmentsOffset = 0;
+  v4::SegmentLayout segments{};
+
+  bool has(Feature feature) const { return (features & feature) != 0; }
+};
+
+constexpr int kPlanOptionsInts = 5 + v4::kSegmentLayoutInts;
+static_assert(sizeof(PlanOptions) == kPlanOptionsInts * sizeof(int32_t));
+
+struct CandidatePackLayout {
+  size_t gate = 0;
+  size_t projection = 0;
+  size_t segments = 0;
+  size_t countWorkspace = 0;
+
+  size_t countBytes() const { return gate * sizeof(float) + 2 * projection * sizeof(uint16_t); }
+  size_t segmentsBytes() const { return segments * sizeof(float); }
+};
+
 // 計画の形（Java の HipShape）。
 struct PlanShape {
   Architecture architecture;
@@ -60,6 +93,7 @@ struct PlanShape {
   int actions;
   size_t inputBytes;
   size_t weightBytes;
+  PlanOptions options{};
 
   int hidden() const { return architecture.hidden; }
   int attention() const { return architecture.attention(); }
@@ -84,8 +118,10 @@ void validateArchitecture(const Architecture& architecture);
 // この形で、このカーネルがこの層を回すか（Java の HipKernel.acceptsLayer）。
 bool acceptsLayer(Kernel kernel, int layer, const Architecture& architecture);
 
+struct WidthKernels;
+
 // 計画。作業領域・重みのバッファ・重みから作るもの（バイアスの表と、QKV・MLP の重みをフラグメントの順に並べた写し）は作るときに一度だけ
-// 確保し、処理は全てスロットのストリームに積む。forward の中では同期もメモリの確保もしない。スレッドセーフではない（使うのは 1 つの
+// 確保し、処理は全てスロットのストリームに積む。候補の辞書を作り直すときだけ forward で同期する。スレッドセーフではない（使うのは 1 つの
 // スロットの submit のスレッドだけ）。
 class Plan {
  public:
@@ -116,8 +152,13 @@ class Plan {
   // ホストへ写す（同期する）。K2・K4 は、前の K0 が書いた組の順の行の番号を読む。
   void run(Kernel kernel, int layer, const BatchShape& batch);
 
-  // H2D を 1 回 → 形の記述の順にカーネル → s の D2H を 1 回（同期しない）。K2・K4 の行の組は、input の行のインデックスからホストで数える。
-  void forward(const void* input, const BatchShape& batch, void* scores, int64_t version);
+  // 入力全体か公開イベントの差分を転送して、形の記述の順にカーネルを流し、スコアを読み出す（同期しない）。K2・K4 の行の組は、input の行のインデックスからホストで数える。
+  void forward(const void* input, const BatchShape& batch, void* scores, int64_t version, const int* eventMap = nullptr,
+               int misses = 0, int slots = 0, size_t transferBytes = 0);
+
+  // 全レーンの作業領域を確保したあと、空き VRAM を残りのレーンで分ける。
+  void configureCandidateInput(const int* descriptor, size_t count);
+  std::array<int64_t, 4> configureEventPages(int remaining, int events, double reserveFraction);
 
   void setProfile(bool enabled) { profile_ = enabled; }
 
@@ -127,6 +168,9 @@ class Plan {
   void synchronize();
 
  private:
+  CandidateInputLayout candidateInput_{};
+  bool restoreCandidates_ = false;
+
   static constexpr int kMaxLaunches = kMaxDepth;
 
   // MLP の重みをフラグメントの順に並べた写し 1 つ: 重みのスロットの項目にある行列の、行 [firstRow, firstRow + rows) の [rows, columns]。
@@ -141,12 +185,14 @@ class Plan {
 
   void launch(Kernel kernel, int layer, const BatchShape& batch);
   // ホストの行のインデックス [行, 幅]（int32、アラインメントは問わない）から、K2・K4 の組ごとの行の数 groupRows_ を数える。
-  void countGroupRows(const char* rowColumn, int rows);
+  void countGroupRows(const char* rowColumn, const BatchShape& batch);
   void validate(const BatchShape& batch) const;
   void validateHeader(const PackHeader& header, size_t bytes) const;
   // 形の記述から、MLP の重みをフラグメントの順に並べた写しの一覧を作る（層ごとの O 射影、FFN の項目ごとの up・down、候補の層のキーと
   // バリューと O 射影、局・席・牌の層ごとの QKV の k・v の行、2 段目のキーとバリューと出力の射影）。
   void planFragmentCopies();
+  void chooseHotOffsets(const void* input, const BatchShape& batch);
+  void publishHotOffsets(v4::HotOffsetCache& cache);
   void resetTiming();
   template <class Launch>
   void timed(Kernel kernel, Launch&& launch);
@@ -177,22 +223,60 @@ class Plan {
   TokenLayout layout(const BatchShape& batch) const;
   size_t weightBytes(Weight weight, int entry) const;
 
+  hipError_t allocateEventPages(int slots);
+  size_t eventInputWidth() const;
+  size_t basicCodeBytes(int transitions) const;
+  void uploadPageMap(const BatchShape& batch, const int* map, int misses, int slots, size_t transferBytes);
+  void uploadInputs(const void* input, const BatchShape& batch, bool sparse);
+  // K1 が埋め込みと同時に射影する幅では QKV も保存する。広い形では K2 の射影を使う。
+  bool saveEventProjection() const;
+  void gatherEventFeatures(const BatchShape& compact, EmbedArgs& args);
+  void exchangePages(const BatchShape& batch, bool embedding);
+  void compactEventInputs(const BatchShape& batch);
+
+  char* pageStorage_ = nullptr;
+  int* pageMap_ = nullptr;
+  uint8_t* pageFeatures_ = nullptr;
+  char* pageInput_ = nullptr;
+  char* pageFixedKeys_ = nullptr;
+  char* pageExtraKeys_ = nullptr;
+  uint16_t* compactAttention_ = nullptr;
+  int pageSlots_ = 0;
+  int denseEvents_ = 0;
+  bool paged_ = false;
+
   int device_;
   hipStream_t stream_;
-  PlanShape shape_;
+  const PlanShape shape_;
+  const WidthKernels& kernels_;
+  const CandidatePackLayout candidatePack_;
+  struct Step {
+    Kernel kernel;
+    int layer;
+  };
+  std::vector<Step> steps_;
+  void launchRereadKeys(const BatchShape& batch);
+  void planSteps(const Architecture& architecture);
+  uint16_t* v4CountWorkspace_ = nullptr;
+  uint16_t* v4CandidateAttention_ = nullptr;
+  std::unique_ptr<v4::HotOffsetCache> v4HotOffsets_;
   std::array<size_t, kRegions> regionOffset_{};
   std::array<size_t, kRegions> regionCapacity_{};
   std::vector<FragmentCopy> fragmentCopies_;
   std::array<int, kWeightEntries> fragmentCopy_{};  // 重みのスロットの項目ごとの写しの番号（なければ −1）
   size_t mlpFragmentElements_ = 0;
+  size_t projectionIndexOffset_ = 0;  // バッチ内で層 0 の射影を共有するための一時領域
   char* workspace_ = nullptr;
   char* weights_ = nullptr;
-  float* relationBias_ = nullptr;     // 層ごとのバイアスの表（置き方は prism_hip_relation.h。uploadWeights が ρ から作る）
-  uint16_t* qkvFragments_ = nullptr;  // 層ごとの、QKV をフラグメントの順に並べた写し（置き方は k2_attention.hip。uploadWeights が
-                                      // 層 1 からの W_qkv から作る。層 0 は K1 の表に折り込んであり、K2 の層 0 は qkv0 を読む）
+  float* relationBias_ = nullptr;  // 層ごとのバイアスの表（置き方は prism_hip_relation.h。uploadWeights が ρ から作る）
+  uint16_t* qkvFragments_ =
+      nullptr;  // 層ごとの、QKV をフラグメントの順に並べた写し（置き方は k2_attention.hip。uploadWeights が
+                // 層 1 からの W_qkv から作る。層 0 は K1 の表に折り込んであり、K2 の層 0 は qkv0 を読む）
   uint16_t* mlpFragments_ = nullptr;  // MLP の重みをフラグメントの順に並べた写し（置き方は prism_hip_mlp.h。中身は
                                       // fragmentCopies_ の一覧）
-  int32_t* rowOrder_ = nullptr;  // K2・K4 が読む、組の順に並べた行の番号（K0 の起動で rowOrderKernel がバッチごとに書く。RowOrderArgs）
+  int32_t* rowOrder_ =
+      nullptr;  // K2・K4 が読む、組の順に並べた行の番号（K0 の起動で rowOrderKernel がバッチごとに書く。RowOrderArgs）
+  std::vector<char> standaloneRows_;
   int groupRows_[kAttentionGroups] = {};  // 今のバッチの組ごとの行の数（forward・run がホストで数える）
   size_t weightsUsed_ = 0;
   size_t embedShared_ = 0;  // K1 の動的な LDS（uploadWeights がヘッダーの特徴の数から決める。embedSharedBytes）

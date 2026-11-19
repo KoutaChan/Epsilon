@@ -78,7 +78,11 @@ __device__ __forceinline__ void writeQueryBlock(const RelationArgs& args, const 
   }
 }
 
+#ifdef PRISM_PAGED_RELATION
+__global__ __launch_bounds__(kThreads) void pageRelationKernel(RelationArgs args, const int* queryMask) {
+#else
 __global__ __launch_bounds__(kThreads) void relationKernel(RelationArgs args) {
+#endif
   __shared__ RelationToken token[kMaxRowTokens];
   __shared__ uint8_t tileRelation[kMaxTiles * kMaxTiles];
 
@@ -88,10 +92,12 @@ __global__ __launch_bounds__(kThreads) void relationKernel(RelationArgs args) {
   const RelationColumns columns = args.columns;
   Bounds bounds;
 
-  const int firstEvent = args.rowColumn.data[bounds.index(
-      static_cast<size_t>(row) * args.rowWidth + args.rowFirstEvent, 1, args.rowColumn.limit)];
-  const int events = args.rowColumn.data[bounds.index(
-      static_cast<size_t>(row) * args.rowWidth + args.rowEvents, 1, args.rowColumn.limit)];
+  const int firstEvent =
+      args.rowColumn
+          .data[bounds.index(static_cast<size_t>(row) * args.rowWidth + args.rowFirstEvent, 1, args.rowColumn.limit)];
+  const int events =
+      args.rowColumn
+          .data[bounds.index(static_cast<size_t>(row) * args.rowWidth + args.rowEvents, 1, args.rowColumn.limit)];
   const int fixed = layout.fixed();
   // 行のトークンの数は、ルールの上限により、行のコードのタイル全体（16·codeBlocks トークン）以下になる。範囲外は検査つきのビルドで
   // 止め、通常のビルドでも LDS と行のコードの外には書かない。
@@ -112,6 +118,9 @@ __global__ __launch_bounds__(kThreads) void relationKernel(RelationArgs args) {
     // 持ち主は 0（なし）か 1〜S（relationSegments は、席のセグメントでこの範囲を前提にする）。
     (void)bounds.index(attributes[columns.owner], 1, static_cast<size_t>(layout.seats) + 1);
     token[p] = relationToken(layout.type(p), attributes, now, columns);
+#if PRISM_HIP_CHECKED
+    checkRelationTile(token[p], layout.tiles, bounds);
+#endif
   }
   for (int e = tid; e < layout.tiles * layout.tiles; e += kThreads) {
     tileRelation[e] = args.tileRelation.data[bounds.index(e, 1, args.tileRelation.limit)];
@@ -120,6 +129,9 @@ __global__ __launch_bounds__(kThreads) void relationKernel(RelationArgs args) {
 
   const int blocks = (tokens + 15) / 16;
   for (int qt = 0; qt < blocks; ++qt) {
+#ifdef PRISM_PAGED_RELATION
+    if (qt * 16 >= fixed && !(queryMask[row] & (1 << qt))) continue;
+#endif
     switch (blockKind(qt, fixed)) {
       case BlockKind::FIXED:
         writeQueryBlock<BlockKind::FIXED>(args, token, tileRelation, row, qt, blocks, tokens, bounds);
@@ -128,12 +140,19 @@ __global__ __launch_bounds__(kThreads) void relationKernel(RelationArgs args) {
         writeQueryBlock<BlockKind::MIXED>(args, token, tileRelation, row, qt, blocks, tokens, bounds);
         break;
       case BlockKind::EVENT:
+#ifdef PRISM_PAGED_RELATION
+        // イベントだけのクエリタイルでは、後のキーとの関係をどの層も読まない。
+        writeQueryBlock<BlockKind::EVENT>(args, token, tileRelation, row, qt, qt + 1, tokens, bounds);
+#else
         writeQueryBlock<BlockKind::EVENT>(args, token, tileRelation, row, qt, blocks, tokens, bounds);
+#endif
         break;
     }
   }
   bounds.trap();
 }
+
+#ifndef PRISM_PAGED_RELATION
 
 // バイアスの表の、1 つのヘッドの対の分を作る。項 e ごとに (ヘッド 2p, ヘッド 2p + 1) の値を書く（×log2e）。組の表 τ の項
 // pairTableEntry(a, b) は ρ[32τ + a] + ρ[32τ + 16 + b]、セグメント 6 の表の項 a は ρ[96 + a]（15 は行の外のキーで −∞）。
@@ -172,9 +191,14 @@ __global__ __launch_bounds__(kThreads) void relationBiasKernel(RelationBiasArgs 
   bounds.trap();
 }
 
+#endif
 }  // namespace
 
+#ifdef PRISM_PAGED_RELATION
+void launchPageRelation(const RelationArgs& args, const int* queryMask, hipStream_t stream) {
+#else
 void launchRelation(const RelationArgs& args, hipStream_t stream) {
+#endif
   if (args.layout.rows <= 0) {
     return;
   }
@@ -190,13 +214,19 @@ void launchRelation(const RelationArgs& args, hipStream_t stream) {
     throw std::invalid_argument("K0 got " + std::to_string(args.codeBlocks) + " code blocks for " +
                                 std::to_string(args.layout.fixed()) + " fixed tokens");
   }
+#ifdef PRISM_PAGED_RELATION
+  hipLaunchKernelGGL(pageRelationKernel, dim3(args.layout.rows), dim3(kThreads), 0, stream, args, queryMask);
+#else
   hipLaunchKernelGGL(relationKernel, dim3(args.layout.rows), dim3(kThreads), 0, stream, args);
+#endif
   PRISM_HIP(hipGetLastError());
 }
 
+#ifndef PRISM_PAGED_RELATION
 void launchRelationBias(const RelationBiasArgs& args, int headPairs, hipStream_t stream) {
   hipLaunchKernelGGL(relationBiasKernel, dim3(headPairs), dim3(kThreads), 0, stream, args);
   PRISM_HIP(hipGetLastError());
 }
 
+#endif
 }  // namespace prism

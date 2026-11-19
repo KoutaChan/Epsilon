@@ -3,7 +3,6 @@ package com.epsilon.prism.hip;
 import ai.djl.engine.Engine;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.jni.LibUtils;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -95,14 +94,20 @@ public final class HipLibrary {
     String os = System.getProperty("os.name");
     String arch = System.getProperty("os.arch");
     if (!"Linux".equals(os) || !("amd64".equals(arch) || "x86_64".equals(arch))) {
-      throw new IllegalStateException("libprism_hip.so is built for linux-x86_64 only, not " + os + "/" + arch);
+      throw new IllegalStateException(
+          "libprism_hip.so is built for linux-x86_64 only, not " + os + "/" + arch);
     }
     Engine engine = Engine.getEngine(PtEngine.ENGINE_NAME);
     BuildInfo build = BuildInfo.read();
     Path library = extract(checked ? CHECKED_LIBRARY : RELEASE_LIBRARY);
     System.load(library.toString());
     RuntimeInfo runtime = RuntimeInfo.parse(PrismHip.runtimeInfo());
-    verify(build, runtime, engine.getVersion(), realPath(Path.of(LibUtils.getLibtorchPath())), checked);
+    verify(
+        build,
+        runtime,
+        engine.getVersion(),
+        realPath(Path.of(LibUtils.getLibtorchPath())),
+        checked);
     return new HipLibrary(build, runtime);
   }
 
@@ -116,10 +121,17 @@ public final class HipLibrary {
    * @param checked 検査つきのビルドを求めたか
    */
   static void verify(
-      BuildInfo build, RuntimeInfo runtime, String torchVersion, Path libtorchDirectory, boolean checked) {
+      BuildInfo build,
+      RuntimeInfo runtime,
+      String torchVersion,
+      Path libtorchDirectory,
+      boolean checked) {
     if (!build.torchVersion().equals(torchVersion)) {
       throw new IllegalStateException(
-          "DJL loaded PyTorch " + torchVersion + " but libprism_hip.so was built for " + build.torchVersion());
+          "DJL loaded PyTorch "
+              + torchVersion
+              + " but libprism_hip.so was built for "
+              + build.torchVersion());
     }
     Path torchHip =
         runtime.torchLoaded().stream()
@@ -128,13 +140,21 @@ public final class HipLibrary {
             .orElseThrow(
                 () ->
                     new IllegalStateException(
-                        "DJL has not loaded the ROCm libtorch (" + TORCH_HIP + "); loaded " + runtime.torchLoaded()));
+                        "DJL has not loaded the ROCm libtorch ("
+                            + TORCH_HIP
+                            + "); loaded "
+                            + runtime.torchLoaded()));
     if (!torchHip.getParent().equals(libtorchDirectory)) {
       throw new IllegalStateException(
-          TORCH_HIP + " is loaded from " + torchHip.getParent() + ", not from DJL's libtorch " + libtorchDirectory);
+          TORCH_HIP
+              + " is loaded from "
+              + torchHip.getParent()
+              + ", not from DJL's libtorch "
+              + libtorchDirectory);
     }
     if (runtime.hipLoaded().size() != 1) {
-      throw new IllegalStateException("expected exactly one HIP runtime in the process, found " + runtime.hipLoaded());
+      throw new IllegalStateException(
+          "expected exactly one HIP runtime in the process, found " + runtime.hipLoaded());
     }
     if (!runtime.hipLoaded().get(0).equals(runtime.hipLibrary())) {
       throw new IllegalStateException(
@@ -157,10 +177,14 @@ public final class HipLibrary {
     String flavor = "rocm" + releaseName(runtime.hipRuntime());
     if (!build.torchFlavor().equals(flavor)) {
       throw new IllegalStateException(
-          "libprism_hip.so was built for the libtorch flavor " + build.torchFlavor() + " but the HIP runtime is " + flavor);
+          "libprism_hip.so was built for the libtorch flavor "
+              + build.torchFlavor()
+              + " but the HIP runtime is "
+              + flavor);
     }
     if (!runtime.cxx11Abi()) {
-      throw new IllegalStateException("libprism_hip.so must use the CXX11 ABI like libtorch " + torchVersion);
+      throw new IllegalStateException(
+          "libprism_hip.so must use the CXX11 ABI like libtorch " + torchVersion);
     }
     if (runtime.checked() != checked) {
       throw new IllegalStateException(
@@ -168,7 +192,10 @@ public final class HipLibrary {
     }
     if (!runtime.architecture().equals(build.architecture())) {
       throw new IllegalStateException(
-          "libprism_hip.so reports arch " + runtime.architecture() + " but its build says " + build.architecture());
+          "libprism_hip.so reports arch "
+              + runtime.architecture()
+              + " but its build says "
+              + build.architecture());
     }
     if (runtime.kernels() != HipKernel.values().length
         || runtime.regions() != HipRegion.values().length
@@ -206,14 +233,16 @@ public final class HipLibrary {
 
   private static Path extract(String name) {
     byte[] bytes = resource(name);
-    Path directory = Path.of(System.getProperty("user.home"), ".cache", "epsilon", "prism-hip", digest(bytes));
+    Path directory =
+        Path.of(System.getProperty("user.home"), ".cache", "epsilon", "prism-hip", digest(bytes));
     Path target = directory.resolve(name);
     try {
       if (!Files.isRegularFile(target) || Files.size(target) != bytes.length) {
         Files.createDirectories(directory);
         Path partial = Files.createTempFile(directory, name, ".part");
         Files.write(partial, bytes);
-        Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        Files.move(
+            partial, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       }
     } catch (IOException e) {
       throw new UncheckedIOException("cannot extract " + name + " to " + directory, e);
@@ -225,7 +254,10 @@ public final class HipLibrary {
     try (InputStream in = HipLibrary.class.getResourceAsStream(RESOURCES + name)) {
       if (in == null) {
         throw new IllegalStateException(
-            RESOURCES + name + " is not on the classpath; build epsilon-prism-hip with -Pnative-hip on the server");
+            RESOURCES
+                + name
+                + " is not on the classpath; build epsilon-prism-hip with -Pnative-hip on the"
+                + " server");
       }
       return in.readAllBytes();
     } catch (IOException e) {
@@ -235,7 +267,9 @@ public final class HipLibrary {
 
   private static String digest(byte[] bytes) {
     try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 16);
+      return HexFormat.of()
+          .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+          .substring(0, 16);
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("SHA-256 is unavailable", e);
     }
@@ -262,14 +296,17 @@ public final class HipLibrary {
       Properties properties = new Properties();
       try (InputStream in = HipLibrary.class.getResourceAsStream(RESOURCES + BUILD_PROPERTIES)) {
         if (in == null) {
-          throw new IllegalStateException(RESOURCES + BUILD_PROPERTIES + " is not on the classpath");
+          throw new IllegalStateException(
+              RESOURCES + BUILD_PROPERTIES + " is not on the classpath");
         }
         properties.load(in);
       } catch (IOException e) {
         throw new UncheckedIOException("cannot read " + BUILD_PROPERTIES, e);
       }
       return new BuildInfo(
-          required(properties, "torch.version"), required(properties, "torch.flavor"), required(properties, "arch"));
+          required(properties, "torch.version"),
+          required(properties, "torch.flavor"),
+          required(properties, "arch"));
     }
 
     private static String required(Properties properties, String key) {

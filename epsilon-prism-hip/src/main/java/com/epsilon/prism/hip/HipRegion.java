@@ -56,8 +56,8 @@ public enum HipRegion {
   EVENT_KEY_VALUE(HipElement.BF16),
   /**
    * 候補層の 2 段目が読むキーとバリュー（BF16。2 段目がある形だけ）。先頭に局・席・牌の {@code [行, 局・席・牌, 2A]}（行ごと）、続けてイベントの
-   * {@code [イベント, 2A]} を置く。局・席・牌の分は K8 が最後の RMSNorm をかけた後の局・席・牌のトークンから、イベントの分は
-   * 最後の全トークンの層の K3 が書き、K9 が読む。
+   * {@code [イベント, 2A]} を置く。V3 では K8 が最後の正規化後の固定トークンを、K3 が更新後のイベントを射影する。
+   * V4 では K8 が層 0 の入力から両方を射影する。K9 がこの領域を読む。
    */
   REREAD_MEMORY(HipElement.BF16);
 
@@ -74,16 +74,23 @@ public enum HipRegion {
   /** 計画の容量いっぱいのときのバイト数。 */
   public long capacityBytes(HipShape shape) {
     HipShape.Capacity capacity = shape.capacity();
-    return bytes(shape, capacity.rows(), capacity.events(), capacity.transitions(), capacity.actions(),
+    return bytes(
+        shape,
+        capacity.rows(),
+        capacity.events(),
+        capacity.transitions(),
+        capacity.actions(),
         capacity.inputBytes());
   }
 
   /** バッチが使うバイト数（領域の先頭から数える）。 */
   public long bytes(HipShape shape, HipBatch batch) {
-    return bytes(shape, batch.rows(), batch.events(), batch.transitions(), batch.actions(), batch.bytes());
+    return bytes(
+        shape, batch.rows(), batch.events(), batch.transitions(), batch.actions(), batch.bytes());
   }
 
-  private long bytes(HipShape shape, int rows, int events, int transitions, int actions, long input) {
+  private long bytes(
+      HipShape shape, int rows, int events, int transitions, int actions, long input) {
     HipArchitecture architecture = shape.architecture();
     long hidden = architecture.hidden();
     long attention = architecture.attention();
@@ -101,7 +108,8 @@ public enum HipRegion {
       case STATIC, TRANSITION -> transitions * hidden * element.bytes();
       case VALUE -> (long) transitions * element.bytes();
       case SCORES -> (long) actions * element.bytes();
-      case EVENT_KEY_VALUE -> architecture.copiedEventLayers() * events * 2 * attention * element.bytes();
+      case EVENT_KEY_VALUE ->
+          architecture.copiedEventLayers() * events * 2 * attention * element.bytes();
       case REREAD_MEMORY -> architecture.reread() ? tokens * 2 * attention * element.bytes() : 0;
     };
   }

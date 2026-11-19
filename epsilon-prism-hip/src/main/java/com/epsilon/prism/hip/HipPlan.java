@@ -2,7 +2,6 @@ package com.epsilon.prism.hip;
 
 import ai.djl.Device;
 import ai.djl.pytorch.engine.PtStream;
-
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
@@ -17,6 +16,11 @@ import java.util.Objects;
 public final class HipPlan implements AutoCloseable {
 
   private final HipShape shape;
+
+  public HipShape shape() {
+    return shape;
+  }
+
   private long handle;
   private long weightsVersion = -1;
 
@@ -34,19 +38,25 @@ public final class HipPlan implements AutoCloseable {
    * @return 計画
    */
   public static HipPlan create(HipLibrary library, PtStream stream, HipShape shape) {
+    return create(library, stream, shape, HipPlanOptions.BASE);
+  }
+
+  /** 配列の容量と追加の候補重み・マスクを同時に指定して計画を作る。 */
+  public static HipPlan create(
+      HipLibrary library, PtStream stream, HipShape shape, HipPlanOptions options) {
     Objects.requireNonNull(library, "library");
     Objects.requireNonNull(shape, "shape");
     Device device = stream.getDevice();
     if (!device.isGpu()) {
       throw new IllegalArgumentException("HIP plans need a GPU stream, got " + device);
     }
-    library.requireArchitecture(device.getDeviceId());
     HipShape.Capacity capacity = shape.capacity();
     long handle =
         PrismHip.newPlan(
             device.getDeviceId(),
             stream.getId(),
             shape.architecture().encode(),
+            options.encode(),
             capacity.rows(),
             capacity.events(),
             capacity.transitions(),
@@ -54,6 +64,20 @@ public final class HipPlan implements AutoCloseable {
             capacity.inputBytes(),
             shape.weightBytes());
     return new HipPlan(shape, handle);
+  }
+
+  /** 公開イベントを使う転送で、候補の追加の区分を復元する列と混合基数を設定する。 */
+  public void configureCandidateInput(int[] descriptor) {
+    PrismHip.configureCandidateInput(handle(), descriptor);
+  }
+
+  /** VRAM の確保前後の空きと総量（バイト）、確保できたイベント数。 */
+  public record EventMemory(long freeBefore, long freeAfter, long total, int slots) {}
+
+  /** 残りのレーン数で空き VRAM を分け、このレーンの保存領域を確保する。イベント数 0 は自動。 */
+  public EventMemory configureEventPages(int remaining, int events, double reserveFraction) {
+    long[] values = PrismHip.configureEventPages(handle(), remaining, events, reserveFraction);
+    return new EventMemory(values[0], values[1], values[2], Math.toIntExact(values[3]));
   }
 
   /** 最後に写した WeightPack のバージョン（まだ写していなければ −1）。 */
@@ -76,7 +100,10 @@ public final class HipPlan implements AutoCloseable {
     }
     if (pack.remaining() > shape.weightBytes() || pack.remaining() < HipPack.HEADER_BYTES) {
       throw new IllegalArgumentException(
-          "weight pack of " + pack.remaining() + " bytes does not fit the plan capacity " + shape.weightBytes());
+          "weight pack of "
+              + pack.remaining()
+              + " bytes does not fit the plan capacity "
+              + shape.weightBytes());
     }
     PrismHip.uploadWeights(handle(), pack, pack.position(), pack.remaining(), version);
     weightsVersion = version;
@@ -92,33 +119,87 @@ public final class HipPlan implements AutoCloseable {
    * @param version 期待する重みのバージョン（写したバージョンと違えば例外）
    */
   public void forward(ByteBuffer input, HipBatch batch, ByteBuffer scores, long version) {
+    forward(input, batch, scores, version, null, 0, 0);
+  }
+
+  /** 配置表には、行ごとのクエリタイルのマスク、イベントの保存先、今回計算するイベントの番号を順に並べる。 */
+  public void forward(
+      ByteBuffer input,
+      HipBatch batch,
+      ByteBuffer scores,
+      long version,
+      ByteBuffer eventMap,
+      int misses,
+      int slots) {
+    forward(input, batch, scores, version, eventMap, misses, slots, 0);
+  }
+
+  /** 未収載のイベントの入力を配置表の後ろから送る。転送バイト数が 0 の場合は全入力を使う。 */
+  public void forward(
+      ByteBuffer input,
+      HipBatch batch,
+      ByteBuffer scores,
+      long version,
+      ByteBuffer eventMap,
+      int misses,
+      int slots,
+      int transferBytes) {
+    if (transferBytes < 0
+        || transferBytes > 0 && (eventMap == null || eventMap.capacity() < transferBytes)) {
+      throw new IllegalArgumentException("invalid event payload length " + transferBytes);
+    }
     requireDirect(input);
     requireDirect(scores);
     shape.requireFits(batch);
     if (version != weightsVersion) {
       throw new IllegalStateException(
-          "weight pack version " + weightsVersion + " is stale; the network is at version " + version);
+          "weight pack version "
+              + weightsVersion
+              + " is stale; the network is at version "
+              + version);
     }
     if (input.remaining() < batch.bytes()) {
-      throw new IllegalArgumentException("input holds " + input.remaining() + " bytes, batch needs " + batch.bytes());
+      throw new IllegalArgumentException(
+          "input holds " + input.remaining() + " bytes, batch needs " + batch.bytes());
     }
     long scoreBytes = (long) batch.actions() * Float.BYTES;
     if (scores.remaining() < scoreBytes) {
-      throw new IllegalArgumentException("scores hold " + scores.remaining() + " bytes, batch needs " + scoreBytes);
+      throw new IllegalArgumentException(
+          "scores hold " + scores.remaining() + " bytes, batch needs " + scoreBytes);
     }
-    PrismHip.forward(
-        handle(),
-        input,
-        input.position(),
-        batch.rows(),
-        batch.events(),
-        batch.transitions(),
-        batch.actions(),
-        batch.bytes(),
-        batch.sections(),
-        scores,
-        scores.position(),
-        version);
+    if (eventMap == null) {
+      PrismHip.forward(
+          handle(),
+          input,
+          input.position(),
+          batch.rows(),
+          batch.events(),
+          batch.transitions(),
+          batch.actions(),
+          batch.bytes(),
+          batch.sections(),
+          scores,
+          scores.position(),
+          version);
+    } else {
+      PrismHip.forwardPaged(
+          handle(),
+          input,
+          input.position(),
+          batch.rows(),
+          batch.events(),
+          batch.transitions(),
+          batch.actions(),
+          batch.bytes(),
+          batch.sections(),
+          scores,
+          scores.position(),
+          version,
+          eventMap,
+          misses,
+          slots,
+          transferBytes);
+    }
   }
 
   /**
@@ -132,7 +213,8 @@ public final class HipPlan implements AutoCloseable {
   public void run(HipKernel kernel, int layer, HipBatch batch) {
     shape.requireFits(batch);
     if (!kernel.acceptsLayer(layer, shape.architecture())) {
-      throw new IllegalArgumentException(kernel + " does not run layer " + layer + " of " + shape.architecture());
+      throw new IllegalArgumentException(
+          kernel + " does not run layer " + layer + " of " + shape.architecture());
     }
     if (weightsVersion < 0) {
       throw new IllegalStateException("weights have not been uploaded to the plan");

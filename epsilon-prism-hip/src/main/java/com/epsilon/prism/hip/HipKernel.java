@@ -48,10 +48,13 @@ public enum HipKernel {
   public boolean acceptsLayer(int layer, HipArchitecture architecture) {
     boolean inside = layer >= 0 && layer < architecture.depth();
     return switch (this) {
-      case ATTENTION_ALL, MLP_ALL -> inside && architecture.layer(layer).role() == LayerRole.ALL_TOKENS;
+      case ATTENTION_ALL, MLP_ALL ->
+          inside && architecture.layer(layer).role() == LayerRole.ALL_TOKENS;
       case ATTENTION_FIXED -> inside && architecture.layer(layer).role() == LayerRole.FIXED_TOKENS;
       case MLP_FIXED ->
-          inside && architecture.layer(layer).role() == LayerRole.FIXED_TOKENS && layer < architecture.depth() - 1;
+          inside
+              && architecture.layer(layer).role() == LayerRole.FIXED_TOKENS
+              && layer < architecture.depth() - 1;
       case MLP_LAST -> layer == architecture.depth() - 1;
       case REREAD_KEY_VALUE, REREAD -> layer == 0 && architecture.reread();
       case EMBED, RELATION, CANDIDATE, VALUE_GRAPH -> layer == 0;

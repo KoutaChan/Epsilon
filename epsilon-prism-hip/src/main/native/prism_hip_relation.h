@@ -26,6 +26,8 @@
 // K2・K4 のワークグループは自分のヘッドの対の分を LDS へ写すだけにする。
 #pragma once
 
+#include "prism_hip_capabilities.h"
+
 #include "prism_hip_kernels.h"
 
 namespace prism {
@@ -34,7 +36,6 @@ constexpr int kRelationSegments = 7;
 constexpr int kRelationEntries = 16;
 constexpr int kTileRelationFirstHalf = kRelationEntries - 1;
 constexpr int kMaxAttributes = 12;  // 関係の属性の列の上限（K0・T0 はトークンの属性の行をレジスタに読む）
-constexpr int kMaxTiles = 34;       // 牌の種類の上限（K0・T0 の LDS の牌の関係の表）
 
 // コードの置き方: 行ごとに、16 トークンのタイルの対 (qt, kt) ごとに kCodeBlockWords ワードずつ置く。1 行のタイルの数 blocks は、
 // 形の記述の Architecture::codeBlocks（Java の HipCounts.codeBlocks）。
@@ -54,7 +55,8 @@ constexpr int kPairTables = 3;
 constexpr int kPairEntries = kRelationEntries * kRelationEntries;
 constexpr int kBiasEntries = kPairTables * kPairEntries + kRelationEntries;
 constexpr float kLog2e = 1.4426950408889634f;
-static_assert(2 * kPairTables + 1 == kRelationSegments, "the pair tables cover segments 0..5 and the last table segment 6");
+static_assert(2 * kPairTables + 1 == kRelationSegments,
+              "the pair tables cover segments 0..5 and the last table segment 6");
 
 // 推論のワードの置き方: 組の表 τ（< 3）のフィールドは bit 3 + 8τ から 8 bit、セグメント 6 のフィールドは bit 27 から 4 bit（bit 0〜2 と
 // 31 は 0）。バイアスの表の項は 8 バイト（2 ヘッドの FP32）で、どのフィールドも表の中の項のバイト位置を持つ。そのため K2・K4 のアドレス
@@ -62,7 +64,8 @@ static_assert(2 * kPairTables + 1 == kRelationSegments, "the pair tables cover s
 constexpr int kBiasEntryShift = 3;  // log2(バイアスの表の項のバイト数)
 constexpr uint32_t kBiasEntryBytes = 1u << kBiasEntryShift;
 constexpr int kLastTableShift = 8 * kPairTables + kBiasEntryShift;  // セグメント 6 のフィールドの最下位の bit
-constexpr uint32_t kPaddedKeyCode = (kRelationEntries - 1u) << kLastTableShift;  // セグメント 6 が 15、ほかが 0: 行の外のキー
+constexpr uint32_t kPaddedKeyCode = (kRelationEntries - 1u)
+                                    << kLastTableShift;  // セグメント 6 が 15、ほかが 0: 行の外のキー
 static_assert(kLastTableShift + 4 < 32, "the last field must leave bit 31 clear");
 
 // 推論のワード code で組の表 table（< 3）を引くときの、項のバイト位置（表の先頭から）。
@@ -153,6 +156,15 @@ __device__ __forceinline__ RelationToken relationToken(int type, const uint8_t* 
   return token;
 }
 
+#if PRISM_HIP_CHECKED
+// Keep an invalid tile away from the LDS tile-relation table until the workgroup traps.
+__device__ __forceinline__ void checkRelationTile(RelationToken& token, int tiles, Bounds& bounds) {
+  constexpr uint32_t tileMask = 0xffu;
+  const auto tile = bounds.index(token.a & tileMask, 1, static_cast<size_t>(tiles) + 1);
+  token.a = (token.a & ~tileMask) | static_cast<uint32_t>(tile);
+}
+#endif
+
 // イベントのトークンの型。
 constexpr int kEventType = 3;
 
@@ -166,8 +178,8 @@ enum class BlockKind { FIXED, MIXED, EVENT };
 // コンパイル時に落とす（局・席・牌どうしではセグメント 4・5 と繋がり、局・席・牌とイベントの間ではセグメント 6 の全て）。落とすのは
 // 0 の項だけなので、コードは MIXED の式とビットで同じになる。
 template <BlockKind Query, BlockKind Key>
-__device__ __forceinline__ void relationSegments(const RelationToken& q, const RelationToken& k, int relation, int seats,
-                                                 int (&segments)[kRelationSegments]) {
+__device__ __forceinline__ void relationSegments(const RelationToken& q, const RelationToken& k, int relation,
+                                                 int seats, int (&segments)[kRelationSegments]) {
   const int typeQ = Query == BlockKind::EVENT ? kEventType : q.type();
   const int typeK = Key == BlockKind::EVENT ? kEventType : k.type();
   segments[0] = 4 * typeQ + typeK;
@@ -273,6 +285,7 @@ constexpr bool attentionCodeMatchesRelationRows() {
   const int padded[kRelationSegments] = {0, 0, 0, 0, 0, 0, kRelationEntries - 1};
   return attentionCodeAddresses(kPaddedKeyCode, padded);
 }
-static_assert(attentionCodeMatchesRelationRows(), "the attention code must address the relation rows of every segment code");
+static_assert(attentionCodeMatchesRelationRows(),
+              "the attention code must address the relation rows of every segment code");
 
 }  // namespace prism

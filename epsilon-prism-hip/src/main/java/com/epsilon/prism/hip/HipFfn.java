@@ -6,7 +6,7 @@ import java.util.List;
 public sealed interface HipFfn permits HipFfn.Shared, HipFfn.Typed {
 
   /** K3・K5・K6 が F を処理する単位の幅。隠れ層 h のこの幅の列を LDS に置く。 */
-  int CHUNK = 128;
+  int CHUNK = HipCapabilities.limit("FfnChunk");
 
   /**
    * トークンの組が通る FFN の幅を返す。
@@ -89,7 +89,8 @@ public sealed interface HipFfn permits HipFfn.Shared, HipFfn.Typed {
 
   private static void requireWidth(String name, int width) {
     if (width <= 0 || width % CHUNK != 0) {
-      throw new IllegalArgumentException(name + " width must be a positive multiple of " + CHUNK + ", got " + width);
+      throw new IllegalArgumentException(
+          name + " width must be a positive multiple of " + CHUNK + ", got " + width);
     }
   }
 }

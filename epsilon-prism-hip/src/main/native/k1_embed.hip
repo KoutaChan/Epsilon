@@ -34,6 +34,7 @@
 #include <type_traits>
 
 #include "prism_hip_common.h"
+#include "prism_hip_capabilities.h"
 #include "prism_hip_kernels.h"
 
 namespace prism {
@@ -44,9 +45,10 @@ constexpr int kWaves = kThreads / kWave;
 constexpr int kTokens = 64;
 constexpr int kTokensPerWave = kTokens / kWaves;
 constexpr int kSpecInts = static_cast<int>(sizeof(EmbeddingSpec) / sizeof(int32_t));
-constexpr int kDensePasses = kMaxDense / kWaves;  // W_d・W'_d を LDS へコピーする回数（ウェーブ w は特徴 w + 8·pass の行を受け持つ）
-constexpr int kDenseGroup = 8;                    // LDS から W_d をまとめて読む特徴の数（遷移の型）
-constexpr int kFoldColumns = 4;                   // lane が持つ qkv0 の 1 チャンクの列の数（FP32 で 16 バイト、BF16 で 8 バイト）
+constexpr int kDensePasses =
+    kMaxDense / kWaves;          // W_d・W'_d を LDS へコピーする回数（ウェーブ w は特徴 w + 8·pass の行を受け持つ）
+constexpr int kDenseGroup = 8;   // LDS から W_d をまとめて読む特徴の数（遷移の型）
+constexpr int kFoldColumns = 4;  // lane が持つ qkv0 の 1 チャンクの列の数（FP32 で 16 バイト、BF16 で 8 バイト）
 // 折り込む型の読み込みのまとめ方。T・T' の行は 4 表ずつ（局は 4 表、牌・イベントは 3 表で 1 往復、席だけは 6 表で 2 往復）、W_d は
 // 4 特徴ずつ、W'_d は 2 特徴ずつ読み、b'・b_qkv はトークンごとに読む（グローバルメモリの同じ 3 KB）。どれも読み込みに使う VGPR を抑えて、
 // 遷移の型と同じ 10 ウェーブ/SIMD に収めるため。
@@ -55,16 +57,15 @@ constexpr int kFoldWeightGroup = 4;
 constexpr int kFoldDenseGroup = 2;
 static_assert(kSpecInts <= kThreads, "one thread copies one int32 of the spec");
 static_assert(kMaxDense % kWaves == 0 && kMaxDense % kDenseGroup == 0, "W_d is staged and read in whole groups");
-static_assert(kDenseGroup % kFoldWeightGroup == 0 && kMaxDense % kFoldDenseGroup == 0, "W_d and W'_d are read in whole groups");
+static_assert(kDenseGroup % kFoldWeightGroup == 0 && kMaxDense % kFoldDenseGroup == 0,
+              "W_d and W'_d are read in whole groups");
 static_assert(kMaxTables <= kWave && kMaxDense <= kWave, "lane t holds table t and lane k dense feature k");
 static_assert(kMaxTables % kFoldTables == 0, "T and T' rows are read in whole groups of tables");
 
 // 動的な LDS（16 バイト単位）。型ごとに、まず W_d を [特徴][lane]（lane の 8 列の BF16）で 8 特徴の組の分の行だけ置き、折り込む型は
 // 続けて W'_d を [特徴][チャンク][lane]（lane の 4 列の FP32）で置く。ウェーブの b128 の読み込みは連続した 512 バイトになる。組の中で
 // 特徴の数を超える W_d の行はコピーしない（読むが掛けない）。W'_d は特徴の数の内の行だけを読む。
-constexpr int denseRows(int dense) {
-  return (dense + kDenseGroup - 1) / kDenseGroup * kDenseGroup;
-}
+constexpr int denseRows(int dense) { return (dense + kDenseGroup - 1) / kDenseGroup * kDenseGroup; }
 
 // lane が持つ qkv0 の 4 列のチャンクの数。
 template <int H>
@@ -74,9 +75,7 @@ constexpr int foldChunks() {
 
 // ウェーブで一様な値を SGPR に移す。仕様のフィールドに使うと表・特徴のループの分岐がスカラーになり、トークンに使うと行の先頭をスカラー
 // 命令で計算できる。
-__device__ __forceinline__ int uniform(int value) {
-  return __builtin_amdgcn_readfirstlane(value);
-}
+__device__ __forceinline__ int uniform(int value) { return __builtin_amdgcn_readfirstlane(value); }
 
 // ウェーブの中で lane 番目の lane が持つ value を返す（結果はウェーブで一様）。
 __device__ __forceinline__ uint32_t readLane(uint32_t value, int lane) {
@@ -119,7 +118,8 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
   constexpr int kFoldWidth = 3 * (H / 2);
   constexpr uint32_t kRowBytes = H * sizeof(float);
   constexpr uint32_t kFoldRowBytes = kFoldWidth * sizeof(float);
-  constexpr uint32_t kChunkBytes = kFoldColumns * kWave * sizeof(float);  // ウェーブの 1 チャンク（T'・W'_d・b' の 512 バイト）
+  constexpr uint32_t kChunkBytes =
+      kFoldColumns * kWave * sizeof(float);  // ウェーブの 1 チャンク（T'・W'_d・b' の 512 バイト）
   static_assert(kPerLane == 8, "one lane holds 8 columns (16 bytes of BF16, 32 bytes of FP32)");
   static_assert(kChunks * kFoldColumns * kWave == kFoldWidth, "the lanes hold every qkv0 column in chunks of 4");
   __shared__ EmbeddingSpec spec;
@@ -135,7 +135,8 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
   const int wave = tid / kWave;
   const int col0 = lane * kPerLane;
   const uint32_t laneOffset = col0 * sizeof(float);  // 表の行の中で lane の 8 列が始まるバイト位置
-  const uint32_t foldLane = lane * kFoldColumns * static_cast<uint32_t>(sizeof(float));  // チャンクの中で lane の 4 列が始まるバイト位置
+  const uint32_t foldLane =
+      lane * kFoldColumns * static_cast<uint32_t>(sizeof(float));  // チャンクの中で lane の 4 列が始まるバイト位置
   const int count = args.count[slot];
   const uint8_t* input = args.input.data;
   const uint8_t* pack = args.pack.data;
@@ -233,7 +234,8 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
     constexpr int kTableGroup = kFold ? kFoldTables : kMaxTables;
     constexpr int kWeightGroup = kFold ? kFoldWeightGroup : kDenseGroup;
     // b' の行のバイト位置（後ろに b_qkv の行が続く。折り込む型だけ使う）。
-    [[maybe_unused]] const uint32_t biasRow = static_cast<uint32_t>(uniform(spec.foldOffset)) + features * kFoldRowBytes;
+    [[maybe_unused]] const uint32_t biasRow =
+        static_cast<uint32_t>(uniform(spec.foldOffset)) + features * kFoldRowBytes;
     for (int i = 0; i < kTokensPerWave; ++i) {
       // トークンはウェーブで一様（SGPR に置き、行の先頭はスカラー命令で計算する）。
       const int token =
@@ -314,7 +316,8 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
             const uint32_t row = readLane(foldStart, t) + foldLane;
 #pragma unroll
             for (int c = 0; c < kChunks; ++c) {
-              part[t][c] = *reinterpret_cast<const f32x4*>(pack + bounds.index(row + c * kChunkBytes, 16, args.pack.limit));
+              part[t][c] =
+                  *reinterpret_cast<const f32x4*>(pack + bounds.index(row + c * kChunkBytes, 16, args.pack.limit));
             }
           }
         }
@@ -380,8 +383,8 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
                   const uint32_t row = readLane(foldStart, g + t) + foldLane;
 #pragma unroll
                   for (int c = 0; c < kChunks; ++c) {
-                    part[t][c] =
-                        *reinterpret_cast<const f32x4*>(pack + bounds.index(row + c * kChunkBytes, 16, args.pack.limit));
+                    part[t][c] = *reinterpret_cast<const f32x4*>(
+                        pack + bounds.index(row + c * kChunkBytes, 16, args.pack.limit));
                   }
                 }
               }
@@ -460,10 +463,10 @@ __global__ __launch_bounds__(kThreads) void embedKernel(EmbedArgs args) {
 }  // namespace
 
 size_t embedSharedBytes(int hidden, const EmbeddingSpec (&spec)[kEmbeddingSlots]) {
-  if (hidden != 256) {
+  if (hidden != kWidthS.width) {
     throw std::invalid_argument("K1 has no specialisation for hidden " + std::to_string(hidden));
   }
-  const size_t foldRow = static_cast<size_t>(foldChunks<256>()) * kWave * sizeof(u32x4);
+  const size_t foldRow = static_cast<size_t>(foldChunks<kWidthS.width>()) * kWave * sizeof(u32x4);
   size_t bytes = 0;
   for (int e = 0; e < kEmbeddingSlots; ++e) {
     const bool folding = static_cast<EmbeddingSlot>(e) != EmbeddingSlot::kTransition;
@@ -479,8 +482,8 @@ void launchEmbed(int hidden, const EmbedArgs& args, int blocks, size_t sharedByt
     return;
   }
   switch (hidden) {
-    case 256:
-      hipLaunchKernelGGL(embedKernel<256>, dim3(blocks), dim3(kThreads), sharedBytes, stream, args);
+    case kWidthS.width:
+      hipLaunchKernelGGL(embedKernel<kWidthS.width>, dim3(blocks), dim3(kThreads), sharedBytes, stream, args);
       break;
     default:
       throw std::invalid_argument("K1 has no specialisation for hidden " + std::to_string(hidden));

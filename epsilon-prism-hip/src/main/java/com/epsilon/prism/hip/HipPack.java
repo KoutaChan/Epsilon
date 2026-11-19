@@ -61,7 +61,8 @@ public final class HipPack {
     private final HipComposition[] compositions = new HipComposition[HipArchitecture.MAX_ROLES];
     private final int[] gates = new int[HipArchitecture.MAX_ROLES];
     private final long[] weights = new long[HipWeight.ENTRIES];
-    private final Map<HipEmbedding.Slot, HipEmbedding> embeddings = new EnumMap<>(HipEmbedding.Slot.class);
+    private final Map<HipEmbedding.Slot, HipEmbedding> embeddings =
+        new EnumMap<>(HipEmbedding.Slot.class);
 
     /**
      * 空のヘッダーを作る。重みは全てなし、手の扱いごとの作り方は全て {@link HipComposition#ZERO}、ゲートは全て −1 にする。
@@ -124,10 +125,12 @@ public final class HipPack {
      */
     public Header weight(HipWeight weight, int entry, long offset) {
       if (!architecture.holds(weight, entry)) {
-        throw new IllegalArgumentException(weight + " has no entry " + entry + " in " + architecture);
+        throw new IllegalArgumentException(
+            weight + " has no entry " + entry + " in " + architecture);
       }
       if (offset < 0 || offset % ALIGNMENT != 0 || offset > Integer.MAX_VALUE) {
-        throw new IllegalArgumentException(weight + " offset " + offset + " must be aligned to " + ALIGNMENT);
+        throw new IllegalArgumentException(
+            weight + " offset " + offset + " must be aligned to " + ALIGNMENT);
       }
       weights[weight.firstEntry() + entry] = offset;
       return this;
@@ -195,7 +198,8 @@ public final class HipPack {
             REREAD_EVENT_NORM,
             REREAD_OUTPUT_BIAS,
             DISCARD_NORM,
-            GATE_NORM -> h;
+            GATE_NORM ->
+            h;
         case QKV -> 3 * a * h;
         case QKV_BIAS -> 3 * a;
         case RELATION_BIAS -> (long) schema(HipSchema.RELATION_ROWS) * architecture.heads();

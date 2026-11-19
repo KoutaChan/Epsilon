@@ -17,6 +17,7 @@
 // tileEntry のパイプラインも spill しない。Cross-Attention は、キーを kAhead 個先まで生の buffer で読むパイプラインのループ
 // （attendPipelined）。FFN の h と B の silu は siluFast、活性値の丸めは bf16RoundActivation（NaN の選択なし）。バリアは全て
 // tile::barrier で、LDS の順序だけをそろえる（読む領域と書く領域が別であることが前提）。
+#include "prism_hip_capabilities.h"
 #include "prism_hip_candidate.h"
 #include "prism_hip_value.h"
 
@@ -28,9 +29,13 @@ using tile::kChunk;
 using tile::kThreads;
 using tile::kWaves;
 
-constexpr int kTile = 48;            // ワークグループが受け持つ遷移の数（MLP の段の行）
+#ifdef PRISM_V4_HOT
+constexpr int kTile = 32;  // 合算表を使う形では、同時に保持する遷移を減らす。
+#else
+constexpr int kTile = 48;  // ワークグループが受け持つ遷移の数（MLP の段の行）
+#endif
 constexpr int kRowTiles = kTile / 16;
-constexpr int kAhead = 3;            // Cross-Attention で読み込みを先に出すキーの数（5 にすると spill する）
+constexpr int kAhead = 3;  // Cross-Attention で読み込みを先に出すキーの数（5 にすると spill する）
 
 // 遷移のキーのコード F バイトを、16 バイトずつ何回で読むか（最後の 1 回は末尾に寄せて [F − 16, F) を読む）。
 template <int F>
@@ -123,7 +128,8 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
     KeySlot ring[kSlots];
 #pragma unroll
     for (int j = 0; j < kAhead; ++j) {
-      ring[j].issue(memory, rowByte, j * kKeyBytes, codeKey, codeRow<A, F>(codes, j, args.codeKey.limit, bounds) + tableLane);
+      ring[j].issue(memory, rowByte, j * kKeyBytes, codeKey,
+                    codeRow<A, F>(codes, j, args.codeKey.limit, bounds) + tableLane);
     }
     float logits[kKeys];
     float maximum = -INFINITY;
@@ -178,13 +184,39 @@ __device__ __forceinline__ void attendPipelined(const CandidateArgs& args, Candi
   }
 }
 
+#ifdef PRISM_V4_CORE
+#include "prism_hip_v4_segments.inc"
+#endif
+
+#ifdef PRISM_V4_HOT
+enum class CandidatePhase { kFull, kPrepare, kFinish };
+#endif
+
 // kValue は B を書くかどうか（1 段の形で true）。
-template <int H, int F, bool kValue>
-__global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) {
+template <int H, int F, bool kValue
+#ifdef PRISM_V4_HOT
+          ,
+          CandidatePhase Phase
+#endif
+          >
+__global__ __launch_bounds__(kThreads) void
+#ifdef PRISM_V4_HOT
+    hotCandidateKernel(CandidateArgs args, Span<const uint16_t> count, v4::SegmentWeights segments,
+                       v4::HotCandidateOffsets hot, Span<uint16_t> attentionState) {
+#elif defined(PRISM_V4_CORE)
+    coreCandidateKernel(CandidateArgs args, Span<const uint16_t> count, v4::SegmentWeights segments) {
+#else
+    candidateKernel(CandidateArgs args) {
+#endif
+#ifdef PRISM_V4_CORE
+  constexpr bool kCoreLayout = true;
+#else
+  constexpr bool kCoreLayout = false;
+#endif
   constexpr int A = H / 2;
   constexpr int kColumns = H / 16 / kWaves;
   constexpr int kParts = H / 32;  // RMSNorm でスレッドが受け持つ H/4 列（4 スレッドで 1 行）に含まれる 16 バイトの数
-  static_assert(A == kChunk, "the query and the attention output are staged in the hidden buffer");
+  static_assert(kCoreLayout ? A >= kChunk : A == kChunk, "invalid candidate query workspace width");
   static_assert(H % kChunk == 0, "the query projection reads the stream in chunks");
   static_assert(sizeof(CandidateShared<H>) <= 64 * 1024, "LDS of one work group is 64 KiB");
   __shared__ CandidateShared<H> shared;
@@ -201,160 +233,296 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
   const TokenLayout layout = args.layout;
   Bounds bounds;
 
-  // 段 3 で使う t_s を最初に読んでおく（RMSNorm と同じ受け持ち。タイルの外の行は最後の行に寄せて読み、使わない）。受け持ちは 64 行
-  // ぶんあり、行 kTile 以上（ウェーブ 6・7）には処理がない。
-  const int normRow = tid >> 2;
-  const int normCol = (tid & 3) * (H / 4);
-  u32x4 staticPart[kParts];
-  {
-    const int r = min(normRow, rows - 1);
+#ifdef PRISM_V4_HOT
+  if constexpr (Phase != CandidatePhase::kFinish) {
+#endif
+    // 段 3 で使う t_s を最初に読んでおく（RMSNorm と同じ受け持ち。タイルの外の行は最後の行に寄せて読み、使わない）。受け持ちは 64 行
+    // ぶんあり、行 kTile 以上（ウェーブ 6・7）には処理がない。
+    const int normRow = tid >> 2;
+    const int normCol = (tid & 3) * (H / 4);
+    u32x4 staticPart[kParts];
+    {
+      const int r = min(normRow, rows - 1);
 #pragma unroll
-    for (int c = 0; c < kParts; ++c) {
-      staticPart[c] = *reinterpret_cast<const u32x4*>(
-          args.statics.data + bounds.index(static_cast<size_t>(t0 + r) * H + normCol + 8 * c, 8, args.statics.limit));
-    }
-  }
-
-  // 0. 遷移ごとの行の番号と牌 τ の ID（0 は牌なし）を LDS に置く。
-  if (tid < kTile) {
-    int row = 0;
-    int tileId = 0;
-    if (tid < rows) {
-      const int t = t0 + tid;
-      row = candidate::transitionRow(args.rowColumn, args.rowWidth, args.rowFirstTransition, layout.rows, t, bounds);
-      tileId = candidate::discardTile(args.category, args.categoryWidth, args.callDiscard, args.mainTile, t, bounds);
-    }
-    shared.row[tid] = row;
-    shared.tile[tid] = tileId;
-  }
-  tile::barrier();
-
-  // 1. y_T[τ] を stream へ置く（τ がない遷移とタイルの外は 0）。τ がなければ y の先頭の行を読み、読み込みを分岐なしで一度に出す。
-  {
-    constexpr int kVectors = H / 8;
-    constexpr int kPasses = kTile * kVectors / kThreads;
-    const int col = (tid % kVectors) * 8;
-    u32x4 values[kPasses];
-#pragma unroll
-    for (int pass = 0; pass < kPasses; ++pass) {
-      const int r = tile::tileRow<H, kTile>(pass, tid);
-      const int tileId = shared.tile[r];
-      const size_t token = tileId > 0 ? static_cast<size_t>(1 + layout.seats) * layout.rows +
-                                            static_cast<size_t>(layout.tiles) * shared.row[r] + tileId - 1
-                                      : 0;
-      values[pass] = *reinterpret_cast<const u32x4*>(args.state.data + bounds.index(token * H + col, 8, args.state.limit));
-    }
-    const u32x4 zero = {0u, 0u, 0u, 0u};
-#pragma unroll
-    for (int pass = 0; pass < kPasses; ++pass) {
-      const int r = tile::tileRow<H, kTile>(pass, tid);
-      *reinterpret_cast<u32x4*>(&stream[r][col]) = shared.tile[r] > 0 ? values[pass] : zero;
-    }
-  }
-  tile::barrier();
-
-  // 2. ⌊y_T·W_Eᵀ⌉（バイアスなし）を、C のフラグメントの並びのまま stream へ書く。
-  int output[kColumns];
-#pragma unroll
-  for (int j = 0; j < kColumns; ++j) {
-    output[j] = (wave * kColumns + j) * 16 + column;
-  }
-  {
-    f32x8 acc[kRowTiles][kColumns];
-#pragma unroll
-    for (int m = 0; m < kRowTiles; ++m) {
-#pragma unroll
-      for (int j = 0; j < kColumns; ++j) {
-        acc[m][j] = f32x8{};
+      for (int c = 0; c < kParts; ++c) {
+        staticPart[c] = *reinterpret_cast<const u32x4*>(
+            args.statics.data + bounds.index(static_cast<size_t>(t0 + r) * H + normCol + 8 * c, 8, args.statics.limit));
       }
     }
-    tile::gemmTile<kColumns, H>(acc, stream, args.tileEntry.data, args.tileEntry.limit, H, 0, output, column, bounds);
+
+    // 0. 遷移ごとの行の番号と牌 τ の ID（0 は牌なし）を LDS に置く。
+    if (tid < kTile) {
+      int row = 0;
+      int tileId = 0;
+      if (tid < rows) {
+        const int t = t0 + tid;
+        row = candidate::transitionRow(args.rowColumn, args.rowWidth, args.rowFirstTransition, layout.rows, t, bounds);
+        tileId = candidate::discardTile(args.category, args.categoryWidth, args.callDiscard, args.mainTile, t, bounds);
+      }
+      shared.row[tid] = row;
+      shared.tile[tid] = tileId;
+    }
     tile::barrier();
+
+    // 1. y_T[τ] を stream へ置く（τ がない遷移とタイルの外は 0）。τ がなければ y の先頭の行を読み、読み込みを分岐なしで一度に出す。
+    if constexpr (kCoreLayout) {
+      constexpr int kVectors = H / 8;
+      constexpr int kPasses = kTile * kVectors / kThreads;
+      u32x4 values[kPasses];
+#pragma unroll
+      for (int pass = 0; pass < kPasses; ++pass) {
+        const int r = (tid + pass * kThreads) / kVectors;
+        const int col = ((tid + pass * kThreads) % kVectors) * 8;
+        const int tileId = shared.tile[r];
+        const size_t token = tileId > 0 ? static_cast<size_t>(1 + layout.seats) * layout.rows +
+                                              static_cast<size_t>(layout.tiles) * shared.row[r] + tileId - 1
+                                        : 0;
+        values[pass] =
+            *reinterpret_cast<const u32x4*>(args.state.data + bounds.index(token * H + col, 8, args.state.limit));
+      }
+      const u32x4 zero = {0u, 0u, 0u, 0u};
+#pragma unroll
+      for (int pass = 0; pass < kPasses; ++pass) {
+        const int r = (tid + pass * kThreads) / kVectors;
+        const int col = ((tid + pass * kThreads) % kVectors) * 8;
+        *reinterpret_cast<u32x4*>(&stream[r][col]) = shared.tile[r] > 0 ? values[pass] : zero;
+      }
+    } else {
+      constexpr int kVectors = H / 8;
+      constexpr int kPasses = kTile * kVectors / kThreads;
+      const int col = (tid % kVectors) * 8;
+      u32x4 values[kPasses];
+#pragma unroll
+      for (int pass = 0; pass < kPasses; ++pass) {
+        const int r = tile::tileRow<H, kTile>(pass, tid);
+        const int tileId = shared.tile[r];
+        const size_t token = tileId > 0 ? static_cast<size_t>(1 + layout.seats) * layout.rows +
+                                              static_cast<size_t>(layout.tiles) * shared.row[r] + tileId - 1
+                                        : 0;
+        values[pass] =
+            *reinterpret_cast<const u32x4*>(args.state.data + bounds.index(token * H + col, 8, args.state.limit));
+      }
+      const u32x4 zero = {0u, 0u, 0u, 0u};
+#pragma unroll
+      for (int pass = 0; pass < kPasses; ++pass) {
+        const int r = tile::tileRow<H, kTile>(pass, tid);
+        *reinterpret_cast<u32x4*>(&stream[r][col]) = shared.tile[r] > 0 ? values[pass] : zero;
+      }
+    }
+    tile::barrier();
+
+    // 2. ⌊y_T·W_Eᵀ⌉（バイアスなし）を、C のフラグメントの並びのまま stream へ書く。
+    int output[kColumns];
 #pragma unroll
     for (int j = 0; j < kColumns; ++j) {
+      output[j] = (wave * kColumns + j) * 16 + column;
+    }
+    {
+      f32x8 acc[kRowTiles][kColumns];
+#pragma unroll
+      for (int m = 0; m < kRowTiles; ++m) {
+#pragma unroll
+        for (int j = 0; j < kColumns; ++j) {
+          acc[m][j] = f32x8{};
+        }
+      }
+      tile::gemmTile<kColumns, H>(acc, stream, args.tileEntry.data, args.tileEntry.limit, H, 0, output, column, bounds);
+      tile::barrier();
+#pragma unroll
+      for (int j = 0; j < kColumns; ++j) {
+#pragma unroll
+        for (int m = 0; m < kRowTiles; ++m) {
+#pragma unroll
+          for (int v = 0; v < 8; ++v) {
+            stream[m * 16 + 2 * v + half][output[j]] = bf16RoundActivation(acc[m][j][v]);
+          }
+        }
+      }
+    }
+    tile::barrier();
+
+    // 3. t0 = ⌊t_s + ⌊E⌉⌉ を RMSNorm の受け持ちでその場で作り（タイルの外の行は t_s を 0 とする）、続けて 1/rms(t0) を inverse へ
+    //    書く。行 kTile 以上の受け持ちは飛ばす（4 スレッドの組ごとに飛ぶので、inverseRms のツリーは欠けない）。
+    if (normRow < kTile) {
+      const bool real = normRow < rows;
+      u32x4 part[kParts];
+#pragma unroll
+      for (int c = 0; c < kParts; ++c) {
+        const u32x4 entry = *reinterpret_cast<const u32x4*>(&stream[normRow][normCol + 8 * c]);
+#pragma unroll
+        for (int w = 0; w < 4; ++w) {
+          const float baseLo = real ? bf16Float(static_cast<uint16_t>(staticPart[c][w] & 0xffffu)) : 0.0f;
+          const float baseHi = real ? bf16Float(static_cast<uint16_t>(staticPart[c][w] >> 16)) : 0.0f;
+          const uint16_t lo = bf16RoundActivation(baseLo + bf16Float(static_cast<uint16_t>(entry[w] & 0xffffu)));
+          const uint16_t hi = bf16RoundActivation(baseHi + bf16Float(static_cast<uint16_t>(entry[w] >> 16)));
+          part[c][w] = static_cast<uint32_t>(lo) | (static_cast<uint32_t>(hi) << 16);
+        }
+        *reinterpret_cast<u32x4*>(&stream[normRow][normCol + 8 * c]) = part[c];
+      }
+      const float inverse = tile::inverseRms<H>(part, args.epsilon);
+      if ((tid & 3) == 0) {
+        shared.inverse[normRow] = inverse;
+      }
+    }
+    tile::barrier();
+
+    // 4. q = ⌊⌊N_q(t0)⌉·W_qᵀ + b_q⌉。正規化した t0 を 128 列ずつ inner に置き、K の順に足し込む。
+    if constexpr (kCoreLayout) {
+      constexpr int kQueryTiles = (A / 16 + kWaves - 1) / kWaves;
+      f32x8 q[kRowTiles][kQueryTiles]{};
+      int units[kQueryTiles];
+#pragma unroll
+      for (int j = 0; j < kQueryTiles; ++j) {
+        units[j] = (wave + j * kWaves) * 16 + column;
+      }
+      int safeUnits[kQueryTiles];
+#pragma unroll
+      for (int j = 0; j < kQueryTiles; ++j) {
+        safeUnits[j] = kQueryTiles == 1 ? units[j] : min(units[j], A - 1);
+      }
+      for (int k0 = 0; k0 < H; k0 += kChunk) {
+        constexpr int kVectors = kChunk / 8;
+#pragma unroll
+        for (int pass = 0; pass < kTile * kVectors / kThreads; ++pass) {
+          const int index = pass * kThreads + tid;
+          const int r = index / kVectors;
+          const int col = (index % kVectors) * 8;
+          float values[8];
+          unpack8(*reinterpret_cast<const u32x4*>(&stream[r][k0 + col]), values);
+          const size_t g = bounds.index(k0 + col, 8, args.queryNorm.limit);
+          const float inverse = shared.inverse[r];
+#pragma unroll
+          for (int c = 0; c < 8; ++c) {
+            values[c] = (values[c] * inverse) * args.queryNorm.data[g + c];
+          }
+          *reinterpret_cast<u32x4*>(&inner[r][col]) = pack8Activation(values);
+        }
+        tile::barrier();
+#ifdef PRISM_V4_HOT
+        if constexpr (Phase == CandidatePhase::kPrepare && kQueryTiles > 1) {
+          // 最後の出力チャンクでは、存在する列を持つウェーブだけが WMMA を行う。
+          // 波ごとの出力タイルを一つずつ処理し、各列への K の積み上げ順は維持する。
+#pragma unroll
+          for (int j = 0; j < kQueryTiles; ++j) {
+            if (units[j] >= A) continue;
+            f32x8 accumulator[kRowTiles][1];
+#pragma unroll
+            for (int m = 0; m < kRowTiles; ++m) accumulator[m][0] = q[m][j];
+            const int output[1] = {units[j]};
+            tile::gemmTile<1, kChunk>(accumulator, inner, args.query.data, args.query.limit, H, k0, output, column,
+                                      bounds);
+#pragma unroll
+            for (int m = 0; m < kRowTiles; ++m) q[m][j] = accumulator[m][0];
+          }
+        } else
+#endif
+        {
+          tile::gemmTile<kQueryTiles, kChunk>(q, inner, args.query.data, args.query.limit, H, k0, safeUnits, column,
+                                              bounds);
+        }
+        tile::barrier();
+      }
+#pragma unroll
+      for (int j = 0; j < kQueryTiles; ++j) {
+        if (kQueryTiles == 1 || units[j] < A) {
+          const float bias = tile::load(args.queryBias.data, args.queryBias.limit, units[j], bounds);
+#pragma unroll
+          for (int m = 0; m < kRowTiles; ++m) {
+#pragma unroll
+            for (int v = 0; v < 8; ++v) {
+              inner[m * 16 + 2 * v + half][units[j]] = bf16RoundActivation(q[m][j][v] + bias);
+            }
+          }
+        }
+      }
+    } else {
+      f32x8 q[kRowTiles][1];
+#pragma unroll
+      for (int m = 0; m < kRowTiles; ++m) {
+        q[m][0] = f32x8{};
+      }
+      const int units[1] = {wave * 16 + column};
+      for (int k0 = 0; k0 < H; k0 += kChunk) {
+        constexpr int kVectors = kChunk / 8;
+#pragma unroll
+        for (int pass = 0; pass < kTile * kVectors / kThreads; ++pass) {
+          const int index = pass * kThreads + tid;
+          const int r = index / kVectors;
+          const int col = (index % kVectors) * 8;
+          float values[8];
+          unpack8(*reinterpret_cast<const u32x4*>(&stream[r][k0 + col]), values);
+          const size_t g = bounds.index(k0 + col, 8, args.queryNorm.limit);
+          const float inverse = shared.inverse[r];
+#pragma unroll
+          for (int c = 0; c < 8; ++c) {
+            values[c] = (values[c] * inverse) * args.queryNorm.data[g + c];
+          }
+          *reinterpret_cast<u32x4*>(&inner[r][col]) = pack8Activation(values);
+        }
+        tile::barrier();
+        tile::gemmTile<1, kChunk>(q, inner, args.query.data, args.query.limit, H, k0, units, column, bounds);
+        tile::barrier();
+      }
+      const float bias = tile::load(args.queryBias.data, args.queryBias.limit, units[0], bounds);
 #pragma unroll
       for (int m = 0; m < kRowTiles; ++m) {
 #pragma unroll
         for (int v = 0; v < 8; ++v) {
-          stream[m * 16 + 2 * v + half][output[j]] = bf16RoundActivation(acc[m][j][v]);
+          inner[m * 16 + 2 * v + half][units[0]] = bf16RoundActivation(q[m][0][v] + bias);
         }
       }
     }
-  }
-  tile::barrier();
+    tile::barrier();
 
-  // 3. t0 = ⌊t_s + ⌊E⌉⌉ を RMSNorm の受け持ちでその場で作り（タイルの外の行は t_s を 0 とする）、続けて 1/rms(t0) を inverse へ
-  //    書く。行 kTile 以上の受け持ちは飛ばす（4 スレッドの組ごとに飛ぶので、inverseRms のツリーは欠けない）。
-  if (normRow < kTile) {
-    const bool real = normRow < rows;
-    u32x4 part[kParts];
-#pragma unroll
-    for (int c = 0; c < kParts; ++c) {
-      const u32x4 entry = *reinterpret_cast<const u32x4*>(&stream[normRow][normCol + 8 * c]);
-#pragma unroll
-      for (int w = 0; w < 4; ++w) {
-        const float baseLo = real ? bf16Float(static_cast<uint16_t>(staticPart[c][w] & 0xffffu)) : 0.0f;
-        const float baseHi = real ? bf16Float(static_cast<uint16_t>(staticPart[c][w] >> 16)) : 0.0f;
-        const uint16_t lo = bf16RoundActivation(baseLo + bf16Float(static_cast<uint16_t>(entry[w] & 0xffffu)));
-        const uint16_t hi = bf16RoundActivation(baseHi + bf16Float(static_cast<uint16_t>(entry[w] >> 16)));
-        part[c][w] = static_cast<uint32_t>(lo) | (static_cast<uint32_t>(hi) << 16);
-      }
-      *reinterpret_cast<u32x4*>(&stream[normRow][normCol + 8 * c]) = part[c];
+#ifdef PRISM_V4_HOT
+    if constexpr (Phase == CandidatePhase::kPrepare) {
+      // 後段が読むのは、融合経路の LDS にある丸め済みの t0 と q。
+      tile::storeTile<H>(args.transition.data, args.transition.limit, stream, t0, rows, tid, bounds);
+      tile::storeTile<A>(attentionState.data, attentionState.limit, inner, t0, rows, tid, bounds);
+      bounds.trap();
+      return;
     }
-    const float inverse = tile::inverseRms<H>(part, args.epsilon);
-    if ((tid & 3) == 0) {
-      shared.inverse[normRow] = inverse;
-    }
+  } else {
+    tile::stageTile<H>(stream, args.transition.data, args.transition.limit, t0, rows, tid, bounds);
+    tile::stageTile<A>(inner, attentionState.data, attentionState.limit, t0, rows, tid, bounds);
+    tile::barrier();
   }
-  tile::barrier();
-
-  // 4. q = ⌊⌊N_q(t0)⌉·W_qᵀ + b_q⌉。正規化した t0 を 128 列ずつ inner に置き、K の順に足し込む。
-  {
-    f32x8 q[kRowTiles][1];
-#pragma unroll
-    for (int m = 0; m < kRowTiles; ++m) {
-      q[m][0] = f32x8{};
-    }
-    const int units[1] = {wave * 16 + column};
-    for (int k0 = 0; k0 < H; k0 += kChunk) {
-      constexpr int kVectors = kChunk / 8;
-#pragma unroll
-      for (int pass = 0; pass < kTile * kVectors / kThreads; ++pass) {
-        const int index = pass * kThreads + tid;
-        const int r = index / kVectors;
-        const int col = (index % kVectors) * 8;
-        float values[8];
-        unpack8(*reinterpret_cast<const u32x4*>(&stream[r][k0 + col]), values);
-        const size_t g = bounds.index(k0 + col, 8, args.queryNorm.limit);
-        const float inverse = shared.inverse[r];
-#pragma unroll
-        for (int c = 0; c < 8; ++c) {
-          values[c] = (values[c] * inverse) * args.queryNorm.data[g + c];
-        }
-        *reinterpret_cast<u32x4*>(&inner[r][col]) = pack8Activation(values);
-      }
-      tile::barrier();
-      tile::gemmTile<1, kChunk>(q, inner, args.query.data, args.query.limit, H, k0, units, column, bounds);
-      tile::barrier();
-    }
-    const float bias = tile::load(args.queryBias.data, args.queryBias.limit, units[0], bounds);
-#pragma unroll
-    for (int m = 0; m < kRowTiles; ++m) {
-#pragma unroll
-      for (int v = 0; v < 8; ++v) {
-        inner[m * 16 + 2 * v + half][units[0]] = bf16RoundActivation(q[m][0][v] + bias);
-      }
-    }
-  }
-  tile::barrier();
+#endif
 
   // 5. Cross-Attention。⌊o⌉ を q に上書きする。
+#ifdef PRISM_V4_HOT
+  if constexpr (Phase == CandidatePhase::kFull) {
+    attendSegments<H, F>(args, segments, shared, t0, rows, tid, bounds, hot);
+    tile::barrier();
+  }
+#else
+#ifdef PRISM_V4_CORE
+  attendSegments<H, F>(args, segments, shared, t0, rows, tid, bounds);
+#else
   attendPipelined<H, F>(args, shared, t0, rows, tid, bounds);
+#endif
   tile::barrier();
+#endif
 
   // 6. z = mlpStage(t0, o)（候補の O 射影と FFN）を書く。
+#ifdef PRISM_V4_HOT
+  tile::mlpStage<H, kTile, true, Phase == CandidatePhase::kFinish>(shared.mlp, args.weights, args.ffn, args.epsilon,
+                                                                   bounds, count, t0, rows);
+#elif defined(PRISM_V4_CORE)
+  tile::mlpStage<H, kTile, true>(shared.mlp, args.weights, args.ffn, args.epsilon, bounds, count, t0, rows);
+#else
   tile::mlpStage<H>(shared.mlp, args.weights, args.ffn, args.epsilon, bounds);
-  tile::storeTile<H>(args.transition.data, args.transition.limit, stream, t0, rows, tid, bounds);
+#endif
+  if constexpr (kCoreLayout && H > kWave * 8) {
+    for (int i = tid; i < rows * H / 8; i += kThreads) {
+      const int r = i / (H / 8);
+      const int c = i % (H / 8) * 8;
+      const size_t at = bounds.index(static_cast<size_t>(t0 + r) * H + c, 8, args.transition.limit);
+      *reinterpret_cast<u32x4*>(args.transition.data + at) = *reinterpret_cast<const u32x4*>(&stream[r][c]);
+    }
+  } else {
+    tile::storeTile<H>(args.transition.data, args.transition.limit, stream, t0, rows, tid, bounds);
+  }
 
   // 7. B を書く（1 段の形だけ）。
   if constexpr (kValue) {
@@ -365,17 +533,103 @@ __global__ __launch_bounds__(kThreads) void candidateKernel(CandidateArgs args) 
   bounds.trap();
 }
 
+#ifdef PRISM_V4_HOT
+template <int H>
+struct alignas(16) CandidateAttentionShared {
+  struct {
+    uint16_t inner[kTile][H / 2 + tile::kPad];
+  } mlp;
+  int row[kTile];
+};
+
+template <int H, int F>
+__global__ __launch_bounds__(kThreads) void candidateAttentionKernel(CandidateArgs args, v4::SegmentWeights segments,
+                                                                     v4::HotCandidateOffsets hot,
+                                                                     Span<uint16_t> attentionState) {
+  constexpr int A = H / 2;
+  __shared__ CandidateAttentionShared<H> shared;
+  const int tid = threadIdx.x;
+  const int t0 = blockIdx.x * kTile;
+  const int rows = min(kTile, args.transitions - t0);
+  Bounds bounds;
+  if (tid < rows) {
+    shared.row[tid] = candidate::transitionRow(args.rowColumn, args.rowWidth, args.rowFirstTransition, args.layout.rows,
+                                               t0 + tid, bounds);
+  }
+  tile::stageTile<A>(shared.mlp.inner, attentionState.data, attentionState.limit, t0, rows, tid, bounds);
+  tile::barrier();
+  attendSegments<H, F>(args, segments, shared, t0, rows, tid, bounds, hot);
+  tile::barrier();
+  // 1 遷移の q を読み終えてから、同じ場所に丸め済みの o を置く。
+  tile::storeTile<A>(attentionState.data, attentionState.limit, shared.mlp.inner, t0, rows, tid, bounds);
+  bounds.trap();
+}
+
+template <int F>
+void launchKeys(int hidden, const CandidateArgs& args, Span<const uint16_t> count, v4::SegmentWeights segments,
+                v4::HotCandidateOffsets hot, Span<uint16_t> attentionState, dim3 grid, hipStream_t stream) {
+  forCoreWidth(hidden, [&](auto width) {
+    constexpr int H = decltype(width)::value;
+    if (attentionState.data == nullptr) {
+      hipLaunchKernelGGL((hotCandidateKernel<H, F, true, CandidatePhase::kFull>), grid, dim3(kThreads), 0, stream, args,
+                         count, segments, hot, attentionState);
+      return;
+    }
+    hipLaunchKernelGGL((hotCandidateKernel<H, F, true, CandidatePhase::kPrepare>), grid, dim3(kThreads), 0, stream,
+                       args, count, segments, hot, attentionState);
+    hipLaunchKernelGGL((candidateAttentionKernel<H, F>), grid, dim3(kThreads), 0, stream, args, segments, hot,
+                       attentionState);
+    hipLaunchKernelGGL((hotCandidateKernel<H, F, true, CandidatePhase::kFinish>), grid, dim3(kThreads), 0, stream, args,
+                       count, segments, hot, attentionState);
+  });
+}
+#elif defined(PRISM_V4_CORE)
+template <int F>
+void launchKeys(int hidden, const CandidateArgs& args, Span<const uint16_t> count, v4::SegmentWeights segments,
+                dim3 grid, hipStream_t stream) {
+  forCoreWidth(hidden, [&](auto width) {
+    hipLaunchKernelGGL((coreCandidateKernel<decltype(width)::value, F, true>), grid, dim3(kThreads), 0, stream, args,
+                       count, segments);
+  });
+}
+#else
 template <int F>
 void launchKeys(const CandidateArgs& args, dim3 grid, hipStream_t stream) {
   if (args.writeValue) {
-    hipLaunchKernelGGL((candidateKernel<256, F, true>), grid, dim3(kThreads), 0, stream, args);
+    hipLaunchKernelGGL((candidateKernel<kWidthS.width, F, true>), grid, dim3(kThreads), 0, stream, args);
   } else {
-    hipLaunchKernelGGL((candidateKernel<256, F, false>), grid, dim3(kThreads), 0, stream, args);
+    hipLaunchKernelGGL((candidateKernel<kWidthS.width, F, false>), grid, dim3(kThreads), 0, stream, args);
   }
 }
-
+#endif
 }  // namespace
 
+#ifdef PRISM_V4_HOT
+void v4::launchCandidateWithHotOffsets(int hidden, const CandidateArgs& args, Span<const uint16_t> count,
+                                       SegmentWeights segments, HotCandidateOffsets hot, hipStream_t stream,
+                                       Span<uint16_t> attentionState) {
+  if (!args.writeValue || args.keys != args.layout.fixed() || args.discardExactWidth > discard::kMaxExact) {
+    throw std::invalid_argument("invalid V4 candidate block layout");
+  }
+  const dim3 grid((args.transitions + kTile - 1) / kTile);
+  forCandidateKeys(args.keys, [&](auto keys) {
+    launchKeys<decltype(keys)::value>(hidden, args, count, segments, hot, attentionState, grid, stream);
+  });
+  PRISM_HIP(hipGetLastError());
+}
+#elif defined(PRISM_V4_CORE)
+void v4::launchCandidateWithOffsets(int hidden, const CandidateArgs& args, Span<const uint16_t> count,
+                                    v4::SegmentWeights segments, hipStream_t stream) {
+  if (args.transitions == 0) return;
+  if (!args.writeValue || args.keys != args.layout.fixed() || args.discardExactWidth > discard::kMaxExact) {
+    throw std::invalid_argument("invalid V4 candidate block layout");
+  }
+  const dim3 grid((args.transitions + kTile - 1) / kTile);
+  forCandidateKeys(args.keys,
+                   [&](auto keys) { launchKeys<decltype(keys)::value>(hidden, args, count, segments, grid, stream); });
+  PRISM_HIP(hipGetLastError());
+}
+#else
 void launchCandidate(int hidden, const CandidateArgs& args, hipStream_t stream) {
   if (args.transitions <= 0) {
     return;
@@ -389,21 +643,14 @@ void launchCandidate(int hidden, const CandidateArgs& args, hipStream_t stream) 
                                 " B path features per transition, the schema has " +
                                 std::to_string(args.discardExactWidth));
   }
-  if (hidden != 256) {
+  if (hidden != kWidthS.width) {
     throw std::invalid_argument("K6 has no specialisation for hidden " + std::to_string(hidden));
   }
   const dim3 grid((args.transitions + kTile - 1) / kTile);
-  switch (args.keys) {
-    case 39:
-      launchKeys<39>(args, grid, stream);
-      break;
-    case 31:
-      launchKeys<31>(args, grid, stream);
-      break;
-    default:
-      throw std::invalid_argument("K6 is built for 31 or 39 keys per row, got " + std::to_string(args.keys));
-  }
+  forCandidateKeys(args.keys, [&](auto keys) { launchKeys<decltype(keys)::value>(args, grid, stream); });
   PRISM_HIP(hipGetLastError());
 }
+
+#endif
 
 }  // namespace prism

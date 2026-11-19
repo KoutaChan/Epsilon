@@ -13,7 +13,7 @@ import ai.djl.ndarray.NDArray;
 public interface RelationAttention {
 
   /** 1 行のトークンの数の上限（native の kAttentionMaxTokens）。 */
-  int MAX_TOKENS = 160;
+  int MAX_TOKENS = HipCapabilities.limit("MaxRowTokens");
 
   /** ヘッドの幅（native の kAttentionFeatures）。 */
   int FEATURES = 16;
@@ -48,7 +48,21 @@ public interface RelationAttention {
       int words,
       int segments,
       int entries,
-      float scale) {
+      float scale,
+      int causalFixedTokens) {
+
+    public Dimensions(
+        int rows,
+        int queries,
+        int keys,
+        int codeQueries,
+        int heads,
+        int words,
+        int segments,
+        int entries,
+        float scale) {
+      this(rows, queries, keys, codeQueries, heads, words, segments, entries, scale, 0);
+    }
 
     /**
      * 次元を確かめる。
@@ -69,11 +83,28 @@ public interface RelationAttention {
           || segments > MAX_SEGMENTS
           || entries <= 0
           || entries > MAX_ENTRIES
-          || !(scale > 0)) {
+          || !(scale > 0)
+          || causalFixedTokens < 0
+          || (causalFixedTokens > 0 && (causalFixedTokens > keys || queries != keys))) {
         throw new IllegalArgumentException(
-            "invalid relation attention dimensions: rows=" + rows + " queries=" + queries + " keys=" + keys
-                + " codeQueries=" + codeQueries + " heads=" + heads + " words=" + words + " segments=" + segments
-                + " entries=" + entries + " scale=" + scale);
+            "invalid relation attention dimensions: rows="
+                + rows
+                + " queries="
+                + queries
+                + " keys="
+                + keys
+                + " codeQueries="
+                + codeQueries
+                + " heads="
+                + heads
+                + " words="
+                + words
+                + " segments="
+                + segments
+                + " entries="
+                + entries
+                + " scale="
+                + scale);
       }
     }
 

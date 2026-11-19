@@ -77,9 +77,10 @@ struct Case {
 };
 
 void usage() {
-  std::fprintf(stderr,
-               "usage: prism_hip_bench --case DIR [--device N] [--lanes N] [--warmup N] [--iterations N]\n"
-               "                       [--kernel NAME] [--serial] [--profile] [--scores FILE] [--compare FILE] [--dry-run]\n");
+  std::fprintf(
+      stderr,
+      "usage: prism_hip_bench --case DIR [--device N] [--lanes N] [--warmup N] [--iterations N]\n"
+      "                       [--kernel NAME] [--serial] [--profile] [--scores FILE] [--compare FILE] [--dry-run]\n");
 }
 
 long long number(const std::string& name, const std::string& text, long long low, long long high) {
@@ -91,8 +92,8 @@ long long number(const std::string& name, const std::string& text, long long low
     used = 0;
   }
   if (used == 0 || used != text.size() || value < low || value > high) {
-    throw std::invalid_argument(name + " must be an integer in [" + std::to_string(low) + ", " +
-                                std::to_string(high) + "], got '" + text + "'");
+    throw std::invalid_argument(name + " must be an integer in [" + std::to_string(low) + ", " + std::to_string(high) +
+                                "], got '" + text + "'");
   }
   return value;
 }
@@ -208,29 +209,34 @@ Case readCase(const Options& options) {
   constexpr long long kInt = 0x7fffffffLL;
   Case result;
   PlanShape& plan = result.plan;
-  // 形の記述。Java の HipArchitecture.encode の int を、符号つきの 10 進でカンマ区切りに並べたもの。
-  const auto architecture = fields.find("architecture");
-  if (architecture == fields.end()) {
-    throw std::invalid_argument("case.txt has no field 'architecture'");
-  }
-  {
-    std::stringstream list(architecture->second);
+  // HipArchitecture.encode と HipPlanOptions.encode の符号つきの 10 進の列。
+  auto descriptor = [&](const std::string& name, auto& target, bool required) {
+    const auto entry = fields.find(name);
+    if (entry == fields.end()) {
+      if (required) {
+        throw std::invalid_argument("case.txt has no field '" + name + "'");
+      }
+      return;
+    }
+    std::stringstream list(entry->second);
     std::string item;
-    int32_t ints[prism::kArchitectureInts];
+    constexpr int length = sizeof(target) / sizeof(int32_t);
+    int32_t ints[length];
     int count = 0;
     while (std::getline(list, item, ',')) {
-      if (count == prism::kArchitectureInts) {
-        throw std::invalid_argument("case.txt architecture has more than " + std::to_string(prism::kArchitectureInts) +
-                                    " ints");
+      if (count == length) {
+        throw std::invalid_argument("case.txt " + name + " has more than " + std::to_string(length) + " ints");
       }
-      ints[count++] = static_cast<int32_t>(number("case.txt architecture", item, -kInt - 1, kInt));
+      ints[count++] = static_cast<int32_t>(number("case.txt " + name, item, -kInt - 1, kInt));
     }
-    if (count != prism::kArchitectureInts) {
-      throw std::invalid_argument("case.txt architecture has " + std::to_string(count) + " ints, expected " +
-                                  std::to_string(prism::kArchitectureInts));
+    if (count != length) {
+      throw std::invalid_argument("case.txt " + name + " has " + std::to_string(count) + " ints, expected " +
+                                  std::to_string(length));
     }
-    std::memcpy(&plan.architecture, ints, sizeof(plan.architecture));
-  }
+    std::memcpy(&target, ints, sizeof(target));
+  };
+  descriptor("architecture", plan.architecture, true);
+  descriptor("planOptions", plan.options, false);
   plan.rows = static_cast<int>(field("capacityRows", 1, kInt));
   plan.events = static_cast<int>(field("capacityEvents", 0, kInt));
   plan.transitions = static_cast<int>(field("capacityTransitions", 1, kInt));
@@ -415,9 +421,7 @@ class Bench {
   long long batches() const { return batches_; }
 
  private:
-  void submitForward(Lane& lane) {
-    lane.plan->forward(lane.input, case_.batch, lane.scores, case_.version);
-  }
+  void submitForward(Lane& lane) { lane.plan->forward(lane.input, case_.batch, lane.scores, case_.version); }
 
   // forward の終わりを待ち、s を最初の s と照合する。
   void finish(Lane& lane, bool timed) {
@@ -498,8 +502,9 @@ void report(const Options& options, const Case& material, const Bench& bench, do
         "PRISM-HIP-BENCH speed depth %d lanes %d%s rows %d tokens/row %.1f transitions/row %.1f actions/row %.1f:%s"
         " kernels=%.3fms (%.3f us/decision) wall=%.3fms (%.3f us/decision)\n",
         material.plan.architecture.depth, options.lanes, options.serial ? " serial" : "", batch.rows,
-        (static_cast<double>(material.plan.architecture.fixed()) * rows + batch.events) / rows, batch.transitions / rows,
-        batch.actions / rows, line.c_str(), sum, sum * 1e3 / rows, wallMs, wallMs * 1e3 / rows);
+        (static_cast<double>(material.plan.architecture.fixed()) * rows + batch.events) / rows,
+        batch.transitions / rows, batch.actions / rows, line.c_str(), sum, sum * 1e3 / rows, wallMs,
+        wallMs * 1e3 / rows);
     if (options.lanes > 1) {
       for (size_t i = 0; i < bench.lanes().size(); ++i) {
         double laneSum = 0.0;
@@ -520,10 +525,10 @@ int bench(const Options& options) {
   std::printf(
       "PRISM-HIP-BENCH case %s: depth %d rows %d events %d transitions %d actions %d bytes %zu weights %zu"
       " version %lld; lanes %d warmup %d iterations %d mode %s%s%s\n",
-      options.directory.c_str(), material.plan.architecture.depth, batch.rows, batch.events, batch.transitions, batch.actions,
-      batch.bytes, material.weights.size(), static_cast<long long>(material.version), options.lanes, options.warmup,
-      options.iterations, options.kernel >= 0 ? kKernelNames[options.kernel] : "forward", options.serial ? " serial" : "",
-      options.profile ? " profile" : "");
+      options.directory.c_str(), material.plan.architecture.depth, batch.rows, batch.events, batch.transitions,
+      batch.actions, batch.bytes, material.weights.size(), static_cast<long long>(material.version), options.lanes,
+      options.warmup, options.iterations, options.kernel >= 0 ? kKernelNames[options.kernel] : "forward",
+      options.serial ? " serial" : "", options.profile ? " profile" : "");
   if (options.dryRun) {
     std::printf("PRISM-HIP-BENCH dry run: arguments and case files are valid; no HIP call was made\n");
     return 0;

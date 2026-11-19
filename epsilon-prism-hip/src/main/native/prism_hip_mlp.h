@@ -29,18 +29,19 @@
 namespace prism {
 namespace tile {
 
-constexpr int kThreads = 256;          // ワークグループのスレッド数
+constexpr int kThreads = 256;  // ワークグループのスレッド数
 constexpr int kWaves = kThreads / kWave;
-constexpr int kChunk = 128;            // F を区切る幅（隠れ層 h の LDS の列）
-constexpr int kPad = 8;                // LDS の行のパディング（BF16 の要素数。行の間の bank の衝突を避ける）
+constexpr int kChunk = kFfnChunk;  // F を区切る幅（隠れ層 h の LDS の列）
+constexpr int kPad = 8;            // LDS の行のパディング（BF16 の要素数。行の間の bank の衝突を避ける）
 
 // LDS。stream は x → x1 → n → x2 の順に、inner は o → h の順に使い回す。Rows は 16 の倍数で、RMSNorm（4 スレッドで 1 行）の受け持ちが
 // ウェーブの境界で切れる数。
-template <int H, int Rows>
+template <int H, int Rows, int Chunks = 1>
 struct alignas(16) MlpShared {
+  static_assert(Chunks == 1 || Chunks == 2, "unsupported number of FFN chunks per tile");
   static_assert(Rows % 16 == 0 && 4 * Rows <= kThreads && 4 * Rows % kWave == 0, "unsupported tile rows");
   uint16_t stream[Rows][H + kPad];
-  uint16_t inner[Rows][kChunk + kPad];
+  uint16_t inner[Rows][(H / 2 > Chunks * kChunk ? H / 2 : Chunks * kChunk) + kPad];
 };
 
 // ワークグループのバリア（LDS の順序だけを守る）。__syncthreads は s_barrier の後に buffer_gl0_inv（WGP モードの acquire で、
@@ -52,6 +53,10 @@ __device__ __forceinline__ void barrier() {
   __builtin_amdgcn_s_barrier();
   __builtin_amdgcn_fence(__ATOMIC_ACQUIRE, "workgroup", "local");
 }
+
+// 幅ごとのベクトルを、ワークグループで端数なく分けられる。
+template <int Width>
+constexpr bool kEvenTile = kThreads % (Width / 8) == 0;
 
 // Rows 行 × Width 列の写しで、スレッド tid が pass 回目に受け持つ 16 バイトの行（列は (tid % kVectors)·8 で pass に依らない）。
 // 「tid の行 + pass ごとの定数」と書くと、LDS とグローバルメモリのアドレスは 1 つの基底に定数を足すだけになる（ds の offset に
@@ -68,53 +73,75 @@ __device__ __forceinline__ int tileRow(int pass, int tid) {
 // Rows 行 × Width 列の BF16 を、グローバルメモリから LDS へ 16 バイトずつ写す。タイルの外の行は 0 にする。読み込みは行をタイルの
 // 最後の行に寄せて（rows ≥ 1）分岐をなくし、kPasses 個を一度に出してから LDS に書く。
 template <int Width, int Rows, int Stride>
-__device__ __forceinline__ void stageTile(uint16_t (&lds)[Rows][Stride], const uint16_t* __restrict__ global, size_t limit,
-                                          int token0, int rows, int tid, Bounds& bounds) {
-  constexpr int kVectors = Width / 8;
-  constexpr int kPasses = Rows * kVectors / kThreads;
-  const int col = (tid % kVectors) * 8;
-  u32x4 values[kPasses];
+__device__ __forceinline__ void stageTile(uint16_t (&lds)[Rows][Stride], const uint16_t* __restrict__ global,
+                                          size_t limit, int token0, int rows, int tid, Bounds& bounds) {
+  if constexpr (!kEvenTile<Width>) {
+    for (int at = tid; at < Rows * (Width / 8); at += kThreads) {
+      const int row = at / (Width / 8);
+      const int c = at % (Width / 8) * 8;
+      const u32x4 zero{};
+      *reinterpret_cast<u32x4*>(&lds[row][c]) =
+          row < rows ? *reinterpret_cast<const u32x4*>(
+                           global + bounds.index(static_cast<size_t>(token0 + row) * Width + c, 8, limit))
+                     : zero;
+    }
+  } else {
+    constexpr int kVectors = Width / 8;
+    constexpr int kPasses = Rows * kVectors / kThreads;
+    const int col = (tid % kVectors) * 8;
+    u32x4 values[kPasses];
 #pragma unroll
-  for (int pass = 0; pass < kPasses; ++pass) {
-    const int row = min(tileRow<Width, Rows>(pass, tid), rows - 1);
-    const size_t at = bounds.index(static_cast<size_t>(token0 + row) * Width + col, 8, limit);
-    values[pass] = *reinterpret_cast<const u32x4*>(global + at);
-  }
-  const u32x4 zero = {0u, 0u, 0u, 0u};
+    for (int pass = 0; pass < kPasses; ++pass) {
+      const int row = min(tileRow<Width, Rows>(pass, tid), rows - 1);
+      const size_t at = bounds.index(static_cast<size_t>(token0 + row) * Width + col, 8, limit);
+      values[pass] = *reinterpret_cast<const u32x4*>(global + at);
+    }
+    const u32x4 zero = {0u, 0u, 0u, 0u};
 #pragma unroll
-  for (int pass = 0; pass < kPasses; ++pass) {
-    const int row = tileRow<Width, Rows>(pass, tid);
-    *reinterpret_cast<u32x4*>(&lds[row][col]) = row < rows ? values[pass] : zero;
+    for (int pass = 0; pass < kPasses; ++pass) {
+      const int row = tileRow<Width, Rows>(pass, tid);
+      *reinterpret_cast<u32x4*>(&lds[row][col]) = row < rows ? values[pass] : zero;
+    }
   }
 }
 
 // LDS の Rows 行 × Width 列を、グローバルメモリへ 16 バイトずつ書く。タイルの外の行は書かない。LDS は先に全て読み、行が埋まった
 // タイル（ワークグループで一様）は分岐なしで書く。
 template <int Width, int Rows, int Stride>
-__device__ __forceinline__ void storeTile(uint16_t* __restrict__ global, size_t limit, const uint16_t (&lds)[Rows][Stride],
-                                          int token0, int rows, int tid, Bounds& bounds) {
-  constexpr int kVectors = Width / 8;
-  constexpr int kPasses = Rows * kVectors / kThreads;
-  const int col = (tid % kVectors) * 8;
-  u32x4 values[kPasses];
-#pragma unroll
-  for (int pass = 0; pass < kPasses; ++pass) {
-    values[pass] = *reinterpret_cast<const u32x4*>(&lds[tileRow<Width, Rows>(pass, tid)][col]);
-  }
-  if (rows == Rows) {
-#pragma unroll
-    for (int pass = 0; pass < kPasses; ++pass) {
-      const int row = tileRow<Width, Rows>(pass, tid);
-      const size_t at = bounds.index(static_cast<size_t>(token0 + row) * Width + col, 8, limit);
-      *reinterpret_cast<u32x4*>(global + at) = values[pass];
+__device__ __forceinline__ void storeTile(uint16_t* __restrict__ global, size_t limit,
+                                          const uint16_t (&lds)[Rows][Stride], int token0, int rows, int tid,
+                                          Bounds& bounds) {
+  if constexpr (!kEvenTile<Width>) {
+    for (int at = tid; at < rows * (Width / 8); at += kThreads) {
+      const int row = at / (Width / 8);
+      const int c = at % (Width / 8) * 8;
+      const size_t to = bounds.index(static_cast<size_t>(token0 + row) * Width + c, 8, limit);
+      *reinterpret_cast<u32x4*>(global + to) = *reinterpret_cast<const u32x4*>(&lds[row][c]);
     }
   } else {
+    constexpr int kVectors = Width / 8;
+    constexpr int kPasses = Rows * kVectors / kThreads;
+    const int col = (tid % kVectors) * 8;
+    u32x4 values[kPasses];
 #pragma unroll
     for (int pass = 0; pass < kPasses; ++pass) {
-      const int row = tileRow<Width, Rows>(pass, tid);
-      if (row < rows) {
+      values[pass] = *reinterpret_cast<const u32x4*>(&lds[tileRow<Width, Rows>(pass, tid)][col]);
+    }
+    if (rows == Rows) {
+#pragma unroll
+      for (int pass = 0; pass < kPasses; ++pass) {
+        const int row = tileRow<Width, Rows>(pass, tid);
         const size_t at = bounds.index(static_cast<size_t>(token0 + row) * Width + col, 8, limit);
         *reinterpret_cast<u32x4*>(global + at) = values[pass];
+      }
+    } else {
+#pragma unroll
+      for (int pass = 0; pass < kPasses; ++pass) {
+        const int row = tileRow<Width, Rows>(pass, tid);
+        if (row < rows) {
+          const size_t at = bounds.index(static_cast<size_t>(token0 + row) * Width + col, 8, limit);
+          *reinterpret_cast<u32x4*>(global + at) = values[pass];
+        }
       }
     }
   }
@@ -124,26 +151,35 @@ __device__ __forceinline__ void storeTile(uint16_t* __restrict__ global, size_t 
 // ワークグループで一様）。
 template <int Width, int Rows, int Stride>
 __device__ __forceinline__ void storeTileRows(uint16_t* __restrict__ global, size_t limit,
-                                              const uint16_t (&lds)[Rows][Stride], int row0, int first, int rows, int tid,
-                                              Bounds& bounds) {
-  if (first == 0) {
-    storeTile<Width>(global, limit, lds, row0, rows, tid, bounds);
-    return;
-  }
-  constexpr int kVectors = Width / 8;
-  constexpr int kPasses = Rows * kVectors / kThreads;
-  const int col = (tid % kVectors) * 8;
-  u32x4 values[kPasses];
+                                              const uint16_t (&lds)[Rows][Stride], int row0, int first, int rows,
+                                              int tid, Bounds& bounds) {
+  if constexpr (!kEvenTile<Width>) {
+    for (int at = first * (Width / 8) + tid; at < rows * (Width / 8); at += kThreads) {
+      const int row = at / (Width / 8);
+      const int c = at % (Width / 8) * 8;
+      const size_t to = bounds.index(static_cast<size_t>(row0 + row) * Width + c, 8, limit);
+      *reinterpret_cast<u32x4*>(global + to) = *reinterpret_cast<const u32x4*>(&lds[row][c]);
+    }
+  } else {
+    if (first == 0) {
+      storeTile<Width>(global, limit, lds, row0, rows, tid, bounds);
+      return;
+    }
+    constexpr int kVectors = Width / 8;
+    constexpr int kPasses = Rows * kVectors / kThreads;
+    const int col = (tid % kVectors) * 8;
+    u32x4 values[kPasses];
 #pragma unroll
-  for (int pass = 0; pass < kPasses; ++pass) {
-    values[pass] = *reinterpret_cast<const u32x4*>(&lds[tileRow<Width, Rows>(pass, tid)][col]);
-  }
+    for (int pass = 0; pass < kPasses; ++pass) {
+      values[pass] = *reinterpret_cast<const u32x4*>(&lds[tileRow<Width, Rows>(pass, tid)][col]);
+    }
 #pragma unroll
-  for (int pass = 0; pass < kPasses; ++pass) {
-    const int row = tileRow<Width, Rows>(pass, tid);
-    if (row >= first && row < rows) {
-      const size_t at = bounds.index(static_cast<size_t>(row0 + row) * Width + col, 8, limit);
-      *reinterpret_cast<u32x4*>(global + at) = values[pass];
+    for (int pass = 0; pass < kPasses; ++pass) {
+      const int row = tileRow<Width, Rows>(pass, tid);
+      if (row >= first && row < rows) {
+        const size_t at = bounds.index(static_cast<size_t>(row0 + row) * Width + col, 8, limit);
+        *reinterpret_cast<u32x4*>(global + at) = values[pass];
+      }
     }
   }
 }
@@ -155,27 +191,38 @@ template <int Width, int Rows, int Stride>
 __device__ __forceinline__ void storeRowMajorFixed(uint16_t* __restrict__ global, size_t limit,
                                                    const uint16_t (&lds)[Rows][Stride], const TokenLayout& layout,
                                                    int token0, int rows, int tid, Bounds& bounds) {
-  constexpr int kVectors = Width / 8;
-  static_assert(kVectors == kWave, "the store gives each wave one token per pass");
-  const int fixed = layout.fixed();
-#pragma unroll
-  for (int pass = 0; pass < Rows * kVectors / kThreads; ++pass) {
-    const int index = pass * kThreads + tid;
-    const int row = __builtin_amdgcn_readfirstlane(index / kVectors);
-    const int col = (index % kVectors) * 8;
-    if (row < rows) {
-      int owner;
-      int position;
+  if constexpr (!kEvenTile<Width>) {
+    for (int at = tid; at < rows * (Width / 8); at += kThreads) {
+      const int row = at / (Width / 8);
+      const int c = at % (Width / 8) * 8;
+      int owner, position;
       layout.locate(token0 + row, owner, position);
-      const size_t at = bounds.index((static_cast<size_t>(owner) * fixed + position) * Width + col, 8, limit);
-      *reinterpret_cast<u32x4*>(global + at) = *reinterpret_cast<const u32x4*>(&lds[row][col]);
+      const size_t to = bounds.index((static_cast<size_t>(owner) * layout.fixed() + position) * Width + c, 8, limit);
+      *reinterpret_cast<u32x4*>(global + to) = *reinterpret_cast<const u32x4*>(&lds[row][c]);
+    }
+  } else {
+    constexpr int kVectors = Width / 8;
+    static_assert(kVectors == kWave, "the store gives each wave one token per pass");
+    const int fixed = layout.fixed();
+#pragma unroll
+    for (int pass = 0; pass < Rows * kVectors / kThreads; ++pass) {
+      const int index = pass * kThreads + tid;
+      const int row = __builtin_amdgcn_readfirstlane(index / kVectors);
+      const int col = (index % kVectors) * 8;
+      if (row < rows) {
+        int owner;
+        int position;
+        layout.locate(token0 + row, owner, position);
+        const size_t at = bounds.index((static_cast<size_t>(owner) * fixed + position) * Width + col, 8, limit);
+        *reinterpret_cast<u32x4*>(global + at) = *reinterpret_cast<const u32x4*>(&lds[row][col]);
+      }
     }
   }
 }
 
 // 重み [rows, stride] の行 row の、K の向きの 16 要素（WMMA の B のフラグメント）。
-__device__ __forceinline__ bf16x16 weightFragment(const uint16_t* __restrict__ weight, size_t limit, int stride, int row,
-                                                  int k0, Bounds& bounds) {
+__device__ __forceinline__ bf16x16 weightFragment(const uint16_t* __restrict__ weight, size_t limit, int stride,
+                                                  int row, int k0, Bounds& bounds) {
   return fragment(weight + bounds.index(static_cast<size_t>(row) * stride + k0, 16, limit));
 }
 
@@ -204,8 +251,8 @@ __device__ __forceinline__ float inverseRms(const u32x4 (&part)[H / 32], float e
 }
 
 // RMSNorm の 8 列 [col, col + 8): ⌊(x·r)·g⌉（ゲインは FP32）。
-__device__ __forceinline__ u32x4 normalize8(u32x4 packed, const float* __restrict__ gain, size_t gainLimit, int col, float r,
-                                            Bounds& bounds) {
+__device__ __forceinline__ u32x4 normalize8(u32x4 packed, const float* __restrict__ gain, size_t gainLimit, int col,
+                                            float r, Bounds& bounds) {
   const size_t at = bounds.index(col, 8, gainLimit);
   const f32x4 g0 = *reinterpret_cast<const f32x4*>(gain + at);
   const f32x4 g1 = *reinterpret_cast<const f32x4*>(gain + at + 4);
@@ -240,7 +287,8 @@ __device__ __forceinline__ void normalizeTile(uint16_t (&stream)[Rows][H + kPad]
   const float r = inverseRms<H>(part, epsilon);
 #pragma unroll
   for (int c = 0; c < H / 32; ++c) {
-    *reinterpret_cast<u32x4*>(&stream[row][col0 + 8 * c]) = normalize8(part[c], gain, gainLimit, col0 + 8 * c, r, bounds);
+    *reinterpret_cast<u32x4*>(&stream[row][col0 + 8 * c]) =
+        normalize8(part[c], gain, gainLimit, col0 + 8 * c, r, bounds);
   }
 }
 
@@ -248,8 +296,8 @@ __device__ __forceinline__ void normalizeTile(uint16_t (&stream)[Rows][H + kPad]
 // 直に書く。stream は読むだけなので、直前の storeTile との間にバリアは要らない。
 template <int H, int Rows>
 __device__ __forceinline__ void normalizeStore(const uint16_t (&stream)[Rows][H + kPad], const float* __restrict__ gain,
-                                               size_t gainLimit, float epsilon, uint16_t* __restrict__ out, size_t outLimit,
-                                               int token0, int rows, int tid, Bounds& bounds) {
+                                               size_t gainLimit, float epsilon, uint16_t* __restrict__ out,
+                                               size_t outLimit, int token0, int rows, int tid, Bounds& bounds) {
   const int row = tid >> 2;
   if (4 * Rows < kThreads && row >= Rows) {
     return;
@@ -523,22 +571,75 @@ __device__ __forceinline__ void projectKeyValue(uint16_t (&stream)[Rows][H + kPa
   barrier();
 }
 
-// K3 の段（上の式）。前: stream に x、inner に o（同期済み）。後: stream に新しい x（同期済み）、inner は壊れる。重みの行列は
-// フラグメントの順に並べた写し（MlpWeights）。ワークグループのバリアは 2·F/kChunk + 3 回。
-template <int H, int Rows>
-__device__ __forceinline__ void mlpStage(MlpShared<H, Rows>& shared, const MlpWeights& w, int ffn, float epsilon,
+// 上げ射影の入力を複数の列タイルで共有する。受け渡しの同期は列タイルの組ごとに 2 回。
+// 下げ射影の累積器は段をまたいで保持し、元の K の順と活性化の前後の BF16 丸めを保つ。
+template <int UpTiles, int H, int Rows, int Chunks, int RowTiles, int Columns>
+__device__ __forceinline__ void ffnChunk(MlpShared<H, Rows, Chunks>& shared, const MlpWeights& w,
+                                         const FragmentWeights& upWeight, const FragmentWeights& downWeight,
+                                         f32x8 (&down)[RowTiles][Columns], int first, int wave, int column, int half,
                                          Bounds& bounds) {
+  constexpr int width = UpTiles * kChunk;
+  int upBase[UpTiles];
+  float bias[UpTiles];
+#pragma unroll
+  for (int j = 0; j < UpTiles; ++j) {
+    const int tile = wave * UpTiles + j;
+    upBase[j] = fragmentBase<H / 16>(upWeight, first / 16 + tile, 0, bounds);
+    bias[j] = load(w.upBias.data, w.upBias.limit, first + tile * 16 + column, bounds);
+  }
+  f32x8 up[RowTiles][UpTiles]{};
+  gemmFragments<UpTiles, H>(up, shared.stream, upWeight, upBase, column);
+  int downBase[Columns];
+#pragma unroll
+  for (int j = 0; j < Columns; ++j) {
+    downBase[j] = fragmentBase<width / 16>(downWeight, wave * Columns + j, first / 16, bounds);
+  }
+  bf16x16 next[Columns];
+  firstFragmentsAt(next, downWeight, downBase);
+  uint16_t activated[RowTiles][UpTiles][8];
+#pragma unroll
+  for (int m = 0; m < RowTiles; ++m) {
+#pragma unroll
+    for (int j = 0; j < UpTiles; ++j) {
+#pragma unroll
+      for (int v = 0; v < 8; ++v) {
+        const float x = bf16Float(bf16RoundActivation(up[m][j][v] + bias[j]));
+        activated[m][j][v] = bf16RoundActivation(siluFast(x));
+      }
+    }
+  }
+  barrier();
+#pragma unroll
+  for (int m = 0; m < RowTiles; ++m) {
+#pragma unroll
+    for (int j = 0; j < UpTiles; ++j) {
+#pragma unroll
+      for (int v = 0; v < 8; ++v) {
+        shared.inner[m * 16 + 2 * v + half][(wave * UpTiles + j) * 16 + column] = activated[m][j][v];
+      }
+    }
+  }
+  barrier();
+  gemmFragmentsFrom<Columns, width>(down, shared.inner, downWeight, downBase, column, next);
+}
+
+// K3 の段（上の式）。前: stream に x、inner に o（同期済み）。後: stream に新しい x（同期済み）、inner は壊れる。重みの行列は
+// フラグメントの順に並べた写し（MlpWeights）。FFN は Chunks 個のチャンクをまとめて計算する。
+template <int H, int Rows, bool kCount = false, bool kShortPrefetch = false, int Chunks>
+__device__ __forceinline__ void mlpStage(MlpShared<H, Rows, Chunks>& shared, const MlpWeights& w, int ffn,
+                                         float epsilon, Bounds& bounds, Span<const uint16_t> count = {}, int first = 0,
+                                         int realRows = 0) {
   constexpr int A = H / 2;                   // Attention の出力の幅
   constexpr int kColumns = H / 16 / kWaves;  // ウェーブごとの出力の列のフラグメント（O 射影と down 射影で同じ受け持ち）
   constexpr int kRowTiles = Rows / 16;
-  static_assert(A <= kChunk, "the attention output is staged in the hidden buffer");
+  static_assert(A <= sizeof(shared.inner[0]) / sizeof(uint16_t) - kPad, "the attention output fits in LDS");
   static_assert(H % (16 * kWaves) == 0 && H % 32 == 0, "unsupported hidden width");
 
   const int tid = threadIdx.x;
   const int lane = tid % kWave;
   const int wave = __builtin_amdgcn_readfirstlane(tid / kWave);  // ウェーブで同じ（写しの soffset を SGPR に置く）
-  const int half = lane >> 4;     // C のフラグメントで奇数の行を持つ lane
-  const int column = lane & 15;   // A・B のフラグメントの行、C のフラグメントの列
+  const int half = lane >> 4;                                    // C のフラグメントで奇数の行を持つ lane
+  const int column = lane & 15;                                  // A・B のフラグメントの行、C のフラグメントの列
   const FragmentWeights outWeight = fragmentWeights(w.outWeight, A, column);
   const FragmentWeights upWeight = fragmentWeights(w.upWeight, H, column);
   const FragmentWeights downWeight = fragmentWeights(w.downWeight, ffn, column);
@@ -563,7 +664,11 @@ __device__ __forceinline__ void mlpStage(MlpShared<H, Rows>& shared, const MlpWe
     outBias[j] = load(w.outBias.data, w.outBias.limit, output[j], bounds);
     outBase[j] = fragmentBase<A / 16>(outWeight, wave * kColumns + j, 0, bounds);
   }
-  gemmFragments<kColumns, A>(acc, shared.inner, outWeight, outBase, column);
+  if constexpr (kShortPrefetch) {
+    gemmFragmentsLoop<kColumns, A>(acc, shared.inner, outWeight, outBase, column);
+  } else {
+    gemmFragments<kColumns, A>(acc, shared.inner, outWeight, outBase, column);
+  }
 
   // 2. x1 = ⌊x + ⌊o·Woᵀ + bo⌉⌉。LDS の x の上に書き、最後の残差のためにレジスタにも 2 つずつ詰めて残す。
   uint32_t keep[kRowTiles][kColumns][4];
@@ -579,7 +684,13 @@ __device__ __forceinline__ void mlpStage(MlpShared<H, Rows>& shared, const MlpWe
         for (int e = 0; e < 2; ++e) {
           const int row = m * 16 + 2 * (v + e) + half;
           const float y = bf16Float(bf16RoundActivation(acc[m][j][v + e] + outBias[j]));
-          const uint16_t x1 = bf16RoundActivation(bf16Float(shared.stream[row][col]) + y);
+          uint16_t x1 = bf16RoundActivation(bf16Float(shared.stream[row][col]) + y);
+          if constexpr (kCount) {
+            if (row < realRows) {
+              const size_t at = bounds.index(static_cast<size_t>(first + row) * H + col, 1, count.limit);
+              x1 = bf16RoundActivation(bf16Float(x1) + bf16Float(count.data[at]));
+            }
+          }
           shared.stream[row][col] = x1;
           pair |= static_cast<uint32_t>(x1) << (16 * e);
         }
@@ -610,63 +721,89 @@ __device__ __forceinline__ void mlpStage(MlpShared<H, Rows>& shared, const MlpWe
       down[m][j] = f32x8{};
     }
   }
-  float upBiasNext = load(w.upBias.data, w.upBias.limit, wave * 16 + column, bounds);
   float downBias[kColumns];
-#pragma unroll
-  for (int j = 0; j < kColumns; ++j) {
-    downBias[j] = load(w.downBias.data, w.downBias.limit, output[j], bounds);
-  }
-  int upBase[1] = {fragmentBase<H / 16>(upWeight, wave, 0, bounds)};
-  bf16x16 upFirst[1];
-  firstFragmentsAt(upFirst, upWeight, upBase);
-  for (int f0 = 0; f0 < ffn; f0 += kChunk) {
-    const float upBias = upBiasNext;
-    f32x8 up[kRowTiles][1];
-#pragma unroll
-    for (int m = 0; m < kRowTiles; ++m) {
-      up[m][0] = f32x8{};
+  if constexpr (Chunks == 2) {
+    int first = 0;
+    for (; first + 2 * kChunk <= ffn; first += 2 * kChunk) {
+      ffnChunk<2>(shared, w, upWeight, downWeight, down, first, wave, column, half, bounds);
     }
-    gemmFragmentsFrom<1, H>(up, shared.stream, upWeight, upBase, column, upFirst);
-    upBiasNext = load(w.upBias.data, w.upBias.limit, min(f0 + kChunk + wave * 16 + column, ffn - 1), bounds);
-    int downBase[kColumns];
+    // FFN の幅が奇数個のチャンクなら、末尾では実在する 1 個だけを読む。
+    if (first < ffn) ffnChunk<1>(shared, w, upWeight, downWeight, down, first, wave, column, half, bounds);
+  } else {
+    float upBiasNext = 0;
+    int upBase[1];
+    bf16x16 upFirst[1];
+    if constexpr (!kShortPrefetch) {
+      upBiasNext = load(w.upBias.data, w.upBias.limit, wave * 16 + column, bounds);
 #pragma unroll
-    for (int j = 0; j < kColumns; ++j) {
-      downBase[j] = fragmentBase<kChunk / 16>(downWeight, wave * kColumns + j, f0 / 16, bounds);
+      for (int j = 0; j < kColumns; ++j) {
+        downBias[j] = load(w.downBias.data, w.downBias.limit, output[j], bounds);
+      }
+      upBase[0] = fragmentBase<H / 16>(upWeight, wave, 0, bounds);
+      firstFragmentsAt(upFirst, upWeight, upBase);
     }
-    bf16x16 downFirst[kColumns];
-    firstFragmentsAt(downFirst, downWeight, downBase);
-    uint16_t h[kRowTiles][8];
+    for (int f0 = 0; f0 < ffn; f0 += kChunk) {
+      float upBias = upBiasNext;
+      f32x8 up[kRowTiles][1];
 #pragma unroll
-    for (int m = 0; m < kRowTiles; ++m) {
+      for (int m = 0; m < kRowTiles; ++m) {
+        up[m][0] = f32x8{};
+      }
+      if constexpr (kShortPrefetch) {
+        // 先読みは射影の中に収め、上げと下げをまたいで重みのフラグメントを保持しない。
+        upBase[0] = fragmentBase<H / 16>(upWeight, f0 / 16 + wave, 0, bounds);
+        gemmFragmentsLoop<1, H>(up, shared.stream, upWeight, upBase, column);
+        upBias = load(w.upBias.data, w.upBias.limit, f0 + wave * 16 + column, bounds);
+      } else {
+        gemmFragmentsFrom<1, H>(up, shared.stream, upWeight, upBase, column, upFirst);
+        upBiasNext = load(w.upBias.data, w.upBias.limit, min(f0 + kChunk + wave * 16 + column, ffn - 1), bounds);
+      }
+      int downBase[kColumns];
 #pragma unroll
-      for (int v = 0; v < 8; ++v) {
-        h[m][v] = bf16RoundActivation(siluFast(bf16Float(bf16RoundActivation(up[m][0][v] + upBias))));
+      for (int j = 0; j < kColumns; ++j) {
+        downBase[j] = fragmentBase<kChunk / 16>(downWeight, wave * kColumns + j, f0 / 16, bounds);
+      }
+      bf16x16 downFirst[kColumns];
+      if constexpr (!kShortPrefetch) firstFragmentsAt(downFirst, downWeight, downBase);
+      uint16_t h[kRowTiles][8];
+#pragma unroll
+      for (int m = 0; m < kRowTiles; ++m) {
+#pragma unroll
+        for (int v = 0; v < 8; ++v) {
+          h[m][v] = bf16RoundActivation(siluFast(bf16Float(bf16RoundActivation(up[m][0][v] + upBias))));
+        }
+      }
+      barrier();
+#pragma unroll
+      for (int m = 0; m < kRowTiles; ++m) {
+#pragma unroll
+        for (int v = 0; v < 8; ++v) {
+          shared.inner[m * 16 + 2 * v + half][wave * 16 + column] = h[m][v];
+        }
+      }
+      barrier();
+      if constexpr (kShortPrefetch) {
+        gemmFragmentsLoop<kColumns, kChunk>(down, shared.inner, downWeight, downBase, column);
+      } else {
+        upBase[0] = fragmentBase<H / 16>(upWeight, min(f0 + kChunk, ffn - kChunk) / 16 + wave, 0, bounds);
+        firstFragmentsAt(upFirst, upWeight, upBase);
+        gemmFragmentsFrom<kColumns, kChunk>(down, shared.inner, downWeight, downBase, column, downFirst);
       }
     }
-    barrier();
-#pragma unroll
-    for (int m = 0; m < kRowTiles; ++m) {
-#pragma unroll
-      for (int v = 0; v < 8; ++v) {
-        shared.inner[m * 16 + 2 * v + half][wave * 16 + column] = h[m][v];
-      }
-    }
-    barrier();
-    upBase[0] = fragmentBase<H / 16>(upWeight, min(f0 + kChunk, ffn - kChunk) / 16 + wave, 0, bounds);
-    firstFragmentsAt(upFirst, upWeight, upBase);
-    gemmFragmentsFrom<kColumns, kChunk>(down, shared.inner, downWeight, downBase, column, downFirst);
   }
 
   // 5. x = ⌊x1 + ⌊acc + b2⌉⌉ を LDS に置く。
 #pragma unroll
   for (int j = 0; j < kColumns; ++j) {
     const int col = output[j];
+    const float bias =
+        (kShortPrefetch || Chunks == 2) ? load(w.downBias.data, w.downBias.limit, col, bounds) : downBias[j];
 #pragma unroll
     for (int m = 0; m < kRowTiles; ++m) {
 #pragma unroll
       for (int v = 0; v < 8; ++v) {
         const uint16_t x1 = static_cast<uint16_t>(keep[m][j][v / 2] >> (16 * (v % 2)));
-        const float y = bf16Float(bf16RoundActivation(down[m][j][v] + downBias[j]));
+        const float y = bf16Float(bf16RoundActivation(down[m][j][v] + bias));
         shared.stream[m * 16 + 2 * v + half][col] = bf16RoundActivation(bf16Float(x1) + y);
       }
     }

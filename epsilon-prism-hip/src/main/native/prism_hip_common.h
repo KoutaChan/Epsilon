@@ -70,15 +70,11 @@ __host__ __device__ __forceinline__ float bf16Float(uint16_t value) {
 
 // 2 つの BF16 を詰めた 1 ワード（下位が先）を v_dot2 のオペランドにする。ワードは値で受ける（ext_vector の要素を直接 bit_cast
 // しない。上の注意を参照）。
-__device__ __forceinline__ bf16x2 asPair(uint32_t bits) {
-  return __builtin_bit_cast(bf16x2, bits);
-}
+__device__ __forceinline__ bf16x2 asPair(uint32_t bits) { return __builtin_bit_cast(bf16x2, bits); }
 
 // SiLU を FP32 で計算する（PyTorch の x / (1 + exp(-x)) と同じ式）。K7 はこちらを使う（eager と約 1e-6 で一致し、速い式にしても得が
 // ない）。
-__device__ __forceinline__ float silu(float value) {
-  return value / (1.0f + expf(-value));
-}
+__device__ __forceinline__ float silu(float value) { return value / (1.0f + expf(-value)); }
 
 // FFN の h（K3・K5・K6）と K6 の B のヘッドで使う SiLU。u·rcp(1 + 2^(−u·log2e)) を v_exp_f32・v_rcp_f32 で計算し、expf の範囲縮小と
 // IEEE の割り算を省く。silu との差は FP32 の相対誤差で約 2e-6（|u| ≤ 30。主に u·log2e の 1 回の丸めによる）。−88.7 < u < −87.3 では、
@@ -119,7 +115,8 @@ __device__ __forceinline__ u32x4 pack8(const float (&values)[8]) {
   u32x4 packed;
 #pragma unroll
   for (int w = 0; w < 4; ++w) {
-    packed[w] = static_cast<uint32_t>(bf16Round(values[2 * w])) | (static_cast<uint32_t>(bf16Round(values[2 * w + 1])) << 16);
+    packed[w] =
+        static_cast<uint32_t>(bf16Round(values[2 * w])) | (static_cast<uint32_t>(bf16Round(values[2 * w + 1])) << 16);
   }
   return packed;
 }
@@ -177,15 +174,15 @@ __device__ __forceinline__ float halfSum(float value) {
   return value;
 }
 
-// グローバルメモリのインデックスの範囲検査（-DPRISM_HIP_CHECK を付けたビルドだけ）。[begin, begin + count) が上限 limit（要素の数）を
+// グローバルメモリのインデックスの範囲検査（PRISM_HIP_CHECKED=1 のビルドだけ）。[begin, begin + count) が上限 limit（要素の数）を
 // 外れたら、その読み書きを領域の先頭に向け、違反のフラグを立てる（範囲外には一度も触れない）。フラグが立っていれば、カーネルの最後の
 // trap() で止める。分岐を作らないので、内側のループの命令の並べ替えを妨げない。通常のビルドでは begin をそのまま返し、フラグは持たない。
 struct Bounds {
-#ifdef PRISM_HIP_CHECK
+#if PRISM_HIP_CHECKED
   bool violated = false;
 
   __device__ __forceinline__ size_t index(size_t begin, size_t count, size_t limit) {
-    const bool inside = begin + count <= limit;
+    const bool inside = begin <= limit && count <= limit - begin;
     violated |= !inside;
     return inside ? begin : 0;
   }

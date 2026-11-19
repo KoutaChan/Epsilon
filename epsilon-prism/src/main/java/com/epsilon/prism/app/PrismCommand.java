@@ -18,6 +18,7 @@ public sealed interface PrismCommand extends Command<PrismSettings>
         SplitDuel,
         GrpCalibration,
         FitCohorts,
+        FitPlateau,
         Records,
         RefitGrp,
         SwitchGrp,

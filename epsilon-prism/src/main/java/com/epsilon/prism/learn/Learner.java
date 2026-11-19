@@ -14,7 +14,6 @@ import ai.djl.pytorch.engine.PtStream;
 import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
-import ai.djl.training.tracker.Tracker;
 import com.epsilon.agent.learn.DataParallelGroup;
 import com.epsilon.agent.learn.DataParallelGroup.Update;
 import com.epsilon.agent.runtime.NetworkDevices;
@@ -28,6 +27,7 @@ import com.epsilon.prism.model.FitProbe;
 import com.epsilon.prism.model.FitProbe.Stage;
 import com.epsilon.prism.model.LearningRateSchedule;
 import com.epsilon.prism.model.Outputs;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
@@ -67,14 +67,13 @@ final class Learner implements AutoCloseable {
   /** GPU で損失をホストへ読み戻すステップの間隔。同期を減らすためで、報告する損失は読み戻したステップの値で代表させる。 */
   static final int METRIC_EVERY = 20;
 
-  private static final float WEIGHT_DECAY = 0f;
-
   private final Model canonical;
   private final PrismNetwork network;
   private final NetworkDevices devices;
   private final LearningRateSchedule schedule;
   private final float gradientClip;
   private final PrismLoss loss;
+  private final PairLoss pair;
   private final Optimizer optimizer;
 
   /** 補助のヘッドの項に掛けるゲイン K′（{@link Teacher#gain}）。 */
@@ -98,6 +97,14 @@ final class Learner implements AutoCloseable {
 
   /** 今の更新の学習率（{@link #train} が決め、AdamW の更新の中で読む）。 */
   private volatile float rate;
+
+  static boolean samplesLoss(int optimizerStep, boolean gpu) {
+    return !gpu || optimizerStep % METRIC_EVERY == 1;
+  }
+
+  boolean sampledLoss() {
+    return samplesLoss(step, devices.primary().isGpu());
+  }
 
   /**
    * 学習器を作る。
@@ -127,21 +134,12 @@ final class Learner implements AutoCloseable {
     this.devices = devices;
     schedule = plan.schedule();
     gradientClip = plan.learner().gradientClip();
-    loss = new PrismLoss(plan.auxiliary());
+    loss = new PrismLoss(plan.auxiliary(), plan.learner().rowAnchor());
+    pair = plan.learner().loss().objective(plan.learner().classWeight());
     this.gain = gain;
     this.profile = profile;
     this.runtime = runtime;
-    optimizer =
-        Optimizer.adamW()
-            .optLearningRateTracker(
-                new Tracker() {
-                  @Override
-                  public float getNewValue(int numUpdate) {
-                    return rate;
-                  }
-                })
-            .optWeightDecays(WEIGHT_DECAY)
-            .build();
+    optimizer = plan.learner().adamEpsilon().optimizer(t -> rate, gain);
   }
 
   /**
@@ -231,8 +229,10 @@ final class Learner implements AutoCloseable {
           lane.network.forward(
               new ParameterStore(scope, false),
               sent.inputs(),
-              Pass.training(lane.precision, part.measured(), part.auxiliary(), tape, FitProbe.NONE));
-      NDArray value = loss.total(outputs, sent.loss(), gain, denominator, part.share());
+              Pass.training(
+                  lane.precision, part.measured(), part.auxiliary(), tape, FitProbe.NONE));
+      NDArray value =
+          loss.total(outputs, sent.loss(), gain, denominator, part.share(), pair, false);
       backward(collector, tape, value, FitProbe.NONE);
     }
     lane.forgetGradients();
@@ -250,6 +250,7 @@ final class Learner implements AutoCloseable {
       NetworkLane lane, List<Microbatch> parts, StepFeed.Step prepared, FitProfile.Timing timing) {
     double total = 0;
     boolean gpu = lane.manager().getDevice().isGpu();
+    boolean readLoss = samplesLoss(step, gpu);
     FitProfile.Clock clock = lane.clock;
     clock.begin(timing);
     long started = System.nanoTime();
@@ -277,13 +278,14 @@ final class Learner implements AutoCloseable {
                   sent.inputs(),
                   Pass.training(lane.precision, part.measured(), part.auxiliary(), tape, clock));
           NDArray value =
-              loss.total(outputs, sent.loss(), gain, prepared.denominator(), part.share());
+              loss.total(
+                  outputs, sent.loss(), gain, prepared.denominator(), part.share(), pair, readLoss);
           clock.mark(Stage.LOSS);
           if (!gpu) {
             collector.backward(value);
             clock.mark(Stage.BACKWARD);
             total += value.getFloat();
-          } else if (step % METRIC_EVERY == 1) {
+          } else if (readLoss) {
             // 損失の読み戻し（ホストとの同期）は METRIC_EVERY ステップに 1 回だけ。読み戻しは逆伝播より先に予約しておく
             try (NDArray metric = value.reshape(1)) {
               try {
@@ -355,7 +357,7 @@ final class Learner implements AutoCloseable {
   /**
    * 段ごとにかかった秒数を返す。
    *
-   * @return {入力と損失の教師の転送, 順伝播と逆伝播, 最適化} の秒数
+   * @return {@link FitResult.Stage#TRANSFER} から {@link FitResult.Stage#OPTIMIZER} までの段の秒数（段の順）
    */
   double[] stageSeconds() {
     return new double[] {
@@ -415,6 +417,16 @@ final class Learner implements AutoCloseable {
    * 更新が済むのを待ってから、データ並列のレプリカ・連続バッファ・AdamW のモーメントを捨て、借りたストリームの処理が終わるのを待つ。
    * 重みはマスターのネットワークに残り、ストリームは閉じない。
    */
+  void restore(java.nio.file.Path state, int completedSteps) throws IOException {
+    optimizer.loadState(canonical.getNDManager(), state);
+    step = completedSteps;
+  }
+
+  void checkpoint(java.nio.file.Path state) throws IOException {
+    if (pendingUpdates) parallel.awaitParameterUpdates();
+    optimizer.saveState(state);
+  }
+
   @Override
   public void close() {
     try {
@@ -440,6 +452,13 @@ final class Learner implements AutoCloseable {
    * @param upload 積んだ転送
    */
   private record Pending(NDManager scope, StagedBatch.Upload upload) {}
+
+  /** この形とデバイスで使う学習用の HIP Attention を返す。eager で計算するときは null。 */
+  static HipAttention hipAttention(Device device, PrismShape shape, PtStream stream) {
+    return device.isGpu() && shape.supportsAttentionTape() && HipLibrary.bundled()
+        ? HipAttention.on(HipLibrary.load(), stream)
+        : null;
+  }
 
   /**
    * 1 つのデバイスのレーン。ネットワークと計算の精度、GPU なら計算ストリームに積む Attention の演算、転送用のストリーム、段のタイマーを
@@ -481,8 +500,7 @@ final class Learner implements AutoCloseable {
       Device device = model.getNDManager().getDevice();
       precision = device.isGpu() ? Precision.BFLOAT16 : Precision.FLOAT32;
       copyStream = device.isGpu() ? runtime.streams(device).h2d() : null;
-      attention =
-          device.isGpu() && HipLibrary.bundled() ? HipAttention.on(HipLibrary.load(), computeStream()) : null;
+      attention = hipAttention(device, network.shape(), computeStream());
       clock = profile.clock(computeStream());
     }
 

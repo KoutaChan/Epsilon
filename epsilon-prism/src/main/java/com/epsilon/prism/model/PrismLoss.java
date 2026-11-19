@@ -12,7 +12,7 @@ import java.util.Objects;
  * 学習の損失。
  *
  * <pre>
- * ℓ = (1/B_C)·[ Σ_{|C|≥2} w·ℓ_PRISM + η·Σ_{|D|≥1} w·s̄_D² ] + share·K′·[ α_o·Σ_読み L̄_h + α_r·(1/8)·Σ_候補 L̄_h ]
+ * ℓ = (1/B_C)·[ Σ_{|C|≥2} w·ℓ_PRISM + η·K′·Σ_{|D|≥1} w·s̄_D² ] + share·K′·[ α_o·Σ_読み L̄_h + α_r·(1/8)·Σ_候補 L̄_h ]
  * D = 行の測った手 C のうち、値を B が出す打牌。s̄_D = D の上の s の平均
  * share = 1 ステップの行のうち、マイクロバッチの元のバッチ（詰め方で決まる 1 バッチ）の行が占める割合
  * </pre>
@@ -31,6 +31,10 @@ import java.util.Objects;
  * ゲート Δ にも効かず、B の定数だけを 0 に留める（最適は s = Q − mean_D Q）。打つ手は行の定数に依らないので、目標を Y の平均（局 1 本の
  * ノイズを含む絶対値）にする理由はない。補助の項は {@link AuxiliaryLoss} が受け持つ。
  *
+ * <p>アンカーには教師のゲイン K′ を掛ける（{@link RowAnchor#GAIN}）。教師 (1−K′)·s_アンカー + K′·Ỹ では ℓ_PRISM が s を動かす力が K′ 倍になるので、アンカーだけを
+ * 1 倍のままにすると、行の定数を留める力が手の差を学ぶ力に勝つ。D は行の種類で違い（根の記録では打った手と逸脱した手の 2 手だけ）、
+ * 似た局面の行どうしで違う手の集合の平均を同時に 0 に留めることになるので、その釣り合いは手の差を縮める向きに働く。
+ *
  * <p>損失は 2 段で取る。学習のレーンは、ネットワークの順伝播の前に教師をデバイスへ送り（{@link StagedBatch#send}）、順伝播の後は送った
  * 配列を読むだけにする（{@link #total(Outputs, LossInputs, float, int, float)}）。GPU のマネージャーで同期してコピーすると、ストリームが
  * 同期する。順伝播の後にコピーすると、ホストは順伝播が終わるまで待ち、その間に損失と逆伝播を積めない。ネットワークの出力が既にある
@@ -38,8 +42,22 @@ import java.util.Objects;
  * 出力から教師を作って送り、同じ演算を通す。
  *
  * @param auxiliary 補助のヘッドの損失
+ * @param rowAnchor 行の平均のアンカーの重みの決め方
  */
-public record PrismLoss(AuxiliaryLoss auxiliary) {
+public record PrismLoss(AuxiliaryLoss auxiliary, RowAnchor rowAnchor) {
+
+  /** 行の平均のアンカーの重みの決め方。 */
+  public enum RowAnchor {
+    /** η·K′。差分整合の教師と同じ目盛りにする。 */
+    GAIN,
+    /** η。教師のゲインに依らない。 */
+    FIXED;
+
+    /** ゲイン K′ のときのアンカーの重みを返す。 */
+    float weight(float gain) {
+      return this == GAIN ? ROW_MEAN * gain : ROW_MEAN;
+    }
+  }
 
   /** 行の平均のアンカーの重み η。 */
   static final float ROW_MEAN = 1f;
@@ -54,12 +72,18 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
   private static final float FLOOR = -1e30f;
 
   /**
-   * 補助の損失があることを確かめる。
+   * 補助の損失とアンカーの決め方があることを確かめる。
    *
-   * @throws NullPointerException 補助の損失がないとき
+   * @throws NullPointerException 補助の損失かアンカーの決め方がないとき
    */
   public PrismLoss {
     Objects.requireNonNull(auxiliary, "auxiliary");
+    Objects.requireNonNull(rowAnchor, "rowAnchor");
+  }
+
+  /** アンカーに教師のゲインを掛ける損失（{@link RowAnchor#GAIN}）。 */
+  public PrismLoss(AuxiliaryLoss auxiliary) {
+    this(auxiliary, RowAnchor.GAIN);
   }
 
   /**
@@ -70,6 +94,34 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
    */
   public static boolean contributes(ValueLabel label) {
     return label.measuredCount() >= 2;
+  }
+
+  /** 重み 1 のラベル行の差分整合損失。教師が NaN の手は除き、測った手が 2 つ未満なら 0 を返す。 */
+  public static double value(float[] scores, float[] targets, double lambda) {
+    double peak = Double.NEGATIVE_INFINITY;
+    double meanError = 0;
+    int count = 0;
+    for (int a = 0; a < targets.length; a++) {
+      if (Float.isNaN(targets[a])) continue;
+      peak = Math.max(peak, scores[a]);
+      meanError += (double) scores[a] - targets[a];
+      count++;
+    }
+    if (count < 2) return 0;
+    meanError /= count;
+    double mass = 0, weighted = 0, squares = 0;
+    for (int a = 0; a < targets.length; a++) {
+      if (Float.isNaN(targets[a])) continue;
+      double shifted = scores[a] - peak;
+      double weight = Math.exp(shifted / lambda);
+      mass += weight;
+      weighted += weight * (shifted - targets[a]);
+      double error = (double) scores[a] - targets[a] - meanError;
+      squares += error * error;
+    }
+    return weighted / mass
+        + lambda * Math.log(count / mass)
+        + WEIGHT_FLOOR * squares / (2 * lambda * count);
   }
 
   /**
@@ -131,7 +183,7 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
   }
 
   /**
-   * マイクロバッチの損失 (1/B_C)·[Σ w·ℓ_PRISM + η·Σ w·s̄_D²] + share·L_aux を返す。教師は順伝播の前に送ったものを読む。
+   * マイクロバッチの損失 (1/B_C)·[Σ w·ℓ_PRISM + η·K′·Σ w·s̄_D²] + share·L_aux を返す。教師は順伝播の前に送ったものを読む。
    *
    * @param outputs ネットワークの出力（順伝播で補助のヘッドも計算したなら、補助の項も足す）
    * @param inputs 送った教師（{@link StagedBatch#send}。補助の教師が無ければ補助の項を足さない）
@@ -141,17 +193,40 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
    * @return 損失（FP32 のスカラー）
    * @throws IllegalArgumentException 分母か割合が範囲の外にあるか、ネットワークの出力が送った教師と合わないとき
    */
-  public NDArray total(Outputs outputs, LossInputs inputs, float gain, int denominator, float share) {
+  public NDArray total(
+      Outputs outputs, LossInputs inputs, float gain, int denominator, float share) {
+    return total(outputs, inputs, gain, denominator, share, null, true);
+  }
+
+  /** 報告する行では順伝播の値を差分整合にそろえ、逆伝播だけに対の目的関数を使う。 */
+  public NDArray total(
+      Outputs outputs,
+      LossInputs inputs,
+      float gain,
+      int denominator,
+      float share,
+      PairLoss pair,
+      boolean report) {
     if (denominator < 1 || !(share >= 0) || share > 1) {
-      throw new IllegalArgumentException("invalid denominator or share: " + denominator + ", " + share);
+      throw new IllegalArgumentException(
+          "invalid denominator or share: " + denominator + ", " + share);
     }
     inputs.check(outputs);
     NDManager scope = inputs.manager();
     NDArray scores = outputs.scores();
+    NDArray value = pair == null ? valueSum(scope, scores, inputs) : pair.sum(scores, inputs);
+    if (pair != null && report) {
+      value = valueSum(scope, scores.stopGradient(), inputs).add(value.sub(value.stopGradient()));
+    }
     NDArray loss =
-        valueSum(scope, scores, inputs).add(rowMeanSum(scope, scores, inputs).mul(ROW_MEAN)).div(denominator);
+        value.add(rowMeanSum(scope, scores, inputs).mul(rowAnchor.weight(gain))).div(denominator);
     if (inputs.auxiliary() != null && outputs.auxiliary() != null) {
-      loss = loss.add(auxiliary.terms(scope, outputs.auxiliary(), inputs.auxiliary(), gain).total().mul(share));
+      loss =
+          loss.add(
+              auxiliary
+                  .terms(scope, outputs.auxiliary(), inputs.auxiliary(), gain)
+                  .total()
+                  .mul(share));
     }
     return loss;
   }
@@ -185,7 +260,8 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
    * @param mask C [行, 手の容量]
    * @return 行ごとの値
    */
-  private static NDArray weightFloor(NDManager scope, NDArray scores, NDArray targets, NDArray mask) {
+  private static NDArray weightFloor(
+      NDManager scope, NDArray scores, NDArray targets, NDArray mask) {
     NDArray zeros = scope.zeros(scores.getShape(), DataType.FLOAT32);
     NDArray count = mask.toType(DataType.FLOAT32, false).sum(ACTIONS, true).maximum(1f);
     NDArray error = NDArrays.where(mask, scores.sub(targets), zeros);
@@ -195,7 +271,8 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
 
   /** 行の平均のアンカーの和 Σ_{|D|≥1} w·s̄_D²。D の外の手とパディングは where で外す。 */
   private static NDArray rowMeanSum(NDManager scope, NDArray scores, LossInputs inputs) {
-    NDArray kept = NDArrays.where(inputs.measuredDiscards(), scores, scope.zeros(scores.getShape()));
+    NDArray kept =
+        NDArrays.where(inputs.measuredDiscards(), scores, scope.zeros(scores.getShape()));
     NDArray mean = kept.sum(new int[] {1}).div(inputs.discardCounts());
     return mean.square().mul(inputs.discardWeights()).sum();
   }
@@ -208,7 +285,7 @@ public record PrismLoss(AuxiliaryLoss auxiliary) {
    * @param pi C の上の確率（外は 0）
    * @param logPi C の上の log 確率（外は 0）
    */
-  private record Softmax(NDArray pi, NDArray logPi) {
+  record Softmax(NDArray pi, NDArray logPi) {
 
     static Softmax of(NDManager scope, NDArray z, NDArray mask) {
       Shape shape = z.getShape();

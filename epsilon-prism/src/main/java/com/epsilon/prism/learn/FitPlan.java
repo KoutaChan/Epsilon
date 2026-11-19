@@ -3,7 +3,9 @@ package com.epsilon.prism.learn;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.model.AuxiliaryLoss;
 import com.epsilon.prism.model.LearningRateSchedule;
+import com.epsilon.prism.model.PrismArchitecture;
 import com.epsilon.prism.model.PrismShape;
+import com.google.gson.annotations.JsonAdapter;
 import java.util.Objects;
 
 /**
@@ -19,7 +21,7 @@ import java.util.Objects;
  */
 public record FitPlan(
     FitSettings learner,
-    PrismShape shape,
+    @JsonAdapter(PrismArchitecture.ShapeJson.class) PrismShape shape,
     AuxiliaryLoss auxiliary,
     int tokenBudget,
     long seed) {

@@ -121,7 +121,9 @@ public final class LossInputs {
     discardCounts = staging.add(counts, new Shape(rows));
     discardWeights = staging.add(discardRowWeights, new Shape(rows));
     auxiliary =
-        auxiliaryLabels == null ? null : AuxiliaryLoss.stage(auxiliaryLabels, denominators, staging);
+        auxiliaryLabels == null
+            ? null
+            : AuxiliaryLoss.stage(auxiliaryLabels, denominators, staging);
   }
 
   /**
@@ -272,5 +274,4 @@ public final class LossInputs {
   AuxiliaryLoss.Inputs auxiliary() {
     return auxiliary;
   }
-
 }

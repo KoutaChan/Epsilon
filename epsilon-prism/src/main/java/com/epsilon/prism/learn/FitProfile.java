@@ -3,8 +3,8 @@ package com.epsilon.prism.learn;
 import ai.djl.pytorch.engine.PtEvent;
 import ai.djl.pytorch.engine.PtStream;
 import com.epsilon.agent.learn.DataParallelGroup;
-import com.epsilon.prism.model.FitProbe.Stage;
 import com.epsilon.prism.model.FitProbe;
+import com.epsilon.prism.model.FitProbe.Stage;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.settings.DiagnosticProperty;
 import java.util.ArrayList;
@@ -417,6 +417,11 @@ final class FitProfile {
     @Override
     public boolean cuts() {
       return enabled();
+    }
+
+    @Override
+    public boolean detailed() {
+      return timing != Timing.OFF;
     }
 
     /** ステップの処理の始めから最後の印までの時間（ns）。 */

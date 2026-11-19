@@ -17,7 +17,16 @@ import com.epsilon.prism.rows.Row;
  * @param gain 補助のヘッドの項に掛けるゲイン K′（(0, 1]）
  */
 public record Teacher(
-    LedgerCorrection correction, AnchorScores anchor, double anchorWeight, float gain) {
+    LedgerCorrection correction,
+    AnchorScores anchor,
+    double anchorWeight,
+    float gain,
+    java.util.function.IntFunction<LedgerCorrection> cohortCorrection) {
+
+  public Teacher(
+      LedgerCorrection correction, AnchorScores anchor, double anchorWeight, float gain) {
+    this(correction, anchor, anchorWeight, gain, null);
+  }
 
   /** 生の Y を使い、アンカーなし、ゲイン 1 の教師（replay の学習に使う）。 */
   public static final Teacher RAW = new Teacher(null, null, 0, 1f);
@@ -50,9 +59,11 @@ public record Teacher(
    */
   float[] values(Row row, int id) {
     float[] raw = row.values();
-    float[] values = correction == null ? raw : correction.values(row);
+    LedgerCorrection selected = cohortCorrection == null ? correction : cohortCorrection.apply(id);
+    float[] values = selected == null ? raw : selected.values(row);
     if (!anchored()) return values;
-    return anchored(values, anchor.scores(id), anchorWeight, values == raw ? new float[raw.length] : values);
+    return anchored(
+        values, anchor.scores(id), anchorWeight, values == raw ? new float[raw.length] : values);
   }
 
   boolean anchored() {
@@ -77,7 +88,9 @@ public record Teacher(
     }
     for (int a = 0; a < values.length; a++) {
       mixed[a] =
-          Float.isNaN(values[a]) ? Float.NaN : (float) ((1 - weight) * values[a] + weight * anchor[a]);
+          Float.isNaN(values[a])
+              ? Float.NaN
+              : (float) ((1 - weight) * values[a] + weight * anchor[a]);
     }
     return mixed;
   }

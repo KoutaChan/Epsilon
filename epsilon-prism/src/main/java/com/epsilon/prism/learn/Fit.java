@@ -109,7 +109,7 @@ public final class Fit {
    * @param teacher 教師の作り方（replay は {@link Teacher#RAW}）
    * @param devices 学習のデバイス（先頭がマスターで、残りはデータ並列のレプリカ）
    * @param threads 行の読み出しとエンコードのスレッドの数
-   * @return 記録（{@code stageSeconds} は {ステップを作る, 入力と損失の教師の転送, 順伝播と逆伝播, 最適化}）
+   * @return 記録（{@code stageSeconds} は {@link FitResult.Stage} の段ごとの秒数）
    */
   public static FitResult run(
       CohortStore store,
@@ -150,7 +150,8 @@ public final class Fit {
       return FitResult.empty(rows.length);
     }
     try (NetworkRuntime runtime = NetworkRuntime.forLearning()) {
-      return new Session(store, rows, model, plan, teacher.gain(), devices, threads, profile, runtime)
+      return new Session(
+              store, rows, model, plan, teacher.gain(), devices, threads, profile, runtime)
           .run(teacher, started);
     }
   }
@@ -190,7 +191,8 @@ public final class Fit {
     Model model = load(start, devices.primary());
     try {
       Session session =
-          new Session(store, rows, model, plan, gain, devices, threads, FitProfile.configured(), runtime);
+          new Session(
+              store, rows, model, plan, gain, devices, threads, FitProfile.configured(), runtime);
       try {
         session.rehearse();
       } catch (RuntimeException | Error failure) {
@@ -198,7 +200,8 @@ public final class Fit {
         throw failure;
       }
       LOG.info(
-          "fit prepared the learner {}s", String.format("%.1f", (System.nanoTime() - started) / 1e9));
+          "fit prepared the learner {}s",
+          String.format("%.1f", (System.nanoTime() - started) / 1e9));
       return new Prepared(model, session);
     } catch (RuntimeException | Error failure) {
       model.close();
@@ -248,7 +251,51 @@ public final class Fit {
     }
   }
 
-  /** 1 回の学習の先読みと学習器（並べ替えた行の順を持つ）。{@link #run} の終わりか {@link #close} で閉じる。 */
+  /** Number of losses read back in the first steps of a fit. */
+  public static int lossSamples(int steps, boolean gpu) {
+    return gpu ? Math.ceilDiv(steps, Learner.METRIC_EVERY) : steps;
+  }
+
+  /** Fit part of a single global permutation, restoring Adam moments and the absolute LR step. */
+  public static FitResult chunk(
+      CohortStore store,
+      int[] orderedRows,
+      Model model,
+      FitPlan plan,
+      Teacher teacher,
+      NetworkDevices devices,
+      int threads,
+      int completedSteps,
+      Path previousState,
+      Path nextState)
+      throws IOException {
+    if (orderedRows.length == 0
+        || completedSteps < 0
+        || (completedSteps == 0) != (previousState == null))
+      throw new IllegalArgumentException("Invalid fit checkpoint boundary");
+    long started = System.nanoTime();
+    try (var runtime = NetworkRuntime.forLearning();
+        var session =
+            new Session(
+                store,
+                orderedRows,
+                model,
+                plan,
+                teacher.gain(),
+                devices,
+                threads,
+                FitProfile.configured(),
+                runtime,
+                true)) {
+      if (previousState != null) session.learner.restore(previousState, completedSteps);
+      return session.run(
+          teacher,
+          started,
+          Math.ceilDiv(orderedRows.length, plan.learner().batchSize()),
+          nextState);
+    }
+  }
+
   private static final class Session implements AutoCloseable {
 
     private final int[] order;
@@ -270,7 +317,21 @@ public final class Fit {
         int threads,
         FitProfile profile,
         NetworkRuntime runtime) {
-      order = shuffle(rows, plan.seed());
+      this(store, rows, model, plan, gain, devices, threads, profile, runtime, false);
+    }
+
+    Session(
+        CohortStore store,
+        int[] rows,
+        Model model,
+        FitPlan plan,
+        float gain,
+        NetworkDevices devices,
+        int threads,
+        FitProfile profile,
+        NetworkRuntime runtime,
+        boolean alreadyShuffled) {
+      order = alreadyShuffled ? rows : shuffle(rows, plan.seed());
       this.plan = plan;
       this.gain = gain;
       lanes = devices.size();
@@ -297,6 +358,10 @@ public final class Fit {
 
     /** 計画のステップ数だけ学習して閉じる。秒数は {@code started} から、学習器を閉じる（更新の完了を待つ）まで。 */
     FitResult run(Teacher teacher, long started) {
+      return run(teacher, started, plan.learner().steps(), null);
+    }
+
+    FitResult run(Teacher teacher, long started, int steps, Path nextState) {
       if (closed) {
         throw new IllegalStateException("the fit already ran");
       }
@@ -304,7 +369,6 @@ public final class Fit {
         throw new IllegalArgumentException(
             "the teacher gain " + teacher.gain() + " differs from the learner gain " + gain);
       }
-      int steps = plan.learner().steps();
       int batchSize = plan.learner().batchSize();
       double sum = 0;
       double first = Double.NaN;
@@ -316,6 +380,7 @@ public final class Fit {
         ArrayDeque<CompletableFuture<StepFeed.Step>> pending = new ArrayDeque<>(PREFETCH);
         int from = 0;
         int queued = 0;
+        int nextProgress = 0;
         for (int step = 0; step < steps; step++) {
           while (pending.size() < PREFETCH && queued < steps) {
             pending.add(feed.prepare(batch(order, from, batchSize), teacher));
@@ -329,6 +394,10 @@ public final class Fit {
           } finally {
             feed.release(prepared);
           }
+          boolean sampled = learner.sampledLoss();
+          if (sampled && nextState != null && !Double.isFinite(loss)) {
+            throw new ArithmeticException("Nonfinite sampled loss at chunk step " + (step + 1));
+          }
           if (!Double.isNaN(loss)) {
             sum += loss;
             measured++;
@@ -337,7 +406,8 @@ public final class Fit {
             }
             last = loss;
           }
-          if (step % PROGRESS_EVERY == 0) {
+          if (step >= nextProgress && sampled) {
+            nextProgress += PROGRESS_EVERY;
             LOG.info(
                 "fit step {}/{} loss {} {}s",
                 step + 1,
@@ -347,7 +417,9 @@ public final class Fit {
           }
         }
         double[] learned = learner.stageSeconds();
-        stages = new double[] {feed.seconds(), learned[0], learned[1], learned[2]};
+        stages = new double[FitResult.Stage.COUNT];
+        stages[FitResult.Stage.PACK.ordinal()] = feed.seconds();
+        System.arraycopy(learned, 0, stages, FitResult.Stage.TRANSFER.ordinal(), learned.length);
         clipped = learner.clippedSteps();
         if (lanes > 1) {
           LOG.info(
@@ -358,6 +430,13 @@ public final class Fit {
               lanes);
         }
         profile.log();
+        if (nextState != null) {
+          try {
+            learner.checkpoint(nextState);
+          } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+          }
+        }
       } catch (RuntimeException | Error failure) {
         closeQuietly(failure);
         throw failure;

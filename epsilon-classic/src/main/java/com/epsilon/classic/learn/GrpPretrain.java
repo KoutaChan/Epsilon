@@ -42,7 +42,8 @@ public final class GrpPretrain {
    * @param uniformNll 検証の行での、一様分布の NLL
    * @param frequencyNll 検証の行での、学習用の行の順列の頻度で予測した NLL
    */
-  public record Result(GrpTrained trained, int trainRows, int stopRows, double uniformNll, double frequencyNll) {}
+  public record Result(
+      GrpTrained trained, int trainRows, int stopRows, double uniformNll, double frequencyNll) {}
 
   private GrpPretrain() {}
 
@@ -54,7 +55,12 @@ public final class GrpPretrain {
    * @param closing 停止のフラグ
    */
   public static Result train(
-      Variant variant, List<GameRecord> games, GrpTraining training, long seed, int threads, BooleanSupplier closing) {
+      Variant variant,
+      List<GameRecord> games,
+      GrpTraining training,
+      long seed,
+      int threads,
+      BooleanSupplier closing) {
     GrpRows.Split split =
         GrpRows.builder(variant, RecencyWindow.uniform(LogGames.COHORT, 1), GateCohort.NEXT)
             .add(LogGames.COHORT, games)
@@ -71,10 +77,15 @@ public final class GrpPretrain {
             training.halvingPatience(),
             training.stopPatience(),
             seed);
-    GrpTrained trained = GrpTrainer.train(shape, null, split.train(), split.stop(), rule, threads, closing);
+    GrpTrained trained =
+        GrpTrainer.train(shape, null, split.train(), split.stop(), rule, threads, closing);
     int outputs = RankPermutations.of(variant).count();
     return new Result(
-        trained, split.train().size(), split.stop().size(), Math.log(outputs), frequencyNll(split, outputs));
+        trained,
+        split.train().size(),
+        split.stop().size(),
+        Math.log(outputs),
+        frequencyNll(split, outputs));
   }
 
   private static double frequencyNll(GrpRows.Split split, int outputs) {

@@ -56,7 +56,8 @@ public class RowChunksTest {
         ClassicRows part = row < first.size() ? first : last;
         int local = row < first.size() ? row : row - first.size();
         int gameOffset = row < first.size() ? 0 : first.games().size();
-        Assert.assertEquals(chunks.gameIndex(row), gameOffset + part.gameIndex(local), "row " + row);
+        Assert.assertEquals(
+            chunks.gameIndex(row), gameOffset + part.gameIndex(local), "row " + row);
         Assert.assertEquals(chunks.game(row), part.game(local), "row " + row);
         Assert.assertEquals(chunks.round(row), part.round(local), "row " + row);
         Assert.assertEquals(chunks.chosen(row), part.chosen(local), "row " + row);

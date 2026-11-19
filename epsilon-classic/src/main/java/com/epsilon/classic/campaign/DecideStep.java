@@ -74,7 +74,9 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
   @Override
   public Optional<StepReport> done(I macro) throws IOException {
     Path file = macro.work().resolve(FILE);
-    return Files.exists(file) ? Optional.of(StepReport.read(file, Decision.class)) : Optional.empty();
+    return Files.exists(file)
+        ? Optional.of(StepReport.read(file, Decision.class))
+        : Optional.empty();
   }
 
   @Override
@@ -97,7 +99,8 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
   private static Decision decide(DuelMacro macro, DuelReport duel) throws Exception {
     TableSpec table = macro.evaluation().tables().get(DuelStep.table(macro).orElseThrow());
     if (duel.crowns()) {
-      String check = table.confirm() == null ? null : RunDirectory.jobName(macro.published(), table.confirm());
+      String check =
+          table.confirm() == null ? null : RunDirectory.jobName(macro.published(), table.confirm());
       return new Decision(Action.CROWN, duel.job(), duel.candidate(), check, null, List.of());
     }
     List<Alarm> alarms = alarms(macro, duel);
@@ -105,15 +108,17 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
       case BETTER -> confirm(macro, table, duel, alarms);
       case WORSE -> {
         boolean hold = alarms.stream().anyMatch(alarm -> alarm.handling() == Alarm.Handling.PAUSE);
-        yield new Decision(hold ? Action.HOLD : Action.KEEP, duel.job(), duel.candidate(), null, null, alarms);
+        yield new Decision(
+            hold ? Action.HOLD : Action.KEEP, duel.job(), duel.candidate(), null, null, alarms);
       }
-      case EVEN, UNDECIDED -> new Decision(Action.KEEP, duel.job(), duel.candidate(), null, null, alarms);
+      case EVEN, UNDECIDED ->
+          new Decision(Action.KEEP, duel.job(), duel.candidate(), null, null, alarms);
     };
   }
 
   /** 良いが出た候補を、確かめの卓で王者と比べる（確かめの卓が無ければ、そのまま王者にする）。 */
-  private static Decision confirm(DuelMacro macro, TableSpec table, DuelReport duel, List<Alarm> alarms)
-      throws Exception {
+  private static Decision confirm(
+      DuelMacro macro, TableSpec table, DuelReport duel, List<Alarm> alarms) throws Exception {
     if (table.confirm() == null) {
       return new Decision(Action.PROMOTE, duel.job(), duel.candidate(), null, null, alarms);
     }
@@ -134,10 +139,12 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
       return new Decision(Action.NOT_CONFIRMED, duel.job(), duel.candidate(), job, null, alarms);
     }
     WallMean pairs = PairedWalls.difference(candidate.get().values(), champion.get().values());
-    Estimate difference = Estimate.of(pairs.mean(), pairs.error(), candidate.get().result().critical());
+    Estimate difference =
+        Estimate.of(pairs.mean(), pairs.error(), candidate.get().result().critical());
     boolean confirmed = difference.low() > -check.confirmMargin();
     LOG.info(
-        "{}: on the confirm table {}, {} - {} = {} [{}, {}] over {} walls against the margin {}: {}",
+        "{}: on the confirm table {}, {} - {} = {} [{}, {}] over {} walls against the margin {}:"
+            + " {}",
         duel.job(),
         name,
         duel.candidate().label(),
@@ -149,7 +156,12 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
         check.confirmMargin(),
         confirmed ? "confirmed" : "not confirmed");
     return new Decision(
-        confirmed ? Action.PROMOTE : Action.NOT_CONFIRMED, duel.job(), duel.candidate(), job, difference, alarms);
+        confirmed ? Action.PROMOTE : Action.NOT_CONFIRMED,
+        duel.job(),
+        duel.candidate(),
+        job,
+        difference,
+        alarms);
   }
 
   /**
@@ -159,11 +171,15 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
    * @param check 確かめの卓
    * @return 済んだジョブ。FAILED なら空
    */
-  private static Optional<DuelJobs.Played> measure(DuelMacro macro, String name, TableSpec check, Champion player)
-      throws Exception {
+  private static Optional<DuelJobs.Played> measure(
+      DuelMacro macro, String name, TableSpec check, Champion player) throws Exception {
     DuelSetup setup =
         DuelJobs.setup(
-            macro, check, DuelJobs.lineage(macro, player), DuelJobs.outside(check.opponent()), Arena.EVALUATION_SEED);
+            macro,
+            check,
+            DuelJobs.lineage(macro, player),
+            DuelJobs.outside(check.opponent()),
+            Arena.EVALUATION_SEED);
     Path directory =
         ChampionStore.open(macro.run().champion()).confirms(macro.options().precision(), player);
     return DuelJobs.play(macro, directory, measurement(macro, directory, name, check), setup);
@@ -182,7 +198,11 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
         continue;
       }
       if (job.state() == JobFile.State.FAILED && job.version() < macro.published()) {
-        LOG.info("{} in {} FAILED at an earlier macro ({}); measuring again", job.name(), directory, job.reason());
+        LOG.info(
+            "{} in {} FAILED at an earlier macro ({}); measuring again",
+            job.name(),
+            directory,
+            job.reason());
         return jobs.retry(job.name());
       }
       return job;
@@ -201,7 +221,8 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
     EvaluationSettings evaluation = macro.evaluation();
     if (evaluation.onWorse() instanceof OnWorseSettings.Rollback) {
       throw new IllegalStateException(
-          "A classic campaign reports or pauses when the champion duels stay worse; it does not roll back");
+          "A classic campaign reports or pauses when the champion duels stay worse; it does not"
+              + " roll back");
     }
     String table = DuelStep.table(macro).orElseThrow();
     Path duels = ChampionStore.open(macro.run().champion()).duels();
@@ -240,7 +261,8 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
           String name = table.confirm();
           if (measure(macro, name, macro.evaluation().tables().get(name), candidate).isEmpty()) {
             LOG.warn(
-                "{}: the confirm table {} failed for the first champion {}; the next better duel measures it again",
+                "{}: the confirm table {} failed for the first champion {}; the next better duel"
+                    + " measures it again",
                 decision.duel(),
                 name,
                 candidate.label());
@@ -253,7 +275,8 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
         }
       }
       case NOT_CONFIRMED -> {
-        if (store.append(new StoreEvent.NotConfirmed(candidate, decision.duel(), decision.check()))) {
+        if (store.append(
+            new StoreEvent.NotConfirmed(candidate, decision.duel(), decision.check()))) {
           LOG.info(
               "{} keeps the champion: {} was not confirmed by {}",
               decision.duel(),
@@ -266,13 +289,16 @@ public final class DecideStep<I extends DuelMacro> implements Step<I> {
         ControlRequests requests = new ControlRequests(macro.run());
         boolean waiting =
             requests.pending().stream()
-                .anyMatch(request -> request.request() instanceof Request.Pause pause && pause.before() == null);
+                .anyMatch(
+                    request ->
+                        request.request() instanceof Request.Pause pause && pause.before() == null);
         if (!waiting) {
           requests.submit(new Request.Pause(null));
         }
         if (recorded || !waiting) {
           LOG.warn(
-              "{}: the champion duels stayed worse; the run pauses at the next safe point until it is resumed",
+              "{}: the champion duels stayed worse; the run pauses at the next safe point until it"
+                  + " is resumed",
               decision.duel());
         }
       }

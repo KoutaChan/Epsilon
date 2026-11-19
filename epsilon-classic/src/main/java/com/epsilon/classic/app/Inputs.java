@@ -17,7 +17,8 @@ final class Inputs {
    */
   static void requireDirectory(Path directory, String argument) {
     if (!Files.isDirectory(directory)) {
-      throw new SettingsException(List.of("Argument --" + argument + " names no directory: " + directory));
+      throw new SettingsException(
+          List.of("Argument --" + argument + " names no directory: " + directory));
     }
   }
 

@@ -108,7 +108,14 @@ public class ValueTargetsTest {
                 chain.add(decision);
               }
             }
-            check(chain, game.endValue(hand, seat, UTILITY), values, credits, lambda, targets, advantages);
+            check(
+                chain,
+                game.endValue(hand, seat, UTILITY),
+                values,
+                credits,
+                lambda,
+                targets,
+                advantages);
           }
         }
       }
@@ -165,7 +172,10 @@ public class ValueTargetsTest {
     add(builder, 2, 0);
     GameTrajectory game = builder.finish(SCORES);
     assertEquals(game.endValue(0, 0, UTILITY), UTILITY.value(VARIANT, 0), 1e-6);
-    assertEquals(game.endValue(0, 2, UTILITY), 0.5 * UTILITY.value(VARIANT, 2) + 0.5 * UTILITY.value(VARIANT, 3), 1e-6);
+    assertEquals(
+        game.endValue(0, 2, UTILITY),
+        0.5 * UTILITY.value(VARIANT, 2) + 0.5 * UTILITY.value(VARIANT, 3),
+        1e-6);
     assertEquals(game.endValue(0, 3, UTILITY), UTILITY.value(VARIANT, 3), 1e-6);
     int[] finalRanks = {1, 0, 3, 2};
     for (int seat = 0; seat < 4; seat++) {
@@ -179,7 +189,8 @@ public class ValueTargetsTest {
     plain.hand(null);
     GameTrajectory without = plain.finish(SCORES);
     for (int seat = 0; seat < 4; seat++) {
-      assertEquals(without.endValue(0, seat, UTILITY), UTILITY.value(VARIANT, finalRanks[seat]), 0.0);
+      assertEquals(
+          without.endValue(0, seat, UTILITY), UTILITY.value(VARIANT, finalRanks[seat]), 0.0);
     }
   }
 
@@ -213,7 +224,11 @@ public class ValueTargetsTest {
       int decision = chain.get(s);
       double lookahead = (1 - lambda) * value[s + 1] + lambda * target[s + 1];
       assertEquals(targets[decision], target[s], TOLERANCE, "target of decision " + decision);
-      assertEquals(advantages[decision], lookahead - value[s], TOLERANCE, "advantage of decision " + decision);
+      assertEquals(
+          advantages[decision],
+          lookahead - value[s],
+          TOLERANCE,
+          "advantage of decision " + decision);
     }
   }
 

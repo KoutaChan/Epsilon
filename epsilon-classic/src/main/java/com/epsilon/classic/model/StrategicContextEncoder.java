@@ -38,19 +38,24 @@ final class StrategicContextEncoder extends AbstractBlock {
   StrategicContextEncoder(Widths widths) {
     hidden = widths.hidden();
     handQueryProjection =
-        addChildBlock("handQueryProjection", Linear.builder().setUnits(Widths.HAND_ATTENTION).build());
+        addChildBlock(
+            "handQueryProjection", Linear.builder().setUnits(Widths.HAND_ATTENTION).build());
     handKeyValueProjection =
         addChildBlock(
             "handKeyValueProjection",
             Linear.builder().setUnits(2L * Widths.HAND_ATTENTION).optBias(false).build());
-    handContextProjection = addChildBlock("handContextProjection", Linear.builder().setUnits(hidden).build());
-    handSummaryLayerNorm = addChildBlock("handSummaryLayerNorm", LayerNorm.builder().axis(1).build());
+    handContextProjection =
+        addChildBlock("handContextProjection", Linear.builder().setUnits(hidden).build());
+    handSummaryLayerNorm =
+        addChildBlock("handSummaryLayerNorm", LayerNorm.builder().axis(1).build());
     tokenRoleEmbedding =
         addChildBlock(
-            "tokenRoleEmbedding", new IdEmbedding.Builder().setDictionarySize(TOKENS).setEmbeddingSize(hidden).build());
+            "tokenRoleEmbedding",
+            new IdEmbedding.Builder().setDictionarySize(TOKENS).setEmbeddingSize(hidden).build());
     stages = new Stage[widths.strategicBlocks()];
     for (int index = 0; index < stages.length; index++) {
-      stages[index] = addChildBlock("block" + index, new Stage(hidden, widths.strategicFeedForward()));
+      stages[index] =
+          addChildBlock("block" + index, new Stage(hidden, widths.strategicFeedForward()));
     }
   }
 
@@ -66,7 +71,8 @@ final class StrategicContextEncoder extends AbstractBlock {
       NDArray hand = summarizeHand(pass, round, summaries.get(":, 0, :"), tiles);
       NDArray roles = pass.own(pass.table(tokenRoleEmbedding).reshape(1, TOKENS, hidden));
       NDArray tokens =
-          NDArrays.concat(new NDList(round.expandDims(1), hand.expandDims(1), summaries), 1).add(roles);
+          NDArrays.concat(new NDList(round.expandDims(1), hand.expandDims(1), summaries), 1)
+              .add(roles);
       for (Stage stage : stages) {
         tokens = stage.encode(pass, tokens);
       }
@@ -89,13 +95,19 @@ final class StrategicContextEncoder extends AbstractBlock {
     try (ArrayScope scope = new ArrayScope()) {
       long rows = round.getShape().get(0);
       NDArray seed = round.add(self).mul((float) (1.0 / Math.sqrt(2.0)));
-      NDArray queries = pass.linear(handQueryProjection, seed).reshape(rows, Widths.HEADS, 1, HAND_HEAD_WIDTH);
+      NDArray queries =
+          pass.linear(handQueryProjection, seed).reshape(rows, Widths.HEADS, 1, HAND_HEAD_WIDTH);
       NDList keyValues = pass.linear(handKeyValueProjection, tiles).split(2, 2);
-      NDArray keys = keyValues.get(0).reshape(rows, Tiles.KINDS, Widths.HEADS, HAND_HEAD_WIDTH).swapAxes(1, 2);
-      NDArray values = keyValues.get(1).reshape(rows, Tiles.KINDS, Widths.HEADS, HAND_HEAD_WIDTH).swapAxes(1, 2);
-      NDArray context = Pass.attention(queries, keys, values, null).reshape(rows, Widths.HAND_ATTENTION);
+      NDArray keys =
+          keyValues.get(0).reshape(rows, Tiles.KINDS, Widths.HEADS, HAND_HEAD_WIDTH).swapAxes(1, 2);
+      NDArray values =
+          keyValues.get(1).reshape(rows, Tiles.KINDS, Widths.HEADS, HAND_HEAD_WIDTH).swapAxes(1, 2);
+      NDArray context =
+          Pass.attention(queries, keys, values, null).reshape(rows, Widths.HAND_ATTENTION);
       NDArray tileMean = tiles.mean(new int[] {1});
-      return scope.keep(pass.norm(handSummaryLayerNorm, tileMean.add(pass.linear(handContextProjection, context))));
+      return scope.keep(
+          pass.norm(
+              handSummaryLayerNorm, tileMean.add(pass.linear(handContextProjection, context))));
     }
   }
 
@@ -113,7 +125,10 @@ final class StrategicContextEncoder extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use encode");
   }
 
@@ -140,32 +155,44 @@ final class StrategicContextEncoder extends AbstractBlock {
     Stage(int hidden, int feedForwardWidth) {
       this.hidden = hidden;
       this.feedForwardWidth = feedForwardWidth;
-      attentionInputLayerNorm = addChildBlock("attentionInputLayerNorm", LayerNorm.builder().axis(2).build());
+      attentionInputLayerNorm =
+          addChildBlock("attentionInputLayerNorm", LayerNorm.builder().axis(2).build());
       queryKeyValueProjection =
           addChildBlock(
               "queryKeyValueProjection",
               Linear.builder().setUnits(3L * Widths.STRATEGIC_ATTENTION).optBias(false).build());
       attentionOutputProjection =
           addChildBlock("attentionOutputProjection", Linear.builder().setUnits(hidden).build());
-      feedForwardInputLayerNorm = addChildBlock("feedForwardInputLayerNorm", LayerNorm.builder().axis(2).build());
+      feedForwardInputLayerNorm =
+          addChildBlock("feedForwardInputLayerNorm", LayerNorm.builder().axis(2).build());
       feedForwardExpansion =
-          addChildBlock("feedForwardExpansion", Linear.builder().setUnits(feedForwardWidth).build());
-      feedForwardProjection = addChildBlock("feedForwardProjection", Linear.builder().setUnits(hidden).build());
+          addChildBlock(
+              "feedForwardExpansion", Linear.builder().setUnits(feedForwardWidth).build());
+      feedForwardProjection =
+          addChildBlock("feedForwardProjection", Linear.builder().setUnits(hidden).build());
       outputLayerNorm = addChildBlock("outputLayerNorm", LayerNorm.builder().axis(2).build());
     }
 
     NDArray encode(Pass pass, NDArray tokens) {
       try (ArrayScope scope = new ArrayScope()) {
         long rows = tokens.getShape().get(0);
-        NDList parts = pass.linear(queryKeyValueProjection, pass.norm(attentionInputLayerNorm, tokens)).split(3, 2);
+        NDList parts =
+            pass.linear(queryKeyValueProjection, pass.norm(attentionInputLayerNorm, tokens))
+                .split(3, 2);
         NDArray context =
-            Pass.attention(heads(parts.get(0), rows), heads(parts.get(1), rows), heads(parts.get(2), rows), null)
+            Pass.attention(
+                    heads(parts.get(0), rows),
+                    heads(parts.get(1), rows),
+                    heads(parts.get(2), rows),
+                    null)
                 .swapAxes(1, 2)
                 .reshape(rows, TOKENS, Widths.STRATEGIC_ATTENTION);
         NDArray residual = tokens.add(pass.linear(attentionOutputProjection, context));
         NDArray expanded =
-            Pass.silu(pass.linear(feedForwardExpansion, pass.norm(feedForwardInputLayerNorm, residual)));
-        return scope.keep(pass.norm(outputLayerNorm, residual.add(pass.linear(feedForwardProjection, expanded))));
+            Pass.silu(
+                pass.linear(feedForwardExpansion, pass.norm(feedForwardInputLayerNorm, residual)));
+        return scope.keep(
+            pass.norm(outputLayerNorm, residual.add(pass.linear(feedForwardProjection, expanded))));
       }
     }
 
@@ -174,11 +201,13 @@ final class StrategicContextEncoder extends AbstractBlock {
     }
 
     @Override
-    protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
+    protected void initializeChildBlocks(
+        NDManager manager, DataType dataType, Shape... inputShapes) {
       Shape tokens = new Shape(-1, TOKENS, hidden);
       attentionInputLayerNorm.initialize(manager, dataType, tokens);
       queryKeyValueProjection.initialize(manager, dataType, tokens);
-      attentionOutputProjection.initialize(manager, dataType, new Shape(-1, TOKENS, Widths.STRATEGIC_ATTENTION));
+      attentionOutputProjection.initialize(
+          manager, dataType, new Shape(-1, TOKENS, Widths.STRATEGIC_ATTENTION));
       feedForwardInputLayerNorm.initialize(manager, dataType, tokens);
       feedForwardExpansion.initialize(manager, dataType, tokens);
       feedForwardProjection.initialize(manager, dataType, new Shape(-1, TOKENS, feedForwardWidth));
@@ -187,7 +216,10 @@ final class StrategicContextEncoder extends AbstractBlock {
 
     @Override
     protected NDList forwardInternal(
-        ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+        ParameterStore parameterStore,
+        NDList inputs,
+        boolean training,
+        PairList<String, Object> params) {
       throw new UnsupportedOperationException("Use encode");
     }
 

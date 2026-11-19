@@ -88,7 +88,10 @@ final class AdamW {
   void restore(long steps, float[][] means, float[][] variances) {
     if (means.length != this.means.length || variances.length != this.variances.length) {
       throw new IllegalArgumentException(
-          "The optimizer state holds " + means.length + " tensors, the network " + this.means.length);
+          "The optimizer state holds "
+              + means.length
+              + " tensors, the network "
+              + this.means.length);
     }
     this.steps = steps;
     for (int index = 0; index < means.length; index++) {

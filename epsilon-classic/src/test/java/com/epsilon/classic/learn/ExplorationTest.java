@@ -34,7 +34,8 @@ import org.testng.annotations.Test;
 public class ExplorationTest {
 
   private static final Variant VARIANT = SampleDecisions.VARIANT;
-  private static final Exploration.Settings SETTINGS = Settings.bind(ClassicSettings.class, List.of()).value().explore();
+  private static final Exploration.Settings SETTINGS =
+      Settings.bind(ClassicSettings.class, List.of()).value().explore();
   private static final double FLOOR = SETTINGS.leafFloor();
 
   private final List<Observation> decisions = new ArrayList<>();
@@ -58,7 +59,9 @@ public class ExplorationTest {
     Random random = new Random(1);
     float[] behaviour = new float[64];
     List<Exploration> explorations =
-        List.of(new Exploration(SETTINGS, UncertaintyCdf.empty()), new Exploration(unmixed, UncertaintyCdf.empty()));
+        List.of(
+            new Exploration(SETTINGS, UncertaintyCdf.empty()),
+            new Exploration(unmixed, UncertaintyCdf.empty()));
     for (Exploration exploration : explorations) {
       for (Observation o : decisions) {
         for (float[] policy : policies(o.legalActions(), random)) {
@@ -66,7 +69,9 @@ public class ExplorationTest {
             exploration.mix(o, policy, scale, behaviour);
             double sum = 0;
             for (int action = 0; action < o.legalActions(); action++) {
-              assertTrue(behaviour[action] >= FLOOR * (1 - 1e-6), "action " + action + " " + behaviour[action]);
+              assertTrue(
+                  behaviour[action] >= FLOOR * (1 - 1e-6),
+                  "action " + action + " " + behaviour[action]);
               sum += behaviour[action];
             }
             assertEquals(sum, 1.0, 1e-5);
@@ -109,7 +114,10 @@ public class ExplorationTest {
       Map<Integer, List<Integer>> groups = new HashMap<>();
       for (int action = 0; action < legal; action++) {
         assertEquals(o.action(action).type(), Action.Type.DAHAI);
-        groups.computeIfAbsent(VocabularyCodec.discardIdentity(o.action(action)), key -> new ArrayList<>()).add(action);
+        groups
+            .computeIfAbsent(
+                VocabularyCodec.discardIdentity(o.action(action)), key -> new ArrayList<>())
+            .add(action);
       }
       for (double scale : new double[] {1, SETTINGS.maximumScale()}) {
         double exploring = SETTINGS.discardMass() * scale;
@@ -122,7 +130,8 @@ public class ExplorationTest {
             mass += normalized[action];
           }
           for (int action : group) {
-            double graph = ((1 - exploring) * mass + exploring / groups.size()) * normalized[action] / mass;
+            double graph =
+                ((1 - exploring) * mass + exploring / groups.size()) * normalized[action] / mass;
             assertEquals(behaviour[action], FLOOR + (1 - legal * FLOOR) * graph, 1e-5);
           }
         }
@@ -184,16 +193,19 @@ public class ExplorationTest {
         double percentile = (UncertaintyCdf.bin(uncertainty) + tie) / UncertaintyCdf.BINS;
         double expected =
             SETTINGS.minimumScale()
-                + (SETTINGS.maximumScale() - SETTINGS.minimumScale()) * Math.pow(percentile, SETTINGS.exponent());
+                + (SETTINGS.maximumScale() - SETTINGS.minimumScale())
+                    * Math.pow(percentile, SETTINGS.exponent());
         double scale = calibrated.behaviour(o, policy, tie, behaviour);
         assertEquals(scale, expected, 1e-9);
-        assertTrue(scale >= SETTINGS.minimumScale() && scale <= SETTINGS.maximumScale(), "scale " + scale);
+        assertTrue(
+            scale >= SETTINGS.minimumScale() && scale <= SETTINGS.maximumScale(), "scale " + scale);
         calibrated.mix(o, policy, scale, mixed);
         assertEquals(Arrays.copyOf(behaviour, legal), Arrays.copyOf(mixed, legal));
         assertEquals(empty.behaviour(o, policy, tie, behaviour), 1.0);
       }
     }
-    assertEquals(calibrated.calibration().counts()[Key.GLOBAL.ordinal()].length, UncertaintyCdf.BINS);
+    assertEquals(
+        calibrated.calibration().counts()[Key.GLOBAL.ordinal()].length, UncertaintyCdf.BINS);
     long counted = Arrays.stream(calibrated.calibration().counts()[Key.GLOBAL.ordinal()]).sum();
     assertEquals(counted, 3L * decisions.size());
   }
@@ -211,11 +223,15 @@ public class ExplorationTest {
     assertEquals(cdf.percentile(Kind.DISCARD, false, 0.0, 0.3), 0.3, 1e-12);
     assertEquals(cdf.percentile(Kind.CALL, true, 0.5, 0.3), 0.0);
     assertEquals(cdf.percentile(Kind.CALL, true, 1.0, 0.25), 0.25, 1e-12);
-    assertEquals(cdf.percentile(Kind.RIICHI, false, 0.5, 0.3), 1.0, "the turn table is short, so the global one");
+    assertEquals(
+        cdf.percentile(Kind.RIICHI, false, 0.5, 0.3),
+        1.0,
+        "the turn table is short, so the global one");
     counts[Key.GLOBAL.ordinal()][0] = 1_023;
     assertTrue(Double.isNaN(UncertaintyCdf.of(counts).percentile(Kind.KAN, false, 0.5, 0.3)));
     assertTrue(Double.isNaN(UncertaintyCdf.empty().percentile(Kind.DISCARD, false, 0.5, 0.3)));
-    assertThrows(IllegalArgumentException.class, () -> cdf.percentile(Kind.DISCARD, false, 1.5, 0.3));
+    assertThrows(
+        IllegalArgumentException.class, () -> cdf.percentile(Kind.DISCARD, false, 1.5, 0.3));
   }
 
   @Test
@@ -228,9 +244,13 @@ public class ExplorationTest {
       }
     }
     assertTrue(Arrays.deepEquals(UncertaintyCdf.of(counts).counts(), counts));
-    assertTrue(Arrays.deepEquals(UncertaintyCdf.empty().counts(), new long[Key.values().length][UncertaintyCdf.BINS]));
-    assertThrows(IllegalArgumentException.class, () -> UncertaintyCdf.of(new long[3][UncertaintyCdf.BINS]));
-    assertThrows(IllegalArgumentException.class, () -> UncertaintyCdf.of(new long[Key.values().length][7]));
+    assertTrue(
+        Arrays.deepEquals(
+            UncertaintyCdf.empty().counts(), new long[Key.values().length][UncertaintyCdf.BINS]));
+    assertThrows(
+        IllegalArgumentException.class, () -> UncertaintyCdf.of(new long[3][UncertaintyCdf.BINS]));
+    assertThrows(
+        IllegalArgumentException.class, () -> UncertaintyCdf.of(new long[Key.values().length][7]));
     counts[2][9] = -1;
     assertThrows(IllegalArgumentException.class, () -> UncertaintyCdf.of(counts));
 
@@ -257,7 +277,9 @@ public class ExplorationTest {
     long total = 4L * perThread;
     assertEquals(Arrays.stream(frozen[Key.GLOBAL.ordinal()]).sum(), total);
     assertEquals(
-        Arrays.stream(frozen[Key.TURN.ordinal()]).sum() + Arrays.stream(frozen[Key.RESPONSE.ordinal()]).sum(), total);
+        Arrays.stream(frozen[Key.TURN.ordinal()]).sum()
+            + Arrays.stream(frozen[Key.RESPONSE.ordinal()]).sum(),
+        total);
     long kinds = 0;
     for (Kind kind : Kind.values()) {
       kinds += Arrays.stream(frozen[Key.of(kind).ordinal()]).sum();
@@ -272,8 +294,12 @@ public class ExplorationTest {
     assertEquals(Exploration.uncertainty(new float[] {1, 1, 1, 1}, 4, 0.5), 1.0, 1e-6);
     assertEquals(Exploration.uncertainty(new float[] {0, 3, 0}, 3, 0.5), 0.0, 1e-12);
     assertEquals(Exploration.uncertainty(new float[] {2, 2, 0, 0}, 4, 0.5), 0.5 * 0.5 + 0.5, 1e-6);
-    assertEquals(Exploration.uncertainty(new float[] {0.6f, 0.2f, 0.2f}, 3, 1), entropy(0.6, 0.2, 0.2) / Math.log(3), 1e-6);
-    assertEquals(Exploration.uncertainty(new float[] {0.6f, 0.2f, 0.2f}, 3, 0), 2 * 0.2 / 0.8, 1e-6);
+    assertEquals(
+        Exploration.uncertainty(new float[] {0.6f, 0.2f, 0.2f}, 3, 1),
+        entropy(0.6, 0.2, 0.2) / Math.log(3),
+        1e-6);
+    assertEquals(
+        Exploration.uncertainty(new float[] {0.6f, 0.2f, 0.2f}, 3, 0), 2 * 0.2 / 0.8, 1e-6);
   }
 
   @Test
@@ -293,7 +319,9 @@ public class ExplorationTest {
         }
       }
       Kind expected =
-          agari ? Kind.AGARI_OR_ABORT : call ? Kind.CALL : kan ? Kind.KAN : riichi ? Kind.RIICHI : Kind.DISCARD;
+          agari
+              ? Kind.AGARI_OR_ABORT
+              : call ? Kind.CALL : kan ? Kind.KAN : riichi ? Kind.RIICHI : Kind.DISCARD;
       assertEquals(Exploration.kind(o), expected);
     }
   }
@@ -305,19 +333,31 @@ public class ExplorationTest {
     float[] behaviour = new float[64];
     float[] uniform = new float[o.legalActions()];
     Arrays.fill(uniform, 1f);
-    assertThrows(IllegalArgumentException.class, () -> exploration.mix(o, uniform, -0.1, behaviour));
-    assertThrows(IllegalArgumentException.class, () -> exploration.mix(o, uniform, 5.01, behaviour));
+    assertThrows(
+        IllegalArgumentException.class, () -> exploration.mix(o, uniform, -0.1, behaviour));
+    assertThrows(
+        IllegalArgumentException.class, () -> exploration.mix(o, uniform, 5.01, behaviour));
     float[] negative = uniform.clone();
     negative[0] = -1f;
     assertThrows(IllegalArgumentException.class, () -> exploration.mix(o, negative, 1, behaviour));
     float[] notFinite = uniform.clone();
     notFinite[0] = Float.NaN;
     assertThrows(IllegalArgumentException.class, () -> exploration.mix(o, notFinite, 1, behaviour));
-    assertThrows(IllegalArgumentException.class, () -> exploration.mix(o, new float[o.legalActions()], 1, behaviour));
-    assertThrows(IllegalArgumentException.class, () -> new Exploration.Settings(0.004, 0.25, 1e-4, 0.1, 5, 4.5, 0.5));
-    assertThrows(IllegalArgumentException.class, () -> new Exploration.Settings(0.004, 0.01, 1.0 / 64, 0.1, 5, 4.5, 0.5));
-    assertThrows(IllegalArgumentException.class, () -> new Exploration.Settings(0.004, 0.01, 1e-4, 0, 5, 4.5, 0.5));
-    assertThrows(IllegalArgumentException.class, () -> new Exploration.Settings(0.004, 0.01, 1e-4, 0.1, 5, 4.5, 1.5));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> exploration.mix(o, new float[o.legalActions()], 1, behaviour));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Exploration.Settings(0.004, 0.25, 1e-4, 0.1, 5, 4.5, 0.5));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Exploration.Settings(0.004, 0.01, 1.0 / 64, 0.1, 5, 4.5, 0.5));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Exploration.Settings(0.004, 0.01, 1e-4, 0, 5, 4.5, 0.5));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Exploration.Settings(0.004, 0.01, 1e-4, 0.1, 5, 4.5, 1.5));
   }
 
   /** 3 つの方策: 全ての手が正の乱数、1 つの手だけ 1（ほかは 0）、1 つの手に寄ったもの。 */
@@ -363,7 +403,8 @@ public class ExplorationTest {
 
   private static boolean response(Observation o) {
     EngineDecisionKind kind = o.decisionKind();
-    return kind == EngineDecisionKind.RESPONSE || kind == EngineDecisionKind.CHANKAN
+    return kind == EngineDecisionKind.RESPONSE
+        || kind == EngineDecisionKind.CHANKAN
         || kind == EngineDecisionKind.NUKI_RESPONSE;
   }
 }

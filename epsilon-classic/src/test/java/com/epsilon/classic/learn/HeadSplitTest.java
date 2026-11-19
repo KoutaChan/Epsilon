@@ -44,7 +44,8 @@ import org.testng.annotations.Test;
 public class HeadSplitTest {
 
   private static final Variant VARIANT = Variant.TENHOU_4P;
-  private static final Bucket BUCKET = Buckets.required(ClassicSchema.MAX_LEGAL, ClassicSchema.MAX_TRANSITIONS);
+  private static final Bucket BUCKET =
+      Buckets.required(ClassicSchema.MAX_LEGAL, ClassicSchema.MAX_TRANSITIONS);
   private static final int PER_SEAT = 12;
 
   /** 勾配を流す損失（方策のヘッドか価値のヘッドか）。 */
@@ -74,7 +75,8 @@ public class HeadSplitTest {
     }
   }
 
-  private static void check(Path checkpoint, Architecture architecture, Trajectories.Pool pool, Loss loss)
+  private static void check(
+      Path checkpoint, Architecture architecture, Trajectories.Pool pool, Loss loss)
       throws IOException {
     int rows = PER_SEAT * VARIANT.seats();
     try (NDManager manager = NDManager.newBaseManager(Device.cpu(), "PyTorch")) {
@@ -97,14 +99,24 @@ public class HeadSplitTest {
       try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
         ClassicBatch batch = ClassicBatch.send(manager, PinnedUploads.on(manager), inputs, rows);
         ClassicNetwork.Output output =
-            network.forward(new ParameterStore(manager, false), batch, Precision.FLOAT32, true, ClassicNetwork.Heads.BOTH);
+            network.forward(
+                new ParameterStore(manager, false),
+                batch,
+                Precision.FLOAT32,
+                true,
+                ClassicNetwork.Heads.BOTH);
         NDArray objective =
             loss == Loss.POLICY
                 ? PolicyGraph.logProbabilities(output.policy(), batch)
                     .mul(manager.create(chosen, new Shape(rows, BUCKET.actions())))
                     .sum()
                     .neg()
-                : network.support().targets(manager.create(utilities)).mul(output.value().logSoftmax(1)).sum().neg();
+                : network
+                    .support()
+                    .targets(manager.create(utilities))
+                    .mul(output.value().logSoftmax(1))
+                    .sum()
+                    .neg();
         collector.backward(objective);
       }
       int reached = 0;
@@ -116,11 +128,14 @@ public class HeadSplitTest {
         if (value == (loss == Loss.VALUE)) {
           reached += peak > 0 ? 1 : 0;
         } else {
-          assertEquals(peak, 0.0, 0.0, architecture + " " + loss + " loss reached " + pair.getKey());
+          assertEquals(
+              peak, 0.0, 0.0, architecture + " " + loss + " loss reached " + pair.getKey());
         }
       }
       assertTrue(reached > 0, architecture + " " + loss + " loss reached nothing");
-      assertTrue(valueParameters > 0 && valueParameters < network.getParameters().size(), "split " + valueParameters);
+      assertTrue(
+          valueParameters > 0 && valueParameters < network.getParameters().size(),
+          "split " + valueParameters);
     }
   }
 

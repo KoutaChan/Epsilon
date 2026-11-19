@@ -38,7 +38,8 @@ final class PretrainState {
   private static final String TENSORS_SUFFIX = ".bin";
   private static final int BUFFER = 1 << 20;
 
-  private static final Gson GSON = new GsonBuilder().setPrettyPrinting().serializeSpecialFloatingPointValues().create();
+  private static final Gson GSON =
+      new GsonBuilder().setPrettyPrinting().serializeSpecialFloatingPointValues().create();
 
   /**
    * 進み具合。
@@ -82,7 +83,12 @@ final class PretrainState {
    * @param variances AdamW の 2 次のモーメント
    * @param best 最良のエポックの重み（無ければ null）
    */
-  record Tensors(List<String> names, long adamSteps, float[][] weights, float[][] means, float[][] variances,
+  record Tensors(
+      List<String> names,
+      long adamSteps,
+      float[][] weights,
+      float[][] means,
+      float[][] variances,
       float[][] best) {}
 
   private PretrainState() {}
@@ -154,11 +160,16 @@ final class PretrainState {
       Files.deleteIfExists(temporary);
       throw failure;
     }
-    Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    Files.move(
+        temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     Path progressFile = directory.resolve(PROGRESS);
     Path progressTemporary = progressFile.resolveSibling(PROGRESS + ".tmp");
     Files.writeString(progressTemporary, GSON.toJson(progress), StandardCharsets.UTF_8);
-    Files.move(progressTemporary, progressFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    Files.move(
+        progressTemporary,
+        progressFile,
+        StandardCopyOption.ATOMIC_MOVE,
+        StandardCopyOption.REPLACE_EXISTING);
     try (Stream<Path> listed = Files.list(directory)) {
       for (Path old : listed.toList()) {
         String name = old.getFileName().toString();
@@ -170,12 +181,14 @@ final class PretrainState {
   }
 
   private static Path tensorsFile(Path directory, int segment) {
-    return directory.resolve(String.format(Locale.ROOT, "%s%05d%s", TENSORS_PREFIX, segment, TENSORS_SUFFIX));
+    return directory.resolve(
+        String.format(Locale.ROOT, "%s%05d%s", TENSORS_PREFIX, segment, TENSORS_SUFFIX));
   }
 
   private static void write(DataOutputStream out, float[] values, int length) throws IOException {
     if (values.length != length) {
-      throw new IllegalArgumentException("Tensor of " + values.length + " values where " + length + " are expected");
+      throw new IllegalArgumentException(
+          "Tensor of " + values.length + " values where " + length + " are expected");
     }
     ByteBuffer bytes = ByteBuffer.allocate(Float.BYTES * length).order(ByteOrder.LITTLE_ENDIAN);
     bytes.asFloatBuffer().put(values);

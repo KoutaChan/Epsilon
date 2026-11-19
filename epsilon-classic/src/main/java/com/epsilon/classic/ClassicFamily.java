@@ -21,7 +21,8 @@ import java.util.Objects;
  * Nano・Major の系列。チェックポイントのネットワークを開き、CPU なら {@link ClassicPolicy.Inline}、GPU なら {@link ClassicPolicy.Batched}
  * の方策を返す。実装は系列ごとに 1 つ（{@link Nano}・{@link Major}）あり、META-INF/services に書いておくと ServiceLoader が見つける。
  */
-public abstract sealed class ClassicFamily implements ModelFamily permits ClassicFamily.Nano, ClassicFamily.Major {
+public abstract sealed class ClassicFamily implements ModelFamily
+    permits ClassicFamily.Nano, ClassicFamily.Major {
 
   private final Architecture architecture;
 
@@ -36,7 +37,8 @@ public abstract sealed class ClassicFamily implements ModelFamily permits Classi
 
   /** この系列のアーキテクチャのネットワークの方策を開く（{@link #open(Architecture, Path, Variant, PolicyOptions, NetworkRuntime)}）。 */
   @Override
-  public Policy open(Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime)
+  public Policy open(
+      Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime)
       throws IOException {
     return open(architecture, checkpoint, variant, options, runtime).asPolicy();
   }
@@ -51,17 +53,27 @@ public abstract sealed class ClassicFamily implements ModelFamily permits Classi
    * @throws IllegalStateException チェックポイントのアーキテクチャが違うとき。またはルールか入力のフィンガープリントが合わないとき
    */
   public static ClassicPolicy open(
-      Architecture architecture, Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime)
+      Architecture architecture,
+      Path checkpoint,
+      Variant variant,
+      PolicyOptions options,
+      NetworkRuntime runtime)
       throws IOException {
     Objects.requireNonNull(options, "options");
     if (options.kernels() == Kernels.NATIVE) {
-      throw new IllegalArgumentException(architecture + " has no native kernels: kernels must be EAGER");
+      throw new IllegalArgumentException(
+          architecture + " has no native kernels: kernels must be EAGER");
     }
     String label = architecture.series().label(checkpoint);
     ClassicHeader header = ClassicCheckpoint.verify(checkpoint, variant);
     if (header.architecture() != architecture) {
       throw new IllegalStateException(
-          "Checkpoint " + checkpoint + " holds a " + header.architecture() + " network, not " + architecture);
+          "Checkpoint "
+              + checkpoint
+              + " holds a "
+              + header.architecture()
+              + " network, not "
+              + architecture);
     }
     Device device = NetworkDevices.device(options.device());
     NetworkRuntime.initialize();

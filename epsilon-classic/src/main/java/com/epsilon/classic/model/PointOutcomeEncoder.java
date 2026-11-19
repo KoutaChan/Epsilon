@@ -21,7 +21,8 @@ final class PointOutcomeEncoder extends AbstractBlock {
 
   PointOutcomeEncoder(int context) {
     this.context = context;
-    projection = addChildBlock("projection", Linear.builder().setUnits(context).optBias(false).build());
+    projection =
+        addChildBlock("projection", Linear.builder().setUnits(context).optBias(false).build());
   }
 
   /**
@@ -39,7 +40,10 @@ final class PointOutcomeEncoder extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use encode");
   }
 

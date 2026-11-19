@@ -56,14 +56,16 @@ public class SelfPlayHooksTest {
   private static final long RUN_SEED = 20_261_110L, MACRO = 5, KEY = 0x5EEDL;
   private static final int GAMES = 8;
   private static final RankUtility UTILITY = RankUtility.TENHOU;
-  private static final Exploration.Settings EXPLORE = Settings.bind(ClassicSettings.class, List.of()).value().explore();
+  private static final Exploration.Settings EXPLORE =
+      Settings.bind(ClassicSettings.class, List.of()).value().explore();
 
   @Test(timeOut = 600_000)
   public void theTrajectoriesDependOnTheSeedsAloneWhateverTheWorkers() {
     GrpNetwork grp = randomGrp(VARIANT, 7);
     long single = digest(play(new TableSettings(1, 1, 1_000L, 4), grp, MACRO, null).trajectories());
     long wide = digest(play(new TableSettings(8, 4, 1_000L, 4), grp, MACRO, null).trajectories());
-    long other = digest(play(new TableSettings(3, 2, 1_000L, 4), grp, MACRO + 1, null).trajectories());
+    long other =
+        digest(play(new TableSettings(3, 2, 1_000L, 4), grp, MACRO + 1, null).trajectories());
     assertEquals(wide, single);
     assertNotEquals(other, single, "another macro plays other walls");
   }
@@ -105,7 +107,8 @@ public class SelfPlayHooksTest {
         queried++;
         ObservationBatch copy = new ObservationBatch(VARIANT, 64);
         copy.add(o);
-        float[] behaviour = behaviour(fresh, copied.bind(copy, 0), game.id(), copy.words(), copy.start(0));
+        float[] behaviour =
+            behaviour(fresh, copied.bind(copy, 0), game.id(), copy.words(), copy.start(0));
         double sum = 0;
         for (float probability : behaviour) {
           assertTrue(probability >= floor * (1 - 1e-6), where + " " + Arrays.toString(behaviour));
@@ -138,14 +141,16 @@ public class SelfPlayHooksTest {
         for (int hand = 0; hand < game.hands(); hand++) {
           if (grp != null) {
             TableState start = hand == 0 ? new TableState(VARIANT) : ends.get(hand - 1);
-            assertTrue(Arrays.equals(game.prior(hand), marginals(grp, start)), where + " hand " + hand);
+            assertTrue(
+                Arrays.equals(game.prior(hand), marginals(grp, start)), where + " hand " + hand);
           }
           for (int seat = 0; seat < seats; seat++) {
             double expected =
                 grp == null || hand + 1 == game.hands()
                     ? UTILITY.value(VARIANT, last.rank(seat))
                     : phi(game.prior(hand + 1), seat);
-            assertEquals(game.endValue(hand, seat, UTILITY), expected, 1e-12, where + " hand " + hand);
+            assertEquals(
+                game.endValue(hand, seat, UTILITY), expected, 1e-12, where + " hand " + hand);
           }
         }
       }
@@ -153,9 +158,17 @@ public class SelfPlayHooksTest {
   }
 
   /** 純 Java の席で macro の半荘を打つ。 */
-  private static Collect.Played play(TableSettings settings, GrpNetwork grp, long macro, GameObserver observer) {
+  private static Collect.Played play(
+      TableSettings settings, GrpNetwork grp, long macro, GameObserver observer) {
     Collect collect =
-        new Collect(VARIANT, RUN_SEED, new Collect.Settings(GAMES, 0.7), EXPLORE, grp, PolicyOptions.defaults(), null);
+        new Collect(
+            VARIANT,
+            RUN_SEED,
+            new Collect.Settings(GAMES, 0.7),
+            EXPLORE,
+            grp,
+            PolicyOptions.defaults(),
+            null);
     try (TableLoop table = new TableLoop(settings);
         HashedLearner learner = new HashedLearner();
         PolicySeat opponent = new PolicySeat(new RuleBot(VARIANT))) {
@@ -167,7 +180,8 @@ public class SelfPlayHooksTest {
   private static final class HashedLearner implements TableSeat<Query> {
 
     private final Exploration exploration = new Exploration(EXPLORE, UncertaintyCdf.empty());
-    private final ThreadLocal<Observation> readers = ThreadLocal.withInitial(() -> new Observation(VARIANT));
+    private final ThreadLocal<Observation> readers =
+        ThreadLocal.withInitial(() -> new Observation(VARIANT));
 
     @Override
     public boolean inline() {
@@ -177,7 +191,8 @@ public class SelfPlayHooksTest {
     @Override
     public void evaluateInline(Query query) {
       Observation o = query.bind(readers.get());
-      query.sigma = behaviour(exploration, o, query.wall(), query.recordWords(), query.recordBase());
+      query.sigma =
+          behaviour(exploration, o, query.wall(), query.recordWords(), query.recordBase());
     }
 
     @Override
@@ -187,7 +202,8 @@ public class SelfPlayHooksTest {
   }
 
   /** 学習器の席の振る舞いの方策（迷いの百分位を散らす一様値は {@link LearnerSeat#tie}）。 */
-  private static float[] behaviour(Exploration exploration, Observation o, long wall, long[] words, int base) {
+  private static float[] behaviour(
+      Exploration exploration, Observation o, long wall, long[] words, int base) {
     float[] policy = new float[o.legalActions()];
     for (int action = 0; action < policy.length; action++) {
       long bits = SeedMixer.mix64(o.action(action).code() * 31L + o.observer());
@@ -207,7 +223,8 @@ public class SelfPlayHooksTest {
     public void roundEnded(GameKey game, FullView full, RoundEnd end) {
       TableState copy = new TableState(VARIANT);
       copy.copyFrom(end.next());
-      ends.computeIfAbsent(game.wall(), wall -> Collections.synchronizedList(new ArrayList<>())).add(copy);
+      ends.computeIfAbsent(game.wall(), wall -> Collections.synchronizedList(new ArrayList<>()))
+          .add(copy);
     }
 
     @Override
@@ -292,7 +309,8 @@ public class SelfPlayHooksTest {
   }
 
   private static boolean response(EngineDecisionKind kind) {
-    return kind == EngineDecisionKind.RESPONSE || kind == EngineDecisionKind.CHANKAN
+    return kind == EngineDecisionKind.RESPONSE
+        || kind == EngineDecisionKind.CHANKAN
         || kind == EngineDecisionKind.NUKI_RESPONSE;
   }
 

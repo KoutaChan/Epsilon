@@ -95,7 +95,8 @@ public class PointProjectionTest {
     after[seat] += payment + Variant.DEPOSIT * kyotaku;
     after[(seat + 1) % SEATS] -= payment;
     boolean finishes =
-        Progression.finishes(VARIANT, round, after, dealerWins ? DealerOutcome.CONTINUES : DealerOutcome.PASSES);
+        Progression.finishes(
+            VARIANT, round, after, dealerWins ? DealerOutcome.CONTINUES : DealerOutcome.PASSES);
     int rank = 0;
     for (int other = 0; other < SEATS; other++) {
       if (after[other] > after[seat] || (after[other] == after[seat] && other < seat)) {
@@ -130,7 +131,8 @@ public class PointProjectionTest {
     FieldLayout<RoundInt> roundLayout = schema.layout(RoundInt.class);
     int[] state = new int[schema.width(Tensor.STATE_CATEGORIES)];
     state[roundLayout.offset(RoundInt.PLAYER_SEAT)] = seat + 1;
-    state[roundLayout.offset(RoundInt.DEALER_RELATIVE_SEAT)] = (VARIANT.dealer(round) - seat + SEATS) % SEATS + 1;
+    state[roundLayout.offset(RoundInt.DEALER_RELATIVE_SEAT)] =
+        (VARIANT.dealer(round) - seat + SEATS) % SEATS + 1;
     state[roundLayout.offset(RoundInt.KYOKU_INDEX)] = round + 1;
     state[roundLayout.offset(RoundInt.KYOTAKU)] = kyotaku;
     FieldLayout<WinFact> factLayout = schema.layout(WinFact.class);

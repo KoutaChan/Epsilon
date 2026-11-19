@@ -109,7 +109,8 @@ public final class Buckets {
 
   /** 区分の通し番号（0 以上 {@link #count} 未満）。 */
   public static int ordinal(Bucket bucket) {
-    return ordinal(position(ACTIONS, bucket.actions()), position(TRANSITIONS, bucket.transitions()));
+    return ordinal(
+        position(ACTIONS, bucket.actions()), position(TRANSITIONS, bucket.transitions()));
   }
 
   /**

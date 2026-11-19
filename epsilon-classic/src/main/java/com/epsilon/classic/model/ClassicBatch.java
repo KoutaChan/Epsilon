@@ -41,7 +41,8 @@ public final class ClassicBatch {
    * @param categorical デバイスへコピーした整数の配列
    * @param numeric デバイスへコピーした実数の配列
    */
-  private ClassicBatch(NDManager manager, ClassicInputs inputs, int rows, NDArray categorical, NDArray numeric) {
+  private ClassicBatch(
+      NDManager manager, ClassicInputs inputs, int rows, NDArray categorical, NDArray numeric) {
     schema = inputs.schema();
     bucket = inputs.bucket();
     this.rows = rows;
@@ -68,17 +69,24 @@ public final class ClassicBatch {
    * @param rows 使う行の数（1 以上で入力の行の数以下）
    * @return 行のバッチ
    */
-  public static ClassicBatch send(NDManager manager, PinnedUploads uploads, ClassicInputs inputs, int rows) {
+  public static ClassicBatch send(
+      NDManager manager, PinnedUploads uploads, ClassicInputs inputs, int rows) {
     Objects.requireNonNull(manager, "manager");
     requireRows(inputs, rows);
     short[] categorical = inputs.categorical();
     float[] numeric = inputs.numeric();
     NDArray categoricalSlab =
         uploads.send(
-            manager, DataType.INT16, new Shape(categorical.length), buffer -> buffer.asShortBuffer().put(categorical));
+            manager,
+            DataType.INT16,
+            new Shape(categorical.length),
+            buffer -> buffer.asShortBuffer().put(categorical));
     NDArray numericSlab =
         uploads.send(
-            manager, DataType.FLOAT32, new Shape(numeric.length), buffer -> buffer.asFloatBuffer().put(numeric));
+            manager,
+            DataType.FLOAT32,
+            new Shape(numeric.length),
+            buffer -> buffer.asFloatBuffer().put(numeric));
     return new ClassicBatch(manager, inputs, rows, categoricalSlab, numericSlab);
   }
 
@@ -111,9 +119,15 @@ public final class ClassicBatch {
       NDManager manager, PinnedUploads region, ClassicInputs inputs, int rows, PtStream stream) {
     Objects.requireNonNull(manager, "manager");
     requireRows(inputs, rows);
-    PinnedUploads.Transfer transfer = region.enqueue(manager, Objects.requireNonNull(stream, "stream"));
+    PinnedUploads.Transfer transfer =
+        region.enqueue(manager, Objects.requireNonNull(stream, "stream"));
     ClassicBatch batch =
-        new ClassicBatch(manager, inputs, rows, transfer.array(DataType.INT16), transfer.array(DataType.FLOAT32));
+        new ClassicBatch(
+            manager,
+            inputs,
+            rows,
+            transfer.array(DataType.INT16),
+            transfer.array(DataType.FLOAT32));
     return new Upload(batch, transfer);
   }
 
@@ -170,7 +184,8 @@ public final class ClassicBatch {
     return unitShape(tensor, schema.width(tensor), rows, bucket.actions(), bucket.transitions());
   }
 
-  private static Shape unitShape(Tensor tensor, int width, long rows, long actions, long transitions) {
+  private static Shape unitShape(
+      Tensor tensor, int width, long rows, long actions, long transitions) {
     return switch (tensor.axis()) {
       case ROW -> new Shape(rows, width);
       case ACTION -> new Shape(rows, actions, width);

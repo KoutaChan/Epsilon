@@ -105,7 +105,11 @@ public final class SelfPlayLearner implements AutoCloseable {
    * @param batches バッチの大きさ
    */
   public record Settings(
-      Ppo ppo, KlLearningRate.Settings actorRate, ValueRate valueRate, VTrace vtrace, Batches batches) {
+      Ppo ppo,
+      KlLearningRate.Settings actorRate,
+      ValueRate valueRate,
+      VTrace vtrace,
+      Batches batches) {
 
     public Settings {
       Objects.requireNonNull(ppo, "ppo");
@@ -137,8 +141,13 @@ public final class SelfPlayLearner implements AutoCloseable {
       @Key(doc = "方策の勾配のノルムの上限", value = "0.5") double gradientClip) {
 
     public Ppo {
-      if (steps < 1 || !(clip > 0 && clip < 1) || !(credit > 0 && credit <= 1) || !(entropy >= 0) || !(klLimit > 0)
-          || !(weightDecay >= 0) || !(gradientClip > 0)) {
+      if (steps < 1
+          || !(clip > 0 && clip < 1)
+          || !(credit > 0 && credit <= 1)
+          || !(entropy >= 0)
+          || !(klLimit > 0)
+          || !(weightDecay >= 0)
+          || !(gradientClip > 0)) {
         throw new IllegalArgumentException("Bad PPO settings: " + this);
       }
     }
@@ -168,7 +177,9 @@ public final class SelfPlayLearner implements AutoCloseable {
    *
    * @param lambda 局の中の V-trace で、次の判断の価値の代わりにその判断の価値の目標を使う割合（0 以上 1 以下）
    */
-  public record VTrace(@Key(doc = "局の中の V-trace で、次の判断の価値の代わりにその判断の価値の目標を使う割合（0 以上 1 以下）", value = "0.95") double lambda) {
+  public record VTrace(
+      @Key(doc = "局の中の V-trace で、次の判断の価値の代わりにその判断の価値の目標を使う割合（0 以上 1 以下）", value = "0.95")
+          double lambda) {
 
     public VTrace {
       if (!(lambda >= 0 && lambda <= 1)) {
@@ -189,7 +200,8 @@ public final class SelfPlayLearner implements AutoCloseable {
 
     public Batches {
       if (rows < 1 || cells < 1) {
-        throw new IllegalArgumentException("Batch rows and cells must be positive: " + rows + ", " + cells);
+        throw new IllegalArgumentException(
+            "Batch rows and cells must be positive: " + rows + ", " + cells);
       }
     }
   }
@@ -291,12 +303,14 @@ public final class SelfPlayLearner implements AutoCloseable {
    * @param runtime GPU のレーンが計算のストリームを借りるランタイム（CPU だけなら null でよい。閉じるのは呼び出し元）
    * @param settings 学習の設定
    */
-  public SelfPlayLearner(Model canonical, NetworkDevices devices, NetworkRuntime runtime, Settings settings) {
+  public SelfPlayLearner(
+      Model canonical, NetworkDevices devices, NetworkRuntime runtime, Settings settings) {
     if (!(canonical.getBlock() instanceof ClassicNetwork block)) {
       throw new IllegalArgumentException("The model does not hold a classic network");
     }
     if (!canonical.getNDManager().getDevice().equals(devices.primary())) {
-      throw new IllegalArgumentException("The model is not on the primary learner device " + devices.primary());
+      throw new IllegalArgumentException(
+          "The model is not on the primary learner device " + devices.primary());
     }
     network = block;
     manager = canonical.getNDManager();
@@ -334,7 +348,11 @@ public final class SelfPlayLearner implements AutoCloseable {
    * @throws IllegalArgumentException 状態がほかの形のネットワークか、ほかの設定で作られた
    */
   public static SelfPlayLearner resume(
-      Model canonical, NetworkDevices devices, NetworkRuntime runtime, Settings settings, Path state)
+      Model canonical,
+      NetworkDevices devices,
+      NetworkRuntime runtime,
+      Settings settings,
+      Path state)
       throws IOException {
     SelfPlayLearner learner = new SelfPlayLearner(canonical, devices, runtime, settings);
     try {
@@ -401,7 +419,8 @@ public final class SelfPlayLearner implements AutoCloseable {
         GameTrajectory game = batch.games().get(index.game[decision]);
         int local = index.local[decision];
         double rollout = Math.exp(rolloutLog[index.offsets[decision] + game.chosen(local)]);
-        credits[decision] = (float) ValueTargets.credit(settings.ppo().credit(), rollout, game.behaviour(local));
+        credits[decision] =
+            (float) ValueTargets.credit(settings.ppo().credit(), rollout, game.behaviour(local));
         creditSum += credits[decision];
       } else {
         credits[decision] = 1f;
@@ -436,7 +455,8 @@ public final class SelfPlayLearner implements AutoCloseable {
       updated += record.actorUpdated() ? 1 : 0;
     }
     double kl = measured == 0 ? 0 : klSum / measured;
-    KlLearningRate.Adjustment adjustment = updated > 0 ? actorRate.accept(kl, updated) : actorRate.reject(kl);
+    KlLearningRate.Adjustment adjustment =
+        updated > 0 ? actorRate.accept(kl, updated) : actorRate.reject(kl);
     actorLearningRate = (float) actorRate.rate();
     macros++;
     long finished = System.nanoTime();
@@ -453,10 +473,22 @@ public final class SelfPlayLearner implements AutoCloseable {
             (evaluated - started) / 1e9,
             (finished - evaluated) / 1e9);
     LOG.info(
-        "classic learn macro {} games={} decisions={} actorRows={} actorSteps={}/{} kl={} credit={} advantage={}"
-            + " rate {} {} -> {} evaluate={}s steps={}s",
-        macros, macro.games(), size, index.actorRows, updated, steps, kl, macro.credit(), macro.advantage(),
-        adjustment.action(), adjustment.applied(), adjustment.next(), macro.evaluateSeconds(), macro.stepSeconds());
+        "classic learn macro {} games={} decisions={} actorRows={} actorSteps={}/{} kl={} credit={}"
+            + " advantage={} rate {} {} -> {} evaluate={}s steps={}s",
+        macros,
+        macro.games(),
+        size,
+        index.actorRows,
+        updated,
+        steps,
+        kl,
+        macro.credit(),
+        macro.advantage(),
+        adjustment.action(),
+        adjustment.applied(),
+        adjustment.next(),
+        macro.evaluateSeconds(),
+        macro.stepSeconds());
     return macro;
   }
 
@@ -468,7 +500,8 @@ public final class SelfPlayLearner implements AutoCloseable {
    */
   public void save(Path directory) throws IOException {
     if (Files.exists(directory)) {
-      throw new FileAlreadyExistsException(directory.toString(), null, "Learner state directory already exists");
+      throw new FileAlreadyExistsException(
+          directory.toString(), null, "Learner state directory already exists");
     }
     group.awaitParameterUpdates();
     Path temporary = directory.resolveSibling(directory.getFileName() + TEMPORARY);
@@ -483,9 +516,15 @@ public final class SelfPlayLearner implements AutoCloseable {
       sync(temporary.resolve(VALUE_STATE));
       Saved saved =
           new Saved(
-              network.architecture().name(), elements(Parameters.ACTOR), elements(Parameters.VALUE), macros,
-              actorSteps, valueSteps, actorRate.state());
-      DurableFiles.write(temporary.resolve(STATE), GSON.toJson(saved).getBytes(StandardCharsets.UTF_8));
+              network.architecture().name(),
+              elements(Parameters.ACTOR),
+              elements(Parameters.VALUE),
+              macros,
+              actorSteps,
+              valueSteps,
+              actorRate.state());
+      DurableFiles.write(
+          temporary.resolve(STATE), GSON.toJson(saved).getBytes(StandardCharsets.UTF_8));
       Files.move(temporary, directory, StandardCopyOption.ATOMIC_MOVE);
     } catch (IOException | RuntimeException failure) {
       try {
@@ -516,7 +555,9 @@ public final class SelfPlayLearner implements AutoCloseable {
   private void load(Path directory) throws IOException {
     Saved saved;
     try {
-      saved = GSON.fromJson(Files.readString(directory.resolve(STATE), StandardCharsets.UTF_8), Saved.class);
+      saved =
+          GSON.fromJson(
+              Files.readString(directory.resolve(STATE), StandardCharsets.UTF_8), Saved.class);
     } catch (RuntimeException invalid) {
       throw new IOException("Invalid learner state " + directory, invalid);
     }
@@ -527,8 +568,14 @@ public final class SelfPlayLearner implements AutoCloseable {
         || saved.actorElements() != elements(Parameters.ACTOR)
         || saved.valueElements() != elements(Parameters.VALUE)) {
       throw new IllegalArgumentException(
-          "The learner state " + directory + " was saved for another network: " + saved.architecture() + " "
-              + saved.actorElements() + "/" + saved.valueElements());
+          "The learner state "
+              + directory
+              + " was saved for another network: "
+              + saved.architecture()
+              + " "
+              + saved.actorElements()
+              + "/"
+              + saved.valueElements());
     }
     actorRate = new KlLearningRate(settings.actorRate(), saved.actorRate());
     actorLearningRate = (float) actorRate.rate();
@@ -540,7 +587,8 @@ public final class SelfPlayLearner implements AutoCloseable {
   }
 
   /** 学習の前のネットワークで全ての判断を推論し、合法手の対数確率と価値を書く。 */
-  private void evaluate(TrajectoryBatch batch, Index index, float[] rolloutLog, float[] values) throws IOException {
+  private void evaluate(TrajectoryBatch batch, Index index, float[] rolloutLog, float[] values)
+      throws IOException {
     int size = batch.size();
     if (size == 0) {
       return;
@@ -569,7 +617,8 @@ public final class SelfPlayLearner implements AutoCloseable {
     List<List<int[]>> assigned = assign(parts(order, from, to, index), index);
     int[] lanes = active(assigned);
     PpoLoss.Coefficients coefficients =
-        new PpoLoss.Coefficients(settings.ppo().clip(), settings.ppo().entropy(), actorRows, to - from);
+        new PpoLoss.Coefficients(
+            settings.ppo().clip(), settings.ppo().entropy(), actorRows, to - from);
     List<LaneWork<NetworkLane, float[]>> work = new ArrayList<>();
     for (int lane : lanes) {
       List<int[]> parts = assigned.get(lane);
@@ -620,10 +669,19 @@ public final class SelfPlayLearner implements AutoCloseable {
             group.norm(Parameters.ACTOR),
             group.norm(Parameters.VALUE));
     LOG.info(
-        "classic learn step {} rows={} actorRows={} kl={} actorUpdated={} surrogate={} entropy={} value={} clipped={}"
-            + " norms={}/{}",
-        number, record.rows(), actorRows, record.kl(), actorUpdated, record.surrogate(), record.entropy(),
-        record.valueLoss(), record.clipFraction(), record.actorNorm(), record.valueNorm());
+        "classic learn step {} rows={} actorRows={} kl={} actorUpdated={} surrogate={} entropy={}"
+            + " value={} clipped={} norms={}/{}",
+        number,
+        record.rows(),
+        actorRows,
+        record.kl(),
+        actorUpdated,
+        record.surrogate(),
+        record.entropy(),
+        record.valueLoss(),
+        record.clipFraction(),
+        record.actorNorm(),
+        record.valueNorm());
     return record;
   }
 
@@ -646,7 +704,9 @@ public final class SelfPlayLearner implements AutoCloseable {
     for (int bucket = 0; bucket < grouped.length; bucket++) {
       int limit = rowLimit(Buckets.of(bucket), settings.batches());
       for (int start = 0; start < grouped[bucket].length; start += limit) {
-        parts.add(Arrays.copyOfRange(grouped[bucket], start, Math.min(grouped[bucket].length, start + limit)));
+        parts.add(
+            Arrays.copyOfRange(
+                grouped[bucket], start, Math.min(grouped[bucket].length, start + limit)));
       }
     }
     return parts;
@@ -674,7 +734,10 @@ public final class SelfPlayLearner implements AutoCloseable {
       sorted[part] = part;
       cells[part] = (long) decisions.length * bucket.actions() * bucket.transitions();
     }
-    Arrays.sort(sorted, (left, right) -> cells[left] != cells[right] ? Long.compare(cells[right], cells[left]) : left - right);
+    Arrays.sort(
+        sorted,
+        (left, right) ->
+            cells[left] != cells[right] ? Long.compare(cells[right], cells[left]) : left - right);
     long[] load = new long[lanes];
     for (int part : sorted) {
       int lightest = 0;
@@ -691,11 +754,14 @@ public final class SelfPlayLearner implements AutoCloseable {
 
   /** バッチを配ったレーンの番号。 */
   private static int[] active(List<List<int[]>> assigned) {
-    return IntStream.range(0, assigned.size()).filter(lane -> !assigned.get(lane).isEmpty()).toArray();
+    return IntStream.range(0, assigned.size())
+        .filter(lane -> !assigned.get(lane).isEmpty())
+        .toArray();
   }
 
   private static int rowLimit(Bucket bucket, Batches batches) {
-    return Math.max(1, Math.min(batches.rows(), batches.cells() / (bucket.actions() * bucket.transitions())));
+    return Math.max(
+        1, Math.min(batches.rows(), batches.cells() / (bucket.actions() * bucket.transitions())));
   }
 
   /** 0 以上 {@code size} 未満の番号を、乱数の種で並べ替えた列。 */
@@ -741,7 +807,8 @@ public final class SelfPlayLearner implements AutoCloseable {
         Device device = devices.get(index);
         Model replica = Model.newInstance("classic-learner-" + index, device, "PyTorch");
         try {
-          ClassicNetwork copy = new ClassicNetwork(network.architecture(), network.variant(), network.utility());
+          ClassicNetwork copy =
+              new ClassicNetwork(network.architecture(), network.variant(), network.utility());
           replica.setBlock(copy);
           copy.initialize(replica.getNDManager());
           DataParallelGroup.copyParameters(canonical, replica);
@@ -753,7 +820,9 @@ public final class SelfPlayLearner implements AutoCloseable {
         }
       }
       return new ParallelOptimizer(
-          lanes, (float) settings.ppo().gradientClip(), (float) settings.valueRate().gradientClip());
+          lanes,
+          (float) settings.ppo().gradientClip(),
+          (float) settings.valueRate().gradientClip());
     } catch (RuntimeException | Error failure) {
       for (NetworkLane lane : lanes) {
         try {
@@ -803,7 +872,8 @@ public final class SelfPlayLearner implements AutoCloseable {
    * @param offsets 合法手の対数確率を並べた配列での、判断ごとの先頭の位置（末尾の要素は合法手の総数）
    * @param actorRows 方策の損失に入れる判断の数
    */
-  private record Index(int[] game, int[] local, byte[] bucket, boolean[] actor, int[] offsets, int actorRows) {
+  private record Index(
+      int[] game, int[] local, byte[] bucket, boolean[] actor, int[] offsets, int actorRows) {
 
     /** 全ての判断を読んで作る（判断を等分し、並列に読む）。 */
     static Index of(TrajectoryBatch batch) {
@@ -820,17 +890,19 @@ public final class SelfPlayLearner implements AutoCloseable {
           local[start + decision] = decision;
         }
       }
-      Ranges.split(size, (from, to) -> {
-        Observation reader = new Observation(batch.variant());
-        for (int decision = from; decision < to; decision++) {
-          GameTrajectory trajectory = batch.games().get(game[decision]);
-          Observation o = trajectory.bind(local[decision], reader);
-          bucket[decision] = (byte) Buckets.ordinal(Buckets.inference(o));
-          legal[decision] = (byte) o.legalActions();
-          actor[decision] = trajectory.causal(local[decision]) && o.legalActions() > 1;
-        }
-        return null;
-      });
+      Ranges.split(
+          size,
+          (from, to) -> {
+            Observation reader = new Observation(batch.variant());
+            for (int decision = from; decision < to; decision++) {
+              GameTrajectory trajectory = batch.games().get(game[decision]);
+              Observation o = trajectory.bind(local[decision], reader);
+              bucket[decision] = (byte) Buckets.ordinal(Buckets.inference(o));
+              legal[decision] = (byte) o.legalActions();
+              actor[decision] = trajectory.causal(local[decision]) && o.legalActions() > 1;
+            }
+            return null;
+          });
       int[] offsets = new int[size + 1];
       int actorRows = 0;
       for (int decision = 0; decision < size; decision++) {
@@ -847,7 +919,12 @@ public final class SelfPlayLearner implements AutoCloseable {
 
   /** ステップで使うバッチの教師を作るための値。軌跡、判断ごとの値、学習の前の対数確率、補正、価値の目標、アドバンテージ。 */
   private record Labels(
-      TrajectoryBatch batch, Index index, float[] rolloutLog, float[] credits, float[] targets, float[] advantages) {}
+      TrajectoryBatch batch,
+      Index index,
+      float[] rolloutLog,
+      float[] credits,
+      float[] targets,
+      float[] advantages) {}
 
   /**
    * 1 つのデバイスのネットワークと、入力と教師を書く作業領域。レーンの処理は、1 度に 1 つのスレッドだけが走らせる。
@@ -877,7 +954,12 @@ public final class SelfPlayLearner implements AutoCloseable {
     private float[] actor = new float[0];
     private float[] target = new float[0];
 
-    NetworkLane(Model model, ClassicNetwork network, boolean ownsModel, NetworkRuntime runtime, Batches batches) {
+    NetworkLane(
+        Model model,
+        ClassicNetwork network,
+        boolean ownsModel,
+        NetworkRuntime runtime,
+        Batches batches) {
       super(model, ownsModel, runtime);
       this.network = network;
       this.batches = batches;
@@ -889,7 +971,8 @@ public final class SelfPlayLearner implements AutoCloseable {
     }
 
     /** バッチの判断を推論し、合法手の対数確率と価値を書く。 */
-    Boolean evaluate(TrajectoryBatch batch, Index index, List<int[]> parts, float[] rolloutLog, float[] values) {
+    Boolean evaluate(
+        TrajectoryBatch batch, Index index, List<int[]> parts, float[] rolloutLog, float[] values) {
       HlGauss support = network.support();
       for (int[] part : parts) {
         ClassicInputs into = encode(batch, index, part);
@@ -898,12 +981,18 @@ public final class SelfPlayLearner implements AutoCloseable {
             InferenceMode ignored = manager().getEngine().newInferenceMode()) {
           ClassicBatch input = ClassicBatch.send(working, uploads, into, part.length);
           ClassicNetwork.Output output =
-              network.forward(new ParameterStore(working, false), input, precision, false, ClassicNetwork.Heads.BOTH);
+              network.forward(
+                  new ParameterStore(working, false),
+                  input,
+                  precision,
+                  false,
+                  ClassicNetwork.Heads.BOTH);
           float[] log = PolicyGraph.logProbabilities(output.policy(), input).toFloatArray();
           float[] logits = output.value().toFloatArray();
           for (int row = 0; row < part.length; row++) {
             int decision = part[row];
-            System.arraycopy(log, row * actions, rolloutLog, index.offsets[decision], index.legal(decision));
+            System.arraycopy(
+                log, row * actions, rolloutLog, index.offsets[decision], index.legal(decision));
             values[decision] = support.decode(logits, row * HlGauss.BINS);
           }
         }
@@ -935,12 +1024,25 @@ public final class SelfPlayLearner implements AutoCloseable {
             NDArray rowTarget = create(working, target, new Shape(rows));
             try (GradientCollector collector = newGradientCollector()) {
               ClassicNetwork.Output output =
-                  network.forward(new ParameterStore(working, false), input, precision, true, ClassicNetwork.Heads.BOTH);
+                  network.forward(
+                      new ParameterStore(working, false),
+                      input,
+                      precision,
+                      true,
+                      ClassicNetwork.Heads.BOTH);
               NDArray logProbabilities = PolicyGraph.logProbabilities(output.policy(), input);
               PpoLoss.Terms terms =
                   PpoLoss.compute(
-                      logProbabilities, legal, chosen, rollout, rowAdvantage, rowCredit, rowActor, output.value(),
-                      network.support().targets(rowTarget), coefficients);
+                      logProbabilities,
+                      legal,
+                      chosen,
+                      rollout,
+                      rowAdvantage,
+                      rowCredit,
+                      rowActor,
+                      output.value(),
+                      network.support().targets(rowTarget),
+                      coefficients);
               collector.backward(terms.objective());
               totals.addi(terms.sums());
             }
@@ -999,7 +1101,14 @@ public final class SelfPlayLearner implements AutoCloseable {
         int base = row * actions;
         Arrays.fill(legalMask, base, base + legal, 1f);
         System.arraycopy(labels.rolloutLog(), index.offsets[decision], rolloutRows, base, legal);
-        chosenMask[base + labels.batch().games().get(index.game[decision]).chosen(index.local[decision])] = 1f;
+        chosenMask[
+                base
+                    + labels
+                        .batch()
+                        .games()
+                        .get(index.game[decision])
+                        .chosen(index.local[decision])] =
+            1f;
         advantage[row] = labels.advantages()[decision];
         credit[row] = labels.credits()[decision];
         actor[row] = index.actor[decision] ? 1f : 0f;
@@ -1009,7 +1118,8 @@ public final class SelfPlayLearner implements AutoCloseable {
 
     private NDArray create(NDManager manager, float[] values, Shape shape) {
       int size = Math.toIntExact(shape.size());
-      return uploads.send(manager, DataType.FLOAT32, shape, buffer -> buffer.asFloatBuffer().put(values, 0, size));
+      return uploads.send(
+          manager, DataType.FLOAT32, shape, buffer -> buffer.asFloatBuffer().put(values, 0, size));
     }
 
     @Override

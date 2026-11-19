@@ -28,7 +28,9 @@ public record OpponentPool(Champion champion, List<Champion> past) {
    */
   public static OpponentPool of(ChampionStore store) throws IOException {
     Champion champion =
-        store.current().orElseThrow(() -> new IllegalStateException("The champion store holds no champion"));
+        store
+            .current()
+            .orElseThrow(() -> new IllegalStateException("The champion store holds no champion"));
     return new OpponentPool(champion, store.past());
   }
 
@@ -40,12 +42,15 @@ public record OpponentPool(Champion champion, List<Champion> past) {
    */
   public Champion draw(double championProbability, long seed) {
     if (!(championProbability >= 0 && championProbability <= 1)) {
-      throw new IllegalArgumentException("The champion probability must be in [0, 1]: " + championProbability);
+      throw new IllegalArgumentException(
+          "The champion probability must be in [0, 1]: " + championProbability);
     }
     if (past.isEmpty()) {
       return champion;
     }
     SplittableRandom random = new SplittableRandom(seed);
-    return random.nextDouble() < championProbability ? champion : past.get(random.nextInt(past.size()));
+    return random.nextDouble() < championProbability
+        ? champion
+        : past.get(random.nextInt(past.size()));
   }
 }

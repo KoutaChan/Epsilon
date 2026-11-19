@@ -53,7 +53,8 @@ public class ModelFamiliesTest {
         Policy policy = family.open(null, VARIANT, CPU, runtime)) {
       assertTrue(policy instanceof RuleBot);
     }
-    expectThrows(IllegalArgumentException.class, () -> family.open(Path.of("nano-1"), VARIANT, CPU));
+    expectThrows(
+        IllegalArgumentException.class, () -> family.open(Path.of("nano-1"), VARIANT, CPU));
   }
 
   @Test
@@ -65,12 +66,16 @@ public class ModelFamiliesTest {
       Path stale = header(root.resolve("stale"), Architecture.NANO, VARIANT, "0123456789abcdef");
       ModelFamily family = ModelFamily.of(Series.NANO);
       IllegalStateException variant =
-          expectThrows(IllegalStateException.class, () -> family.open(nano, Variant.TENHOU_3P, CPU));
+          expectThrows(
+              IllegalStateException.class, () -> family.open(nano, Variant.TENHOU_3P, CPU));
       assertTrue(variant.getMessage().contains("TENHOU_3P"), variant.getMessage());
-      IllegalStateException inputs = expectThrows(IllegalStateException.class, () -> family.open(stale, VARIANT, CPU));
+      IllegalStateException inputs =
+          expectThrows(IllegalStateException.class, () -> family.open(stale, VARIANT, CPU));
       assertTrue(inputs.getMessage().contains("fingerprint"), inputs.getMessage());
       IllegalStateException architecture =
-          expectThrows(IllegalStateException.class, () -> ModelFamily.of(Series.MAJOR).open(nano, VARIANT, CPU));
+          expectThrows(
+              IllegalStateException.class,
+              () -> ModelFamily.of(Series.MAJOR).open(nano, VARIANT, CPU));
       assertTrue(architecture.getMessage().contains("NANO"), architecture.getMessage());
       expectThrows(IllegalArgumentException.class, () -> family.open(null, VARIANT, CPU));
     } finally {
@@ -83,13 +88,21 @@ public class ModelFamiliesTest {
   }
 
   /** model.json だけを置いたチェックポイントのディレクトリを作る。 */
-  private static Path header(Path directory, Architecture architecture, Variant variant, String fingerprint)
+  private static Path header(
+      Path directory, Architecture architecture, Variant variant, String fingerprint)
       throws IOException {
     Files.createDirectories(directory);
     Files.writeString(
         directory.resolve("model.json"),
-        "{\"architecture\": \"" + architecture + "\", \"variant\": \"" + variant + "\", \"utility\": \""
-            + RankUtility.TENHOU + "\", \"inputFingerprint\": \"" + fingerprint + "\", \"step\": 0}");
+        "{\"architecture\": \""
+            + architecture
+            + "\", \"variant\": \""
+            + variant
+            + "\", \"utility\": \""
+            + RankUtility.TENHOU
+            + "\", \"inputFingerprint\": \""
+            + fingerprint
+            + "\", \"step\": 0}");
     return directory;
   }
 }

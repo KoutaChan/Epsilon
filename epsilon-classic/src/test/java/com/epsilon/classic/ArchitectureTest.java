@@ -38,7 +38,12 @@ public class ArchitectureTest {
   @Test
   public void headersRoundTripThroughJson() {
     ClassicHeader header =
-        new ClassicHeader(Architecture.MAJOR, Variant.TENHOU_4P, RankUtility.AVERAGE_RANK, "0123456789abcdef", 42);
+        new ClassicHeader(
+            Architecture.MAJOR,
+            Variant.TENHOU_4P,
+            RankUtility.AVERAGE_RANK,
+            "0123456789abcdef",
+            42);
     Gson gson = new Gson();
     assertEquals(gson.fromJson(gson.toJson(header), ClassicHeader.class), header);
     assertThrows(

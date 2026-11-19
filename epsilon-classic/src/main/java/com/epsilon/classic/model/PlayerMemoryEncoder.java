@@ -36,16 +36,21 @@ final class PlayerMemoryEncoder extends AbstractBlock {
 
   PlayerMemoryEncoder(Widths widths) {
     hidden = widths.hidden();
-    attentionInputLayerNorm = addChildBlock("attentionInputLayerNorm", LayerNorm.builder().axis(2).build());
+    attentionInputLayerNorm =
+        addChildBlock("attentionInputLayerNorm", LayerNorm.builder().axis(2).build());
     queryKeyValueProjection =
         addChildBlock(
             "queryKeyValueProjection",
             Linear.builder().setUnits(3L * Widths.MEMORY_ATTENTION).optBias(false).build());
-    attentionOutputProjection = addChildBlock("attentionOutputProjection", Linear.builder().setUnits(hidden).build());
-    feedForwardInputLayerNorm = addChildBlock("feedForwardInputLayerNorm", LayerNorm.builder().axis(2).build());
+    attentionOutputProjection =
+        addChildBlock("attentionOutputProjection", Linear.builder().setUnits(hidden).build());
+    feedForwardInputLayerNorm =
+        addChildBlock("feedForwardInputLayerNorm", LayerNorm.builder().axis(2).build());
     feedForwardExpansion =
-        addChildBlock("feedForwardExpansion", Linear.builder().setUnits(Widths.MEMORY_FEED_FORWARD).build());
-    feedForwardProjection = addChildBlock("feedForwardProjection", Linear.builder().setUnits(hidden).build());
+        addChildBlock(
+            "feedForwardExpansion", Linear.builder().setUnits(Widths.MEMORY_FEED_FORWARD).build());
+    feedForwardProjection =
+        addChildBlock("feedForwardProjection", Linear.builder().setUnits(hidden).build());
     outputLayerNorm = addChildBlock("outputLayerNorm", LayerNorm.builder().axis(2).build());
   }
 
@@ -61,11 +66,14 @@ final class PlayerMemoryEncoder extends AbstractBlock {
       long groups = shape.get(0) * ClassicSchema.SEATS;
       NDArray present = mask.reshape(groups, TOKENS);
       NDArray kept = present.expandDims(2);
-      NDArray memory = ArrayScope.of(() -> pass.norm(entityNorm, tokens.reshape(groups, TOKENS, hidden)).mul(kept));
+      NDArray memory =
+          ArrayScope.of(
+              () -> pass.norm(entityNorm, tokens.reshape(groups, TOKENS, hidden)).mul(kept));
       memory = attend(pass, memory, present, kept);
       memory = feedForward(pass, memory, kept);
       NDArray output = memory;
-      return scope.keep(ArrayScope.of(() -> pass.norm(outputLayerNorm, output).mul(kept).reshape(shape)));
+      return scope.keep(
+          ArrayScope.of(() -> pass.norm(outputLayerNorm, output).mul(kept).reshape(shape)));
     }
   }
 
@@ -73,10 +81,16 @@ final class PlayerMemoryEncoder extends AbstractBlock {
   private NDArray attend(Pass pass, NDArray memory, NDArray present, NDArray kept) {
     try (ArrayScope scope = new ArrayScope()) {
       long groups = memory.getShape().get(0);
-      NDList parts = pass.linear(queryKeyValueProjection, pass.norm(attentionInputLayerNorm, memory)).split(3, 2);
+      NDList parts =
+          pass.linear(queryKeyValueProjection, pass.norm(attentionInputLayerNorm, memory))
+              .split(3, 2);
       NDArray keyMask = present.reshape(groups, 1, 1, TOKENS).log();
       NDArray context =
-          Pass.attention(heads(parts.get(0), groups), heads(parts.get(1), groups), heads(parts.get(2), groups), keyMask)
+          Pass.attention(
+                  heads(parts.get(0), groups),
+                  heads(parts.get(1), groups),
+                  heads(parts.get(2), groups),
+                  keyMask)
               .swapAxes(1, 2)
               .reshape(groups, TOKENS, Widths.MEMORY_ATTENTION);
       return scope.keep(memory.add(pass.linear(attentionOutputProjection, context)).mul(kept));
@@ -86,7 +100,9 @@ final class PlayerMemoryEncoder extends AbstractBlock {
   /** FFN の残差を足し、実在しないトークンを 0 にした記憶 [席の数 × 行, 29, 幅] を返す。 */
   private NDArray feedForward(Pass pass, NDArray memory, NDArray kept) {
     try (ArrayScope scope = new ArrayScope()) {
-      NDArray expanded = Pass.silu(pass.linear(feedForwardExpansion, pass.norm(feedForwardInputLayerNorm, memory)));
+      NDArray expanded =
+          Pass.silu(
+              pass.linear(feedForwardExpansion, pass.norm(feedForwardInputLayerNorm, memory)));
       return scope.keep(memory.add(pass.linear(feedForwardProjection, expanded)).mul(kept));
     }
   }
@@ -100,16 +116,21 @@ final class PlayerMemoryEncoder extends AbstractBlock {
     Shape tokens = new Shape(-1, TOKENS, hidden);
     attentionInputLayerNorm.initialize(manager, dataType, tokens);
     queryKeyValueProjection.initialize(manager, dataType, tokens);
-    attentionOutputProjection.initialize(manager, dataType, new Shape(-1, TOKENS, Widths.MEMORY_ATTENTION));
+    attentionOutputProjection.initialize(
+        manager, dataType, new Shape(-1, TOKENS, Widths.MEMORY_ATTENTION));
     feedForwardInputLayerNorm.initialize(manager, dataType, tokens);
     feedForwardExpansion.initialize(manager, dataType, tokens);
-    feedForwardProjection.initialize(manager, dataType, new Shape(-1, TOKENS, Widths.MEMORY_FEED_FORWARD));
+    feedForwardProjection.initialize(
+        manager, dataType, new Shape(-1, TOKENS, Widths.MEMORY_FEED_FORWARD));
     outputLayerNorm.initialize(manager, dataType, tokens);
   }
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use encode");
   }
 

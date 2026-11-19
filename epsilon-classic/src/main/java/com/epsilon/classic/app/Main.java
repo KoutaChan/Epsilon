@@ -23,7 +23,8 @@ public final class Main {
 
   /** classic のアプリの宣言。 */
   public static Application<ClassicSettings> application() {
-    return Application.of("classic", ClassicSettings.class, List.of(ClassicCommand.class)).withCheck(Main::problems);
+    return Application.of("classic", ClassicSettings.class, List.of(ClassicCommand.class))
+        .withCheck(Main::problems);
   }
 
   /** コマンドを 1 つ実行し、終了コードで JVM を終える。残ったスレッドのせいで JVM が終われなくなるのを防ぐため。 */
@@ -44,7 +45,10 @@ public final class Main {
         ClassicCheckpoint.verify(start, variant);
       } catch (IOException | IllegalStateException unusable) {
         problems.add(
-            "The start network run.start " + start + " is not a usable classic checkpoint: " + unusable.getMessage());
+            "The start network run.start "
+                + start
+                + " is not a usable classic checkpoint: "
+                + unusable.getMessage());
       }
     }
     Path grp = settings.run().grp();
@@ -52,15 +56,20 @@ public final class Main {
       try {
         GrpModel model = GrpCheckpoint.read(grp);
         if (model.variant() != variant) {
-          problems.add("The GRP run.grp " + grp + " is for " + model.variant() + ", not " + variant);
+          problems.add(
+              "The GRP run.grp " + grp + " is for " + model.variant() + ", not " + variant);
         }
         if (!(model instanceof GrpNetwork)) {
           problems.add(
-              "The GRP run.grp " + grp + " must be a network GRP, not " + model.getClass().getSimpleName()
+              "The GRP run.grp "
+                  + grp
+                  + " must be a network GRP, not "
+                  + model.getClass().getSimpleName()
                   + ": the self-play reads only a network GRP");
         }
       } catch (IOException unusable) {
-        problems.add("The GRP run.grp " + grp + " is not a usable GRP checkpoint: " + unusable.getMessage());
+        problems.add(
+            "The GRP run.grp " + grp + " is not a usable GRP checkpoint: " + unusable.getMessage());
       }
     }
     for (Map.Entry<String, TableSpec> entry : settings.evaluation().tables().entrySet()) {
@@ -68,7 +77,10 @@ public final class Main {
         Series.Spec spec = Series.parse(entry.getValue().opponent());
         if (!Files.isDirectory(spec.checkpoint())) {
           problems.add(
-              "The opponent checkpoint of evaluation table " + entry.getKey() + " does not exist: " + spec.checkpoint());
+              "The opponent checkpoint of evaluation table "
+                  + entry.getKey()
+                  + " does not exist: "
+                  + spec.checkpoint());
         }
       }
     }

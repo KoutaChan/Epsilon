@@ -47,7 +47,8 @@ public record Decision(
     Objects.requireNonNull(candidate, "candidate");
     alarms = List.copyOf(alarms);
     if (action == Action.NOT_CONFIRMED && check == null) {
-      throw new IllegalArgumentException("A candidate is not confirmed only by a confirm table: " + duel);
+      throw new IllegalArgumentException(
+          "A candidate is not confirmed only by a confirm table: " + duel);
     }
   }
 }

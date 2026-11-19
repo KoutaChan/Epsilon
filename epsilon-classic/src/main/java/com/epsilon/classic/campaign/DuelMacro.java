@@ -77,6 +77,7 @@ public interface DuelMacro extends Iteration {
    */
   default Policy open(String spec) throws IOException {
     Series.Spec parsed = Series.parse(spec);
-    return ModelFamily.of(parsed.series()).open(parsed.checkpoint(), variant(), options(), runtime());
+    return ModelFamily.of(parsed.series())
+        .open(parsed.checkpoint(), variant(), options(), runtime());
   }
 }

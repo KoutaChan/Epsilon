@@ -28,7 +28,8 @@ final class FeatureFusion extends AbstractBlock {
     projections = new Linear[inputWidths.length];
     for (int index = 0; index < inputWidths.length; index++) {
       projections[index] =
-          addChildBlock("component" + index, Linear.builder().setUnits(output).optBias(index == 0).build());
+          addChildBlock(
+              "component" + index, Linear.builder().setUnits(output).optBias(index == 0).build());
     }
   }
 
@@ -57,7 +58,10 @@ final class FeatureFusion extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use fuse");
   }
 

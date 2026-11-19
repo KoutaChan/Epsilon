@@ -53,12 +53,14 @@ public final class UncertaintyCdf {
    */
   public static UncertaintyCdf of(long[][] counts) {
     if (counts.length != KEYS.length) {
-      throw new IllegalArgumentException("Counts of " + KEYS.length + " distributions are needed, not " + counts.length);
+      throw new IllegalArgumentException(
+          "Counts of " + KEYS.length + " distributions are needed, not " + counts.length);
     }
     long[][] cumulative = new long[KEYS.length][];
     for (int key = 0; key < KEYS.length; key++) {
       if (counts[key].length != BINS) {
-        throw new IllegalArgumentException("A distribution holds " + BINS + " bins, not " + counts[key].length);
+        throw new IllegalArgumentException(
+            "A distribution holds " + BINS + " bins, not " + counts[key].length);
       }
       long[] running = new long[BINS];
       long sum = 0;

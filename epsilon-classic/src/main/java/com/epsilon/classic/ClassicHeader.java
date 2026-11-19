@@ -13,7 +13,11 @@ import java.util.Objects;
  * @param step 学習のステップ数
  */
 public record ClassicHeader(
-    Architecture architecture, Variant variant, RankUtility utility, String inputFingerprint, long step) {
+    Architecture architecture,
+    Variant variant,
+    RankUtility utility,
+    String inputFingerprint,
+    long step) {
 
   public ClassicHeader {
     Objects.requireNonNull(architecture, "architecture");

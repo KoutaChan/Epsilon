@@ -65,8 +65,8 @@ public record CampaignKind(Collector.Factory collectors)
   }
 
   @Override
-  public RunSession<ClassicSettings, CampaignState, CampaignIteration> open(Launch<ClassicSettings> launch)
-      throws IOException {
+  public RunSession<ClassicSettings, CampaignState, CampaignIteration> open(
+      Launch<ClassicSettings> launch) throws IOException {
     return CampaignSession.open(launch, collectors);
   }
 
@@ -79,7 +79,8 @@ public record CampaignKind(Collector.Factory collectors)
    */
   public Runner<ClassicSettings, CampaignState, CampaignIteration, CampaignStep> runner(
       Path run, Integer stopAfter, BooleanSupplier signalled) throws IOException {
-    return new Runner<>(new RunDirectory(run), this, Runner.Options.of(Jars.running(), stopAfter, signalled));
+    return new Runner<>(
+        new RunDirectory(run), this, Runner.Options.of(Jars.running(), stopAfter, signalled));
   }
 
   /** run を回す呼び出しの終わり方を、コマンドの終わり方に直す。 */

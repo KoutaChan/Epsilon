@@ -26,7 +26,8 @@ public class PretrainStateTest {
 
       PretrainState.Progress second =
           progress(4, List.of(new Pretrainer.Epoch(0, 17, 1.25, 0.5, 0.875, 2.0 / 3, 1.5)));
-      PretrainState.Tensors withBest = tensors(17, new float[][] {{0.25f, -0.5f, 1e-7f}, {Float.MIN_VALUE}});
+      PretrainState.Tensors withBest =
+          tensors(17, new float[][] {{0.25f, -0.5f, 1e-7f}, {Float.MIN_VALUE}});
       PretrainState.write(directory, second, withBest);
       Assert.assertEquals(PretrainState.progress(directory), second);
       assertSame(PretrainState.tensors(directory, second), withBest);
@@ -46,13 +47,25 @@ public class PretrainStateTest {
 
   private static PretrainState.Progress progress(int segment, List<Pretrainer.Epoch> epochs) {
     return new PretrainState.Progress(
-        new Pretrainer.Settings(3, 1_024, 2e-4, 0.01, 0.5, 2.0, 10, 7), "NANO", 1_000, 100, new Pretrainer.Baselines(0.2, 1.7, 0.55), epochs,
-        epochs.size() - 1, epochs.size(), 5, 0.1 + 0.2, 5, 17 + segment, segment);
+        new Pretrainer.Settings(3, 1_024, 2e-4, 0.01, 0.5, 2.0, 10, 7),
+        "NANO",
+        1_000,
+        100,
+        new Pretrainer.Baselines(0.2, 1.7, 0.55),
+        epochs,
+        epochs.size() - 1,
+        epochs.size(),
+        5,
+        0.1 + 0.2,
+        5,
+        17 + segment,
+        segment);
   }
 
   private static PretrainState.Tensors tensors(long adamSteps, float[][] best) {
     return new PretrainState.Tensors(
-        List.of("a_weight", "b_gamma"), adamSteps,
+        List.of("a_weight", "b_gamma"),
+        adamSteps,
         new float[][] {{1f, 2f, -3f}, {Float.NaN}},
         new float[][] {{0.1f, 0.2f, 0.3f}, {-0f}},
         new float[][] {{1e-30f, 4f, 5f}, {Float.MAX_VALUE}},
@@ -78,7 +91,8 @@ public class PretrainStateTest {
       Assert.assertEquals(actual[index].length, expected[index].length);
       for (int value = 0; value < expected[index].length; value++) {
         Assert.assertEquals(
-            Float.floatToRawIntBits(actual[index][value]), Float.floatToRawIntBits(expected[index][value]),
+            Float.floatToRawIntBits(actual[index][value]),
+            Float.floatToRawIntBits(expected[index][value]),
             "tensor " + index + " value " + value);
       }
     }

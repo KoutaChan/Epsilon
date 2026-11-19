@@ -110,12 +110,30 @@ public class ClassicCommandsTest {
         section(Init.class, "init", "architecture = \"MAJOR\"\nout = \"/o\""),
         new Init(Architecture.MAJOR, O, VARIANT, 1));
     Assert.assertEquals(
-        section(Rows.class, "rows", "records = \"/r\"\nout = \"/o\""), new Rows(R, O, VARIANT, 0.1, 2048));
+        section(Rows.class, "rows", "records = \"/r\"\nout = \"/o\""),
+        new Rows(R, O, VARIANT, 0.1, 2048));
     Assert.assertEquals(
         section(Pretrain.class, "pretrain", "rows = \"/r\"\nout = \"/o\"\narchitecture = \"NANO\""),
         new Pretrain(
-            R, O, null, Architecture.NANO, null, 4, 1024, 2e-4, 0.01, 0.5, 2.0, 10.0, "cpu", Precision.FLOAT32, null, 1,
-            null, null, null));
+            R,
+            O,
+            null,
+            Architecture.NANO,
+            null,
+            4,
+            1024,
+            2e-4,
+            0.01,
+            0.5,
+            2.0,
+            10.0,
+            "cpu",
+            Precision.FLOAT32,
+            null,
+            1,
+            null,
+            null,
+            null));
     Assert.assertEquals(
         section(PretrainGrp.class, "pretrain-grp", "records = \"/r\"\nout = \"/o\""),
         new PretrainGrp(R, O, VARIANT, 1, 1));
@@ -142,15 +160,18 @@ public class ClassicCommandsTest {
         List.of(Change.FIT));
     Assert.assertThrows(
         SettingsException.class,
-        () -> Settings.bind(
-            ClassicSettings.class, List.of(Layer.assignments("--set", List.of("grp.training.stopPatience=1")))));
+        () ->
+            Settings.bind(
+                ClassicSettings.class,
+                List.of(Layer.assignments("--set", List.of("grp.training.stopPatience=1")))));
   }
 
   /** 自己対局のセクションの既定値は Nano の自己対局の値。キーを変えてよい時期は、属するセクションと同じ。 */
   @Test
   public void selfPlaySectionsBindTheNanoValues() {
     ClassicSettings defaults = Settings.bind(ClassicSettings.class, List.of()).value();
-    Assert.assertEquals(defaults.explore(), new Exploration.Settings(0.004, 0.010, 1e-4, 0.1, 5.0, 4.5, 0.5));
+    Assert.assertEquals(
+        defaults.explore(), new Exploration.Settings(0.004, 0.010, 1e-4, 0.1, 5.0, 4.5, 0.5));
     Assert.assertEquals(
         defaults.learning(),
         new SelfPlayLearner.Settings(
@@ -159,7 +180,8 @@ public class ClassicCommandsTest {
             new SelfPlayLearner.ValueRate(1.25e-6, 1e-4, 0.5),
             new SelfPlayLearner.VTrace(0.95),
             new SelfPlayLearner.Batches(1_024, 16_384)));
-    Set<String> learning = Set.of("grp", "explore", "ppo", "actorRate", "valueRate", "vtrace", "batches");
+    Set<String> learning =
+        Set.of("grp", "explore", "ppo", "actorRate", "valueRate", "vtrace", "batches");
     Map<String, Change> changes = new LinkedHashMap<>();
     for (KeyInfo key : Settings.describe(ClassicSettings.class)) {
       String section = key.path().split("\\.")[0];
@@ -172,11 +194,26 @@ public class ClassicCommandsTest {
     Assert.assertEquals(
         changes,
         Map.of(
-            "grp", Change.FIT, "explore", Change.COLLECT, "ppo", Change.FIT, "actorRate", Change.FIXED,
-            "valueRate", Change.FIT, "vtrace", Change.FIT, "batches", Change.MACHINE));
+            "grp",
+            Change.FIT,
+            "explore",
+            Change.COLLECT,
+            "ppo",
+            Change.FIT,
+            "actorRate",
+            Change.FIXED,
+            "valueRate",
+            Change.FIT,
+            "vtrace",
+            Change.FIT,
+            "batches",
+            Change.MACHINE));
     Assert.assertThrows(
         SettingsException.class,
-        () -> Settings.bind(ClassicSettings.class, List.of(Layer.assignments("--set", List.of("ppo.clip=1.0")))));
+        () ->
+            Settings.bind(
+                ClassicSettings.class,
+                List.of(Layer.assignments("--set", List.of("ppo.clip=1.0")))));
   }
 
   @Test
@@ -202,11 +239,20 @@ public class ClassicCommandsTest {
     Ran rows = run("help", "rows");
     Assert.assertEquals(rows.exit(), 0, rows.toString());
     for (String expected :
-        List.of("--records", "--out", "--variant", "--validation", "--chunk-games", "default 2048", "[rows]")) {
+        List.of(
+            "--records",
+            "--out",
+            "--variant",
+            "--validation",
+            "--chunk-games",
+            "default 2048",
+            "[rows]")) {
       Assert.assertTrue(rows.out().contains(expected), expected + " in " + rows.out());
     }
     Ran pretrain = run("help", "pretrain");
-    for (String expected : List.of("--from", "--architecture", "--state", "--minutes", "--pause-file", "--precision")) {
+    for (String expected :
+        List.of(
+            "--from", "--architecture", "--state", "--minutes", "--pause-file", "--precision")) {
       Assert.assertTrue(pretrain.out().contains(expected), expected + " in " + pretrain.out());
     }
     Ran campaign = run("help", "campaign");
@@ -231,13 +277,58 @@ public class ClassicCommandsTest {
       String[][] invalid = {
         {"pretrain", "--rows", existing.toString(), "--out", out},
         {
-          "pretrain", "--rows", existing.toString(), "--out", out, "--architecture", "NANO", "--from",
+          "pretrain",
+          "--rows",
+          existing.toString(),
+          "--out",
+          out,
+          "--architecture",
+          "NANO",
+          "--from",
           existing.toString()
         },
-        {"pretrain", "--rows", existing.toString(), "--out", out, "--architecture", "NANO", "--minutes", "1"},
-        {"pretrain", "--rows", existing.toString(), "--out", out, "--architecture", "NANO", "--pause-file", "p"},
-        {"pretrain", "--rows", existing.toString(), "--out", out, "--architecture", "NANO", "--device", "gpu-1"},
-        {"pretrain", "--rows", existing.toString(), "--out", existing.toString(), "--architecture", "NANO"},
+        {
+          "pretrain",
+          "--rows",
+          existing.toString(),
+          "--out",
+          out,
+          "--architecture",
+          "NANO",
+          "--minutes",
+          "1"
+        },
+        {
+          "pretrain",
+          "--rows",
+          existing.toString(),
+          "--out",
+          out,
+          "--architecture",
+          "NANO",
+          "--pause-file",
+          "p"
+        },
+        {
+          "pretrain",
+          "--rows",
+          existing.toString(),
+          "--out",
+          out,
+          "--architecture",
+          "NANO",
+          "--device",
+          "gpu-1"
+        },
+        {
+          "pretrain",
+          "--rows",
+          existing.toString(),
+          "--out",
+          existing.toString(),
+          "--architecture",
+          "NANO"
+        },
         {"rows", "--records", existing.toString(), "--out", out, "--validation", "1.0"},
         {"rows", "--records", existing.toString(), "--out", out, "--validation", "0"},
         {"rows", "--records", file.toString(), "--out", out},
@@ -246,8 +337,24 @@ public class ClassicCommandsTest {
         {"init", "--architecture", "TINY", "--out", out},
         {"pretrain-grp", "--records", existing.toString(), "--out", existing.toString()},
         {"pretrain-grp", "--records", file.toString(), "--out", out},
-        {"pretrain-grp", "--records", existing.toString(), "--out", out, "--set", "grp.training.stopPatience=1"},
-        {"pretrain-grp", "--records", existing.toString(), "--out", out, "--set", "grp.training.batchRow=8"},
+        {
+          "pretrain-grp",
+          "--records",
+          existing.toString(),
+          "--out",
+          out,
+          "--set",
+          "grp.training.stopPatience=1"
+        },
+        {
+          "pretrain-grp",
+          "--records",
+          existing.toString(),
+          "--out",
+          out,
+          "--set",
+          "grp.training.batchRow=8"
+        },
       };
       for (String[] arguments : invalid) {
         Ran ran = run(arguments);
@@ -255,7 +362,16 @@ public class ClassicCommandsTest {
       }
       Assert.assertFalse(Files.exists(root.resolve("out")));
       Assert.assertTrue(
-          run("pretrain", "--rows", existing.toString(), "--out", out, "--architecture", "NANO", "--device", "gpu-1")
+          run(
+                  "pretrain",
+                  "--rows",
+                  existing.toString(),
+                  "--out",
+                  out,
+                  "--architecture",
+                  "NANO",
+                  "--device",
+                  "gpu-1")
               .logged("expected cpu or gpuN"));
       Assert.assertTrue(
           run("rows", "--records", existing.toString(), "--out", existing.toString())
@@ -264,14 +380,37 @@ public class ClassicCommandsTest {
           run("rows", "--records", file.toString(), "--out", out)
               .logged("Argument --records names no directory: " + file));
       Assert.assertTrue(
-          run("pretrain-grp", "--records", existing.toString(), "--out", out, "--set", "grp.training.stopPatience=1")
+          run(
+                  "pretrain-grp",
+                  "--records",
+                  existing.toString(),
+                  "--out",
+                  out,
+                  "--set",
+                  "grp.training.stopPatience=1")
               .logged("stopPatience 1 is below halvingPatience 2"));
       Assert.assertTrue(
-          run("pretrain-grp", "--records", existing.toString(), "--out", out, "--set", "grp.training.batchRow=8")
+          run(
+                  "pretrain-grp",
+                  "--records",
+                  existing.toString(),
+                  "--out",
+                  out,
+                  "--set",
+                  "grp.training.batchRow=8")
               .logged("did you mean grp.training.batchRows?"));
-      Path settings = Files.writeString(root.resolve("classic.toml"), "[pretrain]\ndevice = \"gpu-1\"\n");
+      Path settings =
+          Files.writeString(root.resolve("classic.toml"), "[pretrain]\ndevice = \"gpu-1\"\n");
       Ran section =
-          run("pretrain", "--rows", existing.toString(), "--out", out, "--architecture", "NANO", "--settings",
+          run(
+              "pretrain",
+              "--rows",
+              existing.toString(),
+              "--out",
+              out,
+              "--architecture",
+              "NANO",
+              "--settings",
               settings.toString());
       Assert.assertEquals(section.exit(), 2, section.toString());
       Assert.assertTrue(section.logged("expected cpu or gpuN"), section.toString());
@@ -305,12 +444,19 @@ public class ClassicCommandsTest {
 
       Path grp = root.resolve("grp");
       Ran grpRun =
-          run("pretrain-grp", "--records", all.toString(), "--out", grp.toString(), "--set",
+          run(
+              "pretrain-grp",
+              "--records",
+              all.toString(),
+              "--out",
+              grp.toString(),
+              "--set",
               "grp.training.scratchEpochs=8");
       Assert.assertEquals(grpRun.exit(), 0, grpRun.toString());
       Assert.assertTrue(grpRun.number("stop") > 0, grpRun.toString());
       Assert.assertTrue(grpRun.number("half-epochs") <= 16, grpRun.toString());
-      Assert.assertTrue(grpRun.number("trained") <= grpRun.number("frequency") + 1e-9, grpRun.toString());
+      Assert.assertTrue(
+          grpRun.number("trained") <= grpRun.number("frequency") + 1e-9, grpRun.toString());
       Assert.assertTrue(GrpCheckpoint.read(grp) instanceof GrpNetwork);
       Assert.assertFalse(grpRun.summary().containsKey("sha256"), grpRun.toString());
       Ran again = run("pretrain-grp", "--records", all.toString(), "--out", grp.toString());
@@ -327,19 +473,27 @@ public class ClassicCommandsTest {
       Ran trained =
           run(
               "pretrain",
-              "--rows", rows.toString(),
-              "--out", nano.toString(),
-              "--architecture", "NANO",
-              "--grp", grp.toString(),
-              "--epochs", "1",
-              "--batch", "64");
+              "--rows",
+              rows.toString(),
+              "--out",
+              nano.toString(),
+              "--architecture",
+              "NANO",
+              "--grp",
+              grp.toString(),
+              "--epochs",
+              "1",
+              "--batch",
+              "64");
       Assert.assertEquals(trained.exit(), 0, trained.toString());
       Map<String, String> summary = trained.summary();
       Assert.assertEquals(summary.get("finished"), "true");
       Assert.assertEquals(summary.get("epochs"), "1");
       Assert.assertTrue(
-          Double.isFinite(trained.number("nll")) && Double.isFinite(trained.number("value")), summary.toString());
-      Assert.assertTrue(trained.number("agreement") >= 0 && trained.number("agreement") <= 1, summary.toString());
+          Double.isFinite(trained.number("nll")) && Double.isFinite(trained.number("value")),
+          summary.toString());
+      Assert.assertTrue(
+          trained.number("agreement") >= 0 && trained.number("agreement") <= 1, summary.toString());
       // ルールベースの打ち手の牌譜なので、ルールベースの打ち手をまねた手は全て一致する
       Assert.assertEquals(trained.number("rulebot"), 1.0);
       Assert.assertTrue(trained.number("uniform") < 0.5, summary.toString());
@@ -370,20 +524,37 @@ public class ClassicCommandsTest {
         RuleGames.write(records, RuleGames.play(VARIANT, 4_000 + index, "chunk-" + index));
       }
       Path split = root.resolve("split");
-      Ran result = run("rows", "--records", records.toString(), "--out", split.toString(), "--chunk-games", "2");
+      Ran result =
+          run(
+              "rows",
+              "--records",
+              records.toString(),
+              "--out",
+              split.toString(),
+              "--chunk-games",
+              "2");
       Assert.assertEquals(result.exit(), 0, result.toString());
       Assert.assertEquals(result.summary().get("chunks"), "3");
       Assert.assertEquals(result.summary().get("games"), "5");
       Assert.assertEquals(result.summary().get("skipped"), "0");
       Assert.assertEquals(
-          RowChunks.files(split), List.of(RowChunks.file(split, 0), RowChunks.file(split, 1), RowChunks.file(split, 2)));
+          RowChunks.files(split),
+          List.of(RowChunks.file(split, 0), RowChunks.file(split, 1), RowChunks.file(split, 2)));
       Assert.assertEquals(
-          RowChunks.files(split).stream().map(file -> read(file).games().size()).toList(), List.of(2, 2, 1));
+          RowChunks.files(split).stream().map(file -> read(file).games().size()).toList(),
+          List.of(2, 2, 1));
 
       Path settings = Files.writeString(root.resolve("classic.toml"), "[rows]\nchunkGames = 2\n");
       Path fromFile = root.resolve("from-file");
       Ran section =
-          run("rows", "--records", records.toString(), "--out", fromFile.toString(), "--settings", settings.toString());
+          run(
+              "rows",
+              "--records",
+              records.toString(),
+              "--out",
+              fromFile.toString(),
+              "--settings",
+              settings.toString());
       Assert.assertEquals(section.exit(), 0, section.toString());
       Assert.assertEquals(RowChunks.files(fromFile).size(), 3);
 
@@ -430,14 +601,28 @@ public class ClassicCommandsTest {
         }
       }
       Path rows = root.resolve("rows");
-      Assert.assertEquals(run("rows", "--records", records.toString(), "--out", rows.toString()).exit(), 0);
+      Assert.assertEquals(
+          run("rows", "--records", records.toString(), "--out", rows.toString()).exit(), 0);
       Path nano = root.resolve("nano");
       Path state = root.resolve("state");
       Path pauseFile = root.resolve("pause");
       Files.writeString(pauseFile, "");
       String[] arguments = {
-        "pretrain", "--rows", rows.toString(), "--out", nano.toString(), "--architecture", "NANO", "--epochs", "1",
-        "--batch", "64", "--state", state.toString(), "--pause-file", pauseFile.toString()
+        "pretrain",
+        "--rows",
+        rows.toString(),
+        "--out",
+        nano.toString(),
+        "--architecture",
+        "NANO",
+        "--epochs",
+        "1",
+        "--batch",
+        "64",
+        "--state",
+        state.toString(),
+        "--pause-file",
+        pauseFile.toString()
       };
       Ran paused = run(arguments);
       Assert.assertEquals(paused.exit(), 3, paused.toString());
@@ -453,7 +638,8 @@ public class ClassicCommandsTest {
       Assert.assertTrue(finished.number("steps") > 0, finished.toString());
       Assert.assertEquals(finished.summary().get("uniform"), paused.summary().get("uniform"));
       Assert.assertEquals(finished.summary().get("rulebot"), paused.summary().get("rulebot"));
-      Assert.assertEquals(String.valueOf(ClassicCheckpoint.header(nano).step()), finished.summary().get("steps"));
+      Assert.assertEquals(
+          String.valueOf(ClassicCheckpoint.header(nano).step()), finished.summary().get("steps"));
       Assert.assertTrue(Files.isRegularFile(root.resolve("nano" + Pretrain.REPORT_SUFFIX)));
     } finally {
       delete(root);
@@ -480,7 +666,9 @@ public class ClassicCommandsTest {
       Path out = root.resolve("grp");
       PretrainGrp.Result stopped =
           new PretrainGrp(records, out, VARIANT, 1, 1)
-              .train(Settings.bind(ClassicSettings.class, List.of()).value().grp().training(), () -> true);
+              .train(
+                  Settings.bind(ClassicSettings.class, List.of()).value().grp().training(),
+                  () -> true);
       Assert.assertEquals(stopped.training().trained().ending(), TrainingEnding.STOPPED);
       Assert.assertEquals(stopped.games(), games);
       Assert.assertFalse(Files.exists(out));
@@ -502,7 +690,8 @@ public class ClassicCommandsTest {
       Assert.assertEquals(ran.summary().get("architecture"), "MAJOR");
       Ran again = run("init", "--architecture", "MAJOR", "--out", out.toString(), "--seed", "4");
       Assert.assertEquals(again.exit(), 2, again.toString());
-      Assert.assertTrue(again.logged("The output checkpoint already exists: " + out), again.toString());
+      Assert.assertTrue(
+          again.logged("The output checkpoint already exists: " + out), again.toString());
       Assert.assertEquals(ClassicCheckpoint.header(out), header);
     } finally {
       delete(root);
@@ -511,7 +700,9 @@ public class ClassicCommandsTest {
 
   private static <T extends Record> T section(Class<T> type, String path, String body) {
     String text = "[" + path + "]\n" + body + "\n";
-    return Settings.section(type, path, List.of(Layer.parse("classic.toml", Layer.Source.FILE, text))).value();
+    return Settings.section(
+            type, path, List.of(Layer.parse("classic.toml", Layer.Source.FILE, text)))
+        .value();
   }
 
   private static Ran run(String... args) {

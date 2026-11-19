@@ -178,7 +178,8 @@ public class KlLearningRateTest {
       assertEquals(saved, first.state());
       KlLearningRate resumed = new KlLearningRate(planned, saved);
       for (int macro = split; macro < kls.length; macro++) {
-        assertEquals(resumed.accept(kls[macro], 30), unbroken.accept(kls[macro], 30), "macro " + macro);
+        assertEquals(
+            resumed.accept(kls[macro], 30), unbroken.accept(kls[macro], 30), "macro " + macro);
       }
       assertEquals(resumed.state(), unbroken.state());
     }
@@ -192,24 +193,63 @@ public class KlLearningRateTest {
     assertThrows(IllegalArgumentException.class, () -> rate.accept(Double.POSITIVE_INFINITY, 1));
     assertThrows(IllegalArgumentException.class, () -> rate.accept(0.01, 0));
     assertThrows(IllegalArgumentException.class, () -> rate.reject(-1));
-    assertThrows(IllegalArgumentException.class, () -> new Settings(1e-4, 2e-4, 1e-3, 3, 3, 1.25, 1.25, 1.02, 0, 0.5));
-    assertThrows(IllegalArgumentException.class, () -> new Settings(1e-4, 1e-6, 1e-3, 0, 3, 1.25, 1.25, 1.02, 0, 0.5));
-    assertThrows(IllegalArgumentException.class, () -> new Settings(1e-4, 1e-6, 1e-3, 3, 3, 1.25, 1.0, 1.02, 0, 0.5));
-    assertThrows(IllegalArgumentException.class, () -> new Settings(1e-4, 1e-6, 1e-3, 3, 3, 1.25, 1.25, 1.02, 0, 0));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Settings(1e-4, 2e-4, 1e-3, 3, 3, 1.25, 1.25, 1.02, 0, 0.5));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Settings(1e-4, 1e-6, 1e-3, 0, 3, 1.25, 1.25, 1.02, 0, 0.5));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Settings(1e-4, 1e-6, 1e-3, 3, 3, 1.25, 1.0, 1.02, 0, 0.5));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Settings(1e-4, 1e-6, 1e-3, 3, 3, 1.25, 1.25, 1.02, 0, 0));
 
     KlLearningRate warmed = warmed(flat());
     State state = warmed.state();
     assertThrows(
         IllegalArgumentException.class,
-        () -> new KlLearningRate(flat(), new State(3, 3, 2e-3, state.warmup(), state.recent(), state.baseline(), state.schedule())));
+        () ->
+            new KlLearningRate(
+                flat(),
+                new State(
+                    3,
+                    3,
+                    2e-3,
+                    state.warmup(),
+                    state.recent(),
+                    state.baseline(),
+                    state.schedule())));
     assertThrows(
         IllegalArgumentException.class,
-        () -> new KlLearningRate(flat(), new State(2, 3, 1e-4, state.warmup(), state.recent(), state.baseline(), state.schedule())));
+        () ->
+            new KlLearningRate(
+                flat(),
+                new State(
+                    2,
+                    3,
+                    1e-4,
+                    state.warmup(),
+                    state.recent(),
+                    state.baseline(),
+                    state.schedule())));
     assertThrows(
         IllegalArgumentException.class,
-        () -> new KlLearningRate(flat(), new State(2, 3, 1e-4, List.of(0.1, 0.2), List.of(0.1, 0.2), state.baseline(), state.schedule())));
+        () ->
+            new KlLearningRate(
+                flat(),
+                new State(
+                    2,
+                    3,
+                    1e-4,
+                    List.of(0.1, 0.2),
+                    List.of(0.1, 0.2),
+                    state.baseline(),
+                    state.schedule())));
     assertThrows(
-        IllegalArgumentException.class, () -> new State(0, 0, 1e-4, List.of(), List.of(), 0.02, null));
+        IllegalArgumentException.class,
+        () -> new State(0, 0, 1e-4, List.of(), List.of(), 0.02, null));
   }
 
   /** ウォームアップの KL 0.02・0.01・0.03（どれも 1 ステップ）を受け入れた制御。目標は 0.025。 */

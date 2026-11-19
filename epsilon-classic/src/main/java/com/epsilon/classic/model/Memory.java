@@ -14,7 +14,12 @@ import ai.djl.ndarray.NDArray;
  * @param playerMask 席ごとの記憶のトークンが実在すれば 1 [行, 4, 29]
  */
 record Memory(
-    NDArray round, NDArray entities, NDArray entityMask, NDArray tiles, NDArray players, NDArray playerMask) {
+    NDArray round,
+    NDArray entities,
+    NDArray entityMask,
+    NDArray tiles,
+    NDArray players,
+    NDArray playerMask) {
 
   /** 値はそのままで、勾配を止めた記憶を返す。価値の集約に渡すときに使う。 */
   Memory detached() {

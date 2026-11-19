@@ -47,7 +47,8 @@ public final class LogRows {
   public LogRows(Variant variant, double validationShare) {
     this.variant = Objects.requireNonNull(variant, "variant");
     if (!(validationShare > 0 && validationShare < 1)) {
-      throw new IllegalArgumentException("The validation share must be in (0, 1): " + validationShare);
+      throw new IllegalArgumentException(
+          "The validation share must be in (0, 1): " + validationShare);
     }
     this.validationShare = validationShare;
     driver = new ReplayDriver(variant);
@@ -66,7 +67,8 @@ public final class LogRows {
    * @return 検証用なら true
    */
   public static boolean validation(String recordId, double share) {
-    return (SeedMixer.mix64(LogGames.gameId(recordId) ^ VALIDATION_SALT) >>> 11) * 0x1.0p-53 < share;
+    return (SeedMixer.mix64(LogGames.gameId(recordId) ^ VALIDATION_SALT) >>> 11) * 0x1.0p-53
+        < share;
   }
 
   /**
@@ -78,7 +80,8 @@ public final class LogRows {
    */
   public int add(RecordedGame game, ClassicRows.Builder into) {
     if (game.variant() != variant || into.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + game.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + game.variant());
     }
     scratch.clear();
     pending.clear();
@@ -105,7 +108,10 @@ public final class LogRows {
     int gameIndex =
         into.game(
             new ClassicRows.Game(
-                game.meta().id(), validation(game.meta().id(), validationShare), starts, game.finalScores()));
+                game.meta().id(),
+                validation(game.meta().id(), validationShare),
+                starts,
+                game.finalScores()));
     for (int row = 0; row < pending.size(); row++) {
       int[] entry = pending.get(row);
       into.row(gameIndex, entry[0], entry[1], reader.bind(scratch, row));

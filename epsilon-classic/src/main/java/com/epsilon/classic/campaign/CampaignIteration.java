@@ -30,7 +30,8 @@ public final class CampaignIteration implements DuelMacro {
   private final CampaignState state;
   private final CampaignSession session;
 
-  CampaignIteration(IterationFile fixed, ClassicSettings settings, CampaignState state, CampaignSession session) {
+  CampaignIteration(
+      IterationFile fixed, ClassicSettings settings, CampaignState state, CampaignSession session) {
     this.fixed = Objects.requireNonNull(fixed, "fixed");
     this.settings = Objects.requireNonNull(settings, "settings");
     this.state = Objects.requireNonNull(state, "state");
@@ -76,7 +77,11 @@ public final class CampaignIteration implements DuelMacro {
   public SelfPlayLearner.Settings learning() {
     SelfPlayLearner.Settings fixedRow = settings.learning();
     return new SelfPlayLearner.Settings(
-        fixedRow.ppo(), fixedRow.actorRate(), fixedRow.valueRate(), fixedRow.vtrace(), machine().batches());
+        fixedRow.ppo(),
+        fixedRow.actorRate(),
+        fixedRow.valueRate(),
+        fixedRow.vtrace(),
+        machine().batches());
   }
 
   /** macro を始めたときの state。 */

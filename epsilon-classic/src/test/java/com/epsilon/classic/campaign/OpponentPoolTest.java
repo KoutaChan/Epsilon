@@ -36,7 +36,8 @@ public class OpponentPoolTest {
   @Test
   public void theChampionComesWithItsProbabilityAndThePastShareTheRest() {
     Champion now = champion("v00030", 30);
-    List<Champion> past = List.of(champion("v00010", 10), champion("v00020", 20), champion("v00025", 25));
+    List<Champion> past =
+        List.of(champion("v00010", 10), champion("v00020", 20), champion("v00025", 25));
     OpponentPool pool = new OpponentPool(now, past);
     double p = 0.7;
     int[] counts = new int[past.size()];
@@ -98,7 +99,8 @@ public class OpponentPoolTest {
   private static void assertWithin(int count, double probability) {
     double error = Math.sqrt(probability * (1 - probability) / DRAWS);
     double frequency = (double) count / DRAWS;
-    assertTrue(Math.abs(frequency - probability) <= SIGMAS * error, frequency + " vs " + probability);
+    assertTrue(
+        Math.abs(frequency - probability) <= SIGMAS * error, frequency + " vs " + probability);
   }
 
   private static Path checkpoint(Path root, String name, String weights) throws IOException {

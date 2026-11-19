@@ -41,7 +41,8 @@ final class PublicHistoryEncoder extends AbstractBlock {
     feedForwardWidth = widths.historyFeedForward();
     queryNorm = addChildBlock("queryNorm", LayerNorm.builder().axis(2).build());
     queryProjection =
-        addChildBlock("queryProjection", Linear.builder().setUnits(attentionWidth).optBias(false).build());
+        addChildBlock(
+            "queryProjection", Linear.builder().setUnits(attentionWidth).optBias(false).build());
     relationTable =
         addChildBlock(
             "relationTable",
@@ -76,7 +77,8 @@ final class PublicHistoryEncoder extends AbstractBlock {
             ClassicSchema.HISTORY_SEGMENT_ROWS,
             1.0 / Math.sqrt((double) attentionWidth / Widths.HEADS));
     NDArray attended = summaries.add(pass.linear(contextProjection, context));
-    NDArray expanded = Pass.silu(pass.linear(feedForwardExpansion, pass.norm(feedForwardNorm, attended)));
+    NDArray expanded =
+        Pass.silu(pass.linear(feedForwardExpansion, pass.norm(feedForwardNorm, attended)));
     return attended.add(pass.linear(feedForwardProjection, expanded));
   }
 
@@ -93,15 +95,20 @@ final class PublicHistoryEncoder extends AbstractBlock {
     queryNorm.initialize(manager, dataType, summaries);
     queryProjection.initialize(manager, dataType, summaries);
     relationTable.initialize(manager, dataType, new Shape(-1));
-    contextProjection.initialize(manager, dataType, new Shape(-1, ClassicSchema.SEATS, attentionWidth));
+    contextProjection.initialize(
+        manager, dataType, new Shape(-1, ClassicSchema.SEATS, attentionWidth));
     feedForwardNorm.initialize(manager, dataType, summaries);
     feedForwardExpansion.initialize(manager, dataType, summaries);
-    feedForwardProjection.initialize(manager, dataType, new Shape(-1, ClassicSchema.SEATS, feedForwardWidth));
+    feedForwardProjection.initialize(
+        manager, dataType, new Shape(-1, ClassicSchema.SEATS, feedForwardWidth));
   }
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use encode");
   }
 

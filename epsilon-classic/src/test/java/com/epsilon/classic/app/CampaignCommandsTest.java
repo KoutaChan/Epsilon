@@ -76,7 +76,8 @@ public class CampaignCommandsTest {
     ClassicSettings defaults = Settings.bind(ClassicSettings.class, List.of()).value();
     Assert.assertEquals(defaults.run(), new ClassicSettings.Run(Variant.TENHOU_4P, 1, null, null));
     Assert.assertEquals(defaults.schedule(), new ClassicSettings.Schedule(1_350, 32_768));
-    Assert.assertEquals(defaults.learner(), new ClassicSettings.Learner(List.of("cpu"), Precision.FLOAT32));
+    Assert.assertEquals(
+        defaults.learner(), new ClassicSettings.Learner(List.of("cpu"), Precision.FLOAT32));
     Assert.assertEquals(defaults.selfPlay(), new ClassicSettings.SelfPlay(0.7, 32));
     Assert.assertEquals(defaults.evaluation().tables(), Map.of());
     Assert.assertEquals(defaults.inference().precision(), Precision.FLOAT32);
@@ -107,11 +108,24 @@ public class CampaignCommandsTest {
 
     ClassicSettings written =
         bind(
-            "[run]\nseed = 5\nstart = \"/nets/start\"\ngrp = \"/nets/grp\"\n[schedule]\nmacros = 20\ngames = 1024\n"
-                + "[learner]\ndevices = [\"gpu1\", \"gpu0\"]\nprecision = \"BFLOAT16\"\n"
-                + "[selfPlay]\nchampionProbability = 1.0\n" + CHAMPION_TABLE + CONFIRM_TABLE);
+            "[run]\n"
+                + "seed = 5\n"
+                + "start = \"/nets/start\"\n"
+                + "grp = \"/nets/grp\"\n"
+                + "[schedule]\n"
+                + "macros = 20\n"
+                + "games = 1024\n"
+                + "[learner]\n"
+                + "devices = [\"gpu1\", \"gpu0\"]\n"
+                + "precision = \"BFLOAT16\"\n"
+                + "[selfPlay]\n"
+                + "championProbability = 1.0\n"
+                + CHAMPION_TABLE
+                + CONFIRM_TABLE);
     Assert.assertEquals(
-        written.run(), new ClassicSettings.Run(Variant.TENHOU_4P, 5, Path.of("/nets/start"), Path.of("/nets/grp")));
+        written.run(),
+        new ClassicSettings.Run(
+            Variant.TENHOU_4P, 5, Path.of("/nets/start"), Path.of("/nets/grp")));
     Assert.assertEquals(written.schedule(), new ClassicSettings.Schedule(20, 1024));
     Assert.assertEquals(written.learner().networkDevices().size(), 2);
     Assert.assertEquals(written.selfPlay(), new ClassicSettings.SelfPlay(1.0, 32));
@@ -119,18 +133,22 @@ public class CampaignCommandsTest {
 
     Map<String, String> refused = new LinkedHashMap<>();
     refused.put("[learner]\ndevices = [\"gpu0\"]\n", "the learner computes in BFLOAT16");
-    refused.put("[learner]\ndevices = [\"cpu\", \"gpu0\"]\n", "Devices must be one cpu or distinct GPUs");
+    refused.put(
+        "[learner]\ndevices = [\"cpu\", \"gpu0\"]\n", "Devices must be one cpu or distinct GPUs");
     refused.put("[run]\nstart = \"nets/start\"\n", "run.start");
     refused.put("[run]\ngrp = \"nets/grp\"\n", "run.grp");
     refused.put("[selfPlay]\nchampionProbability = 1.5\n", "selfPlay.championProbability");
     refused.put("[selfPlay]\npool = 0\n", "selfPlay.pool");
     refused.put("[schedule]\nmacros = 0\n", "schedule.macros");
-    refused.put(SCHEDULED_TABLE, "the classic campaign schedules only the table that promotes the champion");
+    refused.put(
+        SCHEDULED_TABLE,
+        "the classic campaign schedules only the table that promotes the champion");
     refused.put(
         "[evaluation]\nonWorse = {kind = \"ROLLBACK\", streak = 1, maxRollbacks = 1, span = 10}\n",
         "the classic campaign reports or pauses when the champion duels stay worse");
     for (Map.Entry<String, String> entry : refused.entrySet()) {
-      SettingsException thrown = Assert.expectThrows(SettingsException.class, () -> bind(entry.getKey()));
+      SettingsException thrown =
+          Assert.expectThrows(SettingsException.class, () -> bind(entry.getKey()));
       Assert.assertTrue(
           thrown.problems().stream().anyMatch(problem -> problem.contains(entry.getValue())),
           entry.getValue() + " in " + thrown.problems());
@@ -140,10 +158,12 @@ public class CampaignCommandsTest {
   @Test
   public void campaignAndChampionArguments() throws Exception {
     Assert.assertEquals(section(Campaign.class, "campaign", "run = \"/r\""), new Campaign(R, null));
-    Assert.assertEquals(section(Campaign.class, "campaign", "run = \"/r\"\nstopAfter = 3"), new Campaign(R, 3));
+    Assert.assertEquals(
+        section(Campaign.class, "campaign", "run = \"/r\"\nstopAfter = 3"), new Campaign(R, 3));
     Assert.assertEquals(section(Champion.class, "champion", "run = \"/r\""), new Champion(R, null));
     Assert.assertEquals(
-        section(Champion.class, "champion", "run = \"/r\"\ninitial = \"/c\""), new Champion(R, Path.of("/c")));
+        section(Champion.class, "champion", "run = \"/r\"\ninitial = \"/c\""),
+        new Champion(R, Path.of("/c")));
     Path root = Files.createTempDirectory("classic-campaign-arguments");
     try {
       String run = root.resolve("run").toString();
@@ -162,7 +182,8 @@ public class CampaignCommandsTest {
         Assert.assertEquals(ran.exit(), 2, Arrays.toString(arguments) + " " + ran);
       }
       Assert.assertTrue(
-          run("campaign", "--run", run, "--set", "ppo.steps=4").logged("classic settings change --run DIR"));
+          run("campaign", "--run", run, "--set", "ppo.steps=4")
+              .logged("classic settings change --run DIR"));
       Assert.assertTrue(run("campaign", "--run", run).logged("create it with settings create"));
       Assert.assertTrue(run("champion", "--run", run).logged("No settings rows in"));
     } finally {
@@ -184,18 +205,23 @@ public class CampaignCommandsTest {
       Path foreign = checkpoint(root.resolve("sanma"), Variant.TENHOU_3P);
       Ran refused = run("champion", "--run", run.toString(), "--initial", foreign.toString());
       Assert.assertEquals(refused.exit(), 2, refused.toString());
-      Assert.assertTrue(refused.logged("is not a classic checkpoint for TENHOU_4P"), refused.toString());
+      Assert.assertTrue(
+          refused.logged("is not a classic checkpoint for TENHOU_4P"), refused.toString());
 
       Path nano = checkpoint(root.resolve("nano-stage8"), Variant.TENHOU_4P);
       Ran placed = run("champion", "--run", run.toString(), "--initial", nano.toString());
       Assert.assertEquals(placed.exit(), 0, placed.toString());
-      Assert.assertTrue(placed.out().startsWith("champion nano-stage8 version 0 since "), placed.out());
-      Assert.assertTrue(placed.out().contains("(initial) " + nano.toAbsolutePath().normalize()), placed.out());
+      Assert.assertTrue(
+          placed.out().startsWith("champion nano-stage8 version 0 since "), placed.out());
+      Assert.assertTrue(
+          placed.out().contains("(initial) " + nano.toAbsolutePath().normalize()), placed.out());
       Assert.assertFalse(placed.out().contains("sha256"), placed.out());
-      List<ChampionStore.Entry> history = ChampionStore.open(new RunDirectory(run).champion()).history();
+      List<ChampionStore.Entry> history =
+          ChampionStore.open(new RunDirectory(run).champion()).history();
       Assert.assertEquals(history.size(), 1);
       StoreEvent.Initial initial = (StoreEvent.Initial) history.getFirst().event();
-      Assert.assertEquals(initial.champion(), ChampionStore.Champion.placed("nano-stage8", nano, 0));
+      Assert.assertEquals(
+          initial.champion(), ChampionStore.Champion.placed("nano-stage8", nano, 0));
 
       Ran again = run("champion", "--run", run.toString(), "--initial", nano.toString());
       Assert.assertEquals(again.exit(), 2, again.toString());
@@ -227,7 +253,9 @@ public class CampaignCommandsTest {
       Ran shown = run("champion", "--run", run.toString());
       Assert.assertEquals(shown.exit(), 0, shown.toString());
       Assert.assertEquals(shown.out(), placed.out());
-      Assert.assertTrue(Files.exists(temporary), "showing the champion removed the temporary file of the campaign");
+      Assert.assertTrue(
+          Files.exists(temporary),
+          "showing the champion removed the temporary file of the campaign");
       Assert.assertFalse(Files.exists(reference), "showing the champion wrote the reference");
     } finally {
       delete(root);
@@ -242,18 +270,31 @@ public class CampaignCommandsTest {
       Path missing = root.resolve("missing").toAbsolutePath();
       Path grp = root.resolve("grp").toAbsolutePath();
       Ran created =
-          run("settings", "create", "--run", run.toString(), "--set", "run.start=" + missing, "--set", "run.grp=" + grp);
+          run(
+              "settings",
+              "create",
+              "--run",
+              run.toString(),
+              "--set",
+              "run.start=" + missing,
+              "--set",
+              "run.grp=" + grp);
       Assert.assertEquals(created.exit(), 0, created.toString());
       Ran checked = run("settings", "check", "--run", run.toString());
       Assert.assertEquals(checked.exit(), 4, checked.toString());
-      Assert.assertTrue(checked.logged("The start network run.start " + missing), checked.toString());
-      Assert.assertTrue(checked.logged("The GRP run.grp " + grp + " is not a usable GRP checkpoint"), checked.toString());
+      Assert.assertTrue(
+          checked.logged("The start network run.start " + missing), checked.toString());
+      Assert.assertTrue(
+          checked.logged("The GRP run.grp " + grp + " is not a usable GRP checkpoint"),
+          checked.toString());
 
       checkpoint(missing, Variant.TENHOU_4P);
       grp(grp, Variant.TENHOU_3P);
       Ran foreign = run("settings", "check", "--run", run.toString());
       Assert.assertEquals(foreign.exit(), 4, foreign.toString());
-      Assert.assertTrue(foreign.logged("The GRP run.grp " + grp + " is for TENHOU_3P, not TENHOU_4P"), foreign.toString());
+      Assert.assertTrue(
+          foreign.logged("The GRP run.grp " + grp + " is for TENHOU_3P, not TENHOU_4P"),
+          foreign.toString());
       Assert.assertFalse(foreign.logged("The start network"), foreign.toString());
 
       delete(grp);
@@ -278,7 +319,8 @@ public class CampaignCommandsTest {
       Ran checked = run("settings", "check", "--run", run.toString());
       Assert.assertEquals(checked.exit(), 4, checked.toString());
       Assert.assertTrue(
-          checked.logged("The GRP run.grp " + grp + " must be a network GRP, not GruSinkhorn"), checked.toString());
+          checked.logged("The GRP run.grp " + grp + " must be a network GRP, not GruSinkhorn"),
+          checked.toString());
     } finally {
       delete(root);
     }
@@ -334,8 +376,11 @@ public class CampaignCommandsTest {
     Files.createDirectories(directory);
     Files.writeString(
         directory.resolve("model.json"),
-        "{\"architecture\": \"NANO\", \"variant\": \"" + variant + "\", \"utility\": \"TENHOU\", \"inputFingerprint\": \""
-            + ClassicSchema.of(Architecture.NANO).fingerprint() + "\", \"step\": 0}",
+        "{\"architecture\": \"NANO\", \"variant\": \""
+            + variant
+            + "\", \"utility\": \"TENHOU\", \"inputFingerprint\": \""
+            + ClassicSchema.of(Architecture.NANO).fingerprint()
+            + "\", \"step\": 0}",
         StandardCharsets.UTF_8);
     Files.write(directory.resolve("weights.bin"), new byte[] {1, 2, 3});
     return directory.toAbsolutePath();
@@ -349,12 +394,16 @@ public class CampaignCommandsTest {
   }
 
   private static ClassicSettings bind(String toml) {
-    return Settings.bind(ClassicSettings.class, List.of(Layer.parse("campaign.toml", Layer.Source.FILE, toml))).value();
+    return Settings.bind(
+            ClassicSettings.class, List.of(Layer.parse("campaign.toml", Layer.Source.FILE, toml)))
+        .value();
   }
 
   private static <T extends Record> T section(Class<T> type, String path, String body) {
     String text = "[" + path + "]\n" + body + "\n";
-    return Settings.section(type, path, List.of(Layer.parse("classic.toml", Layer.Source.FILE, text))).value();
+    return Settings.section(
+            type, path, List.of(Layer.parse("classic.toml", Layer.Source.FILE, text)))
+        .value();
   }
 
   private static Ran run(String... args) {

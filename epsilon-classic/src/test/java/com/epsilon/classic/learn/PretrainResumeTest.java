@@ -83,18 +83,23 @@ public class PretrainResumeTest {
       Assert.assertEquals(actual.validationRows(), expected.validationRows());
       Assert.assertEquals(actual.baselines(), expected.baselines());
       for (int epoch = 0; epoch < expected.epochs().size(); epoch++) {
-        Assert.assertEquals(withoutSeconds(actual.epochs().get(epoch)), withoutSeconds(expected.epochs().get(epoch)));
+        Assert.assertEquals(
+            withoutSeconds(actual.epochs().get(epoch)),
+            withoutSeconds(expected.epochs().get(epoch)));
       }
       Assert.assertEquals(last.weights().length, unbroken.weights().length);
       for (int index = 0; index < unbroken.weights().length; index++) {
-        Assert.assertTrue(Arrays.equals(last.weights()[index], unbroken.weights()[index]), "tensor " + index);
+        Assert.assertTrue(
+            Arrays.equals(last.weights()[index], unbroken.weights()[index]), "tensor " + index);
       }
 
       Pretrainer.Settings otherBatch = new Pretrainer.Settings(2, 32, 1e-3, 0.01, 0.5, 2.0, 10, 5);
       Assert.assertThrows(
-          IllegalArgumentException.class, () -> train(checkpoint, rows, otherBatch, state, () -> false));
+          IllegalArgumentException.class,
+          () -> train(checkpoint, rows, otherBatch, state, () -> false));
       RowChunks fewer = RowChunks.of(chunks.subList(0, 1));
-      Assert.assertThrows(IllegalArgumentException.class, () -> train(checkpoint, fewer, two, state, () -> false));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> train(checkpoint, fewer, two, state, () -> false));
     } finally {
       delete(root);
     }
@@ -102,11 +107,17 @@ public class PretrainResumeTest {
 
   /** 1 回の呼び出し。checkpoint の重みから始め、途中の状態があれば続きから学ぶ。 */
   private static Outcome train(
-      Path checkpoint, RowChunks rows, Pretrainer.Settings settings, Path state, BooleanSupplier pause)
+      Path checkpoint,
+      RowChunks rows,
+      Pretrainer.Settings settings,
+      Path state,
+      BooleanSupplier pause)
       throws IOException {
     try (NDManager manager = NDManager.newBaseManager("PyTorch")) {
       ClassicNetwork network = ClassicCheckpoint.read(checkpoint, VARIANT, manager);
-      Pretrainer.Result result = new Pretrainer(network, manager, Precision.FLOAT32, rows, null, settings).train(state, pause);
+      Pretrainer.Result result =
+          new Pretrainer(network, manager, Precision.FLOAT32, rows, null, settings)
+              .train(state, pause);
       List<float[]> weights = new ArrayList<>();
       for (Pair<String, Parameter> pair : network.getParameters()) {
         weights.add(pair.getValue().getArray().toFloatArray());
@@ -123,7 +134,13 @@ public class PretrainResumeTest {
 
   private static Pretrainer.Epoch withoutSeconds(Pretrainer.Epoch epoch) {
     return new Pretrainer.Epoch(
-        epoch.epoch(), epoch.steps(), epoch.trainLoss(), epoch.agreement(), epoch.nll(), epoch.valueLoss(), 0);
+        epoch.epoch(),
+        epoch.steps(),
+        epoch.trainLoss(),
+        epoch.agreement(),
+        epoch.nll(),
+        epoch.valueLoss(),
+        0);
   }
 
   /** 学習用の半荘 2 つと検証用の半荘 1 つを、2 つの行のファイルに分けたもの（初めのファイルに両方の行がある）。 */

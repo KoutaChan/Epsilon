@@ -30,17 +30,27 @@ import java.util.Optional;
  * @param run campaign の run のディレクトリ
  * @param initial 初めの王者にする classic のチェックポイント（無ければ王者を出すだけ）
  */
-@Named(value = "champion", doc = "Show the current and past champions of a campaign; can set the first champion when there is none yet")
+@Named(
+    value = "champion",
+    doc =
+        "Show the current and past champions of a campaign; can set the first champion when there"
+            + " is none yet")
 public record Champion(
     @Key(doc = "Campaign run directory", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Classic checkpoint to make the first champion (only for a run with no champion yet)", presence = Presence.ABSENT) Path initial)
+    @Key(
+            doc =
+                "Classic checkpoint to make the first champion (only for a run with no champion"
+                    + " yet)",
+            presence = Presence.ABSENT)
+        Path initial)
     implements ClassicCommand {
 
   @Override
   public Outcome run(Context<ClassicSettings> context) throws IOException {
     context.requireNoLayers();
     RunDirectory directory = new RunDirectory(run);
-    ClassicSettings settings = new SettingsRows(directory).latest().bind(ClassicSettings.class).value();
+    ClassicSettings settings =
+        new SettingsRows(directory).latest().bind(ClassicSettings.class).value();
     if (initial != null) {
       place(directory, settings.run().variant());
     }
@@ -48,24 +58,38 @@ public record Champion(
     Optional<ChampionStore.Champion> current = store.current();
     PrintStream out = context.out();
     if (current.isEmpty()) {
-      out.println("No champion yet: the campaign makes version 1 the first champion when it starts");
+      out.println(
+          "No champion yet: the campaign makes version 1 the first champion when it starts");
       return Outcome.ok("no champion");
     }
     ChampionStore.Entry crowned = null;
     for (ChampionStore.Entry entry : store.history()) {
-      if (entry.event() instanceof StoreEvent.Initial || entry.event() instanceof StoreEvent.Promoted) {
+      if (entry.event() instanceof StoreEvent.Initial
+          || entry.event() instanceof StoreEvent.Promoted) {
         crowned = entry;
       }
     }
-    String by = crowned.event() instanceof StoreEvent.Promoted promoted ? "promoted by " + promoted.duel() : "initial";
+    String by =
+        crowned.event() instanceof StoreEvent.Promoted promoted
+            ? "promoted by " + promoted.duel()
+            : "initial";
     ChampionStore.Champion champion = current.get();
     out.println(
-        "champion " + champion.label() + " version " + champion.version() + " since " + crowned.at() + " (" + by + ") "
+        "champion "
+            + champion.label()
+            + " version "
+            + champion.version()
+            + " since "
+            + crowned.at()
+            + " ("
+            + by
+            + ") "
             + champion.checkpoint());
     List<ChampionStore.Champion> past = store.past();
     for (int index = past.size() - 1; index >= 0; index--) {
       ChampionStore.Champion earlier = past.get(index);
-      out.println("past " + earlier.label() + " version " + earlier.version() + " " + earlier.checkpoint());
+      out.println(
+          "past " + earlier.label() + " version " + earlier.version() + " " + earlier.checkpoint());
     }
     return Outcome.ok("champion=" + champion.label() + " past=" + past.size());
   }
@@ -81,22 +105,35 @@ public record Champion(
       ClassicCheckpoint.verify(initial, variant);
     } catch (IllegalStateException | IOException mismatch) {
       throw new SettingsException(
-          List.of("The first champion " + initial + " is not a classic checkpoint for " + variant + ": "
-              + mismatch.getMessage()));
+          List.of(
+              "The first champion "
+                  + initial
+                  + " is not a classic checkpoint for "
+                  + variant
+                  + ": "
+                  + mismatch.getMessage()));
     }
     if (TrainLock.running(directory.trainLock())) {
       throw new SettingsException(
-          List.of("The campaign " + directory.root() + " is running: stop it before placing the first champion"));
+          List.of(
+              "The campaign "
+                  + directory.root()
+                  + " is running: stop it before placing the first champion"));
     }
     try (TrainLock lock = TrainLock.hold(directory.trainLock())) {
       ChampionStore store = ChampionStore.open(directory.champion());
       Optional<ChampionStore.Champion> current = store.current();
       if (current.isPresent()) {
         throw new SettingsException(
-            List.of("The campaign " + directory.root() + " already has the champion " + current.get().label()));
+            List.of(
+                "The campaign "
+                    + directory.root()
+                    + " already has the champion "
+                    + current.get().label()));
       }
       Path checkpoint = initial.toAbsolutePath().normalize();
-      ChampionStore.Champion first = ChampionStore.Champion.placed(checkpoint.getFileName().toString(), checkpoint, 0);
+      ChampionStore.Champion first =
+          ChampionStore.Champion.placed(checkpoint.getFileName().toString(), checkpoint, 0);
       store.append(new StoreEvent.Initial(first));
     }
   }

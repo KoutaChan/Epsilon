@@ -120,10 +120,12 @@ public final class RuleScene {
         }
       }
       choices[slot] = legal(seat).indexOf(name);
-      Assert.assertTrue(choices[slot] >= 0, name + " is not legal for seat " + seat + ": " + legal(seat));
+      Assert.assertTrue(
+          choices[slot] >= 0, name + " is not legal for seat " + seat + ": " + legal(seat));
     }
     for (String pick : picks) {
-      Assert.assertTrue(decisions.slotOf(pick.charAt(0) - '0') >= 0, pick + " has no decision at this boundary");
+      Assert.assertTrue(
+          decisions.slotOf(pick.charAt(0) - '0') >= 0, pick + " has no decision at this boundary");
     }
     boundary = engine.commit(choices, ws);
     return this;

@@ -72,14 +72,16 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
    * @param precision 計算の型
    * @param label 評価の結果の行の名前
    */
-  private ClassicPolicy(ClassicNetwork network, NDManager manager, Precision precision, String label) {
+  private ClassicPolicy(
+      ClassicNetwork network, NDManager manager, Precision precision, String label) {
     this.network = Objects.requireNonNull(network, "network");
     this.manager = Objects.requireNonNull(manager, "manager");
     this.precision = Objects.requireNonNull(precision, "precision");
     this.label = Objects.requireNonNull(label, "label");
     schema = ClassicSchema.of(network.architecture());
     workspaces =
-        ThreadLocal.withInitial(() -> new Workspace(network.architecture(), network.variant(), schema, manager));
+        ThreadLocal.withInitial(
+            () -> new Workspace(network.architecture(), network.variant(), schema, manager));
   }
 
   public Variant variant() {
@@ -151,7 +153,10 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
   final int infer(Observation observation, Workspace workspace) {
     if (observation.variant() != network.variant()) {
       throw new IllegalArgumentException(
-          "Variant mismatch: expected " + network.variant() + " but found " + observation.variant());
+          "Variant mismatch: expected "
+              + network.variant()
+              + " but found "
+              + observation.variant());
     }
     ClassicInputs inputs = workspace.row(observation);
     workspace.tokenizer.write(observation, EXTRAS, inputs, 0);
@@ -169,7 +174,11 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
   final NDArray probabilities(ClassicBatch batch) {
     ClassicNetwork.Output output =
         network.forward(
-            new ParameterStore(batch.manager(), false), batch, precision, false, ClassicNetwork.Heads.POLICY);
+            new ParameterStore(batch.manager(), false),
+            batch,
+            precision,
+            false,
+            ClassicNetwork.Heads.POLICY);
     return PolicyGraph.probabilities(PolicyGraph.logProbabilities(output.policy(), batch), batch);
   }
 
@@ -241,7 +250,12 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
     /**
      * @param shared 呼び出し元の推論のランタイム（null なら方策が作って持つ）。パラメーターが CPU にあるときは読まない
      */
-    Batched(ClassicNetwork network, NDManager manager, Precision precision, String label, NetworkRuntime shared) {
+    Batched(
+        ClassicNetwork network,
+        NDManager manager,
+        Precision precision,
+        String label,
+        NetworkRuntime shared) {
       super(network, manager, precision, label);
       device = manager.getDevice();
       pools = new ArrayList<>(Buckets.count() * ROW_STEPS);
@@ -255,7 +269,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
         registration = null;
         return;
       }
-      NetworkRuntime used = shared != null ? shared : new NetworkRuntime(ENCODING_WORKERS, SLOTS, READY_BATCHES);
+      NetworkRuntime used =
+          shared != null ? shared : new NetworkRuntime(ENCODING_WORKERS, SLOTS, READY_BATCHES);
       DecisionDevicePipeline.Lease leased = null;
       InferenceDispatcher.Registration<Job, Void> registered;
       try {
@@ -326,7 +341,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
      * @throws IllegalStateException 予約を渡し済みか、方策が閉じているとき
      */
     @Override
-    public CompletableFuture<Void> choose(ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
+    public CompletableFuture<Void> choose(
+        ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
       return submit(batch, new Greedy(chosen), reservation);
     }
 
@@ -346,7 +362,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
     }
 
     /** バッチを推論して答えを書く。予約は方策が受け取り、受け付けないバッチでは予約を返してから例外を投げる。 */
-    private CompletableFuture<Void> submit(ObservationBatch batch, Answer answer, DecisionInferenceIngress reservation) {
+    private CompletableFuture<Void> submit(
+        ObservationBatch batch, Answer answer, DecisionInferenceIngress reservation) {
       DecisionInferenceIngress.Ownership ownership = reservation.handoff(this);
       int rows;
       Encoding encoding;
@@ -360,7 +377,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
         Bucket bucket = cover(batch);
         int limit = maxBatch(Buckets.ordinal(bucket));
         if (rows > limit) {
-          throw new IllegalArgumentException(rows + " observations exceed the batch limit " + limit + " of " + bucket);
+          throw new IllegalArgumentException(
+              rows + " observations exceed the batch limit " + limit + " of " + bucket);
         }
         answer.check(batch, workspace().reader);
         encoding = borrow(bucket, rows);
@@ -373,7 +391,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
         try {
           encode(batch, encoding, 0, rows);
           try (NDManager working = manager.newSubManager()) {
-            ClassicBatch input = ClassicBatch.send(working, workspace().uploads(), encoding.inputs, rows);
+            ClassicBatch input =
+                ClassicBatch.send(working, workspace().uploads(), encoding.inputs, rows);
             try (InferenceMode inference = manager.getEngine().newInferenceMode()) {
               float[] probabilities = probabilities(input).toFloatArray();
               answer.write(encoding, probabilities, rows);
@@ -386,7 +405,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
           giveBack(encoding);
         }
       }
-      return run(ownership, batch, encoding, rows, answer).whenComplete((ignored, failure) -> giveBack(encoding));
+      return run(ownership, batch, encoding, rows, answer)
+          .whenComplete((ignored, failure) -> giveBack(encoding));
     }
 
     /** 受付の登録を外し、出したバッチが全て終わるのを待ってから、GPU のリソースとパラメーターを解放する。 */
@@ -482,18 +502,22 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
     }
 
     /** 予約を実行先へ移してバッチを出す。容量を数えない予約のように、受付の予約でなければ IllegalArgumentException で完了する。 */
-    private static CompletableFuture<Void> dispatch(DecisionInferenceIngress.Ownership ownership, Job job) {
+    private static CompletableFuture<Void> dispatch(
+        DecisionInferenceIngress.Ownership ownership, Job job) {
       if (!(ownership.move() instanceof InferenceDispatcher.Reservation<?, ?> route)) {
         return CompletableFuture.failedFuture(
-            new IllegalArgumentException("The reservation holds no capacity of the inference dispatcher"));
+            new IllegalArgumentException(
+                "The reservation holds no capacity of the inference dispatcher"));
       }
       @SuppressWarnings("unchecked")
-      InferenceDispatcher.Reservation<Job, Void> reservation = (InferenceDispatcher.Reservation<Job, Void>) route;
+      InferenceDispatcher.Reservation<Job, Void> reservation =
+          (InferenceDispatcher.Reservation<Job, Void>) route;
       return reservation.submit(job);
     }
 
     /** 渡されなかった予約を返す。返すときに出た例外は、先の失敗に付ける。 */
-    private static void releaseReservation(DecisionInferenceIngress.Ownership ownership, Throwable failure) {
+    private static void releaseReservation(
+        DecisionInferenceIngress.Ownership ownership, Throwable failure) {
       try {
         ownership.release();
       } catch (RuntimeException | Error problem) {
@@ -506,7 +530,9 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
       int capacity = rows == 1 ? 1 : Integer.highestOneBit(rows - 1) << 1;
       int pool = Buckets.ordinal(bucket) * ROW_STEPS + Integer.numberOfTrailingZeros(capacity);
       Encoding encoding = pools.get(pool).poll();
-      return encoding != null ? encoding : new Encoding(new ClassicInputs(schema, bucket, capacity), pool);
+      return encoding != null
+          ? encoding
+          : new Encoding(new ClassicInputs(schema, bucket, capacity), pool);
     }
 
     private void giveBack(Encoding encoding) {
@@ -538,7 +564,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
     }
 
     /** スロットごとのリソースを全て閉じて、表を空にする。閉じられないものがあれば、最初の例外にほかの例外を付けて投げる。 */
-    private static void closeAll(Map<DecisionDevicePipeline.Slot, ? extends AutoCloseable> resources) throws Exception {
+    private static void closeAll(
+        Map<DecisionDevicePipeline.Slot, ? extends AutoCloseable> resources) throws Exception {
       Throwable failure = null;
       for (AutoCloseable resource : resources.values()) {
         failure = closeAfter(resource, failure);
@@ -577,7 +604,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
       @Override
       public void check(ObservationBatch batch, Observation reader) {
         if (chosen.length < batch.size()) {
-          throw new IllegalArgumentException(batch.size() + " observations need choices, got " + chosen.length);
+          throw new IllegalArgumentException(
+              batch.size() + " observations need choices, got " + chosen.length);
         }
       }
 
@@ -593,7 +621,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
       @Override
       public void check(ObservationBatch batch, Observation reader) {
         if (rows.length < batch.size()) {
-          throw new IllegalArgumentException(batch.size() + " observations need probability rows, got " + rows.length);
+          throw new IllegalArgumentException(
+              batch.size() + " observations need probability rows, got " + rows.length);
         }
         for (int row = 0; row < batch.size(); row++) {
           int legal = reader.bind(batch, row).legalActions();
@@ -688,7 +717,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
 
       @Override
       public DecisionDevicePipeline.BatchMetadata batchMetadata() {
-        return new DecisionDevicePipeline.BatchMetadata(rows, maxBatch(Buckets.ordinal(encoding.inputs.bucket())));
+        return new DecisionDevicePipeline.BatchMetadata(
+            rows, maxBatch(Buckets.ordinal(encoding.inputs.bucket())));
       }
 
       /** 書いた入力をスロットのバッファにコピーする。バッファは、このスロットの前のバッチのコピーが終わるのを待ってから書かせる。 */
@@ -703,7 +733,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
         working = manager.newSubManager();
         try {
           copyStarted = true;
-          ClassicBatch.Upload upload = ClassicBatch.enqueue(working, region, encoding.inputs, rows, slot.h2dStream());
+          ClassicBatch.Upload upload =
+              ClassicBatch.enqueue(working, region, encoding.inputs, rows, slot.h2dStream());
           copied = true;
           computeStarted = true;
           stream = stream(slot);
@@ -732,7 +763,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
 
       @Override
       public void complete(DecisionDevicePipeline.Slot slot) {
-        slot.outputFloats().get(encoding.probabilities, 0, rows * encoding.inputs.bucket().actions());
+        slot.outputFloats()
+            .get(encoding.probabilities, 0, rows * encoding.inputs.bucket().actions());
         answer.write(encoding, encoding.probabilities, rows);
       }
 
@@ -749,7 +781,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
       public boolean abort(DecisionDevicePipeline.Slot slot, Throwable problem) {
         fail(problem);
         if ((copyStarted && !copied && !copyFenced) || (computeStarted && !computeRecorded)) {
-          problem.addSuppressed(new IllegalStateException("Classic stream completion could not be recorded"));
+          problem.addSuppressed(
+              new IllegalStateException("Classic stream completion could not be recorded"));
           return false;
         }
         try {
@@ -836,7 +869,8 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
     /** 最後に推論した行の合法手の確率。長さは区分の合法手の軸の大きさ。 */
     private float[] probabilities;
 
-    private Workspace(Architecture architecture, Variant variant, ClassicSchema schema, NDManager owner) {
+    private Workspace(
+        Architecture architecture, Variant variant, ClassicSchema schema, NDManager owner) {
       this.schema = schema;
       this.owner = owner;
       tokenizer = new ClassicTokenizer(architecture, variant);
@@ -872,6 +906,7 @@ public abstract sealed class ClassicPolicy permits ClassicPolicy.Inline, Classic
 
     /** GPU のバッチの確率をホストへコピーする先 [行, 合法手の軸]。CPU のバッチは推論ごとの配列を使い、ここは使わない。 */
     private final float[] probabilities;
+
     private final PolicyGraph.Greedy greedy = new PolicyGraph.Greedy();
 
     private Encoding(ClassicInputs inputs, int pool) {

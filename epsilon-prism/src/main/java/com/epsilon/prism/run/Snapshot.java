@@ -155,7 +155,13 @@ public final class Snapshot {
       InferencePath inference)
       throws IOException {
     return NetworkPolicy.open(
-        PolicyParams.read(snapshot.resolve(POLICY)), net, devices, runtime, maxBatch, precision, inference);
+        PolicyParams.read(snapshot.resolve(POLICY)),
+        net,
+        devices,
+        runtime,
+        maxBatch,
+        precision,
+        inference);
   }
 
   /**
@@ -219,7 +225,8 @@ public final class Snapshot {
    * @param modelDirectory 保存したネットワークのディレクトリ
    * @throws IOException 保存したネットワークでないとき
    */
-  public static void fillCopy(Path part, Path modelDirectory, PolicyParams params) throws IOException {
+  public static void fillCopy(Path part, Path modelDirectory, PolicyParams params)
+      throws IOException {
     requireSaved(modelDirectory);
     Files.createDirectories(part);
     copyModel(modelDirectory, model(part));
@@ -235,7 +242,11 @@ public final class Snapshot {
    * @throws IOException 保存したネットワークでないとき
    */
   public static void fillAveraged(
-      Path part, Path iterateDirectory, PrismNetwork average, AverageRecord record, PolicyParams params)
+      Path part,
+      Path iterateDirectory,
+      PrismNetwork average,
+      AverageRecord record,
+      PolicyParams params)
       throws IOException {
     requireSaved(iterateDirectory);
     Files.createDirectories(part);

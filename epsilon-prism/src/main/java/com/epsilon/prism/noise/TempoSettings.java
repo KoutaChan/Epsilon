@@ -78,12 +78,14 @@ public sealed interface TempoSettings {
   @Case("true")
   record On(
       @Key(doc = "ゲインの数え始めの反復", value = "1") @Range(min = 1) int from,
-      @Key(doc = "ゲインの初期値", value = "0.9") @Range(min = 0, minInclusive = false, max = 1, maxInclusive = false)
+      @Key(doc = "ゲインの初期値", value = "0.9")
+          @Range(min = 0, minInclusive = false, max = 1, maxInclusive = false)
           double gain,
       @Key(doc = "ゲインの減りの時定数（反復）", value = "4.0") @Range(min = 0, minInclusive = false) double tau,
       @Key(doc = "ゲインの減りの指数（0 なら一定のゲイン）", value = "0.6666667") @Range(min = 0) double power,
       @Key(doc = "教師のゲインに、教師のノイズの減りをどう入れるか", value = "LEDGER_R2") NoiseGain noiseGain,
-      @Key(doc = "Φ が点数だけの Φ から GRP に替わる反復で、運の精算の決定係数を持ち越さないか", value = "true") boolean resetOnPhiKind,
+      @Key(doc = "Φ が点数だけの Φ から GRP に替わる反復で、運の精算の決定係数を持ち越さないか", value = "true")
+          boolean resetOnPhiKind,
       @Key(doc = "学習率の倍率の決め方", value = "GAIN") TempoLrMode lrMode,
       @Key(doc = "学習率の倍率（GAIN）の基準にするゲイン", value = "0.25")
           @Range(min = 0, minInclusive = false, max = 1)

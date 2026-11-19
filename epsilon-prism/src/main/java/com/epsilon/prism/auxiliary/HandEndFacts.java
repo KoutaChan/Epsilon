@@ -42,7 +42,8 @@ public record HandEndFacts(
     Objects.requireNonNull(variant, "variant");
     Objects.requireNonNull(reach, "reach");
     if (outcome.variant() != variant || next.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: " + variant + ", " + outcome + ", " + next);
+      throw new IllegalArgumentException(
+          "Variant mismatch: " + variant + ", " + outcome + ", " + next);
     }
     int seats = variant.seatMask();
     if (dealer < 0
@@ -51,8 +52,16 @@ public record HandEndFacts(
         || (yakuTenpaiMask & ~seats) != 0
         || yaku.length != outcome.winnerCount()) {
       throw new IllegalArgumentException(
-          "Hand end out of range: dealer=" + dealer + " tenpai=" + tenpaiMask + " yaku=" + yakuTenpaiMask
-              + " winners=" + yaku.length + "/" + outcome.winnerCount());
+          "Hand end out of range: dealer="
+              + dealer
+              + " tenpai="
+              + tenpaiMask
+              + " yaku="
+              + yakuTenpaiMask
+              + " winners="
+              + yaku.length
+              + "/"
+              + outcome.winnerCount());
     }
   }
 

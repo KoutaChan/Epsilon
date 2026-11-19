@@ -22,7 +22,9 @@ public class ImportDirectionTest {
   @Test
   public void importsNoClassicNorTheVariantModule() throws IOException {
     Assert.assertEquals(
-        ImportDirection.violations(ImportDirection.CLASSIC_PACKAGES + "|com\\.epsilon\\.prism4p(\\..*)?"), List.of());
+        ImportDirection.violations(
+            ImportDirection.CLASSIC_PACKAGES + "|com\\.epsilon\\.prism4p(\\..*)?"),
+        List.of());
   }
 
   @Test
@@ -32,14 +34,16 @@ public class ImportDirectionTest {
 
   @Test
   public void classpathHoldsNoVariantModule() {
-    Assert.assertEquals(ImportDirection.loadable(List.of("com.epsilon.prism4p.variant.FourPlayer")), List.of());
+    Assert.assertEquals(
+        ImportDirection.loadable(List.of("com.epsilon.prism4p.variant.FourPlayer")), List.of());
   }
 
   /** 運の精算（luck）は、収集・学習・系譜・コマンド（collect・learn・run・app）を読まない。 */
   @Test
   public void luckReadsNoCollectLearnRunNorApp() throws IOException {
     Assert.assertEquals(
-        ImportDirection.packageViolations("com.epsilon.prism.luck", "com\\.epsilon\\.prism\\.(collect|learn|run|app)(\\..*)?"),
+        ImportDirection.packageViolations(
+            "com.epsilon.prism.luck", "com\\.epsilon\\.prism\\.(collect|learn|run|app)(\\..*)?"),
         List.of());
   }
 
@@ -48,7 +52,9 @@ public class ImportDirectionTest {
   public void rowsAndNoiseReadNoLuck() throws IOException {
     for (String packageName : List.of("com.epsilon.prism.rows", "com.epsilon.prism.noise"))
       Assert.assertEquals(
-          ImportDirection.packageViolations(packageName, "com\\.epsilon\\.prism\\.luck(\\..*)?"), List.of(), packageName);
+          ImportDirection.packageViolations(packageName, "com\\.epsilon\\.prism\\.luck(\\..*)?"),
+          List.of(),
+          packageName);
   }
 
   /** 運の精算のクラスは luck にまとめたので、前に置いていたパッケージ（collect・learn・rows・label）のクラスは class path に無い。 */
@@ -71,7 +77,8 @@ public class ImportDirectionTest {
   @Test
   public void classpathHoldsNoLuckSamplePorts() {
     Assert.assertEquals(
-        ImportDirection.loadable(List.of("com.epsilon.prism.collect.LuckHooks", "com.epsilon.prism.collect.LuckSink")),
+        ImportDirection.loadable(
+            List.of("com.epsilon.prism.collect.LuckHooks", "com.epsilon.prism.collect.LuckSink")),
         List.of());
   }
 }

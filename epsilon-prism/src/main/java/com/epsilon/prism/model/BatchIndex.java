@@ -7,8 +7,8 @@ import com.epsilon.prism.auxiliary.TargetSchema;
 import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.Composition;
 import com.epsilon.prism.input.InputBlob.RowColumn;
-import com.epsilon.prism.input.InputFormat.Role;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.InputFormat.Role;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
@@ -160,8 +160,7 @@ final class BatchIndex {
    * @param staging 領域を載せる先
    * @throws IllegalArgumentException インデックスの並びが正しくないとき
    */
-  BatchIndex(
-      HostColumns inputs, boolean[] measuredFlags, AuxiliaryLabels labels, Staging staging) {
+  BatchIndex(HostColumns inputs, boolean[] measuredFlags, AuxiliaryLabels labels, Staging staging) {
     format = inputs.format();
     Structure structure = new Structure(inputs);
     Role discardRole = format.discard();
@@ -278,9 +277,11 @@ final class BatchIndex {
         case RIICHI_GATE -> {
           int base = structure.base(a, discardRole);
           lists.riichiActions.add(a);
-          lists.riichiBaseTransitions.add(structure.firstTransition(structure.representative[base]));
+          lists.riichiBaseTransitions.add(
+              structure.firstTransition(structure.representative[base]));
           lists.riichiGates.add(lists.gateActions.size());
-          lists.riichiAnchors.add(measuredGroup != null && measuredGroup[structure.representative[base]]);
+          lists.riichiAnchors.add(
+              measuredGroup != null && measuredGroup[structure.representative[base]]);
           lists.addGate(format, a, structure, base, false);
           pivot[slot] = true;
           pivotRow[r] = 1f;
@@ -304,8 +305,7 @@ final class BatchIndex {
     legal = staging.add(legalSlot, new Shape(rows, capacity));
     pivotMask = staging.add(pivot, new Shape(rows, capacity));
     pivotPresent = staging.add(pivotRow, new Shape(rows, 1));
-    measured =
-        measuredSlot == null ? null : staging.add(measuredSlot, new Shape(rows, capacity));
+    measured = measuredSlot == null ? null : staging.add(measuredSlot, new Shape(rows, capacity));
 
     discardCount = lists.discardActions.size();
     discardActions = staging.addLongs(lists.discardActions);
@@ -410,8 +410,7 @@ final class BatchIndex {
     for (int i = 0; i < readingCount; i++) {
       readingRow[i] = Objects.checkIndex(reading[i], rows);
     }
-    readingRows =
-        readingCount == 0 ? null : staging.add(readingRow, new Shape(readingCount));
+    readingRows = readingCount == 0 ? null : staging.add(readingRow, new Shape(readingCount));
 
     // フィールドの並べ方の列の添字（定数だが、転送を 1 回にまとめるためここで載せる）
     for (FieldPack pack : FieldPack.of(format).all()) {
@@ -627,7 +626,8 @@ final class BatchIndex {
       firstTransitionOfRow = column(inputs, rows, RowColumn.FIRST_TRANSITION);
       transitionCount = column(inputs, rows, RowColumn.TRANSITIONS);
       contiguous("events", firstEvent, eventCount, inputs.events(), 0, format.eventCapacity());
-      contiguous("actions", firstAction, actionCount, inputs.actions(), 1, Limits.MAX_LEGAL_ACTIONS);
+      contiguous(
+          "actions", firstAction, actionCount, inputs.actions(), 1, Limits.MAX_LEGAL_ACTIONS);
       contiguous(
           "transitions",
           firstTransitionOfRow,
@@ -655,7 +655,8 @@ final class BatchIndex {
           baseAction[a] = inputs.action(a, ActionColumn.BASE);
           representative[a] = inputs.action(a, ActionColumn.REPRESENTATIVE);
           if (!inRow(representative[a], r)) {
-            throw new IllegalArgumentException("action " + a + " has a representative outside its row");
+            throw new IllegalArgumentException(
+                "action " + a + " has a representative outside its row");
           }
           if (baseAction[a] != -1 && !inRow(baseAction[a], r)) {
             throw new IllegalArgumentException("action " + a + " has a base outside its row");

@@ -68,11 +68,13 @@ public class HipAttentionGpuTest {
   private static final int EMPTY_ROW = 2;
   private static final int SUBSET_ROWS = 13;
   private static final int[] PADDED_TOKENS = {70, 80, 121, 160};
+
   /**
    * {@link #deadQueriesContributeNothing} で使う。途中に置く死んだクエリ（出力の勾配が 0 のクエリ）の範囲 [DEAD_FIRST, DEAD_END) と、
    * 先頭から数えた生きたクエリの数（これより後ろのクエリも死んだクエリにする）。
    */
   private static final int DEAD_FIRST = 36;
+
   private static final int DEAD_END = 44;
   private static final int LIVE_QUERIES = 60;
   private static final double FLOAT_UNIT = 0x1p-24;
@@ -123,7 +125,8 @@ public class HipAttentionGpuTest {
     }
 
     RelationAttention.Dimensions dimensions(int rows) {
-      return new RelationAttention.Dimensions(rows, queries, keys, keys, HEADS, WORDS, segments, entries, SCALE);
+      return new RelationAttention.Dimensions(
+          rows, queries, keys, keys, HEADS, WORDS, segments, entries, SCALE);
     }
   }
 
@@ -187,7 +190,8 @@ public class HipAttentionGpuTest {
             SoftAssert checks = new SoftAssert();
             for (Output output : Output.values()) {
               checks.assertTrue(
-                  bitsEqual(first.get(output), second.get(output)), shape + " " + output + " differs between runs");
+                  bitsEqual(first.get(output), second.get(output)),
+                  shape + " " + output + " differs between runs");
             }
             Reference fp64 = reference(inputs);
             compareWithDjl(checks, shape, inputs, first, djl(manager, inputs), fp64);
@@ -222,11 +226,13 @@ public class HipAttentionGpuTest {
             Arrays.setAll(rows, n -> n < 3 ? n : 3 * n - 3);
             for (int tokens : PADDED_TOKENS) {
               boolean paddedQueries = shape.queries == shape.keys && tokens > shape.keys;
-              for (Padding padding : paddedQueries ? Padding.values() : new Padding[] {Padding.GAUSSIAN}) {
+              for (Padding padding :
+                  paddedQueries ? Padding.values() : new Padding[] {Padding.GAUSSIAN}) {
                 Inputs part = pad(whole, rows, tokens, padding);
                 compareRealPositions(
                     "ROWS",
-                    String.format("case=%s rows=%d S=%d padding=%s", shape, SUBSET_ROWS, tokens, padding),
+                    String.format(
+                        "case=%s rows=%d S=%d padding=%s", shape, SUBSET_ROWS, tokens, padding),
                     failures,
                     new Placed(expected, whole.d(), rows),
                     new Placed(run(manager, attention, part), part.d(), identity(SUBSET_ROWS)),
@@ -282,19 +288,49 @@ public class HipAttentionGpuTest {
           }
           RelationAttention.Dimensions live =
               new RelationAttention.Dimensions(
-                  ROWS, LIVE_QUERIES, d.keys(), d.codeQueries(), HEADS, WORDS, d.segments(), d.entries(), SCALE);
-          Inputs whole = new Inputs(d, base.query(), base.keyValue(), base.mask(), base.codes(), base.table(), gradOut);
+                  ROWS,
+                  LIVE_QUERIES,
+                  d.keys(),
+                  d.codeQueries(),
+                  HEADS,
+                  WORDS,
+                  d.segments(),
+                  d.entries(),
+                  SCALE);
+          Inputs whole =
+              new Inputs(
+                  d,
+                  base.query(),
+                  base.keyValue(),
+                  base.mask(),
+                  base.codes(),
+                  base.table(),
+                  gradOut);
           Map<Output, float[]> expected = run(manager, attention, whole);
           Map<Output, float[]> zeroed =
               run(
                   manager,
                   attention,
-                  new Inputs(d, zeroQuery, base.keyValue(), base.mask(), base.codes(), base.table(), gradOut));
+                  new Inputs(
+                      d,
+                      zeroQuery,
+                      base.keyValue(),
+                      base.mask(),
+                      base.codes(),
+                      base.table(),
+                      gradOut));
           Map<Output, float[]> truncated =
               run(
                   manager,
                   attention,
-                  new Inputs(live, liveQuery, base.keyValue(), base.mask(), base.codes(), base.table(), liveGradOut));
+                  new Inputs(
+                      live,
+                      liveQuery,
+                      base.keyValue(),
+                      base.mask(),
+                      base.codes(),
+                      base.table(),
+                      liveGradOut));
           int[] rows = identity(ROWS);
           compareRealPositions(
               "DEAD",
@@ -323,11 +359,15 @@ public class HipAttentionGpuTest {
             for (int i = 0; i < queries; i++) {
               for (int f = 0; dead[i] && f < WIDTH; f++) {
                 elements++;
-                nonzero += Float.floatToRawIntBits(gradQuery[(r * queries + i) * WIDTH + f]) == 0 ? 0 : 1;
+                nonzero +=
+                    Float.floatToRawIntBits(gradQuery[(r * queries + i) * WIDTH + f]) == 0 ? 0 : 1;
               }
             }
           }
-          log.info("PRISM-HIPATTN-DEAD case=LAYER0_S70 dq of dead queries +0: {} of {}", elements - nonzero, elements);
+          log.info(
+              "PRISM-HIPATTN-DEAD case=LAYER0_S70 dq of dead queries +0: {} of {}",
+              elements - nonzero,
+              elements);
           if (nonzero > 0) {
             failures.append(String.format("%n%d dq elements of dead queries are not +0", nonzero));
           }
@@ -417,10 +457,20 @@ public class HipAttentionGpuTest {
     float[] gradOut = new float[rows.length * queries * WIDTH];
     for (int n = 0; n < rows.length; n++) {
       int r = rows[n];
-      System.arraycopy(whole.query(), r * w.queries() * WIDTH, query, n * queries * WIDTH, w.queries() * WIDTH);
-      System.arraycopy(whole.gradOut(), r * w.queries() * WIDTH, gradOut, n * queries * WIDTH, w.queries() * WIDTH);
       System.arraycopy(
-          whole.keyValue(), r * w.keys() * 2 * WIDTH, keyValue, n * tokens * 2 * WIDTH, w.keys() * 2 * WIDTH);
+          whole.query(), r * w.queries() * WIDTH, query, n * queries * WIDTH, w.queries() * WIDTH);
+      System.arraycopy(
+          whole.gradOut(),
+          r * w.queries() * WIDTH,
+          gradOut,
+          n * queries * WIDTH,
+          w.queries() * WIDTH);
+      System.arraycopy(
+          whole.keyValue(),
+          r * w.keys() * 2 * WIDTH,
+          keyValue,
+          n * tokens * 2 * WIDTH,
+          w.keys() * 2 * WIDTH);
       System.arraycopy(whole.mask(), r * w.keys(), mask, n * tokens, w.keys());
       for (int i = 0; i < w.codeQueries(); i++) {
         System.arraycopy(
@@ -451,7 +501,8 @@ public class HipAttentionGpuTest {
       attention.forward(d, query, keyValue, mask, codes, table, out, outFloat, logSumExp);
       NDArray gradQuery = scope.create(queries, DataType.BFLOAT16);
       NDArray gradKeyValue = scope.create(keys, DataType.BFLOAT16);
-      NDArray gradTable = scope.create(new Shape((long) d.rows() * HEADS, d.tableRows()), DataType.FLOAT32);
+      NDArray gradTable =
+          scope.create(new Shape((long) d.rows() * HEADS, d.tableRows()), DataType.FLOAT32);
       attention.backward(
           d,
           query,
@@ -487,7 +538,8 @@ public class HipAttentionGpuTest {
     float[] mask = in.mask().clone();
     mask[EMPTY_ROW * d.keys()] = 1f;
     float[] gradOut = in.gradOut().clone();
-    Arrays.fill(gradOut, EMPTY_ROW * d.queries() * WIDTH, (EMPTY_ROW + 1) * d.queries() * WIDTH, 0f);
+    Arrays.fill(
+        gradOut, EMPTY_ROW * d.queries() * WIDTH, (EMPTY_ROW + 1) * d.queries() * WIDTH, 0f);
     try (NDManager scope = manager.newSubManager()) {
       NDArray q = bfloat16(scope, in.query(), queries);
       NDArray kv = bfloat16(scope, in.keyValue(), new Shape(d.rows(), d.keys(), 2 * WIDTH));
@@ -499,19 +551,28 @@ public class HipAttentionGpuTest {
       kv.setRequiresGradient(true);
       full.setRequiresGradient(true);
       NDArray codes = codes(scope, in);
-      NDArray pairs = d.queries() == d.codeQueries() ? codes : codes.get(new NDIndex(":, 0:{}", d.queries()));
+      NDArray pairs =
+          d.queries() == d.codeQueries() ? codes : codes.get(new NDIndex(":, 0:{}", d.queries()));
       NDArray expected;
       try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
         expected =
             NDArrays.packedRelationScaledDotProductAttention(
-                q, kv, scope.create(mask, new Shape(d.rows(), d.keys())), pairs, full, HEADS, d.entries(), SCALE);
+                q,
+                kv,
+                scope.create(mask, new Shape(d.rows(), d.keys())),
+                pairs,
+                full,
+                HEADS,
+                d.entries(),
+                SCALE);
         collector.backward(expected.mul(bfloat16(scope, gradOut, queries)).sum());
       }
       Map<Output, float[]> outputs = new EnumMap<>(Output.class);
       outputs.put(Output.OUT, widen(expected));
       outputs.put(Output.GRAD_QUERY, widen(q.getGradient()));
       outputs.put(Output.GRAD_KEY_VALUE, widen(kv.getGradient()));
-      outputs.put(Output.GRAD_TABLE, full.getGradient().get(new NDIndex(":, 0:{}", HEADS)).toFloatArray());
+      outputs.put(
+          Output.GRAD_TABLE, full.getGradient().get(new NDIndex(":, 0:{}", HEADS)).toFloatArray());
       return outputs;
     }
   }
@@ -597,17 +658,22 @@ public class HipAttentionGpuTest {
             double gradProbabilityMagnitude = 0;
             for (int f = 0; f < FEATURES; f++) {
               gradProbability += (double) in.gradOut()[queryAt + f] * in.keyValue()[valueAt + f];
-              gradProbabilityMagnitude += Math.abs((double) in.gradOut()[queryAt + f] * in.keyValue()[valueAt + f]);
+              gradProbabilityMagnitude +=
+                  Math.abs((double) in.gradOut()[queryAt + f] * in.keyValue()[valueAt + f]);
             }
             double gradScore = probability[j] * (gradProbability - delta);
-            double gradScoreMagnitude = probability[j] * (gradProbabilityMagnitude + deltaMagnitude);
+            double gradScoreMagnitude =
+                probability[j] * (gradProbabilityMagnitude + deltaMagnitude);
             for (int f = 0; f < FEATURES; f++) {
               gradQuery[queryAt + f] += SCALE * gradScore * in.keyValue()[keyAt + f];
               gradKeyValue[keyAt + f] += SCALE * gradScore * in.query()[queryAt + f];
               gradKeyValue[valueAt + f] += probability[j] * in.gradOut()[queryAt + f];
-              gradQueryMagnitude[queryAt + f] += SCALE * gradScoreMagnitude * Math.abs(in.keyValue()[keyAt + f]);
-              gradKeyValueMagnitude[keyAt + f] += SCALE * gradScoreMagnitude * Math.abs(in.query()[queryAt + f]);
-              gradKeyValueMagnitude[valueAt + f] += probability[j] * Math.abs(in.gradOut()[queryAt + f]);
+              gradQueryMagnitude[queryAt + f] +=
+                  SCALE * gradScoreMagnitude * Math.abs(in.keyValue()[keyAt + f]);
+              gradKeyValueMagnitude[keyAt + f] +=
+                  SCALE * gradScoreMagnitude * Math.abs(in.query()[queryAt + f]);
+              gradKeyValueMagnitude[valueAt + f] +=
+                  probability[j] * Math.abs(in.gradOut()[queryAt + f]);
             }
             for (int s = 0; s < d.segments(); s++) {
               gradTable[tableRow + entry[j][s]] += gradScore;
@@ -667,7 +733,10 @@ public class HipAttentionGpuTest {
         int rounded = Float.floatToRawIntBits(bfloat16(referenceOut[i]));
         boolean hipRight = Float.floatToRawIntBits(actualOut[i]) == rounded;
         boolean djlRight = Float.floatToRawIntBits(expectedOut[i]) == rounded;
-        same += Float.floatToRawIntBits(expectedOut[i]) == Float.floatToRawIntBits(actualOut[i]) ? 1 : 0;
+        same +=
+            Float.floatToRawIntBits(expectedOut[i]) == Float.floatToRawIntBits(actualOut[i])
+                ? 1
+                : 0;
         hipOnly += !hipRight && djlRight ? 1 : 0;
         djlOnly += hipRight && !djlRight ? 1 : 0;
         both += !hipRight && !djlRight ? 1 : 0;
@@ -678,8 +747,10 @@ public class HipAttentionGpuTest {
     int compared = expectedOut.length - (emptyEnd - emptyFirst);
     double sameShare = same / (double) compared;
     double queryError = relative(expected.get(Output.GRAD_QUERY), actual.get(Output.GRAD_QUERY));
-    double keyValueError = relative(expected.get(Output.GRAD_KEY_VALUE), actual.get(Output.GRAD_KEY_VALUE));
-    double tableError = relative(expected.get(Output.GRAD_TABLE), rowSum(actual.get(Output.GRAD_TABLE), d));
+    double keyValueError =
+        relative(expected.get(Output.GRAD_KEY_VALUE), actual.get(Output.GRAD_KEY_VALUE));
+    double tableError =
+        relative(expected.get(Output.GRAD_TABLE), rowSum(actual.get(Output.GRAD_TABLE), d));
     log.info(
         "PRISM-HIPATTN case={} queries={} keys={} out same={} max|d|={} gradients rel q={} kv={}"
             + " rho={} fp64 same hip={} djl={} wrong hip-only={} djl-only={} both={} of {}",
@@ -716,10 +787,13 @@ public class HipAttentionGpuTest {
       }
       checks.assertEquals(infinite, 0, shape + " " + output + " elements not finite");
     }
-    assertOutputElements(checks, shape, in, actual, reference.get(Output.OUT), fp64.magnitudes().get(Output.OUT));
+    assertOutputElements(
+        checks, shape, in, actual, reference.get(Output.OUT), fp64.magnitudes().get(Output.OUT));
     double outShare = bfloat16Share(actual.get(Output.OUT), reference.get(Output.OUT));
-    double queryShare = assertGradientElements(checks, shape, Output.GRAD_QUERY, actual, fp64, 1e-5);
-    double keyValueShare = assertGradientElements(checks, shape, Output.GRAD_KEY_VALUE, actual, fp64, 1e-5);
+    double queryShare =
+        assertGradientElements(checks, shape, Output.GRAD_QUERY, actual, fp64, 1e-5);
+    double keyValueShare =
+        assertGradientElements(checks, shape, Output.GRAD_KEY_VALUE, actual, fp64, 1e-5);
     double outFloatError = relative(reference.get(Output.OUT_FLOAT), actual.get(Output.OUT_FLOAT));
     double tableError = relative(reference.get(Output.GRAD_TABLE), actual.get(Output.GRAD_TABLE));
     double tableWorst = worst(reference.get(Output.GRAD_TABLE), actual.get(Output.GRAD_TABLE));
@@ -730,7 +804,8 @@ public class HipAttentionGpuTest {
       lseWorst = Math.max(lseWorst, Math.abs(actualLse[i] - lse[i]) / (1 + Math.abs(lse[i])));
     }
     log.info(
-        "PRISM-HIPATTN-FP64 case={} out same={} outFloat rel={} lse={} q same={} kv same={} rho rel={} worst={}",
+        "PRISM-HIPATTN-FP64 case={} out same={} outFloat rel={} lse={} q same={} kv same={} rho"
+            + " rel={} worst={}",
         shape,
         String.format("%.5f", outShare),
         String.format("%.3g", outFloatError),
@@ -740,22 +815,37 @@ public class HipAttentionGpuTest {
         String.format("%.3g", tableError),
         String.format("%.3g", tableWorst));
     checks.assertTrue(outShare >= 0.999, shape + " output bits against FP64 " + outShare);
-    checks.assertTrue(queryShare >= 0.995, shape + " query gradient bits against FP64 " + queryShare);
-    checks.assertTrue(keyValueShare >= 0.995, shape + " key/value gradient bits against FP64 " + keyValueShare);
+    checks.assertTrue(
+        queryShare >= 0.995, shape + " query gradient bits against FP64 " + queryShare);
+    checks.assertTrue(
+        keyValueShare >= 0.995, shape + " key/value gradient bits against FP64 " + keyValueShare);
     checks.assertTrue(outFloatError <= 1e-6, shape + " FP32 output against FP64 " + outFloatError);
     checks.assertTrue(lseWorst <= 2e-6, shape + " log-sum-exp against FP64 " + lseWorst);
-    checks.assertTrue(tableError <= 1e-5, shape + " relation table gradient against FP64 " + tableError);
-    checks.assertTrue(tableWorst <= 1e-5, shape + " relation table gradient element against FP64 " + tableWorst);
+    checks.assertTrue(
+        tableError <= 1e-5, shape + " relation table gradient against FP64 " + tableError);
+    checks.assertTrue(
+        tableWorst <= 1e-5, shape + " relation table gradient element against FP64 " + tableWorst);
 
     int queryFirst = EMPTY_ROW * d.queries() * WIDTH;
     for (Output output : new Output[] {Output.OUT, Output.OUT_FLOAT, Output.GRAD_QUERY}) {
       assertZero(checks, shape, output, actual.get(output), queryFirst, d.queries() * WIDTH);
     }
     int lseFirst = EMPTY_ROW * HEADS * d.queries();
-    assertZero(checks, shape, Output.LOG_SUM_EXP, actual.get(Output.LOG_SUM_EXP), lseFirst, HEADS * d.queries());
+    assertZero(
+        checks,
+        shape,
+        Output.LOG_SUM_EXP,
+        actual.get(Output.LOG_SUM_EXP),
+        lseFirst,
+        HEADS * d.queries());
     int keyFirst = EMPTY_ROW * d.keys() * 2 * WIDTH;
     assertZero(
-        checks, shape, Output.GRAD_KEY_VALUE, actual.get(Output.GRAD_KEY_VALUE), keyFirst, d.keys() * 2 * WIDTH);
+        checks,
+        shape,
+        Output.GRAD_KEY_VALUE,
+        actual.get(Output.GRAD_KEY_VALUE),
+        keyFirst,
+        d.keys() * 2 * WIDTH);
   }
 
   /** 有効なキーが無い行で、出力 {@code output} の [first, first + length) が 0 であることを確かめる。 */
@@ -765,7 +855,8 @@ public class HipAttentionGpuTest {
     for (int i = first; i < first + length; i++) {
       nonzero += values[i] == 0f ? 0 : 1;
     }
-    checks.assertEquals(nonzero, 0, shape + " " + output + " elements of the row without keys not 0");
+    checks.assertEquals(
+        nonzero, 0, shape + " " + output + " elements of the row without keys not 0");
   }
 
   /**
@@ -782,7 +873,12 @@ public class HipAttentionGpuTest {
    * α の順の誤りを分位で見る）。外れた要素は検査に記録する前に全て数え、先頭の幾つかを A と一緒に出す。
    */
   private static void assertOutputElements(
-      SoftAssert checks, Case shape, Inputs in, Map<Output, float[]> actual, double[] expected, double[] magnitude) {
+      SoftAssert checks,
+      Case shape,
+      Inputs in,
+      Map<Output, float[]> actual,
+      double[] expected,
+      double[] magnitude) {
     RelationAttention.Dimensions d = in.d();
     float[] out = actual.get(Output.OUT);
     float[] outFloat = actual.get(Output.OUT_FLOAT);
@@ -817,8 +913,8 @@ public class HipAttentionGpuTest {
       }
     }
     log.info(
-        "PRISM-HIPATTN-OUT case={} rounded-once mismatches={} fp32 worst={} u·A (element {} |o|={} A={})"
-            + " outside c={}: {}{}",
+        "PRISM-HIPATTN-OUT case={} rounded-once mismatches={} fp32 worst={} u·A (element {} |o|={}"
+            + " A={}) outside c={}: {}{}",
         shape,
         unrounded,
         String.format("%.2f", worst),
@@ -841,12 +937,15 @@ public class HipAttentionGpuTest {
       if (n > 0) {
         double[] sorted = Arrays.copyOf(part, n);
         Arrays.sort(sorted);
-        line.append(String.format(" %s:%d/%.2f/%.2f", stratumName(k), n, sorted[(int) (n * 0.99)], sorted[n - 1]));
+        line.append(
+            String.format(
+                " %s:%d/%.2f/%.2f", stratumName(k), n, sorted[(int) (n * 0.99)], sorted[n - 1]));
       }
     }
     log.info("PRISM-HIPATTN-OUT-STRATA case={} n/p99/max{}", shape, line);
     checks.assertEquals(unrounded, 0, shape + " OUT is not OUT_FLOAT rounded once to BF16");
-    checks.assertEquals(outside, 0, shape + " FP32 output outside c·2^-24·sum p|v| of FP64:" + first);
+    checks.assertEquals(
+        outside, 0, shape + " FP32 output outside c·2^-24·sum p|v| of FP64:" + first);
   }
 
   /** 分位を分けて出すための行の種類。穴の行は 0、抜けたタイルの行は 1、ほかは有効なキーを含むキーのタイルの数 B に 2 を足した値（有効なキーが無い行は 2）。 */
@@ -893,14 +992,22 @@ public class HipAttentionGpuTest {
     Arrays.sort(ratios);
     return String.format(
         "n=%d p50=%.3f p99=%.3f p99.9=%.3f p99.99=%.3f max=%.3f",
-        n, ratios[n / 2], ratios[(int) (n * 0.99)], ratios[(int) (n * 0.999)], ratios[(int) (n * 0.9999)], ratios[n - 1]);
+        n,
+        ratios[n / 2],
+        ratios[(int) (n * 0.99)],
+        ratios[(int) (n * 0.999)],
+        ratios[(int) (n * 0.9999)],
+        ratios[n - 1]);
   }
 
   /** BF16 の出力のうち、FP64 の参照を BF16 に丸めた値（FP64 → FP32 → BF16 の最近接偶数）とビットまで同じ要素の割合。 */
   private static double bfloat16Share(float[] values, double[] expected) {
     int same = 0;
     for (int i = 0; i < values.length; i++) {
-      same += Float.floatToRawIntBits(values[i]) == Float.floatToRawIntBits(bfloat16(expected[i])) ? 1 : 0;
+      same +=
+          Float.floatToRawIntBits(values[i]) == Float.floatToRawIntBits(bfloat16(expected[i]))
+              ? 1
+              : 0;
     }
     return same / (double) values.length;
   }
@@ -922,7 +1029,12 @@ public class HipAttentionGpuTest {
    * @return FP64 の参照を BF16 に丸めた値とビットまで同じ要素の割合
    */
   private static double assertGradientElements(
-      SoftAssert checks, Case shape, Output output, Map<Output, float[]> actual, Reference fp64, double slack) {
+      SoftAssert checks,
+      Case shape,
+      Output output,
+      Map<Output, float[]> actual,
+      Reference fp64,
+      double slack) {
     float[] values = actual.get(output);
     double[] expected = fp64.values().get(output);
     double[] magnitude = fp64.magnitudes().get(output);
@@ -936,7 +1048,10 @@ public class HipAttentionGpuTest {
     for (int i = 0; i < values.length; i++) {
       double error = Math.abs(values[i] - expected[i]);
       double excess = Math.max(0, error - bfloat16Ulp(values[i]) / 2);
-      double ratio = magnitude[i] == 0 ? (excess == 0 ? 0 : Double.POSITIVE_INFINITY) : excess / (FLOAT_UNIT * magnitude[i]);
+      double ratio =
+          magnitude[i] == 0
+              ? (excess == 0 ? 0 : Double.POSITIVE_INFINITY)
+              : excess / (FLOAT_UNIT * magnitude[i]);
       if (magnitude[i] > 0) {
         ratios[count++] = ratio;
       }
@@ -945,7 +1060,10 @@ public class HipAttentionGpuTest {
       ulpOutside += ulpRule ? 0 : 1;
       cancellationOutside += cancellationRule ? 0 : 1;
       if (!ulpRule && !cancellationRule && outside++ < 8) {
-        first.append(String.format(" [%d %s fp64=%.9g M=%.4g ratio=%.1f]", i, values[i], expected[i], magnitude[i], ratio));
+        first.append(
+            String.format(
+                " [%d %s fp64=%.9g M=%.4g ratio=%.1f]",
+                i, values[i], expected[i], magnitude[i], ratio));
       }
     }
     log.info(
@@ -959,7 +1077,9 @@ public class HipAttentionGpuTest {
         outside,
         first);
     checks.assertEquals(
-        outside, 0, shape + " " + output + " elements outside both 1 ulp + rms·slack and c·2^-24·M:" + first);
+        outside,
+        0,
+        shape + " " + output + " elements outside both 1 ulp + rms·slack and c·2^-24·M:" + first);
     return bfloat16Share(values, expected);
   }
 
@@ -979,8 +1099,12 @@ public class HipAttentionGpuTest {
       Output... outputs) {
     boolean equal = true;
     for (Output output : outputs) {
-      float[] want = realPositions(output, first.outputs().get(output), first.d(), first.rows(), queries, keys);
-      float[] got = realPositions(output, second.outputs().get(output), second.d(), second.rows(), queries, keys);
+      float[] want =
+          realPositions(
+              output, first.outputs().get(output), first.d(), first.rows(), queries, keys);
+      float[] got =
+          realPositions(
+              output, second.outputs().get(output), second.d(), second.rows(), queries, keys);
       if (!bitsEqual(want, got)) {
         String differences = differences(output, want, got, queries, keys, first.d().tableRows());
         log.info("PRISM-HIPATTN-{}-DIFF {} {} {}", kind, label, output, differences);
@@ -997,7 +1121,8 @@ public class HipAttentionGpuTest {
    * 実際の位置での 2 つの出力の違いを文字列にする。違う要素の数、そのうち ±0 だけが違う数（kv は dk・dv に分けた数も）、先頭の 8 個
    * （添字・位置・2 つの値・ビット）を書く。
    */
-  private static String differences(Output output, float[] want, float[] got, int queries, int keys, int tableRows) {
+  private static String differences(
+      Output output, float[] want, float[] got, int queries, int keys, int tableRows) {
     int differing = 0;
     int signedZeros = 0;
     int keyPart = 0;
@@ -1014,7 +1139,10 @@ public class HipAttentionGpuTest {
         }
       }
     }
-    String split = output == Output.GRAD_KEY_VALUE ? String.format(" dK=%d dV=%d", keyPart, differing - keyPart) : "";
+    String split =
+        output == Output.GRAD_KEY_VALUE
+            ? String.format(" dK=%d dV=%d", keyPart, differing - keyPart)
+            : "";
     return String.format(
         "lengths %d/%d differing=%d signed-zero-only=%d%s%s",
         want.length, got.length, differing, signedZeros, split, first);
@@ -1031,7 +1159,8 @@ public class HipAttentionGpuTest {
       }
       case LOG_SUM_EXP -> {
         int at = index % (HEADS * queries);
-        yield String.format("n=%d head=%d query=%d", index / (HEADS * queries), at / queries, at % queries);
+        yield String.format(
+            "n=%d head=%d query=%d", index / (HEADS * queries), at / queries, at % queries);
       }
       case GRAD_KEY_VALUE -> {
         int at = index % (keys * 2 * WIDTH);
@@ -1046,7 +1175,8 @@ public class HipAttentionGpuTest {
       }
       case GRAD_TABLE -> {
         int at = index % (HEADS * tableRows);
-        yield String.format("n=%d head=%d entry=%d", index / (HEADS * tableRows), at / tableRows, at % tableRows);
+        yield String.format(
+            "n=%d head=%d entry=%d", index / (HEADS * tableRows), at / tableRows, at % tableRows);
       }
     };
   }
@@ -1084,7 +1214,12 @@ public class HipAttentionGpuTest {
    * 個、キーなら先頭の {@code keys} 個、ρ の勾配なら行 × ヘッドの部分和の全て。
    */
   private static float[] realPositions(
-      Output output, float[] values, RelationAttention.Dimensions d, int[] rows, int queries, int keys) {
+      Output output,
+      float[] values,
+      RelationAttention.Dimensions d,
+      int[] rows,
+      int queries,
+      int keys) {
     int length =
         switch (output) {
           case OUT, OUT_FLOAT, GRAD_QUERY -> queries * WIDTH;
@@ -1096,14 +1231,18 @@ public class HipAttentionGpuTest {
     for (int n = 0; n < rows.length; n++) {
       int r = rows[n];
       switch (output) {
-        case OUT, OUT_FLOAT, GRAD_QUERY -> System.arraycopy(values, r * d.queries() * WIDTH, real, n * length, length);
+        case OUT, OUT_FLOAT, GRAD_QUERY ->
+            System.arraycopy(values, r * d.queries() * WIDTH, real, n * length, length);
         case LOG_SUM_EXP -> {
           for (int h = 0; h < HEADS; h++) {
-            System.arraycopy(values, (r * HEADS + h) * d.queries(), real, n * length + h * queries, queries);
+            System.arraycopy(
+                values, (r * HEADS + h) * d.queries(), real, n * length + h * queries, queries);
           }
         }
-        case GRAD_KEY_VALUE -> System.arraycopy(values, r * d.keys() * 2 * WIDTH, real, n * length, length);
-        case GRAD_TABLE -> System.arraycopy(values, r * HEADS * d.tableRows(), real, n * length, length);
+        case GRAD_KEY_VALUE ->
+            System.arraycopy(values, r * d.keys() * 2 * WIDTH, real, n * length, length);
+        case GRAD_TABLE ->
+            System.arraycopy(values, r * HEADS * d.tableRows(), real, n * length, length);
       }
     }
     return real;

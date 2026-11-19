@@ -43,7 +43,8 @@ final class RollIn {
     int[] others = new int[candidates.length];
     int size = 0;
     for (int a : candidates) if (a != played) others[size++] = a;
-    if (size == 0) throw new IllegalStateException("No candidate other than the played action " + played);
+    if (size == 0)
+      throw new IllegalStateException("No candidate other than the played action " + played);
     return size == candidates.length ? others : Arrays.copyOf(others, size);
   }
 

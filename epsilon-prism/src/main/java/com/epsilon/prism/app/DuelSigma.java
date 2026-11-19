@@ -36,10 +36,22 @@ import java.util.Locale;
  * @param duels σ を求めるのに使う直近の決闘の数
  * @param games 1 回の決闘の半荘の上限
  */
-@Named(value = "duel-sigma", doc = "Estimate the wall σ from the champion's duels and suggest the game cap and parity margin of the champion's tables")
+@Named(
+    value = "duel-sigma",
+    doc =
+        "Estimate the wall σ from the champion's duels and suggest the game cap and parity margin"
+            + " of the champion's tables")
 public record DuelSigma(
-    @Key(doc = "Run directory (an evaluate --out directory also works)", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Champion's table name (default: every table that stops on a sequential test against the champion)", presence = Presence.ABSENT) String table,
+    @Key(
+            doc = "Run directory (an evaluate --out directory also works)",
+            presence = Presence.REQUIRED)
+        Path run,
+    @Key(
+            doc =
+                "Champion's table name (default: every table that stops on a sequential test"
+                    + " against the champion)",
+            presence = Presence.ABSENT)
+        String table,
     @Key(doc = "Number of recent duels used to estimate σ", value = "16") @Range(min = 1) int duels,
     @Key(doc = "Game cap of one duel", value = "25000") @Range(min = 1) long games)
     implements PrismCommand {
@@ -52,7 +64,8 @@ public record DuelSigma(
     context.requireNoLayers();
     RunDirectory directory = new RunDirectory(run);
     List<JobFile> played = new ArrayList<>();
-    for (JobFile job : new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS)).list().jobs()) {
+    for (JobFile job :
+        new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS)).list().jobs()) {
       if (job.state() != JobFile.State.DONE || (table != null && !job.table().equals(table))) {
         continue;
       }
@@ -65,7 +78,8 @@ public record DuelSigma(
     }
     if (played.isEmpty()) {
       String where = table == null ? "" : " on " + table;
-      throw new SettingsException(List.of("The run " + directory.root() + " has no finished champion duel" + where));
+      throw new SettingsException(
+          List.of("The run " + directory.root() + " has no finished champion duel" + where));
     }
     List<JobFile> recent = played.subList(Math.max(0, played.size() - duels), played.size());
     PrintStream out = context.out();
@@ -91,10 +105,12 @@ public record DuelSigma(
     }
     Sequential sequential = test.sequential();
     int perWall = duel.layout().gamesPerWall();
-    double now = DuelSizing.detection(sequential, duel.walls(), sigma, DuelSizing.REACH * test.evenAbove());
+    double now =
+        DuelSizing.detection(sequential, duel.walls(), sigma, DuelSizing.REACH * test.evenAbove());
     DuelSizing.Choice choice = DuelSizing.choose(sequential, sigma, perWall, games);
     double margin = Math.ceil(choice.margin() / MARGIN_STEP) * MARGIN_STEP;
-    double suggested = DuelSizing.detection(sequential, choice.walls(), sigma, DuelSizing.REACH * margin);
+    double suggested =
+        DuelSizing.detection(sequential, choice.walls(), sigma, DuelSizing.REACH * margin);
     out.println(
         String.format(
             Locale.ROOT,
@@ -120,7 +136,8 @@ public record DuelSigma(
     out.println(
         String.format(
             Locale.ROOT,
-            "suggested within %d games: walls=%d games=%d evenMargin=%.4f finds %.1f x the margin with %.4f",
+            "suggested within %d games: walls=%d games=%d evenMargin=%.4f finds %.1f x the margin"
+                + " with %.4f",
             games,
             choice.walls(),
             (long) choice.walls() * perWall,

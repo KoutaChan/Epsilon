@@ -29,7 +29,8 @@ public sealed interface RateReview {
   @Case("MEASURED")
   record Measured(
       @Key(doc = "見直す間隔（反復）", value = "16") @Range(min = 1) int every,
-      @Key(doc = "1 回の見直しで率に掛ける倍率の下限", value = "0.5") @Range(min = 0, minInclusive = false, max = 1) double stepMin,
+      @Key(doc = "1 回の見直しで率に掛ける倍率の下限", value = "0.5") @Range(min = 0, minInclusive = false, max = 1)
+          double stepMin,
       @Key(doc = "1 回の見直しで率に掛ける倍率の上限", value = "2.0") @Range(min = 1) double stepMax,
       @Key(doc = "見直しを採るのに要る、見込みの効率の下限", value = "1.05") @Range(min = 1) double minEfficiency,
       @Key(doc = "クラスごとの設計の重み（書かなければ率の表を使う）", presence = Presence.ABSENT)

@@ -54,7 +54,10 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
   private PrismSettings latest;
 
   private PrismSession(
-      Launch<PrismSettings> launch, TrainingResources resources, GrpBackground background, EvaluationJobs jobs) {
+      Launch<PrismSettings> launch,
+      TrainingResources resources,
+      GrpBackground background,
+      EvaluationJobs jobs) {
     this.launch = launch;
     this.resources = resources;
     this.background = background;
@@ -86,7 +89,10 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
               control::awaitRunning);
       background.request();
       return new PrismSession(
-          launch, resources, background, new EvaluationJobs(run, settings, resources.runtime(), resources.table()));
+          launch,
+          resources,
+          background,
+          new EvaluationJobs(run, settings, resources.runtime(), resources.table()));
     } catch (RuntimeException | Error failure) {
       resources.close();
       throw failure;
@@ -122,12 +128,17 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
   public PrismState begin(PrismSettings settings) throws IOException {
     Path first = run().snapshot(1);
     if (!Files.isDirectory(first)) {
-      LOG.warn("Starting a PRISM lineage from a blank network: s = 0 everywhere, so version 1 plays argmax p0");
+      LOG.warn(
+          "Starting a PRISM lineage from a blank network: s = 0 everywhere, so version 1 plays"
+              + " argmax p0");
       Path part = PrismStep.part(first);
       DurableFiles.delete(part);
       try (Model blank =
           Fit.blank(
-              settings.module().input(), settings.network().shape(), Device.cpu(), settings.run().seed() + BLANK_SEED)) {
+              settings.module().input(),
+              settings.network().shape(),
+              Device.cpu(),
+              settings.run().seed() + BLANK_SEED)) {
         Snapshot.fill(part, (PrismNetwork) blank.getBlock(), PolicyParams.of(1));
       }
       DurableFiles.seal(part, first);
@@ -148,20 +159,25 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
    * 反復を閉じると消えるので、その前に残しておく。
    */
   @Override
-  public Closing<PrismState> close(PrismIteration iteration, PrismState state, Map<String, StepReport> steps)
+  public Closing<PrismState> close(
+      PrismIteration iteration, PrismState state, Map<String, StepReport> steps)
       throws IOException {
     int t = iteration.number();
     PhiReport phi = (PhiReport) steps.get(PrismStep.PHI.name()).metrics();
     CollectReport collect = (CollectReport) steps.get(PrismStep.COLLECT.name()).metrics();
     LearnReport learn = (LearnReport) steps.get(PrismStep.LEARN.name()).metrics();
-    PrismCarry carry = new PrismCarry(learn.appliedR2(), CarryKey.of(iteration.settings(), phi.value().entry()));
+    PrismCarry carry =
+        new PrismCarry(learn.appliedR2(), CarryKey.of(iteration.settings(), phi.value().entry()));
     // コホートを確定した後に王者へ戻すと決まった反復では、戻しを次の反復に送る
     int start = state.start() == collect.start() ? t + 1 : state.start();
-    PrismState next = new PrismState(t + 1, state.totalRows() + collect.rows(), carry, start, state.regression());
+    PrismState next =
+        new PrismState(t + 1, state.totalRows() + collect.rows(), carry, start, state.regression());
     CollectReport.Classes collected =
-        RecordFile.read(CollectReport.Classes.class, run().rows(t).resolve(CollectReport.CLASSES)).value();
+        RecordFile.read(CollectReport.Classes.class, run().rows(t).resolve(CollectReport.CLASSES))
+            .value();
     Path learned = iteration.work().resolve(LearnStep.LEARN);
-    LedgerReport.Classes ledger = RecordFile.read(LedgerReport.Classes.class, learned.resolve(LearnReport.CLASSES)).value();
+    LedgerReport.Classes ledger =
+        RecordFile.read(LedgerReport.Classes.class, learned.resolve(LearnReport.CLASSES)).value();
     LedgerReport.Summary summary = learn.ledger();
     Map<String, Record> reports = new LinkedHashMap<>();
     reports.put(

@@ -66,7 +66,8 @@ public class HipNormGpuTest {
           for (int rows : ROWS) {
             for (int width : WIDTHS) {
               NormShape shape = new NormShape(rows, width, ReferenceNormTest.EPSILON);
-              Inputs inputs = ReferenceNormTest.generate(shape, DataType.BFLOAT16, rows * 31L + width);
+              Inputs inputs =
+                  ReferenceNormTest.generate(shape, DataType.BFLOAT16, rows * 31L + width);
               Outputs hip = ReferenceNormTest.kernels(manager, kernels, inputs, DataType.BFLOAT16);
               Outputs fp64;
               try (NDManager host = NDManager.newBaseManager(Device.cpu())) {

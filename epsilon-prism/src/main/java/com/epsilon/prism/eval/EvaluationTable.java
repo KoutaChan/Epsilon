@@ -58,7 +58,8 @@ public final class EvaluationTable {
               inference.maxBatch(),
               inference.precision(),
               InferencePath.of(inference.kernels()));
-      return new PrismPolicy(network, variant, Series.PRISM.label(spec.checkpoint()), null, twinDiscard);
+      return new PrismPolicy(
+          network, variant, Series.PRISM.label(spec.checkpoint()), null, twinDiscard);
     }
     PolicyOptions seat = spec.series().checkpointed() ? options : options.onDevice("cpu");
     return ModelFamily.of(spec.series()).open(spec.checkpoint(), variant, seat, runtime);
@@ -89,7 +90,8 @@ public final class EvaluationTable {
     }
     Path checkpoint = spec.checkpoint().toAbsolutePath().normalize();
     if (!Files.isDirectory(checkpoint)) {
-      throw new IllegalArgumentException("No checkpoint directory at " + checkpoint + " for " + name);
+      throw new IllegalArgumentException(
+          "No checkpoint directory at " + checkpoint + " for " + name);
     }
     int separator = name.indexOf(':');
     boolean prefixed = separator > 0 && knownPrefix(name.substring(0, separator));
@@ -126,7 +128,11 @@ public final class EvaluationTable {
     String actual = CheckpointFiles.sha256(spec.checkpoint());
     if (!actual.equals(entrant.sha256())) {
       throw new IOException(
-          "The checkpoint " + spec.checkpoint() + " has SHA-256 " + actual + ", but the duel was planned with "
+          "The checkpoint "
+              + spec.checkpoint()
+              + " has SHA-256 "
+              + actual
+              + ", but the duel was planned with "
               + entrant.sha256());
     }
   }

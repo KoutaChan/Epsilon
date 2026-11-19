@@ -36,7 +36,8 @@ public class UraAuditTest {
     long[] games = new long[count];
     Set<Integer> clusters = new HashSet<>();
     long game = 0;
-    for (int found = 0; found < count; game++) if (clusters.add(UraAudit.cluster(game, 0))) games[found++] = game;
+    for (int found = 0; found < count; game++)
+      if (clusters.add(UraAudit.cluster(game, 0))) games[found++] = game;
     return games;
   }
 
@@ -61,7 +62,8 @@ public class UraAuditTest {
   /** 束が 1 つなら、行がいくつあっても標準誤差と z は NaN。ラベルの分散が 0 なら、分散が減る割合は NaN。 */
   @Test
   public void aSingleClusterHasNoStandardError() {
-    UraAudit.Cell cell = UraAudit.Cell.of(DecisionClass.END, false, 3, 1, 0.25, 0.01, 0.0625, 0.01, 0);
+    UraAudit.Cell cell =
+        UraAudit.Cell.of(DecisionClass.END, false, 3, 1, 0.25, 0.01, 0.0625, 0.01, 0);
     Assert.assertTrue(Double.isNaN(cell.standardError()));
     Assert.assertTrue(Double.isNaN(cell.z()));
     Assert.assertTrue(Double.isNaN(cell.reduction()));
@@ -75,16 +77,20 @@ public class UraAuditTest {
   public void fewClustersHaveNoZ() {
     UraAudit.Cell two = UraAudit.Cell.of(DecisionClass.KAN, true, 30, 2, 0.5, 0.1, 0.75, 0.2, 1);
     UraAudit.Cell below =
-        UraAudit.Cell.of(DecisionClass.KAN, false, 500, UraAudit.MIN_CLUSTERS - 1, 0.5, 0.1, 0.75, 0.2, 1);
+        UraAudit.Cell.of(
+            DecisionClass.KAN, false, 500, UraAudit.MIN_CLUSTERS - 1, 0.5, 0.1, 0.75, 0.2, 1);
     UraAudit.Cell enough =
-        UraAudit.Cell.of(DecisionClass.END, false, 500, UraAudit.MIN_CLUSTERS, 0.5, 0.1, 0.75, 0.2, 1);
+        UraAudit.Cell.of(
+            DecisionClass.END, false, 500, UraAudit.MIN_CLUSTERS, 0.5, 0.1, 0.75, 0.2, 1);
     for (UraAudit.Cell cell : List.of(two, below)) {
       Assert.assertTrue(cell.standardError() > 0, cell.toString());
       Assert.assertTrue(Double.isNaN(cell.z()), cell.toString());
     }
     Assert.assertEquals(enough.z(), 0.5 / enough.standardError(), EPSILON);
     List<UraAudit.CellSummary> cells =
-        new UraAudit.Report(3, 3, 3, new long[UraAudit.GROUP_BINS], 0, List.of(two, below, enough)).summary().cells();
+        new UraAudit.Report(3, 3, 3, new long[UraAudit.GROUP_BINS], 0, List.of(two, below, enough))
+            .summary()
+            .cells();
     Assert.assertNull(cells.get(0).z(), two.toString());
     Assert.assertNull(cells.get(1).z(), below.toString());
     Assert.assertEquals(cells.get(2).z(), enough.z());
@@ -97,9 +103,11 @@ public class UraAuditTest {
     Phi phi = Phi.scoreSmooth(UraScenes.VARIANT, RankUtility.TENHOU);
     UraScenes.Played played = UraScenes.plainRon();
     UraExpectation averaged = new UraExpectation(phi);
-    averaged.evaluate(played.engine().full(), played.engine().roundEnd(), played.start(), null, true);
+    averaged.evaluate(
+        played.engine().full(), played.engine().roundEnd(), played.start(), null, true);
     UraExpectation realized = new UraExpectation(phi);
-    realized.evaluate(played.engine().full(), played.engine().roundEnd(), played.start(), null, false);
+    realized.evaluate(
+        played.engine().full(), played.engine().roundEnd(), played.start(), null, false);
     UraAudit audit = new UraAudit();
     audit.handEnd(averaged);
     audit.handEnd(realized);
@@ -118,7 +126,8 @@ public class UraAuditTest {
     Assert.assertFalse(cells.get(0).kan());
     Assert.assertEquals(cells.get(0).rows(), 1);
     Assert.assertEquals(cells.get(0).clusters(), 1);
-    Assert.assertEquals(cells.get(0).meanDifference(), averaged.actual(2) - averaged.expected(2), 1e-9);
+    Assert.assertEquals(
+        cells.get(0).meanDifference(), averaged.actual(2) - averaged.expected(2), 1e-9);
     Assert.assertEquals(cells.get(0).expectedVariance(), averaged.variance(2), 1e-9);
   }
 
@@ -138,7 +147,9 @@ public class UraAuditTest {
     int added = 0;
     for (UraScenes.Played played : scenes) {
       UraExpectation values = new UraExpectation(phi);
-      Assert.assertTrue(values.evaluate(played.engine().full(), played.engine().roundEnd(), played.start(), null, true));
+      Assert.assertTrue(
+          values.evaluate(
+              played.engine().full(), played.engine().roundEnd(), played.start(), null, true));
       for (int seat = 0; seat < seats; seat++) {
         audit.rows(values, games[added++], 0, rows(DecisionClass.END, seat));
       }
@@ -163,7 +174,8 @@ public class UraAuditTest {
           double difference = values.actual(seat) - values.expected(seat);
           differenceVariance += (difference - meanDifference) * (difference - meanDifference) / n;
           squared += difference * difference / n;
-          labelVariance += (values.actual(seat) - meanActual) * (values.actual(seat) - meanActual) / n;
+          labelVariance +=
+              (values.actual(seat) - meanActual) * (values.actual(seat) - meanActual) / n;
         }
       }
       Assert.assertEquals(cell.rows(), n);
@@ -187,7 +199,9 @@ public class UraAuditTest {
     Phi phi = Phi.scoreSmooth(UraScenes.VARIANT, RankUtility.TENHOU);
     UraScenes.Played played = UraScenes.plainRon();
     UraExpectation values = new UraExpectation(phi);
-    Assert.assertTrue(values.evaluate(played.engine().full(), played.engine().roundEnd(), played.start(), null, true));
+    Assert.assertTrue(
+        values.evaluate(
+            played.engine().full(), played.engine().roundEnd(), played.start(), null, true));
     // [局] → 行の席
     int[][] discards = {{0, 1, 2, 3}, {2, 2, 2}, {1, 3}, {2}, {0, 0, 1}};
     int[][] wins = {{2}, {2, 1}, {}, {2, 2}, {3}};
@@ -198,7 +212,8 @@ public class UraAuditTest {
       rows.addAll(rows(DecisionClass.DISCARD_MID, discards[hand]));
       audit.rows(values, games[hand], 0, rows);
     }
-    Map<DecisionClass, int[][]> seatsByClass = Map.of(DecisionClass.DISCARD_MID, discards, DecisionClass.END, wins);
+    Map<DecisionClass, int[][]> seatsByClass =
+        Map.of(DecisionClass.DISCARD_MID, discards, DecisionClass.END, wins);
     List<UraAudit.Cell> cells = audit.report().cells();
     Assert.assertEquals(cells.size(), seatsByClass.size());
     for (UraAudit.Cell cell : cells) {
@@ -238,9 +253,11 @@ public class UraAuditTest {
     Phi phi = Phi.scoreSmooth(UraScenes.VARIANT, RankUtility.TENHOU);
     List<UraExpectation> ends = new ArrayList<>();
     for (UraScenes.Played played :
-        List.of(UraScenes.plainRon(), UraScenes.chankan(), UraScenes.chankanWithPendingIndicator())) {
+        List.of(
+            UraScenes.plainRon(), UraScenes.chankan(), UraScenes.chankanWithPendingIndicator())) {
       UraExpectation values = new UraExpectation(phi);
-      values.evaluate(played.engine().full(), played.engine().roundEnd(), played.start(), null, true);
+      values.evaluate(
+          played.engine().full(), played.engine().roundEnd(), played.start(), null, true);
       ends.add(values);
     }
     UraAudit forward = new UraAudit();
@@ -258,7 +275,9 @@ public class UraAuditTest {
           UraExpectation values = ends.get(index);
           long game = repeat;
           int hand = index;
-          tasks.add(pool.submit(() -> threaded.rows(values, game, hand, rows(DecisionClass.END, 3, 2, 1, 0))));
+          tasks.add(
+              pool.submit(
+                  () -> threaded.rows(values, game, hand, rows(DecisionClass.END, 3, 2, 1, 0))));
         }
       }
       for (Future<?> task : tasks) {

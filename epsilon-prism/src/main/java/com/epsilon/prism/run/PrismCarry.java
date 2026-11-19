@@ -10,7 +10,8 @@ import com.epsilon.agent.settings.Presence;
  * @param key 持ち越しのキー。始めの state では無い
  */
 public record PrismCarry(
-    double ledgerR2, @Key(doc = "持ち越しのキー（始めの state では無い）", presence = Presence.ABSENT) CarryKey key) {
+    double ledgerR2,
+    @Key(doc = "持ち越しのキー（始めの state では無い）", presence = Presence.ABSENT) CarryKey key) {
 
   /** 何も持ち越さない初期値。 */
   public static final PrismCarry NONE = new PrismCarry(0, null);

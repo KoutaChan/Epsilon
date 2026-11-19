@@ -49,12 +49,21 @@ public final class PrismPolicy implements BatchedPolicy {
    * @param twinDiscard 同値な打牌のうち切る方
    */
   public PrismPolicy(
-      NetworkPolicy network, Variant variant, String label, NetworkRuntime owned, TwinDiscard twinDiscard) {
+      NetworkPolicy network,
+      Variant variant,
+      String label,
+      NetworkRuntime owned,
+      TwinDiscard twinDiscard) {
     this.network = Objects.requireNonNull(network, "network");
     this.variant = Objects.requireNonNull(variant, "variant");
     if (network.format().variant() != variant) {
       throw new IllegalArgumentException(
-          "Variant mismatch: expected " + variant + " but found " + network.format().variant() + " in " + label);
+          "Variant mismatch: expected "
+              + variant
+              + " but found "
+              + network.format().variant()
+              + " in "
+              + label);
     }
     this.label = Objects.requireNonNull(label, "label");
     this.owned = owned;
@@ -99,12 +108,15 @@ public final class PrismPolicy implements BatchedPolicy {
       ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
     if (batch.variant() != variant) {
       reservation.abort();
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + batch.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + batch.variant());
     }
     Observation reader = readers.get();
     List<PolicyRequest> rows = new ArrayList<>(batch.size());
     for (int index = 0; index < batch.size(); index++) {
-      rows.add(new PolicyRequest(this, 0, index, null, null, false, 0, batch, index, reader.bind(batch, index)));
+      rows.add(
+          new PolicyRequest(
+              this, 0, index, null, null, false, 0, batch, index, reader.bind(batch, index)));
     }
     return network
         .submit(rows, reservation)
@@ -112,7 +124,8 @@ public final class PrismPolicy implements BatchedPolicy {
             () -> {
               for (int index = 0; index < rows.size(); index++) {
                 PolicyRequest row = rows.get(index);
-                chosen[index] = twinDiscard.play(row.legal(), Greedy.argmax(row.sigma, null, row.sigma.length));
+                chosen[index] =
+                    twinDiscard.play(row.legal(), Greedy.argmax(row.sigma, null, row.sigma.length));
               }
             });
   }
@@ -129,7 +142,9 @@ public final class PrismPolicy implements BatchedPolicy {
     }
     single.clear();
     int index = single.add(observation);
-    var request = new PolicyRequest(this, 0, 0, null, null, false, 0, single, index, singleReader.bind(single, index));
+    var request =
+        new PolicyRequest(
+            this, 0, 0, null, null, false, 0, single, index, singleReader.bind(single, index));
     while (true) {
       var attempt = network.tryAcquireIngress(0);
       if (attempt.acquired()) {

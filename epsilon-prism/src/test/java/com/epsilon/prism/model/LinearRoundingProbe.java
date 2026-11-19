@@ -51,7 +51,10 @@ public class LinearRoundingProbe {
       ParameterStore store = new ParameterStore(manager, false);
       try (NDManager scope = manager.newSubManager()) {
         Context context = new Context(store, scope, Precision.BFLOAT16, false);
-        NDArray x3 = scope.create(gaussian(random, rows * tokens * hidden), new Shape(rows, tokens, hidden)).toType(DataType.BFLOAT16, false);
+        NDArray x3 =
+            scope
+                .create(gaussian(random, rows * tokens * hidden), new Shape(rows, tokens, hidden))
+                .toType(DataType.BFLOAT16, false);
         NDArray x2 = x3.reshape(rows * tokens, hidden);
         NDArray w = context.value(weight);
         NDArray b = context.value(bias);
@@ -64,7 +67,8 @@ public class LinearRoundingProbe {
         for (int rank = 2; rank <= 3; rank++) {
           NDArray y = context.linear(rank == 2 ? x2 : x3, weight, bias).reshape(rows * tokens, out);
           log.info(
-              "PRISM-LINEAR-ROUNDING {} rank {}: differs from one rounding in {}, from two roundings in {} of {}",
+              "PRISM-LINEAR-ROUNDING {} rank {}: differs from one rounding in {}, from two"
+                  + " roundings in {} of {}",
               device,
               rank,
               differ(y, once),
@@ -75,7 +79,8 @@ public class LinearRoundingProbe {
     }
   }
 
-  private static Parameter parameter(NDManager manager, String name, Random random, Shape shape, double sigma) {
+  private static Parameter parameter(
+      NDManager manager, String name, Random random, Shape shape, double sigma) {
     Parameter parameter = Parameter.builder().setName(name).setType(Parameter.Type.WEIGHT).build();
     parameter.setArray(manager.create(gaussian(random, (int) shape.size(), sigma), shape));
     return parameter;

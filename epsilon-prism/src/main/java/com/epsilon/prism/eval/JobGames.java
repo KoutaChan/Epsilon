@@ -49,8 +49,16 @@ public final class JobGames {
     long games = job.walls() * perWall;
     if (lines.size() < games) {
       throw new IOException(
-          file + " holds " + lines.size() + " games, but " + job.name() + " recorded " + job.walls() + " walls of "
-              + perWall + " games");
+          file
+              + " holds "
+              + lines.size()
+              + " games, but "
+              + job.name()
+              + " recorded "
+              + job.walls()
+              + " walls of "
+              + perWall
+              + " games");
     }
     return WallValues.of(duel, lines.subList(0, (int) games));
   }

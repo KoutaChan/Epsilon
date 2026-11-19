@@ -176,12 +176,7 @@ final class ValueGraphHead extends Module {
    * @return Δ [ゲート]（FP32）
    */
   NDArray gate(
-      Context context,
-      NDArray chosen,
-      NDArray base,
-      NDArray states,
-      NDArray kinds,
-      NDArray exact) {
+      Context context, NDArray chosen, NDArray base, NDArray states, NDArray kinds, NDArray exact) {
     NDArray input =
         NDArrays.concat(
             new NDList(
@@ -191,11 +186,7 @@ final class ValueGraphHead extends Module {
         context
             .toFloat(context.linear(input, hidden, hiddenBias))
             .add(context.rows(kindOffset, kinds))
-            .add(
-                context
-                    .rows(exactProjection, kinds)
-                    .mul(exact.expandDims(1))
-                    .sum(new int[] {2}));
+            .add(context.rows(exactProjection, kinds).mul(exact.expandDims(1)).sum(new int[] {2}));
     NDArray delta = Context.silu(units).mul(context.rows(output, kinds)).sum(new int[] {1});
     return delta
         .add(context.rows(outputBias, kinds))

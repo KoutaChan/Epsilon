@@ -40,7 +40,8 @@ public final class FrozenNetwork implements AutoCloseable {
    * @return 読み込んだネットワーク
    * @throws IOException 読めないとき、または形式・フィンガープリント・重みが合わないとき
    */
-  public static FrozenNetwork load(Path model, Device device, Precision precision) throws IOException {
+  public static FrozenNetwork load(Path model, Device device, Precision precision)
+      throws IOException {
     Objects.requireNonNull(precision, "precision");
     // エンジンを初めて取る前に、全てのモデルに共通の実行時の既定値（PyTorch の CPU スレッド数）を決める
     NetworkRuntime.initialize();

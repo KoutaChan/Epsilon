@@ -17,7 +17,8 @@ public record CarryKey(LedgerMeaning ledger, boolean scoreBasedPhi) {
   /** 反復の設定と、その反復で使った Φ からキーを作る。 */
   public static CarryKey of(PrismSettings settings, PhiEntry phi) {
     return new CarryKey(
-        LuckSettlement.of(settings.noise(), settings.run().variant()).meaning(), phi.kind().scoreBased());
+        LuckSettlement.of(settings.noise(), settings.run().variant()).meaning(),
+        phi.kind().scoreBased());
   }
 
   /**

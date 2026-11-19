@@ -21,7 +21,8 @@ public class UraExpectationSceneTest {
 
   private static final int WINNER = 2;
 
-  private static final UraSettings REALIZED = new UraSettings.Realized(0.05), EXPECTED = new UraSettings.Expected();
+  private static final UraSettings REALIZED = new UraSettings.Realized(0.05),
+      EXPECTED = new UraSettings.Expected();
 
   private final Phi phi = Phi.scoreSmooth(UraScenes.VARIANT, RankUtility.TENHOU);
 
@@ -65,7 +66,8 @@ public class UraExpectationSceneTest {
     Assert.assertTrue(full.seat(0).last().doraPending());
     Assert.assertEquals(full.seat(0).indicatorCount(), 1);
     int pending = Scenes.faces(UraScenes.PENDING_INDICATOR)[0].kind();
-    Assert.assertEquals(full.unseen(pending), Tiles.COPIES, "the pending indicator is seen by nobody");
+    Assert.assertEquals(
+        full.unseen(pending), Tiles.COPIES, "the pending indicator is seen by nobody");
     UraExpectation values = evaluate(played);
     Assert.assertTrue(values.averaged());
     Assert.assertTrue(values.kan());
@@ -77,7 +79,9 @@ public class UraExpectationSceneTest {
   public void aRiichiWinWithoutAveragingRefusesTheExpectedValue() {
     UraScenes.Played played = UraScenes.plainRon();
     UraExpectation values = new UraExpectation(phi);
-    Assert.assertFalse(values.evaluate(played.engine().full(), played.engine().roundEnd(), played.start(), null, false));
+    Assert.assertFalse(
+        values.evaluate(
+            played.engine().full(), played.engine().roundEnd(), played.start(), null, false));
     Assert.assertTrue(values.riichiWin());
     Assert.assertFalse(values.averaged());
     Assert.assertEquals(values.groups(), 0);
@@ -109,7 +113,9 @@ public class UraExpectationSceneTest {
 
   private UraExpectation evaluate(UraScenes.Played played) {
     UraExpectation values = new UraExpectation(phi);
-    Assert.assertTrue(values.evaluate(played.engine().full(), played.engine().roundEnd(), played.start(), null, true));
+    Assert.assertTrue(
+        values.evaluate(
+            played.engine().full(), played.engine().roundEnd(), played.start(), null, true));
     return values;
   }
 

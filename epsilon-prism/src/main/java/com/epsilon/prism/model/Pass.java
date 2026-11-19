@@ -98,7 +98,8 @@ public record Pass(
       AuxiliaryLabels auxiliary,
       AttentionTape tape,
       FitProbe probe) {
-    return new Pass(precision, Objects.requireNonNull(measured, "measured"), auxiliary, tape, probe);
+    return new Pass(
+        precision, Objects.requireNonNull(measured, "measured"), auxiliary, tape, probe);
   }
 
   public boolean training() {

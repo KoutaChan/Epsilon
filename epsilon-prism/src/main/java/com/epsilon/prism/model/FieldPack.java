@@ -38,7 +38,8 @@ final class FieldPack {
    * @param event イベント
    * @param transition 遷移
    */
-  record Packs(FieldPack round, FieldPack seat, FieldPack tile, FieldPack event, FieldPack transition) {
+  record Packs(
+      FieldPack round, FieldPack seat, FieldPack tile, FieldPack event, FieldPack transition) {
 
     /** 全ての並べ方（宣言の順）。 */
     List<FieldPack> all() {

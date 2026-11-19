@@ -28,7 +28,8 @@ public record RateSettings(
         Map<DecisionClass, @Range(min = 0, max = 1) Double> open,
     @Key(doc = "率に掛ける倍率（掛けた値が 1 を超えれば 1 にする）", value = "1.0") @Range(min = 0, minInclusive = false)
         double multiplier,
-    @Key(doc = "全ての合法手を測るクラス", value = "[DISCARD_EARLY, DISCARD_MID, DISCARD_LATE]") Set<DecisionClass> allActions,
+    @Key(doc = "全ての合法手を測るクラス", value = "[DISCARD_EARLY, DISCARD_MID, DISCARD_LATE]")
+        Set<DecisionClass> allActions,
     @Key(doc = "率の見直し", value = "OFF", change = Change.FIT) RateReview review) {
 
   public RateSettings {

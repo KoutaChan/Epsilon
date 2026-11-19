@@ -73,7 +73,8 @@ public class RowCodecTest {
     body[body.length - 1] ^= 0x5A;
     expectThrows(IOException.class, () -> codec.decode(ByteBuffer.wrap(body)));
 
-    expectThrows(IllegalArgumentException.class, () -> new RowCodec(FEATURES + 1, TENHOU_4P).encode(row));
+    expectThrows(
+        IllegalArgumentException.class, () -> new RowCodec(FEATURES + 1, TENHOU_4P).encode(row));
     float[] ledger = row.ledger().clone();
     ledger[row.played() * FEATURES] = 0.1f;
     expectThrows(IllegalArgumentException.class, () -> codec.encode(withLedger(row, ledger)));
@@ -83,7 +84,8 @@ public class RowCodecTest {
   public void cohortWriterRecordsFingerprintsAndFrames() throws IOException {
     Path directory = Files.createTempDirectory("prism-rows");
     List<Row> rows = rows(120);
-    try (CohortWriter writer = new CohortWriter(directory, TENHOU_4P, 3, FEATURES, 2, CohortWriter.Tap.NONE)) {
+    try (CohortWriter writer =
+        new CohortWriter(directory, TENHOU_4P, 3, FEATURES, 2, CohortWriter.Tap.NONE)) {
       for (Row row : rows) {
         writer.accept(row);
       }
@@ -129,7 +131,9 @@ public class RowCodecTest {
 
     Path path = directory.resolve(CohortWriter.MANIFEST);
     Files.writeString(
-        path, Files.readString(path).replace(OutcomeCodec.of(TENHOU_4P).fingerprint(), "0000000000000000"));
+        path,
+        Files.readString(path)
+            .replace(OutcomeCodec.of(TENHOU_4P).fingerprint(), "0000000000000000"));
     expectThrows(IOException.class, () -> CohortWriter.readManifest(directory));
 
     // O のフィンガープリントは四人打ちなのに、局末の記録のフィンガープリントが三人打ちのマニフェストは、ルールが食い違うので読む前に止める
@@ -160,9 +164,12 @@ public class RowCodecTest {
               batch.clear();
               int index = writer.capture(engine.view(seat), decisions, slot, batch);
               long[] observation =
-                  Arrays.copyOfRange(batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
+                  Arrays.copyOfRange(
+                      batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
               long[] oracle =
-                  rows.size() % 5 == 0 ? new long[0] : OracleCapture.capture(engine.full(), seat, ws);
+                  rows.size() % 5 == 0
+                      ? new long[0]
+                      : OracleCapture.capture(engine.full(), seat, ws);
               rows.add(row(rows.size(), decisions.legalCount(slot), observation, oracle, random));
             });
     assertEquals(rows.size(), count);

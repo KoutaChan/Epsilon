@@ -48,8 +48,12 @@ public sealed interface PhiStartSettings {
   record GrpCheckpoint(
       @Key(doc = "GRP のチェックポイント。grp.json と weights.f32 を直接含むディレクトリ", presence = Presence.REQUIRED)
           Path grp,
-      @Key(doc = "GRP が GruSinkhorn のときに重ねる PhiTable のファイル。無ければ重ねない", presence = Presence.ABSENT) Path table,
-      @Key(doc = "LATE のモードで最後の局を数え上げる、局の結果のネットワークのチェックポイント。grp.json と weights.f32 を直接含むディレクトリ。表とは一緒に使えない",
+      @Key(doc = "GRP が GruSinkhorn のときに重ねる PhiTable のファイル。無ければ重ねない", presence = Presence.ABSENT)
+          Path table,
+      @Key(
+              doc =
+                  "LATE のモードで最後の局を数え上げる、局の結果のネットワークのチェックポイント。grp.json と weights.f32"
+                      + " を直接含むディレクトリ。表とは一緒に使えない",
               presence = Presence.ABSENT)
           Path outcomes)
       implements PhiStartSettings {
@@ -58,7 +62,9 @@ public sealed interface PhiStartSettings {
       Objects.requireNonNull(grp, "grp");
       if (outcomes != null && table != null) {
         throw new InvalidSetting(
-            "outcomes", "the late mode enumerates with a GrpNetwork leaf, and a Φ table overlays a GruSinkhorn only");
+            "outcomes",
+            "the late mode enumerates with a GrpNetwork leaf, and a Φ table overlays a GruSinkhorn"
+                + " only");
       }
     }
 

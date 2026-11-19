@@ -31,7 +31,10 @@ public final class UraDistribution {
 
   /** プールの枚数の上限（全てのルールの牌の枚数の最大）。 */
   private static final int MAX_POOL =
-      Arrays.stream(Variant.values()).mapToInt(variant -> variant.tiles().size()).max().orElseThrow();
+      Arrays.stream(Variant.values())
+          .mapToInt(variant -> variant.tiles().size())
+          .max()
+          .orElseThrow();
 
   /** [c][j] → c 枚から j 枚を選ぶ組み合わせの数（j は表示牌の枚数まで）。 */
   private static final double[][] BINOMIAL = binomials();
@@ -100,7 +103,8 @@ public final class UraDistribution {
 
   private void compute(int[] pool, int[] first, int[] second, int draws) {
     if (draws < 1 || draws > MAX_INDICATORS) {
-      throw new IllegalArgumentException("Ura indicators must number 1 to " + MAX_INDICATORS + ": " + draws);
+      throw new IllegalArgumentException(
+          "Ura indicators must number 1 to " + MAX_INDICATORS + ": " + draws);
     }
     Arrays.fill(grouped, 0);
     int total = 0;
@@ -116,7 +120,8 @@ public final class UraDistribution {
       total += tiles;
     }
     if (total < draws || total > MAX_POOL) {
-      throw new IllegalArgumentException("A pool of " + total + " tiles cannot yield " + draws + " ura indicators");
+      throw new IllegalArgumentException(
+          "A pool of " + total + " tiles cannot yield " + draws + " ura indicators");
     }
     this.draws = draws;
     Arrays.fill(ways, 0, (draws + 1) * PLANE, 0);
@@ -165,7 +170,8 @@ public final class UraDistribution {
   private static int level(int[] count, int kind) {
     int value = count[kind];
     if (value < 0 || value > MAX_COUNT) {
-      throw new IllegalArgumentException("Ura count " + value + " for kind " + kind + " lies outside [0, " + MAX_COUNT + "]");
+      throw new IllegalArgumentException(
+          "Ura count " + value + " for kind " + kind + " lies outside [0, " + MAX_COUNT + "]");
     }
     return value;
   }

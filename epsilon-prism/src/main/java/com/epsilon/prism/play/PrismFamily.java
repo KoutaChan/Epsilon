@@ -37,7 +37,8 @@ public final class PrismFamily implements ModelFamily {
    * @throws IllegalArgumentException 専用のカーネルを BFLOAT16 以外の計算の型で開こうとしたとき
    */
   @Override
-  public Policy open(Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime)
+  public Policy open(
+      Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime)
       throws IOException {
     Objects.requireNonNull(options, "options");
     String label = Series.PRISM.label(checkpoint);
@@ -59,7 +60,8 @@ public final class PrismFamily implements ModelFamily {
         throw new IllegalStateException(
             "Variant mismatch: expected " + variant + " but found " + found + " in " + checkpoint);
       }
-      return new PrismPolicy(network, variant, label, owned, BehaviourSettings.defaults().twinDiscard());
+      return new PrismPolicy(
+          network, variant, label, owned, BehaviourSettings.defaults().twinDiscard());
     } catch (IOException | RuntimeException | Error failure) {
       if (owned != null) {
         try {

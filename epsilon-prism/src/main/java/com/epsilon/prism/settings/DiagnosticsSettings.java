@@ -23,12 +23,15 @@ public record DiagnosticsSettings(
    * @param warmup 計らない始めのステップ数（ウォームアップ）
    */
   public record FitTiming(
-      @Key(doc = "計るステップの間隔", presence = Presence.REQUIRED) @Range(min = 1, max = 999_999) int every,
-      @Key(doc = "計らない始めのステップ数", presence = Presence.REQUIRED) @Range(min = 0, max = 999_999) int warmup) {}
+      @Key(doc = "計るステップの間隔", presence = Presence.REQUIRED) @Range(min = 1, max = 999_999)
+          int every,
+      @Key(doc = "計らない始めのステップ数", presence = Presence.REQUIRED) @Range(min = 0, max = 999_999)
+          int warmup) {}
 
   /** この JVM で追加する診断の出力を、このセクションの値に合わせる。ネットワークを開く前と、学習を始める前に呼ぶ。 */
   public void apply() {
-    DiagnosticProperty.FIT_TIMING.set(fitTiming == null ? null : "sync:" + fitTiming.every() + ":" + fitTiming.warmup());
+    DiagnosticProperty.FIT_TIMING.set(
+        fitTiming == null ? null : "sync:" + fitTiming.every() + ":" + fitTiming.warmup());
     System.setProperty(HipLibrary.CHECKED_PROPERTY, Boolean.toString(hipChecked));
   }
 }

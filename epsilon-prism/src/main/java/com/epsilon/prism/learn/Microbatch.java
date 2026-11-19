@@ -94,7 +94,8 @@ record Microbatch(
     for (Microbatch part : parts) {
       rows += part.rows();
       if (part.denominators != null) {
-        denominators = denominators == null ? part.denominators : denominators.plus(part.denominators);
+        denominators =
+            denominators == null ? part.denominators : denominators.plus(part.denominators);
       }
     }
     float share = (float) rows / stepRows;

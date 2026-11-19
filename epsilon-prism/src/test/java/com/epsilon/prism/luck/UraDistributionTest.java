@@ -69,7 +69,8 @@ public class UraDistributionTest {
       double sum = 0;
       for (int k1 = 0; k1 <= UraDistribution.MAX_URA; k1++) {
         for (int k2 = 0; k2 <= UraDistribution.MAX_URA; k2++) {
-          Assert.assertEquals(distribution.probability(k1, k2), brute[k1][k2], EPSILON, "trial " + trial);
+          Assert.assertEquals(
+              distribution.probability(k1, k2), brute[k1][k2], EPSILON, "trial " + trial);
           sum += distribution.probability(k1, k2);
         }
       }
@@ -149,12 +150,15 @@ public class UraDistributionTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> distribution.single(pool, count, 3));
     int[] badCount = new int[Tiles.KINDS];
     badCount[Tiles.M5] = Tiles.COPIES + 1;
-    Assert.assertThrows(IllegalArgumentException.class, () -> distribution.single(pool, badCount, 1));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> distribution.single(pool, badCount, 1));
     badCount[Tiles.M5] = -1;
-    Assert.assertThrows(IllegalArgumentException.class, () -> distribution.joint(pool, count, badCount, 1));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> distribution.joint(pool, count, badCount, 1));
     int[] badPool = pool.clone();
     badPool[Tiles.M6] = -1;
-    Assert.assertThrows(IllegalArgumentException.class, () -> distribution.single(badPool, count, 1));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> distribution.single(badPool, count, 1));
   }
 
   private static void assertPoint(UraDistribution distribution, int point) {
@@ -195,7 +199,9 @@ public class UraDistributionTest {
     long subsets = 0;
     for (int index = from; index <= tiles.length - left; index++) {
       int kind = tiles[index];
-      subsets += enumerate(tiles, index + 1, left - 1, k1 + first[kind], k2 + second[kind], first, second, out);
+      subsets +=
+          enumerate(
+              tiles, index + 1, left - 1, k1 + first[kind], k2 + second[kind], first, second, out);
     }
     return subsets;
   }

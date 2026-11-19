@@ -131,7 +131,8 @@ sealed interface Anchor extends AutoCloseable permits Anchor.Eager, Anchor.Hip {
     }
 
     /** ネットワークを CPU に読み込んで重みの束を作り、渡したストリームに計画を開いて重みを写す。 */
-    static Hip open(Path directory, PtStream stream, BatchPlan.Capacity capacity) throws IOException {
+    static Hip open(Path directory, PtStream stream, BatchPlan.Capacity capacity)
+        throws IOException {
       WeightPack pack = WeightPack.load(directory, VERSION);
       HipBackend backend = HipBackend.open(HipLibrary.load(), stream, pack.layout(), capacity);
       try {

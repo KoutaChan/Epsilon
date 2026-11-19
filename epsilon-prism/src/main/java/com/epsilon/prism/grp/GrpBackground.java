@@ -196,7 +196,9 @@ public final class GrpBackground implements AutoCloseable {
     for (int b = last + 1; b <= sealed && !stopping; b++) {
       gate.awaitRunning();
       try {
-        if (b + 1 >= next && setup.selfGrp().grp().refit() == GrpRefit.SCHEDULE && !lifecycle.halted())
+        if (b + 1 >= next
+            && setup.selfGrp().grp().refit() == GrpRefit.SCHEDULE
+            && !lifecycle.halted())
           GrpRefitter.refit(files, setup, b - 1, RefitCause.SCHEDULE, () -> stopping);
         if (stopping) return;
         boolean waits = hold(b);
@@ -224,7 +226,8 @@ public final class GrpBackground implements AutoCloseable {
       int slot = ((Request.GrpRefit) request.request()).slot();
       CancelWatch cancel = new CancelWatch(request);
       try {
-        GrpRefitter.refit(files, setup, slot, RefitCause.MANUAL, () -> stopping || cancel.cancelled());
+        GrpRefitter.refit(
+            files, setup, slot, RefitCause.MANUAL, () -> stopping || cancel.cancelled());
         if (stopping) return;
         if (!cancel.cancelled) {
           boolean waits = hold(slot + 1);
@@ -235,10 +238,18 @@ public final class GrpBackground implements AutoCloseable {
           }
         }
       } catch (IOException | RuntimeException | Error failure) {
-        LOG.warn("grp-refit request {} for slot {} failed: {}", request.number(), slot, failure.toString(), failure);
+        LOG.warn(
+            "grp-refit request {} for slot {} failed: {}",
+            request.number(),
+            slot,
+            failure.toString(),
+            failure);
       }
       if (cancel.cancelled) {
-        LOG.info("Stopped the refit of grp-refit request {} for slot {}: the request was cancelled", request.number(), slot);
+        LOG.info(
+            "Stopped the refit of grp-refit request {} for slot {}: the request was cancelled",
+            request.number(),
+            slot);
       } else {
         requests.retire(request);
         LOG.info("Retired grp-refit request {} for slot {}", request.number(), slot);
@@ -290,7 +301,9 @@ public final class GrpBackground implements AutoCloseable {
         boolean targeted = false;
         for (ControlRequest other : requests.pending()) {
           pending |= other.number() == request.number();
-          targeted |= other.request() instanceof Request.Cancel cancel && cancel.request() == request.number();
+          targeted |=
+              other.request() instanceof Request.Cancel cancel
+                  && cancel.request() == request.number();
         }
         cancelled = targeted || !pending;
       } catch (IOException | RuntimeException failure) {

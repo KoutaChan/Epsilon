@@ -109,7 +109,8 @@ public final class RegimeRepresentatives {
         int kind = action.tile();
         for (int seat = 1; seat < seats; seat++) {
           if (!Threats.isThreat(o, facts, seat)) continue;
-          if (o.riichi(seat) != RiichiState.NONE && !Tiles.contains(facts.safe(seat), kind)) unsafeRiichi++;
+          if (o.riichi(seat) != RiichiState.NONE && !Tiles.contains(facts.safe(seat), kind))
+            unsafeRiichi++;
           danger = Math.max(danger, facts.danger(seat, kind, tools.counts));
         }
       }
@@ -130,7 +131,8 @@ public final class RegimeRepresentatives {
    * 種類が条件に合う手のうち、値が最大の手の位置を返す。比べ方は {@link Greedy#before} と同じ。同点なら同点用の値が大きい手を選び、それも
    * 同じか同点用の値が無ければ番号の小さい手を選ぶ。当てはまる手が無ければ -1。
    */
-  private static int best(int[] legal, float[] values, float[] tieBreak, Predicate<Action.Type> member) {
+  private static int best(
+      int[] legal, float[] values, float[] tieBreak, Predicate<Action.Type> member) {
     int best = -1;
     for (int a = 0; a < legal.length; a++)
       if (member.test(Action.of(legal[a]).type())

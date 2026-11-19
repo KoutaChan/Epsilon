@@ -50,13 +50,7 @@ public class ReferenceNormTest {
     public String toString() {
       return String.format(
           "out equal=%.6f ulps=%d rel=%.3g input equal=%.6f ulps=%d rel=%.3g gain rel=%.3g",
-          outEqual,
-          outUlps,
-          outRelative,
-          inputEqual,
-          inputUlps,
-          inputRelative,
-          gainRelative);
+          outEqual, outUlps, outRelative, inputEqual, inputUlps, inputRelative, gainRelative);
     }
   }
 
@@ -138,8 +132,7 @@ public class ReferenceNormTest {
       gain.setRequiresGradient(true);
       NDArray values = cast(x, DataType.FLOAT32);
       long[] axes = {in.shape().width()};
-      NDArray y =
-          cast(values.getNDArrayInternal().rmsNorm(axes, gain, in.shape().epsilon()), type);
+      NDArray y = cast(values.getNDArrayInternal().rmsNorm(axes, gain, in.shape().epsilon()), type);
       NDArray dy = scope.create(in.gradOut(), shape).toType(type, false);
       collector.backward(y.mul(dy).sum());
       return new Outputs(floats(y), floats(x.getGradient()), floats(gain.getGradient()));

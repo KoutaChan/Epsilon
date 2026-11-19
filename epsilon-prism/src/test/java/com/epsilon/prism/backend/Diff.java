@@ -25,7 +25,8 @@ record Diff(double relativeRms, double withinOneUlp, double maxAbs, int count) {
 
   private static Diff of(float[] expected, float[] actual, boolean bf16) {
     if (expected.length != actual.length) {
-      throw new IllegalArgumentException("lengths differ: " + expected.length + " vs " + actual.length);
+      throw new IllegalArgumentException(
+          "lengths differ: " + expected.length + " vs " + actual.length);
     }
     double error = 0;
     double norm = 0;

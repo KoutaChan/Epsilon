@@ -71,21 +71,26 @@ public record PhiEntry(
     for (String text : new String[] {id, path, sha256, table, tableSha256, parent, reason})
       Objects.requireNonNull(text, "Φ entry fields must not be null");
     if (id.isBlank()) throw new IllegalArgumentException("Φ entry without an id");
-    if (PhiMode.byAlias(id).isPresent()) throw new IllegalArgumentException("Φ entry id " + id + " names a mode");
+    if (PhiMode.byAlias(id).isPresent())
+      throw new IllegalArgumentException("Φ entry id " + id + " names a mode");
     if (effectiveFrom < 1)
-      throw new IllegalArgumentException("Φ entry " + id + " effectiveFrom must be positive: " + effectiveFrom);
+      throw new IllegalArgumentException(
+          "Φ entry " + id + " effectiveFrom must be positive: " + effectiveFrom);
     if (table.isEmpty() != tableSha256.isEmpty())
-      throw new IllegalArgumentException("A Φ table needs its sha and the sha needs a table: " + id);
+      throw new IllegalArgumentException(
+          "A Φ table needs its sha and the sha needs a table: " + id);
     if (outcomes.isEmpty() && !outcomesSha256.isEmpty())
       throw new IllegalArgumentException("An outcome network sha needs the network: " + id);
     if (kind.scoreBased()) {
       if (!path.isEmpty() || !sha256.isEmpty() || !table.isEmpty() || !outcomes.isEmpty())
-        throw new IllegalArgumentException("A score-only Φ entry takes no checkpoint, table or outcome network: " + id);
+        throw new IllegalArgumentException(
+            "A score-only Φ entry takes no checkpoint, table or outcome network: " + id);
     } else if (path.isEmpty()) {
       throw new IllegalArgumentException("A GRP Φ entry needs the exact checkpoint: " + id);
     } else if (!CANDIDATE.matcher(id).matches()
         && (sha256.isEmpty() || outcomes.isEmpty() != outcomesSha256.isEmpty())) {
-      throw new IllegalArgumentException("An outside GRP Φ entry needs the sha of its checkpoint and q: " + id);
+      throw new IllegalArgumentException(
+          "An outside GRP Φ entry needs the sha of its checkpoint and q: " + id);
     }
     if (!outcomes.isEmpty() && !table.isEmpty())
       throw new IllegalArgumentException("An entry with an outcome network takes no table: " + id);
@@ -93,11 +98,12 @@ public record PhiEntry(
 
   /** Φ の出どころが点数だけで決まる固定の Φ のときの項目。phi.jsonl には書かず、全ての反復で効く。 */
   public static PhiEntry scoreOnly(PhiEntryKind kind, Variant variant) {
-    String id = switch (kind) {
-      case SCORE_RANK -> SCORE_RANK_ID;
-      case SCORE_SMOOTH -> SCORE_SMOOTH_ID;
-      case NETWORK -> throw new IllegalArgumentException("Not a score-only kind: " + kind);
-    };
+    String id =
+        switch (kind) {
+          case SCORE_RANK -> SCORE_RANK_ID;
+          case SCORE_SMOOTH -> SCORE_SMOOTH_ID;
+          case NETWORK -> throw new IllegalArgumentException("Not a score-only kind: " + kind);
+        };
     return new PhiEntry(id, kind, variant, "", "", "", "", "", "", 1, "", "phi.source = " + kind);
   }
 
@@ -132,6 +138,18 @@ public record PhiEntry(
 
   /** 同じ項目（q も同じ）を反復 {@code from} から効かせる行を作る。前の項目に戻すときと、開けなかった候補の代わりに使う。 */
   public PhiEntry from(int from, String why) {
-    return new PhiEntry(id, kind, variant, path, sha256, table, tableSha256, outcomes, outcomesSha256, from, parent, why);
+    return new PhiEntry(
+        id,
+        kind,
+        variant,
+        path,
+        sha256,
+        table,
+        tableSha256,
+        outcomes,
+        outcomesSha256,
+        from,
+        parent,
+        why);
   }
 }

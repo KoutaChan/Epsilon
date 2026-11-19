@@ -29,7 +29,9 @@ final class PhiStep implements Step<PrismIteration> {
   @Override
   public Optional<StepReport> done(PrismIteration iteration) throws IOException {
     Path file = iteration.work().resolve(FILE);
-    return Files.exists(file) ? Optional.of(StepReport.read(file, PhiReport.class)) : Optional.empty();
+    return Files.exists(file)
+        ? Optional.of(StepReport.read(file, PhiReport.class))
+        : Optional.empty();
   }
 
   @Override
@@ -40,10 +42,13 @@ final class PhiStep implements Step<PrismIteration> {
     iteration
         .session()
         .control()
-        .await(SafePoint.waiting(PrismStep.PHI.name()), timeout -> background.awaitBoundary(t - 1, timeout));
+        .await(
+            SafePoint.waiting(PrismStep.PHI.name()),
+            timeout -> background.awaitBoundary(t - 1, timeout));
     double waited = (System.nanoTime() - started) / 1e9;
     if (waited >= 1) {
-      LOG.info("t={} waited {}s for the GRP boundary of c{}", t, String.format("%.1f", waited), t - 1);
+      LOG.info(
+          "t={} waited {}s for the GRP boundary of c{}", t, String.format("%.1f", waited), t - 1);
     }
     // 固定の GRP は、この反復に決めた行のファイルで開く（起動したときの行と違えば開き直す）
     ActivePhi phi = iteration.session().resources().phi(t, iteration.settings().phi());
@@ -61,7 +66,8 @@ final class PhiStep implements Step<PrismIteration> {
   static PhiReport recorded(PrismIteration iteration) throws IOException {
     Path file = iteration.work().resolve(FILE);
     if (!Files.exists(file)) {
-      throw new IOException("Iteration " + iteration.number() + " has no " + FILE + ": its Φ step is not done");
+      throw new IOException(
+          "Iteration " + iteration.number() + " has no " + FILE + ": its Φ step is not done");
     }
     return (PhiReport) StepReport.read(file, PhiReport.class).metrics();
   }

@@ -74,6 +74,7 @@ public interface PrismVariant {
    * 中身は resources の {@code prism/variants/<ルールの名前>.toml}。
    */
   default Layer settings() {
-    return Layer.resource("prism/variants/" + variant().name() + ".toml", "variant " + variant().name());
+    return Layer.resource(
+        "prism/variants/" + variant().name() + ".toml", "variant " + variant().name());
   }
 }

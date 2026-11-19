@@ -78,8 +78,7 @@ record CandidateSet(int[] support, int[] measured, boolean explored) {
     int[] byScore = distinct(legal, all, ranking(all, scores, prior));
     int[] byPrior = distinct(legal, all, ranking(all, prior, null));
     members.add(byScore, 0);
-    for (int a : RegimeRepresentatives.of(o, legal, scores, prior, threats))
-      members.add(a);
+    for (int a : RegimeRepresentatives.of(o, legal, scores, prior, threats)) members.add(a);
     members.add(byPrior, 0);
     members.add(byScore, 1);
     members.add(byPrior, 1);

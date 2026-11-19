@@ -96,7 +96,8 @@ public class LedgerTrackerTest {
    * {@code observe}、合法手が 2 つ以上ある判断ごとに {@code policy}、局末に {@code handEnd} を呼ぶ。手は、安い打ち方の one-hot に下限 0.1 を
    * 混ぜた b から引く。
    */
-  private static Hand playHand(Variant variant, long seed, LedgerGames.Style style, StageTimer<Stage> timer) {
+  private static Hand playHand(
+      Variant variant, long seed, LedgerGames.Style style, StageTimer<Stage> timer) {
     var engine = new Engine(variant);
     engine.startGame(SeedMixer.mix64(seed * 2_147_483_647L), DrawOrder.SEAT_STREAMS);
     var ws = new RuleWorkspace(variant);
@@ -154,7 +155,8 @@ public class LedgerTrackerTest {
     double[][] sum = new double[seats][columns], square = new double[seats][columns];
     int[][] nonzero = new int[seats][columns];
     for (long seed = 1; seed <= hands; seed++) {
-      Hand hand = playHand(variant, seed, seed % 3 == 0 ? LedgerGames.KANS : LedgerGames.PLAIN, null);
+      Hand hand =
+          playHand(variant, seed, seed % 3 == 0 ? LedgerGames.KANS : LedgerGames.PLAIN, null);
       for (LedgerGames.Seat target : hand.seats()) {
         int seat = target.seat();
         for (int f = 0; f < columns; f++) {
@@ -175,7 +177,16 @@ public class LedgerTrackerTest {
         double z = mean / Math.sqrt(variance / hands);
         Assert.assertTrue(
             Math.abs(z) < 4.5,
-            variant + " seat " + seat + " " + COLUMNS[f].reportName() + " mean=" + mean + " z=" + z + " nonzero="
+            variant
+                + " seat "
+                + seat
+                + " "
+                + COLUMNS[f].reportName()
+                + " mean="
+                + mean
+                + " z="
+                + z
+                + " nonzero="
                 + nonzero[seat][f]);
       }
     for (int seat = 0; seat < seats; seat++)
@@ -192,7 +203,13 @@ public class LedgerTrackerTest {
           })
         Assert.assertTrue(
             nonzero[seat][column.ordinal()] >= 30,
-            variant + " seat " + seat + " " + column.reportName() + " happened in " + nonzero[seat][column.ordinal()]
+            variant
+                + " seat "
+                + seat
+                + " "
+                + column.reportName()
+                + " happened in "
+                + nonzero[seat][column.ordinal()]
                 + " hands");
     Assert.assertTrue(tested >= 12 * seats, variant + " tested seat columns " + tested);
   }
@@ -236,10 +253,13 @@ public class LedgerTrackerTest {
         square += delta * delta;
       }
       double mean = sum / keys, variance = square / keys - mean * mean;
-      Assert.assertTrue(Math.abs(mean / Math.sqrt(variance / keys)) < 4.5, "config " + config + " mean " + mean);
+      Assert.assertTrue(
+          Math.abs(mean / Math.sqrt(variance / keys)) < 4.5, "config " + config + " mean " + mean);
       double[] expected = new double[n];
       for (int a = 0; a < n; a++) expected[a] = keys * (p[a] > 0 ? p[a] : 0) / weight;
-      double p0 = LedgerGames.chiSquareUpper(LedgerGames.chiSquare(counts, expected), LedgerGames.degrees(expected));
+      double p0 =
+          LedgerGames.chiSquareUpper(
+              LedgerGames.chiSquare(counts, expected), LedgerGames.degrees(expected));
       Assert.assertTrue(p0 > 1e-4, "config " + config + " frequencies " + Arrays.toString(counts));
     }
   }
@@ -250,13 +270,30 @@ public class LedgerTrackerTest {
    */
   @Test
   public void stochasticRoundingIsUnbiased() {
-    double[] xs = {0.3, -0.3, 1e-6, -2.5e-5, 6.1e-5, Math.scalb(1.0, -14), 1 + Math.scalb(1.0, -11), 3.0, 1024.3, -777.77, 65000.7, -65000.7};
+    double[] xs = {
+      0.3,
+      -0.3,
+      1e-6,
+      -2.5e-5,
+      6.1e-5,
+      Math.scalb(1.0, -14),
+      1 + Math.scalb(1.0, -11),
+      3.0,
+      1024.3,
+      -777.77,
+      65000.7,
+      -65000.7
+    };
     int coins = 100_000;
     for (int i = 0; i < xs.length; i++) {
       double x = xs[i], sum = 0, square = 0;
       for (int k = 0; k < coins; k++) {
-        float rounded = LedgerRounding.round(x, LedgerRounding.coin(LedgerRounding.key(11L, i, k), k % 7, k % LedgerColumn.COUNT));
-        Assert.assertEquals(Float.float16ToFloat(Float.floatToFloat16(rounded)), rounded, 0f, "x " + x);
+        float rounded =
+            LedgerRounding.round(
+                x,
+                LedgerRounding.coin(LedgerRounding.key(11L, i, k), k % 7, k % LedgerColumn.COUNT));
+        Assert.assertEquals(
+            Float.float16ToFloat(Float.floatToFloat16(rounded)), rounded, 0f, "x " + x);
         sum += rounded;
         square += (double) rounded * rounded;
       }
@@ -282,32 +319,52 @@ public class LedgerTrackerTest {
   public void policyTermClipsAndSkips() {
     float[] scores = {20f, 0f, -30f}, p = {0.5f, 0.3f, 0.2f};
     Assert.assertTrue(LedgerTracker.policyCounts(scores, p, 3));
-    Assert.assertEquals(LedgerTracker.policyDelta(scores, p, 0, 3, POLICY_CLIP), 8 - (0.5 * 8 + 0.2 * -8), 1e-6);
-    Assert.assertEquals(LedgerTracker.policyDelta(scores, p, 2, 3, POLICY_CLIP), -8 - (0.5 * 8 + 0.2 * -8), 1e-6);
-    Assert.assertFalse(LedgerTracker.policyCounts(new float[] {Float.NaN, 0f, 1f}, new float[] {0.5f, 0.5f, 0f}, 3));
-    Assert.assertFalse(LedgerTracker.policyCounts(new float[] {Float.POSITIVE_INFINITY, 0f}, new float[] {0.5f, 0.5f}, 2));
-    Assert.assertTrue(LedgerTracker.policyCounts(new float[] {Float.NaN, 0f, 1f}, new float[] {0f, 0.5f, 0.5f}, 3));
     Assert.assertEquals(
-        LedgerTracker.policyDelta(new float[] {Float.NaN, 0f, 1f}, new float[] {0f, 0.5f, 0.5f}, 2, 3, POLICY_CLIP), 0.5, 1e-6);
+        LedgerTracker.policyDelta(scores, p, 0, 3, POLICY_CLIP), 8 - (0.5 * 8 + 0.2 * -8), 1e-6);
+    Assert.assertEquals(
+        LedgerTracker.policyDelta(scores, p, 2, 3, POLICY_CLIP), -8 - (0.5 * 8 + 0.2 * -8), 1e-6);
+    Assert.assertFalse(
+        LedgerTracker.policyCounts(
+            new float[] {Float.NaN, 0f, 1f}, new float[] {0.5f, 0.5f, 0f}, 3));
+    Assert.assertFalse(
+        LedgerTracker.policyCounts(
+            new float[] {Float.POSITIVE_INFINITY, 0f}, new float[] {0.5f, 0.5f}, 2));
+    Assert.assertTrue(
+        LedgerTracker.policyCounts(
+            new float[] {Float.NaN, 0f, 1f}, new float[] {0f, 0.5f, 0.5f}, 3));
+    Assert.assertEquals(
+        LedgerTracker.policyDelta(
+            new float[] {Float.NaN, 0f, 1f}, new float[] {0f, 0.5f, 0.5f}, 2, 3, POLICY_CLIP),
+        0.5,
+        1e-6);
     float[] odd = {Float.NaN, -1f, 0f, 0.7f, 0.3f};
-    Assert.assertEquals(LedgerTracker.policyDelta(new float[] {9f, 9f, 9f, 1f, 0f}, odd, 3, 5, POLICY_CLIP), 1 - 0.7, 1e-6);
+    Assert.assertEquals(
+        LedgerTracker.policyDelta(new float[] {9f, 9f, 9f, 1f, 0f}, odd, 3, 5, POLICY_CLIP),
+        1 - 0.7,
+        1e-6);
     int[] legal = discards(1, 2, 3, 4, 5);
-    for (int k = 0; k < 10_000; k++) Assert.assertTrue(CrnKeys.select(SeedMixer.mix64(k), legal, odd, 0) >= 3);
+    for (int k = 0; k < 10_000; k++)
+      Assert.assertTrue(CrnKeys.select(SeedMixer.mix64(k), legal, odd, 0) >= 3);
     // トラッカー: s のない判断と、b > 0 の手の s が有限でない判断は帳簿を変えない
     var tracker = new LedgerTracker(LedgerGames.RECORDING);
     List<LedgerGames.Seat> seats = LedgerGames.seats(Variant.TENHOU_4P);
     tracker.policy(0, null, p, 0, 3, seats);
     tracker.policy(0, new float[] {Float.NaN, 0f, 1f}, p, 1, 3, seats);
-    for (LedgerGames.Seat target : seats) for (double value : target.ledger()) Assert.assertEquals(value, 0.0);
+    for (LedgerGames.Seat target : seats)
+      for (double value : target.ledger()) Assert.assertEquals(value, 0.0);
     tracker.policy(1, scores, p, 0, 3, seats);
     for (LedgerGames.Seat target : seats) {
       int seat = target.seat();
-      Assert.assertEquals(target.ledger()[LedgerColumn.POLICY_SELF.ordinal()], seat == 1 ? 5.6 : 0, 1e-6);
-      Assert.assertEquals(target.ledger()[LedgerColumn.POLICY_OPPONENT.ordinal()], seat == 1 ? 0 : 5.6, 1e-6);
+      Assert.assertEquals(
+          target.ledger()[LedgerColumn.POLICY_SELF.ordinal()], seat == 1 ? 5.6 : 0, 1e-6);
+      Assert.assertEquals(
+          target.ledger()[LedgerColumn.POLICY_OPPONENT.ordinal()], seat == 1 ? 0 : 5.6, 1e-6);
     }
     // 判断の合法手の番号は重ならない（b の正規化は、手の番号が重ならないことを前提にする）
     for (Variant variant : Variant.values()) {
-      RandomGames games = RandomGames.start(variant, 77L + variant.ordinal(), LedgerGames.chooser(variant, LedgerGames.CALLS));
+      RandomGames games =
+          RandomGames.start(
+              variant, 77L + variant.ordinal(), LedgerGames.chooser(variant, LedgerGames.CALLS));
       for (int step = 0; step < 20_000; step++) {
         if (games.boundary() == Boundary.DECISIONS) {
           Decisions decisions = games.engine.decisions();
@@ -328,7 +385,9 @@ public class LedgerTrackerTest {
    */
   @Test
   public void nonFiniteDeltaFails() {
-    Assert.assertThrows(IllegalStateException.class, () -> LedgerTracker.add(new double[LedgerColumn.COUNT], 3, Double.NaN));
+    Assert.assertThrows(
+        IllegalStateException.class,
+        () -> LedgerTracker.add(new double[LedgerColumn.COUNT], 3, Double.NaN));
     Assert.assertThrows(
         IllegalStateException.class,
         () -> LedgerTracker.add(new double[LedgerColumn.COUNT], 3, Double.NEGATIVE_INFINITY));
@@ -336,9 +395,12 @@ public class LedgerTrackerTest {
     List<LedgerGames.Seat> seats = LedgerGames.seats(Variant.TENHOU_4P);
     Assert.assertThrows(
         IllegalStateException.class,
-        () -> tracker.policy(0, new float[] {0f, 1f}, new float[] {Float.POSITIVE_INFINITY, 0.5f}, 0, 2, seats));
+        () ->
+            tracker.policy(
+                0, new float[] {0f, 1f}, new float[] {Float.POSITIVE_INFINITY, 0.5f}, 0, 2, seats));
     Assert.assertThrows(IllegalStateException.class, () -> LedgerRounding.round(70_000, 0.5));
-    Assert.assertThrows(IllegalStateException.class, () -> LedgerRounding.round(Double.POSITIVE_INFINITY, 0.5));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> LedgerRounding.round(Double.POSITIVE_INFINITY, 0.5));
   }
 
   /**
@@ -366,22 +428,32 @@ public class LedgerTrackerTest {
       RoundOutcome outcome = new RoundOutcome(variant);
       for (int trial = 0; trial < 400; trial++) {
         int base = bases[random.nextInt(bases.length)];
-        int winner = random.nextInt(seats), dealer = random.nextInt(seats), honba = random.nextInt(4), sticks = random.nextInt(3);
+        int winner = random.nextInt(seats),
+            dealer = random.nextInt(seats),
+            honba = random.nextInt(4),
+            sticks = random.nextInt(3);
         int[] delta = new int[seats];
         Settlement.tsumo(variant, base, winner, dealer, honba, RoundOutcome.NO_SEAT, delta);
-        Assert.assertEquals(LedgerTracker.tsumoGain(variant, base, winner, dealer, honba, sticks), delta[winner] + Variant.DEPOSIT * sticks);
+        Assert.assertEquals(
+            LedgerTracker.tsumoGain(variant, base, winner, dealer, honba, sticks),
+            delta[winner] + Variant.DEPOSIT * sticks);
         for (int payer = 0; payer < seats; payer++)
-          if (payer != winner) Assert.assertEquals(LedgerTracker.tsumoPayment(base, winner, payer, dealer, honba), -delta[payer]);
+          if (payer != winner)
+            Assert.assertEquals(
+                LedgerTracker.tsumoPayment(base, winner, payer, dealer, honba), -delta[payer]);
         int loser = (winner + 1 + random.nextInt(seats - 1)) % seats;
         delta = new int[seats];
         Settlement.ron(variant, base, winner, loser, dealer, honba, RoundOutcome.NO_SEAT, delta);
-        Assert.assertEquals(LedgerTracker.ronPayment(variant, base, winner, dealer, honba), -delta[loser]);
-        Assert.assertEquals(LedgerTracker.ronPayment(variant, base, winner, dealer, honba), delta[winner]);
+        Assert.assertEquals(
+            LedgerTracker.ronPayment(variant, base, winner, dealer, honba), -delta[loser]);
+        Assert.assertEquals(
+            LedgerTracker.ronPayment(variant, base, winner, dealer, honba), delta[winner]);
         // 裏ドラの重み: 和了者は +1、栄和なら放銃者は −1、ツモなら払いの割合の負（合わせて −1）
         outcome.setRon(base, winner, loser, RoundOutcome.NO_SEAT, 1 << winner);
         for (int seat = 0; seat < seats; seat++)
           Assert.assertEquals(
-              LedgerTracker.uraWeight(variant, outcome, winner, seat, dealer), seat == winner ? 1.0 : seat == loser ? -1.0 : 0.0);
+              LedgerTracker.uraWeight(variant, outcome, winner, seat, dealer),
+              seat == winner ? 1.0 : seat == loser ? -1.0 : 0.0);
         outcome.setTsumo(base, winner, RoundOutcome.NO_SEAT, 1 << winner);
         Assert.assertEquals(outcome.kind(), EndKind.TSUMO);
         double total = 0;
@@ -402,7 +474,8 @@ public class LedgerTrackerTest {
             if (seat == winner) continue;
             double expected = winner == dealer ? -1.0 / 3 : seat == dealer ? -0.5 : -0.25;
             Assert.assertEquals(
-                Double.doubleToRawLongBits(LedgerTracker.uraWeight(variant, outcome, winner, seat, dealer)),
+                Double.doubleToRawLongBits(
+                    LedgerTracker.uraWeight(variant, outcome, winner, seat, dealer)),
                 Double.doubleToRawLongBits(expected));
           }
       }
@@ -418,7 +491,8 @@ public class LedgerTrackerTest {
     for (long seed = 1; seed <= 50; seed++) playHand(variant, seed, LedgerGames.PLAIN, null);
     var timer = new StageTimer<>(Stage.class);
     long draws = 0;
-    for (long seed = 1001; seed <= 1400; seed++) draws += playHand(variant, seed, LedgerGames.PLAIN, timer).draws();
+    for (long seed = 1001; seed <= 1400; seed++)
+      draws += playHand(variant, seed, LedgerGames.PLAIN, timer).draws();
     StageTimer.Entry entry = timer.snapshot().get(Stage.LEDGER);
     Assert.assertNotNull(entry);
     double perCall = entry.seconds() / entry.count() * 1e9, perDraw = entry.seconds() / draws * 1e9;
@@ -456,10 +530,12 @@ public class LedgerTrackerTest {
       tracker.observe(engine.full(), seats, ws);
       if (copy != null) copyTracker.observe(copy.full(), follower, copyWs);
       Decisions decisions = engine.decisions();
-      for (int slot = 0; slot < decisions.size(); slot++) choices[slot] = chooser.choose(engine, slot, random);
+      for (int slot = 0; slot < decisions.size(); slot++)
+        choices[slot] = chooser.choose(engine, slot, random);
       if (decision++ == fork) {
         branch(variant, engine.copy(), new LedgerTracker(tracker), seed);
-        for (int seat = 0; seat < seats.size() && at != null; seat++) at[seat] = seats.get(seat).ledger().clone();
+        for (int seat = 0; seat < seats.size() && at != null; seat++)
+          at[seat] = seats.get(seat).ledger().clone();
         if (follower != null) {
           copy = engine.copy();
           copyTracker = new LedgerTracker(tracker);
@@ -482,7 +558,8 @@ public class LedgerTrackerTest {
     int[] choices = new int[variant.seats()];
     while (true) {
       Decisions decisions = branch.decisions();
-      for (int slot = 0; slot < decisions.size(); slot++) choices[slot] = chooser.choose(branch, slot, random);
+      for (int slot = 0; slot < decisions.size(); slot++)
+        choices[slot] = chooser.choose(branch, slot, random);
       if (branch.commit(choices, ws) != Boundary.DECISIONS) break;
       tracker.observe(branch.full(), seats, ws);
     }
@@ -505,9 +582,13 @@ public class LedgerTrackerTest {
       List<LedgerGames.Seat> forked = mainLedger(variant, seed, fork, follower, at);
       for (int seat = 0; seat < alone.size(); seat++)
         for (int f = 0; f < LedgerColumn.COUNT; f++) {
-          String where = variant + " seed " + seed + " seat " + seat + " " + COLUMNS[f].reportName();
+          String where =
+              variant + " seed " + seed + " seat " + seat + " " + COLUMNS[f].reportName();
           double parent = forked.get(seat).ledger()[f];
-          Assert.assertEquals(Double.doubleToRawLongBits(parent), Double.doubleToRawLongBits(alone.get(seat).ledger()[f]), where);
+          Assert.assertEquals(
+              Double.doubleToRawLongBits(parent),
+              Double.doubleToRawLongBits(alone.get(seat).ledger()[f]),
+              where);
           if (at[seat] == null) continue;
           double copied = follower.get(seat).ledger()[f];
           Assert.assertEquals(copied, parent - at[seat][f], 1e-9, where + " (copy)");
@@ -565,7 +646,8 @@ public class LedgerTrackerTest {
                 full.copyHand(seat, hand);
                 expected -= hand.count(kind);
               }
-              Assert.assertEquals(pool[kind], expected, variant + " kind " + kind + " uras " + uras);
+              Assert.assertEquals(
+                  pool[kind], expected, variant + " kind " + kind + " uras " + uras);
               left += expected;
             }
             Assert.assertEquals(total + uras, left);

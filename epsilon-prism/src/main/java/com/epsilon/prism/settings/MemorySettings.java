@@ -84,7 +84,8 @@ public sealed interface MemorySettings {
    */
   @Case("EMA")
   record Ema(
-      @Key(doc = "半減期（バージョンの数）", value = "8.0") @Range(min = 0, minInclusive = false) double halfLife,
+      @Key(doc = "半減期（バージョンの数）", value = "8.0") @Range(min = 0, minInclusive = false)
+          double halfLife,
       @Key(doc = "平均を始めるバージョン", value = "16") @Range(min = 1) int from,
       @Key(doc = "収集で打つネットワーク", value = "ITERATE") MemoryNetwork collectWith,
       @Key(doc = "生徒の学習を始めるネットワーク", value = "ITERATE") MemoryNetwork learnFrom)

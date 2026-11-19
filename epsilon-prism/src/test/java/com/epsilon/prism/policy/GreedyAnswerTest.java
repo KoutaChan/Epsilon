@@ -49,7 +49,8 @@ public class GreedyAnswerTest {
     for (long[] words : PolicyRequests.observations(3, TableWalk.Policy.GREEDY, 64)) {
       if (reader.bind(words, 0).legalActions() >= actions) {
         int index = batch.add(reader.bind(words, 0));
-        return new PolicyRequest(null, 0, index, null, null, false, 0, batch, index, reader.bind(batch, index));
+        return new PolicyRequest(
+            null, 0, index, null, null, false, 0, batch, index, reader.bind(batch, index));
       }
     }
     throw new IllegalStateException("no decision with " + actions + " legal actions");

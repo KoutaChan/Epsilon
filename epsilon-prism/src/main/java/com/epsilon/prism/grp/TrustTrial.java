@@ -82,7 +82,9 @@ public record TrustTrial(
     List<PhiEntry> history = PhiHistory.read(files);
     for (int cohort : files.recordedCohorts().descendingSet()) {
       if (files.recorded(cohort)
-          && PhiHistory.effectiveAt(history, cohort).map(entry -> entry.kind().scoreBased()).orElse(false)) {
+          && PhiHistory.effectiveAt(history, cohort)
+              .map(entry -> entry.kind().scoreBased())
+              .orElse(false)) {
         return OptionalInt.of(cohort);
       }
     }
@@ -97,7 +99,8 @@ public record TrustTrial(
    * @throws IllegalArgumentException 範囲が空のとき、範囲に確定済みでないか記録の無いコホートがあるとき、範囲の全てを同じ点数だけの
    *     Φ で集めていないとき、記録の Φ の項目かルールが run と違うとき
    */
-  public static TrustTrial run(GrpFiles files, PhiSetup setup, int firstCohort, int lastCohort, int resamples)
+  public static TrustTrial run(
+      GrpFiles files, PhiSetup setup, int firstCohort, int lastCohort, int resamples)
       throws IOException {
     List<PhiEntry> history = PhiHistory.read(files);
     PhiEntry used = null;
@@ -112,31 +115,58 @@ public record TrustTrial(
       PhiEntry entry =
           PhiHistory.effectiveAt(history, cohort)
               .orElseThrow(
-                  () -> new IllegalArgumentException("No Φ entry for cohort " + at + " in " + files.phiHistory()));
+                  () ->
+                      new IllegalArgumentException(
+                          "No Φ entry for cohort " + at + " in " + files.phiHistory()));
       if (!entry.kind().scoreBased()) {
         throw new IllegalArgumentException(
-            "Cohort " + cohort + " was collected with " + entry.id() + " (" + entry.kind() + "), not a score-only Φ");
+            "Cohort "
+                + cohort
+                + " was collected with "
+                + entry.id()
+                + " ("
+                + entry.kind()
+                + "), not a score-only Φ");
       }
       if (used == null) {
         used = entry;
       } else if (!used.sameValue(entry)) {
         throw new IllegalArgumentException(
-            "Cohorts " + firstCohort + ".." + lastCohort + " were collected with " + used.id() + " and " + entry.id());
+            "Cohorts "
+                + firstCohort
+                + ".."
+                + lastCohort
+                + " were collected with "
+                + used.id()
+                + " and "
+                + entry.id());
       }
       GameCohort recorded = GameRecordCodec.read(files.records(cohort));
       if (recorded.variant() != setup.variant()) {
         throw new IllegalArgumentException(
-            "Variant mismatch: expected " + setup.variant() + " but found " + recorded.variant() + " in "
+            "Variant mismatch: expected "
+                + setup.variant()
+                + " but found "
+                + recorded.variant()
+                + " in "
                 + files.records(cohort));
       }
       if (!recorded.phiId().equals(entry.id())) {
         throw new IllegalArgumentException(
-            "Cohort " + cohort + " was recorded with " + recorded.phiId() + ", not " + entry.id() + " of "
+            "Cohort "
+                + cohort
+                + " was recorded with "
+                + recorded.phiId()
+                + ", not "
+                + entry.id()
+                + " of "
                 + files.phiHistory());
       }
       games.addAll(recorded.games());
       cohortGames =
-          Math.min(cohortGames, (int) recorded.games().stream().filter(game -> !game.handEnds().isEmpty()).count());
+          Math.min(
+              cohortGames,
+              (int) recorded.games().stream().filter(game -> !game.handEnds().isEmpty()).count());
     }
     if (used == null) {
       throw new IllegalArgumentException("Empty cohort range " + firstCohort + ".." + lastCohort);
@@ -144,7 +174,9 @@ public record TrustTrial(
     // 全ての半荘を、学習に使える最初の番号のコホート 1 つとして足す。こうすると、学習に使わない始めのコホートも測れる
     int slot = RecencyWindow.SKIPPED_COHORTS + 1;
     GrpRows.Split rows =
-        GrpRows.builder(setup.variant(), RecencyWindow.uniform(slot, 1), GateCohort.GUARDED).add(slot, games).build();
+        GrpRows.builder(setup.variant(), RecencyWindow.uniform(slot, 1), GateCohort.GUARDED)
+            .add(slot, games)
+            .build();
     List<GameRecord> held = GateCohort.GUARDED.gateGames(games);
     GrpOperations operations = setup.selfGrp().grp();
     long seed = SeedMixer.derive(setup.seed(), SALT, firstCohort, lastCohort);
@@ -166,8 +198,14 @@ public record TrustTrial(
     MonotoneProbe probe = MonotoneProbe.of(ends);
     GateReport gate =
         GrpGate.replacement(
-            ends, usedValues, candidateValues, probe.violationRate(usedPhi), probe.violationRate(candidatePhi));
-    TrustGames trust = TrustGames.measure(ends, usedValues, candidateValues, resamples, SeedMixer.derive(seed, SALT));
+            ends,
+            usedValues,
+            candidateValues,
+            probe.violationRate(usedPhi),
+            probe.violationRate(candidatePhi));
+    TrustGames trust =
+        TrustGames.measure(
+            ends, usedValues, candidateValues, resamples, SeedMixer.derive(seed, SALT));
     return new TrustTrial(
         firstCohort,
         lastCohort,

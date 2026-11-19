@@ -35,10 +35,18 @@ import java.util.OptionalInt;
  * @param cohorts 測るコホートの範囲（a..b。無ければ、点数だけの Φ で集めて半荘の記録がある、最新の確定済みのコホート 1 つ）
  * @param resamples ブートストラップの回数
  */
-@Named(value = "grp-trust", doc = "Measure how many games the first switch away from the score-only Φ needs for a 2 SE decision")
+@Named(
+    value = "grp-trust",
+    doc =
+        "Measure how many games the first switch away from the score-only Φ needs for a 2 SE"
+            + " decision")
 public record GrpTrust(
     @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Range of cohorts to measure (a..b; default: the latest sealed cohort collected with the score-only Φ)", presence = Presence.ABSENT)
+    @Key(
+            doc =
+                "Range of cohorts to measure (a..b; default: the latest sealed cohort collected"
+                    + " with the score-only Φ)",
+            presence = Presence.ABSENT)
         String cohorts,
     @Key(doc = "Number of bootstrap samples", value = "2000") @Range(min = 2) int resamples)
     implements PrismCommand {
@@ -58,7 +66,12 @@ public record GrpTrust(
     PrismSettings settings = PrismApp.latest(run);
     if (!(settings.phi() instanceof PhiSettings.SelfGrp self)) {
       throw new SettingsException(
-          List.of("The run " + run + " has the Φ source " + settings.phi().source() + ", not SELF_GRP"));
+          List.of(
+              "The run "
+                  + run
+                  + " has the Φ source "
+                  + settings.phi().source()
+                  + ", not SELF_GRP"));
     }
     GrpFiles files = new GrpFiles(run);
     Span span;
@@ -67,7 +80,8 @@ public record GrpTrust(
     } else {
       OptionalInt latest = TrustTrial.latestCohort(files);
       if (latest.isEmpty()) {
-        throw new SettingsException(List.of("The run " + run + " has no sealed cohort recorded with a score-only Φ"));
+        throw new SettingsException(
+            List.of("The run " + run + " has no sealed cohort recorded with a score-only Φ"));
       }
       span = new Span(latest.getAsInt(), latest.getAsInt());
     }
@@ -85,8 +99,8 @@ public record GrpTrust(
     out.println(
         String.format(
             Locale.ROOT,
-            "cohorts %s of %s collected with %s (%s): %d games learned from scratch (%d rows, %d stop rows,"
-                + " %d half epochs, stop NLL %.6f), %d games held out",
+            "cohorts %s of %s collected with %s (%s): %d games learned from scratch (%d rows, %d"
+                + " stop rows, %d half epochs, stop NLL %.6f), %d games held out",
             span,
             settings.run().variant(),
             trial.used().id(),
@@ -100,8 +114,8 @@ public record GrpTrust(
     out.println(
         String.format(
             Locale.ROOT,
-            "held out: %d games with hand ends, %.3f hand ends per game, paired MSE candidate - used %+.6f"
-                + " (SE %.6f, z %+.2f), bootstrap SD %.6f over %d resamples",
+            "held out: %d games with hand ends, %.3f hand ends per game, paired MSE candidate -"
+                + " used %+.6f (SE %.6f, z %+.2f), bootstrap SD %.6f over %d resamples",
             trust.games(),
             trust.handEndsPerGame(),
             trust.difference().mean(),
@@ -120,14 +134,20 @@ public record GrpTrust(
     others.remove(GateFailure.NOT_BETTER);
     if (!others.isEmpty()) {
       out.println(
-          "the candidate learned from " + trial.learnedGames() + " games fails " + others
-              + ", so the first switch needs a larger window than the 2 SE judgment alone: measure more cohorts");
+          "the candidate learned from "
+              + trial.learnedGames()
+              + " games fails "
+              + others
+              + ", so the first switch needs a larger window than the 2 SE judgment alone: measure"
+              + " more cohorts");
     }
     int now = self.grp().trustGames();
     if (Double.isInfinite(trust.withPower())) {
       out.println(
-          "the candidate is not better on the held-out games, so no number of games passes the 2 SE judgment"
-              + " (the run has trustGames " + now + ")");
+          "the candidate is not better on the held-out games, so no number of games passes the 2 SE"
+              + " judgment (the run has trustGames "
+              + now
+              + ")");
       return Outcome.ok(
           String.format(
               Locale.ROOT,
@@ -138,20 +158,24 @@ public record GrpTrust(
     }
     if (!trial.cohortHasPower()) {
       out.println(
-          "the gate of a refit compares only the games of the next cohort, and a cohort of the range has "
-              + trial.cohortGames() + " games with hand ends, fewer than the 2 SE judgment needs: a larger trustGames"
+          "the gate of a refit compares only the games of the next cohort, and a cohort of the"
+              + " range has "
+              + trial.cohortGames()
+              + " games with hand ends, fewer than the 2 SE judgment needs: a larger trustGames"
               + " adds none, so measure more cohorts or collect larger ones");
     }
     boolean enough = others.isEmpty() && trial.cohortHasPower();
     OptionalInt suggested = enough ? suggestion(trial.learnedGames()) : OptionalInt.empty();
     String suggestion =
-        suggested.isPresent() ? Integer.toString(suggested.getAsInt()) : enough ? "over " + MAX_SUGGESTION : "none";
+        suggested.isPresent()
+            ? Integer.toString(suggested.getAsInt())
+            : enough ? "over " + MAX_SUGGESTION : "none";
     out.println(
         String.format(
             Locale.ROOT,
-            "2 SE judgment: %d games at the line, %d games with 95%% power, counted in the cohort after the refit"
-                + " range (a cohort of the range has %d); the candidate learned from %d games of the range;"
-                + " suggested trustGames %s (the run has %d)",
+            "2 SE judgment: %d games at the line, %d games with 95%% power, counted in the cohort"
+                + " after the refit range (a cohort of the range has %d); the candidate learned"
+                + " from %d games of the range; suggested trustGames %s (the run has %d)",
             (long) Math.ceil(trust.atLine()),
             (long) Math.ceil(trust.withPower()),
             trial.cohortGames(),

@@ -53,7 +53,10 @@ public record PhiMonitorLine(
 
   /** 1 行に JSON を 1 つ書く Gson。NaN の値もそのまま書き、そのまま読む。 */
   private static final Gson LINES =
-      new GsonBuilder().serializeSpecialFloatingPointValues().setStrictness(Strictness.LENIENT).create();
+      new GsonBuilder()
+          .serializeSpecialFloatingPointValues()
+          .setStrictness(Strictness.LENIENT)
+          .create();
 
   /**
    * phimon.jsonl の全ての行を書いた順に返す。ファイルが無ければ空。壊れた行は、最後の行でなくても書きかけで止まった行とみなして
@@ -82,7 +85,8 @@ public record PhiMonitorLine(
     Path path = files.monitor();
     Files.createDirectories(path.getParent());
     try (FileChannel channel =
-        FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+        FileChannel.open(
+            path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
       // 最後の行が書きかけで止まっていれば、改行で閉じてから足す。読む側はその行を飛ばす
       long size = channel.size();
       String prefix = "";
@@ -91,7 +95,9 @@ public record PhiMonitorLine(
         channel.read(lastByte, size - 1);
         if (lastByte.get(0) != '\n') prefix = "\n";
       }
-      channel.write(ByteBuffer.wrap((prefix + LINES.toJson(this) + "\n").getBytes(StandardCharsets.UTF_8)), size);
+      channel.write(
+          ByteBuffer.wrap((prefix + LINES.toJson(this) + "\n").getBytes(StandardCharsets.UTF_8)),
+          size);
       channel.force(true);
     }
   }
@@ -106,7 +112,8 @@ public record PhiMonitorLine(
     GrpReport.Fit penultimate = groups.size() >= 2 ? groups.get(groups.size() - 2) : null;
     return String.format(
         Locale.ROOT,
-        "phi[%d] %s mse=%.5f D=%.3e slope=%.3f z=%+.1f close=%.2fpp mode=%s late=%s shadows=%d %.0fs",
+        "phi[%d] %s mse=%.5f D=%.3e slope=%.3f z=%+.1f close=%.2fpp mode=%s late=%s shadows=%d"
+            + " %.0fs",
         cohort,
         phiId,
         active.mse(),
@@ -115,7 +122,9 @@ public record PhiMonitorLine(
         penultimate == null ? Double.NaN : penultimate.slopeZ(),
         100 * widestCloseGap(active),
         mode,
-        late == null ? "-" : String.format(Locale.ROOT, "%+.3e(z=%+.1f)", late.mse().mean(), late.mse().z()),
+        late == null
+            ? "-"
+            : String.format(Locale.ROOT, "%+.3e(z=%+.1f)", late.mse().mean(), late.mse().z()),
         shadows.size(),
         seconds);
   }

@@ -73,7 +73,8 @@ public record AuxiliaryLabels(
    * @return 空の教師
    */
   public static AuxiliaryLabels empty(TargetSchema heads) {
-    return new AuxiliaryLabels(heads, new int[0], new int[0], new float[0], new int[0], new float[0]);
+    return new AuxiliaryLabels(
+        heads, new int[0], new int[0], new float[0], new int[0], new float[0]);
   }
 
   private static void requireFinite(float[] values) {

@@ -67,7 +67,8 @@ public enum PrismRun implements RunKind<PrismSettings, PrismState, PrismIteratio
   }
 
   @Override
-  public RunSession<PrismSettings, PrismState, PrismIteration> open(Launch<PrismSettings> launch) throws IOException {
+  public RunSession<PrismSettings, PrismState, PrismIteration> open(Launch<PrismSettings> launch)
+      throws IOException {
     return PrismSession.open(launch);
   }
 
@@ -80,7 +81,8 @@ public enum PrismRun implements RunKind<PrismSettings, PrismState, PrismIteratio
    */
   public static Runner<PrismSettings, PrismState, PrismIteration, PrismStep> runner(
       Path run, Integer stopAfter, BooleanSupplier signalled) throws IOException {
-    return new Runner<>(new RunDirectory(run), LINEAGE, Runner.Options.of(Jars.running(), stopAfter, signalled));
+    return new Runner<>(
+        new RunDirectory(run), LINEAGE, Runner.Options.of(Jars.running(), stopAfter, signalled));
   }
 
   /** run を回した呼び出しの終わり方を、コマンドの終わり方に直す。 */

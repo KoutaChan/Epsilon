@@ -13,8 +13,10 @@ public class GreedyTest {
   @Test
   public void tiesGoToThePriorThenTheIndex() {
     Assert.assertEquals(Greedy.argmax(new float[] {0.1f, 0.3f, 0.3f}, null, 3), 1);
-    Assert.assertEquals(Greedy.argmax(new float[] {0.1f, 0.3f, 0.3f}, new float[] {0.5f, 0.2f, 0.3f}, 3), 2);
-    Assert.assertEquals(Greedy.argmax(new float[] {0.1f, 0.3f, 0.3f}, new float[] {0.5f, 0.25f, 0.25f}, 3), 1);
+    Assert.assertEquals(
+        Greedy.argmax(new float[] {0.1f, 0.3f, 0.3f}, new float[] {0.5f, 0.2f, 0.3f}, 3), 2);
+    Assert.assertEquals(
+        Greedy.argmax(new float[] {0.1f, 0.3f, 0.3f}, new float[] {0.5f, 0.25f, 0.25f}, 3), 1);
     Assert.assertEquals(Greedy.argmax(new float[] {0.1f, 0.3f, 0.9f}, null, 2), 1);
   }
 
@@ -25,7 +27,8 @@ public class GreedyTest {
     Assert.assertEquals(Greedy.argmax(new float[] {0.1f, NAN, 0.3f}, null, 3), 2);
     Assert.assertEquals(Greedy.argmax(new float[] {0.3f, 0.1f, NAN}, null, 3), 0);
     Assert.assertEquals(Greedy.argmax(new float[] {NAN, Float.NEGATIVE_INFINITY}, null, 2), 1);
-    Assert.assertEquals(Greedy.argmax(new float[] {NAN, 0.3f, 0.3f}, new float[] {0.6f, 0.1f, 0.3f}, 3), 2);
+    Assert.assertEquals(
+        Greedy.argmax(new float[] {NAN, 0.3f, 0.3f}, new float[] {0.6f, 0.1f, 0.3f}, 3), 2);
     float[] scores = {NAN, 0.3f};
     Assert.assertTrue(Greedy.before(1, 0, scores, null));
     Assert.assertFalse(Greedy.before(0, 1, scores, null));

@@ -22,10 +22,12 @@ public record ModeLine(PhiMode mode, Double cutoff, int effectiveFrom, String re
     Objects.requireNonNull(mode, "mode");
     Objects.requireNonNull(reason, "reason");
     if (effectiveFrom < 1) {
-      throw new IllegalArgumentException("Mode line effectiveFrom must be positive: " + effectiveFrom);
+      throw new IllegalArgumentException(
+          "Mode line effectiveFrom must be positive: " + effectiveFrom);
     }
     if (mode == PhiMode.LATE && (cutoff == null || !(cutoff >= 0 && cutoff < 1))) {
-      throw new IllegalArgumentException("A LATE mode line needs a cutoff in [0, 1), got " + cutoff);
+      throw new IllegalArgumentException(
+          "A LATE mode line needs a cutoff in [0, 1), got " + cutoff);
     }
     if (mode == PhiMode.GRP && cutoff != null) {
       throw new IllegalArgumentException("A GRP mode line takes no cutoff, got " + cutoff);
@@ -46,7 +48,8 @@ public record ModeLine(PhiMode mode, Double cutoff, int effectiveFrom, String re
   public static Optional<ModeLine> effectiveAt(List<ModeLine> lines, int t) {
     ModeLine effective = null;
     for (ModeLine line : lines) {
-      if (line.effectiveFrom <= t && (effective == null || line.effectiveFrom >= effective.effectiveFrom)) {
+      if (line.effectiveFrom <= t
+          && (effective == null || line.effectiveFrom >= effective.effectiveFrom)) {
         effective = line;
       }
     }

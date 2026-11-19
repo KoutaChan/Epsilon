@@ -22,13 +22,15 @@ import java.util.Map;
  * @param run run のディレクトリ
  */
 @Named(value = "jobs list", doc = "List the run's jobs and their states")
-public record JobsList(@Key(doc = "Run directory", presence = Presence.REQUIRED) Path run) implements PrismCommand {
+public record JobsList(@Key(doc = "Run directory", presence = Presence.REQUIRED) Path run)
+    implements PrismCommand {
 
   @Override
   public Outcome run(Context<PrismSettings> context) throws Exception {
     context.requireNoLayers();
     RunDirectory directory = new RunDirectory(run);
-    Jobs.Listing listing = new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS)).list();
+    Jobs.Listing listing =
+        new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS)).list();
     PrintStream out = context.out();
     Map<JobFile.State, Integer> counts = new EnumMap<>(JobFile.State.class);
     for (JobFile job : listing.jobs()) {
@@ -48,6 +50,11 @@ public record JobsList(@Key(doc = "Run directory", presence = Presence.REQUIRED)
       out.println(String.format(Locale.ROOT, "%-24s UNREADABLE", name));
     }
     return Outcome.ok(
-        "jobs=" + listing.jobs().size() + " " + counts + " unreadable=" + listing.unreadable().size());
+        "jobs="
+            + listing.jobs().size()
+            + " "
+            + counts
+            + " unreadable="
+            + listing.unreadable().size());
   }
 }

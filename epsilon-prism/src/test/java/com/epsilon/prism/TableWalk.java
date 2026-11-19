@@ -148,12 +148,14 @@ public final class TableWalk {
         Decisions table = engine.decisions();
         Decisions shadow = mirror.decisions();
         if (table.size() != shadow.size()) {
-          throw new AssertionError("The mirrored round has " + shadow.size() + " slots, not " + table.size());
+          throw new AssertionError(
+              "The mirrored round has " + shadow.size() + " slots, not " + table.size());
         }
         for (int slot = 0; slot < table.size(); slot++) {
           int mirrorSlot = shadow.slotOf(table.seat(slot));
           if (mirrorSlot < 0 || table.legalCount(slot) != shadow.legalCount(mirrorSlot)) {
-            throw new AssertionError("The mirrored round has other decisions of seat " + table.seat(slot));
+            throw new AssertionError(
+                "The mirrored round has other decisions of seat " + table.seat(slot));
           }
           visitor.decision(engine, slot, mirror, mirrorSlot);
           decisions++;
@@ -188,7 +190,8 @@ public final class TableWalk {
     int best = 0;
     int bestValue = Integer.MIN_VALUE;
     for (int index = 0; index < legal; index++) {
-      int value = value(Action.of(boundary.legal(slot, index))) * PER_SHANTEN + random.nextInt(PER_SHANTEN);
+      int value =
+          value(Action.of(boundary.legal(slot, index))) * PER_SHANTEN + random.nextInt(PER_SHANTEN);
       if (value > bestValue) {
         best = index;
         bestValue = value;
@@ -207,7 +210,9 @@ public final class TableWalk {
       case RIICHI_DAHAI -> policy == Policy.GREEDY ? RIICHI - shantenAfter(action.tile()) : 0;
       case DAHAI -> {
         boolean simple = (Tiles.bit(action.tile()) & Tiles.TERMINALS_AND_HONORS) == 0L;
-        yield DISCARD - shantenAfter(action.tile()) + (policy == Policy.TERMINALS && simple ? SIMPLE : 0);
+        yield DISCARD
+            - shantenAfter(action.tile())
+            + (policy == Policy.TERMINALS && simple ? SIMPLE : 0);
       }
       case NUKI -> policy == Policy.TERMINALS ? 0 : CALL;
     };
@@ -235,7 +240,8 @@ public final class TableWalk {
         scores[random.nextInt(seats)] += amount;
       }
     }
-    return new RoundStart(variant, random.nextInt(variant.finalRound() + 1), random.nextInt(4), kyotaku, scores);
+    return new RoundStart(
+        variant, random.nextInt(variant.finalRound() + 1), random.nextInt(4), kyotaku, scores);
   }
 
   private int[] randomWall(Random random) {

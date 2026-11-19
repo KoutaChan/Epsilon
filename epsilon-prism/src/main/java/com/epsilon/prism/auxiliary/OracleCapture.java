@@ -70,13 +70,16 @@ public final class OracleCapture {
       int player = (seat + relative) % seats;
       full.copyHand(player, hand);
       if (hand.size() != HandShape.MAX_SIZE - 1) {
-        throw new IllegalStateException("Opponent " + player + " holds " + hand.size() + " tiles at a decision");
+        throw new IllegalStateException(
+            "Opponent " + player + " holds " + hand.size() + " tiles at a decision");
       }
       int shanten = shapes.shanten(hand);
       long waits = full.waits(player);
       long danger = 0L;
       boolean dealer = player == table.dealer();
-      for (long rest = waits & ~TenpaiProbe.fullyHeld(table, player, hand); rest != 0L; rest &= rest - 1) {
+      for (long rest = waits & ~TenpaiProbe.fullyHeld(table, player, hand);
+          rest != 0L;
+          rest &= rest - 1) {
         int kind = Long.numberOfTrailingZeros(rest);
         if (full.ronScore(player, Tiles.physicalId(kind, PLAIN_COPY), seat, ws, score)) {
           danger |= Tiles.bit(kind);

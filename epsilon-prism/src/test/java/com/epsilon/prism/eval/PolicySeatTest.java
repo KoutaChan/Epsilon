@@ -73,7 +73,8 @@ public class PolicySeatTest {
     }
 
     @Override
-    public CompletableFuture<Void> choose(ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
+    public CompletableFuture<Void> choose(
+        ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
       reservation.handoff(this).release();
       if (failing) {
         return CompletableFuture.failedFuture(new IllegalStateException("no answer"));
@@ -138,7 +139,8 @@ public class PolicySeatTest {
     for (int row = 0; row < batch.size(); row++) {
       PolicyRequest request = batch.get(row);
       int start = request.recordBase();
-      long[] words = Arrays.copyOfRange(request.recordWords(), start, start + request.bind(o).longs());
+      long[] words =
+          Arrays.copyOfRange(request.recordWords(), start, start + request.bind(o).longs());
       Assert.assertEquals(policy.received.get(row), words, "row " + row);
       float[] sigma = new float[request.legalCount()];
       sigma[sigma.length - 1] = 1f;
@@ -146,7 +148,8 @@ public class PolicySeatTest {
       Assert.assertNull(request.scores);
       Assert.assertNull(request.prior);
     }
-    Assert.assertThrows(UnsupportedOperationException.class, () -> seat.evaluateInline(batch.getFirst()));
+    Assert.assertThrows(
+        UnsupportedOperationException.class, () -> seat.evaluateInline(batch.getFirst()));
     seat.close();
     Assert.assertTrue(policy.closed);
   }
@@ -159,8 +162,10 @@ public class PolicySeatTest {
     var attempt = seat.tryAcquireIngress(0);
     CompletionException failure =
         Assert.expectThrows(
-            CompletionException.class, () -> seat.submit(List.<Query>copyOf(requests(3)), attempt.ingress()).join());
-    Assert.assertTrue(failure.getCause() instanceof IllegalStateException, String.valueOf(failure.getCause()));
+            CompletionException.class,
+            () -> seat.submit(List.<Query>copyOf(requests(3)), attempt.ingress()).join());
+    Assert.assertTrue(
+        failure.getCause() instanceof IllegalStateException, String.valueOf(failure.getCause()));
   }
 
   @Test

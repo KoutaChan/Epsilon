@@ -28,10 +28,16 @@ import java.util.OptionalDouble;
  * @param run run のディレクトリ
  * @param cohorts 測るコホートの範囲（a..b。無ければ、半荘の記録がある確定済みのコホートの全て）
  */
-@Named(value = "grp-sigma", doc = "Measure the σ coefficient of the smooth score-only Φ from the game records")
+@Named(
+    value = "grp-sigma",
+    doc = "Measure the σ coefficient of the smooth score-only Φ from the game records")
 public record GrpSigma(
     @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Range of cohorts to measure (a..b; default: every sealed cohort with game records)", presence = Presence.ABSENT)
+    @Key(
+            doc =
+                "Range of cohorts to measure (a..b; default: every sealed cohort with game"
+                    + " records)",
+            presence = Presence.ABSENT)
         String cohorts)
     implements PrismCommand {
 
@@ -51,13 +57,15 @@ public record GrpSigma(
     Span span = cohorts == null ? null : Span.of("cohorts", cohorts);
     List<Integer> chosen = new ArrayList<>();
     for (int cohort : files.recordedCohorts()) {
-      if (files.recorded(cohort) && (span == null || (cohort >= span.first() && cohort <= span.last()))) {
+      if (files.recorded(cohort)
+          && (span == null || (cohort >= span.first() && cohort <= span.last()))) {
         chosen.add(cohort);
       }
     }
     if (chosen.isEmpty()) {
       String where = span == null ? "" : " in " + span;
-      throw new SettingsException(List.of("The run " + run + " has no sealed cohort with game records" + where));
+      throw new SettingsException(
+          List.of("The run " + run + " has no sealed cohort with game records" + where));
     }
     Variant variant = null;
     SmoothSigma.Builder builder = null;
@@ -69,7 +77,11 @@ public record GrpSigma(
         builder = SmoothSigma.builder(variant);
       } else if (recorded.variant() != variant) {
         throw new IllegalStateException(
-            "Variant mismatch: expected " + variant + " but found " + recorded.variant() + " in "
+            "Variant mismatch: expected "
+                + variant
+                + " but found "
+                + recorded.variant()
+                + " in "
                 + files.records(cohort));
       }
       builder.add(recorded.games());
@@ -92,7 +104,8 @@ public record GrpSigma(
     out.println(
         String.format(
             Locale.ROOT,
-            "%s over %d cohorts (%d..%d), %d games, %d seat-hands: sigma per hand %.1f (in use: %s)",
+            "%s over %d cohorts (%d..%d), %d games, %d seat-hands: sigma per hand %.1f (in use:"
+                + " %s)",
             variant,
             chosen.size(),
             chosen.getFirst(),
@@ -103,7 +116,11 @@ public record GrpSigma(
             inUse.isPresent() ? String.format(Locale.ROOT, "%.0f", inUse.getAsDouble()) : "none"));
     return Outcome.ok(
         String.format(
-            Locale.ROOT, "variant=%s sigmaPerHand=%.1f seatHands=%d", variant, sigma.perHand(), sigma.seatHands()));
+            Locale.ROOT,
+            "variant=%s sigmaPerHand=%.1f seatHands=%d",
+            variant,
+            sigma.perHand(),
+            sigma.seatHands()));
   }
 
   /** 局の名前（東 1 局なら E1）を返す。 */

@@ -26,6 +26,7 @@ import com.epsilon.prism.luck.LedgerTracker;
 import com.epsilon.prism.luck.UraExpectation;
 import com.epsilon.prism.luck.UraValues;
 import com.epsilon.prism.policy.PolicyRequest;
+import com.epsilon.prism.policy.PolicyService;
 import com.epsilon.prism.rows.Row;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -112,6 +113,9 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
   /** 判断ごとの予定。強制の判断と行を作らない判断は {@link LabelPlan#NONE}。 */
   private final LabelPlan[] plans;
 
+  private final int[] forcedAction;
+  private final PolicyRequest[] first, second;
+
   private final List<HandEnd> handEnds = new ArrayList<>(1);
 
   /** この局の値の受け取り先。写しと分岐は、作られたときに親が入れた受け取り先で始まる。主経路は局ごとに新しい一覧で始める。 */
@@ -135,6 +139,9 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
   CollectionPath(CollectContext context, long gameId) {
     this.context = context;
     role = Role.MAIN;
+    forcedAction = context.split == null ? null : new int[1];
+    first = context.split == null ? null : new PolicyRequest[context.variant.seats() - 1];
+    second = context.split == null ? null : new PolicyRequest[first.length];
     decisionCounts = new DecisionCounts(Role.MAIN, null);
     if (context.phi.needsHistory()) {
       history = new RoundHistory(context.variant);
@@ -152,7 +159,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
     plans = plans(context);
     targets = new ArrayList<>();
     ledger = context.ledger == null ? null : new LedgerTracker(context.ledger);
-    rows = new RowRecorder(context.variant);
+    rows = context.split == null ? new RowRecorder(context.variant) : null;
   }
 
   /**
@@ -175,6 +182,8 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
     if (role == Role.MAIN) throw new IllegalArgumentException("Spawned paths are copies or forks");
     context = parent.context;
     this.role = role;
+    forcedAction = null;
+    first = second = null;
     boolean copy = role == Role.COPY;
     rootClass = copy ? decisionClass : null;
     copyRule = copy ? context.sampling.rollIn(decisionClass) : null;
@@ -190,7 +199,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
     // 計算器は、親が最後に読んだ判断の時点（o の時点）から写す。o の打牌の後の表示とツモは、この経路の最初の判断の時点で数える
     ledger = parent.ledger == null ? null : new LedgerTracker(parent.ledger);
     // 行の記録の聴牌への到達も、親の o の時点から写す。o の打牌は、この経路の最初の判断の時点で数える
-    rows = new RowRecorder(parent.rows);
+    rows = parent.rows == null ? null : new RowRecorder(parent.rows);
   }
 
   private static LabelPlan[] plans(CollectContext context) {
@@ -204,7 +213,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
   public void boundary(Run<PolicyRequest> run, Decisions decisions, RuleWorkspace ws) {
     FullView full = run.full();
     if (ledger != null) ledger.observe(full, targets, ws);
-    rows.boundary(full, targets);
+    if (rows != null) rows.boundary(full, targets);
     stage = Stage.of(context.variant, full.seat(0).liveLeft());
   }
 
@@ -228,11 +237,54 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
     int seat = decisions.seat(slot);
     Kind kind = Kind.classify(decisions.kind(slot), legal);
     int threats = Threats.count(view);
-    DecisionClass decisionClass = DecisionClass.of(context.variant, kind, stage, threats, view.round());
+    DecisionClass decisionClass =
+        DecisionClass.of(context.variant, kind, stage, threats, view.round());
     LabelPlan plan = plan(decisions.id(slot), seat, decisionClass, threats, legal, view);
     plans[slot] = plan;
+    if (context.split != null
+        && role == Role.MAIN
+        && context.split.sampled(coinKey, decisions.id(slot))) {
+      first[slot] =
+          ask(context.split.first, run, slot, kind, decisionClass, records, record, observation);
+      second[slot] =
+          ask(context.split.second, run, slot, kind, decisionClass, records, record, observation);
+    }
     return new PolicyRequest(
-        run, run.game().wall(), slot, kind, decisionClass, plan.retain(), admission, records, record, observation);
+        run,
+        run.game().wall(),
+        slot,
+        kind,
+        decisionClass,
+        plan.retain(),
+        admission,
+        records,
+        record,
+        observation);
+  }
+
+  private static PolicyRequest ask(
+      PolicyService policy,
+      Run<PolicyRequest> run,
+      int slot,
+      Kind kind,
+      DecisionClass group,
+      ObservationBatch records,
+      int record,
+      Observation observation) {
+    var request =
+        new PolicyRequest(
+            run,
+            run.game().wall(),
+            slot,
+            kind,
+            group,
+            false,
+            policy.admission(observation, run.game().wall()),
+            records,
+            record,
+            observation);
+    run.ask(policy, request);
+    return request;
   }
 
   /**
@@ -241,7 +293,12 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
    * 予約した時点で上限に数える。写しの進行は決定的なので、どの判断が当たるかも実行順に依らない。
    */
   private LabelPlan plan(
-      long decisionId, int seat, DecisionClass decisionClass, int threats, int[] legal, SeatView view) {
+      long decisionId,
+      int seat,
+      DecisionClass decisionClass,
+      int threats,
+      int[] legal,
+      SeatView view) {
     return switch (role) {
       case MAIN -> {
         Openness hand = Openness.of(view);
@@ -256,7 +313,14 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
         decisionCounts.countDeviator();
         LabelPlan plan =
             LabelPlan.copy(
-                context, coinKey, decisionId, copyRule, copyLabels, decisionClass, Openness.of(view), threats);
+                context,
+                coinKey,
+                decisionId,
+                copyRule,
+                copyLabels,
+                decisionClass,
+                Openness.of(view),
+                threats);
         if (plan.label()) copyLabels++;
         yield plan;
       }
@@ -285,14 +349,24 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
       if (request == null) continue;
       if (ledger != null)
         ledger.policy(
-            decisions.seat(slot), request.scores, run.distribution(slot), chosen[slot], request.legalCount(), targets);
+            decisions.seat(slot),
+            request.scores,
+            run.distribution(slot),
+            chosen[slot],
+            request.legalCount(),
+            targets);
       if (role == Role.MAIN
           && request.sigma != null
           && !Twins.same(request.legal(), chosen[slot], greedy(request.sigma)))
         metrics.mainNonGreedy.increment();
     }
     for (int slot = 0; slot < count; slot++) {
-      if (plans[slot].retain()) record(run, decisions, chosen, slot, ws);
+      if (context.split != null) {
+        if (role == Role.MAIN
+            && (run.query(slot) == null
+                ? context.split.sampled(coinKey, decisions.id(slot))
+                : first[slot] != null)) split(run, decisions, slot);
+      } else if (plans[slot].retain()) record(run, decisions, chosen, slot, ws);
     }
     Arrays.fill(plans, LabelPlan.NONE);
   }
@@ -303,17 +377,20 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
    * floorRoots・copies・sameDeviations・forks・measured・explored・playedOutside）もここで数える。根の記録の候補集合のフィールドには q の台を
    * 書く。打った手のほかから d を引く決まりでは、打った手を除いた集合になる。かかった時間は {@link CollectStage#CANDIDATES} に足す。
    */
-  private void record(Run<PolicyRequest> run, Decisions decisions, int[] chosen, int slot, RuleWorkspace ws) {
+  private void record(
+      Run<PolicyRequest> run, Decisions decisions, int[] chosen, int slot, RuleWorkspace ws) {
     PolicyRequest request = run.query(slot);
     LabelPlan plan = plans[slot];
     if (request.scores == null || request.prior == null)
-      throw new IllegalStateException("Retained decisions need s and p0 from the policy: " + describe(run));
+      throw new IllegalStateException(
+          "Retained decisions need s and p0 from the policy: " + describe(run));
     int[] legal = request.legal();
     int played = chosen[slot];
     int seat = decisions.seat(slot);
     long id = decisions.id(slot);
     int classIndex = plan.decisionClass().ordinal();
-    boolean exploring = role == Role.MAIN && context.behaviour != null && context.behaviour.temperature() > 0;
+    boolean exploring =
+        role == Role.MAIN && context.behaviour != null && context.behaviour.temperature() > 0;
     List<Slot> playedSlots = new ArrayList<>(2);
     long started = System.nanoTime();
     CandidateSet candidates =
@@ -337,12 +414,19 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
     // 逸脱の台は同値な打牌の組を番号の最も小さい手で表す（打った手の番号で順位の同点を割らないので、切り方に依らず同じ組を引く）
     int[] deviationSupport =
         rollIn
-            ? RollIn.support(Twins.lowest(legal, candidates.support()), Twins.lowest(legal, played), rule.target())
+            ? RollIn.support(
+                Twins.lowest(legal, candidates.support()),
+                Twins.lowest(legal, played),
+                rule.target())
             : null;
     RollIn.Deviation deviation =
         rollIn
             ? RollIn.draw(
-                deviationSupport, request.scores, request.prior, rule.epsilonQ(), context.deviationCoin(coinKey, id))
+                deviationSupport,
+                request.scores,
+                request.prior,
+                rule.epsilonQ(),
+                context.deviationCoin(coinKey, id))
             : null;
     context.timer.add(CollectStage.CANDIDATES, System.nanoTime() - started);
     // 候補と逸脱は同値な打牌の組ごとに 1 つの手で選んだ。分岐と写しで打つ手と行に書く手は、組の中で切る方の手に替える（選んだ組は変えない）
@@ -353,7 +437,9 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
     if (candidates.explored()) metrics.explored.increment();
     // 行を作る判断だけ、O の写しと Oracle を記録する
     RowRecorder.Decision recorded =
-        labelled || deviation != null ? rows.decision(request, run.read(request), run.full(), ws) : null;
+        labelled || deviation != null
+            ? rows.decision(request, run.read(request), run.full(), ws)
+            : null;
     PendingLabel label = null;
     if (labelled) {
       boolean main = role == Role.MAIN;
@@ -379,8 +465,11 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
       // 打った手も分岐で測り、その後を b で打つ。主経路の値を使うと打った手だけその後の打ち方が違い、差が片側にずれ、候補の間の共通乱数も切れる
       if (exploring) playedSlots.add(slot(label, played));
       else targets.add(slot(label, played));
-      if (main) metrics.labelRows[CollectionMetrics.byHand(plan.hand(), plan.decisionClass())].increment();
-      else metrics.copyLabelRows[CollectionMetrics.byRoot(rootClass, plan.decisionClass())].increment();
+      if (main)
+        metrics.labelRows[CollectionMetrics.byHand(plan.hand(), plan.decisionClass())].increment();
+      else
+        metrics.copyLabelRows[CollectionMetrics.byRoot(rootClass, plan.decisionClass())]
+            .increment();
       metrics.measured.add(measured.length);
       if (!candidates.playedInside(played)) metrics.playedOutside.increment();
     }
@@ -401,7 +490,9 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
                   recorded,
                   Row.Source.ROOT,
                   played,
-                  rule.target() == DeviationTarget.ANY ? support : CandidateSet.bytes(twins.play(legal, deviationSupport)),
+                  rule.target() == DeviationTarget.ANY
+                      ? support
+                      : CandidateSet.bytes(twins.play(legal, deviationSupport)),
                   d,
                   deviation.probability(),
                   (float) (rule.rate() * deviation.probability()),
@@ -475,6 +566,30 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
         recorded);
   }
 
+  private void split(Run<PolicyRequest> run, Decisions decisions, int slot) {
+    PolicyRequest request = run.query(slot);
+    SplitTrial trial = context.split;
+    if (request == null) {
+      forcedAction[0] = decisions.legal(slot, 0);
+      SeatView view = run.full().seat(decisions.seat(slot));
+      Kind kind = Kind.classify(decisions.kind(slot), forcedAction);
+      trial.agree(
+          run.game().wall(),
+          DecisionClass.of(context.variant, kind, stage, Threats.count(view), view.round()));
+      return;
+    }
+    int a = play(first[slot], greedy(first[slot].sigma));
+    int b = play(second[slot], greedy(second[slot].sigma));
+    first[slot] = second[slot] = null;
+    if (a == b) {
+      trial.agree(request.wall(), request.decisionClass());
+      return;
+    }
+    var pair = trial.disagree(request, a);
+    spawn(run, decisions, slot, a, Role.FORK, List.of(slot(pair, a)));
+    spawn(run, decisions, slot, b, Role.FORK, List.of(slot(pair, b)));
+  }
+
   private static boolean contains(int[] actions, int action) {
     for (int a : actions) if (a == action) return true;
     return false;
@@ -502,7 +617,13 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
    *     クラスになる
    * @param slots 作った経路の局末の値の受け取り先
    */
-  private void spawn(Run<PolicyRequest> run, Decisions decisions, int slot, int action, Role role, List<Slot> slots) {
+  private void spawn(
+      Run<PolicyRequest> run,
+      Decisions decisions,
+      int slot,
+      int action,
+      Role role,
+      List<Slot> slots) {
     int[] choices = new int[decisions.size()];
     for (int other = 0; other < choices.length; other++)
       choices[other] = other == slot ? action : run.behaviourChoice(other);
@@ -514,7 +635,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
             run.game().wall(),
             decisions.seat(slot),
             decisions.id(slot),
-            plans[slot].decisionClass(),
+            run.query(slot).decisionClass(),
             slots));
   }
 
@@ -527,20 +648,22 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
   public void roundEnded(Run<PolicyRequest> run, RoundEnd end, boolean gameEnded) {
     FullView full = run.full();
     if (ledger != null && !targets.isEmpty()) ledger.handEnd(full, end, targets);
-    HandEndFacts facts = !targets.isEmpty() ? rows.handEnd(full, end, targets) : null;
+    HandEndFacts facts =
+        rows != null && !targets.isEmpty() ? rows.handEnd(full, end, targets) : null;
     List<Slot> slots = targets;
     if (!slots.isEmpty()) {
       // 局末の値は、局末を作ったこのスレッドがその場で求める
       double[] values = new double[context.variant.seats()];
       UraExpectation ura =
-          context.ura.handEnd(full, end, run.handStart(), history, run.game().wall(), run.handOrdinal(), values);
+          context.ura.handEnd(
+              full, end, run.handStart(), history, run.game().wall(), run.handOrdinal(), values);
       context.ura.rows(ura, run.game().wall(), run.handOrdinal(), slots);
       handEnds.add(new HandEnd(values, slots, facts));
     }
     if (gameEnded || role != Role.MAIN) return;
     targets = new ArrayList<>();
     if (ledger != null) ledger.reset();
-    rows.reset();
+    if (rows != null) rows.reset();
     if (history != null) history.add(end.next());
   }
 
@@ -556,7 +679,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
         nanos);
     decisionCounts.flush(metrics);
     if (ledger != null) ledger.flush(context.timer, CollectStage.LEDGER);
-    rows.flush(context.timer);
+    if (rows != null) rows.flush(context.timer);
   }
 
   /** この経路が作った局末を、ドライバのスレッドで受け取り先に渡す。 */

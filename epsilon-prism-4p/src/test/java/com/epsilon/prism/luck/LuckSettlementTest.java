@@ -67,19 +67,22 @@ public class LuckSettlementTest {
     Assert.assertNull(audited.correction());
     Assert.assertEquals(audited.appliedR2(), 0.0);
     Assert.assertTrue(audited.summary().streamed());
-    LedgerFitTest.assertBitwiseEqual(new LedgerFit.Result(expected.correction(), audited.report()), expected);
+    LedgerFitTest.assertBitwiseEqual(
+        new LedgerFit.Result(expected.correction(), audited.report()), expected);
     Assert.assertEquals(audited.classes().classes().keySet(), audited.report().byClass().keySet());
 
     LuckSettlement apply = settle();
     Assert.assertEquals(apply.meaning().mode(), "APPLY");
     LedgerOutcome applied = apply.learn(1, tapped(apply, rows), List.of(), rows.size());
-    LedgerFitTest.assertBitwiseEqual(new LedgerFit.Result(applied.correction(), applied.report()), expected);
+    LedgerFitTest.assertBitwiseEqual(
+        new LedgerFit.Result(applied.correction(), applied.report()), expected);
     double r2 = applied.report().all().r2();
     Assert.assertTrue(r2 > 0.5, "r2 " + r2);
     Assert.assertEquals(applied.appliedR2(), r2);
 
     Assert.expectThrows(
-        IllegalStateException.class, () -> apply.learn(1, tapped(apply, rows), List.of(), rows.size() + 1));
+        IllegalStateException.class,
+        () -> apply.learn(1, tapped(apply, rows), List.of(), rows.size() + 1));
   }
 
   /**
@@ -151,13 +154,16 @@ public class LuckSettlementTest {
     List<LedgerFitTest.SyntheticRow> shifted = new ArrayList<>();
     for (var row : rows) {
       float[] ledger = row.ledger().clone();
-      for (int a = 0; a < row.actions(); a++) if (!Float.isNaN(row.values()[a])) ledger[a * F + column] += 0.1f;
+      for (int a = 0; a < row.actions(); a++)
+        if (!Float.isNaN(row.values()[a])) ledger[a * F + column] += 0.1f;
       shifted.add(LedgerFitTest.withValues(row, row.values(), ledger));
     }
     LuckSettlement strict = settle("noise.ledger.mode=AUDIT", NO_GAIN);
     LuckSettlement loose = settle("noise.ledger.mode=AUDIT", NO_GAIN, "noise.ledger.biasZ=1000");
-    LedgerReport.Summary flagged = strict.learn(1, tapped(strict, shifted), List.of(), shifted.size()).summary();
-    LedgerReport.Summary quiet = loose.learn(1, tapped(loose, shifted), List.of(), shifted.size()).summary();
+    LedgerReport.Summary flagged =
+        strict.learn(1, tapped(strict, shifted), List.of(), shifted.size()).summary();
+    LedgerReport.Summary quiet =
+        loose.learn(1, tapped(loose, shifted), List.of(), shifted.size()).summary();
     Assert.assertEquals(flagged.biased(), List.of(LedgerColumn.OWN_TSUMO.reportName()));
     Assert.assertTrue(flagged.maxAbsZ() > 3, "max |z| " + flagged.maxAbsZ());
     Assert.assertTrue(quiet.biased().isEmpty(), quiet.biased().toString());
@@ -166,11 +172,14 @@ public class LuckSettlementTest {
 
   /**
    * 次の設定は拒む: 古典の 5 組の外の組、計算しない組での補正、期待値の裏ドラと裏ドラの組の組み合わせ（期待値の裏ドラはそれだけでも
-   * この jar では使えない）、クラス以外の区分。古典の組の部分集合と、切る幅・ridge・行の数・しきい値の値は受け付ける。
+   * この jar では使えない）、前のコホートで当てはめた係数。古典の組の部分集合と、切る幅・ridge・行の数・しきい値の値は受け付ける。
    */
   @Test
   public void theSettingsRejectWhatTheJarCannotSettle() {
-    rejects("noise.ledger.compute", "not available", "noise.ledger.compute=[IMPROVE, POINTS, DORA, URA, POLICY, SLOPE]");
+    rejects(
+        "noise.ledger.compute",
+        "not available",
+        "noise.ledger.compute=[IMPROVE, POINTS, DORA, URA, POLICY, SLOPE]");
     rejects("noise.ledger.apply", "subset", "noise.ledger.compute=[POINTS]");
     rejects("noise.ledger.compute", "must not compute URA", "noise.ura.mode=EXPECTED");
     rejects(
@@ -179,7 +188,7 @@ public class LuckSettlementTest {
         "noise.ura.mode=EXPECTED",
         "noise.ledger.compute=[IMPROVE, POINTS, DORA, POLICY]",
         "noise.ledger.apply=[IMPROVE, POINTS, DORA, POLICY]");
-    rejects("noise.ledger", "not available", "noise.ledger.cells=CLASS_STAGE");
+    rejects("noise.ledger", "not available", "noise.ledger.coefficients=PREVIOUS_COHORT");
     PrismSettings accepted =
         TestSettings.of(
             "noise.ledger.mode=AUDIT",
@@ -197,8 +206,11 @@ public class LuckSettlementTest {
   }
 
   private static void rejects(String path, String because, String... assignments) {
-    SettingsException failure = Assert.expectThrows(SettingsException.class, () -> TestSettings.of(assignments));
-    boolean named = failure.problems().stream().anyMatch(problem -> problem.contains(path) && problem.contains(because));
+    SettingsException failure =
+        Assert.expectThrows(SettingsException.class, () -> TestSettings.of(assignments));
+    boolean named =
+        failure.problems().stream()
+            .anyMatch(problem -> problem.contains(path) && problem.contains(because));
     Assert.assertTrue(named, String.join(" ", assignments) + " -> " + failure.problems());
   }
 }

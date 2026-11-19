@@ -4,11 +4,11 @@ import com.epsilon.mahjong.util.SeedMixer;
 import java.util.Arrays;
 
 /**
- * Φ のメモ。卓のキー（GrpKey）と履歴のバージョン（RoundHistory が持つ値。履歴を読まないモデルでは 0）の組をキーにし、組から
+ * Φ のキャッシュ。卓のキー（GrpKey）と履歴のバージョン（RoundHistory が持つ値。履歴を読まないモデルでは 0）の組をキーにし、組から
  * スロットを 1 つ決めるダイレクトマップ方式で持つ。組が完全に一致したときだけ値を使い、書くときはスロットの値を上書きする。
  * Φ はこの組だけで決まるので、当たっても外れても値はビット単位で同じになる。同時に使えるのは 1 スレッドだけ。
  */
-public final class PhiMemo {
+public final class PhiCache {
 
   private final int seats;
 
@@ -28,9 +28,9 @@ public final class PhiMemo {
   private long bypasses;
 
   /** スロットの数が 2 の冪でなければ IllegalArgumentException を投げる。 */
-  PhiMemo(int slots, int seats) {
+  PhiCache(int slots, int seats) {
     if (slots < 1 || Integer.bitCount(slots) != 1) {
-      throw new IllegalArgumentException("Memo slots must be a power of two: " + slots);
+      throw new IllegalArgumentException("Cache slots must be a power of two: " + slots);
     }
     this.seats = seats;
     mask = slots - 1;
@@ -41,7 +41,7 @@ public final class PhiMemo {
   }
 
   /**
-   * メモを引き、当たれば Φ をコピーする。
+   * キャッシュを引き、当たれば Φ をコピーする。
    *
    * @param stamp 履歴のバージョン
    * @param key 卓のキー。空のスロットと区別できないので、GrpKey.NONE は渡さない
@@ -66,7 +66,7 @@ public final class PhiMemo {
     System.arraycopy(phi, 0, values, slot * seats, seats);
   }
 
-  /** キーに収まらずメモを使わなかった卓を 1 つ数える。 */
+  /** キーに収まらずキャッシュを使わなかった卓を 1 つ数える。 */
   void bypass() {
     bypasses++;
   }
@@ -83,7 +83,7 @@ public final class PhiMemo {
     return misses;
   }
 
-  /** キーに収まらずメモを使わなかった卓の数を返す。 */
+  /** キーに収まらずキャッシュを使わなかった卓の数を返す。 */
   public long bypasses() {
     return bypasses;
   }

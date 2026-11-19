@@ -3,13 +3,13 @@ package com.epsilon.grp;
 import com.epsilon.mahjong.util.SeedMixer;
 
 /**
- * GruSinkhorn の作業領域。局末の行、GRU の状態とゲート、出力ヘッドと Sinkhorn の配列、GRU の状態のメモを持つ。モデルごとに作り、
+ * GruSinkhorn の作業領域。局末の行、GRU の状態とゲート、出力ヘッドと Sinkhorn の配列、GRU の状態のキャッシュを持つ。モデルごとに作り、
  * 作るときに渡したモデルでしか使えない。ほかのモデルに渡すと、形が同じでも IllegalArgumentException を投げる。同時に使えるのは
  * 1 スレッドだけ。
  *
- * <p>状態のメモは、RoundHistory のバージョンで引くダイレクトマップ方式。バージョンが一致したときだけ使い、入れるときにスロットが
- * 埋まっていれば上書きする。メモに入れるのは、このモデルで履歴の全ての局を読んだ後の各層の状態。状態はモデルと履歴だけで決まる
- * ので、メモに当たっても外れても値はビット単位で同じになる。
+ * <p>状態のキャッシュは、RoundHistory のバージョンで引くダイレクトマップ方式。バージョンが一致したときだけ使い、入れるときにスロットが
+ * 埋まっていれば上書きする。キャッシュに入れるのは、このモデルで履歴の全ての局を読んだ後の各層の状態。状態はモデルと履歴だけで決まる
+ * ので、キャッシュに当たっても外れても値はビット単位で同じになる。
  */
 public final class GruWorkspace {
 
@@ -76,17 +76,17 @@ public final class GruWorkspace {
     return new GruWorkspace(model);
   }
 
-  /** 状態のメモに当たり、履歴を読み直さずに済んだ回数。 */
+  /** 状態のキャッシュに当たり、履歴を読み直さずに済んだ回数。 */
   public long stateHits() {
     return stateHits;
   }
 
-  /** 状態がメモに無く、履歴を最初から読んだ回数。 */
+  /** 状態がキャッシュに無く、履歴を最初から読んだ回数。 */
   public long stateMisses() {
     return stateMisses;
   }
 
-  /** 指定したバージョンの履歴を読んだ後の状態がメモにあれば、それを今の状態に写して true を返す。 */
+  /** 指定したバージョンの履歴を読んだ後の状態がキャッシュにあれば、それを今の状態に写して true を返す。 */
   boolean restore(long stamp) {
     int slot = slot(stamp);
     if (stamps[slot] != stamp) {
@@ -102,7 +102,7 @@ public final class GruWorkspace {
     return true;
   }
 
-  /** 今の状態を、指定したバージョンの履歴を読んだ後の状態としてメモに入れる。 */
+  /** 今の状態を、指定したバージョンの履歴を読んだ後の状態としてキャッシュに入れる。 */
   void save(long stamp) {
     int slot = slot(stamp);
     stamps[slot] = stamp;

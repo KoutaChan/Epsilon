@@ -35,10 +35,11 @@ public class ThreePlayerFinalRoundTest {
     int[] counts = new int[OutcomeSection.values().length];
     for (int main = 0; main < hands.mainCount(); main++) {
       counts[hands.section(main).ordinal()]++;
-      int expected = switch (hands.section(main)) {
-        case TSUMO, RON, DOUBLE_RON, ABORTIVE -> 3;
-        case DRAW -> Integer.bitCount(hands.tenpai(main));
-      };
+      int expected =
+          switch (hands.section(main)) {
+            case TSUMO, RON, DOUBLE_RON, ABORTIVE -> 3;
+            case DRAW -> Integer.bitCount(hands.tenpai(main));
+          };
       Assert.assertEquals(hands.factorCount(main), expected, "main " + main);
     }
     Assert.assertEquals(counts, new int[] {3, 6, 3, 8, 1});
@@ -55,7 +56,8 @@ public class ThreePlayerFinalRoundTest {
     int[] scores = {35_000, 35_000, 35_000};
     Assert.assertFalse(FinalRound.covers(new GrpState(THREE, 4, 0, 0, scores)));
     for (int round = 5; round <= THREE.finalRound(); round++) {
-      Assert.assertTrue(FinalRound.covers(new GrpState(THREE, round, 0, 0, scores)), "round " + round);
+      Assert.assertTrue(
+          FinalRound.covers(new GrpState(THREE, round, 0, 0, scores)), "round " + round);
     }
   }
 
@@ -103,8 +105,11 @@ public class ThreePlayerFinalRoundTest {
   public void anUncutEnumerationMatchesABruteForceSum() {
     for (Variant variant : List.of(THREE, Variant.TENHOU_4P)) {
       OutcomeShape shape = new OutcomeShape(variant, GrpFixtures.plainFields(), 8);
-      FinalRound round = FinalRound.of(
-          GrpFixtures.outcomes(shape, 51, 0.5), GrpFixtures.network(GrpFixtures.shape(variant, 8, false), 53, 0.5), 0);
+      FinalRound round =
+          FinalRound.of(
+              GrpFixtures.outcomes(shape, 51, 0.5),
+              GrpFixtures.network(GrpFixtures.shape(variant, 8, false), 53, 0.5),
+              0);
       FinalRoundWorkspace workspace = FinalRoundWorkspace.of(round);
       Random random = new Random(55);
       int tables = variant == THREE ? 12 : 2;
@@ -113,9 +118,13 @@ public class ThreePlayerFinalRoundTest {
       for (int table = 0; table < tables; table++) {
         GrpState state = GrpFixtures.state(variant, random);
         int last = variant.lastRound();
-        state = new GrpState(
-            variant, last + random.nextInt(variant.finalRound() - last + 1), state.honba(), state.sticks(),
-            state.scores());
+        state =
+            new GrpState(
+                variant,
+                last + random.nextInt(variant.finalRound() - last + 1),
+                state.honba(),
+                state.sticks(),
+                state.scores());
         Assert.assertEquals(round.permutations(state, workspace, p), 0.0);
         double[] expected = bruteForce(round, state);
         double sum = 0;
@@ -129,7 +138,7 @@ public class ThreePlayerFinalRoundTest {
   }
 
   /**
-   * 全ての組を足し上げた p(π|s)。FinalRound の打ち切りと葉のメモを使わない。局の始めの点が 1,000 点未満の席は立直できないので、
+   * 全ての組を足し上げた p(π|s)。FinalRound の打ち切りと葉のキャッシュを使わない。局の始めの点が 1,000 点未満の席は立直できないので、
    * その席が立直した組の重みは 0 にし、立直していない組にはその席の立直の確率を掛けない。
    */
   private static double[] bruteForce(FinalRound round, GrpState state) {
@@ -152,8 +161,10 @@ public class ThreePlayerFinalRoundTest {
     int dealer = start.dealer();
     for (int main = 0; main < hands.mainCount(); main++) {
       OutcomeSection section = hands.section(main);
-      boolean win = section == OutcomeSection.TSUMO || section == OutcomeSection.RON
-          || section == OutcomeSection.DOUBLE_RON;
+      boolean win =
+          section == OutcomeSection.TSUMO
+              || section == OutcomeSection.RON
+              || section == OutcomeSection.DOUBLE_RON;
       WinMethod method = section == OutcomeSection.TSUMO ? WinMethod.TSUMO : WinMethod.RON;
       int bases = win ? HandOutcomes.BASES : 1;
       int others = section == OutcomeSection.DOUBLE_RON ? HandOutcomes.BASES : 1;
@@ -166,7 +177,9 @@ public class ThreePlayerFinalRoundTest {
               q *= outcomes.probability(hands.gradeTerm(hands.winner(main), method, base));
             }
             if (others > 1) {
-              q *= outcomes.probability(hands.gradeTerm(hands.secondWinner(main), WinMethod.RON, other));
+              q *=
+                  outcomes.probability(
+                      hands.gradeTerm(hands.secondWinner(main), WinMethod.RON, other));
             }
             int riichi = 0;
             for (int index = 0; index < factors; index++) {
@@ -182,7 +195,8 @@ public class ThreePlayerFinalRoundTest {
                 riichi |= 1 << absolute;
               }
             }
-            hands.place(main, win ? base : NONE, others > 1 ? other : NONE, riichi, dealer, outcome);
+            hands.place(
+                main, win ? base : NONE, others > 1 ? other : NONE, riichi, dealer, outcome);
             Settlement.apply(variant, start, outcome, delta);
             Progression.next(start, outcome, delta, after);
             if (after.gameOver()) {

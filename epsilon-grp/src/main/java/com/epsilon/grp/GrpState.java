@@ -25,10 +25,12 @@ public record GrpState(Variant variant, int round, int honba, int sticks, int[] 
       throw new IllegalArgumentException("Round " + round + " is outside " + variant);
     }
     if (honba < 0 || sticks < 0) {
-      throw new IllegalArgumentException("Honba and sticks must not be negative: " + honba + ", " + sticks);
+      throw new IllegalArgumentException(
+          "Honba and sticks must not be negative: " + honba + ", " + sticks);
     }
     if (scores.length != variant.seats()) {
-      throw new IllegalArgumentException(variant + " needs " + variant.seats() + " scores, got " + scores.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + variant.seats() + " scores, got " + scores.length);
     }
     scores = scores.clone();
   }
@@ -71,7 +73,7 @@ public record GrpState(Variant variant, int round, int honba, int sticks, int[] 
     return Placement.rank(scores, seat);
   }
 
-  /** 学習の行とメモに使うキーを返す。収まらなければ GrpKey.NONE を返す。 */
+  /** 学習の行とキャッシュに使うキーを返す。収まらなければ GrpKey.NONE を返す。 */
   public long key() {
     return GrpKey.of(this);
   }
@@ -82,7 +84,8 @@ public record GrpState(Variant variant, int round, int honba, int sticks, int[] 
    */
   public void copyInto(TableState table) {
     if (table.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: table " + table.variant() + ", state " + variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: table " + table.variant() + ", state " + variant);
     }
     table.set(round, honba, sticks, scores);
   }
@@ -110,7 +113,16 @@ public record GrpState(Variant variant, int round, int honba, int sticks, int[] 
 
   @Override
   public String toString() {
-    return "GrpState[" + variant + " round=" + round + " honba=" + honba + " sticks=" + sticks
-        + " scores=" + Arrays.toString(scores) + "]";
+    return "GrpState["
+        + variant
+        + " round="
+        + round
+        + " honba="
+        + honba
+        + " sticks="
+        + sticks
+        + " scores="
+        + Arrays.toString(scores)
+        + "]";
   }
 }

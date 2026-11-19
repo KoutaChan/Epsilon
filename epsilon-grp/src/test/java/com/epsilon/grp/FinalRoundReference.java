@@ -11,7 +11,7 @@ import java.util.Arrays;
 /**
  * 最後の局の数え上げの、参照用の実装。葉の値は外から渡した関数で求める。ベンチマークで、葉の値を定数に替えて測るときと、葉の卓を
  * 記録するときに使う。組を数え上げる順に、その場で葉の値を求めて足す。渡した関数が葉のネットワークの値を書くなら、結果は FinalRound と
- * ビット単位で同じになる。葉の値は、GrpKey で引く 1,024 スロットのメモに覚える。同時に使えるのは 1 スレッドだけ。
+ * ビット単位で同じになる。葉の値は、GrpKey で引く 1,024 スロットのキャッシュに覚える。同時に使えるのは 1 スレッドだけ。
  */
 public final class FinalRoundReference {
 
@@ -26,7 +26,7 @@ public final class FinalRoundReference {
     void permutations(TableState table, double[] out);
   }
 
-  private static final int MEMO_SLOTS = 1 << 10;
+  private static final int CACHE_SLOTS = 1 << 10;
 
   private final FinalRound round;
   private final Leaf leaf;
@@ -43,8 +43,8 @@ public final class FinalRoundReference {
   private final int[] delta;
   private final int[] scores;
   private final double[] leafOut;
-  private final long[] memoKeys;
-  private final double[] memoValues;
+  private final long[] cacheKeys;
+  private final double[] cacheValues;
   private final double[] declared;
   private final double[] quiet;
   private final int[] riichiBits;
@@ -52,7 +52,7 @@ public final class FinalRoundReference {
   private long settled;
   private long terminalLeaves;
   private long networkLeaves;
-  private long memoHits;
+  private long cacheHits;
 
   private FinalRoundReference(FinalRound round, Leaf leaf) {
     this.round = round;
@@ -70,9 +70,9 @@ public final class FinalRoundReference {
     delta = new int[seats];
     scores = new int[seats];
     leafOut = new double[count];
-    memoKeys = new long[MEMO_SLOTS];
-    Arrays.fill(memoKeys, GrpKey.NONE);
-    memoValues = new double[MEMO_SLOTS * count];
+    cacheKeys = new long[CACHE_SLOTS];
+    Arrays.fill(cacheKeys, GrpKey.NONE);
+    cacheValues = new double[CACHE_SLOTS * count];
     declared = new double[seats];
     quiet = new double[seats];
     riichiBits = new int[seats];
@@ -86,7 +86,8 @@ public final class FinalRoundReference {
   /** 葉の値を、数え上げが持つ葉のネットワークで 1 卓ずつ求める実装を作る。 */
   public static FinalRoundReference of(FinalRound round) {
     GrpWorkspace workspace = GrpWorkspace.of(round.leaf().shape());
-    return new FinalRoundReference(round, (table, out) -> round.leaf().permutations(table, workspace, out));
+    return new FinalRoundReference(
+        round, (table, out) -> round.leaf().permutations(table, workspace, out));
   }
 
   public long settled() {
@@ -102,8 +103,8 @@ public final class FinalRoundReference {
     return networkLeaves;
   }
 
-  public long memoHits() {
-    return memoHits;
+  public long cacheHits() {
+    return cacheHits;
   }
 
   /**
@@ -141,7 +142,8 @@ public final class FinalRoundReference {
       prepareRiichi(main);
       switch (hands.section(main)) {
         case TSUMO, RON -> {
-          WinMethod method = hands.section(main) == OutcomeSection.TSUMO ? WinMethod.TSUMO : WinMethod.RON;
+          WinMethod method =
+              hands.section(main) == OutcomeSection.TSUMO ? WinMethod.TSUMO : WinMethod.RON;
           int grades = hands.gradeTerm(hands.winner(main), method, 0);
           for (int base = 0; base < HandOutcomes.BASES; base++) {
             double q = p * outcomes.probability(grades + base);
@@ -171,7 +173,8 @@ public final class FinalRoundReference {
             }
           }
         }
-        case DRAW, ABORTIVE -> dropped += riichi(out, main, p, HandOutcomes.NONE, HandOutcomes.NONE);
+        case DRAW, ABORTIVE ->
+            dropped += riichi(out, main, p, HandOutcomes.NONE, HandOutcomes.NONE);
       }
     }
     return dropped;
@@ -230,7 +233,7 @@ public final class FinalRoundReference {
       return;
     }
     int at = leafValues();
-    double[] values = at < 0 ? leafOut : memoValues;
+    double[] values = at < 0 ? leafOut : cacheValues;
     int from = Math.max(at, 0);
     int shift = Math.floorMod(after.dealer() - start.dealer(), seats);
     for (int k = 0; k < count; k++) {
@@ -241,7 +244,7 @@ public final class FinalRoundReference {
   /**
    * 局を進めた卓の葉の値を用意する。
    *
-   * @return メモの値の配列の中で、その卓の値が始まる位置。キーに収まらない卓では −1 で、値は {@code leafOut} にある
+   * @return キャッシュの値の配列の中で、その卓の値が始まる位置。キーに収まらない卓では −1 で、値は {@code leafOut} にある
    */
   private int leafValues() {
     long key = GrpKey.of(after);
@@ -250,15 +253,15 @@ public final class FinalRoundReference {
       networkLeaves++;
       return -1;
     }
-    int slot = (int) SeedMixer.mix64(key) & MEMO_SLOTS - 1;
+    int slot = (int) SeedMixer.mix64(key) & CACHE_SLOTS - 1;
     int at = slot * count;
-    if (memoKeys[slot] == key) {
-      memoHits++;
+    if (cacheKeys[slot] == key) {
+      cacheHits++;
       return at;
     }
     leaf.permutations(after, leafOut);
-    System.arraycopy(leafOut, 0, memoValues, at, count);
-    memoKeys[slot] = key;
+    System.arraycopy(leafOut, 0, cacheValues, at, count);
+    cacheKeys[slot] = key;
     networkLeaves++;
     return at;
   }

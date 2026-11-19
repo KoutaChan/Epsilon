@@ -17,7 +17,6 @@ import com.epsilon.mahjong.record.GameRecorder;
 import com.epsilon.mahjong.record.RecordedGame;
 import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
-import com.epsilon.prism.FourPlayerFormat;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
@@ -36,7 +35,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPOutputStream;
 
 /**
- * 自己対局の半荘を天鳳の牌譜の XML（gzip）に書く。1 半荘を 1 ファイルにする。classic のモデルを牌譜から学習するときの材料になる。
+ * 自己対局の半荘を天鳳の牌譜の XML（gzip）に書く。ルールは四人打ちと三人打ちのどちらでもよい。1 半荘を 1 ファイルにする。classic の
+ * モデルを牌譜から学習するときの材料になる。
  * 卓のコアで打ち、学習の行は作らない。手は各席の σ から引く。ネットワークの方策の σ は one-hot なので、ネットワークの席は貪欲に打つ。
  *
  * <p>候補の打ち手を指定した数の席に座らせ、残りの席には相手を座らせる。候補の席は、半荘 ID を席の数で割った余りの席から順に続く。
@@ -47,8 +47,6 @@ public final class SelfPlayRecords {
 
   /** 書いたファイルの名前の末尾。 */
   public static final String SUFFIX = ".xml.gz";
-
-  private static final Variant VARIANT = FourPlayerFormat.VARIANT;
 
   /**
    * 書いた結果。
@@ -79,6 +77,7 @@ public final class SelfPlayRecords {
    * 半荘を打ち、牌譜のファイルに書く。
    *
    * @param table 半荘を打つ卓
+   * @param variant 打つルール（打ち手はこのルールの方策）
    * @param candidate 候補の打ち手
    * @param opponent 相手の打ち手（候補が全ての席に座るなら使わない）
    * @param seats 候補の席の数（1〜席の数）
@@ -91,6 +90,7 @@ public final class SelfPlayRecords {
    */
   public static Result write(
       TableLoop table,
+      Variant variant,
       Player candidate,
       Player opponent,
       int seats,
@@ -99,30 +99,31 @@ public final class SelfPlayRecords {
       long firstGame,
       Path out)
       throws IOException {
-    int total = VARIANT.seats();
+    int total = variant.seats();
     if (seats < 1 || seats > total) {
-      throw new IllegalArgumentException("The candidate takes 1 to " + total + " seats, not " + seats);
+      throw new IllegalArgumentException(
+          "The candidate takes 1 to " + total + " seats, not " + seats);
     }
     if (games < 1) {
       throw new IllegalArgumentException("Write at least one game: " + games);
     }
     Files.createDirectories(out);
     long started = System.nanoTime();
-    Writer writer = new Writer(candidate, opponent, seats, out);
+    Writer writer = new Writer(variant, candidate, opponent, seats, out);
     List<Long> ids = new ArrayList<>(games);
     for (int game = 0; game < games; game++) {
       ids.add(firstGame + game);
     }
-    List<List<TableSeat<Query>>> seating = seating(candidate, opponent, seats);
+    List<List<TableSeat<Query>>> seating = seating(candidate, opponent, seats, total);
     table.play(
         new TablePlan<Query>(
-            VARIANT,
+            variant,
             seed,
             seed,
             GameKey.onePerWall(ids),
             DrawOrder.SEAT_STREAMS,
             null,
-            game -> seating.get(Math.floorMod(game.wall(), VARIANT.seats())),
+            game -> seating.get(Math.floorMod(game.wall(), total)),
             writer),
         TableHooks.plain());
     Throwable failure = writer.failure.get();
@@ -131,33 +132,47 @@ public final class SelfPlayRecords {
     }
     if (writer.written.get() != games || !writer.recorders.isEmpty()) {
       throw new IllegalStateException(
-          "Recorded " + writer.written.get() + " of " + games + " games, " + writer.recorders.size() + " unfinished");
+          "Recorded "
+              + writer.written.get()
+              + " of "
+              + games
+              + " games, "
+              + writer.recorders.size()
+              + " unfinished");
     }
     return new Result(games, writer.rounds.get(), (System.nanoTime() - started) / 1e9);
   }
 
   /** 各席の打ち手を、半荘 ID を席の数で割った余りごとに並べた表。 */
-  private static List<List<TableSeat<Query>>> seating(Player candidate, Player opponent, int seats) {
-    int total = VARIANT.seats();
-    TableSeat<Query> candidateSeat = new PolicySeat(candidate.policy()), opponentSeat = new PolicySeat(opponent.policy());
+  private static List<List<TableSeat<Query>>> seating(
+      Player candidate, Player opponent, int seats, int total) {
+    TableSeat<Query> candidateSeat = new PolicySeat(candidate.policy()),
+        opponentSeat = new PolicySeat(opponent.policy());
     List<List<TableSeat<Query>>> result = new ArrayList<>(total);
     for (int rest = 0; rest < total; rest++) {
       List<TableSeat<Query>> row = new ArrayList<>(total);
-      for (int seat = 0; seat < total; seat++) row.add(candidateSeat(rest, seat, seats) ? candidateSeat : opponentSeat);
+      for (int seat = 0; seat < total; seat++) {
+        row.add(candidateSeat(rest, seat, seats, total) ? candidateSeat : opponentSeat);
+      }
       result.add(List.copyOf(row));
     }
     return List.copyOf(result);
   }
 
-  /** 候補の席なら true。候補の席は、半荘 ID を席の数で割った余りの席から順に、候補の席の数だけ続く。 */
-  static boolean candidateSeat(long gameId, int seat, int seats) {
-    int total = VARIANT.seats();
+  /**
+   * 候補の席なら true。候補の席は、半荘 ID を席の数で割った余りの席から順に、候補の席の数だけ続く。
+   *
+   * @param seats 候補の席の数
+   * @param total 卓の席の数
+   */
+  static boolean candidateSeat(long gameId, int seat, int seats, int total) {
     return Math.floorMod(seat - gameId, total) < seats;
   }
 
   /** 主経路の進行を半荘ごとに記録し、終局したらファイルに書く。進行ワーカーから並行に呼ばれる。 */
   private static final class Writer implements GameObserver {
 
+    private final Variant variant;
     private final Player candidate;
     private final Player opponent;
     private final int seats;
@@ -167,7 +182,8 @@ public final class SelfPlayRecords {
     private final AtomicLong rounds = new AtomicLong();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
 
-    private Writer(Player candidate, Player opponent, int seats, Path out) {
+    private Writer(Variant variant, Player candidate, Player opponent, int seats, Path out) {
+      this.variant = variant;
       this.candidate = candidate;
       this.opponent = opponent;
       this.seats = seats;
@@ -178,7 +194,7 @@ public final class SelfPlayRecords {
     public void advanced(GameKey game, FullView full) {
       if (failure.get() != null) return;
       try {
-        recorders.computeIfAbsent(game.wall(), id -> new GameRecorder(VARIANT)).advanced(full);
+        recorders.computeIfAbsent(game.wall(), id -> new GameRecorder(variant)).advanced(full);
       } catch (RuntimeException thrown) {
         failure.compareAndSet(null, thrown);
       }
@@ -202,13 +218,15 @@ public final class SelfPlayRecords {
       try {
         GameRecorder recorder = recorder(gameId);
         recorders.remove(gameId);
-        String[] names = new String[VARIANT.seats()];
+        String[] names = new String[variant.seats()];
         for (int seat = 0; seat < names.length; seat++) {
-          names[seat] = candidateSeat(gameId, seat, seats) ? candidate.name() : opponent.name();
+          names[seat] =
+              candidateSeat(gameId, seat, seats, names.length) ? candidate.name() : opponent.name();
         }
         String id = Long.toString(gameId);
         RecordedGame game =
-            recorder.gameEnded(last, new RecordedGame.Meta(id, RecordedGame.Source.TENHOU, Arrays.asList(names)));
+            recorder.gameEnded(
+                last, new RecordedGame.Meta(id, RecordedGame.Source.TENHOU, Arrays.asList(names)));
         save(out.resolve(id + SUFFIX), TenhouXml.write(game));
         written.incrementAndGet();
       } catch (IOException thrown) {
@@ -231,7 +249,8 @@ public final class SelfPlayRecords {
       try (OutputStream stream = new GZIPOutputStream(Files.newOutputStream(temporary))) {
         stream.write(xml.getBytes(StandardCharsets.UTF_8));
       }
-      Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      Files.move(
+          temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
   }
 }

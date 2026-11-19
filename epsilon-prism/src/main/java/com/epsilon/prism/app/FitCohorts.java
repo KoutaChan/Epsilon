@@ -30,10 +30,12 @@ import com.epsilon.prism.learn.FitResult;
 import com.epsilon.prism.learn.Selection;
 import com.epsilon.prism.learn.Teacher;
 import com.epsilon.prism.luck.LedgerOutcome;
+import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.luck.LuckSettlement;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
+import com.epsilon.prism.noise.NoiseSettings;
 import com.epsilon.prism.noise.TempoSettings;
 import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.PolicyParams;
@@ -224,6 +226,7 @@ public record FitCohorts(
     LuckSettlement luck = LuckSettlement.of(settings.noise(), settings.run().variant());
     TempoSettings tempo = settings.noise().tempo();
     int threads = settings.learner().decodeThreads();
+    var sourceSettings = new SettingsRows(new RunDirectory(run)).read().reversed();
     Path anchorDirectory = out.resolve(ANCHOR);
     double r2 = appliedR2 == null ? 0 : appliedR2;
     Fitted last = null;
@@ -236,8 +239,13 @@ public record FitCohorts(
             ledger = luck.learn(t, null, store.iterate(rows, fitting.batch(), readers, threads), rows.length);
           }
           if (ledger.report() != null) {
+            int cohort = t;
+            var source = sourceSettings.stream().filter(row -> row.from() <= cohort).findFirst()
+                .orElseThrow(() -> new IOException("Missing settings for cohort " + cohort));
+            var recording = LedgerRecording.of(Settings.section(NoiseSettings.class, "noise",
+                List.of(source.layer())).value().ledger());
             DurableFiles.write(
-                out.resolve(LEDGER).resolve(String.format(Locale.ROOT, "%05d.json", t)), ledger.report().full());
+                out.resolve(LEDGER).resolve(String.format(Locale.ROOT, "%05d.json", t)), ledger.report().full(recording));
           }
         }
         double gain = tempo.gain(t, r2);

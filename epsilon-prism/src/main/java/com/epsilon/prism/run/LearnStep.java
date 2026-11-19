@@ -14,6 +14,7 @@ import com.epsilon.prism.learn.FitPlan;
 import com.epsilon.prism.learn.FitResult;
 import com.epsilon.prism.learn.Teacher;
 import com.epsilon.prism.luck.LedgerOutcome;
+import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.luck.LuckSettlement;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.noise.TempoSettings;
@@ -91,11 +92,14 @@ final class LearnStep implements Step<PrismIteration> {
       RowCounts counts = RowCounts.of(store.select(t, t, index -> true), store::index);
       int[] rows = store.select(t, t, settings.fit().rows());
       LOG.info("t={} student rows {} (holdout rows {})", t, rows.length, counts.holdout());
-      learnt = learn(iteration, store, rows, counts.holdout(), priorR2, reset, part.resolve(STUDENT));
+      learnt =
+          learn(iteration, store, rows, counts.holdout(), priorR2, reset, part.resolve(STUDENT));
     }
     DurableFiles.write(part.resolve(LearnReport.CLASSES), learnt.ledger().classes());
     if (learnt.ledger().report() != null) {
-      DurableFiles.write(part.resolve(LearnReport.LEDGER), learnt.ledger().report().full());
+      DurableFiles.write(
+          part.resolve(LearnReport.LEDGER),
+          learnt.ledger().report().full(LedgerRecording.of(settings.noise().ledger())));
     }
     StepReport step = StepReport.ran(iteration, started, learnt.report());
     step.write(part.resolve(PrismStep.REPORT));
@@ -120,7 +124,13 @@ final class LearnStep implements Step<PrismIteration> {
    * @param student 生徒を保存するディレクトリ
    */
   private static Learned learn(
-      PrismIteration iteration, CohortStore store, int[] rows, long holdout, double priorR2, String reset, Path student)
+      PrismIteration iteration,
+      CohortStore store,
+      int[] rows,
+      long holdout,
+      double priorR2,
+      String reset,
+      Path student)
       throws IOException {
     int t = iteration.number();
     PrismSettings settings = iteration.settings();
@@ -128,7 +138,8 @@ final class LearnStep implements Step<PrismIteration> {
     NetworkDevices devices = machine.learner().networkDevices();
     int threads = machine.learner().decodeThreads();
     NetworkRuntime learning = iteration.session().resources().learning();
-    Path start = Snapshot.net(iteration.run().snapshot(iteration.start()), settings.memory().learnFrom());
+    Path start =
+        Snapshot.net(iteration.run().snapshot(iteration.start()), settings.memory().learnFrom());
     TempoSettings tempo = settings.noise().tempo();
     int steps = settings.fit().steps(rows.length);
     boolean fits = steps > 0;
@@ -142,8 +153,13 @@ final class LearnStep implements Step<PrismIteration> {
               ? ahead.submit(
                   () ->
                       AnchorScores.compute(
-                          store, rows, start, iteration.start(), InferencePath.of(machine.inference().kernels()),
-                          devices, threads))
+                          store,
+                          rows,
+                          start,
+                          iteration.start(),
+                          InferencePath.of(machine.inference().kernels()),
+                          devices,
+                          threads))
               : null;
       Future<Fit.Prepared> warmed =
           fits
@@ -189,7 +205,9 @@ final class LearnStep implements Step<PrismIteration> {
         if (tempo.anchored()) {
           anchor.requireVersion(iteration.start());
         }
-        Teacher teacher = new Teacher(ledger.correction(), tempo.anchored() ? anchor : null, anchorWeight, (float) gain);
+        Teacher teacher =
+            new Teacher(
+                ledger.correction(), tempo.anchored() ? anchor : null, anchorWeight, (float) gain);
         result = prepared.fit(teacher);
         prepared.network().save(student);
       }
@@ -220,7 +238,8 @@ final class LearnStep implements Step<PrismIteration> {
    * @param priorR2 K′ を決める R²
    * @param start 始めのネットワーク
    */
-  private static FitPlan plan(PrismSettings settings, int t, int steps, double priorR2, Path start) throws IOException {
+  private static FitPlan plan(PrismSettings settings, int t, int steps, double priorR2, Path start)
+      throws IOException {
     return new FitPlan(
         settings.fit().fit(steps, settings.noise().tempo().learningRateScale(t, priorR2)),
         PrismNetwork.readShape(start),
@@ -233,10 +252,12 @@ final class LearnStep implements Step<PrismIteration> {
    * 反復の運の精算のうち、学習の段で行う部分（{@link LuckSettlement#learn}）。和は、収集のライターが同じ JVM で作ったものがあれば
    * それを使い、なければ行のストアから行を読み直して作る。どちらも同じ行を同じ順に足すので、係数はビット単位で同じになる。
    */
-  private static LedgerOutcome settle(PrismIteration iteration, CohortStore store, int[] rows, int threads) {
+  private static LedgerOutcome settle(
+      PrismIteration iteration, CohortStore store, int[] rows, int threads) {
     LuckSettlement luck = iteration.luck();
     try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
-      Iterable<Row> stored = store.iterate(rows, iteration.settings().fit().batch(), readers, threads);
+      Iterable<Row> stored =
+          store.iterate(rows, iteration.settings().fit().batch(), readers, threads);
       return luck.learn(iteration.number(), iteration.ledger(), stored, rows.length);
     }
   }

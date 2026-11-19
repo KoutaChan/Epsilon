@@ -15,6 +15,9 @@ interface FitRow {
   /** 判断のクラス。係数 β_c はクラスごとに持つ。 */
   DecisionClass decisionClass();
 
+  /** 判断時の局と自席の順位の区分。区分ごとに当てはめるときだけ読む。 */
+  int cell();
+
   /** 合法手ごとの値 Y（測っていない手は NaN）。 */
   float[] values();
 
@@ -24,13 +27,17 @@ interface FitRow {
   /** 手 {@code action} の、帳簿の列 {@code column} の値。 */
   float ledger(int action, int column);
 
-  /** コホートの行を読む。 */
-  static FitRow of(Row row) {
-    return new Cohort(row);
+  /**
+   * コホートの行を読む。
+   *
+   * @param cells 行の区分を読む区分（区分ごとに当てはめないときは null）
+   */
+  static FitRow of(Row row, LedgerCell cells) {
+    return new Cohort(row, cells);
   }
 
   /** コホートの行。 */
-  record Cohort(Row row) implements FitRow {
+  record Cohort(Row row, LedgerCell cells) implements FitRow {
     @Override
     public long gameId() {
       return row.gameId();
@@ -39,6 +46,11 @@ interface FitRow {
     @Override
     public DecisionClass decisionClass() {
       return row.decisionClass();
+    }
+
+    @Override
+    public int cell() {
+      return cells.of(row.observation(), 0);
     }
 
     @Override

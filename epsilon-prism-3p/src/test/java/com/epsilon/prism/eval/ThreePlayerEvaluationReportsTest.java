@@ -75,7 +75,8 @@ public class ThreePlayerEvaluationReportsTest {
       Files.writeString(run.snapshot(version).resolve("weights.bin"), "version " + version);
     }
     DurableFiles.write(
-        run.state(), new PrismState(versions + 1, 0, PrismCarry.NONE, versions + 1, Regression.NONE));
+        run.state(),
+        new PrismState(versions + 1, 0, PrismCarry.NONE, versions + 1, Regression.NONE));
     return settings;
   }
 
@@ -85,7 +86,10 @@ public class ThreePlayerEvaluationReportsTest {
 
   /** バージョンを予定どおりの卓で測るジョブを作り、全て実行する。 */
   private void measure(
-      PrismSettings settings, int version, Function<JobFile, DuelResult> champion, SyntheticDuels.Places places)
+      PrismSettings settings,
+      int version,
+      Function<JobFile, DuelResult> champion,
+      SyntheticDuels.Places places)
       throws Exception {
     measure(settings, 1, version, champion, places);
   }
@@ -100,7 +104,10 @@ public class ThreePlayerEvaluationReportsTest {
       throws Exception {
     int order = 0;
     for (Map.Entry<String, TableSpec> entry : settings.evaluation().scheduled(version).entrySet()) {
-      jobs().create(JobFile.pending(version, entry.getKey(), order++, row, RecordFile.tree(entry.getValue())));
+      jobs()
+          .create(
+              JobFile.pending(
+                  version, entry.getKey(), order++, row, RecordFile.tree(entry.getValue())));
     }
     SyntheticDuels.Runner runner =
         new SyntheticDuels.Runner(new EvaluationJobs(run, settings, null, null), champion, places);
@@ -110,8 +117,11 @@ public class ThreePlayerEvaluationReportsTest {
   private void settleAgain(PrismSettings settings, String name) throws Exception {
     SyntheticDuels.Runner runner =
         new SyntheticDuels.Runner(
-            new EvaluationJobs(run, settings, null, null), SyntheticDuels::noChampion, (job, wall, game) -> 0);
-    Assert.assertTrue(jobs().run(jobs().read(name), runner, RunControl.detached(() -> false)).isEmpty());
+            new EvaluationJobs(run, settings, null, null),
+            SyntheticDuels::noChampion,
+            (job, wall, game) -> 0);
+    Assert.assertTrue(
+        jobs().run(jobs().read(name), runner, RunControl.detached(() -> false)).isEmpty());
   }
 
   private DuelResult result(int version, String table) throws Exception {
@@ -170,7 +180,8 @@ public class ThreePlayerEvaluationReportsTest {
     PrismSettings settings = chain();
     // ラダーは、相手が基準の卓と重なる回（v2 は reference と、v4 は second と）は打たない
     Assert.assertEquals(settings.evaluation().scheduled(2).keySet().toString(), "[reference]");
-    Assert.assertEquals(settings.evaluation().scheduled(4).keySet().toString(), "[reference, second]");
+    Assert.assertEquals(
+        settings.evaluation().scheduled(4).keySet().toString(), "[reference, second]");
     Assert.assertEquals(settings.evaluation().coveredLadders("second", 4), List.of("ladder"));
     for (int version = 2; version <= 6; version++) {
       measure(settings, version, SyntheticDuels::noChampion, truth());
@@ -188,7 +199,8 @@ public class ThreePlayerEvaluationReportsTest {
     offset /= 3;
     linkError /= 3;
     // 真の offset は θ(1) − θ(3) = −0.2
-    Assert.assertEquals(offset, theta(3) - theta(1), 4 * linkError, "offset " + offset + " ± " + linkError);
+    Assert.assertEquals(
+        offset, theta(3) - theta(1), 4 * linkError, "offset " + offset + " ± " + linkError);
 
     List<Map<String, String>> rows = rows(EvaluationReports.BASELINE);
     Assert.assertEquals(rows.size(), 8);
@@ -203,21 +215,33 @@ public class ThreePlayerEvaluationReportsTest {
       Assert.assertEquals(row.get("opponent"), table.equals("reference") ? "v00001" : "v00003");
       Assert.assertEquals(Double.parseDouble(row.get("rank")), value, 1e-6, row.toString());
       Assert.assertEquals(Double.parseDouble(row.get("error")), error, 1e-6, row.toString());
-      Assert.assertEquals(Double.parseDouble(row.get("oneVsRest")), value, 1e-6, "only 1v2 is played");
+      Assert.assertEquals(
+          Double.parseDouble(row.get("oneVsRest")), value, 1e-6, "only 1v2 is played");
       Assert.assertEquals(row.get("segment"), "0");
       Assert.assertEquals(
-          row.get("jar"), RecordFile.read(EvaluationPlan.class, jobs().read(RunDirectory.jobName(version, table)).plan())
+          row.get("jar"),
+          RecordFile.read(
+                  EvaluationPlan.class, jobs().read(RunDirectory.jobName(version, table)).plan())
               .value()
               .jar());
       double scaled = table.equals("reference") ? value : value + offset;
       double scaledError = table.equals("reference") ? error : Math.hypot(error, linkError);
       Assert.assertEquals(Double.parseDouble(row.get("scaled")), scaled, 1e-6, row.toString());
-      Assert.assertEquals(Double.parseDouble(row.get("scaledError")), scaledError, 1e-6, row.toString());
+      Assert.assertEquals(
+          Double.parseDouble(row.get("scaledError")), scaledError, 1e-6, row.toString());
     }
     // バージョンの順。同じバージョンでは 1 つ目の基準が先
     Assert.assertEquals(
         order,
-        List.of("2reference", "3reference", "4reference", "4second", "5reference", "5second", "6reference", "6second"));
+        List.of(
+            "2reference",
+            "3reference",
+            "4reference",
+            "4second",
+            "5reference",
+            "5second",
+            "6reference",
+            "6second"));
   }
 
   @Test(timeOut = 600_000)
@@ -233,13 +257,26 @@ public class ThreePlayerEvaluationReportsTest {
     DurableFiles.write(
         run.job(done.name()).resolve(Jobs.JOB),
         new JobFile(
-            done.name(), done.version(), done.table(), done.order(), done.row(), done.definition(),
-            RecordFile.tree(new EvaluationPlan(plan.candidate(), plan.duel(), "elsewhere", plan.twinDiscard())), done.state(),
-            done.attempts(), done.cleanStops(), done.walls(), done.gamesBytes(), done.looksBytes(), done.created(),
+            done.name(),
+            done.version(),
+            done.table(),
+            done.order(),
+            done.row(),
+            done.definition(),
+            RecordFile.tree(
+                new EvaluationPlan(plan.candidate(), plan.duel(), "elsewhere", plan.twinDiscard())),
+            done.state(),
+            done.attempts(),
+            done.cleanStops(),
+            done.walls(),
+            done.gamesBytes(),
+            done.looksBytes(),
+            done.created(),
             done.reason()));
     settleAgain(settings, "v00004-reference");
     List<Map<String, String>> rows = rows(EvaluationReports.BASELINE);
-    Assert.assertEquals(rows.stream().map(row -> row.get("segment")).toList(), List.of("0", "1", "2"));
+    Assert.assertEquals(
+        rows.stream().map(row -> row.get("segment")).toList(), List.of("0", "1", "2"));
     Assert.assertEquals(rows.get(1).get("jar"), "elsewhere");
     Assert.assertEquals(rows.get(0).get("jar"), plan.jar());
     Assert.assertEquals(rows.get(2).get("jar"), plan.jar());
@@ -252,15 +289,19 @@ public class ThreePlayerEvaluationReportsTest {
     measure(settings, 2, SyntheticDuels::noChampion, truth());
     // 設定の 2 行目で切り方を手出しに替える: 1 行目で作った v2 は 0、2 行目で作った v3・v4 は 1
     PrismSettings tedashi =
-        ThreePlayerSettings.append(root, List.of(), concat(tables, List.of("behaviour.twinDiscard=TEDASHI")));
+        ThreePlayerSettings.append(
+            root, List.of(), concat(tables, List.of("behaviour.twinDiscard=TEDASHI")));
     for (int version = 3; version <= 4; version++) {
       measure(tedashi, 2, version, SyntheticDuels::noChampion, truth());
     }
     List<Map<String, String>> rows = rows(EvaluationReports.BASELINE);
-    Assert.assertEquals(rows.stream().map(row -> row.get("segment")).toList(), List.of("0", "1", "1"));
     Assert.assertEquals(
-        rows.stream().map(row -> row.get("twinDiscard")).toList(), List.of("TSUMOGIRI", "TEDASHI", "TEDASHI"));
+        rows.stream().map(row -> row.get("segment")).toList(), List.of("0", "1", "1"));
+    Assert.assertEquals(
+        rows.stream().map(row -> row.get("twinDiscard")).toList(),
+        List.of("TSUMOGIRI", "TEDASHI", "TEDASHI"));
   }
+
   // ratings.tsv
 
   @Test(timeOut = 600_000)
@@ -270,9 +311,14 @@ public class ThreePlayerEvaluationReportsTest {
       measure(settings, version, SyntheticDuels::noChampion, truth());
     }
     // 辺は reference が 5 本（v2〜v6）、second が 3 本（v4〜v6）、ladder が 3 本（v3・v5・v6）
-    List<String> lines = Files.readAllLines(run.report(EvaluationReports.RATINGS), StandardCharsets.UTF_8);
-    Assert.assertTrue(lines.getFirst().contains("from 11 edges of [ladder, reference, second]"), lines.getFirst());
-    Assert.assertTrue(lines.getFirst().contains("(left out: 0 edges not connected to it yet, 0 edges"), lines.getFirst());
+    List<String> lines =
+        Files.readAllLines(run.report(EvaluationReports.RATINGS), StandardCharsets.UTF_8);
+    Assert.assertTrue(
+        lines.getFirst().contains("from 11 edges of [ladder, reference, second]"),
+        lines.getFirst());
+    Assert.assertTrue(
+        lines.getFirst().contains("(left out: 0 edges not connected to it yet, 0 edges"),
+        lines.getFirst());
     Assert.assertTrue(lines.getFirst().contains("against v00001"), lines.getFirst());
     List<Map<String, String>> rows = rows(EvaluationReports.RATINGS);
     Assert.assertEquals(
@@ -321,7 +367,8 @@ public class ThreePlayerEvaluationReportsTest {
 
   @Test(timeOut = 600_000)
   public void duelSigmaGivesTheMedianSigmaAndTheSuggestedSizeByHand() throws Exception {
-    PrismSettings settings = lineage(20, ThreePlayerFrozenLadderTest.championTable().toArray(String[]::new));
+    PrismSettings settings =
+        lineage(20, ThreePlayerFrozenLadderTest.championTable().toArray(String[]::new));
     Champion first = Champion.of(EvaluationJobs.label(1), run.snapshot(1), 1);
     Assert.assertTrue(ChampionStore.open(run.champion()).append(new StoreEvent.Initial(first)));
     for (int version = 2; version <= 20; version++) {
@@ -342,18 +389,28 @@ public class ThreePlayerEvaluationReportsTest {
     // 王者の卓は 1v2 と 2v1 で牌山 1 つにつき 6 半荘を打ち、512 牌山ごとに判定する。25,000 半荘以内なら判定は 8 回（4,096 牌山、24,576 半荘）
     Sequential sequential = new Sequential(0.01, 3.0, 512);
     double[] critical = sequential.boundaries(4096);
-    double margin = (critical[critical.length - 1] + 1.6448536269514722) * median / (1.5 * Math.sqrt(4096));
+    double margin =
+        (critical[critical.length - 1] + 1.6448536269514722) * median / (1.5 * Math.sqrt(4096));
     double rounded = Math.ceil(margin / 1e-4) * 1e-4;
     String out = sigma();
     Assert.assertTrue(
-        out.contains(String.format(Locale.ROOT, "median sigma %.4f over 16 duels (v00005-champion .. v00020-champion)", median)),
+        out.contains(
+            String.format(
+                Locale.ROOT,
+                "median sigma %.4f over 16 duels (v00005-champion .. v00020-champion)",
+                median)),
         out);
     Assert.assertTrue(
-        out.contains(String.format(Locale.ROOT, "suggested within 25000 games: walls=4096 games=24576 evenMargin=%.4f", rounded)),
+        out.contains(
+            String.format(
+                Locale.ROOT,
+                "suggested within 25000 games: walls=4096 games=24576 evenMargin=%.4f",
+                rounded)),
         out);
     Assert.assertEquals(DuelSizing.choose(sequential, median, 6, 25_000).margin(), margin, 1e-9);
     // 切り上げた幅でも、真の差が幅の 1.5 倍なら 0.95 以上の確率で見つける
-    String found = out.lines().filter(line -> line.startsWith("suggested")).findFirst().orElseThrow();
+    String found =
+        out.lines().filter(line -> line.startsWith("suggested")).findFirst().orElseThrow();
     double power = Double.parseDouble(found.substring(found.lastIndexOf(' ') + 1));
     Assert.assertTrue(power >= 0.95, found);
     Assert.assertFalse(out.contains("v00004-champion"), "only the last 16 duels");
@@ -366,7 +423,8 @@ public class ThreePlayerEvaluationReportsTest {
     Arrays.sort(four);
     double fourMedian = (four[1] + four[2]) / 2;
     double[] fewer = sequential.boundaries(2048);
-    double fourMargin = (fewer[fewer.length - 1] + 1.6448536269514722) * fourMedian / (1.5 * Math.sqrt(2048));
+    double fourMargin =
+        (fewer[fewer.length - 1] + 1.6448536269514722) * fourMedian / (1.5 * Math.sqrt(2048));
     String short4 = sigma("--duels", "4", "--games", "12288");
     Assert.assertTrue(
         short4.contains(
@@ -375,10 +433,13 @@ public class ThreePlayerEvaluationReportsTest {
                 "suggested within 12288 games: walls=2048 games=12288 evenMargin=%.4f",
                 Math.ceil(fourMargin / 1e-4) * 1e-4)),
         short4);
-    Assert.assertTrue(short4.contains(String.format(Locale.ROOT, "median sigma %.4f over 4 duels", fourMedian)), short4);
+    Assert.assertTrue(
+        short4.contains(String.format(Locale.ROOT, "median sigma %.4f over 4 duels", fourMedian)),
+        short4);
 
     // 王者との決闘が無い卓を指定するのは、使い方の誤り
     Assert.assertEquals(
-        Main.run(new String[] {"duel-sigma", "--run", root.toString(), "--table", "nothing"}), Exit.USAGE.code());
+        Main.run(new String[] {"duel-sigma", "--run", root.toString(), "--table", "nothing"}),
+        Exit.USAGE.code());
   }
 }

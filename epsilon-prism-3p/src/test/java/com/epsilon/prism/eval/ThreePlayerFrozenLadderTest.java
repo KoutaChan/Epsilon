@@ -56,7 +56,8 @@ import org.testng.annotations.Test;
 public class ThreePlayerFrozenLadderTest {
 
   private static final String TEST =
-      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote = true}";
+      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote"
+          + " = true}";
 
   private Path root;
   private RunDirectory run;
@@ -74,7 +75,14 @@ public class ThreePlayerFrozenLadderTest {
 
   /** 1v2 の卓の設定のキーを全て書いた上書き。 @param onPromotion 書かないなら null */
   static List<String> table(
-      String name, String opponent, String wallSet, int walls, String stop, int every, int from, Boolean onPromotion) {
+      String name,
+      String opponent,
+      String wallSet,
+      int walls,
+      String stop,
+      int every,
+      int from,
+      Boolean onPromotion) {
     String prefix = "evaluation.tables." + name + ".";
     List<String> all =
         new ArrayList<>(
@@ -126,7 +134,8 @@ public class ThreePlayerFrozenLadderTest {
       Files.writeString(run.snapshot(version).resolve("weights.bin"), "version " + version);
     }
     DurableFiles.write(
-        run.state(), new PrismState(versions + 1, 0, PrismCarry.NONE, versions + 1, Regression.NONE));
+        run.state(),
+        new PrismState(versions + 1, 0, PrismCarry.NONE, versions + 1, Regression.NONE));
     return settings;
   }
 
@@ -150,7 +159,8 @@ public class ThreePlayerFrozenLadderTest {
 
   /** 実行できるジョブを全て実行し、全て済んだことを確かめる（評価のジョブは毎回作り直す）。 */
   private void runAll(
-      PrismSettings settings, Function<JobFile, DuelResult> champion, SyntheticDuels.Places places) throws Exception {
+      PrismSettings settings, Function<JobFile, DuelResult> champion, SyntheticDuels.Places places)
+      throws Exception {
     SyntheticDuels.Runner runner =
         new SyntheticDuels.Runner(new EvaluationJobs(run, settings, null, null), champion, places);
     Assert.assertTrue(jobs().runAll(runner, RunControl.detached(() -> false)).isEmpty());
@@ -160,11 +170,13 @@ public class ThreePlayerFrozenLadderTest {
   }
 
   /** 済んだジョブの結果をもう一度反映する。 */
-  private void settleAgain(PrismSettings settings, String name, SyntheticDuels.Places places) throws Exception {
+  private void settleAgain(PrismSettings settings, String name, SyntheticDuels.Places places)
+      throws Exception {
     SyntheticDuels.Runner runner =
         new SyntheticDuels.Runner(
             new EvaluationJobs(run, settings, null, null), SyntheticDuels::noChampion, places);
-    Assert.assertTrue(jobs().run(jobs().read(name), runner, RunControl.detached(() -> false)).isEmpty());
+    Assert.assertTrue(
+        jobs().run(jobs().read(name), runner, RunControl.detached(() -> false)).isEmpty());
   }
 
   private Jobs jobs() {
@@ -184,7 +196,8 @@ public class ThreePlayerFrozenLadderTest {
   private void promote(int version) throws Exception {
     Champion champion = Champion.of(EvaluationJobs.label(version), run.snapshot(version), version);
     String duel = RunDirectory.jobName(version, "champion");
-    Assert.assertTrue(ChampionStore.open(run.champion()).append(new StoreEvent.Promoted(champion, duel)));
+    Assert.assertTrue(
+        ChampionStore.open(run.champion()).append(new StoreEvent.Promoted(champion, duel)));
   }
 
   private List<Alarm> alarms() throws Exception {
@@ -220,10 +233,22 @@ public class ThreePlayerFrozenLadderTest {
                 table("reference", "version:1", "FIXED", 30, "FIXED", 4, 3, true),
                 table("quiet", "version:1", "FIXED", 30, "FIXED", 4, 3, false),
                 table("late", "version:4", "FIXED", 30, "FIXED", 4, 6, true)));
-    Assert.assertEquals(settings.evaluation().tables().get("reference").onPromotion(), Boolean.TRUE);
+    Assert.assertEquals(
+        settings.evaluation().tables().get("reference").onPromotion(), Boolean.TRUE);
     Assert.assertEquals(settings.evaluation().tables().get("quiet").onPromotion(), Boolean.FALSE);
     Function<JobFile, DuelResult> champion =
-        verdicts(Map.of(3, Verdict.BETTER, 4, Verdict.BETTER, 5, Verdict.EVEN, 6, Verdict.BETTER, 7, Verdict.WORSE));
+        verdicts(
+            Map.of(
+                3,
+                Verdict.BETTER,
+                4,
+                Verdict.BETTER,
+                5,
+                Verdict.EVEN,
+                6,
+                Verdict.BETTER,
+                7,
+                Verdict.WORSE));
     SyntheticDuels.Places places = SyntheticDuels.drawn(job -> -0.1);
 
     // バージョン 2: 王者の保存先が空なので、打たずに最初の王者にする（昇格ではないので、基準のジョブは足さない）
@@ -241,7 +266,8 @@ public class ThreePlayerFrozenLadderTest {
         "quiet: false, late: not newer than version 4");
     JobFile added = jobs().read("v00003-reference");
     Assert.assertEquals(added.row(), 1);
-    Assert.assertEquals(RecordFile.read(TableSpec.class, added.definition()).value(),
+    Assert.assertEquals(
+        RecordFile.read(TableSpec.class, added.definition()).value(),
         settings.evaluation().tables().get("reference"));
     EvaluationPlan plan = RecordFile.read(EvaluationPlan.class, added.plan()).value();
     Assert.assertEquals(plan.duel().candidate().version(), 3);
@@ -264,31 +290,41 @@ public class ThreePlayerFrozenLadderTest {
     // バージョン 5: 互角なので足さない
     schedule(settings, 5);
     runAll(settings, champion, places);
-    Assert.assertTrue(names().stream().noneMatch(name -> name.startsWith("v00005-") && !name.endsWith("champion")));
+    Assert.assertTrue(
+        names().stream()
+            .noneMatch(name -> name.startsWith("v00005-") && !name.endsWith("champion")));
 
     // バージョン 6: 昇格。late の相手のバージョン 4 より新しいので、reference と late を足す
     schedule(settings, 6);
     runAll(settings, champion, places);
-    Assert.assertTrue(names().containsAll(List.of("v00006-reference", "v00006-late")), names().toString());
+    Assert.assertTrue(
+        names().containsAll(List.of("v00006-reference", "v00006-late")), names().toString());
     Assert.assertFalse(names().contains("v00006-quiet"), names().toString());
 
     // バージョン 7: 悪いという判定では足さない
     schedule(settings, 7);
     runAll(settings, champion, places);
     Assert.assertEquals(
-        names().stream().filter(name -> name.startsWith("v00007-")).toList(), List.of("v00007-champion"));
+        names().stream().filter(name -> name.startsWith("v00007-")).toList(),
+        List.of("v00007-champion"));
   }
 
   // 基準の卓の最初のバージョンより前に昇格したバージョン
 
   /** 三人打ちの系譜のプリセットと同じ番号の基準の卓（相手はバージョン 32、バージョン 40 から 8 バージョンごと）と、王者の卓を持つ系譜。 */
   private PrismSettings beforeFrom() throws Exception {
-    return lineage(40, concat(championTable(), table("reference", "version:32", "FIXED", 60, "FIXED", 8, 40, true)));
+    return lineage(
+        40,
+        concat(
+            championTable(), table("reference", "version:32", "FIXED", 60, "FIXED", 8, 40, true)));
   }
 
   /** バージョンの王者との決闘のジョブを作り、実行できるジョブを全て実行する。 */
   private void duel(
-      PrismSettings settings, int version, Function<JobFile, DuelResult> champion, SyntheticDuels.Places places)
+      PrismSettings settings,
+      int version,
+      Function<JobFile, DuelResult> champion,
+      SyntheticDuels.Places places)
       throws Exception {
     create(settings, version, List.of("champion"));
     runAll(settings, champion, places);
@@ -305,19 +341,22 @@ public class ThreePlayerFrozenLadderTest {
     // バージョン 31・32: 昇格したが、基準の卓の相手（バージョン 32）より新しくないので足さない
     for (int version : List.of(31, 32)) {
       duel(settings, version, champion, places);
-      Assert.assertEquals(ChampionStore.open(run.champion()).current().orElseThrow().version(), version);
+      Assert.assertEquals(
+          ChampionStore.open(run.champion()).current().orElseThrow().version(), version);
     }
     Assert.assertEquals(names(), List.of("v00031-champion", "v00032-champion"));
 
     // バージョン 35: 卓の最初のバージョン 40 より前だが、相手より新しいので足し、同じ実行の中で打つ
     duel(settings, 35, champion, places);
     Assert.assertEquals(ChampionStore.open(run.champion()).current().orElseThrow().version(), 35);
-    List<String> measured = List.of("v00031-champion", "v00032-champion", "v00035-champion", "v00035-reference");
+    List<String> measured =
+        List.of("v00031-champion", "v00032-champion", "v00035-champion", "v00035-reference");
     Assert.assertEquals(names(), measured);
     JobFile added = jobs().read("v00035-reference");
     Assert.assertEquals(added.row(), 1);
     Assert.assertEquals(added.order(), 1);
-    Assert.assertEquals(RecordFile.read(TableSpec.class, added.definition()).value(),
+    Assert.assertEquals(
+        RecordFile.read(TableSpec.class, added.definition()).value(),
         settings.evaluation().tables().get("reference"));
     EvaluationPlan plan = RecordFile.read(EvaluationPlan.class, added.plan()).value();
     Assert.assertEquals(plan.duel().candidate().version(), 35);
@@ -389,8 +428,12 @@ public class ThreePlayerFrozenLadderTest {
     String name = RunDirectory.jobName(version, "champion");
     JobRunner runner =
         new Falling(
-            new SyntheticDuels.Runner(new EvaluationJobs(run, settings, null, null), champion, places), name, applied);
-    Assert.expectThrows(IllegalStateException.class, () -> jobs().runAll(runner, RunControl.detached(() -> false)));
+            new SyntheticDuels.Runner(
+                new EvaluationJobs(run, settings, null, null), champion, places),
+            name,
+            applied);
+    Assert.expectThrows(
+        IllegalStateException.class, () -> jobs().runAll(runner, RunControl.detached(() -> false)));
     Assert.assertEquals(jobs().read(name).state(), JobFile.State.RUNNING);
     Assert.assertTrue(Files.exists(run.job(name).resolve(Jobs.RESULT)));
   }
@@ -399,7 +442,8 @@ public class ThreePlayerFrozenLadderTest {
   public void resumingAPromotionGivesTheSameBaselineJobs() throws Exception {
     PrismSettings settings = beforeFrom();
     crown(34);
-    Function<JobFile, DuelResult> champion = verdicts(Map.of(35, Verdict.BETTER, 36, Verdict.BETTER));
+    Function<JobFile, DuelResult> champion =
+        verdicts(Map.of(35, Verdict.BETTER, 36, Verdict.BETTER));
     SyntheticDuels.Places places = (job, wall, game) -> even(wall, game);
 
     // バージョン 35: 結果を書いた後、反映する前に落ちる。続きから回すと昇格させ、基準のジョブを足して打つ
@@ -412,7 +456,8 @@ public class ThreePlayerFrozenLadderTest {
 
     // バージョン 36: 反映した後、DONE にする前に落ちる。足したジョブは、続きから回しても作り直さずに 1 つのまま打つ
     fall(settings, 36, champion, places, true);
-    List<String> measured = List.of("v00035-champion", "v00035-reference", "v00036-champion", "v00036-reference");
+    List<String> measured =
+        List.of("v00035-champion", "v00035-reference", "v00036-champion", "v00036-reference");
     Assert.assertEquals(names(), measured);
     JobFile added = jobs().read("v00036-reference");
     Assert.assertEquals(added.state(), JobFile.State.PENDING);
@@ -431,7 +476,8 @@ public class ThreePlayerFrozenLadderTest {
 
   @Test(timeOut = 600_000)
   public void aLadderThatMeetsTheBaselineOpponentIsJudgedByTheBaseline() throws Exception {
-    // 三人打ちの系譜で勧める卓を縮めたもの: 基準は version:4 を v8 から 4 バージョンごと、ラダーは 4 つ前（v8 から）と 8 つ前（v12 から）。v8 では 4 つ前が、v12 では 8 つ前が基準と重なる
+    // 三人打ちの系譜で勧める卓を縮めたもの: 基準は version:4 を v8 から 4 バージョンごと、ラダーは 4 つ前（v8 から）と 8 つ前（v12 から）。v8 では 4
+    // つ前が、v12 では 8 つ前が基準と重なる
     PrismSettings settings =
         lineage(
             16,
@@ -457,7 +503,8 @@ public class ThreePlayerFrozenLadderTest {
     Assert.assertEquals(schedule(settings, 12), List.of("ladder4", "reference"));
     Assert.assertEquals(settings.evaluation().coveredLadders("reference", 12), List.of("ladder8"));
     runAll(settings, SyntheticDuels::noChampion, places);
-    Assert.assertEquals(raised(), List.of("v00008-reference:LADDER_WORSE", "v00012-reference:LADDER_WORSE"));
+    Assert.assertEquals(
+        raised(), List.of("v00008-reference:LADDER_WORSE", "v00012-reference:LADDER_WORSE"));
 
     // v16 ではどのラダーも基準と重ならない: 両方のラダーを打ち、基準の結果ではラダーの低下を出さない
     Assert.assertEquals(schedule(settings, 16), List.of("ladder4", "ladder8", "reference"));
@@ -466,11 +513,17 @@ public class ThreePlayerFrozenLadderTest {
     Assert.assertEquals(
         raised(),
         List.of(
-            "v00008-reference:LADDER_WORSE", "v00012-reference:LADDER_WORSE", "v00016-ladder8:LADDER_WORSE"));
+            "v00008-reference:LADDER_WORSE",
+            "v00012-reference:LADDER_WORSE",
+            "v00016-ladder8:LADDER_WORSE"));
     Assert.assertEquals(
         names(),
         List.of(
-            "v00008-reference", "v00012-ladder4", "v00012-reference", "v00016-ladder4", "v00016-ladder8",
+            "v00008-reference",
+            "v00012-ladder4",
+            "v00012-reference",
+            "v00016-ladder4",
+            "v00016-ladder8",
             "v00016-reference"));
 
     // ラダーの低下の値は、基準の結果の区間の符号を反転したもの（候補が良いと正になる向き）。その上端は 0 より小さい
@@ -524,7 +577,12 @@ public class ThreePlayerFrozenLadderTest {
     Assert.assertEquals(raised(), List.of("v00008-ladder4:LADDER_WORSE"));
     Assert.assertEquals(
         names(),
-        List.of("v00008-ladder4", "v00008-reference", "v00012-ladder4", "v00012-ladder8", "v00012-reference"));
+        List.of(
+            "v00008-ladder4",
+            "v00008-reference",
+            "v00012-ladder4",
+            "v00012-ladder8",
+            "v00012-reference"));
 
     // 予算: ラダーの回数は打ったラダーの 3 回だけで、基準の卓の結果では数えない
     String budget =
@@ -547,7 +605,11 @@ public class ThreePlayerFrozenLadderTest {
    */
   private List<String> dropRun(String... evaluation) throws Exception {
     PrismSettings settings =
-        lineage(3, concat(table("reference", "version:1", "FIXED", 60, "FIXED", 1, 2, false), List.of(evaluation)));
+        lineage(
+            3,
+            concat(
+                table("reference", "version:1", "FIXED", 60, "FIXED", 1, 2, false),
+                List.of(evaluation)));
     crown(2);
     SyntheticDuels.Places places =
         (job, wall, game) -> job.version() == 3 && wall % 6 == 0 ? 2 : even(wall, game);
@@ -596,7 +658,8 @@ public class ThreePlayerFrozenLadderTest {
 
   @Test(timeOut = 600_000)
   public void justOutsideTheMarginABaselineDrop() throws Exception {
-    Assert.assertEquals(dropRun("evaluation.dropMargin=0.16"), List.of("v00003-reference:BASELINE_DROP@2"));
+    Assert.assertEquals(
+        dropRun("evaluation.dropMargin=0.16"), List.of("v00003-reference:BASELINE_DROP@2"));
   }
 
   @Test(timeOut = 600_000)
@@ -606,7 +669,8 @@ public class ThreePlayerFrozenLadderTest {
 
   @Test(timeOut = 600_000)
   public void aboveTheZLineABaselineDrop() throws Exception {
-    Assert.assertEquals(dropRun("evaluation.alarmZ=3.4"), List.of("v00003-reference:BASELINE_DROP@2"));
+    Assert.assertEquals(
+        dropRun("evaluation.alarmZ=3.4"), List.of("v00003-reference:BASELINE_DROP@2"));
   }
 
   @Test(timeOut = 600_000)
@@ -633,7 +697,8 @@ public class ThreePlayerFrozenLadderTest {
       schedule(settings, version);
       runAll(settings, SyntheticDuels::noChampion, places);
     }
-    List<String> once = List.of("v00003-reference:BASELINE_DROP@2", "v00003-second:BASELINE_DROP@2");
+    List<String> once =
+        List.of("v00003-reference:BASELINE_DROP@2", "v00003-second:BASELINE_DROP@2");
     Assert.assertEquals(raised(), once, "v4 is worse too, but the champion is the same");
     settleAgain(settings, "v00003-reference", places);
     Assert.assertEquals(raised(), once);
@@ -659,7 +724,8 @@ public class ThreePlayerFrozenLadderTest {
 
   @Test(timeOut = 600_000)
   public void jobsPlayedWithAnotherTwinDiscardAreNotPaired() throws Exception {
-    List<String> tables = new ArrayList<>(table("reference", "version:1", "FIXED", 60, "FIXED", 1, 2, false));
+    List<String> tables =
+        new ArrayList<>(table("reference", "version:1", "FIXED", 60, "FIXED", 1, 2, false));
     tables.addAll(table("second", "version:1", "FIXED", 60, "FIXED", 1, 2, false));
     PrismSettings settings = lineage(3, concat(tables));
     crown(2);
@@ -669,11 +735,16 @@ public class ThreePlayerFrozenLadderTest {
     runAll(settings, SyntheticDuels::noChampion, places);
     // 設定の 2 行目で切り方を手出しに替える。候補の reference は 2 行目で、second は王者と同じ 1 行目で作る
     PrismSettings tedashi =
-        ThreePlayerSettings.append(root, List.of(), concat(tables, List.of("behaviour.twinDiscard=TEDASHI")));
+        ThreePlayerSettings.append(
+            root, List.of(), concat(tables, List.of("behaviour.twinDiscard=TEDASHI")));
     Assert.assertNotEquals(tedashi.behaviour().twinDiscard(), settings.behaviour().twinDiscard());
     Jobs jobs = jobs();
-    jobs.create(JobFile.pending(3, "reference", 0, 2, RecordFile.tree(tedashi.evaluation().tables().get("reference"))));
-    jobs.create(JobFile.pending(3, "second", 1, 1, RecordFile.tree(settings.evaluation().tables().get("second"))));
+    jobs.create(
+        JobFile.pending(
+            3, "reference", 0, 2, RecordFile.tree(tedashi.evaluation().tables().get("reference"))));
+    jobs.create(
+        JobFile.pending(
+            3, "second", 1, 1, RecordFile.tree(settings.evaluation().tables().get("second"))));
     runAll(settings, SyntheticDuels::noChampion, places);
     Assert.assertEquals(raised(), List.of("v00003-second:BASELINE_DROP@2"));
   }

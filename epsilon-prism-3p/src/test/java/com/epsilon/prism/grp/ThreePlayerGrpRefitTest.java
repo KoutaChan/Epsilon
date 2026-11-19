@@ -47,12 +47,25 @@ public class ThreePlayerGrpRefitTest {
       GrpFiles files = new GrpFiles(run);
       Files.writeString(run.resolve("state.json"), "{\"format\": 1, \"next\": 6}");
       PhiEntry start =
-          new PhiEntry(PhiEntry.INITIAL_ID, PhiEntryKind.SCORE_RANK, VARIANT, "", "", "", "", "", "", 1, "", "test");
+          new PhiEntry(
+              PhiEntry.INITIAL_ID,
+              PhiEntryKind.SCORE_RANK,
+              VARIANT,
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              1,
+              "",
+              "test");
       PhiHistory.write(files.phiHistory(), PhiHistory.LINES.toJson(start));
       for (int t = 1; t <= 5; t++) {
         record(files, t, start, games(1_000L * t, 30, t));
       }
-      RefitRecord record = GrpRefitter.refit(files, setup(), 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
+      RefitRecord record =
+          GrpRefitter.refit(files, setup(), 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
       Assert.assertEquals(record.status(), RefitStatus.TRAINED, record.detail());
       Assert.assertEquals(record.init(), GrpInit.SCRATCH);
       Path candidate = files.candidate(record.id());
@@ -129,7 +142,8 @@ public class ThreePlayerGrpRefitTest {
     return new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed());
   }
 
-  private static void record(GrpFiles files, int t, PhiEntry entry, List<GameRecord> games) throws IOException {
+  private static void record(GrpFiles files, int t, PhiEntry entry, List<GameRecord> games)
+      throws IOException {
     Files.createDirectories(files.cohort(t));
     Files.writeString(files.cohort(t).resolve(CohortWriter.MANIFEST), "{}");
     Files.createDirectories(files.records(t).getParent());

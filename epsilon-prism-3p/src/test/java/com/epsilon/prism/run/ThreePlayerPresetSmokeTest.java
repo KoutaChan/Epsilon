@@ -47,16 +47,22 @@ public class ThreePlayerPresetSmokeTest {
               "evaluation.tables.rx2.walls=4",
               "phi.grp.threads=1");
       Assert.assertEquals(
-          created.evaluation().tables().keySet(), Set.of("champion", "ladder32", "ladder8", "reference", "rx2", "smoke"));
+          created.evaluation().tables().keySet(),
+          Set.of("champion", "ladder32", "ladder8", "reference", "rx2", "smoke"));
       Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
       Assert.assertEquals(
-          JsonParser.parseString(Files.readString(directory.state())).getAsJsonObject().get("next").getAsInt(), 2);
+          JsonParser.parseString(Files.readString(directory.state()))
+              .getAsJsonObject()
+              .get("next")
+              .getAsInt(),
+          2);
       PrismSettings latest = PrismApp.latest(run);
       Assert.assertEquals(latest.run().variant(), Variant.TENHOU_3P);
       Assert.assertEquals(latest.evaluation().anchor(), "reference");
       Assert.assertEquals(((PhiSettings.SelfGrp) latest.phi()).grp().trustGames(), 8192);
       Assert.assertEquals(
-          Files.readAllLines(directory.report(RunDirectory.ITERATIONS), StandardCharsets.UTF_8).stream()
+          Files.readAllLines(directory.report(RunDirectory.ITERATIONS), StandardCharsets.UTF_8)
+              .stream()
               .filter(line -> !line.isBlank())
               .count(),
           1L);
@@ -65,7 +71,8 @@ public class ThreePlayerPresetSmokeTest {
       Jobs jobs = new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS));
       List<String> names = jobs.list().jobs().stream().map(JobFile::name).sorted().toList();
       Assert.assertEquals(
-          names, List.of("v00001-rx2", "v00001-smoke", "v00002-champion", "v00002-rx2", "v00002-smoke"));
+          names,
+          List.of("v00001-rx2", "v00001-smoke", "v00002-champion", "v00002-rx2", "v00002-smoke"));
       for (JobFile job : jobs.list().jobs()) {
         Assert.assertEquals(job.state(), JobFile.State.DONE, job.name() + " " + job.reason());
         Assert.assertTrue(Files.exists(directory.job(job.name()).resolve(Jobs.RESULT)), job.name());
@@ -76,13 +83,15 @@ public class ThreePlayerPresetSmokeTest {
         DuelResult result = Jobs.result(job, DuelResult.class);
         Assert.assertEquals(result.walls(), 4, job.toString());
         Assert.assertEquals(result.games(), 12L, job.toString());
-        Assert.assertEquals(Files.readAllLines(job.resolve(JobOutputs.GAMES)).size(), 12, job.toString());
+        Assert.assertEquals(
+            Files.readAllLines(job.resolve(JobOutputs.GAMES)).size(), 12, job.toString());
       }
       // 王者の保存先は空だったので、v2 を対局なしで最初の王者にする
       List<ChampionStore.Entry> history = ChampionStore.open(directory.champion()).history();
       Assert.assertEquals(history.size(), 1, history.toString());
       Assert.assertTrue(
-          history.getFirst().event() instanceof StoreEvent.Initial initial && initial.champion().version() == 2,
+          history.getFirst().event() instanceof StoreEvent.Initial initial
+              && initial.champion().version() == 2,
           history.toString());
 
       // Φ の履歴の最初の行は、三人打ちの点数の順位から作った g000 で、反復 1 から使う

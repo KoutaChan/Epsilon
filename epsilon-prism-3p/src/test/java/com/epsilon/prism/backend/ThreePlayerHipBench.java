@@ -46,7 +46,8 @@ public class ThreePlayerHipBench {
         PrismNetwork network = ThreePlayerRows.network(manager, arm.shape(), 70 + arm.ordinal());
         WeightLayout layout = WeightLayout.of(network);
         WeightPack pack = WeightPack.build(layout, network, VERSION);
-        try (HipBackend backend = HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(ROWS))) {
+        try (HipBackend backend =
+            HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(ROWS))) {
           backend.publish(pack);
           double micros = measure(backend, batch, arm.label());
           if (!(micros <= LINE_MICROS)) {
@@ -62,7 +63,8 @@ public class ThreePlayerHipBench {
   private static double measure(HipBackend backend, HostBatch input, String arm) {
     HipBatch batch = HipBackend.batchOf(input);
     int decisions = batch.rows();
-    ByteBuffer scores = ByteBuffer.allocateDirect(batch.actions() * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+    ByteBuffer scores =
+        ByteBuffer.allocateDirect(batch.actions() * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
     backend.plan().profile(true);
     float[][] millis = new float[ITERATIONS][];
     float[] totals = new float[ITERATIONS];
@@ -87,20 +89,23 @@ public class ThreePlayerHipBench {
       Arrays.sort(samples);
       double median = samples[ITERATIONS / 2];
       if (Double.isNaN(median)) {
-        continue;  // この形では使わないカーネル
+        continue; // この形では使わないカーネル
       }
       sum += median;
-      line.append(String.format(Locale.ROOT, " %s=%.3fms(%.3fus)", kernel, median, median * 1e3 / decisions));
+      line.append(
+          String.format(
+              Locale.ROOT, " %s=%.3fms(%.3fus)", kernel, median, median * 1e3 / decisions));
     }
     Arrays.sort(totals);
     int fixed = backend.layout().architecture().counts().fixed();
     double micros = sum * 1e3 / decisions;
     log.info(
-        "PRISM-3P-HIP-SPEED arm {} rows {} tokens/row {} transitions/row {} actions/row {}:{} kernels={}ms"
-            + " ({} us/decision) wall={}ms ({} us/decision)",
+        "PRISM-3P-HIP-SPEED arm {} rows {} tokens/row {} transitions/row {} actions/row {}:{}"
+            + " kernels={}ms ({} us/decision) wall={}ms ({} us/decision)",
         arm,
         decisions,
-        String.format(Locale.ROOT, "%.1f", ((double) fixed * decisions + batch.events()) / decisions),
+        String.format(
+            Locale.ROOT, "%.1f", ((double) fixed * decisions + batch.events()) / decisions),
         String.format(Locale.ROOT, "%.1f", (double) batch.transitions() / decisions),
         String.format(Locale.ROOT, "%.1f", (double) batch.actions() / decisions),
         line,

@@ -91,7 +91,8 @@ public class ThreePlayerFirstSwitchTest {
   }
 
   /** コホート t を確定済みにし、Φ の項目 {@code entry} で集めた半荘の記録を書く。 */
-  static void record(GrpFiles files, int t, PhiEntry entry, List<GameRecord> games) throws IOException {
+  static void record(GrpFiles files, int t, PhiEntry entry, List<GameRecord> games)
+      throws IOException {
     Files.createDirectories(files.cohort(t));
     Files.writeString(files.cohort(t).resolve(CohortWriter.MANIFEST), "{}");
     Files.createDirectories(files.records(t).getParent());
@@ -146,7 +147,8 @@ public class ThreePlayerFirstSwitchTest {
 
   /** 学び直しと同じ形の三人打ちの GrpNetwork を、重みの標準偏差 {@code scale} で作り、ディレクトリに書く。 */
   static Path network(Path directory, long seed, double scale) throws IOException {
-    float[] weights = new float[GrpTensor.starts(GrpRefitter.shape(THREE))[GrpTensor.values().length]];
+    float[] weights =
+        new float[GrpTensor.starts(GrpRefitter.shape(THREE))[GrpTensor.values().length]];
     SplittableRandom random = new SplittableRandom(seed);
     for (int index = 0; index < weights.length; index++) {
       weights[index] = (float) (random.nextGaussian() * scale);
@@ -165,8 +167,20 @@ public class ThreePlayerFirstSwitchTest {
     }
     RefitRecord record =
         new RefitRecord(
-            id, slot, RefitStatus.TRAINED, RefitCause.SCHEDULE, new RecencyWindow(slot, 2, 64), GrpInit.SCRATCH,
-            PhiEntry.INITIAL_ID, candidate.toAbsolutePath().normalize().toString(), "", "", null, null, "", 1);
+            id,
+            slot,
+            RefitStatus.TRAINED,
+            RefitCause.SCHEDULE,
+            new RecencyWindow(slot, 2, 64),
+            GrpInit.SCRATCH,
+            PhiEntry.INITIAL_ID,
+            candidate.toAbsolutePath().normalize().toString(),
+            "",
+            "",
+            null,
+            null,
+            "",
+            1);
     record.append(files);
     return record;
   }
@@ -176,7 +190,8 @@ public class ThreePlayerFirstSwitchTest {
   }
 
   @Test
-  public void aCandidateThatPassesTheReplacementGateSwitchesFromTheNextIteration() throws Exception {
+  public void aCandidateThatPassesTheReplacementGateSwitchesFromTheNextIteration()
+      throws Exception {
     PhiSetup setup = start(3);
     GrpLifecycle lifecycle = new GrpLifecycle(files, setup);
     record(1, false);
@@ -188,7 +203,8 @@ public class ThreePlayerFirstSwitchTest {
     Assert.assertEquals(gated.status(), RefitStatus.READY, gated.detail());
     Assert.assertEquals(gated.gate().kind(), GateKind.REPLACEMENT);
     Assert.assertTrue(gated.gate().passed(), gated.gate().toString());
-    Assert.assertTrue(gated.gate().versusUsed().mean() < -2 * gated.gate().versusUsed().standardError());
+    Assert.assertTrue(
+        gated.gate().versusUsed().mean() < -2 * gated.gate().versusUsed().standardError());
     List<PhiEntry> history = PhiHistory.read(files);
     Assert.assertEquals(history.size(), 2);
     PhiEntry switched = history.getLast();
@@ -198,7 +214,8 @@ public class ThreePlayerFirstSwitchTest {
     Assert.assertEquals(switched.parent(), PhiEntry.INITIAL_ID);
     Assert.assertEquals(switched.effectiveFrom(), 3);
     Assert.assertTrue(switched.reason().startsWith("AUTO"), switched.reason());
-    Assert.assertEquals(PhiHistory.effectiveAt(history, 2).orElseThrow().kind(), PhiEntryKind.SCORE_RANK);
+    Assert.assertEquals(
+        PhiHistory.effectiveAt(history, 2).orElseThrow().kind(), PhiEntryKind.SCORE_RANK);
     Assert.assertEquals(PhiHistory.effectiveAt(history, 3).orElseThrow().id(), "g001-a1");
     // ネットワークの形を替えたので、切り替えから 8 反復は τ が 1。その後は設定の値
     GrpOperations operations = setup.selfGrp().grp();
@@ -206,9 +223,11 @@ public class ThreePlayerFirstSwitchTest {
     Assert.assertFalse(quiet.widened());
     Assert.assertEquals(GrpRefitter.halfLife(operations, history, quiet, 2), operations.halfLife());
     for (int slot = 3; slot <= 10; slot++) {
-      Assert.assertEquals(GrpRefitter.halfLife(operations, history, quiet, slot), 1.0, "slot " + slot);
+      Assert.assertEquals(
+          GrpRefitter.halfLife(operations, history, quiet, slot), 1.0, "slot " + slot);
     }
-    Assert.assertEquals(GrpRefitter.halfLife(operations, history, quiet, 11), operations.halfLife());
+    Assert.assertEquals(
+        GrpRefitter.halfLife(operations, history, quiet, 11), operations.halfLife());
   }
 
   @Test
@@ -223,10 +242,12 @@ public class ThreePlayerFirstSwitchTest {
     RefitRecord rejected = latest("g001-a1");
     Assert.assertEquals(rejected.status(), RefitStatus.REJECTED, rejected.detail());
     Assert.assertEquals(rejected.gate().kind(), GateKind.REPLACEMENT);
-    Assert.assertTrue(rejected.gate().failures().contains(GateFailure.NOT_BETTER), rejected.gate().toString());
+    Assert.assertTrue(
+        rejected.gate().failures().contains(GateFailure.NOT_BETTER), rejected.gate().toString());
     List<PhiEntry> history = PhiHistory.read(files);
     Assert.assertEquals(history.size(), 1);
-    Assert.assertEquals(PhiHistory.effectiveAt(history, 3).orElseThrow().kind(), PhiEntryKind.SCORE_RANK);
+    Assert.assertEquals(
+        PhiHistory.effectiveAt(history, 3).orElseThrow().kind(), PhiEntryKind.SCORE_RANK);
     Assert.assertEquals(PhiHistory.effectiveAt(history, 3).orElseThrow().id(), PhiEntry.INITIAL_ID);
   }
 
@@ -241,12 +262,18 @@ public class ThreePlayerFirstSwitchTest {
     RecencyWindow window =
         new RecencyWindow(
             5,
-            GrpRefitter.halfLife(operations, PhiHistory.read(files), SwitchWatchRecord.state(List.of()), 5),
+            GrpRefitter.halfLife(
+                operations, PhiHistory.read(files), SwitchWatchRecord.state(List.of()), 5),
             operations.window());
     int games = 30 * (5 - window.first() + 1);
     Assert.assertTrue(games > 0 && window.first() > 1, window.toString());
     Assert.assertTrue(
-        GrpRefitter.refit(files, setup("phi.grp.trustGames=" + (games + 1)), 5, RefitCause.SCHEDULE, () -> false)
+        GrpRefitter.refit(
+                files,
+                setup("phi.grp.trustGames=" + (games + 1)),
+                5,
+                RefitCause.SCHEDULE,
+                () -> false)
             .isEmpty());
     Assert.assertTrue(RefitRecord.readAll(files).isEmpty());
     Assert.assertFalse(Files.exists(files.candidate("x").getParent()));
@@ -267,11 +294,13 @@ public class ThreePlayerFirstSwitchTest {
     RecencyWindow window =
         new RecencyWindow(
             5,
-            GrpRefitter.halfLife(operations, PhiHistory.read(files), SwitchWatchRecord.state(List.of()), 5),
+            GrpRefitter.halfLife(
+                operations, PhiHistory.read(files), SwitchWatchRecord.state(List.of()), 5),
             operations.window());
     int games = 30 * (5 - window.first() + 1);
     RefitRecord record =
-        GrpRefitter.refit(files, setup("phi.grp.trustGames=" + games), 5, RefitCause.SCHEDULE, () -> false)
+        GrpRefitter.refit(
+                files, setup("phi.grp.trustGames=" + games), 5, RefitCause.SCHEDULE, () -> false)
             .orElseThrow();
     Assert.assertEquals(record.status(), RefitStatus.TRAINED, record.detail());
     Assert.assertEquals(record.init(), GrpInit.SCRATCH);
@@ -285,19 +314,27 @@ public class ThreePlayerFirstSwitchTest {
     String reason = "The score-smooth sigma is not measured for TENHOU_3P";
     PrismSettings direct = ThreePlayerSettings.of("phi.source=SCORE_SMOOTH");
     List<String> problems =
-        PhiControl.problems(new PhiSetup(direct.phi(), direct.run().variant(), direct.run().seed()));
+        PhiControl.problems(
+            new PhiSetup(direct.phi(), direct.run().variant(), direct.run().seed()));
     Assert.assertEquals(problems.size(), 1, problems.toString());
-    Assert.assertTrue(problems.getFirst().startsWith("The Φ of the settings cannot be opened: "), problems.toString());
+    Assert.assertTrue(
+        problems.getFirst().startsWith("The Φ of the settings cannot be opened: "),
+        problems.toString());
     Assert.assertTrue(problems.getFirst().endsWith(reason), problems.toString());
     Assert.assertEquals(PhiControl.problems(setup("phi.start.kind=SCORE_SMOOTH")).size(), 1);
-    Assert.assertTrue(PhiControl.problems(setup("phi.start.kind=SCORE_SMOOTH")).getFirst().endsWith(reason));
+    Assert.assertTrue(
+        PhiControl.problems(setup("phi.start.kind=SCORE_SMOOTH")).getFirst().endsWith(reason));
     Assert.assertEquals(PhiControl.problems(setup()), List.of());
     PrismSettings rank = ThreePlayerSettings.of("phi.source=SCORE_RANK");
-    Assert.assertEquals(PhiControl.problems(new PhiSetup(rank.phi(), rank.run().variant(), rank.run().seed())), List.of());
+    Assert.assertEquals(
+        PhiControl.problems(new PhiSetup(rank.phi(), rank.run().variant(), rank.run().seed())),
+        List.of());
     IllegalArgumentException opened =
         Assert.expectThrows(
             IllegalArgumentException.class,
-            () -> HandEndPhi.open(PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, THREE), setup().utility()));
+            () ->
+                HandEndPhi.open(
+                    PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, THREE), setup().utility()));
     Assert.assertEquals(opened.getMessage(), reason);
   }
 }

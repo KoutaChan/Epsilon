@@ -1,6 +1,7 @@
 // V4-only launch arguments. The released kernel arguments and PackHeader are fixed.
 #pragma once
 #include "prism_hip_candidate_layout.h"
+#include "prism_hip_event_pages.h"
 #include "prism_hip_kernels.h"
 #include "prism_hip_training.h"
 
@@ -30,12 +31,24 @@ namespace prism::v4 {
 struct ProjectionIndex {
   int* owners{};
   int tokens{};
-  int* sources() const { return owners + tokens; }
-  int* table() const { return sources() + tokens; }
-  int* count() const { return table() + tokens; }
+  ProjectionCache cache{};
+  __host__ __device__ int* sources() const { return owners + tokens; }
+  __host__ __device__ int* table() const { return sources() + tokens; }
+  __host__ __device__ int* count() const { return table() + tokens; }
   static size_t bytes(size_t tokens) { return (3 * tokens + 1) * sizeof(int); }
 };
 
+// 最初の固定注意が、観測席で共有するイベントの K/V をページ番号で直接読む。
+void launchPageAttention(const AttentionArgs& args, Span<const int> slots, int headPairs,
+                         const int (&groupRows)[kAttentionGroups], hipStream_t stream);
+// 固定行の残差は最後の層まで空いている STATE、イベントの残差は密な RESIDUAL にある。
+struct MlpSources {
+  Span<const uint16_t> fixed;
+  Span<const uint16_t> cached;
+  Span<const int> owners;
+  Span<const int> misses;
+};
+void launchPageMlp(int hidden, const MlpArgs& args, MlpSources sources, hipStream_t stream);
 void indexLayerInputs(const EmbedArgs& args, const EmbeddingSpec (&specs)[kEmbeddingSlots], ProjectionIndex index,
                       hipStream_t stream);
 void launchSharedProjection(AttentionArgs args, ProjectionIndex index, Span<uint16_t> projections, int headPairs,
@@ -43,8 +56,6 @@ void launchSharedProjection(AttentionArgs args, ProjectionIndex index, Span<uint
 
 void launchWideEmbed(const EmbedArgs& args, Span<const float> gain, const Span<uint16_t> (&normalized)[kEmbeddingSlots],
                      ProjectionIndex index, hipStream_t stream);
-void restoreEmbedRows(Span<uint16_t> residual, const int* owners, const int* misses, int fixed, int missCount,
-                      hipStream_t stream);
 
 struct CountWeights {
   Span<const float> gate;

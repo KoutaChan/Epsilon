@@ -225,6 +225,8 @@ class Plan {
 
   hipError_t allocateEventPages(int slots);
   size_t eventInputWidth() const;
+  int projectionRows(int slots) const;
+  size_t projectionBytes(int slots) const;
   size_t basicCodeBytes(int transitions) const;
   void uploadPageMap(const BatchShape& batch, const int* map, int misses, int slots, size_t transferBytes);
   void uploadInputs(const void* input, const BatchShape& batch, bool sparse);
@@ -241,6 +243,7 @@ class Plan {
   char* pageFixedKeys_ = nullptr;
   char* pageExtraKeys_ = nullptr;
   uint16_t* compactAttention_ = nullptr;
+  v4::ProjectionCache projectionCache_{};
   int pageSlots_ = 0;
   int denseEvents_ = 0;
   bool paged_ = false;

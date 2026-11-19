@@ -41,6 +41,7 @@
 #include "prism_hip_relation.h"
 #include "prism_hip_v4_causal.h"
 #include "prism_hip_event_pages.h"
+#include "prism_hip_v4.h"
 
 #ifdef PRISM_V4_CAUSAL
 #define attentionKernel causalAttentionKernel
@@ -511,6 +512,12 @@ __device__ __forceinline__ void storeHead(const HeadState& s, bool inside, size_
 // 射影済みの K2 では、同じ入力を持つ代表トークンの Q・K・V を読む。
 struct RowAttentionArgs : AttentionArgs {
   Span<const int> owners{};
+  Span<const uint16_t> cachedQkv{};
+};
+#elif defined(PRISM_V4_WIDE)
+struct RowAttentionArgs : AttentionArgs {
+  Span<const int> eventSlots;
+  RowAttentionArgs(const AttentionArgs& args, Span<const int> slots = {}) : AttentionArgs(args), eventSlots(slots) {}
 };
 #else
 using RowAttentionArgs = AttentionArgs;
@@ -534,12 +541,15 @@ __device__ __forceinline__ void loadFolded(Shared& shared, bf16x16 (&query)[2], 
   const int token = min(key, tokens - 1);
   const int index = args.layout.index(row, firstEvent, token);
 #if defined(PRISM_V4_WIDE) && defined(PRISM_V4_CAUSAL)
-  const int source = args.owners.data[bounds.index(index, 1, args.owners.limit)];
+  const int owner = args.owners.data[bounds.index(index, 1, args.owners.limit)];
+  const int source = owner < 0 ? ~owner : owner;
+  const auto qkv = owner < 0 ? args.cachedQkv : args.qkv0;
 #else
   const int source = index;
+  const auto qkv = args.qkv0;
 #endif
-  const size_t base = bounds.index(static_cast<size_t>(source) * kWidth + foldColumn(kPairWidth * pair, A),
-                                   3 * kPairWidth, args.qkv0.limit);
+  const size_t base =
+      bounds.index(static_cast<size_t>(source) * kWidth + foldColumn(kPairWidth * pair, A), 3 * kPairWidth, qkv.limit);
   u32x4 part[3][2];
 #pragma unroll
   for (int j = 0; j < 3; ++j) {
@@ -547,7 +557,7 @@ __device__ __forceinline__ void loadFolded(Shared& shared, bf16x16 (&query)[2], 
     for (int h = 0; h < 2; ++h) {
       const int at =
           foldColumn(j * A + kPairWidth * pair + kHeadWidth * h + 8 * half, A) - foldColumn(kPairWidth * pair, A);
-      part[j][h] = *reinterpret_cast<const u32x4*>(args.qkv0.data + base + at);
+      part[j][h] = *reinterpret_cast<const u32x4*>(qkv.data + base + at);
     }
   }
 #pragma unroll
@@ -572,9 +582,10 @@ __device__ __forceinline__ void loadFolded(Shared& shared, bf16x16 (&query)[2], 
 // ヘッド h の次元 8·half 〜 8·half + 7 を k・v ごとに 16 バイトずつ読み、loadFolded と同じ置き方で置く。行の外のキーは行の最後の
 // イベントを読む（射影する場合と同じ）。局・席・牌とイベントが混ざるタイルでは、同じウェーブが射影の後に呼ぶので、イベントの位置に
 // 射影した値を上書きする（同じウェーブの LDS の読み書きは順に行われる）。
-template <int H, int Heads = 2, class Shared>
-__device__ __forceinline__ void loadEventKeys(Shared& shared, const AttentionArgs& args, Bounds& bounds, int firstEvent,
-                                              int fixed, int tokens, int pair, int m, int lane, int firstHead = 0) {
+template <int H, int Heads = 2, bool Paged = false, class Shared>
+__device__ __forceinline__ void loadEventKeys(Shared& shared, const RowAttentionArgs& args, Bounds& bounds,
+                                              int firstEvent, int fixed, int tokens, int pair, int m, int lane,
+                                              int firstHead = 0) {
   constexpr int A = H / 2;
   const int column = lane & 15;
   const int half = lane >> 4;
@@ -582,7 +593,10 @@ __device__ __forceinline__ void loadEventKeys(Shared& shared, const AttentionArg
   if (key < fixed) {
     return;
   }
-  const int event = firstEvent + min(key, tokens - 1) - fixed;
+  int event = firstEvent + min(key, tokens - 1) - fixed;
+#if defined(PRISM_V4_WIDE) && !defined(PRISM_V4_CAUSAL)
+  if constexpr (Paged) event = args.eventSlots.data[bounds.index(event, 1, args.eventSlots.limit)];
+#endif
   const size_t base =
       bounds.index(static_cast<size_t>(event) * (2 * A) + kPairWidth * pair, A + kPairWidth, args.eventKeyValue.limit);
   u32x4 part[2][Heads];
@@ -705,7 +719,8 @@ __global__ __launch_bounds__(kWave* kWaves) void attentionKernel(RowAttentionArg
   constexpr int kPairElements =
       (H / 16) * kStepBytes / static_cast<int>(sizeof(uint16_t));  // ヘッドの対 1 つ分の重みのコピーの要素数
   // イベントの k・v をコピーする K4（kCopied）は、局・席・牌のタイルだけを射影する。
-  constexpr bool kCopied = kLast && kEvents == EventKeys::kCopied;
+  constexpr bool kPaged = kEvents == EventKeys::kPaged;
+  constexpr bool kCopied = kLast && (kEvents == EventKeys::kCopied || kPaged);
   // 固定タイルの各ヘッドにウェーブを割り当てられる場合、射影から注意までを同じウェーブで行う。
   constexpr bool kSplitHeads = kCopied && !kAttentionWidth.folded && kWaves >= 2 * kFixedBlocks;
   // 全てのタイルを射影する K4 のうち W ≥ 6 のグループは、射影で 1 ウェーブが 2 タイルの 1 ヘッドを作り、q を LDS に置く。W = 4 の
@@ -803,7 +818,7 @@ __global__ __launch_bounds__(kWave* kWaves) void attentionKernel(RowAttentionArg
     for (int job = w; job < 2 * blocks; job += kWaves) {
       const int tile = job / 2;
       if (tokens > fixed && 16 * (tile + 1) > fixed) {
-        loadEventKeys<H, 1>(shared, args, bounds, firstEvent, fixed, tokens, pair, tile, lane, job % 2);
+        loadEventKeys<H, 1, kPaged>(shared, args, bounds, firstEvent, fixed, tokens, pair, tile, lane, job % 2);
       }
     }
   } else if constexpr (kPairedBlocks) {
@@ -909,7 +924,7 @@ __global__ __launch_bounds__(kWave* kWaves) void attentionKernel(RowAttentionArg
     // 作った k・v からコピーする。イベントのない行は、混ざるタイルのイベントの位置に、射影した値（最後の局・席・牌のトークン。有限）が
     // 残る。
     if (wave < blocks && 16 * (wave + 1) > fixed && tokens > fixed) {
-      loadEventKeys<H>(shared, args, bounds, firstEvent, fixed, tokens, pair, wave, lane);
+      loadEventKeys<H, 2, kPaged>(shared, args, bounds, firstEvent, fixed, tokens, pair, wave, lane);
     }
   }
   phaseBarrier();
@@ -1144,6 +1159,12 @@ void launchAttention(int hidden, bool folded, const AttentionArgs& args,
 }
 
 #ifdef PRISM_V4_WIDE
+void v4::launchPageAttention(const AttentionArgs& args, Span<const int> slots, int headPairs,
+                             const int (&groupRows)[kAttentionGroups], hipStream_t stream) {
+  launchGroups<kAttentionWidth.width, true, false, EventKeys::kPaged>(
+      RowAttentionArgs{args, slots}, groupRows, headPairs, stream, std::make_integer_sequence<int, kAttentionGroups>{});
+}
+
 void launchV4WideQkvFragments(int hidden, const QkvFragmentArgs& args, int headPairs, hipStream_t stream) {
 #else
 void launchQkvFragments(int hidden, const QkvFragmentArgs& args, int headPairs, hipStream_t stream) {

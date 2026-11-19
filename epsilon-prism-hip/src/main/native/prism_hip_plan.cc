@@ -27,6 +27,8 @@ struct WidthKernels {
   decltype(&launchAttention) attention;
   decltype(&launchV4CausalAttention) causal;
   decltype(&v4::launchSharedProjection) sharedProjection;
+  decltype(&v4::launchPageAttention) pageAttention;
+  decltype(&v4::launchPageMlp) pageMlp;
   decltype(&launchMlp) mlp;
   decltype(&launchMlpKv) lastMlp;
   decltype(&launchValueGraph) valueGraph;
@@ -44,6 +46,8 @@ constexpr WidthKernels kernelsS{kWidthS,
                                 launchAttention,
                                 launchV4CausalAttention,
                                 nullptr,
+                                nullptr,
+                                nullptr,
                                 launchMlp,
                                 launchMlpKv,
                                 launchValueGraph,
@@ -59,6 +63,8 @@ constexpr WidthKernels kernelsM{kWidthM,
                                 launchV4WideAttention,
                                 launchV4WideCausalAttention,
                                 v4::launchSharedProjection,
+                                v4::launchPageAttention,
+                                v4::launchPageMlp,
                                 launchV4WideMlp,
                                 launchV4WideMlpKv,
                                 launchV4WideValueGraph,
@@ -923,6 +929,9 @@ void Plan::uploadWeights(const void* host, size_t bytes, int64_t version) {
   // 写しと、重みから作るものが済むまでは、重みのない計画として扱う（途中で失敗しても、新しい重みと古い表・写しの組み合わせで
   // forward が回らない）。
   version_ = -1;
+  if (projectionCache_.rows)
+    PRISM_HIP(hipMemsetAsync(projectionCache_.tags, 0, size_t(projectionCache_.rows) * sizeof(*projectionCache_.tags),
+                             stream_));
   standaloneRows_.resize(static_cast<size_t>(shape_.rows) * header.width(Section::kRowColumn) * sizeof(int32_t));
   header_ = header;
   weightsUsed_ = bytes;
@@ -1176,7 +1185,10 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch) {
         args.blockStart[e] = blocks;
         blocks += (counts[e] + 63) / 64;
         const bool transition = static_cast<EmbeddingSlot>(e) == EmbeddingSlot::kTransition;
-        args.out[e] = regionSpan<uint16_t>(transition ? Region::kStatic : Region::kResidual, starts[e] * hidden);
+        // K3 は代表から読んだ残差を各行へ書く。固定トークンの代表は、K5 まで空いている STATE に置く。
+        Region residual =
+            paged_ && kernels_.pageMlp && e < ordinal(EmbeddingSlot::kEvent) ? Region::kState : Region::kResidual;
+        args.out[e] = regionSpan<uint16_t>(transition ? Region::kStatic : residual, starts[e] * hidden);
         args.qkv0[e] =
             transition ? Span<uint16_t>{nullptr, 0} : regionSpan<uint16_t>(Region::kQkv0, starts[e] * 3 * attention);
       }
@@ -1191,7 +1203,13 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch) {
           }
           v4::ProjectionIndex index{};
           if (paged_ && kernels_.sharedProjection) {
-            index = {reinterpret_cast<int*>(workspace_ + projectionIndexOffset_), allTokens};
+            // 同じ提出の途中では入力を直接照合し、先行の提出では保存したキーを照合する。
+            if (++projectionCache_.generation >= std::numeric_limits<unsigned>::max() / kEmbeddingSlots) {
+              PRISM_HIP(hipMemsetAsync(projectionCache_.tags, 0,
+                                       size_t(projectionCache_.rows) * sizeof(*projectionCache_.tags), stream_));
+              projectionCache_.generation = 1;
+            }
+            index = {reinterpret_cast<int*>(workspace_ + projectionIndexOffset_), allTokens, projectionCache_};
             v4::indexLayerInputs(args, header_.embedding, index, stream_);
           }
           kernels_.projectedEmbed(args, weight<float>(Weight::kAttentionNorm, 0), normalized, index, stream_);
@@ -1271,7 +1289,8 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch) {
       // 最初の局・席・牌の層は、最後の全トークンの層の K3 が全てのトークンについて書いた n から、イベントの k・v も射影する。
       // 後の局・席・牌の層は、その K3 が作ったイベントの k・v を写す。
       args.eventKeys = !fixedLayer || a.fixedIndex(layer) == 0 ? EventKeys::kProjected : EventKeys::kCopied;
-      if (paged_ && fixedLayer && a.fixedIndex(layer) == 0) {
+      const bool firstFixed = paged_ && fixedLayer && a.fixedIndex(layer) == 0;
+      if (firstFixed) {
         args.eventKeys = EventKeys::kCopied;
         args.eventKeyValue = regionSpan<const uint16_t>(Region::kQkv0, 0);
       } else if (args.eventKeys == EventKeys::kCopied) {
@@ -1279,10 +1298,15 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch) {
             Region::kEventKeyValue, static_cast<size_t>(a.fixedIndex(layer) - 1) * batch.events * 2 * attention);
       }
       timed(kernel, [&] {
-        if (shape_.options.has(PlanOptions::kCausal) && layer == 0) {
+        if (firstFixed && kernels_.pageAttention) {
+          args.eventKeyValue = {reinterpret_cast<const uint16_t*>(pageFixedKeys_), size_t(pageSlots_) * hidden};
+          kernels_.pageAttention(args, {pageMap_ + batch.rows, size_t(batch.events)}, a.headPairs(), groupRows_,
+                                 stream_);
+        } else if (shape_.options.has(PlanOptions::kCausal) && layer == 0) {
           if (paged_) args.eventKeyValue = {reinterpret_cast<const uint16_t*>(pageMap_), size_t(batch.rows) * 2};
           if (paged_ && kernels_.sharedProjection) {
-            v4::ProjectionIndex index{reinterpret_cast<int*>(workspace_ + projectionIndexOffset_), allTokens};
+            v4::ProjectionIndex index{reinterpret_cast<int*>(workspace_ + projectionIndexOffset_), allTokens,
+                                      projectionCache_};
             kernels_.sharedProjection(args, index, regionSpan<uint16_t>(Region::kQkv0, 0), a.headPairs(), groupRows_,
                                       stream_);
           } else {
@@ -1325,8 +1349,17 @@ void Plan::launch(Kernel kernel, int layer, const BatchShape& batch) {
       }
       args.epsilon = a.epsilon();
       timed(kernel, [&] {
-        if (paged_) compactEventInputs(batch);
-        kernels_.mlp(hidden, args, stream_);
+        if (paged_ && kernels_.pageMlp) {
+          v4::MlpSources sources{
+              regionSpan<const uint16_t>(Region::kState, 0),
+              {projectionCache_.residual.data, projectionCache_.residual.limit},
+              {reinterpret_cast<const int*>(workspace_ + projectionIndexOffset_), size_t(fixed + denseEvents_)},
+              {pageMap_ + batch.rows + denseEvents_, size_t(batch.events)}};
+          kernels_.pageMlp(hidden, args, sources, stream_);
+        } else {
+          if (paged_) compactEventInputs(batch);
+          kernels_.mlp(hidden, args, stream_);
+        }
         if (paged_) exchangePages(batch, false);
       });
       return;
@@ -1608,6 +1641,19 @@ size_t Plan::basicCodeBytes(int transitions) const {
   return restoreCandidates_ ? size_t(transitions) * shape_.architecture.fixed() : 0;
 }
 
+int Plan::projectionRows(int slots) const {
+  if (!kernels_.sharedProjection) return 0;
+  int limit = std::min(size_t(std::min(slots, v4::ProjectionCache::kMaxRows)), shape_.tokens());
+  int rows = 1;
+  while (rows <= limit / 2) rows *= 2;
+  return rows;
+}
+
+size_t Plan::projectionBytes(int slots) const {
+  return size_t(projectionRows(slots)) * (sizeof(unsigned long long) + v4::ProjectionCache::kKeyBytes +
+                                          (shape_.hidden() + 3 * shape_.attention()) * sizeof(uint16_t));
+}
+
 hipError_t Plan::allocateEventPages(int slots) {
   const size_t capacity = slots, batchCapacity = std::min(slots, shape_.events);
   size_t bytes = 0;
@@ -1624,6 +1670,7 @@ hipError_t Plan::allocateEventPages(int slots) {
   size_t kv = reserve(capacity * shape_.hidden() * sizeof(uint16_t) * (shape_.architecture.depth - 2));
   size_t scratchWidth = saveEventProjection() ? shape_.attention() : shape_.hidden();
   size_t compact = reserve(batchCapacity * scratchWidth * sizeof(uint16_t));
+  const size_t saved = reserve(projectionBytes(slots));
   char* storage = nullptr;
   hipError_t status = hipMalloc(&storage, bytes);
   if (status != hipSuccess) return status;
@@ -1635,6 +1682,16 @@ hipError_t Plan::allocateEventPages(int slots) {
   pageFixedKeys_ = storage + norm;
   pageExtraKeys_ = storage + kv;
   compactAttention_ = reinterpret_cast<uint16_t*>(storage + compact);
+  auto& cache = projectionCache_;
+  cache.rows = projectionRows(slots);
+  if (cache.rows) {
+    cache.tags = reinterpret_cast<unsigned long long*>(storage + saved);
+    cache.keys = reinterpret_cast<uint8_t*>(cache.tags + cache.rows);
+    cache.residual = {reinterpret_cast<uint16_t*>(cache.keys + size_t(cache.rows) * cache.kKeyBytes),
+                      size_t(cache.rows) * shape_.hidden()};
+    cache.qkv = {cache.residual.data + cache.residual.limit, size_t(cache.rows) * 3 * shape_.attention()};
+    PRISM_HIP(hipMemsetAsync(cache.tags, 0, size_t(cache.rows) * sizeof(*cache.tags), stream_));
+  }
   return hipSuccess;
 }
 
@@ -1658,6 +1715,7 @@ std::array<int64_t, 4> Plan::configureEventPages(int remaining, int events, doub
   size_t fixed = alignUp((shape_.rows + 2 * size_t(shape_.events)) * sizeof(int) +
                          size_t(shape_.events) * eventInputWidth() + basicCodeBytes(shape_.transitions)) +
                  alignUp(size_t(shape_.events) * scratchWidth * sizeof(uint16_t)) + 4 * kPackAlignment;
+  fixed += alignUp(projectionBytes(v4::ProjectionCache::kMaxRows));
   size_t projectionWidth = saveEventProjection() ? 3 * shape_.attention() : 0;
   size_t perEvent = (projectionWidth + (a.depth - 1) * shape_.hidden()) * sizeof(uint16_t) + eventInputWidth();
   size_t slots = budget > fixed ? (budget - fixed) / perEvent : 0;
@@ -1786,26 +1844,26 @@ void Plan::exchangePages(const BatchShape& batch, bool embedding) {
   const int hidden = shape_.hidden();
   PageColumns columns{};
   auto add = [&](void* current, void* pages, int bytes) { columns.column[columns.count++] = {current, pages, bytes}; };
+  const int* slots = pageMap_ + batch.rows;
   if (embedding) {
     int width = 3 * shape_.attention();
     add(regionSpan<uint16_t>(Region::kQkv0, fixed * width).data, pageInput_, width * 2);
   } else {
     add(regionSpan<uint16_t>(Region::kQkv0, 0).data, pageFixedKeys_, hidden * 2);
+    if (kernels_.pageAttention) {
+      // 新しい K/V だけを書き足す。最初の固定注意は、このページをそのまま読む。
+      exchangeEventPages(slots, slots + denseEvents_, 0, batch.events, columns, stream_);
+      columns.count = 0;
+    }
     if (shape_.architecture.depth > 2)
       add(regionSpan<uint16_t>(Region::kEventKeyValue, 0).data, pageExtraKeys_, hidden * 2);
   }
-  const int* slots = pageMap_ + batch.rows;
-  exchangeEventPages(slots, slots + denseEvents_, denseEvents_, batch.events, columns, stream_);
+  if (columns.count) exchangeEventPages(slots, slots + denseEvents_, denseEvents_, batch.events, columns, stream_);
 }
 
 void Plan::compactEventInputs(const BatchShape& batch) {
   const int fixed = batch.rows * shape_.architecture.fixed();
   const int* misses = pageMap_ + batch.rows + denseEvents_;
-  if (kernels_.sharedProjection) {
-    // K2 は代表だけを読めるが、K3 は各行の残差を上書きする。計算する行だけを先に独立させる。
-    const auto* owners = reinterpret_cast<const int*>(workspace_ + projectionIndexOffset_);
-    v4::restoreEmbedRows(regionSpan<uint16_t>(Region::kResidual, 0), owners, misses, fixed, batch.events, stream_);
-  }
   if (!batch.events) return;
   auto compact = [&](Region region, int width) {
     auto* dense = regionSpan<uint16_t>(region, static_cast<size_t>(fixed) * width).data;

@@ -5,6 +5,20 @@
 
 namespace prism {
 
+// 重みの公開ごとに空にする入力の表。行には全入力のバイトと、その埋め込みと射影を置く。
+namespace v4 {
+struct ProjectionCache {
+  // この幅を超える入力と衝突した入力は、そのバッチの代表だけで計算する。
+  static constexpr int kKeyBytes = 32;
+  static constexpr int kMaxRows = 131072;
+  unsigned long long* tags{};
+  uint8_t* keys{};
+  Span<uint16_t> residual{}, qkv{};
+  unsigned generation{};
+  int rows{};
+};
+}  // namespace v4
+
 // GPU ページの列。未計算の行を先に保存し、全行をバッチの順に読み戻す。二つの領域は同じでもよい。
 struct PageColumn {
   void* dense;

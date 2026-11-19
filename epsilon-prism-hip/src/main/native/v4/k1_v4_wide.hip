@@ -30,12 +30,13 @@ __device__ __forceinline__ EmbedRow embedRow(const EmbedArgs& args, int slot, in
 
 template <int H, bool indexed>
 __global__ void wideEmbedKernel(EmbedArgs args, int slot, Span<const float> gain, Span<uint16_t> normalized,
-                                const int* sources, const int* unique) {
+                                ProjectionIndex index) {
+  const int* sources = indexed ? index.sources() : nullptr;
   __shared__ int tableRows[kTokensPerBlock][kMaxTables];
   __shared__ float features[kTokensPerBlock][kMaxDense];
   alignas(8) __shared__ uint16_t state[kTokensPerBlock][H + tile::kPad];
   const int first = blockIdx.x * kTokensPerBlock;
-  const int count = min(kTokensPerBlock, (indexed ? *unique : args.count[slot]) - first);
+  const int count = min(kTokensPerBlock, (indexed ? *index.count() : args.count[slot]) - first);
   if (count <= 0) return;
   const int tid = threadIdx.x;
   const uint8_t* input = args.input.data;
@@ -85,7 +86,8 @@ __global__ void wideEmbedKernel(EmbedArgs args, int slot, Span<const float> gain
   if (token < count) {
     const auto src = embedRow<indexed>(args, slot, first + token, sources);
     const auto& spec = args.spec[src.slot];
-    const auto out = args.out[indexed ? 0 : slot];
+    const int dstRow = indexed ? index.owners[src.output] : src.output;
+    const auto out = dstRow < 0 ? index.cache.residual : args.out[src.slot];
     f32x4 sums[kVectorsPerLane]{};
     for (int t = 0; t < spec.tables; ++t) {
       const auto& table = spec.table[t];
@@ -118,7 +120,8 @@ __global__ void wideEmbedKernel(EmbedArgs args, int slot, Span<const float> gain
 #pragma unroll
       for (int col = 0; col < kColumnsPerLane; ++col) rounded[col] = bf16RoundActivation(sums[j][col]);
       *reinterpret_cast<u16x4*>(&state[token][c]) = rounded;
-      const size_t dst = bounds.index(static_cast<size_t>(src.output) * H + c, kColumnsPerLane, out.limit);
+      const size_t dst =
+          bounds.index(static_cast<size_t>(dstRow < 0 ? ~dstRow : src.input) * H + c, kColumnsPerLane, out.limit);
       *reinterpret_cast<u16x4*>(out.data + dst) = rounded;
     }
   }
@@ -145,36 +148,7 @@ __global__ void wideEmbedKernel(EmbedArgs args, int slot, Span<const float> gain
   bounds.trap();
 }
 
-// 代表は自分自身を指す。別の行へ書き戻している間も、コピー元の残差を読むことができる。
-template <int H>
-__global__ void restoreResidual(Span<uint16_t> residual, const int* owners, const int* misses, int fixed, int count) {
-  const int job = blockIdx.x * kTokensPerBlock + threadIdx.x / kWave;
-  if (job >= count) return;
-  const int token = job < fixed ? job : fixed + misses[job - fixed];
-  const int owner = owners[token];
-  if (token == owner) return;
-
-  Bounds bounds;
-  const size_t from = bounds.index(static_cast<size_t>(owner) * H, H, residual.limit);
-  const size_t to = bounds.index(static_cast<size_t>(token) * H, H, residual.limit);
-  const int lane = threadIdx.x % kWave;
-  for (int c = lane * 8; c < H; c += kWave * 8) {
-    *reinterpret_cast<u32x4*>(residual.data + to + c) = *reinterpret_cast<const u32x4*>(residual.data + from + c);
-  }
-  bounds.trap();
-}
-
 }  // namespace
-
-void restoreEmbedRows(Span<uint16_t> residual, const int* owners, const int* misses, int fixed, int missCount,
-                      hipStream_t stream) {
-  const int rows = fixed + missCount;
-  if (rows == 0) return;
-  const int blocks = (rows + kTokensPerBlock - 1) / kTokensPerBlock;
-  hipLaunchKernelGGL((restoreResidual<kWidthM.width>), dim3(blocks), dim3(kEmbedThreads), 0, stream, residual, owners,
-                     misses, fixed, rows);
-  PRISM_HIP(hipGetLastError());
-}
 
 void launchWideEmbed(const EmbedArgs& args, Span<const float> gain, const Span<uint16_t> (&normalized)[kEmbeddingSlots],
                      ProjectionIndex index, hipStream_t stream) {
@@ -183,7 +157,7 @@ void launchWideEmbed(const EmbedArgs& args, Span<const float> gain, const Span<u
     const int blocks = (index.tokens + kTokensPerBlock - 1) / kTokensPerBlock;
     if (blocks > 0) {
       hipLaunchKernelGGL((wideEmbedKernel<kWidthM.width, true>), dim3(blocks), dim3(kEmbedThreads), 0, stream, args,
-                         firstSlot, gain, normalized[firstSlot], index.sources(), index.count());
+                         firstSlot, gain, normalized[firstSlot], index);
       PRISM_HIP(hipGetLastError());
     }
     firstSlot = static_cast<int>(EmbeddingSlot::kTransition);
@@ -192,7 +166,7 @@ void launchWideEmbed(const EmbedArgs& args, Span<const float> gain, const Span<u
     const int blocks = (args.count[slot] + kTokensPerBlock - 1) / kTokensPerBlock;
     if (blocks > 0) {
       hipLaunchKernelGGL((wideEmbedKernel<kWidthM.width, false>), dim3(blocks), dim3(kEmbedThreads), 0, stream, args,
-                         slot, gain, normalized[slot], nullptr, nullptr);
+                         slot, gain, normalized[slot], index);
       PRISM_HIP(hipGetLastError());
     }
   }

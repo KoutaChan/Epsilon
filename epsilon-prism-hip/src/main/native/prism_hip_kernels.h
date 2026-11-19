@@ -165,7 +165,7 @@ struct RowOrderArgs {
 
 // K4 がイベントのキーとバリューをどう作るか。最初の局・席・牌の層は、最後の全トークンの層の K3 が全てのトークンについて書いた n から
 // 自分で射影する。後の局・席・牌の層は、最後の全トークンの層の K3 が作った eventKeyValue を写す。
-enum class EventKeys : int { kProjected, kCopied };
+enum class EventKeys : int { kProjected, kCopied, kPaged };
 
 // K2（全トークンの層）・K4（局・席・牌の層）: ヘッドの対 × 組の行（起動は組ごと）。K2 の層 0 は射影をせず qkv0 を読む（n・qkv・qkvBias
 // は読まない）。K4 は、eventKeys が kProjected なら全てのタイルを n から射影する。kCopied なら局・席・牌のタイルだけを射影し、イベントの

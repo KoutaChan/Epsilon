@@ -44,20 +44,56 @@ struct InputKey {
   RowBytes columns[3];  // 埋め込みが参照するカテゴリ・スカラー・厳密値。省略された列の幅は 0。
 };
 
+// 空きの行を取った提出だけが値を書く。現在の提出で確保した行は元の入力を参照できるので、
+// キーを書き終える前の別ウェーブとも照合できる。次の提出の読み出しはストリーム順で後になる。
+__device__ int cachedInput(InputKey key, int kind, int row, uint32_t hash, v4::ProjectionCache cache, bool& compute) {
+  int width = 0;
+  for (const auto& col : key.columns) width += col.width;
+  if (!cache.rows || width > cache.kKeyBytes) return -1;
+  const int slot = hash & (cache.rows - 1);
+  const unsigned stamp = cache.generation * kEmbeddingSlots + kind;
+  const unsigned long long claim = (static_cast<unsigned long long>(stamp) << 32) | static_cast<unsigned>(row);
+  auto* tag = cache.tags + slot;
+  auto prior = __atomic_load_n(tag, __ATOMIC_RELAXED);
+  if (!prior) prior = atomicCAS(tag, 0ull, claim);
+  auto* saved = cache.keys + size_t(slot) * cache.kKeyBytes;
+  if (!prior) {
+    for (const auto& col : key.columns) {
+      for (int i = 0; i < col.width; ++i) saved[i] = col.row(row)[i];
+      saved += col.width;
+    }
+    compute = true;
+    return slot;
+  }
+  const unsigned when = static_cast<unsigned>(prior >> 32);
+  if (when % kEmbeddingSlots != kind) return -1;
+  for (const auto& col : key.columns) {
+    const auto* other = when == stamp ? col.row(static_cast<int>(static_cast<uint32_t>(prior))) : saved;
+    if (!sameBytes(col.row(row), other, col.width)) return -1;
+    saved += col.width;
+  }
+  compute = false;
+  return slot;
+}
+
 // 種類ごとに表を区切り、列が全て一致したときだけ先に登録した代表を使う。
 // 衝突が続く場合は自分を代表にするので、挿入順によらず同じ値になる。
-__global__ void indexProjectionInputs(InputKey key, int first, int rows, int* owners, int* sources, int* table,
-                                      int* count) {
+__global__ void indexProjectionInputs(InputKey key, int kind, int first, int rows, int* owners, int* sources,
+                                      int* table, int* count, v4::ProjectionCache cache) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
   if (row >= rows) return;
   const int token = first + row;
   int owner = token;
-  uint32_t hash = 2166136261u;
+  uint32_t hash = (2166136261u ^ kind) * 16777619u;
 #pragma unroll
   for (const auto& column : key.columns) hash = hashBytes(column.row(row), column.width, hash);
   hash = (hash ^ (hash >> 16)) * 0x85ebca6bu;
-  int slot = (hash ^ (hash >> 13)) % rows;
-  for (int probe = 0; probe < 4; ++probe) {
+  hash ^= hash >> 13;
+  bool compute = true;
+  const int page = cachedInput(key, kind, row, hash, cache, compute);
+  if (page >= 0) owner = ~page;
+  int slot = hash % rows;
+  for (int probe = 0; page < 0 && probe < 4; ++probe) {
     const int previous = atomicCAS(table + slot, 0, row + 1) - 1;
     if (previous < 0) break;
     bool equal = true;
@@ -65,24 +101,26 @@ __global__ void indexProjectionInputs(InputKey key, int first, int rows, int* ow
     for (const auto& column : key.columns) equal &= sameBytes(column.row(row), column.row(previous), column.width);
     if (equal) {
       owner = first + previous;
+      compute = false;
       break;
     }
     slot = slot + 1 == rows ? 0 : slot + 1;
   }
   owners[token] = owner;
   const int lane = threadIdx.x % kWave;
-  const unsigned mask = __ballot(owner == token);
+  const unsigned mask = __ballot(compute);
   int begin = 0;
   if (lane == 0 && mask != 0) begin = atomicAdd(count, __popc(mask));
   begin = __shfl(begin, 0);
-  if (owner == token) sources[begin + __popc(mask & ((1u << lane) - 1u))] = token;
+  if (compute) sources[begin + __popc(mask & ((1u << lane) - 1u))] = token;
 }
 
 // 代表の正規化済み入力をまとめて LDS に読み、全ヘッドの射影に使う。Q と K/V では元の
 // projectHead と同じ左右のオペランドを使う。K の順、バイアスを足す位置、BF16 への丸めもそろえる。
 template <int H>
 __global__ __launch_bounds__(tile::kThreads) void projectDistinctInputs(AttentionArgs args, const int* sources,
-                                                                        const int* count, Span<uint16_t> output) {
+                                                                        const int* count, Span<uint16_t> output,
+                                                                        v4::ProjectionIndex index) {
   constexpr int A = H / 2;
   constexpr int parts = kProjectionRows / 16;
   const int first = blockIdx.x * kProjectionRows;
@@ -92,10 +130,13 @@ __global__ __launch_bounds__(tile::kThreads) void projectDistinctInputs(Attentio
   const int wave = __builtin_amdgcn_readfirstlane(tid / kWave);
   const int column = tid % 16;
   const int half = (tid % kWave) >> 4;
-  __shared__ int source[kProjectionRows];
+  __shared__ int source[kProjectionRows], destination[kProjectionRows];
   __shared__ __align__(16) uint16_t input[kProjectionRows][H + tile::kPad];
   Bounds bounds;
-  if (tid < kProjectionRows) source[tid] = sources[first + min(tid, rows - 1)];
+  if (tid < kProjectionRows) {
+    source[tid] = sources[first + min(tid, rows - 1)];
+    destination[tid] = index.owners[source[tid]];
+  }
   tile::barrier();
   for (int i = tid; i < kProjectionRows * (H / 8); i += tile::kThreads) {
     const int row = i / (H / 8);
@@ -143,9 +184,11 @@ __global__ __launch_bounds__(tile::kThreads) void projectDistinctInputs(Attentio
           float values[8];
 #pragma unroll
           for (int v = 0; v < 8; ++v) values[v] = acc[m][v] + bias[v];
+          const int dst = destination[row];
+          const auto target = dst < 0 ? index.cache.qkv : output;
           const size_t to =
-              bounds.index(static_cast<size_t>(source[row]) * (3 * A) + outColumn + 8 * half, 8, output.limit);
-          *reinterpret_cast<u32x4*>(output.data + to) = pack8Activation(values);
+              bounds.index(static_cast<size_t>(dst < 0 ? ~dst : dst) * (3 * A) + outColumn + 8 * half, 8, target.limit);
+          *reinterpret_cast<u32x4*>(target.data + to) = pack8Activation(values);
         }
       }
     } else {
@@ -156,9 +199,11 @@ __global__ __launch_bounds__(tile::kThreads) void projectDistinctInputs(Attentio
         for (int v = 0; v < 8; ++v) {
           const int row = 16 * m + 2 * v + half;
           if (row < rows) {
+            const int dst = destination[row];
+            const auto target = dst < 0 ? index.cache.qkv : output;
             const size_t to =
-                bounds.index(static_cast<size_t>(source[row]) * (3 * A) + outColumn + column, 1, output.limit);
-            output.data[to] = bf16RoundActivation(acc[m][v] + bias);
+                bounds.index(static_cast<size_t>(dst < 0 ? ~dst : dst) * (3 * A) + outColumn + column, 1, target.limit);
+            target.data[to] = bf16RoundActivation(acc[m][v] + bias);
           }
         }
       }
@@ -185,8 +230,8 @@ void v4::indexLayerInputs(const EmbedArgs& args, const EmbeddingSpec (&specs)[kE
     const auto& spec = specs[slot];
     const InputKey key{{column(spec.category), column(spec.scalar), column(spec.exact)}};
     const int blocks = (rows + tile::kThreads - 1) / tile::kThreads;
-    hipLaunchKernelGGL(indexProjectionInputs, dim3(blocks), dim3(tile::kThreads), 0, stream, key, first, rows,
-                       index.owners, index.sources(), index.table() + first, index.count());
+    hipLaunchKernelGGL(indexProjectionInputs, dim3(blocks), dim3(tile::kThreads), 0, stream, key, slot, first, rows,
+                       index.owners, index.sources(), index.table() + first, index.count(), index.cache);
     PRISM_HIP(hipGetLastError());
     first += rows;
   }
@@ -197,10 +242,11 @@ void v4::launchSharedProjection(AttentionArgs args, ProjectionIndex index, Span<
   if (index.tokens == 0) return;
   const int blocks = (index.tokens + kProjectionRows - 1) / kProjectionRows;
   hipLaunchKernelGGL((projectDistinctInputs<kAttentionWidth.width>), dim3(blocks), dim3(tile::kThreads), 0, stream,
-                     args, index.sources(), index.count(), projections);
+                     args, index.sources(), index.count(), projections, index);
   PRISM_HIP(hipGetLastError());
   args.qkv0 = {projections.data, projections.limit};
-  const RowAttentionArgs mapped{args, {index.owners, static_cast<size_t>(index.tokens)}};
+  const RowAttentionArgs mapped{
+      args, {index.owners, static_cast<size_t>(index.tokens)}, {index.cache.qkv.data, index.cache.qkv.limit}};
   launchGroups<kAttentionWidth.width, false, true, EventKeys::kProjected>(
       mapped, groupRows, headPairs, stream, std::make_integer_sequence<int, kAttentionGroups>{});
 }

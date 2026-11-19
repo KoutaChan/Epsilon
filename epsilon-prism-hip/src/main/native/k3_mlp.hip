@@ -19,6 +19,9 @@
 // tile::barrier で、LDS の順序だけをそろえる（読む領域と書く領域が別であることが前提）。重みの行列（W_o・W1・W2・W_kv）は、重みを
 // 公開するときに計画が mlpFragmentKernel で作った、フラグメントの順のコピーから読む。
 #include "prism_hip_mlp.h"
+#ifdef PRISM_V4_WIDE
+#include "prism_hip_v4.h"
+#endif
 
 #ifdef PRISM_V4_WIDE
 #define mlpKernel wideMlpKernel
@@ -119,8 +122,60 @@ __device__ __forceinline__ void eventKeyValues(MlpTile<H>& shared, const MlpArgs
   }
 }
 
+#ifdef PRISM_V4_WIDE
+struct MappedMlpArgs : MlpArgs {
+  v4::MlpSources sources;
+};
+
+// 密な順の注意出力と、種類ごとに共有した埋め込みを MLP のタイルに直接読む。
+template <bool Residual, int Width, int Rows, int Stride>
+__device__ __forceinline__ void stageMapped(uint16_t (&lds)[Rows][Stride], const MappedMlpArgs& args, int token0,
+                                            int rows, int tid, Bounds& bounds) {
+  for (int i = tid; i < Rows * (Width / 8); i += kThreads) {
+    int local = i / (Width / 8);
+    int c = (i % (Width / 8)) * 8;
+    u32x4 data{};
+    if (local < rows) {
+      int token = token0 + local;
+      if (token >= args.firstEvent)
+        token = args.firstEvent +
+                args.sources.misses.data[bounds.index(token - args.firstEvent, 1, args.sources.misses.limit)];
+      Span<const uint16_t> src = args.o;
+      if constexpr (Residual) {
+        token = args.sources.owners.data[bounds.index(token, 1, args.sources.owners.limit)];
+        if (token < 0) {
+          token = ~token;
+          src = args.sources.cached;
+        } else {
+          src = token < args.firstEvent ? args.sources.fixed : Span<const uint16_t>{args.x.data, args.x.limit};
+        }
+      }
+      const size_t at = bounds.index(size_t(token) * Width + c, 8, src.limit);
+      data = *reinterpret_cast<const u32x4*>(src.data + at);
+    }
+    *reinterpret_cast<u32x4*>(&lds[local][c]) = data;
+  }
+}
+
+template <int H>
+__device__ __forceinline__ void stageMlpRows(MlpTile<H>& shared, const MappedMlpArgs& args, int token0, int rows,
+                                             int tid, Bounds& bounds) {
+  stageMapped<true, H>(shared.stream, args, token0, rows, tid, bounds);
+  if (token0 + rows <= args.firstEvent) {
+    tile::stageTile<H / 2>(shared.inner, args.o.data, args.o.limit, token0, rows, tid, bounds);
+  } else {
+    stageMapped<false, H / 2>(shared.inner, args, token0, rows, tid, bounds);
+  }
+}
+#endif
+
+#ifdef PRISM_V4_WIDE
+template <int H, class Args = MlpArgs>
+__global__ __launch_bounds__(kThreads) void mlpKernel(Args args) {
+#else
 template <int H>
 __global__ __launch_bounds__(kThreads) void mlpKernel(MlpArgs args) {
+#endif
   constexpr int A = H / 2;
   static_assert(sizeof(MlpTile<H>) <= 64 * 1024, "LDS of one work group is 64 KiB");
   __shared__ MlpTile<H> shared;
@@ -131,8 +186,15 @@ __global__ __launch_bounds__(kThreads) void mlpKernel(MlpArgs args) {
   const int rows = block.rows;
 
   Bounds bounds;
-  tile::stageTile<H>(shared.stream, args.x.data, args.x.limit, token0, rows, tid, bounds);
-  tile::stageTile<A>(shared.inner, args.o.data, args.o.limit, token0, rows, tid, bounds);
+#ifdef PRISM_V4_WIDE
+  if constexpr (std::is_same_v<Args, MappedMlpArgs>) {
+    stageMlpRows<H>(shared, args, token0, rows, tid, bounds);
+  } else
+#endif
+  {
+    tile::stageTile<H>(shared.stream, args.x.data, args.x.limit, token0, rows, tid, bounds);
+    tile::stageTile<A>(shared.inner, args.o.data, args.o.limit, token0, rows, tid, bounds);
+  }
   tile::barrier();
   tile::mlpStage<H>(shared, block.segment.weights, block.segment.ffn, args.epsilon, bounds);
   bounds.trap();
@@ -271,7 +333,7 @@ void launchV4WideMlpKv(int hidden, const MlpKvArgs& args, hipStream_t stream);
 #define launchMlp launchV4WideMlp
 #define launchMlpKv launchV4WideMlpKv
 #endif
-void launchMlp(int hidden, const MlpArgs& args, hipStream_t stream) {
+static MlpArgs validateMlp(int hidden, const MlpArgs& args) {
   MlpArgs launched = args;
   const int end = segmentBlocks(hidden, launched, "K3");
   if (args.residualTokens < 0 || args.residualTokens > end || args.normalizedTokens < 0 ||
@@ -300,6 +362,21 @@ void launchMlp(int hidden, const MlpArgs& args, hipStream_t stream) {
       }
     }
   }
+  return launched;
+}
+
+#ifdef PRISM_V4_WIDE
+void v4::launchPageMlp(int hidden, const MlpArgs& args, MlpSources sources, hipStream_t stream) {
+  MappedMlpArgs mapped{validateMlp(hidden, args), sources};
+  int blocks = mapped.blockStart[mapped.segments];
+  if (!blocks) return;
+  hipLaunchKernelGGL((mlpKernel<kMlpWidth.width, MappedMlpArgs>), dim3(blocks), dim3(kThreads), 0, stream, mapped);
+  PRISM_HIP(hipGetLastError());
+}
+#endif
+
+void launchMlp(int hidden, const MlpArgs& args, hipStream_t stream) {
+  const auto launched = validateMlp(hidden, args);
   const int blocks = launched.blockStart[launched.segments];
   if (blocks <= 0) {
     return;

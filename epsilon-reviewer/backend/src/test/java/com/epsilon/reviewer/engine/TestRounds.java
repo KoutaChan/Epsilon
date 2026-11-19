@@ -30,12 +30,12 @@ final class TestRounds {
     return round(deal, indicator, RoundResult.drawWithoutDetails(new int[4]), events);
   }
 
-  static LoadedRecord round(int[][] deal, int indicator, RoundResult result, RecordEvent... events) {
+  static LoadedRecord round(
+      int[][] deal, int indicator, RoundResult result, RecordEvent... events) {
     var start = new RoundStart(VARIANT, 0, 0, 0, SCORES);
     var round = new RecordedRound(start, deal, indicator, List.of(events), result);
     var meta =
-        new RecordedGame.Meta(
-            "synthetic", RecordedGame.Source.MJAI, List.of("A", "B", "C", "D"));
+        new RecordedGame.Meta("synthetic", RecordedGame.Source.MJAI, List.of("A", "B", "C", "D"));
     return TestRecords.unchecked(new RecordedGame(VARIANT, List.of(round), SCORES, meta));
   }
 

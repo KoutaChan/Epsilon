@@ -24,8 +24,12 @@ import java.util.regex.Pattern;
  *     ルールに 1 つまで。無ければ空
  */
 public record ModelsFile(
-    @Key(doc = "モデルの一覧（画面に出す順）", presence = Presence.REQUIRED, change = Change.MACHINE) List<Model> models,
-    @Key(doc = "ルールごとに、牌譜を読んだときに選んでおくモデル（1 つのルールに 1 つまで）", presence = Presence.ABSENT, change = Change.MACHINE)
+    @Key(doc = "モデルの一覧（画面に出す順）", presence = Presence.REQUIRED, change = Change.MACHINE)
+        List<Model> models,
+    @Key(
+            doc = "ルールごとに、牌譜を読んだときに選んでおくモデル（1 つのルールに 1 つまで）",
+            presence = Presence.ABSENT,
+            change = Change.MACHINE)
         List<Reference> defaultModels) {
 
   private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
@@ -45,11 +49,13 @@ public record ModelsFile(
     for (int index = 0; index < defaultModels.size(); index++) {
       Variant variant = variants.get(defaultModels.get(index).key());
       if (variant == null) {
-        throw new InvalidSetting("defaultModels", "defaultModels[" + index + "] names no model of the catalog");
+        throw new InvalidSetting(
+            "defaultModels", "defaultModels[" + index + "] names no model of the catalog");
       }
       if (!ruled.add(variant)) {
         throw new InvalidSetting(
-            "defaultModels", "defaultModels[" + index + "] is a second default model for " + variant);
+            "defaultModels",
+            "defaultModels[" + index + "] is a second default model for " + variant);
       }
     }
     models = List.copyOf(models);
@@ -69,7 +75,8 @@ public record ModelsFile(
       @Key(doc = "重みを見分ける名前（重みを替えたら変える）", presence = Presence.REQUIRED) String revision,
       @Key(doc = "画面に出す名前", presence = Presence.REQUIRED) String displayName,
       @Key(doc = "画面に出すバージョン", presence = Presence.REQUIRED) String version,
-      @Key(doc = "系列（epsilon-prism・epsilon-nano・epsilon・rulebot）", presence = Presence.REQUIRED) String series,
+      @Key(doc = "系列（epsilon-prism・epsilon-nano・epsilon・rulebot）", presence = Presence.REQUIRED)
+          String series,
       @Key(doc = "モデルが読む牌譜のルール", presence = Presence.REQUIRED) Variant variant,
       @Key(doc = "チェックポイントのフォルダー（models.json のあるフォルダーからの相対パスか、絶対パス）", presence = Presence.ABSENT)
           Path checkpoint,
@@ -86,12 +93,14 @@ public record ModelsFile(
         kind = Series.ofId(series);
       } catch (IllegalArgumentException unknown) {
         throw new InvalidSetting(
-            "series",
-            "expected one of " + Arrays.stream(Series.values()).map(Series::id).toList());
+            "series", "expected one of " + Arrays.stream(Series.values()).map(Series::id).toList());
       }
       if ((checkpoint != null) != kind.checkpointed()) {
         throw new InvalidSetting(
-            "checkpoint", "series " + series + (kind.checkpointed() ? " needs a checkpoint" : " takes no checkpoint"));
+            "checkpoint",
+            "series "
+                + series
+                + (kind.checkpointed() ? " needs a checkpoint" : " takes no checkpoint"));
       }
       if (sha256 != null && !SHA256.matcher(sha256).matches()) {
         throw new InvalidSetting("sha256", "expected 64 lowercase hexadecimal digits");

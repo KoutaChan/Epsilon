@@ -86,8 +86,7 @@ public class StaticFilesTest {
     String plainTag = plain.headers().firstValue("ETag").orElseThrow();
     Assert.assertTrue(plainTag.matches("\"[0-9a-f]{16}\""), plainTag);
     Assert.assertNotEquals(brotli.headers().firstValue("ETag").orElseThrow(), plainTag);
-    Assert.assertEquals(
-        server.bytes(asset().header("If-None-Match", plainTag)).statusCode(), 304);
+    Assert.assertEquals(server.bytes(asset().header("If-None-Match", plainTag)).statusCode(), 304);
     Assert.assertEquals(
         server
             .bytes(asset().header("If-None-Match", plainTag).header("Accept-Encoding", "br"))

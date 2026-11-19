@@ -55,7 +55,9 @@ public class HttpApiTest {
             server
                 .request("/api/records", OWNER)
                 .header("Content-Type", "application/octet-stream")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(TestFiles.played(Variant.TENHOU_4P, 0))));
+                .POST(
+                    HttpRequest.BodyPublishers.ofByteArray(
+                        TestFiles.played(Variant.TENHOU_4P, 0))));
     Assert.assertEquals(imported.statusCode(), 200, imported.body());
     JsonObject record = TestServer.body(imported);
     Assert.assertEquals(record.getAsJsonObject("record").get("source").getAsString(), "tenhou");

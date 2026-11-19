@@ -47,11 +47,15 @@ public class MainTest {
 
   private static final String RULES =
       "{\"models\":[{\"modelId\":\"rules\",\"revision\":\"r1\",\"displayName\":\"Rules\",\"version\":\"1\","
-          + "\"series\":\"" + Series.RULE_BOT.id() + "\",\"variant\":\"TENHOU_4P\"}]}";
+          + "\"series\":\""
+          + Series.RULE_BOT.id()
+          + "\",\"variant\":\"TENHOU_4P\"}]}";
 
   private static final String QUOTED =
       "{\"models\":[{\"modelId\":\"rules\",\"revision\":\"r1\",\"displayName\":\"Rules\",\"version\":\"1\","
-          + "\"series\":\"" + Series.RULE_BOT.id() + "\",\"variant\":\"TENHOU_4P\","
+          + "\"series\":\""
+          + Series.RULE_BOT.id()
+          + "\",\"variant\":\"TENHOU_4P\","
           + "\"options\":{\"temperature\":\"0.004\"}}]}";
 
   /** 1 回呼び出したときの終了コード、出力、ログの行。 */
@@ -82,15 +86,18 @@ public class MainTest {
   @Test
   public void serveAndTheSettingsBindTheDesignDefaults() {
     Main.Serve serve = section(Main.Serve.class, "serve", "");
-    Assert.assertEquals(serve, new Main.Serve("127.0.0.1", 8080, null, null, Path.of("reviewer-data"), null));
+    Assert.assertEquals(
+        serve, new Main.Serve("127.0.0.1", 8080, null, null, Path.of("reviewer-data"), null));
     Assert.assertEquals(serve.publicOrigin(), URI.create("http://127.0.0.1:8080"));
     Assert.assertEquals(
         Settings.bind(ReviewerSettings.class, List.of()).value(),
-        new ReviewerSettings(new ReviewerSettings.Server(2, 60, 120, 64), new AnalysisSettings(1, 16, 24)));
+        new ReviewerSettings(
+            new ReviewerSettings.Server(2, 60, 120, 64), new AnalysisSettings(1, 16, 24)));
     Assert.assertEquals(
         section(Main.Engine.class, "engine", "dataDir = \"/d\"\nmodels = \"/m.json\""),
         new Main.Engine(Path.of("/d"), Path.of("/m.json")));
-    Assert.assertThrows(SettingsException.class, () -> section(Main.Engine.class, "engine", "dataDir = \"/d\""));
+    Assert.assertThrows(
+        SettingsException.class, () -> section(Main.Engine.class, "engine", "dataDir = \"/d\""));
   }
 
   @Test
@@ -99,7 +106,11 @@ public class MainTest {
         section(Main.Serve.class, "serve", "host = \"::1\"\nport = 8097").publicOrigin(),
         URI.create("http://[::1]:8097"));
     Assert.assertEquals(
-        section(Main.Serve.class, "serve", "host = \"0.0.0.0\"\norigin = \"https://reviewer.test/\"").publicOrigin(),
+        section(
+                Main.Serve.class,
+                "serve",
+                "host = \"0.0.0.0\"\norigin = \"https://reviewer.test/\"")
+            .publicOrigin(),
         URI.create("https://reviewer.test"));
     Assert.assertEquals(
         section(Main.Serve.class, "serve", "origin = \"http://reviewer.test:8097\"").publicOrigin(),
@@ -131,7 +142,8 @@ public class MainTest {
       Ran ran = run(arguments);
       Assert.assertEquals(ran.exit(), 2, Arrays.toString(arguments) + " " + ran);
     }
-    Assert.assertTrue(run(invalid[4]).logged("is required when host is the wildcard address 0.0.0.0"));
+    Assert.assertTrue(
+        run(invalid[4]).logged("is required when host is the wildcard address 0.0.0.0"));
     Assert.assertTrue(run(invalid[13]).logged("did you mean server.maxConnections?"));
     Ran quoted = run(invalid[14]);
     Assert.assertTrue(quoted.logged("models[0].options.temperature=0.004"), quoted.toString());
@@ -141,7 +153,14 @@ public class MainTest {
     String usage = new String(help.out(), StandardCharsets.UTF_8);
     for (String expected :
         List.of(
-            "--host", "default 127.0.0.1", "--port", "default 8080", "--origin", "--models", "--data-dir", "--web-dir")) {
+            "--host",
+            "default 127.0.0.1",
+            "--port",
+            "default 8080",
+            "--origin",
+            "--models",
+            "--data-dir",
+            "--web-dir")) {
       Assert.assertTrue(usage.contains(expected), expected + " in " + usage);
     }
   }
@@ -154,7 +173,11 @@ public class MainTest {
   public void anEngineThatCannotStartWritesAFailedFrame() throws IOException {
     Path broken = Files.writeString(directory.resolve("models.json"), QUOTED);
     Ran ran =
-        run("engine", "--set", "engine.dataDir=\"" + directory.resolve("data") + "\"", "--set",
+        run(
+            "engine",
+            "--set",
+            "engine.dataDir=\"" + directory.resolve("data") + "\"",
+            "--set",
             "engine.models=\"" + broken + "\"");
     Assert.assertEquals(ran.exit(), 1, ran.toString());
     List<JsonObject> frames = frames(ran.out());
@@ -187,11 +210,18 @@ public class MainTest {
     Assert.assertEquals(ready.frames().getFirst().get("event").getAsString(), "ready");
     Assert.assertTrue(Files.isDirectory(data), "the data directory " + data + " was not opened");
 
-    Child unset = child(Map.of("EPSILON_REVIEWER_DATA", data.toString(), "EPSILON_REVIEWER_LOGS", logs.toString()));
+    Child unset =
+        child(
+            Map.of(
+                "EPSILON_REVIEWER_DATA",
+                data.toString(),
+                "EPSILON_REVIEWER_LOGS",
+                logs.toString()));
     Assert.assertEquals(unset.exit(), 1, unset.toString());
     Assert.assertEquals(unset.frames().getFirst().get("event").getAsString(), "failed");
     Assert.assertTrue(
-        unset.frames().getFirst().toString().contains("EPSILON_REVIEWER_MODELS is not set."), unset.toString());
+        unset.frames().getFirst().toString().contains("EPSILON_REVIEWER_MODELS is not set."),
+        unset.toString());
 
     Path broken = Files.writeString(directory.resolve("broken.json"), QUOTED);
     Child invalid =
@@ -202,7 +232,8 @@ public class MainTest {
                 "EPSILON_REVIEWER_LOGS", logs.toString()));
     Assert.assertEquals(invalid.exit(), 1, invalid.toString());
     Assert.assertEquals(invalid.frames().getFirst().get("event").getAsString(), "failed");
-    Assert.assertTrue(invalid.frames().getFirst().toString().contains("drop the quotes"), invalid.toString());
+    Assert.assertTrue(
+        invalid.frames().getFirst().toString().contains("drop the quotes"), invalid.toString());
   }
 
   /** 子プロセスの終了コード、標準出力に書かれたフレーム、標準エラー。 */
@@ -213,7 +244,11 @@ public class MainTest {
     Path java = Path.of(System.getProperty("java.home"), "bin", "java");
     ProcessBuilder builder =
         new ProcessBuilder(
-            java.toString(), "-Xmx512m", "-cp", System.getProperty("java.class.path"), StdioMain.class.getName());
+            java.toString(),
+            "-Xmx512m",
+            "-cp",
+            System.getProperty("java.class.path"),
+            StdioMain.class.getName());
     Map<String, String> env = builder.environment();
     env.remove("EPSILON_REVIEWER_DATA");
     env.remove("EPSILON_REVIEWER_MODELS");
@@ -243,7 +278,8 @@ public class MainTest {
           return frames;
         }
         byte[] header = in.readNBytes(length);
-        frames.add(JsonParser.parseString(new String(header, StandardCharsets.UTF_8)).getAsJsonObject());
+        frames.add(
+            JsonParser.parseString(new String(header, StandardCharsets.UTF_8)).getAsJsonObject());
         in.skipNBytes(in.readInt());
       }
     }
@@ -251,7 +287,9 @@ public class MainTest {
 
   private static <T extends Record> T section(Class<T> type, String path, String body) {
     String text = "[" + path + "]\n" + body + "\n";
-    return Settings.section(type, path, List.of(Layer.parse("reviewer.toml", Layer.Source.FILE, text))).value();
+    return Settings.section(
+            type, path, List.of(Layer.parse("reviewer.toml", Layer.Source.FILE, text)))
+        .value();
   }
 
   private static Ran run(String... args) {

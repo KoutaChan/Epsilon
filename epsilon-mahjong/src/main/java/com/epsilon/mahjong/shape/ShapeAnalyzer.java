@@ -46,7 +46,9 @@ public final class ShapeAnalyzer {
 
   /** 3 つの形のうち、最も小さい向聴。 */
   public int shanten(HandShape hand) {
-    return Math.min(standardDistance(hand), Math.min(chiitoitsuDistance(hand), kokushiDistance(hand))) - 1;
+    return Math.min(
+            standardDistance(hand), Math.min(chiitoitsuDistance(hand), kokushiDistance(hand)))
+        - 1;
   }
 
   public int standardShanten(HandShape hand) {
@@ -194,7 +196,8 @@ public final class ShapeAnalyzer {
       int code = hand.code(Block.HONOR);
       for (long rest = honorCandidates; rest != 0; rest &= rest - 1) {
         int kind = Long.numberOfTrailingZeros(rest);
-        if (ShapeTables.distance(suits, ShapeTables.honorKey(code + Block.weight(kind)), melds) < best) {
+        if (ShapeTables.distance(suits, ShapeTables.honorKey(code + Block.weight(kind)), melds)
+            < best) {
           improving |= Tiles.bit(kind);
         }
       }
@@ -266,7 +269,8 @@ public final class ShapeAnalyzer {
 
   private static void requireConcealed(HandShape hand) {
     if (hand.melds() > 0) {
-      throw new IllegalArgumentException("A hand with melds has no seven pairs or thirteen orphans shape: " + hand);
+      throw new IllegalArgumentException(
+          "A hand with melds has no seven pairs or thirteen orphans shape: " + hand);
     }
   }
 
@@ -326,8 +330,44 @@ public final class ShapeAnalyzer {
 
     private void requireConcealed() {
       if (!concealed) {
-        throw new IllegalStateException("A hand with melds has no seven pairs or thirteen orphans shape");
+        throw new IllegalStateException(
+            "A hand with melds has no seven pairs or thirteen orphans shape");
       }
     }
+
+    /**
+     * 結果を {@code long} 1 つに詰める（{@link ShapeCache} が覚える値）。下位 34 ビットが有効牌、その上に 4 ビットずつ通常の形・七対子・
+     * 国士無双の足りない枚数。面子のある手では七対子と国士無双の桁を 0 にする（作れないことは手の面子の数で分かる）。
+     */
+    long pack() {
+      long packed = improving | (long) (standard + 1) << STANDARD_SHIFT;
+      if (concealed) {
+        packed |=
+            (long) (chiitoitsu + 1) << CHIITOITSU_SHIFT | (long) (kokushi + 1) << KOKUSHI_SHIFT;
+      }
+      return packed;
+    }
+
+    /** {@link #pack} した値から、{@link ShapeAnalyzer#analyze} と同じ結果に戻す。 */
+    void unpack(long packed, boolean concealed) {
+      improving = packed & IMPROVING_MASK;
+      standard = (int) (packed >>> STANDARD_SHIFT & DISTANCE_MASK) - 1;
+      this.concealed = concealed;
+      if (concealed) {
+        chiitoitsu = (int) (packed >>> CHIITOITSU_SHIFT & DISTANCE_MASK) - 1;
+        kokushi = (int) (packed >>> KOKUSHI_SHIFT & DISTANCE_MASK) - 1;
+        shanten = Math.min(standard, Math.min(chiitoitsu, kokushi));
+      } else {
+        chiitoitsu = IMPOSSIBLE - 1;
+        kokushi = IMPOSSIBLE - 1;
+        shanten = standard;
+      }
+    }
+
+    private static final long IMPROVING_MASK = (1L << Tiles.KINDS) - 1;
+    private static final int STANDARD_SHIFT = Tiles.KINDS;
+    private static final int CHIITOITSU_SHIFT = STANDARD_SHIFT + 4;
+    private static final int KOKUSHI_SHIFT = CHIITOITSU_SHIFT + 4;
+    private static final long DISTANCE_MASK = 0xF;
   }
 }

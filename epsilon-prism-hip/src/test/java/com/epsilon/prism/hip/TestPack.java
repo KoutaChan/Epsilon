@@ -115,7 +115,8 @@ final class TestPack {
     if (tokens < fixed) {
       throw new IllegalArgumentException("a batch row has at least " + fixed + " tokens");
     }
-    return new HipBatch(1, tokens - fixed, 1, 1, inputBytes(tokens), new long[HipSection.values().length]);
+    return new HipBatch(
+        1, tokens - fixed, 1, 1, inputBytes(tokens), new long[HipSection.values().length]);
   }
 
   /** 指定した数のトークンのバッチに要る、blob のバイト数。いちばん大きい関係の属性のセクションに合わせる。 */

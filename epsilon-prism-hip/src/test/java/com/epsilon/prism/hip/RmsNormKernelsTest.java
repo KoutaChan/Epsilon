@@ -32,7 +32,9 @@ public class RmsNormKernelsTest {
   /** 範囲の外の値で止めるときの例外のメッセージは、渡した行の数・幅・ε を示す。 */
   @Test
   public void rejectedShapeReportsTheGivenValues() {
-    String message = expectThrows(IllegalArgumentException.class, () -> new NormShape(37, 12, 0.5f)).getMessage();
+    String message =
+        expectThrows(IllegalArgumentException.class, () -> new NormShape(37, 12, 0.5f))
+            .getMessage();
     for (String given : new String[] {"rows=37", "width=12", "epsilon=0.5"}) {
       assertTrue(message.contains(given), message);
     }

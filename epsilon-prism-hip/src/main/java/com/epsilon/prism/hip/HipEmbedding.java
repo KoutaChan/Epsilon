@@ -113,8 +113,13 @@ public record HipEmbedding(
      *     {@link #MAX_MEMBERS} 個を超えるとき。列とストライドの数が違うとき
      */
     public Table {
-      if (offset < 0 || rows <= 0 || columns.length == 0 || columns.length > MAX_MEMBERS || foldOffset < -1) {
-        throw new IllegalArgumentException("invalid embedding table at " + offset + " with " + rows + " rows");
+      if (offset < 0
+          || rows <= 0
+          || columns.length == 0
+          || columns.length > MAX_MEMBERS
+          || foldOffset < -1) {
+        throw new IllegalArgumentException(
+            "invalid embedding table at " + offset + " with " + rows + " rows");
       }
       if (columns.length != strides.length) {
         throw new IllegalArgumentException("embedding table columns and strides differ in length");
@@ -145,13 +150,21 @@ public record HipEmbedding(
 
     @Override
     public int hashCode() {
-      return Objects.hash(offset, rows, Arrays.hashCode(columns), Arrays.hashCode(strides), foldOffset);
+      return Objects.hash(
+          offset, rows, Arrays.hashCode(columns), Arrays.hashCode(strides), foldOffset);
     }
 
     @Override
     public String toString() {
-      return "Table[offset=" + offset + ", rows=" + rows + ", columns=" + Arrays.toString(columns) + ", foldOffset="
-          + foldOffset + "]";
+      return "Table[offset="
+          + offset
+          + ", rows="
+          + rows
+          + ", columns="
+          + Arrays.toString(columns)
+          + ", foldOffset="
+          + foldOffset
+          + "]";
     }
   }
 
@@ -187,10 +200,12 @@ public record HipEmbedding(
     tables = List.copyOf(tables);
     dense = List.copyOf(dense);
     if (tables.isEmpty() || tables.size() > MAX_TABLES) {
-      throw new IllegalArgumentException("embedding needs 1.." + MAX_TABLES + " tables, got " + tables.size());
+      throw new IllegalArgumentException(
+          "embedding needs 1.." + MAX_TABLES + " tables, got " + tables.size());
     }
     if (dense.size() > MAX_DENSE) {
-      throw new IllegalArgumentException("embedding has more than " + MAX_DENSE + " dense features: " + dense.size());
+      throw new IllegalArgumentException(
+          "embedding has more than " + MAX_DENSE + " dense features: " + dense.size());
     }
     for (Dense feature : dense) {
       if ((feature.source() == Source.SCALAR && scalar == null)
@@ -203,7 +218,8 @@ public record HipEmbedding(
     }
     for (Table table : tables) {
       if ((table.foldOffset() < 0) != (foldOffset < 0)) {
-        throw new IllegalArgumentException("the folded tables and the folded dense weights must be present together");
+        throw new IllegalArgumentException(
+            "the folded tables and the folded dense weights must be present together");
       }
     }
   }

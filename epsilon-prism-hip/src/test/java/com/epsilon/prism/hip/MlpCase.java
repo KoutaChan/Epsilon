@@ -110,7 +110,8 @@ final class MlpCase {
 
     private static void requireElement(HipWeight weight, HipElement element) {
       if (weight.element() != element) {
-        throw new IllegalArgumentException(weight + " holds " + weight.element() + ", not " + element);
+        throw new IllegalArgumentException(
+            weight + " holds " + weight.element() + ", not " + element);
       }
     }
   }
@@ -232,12 +233,16 @@ final class MlpCase {
    * @return 入力
    * @throws IllegalArgumentException MLP のカーネルでないか、カーネルがその層を回さないとき
    */
-  static MlpCase random(long seed, HipArchitecture architecture, HipKernel kernel, int layer, int rows, int events) {
-    if (kernel != HipKernel.MLP_ALL && kernel != HipKernel.MLP_FIXED && kernel != HipKernel.MLP_LAST) {
+  static MlpCase random(
+      long seed, HipArchitecture architecture, HipKernel kernel, int layer, int rows, int events) {
+    if (kernel != HipKernel.MLP_ALL
+        && kernel != HipKernel.MLP_FIXED
+        && kernel != HipKernel.MLP_LAST) {
       throw new IllegalArgumentException("not an MLP kernel: " + kernel);
     }
     if (!kernel.acceptsLayer(layer, architecture)) {
-      throw new IllegalArgumentException(kernel + " does not run layer " + layer + " of " + architecture);
+      throw new IllegalArgumentException(
+          kernel + " does not run layer " + layer + " of " + architecture);
     }
     Random random = new Random(seed);
     int h = architecture.hidden();
@@ -264,29 +269,61 @@ final class MlpCase {
       float[] nextNorm = fp32(random, h, 1.0, 0.1);
       List<Attention> fixedAttention = new ArrayList<>();
       EventKeyValue reread = null;
-      if (kernel == HipKernel.MLP_ALL && architecture.layer(layer + 1).role() == LayerRole.FIXED_TOKENS) {
+      if (kernel == HipKernel.MLP_ALL
+          && architecture.layer(layer + 1).role() == LayerRole.FIXED_TOKENS) {
         for (int l = layer + 2; l < architecture.depth(); l++) {
           fixedAttention.add(
               new Attention(
-                  fp32(random, h, 1.0, 0.1), bf16(random, 3 * a * h, 1 / Math.sqrt(h)), fp32(random, 3 * a, 0.0, 0.02)));
+                  fp32(random, h, 1.0, 0.1),
+                  bf16(random, 3 * a * h, 1 / Math.sqrt(h)),
+                  fp32(random, 3 * a, 0.0, 0.02)));
         }
         if (architecture.reread()) {
           reread =
               new EventKeyValue(
-                  fp32(random, h, 1.0, 0.1), bf16(random, 2 * a * h, 1 / Math.sqrt(h)), fp32(random, 2 * a, 0.0, 0.02));
+                  fp32(random, h, 1.0, 0.1),
+                  bf16(random, 2 * a * h, 1 / Math.sqrt(h)),
+                  fp32(random, 2 * a, 0.0, 0.02));
         }
       }
       return new MlpCase(
-          architecture, kernel, layer, rows, events, x, o, outWeight, outBias, ffns, nextNorm, null, fixedAttention,
+          architecture,
+          kernel,
+          layer,
+          rows,
+          events,
+          x,
+          o,
+          outWeight,
+          outBias,
+          ffns,
+          nextNorm,
+          null,
+          fixedAttention,
           reread);
     }
     Map<TokenGroup, float[]> gains = new EnumMap<>(TokenGroup.class);
     for (TokenGroup group : architecture.finalGroups()) {
       gains.put(group, fp32(random, h, 1.0, 0.1));
     }
-    Memory memory = new Memory(gains, bf16(random, 2 * a * h, 1 / Math.sqrt(h)), fp32(random, 2 * a, 0.0, 0.02));
+    Memory memory =
+        new Memory(
+            gains, bf16(random, 2 * a * h, 1 / Math.sqrt(h)), fp32(random, 2 * a, 0.0, 0.02));
     return new MlpCase(
-        architecture, kernel, layer, rows, events, x, o, outWeight, outBias, ffns, null, memory, List.of(), null);
+        architecture,
+        kernel,
+        layer,
+        rows,
+        events,
+        x,
+        o,
+        outWeight,
+        outBias,
+        ffns,
+        null,
+        memory,
+        List.of(),
+        null);
   }
 
   /** 残差の枝（O 射影と、全ての組の下りの射影）を 0 にした写し。K3 が出す x は、入力の x とビットで一致するはず。 */
@@ -389,7 +426,8 @@ final class MlpCase {
 
   /** K3 が x を書き戻すトークンの数。次が全トークンの層なら全てのトークン、そうでなければ局・席・牌のトークン。 */
   int writtenTokens() {
-    return kernel == HipKernel.MLP_ALL && architecture.layer(layer + 1).role() == LayerRole.ALL_TOKENS
+    return kernel == HipKernel.MLP_ALL
+            && architecture.layer(layer + 1).role() == LayerRole.ALL_TOKENS
         ? tokens()
         : fixedTokens();
   }
@@ -477,13 +515,23 @@ final class MlpCase {
     int capacityTokens = architecture.counts().fixed() * capacityRows + capacityEvents;
     HipShape.Capacity capacity =
         new HipShape.Capacity(
-            capacityRows, capacityEvents, capacityRows, capacityRows, TestPack.inputBytes(capacityTokens));
+            capacityRows,
+            capacityEvents,
+            capacityRows,
+            capacityRows,
+            TestPack.inputBytes(capacityTokens));
     return new HipShape(architecture, capacity, packBytes);
   }
 
   /** この入力のバッチ。行ごとに遷移と手を 1 つずつ持つ。K3・K5 は入力の blob を読まないので、blob のセクションの位置は全て 0 にする。 */
   HipBatch batch() {
-    return new HipBatch(rows, events, rows, rows, TestPack.inputBytes(tokens()), new long[HipSection.values().length]);
+    return new HipBatch(
+        rows,
+        events,
+        rows,
+        rows,
+        TestPack.inputBytes(tokens()),
+        new long[HipSection.values().length]);
   }
 
   /** WeightPack を作る（ダイレクトの ByteBuffer、little-endian、ヘッダーつき）。 */
@@ -496,9 +544,15 @@ final class MlpCase {
     for (int i = 0; i < placements.size(); i++) {
       Placement placement = placements.get(i);
       if (header.elements(placement.weight(), placement.entry()) != placement.length()) {
-        throw new IllegalStateException(placement.weight() + " entry " + placement.entry() + " has the wrong size");
+        throw new IllegalStateException(
+            placement.weight() + " entry " + placement.entry() + " has the wrong size");
       }
-      placement.writer().accept(pack.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(Math.toIntExact(offsets[i])));
+      placement
+          .writer()
+          .accept(
+              pack.duplicate()
+                  .order(ByteOrder.LITTLE_ENDIAN)
+                  .position(Math.toIntExact(offsets[i])));
     }
     return pack;
   }
@@ -509,7 +563,9 @@ final class MlpCase {
         switch (region) {
           case RESIDUAL -> x;
           case ATTENTION -> o;
-          default -> throw new IllegalArgumentException("K3 and K5 read only the residual and attention regions");
+          default ->
+              throw new IllegalArgumentException(
+                  "K3 and K5 read only the residual and attention regions");
         };
     ByteBuffer buffer = TestPack.direct((long) values.length * Short.BYTES);
     buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(values);
@@ -555,7 +611,11 @@ final class MlpCase {
       placements.add(Placement.fp32(HipWeight.REREAD_KEY_VALUE_BIAS, 0, reread.bias()));
     }
     if (memory != null) {
-      memory.gains().forEach((group, gain) -> placements.add(Placement.fp32(HipWeight.FINAL_NORM, group.ordinal(), gain)));
+      memory
+          .gains()
+          .forEach(
+              (group, gain) ->
+                  placements.add(Placement.fp32(HipWeight.FINAL_NORM, group.ordinal(), gain)));
       placements.add(Placement.bf16(HipWeight.KEY_VALUE, 0, memory.weight()));
       placements.add(Placement.fp32(HipWeight.KEY_VALUE_BIAS, 0, memory.bias()));
     }
@@ -588,7 +648,8 @@ final class MlpCase {
       start += mine[region];
       joined += mine[region] + theirs[region];
     }
-    throw new IllegalArgumentException("token " + token + " is outside the " + tokens() + " tokens");
+    throw new IllegalArgumentException(
+        "token " + token + " is outside the " + tokens() + " tokens");
   }
 
   /** 範囲ごとに、{@code first}（{@code other} の値）のトークンを先に、{@code second}（この入力の値）のトークンを後に並べる。 */

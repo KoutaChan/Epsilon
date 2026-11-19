@@ -19,8 +19,9 @@ constexpr int kMaxExact = 8;  // B に直接足す特徴 x^B の数の上限（D
 // バッファ。W_B は行優先の [G, H] で、gemmTile で読む。
 template <int H, int Rows>
 __device__ __forceinline__ void value(uint16_t (&stream)[Rows][H + tile::kPad], float (&partial)[tile::kWaves][Rows],
-                                      const DiscardValueWeights& weights, const Span<const float>& exact, int exactWidth,
-                                      int gate, float epsilon, const Span<float>& out, int t0, int rows, Bounds& bounds) {
+                                      const DiscardValueWeights& weights, const Span<const float>& exact,
+                                      int exactWidth, int gate, float epsilon, const Span<float>& out, int t0, int rows,
+                                      Bounds& bounds) {
   constexpr int kRowTiles = Rows / 16;
   const int tid = threadIdx.x;
   const int lane = tid % kWave;

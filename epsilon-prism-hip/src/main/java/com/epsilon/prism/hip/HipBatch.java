@@ -13,7 +13,8 @@ import java.util.Arrays;
  * @param bytes 使う blob のバイト数（H2D のコピーはこの大きさで 1 回）
  * @param sections 領域ごとの先頭のバイト位置（{@link HipSection} の順）
  */
-public record HipBatch(int rows, int events, int transitions, int actions, long bytes, long[] sections) {
+public record HipBatch(
+    int rows, int events, int transitions, int actions, long bytes, long[] sections) {
 
   /** 領域の先頭のアラインメント（バイト）。native が 16 バイト単位で読むのに要る下限。 */
   public static final int SECTION_ALIGNMENT = 16;
@@ -47,7 +48,11 @@ public record HipBatch(int rows, int events, int transitions, int actions, long 
       long offset = sections[section.ordinal()];
       if (offset < 0 || offset > bytes || offset % SECTION_ALIGNMENT != 0) {
         throw new IllegalArgumentException(
-            section + " offset " + offset + " must be inside the blob and aligned to " + SECTION_ALIGNMENT);
+            section
+                + " offset "
+                + offset
+                + " must be inside the blob and aligned to "
+                + SECTION_ALIGNMENT);
       }
     }
   }
@@ -74,7 +79,9 @@ public record HipBatch(int rows, int events, int transitions, int actions, long 
 
   @Override
   public int hashCode() {
-    return 31 * (31 * (31 * (31 * (31 * rows + events) + transitions) + actions) + Long.hashCode(bytes))
+    return 31
+            * (31 * (31 * (31 * (31 * rows + events) + transitions) + actions)
+                + Long.hashCode(bytes))
         + Arrays.hashCode(sections);
   }
 

@@ -7,9 +7,7 @@ import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtStream;
-
 import com.epsilon.prism.hip.RereadCase.Row;
-
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -19,7 +17,6 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterClass;
@@ -71,7 +68,8 @@ public class RereadKernelTest {
     HipLibrary library = HipLibrary.load();
     stream = ((PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME)).newStream(Device.gpu(0));
     for (Arm arm : Arm.values()) {
-      HipShape shape = RereadCase.shape(arm.architecture, ROW_CAPACITY, EVENT_CAPACITY, TRANSITION_CAPACITY);
+      HipShape shape =
+          RereadCase.shape(arm.architecture, ROW_CAPACITY, EVENT_CAPACITY, TRANSITION_CAPACITY);
       plans.put(arm, HipPlan.create(library, stream, shape));
     }
   }
@@ -98,12 +96,13 @@ public class RereadKernelTest {
     RereadCase c = RereadCase.random(11, arm.architecture, rows(arm.architecture.counts()));
     RereadReference.Result expected = RereadReference.run(c);
     RereadReference.Result actual = run(arm, c);
-    MlpReference.Comparison z = MlpReference.Comparison.of(expected.transitions(), actual.transitions());
+    MlpReference.Comparison z =
+        MlpReference.Comparison.of(expected.transitions(), actual.transitions());
     double branch = relativeRms(branch(c, expected.transitions()), branch(c, actual.transitions()));
     double value = relativeRms(expected.values(), actual.values());
     log.info(
-        "PRISM-HIP-K9 {} ({} rows, {} events, {} transitions): z relative RMS {}, within 1 ulp {}, max ulp {}; "
-            + "branch z - z1 relative RMS {}; B relative RMS {}",
+        "PRISM-HIP-K9 {} ({} rows, {} events, {} transitions): z relative RMS {}, within 1 ulp {},"
+            + " max ulp {}; branch z - z1 relative RMS {}; B relative RMS {}",
         arm,
         c.rows.size(),
         c.events,
@@ -142,7 +141,8 @@ public class RereadKernelTest {
   /** 出力の射影 W_O と b_O が 0 なら、z は z1 とビットで同じになる。 */
   @Test(groups = "rocm", dataProvider = "arms")
   public void zeroOutputKeepsTheFirstStage(Arm arm) {
-    RereadCase c = RereadCase.random(14, arm.architecture, rows(arm.architecture.counts())).withoutOutput();
+    RereadCase c =
+        RereadCase.random(14, arm.architecture, rows(arm.architecture.counts())).withoutOutput();
     assertEquals(run(arm, c).transitions(), c.start);
   }
 

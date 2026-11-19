@@ -6,10 +6,8 @@ import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtStream;
-
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
-
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -24,7 +22,8 @@ public class HipPlanTimingTest {
   private static final int EVENTS = 100;
 
   private static final MlpCase CASE =
-      MlpCase.random(1, TestPack.architecture(512, TestPack.FOUR_PLAYERS), HipKernel.MLP_ALL, 0, ROWS, EVENTS);
+      MlpCase.random(
+          1, TestPack.architecture(512, TestPack.FOUR_PLAYERS), HipKernel.MLP_ALL, 0, ROWS, EVENTS);
 
   private HipLibrary library;
   private PtStream stream;
@@ -89,7 +88,9 @@ public class HipPlanTimingTest {
 
   private static void assertNoTime(float[] millis) {
     for (HipKernel kernel : HipKernel.values()) {
-      assertTrue(Float.isNaN(millis[kernel.ordinal()]), kernel + " reports " + millis[kernel.ordinal()] + " ms");
+      assertTrue(
+          Float.isNaN(millis[kernel.ordinal()]),
+          kernel + " reports " + millis[kernel.ordinal()] + " ms");
     }
   }
 

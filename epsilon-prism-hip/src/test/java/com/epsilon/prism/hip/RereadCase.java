@@ -101,24 +101,34 @@ final class RereadCase {
   final List<Row> rows;
   final int events;
   final int transitions;
+
   /** 遷移ごとの、属する行の番号。 */
   final int[] transitionRow;
+
   /** 行ごとの、最初のイベントの番号。 */
   final int[] firstEvent;
+
   /** 行ごとの、最初の遷移の番号。 */
   final int[] firstTransition;
+
   /** z1 [遷移, H]。 */
   final short[] start;
+
   /** REREAD_MEMORY の領域の値。局・席・牌の [行, F, 2A] の後に、イベントの [イベント, 2A] が続く。 */
   final short[] memory;
+
   /** 遷移のカテゴリ [遷移, 幅]。 */
   final byte[] category;
+
   /** 遷移ごとの、キーのコード [遷移, F]。 */
   final byte[] codes;
+
   /** イベントの関係の属性の牌 [イベント]（牌の ID。0 は牌なし）。 */
   final byte[] eventTiles;
+
   /** B のヘッドが FP32 のまま読むフィールド [遷移, 幅]。 */
   final float[] exact;
+
   final Weights weights;
 
   private RereadCase(
@@ -155,7 +165,8 @@ final class RereadCase {
     transitions = transitionCount;
     transitionRow = new int[transitions];
     for (int r = 0; r < rows.size(); r++) {
-      Arrays.fill(transitionRow, firstTransition[r], firstTransition[r] + rows.get(r).transitions(), r);
+      Arrays.fill(
+          transitionRow, firstTransition[r], firstTransition[r] + rows.get(r).transitions(), r);
     }
   }
 
@@ -212,7 +223,8 @@ final class RereadCase {
     int mainTile = header.schema(HipSchema.TRANSITION_MAIN_TILE);
     byte[] category = new byte[transitionCount * categoryWidth];
     for (int t = 0; t < transitionCount; t++) {
-      category[t * categoryWidth + callDiscard] = (byte) (t > 0 && random.nextDouble() >= 0.7 ? tile(random, tiles) : 0);
+      category[t * categoryWidth + callDiscard] =
+          (byte) (t > 0 && random.nextDouble() >= 0.7 ? tile(random, tiles) : 0);
       category[t * categoryWidth + mainTile] = (byte) (t > 0 ? tileOrNone(random, tiles) : 0);
     }
     byte[] codes = new byte[transitionCount * fixed];
@@ -258,7 +270,15 @@ final class RereadCase {
   /** 出力の射影 W_O と b_O を 0 にした写し。z は z1 とビットで一致するはず。 */
   RereadCase withoutOutput() {
     return new RereadCase(
-        architecture, rows, start, memory, category, codes, eventTiles, exact, weights.withoutOutput());
+        architecture,
+        rows,
+        start,
+        memory,
+        category,
+        codes,
+        eventTiles,
+        exact,
+        weights.withoutOutput());
   }
 
   /**
@@ -274,8 +294,10 @@ final class RereadCase {
     short[] keys = new short[other.memory.length + memory.length];
     System.arraycopy(other.memory, 0, keys, 0, otherFixed);
     System.arraycopy(memory, 0, keys, otherFixed, thisFixed);
-    System.arraycopy(other.memory, otherFixed, keys, otherFixed + thisFixed, other.memory.length - otherFixed);
-    System.arraycopy(memory, thisFixed, keys, other.memory.length + thisFixed, memory.length - thisFixed);
+    System.arraycopy(
+        other.memory, otherFixed, keys, otherFixed + thisFixed, other.memory.length - otherFixed);
+    System.arraycopy(
+        memory, thisFixed, keys, other.memory.length + thisFixed, memory.length - thisFixed);
     List<Row> joined = new ArrayList<>(other.rows);
     joined.addAll(rows);
     return new RereadCase(
@@ -302,7 +324,11 @@ final class RereadCase {
   static HipShape shape(HipArchitecture architecture, int rows, int events, int transitions) {
     HipShape.Capacity capacity =
         new HipShape.Capacity(
-            rows, events, transitions, rows, layout(architecture, rows, events, transitions).bytes());
+            rows,
+            events,
+            transitions,
+            rows,
+            layout(architecture, rows, events, transitions).bytes());
     return new HipShape(architecture, capacity, packBytes(architecture));
   }
 
@@ -319,7 +345,9 @@ final class RereadCase {
     int relationTile = header.schema(HipSchema.RELATION_TILE);
     int fixedTokens = architecture.counts().fixed() * rows.size();
     for (int e = 0; e < events; e++) {
-      blob.put(at(batch, HipSection.RELATION, (long) (fixedTokens + e) * relationWidth + relationTile), eventTiles[e]);
+      blob.put(
+          at(batch, HipSection.RELATION, (long) (fixedTokens + e) * relationWidth + relationTile),
+          eventTiles[e]);
     }
     for (int i = 0; i < category.length; i++) {
       blob.put(at(batch, HipSection.TRANSITION_CATEGORY, i), category[i]);
@@ -340,7 +368,9 @@ final class RereadCase {
       columns[header.schema(HipSchema.ROW_FIRST_TRANSITION)] = firstTransition[r];
       columns[header.schema(HipSchema.ROW_TRANSITIONS)] = rows.get(r).transitions();
       for (int c = 0; c < rowWidth; c++) {
-        blob.putInt(at(batch, HipSection.ROW_COLUMN, (long) (r * rowWidth + c) * Integer.BYTES), columns[c]);
+        blob.putInt(
+            at(batch, HipSection.ROW_COLUMN, (long) (r * rowWidth + c) * Integer.BYTES),
+            columns[c]);
       }
     }
     return blob;
@@ -352,7 +382,9 @@ final class RereadCase {
         switch (region) {
           case TRANSITION -> start;
           case REREAD_MEMORY -> memory;
-          default -> throw new IllegalArgumentException("K9 reads only the transition and reread memory regions");
+          default ->
+              throw new IllegalArgumentException(
+                  "K9 reads only the transition and reread memory regions");
         };
     ByteBuffer buffer = TestPack.direct((long) values.length * Short.BYTES);
     buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(values);
@@ -380,7 +412,10 @@ final class RereadCase {
     ByteBuffer pack = TestPack.direct(packBytes(architecture));
     placed.write(pack);
     for (HipWeight weight : SLOTS) {
-      ByteBuffer at = pack.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(Math.toIntExact(offsets.get(weight)));
+      ByteBuffer at =
+          pack.duplicate()
+              .order(ByteOrder.LITTLE_ENDIAN)
+              .position(Math.toIntExact(offsets.get(weight)));
       switch (weight) {
         case TILE_RELATION -> at.put(weights.tileRelation());
         case REREAD_QUERY_NORM -> at.asFloatBuffer().put(weights.queryNorm());
@@ -423,7 +458,8 @@ final class RereadCase {
   }
 
   /** blob のセクションを {@link HipSection} の順に、16 バイト境界にそろえて並べたバッチ（合法手は行ごとに 1 つ）。 */
-  private static HipBatch layout(HipArchitecture architecture, int rows, int events, int transitions) {
+  private static HipBatch layout(
+      HipArchitecture architecture, int rows, int events, int transitions) {
     HipCounts counts = architecture.counts();
     HipPack.Header header = TestPack.header(architecture);
     long[] sections = new long[HipSection.values().length];

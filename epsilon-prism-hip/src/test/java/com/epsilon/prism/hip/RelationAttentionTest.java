@@ -25,7 +25,9 @@ public class RelationAttentionTest {
     for (int heads : new int[] {1, 3, 7}) {
       assertThrows(
           IllegalArgumentException.class,
-          () -> new RelationAttention.Dimensions(48, 70, 70, 70, heads, RelationCodes.WORDS, 7, 16, 0.25f));
+          () ->
+              new RelationAttention.Dimensions(
+                  48, 70, 70, 70, heads, RelationCodes.WORDS, 7, 16, 0.25f));
     }
     for (int words : new int[] {1, 3, 4}) {
       assertThrows(
@@ -40,11 +42,20 @@ public class RelationAttentionTest {
     String message =
         expectThrows(
                 IllegalArgumentException.class,
-                () -> new RelationAttention.Dimensions(48, 39, 121, 122, 3, RelationCodes.WORDS, 7, 16, 0.25f))
+                () ->
+                    new RelationAttention.Dimensions(
+                        48, 39, 121, 122, 3, RelationCodes.WORDS, 7, 16, 0.25f))
             .getMessage();
     String[] givens = {
-      "rows=48", "queries=39", "keys=121", "codeQueries=122", "heads=3", "words=" + RelationCodes.WORDS, "segments=7",
-      "entries=16", "scale=0.25"
+      "rows=48",
+      "queries=39",
+      "keys=121",
+      "codeQueries=122",
+      "heads=3",
+      "words=" + RelationCodes.WORDS,
+      "segments=7",
+      "entries=16",
+      "scale=0.25"
     };
     for (String given : givens) {
       assertTrue(message.contains(given), message);

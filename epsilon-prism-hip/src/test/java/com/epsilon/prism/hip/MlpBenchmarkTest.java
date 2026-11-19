@@ -6,13 +6,11 @@ import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtStream;
-
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
@@ -84,7 +82,8 @@ public class MlpBenchmarkTest {
   public void reachesTheGate() {
     int tokens = ROWS * TOKENS_PER_ROW;
     HipArchitecture shared = TestPack.architecture(FFN, TestPack.FOUR_PLAYERS);
-    MlpCase c = MlpCase.random(7, shared, HipKernel.MLP_ALL, 0, 1, tokens - shared.counts().fixed());
+    MlpCase c =
+        MlpCase.random(7, shared, HipKernel.MLP_ALL, 0, 1, tokens - shared.counts().fixed());
     HipLibrary library = HipLibrary.load();
     double tflops;
     float[] millis;
@@ -106,7 +105,9 @@ public class MlpBenchmarkTest {
         String.format("%.1f", tflops),
         String.format("%.0f", GATE_TFLOPS),
         tflops >= GATE_TFLOPS ? "PASS" : "FAIL");
-    assertTrue(tflops >= GATE_TFLOPS, "K3 effective " + tflops + " TFLOPS is below the gate " + GATE_TFLOPS);
+    assertTrue(
+        tflops >= GATE_TFLOPS,
+        "K3 effective " + tflops + " TFLOPS is below the gate " + GATE_TFLOPS);
   }
 
   /**
@@ -131,7 +132,11 @@ public class MlpBenchmarkTest {
         for (int width : new int[] {FFN, contextWidth, tileWidth}) {
           HipArchitecture shared = MlpCase.sharedDepth3(width);
           int events = tokens - shared.counts().fixed();
-          measured.add(Measured.open(library, stream, MlpCase.random(12 + width, shared, HipKernel.MLP_ALL, 0, 1, events)));
+          measured.add(
+              Measured.open(
+                  library,
+                  stream,
+                  MlpCase.random(12 + width, shared, HipKernel.MLP_ALL, 0, 1, events)));
         }
         for (int i = 0; i < WARMUP + ITERATIONS; i++) {
           for (Measured kernel : measured) {
@@ -147,13 +152,15 @@ public class MlpBenchmarkTest {
     Measured typedK3 = measured.get(0);
     Measured production = measured.get(1);
     double share = (double) typedCase.contextTokens() / tokens;
-    double matchedMillis = share * measured.get(2).median() + (1 - share) * measured.get(3).median();
+    double matchedMillis =
+        share * measured.get(2).median() + (1 - share) * measured.get(3).median();
     double matched = flops(typedCase) / (matchedMillis * 1e-3) / 1e12;
     double toProduction = typedK3.tflops() / production.tflops();
     double toMatched = typedK3.tflops() / matched;
     log.info(
-        "K3 typed FFN {}/{} on {} fixed tokens: median {} ms = {} TFLOPS; shared F {} {} TFLOPS (ratio {}), shared F {}"
-            + " {} TFLOPS and F {} {} TFLOPS give {} TFLOPS at the typed widths (ratio {}); gate {}: {}",
+        "K3 typed FFN {}/{} on {} fixed tokens: median {} ms = {} TFLOPS; shared F {} {} TFLOPS"
+            + " (ratio {}), shared F {} {} TFLOPS and F {} {} TFLOPS give {} TFLOPS at the typed"
+            + " widths (ratio {}); gate {}: {}",
         contextWidth,
         tileWidth,
         tokens,
@@ -170,8 +177,12 @@ public class MlpBenchmarkTest {
         String.format("%.3f", toMatched),
         TYPED_GATE,
         toProduction >= TYPED_GATE && toMatched >= TYPED_GATE ? "PASS" : "FAIL");
-    assertTrue(toProduction >= TYPED_GATE, "typed K3 reaches " + toProduction + " of the production shared K3");
-    assertTrue(toMatched >= TYPED_GATE, "typed K3 reaches " + toMatched + " of the shared K3 at the same widths");
+    assertTrue(
+        toProduction >= TYPED_GATE,
+        "typed K3 reaches " + toProduction + " of the production shared K3");
+    assertTrue(
+        toMatched >= TYPED_GATE,
+        "typed K3 reaches " + toMatched + " of the shared K3 at the same widths");
   }
 
   /**

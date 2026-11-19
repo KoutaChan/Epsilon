@@ -23,8 +23,16 @@ public record HipCounts(int seats, int tiles, int keyCodes, int tileRelations, i
   public HipCounts {
     if (seats <= 0 || tiles <= 0 || keyCodes <= 0 || tileRelations <= 0 || maxEvents < 0) {
       throw new IllegalArgumentException(
-          "invalid counts: seats=" + seats + " tiles=" + tiles + " keyCodes=" + keyCodes + " tileRelations="
-              + tileRelations + " maxEvents=" + maxEvents);
+          "invalid counts: seats="
+              + seats
+              + " tiles="
+              + tiles
+              + " keyCodes="
+              + keyCodes
+              + " tileRelations="
+              + tileRelations
+              + " maxEvents="
+              + maxEvents);
     }
   }
 

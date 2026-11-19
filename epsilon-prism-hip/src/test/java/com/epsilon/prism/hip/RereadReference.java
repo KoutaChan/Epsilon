@@ -95,7 +95,8 @@ final class RereadReference {
           double dot = 0;
           for (int d = 0; d < HipArchitecture.HEAD_WIDTH; d++) {
             double key =
-                (double) MlpReference.value(c.memory[memoryRow[j] * 2 * a + lane + d]) + w.codeKey()[code[j] * a + lane + d];
+                (double) MlpReference.value(c.memory[memoryRow[j] * 2 * a + lane + d])
+                    + w.codeKey()[code[j] * a + lane + d];
             dot += q[lane + d] * key;
           }
           logits[j] = dot * architecture.scale();

@@ -7,13 +7,11 @@ import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtStream;
-
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterClass;
@@ -35,6 +33,7 @@ public class MlpKernelTest {
 
   /** 前に足すバッチの大きさ（{@link MlpCase#prepend}）。 */
   private static final int PREPENDED_ROWS = 11;
+
   private static final int PREPENDED_EVENTS = 23;
 
   private static final double RELATIVE_RMS = 1e-2;
@@ -43,7 +42,8 @@ public class MlpKernelTest {
   private static final HipArchitecture SHARED = TestPack.architecture(512, TestPack.FOUR_PLAYERS);
   private static final HipArchitecture SHARED_DEPTH3 = MlpCase.sharedDepth3(512);
   private static final HipArchitecture TYPED_FOUR = MlpCase.typed(TestPack.FOUR_PLAYERS, 1536);
-  private static final HipArchitecture TYPED_FOUR_CONTEXT_512 = MlpCase.typed(TestPack.FOUR_PLAYERS, 512);
+  private static final HipArchitecture TYPED_FOUR_CONTEXT_512 =
+      MlpCase.typed(TestPack.FOUR_PLAYERS, 512);
   private static final HipArchitecture TYPED_THREE = MlpCase.typed(MlpCase.THREE_PLAYERS, 1536);
 
   private HipLibrary library;
@@ -98,7 +98,8 @@ public class MlpKernelTest {
    * イベントのキーとバリューの組も比べる。K5 では、組ごとのゲインで最後に正規化した y と、Cross-Attention のキーとバリューを比べる。
    */
   @Test(groups = "rocm", dataProvider = "kernels")
-  public void matchesReference(String name, HipArchitecture architecture, HipKernel kernel, int layer) {
+  public void matchesReference(
+      String name, HipArchitecture architecture, HipKernel kernel, int layer) {
     MlpCase c = MlpCase.random(1, architecture, kernel, layer, ROWS, EVENTS);
     MlpReference.Output expected = MlpReference.run(c);
     MlpReference.Output actual;
@@ -111,7 +112,13 @@ public class MlpKernelTest {
         c.tokens(),
         c.group(0) == TokenGroup.ALL
             ? "[0, " + c.processedTokens() + ")"
-            : "[0, " + c.contextTokens() + ") and [" + c.contextTokens() + ", " + c.fixedTokens() + ")");
+            : "[0, "
+                + c.contextTokens()
+                + ") and ["
+                + c.contextTokens()
+                + ", "
+                + c.fixedTokens()
+                + ")");
     List<String> failures = new ArrayList<>();
     int h = architecture.hidden();
     if (kernel == HipKernel.MLP_LAST) {
@@ -119,10 +126,16 @@ public class MlpKernelTest {
       compare(failures, name, "KV", expected.memory(), actual.memory());
     } else {
       int written = c.writtenTokens() * h;
-      compare(failures, name, "x", MlpReference.head(expected.x(), written), MlpReference.head(actual.x(), written));
+      compare(
+          failures,
+          name,
+          "x",
+          MlpReference.head(expected.x(), written),
+          MlpReference.head(actual.x(), written));
       compare(failures, name, "n", expected.normalized(), actual.normalized());
       for (int j = 0; j < expected.events().length; j++) {
-        compare(failures, name, "event keys and values " + j, expected.events()[j], actual.events()[j]);
+        compare(
+            failures, name, "event keys and values " + j, expected.events()[j], actual.events()[j]);
       }
       assertEquals(
           Arrays.copyOfRange(actual.x(), written, actual.x().length),
@@ -134,8 +147,10 @@ public class MlpKernelTest {
 
   /** 残差の枝（O 射影と、全ての組の下りの射影）が 0 なら、x はビットで変わらない（x1 = ⌊x + 0⌉ = x、x = ⌊x1 + 0⌉）。 */
   @Test(groups = "rocm", dataProvider = "residualKernels")
-  public void zeroBranchKeepsResidual(String name, HipArchitecture architecture, HipKernel kernel, int layer) {
-    MlpCase c = MlpCase.random(2, architecture, kernel, layer, ROWS, EVENTS).withoutResidualBranch();
+  public void zeroBranchKeepsResidual(
+      String name, HipArchitecture architecture, HipKernel kernel, int layer) {
+    MlpCase c =
+        MlpCase.random(2, architecture, kernel, layer, ROWS, EVENTS).withoutResidualBranch();
     try (HipPlan plan = HipPlan.create(library, stream, c.shape())) {
       assertEquals(run(plan, c).x(), c.x, name);
     }
@@ -146,9 +161,11 @@ public class MlpKernelTest {
    * x と n とイベントのキーとバリュー、K5 では y とキーとバリュー。
    */
   @Test(groups = "rocm", dataProvider = "kernels")
-  public void independentOfBatchPosition(String name, HipArchitecture architecture, HipKernel kernel, int layer) {
+  public void independentOfBatchPosition(
+      String name, HipArchitecture architecture, HipKernel kernel, int layer) {
     MlpCase alone = MlpCase.random(3, architecture, kernel, layer, ROWS, EVENTS);
-    MlpCase other = MlpCase.random(4, architecture, kernel, layer, PREPENDED_ROWS, PREPENDED_EVENTS);
+    MlpCase other =
+        MlpCase.random(4, architecture, kernel, layer, PREPENDED_ROWS, PREPENDED_EVENTS);
     MlpCase joined = alone.prepend(other);
     int h = architecture.hidden();
     MlpReference.Output single;
@@ -158,16 +175,22 @@ public class MlpKernelTest {
       shifted = run(plan, joined);
     }
     if (kernel == HipKernel.MLP_LAST) {
-      assertEquals(alone.unprepend(shifted.state(), h, alone.fixedTokens(), other), single.state(), name + " y");
+      assertEquals(
+          alone.unprepend(shifted.state(), h, alone.fixedTokens(), other),
+          single.state(),
+          name + " y");
       assertEquals(alone.unprependRows(shifted.memory(), other), single.memory(), name + " KV");
     } else {
       assertEquals(alone.unprepend(shifted.x(), h, alone.tokens(), other), single.x(), name + " x");
       assertEquals(
-          alone.unprepend(shifted.normalized(), h, alone.normalizedTokens(), other), single.normalized(), name + " n");
+          alone.unprepend(shifted.normalized(), h, alone.normalizedTokens(), other),
+          single.normalized(),
+          name + " n");
       int width = 2 * architecture.attention();
       for (int j = 0; j < single.events().length; j++) {
         assertEquals(
-            Arrays.copyOfRange(shifted.events()[j], other.events * width, (other.events + alone.events) * width),
+            Arrays.copyOfRange(
+                shifted.events()[j], other.events * width, (other.events + alone.events) * width),
             single.events()[j],
             name + " event keys and values " + j);
       }
@@ -188,9 +211,14 @@ public class MlpKernelTest {
     int h = c.architecture.hidden();
     if (c.kernel == HipKernel.MLP_LAST) {
       return new MlpReference.Output(
-          new short[0], new short[0], read(plan, c, HipRegion.STATE), read(plan, c, HipRegion.MEMORY), new short[0][]);
+          new short[0],
+          new short[0],
+          read(plan, c, HipRegion.STATE),
+          read(plan, c, HipRegion.MEMORY),
+          new short[0][]);
     }
-    short[] normalized = MlpReference.head(read(plan, c, HipRegion.NORMALIZED), c.normalizedTokens() * h);
+    short[] normalized =
+        MlpReference.head(read(plan, c, HipRegion.NORMALIZED), c.normalizedTokens() * h);
     return new MlpReference.Output(
         read(plan, c, HipRegion.RESIDUAL), normalized, new short[0], new short[0], events(plan, c));
   }
@@ -226,7 +254,8 @@ public class MlpKernelTest {
     return MlpReference.shorts(out, Math.toIntExact(bytes / Short.BYTES));
   }
 
-  private static void compare(List<String> failures, String name, String output, short[] expected, short[] actual) {
+  private static void compare(
+      List<String> failures, String name, String output, short[] expected, short[] actual) {
     MlpReference.Comparison comparison = MlpReference.Comparison.of(expected, actual);
     log.info(
         "PRISM-HIP-MLP {} {} vs reference: relative RMS {}, within 1 ulp {}, max ulp {}",
@@ -235,7 +264,8 @@ public class MlpKernelTest {
         String.format("%.3e", comparison.relativeRms()),
         String.format("%.5f", comparison.withinOneUlp()),
         comparison.maxUlp());
-    if (!(comparison.relativeRms() <= RELATIVE_RMS) || !(comparison.withinOneUlp() >= WITHIN_ONE_ULP)) {
+    if (!(comparison.relativeRms() <= RELATIVE_RMS)
+        || !(comparison.withinOneUlp() >= WITHIN_ONE_ULP)) {
       failures.add(name + " " + output + " " + comparison);
     }
   }

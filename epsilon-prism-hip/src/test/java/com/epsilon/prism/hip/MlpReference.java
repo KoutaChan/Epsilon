@@ -35,10 +35,17 @@ final class MlpReference {
   record Output(short[] x, short[] normalized, short[] state, short[] memory, short[][] events) {}
 
   /** FFN の 1 組の重みの値（BF16 の行列を float にしたもの）。 */
-  private record Dense(float[] norm, float[] up, float[] upBias, float[] down, float[] downBias, int width) {
+  private record Dense(
+      float[] norm, float[] up, float[] upBias, float[] down, float[] downBias, int width) {
 
     static Dense of(MlpCase.Ffn ffn) {
-      return new Dense(ffn.norm(), values(ffn.up()), ffn.upBias(), values(ffn.down()), ffn.downBias(), ffn.width());
+      return new Dense(
+          ffn.norm(),
+          values(ffn.up()),
+          ffn.upBias(),
+          values(ffn.down()),
+          ffn.downBias(),
+          ffn.width());
     }
   }
 
@@ -183,7 +190,8 @@ final class MlpReference {
 
     static Comparison of(short[] expected, short[] actual) {
       if (expected.length != actual.length) {
-        throw new IllegalArgumentException("compared " + expected.length + " with " + actual.length + " values");
+        throw new IllegalArgumentException(
+            "compared " + expected.length + " with " + actual.length + " values");
       }
       double error = 0;
       double norm = 0;
@@ -210,7 +218,8 @@ final class MlpReference {
   /** ダイレクトの ByteBuffer（little-endian）の先頭から、BF16 のビットを読む。 */
   static short[] shorts(ByteBuffer buffer, int count) {
     short[] values = new short[count];
-    ShortBuffer view = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(0).asShortBuffer();
+    ShortBuffer view =
+        buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(0).asShortBuffer();
     view.get(values);
     return values;
   }

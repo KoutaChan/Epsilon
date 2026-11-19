@@ -15,7 +15,8 @@ public class HipArchitectureTest {
 
   private static final HipCounts THREE_PLAYERS = new HipCounts(3, 27, 107, 23, 91);
 
-  private static HipArchitecture typed(HipCounts counts, CandidateStages stages, int gateKinds, int roles) {
+  private static HipArchitecture typed(
+      HipCounts counts, CandidateStages stages, int gateKinds, int roles) {
     return new HipArchitecture(
         HipArchitecture.HIDDEN,
         1e-5f,
@@ -109,12 +110,15 @@ public class HipArchitectureTest {
   public void kernelsRunTheLayersOfTheirRole() {
     HipArchitecture v2 = TestPack.architecture(512, TestPack.FOUR_PLAYERS);
     HipLayer all = new HipLayer(LayerRole.ALL_TOKENS, new HipFfn.Shared(512));
-    HipArchitecture deep = layers(List.of(all, all, new HipLayer(LayerRole.FIXED_TOKENS, new HipFfn.Shared(512))));
+    HipArchitecture deep =
+        layers(List.of(all, all, new HipLayer(LayerRole.FIXED_TOKENS, new HipFfn.Shared(512))));
     HipArchitecture v3 = typed(TestPack.FOUR_PLAYERS, CandidateStages.REREAD, 6, 8);
     HipArchitecture oneStage = typed(TestPack.FOUR_PLAYERS, CandidateStages.ONE, 6, 8);
-    for (HipKernel kernel : List.of(HipKernel.EMBED, HipKernel.RELATION, HipKernel.CANDIDATE, HipKernel.VALUE_GRAPH)) {
+    for (HipKernel kernel :
+        List.of(HipKernel.EMBED, HipKernel.RELATION, HipKernel.CANDIDATE, HipKernel.VALUE_GRAPH)) {
       for (HipArchitecture architecture : List.of(v2, deep, v3, oneStage)) {
-        assertEquals(accepted(kernel, architecture), List.of(0), kernel + " of " + architecture.layers());
+        assertEquals(
+            accepted(kernel, architecture), List.of(0), kernel + " of " + architecture.layers());
       }
     }
     assertEquals(accepted(HipKernel.ATTENTION_ALL, v2), List.of(0));
@@ -169,37 +173,47 @@ public class HipArchitectureTest {
       HipArchitecture architecture = typed(counts, CandidateStages.REREAD, gateKinds, roles);
       long attention = architecture.attention();
       HipPack.Header header = TestPack.header(architecture);
-      assertEquals(header.elements(HipWeight.TILE_RELATION, 0), (long) counts.tiles() * counts.tiles());
+      assertEquals(
+          header.elements(HipWeight.TILE_RELATION, 0), (long) counts.tiles() * counts.tiles());
       assertEquals(header.elements(HipWeight.CODE_KEY, 0), counts.keyCodes() * attention);
       assertEquals(header.elements(HipWeight.CODE_VALUE, 0), counts.keyCodes() * attention);
       assertEquals(header.elements(HipWeight.REREAD_CODE_KEY, 0), counts.rereadCodes() * attention);
-      assertEquals(header.elements(HipWeight.REREAD_CODE_VALUE, 0), counts.rereadCodes() * attention);
-      assertEquals(header.elements(HipWeight.GATE_KIND_OFFSET, 0), (long) gateKinds * architecture.gate());
+      assertEquals(
+          header.elements(HipWeight.REREAD_CODE_VALUE, 0), counts.rereadCodes() * attention);
+      assertEquals(
+          header.elements(HipWeight.GATE_KIND_OFFSET, 0), (long) gateKinds * architecture.gate());
       assertEquals(header.elements(HipWeight.GATE_OUTPUT_BIAS, 0), gateKinds);
       assertEquals(header.sectionWidth(HipSection.TRANSITION_CODE), counts.fixed());
       header.role(roles - 1, HipComposition.TURN_GATE, gateKinds - 1);
-      assertThrows(IllegalArgumentException.class, () -> header.role(roles, HipComposition.ZERO, -1));
-      assertThrows(IllegalArgumentException.class, () -> header.role(0, HipComposition.TURN_GATE, gateKinds));
+      assertThrows(
+          IllegalArgumentException.class, () -> header.role(roles, HipComposition.ZERO, -1));
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> header.role(0, HipComposition.TURN_GATE, gateKinds));
 
       int rows = 5;
       int events = 123;
-      HipShape shape = new HipShape(architecture, new HipShape.Capacity(rows, events, 40, 40, 4096), 1);
+      HipShape shape =
+          new HipShape(architecture, new HipShape.Capacity(rows, events, 40, 40, 4096), 1);
       long fixed = (long) counts.fixed() * rows;
       long tokens = fixed + events;
       long pairs = (long) counts.codeBlocks() * HipCounts.CODE_BLOCK;
       assertEquals(shape.fixedTokens(), counts.fixed());
-      assertEquals(HipRegion.RELATION_CODE.capacityBytes(shape), rows * pairs * pairs * Integer.BYTES);
+      assertEquals(
+          HipRegion.RELATION_CODE.capacityBytes(shape), rows * pairs * pairs * Integer.BYTES);
       assertEquals(HipRegion.RESIDUAL.capacityBytes(shape), tokens * architecture.hidden() * 2);
       assertEquals(HipRegion.STATE.capacityBytes(shape), fixed * architecture.hidden() * 2);
       assertEquals(HipRegion.MEMORY.capacityBytes(shape), fixed * 2 * attention * 2);
       assertEquals(architecture.copiedEventLayers(), 1);
-      assertEquals(HipRegion.EVENT_KEY_VALUE.capacityBytes(shape), (long) events * 2 * attention * 2);
+      assertEquals(
+          HipRegion.EVENT_KEY_VALUE.capacityBytes(shape), (long) events * 2 * attention * 2);
       assertEquals(HipRegion.REREAD_MEMORY.capacityBytes(shape), tokens * 2 * attention * 2);
     }
     assertEquals(THREE_PLAYERS.codeBlocks() * HipCounts.CODE_BLOCK, 128);
     HipArchitecture oneStage = typed(THREE_PLAYERS, CandidateStages.ONE, 7, 9);
     assertThrows(
-        IllegalArgumentException.class, () -> TestPack.header(oneStage).weight(HipWeight.REREAD_OUTPUT, 0, 0));
+        IllegalArgumentException.class,
+        () -> TestPack.header(oneStage).weight(HipWeight.REREAD_OUTPUT, 0, 0));
     HipShape shape = new HipShape(oneStage, new HipShape.Capacity(2, 10, 4, 4, 4096), 1);
     assertEquals(HipRegion.REREAD_MEMORY.capacityBytes(shape), 0L);
   }
@@ -213,25 +227,47 @@ public class HipArchitectureTest {
     assertThrows(IllegalArgumentException.class, () -> layers(List.of(all, fixed, fixed, fixed)));
     assertThrows(
         IllegalArgumentException.class,
-        () -> layers(List.of(new HipLayer(LayerRole.ALL_TOKENS, new HipFfn.Typed(512, 512)), fixed)));
+        () ->
+            layers(List.of(new HipLayer(LayerRole.ALL_TOKENS, new HipFfn.Typed(512, 512)), fixed)));
     assertThrows(IllegalArgumentException.class, () -> new HipFfn.Shared(500));
-    assertThrows(IllegalArgumentException.class, () -> typed(new HipCounts(5, 27, 107, 23, 91), CandidateStages.ONE, 7, 9));
-    assertThrows(IllegalArgumentException.class, () -> typed(new HipCounts(4, 34, 109, 23, 130), CandidateStages.ONE, 6, 8));
-    assertThrows(IllegalArgumentException.class, () -> typed(TestPack.FOUR_PLAYERS, CandidateStages.ONE, 6, 17));
-    assertThrows(IllegalArgumentException.class, () -> typed(TestPack.FOUR_PLAYERS, CandidateStages.ONE, 9, 8));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> typed(new HipCounts(5, 27, 107, 23, 91), CandidateStages.ONE, 7, 9));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> typed(new HipCounts(4, 34, 109, 23, 130), CandidateStages.ONE, 6, 8));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> typed(TestPack.FOUR_PLAYERS, CandidateStages.ONE, 6, 17));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> typed(TestPack.FOUR_PLAYERS, CandidateStages.ONE, 9, 8));
   }
 
   /** 範囲の外の数で止めるときの例外のメッセージは、渡した数を示す。 */
   @Test
   public void rejectedCountsReportTheGivenValues() {
-    String message = expectThrows(IllegalArgumentException.class, () -> new HipCounts(0, 27, 107, 23, 91)).getMessage();
-    for (String given : new String[] {"seats=0", "tiles=27", "keyCodes=107", "tileRelations=23", "maxEvents=91"}) {
+    String message =
+        expectThrows(IllegalArgumentException.class, () -> new HipCounts(0, 27, 107, 23, 91))
+            .getMessage();
+    for (String given :
+        new String[] {"seats=0", "tiles=27", "keyCodes=107", "tileRelations=23", "maxEvents=91"}) {
       assertTrue(message.contains(given), message);
     }
   }
 
   private static HipArchitecture layers(List<HipLayer> layers) {
     return new HipArchitecture(
-        HipArchitecture.HIDDEN, 1e-5f, 0.25f, 0.01f, layers, 512, CandidateStages.ONE, 256, 6, 8, TestPack.FOUR_PLAYERS);
+        HipArchitecture.HIDDEN,
+        1e-5f,
+        0.25f,
+        0.01f,
+        layers,
+        512,
+        CandidateStages.ONE,
+        256,
+        6,
+        8,
+        TestPack.FOUR_PLAYERS);
   }
 }

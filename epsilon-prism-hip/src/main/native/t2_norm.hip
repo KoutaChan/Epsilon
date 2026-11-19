@@ -24,8 +24,8 @@ namespace {
 
 constexpr int kThreads = 256;
 constexpr int kWaves = kThreads / kWave;
-constexpr int kChunk = 8;                                        // lane が一度に読み書きする列の数（BF16 の 16 バイト）
-constexpr int kMaxChunks = kNormMaxWidth / (kWave * kChunk);     // lane あたりのチャンクの数の上限
+constexpr int kChunk = 8;                                     // lane が一度に読み書きする列の数（BF16 の 16 バイト）
+constexpr int kMaxChunks = kNormMaxWidth / (kWave * kChunk);  // lane あたりのチャンクの数の上限
 static_assert(kMaxChunks * kWave * kChunk == kNormMaxWidth, "the widest row is a whole number of chunks per lane");
 static_assert(kNormGainRows % kWaves == 0, "every wave walks the same number of rows of a full gain block");
 
@@ -49,14 +49,10 @@ struct BackwardArgs {
 };
 
 // lane のチャンク k の先頭の列。
-__device__ __forceinline__ int column(int lane, int k) {
-  return kChunk * (lane + kWave * k);
-}
+__device__ __forceinline__ int column(int lane, int k) { return kChunk * (lane + kWave * k); }
 
 // lane のチャンク k が行の中にあれば true（width は 8 の倍数なので、チャンクは丸ごと中か丸ごと外）。
-__device__ __forceinline__ bool owns(int lane, int k, int width) {
-  return column(lane, k) < width;
-}
+__device__ __forceinline__ bool owns(int lane, int k, int width) { return column(lane, k) < width; }
 
 // 行の 8 列の BF16（16 バイト）を float にする。
 __device__ __forceinline__ void load8(Span<const uint16_t> span, size_t at, float (&values)[8], Bounds& bounds) {
@@ -209,9 +205,7 @@ __global__ __launch_bounds__(kThreads) void normBackwardKernel(BackwardArgs args
   bounds.trap();
 }
 
-int chunksOf(int width) {
-  return (width / kChunk + kWave - 1) / kWave;
-}
+int chunksOf(int width) { return (width / kChunk + kWave - 1) / kWave; }
 
 template <class T>
 void requireAligned(const T* data, const char* name) {

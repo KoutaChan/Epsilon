@@ -26,8 +26,8 @@ __device__ __forceinline__ int transitionRow(const Span<const int32_t>& rowColum
 }
 
 // 遷移 t の牌 τ を返す。鳴いた後に捨てる牌、なければ主牌（ID、0 はなし）。
-__device__ __forceinline__ int discardTile(const Span<const uint8_t>& category, int width, int callDiscard, int mainTile,
-                                           int t, Bounds& bounds) {
+__device__ __forceinline__ int discardTile(const Span<const uint8_t>& category, int width, int callDiscard,
+                                           int mainTile, int t, Bounds& bounds) {
   const size_t at = static_cast<size_t>(t) * width;
   const int afterCall = category.data[bounds.index(at + callDiscard, 1, category.limit)];
   const int primary = category.data[bounds.index(at + mainTile, 1, category.limit)];

@@ -73,7 +73,8 @@ public final class TenhouClient {
       if (!helo.name().equals("HELO")) {
         throw new IOException("Tenhou answers the login with " + helo.name());
       }
-      keepalive.scheduleAtFixedRate(() -> keepAlive(transport), KEEPALIVE_SECONDS, KEEPALIVE_SECONDS, TimeUnit.SECONDS);
+      keepalive.scheduleAtFixedRate(
+          () -> keepAlive(transport), KEEPALIVE_SECONDS, KEEPALIVE_SECONDS, TimeUnit.SECONDS);
       transport.send(TenhouCodec.lobby(room));
       transport.send(TenhouCodec.join(room + "," + TenhouRule.hanchan(variant)));
       log.info("Tenhou room {} is joined as {} for {}", room, name, variant);

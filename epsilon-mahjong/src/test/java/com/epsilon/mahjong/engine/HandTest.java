@@ -141,7 +141,8 @@ public class HandTest {
     hand.addMeld(Meld.ankan(Tiles.P5, true).id());
     Assert.assertEquals(hand.redFives(), 0L);
     Assert.assertEquals(hand.shape().size(), HandShape.MAX_SIZE - 1);
-    Assert.assertEquals(hand.waits(), Tiles.bit(Tiles.S3) | Tiles.bit(Tiles.S6) | Tiles.bit(Tiles.S9));
+    Assert.assertEquals(
+        hand.waits(), Tiles.bit(Tiles.S3) | Tiles.bit(Tiles.S6) | Tiles.bit(Tiles.S9));
   }
 
   @Test
@@ -153,10 +154,13 @@ public class HandTest {
     hand.add(Tiles.physicalId(Tiles.S1, 1));
     Assert.assertEquals(hand.pick(Tiles.S5, true), Tiles.physicalId(Tiles.S5, 0));
     Assert.assertEquals(hand.pick(Tiles.S5, false), Tiles.physicalId(Tiles.S5, 2));
-    Assert.assertEquals(hand.pick(Tiles.S5, false, Tiles.physicalId(Tiles.S5, 2)), Tiles.physicalId(Tiles.S5, 3));
+    Assert.assertEquals(
+        hand.pick(Tiles.S5, false, Tiles.physicalId(Tiles.S5, 2)), Tiles.physicalId(Tiles.S5, 3));
     Assert.assertEquals(hand.pick(Tiles.S1, false), Tiles.physicalId(Tiles.S1, 1));
     Assert.assertThrows(IllegalStateException.class, () -> hand.pick(Tiles.S1, true));
-    Assert.assertThrows(IllegalStateException.class, () -> hand.pick(Tiles.S1, false, Tiles.physicalId(Tiles.S1, 1)));
+    Assert.assertThrows(
+        IllegalStateException.class,
+        () -> hand.pick(Tiles.S1, false, Tiles.physicalId(Tiles.S1, 1)));
     Assert.assertThrows(IllegalStateException.class, () -> hand.pick(Tiles.S2, false));
     Assert.assertEquals(hand.redFives(), Tiles.bit(Tiles.S5));
     Assert.assertTrue(hand.holds(Tiles.physicalId(Tiles.S5, 0)));
@@ -169,9 +173,12 @@ public class HandTest {
     Hand hand = new Hand(Variant.TENHOU_3P);
     hand.add(Tiles.physicalId(Tiles.M1, 0));
     Assert.assertThrows(IllegalStateException.class, () -> hand.add(Tiles.physicalId(Tiles.M1, 0)));
-    Assert.assertThrows(IllegalArgumentException.class, () -> hand.add(Tiles.physicalId(Tiles.M2, 0)));
-    Assert.assertThrows(IllegalStateException.class, () -> hand.discard(Tiles.physicalId(Tiles.M1, 1)));
-    Assert.assertThrows(IllegalStateException.class, () -> hand.take(Tiles.physicalId(Tiles.M9, 0)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> hand.add(Tiles.physicalId(Tiles.M2, 0)));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> hand.discard(Tiles.physicalId(Tiles.M1, 1)));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> hand.take(Tiles.physicalId(Tiles.M9, 0)));
     Assert.assertEquals(hand.count(Tiles.M1), 1);
     Assert.assertTrue(hand.holds(Tiles.physicalId(Tiles.M1, 0)));
     Assert.assertEquals(hand.shape().tiles(), 1);
@@ -208,7 +215,8 @@ public class HandTest {
     Assert.assertFalse(hand.holds(Tiles.physicalId(Tiles.CHUN, 0)));
     Assert.assertEquals(hand.waits(), Tiles.bit(Tiles.TON) | Tiles.bit(Tiles.NAN));
     Assert.assertEquals(copy.waits(), 0L);
-    Assert.assertThrows(IllegalArgumentException.class, () -> copy.copyFrom(new Hand(Variant.TENHOU_3P)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> copy.copyFrom(new Hand(Variant.TENHOU_3P)));
   }
 
   private static void assertHand(Hand hand, boolean[] held, ShapeAnalyzer analyzer) {
@@ -222,7 +230,8 @@ public class HandTest {
     }
     HandShape recount = ShapeFixtures.shape(counts, 0);
     Fields.assertSameFields(recount, hand.shape());
-    Assert.assertEquals(hand.waits(), recount.size() == Variant.HAND ? analyzer.waits(recount) : 0L);
+    Assert.assertEquals(
+        hand.waits(), recount.size() == Variant.HAND ? analyzer.waits(recount) : 0L);
   }
 
   private static int randomHeld(Random random, boolean[] held) {

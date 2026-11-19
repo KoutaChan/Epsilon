@@ -186,7 +186,8 @@ public final class ReplayDriver {
   /** 半荘の全ての局を再生する。記録と食い違えば IllegalStateException。 */
   public void replay(RecordedGame game, RuleWorkspace ws) {
     if (game.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + game.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + game.variant());
     }
     id = game.meta().id();
     List<RecordedRound> rounds = game.rounds();
@@ -247,7 +248,13 @@ public final class ReplayDriver {
     if (!(event instanceof RecordEvent.Draw draw)
         || draw.seat() != seat
         || Tiles.kind(draw.tile()) != view.last().tile()) {
-      throw fault("Seat " + seat + " draws a tile of kind " + view.last().tile() + ", but the record has " + event);
+      throw fault(
+          "Seat "
+              + seat
+              + " draws a tile of kind "
+              + view.last().tile()
+              + ", but the record has "
+              + event);
     }
     read++;
   }
@@ -266,7 +273,12 @@ public final class ReplayDriver {
       return;
     }
     if (result.kind() == EndKind.RON && result.loser() == events.seat(last)) {
-      throw fault("The record rons the " + events.kind(last) + " of seat " + result.loser() + ", which no seat can claim");
+      throw fault(
+          "The record rons the "
+              + events.kind(last)
+              + " of seat "
+              + result.loser()
+              + ", which no seat can claim");
     }
     if (result.abortive() == AbortiveDraw.TRIPLE_RON) {
       throw fault("The record ends with three rons, which the engine does not offer");
@@ -343,7 +355,11 @@ public final class ReplayDriver {
   private int turnCode(RecordEvent event, int seat) {
     return switch (event) {
       case RecordEvent.Discard discard when discard.seat() == seat ->
-          Action.discard(Tiles.kind(discard.tile()), set.red(discard.tile()), discard.tsumogiri(), discard.riichi());
+          Action.discard(
+              Tiles.kind(discard.tile()),
+              set.red(discard.tile()),
+              discard.tsumogiri(),
+              discard.riichi());
       case RecordEvent.ClosedKan kan when kan.seat() == seat ->
           Action.code(Type.ANKAN, kan.kind(), TileSelection.NOT_APPLICABLE);
       case RecordEvent.AddedKan kan when kan.seat() == seat ->
@@ -414,10 +430,13 @@ public final class ReplayDriver {
    */
   private boolean robs(int actor, Decisions decisions) {
     RoundResult result = round.result();
-    if (result.kind() == EndKind.RON && result.loser() == actor || result.abortive() == AbortiveDraw.TRIPLE_RON) {
+    if (result.kind() == EndKind.RON && result.loser() == actor
+        || result.abortive() == AbortiveDraw.TRIPLE_RON) {
       return true;
     }
-    if (result.kind() != null || !variant.aborts(AbortiveDraw.TRIPLE_RON) || decisions.size() != seats - 1) {
+    if (result.kind() != null
+        || !variant.aborts(AbortiveDraw.TRIPLE_RON)
+        || decisions.size() != seats - 1) {
       return false;
     }
     for (int slot = 0; slot < decisions.size(); slot++) {
@@ -471,7 +490,8 @@ public final class ReplayDriver {
       rejectUnofferedRon();
     }
     if (!round.result().matches(end, round.riichiMask())) {
-      throw fault("The engine ended with " + describe(end) + ", but the record has " + round.result());
+      throw fault(
+          "The engine ended with " + describe(end) + ", but the record has " + round.result());
     }
   }
 
@@ -480,10 +500,13 @@ public final class ReplayDriver {
     TableState next = engine.roundEnd().next();
     List<RecordedRound> rounds = game.rounds();
     boolean last = index == rounds.size() - 1;
-    boolean same = last ? next.endsWith(game.finalScores()) : next.startsAt(rounds.get(index + 1).start());
+    boolean same =
+        last ? next.endsWith(game.finalScores()) : next.startsAt(rounds.get(index + 1).start());
     if (!same) {
       String recorded =
-          last ? "ends with " + Arrays.toString(game.finalScores()) : "goes on with " + rounds.get(index + 1).start();
+          last
+              ? "ends with " + Arrays.toString(game.finalScores())
+              : "goes on with " + rounds.get(index + 1).start();
       throw fault("The engine moves on to " + next + ", but the record " + recorded);
     }
   }
@@ -515,17 +538,21 @@ public final class ReplayDriver {
             throw fault("The record draws more tiles than the wall holds");
           }
           int position =
-              replacement ? Wall.rinshanPosition(variant, ++replacements) : Wall.livePosition(variant, live++);
+              replacement
+                  ? Wall.rinshanPosition(variant, ++replacements)
+                  : Wall.livePosition(variant, live++);
           place(position, draw.tile());
           replacement = false;
         }
         case RecordEvent.DoraReveal reveal -> {
           if (indicators == WinContext.MAX_INDICATORS) {
-            throw fault("The record reveals more than " + WinContext.MAX_INDICATORS + " indicators");
+            throw fault(
+                "The record reveals more than " + WinContext.MAX_INDICATORS + " indicators");
           }
           place(Wall.indicatorPosition(variant, indicators++), reveal.tile());
         }
-        case RecordEvent.Call call -> replacement = Meld.of(call.meld()).type() == Meld.Type.DAIMINKAN;
+        case RecordEvent.Call call ->
+            replacement = Meld.of(call.meld()).type() == Meld.Type.DAIMINKAN;
         case RecordEvent.ClosedKan ignored -> replacement = true;
         case RecordEvent.AddedKan ignored -> replacement = true;
         case RecordEvent.Nuki ignored -> replacement = true;
@@ -535,7 +562,12 @@ public final class ReplayDriver {
     }
     RoundResult result = round.result();
     if (result.uraCount() > indicators) {
-      throw fault("The record has " + result.uraCount() + " ura indicators for " + indicators + " indicators");
+      throw fault(
+          "The record has "
+              + result.uraCount()
+              + " ura indicators for "
+              + indicators
+              + " indicators");
     }
     for (int index = 0; index < result.uraCount(); index++) {
       place(Wall.uraPosition(variant, index), result.ura(index));
@@ -564,7 +596,8 @@ public final class ReplayDriver {
     List<RecordEvent> events = round.events();
     while (read < events.size()) {
       RecordEvent event = events.get(read);
-      if (!(event instanceof RecordEvent.DoraReveal) && !(event instanceof RecordEvent.RiichiAccepted)) {
+      if (!(event instanceof RecordEvent.DoraReveal)
+          && !(event instanceof RecordEvent.RiichiAccepted)) {
         return event;
       }
       read++;

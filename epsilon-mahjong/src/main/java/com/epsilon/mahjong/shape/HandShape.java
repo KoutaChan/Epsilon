@@ -101,6 +101,7 @@ public final class HandShape {
 
   /** 1 枚以上ある種類、2 枚以上ある種類、4 枚ある種類のマスク。 */
   private long kinds;
+
   private long pairs;
   private long full;
 

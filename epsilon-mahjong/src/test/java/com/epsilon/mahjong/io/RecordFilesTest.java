@@ -41,8 +41,10 @@ public class RecordFilesTest {
     Assert.assertEquals(read.meta().source(), RecordedGame.Source.MJAI);
     Assert.assertEquals(RecordFiles.read(utf8(mjai), id), read);
     Assert.assertEquals(RecordFiles.read(gzip(utf8(mjai)), id), read);
-    Assert.assertEquals(RecordFiles.read(utf8("[" + String.join(",", mjai.strip().split("\n")) + "]"), id), read);
-    String later = mjai.replaceFirst("\\{\"type\":\"start_game\",", "{\"id\":0,\"type\":\"start_game\",");
+    Assert.assertEquals(
+        RecordFiles.read(utf8("[" + String.join(",", mjai.strip().split("\n")) + "]"), id), read);
+    String later =
+        mjai.replaceFirst("\\{\"type\":\"start_game\",", "{\"id\":0,\"type\":\"start_game\",");
     Assert.assertNotEquals(later, mjai);
     Assert.assertEquals(RecordFiles.read(utf8(later), id), read);
 
@@ -65,8 +67,12 @@ public class RecordFilesTest {
     rejected(gzip(new byte[RecordFiles.MAX_BYTES + 1]), "unpacks");
     rejected(new byte[] {0x1f, (byte) 0x8b, 1, 2, 3}, "gzip");
     rejected(utf8(" \n "), "empty");
-    rejected(utf8("[".repeat(RecordFiles.MAX_NESTING + 1) + "]".repeat(RecordFiles.MAX_NESTING + 1)), "deeper");
-    rejected(utf8("[".repeat(RecordFiles.MAX_NESTING) + "]".repeat(RecordFiles.MAX_NESTING)), "event objects");
+    rejected(
+        utf8("[".repeat(RecordFiles.MAX_NESTING + 1) + "]".repeat(RecordFiles.MAX_NESTING + 1)),
+        "deeper");
+    rejected(
+        utf8("[".repeat(RecordFiles.MAX_NESTING) + "]".repeat(RecordFiles.MAX_NESTING)),
+        "event objects");
     rejected(utf8("{\"format\":6,\"resultId\":\"x\"}"), "analysis");
     rejected(utf8("CgYKBAgBEAE="), "neither");
     rejected(utf8("[{\"name\":\".lq.RecordNewRound\",\"data\":{}}]"), "neither");
@@ -96,7 +102,8 @@ public class RecordFilesTest {
     List<String> round = lines.subList(1, end + 1);
     int events = MjaiCodec.read(MjaiCodec.write(game), "long").rounds().get(0).events().size();
     byte[] within = repeated(lines, round, RecordFiles.MAX_EVENTS / events);
-    Assert.assertEquals(RecordFiles.read(within, "within").rounds().size(), RecordFiles.MAX_EVENTS / events);
+    Assert.assertEquals(
+        RecordFiles.read(within, "within").rounds().size(), RecordFiles.MAX_EVENTS / events);
     rejected(repeated(lines, round, RecordFiles.MAX_EVENTS / events + 1), "50000");
   }
 

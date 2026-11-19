@@ -32,7 +32,12 @@ public final class Settlement {
   public static void apply(Variant variant, TableState start, RoundOutcome outcome, int[] delta) {
     if (start.variant() != variant || outcome.variant() != variant) {
       throw new IllegalArgumentException(
-          "Variant mismatch: " + variant + ", table " + start.variant() + ", outcome " + outcome.variant());
+          "Variant mismatch: "
+              + variant
+              + ", table "
+              + start.variant()
+              + ", outcome "
+              + outcome.variant());
     }
     if (start.gameOver()) {
       throw new IllegalArgumentException("No round starts from a finished game: " + start);
@@ -47,14 +52,31 @@ public final class Settlement {
     }
     int dealer = start.dealer();
     switch (outcome.kind()) {
-      case TSUMO -> tsumo(variant, outcome.base(0), outcome.winner(0), dealer, start.honba(), outcome.pao(0), delta);
+      case TSUMO ->
+          tsumo(
+              variant,
+              outcome.base(0),
+              outcome.winner(0),
+              dealer,
+              start.honba(),
+              outcome.pao(0),
+              delta);
       case RON -> {
         for (int i = 0; i < outcome.winnerCount(); i++) {
           int honba = i == 0 ? start.honba() : 0;
-          ron(variant, outcome.base(i), outcome.winner(i), outcome.loser(), dealer, honba, outcome.pao(i), delta);
+          ron(
+              variant,
+              outcome.base(i),
+              outcome.winner(i),
+              outcome.loser(),
+              dealer,
+              honba,
+              outcome.pao(i),
+              delta);
         }
       }
-      case EXHAUSTIVE -> exhaustive(variant, dealer, outcome.tenpaiMask(), outcome.nagashiMask(), delta);
+      case EXHAUSTIVE ->
+          exhaustive(variant, dealer, outcome.tenpaiMask(), outcome.nagashiMask(), delta);
       case ABORTIVE -> {
         // 立直の供託のほかは点が動かない。
       }
@@ -77,7 +99,8 @@ public final class Settlement {
    * @param pao 包の席。無ければ {@link RoundOutcome#NO_SEAT}
    * @param delta 点の動きを足し込む先
    */
-  public static void tsumo(Variant variant, int base, int winner, int dealer, int honba, int pao, int[] delta) {
+  public static void tsumo(
+      Variant variant, int base, int winner, int dealer, int honba, int pao, int[] delta) {
     int seats = variant.seats();
     Objects.checkIndex(winner, seats);
     Objects.checkIndex(dealer, seats);
@@ -113,7 +136,14 @@ public final class Settlement {
    * @throws IllegalArgumentException 包の席が放銃者のとき（包の席が放銃したロンは、包の無いロンとして書く）
    */
   public static void ron(
-      Variant variant, int base, int winner, int loser, int dealer, int honba, int pao, int[] delta) {
+      Variant variant,
+      int base,
+      int winner,
+      int loser,
+      int dealer,
+      int honba,
+      int pao,
+      int[] delta) {
     int seats = variant.seats();
     Objects.checkIndex(winner, seats);
     Objects.checkIndex(loser, seats);
@@ -148,12 +178,18 @@ public final class Settlement {
    * @param nagashiMask 流し満貫になった席のマスク
    * @param delta 点の動きを足し込む先
    */
-  public static void exhaustive(Variant variant, int dealer, int tenpaiMask, int nagashiMask, int[] delta) {
+  public static void exhaustive(
+      Variant variant, int dealer, int tenpaiMask, int nagashiMask, int[] delta) {
     int seats = variant.seats();
     Objects.checkIndex(dealer, seats);
     if (((tenpaiMask | nagashiMask) & ~variant.seatMask()) != 0) {
-      throw new IllegalArgumentException("Masks " + Integer.toBinaryString(tenpaiMask) + " and "
-          + Integer.toBinaryString(nagashiMask) + " have seats outside " + variant);
+      throw new IllegalArgumentException(
+          "Masks "
+              + Integer.toBinaryString(tenpaiMask)
+              + " and "
+              + Integer.toBinaryString(nagashiMask)
+              + " have seats outside "
+              + variant);
     }
     requireDelta(variant, delta);
     if (nagashiMask != 0) {
@@ -200,13 +236,15 @@ public final class Settlement {
   /** ロンで、包の席が放銃者でないことを確かめる。包の席が放銃したロンは、包の無いロンとして書く。 */
   static void requireLoserNotLiable(int loser, int pao) {
     if (pao != RoundOutcome.NO_SEAT && pao == loser) {
-      throw new IllegalArgumentException("Seat " + loser + " deals in, so it cannot also be liable for the win");
+      throw new IllegalArgumentException(
+          "Seat " + loser + " deals in, so it cannot also be liable for the win");
     }
   }
 
   static void requireDelta(Variant variant, int[] delta) {
     if (delta.length != variant.seats()) {
-      throw new IllegalArgumentException(variant + " needs " + variant.seats() + " deltas, got " + delta.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + variant.seats() + " deltas, got " + delta.length);
     }
   }
 

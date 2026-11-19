@@ -166,7 +166,8 @@ public final class Wall {
    */
   void load(int[] recorded) {
     if (recorded.length != size) {
-      throw new IllegalArgumentException(variant + " needs " + size + " wall positions, got " + recorded.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + size + " wall positions, got " + recorded.length);
     }
     begin();
     Arrays.fill(positionOf, UNKNOWN);
@@ -195,7 +196,9 @@ public final class Wall {
     int seats = variant.seats();
     Objects.checkIndex(offset, seats);
     int packet = Objects.checkIndex(index, Variant.HAND) / PACKET;
-    return packet < PACKETS ? (packet * seats + offset) * PACKET + index % PACKET : PACKETS * PACKET * seats + offset;
+    return packet < PACKETS
+        ? (packet * seats + offset) * PACKET + index % PACKET
+        : PACKETS * PACKET * seats + offset;
   }
 
   /**
@@ -231,7 +234,9 @@ public final class Wall {
    * @param index 表示牌の番号（0 始まり）
    */
   public static int indicatorPosition(Variant variant, int index) {
-    return variant.tiles().size() - DEAD_RINSHAN - 2 * (Objects.checkIndex(index, WinContext.MAX_INDICATORS) + 1);
+    return variant.tiles().size()
+        - DEAD_RINSHAN
+        - 2 * (Objects.checkIndex(index, WinContext.MAX_INDICATORS) + 1);
   }
 
   /** 表示牌に対応する裏ドラ表示牌の位置（表示牌の次の位置）。 */
@@ -351,7 +356,8 @@ public final class Wall {
 
   void copyFrom(Wall other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     System.arraycopy(other.tiles, 0, tiles, 0, tiles.length);
     System.arraycopy(other.stream, 0, stream, 0, stream.length);

@@ -50,27 +50,37 @@ public class ReplayCursorTest {
           RecordEvent after = cursor < events.size() ? events.get(cursor) : null;
           boolean fits =
               switch (decided.kind(0)) {
-                case TURN -> before instanceof RecordEvent.Draw draw
-                    && draw.seat() == seat
-                    && (after == null || turnAction(after, seat));
-                case POST_CALL_DAHAI -> before instanceof RecordEvent.Call call
-                    && call.seat() == seat
-                    && after instanceof RecordEvent.Discard discard
-                    && discard.seat() == seat;
-                case RESPONSE -> lastMove(events, cursor) instanceof RecordEvent.Discard discard
-                    && discard.seat() == actor
-                    && (after == null
-                        || after instanceof RecordEvent.RiichiAccepted
-                        || after instanceof RecordEvent.Call
-                        || after instanceof RecordEvent.Draw);
-                case CHANKAN -> before instanceof RecordEvent.AddedKan kan
-                    && kan.seat() == actor
-                    && (after == null || after instanceof RecordEvent.DoraReveal || after instanceof RecordEvent.Draw);
-                case NUKI_RESPONSE -> before instanceof RecordEvent.Nuki nuki
-                    && nuki.seat() == actor
-                    && (after == null || after instanceof RecordEvent.DoraReveal || after instanceof RecordEvent.Draw);
+                case TURN ->
+                    before instanceof RecordEvent.Draw draw
+                        && draw.seat() == seat
+                        && (after == null || turnAction(after, seat));
+                case POST_CALL_DAHAI ->
+                    before instanceof RecordEvent.Call call
+                        && call.seat() == seat
+                        && after instanceof RecordEvent.Discard discard
+                        && discard.seat() == seat;
+                case RESPONSE ->
+                    lastMove(events, cursor) instanceof RecordEvent.Discard discard
+                        && discard.seat() == actor
+                        && (after == null
+                            || after instanceof RecordEvent.RiichiAccepted
+                            || after instanceof RecordEvent.Call
+                            || after instanceof RecordEvent.Draw);
+                case CHANKAN ->
+                    before instanceof RecordEvent.AddedKan kan
+                        && kan.seat() == actor
+                        && (after == null
+                            || after instanceof RecordEvent.DoraReveal
+                            || after instanceof RecordEvent.Draw);
+                case NUKI_RESPONSE ->
+                    before instanceof RecordEvent.Nuki nuki
+                        && nuki.seat() == actor
+                        && (after == null
+                            || after instanceof RecordEvent.DoraReveal
+                            || after instanceof RecordEvent.Draw);
               };
-          Assert.assertTrue(fits, where + " " + decided.kind(0) + " between " + before + " and " + after);
+          Assert.assertTrue(
+              fits, where + " " + decided.kind(0) + " between " + before + " and " + after);
           Assert.assertEquals(reveals(events, cursor), view.indicatorCount() - 1, where);
           previous = cursor;
           decisions++;

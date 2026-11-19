@@ -26,7 +26,8 @@ public class WinPointsTest {
       Assert.assertEquals(child.han(), 3, variant + " " + child);
       Assert.assertEquals(child.fu(), 40, variant + " " + child);
       Assert.assertEquals(ScoreMath.ron(child.base(), false), 5_200, variant.name());
-      WinScore dealer = WinCase.of(variant, FORTY_FU).dealer().riichi().ron("5s").dora("4p3p").score();
+      WinScore dealer =
+          WinCase.of(variant, FORTY_FU).dealer().riichi().ron("5s").dora("4p3p").score();
       Assert.assertEquals(ScoreMath.ron(dealer.base(), true), 7_700, variant.name());
     }
   }

@@ -6,7 +6,9 @@ import java.util.Arrays;
 public enum TileSet {
   FULL(Tiles.ALL_KINDS, Tiles.FIVES),
   /** 2〜8 萬（物理 id 4〜31）を使わない。赤 5 は 5p・5s だけ。 */
-  SANMA(Tiles.ALL_KINDS & ~Tiles.range(Tiles.M2, Tiles.M8), Tiles.bit(Tiles.P5) | Tiles.bit(Tiles.S5));
+  SANMA(
+      Tiles.ALL_KINDS & ~Tiles.range(Tiles.M2, Tiles.M8),
+      Tiles.bit(Tiles.P5) | Tiles.bit(Tiles.S5));
 
   private final long kinds;
   private final long redKinds;

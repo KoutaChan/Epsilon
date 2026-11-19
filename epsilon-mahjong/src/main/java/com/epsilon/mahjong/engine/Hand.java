@@ -110,7 +110,14 @@ final class Hand {
       }
     }
     throw new IllegalStateException(
-        "No " + (red ? "red" : "plain") + " tile of kind " + kind + " other than " + excluded + " in " + shape);
+        "No "
+            + (red ? "red" : "plain")
+            + " tile of kind "
+            + kind
+            + " other than "
+            + excluded
+            + " in "
+            + shape);
   }
 
   void clear() {
@@ -202,7 +209,8 @@ final class Hand {
 
   void copyFrom(Hand other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     shape.copyFrom(other.shape);
     System.arraycopy(other.copies, 0, copies, 0, copies.length);

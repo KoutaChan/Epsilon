@@ -25,7 +25,10 @@ public class WindowTest {
 
   /** 席 0 が打った 5p に、席 1 はチーが 3 通り、席 2 は赤入りのポン・ポン・大明槓、席 3 はロン（一気通貫）ができる手牌。 */
   private static Scene fivePinHands(Scene scene) {
-    return scene.hand(1, "3467p123m789s11z9m").hand(2, "055p123s456s789s2z").hand(3, "123m456m789m46p11z");
+    return scene
+        .hand(1, "3467p123m789s11z9m")
+        .hand(2, "055p123s456s789s2z")
+        .hand(3, "123m456m789m46p11z");
   }
 
   private static Scene fivePin() {
@@ -42,8 +45,10 @@ public class WindowTest {
       Assert.assertEquals(scene.decisions.id(slot), slot + 1L);
     }
     Assert.assertEquals(scene.nextId(), 4L);
-    Assert.assertEquals(scene.legal(1), List.of("CHI(3p4p5p 5p)", "CHI(4p5p6p 5p)", "CHI(5p6p7p 5p)", "PASS"));
-    Assert.assertEquals(scene.legal(2), List.of("PON_AKA(5pr)", "PON(5p)", "DAIMINKAN(5p)", "PASS"));
+    Assert.assertEquals(
+        scene.legal(1), List.of("CHI(3p4p5p 5p)", "CHI(4p5p6p 5p)", "CHI(5p6p7p 5p)", "PASS"));
+    Assert.assertEquals(
+        scene.legal(2), List.of("PON_AKA(5pr)", "PON(5p)", "DAIMINKAN(5p)", "PASS"));
     Assert.assertEquals(scene.legal(3), List.of("RON_AGARI", "PASS"));
     Assert.assertTrue(scene.decisions.win(2).has(ScoringYaku.ITTSU));
   }
@@ -80,7 +85,8 @@ public class WindowTest {
   /** 最後の打牌には鳴けず、ロンすれば河底が付く。 */
   @Test
   public void theLastDiscardCanOnlyBeRonnedForHoutei() {
-    Scene scene = fivePinHands(Scene.first().burn(Scene.VARIANT.liveWall())).river(0, "5p").respond();
+    Scene scene =
+        fivePinHands(Scene.first().burn(Scene.VARIANT.liveWall())).river(0, "5p").respond();
     Assert.assertEquals(scene.decisions.size(), 1);
     Assert.assertEquals(scene.legal(3), List.of("RON_AGARI", "PASS"));
     Assert.assertTrue(scene.decisions.win(0).has(ScoringYaku.HOUTEI));
@@ -110,7 +116,8 @@ public class WindowTest {
   @Test
   public void ronBeatsCallsAndPonBeatsChi() {
     Scene ron = fivePin();
-    Assert.assertEquals(ron.close("CHI(4p5p6p 5p)", "PON_AKA(5pr)", "RON_AGARI"), Window.Outcome.RON);
+    Assert.assertEquals(
+        ron.close("CHI(4p5p6p 5p)", "PON_AKA(5pr)", "RON_AGARI"), Window.Outcome.RON);
     Assert.assertEquals(ron.window.winnerCount(), 1);
     Assert.assertEquals(ron.window.winner(0), 3);
     assertResolution(ron, "PREEMPTED false", "PREEMPTED false", "CAUSAL true");
@@ -137,18 +144,37 @@ public class WindowTest {
   /** ロンを選んだ席は全員が和了し、放銃した席から手番の近い順に並ぶ。四人打ちで 3 人がロンすれば三家和になる。 */
   @Test
   public void everyRonWinsInTurnOrderAndThreeAbort() {
-    Scene triple = Scene.first().hand(1, MAN_ITTSU).hand(2, PIN_ITTSU).hand(3, TANYAO).river(0, "5s").respond();
+    Scene triple =
+        Scene.first()
+            .hand(1, MAN_ITTSU)
+            .hand(2, PIN_ITTSU)
+            .hand(3, TANYAO)
+            .river(0, "5s")
+            .respond();
     Assert.assertEquals(triple.legal(1), List.of("RON_AGARI", "CHI(4s5s6s 5s)", "PASS"));
-    Assert.assertEquals(triple.close("RON_AGARI", "RON_AGARI", "RON_AGARI"), Window.Outcome.TRIPLE_RON);
+    Assert.assertEquals(
+        triple.close("RON_AGARI", "RON_AGARI", "RON_AGARI"), Window.Outcome.TRIPLE_RON);
     Assert.assertEquals(triple.window.winnerCount(), 3);
 
-    Scene twice = Scene.first().hand(1, MAN_ITTSU).hand(2, PIN_ITTSU).hand(3, TANYAO).river(0, "5s").respond();
+    Scene twice =
+        Scene.first()
+            .hand(1, MAN_ITTSU)
+            .hand(2, PIN_ITTSU)
+            .hand(3, TANYAO)
+            .river(0, "5s")
+            .respond();
     Assert.assertEquals(twice.close("RON_AGARI", "RON_AGARI", "PASS"), Window.Outcome.RON);
     Assert.assertEquals(twice.window.winnerCount(), 2);
     Assert.assertEquals(twice.window.winner(0), 1);
     Assert.assertEquals(twice.window.winner(1), 2);
 
-    Scene order = Scene.first().hand(3, MAN_ITTSU).hand(0, PIN_ITTSU).hand(1, TANYAO).river(2, "5s").respond();
+    Scene order =
+        Scene.first()
+            .hand(3, MAN_ITTSU)
+            .hand(0, PIN_ITTSU)
+            .hand(1, TANYAO)
+            .river(2, "5s")
+            .respond();
     Assert.assertEquals(order.close("PASS", "RON_AGARI", "RON_AGARI"), Window.Outcome.RON);
     Assert.assertEquals(order.window.winner(0), 3);
     Assert.assertEquals(order.window.winner(1), 1);
@@ -272,7 +298,8 @@ public class WindowTest {
     Assert.assertTrue(added.decisions.win(0).has(ScoringYaku.KOKUSHI));
     Assert.assertEquals(added.decisions.win(0).yakuman(), 1);
 
-    Scene closed = Scene.first().hand(3, "19m19p19s2234567z").hand(1, "123m456p789s").ankan(1, "1z");
+    Scene closed =
+        Scene.first().hand(3, "19m19p19s2234567z").hand(1, "123m456p789s").ankan(1, "1z");
     Assert.assertThrows(IllegalStateException.class, closed::respond);
   }
 
@@ -280,7 +307,13 @@ public class WindowTest {
   @Test
   public void aRiichiRonKeepsItsUraInTheSlot() {
     Scene scene =
-        Scene.first().hand(3, WAITS_1S_4S).riichi(3).indicator("1m").ura(0, "1s").river(0, "1s").respond();
+        Scene.first()
+            .hand(3, WAITS_1S_4S)
+            .riichi(3)
+            .indicator("1m")
+            .ura(0, "1s")
+            .river(0, "1s")
+            .respond();
     WinScore slot = scene.decisions.win(scene.decisions.slotOf(3));
     Assert.assertEquals(slot.dora(), 1);
     Assert.assertEquals(slot.ura(), 1);
@@ -314,7 +347,8 @@ public class WindowTest {
     Assert.assertEquals(resolution.size(), expected.length);
     for (int slot = 0; slot < expected.length; slot++) {
       Assert.assertEquals(resolution.id(slot), scene.decisions.id(slot));
-      Assert.assertEquals(resolution.role(slot) + " " + resolution.executed(slot), expected[slot], "slot " + slot);
+      Assert.assertEquals(
+          resolution.role(slot) + " " + resolution.executed(slot), expected[slot], "slot " + slot);
     }
   }
 }

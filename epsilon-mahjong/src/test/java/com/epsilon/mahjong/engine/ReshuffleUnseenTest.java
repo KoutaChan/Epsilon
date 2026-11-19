@@ -96,8 +96,11 @@ public class ReshuffleUnseenTest {
       games.step();
     }
     Assert.assertTrue(checks > 2_000, checks + " checks");
-    Assert.assertTrue(streamed > checks / 4 && streamed < checks * 3 / 4, streamed + " of " + checks + " streamed");
-    Assert.assertTrue(differed >= large * 99 / 100, differed + " of " + large + " differ with another seed");
+    Assert.assertTrue(
+        streamed > checks / 4 && streamed < checks * 3 / 4,
+        streamed + " of " + checks + " streamed");
+    Assert.assertTrue(
+        differed >= large * 99 / 100, differed + " of " + large + " differ with another seed");
     Assert.assertTrue(continued > 500, continued + " continuations");
     Assert.assertTrue(riichiWins > 20, riichiWins + " riichi wins");
     Assert.assertTrue(uraChanged > 0, "no riichi win changed its ura in " + riichiWins);
@@ -129,7 +132,8 @@ public class ReshuffleUnseenTest {
       games.step();
     }
     Assert.assertTrue(compared >= 100, compared + " comparisons");
-    Assert.assertTrue(shrunk > compared / 2, shrunk + " of " + compared + " read a tile in between");
+    Assert.assertTrue(
+        shrunk > compared / 2, shrunk + " of " + compared + " read a tile in between");
   }
 
   /**
@@ -176,8 +180,10 @@ public class ReshuffleUnseenTest {
     }
     double scaled = chiSquare * (unread - 1) / unread;
     double freedom = (double) (unread - 1) * (kinds - 1);
-    double z = (Math.cbrt(scaled / freedom) - (1 - 2 / (9 * freedom))) / Math.sqrt(2 / (9 * freedom));
-    Assert.assertTrue(Math.abs(z) < CHI_SQUARE_Z, "chi-square " + scaled + " on " + freedom + " degrees, z " + z);
+    double z =
+        (Math.cbrt(scaled / freedom) - (1 - 2 / (9 * freedom))) / Math.sqrt(2 / (9 * freedom));
+    Assert.assertTrue(
+        Math.abs(z) < CHI_SQUARE_Z, "chi-square " + scaled + " on " + freedom + " degrees, z " + z);
   }
 
   @Test
@@ -208,11 +214,13 @@ public class ReshuffleUnseenTest {
     Assert.assertThrows(IllegalStateException.class, () -> engine.reshuffleUnseen(1, ws));
     Assert.assertEquals(engine.advance(ws), Boundary.DECISIONS);
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> engine.reshuffleUnseen(1, new RuleWorkspace(other(variant))));
+        IllegalArgumentException.class,
+        () -> engine.reshuffleUnseen(1, new RuleWorkspace(other(variant))));
     engine.reshuffleUnseen(1, ws);
 
     EngineScene scene = EngineScene.first(variant).start();
-    Assert.assertThrows(IllegalStateException.class, () -> scene.engine.reshuffleUnseen(1, scene.ws));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> scene.engine.reshuffleUnseen(1, scene.ws));
 
     RandomGames games = new RandomGames(engine, Boundary.DECISIONS, 5, new GreedyChooser(variant));
     while (games.step() == Boundary.DECISIONS) {}
@@ -229,14 +237,16 @@ public class ReshuffleUnseenTest {
       int tile = after.tiles[position];
       places[tile]++;
       if (before.hidden[old]) {
-        Assert.assertTrue(before.hidden[tile], "position " + position + " got the seen tile " + tile);
+        Assert.assertTrue(
+            before.hidden[tile], "position " + position + " got the seen tile " + tile);
         hiddenOfKind[Tiles.kind(tile)]++;
       } else {
         Assert.assertEquals(tile, old, "the read position " + position + " moved");
       }
     }
     for (int index = 0; index < set.size(); index++) {
-      Assert.assertEquals(places[set.physicalId(index)], 1, "tile " + set.physicalId(index) + " on the wall");
+      Assert.assertEquals(
+          places[set.physicalId(index)], 1, "tile " + set.physicalId(index) + " on the wall");
     }
     Assert.assertEquals(hiddenOfKind, before.unseen, "hidden tiles per kind on the wall");
 
@@ -247,15 +257,21 @@ public class ReshuffleUnseenTest {
       return;
     }
     for (int position = 0; position < after.tiles.length; position++) {
-      Assert.assertEquals(after.positionOf[after.tiles[position]], position, "position of " + after.tiles[position]);
+      Assert.assertEquals(
+          after.positionOf[after.tiles[position]],
+          position,
+          "position of " + after.tiles[position]);
     }
     for (int seat = 0; seat < seats; seat++) {
       int base = seat * before.streamCapacity;
       for (int index = 0; index < before.streamSize[seat]; index++) {
         int old = before.stream[base + index];
         int expected =
-            index >= before.streamCursor[seat] && before.hidden[old] ? after.tiles[before.positionOf[old]] : old;
-        Assert.assertEquals(after.stream[base + index], expected, "seat " + seat + " column item " + index);
+            index >= before.streamCursor[seat] && before.hidden[old]
+                ? after.tiles[before.positionOf[old]]
+                : old;
+        Assert.assertEquals(
+            after.stream[base + index], expected, "seat " + seat + " column item " + index);
       }
     }
   }
@@ -290,7 +306,15 @@ public class ReshuffleUnseenTest {
           decisions.kind(slot) == EngineDecisionKind.TURN
               ? WinLegality.tsumo(state, hands[seat], wall, ws, expected)
               : WinLegality.ron(
-                  state, hands[seat], seat, last.tile(), last.red(), Window.ronSource(state), wall, ws, expected);
+                  state,
+                  hands[seat],
+                  seat,
+                  last.tile(),
+                  last.red(),
+                  Window.ronSource(state),
+                  wall,
+                  ws,
+                  expected);
       Assert.assertTrue(won);
       WinScore score = decisions.win(slot);
       WinScore old = before.win(slot);
@@ -302,7 +326,8 @@ public class ReshuffleUnseenTest {
       Assert.assertEquals(score.nuki(), old.nuki());
       Assert.assertEquals(score.yakuman(), old.yakuman());
       if (score.yakuman() == 0) {
-        Assert.assertEquals(score.han() - old.han(), score.ura() - old.ura(), score + " after " + old);
+        Assert.assertEquals(
+            score.han() - old.han(), score.ura() - old.ura(), score + " after " + old);
       }
       changed += score.ura() != old.ura() ? 1 : 0;
     }
@@ -315,7 +340,8 @@ public class ReshuffleUnseenTest {
    */
   private void assertSameContinuation(Engine copy, Engine twin, long seed) {
     RandomGames first = new RandomGames(copy, Boundary.DECISIONS, seed, new GreedyChooser(variant));
-    RandomGames second = new RandomGames(twin, Boundary.DECISIONS, seed, new GreedyChooser(variant));
+    RandomGames second =
+        new RandomGames(twin, Boundary.DECISIONS, seed, new GreedyChooser(variant));
     Boundary boundary = Boundary.DECISIONS;
     while (boundary == Boundary.DECISIONS) {
       assertTilesAccounted(copy);
@@ -366,7 +392,8 @@ public class ReshuffleUnseenTest {
       places[tile]++;
     }
     for (int index = 0; index < set.size(); index++) {
-      Assert.assertEquals(places[set.physicalId(index)], 1, "tile " + set.physicalId(index) + " on the wall");
+      Assert.assertEquals(
+          places[set.physicalId(index)], 1, "tile " + set.physicalId(index) + " on the wall");
     }
   }
 
@@ -381,7 +408,8 @@ public class ReshuffleUnseenTest {
   private boolean hasRiichiWin(Engine engine) {
     Decisions decisions = engine.decisions();
     for (int slot = 0; slot < decisions.size(); slot++) {
-      if (decisions.hasWin(slot) && engine.view(0).riichi(decisions.seat(slot)) != RiichiState.NONE) {
+      if (decisions.hasWin(slot)
+          && engine.view(0).riichi(decisions.seat(slot)) != RiichiState.NONE) {
         return true;
       }
     }

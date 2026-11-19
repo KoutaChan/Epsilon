@@ -20,7 +20,9 @@ public class ChanceLogTest {
     log.appendRinshan(2, 135);
     log.appendUra(100);
     Assert.assertEquals(log.size(), 4);
-    ChanceKind[] kinds = {ChanceKind.DRAW, ChanceKind.INDICATOR, ChanceKind.RINSHAN, ChanceKind.URA};
+    ChanceKind[] kinds = {
+      ChanceKind.DRAW, ChanceKind.INDICATOR, ChanceKind.RINSHAN, ChanceKind.URA
+    };
     int[] seats = {1, ChanceLog.NO_SEAT, 2, ChanceLog.NO_SEAT};
     int[] tiles = {9, 17, 135, 100};
     for (int index = 0; index < kinds.length; index++) {
@@ -69,7 +71,8 @@ public class ChanceLogTest {
         for (int kind = 0; kind < Tiles.KINDS; kind++) {
           total += round.chance.unseen(kind);
         }
-        Assert.assertEquals(total + round.chance.size() + Variant.HAND * variant.seats() + 1, set.size());
+        Assert.assertEquals(
+            total + round.chance.size() + Variant.HAND * variant.seats() + 1, set.size());
         Assert.assertEquals(round.wall.liveLeft(), 0);
         round.deal(RoundStart.first(variant));
       }
@@ -85,11 +88,15 @@ public class ChanceLogTest {
     }
     log.begin(new Hand[] {hand}, Tiles.physicalId(Tiles.HAKU, 3));
     Assert.assertEquals(log.unseen(Tiles.HAKU), 0);
-    Assert.assertThrows(IllegalStateException.class, () -> log.appendDraw(0, Tiles.physicalId(Tiles.HAKU, 3)));
-    Assert.assertThrows(IllegalArgumentException.class, () -> log.appendDraw(0, Tiles.physicalId(Tiles.M5, 1)));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> log.appendDraw(0, Tiles.physicalId(Tiles.HAKU, 3)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> log.appendDraw(0, Tiles.physicalId(Tiles.M5, 1)));
     Assert.assertEquals(log.size(), 0);
     hand.add(Tiles.physicalId(Tiles.HAKU, 3));
-    Assert.assertThrows(IllegalArgumentException.class, () -> log.begin(new Hand[] {hand}, Tiles.physicalId(Tiles.HAKU, 0)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> log.begin(new Hand[] {hand}, Tiles.physicalId(Tiles.HAKU, 0)));
   }
 
   @Test
@@ -101,7 +108,9 @@ public class ChanceLogTest {
       for (int index = 1; index <= capacity; index++) {
         log.appendIndicator(variant.tiles().physicalId(index));
       }
-      Assert.assertThrows(IllegalStateException.class, () -> log.appendUra(variant.tiles().physicalId(capacity + 1)));
+      Assert.assertThrows(
+          IllegalStateException.class,
+          () -> log.appendUra(variant.tiles().physicalId(capacity + 1)));
     }
   }
 

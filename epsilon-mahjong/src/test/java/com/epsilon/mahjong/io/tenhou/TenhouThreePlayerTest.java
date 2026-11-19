@@ -56,7 +56,8 @@ public class TenhouThreePlayerTest {
     String xml = TenhouXml.write(game);
     List<TenhouTag> tags = TenhouTag.parse(xml);
     String code = Integer.toString(TenhouMeldCode.encodeNuki(nuki.tile()));
-    int at = tags.indexOf(new TenhouTag("N", Map.of("who", Integer.toString(nuki.seat()), "m", code)));
+    int at =
+        tags.indexOf(new TenhouTag("N", Map.of("who", Integer.toString(nuki.seat()), "m", code)));
     Assert.assertTrue(at >= 0, xml);
     Assert.assertEquals(tags.get(at + 1).name(), "DORA", xml);
     TenhouTiles.TileTag draw = TenhouTiles.TileTag.parse(tags.get(at + 2).name(), VARIANT);
@@ -74,7 +75,8 @@ public class TenhouThreePlayerTest {
     RecordedRound round = read.rounds().get(0);
     List<RecordEvent> events = round.events();
     Assert.assertTrue(
-        events.get(events.size() - 1) instanceof RecordEvent.Nuki last && last.seat() == 0, events.toString());
+        events.get(events.size() - 1) instanceof RecordEvent.Nuki last && last.seat() == 0,
+        events.toString());
     RoundResult result = round.result();
     Assert.assertEquals(result.kind(), EndKind.RON);
     Assert.assertEquals(result.loser(), 0);

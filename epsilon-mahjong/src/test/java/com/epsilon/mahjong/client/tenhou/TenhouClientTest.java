@@ -15,7 +15,8 @@ import org.testng.annotations.Test;
 /** 天鳳のクライアントを、決まったメッセージを返す偽の接続で動かし、ログイン、卓の申し込み、対局中の返事を確かめる。 */
 public class TenhouClientTest {
 
-  private static final String HELO = "{\"tag\":\"HELO\",\"uname\":\"Epsilon\",\"auth\":\"20261107-0000\"}";
+  private static final String HELO =
+      "{\"tag\":\"HELO\",\"uname\":\"Epsilon\",\"auth\":\"20261107-0000\"}";
 
   @DataProvider
   public Object[][] tables() {
@@ -32,7 +33,8 @@ public class TenhouClientTest {
     List<String> frames = new ArrayList<>();
     frames.add(HELO);
     List<String> expected = new ArrayList<>();
-    expected.add("{\"tag\":\"HELO\",\"name\":\"Epsilon+%E3%83%86%E3%82%B9%E3%83%88\",\"sx\":\"M\"}");
+    expected.add(
+        "{\"tag\":\"HELO\",\"name\":\"Epsilon+%E3%83%86%E3%82%B9%E3%83%88\",\"sx\":\"M\"}");
     expected.add("{\"tag\":\"LOBBY\",\"id\":\"C12345678\"}");
     expected.add("{\"tag\":\"JOIN\",\"t\":\"C12345678," + type + "\"}");
     for (LiveTranscript.Line line : transcript.lines()) {

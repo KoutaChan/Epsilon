@@ -148,7 +148,8 @@ final class EngineScene {
         }
       }
       choices[slot] = legal(seat).indexOf(name);
-      Assert.assertTrue(choices[slot] >= 0, name + " is not legal for seat " + seat + ": " + legal(seat));
+      Assert.assertTrue(
+          choices[slot] >= 0, name + " is not legal for seat " + seat + ": " + legal(seat));
     }
     for (int pick = 0; pick < picks.length; pick++) {
       Assert.assertTrue(matched[pick], picks[pick] + " has no decision at this point");

@@ -105,7 +105,8 @@ public class EventLogTest {
     int kakan = Meld.kakan(pon, false).id();
     Assert.assertThrows(IllegalStateException.class, () -> log.appendKakan(2, kakan));
     Meld other = Meld.pon(Tiles.HAKU, RelativeSource.TOIMEN, AkaSource.NONE);
-    Assert.assertThrows(IllegalArgumentException.class, () -> log.appendKakan(1, Meld.kakan(other, false).id()));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> log.appendKakan(1, Meld.kakan(other, false).id()));
     Assert.assertThrows(IllegalArgumentException.class, () -> log.appendKakan(1, pon.id()));
     Assert.assertEquals(log.appendKakan(1, kakan), 2);
   }
@@ -117,9 +118,14 @@ public class EventLogTest {
     EventLog three = new EventLog(Variant.TENHOU_3P);
     three.appendDiscard(0, Tiles.P2, false, false, false);
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> three.appendMeld(1, Meld.chi(Tiles.P1, Tiles.P2, AkaSource.NONE).id()));
-    Assert.assertThrows(IllegalArgumentException.class, () -> three.appendDiscard(0, Tiles.M5, false, false, false));
-    Assert.assertThrows(IndexOutOfBoundsException.class, () -> three.appendDiscard(3, Tiles.P2, false, false, false));
+        IllegalArgumentException.class,
+        () -> three.appendMeld(1, Meld.chi(Tiles.P1, Tiles.P2, AkaSource.NONE).id()));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> three.appendDiscard(0, Tiles.M5, false, false, false));
+    Assert.assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> three.appendDiscard(3, Tiles.P2, false, false, false));
     Assert.assertEquals(three.size(), 1);
   }
 
@@ -132,7 +138,8 @@ public class EventLogTest {
         log.appendDiscard(event % seats, Tiles.P1, false, false, false);
       }
       Assert.assertEquals(log.size(), variant.maxPublicEvents());
-      Assert.assertThrows(IllegalStateException.class, () -> log.appendDiscard(0, Tiles.P1, false, false, false));
+      Assert.assertThrows(
+          IllegalStateException.class, () -> log.appendDiscard(0, Tiles.P1, false, false, false));
       Assert.assertEquals(log.size(), variant.maxPublicEvents());
     }
   }
@@ -141,17 +148,20 @@ public class EventLogTest {
   public void aCopyEqualsTheOriginalAndStaysIndependent() {
     EventLog log = new EventLog(Variant.TENHOU_4P);
     log.appendDiscard(2, Tiles.S5, false, false, true);
-    log.appendMeld(3, Meld.pon(Tiles.S5, RelativeSource.KAMICHA, AkaSource.CONSUMED_HAND_TILE).id());
+    log.appendMeld(
+        3, Meld.pon(Tiles.S5, RelativeSource.KAMICHA, AkaSource.CONSUMED_HAND_TILE).id());
     EventLog copy = new EventLog(Variant.TENHOU_4P);
     copy.copyFrom(log);
     Fields.assertSameFields(log, copy);
     copy.appendDiscard(3, Tiles.NAN, false, false, false);
     Assert.assertEquals(log.size(), 2);
     Assert.assertEquals(log.riverSize(3), 0);
-    Assert.assertThrows(IllegalArgumentException.class, () -> copy.copyFrom(new EventLog(Variant.TENHOU_3P)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> copy.copyFrom(new EventLog(Variant.TENHOU_3P)));
   }
 
-  private static void assertEvent(EventLog log, int event, EventKind kind, int seat, int tile, int meld) {
+  private static void assertEvent(
+      EventLog log, int event, EventKind kind, int seat, int tile, int meld) {
     Assert.assertEquals(log.kind(event), kind, "event " + event);
     Assert.assertEquals(log.seat(event), seat, "event " + event);
     Assert.assertEquals(log.tile(event), tile, "event " + event);

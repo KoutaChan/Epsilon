@@ -86,7 +86,8 @@ final class Dora {
 
   void copyFrom(Dora other) {
     if (other.set != set) {
-      throw new IllegalArgumentException("Tile set mismatch: expected " + set + " but found " + other.set);
+      throw new IllegalArgumentException(
+          "Tile set mismatch: expected " + set + " but found " + other.set);
     }
     System.arraycopy(other.indicators, 0, indicators, 0, indicators.length);
     System.arraycopy(other.revealedAt, 0, revealedAt, 0, revealedAt.length);

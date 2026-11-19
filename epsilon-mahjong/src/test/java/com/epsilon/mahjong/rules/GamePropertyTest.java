@@ -33,7 +33,8 @@ public class GamePropertyTest {
         late += last >= variant.lastRound() ? 1 : 0;
         west += last > variant.lastRound() ? 1 : 0;
       }
-      Assert.assertTrue(late >= GAMES / 10, variant + ": " + late + " games reached the last round");
+      Assert.assertTrue(
+          late >= GAMES / 10, variant + ": " + late + " games reached the last round");
       Assert.assertTrue(west >= GAMES / 100, variant + ": " + west + " games went west");
     }
   }
@@ -119,7 +120,8 @@ public class GamePropertyTest {
   }
 
   /** 局の結果を乱数で作る。立直できるのは 1000 点以上の席だけ。和了が 6 割（ロンは時々ダブロン）、荒牌が 3 割、途中流局が 1 割。 */
-  private static void randomOutcome(TableState table, AbortiveDraw[] draws, Random random, RoundOutcome outcome) {
+  private static void randomOutcome(
+      TableState table, AbortiveDraw[] draws, Random random, RoundOutcome outcome) {
     int seats = table.variant().seats();
     int riichiMask = 0;
     for (int seat = 0; seat < seats; seat++) {
@@ -136,11 +138,13 @@ public class GamePropertyTest {
       int loser = random.nextInt(seats);
       int winner = otherSeat(random, loser, seats);
       int base = randomBase(random);
-      outcome.setRon(base, winner, loser, randomPao(random, base, winner, loser, seats), riichiMask);
+      outcome.setRon(
+          base, winner, loser, randomPao(random, base, winner, loser, seats), riichiMask);
       int second = otherSeat(random, loser, seats);
       if (second != winner && random.nextInt(5) == 0) {
         int secondBase = randomBase(random);
-        outcome.addRonWinner(secondBase, second, randomPao(random, secondBase, second, loser, seats));
+        outcome.addRonWinner(
+            secondBase, second, randomPao(random, secondBase, second, loser, seats));
       }
     } else if (roll < 9) {
       int nagashiMask = random.nextInt(10) == 0 ? 1 << random.nextInt(seats) : 0;

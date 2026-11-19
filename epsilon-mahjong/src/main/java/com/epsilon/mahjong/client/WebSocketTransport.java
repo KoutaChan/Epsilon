@@ -47,6 +47,7 @@ public final class WebSocketTransport implements Transport, WebSocket.Listener {
 
   /** 相手から最後にフレーム（メッセージの断片・Ping・Pong）が届いた時刻（System.nanoTime の値）。 */
   private volatile long heardNanos;
+
   private volatile boolean closing;
   private volatile boolean connected;
   private volatile IOException failure = new IOException("WebSocket connection closed");
@@ -67,7 +68,8 @@ public final class WebSocketTransport implements Transport, WebSocket.Listener {
    * @param pingInterval read が Ping を送るまでの、読むメッセージの無い時間。Ping の後、同じ時間のうちに相手から何も届かなければ、
    *     read は IOException を投げる
    */
-  public static WebSocketTransport connect(URI uri, Map<String, String> headers, Duration pingInterval)
+  public static WebSocketTransport connect(
+      URI uri, Map<String, String> headers, Duration pingInterval)
       throws IOException, InterruptedException {
     WebSocketTransport transport = new WebSocketTransport(pingInterval);
     CompletableFuture<WebSocket> opening = null;
@@ -147,7 +149,9 @@ public final class WebSocketTransport implements Transport, WebSocket.Listener {
     connected = false;
     if (socket != null) {
       try {
-        socket.sendClose(WebSocket.NORMAL_CLOSURE, "bye").get(CLOSE_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+        socket
+            .sendClose(WebSocket.NORMAL_CLOSURE, "bye")
+            .get(CLOSE_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
         closed.await(CLOSE_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
       } catch (InterruptedException interrupted) {
         Thread.currentThread().interrupt();

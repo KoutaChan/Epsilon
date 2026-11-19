@@ -148,10 +148,17 @@ public final class SceneGames {
    * @param rinshan 嶺上のツモ
    * @param rest 中のポンの後の打牌に続く選び
    */
-  private static RecordedGame thirdDragonFedBySeatOne(String id, String draws, String rinshan, String... rest) {
+  private static RecordedGame thirdDragonFedBySeatOne(
+      String id, String draws, String rinshan, String... rest) {
     List<String> picks =
         new ArrayList<>(
-            List.of("0:ANKAN(P)", "0:ANKAN(F)", "0:DAHAI(1m)", "1:DAHAI_TSUMOGIRI(C)", "0:PON(C)", "0:DAHAI(8m)"));
+            List.of(
+                "0:ANKAN(P)",
+                "0:ANKAN(F)",
+                "0:DAHAI(1m)",
+                "1:DAHAI_TSUMOGIRI(C)",
+                "0:PON(C)",
+                "0:DAHAI(8m)"));
     picks.addAll(List.of(rest));
     return RecordedGames.scene(
         Scenes.first(FOUR)

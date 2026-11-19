@@ -77,7 +77,8 @@ public class WallReplayTest {
     unknown[100] = Wall.UNKNOWN;
     Assert.assertThrows(IllegalArgumentException.class, () -> new WallReplay(start, unknown));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> new WallReplay(start, Arrays.copyOf(wall, wall.length - 1)));
+        IllegalArgumentException.class,
+        () -> new WallReplay(start, Arrays.copyOf(wall, wall.length - 1)));
     WallReplay replay = new WallReplay(start, wall);
     while (replay.boundary() == Boundary.DECISIONS) {
       replay.commit(new int[replay.engine().decisions().size()]);
@@ -104,7 +105,8 @@ public class WallReplayTest {
       read[position] = true;
     }
     for (int k = 1; k <= replacements(chance); k++) {
-      read[k <= Variant.MAX_KANS ? size - k : size - Variant.DEAD_WALL - (k - Variant.MAX_KANS)] = true;
+      read[k <= Variant.MAX_KANS ? size - k : size - Variant.DEAD_WALL - (k - Variant.MAX_KANS)] =
+          true;
     }
     for (int index = 0; index < full.seat(0).indicatorCount(); index++) {
       read[size - Variant.MAX_KANS - 2 - 2 * index] = true;

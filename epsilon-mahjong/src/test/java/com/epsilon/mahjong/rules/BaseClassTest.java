@@ -44,7 +44,11 @@ public class BaseClassTest {
   @Test
   public void yakumanMultiplesUpToSix() {
     BaseClass[] yakuman = {
-      BaseClass.YAKUMAN, BaseClass.YAKUMAN_2, BaseClass.YAKUMAN_3, BaseClass.YAKUMAN_4, BaseClass.YAKUMAN_5,
+      BaseClass.YAKUMAN,
+      BaseClass.YAKUMAN_2,
+      BaseClass.YAKUMAN_3,
+      BaseClass.YAKUMAN_4,
+      BaseClass.YAKUMAN_5,
       BaseClass.YAKUMAN_6
     };
     for (int multiple = 1; multiple <= yakuman.length; multiple++) {

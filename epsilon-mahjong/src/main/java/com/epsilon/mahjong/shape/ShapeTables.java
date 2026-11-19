@@ -45,10 +45,13 @@ final class ShapeTables {
     require(ShapeSection.TWO_SUITS, TWO_SUITS.length, SUIT_KEYS * SUIT_KEYS);
     require(ShapeSection.THREE_SUITS, THREE_SUITS.length, keys(TWO_SUITS) * SUIT_KEYS);
     require(
-        ShapeSection.DISTANCE, DISTANCE.length, keys(THREE_SUITS) * HONOR_KEYS * ShapeSection.MELD_TARGETS);
+        ShapeSection.DISTANCE,
+        DISTANCE.length,
+        keys(THREE_SUITS) * HONOR_KEYS * ShapeSection.MELD_TARGETS);
     require(ShapeSection.SUIT_STATE, SUIT_STATE.length, Block.MAN.codes());
     require(ShapeSection.HONOR_STATE, HONOR_STATE.length, Block.HONOR.codes());
-    require(ShapeSection.FIRST, FIRST.length, Math.max(states(SUIT_STATE), states(HONOR_STATE)) + 1);
+    require(
+        ShapeSection.FIRST, FIRST.length, Math.max(states(SUIT_STATE), states(HONOR_STATE)) + 1);
     require(ShapeSection.PAIR, PAIR.length, FIRST[FIRST.length - 1]);
     require(ShapeSection.MELD, MELD.length, PAIR.length * Variant.MAX_MELDS);
   }
@@ -137,7 +140,8 @@ final class ShapeTables {
         arrays[section.ordinal()] = readSection(data, section.element());
       }
       if (data.hasRemaining()) {
-        throw new IllegalStateException("Shape table has " + data.remaining() + " bytes after the last section");
+        throw new IllegalStateException(
+            "Shape table has " + data.remaining() + " bytes after the last section");
       }
       return arrays;
     } catch (IOException e) {

@@ -186,7 +186,8 @@ public final class MajSoulReader {
 
     ScoringYaku scoring() {
       if (scoring == null) {
-        throw new IllegalArgumentException("Mahjong Soul fan " + this + " is not a yaku of the Tenhou rules");
+        throw new IllegalArgumentException(
+            "Mahjong Soul fan " + this + " is not a yaku of the Tenhou rules");
       }
       return scoring;
     }
@@ -385,7 +386,8 @@ public final class MajSoulReader {
         throw new IllegalArgumentException(id + " has no round");
       }
       if (players.size() != seats) {
-        throw new IllegalArgumentException(id + " has final scores for " + players.size() + " of " + seats + " seats");
+        throw new IllegalArgumentException(
+            id + " has final scores for " + players.size() + " of " + seats + " seats");
       }
       int[] finalScores = new int[seats];
       for (JsonElement player : players) {
@@ -399,7 +401,8 @@ public final class MajSoulReader {
         JsonElement nickname = find(object, "nickname");
         names[seat(integer(object, "seat"))] = nickname == null ? "" : nickname.getAsString();
       }
-      RecordedGame.Meta meta = new RecordedGame.Meta(id, RecordedGame.Source.MAJSOUL, List.of(names));
+      RecordedGame.Meta meta =
+          new RecordedGame.Meta(id, RecordedGame.Source.MAJSOUL, List.of(names));
       return new RecordedGame(variant, rounds, finalScores, meta);
     }
 
@@ -410,12 +413,16 @@ public final class MajSoulReader {
             Arrays.stream(Variant.values())
                 .filter(each -> each.seats() == scores.length)
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException(id + " has scores for " + scores.length + " seats"));
+                .orElseThrow(
+                    () ->
+                        new IllegalArgumentException(
+                            id + " has scores for " + scores.length + " seats"));
         seats = variant.seats();
         copies = new TileCopies(variant);
       }
       int round = integer(data, "chang") * seats + integer(data, "ju");
-      start = new RoundStart(variant, round, integer(data, "ben"), integer(data, "liqibang"), scores);
+      start =
+          new RoundStart(variant, round, integer(data, "ben"), integer(data, "liqibang"), scores);
       int dealer = variant.dealer(round);
       copies.clear();
       deal = new int[seats][Variant.HAND];
@@ -423,7 +430,8 @@ public final class MajSoulReader {
       for (int seat = 0; seat < seats; seat++) {
         JsonArray tiles = field(data, "tiles" + seat).getAsJsonArray();
         if (tiles.size() != Variant.HAND + (seat == dealer ? 1 : 0)) {
-          throw new IllegalArgumentException(id + " deals " + tiles.size() + " tiles to seat " + seat);
+          throw new IllegalArgumentException(
+              id + " deals " + tiles.size() + " tiles to seat " + seat);
         }
         for (int index = 0; index < Variant.HAND; index++) {
           deal[seat][index] = copies.deal(seat, face(tiles.get(index)));
@@ -487,7 +495,8 @@ public final class MajSoulReader {
           || target != lastDiscarder
           || called.kind() != Tiles.kind(lastDiscard)
           || called.red() != variant.tiles().red(lastDiscard)) {
-        throw new IllegalArgumentException(id + ": seat " + seat + " calls a tile that is not the last discard");
+        throw new IllegalArgumentException(
+            id + ": seat " + seat + " calls a tile that is not the last discard");
       }
       Meld.Type type = Meld.Type.valueOf(callType(integer(data, "type")).name());
       Meld meld = Meld.call(type, Meld.RelativeSource.of(seat, target, seats), called, consumed);
@@ -504,7 +513,9 @@ public final class MajSoulReader {
       switch (KanType.of(integer(data, "type"))) {
         case ANKAN -> {
           for (int copy = 0; copy < Tiles.COPIES; copy++) {
-            copies.meld(seat, Face.of(tile.kind(), variant.tiles().red(Tiles.physicalId(tile.kind(), copy))));
+            copies.meld(
+                seat,
+                Face.of(tile.kind(), variant.tiles().red(Tiles.physicalId(tile.kind(), copy))));
           }
           events.add(new RecordEvent.ClosedKan(seat, tile.kind()));
         }
@@ -521,7 +532,8 @@ public final class MajSoulReader {
     private void nuki(JsonObject data) {
       int seat = seat(integer(data, "seat"));
       if (!variant.has(RuleFlag.NUKI)) {
-        throw new IllegalArgumentException(id + ": seat " + seat + " takes out a north in " + variant);
+        throw new IllegalArgumentException(
+            id + ": seat " + seat + " takes out a north in " + variant);
       }
       events.add(new RecordEvent.Nuki(seat, copies.meld(seat, Face.of(Tiles.PEI, false))));
       claimant = seat;
@@ -572,7 +584,15 @@ public final class MajSoulReader {
       int fu = find(hule, "fu") == null ? 0 : integer(hule, "fu");
       int loser = flag(hule, "zimo") ? RoundOutcome.NO_SEAT : claimant;
       return RoundResult.Win.of(
-          seat, yaku, count, fu, dora, aka, uraHan, flag(hule, "yiman") ? count : 0, pao(seat, yaku, loser));
+          seat,
+          yaku,
+          count,
+          fu,
+          dora,
+          aka,
+          uraHan,
+          flag(hule, "yiman") ? count : 0,
+          pao(seat, yaku, loser));
     }
 
     /**
@@ -667,8 +687,10 @@ public final class MajSoulReader {
       }
       int loser = kind == EndKind.RON ? claimant : RoundOutcome.NO_SEAT;
       RoundResult result =
-          new RoundResult(kind, abortive, wins, loser, tenpaiMask, nagashi ? nagashiMask() : 0, deltas, ura);
-      rounds.add(new RecordedRound(start, deal, indicator, RecordedRound.contractOrder(events), result));
+          new RoundResult(
+              kind, abortive, wins, loser, tenpaiMask, nagashi ? nagashiMask() : 0, deltas, ura);
+      rounds.add(
+          new RecordedRound(start, deal, indicator, RecordedRound.contractOrder(events), result));
       start = null;
     }
 

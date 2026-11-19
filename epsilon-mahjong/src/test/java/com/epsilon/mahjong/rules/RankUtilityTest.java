@@ -32,17 +32,20 @@ public class RankUtilityTest {
       for (Variant variant : Variant.values()) {
         for (int rank = 1; rank < variant.seats(); rank++) {
           Assert.assertTrue(
-              utility.value(variant, rank) < utility.value(variant, rank - 1), utility + " " + variant + " " + rank);
+              utility.value(variant, rank) < utility.value(variant, rank - 1),
+              utility + " " + variant + " " + rank);
         }
         int outside = variant.seats();
-        Assert.assertThrows(ArrayIndexOutOfBoundsException.class, () -> utility.value(variant, outside));
+        Assert.assertThrows(
+            ArrayIndexOutOfBoundsException.class, () -> utility.value(variant, outside));
       }
     }
   }
 
   private static void assertValues(RankUtility utility, Variant variant, double... expected) {
     for (int rank = 0; rank < expected.length; rank++) {
-      Assert.assertEquals(utility.value(variant, rank), expected[rank], 0.0, utility + " " + variant + " " + rank);
+      Assert.assertEquals(
+          utility.value(variant, rank), expected[rank], 0.0, utility + " " + variant + " " + rank);
     }
   }
 }

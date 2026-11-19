@@ -68,7 +68,8 @@ public class WinningDecompositionTest {
 
   @Test
   public void calledMeldsLeaveFewerConcealedMelds() {
-    Assert.assertEquals(decompositions(ShapeFixtures.shape("123p456s11z", 2)), List.of("EE 1p2p3p 4s5s6s"));
+    Assert.assertEquals(
+        decompositions(ShapeFixtures.shape("123p456s11z", 2)), List.of("EE 1p2p3p 4s5s6s"));
     Assert.assertEquals(decompositions(ShapeFixtures.shape("99m", 4)), List.of("9m9m"));
   }
 
@@ -149,7 +150,8 @@ public class WinningDecompositionTest {
   }
 
   private static String describe(WinningDecomposition decomposition) {
-    StringBuilder text = new StringBuilder(face(decomposition.pair())).append(face(decomposition.pair()));
+    StringBuilder text =
+        new StringBuilder(face(decomposition.pair())).append(face(decomposition.pair()));
     for (int i = 0; i < decomposition.meldCount(); i++) {
       text.append(' ').append(meld(decomposition.meld(i), decomposition.run(i)));
     }
@@ -188,7 +190,13 @@ public class WinningDecompositionTest {
   }
 
   private static void cover(
-      int[] rest, List<Integer> kinds, List<Boolean> runs, int from, int left, List<String> chosen, String pair,
+      int[] rest,
+      List<Integer> kinds,
+      List<Boolean> runs,
+      int from,
+      int left,
+      List<String> chosen,
+      String pair,
       List<String> found) {
     if (left == 0) {
       for (int count : rest) {

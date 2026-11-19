@@ -155,7 +155,8 @@ public final class WinContext {
   /** 純手牌（和了牌を含む）にある赤 5 を、種類の集合で書く。面子の赤 5 は {@link Meld} の情報から数える。 */
   public void setRedFives(long kinds) {
     if ((kinds & ~redKinds) != 0) {
-      throw new IllegalArgumentException(variant + " has no red copy of kinds " + Long.toBinaryString(kinds));
+      throw new IllegalArgumentException(
+          variant + " has no red copy of kinds " + Long.toBinaryString(kinds));
     }
     redFives = kinds;
   }
@@ -304,9 +305,12 @@ public final class WinContext {
     if (winningKind != NO_KIND) {
       text.append(" win=").append(Face.of(winningKind, false).mjai()).append(' ').append(source);
     }
-    text.append(" seat=").append(Face.of(seatWind, false).mjai())
-        .append(" round=").append(Face.of(roundWind, false).mjai())
-        .append(' ').append(riichi);
+    text.append(" seat=")
+        .append(Face.of(seatWind, false).mjai())
+        .append(" round=")
+        .append(Face.of(roundWind, false).mjai())
+        .append(' ')
+        .append(riichi);
     if (ippatsu) {
       text.append(" ippatsu");
     }

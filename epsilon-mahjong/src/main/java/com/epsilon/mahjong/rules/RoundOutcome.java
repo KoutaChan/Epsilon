@@ -18,6 +18,7 @@ public final class RoundOutcome {
 
   /** 和了ごとの和了者・基本点・包の席。放銃者から手番が近い順に並ぶ。 */
   private final int[] winners;
+
   private final int[] bases;
   private final int[] paos;
 
@@ -106,7 +107,8 @@ public final class RoundOutcome {
       }
     }
     if (winnerCount == winners.length) {
-      throw new IllegalArgumentException(variant + " settles at most " + winners.length + " ron winners");
+      throw new IllegalArgumentException(
+          variant + " settles at most " + winners.length + " ron winners");
     }
     int index = winnerCount++;
     while (index > 0 && turnsFromLoser(winners[index - 1]) > turnsFromLoser(winner)) {
@@ -145,7 +147,8 @@ public final class RoundOutcome {
   /** 別の結果をコピーする。ルールが違えば IllegalArgumentException。 */
   public void copyFrom(RoundOutcome other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     System.arraycopy(other.winners, 0, winners, 0, winners.length);
     System.arraycopy(other.bases, 0, bases, 0, bases.length);
@@ -254,13 +257,15 @@ public final class RoundOutcome {
 
   private void requireMask(int mask) {
     if ((mask & ~variant.seatMask()) != 0) {
-      throw new IllegalArgumentException("Mask " + Integer.toBinaryString(mask) + " has seats outside " + variant);
+      throw new IllegalArgumentException(
+          "Mask " + Integer.toBinaryString(mask) + " has seats outside " + variant);
     }
   }
 
   @Override
   public String toString() {
-    StringBuilder text = new StringBuilder("RoundOutcome[").append(variant).append(' ').append(kind);
+    StringBuilder text =
+        new StringBuilder("RoundOutcome[").append(variant).append(' ').append(kind);
     if (abortive != null) {
       text.append(' ').append(abortive);
     }
@@ -273,9 +278,12 @@ public final class RoundOutcome {
     if (loser != NO_SEAT) {
       text.append(" loser=").append(loser);
     }
-    return text.append(" riichi=").append(Integer.toBinaryString(riichiMask))
-        .append(" tenpai=").append(Integer.toBinaryString(tenpaiMask))
-        .append(" nagashi=").append(Integer.toBinaryString(nagashiMask))
+    return text.append(" riichi=")
+        .append(Integer.toBinaryString(riichiMask))
+        .append(" tenpai=")
+        .append(Integer.toBinaryString(tenpaiMask))
+        .append(" nagashi=")
+        .append(Integer.toBinaryString(nagashiMask))
         .append(']')
         .toString();
   }

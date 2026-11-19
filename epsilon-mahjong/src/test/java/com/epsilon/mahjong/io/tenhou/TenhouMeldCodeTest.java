@@ -34,10 +34,13 @@ public class TenhouMeldCodeTest {
           int caller = seat;
           if (aka(tiles) == meld.aka()) {
             Assert.assertEquals(
-                TenhouMeldCode.decode(tiles.encode(VARIANT, caller), VARIANT, caller), tiles, tiles.toString());
+                TenhouMeldCode.decode(tiles.encode(VARIANT, caller), VARIANT, caller),
+                tiles,
+                tiles.toString());
             fitting++;
           } else {
-            Assert.assertThrows(IllegalArgumentException.class, () -> tiles.encode(VARIANT, caller));
+            Assert.assertThrows(
+                IllegalArgumentException.class, () -> tiles.encode(VARIANT, caller));
           }
         }
       }
@@ -62,10 +65,12 @@ public class TenhouMeldCodeTest {
           int code = Integer.parseInt(matcher.group(2));
           String where = id + " who=" + seat + " m=" + code;
           if (TenhouMeldCode.nuki(code)) {
-            Assert.assertEquals(TenhouMeldCode.encodeNuki(TenhouMeldCode.nukiTile(code, variant)), code, where);
+            Assert.assertEquals(
+                TenhouMeldCode.encodeNuki(TenhouMeldCode.nukiTile(code, variant)), code, where);
             nukis++;
           } else {
-            Assert.assertEquals(TenhouMeldCode.decode(code, variant, seat).encode(variant, seat), code, where);
+            Assert.assertEquals(
+                TenhouMeldCode.decode(code, variant, seat).encode(variant, seat), code, where);
             melds++;
           }
         }
@@ -89,14 +94,16 @@ public class TenhouMeldCodeTest {
     for (int[] call : expected) {
       Meld.RelativeSource source = Meld.RelativeSource.of(call[0], call[1], sanma.seats());
       TenhouMeldCode pon =
-          new TenhouMeldCode(Meld.pon(Tiles.S9, source, Meld.AkaSource.NONE), 104, new int[] {105, 106});
+          new TenhouMeldCode(
+              Meld.pon(Tiles.S9, source, Meld.AkaSource.NONE), 104, new int[] {105, 106});
       int code = pon.encode(sanma, call[0]);
       Assert.assertEquals(code & 3, call[2], Arrays.toString(call));
       Assert.assertEquals(TenhouMeldCode.decode(code, sanma, call[0]), pon, Arrays.toString(call));
     }
     Meld kamicha = Meld.pon(Tiles.S9, Meld.RelativeSource.KAMICHA, Meld.AkaSource.NONE);
     int distanceThree = new TenhouMeldCode(kamicha, 104, new int[] {105, 106}).encode(sanma, 1);
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.decode(distanceThree, sanma, 0));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouMeldCode.decode(distanceThree, sanma, 0));
   }
 
   /** 北抜きのコードは、抜いた北の物理 id を 8 bit 左にずらして 0x20 を足した値。北抜きの無い卓や北でない牌は読み書きしない。 */
@@ -109,15 +116,19 @@ public class TenhouMeldCodeTest {
       Assert.assertEquals(code, north << 8 | 0x20);
       Assert.assertTrue(TenhouMeldCode.nuki(code));
       Assert.assertEquals(TenhouMeldCode.nukiTile(code, sanma), north);
-      Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.decode(code, sanma, 0));
-      Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.nukiTile(code, VARIANT));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> TenhouMeldCode.decode(code, sanma, 0));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> TenhouMeldCode.nukiTile(code, VARIANT));
     }
     Assert.assertEquals(TenhouMeldCode.nukiTile(31008, sanma), 121);
     Assert.assertFalse(TenhouMeldCode.nuki(16384));
     Assert.assertFalse(TenhouMeldCode.nuki(15543));
     Assert.assertFalse(TenhouMeldCode.nuki(-224));
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.nukiTile(0x20 | 32 << 8, sanma));
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.nukiTile(31008 | 1 << 6, sanma));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouMeldCode.nukiTile(0x20 | 32 << 8, sanma));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouMeldCode.nukiTile(31008 | 1 << 6, sanma));
     Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.encodeNuki(119));
   }
 
@@ -126,11 +137,14 @@ public class TenhouMeldCodeTest {
   public void codesFromTheLogsReadAsTheirMelds() {
     Assert.assertEquals(
         TenhouMeldCode.decode(15543, VARIANT, 0),
-        new TenhouMeldCode(Meld.chi(Tiles.M6, Tiles.M6, Meld.AkaSource.NONE), 22, new int[] {25, 29}));
+        new TenhouMeldCode(
+            Meld.chi(Tiles.M6, Tiles.M6, Meld.AkaSource.NONE), 22, new int[] {25, 29}));
     Assert.assertEquals(
         TenhouMeldCode.decode(43562, VARIANT, 1),
         new TenhouMeldCode(
-            Meld.pon(Tiles.NAN, Meld.RelativeSource.TOIMEN, Meld.AkaSource.NONE), 114, new int[] {112, 115}));
+            Meld.pon(Tiles.NAN, Meld.RelativeSource.TOIMEN, Meld.AkaSource.NONE),
+            114,
+            new int[] {112, 115}));
     Assert.assertEquals(
         TenhouMeldCode.decode(4098, VARIANT, 2),
         new TenhouMeldCode(
@@ -141,23 +155,32 @@ public class TenhouMeldCodeTest {
         TenhouMeldCode.decode(16384, VARIANT, 3),
         new TenhouMeldCode(Meld.ankan(Tiles.P8, false), -1, new int[] {64, 65, 66, 67}));
     Meld pon = Meld.pon(Tiles.CHUN, Meld.RelativeSource.KAMICHA, Meld.AkaSource.NONE);
-    Assert.assertEquals(TenhouMeldCode.decode(51211, VARIANT, 0), new TenhouMeldCode(pon, 134, new int[] {133, 135}));
     Assert.assertEquals(
-        TenhouMeldCode.decode(51219, VARIANT, 0), new TenhouMeldCode(Meld.kakan(pon, false), 134, new int[] {132}));
+        TenhouMeldCode.decode(51211, VARIANT, 0),
+        new TenhouMeldCode(pon, 134, new int[] {133, 135}));
+    Assert.assertEquals(
+        TenhouMeldCode.decode(51219, VARIANT, 0),
+        new TenhouMeldCode(Meld.kakan(pon, false), 134, new int[] {132}));
   }
 
   /** コードの形をしていない値と、チーの無い三人打ちの卓でのチー（上家からの 1p2p3p）は読まない。 */
   @Test
   public void valuesThatAreNotCodesAreRejected() {
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.decode(1 << 16, VARIANT, 0));
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.decode(-1, VARIANT, 0));
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.decode(15543 & ~3 | 1, VARIANT, 0));
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.decode(16384 | 1 << 5, VARIANT, 0));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouMeldCode.decode(1 << 16, VARIANT, 0));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouMeldCode.decode(-1, VARIANT, 0));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouMeldCode.decode(15543 & ~3 | 1, VARIANT, 0));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouMeldCode.decode(16384 | 1 << 5, VARIANT, 0));
     TenhouMeldCode chi =
-        new TenhouMeldCode(Meld.chi(Tiles.P1, Tiles.P1, Meld.AkaSource.NONE), 36, new int[] {40, 44});
+        new TenhouMeldCode(
+            Meld.chi(Tiles.P1, Tiles.P1, Meld.AkaSource.NONE), 36, new int[] {40, 44});
     int code = chi.encode(VARIANT, 0);
     Assert.assertEquals(TenhouMeldCode.decode(code, VARIANT, 0), chi);
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouMeldCode.decode(code, Variant.TENHOU_3P, 1));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouMeldCode.decode(code, Variant.TENHOU_3P, 1));
   }
 
   private static Meld meld(int id) {
@@ -188,7 +211,9 @@ public class TenhouMeldCodeTest {
                   new TenhouMeldCode(
                       meld,
                       Tiles.physicalId(meld.called(), called),
-                      new int[] {Tiles.physicalId(others[0], first), Tiles.physicalId(others[1], second)}));
+                      new int[] {
+                        Tiles.physicalId(others[0], first), Tiles.physicalId(others[1], second)
+                      }));
             }
           }
         }
@@ -197,14 +222,17 @@ public class TenhouMeldCodeTest {
         for (int called = 0; called < Tiles.COPIES; called++) {
           for (int left = 0; left < Tiles.COPIES; left++) {
             if (left != called) {
-              tilings.add(new TenhouMeldCode(meld, Tiles.physicalId(kind, called), others(kind, called, left)));
+              tilings.add(
+                  new TenhouMeldCode(
+                      meld, Tiles.physicalId(kind, called), others(kind, called, left)));
             }
           }
         }
       }
       case DAIMINKAN -> {
         for (int called = 0; called < Tiles.COPIES; called++) {
-          tilings.add(new TenhouMeldCode(meld, Tiles.physicalId(kind, called), others(kind, called, -1)));
+          tilings.add(
+              new TenhouMeldCode(meld, Tiles.physicalId(kind, called), others(kind, called, -1)));
         }
       }
       case ANKAN -> tilings.add(new TenhouMeldCode(meld, -1, others(kind, -1, -1)));
@@ -213,7 +241,10 @@ public class TenhouMeldCodeTest {
           for (int called = 0; called < Tiles.COPIES; called++) {
             if (called != added) {
               tilings.add(
-                  new TenhouMeldCode(meld, Tiles.physicalId(kind, called), new int[] {Tiles.physicalId(kind, added)}));
+                  new TenhouMeldCode(
+                      meld,
+                      Tiles.physicalId(kind, called),
+                      new int[] {Tiles.physicalId(kind, added)}));
             }
           }
         }

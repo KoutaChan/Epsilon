@@ -67,7 +67,9 @@ public class TilesTest {
       Assert.assertEquals(Tiles.contains(Tiles.TERMINALS, kind), terminal, "kind " + kind);
       Assert.assertEquals(Tiles.contains(Tiles.HONORS, kind), !group.suited(), "kind " + kind);
       Assert.assertEquals(
-          Tiles.contains(Tiles.FIVES, kind), group.suited() && Tiles.number(kind) == Tiles.FIVE, "kind " + kind);
+          Tiles.contains(Tiles.FIVES, kind),
+          group.suited() && Tiles.number(kind) == Tiles.FIVE,
+          "kind " + kind);
     }
     Assert.assertEquals(Tiles.range(Tiles.M2, Tiles.M8), 0b1111_1110L);
     Assert.assertEquals(Tiles.range(Tiles.M1, Tiles.CHUN), Tiles.ALL_KINDS);

@@ -22,15 +22,19 @@ public class RoundResultTest {
     RoundResult.Win liable = new RoundResult.Win(1, 8_000, DAISANGEN, 0, 0, 0, 0, 0, 0);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> new RoundResult(EndKind.RON, null, List.of(liable), 0, 0, 0, plainDeltas, new int[0]));
+        () ->
+            new RoundResult(EndKind.RON, null, List.of(liable), 0, 0, 0, plainDeltas, new int[0]));
 
-    RoundResult.Win plain = new RoundResult.Win(1, 8_000, DAISANGEN, 0, 0, 0, 0, 0, RoundOutcome.NO_SEAT);
-    RoundResult result = new RoundResult(EndKind.RON, null, List.of(plain), 0, 0, 0, plainDeltas, new int[0]);
+    RoundResult.Win plain =
+        new RoundResult.Win(1, 8_000, DAISANGEN, 0, 0, 0, 0, 0, RoundOutcome.NO_SEAT);
+    RoundResult result =
+        new RoundResult(EndKind.RON, null, List.of(plain), 0, 0, 0, plainDeltas, new int[0]);
     Assert.assertEquals(result.wins().get(0).pao(), RoundOutcome.NO_SEAT);
 
     int[] splitDeltas = {-16_000, 32_000, -16_000, 0};
     RoundResult.Win fed = new RoundResult.Win(1, 8_000, DAISANGEN, 0, 0, 0, 0, 0, 2);
-    RoundResult split = new RoundResult(EndKind.RON, null, List.of(fed), 0, 0, 0, splitDeltas, new int[0]);
+    RoundResult split =
+        new RoundResult(EndKind.RON, null, List.of(fed), 0, 0, 0, splitDeltas, new int[0]);
     Assert.assertEquals(split.wins().get(0).pao(), 2);
   }
 }

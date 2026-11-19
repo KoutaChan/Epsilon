@@ -11,11 +11,14 @@ public class RecordedGameTest {
   @Test
   public void aGameNamesEverySeat() {
     RecordedGame game = RecordedGames.play(Variant.TENHOU_4P, 3, "four");
-    RecordedGame.Meta three = new RecordedGame.Meta("three", RecordedGame.Source.MJAI, List.of("A", "B", "C"));
+    RecordedGame.Meta three =
+        new RecordedGame.Meta("three", RecordedGame.Source.MJAI, List.of("A", "B", "C"));
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> new RecordedGame(game.variant(), game.rounds(), game.finalScores(), three));
-    RecordedGame.Meta four = new RecordedGame.Meta("four", RecordedGame.Source.MJAI, List.of("A", "B", "C", ""));
-    Assert.assertEquals(new RecordedGame(game.variant(), game.rounds(), game.finalScores(), four).meta(), four);
+    RecordedGame.Meta four =
+        new RecordedGame.Meta("four", RecordedGame.Source.MJAI, List.of("A", "B", "C", ""));
+    Assert.assertEquals(
+        new RecordedGame(game.variant(), game.rounds(), game.finalScores(), four).meta(), four);
   }
 }

@@ -17,6 +17,7 @@ import com.epsilon.mahjong.engine.SeatView;
 import com.epsilon.mahjong.rules.RankUtility;
 import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.mahjong.util.SeedMixer;
 import java.util.List;
 import java.util.Map;
@@ -59,8 +60,10 @@ public class DuelPairsTest {
       for (int seat = 0; seat < variant.seats(); seat++) {
         state = mix(state, o.score(seat));
       }
+      int[] counts = new int[Tiles.KINDS];
+      o.handCounts(counts);
       for (int kind = 0; kind < 34; kind++) {
-        state = mix(state, o.handCount(kind) * 64L + kind);
+        state = mix(state, counts[kind] * 64L + kind);
       }
       int n = o.legalActions();
       for (int a = 0; a < n; a++) {
@@ -160,14 +163,30 @@ public class DuelPairsTest {
     }
 
     Map<GameKey, Long> snapshot() {
-      Map<GameKey, Long> result = new TreeMap<>((a, b) -> a.wall() != b.wall() ? Long.compare(a.wall(), b.wall()) : Integer.compare(a.placement(), b.placement()));
+      Map<GameKey, Long> result =
+          new TreeMap<>(
+              (a, b) ->
+                  a.wall() != b.wall()
+                      ? Long.compare(a.wall(), b.wall())
+                      : Integer.compare(a.placement(), b.placement()));
       games.forEach((key, state) -> result.put(key, state[0]));
       return result;
     }
   }
 
-  private static ArenaPlan plan(Variant variant, List<Policy> slots, Seating seating, List<Split> splits, DrawOrder order) {
-    return new ArenaPlan(variant, slots, seating, splits, order, WallSet.FIXED, SEED, BASE, WALLS, RankUtility.TENHOU);
+  private static ArenaPlan plan(
+      Variant variant, List<Policy> slots, Seating seating, List<Split> splits, DrawOrder order) {
+    return new ArenaPlan(
+        variant,
+        slots,
+        seating,
+        splits,
+        order,
+        WallSet.FIXED,
+        SEED,
+        BASE,
+        WALLS,
+        RankUtility.TENHOU);
   }
 
   private static List<List<Split>> methods(Variant variant) {
@@ -187,7 +206,13 @@ public class DuelPairsTest {
       for (Variant variant : List.of(Variant.TENHOU_4P, Variant.TENHOU_3P)) {
         for (List<Split> splits : methods(variant)) {
           for (DrawOrder order : DrawOrder.values()) {
-            ArenaPlan plan = plan(variant, List.of(open.apply(variant), open.apply(variant)), Seating.EVERY_PLACEMENT, splits, order);
+            ArenaPlan plan =
+                plan(
+                    variant,
+                    List.of(open.apply(variant), open.apply(variant)),
+                    Seating.EVERY_PLACEMENT,
+                    splits,
+                    order);
             String label = variant + " " + splits + " " + order;
             PairScore score = new PairScore(plan);
             AtomicInteger walls = new AtomicInteger();
@@ -201,8 +226,12 @@ public class DuelPairsTest {
                       Assert.assertEquals(score.rank(), 0.0, label + " rank of wall " + wall);
                       Assert.assertEquals(score.utility(), 0.0, label + " utility of wall " + wall);
                       for (int split = 0; split < splits.size(); split++) {
-                        Assert.assertEquals(score.rank(split), 0.0, label + " split " + split + " of wall " + wall);
-                        Assert.assertEquals(score.utility(split), 0.0, label + " split " + split + " of wall " + wall);
+                        Assert.assertEquals(
+                            score.rank(split), 0.0, label + " split " + split + " of wall " + wall);
+                        Assert.assertEquals(
+                            score.utility(split),
+                            0.0,
+                            label + " split " + split + " of wall " + wall);
                       }
                       return true;
                     },
@@ -220,7 +249,8 @@ public class DuelPairsTest {
     assertZeroOnEveryWall(variant -> new CommonRandom(variant, 7));
   }
 
-  private static Map<GameKey, Long> digests(TableLoop table, ArenaPlan plan, Digests digests, Map<Long, int[]> scores) {
+  private static Map<GameKey, Long> digests(
+      TableLoop table, ArenaPlan plan, Digests digests, Map<Long, int[]> scores) {
     Arena.play(
         table,
         plan,
@@ -246,25 +276,54 @@ public class DuelPairsTest {
         for (DrawOrder order : DrawOrder.values()) {
           Digests digests = new Digests();
           Map<Long, int[]> finals = new TreeMap<>();
-          games.put(order, digests(table, plan(variant, List.of(new Tsumogiri(variant), new Tsumogiri(variant)), Seating.BY_GAME, one, order), digests, finals));
+          games.put(
+              order,
+              digests(
+                  table,
+                  plan(
+                      variant,
+                      List.of(new Tsumogiri(variant), new Tsumogiri(variant)),
+                      Seating.BY_GAME,
+                      one,
+                      order),
+                  digests,
+                  finals));
           scores.put(order, finals);
           Assert.assertEquals(digests.calls.get(), 0, variant + " " + order + " called");
           rounds += digests.rounds.get();
         }
         Assert.assertEquals(games.get(DrawOrder.WALL_ORDER).size(), WALLS);
-        Assert.assertEquals(games.get(DrawOrder.WALL_ORDER), games.get(DrawOrder.SEAT_STREAMS), variant + " games");
+        Assert.assertEquals(
+            games.get(DrawOrder.WALL_ORDER), games.get(DrawOrder.SEAT_STREAMS), variant + " games");
         for (long wall : scores.get(DrawOrder.WALL_ORDER).keySet()) {
-          Assert.assertEquals(scores.get(DrawOrder.WALL_ORDER).get(wall), scores.get(DrawOrder.SEAT_STREAMS).get(wall), variant + " wall " + wall);
+          Assert.assertEquals(
+              scores.get(DrawOrder.WALL_ORDER).get(wall),
+              scores.get(DrawOrder.SEAT_STREAMS).get(wall),
+              variant + " wall " + wall);
         }
         Assert.assertTrue(rounds > 2 * WALLS * 2, variant + " rounds " + rounds);
         // 鳴く打ち手では、ツモの順で半荘が分かれる
         Map<DrawOrder, Map<GameKey, Long>> calling = new TreeMap<>();
         for (DrawOrder order : DrawOrder.values()) {
           Digests digests = new Digests();
-          calling.put(order, digests(table, plan(variant, List.of(new CommonRandom(variant, 3), new CommonRandom(variant, 3)), Seating.BY_GAME, one, order), digests, new TreeMap<>()));
+          calling.put(
+              order,
+              digests(
+                  table,
+                  plan(
+                      variant,
+                      List.of(new CommonRandom(variant, 3), new CommonRandom(variant, 3)),
+                      Seating.BY_GAME,
+                      one,
+                      order),
+                  digests,
+                  new TreeMap<>()));
           Assert.assertTrue(digests.calls.get() > 0, variant + " " + order + " made no call");
         }
-        Assert.assertNotEquals(calling.get(DrawOrder.WALL_ORDER), calling.get(DrawOrder.SEAT_STREAMS), variant + " calling games");
+        Assert.assertNotEquals(
+            calling.get(DrawOrder.WALL_ORDER),
+            calling.get(DrawOrder.SEAT_STREAMS),
+            variant + " calling games");
       }
     }
   }

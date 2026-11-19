@@ -21,6 +21,7 @@ import com.epsilon.mahjong.engine.WinSettlementProjection;
 import com.epsilon.mahjong.rules.RoundOutcome;
 import com.epsilon.mahjong.rules.RuleFlag;
 import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.score.RiichiState;
 import com.epsilon.mahjong.tile.TileSet;
 import com.epsilon.mahjong.tile.Tiles;
 import org.testng.annotations.DataProvider;
@@ -111,7 +112,8 @@ public class ObservationRoundTripTest {
       int index = writer.capture(view, boundary, slot, batch);
       read.bind(batch, index);
       assertEquals(read.longs(), batch.longs(index));
-      assertEquals(read.longs(), ObservationSchema.of(variant).longs(batch.words(), batch.start(index)));
+      assertEquals(
+          read.longs(), ObservationSchema.of(variant).longs(batch.words(), batch.start(index)));
       if (copies.size() == COPIES_PER_BATCH) {
         copies.clear();
       }
@@ -182,7 +184,9 @@ public class ObservationRoundTripTest {
     assertEquals(r.lastEventAka(), last.red());
     assertEquals(r.lastEventRinshan(), last.kind() == TurnEvent.Kind.DRAW && last.rinshan());
     boolean pendingKind =
-        last.kind() == TurnEvent.Kind.DRAW || last.kind() == TurnEvent.Kind.KAN || last.kind() == TurnEvent.Kind.NUKI;
+        last.kind() == TurnEvent.Kind.DRAW
+            || last.kind() == TurnEvent.Kind.KAN
+            || last.kind() == TurnEvent.Kind.NUKI;
     assertEquals(r.deferredDora(), pendingKind && last.doraPending());
     assertEquals(r.lastKanKind(), last.kind() == TurnEvent.Kind.KAN ? last.kanKind() : null);
     boolean own = last.kind() == TurnEvent.Kind.DRAW && last.seat() == observer;
@@ -193,7 +197,6 @@ public class ObservationRoundTripTest {
     int[] counts = new int[Tiles.KINDS];
     r.handCounts(counts);
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
-      assertEquals(r.handCount(kind), view.count(kind));
       assertEquals(counts[kind], view.count(kind));
     }
     TileSet set = variant.tiles();
@@ -238,6 +241,11 @@ public class ObservationRoundTripTest {
       firstCycle |= events.riverSize(player) == 0;
     }
     assertEquals(r.firstCycle(), firstCycle);
+    assertEquals(
+        r.declaration(),
+        events.riverSize(view.seat()) == 0 && events.interruptions() == 0
+            ? RiichiState.DOUBLE_RIICHI
+            : RiichiState.RIICHI);
   }
 
   /** 全てのイベントが、エンジンと同じ番号で読める。フィールドごとに読んでも、まとめて読んでも（{@code readEvent}）同じ値になる。 */
@@ -343,7 +351,9 @@ public class ObservationRoundTripTest {
       assertEquals(r.winOf(action), win);
       projection.load(view, code, ws);
       assertEquals(r.winHan(win), projection.score().han());
-      assertEquals(r.winFuCode(win), ObservationSchema.encodeFu(projection.score().han(), projection.score().fu()));
+      assertEquals(
+          r.winFuCode(win),
+          ObservationSchema.encodeFu(projection.score().han(), projection.score().fu()));
       assertEquals(r.winYakuman(win), projection.score().yakuman());
       assertEquals(r.winPao(win), projection.pao() != RoundOutcome.NO_SEAT);
       assertEquals(r.winUraEligible(win), projection.uraEligible());

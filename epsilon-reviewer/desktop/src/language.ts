@@ -5,7 +5,8 @@ import type shellMessages from "../../language/ja/shell.json";
 
 /** メインプロセスで使う文言のキー。ja のファイルにあるキーと同じ。 */
 export type MessageKey =
-  keyof typeof shellMessages | keyof typeof desktopMessages;
+  | keyof typeof shellMessages
+  | keyof typeof desktopMessages;
 
 /** メインプロセスが読む言語のファイル。ウィンドウのタイトルとネイティブのダイアログの文言が入る。 */
 const FILES = ["shell.json", "desktop.json"] as const;
@@ -64,12 +65,11 @@ export class Languages {
     return this.has(base) ? base : SOURCE_LANGUAGE;
   }
 
-  /** @throws Error ja にもキーが無いとき */
   message(language: string, key: MessageKey): string {
-    const text =
+    return (
       this.#messages.get(language)?.get(key) ??
-      this.#messages.get(SOURCE_LANGUAGE)?.get(key);
-    if (text === undefined) throw new Error(`Missing language key: ${key}`);
-    return text;
+      this.#messages.get(SOURCE_LANGUAGE)?.get(key) ??
+      key
+    );
   }
 }

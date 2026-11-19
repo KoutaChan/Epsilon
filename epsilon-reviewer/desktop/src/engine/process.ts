@@ -1,3 +1,4 @@
+import versions from "../../native-versions.json" with { type: "json" };
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, mkdirSync, openSync, statSync } from "node:fs";
 import path from "node:path";
@@ -64,7 +65,7 @@ export function engineLaunch(
     [ENGINE_ENV.logs]: logs,
     PYTORCH_LIBRARY_PATH: path.join(engine, "native"),
     PYTORCH_FLAVOR: "cpu",
-    PYTORCH_VERSION: "2.11.0",
+    PYTORCH_VERSION: versions.libtorch,
     DJL_OFFLINE: "true",
     OPT_OUT_TRACKING: "true",
     ENGINE_CACHE_DIR: cache,

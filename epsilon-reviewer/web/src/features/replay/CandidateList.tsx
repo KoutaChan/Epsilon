@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { ChevronRight } from "lucide-react";
 import { Tile } from "../../components/Tile";
-import { actionMessageKeys } from "../../language/actionMessages";
+import { actionMessage } from "../../language/actionMessages";
 import { useLanguage } from "../../language/LanguageProvider";
 import { listedCandidates } from "./model/candidates.ts";
 import { gradeLoss, hasValueLoss } from "./model/decisionGrade.ts";
@@ -33,13 +33,7 @@ export function CandidateList({
   const { top, outside } = listedCandidates(candidates, compared !== null);
   const rows = outside ? [...top, outside] : top;
   const actionName = (candidate: Candidate) =>
-    t(
-      candidate.tsumogiri && candidate.type === "DAHAI"
-        ? "action.dahaiTsumogiri"
-        : candidate.tsumogiri && candidate.type === "RIICHI_DAHAI"
-          ? "action.riichiTsumogiri"
-          : actionMessageKeys[candidate.type],
-    );
+    t(actionMessage(candidate.type, candidate.tsumogiri));
   const lossText = (loss: number) =>
     gradeLoss(loss) === "best"
       ? t("grade.best")

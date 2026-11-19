@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useDismiss } from "../../components/useDismiss";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Eye, LoaderCircle, RotateCcw } from "lucide-react";
 import { errorKey, type MessageKey } from "../../language/catalog";
 import { seatName } from "../../language/format";
@@ -163,26 +164,16 @@ export function ScenarioEditor({
     }
     if (place?.left !== left || place?.top !== top) setPlace({ left, top });
   });
-  useEffect(() => {
-    const pointer = (event: PointerEvent) => {
-      const node = event.target;
-      if (
-        node instanceof Element &&
-        (element.current?.contains(node) || node.closest("[data-scenario-key]"))
-      )
-        return;
-      select(null);
-    };
-    const keyboard = (event: KeyboardEvent) => {
-      if (event.key === "Escape") select(null);
-    };
-    document.addEventListener("pointerdown", pointer);
-    document.addEventListener("keydown", keyboard);
-    return () => {
-      document.removeEventListener("pointerdown", pointer);
-      document.removeEventListener("keydown", keyboard);
-    };
-  }, [select]);
+  const closeEditor = () => select(null);
+  useDismiss(
+    true,
+    (node) =>
+      Boolean(
+        element.current?.contains(node) || node.closest("[data-scenario-key]"),
+      ),
+    closeEditor,
+    closeEditor,
+  );
   const props = { scenario, playback };
   return (
     <section

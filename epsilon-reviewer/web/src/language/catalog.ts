@@ -55,7 +55,7 @@ export function translator(language: string): Translate {
 function translatorOf(messages: Readonly<Record<string, string>>): Translate {
   return (key, values) => {
     // キーは型で決まるが、牌譜の値から作ったキーは文言に無いことがある。そのときも画面を落とさず、キーをそのまま出す。
-    const message = messages[key] ?? key;
+    const message = messages[key] ?? catalogs.get("ja")?.[key] ?? key;
     if (values === undefined) return message;
     return message.replace(PLACEHOLDER, (token, name: string) =>
       Object.hasOwn(values, name) ? String(values[name]) : token,

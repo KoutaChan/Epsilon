@@ -1,3 +1,4 @@
+import { isFields } from "@epsilon-reviewer/protocol/values";
 import { COMMANDS, httpTarget } from "@epsilon-reviewer/protocol/commands";
 import type {
   CommandName,
@@ -84,8 +85,8 @@ async function failure(
   } catch (error) {
     if (signal?.aborted) throw error;
   }
-  const error = isObject(body) ? body.error : undefined;
-  if (isObject(error) && isErrorCode(error.code))
+  const error = isFields(body) ? body.error : undefined;
+  if (isFields(error) && isErrorCode(error.code))
     return new ApiError(
       error.code,
       typeof error.message === "string" ? error.message : "",
@@ -96,8 +97,4 @@ async function failure(
     `Unexpected HTTP status ${response.status}.`,
     response.status,
   );
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

@@ -3,7 +3,10 @@ import type {
   InvokeReply,
   ReviewerBridge,
 } from "@epsilon-reviewer/protocol/bridge";
-import { COMMANDS } from "@epsilon-reviewer/protocol/commands";
+import {
+  COMMANDS,
+  isRendererCommand,
+} from "@epsilon-reviewer/protocol/commands";
 import type {
   CommandName,
   CommandRequest,
@@ -57,12 +60,6 @@ export function bridgeTransport(bridge: ReviewerBridge): DesktopTransport {
     exportResult: async (resultId) =>
       unwrap(await bridge.exportResult(resultId)).saved,
   };
-}
-
-function isRendererCommand(
-  command: CommandName,
-): command is RendererCommandName {
-  return COMMANDS[command].renderer;
 }
 
 /** 保存された gzip の文書を、画面の中で 1 回だけ展開して JSON として読む。本文が無いか読めなければ invalid_response の ApiError を投げる。 */

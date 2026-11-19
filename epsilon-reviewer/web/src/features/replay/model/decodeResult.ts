@@ -1,3 +1,4 @@
+import { isFields, type Fields } from "@epsilon-reviewer/protocol/values";
 import type {
   ModelInfo,
   RecordSummary,
@@ -16,7 +17,6 @@ import type {
 // 解析結果の文書を先頭から 1 回だけ読んで中身を確かめ、各手順に牌譜の位置と局面の番号を付ける。局面はここでは作らない。
 // 席の数（4 人か 3 人）は、牌譜にある名前の数で決まる。席の番号と局面の席の数が、その数に合うかも確かめる。
 
-type Fields = Readonly<Record<string, unknown>>;
 interface Lengths {
   readonly players: { hand: number; river: number; melds: number }[];
   dora: number;
@@ -427,9 +427,9 @@ function text(value: unknown): string {
 }
 
 function object(value: unknown): Fields {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
+  if (!isFields(value))
     fail("Expected an object.");
-  return value as Fields;
+  return value;
 }
 
 function array(value: unknown): readonly unknown[] {

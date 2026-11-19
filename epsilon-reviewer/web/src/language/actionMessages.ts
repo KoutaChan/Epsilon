@@ -16,3 +16,12 @@ export const actionMessageKeys = {
   KYUSHU_KYUHAI: "action.kyushu",
   NUKI: "action.nuki",
 } as const satisfies Record<ActionType, MessageKey>;
+
+export function actionMessage(
+  type: ActionType,
+  tsumogiri: boolean,
+): MessageKey {
+  if (tsumogiri && type === "DAHAI") return "action.dahaiTsumogiri";
+  if (tsumogiri && type === "RIICHI_DAHAI") return "action.riichiTsumogiri";
+  return actionMessageKeys[type];
+}

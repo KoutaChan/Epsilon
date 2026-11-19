@@ -1,3 +1,4 @@
+import { jobFinished } from "@epsilon-reviewer/protocol/model";
 import { useEffect, useState } from "react";
 import { JOB_POLL_INTERVAL_MS } from "@epsilon-reviewer/protocol/commands";
 import type { JobSnapshot } from "@epsilon-reviewer/protocol/model";
@@ -45,7 +46,7 @@ export function useAnalysisJob(
             );
           const document = await api.result(next.resultId, controller.signal);
           if (!controller.signal.aborted) onComplete(document);
-        } else if (next.status !== "failed" && next.status !== "cancelled")
+        } else if (!jobFinished(next.status))
           timer = setTimeout(poll, JOB_POLL_INTERVAL_MS);
       } catch (cause) {
         if (!controller.signal.aborted) setError(cause);

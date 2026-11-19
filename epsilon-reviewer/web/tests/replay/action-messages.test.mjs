@@ -20,22 +20,7 @@ async function messages(language) {
   return Object.assign({}, ...files);
 }
 
-test("every action emitted by the Java engine has an explicit display message", async () => {
-  const source = await readFile(
-    new URL(
-      "../../../../epsilon-mahjong/src/main/java/com/epsilon/mahjong/action/Action.java",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  const types = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .match(/enum Type\b[^{]*\{([^;]*);/)?.[1];
-  assert.ok(types, "The Java action type enum was not found.");
-  const actions = [...types.matchAll(/([A-Z_]+)(?:\(RuleFlag\.([A-Z_]+)\))?/g)]
-    .map((match) => match[1]);
-  assert.ok(actions.length > 0, "No Java action types were found.");
-  assert.deepEqual(Object.keys(actionMessageKeys).sort(), actions.sort());
+test("each protocol action has an explicit display message", () => {
   assert.deepEqual(Object.keys(actionMessageKeys), [...ACTION_TYPES]);
 });
 

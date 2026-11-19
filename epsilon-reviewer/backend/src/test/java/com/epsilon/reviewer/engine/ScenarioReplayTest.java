@@ -7,9 +7,9 @@ import static com.epsilon.reviewer.engine.TestEdits.rivers;
 
 import com.epsilon.mahjong.action.Action;
 import com.epsilon.mahjong.engine.EngineDecisionKind;
+import com.epsilon.mahjong.record.RecordEvent;
 import com.epsilon.mahjong.record.RecordEvent.Discard;
 import com.epsilon.mahjong.record.RecordEvent.Draw;
-import com.epsilon.mahjong.record.RecordEvent;
 import com.epsilon.mahjong.record.TileCopies;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.tile.Face;
@@ -322,12 +322,8 @@ public class ScenarioReplayTest {
     rejected(decision, scores(scores, 0, 25050), "edits.scores[0]", "multiples of 100");
     rejected(decision, scores(scores, 2, 4_000_000), "edits.scores[2]", "out of range");
     rejected(
-        decision,
-        new ScenarioEdits(null, null, null, null, 256, null),
-        "edits.honba",
-        "honba");
-    rejected(
-        decision, new ScenarioEdits(null, null, null, null, -1, null), "edits.honba", "honba");
+        decision, new ScenarioEdits(null, null, null, null, 256, null), "edits.honba", "honba");
+    rejected(decision, new ScenarioEdits(null, null, null, null, -1, null), "edits.honba", "honba");
     rejected(
         decision,
         new ScenarioEdits(null, null, null, null, null, 101),
@@ -353,9 +349,11 @@ public class ScenarioReplayTest {
     ReviewerException count =
         Assert.expectThrows(
             ReviewerException.class,
-            () -> decision.answer(new ScenarioEdits(null, null, null, scores.subList(0, 3), null, null)));
+            () ->
+                decision.answer(
+                    new ScenarioEdits(null, null, null, scores.subList(0, 3), null, null)));
     Assert.assertEquals(count.code(), ErrorCode.INVALID_REQUEST);
-    Assert.assertEquals(count.getMessage(), "edits.scores must contain four scores.");
+    Assert.assertEquals(count.getMessage(), "edits.scores must contain 4 scores.");
   }
 
   /**
@@ -593,7 +591,8 @@ public class ScenarioReplayTest {
     int compared = 0;
     for (Map.Entry<String, LoadedRecord> entry : PlayedRecords.fourPlayer().entrySet()) {
       compared += compareRecordedCalls(entry.getKey(), entry.getValue());
-      compared += compareRecordedCalls(entry.getKey() + " mjai", PlayedRecords.mjai(entry.getValue()));
+      compared +=
+          compareRecordedCalls(entry.getKey() + " mjai", PlayedRecords.mjai(entry.getValue()));
     }
     Assert.assertTrue(compared > 0, "The fixtures have no recorded chi or pon.");
   }
@@ -642,8 +641,7 @@ public class ScenarioReplayTest {
       Assert.assertEquals(answer.table().players().get(declarer).score(), minScore);
       Assert.assertEquals(policy.input(0).scores().get(declarer).intValue(), minScore);
       scores.set(declarer, minScore);
-      assertRefused(
-          record, response, scores(scores), call, "call: the riichi deposit at the call");
+      assertRefused(record, response, scores(scores), call, "call: the riichi deposit at the call");
       Scenarios.evaluate(record, query(response, scores(scores), null), new RecordingPolicy());
       return;
     }
@@ -919,8 +917,7 @@ public class ScenarioReplayTest {
     for (Place place : places)
       for (String tile : TILES) {
         ScenarioEdits edits = place.editTo().apply(tile);
-        if (!tile.equals(place.tile())
-            && visible.getOrDefault(tile, 0) >= copies(tile))
+        if (!tile.equals(place.tile()) && visible.getOrDefault(tile, 0) >= copies(tile))
           rejected(edits, place.field() + "[0]", tile);
         else accepted(edits);
       }
@@ -983,8 +980,7 @@ public class ScenarioReplayTest {
         case Draw draw when draw.seat() == SEAT -> enter.accept(draw.tile());
         case Discard discard when discard.seat() == SEAT ->
             Assert.assertTrue(held.remove(discard.tile()), "not in the hand: " + event);
-        case Discard discard ->
-            Assert.assertTrue(seen.add(discard.tile()), "seen twice: " + event);
+        case Discard discard -> Assert.assertTrue(seen.add(discard.tile()), "seen twice: " + event);
         default -> {}
       }
   }

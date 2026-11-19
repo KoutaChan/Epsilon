@@ -280,3 +280,13 @@ export function httpTarget(
   });
   return { path, body: Object.keys(rest).length > 0 ? rest : null };
 }
+
+export function isRendererCommand(
+  value: unknown,
+): value is RendererCommandName {
+  return (
+    typeof value === "string" &&
+    Object.hasOwn(COMMANDS, value) &&
+    COMMANDS[value as CommandName].renderer
+  );
+}

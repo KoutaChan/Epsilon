@@ -75,6 +75,12 @@ export const JOB_STATUSES = [
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
+export function jobFinished(status: unknown): boolean {
+  return (
+    status === "completed" || status === "failed" || status === "cancelled"
+  );
+}
+
 /** 解析の進み具合。progress は 0..100 で、completed になるまでは 99 を超えない。 */
 export interface JobSnapshot {
   jobId: string;

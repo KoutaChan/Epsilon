@@ -119,8 +119,7 @@ public final class RoundRewriter {
     int seats = recorded.start().variant().seats();
     if (!edits.scores().isEmpty() && edits.scores().size() != seats)
       throw new ReviewerException(
-          ErrorCode.INVALID_REQUEST,
-          "edits.scores must contain " + (seats == 3 ? "three" : "four") + " scores.");
+          ErrorCode.INVALID_REQUEST, "edits.scores must contain " + seats + " scores.");
     var round = new RoundRewriter(recorded, decision);
     each(edits.rivers(), "edits.rivers", edit -> List.of(edit.seat(), edit.index()), round::river);
     each(edits.dora(), "edits.dora", DoraEdit::index, round::dora);

@@ -1,3 +1,4 @@
+import { useDismiss } from "../../components/useDismiss";
 import {
   useCallback,
   useEffect,
@@ -74,15 +75,11 @@ export function PlaybackControls({
     opener.current = event.currentTarget;
     setMenu(menu === target ? null : target);
   };
-  useEffect(() => {
-    const pointer = (event: PointerEvent) => {
-      const node = event.target;
-      if (!(node instanceof Node) || !elements.playback.current?.contains(node))
-        setMenu(null);
-    };
-    document.addEventListener("pointerdown", pointer);
-    return () => document.removeEventListener("pointerdown", pointer);
-  }, [elements]);
+  useDismiss(
+    menu !== null,
+    (node) => Boolean(elements.playback.current?.contains(node)),
+    () => setMenu(null),
+  );
   useEffect(() => {
     if (stage !== "table") setMenu(null);
   }, [stage]);

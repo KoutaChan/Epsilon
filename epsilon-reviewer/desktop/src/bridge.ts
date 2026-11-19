@@ -7,16 +7,16 @@ import {
   type InvokeReply,
 } from "@epsilon-reviewer/protocol/bridge";
 import {
-  COMMANDS,
-  type CommandName,
+  isRendererCommand,
   type RendererCommandName,
   type StdioCommandName,
 } from "@epsilon-reviewer/protocol/commands";
 import type { ErrorBody } from "@epsilon-reviewer/protocol/errors";
-import type { JobStatus } from "@epsilon-reviewer/protocol/model";
+import { jobFinished } from "@epsilon-reviewer/protocol/model";
 import type { Languages } from "./language.ts";
 import type { SettingsStore } from "./settings.ts";
-import { errorMessage, isFields, type Fields } from "./values.ts";
+import { errorMessage } from "./values.ts";
+import { isFields, type Fields } from "@epsilon-reviewer/protocol/values";
 
 /** ブリッジから Java のエンジンを呼ぶためのインターフェース。実装は EngineProcess。 */
 export interface Engine {
@@ -60,12 +60,6 @@ export interface IpcHandlers {
 }
 
 type Refusal = { ok: false; error: ErrorBody };
-
-const FINISHED: ReadonlySet<string> = new Set<JobStatus>([
-  "completed",
-  "failed",
-  "cancelled",
-]);
 
 /**
  * BRIDGE_CHANNELS の全てのチャンネルにハンドラーを登録する。どのハンドラーも送信元を確かめ、BridgeReply か
@@ -211,17 +205,9 @@ class ActiveAnalyses {
   #settle(jobId: string, reply: InvokeReply): void {
     const status =
       reply.ok && isFields(reply.response) ? reply.response.status : undefined;
-    if (typeof status !== "string" || FINISHED.has(status))
+    if (typeof status !== "string" || jobFinished(status))
       this.#jobs.delete(jobId);
   }
-}
-
-function isRendererCommand(value: unknown): value is RendererCommandName {
-  return (
-    typeof value === "string" &&
-    Object.hasOwn(COMMANDS, value) &&
-    COMMANDS[value as CommandName].renderer
-  );
 }
 
 function isAbsolutePath(value: unknown): boolean {

@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
@@ -8,7 +10,6 @@ import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.model.Batches.Batch;
 import com.epsilon.prism.model.FitProbe.Stage;
-import com.epsilon.prism4p.input.InputSchema;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +59,7 @@ public class FitProbeTest {
       for (int depth = PrismShape.MIN_DEPTH; depth <= PrismShape.MAX_DEPTH; depth++) {
         try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
           manager.getEngine().setRandomSeed(3);
-          PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, Batches.small(depth));
+          PrismNetwork network = new PrismNetwork(FOUR_PLAYER, Batches.small(depth));
           network.initialize(manager);
           Batches.perturb(network, 0.05f, 7);
           Batch batch = Batches.build(rows(), 5);
@@ -81,7 +82,8 @@ public class FitProbeTest {
             }
           }
           log.info(
-              "PRISM-PROBE depth={} {} loss {} vs {} gradients differing={} of {} worst={} ({}) marks={}",
+              "PRISM-PROBE depth={} {} loss {} vs {} gradients differing={} of {} worst={} ({})"
+                  + " marks={}",
               depth,
               precision,
               String.format("%.7f", plain.loss()),
@@ -92,7 +94,9 @@ public class FitProbeTest {
               worstName,
               recorder.marks);
           Assert.assertEquals(
-              Float.floatToRawIntBits(split.loss()), Float.floatToRawIntBits(plain.loss()), "loss bits");
+              Float.floatToRawIntBits(split.loss()),
+              Float.floatToRawIntBits(plain.loss()),
+              "loss bits");
           Assert.assertTrue(worst <= TOLERANCE, "gradient difference " + worst);
           Assert.assertEquals(recorder.marks, expectedMarks(depth));
         }

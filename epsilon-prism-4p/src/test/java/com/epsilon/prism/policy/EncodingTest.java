@@ -1,8 +1,10 @@
 package com.epsilon.prism.policy;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
 
 import com.epsilon.mahjong.engine.Decisions;
 import com.epsilon.mahjong.engine.Engine;
@@ -11,12 +13,14 @@ import com.epsilon.mahjong.engine.SeatView;
 import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
+import com.epsilon.prism.input.InputFeature;
+import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.input.RowTokens;
-import com.epsilon.prism4p.input.InputSchema;
 import java.lang.reflect.Field;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import org.testng.annotations.Test;
@@ -40,8 +44,20 @@ public class EncodingTest {
       while (type.isArray()) {
         type = type.getComponentType();
       }
-      assertFalse(engine.contains(type), "Encoding." + field.getName() + " holds " + type.getSimpleName());
+      assertFalse(
+          engine.contains(type), "Encoding." + field.getName() + " holds " + type.getSimpleName());
     }
+  }
+
+  @Test
+  public void eventHistoriesNeedEventsThatSettleOnPublication() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new BatchEncoder(
+                FOUR_PLAYER, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT, true));
+    var causal = InputFormat.of(FOUR_PLAYER.variant(), EnumSet.allOf(InputFeature.class));
+    new BatchEncoder(causal, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT, true).close();
   }
 
   @Test(timeOut = 300_000)
@@ -59,7 +75,7 @@ public class EncodingTest {
       expected[row] = oneRow.tokenize(request.recordWords(), request.recordBase());
     }
 
-    var encoder = new BatchEncoder(InputSchema.FORMAT, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT);
+    var encoder = new BatchEncoder(FOUR_PLAYER, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT);
     Encoding encoding = encoder.acquire(requests);
     try {
       encoder.encode(encoding, null).join();

@@ -1,5 +1,7 @@
 package com.epsilon.prism.learn;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDManager;
@@ -11,7 +13,6 @@ import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -40,7 +41,7 @@ public class AnchorGpuTest {
       }
       HostBatch batch = HipFixtures.encode(HipFixtures.mixedRows(48, 900));
       HostInputs inputs = new HostInputs(batch);
-      BatchPlan.Capacity capacity = StepFeed.capacity(InputSchema.FORMAT, FitPlan.TOKEN_BUDGET);
+      BatchPlan.Capacity capacity = StepFeed.capacity(FOUR_PLAYER, FitPlan.TOKEN_BUDGET);
       Device gpu = Device.gpu(0);
       PtEngine engine = (PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME);
       try (PtStream stream = engine.newStream(gpu);
@@ -58,7 +59,8 @@ public class AnchorGpuTest {
         int compared = 0;
         for (int row = 0; row < plan.rows(); row++) {
           for (int k = 0; k < plan.actions(row); k++) {
-            double difference = fast.values()[fast.starts()[row] + k] - slow.values()[slow.starts()[row] + k];
+            double difference =
+                fast.values()[fast.starts()[row] + k] - slow.values()[slow.starts()[row] + k];
             double value = slow.values()[slow.starts()[row] + k];
             squared += difference * difference;
             reference += value * value;

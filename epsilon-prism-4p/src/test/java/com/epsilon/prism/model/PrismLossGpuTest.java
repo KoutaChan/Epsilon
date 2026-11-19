@@ -1,11 +1,12 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDManager;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.model.Batches.Batch;
-import com.epsilon.prism4p.input.InputSchema;
 import java.util.List;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
@@ -28,7 +29,7 @@ public class PrismLossGpuTest {
     }
     try (NDManager manager = NDManager.newBaseManager(Device.gpu(0))) {
       manager.getEngine().setRandomSeed(3);
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard(2));
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, PrismShape.standard(2));
       network.initialize(manager);
       Batches.perturb(network, 0.05f, 7);
       Batch batch = Batches.build(PrismLossTest.rows(ROWS), 5);

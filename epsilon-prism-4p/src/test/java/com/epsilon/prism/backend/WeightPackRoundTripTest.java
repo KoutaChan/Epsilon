@@ -1,5 +1,7 @@
 package com.epsilon.prism.backend;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
@@ -11,7 +13,6 @@ import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism4p.input.InputSchema;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
@@ -66,10 +67,13 @@ public class WeightPackRoundTripTest {
       PrismNetwork network = perturbed(manager, shape);
       WeightLayout layout = WeightLayout.of(network);
       ByteBuffer built = WeightPack.build(layout, network, 11).buffer();
-      Assert.assertEquals(WeightPack.build(WeightLayout.of(network), network, 11).buffer(), built, "a second build");
+      Assert.assertEquals(
+          WeightPack.build(WeightLayout.of(network), network, 11).buffer(),
+          built,
+          "a second build");
 
       WeightLayout given =
-          WeightLayout.of(InputSchema.FORMAT, shape.hip(InputSchema.FORMAT), network.inferenceParameters());
+          WeightLayout.of(FOUR_PLAYER, shape.hip(FOUR_PLAYER), network.inferenceParameters());
       Assert.assertEquals(given.architecture(), layout.architecture());
       Assert.assertEquals(given.bytes(), layout.bytes());
       ByteBuffer expected = copy(WeightPack.build(given, network, 11).buffer());
@@ -79,7 +83,8 @@ public class WeightPackRoundTripTest {
       for (int i = 0; i < relations.length; i++) {
         expected.put(tiles + i, (byte) relations[i]);
       }
-      Assert.assertEquals(built, expected, "the four-player pack with the MahjongTileRelation table");
+      Assert.assertEquals(
+          built, expected, "the four-player pack with the MahjongTileRelation table");
     }
   }
 
@@ -94,13 +99,17 @@ public class WeightPackRoundTripTest {
     Assert.assertEquals(PrismNetwork.readShape(model), PrismShape.standard());
     WeightPack pack = WeightPack.load(model, 760);
     WeightLayout layout = pack.layout();
-    Assert.assertEquals(layout.architecture(), PrismShape.standard().hip(InputSchema.FORMAT));
+    Assert.assertEquals(layout.architecture(), PrismShape.standard().hip(FOUR_PLAYER));
     Assert.assertEquals(new PackView(pack.buffer()).architecture(), layout.architecture().encode());
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = PrismNetwork.load(model, manager);
       PackReadBack.assertReadsBack(layout, pack, network.inferenceParameters());
     }
-    log.info("PRISM-HIP-V760 {} reads as {} ({} bytes)", given, layout.architecture().layers(), layout.bytes());
+    log.info(
+        "PRISM-HIP-V760 {} reads as {} ({} bytes)",
+        given,
+        layout.architecture().layers(),
+        layout.bytes());
   }
 
   /**
@@ -109,7 +118,7 @@ public class WeightPackRoundTripTest {
    */
   private static PrismNetwork perturbed(NDManager manager, PrismShape shape) {
     manager.getEngine().setRandomSeed(23);
-    PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, shape);
+    PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
     network.initialize(manager);
     Random random = new Random(29);
     for (Pair<String, Parameter> pair : network.getParameters()) {

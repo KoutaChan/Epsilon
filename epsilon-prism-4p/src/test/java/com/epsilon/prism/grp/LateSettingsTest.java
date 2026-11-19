@@ -51,56 +51,80 @@ public class LateSettingsTest {
     Assert.assertTrue(TestSettings.of("phi.source=SCORE_SMOOTH").phi().lateSettings().isEmpty());
 
     PhiSettings set =
-        TestSettings.of("phi.source=SELF_GRP", "phi.late.from=4", "phi.late.cutoff=1e-6", "phi.late.memo=4096").phi();
+        TestSettings.of(
+                "phi.source=SELF_GRP",
+                "phi.late.from=4",
+                "phi.late.cutoff=1e-6",
+                "phi.late.cache=4096")
+            .phi();
     Assert.assertEquals(set.lateSettings().orElseThrow(), new LateSettings(4, 1e-6, 4096));
     var withOutcomes =
         (PhiSettings.FixedGrp)
-            TestSettings.of("phi.source=FIXED_GRP", "phi.grp=/grp/a", "phi.outcomes=/grp/q", "phi.late.from=2").phi();
+            TestSettings.of(
+                    "phi.source=FIXED_GRP",
+                    "phi.grp=/grp/a",
+                    "phi.outcomes=/grp/q",
+                    "phi.late.from=2")
+                .phi();
     Assert.assertEquals(withOutcomes.outcomes(), Path.of("/grp/q"));
     Assert.assertEquals(withOutcomes.late().from(), 2);
     var start =
         (PhiSettings.SelfGrp)
             TestSettings.of(
-                    "phi.source=SELF_GRP", "phi.start.kind=GRP_CHECKPOINT", "phi.start.grp=/grp/a",
+                    "phi.source=SELF_GRP",
+                    "phi.start.kind=GRP_CHECKPOINT",
+                    "phi.start.grp=/grp/a",
                     "phi.start.outcomes=/grp/q")
                 .phi();
-    Assert.assertEquals(((PhiStartSettings.GrpCheckpoint) start.start()).outcomes(), Path.of("/grp/q"));
+    Assert.assertEquals(
+        ((PhiStartSettings.GrpCheckpoint) start.start()).outcomes(), Path.of("/grp/q"));
   }
 
   @Test
-  public void startAndCutoffAreFixedForTheRunAndTheMemoIsPerMachine() {
+  public void startAndCutoffAreFixedForTheRunAndTheCacheIsPerMachine() {
     Assert.assertEquals(change(LateSettings.class, "from"), Change.FIXED);
     Assert.assertEquals(change(LateSettings.class, "cutoff"), Change.FIXED);
-    Assert.assertEquals(change(LateSettings.class, "memo"), Change.MACHINE);
+    Assert.assertEquals(change(LateSettings.class, "cache"), Change.MACHINE);
     Assert.assertEquals(change(PhiSettings.FixedGrp.class, "outcomes"), Change.FIT);
   }
 
   @Test
   public void invalidValuesNameTheirKeyInEnglish() {
     assertProblem(
-        List.of("phi.source=SELF_GRP", "phi.late.memo=3"),
-        "phi.late.memo=3",
-        "the late memo needs a power of two slots, got 3");
-    assertProblem(List.of("phi.source=SELF_GRP", "phi.late.cutoff=0.02"), "phi.late.cutoff=0.02", "a number");
+        List.of("phi.source=SELF_GRP", "phi.late.cache=3"),
+        "phi.late.cache=3",
+        "the late cache needs a power of two slots, got 3");
+    assertProblem(
+        List.of("phi.source=SELF_GRP", "phi.late.cutoff=0.02"), "phi.late.cutoff=0.02", "a number");
     assertProblem(List.of("phi.source=SELF_GRP", "phi.late.from=-1"), "phi.late.from=-1", "");
     assertProblem(
         List.of("phi.source=FIXED_GRP", "phi.grp=/grp/a", "phi.late.from=2"),
         "phi.late.from=2",
         "the late mode needs the outcome network: set outcomes");
     assertProblem(
-        List.of("phi.source=FIXED_GRP", "phi.grp=/grp/a", "phi.table=/grp/t.json", "phi.outcomes=/grp/q"),
+        List.of(
+            "phi.source=FIXED_GRP",
+            "phi.grp=/grp/a",
+            "phi.table=/grp/t.json",
+            "phi.outcomes=/grp/q"),
         "phi.outcomes",
         "a Φ table overlays a GruSinkhorn only");
     assertProblem(
         List.of(
-            "phi.source=SELF_GRP", "phi.start.kind=GRP_CHECKPOINT", "phi.start.grp=/grp/a",
-            "phi.start.table=/grp/t.json", "phi.start.outcomes=/grp/q"),
+            "phi.source=SELF_GRP",
+            "phi.start.kind=GRP_CHECKPOINT",
+            "phi.start.grp=/grp/a",
+            "phi.start.table=/grp/t.json",
+            "phi.start.outcomes=/grp/q"),
         "phi.start.outcomes",
         "a Φ table overlays a GruSinkhorn only");
     assertProblem(
-        List.of("phi.source=SCORE_RANK", "phi.late.from=1"), "phi.late", "does not apply to phi.source=SCORE_RANK");
-    InvalidSetting memo = Assert.expectThrows(InvalidSetting.class, () -> new LateSettings(0, 1e-5, 12));
-    Assert.assertEquals(memo.component(), "memo");
+        List.of("phi.source=SCORE_RANK", "phi.late.from=1"),
+        "phi.late",
+        "does not apply to phi.source=SCORE_RANK");
+    InvalidSetting cache =
+        Assert.expectThrows(InvalidSetting.class, () -> new LateSettings(0, 1e-5, 12));
+    Assert.assertEquals(cache.component(), "cache");
   }
 
   /**
@@ -109,52 +133,68 @@ public class LateSettingsTest {
    * キーと値を添えた英語の 1 文のエラーメッセージで知らせる。
    */
   @Test
-  public void theMemoTakesPowersOfTwoFromOne() {
-    Key memo = key(LateSettings.class, "memo");
-    Assert.assertEquals(memo.value(), "1048576");
-    Assert.assertEquals(Integer.bitCount(Integer.parseInt(memo.value())), 1);
-    Assert.assertEquals(TestSettings.of("phi.source=SELF_GRP").phi().lateSettings().orElseThrow().memo(), 1 << 20);
-    Assert.assertEquals(LateSettings.MAX_MEMO, 1 << 26);
-    Assert.assertTrue((long) LateSettings.MAX_MEMO * Variant.TENHOU_4P.seats() <= Integer.MAX_VALUE);
+  public void theCacheTakesPowersOfTwoFromOne() {
+    Key cache = key(LateSettings.class, "cache");
+    Assert.assertEquals(cache.value(), "1048576");
+    Assert.assertEquals(Integer.bitCount(Integer.parseInt(cache.value())), 1);
+    Assert.assertEquals(
+        TestSettings.of("phi.source=SELF_GRP").phi().lateSettings().orElseThrow().cache(), 1 << 20);
+    Assert.assertEquals(LateSettings.MAX_CACHE, 1 << 26);
+    Assert.assertTrue(
+        (long) LateSettings.MAX_CACHE * Variant.TENHOU_4P.seats() <= Integer.MAX_VALUE);
     for (int slots : new int[] {1, 2, 1 << 12, 1 << 20, 1 << 24, 1 << 26})
       Assert.assertEquals(
-          TestSettings.of("phi.source=SELF_GRP", "phi.late.memo=" + slots).phi().lateSettings().orElseThrow().memo(),
+          TestSettings.of("phi.source=SELF_GRP", "phi.late.cache=" + slots)
+              .phi()
+              .lateSettings()
+              .orElseThrow()
+              .cache(),
           slots);
     for (String slots : List.of("0", "-4", "-2147483648"))
-      assertProblem(List.of("phi.source=SELF_GRP", "phi.late.memo=" + slots), "phi.late.memo=" + slots, "");
+      assertProblem(
+          List.of("phi.source=SELF_GRP", "phi.late.cache=" + slots), "phi.late.cache=" + slots, "");
     for (String slots : List.of("134217728", "536870912", "1073741824"))
       assertProblem(
-          List.of("phi.source=SELF_GRP", "phi.late.memo=" + slots),
-          "phi.late.memo=" + slots,
+          List.of("phi.source=SELF_GRP", "phi.late.cache=" + slots),
+          "phi.late.cache=" + slots,
           "an integer in [1, 67108864]");
     for (String slots : List.of("3", "6", "1048575", "1048577"))
       assertProblem(
-          List.of("phi.source=SELF_GRP", "phi.late.memo=" + slots),
-          "phi.late.memo=" + slots,
-          "the late memo needs a power of two slots, got " + slots);
+          List.of("phi.source=SELF_GRP", "phi.late.cache=" + slots),
+          "phi.late.cache=" + slots,
+          "the late cache needs a power of two slots, got " + slots);
     for (int slots : new int[] {0, -4, 3, 1_048_575})
       Assert.assertEquals(
-          Assert.expectThrows(InvalidSetting.class, () -> new LateSettings(0, 1e-5, slots)).component(), "memo");
+          Assert.expectThrows(InvalidSetting.class, () -> new LateSettings(0, 1e-5, slots))
+              .component(),
+          "cache");
   }
 
   @Test
   public void checkConfigOpensTheOutcomeNetworkInTheLateMode() throws Exception {
     Path leaf = GrpFixtures.network(directory.resolve("leaf"), 1);
     Path q = GrpFixtures.outcomes(directory.resolve("q"), GrpFixtures.VARIANT, 2);
-    Assert.assertEquals(PhiControl.problems(GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + q)), List.of());
+    Assert.assertEquals(
+        PhiControl.problems(GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + q)), List.of());
     Assert.assertEquals(PhiControl.problems(fixed(leaf, q)), List.of());
     // q を持っていれば、使い始める反復が 0 でも LATE のモードで開いてみる
     Path gru = GrpFixtures.gru(directory.resolve("gru"), 3);
-    assertOneProblem(PhiControl.problems(fixed(gru, q)), "The late mode enumerates with a GrpNetwork leaf");
+    assertOneProblem(
+        PhiControl.problems(fixed(gru, q)), "The late mode enumerates with a GrpNetwork leaf");
     Path threePlayer = GrpFixtures.outcomes(directory.resolve("q3"), Variant.TENHOU_3P, 4);
-    assertOneProblem(PhiControl.problems(fixed(leaf, threePlayer)), "is TENHOU_3P, the entry TENHOU_4P");
+    assertOneProblem(
+        PhiControl.problems(fixed(leaf, threePlayer)), "is TENHOU_3P, the entry TENHOU_4P");
     assertOneProblem(PhiControl.problems(fixed(leaf, leaf)), "not an");
     assertOneProblem(
-        PhiControl.problems(GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + threePlayer)), "is TENHOU_3P");
+        PhiControl.problems(GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + threePlayer)),
+        "is TENHOU_3P");
 
-    Assert.assertEquals(check("late.toml", fixedToml(leaf, q) + "\n[phi.late]\nfrom = 2\n"), Exit.OK.code());
+    Assert.assertEquals(
+        check("late.toml", fixedToml(leaf, q) + "\n[phi.late]\nfrom = 2\n"), Exit.OK.code());
     Assert.assertEquals(check("gru.toml", fixedToml(gru, q)), Exit.PROBLEMS.code());
-    Assert.assertEquals(check("missing.toml", fixedToml(leaf, null) + "\n[phi.late]\nfrom = 2\n"), Exit.PROBLEMS.code());
+    Assert.assertEquals(
+        check("missing.toml", fixedToml(leaf, null) + "\n[phi.late]\nfrom = 2\n"),
+        Exit.PROBLEMS.code());
   }
 
   private static PhiSetup fixed(Path grp, Path outcomes) {
@@ -162,13 +202,17 @@ public class LateSettingsTest {
   }
 
   private static String fixedToml(Path grp, Path outcomes) {
-    return "[phi]\nsource = \"FIXED_GRP\"\ngrp = \"" + grp + "\"\n"
+    return "[phi]\nsource = \"FIXED_GRP\"\ngrp = \""
+        + grp
+        + "\"\n"
         + (outcomes == null ? "" : "outcomes = \"" + outcomes + "\"\n");
   }
 
   /** 本文を設定ファイルに書いて {@code settings check} を実行し、終了コードを返す。 */
   private int check(String name, String body) throws IOException {
-    Path file = Files.writeString(directory.resolve(name), body + "\n[run]\nvariant = \"TENHOU_4P\"\nseed = 1\n");
+    Path file =
+        Files.writeString(
+            directory.resolve(name), body + "\n[run]\nvariant = \"TENHOU_4P\"\nseed = 1\n");
     return PhiControlTest.prism("settings", "check", "--settings", file.toString());
   }
 
@@ -185,7 +229,8 @@ public class LateSettingsTest {
   /** 設定の読み込みがエラーを 1 つだけ返し、そのメッセージがキー（と値）と理由を英語で書いていること。 */
   private static void assertProblem(List<String> assignments, String key, String reason) {
     SettingsException failure =
-        Assert.expectThrows(SettingsException.class, () -> TestSettings.of(assignments.toArray(String[]::new)));
+        Assert.expectThrows(
+            SettingsException.class, () -> TestSettings.of(assignments.toArray(String[]::new)));
     Assert.assertEquals(failure.problems().size(), 1, failure.getMessage());
     String problem = failure.problems().getFirst();
     Assert.assertTrue(problem.contains(key), problem);

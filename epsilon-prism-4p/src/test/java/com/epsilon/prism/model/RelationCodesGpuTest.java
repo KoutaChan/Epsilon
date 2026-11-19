@@ -1,6 +1,7 @@
 package com.epsilon.prism.model;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 
 import ai.djl.Device;
 import ai.djl.engine.Engine;
@@ -20,7 +21,6 @@ import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.learn.FitPlan;
 import com.epsilon.prism.learn.Selection;
-import com.epsilon.prism4p.input.InputSchema;
 import java.io.IOException;
 import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
@@ -51,6 +51,7 @@ public class RelationCodesGpuTest {
 
   /** 本物の行で、1 ステップの行の数と比べるステップの数。 */
   private static final int STEP_ROWS = 4096;
+
   private static final int STEPS = 4;
 
   /** 乱数のバッチとエンジンのバッチの行の数。 */
@@ -95,11 +96,14 @@ public class RelationCodesGpuTest {
 
   /** バッチの関係のコードを eager と自前のカーネルで作り、全てのワードを照合する。違えば最初に違った位置をログに出す。 */
   private static void compare(
-      NDManager manager, RelationCodes kernel, String name, Function<NDManager, NetworkInputs> batch) {
+      NDManager manager,
+      RelationCodes kernel,
+      String name,
+      Function<NDManager, NetworkInputs> batch) {
     try (NDManager scope = manager.newSubManager()) {
       NetworkInputs inputs = batch.apply(scope);
       BatchIndex index = BatchIndex.send(inputs, Pass.inference(Precision.BFLOAT16));
-      ShortBuffer expected = words(RelationClass.codes(inputs, index));
+      ShortBuffer expected = words(RelationClass.codes(inputs, index, index.tokens));
       ShortBuffer actual = words(RelationClass.codes(kernel, inputs, index));
       Assert.assertEquals(actual.limit(), expected.limit(), "code words");
       int mismatched = 0;
@@ -112,7 +116,12 @@ public class RelationCodesGpuTest {
       }
       int size = index.tokens;
       log.info(
-          "PRISM-T0 {} rows={} S={} words={} mismatched={}", name, inputs.rows(), size, expected.limit(), mismatched);
+          "PRISM-T0 {} rows={} S={} words={} mismatched={}",
+          name,
+          inputs.rows(),
+          size,
+          expected.limit(),
+          mismatched);
       if (first >= 0) {
         int pair = first / RelationCodes.WORDS;
         log.info(
@@ -160,7 +169,9 @@ public class RelationCodesGpuTest {
         List<Row> sorted = new ArrayList<>(STEP_ROWS);
         for (int r = step * STEP_ROWS; r < (step + 1) * STEP_ROWS; r++) {
           long[] words = store.read(rows[r]).observation();
-          sorted.add(new Row(InputSchema.FORMAT.fixedTokens() + observation.bind(words, 0).publicEvents(), words));
+          sorted.add(
+              new Row(
+                  FOUR_PLAYER.fixedTokens() + observation.bind(words, 0).publicEvents(), words));
         }
         sorted.sort(Comparator.comparingInt(Row::tokens));
         List<long[]> piece = new ArrayList<>();

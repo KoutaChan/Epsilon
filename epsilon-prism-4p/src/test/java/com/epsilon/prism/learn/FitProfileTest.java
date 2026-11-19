@@ -1,5 +1,6 @@
 package com.epsilon.prism.learn;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -12,9 +13,9 @@ import ai.djl.util.Pair;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.prism.learn.FitProfile.Timing;
 import com.epsilon.prism.model.AuxiliaryLoss;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.rows.CohortWriter;
-import com.epsilon.prism4p.input.InputSchema;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,7 +74,13 @@ public class FitProfileTest {
     assertTrue(alternating.enabled());
     List<Timing> expected =
         List.of(
-            Timing.OFF, Timing.OFF, Timing.OFF, Timing.SYNCED, Timing.HOST, Timing.SYNCED, Timing.HOST);
+            Timing.OFF,
+            Timing.OFF,
+            Timing.OFF,
+            Timing.SYNCED,
+            Timing.HOST,
+            Timing.SYNCED,
+            Timing.HOST);
     for (int step = 1; step <= expected.size(); step++) {
       assertEquals(alternating.timing(step), expected.get(step - 1), "step " + step);
     }
@@ -89,7 +96,17 @@ public class FitProfileTest {
   public void profileKeepsTheFitAndReportsTheStages() throws IOException {
     FitPlan plan =
         new FitPlan(
-            new FitSettings(STEPS, 4096, 3e-3, 3e-4, 1f, 0.01, 0.02),
+            new FitSettings(
+                STEPS,
+                4096,
+                3e-3,
+                3e-4,
+                1f,
+                0.01,
+                0.02,
+                PairLoss.Mode.PRISM,
+                PairLoss.ClassWeight.INVERSE_LAMBDA,
+                AdamEpsilon.FIXED),
             SHAPE,
             AuxiliaryLoss.standard(),
             BUDGET,
@@ -101,9 +118,10 @@ public class FitProfileTest {
       List<FitResult> results = new ArrayList<>();
       List<Map<String, float[]>> weights = new ArrayList<>();
       for (FitProfile used : List.of(FitProfile.of(null), profile)) {
-        try (Model model = Fit.blank(InputSchema.FORMAT, SHAPE, Device.cpu(), plan.seed())) {
+        try (Model model = Fit.blank(FOUR_PLAYER, SHAPE, Device.cpu(), plan.seed())) {
           results.add(
-              Fit.run(store, rows, model, plan, Teacher.RAW, NetworkDevices.of(Device.cpu()), 2, used));
+              Fit.run(
+                  store, rows, model, plan, Teacher.RAW, NetworkDevices.of(Device.cpu()), 2, used));
           weights.add(parameters(model));
         }
       }
@@ -111,9 +129,11 @@ public class FitProfileTest {
       report.forEach(log::info);
       FitResult plain = results.get(0);
       FitResult profiled = results.get(1);
-      assertEquals(Double.doubleToRawLongBits(profiled.loss()), Double.doubleToRawLongBits(plain.loss()));
       assertEquals(
-          Double.doubleToRawLongBits(profiled.lastLoss()), Double.doubleToRawLongBits(plain.lastLoss()));
+          Double.doubleToRawLongBits(profiled.loss()), Double.doubleToRawLongBits(plain.loss()));
+      assertEquals(
+          Double.doubleToRawLongBits(profiled.lastLoss()),
+          Double.doubleToRawLongBits(plain.lastLoss()));
       for (Map.Entry<String, float[]> entry : weights.get(0).entrySet()) {
         assertTrue(
             Arrays.equals(entry.getValue(), weights.get(1).get(entry.getKey())),

@@ -1,6 +1,7 @@
 package com.epsilon.prism.policy;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.runtime.DecisionInferenceIngress;
@@ -8,7 +9,6 @@ import com.epsilon.mahjong.util.SeedMixer;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.RowTokens;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.FloatBuffer;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -27,12 +27,13 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class ServedGoldenPolicy implements PolicyService {
   private final BatchEncoder encoder =
-      new BatchEncoder(InputSchema.FORMAT, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT);
+      new BatchEncoder(FOUR_PLAYER, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT);
 
   /** スレッドごとの 1 行のライター（スレッドセーフでない）。 */
   private final ThreadLocal<RowTokens> oneRow = ThreadLocal.withInitial(RowTokens::new);
 
-  private final ThreadLocal<Observation> reader = ThreadLocal.withInitial(() -> new Observation(TENHOU_4P));
+  private final ThreadLocal<Observation> reader =
+      ThreadLocal.withInitial(() -> new Observation(TENHOU_4P));
   private final PriorSettings prior;
   private final AtomicLong observations = new AtomicLong();
   private final AtomicLong tokens = new AtomicLong();
@@ -77,7 +78,8 @@ public final class ServedGoldenPolicy implements PolicyService {
   }
 
   @Override
-  public CompletableFuture<Void> submit(List<PolicyRequest> rows, DecisionInferenceIngress ingress) {
+  public CompletableFuture<Void> submit(
+      List<PolicyRequest> rows, DecisionInferenceIngress ingress) {
     ingress.handoff(this).move();
     Encoding encoding = encoder.acquire(rows);
     try {
@@ -90,7 +92,8 @@ public final class ServedGoldenPolicy implements PolicyService {
         for (int row = 0; row < plan.rows(); row++) {
           long bytes = RowTokens.row(batch, row);
           served += SeedMixer.mix64(bytes);
-          for (int action = 0; action < plan.actions(row); action++) scores.put(score(bytes, action));
+          for (int action = 0; action < plan.actions(row); action++)
+            scores.put(score(bytes, action));
         }
       }
       encoding.answer(scores, prior);
@@ -104,7 +107,8 @@ public final class ServedGoldenPolicy implements PolicyService {
         written += SeedMixer.mix64(own.tokenize(words, base));
       }
       if (written != served) {
-        throw new IllegalStateException("the served rows differ from one-row encodings of the captured observations");
+        throw new IllegalStateException(
+            "the served rows differ from one-row encodings of the captured observations");
       }
       observations.addAndGet(captured);
       tokens.addAndGet(served);

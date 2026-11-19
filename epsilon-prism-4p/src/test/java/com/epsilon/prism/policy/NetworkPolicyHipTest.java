@@ -1,5 +1,6 @@
 package com.epsilon.prism.policy;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -9,17 +10,18 @@ import ai.djl.ndarray.NDManager;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.TestSettings;
-import com.epsilon.prism.backend.HipFixtures;
 import com.epsilon.prism.backend.HipReference;
+import com.epsilon.prism.backend.WeightLayout;
 import com.epsilon.prism.backend.WeightPack;
 import com.epsilon.prism.core.Greedy;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.input.HostInputs;
+import com.epsilon.prism.model.ModelShapes;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.ShapeArm;
 import com.epsilon.prism.run.Snapshot;
 import com.epsilon.prism.settings.PrismSettings;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -38,7 +40,7 @@ import org.testng.annotations.Test;
  * ネットワークから作る重みの束とバージョン番号、ページ固定の blob の中のバッチの領域、バッチの順に並べた s と答え。
  *
  * <ul>
- *   <li>乱数を足した v2 の本番の形と v3 の形（H 256）のバージョンで、s が参照の s とビットで同じ。参照の s は、同じ重みの束で、同じ O を
+ *   <li>乱数を足した V2・V3・V4_S の重みで、s が参照の s とビットで同じ。参照の s は、同じ重みの束で、同じ O を
  *       要求の順に 1 つのバッチにして直に計算したもの。トークンの上限でバッチを分けても（S の順に並べ替える）ビットで同じ。参照は行ごとに
  *       閉じた計算だから。σ は貪欲に選んだ手の one-hot。
  *   <li>重みの束は読んだネットワークと合う。s と eager の BF16 の s の差は相対 RMS 4e-2 以内。層 0 の q・k・v は折り込んだ表から 1 回の
@@ -62,28 +64,26 @@ public class NetworkPolicyHipTest {
   /** eager の BF16 の s との相対 RMS の上限。層 0 の丸めの位置の違いによる差を含む（クラスの説明を参照）。 */
   private static final double EAGER_LIMIT = 4e-2;
 
-  /** 方策を確かめる形。v2 の本番の形と、型ごとの FFN・候補層の 2 段目を持つ v3 の形。 */
   @DataProvider
   public Object[][] shapes() {
-    return new Object[][] {{HipFixtures.Arm.V2_DEPTH_2}, {HipFixtures.Arm.V3}};
+    return new Object[][] {{ShapeArm.V2}, {ShapeArm.V3}, {ShapeArm.V4_S}};
   }
 
   @Test(timeOut = 900_000, dataProvider = "shapes")
-  public void servedScoresMatchTheReference(HipFixtures.Arm arm) throws Exception {
+  public void servedScoresMatchTheReference(ShapeArm arm) throws Exception {
     Path root = Files.createTempDirectory("prism-hip-policy");
     try {
       Path snapshot = root.resolve("1");
       NetworkPolicyTest.write(snapshot, arm.shape(), true);
       Path model = snapshot.resolve(Snapshot.MODEL);
       PriorSettings prior = PriorSettings.STANDARD;
-      List<Device> cpu = List.of(Device.cpu());
-      int smallest = InputSchema.FORMAT.fixedTokens() + Limits.MAX_EVENT_TOKENS;
-      HipReference reference = new HipReference(WeightPack.load(model, VERSION));
-      RequestBatch batch = new RequestBatch();
+      WeightPack pack = WeightPack.load(model, VERSION);
+      int smallest = pack.layout().format().fixedTokens() + Limits.MAX_EVENT_TOKENS;
+      HipReference reference = new HipReference(pack);
+      RequestBatch batch = new RequestBatch(pack.layout().format());
       double[] squares = new double[2];
       int[] counts = new int[3];
-      try (NetworkPolicy whole =
-              hip(model, prior, BatchEncoder.UNBOUNDED, ReferenceLane::new);
+      try (NetworkPolicy whole = hip(model, prior, BatchEncoder.UNBOUNDED, ReferenceLane::new);
           NetworkPolicy split = hip(model, prior, smallest, ReferenceLane::new);
           NDManager manager = NDManager.newBaseManager(Device.cpu())) {
         assertEquals(whole.inference(), InferencePath.HIP);
@@ -120,7 +120,8 @@ public class NetworkPolicyHipTest {
                   squares[0] += delta * delta;
                   squares[1] += (double) bf16[row][a] * bf16[row][a];
                 }
-                assertEquals(request.sigma[Greedy.argmax(request.scores, request.prior, n)], 1f, where);
+                assertEquals(
+                    request.sigma[Greedy.argmax(request.scores, request.prior, n)], 1f, where);
                 counts[1] += n;
               }
               counts[0]++;
@@ -131,7 +132,7 @@ public class NetworkPolicyHipTest {
         log.info(
             "PRISM-HIP-POLICY arm={} batches={} actions={} widest={} chunks {} -> {} decisions={}"
                 + " vs eager BF16 relative RMS={}",
-            arm.label(),
+            arm,
             counts[0],
             counts[1],
             counts[2],
@@ -184,13 +185,29 @@ public class NetworkPolicyHipTest {
     }
   }
 
+  @Test(dataProvider = "eagerArms", dataProviderClass = ModelShapes.class)
+  public void unsupportedShapesSelectEagerBeforePacking(PrismShape shape) {
+    assertEquals(InferencePath.HIP.resolve(Device.gpu(0), shape), InferencePath.EAGER);
+    PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
+    IllegalArgumentException error =
+        expectThrows(IllegalArgumentException.class, () -> WeightLayout.of(network));
+    assertTrue(error.getMessage().contains("HIP does not support this shape"), error.getMessage());
+  }
+
   @Test(timeOut = 900_000)
   public void hipFallsBackToEagerWhereTheKernelsDoNotRun() throws Exception {
     PrismShape standard = PrismShape.standard();
     assertEquals(InferencePath.HIP.resolve(Device.gpu(0), standard), InferencePath.HIP);
-    assertEquals(InferencePath.HIP.resolve(Device.gpu(1), PrismShape.standard(3)), InferencePath.HIP);
+    assertEquals(
+        InferencePath.HIP.resolve(Device.gpu(1), PrismShape.standard(3)), InferencePath.HIP);
     assertEquals(InferencePath.HIP.resolve(Device.cpu(), standard), InferencePath.EAGER);
-    assertEquals(InferencePath.HIP.resolve(Device.gpu(0), new PrismShape.V2(384, 512, 256, 2)), InferencePath.EAGER);
+    assertEquals(
+        InferencePath.HIP.resolve(Device.gpu(0), ShapeArm.V4_S.shape()), InferencePath.HIP);
+    assertEquals(
+        InferencePath.HIP.resolve(Device.cpu(), ShapeArm.V4_S.shape()), InferencePath.EAGER);
+    assertEquals(
+        InferencePath.HIP.resolve(Device.gpu(0), new PrismShape.V2(384, 512, 256, 2)),
+        InferencePath.EAGER);
     assertEquals(InferencePath.EAGER.resolve(Device.gpu(0), standard), InferencePath.EAGER);
     Path root = Files.createTempDirectory("prism-hip-cpu");
     try {
@@ -260,7 +277,8 @@ public class NetworkPolicyHipTest {
   }
 
   /** バージョン {@link #VERSION} の HIP の方策を、呼び出したスレッドで評価する形で開く。レーンはテストで渡したもの。 */
-  private static NetworkPolicy hip(Path model, PriorSettings prior, int tokenBudget, PackLanes lanes) throws Exception {
+  private static NetworkPolicy hip(
+      Path model, PriorSettings prior, int tokenBudget, PackLanes lanes) throws Exception {
     return NetworkPolicy.hip(
         PolicyParams.of(VERSION),
         model,

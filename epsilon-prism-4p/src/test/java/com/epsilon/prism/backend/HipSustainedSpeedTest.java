@@ -1,5 +1,7 @@
 package com.epsilon.prism.backend;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDManager;
@@ -13,7 +15,6 @@ import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.model.PrismNetwork;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -84,7 +85,13 @@ public class HipSustainedSpeedTest {
     final double[] kernelMillis = new double[HipKernel.values().length];
     Throwable failure;
 
-    Lane(int gpu, WeightPack pack, BatchPlan.Capacity capacity, Batch batch, ByteBuffer out, Phases phases) {
+    Lane(
+        int gpu,
+        WeightPack pack,
+        BatchPlan.Capacity capacity,
+        Batch batch,
+        ByteBuffer out,
+        Phases phases) {
       this.gpu = gpu;
       this.batch = batch;
       this.out = out;
@@ -114,7 +121,13 @@ public class HipSustainedSpeedTest {
             backend.plan().profile(true);
             profileStart = System.nanoTime();
           }
-          backend.plan().forward(batch.blob().duplicate().position(0), batch.batch(), out.duplicate().position(0), version);
+          backend
+              .plan()
+              .forward(
+                  batch.blob().duplicate().position(0),
+                  batch.batch(),
+                  out.duplicate().position(0),
+                  version);
           backend.synchronize();
           long done = System.nanoTime();
           int rows = batch.batch().rows();
@@ -153,9 +166,12 @@ public class HipSustainedSpeedTest {
     int gpus = Engine.getInstance().getGpuCount();
     Assert.assertTrue(gpus > 0, "no visible GPU");
     Assert.assertTrue(LANES > 0, "prism.lanes must be positive: " + LANES);
-    HipFixtures.Arm arm = HipFixtures.Arm.valueOf(System.getProperty(ARM_PROPERTY, HipFixtures.Arm.V2_DEPTH_2.name()));
+    HipFixtures.Arm arm =
+        HipFixtures.Arm.valueOf(
+            System.getProperty(ARM_PROPERTY, HipFixtures.Arm.V2_DEPTH_2.name()));
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-        PtNDManager pinned = (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME)) {
+        PtNDManager pinned =
+            (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME)) {
       PrismNetwork network = HipFixtures.network(manager, arm.shape(), 72);
       WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 5);
       HostBatch encoded =
@@ -163,7 +179,7 @@ public class HipSustainedSpeedTest {
               HipFixtures.simulatedRows(SPEED_ROWS, 800),
               bytes -> pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer());
       Batch batch = new Batch(encoded.blob(), HipBackend.batchOf(encoded));
-      BatchPlan.Capacity capacity = BatchPlan.Capacity.standard(InputSchema.FORMAT);
+      BatchPlan.Capacity capacity = BatchPlan.Capacity.standard(FOUR_PLAYER);
       Phases phases = new Phases();
       List<Lane> lanes = new ArrayList<>();
       long fromEpoch;
@@ -219,7 +235,8 @@ public class HipSustainedSpeedTest {
    * GPU ごとに 1 行をログに書く。中身は、区間に終えた判断の数、1 判断あたりの経過時間、それをカーネルの割合で分けた時間、計時を入れていた間の
    * 1 判断あたりの経過時間。
    */
-  private static void report(int gpu, List<Lane> lanes, String arm, double seconds, long fromEpoch, long toEpoch) {
+  private static void report(
+      int gpu, List<Lane> lanes, String arm, double seconds, long fromEpoch, long toEpoch) {
     long measured = 0;
     long profiled = 0;
     double profiledSeconds = 0;
@@ -247,7 +264,9 @@ public class HipSustainedSpeedTest {
     StringBuilder line = new StringBuilder();
     for (HipKernel kernel : HipKernel.values()) {
       if (kernels[kernel.ordinal()] > 0) {
-        line.append(String.format(Locale.ROOT, " %s=%.3fus", kernel, wall * kernels[kernel.ordinal()] / spans));
+        line.append(
+            String.format(
+                Locale.ROOT, " %s=%.3fus", kernel, wall * kernels[kernel.ordinal()] / spans));
       }
     }
     // 計時を入れていた区間の長さをレーンで平均し、その間に終えた判断の数で割る

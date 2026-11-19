@@ -12,6 +12,8 @@ import com.epsilon.mahjong.engine.Engine;
 import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.input.EventTable;
+import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.RowEncoder;
 import org.testng.annotations.Test;
 
 /**
@@ -34,7 +36,7 @@ public class SharedEventReadTest {
   }
 
   private static final class Walk implements TableWalk.Visitor {
-    private final RowEncoder encoder = new RowEncoder();
+    private final RowEncoder encoder = new RowEncoder(InputFormat.of(TENHOU_4P));
     private final EventTable separateEvents = new EventTable(TENHOU_4P);
     private final TileCounts separateTiles = new TileCounts(TENHOU_4P);
     private final SeatFacts separateSeats = new SeatFacts(TENHOU_4P);

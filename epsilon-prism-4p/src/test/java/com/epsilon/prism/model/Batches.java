@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.nn.Parameter;
@@ -19,10 +21,8 @@ import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.Element;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.input.TokenLayout;
-import com.epsilon.prism4p.input.InputSchema;
-import com.epsilon.prism4p.input.InputSchema.ActionRole;
-import com.epsilon.prism4p.input.InputSchema.KeyBlock;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -41,7 +41,7 @@ final class Batches {
   private static final TargetSchema HEADS = TargetSchema.of(Variant.TENHOU_4P);
 
   /** テスト用の小さな形（CPU で速く回す）。 */
-  static PrismShape small(int depth) {
+  static PrismShape.V2 small(int depth) {
     return new PrismShape.V2(64, 128, 64, depth);
   }
 
@@ -133,12 +133,21 @@ final class Batches {
    * @param actions 手の数
    * @param sections 領域
    */
-  record Batch(List<Row> rows, int events, int transitions, int actions, Map<Tensor, ByteBuffer> sections) {
+  record Batch(
+      List<Row> rows, int events, int transitions, int actions, Map<Tensor, ByteBuffer> sections) {
 
     /** ネットワークの入力。 */
     NetworkInputs inputs(NDManager manager) {
+      var format = FOUR_PLAYER;
       return NetworkInputs.of(
-          manager, PinnedUploads.on(manager), InputSchema.FORMAT, rows.size(), events, transitions, actions, sections);
+          manager,
+          PinnedUploads.on(manager),
+          format,
+          rows.size(),
+          events,
+          transitions,
+          actions,
+          sections);
     }
 
     /** 行の最初の手の、バッチでの通し番号。 */
@@ -176,17 +185,20 @@ final class Batches {
     int count = rows.size();
     Map<Tensor, ByteBuffer> sections = new EnumMap<>(Tensor.class);
     for (Tensor tensor : Tensor.values()) {
-      int length = NetworkInputs.count(InputSchema.FORMAT, tensor.axis(), count, events, transitions, actions) * InputSchema.FORMAT.width(tensor);
+      int length =
+          NetworkInputs.count(FOUR_PLAYER, tensor.axis(), count, events, transitions, actions)
+              * FOUR_PLAYER.width(tensor);
       sections.put(
           tensor,
-          ByteBuffer.allocateDirect(length * tensor.element().bytes()).order(ByteOrder.nativeOrder()));
+          ByteBuffer.allocateDirect(length * tensor.element().bytes())
+              .order(ByteOrder.nativeOrder()));
     }
-    categories(sections.get(Tensor.ROUND_CATEGORY), InputSchema.ROUND, random);
-    categories(sections.get(Tensor.SEAT_CATEGORY), InputSchema.SEAT, random);
-    categories(sections.get(Tensor.TILE_CATEGORY), InputSchema.TILE, random);
-    categories(sections.get(Tensor.EVENT_CATEGORY), InputSchema.EVENT, random);
-    categories(sections.get(Tensor.RELATION), InputSchema.RELATION, random);
-    categories(sections.get(Tensor.TRANSITION_CATEGORY), InputSchema.TRANSITION, random);
+    categories(sections.get(Tensor.ROUND_CATEGORY), FOUR_PLAYER.round(), random);
+    categories(sections.get(Tensor.SEAT_CATEGORY), FOUR_PLAYER.seat(), random);
+    categories(sections.get(Tensor.TILE_CATEGORY), FOUR_PLAYER.tile(), random);
+    categories(sections.get(Tensor.EVENT_CATEGORY), FOUR_PLAYER.event(), random);
+    categories(sections.get(Tensor.RELATION), FOUR_PLAYER.relation(), random);
+    categories(sections.get(Tensor.TRANSITION_CATEGORY), FOUR_PLAYER.transition(), random);
     for (Tensor tensor : Tensor.values()) {
       ByteBuffer section = sections.get(tensor);
       if (tensor.element() == Element.BF16) {
@@ -199,7 +211,7 @@ final class Batches {
         }
       } else if (tensor == Tensor.TRANSITION_CODE) {
         while (section.hasRemaining()) {
-          section.put((byte) random.nextInt(KeyBlock.CODE_COUNT));
+          section.put((byte) random.nextInt(FOUR_PLAYER.keys().codes()));
         }
       }
     }
@@ -222,11 +234,24 @@ final class Batches {
         Move move = row.moves().get(m);
         int action = firstAction + m;
         putAction(actionColumns, action, ActionColumn.ROW, r);
-        putAction(actionColumns, action, ActionColumn.FIRST_TRANSITION, move.transitions() == 0 ? -1 : transition);
+        putAction(
+            actionColumns,
+            action,
+            ActionColumn.FIRST_TRANSITION,
+            move.transitions() == 0 ? -1 : transition);
         putAction(actionColumns, action, ActionColumn.TRANSITIONS, move.transitions());
-        putAction(actionColumns, action, ActionColumn.ROLE, roleOf(move.type()).ordinal());
-        putAction(actionColumns, action, ActionColumn.BASE, move.base() < 0 ? -1 : firstAction + move.base());
-        putAction(actionColumns, action, ActionColumn.REPRESENTATIVE, firstAction + move.representative());
+        putAction(
+            actionColumns, action, ActionColumn.ROLE, FOUR_PLAYER.roleIndex(roleOf(move.type())));
+        putAction(
+            actionColumns,
+            action,
+            ActionColumn.BASE,
+            move.base() < 0 ? -1 : firstAction + move.base());
+        putAction(
+            actionColumns,
+            action,
+            ActionColumn.REPRESENTATIVE,
+            firstAction + move.representative());
         transition += move.transitions();
       }
       firstEvent += row.events();
@@ -255,10 +280,19 @@ final class Batches {
 
   /** 教師のある全ての候補と全ての行の補助の教師。 */
   static AuxiliaryLabels auxiliary(Batch batch, long seed) {
+    return auxiliary(
+        batch.rows().size(),
+        batch.actions(),
+        a -> TargetSchema.hasCandidateTargets(batch.role(a)),
+        seed);
+  }
+
+  static AuxiliaryLabels auxiliary(
+      int rows, int actionCount, java.util.function.IntPredicate hasTarget, long seed) {
     Random random = new Random(seed);
     List<Integer> candidates = new ArrayList<>();
-    for (int a = 0; a < batch.actions(); a++) {
-      if (TargetSchema.hasCandidateTargets(batch.role(a))) {
+    for (int a = 0; a < actionCount; a++) {
+      if (hasTarget.test(a)) {
         candidates.add(a);
       }
     }
@@ -281,7 +315,6 @@ final class Batches {
       values[base + HEADS.offset(CandidateTarget.POINT_DELTA)] = random.nextInt(16001) - 8000;
       values[base + HEADS.offset(CandidateTarget.WINNER) + random.nextInt(3)] = 1f;
     }
-    int rows = batch.rows().size();
     int[] readingRows = new int[rows];
     float[] reading = new float[rows * HEADS.opponents() * HEADS.readingWidth()];
     for (int r = 0; r < rows; r++) {
@@ -289,11 +322,18 @@ final class Batches {
       for (int j = 0; j < HEADS.opponents(); j++) {
         int base = (r * HEADS.opponents() + j) * HEADS.readingWidth();
         reading[base + HEADS.offset(ReadingTarget.TENPAI)] = random.nextFloat() < 0.5f ? 1f : 0f;
-        reading[base + HEADS.offset(ReadingTarget.SHANTEN) + random.nextInt(TargetSchema.SHANTEN_CLASSES)] = 1f;
+        reading[
+                base
+                    + HEADS.offset(ReadingTarget.SHANTEN)
+                    + random.nextInt(TargetSchema.SHANTEN_CLASSES)] =
+            1f;
         for (int t = 0; t < HEADS.width(ReadingTarget.DANGER); t++) {
-          reading[base + HEADS.offset(ReadingTarget.DANGER) + t] = random.nextFloat() < 0.2f ? 1f : 0f;
-          reading[base + HEADS.offset(ReadingTarget.WAITS) + t] = random.nextFloat() < 0.2f ? 1f : 0f;
-          reading[base + HEADS.offset(ReadingTarget.DANGER_POINTS) + t] = 1000 + random.nextInt(11000);
+          reading[base + HEADS.offset(ReadingTarget.DANGER) + t] =
+              random.nextFloat() < 0.2f ? 1f : 0f;
+          reading[base + HEADS.offset(ReadingTarget.WAITS) + t] =
+              random.nextFloat() < 0.2f ? 1f : 0f;
+          reading[base + HEADS.offset(ReadingTarget.DANGER_POINTS) + t] =
+              1000 + random.nextInt(11000);
         }
       }
     }
@@ -364,11 +404,12 @@ final class Batches {
   }
 
   private static void putAction(ByteBuffer section, int action, ActionColumn column, int value) {
-    section.putInt((action * ActionColumn.values().length + column.ordinal()) * Integer.BYTES, value);
+    section.putInt(
+        (action * ActionColumn.values().length + column.ordinal()) * Integer.BYTES, value);
   }
 
   /** float を BF16 のビット列に丸める（最近接偶数）。 */
-  private static short bfloat16(float value) {
+  static short bfloat16(float value) {
     int bits = Float.floatToIntBits(value);
     return (short) ((bits + 0x7FFF + ((bits >>> 16) & 1)) >>> 16);
   }
@@ -377,6 +418,6 @@ final class Batches {
 
   /** 旧エンジンの手の種類に対応する {@code ActionRole}（同じ名前の新しい種類で引く）。 */
   private static ActionRole roleOf(Action.Type type) {
-    return ActionRole.of(type);
+    return FOUR_PLAYER.role(type);
   }
 }

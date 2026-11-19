@@ -1,5 +1,6 @@
 package com.epsilon.prism.policy;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -12,10 +13,11 @@ import com.epsilon.mahjong.action.Action;
 import com.epsilon.prism.TestSettings;
 import com.epsilon.prism.backend.HipFixtures;
 import com.epsilon.prism.backend.HipParity;
+import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.play.PublishedModel;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism4p.input.InputSchema.ActionRole;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -44,6 +46,14 @@ public class NetworkPolicyHipGpuTest {
   /** -Dprism.snapshot が無いときに作るバージョンの形のアームを渡すシステムプロパティ（{@link HipFixtures.Arm} の名前。既定は v2 の本番の形）。 */
   private static final String ARM_PROPERTY = "prism.arm";
 
+  @Test(
+      groups = "rocm",
+      dataProvider = "fourPlayerModels",
+      dataProviderClass = PublishedModel.class)
+  public void publishedHipScores(PublishedModel model) throws Exception {
+    model.assertHipScores();
+  }
+
   @Test(groups = "rocm")
   public void hipPolicyMatchesEager() throws Exception {
     if (Engine.getInstance().getGpuCount() == 0) {
@@ -54,7 +64,9 @@ public class NetworkPolicyHipGpuTest {
     Path root = Files.createTempDirectory("prism-hip-gpu");
     try {
       String given = System.getProperty("prism.snapshot");
-      HipFixtures.Arm arm = HipFixtures.Arm.valueOf(System.getProperty(ARM_PROPERTY, HipFixtures.Arm.V2_DEPTH_2.name()));
+      HipFixtures.Arm arm =
+          HipFixtures.Arm.valueOf(
+              System.getProperty(ARM_PROPERTY, HipFixtures.Arm.V2_DEPTH_2.name()));
       Path snapshot = given == null ? root.resolve("1") : Path.of(given);
       if (given == null) {
         NetworkPolicyTest.write(snapshot, arm.shape(), true);
@@ -67,7 +79,8 @@ public class NetworkPolicyHipGpuTest {
       Collected collected = new Collected();
       NetworkPolicy.Throughput eagerWork;
       NetworkPolicy.Throughput hipWork;
-      try (var execution = new NetworkRuntime(settings.encoders(), settings.slots(), settings.readyBatches());
+      try (var execution =
+              new NetworkRuntime(settings.encoders(), settings.slots(), settings.readyBatches());
           var eager = open(snapshot, gpu, execution, maxBatch, InferencePath.EAGER);
           var hip = open(snapshot, gpu, execution, maxBatch, InferencePath.HIP)) {
         assertEquals(eager.inference(), InferencePath.EAGER);
@@ -91,7 +104,8 @@ public class NetworkPolicyHipGpuTest {
       }
       HipParity.Report report = collected.compare();
       log.info(
-          "PRISM-HIP-POLICY-T5 snapshot={} shape={} decisions={} HIP vs eager (GPU BF16): {} relativeRMS={} T5={}",
+          "PRISM-HIP-POLICY-T5 snapshot={} shape={} decisions={} HIP vs eager (GPU BF16): {}"
+              + " relativeRMS={} T5={}",
           given == null ? "perturbed " + arm.label() : given,
           shape,
           report.rows(),
@@ -99,7 +113,8 @@ public class NetworkPolicyHipGpuTest {
           String.format(Locale.ROOT, "%.3e", collected.relativeRms()),
           report.passes() ? "PASS" : "FAIL");
       log.info(
-          "PRISM-HIP-POLICY-WORK one batch at a time: eager {} decisions {} s, HIP {} decisions {} s",
+          "PRISM-HIP-POLICY-WORK one batch at a time: eager {} decisions {} s, HIP {} decisions {}"
+              + " s",
           eagerWork.decisions(),
           String.format(Locale.ROOT, "%.1f", eagerWork.seconds()),
           hipWork.decisions(),
@@ -107,7 +122,8 @@ public class NetworkPolicyHipGpuTest {
       assertTrue(report.rows() > 0, "no decisions were compared");
       assertTrue(collected.finite(), "HIP or eager returned a non-finite score");
       assertTrue(
-          collected.relativeRms() <= SANITY_LIMIT, "HIP s against eager s: " + collected.relativeRms());
+          collected.relativeRms() <= SANITY_LIMIT,
+          "HIP s against eager s: " + collected.relativeRms());
     } finally {
       Snapshot.deleteTree(root);
     }
@@ -139,7 +155,7 @@ public class NetworkPolicyHipGpuTest {
       for (int a = 0; a < legal.length; a++) {
         hip.add(hipRequest.scores[a]);
         eager.add(eagerRequest.scores[a]);
-        roles.add(ActionRole.of(Action.of(legal[a]).type()));
+        roles.add(FOUR_PLAYER.role(Action.of(legal[a]).type()));
       }
     }
 

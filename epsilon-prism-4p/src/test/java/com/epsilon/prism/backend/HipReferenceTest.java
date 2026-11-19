@@ -1,5 +1,7 @@
 package com.epsilon.prism.backend;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
 import ai.djl.training.ParameterStore;
@@ -7,10 +9,10 @@ import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.hip.HipArchitecture;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputFormat.Role;
+import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.model.EagerStages;
 import com.epsilon.prism.model.PrismNetwork;
-import com.epsilon.prism4p.input.InputSchema;
-import com.epsilon.prism4p.input.InputSchema.ActionRole;
+import com.epsilon.prism.model.PrismShape;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -44,7 +46,9 @@ public class HipReferenceTest {
 
   @DataProvider
   public Object[][] arms() {
-    return HipFixtures.Arm.selected().stream().map(arm -> new Object[] {arm}).toArray(Object[][]::new);
+    return HipFixtures.Arm.selected().stream()
+        .map(arm -> new Object[] {arm})
+        .toArray(Object[][]::new);
   }
 
   @Test(dataProvider = "arms")
@@ -70,7 +74,8 @@ public class HipReferenceTest {
       EagerStages.Stages eager;
       EagerStages.Stages full;
       try (NDManager scope = manager.newSubManager()) {
-        eager = EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.BFLOAT16);
+        eager =
+            EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.BFLOAT16);
       }
       try (NDManager scope = manager.newSubManager()) {
         full = EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.FLOAT32);
@@ -88,18 +93,27 @@ public class HipReferenceTest {
       check(failures, prefix + "K1 t_s", Diff.bf16(eager.statics(), reference.statics));
       int allTokens = architecture.allTokenLayers();
       for (int layer = 0; layer < allTokens; layer++) {
-        reference.residual = (layer == 0 ? eager.embedded() : eager.layers().get(layer - 1)).clone();
+        reference.residual =
+            (layer == 0 ? eager.embedded() : eager.layers().get(layer - 1)).clone();
         reference.attention(in, layer);
-        check(failures, prefix + "K2 o layer " + layer, Diff.bf16(eager.attention().get(layer), reference.attentionOut));
+        check(
+            failures,
+            prefix + "K2 o layer " + layer,
+            Diff.bf16(eager.attention().get(layer), reference.attentionOut));
         reference.attentionOut = eager.attention().get(layer).clone();
         reference.mlp(in, layer);
-        check(failures, prefix + "K3 x layer " + layer, Diff.bf16(eager.layers().get(layer), reference.residual));
+        check(
+            failures,
+            prefix + "K3 x layer " + layer,
+            Diff.bf16(eager.layers().get(layer), reference.residual));
       }
       float[] backbone = eager.layers().get(allTokens - 1);
       reference.residual = backbone.clone();
       reference.eventKeyValue(in);
       for (int f = 0; f < architecture.fixedLayers(); f++) {
-        check(failures, prefix + "K8 kv layer " + (allTokens + f),
+        check(
+            failures,
+            prefix + "K8 kv layer " + (allTokens + f),
             Diff.bf16(eager.eventKeyValues().get(f), reference.eventKeyValues[f]));
       }
       for (int layer = allTokens; layer < architecture.depth(); layer++) {
@@ -107,12 +121,16 @@ public class HipReferenceTest {
         System.arraycopy(eager.layers().get(layer - 1), 0, reference.residual, 0, fixedValues);
         reference.attention(in, layer);
         float[] attended = eager.attention().get(layer);
-        check(failures, prefix + "K4 o layer " + layer,
+        check(
+            failures,
+            prefix + "K4 o layer " + layer,
             Diff.bf16(attended, Arrays.copyOf(reference.attentionOut, attended.length)));
         System.arraycopy(attended, 0, reference.attentionOut, 0, attended.length);
         if (layer + 1 < architecture.depth()) {
           reference.mlp(in, layer);
-          check(failures, prefix + "K3 fixed x layer " + layer,
+          check(
+              failures,
+              prefix + "K3 fixed x layer " + layer,
               Diff.bf16(eager.layers().get(layer), Arrays.copyOf(reference.residual, fixedValues)));
         } else {
           reference.mlpLast(in, layer);
@@ -123,13 +141,18 @@ public class HipReferenceTest {
       if (architecture.reread()) {
         reference.state = eager.states().clone();
         reference.rereadKeyValue(in);
-        check(failures, prefix + "K8 reread", Diff.bf16(eager.rereadMemory(), reference.rereadMemory));
+        check(
+            failures,
+            prefix + "K8 reread",
+            Diff.bf16(eager.rereadMemory(), reference.rereadMemory));
       }
       reference.statics = eager.statics().clone();
       reference.state = eager.states().clone();
       reference.memory = eager.memory().clone();
       reference.candidate(in);
-      check(failures, prefix + (architecture.reread() ? "K6 z1" : "K6 z"),
+      check(
+          failures,
+          prefix + (architecture.reread() ? "K6 z1" : "K6 z"),
           Diff.bf16(eager.candidates(), reference.transitions));
       if (architecture.reread()) {
         reference.transitions = eager.candidates().clone();
@@ -145,9 +168,18 @@ public class HipReferenceTest {
 
       float[] scores = new HipReference(pack).forward(batch);
       HipParity.Actions actions = HipParity.Actions.of(batch);
-      log.info("{}T5 vs eager BF16: {}", prefix, HipParity.compare(scores, eager.scores(), actions).summary());
-      log.info("{}T5 vs eager FP32: {}", prefix, HipParity.compare(scores, full.scores(), actions).summary());
-      log.info("{}eager BF16 vs FP32: {}", prefix, HipParity.compare(eager.scores(), full.scores(), actions).summary());
+      log.info(
+          "{}T5 vs eager BF16: {}",
+          prefix,
+          HipParity.compare(scores, eager.scores(), actions).summary());
+      log.info(
+          "{}T5 vs eager FP32: {}",
+          prefix,
+          HipParity.compare(scores, full.scores(), actions).summary());
+      log.info(
+          "{}eager BF16 vs FP32: {}",
+          prefix,
+          HipParity.compare(eager.scores(), full.scores(), actions).summary());
       Diff diff = Diff.fp32(eager.scores(), scores);
       log.info(diff.line(prefix + "s vs eager BF16"));
       if (!(diff.relativeRms() <= SCORE_LIMIT)) {
@@ -157,28 +189,46 @@ public class HipReferenceTest {
     }
   }
 
-  @Test(dataProvider = "arms")
-  public void blankNetworkScoresPositiveZero(HipFixtures.Arm arm) {
+  @Test(dataProvider = "scoreShapes", dataProviderClass = HipFixtures.class)
+  public void packedScoresMatchEager(PrismShape shape) {
+    HostBatch batch = HipFixtures.encode(mixedRows(6));
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+      PrismNetwork network = HipFixtures.network(manager, shape, 72);
+      WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 0);
+      float[] expected =
+          EagerStages.scores(
+              network,
+              new ParameterStore(manager, false),
+              EagerStages.inputs(manager, batch),
+              Precision.BFLOAT16);
+      Diff diff = Diff.fp32(expected, new HipReference(pack).forward(batch));
+      Assert.assertTrue(diff.relativeRms() <= SCORE_LIMIT, diff.line(shape.toString()));
+    }
+  }
+
+  @Test(dataProvider = "scoreShapes", dataProviderClass = HipFixtures.class)
+  public void blankNetworkScoresPositiveZero(PrismShape shape) {
     HostBatch batch = HipFixtures.encode(mixedRows(ROWS));
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       manager.getEngine().setRandomSeed(5);
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, arm.shape());
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
       network.initialize(manager);
       WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 0);
       float[] scores = new HipReference(pack).forward(batch);
       for (int a = 0; a < scores.length; a++) {
-        Assert.assertEquals(Float.floatToRawIntBits(scores[a]), 0, arm.label() + " blank score " + a + " = " + scores[a]);
+        Assert.assertEquals(
+            Float.floatToRawIntBits(scores[a]), 0, shape + " blank score " + a + " = " + scores[a]);
       }
     }
   }
 
-  @Test(dataProvider = "arms")
-  public void rebatchingKeepsRowScores(HipFixtures.Arm arm) {
+  @Test(dataProvider = "scoreShapes", dataProviderClass = HipFixtures.class)
+  public void rebatchingKeepsRowScores(PrismShape shape) {
     List<long[]> rows = mixedRows(ROWS);
     List<long[]> shuffled = new ArrayList<>(rows);
     Collections.shuffle(shuffled, new Random(3));
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      PrismNetwork network = HipFixtures.network(manager, arm.shape(), 31 + arm.ordinal());
+      PrismNetwork network = HipFixtures.network(manager, shape, 31);
       WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 1);
       HostBatch first = HipFixtures.encode(rows);
       HostBatch second = HipFixtures.encode(shuffled);
@@ -192,7 +242,7 @@ public class HipReferenceTest {
           Assert.assertEquals(
               Float.floatToRawIntBits(b[HipFixtures.firstAction(second, s) + k]),
               Float.floatToRawIntBits(a[HipFixtures.firstAction(first, r) + k]),
-              arm.label() + " row " + r + " action " + k);
+              shape + " row " + r + " action " + k);
         }
       }
     }

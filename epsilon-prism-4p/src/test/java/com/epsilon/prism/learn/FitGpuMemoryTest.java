@@ -1,5 +1,6 @@
 package com.epsilon.prism.learn;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertEquals;
 
 import ai.djl.Device;
@@ -9,9 +10,9 @@ import ai.djl.pytorch.engine.PtEngine;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.model.AuxiliaryLoss;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
-import com.epsilon.prism4p.input.InputSchema;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,20 +41,32 @@ public class FitGpuMemoryTest {
       throw new SkipException("no GPU");
     }
     NetworkDevices devices =
-        gpus >= 2 ? NetworkDevices.of(Device.gpu(1), Device.gpu(0)) : NetworkDevices.of(Device.gpu(0));
+        gpus >= 2
+            ? NetworkDevices.of(Device.gpu(1), Device.gpu(0))
+            : NetworkDevices.of(Device.gpu(0));
     PtEngine engine = (PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME);
     Path root = Files.createTempDirectory("prism-fit-memory");
     try {
       SyntheticCohort.write(root.resolve("1"), 1, SyntheticCohort.rows(500, 4, 1));
       FitPlan plan =
           new FitPlan(
-              new FitSettings(STEPS, 512, 2e-4, 1e-5, 0.5f, 0.01, 0.02),
+              new FitSettings(
+                  STEPS,
+                  512,
+                  2e-4,
+                  1e-5,
+                  0.5f,
+                  0.01,
+                  0.02,
+                  PairLoss.Mode.PRISM,
+                  PairLoss.ClassWeight.INVERSE_LAMBDA,
+                  AdamEpsilon.FIXED),
               PrismShape.standard(),
               AuxiliaryLoss.standard(),
               FitPlan.TOKEN_BUDGET,
               3);
       Path start = root.resolve("network-0");
-      try (Model blank = Fit.blank(InputSchema.FORMAT, plan.shape(), Device.cpu(), plan.seed())) {
+      try (Model blank = Fit.blank(FOUR_PLAYER, plan.shape(), Device.cpu(), plan.seed())) {
         ((PrismNetwork) blank.getBlock()).save(start);
       }
       long[] first = null;
@@ -72,11 +85,16 @@ public class FitGpuMemoryTest {
           for (int lane = 0; lane < allocated.length; lane++) {
             allocated[lane] = engine.getMemoryStats(devices.get(lane)).getAllocatedBytes();
           }
-          log.info("PRISM-FIT-MEMORY fit={} devices={} allocated={}", fit, devices.devices(), Arrays.toString(allocated));
+          log.info(
+              "PRISM-FIT-MEMORY fit={} devices={} allocated={}",
+              fit,
+              devices.devices(),
+              Arrays.toString(allocated));
           if (first == null) {
             first = allocated;
           } else {
-            assertEquals(allocated, first, "bytes allocated on " + devices.devices() + " after fit " + fit);
+            assertEquals(
+                allocated, first, "bytes allocated on " + devices.devices() + " after fit " + fit);
           }
         }
       }

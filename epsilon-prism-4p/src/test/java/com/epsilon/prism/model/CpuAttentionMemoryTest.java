@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.engine.InferenceMode;
 import ai.djl.ndarray.NDManager;
@@ -7,7 +9,6 @@ import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.model.Batches.Batch;
-import com.epsilon.prism4p.input.InputSchema;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -48,11 +49,11 @@ public class CpuAttentionMemoryTest {
     List<ValueLabel> labels = Batches.values(batch, 11);
     boolean[] measured = ValueLabel.measured(labels);
     PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
-    long tokens = InputSchema.FORMAT.fixedTokens() + EVENTS;
+    long tokens = FOUR_PLAYER.fixedTokens() + EVENTS;
     long pairs = ROWS * tokens * tokens;
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       manager.getEngine().setRandomSeed(5);
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, shape);
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
       network.initialize(manager);
       ParameterStore store = new ParameterStore(manager, false);
       Runnable inference =
@@ -84,8 +85,10 @@ public class CpuAttentionMemoryTest {
           inferencePeak / pairs,
           trainingPeak / pairs,
           pairs);
-      Assert.assertTrue(inferencePeak < BYTES_PER_PAIR * pairs, "inference peak " + inferencePeak + " B");
-      Assert.assertTrue(trainingPeak < BYTES_PER_PAIR * pairs, "training peak " + trainingPeak + " B");
+      Assert.assertTrue(
+          inferencePeak < BYTES_PER_PAIR * pairs, "inference peak " + inferencePeak + " B");
+      Assert.assertTrue(
+          trainingPeak < BYTES_PER_PAIR * pairs, "training peak " + trainingPeak + " B");
     }
   }
 

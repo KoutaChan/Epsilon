@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDArray;
@@ -10,16 +12,21 @@ import ai.djl.pytorch.engine.PtStreamScope;
 import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.Precision;
+import com.epsilon.prism.auxiliary.TargetSchema;
+import com.epsilon.prism.backend.HipFixtures;
+import com.epsilon.prism.backend.HipParity;
+import com.epsilon.prism.backend.V4BitFixture;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.hip.TrainingKernels;
 import com.epsilon.prism.model.Batches.Batch;
-import com.epsilon.prism4p.input.InputSchema;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +69,8 @@ public class AttentionTapeGpuTest {
   private static final double MARGIN = Math.log(1.05);
 
   /** Attention に接するパラメーター（層ごとの qkv の射影、関係の表 ρ、O の射影）。 */
-  private static final Pattern ATTENTION = Pattern.compile("encoder\\d+_(qkv|qkvBias|relation|output|outputBias)$");
+  private static final Pattern ATTENTION =
+      Pattern.compile("encoder\\d+_(qkv|qkvBias|relation|output|outputBias)$");
 
   /** 判定する差の種類（s、全ての勾配、Attention に接する勾配）。 */
   private enum Metric {
@@ -71,24 +79,171 @@ public class AttentionTapeGpuTest {
     ATTENTION
   }
 
-  @Test(groups = "rocm")
-  public void tapeMatchesTheDjlOperator() {
-    if (Engine.getInstance().getGpuCount() == 0) {
-      throw new SkipException("no GPU");
-    }
-    for (int depth = PrismShape.MIN_DEPTH; depth <= PrismShape.MAX_DEPTH; depth++) {
-      compare(PrismShape.standard(depth), Precision.BFLOAT16);
+  @DataProvider
+  public Object[][] v4KernelArms() {
+    return new Object[][] {
+      {"V4_S", new PrismShape.V4()},
+      {"V4_M", new PrismShape.V4(384)},
+      {"V4_S_BIDIRECTIONAL", com.epsilon.prism.model.ModelShapes.bidirectional(256)},
+      {"V4_M_BIDIRECTIONAL", com.epsilon.prism.model.ModelShapes.bidirectional(384)}
+    };
+  }
+
+  @Test(groups = "rocm", dataProvider = "v4KernelArms")
+  public void v4KernelGradients(String arm, PrismShape.V4 shape) throws java.io.IOException {
+    Device gpu = Device.gpu(0);
+    try (NDManager manager = NDManager.newBaseManager(gpu, "PyTorch");
+        PtStream stream = ((PtEngine) manager.getEngine()).newStream(gpu);
+        PtStreamScope ignored = stream.openScope()) {
+      HipAttention attention = HipAttention.on(HipLibrary.load(), stream);
+      compareV4KernelPrecisions(arm + "/random", network(manager, shape, 0), manager, attention);
+      String checkpoints = System.getProperty("prism.v4.checkpoints");
+      if (checkpoints != null) {
+        PrismNetwork trained = PrismNetwork.load(java.nio.file.Path.of(checkpoints, arm), manager);
+        Assert.assertEquals(trained.shape(), shape);
+        trained
+            .getParameters()
+            .forEach(pair -> pair.getValue().getArray().setRequiresGradient(true));
+        compareV4KernelPrecisions(arm + "/trained", trained, manager, attention);
+      }
     }
   }
 
-  @Test(groups = "rocm")
-  public void tapeMatchesTheDjlOperatorInFloat32() {
+  private static void compareV4KernelPrecisions(
+      String label, PrismNetwork network, NDManager manager, HipAttention attention) {
+    compareV4KernelGradients(
+        label + "/BF16", network, manager, new AttentionTape(attention), Precision.BFLOAT16);
+    if (System.getProperty("prism.v4.bitFixtures") != null) {
+      AttentionTape fp32 =
+          network.shape() instanceof PrismShape.V4 && Boolean.getBoolean("prism.v4.fp32Candidate")
+              ? AttentionTape.candidateOnly(attention)
+              : null;
+      compareV4KernelGradients(label + "/FP32", network, manager, fp32, Precision.FLOAT32);
+    }
+  }
+
+  private static void compareV4KernelGradients(
+      String label,
+      PrismNetwork network,
+      NDManager manager,
+      AttentionTape tape,
+      Precision precision) {
+    var host = HipFixtures.encode(HipFixtures.mixedRows(48, 800), network.shape());
+    var actions = HipParity.Actions.of(host);
+    Random random = new Random(11);
+    List<ValueLabel> labels = new ArrayList<>();
+    for (int count : actions.rowCount()) {
+      float[] values = new float[count];
+      for (int i = 0; i < count; i++) {
+        values[i] = random.nextFloat() - 0.5f;
+      }
+      labels.add(new ValueLabel(values, 0.1f, 1f));
+    }
+    AuxiliaryLabels auxiliary =
+        Batches.auxiliary(
+            labels.size(),
+            actions.roles().length,
+            a -> TargetSchema.hasCandidateTargets(actions.roles()[a]),
+            13);
+    Function<NDManager, NetworkInputs> inputs = scope -> EagerStages.inputs(scope, host);
+    Outcome hip =
+        runWithTape(
+            network,
+            manager,
+            tape,
+            precision,
+            Context.Intermediates.CLOSE,
+            inputs,
+            labels,
+            auxiliary);
+    checkV4TrainingBits(label, hip);
+    if (precision == Precision.FLOAT32) return;
+    Outcome eager =
+        run(
+            network,
+            manager,
+            null,
+            precision,
+            Context.Intermediates.CLOSE,
+            inputs,
+            labels,
+            auxiliary);
+    double gradients = report(label, "HIP BF16 vs eager BF16", eager, hip);
+    Assert.assertEquals(hip.loss(), eager.loss(), 1e-3f * Math.abs(eager.loss()) + 1e-5f);
+    Assert.assertTrue(relative(eager.scores(), hip.scores()) < 2e-2, label + " scores");
+    Assert.assertTrue(gradients < 2e-2, label + " gradients " + gradients);
+    for (var entry : eager.gradients().entrySet()) {
+      if (entry.getKey().contains("candidateFeatures")) {
+        double error = relative(entry.getValue(), hip.gradients().get(entry.getKey()));
+        log.info("PRISM-V4-GRADIENT {} {} relative L2 {}", label, entry.getKey(), error);
+        Assert.assertTrue(error < 5e-2, label + " " + entry.getKey() + " gradient " + error);
+      }
+    }
+  }
+
+  private static void checkV4TrainingBits(String label, Outcome hip) {
+    var scores = V4BitFixture.compare(label, "training-scores", hip.scores());
+    var loss = V4BitFixture.compare(label, "training-loss", new float[] {hip.loss()});
+    var total = new V4BitFixture.Difference(0, 0, 0.0, 0.0, 0f);
+    var groups = new java.util.TreeMap<String, V4BitFixture.Difference>();
+    for (var entry : hip.gradients().entrySet()) {
+      String name = entry.getKey();
+      var diff = V4BitFixture.compare(label, name, entry.getValue());
+      total = total.plus(diff);
+      String group =
+          name.contains("candidateFeatures_02segments_")
+                  || name.matches(".*candidate_code(Key|Value)$")
+              ? "K"
+              : name.contains("candidateFeatures_01count_")
+                  ? "DeltaC"
+                  : name.matches(".*(stateEmbedding|encoder\\d+|finalNorm)_.*") ? "trunk" : "other";
+      groups.merge(group, diff, V4BitFixture.Difference::plus);
+    }
+    groups.forEach(
+        (group, diff) ->
+            log.info(
+                "PRISM-V4-BITS {} {} different={}/{} rel={} max={}",
+                label,
+                group,
+                diff.differing(),
+                diff.elements(),
+                diff.relativeL2(),
+                diff.max()));
+    log.info(
+        "PRISM-V4-BITS {} training scores different={}/{} loss different={} gradients"
+            + " different={}/{} rel={} max={}",
+        label,
+        scores.differing(),
+        scores.elements(),
+        loss.differing(),
+        total.differing(),
+        total.elements(),
+        total.relativeL2(),
+        total.max());
+    Assert.assertEquals(
+        scores.differing() + loss.differing(), 0L, label + " training forward bits");
+    if (Boolean.getBoolean("prism.v4.strictGradientBits")) {
+      Assert.assertEquals(total.differing(), 0L, label + " gradient bits");
+    }
+  }
+
+  @DataProvider
+  public Object[][] sharedLayers() {
+    return java.util.stream.Stream.of(
+            PrismShape.standard(2), PrismShape.standard(3), ShapeArm.V4_S.shape())
+        .flatMap(
+            shape ->
+                java.util.Arrays.stream(Precision.values())
+                    .map(precision -> new Object[] {shape, precision}))
+        .toArray(Object[][]::new);
+  }
+
+  @Test(groups = "rocm", dataProvider = "sharedLayers")
+  public void tapeMatchesTheDjlOperator(PrismShape shape, Precision precision) {
     if (Engine.getInstance().getGpuCount() == 0) {
       throw new SkipException("no GPU");
     }
-    for (int depth = PrismShape.MIN_DEPTH; depth <= PrismShape.MAX_DEPTH; depth++) {
-      compare(PrismShape.standard(depth), Precision.FLOAT32);
-    }
+    compare(shape, precision);
   }
 
   /**
@@ -119,15 +274,18 @@ public class AttentionTapeGpuTest {
         Outcome truth = run(network, manager, batch, null, Precision.FLOAT32);
         Outcome djl = run(network, manager, batch, null, Precision.BFLOAT16);
         Outcome hip = run(network, manager, batch, attention, Precision.BFLOAT16);
-        Assert.assertEquals(silent(hip), List.of(), arm + " seed " + seed + " HIP gradients that are exactly zero");
-        Assert.assertEquals(silent(djl), List.of(), arm + " seed " + seed + " djl gradients that are exactly zero");
+        Assert.assertEquals(
+            silent(hip), List.of(), arm + " seed " + seed + " HIP gradients that are exactly zero");
+        Assert.assertEquals(
+            silent(djl), List.of(), arm + " seed " + seed + " djl gradients that are exactly zero");
         loss[seed] = Math.abs(hip.loss() - djl.loss()) / Math.abs(djl.loss());
         scores[seed] = relative(djl.scores(), hip.scores());
         gradients[seed] = errors(djl, hip).get(Metric.GRADIENTS);
         djlRounding[seed] = relative(truth.scores(), djl.scores());
         hipRounding[seed] = relative(truth.scores(), hip.scores());
         log.info(
-            "PRISM-TAPE-TYPED {} seed={} loss {} vs {} rel={} s rel={} gradients rel={} from FP32 s djl={} hip={}",
+            "PRISM-TAPE-TYPED {} seed={} loss {} vs {} rel={} s rel={} gradients rel={} from FP32 s"
+                + " djl={} hip={}",
             arm,
             seed,
             String.format("%.6f", djl.loss()),
@@ -140,7 +298,8 @@ public class AttentionTapeGpuTest {
       }
     }
     log.info(
-        "PRISM-TAPE-TYPED-SUMMARY {} seeds={} mean loss rel={} s rel={} (max {}) gradients rel={} (max {}) from FP32 s djl={} hip={}",
+        "PRISM-TAPE-TYPED-SUMMARY {} seeds={} mean loss rel={} s rel={} (max {}) gradients rel={}"
+            + " (max {}) from FP32 s djl={} hip={}",
         arm,
         TYPED_SEEDS,
         String.format("%.3g", mean(loss)),
@@ -155,7 +314,11 @@ public class AttentionTapeGpuTest {
     Assert.assertTrue(mean(gradients) <= 2e-2, "mean gradients rel " + mean(gradients));
     Assert.assertTrue(
         mean(hipRounding) <= 1.25 * mean(djlRounding),
-        "the HIP path is further from FP32 (" + mean(hipRounding) + ") than djl (" + mean(djlRounding) + ")");
+        "the HIP path is further from FP32 ("
+            + mean(hipRounding)
+            + ") than djl ("
+            + mean(djlRounding)
+            + ")");
   }
 
   /** 型ごとの FFN の V3 のアーム（FP32 の参照の実装の経路で、記録のつなぎ込みを比べる）。 */
@@ -195,28 +358,48 @@ public class AttentionTapeGpuTest {
         HipAttention attention = HipAttention.on(HipLibrary.load(), stream);
         // 1 回目は、勾配のバッファとカーネルを用意するためのウォームアップ
         run(network, manager, batch, attention, Precision.BFLOAT16, Context.Intermediates.CLOSE);
-        Outcome kept = run(network, manager, batch, attention, Precision.BFLOAT16, Context.Intermediates.KEEP);
-        Outcome closed = run(network, manager, batch, attention, Precision.BFLOAT16, Context.Intermediates.CLOSE);
-        Outcome again = run(network, manager, batch, attention, Precision.BFLOAT16, Context.Intermediates.CLOSE);
+        Outcome kept =
+            run(network, manager, batch, attention, Precision.BFLOAT16, Context.Intermediates.KEEP);
+        Outcome closed =
+            run(
+                network,
+                manager,
+                batch,
+                attention,
+                Precision.BFLOAT16,
+                Context.Intermediates.CLOSE);
+        Outcome again =
+            run(
+                network,
+                manager,
+                batch,
+                attention,
+                Precision.BFLOAT16,
+                Context.Intermediates.CLOSE);
         String label =
             switch (shape) {
               case PrismShape.V2 v2 -> "depth=2";
               case PrismShape.V3 v3 -> "typed";
+              case PrismShape.V4 v4 -> v4.toString();
             };
         double difference = report(label, "keep-vs-close", kept, closed);
         double wobble = report(label, "close-vs-close", closed, again);
         log.info(
-            "PRISM-TAPE-PEAK shape={} rows={} step peak keep={}GB close={}GB gradients rel keep-close={} close-close={}",
+            "PRISM-TAPE-PEAK shape={} rows={} step peak keep={}GB close={}GB gradients rel"
+                + " keep-close={} close-close={}",
             shape,
             PEAK_ROWS,
             String.format("%.3f", kept.peakBytes() / 1e9),
             String.format("%.3f", closed.peakBytes() / 1e9),
             String.format("%.3g", difference),
             String.format("%.3g", wobble));
-        Assert.assertEquals(relative(kept.scores(), closed.scores()), 0d, "scores of the same forward");
-        Assert.assertTrue(closed.peakBytes() < kept.peakBytes(), "closing must lower the step peak");
+        Assert.assertEquals(
+            relative(kept.scores(), closed.scores()), 0d, "scores of the same forward");
+        Assert.assertTrue(
+            closed.peakBytes() < kept.peakBytes(), "closing must lower the step peak");
         Assert.assertTrue(difference <= Math.max(2 * wobble, 2e-3), "gradients rel " + difference);
-        Assert.assertTrue(engine.getMemoryStats(gpu).getOutOfMemoryCount() == 0, "no allocation failed");
+        Assert.assertTrue(
+            engine.getMemoryStats(gpu).getOutOfMemoryCount() == 0, "no allocation failed");
       }
     }
   }
@@ -256,14 +439,20 @@ public class AttentionTapeGpuTest {
           Outcome truth = run(network, manager, batch, null, Precision.FLOAT32);
           Outcome djl = run(network, manager, batch, null, Precision.BFLOAT16);
           Outcome host = run(network, manager, batch, new ReferenceAttention(), Precision.BFLOAT16);
-          Outcome hip = run(network, manager, batch, HipAttention.on(HipLibrary.load(), stream), Precision.BFLOAT16);
+          Outcome hip =
+              run(
+                  network,
+                  manager,
+                  batch,
+                  HipAttention.on(HipLibrary.load(), stream),
+                  Precision.BFLOAT16);
           Map<Metric, Double> eDjl = errors(truth, djl);
           Map<Metric, Double> eHost = errors(truth, host);
           Map<Metric, Double> eHip = errors(truth, hip);
           log.info(
-              "PRISM-TAPE-ACCURACY depth={} seed={} scores djl={} host={} hip={} gradients djl={} host={}"
-                  + " hip={} attention djl={} host={} hip={} hip-host scores={} loss fp32={} djl={}"
-                  + " host={} hip={}",
+              "PRISM-TAPE-ACCURACY depth={} seed={} scores djl={} host={} hip={} gradients djl={}"
+                  + " host={} hip={} attention djl={} host={} hip={} hip-host scores={} loss"
+                  + " fp32={} djl={} host={} hip={}",
               depth,
               seed,
               String.format("%.6f", eDjl.get(Metric.SCORES)),
@@ -304,8 +493,8 @@ public class AttentionTapeGpuTest {
     for (Metric metric : Metric.values()) {
       String verdict = verdict(hipHost.get(metric));
       log.info(
-          "PRISM-TAPE-ACCURACY-SUMMARY metric={} ln(e_hip/e_host) {} verdict={} | ln(e_hip/e_djl) {} |"
-              + " ln(e_djl/e_host) {}",
+          "PRISM-TAPE-ACCURACY-SUMMARY metric={} ln(e_hip/e_host) {} verdict={} | ln(e_hip/e_djl)"
+              + " {} | ln(e_djl/e_host) {}",
           metric,
           summary(hipHost.get(metric)),
           verdict,
@@ -315,7 +504,8 @@ public class AttentionTapeGpuTest {
         failures.append(' ').append(metric);
       }
     }
-    Assert.assertTrue(failures.isEmpty(), "HIP less accurate than the reference attention:" + failures);
+    Assert.assertTrue(
+        failures.isEmpty(), "HIP less accurate than the reference attention:" + failures);
   }
 
   /** 1 回の順伝播と逆伝播の結果。{@code peakBytes} は、ステップの前の確保量からの VRAM のピークの増え。 */
@@ -325,7 +515,7 @@ public class AttentionTapeGpuTest {
   /** 種で決まる、乱したネットワーク（種 0 は {@link #tapeMatchesTheDjlOperator} と同じネットワーク）。 */
   private static PrismNetwork network(NDManager manager, PrismShape shape, int seed) {
     manager.getEngine().setRandomSeed(3 + seed);
-    PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, shape);
+    PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
     network.initialize(manager);
     Batches.perturb(network, 0.05f, 7 + seed);
     return network;
@@ -357,6 +547,7 @@ public class AttentionTapeGpuTest {
         switch (shape) {
           case PrismShape.V2 v2 -> "depth=" + v2.depth();
           case PrismShape.V3 v3 -> "typed=" + v3;
+          case PrismShape.V4 v4 -> v4.toString();
         };
     try (NDManager manager = NDManager.newBaseManager(gpu, "PyTorch");
         PtStream stream = ((PtEngine) manager.getEngine()).newStream(gpu);
@@ -366,7 +557,8 @@ public class AttentionTapeGpuTest {
       Outcome reference = run(network, manager, batch, null, precision);
       Outcome host = run(network, manager, batch, new ReferenceAttention(), precision);
       Assert.assertTrue(Batches.maxAbs(reference.scores()) > 1e-3f, "scores must be non-trivial");
-      Assert.assertEquals(silent(reference), List.of(), label + " djl gradients that are exactly zero");
+      Assert.assertEquals(
+          silent(reference), List.of(), label + " djl gradients that are exactly zero");
       Assert.assertEquals(silent(host), List.of(), label + " host gradients that are exactly zero");
       if (precision == Precision.FLOAT32) {
         double total = report(label, "host-fp32", reference, host);
@@ -465,8 +657,39 @@ public class AttentionTapeGpuTest {
       TrainingKernels attention,
       Precision precision,
       Context.Intermediates intermediates) {
-    List<ValueLabel> labels = Batches.values(batch, 11);
-    AuxiliaryLabels auxiliary = Batches.auxiliary(batch, 13);
+    return run(
+        network,
+        manager,
+        attention,
+        precision,
+        intermediates,
+        batch::inputs,
+        Batches.values(batch, 11),
+        Batches.auxiliary(batch, 13));
+  }
+
+  private static Outcome run(
+      PrismNetwork network,
+      NDManager manager,
+      TrainingKernels attention,
+      Precision precision,
+      Context.Intermediates intermediates,
+      Function<NDManager, NetworkInputs> inputs,
+      List<ValueLabel> labels,
+      AuxiliaryLabels auxiliary) {
+    AttentionTape tape = attention == null ? null : new AttentionTape(attention);
+    return runWithTape(network, manager, tape, precision, intermediates, inputs, labels, auxiliary);
+  }
+
+  private static Outcome runWithTape(
+      PrismNetwork network,
+      NDManager manager,
+      AttentionTape tape,
+      Precision precision,
+      Context.Intermediates intermediates,
+      Function<NDManager, NetworkInputs> inputs,
+      List<ValueLabel> labels,
+      AuxiliaryLabels auxiliary) {
     boolean[] measured = ValueLabel.measured(labels);
     PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
     PtEngine engine = (PtEngine) manager.getEngine();
@@ -478,11 +701,10 @@ public class AttentionTapeGpuTest {
     float[] scores;
     try (NDManager step = manager.newSubManager();
         GradientCollector collector = manager.getEngine().newGradientCollector()) {
-      AttentionTape tape = attention == null ? null : new AttentionTape(attention);
       Outputs outputs =
           network.forward(
               new ParameterStore(manager, false),
-              batch.inputs(step),
+              inputs.apply(step),
               Pass.training(precision, measured, auxiliary, tape),
               intermediates);
       NDArray total = loss.total(step, outputs, labels, auxiliary, 1f, labels.size(), 1f);
@@ -506,7 +728,8 @@ public class AttentionTapeGpuTest {
     int tensors = 0;
     for (Map.Entry<String, float[]> entry : truth.gradients().entrySet()) {
       double tensorNorm = squared(entry.getValue());
-      double tensorError = squaredDifference(entry.getValue(), other.gradients().get(entry.getKey()));
+      double tensorError =
+          squaredDifference(entry.getValue(), other.gradients().get(entry.getKey()));
       norm[0] += tensorNorm;
       error[0] += tensorError;
       if (ATTENTION.matcher(entry.getKey()).find()) {
@@ -537,7 +760,8 @@ public class AttentionTapeGpuTest {
     double mean = mean(values);
     double error = standardError(values);
     return String.format(
-        "n=%d mean=%+.4f se=%.4f sd=%.4f mean+2se=%+.4f mean-2se=%+.4f margin=%.4f min=%+.4f max=%+.4f",
+        "n=%d mean=%+.4f se=%.4f sd=%.4f mean+2se=%+.4f mean-2se=%+.4f margin=%.4f min=%+.4f"
+            + " max=%+.4f",
         values.length,
         mean,
         error,

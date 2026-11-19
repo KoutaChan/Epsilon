@@ -1,5 +1,7 @@
 package com.epsilon.prism.learn;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.Model;
 import ai.djl.engine.Engine;
@@ -21,10 +23,10 @@ import com.epsilon.prism.hip.RelationAttention;
 import com.epsilon.prism.hip.TrainingKernels;
 import com.epsilon.prism.model.AttentionTape;
 import com.epsilon.prism.model.AuxiliaryLoss;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -132,13 +134,23 @@ public class TrainingAttentionGpuBench {
     Device gpu = Device.gpu(0);
     FitPlan plan =
         new FitPlan(
-            new FitSettings(1, STEP_ROWS, 2e-4, 1e-5, 1f, 0.01, 0.02),
+            new FitSettings(
+                1,
+                STEP_ROWS,
+                2e-4,
+                1e-5,
+                1f,
+                0.01,
+                0.02,
+                PairLoss.Mode.PRISM,
+                PairLoss.ClassWeight.INVERSE_LAMBDA,
+                AdamEpsilon.FIXED),
             PrismShape.standard(),
             AuxiliaryLoss.standard(),
             FitPlan.TOKEN_BUDGET,
             3);
     try (CohortStore store = new CohortStore();
-        Model model = Fit.blank(InputSchema.FORMAT, plan.shape(), gpu, plan.seed());
+        Model model = Fit.blank(FOUR_PLAYER, plan.shape(), gpu, plan.seed());
         PtStream stream = ((PtEngine) model.getNDManager().getEngine()).newStream(gpu);
         PtStreamScope ignored = stream.openScope();
         PtEvent event = stream.newEvent();
@@ -151,7 +163,8 @@ public class TrainingAttentionGpuBench {
       double slowest = 0;
       for (int step = 0; step < STEPS; step++) {
         StepFeed.Step prepared =
-            feed.prepare(Arrays.copyOfRange(rows, step * STEP_ROWS, (step + 1) * STEP_ROWS), Teacher.RAW)
+            feed.prepare(
+                    Arrays.copyOfRange(rows, step * STEP_ROWS, (step + 1) * STEP_ROWS), Teacher.RAW)
                 .join();
         double[] lanes = new double[LANES];
         for (int lane = 0; lane < LANES; lane++) {
@@ -181,7 +194,8 @@ public class TrainingAttentionGpuBench {
       for (int lane = 0; lane < LANES; lane++) {
         line.append(
             String.format(
-                " lane%d forward=%.2f backward=%.2f", lane, totals[lane][0] / STEPS, totals[lane][1] / STEPS));
+                " lane%d forward=%.2f backward=%.2f",
+                lane, totals[lane][0] / STEPS, totals[lane][1] / STEPS));
       }
       line.append(String.format(" slower lane forward+backward=%.2f", slowest / STEPS));
       log.info(line.toString());

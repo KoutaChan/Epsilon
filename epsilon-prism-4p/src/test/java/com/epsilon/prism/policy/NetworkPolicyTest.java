@@ -1,6 +1,7 @@
 package com.epsilon.prism.policy;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -27,17 +28,18 @@ import com.epsilon.prism.app.Evaluate;
 import com.epsilon.prism.core.Greedy;
 import com.epsilon.prism.eval.EvaluationTable;
 import com.epsilon.prism.input.HostInputs;
+import com.epsilon.prism.learn.AdamEpsilon;
 import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.learn.FitPlan;
 import com.epsilon.prism.learn.FitResult;
 import com.epsilon.prism.learn.FitSettings;
 import com.epsilon.prism.model.AuxiliaryLoss;
 import com.epsilon.prism.model.NetworkInputs;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -80,12 +82,13 @@ public class NetworkPolicyTest {
       write(snapshot, SHAPE, true);
       PriorSettings prior = PriorSettings.STANDARD;
       List<Device> cpu = List.of(Device.cpu());
-      int smallest = InputSchema.FORMAT.fixedTokens() + Limits.MAX_EVENT_TOKENS;
+      int smallest = FOUR_PLAYER.fixedTokens() + Limits.MAX_EVENT_TOKENS;
       PriorReference reference = new PriorReference();
       Observation reader = new Observation(TENHOU_4P);
       int[] counts = new int[4];
       try (PolicyService served =
-              Snapshot.open(snapshot, cpu, null, MAX_BATCH, Precision.FLOAT32, InferencePath.EAGER);
+              Snapshot.open(
+                  snapshot, cpu, null, MAX_BATCH, Precision.FLOAT32, InferencePath.EAGER);
           NetworkPolicy split =
               NetworkPolicy.eager(
                   PolicyParams.of(1),
@@ -122,7 +125,8 @@ public class NetworkPolicyTest {
                       Float.floatToRawIntBits(request.scores[a]),
                       Float.floatToRawIntBits(expected[row][a]),
                       "service s " + a + " " + where);
-                  assertEquals(copies.get(row).scores[a], request.scores[a], 1e-5f, "split s " + where);
+                  assertEquals(
+                      copies.get(row).scores[a], request.scores[a], 1e-5f, "split s " + where);
                 }
                 Observation o = request.bind(reader);
                 float[] expectedPrior = reference.prior(o, prior);
@@ -132,7 +136,8 @@ public class NetworkPolicyTest {
                       Float.floatToRawIntBits(expectedPrior[a]),
                       "p0 " + a + " " + where);
                 }
-                assertEquals(request.sigma[Greedy.argmax(request.scores, request.prior, n)], 1f, where);
+                assertEquals(
+                    request.sigma[Greedy.argmax(request.scores, request.prior, n)], 1f, where);
                 assertEquals(served.admission(o), 0, where);
                 counts[1] += n;
                 if (Capacity.of(o) == Capacity.MULTIPLE_TRANSITIONS) {
@@ -196,9 +201,25 @@ public class NetworkPolicyTest {
     List<String> arguments =
         new ArrayList<>(
             List.of(
-                "evaluate", "--model", snapshot.toString(), "--table", "t", "--out", out.toString(), "--set",
-                "run.variant=TENHOU_4P", "--set", "run.seed=1", "--set", "table.activeGames=4", "--set",
-                "table.workers=2", "--set", "inference.encoders=2", "--set", "table.batchWaitMicros=1000"));
+                "evaluate",
+                "--model",
+                snapshot.toString(),
+                "--table",
+                "t",
+                "--out",
+                out.toString(),
+                "--set",
+                "run.variant=TENHOU_4P",
+                "--set",
+                "run.seed=1",
+                "--set",
+                "table.activeGames=4",
+                "--set",
+                "table.workers=2",
+                "--set",
+                "inference.encoders=2",
+                "--set",
+                "table.batchWaitMicros=1000"));
     for (String assignment : TestSettings.table("t", EvaluationTable.HEURISTIC, walls, 1, 1)) {
       arguments.addAll(List.of("--set", assignment));
     }
@@ -215,12 +236,22 @@ public class NetworkPolicyTest {
   static void write(Path snapshot, PrismShape shape, boolean perturbed) throws Exception {
     FitPlan plan =
         new FitPlan(
-            new FitSettings(1, 4096, 3e-3, 3e-4, 1f, 0.01, 0.02),
+            new FitSettings(
+                1,
+                4096,
+                3e-3,
+                3e-4,
+                1f,
+                0.01,
+                0.02,
+                PairLoss.Mode.PRISM,
+                PairLoss.ClassWeight.INVERSE_LAMBDA,
+                AdamEpsilon.FIXED),
             shape,
             AuxiliaryLoss.standard(),
             FitPlan.TOKEN_BUDGET,
             7);
-    try (Model model = Fit.blank(InputSchema.FORMAT, shape, Device.cpu(), plan.seed())) {
+    try (Model model = Fit.blank(FOUR_PLAYER, shape, Device.cpu(), plan.seed())) {
       PrismNetwork network = (PrismNetwork) model.getBlock();
       if (perturbed) {
         Random random = new Random(13);
@@ -284,7 +315,7 @@ public class NetworkPolicyTest {
     Direct(PrismNetwork network, Precision precision) {
       this.network = network;
       this.precision = precision;
-      batch = new RequestBatch();
+      batch = new RequestBatch(network.format());
     }
 
     float[][] scores(List<PolicyRequest> requests, NDManager manager) {

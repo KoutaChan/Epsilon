@@ -1,5 +1,6 @@
 package com.epsilon.prism.learn;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -15,6 +16,7 @@ import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.model.AuxiliaryLoss;
 import com.epsilon.prism.model.Outputs;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
@@ -22,7 +24,6 @@ import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.StagedBatch;
 import com.epsilon.prism.model.ValueLabel;
 import com.epsilon.prism.rows.CohortWriter;
-import com.epsilon.prism4p.input.InputSchema;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -83,7 +84,7 @@ public class StepFeedTest {
     int compared = 0;
     int split = 0;
     try (CohortStore store = new CohortStore();
-        Model model = Fit.blank(InputSchema.FORMAT, SHAPE, Device.cpu(), 7);
+        Model model = Fit.blank(FOUR_PLAYER, SHAPE, Device.cpu(), 7);
         NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       store.addCohort(CohortWriter.directory(root, 1));
       int[] selected = store.select(1, 1, Selection.LABELS);
@@ -108,7 +109,10 @@ public class StepFeedTest {
             double expected = stepLoss(reference, network, loss, manager);
             double actual = stepLoss(candidate, network, loss, manager);
             assertEquals(
-                actual, expected, 1e-3 * Math.max(1, Math.abs(expected)), "step loss at budget " + budget);
+                actual,
+                expected,
+                1e-3 * Math.max(1, Math.abs(expected)),
+                "step loss at budget " + budget);
           }
           if (packing != Packing.DIFFERENT) {
             compared++;
@@ -125,7 +129,7 @@ public class StepFeedTest {
   @Test(timeOut = 600_000)
   public void stagedInputsMatchInputsSentInPlace() throws IOException {
     try (CohortStore store = new CohortStore();
-        Model model = Fit.blank(InputSchema.FORMAT, SHAPE, Device.cpu(), 7);
+        Model model = Fit.blank(FOUR_PLAYER, SHAPE, Device.cpu(), 7);
         NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       store.addCohort(CohortWriter.directory(root, 1));
       int[] selected = store.select(1, 1, Selection.LABELS);
@@ -210,7 +214,8 @@ public class StepFeedTest {
             Float.floatToRawIntBits((float) pieceRows / candidate.rows()),
             "the parts carry the share of the piece");
         assertTrue(
-            same(piece.denominators(), pieceDenominators), "the parts carry the denominators of the piece");
+            same(piece.denominators(), pieceDenominators),
+            "the parts carry the denominators of the piece");
       }
     }
     List<Microbatch> left = new ArrayList<>(whole);
@@ -222,7 +227,9 @@ public class StepFeedTest {
     if (pieces.isEmpty()) {
       return left.isEmpty() ? Packing.WHOLE : Packing.DIFFERENT;
     }
-    return remove(left, labels(pieces), pieceDenominators) && left.isEmpty() ? Packing.SPLIT : Packing.DIFFERENT;
+    return remove(left, labels(pieces), pieceDenominators) && left.isEmpty()
+        ? Packing.SPLIT
+        : Packing.DIFFERENT;
   }
 
   /** 同じ行（教師の中身の多重集合）と補助のヘッドの分母を持つマイクロバッチを 1 つ取り除き、あれば true を返す。 */
@@ -253,7 +260,8 @@ public class StepFeedTest {
   /** 分けないバッチの割合が自分の行の数 / 1 ステップの行の数で、分母が自分の教師から数えた数であることを確かめる。 */
   private static void assertOwn(Microbatch part, int stepRows) {
     assertEquals(
-        Float.floatToRawIntBits(part.share()), Float.floatToRawIntBits((float) part.rows() / stepRows));
+        Float.floatToRawIntBits(part.share()),
+        Float.floatToRawIntBits((float) part.rows() / stepRows));
     assertTrue(
         same(part.denominators(), AuxiliaryLoss.Denominators.of(part.auxiliary())),
         "a whole piece carries its own denominators");
@@ -317,7 +325,17 @@ public class StepFeedTest {
 
   private static FitPlan plan(int budget) {
     return new FitPlan(
-        new FitSettings(1, STEP_ROWS, 3e-3, 3e-4, 1f, 0.01, 0.02),
+        new FitSettings(
+            1,
+            STEP_ROWS,
+            3e-3,
+            3e-4,
+            1f,
+            0.01,
+            0.02,
+            PairLoss.Mode.PRISM,
+            PairLoss.ClassWeight.INVERSE_LAMBDA,
+            AdamEpsilon.FIXED),
         SHAPE,
         AuxiliaryLoss.standard(),
         budget,

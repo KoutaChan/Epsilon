@@ -22,7 +22,25 @@ public final class ObservationBatch {
   /** O ごとに、配列の中で始まる添字。最後の O の次の要素には、使っている {@code long} の数を入れる。 */
   private int[] starts = new int[INITIAL_OBSERVATIONS + 1];
 
+  private EventRecords.Prefix[] prefixes;
   private int size;
+
+  /** この O を書いた経路と観測席の公開順。単独でコピーした O や、公開順を使わない打ち手では null。 */
+  public EventRecords.Prefix eventPrefix(int index) {
+    Objects.checkIndex(index, size);
+    return prefixes == null || index >= prefixes.length ? null : prefixes[index];
+  }
+
+  /** 書き終えた O に公開順を付ける。バッチを次に空にするまで、同じ時点の公開順を読める。 */
+  public void rememberEvents(int index, EventRecords.Prefix prefix) {
+    Objects.checkIndex(index, size);
+    if (prefixes == null) prefixes = new EventRecords.Prefix[Math.max(2, index + 1)];
+    else if (index >= prefixes.length)
+      prefixes = Arrays.copyOf(prefixes, Math.max(index + 1, 2 * prefixes.length));
+    if (prefix != null) prefix.retain();
+    if (prefixes[index] != null) prefixes[index].release();
+    prefixes[index] = prefix;
+  }
 
   /**
    * @param initialLongs 初めに用意する {@code long} の数
@@ -70,7 +88,47 @@ public final class ObservationBatch {
 
   /** 全ての O を捨て、空のバッチとして使い回す。 */
   public void clear() {
+    if (prefixes != null) {
+      for (int row = 0, count = Math.min(size, prefixes.length); row < count; row++) {
+        if (prefixes[row] != null) prefixes[row].release();
+        prefixes[row] = null;
+      }
+    }
     size = 0;
+  }
+
+  /**
+   * 末尾に、指定した長さ（{@code long} の数）まで書ける空きを取り、書く先の配列を返す。空きは {@link #end} から始まる。書いた O は
+   * {@link #commit} でバッチに入れる。入れる前の空きの中身は、次の取り込みで上書きされる。
+   */
+  long[] reserve(int longs) {
+    int end = Math.addExact(starts[size], longs);
+    if (end > words.length) {
+      words = Arrays.copyOf(words, Math.max(end, words.length * 2));
+    }
+    return words;
+  }
+
+  /** 末尾の空きの先頭の位置（次に入れる O の先頭）。 */
+  int end() {
+    return starts[size];
+  }
+
+  /** {@link #reserve} で取った空きの先頭に書いた O を、指定した長さでバッチに入れ、その番号を返す。 */
+  int commit(int longs) {
+    if (longs < 1) {
+      throw new IllegalArgumentException("An observation holds at least one long: " + longs);
+    }
+    int end = Math.addExact(starts[size], longs);
+    if (end > words.length) {
+      throw new IllegalStateException(
+          "Observation of " + longs + " longs overruns the reserved space");
+    }
+    if (size + 1 >= starts.length) {
+      starts = Arrays.copyOf(starts, starts.length * 2);
+    }
+    starts[++size] = end;
+    return size - 1;
   }
 
   /** 配列の指定した位置から始まる、指定した長さ（{@code long} の数）の O を末尾にコピーし、その番号を返す。 */

@@ -13,6 +13,7 @@ import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 /**
@@ -60,8 +61,9 @@ public final class Run<Q extends Query> {
   private final int[] chosen;
 
   private final List<Q> outstanding;
+  private IdentityHashMap<Q, TableSeat<Q>> additional;
   private final List<Run<Q>> spawned = new ArrayList<>(0);
-  private final RunRecords records = new RunRecords();
+  private final RunRecords records;
   private final RunHooks<Q> hooks;
   private Boundary step;
   private int handOrdinal;
@@ -92,6 +94,7 @@ public final class Run<Q extends Query> {
     keys = new long[slots];
     chosen = new int[slots];
     outstanding = new ArrayList<>(slots);
+    records = new RunRecords();
     handKey = TableSeeds.handKey(plan.iterationSeed(), game.wall(), 0);
     hooks = table.hooks.main(this);
     step = engine.advance(table.tools().workspace);
@@ -112,6 +115,7 @@ public final class Run<Q extends Query> {
     keys = new long[slots];
     chosen = new int[slots];
     outstanding = new ArrayList<>(slots);
+    records = new RunRecords(parent.records);
     handKey = parent.handKey;
     handOrdinal = parent.handOrdinal;
     this.hooks = hooks;
@@ -180,7 +184,9 @@ public final class Run<Q extends Query> {
     Behaviour behaviour = table.behaviour;
     if (query == null || behaviour == null || floored(query)) return chosen[slot];
     float[] b = behaviour.policy(query.sigma, query.legalCount());
-    return hooks.play(query(slot), table.crn.select(keys[slot], query.legal(), query.sigma, b, behaviour.epsilon()));
+    return hooks.play(
+        query(slot),
+        table.crn.select(keys[slot], query.legal(), query.sigma, b, behaviour.epsilon()));
   }
 
   /** 呼んだスレッドのリーダーを問い合わせの O に付けて返す。同じスレッドで次に読むか取り込むまで有効。 */
@@ -239,6 +245,7 @@ public final class Run<Q extends Query> {
    */
   private boolean prepare(Table.Tools tools) {
     outstanding.clear();
+    if (additional != null) additional.clear();
     records.clear();
     Decisions decisions = engine.decisions();
     hooks.boundary(this, decisions, tools.workspace);
@@ -252,10 +259,19 @@ public final class Run<Q extends Query> {
       int seat = decisions.seat(slot);
       SeatView view = engine.view(seat);
       TableSeat<Q> policy = seats.get(seat);
-      int record = records.capture(tools, variant, view, decisions, slot);
+      int record =
+          records.capture(tools, variant, view, decisions, slot, policy.reuseEventPrefix());
       Observation observation = tools.reader;
       Q query =
-          hooks.query(this, decisions, slot, view, policy.admission(observation), records.batch(), record, observation);
+          hooks.query(
+              this,
+              decisions,
+              slot,
+              view,
+              policy.admission(observation, game.wall()),
+              records.batch(),
+              record,
+              observation);
       queried++;
       queries[slot] = query;
       if (policy.inline()) {
@@ -350,18 +366,36 @@ public final class Run<Q extends Query> {
         table.games.increment();
       }
     }
-    if (gameEnded || !main) return true;
+    if (gameEnded || !main) {
+      records.finished();
+      return true;
+    }
     handOrdinal++;
     handKey = TableSeeds.handKey(table.plan.iterationSeed(), game.wall(), handOrdinal);
     cursor.reset();
+    records.roundStarted();
     step = engine.advance(ws);
     if (observer != null) observer.advanced(game, engine.full());
     return false;
   }
 
-  /** 問い合わせの席に座る打ち手。 */
-  TableSeat<Q> seatOf(Query query) {
-    return seats.get(query.seat());
+  /** 判断を準備する間に、同じ観測に対する別の打ち手の答えも要求する。全ての答えがそろうまで局面と観測を保持する。 */
+  public void ask(TableSeat<Q> evaluator, Q query) {
+    if (query.owner() != this)
+      throw new IllegalArgumentException("Additional query belongs to another run");
+    if (evaluator.inline()) {
+      evaluator.evaluateInline(query);
+    } else {
+      if (additional == null) additional = new IdentityHashMap<>();
+      additional.put(query, evaluator);
+      outstanding.add(query);
+    }
+  }
+
+  /** この問い合わせを受ける打ち手。通常の問い合わせでは席の打ち手を返す。 */
+  TableSeat<Q> seatOf(Q query) {
+    if (query == queries[query.slot()]) return seats.get(query.seat());
+    return additional.get(query);
   }
 
   List<Q> outstanding() {
@@ -382,8 +416,11 @@ public final class Run<Q extends Query> {
   @Override
   public String toString() {
     return (main ? "main" : "branch")
-        + " wall=" + game.wall()
-        + " placement=" + game.placement()
-        + " hand=" + handOrdinal;
+        + " wall="
+        + game.wall()
+        + " placement="
+        + game.placement()
+        + " hand="
+        + handOrdinal;
   }
 }

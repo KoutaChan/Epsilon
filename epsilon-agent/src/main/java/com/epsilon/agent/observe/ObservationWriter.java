@@ -24,6 +24,7 @@ import com.epsilon.mahjong.score.WinScore;
 import com.epsilon.mahjong.tile.TileSet;
 import com.epsilon.mahjong.tile.Tiles;
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * 判断する席から見た局面と、席ごとの判断をもとに記録 O を作り、バッチに足す。作業領域を持つのでスレッドセーフではなく、スレッドごとに
@@ -35,8 +36,8 @@ import java.util.Arrays;
  * イベントは、エンジンの記録を {@link EventRecords} でそのまま書く。槓ドラの表示の位置が、O から求めた位置
  * （{@link Observation#kanDoraEvent}）と合わなければ IllegalStateException を投げる。
  *
- * <p>O は作業領域に書き終えてからバッチにコピーするので、例外で終わった書き込みはバッチに何も残さない。作業領域は書く分を 0 で
- * 埋めてから書く。全てのビットが 0 のフィールドは最小の値として読めるので、最小の値は書かない。{@code long} 1 つに収まる記録
+ * <p>O はバッチの末尾の空きに直接書き、書き終えてからバッチの O の数を進めるので、例外で終わった書き込みはバッチに何も残さない。
+ * 書く分は 0 で埋めてから書く。全てのビットが 0 のフィールドは最小の値として読めるので、最小の値は書かない。{@code long} 1 つに収まる記録
  * （席・イベント・合法手）は、フィールドを {@code long} の中で詰めてから丸ごと書く。
  */
 public final class ObservationWriter {
@@ -56,12 +57,21 @@ public final class ObservationWriter {
   private final short[] callDiscardActions =
       new short[ObservationSchema.MAX_LEGAL * ObservationSchema.MAX_CALL_DISCARDS];
 
-  /** 書いている O（位置 0 から書く）。どの O も入る長さを取る。 */
-  private final long[] words;
+  /** O を書いているバッチの配列と、O の先頭の位置（書いている間だけ有効）。 */
+  private long[] out;
+
+  private int base;
+
+  /** どの O も入る長さ（{@code long} の数）。 */
+  private final int maxLongs;
 
   private final int headerLongs;
   private final int[] start = new int[ObservationSchema.sections()];
   private final Observation written;
+
+  /** 全てのイベントを書くときに使う、イベントの書き手（経路のセクションは使わない）。 */
+  private final EventRecords events;
+
   private int observer;
 
   public ObservationWriter(Variant variant) {
@@ -69,9 +79,10 @@ public final class ObservationWriter {
     schema = ObservationSchema.of(variant);
     ws = new RuleWorkspace(variant);
     projection = new WinSettlementProjection(variant);
-    words = new long[schema.maxLongs()];
     headerLongs = schema.header.longs(1);
+    maxLongs = schema.maxLongs();
     written = new Observation(variant);
+    events = new EventRecords(variant);
   }
 
   /**
@@ -85,9 +96,39 @@ public final class ObservationWriter {
    * @return バッチの中の O の番号
    */
   public int capture(SeatView view, Decisions decisions, int slot, ObservationBatch into) {
+    return build(view, decisions, slot, into, null);
+  }
+
+  /**
+   * {@link #capture(SeatView, Decisions, int, ObservationBatch)} と同じ O を作り、足した O をリーダーに付ける。公開のイベントは、1 本の
+   * 経路の局面を順に取り込む側が持つセクションに書き足してから写す（{@link EventRecords#append}）。
+   *
+   * @param path 経路のイベントのセクション（局が変わったら経路が {@link EventRecords#reset} を呼ぶ）
+   * @param reader 足した O を読むように付け替えるリーダー（ルールは同じ）
+   */
+  public int capture(
+      SeatView view,
+      Decisions decisions,
+      int slot,
+      ObservationBatch into,
+      EventRecords path,
+      Observation reader) {
+    int index = build(view, decisions, slot, into, Objects.requireNonNull(path, "path"));
+    reader.bind(written, into.words(), into.start(index));
+    return index;
+  }
+
+  /** O を作ってバッチに足す。経路のセクションが null なら、全てのイベントを書く。 */
+  private int build(
+      SeatView view, Decisions decisions, int slot, ObservationBatch into, EventRecords path) {
     if (view.variant() != variant || into.variant() != variant) {
       throw new IllegalArgumentException(
-          "Variant mismatch: expected " + variant + " but found " + view.variant() + " and " + into.variant());
+          "Variant mismatch: expected "
+              + variant
+              + " but found "
+              + view.variant()
+              + " and "
+              + into.variant());
     }
     observer = view.seat();
     if (decisions.seat(slot) != observer) {
@@ -96,29 +137,42 @@ public final class ObservationWriter {
     }
     int legal = decisions.legalCount(slot);
     int callDiscards = projectCalls(view, decisions, slot, legal);
-    Arrays.fill(words, 0, headerLongs, 0L);
+    out = into.reserve(maxLongs);
+    base = into.end();
+    Arrays.fill(out, base, base + headerLongs, 0L);
     writeHeader(view, decisions, slot, legal, callDiscards);
-    int longs = schema.place(words, 0, start);
-    Arrays.fill(words, headerLongs, longs, 0L);
+    int longs = schema.place(out, base, start);
+    Arrays.fill(out, base + headerLongs, base + longs, 0L);
     writeSeats(view);
     writeHand(view);
-    EventRecords.write(schema, view.events(), observer, words, start[Section.EVENT.ordinal()]);
+    int eventStart = start[Section.EVENT.ordinal()];
+    if (path == null) {
+      events.write(view.events(), observer, out, base + eventStart);
+    } else {
+      path.append(view.events(), observer, out, base + eventStart);
+    }
     writeLegal(decisions, slot, legal);
     writeWins(view, decisions, slot, legal);
-    written.bind(words, 0);
+    written.bind(out, base);
     write(schema.header, 0, 0, HeaderBits.TRANSITIONS, written.countTransitions());
     for (int kan = 0; kan < written.kanDoraIndicators(); kan++) {
       int before = written.kanDoraEvent(kan);
       if (before + 1 != view.indicatorEvent(kan + 1)) {
         throw new IllegalStateException(
-            "Kan dora " + kan + " follows public event " + (view.indicatorEvent(kan + 1) - 1) + ", not " + before);
+            "Kan dora "
+                + kan
+                + " follows public event "
+                + (view.indicatorEvent(kan + 1) - 1)
+                + ", not "
+                + before);
       }
     }
-    return into.add(words, 0, longs);
+    return into.commit(longs);
   }
 
   /** ヘッダーを書く（記録の数を含む。遷移の数は、合法手を書いた後で書く）。 */
-  private void writeHeader(SeatView view, Decisions decisions, int slot, int legal, int callDiscards) {
+  private void writeHeader(
+      SeatView view, Decisions decisions, int slot, int legal, int callDiscards) {
     header(HeaderBits.DECISION_KIND, schema.decisionKinds.index(decisions.kind(slot)));
     header(HeaderBits.OBSERVER, observer);
     header(HeaderBits.DEALER, relative(view.dealer()));
@@ -179,10 +233,12 @@ public final class ObservationWriter {
     int at = start[Section.SEAT.ordinal()];
     for (int seat = 0; seat < variant.seats(); seat++) {
       int player = absolute(seat);
-      long record = schema.seat.with(0L, SeatBits.SCORE, ObservationSchema.encodePoints(view.score(player)));
-      record = schema.seat.with(record, SeatBits.RIICHI, schema.riichiStates.index(view.riichi(player)));
+      long record =
+          schema.seat.with(0L, SeatBits.SCORE, ObservationSchema.encodePoints(view.score(player)));
+      record =
+          schema.seat.with(record, SeatBits.RIICHI, schema.riichiStates.index(view.riichi(player)));
       record = schema.seat.with(record, SeatBits.IPPATSU, view.ippatsu(player) ? 1 : 0);
-      schema.seat.putRecord(words, at, seat, record);
+      schema.seat.putRecord(out, base + at, seat, record);
     }
   }
 
@@ -236,10 +292,15 @@ public final class ObservationWriter {
       if (count > 0) {
         record = schema.legal.with(record, LegalBits.CALL_DISCARDS, count);
         for (int discard = 0; discard < count; discard++, next++) {
-          write(schema.callDiscard, discardsAt, next, CallDiscardBits.ACTION, callDiscardActions[next]);
+          write(
+              schema.callDiscard,
+              discardsAt,
+              next,
+              CallDiscardBits.ACTION,
+              callDiscardActions[next]);
         }
       }
-      schema.legal.putRecord(words, at, action, record);
+      schema.legal.putRecord(out, base + at, action, record);
     }
   }
 
@@ -255,16 +316,32 @@ public final class ObservationWriter {
       projection.load(view, code, ws);
       WinScore score = projection.score();
       write(schema.win, at, win, WinBits.HAN, score.han());
-      write(schema.win, at, win, WinBits.FU_CODE, ObservationSchema.encodeFu(score.han(), score.fu()));
+      write(
+          schema.win,
+          at,
+          win,
+          WinBits.FU_CODE,
+          ObservationSchema.encodeFu(score.han(), score.fu()));
       write(schema.win, at, win, WinBits.YAKUMAN, score.yakuman());
       write(schema.win, at, win, WinBits.PAO, projection.pao() != RoundOutcome.NO_SEAT ? 1 : 0);
       write(schema.win, at, win, WinBits.URA_ELIGIBLE, projection.uraEligible() ? 1 : 0);
       write(schema.win, at, win, WinBits.URA_INDICATORS, projection.uraIndicators());
-      write(schema.win, at, win, WinBits.SETTLEMENT, schema.settlements.index(projection.assumption()));
+      write(
+          schema.win,
+          at,
+          win,
+          WinBits.SETTLEMENT,
+          schema.settlements.index(projection.assumption()));
       for (int seat = 0; seat < variant.seats(); seat++) {
         int player = absolute(seat);
         write(schema.win, at, win, WinBits.RANK, seat, projection.rank(player));
-        write(schema.win, at, win, WinBits.PAYMENT, seat, ObservationSchema.encodePoints(projection.payment(player)));
+        write(
+            schema.win,
+            at,
+            win,
+            WinBits.PAYMENT,
+            seat,
+            ObservationSchema.encodePoints(projection.payment(player)));
       }
       win++;
     }
@@ -293,9 +370,10 @@ public final class ObservationWriter {
    * @param at セクションの先頭の位置
    * @param record セクションの中の記録の番号
    */
-  private <E extends Enum<E> & BitField> void write(BitLayout<E> layout, int at, int record, E field, int value) {
+  private <E extends Enum<E> & BitField> void write(
+      BitLayout<E> layout, int at, int record, E field, int value) {
     if (value != layout.min(field)) {
-      layout.put(words, at, record, field, value);
+      layout.put(out, base + at, record, field, value);
     }
   }
 
@@ -309,7 +387,7 @@ public final class ObservationWriter {
   private <E extends Enum<E> & BitField> void write(
       BitLayout<E> layout, int at, int record, E field, int index, int value) {
     if (value != layout.min(field)) {
-      layout.put(words, at, record, field, index, value);
+      layout.put(out, base + at, record, field, index, value);
     }
   }
 }

@@ -41,7 +41,8 @@ public final class NetworkRuntime implements AutoCloseable {
   private static final int MAX_SLOTS = 4;
 
   static {
-    // 小さなネットワークの CPU の推論を多くのスレッドから呼ぶので、PyTorch の CPU のスレッドは 1 つにする。DJL のシステムプロパティか OpenMP・MKL の環境変数で指定してあれば、そちらに従う
+    // 小さなネットワークの CPU の推論を多くのスレッドから呼ぶので、PyTorch の CPU のスレッドは 1 つにする。DJL のシステムプロパティか OpenMP・MKL
+    // の環境変数で指定してあれば、そちらに従う
     String omp = System.getenv("OMP_NUM_THREADS");
     String mkl = System.getenv("MKL_NUM_THREADS");
     if (System.getProperty("ai.djl.pytorch.num_threads") == null
@@ -57,6 +58,7 @@ public final class NetworkRuntime implements AutoCloseable {
   /** GPU ごとに同時に実行するバッチの数。学習だけに使うランタイムでは 0。 */
   private final int slots;
 
+  private final EventCacheSettings eventCache;
   private final int readyBatches;
   private final InferenceDispatcher dispatcher = new InferenceDispatcher();
   private final Map<Device, Streams> devices = new LinkedHashMap<>();
@@ -70,19 +72,40 @@ public final class NetworkRuntime implements AutoCloseable {
    * @param readyBatches GPU ごとに、符号化を終えて実行を待てるバッチの数（同時に実行するバッチの数以上）
    */
   public NetworkRuntime(int encodingWorkers, int slots, int readyBatches) {
+    this(encodingWorkers, slots, readyBatches, EventCacheSettings.DEFAULT);
+  }
+
+  /** run で指定した推論のリソースとイベントページの設定を使う。 */
+  public NetworkRuntime(InferenceSettings settings) {
+    this(settings.encoders(), settings.slots(), settings.readyBatches(), settings.eventCache());
+  }
+
+  private NetworkRuntime(
+      int encodingWorkers, int slots, int readyBatches, EventCacheSettings eventCache) {
+    this.eventCache = eventCache;
     if (encodingWorkers < 1) {
       throw new IllegalArgumentException("Encoding workers must be positive: " + encodingWorkers);
     }
     if (slots < 1 || slots > MAX_SLOTS || readyBatches < slots) {
       throw new IllegalArgumentException(
-          "GPU slots must be in [1, " + MAX_SLOTS + "] and ready batches must cover them: " + slots + '/' + readyBatches);
+          "GPU slots must be in [1, "
+              + MAX_SLOTS
+              + "] and ready batches must cover them: "
+              + slots
+              + '/'
+              + readyBatches);
     }
     this.encodingWorkers = encodingWorkers;
     this.slots = slots;
     this.readyBatches = readyBatches;
   }
 
+  public EventCacheSettings eventCache() {
+    return eventCache;
+  }
+
   private NetworkRuntime() {
+    eventCache = EventCacheSettings.DEFAULT;
     encodingWorkers = 0;
     slots = 0;
     readyBatches = 0;
@@ -229,8 +252,8 @@ public final class NetworkRuntime implements AutoCloseable {
   public void logInference(InferenceAdmission.Metrics admission) {
     InferenceDispatcher.Metrics dispatch = dispatcher.metrics();
     LOG.info(
-        "Inference admission: admitted={} meanOldestRowWaitMs={} maxOldestRowWaitMs={} hostCapacity={}"
-            + " peakReservations={}",
+        "Inference admission: admitted={} meanOldestRowWaitMs={} maxOldestRowWaitMs={}"
+            + " hostCapacity={} peakReservations={}",
         admission.admitted(),
         milliseconds(admission.totalOldestWaitNanos(), admission.batches()),
         milliseconds(admission.maxOldestWaitNanos(), 1),
@@ -239,10 +262,10 @@ public final class NetworkRuntime implements AutoCloseable {
     for (DecisionDevicePipeline.Metrics device : pipelineMetrics()) {
       DecisionDevicePipeline.BatchMetrics total = device.total();
       LOG.info(
-          "Inference device {}: elapsedMs={} pipelineIdleMs={} batches={} rows={} fillRatio={} fullBatches={}"
-              + " meanReadyWaitMs={} meanStageMs={} meanSubmitQueueWaitMs={} meanSubmitMs={}"
-              + " meanCompletionWaitMs={} meanComposeMs={} meanReclaimWaitMs={} meanReleaseMs={}"
-              + " meanRoundTripMs={} maxHostReadyCells={}",
+          "Inference device {}: elapsedMs={} pipelineIdleMs={} batches={} rows={} fillRatio={}"
+              + " fullBatches={} meanReadyWaitMs={} meanStageMs={} meanSubmitQueueWaitMs={}"
+              + " meanSubmitMs={} meanCompletionWaitMs={} meanComposeMs={} meanReclaimWaitMs={}"
+              + " meanReleaseMs={} meanRoundTripMs={} maxHostReadyCells={}",
           device.device(),
           milliseconds(device.elapsedNanos(), 1),
           milliseconds(device.pipelineIdleNanos(), 1),
@@ -264,7 +287,8 @@ public final class NetworkRuntime implements AutoCloseable {
     for (Device device : gpus()) {
       PtMemoryStats memory = engine().getMemoryStats(device);
       LOG.info(
-          "Inference device {} memory: reservedGb={} peakReservedGb={} peakAllocatedGb={} allocRetries={}",
+          "Inference device {} memory: reservedGb={} peakReservedGb={} peakAllocatedGb={}"
+              + " allocRetries={}",
           device,
           gigabytes(memory.getReservedBytes()),
           gigabytes(memory.getPeakReservedBytes()),
@@ -315,13 +339,15 @@ public final class NetworkRuntime implements AutoCloseable {
     }
   }
 
-  private synchronized CompletableFuture<Void> scheduleRows(int rows, int tasks, RangeEncoder encodeRange) {
+  private synchronized CompletableFuture<Void> scheduleRows(
+      int rows, int tasks, RangeEncoder encodeRange) {
     if (closed) {
       throw new IllegalStateException("The network runtime is closed");
     }
     if (encoder == null) {
       encoder =
-          Executors.newFixedThreadPool(encodingWorkers, Thread.ofPlatform().daemon().name("epsilon-encode-", 0).factory());
+          Executors.newFixedThreadPool(
+              encodingWorkers, Thread.ofPlatform().daemon().name("epsilon-encode-", 0).factory());
     }
     CompletableFuture<?>[] parts = new CompletableFuture<?>[tasks];
     for (int task = 0; task < tasks; task++) {

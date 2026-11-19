@@ -7,6 +7,7 @@ import com.epsilon.grp.GrpField;
 import com.epsilon.grp.GrpModel;
 import com.epsilon.grp.GrpNetwork;
 import com.epsilon.grp.GrpShape;
+import com.epsilon.grp.OutcomeLink;
 import com.epsilon.grp.OutcomeNetwork;
 import com.epsilon.grp.OutcomeShape;
 import com.epsilon.grp.train.CountFile;
@@ -64,20 +65,27 @@ public final class GrpRefitter {
   public static GrpShape shape(Variant variant) {
     return new GrpShape(
         variant,
-        EnumSet.of(GrpField.ROUND, GrpField.HONBA, GrpField.KYOTAKU, GrpField.SCORE, GrpField.RANK, GrpField.GAP),
+        EnumSet.of(
+            GrpField.ROUND,
+            GrpField.HONBA,
+            GrpField.KYOTAKU,
+            GrpField.SCORE,
+            GrpField.RANK,
+            GrpField.GAP),
         128,
         false);
   }
 
   /**
-   * 学び直す q の形を返す。入力のフィールドと隠れ層の幅は、学び直すネットワークと同じ。
+   * 学び直す q の形を返す。入力のフィールドと隠れ層の幅は、学び直すネットワークと同じ。足すロジット（OutcomeLink）は全て持つ。
    *
    * @param variant ルール
    * @return 形
    */
   public static OutcomeShape outcomeShape(Variant variant) {
     GrpShape network = shape(variant);
-    return new OutcomeShape(variant, network.fields(), network.hidden());
+    return new OutcomeShape(
+        variant, network.fields(), network.hidden(), EnumSet.allOf(OutcomeLink.class));
   }
 
   /** 構造を入れ替えた直後に τ を 1 にする反復の数。監視で戻した後、戻した項目とも比べる関門を使う反復の数も同じ。 */
@@ -120,18 +128,24 @@ public final class GrpRefitter {
    * @return 書いた refits.jsonl の行（学ばなかったか、止めたなら空）
    * @throws IOException refits.jsonl か phi.jsonl が読めないか書けないとき
    */
-  static Optional<RefitRecord> refit(GrpFiles files, PhiSetup setup, int slot, RefitCause cause, BooleanSupplier stop)
+  static Optional<RefitRecord> refit(
+      GrpFiles files, PhiSetup setup, int slot, RefitCause cause, BooleanSupplier stop)
       throws IOException {
     GrpOperations operations = setup.selfGrp().grp();
     List<RefitRecord> records = RefitRecord.readAll(files);
-    if (RefitRecord.latestAt(records, slot).isPresent() || !files.recorded(slot)) return Optional.empty();
+    if (RefitRecord.latestAt(records, slot).isPresent() || !files.recorded(slot))
+      return Optional.empty();
     List<PhiEntry> history = PhiHistory.read(files);
     PhiEntry used = PhiHistory.effectiveAt(history, slot + 1).orElse(null);
     if (used == null) return Optional.empty();
     RecencyWindow window =
         new RecencyWindow(
             slot,
-            halfLife(operations, history, SwitchWatchRecord.state(SwitchWatchRecord.readAll(files)), slot),
+            halfLife(
+                operations,
+                history,
+                SwitchWatchRecord.state(SwitchWatchRecord.readAll(files)),
+                slot),
             operations.window());
     if (window.cohorts() == 0) return Optional.empty();
     long started = System.nanoTime();
@@ -147,7 +161,12 @@ public final class GrpRefitter {
       games += recorded.size();
     }
     if (used.kind().scoreBased() && games < operations.trustGames()) {
-      LOG.info("GRP refit at {} waits: {} games in {}, {} needed", slot, games, window, operations.trustGames());
+      LOG.info(
+          "GRP refit at {} waits: {} games in {}, {} needed",
+          slot,
+          games,
+          window,
+          operations.trustGames());
       return Optional.empty();
     }
     GrpNetwork start = operations.init() == GrpInit.WARM ? warmStart(used, setup.variant()) : null;
@@ -155,7 +174,21 @@ public final class GrpRefitter {
     int attempt = nextAttempt(files, records, slot);
     String id = attemptId(slot, attempt);
     var draft =
-        new RefitRecord(id, slot, RefitStatus.FAILED, cause, window, init, used.id(), "", "", "", null, null, "", 0);
+        new RefitRecord(
+            id,
+            slot,
+            RefitStatus.FAILED,
+            cause,
+            window,
+            init,
+            used.id(),
+            "",
+            "",
+            "",
+            null,
+            null,
+            "",
+            0);
     RefitRecord record;
     try {
       GrpRows.Split rows = builder.build();
@@ -210,7 +243,13 @@ public final class GrpRefitter {
       record = draft.with(RefitStatus.FAILED, null, failure.toString(), seconds(started));
     }
     record.append(files);
-    LOG.info("GRP refit {} {} in {}s ({}): {}", id, record.status(), String.format("%.1f", record.seconds()), window, record.detail());
+    LOG.info(
+        "GRP refit {} {} in {}s ({}): {}",
+        id,
+        record.status(),
+        String.format("%.1f", record.seconds()),
+        window,
+        record.detail());
     return Optional.of(record);
   }
 
@@ -219,7 +258,8 @@ public final class GrpRefitter {
    * 監視で τ を 2 倍にしている間は 2 倍にする。構造を入れ替えた行とは、自己対局の候補の行のうち、親が自己対局の候補でない
    * （点数だけの Φ か g000 の）もの。戻しの行は含めない。
    */
-  static double halfLife(GrpOperations operations, List<PhiEntry> history, SwitchWatchRecord.State watch, int slot) {
+  static double halfLife(
+      GrpOperations operations, List<PhiEntry> history, SwitchWatchRecord.State watch, int slot) {
     double halfLife = operations.halfLife();
     for (PhiEntry entry : history)
       if (entry.candidate()
@@ -234,7 +274,9 @@ public final class GrpRefitter {
   private static GrpNetwork warmStart(PhiEntry used, Variant variant) throws IOException {
     if (!used.candidate()) return null;
     GrpModel model = GrpCheckpoint.read(Path.of(used.path()));
-    return model instanceof GrpNetwork network && network.shape().equals(shape(variant)) ? network : null;
+    return model instanceof GrpNetwork network && network.shape().equals(shape(variant))
+        ? network
+        : null;
   }
 
   /**
@@ -245,16 +287,25 @@ public final class GrpRefitter {
    * @return 学んだ q（まだ書いていない）。停止のフラグで止めたら null
    */
   private static Outcomes learnOutcomes(
-      GrpFiles files, PhiSetup setup, PhiEntry used, RecencyWindow window, int attempt, BooleanSupplier stop) {
+      GrpFiles files,
+      PhiSetup setup,
+      PhiEntry used,
+      RecencyWindow window,
+      int attempt,
+      BooleanSupplier stop) {
     long started = System.nanoTime();
     GrpOperations operations = setup.selfGrp().grp();
     int slot = window.newest();
     try {
-      OutcomeRows.Builder builder = OutcomeRows.builder(setup.variant(), window, GateCohort.NEXT, FinalRound::covers);
+      OutcomeRows.Builder builder =
+          OutcomeRows.builder(setup.variant(), window, GateCohort.NEXT, FinalRound::covers);
       long games = 0;
       for (int cohort = window.first(); cohort <= slot; cohort++) {
         if (!files.counted(cohort)) {
-          LOG.warn("GRP refit at {}: cohort {} has no count file and is left out of the outcome rows", slot, cohort);
+          LOG.warn(
+              "GRP refit at {}: cohort {} has no count file and is left out of the outcome rows",
+              slot,
+              cohort);
           continue;
         }
         CountedHands counted = CountFile.read(files.counts(cohort));
@@ -264,7 +315,8 @@ public final class GrpRefitter {
       OutcomeRows.Split rows = builder.build();
       if (rows.train().size() == 0 || rows.stop().size() == 0)
         return Outcomes.none("no TRAIN or STOP rows in " + games + " counted games of " + window);
-      OutcomeNetwork start = operations.init() == GrpInit.WARM ? warmOutcomes(used, setup.variant()) : null;
+      OutcomeNetwork start =
+          operations.init() == GrpInit.WARM ? warmOutcomes(used, setup.variant()) : null;
       GrpInit init = start == null ? GrpInit.SCRATCH : GrpInit.WARM;
       long seed = SeedMixer.derive(setup.seed(), OUTCOME_SALT, slot, attempt);
       OutcomeTrained trained =
@@ -281,8 +333,8 @@ public final class GrpRefitter {
           trained.network(),
           "",
           String.format(
-              "q init=%s games=%d rows=%d stopRows=%d excluded=%d unexplained=%d halfEpochs=%d stopNll=%.6f clipped=%d"
-                  + " seconds=%.1f",
+              "q init=%s games=%d rows=%d stopRows=%d excluded=%d unexplained=%d halfEpochs=%d"
+                  + " stopNll=%.6f clipped=%d seconds=%.1f",
               init,
               games,
               rows.train().size(),
@@ -326,14 +378,19 @@ public final class GrpRefitter {
         GrpCheckpoint.write(network, directory);
         return new Outcomes(network, directory.toAbsolutePath().normalize().toString(), detail);
       } catch (IOException | RuntimeException failure) {
-        LOG.warn("GRP refit could not write the outcome network {}: {}", directory, failure.toString(), failure);
+        LOG.warn(
+            "GRP refit could not write the outcome network {}: {}",
+            directory,
+            failure.toString(),
+            failure);
         return none("not written: " + failure);
       }
     }
   }
 
   /** 時点 {@code slot} の次の試行の番号。refits.jsonl と候補のディレクトリの名前で使った最大の番号に 1 を足す。 */
-  private static int nextAttempt(GrpFiles files, List<RefitRecord> records, int slot) throws IOException {
+  private static int nextAttempt(GrpFiles files, List<RefitRecord> records, int slot)
+      throws IOException {
     int last = 0;
     for (RefitRecord record : records) last = Math.max(last, attemptOf(record.id(), slot));
     Path candidates = files.candidate("x").getParent();
@@ -353,7 +410,9 @@ public final class GrpRefitter {
 
   private static int attemptOf(String id, int slot) {
     Matcher matcher = PhiEntry.CANDIDATE.matcher(id);
-    return matcher.matches() && Integer.parseInt(matcher.group(1)) == slot ? Integer.parseInt(matcher.group(2)) : 0;
+    return matcher.matches() && Integer.parseInt(matcher.group(1)) == slot
+        ? Integer.parseInt(matcher.group(2))
+        : 0;
   }
 
   private static double seconds(long started) {

@@ -49,11 +49,14 @@ public final class GrpCheckpoint {
   private static final String HIDDEN = "hidden";
   private static final String PHASE_HEADS = "phaseHeads";
   private static final String LAYERS = "layers";
+  private static final String LINKS = "links";
 
   private static final Set<String> NETWORK_KEYS =
       Set.of(MODEL, VARIANT, FIELDS, HIDDEN, PHASE_HEADS);
   private static final Set<String> GRU_KEYS = Set.of(MODEL, VARIANT, HIDDEN, LAYERS);
   private static final Set<String> OUTCOME_KEYS = Set.of(MODEL, VARIANT, FIELDS, HIDDEN);
+  private static final Set<String> LINKED_OUTCOME_KEYS =
+      Set.of(MODEL, VARIANT, FIELDS, HIDDEN, LINKS);
 
   private GrpCheckpoint() {}
 
@@ -106,12 +109,16 @@ public final class GrpCheckpoint {
     if (!model.equals(OUTCOME_NETWORK)) {
       throw new IOException(directory + " holds a " + model + ", not an " + OUTCOME_NETWORK);
     }
-    requireKeys(root, OUTCOME_KEYS, directory);
+    requireKeys(root, root.has(LINKS) ? LINKED_OUTCOME_KEYS : OUTCOME_KEYS, directory);
     OutcomeShape shape;
     try {
       Variant variant = Variant.valueOf(string(root, VARIANT, directory));
       shape =
-          new OutcomeShape(variant, fields(root, variant, directory), root.get(HIDDEN).getAsInt());
+          new OutcomeShape(
+              variant,
+              fields(root, variant, directory),
+              root.get(HIDDEN).getAsInt(),
+              links(root, variant, directory));
     } catch (RuntimeException malformed) {
       throw new IOException(
           "Malformed " + JSON_FILE + " in " + directory + ": " + malformed.getMessage(), malformed);
@@ -222,6 +229,13 @@ public final class GrpCheckpoint {
     root.addProperty(VARIANT, shape.variant().name());
     root.add(FIELDS, widths(shape.variant(), shape.fields()));
     root.addProperty(HIDDEN, shape.hidden());
+    if (!shape.links().isEmpty()) {
+      JsonObject links = new JsonObject();
+      for (OutcomeLink link : shape.links()) {
+        links.addProperty(link.name(), link.width(shape.variant()));
+      }
+      root.add(LINKS, links);
+    }
     return text(root);
   }
 
@@ -307,6 +321,32 @@ public final class GrpCheckpoint {
       fields.add(field);
     }
     return fields;
+  }
+
+  /** 足すロジットのまとまりを読む。grp.json に無ければ空の集合を返す。 */
+  private static Set<OutcomeLink> links(JsonObject root, Variant variant, Path directory)
+      throws IOException {
+    Set<OutcomeLink> links = EnumSet.noneOf(OutcomeLink.class);
+    if (!root.has(LINKS)) {
+      return links;
+    }
+    for (Map.Entry<String, JsonElement> entry : root.getAsJsonObject(LINKS).entrySet()) {
+      OutcomeLink link = OutcomeLink.valueOf(entry.getKey());
+      int width = entry.getValue().getAsInt();
+      if (width != link.width(variant)) {
+        throw new IOException(
+            link
+                + " is "
+                + width
+                + " wide in "
+                + directory
+                + " but "
+                + link.width(variant)
+                + " in this code");
+      }
+      links.add(link);
+    }
+    return links;
   }
 
   private static String string(JsonObject root, String key, Path directory) throws IOException {

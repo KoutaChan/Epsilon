@@ -15,6 +15,14 @@ public final class OutcomeWorkspace {
   final double[] terms;
   final double[] probabilities;
 
+  /** 打点の softmax に入れる値（打点の種類の数）。 */
+  final double[] grades;
+
+  /** 和了者が就く順位を求める道具と、打点ごとの順位。形が順位のロジットを持つときだけ作る。 */
+  final WinRanks ranks;
+
+  final int[] winRanks;
+
   private OutcomeWorkspace(OutcomeShape shape, GrpEncoder encoder) {
     this.shape = shape;
     this.encoder = encoder;
@@ -22,9 +30,12 @@ public final class OutcomeWorkspace {
     input = new float[shape.width()];
     hidden1 = new float[shape.hidden()];
     hidden2 = new float[shape.hidden()];
-    logits = new double[outcomes.logits()];
+    logits = new double[shape.logits()];
     terms = new double[outcomes.terms()];
     probabilities = new double[outcomes.terms()];
+    grades = new double[HandOutcomes.BASES];
+    ranks = shape.links().contains(OutcomeLink.RANK) ? new WinRanks(shape.variant()) : null;
+    winRanks = new int[HandOutcomes.BASES];
   }
 
   public static OutcomeWorkspace of(OutcomeShape shape) {

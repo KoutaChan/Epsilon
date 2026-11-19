@@ -9,8 +9,10 @@ import com.epsilon.mahjong.rules.Variant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -350,8 +352,18 @@ public class LatePhiTest {
    * 数え上げは、参照用の実装（FinalRoundReference。葉を 1 卓ずつ求めてその場で足す）とビット単位で同じ。打ち切りの値と、
    * 葉のキャッシュのスロットの数（1・8・64・1,024）に依らない。埋めた確率と、精算の数、半荘が終わる葉の数も同じ。
    */
-  @Test(dataProvider = "variants")
-  public void finalRoundMatchesTheReferenceCopy(Variant variant) {
+  @DataProvider
+  public static Object[][] linkedVariants() {
+    return new Object[][] {
+      {Variant.TENHOU_4P, EnumSet.noneOf(OutcomeLink.class)},
+      {Variant.TENHOU_4P, EnumSet.allOf(OutcomeLink.class)},
+      {Variant.TENHOU_3P, EnumSet.noneOf(OutcomeLink.class)},
+      {Variant.TENHOU_3P, EnumSet.allOf(OutcomeLink.class)}
+    };
+  }
+
+  @Test(dataProvider = "linkedVariants")
+  public void finalRoundMatchesTheReferenceCopy(Variant variant, Set<OutcomeLink> links) {
     List<GrpState> covered = new ArrayList<>();
     for (GrpState state : states(variant, 400, 13)) {
       if (FinalRound.covers(state) && covered.size() < 40) {
@@ -362,7 +374,7 @@ public class LatePhiTest {
     double[] p = new double[count];
     double[] expected = new double[count];
     for (double cutoff : new double[] {1e-4, 1e-5, 1e-7}) {
-      FinalRound round = round(variant, cutoff);
+      FinalRound round = round(variant, cutoff, links);
       FinalRoundReference reference = FinalRoundReference.of(round);
       double[][] references = new double[covered.size()][];
       double[] dropped = new double[covered.size()];
@@ -419,8 +431,13 @@ public class LatePhiTest {
     }
   }
 
+  /** 足すロジットを全て持つ q の数え上げを作る。 */
   static FinalRound round(Variant variant, double cutoff) {
-    OutcomeShape outcomes = new OutcomeShape(variant, GrpFixtures.plainFields(), 8);
+    return round(variant, cutoff, EnumSet.allOf(OutcomeLink.class));
+  }
+
+  static FinalRound round(Variant variant, double cutoff, Set<OutcomeLink> links) {
+    OutcomeShape outcomes = new OutcomeShape(variant, GrpFixtures.plainFields(), 8, links);
     GrpShape leaf = GrpFixtures.shape(variant, 8, false);
     return FinalRound.of(
         GrpFixtures.outcomes(outcomes, 31, 0.5), GrpFixtures.network(leaf, 37, 0.5), cutoff);

@@ -315,6 +315,42 @@ public class GrpCheckpointTest {
     Assert.assertThrows(IOException.class, () -> GrpCheckpoint.readOutcomes(leafDirectory));
   }
 
+  /**
+   * 足すロジットを持つ形は、grp.json にそのまとまりの名前と幅を書き、読み戻すと同じ形と重みになる。足すロジットを持たない形の
+   * grp.json には書かない。幅がこのコードと違うチェックポイントは拒む。
+   */
+  @Test
+  public void linkedOutcomeCheckpointsRoundTrip() throws IOException {
+    for (Variant variant : FinalRound.VARIANTS) {
+      OutcomeShape shape =
+          new OutcomeShape(variant, GrpFixtures.plainFields(), 5, EnumSet.allOf(OutcomeLink.class));
+      OutcomeNetwork outcomes = GrpFixtures.outcomes(shape, 41, 0.5);
+      Path linked = root.resolve("linked-" + variant);
+      GrpCheckpoint.write(outcomes, linked);
+      OutcomeNetwork read = GrpCheckpoint.readOutcomes(linked);
+      Assert.assertEquals(read.shape(), shape);
+      Assert.assertTrue(Arrays.equals(read.weights(), outcomes.weights()));
+      JsonObject links = description(linked).getAsJsonObject("links");
+      for (OutcomeLink link : OutcomeLink.values()) {
+        Assert.assertEquals(links.get(link.name()).getAsInt(), link.width(variant));
+      }
+
+      Path plain = root.resolve("plain-" + variant);
+      GrpCheckpoint.write(
+          GrpFixtures.outcomes(new OutcomeShape(variant, GrpFixtures.plainFields(), 5), 41, 0.5),
+          plain);
+      Assert.assertFalse(description(plain).has("links"));
+      Assert.assertTrue(GrpCheckpoint.readOutcomes(plain).shape().links().isEmpty());
+
+      JsonObject widened = description(linked);
+      widened
+          .getAsJsonObject("links")
+          .addProperty(OutcomeLink.RANK.name(), OutcomeLink.RANK.width(variant) + 1);
+      rewrite(linked, widened);
+      Assert.assertThrows(IOException.class, () -> GrpCheckpoint.readOutcomes(linked));
+    }
+  }
+
   @Test
   public void outcomeFilesThatDoNotFitAreRefused() throws IOException {
     OutcomeShape shape = new OutcomeShape(Variant.TENHOU_4P, GrpFixtures.plainFields(), 4);

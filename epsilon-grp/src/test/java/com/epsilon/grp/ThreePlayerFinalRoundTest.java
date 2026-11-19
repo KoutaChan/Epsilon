@@ -45,9 +45,10 @@ public class ThreePlayerFinalRoundTest {
     Assert.assertEquals(counts, new int[] {3, 6, 3, 8, 1});
     int roles = RiichiRole.values().length;
     Assert.assertEquals(hands.termStart(OutcomeTerm.GRADE), 21);
-    Assert.assertEquals(hands.termStart(OutcomeTerm.RIICHI), 21 + 156);
+    Assert.assertEquals(hands.wins(), 9);
+    Assert.assertEquals(hands.termStart(OutcomeTerm.RIICHI), 21 + 9 * HandOutcomes.BASES);
     Assert.assertEquals(hands.logits(), 21 + 156 + 3 * roles);
-    Assert.assertEquals(hands.terms(), 21 + 156 + 2 * 3 * roles);
+    Assert.assertEquals(hands.terms(), 21 + 9 * HandOutcomes.BASES + 2 * 21 * 3);
     Assert.assertEquals(hands.maxTerms(), 6);
     Assert.assertEquals(RankPermutations.of(THREE).count(), 6);
     Assert.assertEquals(FinalRound.VARIANTS, EnumSet.of(Variant.TENHOU_4P, THREE));
@@ -71,11 +72,11 @@ public class ThreePlayerFinalRoundTest {
     double[] logits = new double[hands.logits()];
     for (int seat = 0; seat < 3; seat++) {
       for (RiichiRole role : RiichiRole.values()) {
-        logits[hands.riichiTerm(seat, role, true)] = -40;
+        logits[hands.riichiLogit(seat, role)] = -40;
       }
     }
-    logits[hands.mainTerm(GrpFixtures.main(hands, OutcomeSection.TSUMO, 1, NONE, NONE, 0))] = 40;
-    logits[hands.gradeTerm(1, WinMethod.TSUMO, BaseClass.MANGAN.ordinal())] = 40;
+    logits[hands.mainLogit(GrpFixtures.main(hands, OutcomeSection.TSUMO, 1, NONE, NONE, 0))] = 40;
+    logits[hands.gradeLogit(1, WinMethod.TSUMO, BaseClass.MANGAN.ordinal())] = 40;
     OutcomeShape shape = new OutcomeShape(THREE, GrpFixtures.plainFields(), 8);
     GrpNetwork leaf = GrpFixtures.network(GrpFixtures.shape(THREE, 8, false), 17, 0.5);
     FinalRound round = FinalRound.of(GrpFixtures.biased(shape, logits), leaf, 1e-9);
@@ -165,7 +166,6 @@ public class ThreePlayerFinalRoundTest {
           section == OutcomeSection.TSUMO
               || section == OutcomeSection.RON
               || section == OutcomeSection.DOUBLE_RON;
-      WinMethod method = section == OutcomeSection.TSUMO ? WinMethod.TSUMO : WinMethod.RON;
       int bases = win ? HandOutcomes.BASES : 1;
       int others = section == OutcomeSection.DOUBLE_RON ? HandOutcomes.BASES : 1;
       int factors = hands.factorCount(main);
@@ -174,12 +174,14 @@ public class ThreePlayerFinalRoundTest {
           for (int mask = 0; mask < 1 << factors; mask++) {
             double q = outcomes.probability(hands.mainTerm(main));
             if (win) {
-              q *= outcomes.probability(hands.gradeTerm(hands.winner(main), method, base));
+              int solo = others > 1 ? hands.ron(hands.winner(main), hands.loser(main)) : main;
+              q *= outcomes.probability(hands.gradeTerm(solo, base));
             }
             if (others > 1) {
               q *=
                   outcomes.probability(
-                      hands.gradeTerm(hands.secondWinner(main), WinMethod.RON, other));
+                      hands.gradeTerm(
+                          hands.ron(hands.secondWinner(main), hands.loser(main)), other));
             }
             int riichi = 0;
             for (int index = 0; index < factors; index++) {
@@ -189,7 +191,7 @@ public class ThreePlayerFinalRoundTest {
               if (start.score(absolute) < Variant.DEPOSIT) {
                 q *= declared ? 0 : 1;
               } else {
-                q *= outcomes.probability(hands.riichiTerm(seat, hands.role(main, seat), declared));
+                q *= outcomes.probability(hands.riichiTerm(main, seat, declared));
               }
               if (declared) {
                 riichi |= 1 << absolute;

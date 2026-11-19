@@ -3,11 +3,14 @@ package com.epsilon.grp.train;
 import com.epsilon.grp.GrpFixtures;
 import com.epsilon.grp.GrpState;
 import com.epsilon.grp.HandOutcomes;
+import com.epsilon.grp.OutcomeLink;
 import com.epsilon.grp.OutcomeNetwork;
+import com.epsilon.grp.OutcomeSection;
 import com.epsilon.grp.OutcomeShape;
 import com.epsilon.grp.OutcomeTensor;
 import com.epsilon.grp.OutcomeTerm;
 import com.epsilon.grp.OutcomeWorkspace;
+import com.epsilon.grp.RiichiRole;
 import com.epsilon.grp.Seats;
 import com.epsilon.grp.WinMethod;
 import com.epsilon.mahjong.rules.AbortiveDraw;
@@ -18,6 +21,8 @@ import com.epsilon.mahjong.rules.Settlement;
 import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.SplittableRandom;
 
@@ -34,9 +39,21 @@ final class OutcomeFixtures {
 
   /** 局の結果に出す打点。 */
   private static final BaseClass[] BASES = {
-    BaseClass.B240, BaseClass.B320, BaseClass.B400, BaseClass.B480, BaseClass.B640, BaseClass.B800, BaseClass.B960,
-    BaseClass.B1280, BaseClass.B1600, BaseClass.B1920, BaseClass.MANGAN, BaseClass.HANEMAN, BaseClass.BAIMAN,
-    BaseClass.SANBAIMAN, BaseClass.YAKUMAN
+    BaseClass.B240,
+    BaseClass.B320,
+    BaseClass.B400,
+    BaseClass.B480,
+    BaseClass.B640,
+    BaseClass.B800,
+    BaseClass.B960,
+    BaseClass.B1280,
+    BaseClass.B1600,
+    BaseClass.B1920,
+    BaseClass.MANGAN,
+    BaseClass.HANEMAN,
+    BaseClass.BAIMAN,
+    BaseClass.SANBAIMAN,
+    BaseClass.YAKUMAN
   };
 
   /** 打点ごとの出やすさの重み。並びは打点と同じで、安い手ほどおおむね出やすい。 */
@@ -73,13 +90,34 @@ final class OutcomeFixtures {
   }
 
   /** 重みが全て 0 のネットワークを作る。終わり方と打点は一様で、立直の確率は 1/2 になる。 */
+  /** 足すロジットを全て持つ形を作る。 */
+  static OutcomeShape linked(Variant variant, int hidden) {
+    return new OutcomeShape(
+        variant, GrpFixtures.plainFields(), hidden, EnumSet.allOf(OutcomeLink.class));
+  }
+
+  /** ネットワークが書く項なら true。立直の有無を確率に入れない席の立直の項だけが false。 */
+  static boolean[] written(HandOutcomes hands) {
+    boolean[] written = new boolean[hands.terms()];
+    Arrays.fill(written, 0, hands.termStart(OutcomeTerm.RIICHI), true);
+    for (int main = 0; main < hands.mainCount(); main++) {
+      for (int index = 0; index < hands.factorCount(main); index++) {
+        written[hands.riichiTerm(main, hands.factorSeat(main, index), true)] = true;
+        written[hands.riichiTerm(main, hands.factorSeat(main, index), false)] = true;
+      }
+    }
+    return written;
+  }
+
   static OutcomeNetwork uniform(OutcomeShape shape) {
-    return OutcomeNetwork.of(shape, new float[OutcomeTensor.starts(shape)[OutcomeTensor.values().length]]);
+    return OutcomeNetwork.of(
+        shape, new float[OutcomeTensor.starts(shape)[OutcomeTensor.values().length]]);
   }
 
   /**
    * 各行の最初の結果の項を数えて、卓に依らないネットワークを作る。終わり方と打点のロジットは「数 ＋ 1」の対数。立直のロジットは、
-   * 「立直した数 ＋ 1」と「立直していない数 ＋ 1」の比の対数。
+   * 「立直した数 ＋ 1」と「立直していない数 ＋ 1」の比の対数。打点は和了者と和了の形ごとに、立直は相対席と立場ごとに、終わり方を
+   * またいで数える。形が足すロジットは 0 のまま。
    */
   static OutcomeNetwork counted(OutcomeShape shape, OutcomeRows rows) {
     HandOutcomes hands = shape.outcomes();
@@ -90,13 +128,33 @@ final class OutcomeFixtures {
         counts[rows.terms[at + j]]++;
       }
     }
-    int riichi = hands.termStart(OutcomeTerm.RIICHI);
-    int quiet = hands.termStart(OutcomeTerm.NO_RIICHI);
+    int seats = shape.variant().seats();
     double[] logits = new double[hands.logits()];
+    double[] quiet = new double[hands.logits()];
+    for (int main = 0; main < hands.mainCount(); main++) {
+      logits[hands.mainLogit(main)] = counts[hands.mainTerm(main)];
+      if (main < hands.wins()) {
+        WinMethod method =
+            hands.section(main) == OutcomeSection.TSUMO ? WinMethod.TSUMO : WinMethod.RON;
+        for (int base = 0; base < HandOutcomes.BASES; base++) {
+          logits[hands.gradeLogit(hands.winner(main), method, base)] +=
+              counts[hands.gradeTerm(main, base)];
+        }
+      }
+      for (int seat = 0; seat < seats; seat++) {
+        if (hands.role(main, seat) != null) {
+          int logit = hands.riichiLogit(seat, hands.role(main, seat));
+          logits[logit] += counts[hands.riichiTerm(main, seat, true)];
+          quiet[logit] += counts[hands.riichiTerm(main, seat, false)];
+        }
+      }
+    }
+    int riichi = hands.riichiLogit(0, RiichiRole.values()[0]);
     for (int index = 0; index < logits.length; index++) {
-      logits[index] = index < riichi
-          ? Math.log(counts[index] + 1)
-          : Math.log((counts[index] + 1) / (counts[quiet + index - riichi] + 1));
+      logits[index] =
+          index < riichi
+              ? Math.log(logits[index] + 1)
+              : Math.log((logits[index] + 1) / (quiet[index] + 1));
     }
     return GrpFixtures.biased(shape, logits);
   }
@@ -137,21 +195,29 @@ final class OutcomeFixtures {
         int base = HandOutcomes.NONE;
         int other = HandOutcomes.NONE;
         switch (hands.section(main)) {
-          case TSUMO -> base = pick(
-              random, workspace, hands.gradeTerm(hands.winner(main), WinMethod.TSUMO, 0), HandOutcomes.BASES);
-          case RON -> base = pick(
-              random, workspace, hands.gradeTerm(hands.winner(main), WinMethod.RON, 0), HandOutcomes.BASES);
+          case TSUMO, RON ->
+              base = pick(random, workspace, hands.gradeTerm(main, 0), HandOutcomes.BASES);
           case DOUBLE_RON -> {
-            base = pick(random, workspace, hands.gradeTerm(hands.winner(main), WinMethod.RON, 0), HandOutcomes.BASES);
-            other = pick(
-                random, workspace, hands.gradeTerm(hands.secondWinner(main), WinMethod.RON, 0), HandOutcomes.BASES);
+            int loser = hands.loser(main);
+            base =
+                pick(
+                    random,
+                    workspace,
+                    hands.gradeTerm(hands.ron(hands.winner(main), loser), 0),
+                    HandOutcomes.BASES);
+            other =
+                pick(
+                    random,
+                    workspace,
+                    hands.gradeTerm(hands.ron(hands.secondWinner(main), loser), 0),
+                    HandOutcomes.BASES);
           }
           case DRAW, ABORTIVE -> {}
         }
         int riichi = 0;
         for (int index = 0; index < hands.factorCount(main); index++) {
           int seat = hands.factorSeat(main, index);
-          if (random.nextDouble() < workspace.probability(hands.riichiTerm(seat, hands.role(main, seat), true))) {
+          if (random.nextDouble() < workspace.probability(hands.riichiTerm(main, seat, true))) {
             riichi |= 1 << Seats.absolute(dealer, seat, seats);
           }
         }
@@ -175,7 +241,8 @@ final class OutcomeFixtures {
   }
 
   /** 項の位置 {@code first} から続く {@code count} 個の確率に従って、番号を 1 つ引く。確率の和の端数は最後の番号に寄せる。 */
-  private static int pick(SplittableRandom random, OutcomeWorkspace workspace, int first, int count) {
+  private static int pick(
+      SplittableRandom random, OutcomeWorkspace workspace, int first, int count) {
     double left = random.nextDouble();
     for (int index = 0; index < count - 1; index++) {
       left -= workspace.probability(first + index);

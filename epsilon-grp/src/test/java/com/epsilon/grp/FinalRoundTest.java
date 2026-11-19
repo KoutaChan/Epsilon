@@ -92,8 +92,8 @@ public class FinalRoundTest {
   public void terminalLeavesAreExact() {
     HandOutcomes hands = HandOutcomes.of(FOUR);
     double[] logits = quiet(hands);
-    logits[hands.mainTerm(GrpFixtures.main(hands, OutcomeSection.TSUMO, 2, NONE, NONE, 0))] = 40;
-    logits[hands.gradeTerm(2, WinMethod.TSUMO, BaseClass.MANGAN.ordinal())] = 40;
+    logits[hands.mainLogit(GrpFixtures.main(hands, OutcomeSection.TSUMO, 2, NONE, NONE, 0))] = 40;
+    logits[hands.gradeLogit(2, WinMethod.TSUMO, BaseClass.MANGAN.ordinal())] = 40;
     GrpState west4 = new GrpState(FOUR, 11, 0, 0, new int[] {26_000, 25_000, 24_000, 25_000});
     double[] p = new double[24];
     FinalRound every =
@@ -129,8 +129,8 @@ public class FinalRoundTest {
   public void continuingLeavesUseTheLeafNetworkInTheStartFrame() {
     HandOutcomes hands = HandOutcomes.of(FOUR);
     double[] logits = quiet(hands);
-    logits[hands.mainTerm(GrpFixtures.main(hands, OutcomeSection.RON, 1, NONE, 2, 0))] = 40;
-    logits[hands.gradeTerm(1, WinMethod.RON, BaseClass.B240.ordinal())] = 40;
+    logits[hands.mainLogit(GrpFixtures.main(hands, OutcomeSection.RON, 1, NONE, 2, 0))] = 40;
+    logits[hands.gradeLogit(1, WinMethod.RON, BaseClass.B240.ordinal())] = 40;
     GrpNetwork leaf = GrpFixtures.network(LEAF, 19, 0.7);
     FinalRound round = FinalRound.of(GrpFixtures.biased(SHAPE, logits), leaf, 0);
     double[] p = new double[24];
@@ -161,9 +161,9 @@ public class FinalRoundTest {
   public void seatsBelowTheDepositDeclareNoRiichi() {
     HandOutcomes hands = HandOutcomes.of(FOUR);
     double[] logits = quiet(hands);
-    logits[hands.mainTerm(GrpFixtures.main(hands, OutcomeSection.TSUMO, 0, NONE, NONE, 0))] = 40;
-    logits[hands.gradeTerm(0, WinMethod.TSUMO, BaseClass.B240.ordinal())] = 40;
-    logits[hands.riichiTerm(1, RiichiRole.PAYER, true)] = 40;
+    logits[hands.mainLogit(GrpFixtures.main(hands, OutcomeSection.TSUMO, 0, NONE, NONE, 0))] = 40;
+    logits[hands.gradeLogit(0, WinMethod.TSUMO, BaseClass.B240.ordinal())] = 40;
+    logits[hands.riichiLogit(1, RiichiRole.PAYER)] = 40;
     GrpNetwork leaf = GrpFixtures.network(LEAF, 19, 0.7);
     FinalRound round = FinalRound.of(GrpFixtures.biased(SHAPE, logits), leaf, 0);
     double[] p = new double[24];
@@ -266,7 +266,7 @@ public class FinalRoundTest {
     double[] logits = new double[hands.logits()];
     for (int seat = 0; seat < 4; seat++) {
       for (RiichiRole role : RiichiRole.values()) {
-        logits[hands.riichiTerm(seat, role, true)] = -40;
+        logits[hands.riichiLogit(seat, role)] = -40;
       }
     }
     return logits;

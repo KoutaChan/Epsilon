@@ -24,19 +24,21 @@ public class ThreePlayerOutcomeTrainerTest {
   @Test(groups = "native")
   public void threePlayerOutcomesAreLearnedFromCountFiles() {
     RecencyWindow window = RecencyWindow.uniform(5, 64);
-    OutcomeRows.Builder builder = OutcomeRows.builder(THREE, window, GateCohort.NEXT, state -> true);
+    OutcomeRows.Builder builder =
+        OutcomeRows.builder(THREE, window, GateCohort.NEXT, state -> true);
     for (int cohort = window.first(); cohort <= window.newest(); cohort++) {
       EngineGames.Played played = EngineGames.play(THREE, 150, cohort * 100_000L, cohort);
       CountedHands.Builder counts = CountedHands.builder(THREE, cohort, 0, GrpFixtures.STAMP);
       for (EngineGames.Hand hand : played.hands()) {
-        counts.add(hand.gameId(), hand.start(), HandResult.raw(hand.outcome(), hand.start().dealer()));
+        counts.add(
+            hand.gameId(), hand.start(), HandResult.raw(hand.outcome(), hand.start().dealer()));
       }
       builder.add(cohort, counts.build());
     }
     OutcomeRows.Split rows = builder.build();
     Assert.assertTrue(rows.train().size() > 1_000 && rows.stop().size() > 100, rows.toString());
     Assert.assertEquals(rows.train().maxOutcomes(), 1);
-    OutcomeShape shape = new OutcomeShape(THREE, GrpFixtures.plainFields(), 16);
+    OutcomeShape shape = OutcomeFixtures.linked(THREE, 16);
 
     OutcomeNetwork random = GrpFixtures.outcomes(shape, 3, 0.4);
     OutcomeWorkspace workspace = OutcomeWorkspace.of(shape);
@@ -46,12 +48,19 @@ public class ThreePlayerOutcomeTrainerTest {
       batch.add(train, row, 1f);
     }
     int terms = shape.outcomes().terms();
+    boolean[] written = OutcomeFixtures.written(shape.outcomes());
     try (OutcomeGraph graph = OutcomeGraph.of(shape, random.weights())) {
       float[] djl = graph.terms(batch);
       for (int row = 0; row < train.size(); row += 7) {
         random.forward(GrpState.ofKey(THREE, train.key(row)), workspace);
         for (int term = 0; term < terms; term++) {
-          Assert.assertEquals(djl[row * terms + term], workspace.term(term), TOLERANCE, "row " + row + " term " + term);
+          if (written[term]) {
+            Assert.assertEquals(
+                djl[row * terms + term],
+                workspace.term(term),
+                TOLERANCE,
+                "row " + row + " term " + term);
+          }
         }
       }
       double expected = train.nll(random, workspace) * train.totalWeight();
@@ -60,7 +69,8 @@ public class ThreePlayerOutcomeTrainerTest {
 
     double uniform = rows.stop().nll(OutcomeFixtures.uniform(shape), workspace);
     GrpTrainingRule rule = new GrpTrainingRule(GrpInit.SCRATCH, 1e-2, 0, 8, 512, 10, 2, 4, 11);
-    OutcomeTrained trained = OutcomeTrainer.train(shape, null, rows.train(), rows.stop(), rule, () -> false);
+    OutcomeTrained trained =
+        OutcomeTrainer.train(shape, null, rows.train(), rows.stop(), rule, () -> false);
     Assert.assertEquals(trained.ending(), TrainingEnding.COMPLETED);
     double learned = rows.stop().nll(trained.network(), workspace);
     Assert.assertEquals(learned, trained.stopNll(), 1e-3);

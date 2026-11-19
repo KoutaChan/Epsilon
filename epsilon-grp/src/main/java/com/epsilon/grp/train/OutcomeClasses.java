@@ -5,7 +5,6 @@ import com.epsilon.grp.OutcomeNetwork;
 import com.epsilon.grp.OutcomeSection;
 import com.epsilon.grp.OutcomeWorkspace;
 import com.epsilon.grp.Seats;
-import com.epsilon.grp.WinMethod;
 import com.epsilon.mahjong.rules.BaseClass;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -142,7 +141,14 @@ public final class OutcomeClasses {
    * @param rates 分類ごとの予測と実際の値（SeatClass の順）
    */
   public record SeatCell(
-      int group, int rank, int lowGap, int highGap, long seatHands, long ending, long skipped, List<Rate> rates) {}
+      int group,
+      int rank,
+      int lowGap,
+      int highGap,
+      long seatHands,
+      long ending,
+      long skipped,
+      List<Rate> rates) {}
 
   /**
    * 親から見た分類のセル 1 つ。
@@ -154,7 +160,8 @@ public final class OutcomeClasses {
    * @param skipped 測らなかった局末のうち、このセルに入る数
    * @param rates 分類ごとの予測と実際の値（DealerClass の順）
    */
-  public record DealerCell(int group, int dealerRank, long handEnds, long ending, long skipped, List<Rate> rates) {}
+  public record DealerCell(
+      int group, int dealerRank, long handEnds, long ending, long skipped, List<Rate> rates) {}
 
   /**
    * 測った結果。
@@ -165,7 +172,8 @@ public final class OutcomeClasses {
    * @param seats 席から見た分類のセル（測った局末の無いセルは除く）
    * @param dealers 親から見た分類のセル（測った局末の無いセルは除く）
    */
-  public record Result(long handEnds, long ending, long skipped, List<SeatCell> seats, List<DealerCell> dealers) {
+  public record Result(
+      long handEnds, long ending, long skipped, List<SeatCell> seats, List<DealerCell> dealers) {
 
     /**
      * 区分ごとのセルで、|z| がしきい値を越えた分類を返す。並びは |z| の大きい順で、同じなら席から見た分類が先、その中はセルの順。
@@ -182,7 +190,9 @@ public final class OutcomeClasses {
         }
         for (Rate rate : cell.rates()) {
           if (outlying(rate, cell.seatHands(), limit)) {
-            outliers.add(new Outlier(View.SEAT, cell.group(), cell.rank(), cell.lowGap(), cell.highGap(), rate));
+            outliers.add(
+                new Outlier(
+                    View.SEAT, cell.group(), cell.rank(), cell.lowGap(), cell.highGap(), rate));
           }
         }
       }
@@ -192,7 +202,9 @@ public final class OutcomeClasses {
         }
         for (Rate rate : cell.rates()) {
           if (outlying(rate, cell.handEnds(), limit)) {
-            outliers.add(new Outlier(View.DEALER, cell.group(), cell.dealerRank(), 0, Integer.MAX_VALUE, rate));
+            outliers.add(
+                new Outlier(
+                    View.DEALER, cell.group(), cell.dealerRank(), 0, Integer.MAX_VALUE, rate));
           }
         }
       }
@@ -207,7 +219,9 @@ public final class OutcomeClasses {
      */
     private static boolean outlying(Rate rate, long count, double limit) {
       double expected = rate.predicted() * count;
-      return expected >= MIN_EXPECTED && count - expected >= MIN_EXPECTED && Math.abs(rate.z()) > limit;
+      return expected >= MIN_EXPECTED
+          && count - expected >= MIN_EXPECTED
+          && Math.abs(rate.z()) > limit;
     }
   }
 
@@ -253,8 +267,6 @@ public final class OutcomeClasses {
     double[] realized = new double[seats * seatClasses];
     double[] predictedDealer = new double[dealerClasses];
     double[] realizedDealer = new double[dealerClasses];
-    double[] bigTsumo = new double[seats];
-    double[] bigRon = new double[seats];
     short[] terms = new short[hands.maxTerms()];
     double[] logs = new double[8];
     OutcomeWorkspace workspace = workspaces.get();
@@ -278,20 +290,30 @@ public final class OutcomeClasses {
         }
         measured++;
         networks.apply(h).forward(ends.states[h], workspace);
-        for (int seat = 0; seat < seats; seat++) {
-          bigTsumo[seat] = big(hands, workspace, seat, WinMethod.TSUMO);
-          bigRon[seat] = big(hands, workspace, seat, WinMethod.RON);
-        }
         Arrays.fill(predicted, 0);
         Arrays.fill(predictedDealer, 0);
         for (int main = 0; main < hands.mainCount(); main++) {
           int winner = hands.winner(main);
           int second = hands.secondWinner(main);
-          double firstBig = winner == HandOutcomes.NONE
-              ? 0
-              : hands.section(main) == OutcomeSection.TSUMO ? bigTsumo[winner] : bigRon[winner];
-          double secondBig = second == HandOutcomes.NONE ? 0 : bigRon[second];
-          add(hands, main, workspace.probability(hands.mainTerm(main)), firstBig, secondBig, seats, predicted,
+          double firstBig =
+              winner == HandOutcomes.NONE
+                  ? 0
+                  : big(
+                      hands,
+                      workspace,
+                      second == HandOutcomes.NONE ? main : hands.ron(winner, hands.loser(main)));
+          double secondBig =
+              second == HandOutcomes.NONE
+                  ? 0
+                  : big(hands, workspace, hands.ron(second, hands.loser(main)));
+          add(
+              hands,
+              main,
+              workspace.probability(hands.mainTerm(main)),
+              firstBig,
+              secondBig,
+              seats,
+              predicted,
               predictedDealer);
         }
         int found = next.found(h);
@@ -300,8 +322,15 @@ public final class OutcomeClasses {
         }
         double max = Double.NEGATIVE_INFINITY;
         for (int k = 0; k < found; k++) {
-          int count = OutcomeRows.outcomeTerms(
-              hands, next.main(h, k), next.base(h, k), next.other(h, k), next.riichi(h, k), terms, 0);
+          int count =
+              OutcomeRows.outcomeTerms(
+                  hands,
+                  next.main(h, k),
+                  next.base(h, k),
+                  next.other(h, k),
+                  next.riichi(h, k),
+                  terms,
+                  0);
           double log = 0;
           for (int j = 0; j < count; j++) {
             log += workspace.term(terms[j]);
@@ -326,7 +355,8 @@ public final class OutcomeClasses {
         for (int pass = 0; pass < 2; pass++) {
           int cellGroup = pass == 0 ? ends.group[h] : groups;
           for (int relative = 0; relative < seats; relative++) {
-            int cell = seatCell(ends, cellGroup, h * seats + Seats.absolute(dealer, relative, seats));
+            int cell =
+                seatCell(ends, cellGroup, h * seats + Seats.absolute(dealer, relative, seats));
             seatCount[cell]++;
             for (int kind = 0; kind < seatClasses; kind++) {
               int index = cell * seatClasses + kind;
@@ -362,8 +392,16 @@ public final class OutcomeClasses {
             int index = cell * seatClasses + kind.ordinal();
             rates.add(rate(kind.name(), count, index, seatPredicted, seatRealized, seatVariance));
           }
-          seatRows.add(new SeatCell(cellGroup == groups ? -1 : cellGroup, rank, GAP_EDGES[bin], GAP_EDGES[bin + 1],
-              count, seatEnding[cell], seatSkipped[cell], rates));
+          seatRows.add(
+              new SeatCell(
+                  cellGroup == groups ? -1 : cellGroup,
+                  rank,
+                  GAP_EDGES[bin],
+                  GAP_EDGES[bin + 1],
+                  count,
+                  seatEnding[cell],
+                  seatSkipped[cell],
+                  rates));
         }
       }
     }
@@ -378,10 +416,17 @@ public final class OutcomeClasses {
         List<Rate> rates = new ArrayList<>(dealerClasses);
         for (DealerClass kind : DEALER_CLASSES) {
           int index = cell * dealerClasses + kind.ordinal();
-          rates.add(rate(kind.name(), count, index, dealerPredicted, dealerRealized, dealerVariance));
+          rates.add(
+              rate(kind.name(), count, index, dealerPredicted, dealerRealized, dealerVariance));
         }
-        dealerRows.add(new DealerCell(cellGroup == groups ? -1 : cellGroup, rank, count, dealerEnding[cell],
-            dealerSkipped[cell], rates));
+        dealerRows.add(
+            new DealerCell(
+                cellGroup == groups ? -1 : cellGroup,
+                rank,
+                count,
+                dealerEnding[cell],
+                dealerSkipped[cell],
+                rates));
       }
     }
     return new Result(measured, ending, skipped, seatRows, dealerRows);
@@ -452,20 +497,23 @@ public final class OutcomeClasses {
           bySeat[seat * classes + kind.ordinal()] += weight;
         }
         bySeat[winner * classes + SeatClass.BIG_WIN.ordinal()] += weight * firstBig;
-        byDealer[(winner == 0 ? DealerClass.DEALER_WIN : DealerClass.CHILD_TSUMO).ordinal()] += weight;
+        byDealer[(winner == 0 ? DealerClass.DEALER_WIN : DealerClass.CHILD_TSUMO).ordinal()] +=
+            weight;
       }
       case RON, DOUBLE_RON -> {
         for (int seat = 0; seat < seats; seat++) {
-          SeatClass kind = seat == winner || seat == second
-              ? SeatClass.RON
-              : seat == loser ? SeatClass.DEAL_IN : SeatClass.OTHER_RON;
+          SeatClass kind =
+              seat == winner || seat == second
+                  ? SeatClass.RON
+                  : seat == loser ? SeatClass.DEAL_IN : SeatClass.OTHER_RON;
           bySeat[seat * classes + kind.ordinal()] += weight;
         }
         bySeat[winner * classes + SeatClass.BIG_WIN.ordinal()] += weight * firstBig;
         if (second != HandOutcomes.NONE) {
           bySeat[second * classes + SeatClass.BIG_WIN.ordinal()] += weight * secondBig;
         }
-        bySeat[loser * classes + SeatClass.BIG_DEAL_IN.ordinal()] += weight * (1 - (1 - firstBig) * (1 - secondBig));
+        bySeat[loser * classes + SeatClass.BIG_DEAL_IN.ordinal()] +=
+            weight * (1 - (1 - firstBig) * (1 - secondBig));
         boolean dealerWins = winner == 0 || second == 0;
         byDealer[(dealerWins ? DealerClass.DEALER_WIN : DealerClass.CHILD_RON).ordinal()] += weight;
       }
@@ -473,21 +521,24 @@ public final class OutcomeClasses {
         for (int seat = 0; seat < seats; seat++) {
           bySeat[seat * classes + SeatClass.DRAW.ordinal()] += weight;
         }
-        DealerClass kind = hands.section(main) == OutcomeSection.ABORTIVE
-            ? DealerClass.ABORTIVE
-            : (hands.tenpai(main) & 1) != 0 ? DealerClass.DEALER_TENPAI : DealerClass.DEALER_NOTEN;
+        DealerClass kind =
+            hands.section(main) == OutcomeSection.ABORTIVE
+                ? DealerClass.ABORTIVE
+                : (hands.tenpai(main) & 1) != 0
+                    ? DealerClass.DEALER_TENPAI
+                    : DealerClass.DEALER_NOTEN;
         byDealer[kind.ordinal()] += weight;
       }
     }
   }
 
   /**
-   * その席が指定した和了の仕方で和了したとき、満貫以上になる確率。打点の確率のうち、満貫以上の分を足す。
+   * その終わり方で和了したとき、満貫以上になる確率。打点の確率のうち、満貫以上の分を足す。
    *
-   * @param seat 和了者の相対席
+   * @param main 和了者が 1 人の終わり方（ツモかロン）の番号
    */
-  private static double big(HandOutcomes hands, OutcomeWorkspace workspace, int seat, WinMethod method) {
-    int first = hands.gradeTerm(seat, method, 0);
+  private static double big(HandOutcomes hands, OutcomeWorkspace workspace, int main) {
+    int first = hands.gradeTerm(main, 0);
     double sum = 0;
     for (int base = BIG; base < HandOutcomes.BASES; base++) {
       sum += workspace.probability(first + base);
@@ -502,8 +553,17 @@ public final class OutcomeClasses {
    * @param variance q が正しいときの「実際 − 予測」の和の分散（セルごと・分類ごと）
    */
   private static Rate rate(
-      String name, long count, int index, double[] predicted, double[] realized, double[] variance) {
-    return new Rate(name, predicted[index] / count, realized[index] / count, Math.sqrt(variance[index]) / count);
+      String name,
+      long count,
+      int index,
+      double[] predicted,
+      double[] realized,
+      double[] variance) {
+    return new Rate(
+        name,
+        predicted[index] / count,
+        realized[index] / count,
+        Math.sqrt(variance[index]) / count);
   }
 
   private static int gapBin(int gap) {

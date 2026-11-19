@@ -11,7 +11,8 @@ import java.util.Objects;
 /**
  * 次局の結果の一覧表。ルールごとに 1 回だけ作り、どのメソッドもメモリを確保しない。席は次局の親を 0 とする相対席。局の終わり方の
  * 番号は、区分（OutcomeSection）を宣言の順に並べ、区分の中では各定数の説明に書いた順に振る。打点の番号は BaseClass の宣言の順。
- * q(o|s) の対数確率の項の位置は、OutcomeTerm を宣言の順に並べて決める。
+ * q(o|s) の対数確率の項の位置は、OutcomeTerm を宣言の順に並べて決める。ネットワークのロジットは、終わり方、打点
+ * （[(和了者の相対席 × 2 ＋ 和了の形) × 打点の種類の数 ＋ 打点]）、「立直した」（[相対席 × 立場の数 ＋ 立場]）の順に並ぶ。
  *
  * <p>立直の有無を確率に入れる席とは、終わり方が決まった上で、立直したかどうかが確率の変数になる席のこと。和了と途中流局では
  * 全ての席、荒牌では聴牌した席だけがそうなる。
@@ -39,10 +40,17 @@ public final class HandOutcomes {
 
   /** 終わり方ごとの区分、和了者、2 人目の和了者、放銃者、聴牌した席のビット。 */
   private final OutcomeSection[] sections;
+
   private final int[] winners;
   private final int[] secondWinners;
   private final int[] losers;
   private final int[] tenpaiMasks;
+
+  /** 和了者が 1 人の終わり方（ツモとロン）の数。この終わり方は番号の先頭に並ぶ。 */
+  private final int wins;
+
+  /** (和了者, 放銃者) ごとのロンの終わり方の番号。並びは [和了者 × S ＋ 放銃者]。 */
+  private final int[] rons;
 
   /** 終わり方と席ごとの立場。並びは [終わり方 × S ＋ 席] で、立直の有無を確率に入れない席は null。 */
   private final RiichiRole[] roles;
@@ -52,6 +60,7 @@ public final class HandOutcomes {
    * 置く。
    */
   private final int[] factorCounts;
+
   private final int[] factorSeats;
 
   /** 項のまとまりごとの開始位置（OutcomeTerm の宣言の順）。最後の要素は項の数。 */
@@ -73,6 +82,8 @@ public final class HandOutcomes {
     secondWinners = new int[mainCount];
     losers = new int[mainCount];
     tenpaiMasks = new int[mainCount];
+    wins = OutcomeSection.TSUMO.count(variant) + OutcomeSection.RON.count(variant);
+    rons = new int[seats * seats];
     roles = new RiichiRole[mainCount * seats];
     factorCounts = new int[mainCount];
     factorSeats = new int[mainCount * seats];
@@ -83,6 +94,7 @@ public final class HandOutcomes {
     for (int winner = 0; winner < seats; winner++) {
       for (int loser = 0; loser < seats; loser++) {
         if (loser != winner) {
+          rons[winner * seats + loser] = main;
           main = put(main, OutcomeSection.RON, winner, NONE, loser, 0);
         }
       }
@@ -104,7 +116,8 @@ public final class HandOutcomes {
     for (OutcomeSection section : OutcomeSection.values()) {
       for (int index = 0; index < section.count(variant); index++) {
         if (sections[expected++] != section) {
-          throw new IllegalStateException("Main outcome " + (expected - 1) + " is out of the declared order");
+          throw new IllegalStateException(
+              "Main outcome " + (expected - 1) + " is out of the declared order");
         }
       }
     }
@@ -210,13 +223,25 @@ public final class HandOutcomes {
    */
   public void place(int main, int base, int other, int riichi, int dealer, RoundOutcome outcome) {
     switch (sections[main]) {
-      case TSUMO -> outcome.setTsumo(base(base), absolute(dealer, winners[main]), RoundOutcome.NO_SEAT, riichi);
-      case RON -> outcome.setRon(
-          base(base), absolute(dealer, winners[main]), absolute(dealer, losers[main]), RoundOutcome.NO_SEAT, riichi);
+      case TSUMO ->
+          outcome.setTsumo(
+              base(base), absolute(dealer, winners[main]), RoundOutcome.NO_SEAT, riichi);
+      case RON ->
+          outcome.setRon(
+              base(base),
+              absolute(dealer, winners[main]),
+              absolute(dealer, losers[main]),
+              RoundOutcome.NO_SEAT,
+              riichi);
       case DOUBLE_RON -> {
         outcome.setRon(
-            base(base), absolute(dealer, winners[main]), absolute(dealer, losers[main]), RoundOutcome.NO_SEAT, riichi);
-        outcome.addRonWinner(base(other), absolute(dealer, secondWinners[main]), RoundOutcome.NO_SEAT);
+            base(base),
+            absolute(dealer, winners[main]),
+            absolute(dealer, losers[main]),
+            RoundOutcome.NO_SEAT,
+            riichi);
+        outcome.addRonWinner(
+            base(other), absolute(dealer, secondWinners[main]), RoundOutcome.NO_SEAT);
       }
       case DRAW -> {
         int tenpai = 0;
@@ -240,36 +265,74 @@ public final class HandOutcomes {
     return termStarts[term.ordinal()];
   }
 
-  /** 項の数を返す（四人打ちで 301）。 */
+  /** 項の数を返す（四人打ちで 821）。 */
   public int terms() {
     return termStarts[TERMS.length];
   }
 
-  /** ネットワークが出すロジットの数を返す。終わり方・打点・「立直した」の 3 つの項のまとまりの分で、四人打ちで 277。 */
-  public int logits() {
-    return termStarts[OutcomeTerm.NO_RIICHI.ordinal()];
+  /** 和了者が 1 人の終わり方（ツモとロン）の数を返す。この終わり方の番号は 0 からこの数の手前まで。 */
+  public int wins() {
+    return wins;
+  }
+
+  /** 和了者と放銃者（相対席）に対応するロンの終わり方の番号を返す。 */
+  public int ron(int winner, int loser) {
+    Objects.checkIndex(winner, seats);
+    Objects.checkIndex(loser, seats);
+    if (winner == loser) {
+      throw new IllegalArgumentException("Seat " + winner + " cannot win from itself");
+    }
+    return rons[winner * seats + loser];
   }
 
   public int mainTerm(int main) {
     return termStarts[OutcomeTerm.MAIN.ordinal()] + Objects.checkIndex(main, mainCount);
   }
 
-  /** 和了者の相対席、和了の形、打点の番号に対応する打点の項の位置を返す。 */
-  public int gradeTerm(int seat, WinMethod method, int base) {
-    Objects.checkIndex(seat, seats);
+  /**
+   * 終わり方と打点の番号に対応する打点の項の位置を返す。
+   *
+   * @param main 和了者が 1 人の終わり方（ツモかロン）の番号。ダブロンの和了者の打点は、{@link #ron} の番号で引く
+   */
+  public int gradeTerm(int main, int base) {
+    Objects.checkIndex(main, wins);
     Objects.checkIndex(base, BASES);
-    return termStarts[OutcomeTerm.GRADE.ordinal()] + (seat * METHODS + method.ordinal()) * BASES + base;
+    return termStarts[OutcomeTerm.GRADE.ordinal()] + main * BASES + base;
   }
 
   /**
-   * 相対席と立場に対応する立直の項の位置を返す。
+   * 終わり方と相対席に対応する立直の項の位置を返す。
    *
    * @param declared true なら「立直した」の項、false なら「立直していない」の項
    */
-  public int riichiTerm(int seat, RiichiRole role, boolean declared) {
+  public int riichiTerm(int main, int seat, boolean declared) {
+    Objects.checkIndex(main, mainCount);
     Objects.checkIndex(seat, seats);
     OutcomeTerm term = declared ? OutcomeTerm.RIICHI : OutcomeTerm.NO_RIICHI;
-    return termStarts[term.ordinal()] + seat * ROLES + role.ordinal();
+    return termStarts[term.ordinal()] + main * seats + seat;
+  }
+
+  /** 終わり方・打点・「立直した」のロジットの数を返す（四人打ちで 277）。形が足すロジット（OutcomeLink）は、この後ろに並ぶ。 */
+  public int logits() {
+    return mainCount + seats * METHODS * BASES + seats * ROLES;
+  }
+
+  /** 終わり方のロジットの位置を返す。 */
+  public int mainLogit(int main) {
+    return Objects.checkIndex(main, mainCount);
+  }
+
+  /** 和了者の相対席、和了の形、打点の番号に対応する打点のロジットの位置を返す。 */
+  public int gradeLogit(int seat, WinMethod method, int base) {
+    Objects.checkIndex(seat, seats);
+    Objects.checkIndex(base, BASES);
+    return mainCount + (seat * METHODS + method.ordinal()) * BASES + base;
+  }
+
+  /** 相対席と立場に対応する「立直した」のロジットの位置を返す。 */
+  public int riichiLogit(int seat, RiichiRole role) {
+    Objects.checkIndex(seat, seats);
+    return mainCount + seats * METHODS * BASES + seat * ROLES + role.ordinal();
   }
 
   private int put(int main, OutcomeSection section, int winner, int second, int loser, int tenpai) {
@@ -280,14 +343,16 @@ public final class HandOutcomes {
     tenpaiMasks[main] = tenpai;
     int factors = 0;
     for (int seat = 0; seat < seats; seat++) {
-      RiichiRole role = switch (section) {
-        case TSUMO -> seat == winner ? RiichiRole.WINNER : RiichiRole.PAYER;
-        case RON, DOUBLE_RON -> seat == winner || seat == second
-            ? RiichiRole.WINNER
-            : seat == loser ? RiichiRole.LOSER : RiichiRole.BYSTANDER;
-        case DRAW -> (tenpai & 1 << seat) != 0 ? RiichiRole.TENPAI : null;
-        case ABORTIVE -> RiichiRole.ABORTIVE;
-      };
+      RiichiRole role =
+          switch (section) {
+            case TSUMO -> seat == winner ? RiichiRole.WINNER : RiichiRole.PAYER;
+            case RON, DOUBLE_RON ->
+                seat == winner || seat == second
+                    ? RiichiRole.WINNER
+                    : seat == loser ? RiichiRole.LOSER : RiichiRole.BYSTANDER;
+            case DRAW -> (tenpai & 1 << seat) != 0 ? RiichiRole.TENPAI : null;
+            case ABORTIVE -> RiichiRole.ABORTIVE;
+          };
       roles[main * seats + seat] = role;
       if (role != null) {
         factorSeats[main * seats + factors++] = seat;

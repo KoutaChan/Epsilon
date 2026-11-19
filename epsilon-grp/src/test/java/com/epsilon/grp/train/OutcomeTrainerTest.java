@@ -8,6 +8,7 @@ import com.epsilon.grp.OutcomeNetwork;
 import com.epsilon.grp.OutcomeShape;
 import com.epsilon.grp.OutcomeWorkspace;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -21,10 +22,17 @@ public class OutcomeTrainerTest {
   /** 許容誤差。float32 の積和と log softmax で、足す順が違うことから出る誤差を見込む。 */
   private static final double TOLERANCE = 1e-4;
 
-  @Test(groups = "native")
-  public void djlTermsAndNllMatchThePureJavaNetwork() {
+  @DataProvider
+  public static Object[][] shapes() {
+    return new Object[][] {
+      {new OutcomeShape(OutcomeFixtures.FOUR, GrpFixtures.plainFields(), 16)},
+      {OutcomeFixtures.linked(OutcomeFixtures.FOUR, 16)}
+    };
+  }
+
+  @Test(groups = "native", dataProvider = "shapes")
+  public void djlTermsAndNllMatchThePureJavaNetwork(OutcomeShape shape) {
     OutcomeRows rows = OutcomeFixtures.rows(new RecencyWindow(4, 1, 64), 20).train();
-    OutcomeShape shape = new OutcomeShape(OutcomeFixtures.FOUR, GrpFixtures.plainFields(), 16);
     OutcomeNetwork network = GrpFixtures.outcomes(shape, 3, 0.4);
     OutcomeBatch batch = new OutcomeBatch(shape, rows.size(), rows.maxOutcomes());
     for (int row = 0; row < rows.size(); row++) {
@@ -32,12 +40,19 @@ public class OutcomeTrainerTest {
     }
     OutcomeWorkspace workspace = OutcomeWorkspace.of(shape);
     int terms = shape.outcomes().terms();
+    boolean[] written = OutcomeFixtures.written(shape.outcomes());
     try (OutcomeGraph graph = OutcomeGraph.of(shape, network.weights())) {
       float[] djl = graph.terms(batch);
       for (int row = 0; row < rows.size(); row++) {
         network.forward(GrpState.ofKey(OutcomeFixtures.FOUR, rows.key(row)), workspace);
         for (int term = 0; term < terms; term++) {
-          Assert.assertEquals(djl[row * terms + term], workspace.term(term), TOLERANCE, "row " + row + " term " + term);
+          if (written[term]) {
+            Assert.assertEquals(
+                djl[row * terms + term],
+                workspace.term(term),
+                TOLERANCE,
+                "row " + row + " term " + term);
+          }
         }
       }
       double expected = rows.nll(network, workspace) * rows.totalWeight();
@@ -45,21 +60,27 @@ public class OutcomeTrainerTest {
     }
   }
 
-  @Test(groups = "native")
-  public void marginalLikelihoodTrainingLowersTheNll() {
+  @Test(groups = "native", dataProvider = "shapes")
+  public void marginalLikelihoodTrainingLowersTheNll(OutcomeShape shape) {
     OutcomeRows.Split rows = OutcomeFixtures.rows(new RecencyWindow(10, 1, 64), 400);
-    OutcomeShape shape = new OutcomeShape(OutcomeFixtures.FOUR, GrpFixtures.plainFields(), 16);
     OutcomeWorkspace workspace = OutcomeWorkspace.of(shape);
     double uniform = rows.stop().nll(OutcomeFixtures.uniform(shape), workspace);
     GrpTrainingRule rule = new GrpTrainingRule(GrpInit.SCRATCH, 1e-2, 0, 8, 512, 10, 2, 4, 11);
-    OutcomeTrained trained = OutcomeTrainer.train(shape, null, rows.train(), rows.stop(), rule, () -> false);
+    OutcomeTrained trained =
+        OutcomeTrainer.train(shape, null, rows.train(), rows.stop(), rule, () -> false);
     Assert.assertEquals(trained.ending(), TrainingEnding.COMPLETED);
     double learned = rows.stop().nll(trained.network(), workspace);
     Assert.assertEquals(learned, trained.stopNll(), 1e-3);
     Assert.assertTrue(learned < uniform - 0.5, "learned " + learned + " vs uniform " + uniform);
 
-    OutcomeTrained warmed = OutcomeTrainer.train(
-        shape, trained.network(), rows.train(), rows.stop(), defaults(GrpInit.WARM, 13), () -> false);
+    OutcomeTrained warmed =
+        OutcomeTrainer.train(
+            shape,
+            trained.network(),
+            rows.train(),
+            rows.stop(),
+            defaults(GrpInit.WARM, 13),
+            () -> false);
     Assert.assertEquals(warmed.ending(), TrainingEnding.COMPLETED);
     Assert.assertTrue(warmed.stopNll() <= trained.stopNll() + 1e-4, warmed + " after " + trained);
   }
@@ -68,15 +89,17 @@ public class OutcomeTrainerTest {
   public void closingStopsBeforeTheNextStep() {
     OutcomeRows.Split rows = OutcomeFixtures.rows(new RecencyWindow(4, 1, 64), 120);
     OutcomeShape shape = new OutcomeShape(OutcomeFixtures.FOUR, GrpFixtures.plainFields(), 8);
-    OutcomeTrained stopped = OutcomeTrainer.train(
-        shape, null, rows.train(), rows.stop(), defaults(GrpInit.SCRATCH, 1), () -> true);
+    OutcomeTrained stopped =
+        OutcomeTrainer.train(
+            shape, null, rows.train(), rows.stop(), defaults(GrpInit.SCRATCH, 1), () -> true);
     Assert.assertEquals(stopped.ending(), TrainingEnding.STOPPED);
     Assert.assertNull(stopped.network());
     Assert.assertEquals(stopped.halfEpochs(), 0);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> OutcomeTrainer.train(
-            shape, null, rows.train(), rows.stop(), defaults(GrpInit.WARM, 1), () -> false));
+        () ->
+            OutcomeTrainer.train(
+                shape, null, rows.train(), rows.stop(), defaults(GrpInit.WARM, 1), () -> false));
   }
 
   /**
@@ -90,24 +113,45 @@ public class OutcomeTrainerTest {
     int before = JniUtils.getNumThreads();
     int threads = before == 1 ? 2 : 1;
     int[] during = {-1};
-    OutcomeTrained trained = OutcomeTrainer.train(
-        shape, null, rows.train(), rows.stop(), defaults(GrpInit.SCRATCH, 1), threads, () -> {
-          during[0] = JniUtils.getNumThreads();
-          return false;
-        });
+    OutcomeTrained trained =
+        OutcomeTrainer.train(
+            shape,
+            null,
+            rows.train(),
+            rows.stop(),
+            defaults(GrpInit.SCRATCH, 1),
+            threads,
+            () -> {
+              during[0] = JniUtils.getNumThreads();
+              return false;
+            });
     Assert.assertEquals(trained.ending(), TrainingEnding.COMPLETED);
     Assert.assertEquals(during[0], threads);
     Assert.assertEquals(JniUtils.getNumThreads(), before);
 
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> OutcomeTrainer.train(
-            shape, null, rows.train(), rows.stop(), defaults(GrpInit.WARM, 1), threads, () -> false));
+        () ->
+            OutcomeTrainer.train(
+                shape,
+                null,
+                rows.train(),
+                rows.stop(),
+                defaults(GrpInit.WARM, 1),
+                threads,
+                () -> false));
     Assert.assertEquals(JniUtils.getNumThreads(), before);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> OutcomeTrainer.train(
-            shape, null, rows.train(), rows.stop(), defaults(GrpInit.SCRATCH, 1), 0, () -> false));
+        () ->
+            OutcomeTrainer.train(
+                shape,
+                null,
+                rows.train(),
+                rows.stop(),
+                defaults(GrpInit.SCRATCH, 1),
+                0,
+                () -> false));
     Assert.assertEquals(JniUtils.getNumThreads(), before);
   }
 

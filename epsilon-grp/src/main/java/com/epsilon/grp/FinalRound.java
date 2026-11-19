@@ -187,9 +187,7 @@ public final class FinalRound {
       prepareRiichi(start, workspace, main, probability);
       switch (hands.section(main)) {
         case TSUMO, RON -> {
-          WinMethod method =
-              hands.section(main) == OutcomeSection.TSUMO ? WinMethod.TSUMO : WinMethod.RON;
-          int grades = hands.gradeTerm(hands.winner(main), method, 0);
+          int grades = hands.gradeTerm(main, 0);
           for (int base = 0; base < HandOutcomes.BASES; base++) {
             double q = p * probability[grades + base];
             if (q < cutoff) {
@@ -200,8 +198,8 @@ public final class FinalRound {
           }
         }
         case DOUBLE_RON -> {
-          int grades = hands.gradeTerm(hands.winner(main), WinMethod.RON, 0);
-          int others = hands.gradeTerm(hands.secondWinner(main), WinMethod.RON, 0);
+          int grades = hands.gradeTerm(hands.ron(hands.winner(main), hands.loser(main)), 0);
+          int others = hands.gradeTerm(hands.ron(hands.secondWinner(main), hands.loser(main)), 0);
           for (int base = 0; base < HandOutcomes.BASES; base++) {
             double q = p * probability[grades + base];
             if (q < cutoff) {
@@ -241,9 +239,8 @@ public final class FinalRound {
       if (start.score(absolute) < Variant.DEPOSIT) {
         continue;
       }
-      RiichiRole role = hands.role(main, seat);
-      workspace.declared[factors] = probability[hands.riichiTerm(seat, role, true)];
-      workspace.quiet[factors] = probability[hands.riichiTerm(seat, role, false)];
+      workspace.declared[factors] = probability[hands.riichiTerm(main, seat, true)];
+      workspace.quiet[factors] = probability[hands.riichiTerm(main, seat, false)];
       workspace.riichiBits[factors] = 1 << absolute;
       factors++;
     }

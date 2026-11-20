@@ -271,7 +271,7 @@ public class JobsTest {
     assertEquals(world.outcome(), expected);
   }
 
-  /** 仕事を回す共有の資源の作り物。塊の途中で壊せて、壊れた後はどの仕事も開けない。 */
+  /** ジョブが共有するリソースのテスト用実装。バッチの途中で障害を起こすと、それ以降はジョブを開始できない。 */
   private static final class FragileJobs implements JobRunner {
     private final JobRunner jobs;
     boolean breaksAtNextChunk;
@@ -319,8 +319,8 @@ public class JobsTest {
   }
 
   /**
-   * 試みの途中で共有の資源が壊れたら、落ちた試みを 1 回と数え、次の試みもほかの仕事も始めずにその例外で止まる。打っていない仕事は
-   * FAILED にならず、資源を作り直した次の起動で全ての仕事が済む。
+   * 共有リソースが壊れた試行を 1 回と数え、次の試行や別のジョブを開始する前に例外で停止する。未実行のジョブは
+   * FAILED にならず、リソースを作り直した次の起動で全てのジョブが完了する。
    */
   @Test
   public void brokenSharedResourcesStopTheJobsWithoutFailingTheOnesThatNeverPlayed()

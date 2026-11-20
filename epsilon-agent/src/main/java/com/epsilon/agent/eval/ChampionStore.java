@@ -59,7 +59,7 @@ public final class ChampionStore {
 
   private final Path directory;
 
-  /** 読むだけで開いた置き場か。 */
+  /** 読むだけで開いた保存先か。 */
   private final boolean readOnly;
 
   private ChampionStore(Path directory, boolean readOnly) {

@@ -53,7 +53,7 @@ public final class EventRecords {
     private volatile int users = 1;
     private volatile Placement placement;
 
-    /** 入力形式がこの区間に追記した符号。GPU の保存先とは独立に、同じ公開順を使う経路が共有する。 */
+    /** 入力形式がこの区間に追記したコード。GPU の保存先とは独立に、同じ公開順を使う経路が共有する。 */
     public interface Encoding {
       void unused();
     }

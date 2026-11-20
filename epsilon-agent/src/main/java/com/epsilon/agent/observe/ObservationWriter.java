@@ -69,7 +69,7 @@ public final class ObservationWriter {
   private final int[] start = new int[ObservationSchema.sections()];
   private final Observation written;
 
-  /** 全てのイベントを書くときに使う、イベントの書き手（経路のセクションは使わない）。 */
+  /** 全てのイベントを書くときに使う、イベントライター（経路のセクションは使わない）。 */
   private final EventRecords events;
 
   private int observer;

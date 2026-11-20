@@ -197,7 +197,7 @@ public class RunReportTest {
     assertBroken(evaluations, List.of(results.get(0).replace("\"sum\"", "\"total\"")), "total");
   }
 
-  /** 反復の行は、設定の行の番号だけで設定を指し、読んで木に戻すと同じ報告になる。設定の中身の SHA-256 の欄がある行は読まない。 */
+  /** 反復の行は、設定の行の番号だけで設定を指し、読んで木に戻すと同じ報告になる。設定の中身の SHA-256 の項目がある行は読まない。 */
   @Test
   public void anIterationLineNamesItsSettingsByTheRowAlone() throws IOException {
     writeIterations();

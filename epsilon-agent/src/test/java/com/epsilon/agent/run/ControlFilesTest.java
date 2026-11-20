@@ -54,7 +54,7 @@ public class ControlFilesTest {
         Files.readString(run.control().resolve("1-grp-refit.json"), StandardCharsets.UTF_8);
     Node.Table tree = (Node.Table) Json.read(text, "request").get("request");
     assertEquals(tree.get("kind"), new Node.Text("GRP_REFIT", "expected"));
-    // 安全点の確かめと GRP の裏の作業が同じ頼みを移しても誤りにならない
+    // セーフポイントでの確認と GRP の裏の作業が同じ要求を移しても誤りにならない
     requests.retire(refit);
     requests.retire(refit);
     assertEquals(requests.pending(), List.of());

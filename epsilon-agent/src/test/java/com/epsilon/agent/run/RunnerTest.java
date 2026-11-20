@@ -226,7 +226,7 @@ public class RunnerTest {
     assertEquals(world.outcome(), reference());
   }
 
-  /** GRP の学び直しの頼みには段と仕事を回す仕組みは従わず、取り消しの頼みが来れば次の安全点で消す。 */
+  /** 段とジョブの実行中は GRP の再学習要求を処理しない。取り消し要求を受けたら次のセーフポイントで削除する。 */
   @Test
   public void aGrpRefitRequestStaysUntilACancelRemovesIt() throws Exception {
     FakeRun world = FakeRun.create(Files.createTempDirectory("run-grp-refit"));

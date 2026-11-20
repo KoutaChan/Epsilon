@@ -214,7 +214,7 @@ public class AppTest {
     assertEquals(secret.exit(), 2);
   }
 
-  /** 秘密のキーを持つコマンドの口。 */
+  /** 秘密のキーを持つコマンドのインターフェース。 */
   sealed interface Keyed extends Command<Demo> permits Login, RemoteLogin {}
 
   @Named(value = "login", doc = "秘密のキーを持つコマンド")
@@ -235,7 +235,7 @@ public class AppTest {
     }
   }
 
-  /** コマンドの節の秘密のキーに {@code --set} で書いた値も、始めのログの行で伏せる。 */
+  /** コマンドのセクションの秘密のキーに {@code --set} で書いた値も、始めのログの行で伏せる。 */
   @Test
   public void theStartLineHidesASecretOfTheCommandSectionWrittenWithSet() {
     List<Class<? extends Command<Demo>>> commands = List.of(Keyed.class);

@@ -31,7 +31,7 @@ template <int Columns, int K, int Rows, int Stride>
 __device__ __forceinline__ void multiplyFfn(FfnAccumulator (&acc)[Rows / 16][Columns],
                                             const uint16_t (&a)[Rows][Stride], device::Buffer weight,
                                             const int (&base)[Columns]) {
-  matrix_product::accumulateNative<K, Rows>(acc, a, PackedWeight<Columns>{weight, base});
+  matrix_product::accumulateNative<K, Rows, true>(acc, a, PackedWeight<Columns>{weight, base});
 }
 
 // 各レーンが持つ隣り合う 2 列を、上半分と下半分の行へ書く。

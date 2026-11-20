@@ -9,6 +9,7 @@
   <artifactId>epsilon-prism-kernel</artifactId>
   <packaging>pom</packaging>
   <modules>
+    <module>common</module>
     <module>hip</module>
   </modules>
 </project>

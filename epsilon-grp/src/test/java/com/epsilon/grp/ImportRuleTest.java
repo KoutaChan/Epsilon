@@ -38,7 +38,12 @@ public class ImportRuleTest {
   private static final Pattern DJL_NAME = Pattern.compile("\\bai\\.djl\\.[A-Za-z]");
 
   /** PRISM のモジュールの artifactId。 */
-  private static final Set<String> PRISM_MODULES = Set.of("epsilon-prism", "epsilon-prism-hip");
+  private static final Set<String> PRISM_MODULES =
+      Set.of(
+          "epsilon-prism",
+          "epsilon-prism-kernel-common",
+          "epsilon-prism-hip",
+          "epsilon-prism-cuda");
 
   @Test
   public void mainImportsStayInsideTheAllowedLibraries() throws IOException {

@@ -27,7 +27,9 @@ public class ImportDirectionTest {
           "epsilon-grp",
           "epsilon-classic",
           "epsilon-prism",
+          "epsilon-prism-kernel-common",
           "epsilon-prism-hip",
+          "epsilon-prism-cuda",
           "epsilon-reviewer");
 
   /** PRISM を代表するクラス。 */

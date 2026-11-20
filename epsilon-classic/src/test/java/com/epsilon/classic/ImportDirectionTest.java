@@ -22,7 +22,12 @@ public class ImportDirectionTest {
 
   /** classic が使わないモジュールの artifactId。 */
   private static final Set<String> FORBIDDEN_MODULES =
-      Set.of("epsilon-prism", "epsilon-prism-hip", "epsilon-reviewer");
+      Set.of(
+          "epsilon-prism",
+          "epsilon-prism-kernel-common",
+          "epsilon-prism-hip",
+          "epsilon-prism-cuda",
+          "epsilon-reviewer");
 
   /** classpath に無いことを確かめる、PRISM の代表的なクラス。 */
   private static final List<String> PRISM_CLASSES = List.of("com.epsilon.prism.Limits");

@@ -351,7 +351,7 @@ public class FitTest {
         Path snapshot = Files.createTempDirectory(root, "fit-").resolve("snapshot");
         Snapshot.FitRecord record = new Snapshot.FitRecord(root.toString(), 1, 2, 0, plan, result);
         Snapshot.write(snapshot, network, PolicyParams.of(3), record);
-        try (StepFeed feed = new StepFeed(store, plan, 1, 2);
+        try (StepFeed feed = new StepFeed(store, plan, new boolean[1], 2);
             NDManager manager = NDManager.newBaseManager(Device.cpu())) {
           Snapshot.Loaded loaded = Snapshot.load(snapshot, manager);
           assertEquals(loaded.params().version(), 3);
@@ -411,7 +411,8 @@ public class FitTest {
       int[] rows = Arrays.copyOf(store.select(1, 1, Selection.LABELS), 8);
       CountingKernels lanes = new CountingKernels(-1);
       try (Learner learner = new Learner(model, two, plan, 1f, runtime, lanes);
-          StepFeed feed = new StepFeed(store, plan, two.size(), 1)) {
+          StepFeed feed = new StepFeed(store, plan, learner.attentionTapes(), 1)) {
+        assertEquals(learner.attentionTapes(), new boolean[] {true, true});
         StepFeed.Step step = feed.prepare(rows, Teacher.RAW).join();
         try {
           expectThrows(RuntimeException.class, () -> learner.rehearse(step));
@@ -660,7 +661,7 @@ public class FitTest {
       Teacher teacher = new Teacher(null, scores, 0.5, 1f);
       int[] part = Arrays.copyOf(rows, 40);
       int compared = 0;
-      try (StepFeed feed = new StepFeed(store, plan, 1, 2);
+      try (StepFeed feed = new StepFeed(store, plan, new boolean[1], 2);
           Anchor eager =
               Anchor.open(
                   anchor,

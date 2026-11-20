@@ -32,10 +32,11 @@ void launchCountTrainingBackward(CountTraining shape, const uint16_t* projected,
                                  const int32_t* rows, const int32_t* codes, const uint16_t* gradOutput,
                                  uint16_t* gradProjected, float* gradGate, gpu::Stream stream) {
   validate(shape);
-  const size_t gateBytes = static_cast<size_t>(shape.codes) * kCountWidth * sizeof(float);
-  PRISM_GPU(gpu::clear(gradGate, 0, gateBytes, stream));
-  countBackwardByRow<<<dim3(shape.rows), dim3(kThreads), gateBytes, stream>>>(shape, projected, gates, rows, codes,
-                                                                              gradOutput, gradProjected, gradGate);
+  countProjectedGradient<<<dim3(shape.rows), dim3(kThreads), 0, stream>>>(shape, gates, rows, codes, gradOutput,
+                                                                          gradProjected);
+  PRISM_GPU(gpu::lastError());
+  countGateGradient<<<dim3(shape.codes), dim3(kThreads), 0, stream>>>(shape, projected, gates, rows, codes, gradOutput,
+                                                                      gradGate);
   PRISM_GPU(gpu::lastError());
 }
 

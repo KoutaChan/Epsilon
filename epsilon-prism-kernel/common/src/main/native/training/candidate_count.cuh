@@ -44,20 +44,15 @@ __device__ int firstTransition(const int32_t* rows, int transitions, int row) {
   return first;
 }
 
-// 行ごとに 1 ブロックで、牌の勾配を上流の勾配とゲートの積の遷移順の積和で求める。ゲートの勾配は、FP32 に丸めた各項を共有メモリの
-// 行の表に原子的に足し、0 でない成分を全体の表に原子的に足す（全体の表は先に 0 にしておく）。足す順はスレッドとブロックの到着順で決まる。
-__global__ void countBackwardByRow(CountTraining shape, const uint16_t* projected, const float* gates,
-                                   const int32_t* rows, const int32_t* codes, const uint16_t* gradOutput,
-                                   uint16_t* gradProjected, float* gradGate) {
-  extern __shared__ float rowGate[];
+// 各行の牌の勾配を、上流の勾配とゲートの積の遷移順の積和で求める。
+__global__ void countProjectedGradient(CountTraining shape, const float* gates, const int32_t* rows,
+                                       const int32_t* codes, const uint16_t* gradOutput, uint16_t* gradProjected) {
   __shared__ int first, last;
   const int row = blockIdx.x;
-  const int gateItems = shape.codes * kCountWidth;
   if (threadIdx.x == 0) {
     first = firstTransition(rows, shape.transitions, row);
     last = firstTransition(rows, shape.transitions, row + 1);
   }
-  for (int g = threadIdx.x; g < gateItems; g += kThreads) rowGate[g] = 0.0f;
   shareGroupWrites();
 
   Bounds bounds;
@@ -66,7 +61,6 @@ __global__ void countBackwardByRow(CountTraining shape, const uint16_t* projecte
     const int key = item / kCountWidth;
     const int col = item % kCountWidth;
     const size_t tile = static_cast<size_t>(row) * tileItems + item;
-    const float value = bf16Float(projected[tile]);
     float gradTile = 0.0f;
     for (int t = first; t < last; ++t) {
       const size_t code = bounds.index(codes[t * shape.tiles + key], 1, shape.codes);
@@ -74,16 +68,53 @@ __global__ void countBackwardByRow(CountTraining shape, const uint16_t* projecte
       const float gate = training::countGate(gates[gi]);
       const float grad = bf16Float(gradOutput[t * kCountWidth + col]);
       gradTile = fusedMultiplyAdd(gate, grad, gradTile);
-      atomicAdd(rowGate + gi, training::gateGradient(grad, value, gate));
     }
     gradProjected[tile] = bf16Round(gradTile);
   }
-  shareGroupWrites();
-  for (int g = threadIdx.x; g < gateItems; g += kThreads) {
-    const float gradient = rowGate[g];
-    if (gradient != 0.0f) atomicAdd(gradGate + g, gradient);
-  }
   bounds.trap();
+}
+
+// コードごとに 1 ブロックで、ゲートの各成分の勾配を求める。行ごとに牌を rowLanes 個ずつのまとまりに分け、まとまりの中は遷移・牌の順に、
+// FP32 に丸めた各項を部分和に足す。行の部分和は行の番号の順に足し、0 の部分和は足さない。
+__global__ void countGateGradient(CountTraining shape, const uint16_t* projected, const float* gates,
+                                  const int32_t* rows, const int32_t* codes, const uint16_t* gradOutput,
+                                  float* gradGate) {
+  constexpr int rowLanes = kThreads / kCountWidth;
+  static_assert(kThreads % kCountWidth == 0);
+  __shared__ float partial[kThreads];
+  const int code = blockIdx.x;
+  const int col = threadIdx.x % kCountWidth;
+  const int lane = threadIdx.x / kCountWidth;
+  const float gate = training::countGate(gates[code * kCountWidth + col]);
+  float total = 0.0f;
+  for (int begin = 0; begin < shape.rows; begin += rowLanes) {
+    const int row = begin + lane;
+    float sum = 0.0f;
+    if (row < shape.rows) {
+      const int first = firstTransition(rows, shape.transitions, row);
+      const int last = firstTransition(rows, shape.transitions, row + 1);
+      for (int start = 0; start < shape.tiles; start += rowLanes) {
+        for (int t = first; t < last; ++t) {
+          const float grad = bf16Float(gradOutput[t * kCountWidth + col]);
+          for (int key = start; key < shape.tiles && key < start + rowLanes; ++key) {
+            if (codes[t * shape.tiles + key] != code) continue;
+            const size_t tile = static_cast<size_t>(row) * shape.tiles + key;
+            sum = roundedAdd(sum, training::gateGradient(grad, bf16Float(projected[tile * kCountWidth + col]), gate));
+          }
+        }
+      }
+    }
+    partial[threadIdx.x] = sum;
+    shareGroupWrites();
+    if (lane == 0) {
+      for (int r = 0; r < rowLanes && begin + r < shape.rows; ++r) {
+        const float value = partial[r * kCountWidth + col];
+        if (value != 0.0f) total = roundedAdd(total, value);
+      }
+    }
+    shareGroupWrites();
+  }
+  if (lane == 0) gradGate[code * kCountWidth + col] = total;
 }
 }  // namespace
 }  // namespace prism

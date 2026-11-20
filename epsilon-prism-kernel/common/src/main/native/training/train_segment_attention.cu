@@ -47,17 +47,18 @@ void launchSegmentAttentionBackward(SegmentAttention d, SegmentAttentionArrays a
   check(d);
   const int queries = (d.input.transitions * d.heads + kWaves - 1) / kWaves;
   const int tableRows = d.input.baseCodes + d.input.layout.tableRows;
-  const int pairs = (d.input.transitions * d.input.keys + kThreads - 1) / kThreads;
+  const int groups = 1 + (d.input.transitions * d.input.keys - 1) / kOccurrenceThreads;
   segmentAttentionQueryGradient<<<dim3(queries), dim3(kThreads), 0, stream>>>(d, a, b.probs, b.upstream, b.query,
                                                                               b.score);
   segmentAttentionMemoryGradient<<<dim3(d.rows * d.input.keys), dim3(kThreads), 0, stream>>>(d, a, b.probs, b.score,
                                                                                              b.upstream, b.memory);
-  PRISM_GPU(gpu::clear(b.cursor, 0, tableRows * sizeof(int32_t), stream));
-  const size_t histogramBytes = tableRows * sizeof(int32_t);
+  const size_t bitBytes = size_t(tableRows) * (kOccurrenceThreads / 32) * sizeof(uint32_t);
   segmentAttentionOccurrences<false>
-      <<<dim3(pairs), dim3(kThreads), histogramBytes, stream>>>(d, a.codes, b.cursor, nullptr, nullptr, tableRows);
-  segmentAttentionOffsets<<<dim3(1), dim3(1), 0, stream>>>(tableRows, b.cursor, b.offsets);
-  segmentAttentionOccurrences<true><<<dim3(pairs), dim3(kThreads), 2 * histogramBytes, stream>>>(
+      <<<dim3(groups), dim3(kOccurrenceThreads), bitBytes, stream>>>(d, a.codes, b.cursor, nullptr, nullptr, tableRows);
+  segmentAttentionGroupOffsets<<<dim3((tableRows + kThreads - 1) / kThreads), dim3(kThreads), 0, stream>>>(
+      tableRows, groups, b.cursor, b.offsets);
+  segmentAttentionOffsets<<<dim3(1), dim3(1), 0, stream>>>(tableRows, b.offsets);
+  segmentAttentionOccurrences<true><<<dim3(groups), dim3(kOccurrenceThreads), bitBytes, stream>>>(
       d, a.codes, b.cursor, b.offsets, b.occurrences, tableRows);
   forCoreWidth(d.input.width,
                [&](auto width) { launchTablePartials<decltype(width)::value>(d, a, b, tableRows, stream); });

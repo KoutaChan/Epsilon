@@ -81,6 +81,9 @@ final class Learner implements AutoCloseable {
   /** デバイスごとの学習カーネル（無ければ null）。レーンに渡したものは null にする。 */
   private final TrainingKernels[] kernels;
 
+  /** レーンごとに、順伝播を Attention の記録（{@link AttentionTape}）で行うか。 */
+  private final boolean[] attentionTapes;
+
   /**
    * レーンの計算用と転送用のストリームを借りるランタイム。所有者は呼び出し元で、学習器は閉じない。系譜では反復をまたいで同じものを渡す。
    * PyTorch のキャッシュはストリームごとなので、反復ごとに別のストリームになると、前の反復の作業領域のキャッシュが使い回されずに残るからである。
@@ -162,17 +165,29 @@ final class Learner implements AutoCloseable {
     this.gain = gain;
     this.runtime = runtime;
     kernels = new TrainingKernels[devices.size()];
+    attentionTapes = new boolean[devices.size()];
     try {
       for (int lane = 0; lane < kernels.length; lane++) {
         Device device = devices.get(lane);
         PtStream stream = device.isGpu() ? runtime.streams(device).compute() : null;
         kernels[lane] = laneKernels.open(device, block, stream);
+        attentionTapes[lane] = kernels[lane] != null;
       }
       optimizer = plan.learner().adamEpsilon().optimizer(t -> rate, gain);
     } catch (RuntimeException | Error failure) {
       closeKernels(failure);
       throw failure;
     }
+  }
+
+  /**
+   * レーンごとに、順伝播を Attention の記録で行うかを返す。マイクロバッチを並べる側（{@link StepFeed}）が、レーンの順伝播が読む
+   * インデックスだけを作るのに使う。
+   *
+   * @return レーンの順の真偽（写し）
+   */
+  boolean[] attentionTapes() {
+    return attentionTapes.clone();
   }
 
   /**

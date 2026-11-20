@@ -123,7 +123,7 @@ final class BatchIndex {
   /** 候補の手 e_a の集約（候補がなければ null）。 */
   final Aggregation candidates;
 
-  final Staging.Section candidateRows;
+  final CandidateDecisionRows candidateRows;
 
   final int readingCount;
   final Staging.Section readingRows;
@@ -137,6 +137,9 @@ final class BatchIndex {
   /** 作るのに使った補助のヘッドの教師（なければ null）。 */
   private final AuxiliaryLabels labels;
 
+  /** Attention の記録がある順伝播（{@link Pass#tape}）のために作ったか。 */
+  private final boolean attentionTape;
+
   /**
    * インデックスをその場で作り、入力のバッファから同期で送る。
    *
@@ -147,7 +150,8 @@ final class BatchIndex {
    */
   static BatchIndex send(NetworkInputs inputs, Pass pass) {
     Staging staging = new Staging();
-    BatchIndex index = new BatchIndex(inputs, pass.measured(), pass.auxiliary(), staging);
+    BatchIndex index =
+        new BatchIndex(inputs, pass.measured(), pass.auxiliary(), pass.tape() != null, staging);
     staging.send(inputs.uploads(), inputs.manager());
     return index;
   }
@@ -158,10 +162,16 @@ final class BatchIndex {
    * @param inputs バッチの大きさとインデックスの、ホストの写し
    * @param measuredFlags 学習の C のフラグ（バッチの手の順。推論では null）
    * @param labels 補助のヘッドの教師（補助のヘッドを計算しないなら null）
+   * @param attentionTape Attention の記録がある順伝播で使うか（候補の決定行の集め方が変わる。{@link CandidateDecisionRows}）
    * @param staging 領域を載せる先
    * @throws IllegalArgumentException インデックスの並びが正しくないとき
    */
-  BatchIndex(HostColumns inputs, boolean[] measuredFlags, AuxiliaryLabels labels, Staging staging) {
+  BatchIndex(
+      HostColumns inputs,
+      boolean[] measuredFlags,
+      AuxiliaryLabels labels,
+      boolean attentionTape,
+      Staging staging) {
     format = inputs.format();
     Structure structure = new Structure(inputs);
     Role discardRole = format.discard();
@@ -170,6 +180,7 @@ final class BatchIndex {
     rowActions = structure.actionCount;
     this.measuredFlags = measuredFlags;
     this.labels = labels;
+    this.attentionTape = attentionTape;
 
     // トークン
     int events = inputs.events();
@@ -394,17 +405,17 @@ final class BatchIndex {
     }
     if (candidateCount > 0) {
       Aggregation.Builder chosen = new Aggregation.Builder(candidateCount);
-      long[] candidateRow = new long[candidateCount];
+      int[] candidateRow = new int[candidateCount];
       for (int c = 0; c < candidateCount; c++) {
         int action = candidates[c];
         chosen.add(structure.firstTransition(action), structure.transitionsOf(action));
         candidateRow[c] = structure.row[action];
       }
       this.candidates = chosen.build(1, staging);
-      candidateRows = staging.add(candidateRow, new Shape(candidateCount));
+      candidateRows = CandidateDecisionRows.stage(staging, rows, candidateRow, attentionTape);
     } else {
       this.candidates = null;
-      candidateRows = null;
+      candidateRows = CandidateDecisionRows.EMPTY;
     }
     int[] reading = labels == null ? new int[0] : labels.readingRows();
     readingCount = reading.length;
@@ -427,13 +438,15 @@ final class BatchIndex {
   }
 
   /**
-   * このインデックスを、順伝播の種類と同じ C のフラグと補助のヘッドの教師で作ったかを返す。
+   * このインデックスを、順伝播の種類と同じ C のフラグと補助のヘッドの教師で、Attention の記録の有無も同じ順伝播のために作ったかを返す。
    *
    * @param pass 順伝播の種類
-   * @return 同じ配列から作ったなら true
+   * @return 同じ配列から、同じ記録の有無で作ったなら true
    */
   boolean builtFor(Pass pass) {
-    return pass.measured() == measuredFlags && pass.auxiliary() == labels;
+    return pass.measured() == measuredFlags
+        && pass.auxiliary() == labels
+        && (pass.tape() != null) == attentionTape;
   }
 
   /**

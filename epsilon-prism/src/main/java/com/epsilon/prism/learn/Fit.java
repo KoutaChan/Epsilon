@@ -319,7 +319,7 @@ public final class Fit {
       lanes = devices.size();
       learner = new Learner(model, devices, plan, gain, runtime);
       try {
-        feed = new StepFeed(store, plan, devices.size(), threads);
+        feed = new StepFeed(store, plan, learner.attentionTapes(), threads);
       } catch (RuntimeException | Error failure) {
         try {
           learner.close();

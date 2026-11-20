@@ -94,8 +94,8 @@ public class StepFeedTest {
       PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
       for (int budget = 1_000; budget <= 9_000; budget += 250) {
         FitPlan plan = plan(budget);
-        try (StepFeed single = new StepFeed(store, plan, 1, 2);
-            StepFeed balanced = new StepFeed(store, plan, LANES, 2)) {
+        try (StepFeed single = new StepFeed(store, plan, new boolean[1], 2);
+            StepFeed balanced = new StepFeed(store, plan, new boolean[LANES], 2)) {
           StepFeed.Step reference = single.prepare(rows, Teacher.RAW).join();
           StepFeed.Step candidate = balanced.prepare(rows, Teacher.RAW).join();
           Packing packing = compare(reference, candidate);
@@ -137,7 +137,7 @@ public class StepFeedTest {
       PrismNetwork network = (PrismNetwork) model.getBlock();
       perturb(network, 0.05f, 13);
       PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
-      try (StepFeed feed = new StepFeed(store, plan(2_000), 1, 2)) {
+      try (StepFeed feed = new StepFeed(store, plan(2_000), new boolean[1], 2)) {
         StepFeed.Step step = feed.prepare(rows, Teacher.RAW).join();
         int parts = 0;
         for (Microbatch part : microbatches(step)) {

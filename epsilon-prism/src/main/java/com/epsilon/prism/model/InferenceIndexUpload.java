@@ -16,7 +16,7 @@ public final class InferenceIndexUpload {
       NetworkInputs input = chunks[i];
       // 各チャンクを個別に送る場合と同じ境界にそろえる。
       staging.align();
-      BatchIndex index = new BatchIndex(input, null, null, staging);
+      BatchIndex index = new BatchIndex(input, null, null, false, staging);
       chunks[i] =
           new NetworkInputs(
               input.format(),

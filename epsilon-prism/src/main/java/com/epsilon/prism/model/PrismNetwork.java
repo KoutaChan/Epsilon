@@ -382,9 +382,7 @@ public final class PrismNetwork extends AbstractBlock {
     NDArray candidates = null;
     if (index.candidateCount > 0) {
       NDArray chosen = ValueGraphHead.aggregate(representations, values, index.candidates);
-      candidates =
-          outcome.forward(
-              context, chosen, NDArrays.gatherRows(decision, index.candidateRows.array()));
+      candidates = outcome.forward(context, chosen, index.candidateRows.gather(context, decision));
     }
     NDArray readings = null;
     if (index.readingCount > 0) {

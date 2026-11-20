@@ -299,6 +299,8 @@ public abstract class TensorTrainingKernels
       NDArray gradWeights) {
     int[] d = input.dimensions();
     int buckets = d[4] + input.layout().tableRows();
+    long groups =
+        Math.ceilDiv((long) d[0] * d[1], CollectionCapabilities.limit("OccurrenceThreads"));
     long[] floats =
         scratch(
             gradQuery.getManager(),
@@ -309,7 +311,7 @@ public abstract class TensorTrainingKernels
         scratch(
             gradQuery.getManager(),
             DataType.INT32,
-            buckets,
+            groups * buckets,
             buckets + 1L,
             (long) d[0] * input.layout().codeWidth());
     long[] gradients = {

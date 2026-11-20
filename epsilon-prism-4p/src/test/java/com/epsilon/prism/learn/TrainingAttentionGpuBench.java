@@ -154,7 +154,7 @@ public class TrainingAttentionGpuBench {
         PtStream stream = ((PtEngine) model.getNDManager().getEngine()).newStream(gpu);
         PtStreamScope ignored = stream.openScope();
         PtEvent event = stream.newEvent();
-        StepFeed feed = new StepFeed(store, plan, LANES, THREADS)) {
+        StepFeed feed = new StepFeed(store, plan, new boolean[LANES], THREADS)) {
       store.addCohort(Path.of(directory));
       int cohort = store.cohorts().get(0);
       int[] rows = Fit.shuffle(store.select(cohort, cohort, Selection.LABELS), 5);

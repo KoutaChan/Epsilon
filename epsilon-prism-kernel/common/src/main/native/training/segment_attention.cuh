@@ -185,63 +185,71 @@ __global__ void segmentAttentionMemoryGradient(SegmentAttention d, SegmentAttent
   }
 }
 
-// 表の各行に属する出現位置（遷移とキーの組）を、行ごとの区間に並べる。数える回では行ごとの個数を cursor に足し、並べる回では cursor から
-// ブロックの区間を予約して、ブロックの中の予約の順に書く。区間の中の並びは原子的な予約の到着順で決まる。
+// 表の各行について、遷移とキーの順に出現位置を並べる。ビットの集合はスレッドの到着順に依存しない。
 template <bool Scatter>
-__global__ void segmentAttentionOccurrences(SegmentAttention d, const uint8_t* codes, int32_t* cursor,
+__global__ void segmentAttentionOccurrences(SegmentAttention d, const uint8_t* codes, int32_t* starts,
                                             const int32_t* offsets, int32_t* occurrences, int buckets) {
-  extern __shared__ int32_t local[];
-  int32_t* reservation = local + buckets;
-  for (int row = threadIdx.x; row < buckets; row += kThreads) local[row] = 0;
+  constexpr int words = kOccurrenceThreads / 32;
+  static_assert(kOccurrenceThreads % 32 == 0);
+  extern __shared__ uint32_t bits[];
+  const int tid = threadIdx.x;
+  for (int i = tid; i < buckets * words; i += kOccurrenceThreads) bits[i] = 0;
   shareGroupWrites();
-  const int pair = blockIdx.x * kThreads + threadIdx.x;
+  const int pair = blockIdx.x * kOccurrenceThreads + tid;
   const int t = pair / d.input.keys;
   const int key = pair % d.input.keys;
-  const int end = key >= d.input.keys - d.input.tiles ? d.input.layout.count : 0;
-  constexpr int kMaxCodesPerPair = kMaxSegmentSpans + 1;
-  int rows[kMaxCodesPerPair];
-  int slots[kMaxCodesPerPair];
-  if (pair < d.input.transitions * d.input.keys) {
-#pragma unroll
-    for (int i = 0; i < kMaxCodesPerPair; ++i) {
-      if (i <= end) {
-        const int row = codeRow(d, codes, t, key, i - 1) + (i == 0 ? 0 : d.input.baseCodes);
-        const int slot = atomicAdd(local + row, 1);
-        if constexpr (Scatter) {
-          rows[i] = row;
-          slots[i] = slot;
-        }
-      }
+  const int entries = key >= d.input.keys - d.input.tiles ? 1 + d.input.layout.count : 1;
+  int rows[1 + kMaxSegmentSpans];
+  const uint32_t bit = 1u << (tid % 32);
+  if (t < d.input.transitions) {
+    for (int i = 0; i < entries; ++i) {
+      const int row = codeRow(d, codes, t, key, i - 1) + (i == 0 ? 0 : d.input.baseCodes);
+      if constexpr (Scatter) rows[i] = row;
+      atomicOr(bits + row * words + tid / 32, bit);
     }
   }
   shareGroupWrites();
-  for (int row = threadIdx.x; row < buckets; row += kThreads) {
-    if (local[row] == 0) continue;
-    const int start = atomicAdd(cursor + row, local[row]);
-    if constexpr (Scatter) reservation[row] = offsets[row] + start;
-  }
+  auto* group = starts + static_cast<size_t>(blockIdx.x) * buckets;
   if constexpr (Scatter) {
-    shareGroupWrites();
-    if (pair < d.input.transitions * d.input.keys) {
-#pragma unroll
-      for (int i = 0; i < kMaxCodesPerPair; ++i) {
-        if (i <= end) occurrences[reservation[rows[i]] + slots[i]] = pair;
-      }
+    if (t >= d.input.transitions) return;
+    for (int i = 0; i < entries; ++i) {
+      const int row = rows[i];
+      const uint32_t* mask = bits + row * words;
+      int rank = __popc(mask[tid / 32] & (bit - 1));
+      for (int w = 0; w < tid / 32; ++w) rank += __popc(mask[w]);
+      occurrences[offsets[row] + group[row] + rank] = pair;
+    }
+  } else {
+    for (int row = tid; row < buckets; row += kOccurrenceThreads) {
+      int count = 0;
+      for (int w = 0; w < words; ++w) count += __popc(bits[row * words + w]);
+      group[row] = count;
     }
   }
 }
 
-// 数えた個数から各行の区間の先頭を求め、並べる回のために cursor を 0 に戻す。
-__global__ void segmentAttentionOffsets(int rows, int32_t* cursor, int32_t* offsets) {
-  if (threadIdx.x == 0) {
-    int sum = 0;
-    for (int row = 0; row < rows; ++row) {
-      offsets[row] = sum;
-      sum += cursor[row];
-      cursor[row] = 0;
-    }
-    offsets[rows] = sum;
+// 各ブロックの書き出し位置を、表の行の先頭からの個数で求める。
+__global__ void segmentAttentionGroupOffsets(int rows, int groups, int32_t* starts, int32_t* totals) {
+  int row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row >= rows) return;
+  int sum = 0;
+  for (int g = 0; g < groups; ++g) {
+    auto& count = starts[static_cast<size_t>(g) * rows + row];
+    int n = count;
+    count = sum;
+    sum += n;
   }
+  totals[row] = sum;
+}
+
+__global__ void segmentAttentionOffsets(int rows, int32_t* offsets) {
+  int sum = 0;
+  for (int row = 0; row < rows; ++row) {
+    const int count = offsets[row];
+    offsets[row] = sum;
+    sum += count;
+  }
+  offsets[rows] = sum;
 }
 
 template <int Width, int Keys>

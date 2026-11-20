@@ -13,6 +13,38 @@ endif()
 target_include_directories(inference_plan_test PRIVATE "${inference}/.." "${inference}")
 add_test(NAME inference_plan COMMAND inference_plan_test)
 
+set(host_submission "${inference}/batch_executor.cu" "${inference}/kernel_selection.cu")
+set_source_files_properties(${host_submission} PROPERTIES LANGUAGE CXX)
+add_executable(collection_submission_test
+  collection_submission_test.cc recorded_commands.cc
+  recording_backend/runtime.cc recording_backend/kernel_calls.cc
+  ${host_submission} "${inference}/../cache/candidate_offset_cache.cc" "${inference}/declared_plan.cc"
+  "${inference}/execution_plan.cc"
+  "${inference}/workspace_layout.cc" "${inference}/packed_weights.cc")
+target_include_directories(collection_submission_test PRIVATE recording_backend .
+  "${inference}/.." "${inference}")
+target_compile_features(collection_submission_test PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(collection_submission_test PRIVATE /UNDEBUG /utf-8)
+else()
+  target_compile_options(collection_submission_test PRIVATE -UNDEBUG)
+endif()
+add_test(NAME collection_submission COMMAND collection_submission_test)
+
+add_executable(collection_capacity_test collection_capacity_test.cc recorded_commands.cc
+  recording_backend/runtime.cc recording_backend/kernel_calls.cc
+  ${host_submission} "${inference}/../cache/candidate_offset_cache.cc" "${inference}/declared_plan.cc"
+  "${inference}/execution_plan.cc" "${inference}/workspace_layout.cc" "${inference}/packed_weights.cc")
+target_include_directories(collection_capacity_test PRIVATE recording_backend .
+  "${inference}/.." "${inference}")
+target_compile_features(collection_capacity_test PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(collection_capacity_test PRIVATE /UNDEBUG /utf-8)
+else()
+  target_compile_options(collection_capacity_test PRIVATE -UNDEBUG)
+endif()
+add_test(NAME collection_capacity COMMAND collection_capacity_test)
+
 foreach(test event_cache_test training_gradients_test)
   add_executable(${test} ${test}.cc)
   target_compile_features(${test} PRIVATE cxx_std_17)

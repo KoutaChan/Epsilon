@@ -24,6 +24,7 @@
     <skip.hip.compiler>false</skip.hip.compiler>
     <prism.hip.jobs>8</prism.hip.jobs>
     <prism.hip.build>${project.build.directory}/native-unified</prism.hip.build>
+    <prism.hip.tests>OFF</prism.hip.tests>
   </properties>
   <build>
     <resources>
@@ -73,12 +74,49 @@
                       <arg value="-DPRISM_OUTPUT_DIR=${project.build.outputDirectory}/native/linux-x86_64" />
                       <arg value="-DPRISM_TORCH_VERSION=${pytorch.native.version}" />
                       <arg value="-DPRISM_TORCH_FLAVOR=${pytorch.rocm.flavor}" />
+                      <arg value="-DBUILD_TESTING=${prism.hip.tests}" />
                     </exec>
                     <exec executable="cmake" failonerror="true">
                       <arg value="--build" />
                       <arg value="${prism.hip.build}" />
                       <arg value="--parallel" />
                       <arg value="${prism.hip.jobs}" />
+                    </exec>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <!-- -Pnative-hip と一緒に指定すると、native のテストも組み、test の段で ctest を回す。 -->
+    <profile>
+      <id>hip-native-tests</id>
+      <properties><prism.hip.tests>ON</prism.hip.tests></properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>test-hip-native</id>
+                <phase>test</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <skip>${skipTests}</skip>
+                  <target>
+                    <exec executable="ctest" failonerror="true">
+                      <arg value="--test-dir" />
+                      <arg value="${prism.hip.build}" />
+                      <arg value="-C" />
+                      <arg value="Release" />
+                      <arg value="--output-on-failure" />
+                      <arg value="--no-tests=error" />
                     </exec>
                   </target>
                 </configuration>

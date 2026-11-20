@@ -73,5 +73,10 @@ endfunction()
 prism_hip_library(prism_hip OFF $<TARGET_OBJECTS:prism_hip_inference_objects>)
 prism_hip_library(prism_hip_check ON ${PRISM_INFERENCE_OBJECT_SOURCES})
 
+include(CTest)
+if(BUILD_TESTING)
+  set(PRISM_HIP_NATIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../test/native" hip-tests)
+endif()
 
 configure_file(prism-hip.properties.in ${PRISM_OUTPUT_DIR}/prism-hip.properties @ONLY)

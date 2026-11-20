@@ -170,7 +170,7 @@
     <module>epsilon-grp</module>
     <module>epsilon-classic</module>
     <!-- PRISM の HIP の実行系。Java の部分はどこでも組み立て、native（libprism_hip.so）は -Pnative-hip のときだけ作る。 -->
-    <module>epsilon-prism-hip</module>
+    <module>epsilon-prism-kernel</module>
     <module>epsilon-prism</module>
     <module>epsilon-prism-4p</module>
     <module>epsilon-prism-3p</module>

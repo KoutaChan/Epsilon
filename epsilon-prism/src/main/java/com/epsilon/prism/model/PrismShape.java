@@ -1,16 +1,16 @@
 package com.epsilon.prism.model;
 
 import com.epsilon.agent.facts.MahjongTileRelation;
-import com.epsilon.prism.hip.CandidateStages;
-import com.epsilon.prism.hip.HipArchitecture;
-import com.epsilon.prism.hip.HipCapabilities;
-import com.epsilon.prism.hip.HipCounts;
-import com.epsilon.prism.hip.HipFfn;
-import com.epsilon.prism.hip.HipLayer;
-import com.epsilon.prism.hip.LayerRole;
 import com.epsilon.prism.input.InputFeature;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.input.TileTokens;
+import com.epsilon.prism.kernel.CandidateStages;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.CollectionCapabilities;
+import com.epsilon.prism.kernel.EncoderLayerShape;
+import com.epsilon.prism.kernel.FeedForwardShape;
+import com.epsilon.prism.kernel.LayerRole;
+import com.epsilon.prism.kernel.TokenCounts;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -39,12 +39,12 @@ public sealed interface PrismShape permits PrismShape.TokenTrunk {
     return Set.of();
   }
 
-  /** 候補層で基本の注意に加える計算を作る。 */
+  /** 候補層の Attention に加える計算を返す。 */
   default CandidateLayer.Features candidateFeatures(InputFormat format) {
     return CandidateLayer.Features.STANDARD;
   }
 
-  /** 各層の注意と FFN を組み立てる。 */
+  /** 指定した層の Attention と FFN を作る。 */
   default EncoderLayer encoder(int layer, InputFormat format) {
     return new EncoderLayer(this, layer, format);
   }
@@ -157,15 +157,10 @@ public sealed interface PrismShape permits PrismShape.TokenTrunk {
   int gate();
 
   /** 埋め込みに適用するトークン層を入力側から順に返す。 */
-  List<HipLayer> layers();
+  List<EncoderLayerShape> layers();
 
-  private static HipLayer allTokens(int ffn) {
-    return new HipLayer(LayerRole.ALL_TOKENS, new HipFfn.Shared(ffn));
-  }
-
-  /** 専用の HIP カーネルが扱わず、eager で計算する構造なら true。 */
-  default boolean eagerOnly() {
-    return !HipCapabilities.supports(hidden(), candidateSegments(), reread());
+  private static EncoderLayerShape allTokens(int ffn) {
+    return new EncoderLayerShape(LayerRole.ALL_TOKENS, new FeedForwardShape.Shared(ffn));
   }
 
   /** 候補層が ΣC と K を持つなら true。 */
@@ -197,57 +192,36 @@ public sealed interface PrismShape permits PrismShape.TokenTrunk {
      * @return 層（入力に近い順）
      */
     @Override
-    default List<HipLayer> layers() {
-      List<HipLayer> layers = new ArrayList<>();
+    default List<EncoderLayerShape> layers() {
+      List<EncoderLayerShape> layers = new ArrayList<>();
       switch (this) {
         case V2 v2 -> {
-          HipLayer allTokens = allTokens(v2.ffn());
+          EncoderLayerShape allTokens = allTokens(v2.ffn());
           for (int layer = 0; layer < v2.depth() - 1; layer++) {
             layers.add(allTokens);
           }
-          layers.add(new HipLayer(LayerRole.FIXED_TOKENS, new HipFfn.Shared(v2.ffn())));
+          layers.add(
+              new EncoderLayerShape(LayerRole.FIXED_TOKENS, new FeedForwardShape.Shared(v2.ffn())));
         }
         case V4 v4 -> {
           layers.add(allTokens(v4.layer0Ffn()));
           for (int layer = 1; layer < v4.depth(); layer++) {
-            layers.add(new HipLayer(LayerRole.FIXED_TOKENS, new HipFfn.Shared(v4.ffn())));
+            layers.add(
+                new EncoderLayerShape(
+                    LayerRole.FIXED_TOKENS, new FeedForwardShape.Shared(v4.ffn())));
           }
         }
         case V3 v3 -> {
           layers.add(allTokens(v3.ffn()));
           for (int layer = 1; layer < V3.DEPTH; layer++) {
             layers.add(
-                new HipLayer(LayerRole.FIXED_TOKENS, new HipFfn.Typed(v3.context(), v3.tile())));
+                new EncoderLayerShape(
+                    LayerRole.FIXED_TOKENS, new FeedForwardShape.Typed(v3.context(), v3.tile())));
           }
         }
       }
       return List.copyOf(layers);
     }
-  }
-
-  /**
-   * 層・候補層・ヘッドと入力形式を HIP の記述に変換する。
-   *
-   * @throws IllegalArgumentException 専用のカーネルが扱えない構造・幅・入力形式のとき
-   */
-  default HipArchitecture hip(InputFormat format) {
-    if (eagerOnly()) {
-      throw new IllegalArgumentException(
-          "HIP does not support this shape; use eager inference: " + this);
-    }
-    int gateKinds = (int) format.roles().stream().filter(InputFormat.Role::gate).count();
-    return new HipArchitecture(
-        hidden(),
-        (float) epsilon(),
-        (float) EncoderLayer.SCALE,
-        ValueGraphHead.TAU,
-        layers(),
-        candidateFfn(),
-        candidateStages(),
-        gate(),
-        gateKinds,
-        format.roles().size(),
-        counts(format));
   }
 
   /** イベント同士が層 0 で読める範囲。固定トークンはどちらでも全イベントを読む。 */
@@ -264,14 +238,12 @@ public sealed interface PrismShape permits PrismShape.TokenTrunk {
    * @param hidden 隠れ状態の幅。S は 256、M は 384、L は 512
    * @param layer0Ffn イベントも更新する最初の層の FFN 幅。後続の層と候補層の幅は hidden の 2 倍
    * @param depth 幹の層数（2 または 3）。層 1 以降は固定トークンだけを更新する
-   * @param eventAttention イベント同士の注意の向き
+   * @param eventAttention イベントの Attention で各クエリが読めるイベントの範囲
    */
   record V4(int hidden, int layer0Ffn, int depth, EventAttention eventAttention)
       implements TokenTrunk {
     public V4 {
-      if (HipCapabilities.width(hidden) == null) {
-        throw new IllegalArgumentException("undeclared V4 hidden width " + hidden);
-      }
+      Math.multiplyExact(hidden, 2);
       requireWidths(hidden, layer0Ffn, hidden);
       if (depth < MIN_DEPTH || depth > MAX_DEPTH) {
         throw new IllegalArgumentException("V4 depth must be 2 or 3: " + depth);
@@ -279,14 +251,14 @@ public sealed interface PrismShape permits PrismShape.TokenTrunk {
       Objects.requireNonNull(eventAttention, "eventAttention");
     }
 
-    /** 指定した幅で層 0 の FFN を 2 倍幅にし、深さ 2・因果注意で作る。 */
+    /** 指定した幅の 2 倍を層 0 の FFN 幅とし、2 層の幹でイベントに因果マスクを適用する。 */
     public V4(int hidden) {
-      this(hidden, 2 * hidden, DEFAULT_DEPTH, EventAttention.CAUSAL);
+      this(hidden, Math.multiplyExact(2, hidden), DEFAULT_DEPTH, EventAttention.CAUSAL);
     }
 
     /** S の既定形。 */
     public V4() {
-      this(HipArchitecture.HIDDEN);
+      this(256);
     }
 
     @Override
@@ -317,7 +289,7 @@ public sealed interface PrismShape permits PrismShape.TokenTrunk {
 
     @Override
     public boolean supportsAttentionTape() {
-      return !eagerOnly();
+      return CollectionCapabilities.supports(hidden(), candidateSegments(), reread());
     }
 
     @Override
@@ -338,16 +310,16 @@ public sealed interface PrismShape permits PrismShape.TokenTrunk {
       throw new IllegalArgumentException("hidden must be a positive multiple of 32: " + hidden);
     }
     requireFfn("ffn", ffn);
-    if (gate <= 0 || gate % HipArchitecture.GATE_STEP != 0) {
+    if (gate <= 0 || gate % CollectionArchitecture.GATE_STEP != 0) {
       throw new IllegalArgumentException(
-          "gate must be a positive multiple of " + HipArchitecture.GATE_STEP + ": " + gate);
+          "gate must be a positive multiple of " + CollectionArchitecture.GATE_STEP + ": " + gate);
     }
   }
 
   private static void requireFfn(String name, int width) {
-    if (width <= 0 || width % HipFfn.CHUNK != 0) {
+    if (width <= 0 || width % FeedForwardShape.CHUNK != 0) {
       throw new IllegalArgumentException(
-          name + " must be a positive multiple of " + HipFfn.CHUNK + ": " + width);
+          name + " must be a positive multiple of " + FeedForwardShape.CHUNK + ": " + width);
     }
   }
 
@@ -424,20 +396,20 @@ public sealed interface PrismShape permits PrismShape.TokenTrunk {
   }
 
   /**
-   * 入力形式で決まる、HIP が使う数を返す。牌の数は 1 行あたりの牌のトークンの数で、牌の関係の表（{@link TileTokens#relations()}）
+   * 入力形式で決まる、推論カーネルが使うトークンや関係の種類の数とイベント数の上限を返す。牌の数は 1 行あたりの牌のトークンの数で、牌の関係の表（{@link TileTokens#relations()}）
    * はその 2 乗の大きさになる。関係のクラスの数は {@link MahjongTileRelation} の数で、四人打ちと三人打ちで同じ。
    *
    * @param format 入力形式
    * @return 席の数、牌の数、遷移のキーのコードの数、牌の関係のクラスの数、イベントの数の上限
    * @throws IllegalArgumentException 局が 1 トークンでない形式のとき
    */
-  static HipCounts counts(InputFormat format) {
+  static TokenCounts counts(InputFormat format) {
     InputFormat.Keys keys = format.keys();
     if (keys.round() != 1) {
       throw new IllegalArgumentException(
-          "the HIP architecture needs one round token per row, got " + keys.round());
+          "the collection kernels need one round token per row, got " + keys.round());
     }
-    return new HipCounts(
+    return new TokenCounts(
         keys.seat(),
         keys.tile(),
         keys.codes(),

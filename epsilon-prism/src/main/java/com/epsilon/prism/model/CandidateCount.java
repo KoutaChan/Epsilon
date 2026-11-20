@@ -34,10 +34,6 @@ final class CandidateCount extends Module {
       Context context, NetworkInputs inputs, BatchIndex index, NDArray states, NDArray residual) {
     NDArray tiles = states.get(new NDIndex(":, {}:", firstTile));
     NDArray projected = context.linear(tiles, tile, null);
-    FitProbe probe = context.probe();
-    if (probe.detailed()) {
-      probe.mark(FitProbe.Stage.CANDIDATE);
-    }
     NDArray ids =
         inputs
             .get(Tensor.TRANSITION_CODE)
@@ -45,17 +41,11 @@ final class CandidateCount extends Module {
             .toType(DataType.INT32, false)
             .sub(firstCode);
     NDArray rows = index.transitionRows.array();
-    if (probe.detailed()) {
-      probe.mark(FitProbe.Stage.COUNT_FORWARD_CODES);
-    }
     NDArray count = context.candidateCount(projected, gate, rows, ids);
     if (count == null) {
       NDArray shared = NDArrays.gatherRows(projected, rows);
       NDArray gates = context.rows(gate, ids.reshape(-1)).reshape(ids.getShape().add(width));
       count = context.toFloat(shared).mul(Activation.sigmoid(gates)).sum(new int[] {1});
-    }
-    if (probe.detailed()) {
-      probe.mark(FitProbe.Stage.COUNT_FORWARD_KERNEL);
     }
     return residual.add(context.linear(context.toCompute(count), output, null));
   }

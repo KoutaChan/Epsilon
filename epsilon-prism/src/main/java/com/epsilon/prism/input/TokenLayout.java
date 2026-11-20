@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * フィールドの enum から、トークンの列と埋め込みの名前空間を一度だけ作る。入力のライター、ネットワーク、HIP の表はどれもこれを引き、
+ * フィールドの enum から、トークンの列と埋め込みの名前空間を一度だけ作る。入力のライター、ネットワーク、推論カーネルの表はどれもこれを引き、
  * オフセットを手で並べない。
  *
  * <p>列はフィールドの宣言の順に置き、繰り返しのあるフィールドは繰り返しの数だけ列を続ける。名前空間は列ごとの語彙の累積和で、列 c の値 v
@@ -146,7 +146,7 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
   }
 
   /**
-   * 列ごとの語彙の写しを返す（ネットワークの表と HIP の定数を作るときに使う）。
+   * 列ごとの語彙の写しを返す（ネットワークの表と推論カーネルの定数を作るときに使う）。
    *
    * @return 列の順の語彙
    */
@@ -155,7 +155,7 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
   }
 
   /**
-   * 列の値の書き方を返す（ネットワークの表と HIP の定数を作るときに使う）。
+   * 列の値の書き方を返す（ネットワークの表と推論カーネルの定数を作るときに使う）。
    *
    * @param column 列
    * @return 書き方
@@ -165,7 +165,7 @@ public final class TokenLayout<E extends Enum<E> & FieldSpec.BoundedField> {
   }
 
   /**
-   * 列ごとの名前空間の先頭の行の写しを返す（ネットワークの表と HIP の定数を作るときに使う）。
+   * 列ごとの名前空間の先頭の行の写しを返す（ネットワークの表と推論カーネルの定数を作るときに使う）。
    *
    * @return 列の順の表の行
    */

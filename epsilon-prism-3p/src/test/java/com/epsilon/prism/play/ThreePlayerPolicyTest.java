@@ -47,6 +47,20 @@ public class ThreePlayerPolicyTest {
   private static final int DECISIONS = 8;
 
   @Test(dataProvider = "threePlayerModels", dataProviderClass = PublishedModel.class)
+  public void publishedPacks(PublishedModel model) throws Exception {
+    PublishedWeights.check(model);
+  }
+
+  /** この機械の GPU のプロバイダーで配布モデルを開き、全ての合法手のスコアのビットを参照と照らす。 */
+  @Test(
+      groups = "gpu",
+      dataProvider = "threePlayerModels",
+      dataProviderClass = PublishedModel.class)
+  public void publishedNativeScores(PublishedModel model) throws Exception {
+    model.assertNativeScores();
+  }
+
+  @Test(dataProvider = "threePlayerModels", dataProviderClass = PublishedModel.class)
   public void publishedEagerScores(PublishedModel model) throws Exception {
     model.assertEagerScores();
   }

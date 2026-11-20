@@ -2,8 +2,8 @@ package com.epsilon.prism.model;
 
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.types.DataType;
-import com.epsilon.prism.hip.RmsNormKernels;
-import com.epsilon.prism.hip.TrainingKernels;
+import com.epsilon.prism.kernel.RmsNormKernels;
+import com.epsilon.prism.kernel.TrainingKernels;
 
 /**
  * テストだけで使う {@link TrainingKernels} の参照実装。配列をホストに写し、式をそのまま書いたループで計算して、元の配列の型で書き戻す。

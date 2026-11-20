@@ -6,12 +6,14 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtNDManager;
 import com.epsilon.agent.runtime.NetworkRuntime;
+import com.epsilon.prism.Limits;
 import com.epsilon.prism.backend.EventPages;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.learn.FitPlan;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,8 +26,7 @@ import java.util.function.IntFunction;
  * 要求を出す側が済ませている。O にリーダーを付ける処理と符号化は、符号化のプールで範囲ごとに並列に行う。この 2 つの間に、バッチの
  * 計画を 1 つのスレッドで立てる。CPU のネットワーク（プールなし）では、全てを呼び出しスレッドで行う。
  *
- * <p>作業領域と入力のバッチはプールで使い回し、足りなければ足す（同時に受け付けた数まで増えて止まる）。バッチの容量は推論のバッチと
- * 同じ（{@link BatchPlan.Capacity#standard}）。blob のバッファの種類は推論のバックエンドで決める（{@link Memory}）。入力の形式の
+ * <p>専用カーネルの入力とページ配置は受付とスロットの数に合わせて先に確保する。各受付の分割は {@link BatchPlan.Capacity#standard} の上限を使う。入力の形式の
  * 1 行のライターは、符号化のスレッドごとに 1 つ持つ（O のリーダーは {@link Encoding} が行ごとに持つ）。
  */
 final class BatchEncoder implements AutoCloseable {
@@ -48,14 +49,14 @@ final class BatchEncoder implements AutoCloseable {
     return device.isGpu() ? TOKEN_BUDGET / runtime.slots() : TOKEN_BUDGET;
   }
 
-  /** トークン数の上限なし。HIP は行をパディングせずに並べるので、バッチの容量だけで分ける。 */
+  /** トークン数の上限なし。専用カーネルは行をパディングせずに並べるので、バッチの容量だけで分ける。 */
   static final int UNBOUNDED = Integer.MAX_VALUE;
 
   /** 入力の blob を置くバッファの種類。 */
   enum Memory {
     /** ダイレクトバッファ。eager はバッチごとに入力の配列へコピーする。 */
     DIRECT,
-    /** ページ固定のホストメモリ。HIP の H2D が非同期に読む。 */
+    /** ページ固定のホストメモリ。デバイスへの非同期転送で使う。 */
     PINNED
   }
 
@@ -78,6 +79,9 @@ final class BatchEncoder implements AutoCloseable {
   private final ThreadLocal<Tools> tools;
   private final ConcurrentLinkedQueue<Encoding> encodings = new ConcurrentLinkedQueue<>();
   private final ConcurrentLinkedQueue<HostInputs> batches = new ConcurrentLinkedQueue<>();
+  private boolean reserved;
+  private boolean closed;
+  private CompletableFuture<Void> available;
   private final LongAdder nanos = new LongAdder();
 
   /**
@@ -114,25 +118,67 @@ final class BatchEncoder implements AutoCloseable {
   }
 
   /**
-   * 作業領域を借りる。結果を書き終えたら {@link #release} で返す。
+   * 受付中と実行中のバッチが使う入力とページ配置を、公開前に確保する。
    *
-   * @param rows 方策の要求（1 つ以上）
-   * @return 作業領域
+   * @throws IllegalArgumentException 受付か行の上限が 1 未満のときと、バッチの容量に全ての軸で最大の行が 1 つも入らないとき
    */
-  Encoding acquire(List<PolicyRequest> rows) {
-    Encoding encoding = encodings.poll();
-    if (encoding == null) {
-      encoding =
-          new Encoding(
-              format,
-              eventPages
-                  ? batch ->
-                      pageBatches.computeIfAbsent(
-                          batch, ignored -> new EventPages(format, capacity, blobs))
-                  : null);
+  void reserve(int admissions, int maxRows) {
+    if (admissions < 1 || maxRows < 1) throw new IllegalArgumentException("invalid input capacity");
+    int events = format.maxEvents();
+    int minimumRows =
+        Math.min(capacity.rows(), budget / (format.fixedTokens() + format.maxEvents()));
+    minimumRows = Math.min(minimumRows, capacity.events() / events);
+    minimumRows = Math.min(minimumRows, capacity.transitions() / Limits.MAX_TRANSITIONS);
+    minimumRows = Math.min(minimumRows, capacity.actions() / Limits.MAX_LEGAL_ACTIONS);
+    if (minimumRows < 1)
+      throw new IllegalArgumentException("the batch capacity cannot hold the largest row");
+    // 最後以外の分割には、各行が全ての軸で最大でも minimumRows 行が入る。
+    for (int cell = 0; cell < admissions; ++cell) {
+      var inputs = new ArrayList<HostInputs>();
+      for (int remaining = maxRows; remaining > 0; remaining -= minimumRows) {
+        int rows = Math.min(remaining, Math.min(capacity.rows(), budget / format.fixedTokens()));
+        var limits =
+            new BatchPlan.Capacity(
+                rows,
+                (int)
+                    Math.max(
+                        Limits.MAX_EVENT_TOKENS, Math.min(capacity.events(), (long) rows * events)),
+                (int) Math.min(capacity.transitions(), (long) rows * Limits.MAX_TRANSITIONS),
+                (int) Math.min(capacity.actions(), (long) rows * Limits.MAX_LEGAL_ACTIONS));
+        inputs.add(allocate(limits));
+      }
+      encodings.add(new Encoding(format, inputs::get, eventPages ? pageBatches::get : null));
     }
-    encoding.reset(rows);
-    return encoding;
+    reserved = true;
+  }
+
+  /** 入力に空きがなければ、返却時に完了する通知を返す。 */
+  synchronized CompletableFuture<Void> whenFull() {
+    if (closed) throw new IllegalStateException("batch encoder is closed");
+    if (!reserved || !encodings.isEmpty()) return null;
+    if (available == null) available = new CompletableFuture<>();
+    return available;
+  }
+
+  /** 受付が所有する作業領域を一つ借りる。 */
+  synchronized Encoding borrow() {
+    if (closed) throw new IllegalStateException("batch encoder is closed");
+    Encoding encoding = encodings.poll();
+    if (encoding != null) return encoding;
+    if (reserved) throw new IllegalStateException("no reserved input available");
+    return new Encoding(format, ignored -> batch(), eventPages ? pageBatches::get : null);
+  }
+
+  /** 呼び出しスレッドの作業領域を借り、要求を付ける。 */
+  Encoding acquire(List<PolicyRequest> rows) {
+    Encoding encoding = borrow();
+    try {
+      encoding.reset(rows);
+      return encoding;
+    } catch (RuntimeException | Error failure) {
+      release(encoding);
+      throw failure;
+    }
   }
 
   /**
@@ -148,7 +194,7 @@ final class BatchEncoder implements AutoCloseable {
         .thenCompose(
             ignored -> {
               long started = System.nanoTime();
-              encoding.plan(this::batch, budget);
+              encoding.plan(budget);
               nanos.add(System.nanoTime() - started);
               return ranges(
                   runtime,
@@ -167,10 +213,16 @@ final class BatchEncoder implements AutoCloseable {
         chunk.pages().clear(chunk.batch().plan().rows());
         chunk.batch().input().releaseEvents();
       }
-      batches.add(chunk.batch());
+      if (!reserved) batches.add(chunk.batch());
     }
     encoding.clear();
-    encodings.add(encoding);
+    CompletableFuture<Void> wake;
+    synchronized (this) {
+      encodings.add(encoding);
+      wake = available;
+      available = null;
+    }
+    if (wake != null) wake.completeAsync(() -> null);
   }
 
   /** リーダーを付ける処理・計画・符号化に、各スレッドがかけた時間の合計（秒）。 */
@@ -195,21 +247,32 @@ final class BatchEncoder implements AutoCloseable {
         : runtime.encodeRows(rows, timed);
   }
 
-  /** 空いたバッチを借りる（無ければ新しく確保する）。計画は空にして渡す。 */
   private HostInputs batch() {
     HostInputs batch = batches.poll();
-    if (batch == null) {
-      batch = HostInputs.allocate(format, capacity, blobs);
-      if (eventPages) batch.input().enablePublishedEvents();
+    return batch != null ? batch : allocate(capacity);
+  }
+
+  private HostInputs allocate(BatchPlan.Capacity limits) {
+    HostInputs batch = HostInputs.allocate(format, limits, blobs);
+    if (eventPages) {
+      batch.input().enablePublishedEvents();
+      pageBatches.put(batch, new EventPages(format, limits, blobs));
     }
-    batch.plan().clear();
     return batch;
   }
 
   /** プールを空にし、ページ固定のバッファを解放する。blob を読むデバイスの処理が全て終わった後に呼ぶ。 */
   @Override
   public void close() {
-    encodings.clear();
+    CompletableFuture<Void> wake;
+    synchronized (this) {
+      closed = true;
+      encodings.clear();
+      wake = available;
+      available = null;
+    }
+    if (wake != null)
+      wake.completeExceptionally(new IllegalStateException("batch encoder is closed"));
     batches.clear();
     pageBatches.clear();
     if (pinned != null) {

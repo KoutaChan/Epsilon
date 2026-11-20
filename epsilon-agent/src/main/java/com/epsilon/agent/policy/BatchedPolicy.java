@@ -14,6 +14,17 @@ public non-sealed interface BatchedPolicy extends Policy {
   /** 記録を入れるバッチの区分（0 以上）。区分で決まるのはバッチの形（入力の大きさ）だけで、選ぶ手は変わらない。 */
   int admission(Observation observation);
 
+  /**
+   * 牌山の番号を引き継いだ記録の区分。同じ牌山の記録を同じ実行先に送る方策は、区分で実行先を表す。既定は牌山に依らない区分。
+   *
+   * @param observation 記録
+   * @param wall 記録を出した半荘の牌山の番号
+   * @return 区分（0 以上）
+   */
+  default int admission(Observation observation, long wall) {
+    return admission(observation);
+  }
+
   /** 1 つのバッチに入れられる記録の数の上限。区分ごとに決まる。 */
   int maxBatch(int admission);
 

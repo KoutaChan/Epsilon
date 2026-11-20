@@ -12,7 +12,7 @@ import java.util.stream.IntStream;
 /**
  * 候補の牌コードと、局面に共通する区分の桁を合わせて書く。
  *
- * <p>区分の符号は、牌の公開の値（判断ごとに 1 つ）と、遷移の牌のコードの桁で決まる。席に依らない区分は受け入れの桁を、席の区分は
+ * <p>区分のコードは、牌の公開の値（判断ごとに 1 つ）と、遷移の牌のコードの桁で決まる。席に依らない区分は受け入れの桁を、席の区分は
  * 待ちと打った牌の桁を読み、枚数の桁は読まない。判断の手牌のコードはどの桁も 0 なので、手牌のコードで作った区分の行を
  * {@link #prepare} で 1 回作り、遷移ごとにはそれを写して、遷移のコードを書いたときに桁が立った牌（{@link #mark}）の区分だけを書き直す。
  */
@@ -40,7 +40,7 @@ final class CandidateWriter {
   /** 牌のコードごとの、区分が読む桁（{@link #UKEIRE}・{@link #WAIT}・{@link #DISCARDED} のビット）。 */
   private final byte[] read = new byte[256];
 
-  /** 区分ごとの、符号を書く最初の列。 */
+  /** 区分ごとの、コードを書く最初の列。 */
   private final int[] columns;
 
   /** 席に依らない区分と、席の区分の番号。 */
@@ -171,7 +171,7 @@ final class CandidateWriter {
   }
 
   /**
-   * 遷移ごとに、基本のキーのコードと区分の符号を書く。区分の行は {@link #prepare} の行を写し、印の付いた牌の区分だけを遷移のコードで
+   * 遷移ごとに、基本のキーのコードと区分のコードを書く。区分の行は {@link #prepare} の行を写し、印の付いた牌の区分だけを遷移のコードで
    * 書き直す。
    */
   void write(ByteBuffer target, int start, byte[] basic, int transitions) {

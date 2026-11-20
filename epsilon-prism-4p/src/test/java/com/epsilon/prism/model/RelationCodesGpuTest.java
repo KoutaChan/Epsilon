@@ -16,7 +16,7 @@ import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.backend.HipFixtures;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.RelationCodes;
+import com.epsilon.prism.kernel.RelationCodes;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.learn.FitPlan;
@@ -36,7 +36,7 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * GPU の学習で作る関係のコード（{@link RelationCodes}、{@code t0_relation.hip}）が、eager の {@link RelationClass} とビットで
+ * GPU の学習で作る関係のコード（{@link RelationCodes}、{@code relation_codes.cuh}）が、eager の {@link RelationClass} とビットで
  * 同じことを確かめる。パディングの位置も含め、全てのワードを比べる（テストグループ rocm。GPU 1 枚）。
  *
  * <p>比べるバッチは 3 つ。属性を乱数で決めた行のバッチ（S は 156 まで）、エンジンで打った半荘のバッチ、
@@ -46,7 +46,7 @@ import org.testng.annotations.Test;
 public class RelationCodesGpuTest {
   private static final Logger log = LoggerFactory.getLogger(RelationCodesGpuTest.class);
 
-  /** 本物の行のディレクトリを渡すシステムプロパティ（FitStepGpuBench と同じ）。 */
+  /** 本物の行のディレクトリを渡すシステムプロパティ。 */
   private static final String ROWS_PROPERTY = "prism.bench.rows";
 
   /** 本物の行で、1 ステップの行の数と比べるステップの数。 */

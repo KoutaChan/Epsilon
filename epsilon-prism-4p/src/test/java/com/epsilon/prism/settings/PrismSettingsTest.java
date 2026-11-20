@@ -374,8 +374,8 @@ public class PrismSettingsTest {
   }
 
   /**
-   * 同値な打牌の切り方は行動方策の節のキーで、既定はツモ切り。収集から効く（COLLECT）。手出しに替えられ、ほかの値はキーのパスを添えて拒む。
-   * 系列の入口が使う既定の節も、ツモ切り。
+   * 同値な打牌の切り方は行動方策セクションのキーで、既定はツモ切り。収集から効く（COLLECT）。手出しに替えられ、ほかの値はキーのパスを添えて拒む。
+   * 系列の既定設定でもツモ切りを選ぶ。
    */
   @Test
   public void twinDiscardsAreTsumogiriByDefault() {

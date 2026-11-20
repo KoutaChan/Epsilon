@@ -8,7 +8,8 @@ import ai.djl.ndarray.NDManager;
 import ai.djl.nn.Parameter;
 import ai.djl.util.Pair;
 import com.epsilon.agent.facts.MahjongTileRelation;
-import com.epsilon.prism.hip.HipWeight;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
@@ -73,13 +74,16 @@ public class WeightPackRoundTripTest {
           "a second build");
 
       WeightLayout given =
-          WeightLayout.of(FOUR_PLAYER, shape.hip(FOUR_PLAYER), network.inferenceParameters());
+          WeightLayout.of(
+              FOUR_PLAYER,
+              CollectionArchitecture.from(network.declaration()),
+              network.inferenceParameters());
       Assert.assertEquals(given.architecture(), layout.architecture());
       Assert.assertEquals(given.bytes(), layout.bytes());
       ByteBuffer expected = copy(WeightPack.build(given, network, 11).buffer());
       long[] relations = MahjongTileRelation.relationIds();
-      int tiles = Math.toIntExact(given.header().weight(HipWeight.TILE_RELATION, 0));
-      Assert.assertEquals(given.header().elements(HipWeight.TILE_RELATION, 0), relations.length);
+      int tiles = Math.toIntExact(given.header().weight(WeightField.TILE_RELATION, 0));
+      Assert.assertEquals(given.header().elements(WeightField.TILE_RELATION, 0), relations.length);
       for (int i = 0; i < relations.length; i++) {
         expected.put(tiles + i, (byte) relations[i]);
       }
@@ -99,7 +103,10 @@ public class WeightPackRoundTripTest {
     Assert.assertEquals(PrismNetwork.readShape(model), PrismShape.standard());
     WeightPack pack = WeightPack.load(model, 760);
     WeightLayout layout = pack.layout();
-    Assert.assertEquals(layout.architecture(), PrismShape.standard().hip(FOUR_PLAYER));
+    Assert.assertEquals(
+        layout.architecture(),
+        CollectionArchitecture.from(
+            new PrismNetwork(FOUR_PLAYER, PrismShape.standard()).declaration()));
     Assert.assertEquals(new PackView(pack.buffer()).architecture(), layout.architecture().encode());
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = PrismNetwork.load(model, manager);

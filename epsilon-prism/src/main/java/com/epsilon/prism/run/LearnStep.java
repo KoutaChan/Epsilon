@@ -18,7 +18,6 @@ import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.luck.LuckSettlement;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.noise.TempoSettings;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.rows.RowCounts;
 import com.epsilon.prism.settings.PrismSettings;
@@ -157,7 +156,7 @@ final class LearnStep implements Step<PrismIteration> {
                           rows,
                           start,
                           iteration.start(),
-                          InferencePath.of(machine.inference().kernels()),
+                          machine.inference().kernels(),
                           devices,
                           threads))
               : null;

@@ -18,7 +18,7 @@ public enum AdamEpsilon {
     return this == FIXED ? builder.build() : new TempoAdamW(builder, rate, gain);
   }
 
-  /** DJL のモーメントと歩数を使い、補正前の √v に渡す ε だけを毎歩変える。 */
+  /** DJL のモーメントとステップ数を使い、補正前の √v に渡す ε だけを各ステップで変える。 */
   private static final class TempoAdamW extends AdamW {
     private static final float BETA1 = 0.9f, BETA2 = 0.999f;
     private final Tracker rate;

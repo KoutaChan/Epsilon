@@ -60,13 +60,13 @@ public final class PhiControl {
   }
 
   /**
-   * 手動の学び直しの頼みを run の control に置く。学び直すのは、学習の JVM で GRP の裏の作業（{@link GrpBackground}）が次に動いたとき。
-   * 関門はコホート n ＋ 1 で判定する。頼みは置いた数だけ番号の順に従い、学び終える前なら取り消しの頼みで消せる。
+   * 手動の再学習の要求を run の control に置く。学び直すのは、学習の JVM で GRP の裏の作業（{@link GrpBackground}）が次に動いたとき。
+   * 関門はコホート n ＋ 1 で判定する。要求は番号順に処理し、学び終える前なら取り消し要求で消せる。
    *
    * @param run run のディレクトリ
    * @param operations 自分の GRP の運用の設定
    * @param slot 学び直す時点 n（null なら、半荘の記録がある最新の確定済みのコホート）
-   * @return 置いた頼み
+   * @return 置いた要求
    * @throws IllegalArgumentException その時点のコホートが確定済みでないか半荘の記録が無いとき、または学び直しに使えるコホートが無いとき
    */
   public static ControlRequest requestRefit(Path run, GrpOperations operations, Integer slot)

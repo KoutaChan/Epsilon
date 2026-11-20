@@ -8,7 +8,6 @@ import com.epsilon.agent.policy.Series;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.mahjong.rules.Variant;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PrismPolicy;
 import com.epsilon.prism.run.Snapshot;
@@ -53,7 +52,7 @@ public final class PrismFamily implements ModelFamily {
               runtime != null ? runtime : owned,
               options.maxBatch(),
               options.precision(),
-              InferencePath.of(options.kernels()));
+              options.kernels());
       if (network.format().variant() != variant) {
         Variant found = network.format().variant();
         network.close();

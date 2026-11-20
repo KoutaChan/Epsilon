@@ -35,7 +35,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-/** BF16 の学習器でパラメーターを更新する試験。対応する形では HIP の Attention を記録する。 */
+/** BF16 の学習器でパラメーターを更新するテスト。対応する形では HIP の Attention を記録する。 */
 public class FitGpuTest {
   private static final Logger log = LoggerFactory.getLogger(FitGpuTest.class);
 

@@ -41,6 +41,17 @@ public class PrismFamilyTest {
   private static final PolicyOptions CPU = PolicyOptions.defaults();
 
   @Test(dataProvider = "fourPlayerModels", dataProviderClass = PublishedModel.class)
+  public void publishedPacks(PublishedModel model) throws Exception {
+    PublishedWeights.check(model);
+  }
+
+  /** この機械の GPU のプロバイダーで配布モデルを開き、全ての合法手のスコアのビットを参照と照らす。 */
+  @Test(groups = "gpu", dataProvider = "fourPlayerModels", dataProviderClass = PublishedModel.class)
+  public void publishedNativeScores(PublishedModel model) throws Exception {
+    model.assertNativeScores();
+  }
+
+  @Test(dataProvider = "fourPlayerModels", dataProviderClass = PublishedModel.class)
   public void publishedEagerScores(PublishedModel model) throws Exception {
     model.assertEagerScores();
   }

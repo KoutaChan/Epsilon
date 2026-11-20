@@ -4,7 +4,10 @@ import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.epsilon.mahjong.engine.Decisions;
 import com.epsilon.mahjong.engine.Engine;
@@ -58,6 +61,63 @@ public class EncodingTest {
                 FOUR_PLAYER, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT, true));
     var causal = InputFormat.of(FOUR_PLAYER.variant(), EnumSet.allOf(InputFeature.class));
     new BatchEncoder(causal, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT, true).close();
+  }
+
+  @Test(timeOut = 60_000)
+  public void reservedInputsCoverEveryChunkAndWakeOnReturn() {
+    var causal = InputFormat.of(FOUR_PLAYER.variant(), EnumSet.allOf(InputFeature.class));
+    int budget = causal.fixedTokens() + causal.maxEvents();
+    var rows = PolicyRequests.requests(PolicyRequests.observations(31, TableWalk.Policy.CALLS, 14));
+    try (var encoder = new BatchEncoder(causal, budget, BatchEncoder.Memory.DIRECT, true);
+        var normal = new BatchEncoder(causal, budget, BatchEncoder.Memory.DIRECT, true)) {
+      encoder.reserve(2, rows.size());
+      var first = encoder.acquire(rows);
+      var second = encoder.acquire(rows);
+      var wake = encoder.whenFull();
+      assertNotNull(wake);
+      assertFalse(wake.isDone());
+      assertThrows(IllegalStateException.class, encoder::borrow);
+      var reference = normal.acquire(rows);
+      normal.encode(reference, null).join();
+      encoder.encode(first, null).join();
+      assertTrue(first.chunks().size() > 1);
+      assertEquals(first.chunks().size(), reference.chunks().size());
+      var chunks = List.copyOf(first.chunks());
+      for (int i = 0; i < chunks.size(); i++) {
+        var expected = reference.chunks().get(i);
+        var actual = chunks.get(i);
+        assertEquals(actual.first(), expected.first());
+        var used = actual.batch().plan().bytes();
+        assertEquals(used, expected.batch().plan().bytes());
+        assertEquals(
+            actual.batch().input().storage().slice(0, used),
+            expected.batch().input().storage().slice(0, used));
+      }
+      encoder.release(first);
+      wake.join();
+      assertNull(encoder.whenFull());
+      assertThrows(IllegalArgumentException.class, () -> encoder.acquire(List.of()));
+      first = encoder.acquire(rows);
+      encoder.encode(first, null).join();
+      for (int i = 0; i < chunks.size(); ++i) {
+        assertSame(first.chunks().get(i).batch(), chunks.get(i).batch());
+        assertSame(first.chunks().get(i).pages(), chunks.get(i).pages());
+      }
+      normal.release(reference);
+      encoder.release(first);
+      encoder.release(second);
+    }
+  }
+
+  @Test
+  public void closingInputReservationsWakesAnUnsubmittedAdmission() {
+    var encoder = new BatchEncoder(FOUR_PLAYER, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.DIRECT);
+    encoder.reserve(1, 1);
+    encoder.borrow();
+    var wake = encoder.whenFull();
+    encoder.close();
+    assertTrue(wake.isCompletedExceptionally());
+    assertThrows(IllegalStateException.class, encoder::borrow);
   }
 
   @Test(timeOut = 300_000)

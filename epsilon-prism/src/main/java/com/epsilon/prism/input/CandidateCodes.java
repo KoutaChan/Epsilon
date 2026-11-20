@@ -1,16 +1,16 @@
 package com.epsilon.prism.input;
 
-import com.epsilon.prism.hip.HipCapabilities;
-import com.epsilon.prism.hip.HipPlanOptions.SegmentLayout;
-import com.epsilon.prism.hip.HipPlanOptions.SegmentSpan;
 import com.epsilon.prism.input.InputSchema.TileField;
+import com.epsilon.prism.kernel.CollectionCapabilities;
+import com.epsilon.prism.kernel.CollectionPlanOptions.SegmentLayout;
+import com.epsilon.prism.kernel.CollectionPlanOptions.SegmentSpan;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.ToIntFunction;
 
-/** 遷移と牌の組に与える区分ごとの符号と、対応する重み表の配置。 */
+/** 遷移と牌の組に与える区分ごとのコードと、対応する重み表の配置。 */
 public final class CandidateCodes {
-  public static final int COUNT_WIDTH = HipCapabilities.COUNT_WIDTH;
+  public static final int COUNT_WIDTH = CollectionCapabilities.COUNT_WIDTH;
 
   /** 候補区分の桁と、その形式で使う基数。 */
   public enum Digit {
@@ -102,7 +102,7 @@ public final class CandidateCodes {
     return slots;
   }
 
-  /** 公開順の入力から候補の区分を復元するために、入力の列・語彙の値・各桁の重みを HIP に渡す。 */
+  /** 公開順の入力から候補の区分を復元するために、入力の列・語彙の値・各桁の重みを推論カーネルに渡す。 */
   public int[] restoration(InputFormat format) {
     if (!format.eventsSettleOnPublication() || this != format.candidateCodes() || slots.isEmpty()) {
       throw new IllegalArgumentException(
@@ -158,7 +158,7 @@ public final class CandidateCodes {
     return words.build().toArray();
   }
 
-  /** 各区分の列と行の範囲を HIP に渡す。 */
+  /** 各区分の列と行の範囲を推論カーネルに渡す。 */
   public SegmentLayout hip() {
     return new SegmentLayout(
         codeWidth,

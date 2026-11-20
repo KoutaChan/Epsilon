@@ -80,7 +80,7 @@ public enum PrismArchitecture {
     }
   }
 
-  /** モデルの形式に従い、形の欄とその値を照合してから読む。 */
+  /** モデルの形式に従い、形を表すフィールドとその値を照合してから読む。 */
   PrismShape readShape(Gson json, JsonObject record) {
     if (!matchesFields(record))
       throw new JsonParseException("Invalid shape fields for " + id + ": " + record.keySet());

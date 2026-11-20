@@ -11,17 +11,15 @@ import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.backend.WeightLayout;
-import com.epsilon.prism.hip.CandidateStages;
-import com.epsilon.prism.hip.HipArchitecture;
-import com.epsilon.prism.hip.HipCounts;
-import com.epsilon.prism.hip.HipFfn;
-import com.epsilon.prism.hip.HipLayer;
-import com.epsilon.prism.hip.HipRegion;
-import com.epsilon.prism.hip.HipShape;
-import com.epsilon.prism.hip.LayerRole;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.kernel.CandidateStages;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.EncoderLayerShape;
+import com.epsilon.prism.kernel.FeedForwardShape;
+import com.epsilon.prism.kernel.LayerRole;
+import com.epsilon.prism.kernel.TokenCounts;
 import com.epsilon.prism.play.PublishedPositions;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
@@ -138,7 +136,7 @@ public class ShapeArchitectureTest {
   public Object[][] invalidShapes() {
     return new Object[][] {
       {(Runnable) () -> new PrismShape.V2(64, 128, 64, 1)},
-      {(Runnable) () -> new PrismShape.V4(320)},
+      {(Runnable) () -> new PrismShape.V4(336)},
       {(Runnable) () -> new PrismShape.V4(384, 255, 2, PrismShape.EventAttention.CAUSAL)},
       {(Runnable) () -> new PrismShape.V4(384, 768, 4, PrismShape.EventAttention.CAUSAL)},
       {(Runnable) () -> new PrismShape.V3(64, 128, 64, 32, 128, 128, true)},
@@ -156,37 +154,37 @@ public class ShapeArchitectureTest {
     Assert.assertEquals(ShapeArm.V4_S.shape().layers(), ShapeArm.V2.shape().layers());
   }
 
-  private static final HipCounts FOUR_PLAYERS = new HipCounts(4, 34, 109, 23, 110);
+  private static final TokenCounts FOUR_PLAYERS = new TokenCounts(4, 34, 109, 23, 110);
 
-  private static final HipLayer ALL_512 =
-      new HipLayer(LayerRole.ALL_TOKENS, new HipFfn.Shared(512));
+  private static final EncoderLayerShape ALL_512 =
+      new EncoderLayerShape(LayerRole.ALL_TOKENS, new FeedForwardShape.Shared(512));
 
-  private static HipLayer fixed(HipFfn ffn) {
-    return new HipLayer(LayerRole.FIXED_TOKENS, ffn);
+  private static EncoderLayerShape fixed(FeedForwardShape ffn) {
+    return new EncoderLayerShape(LayerRole.FIXED_TOKENS, ffn);
   }
 
   /** 形、層の並び、候補層の FFN の幅、候補層の段の数、G。 */
   @DataProvider
   public Object[][] shapes() {
-    HipLayer v3Fixed = fixed(new HipFfn.Typed(1536, 768));
+    EncoderLayerShape v3Fixed = fixed(new FeedForwardShape.Typed(1536, 768));
     return new Object[][] {
       {
         ShapeArm.V4_S.shape(),
-        List.of(ALL_512, fixed(new HipFfn.Shared(512))),
+        List.of(ALL_512, fixed(new FeedForwardShape.Shared(512))),
         512,
         CandidateStages.ONE,
         256
       },
       {
         PrismShape.standard(2),
-        List.of(ALL_512, fixed(new HipFfn.Shared(512))),
+        List.of(ALL_512, fixed(new FeedForwardShape.Shared(512))),
         512,
         CandidateStages.ONE,
         256
       },
       {
         PrismShape.standard(3),
-        List.of(ALL_512, ALL_512, fixed(new HipFfn.Shared(512))),
+        List.of(ALL_512, ALL_512, fixed(new FeedForwardShape.Shared(512))),
         512,
         CandidateStages.ONE,
         256
@@ -194,8 +192,8 @@ public class ShapeArchitectureTest {
       {
         new PrismShape.V2(256, 768, 256, 2),
         List.of(
-            new HipLayer(LayerRole.ALL_TOKENS, new HipFfn.Shared(768)),
-            fixed(new HipFfn.Shared(768))),
+            new EncoderLayerShape(LayerRole.ALL_TOKENS, new FeedForwardShape.Shared(768)),
+            fixed(new FeedForwardShape.Shared(768))),
         768,
         CandidateStages.ONE,
         256
@@ -210,7 +208,10 @@ public class ShapeArchitectureTest {
       },
       {
         ShapeArm.V3_CONTEXT_512.shape(3),
-        List.of(ALL_512, fixed(new HipFfn.Typed(512, 768)), fixed(new HipFfn.Typed(512, 768))),
+        List.of(
+            ALL_512,
+            fixed(new FeedForwardShape.Typed(512, 768)),
+            fixed(new FeedForwardShape.Typed(512, 768))),
         1024,
         CandidateStages.REREAD,
         512
@@ -221,11 +222,11 @@ public class ShapeArchitectureTest {
   @Test(dataProvider = "shapes")
   public void everyShapeDescribesItsLayersCandidateAndHeads(
       PrismShape.TokenTrunk shape,
-      List<HipLayer> layers,
+      List<EncoderLayerShape> layers,
       int candidateFfn,
       CandidateStages stages,
       int gate) {
-    HipArchitecture architecture = shape.hip(FOUR_PLAYER);
+    CollectionArchitecture architecture = architecture(shape);
     Assert.assertEquals(shape.layers(), layers);
     Assert.assertEquals(architecture.layers(), layers);
     Assert.assertEquals(architecture.depth(), shape.depth());
@@ -233,7 +234,7 @@ public class ShapeArchitectureTest {
     Assert.assertEquals(architecture.stages(), stages);
     Assert.assertEquals(architecture.reread(), shape.reread());
     Assert.assertEquals(architecture.gate(), gate);
-    Assert.assertEquals(architecture.hidden(), HipArchitecture.HIDDEN);
+    Assert.assertEquals(architecture.hidden(), CollectionArchitecture.HIDDEN);
     Assert.assertEquals(architecture.epsilon(), (float) shape.epsilon());
     Assert.assertEquals((double) architecture.scale(), EagerStages.scale(), 0.0);
     Assert.assertEquals(architecture.tau(), EagerStages.tau());
@@ -243,15 +244,17 @@ public class ShapeArchitectureTest {
     Assert.assertEquals(architecture.counts().fixed(), FOUR_PLAYER.fixedTokens());
     Assert.assertEquals(architecture.counts().keyCodes(), FOUR_PLAYER.keys().codes());
     Assert.assertEquals(architecture.allTokenLayers() + architecture.fixedLayers(), shape.depth());
-    Assert.assertEquals(architecture.encode(), shape.hip(FOUR_PLAYER).encode());
+    Assert.assertEquals(architecture.encode(), architecture(shape).encode());
     Assert.assertTrue(WeightLayout.supports(shape));
   }
 
-  /** H が 256 でない形は記述を作らない（HIP のカーネルは H 256 に特化している）。 */
+  /** 収集カーネルが対応しない幅の形は、重みの束の表を作らない。 */
   @Test
   public void otherWidthsHaveNoDescription() {
     PrismShape.V2 narrow = new PrismShape.V2(128, 512, 256, 2);
-    Assert.assertThrows(IllegalArgumentException.class, () -> narrow.hip(FOUR_PLAYER));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> WeightLayout.of(new PrismNetwork(FOUR_PLAYER, narrow)));
     Assert.assertFalse(WeightLayout.supports(narrow));
   }
 
@@ -262,7 +265,7 @@ public class ShapeArchitectureTest {
   @Test(dataProvider = "shapes")
   public void networkRegistersTheFfnOfEachLayer(
       PrismShape.TokenTrunk shape,
-      List<HipLayer> layers,
+      List<EncoderLayerShape> layers,
       int candidateFfn,
       CandidateStages stages,
       int gate) {
@@ -275,71 +278,20 @@ public class ShapeArchitectureTest {
       }
     }
     for (int layer = 0; layer < layers.size(); layer++) {
-      boolean typed = layers.get(layer).ffn() instanceof HipFfn.Typed;
+      boolean typed = layers.get(layer).ffn() instanceof FeedForwardShape.Typed;
       String encoder = "encoder" + layer + "_";
       Assert.assertEquals(names.contains(encoder + "up"), !typed, encoder + "up");
       Assert.assertEquals(names.contains(encoder + "contextUp"), typed, encoder + "contextUp");
       Assert.assertEquals(names.contains(encoder + "tileUp"), typed, encoder + "tileUp");
     }
-    boolean typedLast = layers.getLast().ffn() instanceof HipFfn.Typed;
+    boolean typedLast = layers.getLast().ffn() instanceof FeedForwardShape.Typed;
     Assert.assertEquals(names.contains("finalNorm_gain"), !typedLast);
     Assert.assertEquals(names.contains("finalNorm_contextGain"), typedLast);
     Assert.assertEquals(names.contains("reread_output"), stages != CandidateStages.ONE);
   }
 
-  /**
-   * v2 の形の計画では、各領域の大きさが変わらない（関係のコードは行ごとに 160² ワード）。イベントのキーとバリューの領域と、2 段目の
-   * 領域は持たない。局・席・牌の層が 1 つだけで、その Attention がイベントの k・v を n から射影するため。型ごとの FFN を持つ形の
-   * アーム（V3 など）は、2 つ目の局・席・牌の層が使うイベントのキーとバリューを持ち、2 段目があれば全てのトークンの 2 段目のキーと
-   * バリューも持つ。
-   */
-  @Test
-  public void v2RegionsKeepTheirSizes() {
-    int rows = 64;
-    int events = 3000;
-    int transitions = 900;
-    int actions = 700;
-    long input = 1 << 20;
-    for (PrismShape.TokenTrunk shape : List.of(PrismShape.standard(2), PrismShape.standard(3))) {
-      HipShape plan = plan(shape, rows, events, transitions, actions, input);
-      long hidden = 256;
-      long attention = 128;
-      long fixed = 39L * rows;
-      long tokens = fixed + events;
-      Assert.assertEquals(HipRegion.INPUT.capacityBytes(plan), input);
-      Assert.assertEquals(HipRegion.RESIDUAL.capacityBytes(plan), tokens * hidden * 2);
-      Assert.assertEquals(HipRegion.NORMALIZED.capacityBytes(plan), tokens * hidden * 2);
-      Assert.assertEquals(HipRegion.QKV0.capacityBytes(plan), tokens * 3 * attention * 2);
-      Assert.assertEquals(HipRegion.ATTENTION.capacityBytes(plan), tokens * attention * 2);
-      Assert.assertEquals(
-          HipRegion.RELATION_CODE.capacityBytes(plan), rows * (160L / 16) * (160L / 16) * 256 * 4);
-      Assert.assertEquals(HipRegion.STATE.capacityBytes(plan), fixed * hidden * 2);
-      Assert.assertEquals(HipRegion.MEMORY.capacityBytes(plan), fixed * 2 * attention * 2);
-      Assert.assertEquals(HipRegion.STATIC.capacityBytes(plan), transitions * hidden * 2);
-      Assert.assertEquals(HipRegion.TRANSITION.capacityBytes(plan), transitions * hidden * 2);
-      Assert.assertEquals(HipRegion.VALUE.capacityBytes(plan), transitions * 4L);
-      Assert.assertEquals(HipRegion.SCORES.capacityBytes(plan), actions * 4L);
-      Assert.assertEquals(HipRegion.EVENT_KEY_VALUE.capacityBytes(plan), 0L);
-      Assert.assertEquals(HipRegion.REREAD_MEMORY.capacityBytes(plan), 0L);
-    }
-    for (ShapeArm arm : List.of(ShapeArm.V3, ShapeArm.V3_ONE_STAGE, ShapeArm.V3_CONTEXT_512)) {
-      PrismShape.TokenTrunk shape = arm.shape(ShapeArm.V3_DEPTH);
-      HipShape plan = plan(shape, rows, events, transitions, actions, input);
-      long tokens = 39L * rows + events;
-      Assert.assertEquals(
-          HipRegion.EVENT_KEY_VALUE.capacityBytes(plan), events * 2 * 128 * 2L, arm.name());
-      Assert.assertEquals(
-          HipRegion.REREAD_MEMORY.capacityBytes(plan),
-          shape.reread() ? tokens * 2 * 128 * 2 : 0,
-          arm.name());
-    }
-  }
-
-  private static HipShape plan(
-      PrismShape.TokenTrunk shape, int rows, int events, int transitions, int actions, long input) {
-    return new HipShape(
-        shape.hip(FOUR_PLAYER),
-        new HipShape.Capacity(rows, events, transitions, actions, input),
-        1);
+  /** 四人打ちのネットワークの宣言から作る、収集カーネルの形の記述。 */
+  private static CollectionArchitecture architecture(PrismShape shape) {
+    return CollectionArchitecture.from(new PrismNetwork(FOUR_PLAYER, shape).declaration());
   }
 }

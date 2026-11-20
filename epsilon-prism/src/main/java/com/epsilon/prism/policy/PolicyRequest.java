@@ -14,7 +14,7 @@ import com.epsilon.prism.input.EventHistory;
  * ルールベースの事前分布 p0 を受け取る。
  *
  * <p>評価器は {@link #sigma} に打つ方策を書く。ネットワークの方策では貪欲の one-hot で、s が最大の手を選び、同点なら p0 の大きい手を選ぶ
- * （{@link Greedy#argmax}）。一様分布を混ぜるのは {@link Behaviour} の仕事。ネットワークの方策は {@link #scores} に合法手ごとの s（FP32、
+ * （{@link Greedy#argmax}）。一様分布は {@link Behaviour} が混ぜる。ネットワークの方策は {@link #scores} に合法手ごとの s（FP32、
  * 効用の単位）も書く。{@link #retain} の問い合わせでは {@link #prior} も書き、ネットワークの方策は s の最大が同点のときにも書く。
  */
 public final class PolicyRequest extends Query {

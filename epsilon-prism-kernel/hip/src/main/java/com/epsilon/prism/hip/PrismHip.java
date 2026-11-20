@@ -1,16 +1,19 @@
 package com.epsilon.prism.hip;
 
+import com.epsilon.prism.kernel.CollectionLane;
+import com.epsilon.prism.kernel.PackedWeightLayout;
 import java.nio.ByteBuffer;
 
 /**
- * {@code libprism_hip.so} の JNI のインターフェース。ネットワークの側の名前は知らない。受け取るのは、作業領域の各領域、カーネル、
- * 自分の形を書いた WeightPack（{@link HipPack}）、バッチの各数、入力の各領域の位置だけ。
+ * {@code libprism_hip.so} の JNI のインターフェース。ネットワークの側の名前は知らない。受け取るのは、モデルの宣言、自分の形を書いた
+ * WeightPack（{@link PackedWeightLayout}）、バッチの各数、入力の各領域の位置だけ。
  *
- * <p>{@link HipLibrary#load()} で読み込んだ後だけ呼べる。引数は {@link HipPlan} が先に確かめ、native も同じ上限で照合する。
+ * <p>{@link HipLibrary#load()} で読み込んだ後だけ呼べる。収集の引数は {@link CollectionLane} が先に確かめ、native も同じ上限で照合する。
  * ホストのメモリは direct の {@link ByteBuffer}（推論ではページ固定の {@code PtPinnedBuffer}）で、ストリームは
  * {@code PtStream.getId()} で受け取る。
  */
-final class PrismHip {
+final class PrismHip extends CollectionLane.Bindings {
+  static final PrismHip COLLECTION = new PrismHip();
 
   private PrismHip() {}
 
@@ -20,12 +23,15 @@ final class PrismHip {
   /** GPU {@code device} の arch（{@code gcnArchName}）。 */
   static native String deviceArch(int device);
 
-  /** 計画を作り、作業領域と重みのバッファを一度だけ確保する（architecture は {@link HipArchitecture#encode()} の値）。 */
-  static native long newPlan(
+  @Override
+  protected native long declaredPlan(
       int device,
       long stream,
-      int[] architecture,
-      int[] options,
+      ByteBuffer declaration,
+      int length,
+      int abi,
+      int countOffset,
+      int segmentsOffset,
       int rows,
       int events,
       int transitions,
@@ -33,9 +39,11 @@ final class PrismHip {
       long inputBytes,
       long weightBytes);
 
-  static native void freePlan(long plan);
+  @Override
+  protected native void freePlan(long plan);
 
   static native void countForward(
+      int device,
       long stream,
       int rows,
       int transitions,
@@ -49,6 +57,7 @@ final class PrismHip {
       long output);
 
   static native void countBackward(
+      int device,
       long stream,
       int rows,
       int transitions,
@@ -64,33 +73,28 @@ final class PrismHip {
       long gradGate);
 
   static native void segmentAttentionForward(
-      long stream, int[] dimensions, float scale, long[] inputs, long output, long probabilities);
+      int device,
+      long stream,
+      int[] dimensions,
+      float scale,
+      long[] inputs,
+      long output,
+      long probabilities);
 
   static native void segmentAttentionBackward(
-      long stream, int[] dimensions, float scale, long[] inputs, long[] gradients);
+      int device, long stream, int[] dimensions, float scale, long[] inputs, long[] gradients);
 
   /** ヘッダーつきの WeightPack を読み、照合してからデバイスへ写す。ストリームを同期する。 */
-  static native void uploadWeights(
+  @Override
+  protected native void uploadWeights(
       long plan, ByteBuffer pack, int position, long bytes, long version);
 
-  static native void copyIn(long plan, int region, ByteBuffer source, int position, long bytes);
-
-  static native void copyOut(long plan, int region, ByteBuffer target, int position, long bytes);
-
-  /** 作業領域にある入力のまま、カーネルを 1 つだけ実行する（テストと計測でだけ使う）。 */
-  static native void run(
-      long plan,
-      int kernel,
-      int layer,
-      int rows,
-      int events,
-      int transitions,
-      int actions,
-      long bytes,
-      long[] sections);
+  @Override
+  protected native long publishedVersion(long plan);
 
   /** 入力の H2D を 1 回、形の記述の順のカーネル、手のスコア s の D2H を 1 回、この順にストリームに積む。 */
-  static native void forward(
+  @Override
+  protected native void forward(
       long plan,
       ByteBuffer input,
       int inputPosition,
@@ -104,7 +108,8 @@ final class PrismHip {
       int scoresPosition,
       long version);
 
-  static native void forwardPaged(
+  @Override
+  protected native void forwardPaged(
       long plan,
       ByteBuffer input,
       int inputPosition,
@@ -122,22 +127,19 @@ final class PrismHip {
       int slots,
       int transferBytes);
 
-  static native void configureCandidateInput(long handle, int[] descriptor);
+  @Override
+  protected native void configureCandidateInput(long handle, int[] descriptor);
 
-  static native long[] configureEventPages(
+  @Override
+  protected native long[] configureEventPages(
       long handle, int remaining, int events, double reserveFraction);
-
-  static native void profile(long plan, boolean enabled);
-
-  static native float[] kernelMillis(long plan);
-
-  static native void synchronize(long plan);
 
   /** DJL の配列（torch::Tensor* のハンドル）が持つデータの、デバイス上のアドレス。要素の型と GPU を照合する（{@link HipAttention}）。 */
   static native long tensorAddress(long handle, int element, int gpu);
 
   /** 学習で使う関係のコードを作る演算を、ストリームに積む（アドレスは {@link #tensorAddress} で得る）。 */
   static native void relationCodes(
+      int device,
       long stream,
       int rows,
       int events,
@@ -163,6 +165,7 @@ final class PrismHip {
 
   /** 学習の Attention の順伝播を、ストリームに積む（アドレスは {@link #tensorAddress} で得る）。 */
   static native void attentionForward(
+      int device,
       long stream,
       int rows,
       int queries,
@@ -185,6 +188,7 @@ final class PrismHip {
 
   /** 学習の Attention の逆伝播を、ストリームに積む。 */
   static native void attentionBackward(
+      int device,
       long stream,
       int rows,
       int queries,
@@ -210,6 +214,7 @@ final class PrismHip {
 
   /** 学習の RMSNorm の順伝播を、ストリームに積む（アドレスは {@link #tensorAddress} で得る）。 */
   static native void normForward(
+      int device,
       long stream,
       int rows,
       int width,
@@ -221,6 +226,7 @@ final class PrismHip {
 
   /** 学習の RMSNorm の逆伝播を、ストリームに積む。 */
   static native void normBackward(
+      int device,
       long stream,
       int rows,
       int width,

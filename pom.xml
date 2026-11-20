@@ -11,9 +11,10 @@
   <packaging>pom</packaging>
   <name>Epsilon - Mahjong AI</name>
   <description>Japanese Riichi Mahjong AI</description>
-  <!-- djl.version と DJL の置き場（djl-rocm）、gson・DJL・logback の版は epsilon-base が持ち、ここは継ぐ。 -->
+  <!-- djl.version と DJL の置き場（djl-rocm）、gson・DJL・logback のバージョンは epsilon-base が持ち、ここは継ぐ。 -->
   <properties>
     <pytorch.native.version>2.11.0</pytorch.native.version>
+    <pytorch.rocm.flavor>rocm7.2</pytorch.rocm.flavor>
     <pytorch.linux.flavor>cpu</pytorch.linux.flavor>
     <pytorch.windows.flavor>cpu</pytorch.windows.flavor>
   </properties>
@@ -146,8 +147,13 @@
       <id>rocm</id>
       <properties>
         <pytorch.rocm.version>2.11.0</pytorch.rocm.version>
-        <pytorch.rocm.flavor>rocm7.2</pytorch.rocm.flavor>
         <pytorch.native.version>${pytorch.rocm.version}</pytorch.native.version>
+        <pytorch.linux.flavor>${pytorch.rocm.flavor}</pytorch.linux.flavor>
+      </properties>
+    </profile>
+    <profile>
+      <id>native-hip</id>
+      <properties>
         <pytorch.linux.flavor>${pytorch.rocm.flavor}</pytorch.linux.flavor>
       </properties>
     </profile>

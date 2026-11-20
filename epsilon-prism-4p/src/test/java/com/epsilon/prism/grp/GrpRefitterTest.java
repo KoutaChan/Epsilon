@@ -132,7 +132,7 @@ public class GrpRefitterTest {
     Assert.assertEquals(TrustTrial.latestCohort(files), OptionalInt.of(5));
   }
 
-  /** 半荘の記録の先頭の項目の id が、そのコホートに効いた項目と違えば、grp-trust の測り（{@link TrustTrial}）は拒む。 */
+  /** 半荘の記録の先頭の項目の id が、そのコホートに効いた項目と違えば、grp-trust の計測（{@link TrustTrial}）は拒む。 */
   @Test
   public void theTrustTrialRefusesGamesRecordedUnderAnotherEntry() throws Exception {
     GrpFixtures.record(
@@ -296,7 +296,7 @@ public class GrpRefitterTest {
         PhiControlTest.prism("grp-refit", "--run", run.toString()), Exit.USAGE.code());
   }
 
-  /** run の control で待っている学び直しの頼みの時点（番号の順）。 */
+  /** run の control で待っている再学習の要求の時点（番号の順）。 */
   private List<Integer> slots() throws IOException {
     return new ControlRequests(new RunDirectory(run))
         .pending().stream().map(request -> ((Request.GrpRefit) request.request()).slot()).toList();

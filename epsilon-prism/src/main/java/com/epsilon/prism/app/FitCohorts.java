@@ -37,7 +37,6 @@ import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
 import com.epsilon.prism.noise.NoiseSettings;
 import com.epsilon.prism.noise.TempoSettings;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.run.Snapshot;
@@ -67,14 +66,14 @@ import org.slf4j.LoggerFactory;
  * 倍率を前のコホートの R² から決める。ステップ数は {@code fit.steps} で決める。
  *
  * <p>始めのネットワークは、{@code --start} があれば、そのバージョンの重みにする（バージョンの形は学ぶ形と同じであること）。無ければゼロから
- * 学ぶ。{@code --shape} で深さを選べる腕を指定する場合は、{@code --depth} で深さも指定する。形を省くと run の network の形を使う。
+ * 学ぶ。{@code --shape} で深さを選べるアームを指定する場合は、{@code --depth} で深さも指定する。形を省くと run の network の形を使う。
  *
  * @param run 行を読む run のディレクトリ
  * @param cohorts 学ぶコホートの範囲（a..b）
  * @param out 書き出すディレクトリ
  * @param teacher 教師の作り方
  * @param shape 形のアーム（無ければ run の network の形）
- * @param depth バックボーンの層の数。深さを選べる腕では必須。深さが固定の腕では省略するか、その深さを指定する
+ * @param depth バックボーンの層の数。深さを選べるアームでは必須。深さが固定のアームでは省略するか、その深さを指定する
  * @param start 始めのネットワークのバージョンのディレクトリ（無ければゼロから学ぶ）
  * @param maxRows 学ぶ行の数の上限（試しに学ぶときに使い、選んだ行の先頭から取る。無ければ全ての行）
  * @param appliedR2 前のコホートで教師に掛けた補正の R²。LINEAGE の最初のコホートの K′ を決めるのに使う（無ければ持ち越さない）
@@ -327,7 +326,7 @@ public record FitCohorts(
                   rows,
                   anchorDirectory,
                   t,
-                  InferencePath.of(settings.inference().kernels()),
+                  settings.inference().kernels(),
                   devices,
                   threads);
           anchor.requireVersion(t);

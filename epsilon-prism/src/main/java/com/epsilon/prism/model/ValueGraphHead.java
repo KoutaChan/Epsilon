@@ -10,7 +10,7 @@ import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
 
 /**
- * 価値グラフのヘッド（HIP の K7 に当たる）。ゲートの値 Δ を求め、手ごとの s を組み立てる。
+ * 価値グラフのヘッド。ゲートの値 Δ を求め、手ごとの s を組み立てる。
  *
  * <pre>
  * u^G_a  = fp32(W_g·[N(e_a); N(e_base); h] + c) + β_k + U_k·x^G_a     （U_k は [G, 厳密なフィールドの列]、FP32 の要素積）

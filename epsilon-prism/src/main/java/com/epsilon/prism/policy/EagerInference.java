@@ -25,8 +25,8 @@ import java.util.function.Function;
  * eager で推論するバックエンド（デバイス 1 つ分）。保存したネットワークを凍結して持ち（{@link FrozenNetwork}。計算の精度は開くときに
  * 選ぶ）、スロットで行うジョブを作る。
  *
- * <p>スロットでは、入力を共通の H2D ストリームで作り、順伝播をスロットごとの計算ストリームで出す。ネットワークのインデックスの転送は
- * 同期するので、こうするとほかのスロットの計算を待たずに済む。出力の D2H は共通のパイプラインが受け持つ（{@code Slot.prepareOutput}）。
+ * <p>スロットでは、入力とネットワークのインデックスを共通の H2D ストリームに積み、順伝播はその完了を待ってスロットごとの計算ストリームで
+ * 出す。こうするとほかのスロットの計算を待たずに済む。出力の D2H は共通のパイプラインが受け持つ（{@code Slot.prepareOutput}）。
  * スロットの計算ストリームは、提出のスレッドだけが作って使う。
  *
  * <p>1 回のジョブは、インデックスを送るバッファ（{@link PinnedUploads}）をプールから借り、終わったら返す。呼び出し元のスレッドがいくつ
@@ -164,9 +164,9 @@ final class EagerInference implements DeviceInference {
     public void submit(DecisionDevicePipeline.Slot slot) {
       try {
         h2dStarted = true;
+        pass = new EagerPass(EagerInference.this, encoding);
+        pass.uploadIndices(slot.h2dStream());
         try (var ignored = slot.h2dStream().openScope()) {
-          pass = new EagerPass(EagerInference.this, encoding);
-          pass.upload();
           slot.h2dReady().record();
           h2dRecorded = true;
         }
@@ -185,7 +185,10 @@ final class EagerInference implements DeviceInference {
       }
     }
 
-    /** 提出が途中で失敗しても、積んだ転送と順伝播の後に印を記録する。回収のときに待てるようにするため。 */
+    /**
+     * 提出が途中で失敗しても、積んだ転送と順伝播の後に印を記録する。回収のときに待てるようにするため。転送も順伝播もやり直さない（入力を
+     * 作る前に失敗したときも、記録するのは印だけ）。印を記録できなければ、その失敗を元の例外に付ける。
+     */
     private void recordLatestCompletion(DecisionDevicePipeline.Slot slot, Throwable problem) {
       if (h2dStarted && !h2dRecorded) {
         try (var ignored = slot.h2dStream().openScope()) {

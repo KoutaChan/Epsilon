@@ -20,7 +20,7 @@ public enum ShapeArm {
 
   private final PrismShape.TokenTrunk fixed;
 
-  /** 設定や当てはめで幹の深さを選べる腕。 */
+  /** 設定や学習時にバックボーンの深さを選べるアーム。 */
   public boolean selectableDepth() {
     return this == V2;
   }

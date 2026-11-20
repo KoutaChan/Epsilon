@@ -15,7 +15,6 @@ import java.util.List;
 
 /** 天鳳の三人打ちの PRISM のモジュール。三人打ちだけのコマンドは持たない。 */
 public final class ThreePlayer implements PrismVariant {
-
   private static final Variant VARIANT = Variant.TENHOU_3P;
 
   @Override

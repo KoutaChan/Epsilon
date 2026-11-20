@@ -8,7 +8,7 @@ import java.util.List;
 import org.testng.annotations.Test;
 
 /**
- * 四人打ちの収集で、同値な打牌を切り方のとおりに切る（{@link TwinCollection#assertEveryPath}）。主経路の貪欲・床・探索、写しと分岐の最初の手
+ * 四人打ちの収集で、同値な打牌を切り方のとおりに切る（{@link TwinCollection#assertEveryPath}）。主経路の貪欲方策・一様分布・探索、写しと分岐の最初の手
  * （候補集合と逸脱）と続きの手の全てで、TSUMOGIRI はツモ牌を、TEDASHI は手牌を切る（立直の打牌も）。手は同値な打牌の組を除けば切り方に
  * 依らず、行も、手の位置を組の手出しに直せば値まで同じ。
  */

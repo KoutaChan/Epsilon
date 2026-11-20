@@ -33,9 +33,9 @@ import java.util.OptionalInt;
  * 判定と、2 SE の判定に要る半荘の数（{@link TrustGames}）。学習とブートストラップの乱数の種は、run の種と範囲で決まる。結果はどの
  * ファイルにも書かない。
  *
- * <p>範囲の半荘から関門用を分けるのは、この測りだけ。学び直し（{@link GrpRefitter}）は範囲の半荘を全て学習に使い、その関門は範囲の次の
+ * <p>範囲の半荘から関門用を分けるのは、この計測だけ。学び直し（{@link GrpRefitter}）は範囲の半荘を全て学習に使い、その関門は範囲の次の
  * コホートの全ての半荘で比べる（{@link GateCohort#NEXT}）。そのため、{@link TrustGames} が数える半荘は、1 コホートの半荘の数と比べる
- * （{@link #cohortHasPower}）。設定の {@code trustGames} は学び直しの範囲の半荘の数で、この測りでは候補を学習した半荘の数に当たる。
+ * （{@link #cohortHasPower}）。設定の {@code trustGames} は学び直しの範囲の半荘の数で、この計測では候補を学習した半荘の数に当たる。
  *
  * @param firstCohort 範囲の最初のコホート
  * @param lastCohort 範囲の最後のコホート

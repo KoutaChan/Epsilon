@@ -10,10 +10,9 @@ import ai.djl.nn.Parameter;
 import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.input.InputSchema.TransitionField;
-import com.epsilon.prism.model.FitProbe.Stage;
 
 /**
- * 候補層（HIP の K6 に当たる）。遷移ごとに 1 段だけ通し、候補どうしは参照しない。
+ * 候補層。遷移ごとに 1 段だけ通し、候補どうしは参照しない。
  *
  * <pre>
  * t0 = W_X·pack_t + b_X + W_E·y_T[τ(t)]          τ(t) は捨てる牌（鳴いた後の打牌、なければ主牌。どちらもなければ項なし）
@@ -34,10 +33,10 @@ final class CandidateLayer extends Module {
   /** 遷移のフィールドの埋め込みの次元。 */
   static final int DIMENSION = 8;
 
-  /** 注意に渡すキー・値の補正表と、各遷移のキーから表を引くための行番号。 */
+  /** Attention のキーとバリューの補正表と、各遷移のキーから表を引くための行番号。 */
   record Offsets(NDArray table, NDArray ids) {}
 
-  /** 遷移ごとの追加情報を、注意のキー・値または候補の残差に反映する。 */
+  /** 遷移ごとの追加情報を、Attention のキーとバリューまたは候補の残差に反映する。 */
   interface Features {
     default boolean fusedAttention(Context context) {
       return false;
@@ -152,7 +151,6 @@ final class CandidateLayer extends Module {
     NDArray category = inputs.get(Tensor.TRANSITION_CATEGORY);
     NDArray packed =
         pack.pack(category, index.columns(pack), context.value(table), scalars(context, inputs));
-    // 計測のときは t0 と、Cross-Attention の FP32 の入力と出力を葉にして、逆伝播を段に分けて測る（Context#probeCut）
     boolean fused = features.fusedAttention(context);
     NDArray initial =
         context
@@ -160,11 +158,8 @@ final class CandidateLayer extends Module {
             .add(
                 context.linear(
                     tileStates(context, format, category, index, states), tileEntry, null));
-    // A taped candidate attention and the residual both back-propagate through this value.
-    NDArray start =
-        fused
-            ? context.cutCandidateInput(initial, Stage.CANDIDATE_START_BACKWARD)
-            : context.probeCut(initial, Stage.CANDIDATE_START_BACKWARD, 0);
+    // 順伝播を記録するときは、Attention と残差への勾配を同じ葉に集める。
+    NDArray start = fused && context.tape() != null ? context.cutCandidateInput(initial) : initial;
 
     NDArray queries =
         context
@@ -172,16 +167,17 @@ final class CandidateLayer extends Module {
             .reshape(transitions, heads, PrismShape.HEAD_WIDTH);
     NDArray memory = context.linear(states, keyValue, keyValueBias);
     NDArray codes = context.own(context.fp32(codeKey).concat(context.fp32(codeValue), 1));
-    NDArray attentionResult;
+    NDArray attentionResult = null;
     if (fused) {
       attentionResult = features.attention(context, inputs, index, queries, memory, codes);
-    } else {
+    }
+    if (attentionResult == null) {
       Offsets offsets = features.offsets(context, inputs, codes);
       NDManager working = context.working();
       attentionResult =
           NDArrays.mappedGroupedIndexedScaledDotProductAttention(
-              context.probeCut(context.toFloat(queries), Stage.CROSS_PROJECTION_BACKWARD, 0),
-              context.probeCut(context.toFloat(memory), Stage.CROSS_PROJECTION_BACKWARD, 0),
+              context.toFloat(queries),
+              context.toFloat(memory),
               index.transitionRows.array(),
               offsets.table(),
               offsets.ids(),
@@ -189,11 +185,12 @@ final class CandidateLayer extends Module {
               working.zeros(new Shape(transitions, 1), DataType.INT32),
               EncoderLayer.SCALE);
     }
-    NDArray attended = context.probeCut(attentionResult, Stage.CROSS_ATTENTION_BACKWARD, 0);
     NDArray residual =
         start.add(
             context.linear(
-                context.toCompute(attended.reshape(transitions, attention)), output, outputBias));
+                context.toCompute(attentionResult.reshape(transitions, attention)),
+                output,
+                outputBias));
     residual = features.add(context, inputs, index, states, residual);
     NDArray hidden =
         Context.silu(context.linear(context.norm(residual, ffnNorm, epsilon), up, upBias));
@@ -237,8 +234,6 @@ final class CandidateLayer extends Module {
     long hidden = states.getShape().get(2);
     NDArray flat = states.reshape(-1, hidden);
     NDArray present = tile.gt(0).toType(context.compute(), false).expandDims(1);
-    return context
-        .probeCut(NDArrays.gatherRows(flat, position), Stage.GATHER_BACKWARD, 0)
-        .mul(present);
+    return NDArrays.gatherRows(flat, position).mul(present);
   }
 }

@@ -7,11 +7,11 @@ import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDManager;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtStream;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.prism.backend.HipFixtures;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.run.Snapshot;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,9 +45,9 @@ public class AnchorGpuTest {
       Device gpu = Device.gpu(0);
       PtEngine engine = (PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME);
       try (PtStream stream = engine.newStream(gpu);
-          Anchor hip = Anchor.open(directory, InferencePath.HIP, gpu, stream, null, capacity);
-          Anchor eager = Anchor.open(directory, InferencePath.EAGER, gpu, stream, null, capacity)) {
-        Assert.assertTrue(hip instanceof Anchor.Hip, "HIP path on the GPU");
+          Anchor hip = Anchor.open(directory, Kernels.NATIVE, gpu, stream, null, capacity);
+          Anchor eager = Anchor.open(directory, Kernels.EAGER, gpu, stream, null, capacity)) {
+        Assert.assertTrue(hip instanceof Anchor.Native, "HIP path on the GPU");
         Assert.assertTrue(eager instanceof Anchor.Eager, "eager path on request");
         Anchor.Scores fast = hip.scores(inputs);
         Anchor.Scores slow = eager.scores(inputs);

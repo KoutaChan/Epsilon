@@ -15,7 +15,7 @@
 
 ## ビルド
 
-[共通の手順](../BUILDING.md)でビルドし、リポジトリのルートで実行します。AMDのGPUを使うときは、`-Pnative-hip`を付けてビルドします。
+[共通の手順](../BUILDING.md)でビルドし、リポジトリのルートで実行します。AMDのGPUを使うときは、`-Pnative-hip`を付けてビルドします。NVIDIA の GPU では、CUDA 用の DJL JNI と収集カーネルを `-Pcuda,native-cuda` で組み込みます。
 
 ## 学習
 

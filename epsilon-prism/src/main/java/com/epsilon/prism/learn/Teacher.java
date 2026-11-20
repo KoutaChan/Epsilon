@@ -2,6 +2,7 @@ package com.epsilon.prism.learn;
 
 import com.epsilon.prism.luck.LedgerCorrection;
 import com.epsilon.prism.rows.Row;
+import java.util.function.IntFunction;
 
 /**
  * 生徒に渡す教師の作り方。運の精算の補正があれば、行の教師の値を Ỹ = Y − β_c·L にする（{@link LedgerCorrection#values}）。
@@ -15,14 +16,24 @@ import com.epsilon.prism.rows.Row;
  * @param anchor 学習に使う全ての行のアンカーの s（null ならアンカーなし）
  * @param anchorWeight アンカーの重み w（[0, 1)。アンカーがなければ 0）
  * @param gain 補助のヘッドの項に掛けるゲイン K′（(0, 1]）
+ * @param cohortCorrection 行のストアの番号から、その行に使う運の精算の補正を返す（null なら全ての行に {@code correction} を使う。null を
+ *     返した行は生の Y を使う）
  */
 public record Teacher(
     LedgerCorrection correction,
     AnchorScores anchor,
     double anchorWeight,
     float gain,
-    java.util.function.IntFunction<LedgerCorrection> cohortCorrection) {
+    IntFunction<LedgerCorrection> cohortCorrection) {
 
+  /**
+   * 全ての行に同じ補正を使う教師を作る。
+   *
+   * @param correction 運の精算の補正（null なら生の Y を使う）
+   * @param anchor 学習に使う全ての行のアンカーの s（null ならアンカーなし）
+   * @param anchorWeight アンカーの重み w（[0, 1)。アンカーがなければ 0）
+   * @param gain 補助のヘッドの項に掛けるゲイン K′（(0, 1]）
+   */
   public Teacher(
       LedgerCorrection correction, AnchorScores anchor, double anchorWeight, float gain) {
     this(correction, anchor, anchorWeight, gain, null);

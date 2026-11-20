@@ -24,7 +24,6 @@ import org.slf4j.LoggerFactory;
  * 詰め込み、エンコード、教師（{@link Teacher}）は、先読みのスレッドが {@link #PREFETCH} ステップ先まで作る（{@link StepFeed}）。
  * 学習のスレッドは、デバイスの計算だけを回す（{@link Learner}）。デバイスが 2 つ以上なら、詰めたマイクロバッチの数がデバイスの数の
  * 倍数にならなかったステップの数をログに出す（そのステップの最後のマイクロバッチは、全てのレーンに分けて載せる）。
- * システムプロパティ {@value FitProfile#PROPERTY} があれば、段ごとの時間の表を学習の終わりにログに出す（{@link FitProfile}）。
  *
  * <p>系譜では、教師が決まる前（運の精算の当てはめの間）に {@link #prepare} で生徒を読み、学習器をウォームアップしておく
  * （{@link Learner#rehearse}）。ウォームアップは重みにも最適化の状態にもステップ数にも触れないので、ウォームアップを挟んで学習した重みは、
@@ -119,39 +118,12 @@ public final class Fit {
       Teacher teacher,
       NetworkDevices devices,
       int threads) {
-    return run(store, rows, model, plan, teacher, devices, threads, FitProfile.configured());
-  }
-
-  /**
-   * 計測を渡してネットワークを学習する。{@link #run(CohortStore, int[], Model, FitPlan, Teacher, NetworkDevices, int)} の本体で、
-   * 計測するステップがあれば、学習の終わりに表をログに出す。
-   *
-   * @param store 行のストア
-   * @param rows 学習する行
-   * @param model ネットワークのモデル
-   * @param plan 学習の計画
-   * @param teacher 教師の作り方
-   * @param devices 学習のデバイス
-   * @param threads 行の読み出しとエンコードのスレッドの数
-   * @param profile 学習の計測
-   * @return 記録
-   */
-  static FitResult run(
-      CohortStore store,
-      int[] rows,
-      Model model,
-      FitPlan plan,
-      Teacher teacher,
-      NetworkDevices devices,
-      int threads,
-      FitProfile profile) {
     long started = System.nanoTime();
     if (rows.length == 0 || plan.learner().steps() <= 0) {
       return FitResult.empty(rows.length);
     }
     try (NetworkRuntime runtime = NetworkRuntime.forLearning()) {
-      return new Session(
-              store, rows, model, plan, teacher.gain(), devices, threads, profile, runtime)
+      return new Session(store, rows, model, plan, teacher.gain(), devices, threads, runtime)
           .run(teacher, started);
     }
   }
@@ -190,9 +162,7 @@ public final class Fit {
     long started = System.nanoTime();
     Model model = load(start, devices.primary());
     try {
-      Session session =
-          new Session(
-              store, rows, model, plan, gain, devices, threads, FitProfile.configured(), runtime);
+      Session session = new Session(store, rows, model, plan, gain, devices, threads, runtime);
       try {
         session.rehearse();
       } catch (RuntimeException | Error failure) {
@@ -251,12 +221,36 @@ public final class Fit {
     }
   }
 
-  /** Number of losses read back in the first steps of a fit. */
+  /**
+   * 学習の最初から {@code steps} ステップまでに、ホストへ読み戻す損失の数を返す。GPU では {@link Learner#METRIC_EVERY} ステップに 1 回、
+   * CPU では毎ステップ読み戻す。
+   *
+   * @param steps ステップの数
+   * @param gpu GPU で学習するか
+   * @return 読み戻す損失の数
+   */
   public static int lossSamples(int steps, boolean gpu) {
     return gpu ? Math.ceilDiv(steps, Learner.METRIC_EVERY) : steps;
   }
 
-  /** Fit part of a single global permutation, restoring Adam moments and the absolute LR step. */
+  /**
+   * 1 つの並べ替えの一部の行で学習する。行は渡した順のまま使い、並べ替えない。前の区切りで書き出した AdamW の状態を読み戻し、学習率は
+   * 通しのステップ数の続きから決める。終わったら、次の区切りのために状態を書き出す。
+   *
+   * @param store 行のストア
+   * @param orderedRows 学習する行（並べ替えた後の順）
+   * @param model ネットワークのモデル
+   * @param plan 学習の計画
+   * @param teacher 教師の作り方
+   * @param devices 学習のデバイス
+   * @param threads 行の読み出しとエンコードのスレッドの数
+   * @param completedSteps 前の区切りまでに終えたステップの数（最初の区切りでは 0）
+   * @param previousState 前の区切りで書き出した AdamW の状態（最初の区切りでは null）
+   * @param nextState この区切りの後に AdamW の状態を書き出すファイル（書き出さないなら null）
+   * @return 記録
+   * @throws IOException AdamW の状態を読み書きできないとき
+   * @throws IllegalArgumentException 行が無いとき、または終えたステップの数と前の状態の有無が合わないとき
+   */
   public static FitResult chunk(
       CohortStore store,
       int[] orderedRows,
@@ -277,16 +271,7 @@ public final class Fit {
     try (var runtime = NetworkRuntime.forLearning();
         var session =
             new Session(
-                store,
-                orderedRows,
-                model,
-                plan,
-                teacher.gain(),
-                devices,
-                threads,
-                FitProfile.configured(),
-                runtime,
-                true)) {
+                store, orderedRows, model, plan, teacher.gain(), devices, threads, runtime, true)) {
       if (previousState != null) session.learner.restore(previousState, completedSteps);
       return session.run(
           teacher,
@@ -302,7 +287,6 @@ public final class Fit {
     private final FitPlan plan;
     private final float gain;
     private final int lanes;
-    private final FitProfile profile;
     private final StepFeed feed;
     private final Learner learner;
     private boolean closed;
@@ -315,9 +299,8 @@ public final class Fit {
         float gain,
         NetworkDevices devices,
         int threads,
-        FitProfile profile,
         NetworkRuntime runtime) {
-      this(store, rows, model, plan, gain, devices, threads, profile, runtime, false);
+      this(store, rows, model, plan, gain, devices, threads, runtime, false);
     }
 
     Session(
@@ -328,19 +311,21 @@ public final class Fit {
         float gain,
         NetworkDevices devices,
         int threads,
-        FitProfile profile,
         NetworkRuntime runtime,
         boolean alreadyShuffled) {
       order = alreadyShuffled ? rows : shuffle(rows, plan.seed());
       this.plan = plan;
       this.gain = gain;
       lanes = devices.size();
-      this.profile = profile;
-      feed = new StepFeed(store, plan, devices.size(), threads);
+      learner = new Learner(model, devices, plan, gain, runtime);
       try {
-        learner = new Learner(model, devices, plan, gain, profile, runtime);
+        feed = new StepFeed(store, plan, devices.size(), threads);
       } catch (RuntimeException | Error failure) {
-        feed.close();
+        try {
+          learner.close();
+        } catch (RuntimeException | Error closing) {
+          failure.addSuppressed(closing);
+        }
         throw failure;
       }
     }
@@ -429,7 +414,6 @@ public final class Fit {
               steps,
               lanes);
         }
-        profile.log();
         if (nextState != null) {
           try {
             learner.checkpoint(nextState);

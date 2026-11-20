@@ -21,7 +21,6 @@ import com.epsilon.prism.grp.GrpFiles;
 import com.epsilon.prism.grp.PhiSetup;
 import com.epsilon.prism.luck.LedgerFit;
 import com.epsilon.prism.luck.LuckSettlement;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.settings.PrismSettings;
@@ -88,7 +87,7 @@ final class CollectStep implements Step<PrismIteration> {
                 resources.runtime(),
                 inference.maxBatch(),
                 settings.inference().precision(),
-                InferencePath.of(inference.kernels()));
+                inference.kernels());
         CohortWriter writer =
             new CohortWriter(
                 part,

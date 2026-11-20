@@ -7,13 +7,11 @@ import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
-import com.epsilon.prism.hip.HipFfn;
 import com.epsilon.prism.input.InputFormat;
-import com.epsilon.prism.model.FitProbe.Stage;
+import com.epsilon.prism.kernel.FeedForwardShape;
 
 /**
- * バックボーンの 1 層。HIP の K2・K3 に当たり、局・席・牌の層は K4 と K3・K5 に当たる。pre-RMSNorm の形で、x += Attn(N(x))、
- * x += FFN(N(x)) と更新する。
+ * バックボーンの 1 層。Attention と FFN の各入力を RMSNorm で正規化し、x += Attn(N(x))、x += FFN(N(x)) と更新する。
  *
  * <p>Attention のヘッドは H/32 個で、ヘッドの幅は 16。ロジットは q·k/4 に関係のバイアス Σ_s ρ[16s + c_s(i, j), ヘッド] を足したもの。
  * q·k・バイアス・softmax・p·v は全て FP32 で計算し、出力で 1 回だけ丸める（{@code packedRelationScaledDotProductAttention}）。ρ は層ごとの
@@ -30,17 +28,13 @@ import com.epsilon.prism.model.FitProbe.Stage;
  * <p>Attention の記録があるときは、層の入力と残差を葉にする（どちらも正規化と残差の和の両方が読む値）。正規化の出力（q と kv の射影が
  * 両方とも読む）は、記録の正規化が葉にする（{@link AttentionTape}）。型ごとの FFN を持つ層では、残差は局・席と牌の 2 つの連続した配列に
  * なり、それぞれを葉にして記録の正規化に渡す。
- *
- * <p>計測点（{@link FitProbe}）では、段の時間を層ごとに分けて数える。順伝播は「正規化と q・kv の射影」「Attention」「O 射影と FFN」の
- * 3 段に分ける。逆伝播は Attention の記録の葉で区切る。層の入力の葉は前の層の「O 射影と FFN」（最初の層では埋め込み）に、Attention の
- * 前の正規化は「Attention の前の正規化と q・kv の射影」に、残差の葉と FFN の前の正規化は「O 射影と FFN」に数える。
  */
 public class EncoderLayer extends Module {
 
   /** Attention のロジットに掛ける倍率（1/√16）。 */
   static final double SCALE = 1.0 / Math.sqrt(PrismShape.HEAD_WIDTH);
 
-  /** ネットワークの中の層の番号（計測点に段の切れ目を記録するときだけ使う）。 */
+  /** ネットワークの中の層の番号（最初の層が 0）。 */
   private final int layer;
 
   private final int attention;
@@ -124,7 +118,7 @@ public class EncoderLayer extends Module {
    */
   public EncoderLayer(PrismShape shape, int layer, InputFormat format) {
     this.layer = layer;
-    HipFfn layerFfn = shape.layers().get(layer).ffn();
+    FeedForwardShape layerFfn = shape.layers().get(layer).ffn();
     contextTokens = 1 + format.seats();
     fixedTokens = format.fixedTokens();
     int hidden = shape.hidden();
@@ -138,15 +132,15 @@ public class EncoderLayer extends Module {
     output = weight("output", new Shape(hidden, attention));
     outputBias = bias("outputBias", hidden);
     sharedFfn =
-        layerFfn instanceof HipFfn.Shared shared
+        layerFfn instanceof FeedForwardShape.Shared shared
             ? ffn("ffnNorm", "up", "down", hidden, shared.width())
             : null;
     contextFfn =
-        layerFfn instanceof HipFfn.Typed typed
+        layerFfn instanceof FeedForwardShape.Typed typed
             ? ffn("contextNorm", "contextUp", "contextDown", hidden, typed.context())
             : null;
     tileFfn =
-        layerFfn instanceof HipFfn.Typed typed
+        layerFfn instanceof FeedForwardShape.Typed typed
             ? ffn("tileNorm", "tileUp", "tileDown", hidden, typed.tile())
             : null;
   }
@@ -167,7 +161,7 @@ public class EncoderLayer extends Module {
    * @param context 計算の文脈
    * @param tokens 各トークンの表現 [行, S, H]（計算の型）
    * @param mask トークンがあるか [行, S]
-   * @param codes 関係のコード [行, 用意した問いの数, S, 2]（INT16）。この層の問いに使う先頭の行を読む
+   * @param codes 関係のコード [行, 用意したクエリの数, S, 2]（INT16）。この層のクエリに使う先頭の行を読む
    * @param queries クエリにする先頭のトークンの数
    * @return 更新した先頭 {@code queries} 個のトークン [行, queries, H]（計算の型）
    * @throws IllegalStateException 型ごとの FFN を持つ層のとき
@@ -187,7 +181,7 @@ public class EncoderLayer extends Module {
    * @param context 計算の文脈
    * @param entry 層の入力 [行, S, H]（計算の型）。先頭に局・席・牌、続いてイベントが並ぶ。記録があるときは呼び出し元が葉にした値
    * @param mask トークンがあるか [行, S]
-   * @param codes 関係のコード [行, 用意した問いの数, S, 2]（INT16）。この層の問いに使う先頭の行を読む
+   * @param codes 関係のコード [行, 用意したクエリの数, S, 2]（INT16）。この層のクエリに使う先頭の行を読む
    * @return 局・席・牌の出力
    */
   FixedTokens fixed(Context context, NDArray entry, NDArray mask, NDArray codes) {
@@ -200,7 +194,6 @@ public class EncoderLayer extends Module {
   private NDArray shared(Context context, NDArray input, NDArray mask, NDArray codes, int queries) {
     NDArray residual = context.scoped(scope -> attend(scope, input, mask, codes, queries), input);
     NDArray updated = context.scoped(scope -> feedForward(scope, residual, sharedFfn), residual);
-    context.probe().mark(Stage.O_FFN, layer);
     return updated;
   }
 
@@ -221,7 +214,6 @@ public class EncoderLayer extends Module {
             scope -> typedHalf(scope, entry, attended, contextTokens, fixedTokens, tileFfn),
             entry,
             attended);
-    context.probe().mark(Stage.O_FFN, layer);
     return new TypedTokens(seats, tileTokens);
   }
 
@@ -230,7 +222,7 @@ public class EncoderLayer extends Module {
     NDArray projected =
         context.linear(attention(context, input, mask, codes, queries), output, outputBias);
     NDArray kept = prefix(input, queries);
-    return context.cut(kept.add(projected), Stage.O_FFN_BACKWARD, layer);
+    return context.cut(kept.add(projected));
   }
 
   /** 型ごとの半分。トークンの区間 [from, to) について x + O(Attn) を葉にし、その型の FFN に通す。 */
@@ -238,15 +230,14 @@ public class EncoderLayer extends Module {
       Context context, NDArray entry, NDArray attended, int from, int to, Ffn ffn) {
     NDIndex span = new NDIndex(":, {}:{}", from, to);
     NDArray projected = context.linear(attended.get(span), output, outputBias);
-    NDArray residual = context.cut(entry.get(span).add(projected), Stage.O_FFN_BACKWARD, layer);
+    NDArray residual = context.cut(entry.get(span).add(projected));
     return feedForward(context, residual, ffn);
   }
 
   /** O 射影の前の Attn(N(x)) [行, queries, A]。クエリは先頭 {@code queries} 個で、キーとバリューは全てのトークンから作る。 */
   private NDArray attention(
       Context context, NDArray input, NDArray mask, NDArray codes, int queries) {
-    NDArray normalized =
-        context.backboneNorm(input, attentionNorm, epsilon, Stage.NORM_QKV_BACKWARD, layer);
+    NDArray normalized = context.backboneNorm(input, attentionNorm, epsilon);
     NDArray weights = context.value(qkv);
     NDArray biases = context.value(qkvBias);
     NDArray keyValue =
@@ -259,7 +250,6 @@ public class EncoderLayer extends Module {
             prefix(normalized, queries),
             context.slice(weights, 0, attention),
             context.slice(biases, 0, attention));
-    context.probe().mark(Stage.NORM_QKV, layer);
     AttentionTape tape = context.backboneTape();
     NDArray attended =
         tape == null
@@ -274,16 +264,13 @@ public class EncoderLayer extends Module {
                 heads,
                 RelationClass.ENTRIES,
                 SCALE,
-                layer,
                 causalFixedTokens());
-    context.probe().mark(Stage.ATTENTION, layer);
     return attended;
   }
 
   /** x + FFN(N(x)) を求める。N はバックボーンの正規化。記録があるとき、x は葉になっている。 */
   private NDArray feedForward(Context context, NDArray residual, Ffn ffn) {
-    NDArray normalized =
-        context.backboneNorm(residual, ffn.norm(), epsilon, Stage.O_FFN_BACKWARD, layer);
+    NDArray normalized = context.backboneNorm(residual, ffn.norm(), epsilon);
     NDArray hidden = Context.silu(context.linear(normalized, ffn.up(), ffn.upBias()));
     return residual.add(context.linear(hidden, ffn.down(), ffn.downBias()));
   }

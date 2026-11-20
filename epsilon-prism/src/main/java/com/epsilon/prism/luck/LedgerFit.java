@@ -739,7 +739,7 @@ public final class LedgerFit {
       }
     }
 
-    /** この区分の保留残差だけをクラスの係数から区分の係数に置き換える。 */
+    /** この区分のホールドアウトの残差だけをクラスの係数から区分の係数に置き換える。 */
     double[] refine(int parity, Sums train, Sums held) {
       double[] beta = solve(train, fitted, ridge);
       sse[parity] += held.sse(beta) - held.sse(byFold[parity]);

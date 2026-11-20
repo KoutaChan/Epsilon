@@ -261,7 +261,7 @@ public class ThreePlayerLineagePresetTest {
         concat(table("second", "version:16", "\"1v2\"", "FIXED", 8192, PRECISION_512, 8, 24)));
   }
 
-  /** 尺度の辺には上限を掛けないので、上限のキーは評価の節に無い。 */
+  /** 尺度の辺には上限を掛けないので、上限のキーは評価セクションに無い。 */
   @Test
   public void aLinearCapIsAnUnknownKey() {
     rejects("evaluation.linearCap", "Unknown setting", "evaluation.linearCap=0.05");

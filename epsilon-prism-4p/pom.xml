@@ -15,6 +15,12 @@
   <dependencies>
     <dependency>
       <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism-hip</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
       <artifactId>epsilon-prism</artifactId>
       <version>${project.version}</version>
     </dependency>
@@ -39,6 +45,18 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <profiles>
+    <profile>
+      <id>native-hip</id>
+      <dependencies>
+        <dependency>
+          <groupId>com.epsilon</groupId>
+          <artifactId>epsilon-prism-hip</artifactId>
+          <version>${project.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
   <build>
     <finalName>epsilon-prism-4p</finalName>
     <plugins>

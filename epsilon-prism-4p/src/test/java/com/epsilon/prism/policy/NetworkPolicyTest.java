@@ -18,6 +18,7 @@ import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.run.JobOutputs;
 import com.epsilon.agent.run.Jobs;
 import com.epsilon.agent.run.RunDirectory;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.Limits;
@@ -87,8 +88,7 @@ public class NetworkPolicyTest {
       Observation reader = new Observation(TENHOU_4P);
       int[] counts = new int[4];
       try (PolicyService served =
-              Snapshot.open(
-                  snapshot, cpu, null, MAX_BATCH, Precision.FLOAT32, InferencePath.EAGER);
+              Snapshot.open(snapshot, cpu, null, MAX_BATCH, Precision.FLOAT32, Kernels.EAGER);
           NetworkPolicy split =
               NetworkPolicy.eager(
                   PolicyParams.of(1),
@@ -101,7 +101,7 @@ public class NetworkPolicyTest {
                   smallest);
           NDManager manager = NDManager.newBaseManager(Device.cpu())) {
         assertTrue(served instanceof NetworkPolicy, served.getClass().getName());
-        assertEquals(((NetworkPolicy) served).inference(), InferencePath.EAGER);
+        assertEquals(((NetworkPolicy) served).inference(), Kernels.EAGER);
         Direct direct =
             new Direct(
                 PrismNetwork.load(snapshot.resolve(Snapshot.MODEL), manager), Precision.FLOAT32);

@@ -8,7 +8,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.testng.Assert;
 
-/** Raw FP32 fixtures captured by the identical test code on the K1 tree. */
+/**
+ * 別のビルドで同じテストのコードが保存した FP32 の生のビットと、今の値を比べる。保存先のディレクトリを {@code prism.v4.bitFixtures}
+ * で渡さなければ比べない。
+ */
 public final class V4BitFixture {
   private V4BitFixture() {}
 

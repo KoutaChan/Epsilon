@@ -1006,7 +1006,7 @@ public final class InputSchema {
         TileKeyCode.space(WaitClass.values().length + 1);
   }
 
-  /** 遷移のキーと符号を並べる順。 */
+  /** 遷移のキーとコードを並べる順。 */
   public enum KeyBlock {
     ROUND,
     SEAT,

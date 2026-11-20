@@ -3,12 +3,12 @@ package com.epsilon.prism.run;
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
 import com.epsilon.agent.run.DurableFiles;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.learn.FitPlan;
 import com.epsilon.prism.learn.FitResult;
 import com.epsilon.prism.model.PrismNetwork;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.settings.MemoryNetwork;
@@ -122,7 +122,7 @@ public final class Snapshot {
 
   /**
    * バージョンの打つネットワーク m0 を推論用に開く。貪欲な手は s の argmax（{@link #open(Path, Path, List, NetworkRuntime, int,
-   * Precision, InferencePath)}）。
+   * Precision, Kernels)}）。
    *
    * @param precision eager のバックエンドの計算の型
    * @param inference ネットワークの推論のバックエンド
@@ -133,9 +133,29 @@ public final class Snapshot {
       NetworkRuntime runtime,
       int maxBatch,
       Precision precision,
-      InferencePath inference)
+      Kernels inference)
       throws IOException {
     return open(snapshot, model(snapshot), devices, runtime, maxBatch, precision, inference);
+  }
+
+  /** eager を選んだ対戦では、1 判断ずつ評価する。 */
+  public static NetworkPolicy openDuel(
+      Path snapshot,
+      List<Device> devices,
+      NetworkRuntime runtime,
+      int maxBatch,
+      Precision precision,
+      Kernels inference)
+      throws IOException {
+    return NetworkPolicy.open(
+        PolicyParams.read(snapshot.resolve(POLICY)),
+        model(snapshot),
+        devices,
+        runtime,
+        maxBatch,
+        1,
+        precision,
+        inference);
   }
 
   /**
@@ -152,7 +172,7 @@ public final class Snapshot {
       NetworkRuntime runtime,
       int maxBatch,
       Precision precision,
-      InferencePath inference)
+      Kernels inference)
       throws IOException {
     return NetworkPolicy.open(
         PolicyParams.read(snapshot.resolve(POLICY)),

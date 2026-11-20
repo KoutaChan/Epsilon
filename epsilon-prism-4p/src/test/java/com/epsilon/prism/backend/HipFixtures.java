@@ -42,7 +42,7 @@ public final class HipFixtures {
   /** 長い行を探す半荘の数の上限。 */
   private static final int LONG_SEARCH_GAMES = 400;
 
-  /** 長い行とみなす公開イベントの数の下限。T = 39 + イベント数 > 128 になるので、K2・K4 は 10 ウェーブ構成のカーネルを通る。 */
+  /** 長い行とみなす公開イベントの数の下限。T = 39 + イベント数 > 128 になるので、全トークンと固定トークンの Attention は 10 ウェーブ構成のカーネルを通る。 */
   private static final int LONG_ROW_EVENTS = 90;
 
   /** {@link #longRows(int)} が 1 つの半荘から取る判断の上限。 */

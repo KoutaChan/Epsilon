@@ -2,9 +2,9 @@ package com.epsilon.prism.backend;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
-import com.epsilon.prism.hip.HipEmbedding;
-import com.epsilon.prism.hip.HipWeight;
 import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.kernel.EmbeddingTable;
+import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.PrismNetwork;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,7 +16,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 参照実装の既定の層 0（K1 の L0-FOLD）が式 D と合うことを、CPU で確かめる。D はテストの側で、重みの束の T・W_d・b と層 0 の g・W_qkv から
+ * 参照実装の既定の層 0（埋め込みの L0-FOLD）が式 D と合うことを、CPU で確かめる。D はテストの側で、重みの束の T・W_d・b と層 0 の g・W_qkv から
  * 作り直す。qkv0 = ⌊r·(ΣT'[idx] + ΣW'_d·f + b') + b_qkv⌉、T' = T·diag(g)·W_qkvᵀ とする。T'・W'_d・b' は FP64 で作って FP32 に丸めた値。
  * r は丸める前の x の 1/rms で、x は k の順に FP32 で足す。参照は束にある折り込み済みの表を使い、カーネルと同じ順に FP32 で足すので、D との
  * 違いは r の和の順だけになる。そこで、全ての値が BF16 の 1 ulp 以内に収まり、ビットが違う値の割合が {@value #DIFFER_LIMIT} 以下であることを
@@ -64,15 +64,15 @@ public class HipFoldReferenceTest {
     int width = 3 * attention;
     double[] projection = new double[hidden * width];
     for (int h = 0; h < hidden; h++) {
-      double gain = r.weight(HipWeight.ATTENTION_NORM, 0, h);
+      double gain = r.weight(WeightField.ATTENTION_NORM, 0, h);
       for (int c = 0; c < width; c++) {
-        projection[h * width + c] = gain * r.weight(HipWeight.QKV, 0, c * hidden + h);
+        projection[h * width + c] = gain * r.weight(WeightField.QKV, 0, c * hidden + h);
       }
     }
     PackView pack = r.pack;
     float[] out = new float[(r.fixed * in.rows + in.events) * width];
-    for (HipEmbedding.Slot slot : HipEmbedding.Slot.values()) {
-      if (slot == HipEmbedding.Slot.TRANSITION) {
+    for (EmbeddingTable.Slot slot : EmbeddingTable.Slot.values()) {
+      if (slot == EmbeddingTable.Slot.TRANSITION) {
         continue;
       }
       PackView.Spec spec = pack.embedding(slot);
@@ -130,7 +130,7 @@ public class HipFoldReferenceTest {
         for (int k = 0; k < features; k++) {
           int index = spec.source()[k] & 0xFFFF;
           float feature =
-              switch (HipEmbedding.Source.values()[spec.source()[k] >> 16]) {
+              switch (EmbeddingTable.Source.values()[spec.source()[k] >> 16]) {
                 case FLAG -> in.u8(category, t, index);
                 case SCALAR -> in.bf16(scalar, t, index);
                 case EXACT -> HipReference.bf(in.f32(exact, t, index));
@@ -153,8 +153,8 @@ public class HipFoldReferenceTest {
         }
         float rms = (float) (1.0 / Math.sqrt(squares / hidden + r.epsilon));
         for (int c = 0; c < width; c++) {
-          out[(start + t) * width + HipEmbedding.foldColumn(c, attention)] =
-              HipReference.bf(rms * (sum[c] + bias[c]) + r.weight(HipWeight.QKV_BIAS, 0, c));
+          out[(start + t) * width + EmbeddingTable.foldColumn(c, attention)] =
+              HipReference.bf(rms * (sum[c] + bias[c]) + r.weight(WeightField.QKV_BIAS, 0, c));
         }
       }
     }

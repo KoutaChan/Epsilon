@@ -12,8 +12,14 @@
   <dependencies>
     <dependency>
       <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism-kernel-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
       <artifactId>epsilon-prism-hip</artifactId>
       <version>${project.version}</version>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>com.epsilon</groupId>

@@ -8,13 +8,20 @@
   </parent>
   <artifactId>epsilon-prism-hip</artifactId>
   <name>Epsilon Prism HIP</name>
+  <dependencies>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism-kernel-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
   <properties>
-    <!-- ROCm の根（HIP の実行系とヘッダ。DJL の libtorch 2.11.0+rocm7.2 と同じ 7.2 系）。 -->
+    <!-- ROCm のインストール先（HIP ランタイムとヘッダー。DJL の libtorch 2.11.0+rocm7.2 と同じ 7.2 系）。 -->
     <prism.hip.rocm>/opt/rocm-7.2.2</prism.hip.rocm>
-    <!-- 翻訳は ROCm 7.2.2 の clang で行う。機器の側の結合（amdgcn-link）だけは、7.2.2 の lld が Ubuntu 26.04 で libxml2.so.2 を
-         欠いて起動しないため、同じ機械の ROCm 10 core の lld を -B で借りる。 -->
+    <!-- 機器の側の結合（amdgcn-link）に使う lld のディレクトリ（-B で clang に渡す）。 -->
     <prism.hip.lld>/opt/rocm-7.2.2/llvm/bin</prism.hip.lld>
     <prism.hip.arch>gfx1100</prism.hip.arch>
+    <skip.hip.compiler>false</skip.hip.compiler>
     <prism.hip.jobs>8</prism.hip.jobs>
     <prism.hip.build>${project.build.directory}/native-unified</prism.hip.build>
   </properties>
@@ -23,17 +30,15 @@
       <resource>
         <directory>src/main/resources</directory>
       </resource>
-      <resource>
-        <directory>src/main/native</directory>
-        <includes>
-          <include>prism_hip_capabilities.def</include>
-          <include>prism_hip_limits.def</include>
-        </includes>
-      </resource>
     </resources>
   </build>
   <profiles>
-    <!-- native の組み立て。-Pnative-hip のときだけで、ROCm と cmake が要る。既定の組み立ては Java の部分だけで、
+    <profile>
+      <id>windows-hip-java</id>
+      <activation><os><family>windows</family></os></activation>
+      <properties><skip.hip.compiler>true</skip.hip.compiler></properties>
+    </profile>
+    <!-- ネイティブライブラリのビルドには ROCm と CMake が必要。既定では Java のみをビルドするため、
          jar に .so が入らないので HipLibrary.load() は英語の例外で止まる。 -->
     <profile>
       <id>native-hip</id>
@@ -45,13 +50,14 @@
             <version>3.1.0</version>
             <executions>
               <execution>
-                <!-- libprism_hip.so（通常）と libprism_hip_check.so（-DPRISM_HIP_CHECK）を classes/native/linux-x86_64 に作る。 -->
+                <!-- libprism_hip.so（通常）と libprism_hip_check.so（PRISM_CHECKED=1）を classes/native/linux-x86_64 に作る。 -->
                 <id>native-hip</id>
                 <phase>process-classes</phase>
                 <goals>
                   <goal>run</goal>
                 </goals>
                 <configuration>
+                  <skip>${skip.hip.compiler}</skip>
                   <target>
                     <exec executable="cmake" failonerror="true">
                       <arg value="-S" />
@@ -66,7 +72,7 @@
                       <arg value="-DPRISM_JAVA_HOME=${java.home}" />
                       <arg value="-DPRISM_OUTPUT_DIR=${project.build.outputDirectory}/native/linux-x86_64" />
                       <arg value="-DPRISM_TORCH_VERSION=${pytorch.native.version}" />
-                      <arg value="-DPRISM_TORCH_FLAVOR=${pytorch.linux.flavor}" />
+                      <arg value="-DPRISM_TORCH_FLAVOR=${pytorch.rocm.flavor}" />
                     </exec>
                     <exec executable="cmake" failonerror="true">
                       <arg value="--build" />
@@ -74,9 +80,6 @@
                       <arg value="--parallel" />
                       <arg value="${prism.hip.jobs}" />
                     </exec>
-                    <!-- A build over a split-library checkout can retain the old build outputs. -->
-                    <delete file="${project.build.outputDirectory}/native/linux-x86_64/libprism_hip_v4.so" />
-                    <delete file="${project.build.outputDirectory}/native/linux-x86_64/libprism_hip_v4_check.so" />
                   </target>
                 </configuration>
               </execution>

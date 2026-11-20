@@ -14,8 +14,8 @@ import ai.djl.pytorch.engine.PtStreamScope;
 import ai.djl.training.GradientCollector;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.RelationAttention;
-import com.epsilon.prism.hip.RelationCodes;
+import com.epsilon.prism.kernel.RelationAttention;
+import com.epsilon.prism.kernel.RelationCodes;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
@@ -80,11 +80,11 @@ public class HipAttentionGpuTest {
   private static final double FLOAT_UNIT = 0x1p-24;
 
   /**
-   * FP32 の出力に許す誤差の幅の係数 c（{@link #assertOutputElements}）。和の側: 項 p_j v_j が t1 の和で通る丸めは多くて 4B + 6 回（B ≤ 10 個の
+   * FP32 の出力に許す誤差の幅の係数 c（{@link #assertOutputElements}）。和の側: 項 p_j v_j が Attention の加算で通る丸めは多くて 4B + 6 回（B ≤ 10 個の
    * キーのタイルごとに WMMA 3 回と α の掛け算 1 回、WMMA の中の 5 段、最後の 1/Σ）。1 回の丸めは切り捨てでも相対 2⁻²³ なので、線形の
    * 上限は 92·2⁻²⁴·A。ℓ の側: ℓ₂ の丸め δ_j は p_j を相対で ln2·δ_j 動かし、o を Σ p_j (v_j − o)·ln2·δ_j だけ動かす
    * （|·| ≤ 2A·ln2·max δ）。このテストの大きさ（|ℓ₂| ≲ 10、Σ|τ| ≈ 4）では max δ ≈ 48·2⁻²⁴ で、線形の上限は約 66·2⁻²⁴·A。誤差は
-   * 独立なので、実際はずっと小さい。c = 128 は 2 つの線形の上限の和（約 158）より小さく、t1 の順で足した FP32 の和の誤差より十分に大きい。
+   * 独立なので、実際はずっと小さい。c = 128 は 2 つの線形の上限の和（約 158）より小さく、カーネルと同じ順で足した FP32 の和の誤差より十分に大きい。
    * キーが 1 つ抜ける誤り（p_j|v_j| > 128·2⁻²⁴·A ≈ 7.6e-6·A）や P の誤りは幅を外れる。|o| ≈ A の要素では、幅は BF16 の ulp の 1/500
    * ほど。c は上限のしきい値で、分位（p99・p99.99）もログに出す。勾配も同じ c を勾配の尺度（{@link Reference}）に使う（dS の 1 段と、
    * キー・クエリのタイルの和で丸めは 7 回ほど増え、線形の上限は約 172）。
@@ -97,7 +97,7 @@ public class HipAttentionGpuTest {
     LAYER0_S70(70, 70, 7, 16),
     /** 最後の層、S = 70。 */
     LAYER1_S70(LAST_QUERIES, 70, 7, 16),
-    /** キーのタイル 1 つ（逆伝播のワークグループは、キーのタイルの数より多い 5 ウェーブになる。t1 の段 B に 5 ウェーブ要るため）。 */
+    /** キーのタイル 1 つ（逆伝播のワークグループは、キーのタイルの数より多い 5 ウェーブになる。関係バイアスの勾配に 4 ウェーブ、クエリの勾配に 1 ウェーブ使うため）。 */
     LAYER0_S16(16, 16, 7, 16),
     /** キーのタイル 6 つ（キーのタイルの上限が 8 のカーネルを使い、LDS もその大きさになる）。 */
     LAYER0_S81(81, 81, 7, 16),

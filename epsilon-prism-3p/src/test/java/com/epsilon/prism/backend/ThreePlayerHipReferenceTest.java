@@ -6,10 +6,10 @@ import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
 import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.Precision;
-import com.epsilon.prism.hip.HipArchitecture;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputFormat.Role;
 import com.epsilon.prism.input.InputSchema.ActionRole;
+import com.epsilon.prism.kernel.CollectionArchitecture;
 import com.epsilon.prism.model.EagerStages;
 import com.epsilon.prism.model.PrismNetwork;
 import java.util.ArrayList;
@@ -64,7 +64,7 @@ public class ThreePlayerHipReferenceTest {
       PrismNetwork network = ThreePlayerRows.network(manager, arm.shape(), 21 + arm.ordinal());
       ParameterStore store = new ParameterStore(manager, false);
       WeightLayout layout = WeightLayout.of(network);
-      HipArchitecture architecture = layout.architecture();
+      CollectionArchitecture architecture = layout.architecture();
       WeightPack pack = WeightPack.build(layout, network, 1);
       EagerStages.Stages eager;
       try (NDManager scope = manager.newSubManager()) {

@@ -77,7 +77,7 @@ final class GrpLifecycle {
   }
 
   /**
-   * 封印したコホート h の境目の手続き。
+   * コホート h の確定時に行う処理。
    *
    * @param held 呼び出し元が、この手続きの間、反復 h ＋ 1 の Φ の段を待たせているなら true。false なら、その反復の Φ は決まったものと
    *     して、phi.jsonl に足さない

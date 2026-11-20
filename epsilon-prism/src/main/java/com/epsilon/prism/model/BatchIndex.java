@@ -9,6 +9,7 @@ import com.epsilon.prism.input.InputBlob.Composition;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.input.InputFormat.Role;
+import com.epsilon.prism.kernel.CandidateKernels;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
@@ -61,7 +62,7 @@ final class BatchIndex {
   /** 牌の関係の種類（{@link MahjongTileRelation} の ordinal、INT32 [T·T]。T は牌のトークンの数）。 */
   final Staging.Section tileRelations;
 
-  /** 遷移ごとの行（INT32 [遷移]）。 */
+  /** 遷移ごとの行（INT32 [遷移]）。行の番号は減らない（{@link CandidateKernels} の並びの約束）。 */
   final Staging.Section transitionRows;
 
   /** 手を [行 × 手の容量] へ散らす位置（INT64）。 */
@@ -227,6 +228,7 @@ final class BatchIndex {
         transitionRow[structure.firstTransitionOfRow[r] + t] = r;
       }
     }
+    CandidateKernels.requireGroupedRows(transitionRow, rows);
     transitionRows = staging.add(transitionRow, new Shape(transitionRow.length));
 
     // 手の並べ方と価値グラフ

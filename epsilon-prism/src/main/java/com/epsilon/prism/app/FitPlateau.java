@@ -6,13 +6,20 @@ import com.epsilon.agent.app.Named;
 import com.epsilon.agent.app.Outcome;
 import com.epsilon.agent.app.Span;
 import com.epsilon.agent.run.DurableFiles;
+import com.epsilon.agent.runtime.Kernels;
+import com.epsilon.agent.runtime.Precision;
 import com.epsilon.agent.settings.Json;
 import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Presence;
 import com.epsilon.agent.settings.Range;
 import com.epsilon.agent.settings.RecordFile;
+import com.epsilon.prism.backend.KernelDevices;
 import com.epsilon.prism.core.CrnSeeds;
-import com.epsilon.prism.hip.HipLibrary;
+import com.epsilon.prism.input.BatchPlan;
+import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.kernel.KernelProvider;
+import com.epsilon.prism.kernel.KernelProvider.Backend;
+import com.epsilon.prism.kernel.KernelProviders;
 import com.epsilon.prism.learn.AnchorScores;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
@@ -27,7 +34,7 @@ import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
 import com.epsilon.prism.noise.TempoLrMode;
 import com.epsilon.prism.noise.TempoSettings;
-import com.epsilon.prism.policy.InferencePath;
+import com.epsilon.prism.policy.CollectionPlans;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.run.Snapshot;
@@ -43,9 +50,10 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 
-/** 複数のコホートを並べ替え、固定したモデルを基準に、同じ順列と学習率の進行を引き継いで 1 周学習する。 */
+/** 複数のコホートを並べ替え、固定したモデルを基準に、同じ順列と学習率の進行を引き継いで 1 エポック学習する。 */
 @Named(
     value = "fit-plateau",
     doc = "Fit one resumable pass over saved cohorts with the combined TEMPO gain")
@@ -70,9 +78,9 @@ public record FitPlateau(
         @Range(min = 0, minInclusive = false)
         Double lrScale,
     @Key(
-            doc = "Require native HIP for scoring the anchor and training the student",
+            doc = "Require the native kernels for scoring the anchor and training the student",
             value = "false")
-        boolean requireHip,
+        boolean requireNative,
     @Key(doc = "Maximum optimizer steps per invocation", value = "512") @Range(min = 1)
         int chunkSteps,
     @Key(doc = "Shuffle replica", value = "0") @Range(min = 0) int replicate)
@@ -140,8 +148,15 @@ public record FitPlateau(
   private static final Gson FIT_JSON =
       new GsonBuilder().serializeSpecialFloatingPointValues().create();
 
+  /**
+   * 再開のたびに照合する、アンカーの採点と学習の計算。
+   *
+   * @param devices 学習のデバイス
+   * @param anchorInference アンカーの採点に使う計算（{@link KernelDevices#label}）
+   * @param nativeTrainingAttention 学習の Attention を専用カーネルで計算するか
+   */
   private record Execution(
-      List<String> devices, InferencePath anchorInference, boolean nativeTrainingAttention) {}
+      List<String> devices, String anchorInference, boolean nativeTrainingAttention) {}
 
   private record Progress(int steps, long rows, double elapsedSeconds) {}
 
@@ -156,7 +171,8 @@ public record FitPlateau(
         || settings.fit().lrFloor() != history.lrFloor())
       throw new IllegalArgumentException("This arm requires the recorded lineage learning rate");
     Path anchor = Snapshot.model(start);
-    var original = PrismNetwork.readShape(anchor);
+    var header = PrismNetwork.readHeader(anchor);
+    var original = header.shape();
     var student = shape == null ? original : shape.shape();
     if (!original.equals(student))
       throw new IllegalArgumentException("Starting shape mismatch: " + original + " -> " + student);
@@ -199,15 +215,37 @@ public record FitPlateau(
         DurableFiles.write(file, recipe);
       }
       var devices = settings.learner().networkDevices();
-      var scoring =
-          InferencePath.of(settings.inference().kernels()).resolve(devices.primary(), original);
-      boolean nativeTraining =
-          devices.primary().isGpu() && student.supportsAttentionTape() && HipLibrary.bundled();
+      Optional<Backend> scoring = Optional.empty();
+      boolean nativeTraining = false;
+      if (devices.primary().isGpu()) {
+        if (settings.inference().kernels() == Kernels.NATIVE) {
+          var teacher = new PrismNetwork(header.format(), original);
+          scoring =
+              CollectionPlans.select(
+                      teacher,
+                      List.of(devices.primary()),
+                      Precision.BFLOAT16,
+                      BatchPlan.Capacity.standard(teacher.format()),
+                      null)
+                  .map(CollectionPlans::backend);
+        }
+        var network = new PrismNetwork(InputFormat.of(header.format().variant()), student);
+        var request =
+            KernelDevices.request(
+                network,
+                devices.primary(),
+                BatchPlan.Capacity.standard(network.format()),
+                KernelProvider.Use.TRAINING);
+        nativeTraining = KernelProviders.training(request, KernelProviders.discover()).isPresent();
+      }
       var execution =
           new Execution(
-              devices.devices().stream().map(Object::toString).toList(), scoring, nativeTraining);
-      if (requireHip && (scoring != InferencePath.HIP || !nativeTraining)) {
-        throw new IllegalArgumentException("Expected HIP scoring and training for the plateau arm");
+              devices.devices().stream().map(Object::toString).toList(),
+              KernelDevices.label(scoring),
+              nativeTraining);
+      if (requireNative && (scoring.isEmpty() || !nativeTraining)) {
+        throw new IllegalArgumentException(
+            "Expected native scoring and training for the plateau arm");
       }
       Path executionFile = out.resolve("execution.json");
       if (Files.exists(executionFile)) {
@@ -215,7 +253,7 @@ public record FitPlateau(
           throw new IOException("The execution backend changed while resuming " + out);
         }
       } else {
-        if (requireHip && (Files.exists(out.resolve("snapshot")) || lastCheckpoint() != null)) {
+        if (requireNative && (Files.exists(out.resolve("snapshot")) || lastCheckpoint() != null)) {
           throw new IOException("The existing fit did not record its execution backend");
         }
         DurableFiles.write(executionFile, execution);
@@ -236,7 +274,7 @@ public record FitPlateau(
     var devices = s.learner().networkDevices();
     var fit = s.fit();
     int threads = s.learner().decodeThreads();
-    var path = InferencePath.of(s.inference().kernels());
+    var path = s.inference().kernels();
     long seed =
         CrnSeeds.derive(s.run().seed(), CrnSeeds.Domain.LEARN, span.last(), 0x76326172L, replicate);
     int count = span.last() - span.first() + 1;

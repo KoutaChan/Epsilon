@@ -12,7 +12,6 @@ import ai.djl.nn.Parameter;
 import ai.djl.nn.core.Linear;
 import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.Precision;
-import com.epsilon.prism.model.FitProbe.Stage;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
@@ -45,7 +44,6 @@ public final class Context {
   private final Precision precision;
   private final boolean training;
   private final AttentionTape tape;
-  private final FitProbe probe;
   private final Intermediates intermediates;
 
   /**
@@ -57,27 +55,25 @@ public final class Context {
    * @param training 学習の順伝播なら true
    */
   public Context(ParameterStore store, NDManager working, Precision precision, boolean training) {
-    this(store, working, precision, training, null, FitProbe.NONE);
+    this(store, working, precision, training, null);
   }
 
   /**
-   * バックボーンの Attention を自前の HIP の演算で行い、段ごとに時間を測る文脈を作る（{@link Pass} のネットワークの順伝播で使う）。
+   * バックボーンの Attention を専用カーネルで行う文脈を作る（{@link Pass} のネットワークの順伝播で使う）。
    *
    * @param store パラメーターの値の取り出し元
    * @param working 作業用のマネージャー（入力のマネージャー）
    * @param precision 計算の型
    * @param training 学習の順伝播なら true
-   * @param tape Attention の記録（null なら djl-rocm の演算を使う。記録するときは、先に {@link AttentionTape#open} を呼んでおく）
-   * @param probe 段ごとの時間の計測点（計測しないなら {@link FitProbe#NONE}）
+   * @param tape Attention の記録（null なら DJL の演算を使う。記録するときは、先に {@link AttentionTape#open} を呼んでおく）
    */
   public Context(
       ParameterStore store,
       NDManager working,
       Precision precision,
       boolean training,
-      AttentionTape tape,
-      FitProbe probe) {
-    this(store, working, precision, training, tape, probe, Intermediates.CLOSE);
+      AttentionTape tape) {
+    this(store, working, precision, training, tape, Intermediates.CLOSE);
   }
 
   /**
@@ -87,8 +83,7 @@ public final class Context {
    * @param working 作業用のマネージャー（入力のマネージャー）
    * @param precision 計算の型
    * @param training 学習の順伝播なら true
-   * @param tape Attention の記録（null なら djl-rocm の演算を使う）
-   * @param probe 段ごとの時間の計測点
+   * @param tape Attention の記録（null なら DJL の演算を使う）
    * @param intermediates 区切りの中で作った途中の配列の扱い
    */
   Context(
@@ -97,7 +92,6 @@ public final class Context {
       Precision precision,
       boolean training,
       AttentionTape tape,
-      FitProbe probe,
       Intermediates intermediates) {
     this.store = store;
     this.working = working;
@@ -105,7 +99,6 @@ public final class Context {
     this.precision = precision;
     this.training = training;
     this.tape = tape;
-    this.probe = probe;
     this.intermediates = intermediates;
   }
 
@@ -118,40 +111,18 @@ public final class Context {
     return tape != null && tape.backbone() ? tape : null;
   }
 
-  /** 段ごとの時間の計測点（計測しないなら {@link FitProbe#NONE}）。 */
-  FitProbe probe() {
-    return probe;
-  }
-
   /**
    * 記録があれば、値を葉にする（{@link AttentionTape#cut}。葉は作業用のマネージャーに付く）。記録がなければ値をそのまま返す。
    *
    * @param source 値（勾配を持つグラフの出力）
-   * @param stage 葉への勾配の注入の時間を計上する段
-   * @param layer 層ごとの段なら層の番号、ほかは 0
    * @return 葉（同じ値）か {@code source}
    */
-  NDArray cut(NDArray source, Stage stage, int layer) {
-    return backboneTape() == null ? source : tape.cut(working, source, stage, layer);
+  NDArray cut(NDArray source) {
+    return backboneTape() == null ? source : tape.cut(working, source);
   }
 
-  NDArray cutCandidateInput(NDArray source, Stage stage) {
-    return tape.cut(working, source, stage, 0);
-  }
-
-  /**
-   * 計測するときだけ、値を葉にする（{@link AttentionTape#cut}）。計測するときとは、{@link FitProbe#cuts} が true で、Attention の
-   * 記録がある学習のこと。葉への勾配の注入は {@code stage} の段に計上するので、逆伝播を段に分けて測れる。注入する勾配は葉への寄与の
-   * 和そのものなので、勾配の式は葉にしないときと変わらない。注入はグラフを残さない。そのため {@code source} のグラフ（前の葉まで）は、
-   * 値を保存したノードを、ほかの葉のグラフと共有してはならない。
-   *
-   * @param source 値（勾配を持つグラフの出力）
-   * @param stage 葉への勾配の注入の時間を計上する段
-   * @param layer 層ごとの段なら層の番号、ほかは 0
-   * @return 計測するときは葉（同じ値）、ほかは {@code source}
-   */
-  NDArray probeCut(NDArray source, Stage stage, int layer) {
-    return tape == null || !probe.cuts() ? source : tape.cut(working, source, stage, layer);
+  NDArray cutCandidateInput(NDArray source) {
+    return tape.cut(working, source);
   }
 
   public NDManager working() {
@@ -187,7 +158,7 @@ public final class Context {
         }
       }
       NDArray output =
-          block.apply(new Context(store, scope, precision, training, tape, probe, intermediates));
+          block.apply(new Context(store, scope, precision, training, tape, intermediates));
       if (tape != null) {
         tape.adopt(scope, attached);
       }
@@ -331,14 +302,12 @@ public final class Context {
    * @param input 入力 [..., H]（計算の型）
    * @param gain ゲイン [H]
    * @param epsilon ε
-   * @param stage 記録の逆伝播（入力とゲインへの勾配の注入）の時間を計上する段
-   * @param layer 層ごとの段の、層の番号
    * @return 正規化した値（計算の型）
    */
-  NDArray backboneNorm(NDArray input, Parameter gain, double epsilon, Stage stage, int layer) {
+  NDArray backboneNorm(NDArray input, Parameter gain, double epsilon) {
     return backboneTape() == null
         ? norm(input, gain, epsilon)
-        : tape.norm(working, input, fp32(gain), (float) epsilon, stage, layer);
+        : tape.norm(working, input, fp32(gain), (float) epsilon);
   }
 
   /** SiLU を計算する（FP32 で計算し、入力の型に丸める）。 */

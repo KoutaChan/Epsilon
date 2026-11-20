@@ -84,7 +84,7 @@ public class FitPlateauTest {
 
   private void checkPublishedCopy(boolean hip) throws Exception {
     var reference = PublishedModel.fourPlayer(760);
-    var original = Snapshot.model(reference.snapshot());
+    var original = Snapshot.model(hip ? reference.requiredSnapshot() : reference.snapshot());
     var root = Files.createTempDirectory("plateau-v760");
     try {
       var shape = PrismNetwork.readShape(original);
@@ -92,7 +92,7 @@ public class FitPlateauTest {
       try (var model = Fit.load(original, Device.cpu())) {
         Snapshot.write(target, (PrismNetwork) model.getBlock(), PolicyParams.of(760));
       }
-      if (hip) reference.assertHipScores(target, shape);
+      if (hip) reference.assertNativeScores(target, shape);
       else reference.assertEagerScores(target, shape);
     } finally {
       Snapshot.deleteTree(root);

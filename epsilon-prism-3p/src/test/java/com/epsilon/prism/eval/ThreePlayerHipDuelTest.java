@@ -10,15 +10,16 @@ import com.epsilon.agent.run.JobOutputs;
 import com.epsilon.agent.run.Jobs;
 import com.epsilon.agent.run.RunDirectory;
 import com.epsilon.agent.runtime.InferenceSettings;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.Main;
 import com.epsilon.prism.ThreePlayerSettings;
 import com.epsilon.prism.app.Evaluate;
 import com.epsilon.prism.backend.PerturbedNetwork;
+import com.epsilon.prism.kernel.KernelProvider.Backend;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.run.Snapshot;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,10 +78,10 @@ public class ThreePlayerHipDuelTest {
                   runtime,
                   64,
                   Precision.BFLOAT16,
-                  InferencePath.HIP)) {
+                  Kernels.NATIVE)) {
         Assert.assertEquals(
-            policy.inference(),
-            InferencePath.HIP,
+            policy.backend(),
+            Optional.of(Backend.HIP),
             label + ": the three-player version opens on HIP");
       }
       for (String draws : List.of("SEAT_STREAMS", "WALL_ORDER")) {

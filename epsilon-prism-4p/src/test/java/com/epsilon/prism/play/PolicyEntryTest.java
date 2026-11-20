@@ -17,7 +17,6 @@ import com.epsilon.agent.runtime.Precision;
 import com.epsilon.mahjong.engine.Decisions;
 import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.backend.HipFixtures;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.policy.PrismPolicy;
@@ -94,14 +93,8 @@ public class PolicyEntryTest {
   public void nativeKernelsRunEagerOnTheCpu() throws Exception {
     for (Precision precision : Precision.values()) {
       try (NetworkPolicy network =
-          Snapshot.open(
-              snapshot,
-              List.of(Device.cpu()),
-              null,
-              4,
-              precision,
-              InferencePath.of(Kernels.NATIVE))) {
-        Assert.assertEquals(network.inference(), InferencePath.EAGER, precision.toString());
+          Snapshot.open(snapshot, List.of(Device.cpu()), null, 4, precision, Kernels.NATIVE)) {
+        Assert.assertEquals(network.inference(), Kernels.EAGER, precision.toString());
         Assert.assertEquals(network.maxBatch(0), 4);
       }
     }

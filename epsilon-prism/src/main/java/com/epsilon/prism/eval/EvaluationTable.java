@@ -10,7 +10,6 @@ import com.epsilon.agent.runtime.InferenceSettings;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.core.TwinDiscard;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PrismPolicy;
 import com.epsilon.prism.run.Snapshot;
@@ -57,7 +56,7 @@ public final class EvaluationTable {
               runtime,
               inference.maxBatch(),
               inference.precision(),
-              InferencePath.of(inference.kernels()));
+              inference.kernels());
       return new PrismPolicy(
           network, variant, Series.PRISM.label(spec.checkpoint()), null, twinDiscard);
     }

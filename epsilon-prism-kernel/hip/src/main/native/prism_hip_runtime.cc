@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "prism_hip_common.h"
-#include "prism_hip_plan.h"
+#include "batch_executor.h"
 
 namespace prism {
 namespace {
@@ -88,9 +88,7 @@ std::vector<std::string> runtimeInfo() {
   info.push_back("hip.loaded=" + join(hip));
   info.push_back("torch.loaded=" + join(torch));
   info.push_back("cxx11abi=" + std::to_string(_GLIBCXX_USE_CXX11_ABI));
-  info.push_back(std::string("checked=") + (PRISM_HIP_CHECKED ? "true" : "false"));
-  info.push_back("kernels=" + std::to_string(kKernels));
-  info.push_back("regions=" + std::to_string(kRegions));
+  info.push_back(std::string("checked=") + (PRISM_CHECKED ? "true" : "false"));
   info.push_back("architecture=" + std::to_string(kArchitectureInts));
   info.push_back("header=" + std::to_string(kHeaderInts));
   info.push_back("arch=" PRISM_HIP_ARCH);

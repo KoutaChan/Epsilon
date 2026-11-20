@@ -16,13 +16,13 @@ import ai.djl.util.PairList;
 import com.epsilon.agent.checkpoint.CheckpointFiles;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.auxiliary.TargetSchema;
-import com.epsilon.prism.hip.CandidateStages;
-import com.epsilon.prism.hip.HipLayer;
-import com.epsilon.prism.hip.LayerRole;
-import com.epsilon.prism.hip.RelationCodes;
 import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
-import com.epsilon.prism.model.FitProbe.Stage;
+import com.epsilon.prism.kernel.CandidateStages;
+import com.epsilon.prism.kernel.EncoderLayerShape;
+import com.epsilon.prism.kernel.LayerRole;
+import com.epsilon.prism.kernel.ModelSchema;
+import com.epsilon.prism.kernel.RelationCodes;
 import com.epsilon.prism.variant.PrismVariant;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -125,6 +125,7 @@ public final class PrismNetwork extends AbstractBlock {
   /** 保存したネットワークの入力の形式と形。 */
   public record Header(InputFormat format, PrismShape shape) {}
 
+  private final ModelSchema.Model declaration;
   private final InputFormat format;
   private final PrismShape shape;
 
@@ -162,7 +163,7 @@ public final class PrismNetwork extends AbstractBlock {
     this.format = format;
     this.shape = shape;
     embedding = addChildBlock("stateEmbedding", new TokenEmbedding(shape, format));
-    List<HipLayer> layers = shape.layers();
+    List<EncoderLayerShape> layers = shape.layers();
     encoders = new EncoderLayer[layers.size()];
     for (int layer = 0; layer < encoders.length; layer++) {
       encoders[layer] = addChildBlock("encoder" + layer, shape.encoder(layer, format));
@@ -190,6 +191,12 @@ public final class PrismNetwork extends AbstractBlock {
     outcome = addChildBlock("outcome", new OutcomeHeads(shape, TargetSchema.of(format.variant())));
     // 共通の重みを同じ乱数列で初期化してから、追加の重みを作る。
     if (features instanceof Module extra) addChildBlock("candidateFeatures", extra);
+    declaration = ModelDeclaration.of(shape, format, inferenceParameters());
+  }
+
+  /** 入力・層・候補と元の推論パラメーターを保存時の順に返す。 */
+  public ModelSchema.Model declaration() {
+    return declaration;
   }
 
   /** 読む入力の形式。 */
@@ -218,8 +225,8 @@ public final class PrismNetwork extends AbstractBlock {
   }
 
   /**
-   * 順伝播する。autocast は開かずに呼ぶ（どこで丸めるかはクラスの説明のとおり）。段の区切りごとに、順伝播の種類が持つ計測点
-   * （{@link FitProbe}）に切れ目を記録する。区切りの途中の配列は、区切りを出るときに閉じる（{@link Context#scoped}）。
+   * 順伝播する。autocast は開かずに呼ぶ（どこで丸めるかはクラスの説明のとおり）。区切りの途中の配列は、区切りを出るときに閉じる
+   * （{@link Context#scoped}）。
    *
    * @param store パラメーターの値の取り出し元
    * @param inputs 入力（作った配列は入力のマネージャーに付く。記録する Attention の配列もその下に付くので、逆伝播を終えるまで
@@ -256,7 +263,6 @@ public final class PrismNetwork extends AbstractBlock {
               + format.fingerprint()
               + ")");
     }
-    FitProbe probe = pass.probe();
     AttentionTape tape = pass.tape();
     if (tape != null) {
       if (!shape.supportsAttentionTape()) {
@@ -267,40 +273,34 @@ public final class PrismNetwork extends AbstractBlock {
     }
     Context context =
         new Context(
-            store, inputs.manager(), pass.precision(), pass.training(), tape, probe, intermediates);
+            store, inputs.manager(), pass.precision(), pass.training(), tape, intermediates);
     BatchIndex index = inputs.index(pass);
-    probe.mark(Stage.BATCH_INDEX);
     NDArray tokens = context.scoped(scope -> tokens(scope, inputs, index));
-    probe.mark(Stage.EMBED);
     NDArray codes = relationCodes(context, inputs, index, index.tokens);
-    probe.mark(Stage.RELATION);
-    NDArray input = context.cut(tokens, Stage.EMBED_BACKWARD, 0);
+    NDArray input = context.cut(tokens);
     NDArray entry = input;
     NDArray mask = index.tokenMask.array();
     for (int layer = 0; layer < allTokenLayers; layer++) {
       tokens = encoders[layer].forward(context, entry, mask, codes, index.tokens);
-      entry = context.cut(tokens, Stage.O_FFN_BACKWARD, layer);
+      entry = context.cut(tokens);
     }
     Backbone backbone = fixedLayers(context, index, entry, codes);
     NDArray states = backbone.states();
     if (tape != null && !tape.backbone()) {
-      states = context.cutCandidateInput(states, Stage.CROSS_PROJECTION_BACKWARD);
+      states = context.cutCandidateInput(states);
     }
     NDArray decision = states.get(new NDIndex(":, {}, :", TokenType.ROUND.first(format)));
     NDArray transitions = candidate.forward(context, inputs, index, states);
     transitions = secondStage.read(context, inputs, index, transitions, backbone);
-    probe.mark(Stage.CANDIDATE);
     NDArray values = discardValue.forward(context, transitions, inputs.get(Tensor.DISCARD_EXACT));
     NDArray representations = context.toFloat(transitions);
     NDArray scores =
         gates.scores(
             context, index, representations, values, decision, inputs.get(Tensor.ACTION_EXACT));
-    probe.mark(Stage.VALUE_GRAPH);
     Outputs.Auxiliary auxiliary =
         pass.auxiliary() == null
             ? null
             : auxiliary(context, index, representations, values, decision, states);
-    probe.mark(Stage.AUX_HEADS);
     return new Outputs(
         scores, index.legal.array(), index.rowActions, index.discardValueSlots, auxiliary);
   }
@@ -318,19 +318,17 @@ public final class PrismNetwork extends AbstractBlock {
    * 専用の残差 MLP を一度通す。記録中は同じ入力の葉を共有し、そこから派生した全経路の勾配をまとめる。
    */
   Backbone fixedLayers(Context context, BatchIndex index, NDArray entry, NDArray codes) {
-    FitProbe probe = context.probe();
     NDArray mask = index.tokenMask.array();
     int layer = allTokenLayers;
     NDArray events = keepEvents ? events(entry, index) : null;
     EncoderLayer.FixedTokens fixed = encoders[layer].fixed(context, entry, mask, codes);
     for (layer++; layer < encoders.length; layer++) {
-      entry = context.cut(fixed.withEvents(events), Stage.O_FFN_BACKWARD, layer - 1);
+      entry = context.cut(fixed.withEvents(events));
       fixed = encoders[layer].fixed(context, entry, mask, codes);
     }
     // Attention の記録があれば、バックボーンの出力は記録が作る正規化の葉（型ごとのゲインなら 2 つの葉を並べたもの）になり、
-    // 損失の逆伝播はヘッドの側（Stage.HEADS_BACKWARD）で止まる
-    NDArray states = finalNorm.apply(context, fixed, encoders.length - 1);
-    probe.mark(Stage.FINAL_NORM);
+    // 損失の逆伝播はヘッドの側で止まる
+    NDArray states = finalNorm.apply(context, fixed);
     return new Backbone(states, events);
   }
 
@@ -362,8 +360,8 @@ public final class PrismNetwork extends AbstractBlock {
   }
 
   /**
-   * 関係のコード [行, 問いの数, S, 2]（INT16）。GPU の学習で Attention の記録の演算がコードも作るなら、自前の演算
-   * （{@link AttentionTape#relationCodes}）で作る。ほか（CPU・djl-rocm の Attention・推論）は eager で作る。どちらでも同じビットになる。
+   * 関係のコード [行, クエリ数, S, 2]（INT16）。GPU の学習で Attention の記録の演算がコードも作るなら、自前の演算
+   * （{@link AttentionTape#relationCodes}）で作る。それ以外は eager で作る。どちらでも同じビットになる。
    */
   private static NDArray relationCodes(
       Context context, NetworkInputs inputs, BatchIndex index, int queries) {
@@ -386,25 +384,19 @@ public final class PrismNetwork extends AbstractBlock {
       NDArray chosen = ValueGraphHead.aggregate(representations, values, index.candidates);
       candidates =
           outcome.forward(
-              context,
-              chosen,
-              context.probeCut(
-                  NDArrays.gatherRows(decision, index.candidateRows.array()),
-                  Stage.GATHER_BACKWARD,
-                  0));
+              context, chosen, NDArrays.gatherRows(decision, index.candidateRows.array()));
     }
     NDArray readings = null;
     if (index.readingCount > 0) {
       NDArray rows = index.readingRows.array();
-      NDArray selected =
-          context.probeCut(NDArrays.gatherRows(states, rows), Stage.GATHER_BACKWARD, 0);
+      NDArray selected = NDArrays.gatherRows(states, rows);
       readings = reading.forward(context, selected);
     }
     return new Outputs.Auxiliary(candidates, readings);
   }
 
   /**
-   * 推論で使う重み（HIP の WeightLayout の元）を返す。登録の順に並べ、補助のヘッドは除く。
+   * 推論で使う重み（重みの配置表の作成に使う）を返す。登録の順に並べ、補助のヘッドは除く。
    *
    * @return 名前とパラメーター
    */
@@ -522,15 +514,23 @@ public final class PrismNetwork extends AbstractBlock {
   public static PrismNetwork load(Path directory, NDManager manager) throws IOException {
     Header header = readHeader(directory);
     PrismNetwork network = new PrismNetwork(header.format(), header.shape());
-    network.initialize(manager);
+    network.readWeights(directory, manager);
+    return network;
+  }
+
+  /** 検証済みのヘッダーから組み立てたネットワークに、保存されたパラメーターを読み込む。 */
+  public void readWeights(Path directory, NDManager manager) throws IOException {
+    initialize(manager);
     Map<String, Shape> built = new HashMap<>();
-    for (Pair<String, Parameter> pair : network.getParameters()) {
+    for (Pair<String, Parameter> pair : getParameters()) {
       built.put(pair.getKey(), pair.getValue().getArray().getShape());
     }
-    CheckpointFiles.loadParameters(directory, network, manager);
+    CheckpointFiles.loadParameters(directory, this, manager);
     // DJL は名前だけを照合し、形は読んだ配列で上書きするので、組んだときの形と全て照合する
-    for (Pair<String, Parameter> pair : network.getParameters()) {
+    for (Pair<String, Parameter> pair : getParameters()) {
       Shape loaded = pair.getValue().getArray().getShape();
+      if (pair.getValue().getArray().getDataType() != DataType.FLOAT32)
+        throw new IOException("Expected FP32 parameter: " + pair.getKey());
       if (!loaded.equals(built.get(pair.getKey()))) {
         throw new IOException(
             "PRISM weight "
@@ -543,7 +543,6 @@ public final class PrismNetwork extends AbstractBlock {
                 + directory);
       }
     }
-    return network;
   }
 
   private Set<String> auxiliaryChildren() {

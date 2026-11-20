@@ -4,7 +4,7 @@ import com.epsilon.agent.observe.codec.SchemaDigest;
 
 /** 基本の入力に加える列と、公開履歴の読み方。 */
 public enum InputFeature {
-  /** 各遷移の基本キーに続けて、牌の状態と公開情報の組の符号を書く。 */
+  /** 各遷移の基本キーに続けて、牌の状態と公開情報の組のコードを書く。 */
   CANDIDATE_SEGMENTS {
     @Override
     void describe(SchemaDigest digest, InputFormat format) {

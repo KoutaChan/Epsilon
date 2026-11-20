@@ -54,7 +54,7 @@ public final class HostBatch {
     return published == null ? null : published[row];
   }
 
-  /** 候補の基本符号を遷移順に続けて書けるページ固定領域を関連付ける。 */
+  /** 候補の基本コードを遷移順に続けて書けるページ固定領域を関連付ける。 */
   public void basicCodes(ByteBuffer target) {
     basicCodes = target;
   }
@@ -80,7 +80,7 @@ public final class HostBatch {
     return blob;
   }
 
-  /** 1 行の公開イベントの指定区間を、転送先の各列へ詰める。GPU から押し出された区間も同じ符号から取り出す。 */
+  /** 1 行の公開イベントの指定区間を、転送先の各列へ詰める。GPU から押し出された区間も同じコードから取り出す。 */
   public void copyEvents(
       int row, int from, int count, ByteBuffer out, int categories, int scalars, int relations) {
     int c = plan.format().width(Tensor.EVENT_CATEGORY);

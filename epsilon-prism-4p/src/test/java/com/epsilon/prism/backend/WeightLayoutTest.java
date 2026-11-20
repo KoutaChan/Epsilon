@@ -4,15 +4,15 @@ import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
-import com.epsilon.prism.hip.HipArchitecture;
-import com.epsilon.prism.hip.HipCounts;
-import com.epsilon.prism.hip.HipEmbedding;
-import com.epsilon.prism.hip.HipPack;
-import com.epsilon.prism.hip.HipSchema;
-import com.epsilon.prism.hip.HipSection;
-import com.epsilon.prism.hip.HipWeight;
-import com.epsilon.prism.hip.TokenGroup;
 import com.epsilon.prism.input.InputSchema.ActionRole;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.ColumnIndex;
+import com.epsilon.prism.kernel.EmbeddingTable;
+import com.epsilon.prism.kernel.InputSection;
+import com.epsilon.prism.kernel.PackedWeightLayout;
+import com.epsilon.prism.kernel.TokenCounts;
+import com.epsilon.prism.kernel.TokenGroup;
+import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.EagerStages;
 import com.epsilon.prism.model.ModelShapes;
 import com.epsilon.prism.model.PrismNetwork;
@@ -86,13 +86,13 @@ public class WeightLayoutTest {
       WeightLayout layout = WeightLayout.of(network);
       WeightPack pack = WeightPack.build(layout, network, 7);
       PackView view = new PackView(pack.buffer());
-      HipPack.Header header = layout.header();
-      HipArchitecture architecture = layout.architecture();
+      PackedWeightLayout.Header header = layout.header();
+      CollectionArchitecture architecture = layout.architecture();
       Assert.assertEquals(view.architecture(), architecture.encode());
-      for (HipSchema field : HipSchema.values()) {
+      for (ColumnIndex field : ColumnIndex.values()) {
         Assert.assertEquals(view.schema(field), header.schema(field), field.name());
       }
-      for (HipSection section : HipSection.values()) {
+      for (InputSection section : InputSection.values()) {
         Assert.assertEquals(view.width(section), header.sectionWidth(section), section.name());
       }
       for (ActionRole role : FOUR_PLAYER.roles()) {
@@ -105,7 +105,7 @@ public class WeightLayoutTest {
             WeightLayout.gateKind(FOUR_PLAYER, role),
             role.name());
       }
-      for (HipWeight weight : HipWeight.values()) {
+      for (WeightField weight : WeightField.values()) {
         for (int entry = 0; entry < weight.index().entries(); entry++) {
           if (!architecture.holds(weight, entry)) {
             Assert.assertEquals(view.weightOrAbsent(weight, entry), -1, weight + " " + entry);
@@ -113,15 +113,16 @@ public class WeightLayoutTest {
           }
           Assert.assertEquals(
               view.weight(weight, entry), header.weight(weight, entry), weight + " " + entry);
-          Assert.assertEquals(view.weight(weight, entry) % HipPack.ALIGNMENT, 0);
+          Assert.assertEquals(view.weight(weight, entry) % PackedWeightLayout.ALIGNMENT, 0);
         }
       }
       long tables = 0;
       StringBuilder groups = new StringBuilder();
-      for (HipEmbedding.Slot slot : HipEmbedding.Slot.values()) {
+      for (EmbeddingTable.Slot slot : EmbeddingTable.Slot.values()) {
         PackView.Spec spec = view.embedding(slot);
         Assert.assertTrue(
-            spec.tableOffset().length > 0 && spec.tableOffset().length <= HipEmbedding.MAX_TABLES);
+            spec.tableOffset().length > 0
+                && spec.tableOffset().length <= EmbeddingTable.MAX_TABLES);
         groups.append(' ').append(slot).append('=');
         for (int rows : spec.tableRows()) {
           tables += rows;
@@ -147,9 +148,9 @@ public class WeightLayoutTest {
    * 作り直した値と一致する（列は Attention のヘッドの対の並び）。
    */
   private static void checkFold(
-      PackView view, WeightLayout layout, HipEmbedding.Slot slot, PackView.Spec spec) {
-    if (slot == HipEmbedding.Slot.TRANSITION
-        || layout.architecture().hidden() != HipArchitecture.HIDDEN) {
+      PackView view, WeightLayout layout, EmbeddingTable.Slot slot, PackView.Spec spec) {
+    if (slot == EmbeddingTable.Slot.TRANSITION
+        || layout.architecture().hidden() != CollectionArchitecture.HIDDEN) {
       Assert.assertEquals(spec.fold(), -1);
       for (int offset : spec.tableFold()) {
         Assert.assertEquals(offset, -1);
@@ -169,7 +170,7 @@ public class WeightLayoutTest {
       for (int c = 0; c < width; c++) {
         int at =
             spec.tableFold()[t]
-                + (row * width + HipEmbedding.foldColumn(c, attention)) * Float.BYTES;
+                + (row * width + EmbeddingTable.foldColumn(c, attention)) * Float.BYTES;
         Assert.assertEquals(
             view.bytes.getFloat(at),
             projected(view, source, c),
@@ -181,14 +182,14 @@ public class WeightLayoutTest {
       bias[h] = view.bytes.getFloat(spec.biasOffset() + h * Float.BYTES);
     }
     for (int c = 0; c < width; c++) {
-      int column = HipEmbedding.foldColumn(c, attention);
+      int column = EmbeddingTable.foldColumn(c, attention);
       Assert.assertEquals(
           view.bytes.getFloat(spec.fold() + (dense * width + column) * Float.BYTES),
           projected(view, bias, c),
           slot + " b'");
       Assert.assertEquals(
           view.bytes.getFloat(spec.fold() + ((dense + 1) * width + column) * Float.BYTES),
-          view.f32(HipWeight.QKV_BIAS, 0, c),
+          view.f32(WeightField.QKV_BIAS, 0, c),
           slot + " b_qkv");
     }
   }
@@ -200,8 +201,8 @@ public class WeightLayoutTest {
       if (v[h] != 0) {
         sum +=
             v[h]
-                * ((double) view.f32(HipWeight.ATTENTION_NORM, 0, h)
-                    * view.bf16(HipWeight.QKV, 0, c * v.length + h));
+                * ((double) view.f32(WeightField.ATTENTION_NORM, 0, h)
+                    * view.bf16(WeightField.QKV, 0, c * v.length + h));
       }
     }
     return (float) sum;
@@ -209,7 +210,9 @@ public class WeightLayoutTest {
 
   @Test
   public void networkConstantsMatch() {
-    HipArchitecture architecture = PrismShape.standard().hip(FOUR_PLAYER);
+    CollectionArchitecture architecture =
+        CollectionArchitecture.from(
+            new PrismNetwork(FOUR_PLAYER, PrismShape.standard()).declaration());
     Assert.assertEquals(architecture.tau(), EagerStages.tau());
     Assert.assertEquals((double) architecture.scale(), EagerStages.scale(), 0.0);
     Assert.assertEquals(
@@ -227,28 +230,29 @@ public class WeightLayoutTest {
       PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
       network.initialize(manager);
       WeightLayout layout = WeightLayout.of(network);
-      HipArchitecture architecture = layout.architecture();
-      HipPack.Header header = layout.header();
-      Assert.assertEquals(architecture.counts(), new HipCounts(4, 34, 109, 23, 110));
+      CollectionArchitecture architecture = layout.architecture();
+      PackedWeightLayout.Header header = layout.header();
+      Assert.assertEquals(architecture.counts(), new TokenCounts(4, 34, 109, 23, 110));
       Assert.assertEquals(architecture.reread(), shape.reread());
       Assert.assertEquals(architecture.fixedLayers(), 2);
       for (int layer = 1; layer < 3; layer++) {
         Assert.assertEquals(
-            header.elements(HipWeight.UP, HipWeight.ffnEntry(layer, TokenGroup.CONTEXT)),
+            header.elements(WeightField.UP, WeightField.ffnEntry(layer, TokenGroup.CONTEXT)),
             (long) shape.context() * shape.hidden());
         Assert.assertEquals(
-            header.elements(HipWeight.UP, HipWeight.ffnEntry(layer, TokenGroup.TILE)),
+            header.elements(WeightField.UP, WeightField.ffnEntry(layer, TokenGroup.TILE)),
             (long) shape.tile() * shape.hidden());
         Assert.assertTrue(
-            header.weight(HipWeight.FFN_NORM, HipWeight.ffnEntry(layer, TokenGroup.ALL)) < 0);
+            header.weight(WeightField.FFN_NORM, WeightField.ffnEntry(layer, TokenGroup.ALL)) < 0);
       }
       Assert.assertEquals(
-          header.elements(HipWeight.UP, HipWeight.CANDIDATE_FFN),
+          header.elements(WeightField.UP, WeightField.CANDIDATE_FFN),
           (long) shape.candidate() * shape.hidden());
-      Assert.assertTrue(header.weight(HipWeight.FINAL_NORM, TokenGroup.CONTEXT.ordinal()) >= 0);
-      Assert.assertTrue(header.weight(HipWeight.FINAL_NORM, TokenGroup.TILE.ordinal()) >= 0);
-      Assert.assertEquals(header.weight(HipWeight.REREAD_OUTPUT, 0) >= 0, shape.reread());
-      Assert.assertEquals(header.elements(HipWeight.REREAD_CODE_KEY, 0), 133L * shape.attention());
+      Assert.assertTrue(header.weight(WeightField.FINAL_NORM, TokenGroup.CONTEXT.ordinal()) >= 0);
+      Assert.assertTrue(header.weight(WeightField.FINAL_NORM, TokenGroup.TILE.ordinal()) >= 0);
+      Assert.assertEquals(header.weight(WeightField.REREAD_OUTPUT, 0) >= 0, shape.reread());
+      Assert.assertEquals(
+          header.elements(WeightField.REREAD_CODE_KEY, 0), 133L * shape.attention());
       WeightPack pack = WeightPack.build(layout, network, 3);
       Assert.assertEquals(new PackView(pack.buffer()).architecture(), architecture.encode());
       log.info(

@@ -30,7 +30,7 @@ import org.testng.Assert;
  */
 public final class TwinPolicyWalk {
 
-  /** CPU の FP32 の eager で、PRISM のバージョンを評価の卓の入口から開く推論の節。 */
+  /** 評価卓で PRISM を CPU の FP32 で動かすための eager 推論設定。 */
   private static final InferenceSettings CPU =
       new InferenceSettings(List.of("cpu"), Precision.FLOAT32, Kernels.EAGER, 8, 1, 1, 1);
 

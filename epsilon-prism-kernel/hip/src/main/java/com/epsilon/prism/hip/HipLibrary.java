@@ -3,17 +3,15 @@ package com.epsilon.prism.hip;
 import ai.djl.engine.Engine;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.jni.LibUtils;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.PackedWeightLayout;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -21,8 +19,8 @@ import java.util.Properties;
 /**
  * {@code libprism_hip.so} を読み込み、DJL が読んだ libtorch と同じ HIP のランタイムに繋がったことを確かめる。
  *
- * <p>先に DJL の PyTorch のエンジンを初期化して、libtorch と HIP のランタイムを読ませる。その後に jar の中の .so を
- * {@code ~/.cache/epsilon/prism-hip/<sha>/} に取り出して {@link System#load} する。
+ * <p>DJL の PyTorch エンジンが libtorch と HIP ランタイムを読み込んだ後、同梱の共有ライブラリを
+ * JVM 専用の一時ディレクトリに展開して読み込み、読み込んだらすぐにディレクトリごと消す。
  *
  * <p>libprism_hip.so は libtorch のヘッダーを使わず、HIP のランタイム
  * （{@code libamdhip64.so.7}）だけに繋がる。DJL の配列のアドレスだけは、libtorch が公開するシンボルを dlsym で引く。ストリームは
@@ -35,17 +33,17 @@ import java.util.Properties;
  *   <li>プロセスの HIP のランタイムが 1 つだけで、libprism_hip.so がそれに繋がったこと
  *   <li>HIP のランタイムのバージョン（major.minor）が、ビルドしたときの HIP と libtorch の flavor に合うこと
  *   <li>CXX11 ABI でビルドされていて、検査つきのビルドかどうかが求めたとおりであること
- *   <li>Java と native で、enum の数と、形の記述・WeightPack のヘッダーの大きさが同じこと
+ *   <li>Java と native で、形の記述と WeightPack のヘッダーの大きさが同じこと
  * </ul>
  */
 public final class HipLibrary {
 
-  /** 検査つきのビルド（{@code -DPRISM_HIP_CHECK}。グローバルメモリの添字を検査する）を読み込むときに true にするシステムプロパティ。 */
-  public static final String CHECKED_PROPERTY = "epsilon.prism.hip.checked";
+  /** 検査つきのビルド（グローバルメモリの添字を検査する）を読み込むときに true にするシステムプロパティ。 */
+  public static final String CHECKED_PROPERTY = HipResources.CHECKED_PROPERTY;
 
-  private static final String RESOURCES = "/native/linux-x86_64/";
-  private static final String RELEASE_LIBRARY = "libprism_hip.so";
-  private static final String CHECKED_LIBRARY = "libprism_hip_check.so";
+  private static final String RESOURCES = HipResources.DIRECTORY;
+  private static final String RELEASE_LIBRARY = HipResources.RELEASE;
+  private static final String CHECKED_LIBRARY = HipResources.CHECKED;
   private static final String BUILD_PROPERTIES = "prism-hip.properties";
   private static final String TORCH_HIP = "libtorch_hip.so";
 
@@ -72,8 +70,7 @@ public final class HipLibrary {
    * ビルドした jar なら true。読み込めるか、DJL の libtorch と HIP のランタイムに合うかは、{@link #load} が確かめる。
    */
   public static boolean bundled() {
-    String name = Boolean.getBoolean(CHECKED_PROPERTY) ? CHECKED_LIBRARY : RELEASE_LIBRARY;
-    return HipLibrary.class.getResource(RESOURCES + name) != null;
+    return HipResources.bundled();
   }
 
   public RuntimeInfo runtime() {
@@ -99,8 +96,8 @@ public final class HipLibrary {
     }
     Engine engine = Engine.getEngine(PtEngine.ENGINE_NAME);
     BuildInfo build = BuildInfo.read();
-    Path library = extract(checked ? CHECKED_LIBRARY : RELEASE_LIBRARY);
-    System.load(library.toString());
+    load(checked ? CHECKED_LIBRARY : RELEASE_LIBRARY);
+    HipDeclarations.requireCompatible();
     RuntimeInfo runtime = RuntimeInfo.parse(PrismHip.runtimeInfo());
     verify(
         build,
@@ -197,27 +194,17 @@ public final class HipLibrary {
               + " but its build says "
               + build.architecture());
     }
-    if (runtime.kernels() != HipKernel.values().length
-        || runtime.regions() != HipRegion.values().length
-        || runtime.architectureInts() != HipArchitecture.INTS
-        || runtime.headerInts() != HipPack.HEADER_INTS) {
+    if (runtime.architectureInts() != CollectionArchitecture.INTS
+        || runtime.headerInts() != PackedWeightLayout.HEADER_INTS) {
       throw new IllegalStateException(
-          "libprism_hip.so has "
-              + runtime.kernels()
-              + " kernels, "
-              + runtime.regions()
-              + " regions, a "
+          "libprism_hip.so has a "
               + runtime.architectureInts()
               + "-int architecture and a "
               + runtime.headerInts()
               + "-int weight pack header but Java expects "
-              + HipKernel.values().length
-              + ", "
-              + HipRegion.values().length
-              + ", "
-              + HipArchitecture.INTS
+              + CollectionArchitecture.INTS
               + " and "
-              + HipPack.HEADER_INTS
+              + PackedWeightLayout.HEADER_INTS
               + "; rebuild epsilon-prism-hip");
     }
   }
@@ -231,47 +218,26 @@ public final class HipLibrary {
     return hipVersion / 10_000_000 + "." + hipVersion / 100_000 % 100;
   }
 
-  private static Path extract(String name) {
-    byte[] bytes = resource(name);
-    Path directory =
-        Path.of(System.getProperty("user.home"), ".cache", "epsilon", "prism-hip", digest(bytes));
-    Path target = directory.resolve(name);
-    try {
-      if (!Files.isRegularFile(target) || Files.size(target) != bytes.length) {
-        Files.createDirectories(directory);
-        Path partial = Files.createTempFile(directory, name, ".part");
-        Files.write(partial, bytes);
-        Files.move(
-            partial, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-      }
-    } catch (IOException e) {
-      throw new UncheckedIOException("cannot extract " + name + " to " + directory, e);
-    }
-    return target;
-  }
-
-  private static byte[] resource(String name) {
+  /** 同梱の .so を一時ディレクトリに展開して読み込み、ディレクトリを消す。読み込んだライブラリは消した後も使える。 */
+  private static void load(String name) {
     try (InputStream in = HipLibrary.class.getResourceAsStream(RESOURCES + name)) {
       if (in == null) {
         throw new IllegalStateException(
             RESOURCES
                 + name
-                + " is not on the classpath; build epsilon-prism-hip with -Pnative-hip on the"
-                + " server");
+                + " is not on the classpath; build epsilon-prism-hip with -Pnative-hip");
       }
-      return in.readAllBytes();
+      Path directory = Files.createTempDirectory("prism-hip-");
+      Path target = directory.resolve(name);
+      try {
+        Files.copy(in, target);
+        System.load(target.toString());
+      } finally {
+        Files.deleteIfExists(target);
+        Files.delete(directory);
+      }
     } catch (IOException e) {
-      throw new UncheckedIOException("cannot read " + RESOURCES + name, e);
-    }
-  }
-
-  private static String digest(byte[] bytes) {
-    try {
-      return HexFormat.of()
-          .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
-          .substring(0, 16);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 is unavailable", e);
+      throw new UncheckedIOException("Cannot load " + RESOURCES + name, e);
     }
   }
 
@@ -329,8 +295,6 @@ public final class HipLibrary {
    * @param torchLoaded プロセスにある libtorch*・libc10*
    * @param cxx11Abi CXX11 ABI でビルドしたか
    * @param checked 検査つきのビルドか
-   * @param kernels native のカーネルの数
-   * @param regions native が作業領域の中に持つ領域の数
    * @param architectureInts native の形の記述の int の数
    * @param headerInts native の WeightPack のヘッダーの int の数
    * @param architecture ビルドの対象の arch
@@ -344,8 +308,6 @@ public final class HipLibrary {
       List<Path> torchLoaded,
       boolean cxx11Abi,
       boolean checked,
-      int kernels,
-      int regions,
       int architectureInts,
       int headerInts,
       String architecture) {
@@ -373,8 +335,6 @@ public final class HipLibrary {
           paths(required(values, "torch.loaded")),
           "1".equals(required(values, "cxx11abi")),
           Boolean.parseBoolean(required(values, "checked")),
-          Integer.parseInt(required(values, "kernels")),
-          Integer.parseInt(required(values, "regions")),
           Integer.parseInt(required(values, "architecture")),
           Integer.parseInt(required(values, "header")),
           required(values, "arch"));

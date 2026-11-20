@@ -1,23 +1,24 @@
 package com.epsilon.prism.backend;
 
-import com.epsilon.prism.hip.CandidateStages;
-import com.epsilon.prism.hip.HipArchitecture;
-import com.epsilon.prism.hip.HipBatch;
-import com.epsilon.prism.hip.HipComposition;
-import com.epsilon.prism.hip.HipCounts;
-import com.epsilon.prism.hip.HipEmbedding;
-import com.epsilon.prism.hip.HipFfn;
-import com.epsilon.prism.hip.HipPack;
-import com.epsilon.prism.hip.HipPlanOptions;
-import com.epsilon.prism.hip.HipSchema;
-import com.epsilon.prism.hip.HipSection;
-import com.epsilon.prism.hip.HipWeight;
-import com.epsilon.prism.hip.LayerRole;
-import com.epsilon.prism.hip.TokenGroup;
+import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputBlob.ActionColumn;
+import com.epsilon.prism.input.InputBlob.Axis;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.kernel.CandidateStages;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.CollectionPlanOptions;
+import com.epsilon.prism.kernel.ColumnIndex;
+import com.epsilon.prism.kernel.EmbeddingTable;
+import com.epsilon.prism.kernel.FeedForwardShape;
+import com.epsilon.prism.kernel.InputSection;
+import com.epsilon.prism.kernel.LayerRole;
+import com.epsilon.prism.kernel.PackedWeightLayout;
+import com.epsilon.prism.kernel.ScoreComposition;
+import com.epsilon.prism.kernel.TokenCounts;
+import com.epsilon.prism.kernel.TokenGroup;
+import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.EagerStages;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -27,12 +28,12 @@ import java.util.List;
 import java.util.function.ToIntFunction;
 
 /**
- * HIP の K0〜K9 を CPU で計算する参照の実装。重みの束、推論計画の機能記述、入力の blob を読み、カーネルと同じ箇所で丸める。
- * 層と候補の形、席と牌の数を束のヘッダーから読み、候補の追加表と因果注意を推論計画の記述から読む。
+ * HIP の推論演算を CPU で計算する参照の実装。重みの束、推論計画の機能記述、入力の blob を読み、カーネルと同じ箇所で丸める。
+ * 層と候補の形、席と牌の数を束のヘッダーから読み、候補の追加表と Attention の因果マスクの設定を推論計画から読む。
  *
- * <p>和の順がカーネルと違うのは、行列積（WMMA）と 1/rms だけ。ほかの所（K1、Attention の softmax と p·v、候補の Cross-Attention、集約、
- * 合成）はカーネルと同じ順で足す。層 0 の q・k・v は K1 と同じ L0-FOLD の式と同じ FP32 の順で作るので、K1 の x と qkv0 はカーネルと
- * ビット単位で一致する。候補層の 2 段目（K9）の softmax は素朴な順で計算する（カーネルはオンラインの softmax）。
+ * <p>和の順がカーネルと違うのは、行列積（WMMA）と 1/rms だけ。ほかの所（埋め込み、Attention の softmax と p·v、候補の Cross-Attention、集約、
+ * 合成）はカーネルと同じ順で足す。層 0 の q・k・v は埋め込みと同じ L0-FOLD の式と同じ FP32 の順で作るので、埋め込みの x と qkv0 はカーネルと
+ * ビット単位で一致する。候補層の 2 段目の softmax は素朴な順で計算する（カーネルはオンラインの softmax）。
  *
  * <p>作業領域の値は、HIP の作業領域と同じ並びの float で持つ（BF16 の領域には BF16 で表せる値が入る）。計算は行ごとに閉じているので、同じ行の
  * s はバッチの組み方によらずビット単位で一致する。方策のテストでは GPU の計画の代わりに使う（公開するのは {@link #forward} だけ）。
@@ -40,9 +41,9 @@ import java.util.function.ToIntFunction;
 public final class HipReference {
 
   final PackView pack;
-  private final HipPlanOptions options;
+  private final CollectionPlanOptions options;
   private final ByteBuffer packedWeights;
-  final HipArchitecture architecture;
+  final CollectionArchitecture architecture;
   final int hidden;
   final int attention;
   final int heads;
@@ -56,7 +57,7 @@ public final class HipReference {
   final float tau;
 
   /** 重みごと・項目ごとの値（BF16 と UINT8 は float に直した値。形の記述にない項目は null）。 */
-  private final float[][][] cache = new float[HipWeight.values().length][][];
+  private final float[][][] cache = new float[WeightField.values().length][][];
 
   float[] residual;
   float[] attentionOut;
@@ -74,13 +75,13 @@ public final class HipReference {
   float[] rereadMemory;
 
   /**
-   * K6 の Cross-Attention を FP64 で計算し、o を BF16 に 1 回だけ丸める。カーネルの FP32 の順の精度を測る物差しに使う（既定はカーネルと
+   * 候補層の Cross-Attention を FP64 で計算し、o を BF16 に 1 回だけ丸める。カーネルの FP32 の順の精度を測る物差しに使う（既定はカーネルと
    * 同じ順の FP32）。
    */
   boolean exactCrossAttention;
 
   /**
-   * K1 の L0-FOLD で作る qkv0（[トークン, 3A]。列はヘッドの対の並びで、QKV0 の領域と同じ値の並び）。重みの束の折り込んだ表から
+   * 埋め込みの L0-FOLD で作る qkv0（[トークン, 3A]。列はヘッドの対の並びで、QKV0 の領域と同じ値の並び）。重みの束の折り込んだ表から
    * ⌊r·(ΣT'[idx] + ΣW'_d·f + b') + b_qkv⌉ で作る。r は丸める前の x の 1/rms。
    */
   private float[] layer0Qkv;
@@ -104,8 +105,8 @@ public final class HipReference {
     fixed = architecture.counts().fixed();
     scale = architecture.scale();
     tau = architecture.tau();
-    HipPack.Header header = weights.layout().header();
-    for (HipWeight weight : HipWeight.values()) {
+    PackedWeightLayout.Header header = weights.layout().header();
+    for (WeightField weight : WeightField.values()) {
       cache[weight.ordinal()] = new float[weight.index().entries()][];
       for (int entry = 0; entry < weight.index().entries(); entry++) {
         if (!architecture.holds(weight, entry) || pack.weightOrAbsent(weight, entry) < 0) {
@@ -128,8 +129,24 @@ public final class HipReference {
   }
 
   /** 重みの項目の値。項目は層の番号か、FFN の項目か組の番号（項目を持たない重みは 0）。 */
-  float weight(HipWeight weight, int entry, int index) {
+  float weight(WeightField weight, int entry, int index) {
     return cache[weight.ordinal()][entry][index];
+  }
+
+  /** 確定したバッチの行・イベント・遷移・手の数と、入力の領域ごとの位置（{@link InputSection} の順）。 */
+  static ReferenceBatch batchOf(HostBatch batch) {
+    BatchPlan plan = batch.plan();
+    long[] offsets = new long[InputSection.values().length];
+    for (Tensor tensor : Tensor.values()) {
+      offsets[InputSection.valueOf(tensor.name()).ordinal()] = plan.offset(tensor);
+    }
+    return new ReferenceBatch(
+        plan.rows(),
+        plan.count(Axis.EVENT),
+        plan.count(Axis.TRANSITION),
+        plan.count(Axis.ACTION),
+        plan.bytes(),
+        offsets);
   }
 
   /** バッチの入力のリーダー。blob の領域を読む（領域の幅は、重みの束のヘッダーかバッチの入力の形式から取る）。 */
@@ -144,7 +161,7 @@ public final class HipReference {
 
     /** 確定したバッチから読む（領域の幅はバッチの入力の形式から取る）。 */
     Input(HostBatch batch) {
-      this(batch.blob(), HipBackend.batchOf(batch), batch.plan().format()::width);
+      this(batch.blob(), batchOf(batch), batch.plan().format()::width);
     }
 
     /**
@@ -154,7 +171,7 @@ public final class HipReference {
      * @param batch バッチの各数（行・イベント・遷移・手）と領域の位置
      * @param widths 領域ごとの、1 個あたりの要素の数
      */
-    Input(ByteBuffer blob, HipBatch batch, ToIntFunction<Tensor> widths) {
+    Input(ByteBuffer blob, ReferenceBatch batch, ToIntFunction<Tensor> widths) {
       this.blob = blob.duplicate().order(ByteOrder.LITTLE_ENDIAN);
       rows = batch.rows();
       events = batch.events();
@@ -173,7 +190,7 @@ public final class HipReference {
 
     private int at(Tensor tensor, int row, int column, int bytes) {
       return Math.toIntExact(
-          offsets[HipSection.valueOf(tensor.name()).ordinal()]
+          offsets[InputSection.valueOf(tensor.name()).ordinal()]
               + ((long) row * widths[tensor.ordinal()] + column) * bytes);
     }
 
@@ -210,8 +227,8 @@ public final class HipReference {
    * @param batch バッチの各数と領域の位置
    * @return リーダー
    */
-  Input input(ByteBuffer blob, HipBatch batch) {
-    return new Input(blob, batch, tensor -> pack.width(HipSection.valueOf(tensor.name())));
+  Input input(ByteBuffer blob, ReferenceBatch batch) {
+    return new Input(blob, batch, tensor -> pack.width(InputSection.valueOf(tensor.name())));
   }
 
   /**
@@ -231,7 +248,7 @@ public final class HipReference {
    * @param batch バッチの各数と領域の位置
    * @return s（バッチの手の順）
    */
-  public float[] forward(ByteBuffer blob, HipBatch batch) {
+  public float[] forward(ByteBuffer blob, ReferenceBatch batch) {
     return forward(input(blob, batch));
   }
 
@@ -335,7 +352,7 @@ public final class HipReference {
   }
 
   /** 指定した型のトークンの数。 */
-  int slotCount(HipEmbedding.Slot slot, Input in) {
+  int slotCount(EmbeddingTable.Slot slot, Input in) {
     return switch (slot) {
       case ROUND -> in.rows;
       case SEAT -> seats * in.rows;
@@ -346,7 +363,7 @@ public final class HipReference {
   }
 
   /** 指定した型の最初のトークンの番号（遷移は遷移の領域の中の番号）。 */
-  int slotStart(HipEmbedding.Slot slot, Input in) {
+  int slotStart(EmbeddingTable.Slot slot, Input in) {
     return switch (slot) {
       case ROUND, TRANSITION -> 0;
       case SEAT -> in.rows;
@@ -355,22 +372,22 @@ public final class HipReference {
     };
   }
 
-  /** K1 が作った、層 0 の qkv0（QKV0 の領域と同じ並び）。 */
+  /** 埋め込みが作った、層 0 の qkv0（QKV0 の領域と同じ並び）。 */
   float[] layer0Qkv() {
     return layer0Qkv;
   }
 
   void embed(Input in) {
     int width = 3 * attention;
-    for (HipEmbedding.Slot slot : HipEmbedding.Slot.values()) {
+    for (EmbeddingTable.Slot slot : EmbeddingTable.Slot.values()) {
       PackView.Spec spec = pack.embedding(slot);
       int count = slotCount(slot, in);
       int start = slotStart(slot, in);
-      float[] out = slot == HipEmbedding.Slot.TRANSITION ? statics : residual;
+      float[] out = slot == EmbeddingTable.Slot.TRANSITION ? statics : residual;
       Tensor category = tensor(spec.category());
       Tensor scalar = spec.scalar() < 0 ? null : tensor(spec.scalar());
       Tensor exact = spec.exact() < 0 ? null : tensor(spec.exact());
-      boolean folding = slot != HipEmbedding.Slot.TRANSITION;
+      boolean folding = slot != EmbeddingTable.Slot.TRANSITION;
       int[] entries = new int[spec.tableOffset().length];
       float[] features = new float[spec.source().length];
       for (int t = 0; t < count; t++) {
@@ -390,7 +407,7 @@ public final class HipReference {
           int source = spec.source()[k] >> 16;
           int index = spec.source()[k] & 0xFFFF;
           float feature =
-              switch (HipEmbedding.Source.values()[source]) {
+              switch (EmbeddingTable.Source.values()[source]) {
                 case FLAG -> in.u8(category, t, index);
                 case SCALAR -> in.bf16(scalar, t, index);
                 case EXACT -> bf(in.f32(exact, t, index));
@@ -417,7 +434,7 @@ public final class HipReference {
   }
 
   /**
-   * K1 の L0-FOLD を 1 トークン分計算する（k1_embed.hip と同じ順）。r = 1/√(Σ/H + ε) で、Σ は lane ごとに H/32 列の acc² を fma で順に足し、
+   * 埋め込みの L0-FOLD を 1 トークン分計算する（埋め込みカーネルと同じ加算順）。r = 1/√(Σ/H + ε) で、Σ は lane ごとに H/32 列の acc² を fma で順に足し、
    * 32 lane の分を xor の木で足したもの。列ごとに s = 0 から、表の順に T'、特徴の順に fma で W'_d·f、最後に b' を足し、⌊r·s + b_qkv⌉ を書く
    * （積と和は別々に丸める）。
    */
@@ -465,26 +482,26 @@ public final class HipReference {
     float[] out = new float[x.length];
     for (int t = 0; t < x.length / hidden; t++) {
       System.arraycopy(
-          normalize(x, t * hidden, HipWeight.ATTENTION_NORM, layer), 0, out, t * hidden, hidden);
+          normalize(x, t * hidden, WeightField.ATTENTION_NORM, layer), 0, out, t * hidden, hidden);
     }
     return out;
   }
 
   /**
-   * バックボーンの 1 層の Attention。全トークンの層（K2）では、全てのトークンがクエリになる。局・席・牌の層（K4）では局・席・牌だけが
+   * バックボーンの 1 層の Attention。全トークンの層では、全てのトークンがクエリになる。局・席・牌の層では局・席・牌だけが
    * クエリになり、局・席・牌のキーとバリューは残差の流れから射影し、イベントのキーとバリューは {@link #eventKeyValues} から読む。
    */
   void attention(Input in, int layer) {
     boolean all = architecture.layer(layer).role() == LayerRole.ALL_TOKENS;
     float[] eventKeyValue = all ? null : eventKeyValues[architecture.fixedIndex(layer)];
     int relationWidth = in.width(Tensor.RELATION);
-    int columnTile = pack.schema(HipSchema.RELATION_TILE);
-    int columnOwner = pack.schema(HipSchema.RELATION_OWNER);
-    int columnEvent = pack.schema(HipSchema.RELATION_EVENT);
-    int columnRiichi = pack.schema(HipSchema.RELATION_RIICHI);
-    int columnDiscard = pack.schema(HipSchema.RELATION_LAST_DISCARD);
-    int columnLink = pack.schema(HipSchema.RELATION_LINK);
-    int columnSafety = pack.schema(HipSchema.RELATION_SAFETY);
+    int columnTile = pack.schema(ColumnIndex.RELATION_TILE);
+    int columnOwner = pack.schema(ColumnIndex.RELATION_OWNER);
+    int columnEvent = pack.schema(ColumnIndex.RELATION_EVENT);
+    int columnRiichi = pack.schema(ColumnIndex.RELATION_RIICHI);
+    int columnDiscard = pack.schema(ColumnIndex.RELATION_LAST_DISCARD);
+    int columnLink = pack.schema(ColumnIndex.RELATION_LINK);
+    int columnSafety = pack.schema(ColumnIndex.RELATION_SAFETY);
     int safeties = architecture.counts().opponents();
     for (int r = 0; r < in.rows; r++) {
       int firstEvent = in.row(r, RowColumn.FIRST_EVENT);
@@ -501,13 +518,13 @@ public final class HipReference {
       float[][] qkv = new float[tokens][3 * attention];
       for (int p = 0; p < tokens; p++) {
         if (layer == 0) {
-          // L0-FOLD: K1 が作った qkv0（ヘッドの対の並び）を、q・k・v の並びに直して読む。
+          // L0-FOLD: 埋め込みが作った qkv0（ヘッドの対の並び）を、q・k・v の並びに直して読む。
           for (int col = 0; col < 3 * attention; col++) {
             if (col < attention && p >= queries) {
               continue;
             }
             qkv[p][col] =
-                layer0Qkv[global[p] * 3 * attention + HipEmbedding.foldColumn(col, attention)];
+                layer0Qkv[global[p] * 3 * attention + EmbeddingTable.foldColumn(col, attention)];
           }
           continue;
         }
@@ -518,15 +535,15 @@ public final class HipReference {
           continue;
         }
         float[] normalized =
-            normalize(residual, global[p] * hidden, HipWeight.ATTENTION_NORM, layer);
+            normalize(residual, global[p] * hidden, WeightField.ATTENTION_NORM, layer);
         for (int col = 0; col < 3 * attention; col++) {
           if (col < attention && p >= queries) {
             continue;
           }
           qkv[p][col] =
               bf(
-                  dot(normalized, HipWeight.QKV, layer, col)
-                      + weight(HipWeight.QKV_BIAS, layer, col));
+                  dot(normalized, WeightField.QKV, layer, col)
+                      + weight(WeightField.QKV_BIAS, layer, col));
         }
       }
       int now = attributes[0][columnEvent];
@@ -565,7 +582,7 @@ public final class HipReference {
             }
             float score = dot * scale;
             for (int s = 0; s < 7; s++) {
-              score += weight(HipWeight.RELATION_BIAS, layer, (16 * s + segments[s]) * heads + h);
+              score += weight(WeightField.RELATION_BIAS, layer, (16 * s + segments[s]) * heads + h);
             }
             logits[j] = score;
             maximum = Math.max(maximum, score);
@@ -631,7 +648,7 @@ public final class HipReference {
     int relation =
         (int)
             weight(
-                HipWeight.TILE_RELATION,
+                WeightField.TILE_RELATION,
                 0,
                 Math.max(tileQ - 1, 0) * tiles + Math.max(tileK - 1, 0));
     segment[1] = bothTiles && relation < 15 ? relation + 1 : 0;
@@ -689,11 +706,11 @@ public final class HipReference {
     return riichi > 0 ? (number >= riichi ? 1 : 0) + (number > riichi ? 1 : 0) + 1 : 0;
   }
 
-  /** 行のトークンより後ろのキーに K0 が書くワード。セグメント 6 に 15 を置き、Attention から外す印にする。 */
+  /** 行のトークンより後ろのキーに書く関係コードのワード。セグメント 6 に 15 を置き、Attention から外す印にする。 */
   static final int PADDED_KEY_CODE = 15 << 27;
 
   /**
-   * K0 が 1 つの行に書く関係のコードを求める。行のトークンを {@link HipCounts#CODE_BLOCK} 個ずつのタイルに分け、クエリとキーのタイルの
+   * 1 行分の関係のコードを求める。行のトークンを {@link TokenCounts#CODE_BLOCK} 個ずつのタイルに分け、クエリとキーのタイルの
    * 組ごとに 256 ワードを書く。ワードはウェーブのレーンごとに 8 つずつ並び、クエリはレーンの下 4 bit、キーの偶奇はレーンの 5 bit 目で
    * 決まる。行のトークンより後ろのキーは {@link #PADDED_KEY_CODE}、後ろのクエリは 0 になる。
    *
@@ -703,13 +720,13 @@ public final class HipReference {
    */
   int[][] relationCodes(Input in, int row) {
     int relationWidth = in.width(Tensor.RELATION);
-    int columnTile = pack.schema(HipSchema.RELATION_TILE);
-    int columnOwner = pack.schema(HipSchema.RELATION_OWNER);
-    int columnEvent = pack.schema(HipSchema.RELATION_EVENT);
-    int columnRiichi = pack.schema(HipSchema.RELATION_RIICHI);
-    int columnDiscard = pack.schema(HipSchema.RELATION_LAST_DISCARD);
-    int columnLink = pack.schema(HipSchema.RELATION_LINK);
-    int columnSafety = pack.schema(HipSchema.RELATION_SAFETY);
+    int columnTile = pack.schema(ColumnIndex.RELATION_TILE);
+    int columnOwner = pack.schema(ColumnIndex.RELATION_OWNER);
+    int columnEvent = pack.schema(ColumnIndex.RELATION_EVENT);
+    int columnRiichi = pack.schema(ColumnIndex.RELATION_RIICHI);
+    int columnDiscard = pack.schema(ColumnIndex.RELATION_LAST_DISCARD);
+    int columnLink = pack.schema(ColumnIndex.RELATION_LINK);
+    int columnSafety = pack.schema(ColumnIndex.RELATION_SAFETY);
     int safeties = architecture.counts().opponents();
     int firstEvent = in.row(row, RowColumn.FIRST_EVENT);
     int tokens = fixed + in.row(row, RowColumn.EVENTS);
@@ -721,14 +738,14 @@ public final class HipReference {
       }
     }
     int now = attributes[0][columnEvent];
-    int blocks = Math.ceilDiv(tokens, HipCounts.CODE_BLOCK);
+    int blocks = Math.ceilDiv(tokens, TokenCounts.CODE_BLOCK);
     int[][] words = new int[blocks][blocks * 256];
     for (int queryBlock = 0; queryBlock < blocks; queryBlock++) {
       for (int keyBlock = 0; keyBlock < blocks; keyBlock++) {
         for (int t = 0; t < 256; t++) {
           int lane = t >> 3;
-          int i = HipCounts.CODE_BLOCK * queryBlock + (lane & 15);
-          int j = HipCounts.CODE_BLOCK * keyBlock + 2 * (t & 7) + (lane >> 4);
+          int i = TokenCounts.CODE_BLOCK * queryBlock + (lane & 15);
+          int j = TokenCounts.CODE_BLOCK * keyBlock + 2 * (t & 7) + (lane >> 4);
           int word = PADDED_KEY_CODE;
           if (j < tokens) {
             word =
@@ -769,7 +786,7 @@ public final class HipReference {
   }
 
   /**
-   * バックボーンの 1 層の MLP（最後の層を除く）。全トークンの層（K3 の MLP_ALL）は全てのトークンを、局・席・牌の層（K3 の MLP_FIXED）は
+   * バックボーンの 1 層の MLP（最後の層を除く）。全トークンの層は全てのトークンを、局・席・牌の層は
    * 局・席・牌だけを書き換える。型ごとの FFN なら、局・席と牌をそれぞれの組の FFN に通す。
    */
   void mlp(Input in, int layer) {
@@ -782,8 +799,8 @@ public final class HipReference {
   }
 
   /**
-   * 最後の層の MLP（K5）。局・席・牌の x から最後の正規化 y（組ごとのゲイン）を求め、候補層の Cross-Attention のキーとバリューを作る。
-   * x は残差の流れの局・席・牌にも書く（K5 は書かないが、後の段はここを読まない）。
+   * 最後の層の MLP。局・席・牌の x から最後の正規化 y（組ごとのゲイン）を求め、候補層の Cross-Attention のキーとバリューを作る。
+   * x は残差の流れの局・席・牌にも書く（最終層の MLP は書かないが、後の段はここを読まない）。
    */
   void mlpLast(Input in, int layer) {
     int tokens = fixed * in.rows;
@@ -794,13 +811,13 @@ public final class HipReference {
           architecture.finalGroups().contains(TokenGroup.ALL)
               ? TokenGroup.ALL
               : contextOrTile(in, t);
-      float[] y = normalize(x, 0, HipWeight.FINAL_NORM, group.ordinal());
+      float[] y = normalize(x, 0, WeightField.FINAL_NORM, group.ordinal());
       System.arraycopy(y, 0, state, t * hidden, hidden);
       int[] located = locate(in.rows, t);
       project(
           y,
-          HipWeight.KEY_VALUE,
-          HipWeight.KEY_VALUE_BIAS,
+          WeightField.KEY_VALUE,
+          WeightField.KEY_VALUE_BIAS,
           0,
           2 * attention,
           memory,
@@ -810,16 +827,17 @@ public final class HipReference {
 
   /** 1 層の 1 トークンについて、O 射影と残差を足してから組の FFN に通す（型ごとの FFN なら、そのトークンの組の重みを使う）。 */
   private float[] layerStage(Input in, int layer, int t) {
-    HipFfn ffn = architecture.layer(layer).ffn();
-    TokenGroup group = ffn instanceof HipFfn.Typed ? contextOrTile(in, t) : TokenGroup.ALL;
+    FeedForwardShape ffn = architecture.layer(layer).ffn();
+    TokenGroup group =
+        ffn instanceof FeedForwardShape.Typed ? contextOrTile(in, t) : TokenGroup.ALL;
     float[] x =
         addAttention(
             slice(residual, t * hidden, hidden),
             slice(attentionOut, t * attention, attention),
-            HipWeight.OUTPUT,
-            HipWeight.OUTPUT_BIAS,
+            WeightField.OUTPUT,
+            WeightField.OUTPUT_BIAS,
             layer);
-    return feedForward(x, HipWeight.ffnEntry(layer, group));
+    return feedForward(x, WeightField.ffnEntry(layer, group));
   }
 
   /** 局・席・牌のトークン（トークンの軸の番号）が属する組。局・席は先頭の (1 + S)·R 個で、牌はその後。 */
@@ -829,30 +847,30 @@ public final class HipReference {
 
   /**
    * 最後の全トークンの層のイベントの x から、局・席・牌の層ごとのイベントの [k | v] を作る。使うのは、その層の Attention の前のゲインと、
-   * W_qkv の k・v の行。カーネルでは、最初の層の分は K4 が n から作り、後の層の分は最後の全トークンの層の K3 が作る。2 段目のある形では、
-   * 2 段目のイベントのキーとバリューも作る（2 段目のイベントのゲインと、キー・バリューの射影を使う。カーネルでは最後の全トークンの層の K3 が作る）。
+   * W_qkv の k・v の行。カーネルでは、最初の層の分は固定トークンの Attention が n から作り、後の層の分は最後の全トークン層の MLP が作る。2 段目のある形では、
+   * 2 段目のイベントのキーとバリューも作る（2 段目のイベントのゲインと、キー・バリューの射影を使う。カーネルでは最後の全トークン層の MLP が作る）。
    */
   void eventKeyValue(Input in) {
     int first = fixed * in.rows;
     for (int layer = architecture.allTokenLayers(); layer < depth; layer++) {
       float[] out = eventKeyValues[architecture.fixedIndex(layer)];
       for (int e = 0; e < in.events; e++) {
-        float[] n = normalize(residual, (first + e) * hidden, HipWeight.ATTENTION_NORM, layer);
+        float[] n = normalize(residual, (first + e) * hidden, WeightField.ATTENTION_NORM, layer);
         for (int c = 0; c < 2 * attention; c++) {
           out[e * 2 * attention + c] =
               bf(
-                  dot(n, HipWeight.QKV, layer, attention + c)
-                      + weight(HipWeight.QKV_BIAS, layer, attention + c));
+                  dot(n, WeightField.QKV, layer, attention + c)
+                      + weight(WeightField.QKV_BIAS, layer, attention + c));
         }
       }
     }
     if (architecture.stages() == CandidateStages.REREAD) {
       for (int e = 0; e < in.events; e++) {
-        float[] n = normalize(residual, (first + e) * hidden, HipWeight.REREAD_EVENT_NORM, 0);
+        float[] n = normalize(residual, (first + e) * hidden, WeightField.REREAD_EVENT_NORM, 0);
         project(
             n,
-            HipWeight.REREAD_KEY_VALUE,
-            HipWeight.REREAD_KEY_VALUE_BIAS,
+            WeightField.REREAD_KEY_VALUE,
+            WeightField.REREAD_KEY_VALUE_BIAS,
             0,
             2 * attention,
             rereadMemory,
@@ -861,7 +879,7 @@ public final class HipReference {
     }
   }
 
-  /** K8 の REREAD_KEY_VALUE。最後の正規化の後の y から、2 段目の局・席・牌のキーとバリューを [行, 位置, 2A] に書く（ここでは正規化しない）。 */
+  /** 読み直し用のキーとバリューの射影。最後の正規化の後の y から、2 段目の局・席・牌のキーとバリューを [行, 位置, 2A] に書く（ここでは正規化しない）。 */
   void rereadKeyValue(Input in) {
     int fixedCount = fixed * in.rows;
     for (int t = 0; t < fixedCount; t++) {
@@ -870,8 +888,8 @@ public final class HipReference {
       float[] token = slice(state, t * hidden, hidden);
       project(
           token,
-          HipWeight.REREAD_KEY_VALUE,
-          HipWeight.REREAD_KEY_VALUE_BIAS,
+          WeightField.REREAD_KEY_VALUE,
+          WeightField.REREAD_KEY_VALUE_BIAS,
           0,
           2 * attention,
           rereadMemory,
@@ -881,14 +899,14 @@ public final class HipReference {
 
   /** out[at + c] = ⌊v·W[c]ᵀ + b[c]⌉（c < width、W の行は H 列）。 */
   private void project(
-      float[] v, HipWeight weight, HipWeight bias, int entry, int width, float[] out, int at) {
+      float[] v, WeightField weight, WeightField bias, int entry, int width, float[] out, int at) {
     for (int c = 0; c < width; c++) {
       out[at + c] = bf(dot(v, weight, entry, c) + weight(bias, entry, c));
     }
   }
 
   /** Σ_k v[k]·W[row, k]（W は [?, H]。FP32 で k の順に足す）。 */
-  private float dot(float[] v, HipWeight weight, int entry, int row) {
+  private float dot(float[] v, WeightField weight, int entry, int row) {
     float acc = 0f;
     for (int k = 0; k < hidden; k++) {
       acc += v[k] * weight(weight, entry, row * hidden + k);
@@ -896,9 +914,9 @@ public final class HipReference {
     return acc;
   }
 
-  /** 注意の出力を射影し、残差に足す。 */
+  /** Attention の出力を射影して残差に足す。 */
   private float[] addAttention(
-      float[] x, float[] o, HipWeight outWeight, HipWeight outBias, int outEntry) {
+      float[] x, float[] o, WeightField outWeight, WeightField outBias, int outEntry) {
     float[] x1 = new float[hidden];
     for (int i = 0; i < hidden; i++) {
       float acc = 0f;
@@ -913,23 +931,23 @@ public final class HipReference {
   /** 残差を正規化して FFN に通し、出力を足す。 */
   private float[] feedForward(float[] x1, int entry) {
     int ffn = architecture.ffnWidth(entry);
-    float[] n = normalize(x1, 0, HipWeight.FFN_NORM, entry);
+    float[] n = normalize(x1, 0, WeightField.FFN_NORM, entry);
     float[] h = new float[ffn];
     for (int j = 0; j < ffn; j++) {
-      h[j] = bf(silu(bf(dot(n, HipWeight.UP, entry, j) + weight(HipWeight.UP_BIAS, entry, j))));
+      h[j] = bf(silu(bf(dot(n, WeightField.UP, entry, j) + weight(WeightField.UP_BIAS, entry, j))));
     }
     float[] out = new float[hidden];
     for (int i = 0; i < hidden; i++) {
       float acc = 0f;
       for (int j = 0; j < ffn; j++) {
-        acc += h[j] * weight(HipWeight.DOWN, entry, i * ffn + j);
+        acc += h[j] * weight(WeightField.DOWN, entry, i * ffn + j);
       }
-      out[i] = bf(x1[i] + bf(acc + weight(HipWeight.DOWN_BIAS, entry, i)));
+      out[i] = bf(x1[i] + bf(acc + weight(WeightField.DOWN_BIAS, entry, i)));
     }
     return out;
   }
 
-  /** K6。候補層の 1 段目の z（2 段目のある形では z1）を作る。1 段だけの形では B も書く。 */
+  /** 候補層の 1 段目の z（2 段目のある形では z1）を作る。1 段だけの形では B も書く。 */
   void candidate(Input in) {
     int keys = fixed;
     int[] rowOf = transitionRows(in);
@@ -942,15 +960,16 @@ public final class HipReference {
         if (tileId > 0) {
           int token = (1 + seats) * in.rows + tiles * row + tileId - 1;
           for (int k = 0; k < hidden; k++) {
-            acc += state[token * hidden + k] * weight(HipWeight.TILE_ENTRY, 0, h * hidden + k);
+            acc += state[token * hidden + k] * weight(WeightField.TILE_ENTRY, 0, h * hidden + k);
           }
         }
         start[h] = bf(statics[t * hidden + h] + bf(acc));
       }
-      float[] normalized = normalize(start, 0, HipWeight.QUERY_NORM, 0);
+      float[] normalized = normalize(start, 0, WeightField.QUERY_NORM, 0);
       float[] query = new float[attention];
       for (int c = 0; c < attention; c++) {
-        query[c] = bf(dot(normalized, HipWeight.QUERY, 0, c) + weight(HipWeight.QUERY_BIAS, 0, c));
+        query[c] =
+            bf(dot(normalized, WeightField.QUERY, 0, c) + weight(WeightField.QUERY_BIAS, 0, c));
       }
       float[] offsets = candidateOffsets(in, t);
       float[] attended = new float[attention];
@@ -991,9 +1010,9 @@ public final class HipReference {
       }
       float[] residual =
           addAttention(
-              start, attended, HipWeight.CANDIDATE_OUTPUT, HipWeight.CANDIDATE_OUTPUT_BIAS, 0);
+              start, attended, WeightField.CANDIDATE_OUTPUT, WeightField.CANDIDATE_OUTPUT_BIAS, 0);
       if (options.count() != null) addCount(in, row, t, residual);
-      float[] z = feedForward(residual, HipWeight.CANDIDATE_FFN);
+      float[] z = feedForward(residual, WeightField.CANDIDATE_FFN);
       System.arraycopy(z, 0, transitions, t * hidden, hidden);
       if (!architecture.reread()) {
         values[t] = discardValue(in, t, z);
@@ -1008,13 +1027,13 @@ public final class HipReference {
     for (int key = 0; key < fixed; key++) {
       int code = in.u8(Tensor.TRANSITION_CODE, transition, key);
       System.arraycopy(
-          cache[HipWeight.CODE_KEY.ordinal()][0],
+          cache[WeightField.CODE_KEY.ordinal()][0],
           code * attention,
           offsets,
           key * width,
           attention);
       System.arraycopy(
-          cache[HipWeight.CODE_VALUE.ordinal()][0],
+          cache[WeightField.CODE_VALUE.ordinal()][0],
           code * attention,
           offsets,
           key * width + attention,
@@ -1108,7 +1127,7 @@ public final class HipReference {
   }
 
   /**
-   * K9。候補層の 2 段目。遷移ごとに z1 からクエリを作り、行の局・席・牌（遷移のコードを使う）とイベント（τ とイベントの牌の関係のコードを
+   * 候補層の 2 段目で局・席・牌とイベントを読み直す。遷移ごとに z1 からクエリを作り、行の局・席・牌（遷移のコードを使う）とイベント（τ とイベントの牌の関係のコードを
    * 使う）のキーとバリューを読み直して、z = ⌊z1 + ⌊o·W_Oᵀ + b_O⌉⌉ と B を書く。
    *
    * <pre>
@@ -1120,7 +1139,7 @@ public final class HipReference {
   void reread(Input in) {
     int width = 2 * attention;
     int keyCodes = architecture.counts().keyCodes();
-    int tileColumn = pack.schema(HipSchema.RELATION_TILE);
+    int tileColumn = pack.schema(ColumnIndex.RELATION_TILE);
     int eventBase = fixed * in.rows;
     int[] rowOf = transitionRows(in);
     for (int t = 0; t < in.transitions; t++) {
@@ -1130,13 +1149,13 @@ public final class HipReference {
       int keys = fixed + events;
       int discard = discardTile(in, t);
       float[] z1 = slice(transitions, t * hidden, hidden);
-      float[] normalized = normalize(z1, 0, HipWeight.REREAD_QUERY_NORM, 0);
+      float[] normalized = normalize(z1, 0, WeightField.REREAD_QUERY_NORM, 0);
       float[] query = new float[attention];
       for (int c = 0; c < attention; c++) {
         query[c] =
             bf(
-                dot(normalized, HipWeight.REREAD_QUERY, 0, c)
-                    + weight(HipWeight.REREAD_QUERY_BIAS, 0, c));
+                dot(normalized, WeightField.REREAD_QUERY, 0, c)
+                    + weight(WeightField.REREAD_QUERY_BIAS, 0, c));
       }
       int[] codes = new int[keys];
       int[] bases = new int[keys];
@@ -1152,7 +1171,8 @@ public final class HipReference {
                   ? keyCodes
                       + 1
                       + (int)
-                          weight(HipWeight.TILE_RELATION, 0, (discard - 1) * tiles + eventTile - 1)
+                          weight(
+                              WeightField.TILE_RELATION, 0, (discard - 1) * tiles + eventTile - 1)
                   : keyCodes;
           bases[j] = (eventBase + event) * width;
         }
@@ -1167,7 +1187,7 @@ public final class HipReference {
             int column = 16 * h + d;
             float key =
                 rereadMemory[bases[j] + column]
-                    + weight(HipWeight.REREAD_CODE_KEY, 0, codes[j] * attention + column);
+                    + weight(WeightField.REREAD_CODE_KEY, 0, codes[j] * attention + column);
             dot = Math.fma(query[column], key, dot);
           }
           logits[j] = dot * scale;
@@ -1185,7 +1205,7 @@ public final class HipReference {
             int column = 16 * h + d;
             float v =
                 rereadMemory[bases[j] + attention + column]
-                    + weight(HipWeight.REREAD_CODE_VALUE, 0, codes[j] * attention + column);
+                    + weight(WeightField.REREAD_CODE_VALUE, 0, codes[j] * attention + column);
             value[d] = Math.fma(p, v, value[d]);
           }
         }
@@ -1196,10 +1216,10 @@ public final class HipReference {
       for (int i = 0; i < hidden; i++) {
         float acc = 0f;
         for (int k = 0; k < attention; k++) {
-          acc += attended[k] * weight(HipWeight.REREAD_OUTPUT, 0, i * attention + k);
+          acc += attended[k] * weight(WeightField.REREAD_OUTPUT, 0, i * attention + k);
         }
         transitions[t * hidden + i] =
-            bf(z1[i] + bf(acc + weight(HipWeight.REREAD_OUTPUT_BIAS, 0, i)));
+            bf(z1[i] + bf(acc + weight(WeightField.REREAD_OUTPUT_BIAS, 0, i)));
       }
       values[t] = discardValue(in, t, slice(transitions, t * hidden, hidden));
     }
@@ -1208,24 +1228,26 @@ public final class HipReference {
   /** 遷移の τ。鳴いた後に捨てる牌で、無ければ主牌（牌の番号 + 1。どちらも無ければ 0）。 */
   private int discardTile(Input in, int t) {
     int callDiscard =
-        in.u8(Tensor.TRANSITION_CATEGORY, t, pack.schema(HipSchema.TRANSITION_CALL_DISCARD));
+        in.u8(Tensor.TRANSITION_CATEGORY, t, pack.schema(ColumnIndex.TRANSITION_CALL_DISCARD));
     return callDiscard > 0
         ? callDiscard
-        : in.u8(Tensor.TRANSITION_CATEGORY, t, pack.schema(HipSchema.TRANSITION_MAIN_TILE));
+        : in.u8(Tensor.TRANSITION_CATEGORY, t, pack.schema(ColumnIndex.TRANSITION_MAIN_TILE));
   }
 
-  /** B = Σ_g silu(⌊W_B·N_B(z) + c_B⌉)·wB + Σ uBx·B（後ろの和は厳密な特徴の経路。K6 と K9 に共通の式）。 */
+  /** B = Σ_g silu(⌊W_B·N_B(z) + c_B⌉)·wB + Σ uBx·B（後ろの和は厳密な特徴の経路。候補の計算と候補の読み直しに共通の式）。 */
   private float discardValue(Input in, int t, float[] z) {
-    float[] n = normalize(z, 0, HipWeight.DISCARD_NORM, 0);
+    float[] n = normalize(z, 0, WeightField.DISCARD_NORM, 0);
     float sum = 0f;
     for (int g = 0; g < gate; g++) {
       float u =
-          bf(dot(n, HipWeight.DISCARD_HIDDEN, 0, g) + weight(HipWeight.DISCARD_HIDDEN_BIAS, 0, g));
-      sum += silu(u) * weight(HipWeight.DISCARD_OUTPUT, 0, g);
+          bf(
+              dot(n, WeightField.DISCARD_HIDDEN, 0, g)
+                  + weight(WeightField.DISCARD_HIDDEN_BIAS, 0, g));
+      sum += silu(u) * weight(WeightField.DISCARD_OUTPUT, 0, g);
     }
     float exact = 0f;
     for (int k = 0; k < in.width(Tensor.DISCARD_EXACT); k++) {
-      exact += in.f32(Tensor.DISCARD_EXACT, t, k) * weight(HipWeight.DISCARD_EXACT, 0, k);
+      exact += in.f32(Tensor.DISCARD_EXACT, t, k) * weight(WeightField.DISCARD_EXACT, 0, k);
     }
     return sum + exact;
   }
@@ -1239,7 +1261,7 @@ public final class HipReference {
       if (kind < 0) {
         continue;
       }
-      HipComposition composition = pack.composition(role);
+      ScoreComposition composition = pack.composition(role);
       int representative = in.action(a, ActionColumn.REPRESENTATIVE);
       float[] chosen =
           aggregate(
@@ -1247,7 +1269,7 @@ public final class HipReference {
               in.action(representative, ActionColumn.TRANSITIONS));
       int row = in.action(a, ActionColumn.ROW);
       float[] base;
-      if (composition == HipComposition.TURN_GATE) {
+      if (composition == ScoreComposition.TURN_GATE) {
         base = bar(in, row);
       } else {
         int baseAction = in.action(a, ActionColumn.BASE);
@@ -1259,34 +1281,34 @@ public final class HipReference {
                 hidden);
       }
       float[] input = new float[3 * hidden];
-      System.arraycopy(normalize(chosen, 0, HipWeight.GATE_NORM, 0), 0, input, 0, hidden);
-      System.arraycopy(normalize(base, 0, HipWeight.GATE_NORM, 0), 0, input, hidden, hidden);
+      System.arraycopy(normalize(chosen, 0, WeightField.GATE_NORM, 0), 0, input, 0, hidden);
+      System.arraycopy(normalize(base, 0, WeightField.GATE_NORM, 0), 0, input, hidden, hidden);
       System.arraycopy(state, row * hidden, input, 2 * hidden, hidden);
       float sum = 0f;
       for (int g = 0; g < gate; g++) {
         float acc = 0f;
         for (int k = 0; k < 3 * hidden; k++) {
-          acc += input[k] * weight(HipWeight.GATE_HIDDEN, 0, g * 3 * hidden + k);
+          acc += input[k] * weight(WeightField.GATE_HIDDEN, 0, g * 3 * hidden + k);
         }
         float projected = 0f;
         for (int x = 0; x < exactWidth; x++) {
           projected +=
-              weight(HipWeight.GATE_EXACT_PROJECTION, 0, (kind * gate + g) * exactWidth + x)
+              weight(WeightField.GATE_EXACT_PROJECTION, 0, (kind * gate + g) * exactWidth + x)
                   * in.f32(Tensor.ACTION_EXACT, a, x);
         }
         float u =
-            (bf(acc + weight(HipWeight.GATE_HIDDEN_BIAS, 0, g))
-                    + weight(HipWeight.GATE_KIND_OFFSET, 0, kind * gate + g))
+            (bf(acc + weight(WeightField.GATE_HIDDEN_BIAS, 0, g))
+                    + weight(WeightField.GATE_KIND_OFFSET, 0, kind * gate + g))
                 + projected;
-        sum += silu(u) * weight(HipWeight.GATE_OUTPUT, 0, kind * gate + g);
+        sum += silu(u) * weight(WeightField.GATE_OUTPUT, 0, kind * gate + g);
       }
       float direct = 0f;
       for (int x = 0; x < exactWidth; x++) {
         direct +=
             in.f32(Tensor.ACTION_EXACT, a, x)
-                * weight(HipWeight.GATE_EXACT_OUTPUT, 0, kind * exactWidth + x);
+                * weight(WeightField.GATE_EXACT_OUTPUT, 0, kind * exactWidth + x);
       }
-      delta[a] = (sum + weight(HipWeight.GATE_OUTPUT_BIAS, 0, kind)) + direct;
+      delta[a] = (sum + weight(WeightField.GATE_OUTPUT_BIAS, 0, kind)) + direct;
     }
     for (int r = 0; r < in.rows; r++) {
       int first = in.row(r, RowColumn.FIRST_ACTION);
@@ -1294,7 +1316,7 @@ public final class HipReference {
       float pivot = 0f;
       boolean havePivot = false;
       for (int a = first; a < first + count; a++) {
-        HipComposition composition = pack.composition(in.action(a, ActionColumn.ROLE));
+        ScoreComposition composition = pack.composition(in.action(a, ActionColumn.ROLE));
         float score;
         switch (composition) {
           case DISCARD_VALUE -> {
@@ -1314,14 +1336,14 @@ public final class HipReference {
         }
         score = 0f + score;
         scores[a] = score;
-        if (composition == HipComposition.DISCARD_VALUE
-            || composition == HipComposition.RIICHI_GATE) {
+        if (composition == ScoreComposition.DISCARD_VALUE
+            || composition == ScoreComposition.RIICHI_GATE) {
           pivot = havePivot ? Math.max(pivot, score) : score;
           havePivot = true;
         }
       }
       for (int a = first; a < first + count; a++) {
-        if (pack.composition(in.action(a, ActionColumn.ROLE)) == HipComposition.TURN_GATE) {
+        if (pack.composition(in.action(a, ActionColumn.ROLE)) == ScoreComposition.TURN_GATE) {
           scores[a] = 0f + ((havePivot ? pivot : 0f) + delta[a]);
         }
       }
@@ -1381,12 +1403,12 @@ public final class HipReference {
   }
 
   private boolean representativeDiscard(Input in, int action) {
-    return pack.composition(in.action(action, ActionColumn.ROLE)) == HipComposition.DISCARD_VALUE
+    return pack.composition(in.action(action, ActionColumn.ROLE)) == ScoreComposition.DISCARD_VALUE
         && in.action(action, ActionColumn.REPRESENTATIVE) == action;
   }
 
   /** ⌊(v·r)·g⌉（r = 1/√(mean(v²) + ε)、FP32）。 */
-  private float[] normalize(float[] source, int at, HipWeight gain, int entry) {
+  private float[] normalize(float[] source, int at, WeightField gain, int entry) {
     float sum = 0f;
     for (int k = 0; k < hidden; k++) {
       sum += source[at + k] * source[at + k];
@@ -1442,7 +1464,7 @@ public final class HipReference {
   }
 
   static Tensor tensor(int section) {
-    return Tensor.valueOf(HipSection.values()[section].name());
+    return Tensor.valueOf(InputSection.values()[section].name());
   }
 
   static float[] slice(float[] values, int at, int length) {

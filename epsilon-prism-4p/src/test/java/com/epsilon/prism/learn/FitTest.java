@@ -13,6 +13,7 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
+import ai.djl.pytorch.engine.PtStream;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
 import ai.djl.training.tracker.Tracker;
@@ -20,6 +21,7 @@ import ai.djl.util.Pair;
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.observe.ObservationBatch;
 import com.epsilon.agent.observe.ObservationWriter;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.agent.runtime.PinnedUploads;
@@ -42,6 +44,7 @@ import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputBlob.Axis;
 import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.kernel.TrainingKernels;
 import com.epsilon.prism.model.AuxiliaryLabels;
 import com.epsilon.prism.model.AuxiliaryLoss;
 import com.epsilon.prism.model.ModelShapes;
@@ -51,12 +54,12 @@ import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.run.Snapshot;
 import java.io.IOException;
+import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -367,6 +370,96 @@ public class FitTest {
   }
 
   /**
+   * 学習器は学習カーネルをデバイスごとに開き、作り終えたレーンにだけ渡す。2 つ目のデバイスで開くのに失敗しても、レーンを作る前に閉じても、
+   * レーンを作った後に順伝播で失敗しても、開いたカーネルの数と閉じた数が合う。
+   */
+  @Test(timeOut = 600_000)
+  public void theLearnerClosesEveryTrainingKernelItOpens() throws IOException {
+    FitPlan plan =
+        new FitPlan(
+            new FitSettings(
+                1,
+                4096,
+                3e-3,
+                3e-4,
+                1f,
+                0.01,
+                0.02,
+                PairLoss.Mode.PRISM,
+                PairLoss.ClassWeight.INVERSE_LAMBDA,
+                AdamEpsilon.FIXED),
+            SHAPE,
+            new AuxiliaryLoss(0f, 0f),
+            BUDGET,
+            5);
+    NetworkDevices two = NetworkDevices.of(Device.cpu(), Device.cpu());
+    try (Model model = Fit.blank(FOUR_PLAYER, SHAPE, Device.cpu(), plan.seed());
+        NetworkRuntime runtime = NetworkRuntime.forLearning();
+        CohortStore store = new CohortStore()) {
+      CountingKernels failing = new CountingKernels(1);
+      expectThrows(
+          IllegalStateException.class, () -> new Learner(model, two, plan, 1f, runtime, failing));
+      assertEquals(failing.opened, 1);
+      assertEquals(failing.closed, 1);
+
+      CountingKernels unused = new CountingKernels(-1);
+      new Learner(model, two, plan, 1f, runtime, unused).close();
+      assertEquals(unused.opened, 2);
+      assertEquals(unused.closed, 2);
+
+      store.addCohort(CohortWriter.directory(root, 1));
+      int[] rows = Arrays.copyOf(store.select(1, 1, Selection.LABELS), 8);
+      CountingKernels lanes = new CountingKernels(-1);
+      try (Learner learner = new Learner(model, two, plan, 1f, runtime, lanes);
+          StepFeed feed = new StepFeed(store, plan, two.size(), 1)) {
+        StepFeed.Step step = feed.prepare(rows, Teacher.RAW).join();
+        try {
+          expectThrows(RuntimeException.class, () -> learner.rehearse(step));
+        } finally {
+          feed.release(step);
+        }
+      }
+      assertEquals(lanes.opened, 2);
+      assertEquals(lanes.closed, 2);
+    }
+  }
+
+  /** 開いた数と閉じた数を数える学習カーネル。演算を呼ぶと失敗する。{@code failAt} 番目（0 から）の開く処理は失敗する。 */
+  private static final class CountingKernels implements Learner.LaneKernels {
+    private final int failAt;
+    private int opened;
+    private int closed;
+
+    CountingKernels(int failAt) {
+      this.failAt = failAt;
+    }
+
+    @Override
+    public TrainingKernels open(Device device, PrismNetwork network, PtStream stream) {
+      if (opened == failAt) {
+        throw new IllegalStateException("The training kernel provider failed");
+      }
+      opened++;
+      return (TrainingKernels)
+          Proxy.newProxyInstance(
+              TrainingKernels.class.getClassLoader(),
+              new Class<?>[] {TrainingKernels.class},
+              (self, method, args) ->
+                  switch (method.getName()) {
+                    case "close" -> {
+                      closed++;
+                      yield null;
+                    }
+                    case "candidateKernels" -> null;
+                    case "hashCode" -> System.identityHashCode(self);
+                    case "equals" -> self == args[0];
+                    case "toString" -> "CountingKernels";
+                    default -> throw new UnsupportedOperationException(method.getName());
+                  });
+    }
+  }
+
+  /**
    * データ並列（CPU に 2 レーン）。補助のヘッドの項を外した計画では、2 レーンで学習した損失と重みが、1 レーンで学習したものと許容誤差の内で
    * 合う。主の損失は行ごとの和を 1 ステップの分母で割るので、マイクロバッチの分け方に依らない。補助の項はバッチごとの平均なので、レーンの数で
    * バッチが変わると値も変わる。補助のヘッドの項を入れた計画では、1 行ずつのマイクロバッチを 2 レーンに置いたステップでも落ちない
@@ -560,7 +653,7 @@ public class FitTest {
       int[] rows = store.select(1, 2, Selection.LABELS);
       AnchorScores scores =
           AnchorScores.compute(
-              store, rows, anchor, 3, InferencePath.EAGER, NetworkDevices.of(Device.cpu()), 2);
+              store, rows, anchor, 3, Kernels.EAGER, NetworkDevices.of(Device.cpu()), 2);
       scores.requireVersion(3);
       expectThrows(IllegalStateException.class, () -> scores.requireVersion(4));
       expectThrows(IllegalArgumentException.class, () -> scores.scores(-1));
@@ -571,7 +664,7 @@ public class FitTest {
           Anchor eager =
               Anchor.open(
                   anchor,
-                  InferencePath.EAGER,
+                  Kernels.EAGER,
                   Device.cpu(),
                   null,
                   null,
@@ -804,9 +897,12 @@ public class FitTest {
     return max;
   }
 
+  /** 学習のカーネルが対応しない形では、製品の学習の選び方は GPU の演算を選ばない（学習は eager の演算を使う）。 */
   @Test(dataProvider = "eagerArms", dataProviderClass = ModelShapes.class)
-  public void eagerArmsUseNoHipTrainingStream(PrismShape shape) {
-    assertNull(Learner.hipAttention(Device.gpu(0), shape, null));
+  public void eagerArmsOpenNoTrainingKernels(PrismShape shape) {
+    try (Model model = Fit.blank(FOUR_PLAYER, shape, Device.cpu(), 1)) {
+      assertNull(Learner.training(Device.gpu(0), (PrismNetwork) model.getBlock(), null));
+    }
   }
 
   @DataProvider

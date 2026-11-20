@@ -2,14 +2,15 @@ package com.epsilon.prism.policy;
 
 import ai.djl.Device;
 import com.epsilon.agent.runtime.DecisionDevicePipeline;
+import com.epsilon.agent.runtime.Kernels;
 import java.nio.FloatBuffer;
 
 /**
- * 1 つのデバイスで動く推論のバックエンド（{@link InferencePath}）。ネットワークの重みをデバイスに置き、1 回の受付の s を出す。CPU では
+ * 1 つのデバイスで動く推論のバックエンド（{@link Kernels}）。ネットワークの重みをデバイスに置き、1 回の受付の s を出す。CPU では
  * 呼び出したスレッドで（{@link #score}）、GPU では共通のデバイスパイプラインのスロットで（{@link #work}）計算する。s はどちらも、受付の中の
  * バッチを順に並べ、各バッチの手の順の FP32 を詰めてつないだもの（{@link Encoding#answer} が読む並び）。
  */
-sealed interface DeviceInference extends AutoCloseable permits EagerInference, HipInference {
+sealed interface DeviceInference extends AutoCloseable permits EagerInference, NativeInference {
 
   Device device();
 

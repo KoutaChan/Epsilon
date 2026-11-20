@@ -94,7 +94,7 @@ public class ThreePlayerEvaluationReportsTest {
     measure(settings, 1, version, champion, places);
   }
 
-  /** バージョンを予定で測る卓の仕事を設定の行 row で作って、全て回す。 */
+  /** バージョンを予定で測る卓のジョブを設定の行 row で作って、全て回す。 */
   private void measure(
       PrismSettings settings,
       int row,

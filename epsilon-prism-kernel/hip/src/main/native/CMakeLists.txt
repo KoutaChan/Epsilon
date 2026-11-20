@@ -1,9 +1,4 @@
-# libprism_hip.so: PRISM の HIP の実行系。網を知らない JNI と自前のカーネルだけを持つ。
-#
-# libtorch のヘッダは使わない。学習の演算が DJL の配列のアドレスを引くときだけ、
-# libtorch が公開する at::TensorBase::const_data_ptr<T>() を dlsym で呼ぶ（prism_hip_torch.cc）。繋がるのは HIP の実行系（libamdhip64.so.7）だけで、
-# DJL が先に読んだものを soname で使い回す。ストリームは PtStream.getId()、ホストのメモリは直の ByteBuffer で受け、デバイスの
-# メモリは計画（newPlan）が一度だけ取る。RPATH は付けない。
+# HIP ランタイムは DJL が先にロードする。学習で使う libtorch のシンボルは実行時に取得する。
 cmake_minimum_required(VERSION 3.28)
 
 if(NOT DEFINED CMAKE_HIP_ARCHITECTURES)
@@ -30,78 +25,53 @@ if(NOT PRISM_ARCH_COUNT EQUAL 1)
 endif()
 set(PRISM_HIP_ARCH ${CMAKE_HIP_ARCHITECTURES})
 
-set(PRISM_KERNELS
-  event_pages.hip
-  k0_relation.hip
-  k1_embed.hip
-  v4/k1_v4_wide.hip
-  k2_attention.hip
-  v4/k2_v4_causal.hip
-  v4/k2_v4_wide.hip
-  v4/k2_v4_wide_causal.hip
-  k3_mlp.hip
-  v4/k3_v4_wide.hip
-  k6_candidate.hip
-  v4/k6_v4_count.hip
-  v4/k6_v4_core.hip
-  v4/k6_v4_hot.hip
-  k7_value_graph.hip
-  v4/k7_v4_wide.hip
-  k8_key_value.hip
-  k9_reread.hip)
-set(PRISM_SOURCES
-  prism_hip_jni.cc
-  prism_hip_plan.cc
-  prism_hip_runtime.cc
-  prism_hip_torch.cc
-  v4/prism_hip_hot_cache.cc
-  ${PRISM_KERNELS}
-  t0_relation.hip
-  t1_attention.hip
-  t2_norm.hip
-  v4/t3_v4_count.hip
-  v4/t6_segment_attention.hip
-  v4/t5_v4_causal.hip)
-# 全ての翻訳単位を HIP として 7.2.2 の clang に通す（HIP の実行系のヘッダと定義をそろえる）。
-set_source_files_properties(prism_hip_jni.cc prism_hip_plan.cc prism_hip_runtime.cc prism_hip_torch.cc v4/prism_hip_hot_cache.cc
+set(PRISM_COMMON "${CMAKE_CURRENT_SOURCE_DIR}/../../../../common")
+set(PRISM_INFERENCE_DIR "${PRISM_COMMON}/src/main/native/inference")
+file(STRINGS "${PRISM_INFERENCE_DIR}/inference_sources.txt" PRISM_INFERENCE_SOURCES)
+list(TRANSFORM PRISM_INFERENCE_SOURCES PREPEND "${PRISM_INFERENCE_DIR}/")
+set(PRISM_KERNELS ${PRISM_INFERENCE_SOURCES})
+set_source_files_properties(${PRISM_INFERENCE_SOURCES} PROPERTIES LANGUAGE HIP)
+set(PRISM_TRAINING_DIR "${PRISM_COMMON}/src/main/native/training")
+file(STRINGS "${PRISM_TRAINING_DIR}/training_sources.txt" PRISM_TRAINING_SOURCES)
+list(TRANSFORM PRISM_TRAINING_SOURCES PREPEND "${PRISM_TRAINING_DIR}/")
+set_source_files_properties(${PRISM_TRAINING_SOURCES} PROPERTIES LANGUAGE HIP)
+set(PRISM_CACHE_SOURCES "${PRISM_INFERENCE_DIR}/../cache/candidate_offset_cache.cc")
+set(PRISM_INFERENCE_OBJECT_SOURCES device_stream.cc ${PRISM_CACHE_SOURCES} ${PRISM_KERNELS})
+set(PRISM_LIBRARY_SOURCES declaration_jni.cc prism_hip_jni.cc prism_hip_runtime.cc
+  prism_hip_torch.cc ${PRISM_TRAINING_SOURCES})
+set_source_files_properties(device_stream.cc prism_hip_jni.cc prism_hip_runtime.cc prism_hip_torch.cc ${PRISM_CACHE_SOURCES}
   PROPERTIES LANGUAGE HIP)
-# 全てのカーネルは、レジスタ・scratch・LDS・占有を組み立ての記録に出す。
-set_source_files_properties(${PRISM_KERNELS} t0_relation.hip t1_attention.hip t2_norm.hip v4/t3_v4_count.hip v4/t6_segment_attention.hip v4/t5_v4_causal.hip
-  PROPERTIES COMPILE_OPTIONS "-Rpass-analysis=kernel-resource-usage")
 
-function(prism_hip_library name checked)
-  add_library(${name} SHARED ${PRISM_SOURCES})
+function(prism_hip_compile name checked)
+  target_compile_features(${name} PRIVATE cxx_std_17)
   target_include_directories(${name} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/v4
+    ${PRISM_INFERENCE_DIR}
+    "${PRISM_INFERENCE_DIR}/.."
     ${PRISM_JAVA_HOME}/include
     ${PRISM_JAVA_HOME}/include/linux)
   target_compile_definitions(${name} PRIVATE
     PRISM_HIP_ARCH="${PRISM_HIP_ARCH}"
-    PRISM_HIP_CHECKED=$<BOOL:${checked}>)
-  target_compile_options(${name} PRIVATE -O3 -Wall -Wextra -fvisibility=hidden -fvisibility-inlines-hidden)
-  # ROCm の clang の設定（rocm.cfg）は -frtlib-add-rpath で HIP の実行系の RUNPATH を足すので、ここで外す。
-  target_link_options(${name} PRIVATE -fno-rtlib-add-rpath)
-  target_link_libraries(${name} PRIVATE ${CMAKE_DL_LIBS})
-  set_target_properties(${name} PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${PRISM_OUTPUT_DIR}
-    HIP_ARCHITECTURES ${PRISM_HIP_ARCH})
+    PRISM_CHECKED=$<BOOL:${checked}>)
+  # 積と和をコンパイラーに 1 つの積和の命令へまとめさせない。積和はソースが fusedMultiplyAdd で書く。
+  target_compile_options(${name} PRIVATE -O3 -ffp-contract=off -Wall -Wextra -fvisibility=hidden -fvisibility-inlines-hidden)
+  set_target_properties(${name} PROPERTIES HIP_ARCHITECTURES ${PRISM_HIP_ARCH} POSITION_INDEPENDENT_CODE ON)
 endfunction()
 
-prism_hip_library(prism_hip OFF)
-prism_hip_library(prism_hip_check ON)
+add_library(prism_hip_inference_objects OBJECT ${PRISM_INFERENCE_OBJECT_SOURCES})
+prism_hip_compile(prism_hip_inference_objects OFF)
 
-# prism_hip_bench: JVM の外で Plan を直に回す台（rocprofv3 の計数と kernel-trace）。jar の .so とは別の実行ファイルで、既定の組み立て
-# にも入らない。推論の道の翻訳単位を、通常の .so と同じ定義と旗で翻訳し直す。
-add_executable(prism_hip_bench EXCLUDE_FROM_ALL
-  prism_hip_bench.cc
-  prism_hip_plan.cc
-  ${PRISM_KERNELS})
-set_source_files_properties(prism_hip_bench.cc PROPERTIES LANGUAGE HIP)
-target_include_directories(prism_hip_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/v4)
-target_compile_definitions(prism_hip_bench PRIVATE PRISM_HIP_ARCH="${PRISM_HIP_ARCH}" PRISM_HIP_CHECKED=0)
-target_compile_options(prism_hip_bench PRIVATE -O3 -Wall -Wextra -fvisibility=hidden -fvisibility-inlines-hidden)
-set_target_properties(prism_hip_bench PROPERTIES HIP_ARCHITECTURES ${PRISM_HIP_ARCH} POSITION_INDEPENDENT_CODE ON)
+function(prism_hip_library name checked)
+  add_library(${name} SHARED ${PRISM_LIBRARY_SOURCES} ${ARGN})
+  prism_hip_compile(${name} ${checked})
+  # DJL がロードした HIP ランタイムを使うため、ROCm の RUNPATH を追加しない。
+  target_link_options(${name} PRIVATE -fno-rtlib-add-rpath)
+  target_link_libraries(${name} PRIVATE ${CMAKE_DL_LIBS})
+  set_target_properties(${name} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PRISM_OUTPUT_DIR})
+endfunction()
+
+prism_hip_library(prism_hip OFF $<TARGET_OBJECTS:prism_hip_inference_objects>)
+prism_hip_library(prism_hip_check ON ${PRISM_INFERENCE_OBJECT_SOURCES})
+
 
 configure_file(prism-hip.properties.in ${PRISM_OUTPUT_DIR}/prism-hip.properties @ONLY)

@@ -34,7 +34,7 @@ public record FitSettings(
     AdamEpsilon adamEpsilon,
     PrismLoss.RowAnchor rowAnchor) {
 
-  /** 指定のない目的関数・類の重み・ε の扱い・アンカーには、差分整合・温度の逆数・DJL の固定値・教師のゲインを使う。 */
+  /** 指定のない目的関数・判断クラスの重み・ε の扱い・アンカーには、差分整合・温度の逆数・DJL の固定値・教師のゲインを使う。 */
   public FitSettings {
     if (adamEpsilon == null) adamEpsilon = AdamEpsilon.FIXED;
     if (rowAnchor == null) rowAnchor = PrismLoss.RowAnchor.GAIN;

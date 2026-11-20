@@ -7,11 +7,11 @@ import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDManager;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtStream;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.prism.backend.ThreePlayerRows;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.run.Snapshot;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,7 +27,7 @@ import org.testng.annotations.Test;
 /**
  * 三人打ちのアンカーを HIP のバックエンドで動かせることを確かめる（rocm のグループ。GPU 1 枚）。三人打ちの入力形式で乱数で初期化した v2 の
  * 深さ 2 と V3 のネットワークを保存し、同じバッチ（エンジンで打った三人打ちの判断と、公開のイベントが多い行）で比べる。HIP のバックエンドを
- * 指定したアンカーは {@link Anchor.Hip} で開き、その s は行ごとの先頭の位置を使うと eager のアンカーと同じ手の順に並ぶ。
+ * 指定したアンカーは {@link Anchor.Native} で開き、その s は行ごとの先頭の位置を使うと eager のアンカーと同じ手の順に並ぶ。
  *
  * <p>s の比べ方: GPU の BF16 の 2 つのバックエンド（HIP と eager）の差は丸めのずれで、乱数で初期化した 1 つのネットワークでは 2e-2 を
  * 超えることもある。そこで形ごとに種を変えた {@value #SEEDS} 個のネットワークで、CPU の FP32 の eager のアンカーを真の値とし、HIP の s の
@@ -76,12 +76,11 @@ public class ThreePlayerAnchorGpuTest {
           float[] eager;
           float[] truth;
           try (PtStream stream = engine.newStream(gpu);
-              Anchor fast = Anchor.open(directory, InferencePath.HIP, gpu, stream, null, capacity);
-              Anchor slow =
-                  Anchor.open(directory, InferencePath.EAGER, gpu, stream, null, capacity);
+              Anchor fast = Anchor.open(directory, Kernels.NATIVE, gpu, stream, null, capacity);
+              Anchor slow = Anchor.open(directory, Kernels.EAGER, gpu, stream, null, capacity);
               Anchor exact =
-                  Anchor.open(directory, InferencePath.EAGER, Device.cpu(), null, null, capacity)) {
-            Assert.assertTrue(fast instanceof Anchor.Hip, arm.label() + ": HIP path on the GPU");
+                  Anchor.open(directory, Kernels.EAGER, Device.cpu(), null, null, capacity)) {
+            Assert.assertTrue(fast instanceof Anchor.Native, arm.label() + ": HIP path on the GPU");
             Assert.assertTrue(
                 slow instanceof Anchor.Eager, arm.label() + ": eager path on request");
             hip = ordered(fast.scores(inputs), plan);

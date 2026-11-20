@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.StringJoiner;
 import java.util.function.ToIntFunction;
 
-/** enum の宣言順に上位から桁を並べる混合基数の符号。 */
+/** enum の宣言順に上位から桁を並べる混合基数のコード。 */
 public final class CodeSpace<D extends Enum<D>> {
   private final int[] weights;
   private final int[] radices;
@@ -52,7 +52,7 @@ public final class CodeSpace<D extends Enum<D>> {
     return radices[digit.ordinal()];
   }
 
-  /** 宣言順に渡した桁の値を符号にする。 */
+  /** 宣言順に渡した桁の値をコードにする。 */
   public int encode(int... values) {
     if (values.length != order.length)
       throw new IllegalArgumentException("Wrong number of digits: " + values.length);
@@ -61,12 +61,12 @@ public final class CodeSpace<D extends Enum<D>> {
     return code;
   }
 
-  /** その桁の値が符号に足す分を返す。 */
+  /** その桁の値がコードに足す分を返す。 */
   public int part(D digit, int value) {
     return Objects.checkIndex(value, radix(digit)) * weight(digit);
   }
 
-  /** 符号からその桁の値を取り出す。 */
+  /** コードからその桁の値を取り出す。 */
   public int digit(int code, D digit) {
     return Objects.checkIndex(code, size) / weight(digit) % radix(digit);
   }

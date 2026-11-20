@@ -45,7 +45,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** 対局ルールと入力機能に応じた列、語彙、符号と行ライターを提供する。 */
+/** 対局ルールと入力機能に応じた列、語彙、コードと行ライターを提供する。 */
 public final class InputFormat {
   private record Selection(Variant variant, Set<InputFeature> features) {}
 
@@ -86,13 +86,13 @@ public final class InputFormat {
   }
 
   /**
-   * 指紋を古い書き方で作るルール。配布済みの四人打ちの指紋（v714・v760）は、牌の並び・動かせる色・効用の値を指紋に足す前に作り、
-   * {@link #MOVED} の型は {@code InputSchema} の中にあった頃の名前で書いた。この指紋を変えないため、このルールだけ古い書き方を続ける。
-   * ほかのルール（三人打ちと、これから足すルール）は全てを書く。
+   * 配布済みの四人打ちモデル（v714・v760）と同じフィンガープリントを作る。計算には牌の並び・動かせる色・効用の値を含めず、
+   * {@link #MOVED} の型名には {@code InputSchema} の入れ子型としての名前を使う。
+   * ほかのルールでは全項目を使う。
    */
   private static final Variant LEGACY_DIGEST = Variant.TENHOU_4P;
 
-  /** {@link #LEGACY_DIGEST} の指紋で、{@code InputSchema$型名} の形で書く型。 */
+  /** {@link #LEGACY_DIGEST} のフィンガープリントで、{@code InputSchema$型名} の形で書く型。 */
   private static final Set<Class<?>> MOVED =
       Set.of(
           Tensor.class,

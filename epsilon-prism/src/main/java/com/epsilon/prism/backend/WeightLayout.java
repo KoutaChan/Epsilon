@@ -4,21 +4,6 @@ import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
 import ai.djl.util.Pair;
 import ai.djl.util.PairList;
-import com.epsilon.prism.hip.CandidateStages;
-import com.epsilon.prism.hip.HipArchitecture;
-import com.epsilon.prism.hip.HipCapabilities;
-import com.epsilon.prism.hip.HipComposition;
-import com.epsilon.prism.hip.HipCounts;
-import com.epsilon.prism.hip.HipEmbedding;
-import com.epsilon.prism.hip.HipFfn;
-import com.epsilon.prism.hip.HipPack;
-import com.epsilon.prism.hip.HipPlanOptions;
-import com.epsilon.prism.hip.HipSchema;
-import com.epsilon.prism.hip.HipSection;
-import com.epsilon.prism.hip.HipShape;
-import com.epsilon.prism.hip.HipWeight;
-import com.epsilon.prism.hip.TokenGroup;
-import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.CandidateCodes;
 import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.RowColumn;
@@ -28,6 +13,19 @@ import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.input.InputFormat.Role;
 import com.epsilon.prism.input.InputSchema.RelationAttribute;
 import com.epsilon.prism.input.InputSchema.TransitionField;
+import com.epsilon.prism.kernel.CandidateStages;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.CollectionCapabilities;
+import com.epsilon.prism.kernel.CollectionPlanOptions;
+import com.epsilon.prism.kernel.ColumnIndex;
+import com.epsilon.prism.kernel.EmbeddingTable;
+import com.epsilon.prism.kernel.FeedForwardShape;
+import com.epsilon.prism.kernel.InputSection;
+import com.epsilon.prism.kernel.PackedWeightLayout;
+import com.epsilon.prism.kernel.ScoreComposition;
+import com.epsilon.prism.kernel.TokenCounts;
+import com.epsilon.prism.kernel.TokenGroup;
+import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import java.util.ArrayList;
@@ -42,7 +40,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * ネットワークの推論の重みを、HIP のカーネルが読む並び（WeightPack）のどこに置くかを決めた表。形の記述、推論のパラメーターの名前と形、
+ * ネットワークの推論の重みを、推論カーネルが読む並び（WeightPack）のどこに置くかを決めた表。形の記述、推論のパラメーターの名前と形、
  * 入力の宣言から一度だけ作るので、オフセットを手で並べることはない。席・牌・コード・ゲート・手の扱いの数と、層・FFN の幅は形の記述から読む。
  * 入力の列の並びは、ネットワークの入力の形式から読む。入力の形式が持つ数は、形の記述の数と同じでなければならない。比べるのは、席・牌・コード・
  * 牌の関係の種類・イベントの上限、手の扱い、ゲートの種類の数。
@@ -50,7 +48,7 @@ import java.util.Set;
  * <ul>
  *   <li>行列は BF16 で置く。Linear のバイアスは BF16 に丸めた値を FP32 で置く。ゲイン・関係のバイアス・コードの表・ヘッドの最後の層は
  *       FP32 のまま置く。丸める所は eager の {@code Precision.BFLOAT16} と同じ。
- *   <li>埋め込みの表と型ごとの Linear は、K1 が引く組の表（W·E を折り込んだ FP32 の表。1 トークンで引くのは 8 回以下）と、表に折り込まない
+ *   <li>埋め込みの表と型ごとの Linear は、埋め込みで引く組の表（W·E を折り込んだ FP32 の表。1 トークンで引くのは 8 回以下）と、表に折り込まない
  *       特徴の W（BF16、転置）と、バイアスに分けて置く。局・席・牌・イベントの型には、層 0 の QKV まで折り込んだ表 T'・W'_d・b' と
  *       b_qkv（FP32）も置く。
  *   <li>推論のパラメーターは全て、ちょうど 1 回ずつ置く。置く場所の無い名前があれば例外を投げる。
@@ -60,7 +58,7 @@ import java.util.Set;
  */
 public final class WeightLayout {
 
-  /** 組の表の行数の上限として試す値。小さい方から試し、表の数が {@link HipEmbedding#MAX_TABLES} 以下になった最初の値を使う。 */
+  /** 組の表の行数の上限として試す値。小さい方から試し、表の数が {@link EmbeddingTable#MAX_TABLES} 以下になった最初の値を使う。 */
   private static final int[] TABLE_ROW_CAPS = {1024, 2048, 4096, 8192};
 
   enum Conversion {
@@ -77,12 +75,12 @@ public final class WeightLayout {
    *
    * @param parameter パラメーターの名前（推論の重みの束での名前）
    * @param weight 置く先のスロット
-   * @param entry スロットの中の項目（{@link HipWeight.Index} の番号）
+   * @param entry スロットの中の項目（{@link WeightField.Index} の番号）
    * @param conversion 値の変換
    * @param offset WeightPack の中のバイトオフセット
    */
   record Placement(
-      String parameter, HipWeight weight, int entry, Conversion conversion, long offset) {}
+      String parameter, WeightField weight, int entry, Conversion conversion, long offset) {}
 
   /**
    * 1 つの組の表。組に入る列の値の組み合わせごとに 1 行を持つ。
@@ -139,20 +137,20 @@ public final class WeightLayout {
           TokenGroup.ALL, "gain", TokenGroup.CONTEXT, "contextGain", TokenGroup.TILE, "tileGain");
 
   private final InputFormat format;
-  private final HipArchitecture architecture;
-  private final HipPack.Header header;
+  private final CollectionArchitecture architecture;
+  private final PackedWeightLayout.Header header;
   private final List<Placement> placements;
-  private final Map<HipEmbedding.Slot, Embedding> embeddings;
+  private final Map<EmbeddingTable.Slot, Embedding> embeddings;
   private final long countOffset;
   private final long segmentsOffset;
   private final long bytes;
 
   private WeightLayout(
       InputFormat format,
-      HipArchitecture architecture,
-      HipPack.Header header,
+      CollectionArchitecture architecture,
+      PackedWeightLayout.Header header,
       List<Placement> placements,
-      Map<HipEmbedding.Slot, Embedding> embeddings,
+      Map<EmbeddingTable.Slot, Embedding> embeddings,
       long countOffset,
       long segmentsOffset,
       long bytes) {
@@ -167,13 +165,14 @@ public final class WeightLayout {
   }
 
   /**
-   * HIP のカーネルがこの形のネットワークを動かせるかを返す。既存の幅と、V4 の幅 384 に対応する。
+   * 推論カーネルがこの形のネットワークを動かせるかを返す。既存の幅と、V4 の幅 384 に対応する。
    *
    * @param shape ネットワークの形
    * @return 動かせるなら true
    */
   public static boolean supports(PrismShape shape) {
-    return HipCapabilities.supports(shape.hidden(), shape.candidateSegments(), shape.reread());
+    return CollectionCapabilities.supports(
+        shape.hidden(), shape.candidateSegments(), shape.reread());
   }
 
   /**
@@ -181,11 +180,15 @@ public final class WeightLayout {
    *
    * @param network ネットワーク
    * @return 表
-   * @throws IllegalArgumentException HIP のカーネルが特化していない形のとき
+   * @throws IllegalArgumentException 推論カーネルが特化していない形のとき
    */
   public static WeightLayout of(PrismNetwork network) {
     InputFormat format = network.format();
-    return of(format, network.shape().hip(format), network.inferenceParameters());
+    if (!supports(network.shape()))
+      throw new IllegalArgumentException(
+          "PRISM collection kernels do not support this shape: " + network.shape());
+    return of(
+        format, CollectionArchitecture.from(network.declaration()), network.inferenceParameters());
   }
 
   /**
@@ -199,13 +202,16 @@ public final class WeightLayout {
    *     形の合わないパラメーターがあるとき
    */
   public static WeightLayout of(
-      InputFormat format, HipArchitecture architecture, PairList<String, Parameter> parameters) {
-    if (!HipCapabilities.supports(
+      InputFormat format,
+      CollectionArchitecture architecture,
+      PairList<String, Parameter> parameters) {
+    if (!CollectionCapabilities.supports(
         architecture.hidden(),
         format.has(InputFeature.CANDIDATE_SEGMENTS),
         architecture.reread())) {
       throw new IllegalArgumentException(
-          "HIP does not support the input format and candidate stages for this width");
+          "PRISM collection kernels do not support the input format and candidate stages for this"
+              + " width");
     }
     requireMatches(format, architecture);
     Map<String, long[]> shapes = new LinkedHashMap<>();
@@ -234,17 +240,17 @@ public final class WeightLayout {
         && architecture.stages() == CandidateStages.ONE;
   }
 
-  HipPlanOptions planOptions() {
+  CollectionPlanOptions planOptions() {
     var count =
         countOffset < 0
             ? null
-            : new HipPlanOptions.Count(
+            : new CollectionPlanOptions.Count(
                 countOffset, format.tileKeyCode().first(), CandidateCodes.COUNT_WIDTH);
     var segments =
         segmentsOffset < 0
             ? null
-            : new HipPlanOptions.Segments(segmentsOffset, format.candidateCodes().hip());
-    return new HipPlanOptions(format.eventsSettleOnPublication(), count, segments);
+            : new CollectionPlanOptions.Segments(segmentsOffset, format.candidateCodes().hip());
+    return new CollectionPlanOptions(format.eventsSettleOnPublication(), count, segments);
   }
 
   /**
@@ -253,9 +259,9 @@ public final class WeightLayout {
    * @throws IllegalArgumentException 席・牌・コード・牌の関係の種類・イベントの上限、手の扱い、ゲートの種類の
    *     どれかの数が違うとき
    */
-  private static void requireMatches(InputFormat format, HipArchitecture architecture) {
-    HipCounts counts = architecture.counts();
-    HipCounts declared = PrismShape.counts(format);
+  private static void requireMatches(InputFormat format, CollectionArchitecture architecture) {
+    TokenCounts counts = architecture.counts();
+    TokenCounts declared = PrismShape.counts(format);
     if (!declared.equals(counts)) {
       throw new IllegalArgumentException(
           "the "
@@ -288,12 +294,12 @@ public final class WeightLayout {
   }
 
   /** 形の記述。 */
-  public HipArchitecture architecture() {
+  public CollectionArchitecture architecture() {
     return architecture;
   }
 
   /** WeightPack のヘッダー。 */
-  public HipPack.Header header() {
+  public PackedWeightLayout.Header header() {
     return header;
   }
 
@@ -308,41 +314,23 @@ public final class WeightLayout {
   }
 
   /** 型ごとの埋め込みの置き方。WeightPack を書くときに読む。 */
-  Map<HipEmbedding.Slot, Embedding> embeddings() {
+  Map<EmbeddingTable.Slot, Embedding> embeddings() {
     return embeddings;
   }
 
   /**
-   * このネットワークをこのバッチの容量で動かすときの、HIP の計画の形を返す。
-   *
-   * @param capacity バッチの容量（入力の blob の大きさは {@link BatchPlan#maxBytes} で求める）
-   * @return 形
-   */
-  public HipShape hipShape(BatchPlan.Capacity capacity) {
-    return new HipShape(
-        architecture,
-        new HipShape.Capacity(
-            capacity.rows(),
-            capacity.events(),
-            capacity.transitions(),
-            capacity.actions(),
-            BatchPlan.maxBytes(format, capacity)),
-        bytes);
-  }
-
-  /**
-   * 手の扱いが決める s の作り方を、HIP 側の同じ作り方に対応させる。switch に default を書かないので、作り方を足すとここでコンパイルが通らなくなる。
+   * 手の扱いが決める s の作り方を、推論カーネルの演算に対応させる。switch に default を書かないので、作り方を足すとここでコンパイルが通らなくなる。
    *
    * @param role 価値グラフでの手の扱い
-   * @return HIP 側の作り方
+   * @return 推論カーネルで使う演算
    */
-  static HipComposition composition(Role role) {
+  static ScoreComposition composition(Role role) {
     return switch (role.composition()) {
-      case DISCARD_VALUE -> HipComposition.DISCARD_VALUE;
-      case RIICHI_GATE -> HipComposition.RIICHI_GATE;
-      case RESPONSE_GATE -> HipComposition.RESPONSE_GATE;
-      case TURN_GATE -> HipComposition.TURN_GATE;
-      case ZERO -> HipComposition.ZERO;
+      case DISCARD_VALUE -> ScoreComposition.DISCARD_VALUE;
+      case RIICHI_GATE -> ScoreComposition.RIICHI_GATE;
+      case RESPONSE_GATE -> ScoreComposition.RESPONSE_GATE;
+      case TURN_GATE -> ScoreComposition.TURN_GATE;
+      case ZERO -> ScoreComposition.ZERO;
     };
   }
 
@@ -401,21 +389,21 @@ public final class WeightLayout {
   private static final class Builder {
 
     private final InputFormat format;
-    private final HipArchitecture architecture;
+    private final CollectionArchitecture architecture;
     private final Map<String, long[]> shapes;
     private final Map<String, String> byName = new LinkedHashMap<>();
-    private final HipPack.Header header;
+    private final PackedWeightLayout.Header header;
     private final List<Placement> placements = new ArrayList<>();
-    private final Map<HipEmbedding.Slot, Embedding> embeddings =
-        new EnumMap<>(HipEmbedding.Slot.class);
+    private final Map<EmbeddingTable.Slot, Embedding> embeddings =
+        new EnumMap<>(EmbeddingTable.Slot.class);
     private final Set<String> used = new HashSet<>();
-    private long cursor = HipPack.HEADER_BYTES;
+    private long cursor = PackedWeightLayout.HEADER_BYTES;
 
-    Builder(InputFormat format, HipArchitecture architecture, Map<String, long[]> shapes) {
+    Builder(InputFormat format, CollectionArchitecture architecture, Map<String, long[]> shapes) {
       this.format = Objects.requireNonNull(format, "format");
       this.architecture = Objects.requireNonNull(architecture, "architecture");
       this.shapes = shapes;
-      header = new HipPack.Header(architecture);
+      header = new PackedWeightLayout.Header(architecture);
       for (String key : shapes.keySet()) {
         Name name = Name.parse(key);
         byName.put(name.child() + "/" + name.layer() + "/" + name.local(), key);
@@ -427,18 +415,21 @@ public final class WeightLayout {
       for (EmbeddingSource source : EmbeddingSource.of(format)) {
         embedding(source);
       }
-      header.weight(HipWeight.TILE_RELATION, 0, allocate(header.bytes(HipWeight.TILE_RELATION, 0)));
+      header.weight(
+          WeightField.TILE_RELATION, 0, allocate(header.bytes(WeightField.TILE_RELATION, 0)));
       for (int layer = 0; layer < architecture.depth(); layer++) {
-        place("encoder", layer, "attentionNorm", HipWeight.ATTENTION_NORM, layer, Conversion.FP32);
-        place("encoder", layer, "qkv", HipWeight.QKV, layer, Conversion.BF16);
-        place("encoder", layer, "qkvBias", HipWeight.QKV_BIAS, layer, Conversion.ROUNDED);
-        place("encoder", layer, "relation", HipWeight.RELATION_BIAS, layer, Conversion.FP32);
-        place("encoder", layer, "output", HipWeight.OUTPUT, layer, Conversion.BF16);
-        place("encoder", layer, "outputBias", HipWeight.OUTPUT_BIAS, layer, Conversion.ROUNDED);
-        HipFfn ffn = architecture.layer(layer).ffn();
+        place(
+            "encoder", layer, "attentionNorm", WeightField.ATTENTION_NORM, layer, Conversion.FP32);
+        place("encoder", layer, "qkv", WeightField.QKV, layer, Conversion.BF16);
+        place("encoder", layer, "qkvBias", WeightField.QKV_BIAS, layer, Conversion.ROUNDED);
+        place("encoder", layer, "relation", WeightField.RELATION_BIAS, layer, Conversion.FP32);
+        place("encoder", layer, "output", WeightField.OUTPUT, layer, Conversion.BF16);
+        place("encoder", layer, "outputBias", WeightField.OUTPUT_BIAS, layer, Conversion.ROUNDED);
+        FeedForwardShape ffn = architecture.layer(layer).ffn();
         for (TokenGroup group : ffn.groups()) {
-          FfnNames names = ffn instanceof HipFfn.Typed ? TYPED_FFN.get(group) : SHARED_FFN;
-          ffn("encoder", layer, names, HipWeight.ffnEntry(layer, group));
+          FfnNames names =
+              ffn instanceof FeedForwardShape.Typed ? TYPED_FFN.get(group) : SHARED_FFN;
+          ffn("encoder", layer, names, WeightField.ffnEntry(layer, group));
         }
       }
       for (TokenGroup group : architecture.finalGroups()) {
@@ -446,47 +437,49 @@ public final class WeightLayout {
             "finalNorm",
             0,
             FINAL_GAINS.get(group),
-            HipWeight.FINAL_NORM,
+            WeightField.FINAL_NORM,
             group.ordinal(),
             Conversion.FP32);
       }
-      place("candidate", 0, "tileEntry", HipWeight.TILE_ENTRY, 0, Conversion.BF16);
-      place("candidate", 0, "queryNorm", HipWeight.QUERY_NORM, 0, Conversion.FP32);
-      place("candidate", 0, "query", HipWeight.QUERY, 0, Conversion.BF16);
-      place("candidate", 0, "queryBias", HipWeight.QUERY_BIAS, 0, Conversion.ROUNDED);
-      place("candidate", 0, "keyValue", HipWeight.KEY_VALUE, 0, Conversion.BF16);
-      place("candidate", 0, "keyValueBias", HipWeight.KEY_VALUE_BIAS, 0, Conversion.ROUNDED);
-      place("candidate", 0, "codeKey", HipWeight.CODE_KEY, 0, Conversion.FP32);
-      place("candidate", 0, "codeValue", HipWeight.CODE_VALUE, 0, Conversion.FP32);
-      place("candidate", 0, "output", HipWeight.CANDIDATE_OUTPUT, 0, Conversion.BF16);
-      place("candidate", 0, "outputBias", HipWeight.CANDIDATE_OUTPUT_BIAS, 0, Conversion.ROUNDED);
-      ffn("candidate", 0, SHARED_FFN, HipWeight.CANDIDATE_FFN);
+      place("candidate", 0, "tileEntry", WeightField.TILE_ENTRY, 0, Conversion.BF16);
+      place("candidate", 0, "queryNorm", WeightField.QUERY_NORM, 0, Conversion.FP32);
+      place("candidate", 0, "query", WeightField.QUERY, 0, Conversion.BF16);
+      place("candidate", 0, "queryBias", WeightField.QUERY_BIAS, 0, Conversion.ROUNDED);
+      place("candidate", 0, "keyValue", WeightField.KEY_VALUE, 0, Conversion.BF16);
+      place("candidate", 0, "keyValueBias", WeightField.KEY_VALUE_BIAS, 0, Conversion.ROUNDED);
+      place("candidate", 0, "codeKey", WeightField.CODE_KEY, 0, Conversion.FP32);
+      place("candidate", 0, "codeValue", WeightField.CODE_VALUE, 0, Conversion.FP32);
+      place("candidate", 0, "output", WeightField.CANDIDATE_OUTPUT, 0, Conversion.BF16);
+      place("candidate", 0, "outputBias", WeightField.CANDIDATE_OUTPUT_BIAS, 0, Conversion.ROUNDED);
+      ffn("candidate", 0, SHARED_FFN, WeightField.CANDIDATE_FFN);
       if (architecture.reread()) {
-        place("reread", 0, "queryNorm", HipWeight.REREAD_QUERY_NORM, 0, Conversion.FP32);
-        place("reread", 0, "query", HipWeight.REREAD_QUERY, 0, Conversion.BF16);
-        place("reread", 0, "queryBias", HipWeight.REREAD_QUERY_BIAS, 0, Conversion.ROUNDED);
+        place("reread", 0, "queryNorm", WeightField.REREAD_QUERY_NORM, 0, Conversion.FP32);
+        place("reread", 0, "query", WeightField.REREAD_QUERY, 0, Conversion.BF16);
+        place("reread", 0, "queryBias", WeightField.REREAD_QUERY_BIAS, 0, Conversion.ROUNDED);
         String norm = "eventNorm";
-        place("reread", 0, norm, HipWeight.REREAD_EVENT_NORM, 0, Conversion.FP32);
-        place("reread", 0, "keyValue", HipWeight.REREAD_KEY_VALUE, 0, Conversion.BF16);
-        place("reread", 0, "keyValueBias", HipWeight.REREAD_KEY_VALUE_BIAS, 0, Conversion.ROUNDED);
-        place("reread", 0, "codeKey", HipWeight.REREAD_CODE_KEY, 0, Conversion.FP32);
-        place("reread", 0, "codeValue", HipWeight.REREAD_CODE_VALUE, 0, Conversion.FP32);
-        place("reread", 0, "output", HipWeight.REREAD_OUTPUT, 0, Conversion.BF16);
-        place("reread", 0, "outputBias", HipWeight.REREAD_OUTPUT_BIAS, 0, Conversion.ROUNDED);
+        place("reread", 0, norm, WeightField.REREAD_EVENT_NORM, 0, Conversion.FP32);
+        place("reread", 0, "keyValue", WeightField.REREAD_KEY_VALUE, 0, Conversion.BF16);
+        place(
+            "reread", 0, "keyValueBias", WeightField.REREAD_KEY_VALUE_BIAS, 0, Conversion.ROUNDED);
+        place("reread", 0, "codeKey", WeightField.REREAD_CODE_KEY, 0, Conversion.FP32);
+        place("reread", 0, "codeValue", WeightField.REREAD_CODE_VALUE, 0, Conversion.FP32);
+        place("reread", 0, "output", WeightField.REREAD_OUTPUT, 0, Conversion.BF16);
+        place("reread", 0, "outputBias", WeightField.REREAD_OUTPUT_BIAS, 0, Conversion.ROUNDED);
       }
-      place("discardValue", 0, "norm", HipWeight.DISCARD_NORM, 0, Conversion.FP32);
-      place("discardValue", 0, "hidden", HipWeight.DISCARD_HIDDEN, 0, Conversion.BF16);
-      place("discardValue", 0, "hiddenBias", HipWeight.DISCARD_HIDDEN_BIAS, 0, Conversion.ROUNDED);
-      place("discardValue", 0, "output", HipWeight.DISCARD_OUTPUT, 0, Conversion.FP32);
-      place("discardValue", 0, "exact", HipWeight.DISCARD_EXACT, 0, Conversion.FP32);
-      place("gates", 0, "norm", HipWeight.GATE_NORM, 0, Conversion.FP32);
-      place("gates", 0, "hidden", HipWeight.GATE_HIDDEN, 0, Conversion.BF16);
-      place("gates", 0, "hiddenBias", HipWeight.GATE_HIDDEN_BIAS, 0, Conversion.ROUNDED);
-      place("gates", 0, "kindOffset", HipWeight.GATE_KIND_OFFSET, 0, Conversion.FP32);
-      place("gates", 0, "exactProjection", HipWeight.GATE_EXACT_PROJECTION, 0, Conversion.FP32);
-      place("gates", 0, "output", HipWeight.GATE_OUTPUT, 0, Conversion.FP32);
-      place("gates", 0, "outputBias", HipWeight.GATE_OUTPUT_BIAS, 0, Conversion.FP32);
-      place("gates", 0, "exactOutput", HipWeight.GATE_EXACT_OUTPUT, 0, Conversion.FP32);
+      place("discardValue", 0, "norm", WeightField.DISCARD_NORM, 0, Conversion.FP32);
+      place("discardValue", 0, "hidden", WeightField.DISCARD_HIDDEN, 0, Conversion.BF16);
+      place(
+          "discardValue", 0, "hiddenBias", WeightField.DISCARD_HIDDEN_BIAS, 0, Conversion.ROUNDED);
+      place("discardValue", 0, "output", WeightField.DISCARD_OUTPUT, 0, Conversion.FP32);
+      place("discardValue", 0, "exact", WeightField.DISCARD_EXACT, 0, Conversion.FP32);
+      place("gates", 0, "norm", WeightField.GATE_NORM, 0, Conversion.FP32);
+      place("gates", 0, "hidden", WeightField.GATE_HIDDEN, 0, Conversion.BF16);
+      place("gates", 0, "hiddenBias", WeightField.GATE_HIDDEN_BIAS, 0, Conversion.ROUNDED);
+      place("gates", 0, "kindOffset", WeightField.GATE_KIND_OFFSET, 0, Conversion.FP32);
+      place("gates", 0, "exactProjection", WeightField.GATE_EXACT_PROJECTION, 0, Conversion.FP32);
+      place("gates", 0, "output", WeightField.GATE_OUTPUT, 0, Conversion.FP32);
+      place("gates", 0, "outputBias", WeightField.GATE_OUTPUT_BIAS, 0, Conversion.FP32);
+      place("gates", 0, "exactOutput", WeightField.GATE_EXACT_OUTPUT, 0, Conversion.FP32);
       long countOffset = -1;
       long segmentsOffset = -1;
       final boolean core = format.has(InputFeature.CANDIDATE_SEGMENTS);
@@ -499,7 +492,7 @@ public final class WeightLayout {
         append(child, "gate", Conversion.FP32, codes, width);
         append(child, "tile", Conversion.BF16, width, hidden);
         append(child, "output", Conversion.BF16, hidden, width);
-        cursor = HipPack.align(cursor);
+        cursor = PackedWeightLayout.align(cursor);
       }
       if (core) {
         String child = "candidateFeatures/segments";
@@ -508,7 +501,7 @@ public final class WeightLayout {
         for (var slot : format.candidateCodes().slots()) {
           append(child, slot.parameter(), Conversion.FP32, slot.rows(), width);
         }
-        cursor = HipPack.align(cursor);
+        cursor = PackedWeightLayout.align(cursor);
       }
       List<String> unused = new ArrayList<>();
       for (String key : shapes.keySet()) {
@@ -517,7 +510,8 @@ public final class WeightLayout {
         }
       }
       if (!unused.isEmpty()) {
-        throw new IllegalArgumentException("inference parameters without a HIP slot: " + unused);
+        throw new IllegalArgumentException(
+            "inference parameters without a weight pack slot: " + unused);
       }
       return new WeightLayout(
           format,
@@ -534,43 +528,45 @@ public final class WeightLayout {
     private void schema() {
       long[] relation = shape("encoder", 0, "relation");
       header
-          .schema(HipSchema.ROW_FIRST_EVENT, RowColumn.FIRST_EVENT.ordinal())
-          .schema(HipSchema.ROW_EVENTS, RowColumn.EVENTS.ordinal())
-          .schema(HipSchema.ROW_FIRST_ACTION, RowColumn.FIRST_ACTION.ordinal())
-          .schema(HipSchema.ROW_ACTIONS, RowColumn.ACTIONS.ordinal())
-          .schema(HipSchema.ROW_FIRST_TRANSITION, RowColumn.FIRST_TRANSITION.ordinal())
-          .schema(HipSchema.ROW_TRANSITIONS, RowColumn.TRANSITIONS.ordinal())
-          .schema(HipSchema.ACTION_ROW, ActionColumn.ROW.ordinal())
-          .schema(HipSchema.ACTION_FIRST_TRANSITION, ActionColumn.FIRST_TRANSITION.ordinal())
-          .schema(HipSchema.ACTION_TRANSITIONS, ActionColumn.TRANSITIONS.ordinal())
-          .schema(HipSchema.ACTION_ROLE, ActionColumn.ROLE.ordinal())
-          .schema(HipSchema.ACTION_BASE, ActionColumn.BASE.ordinal())
-          .schema(HipSchema.ACTION_REPRESENTATIVE, ActionColumn.REPRESENTATIVE.ordinal())
-          .schema(HipSchema.RELATION_TILE, format.relation().column(RelationAttribute.TILE, 0))
-          .schema(HipSchema.RELATION_OWNER, format.relation().column(RelationAttribute.OWNER, 0))
-          .schema(HipSchema.RELATION_EVENT, format.relation().column(RelationAttribute.EVENT, 0))
+          .schema(ColumnIndex.ROW_FIRST_EVENT, RowColumn.FIRST_EVENT.ordinal())
+          .schema(ColumnIndex.ROW_EVENTS, RowColumn.EVENTS.ordinal())
+          .schema(ColumnIndex.ROW_FIRST_ACTION, RowColumn.FIRST_ACTION.ordinal())
+          .schema(ColumnIndex.ROW_ACTIONS, RowColumn.ACTIONS.ordinal())
+          .schema(ColumnIndex.ROW_FIRST_TRANSITION, RowColumn.FIRST_TRANSITION.ordinal())
+          .schema(ColumnIndex.ROW_TRANSITIONS, RowColumn.TRANSITIONS.ordinal())
+          .schema(ColumnIndex.ACTION_ROW, ActionColumn.ROW.ordinal())
+          .schema(ColumnIndex.ACTION_FIRST_TRANSITION, ActionColumn.FIRST_TRANSITION.ordinal())
+          .schema(ColumnIndex.ACTION_TRANSITIONS, ActionColumn.TRANSITIONS.ordinal())
+          .schema(ColumnIndex.ACTION_ROLE, ActionColumn.ROLE.ordinal())
+          .schema(ColumnIndex.ACTION_BASE, ActionColumn.BASE.ordinal())
+          .schema(ColumnIndex.ACTION_REPRESENTATIVE, ActionColumn.REPRESENTATIVE.ordinal())
+          .schema(ColumnIndex.RELATION_TILE, format.relation().column(RelationAttribute.TILE, 0))
+          .schema(ColumnIndex.RELATION_OWNER, format.relation().column(RelationAttribute.OWNER, 0))
+          .schema(ColumnIndex.RELATION_EVENT, format.relation().column(RelationAttribute.EVENT, 0))
           .schema(
-              HipSchema.RELATION_RIICHI,
+              ColumnIndex.RELATION_RIICHI,
               format.relation().column(RelationAttribute.OWNER_RIICHI_EVENT, 0))
           .schema(
-              HipSchema.RELATION_LAST_DISCARD,
+              ColumnIndex.RELATION_LAST_DISCARD,
               format.relation().column(RelationAttribute.OWNER_LAST_DISCARD_EVENT, 0))
-          .schema(HipSchema.RELATION_LINK, format.relation().column(RelationAttribute.LINK, 0))
-          .schema(HipSchema.RELATION_SAFETY, format.relation().column(RelationAttribute.SAFETY, 0))
+          .schema(ColumnIndex.RELATION_LINK, format.relation().column(RelationAttribute.LINK, 0))
           .schema(
-              HipSchema.TRANSITION_CALL_DISCARD,
+              ColumnIndex.RELATION_SAFETY, format.relation().column(RelationAttribute.SAFETY, 0))
+          .schema(
+              ColumnIndex.TRANSITION_CALL_DISCARD,
               format.transition().column(TransitionField.CALL_DISCARD))
           .schema(
-              HipSchema.TRANSITION_MAIN_TILE, format.transition().column(TransitionField.MAIN_TILE))
-          .schema(HipSchema.RELATION_ROWS, Math.toIntExact(relation[0]));
-      if (Tensor.values().length != HipSection.values().length) {
-        throw new IllegalStateException("HIP sections do not match the input tensors");
+              ColumnIndex.TRANSITION_MAIN_TILE,
+              format.transition().column(TransitionField.MAIN_TILE))
+          .schema(ColumnIndex.RELATION_ROWS, Math.toIntExact(relation[0]));
+      if (Tensor.values().length != InputSection.values().length) {
+        throw new IllegalStateException("collection input sections do not match the input tensors");
       }
       for (Tensor tensor : Tensor.values()) {
-        HipSection section = HipSection.valueOf(tensor.name());
+        InputSection section = InputSection.valueOf(tensor.name());
         if (section.element().bytes() != tensor.element().bytes()) {
           throw new IllegalStateException(
-              tensor + " element differs from the HIP section " + section);
+              tensor + " element differs from the collection input section " + section);
         }
         // V4 の候補区分を含め、幅は保存した形が選ぶ入力形式で決まる。
         int width = format.width(tensor);
@@ -605,7 +601,8 @@ public final class WeightLayout {
       requireShape(biasKey, hidden);
       // 局・席・牌・イベントは、層 0 の QKV まで折り込んだ表（1 行に FP32 を 3A 個）を持つ。遷移は Attention に入らないので持たない。
       boolean folding =
-          HipCapabilities.foldsLayerZero(hidden) && source.slot() != HipEmbedding.Slot.TRANSITION;
+          CollectionCapabilities.foldsLayerZero(hidden)
+              && source.slot() != EmbeddingTable.Slot.TRANSITION;
       long foldRow = 3L * architecture.attention() * Float.BYTES;
       List<Group> groups = new ArrayList<>();
       for (int[] members : groupColumns(source)) {
@@ -640,7 +637,7 @@ public final class WeightLayout {
               biasOffset,
               foldOffset);
       embeddings.put(source.slot(), embedding);
-      List<HipEmbedding.Table> tables = new ArrayList<>();
+      List<EmbeddingTable.Table> tables = new ArrayList<>();
       int[] embedded = source.embedded();
       for (Group group : groups) {
         int[] columns = new int[group.members().length];
@@ -648,7 +645,7 @@ public final class WeightLayout {
           columns[m] = embedded[group.members()[m]];
         }
         tables.add(
-            new HipEmbedding.Table(
+            new EmbeddingTable.Table(
                 Math.toIntExact(group.offset()),
                 group.rows(),
                 columns,
@@ -657,7 +654,7 @@ public final class WeightLayout {
       }
       header.embedding(
           source.slot(),
-          new HipEmbedding(
+          new EmbeddingTable(
               EmbeddingSource.section(source.category()),
               EmbeddingSource.section(source.scalar()),
               EmbeddingSource.section(source.exact()),
@@ -669,9 +666,9 @@ public final class WeightLayout {
     }
 
     /**
-     * 埋め込む列を組に分ける。語彙の大きい列から順に、語彙の積が行数の上限に収まり、列の数が {@link HipEmbedding#MAX_MEMBERS} に
+     * 埋め込む列を組に分ける。語彙の大きい列から順に、語彙の積が行数の上限に収まり、列の数が {@link EmbeddingTable#MAX_MEMBERS} に
      * 満たない最初の組に入れる。組の中は列の順に並べる。
-     * 行数の上限には、組の数が {@link HipEmbedding#MAX_TABLES} 以下になる最も小さい候補を使う。
+     * 行数の上限には、組の数が {@link EmbeddingTable#MAX_TABLES} 以下になる最も小さい候補を使う。
      */
     private static List<int[]> groupColumns(EmbeddingSource source) {
       Integer[] order = new Integer[source.embeddedCount()];
@@ -697,7 +694,7 @@ public final class WeightLayout {
           int target = -1;
           for (int g = 0; g < groups.size(); g++) {
             if ((long) products.get(g) * vocabulary <= cap
-                && groups.get(g).size() < HipEmbedding.MAX_MEMBERS) {
+                && groups.get(g).size() < EmbeddingTable.MAX_MEMBERS) {
               target = g;
               break;
             }
@@ -710,7 +707,7 @@ public final class WeightLayout {
           groups.get(target).add(column);
           products.set(target, products.get(target) * vocabulary);
         }
-        if (fits && groups.size() <= HipEmbedding.MAX_TABLES) {
+        if (fits && groups.size() <= EmbeddingTable.MAX_TABLES) {
           List<int[]> result = new ArrayList<>();
           for (List<Integer> group : groups) {
             result.add(group.stream().mapToInt(Integer::intValue).sorted().toArray());
@@ -719,20 +716,25 @@ public final class WeightLayout {
         }
       }
       throw new IllegalStateException(
-          source + " embedding needs more than " + HipEmbedding.MAX_TABLES + " folded tables");
+          source + " embedding needs more than " + EmbeddingTable.MAX_TABLES + " folded tables");
     }
 
     /** FFN 1 つ分（ゲイン、上りの射影とバイアス、下りの射影とバイアス）を、FFN のスロットの 1 つの項目に置く。 */
     private void ffn(String child, int layer, FfnNames names, int entry) {
-      place(child, layer, names.norm(), HipWeight.FFN_NORM, entry, Conversion.FP32);
-      place(child, layer, names.up(), HipWeight.UP, entry, Conversion.BF16);
-      place(child, layer, names.upBias(), HipWeight.UP_BIAS, entry, Conversion.ROUNDED);
-      place(child, layer, names.down(), HipWeight.DOWN, entry, Conversion.BF16);
-      place(child, layer, names.downBias(), HipWeight.DOWN_BIAS, entry, Conversion.ROUNDED);
+      place(child, layer, names.norm(), WeightField.FFN_NORM, entry, Conversion.FP32);
+      place(child, layer, names.up(), WeightField.UP, entry, Conversion.BF16);
+      place(child, layer, names.upBias(), WeightField.UP_BIAS, entry, Conversion.ROUNDED);
+      place(child, layer, names.down(), WeightField.DOWN, entry, Conversion.BF16);
+      place(child, layer, names.downBias(), WeightField.DOWN_BIAS, entry, Conversion.ROUNDED);
     }
 
     private void place(
-        String child, int layer, String local, HipWeight weight, int entry, Conversion conversion) {
+        String child,
+        int layer,
+        String local,
+        WeightField weight,
+        int entry,
+        Conversion conversion) {
       String key = key(child, layer, local);
       long[] parameterShape = shapes.get(key);
       long elements = 1;
@@ -744,7 +746,7 @@ public final class WeightLayout {
             key
                 + " has "
                 + elements
-                + " elements but the HIP slot "
+                + " elements but the weight pack slot "
                 + weight
                 + " entry "
                 + entry
@@ -797,7 +799,7 @@ public final class WeightLayout {
 
     private long allocate(long size) {
       long offset = cursor;
-      cursor = HipPack.align(cursor + size);
+      cursor = PackedWeightLayout.align(cursor + size);
       if (cursor > Integer.MAX_VALUE) {
         throw new IllegalStateException("weight pack exceeds 2 GiB");
       }

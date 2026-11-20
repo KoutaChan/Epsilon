@@ -29,12 +29,12 @@ import com.epsilon.prism.collect.Collector;
 import com.epsilon.prism.collect.RowSink;
 import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.core.TwinDiscard;
-import com.epsilon.prism.hip.HipArchitecture;
-import com.epsilon.prism.hip.HipCounts;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.Tokenizer;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.TokenCounts;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.noise.UraSettings;
@@ -208,11 +208,11 @@ public class VariantMismatchTest {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = new PrismNetwork(THREE_PLAYER, PrismShape.standard(2));
       network.initialize(manager);
-      HipArchitecture three = WeightLayout.of(network).architecture();
-      HipCounts four =
-          new HipCounts(4, 34, three.counts().keyCodes(), three.counts().tileRelations(), 110);
-      HipArchitecture other =
-          new HipArchitecture(
+      CollectionArchitecture three = WeightLayout.of(network).architecture();
+      TokenCounts four =
+          new TokenCounts(4, 34, three.counts().keyCodes(), three.counts().tileRelations(), 110);
+      CollectionArchitecture other =
+          new CollectionArchitecture(
               three.hidden(),
               three.epsilon(),
               three.scale(),

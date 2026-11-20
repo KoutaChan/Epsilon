@@ -8,19 +8,19 @@ import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import com.epsilon.agent.facts.MahjongTileRelation;
-import com.epsilon.prism.hip.RelationCodes;
-import com.epsilon.prism.hip.RelationSegment;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.input.InputSchema.RelationAttribute;
+import com.epsilon.prism.kernel.RelationCodes;
+import com.epsilon.prism.kernel.RelationSegment;
 import java.util.function.Supplier;
 
 /**
  * 関係のバイアスのコード。トークンの組（クエリ i, キー j）ごとに 4 bit のコードを 7 セグメント分作り、下位のセグメントから 4 bit ずつ
  * INT16 の 2 ワードに詰める。{@code packedRelationScaledDotProductAttention} が読む形で、セグメント s のコード c はバイアスの表の
- * 行 16s + c を引く。整数の演算だけで作るので、CPU と GPU で同じ値になる。HIP の推論の K0 と、GPU の学習の自前のカーネル（{@link RelationCodes}、T0）
- * も同じ式で作る。T0 の結果は、この eager のコードとパディングの位置までビット単位で一致する。
+ * 行 16s + c を引く。整数の演算だけで作るので、CPU と GPU で同じ値になる。推論の関係コードカーネルと、GPU で学習するときの {@link RelationCodes}
+ * も同じ式で作る。学習時の結果は、この eager のコードとパディングの位置までビット単位で一致する。
  *
  * <p>属性の値は、入力形式が関係の属性に書く値のまま使う（0 はなし、番号は番号 + 1）。トークンの型は位置で決まる（{@link TokenType}）。
  *
@@ -107,7 +107,7 @@ final class RelationClass {
   }
 
   /**
-   * 先頭の {@code queries} 個を問い、全トークンをキーとしてコード [行, queries, S, 2] を作る。
+   * 先頭の {@code queries} 個をクエリに、全トークンをキーとしてコード [行, queries, S, 2] を作る。
    * パディングの属性は 0。結果の INT16 配列だけを入力のマネージャーに残す。
    */
   static NDArray codes(NetworkInputs inputs, BatchIndex index, int queries) {
@@ -132,7 +132,7 @@ final class RelationClass {
   }
 
   /**
-   * コードを自前のカーネルで作る（GPU の学習で使う）。全トークンを問いとし、eager とビット単位で一致する。
+   * コードを自前のカーネルで作る（GPU の学習で使う）。全トークンをクエリとし、eager とビット単位で一致する。
    *
    * @param kernel コードを作るカーネル（学習のレーンの計算ストリームに積む）
    * @param inputs 入力
@@ -155,7 +155,7 @@ final class RelationClass {
   }
 
   /**
-   * 先頭 Q 個を問い、全 S 個をキーとしてコードを作る。問いの属性は [行, Q, 1]、キーの属性は [行, 1, S]。
+   * 先頭 Q 個をクエリに、全 S 個をキーとしてコードを作る。クエリの属性は [行, Q, 1]、キーの属性は [行, 1, S]。
    *
    * <p>各セグメントの [行, Q, S] の配列はワードに足した時点で捨てる。同時に持つのは下位・上位のワードと 1 セグメント分だけでよい。
    */
@@ -191,7 +191,7 @@ final class RelationClass {
      * @param attributes 関係の属性 [行, S, 属性]（INT32）
      * @param tokenTypes 位置ごとのトークンの型 [S]（INT32）
      * @param tileRelations 牌の関係のクラス [T·T]（INT32）
-     * @param queries 問いにする先頭のトークンの数
+     * @param queries クエリにする先頭のトークンの数
      */
     Pairs(
         InputFormat format,
@@ -358,7 +358,7 @@ final class RelationClass {
       return array;
     }
 
-    /** 問いに使う先頭の Q 個 [行, Q, 1]。 */
+    /** クエリに使う先頭の Q 個 [行, Q, 1]。 */
     private NDArray query(NDArray column) {
       long queries = pair.get(1);
       NDArray prefix = queries == pair.get(2) ? column : column.get(new NDIndex(":, :{}", queries));

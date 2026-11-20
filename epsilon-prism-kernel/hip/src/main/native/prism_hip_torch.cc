@@ -53,6 +53,28 @@ const std::array<DataAccessor, kElements>& accessors() {
 
 }  // namespace
 
+// DJL がそのスレッドとデバイスで使っているストリームにだけ学習の演算を積む。
+hipStream_t trainingStream(hipStream_t expected) {
+  using CurrentStream = int32_t (*)(int32_t, void**);
+  static const auto current = [] {
+    void* torch = dlopen("libtorch_hip.so", RTLD_LAZY | RTLD_NOLOAD);
+    if (!torch) throw std::runtime_error("libtorch_hip.so is not loaded");
+    return reinterpret_cast<CurrentStream>(dlsym(torch, "aoti_torch_get_current_cuda_stream"));
+  }();
+  if (!current) throw std::runtime_error("libtorch_hip.so does not export the current training stream");
+  int device;
+  PRISM_HIP(hipGetDevice(&device));
+  if (expected) {
+    int owner;
+    PRISM_HIP(hipStreamGetDevice(expected, &owner));
+    if (owner != device) throw std::invalid_argument("training stream belongs to another device");
+  }
+  void* active = nullptr;
+  if (current(device, &active) != 0) throw std::runtime_error("cannot query the current training stream");
+  if (expected != active) throw std::invalid_argument("training stream does not match the current PyTorch stream");
+  return expected;
+}
+
 void* tensorData(int64_t handle, TensorElement element, int device) {
   const int index = static_cast<int>(element);
   if (handle == 0) {

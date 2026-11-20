@@ -46,7 +46,7 @@ public final class GrpBackground implements AutoCloseable {
   /** 閉じるときに実行中の作業を待つ間、ログを 1 行書く間隔（秒）。 */
   private static final long CLOSE_NOTE_SECONDS = 60;
 
-  /** 学び直しの途中で、頼みが取り消されたかを control から読む間隔（ナノ秒）。 */
+  /** 学び直しの途中で、要求が取り消されたかを control から読む間隔（ナノ秒）。 */
   private static final long CANCEL_CHECK_NANOS = TimeUnit.SECONDS.toNanos(1);
 
   /** 作業の合間に通るゲート。run が一時停止している間は戻らない。 */
@@ -215,8 +215,8 @@ public final class GrpBackground implements AutoCloseable {
   }
 
   /**
-   * 手動の学び直しの頼みに従い、予定の学び直しを行う。頼みごとの失敗は警告を書き、その頼みは従ったものとして移す。メモリ切れなどの
-   * Error で落ちた頼みも移す（残すと、裏の作業が動くたびに同じ学び直しをやり直す）。学習の途中で取り消された頼みは、関門に通さず、
+   * 手動の再学習の要求に従い、予定の学び直しを行う。要求ごとの失敗は警告を書き、その要求を処理済みとして移す。メモリ切れなどの
+   * Error で落ちた要求も移す（残すと、裏の作業が動くたびに同じ学び直しをやり直す）。学習の途中で取り消された要求は、関門に通さず、
    * 移さない。
    */
   private void refits(int sealed) throws IOException, InterruptedException {
@@ -261,7 +261,7 @@ public final class GrpBackground implements AutoCloseable {
   }
 
   /**
-   * 次に従う学び直しの頼み。番号の最も小さい頼みのうち、時点のコホートが確定していて、取り消しの頼みが指していないもの。
+   * 次に処理する再学習の要求。番号の最も小さい要求のうち、時点のコホートが確定していて、取り消し要求が指していないもの。
    *
    * @param sealed 最新の確定済みのコホート
    * @return 無ければ null
@@ -279,8 +279,8 @@ public final class GrpBackground implements AutoCloseable {
   }
 
   /**
-   * 従っている学び直しの頼みが取り消されたかを見る。取り消されたのは、取り消しの頼みが指しているか、安全点の確かめがもう control/done に
-   * 移したとき。学習の毎歩の前に呼ばれるので、control を読むのは {@link #CANCEL_CHECK_NANOS} に 1 回だけにする。1 度取り消されたら
+   * 処理中の再学習の要求が取り消されたかを見る。取り消されたのは、取り消し要求が指しているか、セーフポイントでの確認がもう control/done に
+   * 移したとき。学習の各ステップの前に呼ばれるので、control を読むのは {@link #CANCEL_CHECK_NANOS} に 1 回だけにする。1 度取り消されたら
    * 変わらない。control が読めなければ警告を書き、取り消されていないとみなす。
    */
   private final class CancelWatch {

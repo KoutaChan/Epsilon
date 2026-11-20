@@ -6,15 +6,15 @@ import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.index.NDIndex;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.nn.Parameter;
-import com.epsilon.prism.hip.CandidateKernels;
-import com.epsilon.prism.hip.HipCapabilities;
-import com.epsilon.prism.hip.HipPlanOptions.SegmentLayout;
 import com.epsilon.prism.input.CandidateCodes;
 import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.kernel.CandidateKernels;
+import com.epsilon.prism.kernel.CollectionCapabilities;
+import com.epsilon.prism.kernel.CollectionPlanOptions.SegmentLayout;
 
 /**
- * 各区分の u8 コードで独立した表を引き、既存のキー・値の補正に加えてから同じ注意演算に渡す。
+ * 各区分の u8 コードで独立した表を引き、既存のキー・値の補正に加えてから同じ Attention 演算に渡す。
  * 各表の列は前半がキー、後半が値。
  */
 final class CandidateSegments extends Module {
@@ -38,7 +38,7 @@ final class CandidateSegments extends Module {
 
   public boolean fusedAttention(Context context) {
     var tape = context.tape();
-    return HipCapabilities.supports(width, true, false)
+    return CollectionCapabilities.supports(width, true, false)
         && tape != null
         && tape.fusedCandidateAttention();
   }
@@ -51,14 +51,11 @@ final class CandidateSegments extends Module {
       NDArray memory,
       NDArray base) {
     var tape = context.tape();
-    var stage = FitProbe.Stage.CROSS_PROJECTION_BACKWARD;
-    if (context.probe().detailed()) {
-      context.probe().mark(FitProbe.Stage.CANDIDATE);
-    }
+    if (tape == null) return null;
     var args =
         new CandidateKernels.CandidateInput(
-            context.probeCut(context.toFloat(query), stage, 0),
-            context.probeCut(context.toFloat(memory), stage, 0),
+            context.toFloat(query),
+            context.toFloat(memory),
             base,
             weights(context),
             inputs.get(Tensor.TRANSITION_CODE),

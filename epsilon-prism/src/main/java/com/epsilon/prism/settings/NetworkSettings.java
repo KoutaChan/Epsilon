@@ -79,7 +79,7 @@ public sealed interface NetworkSettings {
     }
   }
 
-  /** S・因果注意の試験台用設定。 */
+  /** イベントの Attention に因果マスクを使う V4_S の設定。 */
   @Case("V4_S")
   record V4Small() implements NetworkSettings {
     @Override
@@ -88,7 +88,7 @@ public sealed interface NetworkSettings {
     }
   }
 
-  /** M・因果注意の試験台用設定。 */
+  /** イベントの Attention に因果マスクを使う V4_M の設定。 */
   @Case("V4_M")
   record V4Medium() implements NetworkSettings {
     @Override

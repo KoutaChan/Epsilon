@@ -15,7 +15,7 @@
     <maven.compiler.source>${java.version}</maven.compiler.source>
     <maven.compiler.target>${java.version}</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <surefire.excludedGroups>native,rocm</surefire.excludedGroups>
+    <surefire.excludedGroups>native,rocm,gpu</surefire.excludedGroups>
     <!-- 時間のかかるテスト（slow の組）は普段は外し、-Pslow-tests を付けたときだけ流す -->
     <surefire.excludedSlow>,slow</surefire.excludedSlow>
     <testng.version>7.11.0</testng.version>
@@ -110,7 +110,7 @@
     <profile>
       <id>native-tests</id>
       <properties>
-        <surefire.excludedGroups>rocm</surefire.excludedGroups>
+        <surefire.excludedGroups>rocm,gpu</surefire.excludedGroups>
       </properties>
     </profile>
     <profile>

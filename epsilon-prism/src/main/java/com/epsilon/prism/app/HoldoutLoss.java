@@ -21,7 +21,6 @@ import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.eval.GameEstimate;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.model.PrismLoss;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PolicyRequest;
 import com.epsilon.prism.rows.CohortWriter;
@@ -65,7 +64,7 @@ public record HoldoutLoss(
       int cohort,
       String group,
       GameEstimate loss,
-      InferencePath backend,
+      String backend,
       Precision precision,
       Difference difference) {}
 

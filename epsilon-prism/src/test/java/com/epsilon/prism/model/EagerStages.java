@@ -13,14 +13,15 @@ import ai.djl.training.ParameterStore;
 import ai.djl.util.Pair;
 import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.agent.runtime.Precision;
-import com.epsilon.prism.hip.HipLayer;
-import com.epsilon.prism.hip.LayerRole;
+import com.epsilon.prism.backend.WeightLayout;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputBlob.Axis;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.kernel.EncoderLayerShape;
+import com.epsilon.prism.kernel.LayerRole;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -164,7 +165,7 @@ public final class EagerStages {
    */
   public static Stages run(
       PrismNetwork network, ParameterStore store, NetworkInputs inputs, Precision precision) {
-    if (network.shape().eagerOnly()) {
+    if (!WeightLayout.supports(network.shape())) {
       throw new IllegalArgumentException("Stage inspection requires a HIP-compatible shape");
     }
     InputFormat format = inputs.format();
@@ -208,7 +209,7 @@ public final class EagerStages {
     List<float[]> attention = new ArrayList<>();
     List<float[]> layers = new ArrayList<>();
     List<float[]> eventKeyValues = new ArrayList<>();
-    List<HipLayer> roles = shape.layers();
+    List<EncoderLayerShape> roles = shape.layers();
     NDArray events = null;
     EncoderLayer.FixedTokens fixedTokens = null;
     for (int layer = 0; layer < parts.encoders().size(); layer++) {
@@ -239,7 +240,7 @@ public final class EagerStages {
       fixedTokens = encoder.fixed(context, input, mask, codes);
       layers.add(sectioned(floats(fixedTokens.withEvents(null)), rows, fixed, hidden, true));
     }
-    NDArray states = parts.finalNorm().apply(context, fixedTokens, parts.encoders().size() - 1);
+    NDArray states = parts.finalNorm().apply(context, fixedTokens);
     float[] stateValues = sectioned(floats(states), rows, fixed, hidden, true);
 
     Map<String, Parameter> candidate = parameters(parts.candidate());

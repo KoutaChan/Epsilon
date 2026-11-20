@@ -18,7 +18,7 @@ import com.epsilon.prism.backend.HipParity;
 import com.epsilon.prism.backend.V4BitFixture;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.TrainingKernels;
+import com.epsilon.prism.kernel.TrainingKernels;
 import com.epsilon.prism.model.Batches.Batch;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,7 +41,7 @@ import org.testng.annotations.Test;
  * 乱したネットワークを比べる。バッチにはイベントの数（S）の違う行を混ぜる。どの経路でも、勾配がちょうど 0 のパラメーターはない。
  *
  * <ul>
- *   <li>BF16: HIP の経路（関係のコードの T0、Attention の t1、正規化の t2、勾配の VJP の注入）。違うのは Attention と正規化の FP32 の
+ *   <li>BF16: HIP の経路（関係のコード、Attention、正規化、勾配の VJP の注入）。違うのは Attention と正規化の FP32 の
  *       和の順と、そこから来る BF16 の丸めだけなので、テンソルごとの相対 L2 の差で見る。つなぎ込みの誤りと演算の誤りを見分けるため、
  *       ホストの参照の実装（{@link ReferenceAttention}）を差し込んだ経路も出す。1 ステップの時間も djl と HIP の経路で出す。型ごとの FFN の
  *       アームは、丸めのずれの揺れを均すため、複数の種の平均で見る（{@link #typedTapeMatchesTheDjlOperator}）。

@@ -20,7 +20,7 @@ import java.util.Objects;
  */
 public final class BatchPlan {
 
-  /** バッチの中で、各テンソルの領域の先頭をそろえるバイト数。HostBatch と HIP 側の表はこの値を使う。 */
+  /** バッチの中で、各テンソルの領域の先頭をそろえるバイト数。ホストのバッチとカーネルの入力配置はこの値を使う。 */
   public static final int TENSOR_ALIGNMENT = 256;
 
   private static final Tensor[] TENSORS = Tensor.values();

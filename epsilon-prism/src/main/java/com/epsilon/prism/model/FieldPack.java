@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * トークンのフィールドを、埋め込みの入力に並べる。
  *
  * <p>2 値のフィールド（{@link FieldSpec.Coding#FLAG}）は埋め込まず、0/1 の数値のまま使う。ほかのフィールドは {@link TokenLayout} の
- * 名前空間で表を引く。表の行の数は {@link TokenLayout#tableSize()} のままにして、ライターや HIP と同じ行番号を使う（2 値のフィールドの
+ * 名前空間で表を引く。表の行の数は {@link TokenLayout#tableSize()} のままにして、入力ライターや推論カーネルと同じ行番号を使う（2 値のフィールドの
  * 名前空間の行は引かない）。並べる順は、埋め込むフィールドを列の順に並べた [埋め込み × d]、2 値のフィールドを列の順に並べたフラグ、
  * 呼び出し側が渡す数値の順。
  *

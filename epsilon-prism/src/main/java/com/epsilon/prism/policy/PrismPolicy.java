@@ -5,13 +5,16 @@ import com.epsilon.agent.observe.ObservationBatch;
 import com.epsilon.agent.policy.BatchedPolicy;
 import com.epsilon.agent.policy.Evaluation;
 import com.epsilon.agent.runtime.DecisionInferenceIngress;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.core.Greedy;
 import com.epsilon.prism.core.TwinDiscard;
+import com.epsilon.prism.kernel.KernelProvider.Backend;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.concurrent.CompletableFuture;
 
@@ -73,6 +76,16 @@ public final class PrismPolicy implements BatchedPolicy {
     singleReader = new Observation(variant);
   }
 
+  /** 開いた方策が実際に使う計算方法を返す。 */
+  public Kernels inference() {
+    return network.inference();
+  }
+
+  /** 開いた方策が専用カーネルを使うなら、そのバックエンドを返す。 */
+  public Optional<Backend> backend() {
+    return network.backend();
+  }
+
   @Override
   public Variant variant() {
     return variant;
@@ -86,6 +99,12 @@ public final class PrismPolicy implements BatchedPolicy {
   @Override
   public int admission(Observation observation) {
     return 0;
+  }
+
+  /** イベントを保存するネットワークでは、牌山の番号で GPU とレーンを選ぶ（{@link NetworkPolicy#admission(Observation, long)}）。 */
+  @Override
+  public int admission(Observation observation, long wall) {
+    return network.admission(observation, wall);
   }
 
   @Override

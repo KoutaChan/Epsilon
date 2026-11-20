@@ -16,9 +16,9 @@ import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.backend.ThreePlayerRows;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.RelationCodes;
-import com.epsilon.prism.hip.TrainingKernels;
 import com.epsilon.prism.input.HostBatch;
+import com.epsilon.prism.kernel.RelationCodes;
+import com.epsilon.prism.kernel.TrainingKernels;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.learn.FitPlan;
@@ -44,10 +44,10 @@ import org.testng.annotations.Test;
  * イベントが多い行を含む）。
  *
  * <ul>
- *   <li>関係のコード: GPU の学習で使う自前の演算（{@link RelationCodes}、T0）の結果が、eager の {@link RelationClass} とパディングの位置も
+ *   <li>関係のコード: GPU の学習で使う自前の演算（{@link RelationCodes}）の結果が、eager の {@link RelationClass} とパディングの位置も
  *       含めた全てのワードでビット単位で同じ。席の区分のコードは三人打ちの式の 1〜9 が全て出て、10 以上は出ない。
  *       {@code -Dprism.bench.rows=<rows/t>} があれば、三人打ちのコホートの実際の行を本番と同じ詰め方でバッチにしたものも比べる。
- *   <li>Attention の記録: BF16 の HIP の経路（T0・T1・T2）の損失・s・全ての勾配を、djl-rocm の演算の経路、および CPU の参照の Attention
+ *   <li>Attention の記録: BF16 の HIP の経路（関係コード・Attention・正規化）の損失・s・全ての勾配を、djl-rocm の演算の経路、および CPU の参照の Attention
  *       （{@link ReferenceAttention}）を差し込んだ経路と比べる。v2 の深さ 2 と型ごとの FFN の 3 つのアームを、ネットワークと行の種を変えて
  *       {@value #SEEDS} 回ずつ実行し、差の平均をしきい値と比べる: 損失 ≤ 1e-3、s ≤ 1e-2、勾配の全体 ≤ 2e-2（2 つの BF16 の経路の差は丸めの
  *       ずれによる揺れで、1 つのネットワークでは 2e-2 を超えることもある）。FP32 の djl の経路を真の値として、HIP の経路の s のずれの平均が
@@ -58,7 +58,7 @@ import org.testng.annotations.Test;
 public class ThreePlayerAttentionTapeGpuTest {
   private static final Logger log = LoggerFactory.getLogger(ThreePlayerAttentionTapeGpuTest.class);
 
-  /** 実際の行のディレクトリを渡すシステムプロパティ（FitStepGpuBench と同じ）。 */
+  /** 実際の行のディレクトリを渡すシステムプロパティ。 */
   private static final String ROWS_PROPERTY = "prism.bench.rows";
 
   /** 実際の行で比べるときの、1 ステップの行の数とステップの数。 */

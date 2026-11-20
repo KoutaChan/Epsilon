@@ -17,7 +17,7 @@ import java.util.function.Predicate;
  * 必ず候補集合に入れる。O・s・p0 だけで決めるので、ほかの席の伏せた牌には依らない。
  *
  * <p>返す順は次のとおり。当てはまる分かれ目だけを返し、各組は「踏み込む側、踏み込まない側」の順に並べる。同じ手が重なっても除かない。同じ
- * 結果になる手をまとめるのは、呼び出し側の {@link com.epsilon.prism.collect.CandidateSet} の仕事。
+ * 結果になる手をまとめるのは、呼び出し側の {@link com.epsilon.prism.collect.CandidateSet} が担当する。
  *
  * <ol>
  *   <li>鳴き: チーかポンが合法なら、チー・ポンの中で s が最大の手と、パス。

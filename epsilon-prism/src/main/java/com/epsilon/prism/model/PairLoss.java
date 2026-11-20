@@ -6,7 +6,7 @@ import ai.djl.ndarray.types.DataType;
 
 /** 測った手の対の二乗誤差。対の重みは教師と独立で、逆伝播では定数として扱う。 */
 public record PairLoss(Weighting weighting, ClassWeight classWeight) {
-  /** 学習設定で選ぶ目的関数。PRISM の類の重みだけを変えるときは同じ勾配の対の式を使う。 */
+  /** 学習設定で選ぶ目的関数。PRISM の判断クラスの重みだけを変えるときは同じ勾配の対の式を使う。 */
   public enum Mode {
     PRISM,
     PAIR_ROW,

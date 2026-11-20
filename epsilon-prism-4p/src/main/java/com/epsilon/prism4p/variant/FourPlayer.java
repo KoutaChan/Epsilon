@@ -15,7 +15,6 @@ import java.util.List;
 
 /** 天鳳の四人打ちの PRISM のモジュール。四人打ちだけのコマンドは持たない。 */
 public final class FourPlayer implements PrismVariant {
-
   @Override
   public Variant variant() {
     return Variant.TENHOU_4P;

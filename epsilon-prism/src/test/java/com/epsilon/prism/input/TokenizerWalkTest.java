@@ -167,7 +167,7 @@ public class TokenizerWalkTest {
       assertTrue(counts[4] > counts[0] / 2, "settled checks " + counts[4]);
   }
 
-  /** 共有した公開順を分岐後に追記し、既存の全トークンを再符号化せずに通常版と同じ入力を復元できる。 */
+  /** 共有した公開順を分岐後に追記し、既存の全トークンを再符号化せずに全トークンを符号化したときと同じ入力を復元できる。 */
   @Test(dataProvider = "variants", dataProviderClass = InputFormatTest.class)
   public void publishedRangesSurviveForksAndRoundChanges(
       com.epsilon.mahjong.rules.Variant variant) {

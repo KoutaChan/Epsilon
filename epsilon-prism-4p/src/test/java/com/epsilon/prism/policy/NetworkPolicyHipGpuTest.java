@@ -7,6 +7,7 @@ import static org.testng.Assert.assertTrue;
 import ai.djl.Device;
 import ai.djl.engine.Engine;
 import com.epsilon.agent.runtime.InferenceSettings;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.mahjong.action.Action;
@@ -14,15 +15,16 @@ import com.epsilon.prism.TestSettings;
 import com.epsilon.prism.backend.HipFixtures;
 import com.epsilon.prism.backend.HipParity;
 import com.epsilon.prism.input.InputSchema.ActionRole;
+import com.epsilon.prism.kernel.KernelProvider.Backend;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
-import com.epsilon.prism.play.PublishedModel;
 import com.epsilon.prism.run.Snapshot;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.SkipException;
@@ -45,14 +47,6 @@ public class NetworkPolicyHipGpuTest {
 
   /** -Dprism.snapshot が無いときに作るバージョンの形のアームを渡すシステムプロパティ（{@link HipFixtures.Arm} の名前。既定は v2 の本番の形）。 */
   private static final String ARM_PROPERTY = "prism.arm";
-
-  @Test(
-      groups = "rocm",
-      dataProvider = "fourPlayerModels",
-      dataProviderClass = PublishedModel.class)
-  public void publishedHipScores(PublishedModel model) throws Exception {
-    model.assertHipScores();
-  }
 
   @Test(groups = "rocm")
   public void hipPolicyMatchesEager() throws Exception {
@@ -81,10 +75,10 @@ public class NetworkPolicyHipGpuTest {
       NetworkPolicy.Throughput hipWork;
       try (var execution =
               new NetworkRuntime(settings.encoders(), settings.slots(), settings.readyBatches());
-          var eager = open(snapshot, gpu, execution, maxBatch, InferencePath.EAGER);
-          var hip = open(snapshot, gpu, execution, maxBatch, InferencePath.HIP)) {
-        assertEquals(eager.inference(), InferencePath.EAGER);
-        assertEquals(hip.inference(), InferencePath.HIP);
+          var eager = open(snapshot, gpu, execution, maxBatch, Kernels.EAGER);
+          var hip = open(snapshot, gpu, execution, maxBatch, Kernels.NATIVE)) {
+        assertEquals(eager.inference(), Kernels.EAGER);
+        assertEquals(hip.backend(), Optional.of(Backend.HIP));
         NetworkPolicyTest.walk(
             games,
             batches,
@@ -134,7 +128,7 @@ public class NetworkPolicyHipGpuTest {
       List<Device> devices,
       NetworkRuntime execution,
       int maxBatch,
-      InferencePath inference)
+      Kernels inference)
       throws Exception {
     // HIP は BF16 で計算するので、eager も GPU の BF16 で比べる
     return Snapshot.open(snapshot, devices, execution, maxBatch, Precision.BFLOAT16, inference);

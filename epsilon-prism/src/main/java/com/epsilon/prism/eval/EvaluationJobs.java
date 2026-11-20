@@ -270,7 +270,7 @@ public final class EvaluationJobs implements JobRunner {
     return Duel.open(job.name(), table, duel, candidate, opponent, directory);
   }
 
-  /** 打ち手を載せる実行の資源が、失敗で GPU のリソースを隔離していれば、IllegalStateException を投げる。 */
+  /** 打ち手を載せる実行リソースが、失敗で GPU のリソースを隔離していれば、IllegalStateException を投げる。 */
   @Override
   public void requireUsable() {
     if (runtime != null) {

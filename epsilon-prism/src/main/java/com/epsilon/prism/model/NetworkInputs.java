@@ -26,7 +26,7 @@ import java.util.Objects;
  * その場で作ってバッファ（{@link PinnedUploads}。入力を作ったスレッドのもの）から送るか、前もって作って入力と一緒に送っておく
  * （{@link StagedBatch}）。
  *
- * <p>並び方の契約（入力のライター・HostBatch・HIP と共通）:
+ * <p>並び方の契約（入力ライター・ホストのバッチ・推論カーネルで共通）:
  *
  * <ul>
  *   <li>行の軸（局のフィールドと数値、行のインデックス）は行の順に並ぶ。席は行ごとに相対席の順で S 個、牌のトークンは行ごとに正準の色の順で
@@ -132,10 +132,10 @@ public record NetworkInputs(
     BatchPlan plan = batch.plan();
     InputFormat format = plan.format();
     Map<Tensor, ByteBuffer> sections = new EnumMap<>(Tensor.class);
+    ByteBuffer blob = batch.blob();
     for (Tensor tensor : Tensor.values()) {
       int bytes = plan.count(tensor.axis()) * format.width(tensor) * tensor.element().bytes();
-      sections.put(
-          tensor, batch.blob().slice(plan.offset(tensor), bytes).order(ByteOrder.LITTLE_ENDIAN));
+      sections.put(tensor, blob.slice(plan.offset(tensor), bytes).order(ByteOrder.LITTLE_ENDIAN));
     }
     return of(
         manager,

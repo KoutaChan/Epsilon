@@ -7,13 +7,6 @@ import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
 import com.epsilon.agent.facts.MahjongTileRelation;
 import com.epsilon.mahjong.tile.Tiles;
-import com.epsilon.prism.hip.HipArchitecture;
-import com.epsilon.prism.hip.HipComposition;
-import com.epsilon.prism.hip.HipCounts;
-import com.epsilon.prism.hip.HipPack;
-import com.epsilon.prism.hip.HipSchema;
-import com.epsilon.prism.hip.HipSection;
-import com.epsilon.prism.hip.HipWeight;
 import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
@@ -22,6 +15,13 @@ import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.input.InputSchema.RelationAttribute;
 import com.epsilon.prism.input.InputSchema.TransitionField;
 import com.epsilon.prism.input.TileTokens;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.ColumnIndex;
+import com.epsilon.prism.kernel.InputSection;
+import com.epsilon.prism.kernel.PackedWeightLayout;
+import com.epsilon.prism.kernel.ScoreComposition;
+import com.epsilon.prism.kernel.TokenCounts;
+import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import java.util.EnumMap;
@@ -42,7 +42,7 @@ public class ThreePlayerWeightLayoutTest {
   /** 三人打ちの手の扱いごとの、ゲートの種類の番号。ゲートになる扱いを宣言の順に数えた番号で、ゲートでなければ −1。作り方は次の表に持つ。 */
   private static final Map<ActionRole, Integer> GATE_KINDS = new EnumMap<>(ActionRole.class);
 
-  private static final Map<ActionRole, HipComposition> COMPOSITIONS =
+  private static final Map<ActionRole, ScoreComposition> COMPOSITIONS =
       new EnumMap<>(ActionRole.class);
 
   static {
@@ -55,15 +55,15 @@ public class ThreePlayerWeightLayoutTest {
     GATE_KINDS.put(ActionRole.KYUSHU, 5);
     GATE_KINDS.put(ActionRole.NUKI, 6);
     GATE_KINDS.put(ActionRole.PASS, -1);
-    COMPOSITIONS.put(ActionRole.DISCARD, HipComposition.DISCARD_VALUE);
-    COMPOSITIONS.put(ActionRole.RIICHI, HipComposition.RIICHI_GATE);
-    COMPOSITIONS.put(ActionRole.CALL, HipComposition.RESPONSE_GATE);
-    COMPOSITIONS.put(ActionRole.KAN, HipComposition.TURN_GATE);
-    COMPOSITIONS.put(ActionRole.TSUMO, HipComposition.TURN_GATE);
-    COMPOSITIONS.put(ActionRole.RON, HipComposition.RESPONSE_GATE);
-    COMPOSITIONS.put(ActionRole.KYUSHU, HipComposition.TURN_GATE);
-    COMPOSITIONS.put(ActionRole.NUKI, HipComposition.TURN_GATE);
-    COMPOSITIONS.put(ActionRole.PASS, HipComposition.ZERO);
+    COMPOSITIONS.put(ActionRole.DISCARD, ScoreComposition.DISCARD_VALUE);
+    COMPOSITIONS.put(ActionRole.RIICHI, ScoreComposition.RIICHI_GATE);
+    COMPOSITIONS.put(ActionRole.CALL, ScoreComposition.RESPONSE_GATE);
+    COMPOSITIONS.put(ActionRole.KAN, ScoreComposition.TURN_GATE);
+    COMPOSITIONS.put(ActionRole.TSUMO, ScoreComposition.TURN_GATE);
+    COMPOSITIONS.put(ActionRole.RON, ScoreComposition.RESPONSE_GATE);
+    COMPOSITIONS.put(ActionRole.KYUSHU, ScoreComposition.TURN_GATE);
+    COMPOSITIONS.put(ActionRole.NUKI, ScoreComposition.TURN_GATE);
+    COMPOSITIONS.put(ActionRole.PASS, ScoreComposition.ZERO);
   }
 
   @DataProvider
@@ -81,8 +81,8 @@ public class ThreePlayerWeightLayoutTest {
       Assert.assertSame(layout.format(), FORMAT);
       PackReadBack.assertReadsBack(layout, pack, network.inferenceParameters());
 
-      HipArchitecture architecture = layout.architecture();
-      HipCounts counts = architecture.counts();
+      CollectionArchitecture architecture = layout.architecture();
+      TokenCounts counts = architecture.counts();
       Assert.assertEquals(counts.seats(), 3);
       Assert.assertEquals(counts.tiles(), 27);
       Assert.assertEquals(counts.fixed(), 31);
@@ -97,46 +97,47 @@ public class ThreePlayerWeightLayoutTest {
 
       PackView view = new PackView(pack.buffer());
       Assert.assertEquals(view.architecture(), architecture.encode());
-      HipPack.Header header = layout.header();
-      for (HipSchema field : HipSchema.values()) {
+      PackedWeightLayout.Header header = layout.header();
+      for (ColumnIndex field : ColumnIndex.values()) {
         Assert.assertEquals(view.schema(field), header.schema(field), field.name());
       }
-      Assert.assertEquals(view.schema(HipSchema.ROW_FIRST_EVENT), RowColumn.FIRST_EVENT.ordinal());
-      Assert.assertEquals(view.schema(HipSchema.ROW_ACTIONS), RowColumn.ACTIONS.ordinal());
-      Assert.assertEquals(view.schema(HipSchema.ACTION_ROLE), ActionColumn.ROLE.ordinal());
       Assert.assertEquals(
-          view.schema(HipSchema.ACTION_REPRESENTATIVE), ActionColumn.REPRESENTATIVE.ordinal());
+          view.schema(ColumnIndex.ROW_FIRST_EVENT), RowColumn.FIRST_EVENT.ordinal());
+      Assert.assertEquals(view.schema(ColumnIndex.ROW_ACTIONS), RowColumn.ACTIONS.ordinal());
+      Assert.assertEquals(view.schema(ColumnIndex.ACTION_ROLE), ActionColumn.ROLE.ordinal());
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_TILE),
+          view.schema(ColumnIndex.ACTION_REPRESENTATIVE), ActionColumn.REPRESENTATIVE.ordinal());
+      Assert.assertEquals(
+          view.schema(ColumnIndex.RELATION_TILE),
           FORMAT.relation().column(RelationAttribute.TILE, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_OWNER),
+          view.schema(ColumnIndex.RELATION_OWNER),
           FORMAT.relation().column(RelationAttribute.OWNER, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_EVENT),
+          view.schema(ColumnIndex.RELATION_EVENT),
           FORMAT.relation().column(RelationAttribute.EVENT, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_RIICHI),
+          view.schema(ColumnIndex.RELATION_RIICHI),
           FORMAT.relation().column(RelationAttribute.OWNER_RIICHI_EVENT, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_LAST_DISCARD),
+          view.schema(ColumnIndex.RELATION_LAST_DISCARD),
           FORMAT.relation().column(RelationAttribute.OWNER_LAST_DISCARD_EVENT, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_LINK),
+          view.schema(ColumnIndex.RELATION_LINK),
           FORMAT.relation().column(RelationAttribute.LINK, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.RELATION_SAFETY),
+          view.schema(ColumnIndex.RELATION_SAFETY),
           FORMAT.relation().column(RelationAttribute.SAFETY, 0));
       Assert.assertEquals(
-          view.schema(HipSchema.TRANSITION_CALL_DISCARD),
+          view.schema(ColumnIndex.TRANSITION_CALL_DISCARD),
           FORMAT.transition().column(TransitionField.CALL_DISCARD));
       Assert.assertEquals(
-          view.schema(HipSchema.TRANSITION_MAIN_TILE),
+          view.schema(ColumnIndex.TRANSITION_MAIN_TILE),
           FORMAT.transition().column(TransitionField.MAIN_TILE));
       for (Tensor tensor : Tensor.values()) {
-        HipSection section = HipSection.valueOf(tensor.name());
+        InputSection section = InputSection.valueOf(tensor.name());
         int expected =
-            section == HipSection.TRANSITION_CODE ? counts.fixed() : FORMAT.width(tensor);
+            section == InputSection.TRANSITION_CODE ? counts.fixed() : FORMAT.width(tensor);
         Assert.assertEquals(view.width(section), expected, section.name());
       }
       Assert.assertEquals(FORMAT.roles(), THREE_PLAYER.roles());
@@ -165,13 +166,13 @@ public class ThreePlayerWeightLayoutTest {
       int[] relations = tokens.relations();
       Assert.assertEquals(tokens.count(), 27);
       Assert.assertEquals(relations.length, 27 * 27);
-      Assert.assertEquals(layout.header().elements(HipWeight.TILE_RELATION, 0), 27L * 27);
+      Assert.assertEquals(layout.header().elements(WeightField.TILE_RELATION, 0), 27L * 27);
       long[] four = MahjongTileRelation.relationIds();
       for (int query = 0; query < 27; query++) {
         for (int key = 0; key < 27; key++) {
           int i = query * 27 + key;
           Assert.assertEquals(
-              view.u8(HipWeight.TILE_RELATION, 0, i), relations[i], "tile relation " + i);
+              view.u8(WeightField.TILE_RELATION, 0, i), relations[i], "tile relation " + i);
           Assert.assertEquals(
               relations[i],
               four[tokens.kind(query) * Tiles.KINDS + tokens.kind(key)],
@@ -187,8 +188,8 @@ public class ThreePlayerWeightLayoutTest {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = new PrismNetwork(FORMAT, PrismShape.standard(2));
       network.initialize(manager);
-      HipArchitecture three = WeightLayout.of(network).architecture();
-      HipCounts counts = three.counts();
+      CollectionArchitecture three = WeightLayout.of(network).architecture();
+      TokenCounts counts = three.counts();
 
       assertRefused(
           FORMAT,
@@ -202,8 +203,8 @@ public class ThreePlayerWeightLayoutTest {
           network,
           "the TENHOU_3P input declares 9 action roles with 7 gate kinds, the architecture has 9"
               + " with 6");
-      HipCounts longer =
-          new HipCounts(
+      TokenCounts longer =
+          new TokenCounts(
               counts.seats(),
               counts.tiles(),
               counts.keyCodes(),
@@ -218,7 +219,10 @@ public class ThreePlayerWeightLayoutTest {
   }
 
   private static void assertRefused(
-      InputFormat format, HipArchitecture architecture, PrismNetwork network, String message) {
+      InputFormat format,
+      CollectionArchitecture architecture,
+      PrismNetwork network,
+      String message) {
     IllegalArgumentException refused =
         Assert.expectThrows(
             IllegalArgumentException.class,
@@ -226,9 +230,9 @@ public class ThreePlayerWeightLayoutTest {
     Assert.assertEquals(refused.getMessage(), message);
   }
 
-  private static HipArchitecture with(
-      HipArchitecture a, int gateKinds, int roles, HipCounts counts) {
-    return new HipArchitecture(
+  private static CollectionArchitecture with(
+      CollectionArchitecture a, int gateKinds, int roles, TokenCounts counts) {
+    return new CollectionArchitecture(
         a.hidden(),
         a.epsilon(),
         a.scale(),

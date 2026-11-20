@@ -157,7 +157,7 @@
         <pytorch.linux.flavor>${pytorch.rocm.flavor}</pytorch.linux.flavor>
       </properties>
     </profile>
-    <!-- NVIDIA の GPU（Linux・Windows）。同梱する DJL の JNI を CUDA の版にする。その版の JNI が djl-rocm に要る。 -->
+    <!-- NVIDIA の GPU（Linux・Windows）。対応する CUDA 用 JNI を djl-rocm から同梱する。 -->
     <profile>
       <id>cuda</id>
       <properties>
@@ -175,7 +175,7 @@
     <module>epsilon-agent</module>
     <module>epsilon-grp</module>
     <module>epsilon-classic</module>
-    <!-- PRISM のカーネル（共通の部分と HIP の実装）。Java の部分はどこでも組み立て、native（libprism_hip.so）は -Pnative-hip のときだけ作る。 -->
+    <!-- PRISM のカーネル（共通の部分と HIP・CUDA の実装）。Java の部分はどこでも組み立て、native は -Pnative-hip・-Pnative-cuda のときだけ作る。 -->
     <module>epsilon-prism-kernel</module>
     <module>epsilon-prism</module>
     <module>epsilon-prism-4p</module>

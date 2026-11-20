@@ -11,5 +11,6 @@
   <modules>
     <module>common</module>
     <module>hip</module>
+    <module>cuda</module>
   </modules>
 </project>

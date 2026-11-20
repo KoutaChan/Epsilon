@@ -15,7 +15,7 @@
     <maven.compiler.source>${java.version}</maven.compiler.source>
     <maven.compiler.target>${java.version}</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <surefire.excludedGroups>native,rocm,gpu</surefire.excludedGroups>
+    <surefire.excludedGroups>native,rocm,cuda,gpu</surefire.excludedGroups>
     <!-- 時間のかかるテスト（slow の組）は普段は外し、-Pslow-tests を付けたときだけ流す -->
     <surefire.excludedSlow>,slow</surefire.excludedSlow>
     <testng.version>7.11.0</testng.version>
@@ -110,15 +110,19 @@
     <profile>
       <id>native-tests</id>
       <properties>
-        <surefire.excludedGroups>rocm,gpu</surefire.excludedGroups>
+        <surefire.excludedGroups>rocm,cuda,gpu</surefire.excludedGroups>
       </properties>
     </profile>
     <profile>
       <id>rocm-tests</id>
       <properties>
-        <surefire.excludedGroups></surefire.excludedGroups>
-        <!-- 外す組が slow だけになるので、先頭の区切りを付けない（surefire は ",slow" を読めない）。-Pslow-tests は後に宣言した profile なので、これを空で上書きする -->
-        <surefire.excludedSlow>slow</surefire.excludedSlow>
+        <surefire.excludedGroups>cuda</surefire.excludedGroups>
+      </properties>
+    </profile>
+    <profile>
+      <id>cuda-tests</id>
+      <properties>
+        <surefire.excludedGroups>rocm</surefire.excludedGroups>
       </properties>
     </profile>
     <profile>

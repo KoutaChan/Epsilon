@@ -56,6 +56,17 @@
         </dependency>
       </dependencies>
     </profile>
+    <profile>
+      <id>native-cuda</id>
+      <dependencies>
+        <dependency>
+          <groupId>com.epsilon</groupId>
+          <artifactId>epsilon-prism-cuda</artifactId>
+          <version>${project.version}</version>
+          <scope>runtime</scope>
+        </dependency>
+      </dependencies>
+    </profile>
   </profiles>
   <build>
     <finalName>epsilon-prism-3p</finalName>

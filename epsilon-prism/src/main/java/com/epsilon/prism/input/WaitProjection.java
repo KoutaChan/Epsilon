@@ -170,7 +170,8 @@ public final class WaitProjection {
       Settlement.tsumo(variant, base, observer, dealerAbsolute, honba, RoundOutcome.NO_SEAT, after);
     } else {
       int loser = (observer + from) % seats;
-      Settlement.ron(variant, base, observer, loser, dealerAbsolute, honba, RoundOutcome.NO_SEAT, after);
+      Settlement.ron(
+          variant, base, observer, loser, dealerAbsolute, honba, RoundOutcome.NO_SEAT, after);
     }
     int sticks = kyotaku + (declaresRiichi ? 1 : 0);
     after[observer] += sticks * Variant.DEPOSIT - (declaresRiichi ? Variant.DEPOSIT : 0);

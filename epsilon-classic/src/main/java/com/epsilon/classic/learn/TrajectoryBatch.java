@@ -99,7 +99,8 @@ public final class TrajectoryBatch {
     /** 終えた半荘を足す。 */
     public void add(GameTrajectory game) {
       if (game.variant() != variant) {
-        throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + game.variant());
+        throw new IllegalArgumentException(
+            "Variant mismatch: expected " + variant + " but found " + game.variant());
       }
       games.add(game);
     }

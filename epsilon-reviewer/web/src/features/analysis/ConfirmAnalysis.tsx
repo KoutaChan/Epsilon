@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Check, LoaderCircle } from "lucide-react";
-import type { ImportedRecord } from "../../../../protocol/model.ts";
+import type { ImportedRecord } from "@epsilon-reviewer/protocol/model";
 import { playerName, seatName, sourceLabel } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import { ModelSelect } from "../models/ModelSelect";

@@ -13,4 +13,8 @@ import com.epsilon.grp.OutcomeNetwork;
  * @param ending 学習の終わり方
  */
 public record OutcomeTrained(
-    OutcomeNetwork network, int halfEpochs, double stopNll, long clippedSteps, TrainingEnding ending) {}
+    OutcomeNetwork network,
+    int halfEpochs,
+    double stopNll,
+    long clippedSteps,
+    TrainingEnding ending) {}

@@ -26,7 +26,12 @@ public final class Ratings {
   private final int degrees;
   private final double outlierLine;
 
-  private Ratings(List<Rating> ratings, List<Residual> residuals, double chiSquare, int degrees, double outlierLine) {
+  private Ratings(
+      List<Rating> ratings,
+      List<Residual> residuals,
+      double chiSquare,
+      int degrees,
+      double outlierLine) {
     this.ratings = ratings;
     this.residuals = residuals;
     this.chiSquare = chiSquare;
@@ -59,7 +64,8 @@ public final class Ratings {
       from[e] = column(columns, edge.a(), anchor);
       to[e] = column(columns, edge.b(), anchor);
       if (edge.perWall().length < 2) {
-        throw new IllegalArgumentException("Edge " + edge.a() + " - " + edge.b() + " needs two walls");
+        throw new IllegalArgumentException(
+            "Edge " + edge.a() + " - " + edge.b() + " needs two walls");
       }
       WallMean values = new WallMean();
       for (double value : edge.perWall()) {
@@ -69,7 +75,8 @@ public final class Ratings {
       double error = values.error();
       variance[e] = error * error;
       if (!(variance[e] > 0)) {
-        throw new IllegalArgumentException("Edge " + edge.a() + " - " + edge.b() + " has zero variance");
+        throw new IllegalArgumentException(
+            "Edge " + edge.a() + " - " + edge.b() + " has zero variance");
       }
       weight[e] = 1 / variance[e];
     }
@@ -119,7 +126,12 @@ public final class Ratings {
     ratings.add(new Rating(anchor, 0, 0, touching[0]));
     for (Map.Entry<String, Integer> entry : columns.entrySet()) {
       int j = entry.getValue();
-      ratings.add(new Rating(entry.getKey(), theta[j], Math.sqrt(Math.max(0, covariance[j * size + j])), touching[j + 1]));
+      ratings.add(
+          new Rating(
+              entry.getKey(),
+              theta[j],
+              Math.sqrt(Math.max(0, covariance[j * size + j])),
+              touching[j + 1]));
     }
     double line = Normal.upperPoint(FAMILY_ALPHA / (2.0 * count));
     return new Ratings(List.copyOf(ratings), List.copyOf(residuals), chiSquare, count - size, line);
@@ -166,7 +178,8 @@ public final class Ratings {
    * 正規方程式の右辺の誤差の分散を、牌山ごとにまとめて求める。牌山 c の寄与は Σ_e x_e w_e (y_ec − ȳ_e) / √(n_e (n_e − 1)) で（x_e は辺 e の両端の点に ±1 を置いた行、w_e は辺の重み、y_ec は辺 e の牌山 c の値、ȳ_e と n_e は辺の平均と牌山の数）、牌山の種が
    * 同じ辺どうしでは、添字が同じ値を 1 つの牌山として足す。辺が 1 本だけなら、その辺の平均の分散に一致する。
    */
-  private static double[] clustered(List<Edge> edges, int[] from, int[] to, double[] mean, double[] weight, int size) {
+  private static double[] clustered(
+      List<Edge> edges, int[] from, int[] to, double[] mean, double[] weight, int size) {
     Map<Long, List<Integer>> groups = new LinkedHashMap<>();
     for (int e = 0; e < edges.size(); e++) {
       groups.computeIfAbsent(edges.get(e).wallSeed(), seed -> new ArrayList<>()).add(e);
@@ -329,7 +342,8 @@ public final class Ratings {
 
   /** @return |z| が 3 を超える辺の数 */
   public int beyondThree() {
-    return (int) residuals.stream().filter(residual -> Math.abs(residual.z()) > SINGLE_LINE).count();
+    return (int)
+        residuals.stream().filter(residual -> Math.abs(residual.z()) > SINGLE_LINE).count();
   }
 
   /** @return 当てはめが正しいときの、|z| が 3 を超える辺の数の期待値 */

@@ -1,21 +1,21 @@
 package com.epsilon.reviewer.engine.format;
 
-import com.epsilon.reviewer.engine.view.Meld;
+import com.epsilon.reviewer.engine.view.MeldView;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
 import java.util.List;
 
 /**
- * 局面の JSON（protocol/result.ts の TableState）。全てのフィールドを書く。draw は、ツモ牌が無ければ null を書く。河の牌の印（ツモ切り・立直・
+ * 局面の JSON（protocol/result.ts の TableView）。全てのフィールドを書く。draw は、ツモ牌が無ければ null を書く。河の牌の印（ツモ切り・立直・
  * 鳴かれた）は、真のときだけ書く。渡す JsonWriter は、null も書く設定にしておくこと。
  */
 public final class TableJson {
   private TableJson() {}
 
-  public static void write(JsonWriter json, TableState table) throws IOException {
+  public static void write(JsonWriter json, TableView table) throws IOException {
     json.beginObject().name("players").beginArray();
     for (PlayerState player : table.players()) player(json, player);
     json.endArray().name("dora");
@@ -37,7 +37,7 @@ public final class TableJson {
     json.name("river").beginArray();
     for (RiverTile tile : player.river()) riverTile(json, tile);
     json.endArray().name("melds").beginArray();
-    for (Meld meld : player.melds()) meld(json, meld);
+    for (MeldView meld : player.melds()) meld(json, meld);
     json.endArray().name("nuki").value(player.nuki());
     json.endObject();
   }
@@ -50,7 +50,7 @@ public final class TableJson {
     json.endObject();
   }
 
-  static void meld(JsonWriter json, Meld meld) throws IOException {
+  static void meld(JsonWriter json, MeldView meld) throws IOException {
     json.beginObject().name("type").value(meld.type()).name("tiles");
     strings(json, meld.tiles());
     json.name("from").value(meld.from());

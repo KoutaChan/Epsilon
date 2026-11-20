@@ -34,10 +34,13 @@ public final class VocabularyCodec {
   private static final Variant VARIANT = Variant.TENHOU_4P;
 
   private static final ActionType[] ACTION_TYPES = byName(Action.Type.class, ActionType.class);
-  private static final TileSelection[] SELECTIONS = byName(Action.TileSelection.class, TileSelection.class);
+  private static final TileSelection[] SELECTIONS =
+      byName(Action.TileSelection.class, TileSelection.class);
   private static final MeldType[] MELD_TYPES = byName(Meld.Type.class, MeldType.class);
-  private static final MeldSource[] MELD_SOURCES = byName(Meld.RelativeSource.class, MeldSource.class);
-  private static final MeldAkaSource[] AKA_SOURCES = byName(Meld.AkaSource.class, MeldAkaSource.class);
+  private static final MeldSource[] MELD_SOURCES =
+      byName(Meld.RelativeSource.class, MeldSource.class);
+  private static final MeldAkaSource[] AKA_SOURCES =
+      byName(Meld.AkaSource.class, MeldAkaSource.class);
   private static final RiichiStatus[] RIICHI = byName(RiichiState.class, RiichiStatus.class);
   private static final KanKind[] KAN_KINDS = byName(TurnEvent.KanKind.class, KanKind.class);
   private static final SettlementAssumption[] SETTLEMENTS =
@@ -77,7 +80,8 @@ public final class VocabularyCodec {
     return require(KAN_KINDS, kind);
   }
 
-  public static SettlementAssumption settlement(WinSettlementProjection.SettlementAssumption assumption) {
+  public static SettlementAssumption settlement(
+      WinSettlementProjection.SettlementAssumption assumption) {
     return require(SETTLEMENTS, assumption);
   }
 
@@ -106,8 +110,14 @@ public final class VocabularyCodec {
     boolean red = action.selection().red();
     return switch (actionType(action.type())) {
       case DAHAI -> identity(tile, action.selection());
-      case RIICHI_DAHAI -> ActionBlock.RIICHI.start() - ActionBlock.DAHAI.start() + identity(tile, action.selection());
-      case CHI -> red ? ActionBlock.CHI_AKA.start() + redRun(action) : ActionBlock.CHI.start() + run(action);
+      case RIICHI_DAHAI ->
+          ActionBlock.RIICHI.start()
+              - ActionBlock.DAHAI.start()
+              + identity(tile, action.selection());
+      case CHI ->
+          red
+              ? ActionBlock.CHI_AKA.start() + redRun(action)
+              : ActionBlock.CHI.start() + run(action);
       case PON -> red ? ActionBlock.PON_AKA.start() + suit(tile) : ActionBlock.PON.start() + tile;
       case DAIMINKAN -> ActionBlock.DAIMINKAN.start() + tile;
       case ANKAN -> ActionBlock.ANKAN.start() + tile;
@@ -155,7 +165,8 @@ public final class VocabularyCodec {
   /** チーのブロックの中での位置。色 × 21 ＋ 順子の始まり × 3 ＋ 鳴いた牌の位置。 */
   private static int run(Action chi) {
     int base = chi.base();
-    return (Tiles.Group.of(base).ordinal() * ClassicVocabulary.RUN_STARTS + Tiles.number(base)) * ClassicVocabulary.RUN
+    return (Tiles.Group.of(base).ordinal() * ClassicVocabulary.RUN_STARTS + Tiles.number(base))
+            * ClassicVocabulary.RUN
         + chi.tile()
         - base;
   }
@@ -189,8 +200,11 @@ public final class VocabularyCodec {
   private static <E extends Enum<E>, C extends Enum<C>> C require(C[] mapped, E constant) {
     C value = mapped[constant.ordinal()];
     if (value == null) {
-      throw new IllegalArgumentException("Classic inputs have no " + constant.getDeclaringClass().getSimpleName()
-          + " " + constant);
+      throw new IllegalArgumentException(
+          "Classic inputs have no "
+              + constant.getDeclaringClass().getSimpleName()
+              + " "
+              + constant);
     }
     return value;
   }
@@ -199,7 +213,8 @@ public final class VocabularyCodec {
    * エンジンの ordinal の順に、同じ名前の classic の定数を並べた配列。四人打ちのルールにあるエンジンの定数に、同じ名前の classic の
    * 定数が無ければ IllegalStateException を投げる。
    */
-  private static <E extends Enum<E>, C extends Enum<C>> C[] byName(Class<E> engine, Class<C> classic) {
+  private static <E extends Enum<E>, C extends Enum<C>> C[] byName(
+      Class<E> engine, Class<C> classic) {
     E[] constants = engine.getEnumConstants();
     @SuppressWarnings("unchecked")
     C[] mapped = (C[]) Array.newInstance(classic, constants.length);
@@ -211,7 +226,8 @@ public final class VocabularyCodec {
       }
       boolean inVariant = !(constant instanceof VariantScoped scoped) || scoped.in(VARIANT);
       if (mapped[constant.ordinal()] == null && inVariant) {
-        throw new IllegalStateException(classic.getSimpleName() + " has no " + engine.getSimpleName() + " " + constant);
+        throw new IllegalStateException(
+            classic.getSimpleName() + " has no " + engine.getSimpleName() + " " + constant);
       }
     }
     return mapped;

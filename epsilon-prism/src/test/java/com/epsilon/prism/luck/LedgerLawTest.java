@@ -5,8 +5,8 @@ import com.epsilon.mahjong.engine.Boundary;
 import com.epsilon.mahjong.engine.ChanceKind;
 import com.epsilon.mahjong.engine.ChanceLog;
 import com.epsilon.mahjong.engine.Decisions;
-import com.epsilon.mahjong.engine.EngineDecisionKind;
 import com.epsilon.mahjong.engine.Engine;
+import com.epsilon.mahjong.engine.EngineDecisionKind;
 import com.epsilon.mahjong.engine.FullView;
 import com.epsilon.mahjong.engine.RandomGames;
 import com.epsilon.mahjong.engine.RoundEnd;
@@ -117,7 +117,8 @@ public class LedgerLawTest {
     Pit live = new Pit(variant + " live draws"), rinshan = new Pit(variant + " rinshan draws");
     Pit exhausted = new Pit(variant + " draws after an exhausted stream");
     Pit reveals = new Pit(variant + " dora reveals"), uras = new Pit(variant + " ura");
-    int seats = variant.seats(), length = variant.tiles().size() - Variant.DEAD_WALL - Variant.HAND * seats;
+    int seats = variant.seats(),
+        length = variant.tiles().size() - Variant.DEAD_WALL - Variant.HAND * seats;
     int[] pool = new int[TILES];
     int[] seen = {0};
     int[] draws = new int[seats];
@@ -150,7 +151,8 @@ public class LedgerLawTest {
                 case DRAW, RINSHAN -> {
                   (log.kind(index) == ChanceKind.DRAW ? live : rinshan).add(pool, kind, v);
                   int seat = log.seat(index), offset = Math.floorMod(seat - dealer, seats);
-                  if (++draws[seat] > (length - offset + seats - 1) / seats) exhausted.add(pool, kind, v);
+                  if (++draws[seat] > (length - offset + seats - 1) / seats)
+                    exhausted.add(pool, kind, v);
                 }
                 case INDICATOR -> reveals.add(pool, kind, v);
                 case URA -> uras.add(pool, kind, v);
@@ -184,7 +186,9 @@ public class LedgerLawTest {
     TileSet set = variant.tiles();
     int[] scores = new int[variant.seats()];
     Arrays.fill(scores, variant.startPoints());
-    RoundStart start = new RoundStart(variant, random.nextInt(variant.finalRound() + 1), random.nextInt(3), 0, scores);
+    RoundStart start =
+        new RoundStart(
+            variant, random.nextInt(variant.finalRound() + 1), random.nextInt(3), 0, scores);
     int[] wall = new int[set.size()];
     for (int index = 0; index < wall.length; index++) wall[index] = set.physicalId(index);
     for (int index = wall.length - 1; index > 0; index--) {
@@ -203,7 +207,8 @@ public class LedgerLawTest {
       var choiceRandom = new Random(choiceSeed);
       Decisions decisions = engine.decisions();
       int[] choices = new int[decisions.size()];
-      for (int slot = 0; slot < choices.length; slot++) choices[slot] = chooser.choose(engine, slot, choiceRandom);
+      for (int slot = 0; slot < choices.length; slot++)
+        choices[slot] = chooser.choose(engine, slot, choiceRandom);
       if (probe.visit(replay, line, choices, SeedMixer.mix64(choiceSeed + 1))) return true;
       replay.commit(choices);
     }
@@ -215,14 +220,19 @@ public class LedgerLawTest {
    * そのときの {@code Boundary} を返す。
    */
   static Boundary follow(
-      Engine engine, int[] choices, RandomGames.Chooser chooser, long followSeed, RuleWorkspace ws,
+      Engine engine,
+      int[] choices,
+      RandomGames.Chooser chooser,
+      long followSeed,
+      RuleWorkspace ws,
       Predicate<Engine> until) {
     var random = new Random(followSeed);
     Boundary boundary = engine.commit(choices, ws);
     int[] next = new int[engine.full().variant().seats()];
     while (boundary == Boundary.DECISIONS && !until.test(engine)) {
       Decisions decisions = engine.decisions();
-      for (int slot = 0; slot < decisions.size(); slot++) next[slot] = chooser.choose(engine, slot, random);
+      for (int slot = 0; slot < decisions.size(); slot++)
+        next[slot] = chooser.choose(engine, slot, random);
       boundary = engine.commit(next, ws);
     }
     return boundary;
@@ -237,7 +247,8 @@ public class LedgerLawTest {
   }
 
   static boolean legal(Decisions decisions, int slot, Action.Type type) {
-    for (int a = 0; a < decisions.legalCount(slot); a++) if (LedgerGames.type(decisions, slot, a) == type) return true;
+    for (int a = 0; a < decisions.legalCount(slot); a++)
+      if (LedgerGames.type(decisions, slot, a) == type) return true;
     return false;
   }
 
@@ -264,7 +275,8 @@ public class LedgerLawTest {
             if (!freshDraw(engine)) return false;
             boolean ankan = legal(engine.decisions(), 0, Action.Type.ANKAN);
             int kind = ankan ? 1 : 0;
-            if (ankan ? found[1] >= ankanWanted : found[0] >= plainWanted || ++turns[0] % 11 != 5) return false;
+            if (ankan ? found[1] >= ankanWanted : found[0] >= plainWanted || ++turns[0] % 11 != 5)
+              return false;
             found[kind]++;
             int[] pool = new int[TILES];
             int total = tables.pool(engine.full(), pool);
@@ -273,7 +285,8 @@ public class LedgerLawTest {
             int counted = 0;
             for (int r = 0; r < replicates; r++) {
               Engine copy = replay.replay(SeedMixer.mix64(lineSeed * 31 + r));
-              follow(copy, choices, chooser, followSeed, ws, e -> e.full().chance().size() > position);
+              follow(
+                  copy, choices, chooser, followSeed, ws, e -> e.full().chance().size() > position);
               ChanceLog log = copy.full().chance();
               if (log.size() == position) continue;
               observed[Tiles.kind(log.tile(position))]++;
@@ -284,13 +297,25 @@ public class LedgerLawTest {
             for (int t = 0; t < TILES; t++) expected[t] = counted * (double) pool[t] / total;
             double statistic = LedgerGames.chiSquare(observed, expected);
             double p = LedgerGames.chiSquareUpper(statistic, LedgerGames.degrees(expected));
-            Assert.assertTrue(p > 1e-4, variant + " line " + lineSeed + " (ankan " + ankan + ") chi2=" + statistic + " p=" + p);
+            Assert.assertTrue(
+                p > 1e-4,
+                variant
+                    + " line "
+                    + lineSeed
+                    + " (ankan "
+                    + ankan
+                    + ") chi2="
+                    + statistic
+                    + " p="
+                    + p);
             tested[0]++;
             return found[0] >= plainWanted && found[1] >= ankanWanted;
           });
     }
     Assert.assertTrue(found[1] >= 1, variant + " no boundary with a concealed kan");
-    Assert.assertTrue(tested[0] >= (plainWanted + ankanWanted + 1) / 2, variant + " tested " + tested[0] + " " + Arrays.toString(found));
+    Assert.assertTrue(
+        tested[0] >= (plainWanted + ankanWanted + 1) / 2,
+        variant + " tested " + tested[0] + " " + Arrays.toString(found));
   }
 
   /**
@@ -363,9 +388,18 @@ public class LedgerLawTest {
             tested[0]++;
             for (int seat = 0; seat < seats; seat++)
               for (int f = 0; f < columns; f++) {
-                String where = variant + " line " + lineSeed + " category " + category + " seat " + seat + " "
-                    + COLUMNS[f].reportName();
-                double mean = sum[seat][f] / counted, variance = square[seat][f] / counted - mean * mean;
+                String where =
+                    variant
+                        + " line "
+                        + lineSeed
+                        + " category "
+                        + category
+                        + " seat "
+                        + seat
+                        + " "
+                        + COLUMNS[f].reportName();
+                double mean = sum[seat][f] / counted,
+                    variance = square[seat][f] / counted - mean * mean;
                 if (variance <= 1e-18) {
                   Assert.assertEquals(mean, 0, 1e-9, where);
                   continue;
@@ -377,7 +411,9 @@ public class LedgerLawTest {
           });
     }
     int all = Arrays.stream(wanted).sum();
-    Assert.assertTrue(tested[0] >= (all + 1) / 2, variant + " tested " + tested[0] + " " + Arrays.toString(found));
+    Assert.assertTrue(
+        tested[0] >= (all + 1) / 2,
+        variant + " tested " + tested[0] + " " + Arrays.toString(found));
   }
 
   /**
@@ -429,16 +465,22 @@ public class LedgerLawTest {
                 double value = target.ledger()[ura];
                 for (int f = 0; f < LedgerColumn.COUNT; f++)
                   if (f != ura)
-                    Assert.assertEquals(target.ledger()[f], 0.0, variant + " seat " + seat + " " + COLUMNS[f].reportName());
+                    Assert.assertEquals(
+                        target.ledger()[f],
+                        0.0,
+                        variant + " seat " + seat + " " + COLUMNS[f].reportName());
                 sum[seat] += value;
                 square[seat] += value * value;
                 if (seat == winner && value != 0) nonzero++;
               }
             }
             found[kind]++;
-            Assert.assertTrue(nonzero > replicates / 2, variant + " line " + lineSeed + " (ron " + ron + ") winner ura nonzero " + nonzero);
+            Assert.assertTrue(
+                nonzero > replicates / 2,
+                variant + " line " + lineSeed + " (ron " + ron + ") winner ura nonzero " + nonzero);
             for (int seat = 0; seat < seats; seat++) {
-              double mean = sum[seat] / replicates, variance = square[seat] / replicates - mean * mean;
+              double mean = sum[seat] / replicates,
+                  variance = square[seat] / replicates - mean * mean;
               String where = variant + " line " + lineSeed + " (ron " + ron + ") seat " + seat;
               if (variance <= 1e-18) {
                 Assert.assertEquals(mean, 0, 1e-9, where);

@@ -159,7 +159,8 @@ public final class TableState {
 
   private void requireVariant(Variant other) {
     if (other != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other);
     }
   }
 
@@ -174,7 +175,17 @@ public final class TableState {
 
   @Override
   public String toString() {
-    return "TableState[" + variant + " round=" + round + " honba=" + honba + " kyotaku=" + kyotaku
-        + " scores=" + Arrays.toString(scores) + (gameOver ? " game over" : "") + "]";
+    return "TableState["
+        + variant
+        + " round="
+        + round
+        + " honba="
+        + honba
+        + " kyotaku="
+        + kyotaku
+        + " scores="
+        + Arrays.toString(scores)
+        + (gameOver ? " game over" : "")
+        + "]";
   }
 }

@@ -15,7 +15,8 @@ public record GruShape(Variant variant, int hidden, int layers) {
   public GruShape {
     Objects.requireNonNull(variant, "variant");
     if (hidden < 1 || layers < 1) {
-      throw new IllegalArgumentException("Hidden width and layers must be positive: " + hidden + ", " + layers);
+      throw new IllegalArgumentException(
+          "Hidden width and layers must be positive: " + hidden + ", " + layers);
     }
   }
 

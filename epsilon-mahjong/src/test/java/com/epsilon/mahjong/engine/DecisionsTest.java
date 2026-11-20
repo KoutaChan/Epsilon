@@ -64,23 +64,29 @@ public class DecisionsTest {
     Assert.assertThrows(IllegalStateException.class, () -> decisions.close(1));
     Assert.assertThrows(
         IllegalArgumentException.class, () -> decisions.open(0, EngineDecisionKind.NUKI_RESPONSE));
-    Assert.assertThrows(IndexOutOfBoundsException.class, () -> decisions.open(4, EngineDecisionKind.TURN));
+    Assert.assertThrows(
+        IndexOutOfBoundsException.class, () -> decisions.open(4, EngineDecisionKind.TURN));
     decisions.open(0, EngineDecisionKind.TURN);
-    Assert.assertThrows(IllegalStateException.class, () -> decisions.open(1, EngineDecisionKind.TURN));
-    Assert.assertThrows(IndexOutOfBoundsException.class, () -> decisions.add(ActionSection.space(Variant.TENHOU_4P)));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> decisions.open(1, EngineDecisionKind.TURN));
+    Assert.assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> decisions.add(ActionSection.space(Variant.TENHOU_4P)));
     for (int kind = 0; kind < Decisions.MAX_LEGAL; kind++) {
       decisions.add(kind % Tiles.KINDS);
     }
     Assert.assertThrows(IllegalStateException.class, () -> decisions.add(PASS));
     Assert.assertTrue(decisions.close(1));
-    Assert.assertThrows(IllegalStateException.class, () -> decisions.open(0, EngineDecisionKind.RESPONSE));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> decisions.open(0, EngineDecisionKind.RESPONSE));
     decisions.open(1, EngineDecisionKind.RESPONSE);
     decisions.add(PASS);
     decisions.close(2);
     decisions.open(2, EngineDecisionKind.RESPONSE);
     decisions.add(PASS);
     decisions.close(3);
-    Assert.assertThrows(IllegalStateException.class, () -> decisions.open(3, EngineDecisionKind.RESPONSE));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> decisions.open(3, EngineDecisionKind.RESPONSE));
   }
 
   /** 和了の手は、点数のコピーを判断の中に持つ（元の点数を消しても残る）。和了でない手を和了の手として足すと例外になる。 */
@@ -112,7 +118,8 @@ public class DecisionsTest {
     Assert.assertFalse(resolution.executed(1));
     Assert.assertEquals(resolution.role(1), Resolution.Role.PREEMPTED);
     Assert.assertEquals(resolution.role(2), Resolution.Role.FORCED);
-    Assert.assertThrows(IllegalStateException.class, () -> resolution.add(8, true, Resolution.Role.CAUSAL));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> resolution.add(8, true, Resolution.Role.CAUSAL));
     resolution.clear();
     Assert.assertEquals(resolution.size(), 0);
     Assert.assertThrows(IndexOutOfBoundsException.class, () -> resolution.role(0));
@@ -139,8 +146,10 @@ public class DecisionsTest {
     Fields.assertSameFields(resolution, resolutionCopy);
     resolutionCopy.clear();
     Assert.assertEquals(resolution.size(), 1);
-    Assert.assertThrows(IllegalArgumentException.class, () -> copy.copyFrom(new Decisions(Variant.TENHOU_3P)));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> resolutionCopy.copyFrom(new Resolution(Variant.TENHOU_4P)));
+        IllegalArgumentException.class, () -> copy.copyFrom(new Decisions(Variant.TENHOU_3P)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> resolutionCopy.copyFrom(new Resolution(Variant.TENHOU_4P)));
   }
 }

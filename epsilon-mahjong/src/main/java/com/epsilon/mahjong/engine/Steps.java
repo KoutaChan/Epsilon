@@ -119,7 +119,9 @@ final class Steps {
    * 牌のうち、ツモった牌を除いて物理 id が最も小さいもの。
    */
   int tileOf(int seat, Action action) {
-    return action.selection().tsumogiri() ? drawn : hands[seat].pick(action.tile(), action.selection().red(), drawn);
+    return action.selection().tsumogiri()
+        ? drawn
+        : hands[seat].pick(action.tile(), action.selection().red(), drawn);
   }
 
   /**
@@ -136,7 +138,8 @@ final class Steps {
         || set.red(tile) != action.selection().red()
         || (tile == drawn) != action.selection().tsumogiri()
         || !hands[seat].holds(tile)) {
-      throw new IllegalArgumentException("Seat " + seat + " cannot play tile " + tile + " for " + action);
+      throw new IllegalArgumentException(
+          "Seat " + seat + " cannot play tile " + tile + " for " + action);
     }
     return tile;
   }
@@ -152,7 +155,8 @@ final class Steps {
       return nukiTile(hands[seat]);
     }
     if (Tiles.kind(tile) != Tiles.PEI || !hands[seat].holds(tile)) {
-      throw new IllegalArgumentException("Seat " + seat + " holds no north " + tile + " to take out");
+      throw new IllegalArgumentException(
+          "Seat " + seat + " holds no north " + tile + " to take out");
     }
     return tile;
   }
@@ -270,7 +274,12 @@ final class Steps {
     }
     if (!fits || red != (meld.aka() == Meld.AkaSource.CONSUMED_HAND_TILE)) {
       throw new IllegalArgumentException(
-          "Seat " + caller + " cannot make " + meld + " with tiles " + Arrays.toString(Arrays.copyOf(tiles, count)));
+          "Seat "
+              + caller
+              + " cannot make "
+              + meld
+              + " with tiles "
+              + Arrays.toString(Arrays.copyOf(tiles, count)));
     }
   }
 
@@ -367,7 +376,9 @@ final class Steps {
       hand.take(tile);
     }
     hand.addNuki();
-    if (known && state.riichi(seat) != RiichiState.NONE && Tiles.contains(hand.waits(), Tiles.PEI)) {
+    if (known
+        && state.riichi(seat) != RiichiState.NONE
+        && Tiles.contains(hand.waits(), Tiles.PEI)) {
       hand.setMissedRon(true);
     }
     state.nuki(seat);
@@ -445,7 +456,9 @@ final class Steps {
 
   /** 手番の席が抜く北。この手番にツモった北があればそれで、無ければ純手牌の北のうち物理 id が最も小さいもの。 */
   private int nukiTile(Hand hand) {
-    return drawn != TurnEvent.NONE && Tiles.kind(drawn) == Tiles.PEI ? drawn : hand.pick(Tiles.PEI, false);
+    return drawn != TurnEvent.NONE && Tiles.kind(drawn) == Tiles.PEI
+        ? drawn
+        : hand.pick(Tiles.PEI, false);
   }
 
   /**
@@ -462,7 +475,9 @@ final class Steps {
         && Integer.bitCount(state.riichiMask()) == seats - 1) {
       return AbortiveDraw.FOUR_RIICHI;
     }
-    if (variant.aborts(AbortiveDraw.FOUR_KANS) && state.kans() == Variant.MAX_KANS && !oneSeatHoldsEveryKan()) {
+    if (variant.aborts(AbortiveDraw.FOUR_KANS)
+        && state.kans() == Variant.MAX_KANS
+        && !oneSeatHoldsEveryKan()) {
       return AbortiveDraw.FOUR_KANS;
     }
     return null;

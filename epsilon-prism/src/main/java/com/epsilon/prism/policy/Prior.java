@@ -1,6 +1,5 @@
 package com.epsilon.prism.policy;
 
-
 /**
  * ルールベースの事前分布 p0(a|o)。全ての合法手にわたる分布で、判断の時点に CPU で作る。ネットワークの方策は、{@code retain} の問い合わせと、
  * s の最大が同点の問い合わせにだけ p0 を書く（{@link GreedyAnswer}）。打牌には向聴と受け入れで重みを付け（{@link RulePrior}）、ほかの手は

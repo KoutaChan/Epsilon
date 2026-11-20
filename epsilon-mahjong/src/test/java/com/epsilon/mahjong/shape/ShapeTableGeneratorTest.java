@@ -32,14 +32,20 @@ public class ShapeTableGeneratorTest {
     int[] digits = new int[Block.MAN.size()];
     for (int code = 0; code < distances.length; code++) {
       if (ShapeTableGenerator.digits(code, digits) <= SMALL_SUIT) {
-        assertBlock(distances[code], brute.block(counts(Block.MAN, digits), Block.MAN), "suit code " + code);
+        assertBlock(
+            distances[code],
+            brute.block(counts(Block.MAN, digits), Block.MAN),
+            "suit code " + code);
       }
     }
     Random random = new Random(11);
     for (int checked = 0; checked < RANDOM_SUIT_CODES; ) {
       int code = random.nextInt(distances.length);
       if (ShapeTableGenerator.digits(code, digits) <= HandShape.MAX_SIZE) {
-        assertBlock(distances[code], brute.block(counts(Block.MAN, digits), Block.MAN), "suit code " + code);
+        assertBlock(
+            distances[code],
+            brute.block(counts(Block.MAN, digits), Block.MAN),
+            "suit code " + code);
         checked++;
       } else {
         Assert.assertEquals(distances[code], -1L, "suit code " + code);
@@ -54,7 +60,10 @@ public class ShapeTableGeneratorTest {
     int[] digits = new int[Block.HONOR.size()];
     for (int code = 0; code < distances.length; code++) {
       if (ShapeTableGenerator.digits(code, digits) <= HandShape.MAX_SIZE) {
-        assertBlock(distances[code], brute.block(counts(Block.HONOR, digits), Block.HONOR), "honor code " + code);
+        assertBlock(
+            distances[code],
+            brute.block(counts(Block.HONOR, digits), Block.HONOR),
+            "honor code " + code);
       }
     }
   }
@@ -93,8 +102,13 @@ public class ShapeTableGeneratorTest {
       Path fresh = Path.of("target", "shape", "hand-shape.bin");
       ShapeTableGenerator.write(generated, fresh);
       Assert.fail(
-          "src/main/resources" + ShapeSection.RESOURCE + " differs from the generator output; the generated table is at "
-              + fresh.toAbsolutePath() + " (" + lengths(sections) + ")");
+          "src/main/resources"
+              + ShapeSection.RESOURCE
+              + " differs from the generator output; the generated table is at "
+              + fresh.toAbsolutePath()
+              + " ("
+              + lengths(sections)
+              + ")");
     }
   }
 
@@ -102,7 +116,10 @@ public class ShapeTableGeneratorTest {
     for (int melds = 0; melds < ShapeSection.MELD_TARGETS; melds++) {
       for (int pairs = 0; pairs <= 1; pairs++) {
         int value = Math.min(expected[melds * 2 + pairs], ShapeTableGenerator.IMPOSSIBLE);
-        Assert.assertEquals(Distances.get(distances, melds, pairs), value, context + " melds " + melds + " pairs " + pairs);
+        Assert.assertEquals(
+            Distances.get(distances, melds, pairs),
+            value,
+            context + " melds " + melds + " pairs " + pairs);
       }
     }
   }
@@ -114,7 +131,8 @@ public class ShapeTableGeneratorTest {
   }
 
   private static byte[] resource() throws IOException {
-    try (InputStream in = ShapeTableGeneratorTest.class.getResourceAsStream(ShapeSection.RESOURCE)) {
+    try (InputStream in =
+        ShapeTableGeneratorTest.class.getResourceAsStream(ShapeSection.RESOURCE)) {
       if (in == null) {
         return null;
       }
@@ -127,7 +145,10 @@ public class ShapeTableGeneratorTest {
   private static String lengths(Object[] sections) {
     StringBuilder text = new StringBuilder();
     for (ShapeSection section : ShapeSection.values()) {
-      text.append(section).append('=').append(Array.getLength(sections[section.ordinal()])).append(' ');
+      text.append(section)
+          .append('=')
+          .append(Array.getLength(sections[section.ordinal()]))
+          .append(' ');
     }
     return text.toString().trim();
   }

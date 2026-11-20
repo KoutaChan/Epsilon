@@ -44,8 +44,7 @@ final class TestServer implements AutoCloseable {
     try {
       return new TestServer(
           reviewer,
-          HttpReviewer.start(
-              new ServerConfig("127.0.0.1", 0, origin, web), reviewer.reviewer));
+          HttpReviewer.start(new ServerConfig("127.0.0.1", 0, origin, web), reviewer.reviewer));
     } catch (IOException failure) {
       reviewer.close();
       throw new UncheckedIOException(failure);

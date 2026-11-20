@@ -1,6 +1,6 @@
 package com.epsilon.reviewer;
 
-import com.epsilon.reviewer.model.ModelFamilies;
+import com.epsilon.agent.policy.ModelFamilies;
 import java.nio.file.Path;
 
 /**
@@ -11,4 +11,5 @@ import java.nio.file.Path;
  * @param settings モデルの上限と解析ジョブの設定
  * @param families モデルの系列ごとの方策の実装
  */
-public record ReviewerConfig(Path data, Path models, ReviewerSettings settings, ModelFamilies families) {}
+public record ReviewerConfig(
+    Path data, Path models, ReviewerSettings settings, ModelFamilies families) {}

@@ -90,7 +90,8 @@ public record RunStatus(
     if (!state.live()) {
       return false;
     }
-    boolean alive = pidStart == null ? ProcessHandle.of(pid).isPresent() : ProcessStart.alive(pid, pidStart);
+    boolean alive =
+        pidStart == null ? ProcessHandle.of(pid).isPresent() : ProcessStart.alive(pid, pidStart);
     return !alive || updated.plus(STALE).isBefore(now);
   }
 }

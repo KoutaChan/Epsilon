@@ -25,8 +25,17 @@ public class VariantMismatchTest {
   private static void assertRefused(Variant cohort, Variant phi) throws IOException {
     var plan =
         new Collector.Cohort(
-            cohort, 1, 2, List.of(10L), DrawOrder.SEAT_STREAMS, Sampling.OFF, null, CollectorTest.URA,
-            new Behaviour(0.05, 0, CrnScheme.SINGLE_RACE), TwinDiscard.TSUMOGIRI, null);
+            cohort,
+            1,
+            2,
+            List.of(10L),
+            DrawOrder.SEAT_STREAMS,
+            Sampling.OFF,
+            null,
+            CollectorTest.URA,
+            new Behaviour(0.05, 0, CrnScheme.SINGLE_RACE),
+            TwinDiscard.TSUMOGIRI,
+            null);
     try (var table = new TableLoop(new TableSettings(1, 1, 1000L, 4));
         var temporary = new CollectorTest.TemporaryCohort(null)) {
       IllegalStateException refused =
@@ -39,7 +48,8 @@ public class VariantMismatchTest {
                       new CollectorTest.HashedScorePolicy(),
                       Phi.scoreRank(phi, RankUtility.TENHOU),
                       temporary.sink));
-      Assert.assertTrue(refused.getMessage().startsWith("Variant mismatch: "), refused.getMessage());
+      Assert.assertTrue(
+          refused.getMessage().startsWith("Variant mismatch: "), refused.getMessage());
     }
   }
 
@@ -57,6 +67,7 @@ public class VariantMismatchTest {
         IllegalArgumentException.class,
         () -> new GameRecord(TENHOU_4P, 1, List.of(three), new int[] {25000, 25000, 25000, 25000}));
     Assert.expectThrows(
-        IllegalArgumentException.class, () -> new GameRecord(TENHOU_4P, 1, List.of(), new int[] {35000, 35000, 35000}));
+        IllegalArgumentException.class,
+        () -> new GameRecord(TENHOU_4P, 1, List.of(), new int[] {35000, 35000, 35000}));
   }
 }

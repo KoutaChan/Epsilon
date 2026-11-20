@@ -16,24 +16,27 @@ public class DecisionClassTest {
   @Test
   public void winsInTheFinalRoundsAreTheirOwnClass() {
     Assert.assertEquals(DecisionClass.of(FOUR, Kind.WIN, Stage.EARLY, 0, 0), DecisionClass.END);
-    Assert.assertEquals(DecisionClass.of(FOUR, Kind.WIN, Stage.LATE, 2, SOUTH_FOUR - 1), DecisionClass.END);
+    Assert.assertEquals(
+        DecisionClass.of(FOUR, Kind.WIN, Stage.LATE, 2, SOUTH_FOUR - 1), DecisionClass.END);
     Assert.assertEquals(
         DecisionClass.of(FOUR, Kind.WIN, Stage.LATE, 2, SOUTH_FOUR), DecisionClass.FINAL_END);
     Assert.assertEquals(
-        DecisionClass.of(FOUR, Kind.WIN, Stage.MID, 0, FOUR.finalRound()),
-        DecisionClass.FINAL_END);
+        DecisionClass.of(FOUR, Kind.WIN, Stage.MID, 0, FOUR.finalRound()), DecisionClass.FINAL_END);
     // 九種九牌は局をやり直すだけで半荘を終えないので、オーラスでも END のまま
     Assert.assertEquals(DecisionClass.of(FOUR, Kind.KYUSHU, Stage.EARLY, 0, 0), DecisionClass.END);
     Assert.assertEquals(
         DecisionClass.of(FOUR, Kind.KYUSHU, Stage.EARLY, 0, SOUTH_FOUR), DecisionClass.END);
     Assert.assertEquals(
         DecisionClass.of(FOUR, Kind.RIICHI, Stage.LATE, 1, SOUTH_FOUR), DecisionClass.RIICHI);
-    Assert.assertEquals(DecisionClass.of(FOUR, Kind.KAN, Stage.MID, 0, SOUTH_FOUR), DecisionClass.KAN);
-    Assert.assertEquals(DecisionClass.of(FOUR, Kind.CALL, Stage.MID, 0, SOUTH_FOUR), DecisionClass.CALL);
+    Assert.assertEquals(
+        DecisionClass.of(FOUR, Kind.KAN, Stage.MID, 0, SOUTH_FOUR), DecisionClass.KAN);
+    Assert.assertEquals(
+        DecisionClass.of(FOUR, Kind.CALL, Stage.MID, 0, SOUTH_FOUR), DecisionClass.CALL);
     Assert.assertEquals(
         DecisionClass.of(FOUR, Kind.DISCARD, Stage.LATE, 1, SOUTH_FOUR), DecisionClass.THREAT);
     Assert.assertEquals(
-        DecisionClass.of(FOUR, Kind.POSTCALL, Stage.EARLY, 0, SOUTH_FOUR), DecisionClass.DISCARD_EARLY);
+        DecisionClass.of(FOUR, Kind.POSTCALL, Stage.EARLY, 0, SOUTH_FOUR),
+        DecisionClass.DISCARD_EARLY);
     Assert.assertTrue(DecisionClass.FINAL_END.commitment());
   }
 
@@ -43,9 +46,11 @@ public class DecisionClassTest {
     Assert.assertEquals(
         DecisionClass.of(three, Kind.WIN, Stage.LATE, 0, three.lastRound() - 1), DecisionClass.END);
     Assert.assertEquals(
-        DecisionClass.of(three, Kind.WIN, Stage.LATE, 0, three.lastRound()), DecisionClass.FINAL_END);
+        DecisionClass.of(three, Kind.WIN, Stage.LATE, 0, three.lastRound()),
+        DecisionClass.FINAL_END);
     Assert.assertEquals(
-        DecisionClass.of(three, Kind.WIN, Stage.LATE, 0, three.finalRound()), DecisionClass.FINAL_END);
+        DecisionClass.of(three, Kind.WIN, Stage.LATE, 0, three.finalRound()),
+        DecisionClass.FINAL_END);
   }
 
   /** 北抜きと、抜いた北への応答は、三人打ちにだけあるクラス。オーラスの応答は和了と同じ FINAL_END に入る。 */
@@ -53,14 +58,19 @@ public class DecisionClassTest {
   public void northDecisionsHaveTheirOwnClasses() {
     Variant three = Variant.TENHOU_3P;
     Assert.assertEquals(DecisionClass.of(three, Kind.NUKI, Stage.EARLY, 0, 0), DecisionClass.NUKI);
-    Assert.assertEquals(DecisionClass.of(three, Kind.NUKI, Stage.LATE, 1, three.finalRound()), DecisionClass.NUKI);
-    Assert.assertEquals(DecisionClass.of(three, Kind.NUKI_RESPONSE, Stage.MID, 0, 0), DecisionClass.NUKI_RESPONSE);
     Assert.assertEquals(
-        DecisionClass.of(three, Kind.NUKI_RESPONSE, Stage.MID, 1, three.lastRound() - 1), DecisionClass.NUKI_RESPONSE);
+        DecisionClass.of(three, Kind.NUKI, Stage.LATE, 1, three.finalRound()), DecisionClass.NUKI);
     Assert.assertEquals(
-        DecisionClass.of(three, Kind.NUKI_RESPONSE, Stage.LATE, 0, three.lastRound()), DecisionClass.FINAL_END);
+        DecisionClass.of(three, Kind.NUKI_RESPONSE, Stage.MID, 0, 0), DecisionClass.NUKI_RESPONSE);
     Assert.assertEquals(
-        DecisionClass.of(three, Kind.NUKI_RESPONSE, Stage.LATE, 0, three.finalRound()), DecisionClass.FINAL_END);
+        DecisionClass.of(three, Kind.NUKI_RESPONSE, Stage.MID, 1, three.lastRound() - 1),
+        DecisionClass.NUKI_RESPONSE);
+    Assert.assertEquals(
+        DecisionClass.of(three, Kind.NUKI_RESPONSE, Stage.LATE, 0, three.lastRound()),
+        DecisionClass.FINAL_END);
+    Assert.assertEquals(
+        DecisionClass.of(three, Kind.NUKI_RESPONSE, Stage.LATE, 0, three.finalRound()),
+        DecisionClass.FINAL_END);
     Assert.assertTrue(DecisionClass.NUKI.commitment());
     Assert.assertTrue(DecisionClass.NUKI_RESPONSE.commitment());
   }
@@ -82,8 +92,17 @@ public class DecisionClassTest {
   @Test
   public void existingClassesKeepTheirRowNumbers() {
     String[] names = {
-      "DISCARD_EARLY", "DISCARD_MID", "DISCARD_LATE", "THREAT", "RIICHI", "CALL", "KAN", "END",
-      "FINAL_END", "NUKI", "NUKI_RESPONSE"
+      "DISCARD_EARLY",
+      "DISCARD_MID",
+      "DISCARD_LATE",
+      "THREAT",
+      "RIICHI",
+      "CALL",
+      "KAN",
+      "END",
+      "FINAL_END",
+      "NUKI",
+      "NUKI_RESPONSE"
     };
     Assert.assertEquals(DecisionClass.COUNT, names.length);
     for (int ordinal = 0; ordinal < names.length; ordinal++) {

@@ -82,7 +82,8 @@ public final class RoundEnd {
 
   void copyFrom(RoundEnd other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     outcome.copyFrom(other.outcome);
     for (int i = 0; i < scores.length; i++) {

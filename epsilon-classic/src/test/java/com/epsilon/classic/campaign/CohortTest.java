@@ -37,18 +37,25 @@ public class CohortTest {
       Path cohort = root.resolve("cohort");
       long bytes = Cohort.write(cohort, collected);
       Assert.assertEquals(
-          bytes, Files.size(cohort.resolve(Cohort.TRAJECTORIES)) + Files.size(cohort.resolve(Cohort.CALIBRATION)));
+          bytes,
+          Files.size(cohort.resolve(Cohort.TRAJECTORIES))
+              + Files.size(cohort.resolve(Cohort.CALIBRATION)));
       assertSame(Cohort.trajectories(cohort, VARIANT), collected.trajectories());
       Assert.assertTrue(
-          Arrays.deepEquals(Cohort.calibration(cohort).counts(), collected.calibration().counts()), "calibration");
+          Arrays.deepEquals(Cohort.calibration(cohort).counts(), collected.calibration().counts()),
+          "calibration");
 
       Path empty = root.resolve("empty");
       Cohort.write(
           empty,
-          new Collector.Collected(TrajectoryBatch.of(VARIANT, List.of()), UncertaintyCdf.empty(), collected.opponent()));
+          new Collector.Collected(
+              TrajectoryBatch.of(VARIANT, List.of()),
+              UncertaintyCdf.empty(),
+              collected.opponent()));
       Assert.assertEquals(Cohort.trajectories(empty, VARIANT).games(), List.of());
       Assert.assertTrue(
-          Arrays.deepEquals(Cohort.calibration(empty).counts(), UncertaintyCdf.empty().counts()), "empty calibration");
+          Arrays.deepEquals(Cohort.calibration(empty).counts(), UncertaintyCdf.empty().counts()),
+          "empty calibration");
     } finally {
       delete(root);
     }
@@ -79,7 +86,8 @@ public class CohortTest {
     ClassicSettings settings =
         Settings.bind(
                 ClassicSettings.class,
-                List.of(Layer.assignments("--set", List.of("schedule.games=" + games, "run.seed=3"))))
+                List.of(
+                    Layer.assignments("--set", List.of("schedule.games=" + games, "run.seed=3"))))
             .value();
     List<Collector.Macro> plans = new ArrayList<>();
     ChampionStore.Champion champion =
@@ -114,7 +122,8 @@ public class CohortTest {
       Assert.assertEquals(a.hasPriors(), e.hasPriors());
       priors |= e.hasPriors();
       for (int hand = 0; hand < e.hands(); hand++) {
-        Assert.assertTrue(Arrays.equals(a.prior(hand), e.prior(hand)), "game " + game + " hand " + hand);
+        Assert.assertTrue(
+            Arrays.equals(a.prior(hand), e.prior(hand)), "game " + game + " hand " + hand);
       }
       Assert.assertTrue(Arrays.equals(a.finalScores(), e.finalScores()), "game " + game);
       Assert.assertEquals(a.size(), e.size());
@@ -124,7 +133,9 @@ public class CohortTest {
         Assert.assertEquals(a.seat(decision), e.seat(decision), where);
         Assert.assertEquals(a.chosen(decision), e.chosen(decision), where);
         Assert.assertEquals(
-            Float.floatToIntBits(a.behaviour(decision)), Float.floatToIntBits(e.behaviour(decision)), where);
+            Float.floatToIntBits(a.behaviour(decision)),
+            Float.floatToIntBits(e.behaviour(decision)),
+            where);
         Assert.assertEquals(a.causal(decision), e.causal(decision), where);
         leftWords.clear();
         rightWords.clear();

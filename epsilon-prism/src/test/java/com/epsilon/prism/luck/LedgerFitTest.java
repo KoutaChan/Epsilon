@@ -1,6 +1,12 @@
 package com.epsilon.prism.luck;
 
+import com.epsilon.agent.observe.ObservationBatch;
+import com.epsilon.agent.observe.ObservationWriter;
+import com.epsilon.mahjong.rules.Placement;
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.core.DecisionClass;
+import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -19,7 +25,8 @@ import org.testng.annotations.Test;
  * 運の精算の係数のクロスフィット（{@link LedgerFit}）のテスト。確かめるのは次のこと。植えた係数を取り戻せる。ホールドアウトの R² が
  * 理論値に合う。偶奇 g の行に掛ける β は、偶奇 g の行に依らない。行の少ない判断のクラスは、まとめた当てはめを使う。帳簿の無い行と欠けた
  * 行は、そのまま通る。ridge は特徴の大きさに依らない。報告の組の R² は帳簿の 5 組ごとにあり、その組だけで当てはめた R² と同じ。係数が
- * 付くのは補正に使う組だけ。区分に要る行の数と ridge は、当てはめの値から決まる。
+ * 付くのは補正に使う組だけ。区分に要る行の数と ridge は、当てはめの値から決まる。局・順位の区分は、どのルールでも判断時の局と点と
+ * 絶対席の順で決まる。
  */
 public class LedgerFitTest {
   private static final int F = LedgerColumn.COUNT;
@@ -33,8 +40,12 @@ public class LedgerFitTest {
    * @param ledger 手ごとの帳簿（長さは 合法手の数 × F）
    */
   record SyntheticRow(
-      long gameId, DecisionClass decisionClass, float[] values, float[] ledger)
+      long gameId, DecisionClass decisionClass, float[] values, float[] ledger, int cell)
       implements FitRow {
+    SyntheticRow(long gameId, DecisionClass decisionClass, float[] values, float[] ledger) {
+      this(gameId, decisionClass, values, ledger, 0);
+    }
+
     @Override
     public int ledgerFeatures() {
       return ledger == null ? 0 : ledger.length / values.length;
@@ -50,9 +61,122 @@ public class LedgerFitTest {
     }
   }
 
+  private static List<SyntheticRow> cellRows(int rareOdd, int rareEven) {
+    var rows = new ArrayList<SyntheticRow>();
+    float[] ledger = new float[2 * F];
+    ledger[0] = 1;
+    ledger[F] = -1;
+    for (int parity = 0; parity < 2; parity++) {
+      int rare = parity == 0 ? rareEven : rareOdd;
+      for (int i = 0; i < rare + 530; i++) {
+        int cell = i < rare ? 11 : 0;
+        float slope = (cell == 11 ? 3 : -1) + parity;
+        rows.add(
+            new SyntheticRow(
+                2L * i + parity, DecisionClass.CALL, new float[] {slope, -slope}, ledger, cell));
+      }
+    }
+    return rows;
+  }
+
+  /** 区分の番号は 段階 × 席の数 ＋ 順位で、段階の区切りは場風の境と南場の最後の局。順位は判断時の点と起家順の同点処理で決まる。 */
+  @Test
+  public void cellsFollowTheRoundStageAndTheAbsoluteSeatRank() {
+    for (Variant variant : Variant.values()) {
+      LedgerCell cells = LedgerCell.of(variant);
+      int seats = variant.seats();
+      Assert.assertEquals(cells.count(), 3 * seats);
+      var writer = new ObservationWriter(variant);
+      var batch = new ObservationBatch(variant, 1 << 12);
+      boolean[] stages = new boolean[3];
+      boolean[] tiedRanks = new boolean[seats];
+      new TableWalk(variant, TableWalk.Policy.GREEDY)
+          .run(
+              23,
+              3,
+              (engine, slot) -> {
+                int seat = engine.decisions().seat(slot);
+                var view = engine.full().seat(seat);
+                int[] scores = new int[seats];
+                for (int s = 0; s < seats; s++) scores[s] = view.score(s);
+                int rank = Placement.rank(scores, seat);
+                int stage = view.round() >= variant.lastRound() ? 2 : view.round() >= seats ? 1 : 0;
+                batch.clear();
+                int index = writer.capture(engine.view(seat), engine.decisions(), slot, batch);
+                Assert.assertEquals(
+                    cells.of(batch.words(), batch.start(index)),
+                    stage * seats + rank,
+                    variant.name());
+                stages[stage] = true;
+                if (Arrays.stream(scores).allMatch(score -> score == scores[0]))
+                  tiedRanks[rank] = true;
+              });
+      for (boolean seen : stages) Assert.assertTrue(seen, variant.name());
+      for (boolean seen : tiedRanks) Assert.assertTrue(seen, variant.name());
+    }
+    Assert.assertEquals(
+        LedgerCell.of(Variant.TENHOU_4P).name(DecisionClass.CALL, 11), "CALL_SOUTH_4_PLUS_4");
+    Assert.assertEquals(
+        LedgerCell.of(Variant.TENHOU_4P).name(DecisionClass.CALL, 4), "CALL_SOUTH_1_3_1");
+    Assert.assertEquals(
+        LedgerCell.of(Variant.TENHOU_3P).name(DecisionClass.CALL, 8), "CALL_SOUTH_3_PLUS_3");
+    Assert.assertEquals(
+        LedgerCell.of(Variant.TENHOU_3P).name(DecisionClass.CALL, 0), "CALL_EAST_1");
+  }
+
+  @Test
+  public void sparseCellsReproduceTheClassFitBitForBit() {
+    var rows = cellRows(543, 543);
+    var baseline = CLASSIC.fitRows(rows);
+    var cells =
+        new LedgerFit(
+                LedgerGroup.computed(), 0.001, 32, LedgerCells.CLASS_STAGE_RANK, Variant.TENHOU_4P)
+            .fitRows(rows);
+    Assert.assertTrue(cells.report().byCell().isEmpty());
+    Assert.assertEquals(cells.report().all().r2(), baseline.report().all().r2());
+    Assert.assertEquals(cells.report().all().r2ByGroup(), baseline.report().all().r2ByGroup());
+    for (var row : rows) {
+      Assert.assertTrue(
+          Arrays.equals(cells.correction().values(row), baseline.correction().values(row)));
+    }
+  }
+
+  @Test
+  public void cellThresholdUsesOnlyTheOppositeParityAndSurvivesStreaming() {
+    var rows = cellRows(544, 543);
+    var fitter =
+        new LedgerFit(
+            LedgerGroup.computed(), 0.001, 32, LedgerCells.CLASS_STAGE_RANK, Variant.TENHOU_4P);
+    var result = fitter.fitRows(rows);
+    var tap = fitter.tap(2, index -> true);
+    for (int i = 0; i < rows.size(); i++) tap.add(i < rows.size() / 2 ? 0 : 1, rows.get(i));
+    var streamed = tap.fit();
+    Assert.assertEquals(streamed.report().byCell(), result.report().byCell());
+    Assert.assertEquals(streamed.report().all().r2(), result.report().all().r2());
+    var folds = result.report().byCell().get("CALL_SOUTH_4_PLUS_4");
+    Assert.assertFalse(folds.get(0).fallback());
+    Assert.assertTrue(folds.get(1).fallback());
+    int c = DecisionClass.CALL.ordinal();
+    Assert.assertEquals(result.correction().coefficients(0, c, 11)[0], 4 / 1.001, 1e-12);
+    Assert.assertSame(result.correction().coefficients(1, c, 11), result.correction().beta()[1][c]);
+    double raw = 0, residual = 0;
+    for (var row : rows) {
+      double y = row.values()[0];
+      double corrected = result.correction().values(row)[0];
+      residual += corrected * corrected;
+      raw += y * y;
+    }
+    Assert.assertEquals(result.report().all().r2(), 1 - residual / raw, 1e-7);
+  }
+
   /** テスト用に作る行。3 手を測り、帳簿の特徴 f は scale[f]·N(0, 1)、Y_a = Q_a + Σ_f beta[f]·L_af + N(0, noise²)。 */
   static SyntheticRow row(
-      long gameId, DecisionClass decisionClass, double[] scale, double[] beta, double noise, SplittableRandom random) {
+      long gameId,
+      DecisionClass decisionClass,
+      double[] scale,
+      double[] beta,
+      double noise,
+      SplittableRandom random) {
     int n = 4;
     float[] values = new float[n], ledger = new float[n * F];
     Arrays.fill(values, Float.NaN);
@@ -84,7 +208,8 @@ public class LedgerFitTest {
     return beta;
   }
 
-  static List<SyntheticRow> rows(int count, long firstGame, double[] scale, double[] beta, double noise, long seed) {
+  static List<SyntheticRow> rows(
+      int count, long firstGame, double[] scale, double[] beta, double noise, long seed) {
     var random = new SplittableRandom(seed);
     List<SyntheticRow> rows = new ArrayList<>();
     for (int i = 0; i < count; i++) {
@@ -111,7 +236,8 @@ public class LedgerFitTest {
       for (DecisionClass c : new DecisionClass[] {DecisionClass.DISCARD_MID, DecisionClass.CALL})
         for (int f : new int[] {0, 3, 15}) {
           double got = correction.beta()[g][c.ordinal()][f];
-          Assert.assertEquals(got, beta[f], 0.05 * Math.abs(beta[f]), "fold " + g + " " + c + " feature " + f);
+          Assert.assertEquals(
+              got, beta[f], 0.05 * Math.abs(beta[f]), "fold " + g + " " + c + " feature " + f);
         }
     double signal = 0;
     for (double b : beta) signal += b * b;
@@ -147,13 +273,17 @@ public class LedgerFitTest {
         continue;
       }
       float[] values = row.values().clone();
-      for (int a = 0; a < values.length; a++) if (!Float.isNaN(values[a])) values[a] = values[a] * 3 + 1;
+      for (int a = 0; a < values.length; a++)
+        if (!Float.isNaN(values[a])) values[a] = values[a] * 3 + 1;
       shifted.add(withValues(row, values, row.ledger()));
     }
     double[][][] before = CLASSIC.fitRows(rows).correction().beta();
     double[][][] after = CLASSIC.fitRows(shifted).correction().beta();
-    for (int c = 0; c < DecisionClass.COUNT; c++) Assert.assertTrue(Arrays.equals(after[0][c], before[0][c]), "class " + c);
-    Assert.assertFalse(Arrays.equals(after[1][DecisionClass.CALL.ordinal()], before[1][DecisionClass.CALL.ordinal()]));
+    for (int c = 0; c < DecisionClass.COUNT; c++)
+      Assert.assertTrue(Arrays.equals(after[0][c], before[0][c]), "class " + c);
+    Assert.assertFalse(
+        Arrays.equals(
+            after[1][DecisionClass.CALL.ordinal()], before[1][DecisionClass.CALL.ordinal()]));
   }
 
   /** 行の少ない判断のクラス（偶奇ごとに、区分に要る行の数に足りない）は、もう一方の偶奇の全てのクラスをまとめた当てはめを使う。全体でも足りなければ係数は 0。 */
@@ -168,11 +298,14 @@ public class LedgerFitTest {
     Assert.assertTrue(kan.fallback()[0] && kan.fallback()[1]);
     Assert.assertFalse(fit.report().byClass().get(DecisionClass.CALL.name()).fallback()[0]);
     double[][][] beta = fit.correction().beta();
-    Assert.assertTrue(Arrays.equals(beta[0][DecisionClass.KAN.ordinal()], fit.report().all().betaByFold()[0]));
-    Assert.assertTrue(Arrays.equals(beta[1][DecisionClass.KAN.ordinal()], fit.report().all().betaByFold()[1]));
+    Assert.assertTrue(
+        Arrays.equals(beta[0][DecisionClass.KAN.ordinal()], fit.report().all().betaByFold()[0]));
+    Assert.assertTrue(
+        Arrays.equals(beta[1][DecisionClass.KAN.ordinal()], fit.report().all().betaByFold()[1]));
     // 全体でも足りなければ係数は 0
     LedgerFit.Result tiny = CLASSIC.fitRows(rows.subList(0, 50));
-    for (double value : tiny.correction().beta()[0][DecisionClass.CALL.ordinal()]) Assert.assertEquals(value, 0.0);
+    for (double value : tiny.correction().beta()[0][DecisionClass.CALL.ordinal()])
+      Assert.assertEquals(value, 0.0);
   }
 
   /** 帳簿の無い行と、測った手の帳簿に NaN を含む行は、値を変えずに返す（当てはめにも入れず、{@code skippedRows} に数える）。 */
@@ -204,7 +337,8 @@ public class LedgerFitTest {
     List<SyntheticRow> scaled = new ArrayList<>();
     for (SyntheticRow row : rows) {
       float[] ledger = row.ledger().clone();
-      for (int a = 0; a < row.actions(); a++) if (!Float.isNaN(row.values()[a])) ledger[a * F + 7] *= 10_000f;
+      for (int a = 0; a < row.actions(); a++)
+        if (!Float.isNaN(row.values()[a])) ledger[a * F + 7] *= 10_000f;
       scaled.add(withValues(row, row.values(), ledger));
     }
     LedgerCorrection plain = CLASSIC.fitRows(rows).correction();
@@ -212,7 +346,8 @@ public class LedgerFitTest {
     for (int i = 0; i < 200; i++) {
       float[] a = plain.values(rows.get(i)), b = wide.values(scaled.get(i));
       for (int k = 0; k < a.length; k++)
-        if (!Float.isNaN(a[k])) Assert.assertEquals(b[k], a[k], 1e-5 * Math.max(1, Math.abs(a[k])), "row " + i);
+        if (!Float.isNaN(a[k]))
+          Assert.assertEquals(b[k], a[k], 1e-5 * Math.max(1, Math.abs(a[k])), "row " + i);
     }
     // 小さい特徴（0.05）と大きい特徴（3）を並べる
     double[] mixed = new double[F];
@@ -221,7 +356,8 @@ public class LedgerFitTest {
     double[] coefficients = new double[F];
     coefficients[15] = 4.0;
     coefficients[3] = 0.05;
-    LedgerCorrection fit = CLASSIC.fitRows(rows(20_000, 0, mixed, coefficients, 0.2, 7)).correction();
+    LedgerCorrection fit =
+        CLASSIC.fitRows(rows(20_000, 0, mixed, coefficients, 0.2, 7)).correction();
     for (int g = 0; g < 2; g++)
       Assert.assertEquals(fit.beta()[g][DecisionClass.CALL.ordinal()][15], 4.0, 0.2, "fold " + g);
   }
@@ -258,7 +394,8 @@ public class LedgerFitTest {
     List<SyntheticRow> readBack = new ArrayList<>();
     for (List<SyntheticRow> shard : byShard) readBack.addAll(shard);
     var stream = CLASSIC.tap(shards, index -> true);
-    for (int shard : new int[] {2, 0, 1}) for (SyntheticRow row : byShard.get(shard)) stream.add(shard, row);
+    for (int shard : new int[] {2, 0, 1})
+      for (SyntheticRow row : byShard.get(shard)) stream.add(shard, row);
     LedgerFit.Result streamed = stream.fit();
     Assert.assertEquals(streamed.report().skippedRows(), 2);
     assertBitwiseEqual(streamed, CLASSIC.fitRows(readBack));
@@ -273,10 +410,17 @@ public class LedgerFitTest {
   public void reportGroupsAreTheFiveLedgerGroups() {
     List<LedgerGroup> groups = List.copyOf(LedgerGroup.computed());
     Assert.assertEquals(
-        groups, List.of(LedgerGroup.IMPROVE, LedgerGroup.POINTS, LedgerGroup.DORA, LedgerGroup.URA, LedgerGroup.POLICY));
+        groups,
+        List.of(
+            LedgerGroup.IMPROVE,
+            LedgerGroup.POINTS,
+            LedgerGroup.DORA,
+            LedgerGroup.URA,
+            LedgerGroup.POLICY));
     for (LedgerGroup planted : groups) {
       double[] beta = new double[F];
-      for (LedgerColumn column : LedgerColumn.values()) if (column.group() == planted) beta[column.ordinal()] = 0.3;
+      for (LedgerColumn column : LedgerColumn.values())
+        if (column.group() == planted) beta[column.ordinal()] = 0.3;
       List<SyntheticRow> rows = rows(6000, 0, ones(), beta, 0.2, 20 + planted.ordinal());
       LedgerReport report = CLASSIC.fitRows(rows).report();
       LedgerReport.Line all = report.all();
@@ -286,14 +430,16 @@ public class LedgerFitTest {
         double r2 = all.r2ByGroup().get(group);
         Assert.assertEquals(r2, alone.all().r2(), 1e-12, planted + " planted, " + group + " alone");
         for (Map.Entry<String, LedgerReport.Line> line : report.byClass().entrySet()) {
-          Assert.assertEquals(List.copyOf(line.getValue().r2ByGroup().keySet()), groups, line.getKey());
+          Assert.assertEquals(
+              List.copyOf(line.getValue().r2ByGroup().keySet()), groups, line.getKey());
           Assert.assertEquals(
               line.getValue().r2ByGroup().get(group),
               alone.byClass().get(line.getKey()).r2(),
               1e-12,
               planted + " planted, " + group + " alone in " + line.getKey());
         }
-        if (group == planted) Assert.assertEquals(r2, all.r2(), 0.005, planted + " planted, " + group);
+        if (group == planted)
+          Assert.assertEquals(r2, all.r2(), 0.005, planted + " planted, " + group);
         else Assert.assertTrue(r2 < 0.005, planted + " planted, " + group + " r2=" + r2);
       }
       Assert.assertTrue(all.r2() > 0.5, planted + " r2=" + all.r2());
@@ -309,7 +455,8 @@ public class LedgerFitTest {
   public void onlyTheAppliedGroupsCarryCoefficients() {
     Set<LedgerGroup> apply = EnumSet.of(LedgerGroup.POINTS, LedgerGroup.POLICY);
     boolean[] applied = new boolean[F];
-    for (LedgerColumn column : LedgerColumn.values()) applied[column.ordinal()] = apply.contains(column.group());
+    for (LedgerColumn column : LedgerColumn.values())
+      applied[column.ordinal()] = apply.contains(column.group());
     double[] beta = new double[F];
     Arrays.fill(beta, 0.1);
     List<SyntheticRow> rows = rows(6000, 0, ones(), beta, 0.3, 30);
@@ -318,7 +465,9 @@ public class LedgerFitTest {
     for (int g = 0; g < 2; g++)
       for (int c = 0; c < DecisionClass.COUNT; c++)
         for (int f = 0; f < F; f++)
-          if (!applied[f]) Assert.assertEquals(coefficients[g][c][f], 0.0, 0.0, "fold " + g + " class " + c + " column " + f);
+          if (!applied[f])
+            Assert.assertEquals(
+                coefficients[g][c][f], 0.0, 0.0, "fold " + g + " class " + c + " column " + f);
     for (DecisionClass c : new DecisionClass[] {DecisionClass.CALL, DecisionClass.DISCARD_MID})
       for (int f = 0; f < F; f++)
         if (applied[f]) Assert.assertTrue(coefficients[0][c.ordinal()][f] != 0, c + " column " + f);
@@ -328,14 +477,16 @@ public class LedgerFitTest {
       for (int f = 0; f < F; f++) {
         if (applied[f]) continue;
         Assert.assertEquals(line.beta()[f], 0.0, 0.0, "column " + f);
-        for (double[] fold : line.betaByFold()) Assert.assertEquals(fold[f], 0.0, 0.0, "column " + f);
+        for (double[] fold : line.betaByFold())
+          Assert.assertEquals(fold[f], 0.0, 0.0, "column " + f);
       }
 
     List<SyntheticRow> zeroed = new ArrayList<>();
     for (SyntheticRow row : rows) {
       float[] ledger = row.ledger().clone();
       for (int a = 0; a < row.actions(); a++)
-        if (!Float.isNaN(row.values()[a])) for (int f = 0; f < F; f++) if (!applied[f]) ledger[a * F + f] = 0f;
+        if (!Float.isNaN(row.values()[a]))
+          for (int f = 0; f < F; f++) if (!applied[f]) ledger[a * F + f] = 0f;
       zeroed.add(withValues(row, row.values(), ledger));
     }
     double[][][] reference = CLASSIC.fitRows(zeroed).correction().beta();
@@ -360,7 +511,9 @@ public class LedgerFitTest {
         double expected = y;
         for (int f = 0; f < F; f++) if (applied[f]) expected -= b[f] * row.ledger(a, f);
         Assert.assertEquals(
-            Float.floatToRawIntBits(corrected[a]), Float.floatToRawIntBits((float) expected), "row " + row.gameId());
+            Float.floatToRawIntBits(corrected[a]),
+            Float.floatToRawIntBits((float) expected),
+            "row " + row.gameId());
         if (corrected[a] != y) changed++;
       }
     }
@@ -379,7 +532,10 @@ public class LedgerFitTest {
     for (int i = 0; i < 100; i++)
       rows.add(row(100_000 + i, DecisionClass.KAN, ones(), planted(), 0.5, random));
     Object[][] cases = {
-      {LedgerGroup.URA, 50, false}, {LedgerGroup.URA, 51, true}, {LedgerGroup.POLICY, 25, false}, {LedgerGroup.POLICY, 26, true}
+      {LedgerGroup.URA, 50, false},
+      {LedgerGroup.URA, 51, true},
+      {LedgerGroup.POLICY, 25, false},
+      {LedgerGroup.POLICY, 26, true}
     };
     for (Object[] c : cases) {
       LedgerFit fit = new LedgerFit(Set.of((LedgerGroup) c[0]), 0.001, (int) c[1]);
@@ -388,7 +544,8 @@ public class LedgerFitTest {
       for (int fold = 0; fold < 2; fold++)
         Assert.assertEquals(kan.fallback()[fold], (boolean) c[2], c[0] + " per column " + c[1]);
     }
-    LedgerReport.Line classic = CLASSIC.fitRows(rows).report().byClass().get(DecisionClass.KAN.name());
+    LedgerReport.Line classic =
+        CLASSIC.fitRows(rows).report().byClass().get(DecisionClass.KAN.name());
     Assert.assertTrue(classic.fallback()[0] && classic.fallback()[1]);
   }
 
@@ -400,8 +557,10 @@ public class LedgerFitTest {
   public void ridgeComesFromTheFit() {
     List<SyntheticRow> rows = rows(6000, 0, ones(), planted(), 0.5, 32);
     int ura = LedgerColumn.URA.ordinal();
-    double strong = new LedgerFit(Set.of(LedgerGroup.URA), 1.0, 32).fitRows(rows).report().all().beta()[ura];
-    double weak = new LedgerFit(Set.of(LedgerGroup.URA), 0.001, 32).fitRows(rows).report().all().beta()[ura];
+    double strong =
+        new LedgerFit(Set.of(LedgerGroup.URA), 1.0, 32).fitRows(rows).report().all().beta()[ura];
+    double weak =
+        new LedgerFit(Set.of(LedgerGroup.URA), 0.001, 32).fitRows(rows).report().all().beta()[ura];
     Assert.assertTrue(strong != weak, "ridge 1 and 0.001 gave the same coefficient " + weak);
     Assert.assertEquals(strong * 2.0, weak * 1.001, 1e-12 * Math.abs(weak));
   }

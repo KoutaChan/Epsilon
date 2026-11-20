@@ -32,10 +32,16 @@ import org.slf4j.LoggerFactory;
  */
 @Named(value = "rows", doc = "Replay a records directory and write a training rows directory")
 public record Rows(
-    @Key(doc = "Records directory (files directly inside, read in name order)", presence = Presence.REQUIRED) Path records,
-    @Key(doc = "Rows directory to write (must not exist yet)", presence = Presence.REQUIRED) Path out,
+    @Key(
+            doc = "Records directory (files directly inside, read in name order)",
+            presence = Presence.REQUIRED)
+        Path records,
+    @Key(doc = "Rows directory to write (must not exist yet)", presence = Presence.REQUIRED)
+        Path out,
     @Key(doc = "Rules", value = "TENHOU_4P") Variant variant,
-    @Key(doc = "Fraction of games held out for validation (chosen by a hash of the record id)", value = "0.1")
+    @Key(
+            doc = "Fraction of games held out for validation (chosen by a hash of the record id)",
+            value = "0.1")
         @Range(min = 0, minInclusive = false, max = 1, maxInclusive = false)
         double validation,
     @Key(doc = "Records per row file", value = "2048") @Range(min = 1) int chunkGames)
@@ -44,7 +50,8 @@ public record Rows(
   private static final Logger LOG = LoggerFactory.getLogger(Rows.class);
 
   /** 書いた行の数、半荘の数とそのうち検証用の数、行のファイルの数、飛ばした牌譜の数。 */
-  public record Result(Path out, long rows, int games, int validationGames, int chunks, int skipped) {}
+  public record Result(
+      Path out, long rows, int games, int validationGames, int chunks, int skipped) {}
 
   @Override
   public Outcome run(Context<ClassicSettings> context) throws IOException {
@@ -53,7 +60,12 @@ public record Rows(
         String.format(
             Locale.ROOT,
             "out=%s rows=%d games=%d validationGames=%d chunks=%d skipped=%d",
-            result.out(), result.rows(), result.games(), result.validationGames(), result.chunks(), result.skipped()));
+            result.out(),
+            result.rows(),
+            result.games(),
+            result.validationGames(),
+            result.chunks(),
+            result.skipped()));
   }
 
   /**
@@ -91,7 +103,11 @@ public record Rows(
       held += (int) chunk.games().stream().filter(ClassicRows.Game::validation).count();
       LOG.info(
           "rows chunk {}: games={} rows={} (total games={} rows={})",
-          chunks - 1, chunk.games().size(), chunk.size(), games, rows);
+          chunks - 1,
+          chunk.games().size(),
+          chunk.size(),
+          games,
+          rows);
     }
     return new Result(out, rows, games, held, chunks, skipped);
   }

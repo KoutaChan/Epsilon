@@ -60,14 +60,30 @@ import java.util.regex.Pattern;
  */
 @Named(
     value = "report",
-    doc = "Print one line per iteration of the run and the latest result per table (--compare pairs two versions on the same walls)")
+    doc =
+        "Print one line per iteration of the run and the latest result per table (--compare pairs"
+            + " two versions on the same walls)")
 public record Report(
-    @Key(doc = "Run directory (with --compare, an evaluate --out directory also works)", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Number of iterations to print, counted back from the latest (default: all)", presence = Presence.ABSENT) @Range(min = 1) Integer last,
+    @Key(
+            doc = "Run directory (with --compare, an evaluate --out directory also works)",
+            presence = Presence.REQUIRED)
+        Path run,
+    @Key(
+            doc = "Number of iterations to print, counted back from the latest (default: all)",
+            presence = Presence.ABSENT)
+        @Range(min = 1)
+        Integer last,
     @Key(doc = "Print one JSON line instead of a table", value = "false") boolean json,
-    @Key(doc = "Table name to compare on the same walls (use with --versions)", presence = Presence.ABSENT) String compare,
-    @Key(doc = "Two versions to compare (a,b; the difference is b − a)", presence = Presence.ABSENT) String versions,
-    @Key(doc = "Run directory holding the jobs of the second version (default: --run)", presence = Presence.ABSENT) Path other)
+    @Key(
+            doc = "Table name to compare on the same walls (use with --versions)",
+            presence = Presence.ABSENT)
+        String compare,
+    @Key(doc = "Two versions to compare (a,b; the difference is b − a)", presence = Presence.ABSENT)
+        String versions,
+    @Key(
+            doc = "Run directory holding the jobs of the second version (default: --run)",
+            presence = Presence.ABSENT)
+        Path other)
     implements PrismCommand {
 
   /** 打たずに候補を最初の王者にしたジョブの判定。 */
@@ -82,19 +98,29 @@ public record Report(
           PrismRun.LINEAGE,
           new RunReport.Columns<>(List.of("rows", "r2", "gain"), Report::iteration),
           new RunReport.Columns<>(
-              List.of("opponent", "games", "meanRank", "meanRankError", "delta", "deltaError", "verdict", "stopped"),
+              List.of(
+                  "opponent",
+                  "games",
+                  "meanRank",
+                  "meanRankError",
+                  "delta",
+                  "deltaError",
+                  "verdict",
+                  "stopped"),
               Report::result));
 
   public Report {
     if (compare == null && (versions != null || other != null)) {
-      throw new InvalidSetting(versions != null ? "versions" : "other", "--versions and --other go with --compare");
+      throw new InvalidSetting(
+          versions != null ? "versions" : "other", "--versions and --other go with --compare");
     }
     if (compare != null) {
       if (versions == null) {
         throw new InvalidSetting("compare", "--compare needs --versions a,b");
       }
       if (last != null || json) {
-        throw new InvalidSetting(last != null ? "last" : "json", "--last and --json are not for --compare");
+        throw new InvalidSetting(
+            last != null ? "last" : "json", "--last and --json are not for --compare");
       }
       Versions.of(versions);
     }
@@ -140,7 +166,12 @@ public record Report(
     RunReport report = RunReport.read(new RunDirectory(run), LAYOUT, last);
     context.out().print(json ? Json.write(report.json()) + "\n" : report.text());
     return Outcome.ok(
-        "iterations=" + report.closed() + " shown=" + report.iterations().size() + " tables=" + report.tables().size());
+        "iterations="
+            + report.closed()
+            + " shown="
+            + report.iterations().size()
+            + " tables="
+            + report.tables().size());
   }
 
   /** 2 つのジョブを同じ牌山で対にした差を出す。 */
@@ -159,7 +190,8 @@ public record Report(
     out.println(
         String.format(
             Locale.ROOT,
-            "%s: %s against %s on %d paired walls (%d games); opponent %s, wall seed %d from wall %d, %s %s, %s",
+            "%s: %s against %s on %d paired walls (%d games); opponent %s, wall seed %d from wall"
+                + " %d, %s %s, %s",
             compare,
             second.plan().candidate().label(),
             first.plan().candidate().label(),
@@ -192,7 +224,8 @@ public record Report(
     out.println(
         String.format(
             Locale.ROOT,
-            "%-6s %s in %s: %s, %d walls (%d unpaired), candidate %s, jar %s, rank %.6f +- %.6f, utility %.6f +- %.6f",
+            "%-6s %s in %s: %s, %d walls (%d unpaired), candidate %s, jar %s, rank %.6f +- %.6f,"
+                + " utility %.6f +- %.6f",
             which,
             side.job().name(),
             side.run().root(),
@@ -208,8 +241,10 @@ public record Report(
   }
 
   /** 差の行。z は差を対の標準誤差で割った値（標準誤差が 0 なら出さない）。 */
-  private static void difference(PrintStream out, String score, JobComparison.Value value, String better) {
-    String z = value.error() > 0 ? String.format(Locale.ROOT, "%.2f", value.mean() / value.error()) : "-";
+  private static void difference(
+      PrintStream out, String score, JobComparison.Value value, String better) {
+    String z =
+        value.error() > 0 ? String.format(Locale.ROOT, "%.2f", value.mean() / value.error()) : "-";
     out.println(
         String.format(
             Locale.ROOT,
@@ -232,7 +267,8 @@ public record Report(
   }
 
   /** 段の報告の中身。段が報告に無いか、中身の無い段なら null。 */
-  private static <M extends Record> M metrics(IterationReport report, PrismStep step, Class<M> type) {
+  private static <M extends Record> M metrics(
+      IterationReport report, PrismStep step, Class<M> type) {
     StepReport reported = report.steps().get(step.name());
     return reported == null || reported.metrics() == null ? null : type.cast(reported.metrics());
   }
@@ -243,7 +279,14 @@ public record Report(
       // ほかのフィールドもある行は、読めない行として誤りにする
       Jobs.result(line, EvaluationJobs.Crowned.class);
       return List.of(
-          Cell.NONE, Cell.NONE, Cell.NONE, Cell.NONE, Cell.NONE, Cell.NONE, Cell.text(CROWNED), Cell.NONE);
+          Cell.NONE,
+          Cell.NONE,
+          Cell.NONE,
+          Cell.NONE,
+          Cell.NONE,
+          Cell.NONE,
+          Cell.text(CROWNED),
+          Cell.NONE);
     }
     DuelResult duel = Jobs.result(line, DuelResult.class);
     DuelResult.SlotValue candidate = duel.slots().get(0);

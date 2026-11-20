@@ -23,7 +23,7 @@ import java.util.Set;
  * <p>終わり方、打点、立直の順に確率を掛け、積が打ち切りの値より小さくなった組はその先を足さない。打ち切った確率の和 m は、葉の
  * ネットワークの p(π|s) で埋める（p ← 足した分 ＋ m·p_ネットワーク(π|s)）。残りの組で割り直さないので、打ち切られやすい組
  * （稀な大物手で順位が入れ替わる組）の分だけネットワークの値に寄る。足す順は番号の順に決まっていて、葉のネットワークの値も卓だけで
- * 決まる。そのため、メモの有無に依らず値はビット単位で再現する。作業領域はスレッドごとに持つ。
+ * 決まる。そのため、キャッシュの有無に依らず値はビット単位で再現する。作業領域はスレッドごとに持つ。
  */
 public final class FinalRound {
 
@@ -59,7 +59,8 @@ public final class FinalRound {
    */
   public static FinalRound of(OutcomeNetwork outcomes, GrpNetwork leaf, double cutoff) {
     if (outcomes.variant() != leaf.variant()) {
-      throw new IllegalArgumentException("Outcome network of " + outcomes.variant() + " with a leaf of " + leaf.variant());
+      throw new IllegalArgumentException(
+          "Outcome network of " + outcomes.variant() + " with a leaf of " + leaf.variant());
     }
     if (!(cutoff >= 0 && cutoff < 1)) {
       throw new IllegalArgumentException("The cutoff must be in [0, 1): " + cutoff);
@@ -89,7 +90,9 @@ public final class FinalRound {
    */
   public static boolean covers(TableState table) {
     Variant tableVariant = table.variant();
-    return VARIANTS.contains(tableVariant) && !table.gameOver() && table.round() >= tableVariant.lastRound();
+    return VARIANTS.contains(tableVariant)
+        && !table.gameOver()
+        && table.round() >= tableVariant.lastRound();
   }
 
   public static boolean covers(GrpState state) {
@@ -116,7 +119,8 @@ public final class FinalRound {
   public double permutations(TableState start, FinalRoundWorkspace workspace, double[] out) {
     check(workspace);
     if (start.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: final round " + variant + ", table " + start.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: final round " + variant + ", table " + start.variant());
     }
     if (out.length != count) {
       throw new IllegalArgumentException("Output needs " + count + " values, got " + out.length);
@@ -144,7 +148,8 @@ public final class FinalRound {
    * @param out 出力先（長さ S）
    * @return 葉のネットワークで埋めた確率。数え上げない卓は 0
    */
-  public double phi(GrpState state, RankUtility utility, FinalRoundWorkspace workspace, double[] out) {
+  public double phi(
+      GrpState state, RankUtility utility, FinalRoundWorkspace workspace, double[] out) {
     return phi(check(workspace).load(state), utility, workspace, out);
   }
 
@@ -154,9 +159,11 @@ public final class FinalRound {
    * @param out 出力先（長さ S）
    * @return 葉のネットワークで埋めた確率。数え上げない卓は 0
    */
-  public double phi(TableState start, RankUtility utility, FinalRoundWorkspace workspace, double[] out) {
+  public double phi(
+      TableState start, RankUtility utility, FinalRoundWorkspace workspace, double[] out) {
     if (out.length != seats) {
-      throw new IllegalArgumentException(variant + " needs " + seats + " values, got " + out.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + seats + " values, got " + out.length);
     }
     double filled = permutations(start, workspace, workspace.mixture);
     permutations.phi(workspace.mixture, start.dealer(), utility, out);
@@ -180,8 +187,7 @@ public final class FinalRound {
       prepareRiichi(start, workspace, main, probability);
       switch (hands.section(main)) {
         case TSUMO, RON -> {
-          WinMethod method = hands.section(main) == OutcomeSection.TSUMO ? WinMethod.TSUMO : WinMethod.RON;
-          int grades = hands.gradeTerm(hands.winner(main), method, 0);
+          int grades = hands.gradeTerm(main, 0);
           for (int base = 0; base < HandOutcomes.BASES; base++) {
             double q = p * probability[grades + base];
             if (q < cutoff) {
@@ -192,8 +198,8 @@ public final class FinalRound {
           }
         }
         case DOUBLE_RON -> {
-          int grades = hands.gradeTerm(hands.winner(main), WinMethod.RON, 0);
-          int others = hands.gradeTerm(hands.secondWinner(main), WinMethod.RON, 0);
+          int grades = hands.gradeTerm(hands.ron(hands.winner(main), hands.loser(main)), 0);
+          int others = hands.gradeTerm(hands.ron(hands.secondWinner(main), hands.loser(main)), 0);
           for (int base = 0; base < HandOutcomes.BASES; base++) {
             double q = p * probability[grades + base];
             if (q < cutoff) {
@@ -210,7 +216,8 @@ public final class FinalRound {
             }
           }
         }
-        case DRAW, ABORTIVE -> dropped += riichi(start, workspace, out, main, p, HandOutcomes.NONE, HandOutcomes.NONE);
+        case DRAW, ABORTIVE ->
+            dropped += riichi(start, workspace, out, main, p, HandOutcomes.NONE, HandOutcomes.NONE);
       }
     }
     return dropped;
@@ -222,7 +229,8 @@ public final class FinalRound {
    *
    * @param main 終わり方の番号
    */
-  private void prepareRiichi(TableState start, FinalRoundWorkspace workspace, int main, double[] probability) {
+  private void prepareRiichi(
+      TableState start, FinalRoundWorkspace workspace, int main, double[] probability) {
     int dealer = start.dealer();
     int factors = 0;
     for (int index = 0; index < hands.factorCount(main); index++) {
@@ -231,9 +239,8 @@ public final class FinalRound {
       if (start.score(absolute) < Variant.DEPOSIT) {
         continue;
       }
-      RiichiRole role = hands.role(main, seat);
-      workspace.declared[factors] = probability[hands.riichiTerm(seat, role, true)];
-      workspace.quiet[factors] = probability[hands.riichiTerm(seat, role, false)];
+      workspace.declared[factors] = probability[hands.riichiTerm(main, seat, true)];
+      workspace.quiet[factors] = probability[hands.riichiTerm(main, seat, false)];
       workspace.riichiBits[factors] = 1 << absolute;
       factors++;
     }
@@ -246,7 +253,13 @@ public final class FinalRound {
    * @return 打ち切った組の確率の和
    */
   private double riichi(
-      TableState start, FinalRoundWorkspace workspace, double[] out, int main, double p, int base, int other) {
+      TableState start,
+      FinalRoundWorkspace workspace,
+      double[] out,
+      int main,
+      double p,
+      int base,
+      int other) {
     int factors = workspace.factors;
     double dropped = 0;
     for (int mask = 0; mask < 1 << factors; mask++) {
@@ -271,7 +284,8 @@ public final class FinalRound {
   }
 
   /** 組が表す局の結果を RoundOutcome に置いて精算し、局を進めた卓を作業領域に作る。 */
-  private void settle(TableState start, FinalRoundWorkspace workspace, int main, int base, int other, int riichi) {
+  private void settle(
+      TableState start, FinalRoundWorkspace workspace, int main, int base, int other, int riichi) {
     RoundOutcome outcome = workspace.outcome;
     hands.place(main, base, other, riichi, start.dealer(), outcome);
     Settlement.apply(variant, start, outcome, workspace.delta);
@@ -296,7 +310,7 @@ public final class FinalRound {
       return;
     }
     int at = leafValues(after, workspace);
-    double[] values = at < 0 ? workspace.leafOut : workspace.memoValues;
+    double[] values = at < 0 ? workspace.leafOut : workspace.cacheValues;
     int from = Math.max(at, 0);
     int shift = Math.floorMod(after.dealer() - start.dealer(), seats);
     for (int k = 0; k < count; k++) {
@@ -307,7 +321,7 @@ public final class FinalRound {
   /**
    * 半荘が続く卓について、葉のネットワークの p(π|s′) を用意する。
    *
-   * @return メモの値の配列（{@code memoValues}）の中で、値が始まる位置。キーに収まらない卓では −1 で、値は {@code leafOut} にある
+   * @return キャッシュの値の配列（{@code cacheValues}）の中で、値が始まる位置。キーに収まらない卓では −1 で、値は {@code leafOut} にある
    */
   private int leafValues(TableState after, FinalRoundWorkspace workspace) {
     long key = GrpKey.of(after);
@@ -316,15 +330,15 @@ public final class FinalRound {
       workspace.networkLeaves++;
       return -1;
     }
-    int slot = (int) SeedMixer.mix64(key) & workspace.memoMask;
+    int slot = (int) SeedMixer.mix64(key) & workspace.cacheMask;
     int at = slot * count;
-    if (workspace.memoKeys[slot] == key) {
-      workspace.memoHits++;
+    if (workspace.cacheKeys[slot] == key) {
+      workspace.cacheHits++;
       return at;
     }
     leaf.permutations(after, workspace.leaf, workspace.leafOut);
-    System.arraycopy(workspace.leafOut, 0, workspace.memoValues, at, count);
-    workspace.memoKeys[slot] = key;
+    System.arraycopy(workspace.leafOut, 0, workspace.cacheValues, at, count);
+    workspace.cacheKeys[slot] = key;
     workspace.networkLeaves++;
     return at;
   }

@@ -40,8 +40,10 @@ public final class Collect {
   private static final Logger LOG = LoggerFactory.getLogger(Collect.class);
 
   /** run の種に混ぜるソルト（牌山・局のキー・相手の選び・迷いの百分位を散らす一様値）。 */
-  private static final long WALLS = 0x434c_5741_4c4c_5331L, HANDS = 0x434c_4841_4e44_5331L,
-      OPPONENT = 0x434c_4f50_504f_4e54L, TIES = 0x434c_5449_4553_5331L;
+  private static final long WALLS = 0x434c_5741_4c4c_5331L,
+      HANDS = 0x434c_4841_4e44_5331L,
+      OPPONENT = 0x434c_4f50_504f_4e54L,
+      TIES = 0x434c_5449_4553_5331L;
 
   /**
    * 収集の設定。
@@ -56,7 +58,8 @@ public final class Collect {
         throw new IllegalArgumentException("A macro needs at least one game: " + games);
       }
       if (!(championProbability >= 0 && championProbability <= 1)) {
-        throw new IllegalArgumentException("The champion probability must be in [0, 1]: " + championProbability);
+        throw new IllegalArgumentException(
+            "The champion probability must be in [0, 1]: " + championProbability);
       }
     }
   }
@@ -68,7 +71,8 @@ public final class Collect {
    * @param calibration この macro で数えた迷いの分布（次の macro の探索が引く）
    * @param opponent 相手
    */
-  public record Result(TrajectoryBatch trajectories, UncertaintyCdf calibration, Champion opponent) {}
+  public record Result(
+      TrajectoryBatch trajectories, UncertaintyCdf calibration, Champion opponent) {}
 
   /** 打った半荘の軌跡と、卓のコアの結果。 */
   record Played(TrajectoryBatch trajectories, TableLoop.Result table) {}
@@ -101,7 +105,8 @@ public final class Collect {
     this.settings = Objects.requireNonNull(settings, "settings");
     this.exploration = Objects.requireNonNull(exploration, "exploration");
     if (grp != null && grp.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but the GRP is " + grp.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but the GRP is " + grp.variant());
     }
     this.grp = grp;
     this.options = Objects.requireNonNull(options, "options");
@@ -119,16 +124,23 @@ public final class Collect {
    * @throws IllegalStateException チェックポイントのアーキテクチャ・ルール・入力のフィンガープリントが合わない
    * @throws IOException チェックポイントが読めないか、置いた初めの王者のチェックポイントが置いたときの中身と違う
    */
-  public Result macro(TableLoop table, long macro, Path learner, OpponentPool opponents, UncertaintyCdf previous)
+  public Result macro(
+      TableLoop table, long macro, Path learner, OpponentPool opponents, UncertaintyCdf previous)
       throws IOException {
     if (macro < 0) {
       throw new IllegalArgumentException("The macro must not be negative: " + macro);
     }
-    Champion opponent = opponents.draw(settings.championProbability(), SeedMixer.derive(runSeed, OPPONENT, macro));
+    Champion opponent =
+        opponents.draw(settings.championProbability(), SeedMixer.derive(runSeed, OPPONENT, macro));
     if (DuelJobs.placed(opponent)) {
       opponent.verify();
     }
-    LOG.info("classic collect macro {} learner={} opponent={} ({})", macro, learner, opponent.label(), opponent.checkpoint());
+    LOG.info(
+        "classic collect macro {} learner={} opponent={} ({})",
+        macro,
+        learner,
+        opponent.label(),
+        opponent.checkpoint());
     Architecture architecture = ClassicCheckpoint.header(learner).architecture();
     Exploration explore = new Exploration(exploration, previous);
     Played played;
@@ -139,7 +151,8 @@ public final class Collect {
                 SeedMixer.derive(runSeed, TIES, macro));
         PolicySeat opponentSeat =
             new PolicySeat(
-                ClassicFamily.open(architecture, opponent.checkpoint(), variant, options, runtime).asPolicy())) {
+                ClassicFamily.open(architecture, opponent.checkpoint(), variant, options, runtime)
+                    .asPolicy())) {
       played = play(table, macro, learnerSeat, opponentSeat, null);
     }
     return new Result(played.trajectories(), explore.calibration(), opponent);
@@ -150,7 +163,12 @@ public final class Collect {
    *
    * @param observer 主経路の観測（null なら観測しない）
    */
-  Played play(TableLoop table, long macro, TableSeat<Query> learner, TableSeat<Query> opponent, GameObserver observer) {
+  Played play(
+      TableLoop table,
+      long macro,
+      TableSeat<Query> learner,
+      TableSeat<Query> opponent,
+      GameObserver observer) {
     int seats = variant.seats();
     List<List<TableSeat<Query>>> seatings = new ArrayList<>(seats);
     for (int learnerSeat = 0; learnerSeat < seats; learnerSeat++) {
@@ -179,12 +197,23 @@ public final class Collect {
     TrajectoryBatch trajectories = collector.build();
     if (trajectories.games().size() != settings.games()) {
       throw new IllegalStateException(
-          "Macro " + macro + " collected " + trajectories.games().size() + " of " + settings.games() + " games");
+          "Macro "
+              + macro
+              + " collected "
+              + trajectories.games().size()
+              + " of "
+              + settings.games()
+              + " games");
     }
     LOG.info(
         "classic collect macro {} games={} decisions={} rounds={} queried={} forced={} seconds={}",
-        macro, trajectories.games().size(), trajectories.size(), result.rounds(), result.queriedDecisions(),
-        result.forcedDecisions(), result.seconds());
+        macro,
+        trajectories.games().size(),
+        trajectories.size(),
+        result.rounds(),
+        result.queriedDecisions(),
+        result.forcedDecisions(),
+        result.seconds());
     return new Played(trajectories, result);
   }
 }

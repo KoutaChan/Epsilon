@@ -63,8 +63,7 @@ public class SharingTest {
         TestServer.assertError(refused, 404, "share_not_found");
         Assert.assertFalse(refused.headers().firstValue("Set-Cookie").isPresent());
       }
-      TestServer.assertError(
-          server.send(server.request(path, null).DELETE()), 404, "not_found");
+      TestServer.assertError(server.send(server.request(path, null).DELETE()), 404, "not_found");
       TestServer.assertError(
           server.send(
               server.request(path + "/record", null).POST(HttpRequest.BodyPublishers.noBody())),
@@ -170,8 +169,7 @@ public class SharingTest {
     try (var server = TestServer.start(URI.create("http://reviewer.example:8080"), null)) {
       ResultId id = server.reviewer.analyze(TestReviewer.OWNER, TestReviewer.FIXTURE);
       var link =
-          server.send(
-              server.request("/api/results/" + id.value() + "/share", TestReviewer.OWNER));
+          server.send(server.request("/api/results/" + id.value() + "/share", TestReviewer.OWNER));
       Assert.assertEquals(
           TestServer.body(link).get("url").getAsString(),
           "http://reviewer.example:8080/?share=" + id.value());

@@ -25,7 +25,12 @@ public final class Progression {
     Variant variant = start.variant();
     if (outcome.variant() != variant || into.variant() != variant) {
       throw new IllegalArgumentException(
-          "Variant mismatch: table " + variant + ", outcome " + outcome.variant() + ", into " + into.variant());
+          "Variant mismatch: table "
+              + variant
+              + ", outcome "
+              + outcome.variant()
+              + ", into "
+              + into.variant());
     }
     if (start.gameOver()) {
       throw new IllegalArgumentException("No round starts from a finished game: " + start);
@@ -41,7 +46,12 @@ public final class Progression {
     }
     if (moved != (long) Variant.DEPOSIT * (start.kyotaku() - remaining)) {
       throw new IllegalArgumentException(
-          "Deltas " + Arrays.toString(delta) + " do not match the deposits of " + outcome + " from " + start);
+          "Deltas "
+              + Arrays.toString(delta)
+              + " do not match the deposits of "
+              + outcome
+              + " from "
+              + start);
     }
     DealerOutcome dealerOutcome = dealerOutcome(outcome, start.dealer());
     for (int seat = 0; seat < delta.length; seat++) {
@@ -83,7 +93,10 @@ public final class Progression {
     Objects.checkIndex(dealer, outcome.variant().seats());
     return switch (outcome.kind()) {
       case TSUMO, RON -> wins(outcome, dealer) ? DealerOutcome.CONTINUES : DealerOutcome.PASSES;
-      case EXHAUSTIVE -> (outcome.tenpaiMask() & (1 << dealer)) != 0 ? DealerOutcome.CONTINUES : DealerOutcome.PASSES;
+      case EXHAUSTIVE ->
+          (outcome.tenpaiMask() & (1 << dealer)) != 0
+              ? DealerOutcome.CONTINUES
+              : DealerOutcome.PASSES;
       case ABORTIVE -> DealerOutcome.ABORTIVE;
     };
   }

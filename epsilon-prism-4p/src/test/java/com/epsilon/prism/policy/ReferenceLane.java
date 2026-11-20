@@ -10,9 +10,9 @@ import java.nio.ByteOrder;
 /**
  * HIP のスロットのレーンの代わりに使う、native なしのテスト用のレーン。カーネルと同じ式・同じ丸めの CPU の参照（{@link HipReference}）で
  * s を書く。本物と同じく、写した重みのバージョンを要求されたバージョンと照合し、違えば例外を投げる。ストリームを持たないので、呼び出した
- * スレッドで評価する入口（{@link HipInference#score}）でだけ使う。
+ * スレッドで評価する入口（{@link NativeInference#score}）でだけ使う。
  */
-final class ReferenceLane implements HipInference.Lane {
+final class ReferenceLane implements NativeInference.Lane {
 
   private final HipReference reference;
   private final long version;

@@ -384,10 +384,12 @@ public final class TargetSchema {
 
     /** ルールに依らない幅。牌ごとの教師は {@link #PER_TILE}。 */
     private final int width;
+
     private final ReadingCondition condition;
     private final float scale;
 
-    ReadingTarget(Loss loss, Reduction reduction, int width, ReadingCondition condition, float scale) {
+    ReadingTarget(
+        Loss loss, Reduction reduction, int width, ReadingCondition condition, float scale) {
       this.loss = loss;
       this.reduction = reduction;
       this.width = width;

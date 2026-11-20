@@ -104,7 +104,11 @@ public class OutcomeRefitTest {
     Assert.assertTrue(q.handEnds() > 0, q.toString());
     Assert.assertEquals(gated.outcomes(), initial.outcomes());
     Assert.assertEquals(gated.outcomesSha256(), initial.outcomesSha256());
-    Assert.assertTrue(gated.detail().startsWith("REPLACEMENT gate at c2; q kept from g000: failed q REFIT gate at c2: mean +"),
+    Assert.assertTrue(
+        gated
+            .detail()
+            .startsWith(
+                "REPLACEMENT gate at c2; q kept from g000: failed q REFIT gate at c2: mean +"),
         gated.detail());
     PhiEntry switched = PhiHistory.read(files).getLast();
     Assert.assertEquals(switched.id(), "g001-a1");
@@ -125,7 +129,10 @@ public class OutcomeRefitTest {
     Path own = files.candidateOutcomes("g002-a1").toAbsolutePath().normalize();
     Assert.assertEquals(refit.outcomes(), own.toString());
     Assert.assertEquals(refit.outcomesSha256(), "", "the run's own q carries no sha");
-    Assert.assertTrue(refit.detail().startsWith("REFIT gate at c3; q REFIT gate at c3: mean +0.000000 SE 0.000000 over "),
+    Assert.assertTrue(
+        refit
+            .detail()
+            .startsWith("REFIT gate at c3; q REFIT gate at c3: mean +0.000000 SE 0.000000 over "),
         refit.detail());
     PhiEntry next = PhiHistory.read(files).getLast();
     Assert.assertEquals(next.id(), "g002-a1");
@@ -142,7 +149,9 @@ public class OutcomeRefitTest {
     Assert.assertFalse(gated.outcomeGate().passed(), "the uniform q is not better than itself");
     Assert.assertFalse(gated.hasOutcomes());
     Assert.assertEquals(gated.outcomesSha256(), "");
-    Assert.assertTrue(gated.detail().contains("; q kept from g000 (none): failed q FIRST gate at c2: mean "), gated.detail());
+    Assert.assertTrue(
+        gated.detail().contains("; q kept from g000 (none): failed q FIRST gate at c2: mean "),
+        gated.detail());
     Assert.assertFalse(PhiHistory.read(files).getLast().hasOutcomes());
   }
 
@@ -152,26 +161,32 @@ public class OutcomeRefitTest {
     RefitRecord none = gated(files("none"), good, null, uniform);
     Assert.assertEquals(none.status(), RefitStatus.READY, none.detail());
     Assert.assertNull(none.outcomeGate());
-    Assert.assertTrue(none.detail().endsWith("; q kept from g000: the refit learned no outcome network"), none.detail());
+    Assert.assertTrue(
+        none.detail().endsWith("; q kept from g000: the refit learned no outcome network"),
+        none.detail());
     Assert.assertEquals(none.outcomes(), uniform.toString());
 
     GrpFiles uncounted = files("uncounted");
     var lifecycle = new GrpLifecycle(uncounted, start(uncounted, bad, uniform));
     recordCounted(uncounted, 1);
-    GrpFixtures.record(uncounted, 2, used(uncounted, 2), GrpFixtures.played(2, 20_000L, GAMES, 2).games());
+    GrpFixtures.record(
+        uncounted, 2, used(uncounted, 2), GrpFixtures.played(2, 20_000L, GAMES, 2).games());
     lifecycle.boundary(1);
     trained(uncounted, 1, good, wild);
     lifecycle.boundary(2);
     RefitRecord missing = latest(uncounted, "g001-a1");
     Assert.assertEquals(missing.status(), RefitStatus.READY, missing.detail());
     Assert.assertNull(missing.outcomeGate());
-    Assert.assertTrue(missing.detail().endsWith("; q kept from g000: cohort 2 has no count file"), missing.detail());
+    Assert.assertTrue(
+        missing.detail().endsWith("; q kept from g000: cohort 2 has no count file"),
+        missing.detail());
     Assert.assertEquals(missing.outcomes(), uniform.toString());
 
     GrpFiles mismatched = files("mismatched");
     lifecycle = new GrpLifecycle(mismatched, start(mismatched, bad, uniform));
     recordCounted(mismatched, 1);
-    GrpFixtures.record(mismatched, 2, used(mismatched, 2), GrpFixtures.played(2, 20_000L, GAMES, 2).games());
+    GrpFixtures.record(
+        mismatched, 2, used(mismatched, 2), GrpFixtures.played(2, 20_000L, GAMES, 2).games());
     CountFile.write(mismatched.counts(2), GrpFixtures.played(2, 20_000L, GAMES, 99).counted());
     lifecycle.boundary(1);
     trained(mismatched, 1, good, uniform);
@@ -179,7 +194,8 @@ public class OutcomeRefitTest {
     RefitRecord unreadable = latest(mismatched, "g001-a1");
     Assert.assertEquals(unreadable.status(), RefitStatus.READY, unreadable.detail());
     Assert.assertNull(unreadable.outcomeGate());
-    Assert.assertTrue(unreadable.detail().contains("; q kept from g000: java.lang.IllegalArgumentException: "),
+    Assert.assertTrue(
+        unreadable.detail().contains("; q kept from g000: java.lang.IllegalArgumentException: "),
         unreadable.detail());
     Assert.assertEquals(unreadable.outcomes(), uniform.toString());
   }
@@ -202,7 +218,9 @@ public class OutcomeRefitTest {
     Assert.assertEquals(gated.status(), RefitStatus.READY, gated.detail());
     Assert.assertNull(gated.outcomeGate());
     Assert.assertEquals(gated.outcomes(), used.toString());
-    Assert.assertTrue(gated.detail().contains("; q kept from g000: java.io.IOException: Outcome network "), gated.detail());
+    Assert.assertTrue(
+        gated.detail().contains("; q kept from g000: java.io.IOException: Outcome network "),
+        gated.detail());
   }
 
   /** READY か REJECTED か、そして GRP の関門の判定は、候補の q の有無にも良し悪しにも依らない。 */
@@ -242,7 +260,8 @@ public class OutcomeRefitTest {
     Assert.assertEquals(gated.status(), RefitStatus.READY, gated.detail());
     Assert.assertFalse(gated.outcomeGate().passed());
     Assert.assertEquals(gated.outcomes(), uniform.toString());
-    Assert.assertTrue(gated.detail().contains("; q kept from g000: failed q REFIT gate at c2"), gated.detail());
+    Assert.assertTrue(
+        gated.detail().contains("; q kept from g000: failed q REFIT gate at c2"), gated.detail());
     Assert.assertEquals(PhiHistory.read(files).size(), 1, "PROPOSE appends nothing");
     PhiEntry switched = PhiControl.switchTo(files.run(), "g001-a1", null, "test").orElseThrow();
     Assert.assertEquals(switched.outcomes(), uniform.toString());
@@ -261,7 +280,9 @@ public class OutcomeRefitTest {
     String sha = GrpCheckpoint.sha256(uniform);
     Assert.assertEquals(record("g001-a1", uniform.toString(), "", null).outcomesSha256(), "");
     Assert.assertThrows(IllegalArgumentException.class, () -> record("g001-a1", "", sha, null));
-    var report = new OutcomeGate.Report(OutcomeGate.Kind.FIRST, false, new Paired(Double.NaN, Double.NaN), 0, 3);
+    var report =
+        new OutcomeGate.Report(
+            OutcomeGate.Kind.FIRST, false, new Paired(Double.NaN, Double.NaN), 0, 3);
     RefitRecord record = record("g001-a1", uniform.toString(), sha, report);
     RefitRecord ready = record.with(RefitStatus.READY, null, "test", 2);
     Assert.assertEquals(ready.outcomes(), uniform.toString());
@@ -299,10 +320,12 @@ public class OutcomeRefitTest {
     GrpFiles files = refitRun("window", true);
     Files.delete(files.counts(4));
     PhiSetup setup = refitSetup();
-    RefitRecord record = GrpRefitter.refit(files, setup, 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
+    RefitRecord record =
+        GrpRefitter.refit(files, setup, 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
     Assert.assertEquals(record.status(), RefitStatus.TRAINED, record.detail());
     Assert.assertEquals(record.window(), new RecencyWindow(5, 2.0, 64));
-    Assert.assertTrue(record.detail().startsWith("games=" + 3 * REFIT_GAMES + " "), record.detail());
+    Assert.assertTrue(
+        record.detail().startsWith("games=" + 3 * REFIT_GAMES + " "), record.detail());
     Path q = files.candidateOutcomes("g005-a1").toAbsolutePath().normalize();
     Assert.assertEquals(record.outcomes(), q.toString());
     Assert.assertEquals(record.outcomesSha256(), "", "the run's own q carries no sha");
@@ -314,12 +337,21 @@ public class OutcomeRefitTest {
 
     // 範囲 3..5 のうち、数のファイルがある 3 と 5 だけから作った行
     OutcomeRows.Builder builder =
-        OutcomeRows.builder(GrpFixtures.VARIANT, record.window(), GateCohort.NEXT, FinalRound::covers);
+        OutcomeRows.builder(
+            GrpFixtures.VARIANT, record.window(), GateCohort.NEXT, FinalRound::covers);
     for (int t : new int[] {3, 5}) builder.add(t, CountFile.read(files.counts(t)));
     OutcomeRows.Split rows = builder.build();
     Assert.assertTrue(
-        record.detail().contains(
-            "; q init=SCRATCH games=" + 2 * REFIT_GAMES + " rows=" + rows.train().size() + " stopRows=" + rows.stop().size() + " excluded=0 unexplained=0 "),
+        record
+            .detail()
+            .contains(
+                "; q init=SCRATCH games="
+                    + 2 * REFIT_GAMES
+                    + " rows="
+                    + rows.train().size()
+                    + " stopRows="
+                    + rows.stop().size()
+                    + " excluded=0 unexplained=0 "),
         record.detail());
     // 同じ行を、GRP と同じ学習のしかたと q の乱数の種で学習した q と、重みが同じ
     OutcomeNetwork again =
@@ -332,7 +364,9 @@ public class OutcomeRefitTest {
                 1,
                 () -> false)
             .network();
-    Assert.assertEquals(GrpCheckpoint.write(again, files.run().resolve("again")), GrpCheckpoint.sha256(q));
+    GrpCheckpoint.write(again, files.run().resolve("again"));
+    Assert.assertEquals(
+        GrpCheckpoint.sha256(files.run().resolve("again")), GrpCheckpoint.sha256(q));
   }
 
   /** 数のファイルが 1 つも無ければ、q を持たない候補になる。それでも GRP の候補の重みと関門の判定は、q を学習したときと同じ。 */
@@ -344,7 +378,8 @@ public class OutcomeRefitTest {
       boolean counted = arm == 0;
       GrpFiles files = refitRun(counted ? "counted" : "uncounted", counted);
       PhiSetup setup = refitSetup();
-      trained[arm] = GrpRefitter.refit(files, setup, 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
+      trained[arm] =
+          GrpRefitter.refit(files, setup, 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
       Assert.assertEquals(trained[arm].status(), RefitStatus.TRAINED, trained[arm].detail());
       GrpFixtures.writeState(files.run(), 7);
       GrpFixtures.Played sixth = GrpFixtures.played(6, 6000L, REFIT_GAMES, 6);
@@ -355,16 +390,24 @@ public class OutcomeRefitTest {
     }
     Assert.assertTrue(trained[0].hasOutcomes(), trained[0].detail());
     Assert.assertFalse(trained[1].hasOutcomes());
-    Assert.assertTrue(trained[1].detail().endsWith("; q none: no TRAIN or STOP rows in 0 counted games of " + trained[1].window()),
+    Assert.assertTrue(
+        trained[1]
+            .detail()
+            .endsWith(
+                "; q none: no TRAIN or STOP rows in 0 counted games of " + trained[1].window()),
         trained[1].detail());
     Assert.assertEquals(
-        GrpCheckpoint.sha256(Path.of(trained[0].path())), GrpCheckpoint.sha256(Path.of(trained[1].path())));
+        GrpCheckpoint.sha256(Path.of(trained[0].path())),
+        GrpCheckpoint.sha256(Path.of(trained[1].path())));
     Assert.assertEquals(head(trained[0].detail()), head(trained[1].detail()));
     Assert.assertEquals(gated[0].status(), gated[1].status());
     Assert.assertEquals(gated[0].gate(), gated[1].gate());
     Assert.assertEquals(head(gated[0].detail()), head(gated[1].detail()));
     if (gated[1].status() == RefitStatus.READY)
-      Assert.assertTrue(gated[1].detail().endsWith("; q kept from g000 (none): the refit learned no outcome network"),
+      Assert.assertTrue(
+          gated[1]
+              .detail()
+              .endsWith("; q kept from g000 (none): the refit learned no outcome network"),
           gated[1].detail());
   }
 
@@ -375,20 +418,25 @@ public class OutcomeRefitTest {
     Path candidates = files.candidate("x").getParent();
     Files.createDirectories(candidates.getParent());
     Files.writeString(candidates, "not a directory");
-    RefitRecord failed = GrpRefitter.refit(files, refitSetup(), 4, RefitCause.SCHEDULE, () -> false).orElseThrow();
+    RefitRecord failed =
+        GrpRefitter.refit(files, refitSetup(), 4, RefitCause.SCHEDULE, () -> false).orElseThrow();
     Assert.assertEquals(failed.status(), RefitStatus.FAILED, failed.detail());
     Assert.assertEquals(failed.path(), "");
     Assert.assertFalse(failed.hasOutcomes());
     Files.delete(candidates);
 
     Files.write(files.counts(5), "not a count file".getBytes(StandardCharsets.UTF_8));
-    RefitRecord trained = GrpRefitter.refit(files, refitSetup(), 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
+    RefitRecord trained =
+        GrpRefitter.refit(files, refitSetup(), 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
     Assert.assertEquals(trained.status(), RefitStatus.TRAINED, trained.detail());
-    Assert.assertEquals(trained.path(), files.candidate("g005-a1").toAbsolutePath().normalize().toString());
-    Assert.assertEquals(GrpCheckpoint.read(files.candidate("g005-a1")).variant(), GrpFixtures.VARIANT);
+    Assert.assertEquals(
+        trained.path(), files.candidate("g005-a1").toAbsolutePath().normalize().toString());
+    Assert.assertEquals(
+        GrpCheckpoint.read(files.candidate("g005-a1")).variant(), GrpFixtures.VARIANT);
     Assert.assertFalse(trained.hasOutcomes());
     Assert.assertFalse(Files.exists(files.candidateOutcomes("g005-a1")));
-    Assert.assertTrue(trained.detail().contains("; q none: java.util.zip.ZipException"), trained.detail());
+    Assert.assertTrue(
+        trained.detail().contains("; q none: java.util.zip.ZipException"), trained.detail());
     Assert.assertEquals(RefitRecord.readAll(files), List.of(failed, trained));
   }
 
@@ -401,11 +449,16 @@ public class OutcomeRefitTest {
         () -> {
           boolean inQ =
               StackWalker.getInstance()
-                  .walk(frames -> frames.anyMatch(frame -> frame.getClassName().equals(OutcomeTrainer.class.getName())));
+                  .walk(
+                      frames ->
+                          frames.anyMatch(
+                              frame ->
+                                  frame.getClassName().equals(OutcomeTrainer.class.getName())));
           if (inQ) asked.incrementAndGet();
           return inQ;
         };
-    Assert.assertTrue(GrpRefitter.refit(files, refitSetup(), 5, RefitCause.SCHEDULE, stop).isEmpty());
+    Assert.assertTrue(
+        GrpRefitter.refit(files, refitSetup(), 5, RefitCause.SCHEDULE, stop).isEmpty());
     Assert.assertTrue(asked.get() > 0, "the q training saw the stop signal");
     Assert.assertTrue(RefitRecord.readAll(files).isEmpty());
     Path candidates = files.candidate("x").getParent();
@@ -414,7 +467,8 @@ public class OutcomeRefitTest {
         Assert.assertEquals(left.toList(), List.of());
       }
     }
-    RefitRecord record = GrpRefitter.refit(files, refitSetup(), 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
+    RefitRecord record =
+        GrpRefitter.refit(files, refitSetup(), 5, RefitCause.SCHEDULE, () -> false).orElseThrow();
     Assert.assertEquals(record.id(), "g005-a1");
     Assert.assertTrue(record.hasOutcomes(), record.detail());
   }
@@ -430,23 +484,32 @@ public class OutcomeRefitTest {
     // 既に始まった反復から効く行なので、追記の確かめを通さずに書く
     for (PhiEntry entry :
         List.of(
-            GrpFixtures.ready(files, "g001-a1", 1, network, same).entry(GrpFixtures.VARIANT, 4, "test"),
-            GrpFixtures.ready(files, "g001-a2", 1, network, other).entry(GrpFixtures.VARIANT, 5, "test"),
-            GrpFixtures.ready(files, "g001-a3", 1, network, broken).entry(GrpFixtures.VARIANT, 6, "test")))
+            GrpFixtures.ready(files, "g001-a1", 1, network, same)
+                .entry(GrpFixtures.VARIANT, 4, "test"),
+            GrpFixtures.ready(files, "g001-a2", 1, network, other)
+                .entry(GrpFixtures.VARIANT, 5, "test"),
+            GrpFixtures.ready(files, "g001-a3", 1, network, broken)
+                .entry(GrpFixtures.VARIANT, 6, "test")))
       PhiHistory.write(files.phiHistory(), PhiHistory.LINES.toJson(entry));
     Files.writeString(broken.resolve(GrpCheckpoint.JSON_FILE), "{}");
     PhiSetup setup = refitSetup("phi.grp.init=WARM");
-    RefitRecord warm = GrpRefitter.refit(files, setup, 3, RefitCause.MANUAL, () -> false).orElseThrow();
+    RefitRecord warm =
+        GrpRefitter.refit(files, setup, 3, RefitCause.MANUAL, () -> false).orElseThrow();
     Assert.assertEquals(warm.init(), GrpInit.WARM);
     Assert.assertTrue(warm.detail().contains("; q init=WARM "), warm.detail());
-    RefitRecord scratch = GrpRefitter.refit(files, setup, 4, RefitCause.MANUAL, () -> false).orElseThrow();
+    RefitRecord scratch =
+        GrpRefitter.refit(files, setup, 4, RefitCause.MANUAL, () -> false).orElseThrow();
     Assert.assertEquals(scratch.init(), GrpInit.WARM);
-    Assert.assertTrue(scratch.detail().contains("; q init=SCRATCH "), "another q shape: " + scratch.detail());
-    RefitRecord unreadable = GrpRefitter.refit(files, setup, 5, RefitCause.MANUAL, () -> false).orElseThrow();
+    Assert.assertTrue(
+        scratch.detail().contains("; q init=SCRATCH "), "another q shape: " + scratch.detail());
+    RefitRecord unreadable =
+        GrpRefitter.refit(files, setup, 5, RefitCause.MANUAL, () -> false).orElseThrow();
     Assert.assertEquals(unreadable.status(), RefitStatus.TRAINED, unreadable.detail());
     Assert.assertFalse(unreadable.hasOutcomes());
     Assert.assertTrue(
-        unreadable.detail().contains("; q none: java.io.IOException: " + GrpCheckpoint.JSON_FILE + " in "),
+        unreadable
+            .detail()
+            .contains("; q none: java.io.IOException: " + GrpCheckpoint.JSON_FILE + " in "),
         unreadable.detail());
   }
 
@@ -460,8 +523,11 @@ public class OutcomeRefitTest {
     PhiHistory.write(
         files.phiHistory(),
         PhiHistory.LINES.toJson(
-            HandEndPhi.checkpointEntry(PhiEntry.INITIAL_ID, GrpFixtures.VARIANT, network, "", same, 1, "", "test")));
-    RefitRecord record = GrpRefitter.refit(files, refitSetup("phi.grp.init=WARM"), 5, RefitCause.MANUAL, () -> false).orElseThrow();
+            HandEndPhi.checkpointEntry(
+                PhiEntry.INITIAL_ID, GrpFixtures.VARIANT, network, "", same, 1, "", "test")));
+    RefitRecord record =
+        GrpRefitter.refit(files, refitSetup("phi.grp.init=WARM"), 5, RefitCause.MANUAL, () -> false)
+            .orElseThrow();
     Assert.assertEquals(record.init(), GrpInit.SCRATCH);
     Assert.assertTrue(record.detail().contains("; q init=SCRATCH "), record.detail());
   }
@@ -472,11 +538,22 @@ public class OutcomeRefitTest {
     GrpFiles files = files("learned");
     PhiSetup setup = start(files, bad, null, "phi.grp.switching=AUTO", "phi.grp.threads=1");
     OutcomeRows.Builder builder =
-        OutcomeRows.builder(GrpFixtures.VARIANT, new RecencyWindow(5, 2.0, 64), GateCohort.NEXT, FinalRound::covers);
+        OutcomeRows.builder(
+            GrpFixtures.VARIANT,
+            new RecencyWindow(5, 2.0, 64),
+            GateCohort.NEXT,
+            FinalRound::covers);
     builder.add(5, GrpFixtures.played(5, 500_000L, 600, 77).counted());
     OutcomeRows.Split rows = builder.build();
     OutcomeNetwork network =
-        OutcomeTrainer.train(SHAPE, null, rows.train(), rows.stop(), rule(setup, GrpInit.SCRATCH, 11), 1, () -> false)
+        OutcomeTrainer.train(
+                SHAPE,
+                null,
+                rows.train(),
+                rows.stop(),
+                rule(setup, GrpInit.SCRATCH, 11),
+                1,
+                () -> false)
             .network();
     Path learned = files.run().resolve("learned-q");
     GrpCheckpoint.write(network, learned);
@@ -507,8 +584,10 @@ public class OutcomeRefitTest {
   }
 
   /** チェックポイントと q（無ければ null）から始める自前の GRP の run を作る。g000 を書き、state.json の次のコホートを 3 にする。 */
-  private static PhiSetup start(GrpFiles files, Path checkpoint, Path q, String... more) throws IOException {
-    String[] assignments = q == null ? more : GrpFixtures.concat(new String[] {"phi.start.outcomes=" + q}, more);
+  private static PhiSetup start(GrpFiles files, Path checkpoint, Path q, String... more)
+      throws IOException {
+    String[] assignments =
+        q == null ? more : GrpFixtures.concat(new String[] {"phi.start.outcomes=" + q}, more);
     PhiSetup setup = GrpFixtures.grpStart(checkpoint, assignments);
     GrpFixtures.writeState(files.run(), 3);
     PhiHistory.initialize(files, setup);
@@ -518,7 +597,8 @@ public class OutcomeRefitTest {
   /**
    * 使用中の q（無ければ null）を持つ run で、M(1) の候補（ネットワークと q）を区切り 2 の関門に通し、その候補の最後の行を返す。
    */
-  private static RefitRecord gated(GrpFiles files, Path checkpoint, Path q, Path usedQ) throws IOException {
+  private static RefitRecord gated(GrpFiles files, Path checkpoint, Path q, Path usedQ)
+      throws IOException {
     PhiSetup setup = start(files, usedNetwork(files), usedQ, "phi.grp.switching=AUTO");
     var lifecycle = new GrpLifecycle(files, setup);
     recordCounted(files, 1);
@@ -540,18 +620,31 @@ public class OutcomeRefitTest {
 
   /** その反復に効く項目で集めたものとして、コホート t の記録と数のファイルを書く。 */
   private static void recordCounted(GrpFiles files, int t) throws IOException {
-    GrpFixtures.recordCounted(files, t, used(files, t), GrpFixtures.played(t, 10_000L * t, GAMES, t));
+    GrpFixtures.recordCounted(
+        files, t, used(files, t), GrpFixtures.played(t, 10_000L * t, GAMES, t));
   }
 
   /** その時点の TRAINED の候補を書く。ネットワークと q を候補のディレクトリに写し、q が null なら q を持たない候補にする。 */
-  private static RefitRecord trained(GrpFiles files, int slot, Path checkpoint, Path q) throws IOException {
+  private static RefitRecord trained(GrpFiles files, int slot, Path checkpoint, Path q)
+      throws IOException {
     String id = GrpRefitter.attemptId(slot, 1);
     Path candidate = copy(checkpoint, files.candidate(id));
     Path outcomes = q == null ? null : copy(q, files.candidateOutcomes(id));
     var record =
         new RefitRecord(
-            id, slot, RefitStatus.TRAINED, RefitCause.SCHEDULE, new RecencyWindow(slot, 2, 64), GrpInit.SCRATCH,
-            PhiEntry.INITIAL_ID, candidate.toString(), outcomes == null ? "" : outcomes.toString(), "", null, null, "",
+            id,
+            slot,
+            RefitStatus.TRAINED,
+            RefitCause.SCHEDULE,
+            new RecencyWindow(slot, 2, 64),
+            GrpInit.SCRATCH,
+            PhiEntry.INITIAL_ID,
+            candidate.toString(),
+            outcomes == null ? "" : outcomes.toString(),
+            "",
+            null,
+            null,
+            "",
             1);
     record.append(files);
     return record;
@@ -574,10 +667,23 @@ public class OutcomeRefitTest {
     return q < 0 ? detail : detail.substring(0, q);
   }
 
-  private static RefitRecord record(String id, String outcomes, String sha, OutcomeGate.Report report) {
+  private static RefitRecord record(
+      String id, String outcomes, String sha, OutcomeGate.Report report) {
     return new RefitRecord(
-        id, 1, RefitStatus.TRAINED, RefitCause.MANUAL, new RecencyWindow(1, 2, 64), GrpInit.SCRATCH, PhiEntry.INITIAL_ID,
-        "/grp/" + id, outcomes, sha, null, report, "", 1);
+        id,
+        1,
+        RefitStatus.TRAINED,
+        RefitCause.MANUAL,
+        new RecencyWindow(1, 2, 64),
+        GrpInit.SCRATCH,
+        PhiEntry.INITIAL_ID,
+        "/grp/" + id,
+        outcomes,
+        sha,
+        null,
+        report,
+        "",
+        1);
   }
 
   /**
@@ -601,7 +707,8 @@ public class OutcomeRefitTest {
   private static PhiSetup refitSetup(String... more) {
     return GrpFixtures.setup(
         GrpFixtures.concat(
-            GrpFixtures.concat(GrpFixtures.scoreStartAssignments(), "phi.grp.trustGames=10", "phi.grp.threads=1"),
+            GrpFixtures.concat(
+                GrpFixtures.scoreStartAssignments(), "phi.grp.trustGames=10", "phi.grp.threads=1"),
             more));
   }
 

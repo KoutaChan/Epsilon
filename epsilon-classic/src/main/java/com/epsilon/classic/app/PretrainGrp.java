@@ -34,13 +34,22 @@ import org.slf4j.LoggerFactory;
  *
  * @param out 書く checkpoint のディレクトリ。既にあれば牌譜を読まず、使い方の誤りとして扱う
  */
-@Named(value = "pretrain-grp", doc = "Train a GRP from scratch on the games of the records and write a GRP checkpoint")
+@Named(
+    value = "pretrain-grp",
+    doc = "Train a GRP from scratch on the games of the records and write a GRP checkpoint")
 public record PretrainGrp(
-    @Key(doc = "Records directory (files directly inside, read in name order)", presence = Presence.REQUIRED) Path records,
-    @Key(doc = "GRP checkpoint directory to write (must not exist yet)", presence = Presence.REQUIRED) Path out,
+    @Key(
+            doc = "Records directory (files directly inside, read in name order)",
+            presence = Presence.REQUIRED)
+        Path records,
+    @Key(
+            doc = "GRP checkpoint directory to write (must not exist yet)",
+            presence = Presence.REQUIRED)
+        Path out,
     @Key(doc = "Rules", value = "TENHOU_4P") Variant variant,
     @Key(doc = "Torch op threads", value = "1") @Range(min = 1) int threads,
-    @Key(doc = "Random seed for shuffling and for the initial weights from scratch", value = "1") long seed)
+    @Key(doc = "Random seed for shuffling and for the initial weights from scratch", value = "1")
+        long seed)
     implements ClassicCommand {
 
   private static final Logger LOG = LoggerFactory.getLogger(PretrainGrp.class);
@@ -56,9 +65,16 @@ public record PretrainGrp(
     String summary =
         String.format(
             Locale.ROOT,
-            "games=%d skipped=%d rows=%d stop=%d uniform=%.4f frequency=%.4f trained=%.4f half-epochs=%d",
-            result.games(), result.skipped(), training.trainRows(), training.stopRows(), training.uniformNll(),
-            training.frequencyNll(), training.trained().stopNll(), training.trained().halfEpochs());
+            "games=%d skipped=%d rows=%d stop=%d uniform=%.4f frequency=%.4f trained=%.4f"
+                + " half-epochs=%d",
+            result.games(),
+            result.skipped(),
+            training.trainRows(),
+            training.stopRows(),
+            training.uniformNll(),
+            training.frequencyNll(),
+            training.trained().stopNll(),
+            training.trained().halfEpochs());
     return training.trained().ending() == TrainingEnding.STOPPED
         ? new Outcome(Exit.STOPPED, summary)
         : Outcome.ok(summary);
@@ -80,7 +96,8 @@ public record PretrainGrp(
       try {
         RecordedGame game = RecordDirectory.read(file);
         if (game.variant() != variant) {
-          throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + game.variant());
+          throw new IllegalArgumentException(
+              "Variant mismatch: expected " + variant + " but found " + game.variant());
         }
         games.add(LogGames.of(game));
       } catch (IllegalArgumentException unusable) {

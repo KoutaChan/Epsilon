@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
 import ai.djl.nn.Parameter;
@@ -13,7 +15,6 @@ import com.epsilon.mahjong.engine.EngineDecisionKind;
 import com.epsilon.prism.model.Batches.Batch;
 import com.epsilon.prism.model.Batches.Move;
 import com.epsilon.prism.model.Batches.Row;
-import com.epsilon.prism4p.input.InputSchema;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -75,7 +76,10 @@ public class TwinDiscardTrainingTest {
       Assert.assertEquals(
           differing,
           List.of(),
-          precision + ": weights that differ with the label on the tsumogiri twin (largest difference " + largest + ")");
+          precision
+              + ": weights that differ with the label on the tsumogiri twin (largest difference "
+              + largest
+              + ")");
     }
   }
 
@@ -91,15 +95,19 @@ public class TwinDiscardTrainingTest {
   }
 
   /** 初期値を作る。全てのパラメーターを少し動かして値を 0 でなくし、同値な打牌の値がビットまで同じことを確かめる。 */
-  private static Map<String, float[]> initialWeights(NDManager manager, Batch batch, Precision precision) {
+  private static Map<String, float[]> initialWeights(
+      NDManager manager, Batch batch, Precision precision) {
     manager.getEngine().setRandomSeed(7);
-    PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, Batches.small(PrismShape.MIN_DEPTH));
+    PrismNetwork network = new PrismNetwork(FOUR_PLAYER, Batches.small(PrismShape.MIN_DEPTH));
     network.initialize(manager);
     Batches.perturb(network, 0.05f, 31);
     try (NDManager scope = manager.newSubManager()) {
       float[] scores =
           network
-              .forward(new ParameterStore(manager, false), batch.inputs(scope), Pass.inference(precision))
+              .forward(
+                  new ParameterStore(manager, false),
+                  batch.inputs(scope),
+                  Pass.inference(precision))
               .scores()
               .toFloatArray();
       Assert.assertTrue(Batches.maxAbs(scores) > 1e-4f, "scores must be non-trivial");
@@ -107,7 +115,9 @@ public class TwinDiscardTrainingTest {
       for (int row = 0; row < batch.rows().size(); row++) {
         int tedashi = row * capacity;
         Assert.assertEquals(
-            Float.floatToRawIntBits(scores[tedashi + 1]), Float.floatToRawIntBits(scores[tedashi]), "row " + row);
+            Float.floatToRawIntBits(scores[tedashi + 1]),
+            Float.floatToRawIntBits(scores[tedashi]),
+            "row " + row);
       }
     }
     return weights(network);
@@ -115,8 +125,12 @@ public class TwinDiscardTrainingTest {
 
   /** 初期値から、教師 {@code labels} で {@link #STEPS} ステップ学んだ重みを返す。 */
   private static Map<String, float[]> train(
-      NDManager manager, Map<String, float[]> initial, Batch batch, List<ValueLabel> labels, Precision precision) {
-    PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, Batches.small(PrismShape.MIN_DEPTH));
+      NDManager manager,
+      Map<String, float[]> initial,
+      Batch batch,
+      List<ValueLabel> labels,
+      Precision precision) {
+    PrismNetwork network = new PrismNetwork(FOUR_PLAYER, Batches.small(PrismShape.MIN_DEPTH));
     network.initialize(manager);
     for (Pair<String, Parameter> pair : network.getParameters()) {
       pair.getValue().getArray().set(initial.get(pair.getKey()));
@@ -128,7 +142,8 @@ public class TwinDiscardTrainingTest {
     for (int step = 0; step < STEPS; step++) {
       try (NDManager scope = manager.newSubManager();
           GradientCollector collector = manager.getEngine().newGradientCollector()) {
-        Outputs outputs = network.forward(store, batch.inputs(scope), Pass.training(precision, measured, null));
+        Outputs outputs =
+            network.forward(store, batch.inputs(scope), Pass.training(precision, measured, null));
         collector.backward(loss.total(scope, outputs, labels, null, 1f, labels.size(), 1f));
       }
       Batches.step(network, optimizer);

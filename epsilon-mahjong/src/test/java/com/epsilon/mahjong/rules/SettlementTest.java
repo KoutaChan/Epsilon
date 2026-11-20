@@ -30,16 +30,20 @@ public class SettlementTest {
   @Test
   public void everyOtherSeatPaysAFourPlayerTsumo() {
     TableState start = new TableState(FOUR);
-    Assert.assertEquals(settle(start, tsumo(FOUR, 240, 1, NO_SEAT, 0)), new int[] {-500, 1_100, -300, -300});
-    Assert.assertEquals(settle(start, tsumo(FOUR, 320, 0, NO_SEAT, 0)), new int[] {2_100, -700, -700, -700});
+    Assert.assertEquals(
+        settle(start, tsumo(FOUR, 240, 1, NO_SEAT, 0)), new int[] {-500, 1_100, -300, -300});
+    Assert.assertEquals(
+        settle(start, tsumo(FOUR, 320, 0, NO_SEAT, 0)), new int[] {2_100, -700, -700, -700});
   }
 
   /** 三人打ちのツモ。親の 20 符 4 翻は 2 席が 2600 点ずつ払い、子の跳満は 6000 点と 3000 点（いない席の分は誰も払わない）。 */
   @Test
   public void aThreePlayerTsumoLosesTheMissingSeatsShare() {
     TableState start = new TableState(THREE);
-    Assert.assertEquals(settle(start, tsumo(THREE, 1_280, 0, NO_SEAT, 0)), new int[] {5_200, -2_600, -2_600});
-    Assert.assertEquals(settle(start, tsumo(THREE, 3_000, 1, NO_SEAT, 0)), new int[] {-6_000, 9_000, -3_000});
+    Assert.assertEquals(
+        settle(start, tsumo(THREE, 1_280, 0, NO_SEAT, 0)), new int[] {5_200, -2_600, -2_600});
+    Assert.assertEquals(
+        settle(start, tsumo(THREE, 3_000, 1, NO_SEAT, 0)), new int[] {-6_000, 9_000, -3_000});
   }
 
   /** 本場 1 本につき、ロンなら放銃者が 100 × (席の数 − 1) 点、ツモなら払う席がそれぞれ 100 点を足して払う。 */
@@ -47,25 +51,33 @@ public class SettlementTest {
   public void honbaAddsAHundredPerPayingSeatAndPerOtherSeatOnARon() {
     TableState east2 = table(FOUR, 1, 2, 0, 25_000, 25_000, 25_000, 25_000);
     Assert.assertEquals(settle(east2, ron(FOUR, 240, 3, 0, 0)), new int[] {-1_600, 0, 0, 1_600});
-    Assert.assertEquals(settle(east2, tsumo(FOUR, 240, 2, NO_SEAT, 0)), new int[] {-500, -700, 1_700, -500});
+    Assert.assertEquals(
+        settle(east2, tsumo(FOUR, 240, 2, NO_SEAT, 0)), new int[] {-500, -700, 1_700, -500});
     TableState three = table(THREE, 0, 3, 0, 35_000, 35_000, 35_000);
     Assert.assertEquals(settle(three, ron(THREE, 2_000, 2, 0, 0)), new int[] {-8_600, 0, 8_600});
-    Assert.assertEquals(settle(three, tsumo(THREE, 2_000, 1, NO_SEAT, 0)), new int[] {-4_300, 6_600, -2_300});
+    Assert.assertEquals(
+        settle(three, tsumo(THREE, 2_000, 1, NO_SEAT, 0)), new int[] {-4_300, 6_600, -2_300});
   }
 
   /** 立直の席は 1000 点を場に出す。和了なら場の供託を全て最初の和了者が受け取り、流局なら場に残る。 */
   @Test
   public void riichiDepositsGoToTheWinnerWithTheTableDeposits() {
     TableState start = table(FOUR, 0, 0, 2, 25_000, 24_000, 25_000, 24_000);
-    Assert.assertEquals(settle(start, ron(FOUR, 2_000, 2, 3, 0b0101)), new int[] {-1_000, 0, 11_000, -8_000});
     Assert.assertEquals(
-        settle(start, tsumo(FOUR, 2_000, 0, NO_SEAT, 0b0001)), new int[] {14_000, -4_000, -4_000, -4_000});
-    Assert.assertEquals(settle(start, exhaustive(FOUR, 0b0101, 0, 0b0101)), new int[] {500, -1_500, 500, -1_500});
+        settle(start, ron(FOUR, 2_000, 2, 3, 0b0101)), new int[] {-1_000, 0, 11_000, -8_000});
+    Assert.assertEquals(
+        settle(start, tsumo(FOUR, 2_000, 0, NO_SEAT, 0b0001)),
+        new int[] {14_000, -4_000, -4_000, -4_000});
+    Assert.assertEquals(
+        settle(start, exhaustive(FOUR, 0b0101, 0, 0b0101)), new int[] {500, -1_500, 500, -1_500});
 
     TableState three = table(THREE, 0, 0, 1, 35_000, 34_000, 35_000);
-    Assert.assertEquals(settle(three, ron(THREE, 2_000, 2, 1, 0b001)), new int[] {-1_000, -8_000, 10_000});
-    Assert.assertEquals(settle(three, tsumo(THREE, 2_000, 0, NO_SEAT, 0b001)), new int[] {9_000, -4_000, -4_000});
-    Assert.assertEquals(settle(three, exhaustive(THREE, 0b011, 0, 0b001)), new int[] {0, 1_000, -2_000});
+    Assert.assertEquals(
+        settle(three, ron(THREE, 2_000, 2, 1, 0b001)), new int[] {-1_000, -8_000, 10_000});
+    Assert.assertEquals(
+        settle(three, tsumo(THREE, 2_000, 0, NO_SEAT, 0b001)), new int[] {9_000, -4_000, -4_000});
+    Assert.assertEquals(
+        settle(three, exhaustive(THREE, 0b011, 0, 0b001)), new int[] {0, 1_000, -2_000});
   }
 
   /** ダブロンの本場と供託は、放銃者から手番の順で最初の和了者だけが受け取る。 */
@@ -89,8 +101,10 @@ public class SettlementTest {
   @Test
   public void paoPaysTheWholeTsumoAndHalfTheRon() {
     TableState start = table(FOUR, 0, 1, 0, 25_000, 25_000, 25_000, 25_000);
-    Assert.assertEquals(settle(start, tsumo(FOUR, 8_000, 1, 3, 0)), new int[] {0, 32_300, 0, -32_300});
-    Assert.assertEquals(settle(start, tsumo(FOUR, 16_000, 0, 2, 0)), new int[] {96_300, 0, -96_300, 0});
+    Assert.assertEquals(
+        settle(start, tsumo(FOUR, 8_000, 1, 3, 0)), new int[] {0, 32_300, 0, -32_300});
+    Assert.assertEquals(
+        settle(start, tsumo(FOUR, 16_000, 0, 2, 0)), new int[] {96_300, 0, -96_300, 0});
 
     RoundOutcome outcome = new RoundOutcome(FOUR);
     outcome.setRon(8_000, 2, 1, 0, 0);
@@ -128,10 +142,13 @@ public class SettlementTest {
   @Test
   public void aThreePlayerPaoPaysTheTwoTsumoSharesAndHalfTheRon() {
     TableState start = table(THREE, 0, 1, 0, 35_000, 35_000, 35_000);
-    Assert.assertEquals(settle(start, tsumo(THREE, 8_000, 2, 1, 0)), new int[] {0, -24_200, 24_200});
-    Assert.assertEquals(settle(start, tsumo(THREE, 8_000, 0, 2, 0)), new int[] {32_200, 0, -32_200});
+    Assert.assertEquals(
+        settle(start, tsumo(THREE, 8_000, 2, 1, 0)), new int[] {0, -24_200, 24_200});
+    Assert.assertEquals(
+        settle(start, tsumo(THREE, 8_000, 0, 2, 0)), new int[] {32_200, 0, -32_200});
     TableState east2 = table(THREE, 1, 1, 0, 35_000, 35_000, 35_000);
-    Assert.assertEquals(settle(east2, tsumo(THREE, 8_000, 2, 1, 0)), new int[] {0, -24_200, 24_200});
+    Assert.assertEquals(
+        settle(east2, tsumo(THREE, 8_000, 2, 1, 0)), new int[] {0, -24_200, 24_200});
 
     RoundOutcome outcome = new RoundOutcome(THREE);
     outcome.setRon(8_000, 2, 0, 1, 0);
@@ -147,12 +164,17 @@ public class SettlementTest {
   @Test
   public void paoNeedsAYakumanFromAnotherSeat() {
     int[] delta = new int[4];
-    Assert.assertThrows(IllegalArgumentException.class, () -> Settlement.tsumo(FOUR, 2_000, 1, 0, 0, 3, delta));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Settlement.tsumo(FOUR, 8_000, 1, 0, 0, 1, delta));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Settlement.ron(FOUR, 8_000, 1, 0, 0, 0, 1, delta));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Settlement.ron(FOUR, 8_000, 1, 0, 0, 0, 0, delta));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Settlement.ron(FOUR, 8_000, 1, 1, 0, 0, NO_SEAT, delta));
+        IllegalArgumentException.class, () -> Settlement.tsumo(FOUR, 2_000, 1, 0, 0, 3, delta));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Settlement.tsumo(FOUR, 8_000, 1, 0, 0, 1, delta));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Settlement.ron(FOUR, 8_000, 1, 0, 0, 0, 1, delta));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Settlement.ron(FOUR, 8_000, 1, 0, 0, 0, 0, delta));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Settlement.ron(FOUR, 8_000, 1, 1, 0, 0, NO_SEAT, delta));
     Assert.assertEquals(delta, new int[4]);
   }
 
@@ -161,14 +183,19 @@ public class SettlementTest {
   public void notenPaymentsForEveryTenpaiCount() {
     TableState four = new TableState(FOUR);
     Assert.assertEquals(settle(four, exhaustive(FOUR, 0b0000, 0, 0)), new int[] {0, 0, 0, 0});
-    Assert.assertEquals(settle(four, exhaustive(FOUR, 0b0100, 0, 0)), new int[] {-1_000, -1_000, 3_000, -1_000});
-    Assert.assertEquals(settle(four, exhaustive(FOUR, 0b1001, 0, 0)), new int[] {1_500, -1_500, -1_500, 1_500});
-    Assert.assertEquals(settle(four, exhaustive(FOUR, 0b0111, 0, 0)), new int[] {1_000, 1_000, 1_000, -3_000});
+    Assert.assertEquals(
+        settle(four, exhaustive(FOUR, 0b0100, 0, 0)), new int[] {-1_000, -1_000, 3_000, -1_000});
+    Assert.assertEquals(
+        settle(four, exhaustive(FOUR, 0b1001, 0, 0)), new int[] {1_500, -1_500, -1_500, 1_500});
+    Assert.assertEquals(
+        settle(four, exhaustive(FOUR, 0b0111, 0, 0)), new int[] {1_000, 1_000, 1_000, -3_000});
     Assert.assertEquals(settle(four, exhaustive(FOUR, 0b1111, 0, 0)), new int[] {0, 0, 0, 0});
     TableState three = new TableState(THREE);
     Assert.assertEquals(settle(three, exhaustive(THREE, 0b000, 0, 0)), new int[] {0, 0, 0});
-    Assert.assertEquals(settle(three, exhaustive(THREE, 0b010, 0, 0)), new int[] {-1_000, 2_000, -1_000});
-    Assert.assertEquals(settle(three, exhaustive(THREE, 0b101, 0, 0)), new int[] {1_000, -2_000, 1_000});
+    Assert.assertEquals(
+        settle(three, exhaustive(THREE, 0b010, 0, 0)), new int[] {-1_000, 2_000, -1_000});
+    Assert.assertEquals(
+        settle(three, exhaustive(THREE, 0b101, 0, 0)), new int[] {1_000, -2_000, 1_000});
     Assert.assertEquals(settle(three, exhaustive(THREE, 0b111, 0, 0)), new int[] {0, 0, 0});
   }
 
@@ -187,7 +214,10 @@ public class SettlementTest {
           int expected = 0;
           if (tenpai > 0 && tenpai < seats) {
             boolean listening = (mask & (1 << seat)) != 0;
-            expected = listening ? variant.notenTotal() / tenpai : -variant.notenTotal() / (seats - tenpai);
+            expected =
+                listening
+                    ? variant.notenTotal() / tenpai
+                    : -variant.notenTotal() / (seats - tenpai);
           }
           Assert.assertEquals(delta[seat], expected, variant + " " + Integer.toBinaryString(mask));
         }
@@ -200,23 +230,32 @@ public class SettlementTest {
   @Test
   public void nagashiManganIsAManganTsumoWithoutHonba() {
     TableState four = table(FOUR, 0, 3, 0, 25_000, 25_000, 25_000, 25_000);
-    Assert.assertEquals(settle(four, exhaustive(FOUR, 0b0001, 0b0100, 0)), new int[] {-4_000, -2_000, 8_000, -2_000});
-    Assert.assertEquals(settle(four, exhaustive(FOUR, 0, 0b0001, 0)), new int[] {12_000, -4_000, -4_000, -4_000});
-    Assert.assertEquals(settle(four, exhaustive(FOUR, 0, 0b0110, 0)), new int[] {-8_000, 6_000, 6_000, -4_000});
+    Assert.assertEquals(
+        settle(four, exhaustive(FOUR, 0b0001, 0b0100, 0)),
+        new int[] {-4_000, -2_000, 8_000, -2_000});
+    Assert.assertEquals(
+        settle(four, exhaustive(FOUR, 0, 0b0001, 0)), new int[] {12_000, -4_000, -4_000, -4_000});
+    Assert.assertEquals(
+        settle(four, exhaustive(FOUR, 0, 0b0110, 0)), new int[] {-8_000, 6_000, 6_000, -4_000});
     TableState three = table(THREE, 0, 1, 0, 35_000, 35_000, 35_000);
-    Assert.assertEquals(settle(three, exhaustive(THREE, 0b011, 0b010, 0)), new int[] {-4_000, 6_000, -2_000});
-    Assert.assertEquals(settle(three, exhaustive(THREE, 0, 0b001, 0)), new int[] {8_000, -4_000, -4_000});
+    Assert.assertEquals(
+        settle(three, exhaustive(THREE, 0b011, 0b010, 0)), new int[] {-4_000, 6_000, -2_000});
+    Assert.assertEquals(
+        settle(three, exhaustive(THREE, 0, 0b001, 0)), new int[] {8_000, -4_000, -4_000});
   }
 
   @Test
   public void abortiveDrawsMoveOnlyTheRiichiDeposits() {
     TableState four = table(FOUR, 2, 1, 1, 25_000, 25_000, 25_000, 24_000);
     Assert.assertEquals(
-        settle(four, abortive(FOUR, AbortiveDraw.FOUR_RIICHI, 0b1111)), new int[] {-1_000, -1_000, -1_000, -1_000});
-    Assert.assertEquals(settle(four, abortive(FOUR, AbortiveDraw.TRIPLE_RON, 0)), new int[] {0, 0, 0, 0});
+        settle(four, abortive(FOUR, AbortiveDraw.FOUR_RIICHI, 0b1111)),
+        new int[] {-1_000, -1_000, -1_000, -1_000});
+    Assert.assertEquals(
+        settle(four, abortive(FOUR, AbortiveDraw.TRIPLE_RON, 0)), new int[] {0, 0, 0, 0});
     TableState three = new TableState(THREE);
     Assert.assertEquals(
-        settle(three, abortive(THREE, AbortiveDraw.NINE_TERMINALS, 0b001)), new int[] {-1_000, 0, 0});
+        settle(three, abortive(THREE, AbortiveDraw.NINE_TERMINALS, 0b001)),
+        new int[] {-1_000, 0, 0});
   }
 
   @Test
@@ -235,18 +274,25 @@ public class SettlementTest {
   public void mismatchedInputsAreRejected() {
     TableState four = new TableState(FOUR);
     RoundOutcome outcome = ron(FOUR, 240, 1, 0, 0);
-    Assert.assertThrows(IllegalArgumentException.class, () -> Settlement.apply(THREE, four, outcome, new int[3]));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Settlement.apply(FOUR, four, outcome, new int[3]));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Settlement.apply(FOUR, four, new RoundOutcome(THREE), new int[4]));
+        IllegalArgumentException.class, () -> Settlement.apply(THREE, four, outcome, new int[3]));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Settlement.apply(FOUR, four, outcome, new int[3]));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Settlement.apply(FOUR, four, new RoundOutcome(THREE), new int[4]));
     TableState over = new TableState(FOUR);
     over.finish();
-    Assert.assertThrows(IllegalArgumentException.class, () -> Settlement.apply(FOUR, over, outcome, new int[4]));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Settlement.exhaustive(THREE, 0, 0b1000, 0, new int[3]));
+        IllegalArgumentException.class, () -> Settlement.apply(FOUR, over, outcome, new int[4]));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Settlement.tsumo(FOUR, 2_000, 1, 0, -1, NO_SEAT, new int[4]));
+        IllegalArgumentException.class,
+        () -> Settlement.exhaustive(THREE, 0, 0b1000, 0, new int[3]));
     Assert.assertThrows(
-        IndexOutOfBoundsException.class, () -> Settlement.tsumo(THREE, 2_000, 3, 0, 0, NO_SEAT, new int[3]));
+        IllegalArgumentException.class,
+        () -> Settlement.tsumo(FOUR, 2_000, 1, 0, -1, NO_SEAT, new int[4]));
+    Assert.assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> Settlement.tsumo(THREE, 2_000, 3, 0, 0, NO_SEAT, new int[3]));
   }
 }

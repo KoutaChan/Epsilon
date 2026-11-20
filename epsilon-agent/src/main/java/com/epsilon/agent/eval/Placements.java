@@ -27,7 +27,13 @@ public record Placements(Variant variant, Seating seating, List<Split> splits) {
       Split split = splits.get(index);
       if (split.slots() != slots || split.seatCount() != variant.seats()) {
         throw new IllegalArgumentException(
-            "Split " + split + " does not seat " + slots + " slots at the " + variant.seats() + " seats");
+            "Split "
+                + split
+                + " does not seat "
+                + slots
+                + " slots at the "
+                + variant.seats()
+                + " seats");
       }
       for (int earlier = 0; earlier < index; earlier++) {
         if (splits.get(earlier).equals(split)) {
@@ -35,9 +41,15 @@ public record Placements(Variant variant, Seating seating, List<Split> splits) {
         }
       }
     }
-    if (seating == Seating.BY_GAME && (splits.size() != 1 || slots != 2 || splits.get(0).seatsOf(0) != 1)) {
+    if (seating == Seating.BY_GAME
+        && (splits.size() != 1 || slots != 2 || splits.get(0).seatsOf(0) != 1)) {
       throw new IllegalArgumentException(
-          "A " + seating + " arena plays the split " + Split.oneAgainstRest(variant) + " only, not " + splits);
+          "A "
+              + seating
+              + " arena plays the split "
+              + Split.oneAgainstRest(variant)
+              + " only, not "
+              + splits);
     }
   }
 

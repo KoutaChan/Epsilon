@@ -73,10 +73,14 @@ public sealed interface LedgerSettings {
    */
   @Case("RECORD")
   record RecordOnly(
-      @Key(doc = "帳簿で計算する組（空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]") Set<LedgerGroup> compute,
-      @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false) double pointClip,
-      @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false) double policyClip,
-      @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000) int slopeStep,
+      @Key(doc = "帳簿で計算する組（空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]")
+          Set<LedgerGroup> compute,
+      @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false)
+          double pointClip,
+      @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false)
+          double policyClip,
+      @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000)
+          int slopeStep,
       @Key(doc = "傾きの列を作り直す時点", value = "DEPOSIT") SlopeRefresh slopeRefresh)
       implements LedgerSettings, Recording {
 
@@ -98,20 +102,36 @@ public sealed interface LedgerSettings {
    */
   @Case("AUDIT")
   record Audit(
-      @Key(doc = "帳簿で計算する組（空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]") Set<LedgerGroup> compute,
-      @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false) double pointClip,
-      @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false) double policyClip,
-      @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000) int slopeStep,
+      @Key(doc = "帳簿で計算する組（空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]")
+          Set<LedgerGroup> compute,
+      @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false)
+          double pointClip,
+      @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false)
+          double policyClip,
+      @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000)
+          int slopeStep,
       @Key(doc = "傾きの列を作り直す時点", value = "DEPOSIT") SlopeRefresh slopeRefresh,
-      @Key(doc = "教師の補正に使う組（計算する組の部分集合で、空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]", change = Change.FIT)
+      @Key(
+              doc = "教師の補正に使う組（計算する組の部分集合で、空にしない）",
+              value = "[IMPROVE, POINTS, DORA, URA, POLICY]",
+              change = Change.FIT)
           Set<LedgerGroup> apply,
-      @Key(doc = "係数を当てはめる区分", value = "CLASS", change = Change.FIT) LedgerCells cells,
-      @Key(doc = "係数を縮める強さ（リッジの強さ）", value = "0.001", change = Change.FIT) @Range(min = 0, minInclusive = false)
+      @Key(
+              doc =
+                  "判断クラス別（CLASS）、または局の段階と自席順位でも分ける（CLASS_STAGE_RANK）。後者は反対の偶奇の区分が 544"
+                      + " 行未満ならクラス係数を使う",
+              value = "CLASS",
+              change = Change.FIT)
+          LedgerCells cells,
+      @Key(doc = "係数を縮める強さ（リッジの強さ）", value = "0.001", change = Change.FIT)
+          @Range(min = 0, minInclusive = false)
           double ridge,
       @Key(doc = "区分に要る行の数（当てはめる列 1 つあたり）", value = "32", change = Change.FIT) @Range(min = 1)
           int minRowsPerColumn,
-      @Key(doc = "行に掛ける係数を、どの行で当てはめるか", value = "OTHER_PARITY", change = Change.FIT) CoefficientSource coefficients,
-      @Key(doc = "偏りを警告するしきい値（標準誤差の倍数）", value = "3.0", change = Change.FIT) @Range(min = 0, minInclusive = false)
+      @Key(doc = "行に掛ける係数を、どの行で当てはめるか", value = "OTHER_PARITY", change = Change.FIT)
+          CoefficientSource coefficients,
+      @Key(doc = "偏りを警告するしきい値（標準誤差の倍数）", value = "3.0", change = Change.FIT)
+          @Range(min = 0, minInclusive = false)
           double biasZ)
       implements LedgerSettings, Recording, Fitting {
 
@@ -126,20 +146,36 @@ public sealed interface LedgerSettings {
   /** 帳簿を行に書き、係数を当てはめて、教師を Ỹ = Y − β·L に補正する。キーは {@link Audit} と同じ。 */
   @Case("APPLY")
   record Apply(
-      @Key(doc = "帳簿で計算する組（空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]") Set<LedgerGroup> compute,
-      @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false) double pointClip,
-      @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false) double policyClip,
-      @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000) int slopeStep,
+      @Key(doc = "帳簿で計算する組（空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]")
+          Set<LedgerGroup> compute,
+      @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false)
+          double pointClip,
+      @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false)
+          double policyClip,
+      @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000)
+          int slopeStep,
       @Key(doc = "傾きの列を作り直す時点", value = "DEPOSIT") SlopeRefresh slopeRefresh,
-      @Key(doc = "教師の補正に使う組（計算する組の部分集合で、空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]", change = Change.FIT)
+      @Key(
+              doc = "教師の補正に使う組（計算する組の部分集合で、空にしない）",
+              value = "[IMPROVE, POINTS, DORA, URA, POLICY]",
+              change = Change.FIT)
           Set<LedgerGroup> apply,
-      @Key(doc = "係数を当てはめる区分", value = "CLASS", change = Change.FIT) LedgerCells cells,
-      @Key(doc = "係数を縮める強さ（リッジの強さ）", value = "0.001", change = Change.FIT) @Range(min = 0, minInclusive = false)
+      @Key(
+              doc =
+                  "判断クラス別（CLASS）、または局の段階と自席順位でも分ける（CLASS_STAGE_RANK）。後者は反対の偶奇の区分が 544"
+                      + " 行未満ならクラス係数を使う",
+              value = "CLASS",
+              change = Change.FIT)
+          LedgerCells cells,
+      @Key(doc = "係数を縮める強さ（リッジの強さ）", value = "0.001", change = Change.FIT)
+          @Range(min = 0, minInclusive = false)
           double ridge,
       @Key(doc = "区分に要る行の数（当てはめる列 1 つあたり）", value = "32", change = Change.FIT) @Range(min = 1)
           int minRowsPerColumn,
-      @Key(doc = "行に掛ける係数を、どの行で当てはめるか", value = "OTHER_PARITY", change = Change.FIT) CoefficientSource coefficients,
-      @Key(doc = "偏りを警告するしきい値（標準誤差の倍数）", value = "3.0", change = Change.FIT) @Range(min = 0, minInclusive = false)
+      @Key(doc = "行に掛ける係数を、どの行で当てはめるか", value = "OTHER_PARITY", change = Change.FIT)
+          CoefficientSource coefficients,
+      @Key(doc = "偏りを警告するしきい値（標準誤差の倍数）", value = "3.0", change = Change.FIT)
+          @Range(min = 0, minInclusive = false)
           double biasZ)
       implements LedgerSettings, Recording, Fitting {
 
@@ -162,7 +198,8 @@ public sealed interface LedgerSettings {
 
   private static void requireFit(Set<LedgerGroup> compute, Set<LedgerGroup> apply) {
     if (apply.isEmpty() || !compute.containsAll(apply)) {
-      throw new InvalidSetting("apply", "apply " + apply + " must be a non-empty subset of compute " + compute);
+      throw new InvalidSetting(
+          "apply", "apply " + apply + " must be a non-empty subset of compute " + compute);
     }
   }
 }

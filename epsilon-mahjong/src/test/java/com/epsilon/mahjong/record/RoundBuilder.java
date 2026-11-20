@@ -81,7 +81,10 @@ final class RoundBuilder {
 
   /** 席の北抜き。ツモった牌が北ならその北を、違えば手の中の北を抜く。 */
   RoundBuilder nuki(int seat) {
-    int north = drawn != TurnEvent.NONE && Tiles.kind(drawn) == Tiles.PEI ? drawn : held(seat, Tiles.PEI * 2);
+    int north =
+        drawn != TurnEvent.NONE && Tiles.kind(drawn) == Tiles.PEI
+            ? drawn
+            : held(seat, Tiles.PEI * 2);
     hands.get(seat).remove(Integer.valueOf(north));
     events.add(new RecordEvent.Nuki(seat, north));
     drawn = TurnEvent.NONE;

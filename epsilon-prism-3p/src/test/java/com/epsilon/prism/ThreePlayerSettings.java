@@ -47,7 +47,8 @@ public final class ThreePlayerSettings {
   }
 
   /** run のディレクトリに、プリセットと上書きを重ねた設定の 1 行目を書く（{@code settings create} と同じ行）。 */
-  public static PrismSettings create(Path run, List<String> presets, String... assignments) throws IOException {
+  public static PrismSettings create(Path run, List<String> presets, String... assignments)
+      throws IOException {
     Settings<PrismSettings> settings = bind(presets, assignments);
     try (SettingsRows.Locked locked = new SettingsRows(new RunDirectory(run)).lock()) {
       locked.append(1, "test", SettingsRow.CREATED, List.of(), settings.tree());
@@ -56,7 +57,8 @@ public final class ThreePlayerSettings {
   }
 
   /** run の設定に、プリセットと上書きを重ねた設定の行を 1 つ足す（前の行の値は引き継がない）。 */
-  public static PrismSettings append(Path run, List<String> presets, String... assignments) throws IOException {
+  public static PrismSettings append(Path run, List<String> presets, String... assignments)
+      throws IOException {
     Settings<PrismSettings> settings = bind(presets, assignments);
     try (SettingsRows.Locked locked = new SettingsRows(new RunDirectory(run)).lock()) {
       locked.append(1, "test", "test", List.of(), settings.tree());

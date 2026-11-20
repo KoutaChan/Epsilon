@@ -49,29 +49,56 @@ import java.util.function.BooleanSupplier;
  * @param minutes 区切るまでの分数。エポックの終わりの検証の時間は数えないので、GPU を使える時間より短めにする
  * @param pauseFile 現れたら区切るファイル
  */
-@Named(value = "pretrain", doc = "Train Nano or Major on training rows and write the weights of the best epoch to a checkpoint")
+@Named(
+    value = "pretrain",
+    doc =
+        "Train Nano or Major on training rows and write the weights of the best epoch to a"
+            + " checkpoint")
 public record Pretrain(
     @Key(doc = "Training rows directory", presence = Presence.REQUIRED) Path rows,
-    @Key(doc = "Checkpoint directory to write (must not exist yet)", presence = Presence.REQUIRED) Path out,
-    @Key(doc = "Checkpoint of the starting weights (exactly one of this and architecture)", presence = Presence.ABSENT) Path from,
-    @Key(doc = "Architecture of a network trained from scratch (exactly one of this and from)", presence = Presence.ABSENT) Architecture architecture,
-    @Key(doc = "GRP checkpoint for the value prior (uniform if absent)", presence = Presence.ABSENT) Path grp,
+    @Key(doc = "Checkpoint directory to write (must not exist yet)", presence = Presence.REQUIRED)
+        Path out,
+    @Key(
+            doc = "Checkpoint of the starting weights (exactly one of this and architecture)",
+            presence = Presence.ABSENT)
+        Path from,
+    @Key(
+            doc = "Architecture of a network trained from scratch (exactly one of this and from)",
+            presence = Presence.ABSENT)
+        Architecture architecture,
+    @Key(doc = "GRP checkpoint for the value prior (uniform if absent)", presence = Presence.ABSENT)
+        Path grp,
     @Key(doc = "Number of epochs", value = "4") @Range(min = 1) int epochs,
     @Key(doc = "Maximum rows per step", value = "1024") @Range(min = 1) int batch,
-    @Key(doc = "Learning rate", value = "2e-4") @Range(min = 0, minInclusive = false) double learningRate,
+    @Key(doc = "Learning rate", value = "2e-4") @Range(min = 0, minInclusive = false)
+        double learningRate,
     @Key(doc = "AdamW weight decay", value = "0.01") @Range(min = 0) double weightDecay,
     @Key(doc = "Weight of the value loss", value = "0.5") @Range(min = 0) double valueWeight,
-    @Key(doc = "Loss weight of decisions that can declare riichi and of responses to other players (other decisions 1)", value = "2.0") @Range(min = 0, minInclusive = false)
+    @Key(
+            doc =
+                "Loss weight of decisions that can declare riichi and of responses to other players"
+                    + " (other decisions 1)",
+            value = "2.0")
+        @Range(min = 0, minInclusive = false)
         double emphasis,
-    @Key(doc = "Limit of the global gradient norm", value = "10.0") @Range(min = 0, minInclusive = false) double clipNorm,
+    @Key(doc = "Limit of the global gradient norm", value = "10.0")
+        @Range(min = 0, minInclusive = false)
+        double clipNorm,
     @Key(doc = "Device (cpu or gpuN)", value = "cpu") String device,
     @Key(doc = "Compute type", value = "FLOAT32") Precision precision,
-    @Key(doc = "CPU op threads (unchanged if absent)", presence = Presence.ABSENT) @Range(min = 1) Integer threads,
-    @Key(doc = "Random seed for the initial weights from scratch and for shuffling rows", value = "1") long seed,
-    @Key(doc = "State directory (if given, training runs in segments)", presence = Presence.ABSENT) Path state,
-    @Key(doc = "Minutes per segment (needs state)", presence = Presence.ABSENT) @Range(min = 0, minInclusive = false)
+    @Key(doc = "CPU op threads (unchanged if absent)", presence = Presence.ABSENT) @Range(min = 1)
+        Integer threads,
+    @Key(
+            doc = "Random seed for the initial weights from scratch and for shuffling rows",
+            value = "1")
+        long seed,
+    @Key(doc = "State directory (if given, training runs in segments)", presence = Presence.ABSENT)
+        Path state,
+    @Key(doc = "Minutes per segment (needs state)", presence = Presence.ABSENT)
+        @Range(min = 0, minInclusive = false)
         Double minutes,
-    @Key(doc = "File whose appearance ends the segment (needs state)", presence = Presence.ABSENT) Path pauseFile)
+    @Key(doc = "File whose appearance ends the segment (needs state)", presence = Presence.ABSENT)
+        Path pauseFile)
     implements ClassicCommand {
 
   /** 学習の記録のファイル名の末尾。 */
@@ -82,7 +109,8 @@ public record Pretrain(
       throw new InvalidSetting("from", "give exactly one of from and architecture");
     }
     if (state == null && (minutes != null || pauseFile != null)) {
-      throw new InvalidSetting(minutes != null ? "minutes" : "pauseFile", "minutes and pauseFile need state");
+      throw new InvalidSetting(
+          minutes != null ? "minutes" : "pauseFile", "minutes and pauseFile need state");
     }
     try {
       NetworkDevices.device(device);
@@ -115,8 +143,10 @@ public record Pretrain(
       Inputs.requireDirectory(grp, "grp");
     }
     Pretrainer.Settings settings =
-        new Pretrainer.Settings(epochs, batch, learningRate, weightDecay, valueWeight, emphasis, clipNorm, seed);
-    long deadline = minutes != null ? System.nanoTime() + Math.round(minutes * 60e9) : Long.MAX_VALUE;
+        new Pretrainer.Settings(
+            epochs, batch, learningRate, weightDecay, valueWeight, emphasis, clipNorm, seed);
+    long deadline =
+        minutes != null ? System.nanoTime() + Math.round(minutes * 60e9) : Long.MAX_VALUE;
     BooleanSupplier pause =
         () ->
             stop.getAsBoolean()
@@ -141,7 +171,11 @@ public record Pretrain(
         ClassicCheckpoint.write(out, network, startStep + result.steps());
         Files.writeString(
             out.resolveSibling(out.getFileName() + REPORT_SUFFIX),
-            new GsonBuilder().setPrettyPrinting().serializeSpecialFloatingPointValues().create().toJson(result),
+            new GsonBuilder()
+                .setPrettyPrinting()
+                .serializeSpecialFloatingPointValues()
+                .create()
+                .toJson(result),
             StandardCharsets.UTF_8);
       }
       return result;
@@ -151,7 +185,8 @@ public record Pretrain(
   private static GrpNetwork network(Path directory) throws IOException {
     GrpModel model = GrpCheckpoint.read(directory);
     if (!(model instanceof GrpNetwork network)) {
-      throw new IllegalArgumentException("The value prior needs a network GRP, not " + model.getClass().getSimpleName());
+      throw new IllegalArgumentException(
+          "The value prior needs a network GRP, not " + model.getClass().getSimpleName());
     }
     return network;
   }
@@ -162,8 +197,13 @@ public record Pretrain(
         String.format(
             Locale.ROOT,
             "finished=%s rows=%d validation=%d uniform=%.4f rulebot=%.4f steps=%d epochs=%d",
-            result.finished(), result.trainRows(), result.validationRows(), result.baselines().uniformAgreement(),
-            result.baselines().ruleBotAgreement(), result.steps(), result.epochs().size());
+            result.finished(),
+            result.trainRows(),
+            result.validationRows(),
+            result.baselines().uniformAgreement(),
+            result.baselines().ruleBotAgreement(),
+            result.steps(),
+            result.epochs().size());
     if (best == null) {
       return head;
     }
@@ -171,6 +211,9 @@ public record Pretrain(
         + String.format(
             Locale.ROOT,
             " best epoch=%d agreement=%.4f nll=%.4f value=%.4f",
-            result.best(), best.agreement(), best.nll(), best.valueLoss());
+            result.best(),
+            best.agreement(),
+            best.nll(),
+            best.valueLoss());
   }
 }

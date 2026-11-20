@@ -32,8 +32,7 @@ public final class HttpReviewer implements AutoCloseable {
     int port = server.getAddress().getPort();
     URI origin = config.origin();
     String authority = origin.getRawAuthority();
-    if (authority.endsWith(":0"))
-      authority = authority.substring(0, authority.length() - 1) + port;
+    if (authority.endsWith(":0")) authority = authority.substring(0, authority.length() - 1) + port;
     var dispatcher = new Dispatcher(reviewer, URI.create(origin.getScheme() + "://" + authority));
     var router =
         new HttpRouter(

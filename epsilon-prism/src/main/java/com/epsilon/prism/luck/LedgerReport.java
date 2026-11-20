@@ -19,12 +19,20 @@ import java.util.Map;
  * @param skippedRows 飛ばした行の数（帳簿のない行、測った手が 2 つ未満の行、測った手の帳簿が欠けた行）
  * @param all 全てのクラスをまとめた交差適合の結果
  * @param byClass クラスごとの結果（行のないクラスは載せない）
+ * @param byCell 局・順位別の偶奇ごとの係数。両側ともクラス係数を使う区分は省く。クラス別の当てはめでは null
  * @param bias 偏りの確かめ
  * @param seconds 当てはめにかかった時間（秒）。{@link LedgerFit#fit} では行を読む時間を含む。{@link LedgerFit.WriterTap#fit} では
  *     貯めた行を足して解く時間
  */
 public record LedgerReport(
-    long rows, long slots, long skippedRows, Line all, Map<String, Line> byClass, Bias bias, double seconds) {
+    long rows,
+    long slots,
+    long skippedRows,
+    Line all,
+    Map<String, Line> byClass,
+    Map<String, List<Fold>> byCell,
+    Bias bias,
+    double seconds) {
 
   /**
    * 1 つの区分で当てはめた結果。
@@ -82,7 +90,8 @@ public record LedgerReport(
     public Double maxAbsZ() {
       Double max = null;
       for (FeatureBias feature : all)
-        if (feature.z() != null && (max == null || Math.abs(feature.z()) > max)) max = Math.abs(feature.z());
+        if (feature.z() != null && (max == null || Math.abs(feature.z()) > max))
+          max = Math.abs(feature.z());
       return max;
     }
 
@@ -96,10 +105,11 @@ public record LedgerReport(
   }
 
   /** 報告の全部を、有限でない値を書かない書き出し用の形にして返す。 */
-  public Full full() {
+  public Full full(LedgerRecording recording) {
     Map<String, Segment> classes = new LinkedHashMap<>();
     byClass.forEach((name, line) -> classes.put(name, Segment.of(line)));
-    return new Full(rows, slots, skippedRows, Segment.of(all), classes, bias, seconds);
+    return new Full(
+        rows, slots, skippedRows, Segment.of(all), classes, bias, seconds, recording, byCell);
   }
 
   /**
@@ -112,12 +122,36 @@ public record LedgerReport(
    * @param byClass クラスごとの結果
    * @param bias 偏りの確かめ
    * @param seconds 当てはめにかかった時間（秒）
+   * @param byCell 局・順位の区分名ごとの偶奇の係数（クラス別の報告では省略）
+   * @param recording 行の収集時に使った列の組と切り幅。記録がなければ null
    */
   public record Full(
-      long rows, long slots, long skippedRows, Segment all, Map<String, Segment> byClass, Bias bias, double seconds) {
+      long rows,
+      long slots,
+      long skippedRows,
+      Segment all,
+      Map<String, Segment> byClass,
+      Bias bias,
+      double seconds,
+      @Key(doc = "係数を当てはめた行の帳簿の収集条件", presence = Presence.ABSENT) LedgerRecording recording,
+      @Key(doc = "判断クラス・局・自席順位別の係数（両側ともクラス係数を使う区分は省略）", presence = Presence.ABSENT)
+          Map<String, List<Fold>> byCell) {
+
+    public Full(
+        long rows,
+        long slots,
+        long skippedRows,
+        Segment all,
+        Map<String, Segment> byClass,
+        Bias bias,
+        double seconds,
+        LedgerRecording recording) {
+      this(rows, slots, skippedRows, all, byClass, bias, seconds, recording, null);
+    }
 
     public Full {
       byClass = Collections.unmodifiableMap(new LinkedHashMap<>(byClass));
+      if (byCell != null) byCell = Collections.unmodifiableMap(new LinkedHashMap<>(byCell));
     }
   }
 
@@ -146,7 +180,11 @@ public record LedgerReport(
     static Segment of(Line line) {
       List<Fold> folds = new ArrayList<>(2);
       for (int fold = 0; fold < 2; fold++)
-        folds.add(new Fold(finite(line.r2ByFold()[fold]), columns(line.betaByFold()[fold]), line.fallback()[fold]));
+        folds.add(
+            new Fold(
+                finite(line.r2ByFold()[fold]),
+                columns(line.betaByFold()[fold]),
+                line.fallback()[fold]));
       return new Segment(
           line.rows(),
           line.slots(),
@@ -258,10 +296,14 @@ public record LedgerReport(
     /** 報告から作る。 */
     public static Classes of(LedgerReport report) {
       Map<String, ClassSummary> classes = new LinkedHashMap<>();
-      report.byClass()
+      report
+          .byClass()
           .forEach(
               (name, line) ->
-                  classes.put(name, new ClassSummary(line.rows(), finite(line.r2()), finite(line.equivalentForks()))));
+                  classes.put(
+                      name,
+                      new ClassSummary(
+                          line.rows(), finite(line.r2()), finite(line.equivalentForks()))));
       return new Classes(classes);
     }
   }
@@ -282,7 +324,7 @@ public record LedgerReport(
   }
 
   /** 列ごとの係数のうち有限なものだけを、列の名前をキーにして列の順に並べた表にして返す。 */
-  private static Map<String, Double> columns(double[] beta) {
+  static Map<String, Double> columns(double[] beta) {
     Map<String, Double> named = new LinkedHashMap<>();
     LedgerColumn[] columns = LedgerColumn.values();
     for (int column = 0; column < beta.length; column++)

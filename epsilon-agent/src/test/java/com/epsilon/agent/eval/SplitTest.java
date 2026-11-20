@@ -46,7 +46,8 @@ public class SplitTest {
     return slots;
   }
 
-  private static ArenaPlan plan(Variant variant, Seating seating, List<Split> splits, int slots, int walls) {
+  private static ArenaPlan plan(
+      Variant variant, Seating seating, List<Split> splits, int slots, int walls) {
     return new ArenaPlan(
         variant,
         slots(variant, slots),
@@ -78,15 +79,20 @@ public class SplitTest {
       for (int slot = 0; slot < slots; slot++) {
         Assert.assertEquals(perSlot[slot], split.seatsOf(slot), text + " placement " + placement);
       }
-      Assert.assertTrue(seen.add(Arrays.stream(slotOfSeat).boxed().toList()), text + " repeats placement " + placement);
+      Assert.assertTrue(
+          seen.add(Arrays.stream(slotOfSeat).boxed().toList()),
+          text + " repeats placement " + placement);
       if (slots == 2 && split.seatsOf(0) == 1) {
-        Assert.assertEquals(slotOfSeat[placement], 0, text + " puts the candidate at seat " + placement);
+        Assert.assertEquals(
+            slotOfSeat[placement], 0, text + " puts the candidate at seat " + placement);
       }
     }
     for (int slot = 0; slot < slots; slot++) {
       for (int seat = 0; seat < seats; seat++) {
         Assert.assertEquals(
-            sitting[slot][seat], expected * split.seatsOf(slot) / seats, text + " slot " + slot + " seat " + seat);
+            sitting[slot][seat],
+            expected * split.seatsOf(slot) / seats,
+            text + " slot " + slot + " seat " + seat);
       }
     }
   }
@@ -101,17 +107,22 @@ public class SplitTest {
     assertPlacements(Variant.TENHOU_3P, "1v2", 2, 3);
     assertPlacements(Variant.TENHOU_3P, "2v1", 2, 3);
     assertPlacements(Variant.TENHOU_3P, "1v1v1", 3, 6);
-    Assert.assertEquals(Split.oneAgainstRest(Variant.TENHOU_3P), Split.parse("1v2", 2, Variant.TENHOU_3P));
-    Assert.assertEquals(Split.oneAgainstRest(Variant.TENHOU_4P), Split.parse("1v3", 2, Variant.TENHOU_4P));
+    Assert.assertEquals(
+        Split.oneAgainstRest(Variant.TENHOU_3P), Split.parse("1v2", 2, Variant.TENHOU_3P));
+    Assert.assertEquals(
+        Split.oneAgainstRest(Variant.TENHOU_4P), Split.parse("1v3", 2, Variant.TENHOU_4P));
   }
 
   @Test
   public void splitsAreValidated() {
     for (String text : List.of("1v2", "0v4", "1v", "v3", "1x3", "1v3v", "a1v3")) {
-      Assert.assertThrows(IllegalArgumentException.class, () -> Split.parse(text, 2, Variant.TENHOU_4P));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> Split.parse(text, 2, Variant.TENHOU_4P));
     }
-    Assert.assertThrows(IllegalArgumentException.class, () -> Split.parse("2v2", 3, Variant.TENHOU_4P));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Split.parse("1v3", 2, Variant.TENHOU_3P));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Split.parse("2v2", 3, Variant.TENHOU_4P));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Split.parse("1v3", 2, Variant.TENHOU_3P));
   }
 
   /** 分け方を並べた卓では、分け方の順に割り当てに通し番号を振り、牌山ごとに全ての割り当てを打つ。 */
@@ -142,10 +153,16 @@ public class SplitTest {
       }
       Assert.assertThrows(IndexOutOfBoundsException.class, () -> plan.placement(100, 2 * seats));
     }
-    ArenaPlan pairs = plan(Variant.TENHOU_4P, Seating.EVERY_PLACEMENT, List.of(new Split(List.of(2, 2))), 2, 3);
+    ArenaPlan pairs =
+        plan(Variant.TENHOU_4P, Seating.EVERY_PLACEMENT, List.of(new Split(List.of(2, 2))), 2, 3);
     Assert.assertEquals(pairs.gamesPerWall(), 6);
     ArenaPlan four =
-        plan(Variant.TENHOU_4P, Seating.EVERY_PLACEMENT, List.of(Split.parse("1v1v1v1", 4, Variant.TENHOU_4P)), 4, 2);
+        plan(
+            Variant.TENHOU_4P,
+            Seating.EVERY_PLACEMENT,
+            List.of(Split.parse("1v1v1v1", 4, Variant.TENHOU_4P)),
+            4,
+            2);
     Assert.assertEquals(four.gamesPerWall(), 24);
   }
 
@@ -158,7 +175,8 @@ public class SplitTest {
     for (Variant variant : List.of(Variant.TENHOU_4P, Variant.TENHOU_3P)) {
       int seats = variant.seats();
       int walls = 4 * seats;
-      ArenaPlan plan = plan(variant, Seating.BY_GAME, List.of(Split.oneAgainstRest(variant)), 2, walls);
+      ArenaPlan plan =
+          plan(variant, Seating.BY_GAME, List.of(Split.oneAgainstRest(variant)), 2, walls);
       Assert.assertEquals(plan.gamesPerWall(), 1);
       int[][] table = plan.slotTable();
       int[] candidateSeats = new int[seats];
@@ -175,7 +193,8 @@ public class SplitTest {
       }
       Assert.assertThrows(
           IllegalArgumentException.class,
-          () -> plan(variant, Seating.BY_GAME, List.of(new Split(List.of(seats - 1, 1))), 2, walls));
+          () ->
+              plan(variant, Seating.BY_GAME, List.of(new Split(List.of(seats - 1, 1))), 2, walls));
     }
     Assert.assertThrows(
         IllegalArgumentException.class,
@@ -183,11 +202,19 @@ public class SplitTest {
             plan(
                 Variant.TENHOU_4P,
                 Seating.EVERY_PLACEMENT,
-                List.of(Split.oneAgainstRest(Variant.TENHOU_4P), Split.oneAgainstRest(Variant.TENHOU_4P)),
+                List.of(
+                    Split.oneAgainstRest(Variant.TENHOU_4P),
+                    Split.oneAgainstRest(Variant.TENHOU_4P)),
                 2,
                 1));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> plan(Variant.TENHOU_4P, Seating.EVERY_PLACEMENT, List.of(Split.parse("1v2", 2, Variant.TENHOU_3P)), 2, 1));
+        () ->
+            plan(
+                Variant.TENHOU_4P,
+                Seating.EVERY_PLACEMENT,
+                List.of(Split.parse("1v2", 2, Variant.TENHOU_3P)),
+                2,
+                1));
   }
 }

@@ -68,7 +68,14 @@ public final class LuckSettlement {
     return new LuckSettlement(
         catalog,
         LedgerRecording.of(ledger),
-        fitting == null ? null : new LedgerFit(fitting.apply(), fitting.ridge(), fitting.minRowsPerColumn()),
+        fitting == null
+            ? null
+            : new LedgerFit(
+                fitting.apply(),
+                fitting.ridge(),
+                fitting.minRowsPerColumn(),
+                fitting.cells(),
+                variant),
         fitting == null ? Double.NaN : fitting.biasZ(),
         ledger.corrects(),
         noise.ura(),
@@ -112,7 +119,8 @@ public final class LuckSettlement {
    * @return 帳簿の結果。当てはめない段では {@link LedgerOutcome#NONE}
    * @throws IllegalStateException 和に足した行の数が、選んだ行の数と違うとき
    */
-  public LedgerOutcome learn(int cohort, LedgerFit.WriterTap streamed, Iterable<Row> stored, int selected) {
+  public LedgerOutcome learn(
+      int cohort, LedgerFit.WriterTap streamed, Iterable<Row> stored, int selected) {
     if (fit == null) {
       return LedgerOutcome.NONE;
     }
@@ -122,7 +130,13 @@ public final class LuckSettlement {
       long seen = result.report().rows() + result.report().skippedRows();
       if (seen != selected) {
         throw new IllegalStateException(
-            "Ledger of cohort " + cohort + " summed " + seen + " rows but " + selected + " are selected");
+            "Ledger of cohort "
+                + cohort
+                + " summed "
+                + seen
+                + " rows but "
+                + selected
+                + " are selected");
       }
     } else {
       result = fit.fit(stored);

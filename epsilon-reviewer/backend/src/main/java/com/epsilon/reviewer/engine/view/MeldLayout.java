@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.engine.view;
 
+import com.epsilon.mahjong.action.Meld;
 import com.epsilon.mahjong.action.Meld.AkaSource;
 import com.epsilon.mahjong.action.Meld.RelativeSource;
 import com.epsilon.mahjong.action.Meld.Type;
@@ -16,14 +17,14 @@ public final class MeldLayout {
   private MeldLayout() {}
 
   /**
-   * 面子の表示を作る。mahjong の Meld はこのパッケージの Meld と名前が重なるので、var で受けて型名を書かない。
+   * 面子の表示を作る。mahjong の MeldView はこのパッケージの MeldView と名前が重なるので、var で受けて型名を書かない。
    *
    * @param id 面子の番号
    * @param owner 面子を持つ席
    * @param seats 席の数
    */
-  public static Meld of(int id, int owner, int seats) {
-    var meld = com.epsilon.mahjong.action.Meld.of(id);
+  public static MeldView of(int id, int owner, int seats) {
+    var meld = Meld.of(id);
     RelativeSource source = meld.source();
     int from = source == RelativeSource.NONE ? -1 : source.seat(owner, seats);
     int baseCount = meld.type() == Type.KAKAN ? 3 : meld.size();
@@ -57,6 +58,6 @@ public final class MeldLayout {
       addedIndex = tiles.size();
       tiles.add(TileCode.of(meld.base(), meld.aka() == AkaSource.ADDED_KAN_TILE));
     }
-    return new Meld(meld.type().name(), tiles, from, calledIndex, addedIndex);
+    return new MeldView(meld.type().name(), tiles, from, calledIndex, addedIndex);
   }
 }

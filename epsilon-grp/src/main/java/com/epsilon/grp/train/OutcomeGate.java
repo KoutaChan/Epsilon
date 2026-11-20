@@ -74,11 +74,14 @@ public final class OutcomeGate {
     return judge(Kind.FIRST, next, uniform(candidate.shape()), candidate);
   }
 
-  private static Report judge(Kind kind, NextHands next, OutcomeNetwork reference, OutcomeNetwork candidate) {
+  private static Report judge(
+      Kind kind, NextHands next, OutcomeNetwork reference, OutcomeNetwork candidate) {
     HandEnds ends = next.ends();
     IntPredicate covered = h -> FinalRound.covers(ends.state(h));
-    double[] ofCandidate = next.logLikelihoods(covered, candidate, () -> OutcomeWorkspace.of(candidate.shape()));
-    double[] ofReference = next.logLikelihoods(covered, reference, () -> OutcomeWorkspace.of(reference.shape()));
+    double[] ofCandidate =
+        next.logLikelihoods(covered, candidate, () -> OutcomeWorkspace.of(candidate.shape()));
+    double[] ofReference =
+        next.logLikelihoods(covered, reference, () -> OutcomeWorkspace.of(reference.shape()));
     Clusters differences = new Clusters(1);
     long skipped = 0;
     for (int game = 0; game < ends.games(); game++) {
@@ -100,6 +103,7 @@ public final class OutcomeGate {
 
   /** 重みが全て 0 の q。終わり方と打点は一様、立直は 1/2。 */
   private static OutcomeNetwork uniform(OutcomeShape shape) {
-    return OutcomeNetwork.of(shape, new float[OutcomeTensor.starts(shape)[OutcomeTensor.values().length]]);
+    return OutcomeNetwork.of(
+        shape, new float[OutcomeTensor.starts(shape)[OutcomeTensor.values().length]]);
   }
 }

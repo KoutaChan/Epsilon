@@ -103,8 +103,12 @@ public class LedgerOrderTest {
         });
     int compared = Arrays.stream(counts).sum();
     Assert.assertTrue(compared > 5 * rounds, variant + " compared " + compared);
-    Assert.assertTrue(counts[ChanceKind.INDICATOR.ordinal()] >= 100, variant + " indicators " + Arrays.toString(counts));
-    Assert.assertTrue(counts[ChanceKind.RINSHAN.ordinal()] >= 100, variant + " rinshan " + Arrays.toString(counts));
+    Assert.assertTrue(
+        counts[ChanceKind.INDICATOR.ordinal()] >= 100,
+        variant + " indicators " + Arrays.toString(counts));
+    Assert.assertTrue(
+        counts[ChanceKind.RINSHAN.ordinal()] >= 100,
+        variant + " rinshan " + Arrays.toString(counts));
     Assert.assertEquals(counts[ChanceKind.URA.ordinal()], 0);
   }
 }

@@ -78,7 +78,9 @@ public final class GameLogObserver implements GameObserver {
       TableState next = end.next();
       GrpState handEnd = next.gameOver() ? null : GrpState.of(next);
       RoundOutcome outcome = end.outcome();
-      open.compute(game.wall(), (id, playing) -> (playing == null ? new Playing() : playing).add(outcome, handEnd));
+      open.compute(
+          game.wall(),
+          (id, playing) -> (playing == null ? new Playing() : playing).add(outcome, handEnd));
     } catch (RuntimeException thrown) {
       stop(thrown);
     }
@@ -91,7 +93,9 @@ public final class GameLogObserver implements GameObserver {
       int[] finalScores = new int[last.variant().seats()];
       for (int seat = 0; seat < finalScores.length; seat++) finalScores[seat] = last.score(seat);
       Playing playing = open.remove(game.wall());
-      ended.add((playing == null ? new Playing() : playing).end(phi.entry().variant(), game.wall(), finalScores));
+      ended.add(
+          (playing == null ? new Playing() : playing)
+              .end(phi.entry().variant(), game.wall(), finalScores));
     } catch (RuntimeException thrown) {
       stop(thrown);
     }
@@ -121,7 +125,8 @@ public final class GameLogObserver implements GameObserver {
    */
   public CountedHands countedHands(CollectionMetrics.Snapshot counts) {
     Variant variant = phi.entry().variant();
-    CountedHands.Builder builder = CountedHands.builder(variant, cohort, exploreTemperature, phi.stamp());
+    CountedHands.Builder builder =
+        CountedHands.builder(variant, cohort, exploreTemperature, phi.stamp());
     TableState first = new TableState(variant);
     TableState start = new TableState(variant);
     TableState settled = new TableState(variant);
@@ -133,7 +138,13 @@ public final class GameLogObserver implements GameObserver {
       long[] codes = game.codes();
       if (codes.length != handEnds.size() + 1)
         throw new IllegalStateException(
-            "Game " + record.gameId() + " has " + codes.length + " hand results for " + handEnds.size() + " hand ends");
+            "Game "
+                + record.gameId()
+                + " has "
+                + codes.length
+                + " hand results for "
+                + handEnds.size()
+                + " hand ends");
       start.copyFrom(first);
       for (int hand = 0; hand < codes.length; hand++) {
         builder.add(record.gameId(), start, codes[hand]);
@@ -141,10 +152,17 @@ public final class GameLogObserver implements GameObserver {
         Settlement.apply(variant, start, outcome, delta);
         Progression.next(start, outcome, delta, settled);
         boolean replayed =
-            hand < handEnds.size() ? reaches(settled, handEnds.get(hand)) : settled.endsWith(record.finalScores());
+            hand < handEnds.size()
+                ? reaches(settled, handEnds.get(hand))
+                : settled.endsWith(record.finalScores());
         if (!replayed)
           throw new IllegalStateException(
-              "Hand " + hand + " of game " + record.gameId() + " does not replay its record, it reaches " + settled);
+              "Hand "
+                  + hand
+                  + " of game "
+                  + record.gameId()
+                  + " does not replay its record, it reaches "
+                  + settled);
         start.copyFrom(settled);
       }
     }
@@ -157,7 +175,8 @@ public final class GameLogObserver implements GameObserver {
    */
   private List<Played> played(CollectionMetrics.Snapshot counts) {
     Throwable stopped = failure.get();
-    if (stopped != null) throw new IllegalStateException("The game log stopped: " + stopped, stopped);
+    if (stopped != null)
+      throw new IllegalStateException("The game log stopped: " + stopped, stopped);
     if (!open.isEmpty())
       throw new IllegalStateException(open.size() + " games of cohort " + cohort + " did not end");
     List<Played> games = new ArrayList<>(ended);
@@ -167,8 +186,16 @@ public final class GameLogObserver implements GameObserver {
     for (Played game : games) handEnds += game.record().handEnds().size();
     if (games.size() != counts.games() || handEnds != counts.hands())
       throw new IllegalStateException(
-          "The game log of cohort " + cohort + " has " + games.size() + " games and " + handEnds
-              + " hand ends, the collection " + counts.games() + " and " + counts.hands());
+          "The game log of cohort "
+              + cohort
+              + " has "
+              + games.size()
+              + " games and "
+              + handEnds
+              + " hand ends, the collection "
+              + counts.games()
+              + " and "
+              + counts.hands());
     return games;
   }
 
@@ -229,7 +256,8 @@ public final class GameLogObserver implements GameObserver {
     }
 
     Played end(Variant variant, long gameId, int[] finalScores) {
-      return new Played(new GameRecord(variant, gameId, handEnds, finalScores), Arrays.copyOf(codes, hands));
+      return new Played(
+          new GameRecord(variant, gameId, handEnds, finalScores), Arrays.copyOf(codes, hands));
     }
   }
 }

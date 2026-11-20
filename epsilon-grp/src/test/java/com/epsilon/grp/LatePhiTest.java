@@ -9,8 +9,10 @@ import com.epsilon.mahjong.rules.Variant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -20,8 +22,8 @@ import org.testng.annotations.Test;
 
 /**
  * 終盤だけを数え上げる Φ（Phi.late）を確かめる。値は、覆う卓では FinalRound.phi と、ほかの卓では葉の GrpNetwork だけの Phi と、
- * 終局の卓では順位の効用と、ビット単位で同じ。evaluate の Φ は values と同じビットで、周辺確率もそれぞれの求め方と同じ。値はメモの
- * 有無・スロットの数・スレッドの数・呼ぶ順に依らない。終盤のメモは卓の全てのフィールドで引くので、違う卓の値を混ぜない。終盤のメモは
+ * 終局の卓では順位の効用と、ビット単位で同じ。evaluate の Φ は values と同じビットで、周辺確率もそれぞれの求め方と同じ。値はキャッシュの
+ * 有無・スロットの数・スレッドの数・呼ぶ順に依らない。終盤のキャッシュは卓の全てのフィールドで引くので、違う卓の値を混ぜない。終盤のキャッシュは
  * 全てのスレッドで共有し、ほかのスレッドが数え上げた卓にも当たる。Stats の終盤の数えは、同じ順に呼んだ FinalRound の作業領域の数えと
  * 合う。四人打ちと三人打ちの両方で確かめる。
  */
@@ -104,12 +106,12 @@ public class LatePhiTest {
   }
 
   /**
-   * 終盤のメモが 1 スロット（呼ぶたびに追い出す）でも 16,384 スロットでも、呼ぶ順を変えても、8 本のスレッドが 1 つのメモを共有して
+   * 終盤のキャッシュが 1 スロット（呼ぶたびに追い出す）でも 16,384 スロットでも、呼ぶ順を変えても、8 本のスレッドが 1 つのキャッシュを共有して
    * 別々の順に 2 度ずつ呼んでも（1 スロットなら全てのスレッドが同じスロットを書き合う）、値は 1 卓ずつ求めた値とビット単位で同じ。
-   * 共有したメモの呼び出しの数は全てのスレッドの和で、キーに収まる覆う卓はどれも 1 度は数え上げる。
+   * 共有したキャッシュの呼び出しの数は全てのスレッドの和で、キーに収まる覆う卓はどれも 1 度は数え上げる。
    */
   @Test(dataProvider = "variants")
-  public void memoSlotsThreadsAndOrderDoNotChangeTheBits(Variant variant) throws Exception {
+  public void cacheSlotsThreadsAndOrderDoNotChangeTheBits(Variant variant) throws Exception {
     FinalRound round = round(variant, 1e-5);
     Phi leaf = Phi.of(round.leaf(), UTILITY);
     List<GrpState> states = states(variant, 400, 7);
@@ -134,8 +136,13 @@ public class LatePhiTest {
         List<Future<double[][][]>> results = new ArrayList<>();
         for (int thread = 0; thread < threads; thread++) {
           long seed = 100 + thread;
-          results.add(pool.submit(() -> new double[][][] {
-              valuesInShuffledOrder(shared, states, seed), valuesInShuffledOrder(shared, states, seed + 50)}));
+          results.add(
+              pool.submit(
+                  () ->
+                      new double[][][] {
+                        valuesInShuffledOrder(shared, states, seed),
+                        valuesInShuffledOrder(shared, states, seed + 50)
+                      }));
         }
         for (Future<double[][][]> result : results) {
           for (double[][] values : result.get()) {
@@ -155,8 +162,8 @@ public class LatePhiTest {
   }
 
   /**
-   * 別のスレッドが数え上げた卓は、数え上げずに共有の終盤のメモから読み、値は同じビット。1 スロットのメモでも、別のスレッドが書いた
-   * 直後に引けば当たる。別に開いた Phi はメモを共有しない。
+   * 別のスレッドが数え上げた卓は、数え上げずに共有の終盤のキャッシュから読み、値は同じビット。1 スロットのキャッシュでも、別のスレッドが書いた
+   * 直後に引けば当たる。別に開いた Phi はキャッシュを共有しない。
    */
   @Test(dataProvider = "variants")
   public void anotherThreadsTableIsAHit(Variant variant) throws Exception {
@@ -194,14 +201,17 @@ public class LatePhiTest {
 
   /**
    * 覆う卓から 1 つの値（本場・供託・点・局）だけを変えた卓は、キーも値も元の卓と違い、どれも 1 卓ずつ求めた値と同じになる。
-   * 1 スロットの終盤のメモで交互に呼んでも、16,384 スロットのメモで 2 度呼んでも混ざらない。キーから卓を作り直すと元の卓に戻る。
+   * 1 スロットの終盤のキャッシュで交互に呼んでも、16,384 スロットのキャッシュで 2 度呼んでも混ざらない。キーから卓を作り直すと元の卓に戻る。
    */
   @Test(dataProvider = "variants")
-  public void theLateMemoKeepsEveryTableApart(Variant variant) {
+  public void theLateCacheKeepsEveryTableApart(Variant variant) {
     FinalRound round = round(variant, 1e-5);
     Phi leaf = Phi.of(round.leaf(), UTILITY);
     int seats = variant.seats();
-    int[] scores = seats == 4 ? new int[] {27_000, 25_000, 24_000, 23_000} : new int[] {36_000, 35_000, 33_000};
+    int[] scores =
+        seats == 4
+            ? new int[] {27_000, 25_000, 24_000, 23_000}
+            : new int[] {36_000, 35_000, 33_000};
     int last = variant.lastRound();
     GrpState base = new GrpState(variant, last, 1, 1, scores);
     int[] moved = scores.clone();
@@ -209,12 +219,13 @@ public class LatePhiTest {
     moved[1] += 100;
     int[] deposited = scores.clone();
     deposited[1] -= Variant.DEPOSIT;
-    List<GrpState> family = List.of(
-        base,
-        new GrpState(variant, last, 2, 1, scores),
-        new GrpState(variant, last, 1, 2, deposited),
-        new GrpState(variant, last, 1, 1, moved),
-        new GrpState(variant, last + 1, 1, 1, scores));
+    List<GrpState> family =
+        List.of(
+            base,
+            new GrpState(variant, last, 2, 1, scores),
+            new GrpState(variant, last, 1, 2, deposited),
+            new GrpState(variant, last, 1, 1, moved),
+            new GrpState(variant, last + 1, 1, 1, scores));
     List<Long> keys = new ArrayList<>();
     double[][] expected = new double[family.size()][seats];
     for (int index = 0; index < family.size(); index++) {
@@ -225,7 +236,8 @@ public class LatePhiTest {
       keys.add(state.key());
       reference(round, leaf, state, expected[index]);
       for (int other = 0; other < index; other++) {
-        Assert.assertFalse(Arrays.equals(expected[index], expected[other]), state + " and " + family.get(other));
+        Assert.assertFalse(
+            Arrays.equals(expected[index], expected[other]), state + " and " + family.get(other));
       }
     }
     double[] values = new double[seats];
@@ -241,13 +253,14 @@ public class LatePhiTest {
       }
       Phi.LateStats stats = late.stats().late();
       Assert.assertEquals(stats.requests(), 6L * family.size());
-      Assert.assertEquals(stats.misses(), slots == 1 ? 3L * family.size() : family.size(), stats.toString());
+      Assert.assertEquals(
+          stats.misses(), slots == 1 ? 3L * family.size() : family.size(), stats.toString());
     }
   }
 
   /**
    * 覆う卓 N 個を 2 度ずつ、覆わない卓 M 個を 1 度、終局の卓を 1 度、キーに収まらない覆う卓を 2 度呼ぶ。Phi 全体の数えは全ての
-   * 呼び出しを、終盤の数えは覆う卓の呼び出しだけを数える。精算・葉のネットワーク・葉のメモの当たり・埋めた確率の和は、数え上げた卓を
+   * 呼び出しを、終盤の数えは覆う卓の呼び出しだけを数える。精算・葉のネットワーク・葉のキャッシュの当たり・埋めた確率の和は、数え上げた卓を
    * 同じ順に FinalRound の作業領域 1 つで求めたときの数えと同じ。since は差を返す。ネットワークだけの Phi では、終盤の数えは 0。
    */
   @Test(dataProvider = "variants")
@@ -294,11 +307,13 @@ public class LatePhiTest {
     Assert.assertEquals(lateStats.bypasses(), 2);
     Assert.assertEquals(lateStats.settled(), mirror.settled());
     Assert.assertEquals(lateStats.leafNetworks(), mirror.networkLeaves());
-    Assert.assertEquals(lateStats.leafHits(), mirror.memoHits());
+    Assert.assertEquals(lateStats.leafHits(), mirror.cacheHits());
     Assert.assertEquals(lateStats.filled(), filled, 1e-12 * n);
     Assert.assertTrue(lateStats.filled() > 0, lateStats.toString());
-    Assert.assertTrue(lateStats.nanos() > 0 && lateStats.nanos() <= stats.nanos(), stats.toString());
-    Assert.assertEquals(late.stats().since(late.stats()).late(), new Phi.LateStats(0, 0, 0, 0, 0, 0, 0, 0, 0));
+    Assert.assertTrue(
+        lateStats.nanos() > 0 && lateStats.nanos() <= stats.nanos(), stats.toString());
+    Assert.assertEquals(
+        late.stats().since(late.stats()).late(), new Phi.LateStats(0, 0, 0, 0, 0, 0, 0, 0, 0));
 
     Phi network = Phi.of(round.leaf(), UTILITY);
     for (GrpState state : covered) {
@@ -308,7 +323,7 @@ public class LatePhiTest {
     Assert.assertEquals(network.stats().misses(), n);
   }
 
-  /** 終盤のメモのスロットは 2 の冪であること。ルールの違う卓と、長さの違う出力先は拒む。 */
+  /** 終盤のキャッシュのスロットは 2 の冪であること。ルールの違う卓と、長さの違う出力先は拒む。 */
   @Test
   public void lateNeedsPowerOfTwoSlots() {
     FinalRound round = round(Variant.TENHOU_4P, 1e-5);
@@ -318,20 +333,37 @@ public class LatePhiTest {
     Phi late = Phi.late(round, UTILITY, 64);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> late.values(new GrpState(Variant.TENHOU_3P, 5, 0, 0, new int[] {35_000, 35_000, 35_000}), new double[4]));
+        () ->
+            late.values(
+                new GrpState(Variant.TENHOU_3P, 5, 0, 0, new int[] {35_000, 35_000, 35_000}),
+                new double[4]));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> late.values(new GrpState(Variant.TENHOU_4P, 7, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000}),
-            new double[3]));
-    Assert.assertThrows(IllegalStateException.class, () -> Phi.of(round.leaf(), UTILITY).finalRoundWorkspace());
+        () ->
+            late.values(
+                new GrpState(
+                    Variant.TENHOU_4P, 7, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000}),
+                new double[3]));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> Phi.of(round.leaf(), UTILITY).finalRoundWorkspace());
   }
 
   /**
    * 数え上げは、参照用の実装（FinalRoundReference。葉を 1 卓ずつ求めてその場で足す）とビット単位で同じ。打ち切りの値と、
-   * 葉のメモのスロットの数（1・8・64・1,024）に依らない。埋めた確率と、精算の数、半荘が終わる葉の数も同じ。
+   * 葉のキャッシュのスロットの数（1・8・64・1,024）に依らない。埋めた確率と、精算の数、半荘が終わる葉の数も同じ。
    */
-  @Test(dataProvider = "variants")
-  public void finalRoundMatchesTheReferenceCopy(Variant variant) {
+  @DataProvider
+  public static Object[][] linkedVariants() {
+    return new Object[][] {
+      {Variant.TENHOU_4P, EnumSet.noneOf(OutcomeLink.class)},
+      {Variant.TENHOU_4P, EnumSet.allOf(OutcomeLink.class)},
+      {Variant.TENHOU_3P, EnumSet.noneOf(OutcomeLink.class)},
+      {Variant.TENHOU_3P, EnumSet.allOf(OutcomeLink.class)}
+    };
+  }
+
+  @Test(dataProvider = "linkedVariants")
+  public void finalRoundMatchesTheReferenceCopy(Variant variant, Set<OutcomeLink> links) {
     List<GrpState> covered = new ArrayList<>();
     for (GrpState state : states(variant, 400, 13)) {
       if (FinalRound.covers(state) && covered.size() < 40) {
@@ -342,7 +374,7 @@ public class LatePhiTest {
     double[] p = new double[count];
     double[] expected = new double[count];
     for (double cutoff : new double[] {1e-4, 1e-5, 1e-7}) {
-      FinalRound round = round(variant, cutoff);
+      FinalRound round = round(variant, cutoff, links);
       FinalRoundReference reference = FinalRoundReference.of(round);
       double[][] references = new double[covered.size()][];
       double[] dropped = new double[covered.size()];
@@ -355,7 +387,8 @@ public class LatePhiTest {
         Assert.assertEquals(workspace.leafSlots(), slots);
         for (int index = 0; index < covered.size(); index++) {
           double filled = round.permutations(covered.get(index), workspace, p);
-          Assert.assertEquals(Double.doubleToRawLongBits(filled), Double.doubleToRawLongBits(dropped[index]));
+          Assert.assertEquals(
+              Double.doubleToRawLongBits(filled), Double.doubleToRawLongBits(dropped[index]));
           assertBits(p, references[index], covered.get(index));
         }
         Assert.assertEquals(workspace.settled(), reference.settled());
@@ -365,7 +398,7 @@ public class LatePhiTest {
   }
 
   /**
-   * 終盤の Φ は、数え上げ（1 スロットの終盤のメモで毎回数え上げる）・葉のネットワーク・終局の卓のどれでも、GrpState と TableState
+   * 終盤の Φ は、数え上げ（1 スロットの終盤のキャッシュで毎回数え上げる）・葉のネットワーク・終局の卓のどれでも、GrpState と TableState
    * のどちらからでも、ウォームアップの後はメモリを確保しない。
    */
   @Test(dataProvider = "variants")
@@ -375,14 +408,17 @@ public class LatePhiTest {
     TableState table = new TableState(variant);
     TableState finished = finished(variant);
     double[] values = new double[variant.seats()];
-    Allocations.assertSteady(3 * states.length + " late values", 5, () -> {
-      for (GrpState state : states) {
-        late.values(state, values);
-        state.copyInto(table);
-        late.values(table, values);
-      }
-      late.values(finished, values);
-    });
+    Allocations.assertSteady(
+        3 * states.length + " late values",
+        5,
+        () -> {
+          for (GrpState state : states) {
+            late.values(state, values);
+            state.copyInto(table);
+            late.values(table, values);
+          }
+          late.values(finished, values);
+        });
     Assert.assertTrue(late.stats().late().misses() > 0);
   }
 
@@ -395,10 +431,16 @@ public class LatePhiTest {
     }
   }
 
+  /** 足すロジットを全て持つ q の数え上げを作る。 */
   static FinalRound round(Variant variant, double cutoff) {
-    OutcomeShape outcomes = new OutcomeShape(variant, GrpFixtures.plainFields(), 8);
+    return round(variant, cutoff, EnumSet.allOf(OutcomeLink.class));
+  }
+
+  static FinalRound round(Variant variant, double cutoff, Set<OutcomeLink> links) {
+    OutcomeShape outcomes = new OutcomeShape(variant, GrpFixtures.plainFields(), 8, links);
     GrpShape leaf = GrpFixtures.shape(variant, 8, false);
-    return FinalRound.of(GrpFixtures.outcomes(outcomes, 31, 0.5), GrpFixtures.network(leaf, 37, 0.5), cutoff);
+    return FinalRound.of(
+        GrpFixtures.outcomes(outcomes, 31, 0.5), GrpFixtures.network(leaf, 37, 0.5), cutoff);
   }
 
   /** 乱数で卓を作る。半分（偶数番目）は覆う卓（南場の最後の局から西場の最後の局まで）にする。 */
@@ -420,7 +462,10 @@ public class LatePhiTest {
   /** 南場の最後の局の親が不聴で流れ、トップが返し点に届いて終わった卓。 */
   static TableState finished(Variant variant) {
     int seats = variant.seats();
-    int[] scores = seats == 4 ? new int[] {40_000, 20_000, 20_000, 20_000} : new int[] {45_000, 30_000, 30_000};
+    int[] scores =
+        seats == 4
+            ? new int[] {40_000, 20_000, 20_000, 20_000}
+            : new int[] {45_000, 30_000, 30_000};
     TableState start = new TableState(variant);
     start.set(variant.lastRound(), 0, 0, scores);
     RoundOutcome draw = new RoundOutcome(variant);
@@ -469,7 +514,8 @@ public class LatePhiTest {
     Assert.assertEquals(actual.length, expected.length);
     for (int index = 0; index < actual.length; index++) {
       Assert.assertEquals(
-          Double.doubleToRawLongBits(actual[index]), Double.doubleToRawLongBits(expected[index]),
+          Double.doubleToRawLongBits(actual[index]),
+          Double.doubleToRawLongBits(expected[index]),
           state + " at " + index);
     }
   }

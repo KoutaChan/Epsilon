@@ -13,7 +13,7 @@ import ai.djl.pytorch.engine.PtStreamScope;
 import ai.djl.training.GradientCollector;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.RmsNormKernels.NormShape;
+import com.epsilon.prism.kernel.RmsNormKernels.NormShape;
 import com.epsilon.prism.model.ReferenceNormTest.Difference;
 import com.epsilon.prism.model.ReferenceNormTest.Inputs;
 import com.epsilon.prism.model.ReferenceNormTest.Outputs;
@@ -25,7 +25,7 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * 学習で使う RMSNorm の HIP の演算（{@link HipAttention}、{@code t2_norm.hip}）をテストする（rocm のグループ、GPU 1 枚）。BF16 で
+ * 学習で使う RMSNorm の HIP の演算（{@link HipAttention}、{@code rms_norm.cuh}）をテストする（rocm のグループ、GPU 1 枚）。BF16 で
  * 表せる乱数の入力（{@link ReferenceNormTest#generate}）で、次を確かめる。
  *
  * <ul>
@@ -60,13 +60,36 @@ public class HipNormGpuTest {
   }
 
   @Test(groups = "rocm")
+  public void rejectsNoncontiguousStorageAndAnotherCurrentStream() {
+    withKernels(
+        (manager, stream, kernels) -> {
+          NormShape d = new NormShape(8, 8, ReferenceNormTest.EPSILON);
+          NDArray x = manager.ones(new Shape(8, 8), DataType.BFLOAT16);
+          NDArray gain = manager.ones(new Shape(8));
+          NDArray out = manager.create(x.getShape(), DataType.BFLOAT16);
+          NDArray inverse = manager.create(new Shape(8));
+          Assert.expectThrows(
+              IllegalArgumentException.class,
+              () -> kernels.forward(d, x.transpose(), gain, out, inverse));
+          try (PtStream other = ((PtEngine) manager.getEngine()).newStream(manager.getDevice());
+              var ignored = other.openScope()) {
+            Assert.expectThrows(
+                IllegalArgumentException.class, () -> kernels.forward(d, x, gain, out, inverse));
+          }
+          kernels.forward(d, x, gain, out, inverse);
+          Assert.assertTrue(Float.isFinite(inverse.getFloat(0)));
+        });
+  }
+
+  @Test(groups = "rocm")
   public void kernelsMatchTheReferenceAndTheEagerPath() {
     withKernels(
         (manager, stream, kernels) -> {
           for (int rows : ROWS) {
             for (int width : WIDTHS) {
               NormShape shape = new NormShape(rows, width, ReferenceNormTest.EPSILON);
-              Inputs inputs = ReferenceNormTest.generate(shape, DataType.BFLOAT16, rows * 31L + width);
+              Inputs inputs =
+                  ReferenceNormTest.generate(shape, DataType.BFLOAT16, rows * 31L + width);
               Outputs hip = ReferenceNormTest.kernels(manager, kernels, inputs, DataType.BFLOAT16);
               Outputs fp64;
               try (NDManager host = NDManager.newBaseManager(Device.cpu())) {

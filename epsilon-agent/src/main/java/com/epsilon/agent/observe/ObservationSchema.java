@@ -255,7 +255,8 @@ public final class ObservationSchema {
   /** 点を {@link #POINT_UNIT} 点単位にする。割り切れなければ IllegalArgumentException を投げる。 */
   static int encodePoints(int points) {
     if (points % POINT_UNIT != 0) {
-      throw new IllegalArgumentException("Points are not a multiple of " + POINT_UNIT + ": " + points);
+      throw new IllegalArgumentException(
+          "Points are not a multiple of " + POINT_UNIT + ": " + points);
     }
     return points / POINT_UNIT;
   }
@@ -304,7 +305,8 @@ public final class ObservationSchema {
   private <E extends Enum<E>> Vocabulary<E> vocabulary(Field field, Class<E> type) {
     Vocabulary<?> values = field.width(variant).values();
     if (values == null || values.type() != type) {
-      throw new IllegalStateException(field + " does not hold the vocabulary of " + type.getSimpleName());
+      throw new IllegalStateException(
+          field + " does not hold the vocabulary of " + type.getSimpleName());
     }
     @SuppressWarnings("unchecked")
     Vocabulary<E> typed = (Vocabulary<E>) values;

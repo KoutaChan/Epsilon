@@ -1,6 +1,7 @@
 package com.epsilon.prism.input;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.mahjong.tile.Tiles;
@@ -9,9 +10,6 @@ import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.Axis;
 import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputBlob.Tensor;
-import com.epsilon.prism4p.input.InputSchema;
-import com.epsilon.prism4p.input.InputWriter;
-import com.epsilon.prism4p.input.Tokenizer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -29,7 +27,8 @@ import java.nio.ByteOrder;
 public final class RowTokens {
   /** 1 行だけのバッチの容量。 */
   private static final BatchPlan.Capacity ONE_ROW =
-      new BatchPlan.Capacity(1, Limits.MAX_EVENT_TOKENS, Limits.MAX_TRANSITIONS, Limits.MAX_LEGAL_ACTIONS);
+      new BatchPlan.Capacity(
+          1, Limits.MAX_EVENT_TOKENS, Limits.MAX_TRANSITIONS, Limits.MAX_LEGAL_ACTIONS);
 
   private static final int SEATS = TENHOU_4P.seats();
 
@@ -37,10 +36,12 @@ public final class RowTokens {
   private static final Axis[] TOKEN_TYPES = {Axis.ROW, Axis.SEAT, Axis.TILE, Axis.EVENT};
 
   private final Observation observation = new Observation(TENHOU_4P);
-  private final Tokenizer tokenizer = new Tokenizer();
-  private final InputWriter writer = new InputWriter();
+  private final Tokenizer tokenizer = new Tokenizer(TENHOU_4P);
   private final HostBatch single =
-      new HostBatch(InputSchema.FORMAT, ONE_ROW, ByteBuffer.allocate(BatchPlan.maxBytes(InputSchema.FORMAT, ONE_ROW)));
+      new HostBatch(
+          FOUR_PLAYER, ONE_ROW, ByteBuffer.allocate(BatchPlan.maxBytes(FOUR_PLAYER, ONE_ROW)));
+
+  private final HostInputs host = new HostInputs(single);
 
   /**
    * O を {@link Tokenizer} で 1 行のバッチに書き、その入力のハッシュを返す。
@@ -56,7 +57,7 @@ public final class RowTokens {
       throw new IllegalStateException("one observation does not fit a one-row batch");
     }
     plan.seal();
-    tokenizer.write(observation, writer.bind(single, 0));
+    tokenizer.write(observation, host, 0);
     return row(single, 0);
   }
 
@@ -72,7 +73,7 @@ public final class RowTokens {
     ByteBuffer blob = batch.blob().duplicate().order(ByteOrder.LITTLE_ENDIAN);
     Mix hash = new Mix();
     for (Tensor tensor : Tensor.values()) {
-      int stride = InputSchema.FORMAT.width(tensor) * tensor.element().bytes();
+      int stride = FOUR_PLAYER.width(tensor) * tensor.element().bytes();
       int offset = plan.offset(tensor);
       switch (tensor) {
         case ACTION_COLUMN -> actionColumns(hash, blob, offset, plan, row);
@@ -80,11 +81,17 @@ public final class RowTokens {
         default -> {
           if (tensor.axis() == Axis.TOKEN) {
             for (Axis type : TOKEN_TYPES) {
-              bytes(hash, blob, offset + (plan.tokenStart(type) + first(plan, type, row)) * stride,
+              bytes(
+                  hash,
+                  blob,
+                  offset + (plan.tokenStart(type) + first(plan, type, row)) * stride,
                   count(plan, type, row) * stride);
             }
           } else {
-            bytes(hash, blob, offset + first(plan, tensor.axis(), row) * stride,
+            bytes(
+                hash,
+                blob,
+                offset + first(plan, tensor.axis(), row) * stride,
                 count(plan, tensor.axis(), row) * stride);
           }
         }
@@ -92,7 +99,8 @@ public final class RowTokens {
     }
     int firstAction = plan.firstAction(row);
     for (int action = 0; action < plan.actions(row); action++) {
-      hash.add(batch.priorShanten(firstAction + action)).add(batch.priorUkeire(firstAction + action));
+      hash.add(batch.priorShanten(firstAction + action))
+          .add(batch.priorUkeire(firstAction + action));
     }
     return hash.value();
   }
@@ -106,7 +114,8 @@ public final class RowTokens {
       case EVENT -> plan.firstEvent(row);
       case TRANSITION -> plan.firstTransition(row);
       case ACTION -> plan.firstAction(row);
-      case TOKEN -> throw new IllegalArgumentException("the token axis has no single range per row");
+      case TOKEN ->
+          throw new IllegalArgumentException("the token axis has no single range per row");
     };
   }
 
@@ -119,39 +128,43 @@ public final class RowTokens {
       case EVENT -> plan.events(row);
       case TRANSITION -> plan.transitions(row);
       case ACTION -> plan.actions(row);
-      case TOKEN -> throw new IllegalArgumentException("the token axis has no single range per row");
+      case TOKEN ->
+          throw new IllegalArgumentException("the token axis has no single range per row");
     };
   }
 
   /** 手のインデックスの列を混ぜる。行・遷移・手の番号は、行の中の番号に直す。 */
-  private static void actionColumns(Mix hash, ByteBuffer blob, int offset, BatchPlan plan, int row) {
-    int width = InputSchema.FORMAT.width(Tensor.ACTION_COLUMN);
+  private static void actionColumns(
+      Mix hash, ByteBuffer blob, int offset, BatchPlan plan, int row) {
+    int width = FOUR_PLAYER.width(Tensor.ACTION_COLUMN);
     int firstAction = plan.firstAction(row);
     for (int action = firstAction; action < firstAction + plan.actions(row); action++) {
       for (ActionColumn column : ActionColumn.values()) {
         int value = blob.getInt(offset + (action * width + column.ordinal()) * Integer.BYTES);
-        hash.add(switch (column) {
-          case ROW -> value - row;
-          case FIRST_TRANSITION -> value - plan.firstTransition(row);
-          case BASE -> value < 0 ? value : value - firstAction;
-          case REPRESENTATIVE -> value - firstAction;
-          case TRANSITIONS, ROLE -> value;
-        });
+        hash.add(
+            switch (column) {
+              case ROW -> value - row;
+              case FIRST_TRANSITION -> value - plan.firstTransition(row);
+              case BASE -> value < 0 ? value : value - firstAction;
+              case REPRESENTATIVE -> value - firstAction;
+              case TRANSITIONS, ROLE -> value;
+            });
       }
     }
   }
 
   /** 行のインデックスの列を混ぜる。イベント・手・遷移の最初の番号は、0 からに直す。 */
   private static void rowColumns(Mix hash, ByteBuffer blob, int offset, BatchPlan plan, int row) {
-    int width = InputSchema.FORMAT.width(Tensor.ROW_COLUMN);
+    int width = FOUR_PLAYER.width(Tensor.ROW_COLUMN);
     for (RowColumn column : RowColumn.values()) {
       int value = blob.getInt(offset + (row * width + column.ordinal()) * Integer.BYTES);
-      hash.add(switch (column) {
-        case FIRST_EVENT -> value - plan.firstEvent(row);
-        case FIRST_ACTION -> value - plan.firstAction(row);
-        case FIRST_TRANSITION -> value - plan.firstTransition(row);
-        case EVENTS, ACTIONS, TRANSITIONS, DECISION_KIND -> value;
-      });
+      hash.add(
+          switch (column) {
+            case FIRST_EVENT -> value - plan.firstEvent(row);
+            case FIRST_ACTION -> value - plan.firstAction(row);
+            case FIRST_TRANSITION -> value - plan.firstTransition(row);
+            case EVENTS, ACTIONS, TRANSITIONS, DECISION_KIND -> value;
+          });
     }
   }
 

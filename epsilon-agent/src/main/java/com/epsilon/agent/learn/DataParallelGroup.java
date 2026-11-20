@@ -75,7 +75,8 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
         lanes.size() == 1
             ? null
             : Executors.newFixedThreadPool(
-                lanes.size() - 1, Thread.ofPlatform().daemon().name("epsilon-data-parallel-", 0).factory());
+                lanes.size() - 1,
+                Thread.ofPlatform().daemon().name("epsilon-data-parallel-", 0).factory());
     // 最初の順伝播が、ネットワークの用意（レプリカの初期化と値のコピー）を追い越さないように、レーンのストリームが待つイベントを記録する
     for (L lane : this.lanes) {
       lane.recordParametersReady();
@@ -99,12 +100,18 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
    * i 番目のジョブを、i 番目に指定したレーンで並行して走らせ、結果をジョブと同じ順に返す。同じレーンは 2 度指定できない。レーン 0
    * のジョブは呼び出したスレッドで走り、ほかは並列用のスレッドで走る。
    */
-  public <T> List<T> execute(int[] laneIndices, List<? extends LaneWork<L, T>> work) throws IOException {
+  public <T> List<T> execute(int[] laneIndices, List<? extends LaneWork<L, T>> work)
+      throws IOException {
     requireUsable();
     if (work.isEmpty() || work.size() > lanes.size() || laneIndices.length != work.size()) {
       throw new IllegalArgumentException(
-          "Lane work must be 1.." + lanes.size() + " items, one per lane: " + work.size() + " items for "
-              + laneIndices.length + " lanes");
+          "Lane work must be 1.."
+              + lanes.size()
+              + " items, one per lane: "
+              + work.size()
+              + " items for "
+              + laneIndices.length
+              + " lanes");
     }
     requireDistinctLanes(laneIndices);
     List<Future<T>> futures = new ArrayList<>(work.size());
@@ -190,7 +197,8 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       if (!seen.add(group)) {
         throw new IllegalArgumentException("A step updates " + group.name() + " twice");
       }
-      states[index] = groups.computeIfAbsent(group, key -> new GroupState(key, Layout.of(lanes, key)));
+      states[index] =
+          groups.computeIfAbsent(group, key -> new GroupState(key, Layout.of(lanes, key)));
     }
     try (ComputeScopes ignored = new ComputeScopes()) {
       for (GroupState state : states) {
@@ -220,7 +228,10 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
         committing = true;
         for (int index = 0; index < states.length; index++) {
           TransferBuffers updated = canonical[index];
-          updates.get(index).optimizer().update(states[index].group.name(), updated.parameter, updated.gradient);
+          updates
+              .get(index)
+              .optimizer()
+              .update(states[index].group.name(), updated.parameter, updated.gradient);
           for (int lane = 1; lane < lanes.size(); lane++) {
             updated.parameter.copyTo(lanes.get(lane).buffers(states[index]).parameter);
           }
@@ -349,7 +360,12 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       }
       if ((double) maximum * update.gradientScale() > Float.MAX_VALUE) {
         throw new IllegalStateException(
-            "Scaling the " + name + " gradient overflows: maxAbs=" + maximum + " scale=" + update.gradientScale());
+            "Scaling the "
+                + name
+                + " gradient overflows: maxAbs="
+                + maximum
+                + " scale="
+                + update.gradientScale());
       }
     }
     for (int index = 0; index < canonical.length; index++) {
@@ -364,7 +380,8 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
     boolean[] used = new boolean[lanes.size()];
     for (int lane : laneIndices) {
       if (lane < 0 || lane >= lanes.size() || used[lane]) {
-        throw new IllegalArgumentException("Invalid or repeated lane " + lane + " of " + lanes.size());
+        throw new IllegalArgumentException(
+            "Invalid or repeated lane " + lane + " of " + lanes.size());
       }
       used[lane] = true;
     }
@@ -379,7 +396,8 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
   private void requireUsable() {
     requireOpen();
     if (terminalFailure != null) {
-      throw new IllegalStateException("The data-parallel group failed during an update", terminalFailure);
+      throw new IllegalStateException(
+          "The data-parallel group failed during an update", terminalFailure);
     }
   }
 
@@ -434,7 +452,8 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       Objects.requireNonNull(group, "group");
       Objects.requireNonNull(optimizer, "optimizer");
       if (!Float.isFinite(gradientScale) || gradientScale <= 0f) {
-        throw new IllegalArgumentException("The gradient scale must be finite and positive: " + gradientScale);
+        throw new IllegalArgumentException(
+            "The gradient scale must be finite and positive: " + gradientScale);
       }
     }
   }
@@ -511,7 +530,10 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       }
       if (metrics.getShape().dimension() != 1 || metrics.getDataType() != DataType.FLOAT32) {
         throw new IllegalArgumentException(
-            "Metrics must be one-dimensional FLOAT32: " + metrics.getShape() + " " + metrics.getDataType());
+            "Metrics must be one-dimensional FLOAT32: "
+                + metrics.getShape()
+                + " "
+                + metrics.getDataType());
       }
       if (!(metrics instanceof PtNDArray pytorch) || !(manager() instanceof PtNDManager pinned)) {
         throw new IllegalArgumentException("An asynchronous metric readback needs PyTorch arrays");
@@ -535,7 +557,12 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
       try {
         metricEvent.synchronize();
         float[] values = new float[metricCount];
-        metricBuffer.getByteBuffer().duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer().get(values);
+        metricBuffer
+            .getByteBuffer()
+            .duplicate()
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+            .get(values);
         return values;
       } finally {
         closeMetricReadback();
@@ -618,7 +645,8 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
     }
 
     TransferBuffers buffers(GroupState state) {
-      return transfers.computeIfAbsent(state.group, ignored -> new TransferBuffers(model, state.layout));
+      return transfers.computeIfAbsent(
+          state.group, ignored -> new TransferBuffers(model, state.layout));
     }
 
     private static Throwable closeAfter(AutoCloseable resource, Throwable failure) {
@@ -753,12 +781,19 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
         }
         Parameter parameter = entry.getValue();
         if (!parameter.requiresGradient()) {
-          throw new IllegalStateException("Parameter " + entry.getKey() + " of " + group.name() + " is frozen");
+          throw new IllegalStateException(
+              "Parameter " + entry.getKey() + " of " + group.name() + " is frozen");
         }
         NDArray array = parameter.getArray();
         if (array.getDataType() != DataType.FLOAT32) {
           throw new IllegalArgumentException(
-              "Parameter " + entry.getKey() + " of " + group.name() + " is " + array.getDataType() + ", not FLOAT32");
+              "Parameter "
+                  + entry.getKey()
+                  + " of "
+                  + group.name()
+                  + " is "
+                  + array.getDataType()
+                  + ", not FLOAT32");
         }
         long end = Math.addExact(offset, array.getShape().size());
         slices.add(new Slice(entry.getKey(), array.getShape(), offset, end));
@@ -774,7 +809,8 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
           if (parameter == null
               || !parameter.getArray().getShape().equals(slice.shape())
               || parameter.getArray().getDataType() != DataType.FLOAT32) {
-            throw new IllegalArgumentException("Lane " + index + " differs at parameter " + slice.name());
+            throw new IllegalArgumentException(
+                "Lane " + index + " differs at parameter " + slice.name());
           }
         }
       }
@@ -855,7 +891,8 @@ public class DataParallelGroup<L extends DataParallelGroup.Lane> implements Auto
         PtNDArray sourceGradient = JniUtils.getGradient((PtNDArray) modelParameters.get(index));
         if (sourceGradient == null) {
           if (!allowMissing) {
-            throw new IllegalStateException("Parameter " + layout.slices().get(index).name() + " has no gradient");
+            throw new IllegalStateException(
+                "Parameter " + layout.slices().get(index).name() + " has no gradient");
           }
           gradientViews.get(index).fillI(0f);
           continue;

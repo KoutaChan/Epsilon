@@ -151,7 +151,8 @@ public final class OracleCodec {
    * @return そのロンで和了者が受け取る点
    */
   public int points(long[] words, int base, int index) {
-    return point.get(words, base + pointsStart, index, PointBits.POINTS) * ObservationSchema.POINT_UNIT;
+    return point.get(words, base + pointsStart, index, PointBits.POINTS)
+        * ObservationSchema.POINT_UNIT;
   }
 
   /**
@@ -174,9 +175,11 @@ public final class OracleCodec {
   /** {@code index} 番目の放銃牌の点を書く。 */
   void writePoints(long[] words, int base, int index, int points) {
     if (points % ObservationSchema.POINT_UNIT != 0) {
-      throw new IllegalStateException("Points are not a multiple of " + ObservationSchema.POINT_UNIT + ": " + points);
+      throw new IllegalStateException(
+          "Points are not a multiple of " + ObservationSchema.POINT_UNIT + ": " + points);
     }
-    point.put(words, base + pointsStart, index, PointBits.POINTS, points / ObservationSchema.POINT_UNIT);
+    point.put(
+        words, base + pointsStart, index, PointBits.POINTS, points / ObservationSchema.POINT_UNIT);
   }
 
   private int record(int relative) {

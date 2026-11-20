@@ -29,14 +29,35 @@ public class PhiValueTest {
   /** run が書いた候補の項目（チェックポイントの sha を持たない）。 */
   private static PhiEntry network(String id, String path, String outcomes, String outcomesSha) {
     return new PhiEntry(
-        id, PhiEntryKind.NETWORK, GrpFixtures.VARIANT, path, "", "", "", outcomes, outcomesSha, 4, PhiEntry.INITIAL_ID,
+        id,
+        PhiEntryKind.NETWORK,
+        GrpFixtures.VARIANT,
+        path,
+        "",
+        "",
+        "",
+        outcomes,
+        outcomesSha,
+        4,
+        PhiEntry.INITIAL_ID,
         "test");
   }
 
   /** run の外から来た固定の GRP の項目。 */
   private static PhiEntry fixed(String sha) {
     return new PhiEntry(
-        PhiEntry.FIXED_ID, PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp/f", sha, "", "", "", "", 1, "", "test");
+        PhiEntry.FIXED_ID,
+        PhiEntryKind.NETWORK,
+        GrpFixtures.VARIANT,
+        "/grp/f",
+        sha,
+        "",
+        "",
+        "",
+        "",
+        1,
+        "",
+        "test");
   }
 
   @Test
@@ -62,7 +83,8 @@ public class PhiValueTest {
     Assert.assertFalse(enumerated.sameValue(grp));
 
     // 点数だけの項目も、GRP のモードのまま
-    PhiValue score = PhiValue.of(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT), late);
+    PhiValue score =
+        PhiValue.of(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT), late);
     Assert.assertEquals(score.mode(), PhiMode.GRP);
     Assert.assertEquals(score.requested(), PhiMode.LATE);
   }
@@ -81,21 +103,45 @@ public class PhiValueTest {
             PhiValue.of(network("g003-a1", "/grp/a", "/grp/q", "qq"), late),
             PhiValue.of(
                 new PhiEntry(
-                    "g003-a1", PhiEntryKind.NETWORK, Variant.TENHOU_3P, "/grp/a", "", "", "", "/grp/q", "", 4, "", "x"),
+                    "g003-a1",
+                    PhiEntryKind.NETWORK,
+                    Variant.TENHOU_3P,
+                    "/grp/a",
+                    "",
+                    "",
+                    "",
+                    "/grp/q",
+                    "",
+                    4,
+                    "",
+                    "x"),
                 late),
             PhiValue.grp(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT)));
     for (PhiValue other : others) {
-      Assert.assertFalse(value.sameValue(other), "cutoff, mode, id, checkpoint, q and rule each change the value: " + other);
+      Assert.assertFalse(
+          value.sameValue(other),
+          "cutoff, mode, id, checkpoint, q and rule each change the value: " + other);
       Assert.assertFalse(other.sameValue(value), other.toString());
     }
     Assert.assertFalse(
         PhiValue.grp(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT))
-            .sameValue(PhiValue.grp(PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, GrpFixtures.VARIANT))));
+            .sameValue(
+                PhiValue.grp(PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, GrpFixtures.VARIANT))));
 
     // 効き始め、親、理由は、値を変えない
     PhiEntry back =
         new PhiEntry(
-            "g003-a1", PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp/a", "", "", "", "/grp/q", "", 9, "g001-a1",
+            "g003-a1",
+            PhiEntryKind.NETWORK,
+            GrpFixtures.VARIANT,
+            "/grp/a",
+            "",
+            "",
+            "",
+            "/grp/q",
+            "",
+            9,
+            "g001-a1",
             "rollback: test");
     Assert.assertTrue(PhiValue.of(back, late).sameValue(value));
     Assert.assertTrue(PhiValue.grp(back.from(12, "again")).sameValue(PhiValue.grp(WITH_Q)));
@@ -105,8 +151,18 @@ public class PhiValueTest {
     Assert.assertFalse(PhiValue.grp(fixed("aa")).sameValue(PhiValue.grp(fixed("ab"))));
     PhiEntry overlaid =
         new PhiEntry(
-            PhiEntry.FIXED_ID, PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp/f", "aa", "/grp/t.json", "tt", "", "",
-            1, "", "test");
+            PhiEntry.FIXED_ID,
+            PhiEntryKind.NETWORK,
+            GrpFixtures.VARIANT,
+            "/grp/f",
+            "aa",
+            "/grp/t.json",
+            "tt",
+            "",
+            "",
+            1,
+            "",
+            "test");
     Assert.assertFalse(PhiValue.grp(fixed("aa")).sameValue(PhiValue.grp(overlaid)));
   }
 
@@ -126,11 +182,19 @@ public class PhiValueTest {
   @Test
   public void inconsistentValuesAreRefused() {
     Assert.assertEquals(
-        new PhiValue(WITH_Q, PhiMode.LATE, PhiMode.LATE, 1e-5), PhiValue.of(WITH_Q, ModeLine.late(1e-5, 1, "x")));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new PhiValue(PLAIN, PhiMode.LATE, PhiMode.LATE, 1e-5));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new PhiValue(WITH_Q, PhiMode.GRP, PhiMode.LATE, 1e-5));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new PhiValue(WITH_Q, PhiMode.LATE, PhiMode.LATE, null));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new PhiValue(WITH_Q, PhiMode.GRP, PhiMode.GRP, 1e-5));
+        new PhiValue(WITH_Q, PhiMode.LATE, PhiMode.LATE, 1e-5),
+        PhiValue.of(WITH_Q, ModeLine.late(1e-5, 1, "x")));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> new PhiValue(PLAIN, PhiMode.LATE, PhiMode.LATE, 1e-5));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> new PhiValue(WITH_Q, PhiMode.GRP, PhiMode.LATE, 1e-5));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> new PhiValue(WITH_Q, PhiMode.LATE, PhiMode.LATE, null));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new PhiValue(WITH_Q, PhiMode.GRP, PhiMode.GRP, 1e-5));
   }
 
   @Test
@@ -149,37 +213,96 @@ public class PhiValueTest {
     Assert.assertFalse(WITH_Q.sameValue(inherited));
     Assert.assertFalse(inherited.sameValue(network("g003-a1", "/grp/a", "/grp/q", "qr")));
     Assert.assertTrue(
-        inherited.sameValue(network("g003-a1", "/grp/a", "/other/q", "qq")), "the path of an outside q is not the value");
+        inherited.sameValue(network("g003-a1", "/grp/a", "/other/q", "qq")),
+        "the path of an outside q is not the value");
     // q が null なら「持たない」とみなす
     Assert.assertEquals(network("g003-a1", "/grp/a", null, null), PLAIN);
 
-    Assert.assertThrows(IllegalArgumentException.class, () -> network("g003-a1", "/grp/a", "", "qq"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> network("g003-a1", "/grp/a", "", "qq"));
     // run の外から来た項目は、チェックポイントの sha と、q を持てば q の sha が要る
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> new PhiEntry(
-            PhiEntry.INITIAL_ID, PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp/a", "", "", "", "", "", 1, "", "x"));
+        () ->
+            new PhiEntry(
+                PhiEntry.INITIAL_ID,
+                PhiEntryKind.NETWORK,
+                GrpFixtures.VARIANT,
+                "/grp/a",
+                "",
+                "",
+                "",
+                "",
+                "",
+                1,
+                "",
+                "x"));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> new PhiEntry(
-            PhiEntry.INITIAL_ID, PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp/a", "aa", "", "", "/grp/q", "", 1, "",
-            "x"));
+        () ->
+            new PhiEntry(
+                PhiEntry.INITIAL_ID,
+                PhiEntryKind.NETWORK,
+                GrpFixtures.VARIANT,
+                "/grp/a",
+                "aa",
+                "",
+                "",
+                "/grp/q",
+                "",
+                1,
+                "",
+                "x"));
     Assert.assertTrue(
         new PhiEntry(
-                PhiEntry.INITIAL_ID, PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp/a", "aa", "", "", "/grp/q", "qq",
-                1, "", "x")
+                PhiEntry.INITIAL_ID,
+                PhiEntryKind.NETWORK,
+                GrpFixtures.VARIANT,
+                "/grp/a",
+                "aa",
+                "",
+                "",
+                "/grp/q",
+                "qq",
+                1,
+                "",
+                "x")
             .hasOutcomes());
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> new PhiEntry(
-            "g003-a1", PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp/a", "", "/grp/t.json", "tt", "/grp/q", "", 4,
-            "", "x"));
+        () ->
+            new PhiEntry(
+                "g003-a1",
+                PhiEntryKind.NETWORK,
+                GrpFixtures.VARIANT,
+                "/grp/a",
+                "",
+                "/grp/t.json",
+                "tt",
+                "/grp/q",
+                "",
+                4,
+                "",
+                "x"));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> new PhiEntry(
-            "g000", PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT, "", "", "", "", "/grp/q", "qq", 1, "", "x"));
+        () ->
+            new PhiEntry(
+                "g000",
+                PhiEntryKind.SCORE_RANK,
+                GrpFixtures.VARIANT,
+                "",
+                "",
+                "",
+                "",
+                "/grp/q",
+                "qq",
+                1,
+                "",
+                "x"));
     for (PhiMode mode : PhiMode.values())
-      Assert.assertThrows(IllegalArgumentException.class, () -> network(mode.alias(), "/grp/a", "", ""));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> network(mode.alias(), "/grp/a", "", ""));
   }
 
   @Test
@@ -190,26 +313,38 @@ public class PhiValueTest {
       Path leaf = GrpFixtures.network(run.resolve("leaf"), 1);
       Path q = GrpFixtures.outcomes(run.resolve("q"), GrpFixtures.VARIANT, 2);
       Path other = GrpFixtures.outcomes(run.resolve("q-other"), GrpFixtures.VARIANT, 3);
-      PhiEntry initial = PhiHistory.initialize(files, GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + q));
+      PhiEntry initial =
+          PhiHistory.initialize(files, GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + q));
       Assert.assertEquals(initial.outcomes(), q.toString());
       Assert.assertEquals(initial.outcomesSha256(), GrpCheckpoint.sha256(q));
       Assert.assertEquals(PhiHistory.read(files), List.of(initial));
       // 同じ q を別の書き方のパスで指しても、g000 は同じ
       Path roundabout = run.resolve("leaf").resolve("..").resolve("q");
-      Assert.assertEquals(PhiHistory.initialize(files, GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + roundabout)), initial);
+      Assert.assertEquals(
+          PhiHistory.initialize(
+              files, GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + roundabout)),
+          initial);
       // q を外した設定や、別の q を指す設定は、g000 と食い違う
-      Assert.assertThrows(IOException.class, () -> PhiHistory.initialize(files, GrpFixtures.grpStart(leaf)));
       Assert.assertThrows(
-          IOException.class, () -> PhiHistory.initialize(files, GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + other)));
+          IOException.class, () -> PhiHistory.initialize(files, GrpFixtures.grpStart(leaf)));
+      Assert.assertThrows(
+          IOException.class,
+          () ->
+              PhiHistory.initialize(
+                  files, GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + other)));
       Assert.assertEquals(PhiHistory.read(files).size(), 1);
       // 同じ id で q だけが違う行は足せない
       GrpFixtures.writeState(run, 1);
       Assert.assertThrows(
           IllegalArgumentException.class,
-          () -> PhiHistory.append(
-              files, HandEndPhi.checkpointEntry(PhiEntry.INITIAL_ID, GrpFixtures.VARIANT, leaf, "", other, 2, "", "x")));
+          () ->
+              PhiHistory.append(
+                  files,
+                  HandEndPhi.checkpointEntry(
+                      PhiEntry.INITIAL_ID, GrpFixtures.VARIANT, leaf, "", other, 2, "", "x")));
       PhiHistory.append(files, initial.from(2, PhiEntry.ROLLBACK + " test"));
-      Assert.assertEquals(PhiHistory.read(files).getLast().outcomesSha256(), initial.outcomesSha256());
+      Assert.assertEquals(
+          PhiHistory.read(files).getLast().outcomesSha256(), initial.outcomesSha256());
     } finally {
       Snapshot.deleteTree(run);
     }
@@ -223,7 +358,8 @@ public class PhiValueTest {
       GrpFixtures.writeState(run, 4);
       Path leaf = GrpFixtures.network(run.resolve("leaf"), 1);
       Path q = GrpFixtures.outcomes(run.resolve("q"), GrpFixtures.VARIANT, 2);
-      PhiEntry initial = PhiHistory.initialize(files, GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + q));
+      PhiEntry initial =
+          PhiHistory.initialize(files, GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + q));
       GrpFixtures.ready(files, "g003-a1", 3, GrpFixtures.network(run.resolve("b"), 3));
       PhiControl.switchTo(run, "g003-a1", 4, "test").orElseThrow();
       PhiEntry back = PhiControl.switchTo(run, PhiEntry.INITIAL_ID, 6, "test").orElseThrow();
@@ -231,10 +367,14 @@ public class PhiValueTest {
       Assert.assertEquals(back.outcomesSha256(), initial.outcomesSha256());
       Assert.assertTrue(back.rollback());
       Files.writeString(
-          q.resolve(GrpCheckpoint.WEIGHTS_FILE), "x", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+          q.resolve(GrpCheckpoint.WEIGHTS_FILE),
+          "x",
+          StandardCharsets.UTF_8,
+          StandardOpenOption.APPEND);
       IllegalStateException changed =
           Assert.expectThrows(
-              IllegalStateException.class, () -> PhiControl.switchTo(run, PhiEntry.INITIAL_ID, 8, "test"));
+              IllegalStateException.class,
+              () -> PhiControl.switchTo(run, PhiEntry.INITIAL_ID, 8, "test"));
       Assert.assertTrue(changed.getMessage().startsWith("Outcome network "), changed.getMessage());
       Assert.assertEquals(PhiHistory.read(files).size(), 3);
     } finally {
@@ -252,7 +392,8 @@ public class PhiValueTest {
               PhiValue.of(PLAIN, ModeLine.late(1e-5, 4, "x")),
               PhiValue.grp(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT)))) {
         Path file = work.resolve(value.mode() + "-" + value.entry().id() + ".json");
-        new StepReport(StepReport.Status.RAN, 1.5, 1, "test.jar", new PhiReport(value, 0.25)).write(file);
+        new StepReport(StepReport.Status.RAN, 1.5, 1, "test.jar", new PhiReport(value, 0.25))
+            .write(file);
         PhiReport read = (PhiReport) StepReport.read(file, PhiReport.class).metrics();
         Assert.assertEquals(read, new PhiReport(value, 0.25), Files.readString(file));
       }

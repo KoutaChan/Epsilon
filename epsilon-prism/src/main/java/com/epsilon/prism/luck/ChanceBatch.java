@@ -53,7 +53,8 @@ final class ChanceBatch {
   void read(ChanceLog log) {
     int size = log.size();
     if (size < next) {
-      throw new IllegalStateException("The chance log has " + size + " events but " + next + " were read");
+      throw new IllegalStateException(
+          "The chance log has " + size + " events but " + next + " were read");
     }
     first = next;
     reveals = 0;
@@ -63,17 +64,20 @@ final class ChanceBatch {
       switch (kind) {
         case INDICATOR -> {
           if (draw >= 0) {
-            throw new IllegalStateException("Indicator " + index + " follows the draw " + draw + " in one batch");
+            throw new IllegalStateException(
+                "Indicator " + index + " follows the draw " + draw + " in one batch");
           }
           reveals++;
         }
         case DRAW, RINSHAN -> {
           if (draw >= 0) {
-            throw new IllegalStateException("Draws " + draw + " and " + index + " fall in one batch");
+            throw new IllegalStateException(
+                "Draws " + draw + " and " + index + " fall in one batch");
           }
           draw = index;
         }
-        case URA -> throw new IllegalStateException("Ura indicator " + index + " before a decision");
+        case URA ->
+            throw new IllegalStateException("Ura indicator " + index + " before a decision");
       }
     }
     next = size;

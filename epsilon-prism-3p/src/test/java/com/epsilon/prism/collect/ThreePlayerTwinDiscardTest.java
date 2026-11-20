@@ -25,11 +25,13 @@ public class ThreePlayerTwinDiscardTest {
 
   @Test(timeOut = 900_000)
   public void theFloorPlaysTheChosenTwin() {
-    TwinCollection.assertEveryPath(TENHOU_3P, new Behaviour(0.05, 0, CrnScheme.SINGLE_RACE), 31_007L, GAMES);
+    TwinCollection.assertEveryPath(
+        TENHOU_3P, new Behaviour(0.05, 0, CrnScheme.SINGLE_RACE), 31_007L, GAMES);
   }
 
   @Test(timeOut = 900_000)
   public void theExplorationPlaysTheChosenTwin() {
-    TwinCollection.assertEveryPath(TENHOU_3P, new Behaviour(0.05, 0.2, CrnScheme.TWO_STAGE_FLOOR), 31_007L, GAMES);
+    TwinCollection.assertEveryPath(
+        TENHOU_3P, new Behaviour(0.05, 0.2, CrnScheme.TWO_STAGE_FLOOR), 31_007L, GAMES);
   }
 }

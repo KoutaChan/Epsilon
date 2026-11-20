@@ -1,6 +1,7 @@
 package com.epsilon.prism.input;
 
 import com.epsilon.agent.facts.MahjongTileRelation;
+import com.epsilon.mahjong.rules.RuleFlag;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.tile.Tiles;
 import java.util.Arrays;
@@ -23,6 +24,7 @@ public final class TileTokens {
   private final int[] tokens;
   private final int[] relations;
   private final int movableSuits;
+  private final int nukiDoraToken;
 
   private TileTokens(Variant variant) {
     this.variant = variant;
@@ -37,15 +39,19 @@ public final class TileTokens {
         tokens[kind] = token++;
       }
     }
+    nukiDoraToken = variant.has(RuleFlag.NUKI) ? token(Tiles.PEI) : -1;
     relations = new int[kinds.length * kinds.length];
     for (int query = 0; query < kinds.length; query++) {
       for (int key = 0; key < kinds.length; key++) {
-        relations[query * kinds.length + key] = MahjongTileRelation.between(kinds[query], kinds[key]).ordinal();
+        relations[query * kinds.length + key] =
+            MahjongTileRelation.between(kinds[query], kinds[key]).ordinal();
       }
     }
     int movable = 0;
     for (Tiles.Group group : Tiles.Group.values()) {
-      if (group.suited() && (set & Tiles.range(group.first(), group.last())) == Tiles.range(group.first(), group.last())) {
+      if (group.suited()
+          && (set & Tiles.range(group.first(), group.last()))
+              == Tiles.range(group.first(), group.last())) {
         movable |= 1 << group.ordinal();
       }
     }
@@ -64,6 +70,11 @@ public final class TileTokens {
 
   public Variant variant() {
     return variant;
+  }
+
+  /** ドラ表示の枚数に抜きドラの 1 翻を加えて書く牌のトークン。該当する牌がなければ −1。 */
+  int nukiDoraToken() {
+    return nukiDoraToken;
   }
 
   /** トークンの数。 */
@@ -125,6 +136,11 @@ public final class TileTokens {
   /** 入れ替えてよい数牌の色のビット。ビット g は、{@link Tiles.Group} の ordinal が g の色。 */
   public int movableSuits() {
     return movableSuits;
+  }
+
+  /** 数牌の色を入れ替えてよいか（{@link #movableSuits} にあるか）。 */
+  public boolean movable(Tiles.Group suit) {
+    return (movableSuits & 1 << suit.ordinal()) != 0;
   }
 
   private static TileTokens[] load() {

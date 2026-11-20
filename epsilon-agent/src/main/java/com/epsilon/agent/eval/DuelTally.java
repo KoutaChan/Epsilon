@@ -140,15 +140,24 @@ final class DuelTally {
    * @return タブで分けた列
    * @throws IllegalArgumentException 列の数・牌山の番号・割り当ての番号・席ごとのスロットのどれかが合わないとき
    */
-  static String[] fields(String line, int number, long wall, int game, int placement, String seatSlots, int columns) {
+  static String[] fields(
+      String line, int number, long wall, int game, int placement, String seatSlots, int columns) {
     String[] fields = line.split("\t", -1);
     if (fields.length != columns
         || Long.parseLong(fields[0]) != wall
         || Integer.parseInt(fields[1]) != placement
         || !fields[2].equals(seatSlots)) {
       throw new IllegalArgumentException(
-          "games.tsv line " + (number + 1) + " is not game " + game + " of wall " + wall + " with " + columns
-              + " columns: " + line);
+          "games.tsv line "
+              + (number + 1)
+              + " is not game "
+              + game
+              + " of wall "
+              + wall
+              + " with "
+              + columns
+              + " columns: "
+              + line);
     }
     return fields;
   }
@@ -173,7 +182,8 @@ final class DuelTally {
    */
   void add(long wall, int[][] scores, PlayStats[] games) {
     if (wall != arena.wallBase() + walls) {
-      throw new IllegalArgumentException("Wall " + wall + " does not follow the " + walls + " walls from " + arena.wallBase());
+      throw new IllegalArgumentException(
+          "Wall " + wall + " does not follow the " + walls + " walls from " + arena.wallBase());
     }
     pair.measure(wall, scores);
     rank.add(pair.rank());
@@ -256,7 +266,10 @@ final class DuelTally {
         }
       }
       int candidates = seatsOfSlot[placement][0];
-      line.append('\t').append(candidateRank / candidates).append('\t').append(candidateUtility / candidates);
+      line.append('\t')
+          .append(candidateRank / candidates)
+          .append('\t')
+          .append(candidateUtility / candidates);
       games[game].appendTo(line);
       out.add(line.toString());
     }
@@ -279,7 +292,8 @@ final class DuelTally {
     for (int game = 0; game < perWall; game++) {
       int number = index * perWall + game;
       int placement = arena.placement(wall, game);
-      String[] fields = fields(lines.get(number), number, wall, game, placement, seatSlots[placement], columns);
+      String[] fields =
+          fields(lines.get(number), number, wall, game, placement, seatSlots[placement], columns);
       for (int seat = 0; seat < seats; seat++) {
         scores[game][seat] = Integer.parseInt(fields[SCORE_COLUMN + seat]);
       }
@@ -300,7 +314,8 @@ final class DuelTally {
    */
   Optional<Stopping.Decision> decide(Stopping stopping, int look) {
     if (walls != stopping.wallsAt(look)) {
-      throw new IllegalStateException("Look " + look + " needs " + stopping.wallsAt(look) + " walls, have " + walls);
+      throw new IllegalStateException(
+          "Look " + look + " needs " + stopping.wallsAt(look) + " walls, have " + walls);
     }
     WallMean judged = judged();
     double better = plan.score() == Score.RANK ? -judged.mean() : judged.mean();

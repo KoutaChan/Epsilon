@@ -1,5 +1,8 @@
-import type { ScenarioAnswer, ScenarioQuery } from "../../protocol/model.ts";
-import type { ResultDocument } from "../../protocol/result.ts";
+import type {
+  ScenarioAnswer,
+  ScenarioQuery,
+} from "@epsilon-reviewer/protocol/model";
+import type { ResultDocument } from "@epsilon-reviewer/protocol/result";
 
 // シェル（取り込み・履歴・共有）と再生の画面（雀卓・もしも）の間で受け渡す型。シェルは文書と、もしも・共有・戻るの処理を渡す。再生の画面は、受け取った文書を読んで画面を作る。
 

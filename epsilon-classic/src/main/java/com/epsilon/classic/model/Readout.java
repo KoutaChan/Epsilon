@@ -43,16 +43,23 @@ final class Readout extends AbstractBlock {
     attentionWidth = widths.readoutAttention();
     headWidth = attentionWidth / Widths.HEADS;
     this.feedForwardWidth = feedForwardWidth;
-    querySeedProjection = addChildBlock("querySeedProjection", Linear.builder().setUnits(hidden).build());
+    querySeedProjection =
+        addChildBlock("querySeedProjection", Linear.builder().setUnits(hidden).build());
     queryLayerNorm = addChildBlock("queryLayerNorm", LayerNorm.builder().axis(1).build());
-    queryProjection = addChildBlock("queryProjection", Linear.builder().setUnits(attentionWidth).build());
+    queryProjection =
+        addChildBlock("queryProjection", Linear.builder().setUnits(attentionWidth).build());
     keyValueProjection =
-        addChildBlock("keyValueProjection", Linear.builder().setUnits(2L * attentionWidth).optBias(false).build());
-    contextProjection = addChildBlock("contextProjection", Linear.builder().setUnits(hidden).build());
-    feedForwardInputLayerNorm = addChildBlock("feedForwardInputLayerNorm", LayerNorm.builder().axis(1).build());
+        addChildBlock(
+            "keyValueProjection",
+            Linear.builder().setUnits(2L * attentionWidth).optBias(false).build());
+    contextProjection =
+        addChildBlock("contextProjection", Linear.builder().setUnits(hidden).build());
+    feedForwardInputLayerNorm =
+        addChildBlock("feedForwardInputLayerNorm", LayerNorm.builder().axis(1).build());
     feedForwardExpansion =
         addChildBlock("feedForwardExpansion", Linear.builder().setUnits(feedForwardWidth).build());
-    feedForwardProjection = addChildBlock("feedForwardProjection", Linear.builder().setUnits(hidden).build());
+    feedForwardProjection =
+        addChildBlock("feedForwardProjection", Linear.builder().setUnits(hidden).build());
     outputLayerNorm = addChildBlock("outputLayerNorm", LayerNorm.builder().axis(1).build());
   }
 
@@ -65,18 +72,24 @@ final class Readout extends AbstractBlock {
       NDArray entities = memory.entities();
       NDArray mask = memory.entityMask();
       long rows = entities.getShape().get(0);
-      NDArray mean = entities.sum(new int[] {1}).div(mask.sum(new int[] {1}).reshape(rows, 1).maximum(1f));
+      NDArray mean =
+          entities.sum(new int[] {1}).div(mask.sum(new int[] {1}).reshape(rows, 1).maximum(1f));
       NDArray seed = pass.linear(querySeedProjection, memory.round().concat(mean, 1));
-      NDArray queries = pass.linear(queryProjection, seed).reshape(rows, Widths.HEADS, 1, headWidth);
+      NDArray queries =
+          pass.linear(queryProjection, seed).reshape(rows, Widths.HEADS, 1, headWidth);
       NDList keyValues = pass.linear(keyValueProjection, entities).split(2, 2);
       long tokens = entities.getShape().get(1);
       NDArray keys = keyValues.get(0).reshape(rows, tokens, Widths.HEADS, headWidth).swapAxes(1, 2);
-      NDArray values = keyValues.get(1).reshape(rows, tokens, Widths.HEADS, headWidth).swapAxes(1, 2);
+      NDArray values =
+          keyValues.get(1).reshape(rows, tokens, Widths.HEADS, headWidth).swapAxes(1, 2);
       NDArray keyMask = mask.reshape(rows, 1, 1, tokens).log();
-      NDArray context = Pass.attention(queries, keys, values, keyMask).reshape(rows, attentionWidth);
+      NDArray context =
+          Pass.attention(queries, keys, values, keyMask).reshape(rows, attentionWidth);
       NDArray state = pass.norm(queryLayerNorm, seed.add(pass.linear(contextProjection, context)));
-      NDArray expanded = Pass.silu(pass.linear(feedForwardExpansion, pass.norm(feedForwardInputLayerNorm, state)));
-      return scope.keep(pass.norm(outputLayerNorm, state.add(pass.linear(feedForwardProjection, expanded))));
+      NDArray expanded =
+          Pass.silu(pass.linear(feedForwardExpansion, pass.norm(feedForwardInputLayerNorm, state)));
+      return scope.keep(
+          pass.norm(outputLayerNorm, state.add(pass.linear(feedForwardProjection, expanded))));
     }
   }
 
@@ -96,7 +109,10 @@ final class Readout extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use read");
   }
 

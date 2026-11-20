@@ -34,8 +34,13 @@ public class HandResultTest {
   private static final int TENPAI_SHIFT = 8;
 
   private static final int[] SOME_BASES = {
-    BaseClass.B240.base(), BaseClass.B960.base(), BaseClass.B1920.base(), BaseClass.MANGAN.base(),
-    BaseClass.SANBAIMAN.base(), BaseClass.YAKUMAN.base(), BaseClass.YAKUMAN_6.base()
+    BaseClass.B240.base(),
+    BaseClass.B960.base(),
+    BaseClass.B1920.base(),
+    BaseClass.MANGAN.base(),
+    BaseClass.SANBAIMAN.base(),
+    BaseClass.YAKUMAN.base(),
+    BaseClass.YAKUMAN_6.base()
   };
 
   @Test
@@ -96,12 +101,20 @@ public class HandResultTest {
   @Test
   public void codesOrderByEndingThenWinner() {
     Variant variant = Variant.TENHOU_4P;
-    long tsumo = RulesFixtures.code(variant, 0, o -> o.setTsumo(BaseClass.YAKUMAN_6.base(), 3, RoundOutcome.NO_SEAT, 0));
-    long ron = RulesFixtures.code(variant, 0, o -> o.setRon(BaseClass.B240.base(), 1, 2, RoundOutcome.NO_SEAT, 0));
-    long laterRon = RulesFixtures.code(variant, 0, o -> o.setRon(BaseClass.B240.base(), 2, 3, RoundOutcome.NO_SEAT, 0));
+    long tsumo =
+        RulesFixtures.code(
+            variant, 0, o -> o.setTsumo(BaseClass.YAKUMAN_6.base(), 3, RoundOutcome.NO_SEAT, 0));
+    long ron =
+        RulesFixtures.code(
+            variant, 0, o -> o.setRon(BaseClass.B240.base(), 1, 2, RoundOutcome.NO_SEAT, 0));
+    long laterRon =
+        RulesFixtures.code(
+            variant, 0, o -> o.setRon(BaseClass.B240.base(), 2, 3, RoundOutcome.NO_SEAT, 0));
     long exhaustive = RulesFixtures.code(variant, 0, o -> o.setExhaustive(0b1111, 0, 0b1111));
-    long abortive = RulesFixtures.code(variant, 0, o -> o.setAbortive(AbortiveDraw.NINE_TERMINALS, 0));
-    Assert.assertTrue(tsumo < ron && ron < laterRon && laterRon < exhaustive && exhaustive < abortive);
+    long abortive =
+        RulesFixtures.code(variant, 0, o -> o.setAbortive(AbortiveDraw.NINE_TERMINALS, 0));
+    Assert.assertTrue(
+        tsumo < ron && ron < laterRon && laterRon < exhaustive && exhaustive < abortive);
     Assert.assertEquals(HandResult.BITS, 39);
     for (long code : new long[] {tsumo, ron, exhaustive, abortive}) {
       Assert.assertEquals(code >>> HandResult.BITS, 0L);
@@ -114,12 +127,20 @@ public class HandResultTest {
   public void malformedCodesAreRejected() {
     Variant four = Variant.TENHOU_4P;
     RoundOutcome scratch = new RoundOutcome(four);
-    long tsumo = RulesFixtures.code(four, 0, o -> o.setTsumo(BaseClass.MANGAN.base(), 1, RoundOutcome.NO_SEAT, 0));
-    long ron = RulesFixtures.code(four, 0, o -> o.setRon(BaseClass.MANGAN.base(), 1, 2, RoundOutcome.NO_SEAT, 0));
-    long doubleRon = RulesFixtures.code(four, 0, o -> {
-      o.setRon(BaseClass.MANGAN.base(), 1, 0, RoundOutcome.NO_SEAT, 0);
-      o.addRonWinner(BaseClass.B960.base(), 3, RoundOutcome.NO_SEAT);
-    });
+    long tsumo =
+        RulesFixtures.code(
+            four, 0, o -> o.setTsumo(BaseClass.MANGAN.base(), 1, RoundOutcome.NO_SEAT, 0));
+    long ron =
+        RulesFixtures.code(
+            four, 0, o -> o.setRon(BaseClass.MANGAN.base(), 1, 2, RoundOutcome.NO_SEAT, 0));
+    long doubleRon =
+        RulesFixtures.code(
+            four,
+            0,
+            o -> {
+              o.setRon(BaseClass.MANGAN.base(), 1, 0, RoundOutcome.NO_SEAT, 0);
+              o.addRonWinner(BaseClass.B960.base(), 3, RoundOutcome.NO_SEAT);
+            });
     long nagashi = RulesFixtures.code(four, 0, o -> o.setExhaustive(0b0001, 0b0010, 0));
     for (long code : new long[] {tsumo, ron, doubleRon, nagashi}) {
       Assert.assertTrue(HandResult.valid(code, scratch), Long.toHexString(code));
@@ -138,8 +159,12 @@ public class HandResultTest {
     long second = doubleRon >>> SECOND_SHIFT & 7;
     long baseA = doubleRon >>> BASE_SHIFT & 31;
     long baseB = doubleRon >>> 15 & 31;
-    long swapped = doubleRon & ~(7L << 34 | 7L << SECOND_SHIFT | 31L << BASE_SHIFT | 31L << 15)
-        | second << 34 | first << SECOND_SHIFT | baseB << BASE_SHIFT | baseA << 15;
+    long swapped =
+        doubleRon & ~(7L << 34 | 7L << SECOND_SHIFT | 31L << BASE_SHIFT | 31L << 15)
+            | second << 34
+            | first << SECOND_SHIFT
+            | baseB << BASE_SHIFT
+            | baseA << 15;
     broken.add(swapped);
     // 流し満貫のある荒牌で、子が聴牌している
     broken.add(nagashi | 0b0100L << TENPAI_SHIFT);
@@ -150,7 +175,9 @@ public class HandResultTest {
     }
     // 三人打ちには無い相対席 3
     RoundOutcome three = new RoundOutcome(Variant.TENHOU_3P);
-    long fourthSeat = RulesFixtures.code(four, 0, o -> o.setTsumo(BaseClass.MANGAN.base(), 3, RoundOutcome.NO_SEAT, 0));
+    long fourthSeat =
+        RulesFixtures.code(
+            four, 0, o -> o.setTsumo(BaseClass.MANGAN.base(), 3, RoundOutcome.NO_SEAT, 0));
     Assert.assertTrue(HandResult.valid(fourthSeat, scratch));
     Assert.assertFalse(HandResult.valid(fourthSeat, three));
   }
@@ -182,7 +209,8 @@ public class HandResultTest {
       }
       case EXHAUSTIVE -> {
         Assert.assertEquals(placed.nagashiMask(), outcome.nagashiMask(), context);
-        int tenpai = outcome.nagashiMask() != 0 ? outcome.tenpaiMask() & 1 << dealer : outcome.tenpaiMask();
+        int tenpai =
+            outcome.nagashiMask() != 0 ? outcome.tenpaiMask() & 1 << dealer : outcome.tenpaiMask();
         Assert.assertEquals(placed.tenpaiMask(), tenpai, context);
       }
       case ABORTIVE -> Assert.assertEquals(placed.abortive(), AbortiveDraw.NINE_TERMINALS, context);
@@ -207,22 +235,31 @@ public class HandResultTest {
       for (int seat = 0; seat < seats; seat++) {
         int winner = seat;
         for (int base : SOME_BASES) {
-          outcomes.add(outcome(variant, o -> o.setTsumo(base, winner, RoundOutcome.NO_SEAT, riichi)));
+          outcomes.add(
+              outcome(variant, o -> o.setTsumo(base, winner, RoundOutcome.NO_SEAT, riichi)));
           for (int loser = 0; loser < seats; loser++) {
             if (loser == winner) {
               continue;
             }
             int ronLoser = loser;
-            outcomes.add(outcome(variant, o -> o.setRon(base, winner, ronLoser, RoundOutcome.NO_SEAT, riichi)));
+            outcomes.add(
+                outcome(
+                    variant, o -> o.setRon(base, winner, ronLoser, RoundOutcome.NO_SEAT, riichi)));
             for (int second = 0; second < seats; second++) {
               if (second == winner || second == loser) {
                 continue;
               }
               int other = second;
-              outcomes.add(outcome(variant, o -> {
-                o.setRon(base, winner, ronLoser, RoundOutcome.NO_SEAT, riichi);
-                o.addRonWinner(SOME_BASES[(other + 2) % SOME_BASES.length], other, RoundOutcome.NO_SEAT);
-              }));
+              outcomes.add(
+                  outcome(
+                      variant,
+                      o -> {
+                        o.setRon(base, winner, ronLoser, RoundOutcome.NO_SEAT, riichi);
+                        o.addRonWinner(
+                            SOME_BASES[(other + 2) % SOME_BASES.length],
+                            other,
+                            RoundOutcome.NO_SEAT);
+                      }));
             }
           }
         }
@@ -238,17 +275,21 @@ public class HandResultTest {
               continue;
             }
             int ronLoser = loser;
-            outcomes.add(outcome(variant, o -> o.setRon(yakuman, winner, ronLoser, liable, riichi)));
+            outcomes.add(
+                outcome(variant, o -> o.setRon(yakuman, winner, ronLoser, liable, riichi)));
             for (int second = 0; second < seats; second++) {
               if (second == winner || second == loser) {
                 continue;
               }
               int other = second;
               int otherPao = liableFor(other, ronLoser, seats);
-              outcomes.add(outcome(variant, o -> {
-                o.setRon(yakuman, winner, ronLoser, liable, riichi);
-                o.addRonWinner(BaseClass.YAKUMAN.base(), other, otherPao);
-              }));
+              outcomes.add(
+                  outcome(
+                      variant,
+                      o -> {
+                        o.setRon(yakuman, winner, ronLoser, liable, riichi);
+                        o.addRonWinner(BaseClass.YAKUMAN.base(), other, otherPao);
+                      }));
             }
           }
         }
@@ -294,7 +335,8 @@ public class HandResultTest {
             expected |= 1 << Seats.relative(dealer, seat, 4);
           }
         }
-        Assert.assertEquals(HandResult.riichi(code), expected, Arrays.toString(new int[] {dealer, mask}));
+        Assert.assertEquals(
+            HandResult.riichi(code), expected, Arrays.toString(new int[] {dealer, mask}));
       }
     }
   }

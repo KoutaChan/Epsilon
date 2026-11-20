@@ -150,7 +150,13 @@ final class Rules {
       Action discard = o.callDiscard(first + transition);
       Quality quality = projection.call(call, discard, nextQuality());
       Candidate candidate =
-          nextCandidate().set(action, discard, quality, situation.danger(discard.tile()), offense(quality, false));
+          nextCandidate()
+              .set(
+                  action,
+                  discard,
+                  quality,
+                  situation.danger(discard.tile()),
+                  offense(quality, false));
       if (best == null || betterDiscard(candidate, best, Mode.NORMAL)) {
         best = candidate;
       }
@@ -180,7 +186,8 @@ final class Rules {
           && after.minimumRon() >= KAN_MIN_RON
           && after.minimumRon() <= KAN_MAX_RON;
     }
-    boolean yakuhaiPon = choice.action.type() == Action.Type.PON && situation.yakuhai(choice.action.tile());
+    boolean yakuhaiPon =
+        choice.action.type() == Action.Type.PON && situation.yakuhai(choice.action.tile());
     if (after.shanten() > current.shanten()) {
       return false;
     }
@@ -207,7 +214,8 @@ final class Rules {
       return 0;
     }
     Mode mode = mode(dama != null ? dama : riichi);
-    Candidate selected = dama != null && mode != Mode.NORMAL ? best(damaFrom, riichiFrom, mode) : dama;
+    Candidate selected =
+        dama != null && mode != Mode.NORMAL ? best(damaFrom, riichiFrom, mode) : dama;
     if (selected == null) {
       selected = riichi;
     }
@@ -231,10 +239,17 @@ final class Rules {
         continue;
       }
       int twin = o.representative(action);
-      Quality quality = twin == action ? projection.discard(discard, riichi, nextQuality()) : discards[twin];
+      Quality quality =
+          twin == action ? projection.discard(discard, riichi, nextQuality()) : discards[twin];
       discards[action] = quality;
       boolean furiten = situation.furiten(quality.waits(), discard.tile());
-      nextCandidate().set(action, discard, quality, situation.danger(discard.tile()), offense(quality, furiten));
+      nextCandidate()
+          .set(
+              action,
+              discard,
+              quality,
+              situation.danger(discard.tile()),
+              offense(quality, furiten));
     }
   }
 
@@ -274,13 +289,18 @@ final class Rules {
     }
     boolean valuable = quality.valueHan() >= 2 || quality.minimumRon() >= VALUABLE_RON;
     boolean early = situation.selfDrawsLeft() >= EARLY_SELF_DRAWS;
-    int positive = (quality.goodWait() ? 1 : 0) + (valuable ? 1 : 0) + (situation.dealer() ? 1 : 0) + (early ? 1 : 0);
+    int positive =
+        (quality.goodWait() ? 1 : 0)
+            + (valuable ? 1 : 0)
+            + (situation.dealer() ? 1 : 0)
+            + (early ? 1 : 0);
     if (quality.shanten() == 0) {
       return positive >= (situation.riichiThreats() >= 2 ? 3 : 2) ? Mode.PRESS : Mode.FOLD;
     }
     if (quality.shanten() == 1) {
       boolean wide = quality.ukeire() >= WIDE_UKEIRE && quality.ukeireKinds() >= WIDE_UKEIRE_KINDS;
-      boolean press = situation.riichiThreats() <= 1 && wide && early && (valuable || situation.dealer());
+      boolean press =
+          situation.riichiThreats() <= 1 && wide && early && (valuable || situation.dealer());
       return press ? Mode.PRESS : Mode.FOLD;
     }
     return Mode.FOLD;
@@ -292,7 +312,9 @@ final class Rules {
    * ロンが最低でも 7700 点のときはダマにする。ほかは、良い待ちか、待ちが 3 枚以上か、親か、8 巡目以降なら立直する。
    */
   private boolean declareRiichi(Candidate riichi, Candidate dama, Mode mode) {
-    if (situation.riichi() != RiichiState.NONE || riichi.quality.liveWaits() == 0 || mode == Mode.FOLD) {
+    if (situation.riichi() != RiichiState.NONE
+        || riichi.quality.liveWaits() == 0
+        || mode == Mode.FOLD) {
       return false;
     }
     if (mode == Mode.PRESS && riichi.danger > RIICHI_PRESS_DANGER && !situation.lateLast()) {
@@ -336,10 +358,12 @@ final class Rules {
       if (after.shanten() > 1 || after.shanten() > chosen.shanten()) {
         continue;
       }
-      if (after.shanten() == chosen.shanten() && after.ukeire() * PERCENT < chosen.ukeire() * KAN_UKEIRE_PERCENT) {
+      if (after.shanten() == chosen.shanten()
+          && after.ukeire() * PERCENT < chosen.ukeire() * KAN_UKEIRE_PERCENT) {
         continue;
       }
-      if (kan.type() == Action.Type.KAKAN && (after.valueHan() < 2 || after.shanten() > 0 || !after.goodWait())) {
+      if (kan.type() == Action.Type.KAKAN
+          && (after.valueHan() < 2 || after.shanten() > 0 || !after.goodWait())) {
         continue;
       }
       if (bestQuality == null || betterQuality(after, bestQuality)) {

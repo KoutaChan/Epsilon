@@ -97,7 +97,8 @@ public final class Collector {
 
     /** 書いた行だけを、確定した後のマニフェストの値に差し替えた結果。 */
     public Result withRows(RowStats written) {
-      return new Result(counts, stages, admission, phi, written, batches, largestBatch, seconds, ura);
+      return new Result(
+          counts, stages, admission, phi, written, batches, largestBatch, seconds, ura);
     }
 
     /**
@@ -150,12 +151,27 @@ public final class Collector {
    * @throws IllegalStateException コホートのルール（四人打ち・三人打ち）の PRISM のモジュールが classpath に無いとき、または Φ の
    *     ルールがコホートと違うとき
    */
-  public static Result collect(TableLoop table, Cohort cohort, PolicyService policy, Phi phi, RowSink rows) {
-    Objects.requireNonNull(rows, "rows");
+  public static Result collect(
+      TableLoop table, Cohort cohort, PolicyService policy, Phi phi, RowSink rows) {
+    return play(table, cohort, policy, phi, Objects.requireNonNull(rows, "rows"), null);
+  }
+
+  static Result play(
+      TableLoop table,
+      Cohort cohort,
+      PolicyService policy,
+      Phi phi,
+      RowSink rows,
+      SplitTrial split) {
     if (!PrismVariant.present(cohort.variant()) || phi.variant() != cohort.variant())
       throw new IllegalStateException(
-          "Variant mismatch: the cohort holds " + cohort.variant() + " games and Φ reads " + phi.variant()
-              + (PrismVariant.present(cohort.variant()) ? "" : ", and no PRISM module reads " + cohort.variant()));
+          "Variant mismatch: the cohort holds "
+              + cohort.variant()
+              + " games and Φ reads "
+              + phi.variant()
+              + (PrismVariant.present(cohort.variant())
+                  ? ""
+                  : ", and no PRISM module reads " + cohort.variant()));
     Phi.Stats before = phi.stats();
     var context =
         new CollectContext(
@@ -170,7 +186,8 @@ public final class Collector {
             cohort.twinDiscard(),
             new CollectionMetrics(),
             new StageTimer<>(CollectStage.class),
-            rows);
+            rows,
+            split);
     List<TableSeat<PolicyRequest>> seats = Collections.nCopies(cohort.variant().seats(), policy);
     TableLoop.Result played =
         table.play(
@@ -199,7 +216,7 @@ public final class Collector {
         stages(context.timer, played.stages()),
         played.admission(),
         phi.stats().since(before),
-        new RowStats(rows.rows(), 0),
+        new RowStats(rows == null ? 0 : rows.rows(), 0),
         played.batches(),
         played.largestBatch(),
         played.seconds(),

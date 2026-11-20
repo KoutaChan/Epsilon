@@ -129,11 +129,13 @@ public class NetworkLayoutTest {
 
   @Test
   public void childrenKeepTheConvertedOrder() {
-    ClassicNetwork nano = new ClassicNetwork(Architecture.NANO, Variant.TENHOU_4P, RankUtility.TENHOU);
+    ClassicNetwork nano =
+        new ClassicNetwork(Architecture.NANO, Variant.TENHOU_4P, RankUtility.TENHOU);
     assertEquals(children(nano), NANO_NETWORK);
     assertEquals(children(child(nano, "01stateEncoder")), NANO_STATE);
     assertEquals(children(child(nano, "04policyHead")), NANO_POLICY);
-    ClassicNetwork major = new ClassicNetwork(Architecture.MAJOR, Variant.TENHOU_4P, RankUtility.AVERAGE_RANK);
+    ClassicNetwork major =
+        new ClassicNetwork(Architecture.MAJOR, Variant.TENHOU_4P, RankUtility.AVERAGE_RANK);
     assertEquals(children(major), MAJOR_NETWORK);
     assertEquals(children(child(major, "01stateEncoder")), MAJOR_STATE);
     assertEquals(children(child(major, "04policyHead")), MAJOR_POLICY);
@@ -141,12 +143,17 @@ public class NetworkLayoutTest {
 
   @Test
   public void gatesKeepTheirParts() {
-    ClassicNetwork major = new ClassicNetwork(Architecture.MAJOR, Variant.TENHOU_4P, RankUtility.AVERAGE_RANK);
+    ClassicNetwork major =
+        new ClassicNetwork(Architecture.MAJOR, Variant.TENHOU_4P, RankUtility.AVERAGE_RANK);
     Block policy = child(major, "04policyHead");
-    assertEquals(children(child(policy, "23ronGate")), List.of("01hidden", "02directFeatureProjection", "03score"));
+    assertEquals(
+        children(child(policy, "23ronGate")),
+        List.of("01hidden", "02directFeatureProjection", "03score"));
     assertEquals(children(child(policy, "24callGate")), List.of("01hidden", "02score"));
-    ClassicNetwork nano = new ClassicNetwork(Architecture.NANO, Variant.TENHOU_4P, RankUtility.TENHOU);
-    assertEquals(children(child(child(nano, "04policyHead"), "23ronGate")), List.of("01hidden", "02score"));
+    ClassicNetwork nano =
+        new ClassicNetwork(Architecture.NANO, Variant.TENHOU_4P, RankUtility.TENHOU);
+    assertEquals(
+        children(child(child(nano, "04policyHead"), "23ronGate")), List.of("01hidden", "02score"));
     assertEquals(
         children(child(child(nano, "01stateEncoder"), "11strategicContextEncoder")),
         List.of(
@@ -157,7 +164,8 @@ public class NetworkLayoutTest {
             "05tokenRoleEmbedding",
             "06block0",
             "07block1"));
-    assertEquals(children(child(child(major, "01stateEncoder"), "13strategicContextEncoder")).size(), 8);
+    assertEquals(
+        children(child(child(major, "01stateEncoder"), "13strategicContextEncoder")).size(), 8);
   }
 
   @Test
@@ -167,8 +175,8 @@ public class NetworkLayoutTest {
         "[RON, TSUMO, KYUSHU, CALL, CHI, PON, DAIMINKAN, KAN, ANKAN, KAKAN]");
     assertEquals(
         Arrays.toString(PolicyNode.values()),
-        "[RON_GATE, TSUMO_GATE, KYUSHU_GATE, CALL_GATE, MELD_TYPE, MELD_CANDIDATE, KAN_GATE, KAN_TYPE,"
-            + " DISCARD_IDENTITY, RIICHI_GATE]");
+        "[RON_GATE, TSUMO_GATE, KYUSHU_GATE, CALL_GATE, MELD_TYPE, MELD_CANDIDATE, KAN_GATE,"
+            + " KAN_TYPE, DISCARD_IDENTITY, RIICHI_GATE]");
   }
 
   private static List<String> children(Block block) {

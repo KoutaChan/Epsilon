@@ -26,11 +26,15 @@ public sealed interface ReplicaSettings {
    */
   @Case("true")
   record On(
-      @Key(doc = "反復ごとに選ぶ割合の段（反復 1 から、始まる反復の昇順）", value = "[{from = 1, value = 0.02}, {from = 9, value = 0.005}]")
+      @Key(
+              doc = "反復ごとに選ぶ割合の段（反復 1 から、始まる反復の昇順）",
+              value = "[{from = 1, value = 0.02}, {from = 9, value = 0.005}]")
           List<Step> schedule,
       @Key(doc = "新しい乱数で打つ複製の割合", value = "0.5") @Range(min = 0, max = 1) double newCoins,
-      @Key(doc = "1 つの局の中で、並べ直しの乱数の種を共有する複製の割合", value = "0.5") @Range(min = 0, max = 1) double handSeed,
-      @Key(doc = "牌山を並べ直さず、元の牌山のまま打ち直す複製の割合", value = "0.002") @Range(min = 0, minInclusive = false, max = 1)
+      @Key(doc = "1 つの局の中で、並べ直しの乱数の種を共有する複製の割合", value = "0.5") @Range(min = 0, max = 1)
+          double handSeed,
+      @Key(doc = "牌山を並べ直さず、元の牌山のまま打ち直す複製の割合", value = "0.002")
+          @Range(min = 0, minInclusive = false, max = 1)
           double identity)
       implements ReplicaSettings {
 
@@ -41,7 +45,8 @@ public sealed interface ReplicaSettings {
       }
       for (int index = 1; index < schedule.size(); index++) {
         if (schedule.get(index).from() <= schedule.get(index - 1).from()) {
-          throw new InvalidSetting("schedule", "the schedule's iterations must increase: " + schedule);
+          throw new InvalidSetting(
+              "schedule", "the schedule's iterations must increase: " + schedule);
         }
       }
     }
@@ -55,5 +60,7 @@ public sealed interface ReplicaSettings {
    */
   record Step(
       @Key(doc = "この段が始まる反復", presence = Presence.REQUIRED) @Range(min = 1) int from,
-      @Key(doc = "選ぶ割合", presence = Presence.REQUIRED) @Range(min = 0, minInclusive = false, max = 1) double value) {}
+      @Key(doc = "選ぶ割合", presence = Presence.REQUIRED)
+          @Range(min = 0, minInclusive = false, max = 1)
+          double value) {}
 }

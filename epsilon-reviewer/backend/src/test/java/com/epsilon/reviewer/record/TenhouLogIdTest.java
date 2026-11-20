@@ -90,8 +90,7 @@ public class TenhouLogIdTest {
             "https://tenhou.net/0/?log=2026091512gm-0089-0000-x0123456789abc",
             "https://tenhou.net/0/?log=2026091512gm-0089-0000-x0123456789ag",
             "https://tenhou.net/0/?log=%ZZ",
-            "https://tenhou.net/0/"))
-      refused(url, ErrorCode.INVALID_URL);
+            "https://tenhou.net/0/")) refused(url, ErrorCode.INVALID_URL);
   }
 
   private static void refused(String url, ErrorCode code) {

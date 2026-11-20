@@ -104,7 +104,13 @@ final class Window {
    * @return 次に使う判断 ID（作った判断の数だけ進めたもの）
    */
   long open(
-      PublicState state, Hand[] hands, Wall wall, Decisions decisions, long id, RuleWorkspace ws, boolean calls) {
+      PublicState state,
+      Hand[] hands,
+      Wall wall,
+      Decisions decisions,
+      long id,
+      RuleWorkspace ws,
+      boolean calls) {
     TurnEvent last = state.last();
     int actor = last.seat();
     decisions.clear();
@@ -125,12 +131,17 @@ final class Window {
         next = finish(decisions, options, next);
       }
     } else if (kakan || last.kind() == TurnEvent.Kind.NUKI) {
-      EngineDecisionKind kind = kakan ? EngineDecisionKind.CHANKAN : EngineDecisionKind.NUKI_RESPONSE;
+      EngineDecisionKind kind =
+          kakan ? EngineDecisionKind.CHANKAN : EngineDecisionKind.NUKI_RESPONSE;
       Source source = ronSource(state);
       for (int offset = 1; offset < seats; offset++) {
         int seat = (actor + offset) % seats;
         decisions.open(seat, kind);
-        next = finish(decisions, addRon(state, hands[seat], seat, last, source, wall, decisions, ws), next);
+        next =
+            finish(
+                decisions,
+                addRon(state, hands[seat], seat, last, source, wall, decisions, ws),
+                next);
       }
     } else {
       throw new IllegalStateException("No response follows " + last.kind() + " " + last.kanKind());
@@ -167,7 +178,8 @@ final class Window {
    * @param resolution 席ごとに、選んだ手が行われたかを書く先
    * @return 締めた結果。誰も応じなかったとき（応答を求めた席が無いときを含む）は {@code PASS}
    */
-  Outcome close(PublicState state, Hand[] hands, Decisions decisions, int[] choices, Resolution resolution) {
+  Outcome close(
+      PublicState state, Hand[] hands, Decisions decisions, int[] choices, Resolution resolution) {
     TurnEvent last = state.last();
     int actor = last.seat();
     winnerCount = 0;
@@ -215,7 +227,8 @@ final class Window {
 
   void copyFrom(Window other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     System.arraycopy(other.winners, 0, winners, 0, winners.length);
     winnerCount = other.winnerCount;
@@ -234,7 +247,8 @@ final class Window {
       Wall wall,
       Decisions decisions,
       RuleWorkspace ws) {
-    if (!WinLegality.ron(state, hand, seat, last.tile(), last.red(), source, wall, ws, ws.score())) {
+    if (!WinLegality.ron(
+        state, hand, seat, last.tile(), last.red(), source, wall, ws, ws.score())) {
       return 0;
     }
     decisions.addWin(RON_CODE, ws.score());
@@ -242,7 +256,8 @@ final class Window {
   }
 
   /** 打牌へのポン・大明槓・チーのうち合法なものを足し、足した数を返す。 */
-  private int addCalls(PublicState state, Hand hand, int seat, TurnEvent discard, Decisions decisions) {
+  private int addCalls(
+      PublicState state, Hand hand, int seat, TurnEvent discard, Decisions decisions) {
     int kind = discard.tile();
     int count = hand.count(kind);
     long reds = hand.redFives();
@@ -265,7 +280,9 @@ final class Window {
     Tiles.Group suit = Tiles.Group.of(kind);
     if (variant.has(RuleFlag.CHI) && seat == (discard.seat() + 1) % seats && suit.suited()) {
       int span = Meld.Type.CHI.tiles() - 1;
-      for (int base = Math.max(suit.first(), kind - span); base <= Math.min(kind, suit.last() - span); base++) {
+      for (int base = Math.max(suit.first(), kind - span);
+          base <= Math.min(kind, suit.last() - span);
+          base++) {
         added += addChi(hand, base, kind, reds, decisions);
       }
     }
@@ -346,7 +363,10 @@ final class Window {
               || switch (outcome) {
                 case PASS -> true;
                 case CALL ->
-                    own || chiCalled && (has(decisions, slot, Type.PON) || has(decisions, slot, Type.DAIMINKAN));
+                    own
+                        || chiCalled
+                            && (has(decisions, slot, Type.PON)
+                                || has(decisions, slot, Type.DAIMINKAN));
                 case RON, TRIPLE_RON -> false;
               };
       Resolution.Role role =
@@ -369,7 +389,8 @@ final class Window {
     EventLog events = state.events();
     int last = events.size() - 1;
     if (events.kind(last) == EventKind.DISCARD && events.riichi(last)) {
-      state.riichi(actor, events.riverSize(actor) == 1 && events.interruptions() == 0);
+      state.riichi(
+          actor, RiichiState.declaration(events.riverSize(actor) == 1, events.interruptions() > 0));
     }
   }
 

@@ -48,7 +48,8 @@ public final class TenhouTiles {
       for (Move move : Move.values()) {
         int seat = move.seat(name.charAt(0), variant);
         if (seat >= 0) {
-          return new TileTag(move, seat, TenhouTiles.tile(Integer.parseInt(name.substring(1)), variant.tiles()));
+          return new TileTag(
+              move, seat, TenhouTiles.tile(Integer.parseInt(name.substring(1)), variant.tiles()));
         }
       }
       return null;

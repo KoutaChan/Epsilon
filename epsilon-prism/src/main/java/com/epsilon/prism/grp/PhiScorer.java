@@ -69,7 +69,8 @@ public final class PhiScorer {
    * @param value 採点する値。項目に、使ったモードと打ち切りの値を当てたもの
    * @param counted 数のファイルの中身。無いか読めなければ null
    */
-  private record Recorded(int cohort, PhiEntry active, HandEnds ends, PhiValue value, CountedHands counted) {}
+  record Recorded(
+      int cohort, PhiEntry active, HandEnds ends, PhiValue value, CountedHands counted) {}
 
   /**
    * 使ったモードの値と、同じ項目のもう一方のモードの値で採点した結果。
@@ -87,7 +88,8 @@ public final class PhiScorer {
     Set<Integer> scored = new HashSet<>();
     for (PhiMonitorLine line : PhiMonitorLine.readAll(files)) scored.add(line.cohort());
     int newest = recorded.last();
-    for (int cohort : recorded) if (newest - cohort <= MAX_LAG && !scored.contains(cohort)) pending.add(cohort);
+    for (int cohort : recorded)
+      if (newest - cohort <= MAX_LAG && !scored.contains(cohort)) pending.add(cohort);
     return pending;
   }
 
@@ -97,7 +99,8 @@ public final class PhiScorer {
    * @return 書いた行。記録が読めないか、使ったモードの値を開けなければ空で、そのときはログに 1 回だけ書く
    * @throws IOException phimon.jsonl が書けないとき
    */
-  public static Optional<PhiMonitorLine> score(GrpFiles files, PhiSetup setup, int cohort) throws IOException {
+  public static Optional<PhiMonitorLine> score(GrpFiles files, PhiSetup setup, int cohort)
+      throws IOException {
     long started = System.nanoTime();
     Optional<PhiMonitorLine> line;
     try (ForkJoinPool pool = new ForkJoinPool(threads(setup))) {
@@ -114,7 +117,8 @@ public final class PhiScorer {
   }
 
   /** コホート t の行を作る。採点のプールの中で呼ぶ。記録が読めないか、使ったモードの値を開けなければ空。 */
-  private static Optional<PhiMonitorLine> measure(GrpFiles files, PhiSetup setup, int cohort, long started) {
+  private static Optional<PhiMonitorLine> measure(
+      GrpFiles files, PhiSetup setup, int cohort, long started) {
     Recorded recorded;
     Modes modes;
     try {
@@ -139,11 +143,16 @@ public final class PhiScorer {
       PhiValue shadowValue = PhiValue.of(shadow, value.mode(), value.cutoff());
       if (shadowValue.mode() != value.mode()) {
         LOG.info(
-            "c{} skipped the shadow Φ {}: it has no outcome network for the {} mode", cohort, shadow.id(), value.mode());
+            "c{} skipped the shadow Φ {}: it has no outcome network for the {} mode",
+            cohort,
+            shadow.id(),
+            value.mode());
         continue;
       }
       try {
-        shadows.put(shadow.id(), GrpMetrics.measure(recorded.ends(), values(shadowValue, recorded.ends(), setup)));
+        shadows.put(
+            shadow.id(),
+            GrpMetrics.measure(recorded.ends(), values(shadowValue, recorded.ends(), setup)));
       } catch (IOException | RuntimeException failure) {
         LOG.warn("c{} skipped the shadow Φ {}: {}", cohort, shadow.id(), failure.toString());
       }
@@ -167,7 +176,7 @@ public final class PhiScorer {
    *
    * @throws IOException 記録が読めないか別のコホートのものであるとき、記録の先頭の項目が引けないとき
    */
-  private static Recorded recorded(GrpFiles files, PhiSetup setup, int cohort) throws IOException {
+  static Recorded recorded(GrpFiles files, PhiSetup setup, int cohort) throws IOException {
     GameCohort games = GameRecordCodec.read(files.records(cohort));
     if (games.cohort() != cohort)
       throw new IOException("The game records of cohort " + cohort + " say " + games.cohort());
@@ -180,10 +189,14 @@ public final class PhiScorer {
           throw new IOException("The count file of cohort " + cohort + " says " + counted.cohort());
         PhiStamp stamp = counted.phi();
         PhiValue value =
-            PhiValue.of(active, PhiMode.valueOf(stamp.mode()), Double.isNaN(stamp.cutoff()) ? null : stamp.cutoff());
+            PhiValue.of(
+                active,
+                PhiMode.valueOf(stamp.mode()),
+                Double.isNaN(stamp.cutoff()) ? null : stamp.cutoff());
         return new Recorded(cohort, active, ends, value, counted);
       } catch (IOException | RuntimeException unreadable) {
-        LOG.warn("c{} takes its Φ mode from {}: {}", cohort, files.modeHistory(), unreadable.toString());
+        LOG.warn(
+            "c{} takes its Φ mode from {}: {}", cohort, files.modeHistory(), unreadable.toString());
       }
     }
     PhiValue value =
@@ -194,11 +207,13 @@ public final class PhiScorer {
   }
 
   /** 記録の先頭の id で項目を引き直す。 */
-  private static PhiEntry active(GrpFiles files, PhiSetup setup, GameCohort recorded) throws IOException {
+  private static PhiEntry active(GrpFiles files, PhiSetup setup, GameCohort recorded)
+      throws IOException {
     return switch (recorded.phiId()) {
       case PhiEntry.FIXED_ID -> original(setup);
       case PhiEntry.SCORE_RANK_ID -> PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, setup.variant());
-      case PhiEntry.SCORE_SMOOTH_ID -> PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, setup.variant());
+      case PhiEntry.SCORE_SMOOTH_ID ->
+          PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, setup.variant());
       default -> {
         PhiEntry found = null;
         for (PhiEntry candidate : PhiHistory.read(files))
@@ -228,17 +243,24 @@ public final class PhiScorer {
     GrpReport otherReport;
     try {
       PhiValue otherValue =
-          late ? PhiValue.grp(entry) : PhiValue.of(entry, PhiMode.LATE, lateCutoff(files, setup, recorded.cohort()));
+          late
+              ? PhiValue.grp(entry)
+              : PhiValue.of(entry, PhiMode.LATE, lateCutoff(files, setup, recorded.cohort()));
       other = values(otherValue, ends, setup);
       otherReport = GrpMetrics.measure(ends, other);
     } catch (IOException | RuntimeException failure) {
       LOG.warn(
-          "c{} has no {} mode report: {}", recorded.cohort(), late ? PhiMode.GRP : PhiMode.LATE, failure.toString());
+          "c{} has no {} mode report: {}",
+          recorded.cohort(),
+          late ? PhiMode.GRP : PhiMode.LATE,
+          failure.toString());
       return new Modes(active, null, null);
     }
     try {
       return new Modes(
-          active, otherReport, late ? LateReport.measure(ends, used, other) : LateReport.measure(ends, other, used));
+          active,
+          otherReport,
+          late ? LateReport.measure(ends, used, other) : LateReport.measure(ends, other, used));
     } catch (RuntimeException failure) {
       LOG.warn("c{} has no late report: {}", recorded.cohort(), failure.toString());
       return new Modes(active, otherReport, null);
@@ -255,15 +277,17 @@ public final class PhiScorer {
     HandEnds ends = recorded.ends();
     try {
       NextHands next = NextHands.of(ends, recorded.counted());
-      return OutcomeCalibration.check(next, h -> FinalRound.covers(ends.state(h)), HandEndPhi.outcomes(entry));
+      return OutcomeCalibration.check(
+          next, h -> FinalRound.covers(ends.state(h)), HandEndPhi.outcomes(entry));
     } catch (IOException | RuntimeException failure) {
       LOG.warn("c{} has no q calibration: {}", recorded.cohort(), failure.toString());
       return null;
     }
   }
 
-  /** 局末ごとの Φ を値から求める。収集と同じ値の Phi を開く。局末ごとに 1 回ずつ求めるだけなので、終盤のメモは 1 スロットにする。 */
-  private static HandEndValues values(PhiValue value, HandEnds ends, PhiSetup setup) throws IOException {
+  /** 局末ごとの Φ を値から求める。収集と同じ値の Phi を開く。局末ごとに 1 回ずつ求めるだけなので、終盤のキャッシュは 1 スロットにする。 */
+  private static HandEndValues values(PhiValue value, HandEnds ends, PhiSetup setup)
+      throws IOException {
     return HandEndValues.of(ends, HandEndPhi.openSingleSlot(value, setup.utility()));
   }
 
@@ -273,14 +297,16 @@ public final class PhiScorer {
    */
   private static double lateCutoff(GrpFiles files, PhiSetup setup, int t) throws IOException {
     List<ModeLine> late = new ArrayList<>();
-    for (ModeLine line : PhiHistory.readModes(files)) if (line.mode() == PhiMode.LATE) late.add(line);
+    for (ModeLine line : PhiHistory.readModes(files))
+      if (line.mode() == PhiMode.LATE) late.add(line);
     return ModeLine.effectiveAt(late, t)
         .map(ModeLine::cutoff)
         .orElseGet(() -> setup.phi().lateSettings().orElseThrow().cutoff());
   }
 
   /** 影として採点する項目を返す。今使っている項目は除く。 */
-  private static List<PhiEntry> shadows(GrpFiles files, PhiSetup setup, PhiEntry active) throws IOException {
+  private static List<PhiEntry> shadows(GrpFiles files, PhiSetup setup, PhiEntry active)
+      throws IOException {
     List<PhiEntry> shadows = new ArrayList<>();
     if (setup.selfPlay()) {
       // 同じ id では後の行が前の行に勝つ。id ごとに最後の行を、その行を書いた順に並べ、READY のものを新しいほうから取る
@@ -291,8 +317,10 @@ public final class PhiScorer {
       }
       List<RefitRecord> ready = new ArrayList<>();
       for (RefitRecord record : latest.values())
-        if (record.status() == RefitStatus.READY && !record.id().equals(active.id())) ready.add(record);
-      for (RefitRecord record : ready.subList(Math.max(0, ready.size() - SHADOW_CANDIDATES), ready.size()))
+        if (record.status() == RefitStatus.READY && !record.id().equals(active.id()))
+          ready.add(record);
+      for (RefitRecord record :
+          ready.subList(Math.max(0, ready.size() - SHADOW_CANDIDATES), ready.size()))
         shadows.add(record.entry(setup.variant(), active.effectiveFrom(), "shadow"));
     }
     if (setup.phi() instanceof PhiSettings.SelfGrp self
@@ -325,7 +353,8 @@ public final class PhiScorer {
         table = fixed.table();
         outcomes = fixed.outcomes();
       }
-      case PhiSettings.SelfGrp self when self.start() instanceof PhiStartSettings.GrpCheckpoint start -> {
+      case PhiSettings.SelfGrp self
+          when self.start() instanceof PhiStartSettings.GrpCheckpoint start -> {
         grp = start.grp();
         table = start.table();
         outcomes = start.outcomes();
@@ -333,7 +362,13 @@ public final class PhiScorer {
       default -> throw new IOException("No original GRP for the Φ source " + setup.phi().source());
     }
     return HandEndPhi.checkpointEntry(
-        PhiEntry.FIXED_ID, setup.variant(), grp, table == null ? "" : table.toString(), outcomes, 1, "",
+        PhiEntry.FIXED_ID,
+        setup.variant(),
+        grp,
+        table == null ? "" : table.toString(),
+        outcomes,
+        1,
+        "",
         "phi.source = FIXED_GRP");
   }
 }

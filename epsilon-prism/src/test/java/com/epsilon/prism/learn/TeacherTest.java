@@ -45,7 +45,9 @@ public class TeacherTest {
     Assert.assertTrue(Float.isNaN(mixed[1]));
     Assert.assertEquals(mixed[2], 1.65f, 1e-6f);
     Assert.assertEquals(Teacher.anchored(values, anchor, 0, new float[3])[2], 0.3f, 0f);
-    Assert.assertThrows(IllegalArgumentException.class, () -> Teacher.anchored(values, new float[] {1f}, 0.5, new float[3]));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Teacher.anchored(values, new float[] {1f}, 0.5, new float[3]));
   }
 
   /** 書き込む先が Y の配列そのものでも、別の配列に書いたときとビット単位で同じ値になる。 */
@@ -70,7 +72,8 @@ public class TeacherTest {
    * 行の配列は変わらない。アンカーを混ぜた値と、帳簿のある行で補正した値は、行の配列とは別の配列で返る。
    */
   @Test
-  public void teacherValuesKeepTheFormerBitsAndLeaveTheRowAlone() throws ReflectiveOperationException {
+  public void teacherValuesKeepTheFormerBitsAndLeaveTheRowAlone()
+      throws ReflectiveOperationException {
     Fixture fixture = new Fixture(11);
     for (Teacher teacher : fixture.teachers()) {
       for (int id = 0; id < ROWS; id++) {
@@ -78,7 +81,13 @@ public class TeacherTest {
         float[] before = row.values().clone();
         float[] got = teacher.values(row, id);
         float[] expected = fixture.former(teacher, row, id);
-        String where = "correction " + (teacher.correction() != null) + " anchor " + teacher.anchored() + " row " + id;
+        String where =
+            "correction "
+                + (teacher.correction() != null)
+                + " anchor "
+                + teacher.anchored()
+                + " row "
+                + id;
         assertBitwise(got, expected, where);
         assertBitwise(row.values(), before, where + " row values");
         boolean ledger = row.ledgerFeatures() == F;
@@ -126,8 +135,8 @@ public class TeacherTest {
     log.info(
         String.format(
             Locale.ROOT,
-            "TEACHER allocation per row: now %.1f B, former %.1f B, saved %.1f B per ledger row (%d of %d),"
-                + " %d actions (sink %d)",
+            "TEACHER allocation per row: now %.1f B, former %.1f B, saved %.1f B per ledger row (%d"
+                + " of %d), %d actions (sink %d)",
             now,
             former,
             saved,
@@ -136,14 +145,18 @@ public class TeacherTest {
             ACTIONS,
             sink));
     double array = Float.BYTES * ACTIONS;
-    Assert.assertTrue(saved >= array && saved <= array + 32, "saved " + saved + " now " + now + " former " + former);
+    Assert.assertTrue(
+        saved >= array && saved <= array + 32,
+        "saved " + saved + " now " + now + " former " + former);
   }
 
   private static void assertBitwise(float[] actual, float[] expected, String where) {
     Assert.assertEquals(actual.length, expected.length, where);
     for (int a = 0; a < expected.length; a++) {
       Assert.assertEquals(
-          Float.floatToRawIntBits(actual[a]), Float.floatToRawIntBits(expected[a]), where + " action " + a);
+          Float.floatToRawIntBits(actual[a]),
+          Float.floatToRawIntBits(expected[a]),
+          where + " action " + a);
     }
   }
 
@@ -156,7 +169,8 @@ public class TeacherTest {
     Fixture(long seed) throws ReflectiveOperationException {
       var random = new SplittableRandom(seed);
       double[][][] beta = new double[2][DecisionClass.COUNT][F];
-      for (double[][] fold : beta) for (double[] c : fold) for (int f = 0; f < F; f++) c[f] = random.nextGaussian() * 0.3;
+      for (double[][] fold : beta)
+        for (double[] c : fold) for (int f = 0; f < F; f++) c[f] = random.nextGaussian() * 0.3;
       correction = new LedgerCorrection(beta);
       float[] flat = new float[ROWS * ACTIONS];
       int[] ids = new int[ROWS], starts = new int[ROWS + 1];
@@ -172,7 +186,9 @@ public class TeacherTest {
           values[a] = measured ? (float) random.nextGaussian() : Float.NaN;
           for (int f = 0; ledger && f < F; f++) {
             terms[a * F + f] =
-                measured ? Float.float16ToFloat(Float.floatToFloat16((float) random.nextGaussian())) : Float.NaN;
+                measured
+                    ? Float.float16ToFloat(Float.floatToFloat16((float) random.nextGaussian()))
+                    : Float.NaN;
           }
           flat[id * ACTIONS + a] = (float) random.nextGaussian();
         }
@@ -199,7 +215,8 @@ public class TeacherTest {
                 new long[0]);
       }
       Constructor<AnchorScores> make =
-          AnchorScores.class.getDeclaredConstructor(int.class, int[].class, float[][].class, int[][].class);
+          AnchorScores.class.getDeclaredConstructor(
+              int.class, int[].class, float[][].class, int[][].class);
       make.setAccessible(true);
       anchor = make.newInstance(1, ids, new float[][] {flat}, new int[][] {starts});
     }
@@ -221,9 +238,11 @@ public class TeacherTest {
 
     /** 配列を 2 つ確保するやり方。補正した配列（補正が無ければ行の配列）に、アンカーがあれば別の新しい配列の上で混ぜる。 */
     float[] former(Teacher teacher, Row row, int id) {
-      float[] values = teacher.correction() == null ? row.values() : teacher.correction().values(row);
+      float[] values =
+          teacher.correction() == null ? row.values() : teacher.correction().values(row);
       return teacher.anchored()
-          ? Teacher.anchored(values, anchor.scores(id), teacher.anchorWeight(), new float[values.length])
+          ? Teacher.anchored(
+              values, anchor.scores(id), teacher.anchorWeight(), new float[values.length])
           : values;
     }
   }

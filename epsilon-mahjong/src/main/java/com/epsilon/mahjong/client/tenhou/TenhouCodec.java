@@ -144,7 +144,10 @@ final class TenhouCodec {
       if (seat < 0 || lower && draw || number.isEmpty() && !draw) {
         continue;
       }
-      int tile = number.isEmpty() ? TurnEvent.NONE : TenhouTiles.tile(Integer.parseInt(number), variant.tiles());
+      int tile =
+          number.isEmpty()
+              ? TurnEvent.NONE
+              : TenhouTiles.tile(Integer.parseInt(number), variant.tiles());
       return new Move(kind, seat, tile, lower);
     }
     return null;

@@ -26,17 +26,21 @@ public class HandEndValuesTest {
 
   @Test
   public void networkEntriesTakeTheNetworkPath() {
-    HandEnds ends = HandEnds.of(FOUR, RankUtility.TENHOU, TrainFixtures.simulated(FOUR, 200, 0, 41));
+    HandEnds ends =
+        HandEnds.of(FOUR, RankUtility.TENHOU, TrainFixtures.simulated(FOUR, 200, 0, 41));
     GrpNetwork network = GrpFixtures.network(GrpFixtures.shape(FOUR, 8, false), 43, 0.5);
     HandEndValues direct = HandEndValues.of(ends, network, GrpWorkspace.of(network.shape()));
     HandEndValues fromPhi = HandEndValues.of(ends, Phi.of(network, RankUtility.TENHOU));
     Assert.assertTrue(fromPhi.joint());
     for (int h = 0; h < ends.handEnds(); h++) {
-      Assert.assertEquals(Double.doubleToRawLongBits(fromPhi.jointLog(h)), Double.doubleToRawLongBits(direct.jointLog(h)));
+      Assert.assertEquals(
+          Double.doubleToRawLongBits(fromPhi.jointLog(h)),
+          Double.doubleToRawLongBits(direct.jointLog(h)));
       for (int seat = 0; seat < 4; seat++) {
         assertBits(fromPhi.phi(h, seat), direct.phi(h, seat), ends.state(h));
         for (int place = 0; place < 4; place++) {
-          assertBits(fromPhi.marginal(h, seat, place), direct.marginal(h, seat, place), ends.state(h));
+          assertBits(
+              fromPhi.marginal(h, seat, place), direct.marginal(h, seat, place), ends.state(h));
         }
       }
     }
@@ -51,7 +55,12 @@ public class HandEndValuesTest {
     HandEnds ends = HandEnds.of(FOUR, RankUtility.TENHOU, games);
     GruSinkhorn gru = GrpFixtures.gru(new GruShape(FOUR, 8, 2), 53, 0.5);
     PhiTable phiTable =
-        PhiTable.of(FOUR, new double[] {1, 1, 1, 1, 1.3, 1.3, 0.8, 0.8}, -1, 2.0 / 3, new double[][] {{0.01, -0.02, 0}});
+        PhiTable.of(
+            FOUR,
+            new double[] {1, 1, 1, 1, 1.3, 1.3, 0.8, 0.8},
+            -1,
+            2.0 / 3,
+            new double[][] {{0.01, -0.02, 0}});
     Phi phi = Phi.of(gru, RankUtility.TENHOU, phiTable);
     HandEndValues values = HandEndValues.of(ends, phi);
     Assert.assertFalse(values.joint());
@@ -96,8 +105,12 @@ public class HandEndValuesTest {
 
   @Test
   public void scoreEntriesMatchThePhiValues() {
-    HandEnds ends = HandEnds.of(FOUR, RankUtility.TENHOU, TrainFixtures.simulated(FOUR, 100, 0, 59));
-    for (Phi phi : new Phi[] {Phi.scoreRank(FOUR, RankUtility.TENHOU), Phi.scoreSmooth(FOUR, RankUtility.TENHOU)}) {
+    HandEnds ends =
+        HandEnds.of(FOUR, RankUtility.TENHOU, TrainFixtures.simulated(FOUR, 100, 0, 59));
+    for (Phi phi :
+        new Phi[] {
+          Phi.scoreRank(FOUR, RankUtility.TENHOU), Phi.scoreSmooth(FOUR, RankUtility.TENHOU)
+        }) {
       HandEndValues values = HandEndValues.of(ends, phi);
       double[] expected = new double[4];
       for (int h = 0; h < ends.handEnds(); h++) {
@@ -108,10 +121,12 @@ public class HandEndValuesTest {
       }
     }
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> HandEndValues.of(ends, Phi.scoreRank(FOUR, RankUtility.AVERAGE_RANK)));
+        IllegalArgumentException.class,
+        () -> HandEndValues.of(ends, Phi.scoreRank(FOUR, RankUtility.AVERAGE_RANK)));
   }
 
   private static void assertBits(double actual, double expected, GrpState state) {
-    Assert.assertEquals(Double.doubleToRawLongBits(actual), Double.doubleToRawLongBits(expected), state.toString());
+    Assert.assertEquals(
+        Double.doubleToRawLongBits(actual), Double.doubleToRawLongBits(expected), state.toString());
   }
 }

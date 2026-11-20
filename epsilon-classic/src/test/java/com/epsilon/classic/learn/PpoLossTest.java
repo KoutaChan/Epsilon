@@ -117,10 +117,16 @@ public class PpoLossTest {
     try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
       PpoLoss.Terms terms =
           PpoLoss.compute(
-              logProbabilities(parameters, legalMask), legalMask, manager.create(chosen, new Shape(rows, actions)),
-              manager.create(rollout, new Shape(rows, actions)), manager.create(advantage),
-              manager.create(credit), manager.create(actor), manager.create(valueLogits, new Shape(rows, bins)),
-              manager.create(valueTargets, new Shape(rows, bins)), coefficients);
+              logProbabilities(parameters, legalMask),
+              legalMask,
+              manager.create(chosen, new Shape(rows, actions)),
+              manager.create(rollout, new Shape(rows, actions)),
+              manager.create(advantage),
+              manager.create(credit),
+              manager.create(actor),
+              manager.create(valueLogits, new Shape(rows, bins)),
+              manager.create(valueTargets, new Shape(rows, bins)),
+              coefficients);
       assertEquals(terms.objective().getFloat(), objective, TOLERANCE);
       float[] sums = terms.sums().toFloatArray();
       assertEquals(sums[PpoLoss.Sum.SURROGATE.ordinal()], surrogate, TOLERANCE);
@@ -185,9 +191,16 @@ public class PpoLossTest {
     }
     PpoLoss.Terms terms =
         PpoLoss.compute(
-            current, legalMask, manager.create(chosen, new Shape(rows, actions)), current.duplicate(),
-            manager.create(ones), manager.create(ones), manager.create(ones), manager.zeros(new Shape(rows, 3)),
-            manager.ones(new Shape(rows, 3)).div(3), new PpoLoss.Coefficients(0.2, 0, rows, rows));
+            current,
+            legalMask,
+            manager.create(chosen, new Shape(rows, actions)),
+            current.duplicate(),
+            manager.create(ones),
+            manager.create(ones),
+            manager.create(ones),
+            manager.zeros(new Shape(rows, 3)),
+            manager.ones(new Shape(rows, 3)).div(3),
+            new PpoLoss.Coefficients(0.2, 0, rows, rows));
     float[] sums = terms.sums().toFloatArray();
     assertEquals(sums[PpoLoss.Sum.KL.ordinal()], 0f, 0f);
     assertEquals(sums[PpoLoss.Sum.CLIPPED.ordinal()], 0f, 0f);
@@ -239,16 +252,23 @@ public class PpoLossTest {
         NDArray logits = arms.broadcast(new Shape(pulls, 2));
         PpoLoss.Terms terms =
             PpoLoss.compute(
-                logProbabilities(logits, legal), legal, manager.create(chosen, new Shape(pulls, 2)),
-                manager.create(rollout, new Shape(pulls, 2)), manager.create(advantage), manager.create(ones),
-                manager.create(ones), manager.zeros(new Shape(pulls, 3)), manager.ones(new Shape(pulls, 3)).div(3),
+                logProbabilities(logits, legal),
+                legal,
+                manager.create(chosen, new Shape(pulls, 2)),
+                manager.create(rollout, new Shape(pulls, 2)),
+                manager.create(advantage),
+                manager.create(ones),
+                manager.create(ones),
+                manager.zeros(new Shape(pulls, 3)),
+                manager.ones(new Shape(pulls, 3)).div(3),
                 new PpoLoss.Coefficients(0.2, 0.001, pulls, pulls));
         collector.backward(terms.objective());
       }
       float[] gradient = arms.getGradient().toFloatArray();
       float[] stepped = {-0.5f * gradient[0], -0.5f * gradient[1]};
       double first = softmax(stepped, 0, 2)[0];
-      assertTrue(sign > 0 ? first > 0.5 : first < 0.5, "sign " + sign + ": arm 0 probability " + first);
+      assertTrue(
+          sign > 0 ? first > 0.5 : first < 0.5, "sign " + sign + ": arm 0 probability " + first);
     }
   }
 
@@ -276,12 +296,23 @@ public class PpoLossTest {
 
   /** 方策の項だけで計算したロジットの勾配（価値の項は、勾配の無い一様分布にする）。 */
   private float[] policyGradient(
-      float[] logits, float[] chosen, float[] rollout, float[] advantage, double clip, double beta) {
+      float[] logits,
+      float[] chosen,
+      float[] rollout,
+      float[] advantage,
+      double clip,
+      double beta) {
     return policyGradient(logits, chosen, rollout, advantage, clip, beta, 2);
   }
 
   private float[] policyGradient(
-      float[] logits, float[] chosen, float[] rollout, float[] advantage, double clip, double beta, int actions) {
+      float[] logits,
+      float[] chosen,
+      float[] rollout,
+      float[] advantage,
+      double clip,
+      double beta,
+      int actions) {
     int rows = advantage.length;
     NDArray parameters = manager.create(logits, new Shape(rows, actions));
     parameters.setRequiresGradient(true);
@@ -291,9 +322,15 @@ public class PpoLossTest {
     try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
       PpoLoss.Terms terms =
           PpoLoss.compute(
-              logProbabilities(parameters, legal), legal, manager.create(chosen, new Shape(rows, actions)),
-              manager.create(rollout, new Shape(rows, actions)), manager.create(advantage), manager.create(ones),
-              manager.create(ones), manager.zeros(new Shape(rows, 3)), manager.ones(new Shape(rows, 3)).div(3),
+              logProbabilities(parameters, legal),
+              legal,
+              manager.create(chosen, new Shape(rows, actions)),
+              manager.create(rollout, new Shape(rows, actions)),
+              manager.create(advantage),
+              manager.create(ones),
+              manager.create(ones),
+              manager.zeros(new Shape(rows, 3)),
+              manager.ones(new Shape(rows, 3)).div(3),
               new PpoLoss.Coefficients(clip, beta, rows, rows));
       collector.backward(terms.objective());
     }

@@ -1,16 +1,17 @@
 package com.epsilon.prism.backend;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
 import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.Precision;
-import com.epsilon.prism.hip.HipArchitecture;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputFormat.Role;
+import com.epsilon.prism.input.InputSchema.ActionRole;
+import com.epsilon.prism.kernel.CollectionArchitecture;
 import com.epsilon.prism.model.EagerStages;
 import com.epsilon.prism.model.PrismNetwork;
-import com.epsilon.prism3p.input.InputSchema;
-import com.epsilon.prism3p.input.InputSchema.ActionRole;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,18 +56,20 @@ public class ThreePlayerHipReferenceTest {
     }
     log.info("PRISM-3P-HIP-REF arm={} roles in the batch: {}", arm.label(), roles);
     Assert.assertTrue(
-        roles.containsAll(EnumSet.of(ActionRole.RIICHI, ActionRole.CALL, ActionRole.NUKI, ActionRole.PASS))
+        roles.containsAll(
+                EnumSet.of(ActionRole.RIICHI, ActionRole.CALL, ActionRole.NUKI, ActionRole.PASS))
             && (roles.contains(ActionRole.KAN) || roles.contains(ActionRole.TSUMO)),
         "the batch must exercise the riichi, response and turn gates with nuki: " + roles);
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = ThreePlayerRows.network(manager, arm.shape(), 21 + arm.ordinal());
       ParameterStore store = new ParameterStore(manager, false);
       WeightLayout layout = WeightLayout.of(network);
-      HipArchitecture architecture = layout.architecture();
+      CollectionArchitecture architecture = layout.architecture();
       WeightPack pack = WeightPack.build(layout, network, 1);
       EagerStages.Stages eager;
       try (NDManager scope = manager.newSubManager()) {
-        eager = EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.BFLOAT16);
+        eager =
+            EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.BFLOAT16);
       }
       HipReference reference = new HipReference(pack);
       HipReference.Input in = new HipReference.Input(batch);
@@ -80,18 +83,27 @@ public class ThreePlayerHipReferenceTest {
       check(failures, prefix + "K1 t_s", Diff.bf16(eager.statics(), reference.statics));
       int allTokens = architecture.allTokenLayers();
       for (int layer = 0; layer < allTokens; layer++) {
-        reference.residual = (layer == 0 ? eager.embedded() : eager.layers().get(layer - 1)).clone();
+        reference.residual =
+            (layer == 0 ? eager.embedded() : eager.layers().get(layer - 1)).clone();
         reference.attention(in, layer);
-        check(failures, prefix + "K2 o layer " + layer, Diff.bf16(eager.attention().get(layer), reference.attentionOut));
+        check(
+            failures,
+            prefix + "K2 o layer " + layer,
+            Diff.bf16(eager.attention().get(layer), reference.attentionOut));
         reference.attentionOut = eager.attention().get(layer).clone();
         reference.mlp(in, layer);
-        check(failures, prefix + "K3 x layer " + layer, Diff.bf16(eager.layers().get(layer), reference.residual));
+        check(
+            failures,
+            prefix + "K3 x layer " + layer,
+            Diff.bf16(eager.layers().get(layer), reference.residual));
       }
       float[] backbone = eager.layers().get(allTokens - 1);
       reference.residual = backbone.clone();
       reference.eventKeyValue(in);
       for (int f = 0; f < architecture.fixedLayers(); f++) {
-        check(failures, prefix + "K8 kv layer " + (allTokens + f),
+        check(
+            failures,
+            prefix + "K8 kv layer " + (allTokens + f),
             Diff.bf16(eager.eventKeyValues().get(f), reference.eventKeyValues[f]));
       }
       for (int layer = allTokens; layer < architecture.depth(); layer++) {
@@ -99,12 +111,16 @@ public class ThreePlayerHipReferenceTest {
         System.arraycopy(eager.layers().get(layer - 1), 0, reference.residual, 0, fixedValues);
         reference.attention(in, layer);
         float[] attended = eager.attention().get(layer);
-        check(failures, prefix + "K4 o layer " + layer,
+        check(
+            failures,
+            prefix + "K4 o layer " + layer,
             Diff.bf16(attended, Arrays.copyOf(reference.attentionOut, attended.length)));
         System.arraycopy(attended, 0, reference.attentionOut, 0, attended.length);
         if (layer + 1 < architecture.depth()) {
           reference.mlp(in, layer);
-          check(failures, prefix + "K3 fixed x layer " + layer,
+          check(
+              failures,
+              prefix + "K3 fixed x layer " + layer,
               Diff.bf16(eager.layers().get(layer), Arrays.copyOf(reference.residual, fixedValues)));
         } else {
           reference.mlpLast(in, layer);
@@ -115,13 +131,18 @@ public class ThreePlayerHipReferenceTest {
       if (architecture.reread()) {
         reference.state = eager.states().clone();
         reference.rereadKeyValue(in);
-        check(failures, prefix + "K8 reread", Diff.bf16(eager.rereadMemory(), reference.rereadMemory));
+        check(
+            failures,
+            prefix + "K8 reread",
+            Diff.bf16(eager.rereadMemory(), reference.rereadMemory));
       }
       reference.statics = eager.statics().clone();
       reference.state = eager.states().clone();
       reference.memory = eager.memory().clone();
       reference.candidate(in);
-      check(failures, prefix + (architecture.reread() ? "K6 z1" : "K6 z"),
+      check(
+          failures,
+          prefix + (architecture.reread() ? "K6 z1" : "K6 z"),
           Diff.bf16(eager.candidates(), reference.transitions));
       if (architecture.reread()) {
         reference.transitions = eager.candidates().clone();
@@ -136,7 +157,9 @@ public class ThreePlayerHipReferenceTest {
       check(failures, prefix + "K7 s", Diff.fp32(eager.scores(), reference.scores));
 
       float[] scores = new HipReference(pack).forward(batch);
-      log.info("{}s vs eager BF16: {}", prefix,
+      log.info(
+          "{}s vs eager BF16: {}",
+          prefix,
           HipParity.compare(scores, eager.scores(), HipParity.Actions.of(batch)).summary());
       Diff diff = Diff.fp32(eager.scores(), scores);
       log.info(diff.line(prefix + "s vs eager BF16"));
@@ -152,12 +175,15 @@ public class ThreePlayerHipReferenceTest {
     HostBatch batch = ThreePlayerRows.encode(ThreePlayerRows.mixedRows(ROWS, 900));
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       manager.getEngine().setRandomSeed(5);
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, arm.shape());
+      PrismNetwork network = new PrismNetwork(THREE_PLAYER, arm.shape());
       network.initialize(manager);
       WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 0);
       float[] scores = new HipReference(pack).forward(batch);
       for (int a = 0; a < scores.length; a++) {
-        Assert.assertEquals(Float.floatToRawIntBits(scores[a]), 0, arm.label() + " blank score " + a + " = " + scores[a]);
+        Assert.assertEquals(
+            Float.floatToRawIntBits(scores[a]),
+            0,
+            arm.label() + " blank score " + a + " = " + scores[a]);
       }
     }
   }

@@ -1,8 +1,8 @@
-import type { EventKind, TableState } from "../../../../../protocol/result.ts";
+import type { SeatSlot } from "../model/seats.ts";
+import type { EventKind, TableState } from "@epsilon-reviewer/protocol/result";
 
 export type Layout = "desktop" | "portrait" | "landscape";
-/** 卓の上の席の場所。見ている席から数えて、自家・下家・対面・上家の順。 */
-export type SeatSlot = "south" | "east" | "north" | "west";
+export type { SeatSlot } from "../model/seats.ts";
 
 export interface TableLabels {
   readonly remaining: string;

@@ -188,7 +188,8 @@ public final class RunControl {
             if (target.request() instanceof Request.Pause && target.number() < request.number()) {
               requests.retire(target);
               remaining.remove(target);
-              LOG.info("Removed the pause request {} by request {}", target.number(), request.number());
+              LOG.info(
+                  "Removed the pause request {} by request {}", target.number(), request.number());
             }
           }
           requests.retire(request);
@@ -208,12 +209,14 @@ public final class RunControl {
           String reason = "Stopped at " + point + " by request " + request.number();
           requests.markStopped(reason);
           requests.retire(request);
-          return Optional.of(decided(new Halt(Ending.STOPPED, request.number(), reason), State.STOPPED));
+          return Optional.of(
+              decided(new Halt(Ending.STOPPED, request.number(), reason), State.STOPPED));
         }
         case Request.Restart restart when point.reaches(restart.at()) -> {
           String reason = "Restarting at " + point + " by request " + request.number();
           requests.retire(request);
-          return Optional.of(decided(new Halt(Ending.RESTART, request.number(), reason), State.RESTARTING));
+          return Optional.of(
+              decided(new Halt(Ending.RESTART, request.number(), reason), State.RESTARTING));
         }
         default -> {}
       }
@@ -230,7 +233,14 @@ public final class RunControl {
       if (!alive.isEmpty()) {
         GpuRequests.Request first = alive.getFirst();
         String reason =
-            "Yielding the GPUs at " + point + " to " + first.name() + " (pid " + first.pid() + ": " + first.command()
+            "Yielding the GPUs at "
+                + point
+                + " to "
+                + first.name()
+                + " (pid "
+                + first.pid()
+                + ": "
+                + first.command()
                 + ")";
         return Optional.of(decided(new Halt(Ending.YIELD, null, reason), State.YIELDED));
       }
@@ -242,9 +252,13 @@ public final class RunControl {
   private ControlRequest pause(SafePoint point, List<ControlRequest> pending) {
     for (ControlRequest request : pending) {
       if (request.request() instanceof Request.Pause pause) {
-        if (pause.before() != null && !steps.contains(pause.before()) && warned.add(request.number())) {
+        if (pause.before() != null
+            && !steps.contains(pause.before())
+            && warned.add(request.number())) {
           LOG.warn(
-              "Pause request {} waits before {}, which is not a step of this run", request.number(), pause.before());
+              "Pause request {} waits before {}, which is not a step of this run",
+              request.number(),
+              pause.before());
         }
         if (point.pauses(pause)) {
           return request;

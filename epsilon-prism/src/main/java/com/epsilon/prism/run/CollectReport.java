@@ -30,7 +30,7 @@ import java.util.Map;
  * @param mainNonGreedy 主経路で貪欲でない手を打った判断の数
  * @param breakdown 判断する席の手の形と、写しの根のクラスごとの内訳
  * @param ura 裏ドラの期待値を監査した集計（値を受け取り先に渡した局末を数える）
- * @param phi 収集の間に Φ を呼んだ回数の集計（メモに当たった数と求めた時間、終盤の数え上げの分）
+ * @param phi 収集の間に Φ を呼んだ回数の集計（キャッシュに当たった数と求めた時間、終盤の数え上げの分）
  */
 public record CollectReport(
     int start,
@@ -124,7 +124,11 @@ public record CollectReport(
       for (DecisionClass c : DecisionClass.values()) {
         int i = c.ordinal();
         ClassCounts row =
-            new ClassCounts(counts.mainDecisions()[i], counts.labelRows()[i], counts.copyLabelRows()[i], counts.roots()[i]);
+            new ClassCounts(
+                counts.mainDecisions()[i],
+                counts.labelRows()[i],
+                counts.copyLabelRows()[i],
+                counts.roots()[i]);
         if (row.mainDecisions() + row.labels() + row.copyLabels() + row.roots() > 0) {
           classes.put(c, row);
         }

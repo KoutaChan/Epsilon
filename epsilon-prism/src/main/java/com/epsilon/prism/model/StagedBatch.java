@@ -101,7 +101,8 @@ public final class StagedBatch {
       boolean[] measured,
       AuxiliaryLabels auxiliary,
       List<ValueLabel> labels,
-      AuxiliaryLoss.Denominators denominators) {
+      AuxiliaryLoss.Denominators denominators,
+      boolean attentionTape) {
     this.region = region;
     BatchPlan plan = batch.plan();
     InputFormat format = plan.format();
@@ -129,7 +130,7 @@ public final class StagedBatch {
               : staging.add(bytes, Staging.Kind.of(tensor.element()), shape(tensor, columns)));
     }
     staging.align();
-    index = new BatchIndex(columns, measured, auxiliary, staging);
+    index = new BatchIndex(columns, measured, auxiliary, attentionTape, staging);
     staging.align();
     loss = LossInputs.stage(columns, labels, auxiliary, denominators, staging);
     staging.write(region);
@@ -145,6 +146,7 @@ public final class StagedBatch {
    * @param auxiliary 補助のヘッドの教師（補助のヘッドを計算しないなら null。順伝播に渡すのと同じもの）
    * @param labels 行の順に並べた教師（アンカーを混ぜた後）
    * @param denominators 補助のヘッドの平均の分母（教師があるときだけ）
+   * @param attentionTape 順伝播に Attention の記録（{@link Pass#tape}）を渡すか
    * @return 並べたマイクロバッチ
    * @throws IllegalArgumentException インデックスが並びの契約を外れるとき、または教師がバッチと合わないとき
    */
@@ -154,8 +156,9 @@ public final class StagedBatch {
       boolean[] measured,
       AuxiliaryLabels auxiliary,
       List<ValueLabel> labels,
-      AuxiliaryLoss.Denominators denominators) {
-    return new StagedBatch(region, batch, measured, auxiliary, labels, denominators);
+      AuxiliaryLoss.Denominators denominators,
+      boolean attentionTape) {
+    return new StagedBatch(region, batch, measured, auxiliary, labels, denominators, attentionTape);
   }
 
   /**

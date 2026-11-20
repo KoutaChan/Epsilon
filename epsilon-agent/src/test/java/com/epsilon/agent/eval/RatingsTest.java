@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.SplittableRandom;
+import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
@@ -60,11 +61,13 @@ public class RatingsTest {
       values[i] = 0.03 + 0.4 * random.nextGaussian();
       expected.add(values[i]);
     }
-    Ratings.Rating forward = Ratings.fit(List.of(new Ratings.Edge("x", "base", 5, values)), "base").ratings().get(1);
+    Ratings.Rating forward =
+        Ratings.fit(List.of(new Ratings.Edge("x", "base", 5, values)), "base").ratings().get(1);
     assertEquals(forward.value(), expected.mean(), 1e-12);
     assertEquals(forward.error(), expected.error(), 1e-12 * expected.error());
 
-    Ratings.Rating backward = Ratings.fit(List.of(new Ratings.Edge("base", "x", 5, values)), "base").ratings().get(1);
+    Ratings.Rating backward =
+        Ratings.fit(List.of(new Ratings.Edge("base", "x", 5, values)), "base").ratings().get(1);
     assertEquals(backward.value(), -expected.mean(), 1e-12);
     assertEquals(backward.error(), expected.error(), 1e-12 * expected.error());
   }
@@ -76,13 +79,25 @@ public class RatingsTest {
   @Test
   public void edgesOnTheSameWallsAreClusteredTogether() {
     double[] values = {0.1, -0.3, 0.25, 0.05, -0.1, 0.4};
-    double single = Ratings.fit(List.of(new Ratings.Edge("x", "base", 7, values)), "base").ratings().get(1).error();
+    double single =
+        Ratings.fit(List.of(new Ratings.Edge("x", "base", 7, values)), "base")
+            .ratings()
+            .get(1)
+            .error();
     Ratings.Rating shared =
-        Ratings.fit(List.of(new Ratings.Edge("x", "base", 7, values), new Ratings.Edge("x", "base", 7, values)), "base")
+        Ratings.fit(
+                List.of(
+                    new Ratings.Edge("x", "base", 7, values),
+                    new Ratings.Edge("x", "base", 7, values)),
+                "base")
             .ratings()
             .get(1);
     Ratings.Rating separate =
-        Ratings.fit(List.of(new Ratings.Edge("x", "base", 7, values), new Ratings.Edge("x", "base", 8, values)), "base")
+        Ratings.fit(
+                List.of(
+                    new Ratings.Edge("x", "base", 7, values),
+                    new Ratings.Edge("x", "base", 8, values)),
+                "base")
             .ratings()
             .get(1);
     assertEquals(shared.error(), single, 1e-12);
@@ -127,7 +142,9 @@ public class RatingsTest {
 
     Ratings shifted = Ratings.fit(grid(0.2), "x0");
     Ratings.Residual worst =
-        shifted.residuals().stream().max(Comparator.comparingDouble(residual -> Math.abs(residual.z()))).orElseThrow();
+        shifted.residuals().stream()
+            .max(Comparator.comparingDouble(residual -> Math.abs(residual.z())))
+            .orElseThrow();
     assertEquals(worst.a(), "x15");
     assertEquals(worst.b(), "x0");
     assertTrue(shifted.outliers().contains(worst), shifted.outliers().toString());
@@ -192,30 +209,41 @@ public class RatingsTest {
     double[] values = {0.1, 0.2, 0.4};
     assertThrows(IllegalArgumentException.class, () -> Ratings.fit(List.of(), "a"));
     assertThrows(
-        IllegalArgumentException.class, () -> Ratings.fit(List.of(new Ratings.Edge("b", "c", 1, values)), "a"));
+        IllegalArgumentException.class,
+        () -> Ratings.fit(List.of(new Ratings.Edge("b", "c", 1, values)), "a"));
     assertThrows(
         IllegalArgumentException.class,
-        () -> Ratings.fit(List.of(new Ratings.Edge("b", "a", 1, values), new Ratings.Edge("d", "c", 2, values)), "a"));
+        () ->
+            Ratings.fit(
+                List.of(
+                    new Ratings.Edge("b", "a", 1, values), new Ratings.Edge("d", "c", 2, values)),
+                "a"));
     assertThrows(
         IllegalArgumentException.class,
         () -> Ratings.fit(List.of(new Ratings.Edge("b", "a", 1, new double[] {0.1})), "a"));
     assertThrows(
         IllegalArgumentException.class,
-        () -> Ratings.fit(List.of(new Ratings.Edge("b", "a", 1, new double[] {0.1, 0.1, 0.1})), "a"));
+        () ->
+            Ratings.fit(List.of(new Ratings.Edge("b", "a", 1, new double[] {0.1, 0.1, 0.1})), "a"));
     assertThrows(IllegalArgumentException.class, () -> new Ratings.Edge("a", "a", 1, values));
     assertThrows(NullPointerException.class, () -> new Ratings.Edge("a", null, 1, values));
     assertThrows(NullPointerException.class, () -> new Ratings.Edge("a", "b", 1, null));
-    assertThrows(NullPointerException.class, () -> Ratings.fit(List.of(new Ratings.Edge("b", "a", 1, values)), null));
+    assertThrows(
+        NullPointerException.class,
+        () -> Ratings.fit(List.of(new Ratings.Edge("b", "a", 1, values)), null));
   }
 
   /** 答えの分かる系譜（点 40 個、牌山 1,024 個、基準との辺は牌山を共有）を 5 つの種で当てはめ、どの点も θ が真の値から 4 標準誤差以内。 */
   @Test
   public void aKnownChainIsRecoveredWithinItsErrors() {
     for (long seed = 1; seed <= 5; seed++) {
-      Ratings ratings = Ratings.fit(SyntheticChain.edges(40, 1024, 0.2, true, seed), SyntheticChain.ANCHOR);
+      Ratings ratings =
+          Ratings.fit(SyntheticChain.edges(40, 1024, 0.2, true, seed), SyntheticChain.ANCHOR);
       assertEquals(ratings.ratings().size(), 40);
       for (Ratings.Rating rating : ratings.ratings().subList(1, 40)) {
-        double z = (rating.value() - SyntheticChain.theta(SyntheticChain.index(rating.label()))) / rating.error();
+        double z =
+            (rating.value() - SyntheticChain.theta(SyntheticChain.index(rating.label())))
+                / rating.error();
         assertTrue(Math.abs(z) < 4, "seed " + seed + " " + rating + " z " + z);
       }
     }
@@ -242,14 +270,83 @@ public class RatingsTest {
       assertTrue(ratio > 0.8 && ratio < 1.2, "v" + v + " ratio " + ratio);
     }
     for (int v = 10; v < nodes; v++) {
-      assertTrue(naive[v].reported() < 0.8 * naive[v].simulated(), "v" + v + " naive " + naive[v].reported());
+      assertTrue(
+          naive[v].reported() < 0.8 * naive[v].simulated(),
+          "v" + v + " naive " + naive[v].reported());
     }
   }
 
-  private static void assertRating(Ratings.Rating rating, String label, double value, double error, int edges) {
+  private static void assertRating(
+      Ratings.Rating rating, String label, double value, double error, int edges) {
     assertEquals(rating.label(), label);
     assertEquals(rating.value(), value, 1e-12, label);
     assertEquals(rating.error(), error, 1e-12, label);
     assertEquals(rating.edges(), edges, label);
+  }
+
+  private static final int NODES = 40;
+  private static final int WALLS = 1024;
+  private static final int REPEATS = 2000;
+
+  /**
+   * 基準との辺が牌山を共有するとき、頑健な標準誤差の平均は点の強さ θ のばらつきの 0.92〜1.08 倍に入る。θ のずれの平均は、0 からその
+   * 標準誤差の 4 倍以内に入る。
+   */
+  @Test(groups = "slow", timeOut = 1_800_000)
+  public void robustErrorsMatchTheSpreadOnSharedWalls() {
+    SyntheticChain.Spread[] spread = SyntheticChain.spread(NODES, WALLS, REPEATS, true, 50_000);
+    for (int v = 1; v < NODES; v++) {
+      SyntheticChain.Spread node = spread[v];
+      double ratio = node.reported() / node.simulated();
+      log.info(
+          "RATINGS-SIM v{}: bias {} ({}), simulated {} robust {}",
+          v,
+          node.bias(),
+          node.biasError(),
+          node.simulated(),
+          node.reported());
+      assertTrue(ratio > 0.92 && ratio < 1.08, "v" + v + " ratio " + ratio);
+      assertTrue(Math.abs(node.bias()) < 4 * node.biasError(), "v" + v + " bias " + node.bias());
+    }
+  }
+
+  /**
+   * 辺が全て独立で当てはめのモデルが正しいとき、外れた辺が 1 本でも出る当てはめの割合は 2.5% 以上、5% ＋ 3 SE 以下に入る
+   * （しきい値は Bonferroni 補正なので、割合は 5% より少し下に出る）。|z| が 3 を超える辺の数の平均は期待値の 0.85〜1.15 倍で、
+   * z² の平均は 1 から 0.03 以内。
+   */
+  @Test(groups = "slow", timeOut = 1_800_000)
+  public void theOutlierLineHoldsTheFamilyRateOnIndependentEdges() {
+    List<Ratings> fits =
+        IntStream.range(0, REPEATS)
+            .parallel()
+            .mapToObj(
+                repeat ->
+                    Ratings.fit(
+                        SyntheticChain.edges(NODES, WALLS, 0, false, 90_000 + repeat),
+                        SyntheticChain.ANCHOR))
+            .toList();
+    double family =
+        (double) fits.stream().filter(ratings -> !ratings.outliers().isEmpty()).count() / REPEATS;
+    double beyondThree = fits.stream().mapToInt(Ratings::beyondThree).average().orElseThrow();
+    double expected = fits.get(0).beyondThreeExpected();
+    double squares =
+        fits.stream()
+            .flatMap(ratings -> ratings.residuals().stream())
+            .mapToDouble(residual -> residual.z() * residual.z())
+            .average()
+            .orElseThrow();
+    double bound = 0.05 + 3 * Math.sqrt(0.05 * 0.95 / REPEATS);
+    log.info(
+        "RATINGS-SIM outliers: family {} (bound {}), beyond 3 {} (expected {}), mean z^2 {}",
+        family,
+        bound,
+        beyondThree,
+        expected,
+        squares);
+    assertTrue(family <= bound && family >= 0.025, "family " + family);
+    assertTrue(
+        beyondThree > 0.85 * expected && beyondThree < 1.15 * expected, "beyond 3 " + beyondThree);
+    assertTrue(Math.abs(squares - 1) < 0.03, "mean z^2 " + squares);
   }
 }

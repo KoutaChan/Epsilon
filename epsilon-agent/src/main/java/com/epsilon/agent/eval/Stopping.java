@@ -30,11 +30,14 @@ public final class Stopping {
       throw new IllegalArgumentException("Walls must be positive: " + walls);
     }
     return switch (rule) {
-      case StopRule.Fixed fixed -> new Stopping(rule, new int[] {walls}, new double[] {Normal.upperPoint(fixed.alpha() / 2)});
+      case StopRule.Fixed fixed ->
+          new Stopping(
+              rule, new int[] {walls}, new double[] {Normal.upperPoint(fixed.alpha() / 2)});
       case StopRule.Precision precision -> {
         int checkEvery = precision.checkEvery();
         if (walls % checkEvery != 0) {
-          throw new IllegalArgumentException(walls + " walls are not a multiple of the check interval " + checkEvery);
+          throw new IllegalArgumentException(
+              walls + " walls are not a multiple of the check interval " + checkEvery);
         }
         double[] critical = new double[walls / checkEvery];
         Arrays.fill(critical, Normal.upperPoint(precision.alpha() / 2));
@@ -64,7 +67,8 @@ public final class Stopping {
     }
     int checkEvery = rule.checkEvery(walls);
     if (walls % checkEvery != 0) {
-      throw new IllegalArgumentException(walls + " walls are not a multiple of the check interval " + checkEvery);
+      throw new IllegalArgumentException(
+          walls + " walls are not a multiple of the check interval " + checkEvery);
     }
     if (critical.length != walls / checkEvery) {
       throw new IllegalArgumentException(
@@ -72,7 +76,8 @@ public final class Stopping {
     }
     for (int look = 0; look < critical.length; look++) {
       if (!(critical[look] > 0 && Double.isFinite(critical[look]))) {
-        throw new IllegalArgumentException("Invalid critical value at look " + look + ": " + critical[look]);
+        throw new IllegalArgumentException(
+            "Invalid critical value at look " + look + ": " + critical[look]);
       }
     }
     return new Stopping(rule, schedule(critical.length, checkEvery), critical.clone());
@@ -119,7 +124,8 @@ public final class Stopping {
    */
   public Optional<Decision> decide(int look, WallMean values) {
     if (values.walls() != walls[look]) {
-      throw new IllegalArgumentException("Look " + look + " needs " + walls[look] + " walls, have " + values.walls());
+      throw new IllegalArgumentException(
+          "Look " + look + " needs " + walls[look] + " walls, have " + values.walls());
     }
     return decide(look, values.mean(), values.error());
   }
@@ -140,7 +146,10 @@ public final class Stopping {
       throw new IllegalArgumentException("Invalid estimate: " + mean + " ± " + error);
     }
     Estimate estimate = Estimate.of(mean, error, critical[look]);
-    Verdict sided = estimate.low() > 0 ? Verdict.BETTER : estimate.high() < 0 ? Verdict.WORSE : Verdict.UNDECIDED;
+    Verdict sided =
+        estimate.low() > 0
+            ? Verdict.BETTER
+            : estimate.high() < 0 ? Verdict.WORSE : Verdict.UNDECIDED;
     boolean last = look == walls.length - 1;
     return switch (rule) {
       case StopRule.Fixed fixed -> Optional.of(new Decision(sided, Stopped.LIMIT, estimate));
@@ -152,13 +161,17 @@ public final class Stopping {
       }
       case StopRule.Test test -> {
         Verdict verdict = sided;
-        if (verdict == Verdict.UNDECIDED && estimate.low() > -test.evenBelow() && estimate.high() < test.evenAbove()) {
+        if (verdict == Verdict.UNDECIDED
+            && estimate.low() > -test.evenBelow()
+            && estimate.high() < test.evenAbove()) {
           verdict = Verdict.EVEN;
         }
         if (verdict != Verdict.UNDECIDED) {
           yield Optional.of(new Decision(verdict, Stopped.DECIDED, estimate));
         }
-        yield last ? Optional.of(new Decision(Verdict.UNDECIDED, Stopped.LIMIT, estimate)) : Optional.empty();
+        yield last
+            ? Optional.of(new Decision(Verdict.UNDECIDED, Stopped.LIMIT, estimate))
+            : Optional.empty();
       }
     };
   }

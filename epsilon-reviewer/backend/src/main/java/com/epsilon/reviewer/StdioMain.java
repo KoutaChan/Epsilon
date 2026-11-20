@@ -52,18 +52,26 @@ public final class StdioMain {
       String value = System.getenv(variable.environment);
       if (value == null || value.isBlank()) {
         // ログのフォルダーが分からないので、ログは書かない。
-        fail(frames, ErrorBody.of(ErrorCode.INVALID_REQUEST, variable.environment + " is not set."));
+        fail(
+            frames, ErrorBody.of(ErrorCode.INVALID_REQUEST, variable.environment + " is not set."));
         return;
       }
       if (variable.key != null) {
         arguments.add("--set");
-        arguments.add("engine." + variable.key + "=" + Toml.inline(new Node.Text(value, variable.environment)));
+        arguments.add(
+            "engine."
+                + variable.key
+                + "="
+                + Toml.inline(new Node.Text(value, variable.environment)));
       }
     }
     arguments.addAll(List.of(args));
     int code = App.run(Main.application(), arguments.toArray(String[]::new), frames);
     if (code == Exit.USAGE.code()) {
-      fail(frames, ErrorBody.of(ErrorCode.INVALID_REQUEST, "The engine settings are invalid; see the engine log."));
+      fail(
+          frames,
+          ErrorBody.of(
+              ErrorCode.INVALID_REQUEST, "The engine settings are invalid; see the engine log."));
       return;
     }
     System.exit(code);

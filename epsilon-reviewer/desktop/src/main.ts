@@ -1,6 +1,6 @@
 import path from "node:path";
 import { app, dialog, ipcMain, type BrowserWindow } from "electron";
-import { resultFileName } from "../../protocol/result.ts";
+import { resultFileName } from "@epsilon-reviewer/protocol/result";
 import {
   APP_URL,
   registerAppProtocol,

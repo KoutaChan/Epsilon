@@ -40,7 +40,8 @@ public final class ShapeFacts {
    */
   public void analyze(HandShape hand, TileCounts tiles) {
     if (tiles.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + tiles.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + tiles.variant());
     }
     shanten = analyzer.shanten(hand);
     standardShanten = analyzer.standardShanten(hand);
@@ -98,7 +99,8 @@ public final class ShapeFacts {
 
   private void requireSpecial() {
     if (!special) {
-      throw new IllegalStateException("A hand with melds has no seven pairs or thirteen orphans shanten");
+      throw new IllegalStateException(
+          "A hand with melds has no seven pairs or thirteen orphans shanten");
     }
   }
 }

@@ -90,11 +90,30 @@ final class StateEncoder extends AbstractBlock {
     history = architecture.publicHistory();
     hidden = widths.hidden();
     context = widths.context();
-    round = new Section(schema, StateToken.ROUND, schema.layout(RoundInt.class), schema.layout(RoundFloat.class));
-    players = new Section(schema, StateToken.PLAYER, schema.layout(PlayerInt.class), schema.layout(PlayerFloat.class));
-    tiles = new Section(schema, StateToken.TILE, schema.layout(TileInt.class), schema.layout(TileFloat.class));
-    rivers = new Section(schema, StateToken.RIVER, schema.layout(RiverInt.class), schema.layout(RiverFloat.class));
-    melds = new Section(schema, StateToken.MELD, schema.layout(MeldInt.class), schema.layout(MeldFloat.class));
+    round =
+        new Section(
+            schema,
+            StateToken.ROUND,
+            schema.layout(RoundInt.class),
+            schema.layout(RoundFloat.class));
+    players =
+        new Section(
+            schema,
+            StateToken.PLAYER,
+            schema.layout(PlayerInt.class),
+            schema.layout(PlayerFloat.class));
+    tiles =
+        new Section(
+            schema, StateToken.TILE, schema.layout(TileInt.class), schema.layout(TileFloat.class));
+    rivers =
+        new Section(
+            schema,
+            StateToken.RIVER,
+            schema.layout(RiverInt.class),
+            schema.layout(RiverFloat.class));
+    melds =
+        new Section(
+            schema, StateToken.MELD, schema.layout(MeldInt.class), schema.layout(MeldFloat.class));
     riverTile = schema.layout(RiverInt.class).offset(RiverInt.TILE);
     riverPresent = schema.layout(RiverInt.class).offset(RiverInt.PRESENT);
     meldBase = schema.layout(MeldInt.class).offset(MeldInt.BASE_TILE);
@@ -111,25 +130,37 @@ final class StateEncoder extends AbstractBlock {
     canonicalTileEmbedding =
         addChildBlock(
             "canonicalTileEmbedding",
-            new IdEmbedding.Builder().setDictionarySize(Tiles.KINDS + 1).setEmbeddingSize(hidden).build());
-    roundFeatureProjection = addChildBlock("roundFeatureProjection", Linear.builder().setUnits(hidden).build());
-    playerFeatureProjection = addChildBlock("playerFeatureProjection", Linear.builder().setUnits(hidden).build());
-    tileFeatureProjection = addChildBlock("tileFeatureProjection", Linear.builder().setUnits(hidden).build());
+            new IdEmbedding.Builder()
+                .setDictionarySize(Tiles.KINDS + 1)
+                .setEmbeddingSize(hidden)
+                .build());
+    roundFeatureProjection =
+        addChildBlock("roundFeatureProjection", Linear.builder().setUnits(hidden).build());
+    playerFeatureProjection =
+        addChildBlock("playerFeatureProjection", Linear.builder().setUnits(hidden).build());
+    tileFeatureProjection =
+        addChildBlock("tileFeatureProjection", Linear.builder().setUnits(hidden).build());
     tileRelationEncoder = addChildBlock("tileRelationEncoder", new TileRelationEncoder(widths));
-    riverEventProjection = addChildBlock("riverEventProjection", Linear.builder().setUnits(hidden).build());
-    meldFeatureProjection = addChildBlock("meldFeatureProjection", Linear.builder().setUnits(hidden).build());
-    entityTokenLayerNorm = addChildBlock("entityTokenLayerNorm", LayerNorm.builder().axis(2).build());
+    riverEventProjection =
+        addChildBlock("riverEventProjection", Linear.builder().setUnits(hidden).build());
+    meldFeatureProjection =
+        addChildBlock("meldFeatureProjection", Linear.builder().setUnits(hidden).build());
+    entityTokenLayerNorm =
+        addChildBlock("entityTokenLayerNorm", LayerNorm.builder().axis(2).build());
     playerMemoryEncoder = addChildBlock("playerMemoryEncoder", new PlayerMemoryEncoder(widths));
     if (history) {
       playerMemoryKeyValueProjection =
           addChildBlock(
-              "playerMemoryKeyValueProjection", Linear.builder().setUnits(2L * context).optBias(false).build());
-      publicHistoryEncoder = addChildBlock("publicHistoryEncoder", new PublicHistoryEncoder(widths));
+              "playerMemoryKeyValueProjection",
+              Linear.builder().setUnits(2L * context).optBias(false).build());
+      publicHistoryEncoder =
+          addChildBlock("publicHistoryEncoder", new PublicHistoryEncoder(widths));
     } else {
       playerMemoryKeyValueProjection = null;
       publicHistoryEncoder = null;
     }
-    strategicContextEncoder = addChildBlock("strategicContextEncoder", new StrategicContextEncoder(widths));
+    strategicContextEncoder =
+        addChildBlock("strategicContextEncoder", new StrategicContextEncoder(widths));
   }
 
   /**
@@ -143,13 +174,18 @@ final class StateEncoder extends AbstractBlock {
       int rows = batch.rows();
       NDArray categories = batch.tensor(Tensor.STATE_CATEGORIES);
       NDArray values = history ? categories.get(":, 0:{}", schema.historyStart()) : categories;
-      NDArray embedded = NDArrays.embeddingWithOffsets(values, stateOffsets, pass.table(stateFeatureEmbedding));
+      NDArray embedded =
+          NDArrays.embeddingWithOffsets(values, stateOffsets, pass.table(stateFeatureEmbedding));
       NDArray numerics = pass.toCompute(batch.tensor(Tensor.STATE_NUMERICS));
 
-      NDArray roundToken = project(pass, roundFeatureProjection, round, embedded, numerics, rows).reshape(rows, hidden);
-      NDArray playerTokens = project(pass, playerFeatureProjection, players, embedded, numerics, rows);
+      NDArray roundToken =
+          project(pass, roundFeatureProjection, round, embedded, numerics, rows)
+              .reshape(rows, hidden);
+      NDArray playerTokens =
+          project(pass, playerFeatureProjection, players, embedded, numerics, rows);
       NDArray identities = pass.own(pass.table(canonicalTileEmbedding).get("1:"));
-      NDArray tileTokens = project(pass, tileFeatureProjection, tiles, embedded, numerics, rows).add(identities);
+      NDArray tileTokens =
+          project(pass, tileFeatureProjection, tiles, embedded, numerics, rows).add(identities);
       tileTokens = tileRelationEncoder.encode(pass, tileTokens);
 
       NDArray riverValues = rivers.values(values, rows);
@@ -165,7 +201,8 @@ final class StateEncoder extends AbstractBlock {
       NDArray meldMask = meldValues.get("..., {}", meldPresent).toType(pass.compute(), false);
       NDArray base = meldValues.get("..., {}", meldBase);
       NDArray called = meldValues.get("..., {}", meldCalled);
-      NDArray identityCount = present(pass, base).add(present(pass, called)).maximum(1f).expandDims(2);
+      NDArray identityCount =
+          present(pass, base).add(present(pass, called)).maximum(1f).expandDims(2);
       NDArray meldTokens =
           ArrayScope.of(
               () ->
@@ -187,10 +224,12 @@ final class StateEncoder extends AbstractBlock {
           NDArrays.concat(
               new NDList(
                   playerTokens.reshape(rows, ClassicSchema.SEATS, 1, hidden),
-                  riverTokens.reshape(rows, ClassicSchema.SEATS, ClassicSchema.RIVER_TOKENS, hidden),
+                  riverTokens.reshape(
+                      rows, ClassicSchema.SEATS, ClassicSchema.RIVER_TOKENS, hidden),
                   meldTokens.reshape(rows, ClassicSchema.SEATS, ClassicSchema.MELD_TOKENS, hidden)),
               2);
-      NDArray memory = playerMemoryEncoder.encode(pass, memoryTokens, playerMask, entityTokenLayerNorm);
+      NDArray memory =
+          playerMemoryEncoder.encode(pass, memoryTokens, playerMask, entityTokenLayerNorm);
       NDList sections = memory.split(new long[] {1, 1 + ClassicSchema.RIVER_TOKENS}, 2);
       NDArray summaries = sections.get(0).reshape(rows, ClassicSchema.SEATS, hidden);
       NDArray publicRivers = sections.get(1).reshape(rows, RIVERS, hidden);
@@ -199,13 +238,20 @@ final class StateEncoder extends AbstractBlock {
       NDArray publicKeyValues = null;
       if (history) {
         publicKeyValues =
-            pass.linear(playerMemoryKeyValueProjection, NDArrays.concat(new NDList(publicRivers, publicMelds), 1));
+            pass.linear(
+                playerMemoryKeyValueProjection,
+                NDArrays.concat(new NDList(publicRivers, publicMelds), 1));
         NDArray publicMask = NDArrays.concat(new NDList(riverMask, meldMask), 1);
         NDArray codes =
             categories
                 .get(":, {}:", schema.historyStart())
-                .reshape(rows, ClassicSchema.SEATS, ClassicSchema.HISTORY_TOKENS, ClassicSchema.HISTORY_WORDS);
-        summaries = publicHistoryEncoder.encode(pass, summaries, publicKeyValues, publicMask, codes);
+                .reshape(
+                    rows,
+                    ClassicSchema.SEATS,
+                    ClassicSchema.HISTORY_TOKENS,
+                    ClassicSchema.HISTORY_WORDS);
+        summaries =
+            publicHistoryEncoder.encode(pass, summaries, publicKeyValues, publicMask, codes);
       }
       StrategicContextEncoder.Context strategic =
           strategicContextEncoder.encode(pass, normalizedRound, normalizedTiles, summaries);
@@ -221,7 +267,9 @@ final class StateEncoder extends AbstractBlock {
               1);
       NDArray entityMask =
           NDArrays.concat(
-              new NDList(manager.ones(new Shape(rows, FIXED_TOKENS), pass.compute()), riverMask, meldMask), 1);
+              new NDList(
+                  manager.ones(new Shape(rows, FIXED_TOKENS), pass.compute()), riverMask, meldMask),
+              1);
       NDArray seatMemory;
       if (history) {
         NDList publicSections = publicKeyValues.split(new long[] {RIVERS}, 1);
@@ -230,8 +278,14 @@ final class StateEncoder extends AbstractBlock {
                 new NDList(
                     pass.linear(playerMemoryKeyValueProjection, strategic.summaries())
                         .reshape(rows, ClassicSchema.SEATS, 1, 2L * context),
-                    publicSections.get(0).reshape(rows, ClassicSchema.SEATS, ClassicSchema.RIVER_TOKENS, 2L * context),
-                    publicSections.get(1).reshape(rows, ClassicSchema.SEATS, ClassicSchema.MELD_TOKENS, 2L * context)),
+                    publicSections
+                        .get(0)
+                        .reshape(
+                            rows, ClassicSchema.SEATS, ClassicSchema.RIVER_TOKENS, 2L * context),
+                    publicSections
+                        .get(1)
+                        .reshape(
+                            rows, ClassicSchema.SEATS, ClassicSchema.MELD_TOKENS, 2L * context)),
                 2);
       } else {
         seatMemory =
@@ -270,7 +324,8 @@ final class StateEncoder extends AbstractBlock {
 
   /** 値（牌の種類 ＋ 1）の埋め込みを返す。値が 0（パディング）の所は 0 にする。 */
   private NDArray canonical(Pass pass, NDArray storedTiles) {
-    NDArray embedded = pass.embed(canonicalTileEmbedding, storedTiles.toType(DataType.INT32, false));
+    NDArray embedded =
+        pass.embed(canonicalTileEmbedding, storedTiles.toType(DataType.INT32, false));
     return embedded.mul(present(pass, storedTiles).expandDims(storedTiles.getShape().dimension()));
   }
 
@@ -297,7 +352,8 @@ final class StateEncoder extends AbstractBlock {
         manager, dataType, memory, new Shape(-1, ClassicSchema.SEATS, PlayerMemoryEncoder.TOKENS));
     if (history) {
       playerMemoryKeyValueProjection.initialize(manager, dataType, new Shape(-1, hidden));
-      publicHistoryEncoder.initialize(manager, dataType, new Shape(-1, ClassicSchema.SEATS, hidden));
+      publicHistoryEncoder.initialize(
+          manager, dataType, new Shape(-1, ClassicSchema.SEATS, hidden));
     }
     strategicContextEncoder.initialize(
         manager, dataType, new Shape(-1, hidden), new Shape(-1, Tiles.KINDS, hidden), memory);
@@ -305,13 +361,18 @@ final class StateEncoder extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use encode");
   }
 
   @Override
   public Shape[] getOutputShapes(Shape[] inputShapes) {
-    return new Shape[] {new Shape(-1, hidden), new Shape(-1, ENTITIES, hidden), new Shape(-1, ENTITIES)};
+    return new Shape[] {
+      new Shape(-1, hidden), new Shape(-1, ENTITIES, hidden), new Shape(-1, ENTITIES)
+    };
   }
 
   /** 状態の行のうち、1 種類のトークンが使う範囲（整数のフィールドと実数のフィールド）。 */
@@ -323,7 +384,11 @@ final class StateEncoder extends AbstractBlock {
     private final int numericStart;
     private final int numericStride;
 
-    Section(ClassicSchema schema, StateToken token, FieldLayout<?> categorical, FieldLayout<?> numeric) {
+    Section(
+        ClassicSchema schema,
+        StateToken token,
+        FieldLayout<?> categorical,
+        FieldLayout<?> numeric) {
       count = token.count();
       categoricalStart = schema.stateStart(token, Tensor.Slab.CATEGORICAL);
       categoricalStride = categorical.stride();
@@ -341,7 +406,9 @@ final class StateEncoder extends AbstractBlock {
 
     /** 整数のフィールドの値 [行, トークン, フィールド]。 */
     NDArray values(NDArray categories, int rows) {
-      return categories.get(":, {}:{}", categoricalStart, categoricalEnd()).reshape(rows, count, categoricalStride);
+      return categories
+          .get(":, {}:{}", categoricalStart, categoricalEnd())
+          .reshape(rows, count, categoricalStride);
     }
 
     /** 射影の入力の形。幅は、整数のフィールドの埋め込みと実数のフィールドを並べた分。 */

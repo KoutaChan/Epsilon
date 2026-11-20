@@ -11,20 +11,22 @@ import ai.djl.nn.Parameter;
 import com.epsilon.agent.facts.MahjongTileRelation;
 import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
-import com.epsilon.prism.input.InputFormat.RelationRole;
+import com.epsilon.prism.input.InputSchema.RelationAttribute;
 
 /**
- * 候補層の 2 段目（Attention だけ）。遷移ごとに、局・席・牌の最後の状態とイベントをもう一度読む。候補どうしは参照しない。
+ * 候補層の 2 段目（Attention だけ）。遷移ごとに、局・席・牌とイベントを読む。候補どうしは参照しない。
  *
  * <pre>
  * q  = W_Q·N_q(z1) + b_Q                               z1 は候補層の 1 段目の出力
- * [K_j V_j] = W_KV·y_j + b_KV                            j は局・席・牌（最後の正規化の後）とイベント（層 0 の出力を N_e で正規化）
+ * [K_j V_j] = W_KV·y_j + b_KV                            行内の全ての遷移が共有する射影。
  * o  = Σ_j softmax_j((q·K_j + q·E_k[c_tj])/4)·(V_j + E_v[c_tj])
  * z  = z1 + W_O·o + b_O                                  W_O・b_O は 0 で初期化する（初期化したままなら 1 段の候補層と同じ関数）
  * </pre>
  *
- * <p>キーのコード c_tj は、局・席・牌のキーでは 1 段目と同じ遷移のコード。イベントのキーでは「τ(t) とイベントの牌の関係」の行を使う。
+ * <p>V3 の y_j は最終正規化後の局・席・牌と、正規化したイベント状態。
+ * キーのコード c_tj は、どちらの幹でも局・席・牌のキーでは遷移のコード。イベントのキーでは「τ(t) とイベントの牌の関係」の行を使う。
  * この行は遷移のコードの後ろにあり、どちらかに牌がなければ 1 行、両方にあれば {@link MahjongTileRelation} の種類ごとに 1 行ある。
+ * 待ちの関係を使う形では、イベントのロジットに待ちの区分とヘッドで引いたバイアスを足す。
  * τ(t) は捨てる牌（{@link CandidateLayer#discardTiles}）。E_k・E_v は FP32 で、0 で初期化する。
  *
  * <p>キーとバリューは行ごとに 1 回作り、その行の全ての遷移で共有する（mappedGroupedIndexedScaledDotProductAttention）。行ごとに
@@ -38,23 +40,19 @@ final class CandidateReread extends Module {
 
   private final InputFormat format;
 
-  /** イベントのキーで、牌の関係がないときの行。番号は遷移のコードの数で、1 段目のコードの表の行の数と同じ。 */
+  /** イベントのキーで、牌の関係がないときの行。遷移のコードの直後に置く。 */
   private final int noRelation;
 
-  /**
-   * 学習するコードの表の行の数（遷移のコード、牌の関係がない行、牌の関係の種類）。この数は、パディングのイベントに使うキーの行
-   * （学習しない）の番号でもある。
-   */
+  /** キーとバリューの差分を学習する表の行数。遷移のコードとイベントの牌の関係を含む。 */
   private final int codeRows;
 
-  private final int tileColumn;
   private final int attention;
   private final int heads;
   private final double epsilon;
   private final Parameter queryNorm;
   private final Parameter query;
   private final Parameter queryBias;
-  private final Parameter eventNorm;
+  private final Parameter memoryNorm;
   private final Parameter keyValue;
   private final Parameter keyValueBias;
   private final Parameter codeKey;
@@ -62,17 +60,10 @@ final class CandidateReread extends Module {
   private final Parameter output;
   private final Parameter outputBias;
 
-  /**
-   * パラメーターを登録する。
-   *
-   * @param shape ネットワークの形
-   * @param format 入力の形式
-   */
   CandidateReread(PrismShape shape, InputFormat format) {
     this.format = format;
     noRelation = format.keys().codes();
     codeRows = noRelation + 1 + MahjongTileRelation.values().length;
-    tileColumn = format.relationColumn(RelationRole.TILE, 0);
     int hidden = shape.hidden();
     attention = shape.attention();
     heads = shape.heads();
@@ -80,7 +71,7 @@ final class CandidateReread extends Module {
     queryNorm = gain("queryNorm", hidden);
     query = weight("query", new Shape(attention, hidden));
     queryBias = bias("queryBias", attention);
-    eventNorm = gain("eventNorm", hidden);
+    memoryNorm = gain("eventNorm", hidden);
     keyValue = weight("keyValue", new Shape(2L * attention, hidden));
     keyValueBias = bias("keyValueBias", 2 * attention);
     codeKey = zeros("codeKey", new Shape(codeRows, attention));
@@ -89,19 +80,19 @@ final class CandidateReread extends Module {
     outputBias = bias("outputBias", hidden);
   }
 
-  /**
-   * 遷移の表現を読み直す。
-   *
-   * @param context 文脈
-   * @param inputs 入力
-   * @param index インデックス
-   * @param start 1 段目の出力 z1 [遷移, H]（計算の型）
-   * @param states バックボーンの最後の正規化を通した局・席・牌 [行, 局・席・牌, H]（計算の型）
-   * @param events 層 0 が出力したイベント [行, 最大のイベント数, H]（計算の型。イベントがないバッチでは null）。Attention の記録が
-   *     あるときは局・席・牌の最初の層の入力の葉から切り出したもので、2 段目の勾配はその葉に溜まる
-   * @return z [遷移, H]（計算の型）
-   */
-  NDArray forward(
+  /** 幹が出力した固定トークンと、層 0 で更新したイベントを射影する。 */
+  NDArray encodedMemory(Context context, NDArray states, NDArray events) {
+    return context.scoped(
+        scope -> {
+          NDArray tokens =
+              events == null ? states : states.concat(scope.norm(events, memoryNorm, epsilon), 1);
+          return scope.toFloat(scope.linear(tokens, keyValue, keyValueBias));
+        },
+        states,
+        events);
+  }
+
+  NDArray fromEncoded(
       Context context,
       NetworkInputs inputs,
       BatchIndex index,
@@ -109,10 +100,18 @@ final class CandidateReread extends Module {
       NDArray states,
       NDArray events) {
     return context.scoped(
-        scope -> reread(scope, inputs, index, start, states, events),
+        scope -> forward(scope, inputs, index, start, encodedMemory(scope, states, events)),
         start,
         states,
-        events,
+        events);
+  }
+
+  NDArray forward(
+      Context context, NetworkInputs inputs, BatchIndex index, NDArray start, NDArray memory) {
+    return context.scoped(
+        scope -> reread(scope, inputs, index, start, memory),
+        start,
+        memory,
         inputs.get(Tensor.TRANSITION_CODE),
         inputs.get(Tensor.RELATION),
         inputs.get(Tensor.TRANSITION_CATEGORY),
@@ -121,33 +120,23 @@ final class CandidateReread extends Module {
   }
 
   private NDArray reread(
-      Context context,
-      NetworkInputs inputs,
-      BatchIndex index,
-      NDArray start,
-      NDArray states,
-      NDArray events) {
+      Context context, NetworkInputs inputs, BatchIndex index, NDArray start, NDArray memory) {
     long transitions = inputs.transitions();
     NDManager working = context.working();
     NDArray queries =
         context
             .toFloat(context.linear(context.norm(start, queryNorm, epsilon), query, queryBias))
             .reshape(transitions, heads, PrismShape.HEAD_WIDTH);
-    NDArray keys =
-        events == null
-            ? states
-            : NDArrays.concat(new NDList(states, context.norm(events, eventNorm, epsilon)), 1);
-    NDArray memory = context.toFloat(context.linear(keys, keyValue, keyValueBias));
     // コードの表のパラメーターから作った配列はモデルのマネージャーに付くので、作るたびに作業用のマネージャーへ付け直す
     NDArray learned =
         context.own(
             NDArrays.concat(
-                new NDList(withMask(context, context.fp32(codeKey), 0f), context.fp32(codeValue)), 1));
+                new NDList(withMask(context, context.fp32(codeKey), 0f), context.fp32(codeValue)),
+                1));
     NDArray table = context.own(NDArrays.concat(new NDList(learned, padding(context)), 0));
     NDArray attended =
         NDArrays.mappedGroupedIndexedScaledDotProductAttention(
-            NDArrays.concat(
-                new NDList(queries, working.ones(new Shape(transitions, heads, 1))), 2),
+            NDArrays.concat(new NDList(queries, working.ones(new Shape(transitions, heads, 1))), 2),
             NDArrays.concat(
                 new NDList(
                     withMask(context, memory.get(new NDIndex(":, :, 0:{}", attention)), 0f),
@@ -193,7 +182,8 @@ final class CandidateReread extends Module {
   /** パディングのイベントのキーとバリューの行 [1, 幅]。キーは足した次元だけ −1e9 でほかは 0、バリューは 0。 */
   private NDArray padding(Context context) {
     NDManager working = context.working();
-    NDArray keys = withMask(context, working.zeros(new Shape(1, attention), DataType.FLOAT32), MASKED);
+    NDArray keys =
+        withMask(context, working.zeros(new Shape(1, attention), DataType.FLOAT32), MASKED);
     return NDArrays.concat(
         new NDList(keys, working.zeros(new Shape(1, attention), DataType.FLOAT32)), 1);
   }
@@ -207,21 +197,14 @@ final class CandidateReread extends Module {
     if (index.maxEvents == 0) {
       return fixed;
     }
-    int rows = inputs.rows();
     NDArray transitionRows = index.transitionRows.array();
-    NDArray tiles =
-        NDArrays.scatterRows(
-                inputs
-                    .get(Tensor.RELATION)
-                    .get(new NDIndex(":, {}:{}", tileColumn, tileColumn + 1))
-                    .toType(DataType.INT32, false),
-                index.tokenSlots.array(),
-                (long) rows * index.tokens)
-            .reshape(rows, index.tokens);
     NDIndex eventPositions = new NDIndex(":, {}:", format.fixedTokens());
-    NDArray eventTiles = NDArrays.gatherRows(tiles, transitionRows).get(eventPositions);
+    NDArray rowTiles =
+        RelationClass.attribute(inputs, index, RelationAttribute.TILE)
+            .get(new NDIndex(":, {}:", format.fixedTokens()));
+    NDArray eventTiles = NDArrays.gatherRows(rowTiles, transitionRows);
     NDArray present =
-        NDArrays.gatherRows(index.tokenMask.array(), transitionRows).get(eventPositions).gt(0);
+        NDArrays.gatherRows(index.tokenMask.array().get(eventPositions).gt(0), transitionRows);
     NDArray discard =
         CandidateLayer.discardTiles(format, inputs.get(Tensor.TRANSITION_CATEGORY)).expandDims(1);
     NDArray both = discard.gt(0).logicalAnd(eventTiles.gt(0));

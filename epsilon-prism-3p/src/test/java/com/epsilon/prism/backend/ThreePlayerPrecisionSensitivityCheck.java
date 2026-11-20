@@ -18,12 +18,16 @@ public class ThreePlayerPrecisionSensitivityCheck {
   public void measure() throws IOException {
     Path snapshot = PrecisionSensitivity.snapshot();
     List<long[]> rows = new ArrayList<>();
-    rows.addAll(ThreePlayerRows.observations(31, 6, TableWalk.Policy.GREEDY, PrecisionSensitivity.ROWS / 2));
-    rows.addAll(ThreePlayerRows.observations(37, 6, TableWalk.Policy.CALLS, PrecisionSensitivity.ROWS / 2));
+    rows.addAll(
+        ThreePlayerRows.observations(
+            31, 6, TableWalk.Policy.GREEDY, PrecisionSensitivity.ROWS / 2));
+    rows.addAll(
+        ThreePlayerRows.observations(37, 6, TableWalk.Policy.CALLS, PrecisionSensitivity.ROWS / 2));
     List<HostBatch> batches = new ArrayList<>();
     for (int from = 0; from < rows.size(); from += PrecisionSensitivity.BATCH_ROWS) {
       batches.add(
-          ThreePlayerRows.encode(rows.subList(from, Math.min(rows.size(), from + PrecisionSensitivity.BATCH_ROWS))));
+          ThreePlayerRows.encode(
+              rows.subList(from, Math.min(rows.size(), from + PrecisionSensitivity.BATCH_ROWS))));
     }
     PrecisionSensitivity.measure(snapshot, batches);
   }

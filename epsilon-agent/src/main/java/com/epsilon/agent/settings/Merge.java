@@ -22,7 +22,8 @@ final class Merge {
    * @param prefix 層の木が全体のどのセクションか（コマンドのセクションなら {@code train}。全体なら空）
    * @param problems 設定ファイル以外の層に秘密のキーがあれば、そのエラーをここに足す。そのキーは層から取り除く
    */
-  static Node.Table layers(RecordCodec root, List<Layer> layers, String prefix, List<String> problems) {
+  static Node.Table layers(
+      RecordCodec root, List<Layer> layers, String prefix, List<String> problems) {
     List<List<String>> secrets = Schema.secrets(root);
     Node.Table merged = new Node.Table(Map.of(), Binder.DEFAULT_ORIGIN);
     for (Layer layer : layers) {
@@ -33,7 +34,10 @@ final class Merge {
           if (written != null) {
             String path = String.join(".", secret);
             problems.add(
-                "Setting " + (prefix.isEmpty() ? path : prefix + "." + path) + " at " + written.origin()
+                "Setting "
+                    + (prefix.isEmpty() ? path : prefix + "." + path)
+                    + " at "
+                    + written.origin()
                     + " is secret and is read only from the settings file");
             tree = Keys.remove(tree, secret);
           }
@@ -56,7 +60,8 @@ final class Merge {
       return node == null ? fallback : node;
     }
     Codec codec = component.codec();
-    boolean table = codec instanceof RecordCodec || codec instanceof MapCodec || codec instanceof ChoiceCodec;
+    boolean table =
+        codec instanceof RecordCodec || codec instanceof MapCodec || codec instanceof ChoiceCodec;
     return table ? node(codec, fallback, fallback, node) : node;
   }
 
@@ -70,9 +75,11 @@ final class Merge {
       return upper;
     }
     return switch (codec) {
-      case RecordCodec record when lower instanceof Node.Table below && upper instanceof Node.Table above ->
+      case RecordCodec record
+          when lower instanceof Node.Table below && upper instanceof Node.Table above ->
           tables(below, above, record, null);
-      case MapCodec map when lower instanceof Node.Table below && upper instanceof Node.Table above ->
+      case MapCodec map
+          when lower instanceof Node.Table below && upper instanceof Node.Table above ->
           tables(below, above, null, map.value());
       case ChoiceCodec choice -> choice(choice, fallback, lower, upper);
       default -> upper;
@@ -85,15 +92,19 @@ final class Merge {
    * @param record テーブルが record なら、その型。キーごとの型と既定値をここから引く
    * @param values 名前をキーにしたテーブルなら、値の型
    */
-  private static Node.Table tables(Node.Table lower, Node.Table upper, RecordCodec record, Codec values) {
+  private static Node.Table tables(
+      Node.Table lower, Node.Table upper, RecordCodec record, Codec values) {
     Map<String, Node> entries = new LinkedHashMap<>(lower.entries());
-    upper.entries().forEach(
-        (name, node) -> {
-          Component component = record == null ? null : record.component(name);
-          Codec codec = component != null ? component.codec() : values;
-          Node fallback = component == null ? null : component.fallback();
-          entries.put(name, codec == null ? node : node(codec, fallback, entries.get(name), node));
-        });
+    upper
+        .entries()
+        .forEach(
+            (name, node) -> {
+              Component component = record == null ? null : record.component(name);
+              Codec codec = component != null ? component.codec() : values;
+              Node fallback = component == null ? null : component.fallback();
+              entries.put(
+                  name, codec == null ? node : node(codec, fallback, entries.get(name), node));
+            });
     return new Node.Table(entries, upper.origin());
   }
 

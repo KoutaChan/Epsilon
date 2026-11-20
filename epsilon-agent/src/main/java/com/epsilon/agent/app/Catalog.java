@@ -26,7 +26,11 @@ final class Catalog {
    *
    * @param arguments 引数の名前（{@code stop-after} など）から record のコンポーネントへの対応。コンポーネントの順に並ぶ
    */
-  record Entry(String name, Named named, Class<? extends Record> type, Map<String, RecordComponent> arguments) {
+  record Entry(
+      String name,
+      Named named,
+      Class<? extends Record> type,
+      Map<String, RecordComponent> arguments) {
 
     /** 設定ファイルの中で、このコマンドのセクションを指すキーのパス（{@code settings.change} など）。 */
     String section() {
@@ -78,10 +82,14 @@ final class Catalog {
       String first = entry.words().getFirst();
       if (sections.contains(first)) {
         throw new IllegalStateException(
-            "The command " + entry.name() + " shares its first word with the settings section " + first);
+            "The command "
+                + entry.name()
+                + " shares its first word with the settings section "
+                + first);
       }
       if (entry.words().size() == 1 && catalog.groups.containsKey(first)) {
-        throw new IllegalStateException("The command " + first + " is also the first word of other commands");
+        throw new IllegalStateException(
+            "The command " + first + " is also the first word of other commands");
       }
     }
     return catalog;
@@ -138,11 +146,17 @@ final class Catalog {
                         + child.getKey()
                         + " at "
                         + child.getValue().origin()
-                        + suggestion(first + "." + child.getKey(), sections(), " (did you mean [", "]?)"));
+                        + suggestion(
+                            first + "." + child.getKey(), sections(), " (did you mean [", "]?)"));
               }
             }
           } else if (node != null) {
-            problems.add("Invalid setting " + first + " at " + node.origin() + ": expected a table of commands");
+            problems.add(
+                "Invalid setting "
+                    + first
+                    + " at "
+                    + node.origin()
+                    + ": expected a table of commands");
           }
         });
     return problems;
@@ -189,7 +203,8 @@ final class Catalog {
       return;
     }
     if (!type.isInterface() || !type.isSealed() || !Command.class.isAssignableFrom(type)) {
-      throw new IllegalStateException("Commands are records under a sealed command interface: " + type.getName());
+      throw new IllegalStateException(
+          "Commands are records under a sealed command interface: " + type.getName());
     }
     for (Class<?> permitted : type.getPermittedSubclasses()) {
       collect(permitted, entries);
@@ -203,18 +218,21 @@ final class Catalog {
     }
     String[] words = named.value().split(" ", -1);
     if (words.length > 2 || !Arrays.stream(words).allMatch(word -> WORD.matcher(word).matches())) {
-      throw new IllegalStateException("Invalid command name '" + named.value() + "' on " + type.getName());
+      throw new IllegalStateException(
+          "Invalid command name '" + named.value() + "' on " + type.getName());
     }
     @SuppressWarnings("unchecked")
     Class<? extends Record> record = (Class<? extends Record>) type;
     Map<String, RecordComponent> arguments = new LinkedHashMap<>();
     for (RecordComponent component : record.getRecordComponents()) {
       if (component.getAnnotation(Key.class) == null) {
-        throw new IllegalStateException("The argument " + type.getSimpleName() + "." + component.getName() + " has no @Key");
+        throw new IllegalStateException(
+            "The argument " + type.getSimpleName() + "." + component.getName() + " has no @Key");
       }
       String argument = argument(component.getName());
       if (OPTIONS.contains(argument) || arguments.putIfAbsent(argument, component) != null) {
-        throw new IllegalStateException("The argument --" + argument + " of " + named.value() + " is taken");
+        throw new IllegalStateException(
+            "The argument --" + argument + " of " + named.value() + " is taken");
       }
     }
     Settings.describe(record);

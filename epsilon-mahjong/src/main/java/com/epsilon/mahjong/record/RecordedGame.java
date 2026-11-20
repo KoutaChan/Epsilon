@@ -11,7 +11,8 @@ import java.util.Objects;
  * @param rounds 半荘の局を、行った順に並べたもの
  * @param finalScores 終局の点（絶対席の順）。残りの供託はトップへ渡した後の点
  */
-public record RecordedGame(Variant variant, List<RecordedRound> rounds, int[] finalScores, Meta meta) {
+public record RecordedGame(
+    Variant variant, List<RecordedRound> rounds, int[] finalScores, Meta meta) {
 
   /** 牌譜を読んだ形式。 */
   public enum Source {
@@ -85,7 +86,18 @@ public record RecordedGame(Variant variant, List<RecordedRound> rounds, int[] fi
 
   @Override
   public String toString() {
-    return "RecordedGame[" + variant + " " + meta.source() + " " + meta.id() + " names=" + meta.names() + " rounds="
-        + rounds + " final=" + Arrays.toString(finalScores) + "]";
+    return "RecordedGame["
+        + variant
+        + " "
+        + meta.source()
+        + " "
+        + meta.id()
+        + " names="
+        + meta.names()
+        + " rounds="
+        + rounds
+        + " final="
+        + Arrays.toString(finalScores)
+        + "]";
   }
 }

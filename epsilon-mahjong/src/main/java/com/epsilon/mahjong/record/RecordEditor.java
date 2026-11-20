@@ -86,7 +86,8 @@ public final class RecordEditor {
       switch (event) {
         case RecordEvent.Draw draw when draw.seat() == seat -> {
           if (draw.tile() == TurnEvent.NONE) {
-            throw new IllegalArgumentException("The record hides a draw of seat " + seat + " at " + at);
+            throw new IllegalArgumentException(
+                "The record hides a draw of seat " + seat + " at " + at);
           }
           entered[draw.tile()] = Variant.HAND + at;
           events.add(draw);
@@ -195,12 +196,19 @@ public final class RecordEditor {
     RecordEvent.Call call = callOf(position);
     if (call != null) {
       Meld meld = Meld.of(call.meld());
-      if (Tiles.kind(tile) != meld.called() || set.red(tile) != (meld.aka() == Meld.AkaSource.CALLED_TILE)) {
+      if (Tiles.kind(tile) != meld.called()
+          || set.red(tile) != (meld.aka() == Meld.AkaSource.CALLED_TILE)) {
         throw new IllegalArgumentException(
-            "Seat " + call.seat() + " calls the discard at " + position + ", so it stays a tile of its meld");
+            "Seat "
+                + call.seat()
+                + " calls the discard at "
+                + position
+                + ", so it stays a tile of its meld");
       }
     }
-    events.set(position, new RecordEvent.Discard(discard.seat(), tile, discard.tsumogiri(), discard.riichi()));
+    events.set(
+        position,
+        new RecordEvent.Discard(discard.seat(), tile, discard.tsumogiri(), discard.riichi()));
     int entry = partner[Variant.HAND + position];
     if (entry == NONE) {
       return;
@@ -233,7 +241,11 @@ public final class RecordEditor {
       }
     }
     throw new IllegalArgumentException(
-        "Indicator " + index + " is not revealed before the decision, only " + (revealed + 1) + " are");
+        "Indicator "
+            + index
+            + " is not revealed before the decision, only "
+            + (revealed + 1)
+            + " are");
   }
 
   /**
@@ -246,7 +258,8 @@ public final class RecordEditor {
    */
   public void replaceStart(int honba, int kyotaku, int[] scores) {
     if (scores.length != this.scores.length) {
-      throw new IllegalArgumentException(variant + " needs " + this.scores.length + " scores, got " + scores.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + this.scores.length + " scores, got " + scores.length);
     }
     this.honba = honba;
     this.kyotaku = kyotaku;
@@ -264,7 +277,8 @@ public final class RecordEditor {
   private void link(int[] entered, int tile, int at) {
     int entry = entered[tile];
     if (entry == NONE) {
-      throw new IllegalArgumentException("Seat " + seat + " gives up tile " + tile + " at " + at + " without holding it");
+      throw new IllegalArgumentException(
+          "Seat " + seat + " gives up tile " + tile + " at " + at + " without holding it");
     }
     partner[entry] = Variant.HAND + at;
     partner[Variant.HAND + at] = entry;
@@ -280,7 +294,11 @@ public final class RecordEditor {
   private void requireHeld(int slot) {
     if (partner[slot] != NONE) {
       throw new IllegalArgumentException(
-          "Seat " + seat + " gives up that tile at " + (partner[slot] - Variant.HAND) + ", so replace that event");
+          "Seat "
+              + seat
+              + " gives up that tile at "
+              + (partner[slot] - Variant.HAND)
+              + ", so replace that event");
     }
   }
 

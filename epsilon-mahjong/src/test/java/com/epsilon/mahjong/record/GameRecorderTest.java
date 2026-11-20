@@ -20,7 +20,8 @@ public class GameRecorderTest {
       for (long seed = 1; seed <= 4; seed++) {
         RecordedGame game = play(variant, seed);
         new ReplayDriver(variant).replay(game, new RuleWorkspace(variant));
-        Assert.assertEquals(TenhouXml.read(TenhouXml.write(game), game.meta().id()), game, variant + " " + seed);
+        Assert.assertEquals(
+            TenhouXml.read(TenhouXml.write(game), game.meta().id()), game, variant + " " + seed);
       }
     }
   }
@@ -60,7 +61,8 @@ public class GameRecorderTest {
       }
       recorder.roundEnded(engine.full(), engine.roundEnd());
       if (boundary == Boundary.GAME_END) {
-        return recorder.gameEnded(engine.roundEnd().next(), RecordedGames.unnamed("game-" + seed, variant));
+        return recorder.gameEnded(
+            engine.roundEnd().next(), RecordedGames.unnamed("game-" + seed, variant));
       }
       boundary = engine.advance(ws);
     }

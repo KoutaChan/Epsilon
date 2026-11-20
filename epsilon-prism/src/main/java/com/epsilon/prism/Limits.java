@@ -42,7 +42,8 @@ public final class Limits {
   public static final int MAX_TRANSITIONS = ObservationSchema.MAX_TRANSITIONS;
 
   /** 和了 1 回で和了者が受け取る点（本場・供託を除く）の最大。親が全ての役満を重ねて和了したときの点にする。 */
-  public static final int MAX_WIN_POINTS = ScoreMath.ron(ScoreMath.base(0, 0, ObservationSchema.MAX_YAKUMAN), true);
+  public static final int MAX_WIN_POINTS =
+      ScoreMath.ron(ScoreMath.base(0, 0, ObservationSchema.MAX_YAKUMAN), true);
 
   /**
    * 1 局で放銃者が払う点（本場を除く）の最大。三家和了は途中流局なので、1 つの打牌をロンできるのは 2 人までで、そのうち親は 1 人だけ。

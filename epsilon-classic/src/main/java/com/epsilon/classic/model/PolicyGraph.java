@@ -66,12 +66,22 @@ public final class PolicyGraph {
       NDArray zero = actions.getManager().zeros(new Shape(rows, 1));
 
       Branch answer = new Branch(actions.zerosLike(), legal.mul(responseRow), zero);
-      answer = gate(answer, alternatives, actions, types, ActionType.RON_AGARI, Alternative.RON, rows);
+      answer =
+          gate(answer, alternatives, actions, types, ActionType.RON_AGARI, Alternative.RON, rows);
       NDArray assigned = respond(answer, alternatives, actions, types, rows);
 
       Branch turn = new Branch(assigned, legal.mul(responseRow.neg().add(1f)), zero);
-      turn = gate(turn, alternatives, actions, types, ActionType.TSUMO_AGARI, Alternative.TSUMO, rows);
-      turn = gate(turn, alternatives, actions, types, ActionType.KYUSHU_KYUHAI, Alternative.KYUSHU, rows);
+      turn =
+          gate(turn, alternatives, actions, types, ActionType.TSUMO_AGARI, Alternative.TSUMO, rows);
+      turn =
+          gate(
+              turn,
+              alternatives,
+              actions,
+              types,
+              ActionType.KYUSHU_KYUHAI,
+              Alternative.KYUSHU,
+              rows);
       turn = kan(turn, alternatives, actions, types, rows);
       assigned = discard(turn, actions, riichi, batch.tensor(Tensor.ACTION_ROUTES), types, columns);
       return scope.keep(assigned.add(legal.neg().add(1f).mul(ILLEGAL)));
@@ -87,7 +97,8 @@ public final class PolicyGraph {
    */
   public static NDArray probabilities(NDArray logProbabilities, ClassicBatch batch) {
     ActionColumns columns = ActionColumns.of(batch.schema());
-    NDArray legal = indicator(batch.tensor(Tensor.ACTION_CATEGORIES).get("..., {}", columns.id()).neq(0));
+    NDArray legal =
+        indicator(batch.tensor(Tensor.ACTION_CATEGORIES).get("..., {}", columns.id()).neq(0));
     return logProbabilities.exp().mul(legal);
   }
 
@@ -168,7 +179,8 @@ public final class PolicyGraph {
         if (route(slot, columns.representative()) == 0) {
           continue;
         }
-        float identity = slotMass(route(slot, columns.damaSlot())) + slotMass(route(slot, columns.riichiSlot()));
+        float identity =
+            slotMass(route(slot, columns.damaSlot())) + slotMass(route(slot, columns.riichiSlot()));
         if (identity > chosenMass) {
           chosenMass = identity;
           chosen = slot;
@@ -270,19 +282,29 @@ public final class PolicyGraph {
     NDArray active = present(acceptedMask, rows).mul(present(declinedMask, rows));
     NDArray logit = alternatives.get(":, {}", alternative.ordinal()).reshape(rows, 1);
     NDArray assigned =
-        assign(branch.assigned(), actions, acceptedMask, branch.mass().add(logSigmoid(logit).mul(active)));
-    return new Branch(assigned, declinedMask, branch.mass().add(logSigmoid(logit.neg()).mul(active)));
+        assign(
+            branch.assigned(),
+            actions,
+            acceptedMask,
+            branch.mass().add(logSigmoid(logit).mul(active)));
+    return new Branch(
+        assigned, declinedMask, branch.mass().add(logSigmoid(logit.neg()).mul(active)));
   }
 
   /** 他家の応答で、ロンを分けた後に残った手を、見送るか鳴くかに分ける。鳴くなら種類と候補を割り当てる。 */
-  private static NDArray respond(Branch branch, NDArray alternatives, NDArray actions, NDArray types, long rows) {
+  private static NDArray respond(
+      Branch branch, NDArray alternatives, NDArray actions, NDArray types, long rows) {
     NDArray passMask = typeMask(types, branch.unresolved(), ActionType.PASS);
     NDArray[] meldMasks = typeMasks(types, branch.unresolved(), MELDS);
     NDArray meldMask = union(meldMasks);
     NDArray active = present(passMask, rows).mul(present(meldMask, rows));
     NDArray logit = alternatives.get(":, {}", Alternative.CALL.ordinal()).reshape(rows, 1);
     NDArray assigned =
-        assign(branch.assigned(), actions, passMask, branch.mass().add(logSigmoid(logit.neg()).mul(active)));
+        assign(
+            branch.assigned(),
+            actions,
+            passMask,
+            branch.mass().add(logSigmoid(logit.neg()).mul(active)));
     NDArray meldMass = branch.mass().add(logSigmoid(logit).mul(active));
     return assignTypes(
         assigned,
@@ -295,7 +317,8 @@ public final class PolicyGraph {
   }
 
   /** 手番で、ツモ和了と九種九牌を分けた後に残った手を、槓か打牌かに分ける。槓なら種類と候補を割り当て、打牌の枝を返す。 */
-  private static Branch kan(Branch branch, NDArray alternatives, NDArray actions, NDArray types, long rows) {
+  private static Branch kan(
+      Branch branch, NDArray alternatives, NDArray actions, NDArray types, long rows) {
     NDArray discardMask =
         typeMask(types, branch.unresolved(), ActionType.DAHAI)
             .add(typeMask(types, branch.unresolved(), ActionType.RIICHI_DAHAI));
@@ -312,7 +335,8 @@ public final class PolicyGraph {
             new Alternative[] {Alternative.ANKAN, Alternative.KAKAN},
             branch.mass().add(logSigmoid(logit).mul(active)),
             rows);
-    return new Branch(assigned, discardMask, branch.mass().add(logSigmoid(logit.neg()).mul(active)));
+    return new Branch(
+        assigned, discardMask, branch.mass().add(logSigmoid(logit.neg()).mul(active)));
   }
 
   /** 種類の softmax を取り、続けて種類の中の候補の softmax を割り当てる。 */
@@ -342,7 +366,12 @@ public final class PolicyGraph {
 
   /** 打牌の枝を割り当てる。物理の打牌で softmax を取り、ダマか立直かの二択で分ける。 */
   private static NDArray discard(
-      Branch branch, NDArray actions, NDArray riichi, NDArray routes, NDArray types, ActionColumns columns) {
+      Branch branch,
+      NDArray actions,
+      NDArray riichi,
+      NDArray routes,
+      NDArray types,
+      ActionColumns columns) {
     DiscardChoices choices =
         DiscardChoices.of(
             routes,

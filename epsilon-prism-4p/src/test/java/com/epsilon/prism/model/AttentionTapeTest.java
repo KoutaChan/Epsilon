@@ -1,13 +1,17 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
+import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.agent.runtime.Precision;
+import com.epsilon.prism.backend.HipFixtures;
+import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.model.Batches.Batch;
-import com.epsilon.prism4p.input.InputSchema;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -31,8 +35,7 @@ public class AttentionTapeTest {
   private static final int[] EVENTS = {0, 3, 9, 17};
 
   /** 型ごとの FFN の小さな形（CPU で速く回す）。 */
-  private static final PrismShape TYPED =
-      new PrismShape.V3(64, 128, 64, 128, 256, 128, true);
+  private static final PrismShape TYPED = new PrismShape.V3(64, 128, 64, 128, 256, 128, true);
 
   /** 型ごとの FFN の小さな形で、候補層の 2 段目のない形。 */
   private static final PrismShape TYPED_ONE_STAGE =
@@ -83,6 +86,25 @@ public class AttentionTapeTest {
     }
   }
 
+  @Test(dataProvider = "eagerArms", dataProviderClass = ModelShapes.class)
+  public void unsupportedShapesRejectTheTapeBeforeOpeningIt(PrismShape shape) {
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+      AttentionTape tape = new AttentionTape(new ReferenceAttention());
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
+      HostBatch batch = HipFixtures.encode(HipFixtures.mixedRows(1, 5), shape);
+      NetworkInputs inputs = NetworkInputs.of(manager, PinnedUploads.on(manager), batch);
+      Pass pass =
+          Pass.training(Precision.FLOAT32, new boolean[batch.plan().actions(0)], null, tape);
+      IllegalArgumentException error =
+          Assert.expectThrows(
+              IllegalArgumentException.class,
+              () -> network.forward(new ParameterStore(manager, false), inputs, pass));
+      Assert.assertTrue(
+          error.getMessage().contains("does not support an attention tape"), error.getMessage());
+      tape.open(manager);
+    }
+  }
+
   /** 記録する使い方は推論では拒み、1 つの記録は 1 回の順伝播だけを記録する。 */
   @Test
   public void aRecordingTapeTrainsOneForwardPass() {
@@ -109,9 +131,21 @@ public class AttentionTapeTest {
           try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
             Batch batch = Batches.build(rows(), 5);
             Outcome closed =
-                run(network(manager, shape), manager, batch, recorded, precision, Context.Intermediates.CLOSE);
+                run(
+                    network(manager, shape),
+                    manager,
+                    batch,
+                    recorded,
+                    precision,
+                    Context.Intermediates.CLOSE);
             Outcome kept =
-                run(network(manager, shape), manager, batch, recorded, precision, Context.Intermediates.KEEP);
+                run(
+                    network(manager, shape),
+                    manager,
+                    batch,
+                    recorded,
+                    precision,
+                    Context.Intermediates.KEEP);
             String label = shape + " " + precision + (recorded ? " tape" : " djl");
             log.info(
                 "PRISM-TAPE-SCOPES {} loss {} vs {}",
@@ -119,7 +153,9 @@ public class AttentionTapeTest {
                 String.format("%.7f", closed.loss()),
                 String.format("%.7f", kept.loss()));
             Assert.assertEquals(
-                Float.floatToRawIntBits(closed.loss()), Float.floatToRawIntBits(kept.loss()), label + " loss");
+                Float.floatToRawIntBits(closed.loss()),
+                Float.floatToRawIntBits(kept.loss()),
+                label + " loss");
             Assert.assertTrue(Arrays.equals(closed.scores(), kept.scores()), label + " scores");
             for (Map.Entry<String, float[]> entry : kept.gradients().entrySet()) {
               Assert.assertTrue(
@@ -137,7 +173,7 @@ public class AttentionTapeTest {
   /** 乱したネットワーク（種は形に依らず同じ）。 */
   private static PrismNetwork network(NDManager manager, PrismShape shape) {
     manager.getEngine().setRandomSeed(3);
-    PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, shape);
+    PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
     network.initialize(manager);
     Batches.perturb(network, 0.05f, 7);
     return network;
@@ -175,7 +211,8 @@ public class AttentionTapeTest {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = network(manager, shape);
       Batch batch = Batches.build(rows(), 5);
-      Outcome reference = run(network, manager, batch, false, precision, Context.Intermediates.CLOSE);
+      Outcome reference =
+          run(network, manager, batch, false, precision, Context.Intermediates.CLOSE);
       Outcome tape = run(network, manager, batch, true, precision, Context.Intermediates.CLOSE);
       boolean exact = precision == Precision.FLOAT32;
       Assert.assertEquals(
@@ -195,12 +232,14 @@ public class AttentionTapeTest {
       double djlRounding = 0;
       double tapeRounding = 0;
       if (!exact) {
-        Outcome fp32 = run(network, manager, batch, false, Precision.FLOAT32, Context.Intermediates.CLOSE);
+        Outcome fp32 =
+            run(network, manager, batch, false, Precision.FLOAT32, Context.Intermediates.CLOSE);
         djlRounding = relative(fp32.scores(), reference.scores());
         tapeRounding = relative(fp32.scores(), tape.scores());
       }
       log.info(
-          "PRISM-TAPE-CPU shape={} {} loss {} vs {} scores rel={} from FP32 djl={} tape={} worst gradients {}",
+          "PRISM-TAPE-CPU shape={} {} loss {} vs {} scores rel={} from FP32 djl={} tape={} worst"
+              + " gradients {}",
           shape,
           precision,
           String.format("%.7f", reference.loss()),
@@ -216,9 +255,15 @@ public class AttentionTapeTest {
       Assert.assertTrue(worst < (exact ? 1e-4 : 5e-2), "gradient " + worstName + " rel " + worst);
       Assert.assertTrue(
           tapeRounding <= 1.25 * djlRounding,
-          "the tape's scores are further from FP32 (" + tapeRounding + ") than djl's (" + djlRounding + ")");
-      Assert.assertEquals(silent(reference.gradients()), List.of(), shape + " djl gradients that are all zero");
-      Assert.assertEquals(silent(tape.gradients()), List.of(), shape + " tape gradients that are all zero");
+          "the tape's scores are further from FP32 ("
+              + tapeRounding
+              + ") than djl's ("
+              + djlRounding
+              + ")");
+      Assert.assertEquals(
+          silent(reference.gradients()), List.of(), shape + " djl gradients that are all zero");
+      Assert.assertEquals(
+          silent(tape.gradients()), List.of(), shape + " tape gradients that are all zero");
     }
   }
 

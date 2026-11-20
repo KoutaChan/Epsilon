@@ -56,7 +56,14 @@ public final class SettingsRows {
       SettingsRow row = RecordFile.read(SettingsRow.class, lines[index], origin).value();
       if (row.row() != index + 1) {
         throw new SettingsException(
-            List.of("Settings row " + row.row() + " at " + origin + " is out of order (expected " + (index + 1) + ")"));
+            List.of(
+                "Settings row "
+                    + row.row()
+                    + " at "
+                    + origin
+                    + " is out of order (expected "
+                    + (index + 1)
+                    + ")"));
       }
       rows.add(row);
     }
@@ -71,7 +78,8 @@ public final class SettingsRows {
   public SettingsRow latest() throws IOException {
     List<SettingsRow> rows = read();
     if (rows.isEmpty()) {
-      throw new SettingsException(List.of("No settings rows in " + run.settings() + ": create the run first"));
+      throw new SettingsException(
+          List.of("No settings rows in " + run.settings() + ": create the run first"));
     }
     return rows.getLast();
   }
@@ -101,7 +109,8 @@ public final class SettingsRows {
     IN_JVM.lock();
     try {
       DurableFiles.createDirectories(run.root());
-      FileChannel channel = FileChannel.open(run.settingsLock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+      FileChannel channel =
+          FileChannel.open(run.settingsLock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
       try {
         channel.lock();
       } catch (IOException | RuntimeException failure) {
@@ -126,7 +135,8 @@ public final class SettingsRows {
     if (!Files.exists(state)) {
       return 1;
     }
-    Node next = Json.read(Files.readString(state, StandardCharsets.UTF_8), state.toString()).get("next");
+    Node next =
+        Json.read(Files.readString(state, StandardCharsets.UTF_8), state.toString()).get("next");
     if (next instanceof Node.Numeral numeral && numeral.integer()) {
       return numeral.decimal().intValueExact();
     }
@@ -165,11 +175,19 @@ public final class SettingsRows {
      * @return 足した行
      */
     public SettingsRow append(
-        int from, String jar, String reason, List<SettingsRow.ChangedKey> changes, Node.Table settings)
+        int from,
+        String jar,
+        String reason,
+        List<SettingsRow.ChangedKey> changes,
+        Node.Table settings)
         throws IOException {
       List<SettingsRow> rows = read();
-      SettingsRow row = new SettingsRow(rows.size() + 1, from, Instant.now(), jar, reason, changes, settings);
-      String before = Files.exists(run.settings()) ? Files.readString(run.settings(), StandardCharsets.UTF_8) : "";
+      SettingsRow row =
+          new SettingsRow(rows.size() + 1, from, Instant.now(), jar, reason, changes, settings);
+      String before =
+          Files.exists(run.settings())
+              ? Files.readString(run.settings(), StandardCharsets.UTF_8)
+              : "";
       DurableFiles.write(run.settings(), before + RecordFile.json(row) + "\n");
       return row;
     }

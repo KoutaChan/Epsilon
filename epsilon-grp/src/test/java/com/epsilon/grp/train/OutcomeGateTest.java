@@ -39,10 +39,11 @@ public class OutcomeGateTest {
     NextHands next = NextHands.of(ends, counted);
     OutcomeShape shape = new OutcomeShape(variant, GrpFixtures.plainFields(), 8);
     OutcomeNetwork uniform = OutcomeFixtures.uniform(shape);
-    OutcomeRows rows = OutcomeRows.builder(variant, new RecencyWindow(4, 1, 64), GateCohort.NEXT, state -> true)
-        .add(4, counted)
-        .build()
-        .train();
+    OutcomeRows rows =
+        OutcomeRows.builder(variant, new RecencyWindow(4, 1, 64), GateCohort.NEXT, state -> true)
+            .add(4, counted)
+            .build()
+            .train();
     OutcomeNetwork fitted = OutcomeFixtures.counted(shape, rows);
     OutcomeNetwork wrong = abortive(shape, 5);
 
@@ -61,7 +62,8 @@ public class OutcomeGateTest {
       if (!FinalRound.covers(ends.state(h))) {
         continue;
       }
-      EngineGames.Hand hand = byGame.get(ends.gameId(ends.game(h))).get(h - ends.firstHand(ends.game(h)) + 1);
+      EngineGames.Hand hand =
+          byGame.get(ends.gameId(ends.game(h))).get(h - ends.firstHand(ends.game(h)) + 1);
       int count = codes.terms(HandResult.raw(hand.outcome(), hand.start().dealer()), terms, 0);
       if (count == 0) {
         skipped++;
@@ -98,7 +100,8 @@ public class OutcomeGateTest {
 
     OutcomeGate.Report worse = OutcomeGate.refit(next, fitted, wrong);
     Assert.assertFalse(worse.passed(), worse.toString());
-    Assert.assertTrue(worse.versus().mean() > OutcomeGate.STANDARD_ERRORS * worse.versus().standardError(),
+    Assert.assertTrue(
+        worse.versus().mean() > OutcomeGate.STANDARD_ERRORS * worse.versus().standardError(),
         worse.toString());
     OutcomeGate.Report firstWrong = OutcomeGate.first(next, wrong);
     Assert.assertFalse(firstWrong.passed(), firstWrong.toString());
@@ -112,7 +115,8 @@ public class OutcomeGateTest {
 
     HandEnds early = ends.select(h -> !FinalRound.covers(ends.state(h)));
     NextHands none = NextHands.of(early, counted);
-    for (OutcomeGate.Report empty : List.of(OutcomeGate.refit(none, fitted, fitted), OutcomeGate.first(none, fitted))) {
+    for (OutcomeGate.Report empty :
+        List.of(OutcomeGate.refit(none, fitted, fitted), OutcomeGate.first(none, fitted))) {
       Assert.assertFalse(empty.passed(), empty.toString());
       Assert.assertEquals(empty.handEnds(), 0, empty.toString());
       Assert.assertEquals(empty.skipped(), 0, empty.toString());
@@ -120,9 +124,12 @@ public class OutcomeGateTest {
     }
 
     Variant other = variant == Variant.TENHOU_4P ? Variant.TENHOU_3P : Variant.TENHOU_4P;
-    OutcomeNetwork foreign = OutcomeFixtures.uniform(new OutcomeShape(other, GrpFixtures.plainFields(), 8));
-    Assert.assertThrows(IllegalArgumentException.class, () -> OutcomeGate.refit(next, fitted, foreign));
-    Assert.assertThrows(IllegalArgumentException.class, () -> OutcomeGate.refit(next, foreign, fitted));
+    OutcomeNetwork foreign =
+        OutcomeFixtures.uniform(new OutcomeShape(other, GrpFixtures.plainFields(), 8));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> OutcomeGate.refit(next, fitted, foreign));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> OutcomeGate.refit(next, foreign, fitted));
     Assert.assertThrows(IllegalArgumentException.class, () -> OutcomeGate.first(next, foreign));
   }
 
@@ -132,7 +139,7 @@ public class OutcomeGateTest {
     double[] logits = new double[hands.logits()];
     for (int main = 0; main < hands.mainCount(); main++) {
       if (hands.section(main) == OutcomeSection.ABORTIVE) {
-        logits[hands.mainTerm(main)] = logit;
+        logits[hands.mainLogit(main)] = logit;
       }
     }
     return GrpFixtures.biased(shape, logits);

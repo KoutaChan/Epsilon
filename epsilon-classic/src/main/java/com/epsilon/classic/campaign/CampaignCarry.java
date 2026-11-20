@@ -9,7 +9,8 @@ public record CampaignCarry(double actorRate) {
 
   public CampaignCarry {
     if (!(actorRate > 0) || Double.isInfinite(actorRate)) {
-      throw new IllegalArgumentException("The actor learning rate must be finite and positive: " + actorRate);
+      throw new IllegalArgumentException(
+          "The actor learning rate must be finite and positive: " + actorRate);
     }
   }
 }

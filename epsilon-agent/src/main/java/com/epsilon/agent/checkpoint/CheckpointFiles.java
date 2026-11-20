@@ -51,13 +51,15 @@ public final class CheckpointFiles {
    * ブロックが初期化されていなければ IllegalArgumentException を投げる。どちらのときも何も書かない。
    * 前に途中で止まった書き込みが &lt;dir&gt;.tmp を残していれば、それを消してから書く。
    */
-  public static <H extends Record> void write(Path directory, Block block, H header) throws IOException {
+  public static <H extends Record> void write(Path directory, Block block, H header)
+      throws IOException {
     Objects.requireNonNull(header, "header");
     if (!block.isInitialized()) {
       throw new IllegalArgumentException("Block parameters are not initialized for " + directory);
     }
     if (Files.exists(directory)) {
-      throw new FileAlreadyExistsException(directory.toString(), null, "Checkpoint directory already exists");
+      throw new FileAlreadyExistsException(
+          directory.toString(), null, "Checkpoint directory already exists");
     }
     byte[] json = GSON.toJson(header).getBytes(StandardCharsets.UTF_8);
     Path temporary = directory.resolveSibling(directory.getFileName() + TEMPORARY);
@@ -100,9 +102,11 @@ public final class CheckpointFiles {
    * weights.bin を、ブロックのパラメーターに読み込む。ブロックは、書いたときと同じ形に組んでおく。
    * 形式が合わないときや、読み終えた後にデータが残るときは IOException を投げる。
    */
-  public static void loadParameters(Path directory, Block block, NDManager manager) throws IOException {
+  public static void loadParameters(Path directory, Block block, NDManager manager)
+      throws IOException {
     Path file = directory.resolve(WEIGHTS);
-    try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(file)))) {
+    try (DataInputStream in =
+        new DataInputStream(new BufferedInputStream(Files.newInputStream(file)))) {
       block.loadParameters(manager, in);
       if (in.read() != -1) {
         throw new IOException("Trailing weight data in " + file);
@@ -135,7 +139,12 @@ public final class CheckpointFiles {
     }
     MessageDigest digest = sha256();
     for (Path file : files) {
-      digest.update(directory.relativize(file).toString().replace('\\', '/').getBytes(StandardCharsets.UTF_8));
+      digest.update(
+          directory
+              .relativize(file)
+              .toString()
+              .replace('\\', '/')
+              .getBytes(StandardCharsets.UTF_8));
       digest.update((byte) 0);
       digest.update(ByteBuffer.allocate(Long.BYTES).putLong(Files.size(file)).array());
       try (InputStream in = new DigestInputStream(Files.newInputStream(file), digest)) {
@@ -152,8 +161,10 @@ public final class CheckpointFiles {
 
   /** ファイルを新しく作って中身を書き、ディスクへ fsync する。 */
   private static void writeSynced(Path file, Content content) throws IOException {
-    try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-        DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(channel)))) {
+    try (FileChannel channel =
+            FileChannel.open(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        DataOutputStream out =
+            new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(channel)))) {
       content.write(out);
       out.flush();
       channel.force(true);

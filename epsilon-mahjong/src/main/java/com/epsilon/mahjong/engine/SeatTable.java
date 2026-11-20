@@ -142,7 +142,9 @@ public final class SeatTable {
   public boolean revealDue() {
     TurnEvent.Kind declared = state.last().kind();
     return revealsDue > 0
-        || windowOpen && (declared == TurnEvent.Kind.KAN || declared == TurnEvent.Kind.NUKI) && state.dora().pending();
+        || windowOpen
+            && (declared == TurnEvent.Kind.KAN || declared == TurnEvent.Kind.NUKI)
+            && state.dora().pending();
   }
 
   /**
@@ -170,7 +172,8 @@ public final class SeatTable {
    * @param ownHand 自分の配牌（物理 id 13 枚）
    * @param indicator 局の始めの表示牌の物理 id
    */
-  public void startScenario(int round, int honba, int kyotaku, int[] scores, int[] ownHand, int indicator) {
+  public void startScenario(
+      int round, int honba, int kyotaku, int[] scores, int[] ownHand, int indicator) {
     requireDeal(ownHand);
     table.setScenario(round, honba, kyotaku, scores);
     begin(ownHand, indicator);
@@ -187,7 +190,8 @@ public final class SeatTable {
     boolean rinshan = replacement != TurnEvent.NONE;
     int drawer = rinshan ? replacement : nextDrawer();
     if (seat != drawer) {
-      throw new IllegalStateException("Seat " + seat + " draws out of turn, seat " + drawer + " draws next");
+      throw new IllegalStateException(
+          "Seat " + seat + " draws out of turn, seat " + drawer + " draws next");
     }
     replacement = TurnEvent.NONE;
     decisions.clear();
@@ -318,7 +322,8 @@ public final class SeatTable {
     requireCurrent(seat);
     requireLegal(NUKI_CODE);
     if (Tiles.kind(tile) != Tiles.PEI || !hand.holds(tile)) {
-      throw new IllegalArgumentException("Seat " + self + " holds no north " + tile + " to take out");
+      throw new IllegalArgumentException(
+          "Seat " + self + " holds no north " + tile + " to take out");
     }
     decisions.clear();
     steps.nuki(seat, tile);
@@ -360,7 +365,9 @@ public final class SeatTable {
     int last = events.size() - 1;
     boolean declared =
         windowOpen
-            ? state.last().kind() == TurnEvent.Kind.DISCARD && events.seat(last) == seat && events.riichi(last)
+            ? state.last().kind() == TurnEvent.Kind.DISCARD
+                && events.seat(last) == seat
+                && events.riichi(last)
             : state.riichi(seat) != RiichiState.NONE;
     if (!declared) {
       throw new IllegalStateException("Seat " + seat + " has no riichi to accept");
@@ -377,7 +384,8 @@ public final class SeatTable {
    */
   public RoundEnd settle(RoundOutcome outcome) {
     if (outcome.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + outcome.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + outcome.variant());
     }
     for (int i = 0; i < outcome.winnerCount(); i++) {
       if (outcome.winner(i) == self) {
@@ -395,7 +403,9 @@ public final class SeatTable {
     decisions.clear();
     if (outcome.riichiMask() != state.riichiMask()) {
       throw new IllegalArgumentException(
-          "Riichi seats " + Integer.toBinaryString(outcome.riichiMask()) + " differ from this table's "
+          "Riichi seats "
+              + Integer.toBinaryString(outcome.riichiMask())
+              + " differ from this table's "
               + Integer.toBinaryString(state.riichiMask()));
     }
     end.outcome().copyFrom(outcome);
@@ -406,7 +416,8 @@ public final class SeatTable {
 
   private static void requireDeal(int[] ownHand) {
     if (ownHand.length != Variant.HAND) {
-      throw new IllegalArgumentException("A deal is " + Variant.HAND + " tiles, got " + ownHand.length);
+      throw new IllegalArgumentException(
+          "A deal is " + Variant.HAND + " tiles, got " + ownHand.length);
     }
   }
 
@@ -487,7 +498,8 @@ public final class SeatTable {
 
   private void requireCurrent(int seat) {
     if (seat != state.current()) {
-      throw new IllegalStateException("Seat " + seat + " acts out of turn, seat " + state.current() + " is on turn");
+      throw new IllegalStateException(
+          "Seat " + seat + " acts out of turn, seat " + state.current() + " is on turn");
     }
   }
 

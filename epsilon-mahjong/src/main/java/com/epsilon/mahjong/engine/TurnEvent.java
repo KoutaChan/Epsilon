@@ -92,11 +92,24 @@ public final class TurnEvent {
   }
 
   void copyFrom(TurnEvent other) {
-    set(other.kind, other.seat, other.tile, other.red, other.rinshan, other.doraPending, other.kanKind);
+    set(
+        other.kind,
+        other.seat,
+        other.tile,
+        other.red,
+        other.rinshan,
+        other.doraPending,
+        other.kanKind);
   }
 
   private void set(
-      Kind kind, int seat, int tile, boolean red, boolean rinshan, boolean doraPending, KanKind kanKind) {
+      Kind kind,
+      int seat,
+      int tile,
+      boolean red,
+      boolean rinshan,
+      boolean doraPending,
+      KanKind kanKind) {
     this.kind = kind;
     this.seat = seat;
     this.tile = tile;

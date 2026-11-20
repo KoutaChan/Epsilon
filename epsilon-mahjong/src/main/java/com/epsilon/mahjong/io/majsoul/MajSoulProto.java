@@ -87,7 +87,8 @@ final class MajSoulProto {
         case UINT -> new JsonPrimitive(value & 0xFFFF_FFFFL);
         case INT -> new JsonPrimitive((int) value);
         case BOOL -> new JsonPrimitive(value != 0);
-        case STRING, MESSAGE -> throw new IllegalStateException(this + " is not written as a varint");
+        case STRING, MESSAGE ->
+            throw new IllegalStateException(this + " is not written as a varint");
       };
     }
   }
@@ -133,7 +134,8 @@ final class MajSoulProto {
         strings(9, "tiles2"),
         strings(10, "tiles3"),
         strings(16, "doras")),
-    RECORD_DEAL_TILE(uint(1, "seat"), string(2, "tile"), message(5, "liqi", LI_QI_SUCCESS), strings(6, "doras")),
+    RECORD_DEAL_TILE(
+        uint(1, "seat"), string(2, "tile"), message(5, "liqi", LI_QI_SUCCESS), strings(6, "doras")),
     RECORD_DISCARD_TILE(
         uint(1, "seat"),
         string(2, "tile"),
@@ -142,8 +144,13 @@ final class MajSoulProto {
         strings(8, "doras"),
         bool(9, "is_wliqi")),
     RECORD_CHI_PENG_GANG(
-        uint(1, "seat"), uint(2, "type"), strings(3, "tiles"), uints(4, "froms"), message(5, "liqi", LI_QI_SUCCESS)),
-    RECORD_AN_GANG_ADD_GANG(uint(1, "seat"), uint(2, "type"), string(3, "tiles"), strings(6, "doras")),
+        uint(1, "seat"),
+        uint(2, "type"),
+        strings(3, "tiles"),
+        uints(4, "froms"),
+        message(5, "liqi", LI_QI_SUCCESS)),
+    RECORD_AN_GANG_ADD_GANG(
+        uint(1, "seat"), uint(2, "type"), string(3, "tiles"), strings(6, "doras")),
     RECORD_HULE(messages(1, "hules", HULE_INFO), int32s(3, "delta_scores")),
     RECORD_NO_TILE(
         bool(1, "liujumanguan"),
@@ -184,7 +191,12 @@ final class MajSoulProto {
   /** バイト列が、牌譜を取る API の応答（ResGameRecord を包んだ lq.Wrapper）か。先頭の name で見分ける。 */
   static boolean isResponse(byte[] bytes) {
     return Arrays.equals(
-        bytes, 0, Math.min(bytes.length, RESPONSE_PREFIX.length), RESPONSE_PREFIX, 0, RESPONSE_PREFIX.length);
+        bytes,
+        0,
+        Math.min(bytes.length, RESPONSE_PREFIX.length),
+        RESPONSE_PREFIX,
+        0,
+        RESPONSE_PREFIX.length);
   }
 
   /** 応答を、MajSoulReader が読む JSON に直す。 */
@@ -199,7 +211,8 @@ final class MajSoulProto {
       }
     }
     if (head == null || data == null) {
-      throw new IllegalArgumentException("The Mahjong Soul record has no " + (head == null ? "head" : "data"));
+      throw new IllegalArgumentException(
+          "The Mahjong Soul record has no " + (head == null ? "head" : "data"));
     }
     JsonObject document = new JsonObject();
     document.add("head", head);
@@ -243,7 +256,8 @@ final class MajSoulProto {
       if (name == null) {
         throw new IllegalArgumentException("A Mahjong Soul record has no name");
       }
-      Message message = name.startsWith(NAMESPACE) ? Message.named(name.substring(NAMESPACE.length())) : null;
+      Message message =
+          name.startsWith(NAMESPACE) ? Message.named(name.substring(NAMESPACE.length())) : null;
       JsonObject entry = new JsonObject();
       entry.addProperty("name", name);
       entry.add("data", message == null ? new JsonObject() : decode(message, data));
@@ -420,7 +434,8 @@ final class MajSoulProto {
         case LEN -> advance(length());
         case I64 -> advance(Long.BYTES);
         case I32 -> advance(Integer.BYTES);
-        default -> throw new IllegalArgumentException("A Mahjong Soul protobuf has wire type " + type);
+        default ->
+            throw new IllegalArgumentException("A Mahjong Soul protobuf has wire type " + type);
       }
     }
 
@@ -454,7 +469,12 @@ final class MajSoulProto {
     private void require(int expected) {
       if (type != expected) {
         throw new IllegalArgumentException(
-            "Mahjong Soul protobuf field " + number + " has wire type " + type + ", not " + expected);
+            "Mahjong Soul protobuf field "
+                + number
+                + " has wire type "
+                + type
+                + ", not "
+                + expected);
       }
     }
   }

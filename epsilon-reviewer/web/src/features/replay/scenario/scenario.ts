@@ -1,15 +1,15 @@
+import { TILE_ROWS } from "@epsilon-reviewer/protocol/tiles";
 import type {
   DoraEdit,
   HandEdit,
   RiverEdit,
   ScenarioEdits,
-} from "../../../../../protocol/model.ts";
+} from "@epsilon-reviewer/protocol/model";
 import {
-  tileCopies,
-  tileOrder,
   type RiverTile,
   type TableState,
-} from "../../../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/result";
+import { tileCopies, tileOrder } from "@epsilon-reviewer/protocol/tiles";
 import type {
   Candidate,
   DecisionStep,
@@ -63,14 +63,6 @@ export const NO_EDITS: ScenarioEdits = {};
 export const SCORE_STEP = 100;
 const SCORE_LIMIT = 200_000;
 export const STICK_LIMIT = 20;
-
-/** 牌の一覧の行（34 種と赤 5）。 */
-const TILE_ROWS: readonly (readonly string[])[] = [
-  ["1m", "2m", "3m", "4m", "5m", "5mr", "6m", "7m", "8m", "9m"],
-  ["1p", "2p", "3p", "4p", "5p", "5pr", "6p", "7p", "8p", "9p"],
-  ["1s", "2s", "3s", "4s", "5s", "5sr", "6s", "7s", "8s", "9s"],
-  ["E", "S", "W", "N", "P", "F", "C"],
-];
 
 export const targetKey = (target: ScenarioTarget) =>
   target.kind === "river"
@@ -498,9 +490,7 @@ function fits(
   counts: ReadonlyMap<string, number>,
   seats: number,
 ) {
-  return (
-    tile === current || (counts.get(tile) ?? 0) < tileCopies(tile, seats)
-  );
+  return tile === current || (counts.get(tile) ?? 0) < tileCopies(tile, seats);
 }
 
 export interface TileChoice {

@@ -69,7 +69,12 @@ public final class WinSettlementProjection {
   public void load(SeatView view, int winCode, RuleWorkspace ws) {
     if (view.variant() != variant || ws.variant() != variant) {
       throw new IllegalArgumentException(
-          "Variant mismatch: expected " + variant + " but found " + view.variant() + " and " + ws.variant());
+          "Variant mismatch: expected "
+              + variant
+              + " but found "
+              + view.variant()
+              + " and "
+              + ws.variant());
     }
     Action win = Action.of(winCode);
     boolean tsumo =
@@ -85,7 +90,8 @@ public final class WinSettlementProjection {
     long reds = Legal.redFives(view);
     if (tsumo) {
       if (last.kind() != TurnEvent.Kind.DRAW || last.seat() != seat) {
-        throw new IllegalStateException("Seat " + seat + " can tsumo only its own draw, not " + last.kind());
+        throw new IllegalStateException(
+            "Seat " + seat + " can tsumo only its own draw, not " + last.kind());
       }
       WinLegality.setTsumo(context, last, last.tile(), view.liveLeft(), view.events());
     } else {
@@ -184,7 +190,8 @@ public final class WinSettlementProjection {
       case RESPONSE -> view.liveLeft() == 0 ? Source.HOUTEI : Source.RON;
       case CHANKAN -> Source.CHANKAN;
       case NUKI_RESPONSE -> Source.RON;
-      case TURN, POST_CALL_DAHAI -> throw new IllegalStateException("No ron at a " + view.kind() + " decision");
+      case TURN, POST_CALL_DAHAI ->
+          throw new IllegalStateException("No ron at a " + view.kind() + " decision");
     };
   }
 }

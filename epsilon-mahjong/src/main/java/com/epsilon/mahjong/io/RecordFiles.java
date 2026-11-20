@@ -65,7 +65,8 @@ public final class RecordFiles {
   public static RecordedGame read(byte[] bytes, String id) {
     Objects.requireNonNull(id, "id");
     if (bytes.length == 0 || bytes.length > MAX_BYTES) {
-      throw new IllegalArgumentException("A record holds between 1 byte and 16 MiB, got " + bytes.length + " bytes");
+      throw new IllegalArgumentException(
+          "A record holds between 1 byte and 16 MiB, got " + bytes.length + " bytes");
     }
     byte[] content = unpack(bytes);
     boolean response = MajSoulReader.isResponse(content);
@@ -77,19 +78,22 @@ public final class RecordFiles {
           switch (source) {
             case TENHOU -> TenhouXml.read(text, id);
             case MJAI -> MjaiCodec.read(text, id);
-            case MAJSOUL -> response ? MajSoulReader.read(content, id) : MajSoulReader.read(text, id);
+            case MAJSOUL ->
+                response ? MajSoulReader.read(content, id) : MajSoulReader.read(text, id);
           };
     } catch (IllegalArgumentException failure) {
       throw failure;
     } catch (RuntimeException failure) {
-      throw new IllegalArgumentException("Could not read " + id + " as " + source + ": " + failure, failure);
+      throw new IllegalArgumentException(
+          "Could not read " + id + " as " + source + ": " + failure, failure);
     }
     int events = 0;
     for (RecordedRound round : game.rounds()) {
       events += round.events().size();
     }
     if (events > MAX_EVENTS) {
-      throw new IllegalArgumentException(id + " has " + events + " events, more than " + MAX_EVENTS);
+      throw new IllegalArgumentException(
+          id + " has " + events + " events, more than " + MAX_EVENTS);
     }
     return game;
   }
@@ -154,7 +158,8 @@ public final class RecordFiles {
         }
         reader.skipValue();
       }
-      throw new IllegalArgumentException("The JSON record is neither mjai nor a decoded Mahjong Soul record");
+      throw new IllegalArgumentException(
+          "The JSON record is neither mjai nor a decoded Mahjong Soul record");
     } catch (IOException | IllegalStateException failure) {
       throw new IllegalArgumentException("The record is not valid JSON", failure);
     }
@@ -179,7 +184,8 @@ public final class RecordFiles {
         quoted = true;
       } else if (c == '{' || c == '[') {
         if (++depth > MAX_NESTING) {
-          throw new IllegalArgumentException("The record nests JSON deeper than " + MAX_NESTING + " levels");
+          throw new IllegalArgumentException(
+              "The record nests JSON deeper than " + MAX_NESTING + " levels");
         }
       } else if (c == '}' || c == ']') {
         depth--;

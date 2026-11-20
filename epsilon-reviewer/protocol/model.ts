@@ -37,8 +37,8 @@ export interface RecordSummary {
   source: RecordSource;
   /** 席ごとの名前。人数（4 人か 3 人）と同じ数だけ並び、名前の無い席は空の文字列。 */
   names: readonly string[];
-  /** 席ごとの最終の持ち点。前のバージョンが保存した結果には無いことがある。 */
-  finalScores?: readonly number[];
+  /** 席ごとの最終の持ち点。 */
+  finalScores: readonly number[];
   roundCount: number;
 }
 
@@ -74,6 +74,12 @@ export const JOB_STATUSES = [
   "cancelled",
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
+
+export function jobFinished(status: unknown): boolean {
+  return (
+    status === "completed" || status === "failed" || status === "cancelled"
+  );
+}
 
 /** 解析の進み具合。progress は 0..100 で、completed になるまでは 99 を超えない。 */
 export interface JobSnapshot {

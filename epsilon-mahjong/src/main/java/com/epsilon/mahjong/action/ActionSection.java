@@ -157,7 +157,8 @@ public enum ActionSection implements VariantScoped {
   }
 
   private static ActionSection[][] bySelection() {
-    ActionSection[][] sections = new ActionSection[Type.values().length][TileSelection.values().length];
+    ActionSection[][] sections =
+        new ActionSection[Type.values().length][TileSelection.values().length];
     for (ActionSection section : VALUES) {
       sections[section.type.ordinal()][section.selection.ordinal()] = section;
     }

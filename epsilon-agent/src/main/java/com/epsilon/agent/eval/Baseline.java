@@ -34,7 +34,8 @@ public final class Baseline {
 
     /** @return 1 つ目の尺度に直した値。標準誤差は、元の値と足す量の標準誤差の二乗和の平方根 */
     public Point apply(Point second) {
-      return new Point(second.version(), second.value() + offset, Math.hypot(second.error(), error));
+      return new Point(
+          second.version(), second.value() + offset, Math.hypot(second.error(), error));
     }
   }
 

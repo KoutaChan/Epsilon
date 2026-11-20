@@ -356,7 +356,9 @@ final class HandAnalysis {
       boolean reach = false;
       probe.copyFrom(shape);
       probe.add(draw);
-      for (long discards = handKinds & ~Tiles.bit(draw); discards != 0 && !(free && reach); discards &= discards - 1) {
+      for (long discards = handKinds & ~Tiles.bit(draw);
+          discards != 0 && !(free && reach);
+          discards &= discards - 1) {
         int discard = Long.numberOfTrailingZeros(discards);
         probe.remove(discard);
         if (analyzer.shanten(probe) == 0) {

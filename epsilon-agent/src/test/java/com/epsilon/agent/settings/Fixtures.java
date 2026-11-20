@@ -82,7 +82,8 @@ final class Fixtures {
     @Case("TEST")
     record Sequential(
         @Key(doc = "互角の幅", presence = Presence.REQUIRED) double evenMargin,
-        @Key(doc = "有意水準", value = "0.01") @Range(min = 0, max = 1, minInclusive = false, maxInclusive = false)
+        @Key(doc = "有意水準", value = "0.01")
+            @Range(min = 0, max = 1, minInclusive = false, maxInclusive = false)
             double alpha)
         implements Stop {}
   }
@@ -111,7 +112,10 @@ final class Fixtures {
       @Key(doc = "学習", change = Change.FIT) Fit fit,
       @Key(doc = "記憶", value = "EMA", change = Change.FIT) Memory memory,
       @Key(doc = "間引き", value = "false", change = Change.COLLECT) Thinning thinning,
-      @Key(doc = "コホートの大きさ", value = "[{from = 1, games = 8192}, {from = 9, games = 16384}]", change = Change.COLLECT)
+      @Key(
+              doc = "コホートの大きさ",
+              value = "[{from = 1, games = 8192}, {from = 9, games = 16384}]",
+              change = Change.COLLECT)
           List<Cohort> cohorts,
       @Key(doc = "フラグ", change = Change.MACHINE) Flags flags,
       @Key(doc = "推論", change = Change.MACHINE) InferenceSettings inference,
@@ -121,7 +125,8 @@ final class Fixtures {
       @Key(doc = "RiichiLab", change = Change.MACHINE) Riichi riichi) {}
 
   /** FOUR（四人打ち）の層。学習率のピークを変える。 */
-  static final Layer VARIANT = Layer.parse("variant FOUR", Layer.Source.BUNDLED, "[fit]\nlrPeak = 0.002\n");
+  static final Layer VARIANT =
+      Layer.parse("variant FOUR", Layer.Source.BUNDLED, "[fit]\nlrPeak = 0.002\n");
 
   /** run.variant の値でルールの層を選ぶ。層を持つのは FOUR だけ。 */
   static final BaseLayer BASE =
@@ -167,13 +172,15 @@ final class Fixtures {
 
   /** 設定の結び付けがエラーで止まり、エラーの一覧が期待とちょうど同じになることを確かめる。 */
   static void assertProblems(List<Layer> layers, String... expected) {
-    SettingsException thrown = expectThrows(SettingsException.class, () -> Settings.bind(Root.class, layers));
+    SettingsException thrown =
+        expectThrows(SettingsException.class, () -> Settings.bind(Root.class, layers));
     assertEquals(thrown.problems(), List.of(expected));
   }
 
   /** 設定の結び付けがエラーで止まることを確かめ、エラーの一覧を返す。 */
   static List<String> problems(List<Layer> layers) {
-    return expectThrows(SettingsException.class, () -> Settings.bind(Root.class, layers)).problems();
+    return expectThrows(SettingsException.class, () -> Settings.bind(Root.class, layers))
+        .problems();
   }
 
   static Node.Text text(String value) {

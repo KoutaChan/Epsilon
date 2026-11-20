@@ -69,7 +69,8 @@ public class TenhouSessionTest {
       }
     }
     Assert.assertTrue(decisions > 500, decisions + " decisions");
-    Assert.assertTrue(nuki > 0 && nukiResponses > 0, nuki + " nuki and " + nukiResponses + " responses to nuki");
+    Assert.assertTrue(
+        nuki > 0 && nukiResponses > 0, nuki + " nuki and " + nukiResponses + " responses to nuki");
   }
 
   /** 自分の北抜きは N の type 10 で返す。北抜きのメッセージには答えず、続く補充のツモで次の判断をする。 */
@@ -87,7 +88,8 @@ public class TenhouSessionTest {
               Assert.assertEquals(view.nuki(0), 1);
               return indexOf(decisions, slot, Action.discard(Tiles.CHUN, false, false, false));
             });
-    Assert.assertEquals(session.handle("<GO type=\"25\" lobby=\"0\"/>"), List.of(LiveTranscript.GOK));
+    Assert.assertEquals(
+        session.handle("<GO type=\"25\" lobby=\"0\"/>"), List.of(LiveTranscript.GOK));
     session.handle(
         "<INIT seed=\"0,0,0,0,0,128\" ten=\"350,350,350,0\" oya=\"0\""
             + " hai=\"0,1,32,33,36,37,38,68,69,72,73,120,132\"/>");
@@ -129,7 +131,8 @@ public class TenhouSessionTest {
   @Test
   public void aThreePlayerSessionRejectsAFourPlayerTable() {
     TenhouSession session = new TenhouSession(THREE, noDecision());
-    Assert.assertThrows(IllegalArgumentException.class, () -> session.handle("<GO type=\"9\" lobby=\"0\"/>"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> session.handle("<GO type=\"9\" lobby=\"0\"/>"));
   }
 
   /**
@@ -149,7 +152,8 @@ public class TenhouSessionTest {
     for (RecordedGame game : List.of(SceneGames.paoTsumo(), SceneGames.paoFeederRon())) {
       String xml = TenhouXml.write(game);
       for (int seat = 0; seat < FOUR.seats(); seat++) {
-        decisions += play(FOUR, LiveTranscript.of(FOUR, xml, game.meta().id(), seat, seat % 2 == 0));
+        decisions +=
+            play(FOUR, LiveTranscript.of(FOUR, xml, game.meta().id(), seat, seat % 2 == 0));
       }
     }
     Assert.assertTrue(decisions > 1_000, decisions + " decisions");
@@ -167,15 +171,26 @@ public class TenhouSessionTest {
     Matcher shift = sc.matcher(lines.get(moved).message());
     Assert.assertTrue(shift.find());
     String shifted =
-        "sc=\"" + shift.group(1) + "," + (Integer.parseInt(shift.group(2)) + 1) + "," + shift.group(3) + ","
-            + (Integer.parseInt(shift.group(4)) - 1) + ",";
-    lines.set(moved, new LiveTranscript.Line(shift.replaceFirst(shifted), lines.get(moved).replies()));
+        "sc=\""
+            + shift.group(1)
+            + ","
+            + (Integer.parseInt(shift.group(2)) + 1)
+            + ","
+            + shift.group(3)
+            + ","
+            + (Integer.parseInt(shift.group(4)) - 1)
+            + ",";
+    lines.set(
+        moved, new LiveTranscript.Line(shift.replaceFirst(shifted), lines.get(moved).replies()));
     int misread = firstAfter(lines, "<AGARI", firstAfter(lines, "<INIT", moved));
     Matcher points = ten.matcher(lines.get(misread).message());
     Assert.assertTrue(points.find());
-    String wrong = "ten=\"" + points.group(1) + "," + (Integer.parseInt(points.group(2)) + 100) + ",";
-    lines.set(misread, new LiveTranscript.Line(points.replaceFirst(wrong), lines.get(misread).replies()));
-    TenhouSession session = new TenhouSession(FOUR, scripted(new ArrayDeque<>(transcript.decisions())));
+    String wrong =
+        "ten=\"" + points.group(1) + "," + (Integer.parseInt(points.group(2)) + 100) + ",";
+    lines.set(
+        misread, new LiveTranscript.Line(points.replaceFirst(wrong), lines.get(misread).replies()));
+    TenhouSession session =
+        new TenhouSession(FOUR, scripted(new ArrayDeque<>(transcript.decisions())));
     for (LiveTranscript.Line line : lines) {
       Assert.assertEquals(session.handle(line.message()), line.replies(), line.message());
     }
@@ -194,7 +209,8 @@ public class TenhouSessionTest {
   @Test(dataProvider = "rejoins")
   public void rejoinKeepsTheServerTargetAndFlags(String request, String target) {
     TenhouSession session = new TenhouSession(FOUR, noDecision());
-    Assert.assertEquals(session.handle(request), List.of("{\"tag\":\"JOIN\",\"t\":\"" + target + "\"}"));
+    Assert.assertEquals(
+        session.handle(request), List.of("{\"tag\":\"JOIN\",\"t\":\"" + target + "\"}"));
     Assert.assertEquals(session.handle("{\"tag\":\"REJOIN\"}"), List.of());
     Assert.assertEquals(session.handle("<REJOIN t=\"\"/>"), List.of());
     Assert.assertEquals(session.handle("<SAIKAI/>"), List.of());
@@ -205,34 +221,51 @@ public class TenhouSessionTest {
   @Test
   public void readinessIsSentOncePerPauseAndOwariEndsTheGame() {
     TenhouSession session = new TenhouSession(FOUR, noDecision());
-    Assert.assertEquals(session.handle("{\"tag\":\"GO\",\"type\":9,\"lobby\":1212}"), List.of(LiveTranscript.GOK));
-    Assert.assertEquals(session.handle("<TAIKYOKU oya=\"0\"/>"), List.of(LiveTranscript.NEXT_READY));
+    Assert.assertEquals(
+        session.handle("{\"tag\":\"GO\",\"type\":9,\"lobby\":1212}"), List.of(LiveTranscript.GOK));
+    Assert.assertEquals(
+        session.handle("<TAIKYOKU oya=\"0\"/>"), List.of(LiveTranscript.NEXT_READY));
     Assert.assertEquals(session.handle("{\"tag\":\"TAIKYOKU\"}"), List.of());
     session.handle(init(0, "0,4,8,36,40,44,72,76,80,96,100,104,108"));
-    Assert.assertEquals(session.handle("<AGARI who=\"1\" fromWho=\"3\"/>"), List.of(LiveTranscript.NEXT_READY));
+    Assert.assertEquals(
+        session.handle("<AGARI who=\"1\" fromWho=\"3\"/>"), List.of(LiveTranscript.NEXT_READY));
     Assert.assertEquals(session.handle("<AGARI who=\"2\" fromWho=\"3\"/>"), List.of());
     Assert.assertEquals(session.mismatches(), 1);
     session.handle(init(0, "0,4,8,36,40,44,72,76,80,96,100,104,108"));
     Assert.assertEquals(session.handle("<RYUUKYOKU/>"), List.of(LiveTranscript.NEXT_READY));
     Assert.assertFalse(session.ended());
     session.handle(init(0, "0,4,8,36,40,44,72,76,80,96,100,104,108"));
-    Assert.assertEquals(session.handle("<RYUUKYOKU owari=\"250,0,250,0,250,0,250,0\"/>"), List.of());
+    Assert.assertEquals(
+        session.handle("<RYUUKYOKU owari=\"250,0,250,0,250,0,250,0\"/>"), List.of());
     Assert.assertTrue(session.ended());
   }
 
   @Test
   public void otherTenhouGameTypesAreRejected() {
     TenhouSession session = new TenhouSession(FOUR, noDecision());
-    Assert.assertThrows(IllegalArgumentException.class, () -> session.handle("<GO type=\"25\" lobby=\"0\"/>"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> session.handle("<GO type=\"25\" lobby=\"0\"/>"));
   }
 
   @DataProvider
   public Object[][] responseOffers() {
     return new Object[][] {
       {"", List.<Type>of(), List.<String>of()},
-      {"1", List.of(Type.PON, Type.PASS), List.of("{\"tag\":\"N\",\"type\":1,\"hai0\":4,\"hai1\":5}")},
-      {"4", List.of(Type.CHI, Type.PASS), List.of("{\"tag\":\"N\",\"type\":3,\"hai0\":8,\"hai1\":12}")},
-      {"5", List.of(Type.PON, Type.CHI, Type.PASS), List.of("{\"tag\":\"N\",\"type\":1,\"hai0\":4,\"hai1\":5}")},
+      {
+        "1",
+        List.of(Type.PON, Type.PASS),
+        List.of("{\"tag\":\"N\",\"type\":1,\"hai0\":4,\"hai1\":5}")
+      },
+      {
+        "4",
+        List.of(Type.CHI, Type.PASS),
+        List.of("{\"tag\":\"N\",\"type\":3,\"hai0\":8,\"hai1\":12}")
+      },
+      {
+        "5",
+        List.of(Type.PON, Type.CHI, Type.PASS),
+        List.of("{\"tag\":\"N\",\"type\":1,\"hai0\":4,\"hai1\":5}")
+      },
       {"8", List.<Type>of(), List.of(LiveTranscript.PASS)}
     };
   }
@@ -242,7 +275,8 @@ public class TenhouSessionTest {
    * t が示した手がエンジンの合法手に無ければ見送る。
    */
   @Test(dataProvider = "responseOffers")
-  public void theServerBitsRestrictTheResponse(String offers, List<Type> shown, List<String> replies) {
+  public void theServerBitsRestrictTheResponse(
+      String offers, List<Type> shown, List<String> replies) {
     List<List<Type>> seen = new ArrayList<>();
     TenhouSession session =
         new TenhouSession(
@@ -336,10 +370,12 @@ public class TenhouSessionTest {
             });
     session.handle(init(0, "0,4,8,36,40,44,72,76,80,96,100,104,108"));
     Assert.assertEquals(
-        session.handle("<T132 t=\"32\"/>"), List.of("{\"tag\":\"REACH\"}", "{\"tag\":\"D\",\"p\":132}"));
+        session.handle("<T132 t=\"32\"/>"),
+        List.of("{\"tag\":\"REACH\"}", "{\"tag\":\"D\",\"p\":132}"));
     Assert.assertEquals(session.handle("<REACH who=\"0\" step=\"1\"/>"), List.of());
     Assert.assertEquals(session.handle("<D132/>"), List.of());
-    Assert.assertEquals(session.handle("<REACH who=\"0\" ten=\"240,250,250,250\" step=\"2\"/>"), List.of());
+    Assert.assertEquals(
+        session.handle("<REACH who=\"0\" ten=\"240,250,250,250\" step=\"2\"/>"), List.of());
     goAround(session);
     Assert.assertEquals(session.handle("<T53/>"), List.of("{\"tag\":\"D\",\"p\":53}"));
     Assert.assertEquals(turns.get(), 2);
@@ -360,7 +396,8 @@ public class TenhouSessionTest {
     int added = addedRed ? 16 : 19;
     int[] hand = addedRed ? new int[] {18, 19} : new int[] {17, 18};
     Meld.RelativeSource from = addedRed ? Meld.RelativeSource.TOIMEN : Meld.RelativeSource.SHIMOCHA;
-    Meld pon = Meld.pon(Tiles.M5, from, addedRed ? Meld.AkaSource.NONE : Meld.AkaSource.CALLED_TILE);
+    Meld pon =
+        Meld.pon(Tiles.M5, from, addedRed ? Meld.AkaSource.NONE : Meld.AkaSource.CALLED_TILE);
     int ponCode = new TenhouMeldCode(pon, called, hand).encode(FOUR, 0);
     int kakanCode =
         new TenhouMeldCode(Meld.kakan(pon, addedRed), called, new int[] {added}).encode(FOUR, 0);
@@ -370,9 +407,15 @@ public class TenhouSessionTest {
             FOUR,
             (view, decisions, slot) ->
                 switch (turns.getAndIncrement()) {
-                  case 0 -> indexOf(decisions, slot, Action.code(Type.PON, Tiles.M5, TileSelection.NON_AKA));
+                  case 0 ->
+                      indexOf(
+                          decisions, slot, Action.code(Type.PON, Tiles.M5, TileSelection.NON_AKA));
                   case 1 -> indexOf(decisions, slot, Action.discard(Tiles.M1, false, false, false));
-                  case 2 -> indexOf(decisions, slot, Action.code(Type.KAKAN, Tiles.M5, TileSelection.NOT_APPLICABLE));
+                  case 2 ->
+                      indexOf(
+                          decisions,
+                          slot,
+                          Action.code(Type.KAKAN, Tiles.M5, TileSelection.NOT_APPLICABLE));
                   case 3 -> {
                     Assert.assertTrue(view.last().rinshan());
                     yield indexOf(decisions, slot, Action.discard(Tiles.CHUN, false, true, false));
@@ -380,8 +423,18 @@ public class TenhouSessionTest {
                   default -> throw new AssertionError("No more decisions");
                 });
     int dealer = addedRed ? 2 : 1;
-    session.handle(message(json, "INIT", "seed", INIT_SEED, "ten", EVEN_SCORES, "oya", Integer.toString(dealer), "hai",
-        hand[0] + "," + hand[1] + ",0,4,8,36,40,44,72,76,80,108,109"));
+    session.handle(
+        message(
+            json,
+            "INIT",
+            "seed",
+            INIT_SEED,
+            "ten",
+            EVEN_SCORES,
+            "oya",
+            Integer.toString(dealer),
+            "hai",
+            hand[0] + "," + hand[1] + ",0,4,8,36,40,44,72,76,80,108,109"));
     if (addedRed) {
       session.handle(message(json, "V"));
     } else {
@@ -396,9 +449,13 @@ public class TenhouSessionTest {
     session.handle(message(json, "D0"));
     goAround(session);
     Assert.assertEquals(
-        session.handle(message(json, "T" + added)), List.of("{\"tag\":\"N\",\"type\":5,\"hai\":" + added + "}"));
-    Assert.assertEquals(session.handle(message(json, "N", "who", "0", "m", Integer.toString(kakanCode))), List.of());
-    Assert.assertEquals(session.handle(message(json, "T132")), List.of("{\"tag\":\"D\",\"p\":132}"));
+        session.handle(message(json, "T" + added)),
+        List.of("{\"tag\":\"N\",\"type\":5,\"hai\":" + added + "}"));
+    Assert.assertEquals(
+        session.handle(message(json, "N", "who", "0", "m", Integer.toString(kakanCode))),
+        List.of());
+    Assert.assertEquals(
+        session.handle(message(json, "T132")), List.of("{\"tag\":\"D\",\"p\":132}"));
     Assert.assertEquals(session.handle(message(json, "DORA", "hai", "128")), List.of());
     Assert.assertEquals(session.handle(message(json, "D132")), List.of());
     Assert.assertEquals(turns.get(), 4);
@@ -413,7 +470,10 @@ public class TenhouSessionTest {
             FOUR,
             (view, decisions, slot) -> {
               if (turns.getAndIncrement() == 0) {
-                return indexOf(decisions, slot, Action.code(Type.ANKAN, Tiles.P2, TileSelection.NOT_APPLICABLE));
+                return indexOf(
+                    decisions,
+                    slot,
+                    Action.code(Type.ANKAN, Tiles.P2, TileSelection.NOT_APPLICABLE));
               }
               Assert.assertTrue(view.last().rinshan());
               Assert.assertEquals(view.meldCount(0), 1);
@@ -445,11 +505,14 @@ public class TenhouSessionTest {
             FOUR,
             (view, decisions, slot) -> {
               List<Type> types = types(decisions, slot);
-              return types.contains(Type.DAIMINKAN) ? types.indexOf(Type.DAIMINKAN) : types.indexOf(Type.PASS);
+              return types.contains(Type.DAIMINKAN)
+                  ? types.indexOf(Type.DAIMINKAN)
+                  : types.indexOf(Type.PASS);
             });
     session.handle(init(1, "0,4,8,36,40,44,72,76,80,108,124,125,127"));
     session.handle("<U/>");
-    Assert.assertEquals(session.handle(offers.isEmpty() ? "<E126/>" : "<E126 t=\"" + offers + "\"/>"), replies);
+    Assert.assertEquals(
+        session.handle(offers.isEmpty() ? "<E126/>" : "<E126 t=\"" + offers + "\"/>"), replies);
   }
 
   @Test
@@ -514,7 +577,15 @@ public class TenhouSessionTest {
   }
 
   private static String init(int dealer, String hand) {
-    return "<INIT seed=\"" + INIT_SEED + "\" ten=\"" + EVEN_SCORES + "\" oya=\"" + dealer + "\" hai=\"" + hand + "\"/>";
+    return "<INIT seed=\""
+        + INIT_SEED
+        + "\" ten=\""
+        + EVEN_SCORES
+        + "\" oya=\""
+        + dealer
+        + "\" hai=\""
+        + hand
+        + "\"/>";
   }
 
   private static String message(boolean json, String tag, String... fields) {

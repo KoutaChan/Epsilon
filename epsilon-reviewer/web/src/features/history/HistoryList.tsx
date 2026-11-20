@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDismiss } from "../../components/useDismiss";
+import { useMemo, useRef, useState } from "react";
 import {
   CircleAlert,
   FolderOpen,
@@ -9,7 +10,7 @@ import {
 import type {
   HistoryEntry,
   HistoryList as HistoryData,
-} from "../../../../protocol/model.ts";
+} from "@epsilon-reviewer/protocol/model";
 import { api } from "../../api/platform";
 import type { Resource } from "../../hooks/useResource";
 import { errorKey } from "../../language/catalog";
@@ -53,27 +54,15 @@ export function HistoryList({
       })),
     [entries, t, locale],
   );
-  useEffect(() => {
-    if (menu === null) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (
-        !(event.target instanceof Element) ||
-        !event.target.closest(".history-menu")
-      )
-        setMenu(null);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+  useDismiss(
+    menu !== null,
+    (target) => target.closest(".history-menu") !== null,
+    () => setMenu(null),
+    () => {
       setMenu(null);
       trigger.current?.focus();
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [menu]);
+    },
+  );
   const query = search.toLocaleLowerCase(locale);
   const shown = searchable
     .filter((item) => item.text.includes(query))

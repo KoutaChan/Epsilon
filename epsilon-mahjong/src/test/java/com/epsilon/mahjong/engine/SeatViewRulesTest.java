@@ -30,7 +30,8 @@ public class SeatViewRulesTest {
   private final Random random = new Random(17);
   private final int[] choices = new int[VARIANT.seats() - 1];
   private final short[] discards = new short[Decisions.MAX_LEGAL];
-  private final WinSettlementProjection[] projections = new WinSettlementProjection[VARIANT.seats()];
+  private final WinSettlementProjection[] projections =
+      new WinSettlementProjection[VARIANT.seats()];
   private final int[] winCodes = new int[VARIANT.seats()];
   private final WinScore tsumoScore = new WinScore();
   private int calls;
@@ -51,7 +52,9 @@ public class SeatViewRulesTest {
             case DECISIONS -> decide();
             case ROUND_END -> engine.advance(ws);
             case GAME_END -> {
-              engine.startGame(random.nextLong(), random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
+              engine.startGame(
+                  random.nextLong(),
+                  random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
               yield engine.advance(ws);
             }
           };
@@ -114,7 +117,8 @@ public class SeatViewRulesTest {
     Engine copy = engine.copy();
     Assert.assertEquals(copy.commit(passes, ws), Boundary.DECISIONS);
     SeatView caller = copy.view(seat);
-    Assert.assertEquals(caller.meld(seat, caller.meldCount(seat) - 1), meld, Action.of(code).toString());
+    Assert.assertEquals(
+        caller.meld(seat, caller.meldCount(seat) - 1), meld, Action.of(code).toString());
     if (count < 0) {
       openKans++;
       return;
@@ -126,7 +130,10 @@ public class SeatViewRulesTest {
     for (int legal = 0; legal < expected.length; legal++) {
       expected[legal] = (short) after.legal(0, legal);
     }
-    Assert.assertEquals(Arrays.copyOf(discards, count), expected, Action.of(decisions.legal(slot, index)).toString());
+    Assert.assertEquals(
+        Arrays.copyOf(discards, count),
+        expected,
+        Action.of(decisions.legal(slot, index)).toString());
     calls++;
   }
 
@@ -139,14 +146,18 @@ public class SeatViewRulesTest {
    */
   private void checkTsumo(int seat, boolean legal) {
     TurnEvent draw = engine.view(seat).last();
-    Assert.assertEquals(engine.full().tsumoScore(seat, draw.tile(), ws, tsumoScore), legal, "seat " + seat);
+    Assert.assertEquals(
+        engine.full().tsumoScore(seat, draw.tile(), ws, tsumoScore), legal, "seat " + seat);
     if (!legal) {
       return;
     }
     WinScore projected = projections[seat].score();
     if (draw.red()) {
       Assert.assertEquals(tsumoScore.yakuman(), projected.yakuman(), projected.toString());
-      Assert.assertEquals(tsumoScore.aka(), projected.yakuman() > 0 ? 0 : projected.aka() - 1, projected.toString());
+      Assert.assertEquals(
+          tsumoScore.aka(),
+          projected.yakuman() > 0 ? 0 : projected.aka() - 1,
+          projected.toString());
     } else {
       Assert.assertEquals(tsumoScore.toString(), projected.toString());
     }

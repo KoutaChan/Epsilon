@@ -14,8 +14,9 @@ import java.util.function.IntFunction;
 /**
  * OutcomeNetwork と同じ計算を、DJL（PyTorch、CPU、float32）で組んだもの。重みは OutcomeTensor の宣言の順に並び、W の形は
  * [入力][出力] にする。順伝播は OutcomeNetwork と同じ式で、ロジットから対数確率の項を HandOutcomes の項の順に作る（終わり方の
- * log softmax、打点の組ごとの log softmax、立直の log σ(±z)）。1 行の損失は周辺尤度 −log Σ_k exp(Σ_j 項[k][j]) で、k は
- * 記録を再現できる結果（OutcomeBatch に並べたもの）を全て取る。
+ * log softmax、和了者が 1 人の終わり方ごとの打点の log softmax、終わり方と席ごとの立直の log σ(±z)）。項に入れるロジットは、
+ * OutcomeBatch が持つ位置で集める。1 行の損失は周辺尤度 −log Σ_k exp(Σ_j 項[k][j]) で、k は記録を再現できる結果（OutcomeBatch に
+ * 並べたもの）を全て取る。
  */
 final class OutcomeGraph implements TrainingLoop.Graph<OutcomeBatch>, AutoCloseable {
 
@@ -26,16 +27,17 @@ final class OutcomeGraph implements TrainingLoop.Graph<OutcomeBatch>, AutoClosea
   private final AdamParameters parameters;
   private final int mains;
   private final int grades;
-  private final int gradeGroups;
+  private final int riichi;
 
   private OutcomeGraph(OutcomeShape shape, float[] weights) {
     int[] starts = OutcomeTensor.starts(shape);
     if (weights.length != starts[TENSORS.length]) {
-      throw new IllegalArgumentException(shape + " needs " + starts[TENSORS.length] + " weights, got " + weights.length);
+      throw new IllegalArgumentException(
+          shape + " needs " + starts[TENSORS.length] + " weights, got " + weights.length);
     }
     mains = OutcomeTerm.MAIN.width(shape.variant());
     grades = OutcomeTerm.GRADE.width(shape.variant());
-    gradeGroups = grades / HandOutcomes.BASES;
+    riichi = OutcomeTerm.RIICHI.width(shape.variant());
     parameters = new AdamParameters(weights, starts, forms(shape), hidden());
   }
 
@@ -58,8 +60,13 @@ final class OutcomeGraph implements TrainingLoop.Graph<OutcomeBatch>, AutoClosea
   }
 
   @Override
-  public TrainingStep step(OutcomeBatch batch, double learningRate, double hiddenDecay, double clipNorm) {
-    return parameters.step((scope, weights) -> loss(scope, batch, weights), batch.size, learningRate, hiddenDecay,
+  public TrainingStep step(
+      OutcomeBatch batch, double learningRate, double hiddenDecay, double clipNorm) {
+    return parameters.step(
+        (scope, weights) -> loss(scope, batch, weights),
+        batch.size,
+        learningRate,
+        hiddenDecay,
         clipNorm);
   }
 
@@ -79,28 +86,53 @@ final class OutcomeGraph implements TrainingLoop.Graph<OutcomeBatch>, AutoClosea
   }
 
   /**
-   * 対数確率の項を [行][項] で返す。項は HandOutcomes の順で、終わり方の log softmax、打点の組ごとの log softmax、log σ(z)、
-   * log σ(−z) と並ぶ。
+   * 対数確率の項を [行][項] で返す。項は HandOutcomes の順で、終わり方の log softmax、終わり方ごとの打点の log softmax、
+   * log σ(z)、log σ(−z) と並ぶ。
    */
   private NDArray terms(NDManager scope, OutcomeBatch batch, IntFunction<NDArray> weights) {
     if (batch.size == 0) {
       throw new IllegalArgumentException("An empty batch");
     }
     NDArray x = AdamParameters.rows(scope, batch.inputs, new Shape(batch.size, batch.width));
-    NDArray first = Activation.relu(
-        x.matMul(weights.apply(OutcomeTensor.W1.ordinal())).add(weights.apply(OutcomeTensor.B1.ordinal())));
-    NDArray second = Activation.relu(
-        first.matMul(weights.apply(OutcomeTensor.W2.ordinal())).add(weights.apply(OutcomeTensor.B2.ordinal())));
+    NDArray first =
+        Activation.relu(
+            x.matMul(weights.apply(OutcomeTensor.W1.ordinal()))
+                .add(weights.apply(OutcomeTensor.B1.ordinal())));
+    NDArray second =
+        Activation.relu(
+            first
+                .matMul(weights.apply(OutcomeTensor.W2.ordinal()))
+                .add(weights.apply(OutcomeTensor.B2.ordinal())));
     NDArray logits =
-        second.matMul(weights.apply(OutcomeTensor.W3.ordinal())).add(weights.apply(OutcomeTensor.B3.ordinal()));
+        second
+            .matMul(weights.apply(OutcomeTensor.W3.ordinal()))
+            .add(weights.apply(OutcomeTensor.B3.ordinal()));
     NDArray main = logits.get(":, :{}", mains).logSoftmax(1);
-    NDArray grade = logits.get(":, {}:{}", mains, mains + grades)
-        .reshape(batch.size, gradeGroups, HandOutcomes.BASES)
-        .logSoftmax(2)
-        .reshape(batch.size, grades);
-    NDArray riichi = logits.get(":, {}:", mains + grades);
-    NDArray declared = Activation.softPlus(riichi.neg()).neg();
-    NDArray quiet = Activation.softPlus(riichi).neg();
+    Shape gradeShape = new Shape(batch.size, grades);
+    NDArray gradeLogits =
+        logits.gather(AdamParameters.rows(scope, batch.gradeLogits, gradeShape), 1);
+    if (batch.rankLogits != null) {
+      gradeLogits =
+          gradeLogits.add(
+              logits.gather(AdamParameters.rows(scope, batch.rankLogits, gradeShape), 1));
+    }
+    NDArray grade =
+        gradeLogits
+            .reshape(batch.size, grades / HandOutcomes.BASES, HandOutcomes.BASES)
+            .logSoftmax(2)
+            .reshape(batch.size, grades);
+    Shape riichiShape = new Shape(batch.size, riichi);
+    NDArray riichiLogits =
+        logits.gather(AdamParameters.rows(scope, batch.riichiLogits, riichiShape), 1);
+    if (batch.winnerLogits != null) {
+      NDArray padded = logits.concat(scope.zeros(new Shape(batch.size, 1)), 1);
+      riichiLogits =
+          riichiLogits
+              .add(padded.gather(AdamParameters.rows(scope, batch.winnerLogits, riichiShape), 1))
+              .add(padded.gather(AdamParameters.rows(scope, batch.secondLogits, riichiShape), 1));
+    }
+    NDArray declared = Activation.softPlus(riichiLogits.neg()).neg();
+    NDArray quiet = Activation.softPlus(riichiLogits).neg();
     return main.concat(grade, 1).concat(declared, 1).concat(quiet, 1);
   }
 
@@ -111,11 +143,13 @@ final class OutcomeGraph implements TrainingLoop.Graph<OutcomeBatch>, AutoClosea
     NDArray mask = AdamParameters.rows(scope, batch.mask, new Shape(batch.size, batch.outcomes));
     NDArray rowWeights = AdamParameters.rows(scope, batch.weights, new Shape(batch.size));
     NDArray padding = scope.zeros(new Shape(batch.size, 1));
-    NDArray logs = terms(scope, batch, weights).concat(padding, 1)
-        .gather(indices, 1)
-        .reshape(batch.size, batch.outcomes, batch.stride)
-        .sum(TERMS_AXIS)
-        .add(mask);
+    NDArray logs =
+        terms(scope, batch, weights)
+            .concat(padding, 1)
+            .gather(indices, 1)
+            .reshape(batch.size, batch.outcomes, batch.stride)
+            .sum(TERMS_AXIS)
+            .add(mask);
     NDArray top = logs.max(OUTCOMES_AXIS, true).stopGradient();
     return logs.sub(top).exp().sum(OUTCOMES_AXIS).log().add(top.squeeze(1)).neg().mul(rowWeights);
   }
@@ -123,10 +157,11 @@ final class OutcomeGraph implements TrainingLoop.Graph<OutcomeBatch>, AutoClosea
   private static Shape[] forms(OutcomeShape shape) {
     Shape[] forms = new Shape[TENSORS.length];
     for (OutcomeTensor tensor : TENSORS) {
-      forms[tensor.ordinal()] = switch (tensor) {
-        case W1, W2, W3 -> new Shape(tensor.rows(shape), tensor.columns(shape));
-        case B1, B2, B3 -> new Shape(tensor.columns(shape));
-      };
+      forms[tensor.ordinal()] =
+          switch (tensor) {
+            case W1, W2, W3 -> new Shape(tensor.rows(shape), tensor.columns(shape));
+            case B1, B2, B3 -> new Shape(tensor.columns(shape));
+          };
     }
     return forms;
   }

@@ -16,7 +16,8 @@ public class GrpLayoutTest {
 
   @Test
   public void offsetsFollowTheDeclarationOrder() {
-    GrpLayout layout = GrpLayout.of(Variant.TENHOU_4P, EnumSet.of(GrpField.GAP, GrpField.ROUND, GrpField.SCORE));
+    GrpLayout layout =
+        GrpLayout.of(Variant.TENHOU_4P, EnumSet.of(GrpField.GAP, GrpField.ROUND, GrpField.SCORE));
     Assert.assertEquals(layout.offset(GrpField.ROUND), 0);
     Assert.assertEquals(layout.offset(GrpField.SCORE), 12);
     Assert.assertEquals(layout.offset(GrpField.GAP), 16);
@@ -29,13 +30,15 @@ public class GrpLayoutTest {
   @Test
   public void aLayoutNeedsAField() {
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> GrpLayout.of(Variant.TENHOU_4P, EnumSet.noneOf(GrpField.class)));
+        IllegalArgumentException.class,
+        () -> GrpLayout.of(Variant.TENHOU_4P, EnumSet.noneOf(GrpField.class)));
   }
 
   @Test
   public void encodesTheTableInRelativeSeats() {
     // 南 3（局 6）で親は絶対席 2。相対席 0〜3 は絶対席 2・3・0・1。絶対席 0 と 2 が同点のトップで、0 が上。
-    GrpState state = new GrpState(Variant.TENHOU_4P, 6, 2, 1, new int[] {32_000, 18_000, 32_000, 17_000});
+    GrpState state =
+        new GrpState(Variant.TENHOU_4P, 6, 2, 1, new int[] {32_000, 18_000, 32_000, 17_000});
     GrpLayout layout = GrpLayout.of(Variant.TENHOU_4P, GrpFixtures.plainFields());
     float[] x = new float[layout.width()];
     layout.encode(state, x);
@@ -49,7 +52,9 @@ public class GrpLayoutTest {
     for (int seat = 0; seat < 4; seat++) {
       expected[18 + seat * 4 + ranks[seat]] = 1;
     }
-    float[] gaps = {0, 14_000 / 10_000f, 15_000 / 10_000f, 14_000 / 10_000f, 15_000 / 10_000f, 1_000 / 10_000f};
+    float[] gaps = {
+      0, 14_000 / 10_000f, 15_000 / 10_000f, 14_000 / 10_000f, 15_000 / 10_000f, 1_000 / 10_000f
+    };
     System.arraycopy(gaps, 0, expected, 34, 6);
     Assert.assertEquals(x, expected);
   }
@@ -57,15 +62,32 @@ public class GrpLayoutTest {
   @Test
   public void phasesFollowTheNextRound() {
     GrpPhase[] four = {
-      GrpPhase.EAST, GrpPhase.EAST, GrpPhase.EAST, GrpPhase.EAST, GrpPhase.SOUTH, GrpPhase.SOUTH, GrpPhase.PENULT,
-      GrpPhase.FINAL, GrpPhase.FINAL, GrpPhase.FINAL, GrpPhase.FINAL, GrpPhase.FINAL
+      GrpPhase.EAST,
+      GrpPhase.EAST,
+      GrpPhase.EAST,
+      GrpPhase.EAST,
+      GrpPhase.SOUTH,
+      GrpPhase.SOUTH,
+      GrpPhase.PENULT,
+      GrpPhase.FINAL,
+      GrpPhase.FINAL,
+      GrpPhase.FINAL,
+      GrpPhase.FINAL,
+      GrpPhase.FINAL
     };
     for (int round = 0; round < four.length; round++) {
       Assert.assertEquals(GrpPhase.of(Variant.TENHOU_4P, round), four[round], "round " + round);
     }
     GrpPhase[] three = {
-      GrpPhase.EAST, GrpPhase.EAST, GrpPhase.EAST, GrpPhase.SOUTH, GrpPhase.PENULT, GrpPhase.FINAL, GrpPhase.FINAL,
-      GrpPhase.FINAL, GrpPhase.FINAL
+      GrpPhase.EAST,
+      GrpPhase.EAST,
+      GrpPhase.EAST,
+      GrpPhase.SOUTH,
+      GrpPhase.PENULT,
+      GrpPhase.FINAL,
+      GrpPhase.FINAL,
+      GrpPhase.FINAL,
+      GrpPhase.FINAL
     };
     for (int round = 0; round < three.length; round++) {
       Assert.assertEquals(GrpPhase.of(Variant.TENHOU_3P, round), three[round], "round " + round);

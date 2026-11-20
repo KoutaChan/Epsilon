@@ -10,4 +10,5 @@ import com.epsilon.agent.settings.Presence;
  * @param average 方策の記憶の記録（記憶を使わなければ無い）
  */
 public record PublishReport(
-    int version, @Key(doc = "方策の記憶の記録", presence = Presence.ABSENT) Snapshot.AverageRecord average) {}
+    int version,
+    @Key(doc = "方策の記憶の記録", presence = Presence.ABSENT) Snapshot.AverageRecord average) {}

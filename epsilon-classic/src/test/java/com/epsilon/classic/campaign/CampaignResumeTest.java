@@ -98,8 +98,10 @@ public class CampaignResumeTest {
       Assert.assertEquals(expected.champion().size(), 1);
       for (String line : expected.iterations()) {
         JsonObject steps = JsonParser.parseString(line).getAsJsonObject().getAsJsonObject("steps");
-        Assert.assertEquals(steps.getAsJsonObject("DUEL").get("status").getAsString(), "SKIPPED", line);
-        Assert.assertEquals(steps.getAsJsonObject("DECIDE").get("status").getAsString(), "SKIPPED", line);
+        Assert.assertEquals(
+            steps.getAsJsonObject("DUEL").get("status").getAsString(), "SKIPPED", line);
+        Assert.assertEquals(
+            steps.getAsJsonObject("DECIDE").get("status").getAsString(), "SKIPPED", line);
         JsonObject learn = steps.getAsJsonObject("LEARN");
         Assert.assertTrue(learn.get("actorSteps").getAsInt() > 0, line);
         Assert.assertTrue(learn.has("valueLoss"), line);
@@ -111,16 +113,22 @@ public class CampaignResumeTest {
       List<String> points = stopEverywhere(stopped, stoppedPlans);
       for (String point :
           List.of(
-              "BEFORE_STEP COLLECT", "AFTER_STEP COLLECT", "BEFORE_STEP LEARN", "AFTER_STEP LEARN", "BEFORE_STEP DUEL",
+              "BEFORE_STEP COLLECT",
+              "AFTER_STEP COLLECT",
+              "BEFORE_STEP LEARN",
+              "AFTER_STEP LEARN",
+              "BEFORE_STEP DUEL",
               "ITERATION")) {
         Assert.assertEquals(Collections.frequency(points, point), MACROS, point + " in " + points);
       }
       Assert.assertEquals(Collections.frequency(points, "LAUNCH"), 2, points.toString());
-      Assert.assertEquals(RunStatus.read(new RunDirectory(stopped).status()).state(), RunStatus.State.FINISHED);
+      Assert.assertEquals(
+          RunStatus.read(new RunDirectory(stopped).status()).state(), RunStatus.State.FINISHED);
       Assert.assertEquals(outcome(stopped), expected);
       // 確定を戻した収集はもう一度打つので、macro ごとに同じ計画が 2 回届く
       Assert.assertEquals(
-          plans(stopped, stoppedPlans), List.of(plans.get(0), plans.get(0), plans.get(1), plans.get(1)));
+          plans(stopped, stoppedPlans),
+          List.of(plans.get(0), plans.get(0), plans.get(1), plans.get(1)));
       assertNoLeftovers(new RunDirectory(stopped));
     } finally {
       delete(root);
@@ -163,7 +171,8 @@ public class CampaignResumeTest {
    *
    * @return 止まったセーフポイント（起きた順）
    */
-  private static List<String> stopEverywhere(Path root, List<Collector.Macro> plans) throws Exception {
+  private static List<String> stopEverywhere(Path root, List<Collector.Macro> plans)
+      throws Exception {
     RunDirectory run = new RunDirectory(root);
     ControlRequests requests = new ControlRequests(run);
     requests.submit(new Request.Stop(Request.At.STEP));
@@ -188,16 +197,20 @@ public class CampaignResumeTest {
       }
       Assert.assertEquals(ending, Ending.STOPPED, points + " " + status.reason());
       String reason = status.reason();
-      Assert.assertTrue(reason.startsWith("Stopped at ") && reason.endsWith(" by a signal"), reason);
-      String point = reason.substring("Stopped at ".length(), reason.length() - " by a signal".length());
+      Assert.assertTrue(
+          reason.startsWith("Stopped at ") && reason.endsWith(" by a signal"), reason);
+      String point =
+          reason.substring("Stopped at ".length(), reason.length() - " by a signal".length());
       if (before != null) {
-        Assert.assertEquals(point, "BEFORE_STEP " + before, "the pause request waits before its step");
+        Assert.assertEquals(
+            point, "BEFORE_STEP " + before, "the pause request waits before its step");
       }
       points.add(point);
       leaveTraces(run, point, status.iteration() == null ? 0 : status.iteration());
       before = NEXT_STEP.get(point);
     }
-    throw new AssertionError("The campaign did not finish in " + MAX_LAUNCHES + " launches: " + points);
+    throw new AssertionError(
+        "The campaign did not finish in " + MAX_LAUNCHES + " launches: " + points);
   }
 
   /** 止めた所に、落ちた後の残りを置く。 */
@@ -257,8 +270,15 @@ public class CampaignResumeTest {
   private static String progress(RunDirectory run) {
     try {
       StringBuilder out = new StringBuilder();
-      out.append(Files.exists(run.state()) ? Files.readString(run.state(), StandardCharsets.UTF_8) : "-").append('|');
-      out.append(names(run.snapshots())).append('|').append(names(run.rows(1).getParent())).append('|');
+      out.append(
+              Files.exists(run.state())
+                  ? Files.readString(run.state(), StandardCharsets.UTF_8)
+                  : "-")
+          .append('|');
+      out.append(names(run.snapshots()))
+          .append('|')
+          .append(names(run.rows(1).getParent()))
+          .append('|');
       out.append(names(LearnStep.learner(run, 1).getParent())).append('|');
       for (String t : names(run.work())) {
         out.append(t).append(names(run.work().resolve(t))).append('|');
@@ -288,10 +308,14 @@ public class CampaignResumeTest {
   /** 閉じた反復の作業のディレクトリと、段の書きかけが残っていない。 */
   private static void assertNoLeftovers(RunDirectory run) throws IOException {
     Assert.assertEquals(names(run.work()), List.of());
-    for (Path directory : List.of(run.snapshots(), run.rows(1).getParent(), LearnStep.learner(run, 1).getParent())) {
+    for (Path directory :
+        List.of(run.snapshots(), run.rows(1).getParent(), LearnStep.learner(run, 1).getParent())) {
       try (Stream<Path> listed = Files.list(directory)) {
         Assert.assertEquals(
-            listed.filter(path -> path.getFileName().toString().endsWith(CampaignStep.PART)).toList(), List.of());
+            listed
+                .filter(path -> path.getFileName().toString().endsWith(CampaignStep.PART))
+                .toList(),
+            List.of());
       }
     }
   }
@@ -342,14 +366,22 @@ public class CampaignResumeTest {
     for (String cohort : names(run.rows(1).getParent())) {
       Path directory = run.rows(Integer.parseInt(cohort));
       cohorts.put(
-          cohort, digest(directory.resolve(Cohort.TRAJECTORIES)) + " " + digest(directory.resolve(Cohort.CALIBRATION)));
+          cohort,
+          digest(directory.resolve(Cohort.TRAJECTORIES))
+              + " "
+              + digest(directory.resolve(Cohort.CALIBRATION)));
     }
     List<String> champion = new ArrayList<>();
     for (ChampionStore.Entry entry : ChampionStore.open(run.champion()).history()) {
       champion.add(entry.event().toString().replace(place, "<run>"));
     }
     return new Outcome(
-        Files.readString(run.state(), StandardCharsets.UTF_8), iterations, snapshots, learners, cohorts, champion);
+        Files.readString(run.state(), StandardCharsets.UTF_8),
+        iterations,
+        snapshots,
+        learners,
+        cohorts,
+        champion);
   }
 
   /** 自己対局が受け取った計画を、run の場所に依らない文にする（macro・種・学習器のバージョン・王者・過去の王者の数・半荘の数）。 */
@@ -358,14 +390,24 @@ public class CampaignResumeTest {
     List<String> plans = new ArrayList<>();
     for (Collector.Macro macro : received) {
       plans.add(
-          macro.number() + " " + macro.seed() + " " + macro.learner().toString().replace(place, "<run>") + " "
-              + macro.champion().label() + " " + macro.pool().size() + " " + macro.settings().schedule().games());
+          macro.number()
+              + " "
+              + macro.seed()
+              + " "
+              + macro.learner().toString().replace(place, "<run>")
+              + " "
+              + macro.champion().label()
+              + " "
+              + macro.pool().size()
+              + " "
+              + macro.settings().schedule().games());
     }
     return plans;
   }
 
   private static String digest(Path file) throws Exception {
-    return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+    return HexFormat.of()
+        .formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
   }
 
   /** 学習器の途中の状態の中身の SHA-256。ファイルを名前の順に数え、AdamW の状態のファイルは {@link #optimizerContent} で数える。 */
@@ -375,7 +417,8 @@ public class CampaignResumeTest {
       for (Path file : listed.sorted().toList()) {
         String name = file.getFileName().toString();
         digest.update(name.getBytes(StandardCharsets.UTF_8));
-        digest.update(name.endsWith(OPTIMIZER_STATE) ? optimizerContent(file) : Files.readAllBytes(file));
+        digest.update(
+            name.endsWith(OPTIMIZER_STATE) ? optimizerContent(file) : Files.readAllBytes(file));
       }
     }
     return HexFormat.of().formatHex(digest.digest());
@@ -387,7 +430,8 @@ public class CampaignResumeTest {
    */
   private static byte[] optimizerContent(Path file) throws IOException {
     ByteArrayOutputStream content = new ByteArrayOutputStream();
-    try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(file)));
+    try (DataInputStream in =
+            new DataInputStream(new BufferedInputStream(Files.newInputStream(file)));
         DataOutputStream out = new DataOutputStream(content)) {
       out.writeUTF(in.readUTF());
       out.writeInt(in.readInt());

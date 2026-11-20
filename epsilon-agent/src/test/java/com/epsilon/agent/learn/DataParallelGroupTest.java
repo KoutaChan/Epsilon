@@ -80,7 +80,8 @@ public class DataParallelGroupTest {
         Model replica = model();
         var single = new DataParallelGroup<>(List.of(new Lane(reference, false, runtime)));
         var dual =
-            new DataParallelGroup<>(List.of(new Lane(canonical, false, runtime), new Lane(replica, false, runtime)))) {
+            new DataParallelGroup<>(
+                List.of(new Lane(canonical, false, runtime), new Lane(replica, false, runtime)))) {
       Optimizer singleOptimizer = adam(0.01f);
       Optimizer dualOptimizer = adam(0.01f);
       for (int step = 0; step < 3; step++) {
@@ -96,7 +97,9 @@ public class DataParallelGroupTest {
         assertValues(values(replica), values(canonical), 0f);
       }
       LaneWork<Lane, Boolean> idle = lane -> Boolean.TRUE;
-      expectThrows(IllegalArgumentException.class, () -> dual.execute(new int[] {1, 1}, List.of(idle, idle)));
+      expectThrows(
+          IllegalArgumentException.class,
+          () -> dual.execute(new int[] {1, 1}, List.of(idle, idle)));
       List<Update> all = List.of(new Update(Group.ALL, dualOptimizer, 1f));
       expectThrows(IllegalArgumentException.class, () -> dual.step(new int[] {2}, all));
     }
@@ -108,9 +111,12 @@ public class DataParallelGroupTest {
         Model canonical = model();
         Model replica = model();
         var group =
-            new DataParallelGroup<>(List.of(new Lane(canonical, false, runtime), new Lane(replica, false, runtime)))) {
+            new DataParallelGroup<>(
+                List.of(new Lane(canonical, false, runtime), new Lane(replica, false, runtime)))) {
       Map<String, float[]> before = values(canonical);
-      List<Update> both = List.of(new Update(Group.ACTOR, adam(0.01f), 1f), new Update(Group.VALUE, adam(0.01f), 1f));
+      List<Update> both =
+          List.of(
+              new Update(Group.ACTOR, adam(0.01f), 1f), new Update(Group.VALUE, adam(0.01f), 1f));
       float[][] batch = batch(1);
       int[] lanes = {0, 1};
       LaneWork<Lane, Boolean> head = lane -> learn(lane, batch, 0, ROWS / 2, 1f, 1f);
@@ -177,14 +183,22 @@ public class DataParallelGroupTest {
    * 行 [from, to) の損失 actorWeight·Σ(actor − y)² + valueWeight·Σ(value − y)² の勾配を溜める。重みが 0 の項は損失に入れないので、
    * そのヘッドのパラメーターには勾配が付かない。
    */
-  private static Boolean learn(Lane lane, float[][] batch, int from, int to, float actorWeight, float valueWeight) {
+  private static Boolean learn(
+      Lane lane, float[][] batch, int from, int to, float actorWeight, float valueWeight) {
     try (NDManager scope = lane.manager().newSubManager();
         GradientCollector collector = lane.newGradientCollector()) {
       NDArray inputs =
-          scope.create(Arrays.copyOfRange(batch[0], from * FEATURES, to * FEATURES), new Shape(to - from, FEATURES));
+          scope.create(
+              Arrays.copyOfRange(batch[0], from * FEATURES, to * FEATURES),
+              new Shape(to - from, FEATURES));
       NDArray targets =
-          scope.create(Arrays.copyOfRange(batch[1], from * OUTPUTS, to * OUTPUTS), new Shape(to - from, OUTPUTS));
-      NDList outputs = lane.model().getBlock().forward(new ParameterStore(scope, false), new NDList(inputs), true);
+          scope.create(
+              Arrays.copyOfRange(batch[1], from * OUTPUTS, to * OUTPUTS),
+              new Shape(to - from, OUTPUTS));
+      NDList outputs =
+          lane.model()
+              .getBlock()
+              .forward(new ParameterStore(scope, false), new NDList(inputs), true);
       NDArray loss = scope.zeros(new Shape());
       if (actorWeight != 0f) {
         loss = loss.add(outputs.get(0).sub(targets).square().sum().mul(actorWeight));
@@ -232,7 +246,10 @@ public class DataParallelGroupTest {
   }
 
   private static Optimizer adam(float weightDecay) {
-    return Optimizer.adamW().optLearningRateTracker(Tracker.fixed(0.01f)).optWeightDecays(weightDecay).build();
+    return Optimizer.adamW()
+        .optLearningRateTracker(Tracker.fixed(0.01f))
+        .optWeightDecays(weightDecay)
+        .build();
   }
 
   private static Map<String, float[]> values(Model model) {
@@ -243,7 +260,8 @@ public class DataParallelGroupTest {
     return values;
   }
 
-  private static void assertValues(Map<String, float[]> actual, Map<String, float[]> expected, float tolerance) {
+  private static void assertValues(
+      Map<String, float[]> actual, Map<String, float[]> expected, float tolerance) {
     assertEquals(actual.keySet(), expected.keySet());
     for (Map.Entry<String, float[]> entry : expected.entrySet()) {
       float[] got = actual.get(entry.getKey());
@@ -268,7 +286,10 @@ public class DataParallelGroupTest {
 
     @Override
     protected NDList forwardInternal(
-        ParameterStore store, NDList inputs, boolean training, PairList<String, Object> parameters) {
+        ParameterStore store,
+        NDList inputs,
+        boolean training,
+        PairList<String, Object> parameters) {
       return new NDList(
           actor.forward(store, inputs, training, parameters).singletonOrThrow(),
           value.forward(store, inputs, training, parameters).singletonOrThrow());
@@ -276,7 +297,9 @@ public class DataParallelGroupTest {
 
     @Override
     public Shape[] getOutputShapes(Shape[] inputShapes) {
-      return new Shape[] {actor.getOutputShapes(inputShapes)[0], value.getOutputShapes(inputShapes)[0]};
+      return new Shape[] {
+        actor.getOutputShapes(inputShapes)[0], value.getOutputShapes(inputShapes)[0]
+      };
     }
   }
 }

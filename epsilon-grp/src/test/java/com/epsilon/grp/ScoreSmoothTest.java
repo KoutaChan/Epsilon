@@ -65,7 +65,8 @@ public class ScoreSmoothTest {
       previous = u;
     }
     int[] lead = {28000, 24000, 24000, 24000};
-    Assert.assertTrue(values(lead, 7)[0] > values(lead, 0)[0], "a lead is worth more with fewer rounds left");
+    Assert.assertTrue(
+        values(lead, 7)[0] > values(lead, 0)[0], "a lead is worth more with fewer rounds left");
     // 1 位が変わらない 1,000 点の差も値に出る（点数の順位だけで決めるなら差は 0）
     double small = values(new int[] {33000, 24000, 22000, 21000}, 2)[0];
     double big = values(new int[] {34000, 24000, 21000, 21000}, 2)[0];
@@ -74,9 +75,12 @@ public class ScoreSmoothTest {
 
   @Test
   public void threePlayerIsNotMeasured() {
-    Assert.assertThrows(IllegalArgumentException.class, () -> Phi.scoreSmooth(Variant.TENHOU_3P, RankUtility.TENHOU));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Phi.scoreSmooth(Variant.TENHOU_3P, RankUtility.TENHOU));
     GrpState three = new GrpState(Variant.TENHOU_3P, 0, 0, 0, new int[] {35_000, 35_000, 35_000});
-    Assert.assertThrows(IllegalArgumentException.class, () -> ScoreSmooth.marginals(three, new double[9]));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> ScoreSmooth.marginals(three, new double[9]));
   }
 
   private static double[] values(int[] scores, int round) {

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { describeReplayEvent } from "../../src/features/replay/model/recentEvents.ts";
-import { discard, hora, playerSnapshot, snapshot } from "./fixtures.mjs";
+import { discard, meld, hora, playerSnapshot, snapshot } from "./fixtures.mjs";
 
 function playerEvent(type, fields, eventFields = {}) {
   return snapshot(type, 1, {
@@ -9,16 +9,6 @@ function playerEvent(type, fields, eventFields = {}) {
       playerSnapshot(seat, seat === 1 ? fields : {}),
     ),
     ...eventFields,
-  });
-}
-
-function meld(type, tiles) {
-  return Object.freeze({
-    type,
-    tiles: Object.freeze(tiles),
-    from: 2,
-    calledIndex: 0,
-    addedIndex: type === "KAKAN" ? 1 : -1,
   });
 }
 
@@ -88,12 +78,12 @@ test("a call after set-aside norths shows the new meld, and a kita shows one nor
 });
 
 test("added kan identifies the upgraded pon even before an older kan in the meld list", () => {
-  const olderKan = meld("KAKAN", ["2p", "2p", "2p", "2p"]);
+  const olderKan = meld("KAKAN", ["2p", "2p", "2p", "2p"], { addedIndex: 1 });
   const before = playerEvent("tsumo", {
     draw: "5mr",
     melds: [meld("PON", ["5m", "5m", "5m"]), olderKan],
   });
-  const addedKan = meld("KAKAN", ["5m", "5mr", "5m", "5m"]);
+  const addedKan = meld("KAKAN", ["5m", "5mr", "5m", "5m"], { addedIndex: 1 });
   const after = playerEvent("kakan", { melds: [addedKan, olderKan] });
   const details = describeReplayEvent(after, before, false, 0);
   assert.equal(details.action, "action.kakan");

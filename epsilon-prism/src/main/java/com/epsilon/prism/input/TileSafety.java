@@ -3,7 +3,6 @@ package com.epsilon.prism.input;
 import com.epsilon.agent.facts.SeatFacts;
 import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.prism.input.EventTable.PublicEvent;
-import java.util.Arrays;
 
 /**
  * 牌の安全度のうち、振聴のルールだけで厳密に決まる 3 種類（{@link Safety}）を求める。席ごとに牌のマスクを 3 つ持つ。判断ごとに 1 回
@@ -40,28 +39,27 @@ public final class TileSafety {
     thisCycle = new long[seats];
   }
 
-  /**
-   * 3 種類のマスクを作る。
-   *
-   * @param events 判断の記録の公開イベント
-   * @param seats 席ごとの公開情報（同じ判断の記録から作ったもの）
-   */
   public void load(EventTable events, SeatFacts seats) {
     for (int seat = 0; seat < river.length; seat++) {
       river[seat] = seats.riverKinds(seat);
       afterRiichi[seat] = seats.riichiSafe(seat);
     }
-    Arrays.fill(thisCycle, 0L);
-    for (int e = 0, count = events.events(); e < count; e++) {
-      if (events.kind(e) != PublicEvent.DISCARD) {
-        continue;
+    long later = 0L;
+    int remaining = (1 << river.length) - 1;
+    for (int e = events.events() - 1; e >= 0 && remaining != 0; e--) {
+      if (events.kind(e) != PublicEvent.DISCARD) continue;
+      int seat = events.author(e);
+      int bit = 1 << seat;
+      if ((remaining & bit) != 0) {
+        thisCycle[seat] = later;
+        remaining ^= bit;
       }
-      int author = events.author(e);
-      long bit = Tiles.bit(events.tile(e));
-      for (int seat = 0; seat < thisCycle.length; seat++) {
-        thisCycle[seat] |= bit;
-      }
-      thisCycle[author] = 0L;
+      later |= Tiles.bit(events.tile(e));
+    }
+    // まだ打牌していない席に対しては、これまでの全ての打牌が同巡に通っている。
+    while (remaining != 0) {
+      thisCycle[Integer.numberOfTrailingZeros(remaining)] = later;
+      remaining &= remaining - 1;
     }
   }
 

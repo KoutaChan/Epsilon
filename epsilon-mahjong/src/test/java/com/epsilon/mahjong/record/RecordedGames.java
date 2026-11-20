@@ -109,11 +109,13 @@ public final class RecordedGames {
 
   /** テストで作る半荘の出どころの情報。天鳳のルールで打った、打ち手の名前の無い半荘とする。 */
   public static RecordedGame.Meta unnamed(String id, Variant variant) {
-    return new RecordedGame.Meta(id, RecordedGame.Source.TENHOU, Collections.nCopies(variant.seats(), ""));
+    return new RecordedGame.Meta(
+        id, RecordedGame.Source.TENHOU, Collections.nCopies(variant.seats(), ""));
   }
 
   private RecordedGame game(String id) {
-    engine.startGame(random.nextLong(), random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
+    engine.startGame(
+        random.nextLong(), random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
     List<RecordedRound> rounds = new ArrayList<>();
     while (true) {
       rounds.add(round(engine.advance(ws)));
@@ -134,7 +136,8 @@ public final class RecordedGames {
     for (int seat = 0; seat < seats; seat++) {
       scores[seat] = table.score(seat);
     }
-    RoundStart start = new RoundStart(variant, table.round(), table.honba(), table.kyotaku(), scores);
+    RoundStart start =
+        new RoundStart(variant, table.round(), table.honba(), table.kyotaku(), scores);
     int firstDraw = full.chance().tile(0);
     int[][] deal = new int[seats][];
     for (int seat = 0; seat < seats; seat++) {
@@ -159,7 +162,8 @@ public final class RecordedGames {
     while (boundary == Boundary.DECISIONS) {
       Decisions decisions = engine.decisions();
       EngineDecisionKind kind = decisions.kind(0);
-      boolean window = kind != EngineDecisionKind.TURN && kind != EngineDecisionKind.POST_CALL_DAHAI;
+      boolean window =
+          kind != EngineDecisionKind.TURN && kind != EngineDecisionKind.POST_CALL_DAHAI;
       int actor = window ? TurnEvent.NONE : decisions.seat(0);
       for (int seat = 0; seat < seats; seat++) {
         for (int tile = 0; tile < Tiles.PHYSICAL_IDS; tile++) {
@@ -205,7 +209,8 @@ public final class RecordedGames {
     }
     for (int index = chanceSeen; index < chance.size(); index++) {
       switch (chance.kind(index)) {
-        case DRAW, RINSHAN -> events.add(new RecordEvent.Draw(chance.seat(index), chance.tile(index)));
+        case DRAW, RINSHAN ->
+            events.add(new RecordEvent.Draw(chance.seat(index), chance.tile(index)));
         case URA -> ura.add(chance.tile(index));
         case INDICATOR -> {}
       }
@@ -222,7 +227,9 @@ public final class RecordedGames {
   private RecordEvent publicEvent(EventLog log, int event, int actor) {
     int seat = log.seat(event);
     return switch (log.kind(event)) {
-      case DISCARD -> new RecordEvent.Discard(seat, removed(seat, actor), log.tsumogiri(event), log.riichi(event));
+      case DISCARD ->
+          new RecordEvent.Discard(
+              seat, removed(seat, actor), log.tsumogiri(event), log.riichi(event));
       case MELD -> {
         Meld meld = Meld.of(log.meld(event));
         yield meld.type() == Meld.Type.ANKAN

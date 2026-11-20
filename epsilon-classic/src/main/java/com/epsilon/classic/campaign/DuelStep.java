@@ -44,7 +44,9 @@ public final class DuelStep<I extends DuelMacro> implements Step<I> {
   @Override
   public Optional<StepReport> done(I macro) throws IOException {
     Path file = macro.work().resolve(FILE);
-    return Files.exists(file) ? Optional.of(StepReport.read(file, DuelReport.class)) : Optional.empty();
+    return Files.exists(file)
+        ? Optional.of(StepReport.read(file, DuelReport.class))
+        : Optional.empty();
   }
 
   @Override
@@ -71,7 +73,8 @@ public final class DuelStep<I extends DuelMacro> implements Step<I> {
               DuelJobs.lineage(macro, candidate),
               DuelJobs.lineage(macro, champion.get()),
               Arena.freshSeed(macro.seed(), name));
-      JobFile job = JobFile.pending(macro.published(), table, 0, macro.settingsRow(), RecordFile.tree(spec));
+      JobFile job =
+          JobFile.pending(macro.published(), table, 0, macro.settingsRow(), RecordFile.tree(spec));
       Optional<DuelJobs.Played> played = DuelJobs.play(macro, store.duels(), job, setup);
       report =
           played.isPresent()
@@ -88,7 +91,9 @@ public final class DuelStep<I extends DuelMacro> implements Step<I> {
    */
   static Optional<String> table(DuelMacro macro) {
     EvaluationSettings evaluation = macro.evaluation();
-    return evaluation.promoting().filter(name -> evaluation.tables().get(name).scheduled(macro.published()));
+    return evaluation
+        .promoting()
+        .filter(name -> evaluation.tables().get(name).scheduled(macro.published()));
   }
 
   /**
@@ -99,7 +104,8 @@ public final class DuelStep<I extends DuelMacro> implements Step<I> {
   static DuelReport recorded(DuelMacro macro) throws IOException {
     Path file = macro.work().resolve(FILE);
     if (!Files.exists(file)) {
-      throw new IOException("Macro " + macro.number() + " has no " + FILE + ": its duel step is not done");
+      throw new IOException(
+          "Macro " + macro.number() + " has no " + FILE + ": its duel step is not done");
     }
     return (DuelReport) StepReport.read(file, DuelReport.class).metrics();
   }

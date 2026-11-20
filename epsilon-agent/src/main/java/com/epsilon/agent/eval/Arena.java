@@ -65,7 +65,8 @@ public final class Arena {
    * @return 卓のコアの結果
    * @throws IllegalStateException 打ち切らずに終わったのに、結果がそろわない牌山があった
    */
-  public static TableLoop.Result play(TableLoop table, ArenaPlan plan, WallSink sink, GameObserver watcher) {
+  public static TableLoop.Result play(
+      TableLoop table, ArenaPlan plan, WallSink sink, GameObserver watcher) {
     int[][] slotOfSeat = plan.slotTable();
     List<TableSeat<Query>> slotSeats = new ArrayList<>(plan.slots().size());
     for (var policy : plan.slots()) {
@@ -190,7 +191,9 @@ public final class Arena {
 
     @Override
     public void decided(GameKey game, SeatView view, Decisions decisions, int slot, int choice) {
-      open.get(index(game)).stats[gameOf(game)].decided(slotOfSeat[game.placement()], view, decisions, slot, choice);
+      open.get(index(game))
+          .stats[gameOf(game)]
+          .decided(slotOfSeat[game.placement()], view, decisions, slot, choice);
       if (watcher != null) {
         watcher.decided(game, view, decisions, slot, choice);
       }

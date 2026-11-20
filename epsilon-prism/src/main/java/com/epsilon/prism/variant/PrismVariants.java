@@ -15,9 +15,11 @@ final class PrismVariants {
 
   private static Map<Variant, PrismVariant> load() {
     Map<Variant, PrismVariant> modules = new EnumMap<>(Variant.class);
-    for (PrismVariant module : ServiceLoader.load(PrismVariant.class, PrismVariant.class.getClassLoader())) {
+    for (PrismVariant module :
+        ServiceLoader.load(PrismVariant.class, PrismVariant.class.getClassLoader())) {
       if (modules.putIfAbsent(module.variant(), module) != null) {
-        throw new IllegalStateException("Two PRISM modules for " + module.variant() + " on the classpath");
+        throw new IllegalStateException(
+            "Two PRISM modules for " + module.variant() + " on the classpath");
       }
     }
     return Collections.unmodifiableMap(modules);

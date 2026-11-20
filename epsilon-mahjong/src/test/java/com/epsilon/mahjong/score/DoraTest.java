@@ -23,7 +23,13 @@ public class DoraTest {
   public void doraCountsEveryTileOfTheHandAndTheMelds() {
     assertDora(four(KANCHAN).riichi().ron("2s").dora("4s").score(), 3, 2, 0, 0, 0);
     assertDora(four("123m456p22s78s").pon("5z").ron("9s").dora("7z").score(), 4, 3, 0, 0, 0);
-    assertDora(four("123m456m55p78s").ankan("9p").win("9s", Source.RINSHAN).dora("8p").score(), 6, 4, 0, 0, 0);
+    assertDora(
+        four("123m456m55p78s").ankan("9p").win("9s", Source.RINSHAN).dora("8p").score(),
+        6,
+        4,
+        0,
+        0,
+        0);
     assertDora(four("567m345p66p78s").chi("234m").ron("6s").dora("2m").score(), 2, 1, 0, 0, 0);
   }
 
@@ -58,7 +64,8 @@ public class DoraTest {
   @Test
   public void doraIsNotAYaku() {
     Assert.assertFalse(four(KANCHAN).ron("2s").dora("4s").red("5p").scores(new WinScore()));
-    Assert.assertFalse(three("123p456p789s11m13s").ron("2s").nuki(3).dora("3z").scores(new WinScore()));
+    Assert.assertFalse(
+        three("123p456p789s11m13s").ron("2s").nuki(3).dora("3z").scores(new WinScore()));
   }
 
   /** 三人打ちの萬子は 1m と 9m だけなので、表示牌が 9m ならドラは 1m、1m ならドラは 9m。四人打ちでは表示牌 1m のドラは 2m。 */
@@ -87,7 +94,8 @@ public class DoraTest {
    */
   @Test
   public void aWinOnTheNukiReplacementIsRinshan() {
-    WinScore score = three("111p456p789s11m23s").nuki(1).win("4s", Source.RINSHAN).dora("3z").score();
+    WinScore score =
+        three("111p456p789s11m23s").nuki(1).win("4s", Source.RINSHAN).dora("3z").score();
     assertDora(score, 4, 1, 0, 0, 1);
     Assert.assertEquals(score.yaku(), YakuTest.bits(ScoringYaku.MENZEN_TSUMO, ScoringYaku.RINSHAN));
     Assert.assertEquals(score.fu(), 30);
@@ -120,8 +128,15 @@ public class DoraTest {
     String concealed = "123p456p11m23s";
     assertDora(three(concealed).ankan("4z").riichi().ron("4s").dora("1z").score(), 1, 0, 0, 0, 0);
     assertDora(three(concealed).ankan("4z").riichi().ron("4s").dora("3z").score(), 5, 4, 0, 0, 0);
-    assertDora(three(concealed).ankan("4z").riichi().ron("4s").dora("1z").ura("3z").score(), 5, 0, 0, 4, 0);
-    assertDora(three("123p456p999s11m23s").riichi().ron("4s").nuki(4).dora("3z").score(), 9, 4, 0, 0, 4);
+    assertDora(
+        three(concealed).ankan("4z").riichi().ron("4s").dora("1z").ura("3z").score(),
+        5,
+        0,
+        0,
+        4,
+        0);
+    assertDora(
+        three("123p456p999s11m23s").riichi().ron("4s").nuki(4).dora("3z").score(), 9, 4, 0, 0, 4);
   }
 
   /**
@@ -133,13 +148,16 @@ public class DoraTest {
     String concealed = "123p11m23s";
     assertDora(three(concealed).pon("4z").pon("5z").ron("4s").dora("1z").score(), 1, 0, 0, 0, 0);
     assertDora(three(concealed).pon("4z").pon("5z").ron("4s").dora("3z").score(), 4, 3, 0, 0, 0);
-    assertDora(three(concealed).pon("4z").pon("5z").ron("4s").nuki(1).dora("3z").score(), 6, 4, 0, 0, 1);
+    assertDora(
+        three(concealed).pon("4z").pon("5z").ron("4s").nuki(1).dora("3z").score(), 6, 4, 0, 0, 1);
   }
 
   @Test
   public void nukiNeedsTheNukiRuleAndAFreeNorth() {
-    Assert.assertThrows(IllegalArgumentException.class, () -> new WinContext(Variant.TENHOU_4P).setNuki(1));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new WinContext(Variant.TENHOU_3P).setNuki(5));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new WinContext(Variant.TENHOU_4P).setNuki(1));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new WinContext(Variant.TENHOU_3P).setNuki(5));
     WinCase fiveNorths = three("123p456p789s44z23s").ron("4s").nuki(3);
     Assert.assertThrows(IllegalArgumentException.class, () -> fiveNorths.scores(new WinScore()));
   }

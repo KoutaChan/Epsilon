@@ -5,7 +5,6 @@ import com.epsilon.grp.GrpState;
 import com.epsilon.grp.HandOutcomes;
 import com.epsilon.grp.OutcomeNetwork;
 import com.epsilon.grp.OutcomeWorkspace;
-import com.epsilon.grp.WinMethod;
 import com.epsilon.mahjong.rules.Variant;
 import java.util.Arrays;
 import java.util.List;
@@ -66,7 +65,8 @@ public final class OutcomeRows implements TrainingLoop.Rows {
    *
    * @param rows 行にする局末の卓を選ぶ条件（例えば {@code FinalRound::covers}）
    */
-  public static Builder builder(Variant variant, RecencyWindow window, GateCohort gate, Predicate<GrpState> rows) {
+  public static Builder builder(
+      Variant variant, RecencyWindow window, GateCohort gate, Predicate<GrpState> rows) {
     return new Builder(variant, window, gate, rows);
   }
 
@@ -127,7 +127,8 @@ public final class OutcomeRows implements TrainingLoop.Rows {
   /** 純 Java のネットワークで、重み付きの周辺 NLL Σ w·(−log Σ_o q(o|s)) / Σ w を求める。 */
   public double nll(OutcomeNetwork network, OutcomeWorkspace workspace) {
     if (network.variant() != variant) {
-      throw new IllegalArgumentException("A " + network.variant() + " network for " + variant + " rows");
+      throw new IllegalArgumentException(
+          "A " + network.variant() + " network for " + variant + " rows");
     }
     double[] logs = new double[maxOutcomes];
     double sum = 0;
@@ -179,15 +180,17 @@ public final class OutcomeRows implements TrainingLoop.Rows {
    * @param at 書き始める位置
    * @return 書いた項の数
    */
-  static int outcomeTerms(HandOutcomes hands, int main, int base, int other, int riichi, short[] out, int at) {
+  static int outcomeTerms(
+      HandOutcomes hands, int main, int base, int other, int riichi, short[] out, int at) {
     int next = at;
     out[next++] = (short) hands.mainTerm(main);
     switch (hands.section(main)) {
-      case TSUMO -> out[next++] = (short) hands.gradeTerm(hands.winner(main), WinMethod.TSUMO, base);
-      case RON -> out[next++] = (short) hands.gradeTerm(hands.winner(main), WinMethod.RON, base);
+      case TSUMO, RON -> out[next++] = (short) hands.gradeTerm(main, base);
       case DOUBLE_RON -> {
-        out[next++] = (short) hands.gradeTerm(hands.winner(main), WinMethod.RON, base);
-        out[next++] = (short) hands.gradeTerm(hands.secondWinner(main), WinMethod.RON, other);
+        out[next++] =
+            (short) hands.gradeTerm(hands.ron(hands.winner(main), hands.loser(main)), base);
+        out[next++] =
+            (short) hands.gradeTerm(hands.ron(hands.secondWinner(main), hands.loser(main)), other);
       }
       case DRAW, ABORTIVE -> {
         // 打点の項は無い。
@@ -195,15 +198,26 @@ public final class OutcomeRows implements TrainingLoop.Rows {
     }
     for (int factor = 0; factor < hands.factorCount(main); factor++) {
       int seat = hands.factorSeat(main, factor);
-      out[next++] = (short) hands.riichiTerm(seat, hands.role(main, seat), (riichi & 1 << seat) != 0);
+      out[next++] = (short) hands.riichiTerm(main, seat, (riichi & 1 << seat) != 0);
     }
     return next - at;
   }
 
   @Override
   public String toString() {
-    return "OutcomeRows[" + variant + " " + window() + " rows=" + size + " outcomes=" + firstOutcome[size]
-        + " excluded=" + excluded + " unexplained=" + unexplained + "]";
+    return "OutcomeRows["
+        + variant
+        + " "
+        + window()
+        + " rows="
+        + size
+        + " outcomes="
+        + firstOutcome[size]
+        + " excluded="
+        + excluded
+        + " unexplained="
+        + unexplained
+        + "]";
   }
 
   /** 範囲の学習用の行と、早期終了用の検証の行。 */
@@ -224,7 +238,8 @@ public final class OutcomeRows implements TrainingLoop.Rows {
     private final ThreadLocal<TransitionSearch> searches;
     private final OutcomeCodes codes;
 
-    private Builder(Variant variant, RecencyWindow window, GateCohort gate, Predicate<GrpState> rows) {
+    private Builder(
+        Variant variant, RecencyWindow window, GateCohort gate, Predicate<GrpState> rows) {
       this.variant = variant;
       this.rows = Objects.requireNonNull(rows, "rows");
       split = new CohortSplit(variant, window, gate);
@@ -239,10 +254,13 @@ public final class OutcomeRows implements TrainingLoop.Rows {
     public Builder add(int cohort, List<GameRecord> games) {
       CohortSplit.Target[] targets = split.accept(cohort, games);
       byte offset = split.weights().offset(cohort);
-      List<Column> found = IntStream.range(0, games.size())
-          .parallel()
-          .mapToObj(index -> targets[index] == CohortSplit.Target.NONE ? null : search(games.get(index)))
-          .toList();
+      List<Column> found =
+          IntStream.range(0, games.size())
+              .parallel()
+              .mapToObj(
+                  index ->
+                      targets[index] == CohortSplit.Target.NONE ? null : search(games.get(index)))
+              .toList();
       for (int index = 0; index < games.size(); index++) {
         switch (targets[index]) {
           case TRAIN -> train.append(found.get(index), offset);
@@ -262,17 +280,19 @@ public final class OutcomeRows implements TrainingLoop.Rows {
      */
     public Builder add(int cohort, CountedHands counted) {
       if (counted.variant() != variant) {
-        throw new IllegalArgumentException("A " + counted.variant() + " count file in " + variant + " rows");
+        throw new IllegalArgumentException(
+            "A " + counted.variant() + " count file in " + variant + " rows");
       }
       CohortSplit.Target[] targets = split.accept(cohort, counted.games(), counted::gameId);
       byte offset = split.weights().offset(cohort);
       int[] scores = new int[variant.seats()];
       for (int game = 0; game < counted.games(); game++) {
-        Column column = switch (targets[game]) {
-          case TRAIN -> train;
-          case STOP -> stop;
-          case NONE -> null;
-        };
+        Column column =
+            switch (targets[game]) {
+              case TRAIN -> train;
+              case STOP -> stop;
+              case NONE -> null;
+            };
         if (column == null) {
           continue;
         }
@@ -281,7 +301,8 @@ public final class OutcomeRows implements TrainingLoop.Rows {
             scores[seat] = counted.score(hand, seat);
           }
           GrpState start =
-              new GrpState(variant, counted.round(hand), counted.honba(hand), counted.kyotaku(hand), scores);
+              new GrpState(
+                  variant, counted.round(hand), counted.honba(hand), counted.kyotaku(hand), scores);
           if (!rows.test(start)) {
             continue;
           }
@@ -298,7 +319,8 @@ public final class OutcomeRows implements TrainingLoop.Rows {
 
     public Split build() {
       return new Split(
-          new OutcomeRows(variant, split.weights(), train), new OutcomeRows(variant, split.weights(), stop));
+          new OutcomeRows(variant, split.weights(), train),
+          new OutcomeRows(variant, split.weights(), stop));
     }
 
     /** 半荘 1 つの行を作る。条件を満たす局末ごとに、その次の局への遷移を再現する結果を探す。 */
@@ -317,9 +339,10 @@ public final class OutcomeRows implements TrainingLoop.Rows {
           continue;
         }
         search.from(state);
-        int found = handEnd + 1 < handEnds.size()
-            ? search.next(handEnds.get(handEnd + 1))
-            : search.last(game.finalScores());
+        int found =
+            handEnd + 1 < handEnds.size()
+                ? search.next(handEnds.get(handEnd + 1))
+                : search.last(game.finalScores());
         if (found == 0) {
           column.unexplained++;
         } else {
@@ -422,8 +445,15 @@ public final class OutcomeRows implements TrainingLoop.Rows {
 
     /** 見つけた結果 1 つについて、項の番号を指定の位置から書き、結果 1 つぶんの残りを −1 で埋める。 */
     private void write(HandOutcomes hands, TransitionSearch search, int index, int at) {
-      int written = outcomeTerms(
-          hands, search.main(index), search.base(index), search.other(index), search.riichi(index), terms, at);
+      int written =
+          outcomeTerms(
+              hands,
+              search.main(index),
+              search.base(index),
+              search.other(index),
+              search.riichi(index),
+              terms,
+              at);
       Arrays.fill(terms, at + written, at + stride, (short) -1);
     }
   }

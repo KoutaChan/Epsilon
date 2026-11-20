@@ -47,11 +47,14 @@ public class TableLoopTest {
   private static final long RUN_SEED = 77L, ITERATION_SEED = 991L, BASE = 5_000L;
 
   /** 束ねて答える打ち手が答えを返すスレッド。 */
-  private static final ExecutorService ANSWERS = Executors.newFixedThreadPool(3, task -> {
-    Thread thread = new Thread(task, "table-test-answer");
-    thread.setDaemon(true);
-    return thread;
-  });
+  private static final ExecutorService ANSWERS =
+      Executors.newFixedThreadPool(
+          3,
+          task -> {
+            Thread thread = new Thread(task, "table-test-answer");
+            thread.setDaemon(true);
+            return thread;
+          });
 
   @AfterClass(alwaysRun = true)
   public void stopAnswers() {
@@ -131,10 +134,13 @@ public class TableLoopTest {
     @Override
     public CompletableFuture<Void> submit(List<Query> batch, DecisionInferenceIngress ingress) {
       int admission = batch.get(0).admission();
-      if (batch.size() > limitOf(admission)) violations.add("batch of " + batch.size() + " in class " + admission);
+      if (batch.size() > limitOf(admission))
+        violations.add("batch of " + batch.size() + " in class " + admission);
       for (Query query : batch) {
-        if (query.admission() != admission) violations.add("classes " + admission + " and " + query.admission() + " in one batch");
-        if (query.admission() != admissionOf(query.legalCount())) violations.add("class of " + query.legalCount() + " actions");
+        if (query.admission() != admission)
+          violations.add("classes " + admission + " and " + query.admission() + " in one batch");
+        if (query.admission() != admissionOf(query.legalCount()))
+          violations.add("class of " + query.legalCount() + " actions");
       }
       batches.incrementAndGet();
       rows.addAndGet(batch.size());
@@ -176,7 +182,8 @@ public class TableLoopTest {
       long[] state = of(game.wall());
       mix(state, decisions.id(slot));
       mix(state, decisions.legal(slot, choice));
-      choices.put(game.wall() + ":" + decisions.id(slot) + ":" + slot, decisions.legal(slot, choice));
+      choices.put(
+          game.wall() + ":" + decisions.id(slot) + ":" + slot, decisions.legal(slot, choice));
     }
 
     @Override
@@ -187,7 +194,8 @@ public class TableLoopTest {
           key -> {
             long[] deal = {key};
             for (int seat = 0; seat < 4; seat++)
-              for (int kind = 0; kind < 34; kind++) mix(deal, full.seat(seat).count(kind) * 64L + kind);
+              for (int kind = 0; kind < 34; kind++)
+                mix(deal, full.seat(seat).count(kind) * 64L + kind);
             mix(deal, full.seat(0).indicator(0));
             return deal;
           });
@@ -207,7 +215,8 @@ public class TableLoopTest {
   }
 
   /** 分岐のキー。半荘・局・判断・判断する席・差し替えの組で分岐を見分け、局末の点数の移動と局の始まりの卓をこのキーで控える。 */
-  record BranchKey(long game, int hand, long decision, int slot, int alternative) implements Comparable<BranchKey> {
+  record BranchKey(long game, int hand, long decision, int slot, int alternative)
+      implements Comparable<BranchKey> {
     @Override
     public int compareTo(BranchKey other) {
       return toString().compareTo(other.toString());
@@ -233,10 +242,16 @@ public class TableLoopTest {
      * 主経路の局ごとに、局末で読んだ局の始まりの卓と次局の卓を控える。キーは「半荘/局」。分岐の局の始まりの卓は、次のマップに
      * 分岐のキーで控える。
      */
-    final Map<String, String> mainStarts = new ConcurrentHashMap<>(), mainNexts = new ConcurrentHashMap<>();
+    final Map<String, String> mainStarts = new ConcurrentHashMap<>(),
+        mainNexts = new ConcurrentHashMap<>();
+
     final Map<BranchKey, String> branchStarts = new ConcurrentHashMap<>();
-    final AtomicLong queries = new AtomicLong(), mainRuns = new AtomicLong(), forks = new AtomicLong();
-    final AtomicLong settles = new AtomicLong(), mainRounds = new AtomicLong(), branchEnds = new AtomicLong();
+    final AtomicLong queries = new AtomicLong(),
+        mainRuns = new AtomicLong(),
+        forks = new AtomicLong();
+    final AtomicLong settles = new AtomicLong(),
+        mainRounds = new AtomicLong(),
+        branchEnds = new AtomicLong();
 
     Hooks(boolean remap) {
       this.remap = remap;
@@ -270,7 +285,8 @@ public class TableLoopTest {
       }
 
       private void enter(String hook, boolean driver) {
-        if (!inside.compareAndSet(false, true)) violations.add(hook + " overlaps another hook of the run");
+        if (!inside.compareAndSet(false, true))
+          violations.add(hook + " overlaps another hook of the run");
         boolean worker = Thread.currentThread().getName().startsWith("table-adv-");
         if (worker == driver) violations.add(hook + " on " + Thread.currentThread().getName());
       }
@@ -282,7 +298,8 @@ public class TableLoopTest {
       @Override
       public void boundary(Run<Query> run, Decisions decisions, RuleWorkspace ws) {
         enter("boundary", false);
-        if (atBoundary || ended) violations.add("boundary at " + run + " (open " + atBoundary + ", ended " + ended + ")");
+        if (atBoundary || ended)
+          violations.add("boundary at " + run + " (open " + atBoundary + ", ended " + ended + ")");
         atBoundary = true;
         queried = 0;
         exit();
@@ -301,7 +318,8 @@ public class TableLoopTest {
         enter("query", false);
         if (!atBoundary) violations.add("query before boundary at " + run);
         if (decisions.legalCount(slot) < 2) violations.add("query of a forced decision at " + run);
-        if (observation.legalActions() != decisions.legalCount(slot)) violations.add("O and decisions disagree at " + run);
+        if (observation.legalActions() != decisions.legalCount(slot))
+          violations.add("O and decisions disagree at " + run);
         queries.incrementAndGet();
         queried++;
         exit();
@@ -315,7 +333,9 @@ public class TableLoopTest {
         if (query.sigma == null) violations.add("play before the answer");
         int n = query.legalCount();
         int action =
-            remap && (SeedMixer.mix64(query.legal()[drawn] * 13L + query.seat()) & 3) == 0 ? (drawn + 1) % n : drawn;
+            remap && (SeedMixer.mix64(query.legal()[drawn] * 13L + query.seat()) & 3) == 0
+                ? (drawn + 1) % n
+                : drawn;
         if (action != drawn) (branch == null ? mainRemaps : branchRemaps).incrementAndGet();
         played[query.slot()] = action;
         exit();
@@ -333,12 +353,16 @@ public class TableLoopTest {
           Query query = run.query(slot);
           if (forced != (query == null)) violations.add("query of slot " + slot + " at " + run);
           if (branch == null)
-            mainChosen.put(run.game().wall() + ":" + decisions.id(slot) + ":" + slot, decisions.legal(slot, chosen[slot]));
+            mainChosen.put(
+                run.game().wall() + ":" + decisions.id(slot) + ":" + slot,
+                decisions.legal(slot, chosen[slot]));
           if (query == null) continue;
           asked++;
           if (query.sigma == null) violations.add("decided before the answer at " + run);
-          if (chosen[slot] < 0 || chosen[slot] >= decisions.legalCount(slot)) violations.add("choice out of range at " + run);
-          if (chosen[slot] != played[slot]) violations.add("decided saw another action than play at " + run);
+          if (chosen[slot] < 0 || chosen[slot] >= decisions.legalCount(slot))
+            violations.add("choice out of range at " + run);
+          if (chosen[slot] != played[slot])
+            violations.add("decided saw another action than play at " + run);
         }
         if (asked != queried) violations.add("decided saw " + asked + " queries of " + queried);
         if (run.main()) fork(run, decisions, chosen);
@@ -352,11 +376,14 @@ public class TableLoopTest {
       private void fork(Run<Query> run, Decisions decisions, int[] chosen) {
         for (int slot = 0; slot < decisions.size(); slot++) {
           int n = decisions.legalCount(slot);
-          if (n < 2 || (SeedMixer.mix64(decisions.id(slot) * 977 + run.game().wall()) & 15) != 0) continue;
+          if (n < 2 || (SeedMixer.mix64(decisions.id(slot) * 977 + run.game().wall()) & 15) != 0)
+            continue;
           for (int alternative = 0; alternative < 2; alternative++) {
             int[] choices = Arrays.copyOf(chosen, decisions.size());
             if (alternative == 1) choices[slot] = (chosen[slot] + 1) % n;
-            var key = new BranchKey(run.game().wall(), run.handOrdinal(), decisions.id(slot), slot, alternative);
+            var key =
+                new BranchKey(
+                    run.game().wall(), run.handOrdinal(), decisions.id(slot), slot, alternative);
             forks.incrementAndGet();
             run.fork(choices, new Path(key));
           }
@@ -367,7 +394,9 @@ public class TableLoopTest {
       @Override
       public void roundEnded(Run<Query> run, RoundEnd end, boolean gameEnded) {
         enter("roundEnded", false);
-        if (atBoundary || ended) violations.add("roundEnded at " + run + " (open " + atBoundary + ", ended " + ended + ")");
+        if (atBoundary || ended)
+          violations.add(
+              "roundEnded at " + run + " (open " + atBoundary + ", ended " + ended + ")");
         List<Integer> deltas = new ArrayList<>(4);
         for (int seat = 0; seat < 4; seat++) deltas.add(end.delta(seat));
         String start = table(run.handStart());
@@ -380,7 +409,8 @@ public class TableLoopTest {
           ended = gameEnded;
         } else {
           if (run.main()) violations.add("branch hooks on the main run");
-          if (run.handOrdinal() != branch.hand()) violations.add("branch hand " + run.handOrdinal() + " of " + branch);
+          if (run.handOrdinal() != branch.hand())
+            violations.add("branch hand " + run.handOrdinal() + " of " + branch);
           branchStarts.put(branch, start);
           if (branches.put(branch, deltas) != null) violations.add("branch ended twice " + branch);
           branchEnds.incrementAndGet();
@@ -408,9 +438,16 @@ public class TableLoopTest {
   /** 卓の局・親・本場・供託・点数を / でつないだ文字列。 */
   private static String table(TableState table) {
     StringBuilder text =
-        new StringBuilder().append(table.round()).append('/').append(table.dealer()).append('/').append(table.honba())
-            .append('/').append(table.kyotaku());
-    for (int seat = 0; seat < table.variant().seats(); seat++) text.append('/').append(table.score(seat));
+        new StringBuilder()
+            .append(table.round())
+            .append('/')
+            .append(table.dealer())
+            .append('/')
+            .append(table.honba())
+            .append('/')
+            .append(table.kyotaku());
+    for (int seat = 0; seat < table.variant().seats(); seat++)
+      text.append('/').append(table.score(seat));
     return text.toString();
   }
 
@@ -426,16 +463,21 @@ public class TableLoopTest {
       int hand = Integer.parseInt(key[1]);
       if (hand == 0) {
         String[] fields = entry.getValue().split("/");
-        Assert.assertEquals(List.of(fields[0], fields[2], fields[3]), List.of("0", "0", "0"), entry.toString());
-        for (int seat = 5; seat < fields.length; seat++) Assert.assertEquals(fields[seat], fields[4], entry.toString());
+        Assert.assertEquals(
+            List.of(fields[0], fields[2], fields[3]), List.of("0", "0", "0"), entry.toString());
+        for (int seat = 5; seat < fields.length; seat++)
+          Assert.assertEquals(fields[seat], fields[4], entry.toString());
       } else {
-        Assert.assertEquals(entry.getValue(), hooks.mainNexts.get(key[0] + "/" + (hand - 1)), entry.getKey());
+        Assert.assertEquals(
+            entry.getValue(), hooks.mainNexts.get(key[0] + "/" + (hand - 1)), entry.getKey());
       }
     }
     Assert.assertEquals(hooks.branchStarts.size(), hooks.branches.size());
     for (var entry : hooks.branchStarts.entrySet())
       Assert.assertEquals(
-          entry.getValue(), hooks.mainStarts.get(entry.getKey().game() + "/" + entry.getKey().hand()), entry.toString());
+          entry.getValue(),
+          hooks.mainStarts.get(entry.getKey().game() + "/" + entry.getKey().hand()),
+          entry.toString());
   }
 
   /** 1 回の卓の結果と、フックと観測が控えたもの。 */
@@ -445,7 +487,12 @@ public class TableLoopTest {
    * @param inline 席ごとに、その場で答えるなら true
    */
   private static Played play(
-      int workers, int activeGames, boolean[] inline, Behaviour behaviour, long runSeed, int games) {
+      int workers,
+      int activeGames,
+      boolean[] inline,
+      Behaviour behaviour,
+      long runSeed,
+      int games) {
     return play(workers, activeGames, inline, behaviour, runSeed, games, false);
   }
 
@@ -454,7 +501,13 @@ public class TableLoopTest {
    * @param remap 引いた手の一部を替えて打つなら true（{@link Hooks}）
    */
   private static Played play(
-      int workers, int activeGames, boolean[] inline, Behaviour behaviour, long runSeed, int games, boolean remap) {
+      int workers,
+      int activeGames,
+      boolean[] inline,
+      Behaviour behaviour,
+      long runSeed,
+      int games,
+      boolean remap) {
     Queue<String> violations = new ConcurrentLinkedQueue<>();
     List<BatchedSeat> batched = new ArrayList<>();
     List<TableSeat<Query>> seats = new ArrayList<>();
@@ -484,22 +537,30 @@ public class TableLoopTest {
                   DrawOrder.SEAT_STREAMS,
                   behaviour,
                   game -> seating,
-                  digests), hooks);
+                  digests),
+              hooks);
     }
     hooks.violations.addAll(violations);
     return new Played(result, hooks, digests, batched);
   }
 
-  private static final boolean[] INLINE = {true, true, true, true}, BATCHED = {false, false, false, false};
+  private static final boolean[] INLINE = {true, true, true, true},
+      BATCHED = {false, false, false, false};
   private static final boolean[] MIXED = {true, false, true, false};
 
   private static void assertSame(Played actual, Played expected, String label) {
-    Assert.assertEquals(actual.digests().snapshot(), expected.digests().snapshot(), label + " games");
-    Assert.assertEquals(new TreeMap<>(actual.hooks().branches), new TreeMap<>(expected.hooks().branches), label + " branches");
+    Assert.assertEquals(
+        actual.digests().snapshot(), expected.digests().snapshot(), label + " games");
+    Assert.assertEquals(
+        new TreeMap<>(actual.hooks().branches),
+        new TreeMap<>(expected.hooks().branches),
+        label + " branches");
     Assert.assertEquals(actual.result().games(), expected.result().games(), label);
     Assert.assertEquals(actual.result().rounds(), expected.result().rounds(), label);
-    Assert.assertEquals(actual.result().queriedDecisions(), expected.result().queriedDecisions(), label);
-    Assert.assertEquals(actual.result().forcedDecisions(), expected.result().forcedDecisions(), label);
+    Assert.assertEquals(
+        actual.result().queriedDecisions(), expected.result().queriedDecisions(), label);
+    Assert.assertEquals(
+        actual.result().forcedDecisions(), expected.result().forcedDecisions(), label);
   }
 
   private static void assertConsistent(Played played) {
@@ -525,7 +586,8 @@ public class TableLoopTest {
     if (!played.batched().isEmpty()) {
       Assert.assertTrue(result.batches() > 0);
       Assert.assertTrue(result.largestBatch() <= 5, "largest " + result.largestBatch());
-      long admitted = result.admission().admitted().values().stream().mapToLong(count -> count.rows()).sum();
+      long admitted =
+          result.admission().admitted().values().stream().mapToLong(count -> count.rows()).sum();
       Assert.assertEquals(admitted, batchedRows);
       Assert.assertEquals(result.admission().batches(), result.batches());
     }
@@ -570,7 +632,9 @@ public class TableLoopTest {
     Map<Long, Long> first = reference.digests().snapshot(), second = other.digests().snapshot();
     for (long id : first.keySet()) {
       Assert.assertNotEquals(second.get(id), first.get(id), "game " + id);
-      Assert.assertFalse(Arrays.equals(other.digests().deals.get(id), reference.digests().deals.get(id)), "deal " + id);
+      Assert.assertFalse(
+          Arrays.equals(other.digests().deals.get(id), reference.digests().deals.get(id)),
+          "deal " + id);
     }
   }
 
@@ -578,14 +642,18 @@ public class TableLoopTest {
   @Test(timeOut = 600_000)
   public void behaviourDrawsDoNotDependOnWorkers() {
     for (Behaviour behaviour :
-        List.of(new Behaviour(0.1, 0, CrnScheme.TWO_STAGE_FLOOR), new Behaviour(0.15, 0.5, CrnScheme.SINGLE_RACE))) {
+        List.of(
+            new Behaviour(0.1, 0, CrnScheme.TWO_STAGE_FLOOR),
+            new Behaviour(0.15, 0.5, CrnScheme.SINGLE_RACE))) {
       Played reference = play(1, 1, INLINE, behaviour, RUN_SEED, GAMES);
       assertConsistent(reference);
       if (behaviour.temperature() == 0) assertReplaysMatchMain(reference);
       Played wide = play(4, 8, MIXED, behaviour, RUN_SEED, GAMES);
       assertConsistent(wide);
       assertSame(wide, reference, behaviour.toString());
-      Assert.assertNotEquals(reference.digests().snapshot(), play(1, 1, INLINE, null, RUN_SEED, GAMES).digests().snapshot());
+      Assert.assertNotEquals(
+          reference.digests().snapshot(),
+          play(1, 1, INLINE, null, RUN_SEED, GAMES).digests().snapshot());
     }
   }
 
@@ -600,9 +668,13 @@ public class TableLoopTest {
     assertConsistent(remapped);
     assertReplaysMatchMain(remapped);
     Hooks hooks = remapped.hooks();
-    Assert.assertTrue(hooks.mainRemaps.get() > 0 && hooks.branchRemaps.get() > 0, hooks.mainRemaps + " " + hooks.branchRemaps);
+    Assert.assertTrue(
+        hooks.mainRemaps.get() > 0 && hooks.branchRemaps.get() > 0,
+        hooks.mainRemaps + " " + hooks.branchRemaps);
     Assert.assertEquals(new TreeMap<>(remapped.digests().choices), new TreeMap<>(hooks.mainChosen));
-    Assert.assertNotEquals(remapped.digests().snapshot(), play(2, 4, MIXED, floor, RUN_SEED, GAMES).digests().snapshot());
+    Assert.assertNotEquals(
+        remapped.digests().snapshot(),
+        play(2, 4, MIXED, floor, RUN_SEED, GAMES).digests().snapshot());
   }
 
   /** 打ち手が失敗すると卓を止め、同じ例外をそのまま投げる。卓はその後も使える。 */
@@ -618,22 +690,40 @@ public class TableLoopTest {
             super.evaluateInline(query);
           }
         };
-    List<TableSeat<Query>> seats = List.of(failing, new InlineSeat(), new InlineSeat(), new InlineSeat());
+    List<TableSeat<Query>> seats =
+        List.of(failing, new InlineSeat(), new InlineSeat(), new InlineSeat());
     List<Long> ids = List.of(BASE, BASE + 1, BASE + 2);
     List<GameKey> games = GameKey.onePerWall(ids);
     try (var table = new TableLoop(new TableSettings(3, 2, 200L, 4))) {
       try {
         table.play(
-            new TablePlan<>(TENHOU_4P, RUN_SEED, ITERATION_SEED, games, DrawOrder.SEAT_STREAMS, null, id -> seats, null),
+            new TablePlan<>(
+                TENHOU_4P,
+                RUN_SEED,
+                ITERATION_SEED,
+                games,
+                DrawOrder.SEAT_STREAMS,
+                null,
+                id -> seats,
+                null),
             TableHooks.plain());
         Assert.fail("the failure did not stop the table");
       } catch (IllegalStateException thrown) {
         Assert.assertSame(thrown, failure);
       }
-      List<TableSeat<Query>> healthy = List.of(new InlineSeat(), new InlineSeat(), new InlineSeat(), new InlineSeat());
+      List<TableSeat<Query>> healthy =
+          List.of(new InlineSeat(), new InlineSeat(), new InlineSeat(), new InlineSeat());
       TableLoop.Result result =
           table.play(
-              new TablePlan<>(TENHOU_4P, RUN_SEED, ITERATION_SEED, games, DrawOrder.SEAT_STREAMS, null, id -> healthy, null),
+              new TablePlan<>(
+                  TENHOU_4P,
+                  RUN_SEED,
+                  ITERATION_SEED,
+                  games,
+                  DrawOrder.SEAT_STREAMS,
+                  null,
+                  id -> healthy,
+                  null),
               TableHooks.plain());
       Assert.assertEquals(result.games(), ids.size());
     }
@@ -677,7 +767,8 @@ public class TableLoopTest {
     @Override
     public DecisionInferenceIngress.Attempt tryAcquireIngress(int admission) {
       acquired++;
-      return DecisionInferenceIngress.Attempt.acquired(new DecisionInferenceIngress(this, null, () -> released++));
+      return DecisionInferenceIngress.Attempt.acquired(
+          new DecisionInferenceIngress(this, null, () -> released++));
     }
 
     @Override
@@ -723,7 +814,9 @@ public class TableLoopTest {
 
   @DataProvider
   public Object[][] reservations() {
-    return Arrays.stream(Reservation.values()).map(each -> new Object[] {each}).toArray(Object[][]::new);
+    return Arrays.stream(Reservation.values())
+        .map(each -> new Object[] {each})
+        .toArray(Object[][]::new);
   }
 
   /**
@@ -734,7 +827,8 @@ public class TableLoopTest {
   public void aSeatThatThrowsFromSubmitStopsTheTable(Reservation reservation) {
     var failure = new IllegalStateException("submit failed");
     var failing = new ThrowingSeat(reservation, failure, 20);
-    List<TableSeat<Query>> seats = List.of(failing, new InlineSeat(), new InlineSeat(), new InlineSeat());
+    List<TableSeat<Query>> seats =
+        List.of(failing, new InlineSeat(), new InlineSeat(), new InlineSeat());
     List<Long> ids = List.of(BASE, BASE + 1, BASE + 2);
     List<GameKey> games = GameKey.onePerWall(ids);
     try (var table = new TableLoop(new TableSettings(3, 2, 200L, 4))) {
@@ -745,7 +839,14 @@ public class TableLoopTest {
                 try {
                   table.play(
                       new TablePlan<>(
-                          TENHOU_4P, RUN_SEED, ITERATION_SEED, games, DrawOrder.SEAT_STREAMS, null, id -> seats, null),
+                          TENHOU_4P,
+                          RUN_SEED,
+                          ITERATION_SEED,
+                          games,
+                          DrawOrder.SEAT_STREAMS,
+                          null,
+                          id -> seats,
+                          null),
                       TableHooks.plain());
                   return null;
                 } catch (RuntimeException | Error stopped) {
@@ -753,11 +854,21 @@ public class TableLoopTest {
                 }
               });
       Assert.assertSame(thrown, failure);
-      Assert.assertEquals(failing.released, failing.acquired - (reservation == Reservation.MOVED ? 1 : 0));
-      List<TableSeat<Query>> healthy = List.of(new InlineSeat(), new InlineSeat(), new InlineSeat(), new InlineSeat());
+      Assert.assertEquals(
+          failing.released, failing.acquired - (reservation == Reservation.MOVED ? 1 : 0));
+      List<TableSeat<Query>> healthy =
+          List.of(new InlineSeat(), new InlineSeat(), new InlineSeat(), new InlineSeat());
       TableLoop.Result result =
           table.play(
-              new TablePlan<>(TENHOU_4P, RUN_SEED, ITERATION_SEED, games, DrawOrder.SEAT_STREAMS, null, id -> healthy, null),
+              new TablePlan<>(
+                  TENHOU_4P,
+                  RUN_SEED,
+                  ITERATION_SEED,
+                  games,
+                  DrawOrder.SEAT_STREAMS,
+                  null,
+                  id -> healthy,
+                  null),
               TableHooks.plain());
       Assert.assertEquals(result.games(), ids.size());
     }

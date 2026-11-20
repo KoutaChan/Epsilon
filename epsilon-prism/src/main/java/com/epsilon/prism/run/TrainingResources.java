@@ -39,7 +39,8 @@ public final class TrainingResources implements AutoCloseable {
   /** 反復ごとの Φ を決める。 */
   private final PhiResolver resolver;
 
-  private TrainingResources(NetworkRuntime runtime, NetworkRuntime learning, TableLoop table, PhiResolver resolver) {
+  private TrainingResources(
+      NetworkRuntime runtime, NetworkRuntime learning, TableLoop table, PhiResolver resolver) {
     this.runtime = runtime;
     this.learning = learning;
     this.table = table;
@@ -54,7 +55,7 @@ public final class TrainingResources implements AutoCloseable {
    */
   public static TrainingResources open(PrismSettings settings, Path root) throws IOException {
     InferenceSettings inference = settings.inference();
-    var runtime = new NetworkRuntime(inference.encoders(), inference.slots(), inference.readyBatches());
+    var runtime = new NetworkRuntime(inference);
     var learning = NetworkRuntime.forLearning();
     TableLoop table = null;
     PhiResolver resolver = null;
@@ -67,7 +68,8 @@ public final class TrainingResources implements AutoCloseable {
       table = new TableLoop(settings.table());
       resolver =
           PhiResolver.open(
-              new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed()), new GrpFiles(root));
+              new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed()),
+              new GrpFiles(root));
       return new TrainingResources(runtime, learning, table, resolver);
     } catch (IOException | RuntimeException | Error failure) {
       try (runtime;
@@ -120,9 +122,9 @@ public final class TrainingResources implements AutoCloseable {
   @Override
   public void close() {
     try (runtime;
-         learning;
-         table;
-         resolver) {
+        learning;
+        table;
+        resolver) {
       // 宣言の逆の順に閉じる
     }
   }

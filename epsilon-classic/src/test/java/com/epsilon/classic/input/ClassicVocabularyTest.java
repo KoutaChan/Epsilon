@@ -39,7 +39,8 @@ public class ClassicVocabularyTest {
   public void vocabulariesKeepTheirOrder() {
     assertOrder(
         ActionType.class,
-        "[DAHAI, CHI, PON, DAIMINKAN, ANKAN, KAKAN, RIICHI_DAHAI, TSUMO_AGARI, RON_AGARI, PASS, KYUSHU_KYUHAI]");
+        "[DAHAI, CHI, PON, DAIMINKAN, ANKAN, KAKAN, RIICHI_DAHAI, TSUMO_AGARI, RON_AGARI, PASS,"
+            + " KYUSHU_KYUHAI]");
     assertOrder(ActionGroup.class, "[DAHAI, MELD, KAN, RIICHI, TSUMO, RON, PASS, KYUSHU]");
     assertOrder(TileSelection.class, "[NOT_APPLICABLE, NON_AKA, AKA, TSUMOGIRI, TSUMOGIRI_AKA]");
     assertOrder(MeldType.class, "[CHI, PON, DAIMINKAN, ANKAN, KAKAN]");
@@ -48,25 +49,29 @@ public class ClassicVocabularyTest {
     assertOrder(RiichiStatus.class, "[NONE, RIICHI, DOUBLE_RIICHI]");
     assertOrder(KanKind.class, "[ANKAN, KAKAN, DAIMINKAN]");
     assertOrder(DrawSource.class, "[WALL, RINSHAN]");
-    assertOrder(NextStep.class, "[DECISION_COMPLETE, IMMEDIATE_DISCARD, RINSHAN_DRAW, ROUND_COMPLETE]");
+    assertOrder(
+        NextStep.class, "[DECISION_COMPLETE, IMMEDIATE_DISCARD, RINSHAN_DRAW, ROUND_COMPLETE]");
     assertOrder(SettlementAssumption.class, "[EXACT_TSUMO, SOLE_RON]");
     assertOrder(EventType.class, "[NONE, DRAW, DISCARD, KAN_ATTEMPT]");
     assertOrder(
-        WinConditions.class, "[NONE, TENHOU, CHIIHOU, TSUMO, RINSHAN, HAITEI, RON, CHANKAN, HOUTEI]");
+        WinConditions.class,
+        "[NONE, TENHOU, CHIIHOU, TSUMO, RINSHAN, HAITEI, RON, CHANKAN, HOUTEI]");
     assertOrder(TransitionKind.class, "[IDENTITY, DISCARD, RINSHAN_PENDING, TERMINAL]");
     assertOrder(DiscardContext.class, "[NONE, TURN, AFTER_CHI, AFTER_PON]");
     assertOrder(RonFuritenKind.class, "[NONE, TEMPORARY, RIICHI_PERSISTENT]");
     assertOrder(WaitWinType.class, "[RON, TSUMO]");
     assertOrder(
         Yaku.class,
-        "[RIICHI, DOUBLE_RIICHI, IPPATSU, MENZEN_TSUMO, PINFU, TANYAO, YAKUHAI_HAKU, YAKUHAI_HATSU, YAKUHAI_CHUN,"
-            + " YAKUHAI_SEAT, YAKUHAI_ROUND, RINSHAN, CHANKAN, HAITEI, HOUTEI, IPEIKOU, SANSHOKU, SANSHOKU_DOUKOU,"
-            + " ITTSU, TOITOI, SANANKOU, SANKANTSU, SHOUSANGEN, HONROUTOU, CHANTA, RYANPEIKOU, JUNCHAN, HONITSU,"
-            + " CHINITSU, CHIITOITSU, KOKUSHI, SUUANKOU, CHUUREN, DAISANGEN, TSUUIISOU, RYUUIISOU, CHINROUTOU,"
-            + " DAISUUSHII, SHOUSUUSHII, SUUKANTSU, TENHOU, CHIIHOU]");
+        "[RIICHI, DOUBLE_RIICHI, IPPATSU, MENZEN_TSUMO, PINFU, TANYAO, YAKUHAI_HAKU, YAKUHAI_HATSU,"
+            + " YAKUHAI_CHUN, YAKUHAI_SEAT, YAKUHAI_ROUND, RINSHAN, CHANKAN, HAITEI, HOUTEI,"
+            + " IPEIKOU, SANSHOKU, SANSHOKU_DOUKOU, ITTSU, TOITOI, SANANKOU, SANKANTSU, SHOUSANGEN,"
+            + " HONROUTOU, CHANTA, RYANPEIKOU, JUNCHAN, HONITSU, CHINITSU, CHIITOITSU, KOKUSHI,"
+            + " SUUANKOU, CHUUREN, DAISANGEN, TSUUIISOU, RYUUIISOU, CHINROUTOU, DAISUUSHII,"
+            + " SHOUSUUSHII, SUUKANTSU, TENHOU, CHIIHOU]");
     assertOrder(
         TileFlag.class,
-        "[SHAPE_WAIT, RON_YAKU_WAIT, TSUMO_YAKU_WAIT, DISCARDED, CALLED_INTO_MELD, AKA_WINNING_TILE]");
+        "[SHAPE_WAIT, RON_YAKU_WAIT, TSUMO_YAKU_WAIT, DISCARDED, CALLED_INTO_MELD,"
+            + " AKA_WINNING_TILE]");
   }
 
   @Test
@@ -132,7 +137,8 @@ public class ClassicVocabularyTest {
       Action action = Action.of(code);
       assertEquals(VocabularyCodec.actionIndex(action), code, action.toString());
       assertEquals(VocabularyCodec.actionType(action.type()).name(), action.type().name());
-      assertEquals(VocabularyCodec.tileSelection(action.selection()).name(), action.selection().name());
+      assertEquals(
+          VocabularyCodec.tileSelection(action.selection()).name(), action.selection().name());
       int identity = VocabularyCodec.discardIdentity(action);
       switch (action.type()) {
         case DAHAI -> assertEquals(identity, code);
@@ -147,7 +153,8 @@ public class ClassicVocabularyTest {
   @Test
   public void yakuMapByName() {
     for (ScoringYaku yaku : ScoringYaku.values()) {
-      assertEquals(VocabularyCodec.yaku(yaku.bit()), 1L << Yaku.valueOf(yaku.name()).ordinal(), yaku.name());
+      assertEquals(
+          VocabularyCodec.yaku(yaku.bit()), 1L << Yaku.valueOf(yaku.name()).ordinal(), yaku.name());
     }
     assertEquals(VocabularyCodec.yaku(0), 0);
   }

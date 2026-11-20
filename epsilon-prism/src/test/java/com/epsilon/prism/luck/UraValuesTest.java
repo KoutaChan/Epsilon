@@ -63,16 +63,20 @@ public class UraValuesTest {
     Phi phiAll = UraExpectationPlayTest.phi(variant);
     Phi phiExpected = UraExpectationPlayTest.phi(variant);
     UraValues none = new UraValues(new UraSettings.Realized(0), phiNone, SEED);
-    UraValues sampled = new UraValues(new UraSettings.Realized(0.05), UraExpectationPlayTest.phi(variant), SEED);
-    UraValues half = new UraValues(new UraSettings.Realized(0.5), UraExpectationPlayTest.phi(variant), SEED);
+    UraValues sampled =
+        new UraValues(new UraSettings.Realized(0.05), UraExpectationPlayTest.phi(variant), SEED);
+    UraValues half =
+        new UraValues(new UraSettings.Realized(0.5), UraExpectationPlayTest.phi(variant), SEED);
     UraValues all = new UraValues(new UraSettings.Realized(1), phiAll, SEED);
     UraValues expected = new UraValues(new UraSettings.Expected(), phiExpected, SEED);
     long fixedGame = 9;
     int fixedHand = 3;
     double coin = UraValues.coin(SEED, fixedGame, fixedHand);
     UraValues above =
-        new UraValues(new UraSettings.Realized(Math.nextUp(coin)), UraExpectationPlayTest.phi(variant), SEED);
-    UraValues at = new UraValues(new UraSettings.Realized(coin), UraExpectationPlayTest.phi(variant), SEED);
+        new UraValues(
+            new UraSettings.Realized(Math.nextUp(coin)), UraExpectationPlayTest.phi(variant), SEED);
+    UraValues at =
+        new UraValues(new UraSettings.Realized(coin), UraExpectationPlayTest.phi(variant), SEED);
     int seats = variant.seats();
     double[] former = new double[seats], out = new double[seats];
     long[] game = {0};
@@ -91,7 +95,8 @@ public class UraValuesTest {
               boolean over = next.gameOver();
               formerValues(reference, next, former);
               counts.merge(over ? Count.TERMINAL : Count.CONTINUING, 1L, Long::sum);
-              String where = variant + " game " + game[0] + " hand " + hand[0] + " " + end.outcome();
+              String where =
+                  variant + " game " + game[0] + " hand " + hand[0] + " " + end.outcome();
               UraExpectation values = none.handEnd(full, end, start, null, game[0], hand[0], out);
               boolean riichiWin = values.riichiWin();
               Assert.assertFalse(values.averaged(), where);
@@ -106,16 +111,22 @@ public class UraValuesTest {
               UraExpectation averaged = all.handEnd(full, end, start, null, game[0], hand[0], out);
               assertBits(out, former, "sample 1 " + where);
               Assert.assertEquals(averaged.averaged(), riichiWin, where);
-              UraExpectation learned = expected.handEnd(full, end, start, null, game[0], hand[0], out);
+              UraExpectation learned =
+                  expected.handEnd(full, end, start, null, game[0], hand[0], out);
               Assert.assertEquals(learned.averaged(), riichiWin, where);
               for (int seat = 0; seat < seats; seat++) {
                 double value = riichiWin ? learned.expected(seat) : former[seat];
                 Assert.assertEquals(
-                    Double.doubleToRawLongBits(out[seat]), Double.doubleToRawLongBits(value), where + " seat " + seat);
+                    Double.doubleToRawLongBits(out[seat]),
+                    Double.doubleToRawLongBits(value),
+                    where + " seat " + seat);
               }
               Assert.assertEquals(
-                  above.handEnd(full, end, start, null, fixedGame, fixedHand, out).averaged(), riichiWin, where);
-              Assert.assertFalse(at.handEnd(full, end, start, null, fixedGame, fixedHand, out).averaged(), where);
+                  above.handEnd(full, end, start, null, fixedGame, fixedHand, out).averaged(),
+                  riichiWin,
+                  where);
+              Assert.assertFalse(
+                  at.handEnd(full, end, start, null, fixedGame, fixedHand, out).averaged(), where);
               if (riichiWin) {
                 counts.merge(Count.RIICHI_WINS, 1L, Long::sum);
                 if (over) counts.merge(Count.TERMINAL_RIICHI_WINS, 1L, Long::sum);
@@ -129,7 +140,8 @@ public class UraValuesTest {
             });
     String tally = variant + " " + counts;
     long riichiWins = counts.get(Count.RIICHI_WINS), halfAveraged = counts.get(Count.HALF_AVERAGED);
-    Assert.assertTrue(counts.get(Count.TERMINAL) > 10 && counts.get(Count.TERMINAL_RIICHI_WINS) > 0, tally);
+    Assert.assertTrue(
+        counts.get(Count.TERMINAL) > 10 && counts.get(Count.TERMINAL_RIICHI_WINS) > 0, tally);
     Assert.assertTrue(riichiWins > 100 && halfAveraged > 0 && halfAveraged < riichiWins, tally);
     // 実際の値は、続く局の局末に Φ を 1 回ずつ呼ぶだけ（終局の卓には呼ばない）
     Assert.assertEquals(phiNone.stats().requests(), (long) counts.get(Count.CONTINUING), tally);
@@ -150,7 +162,8 @@ public class UraValuesTest {
   /** 期待値を使わない局末の値。終局は Φ を呼ばずに最終順位の効用、続く局は次局の卓の Φ。 */
   private static void formerValues(Phi phi, TableState next, double[] out) {
     if (next.gameOver()) {
-      for (int seat = 0; seat < out.length; seat++) out[seat] = phi.utility().value(phi.variant(), next.rank(seat));
+      for (int seat = 0; seat < out.length; seat++)
+        out[seat] = phi.utility().value(phi.variant(), next.rank(seat));
     } else {
       phi.values(null, next, out);
     }
@@ -159,7 +172,9 @@ public class UraValuesTest {
   private static void assertBits(double[] actual, double[] expected, String where) {
     for (int seat = 0; seat < expected.length; seat++)
       Assert.assertEquals(
-          Double.doubleToRawLongBits(actual[seat]), Double.doubleToRawLongBits(expected[seat]), where + " seat " + seat);
+          Double.doubleToRawLongBits(actual[seat]),
+          Double.doubleToRawLongBits(expected[seat]),
+          where + " seat " + seat);
   }
 
   /**
@@ -176,13 +191,15 @@ public class UraValuesTest {
       Assert.assertEquals(UraValues.coin(seed, game, hand), CrnSeeds.unit(bits));
       for (CrnSeeds.Domain domain : CrnSeeds.Domain.values())
         if (domain != CrnSeeds.Domain.URA_AUDIT)
-          Assert.assertNotEquals(CrnSeeds.derive(seed, domain, game, hand), bits, domain.toString());
+          Assert.assertNotEquals(
+              CrnSeeds.derive(seed, domain, game, hand), bits, domain.toString());
     }
     UraSettings sample = new UraSettings.Realized(0.05);
     int games = 20_000, hands = 10;
     long chosen = 0;
     for (long game = 0; game < games; game++)
-      for (int hand = 0; hand < hands; hand++) if (sample.averages(UraValues.coin(SEED, game, hand))) chosen++;
+      for (int hand = 0; hand < hands; hand++)
+        if (sample.averages(UraValues.coin(SEED, game, hand))) chosen++;
     double n = (double) games * hands, share = chosen / n;
     Assert.assertEquals(share, 0.05, 5 * Math.sqrt(0.05 * 0.95 / n), "share " + share);
     Assert.assertNotEquals(UraValues.coin(SEED, 1, 2), UraValues.coin(SEED, 2, 1));
@@ -203,10 +220,12 @@ public class UraValuesTest {
     Assert.assertTrue(nothing.groups().stream().allMatch(bin -> bin == 0));
     Assert.assertEquals(nothing.microsPerAveraged(), 0.0);
     Assert.assertTrue(nothing.cells().isEmpty());
-    Assert.assertEquals(RecordFile.read(UraAudit.Summary.class, RecordFile.json(nothing), "test").value(), nothing);
+    Assert.assertEquals(
+        RecordFile.read(UraAudit.Summary.class, RecordFile.json(nothing), "test").value(), nothing);
 
     // 行が 1 つの区分（z も分散の減りも有限でない）と、30 の束の 60 行の区分（どちらも有限）
-    UraAudit.Cell single = UraAudit.Cell.of(DecisionClass.END, false, 1, 1, 0.25, 0, 0.0625, 0.01, 0);
+    UraAudit.Cell single =
+        UraAudit.Cell.of(DecisionClass.END, false, 1, 1, 0.25, 0, 0.0625, 0.01, 0);
     UraAudit.Cell sixty = UraAudit.Cell.of(DecisionClass.KAN, true, 60, 30, 0.5, 0.1, 0.75, 0.2, 1);
     long[] groups = {0, 3, 1, 0, 0, 0, 0, 0};
     UraAudit.Report report = new UraAudit.Report(10, 5, 4, groups, 6_000, List.of(single, sixty));
@@ -228,7 +247,8 @@ public class UraValuesTest {
     Assert.assertFalse(first.has("z") || first.has("reduction"), first.toString());
     Assert.assertEquals(second.get("z").getAsDouble(), sixty.z());
     Assert.assertEquals(second.get("reduction").getAsDouble(), sixty.reduction());
-    Assert.assertEquals(RecordFile.read(UraAudit.Summary.class, RecordFile.json(summary), "test").value(), summary);
+    Assert.assertEquals(
+        RecordFile.read(UraAudit.Summary.class, RecordFile.json(summary), "test").value(), summary);
   }
 
   /**
@@ -241,7 +261,8 @@ public class UraValuesTest {
     UraScenes.Played played = UraScenes.plainRon();
     Engine engine = played.engine();
     UraExpectation values = new UraExpectation(UraExpectationPlayTest.phi(UraScenes.VARIANT));
-    Assert.assertTrue(values.evaluate(engine.full(), engine.roundEnd(), played.start(), null, true));
+    Assert.assertTrue(
+        values.evaluate(engine.full(), engine.roundEnd(), played.start(), null, true));
     int winner = 2;
     Assert.assertNotEquals(values.actual(winner), values.expected(winner));
     Assert.assertTrue(values.variance(winner) > 0);
@@ -255,12 +276,19 @@ public class UraValuesTest {
     List<String> spread = new ArrayList<>();
     for (UraAudit audit : List.of(once, repeated)) {
       for (UraAudit.Cell cell : audit.report().cells()) {
-        String where = cell.decisionClass() + " rows " + cell.rows() + " clusters " + cell.clusters();
+        String where =
+            cell.decisionClass() + " rows " + cell.rows() + " clusters " + cell.clusters();
         if (!Double.isNaN(cell.z())) spread.add(where + " z " + cell.z());
         if (!Double.isNaN(cell.reduction()))
           spread.add(
-              where + " reduction " + cell.reduction() + " (label variance " + cell.labelVariance()
-                  + ", standard error " + cell.standardError() + ")");
+              where
+                  + " reduction "
+                  + cell.reduction()
+                  + " (label variance "
+                  + cell.labelVariance()
+                  + ", standard error "
+                  + cell.standardError()
+                  + ")");
       }
     }
     Assert.assertEquals(spread, List.of(), String.join("; ", spread));
@@ -279,14 +307,17 @@ public class UraValuesTest {
   public void pathsOfOneHandShareACluster() {
     UraScenes.Played played = UraScenes.plainRon();
     Engine engine = played.engine();
-    UraValues values = new UraValues(new UraSettings.Expected(), UraExpectationPlayTest.phi(UraScenes.VARIANT), SEED);
+    UraValues values =
+        new UraValues(
+            new UraSettings.Expected(), UraExpectationPlayTest.phi(UraScenes.VARIANT), SEED);
     int hands = UraScenes.VARIANT.seats(), paths = 3, n = hands * paths;
     double[] out = new double[hands], difference = new double[hands];
     long[] games = UraAuditTest.games(hands);
     for (int hand = 0; hand < hands; hand++) {
       for (int path = 0; path < paths; path++) {
         UraExpectation ura =
-            values.handEnd(engine.full(), engine.roundEnd(), played.start(), null, games[hand], 0, out);
+            values.handEnd(
+                engine.full(), engine.roundEnd(), played.start(), null, games[hand], 0, out);
         Assert.assertTrue(ura.averaged());
         // 局ごとに違う席の行を足すので、局ごとに d が違う
         values.rows(ura, games[hand], 0, UraAuditTest.rows(DecisionClass.DISCARD_MID, hand));

@@ -21,7 +21,8 @@ public record GameRecord(Variant variant, long gameId, List<GrpState> handEnds, 
     handEnds = List.copyOf(handEnds);
     for (GrpState state : handEnds) {
       if (state.variant() != variant) {
-        throw new IllegalArgumentException("Game " + gameId + " mixes " + state.variant() + " into " + variant);
+        throw new IllegalArgumentException(
+            "Game " + gameId + " mixes " + state.variant() + " into " + variant);
       }
     }
     if (finalScores.length != variant.seats()) {
@@ -73,7 +74,14 @@ public record GameRecord(Variant variant, long gameId, List<GrpState> handEnds, 
 
   @Override
   public String toString() {
-    return "GameRecord[" + variant + " id=" + gameId + " handEnds=" + handEnds.size()
-        + " final=" + Arrays.toString(finalScores) + "]";
+    return "GameRecord["
+        + variant
+        + " id="
+        + gameId
+        + " handEnds="
+        + handEnds.size()
+        + " final="
+        + Arrays.toString(finalScores)
+        + "]";
   }
 }

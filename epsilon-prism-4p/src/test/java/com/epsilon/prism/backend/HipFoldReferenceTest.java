@@ -2,9 +2,9 @@ package com.epsilon.prism.backend;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
-import com.epsilon.prism.hip.HipEmbedding;
-import com.epsilon.prism.hip.HipWeight;
 import com.epsilon.prism.input.InputBlob.Tensor;
+import com.epsilon.prism.kernel.EmbeddingTable;
+import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.PrismNetwork;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,7 +16,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 参照実装の既定の層 0（K1 の L0-FOLD）が式 D と合うことを、CPU で確かめる。D はテストの側で、重みの束の T・W_d・b と層 0 の g・W_qkv から
+ * 参照実装の既定の層 0（埋め込みの L0-FOLD）が式 D と合うことを、CPU で確かめる。D はテストの側で、重みの束の T・W_d・b と層 0 の g・W_qkv から
  * 作り直す。qkv0 = ⌊r·(ΣT'[idx] + ΣW'_d·f + b') + b_qkv⌉、T' = T·diag(g)·W_qkvᵀ とする。T'・W'_d・b' は FP64 で作って FP32 に丸めた値。
  * r は丸める前の x の 1/rms で、x は k の順に FP32 で足す。参照は束にある折り込み済みの表を使い、カーネルと同じ順に FP32 で足すので、D との
  * 違いは r の和の順だけになる。そこで、全ての値が BF16 の 1 ulp 以内に収まり、ビットが違う値の割合が {@value #DIFFER_LIMIT} 以下であることを
@@ -36,20 +36,24 @@ public class HipFoldReferenceTest {
       PrismNetwork network = HipFixtures.network(manager, DEPTH, SEED);
       WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 1);
       HipReference reference = new HipReference(pack);
-      HipReference.Input in = new HipReference.Input(HipFixtures.encode(HipFixtures.mixedRows(ROWS, SEED)));
+      HipReference.Input in =
+          new HipReference.Input(HipFixtures.encode(HipFixtures.mixedRows(ROWS, SEED)));
       reference.allocate(in);
       reference.embed(in);
       float[] expected = formD(reference, in);
       float[] actual = reference.layer0Qkv();
       int differ = 0;
       for (int i = 0; i < expected.length; i++) {
-        differ += Float.floatToRawIntBits(expected[i]) != Float.floatToRawIntBits(actual[i]) ? 1 : 0;
+        differ +=
+            Float.floatToRawIntBits(expected[i]) != Float.floatToRawIntBits(actual[i]) ? 1 : 0;
       }
       Diff diff = Diff.bf16(expected, actual);
       log.info("PRISM-HIP-FOLD {}, bits differ {}", diff.line("reference qkv0 vs D"), differ);
-      Assert.assertTrue(diff.withinOneUlp() == 1.0, "qkv0 values beyond 1 BF16 ulp of D: " + diff.line("qkv0"));
       Assert.assertTrue(
-          differ <= DIFFER_LIMIT * expected.length, differ + " of " + expected.length + " qkv0 values differ from D");
+          diff.withinOneUlp() == 1.0, "qkv0 values beyond 1 BF16 ulp of D: " + diff.line("qkv0"));
+      Assert.assertTrue(
+          differ <= DIFFER_LIMIT * expected.length,
+          differ + " of " + expected.length + " qkv0 values differ from D");
     }
   }
 
@@ -60,15 +64,15 @@ public class HipFoldReferenceTest {
     int width = 3 * attention;
     double[] projection = new double[hidden * width];
     for (int h = 0; h < hidden; h++) {
-      double gain = r.weight(HipWeight.ATTENTION_NORM, 0, h);
+      double gain = r.weight(WeightField.ATTENTION_NORM, 0, h);
       for (int c = 0; c < width; c++) {
-        projection[h * width + c] = gain * r.weight(HipWeight.QKV, 0, c * hidden + h);
+        projection[h * width + c] = gain * r.weight(WeightField.QKV, 0, c * hidden + h);
       }
     }
     PackView pack = r.pack;
     float[] out = new float[(r.fixed * in.rows + in.events) * width];
-    for (HipEmbedding.Slot slot : HipEmbedding.Slot.values()) {
-      if (slot == HipEmbedding.Slot.TRANSITION) {
+    for (EmbeddingTable.Slot slot : EmbeddingTable.Slot.values()) {
+      if (slot == EmbeddingTable.Slot.TRANSITION) {
         continue;
       }
       PackView.Spec spec = pack.embedding(slot);
@@ -108,13 +112,17 @@ public class HipFoldReferenceTest {
             acc[h] += pack.bytes.getFloat(base + h * Float.BYTES);
           }
           float[] row =
-              folded.get(table).computeIfAbsent(entry, e -> {
-                double[] values = new double[hidden];
-                for (int h = 0; h < hidden; h++) {
-                  values[h] = pack.bytes.getFloat(base + h * Float.BYTES);
-                }
-                return project(values, projection, width);
-              });
+              folded
+                  .get(table)
+                  .computeIfAbsent(
+                      entry,
+                      e -> {
+                        double[] values = new double[hidden];
+                        for (int h = 0; h < hidden; h++) {
+                          values[h] = pack.bytes.getFloat(base + h * Float.BYTES);
+                        }
+                        return project(values, projection, width);
+                      });
           for (int c = 0; c < width; c++) {
             sum[c] += row[c];
           }
@@ -122,13 +130,17 @@ public class HipFoldReferenceTest {
         for (int k = 0; k < features; k++) {
           int index = spec.source()[k] & 0xFFFF;
           float feature =
-              switch (HipEmbedding.Source.values()[spec.source()[k] >> 16]) {
+              switch (EmbeddingTable.Source.values()[spec.source()[k] >> 16]) {
                 case FLAG -> in.u8(category, t, index);
                 case SCALAR -> in.bf16(scalar, t, index);
                 case EXACT -> HipReference.bf(in.f32(exact, t, index));
               };
           for (int h = 0; h < hidden; h++) {
-            acc[h] = Math.fma(bf16(pack, spec.denseOffset() + (k * hidden + h) * Short.BYTES), feature, acc[h]);
+            acc[h] =
+                Math.fma(
+                    bf16(pack, spec.denseOffset() + (k * hidden + h) * Short.BYTES),
+                    feature,
+                    acc[h]);
           }
           for (int c = 0; c < width; c++) {
             sum[c] = Math.fma(dense[k][c], feature, sum[c]);
@@ -141,8 +153,8 @@ public class HipFoldReferenceTest {
         }
         float rms = (float) (1.0 / Math.sqrt(squares / hidden + r.epsilon));
         for (int c = 0; c < width; c++) {
-          out[(start + t) * width + HipEmbedding.foldColumn(c, attention)] =
-              HipReference.bf(rms * (sum[c] + bias[c]) + r.weight(HipWeight.QKV_BIAS, 0, c));
+          out[(start + t) * width + EmbeddingTable.foldColumn(c, attention)] =
+              HipReference.bf(rms * (sum[c] + bias[c]) + r.weight(WeightField.QKV_BIAS, 0, c));
         }
       }
     }

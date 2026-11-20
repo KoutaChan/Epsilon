@@ -83,9 +83,12 @@ public class ScoreMathTest {
     int[] childFromDealer = {500, 700, 2_000, 2_600, 4_000, 6_000};
     int[] dealerFromChild = {500, 700, 2_000, 2_600, 4_000, 6_000};
     for (int i = 0; i < bases.length; i++) {
-      Assert.assertEquals(ScoreMath.tsumo(bases[i], false, false), childFromChild[i], "child win " + bases[i]);
-      Assert.assertEquals(ScoreMath.tsumo(bases[i], false, true), childFromDealer[i], "child win " + bases[i]);
-      Assert.assertEquals(ScoreMath.tsumo(bases[i], true, false), dealerFromChild[i], "dealer win " + bases[i]);
+      Assert.assertEquals(
+          ScoreMath.tsumo(bases[i], false, false), childFromChild[i], "child win " + bases[i]);
+      Assert.assertEquals(
+          ScoreMath.tsumo(bases[i], false, true), childFromDealer[i], "child win " + bases[i]);
+      Assert.assertEquals(
+          ScoreMath.tsumo(bases[i], true, false), dealerFromChild[i], "dealer win " + bases[i]);
     }
   }
 

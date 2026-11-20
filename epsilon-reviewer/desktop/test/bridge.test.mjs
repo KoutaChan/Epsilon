@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { BRIDGE_CHANNELS } from "../../protocol/bridge.ts";
+import { BRIDGE_CHANNELS } from "@epsilon-reviewer/protocol/bridge";
 import { registerBridge } from "../src/bridge.ts";
 import { Languages } from "../src/language.ts";
 import { SettingsStore } from "../src/settings.ts";

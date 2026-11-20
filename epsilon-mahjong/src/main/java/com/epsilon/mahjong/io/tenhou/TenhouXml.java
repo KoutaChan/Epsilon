@@ -88,7 +88,9 @@ public final class TenhouXml {
    */
   public static Variant variant(int type) {
     Variant variant = TenhouRule.THREE_PLAYER.in(type) ? Variant.TENHOU_3P : Variant.TENHOU_4P;
-    if (TenhouRule.NO_RED.in(type) || TenhouRule.NO_OPEN_TANYAO.in(type) || !TenhouRule.EAST_SOUTH.in(type)) {
+    if (TenhouRule.NO_RED.in(type)
+        || TenhouRule.NO_OPEN_TANYAO.in(type)
+        || !TenhouRule.EAST_SOUTH.in(type)) {
       throw new IllegalArgumentException("Tenhou type " + type + " is not played by " + variant);
     }
     return variant;
@@ -160,7 +162,8 @@ public final class TenhouXml {
           throw new IllegalArgumentException("The log ends before the game does");
         }
         RecordedGame.Meta meta =
-            new RecordedGame.Meta(id, RecordedGame.Source.TENHOU, List.of(Arrays.copyOf(names, seats)));
+            new RecordedGame.Meta(
+                id, RecordedGame.Source.TENHOU, List.of(Arrays.copyOf(names, seats)));
         return new RecordedGame(variant, rounds, finalScores, meta);
       } catch (IllegalArgumentException failure) {
         throw new IllegalArgumentException(id + ": " + failure.getMessage(), failure);
@@ -213,7 +216,8 @@ public final class TenhouXml {
       finishRound();
       start = round.start(tag);
       if (round.rotation() != 0) {
-        throw new IllegalArgumentException("INIT names dealer " + tag.get("oya") + " in round " + start.round());
+        throw new IllegalArgumentException(
+            "INIT names dealer " + tag.get("oya") + " in round " + start.round());
       }
       deal = new int[seats][];
       for (int seat = 0; seat < seats; seat++) {
@@ -234,7 +238,8 @@ public final class TenhouXml {
     }
 
     private void move(TenhouTag tag) {
-      TenhouTiles.TileTag tile = variant == null ? null : TenhouTiles.TileTag.parse(tag.name(), variant);
+      TenhouTiles.TileTag tile =
+          variant == null ? null : TenhouTiles.TileTag.parse(tag.name(), variant);
       if (tile == null) {
         throw new IllegalArgumentException("Unknown Tenhou element " + tag.name());
       }
@@ -247,7 +252,8 @@ public final class TenhouXml {
         }
         case DISCARD -> {
           events.add(
-              new RecordEvent.Discard(seat, tile.tile(), tile.tile() == drawn[seat], (declared & 1 << seat) != 0));
+              new RecordEvent.Discard(
+                  seat, tile.tile(), tile.tile() == drawn[seat], (declared & 1 << seat) != 0));
           declared &= ~(1 << seat);
           drawn[seat] = TurnEvent.NONE;
           lastDiscarder = seat;
@@ -273,10 +279,19 @@ public final class TenhouXml {
             case CHI, PON, DAIMINKAN -> {
               if (code.called() != lastDiscard || meld.source().seat(who, seats) != lastDiscarder) {
                 throw new IllegalArgumentException(
-                    "Seat " + who + " makes " + meld + " on tile " + code.called() + ", but the last discard is "
-                        + lastDiscard + " of seat " + lastDiscarder);
+                    "Seat "
+                        + who
+                        + " makes "
+                        + meld
+                        + " on tile "
+                        + code.called()
+                        + ", but the last discard is "
+                        + lastDiscard
+                        + " of seat "
+                        + lastDiscarder);
               }
-              yield new RecordEvent.Call(who, meld.id(), Arrays.stream(code.hand()).boxed().toList());
+              yield new RecordEvent.Call(
+                  who, meld.id(), Arrays.stream(code.hand()).boxed().toList());
             }
             case ANKAN -> new RecordEvent.ClosedKan(who, meld.base());
             case KAKAN -> new RecordEvent.AddedKan(who, meld.base());
@@ -301,7 +316,9 @@ public final class TenhouXml {
         return;
       }
       RoundResult result = round.result(accepted);
-      rounds.add(new RecordedRound(start, deal, round.indicator(), RecordedRound.contractOrder(events), result));
+      rounds.add(
+          new RecordedRound(
+              start, deal, round.indicator(), RecordedRound.contractOrder(events), result));
       start = null;
     }
 
@@ -460,7 +477,8 @@ public final class TenhouXml {
      */
     private int discard(List<RecordEvent> events, int index, RecordEvent.Discard discard) {
       int last = index;
-      while (last + 1 < events.size() && events.get(last + 1) instanceof RecordEvent.DoraReveal reveal) {
+      while (last + 1 < events.size()
+          && events.get(last + 1) instanceof RecordEvent.DoraReveal reveal) {
         dora(reveal.tile());
         last++;
       }
@@ -482,7 +500,8 @@ public final class TenhouXml {
       int[] hand = call.consumed().stream().mapToInt(Integer::intValue).toArray();
       for (int tile : hand) {
         if (!held[seat][tile]) {
-          throw new IllegalArgumentException("Seat " + seat + " does not hold tile " + tile + " to call with");
+          throw new IllegalArgumentException(
+              "Seat " + seat + " does not hold tile " + tile + " to call with");
         }
         held[seat][tile] = false;
       }
@@ -511,19 +530,22 @@ public final class TenhouXml {
         if (pon.meld().type() == Meld.Type.PON && pon.meld().base() == kan.kind()) {
           int added = take(seat, kan.kind(), true);
           Meld meld = Meld.kakan(pon.meld(), set.red(added));
-          int code = new TenhouMeldCode(meld, pon.called(), new int[] {added}).encode(variant, seat);
+          int code =
+              new TenhouMeldCode(meld, pon.called(), new int[] {added}).encode(variant, seat);
           n(seat, code);
           codes.set(index, code);
           claimable = added;
           return;
         }
       }
-      throw new IllegalArgumentException("Seat " + seat + " has no pon of kind " + kan.kind() + " to add to");
+      throw new IllegalArgumentException(
+          "Seat " + seat + " has no pon of kind " + kan.kind() + " to add to");
     }
 
     private void nuki(RecordEvent.Nuki nuki) {
       if (!held[nuki.seat()][nuki.tile()]) {
-        throw new IllegalArgumentException("Seat " + nuki.seat() + " does not hold north " + nuki.tile());
+        throw new IllegalArgumentException(
+            "Seat " + nuki.seat() + " does not hold north " + nuki.tile());
       }
       held[nuki.seat()][nuki.tile()] = false;
       int code = TenhouMeldCode.encodeNuki(nuki.tile());
@@ -599,7 +621,8 @@ public final class TenhouXml {
       parts[0] = moved(round);
       for (int index = 1; index < wins.size(); index++) {
         RoundResult.Win win = wins.get(index);
-        Settlement.ron(variant, win.base(), win.seat(), result.loser(), dealer, 0, win.pao(), parts[index]);
+        Settlement.ron(
+            variant, win.base(), win.seat(), result.loser(), dealer, 0, win.pao(), parts[index]);
         for (int seat = 0; seat < seats; seat++) {
           parts[0][seat] -= parts[index][seat];
         }
@@ -756,7 +779,9 @@ public final class TenhouXml {
     /** ten の LIMIT を返す。満貫未満 0、満貫 1 … 三倍満 4、役満は倍率に依らず 5。 */
     private static int limit(int base) {
       int over = BaseClass.of(base).ordinal() - BaseClass.MANGAN.ordinal();
-      return over < 0 ? 0 : 1 + Math.min(over, BaseClass.YAKUMAN.ordinal() - BaseClass.MANGAN.ordinal());
+      return over < 0
+          ? 0
+          : 1 + Math.min(over, BaseClass.YAKUMAN.ordinal() - BaseClass.MANGAN.ordinal());
     }
 
     /**
@@ -777,7 +802,8 @@ public final class TenhouXml {
           tenths = points / TenhouRound.POINT_UNIT + uma[ranks[seat]] * TENTHS;
         }
         values.add(Integer.toString(score / TenhouRound.POINT_UNIT));
-        values.add((tenths < 0 ? "-" : "") + Math.abs(tenths) / TENTHS + "." + Math.abs(tenths) % TENTHS);
+        values.add(
+            (tenths < 0 ? "-" : "") + Math.abs(tenths) / TENTHS + "." + Math.abs(tenths) % TENTHS);
       }
       return values.toString();
     }

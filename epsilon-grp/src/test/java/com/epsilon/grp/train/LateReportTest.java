@@ -57,7 +57,8 @@ public class LateReportTest {
         lateRanks[seat * seats + ends.finalRank(h, seat)] = 1;
         boolean leader = ends.rank(h, seat) == 0;
         for (int place = 0; place < seats; place++) {
-          grpRanks[seat * seats + place] = !leader ? 1.0 / seats : place == 0 ? top : (1 - top) / (seats - 1);
+          grpRanks[seat * seats + place] =
+              !leader ? 1.0 / seats : place == 0 ? top : (1 - top) / (seats - 1);
         }
       }
       lateBuilder.set(h, latePhi, lateRanks);
@@ -103,7 +104,8 @@ public class LateReportTest {
     Assert.assertEquals(report.grp(), GrpMetrics.measure(ends, grp, covered));
     long seatHands = handEnds * seats;
     Assert.assertEquals(report.mse().mean(), squares / seatHands, 1e-12, report.mse().toString());
-    Assert.assertEquals(report.rankNll().mean(), rankLogs / seatHands, 1e-12, report.rankNll().toString());
+    Assert.assertEquals(
+        report.rankNll().mean(), rankLogs / seatHands, 1e-12, report.rankNll().toString());
 
     Assert.assertEquals(report.bins().size(), 3);
     double[] edges = {0, 0.5, 0.9, 1};
@@ -113,7 +115,8 @@ public class LateReportTest {
       Assert.assertEquals(measured.low(), edges[bin], 0, context);
       Assert.assertEquals(measured.high(), edges[bin + 1], 0, context);
       Assert.assertEquals(measured.handEnds(), binEnds[bin], context);
-      Assert.assertEquals(measured.mse().mean(), binSquares[bin] / (binEnds[bin] * seats), 1e-12, context);
+      Assert.assertEquals(
+          measured.mse().mean(), binSquares[bin] / (binEnds[bin] * seats), 1e-12, context);
       Assert.assertEquals(measured.late().size(), 2, context);
       Assert.assertEquals(measured.grp().size(), 2, context);
       for (int group = 0; group < 2; group++) {
@@ -124,7 +127,8 @@ public class LateReportTest {
         Assert.assertEquals(lateFit.slope(), 1, 1e-9, context);
         Assert.assertEquals(lateFit.b4(), 0, 1e-12, context);
         Assert.assertEquals(grpFit.slope(), 2, 1e-9, context);
-        Assert.assertEquals(grpFit.b4(), lastSum[bin][group] / lastCount[bin][group], 1e-12, context);
+        Assert.assertEquals(
+            grpFit.b4(), lastSum[bin][group] / lastCount[bin][group], 1e-12, context);
       }
     }
     Assert.assertEquals(report.enumeration(), new LateReport.Enumeration(0, 0, 0, 0));
@@ -138,8 +142,10 @@ public class LateReportTest {
     HandEnds other = HandEnds.of(variant, UTILITY, TrainFixtures.simulated(variant, 20, 0, 59));
     GrpNetwork leaf = LateHandEndValuesTest.round(variant, 0.5).leaf();
     HandEndValues foreign = HandEndValues.of(other, leaf, GrpWorkspace.of(leaf.shape()));
-    Assert.assertThrows(IllegalArgumentException.class, () -> LateReport.measure(ends, foreign, grp));
-    Assert.assertThrows(IllegalArgumentException.class, () -> LateReport.measure(ends, late, foreign));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> LateReport.measure(ends, foreign, grp));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> LateReport.measure(ends, late, foreign));
   }
 
   /**
@@ -191,16 +197,21 @@ public class LateReportTest {
       LateReport.Bin measured = report.bins().get(bin);
       Assert.assertEquals(measured.handEnds(), binEnds[bin], measured.toString());
       Assert.assertEquals(
-          measured.mse(), GrpMetrics.pairedMse(ends, grp, late, h -> covered.test(h) && bins[h] == chosen));
+          measured.mse(),
+          GrpMetrics.pairedMse(ends, grp, late, h -> covered.test(h) && bins[h] == chosen));
     }
     LateReport.Enumeration enumeration = report.enumeration();
     Assert.assertEquals(enumeration.filled(), filled / handEnds, 1e-15);
     Assert.assertEquals(enumeration.terminal(), terminal / handEnds, 1e-15);
     Assert.assertEquals(enumeration.settled(), settled / handEnds, 1e-12);
     Assert.assertEquals(enumeration.leaves(), leaves / handEnds, 1e-12);
-    Assert.assertTrue(enumeration.filled() > 0 && enumeration.terminal() > 0, enumeration.toString());
-    Assert.assertTrue(enumeration.leaves() > 0 && enumeration.settled() > enumeration.leaves(), enumeration.toString());
-    Assert.assertEquals(LateReport.measure(ends, grp, late).enumeration(), new LateReport.Enumeration(0, 0, 0, 0));
+    Assert.assertTrue(
+        enumeration.filled() > 0 && enumeration.terminal() > 0, enumeration.toString());
+    Assert.assertTrue(
+        enumeration.leaves() > 0 && enumeration.settled() > enumeration.leaves(),
+        enumeration.toString());
+    Assert.assertEquals(
+        LateReport.measure(ends, grp, late).enumeration(), new LateReport.Enumeration(0, 0, 0, 0));
     List<LateReport.Bin> again = LateReport.measure(ends, late, grp).bins();
     Assert.assertEquals(again, report.bins());
   }

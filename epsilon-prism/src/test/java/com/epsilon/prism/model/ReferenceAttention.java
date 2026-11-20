@@ -2,8 +2,8 @@ package com.epsilon.prism.model;
 
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.types.DataType;
-import com.epsilon.prism.hip.RmsNormKernels;
-import com.epsilon.prism.hip.TrainingKernels;
+import com.epsilon.prism.kernel.RmsNormKernels;
+import com.epsilon.prism.kernel.TrainingKernels;
 
 /**
  * テストだけで使う {@link TrainingKernels} の参照実装。配列をホストに写し、式をそのまま書いたループで計算して、元の配列の型で書き戻す。
@@ -96,7 +96,8 @@ final class ReferenceAttention implements TrainingKernels {
               dkv[kv + width + f] += (float) (p[j] * dout[at + f]);
             }
             for (int s = 0; s < d.segments(); s++) {
-              drho[(r * d.heads() + h) * d.tableRows() + s * d.entries() + in.code(r, i, j, s)] += (float) ds;
+              drho[(r * d.heads() + h) * d.tableRows() + s * d.entries() + in.code(r, i, j, s)] +=
+                  (float) ds;
             }
           }
         }
@@ -194,7 +195,8 @@ final class ReferenceAttention implements TrainingKernels {
     private final int[] codes;
     private final float[] table;
 
-    Inputs(Dimensions d, NDArray query, NDArray keyValue, NDArray mask, NDArray codes, NDArray table) {
+    Inputs(
+        Dimensions d, NDArray query, NDArray keyValue, NDArray mask, NDArray codes, NDArray table) {
       this.d = d;
       q = query.toType(DataType.FLOAT32, false).toFloatArray();
       kv = keyValue.toType(DataType.FLOAT32, false).toFloatArray();

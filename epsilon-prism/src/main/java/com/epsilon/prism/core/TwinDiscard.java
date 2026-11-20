@@ -30,7 +30,10 @@ public enum TwinDiscard {
     if (!Twins.discard(action) || action.selection().tsumogiri() == tsumogiri) return chosen;
     int twin =
         Action.discard(
-            action.tile(), action.selection().red(), tsumogiri, action.type() == Action.Type.RIICHI_DAHAI);
+            action.tile(),
+            action.selection().red(),
+            tsumogiri,
+            action.type() == Action.Type.RIICHI_DAHAI);
     for (int a = 0; a < legal.length; a++) if (legal[a] == twin) return a;
     return chosen;
   }

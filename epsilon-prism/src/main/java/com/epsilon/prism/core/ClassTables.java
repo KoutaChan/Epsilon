@@ -11,10 +11,12 @@ import java.util.Set;
 /** 判断のクラスをキーにした表と集合を扱う。設定にあるクラスごとの表は、そのルールの判断のクラスをちょうど 1 回ずつ持つ。 */
 public final class ClassTables {
 
-  private static final Set<DecisionClass> WITH_NUKI = Collections.unmodifiableSet(EnumSet.allOf(DecisionClass.class));
+  private static final Set<DecisionClass> WITH_NUKI =
+      Collections.unmodifiableSet(EnumSet.allOf(DecisionClass.class));
 
   private static final Set<DecisionClass> WITHOUT_NUKI =
-      Collections.unmodifiableSet(EnumSet.complementOf(EnumSet.of(DecisionClass.NUKI, DecisionClass.NUKI_RESPONSE)));
+      Collections.unmodifiableSet(
+          EnumSet.complementOf(EnumSet.of(DecisionClass.NUKI, DecisionClass.NUKI_RESPONSE)));
 
   private ClassTables() {}
 
@@ -53,7 +55,12 @@ public final class ClassTables {
     Set<DecisionClass> extra = EnumSet.noneOf(DecisionClass.class);
     extra.addAll(keys);
     extra.removeAll(expected);
-    return "the table must hold each class of " + variant + " once (missing " + missing + ", not of the variant "
-        + extra + ")";
+    return "the table must hold each class of "
+        + variant
+        + " once (missing "
+        + missing
+        + ", not of the variant "
+        + extra
+        + ")";
   }
 }

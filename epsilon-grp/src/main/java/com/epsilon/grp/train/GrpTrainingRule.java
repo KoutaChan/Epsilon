@@ -30,13 +30,16 @@ public record GrpTrainingRule(
   public GrpTrainingRule {
     Objects.requireNonNull(init, "init");
     if (!(learningRate > 0) || !Double.isFinite(learningRate)) {
-      throw new IllegalArgumentException("The learning rate must be positive and finite: " + learningRate);
+      throw new IllegalArgumentException(
+          "The learning rate must be positive and finite: " + learningRate);
     }
     if (!(hiddenDecay >= 0) || !Double.isFinite(hiddenDecay)) {
-      throw new IllegalArgumentException("The hidden decay must be non-negative and finite: " + hiddenDecay);
+      throw new IllegalArgumentException(
+          "The hidden decay must be non-negative and finite: " + hiddenDecay);
     }
     if (maxEpochs < 1 || batchRows < 1) {
-      throw new IllegalArgumentException("Epochs and batch rows must be positive: " + maxEpochs + ", " + batchRows);
+      throw new IllegalArgumentException(
+          "Epochs and batch rows must be positive: " + maxEpochs + ", " + batchRows);
     }
     if (!(clipNorm > 0)) {
       throw new IllegalArgumentException("The clipping norm must be positive: " + clipNorm);

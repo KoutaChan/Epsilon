@@ -9,9 +9,12 @@ import ai.djl.util.PairList;
 import com.epsilon.agent.facts.MahjongTileRelation;
 import com.epsilon.agent.observe.codec.Bfloat16;
 import com.epsilon.agent.runtime.NetworkRuntime;
-import com.epsilon.prism.hip.HipEmbedding;
-import com.epsilon.prism.hip.HipWeight;
 import com.epsilon.prism.input.TileTokens;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.CollectionCapabilities;
+import com.epsilon.prism.kernel.EmbeddingTable;
+import com.epsilon.prism.kernel.PackedWeights;
+import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.PrismNetwork;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -23,7 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * HIP のカーネルが読む推論の重みの束。ネットワークを公開するたびに FP32 のマスターの重みから作り、ネットワークのバージョン番号を持つ。
+ * 推論カーネルが読む推論の重みの束。ネットワークを公開するたびに FP32 のマスターの重みから作り、ネットワークのバージョン番号を持つ。
  * 推論のたびにこの番号を照合するので、古い重みが残ったまま推論することはない。中身は {@link WeightLayout} の並びに置いた direct の
  * ByteBuffer（little-endian、ヘッダーつき）。
  *
@@ -32,7 +35,7 @@ import java.util.Objects;
  *
  * <p>局・席・牌・イベントの型では、層 0 の Attention の QKV の射影もこの表へ折り込む。書いた束の T・W_d・b（BF16 の値）と層 0 の
  * g・W_qkv（BF16 の値）から、T' = T·diag(g)·W_qkvᵀ、W'_d = W_d·diag(g)·W_qkvᵀ、b' = b·diag(g)·W_qkvᵀ を FP64 で求め、FP32 に
- * 丸めて置く。b' の後ろには b_qkv（BF16 に丸めた値）を写す。列はヘッドの対の並び（{@link HipEmbedding#foldColumn}）。
+ * 丸めて置く。b' の後ろには b_qkv（BF16 に丸めた値）を写す。列はヘッドの対の並び（{@link EmbeddingTable#foldColumn}）。
  */
 public final class WeightPack {
 
@@ -72,6 +75,10 @@ public final class WeightPack {
    * @return 重みの束
    */
   public static WeightPack build(WeightLayout layout, PrismNetwork network, long version) {
+    if (!layout.architecture().equals(CollectionArchitecture.from(network.declaration()))
+        || !layout.matchesFeatures(network)) {
+      throw new IllegalArgumentException("The weight pack layout does not match the network shape");
+    }
     return build(layout, network.inferenceParameters(), version);
   }
 
@@ -86,7 +93,8 @@ public final class WeightPack {
    * @throws IllegalArgumentException 表にあるパラメーターが束に無いとき。値が有限でないとき。牌の関係の表の大きさが、形の記述の牌の数の
    *     2 乗でないとき
    */
-  public static WeightPack build(WeightLayout layout, PairList<String, Parameter> parameters, long version) {
+  public static WeightPack build(
+      WeightLayout layout, PairList<String, Parameter> parameters, long version) {
     Objects.requireNonNull(layout, "layout");
     if (version < 0) {
       throw new IllegalArgumentException("weights version must not be negative: " + version);
@@ -104,18 +112,39 @@ public final class WeightPack {
     for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
       fold(buffer, layout, embedding, values);
     }
-    double[] projection = layer0Projection(buffer, layout);
-    for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
-      if (embedding.foldOffset() >= 0) {
-        foldLayer0(buffer, layout, embedding, projection);
+    if (CollectionCapabilities.foldsLayerZero(layout.architecture().hidden())) {
+      double[] projection = layer0Projection(buffer, layout);
+      for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
+        if (embedding.foldOffset() >= 0) {
+          foldLayer0(buffer, layout, embedding, projection);
+        }
       }
     }
     writeTileRelations(
         buffer,
-        layout.header().weight(HipWeight.TILE_RELATION, 0),
-        layout.header().elements(HipWeight.TILE_RELATION, 0),
+        layout.header().weight(WeightField.TILE_RELATION, 0),
+        layout.header().elements(WeightField.TILE_RELATION, 0),
         layout.format().tileTokens().relations());
     return new WeightPack(layout, buffer, version);
+  }
+
+  /**
+   * 収集の計画に公開する重みの束を作る。バイトの並びは配布時の pack と同じで、宣言と世代を添える。
+   *
+   * @param network 重みを読んだネットワーク
+   * @param generation 重みの世代（0 以上）
+   * @return 公開する重みの束
+   */
+  public static PackedWeights publication(PrismNetwork network, long generation) {
+    var layout = WeightLayout.of(network);
+    var pack = build(layout, network, generation);
+    var codes = network.format().candidateCodes();
+    int[] restoration =
+        layout.reusableEventPrefix() && !codes.slots().isEmpty()
+            ? codes.restoration(network.format())
+            : new int[0];
+    return new PackedWeights(
+        network.declaration(), generation, pack.buffer(), layout.planOptions(), restoration);
   }
 
   public WeightLayout layout() {
@@ -129,7 +158,11 @@ public final class WeightPack {
 
   /** 中身を返す。位置 0 から {@link WeightLayout#bytes()} バイトを見る、新しく作った little-endian のビュー。 */
   public ByteBuffer buffer() {
-    return buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(0).limit(Math.toIntExact(layout.bytes()));
+    return buffer
+        .duplicate()
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .position(0)
+        .limit(Math.toIntExact(layout.bytes()));
   }
 
   /** float を BF16 に丸めた値を返す。有限でない値には例外を投げる。 */
@@ -171,7 +204,10 @@ public final class WeightPack {
 
   /** 1 つの型の埋め込みを書く。組の表、表に折り込まない特徴の W（BF16、転置）、バイアス（BF16 に丸めた値）を書く。 */
   private static void fold(
-      ByteBuffer buffer, WeightLayout layout, WeightLayout.Embedding embedding, Map<String, float[]> values) {
+      ByteBuffer buffer,
+      WeightLayout layout,
+      WeightLayout.Embedding embedding,
+      Map<String, float[]> values) {
     EmbeddingSource source = embedding.source();
     int hidden = layout.architecture().hidden();
     int dimension = embedding.dimension();
@@ -226,7 +262,8 @@ public final class WeightPack {
     for (int k = 0; k < source.denseCount(); k++) {
       for (int h = 0; h < hidden; h++) {
         buffer.putShort(
-            denseAt + (k * hidden + h) * Short.BYTES, Bfloat16.fromFloat(projection[h * inputs + embeddedWidth + k]));
+            denseAt + (k * hidden + h) * Short.BYTES,
+            Bfloat16.fromFloat(projection[h * inputs + embeddedWidth + k]));
       }
     }
     int biasAt = Math.toIntExact(embedding.biasOffset());
@@ -242,13 +279,15 @@ public final class WeightPack {
     int hidden = layout.architecture().hidden();
     int attention = layout.architecture().attention();
     int width = 3 * attention;
-    int gain = Math.toIntExact(layout.header().weight(HipWeight.ATTENTION_NORM, 0));
-    int qkv = Math.toIntExact(layout.header().weight(HipWeight.QKV, 0));
+    int gain = Math.toIntExact(layout.header().weight(WeightField.ATTENTION_NORM, 0));
+    int qkv = Math.toIntExact(layout.header().weight(WeightField.QKV, 0));
     double[] projection = new double[hidden * width];
     for (int c = 0; c < width; c++) {
-      int column = HipEmbedding.foldColumn(c, attention);
+      int column = EmbeddingTable.foldColumn(c, attention);
       for (int h = 0; h < hidden; h++) {
-        float weight = Float.intBitsToFloat((buffer.getShort(qkv + (c * hidden + h) * Short.BYTES) & 0xFFFF) << 16);
+        float weight =
+            Float.intBitsToFloat(
+                (buffer.getShort(qkv + (c * hidden + h) * Short.BYTES) & 0xFFFF) << 16);
         projection[h * width + column] = (double) buffer.getFloat(gain + h * Float.BYTES) * weight;
       }
     }
@@ -260,7 +299,10 @@ public final class WeightPack {
    * その後ろに b_qkv を写す。
    */
   private static void foldLayer0(
-      ByteBuffer buffer, WeightLayout layout, WeightLayout.Embedding embedding, double[] projection) {
+      ByteBuffer buffer,
+      WeightLayout layout,
+      WeightLayout.Embedding embedding,
+      double[] projection) {
     int hidden = layout.architecture().hidden();
     int attention = layout.architecture().attention();
     int width = 3 * attention;
@@ -286,7 +328,8 @@ public final class WeightPack {
       for (int h = 0; h < hidden; h++) {
         source[h] =
             k < dense
-                ? Float.intBitsToFloat((buffer.getShort(denseAt + (k * hidden + h) * Short.BYTES) & 0xFFFF) << 16)
+                ? Float.intBitsToFloat(
+                    (buffer.getShort(denseAt + (k * hidden + h) * Short.BYTES) & 0xFFFF) << 16)
                 : buffer.getFloat(Math.toIntExact(embedding.biasOffset()) + h * Float.BYTES);
       }
       project(source, projection, projected);
@@ -294,10 +337,10 @@ public final class WeightPack {
         buffer.putFloat(to + (k * width + c) * Float.BYTES, (float) projected[c]);
       }
     }
-    int qkvBias = Math.toIntExact(layout.header().weight(HipWeight.QKV_BIAS, 0));
+    int qkvBias = Math.toIntExact(layout.header().weight(WeightField.QKV_BIAS, 0));
     for (int c = 0; c < width; c++) {
       buffer.putFloat(
-          to + ((dense + 1) * width + HipEmbedding.foldColumn(c, attention)) * Float.BYTES,
+          to + ((dense + 1) * width + EmbeddingTable.foldColumn(c, attention)) * Float.BYTES,
           buffer.getFloat(qkvBias + c * Float.BYTES));
     }
   }
@@ -319,10 +362,14 @@ public final class WeightPack {
   }
 
   /** 牌の関係の種類を書く。値は MahjongTileRelation の ordinal で、[牌, 牌] の UINT8 で置く。 */
-  private static void writeTileRelations(ByteBuffer buffer, long offset, long elements, int[] relations) {
+  private static void writeTileRelations(
+      ByteBuffer buffer, long offset, long elements, int[] relations) {
     if (relations.length != elements) {
       throw new IllegalArgumentException(
-          "tile relations hold " + relations.length + " classes but the architecture's tiles need " + elements);
+          "tile relations hold "
+              + relations.length
+              + " classes but the architecture's tiles need "
+              + elements);
     }
     int at = Math.toIntExact(offset);
     for (int i = 0; i < relations.length; i++) {

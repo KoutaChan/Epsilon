@@ -2,8 +2,8 @@ package com.epsilon.agent.app;
 
 import com.epsilon.agent.run.DurableFiles;
 import com.epsilon.agent.run.IterationFile;
-import com.epsilon.agent.run.Jobs;
 import com.epsilon.agent.run.JobFile;
+import com.epsilon.agent.run.Jobs;
 import com.epsilon.agent.run.RunDirectory;
 import com.epsilon.agent.run.SettingsRow;
 import com.epsilon.agent.run.SettingsRows;
@@ -32,10 +32,13 @@ import java.util.Map;
  * @param iteration この反復に固定した行を出す。run と一緒に渡す
  * @param job このジョブを作った行を出す。run と一緒に渡す
  */
-@Named(value = "settings show", doc = "Print the effective settings as TOML, with the source of each value")
+@Named(
+    value = "settings show",
+    doc = "Print the effective settings as TOML, with the source of each value")
 public record SettingsShow(
     @Key(doc = "Run directory whose settings row to print", presence = Presence.ABSENT) Path run,
-    @Key(doc = "Print the row pinned to this iteration", presence = Presence.ABSENT) Integer iteration,
+    @Key(doc = "Print the row pinned to this iteration", presence = Presence.ABSENT)
+        Integer iteration,
     @Key(doc = "Print the row that created this job", presence = Presence.ABSENT) String job)
     implements BuiltinCommand {
 
@@ -65,7 +68,8 @@ public record SettingsShow(
       if (!Files.exists(directory.job(job).resolve(Jobs.JOB))) {
         throw new SettingsException(List.of("The run " + run + " has no job " + job));
       }
-      JobFile file = new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS)).read(job);
+      JobFile file =
+          new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS)).read(job);
       shown = rows.row(file.row());
       why = "that created job " + job;
     } else {
@@ -115,9 +119,12 @@ public record SettingsShow(
         }
       }
     }
-    Node.Table beyond = Settings.beyondDefaults(application.schema(), shown.settings(), application::stack);
-    Node.Table relabelled = Settings.relabelValues(beyond, path -> "settings row " + lastChange(changedAt, path));
-    Layer row = new Layer("settings row " + shown.row(), Layer.Source.RECORD, relabelled, List.of());
+    Node.Table beyond =
+        Settings.beyondDefaults(application.schema(), shown.settings(), application::stack);
+    Node.Table relabelled =
+        Settings.relabelValues(beyond, path -> "settings row " + lastChange(changedAt, path));
+    Layer row =
+        new Layer("settings row " + shown.row(), Layer.Source.RECORD, relabelled, List.of());
     Settings<R> listed = Settings.bind(application.schema(), application.stack(List.of(row)));
     return listed.effective().equals(settings.effective()) ? listed : settings;
   }
@@ -153,6 +160,7 @@ public record SettingsShow(
         return row.decimal().intValueExact();
       }
     }
-    throw new SettingsException(List.of("Iteration " + iteration + " of " + directory.root() + " has not started"));
+    throw new SettingsException(
+        List.of("Iteration " + iteration + " of " + directory.root() + " has not started"));
   }
 }

@@ -12,7 +12,10 @@ import java.util.List;
  * @param <K> 段の宣言
  */
 public interface RunKind<
-    R extends Record, S extends Record & Progress, I extends Iteration, K extends Enum<K> & StepKind<I>> {
+    R extends Record,
+    S extends Record & Progress,
+    I extends Iteration,
+    K extends Enum<K> & StepKind<I>> {
 
   Class<R> settings();
 

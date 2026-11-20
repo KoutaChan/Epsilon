@@ -42,7 +42,8 @@ public class DuelSizingTest {
 
   @Test
   public void sigmaIsTheErrorOfTheScoreTimesTheRootOfTheWalls() {
-    assertEquals(DuelSizing.sigma(result(Score.RANK, 2048, 0.009, 0.5)), 0.009 * Math.sqrt(2048), 1e-15);
+    assertEquals(
+        DuelSizing.sigma(result(Score.RANK, 2048, 0.009, 0.5)), 0.009 * Math.sqrt(2048), 1e-15);
     assertEquals(DuelSizing.sigma(result(Score.UTILITY, 1024, 0.009, 0.5)), 0.5 * 32, 1e-12);
   }
 
@@ -53,7 +54,8 @@ public class DuelSizingTest {
     assertEquals(DuelSizing.median(new double[] {0.5, 0.1, 0.3, 0.2}), 0.25, 1e-15);
     double[] values = {0.4, 0.2};
     DuelSizing.median(values);
-    assertTrue(Arrays.equals(values, new double[] {0.4, 0.2}), "the values are not sorted in place");
+    assertTrue(
+        Arrays.equals(values, new double[] {0.4, 0.2}), "the values are not sorted in place");
     assertThrows(IllegalArgumentException.class, () -> DuelSizing.median(new double[0]));
   }
 
@@ -69,10 +71,12 @@ public class DuelSizingTest {
     double margin = (c + Z95) * sigma / (1.5 * Math.sqrt(4096));
     assertEquals(choice.margin(), margin, 1e-9);
     // その幅の 1.5 倍の真の差を、最後の判定の時点で確率 0.95 で見つける
-    assertEquals(DuelSizing.detection(THREE, choice.walls(), sigma, 1.5 * choice.margin()), 0.95, 1e-9);
+    assertEquals(
+        DuelSizing.detection(THREE, choice.walls(), sigma, 1.5 * choice.margin()), 0.95, 1e-9);
     // 見つける確率は、最後の時点の区間の下端が 0 を超える確率
     double d = 0.02;
-    assertEquals(DuelSizing.detection(THREE, 4096, sigma, d), Normal.upper(c - d * 64 / sigma), 1e-15);
+    assertEquals(
+        DuelSizing.detection(THREE, 4096, sigma, d), Normal.upper(c - d * 64 / sigma), 1e-15);
     assertTrue(DuelSizing.detection(THREE, 4096, sigma, 0.0) < 0.01);
     // 幅は標準偏差に比例する
     assertEquals(DuelSizing.choose(THREE, 2 * sigma, 6, 25_000).margin(), 2 * margin, 1e-12);
@@ -90,7 +94,8 @@ public class DuelSizingTest {
     // 判定 1 回分も打てない、標準偏差が正でない、牌山 1 つあたりの半荘が 0 のときは拒む
     assertThrows(IllegalArgumentException.class, () -> DuelSizing.choose(THREE, 0.3, 6, 3071));
     assertThrows(IllegalArgumentException.class, () -> DuelSizing.choose(THREE, 0, 6, 25_000));
-    assertThrows(IllegalArgumentException.class, () -> DuelSizing.choose(THREE, Double.NaN, 6, 25_000));
+    assertThrows(
+        IllegalArgumentException.class, () -> DuelSizing.choose(THREE, Double.NaN, 6, 25_000));
     assertThrows(IllegalArgumentException.class, () -> DuelSizing.choose(THREE, 0.3, 0, 25_000));
     assertThrows(IllegalArgumentException.class, () -> DuelSizing.detection(THREE, 4096, -1, 0.01));
   }

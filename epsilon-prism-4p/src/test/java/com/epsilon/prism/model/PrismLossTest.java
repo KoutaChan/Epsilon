@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
@@ -13,7 +15,6 @@ import com.epsilon.prism.auxiliary.TargetSchema.CandidateTarget;
 import com.epsilon.prism.auxiliary.TargetSchema.Outcome;
 import com.epsilon.prism.auxiliary.TargetSchema.ReadingTarget;
 import com.epsilon.prism.model.Batches.Batch;
-import com.epsilon.prism4p.input.InputSchema;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -55,16 +56,20 @@ public class PrismLossTest {
 
   /** 自分の和了も放銃もない局の終わり方。 */
   private static final Outcome[] QUIET = {
-    Outcome.OTHER_TSUMO, Outcome.OTHER_RON, Outcome.DRAW_TENPAI, Outcome.DRAW_NOTEN, Outcome.ABORTIVE
+    Outcome.OTHER_TSUMO,
+    Outcome.OTHER_RON,
+    Outcome.DRAW_TENPAI,
+    Outcome.DRAW_NOTEN,
+    Outcome.ABORTIVE
   };
 
   private static final int READING_WIDTH = HEADS.opponents() * HEADS.readingWidth();
 
-  @Test
-  public void stagedLossIsBitwiseTheInlineLoss() {
+  @Test(dataProvider = "smallShapes", dataProviderClass = ModelShapes.class)
+  public void stagedLossIsBitwiseTheInlineLoss(PrismShape shape) {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       manager.getEngine().setRandomSeed(3);
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, Batches.small(2));
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
       network.initialize(manager);
       Batches.perturb(network, 0.05f, 7);
       Batch batch = Batches.build(rows(24), 5);
@@ -100,7 +105,8 @@ public class PrismLossTest {
       float[] gradient = scores.getGradient().toFloatArray();
       // e = {−5.02, 0}、ē_C = −2.51
       float expected = PrismLoss.WEIGHT_FLOOR / (0.02f * 2) * -2.51f;
-      Assert.assertEquals(gradient[0], expected, 1e-5f * Math.abs(expected), "the saturated action");
+      Assert.assertEquals(
+          gradient[0], expected, 1e-5f * Math.abs(expected), "the saturated action");
       Assert.assertEquals(gradient[1], -expected, 1e-5f * Math.abs(expected), "the other action");
     }
   }
@@ -136,7 +142,8 @@ public class PrismLossTest {
       NDArray scores = manager.create(values, shape);
       scores.setRequiresGradient(true);
       Outputs outputs =
-          new Outputs(scores, manager.create(legal, shape), actions, new boolean[rows * capacity], null);
+          new Outputs(
+              scores, manager.create(legal, shape), actions, new boolean[rows * capacity], null);
       try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
         collector.backward(loss.value(manager, outputs, labels));
       }
@@ -178,8 +185,10 @@ public class PrismLossTest {
       AuxiliaryLoss.Denominators summed =
           AuxiliaryLoss.Denominators.of(first.auxiliary())
               .plus(AuxiliaryLoss.Denominators.of(second.auxiliary()));
-      Assert.assertTrue(Arrays.equals(summed.candidate(), reference.candidate()), "candidate denominators");
-      Assert.assertTrue(Arrays.equals(summed.reading(), reference.reading()), "reading denominators");
+      Assert.assertTrue(
+          Arrays.equals(summed.candidate(), reference.candidate()), "candidate denominators");
+      Assert.assertTrue(
+          Arrays.equals(summed.reading(), reference.reading()), "reading denominators");
       LossInputs allInputs = all.inputs(manager, reference);
       LossInputs firstInputs = first.inputs(manager, reference);
       LossInputs secondInputs = second.inputs(manager, reference);
@@ -208,7 +217,8 @@ public class PrismLossTest {
               firstTerms.candidate().get(CandidateTarget.DEAL_IN_POINTS),
               firstTerms.reading().get(ReadingTarget.WAITS),
               firstTerms.reading().get(ReadingTarget.DANGER_POINTS))) {
-        Assert.assertEquals(Float.floatToRawIntBits(empty.getFloat()), 0, "a head without units in the part");
+        Assert.assertEquals(
+            Float.floatToRawIntBits(empty.getFloat()), 0, "a head without units in the part");
       }
 
       // 差分整合と行の平均のアンカーは行の和（分母は 1 ステップの B_C）なので、分けても違うのは和の順だけ
@@ -231,7 +241,8 @@ public class PrismLossTest {
               + loss.total(second.outputs(), secondInputs, GAIN, denominator, share).getFloat();
       // 部分ごとの項はどれも符号が一定なので、許す差は項の大きさの和に比べる
       double magnitude =
-          (Math.abs(value.getFloat()) + PrismLoss.ROW_MEAN * Math.abs(rowMean.getFloat())) / denominator
+          (Math.abs(value.getFloat()) + PrismLoss.ROW_MEAN * Math.abs(rowMean.getFloat()))
+                  / denominator
               + share * allTerms.total().getFloat();
       log.info(
           "PRISM-SPLIT step loss {} vs {} (magnitude {})",
@@ -284,7 +295,14 @@ public class PrismLossTest {
       try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
         NDArray total =
             ReferenceLoss.total(
-                scope, loss.auxiliary(), inline.outputs(), labels, auxiliary, GAIN, DENOMINATOR, SHARE);
+                scope,
+                loss.auxiliary(),
+                inline.outputs(),
+                labels,
+                auxiliary,
+                GAIN,
+                DENOMINATOR,
+                SHARE);
         collector.backward(total);
         expected = total.getFloat();
       }
@@ -356,7 +374,8 @@ public class PrismLossTest {
             };
         values[a] = measured ? low + random.nextFloat() : Float.NaN;
       }
-      labels.add(new ValueLabel(values, LAMBDAS[r % LAMBDAS.length], 0.5f + 1.5f * random.nextFloat()));
+      labels.add(
+          new ValueLabel(values, LAMBDAS[r % LAMBDAS.length], 0.5f + 1.5f * random.nextFloat()));
     }
     return labels;
   }
@@ -365,7 +384,8 @@ public class PrismLossTest {
   private static void assertSplit(String what, NDArray whole, NDArray first, NDArray second) {
     float expected = whole.getFloat();
     double actual = (double) first.getFloat() + second.getFloat();
-    Assert.assertEquals(actual, expected, 1e-6 * Math.abs(expected), what + " split " + actual + " vs " + expected);
+    Assert.assertEquals(
+        actual, expected, 1e-6 * Math.abs(expected), what + " split " + actual + " vs " + expected);
   }
 
   /** 2 つの葉の勾配がビットで同じで、0 でない。 */
@@ -472,7 +492,13 @@ public class PrismLossTest {
         readings[k] = gaussians(random, READING_WIDTH);
       }
       return new Piece(
-          rows, batch, PrismLossTest.labels(batch, 11, 0.5f), auxiliary, scores, candidates, readings);
+          rows,
+          batch,
+          PrismLossTest.labels(batch, 11, 0.5f),
+          auxiliary,
+          scores,
+          candidates,
+          readings);
     }
 
     /** 行 [from, to) のマイクロバッチ（手と行の番号は部分の中の番号。行の手の数と打牌の印は、部分のバッチのインデックスから取る）。 */
@@ -480,7 +506,8 @@ public class PrismLossTest {
       int[] picked = candidatesOf(auxiliary, batch, from, to);
       int[] read = readingsOf(auxiliary, from, to);
       List<ValueLabel> partLabels = labels.subList(from, to);
-      AuxiliaryLabels partAuxiliary = select(auxiliary, picked, read, batch.firstAction(from), from);
+      AuxiliaryLabels partAuxiliary =
+          select(auxiliary, picked, read, batch.firstAction(from), from);
       BatchIndex index =
           BatchIndex.send(
               Batches.build(rows.subList(from, to), 5).inputs(manager),
@@ -501,7 +528,8 @@ public class PrismLossTest {
                   picked.length == 0
                       ? null
                       : manager.create(
-                          gather(candidates, picked), new Shape(picked.length, HEADS.candidateWidth())),
+                          gather(candidates, picked),
+                          new Shape(picked.length, HEADS.candidateWidth())),
                   read.length == 0
                       ? null
                       : manager.create(
@@ -545,7 +573,8 @@ public class PrismLossTest {
     for (int i = 0; i < readings.length; i++) {
       int k = readings[i];
       rows[i] = labels.readingRows()[k] - firstRow;
-      System.arraycopy(labels.readingValues(), k * READING_WIDTH, reading, i * READING_WIDTH, READING_WIDTH);
+      System.arraycopy(
+          labels.readingValues(), k * READING_WIDTH, reading, i * READING_WIDTH, READING_WIDTH);
     }
     return new AuxiliaryLabels(HEADS, actions, outcomes, values, rows, reading);
   }
@@ -576,7 +605,8 @@ public class PrismLossTest {
         }
       }
     }
-    return new AuxiliaryLabels(HEADS, labels.candidateActions(), outcomes, values, labels.readingRows(), reading);
+    return new AuxiliaryLabels(
+        HEADS, labels.candidateActions(), outcomes, values, labels.readingRows(), reading);
   }
 
   /** 選んだ行をつなぐ。 */

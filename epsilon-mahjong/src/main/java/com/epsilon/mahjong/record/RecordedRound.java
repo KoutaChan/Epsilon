@@ -35,19 +35,22 @@ public record RecordedRound(
     Objects.requireNonNull(result, "result");
     int seats = start.variant().seats();
     if (deal.length != seats) {
-      throw new IllegalArgumentException(start.variant() + " deals to " + seats + " seats, got " + deal.length);
+      throw new IllegalArgumentException(
+          start.variant() + " deals to " + seats + " seats, got " + deal.length);
     }
     int[][] copy = new int[seats][];
     for (int seat = 0; seat < seats; seat++) {
       if (deal[seat].length != Variant.HAND) {
-        throw new IllegalArgumentException("A deal is " + Variant.HAND + " tiles, got " + deal[seat].length);
+        throw new IllegalArgumentException(
+            "A deal is " + Variant.HAND + " tiles, got " + deal[seat].length);
       }
       copy[seat] = deal[seat].clone();
     }
     deal = copy;
     events = List.copyOf(events);
     if (result.deltas().length != seats) {
-      throw new IllegalArgumentException(seats + " seats need " + seats + " deltas, got " + result.deltas().length);
+      throw new IllegalArgumentException(
+          seats + " seats need " + seats + " deltas, got " + result.deltas().length);
     }
   }
 
@@ -71,7 +74,8 @@ public record RecordedRound(
         case RecordEvent.DoraReveal reveal -> indicators.addLast(reveal.tile());
         case RecordEvent.RiichiAccepted riichi -> {
           if ((accepted & 1 << riichi.seat()) != 0) {
-            throw new IllegalArgumentException("Seat " + riichi.seat() + " has its riichi accepted twice");
+            throw new IllegalArgumentException(
+                "Seat " + riichi.seat() + " has its riichi accepted twice");
           }
           accepted |= 1 << riichi.seat();
         }
@@ -91,7 +95,9 @@ public record RecordedRound(
           && moves.get(index - 1) instanceof RecordEvent.Nuki nuki
           && readBefore[index] < placed) {
         throw new IllegalArgumentException(
-            "The dora indicator due at the nuki of seat " + nuki.seat() + " is read after its replacement draw");
+            "The dora indicator due at the nuki of seat "
+                + nuki.seat()
+                + " is read after its replacement draw");
       }
       ordered.add(move);
       int due = 0;
@@ -104,7 +110,8 @@ public record RecordedRound(
           due = pending;
           pending = 1;
         }
-        case RecordEvent.Call call when Meld.of(call.meld()).type() == Meld.Type.DAIMINKAN -> pending++;
+        case RecordEvent.Call call when Meld.of(call.meld()).type() == Meld.Type.DAIMINKAN ->
+            pending++;
         case RecordEvent.Discard ignored -> {
           due = pending;
           pending = 0;
@@ -119,7 +126,9 @@ public record RecordedRound(
         ordered.add(new RecordEvent.DoraReveal(indicators.removeFirst()));
         placed++;
       }
-      if (move instanceof RecordEvent.Discard discard && discard.riichi() && (accepted & 1 << discard.seat()) != 0) {
+      if (move instanceof RecordEvent.Discard discard
+          && discard.riichi()
+          && (accepted & 1 << discard.seat()) != 0) {
         ordered.add(new RecordEvent.RiichiAccepted(discard.seat()));
         accepted &= ~(1 << discard.seat());
       }
@@ -177,7 +186,16 @@ public record RecordedRound(
 
   @Override
   public String toString() {
-    return "RecordedRound[" + start + " deal=" + Arrays.deepToString(deal) + " indicator=" + indicator
-        + " events=" + events + " " + result + "]";
+    return "RecordedRound["
+        + start
+        + " deal="
+        + Arrays.deepToString(deal)
+        + " indicator="
+        + indicator
+        + " events="
+        + events
+        + " "
+        + result
+        + "]";
   }
 }

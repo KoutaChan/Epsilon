@@ -4,7 +4,7 @@ import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
 
 /**
- * 卓のキーを作り、読む。キーは学習の行とメモに使う。次局・本場・供託と、絶対席ごとの点を 100 で割った値を 1 つの long に
+ * 卓のキーを作り、読む。キーは学習の行とキャッシュに使う。次局・本場・供託と、絶対席ごとの点を 100 で割った値を 1 つの long に
  * 詰める（四人打ち 60 ビット、三人打ち 49 ビット）。収まらない卓（負の点、100 点の倍数でない点、フィールドの幅を超える値）は
  * 丸めずに NONE を返す。ルールはキーに入らないので、読む側がルールを知っている必要がある。
  */
@@ -52,7 +52,13 @@ public final class GrpKey {
 
   /** 半荘が続く卓のキーを返す。収まらなければ NONE を返す。 */
   public static long of(GrpState state) {
-    return pack(state, state.variant().seats(), state.round(), state.honba(), state.sticks(), GrpState::score);
+    return pack(
+        state,
+        state.variant().seats(),
+        state.round(),
+        state.honba(),
+        state.sticks(),
+        GrpState::score);
   }
 
   /** 半荘が続く卓のキーを返す。収まらなければ NONE を返す。終局した卓では IllegalArgumentException を投げる。 */
@@ -60,7 +66,13 @@ public final class GrpKey {
     if (table.gameOver()) {
       throw new IllegalArgumentException("A finished game has no next hand: " + table);
     }
-    return pack(table, table.variant().seats(), table.round(), table.honba(), table.kyotaku(), TableState::score);
+    return pack(
+        table,
+        table.variant().seats(),
+        table.round(),
+        table.honba(),
+        table.kyotaku(),
+        TableState::score);
   }
 
   /** キーのビット数を返す（四人打ち 60、三人打ち 49）。 */
@@ -93,13 +105,15 @@ public final class GrpKey {
     return (int) read(key, Part.SCORE, scoreShift(seat)) * POINT_UNIT;
   }
 
-  private static <T> long pack(T table, int seats, int round, int honba, int sticks, Scores<T> scores) {
+  private static <T> long pack(
+      T table, int seats, int round, int honba, int sticks, Scores<T> scores) {
     if (!fits(Part.ROUND, round) || !fits(Part.HONBA, honba) || !fits(Part.STICKS, sticks)) {
       return NONE;
     }
-    long key = (long) round << SHIFTS[Part.ROUND.ordinal()]
-        | (long) honba << SHIFTS[Part.HONBA.ordinal()]
-        | (long) sticks << SHIFTS[Part.STICKS.ordinal()];
+    long key =
+        (long) round << SHIFTS[Part.ROUND.ordinal()]
+            | (long) honba << SHIFTS[Part.HONBA.ordinal()]
+            | (long) sticks << SHIFTS[Part.STICKS.ordinal()];
     for (int seat = 0; key != NONE && seat < seats; seat++) {
       key = withScore(key, seat, scores.score(table, seat));
     }

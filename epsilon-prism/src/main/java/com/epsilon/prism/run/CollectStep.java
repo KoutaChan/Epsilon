@@ -21,7 +21,6 @@ import com.epsilon.prism.grp.GrpFiles;
 import com.epsilon.prism.grp.PhiSetup;
 import com.epsilon.prism.luck.LedgerFit;
 import com.epsilon.prism.luck.LuckSettlement;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.settings.PrismSettings;
@@ -88,7 +87,7 @@ final class CollectStep implements Step<PrismIteration> {
                 resources.runtime(),
                 inference.maxBatch(),
                 settings.inference().precision(),
-                InferencePath.of(inference.kernels()));
+                inference.kernels());
         CohortWriter writer =
             new CohortWriter(
                 part,
@@ -132,13 +131,22 @@ final class CollectStep implements Step<PrismIteration> {
     CollectionMetrics.Snapshot counts = collected.counts();
     if (written.rows() != counts.rowsWritten()) {
       throw new IllegalStateException(
-          "Cohort " + t + " sealed " + written.rows() + " rows but " + counts.rowsWritten() + " were sent");
+          "Cohort "
+              + t
+              + " sealed "
+              + written.rows()
+              + " rows but "
+              + counts.rowsWritten()
+              + " were sent");
     }
     collected = collected.withRows(new Collector.RowStats(written.rows(), written.bytes()));
     LOG.info("t={} {}", t, collected.summary());
     DurableFiles.write(part.resolve(CollectReport.CLASSES), CollectReport.Classes.of(counts));
     StepReport report =
-        StepReport.ran(iteration, started, CollectReport.of(iteration.start(), collected, written.rows(), written.bytes()));
+        StepReport.ran(
+            iteration,
+            started,
+            CollectReport.of(iteration.start(), collected, written.rows(), written.bytes()));
     report.write(part.resolve(PrismStep.REPORT));
     DurableFiles.seal(part, sealed);
     finish(run, t);
@@ -168,7 +176,8 @@ final class CollectStep implements Step<PrismIteration> {
       return false;
     }
     DurableFiles.createDirectories(target.getParent());
-    Files.move(unmoved, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    Files.move(
+        unmoved, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     DurableFiles.syncDirectory(target.getParent());
     return true;
   }
@@ -192,7 +201,8 @@ final class CollectStep implements Step<PrismIteration> {
    *
    * @param part 確定する前のコホートのディレクトリ
    */
-  private static void writeGameLog(int t, Path part, GameLogObserver games, CollectionMetrics.Snapshot counts) {
+  private static void writeGameLog(
+      int t, Path part, GameLogObserver games, CollectionMetrics.Snapshot counts) {
     if (games == null) {
       return;
     }

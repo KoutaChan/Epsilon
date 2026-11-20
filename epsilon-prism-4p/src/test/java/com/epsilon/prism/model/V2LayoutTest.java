@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.engine.InferenceMode;
 import ai.djl.ndarray.NDManager;
@@ -8,8 +10,8 @@ import ai.djl.training.ParameterStore;
 import ai.djl.util.Pair;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.model.Batches.Batch;
+import com.epsilon.prism.play.PublishedModel;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism4p.input.InputSchema;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
@@ -23,7 +25,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Set;
 import org.testng.Assert;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -31,10 +32,6 @@ import org.testng.annotations.Test;
  * 重み（v2b のバージョン 760）の s のビットを、固定したフィンガープリントと照合する。
  */
 public class V2LayoutTest {
-
-  /** 公開した重みの場所。読むだけで書かない。無ければテストを飛ばす。 */
-  private static final Path PUBLISHED =
-      Path.of(System.getProperty("user.home"), "epsilon-ai/crr/runs/prism-v2b/snapshots/00760/m0");
 
   private static final String PARAMETERS_DEPTH_2 =
       "3c307451da99c0cbf8823d4f2a001783376402ef8b575c187172e263d6ce2bd1";
@@ -55,7 +52,7 @@ public class V2LayoutTest {
   public void savedShapeKeepsTheV2Fields() throws IOException {
     Path root = Files.createTempDirectory("prism-v2-layout");
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard());
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, PrismShape.standard());
       network.initialize(manager);
       Path directory = root.resolve("model");
       network.save(directory);
@@ -63,8 +60,7 @@ public class V2LayoutTest {
           JsonParser.parseString(Files.readString(directory.resolve("model.json")))
               .getAsJsonObject();
       Assert.assertEquals(
-          json.getAsJsonObject("shape").keySet(),
-          Set.of("hidden", "ffn", "gate", "depth"));
+          json.getAsJsonObject("shape").keySet(), Set.of("hidden", "ffn", "gate", "depth"));
       Assert.assertEquals(PrismNetwork.readShape(directory), PrismShape.standard());
     } finally {
       Snapshot.deleteTree(root);
@@ -75,7 +71,7 @@ public class V2LayoutTest {
   public void perturbedNetworkScoresTheSameBits() {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       manager.getEngine().setRandomSeed(41);
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard(3));
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, PrismShape.standard(3));
       network.initialize(manager);
       Batches.perturb(network, 0.05f, 43);
       try (NDManager scope = manager.newSubManager()) {
@@ -95,10 +91,8 @@ public class V2LayoutTest {
 
   @Test
   public void publishedWeightsScoreTheSameBits() throws IOException {
-    if (!Files.isRegularFile(PUBLISHED.resolve("weights.bin"))) {
-      throw new SkipException("published weights are not here: " + PUBLISHED);
-    }
-    try (FrozenNetwork network = FrozenNetwork.load(PUBLISHED, Device.cpu(), Precision.FLOAT32);
+    Path model = Snapshot.model(PublishedModel.fourPlayer(760).snapshot());
+    try (FrozenNetwork network = FrozenNetwork.load(model, Device.cpu(), Precision.FLOAT32);
         NDManager scope = network.newScope();
         InferenceMode inference = network.inference()) {
       Batch batch = Batches.build(Batches.allKinds(9), 53);
@@ -110,7 +104,7 @@ public class V2LayoutTest {
   /** パラメーターの名前と形を登録の順に並べた文字列のフィンガープリント。 */
   private static String parameters(int depth) {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard(depth));
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, PrismShape.standard(depth));
       network.initialize(manager);
       StringBuilder text = new StringBuilder();
       for (Pair<String, Parameter> pair : network.getParameters()) {
@@ -122,7 +116,8 @@ public class V2LayoutTest {
 
   /** 値のビット列のフィンガープリント。 */
   private static String digest(float[] values) {
-    ByteBuffer bytes = ByteBuffer.allocate(values.length * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+    ByteBuffer bytes =
+        ByteBuffer.allocate(values.length * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
     for (float value : values) {
       bytes.putInt(Float.floatToRawIntBits(value));
     }

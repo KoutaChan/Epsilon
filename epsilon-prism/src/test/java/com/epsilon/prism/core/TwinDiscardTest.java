@@ -29,10 +29,13 @@ public class TwinDiscardTest {
   /** ツモ牌が赤でない 5m で、手牌に赤の 5m と赤でない 5m がある手番。赤でない 5m だけが手出しとツモ切りの両方で切れる。 */
   @Test
   public void theDrawnTileOrTheHandTileOfTheSameKindAndRedIsPlayed() {
-    int[] legal = {hand(M5, true, false), hand(M5, false, false), drawn(M5, false, false), hand(M6, false, false)};
+    int[] legal = {
+      hand(M5, true, false), hand(M5, false, false), drawn(M5, false, false), hand(M6, false, false)
+    };
     Assert.assertEquals(play(TwinDiscard.TSUMOGIRI, legal), new int[] {0, 2, 2, 3});
     Assert.assertEquals(play(TwinDiscard.TEDASHI, legal), new int[] {0, 1, 1, 3});
-    Assert.assertEquals(TwinDiscard.TSUMOGIRI.play(legal, new int[] {1, 0, 3}), new int[] {0, 2, 3});
+    Assert.assertEquals(
+        TwinDiscard.TSUMOGIRI.play(legal, new int[] {1, 0, 3}), new int[] {0, 2, 3});
     Assert.assertEquals(TwinDiscard.TEDASHI.play(legal, new int[] {3, 2}), new int[] {1, 3});
   }
 
@@ -65,7 +68,8 @@ public class TwinDiscardTest {
       Action.code(Action.Type.PON, S3, Action.TileSelection.NON_AKA),
       Action.code(Action.Type.RON_AGARI)
     };
-    for (TwinDiscard twins : TwinDiscard.values()) Assert.assertEquals(play(twins, response), new int[] {0, 1, 2});
+    for (TwinDiscard twins : TwinDiscard.values())
+      Assert.assertEquals(play(twins, response), new int[] {0, 1, 2});
   }
 
   /** 新しいエンジンで打った四人打ちの判断で、手牌にツモ牌と同じ種類がある打牌を確かめる（立直の打牌を含む）。 */
@@ -109,10 +113,13 @@ public class TwinDiscardTest {
                 int[] legal = new int[n];
                 for (int a = 0; a < n; a++) legal[a] = decisions.legal(slot, a);
                 batch.clear();
-                o.bind(batch, writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch));
+                o.bind(
+                    batch,
+                    writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch));
                 for (int a = 0; a < n; a++) {
                   Action action = Action.of(legal[a]);
-                  int tsumogiri = TwinDiscard.TSUMOGIRI.play(legal, a), tedashi = TwinDiscard.TEDASHI.play(legal, a);
+                  int tsumogiri = TwinDiscard.TSUMOGIRI.play(legal, a),
+                      tedashi = TwinDiscard.TEDASHI.play(legal, a);
                   for (int played : new int[] {tsumogiri, tedashi}) {
                     Action twin = Action.of(legal[played]);
                     Assert.assertTrue(Twins.same(legal, a, played), action + " -> " + twin);
@@ -136,14 +143,17 @@ public class TwinDiscardTest {
                   }
                   Assert.assertEquals(o.drawnTile(), action.tile(), action.toString());
                   Assert.assertEquals(o.lastEventAka(), red, action.toString());
-                  Assert.assertTrue(o.handCount(action.tile()) >= 2, action.toString());
+                  int[] counts = new int[Tiles.KINDS];
+                  o.handCounts(counts);
+                  Assert.assertTrue(counts[action.tile()] >= 2, action.toString());
                   Assert.assertEquals(tsumogiri, fromDraw, action.toString());
                   Assert.assertEquals(tedashi, fromHand, action.toString());
                   twins[riichi ? 1 : 0]++;
                 }
               });
     }
-    Assert.assertTrue(twins[0] > 0 && twins[1] > 0, variant + " discards " + twins[0] + " riichi " + twins[1]);
+    Assert.assertTrue(
+        twins[0] > 0 && twins[1] > 0, variant + " discards " + twins[0] + " riichi " + twins[1]);
   }
 
   private static int indexOf(int[] legal, int code) {

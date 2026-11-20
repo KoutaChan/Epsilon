@@ -174,9 +174,19 @@ public final class GrpMetrics {
             phiJumps.add(late * seats + place, gap / JUMP_STEP, residual);
           }
           if (place == 0 && gap >= LEAD) {
-            tail(tails, predictedTails, TailCell.LEADER_LAST, values.marginals[base + last], finished == last ? 1 : 0);
+            tail(
+                tails,
+                predictedTails,
+                TailCell.LEADER_LAST,
+                values.marginals[base + last],
+                finished == last ? 1 : 0);
           } else if (place == last && gap >= LEAD) {
-            tail(tails, predictedTails, TailCell.LAST_FIRST, values.marginals[base], finished == 0 ? 1 : 0);
+            tail(
+                tails,
+                predictedTails,
+                TailCell.LAST_FIRST,
+                values.marginals[base],
+                finished == 0 ? 1 : 0);
           }
         }
       }
@@ -209,18 +219,22 @@ public final class GrpMetrics {
     double ece = 0;
     for (int bin = 0; bin < ECE_BINS; bin++) {
       if (eceCount[bin] > 0) {
-        ece += eceCount[bin] / seatHands * Math.abs((eceConfidence[bin] - eceOutcome[bin]) / eceCount[bin]);
+        ece +=
+            eceCount[bin]
+                / seatHands
+                * Math.abs((eceConfidence[bin] - eceOutcome[bin]) / eceCount[bin]);
       }
     }
-    GrpReport.Tails tailReport = new GrpReport.Tails(
-        tailOf(tails, predictedTails, TailCell.LOW_PROBABILITY),
-        tailOf(tails, predictedTails, TailCell.HIGH_PROBABILITY),
-        tailOf(tails, predictedTails, TailCell.LEADER_LAST),
-        tailOf(tails, predictedTails, TailCell.LAST_FIRST),
-        minPhi,
-        maxPhi,
-        tailOf(tails, predictedTails, TailCell.LOW_PHI),
-        tailOf(tails, predictedTails, TailCell.HIGH_PHI));
+    GrpReport.Tails tailReport =
+        new GrpReport.Tails(
+            tailOf(tails, predictedTails, TailCell.LOW_PROBABILITY),
+            tailOf(tails, predictedTails, TailCell.HIGH_PROBABILITY),
+            tailOf(tails, predictedTails, TailCell.LEADER_LAST),
+            tailOf(tails, predictedTails, TailCell.LAST_FIRST),
+            minPhi,
+            maxPhi,
+            tailOf(tails, predictedTails, TailCell.LOW_PHI),
+            tailOf(tails, predictedTails, TailCell.HIGH_PHI));
     return new GrpReport(
         games,
         handEnds * seats,
@@ -283,7 +297,8 @@ public final class GrpMetrics {
   }
 
   /** 席ごとの最終順位の周辺確率で、NLL の差（候補 − 基準。席・局末あたり）の平均と、その標準誤差。 */
-  public static Paired pairedRankNll(HandEnds ends, HandEndValues reference, HandEndValues candidate) {
+  public static Paired pairedRankNll(
+      HandEnds ends, HandEndValues reference, HandEndValues candidate) {
     requireValues(ends, reference);
     requireValues(ends, candidate);
     int seats = ends.seats;
@@ -345,21 +360,23 @@ public final class GrpMetrics {
       for (int place = seats - 1; place >= seats - 2; place--) {
         for (int bin = 0; bin < CLOSE_BINS; bin++) {
           int cell = (late * seats + place) * CLOSE_BINS + bin;
-          cells.add(new GrpReport.CloseCell(
-              ends.groups - LATE_GROUPS + late,
-              place,
-              CLOSE_EDGES[bin],
-              CLOSE_EDGES[bin + 1],
-              (long) close.count(cell),
-              close.mean(cell),
-              Math.sqrt(close.variance(cell))));
+          cells.add(
+              new GrpReport.CloseCell(
+                  ends.groups - LATE_GROUPS + late,
+                  place,
+                  CLOSE_EDGES[bin],
+                  CLOSE_EDGES[bin + 1],
+                  (long) close.count(cell),
+                  close.mean(cell),
+                  Math.sqrt(close.variance(cell))));
         }
       }
     }
     return cells;
   }
 
-  private static List<GrpReport.JumpSeries> jumps(HandEnds ends, AdjacentBins keep, AdjacentBins phi) {
+  private static List<GrpReport.JumpSeries> jumps(
+      HandEnds ends, AdjacentBins keep, AdjacentBins phi) {
     int seats = ends.seats;
     Paired[][] keepJumps = keep.differences();
     Paired[][] phiJumps = phi.differences();
@@ -395,7 +412,8 @@ public final class GrpMetrics {
     return new GrpReport.JumpSeries(group, place, measure, pairs, chiSquare / pairs, maxAbsZ, step);
   }
 
-  private static void tail(Clusters tails, double[] predicted, TailCell cell, double prediction, double outcome) {
+  private static void tail(
+      Clusters tails, double[] predicted, TailCell cell, double prediction, double outcome) {
     tails.add(cell.ordinal(), outcome);
     predicted[cell.ordinal()] += prediction;
   }

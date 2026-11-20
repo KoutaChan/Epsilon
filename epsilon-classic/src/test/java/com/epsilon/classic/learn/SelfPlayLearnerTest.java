@@ -110,7 +110,8 @@ public class SelfPlayLearnerTest {
     SelfPlayLearner.Macro[] macros = new SelfPlayLearner.Macro[2];
     for (int run = 0; run < 2; run++) {
       try (Model model = model(start);
-          SelfPlayLearner learner = new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings)) {
+          SelfPlayLearner learner =
+              new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings)) {
         initial = Weights.of(network(model));
         macros[run] = learner.learn(batch, 5);
         after[run] = Weights.of(network(model));
@@ -133,8 +134,12 @@ public class SelfPlayLearnerTest {
     assertTrue(step.actorUpdated());
     assertTrue(step.kl() >= 0 && step.kl() < 1e-5, "first step KL " + step.kl());
     assertTrue(step.clipFraction() < 1e-3, "clipped " + step.clipFraction());
-    assertTrue(Double.isFinite(step.actorNorm()) && step.actorNorm() > 0, "actor norm " + step.actorNorm());
-    assertTrue(Double.isFinite(step.valueNorm()) && step.valueNorm() > 0, "value norm " + step.valueNorm());
+    assertTrue(
+        Double.isFinite(step.actorNorm()) && step.actorNorm() > 0,
+        "actor norm " + step.actorNorm());
+    assertTrue(
+        Double.isFinite(step.valueNorm()) && step.valueNorm() > 0,
+        "value norm " + step.valueNorm());
     assertTrue(macro.credit() > 0.1 - 1e-6 && macro.credit() <= 1, "credit " + macro.credit());
     assertEquals(macro.rate().action(), KlLearningRate.Action.WARMUP);
     LOG.info("One step: {}", macro);
@@ -152,7 +157,8 @@ public class SelfPlayLearnerTest {
     SelfPlayLearner.Macro unbrokenSecond;
     Weights unbroken;
     try (Model model = model(start);
-        SelfPlayLearner learner = new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings)) {
+        SelfPlayLearner learner =
+            new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings)) {
       learner.learn(batch, 11);
       learner.save(state);
       assertThrows(FileAlreadyExistsException.class, () -> learner.save(state));
@@ -177,7 +183,9 @@ public class SelfPlayLearnerTest {
     try (Model model = model(major)) {
       assertThrows(
           IllegalArgumentException.class,
-          () -> SelfPlayLearner.resume(model, NetworkDevices.of(Device.cpu()), null, settings, state));
+          () ->
+              SelfPlayLearner.resume(
+                  model, NetworkDevices.of(Device.cpu()), null, settings, state));
     }
   }
 
@@ -190,14 +198,16 @@ public class SelfPlayLearnerTest {
     double limit = 1e-30;
     try (Model model = model(start);
         SelfPlayLearner learner =
-            new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings(2, limit, 1e-3))) {
+            new SelfPlayLearner(
+                model, NetworkDevices.of(Device.cpu()), null, settings(2, limit, 1e-3))) {
       Weights initial = Weights.of(network(model));
       double rate = learner.actorRate().rate();
       SelfPlayLearner.Macro macro = learner.learn(batch, 21);
       Weights after = Weights.of(network(model));
       int accepted = 0;
       for (SelfPlayLearner.Step step : macro.steps()) {
-        assertEquals(step.actorUpdated(), step.actorRows() > 0 && step.kl() <= limit, step.toString());
+        assertEquals(
+            step.actorUpdated(), step.actorRows() > 0 && step.kl() <= limit, step.toString());
         assertEquals(Double.isNaN(step.actorNorm()), !step.actorUpdated(), step.toString());
         accepted += step.actorUpdated() ? 1 : 0;
       }
@@ -215,7 +225,8 @@ public class SelfPlayLearnerTest {
     }
     try (Model model = model(start);
         SelfPlayLearner learner =
-            new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings(2, 1e9, 1e-3))) {
+            new SelfPlayLearner(
+                model, NetworkDevices.of(Device.cpu()), null, settings(2, 1e9, 1e-3))) {
       SelfPlayLearner.Macro macro = learner.learn(batch, 21);
       assertEquals(macro.actorSteps(), 2);
       assertEquals(learner.actorRate().state().macros(), 1);
@@ -229,7 +240,9 @@ public class SelfPlayLearnerTest {
     SelfPlayLearner.Macro[] macros = new SelfPlayLearner.Macro[2];
     Weights[] moved = new Weights[2];
     Weights initial = null;
-    NetworkDevices[] devices = {NetworkDevices.of(Device.cpu()), NetworkDevices.of(Device.cpu(), Device.cpu())};
+    NetworkDevices[] devices = {
+      NetworkDevices.of(Device.cpu()), NetworkDevices.of(Device.cpu(), Device.cpu())
+    };
     for (int run = 0; run < 2; run++) {
       try (Model model = model(start);
           SelfPlayLearner learner = new SelfPlayLearner(model, devices[run], null, settings)) {
@@ -278,9 +291,15 @@ public class SelfPlayLearnerTest {
           movement += Math.abs((double) a[index] - from[index]);
         }
       }
-      LOG.info("{} weights: movement {} difference {}", value ? "value" : "policy", movement, difference);
+      LOG.info(
+          "{} weights: movement {} difference {}",
+          value ? "value" : "policy",
+          movement,
+          difference);
       assertTrue(movement > 0, "nothing moved");
-      assertTrue(difference <= 1e-3 * movement, (value ? "value" : "policy") + " " + difference + " of " + movement);
+      assertTrue(
+          difference <= 1e-3 * movement,
+          (value ? "value" : "policy") + " " + difference + " of " + movement);
     }
   }
 
@@ -299,7 +318,8 @@ public class SelfPlayLearnerTest {
             new SelfPlayLearner.VTrace(1),
             new SelfPlayLearner.Batches(64, 16_384));
     try (Model model = model(start);
-        SelfPlayLearner learner = new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings)) {
+        SelfPlayLearner learner =
+            new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings)) {
       double floor = targetEntropy(network(model), small);
       double first = Double.NaN;
       double last = Double.NaN;
@@ -315,8 +335,11 @@ public class SelfPlayLearnerTest {
           LOG.info("Memorize macro {}: value loss {} (floor {})", macro, last, floor);
         }
       }
-      assertTrue(first - floor > 0.5, "the start is already at the floor: " + first + " vs " + floor);
-      assertTrue(last - floor <= 0.1 * (first - floor), "value loss " + first + " -> " + last + " (floor " + floor + ")");
+      assertTrue(
+          first - floor > 0.5, "the start is already at the floor: " + first + " vs " + floor);
+      assertTrue(
+          last - floor <= 0.1 * (first - floor),
+          "value loss " + first + " -> " + last + " (floor " + floor + ")");
     }
   }
 
@@ -327,7 +350,9 @@ public class SelfPlayLearnerTest {
       GameTrajectory trajectory = batch.games().get(game);
       for (int decision = 0; decision < trajectory.size(); decision++) {
         ends[batch.start(game) + decision] =
-            (float) trajectory.endValue(trajectory.hand(decision), trajectory.seat(decision), network.utility());
+            (float)
+                trajectory.endValue(
+                    trajectory.hand(decision), trajectory.seat(decision), network.utility());
       }
     }
     try (NDManager manager = NDManager.newBaseManager(Device.cpu(), "PyTorch")) {
@@ -345,9 +370,12 @@ public class SelfPlayLearnerTest {
   public void emptyAndForeignBatches() throws IOException {
     try (Model model = model(start);
         SelfPlayLearner learner =
-            new SelfPlayLearner(model, NetworkDevices.of(Device.cpu()), null, settings(4, 0.01, 1e-4))) {
+            new SelfPlayLearner(
+                model, NetworkDevices.of(Device.cpu()), null, settings(4, 0.01, 1e-4))) {
       Weights initial = Weights.of(network(model));
-      assertThrows(IllegalArgumentException.class, () -> learner.learn(TrajectoryBatch.of(Variant.TENHOU_3P, List.of()), 1));
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> learner.learn(TrajectoryBatch.of(Variant.TENHOU_3P, List.of()), 1));
       SelfPlayLearner.Macro empty = learner.learn(TrajectoryBatch.of(VARIANT, List.of()), 1);
       assertEquals(empty.decisions(), 0);
       assertEquals(empty.steps(), List.of());
@@ -362,7 +390,8 @@ public class SelfPlayLearnerTest {
   static SelfPlayLearner.Settings settings(int steps, double klLimit, double actorRate) {
     return new SelfPlayLearner.Settings(
         new SelfPlayLearner.Ppo(steps, 0.2, 0.10, 0.001, klLimit, 1e-4, 0.5),
-        new KlLearningRate.Settings(actorRate, actorRate / 100, actorRate * 10, 1, 1, 1.25, 1.25, 1.02, 0, 0.5),
+        new KlLearningRate.Settings(
+            actorRate, actorRate / 100, actorRate * 10, 1, 1, 1.25, 1.25, 1.02, 0, 0.5),
         new SelfPlayLearner.ValueRate(1e-4, 1e-4, 0.5),
         new SelfPlayLearner.VTrace(0.95),
         new SelfPlayLearner.Batches(64, 16_384));
@@ -397,8 +426,16 @@ public class SelfPlayLearnerTest {
 
   private static SelfPlayLearner.Macro withoutSeconds(SelfPlayLearner.Macro macro) {
     return new SelfPlayLearner.Macro(
-        macro.games(), macro.decisions(), macro.actorRows(), macro.steps(), macro.kl(), macro.credit(),
-        macro.advantage(), macro.rate(), 0, 0);
+        macro.games(),
+        macro.decisions(),
+        macro.actorRows(),
+        macro.steps(),
+        macro.kl(),
+        macro.credit(),
+        macro.advantage(),
+        macro.rate(),
+        0,
+        0);
   }
 
   private static void close(double actual, double expected, double relative, String name) {

@@ -78,7 +78,8 @@ public class CollectorTest {
 
   /** ラベル行、ロールイン、写しの中の行がどれも出るようにした抽出率（本番より高い）。 */
   private static final Sampling SAMPLING =
-      TestSampling.grouped(0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
+      TestSampling.grouped(
+          0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
 
   /** 行の帳簿の 17 列が属する 5 つの組を全て計算し、点の列を 32 千点、方策の列の s を 8 で切る帳簿（同梱の設定の既定値と同じ）。 */
   static final LedgerRecording LEDGER = new LedgerRecording(LedgerGroup.computed(), 32, 8);
@@ -146,7 +147,9 @@ public class CollectorTest {
     /** 帳簿の有無に合わせた列の数でライターを作る。帳簿を付けない収集では {@code recording} が null。 */
     TemporaryCohort(LedgerRecording recording) throws IOException {
       directory = Files.createTempDirectory("prism-rows");
-      writer = new CohortWriter(directory, TENHOU_4P, 1, recording == null ? 0 : LedgerColumn.COUNT, 2, ledger);
+      writer =
+          new CohortWriter(
+              directory, TENHOU_4P, 1, recording == null ? 0 : LedgerColumn.COUNT, 2, ledger);
       sink = new RowSink(writer);
     }
 
@@ -214,8 +217,17 @@ public class CollectorTest {
         var temporary = new TemporaryCohort(ledger)) {
       var cohort =
           new Collector.Cohort(
-              TENHOU_4P, SEED, iterationSeed, ids, DrawOrder.SEAT_STREAMS, sampling, ledger, URA, behaviour,
-              TwinDiscard.TSUMOGIRI, null);
+              TENHOU_4P,
+              SEED,
+              iterationSeed,
+              ids,
+              DrawOrder.SEAT_STREAMS,
+              sampling,
+              ledger,
+              URA,
+              behaviour,
+              TwinDiscard.TSUMOGIRI,
+              null);
       var result = Collector.collect(table, cohort, policy, SCORE_RANK, temporary.sink);
       List<Row> rows = temporary.sealAndRead();
       Assert.assertEquals(result.counts().rowsWritten(), rows.size());
@@ -228,14 +240,17 @@ public class CollectorTest {
 
   /** 半荘 100〜103 を、{@link #SAMPLING} の抽出率と、一様分布を 0.05 混ぜる行動方策で集める。 */
   private static Collected collect(int workers, int concurrent) {
-    return collectGames(SAMPLING, null, SEED * 3, 100, 4, FLOOR, new HashedScorePolicy(), workers, concurrent);
+    return collectGames(
+        SAMPLING, null, SEED * 3, 100, 4, FLOOR, new HashedScorePolicy(), workers, concurrent);
   }
 
   /** 行の並びに依らない正準形（直列化したフレームを Base64 にして並べ替えたもの）。 */
   static List<String> encoded(List<Row> rows) {
     List<String> result = new ArrayList<>();
     for (Row row : rows)
-      result.add(Base64.getEncoder().encodeToString(new RowCodec(row.ledgerFeatures(), TENHOU_4P).encode(row)));
+      result.add(
+          Base64.getEncoder()
+              .encodeToString(new RowCodec(row.ledgerFeatures(), TENHOU_4P).encode(row)));
     Collections.sort(result);
     return result;
   }
@@ -251,19 +266,39 @@ public class CollectorTest {
    */
   @Test(timeOut = 300_000)
   public void mainPathExplorationPlaysNonGreedyMovesOnlyWhenEnabled() {
-    float[] b = new Behaviour(0.01, 0.1, CrnScheme.SINGLE_RACE).explore(new float[] {0.3f, 0.1f, 0.2f}, 3);
+    float[] b =
+        new Behaviour(0.01, 0.1, CrnScheme.SINGLE_RACE).explore(new float[] {0.3f, 0.1f, 0.2f}, 3);
     Assert.assertEquals(b[0] + b[1] + b[2], 1f, 1e-5f);
     Assert.assertTrue(b[0] > b[2] && b[2] > b[1]);
     var explored =
-        collectGames(SAMPLING, null, SEED * 3, 100, 4, new Behaviour(0, 0.2, CrnScheme.SINGLE_RACE), new HashedScorePolicy(), 1, 4)
+        collectGames(
+                SAMPLING,
+                null,
+                SEED * 3,
+                100,
+                4,
+                new Behaviour(0, 0.2, CrnScheme.SINGLE_RACE),
+                new HashedScorePolicy(),
+                1,
+                4)
             .result();
     var greedy =
-        collectGames(SAMPLING, null, SEED * 3, 100, 4, new Behaviour(0, 0, CrnScheme.SINGLE_RACE), new HashedScorePolicy(), 1, 4)
+        collectGames(
+                SAMPLING,
+                null,
+                SEED * 3,
+                100,
+                4,
+                new Behaviour(0, 0, CrnScheme.SINGLE_RACE),
+                new HashedScorePolicy(),
+                1,
+                4)
             .result();
     Assert.assertTrue(explored.counts().mainNonGreedy() > 0);
     Assert.assertEquals(greedy.counts().mainNonGreedy(), 0);
     Assert.assertEquals(
-        explored.counts().rowsWritten(), explored.counts().labels() + explored.counts().rootCount());
+        explored.counts().rowsWritten(),
+        explored.counts().labels() + explored.counts().rootCount());
   }
 
   private static long sum(long[] counts) {
@@ -322,7 +357,8 @@ public class CollectorTest {
     }
 
     @Override
-    public CompletableFuture<Void> submit(List<PolicyRequest> batch, DecisionInferenceIngress ingress) {
+    public CompletableFuture<Void> submit(
+        List<PolicyRequest> batch, DecisionInferenceIngress ingress) {
       ingress.handoff(this).release();
       EnumSet<Capacity> capacities = EnumSet.noneOf(Capacity.class);
       Observation reader = new Observation(TENHOU_4P);
@@ -339,12 +375,23 @@ public class CollectorTest {
    * バッチで答える方策で半荘 100〜103 を集め（同時に 4 半荘、進行のワーカー 2 本）、バッチごとの行の容量区分の組と、行を返す。待ちの期限を
    * 長く取るので、バッチは全ての進行が止まってから出る。そのため、バッチの組み方は実行の速さに依らない。
    */
-  private static Map.Entry<List<EnumSet<Capacity>>, List<Row>> collectBatched(boolean merged) throws Exception {
+  private static Map.Entry<List<EnumSet<Capacity>>, List<Row>> collectBatched(boolean merged)
+      throws Exception {
     List<Long> ids = new ArrayList<>();
     for (long id = 0; id < 4; id++) ids.add(100 + id);
     var cohort =
         new Collector.Cohort(
-            TENHOU_4P, SEED, SEED * 3, ids, DrawOrder.SEAT_STREAMS, SAMPLING, null, URA, FLOOR, TwinDiscard.TSUMOGIRI, null);
+            TENHOU_4P,
+            SEED,
+            SEED * 3,
+            ids,
+            DrawOrder.SEAT_STREAMS,
+            SAMPLING,
+            null,
+            URA,
+            FLOOR,
+            TwinDiscard.TSUMOGIRI,
+            null);
     try (var table = new TableLoop(new TableSettings(4, 2, 1000000L, 4));
         var policy = new BatchedHashedPolicy(merged);
         var temporary = new TemporaryCohort(null)) {
@@ -366,8 +413,10 @@ public class CollectorTest {
     var separate = collectBatched(false);
     var merged = collectBatched(true);
     Assert.assertTrue(
-        separate.getKey().stream().anyMatch(batch -> batch.contains(Capacity.MULTIPLE_TRANSITIONS)), "no call rows");
-    for (EnumSet<Capacity> batch : separate.getKey()) Assert.assertEquals(batch.size(), 1, "the default key mixed " + batch);
+        separate.getKey().stream().anyMatch(batch -> batch.contains(Capacity.MULTIPLE_TRANSITIONS)),
+        "no call rows");
+    for (EnumSet<Capacity> batch : separate.getKey())
+      Assert.assertEquals(batch.size(), 1, "the default key mixed " + batch);
     Assert.assertTrue(
         merged.getKey().stream().anyMatch(batch -> batch.size() == Capacity.values().length),
         "the merged key never put both capacities in one batch");
@@ -500,11 +549,21 @@ public class CollectorTest {
   private static List<Collected> everyCollection(boolean ledger) {
     LedgerRecording recording = ledger ? LEDGER : null;
     List<Collected> result = new ArrayList<>();
-    result.add(collectGames(SAMPLING, recording, SEED * 3, 100, 4, FLOOR, new HashedScorePolicy(), 1, 4));
-    result.add(collectGames(SAMPLING, recording, SEED * 7, 300, 4, FLOOR, new HashedScorePolicy(), 1, 4));
+    result.add(
+        collectGames(SAMPLING, recording, SEED * 3, 100, 4, FLOOR, new HashedScorePolicy(), 1, 4));
+    result.add(
+        collectGames(SAMPLING, recording, SEED * 7, 300, 4, FLOOR, new HashedScorePolicy(), 1, 4));
     result.add(
         collectGames(
-            SAMPLING, recording, SEED * 3, 100, 4, new Behaviour(0, 0.2, CrnScheme.SINGLE_RACE), new HashedScorePolicy(), 1, 4));
+            SAMPLING,
+            recording,
+            SEED * 3,
+            100,
+            4,
+            new Behaviour(0, 0.2, CrnScheme.SINGLE_RACE),
+            new HashedScorePolicy(),
+            1,
+            4));
     return result;
   }
 
@@ -520,9 +579,12 @@ public class CollectorTest {
     List<Collected> recorded = everyCollection(true);
     long rows = 0, roots = 0, nonzero = 0;
     for (int i = 0; i < off.size(); i++) {
-      Assert.assertEquals(strippedCanonical(recorded.get(i).rows()), encoded(off.get(i).rows()), "collection " + i);
-      Assert.assertFalse(off.get(i).result().stages().containsKey(CollectStage.LEDGER), "collection " + i);
-      Assert.assertTrue(recorded.get(i).result().stages().containsKey(CollectStage.LEDGER), "collection " + i);
+      Assert.assertEquals(
+          strippedCanonical(recorded.get(i).rows()), encoded(off.get(i).rows()), "collection " + i);
+      Assert.assertFalse(
+          off.get(i).result().stages().containsKey(CollectStage.LEDGER), "collection " + i);
+      Assert.assertTrue(
+          recorded.get(i).result().stages().containsKey(CollectStage.LEDGER), "collection " + i);
       for (Row row : off.get(i).rows()) Assert.assertFalse(row.hasLedger());
       for (Row row : recorded.get(i).rows()) {
         Assert.assertTrue(row.hasLedger());
@@ -549,8 +611,12 @@ public class CollectorTest {
   /** 帳簿つきの行も、実行の順・同時に進める半荘の数・ワーカーの数に依らない（席の表のキャッシュは進行ごとに持つ）。 */
   @Test(timeOut = 600_000)
   public void recordModeIsDeterministic() {
-    var serial = collectGames(SAMPLING, LEDGER, SEED * 3, 100, 4, FLOOR, new HashedScorePolicy(), 1, 4).rows();
-    var parallel = collectGames(SAMPLING, LEDGER, SEED * 3, 100, 4, FLOOR, new HashedScorePolicy(), 4, 2).rows();
+    var serial =
+        collectGames(SAMPLING, LEDGER, SEED * 3, 100, 4, FLOOR, new HashedScorePolicy(), 1, 4)
+            .rows();
+    var parallel =
+        collectGames(SAMPLING, LEDGER, SEED * 3, 100, 4, FLOOR, new HashedScorePolicy(), 4, 2)
+            .rows();
     Assert.assertFalse(serial.isEmpty());
     Assert.assertEquals(encoded(parallel), encoded(serial));
   }
@@ -564,7 +630,8 @@ public class CollectorTest {
    * @param observations 方策が受けた O のハッシュの和
    * @param tokens 方策が符号化したバッチの行のハッシュの和
    */
-  private record Served(Collector.Result result, List<String> rows, long queries, long observations, long tokens) {}
+  private record Served(
+      Collector.Result result, List<String> rows, long queries, long observations, long tokens) {}
 
   /**
    * 半荘 100〜105 を、帳簿つきで、{@link #SAMPLING} の抽出率と一様分布を 0.05 混ぜる行動方策で集める。方策は、本番と同じ符号化の処理を通す
@@ -575,7 +642,16 @@ public class CollectorTest {
     for (long id = 0; id < 6; id++) ids.add(100 + id);
     var cohort =
         new Collector.Cohort(
-            TENHOU_4P, SEED, SEED * 3, ids, DrawOrder.SEAT_STREAMS, SAMPLING, LEDGER, URA, FLOOR, TwinDiscard.TSUMOGIRI,
+            TENHOU_4P,
+            SEED,
+            SEED * 3,
+            ids,
+            DrawOrder.SEAT_STREAMS,
+            SAMPLING,
+            LEDGER,
+            URA,
+            FLOOR,
+            TwinDiscard.TSUMOGIRI,
             null);
     try (var table = new TableLoop(new TableSettings(concurrent, workers, 1000L, 4));
         var policy = new ServedGoldenPolicy(new PriorSettings(4.0, 0.05));
@@ -583,7 +659,8 @@ public class CollectorTest {
       var result = Collector.collect(table, cohort, policy, SCORE_RANK, temporary.sink);
       List<Row> rows = temporary.sealAndRead();
       Assert.assertTrue(rows.stream().allMatch(Row::hasLedger), "a row has no ledger");
-      return new Served(result, encoded(rows), policy.queries(), policy.observations(), policy.tokens());
+      return new Served(
+          result, encoded(rows), policy.queries(), policy.observations(), policy.tokens());
     }
   }
 
@@ -598,7 +675,8 @@ public class CollectorTest {
     Assert.assertTrue(serial.result().counts().forkDecisions() > 0, "no fork decisions");
     Assert.assertTrue(serial.result().counts().copyDecisions() > 0, "no copy decisions");
     Assert.assertFalse(serial.rows().isEmpty(), "no rows");
-    Assert.assertTrue(serial.queries() > serial.rows().size(), "the policy answered too few queries");
+    Assert.assertTrue(
+        serial.queries() > serial.rows().size(), "the policy answered too few queries");
     Assert.assertEquals(parallel.rows(), serial.rows());
     Assert.assertEquals(parallel.queries(), serial.queries());
     Assert.assertEquals(parallel.observations(), serial.observations());
@@ -623,8 +701,17 @@ public class CollectorTest {
         var temporary = new TemporaryCohort(LEDGER)) {
       var cohort =
           new Collector.Cohort(
-              TENHOU_4P, SEED, SEED * 13, ids, DrawOrder.SEAT_STREAMS, SAMPLING, LEDGER, URA, FLOOR,
-              TwinDiscard.TSUMOGIRI, truth);
+              TENHOU_4P,
+              SEED,
+              SEED * 13,
+              ids,
+              DrawOrder.SEAT_STREAMS,
+              SAMPLING,
+              LEDGER,
+              URA,
+              FLOOR,
+              TwinDiscard.TSUMOGIRI,
+              truth);
       Collector.collect(table, cohort, policy, SCORE_RANK, temporary.sink);
       rows = temporary.sealAndRead();
     }
@@ -639,9 +726,13 @@ public class CollectorTest {
         if (outcomes.outcome(row.outcomes(), at) == null) continue;
         int[] scores = new int[TENHOU_4P.seats()];
         for (int relative = 0; relative < scores.length; relative++)
-          scores[(seat + relative) % scores.length] = outcomes.finalScore(row.outcomes(), at, relative);
+          scores[(seat + relative) % scores.length] =
+              outcomes.finalScore(row.outcomes(), at, relative);
         float y = (float) UTILITY.value(TENHOU_4P, Placement.rank(scores, seat));
-        Assert.assertEquals(Float.floatToRawIntBits(row.values()[a]), Float.floatToRawIntBits(y), row.source() + " action " + a);
+        Assert.assertEquals(
+            Float.floatToRawIntBits(row.values()[a]),
+            Float.floatToRawIntBits(y),
+            row.source() + " action " + a);
         slots++;
       }
       int at = row.played() * OutcomeCodec.WORDS;
@@ -654,14 +745,17 @@ public class CollectorTest {
             hand.scores[(seat + relative) % TENHOU_4P.seats()],
             "main path score");
       boolean expected = hand.reached(seat, observation.events());
-      Assert.assertEquals(outcomes.tenpai(row.outcomes(), at), expected, "tenpai reach of " + row.source());
+      Assert.assertEquals(
+          outcomes.tenpai(row.outcomes(), at), expected, "tenpai reach of " + row.source());
       if (expected) reached++;
       if (expected && (hand.endTenpai & 1 << seat) == 0) reachedByDiscard++;
       mainSlots++;
     }
-    Assert.assertTrue(slots > 0 && mainSlots > 0 && reached > 0, slots + " slots, " + mainSlots + " main slots");
+    Assert.assertTrue(
+        slots > 0 && mainSlots > 0 && reached > 0, slots + " slots, " + mainSlots + " main slots");
     log.info(
-        "outcomesComeFromTheirOwnPath: rows={} slots={} mainSlots={} reached={} reachedByDiscard={}",
+        "outcomesComeFromTheirOwnPath: rows={} slots={} mainSlots={} reached={}"
+            + " reachedByDiscard={}",
         rows.size(),
         slots,
         mainSlots,
@@ -694,7 +788,8 @@ public class CollectorTest {
       /** 席 {@code seat} が、判断の時点（それまでのイベントの数が {@code events}）から局の終わりまでに聴牌に届いたか。 */
       boolean reached(int seat, int events) {
         if ((endTenpai & 1 << seat) != 0) return true;
-        for (int[] discard : discards) if (discard[0] == seat && discard[1] >= events && discard[2] != 0) return true;
+        for (int[] discard : discards)
+          if (discard[0] == seat && discard[1] >= events && discard[2] != 0) return true;
         return false;
       }
     }
@@ -709,7 +804,8 @@ public class CollectorTest {
     }
 
     private Hand hand(long gameId, SeatView view) {
-      return hands.computeIfAbsent(gameId + ":" + view.round() + ":" + view.honba(), key -> new Hand());
+      return hands.computeIfAbsent(
+          gameId + ":" + view.round() + ":" + view.honba(), key -> new Hand());
     }
 
     private static int[] scores(TableState table) {

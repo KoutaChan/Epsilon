@@ -101,7 +101,8 @@ final class EvaluationReports {
     if (kind == TableSpec.Opponent.VERSION) {
       baseline(evaluation, done);
     }
-    if (evaluation.anchor() != null && (kind == TableSpec.Opponent.VERSION || kind == TableSpec.Opponent.DISTANCE)) {
+    if (evaluation.anchor() != null
+        && (kind == TableSpec.Opponent.VERSION || kind == TableSpec.Opponent.DISTANCE)) {
       ratings(evaluation, done);
     }
     alarms(evaluation, done);
@@ -118,26 +119,32 @@ final class EvaluationReports {
     }
     List<RunDirectory.JobName> done = new ArrayList<>();
     for (Path home : homes) {
-      Optional<RunDirectory.JobName> name = RunDirectory.parseJobName(home.getFileName().toString());
+      Optional<RunDirectory.JobName> name =
+          RunDirectory.parseJobName(home.getFileName().toString());
       if (name.isPresent()
           && evaluation.tables().containsKey(name.get().table())
           && Files.exists(home.resolve(Jobs.RESULT))) {
         done.add(name.get());
       }
     }
-    done.sort(Comparator.comparingInt(RunDirectory.JobName::version).thenComparing(RunDirectory.JobName::table));
+    done.sort(
+        Comparator.comparingInt(RunDirectory.JobName::version)
+            .thenComparing(RunDirectory.JobName::table));
     return done;
   }
 
   /** 基準の卓のジョブ 1 つ分の行。 @param order 基準の卓の番号（尺度に直す順） */
   private record BaselineRow(int version, int order, String text) {}
 
-  private void baseline(EvaluationSettings evaluation, List<RunDirectory.JobName> done) throws IOException {
+  private void baseline(EvaluationSettings evaluation, List<RunDirectory.JobName> done)
+      throws IOException {
     List<String> tables =
         evaluation.tables().entrySet().stream()
-            .filter(entry -> TableSpec.kind(entry.getValue().opponent()) == TableSpec.Opponent.VERSION)
+            .filter(
+                entry -> TableSpec.kind(entry.getValue().opponent()) == TableSpec.Opponent.VERSION)
             .sorted(
-                Comparator.comparingInt((Map.Entry<String, TableSpec> entry) -> base(entry.getValue()))
+                Comparator.comparingInt(
+                        (Map.Entry<String, TableSpec> entry) -> base(entry.getValue()))
                     .thenComparing(Map.Entry::getKey))
             .map(Map.Entry::getKey)
             .toList();
@@ -152,7 +159,9 @@ final class EvaluationReports {
         if (name.table().equals(table)) {
           Measured job = measured(name);
           measured.add(job);
-          points.add(new Baseline.Point(name.version(), job.result().rank().mean(), job.result().rank().error()));
+          points.add(
+              new Baseline.Point(
+                  name.version(), job.result().rank().mean(), job.result().rank().error()));
         }
       }
       Baseline.Link link =
@@ -170,7 +179,8 @@ final class EvaluationReports {
           twinDiscard = job.plan().twinDiscard();
           segment++;
         }
-        Baseline.Point point = order == 0 ? points.get(index) : link != null ? link.apply(points.get(index)) : null;
+        Baseline.Point point =
+            order == 0 ? points.get(index) : link != null ? link.apply(points.get(index)) : null;
         if (point != null) {
           moved.add(point);
         }
@@ -184,7 +194,8 @@ final class EvaluationReports {
     rows.sort(Comparator.comparingInt(BaselineRow::version).thenComparingInt(BaselineRow::order));
     StringBuilder text =
         new StringBuilder(
-            "version\ttable\topponent\trank\terror\toneVsRest\tjar\ttwinDiscard\tsegment\tscaled\tscaledError\n");
+            "version\ttable\topponent\trank\terror\toneVsRest\tjar\ttwinDiscard\tsegment\tscaled"
+                + "\tscaledError\n");
     for (BaselineRow row : rows) {
       text.append(row.text()).append('\n');
     }
@@ -196,7 +207,8 @@ final class EvaluationReports {
    *
    * @param point 1 つ目の基準の卓の尺度に直した値（つなげなければ null）
    */
-  private static String baselineLine(String table, Measured job, int segment, Baseline.Point point) {
+  private static String baselineLine(
+      String table, Measured job, int segment, Baseline.Point point) {
     DuelSetup duel = job.plan().duel();
     String oneVsRest = Split.oneAgainstRest(duel.variant()).toString();
     String split = "-";
@@ -233,7 +245,8 @@ final class EvaluationReports {
    * 尺度を当てはめ直す。辺にするのは、基準の卓とラダーの結果のうち、辺をたどって尺度の基準にする卓の相手につながるものだけ。全ての牌山で
    * 値が同じ辺は、分散が 0 で重みが決まらないので入れない。入れなかった辺の数はヘッダーに書く。
    */
-  private void ratings(EvaluationSettings evaluation, List<RunDirectory.JobName> done) throws IOException {
+  private void ratings(EvaluationSettings evaluation, List<RunDirectory.JobName> done)
+      throws IOException {
     TableSpec anchorTable = evaluation.tables().get(evaluation.anchor());
     String anchor = EvaluationJobs.label(base(anchorTable));
     Score score = anchorTable.score();
@@ -255,7 +268,8 @@ final class EvaluationReports {
           continue;
         }
         Ratings.Edge edge =
-            new Ratings.Edge(plan.candidate().label(), duel.opponent().label(), duel.wallSeed(), values);
+            new Ratings.Edge(
+                plan.candidate().label(), duel.opponent().label(), duel.wallSeed(), values);
         all.add(new Rated(edge, name.table(), plan.jar()));
       }
       rated = connected(all, anchor);
@@ -277,9 +291,9 @@ final class EvaluationReports {
     text.append(
         String.format(
             Locale.ROOT,
-            "# Ratings against %s, the opponent of the anchor table %s, from %d edges of %s planned by jars %s"
-                + " (left out: %d edges not connected to it yet, %d edges with the same value on every wall);"
-                + " score %s, a %s theta is stronger\n",
+            "# Ratings against %s, the opponent of the anchor table %s, from %d edges of %s planned"
+                + " by jars %s (left out: %d edges not connected to it yet, %d edges with the same"
+                + " value on every wall); score %s, a %s theta is stronger\n",
             anchor,
             evaluation.anchor(),
             rated.size(),
@@ -289,10 +303,13 @@ final class EvaluationReports {
             constant,
             score,
             score == Score.RANK ? "smaller" : "larger"));
-    text.append(String.format(Locale.ROOT, "# chi-square per degree of freedom %.4f\n", fitted.chiSquarePerDegree()));
+    text.append(
+        String.format(
+            Locale.ROOT, "# chi-square per degree of freedom %.4f\n", fitted.chiSquarePerDegree()));
     List<String> outliers = new ArrayList<>();
     for (Ratings.Residual residual : fitted.outliers()) {
-      outliers.add(String.format(Locale.ROOT, "%s-%s z=%.4f", residual.a(), residual.b(), residual.z()));
+      outliers.add(
+          String.format(Locale.ROOT, "%s-%s z=%.4f", residual.a(), residual.b(), residual.z()));
     }
     text.append(
         String.format(
@@ -312,7 +329,11 @@ final class EvaluationReports {
     for (Ratings.Rating rating : ratings) {
       text.append(
           String.join(
-              "\t", rating.label(), number(rating.value()), number(rating.error()), Integer.toString(rating.edges())));
+              "\t",
+              rating.label(),
+              number(rating.value()),
+              number(rating.error()),
+              Integer.toString(rating.edges())));
       text.append('\n');
     }
     DurableFiles.write(run.report(RATINGS), text.toString());
@@ -356,13 +377,15 @@ final class EvaluationReports {
     return values;
   }
 
-  private void alarms(EvaluationSettings evaluation, List<RunDirectory.JobName> done) throws IOException {
+  private void alarms(EvaluationSettings evaluation, List<RunDirectory.JobName> done)
+      throws IOException {
     List<ChampionStore.Entry> history = ChampionStore.open(run.champion()).history();
     OptionalInt crowned =
         !history.isEmpty() && history.getFirst().event() instanceof StoreEvent.Initial initial
             ? OptionalInt.of(initial.champion().version())
             : OptionalInt.empty();
-    long promotions = history.stream().filter(entry -> entry.event() instanceof StoreEvent.Promoted).count();
+    long promotions =
+        history.stream().filter(entry -> entry.event() instanceof StoreEvent.Promoted).count();
     int duels = 0;
     int ladders = 0;
     int baselines = 0;
@@ -419,19 +442,24 @@ final class EvaluationReports {
     text.append(
         String.format(
             Locale.ROOT,
-            "# Alarms expected by chance if every true difference were 0, over the %d jobs with results"
-                + " (z line %.2f, drop margin %.4f, worse streak %d); promotions are expected false promotions and all"
-                + " promotions\n",
+            "# Alarms expected by chance if every true difference were 0, over the %d jobs with"
+                + " results (z line %.2f, drop margin %.4f, worse streak %d); promotions are"
+                + " expected false promotions and all promotions\n",
             done.size(),
             watch.alarmZ(),
             watch.margin(),
             watch.onWorse().streak()));
     text.append("# signal\texpected\tobserved\n");
-    text.append(String.format(Locale.ROOT, "# promotions\t%.4f\t%d\n", budget.promotions(), promotions));
+    text.append(
+        String.format(Locale.ROOT, "# promotions\t%.4f\t%d\n", budget.promotions(), promotions));
     for (Signal signal : Signal.values()) {
       text.append(
           String.format(
-              Locale.ROOT, "# %s\t%.4f\t%d\n", signal, budget.alarms().get(signal), counts.getOrDefault(signal, 0)));
+              Locale.ROOT,
+              "# %s\t%.4f\t%d\n",
+              signal,
+              budget.alarms().get(signal),
+              counts.getOrDefault(signal, 0)));
     }
     text.append("job\tversion\tsignal\tmean\tlow\thigh\thandling\tchampion\n");
     for (Alarm line : raised) {

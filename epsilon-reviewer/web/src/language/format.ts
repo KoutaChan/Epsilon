@@ -2,7 +2,7 @@ import type {
   ModelInfo,
   ModelKey,
   RecordSource,
-} from "../../../protocol/model.ts";
+} from "@epsilon-reviewer/protocol/model";
 import type { Translate } from "./catalog.ts";
 
 const WINDS = ["east", "south", "west", "north"] as const;

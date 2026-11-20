@@ -26,7 +26,8 @@ public class WallTest {
         Set<Integer> seen = new HashSet<>();
         for (int position = 0; position < set.size(); position++) {
           int tile = wall.tile(position);
-          Assert.assertTrue(set.contains(tile), variant + " position " + position + " holds " + tile);
+          Assert.assertTrue(
+              set.contains(tile), variant + " position " + position + " holds " + tile);
           Assert.assertTrue(seen.add(tile), variant + " repeats " + tile);
         }
         Assert.assertEquals(seen.size(), set.size());
@@ -54,7 +55,8 @@ public class WallTest {
             expected[index] = expected[other];
             expected[other] = tile;
           }
-          Assert.assertEquals(positions(wall, set.size()), expected, variant + " seed " + seed + " epoch " + epoch);
+          Assert.assertEquals(
+              positions(wall, set.size()), expected, variant + " seed " + seed + " epoch " + epoch);
           Assert.assertEquals(wall.epoch(), epoch + 1);
         }
       }
@@ -68,8 +70,10 @@ public class WallTest {
       for (long seed = 1; seed <= 20; seed++) {
         int[] first = shuffled(variant, seed, 5);
         Assert.assertEquals(shuffled(variant, seed, 5), first);
-        Assert.assertFalse(Arrays.equals(shuffled(variant, seed, 6), first), variant + " seed " + seed);
-        Assert.assertFalse(Arrays.equals(shuffled(variant, seed + 1000, 5), first), variant + " seed " + seed);
+        Assert.assertFalse(
+            Arrays.equals(shuffled(variant, seed, 6), first), variant + " seed " + seed);
+        Assert.assertFalse(
+            Arrays.equals(shuffled(variant, seed + 1000, 5), first), variant + " seed " + seed);
         Assert.assertEquals(first.length, size);
       }
     }
@@ -95,8 +99,10 @@ public class WallTest {
       boolean[] dealt = new boolean[Variant.HAND * seats];
       for (int offset = 0; offset < seats; offset++) {
         for (int index = 0; index < Variant.HAND; index++) {
-          int position = index < 12 ? index / 4 * 4 * seats + offset * 4 + index % 4 : 12 * seats + offset;
-          Assert.assertEquals(wall.dealt(offset, index), wall.tile(position), variant + " " + offset + "/" + index);
+          int position =
+              index < 12 ? index / 4 * 4 * seats + offset * 4 + index % 4 : 12 * seats + offset;
+          Assert.assertEquals(
+              wall.dealt(offset, index), wall.tile(position), variant + " " + offset + "/" + index);
           Assert.assertFalse(dealt[position]);
           dealt[position] = true;
         }
@@ -115,11 +121,15 @@ public class WallTest {
         Assert.assertEquals(wall.indicator(index), wall.tile(size - 6 - 2 * index));
         Assert.assertEquals(wall.ura(index), wall.tile(size - 5 - 2 * index));
       }
-      Assert.assertThrows(IndexOutOfBoundsException.class, () -> wall.indicator(WinContext.MAX_INDICATORS));
+      Assert.assertThrows(
+          IndexOutOfBoundsException.class, () -> wall.indicator(WinContext.MAX_INDICATORS));
       int live = variant.liveWall();
       for (int k = 1; k <= variant.rinshanTiles(); k++) {
         int position = k <= 4 ? size - k : size - 10 - k;
-        Assert.assertEquals(wall.drawRinshan(k % variant.seats()), wall.tile(position), variant + " replacement " + k);
+        Assert.assertEquals(
+            wall.drawRinshan(k % variant.seats()),
+            wall.tile(position),
+            variant + " replacement " + k);
         Assert.assertEquals(wall.liveLeft(), live - k);
       }
       Assert.assertThrows(IllegalStateException.class, () -> wall.drawRinshan(0));
@@ -206,7 +216,8 @@ public class WallTest {
           replacements += replace ? 1 : 0;
         }
         for (int position = size - Variant.DEAD_WALL; position < size; position++) {
-          Assert.assertEquals(wall.tile(position), positions[position], variant + " dead wall " + position);
+          Assert.assertEquals(
+              wall.tile(position), positions[position], variant + " dead wall " + position);
         }
       }
     }
@@ -267,14 +278,16 @@ public class WallTest {
       Random first = new Random(order);
       Random second = new Random(order);
       while (wall.liveLeft() > 0) {
-        Assert.assertEquals(copy.draw(second.nextInt(variant.seats())), wall.draw(first.nextInt(variant.seats())));
+        Assert.assertEquals(
+            copy.draw(second.nextInt(variant.seats())), wall.draw(first.nextInt(variant.seats())));
       }
       Fields.assertSameFields(wall, copy);
       copy.shuffle(0);
       Assert.assertEquals(copy.epoch(), 11);
       Assert.assertEquals(wall.epoch(), 10);
       Assert.assertEquals(snapshot.liveLeft(), variant.liveWall() - 11);
-      Assert.assertThrows(IllegalArgumentException.class, () -> copy.copyFrom(new Wall(other(variant))));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> copy.copyFrom(new Wall(other(variant))));
     }
   }
 

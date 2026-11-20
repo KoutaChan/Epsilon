@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.engine.view;
 
+import com.epsilon.mahjong.action.Meld;
 import com.epsilon.mahjong.action.Meld.Type;
 import com.epsilon.mahjong.engine.RoundEnd;
 import com.epsilon.mahjong.engine.SeatView;
@@ -72,7 +73,8 @@ public final class RecordTable {
     riichi = new boolean[seats];
     nuki = new int[seats];
     for (int seat = 0; seat < seats; seat++) {
-      for (int index = 0; index < Variant.HAND; index++) hands[seat][recorded.deal(seat, index)] = true;
+      for (int index = 0; index < Variant.HAND; index++)
+        hands[seat][recorded.deal(seat, index)] = true;
       rivers.add(new ArrayList<>());
       melds.add(new ArrayList<>());
     }
@@ -129,7 +131,7 @@ public final class RecordTable {
         lastTile = discard.tile();
       }
       case RecordEvent.Call call -> {
-        var meld = com.epsilon.mahjong.action.Meld.of(call.meld());
+        var meld = Meld.of(call.meld());
         markCalled(meld.source().seat(call.seat(), seats));
         for (int tile : call.consumed()) release(call.seat(), tile);
         melds.get(call.seat()).add(call.meld());
@@ -143,7 +145,7 @@ public final class RecordTable {
           red |= tiles.red(tile);
           release(kan.seat(), tile);
         }
-        melds.get(kan.seat()).add(com.epsilon.mahjong.action.Meld.ankan(kan.kind(), red).id());
+        melds.get(kan.seat()).add(Meld.ankan(kan.kind(), red).id());
         current = kan.seat();
         clearDraw();
       }
@@ -152,8 +154,8 @@ public final class RecordTable {
         release(kan.seat(), tile);
         List<Integer> own = melds.get(kan.seat());
         int index = ponIndex(own, kan.seat(), kan.kind());
-        var pon = com.epsilon.mahjong.action.Meld.of(own.get(index));
-        own.set(index, com.epsilon.mahjong.action.Meld.kakan(pon, tiles.red(tile)).id());
+        var pon = Meld.of(own.get(index));
+        own.set(index, Meld.kakan(pon, tiles.red(tile)).id());
         current = kan.seat();
         clearDraw();
         lastTile = tile;
@@ -207,7 +209,7 @@ public final class RecordTable {
   }
 
   /** 今の表示用の局面。 */
-  public TableState state() {
+  public TableView state() {
     List<PlayerState> players = new ArrayList<>(seats);
     for (int seat = 0; seat < seats; seat++) {
       List<String> hand = new ArrayList<>(14);
@@ -217,7 +219,7 @@ public final class RecordTable {
         if (seat == drawSeat && tile == drawTile) draw = TileCode.of(tiles, tile);
         else hand.add(TileCode.of(tiles, tile));
       }
-      List<Meld> shown = new ArrayList<>(melds.get(seat).size());
+      List<MeldView> shown = new ArrayList<>(melds.get(seat).size());
       for (int id : melds.get(seat)) shown.add(MeldLayout.of(id, seat, seats));
       players.add(
           new PlayerState(
@@ -231,8 +233,13 @@ public final class RecordTable {
     }
     List<String> dora = new ArrayList<>(indicators.size());
     for (int tile : indicators) dora.add(TileCode.of(tiles, tile));
-    return new TableState(
-        List.copyOf(players), List.copyOf(dora), honba, kyotaku, variant.liveWall() - draws, current);
+    return new TableView(
+        List.copyOf(players),
+        List.copyOf(dora),
+        honba,
+        kyotaku,
+        variant.liveWall() - draws,
+        current);
   }
 
   /**
@@ -243,7 +250,7 @@ public final class RecordTable {
    * @param view 鳴いた席から見える、鳴いた後の卓
    * @param shown 鳴く前の、判断の時点の表示用の局面
    */
-  public static TableState afterCall(SeatView view, TableState shown) {
+  public static TableView afterCall(SeatView view, TableView shown) {
     int seat = view.seat();
     int seats = view.variant().seats();
     TileSet tiles = view.variant().tiles();
@@ -252,11 +259,11 @@ public final class RecordTable {
       int tile = tiles.physicalId(index);
       if (view.holds(tile)) hand.add(TileCode.of(tiles, tile));
     }
-    List<Meld> shownMelds = new ArrayList<>(view.meldCount(seat));
+    List<MeldView> shownMelds = new ArrayList<>(view.meldCount(seat));
     for (int index = 0; index < view.meldCount(seat); index++)
       shownMelds.add(MeldLayout.of(view.meld(seat, index), seat, seats));
     int called = view.meld(seat, view.meldCount(seat) - 1);
-    int from = com.epsilon.mahjong.action.Meld.of(called).source().seat(seat, seats);
+    int from = Meld.of(called).source().seat(seat, seats);
     List<PlayerState> players = new ArrayList<>(seats);
     for (int player = 0; player < seats; player++)
       players.add(shown.players().get(player).withScore(view.score(player)));
@@ -278,13 +285,8 @@ public final class RecordTable {
         from,
         discarder.withRiverTile(
             last, new RiverTile(tile.tile(), tile.tsumogiri(), tile.riichi(), true)));
-    return new TableState(
-        List.copyOf(players),
-        shown.dora(),
-        shown.honba(),
-        view.kyotaku(),
-        shown.remaining(),
-        seat);
+    return new TableView(
+        List.copyOf(players), shown.dora(), shown.honba(), view.kyotaku(), shown.remaining(), seat);
   }
 
   /** 局の始めからの点の移動のうち、まだ卓に足していない分。立直の供託は、成立したときに引いてある。 */
@@ -309,13 +311,15 @@ public final class RecordTable {
 
   private void markCalled(int seat) {
     List<RiverTile> river = rivers.get(seat);
-    if (river.isEmpty()) throw new IllegalArgumentException("Seat " + seat + " has no discard to call.");
+    if (river.isEmpty())
+      throw new IllegalArgumentException("Seat " + seat + " has no discard to call.");
     RiverTile tile = river.getLast();
     river.set(river.size() - 1, new RiverTile(tile.tile(), tile.tsumogiri(), tile.riichi(), true));
   }
 
   private void take(int seat, int tile) {
-    if (!tiles.contains(tile)) throw new IllegalArgumentException(variant + " does not use tile " + tile);
+    if (!tiles.contains(tile))
+      throw new IllegalArgumentException(variant + " does not use tile " + tile);
     hands[seat][tile] = true;
   }
 
@@ -336,7 +340,7 @@ public final class RecordTable {
 
   private static int ponIndex(List<Integer> melds, int seat, int kind) {
     for (int index = 0; index < melds.size(); index++) {
-      var meld = com.epsilon.mahjong.action.Meld.of(melds.get(index));
+      var meld = Meld.of(melds.get(index));
       if (meld.type() == Type.PON && meld.base() == kind) return index;
     }
     throw new IllegalArgumentException("Seat " + seat + " has no pon of kind " + kind);

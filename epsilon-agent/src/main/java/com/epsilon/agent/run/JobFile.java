@@ -68,18 +68,43 @@ public record JobFile(
       throw new IllegalArgumentException(
           "Invalid job " + name + ": version " + version + ", order " + order + ", row " + row);
     }
-    if (attempts < 0 || cleanStops < 0 || cleanStops > attempts || walls < 0 || gamesBytes < 0 || looksBytes < 0) {
+    if (attempts < 0
+        || cleanStops < 0
+        || cleanStops > attempts
+        || walls < 0
+        || gamesBytes < 0
+        || looksBytes < 0) {
       throw new IllegalArgumentException(
-          "Invalid progress of job " + name + ": attempts " + attempts + ", clean stops " + cleanStops + ", walls "
+          "Invalid progress of job "
+              + name
+              + ": attempts "
+              + attempts
+              + ", clean stops "
+              + cleanStops
+              + ", walls "
               + walls);
     }
   }
 
   /** まだ始めていないジョブを作る。 */
-  public static JobFile pending(int version, String table, int order, int row, Node.Table definition) {
+  public static JobFile pending(
+      int version, String table, int order, int row, Node.Table definition) {
     return new JobFile(
-        RunDirectory.jobName(version, table), version, table, order, row, definition, null, State.PENDING, 0, 0, 0, 0,
-        0, Instant.now(), null);
+        RunDirectory.jobName(version, table),
+        version,
+        table,
+        order,
+        row,
+        definition,
+        null,
+        State.PENDING,
+        0,
+        0,
+        0,
+        0,
+        0,
+        Instant.now(),
+        null);
   }
 
   /** 落ちた回数。 */
@@ -94,7 +119,8 @@ public record JobFile(
   }
 
   JobFile attempted() {
-    return with(plan, State.RUNNING, attempts + 1, cleanStops, walls, gamesBytes, looksBytes, reason);
+    return with(
+        plan, State.RUNNING, attempts + 1, cleanStops, walls, gamesBytes, looksBytes, reason);
   }
 
   JobFile planned(Node.Table plan) {
@@ -107,7 +133,8 @@ public record JobFile(
   }
 
   JobFile stoppedCleanly() {
-    return with(plan, State.PENDING, attempts, cleanStops + 1, walls, gamesBytes, looksBytes, reason);
+    return with(
+        plan, State.PENDING, attempts, cleanStops + 1, walls, gamesBytes, looksBytes, reason);
   }
 
   JobFile fell(String reason) {
@@ -140,7 +167,20 @@ public record JobFile(
       long looksBytes,
       String reason) {
     return new JobFile(
-        name, version, table, order, row, definition, plan, state, attempts, cleanStops, walls, gamesBytes, looksBytes,
-        created, reason);
+        name,
+        version,
+        table,
+        order,
+        row,
+        definition,
+        plan,
+        state,
+        attempts,
+        cleanStops,
+        walls,
+        gamesBytes,
+        looksBytes,
+        created,
+        reason);
   }
 }

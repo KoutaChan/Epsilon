@@ -51,9 +51,9 @@ test("a key missing in a language falls back to ja, and locales pick the closest
   assert.equal(languages.message("en", "desktop.exportTitle"), "Save");
   assert.equal(languages.message("en", "desktop.directoryTitle"), "保存先");
   assert.equal(languages.message("en", "app.title"), "題");
-  assert.throws(
-    () => languages.message("en", "desktop.startupTitle"),
-    /Missing language key/,
+  assert.equal(
+    languages.message("en", "desktop.startupTitle"),
+    "desktop.startupTitle",
   );
   assert.equal(languages.select("en-US"), "en");
   assert.equal(languages.select("en"), "en");

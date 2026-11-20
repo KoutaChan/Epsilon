@@ -7,8 +7,16 @@ import java.util.List;
  *
  * @param source 牌譜の形式（tenhou・mjai・majsoul）
  * @param names 席ごとの名前。要素の数は席の数（4 人か 3 人）で、名前の無い席は空の文字列
- * @param finalScores 席ごとの終局時の持ち点。読み込んだ牌譜では必ずある。前のバージョンが保存した結果の概要では null のことがある
+ * @param finalScores 席ごとの終局時の持ち点
  * @param roundCount 局の数
  */
 public record RecordSummary(
-    String source, List<String> names, List<Integer> finalScores, int roundCount) {}
+    String source, List<String> names, List<Integer> finalScores, int roundCount) {
+  public RecordSummary {
+    names = List.copyOf(names);
+    if (finalScores == null || finalScores.size() != names.size())
+      throw new IllegalArgumentException(
+          "record.finalScores must contain a final score for every seat.");
+    finalScores = List.copyOf(finalScores);
+  }
+}

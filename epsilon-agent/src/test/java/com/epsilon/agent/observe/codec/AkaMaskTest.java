@@ -44,7 +44,8 @@ public class AkaMaskTest {
     assertFalse(AkaMask.has(manAndSou, Tiles.P5));
     assertTrue(AkaMask.has(manAndSou, Tiles.S5));
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
-      assertEquals(AkaMask.has(AkaMask.ALL, kind), Tiles.contains(Tiles.FIVES, kind), "kind " + kind);
+      assertEquals(
+          AkaMask.has(AkaMask.ALL, kind), Tiles.contains(Tiles.FIVES, kind), "kind " + kind);
     }
     assertFalse(AkaMask.has(AkaMask.ALL, -1));
   }
@@ -52,7 +53,9 @@ public class AkaMaskTest {
   @Test
   public void valuesOutsideTheRangeAreRejected() {
     expectThrows(IllegalArgumentException.class, () -> AkaMask.suitMask(Tiles.bit(Tiles.M4)));
-    expectThrows(IllegalArgumentException.class, () -> AkaMask.suitMask(Tiles.FIVES | Tiles.bit(Tiles.CHUN)));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> AkaMask.suitMask(Tiles.FIVES | Tiles.bit(Tiles.CHUN)));
     expectThrows(IllegalArgumentException.class, () -> AkaMask.redKinds(AkaMask.ALL + 1));
     expectThrows(IllegalArgumentException.class, () -> AkaMask.redKinds(-1));
     expectThrows(IllegalArgumentException.class, () -> AkaMask.has(AkaMask.ALL + 1, Tiles.M5));

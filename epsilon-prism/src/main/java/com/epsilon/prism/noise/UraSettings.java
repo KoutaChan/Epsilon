@@ -22,7 +22,8 @@ public sealed interface UraSettings {
    * @param sample 監査のために期待値も求める局末の割合
    */
   @Case("REALIZED")
-  record Realized(@Key(doc = "監査のために期待値も求める局末の割合", value = "0.05") @Range(min = 0, max = 1) double sample)
+  record Realized(
+      @Key(doc = "監査のために期待値も求める局末の割合", value = "0.05") @Range(min = 0, max = 1) double sample)
       implements UraSettings {
 
     @Override

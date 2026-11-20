@@ -16,7 +16,8 @@ final class CohortWeights {
   /** 範囲に入るコホートが 1 から 256 個でなければ IllegalArgumentException を投げる。 */
   CohortWeights(RecencyWindow window) {
     if (window.cohorts() < 1 || window.cohorts() > MAX_COHORTS) {
-      throw new IllegalArgumentException("A window must hold 1 to " + MAX_COHORTS + " cohorts: " + window);
+      throw new IllegalArgumentException(
+          "A window must hold 1 to " + MAX_COHORTS + " cohorts: " + window);
     }
     this.window = window;
     weights = new float[window.cohorts()];

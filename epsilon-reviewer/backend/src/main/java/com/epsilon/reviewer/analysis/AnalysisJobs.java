@@ -101,8 +101,7 @@ public final class AnalysisJobs implements AutoCloseable {
   /** 覚えておく時間を過ぎたジョブを捨てる。 */
   public void sweep() {
     Instant limit = Instant.now().minus(retention);
-    jobs.values()
-        .removeIf(job -> job.finishedAt() != null && job.finishedAt().isBefore(limit));
+    jobs.values().removeIf(job -> job.finishedAt() != null && job.finishedAt().isBefore(limit));
   }
 
   /** 全てのジョブを取り消し、実行中のジョブが止まるのを待つ。 */

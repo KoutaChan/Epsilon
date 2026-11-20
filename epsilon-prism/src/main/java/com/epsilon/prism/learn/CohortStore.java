@@ -12,6 +12,7 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -77,7 +78,8 @@ public final class CohortStore implements AutoCloseable {
     }
     Variant cohortVariant = manifest.variant();
     if (variant != null && cohortVariant != variant) {
-      throw new IOException("Cohort " + directory + " holds " + cohortVariant + " rows, the store " + variant);
+      throw new IOException(
+          "Cohort " + directory + " holds " + cohortVariant + " rows, the store " + variant);
     }
     int first = size;
     for (CohortWriter.Shard shard : manifest.shards()) {
@@ -106,8 +108,7 @@ public final class CohortStore implements AutoCloseable {
     try (FileChannel entriesFile =
         FileChannel.open(CohortWriter.index(path), StandardOpenOption.READ)) {
       ByteBuffer entries =
-          ByteBuffer.allocateDirect(CohortWriter.INDEX_ENTRY << 13)
-              .order(ByteOrder.LITTLE_ENDIAN);
+          ByteBuffer.allocateDirect(CohortWriter.INDEX_ENTRY << 13).order(ByteOrder.LITTLE_ENDIAN);
       entries.limit(0);
       while (true) {
         if (entries.remaining() < CohortWriter.INDEX_ENTRY) {
@@ -218,6 +219,11 @@ public final class CohortStore implements AutoCloseable {
    * @throws IOException 読めないか、フレームが壊れているとき
    */
   public Row read(int row) throws IOException {
+    return read(row, null);
+  }
+
+  /** 行を展開し、照合用のダイジェストがあれば読んだフレーム全体を順に加える。 */
+  public Row read(int row, MessageDigest digest) throws IOException {
     FileChannel channel;
     long position;
     int bytes;
@@ -246,6 +252,10 @@ public final class CohortStore implements AutoCloseable {
     if (codec == null || codec.ledgerFeatures() != features || codec.variant() != rowVariant) {
       codec = new RowCodec(features, rowVariant);
       CODECS.set(codec);
+    }
+    if (digest != null) {
+      digest.update(buffer);
+      buffer.rewind();
     }
     Row decoded = codec.decode(buffer);
     if (buffer.hasRemaining()) {

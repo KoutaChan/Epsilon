@@ -28,7 +28,8 @@ public class MajSoulProtoTest {
     Assert.assertTrue(MajSoulReader.isResponse(response(true)));
     Assert.assertEquals(MajSoulReader.read(response(true), "soul"), json);
     Assert.assertEquals(MajSoulReader.read(response(false), "soul"), json);
-    Assert.assertFalse(MajSoulReader.isResponse(MajSoulReaderTest.RECORD.getBytes(StandardCharsets.UTF_8)));
+    Assert.assertFalse(
+        MajSoulReader.isResponse(MajSoulReaderTest.RECORD.getBytes(StandardCharsets.UTF_8)));
   }
 
   /** 三人打ちの応答（北抜きの RecordBaBei を含む）は、{@link MajSoulReaderTest#SANMA} と同じ半荘に読む。 */
@@ -42,9 +43,15 @@ public class MajSoulProtoTest {
                     .varint(1, 1)
                     .varint(2, 2)
                     .packed(5, 33_000, 38_000, 34_000)
-                    .strings(7, "1m", "1m", "9m", "9m", "1p", "9p", "1s", "9s", "6s", "2z", "3z", "3z", "6z")
-                    .strings(8, "2p", "3p", "4p", "5p", "6p", "7p", "2s", "3s", "4s", "7s", "8s", "4p", "4p")
-                    .strings(9, "1m", "9m", "1p", "9p", "1s", "9s", "1z", "2z", "3z", "5z", "6z", "7z", "7z", "7z")
+                    .strings(
+                        7, "1m", "1m", "9m", "9m", "1p", "9p", "1s", "9s", "6s", "2z", "3z", "3z",
+                        "6z")
+                    .strings(
+                        8, "2p", "3p", "4p", "5p", "6p", "7p", "2s", "3s", "4s", "7s", "8s", "4p",
+                        "4p")
+                    .strings(
+                        9, "1m", "9m", "1p", "9p", "1s", "9s", "1z", "2z", "3z", "5z", "6z", "7z",
+                        "7z", "7z")
                     .strings(16, "5z")),
             wrapper(".lq.RecordDiscardTile", new Proto().varint(1, 2).string(2, "7z").varint(5, 1)),
             wrapper(".lq.RecordDealTile", new Proto().string(2, "4z")),
@@ -76,7 +83,8 @@ public class MajSoulProtoTest {
                     .message(1, new Proto().varint(3, 31_000))
                     .message(1, new Proto().varint(1, 1).varint(3, 40_000))
                     .message(1, new Proto().varint(1, 2).varint(3, 34_000)));
-    Proto response = new Proto().message(3, head).message(4, wrapper(".lq.GameDetailRecords", details));
+    Proto response =
+        new Proto().message(3, head).message(4, wrapper(".lq.GameDetailRecords", details));
     Assert.assertEquals(
         MajSoulReader.read(wrapper(".lq.ResGameRecord", response).bytes(), "sanma"),
         MajSoulReader.read(MajSoulReaderTest.SANMA, "sanma"));
@@ -90,7 +98,8 @@ public class MajSoulProtoTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> MajSoulReader.read(cut, "cut"));
     byte[] headOnly = wrapper(".lq.ResGameRecord", new Proto().message(3, head())).bytes();
     IllegalArgumentException failure =
-        Assert.expectThrows(IllegalArgumentException.class, () -> MajSoulReader.read(headOnly, "head-only"));
+        Assert.expectThrows(
+            IllegalArgumentException.class, () -> MajSoulReader.read(headOnly, "head-only"));
     Assert.assertTrue(failure.getMessage().contains("no data"), failure.getMessage());
   }
 
@@ -108,15 +117,27 @@ public class MajSoulProtoTest {
                     .varint(1, 1)
                     .varint(2, 3)
                     .packed(5, 24_000, 23_000, 29_000, 24_000)
-                    .strings(7, "2p", "4p", "2m", "8m", "2s", "8s", "4z", "4z", "5z", "5z", "6z", "7z", "7z")
-                    .strings(8, "3p", "3p", "3m", "3m", "7m", "7m", "3s", "3s", "6s", "7s", "7s", "6z", "6z")
-                    .strings(9, "2m", "3m", "4m", "5m", "6m", "7m", "3p", "4p", "5p", "6s", "6s", "7s", "8s")
-                    .strings(10, "1m", "9m", "1p", "9p", "1s", "9s", "1z", "1z", "2z", "2z", "3z", "3p", "7z", "8p")
+                    .strings(
+                        7, "2p", "4p", "2m", "8m", "2s", "8s", "4z", "4z", "5z", "5z", "6z", "7z",
+                        "7z")
+                    .strings(
+                        8, "3p", "3p", "3m", "3m", "7m", "7m", "3s", "3s", "6s", "7s", "7s", "6z",
+                        "6z")
+                    .strings(
+                        9, "2m", "3m", "4m", "5m", "6m", "7m", "3p", "4p", "5p", "6s", "6s", "7s",
+                        "8s")
+                    .strings(
+                        10, "1m", "9m", "1p", "9p", "1s", "9s", "1z", "1z", "2z", "2z", "3z", "3p",
+                        "7z", "8p")
                     .strings(16, "9s")),
             wrapper(".lq.RecordDiscardTile", new Proto().varint(1, 3).string(2, "3p")),
             wrapper(
                 ".lq.RecordChiPengGang",
-                new Proto().varint(1, 1).varint(2, 1).strings(3, "3p", "3p", "3p").packed(4, 1, 1, 3)),
+                new Proto()
+                    .varint(1, 1)
+                    .varint(2, 1)
+                    .strings(3, "3p", "3p", "3p")
+                    .packed(4, 1, 1, 3)),
             wrapper(".lq.RecordDiscardTile", new Proto().varint(1, 1).string(2, "6s")),
             wrapper(
                 ".lq.RecordHule",
@@ -147,7 +168,8 @@ public class MajSoulProtoTest {
         details.message(1, record);
       }
     }
-    Proto response = new Proto().message(3, head()).message(4, wrapper(".lq.GameDetailRecords", details));
+    Proto response =
+        new Proto().message(3, head()).message(4, wrapper(".lq.GameDetailRecords", details));
     return wrapper(".lq.ResGameRecord", response).bytes();
   }
 

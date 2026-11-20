@@ -1,6 +1,7 @@
 package com.epsilon.prism.backend;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 
 import ai.djl.ndarray.NDManager;
 import com.epsilon.agent.observe.Observation;
@@ -8,17 +9,17 @@ import com.epsilon.agent.observe.ObservationBatch;
 import com.epsilon.agent.observe.ObservationWriter;
 import com.epsilon.mahjong.engine.Decisions;
 import com.epsilon.mahjong.engine.Engine;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
-import com.epsilon.prism4p.input.InputSchema;
-import com.epsilon.prism4p.input.InputSchema.ActionRole;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,6 +29,7 @@ import java.util.Locale;
 import java.util.function.IntFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.annotations.DataProvider;
 
 /** HIP のテストの材料。パラメーターを乱数でずらしたネットワークと、エンジンで打った半荘の判断から入力のライターで作ったバッチを用意する。 */
 public final class HipFixtures {
@@ -40,7 +42,7 @@ public final class HipFixtures {
   /** 長い行を探す半荘の数の上限。 */
   private static final int LONG_SEARCH_GAMES = 400;
 
-  /** 長い行とみなす公開イベントの数の下限。T = 39 + イベント数 > 128 になるので、K2・K4 は 10 ウェーブ構成のカーネルを通る。 */
+  /** 長い行とみなす公開イベントの数の下限。T = 39 + イベント数 > 128 になるので、全トークンと固定トークンの Attention は 10 ウェーブ構成のカーネルを通る。 */
   private static final int LONG_ROW_EVENTS = 90;
 
   /** {@link #longRows(int)} が 1 つの半荘から取る判断の上限。 */
@@ -99,6 +101,18 @@ public final class HipFixtures {
     }
   }
 
+  @DataProvider
+  public static PrismShape[] scoreShapes() {
+    List<PrismShape> shapes = new ArrayList<>();
+    for (Arm arm : Arm.selected()) shapes.add(arm.shape());
+    return shapes.toArray(PrismShape[]::new);
+  }
+
+  @DataProvider
+  public static PrismShape[] rereadShapes() {
+    return Arrays.stream(scoreShapes()).filter(PrismShape::reread).toArray(PrismShape[]::new);
+  }
+
   /**
    * 標準の幅で v2 の構造のネットワークを作り、全てのパラメーターを乱数でずらす（{@link #network(NDManager, PrismShape, long)}）。
    *
@@ -120,7 +134,7 @@ public final class HipFixtures {
    * @return ネットワーク
    */
   public static PrismNetwork network(NDManager manager, PrismShape shape, long seed) {
-    return PerturbedNetwork.of(manager, InputSchema.FORMAT, shape, seed);
+    return PerturbedNetwork.of(manager, FOUR_PLAYER, shape, seed);
   }
 
   /** アームのネットワークと、価値グラフの全ての作り方が現れる {@link GpuCase#ROWS} 行のバッチから、GPU のテストの材料を作る。 */
@@ -135,9 +149,19 @@ public final class HipFixtures {
 
   /** 判断する席の O を取り込み、そのワード列の写しを返すヘルパー（スレッドセーフでない）。 */
   private static final class Capture {
-    private final ObservationWriter writer = new ObservationWriter(TENHOU_4P);
-    private final ObservationBatch batch = new ObservationBatch(TENHOU_4P, 1 << 12);
-    private final Observation read = new Observation(TENHOU_4P);
+    private final ObservationWriter writer;
+    private final ObservationBatch batch;
+    private final Observation read;
+
+    Capture() {
+      this(TENHOU_4P);
+    }
+
+    Capture(Variant variant) {
+      writer = new ObservationWriter(variant);
+      batch = new ObservationBatch(variant, 1 << 12);
+      read = new Observation(variant);
+    }
 
     /** 席の O を取り込み、読み込み用の {@link Observation} に結び付けて返す。 */
     Observation observe(Engine engine, int slot) {
@@ -150,8 +174,16 @@ public final class HipFixtures {
     /** 直前に取り込んだ O のワード列の写しを返す。 */
     long[] words() {
       int index = batch.size() - 1;
-      return Arrays.copyOfRange(batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
+      return Arrays.copyOfRange(
+          batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
     }
+  }
+
+  /** 指定した判断を入力ライターに渡せる観測のワード列にする。 */
+  public static long[] observation(Engine engine, int slot) {
+    Capture capture = new Capture();
+    capture.observe(engine, slot);
+    return capture.words();
   }
 
   /**
@@ -164,9 +196,15 @@ public final class HipFixtures {
    * @return 判断ごとの O のワード列
    */
   static List<long[]> observations(long seed, int games, TableWalk.Policy policy, int limit) {
-    Capture capture = new Capture();
+    return observations(TENHOU_4P, seed, games, policy, limit);
+  }
+
+  /** 指定したルールで半荘を打ち、判断の観測を順に返す。 */
+  static List<long[]> observations(
+      Variant variant, long seed, int games, TableWalk.Policy policy, int limit) {
+    Capture capture = new Capture(variant);
     List<long[]> rows = new ArrayList<>();
-    new TableWalk(TENHOU_4P, policy)
+    new TableWalk(variant, policy)
         .run(
             seed,
             games,
@@ -200,7 +238,9 @@ public final class HipFixtures {
     List<long[]> plain = new ArrayList<>();
     int[] seen = new int[1];
     int specialLimit = rows * 2 / 3;
-    for (int game = 0; game < 12 && (special.size() < specialLimit || plain.size() < rows); game++) {
+    for (int game = 0;
+        game < 12 && (special.size() < specialLimit || plain.size() < rows);
+        game++) {
       TableWalk.Policy policy = game % 2 == 0 ? TableWalk.Policy.GREEDY : TableWalk.Policy.CALLS;
       new TableWalk(TENHOU_4P, policy)
           .run(
@@ -213,14 +253,15 @@ public final class HipFixtures {
                 Observation o = capture.observe(engine, slot);
                 boolean wanted = false;
                 for (int a = 0; a < o.legalActions(); a++) {
-                  Integer left = quota.get(ActionRole.of(o.action(a).type()));
+                  Integer left = quota.get(FOUR_PLAYER.role(o.action(a).type()));
                   wanted |= left != null && left > 0;
                 }
                 if (wanted && special.size() < specialLimit) {
                   special.add(capture.words());
                   for (int a = 0; a < o.legalActions(); a++) {
                     quota.computeIfPresent(
-                        ActionRole.of(o.action(a).type()), (role, left) -> Math.max(left - 1, 0));
+                        FOUR_PLAYER.role(o.action(a).type()),
+                        (role, left) -> Math.max(left - 1, 0));
                   }
                 } else if (plain.size() < rows && seen[0]++ % 5 == 0) {
                   plain.add(capture.words());
@@ -244,7 +285,9 @@ public final class HipFixtures {
   static List<long[]> longRows() {
     Capture capture = new Capture();
     List<long[]> rows = new ArrayList<>();
-    for (long seed = LONG_SEARCH_FROM; rows.size() < 2 && seed < LONG_SEARCH_FROM + LONG_SEARCH_GAMES; seed++) {
+    for (long seed = LONG_SEARCH_FROM;
+        rows.size() < 2 && seed < LONG_SEARCH_FROM + LONG_SEARCH_GAMES;
+        seed++) {
       long[][] longest = {null};
       int[] events = {-1};
       new TableWalk(TENHOU_4P, TableWalk.Policy.CALLS)
@@ -265,7 +308,10 @@ public final class HipFixtures {
     }
     if (rows.size() < 2) {
       throw new IllegalStateException(
-          "no two CALLS games with " + LONG_ROW_EVENTS + " public events from seed " + LONG_SEARCH_FROM);
+          "no two CALLS games with "
+              + LONG_ROW_EVENTS
+              + " public events from seed "
+              + LONG_SEARCH_FROM);
     }
     return rows;
   }
@@ -281,7 +327,9 @@ public final class HipFixtures {
   static List<long[]> longRows(int count) {
     Capture capture = new Capture();
     List<long[]> rows = new ArrayList<>();
-    for (long seed = LONG_SEARCH_FROM; rows.size() < count && seed < LONG_SEARCH_FROM + LONG_ROWS_SEARCH_GAMES; seed++) {
+    for (long seed = LONG_SEARCH_FROM;
+        rows.size() < count && seed < LONG_SEARCH_FROM + LONG_ROWS_SEARCH_GAMES;
+        seed++) {
       List<long[]> words = new ArrayList<>();
       List<Integer> events = new ArrayList<>();
       new TableWalk(TENHOU_4P, TableWalk.Policy.CALLS)
@@ -306,7 +354,13 @@ public final class HipFixtures {
     }
     if (rows.size() < count) {
       throw new IllegalStateException(
-          "found " + rows.size() + " of " + count + " decisions with " + LONG_ROW_EVENTS + " public events");
+          "found "
+              + rows.size()
+              + " of "
+              + count
+              + " decisions with "
+              + LONG_ROW_EVENTS
+              + " public events");
     }
     return rows;
   }
@@ -351,6 +405,17 @@ public final class HipFixtures {
   }
 
   /**
+   * O の列を、形が読む入力形式と事実の組で 1 つのバッチに符号化する。
+   *
+   * @param rows 行ごとの O のワード列
+   * @param shape 入力形式と事実の組を決めるネットワークの形
+   * @return 確定したバッチ
+   */
+  public static HostBatch encode(List<long[]> rows, PrismShape shape) {
+    return encode(rows, shape.inputFormat(FOUR_PLAYER), ByteBuffer::allocateDirect);
+  }
+
+  /**
    * O の列を 1 つのバッチに符号化する。
    *
    * @param rows 行ごとの O のワード列
@@ -358,6 +423,11 @@ public final class HipFixtures {
    * @return 確定したバッチ
    */
   static HostBatch encode(List<long[]> rows, IntFunction<ByteBuffer> memory) {
+    return encode(rows, FOUR_PLAYER, memory);
+  }
+
+  private static HostBatch encode(
+      List<long[]> rows, InputFormat format, IntFunction<ByteBuffer> memory) {
     int n = rows.size();
     BatchPlan.Capacity capacity =
         new BatchPlan.Capacity(
@@ -365,7 +435,8 @@ public final class HipFixtures {
             Math.max(n * Limits.MAX_EVENT_TOKENS, Limits.MAX_EVENT_TOKENS),
             Math.max(n * Limits.MAX_TRANSITIONS, Limits.MAX_TRANSITIONS),
             Math.max(n * Limits.MAX_LEGAL_ACTIONS, Limits.MAX_LEGAL_ACTIONS));
-    HostBatch batch = new HostBatch(InputSchema.FORMAT, capacity, memory.apply(BatchPlan.maxBytes(InputSchema.FORMAT, capacity)));
+    HostInputs inputs = HostInputs.allocate(format, capacity, memory);
+    HostBatch batch = inputs.input();
     BatchPlan plan = batch.plan();
     plan.clear();
     Observation read = new Observation(TENHOU_4P);
@@ -375,8 +446,7 @@ public final class HipFixtures {
       }
     }
     plan.seal();
-    InputFormat.RowWriter writer = InputSchema.FORMAT.writer();
-    HostInputs inputs = new HostInputs(batch);
+    InputFormat.RowWriter writer = format.writer();
     for (int row = 0; row < n; row++) {
       writer.write(read.bind(rows.get(row), 0), inputs, row);
     }

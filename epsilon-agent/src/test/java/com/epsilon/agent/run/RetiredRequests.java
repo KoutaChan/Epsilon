@@ -22,7 +22,8 @@ final class RetiredRequests {
     }
     List<ControlRequest> requests = new ArrayList<>();
     try (Stream<Path> files = Files.list(done)) {
-      for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".json")).toList()) {
+      for (Path file :
+          files.filter(path -> path.getFileName().toString().endsWith(".json")).toList()) {
         requests.add(RecordFile.read(ControlRequest.class, file).value());
       }
     }

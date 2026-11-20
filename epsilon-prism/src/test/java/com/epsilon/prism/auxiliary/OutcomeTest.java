@@ -131,7 +131,8 @@ public class OutcomeTest {
     codec.write(facts, 1, 0, words, 0);
     assertEquals(codec.outcome(words, 0), Outcome.DEAL_IN);
     assertEquals(codec.winner(words, 0), 1);
-    assertEquals(codec.dealInPoints(words, 0), ScoreMath.ron(first, false) + ScoreMath.ron(second, true));
+    assertEquals(
+        codec.dealInPoints(words, 0), ScoreMath.ron(first, false) + ScoreMath.ron(second, true));
     codec.write(facts, 3, 0, words, 0);
     assertEquals(codec.outcome(words, 0), Outcome.SELF_RON);
     assertEquals(codec.winPoints(words, 0), ScoreMath.ron(second, true));
@@ -172,14 +173,44 @@ public class OutcomeTest {
       Scene scene =
           new Scene(
               new int[][] {
-                {Tiles.M1, Tiles.M2, Tiles.M3, Tiles.P4, Tiles.P5, Tiles.P6, Tiles.S7, Tiles.S8, Tiles.S9,
-                  Tiles.P1, Tiles.P3, Tiles.TON, Tiles.TON},
-                {Tiles.M2, Tiles.M2, Tiles.M4, Tiles.M4, Tiles.M6, Tiles.M6, Tiles.P2, Tiles.P2, Tiles.P4,
-                  Tiles.P4, Tiles.P6, Tiles.P6, Tiles.PEI},
-                {Tiles.M1, Tiles.M4, Tiles.M7, Tiles.P1, Tiles.P4, Tiles.P7, Tiles.S1, Tiles.S4, Tiles.S7,
-                  Tiles.TON, Tiles.NAN, Tiles.SHA, Tiles.HAKU},
-                {Tiles.M2, Tiles.M5, Tiles.M8, Tiles.P2, Tiles.P5, Tiles.P8, Tiles.S2, Tiles.S5, Tiles.S8,
-                  Tiles.NAN, Tiles.SHA, Tiles.HATSU, Tiles.CHUN}
+                {
+                  Tiles.M1, Tiles.M2, Tiles.M3, Tiles.P4, Tiles.P5, Tiles.P6, Tiles.S7, Tiles.S8,
+                  Tiles.S9, Tiles.P1, Tiles.P3, Tiles.TON, Tiles.TON
+                },
+                {
+                  Tiles.M2, Tiles.M2, Tiles.M4, Tiles.M4, Tiles.M6, Tiles.M6, Tiles.P2, Tiles.P2,
+                  Tiles.P4, Tiles.P4, Tiles.P6, Tiles.P6, Tiles.PEI
+                },
+                {
+                  Tiles.M1,
+                  Tiles.M4,
+                  Tiles.M7,
+                  Tiles.P1,
+                  Tiles.P4,
+                  Tiles.P7,
+                  Tiles.S1,
+                  Tiles.S4,
+                  Tiles.S7,
+                  Tiles.TON,
+                  Tiles.NAN,
+                  Tiles.SHA,
+                  Tiles.HAKU
+                },
+                {
+                  Tiles.M2,
+                  Tiles.M5,
+                  Tiles.M8,
+                  Tiles.P2,
+                  Tiles.P5,
+                  Tiles.P8,
+                  Tiles.S2,
+                  Tiles.S5,
+                  Tiles.S8,
+                  Tiles.NAN,
+                  Tiles.SHA,
+                  Tiles.HATSU,
+                  Tiles.CHUN
+                }
               },
               new int[] {Tiles.PEI});
       scene.choose(0, riichi ? Action.Type.RIICHI_DAHAI : Action.Type.DAHAI, Tiles.PEI);
@@ -206,14 +237,44 @@ public class OutcomeTest {
     Scene scene =
         new Scene(
             new int[][] {
-              {Tiles.M1, Tiles.M9, Tiles.P1, Tiles.P9, Tiles.S1, Tiles.S9, Tiles.TON, Tiles.NAN, Tiles.SHA,
-                Tiles.PEI, Tiles.HAKU, Tiles.HATSU, Tiles.M2},
-              {Tiles.M2, Tiles.M3, Tiles.M4, Tiles.M5, Tiles.M6, Tiles.M7, Tiles.P2, Tiles.P3, Tiles.P4,
-                Tiles.P5, Tiles.P7, Tiles.S2, Tiles.S4},
-              {Tiles.M3, Tiles.M6, Tiles.M8, Tiles.P3, Tiles.P6, Tiles.P8, Tiles.S3, Tiles.S6, Tiles.S8,
-                Tiles.TON, Tiles.NAN, Tiles.SHA, Tiles.PEI},
-              {Tiles.M4, Tiles.M7, Tiles.P4, Tiles.P7, Tiles.S4, Tiles.S7, Tiles.S2, Tiles.S5, Tiles.M9,
-                Tiles.P9, Tiles.S9, Tiles.HAKU, Tiles.HATSU}
+              {
+                Tiles.M1,
+                Tiles.M9,
+                Tiles.P1,
+                Tiles.P9,
+                Tiles.S1,
+                Tiles.S9,
+                Tiles.TON,
+                Tiles.NAN,
+                Tiles.SHA,
+                Tiles.PEI,
+                Tiles.HAKU,
+                Tiles.HATSU,
+                Tiles.M2
+              },
+              {
+                Tiles.M2, Tiles.M3, Tiles.M4, Tiles.M5, Tiles.M6, Tiles.M7, Tiles.P2, Tiles.P3,
+                Tiles.P4, Tiles.P5, Tiles.P7, Tiles.S2, Tiles.S4
+              },
+              {
+                Tiles.M3, Tiles.M6, Tiles.M8, Tiles.P3, Tiles.P6, Tiles.P8, Tiles.S3, Tiles.S6,
+                Tiles.S8, Tiles.TON, Tiles.NAN, Tiles.SHA, Tiles.PEI
+              },
+              {
+                Tiles.M4,
+                Tiles.M7,
+                Tiles.P4,
+                Tiles.P7,
+                Tiles.S4,
+                Tiles.S7,
+                Tiles.S2,
+                Tiles.S5,
+                Tiles.M9,
+                Tiles.P9,
+                Tiles.S9,
+                Tiles.HAKU,
+                Tiles.HATSU
+              }
             },
             new int[] {Tiles.CHUN});
     scene.choose(0, Action.Type.KYUSHU_KYUHAI, -1);
@@ -228,7 +289,8 @@ public class OutcomeTest {
   private static HandEndFacts facts(RoundOutcome outcome, long[] yaku, int dealer, int tenpai) {
     TableState next = new TableState(VARIANT);
     next.set(1, 0, 0, new int[] {31_000, 17_000, 24_000, 28_000});
-    return new HandEndFacts(VARIANT, outcome, yaku, dealer, next, tenpai, tenpai, new TenpaiReach(VARIANT));
+    return new HandEndFacts(
+        VARIANT, outcome, yaku, dealer, next, tenpai, tenpai, new TenpaiReach(VARIANT));
   }
 
   /** 手で作った牌山で打つ東 1 局（親は席 0）。配牌は席ごとに 13 枚の牌の種類で決め、ツモは並べた順に引く。牌山の残りは使っていない牌で埋める。 */
@@ -244,7 +306,8 @@ public class OutcomeTest {
       int[] used = new int[Tiles.KINDS];
       for (int seat = 0; seat < SEATS; seat++) {
         for (int index = 0; index < Variant.HAND; index++) {
-          int position = index < 12 ? index / 4 * 4 * SEATS + seat * 4 + index % 4 : 12 * SEATS + seat;
+          int position =
+              index < 12 ? index / 4 * 4 * SEATS + seat * 4 + index % 4 : 12 * SEATS + seat;
           wall[position] = take(used, hands[seat][index]);
         }
       }
@@ -412,7 +475,9 @@ public class OutcomeTest {
         case RON -> {
           int last = events.size() - 1;
           boolean onRiichi =
-              events.kind(last) == EventKind.DISCARD && events.riichi(last) && events.seat(last) == outcome.loser();
+              events.kind(last) == EventKind.DISCARD
+                  && events.riichi(last)
+                  && events.seat(last) == outcome.loser();
           riichiRonned += onRiichi ? 1 : 0;
         }
         case TSUMO -> {}
@@ -459,7 +524,8 @@ public class OutcomeTest {
       return false;
     }
 
-    private void checkOutcome(FullView full, RoundEnd end, HandEndFacts facts, Decision decision, int tenpai) {
+    private void checkOutcome(
+        FullView full, RoundEnd end, HandEndFacts facts, Decision decision, int tenpai) {
       int seat = decision.seat();
       RoundOutcome outcome = end.outcome();
       codec.write(facts, seat, decision.events(), words, 0);
@@ -476,7 +542,8 @@ public class OutcomeTest {
               yaku = end.score(0).yaku();
               if (tsumo == seat) {
                 Arrays.fill(delta, 0);
-                Settlement.tsumo(VARIANT, outcome.base(0), tsumo, dealer, 0, RoundOutcome.NO_SEAT, delta);
+                Settlement.tsumo(
+                    VARIANT, outcome.base(0), tsumo, dealer, 0, RoundOutcome.NO_SEAT, delta);
                 winPoints = delta[tsumo];
                 yield Outcome.SELF_TSUMO;
               }
@@ -492,7 +559,14 @@ public class OutcomeTest {
                 yaku = end.score(own).yaku();
                 Arrays.fill(delta, 0);
                 Settlement.ron(
-                    VARIANT, outcome.base(own), seat, outcome.loser(), dealer, 0, RoundOutcome.NO_SEAT, delta);
+                    VARIANT,
+                    outcome.base(own),
+                    seat,
+                    outcome.loser(),
+                    dealer,
+                    0,
+                    RoundOutcome.NO_SEAT,
+                    delta);
                 winPoints = delta[seat];
                 multiRonSelf += outcome.winnerCount() > 1 ? 1 : 0;
                 yield Outcome.SELF_RON;
@@ -505,7 +579,14 @@ public class OutcomeTest {
               for (int index = 0; index < outcome.winnerCount(); index++) {
                 Arrays.fill(delta, 0);
                 Settlement.ron(
-                    VARIANT, outcome.base(index), outcome.winner(index), seat, dealer, 0, outcome.pao(index), delta);
+                    VARIANT,
+                    outcome.base(index),
+                    outcome.winner(index),
+                    seat,
+                    dealer,
+                    0,
+                    outcome.pao(index),
+                    delta);
                 dealInPoints -= delta[seat];
               }
               multiRonDealIn += outcome.winnerCount() > 1 ? 1 : 0;
@@ -538,7 +619,8 @@ public class OutcomeTest {
 
       TableState next = end.next();
       for (int relative = 0; relative < SEATS; relative++) {
-        assertEquals(codec.finalScore(words, 0, relative), next.score((seat + relative) % SEATS), where);
+        assertEquals(
+            codec.finalScore(words, 0, relative), next.score((seat + relative) % SEATS), where);
       }
     }
 
@@ -563,7 +645,8 @@ public class OutcomeTest {
             assertFalse(Tiles.contains(danger, kind), "danger on a fifth tile " + kind);
             continue;
           }
-          boolean expected = full.ronScore(player, Tiles.physicalId(kind, PLAIN_COPY), seat, ws, score);
+          boolean expected =
+              full.ronScore(player, Tiles.physicalId(kind, PLAIN_COPY), seat, ws, score);
           assertTrue(!expected || Tiles.contains(waits, kind), "ron outside the waits on " + kind);
           assertEquals(Tiles.contains(danger, kind), expected, "danger " + kind);
           if (expected) {
@@ -598,7 +681,9 @@ public class OutcomeTest {
 
     private static boolean declaredRiichi(EventLog events, int seat) {
       for (int event = 0; event < events.size(); event++) {
-        if (events.kind(event) == EventKind.DISCARD && events.riichi(event) && events.seat(event) == seat) {
+        if (events.kind(event) == EventKind.DISCARD
+            && events.riichi(event)
+            && events.seat(event) == seat) {
           return true;
         }
       }

@@ -107,7 +107,10 @@ public final class ChanceLog {
       }
       if (hidden < 0) {
         throw new IllegalArgumentException(
-            "The deal and the indicator hold more than " + set.copies(tileKind) + " tiles of kind " + tileKind);
+            "The deal and the indicator hold more than "
+                + set.copies(tileKind)
+                + " tiles of kind "
+                + tileKind);
       }
       unseen[tileKind] = (byte) hidden;
     }
@@ -133,7 +136,8 @@ public final class ChanceLog {
 
   void copyFrom(ChanceLog other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     System.arraycopy(other.kind, 0, kind, 0, kind.length);
     System.arraycopy(other.seat, 0, seat, 0, seat.length);
@@ -154,7 +158,8 @@ public final class ChanceLog {
       throw new IllegalStateException("A round has at most " + kind.length + " chance events");
     }
     if (unseen[tileKind] == 0) {
-      throw new IllegalStateException("No unseen tile of kind " + tileKind + " is left for " + physicalId);
+      throw new IllegalStateException(
+          "No unseen tile of kind " + tileKind + " is left for " + physicalId);
     }
     kind[size] = (byte) chanceKind.ordinal();
     seat[size] = (byte) owner;

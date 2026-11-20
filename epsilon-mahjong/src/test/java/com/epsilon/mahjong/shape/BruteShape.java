@@ -55,7 +55,9 @@ final class BruteShape {
 
   /** 3 つの形（通常形・七対子・国士）のうち、足りない枚数の最小。 */
   int distance(int[] counts, int handMelds) {
-    return Math.min(standard(counts, handMelds), Math.min(chiitoitsu(counts, handMelds), kokushi(counts, handMelds)));
+    return Math.min(
+        standard(counts, handMelds),
+        Math.min(chiitoitsu(counts, handMelds), kokushi(counts, handMelds)));
   }
 
   int standard(int[] counts, int handMelds) {
@@ -111,7 +113,10 @@ final class BruteShape {
       blocks[block.ordinal()] = block(counts, block);
     }
     int target = Variant.MAX_MELDS - handMelds;
-    int now = Math.min(combine(blocks, target), Math.min(chiitoitsu(counts, handMelds), kokushi(counts, handMelds)));
+    int now =
+        Math.min(
+            combine(blocks, target),
+            Math.min(chiitoitsu(counts, handMelds), kokushi(counts, handMelds)));
     long improving = 0;
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
       if (tiles.copies(kind) == 0 || counts[kind] == Tiles.COPIES) {
@@ -121,7 +126,10 @@ final class BruteShape {
       int[] saved = blocks[block.ordinal()];
       counts[kind]++;
       blocks[block.ordinal()] = block(counts, block);
-      int after = Math.min(combine(blocks, target), Math.min(chiitoitsu(counts, handMelds), kokushi(counts, handMelds)));
+      int after =
+          Math.min(
+              combine(blocks, target),
+              Math.min(chiitoitsu(counts, handMelds), kokushi(counts, handMelds)));
       counts[kind]--;
       blocks[block.ordinal()] = saved;
       if (after < now) {
@@ -167,11 +175,13 @@ final class BruteShape {
    * @param from 選べる最初の面子の、列での位置
    * @param used 作る形が使う、種類ごとの枚数
    */
-  private void search(int[] counts, Block block, int from, int meldCount, int added, int[] used, int[] best) {
+  private void search(
+      int[] counts, Block block, int from, int meldCount, int added, int[] used, int[] best) {
     best[meldCount * 2] = Math.min(best[meldCount * 2], added);
     for (int kind = block.first(); kind <= block.last(); kind++) {
       if (used[kind] + 2 <= tiles.copies(kind)) {
-        int extra = Math.max(0, used[kind] + 2 - counts[kind]) - Math.max(0, used[kind] - counts[kind]);
+        int extra =
+            Math.max(0, used[kind] + 2 - counts[kind]) - Math.max(0, used[kind] - counts[kind]);
         best[meldCount * 2 + 1] = Math.min(best[meldCount * 2 + 1], added + extra);
       }
     }

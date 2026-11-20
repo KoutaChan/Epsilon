@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.epsilon</groupId>
+    <artifactId>epsilon-base</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <relativePath>../../epsilon-base/pom.xml</relativePath>
+  </parent>
+  <artifactId>epsilon-prism-kernel-common</artifactId>
+  <name>Epsilon Prism Kernel Common</name>
+  <dependencies>
+    <dependency>
+      <groupId>ai.djl</groupId>
+      <artifactId>api</artifactId>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>test-native-declarations</id>
+            <phase>process-test-classes</phase>
+            <goals><goal>run</goal></goals>
+            <configuration>
+              <skip>${skipTests}</skip>
+              <target xmlns:unless="ant:unless">
+                <sequential unless:true="${maven.test.skip}">
+                  <exec executable="cmake" failonerror="true" dir="${project.basedir}">
+                    <arg value="-S"/><arg value="src/test/native"/>
+                    <arg value="-B"/><arg value="target/native-tests"/>
+                  </exec>
+                  <exec executable="cmake" failonerror="true" dir="${project.basedir}">
+                    <arg value="--build"/><arg value="target/native-tests"/>
+                    <arg value="--config"/><arg value="Release"/>
+                  </exec>
+                  <exec executable="ctest" failonerror="true" dir="${project.basedir}">
+                    <arg value="--test-dir"/><arg value="target/native-tests"/>
+                    <arg value="-C"/><arg value="Release"/><arg value="--output-on-failure"/>
+                  </exec>
+                </sequential>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+    <resources>
+      <resource>
+        <directory>src/main/native</directory>
+        <targetPath>com/epsilon/prism/kernel</targetPath>
+        <includes>
+          <include>declaration_version.inc</include>
+          <include>jni_version.inc</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>src/main/native/inference</directory>
+        <includes>
+          <include>collection_widths.def</include>
+          <include>collection_limits.def</include>
+        </includes>
+      </resource>
+    </resources>
+  </build>
+</project>

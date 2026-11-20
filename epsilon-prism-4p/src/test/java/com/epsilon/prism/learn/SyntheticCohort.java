@@ -1,6 +1,7 @@
 package com.epsilon.prism.learn;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.observe.ObservationBatch;
@@ -18,7 +19,6 @@ import com.epsilon.prism.auxiliary.TargetSchema;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.Row;
-import com.epsilon.prism4p.input.InputSchema.ActionRole;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -34,7 +34,8 @@ import java.util.SplittableRandom;
 final class SyntheticCohort implements TableWalk.Visitor {
 
   /** 局末を待っている判断。 */
-  private record Pending(EngineDecisionKind kind, int seat, int events, long[] observation, long[] oracle) {}
+  private record Pending(
+      EngineDecisionKind kind, int seat, int events, long[] observation, long[] oracle) {}
 
   private final ObservationWriter writer = new ObservationWriter(TENHOU_4P);
   private final ObservationBatch batch = new ObservationBatch(TENHOU_4P, 1 << 12);
@@ -76,7 +77,8 @@ final class SyntheticCohort implements TableWalk.Visitor {
    * @throws IOException 書けないとき
    */
   static void write(Path directory, int iteration, List<Row> rows) throws IOException {
-    try (CohortWriter writer = new CohortWriter(directory, TENHOU_4P, iteration, 0, 2, CohortWriter.Tap.NONE)) {
+    try (CohortWriter writer =
+        new CohortWriter(directory, TENHOU_4P, iteration, 0, 2, CohortWriter.Tap.NONE)) {
       for (Row row : rows) {
         writer.accept(row);
       }
@@ -110,10 +112,14 @@ final class SyntheticCohort implements TableWalk.Visitor {
     int seat = decisions.seat(slot);
     batch.clear();
     int index = writer.capture(engine.view(seat), decisions, slot, batch);
-    long[] o = Arrays.copyOfRange(batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
+    long[] o =
+        Arrays.copyOfRange(
+            batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
     int events = observation.bind(o, 0).events();
     long[] oracle =
-        (rows.size() + pending.size()) % 5 == 4 ? new long[0] : OracleCapture.capture(engine.full(), seat, ws);
+        (rows.size() + pending.size()) % 5 == 4
+            ? new long[0]
+            : OracleCapture.capture(engine.full(), seat, ws);
     pending.add(new Pending(decisions.kind(slot), seat, events, o, oracle));
   }
 
@@ -142,7 +148,7 @@ final class SyntheticCohort implements TableWalk.Visitor {
       }
       support |= 1 << action;
       values[action] = random.nextFloat() * 2 - 1;
-      if (TargetSchema.hasCandidateTargets(ActionRole.of(o.action(action).type()))) {
+      if (TargetSchema.hasCandidateTargets(FOUR_PLAYER.role(o.action(action).type()))) {
         outcomes.write(
             facts, decision.seat(), decision.events(), words, action * OutcomeCodec.WORDS);
       }

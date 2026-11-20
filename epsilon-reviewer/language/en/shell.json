@@ -25,6 +25,7 @@
   "home.file": "Choose a game record file",
   "home.formats": "mjai / Tenhou XML / Mahjong Soul",
   "model.label": "Analysis model",
+  "model.labelSeats": "Analysis model ({seats} players)",
   "model.loading": "Loading models…",
   "model.select": "Select a model",
   "model.unavailableOption": "{model} (unavailable)",

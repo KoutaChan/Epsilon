@@ -133,13 +133,15 @@ public final class EventLog {
     Arrays.fill(riverSize, (byte) 0);
   }
 
-  int appendDiscard(int author, int tileKind, boolean redFive, boolean fromDraw, boolean declaresRiichi) {
+  int appendDiscard(
+      int author, int tileKind, boolean redFive, boolean fromDraw, boolean declaresRiichi) {
     if (tileKind < 0 || tileKind >= Tiles.KINDS || variant.tiles().copies(tileKind) == 0) {
       throw new IllegalArgumentException(variant + " has no tile kind " + tileKind);
     }
     int place = riverSize[Objects.checkIndex(author, riverSize.length)];
     if (place == riverCapacity) {
-      throw new IllegalStateException("Seat " + author + " discards at most " + riverCapacity + " tiles");
+      throw new IllegalStateException(
+          "Seat " + author + " discards at most " + riverCapacity + " tiles");
     }
     int event = next(EventKind.DISCARD, author);
     tile[event] = (byte) tileKind;
@@ -198,7 +200,8 @@ public final class EventLog {
 
   void copyFrom(EventLog other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     System.arraycopy(other.kind, 0, kind, 0, kind.length);
     System.arraycopy(other.seat, 0, seat, 0, seat.length);
@@ -241,7 +244,8 @@ public final class EventLog {
         || seat[last] != source
         || tile[last] != called.called()
         || red[last] != calledRed) {
-      throw new IllegalStateException(called + " by seat " + caller + " does not follow its called discard");
+      throw new IllegalStateException(
+          called + " by seat " + caller + " does not follow its called discard");
     }
     calledBy[last] = (byte) caller;
   }

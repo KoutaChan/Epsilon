@@ -149,11 +149,14 @@ public class MajSoulReaderTest {
     Assert.assertEquals(game.variant(), VARIANT);
     Assert.assertEquals(
         game.meta(),
-        new RecordedGame.Meta("pon-over-chi", RecordedGame.Source.MAJSOUL, List.of("East", "", "West", "")));
+        new RecordedGame.Meta(
+            "pon-over-chi", RecordedGame.Source.MAJSOUL, List.of("East", "", "West", "")));
     Assert.assertEquals(game.finalScores(), new int[] {24_000, 21_000, 31_000, 24_000});
     Assert.assertEquals(game.rounds().size(), 1);
     RecordedRound round = game.rounds().get(0);
-    Assert.assertEquals(round.start(), new RoundStart(VARIANT, 7, 0, 0, new int[] {24_000, 23_000, 29_000, 24_000}));
+    Assert.assertEquals(
+        round.start(),
+        new RoundStart(VARIANT, 7, 0, 0, new int[] {24_000, 23_000, 29_000, 24_000}));
     Assert.assertEquals(round.indicator(), Tiles.physicalId(Tiles.S9, 1));
     Assert.assertEquals(round.deal(3, 11), Tiles.physicalId(Tiles.P3, 3));
     Meld pon = Meld.pon(Tiles.P3, Meld.RelativeSource.TOIMEN, Meld.AkaSource.NONE);
@@ -162,14 +165,24 @@ public class MajSoulReaderTest {
         List.of(
             new RecordEvent.Draw(3, Tiles.physicalId(Tiles.P8, 0)),
             new RecordEvent.Discard(3, Tiles.physicalId(Tiles.P3, 3), false, false),
-            new RecordEvent.Call(1, pon.id(), List.of(Tiles.physicalId(Tiles.P3, 0), Tiles.physicalId(Tiles.P3, 1))),
+            new RecordEvent.Call(
+                1, pon.id(), List.of(Tiles.physicalId(Tiles.P3, 0), Tiles.physicalId(Tiles.P3, 1))),
             new RecordEvent.Discard(1, Tiles.physicalId(Tiles.S6, 0), false, false)));
     RoundResult.Win win =
         new RoundResult.Win(
-            2, 480, ScoringYaku.TANYAO.bit() | ScoringYaku.PINFU.bit(), 2, 30, 0, 0, 0, RoundOutcome.NO_SEAT);
+            2,
+            480,
+            ScoringYaku.TANYAO.bit() | ScoringYaku.PINFU.bit(),
+            2,
+            30,
+            0,
+            0,
+            0,
+            RoundOutcome.NO_SEAT);
     Assert.assertEquals(
         round.result(),
-        new RoundResult(EndKind.RON, null, List.of(win), 1, 0, 0, new int[] {0, -2_000, 2_000, 0}, new int[0]));
+        new RoundResult(
+            EndKind.RON, null, List.of(win), 1, 0, 0, new int[] {0, -2_000, 2_000, 0}, new int[0]));
     new ReplayDriver(VARIANT).replay(game, new RuleWorkspace(VARIANT));
   }
 
@@ -181,7 +194,8 @@ public class MajSoulReaderTest {
     Assert.assertEquals(game.variant(), sanma);
     Assert.assertEquals(game.finalScores(), new int[] {31_000, 40_000, 34_000});
     RecordedRound round = game.rounds().get(0);
-    Assert.assertEquals(round.start(), new RoundStart(sanma, 5, 0, 0, new int[] {33_000, 38_000, 34_000}));
+    Assert.assertEquals(
+        round.start(), new RoundStart(sanma, 5, 0, 0, new int[] {33_000, 38_000, 34_000}));
     int north = Tiles.physicalId(Tiles.PEI, 0);
     Assert.assertEquals(
         round.events(),
@@ -201,8 +215,11 @@ public class MajSoulReaderTest {
   /** 最後の打牌と違う牌を鳴いた記録は読まない。 */
   @Test
   public void aCallOfAnotherTileIsRejected() {
-    String wrong = RECORD.replace("\"tiles\": [\"3p\", \"3p\", \"3p\"]", "\"tiles\": [\"3p\", \"3p\", \"4p\"]");
+    String wrong =
+        RECORD.replace(
+            "\"tiles\": [\"3p\", \"3p\", \"3p\"]", "\"tiles\": [\"3p\", \"3p\", \"4p\"]");
     Assert.assertNotEquals(wrong, RECORD);
-    Assert.assertThrows(IllegalArgumentException.class, () -> MajSoulReader.read(wrong, "wrong-call"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> MajSoulReader.read(wrong, "wrong-call"));
   }
 }

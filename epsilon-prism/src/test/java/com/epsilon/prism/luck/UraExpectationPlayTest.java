@@ -23,7 +23,8 @@ public class UraExpectationPlayTest {
 
   private static final int HAND_ENDS = 3_000;
 
-  private static final UraSettings REALIZED = new UraSettings.Realized(0.05), EXPECTED = new UraSettings.Expected();
+  private static final UraSettings REALIZED = new UraSettings.Realized(0.05),
+      EXPECTED = new UraSettings.Expected();
 
   @Test
   public void fourPlayerHandEndsMatchTheReference() {
@@ -109,7 +110,10 @@ public class UraExpectationPlayTest {
                 if (values.averaged()) {
                   // 局末ごとに別の局として数える
                   audit.rows(
-                      values, tally.handEnds, 0, UraAuditTest.rows(DecisionClass.END, firstRiichiWinner(engine)));
+                      values,
+                      tally.handEnds,
+                      0,
+                      UraAuditTest.rows(DecisionClass.END, firstRiichiWinner(engine)));
                 }
               }
             });
@@ -181,8 +185,10 @@ public class UraExpectationPlayTest {
     Assert.assertEquals(values.groups(), reference.groups(), end.outcome().toString());
     for (int seat = 0; seat < seats; seat++) {
       Assert.assertEquals(reference.realized[seat], next[seat], EPSILON, end.outcome().toString());
-      Assert.assertEquals(values.expected(seat), reference.expected[seat], EPSILON, end.outcome().toString());
-      Assert.assertEquals(values.variance(seat), reference.variance[seat], EPSILON, end.outcome().toString());
+      Assert.assertEquals(
+          values.expected(seat), reference.expected[seat], EPSILON, end.outcome().toString());
+      Assert.assertEquals(
+          values.variance(seat), reference.variance[seat], EPSILON, end.outcome().toString());
     }
     tally.compared++;
     if (reference.varyingCount == 2) {

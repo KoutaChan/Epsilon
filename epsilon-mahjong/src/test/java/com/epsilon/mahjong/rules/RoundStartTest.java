@@ -26,11 +26,13 @@ public class RoundStartTest {
     int[] oneShort = {25_000, 25_000, 25_000, 24_000};
     int[] even = {25_000, 25_000, 25_000, 25_000};
     Assert.assertEquals(new RoundStart(four, 5, 2, 1, oneShort).kyotaku(), 1);
-    Assert.assertThrows(IllegalArgumentException.class, () -> new RoundStart(four, 5, 2, 0, oneShort));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new RoundStart(four, 5, 2, 0, oneShort));
     Assert.assertThrows(IllegalArgumentException.class, () -> new RoundStart(four, 0, -1, 0, even));
     Assert.assertThrows(IllegalArgumentException.class, () -> new RoundStart(four, 0, 0, -1, even));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> new RoundStart(four, 0, 0, 0, new int[] {25_000, 25_000, 50_000}));
+        IllegalArgumentException.class,
+        () -> new RoundStart(four, 0, 0, 0, new int[] {25_000, 25_000, 50_000}));
   }
 
   @Test
@@ -39,9 +41,12 @@ public class RoundStartTest {
     int[] three = {35_000, 35_000, 35_000};
     Assert.assertEquals(new RoundStart(Variant.TENHOU_4P, 11, 0, 0, four).round(), 11);
     Assert.assertEquals(new RoundStart(Variant.TENHOU_3P, 8, 0, 0, three).round(), 8);
-    Assert.assertThrows(IllegalArgumentException.class, () -> new RoundStart(Variant.TENHOU_4P, 12, 0, 0, four));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new RoundStart(Variant.TENHOU_3P, 9, 0, 0, three));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new RoundStart(Variant.TENHOU_3P, -1, 0, 0, three));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new RoundStart(Variant.TENHOU_4P, 12, 0, 0, four));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new RoundStart(Variant.TENHOU_3P, 9, 0, 0, three));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new RoundStart(Variant.TENHOU_3P, -1, 0, 0, three));
   }
 
   @Test
@@ -57,8 +62,10 @@ public class RoundStartTest {
   @Test
   public void equalityComparesTheScores() {
     RoundStart one = new RoundStart(Variant.TENHOU_3P, 2, 1, 0, new int[] {40_000, 30_000, 35_000});
-    RoundStart same = new RoundStart(Variant.TENHOU_3P, 2, 1, 0, new int[] {40_000, 30_000, 35_000});
-    RoundStart other = new RoundStart(Variant.TENHOU_3P, 2, 1, 0, new int[] {30_000, 40_000, 35_000});
+    RoundStart same =
+        new RoundStart(Variant.TENHOU_3P, 2, 1, 0, new int[] {40_000, 30_000, 35_000});
+    RoundStart other =
+        new RoundStart(Variant.TENHOU_3P, 2, 1, 0, new int[] {30_000, 40_000, 35_000});
     Assert.assertEquals(one, same);
     Assert.assertEquals(one.hashCode(), same.hashCode());
     Assert.assertNotEquals(one, other);

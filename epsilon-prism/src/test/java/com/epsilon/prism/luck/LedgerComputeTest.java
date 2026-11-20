@@ -35,7 +35,8 @@ public class LedgerComputeTest {
           new LedgerRecording(Set.of(LedgerGroup.URA), 32, 8),
           new LedgerRecording(Set.of(LedgerGroup.POLICY), 32, 8),
           new LedgerRecording(EnumSet.of(LedgerGroup.IMPROVE, LedgerGroup.DORA), 32, 8),
-          new LedgerRecording(EnumSet.of(LedgerGroup.POINTS, LedgerGroup.URA, LedgerGroup.POLICY), 32, 8),
+          new LedgerRecording(
+              EnumSet.of(LedgerGroup.POINTS, LedgerGroup.URA, LedgerGroup.POLICY), 32, 8),
           new LedgerRecording(LedgerGroup.computed(), 2, 8),
           new LedgerRecording(LedgerGroup.computed(), 32, 0.25));
 
@@ -60,7 +61,8 @@ public class LedgerComputeTest {
     LedgerGames.walk(variant, 52L, LedgerGames.KANS, 200, new Side(variant, differences, nonzero));
     for (int k = 1; k < RECORDINGS.size(); k++) {
       LedgerRecording recording = RECORDINGS.get(k);
-      LedgerGroup changing = k == POINT_CLIP ? LedgerGroup.POINTS : k == POLICY_CLIP ? LedgerGroup.POLICY : null;
+      LedgerGroup changing =
+          k == POINT_CLIP ? LedgerGroup.POINTS : k == POLICY_CLIP ? LedgerGroup.POLICY : null;
       long changed = 0;
       for (LedgerColumn column : COLUMNS) {
         long count = differences[k][column.ordinal()];
@@ -68,7 +70,8 @@ public class LedgerComputeTest {
         else Assert.assertEquals(count, 0L, variant + " " + recording + " " + column.reportName());
       }
       if (changing != null)
-        Assert.assertTrue(changed > 0, variant + " " + recording + " changed no " + changing + " column");
+        Assert.assertTrue(
+            changed > 0, variant + " " + recording + " changed no " + changing + " column");
     }
     for (LedgerColumn column :
         new LedgerColumn[] {
@@ -81,7 +84,8 @@ public class LedgerComputeTest {
           LedgerColumn.POLICY_OPPONENT
         })
       Assert.assertTrue(
-          nonzero[column.ordinal()] >= 10, variant + " " + column.reportName() + " " + nonzero[column.ordinal()]);
+          nonzero[column.ordinal()] >= 10,
+          variant + " " + column.reportName() + " " + nonzero[column.ordinal()]);
   }
 
   /** 全ての帳簿の計算器を同じ局に並べる歩き手。局ごとに計算器と受け取り先を作り直す。 */
@@ -112,7 +116,8 @@ public class LedgerComputeTest {
     public void decision(Engine engine, RuleWorkspace ws) {
       FullView full = engine.full();
       for (int k = 0; k < trackers.length; k++) trackers[k].observe(full, targets(k), ws);
-      if (seats.isEmpty()) for (int k = 0; k < trackers.length; k++) seats.add(LedgerGames.seats(variant));
+      if (seats.isEmpty())
+        for (int k = 0; k < trackers.length; k++) seats.add(LedgerGames.seats(variant));
       Decisions decisions = engine.decisions();
       for (int slot = 0; slot < decisions.size(); slot++) {
         int n = decisions.legalCount(slot), seat = decisions.seat(slot);
@@ -121,11 +126,14 @@ public class LedgerComputeTest {
         long code = 0;
         for (int a = 0; a < n; a++) {
           code = SeedMixer.mix64(code ^ decisions.legal(slot, a));
-          scores[a] = (float) (2 * CrnSeeds.unit(SeedMixer.mix64(decisions.legal(slot, a) * 131L + seat)) - 1);
+          scores[a] =
+              (float)
+                  (2 * CrnSeeds.unit(SeedMixer.mix64(decisions.legal(slot, a) * 131L + seat)) - 1);
           p[a] = 1f / n;
         }
         int chosen = (int) Long.remainderUnsigned(code, n);
-        for (int k = 0; k < trackers.length; k++) trackers[k].policy(seat, scores, p, chosen, n, targets(k));
+        for (int k = 0; k < trackers.length; k++)
+          trackers[k].policy(seat, scores, p, chosen, n, targets(k));
       }
     }
 
@@ -152,10 +160,17 @@ public class LedgerComputeTest {
               Assert.assertEquals(
                   Double.doubleToRawLongBits(actual[f]),
                   0L,
-                  variant + " " + RECORDINGS.get(k) + " computed " + COLUMNS[f].reportName() + " = " + actual[f]);
+                  variant
+                      + " "
+                      + RECORDINGS.get(k)
+                      + " computed "
+                      + COLUMNS[f].reportName()
+                      + " = "
+                      + actual[f]);
               continue;
             }
-            if (Double.doubleToRawLongBits(actual[f]) != Double.doubleToRawLongBits(expected[f])) differences[k][f]++;
+            if (Double.doubleToRawLongBits(actual[f]) != Double.doubleToRawLongBits(expected[f]))
+              differences[k][f]++;
           }
         }
       }

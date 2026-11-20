@@ -169,7 +169,8 @@ public final class ClassicRows {
     Path temporary = absolute.resolveSibling(absolute.getFileName() + ".tmp");
     try (DataOutputStream out =
         new DataOutputStream(
-            new BufferedOutputStream(new GZIPOutputStream(Files.newOutputStream(temporary), BUFFER), BUFFER))) {
+            new BufferedOutputStream(
+                new GZIPOutputStream(Files.newOutputStream(temporary), BUFFER), BUFFER))) {
       out.writeUTF(variant.name());
       out.writeInt(games.size());
       for (Game entry : games) {
@@ -206,13 +207,16 @@ public final class ClassicRows {
       Files.deleteIfExists(temporary);
       throw failure;
     }
-    Files.move(temporary, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    Files.move(
+        temporary, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
   }
 
   /** ファイルを読む。読めないとき、途中で切れているとき、中身が形式に合わないときは IOException を投げる。 */
   public static ClassicRows read(Path file) throws IOException {
     try (DataInputStream in =
-        new DataInputStream(new BufferedInputStream(new GZIPInputStream(Files.newInputStream(file), BUFFER), BUFFER))) {
+        new DataInputStream(
+            new BufferedInputStream(
+                new GZIPInputStream(Files.newInputStream(file), BUFFER), BUFFER))) {
       Variant variant = Variant.valueOf(in.readUTF());
       int seats = variant.seats();
       int games = in.readInt();
@@ -233,7 +237,8 @@ public final class ClassicRows {
       int rows = in.readInt();
       int totalLongs = in.readInt();
       if (rows < 0 || totalLongs < 0) {
-        throw new IOException("Negative row or long count in " + file + ": " + rows + ", " + totalLongs);
+        throw new IOException(
+            "Negative row or long count in " + file + ": " + rows + ", " + totalLongs);
       }
       Builder builder = new Builder(variant, Math.max(1, totalLongs), Math.max(1, rows));
       entries.forEach(builder::game);
@@ -249,12 +254,21 @@ public final class ClassicRows {
         }
         Observation observation = reader.bind(words, 0);
         if (observation.longs() != longs) {
-          throw new IOException("Row " + row + " of " + file + " holds " + longs + " longs, its O " + observation.longs());
+          throw new IOException(
+              "Row "
+                  + row
+                  + " of "
+                  + file
+                  + " holds "
+                  + longs
+                  + " longs, its O "
+                  + observation.longs());
         }
         builder.row(gameIndex, round, chosen, observation);
       }
       if (builder.longs() != totalLongs) {
-        throw new IOException("Rows of " + file + " hold " + builder.longs() + " longs, the header " + totalLongs);
+        throw new IOException(
+            "Rows of " + file + " hold " + builder.longs() + " longs, the header " + totalLongs);
       }
       if (in.read() != -1) {
         throw new IOException("Trailing bytes after the last row of " + file);
@@ -322,7 +336,10 @@ public final class ClassicRows {
     public int game(Game entry) {
       if (entry.rounds().getFirst().variant() != variant) {
         throw new IllegalArgumentException(
-            "Variant mismatch: expected " + variant + " but found " + entry.rounds().getFirst().variant());
+            "Variant mismatch: expected "
+                + variant
+                + " but found "
+                + entry.rounds().getFirst().variant());
       }
       games.add(entry);
       return games.size() - 1;
@@ -360,7 +377,8 @@ public final class ClassicRows {
 
     public ClassicRows build() {
       if (observations.size() != size) {
-        throw new IllegalStateException(observations.size() + " observations for " + size + " rows");
+        throw new IllegalStateException(
+            observations.size() + " observations for " + size + " rows");
       }
       return new ClassicRows(this);
     }

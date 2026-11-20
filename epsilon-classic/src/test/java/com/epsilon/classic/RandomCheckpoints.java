@@ -29,8 +29,10 @@ public final class RandomCheckpoints {
    * @param directory 書くディレクトリ（まだ無いもの）
    * @param seed 重みのシード
    */
-  public static void write(Path directory, Architecture architecture, Variant variant, long seed) throws IOException {
-    RankUtility utility = architecture == Architecture.NANO ? RankUtility.TENHOU : RankUtility.AVERAGE_RANK;
+  public static void write(Path directory, Architecture architecture, Variant variant, long seed)
+      throws IOException {
+    RankUtility utility =
+        architecture == Architecture.NANO ? RankUtility.TENHOU : RankUtility.AVERAGE_RANK;
     try (NDManager manager = NDManager.newBaseManager(Device.cpu(), "PyTorch")) {
       ClassicNetwork network = new ClassicNetwork(architecture, variant, utility);
       network.initialize(manager);
@@ -40,7 +42,8 @@ public final class RandomCheckpoints {
         Shape shape = array.getShape();
         float[] values = new float[Math.toIntExact(shape.size())];
         boolean gain = pair.getKey().endsWith("_gamma");
-        double scale = shape.dimension() == 1 ? 0.1 : 1 / Math.sqrt(shape.get(shape.dimension() - 1));
+        double scale =
+            shape.dimension() == 1 ? 0.1 : 1 / Math.sqrt(shape.get(shape.dimension() - 1));
         for (int index = 0; index < values.length; index++) {
           values[index] = (float) ((gain ? 1 : 0) + scale * random.nextGaussian());
         }

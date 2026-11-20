@@ -68,10 +68,13 @@ final class Cohort {
   static TrajectoryBatch trajectories(Path directory, Variant variant) throws IOException {
     Path file = directory.resolve(TRAJECTORIES);
     try (DataInputStream in =
-        new DataInputStream(new BufferedInputStream(new GZIPInputStream(Files.newInputStream(file), BUFFER), BUFFER))) {
+        new DataInputStream(
+            new BufferedInputStream(
+                new GZIPInputStream(Files.newInputStream(file), BUFFER), BUFFER))) {
       Variant written = Variant.valueOf(in.readUTF());
       if (written != variant) {
-        throw new IOException("The trajectories " + file + " are for " + written + ", not " + variant);
+        throw new IOException(
+            "The trajectories " + file + " are for " + written + ", not " + variant);
       }
       int seats = variant.seats();
       int games = in.readInt();
@@ -90,8 +93,11 @@ final class Cohort {
       return collector.build();
     } catch (EOFException truncated) {
       throw new IOException("Truncated trajectories " + file, truncated);
-    } catch (IllegalArgumentException | IllegalStateException | IndexOutOfBoundsException malformed) {
-      throw new IOException("Malformed trajectories " + file + ": " + malformed.getMessage(), malformed);
+    } catch (IllegalArgumentException
+        | IllegalStateException
+        | IndexOutOfBoundsException malformed) {
+      throw new IOException(
+          "Malformed trajectories " + file + ": " + malformed.getMessage(), malformed);
     }
   }
 
@@ -102,7 +108,8 @@ final class Cohort {
    */
   static UncertaintyCdf calibration(Path directory) throws IOException {
     Path file = directory.resolve(CALIBRATION);
-    try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(file), BUFFER))) {
+    try (DataInputStream in =
+        new DataInputStream(new BufferedInputStream(Files.newInputStream(file), BUFFER))) {
       int distributions = in.readInt();
       int bins = in.readInt();
       if (distributions < 0 || bins < 0) {
@@ -121,7 +128,8 @@ final class Cohort {
     } catch (EOFException truncated) {
       throw new IOException("Truncated calibration " + file, truncated);
     } catch (IllegalArgumentException malformed) {
-      throw new IOException("Malformed calibration " + file + ": " + malformed.getMessage(), malformed);
+      throw new IOException(
+          "Malformed calibration " + file + ": " + malformed.getMessage(), malformed);
     }
   }
 
@@ -131,7 +139,8 @@ final class Cohort {
     ObservationBatch scratch = new ObservationBatch(variant, MAX_UNSIGNED_SHORT);
     try (DataOutputStream out =
         new DataOutputStream(
-            new BufferedOutputStream(new GZIPOutputStream(Files.newOutputStream(file), BUFFER), BUFFER))) {
+            new BufferedOutputStream(
+                new GZIPOutputStream(Files.newOutputStream(file), BUFFER), BUFFER))) {
       out.writeUTF(variant.name());
       out.writeInt(batch.games().size());
       for (GameTrajectory game : batch.games()) {
@@ -170,7 +179,8 @@ final class Cohort {
 
   private static void writeCalibration(Path file, UncertaintyCdf calibration) throws IOException {
     long[][] counts = calibration.counts();
-    try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(file), BUFFER))) {
+    try (DataOutputStream out =
+        new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(file), BUFFER))) {
       out.writeInt(counts.length);
       out.writeInt(counts.length == 0 ? 0 : counts[0].length);
       for (long[] distribution : counts) {
@@ -183,7 +193,8 @@ final class Cohort {
 
   /** 半荘 1 つを読んで軌跡に組み直す。局の始まりは、判断の局まで順に足し、最後に残りの局を足す。 */
   private static GameTrajectory game(
-      DataInputStream in, Variant variant, int seats, Observation reader, long[] words, Path file) throws IOException {
+      DataInputStream in, Variant variant, int seats, Observation reader, long[] words, Path file)
+      throws IOException {
     long id = in.readLong();
     int hands = in.readUnsignedShort();
     boolean withPriors = in.readUnsignedByte() != 0;
@@ -215,7 +226,8 @@ final class Cohort {
         words[index] = in.readLong();
       }
       if (hand < started - 1 || hand >= hands) {
-        throw new IOException("Decision " + decision + " of game " + id + " in " + file + " is in hand " + hand);
+        throw new IOException(
+            "Decision " + decision + " of game " + id + " in " + file + " is in hand " + hand);
       }
       while (started <= hand) {
         builder.hand(withPriors ? priors[started] : null);
@@ -224,7 +236,15 @@ final class Cohort {
       Observation observation = reader.bind(words, 0);
       if (observation.longs() != longs) {
         throw new IOException(
-            "Decision " + decision + " of game " + id + " in " + file + " holds " + longs + " longs, its O "
+            "Decision "
+                + decision
+                + " of game "
+                + id
+                + " in "
+                + file
+                + " holds "
+                + longs
+                + " longs, its O "
                 + observation.longs());
       }
       builder.decision(observation, chosen, behaviour, causal);

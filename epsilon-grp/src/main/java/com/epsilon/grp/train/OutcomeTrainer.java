@@ -50,19 +50,33 @@ public final class OutcomeTrainer {
       BooleanSupplier closing) {
     rule.requireStart(start == null ? null : start.shape(), shape);
     if (train.variant() != shape.variant() || stop.variant() != shape.variant()) {
-      throw new IllegalArgumentException("Rows of " + train.variant() + " and " + stop.variant() + " for " + shape);
+      throw new IllegalArgumentException(
+          "Rows of " + train.variant() + " and " + stop.variant() + " for " + shape);
     }
-    float[] initial = start == null
-        ? OutcomeGraph.scratch(shape, new SplittableRandom(SeedMixer.mix64(rule.seed() ^ INIT_SALT)))
-        : start.weights();
+    float[] initial =
+        start == null
+            ? OutcomeGraph.scratch(
+                shape, new SplittableRandom(SeedMixer.mix64(rule.seed() ^ INIT_SALT)))
+            : start.weights();
     int outcomes = Math.max(train.maxOutcomes(), stop.maxOutcomes());
     try (OutcomeGraph graph = OutcomeGraph.of(shape, initial)) {
-      TrainingLoop.Result result = TrainingLoop.run(
-          "GRP outcomes", graph, new OutcomeBatch(shape, rule.batchRows(), outcomes), train, stop, initial, rule,
-          new SplittableRandom(SeedMixer.mix64(rule.seed() ^ SHUFFLE_SALT)), closing);
+      TrainingLoop.Result result =
+          TrainingLoop.run(
+              "GRP outcomes",
+              graph,
+              new OutcomeBatch(shape, rule.batchRows(), outcomes),
+              train,
+              stop,
+              initial,
+              rule,
+              new SplittableRandom(SeedMixer.mix64(rule.seed() ^ SHUFFLE_SALT)),
+              closing);
       OutcomeNetwork network =
-          result.ending() == TrainingEnding.STOPPED ? null : OutcomeNetwork.of(shape, result.weights());
-      return new OutcomeTrained(network, result.halfEpochs(), result.stopNll(), result.clippedSteps(), result.ending());
+          result.ending() == TrainingEnding.STOPPED
+              ? null
+              : OutcomeNetwork.of(shape, result.weights());
+      return new OutcomeTrained(
+          network, result.halfEpochs(), result.stopNll(), result.clippedSteps(), result.ending());
     }
   }
 }

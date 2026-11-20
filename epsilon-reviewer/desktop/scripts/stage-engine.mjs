@@ -9,11 +9,12 @@
 // --jar      backend のデスクトップ版の jar（epsilon-reviewer-1.0-SNAPSHOT-desktop.jar）。
 // --models   入れるモデルを並べた models.json（形は backend/models.example.json と同じ。checkpoint は
 //            絶対パスか、このファイルのあるフォルダーからの相対パス）。コピーするのは、系列ごとに決めた推論用のファイルだけ。
-// --libtorch libtorch 2.11.0 CPU 版の DLL のフォルダー（既定は %USERPROFILE%\.djl.ai\pytorch\2.11.0-cpu-win-x86_64）。
-// --jni      djl_torch.dll を取り出す jar（既定は ~/.m2 の pytorch-jni-cpu-win-x86_64-2.11.0-0.40.7-rocm-SNAPSHOT.jar）。
+// --libtorch libtorch CPU 版の DLL のフォルダー（既定は %USERPROFILE%\.djl.ai\pytorch\<version>-cpu-win-x86_64）。
+// --jni      djl_torch.dll を取り出す jar（既定は ~/.m2 の pytorch-jni-cpu-win-x86_64-<version>.jar）。
 // --out      出力先（既定は desktop/engine）。
 //
 // 7 つの DLL のサイズか SHA-256 が scripts/native-files.json と違えば、エラーで止まる。
+import versions from "../native-versions.json" with { type: "json" };
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
@@ -67,15 +68,15 @@ const { values: options } = parseArgs({
         os.homedir(),
         ".djl.ai",
         "pytorch",
-        "2.11.0-cpu-win-x86_64",
+        `${versions.libtorch}-cpu-win-x86_64`,
       ),
     },
     jni: {
       type: "string",
       default: path.join(
         os.homedir(),
-        ".m2/repository/ai/djl/pytorch/pytorch-jni-cpu-win-x86_64/2.11.0-0.40.7-rocm-SNAPSHOT",
-        "pytorch-jni-cpu-win-x86_64-2.11.0-0.40.7-rocm-SNAPSHOT.jar",
+        `.m2/repository/ai/djl/pytorch/pytorch-jni-cpu-win-x86_64/${versions.libtorch}-${versions.jni}`,
+        `pytorch-jni-cpu-win-x86_64-${versions.libtorch}-${versions.jni}.jar`,
       ),
     },
     out: {
@@ -181,9 +182,13 @@ function defaultModels(listed, models) {
       (entry) => entry.modelId === modelId && entry.revision === revision,
     );
     if (model === undefined)
-      throw new Error(`defaultModels names ${modelId}/${revision}, which is not in models.`);
+      throw new Error(
+        `defaultModels names ${modelId}/${revision}, which is not in models.`,
+      );
     if (chosen.has(model.variant))
-      throw new Error(`defaultModels has a second default model for ${model.variant}.`);
+      throw new Error(
+        `defaultModels has a second default model for ${model.variant}.`,
+      );
     chosen.set(model.variant, model);
   }
   for (const model of models)

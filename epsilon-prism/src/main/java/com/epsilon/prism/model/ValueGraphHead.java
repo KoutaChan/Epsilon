@@ -10,7 +10,7 @@ import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
 
 /**
- * 価値グラフのヘッド（HIP の K7 に当たる）。ゲートの値 Δ を求め、手ごとの s を組み立てる。
+ * 価値グラフのヘッド。ゲートの値 Δ を求め、手ごとの s を組み立てる。
  *
  * <pre>
  * u^G_a  = fp32(W_g·[N(e_a); N(e_base); h] + c) + β_k + U_k·x^G_a     （U_k は [G, 厳密なフィールドの列]、FP32 の要素積）
@@ -176,12 +176,7 @@ final class ValueGraphHead extends Module {
    * @return Δ [ゲート]（FP32）
    */
   NDArray gate(
-      Context context,
-      NDArray chosen,
-      NDArray base,
-      NDArray states,
-      NDArray kinds,
-      NDArray exact) {
+      Context context, NDArray chosen, NDArray base, NDArray states, NDArray kinds, NDArray exact) {
     NDArray input =
         NDArrays.concat(
             new NDList(
@@ -191,11 +186,7 @@ final class ValueGraphHead extends Module {
         context
             .toFloat(context.linear(input, hidden, hiddenBias))
             .add(context.rows(kindOffset, kinds))
-            .add(
-                context
-                    .rows(exactProjection, kinds)
-                    .mul(exact.expandDims(1))
-                    .sum(new int[] {2}));
+            .add(context.rows(exactProjection, kinds).mul(exact.expandDims(1)).sum(new int[] {2}));
     NDArray delta = Context.silu(units).mul(context.rows(output, kinds)).sum(new int[] {1});
     return delta
         .add(context.rows(outputBias, kinds))

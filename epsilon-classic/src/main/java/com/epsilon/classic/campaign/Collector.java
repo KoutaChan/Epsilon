@@ -84,6 +84,7 @@ public interface Collector extends AutoCloseable {
      * @param runtime 自己対局と評価の推論のランタイム（閉じるのは呼び出し元）
      * @param table 自己対局と評価の卓のコア（閉じるのは呼び出し元）
      */
-    Collector open(ClassicSettings machine, NetworkRuntime runtime, TableLoop table) throws IOException;
+    Collector open(ClassicSettings machine, NetworkRuntime runtime, TableLoop table)
+        throws IOException;
   }
 }

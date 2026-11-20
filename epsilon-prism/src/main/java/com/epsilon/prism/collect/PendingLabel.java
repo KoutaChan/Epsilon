@@ -74,12 +74,15 @@ final class PendingLabel implements Pending {
 
   /** 行の帳簿を丸める乱数のキー。{@link RootRecord} も使う。帳簿を付けない収集では 0。 */
   static long roundingKey(CollectContext context, RowDraft draft, float[] ledger) {
-    return ledger == null ? 0 : LedgerRounding.key(context.iterationSeed, draft.gameId(), draft.decisionId());
+    return ledger == null
+        ? 0
+        : LedgerRounding.key(context.iterationSeed, draft.gameId(), draft.decisionId());
   }
 
   /** 手を打った経路の帳簿を丸めて、行の帳簿に書く。{@link RootRecord} も使う。 */
   static void write(float[] ledger, long roundingKey, int action, double[] terms) {
-    if (ledger == null) throw new IllegalStateException("Ledger delivered to a collection without ledgers");
+    if (ledger == null)
+      throw new IllegalStateException("Ledger delivered to a collection without ledgers");
     LedgerRounding.write(roundingKey, action, terms, ledger);
   }
 

@@ -68,7 +68,8 @@ public sealed interface RecordEvent {
       }
       consumed = consumed.stream().sorted().toList();
       if (!fromHand(made, consumed)) {
-        throw new IllegalArgumentException(made + " is not made with tiles " + consumed + " from the hand");
+        throw new IllegalArgumentException(
+            made + " is not made with tiles " + consumed + " from the hand");
       }
     }
 

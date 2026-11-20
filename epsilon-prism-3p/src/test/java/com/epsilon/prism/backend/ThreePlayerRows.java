@@ -1,6 +1,7 @@
 package com.epsilon.prism.backend;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_3P;
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
 
 import ai.djl.ndarray.NDManager;
 import com.epsilon.agent.observe.Observation;
@@ -14,11 +15,10 @@ import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.InputSchema.ActionRole;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
-import com.epsilon.prism3p.input.InputSchema;
-import com.epsilon.prism3p.input.InputSchema.ActionRole;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -82,7 +82,7 @@ public final class ThreePlayerRows {
    * @return ネットワーク
    */
   public static PrismNetwork network(NDManager manager, PrismShape shape, long seed) {
-    return PerturbedNetwork.of(manager, InputSchema.FORMAT, shape, seed);
+    return PerturbedNetwork.of(manager, THREE_PLAYER, shape, seed);
   }
 
   /** 判断する席の O を取り込み、そのワードの写しを返すヘルパー（スレッドセーフではない）。 */
@@ -102,7 +102,8 @@ public final class ThreePlayerRows {
     /** 直前に取り込んだ O のワードの写し。 */
     long[] words() {
       int index = batch.size() - 1;
-      return Arrays.copyOfRange(batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
+      return Arrays.copyOfRange(
+          batch.words(), batch.start(index), batch.start(index) + batch.longs(index));
     }
   }
 
@@ -153,7 +154,9 @@ public final class ThreePlayerRows {
     List<long[]> plain = new ArrayList<>();
     int[] seen = new int[1];
     int specialLimit = rows * 2 / 3;
-    for (int game = 0; game < 40 && (special.size() < specialLimit || plain.size() < rows); game++) {
+    for (int game = 0;
+        game < 40 && (special.size() < specialLimit || plain.size() < rows);
+        game++) {
       TableWalk.Policy policy = game % 2 == 0 ? TableWalk.Policy.GREEDY : TableWalk.Policy.CALLS;
       new TableWalk(TENHOU_3P, policy)
           .run(
@@ -166,13 +169,15 @@ public final class ThreePlayerRows {
                 Observation o = capture.observe(engine, slot);
                 boolean wanted = false;
                 for (int a = 0; a < o.legalActions(); a++) {
-                  Integer left = quota.get(ActionRole.of(o.action(a).type()));
+                  Integer left = quota.get(THREE_PLAYER.role(o.action(a).type()));
                   wanted |= left != null && left > 0;
                 }
                 if (wanted && special.size() < specialLimit) {
                   special.add(capture.words());
                   for (int a = 0; a < o.legalActions(); a++) {
-                    quota.computeIfPresent(ActionRole.of(o.action(a).type()), (role, left) -> Math.max(left - 1, 0));
+                    quota.computeIfPresent(
+                        THREE_PLAYER.role(o.action(a).type()),
+                        (role, left) -> Math.max(left - 1, 0));
                   }
                 } else if (plain.size() < rows && seen[0]++ % 5 == 0) {
                   plain.add(capture.words());
@@ -198,7 +203,9 @@ public final class ThreePlayerRows {
     Capture capture = new Capture();
     List<long[]> rows = new ArrayList<>();
     int most = 0;
-    for (long seed = LONG_SEARCH_FROM; rows.size() < count && seed < LONG_SEARCH_FROM + LONG_SEARCH_GAMES; seed++) {
+    for (long seed = LONG_SEARCH_FROM;
+        rows.size() < count && seed < LONG_SEARCH_FROM + LONG_SEARCH_GAMES;
+        seed++) {
       List<long[]> words = new ArrayList<>();
       List<Integer> events = new ArrayList<>();
       new TableWalk(TENHOU_3P, TableWalk.Policy.CALLS)
@@ -224,9 +231,19 @@ public final class ThreePlayerRows {
     }
     if (rows.size() < count) {
       throw new IllegalStateException(
-          "found " + rows.size() + " of " + count + " decisions with " + LONG_ROW_EVENTS + " public events");
+          "found "
+              + rows.size()
+              + " of "
+              + count
+              + " decisions with "
+              + LONG_ROW_EVENTS
+              + " public events");
     }
-    log.info("PRISM-3P-ROWS {} decisions with at least {} public events, most {}", rows.size(), LONG_ROW_EVENTS, most);
+    log.info(
+        "PRISM-3P-ROWS {} decisions with at least {} public events, most {}",
+        rows.size(),
+        LONG_ROW_EVENTS,
+        most);
     return rows;
   }
 
@@ -268,7 +285,9 @@ public final class ThreePlayerRows {
             Math.max(n * Limits.MAX_LEGAL_ACTIONS, Limits.MAX_LEGAL_ACTIONS));
     HostBatch batch =
         new HostBatch(
-            InputSchema.FORMAT, capacity, ByteBuffer.allocateDirect(BatchPlan.maxBytes(InputSchema.FORMAT, capacity)));
+            THREE_PLAYER,
+            capacity,
+            ByteBuffer.allocateDirect(BatchPlan.maxBytes(THREE_PLAYER, capacity)));
     BatchPlan plan = batch.plan();
     plan.clear();
     Observation read = new Observation(TENHOU_3P);
@@ -278,7 +297,7 @@ public final class ThreePlayerRows {
       }
     }
     plan.seal();
-    InputFormat.RowWriter writer = InputSchema.FORMAT.writer();
+    InputFormat.RowWriter writer = THREE_PLAYER.writer();
     HostInputs inputs = new HostInputs(batch);
     for (int row = 0; row < n; row++) {
       writer.write(read.bind(rows.get(row), 0), inputs, row);

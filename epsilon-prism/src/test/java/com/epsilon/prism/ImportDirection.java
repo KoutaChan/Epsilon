@@ -12,15 +12,19 @@ import java.util.stream.Stream;
 /** PRISM のモジュール（prism・prism-4p）の依存の向きを調べるテスト用のヘルパー。テストはモジュールのディレクトリで実行する。 */
 public final class ImportDirection {
 
-  private static final List<Path> SOURCES = List.of(Path.of("src", "main", "java"), Path.of("src", "test", "java"));
+  private static final List<Path> SOURCES =
+      List.of(Path.of("src", "main", "java"), Path.of("src", "test", "java"));
   private static final Path POM = Path.of("pom.xml");
   private static final Pattern IMPORT =
       Pattern.compile("^import\\s+(?:static\\s+)?([\\w.]+?)(\\.\\*)?;", Pattern.MULTILINE);
+
   /** 完全修飾で書いた epsilon のパッケージやクラスの名前。 */
   private static final Pattern QUALIFIED = Pattern.compile("\\bcom\\.epsilon(?:\\.\\w+)+");
 
-  private static final Pattern DEPENDENCY = Pattern.compile("<dependency>(.*?)</dependency>", Pattern.DOTALL);
-  private static final Pattern ARTIFACT = Pattern.compile("<artifactId>\\s*([^<\\s]+)\\s*</artifactId>");
+  private static final Pattern DEPENDENCY =
+      Pattern.compile("<dependency>(.*?)</dependency>", Pattern.DOTALL);
+  private static final Pattern ARTIFACT =
+      Pattern.compile("<artifactId>\\s*([^<\\s]+)\\s*</artifactId>");
   private static final Pattern SCOPE = Pattern.compile("<scope>\\s*([^<\\s]+)\\s*</scope>");
 
   /** 実行時にだけ class path に置く classic のパッケージを表す正規表現。 */
@@ -41,7 +45,8 @@ public final class ImportDirection {
     Pattern pattern = Pattern.compile(forbidden);
     List<String> violations = new ArrayList<>();
     for (Path root : SOURCES) {
-      if (!Files.isDirectory(root)) throw new IllegalStateException("run from the module directory: " + root);
+      if (!Files.isDirectory(root))
+        throw new IllegalStateException("run from the module directory: " + root);
       try (Stream<Path> files = Files.walk(root)) {
         for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
           Matcher matcher = IMPORT.matcher(Files.readString(file));
@@ -66,9 +71,11 @@ public final class ImportDirection {
    * @param forbidden 禁止するパッケージの正規表現（書いた名前の全体と照合する）
    * @return 違反した名前の一覧（ファイルと行の番号つき）
    */
-  public static List<String> packageViolations(String packageName, String forbidden) throws IOException {
+  public static List<String> packageViolations(String packageName, String forbidden)
+      throws IOException {
     Path root = SOURCES.get(0).resolve(packageName.replace('.', '/'));
-    if (!Files.isDirectory(root)) throw new IllegalStateException("no such package in the main sources: " + root);
+    if (!Files.isDirectory(root))
+      throw new IllegalStateException("no such package in the main sources: " + root);
     Pattern pattern = Pattern.compile(forbidden);
     List<String> violations = new ArrayList<>();
     try (Stream<Path> files = Files.walk(root)) {
@@ -96,7 +103,8 @@ public final class ImportDirection {
       String name = artifact.group(1);
       Matcher scope = SCOPE.matcher(dependency.group(1));
       String scoped = scope.find() ? scope.group(1) : "compile";
-      if (name.equals(CLASSIC) && !scoped.equals("runtime")) violations.add(name + " in scope " + scoped);
+      if (name.equals(CLASSIC) && !scoped.equals("runtime"))
+        violations.add(name + " in scope " + scoped);
     }
     return violations;
   }

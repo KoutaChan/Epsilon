@@ -7,6 +7,7 @@ import com.epsilon.mahjong.action.Meld.RelativeSource;
 import com.epsilon.mahjong.rules.RoundStart;
 import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.score.RiichiState;
 import com.epsilon.mahjong.tile.Face;
 import com.epsilon.mahjong.tile.TileSet;
 import com.epsilon.mahjong.tile.Tiles;
@@ -131,7 +132,10 @@ final class Scene {
     Hand hand = hands[seat];
     hand.take(hand.pick(kind, useRed));
     hand.take(hand.pick(kind, false));
-    AkaSource aka = discard.red() ? AkaSource.CALLED_TILE : useRed ? AkaSource.CONSUMED_HAND_TILE : AkaSource.NONE;
+    AkaSource aka =
+        discard.red()
+            ? AkaSource.CALLED_TILE
+            : useRed ? AkaSource.CONSUMED_HAND_TILE : AkaSource.NONE;
     int meld = Meld.pon(kind, RelativeSource.of(seat, discard.seat(), hands.length), aka).id();
     hand.addMeld(meld);
     state.call(seat, meld);
@@ -158,7 +162,10 @@ final class Scene {
         hand.take(physicalId);
       }
     }
-    AkaSource aka = discard.red() ? AkaSource.CALLED_TILE : handRed ? AkaSource.CONSUMED_HAND_TILE : AkaSource.NONE;
+    AkaSource aka =
+        discard.red()
+            ? AkaSource.CALLED_TILE
+            : handRed ? AkaSource.CONSUMED_HAND_TILE : AkaSource.NONE;
     int meld = Meld.chi(base, called, aka).id();
     hand.addMeld(meld);
     state.call(seat, meld);
@@ -215,7 +222,7 @@ final class Scene {
 
   /** 宣言牌を打たずに立直を成立させる。 */
   Scene riichi(int seat) {
-    state.riichi(seat, false);
+    state.riichi(seat, RiichiState.RIICHI);
     return this;
   }
 
@@ -258,7 +265,8 @@ final class Scene {
     int[] choices = new int[names.length];
     for (int slot = 0; slot < names.length; slot++) {
       choices[slot] = legal(decisions.seat(slot)).indexOf(names[slot]);
-      Assert.assertTrue(choices[slot] >= 0, names[slot] + " is not legal for seat " + decisions.seat(slot));
+      Assert.assertTrue(
+          choices[slot] >= 0, names[slot] + " is not legal for seat " + decisions.seat(slot));
     }
     return choices;
   }

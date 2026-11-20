@@ -79,7 +79,8 @@ public final class RankPermutations {
   /** 相対席ごとの順位の並びから、順列の番号を求める。順列になっていなければ IllegalArgumentException を投げる。 */
   public int index(int[] ranks) {
     if (ranks.length != seats) {
-      throw new IllegalArgumentException(variant + " needs " + seats + " ranks, got " + ranks.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + seats + " ranks, got " + ranks.length);
     }
     for (int seat = 0; seat < seats; seat++) {
       boolean repeated = false;
@@ -109,7 +110,8 @@ public final class RankPermutations {
    */
   public int realized(int[] finalScores, int dealer) {
     if (finalScores.length != seats) {
-      throw new IllegalArgumentException(variant + " needs " + seats + " scores, got " + finalScores.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + seats + " scores, got " + finalScores.length);
     }
     Objects.checkIndex(dealer, seats);
     int index = 0;
@@ -117,7 +119,8 @@ public final class RankPermutations {
       int rank = Placement.rank(finalScores, Seats.absolute(dealer, seat, seats));
       int smallerLater = 0;
       for (int later = seat + 1; later < seats; later++) {
-        smallerLater += Placement.rank(finalScores, Seats.absolute(dealer, later, seats)) < rank ? 1 : 0;
+        smallerLater +=
+            Placement.rank(finalScores, Seats.absolute(dealer, later, seats)) < rank ? 1 : 0;
       }
       index = index * (seats - seat) + smallerLater;
     }
@@ -147,7 +150,13 @@ public final class RankPermutations {
   public void phi(double[] probabilities, int dealer, RankUtility utility, double[] out) {
     if (probabilities.length != count || out.length != seats) {
       throw new IllegalArgumentException(
-          "Expected " + count + " probabilities and " + seats + " values, got " + probabilities.length + " and "
+          "Expected "
+              + count
+              + " probabilities and "
+              + seats
+              + " values, got "
+              + probabilities.length
+              + " and "
               + out.length);
     }
     Objects.checkIndex(dealer, seats);
@@ -181,8 +190,14 @@ public final class RankPermutations {
   public void marginals(double[] probabilities, int dealer, double[] out) {
     if (probabilities.length != count || out.length != seats * seats) {
       throw new IllegalArgumentException(
-          "Expected " + count + " probabilities and " + seats * seats + " marginals, got "
-              + probabilities.length + " and " + out.length);
+          "Expected "
+              + count
+              + " probabilities and "
+              + seats * seats
+              + " marginals, got "
+              + probabilities.length
+              + " and "
+              + out.length);
     }
     Objects.checkIndex(dealer, seats);
     Arrays.fill(out, 0);

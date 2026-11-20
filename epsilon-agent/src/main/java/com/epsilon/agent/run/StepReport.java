@@ -46,7 +46,8 @@ public record StepReport(Status status, double seconds, int launchRow, String ja
     Objects.requireNonNull(status, "status");
     Objects.requireNonNull(jar, "jar");
     if (!(seconds >= 0) || Double.isInfinite(seconds)) {
-      throw new IllegalArgumentException("Step seconds must be finite and not negative: " + seconds);
+      throw new IllegalArgumentException(
+          "Step seconds must be finite and not negative: " + seconds);
     }
     if (status == Status.SKIPPED && metrics != null) {
       throw new IllegalArgumentException("A skipped step reports no metrics");
@@ -61,7 +62,11 @@ public record StepReport(Status status, double seconds, int launchRow, String ja
    */
   public static StepReport ran(Iteration iteration, long startedNanos, Record metrics) {
     return new StepReport(
-        Status.RAN, (System.nanoTime() - startedNanos) / 1e9, iteration.launchRow(), iteration.jar(), metrics);
+        Status.RAN,
+        (System.nanoTime() - startedNanos) / 1e9,
+        iteration.launchRow(),
+        iteration.jar(),
+        metrics);
   }
 
   /** 行わない段の報告。 */
@@ -86,7 +91,10 @@ public record StepReport(Status status, double seconds, int launchRow, String ja
       for (Map.Entry<String, Node> entry : RecordFile.tree(metrics).entries().entrySet()) {
         if (entries.containsKey(entry.getKey())) {
           throw new IllegalStateException(
-              "The step metrics " + metrics.getClass().getName() + " have a component named " + entry.getKey());
+              "The step metrics "
+                  + metrics.getClass().getName()
+                  + " have a component named "
+                  + entry.getKey());
         }
         entries.put(entry.getKey(), entry.getValue());
       }
@@ -105,16 +113,23 @@ public record StepReport(Status status, double seconds, int launchRow, String ja
     Map<String, Node> head = new LinkedHashMap<>();
     Map<String, Node> rest = new LinkedHashMap<>();
     for (Map.Entry<String, Node> entry : tree.entries().entrySet()) {
-      boolean headField = entry.getKey().equals("status") || entry.getKey().equals("seconds")
-          || entry.getKey().equals("launchRow") || entry.getKey().equals("jar");
+      boolean headField =
+          entry.getKey().equals("status")
+              || entry.getKey().equals("seconds")
+              || entry.getKey().equals("launchRow")
+              || entry.getKey().equals("jar");
       (headField ? head : rest).put(entry.getKey(), entry.getValue());
     }
     Head read = RecordFile.read(Head.class, new Node.Table(head, tree.origin())).value();
-    Record value = rest.isEmpty() ? null : RecordFile.read(metrics, new Node.Table(rest, tree.origin())).value();
+    Record value =
+        rest.isEmpty()
+            ? null
+            : RecordFile.read(metrics, new Node.Table(rest, tree.origin())).value();
     try {
       return new StepReport(read.status(), read.seconds(), read.launchRow(), read.jar(), value);
     } catch (IllegalArgumentException invalid) {
-      throw new SettingsException(List.of("Invalid step report at " + tree.origin() + ": " + invalid.getMessage()));
+      throw new SettingsException(
+          List.of("Invalid step report at " + tree.origin() + ": " + invalid.getMessage()));
     }
   }
 

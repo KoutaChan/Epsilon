@@ -75,7 +75,10 @@ public class AdamWTest {
       float[] e = expected[index].toFloatArray();
       Assert.assertEquals(a.length, e.length);
       for (int value = 0; value < e.length; value++) {
-        Assert.assertEquals(a[value], e[value], 1e-7f * Math.max(1f, Math.abs(e[value])),
+        Assert.assertEquals(
+            a[value],
+            e[value],
+            1e-7f * Math.max(1f, Math.abs(e[value])),
             label + " tensor " + index + " value " + value);
       }
     }

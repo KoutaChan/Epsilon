@@ -1,6 +1,7 @@
 package com.epsilon.prism.play;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
@@ -25,7 +26,6 @@ import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.policy.PrismPolicy;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -39,6 +39,22 @@ import org.testng.annotations.Test;
  */
 public class PrismFamilyTest {
   private static final PolicyOptions CPU = PolicyOptions.defaults();
+
+  @Test(dataProvider = "fourPlayerModels", dataProviderClass = PublishedModel.class)
+  public void publishedPacks(PublishedModel model) throws Exception {
+    PublishedWeights.check(model);
+  }
+
+  /** この機械の GPU のプロバイダーで配布モデルを開き、全ての合法手のスコアのビットを参照と照らす。 */
+  @Test(groups = "gpu", dataProvider = "fourPlayerModels", dataProviderClass = PublishedModel.class)
+  public void publishedNativeScores(PublishedModel model) throws Exception {
+    model.assertNativeScores();
+  }
+
+  @Test(dataProvider = "fourPlayerModels", dataProviderClass = PublishedModel.class)
+  public void publishedEagerScores(PublishedModel model) throws Exception {
+    model.assertEagerScores();
+  }
 
   @Test
   public void serviceLoaderFindsThePrismFamily() {
@@ -71,7 +87,8 @@ public class PrismFamilyTest {
                   }
                   Decisions decisions = engine.decisions();
                   batch.clear();
-                  int index = writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch);
+                  int index =
+                      writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch);
                   Observation o = reader.bind(batch, index);
                   Evaluation evaluation = policy.evaluate(o);
                   int n = o.legalActions();
@@ -93,7 +110,9 @@ public class PrismFamilyTest {
                   int[] legal = new int[n];
                   for (int a = 0; a < n; a++) legal[a] = o.action(a).code();
                   Assert.assertEquals(
-                      evaluation.greedy(), TwinDiscard.TSUMOGIRI.play(legal, Greedy.argmax(evaluation.values(), null, n)));
+                      evaluation.greedy(),
+                      TwinDiscard.TSUMOGIRI.play(
+                          legal, Greedy.argmax(evaluation.values(), null, n)));
                   counts[0]++;
                 });
       }
@@ -118,7 +137,9 @@ public class PrismFamilyTest {
         Snapshot.write(snapshot, HipFixtures.network(manager, 2, 17), PolicyParams.of(1));
       }
       try (Policy family = ModelFamily.of(Series.PRISM).open(snapshot, TENHOU_4P, CPU)) {
-        assertTwins(TwinPolicyWalk.walk(family, TwinDiscard.TSUMOGIRI, TableWalk.Policy.GREEDY, 5, 4, 80, 16));
+        assertTwins(
+            TwinPolicyWalk.walk(
+                family, TwinDiscard.TSUMOGIRI, TableWalk.Policy.GREEDY, 5, 4, 80, 16));
       }
       for (TwinDiscard twins : TwinDiscard.values()) {
         try (Policy table = TwinPolicyWalk.open(snapshot, TENHOU_4P, twins)) {
@@ -140,7 +161,7 @@ public class PrismFamilyTest {
     try {
       Path snapshot = root.resolve("1");
       try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-        PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard(2));
+        PrismNetwork network = new PrismNetwork(FOUR_PLAYER, PrismShape.standard(2));
         network.initialize(manager);
         Snapshot.write(snapshot, network, PolicyParams.of(1));
       }
@@ -161,10 +182,13 @@ public class PrismFamilyTest {
                     return;
                   }
                   batch.clear();
-                  int index = writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch);
+                  int index =
+                      writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch);
                   Evaluation evaluation = policy.evaluate(reader.bind(batch, index));
-                  for (float value : evaluation.values()) Assert.assertTrue(value == 0f, "blank score " + value);
-                  Query query = new Query(null, 0, slot, 0, batch, index, reader.bind(batch, index));
+                  for (float value : evaluation.values())
+                    Assert.assertTrue(value == 0f, "blank score " + value);
+                  Query query =
+                      new Query(null, 0, slot, 0, batch, index, reader.bind(batch, index));
                   var attempt = table.tryAcquireIngress(0);
                   Assert.assertTrue(attempt.acquired());
                   table.submit(List.of(query), attempt.ingress()).join();

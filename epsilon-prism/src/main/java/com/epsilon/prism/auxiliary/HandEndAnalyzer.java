@@ -61,6 +61,13 @@ public final class HandEndAnalyzer {
     TableState next = new TableState(variant);
     next.copyFrom(end.next());
     return new HandEndFacts(
-        variant, result, yaku, full.seat(0).dealer(), next, tenpai, yakuTenpai, new TenpaiReach(reach));
+        variant,
+        result,
+        yaku,
+        full.seat(0).dealer(),
+        next,
+        tenpai,
+        yakuTenpai,
+        new TenpaiReach(reach));
   }
 }

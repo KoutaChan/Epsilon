@@ -16,7 +16,7 @@ import com.epsilon.mahjong.record.RoundResult;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.format.ResultWriter;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
-import com.epsilon.reviewer.engine.view.EventKind;
+import com.epsilon.reviewer.engine.view.EventKindView;
 import com.epsilon.reviewer.engine.view.OutcomeProjector;
 import com.epsilon.reviewer.engine.view.RecordTable;
 import com.epsilon.reviewer.error.ErrorCode;
@@ -56,7 +56,8 @@ public final class Analysis {
 
   private boolean valued;
 
-  private Analysis(LoadedRecord record, ReviewModel model, JobControl control, ResultWriter writer) {
+  private Analysis(
+      LoadedRecord record, ReviewModel model, JobControl control, ResultWriter writer) {
     this.record = record;
     this.model = model;
     this.control = control;
@@ -86,7 +87,7 @@ public final class Analysis {
     List<RecordedRound> rounds = record.rounds();
     for (int round = 0; round < rounds.size(); round++) analysis.round(round, rounds.get(round));
     analysis.requireNotCancelled();
-    writer.event(analysis.step, EventKind.END_GAME, -1, null, null);
+    writer.event(analysis.step, EventKindView.END_GAME, -1, null, null);
     writer.finish(analysis.valued ? Double.valueOf(model.temperature()) : null);
   }
 
@@ -94,8 +95,9 @@ public final class Analysis {
     requireNotCancelled();
     var table = new RecordTable(round);
     step = record.firstStep(index);
-    writer.startRound(round.start().round(), round.start().honba(), table.dealer(), step, table.state());
-    event(EventKind.START_KYOKU, -1);
+    writer.startRound(
+        round.start().round(), round.start().honba(), table.dealer(), step, table.state());
+    event(EventKindView.START_KYOKU, -1);
     List<RecordEvent> events = round.events();
     int applied = 0;
     Boundary boundary = driver.start(round, ws);
@@ -107,7 +109,7 @@ public final class Analysis {
     }
     for (; applied < events.size(); applied++) apply(table, events.get(applied));
     outcome(table, round.result(), driver.engine().roundEnd());
-    event(EventKind.END_KYOKU, -1);
+    event(EventKindView.END_KYOKU, -1);
   }
 
   /** この判断の時点にある全ての判断を、判断する席の順に評価して書く。 */
@@ -137,10 +139,10 @@ public final class Analysis {
   /** 牌譜のイベントを表示用の卓に適用して書く。立直の宣言牌の打牌なら、その前に立直の宣言を書く。 */
   private void apply(RecordTable table, RecordEvent event) throws IOException {
     requireNotCancelled();
-    int actor = EventKind.actor(event);
-    if (EventKind.declaresRiichi(event)) event(EventKind.REACH, actor);
+    int actor = EventKindView.actor(event);
+    if (EventKindView.declaresRiichi(event)) event(EventKindView.REACH, actor);
     table.apply(event);
-    writer.event(step++, EventKind.of(event), actor, table.state(), null);
+    writer.event(step++, EventKindView.of(event), actor, table.state(), null);
     progress();
   }
 
@@ -151,19 +153,19 @@ public final class Analysis {
         table.settleWin(end, index);
         writer.event(
             step++,
-            EventKind.HORA,
+            EventKindView.HORA,
             result.wins().get(index).seat(),
             table.state(),
             OutcomeProjector.win(table, result, end, index));
       }
     } else {
       table.settleDraw(end);
-      writer.event(step++, EventKind.RYUKYOKU, -1, table.state(), OutcomeProjector.draw());
+      writer.event(step++, EventKindView.RYUKYOKU, -1, table.state(), OutcomeProjector.draw());
     }
   }
 
   /** 局面を変えない手順を書く。 */
-  private void event(EventKind kind, int actor) throws IOException {
+  private void event(EventKindView kind, int actor) throws IOException {
     writer.event(step++, kind, actor, null, null);
     progress();
   }

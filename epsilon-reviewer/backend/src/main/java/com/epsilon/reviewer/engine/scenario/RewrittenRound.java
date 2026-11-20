@@ -1,7 +1,7 @@
 package com.epsilon.reviewer.engine.scenario;
 
 import com.epsilon.mahjong.record.RecordEvent;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import java.util.List;
 
 /**
@@ -25,4 +25,4 @@ public record RewrittenRound(
     int[] hand,
     int indicator,
     List<RecordEvent> events,
-    TableState table) {}
+    TableView table) {}

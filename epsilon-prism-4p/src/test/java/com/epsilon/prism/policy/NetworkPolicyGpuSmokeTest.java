@@ -53,9 +53,24 @@ public class NetworkPolicyGpuSmokeTest {
       List<String> arguments =
           new ArrayList<>(
               List.of(
-                  "evaluate", "--model", snapshot.toString(), "--table", "x1n3", "--out", out.toString(),
-                  "--nano-device", "gpu0", "--set", "run.variant=TENHOU_4P", "--set", "run.seed=1", "--set",
-                  "inference.devices=[\"gpu0\"]", "--set", "inference.precision=BFLOAT16", "--set",
+                  "evaluate",
+                  "--model",
+                  snapshot.toString(),
+                  "--table",
+                  "x1n3",
+                  "--out",
+                  out.toString(),
+                  "--nano-device",
+                  "gpu0",
+                  "--set",
+                  "run.variant=TENHOU_4P",
+                  "--set",
+                  "run.seed=1",
+                  "--set",
+                  "inference.devices=[\"gpu0\"]",
+                  "--set",
+                  "inference.precision=BFLOAT16",
+                  "--set",
                   "inference.kernels=" + kernels.name()));
       for (String assignment : TestSettings.table("x1n3", "nano:" + nano, games, 1, 1)) {
         arguments.addAll(List.of("--set", assignment));

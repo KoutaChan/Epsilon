@@ -1,8 +1,9 @@
 package com.epsilon.prism4p;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.auxiliary.TargetSchema;
-import com.epsilon.prism4p.input.InputSchema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -14,7 +15,7 @@ public class FourPlayerFingerprintTest {
 
   @Test
   public void formatFingerprintsStayTheSame() {
-    Assert.assertEquals(InputSchema.fingerprint(), "eeeb4f583cd2b92a");
+    Assert.assertEquals(FOUR_PLAYER.fingerprint(), "eeeb4f583cd2b92a");
     Assert.assertEquals(TargetSchema.of(Variant.TENHOU_4P).fingerprint(), "391be70aa4a7bf7b");
   }
 }

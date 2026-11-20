@@ -1,6 +1,7 @@
 package com.epsilon.reviewer.model;
 
 import com.epsilon.agent.checkpoint.CheckpointFiles;
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.reviewer.FixtureFamily;
 import com.epsilon.reviewer.TestFiles;
 import com.epsilon.reviewer.error.ErrorCode;
@@ -109,7 +110,8 @@ public class ModelRegistryTest {
     Files.writeString(checkpoint.resolve(FixtureFamily.BROKEN), "");
     Path models = directory.resolve("models.json");
     Files.writeString(
-        models, "{\"models\":[" + ModelCatalogTest.model("first", "checkpoint", SERIES, null) + "]}");
+        models,
+        "{\"models\":[" + ModelCatalogTest.model("first", "checkpoint", SERIES, null) + "]}");
     for (String failure : List.of("", "io", "linkage")) {
       Files.writeString(checkpoint.resolve(FixtureFamily.BROKEN), failure);
       try (var registry =

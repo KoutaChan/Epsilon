@@ -37,7 +37,8 @@ public class ClassicBatchUploadTest {
   private static final int ROWS = 3;
   private static final int[] USED_ROWS = {1, 2, ROWS};
   private static final Bucket SMALLEST = Buckets.of(0);
-  private static final Bucket LARGEST = Buckets.required(ClassicSchema.MAX_LEGAL, ClassicSchema.MAX_TRANSITIONS);
+  private static final Bucket LARGEST =
+      Buckets.required(ClassicSchema.MAX_LEGAL, ClassicSchema.MAX_TRANSITIONS);
 
   /** 確かめる前の値の控え（バイトで持つので、入力を書き直しても変わらない）。 */
   private record Expected(Tensor tensor, Shape shape, DataType type, ByteBuffer bytes) {}
@@ -53,7 +54,10 @@ public class ClassicBatchUploadTest {
         for (Bucket bucket : List.of(SMALLEST, LARGEST, SMALLEST)) {
           ClassicInputs inputs = filled(architecture, bucket, 17L * sent.size() + 3);
           for (int rows : USED_ROWS) {
-            sent.add(new Sent(ClassicBatch.send(manager, uploads, inputs, rows), plainCopy(manager, inputs, rows)));
+            sent.add(
+                new Sent(
+                    ClassicBatch.send(manager, uploads, inputs, rows),
+                    plainCopy(manager, inputs, rows)));
           }
         }
       }
@@ -66,8 +70,11 @@ public class ClassicBatchUploadTest {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
         PinnedUploads uploads = PinnedUploads.on(manager)) {
       ClassicInputs inputs = filled(Architecture.NANO, SMALLEST, 5);
-      assertThrows(IllegalArgumentException.class, () -> ClassicBatch.send(manager, uploads, inputs, 0));
-      assertThrows(IllegalArgumentException.class, () -> ClassicBatch.send(manager, uploads, inputs, ROWS + 1));
+      assertThrows(
+          IllegalArgumentException.class, () -> ClassicBatch.send(manager, uploads, inputs, 0));
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> ClassicBatch.send(manager, uploads, inputs, ROWS + 1));
     }
   }
 
@@ -75,7 +82,8 @@ public class ClassicBatchUploadTest {
   public void aTensorOfTheOtherArchitectureIsRefused() {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
         PinnedUploads uploads = PinnedUploads.on(manager)) {
-      ClassicBatch nano = ClassicBatch.send(manager, uploads, filled(Architecture.NANO, SMALLEST, 7), 1);
+      ClassicBatch nano =
+          ClassicBatch.send(manager, uploads, filled(Architecture.NANO, SMALLEST, 7), 1);
       assertThrows(IllegalArgumentException.class, () -> nano.tensor(Tensor.POINT_LEDGER_100));
     }
   }
@@ -95,9 +103,13 @@ public class ClassicBatchUploadTest {
         for (Bucket bucket : List.of(SMALLEST, LARGEST, SMALLEST)) {
           ClassicInputs inputs = filled(architecture, bucket, 19L * sent.size() + 11);
           for (int rows : USED_ROWS) {
-            sent.add(new Sent(ClassicBatch.send(manager, uploads, inputs, rows), plainCopy(manager, inputs, rows)));
+            sent.add(
+                new Sent(
+                    ClassicBatch.send(manager, uploads, inputs, rows),
+                    plainCopy(manager, inputs, rows)));
             ClassicBatch.write(region, inputs);
-            ClassicBatch batch = ClassicBatch.enqueue(manager, region, inputs, rows, stream).receive();
+            ClassicBatch batch =
+                ClassicBatch.enqueue(manager, region, inputs, rows, stream).receive();
             sent.add(new Sent(batch, plainCopy(manager, inputs, rows)));
           }
         }
@@ -143,9 +155,13 @@ public class ClassicBatchUploadTest {
           };
       NDArray plain =
           tensor.slab() == Tensor.Slab.CATEGORICAL
-              ? manager.create(ShortBuffer.wrap(Arrays.copyOfRange(inputs.categorical(), start, end)), shape, DataType.INT16)
+              ? manager.create(
+                  ShortBuffer.wrap(Arrays.copyOfRange(inputs.categorical(), start, end)),
+                  shape,
+                  DataType.INT16)
               : manager.create(Arrays.copyOfRange(inputs.numeric(), start, end), shape);
-      expected.add(new Expected(tensor, plain.getShape(), plain.getDataType(), plain.toByteBuffer()));
+      expected.add(
+          new Expected(tensor, plain.getShape(), plain.getDataType(), plain.toByteBuffer()));
     }
     return expected;
   }

@@ -58,7 +58,9 @@ public class JobsTest {
     assertEquals(world.settles, 1);
     FakeRun.Outcome outcome = world.outcome();
     assertEquals(outcome.evaluations().size(), 1);
-    assertEquals(FakeRun.field(outcome.evaluations().getFirst(), "games"), new Node.Numeral("8", "expected"));
+    assertEquals(
+        FakeRun.field(outcome.evaluations().getFirst(), "games"),
+        new Node.Numeral("8", "expected"));
     assertEquals(DurableFiles.lines(world.run.job(JOB).resolve(JobOutputs.GAMES)).size(), 8);
     assertEquals(
         Files.readString(world.run.job(JOB).resolve(Jobs.RESULT), StandardCharsets.UTF_8),
@@ -69,19 +71,26 @@ public class JobsTest {
   public void creatingAJobTwiceKeepsTheFirstRecord() throws Exception {
     Path directory = Files.createTempDirectory("jobs-create");
     Jobs jobs = new Jobs(directory, directory.resolve("evaluations.jsonl"));
-    JobFile first = JobFile.pending(2, "x1n3", 0, 1, RecordFile.tree(new FakeRun.JobDef(2, "x1n3", 8, 2)));
+    JobFile first =
+        JobFile.pending(2, "x1n3", 0, 1, RecordFile.tree(new FakeRun.JobDef(2, "x1n3", 8, 2)));
     assertTrue(jobs.create(first));
-    String written = Files.readString(directory.resolve(JOB).resolve(Jobs.JOB), StandardCharsets.UTF_8);
-    JobFile again = JobFile.pending(2, "x1n3", 0, 3, RecordFile.tree(new FakeRun.JobDef(2, "x1n3", 9, 3)));
+    String written =
+        Files.readString(directory.resolve(JOB).resolve(Jobs.JOB), StandardCharsets.UTF_8);
+    JobFile again =
+        JobFile.pending(2, "x1n3", 0, 3, RecordFile.tree(new FakeRun.JobDef(2, "x1n3", 9, 3)));
     assertFalse(jobs.create(again));
-    assertEquals(Files.readString(directory.resolve(JOB).resolve(Jobs.JOB), StandardCharsets.UTF_8), written);
+    assertEquals(
+        Files.readString(directory.resolve(JOB).resolve(Jobs.JOB), StandardCharsets.UTF_8),
+        written);
     assertEquals(jobs.list().jobs(), List.of(first));
   }
 
   /** 落ちた回数に入るのは、落ちた試行だけ。結果を書いた試行と、まだ動いている試行は入らない。 */
   @Test
   public void onlyFallenAttemptsAreFailures() {
-    JobFile running = JobFile.pending(2, "x1n3", 0, 1, RecordFile.tree(new FakeRun.JobDef(2, "x1n3", 8, 2))).attempted();
+    JobFile running =
+        JobFile.pending(2, "x1n3", 0, 1, RecordFile.tree(new FakeRun.JobDef(2, "x1n3", 8, 2)))
+            .attempted();
     assertEquals(running.failures(), 0);
     assertEquals(running.finished().failures(), 0);
     assertEquals(running.stoppedCleanly().failures(), 0);
@@ -156,7 +165,10 @@ public class JobsTest {
     assertTrue(start.isPresent(), "/proc is needed for the GPU requests");
     for (int chunk = 1; chunk <= 3; chunk++) {
       world.chunkHooks.put(
-          chunk, () -> gpu.write(new GpuRequests.Request("probe", pid, start.getAsLong(), "gpu.sh hold probe")));
+          chunk,
+          () ->
+              gpu.write(
+                  new GpuRequests.Request("probe", pid, start.getAsLong(), "gpu.sh hold probe")));
     }
     Runner.Options options = new Runner.Options(FakeRun.JAR, null, gpu, () -> false);
     for (int yielded = 1; yielded <= 3; yielded++) {
@@ -207,7 +219,8 @@ public class JobsTest {
     assertEquals(retried.state(), JobFile.State.PENDING);
     assertEquals(retried.attempts(), 0);
     assertNull(retried.reason());
-    IllegalArgumentException notFailed = expectThrows(IllegalArgumentException.class, () -> jobs.retry(JOB));
+    IllegalArgumentException notFailed =
+        expectThrows(IllegalArgumentException.class, () -> jobs.retry(JOB));
     assertEquals(notFailed.getMessage(), "Job " + JOB + " is PENDING, not FAILED");
     assertEquals(world.runner(world.options(() -> false)).runJobs(), Ending.FINISHED);
     assertEquals(world.outcome(), expected);
@@ -258,7 +271,7 @@ public class JobsTest {
     assertEquals(world.outcome(), expected);
   }
 
-  /** 仕事を回す共有の資源の作り物。塊の途中で壊せて、壊れた後はどの仕事も開けない。 */
+  /** ジョブが共有するリソースのテスト用実装。バッチの途中で障害を起こすと、それ以降はジョブを開始できない。 */
   private static final class FragileJobs implements JobRunner {
     private final JobRunner jobs;
     boolean breaksAtNextChunk;
@@ -306,17 +319,21 @@ public class JobsTest {
   }
 
   /**
-   * 試みの途中で共有の資源が壊れたら、落ちた試みを 1 回と数え、次の試みもほかの仕事も始めずにその例外で止まる。打っていない仕事は
-   * FAILED にならず、資源を作り直した次の起動で全ての仕事が済む。
+   * 共有リソースが壊れた試行を 1 回と数え、次の試行や別のジョブを開始する前に例外で停止する。未実行のジョブは
+   * FAILED にならず、リソースを作り直した次の起動で全てのジョブが完了する。
    */
   @Test
-  public void brokenSharedResourcesStopTheJobsWithoutFailingTheOnesThatNeverPlayed() throws Exception {
+  public void brokenSharedResourcesStopTheJobsWithoutFailingTheOnesThatNeverPlayed()
+      throws Exception {
     Path directory = Files.createTempDirectory("jobs-broken");
     Jobs jobs = new Jobs(directory, directory.resolve("evaluations.jsonl"));
     List<String> tables = List.of("a", "b", "c");
     for (int order = 0; order < tables.size(); order++) {
       String table = tables.get(order);
-      assertTrue(jobs.create(JobFile.pending(2, table, order, 1, RecordFile.tree(new FakeRun.JobDef(2, table, 4, 2)))));
+      assertTrue(
+          jobs.create(
+              JobFile.pending(
+                  2, table, order, 1, RecordFile.tree(new FakeRun.JobDef(2, table, 4, 2)))));
     }
     FakeRun world = new FakeRun(Files.createTempDirectory("jobs-broken-run"));
     FragileJobs fragile = new FragileJobs(new FakeRun.FakeJobs(world));
@@ -347,7 +364,8 @@ public class JobsTest {
   }
 
   @Test
-  public void aYieldWhileTheRunIsPausedStillYieldsAndThePauseHoldsAfterTheRestart() throws Exception {
+  public void aYieldWhileTheRunIsPausedStillYieldsAndThePauseHoldsAfterTheRestart()
+      throws Exception {
     FakeRun world = world("jobs-pause");
     ControlRequests requests = new ControlRequests(world.run);
     requests.submit(new Request.Pause(null));
@@ -412,7 +430,8 @@ public class JobsTest {
     Files.writeString(directory.resolve("broken"), "not a request\n");
     Files.writeString(directory.resolve(".hidden"), pid + " " + start + " hidden\n");
     assertEquals(gpu.alive(), List.of());
-    assertEquals(world.train(new Runner.Options(FakeRun.JAR, null, gpu, () -> false)), Ending.FINISHED);
+    assertEquals(
+        world.train(new Runner.Options(FakeRun.JAR, null, gpu, () -> false)), Ending.FINISHED);
     gpu.write(new GpuRequests.Request("alive", pid, start, "probe"));
     assertEquals(gpu.alive().stream().map(GpuRequests.Request::name).toList(), List.of("alive"));
   }

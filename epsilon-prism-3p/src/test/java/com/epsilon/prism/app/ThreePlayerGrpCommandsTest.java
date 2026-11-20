@@ -84,7 +84,8 @@ public class ThreePlayerGrpCommandsTest {
     Files.writeString(files.cohort(t).resolve(CohortWriter.MANIFEST), "{}");
   }
 
-  private static void records(GrpFiles files, int t, String phiId, List<GameRecord> games) throws IOException {
+  private static void records(GrpFiles files, int t, String phiId, List<GameRecord> games)
+      throws IOException {
     Files.createDirectories(files.records(t).getParent());
     GameRecordCodec.write(files.records(t), new GameCohort(THREE, t, phiId, games));
   }
@@ -124,8 +125,8 @@ public class ThreePlayerGrpCommandsTest {
 
   private static final Pattern SIGMA_LINE =
       Pattern.compile(
-          "TENHOU_3P over (\\d+) cohorts \\((\\d+)\\.\\.(\\d+)\\), (\\d+) games, (\\d+) seat-hands: sigma per hand"
-              + " ([0-9.]+) \\(in use: none\\)");
+          "TENHOU_3P over (\\d+) cohorts \\((\\d+)\\.\\.(\\d+)\\), (\\d+) games, (\\d+) seat-hands:"
+              + " sigma per hand ([0-9.]+) \\(in use: none\\)");
 
   @Test
   public void grpSigmaGivesBackTheSigmaOfTheMoves() throws Exception {
@@ -155,7 +156,8 @@ public class ThreePlayerGrpCommandsTest {
     Assert.assertEquals(measured, SIGMA, 4 * SIGMA / Math.sqrt(2.0 * seatHands), ran.out());
     // 次の局ごとの行は、東 1 局から西 3 局まで出る
     for (String name : List.of("E1", "E2", "E3", "S1", "S2", "S3", "W1", "W2", "W3")) {
-      Assert.assertTrue(ran.out().contains("next " + name + ": remaining "), name + " in " + ran.out());
+      Assert.assertTrue(
+          ran.out().contains("next " + name + ": remaining "), name + " in " + ran.out());
     }
     Assert.assertTrue(ran.out().contains("next E1: remaining 6,"), ran.out());
     Assert.assertTrue(ran.out().contains("next S3: remaining 1,"), ran.out());
@@ -166,7 +168,8 @@ public class ThreePlayerGrpCommandsTest {
     Assert.assertTrue(partial.find(), part.out());
     Assert.assertEquals(partial.group(2) + ".." + partial.group(3), "2..3");
     Assert.assertEquals(Integer.parseInt(partial.group(4)), 2_000);
-    Assert.assertEquals(prism("grp-sigma", "--run", run.toString(), "--cohorts", "5..9").exit(), Exit.USAGE.code());
+    Assert.assertEquals(
+        prism("grp-sigma", "--run", run.toString(), "--cohorts", "5..9").exit(), Exit.USAGE.code());
   }
 
   /** 勧める trustGames は、学び直しの範囲に要る半荘の数以上で最小の 2 の冪。int に収まらなければ空。 */
@@ -189,14 +192,18 @@ public class ThreePlayerGrpCommandsTest {
   public void settingsCheckRefusesThreePlayerScoreSmooth() throws Exception {
     Assert.assertEquals(check("rank.toml", "[phi]\nsource = \"SCORE_RANK\"\n"), Exit.OK.code());
     Assert.assertEquals(check("self.toml", "[phi]\nsource = \"SELF_GRP\"\n"), Exit.OK.code());
-    Assert.assertEquals(check("smooth.toml", "[phi]\nsource = \"SCORE_SMOOTH\"\n"), Exit.PROBLEMS.code());
     Assert.assertEquals(
-        check("self-smooth.toml", "[phi]\nsource = \"SELF_GRP\"\n\n[phi.start]\nkind = \"SCORE_SMOOTH\"\n"),
+        check("smooth.toml", "[phi]\nsource = \"SCORE_SMOOTH\"\n"), Exit.PROBLEMS.code());
+    Assert.assertEquals(
+        check(
+            "self-smooth.toml",
+            "[phi]\nsource = \"SELF_GRP\"\n\n[phi.start]\nkind = \"SCORE_SMOOTH\"\n"),
         Exit.PROBLEMS.code());
   }
 
   private int check(String name, String body) throws IOException {
-    Path file = Files.writeString(run.resolve(name), body + "\n[run]\nvariant = \"TENHOU_3P\"\nseed = 1\n");
+    Path file =
+        Files.writeString(run.resolve(name), body + "\n[run]\nvariant = \"TENHOU_3P\"\nseed = 1\n");
     return prism("settings", "check", "--settings", file.toString()).exit();
   }
 
@@ -213,9 +220,11 @@ public class ThreePlayerGrpCommandsTest {
                 "phi.grp.trustGames=64",
                 "phi.grp.threads=1"));
     assignments.addAll(List.of(more));
-    PrismSettings settings = ThreePlayerSettings.create(run, List.of(), assignments.toArray(String[]::new));
+    PrismSettings settings =
+        ThreePlayerSettings.create(run, List.of(), assignments.toArray(String[]::new));
     Files.writeString(run.resolve("state.json"), "{\"format\": 1, \"next\": " + next + "}");
-    return PhiHistory.initialize(files, new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed()));
+    return PhiHistory.initialize(
+        files, new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed()));
   }
 
   /** 最終の順位が局末の点数と無関係な三人打ちの半荘を作る（局末は 2〜8 個で、次の局は 1 局ずつ進む）。 */
@@ -235,7 +244,9 @@ public class ThreePlayerGrpCommandsTest {
       for (int hand = 0; hand < hands; hand++) {
         int first = 35_000 + 100 * (random.nextInt(201) - 100);
         int second = 35_000 + 100 * (random.nextInt(201) - 100);
-        handEnds.add(new GrpState(THREE, hand + 1, 0, 0, new int[] {first, second, 105_000 - first - second}));
+        handEnds.add(
+            new GrpState(
+                THREE, hand + 1, 0, 0, new int[] {first, second, 105_000 - first - second}));
       }
       games.add(new GameRecord(THREE, firstId + game, handEnds, finals));
     }
@@ -244,17 +255,19 @@ public class ThreePlayerGrpCommandsTest {
 
   private static final Pattern HELD =
       Pattern.compile(
-          "held out: (\\d+) games with hand ends, ([0-9.]+) hand ends per game, paired MSE candidate - used"
-              + " ([-+][0-9.]+) \\(SE ([0-9.]+), z [-+][0-9.]+\\), bootstrap SD ([0-9.]+) over (\\d+) resamples");
+          "held out: (\\d+) games with hand ends, ([0-9.]+) hand ends per game, paired MSE"
+              + " candidate - used ([-+][0-9.]+) \\(SE ([0-9.]+), z [-+][0-9.]+\\), bootstrap SD"
+              + " ([0-9.]+) over (\\d+) resamples");
 
   private static final Pattern SPLIT =
       Pattern.compile(": (\\d+) games learned from scratch \\([^)]*\\), (\\d+) games held out");
 
   private static final Pattern JUDGMENT =
       Pattern.compile(
-          "2 SE judgment: (\\d+) games at the line, (\\d+) games with 95% power, counted in the cohort after the"
-              + " refit range \\(a cohort of the range has (\\d+)\\); the candidate learned from (\\d+) games of the"
-              + " range; suggested trustGames (\\d+) \\(the run has 64\\)");
+          "2 SE judgment: (\\d+) games at the line, (\\d+) games with 95% power, counted in the"
+              + " cohort after the refit range \\(a cohort of the range has (\\d+)\\); the"
+              + " candidate learned from (\\d+) games of the range; suggested trustGames (\\d+)"
+              + " \\(the run has 64\\)");
 
   /**
    * 点数の順位で集めた三人打ちのコホートで grp-trust を実行する。乱数の種が同じなら出力も同じ。出力される必要な半荘の数は、同じく出力される差と
@@ -268,14 +281,19 @@ public class ThreePlayerGrpCommandsTest {
       seal(files, t);
       records(files, t, initial.id(), shuffled(200, 1_000L * t, t));
     }
-    String[] arguments = {"grp-trust", "--run", run.toString(), "--cohorts", "1..2", "--resamples", "400"};
+    String[] arguments = {
+      "grp-trust", "--run", run.toString(), "--cohorts", "1..2", "--resamples", "400"
+    };
     Ran first = prism(arguments);
     Assert.assertEquals(first.exit(), Exit.OK.code(), first.out());
     Ran again = prism(arguments);
     Assert.assertEquals(again.exit(), Exit.OK.code(), again.out());
     Assert.assertEquals(again.out(), first.out(), "the same run and range give the same output");
     Assert.assertTrue(
-        first.out().contains("cohorts 1..2 of TENHOU_3P collected with " + initial.id() + " (SCORE_RANK)"), first.out());
+        first
+            .out()
+            .contains("cohorts 1..2 of TENHOU_3P collected with " + initial.id() + " (SCORE_RANK)"),
+        first.out());
     Matcher held = HELD.matcher(first.out());
     Assert.assertTrue(held.find(), first.out());
     int games = Integer.parseInt(held.group(1));
@@ -290,8 +308,10 @@ public class ThreePlayerGrpCommandsTest {
     double line = games * Math.pow(2 * sd / difference, 2);
     double power = games * Math.pow((2 + 1.6448536269514722) * sd / difference, 2);
     // 出力の値は丸めてあるので、1 半荘のずれまで許す
-    Assert.assertEquals(Long.parseLong(judgment.group(1)), (long) Math.ceil(line), 1.0, first.out());
-    Assert.assertEquals(Long.parseLong(judgment.group(2)), (long) Math.ceil(power), 1.0, first.out());
+    Assert.assertEquals(
+        Long.parseLong(judgment.group(1)), (long) Math.ceil(line), 1.0, first.out());
+    Assert.assertEquals(
+        Long.parseLong(judgment.group(2)), (long) Math.ceil(power), 1.0, first.out());
     // 学び直しの関門が比べるのは次のコホートの半荘なので、判定に要る数と比べるのは 1 コホートの半荘（どの半荘も局末を持つ）
     Assert.assertEquals(Integer.parseInt(judgment.group(3)), 200, first.out());
     Assert.assertTrue(Long.parseLong(judgment.group(2)) <= 200, first.out());
@@ -310,12 +330,15 @@ public class ThreePlayerGrpCommandsTest {
     Assert.assertEquals(latest.exit(), Exit.OK.code(), latest.out());
     Assert.assertTrue(latest.out().contains("cohorts 2..2 of TENHOU_3P"), latest.out());
     // 確定していないコホートを含む範囲は測らない
-    Assert.assertEquals(prism("grp-trust", "--run", run.toString(), "--cohorts", "1..3").exit(), Exit.FAILED.code());
+    Assert.assertEquals(
+        prism("grp-trust", "--run", run.toString(), "--cohorts", "1..3").exit(),
+        Exit.FAILED.code());
   }
 
   private static final Pattern POWER = Pattern.compile("(\\d+) games with 95% power");
 
-  private static final Pattern SUGGESTED = Pattern.compile("suggested trustGames (\\S+) \\(the run has 64\\)");
+  private static final Pattern SUGGESTED =
+      Pattern.compile("suggested trustGames (\\S+) \\(the run has 64\\)");
 
   /**
    * 1 コホートの半荘が 2 SE の判定に要る数より少ない run では、trustGames を勧めない。学び直しの関門が比べるのは、範囲の次のコホートの
@@ -331,7 +354,15 @@ public class ThreePlayerGrpCommandsTest {
       seal(files, t);
       records(files, t, initial.id(), List.copyOf(games.subList(2 * (t - 1), 2 * t)));
     }
-    Ran ran = prism("grp-trust", "--run", run.toString(), "--cohorts", "1.." + cohorts, "--resamples", "400");
+    Ran ran =
+        prism(
+            "grp-trust",
+            "--run",
+            run.toString(),
+            "--cohorts",
+            "1.." + cohorts,
+            "--resamples",
+            "400");
     Assert.assertEquals(ran.exit(), Exit.OK.code(), ran.out());
     Matcher power = POWER.matcher(ran.out());
     Assert.assertTrue(power.find(), ran.out());
@@ -340,7 +371,10 @@ public class ThreePlayerGrpCommandsTest {
     Assert.assertTrue(suggested.find(), ran.out());
     Assert.assertEquals(suggested.group(1), "none", ran.out());
     Assert.assertTrue(
-        ran.out().contains("a cohort of the range has 2 games with hand ends, fewer than the 2 SE judgment needs"),
+        ran.out()
+            .contains(
+                "a cohort of the range has 2 games with hand ends, fewer than the 2 SE judgment"
+                    + " needs"),
         ran.out());
   }
 

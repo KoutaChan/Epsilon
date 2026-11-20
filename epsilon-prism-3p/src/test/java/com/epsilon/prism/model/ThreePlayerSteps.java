@@ -13,10 +13,10 @@ import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.auxiliary.TargetSchema;
 import com.epsilon.prism.auxiliary.TargetSchema.CandidateTarget;
 import com.epsilon.prism.auxiliary.TargetSchema.ReadingTarget;
-import com.epsilon.prism.hip.TrainingKernels;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.RowColumn;
+import com.epsilon.prism.kernel.TrainingKernels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -121,7 +121,8 @@ final class ThreePlayerSteps {
     Random random = new Random(AUXILIARY_SEED);
     List<Integer> candidates = new ArrayList<>();
     for (int a = 0; a < inputs.actions(); a++) {
-      if (TargetSchema.hasCandidateTargets(inputs.format().roles().get(inputs.action(a, ActionColumn.ROLE)))) {
+      if (TargetSchema.hasCandidateTargets(
+          inputs.format().roles().get(inputs.action(a, ActionColumn.ROLE)))) {
         candidates.add(a);
       }
     }
@@ -142,7 +143,11 @@ final class ThreePlayerSteps {
       values[base + HEADS.offset(CandidateTarget.DEAL_IN_POINTS)] = 1000 + random.nextInt(11000);
       values[base + HEADS.offset(CandidateTarget.YAKU_TENPAI)] = random.nextInt(2);
       values[base + HEADS.offset(CandidateTarget.POINT_DELTA)] = random.nextInt(16001) - 8000;
-      values[base + HEADS.offset(CandidateTarget.WINNER) + random.nextInt(HEADS.width(CandidateTarget.WINNER))] = 1f;
+      values[
+              base
+                  + HEADS.offset(CandidateTarget.WINNER)
+                  + random.nextInt(HEADS.width(CandidateTarget.WINNER))] =
+          1f;
     }
     int rows = inputs.rows();
     int[] readingRows = new int[rows];
@@ -152,11 +157,18 @@ final class ThreePlayerSteps {
       for (int j = 0; j < HEADS.opponents(); j++) {
         int base = (r * HEADS.opponents() + j) * HEADS.readingWidth();
         reading[base + HEADS.offset(ReadingTarget.TENPAI)] = random.nextFloat() < 0.5f ? 1f : 0f;
-        reading[base + HEADS.offset(ReadingTarget.SHANTEN) + random.nextInt(TargetSchema.SHANTEN_CLASSES)] = 1f;
+        reading[
+                base
+                    + HEADS.offset(ReadingTarget.SHANTEN)
+                    + random.nextInt(TargetSchema.SHANTEN_CLASSES)] =
+            1f;
         for (int t = 0; t < HEADS.width(ReadingTarget.DANGER); t++) {
-          reading[base + HEADS.offset(ReadingTarget.DANGER) + t] = random.nextFloat() < 0.2f ? 1f : 0f;
-          reading[base + HEADS.offset(ReadingTarget.WAITS) + t] = random.nextFloat() < 0.2f ? 1f : 0f;
-          reading[base + HEADS.offset(ReadingTarget.DANGER_POINTS) + t] = 1000 + random.nextInt(11000);
+          reading[base + HEADS.offset(ReadingTarget.DANGER) + t] =
+              random.nextFloat() < 0.2f ? 1f : 0f;
+          reading[base + HEADS.offset(ReadingTarget.WAITS) + t] =
+              random.nextFloat() < 0.2f ? 1f : 0f;
+          reading[base + HEADS.offset(ReadingTarget.DANGER_POINTS) + t] =
+              1000 + random.nextInt(11000);
         }
       }
     }

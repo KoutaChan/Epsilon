@@ -51,7 +51,8 @@ public record LearnReport(
    * @param scheduledGain スケジュールで決まるゲイン K_t
    * @param r2 K′_t を決めるのに使った R²（持ち越しを捨てたら 0）
    */
-  public record Tempo(double gain, double anchorWeight, double lrScale, double scheduledGain, double r2) {}
+  public record Tempo(
+      double gain, double anchorWeight, double lrScale, double scheduledGain, double r2) {}
 
   /**
    * 生徒の学習の結果。有限でない損失は書かない（ステップが無ければ損失も無い）。

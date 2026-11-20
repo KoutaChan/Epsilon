@@ -34,6 +34,7 @@ import com.epsilon.agent.settings.Json;
 import com.epsilon.agent.settings.Node;
 import com.epsilon.agent.settings.RecordFile;
 import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.mahjong.util.SeedMixer;
 import com.epsilon.prism.ThreePlayerSettings;
 import com.epsilon.prism.core.TwinDiscard;
@@ -113,8 +114,10 @@ public class ThreePlayerEvaluationJobsTest {
       for (int seat = 0; seat < variant.seats(); seat++) {
         state = mix(state, o.score(seat));
       }
+      int[] counts = new int[Tiles.KINDS];
+      o.handCounts(counts);
       for (int kind = 0; kind < 34; kind++) {
-        state = mix(state, o.handCount(kind) * 64L + kind);
+        state = mix(state, counts[kind] * 64L + kind);
       }
       int n = o.legalActions();
       for (int a = 0; a < n; a++) {
@@ -188,7 +191,12 @@ public class ThreePlayerEvaluationJobsTest {
     private static Policy rules(DuelSetup duel) throws Exception {
       Assert.assertEquals(duel.opponent().spec(), EvaluationTable.HEURISTIC);
       return EvaluationTable.open(
-          EvaluationTable.HEURISTIC, THREE, null, TwinDiscard.TSUMOGIRI, PolicyOptions.defaults(), null);
+          EvaluationTable.HEURISTIC,
+          THREE,
+          null,
+          TwinDiscard.TSUMOGIRI,
+          PolicyOptions.defaults(),
+          null);
     }
   }
 
@@ -225,15 +233,22 @@ public class ThreePlayerEvaluationJobsTest {
    *
    * @return 済んだジョブ
    */
-  private JobFile play(PrismSettings settings, String table, int version, Map<Integer, Player> players, Verdict verdict)
+  private JobFile play(
+      PrismSettings settings,
+      String table,
+      int version,
+      Map<Integer, Player> players,
+      Verdict verdict)
       throws Exception {
     Jobs jobs = new Jobs(run.jobs(), run.report(RunDirectory.EVALUATIONS));
     TableSpec spec = settings.evaluation().tables().get(table);
     JobFile job = JobFile.pending(version, table, 0, 1, RecordFile.tree(spec));
     Assert.assertTrue(jobs.create(job), job.name());
     try (TableLoop loop = new TableLoop(new TableSettings(16, 4, 1000L, 4))) {
-      Runner runner = new Runner(new EvaluationJobs(run, settings, null, null), loop, players, verdict);
-      Assert.assertTrue(jobs.run(job, runner, RunControl.detached(() -> false)).isEmpty(), job.name());
+      Runner runner =
+          new Runner(new EvaluationJobs(run, settings, null, null), loop, players, verdict);
+      Assert.assertTrue(
+          jobs.run(job, runner, RunControl.detached(() -> false)).isEmpty(), job.name());
     }
     JobFile done = jobs.read(job.name());
     Assert.assertEquals(done.state(), JobFile.State.DONE, done.name() + " " + done.reason());
@@ -244,8 +259,10 @@ public class ThreePlayerEvaluationJobsTest {
   private void settleAgain(PrismSettings settings, JobFile done) throws Exception {
     Jobs jobs = new Jobs(run.jobs(), run.report(RunDirectory.EVALUATIONS));
     try (TableLoop loop = new TableLoop(new TableSettings(16, 4, 1000L, 4))) {
-      Runner runner = new Runner(new EvaluationJobs(run, settings, null, null), loop, Map.of(), Verdict.EVEN);
-      Assert.assertTrue(jobs.run(done, runner, RunControl.detached(() -> false)).isEmpty(), done.name());
+      Runner runner =
+          new Runner(new EvaluationJobs(run, settings, null, null), loop, Map.of(), Verdict.EVEN);
+      Assert.assertTrue(
+          jobs.run(done, runner, RunControl.detached(() -> false)).isEmpty(), done.name());
     }
   }
 
@@ -253,7 +270,19 @@ public class ThreePlayerEvaluationJobsTest {
   public void theAnchorDropIsRaisedOncePerChampionAndOnlyForARealDrop() throws Exception {
     PrismSettings settings = anchorRun(6);
     Map<Integer, Player> players =
-        Map.of(1, Player.RULES, 2, Player.RULES, 3, Player.RANDOM, 4, Player.RANDOM, 5, Player.RULES, 6, Player.RANDOM);
+        Map.of(
+            1,
+            Player.RULES,
+            2,
+            Player.RULES,
+            3,
+            Player.RANDOM,
+            4,
+            Player.RANDOM,
+            5,
+            Player.RULES,
+            6,
+            Player.RANDOM);
     crown(1);
 
     // 王者のバージョン自身の 2×R は、対にしない
@@ -264,10 +293,13 @@ public class ThreePlayerEvaluationJobsTest {
     Assert.assertEquals(anchorAlarms(), List.of());
     Assert.assertEquals(result(1).rank().mean(), 0.0, "the rule bot against itself");
     DuelSetup duel = RecordFile.read(EvaluationPlan.class, even.plan()).value().duel();
-    WallValues values = WallValues.of(duel, DurableFiles.lines(run.job(even.name()).resolve(JobOutputs.GAMES)));
+    WallValues values =
+        WallValues.of(duel, DurableFiles.lines(run.job(even.name()).resolve(JobOutputs.GAMES)));
     Assert.assertEquals(values.walls(), WALLS);
-    Assert.assertTrue(Arrays.equals(values.rank(), new double[WALLS]), Arrays.toString(values.rank()));
-    Assert.assertTrue(Arrays.equals(values.utility(), new double[WALLS]), Arrays.toString(values.utility()));
+    Assert.assertTrue(
+        Arrays.equals(values.rank(), new double[WALLS]), Arrays.toString(values.rank()));
+    Assert.assertTrue(
+        Arrays.equals(values.utility(), new double[WALLS]), Arrays.toString(values.utility()));
 
     // わざと作った悪い差（乱数で選ぶ打ち手）: 王者 1 と対にして 1 回出る。反映し直しても、2 回目は書かない
     JobFile worse = play(settings, ANCHOR, 3, players, null);
@@ -292,8 +324,12 @@ public class ThreePlayerEvaluationJobsTest {
     Assert.assertEquals(anchorAlarms(), once);
     promote(5);
     play(settings, ANCHOR, 6, players, null);
-    Assert.assertEquals(anchorAlarms(), List.of("v00003-rx2:ANCHOR_DROP@1", "v00006-rx2:ANCHOR_DROP@5"));
-    Assert.assertEquals(lines().getLast().estimate().mean(), result(5).rank().mean() - result(6).rank().mean(), 1e-12);
+    Assert.assertEquals(
+        anchorAlarms(), List.of("v00003-rx2:ANCHOR_DROP@1", "v00006-rx2:ANCHOR_DROP@5"));
+    Assert.assertEquals(
+        lines().getLast().estimate().mean(),
+        result(5).rank().mean() - result(6).rank().mean(),
+        1e-12);
   }
 
   /** 王者が同じ卓を打っていなければ、対にせず、アラートを何も書かない。 */
@@ -318,8 +354,9 @@ public class ThreePlayerEvaluationJobsTest {
             table + "draws=SEAT_STREAMS",
             table + "wallSet=FRESH",
             table + "walls=4096",
-            table + "stop={kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512,"
-                + " promote = true}",
+            table
+                + "stop={kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0,"
+                + " checkEvery = 512, promote = true}",
             table + "score=RANK",
             table + "every=1",
             table + "from=2");
@@ -328,11 +365,14 @@ public class ThreePlayerEvaluationJobsTest {
 
     // 王者の保存先が空: 打たずにバージョン 2 を最初の王者にする。反映し直しても 1 回だけ
     JobFile crowning = play(settings, CHAMPION, 2, Map.of(), Verdict.BETTER);
-    Assert.assertEquals(Jobs.result(run.job(crowning.name()), EvaluationJobs.Crowned.class).champion(), "v00002");
+    Assert.assertEquals(
+        Jobs.result(run.job(crowning.name()), EvaluationJobs.Crowned.class).champion(), "v00002");
     settleAgain(settings, crowning);
     ChampionStore store = ChampionStore.open(run.champion());
     Assert.assertEquals(store.history().size(), 1);
-    Assert.assertTrue(store.history().getFirst().event() instanceof StoreEvent.Initial, store.history().toString());
+    Assert.assertTrue(
+        store.history().getFirst().event() instanceof StoreEvent.Initial,
+        store.history().toString());
     Assert.assertEquals(store.current().orElseThrow().version(), 2);
 
     // 王者より良い: バージョン 3 を昇格させる。反映し直しても、保存先・state・アラートは変わらない
@@ -346,10 +386,13 @@ public class ThreePlayerEvaluationJobsTest {
     Assert.assertEquals(Files.readString(run.state(), StandardCharsets.UTF_8), state);
     store = ChampionStore.open(run.champion());
     Assert.assertEquals(store.history().size(), 2);
-    Assert.assertTrue(store.history().getLast().event() instanceof StoreEvent.Promoted, store.history().toString());
+    Assert.assertTrue(
+        store.history().getLast().event() instanceof StoreEvent.Promoted,
+        store.history().toString());
     Assert.assertEquals(store.current().orElseThrow().version(), 3);
     Assert.assertEquals(
-        RecordFile.read(PrismState.class, run.state()).value().regression(), new Regression(0, "v00003-champion", List.of()));
+        RecordFile.read(PrismState.class, run.state()).value().regression(),
+        new Regression(0, "v00003-champion", List.of()));
     Assert.assertFalse(Files.exists(run.report(Alarm.FILE)));
   }
 
@@ -361,7 +404,8 @@ public class ThreePlayerEvaluationJobsTest {
   private void promote(int version) throws Exception {
     Champion champion = Champion.of(label(version), run.snapshot(version), version);
     String duel = RunDirectory.jobName(version, CHAMPION);
-    Assert.assertTrue(ChampionStore.open(run.champion()).append(new StoreEvent.Promoted(champion, duel)));
+    Assert.assertTrue(
+        ChampionStore.open(run.champion()).append(new StoreEvent.Promoted(champion, duel)));
   }
 
   private DuelResult result(int version) throws Exception {

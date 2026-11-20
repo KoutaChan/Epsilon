@@ -26,7 +26,8 @@ public final class RandomPlay {
     ws = new RuleWorkspace(variant);
     random = new Random(seed);
     choices = new int[variant.seats() - 1];
-    engine.startGame(random.nextLong(), random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
+    engine.startGame(
+        random.nextLong(), random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
     boundary = engine.advance(ws);
   }
 
@@ -46,7 +47,9 @@ public final class RandomPlay {
       }
       case ROUND_END -> boundary = engine.advance(ws);
       case GAME_END -> {
-        engine.startGame(random.nextLong(), random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
+        engine.startGame(
+            random.nextLong(),
+            random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
         boundary = engine.advance(ws);
       }
     }

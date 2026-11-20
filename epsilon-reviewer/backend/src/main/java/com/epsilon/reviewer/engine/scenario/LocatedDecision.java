@@ -1,7 +1,7 @@
 package com.epsilon.reviewer.engine.scenario;
 
 import com.epsilon.mahjong.engine.EngineDecisionKind;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import java.util.List;
 
 /**
@@ -20,7 +20,7 @@ public record LocatedDecision(
     int position,
     int seat,
     Kind kind,
-    TableState table,
+    TableView table,
     int recorded,
     int[] legal,
     List<Integer> concealed,

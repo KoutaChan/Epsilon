@@ -56,14 +56,21 @@ public final class Exploration {
       @Key(doc = "迷いに占めるエントロピーの重み（0 以上 1 以下）", value = "0.5") double entropyWeight) {
 
     public Settings {
-      if (!(gateMass >= 0) || !(discardMass >= 0) || !(Math.max(gateMass, discardMass) * maximumScale < 1)) {
-        throw new IllegalArgumentException("Exploration masses times the maximum scale must be in [0, 1): " + this);
+      if (!(gateMass >= 0)
+          || !(discardMass >= 0)
+          || !(Math.max(gateMass, discardMass) * maximumScale < 1)) {
+        throw new IllegalArgumentException(
+            "Exploration masses times the maximum scale must be in [0, 1): " + this);
       }
       if (!(leafFloor >= 0 && leafFloor < 1.0 / FLOOR_DIVISOR)) {
-        throw new IllegalArgumentException("The leaf floor must be in [0, 1/" + FLOOR_DIVISOR + "): " + leafFloor);
+        throw new IllegalArgumentException(
+            "The leaf floor must be in [0, 1/" + FLOOR_DIVISOR + "): " + leafFloor);
       }
-      if (!(minimumScale > 0 && minimumScale <= 1) || !(maximumScale >= 1) || !(exponent > 0)
-          || !Double.isFinite(exponent) || !(entropyWeight >= 0 && entropyWeight <= 1)) {
+      if (!(minimumScale > 0 && minimumScale <= 1)
+          || !(maximumScale >= 1)
+          || !(exponent > 0)
+          || !Double.isFinite(exponent)
+          || !(entropyWeight >= 0 && entropyWeight <= 1)) {
         throw new IllegalArgumentException("Bad exploration scale: " + this);
       }
     }
@@ -125,7 +132,8 @@ public final class Exploration {
         Double.isNaN(percentile)
             ? 1
             : settings.minimumScale()
-                + (settings.maximumScale() - settings.minimumScale()) * Math.pow(percentile, settings.exponent());
+                + (settings.maximumScale() - settings.minimumScale())
+                    * Math.pow(percentile, settings.exponent());
     mix(observation, policy, scale, behaviour);
     return scale;
   }
@@ -137,7 +145,8 @@ public final class Exploration {
    */
   public void mix(Observation observation, float[] policy, double scale, float[] behaviour) {
     if (!(scale >= 0 && scale <= settings.maximumScale())) {
-      throw new IllegalArgumentException("The exploration scale must be in [0, " + settings.maximumScale() + "]: " + scale);
+      throw new IllegalArgumentException(
+          "The exploration scale must be in [0, " + settings.maximumScale() + "]: " + scale);
     }
     int legal = observation.legalActions();
     Work at = work.get();
@@ -146,12 +155,14 @@ public final class Exploration {
     for (int action = 0; action < legal; action++) {
       float probability = policy[action];
       if (!(probability >= 0) || !Float.isFinite(probability)) {
-        throw new IllegalArgumentException("A policy probability must be finite and non-negative: " + probability);
+        throw new IllegalArgumentException(
+            "A policy probability must be finite and non-negative: " + probability);
       }
       sum += probability;
     }
     if (!(sum > 0)) {
-      throw new IllegalArgumentException("The policy probabilities must have a positive sum: " + sum);
+      throw new IllegalArgumentException(
+          "The policy probabilities must have a positive sum: " + sum);
     }
     double positive = 0;
     for (int action = 0; action < legal; action++) {
@@ -169,7 +180,14 @@ public final class Exploration {
     if (response(observation)) {
       respond(observation, canonical, all, gate, behaviour);
     } else {
-      turn(observation, canonical, all, gate, (float) (settings.discardMass() * scale), at.identities, behaviour);
+      turn(
+          observation,
+          canonical,
+          all,
+          gate,
+          (float) (settings.discardMass() * scale),
+          at.identities,
+          behaviour);
     }
     double total = 0;
     for (int action = 0; action < legal; action++) {
@@ -275,12 +293,23 @@ public final class Exploration {
     float branch = (1f - ronAccepted) * callAccepted;
     assign(canonical, chi, branch * choice(canonical, chi, typeMass, types, gate), gate, out);
     assign(canonical, pon, branch * choice(canonical, pon, typeMass, types, gate), gate, out);
-    assign(canonical, daiminkan, branch * choice(canonical, daiminkan, typeMass, types, gate), gate, out);
+    assign(
+        canonical,
+        daiminkan,
+        branch * choice(canonical, daiminkan, typeMass, types, gate),
+        gate,
+        out);
   }
 
   /** 手番の節点を、ツモ和了するか → 九種九牌か → 槓か打牌か、の順にたどる。槓は種類 → 候補、打牌は打つ牌 → 立直か黙聴か。 */
   private static void turn(
-      Observation o, float[] canonical, long all, float gate, float discard, int[] identities, float[] out) {
+      Observation o,
+      float[] canonical,
+      long all,
+      float gate,
+      float discard,
+      int[] identities,
+      float[] out) {
     long tsumo = slots(o, all, Action.Type.TSUMO_AGARI);
     long afterTsumo = all & ~tsumo;
     float tsumoAccepted = binary(canonical, tsumo, afterTsumo, gate);
@@ -289,7 +318,8 @@ public final class Exploration {
     long afterKyushu = afterTsumo & ~kyushu;
     float kyushuAccepted = binary(canonical, kyushu, afterKyushu, gate);
     assign(canonical, kyushu, (1f - tsumoAccepted) * kyushuAccepted, 0f, out);
-    long discards = slots(o, afterKyushu, Action.Type.DAHAI) | slots(o, afterKyushu, Action.Type.RIICHI_DAHAI);
+    long discards =
+        slots(o, afterKyushu, Action.Type.DAHAI) | slots(o, afterKyushu, Action.Type.RIICHI_DAHAI);
     long ankan = slots(o, afterKyushu, Action.Type.ANKAN);
     long kakan = slots(o, afterKyushu, Action.Type.KAKAN);
     long kan = ankan | kakan;
@@ -297,8 +327,18 @@ public final class Exploration {
     float path = (1f - tsumoAccepted) * (1f - kyushuAccepted);
     float kanMass = mass(canonical, kan);
     int kanTypes = present(ankan) + present(kakan);
-    assign(canonical, ankan, path * kanAccepted * choice(canonical, ankan, kanMass, kanTypes, gate), gate, out);
-    assign(canonical, kakan, path * kanAccepted * choice(canonical, kakan, kanMass, kanTypes, gate), gate, out);
+    assign(
+        canonical,
+        ankan,
+        path * kanAccepted * choice(canonical, ankan, kanMass, kanTypes, gate),
+        gate,
+        out);
+    assign(
+        canonical,
+        kakan,
+        path * kanAccepted * choice(canonical, kakan, kanMass, kanTypes, gate),
+        gate,
+        out);
     discards(o, canonical, discards, path * (1f - kanAccepted), gate, discard, identities, out);
   }
 
@@ -362,7 +402,8 @@ public final class Exploration {
   }
 
   /** 候補の中の 1 つを選ぶ確率（候補が無ければ 0）。 */
-  private static float choice(float[] canonical, long slots, float total, int alternatives, float exploration) {
+  private static float choice(
+      float[] canonical, long slots, float total, int alternatives, float exploration) {
     if (slots == 0) {
       return 0f;
     }
@@ -370,7 +411,8 @@ public final class Exploration {
   }
 
   /** 枝の確率を枝の中の手へ割り当てる。手ごとの割合は、方策の条件つき確率に一様分布を混ぜた値。 */
-  private static void assign(float[] canonical, long slots, float branch, float exploration, float[] out) {
+  private static void assign(
+      float[] canonical, long slots, float branch, float exploration, float[] out) {
     if (slots == 0) {
       return;
     }

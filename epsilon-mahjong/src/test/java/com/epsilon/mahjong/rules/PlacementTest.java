@@ -36,7 +36,9 @@ public class PlacementTest {
       for (int seat = 0; seat < seats; seat++) {
         order[seat] = seat;
       }
-      Arrays.sort(order, Comparator.comparingInt((Integer seat) -> -scores[seat]).thenComparingInt(seat -> seat));
+      Arrays.sort(
+          order,
+          Comparator.comparingInt((Integer seat) -> -scores[seat]).thenComparingInt(seat -> seat));
       for (int rank = 0; rank < seats; rank++) {
         Assert.assertEquals(ranks[order[rank]], rank, Arrays.toString(scores));
         Assert.assertEquals(Placement.rank(scores, order[rank]), rank, Arrays.toString(scores));

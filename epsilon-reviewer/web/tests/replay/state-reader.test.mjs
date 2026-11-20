@@ -9,24 +9,20 @@ import {
 import { measurePlayerRowWidth } from "../../src/features/replay/renderer/tileLayout.ts";
 import {
   discard,
+  meld,
   event,
   player,
   resultDocument,
   roundFromTables,
   table,
+  northExtractionDocument,
 } from "./fixtures.mjs";
 
 const NAMES = ["Player 1", "Player 2", "Player 3", "Player 4"];
 
 function recordedTables(count = 100) {
   const river = [];
-  const pon = {
-    type: "PON",
-    tiles: ["5mr", "5m", "5m"],
-    from: 3,
-    calledIndex: 0,
-    addedIndex: -1,
-  };
+  const pon = meld("PON", ["5mr", "5m", "5m"], { from: 3 });
   const kan = {
     ...pon,
     type: "KAKAN",
@@ -195,4 +191,25 @@ test("unselected rounds are not built and the camera width reads only melds", ()
     ) + 0.4;
   assert.equal(maximumPlayerRowWidth(model, measurePlayerRowWidth), expected);
   assert.ok(expected > measurePlayerRowWidth([]) + 0.4);
+});
+
+test("a three-player document decodes with three seats and keeps the norths apart from the melds", () => {
+  const model = decodeResult(northExtractionDocument());
+  const [first] = model.rounds;
+  assert.equal(first.seats, 3);
+  assert.equal(first.steps[2].eventType, "kita");
+  assert.deepEqual(first.deltas[1].players[0], { seat: 1, nuki: 1 });
+  const reader = createStateReader(model);
+  const afterPon = reader.readSnapshot(0, first.steps[1]).players[1];
+  assert.deepEqual(
+    [afterPon.melds, afterPon.nuki],
+    [[meld("PON", ["P", "P", "P"])], 0],
+  );
+  const ron = reader.readSnapshot(0, first.steps[5]);
+  assert.deepEqual(
+    [ron.players[1].melds, ron.players[1].nuki],
+    [[meld("PON", ["P", "P", "P"])], 2],
+  );
+  assert.equal(ron.players[0].nuki, 0);
+  assert.equal(ron.outcome.winningTile, "N");
 });

@@ -4,12 +4,11 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
 import com.epsilon.prism.input.InputFormat;
-import com.epsilon.prism.model.FitProbe.Stage;
 import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * トークンの埋め込み（HIP の K1 に当たる）。型ごとに、フィールドの小さな埋め込み（局・席は 16 次元、牌・イベントは 8 次元）と、
+ * トークンの埋め込み。型ごとに、フィールドの小さな埋め込み（局・席は 16 次元、牌・イベントは 8 次元）と、
  * 2 値のフィールドと、数値を {@link FieldPack} で並べ、型ごとの Linear で幅 H にする。Linear のバイアスが型の埋め込みも兼ねる。
  *
  * <p>パラメーターは型ごとに {@code table?}（[表の行, d]）・{@code project?}（[H, 入力]）・{@code project?Bias}（[H]）で、? は
@@ -63,10 +62,6 @@ final class TokenEmbedding extends Module {
         scalar == null
             ? pack.pack(category, columns, table)
             : pack.pack(category, columns, table, context.toCompute(scalar));
-    // 計測のときは並べたフィールドを葉にして、表の勾配への足し込みを Linear の逆伝播と分けて計る（Context#probeCut）
-    return context.linear(
-        context.probeCut(packed, Stage.EMBED_PACK_BACKWARD, 0),
-        projections.get(type),
-        biases.get(type));
+    return context.linear(packed, projections.get(type), biases.get(type));
   }
 }

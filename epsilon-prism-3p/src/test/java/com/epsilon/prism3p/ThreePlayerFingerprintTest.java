@@ -1,12 +1,14 @@
 package com.epsilon.prism3p;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import com.epsilon.agent.observe.ObservationSchema;
 import com.epsilon.mahjong.rules.RankUtility;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.auxiliary.OracleCodec;
 import com.epsilon.prism.auxiliary.OutcomeCodec;
 import com.epsilon.prism.auxiliary.TargetSchema;
-import com.epsilon.prism3p.input.InputSchema;
+import com.epsilon.prism.input.InputSchema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,8 +20,8 @@ public class ThreePlayerFingerprintTest {
 
   @Test
   public void formatFingerprintsStayTheSame() {
-    Assert.assertEquals(InputSchema.fingerprint(), "f22b982987b2d084");
-    Assert.assertEquals(InputSchema.FORMAT.fingerprint(), "f22b982987b2d084");
+    Assert.assertEquals(THREE_PLAYER.fingerprint(), "f22b982987b2d084");
+    Assert.assertEquals(THREE_PLAYER.fingerprint(), "f22b982987b2d084");
     Assert.assertEquals(TargetSchema.of(Variant.TENHOU_3P).fingerprint(), "396d676ebb8abdb3");
     Assert.assertEquals(ObservationSchema.of(Variant.TENHOU_3P).fingerprint(), "66529273ed75ef58");
     Assert.assertEquals(OutcomeCodec.of(Variant.TENHOU_3P).fingerprint(), "758353849c4267c2");
@@ -28,7 +30,7 @@ public class ThreePlayerFingerprintTest {
 
   @Test
   public void theInputDiffersFromTheFourPlayerOne() {
-    Assert.assertNotEquals(InputSchema.fingerprint(), "eeeb4f583cd2b92a");
+    Assert.assertNotEquals(THREE_PLAYER.fingerprint(), "eeeb4f583cd2b92a");
   }
 
   /** 順位の効用は天鳳の表（三人打ちで +1・0・−1）を使う。効用は入力の値（待ちの射影と、ゲートに直接渡す値）に入るので、フィンガープリントにも入る。 */

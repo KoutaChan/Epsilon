@@ -51,7 +51,9 @@ public class PresetLineageTest {
       }
       JsonObject first = learn(lines(directory.report(RunDirectory.ITERATIONS)).get(0));
       Assert.assertTrue(first.has("ledger"), "the default ledger is fitted");
-      Assert.assertTrue(first.getAsJsonObject("tempo").get("anchorWeight").getAsDouble() > 0, "TEMPO anchors by default");
+      Assert.assertTrue(
+          first.getAsJsonObject("tempo").get("anchorWeight").getAsDouble() > 0,
+          "TEMPO anchors by default");
       int firstSteps = first.getAsJsonObject("fit").get("steps").getAsInt();
       Assert.assertTrue(firstSteps > 0 && firstSteps <= 8, "steps " + firstSteps);
 
@@ -71,8 +73,11 @@ public class PresetLineageTest {
       Assert.assertEquals(row.row(), 2);
       Assert.assertEquals(row.from(), 2);
       Assert.assertTrue(
-          row.changes().stream().anyMatch(changed -> changed.key().startsWith("evaluation.tables.late")
-              && changed.change() == Change.SCHEDULE),
+          row.changes().stream()
+              .anyMatch(
+                  changed ->
+                      changed.key().startsWith("evaluation.tables.late")
+                          && changed.change() == Change.SCHEDULE),
           row.changes().toString());
 
       Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
@@ -95,8 +100,10 @@ public class PresetLineageTest {
       Assert.assertTrue(rows.stream().anyMatch(Row::hasLedger), "RECORD writes the ledger");
 
       // smoke の卓はバージョン 3 も測り、足した卓はバージョン 3 だけを測る
-      Assert.assertTrue(Files.exists(directory.job(RunDirectory.jobName(3, "smoke")).resolve(Jobs.RESULT)));
-      Assert.assertTrue(Files.exists(directory.job(RunDirectory.jobName(3, "late")).resolve(Jobs.RESULT)));
+      Assert.assertTrue(
+          Files.exists(directory.job(RunDirectory.jobName(3, "smoke")).resolve(Jobs.RESULT)));
+      Assert.assertTrue(
+          Files.exists(directory.job(RunDirectory.jobName(3, "late")).resolve(Jobs.RESULT)));
       for (int version = 1; version <= 2; version++) {
         Path late = directory.job(RunDirectory.jobName(version, "late"));
         Assert.assertFalse(Files.exists(late), late.toString());
@@ -107,7 +114,8 @@ public class PresetLineageTest {
   }
 
   private static int change(Path run, String... assignments) {
-    List<String> arguments = new ArrayList<>(List.of("settings", "change", "--run", run.toString()));
+    List<String> arguments =
+        new ArrayList<>(List.of("settings", "change", "--run", run.toString()));
     for (String assignment : assignments) {
       arguments.add("--change");
       arguments.add(assignment);

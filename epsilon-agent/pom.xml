@@ -12,8 +12,20 @@
   <dependencies>
     <dependency>
       <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-io</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
       <artifactId>epsilon-mahjong</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-mahjong</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>ai.djl</groupId>
@@ -27,7 +39,7 @@
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
     </dependency>
-    <!-- 試験のログ（*Bench と試験の集計の行）を出す SLF4J の実装。 -->
+    <!-- テストのログ（*Bench とテストの集計の行）を出す SLF4J の実装。 -->
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>

@@ -6,13 +6,15 @@ import com.epsilon.mahjong.action.Meld;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.shape.HandShape;
 import com.epsilon.mahjong.shape.ShapeAnalyzer;
+import com.epsilon.mahjong.shape.ShapeCache;
 import com.epsilon.mahjong.tile.Tiles;
 import java.util.Arrays;
 
 /**
  * 手を選んだ後の手牌の形を求める。求めるのは、4 種類の向聴、受け入れ、形の上の待ち、受け入れの残り枚数、1〜3 ツモ以内に受け入れを
- * 引く確率。形は {@link ShapeAnalyzer} で求める。面子を晒した手か北を抜いた手では、晒した面子・抜いた北と合わせて 5 枚目になる牌を
- * 受け入れと待ちから除く（{@link #possibleDraws}）。引く確率は、見えていない牌から引くとして超幾何分布で求める。
+ * 引く確率。形は {@link ShapeAnalyzer} で求め、判断と分岐をまたいでルールごとの共有の表（{@link ShapeCache}）に覚える。面子を
+ * 晒した手か北を抜いた手では、晒した面子・抜いた北と合わせて 5 枚目になる牌を受け入れと待ちから除く（{@link #possibleDraws}）。
+ * 引く確率は、見えていない牌から引くとして超幾何分布で求める。
  *
  * <p>1 回の判断の中では、手を選んだ後の手が同じなら解析は 1 回だけにする。形は牌の枚数と面子だけで決まり、赤は関係しない。だから次の
  * 遷移は結果のスロット（{@link #slot}）を共有する。
@@ -46,7 +48,7 @@ public final class ShapeAnalysis {
 
   private static final int SLOTS = UNSHARED + 1;
 
-  private final ShapeAnalyzer analyzer;
+  private final ShapeCache cache;
   private final ShapeAnalyzer.Analysis result = new ShapeAnalyzer.Analysis();
   private final byte[] minimum = new byte[SLOTS];
   private final byte[] standard = new byte[SLOTS];
@@ -56,12 +58,13 @@ public final class ShapeAnalysis {
   private final long[] ukeire = new long[SLOTS];
   private final long[] waits = new long[SLOTS];
   private final int[] liveUkeire = new int[SLOTS];
-  private final float[] hits = new float[SLOTS * DRAWS];
+  private static final float[][] HITS = hitProbabilities();
+  private int totalUnseen;
   private final long[] analyzed = new long[(SLOTS + Long.SIZE - 1) / Long.SIZE];
   private int slot;
 
   public ShapeAnalysis(Variant variant) {
-    analyzer = new ShapeAnalyzer(variant);
+    cache = ShapeCache.shared(variant);
   }
 
   /** 判断の初めに、共有していた結果を捨てる。 */
@@ -104,7 +107,7 @@ public final class ShapeAnalysis {
       return;
     }
     HandShape shape = hand.shape();
-    analyzer.analyze(shape, result);
+    cache.analyze(shape, result);
     int shanten = result.shanten();
     long improving = result.improving();
     long agari = shanten == 0 ? improving : 0L;
@@ -123,7 +126,7 @@ public final class ShapeAnalysis {
     waits[slot] = agari;
     int live = tiles.live(improving);
     liveUkeire[slot] = live;
-    loadHits(live, tiles.totalUnseen());
+    totalUnseen = tiles.totalUnseen();
     if (slot != UNSHARED) {
       analyzed[word] |= bit;
     }
@@ -176,28 +179,25 @@ public final class ShapeAnalysis {
 
   /** {@code draws} ツモ（1〜{@value #DRAWS}）以内に受け入れを引く確率。 */
   public float hitWithin(int draws) {
-    return hits[slot * DRAWS + draws - 1];
+    return HITS[totalUnseen][liveUkeire[slot] * DRAWS + draws - 1];
   }
 
-  /** 1〜3 ツモ以内に受け入れを引く確率を書く。引けない確率を 1 ツモずつ掛け合わせて求める。 */
-  private void loadHits(int targets, int total) {
-    double miss = 1.0;
-    boolean certain = false;
-    for (int draw = 0; draw < DRAWS; draw++) {
-      float hit = 0f;
-      if (targets != 0 && total != 0) {
-        if (!certain && draw < total) {
-          int remaining = total - targets - draw;
-          if (remaining <= 0) {
-            certain = true;
-          } else {
-            miss *= remaining / (double) (total - draw);
-          }
+  /** 残り枚数と受け入れ枚数から、1〜3 ツモ以内に引く確率を求める。 */
+  private static float[][] hitProbabilities() {
+    float[][] table = new float[Tiles.PHYSICAL_IDS + 1][];
+    for (int total = 0; total < table.length; total++) {
+      float[] row = new float[(total + 1) * DRAWS];
+      table[total] = row;
+      for (int targets = 1; targets <= total; targets++) {
+        double miss = 1.0;
+        for (int draw = 0; draw < DRAWS; draw++) {
+          if (total - targets <= draw) miss = 0;
+          else miss *= (total - targets - draw) / (double) (total - draw);
+          row[targets * DRAWS + draw] = (float) (1.0 - miss);
         }
-        hit = certain ? 1f : (float) (1.0 - miss);
       }
-      hits[slot * DRAWS + draw] = hit;
     }
+    return table;
   }
 
   /**

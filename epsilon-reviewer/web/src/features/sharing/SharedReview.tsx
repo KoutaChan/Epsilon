@@ -1,5 +1,5 @@
 import { ArrowLeft, CircleAlert, LoaderCircle } from "lucide-react";
-import { ApiError } from "../../api/errors";
+import { ApiError, resultErrorDetail } from "../../api/errors";
 import { api } from "../../api/platform";
 import { useResource } from "../../hooks/useResource";
 import { errorKey } from "../../language/catalog";
@@ -66,7 +66,9 @@ export function SharedReview({ resultId }: { resultId: string }) {
             <div role="alert">
               <CircleAlert aria-hidden="true" />
               <h1>{t("share.unavailable")}</h1>
-              <p>{t(errorKey(state.error))}</p>
+              <p>
+                {t(errorKey(state.error))} {resultErrorDetail(state.error)}
+              </p>
             </div>
             <div className="shared-review-actions">
               {!unavailable && (

@@ -68,7 +68,8 @@ public record ClassicSettings(
     if (evaluation.onWorse() instanceof OnWorseSettings.Rollback) {
       throw new InvalidSetting(
           "evaluation.onWorse",
-          "the classic campaign reports or pauses when the champion duels stay worse; it does not roll back");
+          "the classic campaign reports or pauses when the champion duels stay worse; it does not"
+              + " roll back");
     }
     for (Map.Entry<String, TableSpec> entry : evaluation.tables().entrySet()) {
       TableSpec spec = entry.getValue();
@@ -76,8 +77,8 @@ public record ClassicSettings(
       if (spec.every() > 0 && !promotes) {
         throw new InvalidSetting(
             "evaluation.tables." + entry.getKey() + ".every",
-            "the classic campaign schedules only the table that promotes the champion; set every = 0 and play this"
-                + " table from the duel");
+            "the classic campaign schedules only the table that promotes the champion; set every ="
+                + " 0 and play this table from the duel");
       }
     }
   }
@@ -124,7 +125,8 @@ public record ClassicSettings(
    */
   public record Schedule(
       @Key(doc = "回す macro の数", value = "1350", change = Change.FIT) @Range(min = 1) int macros,
-      @Key(doc = "1 回の macro で集める半荘の数", value = "32768", change = Change.COLLECT) @Range(min = 1) int games) {}
+      @Key(doc = "1 回の macro で集める半荘の数", value = "32768", change = Change.COLLECT) @Range(min = 1)
+          int games) {}
 
   /**
    * 学習器のセクション。計算の型は、主のデバイスで決まる型（GPU なら BFLOAT16、CPU なら FLOAT32）だけを受け付ける。
@@ -148,7 +150,13 @@ public record ClassicSettings(
       Precision computed = parsed.primary().isGpu() ? Precision.BFLOAT16 : Precision.FLOAT32;
       if (precision != computed) {
         throw new InvalidSetting(
-            "precision", "the learner computes in " + computed + " on " + parsed.primary() + ", not " + precision);
+            "precision",
+            "the learner computes in "
+                + computed
+                + " on "
+                + parsed.primary()
+                + ", not "
+                + precision);
       }
     }
 

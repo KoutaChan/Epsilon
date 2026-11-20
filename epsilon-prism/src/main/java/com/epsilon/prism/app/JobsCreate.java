@@ -41,10 +41,17 @@ import org.slf4j.LoggerFactory;
  * @param table 卓の名前（最新の設定の行の {@code evaluation.tables} の名前）
  * @param versions 測るバージョンの範囲（a..b）
  */
-@Named(value = "jobs create", doc = "Create jobs that measure published versions on a table (they run before the next iteration)")
+@Named(
+    value = "jobs create",
+    doc =
+        "Create jobs that measure published versions on a table (they run before the next"
+            + " iteration)")
 public record JobsCreate(
     @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Table name (a name in evaluation.tables of the latest settings row)", presence = Presence.REQUIRED) String table,
+    @Key(
+            doc = "Table name (a name in evaluation.tables of the latest settings row)",
+            presence = Presence.REQUIRED)
+        String table,
     @Key(doc = "Range of versions to measure (a..b)", presence = Presence.REQUIRED) String versions)
     implements PrismCommand {
 
@@ -64,7 +71,11 @@ public record JobsCreate(
     if (spec == null) {
       throw new SettingsException(
           List.of(
-              "Unknown table " + table + " in settings row " + row.row() + "; the tables are "
+              "Unknown table "
+                  + table
+                  + " in settings row "
+                  + row.row()
+                  + "; the tables are "
                   + settings.evaluation().tables().keySet()));
     }
     Span span = Span.of("versions", versions);
@@ -83,8 +94,8 @@ public record JobsCreate(
             + created * games(spec, settings.run().variant())
             + " games";
     LOG.info(
-        "Created {} PENDING job(s) on table {} for versions {} with settings row {} ({} existing job(s) left as they"
-            + " are): {}",
+        "Created {} PENDING job(s) on table {} for versions {} with settings row {} ({} existing"
+            + " job(s) left as they are): {}",
         created,
         table,
         span,
@@ -104,7 +115,11 @@ public record JobsCreate(
   private void requireMeasurable(TableSpec spec, Span span, int latest) {
     List<String> problems = new ArrayList<>();
     if (span.last() > latest) {
-      problems.add("Version " + span.last() + " is not published: the run has published versions 1.." + latest);
+      problems.add(
+          "Version "
+              + span.last()
+              + " is not published: the run has published versions 1.."
+              + latest);
     }
     TableSpec.Opponent opponent = TableSpec.kind(spec.opponent());
     if (opponent == TableSpec.Opponent.VERSION || opponent == TableSpec.Opponent.DISTANCE) {
@@ -112,20 +127,40 @@ public record JobsCreate(
       int last = spec.opponentVersion(span.last());
       if (first < 1 || last > latest) {
         problems.add(
-            "Table " + table + " plays " + spec.opponent() + ", so versions " + span + " would play versions " + first
-                + ".." + last + ", but the run has published versions 1.." + latest);
+            "Table "
+                + table
+                + " plays "
+                + spec.opponent()
+                + ", so versions "
+                + span
+                + " would play versions "
+                + first
+                + ".."
+                + last
+                + ", but the run has published versions 1.."
+                + latest);
       }
     }
     if (opponent == TableSpec.Opponent.VERSION) {
       int fixed = spec.opponentVersion(span.first());
       if (span.first() <= fixed && fixed <= span.last()) {
-        problems.add("Table " + table + " plays " + spec.opponent() + ", so version " + fixed + " would play itself");
+        problems.add(
+            "Table "
+                + table
+                + " plays "
+                + spec.opponent()
+                + ", so version "
+                + fixed
+                + " would play itself");
       }
     }
     if (opponent == TableSpec.Opponent.CHAMPION && spec.stop() instanceof StopSettings.Test) {
       problems.add(
-          "Table " + table + " duels the champion with a TEST stop: its results promote and roll back the lineage in"
-              + " the order the versions are published, so it takes no jobs for past versions");
+          "Table "
+              + table
+              + " duels the champion with a TEST stop: its results promote and roll back the"
+              + " lineage in the order the versions are published, so it takes no jobs for past"
+              + " versions");
     }
     if (!problems.isEmpty()) {
       throw new SettingsException(problems);
@@ -147,7 +182,8 @@ public record JobsCreate(
 
   /** 卓のジョブ 1 つが打つ半荘の数（計画の牌山を全て打たない止め方の卓では上限）。 */
   private static long games(TableSpec spec, Variant variant) {
-    Placements placements = new Placements(variant, spec.seating().seating(), spec.seating().splits(variant));
+    Placements placements =
+        new Placements(variant, spec.seating().seating(), spec.seating().splits(variant));
     return (long) spec.walls() * placements.gamesPerWall();
   }
 }

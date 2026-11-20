@@ -22,17 +22,23 @@ public class ProgressionTest {
 
   @Test
   public void theDealerStaysOnItsOwnWinOrTenpaiAndOnAbortiveDraws() {
-    Assert.assertEquals(Progression.dealerOutcome(tsumo(FOUR, 240, 0, NO_SEAT, 0), 0), DealerOutcome.CONTINUES);
-    Assert.assertEquals(Progression.dealerOutcome(tsumo(FOUR, 240, 1, NO_SEAT, 0), 0), DealerOutcome.PASSES);
+    Assert.assertEquals(
+        Progression.dealerOutcome(tsumo(FOUR, 240, 0, NO_SEAT, 0), 0), DealerOutcome.CONTINUES);
+    Assert.assertEquals(
+        Progression.dealerOutcome(tsumo(FOUR, 240, 1, NO_SEAT, 0), 0), DealerOutcome.PASSES);
     RoundOutcome doubleRon = ron(FOUR, 240, 1, 2, 0);
     doubleRon.addRonWinner(240, 3, NO_SEAT);
     Assert.assertEquals(Progression.dealerOutcome(doubleRon, 3), DealerOutcome.CONTINUES);
     Assert.assertEquals(Progression.dealerOutcome(doubleRon, 0), DealerOutcome.PASSES);
-    Assert.assertEquals(Progression.dealerOutcome(exhaustive(THREE, 0b100, 0, 0), 2), DealerOutcome.CONTINUES);
     Assert.assertEquals(
-        Progression.dealerOutcome(exhaustive(THREE, 0b011, 0b100, 0), 2), DealerOutcome.PASSES, "noten nagashi");
+        Progression.dealerOutcome(exhaustive(THREE, 0b100, 0, 0), 2), DealerOutcome.CONTINUES);
     Assert.assertEquals(
-        Progression.dealerOutcome(abortive(THREE, AbortiveDraw.FOUR_KANS, 0), 1), DealerOutcome.ABORTIVE);
+        Progression.dealerOutcome(exhaustive(THREE, 0b011, 0b100, 0), 2),
+        DealerOutcome.PASSES,
+        "noten nagashi");
+    Assert.assertEquals(
+        Progression.dealerOutcome(abortive(THREE, AbortiveDraw.FOUR_KANS, 0), 1),
+        DealerOutcome.ABORTIVE);
   }
 
   @Test
@@ -307,17 +313,24 @@ public class ProgressionTest {
     int[] high = {31_000, 31_000, 31_000, 31_000};
     Assert.assertTrue(Progression.finishes(FOUR, 7, high, DealerOutcome.PASSES));
     Assert.assertFalse(
-        Progression.finishes(FOUR, 7, high, DealerOutcome.CONTINUES), "a tie gives the top to seat 0, not the dealer");
+        Progression.finishes(FOUR, 7, high, DealerOutcome.CONTINUES),
+        "a tie gives the top to seat 0, not the dealer");
     Assert.assertFalse(Progression.finishes(FOUR, 6, high, DealerOutcome.PASSES));
-    Assert.assertTrue(Progression.finishes(FOUR, 0, new int[] {-100, 0, 0, 0}, DealerOutcome.ABORTIVE));
-    Assert.assertTrue(Progression.finishes(THREE, 8, new int[] {1_000, 1_000, 1_000}, DealerOutcome.PASSES));
-    Assert.assertFalse(Progression.finishes(THREE, 8, new int[] {1_000, 1_000, 1_000}, DealerOutcome.CONTINUES));
+    Assert.assertTrue(
+        Progression.finishes(FOUR, 0, new int[] {-100, 0, 0, 0}, DealerOutcome.ABORTIVE));
+    Assert.assertTrue(
+        Progression.finishes(THREE, 8, new int[] {1_000, 1_000, 1_000}, DealerOutcome.PASSES));
+    Assert.assertFalse(
+        Progression.finishes(THREE, 8, new int[] {1_000, 1_000, 1_000}, DealerOutcome.CONTINUES));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Progression.finishes(FOUR, -1, high, DealerOutcome.PASSES));
+        IllegalArgumentException.class,
+        () -> Progression.finishes(FOUR, -1, high, DealerOutcome.PASSES));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Progression.finishes(FOUR, 12, high, DealerOutcome.PASSES));
+        IllegalArgumentException.class,
+        () -> Progression.finishes(FOUR, 12, high, DealerOutcome.PASSES));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Progression.finishes(THREE, 0, high, DealerOutcome.PASSES));
+        IllegalArgumentException.class,
+        () -> Progression.finishes(THREE, 0, high, DealerOutcome.PASSES));
   }
 
   /** 三人打ちは南 3 局から、トップが 40000 点以上なら終わる。 */
@@ -363,18 +376,24 @@ public class ProgressionTest {
     int[] delta = settle(start, outcome);
     TableState into = new TableState(FOUR);
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Progression.next(start, outcome, new int[] {-1_000, 900, 0, 0}, into));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Progression.next(start, outcome, new int[3], into));
+        IllegalArgumentException.class,
+        () -> Progression.next(start, outcome, new int[] {-1_000, 900, 0, 0}, into));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Progression.next(start, outcome, delta, new TableState(THREE)));
+        IllegalArgumentException.class, () -> Progression.next(start, outcome, new int[3], into));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Progression.next(start, new RoundOutcome(THREE), delta, into));
+        IllegalArgumentException.class,
+        () -> Progression.next(start, outcome, delta, new TableState(THREE)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Progression.next(start, new RoundOutcome(THREE), delta, into));
     TableState over = new TableState(FOUR);
     over.finish();
-    Assert.assertThrows(IllegalArgumentException.class, () -> Progression.next(over, outcome, delta, into));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Progression.next(over, outcome, delta, into));
   }
 
-  private static void assertTable(TableState table, int round, int honba, int kyotaku, boolean gameOver) {
+  private static void assertTable(
+      TableState table, int round, int honba, int kyotaku, boolean gameOver) {
     Assert.assertEquals(table.round(), round, table.toString());
     Assert.assertEquals(table.honba(), honba, table.toString());
     Assert.assertEquals(table.kyotaku(), kyotaku, table.toString());

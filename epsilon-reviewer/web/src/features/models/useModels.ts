@@ -3,7 +3,7 @@ import type {
   CatalogModel,
   ModelCatalog,
   ModelKey,
-} from "../../../../protocol/model.ts";
+} from "@epsilon-reviewer/protocol/model";
 import { api } from "../../api/platform";
 import { useResource, type ResourceState } from "../../hooks/useResource";
 import { modelFor, scenarioAvailable } from "./availability";

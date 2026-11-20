@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.ndarray.NDManager;
@@ -8,7 +10,6 @@ import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.model.Batches.Batch;
-import com.epsilon.prism4p.input.InputSchema;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -35,7 +36,7 @@ public class PrismGpuSmokeTest {
     try (NDManager manager = NDManager.newBaseManager(Device.gpu(0));
         NDManager scope = manager.newSubManager()) {
       manager.getEngine().setRandomSeed(3);
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard(2));
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, PrismShape.standard(2));
       network.initialize(manager);
       ParameterStore store = new ParameterStore(manager, false);
       List<Batches.Row> rows = new ArrayList<>();
@@ -51,15 +52,24 @@ public class PrismGpuSmokeTest {
       Batch batch = Batches.build(rows, 5);
       try (NDManager step = scope.newSubManager()) {
         float[] blank =
-            network.forward(store, batch.inputs(step), Pass.inference(Precision.BFLOAT16)).scores().toFloatArray();
+            network
+                .forward(store, batch.inputs(step), Pass.inference(Precision.BFLOAT16))
+                .scores()
+                .toFloatArray();
         Assert.assertEquals(Batches.maxAbs(blank), 0f);
       }
       Batches.perturb(network, 0.02f, 7);
       try (NDManager step = scope.newSubManager()) {
         float[] full =
-            network.forward(store, batch.inputs(step), Pass.inference(Precision.FLOAT32)).scores().toFloatArray();
+            network
+                .forward(store, batch.inputs(step), Pass.inference(Precision.FLOAT32))
+                .scores()
+                .toFloatArray();
         float[] half =
-            network.forward(store, batch.inputs(step), Pass.inference(Precision.BFLOAT16)).scores().toFloatArray();
+            network
+                .forward(store, batch.inputs(step), Pass.inference(Precision.BFLOAT16))
+                .scores()
+                .toFloatArray();
         double error = 0;
         double norm = 0;
         for (int i = 0; i < full.length; i++) {
@@ -83,7 +93,9 @@ public class PrismGpuSmokeTest {
             GradientCollector collector = manager.getEngine().newGradientCollector()) {
           Outputs outputs =
               network.forward(
-                  store, batch.inputs(step), Pass.training(Precision.BFLOAT16, measured, auxiliary));
+                  store,
+                  batch.inputs(step),
+                  Pass.training(Precision.BFLOAT16, measured, auxiliary));
           var total = loss.total(step, outputs, labels, auxiliary, 1f, labels.size(), 1f);
           collector.backward(total);
           value = total.getFloat();
@@ -94,7 +106,8 @@ public class PrismGpuSmokeTest {
           nanos += System.nanoTime() - start;
         }
       }
-      log.info("PRISM-GPU bf16 train rows={} ms/step={}", ROWS, String.format("%.1f", nanos / 1e6 / 5));
+      log.info(
+          "PRISM-GPU bf16 train rows={} ms/step={}", ROWS, String.format("%.1f", nanos / 1e6 / 5));
     }
   }
 }

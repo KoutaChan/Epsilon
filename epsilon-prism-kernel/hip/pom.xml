@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.epsilon</groupId>
+    <artifactId>epsilon-prism-kernel</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>epsilon-prism-hip</artifactId>
+  <name>Epsilon Prism HIP</name>
+  <dependencies>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism-kernel-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+  <properties>
+    <!-- ROCm のインストール先（HIP ランタイムとヘッダー。DJL の libtorch 2.11.0+rocm7.2 と同じ 7.2 系）。 -->
+    <prism.hip.rocm>/opt/rocm-7.2.2</prism.hip.rocm>
+    <!-- 機器の側の結合（amdgcn-link）に使う lld のディレクトリ（-B で clang に渡す）。 -->
+    <prism.hip.lld>/opt/rocm-7.2.2/llvm/bin</prism.hip.lld>
+    <prism.hip.arch>gfx1100</prism.hip.arch>
+    <skip.hip.compiler>false</skip.hip.compiler>
+    <prism.hip.jobs>8</prism.hip.jobs>
+    <prism.hip.build>${project.build.directory}/native-unified</prism.hip.build>
+    <prism.hip.tests>OFF</prism.hip.tests>
+  </properties>
+  <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+    </resources>
+  </build>
+  <profiles>
+    <profile>
+      <id>windows-hip-java</id>
+      <activation><os><family>windows</family></os></activation>
+      <properties><skip.hip.compiler>true</skip.hip.compiler></properties>
+    </profile>
+    <!-- ネイティブライブラリのビルドには ROCm と CMake が必要。既定では Java のみをビルドするため、
+         jar に .so が入らないので HipLibrary.load() は英語の例外で止まる。 -->
+    <profile>
+      <id>native-hip</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <!-- libprism_hip.so（通常）と libprism_hip_check.so（PRISM_CHECKED=1）を classes/native/linux-x86_64 に作る。 -->
+                <id>native-hip</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <skip>${skip.hip.compiler}</skip>
+                  <target>
+                    <exec executable="cmake" failonerror="true">
+                      <arg value="-S" />
+                      <arg value="${project.basedir}/src/main/native" />
+                      <arg value="-B" />
+                      <arg value="${prism.hip.build}" />
+                      <arg value="-DCMAKE_BUILD_TYPE=Release" />
+                      <arg value="-DCMAKE_HIP_COMPILER=${prism.hip.rocm}/lib/llvm/bin/clang++" />
+                      <arg value="-DCMAKE_HIP_FLAGS=-B${prism.hip.lld}" />
+                      <arg value="-DCMAKE_HIP_ARCHITECTURES=${prism.hip.arch}" />
+                      <arg value="-DCMAKE_PREFIX_PATH=${prism.hip.rocm}" />
+                      <arg value="-DPRISM_JAVA_HOME=${java.home}" />
+                      <arg value="-DPRISM_OUTPUT_DIR=${project.build.outputDirectory}/native/linux-x86_64" />
+                      <arg value="-DPRISM_TORCH_VERSION=${pytorch.native.version}" />
+                      <arg value="-DPRISM_TORCH_FLAVOR=${pytorch.rocm.flavor}" />
+                      <arg value="-DBUILD_TESTING=${prism.hip.tests}" />
+                    </exec>
+                    <exec executable="cmake" failonerror="true">
+                      <arg value="--build" />
+                      <arg value="${prism.hip.build}" />
+                      <arg value="--parallel" />
+                      <arg value="${prism.hip.jobs}" />
+                    </exec>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <!-- -Pnative-hip と一緒に指定すると、native のテストも組み、test の段で ctest を回す。 -->
+    <profile>
+      <id>hip-native-tests</id>
+      <properties><prism.hip.tests>ON</prism.hip.tests></properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>test-hip-native</id>
+                <phase>test</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <skip>${skipTests}</skip>
+                  <target>
+                    <exec executable="ctest" failonerror="true">
+                      <arg value="--test-dir" />
+                      <arg value="${prism.hip.build}" />
+                      <arg value="-C" />
+                      <arg value="Release" />
+                      <arg value="--output-on-failure" />
+                      <arg value="--no-tests=error" />
+                    </exec>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

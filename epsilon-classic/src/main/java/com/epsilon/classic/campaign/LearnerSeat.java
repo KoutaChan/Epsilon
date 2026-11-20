@@ -33,7 +33,8 @@ final class LearnerSeat implements TableSeat<Query> {
   private final ThreadLocal<Observation> readers;
 
   /** その場で答えるときに π を書くバッファ（スレッドごと）。 */
-  private final ThreadLocal<float[]> policies = ThreadLocal.withInitial(() -> new float[ClassicSchema.MAX_LEGAL]);
+  private final ThreadLocal<float[]> policies =
+      ThreadLocal.withInitial(() -> new float[ClassicSchema.MAX_LEGAL]);
 
   /**
    * @param policy 学習器の方策（所有権を受け取る）
@@ -57,7 +58,8 @@ final class LearnerSeat implements TableSeat<Query> {
     Observation observation = query.bind(readers.get());
     float[] probabilities = policies.get();
     policy.probabilities(observation, probabilities);
-    double tie = tie(key, query.wall(), query.recordWords(), query.recordBase(), observation.longs());
+    double tie =
+        tie(key, query.wall(), query.recordWords(), query.recordBase(), observation.longs());
     query.sigma = behaviour(observation, probabilities, tie);
   }
 
@@ -95,7 +97,8 @@ final class LearnerSeat implements TableSeat<Query> {
       for (int row = 0; row < rows; row++) {
         Query query = batch.get(row);
         Observation observation = query.bind(reader);
-        ties[row] = tie(key, query.wall(), query.recordWords(), query.recordBase(), observation.longs());
+        ties[row] =
+            tie(key, query.wall(), query.recordWords(), query.recordBase(), observation.longs());
         probabilities[row] = new float[observation.legalActions()];
         out.add(observation);
       }
@@ -109,7 +112,8 @@ final class LearnerSeat implements TableSeat<Query> {
             () -> {
               Observation reader = readers.get();
               for (int row = 0; row < rows; row++) {
-                batch.get(row).sigma = behaviour(reader.bind(out, row), probabilities[row], ties[row]);
+                batch.get(row).sigma =
+                    behaviour(reader.bind(out, row), probabilities[row], ties[row]);
               }
             });
   }

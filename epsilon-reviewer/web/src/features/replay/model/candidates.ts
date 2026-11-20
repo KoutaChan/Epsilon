@@ -4,7 +4,7 @@ import {
   candidateProbabilities,
   candidateTiles,
   type CandidateSet,
-} from "../../../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/result";
 import type { Candidate } from "./types.ts";
 
 const cache = new WeakMap<CandidateSet, readonly Candidate[]>();

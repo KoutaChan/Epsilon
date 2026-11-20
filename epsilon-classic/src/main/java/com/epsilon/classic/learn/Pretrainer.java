@@ -105,16 +105,22 @@ public final class Pretrainer {
 
     public Settings {
       if (epochs < 1 || batchRows < 1) {
-        throw new IllegalArgumentException("Epochs and batch rows must be positive: " + epochs + ", " + batchRows);
+        throw new IllegalArgumentException(
+            "Epochs and batch rows must be positive: " + epochs + ", " + batchRows);
       }
-      if (!(learningRate > 0) || !(weightDecay >= 0) || !(valueWeight >= 0) || !(emphasis > 0) || !(clipNorm > 0)) {
+      if (!(learningRate > 0)
+          || !(weightDecay >= 0)
+          || !(valueWeight >= 0)
+          || !(emphasis > 0)
+          || !(clipNorm > 0)) {
         throw new IllegalArgumentException("Bad pretraining settings: " + this);
       }
     }
 
     /** エポックの数だけを替えた設定。 */
     public Settings withEpochs(int epochs) {
-      return new Settings(epochs, batchRows, learningRate, weightDecay, valueWeight, emphasis, clipNorm, seed);
+      return new Settings(
+          epochs, batchRows, learningRate, weightDecay, valueWeight, emphasis, clipNorm, seed);
     }
   }
 
@@ -138,7 +144,14 @@ public final class Pretrainer {
    * @param valueLoss 検証用の行での、価値の交差エントロピーの平均
    * @param seconds このエポックを終えたプロセスが、そのエポックに使った秒数（中断を挟んだエポックは、最後に再開してからの分だけ）
    */
-  public record Epoch(int epoch, long steps, double trainLoss, double agreement, double nll, double valueLoss, double seconds) {}
+  public record Epoch(
+      int epoch,
+      long steps,
+      double trainLoss,
+      double agreement,
+      double nll,
+      double valueLoss,
+      double seconds) {}
 
   /**
    * 学習の結果。全てのエポックを終えたとき（状態のディレクトリを渡さずに中断したときも）、ネットワークにはそれまでで最良のエポックの
@@ -153,7 +166,13 @@ public final class Pretrainer {
    * @param finished 全てのエポックを終えたなら true。中断のフラグで止めたなら false
    */
   public record Result(
-      int trainRows, int validationRows, Baselines baselines, List<Epoch> epochs, int best, long steps, boolean finished) {
+      int trainRows,
+      int validationRows,
+      Baselines baselines,
+      List<Epoch> epochs,
+      int best,
+      long steps,
+      boolean finished) {
 
     /** 最良のエポックの記録（終えたエポックが無ければ null）。 */
     public Epoch bestEpoch() {
@@ -217,10 +236,12 @@ public final class Pretrainer {
     this.settings = Objects.requireNonNull(settings, "settings");
     variant = network.variant();
     if (rows.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + rows.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + rows.variant());
     }
     if (grp != null && grp.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + grp.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + grp.variant());
     }
     schema = ClassicSchema.of(network.architecture());
     tokenizer = new ClassicTokenizer(network.architecture(), variant);
@@ -230,16 +251,19 @@ public final class Pretrainer {
     buckets = new byte[rows.size()];
     weights = new float[rows.size()];
     utilities = new float[rows.size()];
-    Ranges.split(rows.size(), (from, to) -> {
-      Observation scanner = new Observation(variant);
-      for (int row = from; row < to; row++) {
-        Observation o = rows.bind(row, scanner);
-        buckets[row] = (byte) Buckets.ordinal(Buckets.inference(o));
-        weights[row] = emphasized(o) ? (float) settings.emphasis() : 1f;
-        utilities[row] = (float) network.utility().value(variant, rows.game(row).finalRank(o.observer()));
-      }
-      return null;
-    });
+    Ranges.split(
+        rows.size(),
+        (from, to) -> {
+          Observation scanner = new Observation(variant);
+          for (int row = from; row < to; row++) {
+            Observation o = rows.bind(row, scanner);
+            buckets[row] = (byte) Buckets.ordinal(Buckets.inference(o));
+            weights[row] = emphasized(o) ? (float) settings.emphasis() : 1f;
+            utilities[row] =
+                (float) network.utility().value(variant, rows.game(row).finalRank(o.observer()));
+          }
+          return null;
+        });
     parameters = new ArrayList<>();
     List<NDArray> arrays = new ArrayList<>();
     for (Pair<String, Parameter> pair : network.getParameters()) {
@@ -254,7 +278,8 @@ public final class Pretrainer {
   /** 立直を選べる判断か、他家への応答の判断（ロン・鳴き・見送り）なら true。 */
   static boolean emphasized(Observation o) {
     EngineDecisionKind kind = o.decisionKind();
-    if (kind == EngineDecisionKind.RESPONSE || kind == EngineDecisionKind.CHANKAN
+    if (kind == EngineDecisionKind.RESPONSE
+        || kind == EngineDecisionKind.CHANKAN
         || kind == EngineDecisionKind.NUKI_RESPONSE) {
       return true;
     }
@@ -281,7 +306,10 @@ public final class Pretrainer {
     int[] validation = select(true);
     if (train.length == 0 || validation.length == 0) {
       throw new IllegalArgumentException(
-          "Pretraining needs training and validation rows: " + train.length + ", " + validation.length);
+          "Pretraining needs training and validation rows: "
+              + train.length
+              + ", "
+              + validation.length);
     }
     PretrainState.Progress progress = state == null ? null : PretrainState.progress(state);
     Baselines baselines;
@@ -310,12 +338,21 @@ public final class Pretrainer {
       resumedSteps = progress.epochSteps();
       steps = progress.steps();
       segment = progress.segment() + 1;
-      LOG.info("pretrain resume epoch {} batch {} steps {} from {}", firstEpoch, firstBatch, steps, state);
+      LOG.info(
+          "pretrain resume epoch {} batch {} steps {} from {}",
+          firstEpoch,
+          firstBatch,
+          steps,
+          state);
     }
     LOG.info(
         "pretrain {} rows={} validation={} uniform agreement={} nll={} rulebot agreement={}",
-        network.architecture(), train.length, validation.length, baselines.uniformAgreement(),
-        baselines.uniformNll(), baselines.ruleBotAgreement());
+        network.architecture(),
+        train.length,
+        validation.length,
+        baselines.uniformAgreement(),
+        baselines.uniformNll(),
+        baselines.ruleBotAgreement());
     boolean paused = false;
     long started = System.nanoTime();
     long trained = 0;
@@ -329,9 +366,23 @@ public final class Pretrainer {
         if (pause.getAsBoolean()) {
           paused = true;
           if (state != null) {
-            save(state, new PretrainState.Progress(
-                settings, network.architecture().name(), train.length, validation.length, baselines, epochs,
-                bestEpoch, epoch, batch, lossSum, epochSteps, steps, segment++), best);
+            save(
+                state,
+                new PretrainState.Progress(
+                    settings,
+                    network.architecture().name(),
+                    train.length,
+                    validation.length,
+                    baselines,
+                    epochs,
+                    bestEpoch,
+                    epoch,
+                    batch,
+                    lossSum,
+                    epochSteps,
+                    steps,
+                    segment++),
+                best);
             LOG.info("pretrain paused at epoch {} batch {} steps {}", epoch, batch, steps);
           }
           break;
@@ -344,8 +395,13 @@ public final class Pretrainer {
         if (epochSteps % PROGRESS_STEPS == 0) {
           LOG.info(
               "pretrain epoch {} batch {}/{} train loss={} rows/s={} encode={}s compute={}s",
-              epoch, batch + 1, batches.size(), lossSum / epochSteps,
-              Math.round(trained / ((System.nanoTime() - started) / 1e9)), encodeNanos / 1e9, computeNanos / 1e9);
+              epoch,
+              batch + 1,
+              batches.size(),
+              lossSum / epochSteps,
+              Math.round(trained / ((System.nanoTime() - started) / 1e9)),
+              encodeNanos / 1e9,
+              computeNanos / 1e9);
         }
       }
       if (paused) {
@@ -353,26 +409,53 @@ public final class Pretrainer {
       }
       double[] measured = measure(validation);
       Epoch record =
-          new Epoch(epoch, steps, lossSum / epochSteps, measured[0], measured[1], measured[2],
+          new Epoch(
+              epoch,
+              steps,
+              lossSum / epochSteps,
+              measured[0],
+              measured[1],
+              measured[2],
               (System.nanoTime() - epochStarted) / 1e9);
       epochs.add(record);
       LOG.info(
           "pretrain epoch {} steps={} train loss={} agreement={} nll={} value loss={} seconds={}",
-          epoch, steps, record.trainLoss(), record.agreement(), record.nll(), record.valueLoss(), record.seconds());
+          epoch,
+          steps,
+          record.trainLoss(),
+          record.agreement(),
+          record.nll(),
+          record.valueLoss(),
+          record.seconds());
       if (bestEpoch < 0 || record.nll() < epochs.get(bestEpoch).nll()) {
         bestEpoch = epoch;
         best = snapshot();
       }
       if (state != null) {
-        save(state, new PretrainState.Progress(
-            settings, network.architecture().name(), train.length, validation.length, baselines, epochs, bestEpoch,
-            epoch + 1, 0, 0, 0, steps, segment++), best);
+        save(
+            state,
+            new PretrainState.Progress(
+                settings,
+                network.architecture().name(),
+                train.length,
+                validation.length,
+                baselines,
+                epochs,
+                bestEpoch,
+                epoch + 1,
+                0,
+                0,
+                0,
+                steps,
+                segment++),
+            best);
       }
     }
     if (best != null && (!paused || state == null)) {
       restoreWeights(best);
     }
-    return new Result(train.length, validation.length, baselines, List.copyOf(epochs), bestEpoch, steps, !paused);
+    return new Result(
+        train.length, validation.length, baselines, List.copyOf(epochs), bestEpoch, steps, !paused);
   }
 
   /** 状態が、同じ設定（エポックの数は除く）、同じネットワークの形、同じ行の数で作られたことを確かめる。 */
@@ -382,22 +465,43 @@ public final class Pretrainer {
         || progress.trainRows() != trainRows
         || progress.validationRows() != validationRows) {
       throw new IllegalArgumentException(
-          "The pretraining state was made with other settings, network or rows: " + progress.settings() + " "
-              + progress.architecture() + " rows " + progress.trainRows() + "/" + progress.validationRows() + " vs "
-              + settings + " " + network.architecture() + " rows " + trainRows + "/" + validationRows);
+          "The pretraining state was made with other settings, network or rows: "
+              + progress.settings()
+              + " "
+              + progress.architecture()
+              + " rows "
+              + progress.trainRows()
+              + "/"
+              + progress.validationRows()
+              + " vs "
+              + settings
+              + " "
+              + network.architecture()
+              + " rows "
+              + trainRows
+              + "/"
+              + validationRows);
     }
   }
 
-  private void save(Path state, PretrainState.Progress progress, float[][] best) throws IOException {
+  private void save(Path state, PretrainState.Progress progress, float[][] best)
+      throws IOException {
     PretrainState.write(
-        state, progress,
+        state,
+        progress,
         new PretrainState.Tensors(
-            names(), optimizer.steps(), snapshot(), optimizer.means(), optimizer.variances(), best));
+            names(),
+            optimizer.steps(),
+            snapshot(),
+            optimizer.means(),
+            optimizer.variances(),
+            best));
   }
 
   private void restore(PretrainState.Tensors tensors) {
     if (!tensors.names().equals(names())) {
-      throw new IllegalArgumentException("The pretraining state holds other parameters: " + tensors.names());
+      throw new IllegalArgumentException(
+          "The pretraining state holds other parameters: " + tensors.names());
     }
     restoreWeights(tensors.weights());
     optimizer.restore(tensors.adamSteps(), tensors.means(), tensors.variances());
@@ -471,7 +575,8 @@ public final class Pretrainer {
   }
 
   private int rowLimit(Bucket bucket) {
-    return Math.max(1, Math.min(settings.batchRows(), MAX_CELLS / (bucket.actions() * bucket.transitions())));
+    return Math.max(
+        1, Math.min(settings.batchRows(), MAX_CELLS / (bucket.actions() * bucket.transitions())));
   }
 
   /** バッチの行を、その区分の入力に書いて返す。 */
@@ -519,8 +624,17 @@ public final class Pretrainer {
       NDArray rowUtility = rowValues(working, utilities, batch);
       try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
         ClassicNetwork.Output output =
-            network.forward(new ParameterStore(working, false), input, precision, true, ClassicNetwork.Heads.BOTH);
-        NDArray nll = PolicyGraph.logProbabilities(output.policy(), input).mul(chosen).sum(new int[] {1}).neg();
+            network.forward(
+                new ParameterStore(working, false),
+                input,
+                precision,
+                true,
+                ClassicNetwork.Heads.BOTH);
+        NDArray nll =
+            PolicyGraph.logProbabilities(output.policy(), input)
+                .mul(chosen)
+                .sum(new int[] {1})
+                .neg();
         NDArray policyLoss = nll.mul(rowWeight).sum().div((float) weightSum);
         NDArray valueLoss = valueLoss(output.value(), rowUtility).mean();
         NDArray objective = policyLoss.add(valueLoss.mul((float) settings.valueWeight()));
@@ -596,7 +710,12 @@ public final class Pretrainer {
         NDArray rowUtility = rowValues(working, utilities, batch);
         try (InferenceMode ignored = manager.getEngine().newInferenceMode()) {
           ClassicNetwork.Output output =
-              network.forward(new ParameterStore(working, false), input, precision, false, ClassicNetwork.Heads.BOTH);
+              network.forward(
+                  new ParameterStore(working, false),
+                  input,
+                  precision,
+                  false,
+                  ClassicNetwork.Heads.BOTH);
           NDArray logProbabilities = PolicyGraph.logProbabilities(output.policy(), input);
           float[] log = logProbabilities.toFloatArray();
           float[] probabilities = PolicyGraph.probabilities(logProbabilities, input).toFloatArray();
@@ -609,7 +728,9 @@ public final class Pretrainer {
         }
       }
     }
-    return new double[] {agreed / (double) validation.length, nll / validation.length, value / validation.length};
+    return new double[] {
+      agreed / (double) validation.length, nll / validation.length, value / validation.length
+    };
   }
 
   /**
@@ -621,39 +742,47 @@ public final class Pretrainer {
    * @return [行]（FP32）
    */
   private NDArray rowValues(NDManager working, float[] values, int[] batch) {
-    return uploads.send(working, DataType.FLOAT32, new Shape(batch.length), buffer -> {
-      FloatBuffer into = buffer.asFloatBuffer();
-      for (int row : batch) {
-        into.put(values[row]);
-      }
-    });
+    return uploads.send(
+        working,
+        DataType.FLOAT32,
+        new Shape(batch.length),
+        buffer -> {
+          FloatBuffer into = buffer.asFloatBuffer();
+          for (int row : batch) {
+            into.put(values[row]);
+          }
+        });
   }
 
   /** 検証用の行で基準を測る（行を等分し、並列に測る）。 */
   private Baselines baselines(int[] validation) {
-    List<double[]> parts = Ranges.split(validation.length, (from, to) -> {
-      double uniformAgreement = 0;
-      double uniformNll = 0;
-      long ruleBot = 0;
-      Observation scanner = new Observation(variant);
-      try (RuleBot bot = new RuleBot(variant)) {
-        for (int index = from; index < to; index++) {
-          int row = validation[index];
-          Observation o = rows.bind(row, scanner);
-          uniformAgreement += 1.0 / o.legalActions();
-          uniformNll += Math.log(o.legalActions());
-          ruleBot += bot.act(o) == rows.chosen(row) ? 1 : 0;
-        }
-      }
-      return new double[] {uniformAgreement, uniformNll, ruleBot};
-    });
+    List<double[]> parts =
+        Ranges.split(
+            validation.length,
+            (from, to) -> {
+              double uniformAgreement = 0;
+              double uniformNll = 0;
+              long ruleBot = 0;
+              Observation scanner = new Observation(variant);
+              try (RuleBot bot = new RuleBot(variant)) {
+                for (int index = from; index < to; index++) {
+                  int row = validation[index];
+                  Observation o = rows.bind(row, scanner);
+                  uniformAgreement += 1.0 / o.legalActions();
+                  uniformNll += Math.log(o.legalActions());
+                  ruleBot += bot.act(o) == rows.chosen(row) ? 1 : 0;
+                }
+              }
+              return new double[] {uniformAgreement, uniformNll, ruleBot};
+            });
     double[] total = new double[3];
     for (double[] part : parts) {
       for (int index = 0; index < total.length; index++) {
         total[index] += part[index];
       }
     }
-    return new Baselines(total[0] / validation.length, total[1] / validation.length, total[2] / validation.length);
+    return new Baselines(
+        total[0] / validation.length, total[1] / validation.length, total[2] / validation.length);
   }
 
   /** 記録の手の one-hot [行, 合法手] を書く（記録の手で 1、ほかは 0）。 */
@@ -676,7 +805,8 @@ public final class Pretrainer {
 
   private void restoreWeights(float[][] values) {
     if (values.length != parameters.size()) {
-      throw new IllegalArgumentException("Weights of " + values.length + " tensors for " + parameters.size());
+      throw new IllegalArgumentException(
+          "Weights of " + values.length + " tensors for " + parameters.size());
     }
     for (int index = 0; index < values.length; index++) {
       parameters.get(index).getValue().getArray().set(values[index]);
@@ -696,7 +826,8 @@ public final class Pretrainer {
       priors[game] = new float[rounds.size()][];
       for (int round = 0; round < rounds.size(); round++) {
         RoundStart start = rounds.get(round);
-        GrpState state = new GrpState(variant, start.round(), start.honba(), start.kyotaku(), start.scores());
+        GrpState state =
+            new GrpState(variant, start.round(), start.honba(), start.kyotaku(), start.scores());
         grp.permutations(state, workspace, probabilities);
         permutations.marginals(probabilities, state.dealer(), marginals);
         float[] prior = new float[marginals.length];

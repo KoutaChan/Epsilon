@@ -34,14 +34,17 @@ public class GrpGateTest {
   @Test
   public void replacementsMustBeBetterByTwoStandardErrors() {
     Assert.assertTrue(judge(GateKind.REPLACEMENT, -2.1e-5, 0).passed());
-    Assert.assertEquals(judge(GateKind.REPLACEMENT, -2e-5, 0).failures(), List.of(GateFailure.NOT_BETTER));
-    Assert.assertEquals(judge(GateKind.REPLACEMENT, 0, 0).failures(), List.of(GateFailure.NOT_BETTER));
+    Assert.assertEquals(
+        judge(GateKind.REPLACEMENT, -2e-5, 0).failures(), List.of(GateFailure.NOT_BETTER));
+    Assert.assertEquals(
+        judge(GateKind.REPLACEMENT, 0, 0).failures(), List.of(GateFailure.NOT_BETTER));
   }
 
   @Test
   public void afterARollbackTheAnchorAllowsOneStandardError() {
     Paired used = new Paired(0, SE);
-    Assert.assertTrue(GrpGate.judge(GateKind.REFIT, true, used, new Paired(0.9e-5, SE), 0, 0).passed());
+    Assert.assertTrue(
+        GrpGate.judge(GateKind.REFIT, true, used, new Paired(0.9e-5, SE), 0, 0).passed());
     GateReport worse = GrpGate.judge(GateKind.REFIT, true, used, new Paired(1.1e-5, SE), 0, 0);
     Assert.assertEquals(worse.failures(), List.of(GateFailure.WORSE_THAN_ANCHOR));
   }
@@ -54,30 +57,45 @@ public class GrpGateTest {
     GateReport scaled = GrpGate.judge(GateKind.REFIT, true, new Paired(0, SE), null, 0.004, 0.0061);
     Assert.assertEquals(scaled.monotoneLine(), 0.006, 1e-15);
     Assert.assertEquals(scaled.failures(), List.of(GateFailure.NOT_MONOTONE));
-    Assert.assertTrue(GrpGate.judge(GateKind.REFIT, true, new Paired(0, SE), null, 0.004, 0.0059).passed());
+    Assert.assertTrue(
+        GrpGate.judge(GateKind.REFIT, true, new Paired(0, SE), null, 0.004, 0.0059).passed());
   }
 
   @Test
   public void brokenValuesFailEveryLineTheyTouch() {
-    GateReport report = GrpGate.judge(GateKind.REFIT, false, new Paired(Double.NaN, Double.NaN), null, 0, Double.NaN);
+    GateReport report =
+        GrpGate.judge(
+            GateKind.REFIT, false, new Paired(Double.NaN, Double.NaN), null, 0, Double.NaN);
     Assert.assertEquals(
-        report.failures(), List.of(GateFailure.NOT_FINITE, GateFailure.WORSE, GateFailure.NOT_MONOTONE));
-    GateReport all = GrpGate.judge(GateKind.REPLACEMENT, false, new Paired(1, SE), new Paired(1, SE), 0, 1);
-    Assert.assertEquals(all.failures(), List.of(GateFailure.NOT_FINITE, GateFailure.NOT_BETTER,
-        GateFailure.WORSE_THAN_ANCHOR, GateFailure.NOT_MONOTONE));
+        report.failures(),
+        List.of(GateFailure.NOT_FINITE, GateFailure.WORSE, GateFailure.NOT_MONOTONE));
+    GateReport all =
+        GrpGate.judge(GateKind.REPLACEMENT, false, new Paired(1, SE), new Paired(1, SE), 0, 1);
+    Assert.assertEquals(
+        all.failures(),
+        List.of(
+            GateFailure.NOT_FINITE,
+            GateFailure.NOT_BETTER,
+            GateFailure.WORSE_THAN_ANCHOR,
+            GateFailure.NOT_MONOTONE));
   }
 
   @Test
   public void gatesCompareTheCandidateWithTheUsedPhiOnTheGateCohort() {
-    HandEnds ends = HandEnds.of(
-        Variant.TENHOU_4P, RankUtility.TENHOU, TrainFixtures.uniform(4_000, 6, new SplittableRandom(31)));
+    HandEnds ends =
+        HandEnds.of(
+            Variant.TENHOU_4P,
+            RankUtility.TENHOU,
+            TrainFixtures.uniform(4_000, 6, new SplittableRandom(31)));
     HandEndValues calibrated = shifted(ends, 0);
     HandEndValues off = shifted(ends, 0.1);
     Assert.assertTrue(GrpGate.refit(ends, calibrated, calibrated, 0, 0).passed());
-    Assert.assertEquals(GrpGate.refit(ends, calibrated, off, 0, 0).failures(), List.of(GateFailure.WORSE));
+    Assert.assertEquals(
+        GrpGate.refit(ends, calibrated, off, 0, 0).failures(), List.of(GateFailure.WORSE));
     Assert.assertTrue(GrpGate.replacement(ends, off, calibrated, 0, 0).passed());
     Assert.assertEquals(
-        GrpGate.replacement(ends, calibrated, calibrated, 0, 0).failures(), List.of(GateFailure.NOT_BETTER));
+        GrpGate.replacement(ends, calibrated, calibrated, 0, 0).failures(),
+        List.of(GateFailure.NOT_BETTER));
     GateReport anchored = GrpGate.refit(ends, off, calibrated, off, 0, 0);
     Assert.assertTrue(anchored.passed(), anchored.toString());
     Assert.assertTrue(anchored.versusAnchor().mean() < 0);
@@ -87,8 +105,11 @@ public class GrpGateTest {
 
   @Test
   public void probesCountScoreMovesThatPushPhiTheWrongWay() {
-    HandEnds ends = HandEnds.of(
-        Variant.TENHOU_4P, RankUtility.TENHOU, TrainFixtures.simulated(Variant.TENHOU_4P, 400, 0, 37));
+    HandEnds ends =
+        HandEnds.of(
+            Variant.TENHOU_4P,
+            RankUtility.TENHOU,
+            TrainFixtures.simulated(Variant.TENHOU_4P, 400, 0, 37));
     MonotoneProbe probe = MonotoneProbe.of(ends);
     Assert.assertEquals(probe.samples(), Math.min(4_096, ends.handEnds()));
     GrpNetwork forward = firstPlaceByScore(1);
@@ -112,8 +133,11 @@ public class GrpGateTest {
    */
   @Test
   public void probesTakeTheValuesOfAnyPhi() {
-    HandEnds ends = HandEnds.of(
-        Variant.TENHOU_4P, RankUtility.TENHOU, TrainFixtures.simulated(Variant.TENHOU_4P, 200, 0, 41));
+    HandEnds ends =
+        HandEnds.of(
+            Variant.TENHOU_4P,
+            RankUtility.TENHOU,
+            TrainFixtures.simulated(Variant.TENHOU_4P, 200, 0, 41));
     MonotoneProbe probe = MonotoneProbe.of(ends, 50, 3);
     GrpNetwork backward = firstPlaceByScore(-1);
     GrpWorkspace workspace = GrpWorkspace.of(backward.shape());
@@ -133,12 +157,14 @@ public class GrpGateTest {
       }
       Assert.assertEquals(move.handEnd(), base.handEnd());
       int moved = move.state().score(move.receiver()) - base.state().score(move.receiver());
-      Assert.assertEquals(base.state().score(move.giver()) - move.state().score(move.giver()), moved);
+      Assert.assertEquals(
+          base.state().score(move.giver()) - move.state().score(move.giver()), moved);
       Assert.assertTrue(move.state().score(move.giver()) >= 0, move.toString());
     }
     Assert.assertEquals(bases, probe.samples());
     Assert.assertEquals(probe.violationRate(values), probe.violationRate(backward, workspace));
-    Assert.assertThrows(IllegalArgumentException.class, () -> probe.violationRate(new double[1][4]));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> probe.violationRate(new double[1][4]));
   }
 
   /**

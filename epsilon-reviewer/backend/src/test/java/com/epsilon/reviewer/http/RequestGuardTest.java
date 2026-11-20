@@ -7,13 +7,26 @@ import java.io.InputStream;
 import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /** Host・Origin・Sec-Fetch-Site の検査と、他のサイトから共有リンクへ移るときの例外、セキュリティのヘッダーをテストする。 */
 public class RequestGuardTest {
   private static final RequestGuard GUARD = new RequestGuard("http", "reviewer.example:8080", 8080);
+
+  @Test
+  public void builtPageAndServerEnforceTheSameContentPolicy() throws Exception {
+    String vite = Files.readString(Path.of("..", "web", "vite.config.ts"));
+    String policy = RequestGuard.CONTENT_SECURITY_POLICY.replace("; frame-ancestors 'none'", "");
+    var declaration =
+        Pattern.compile("const\\s+CONTENT_SECURITY_POLICY\\s*=\\s*\"([^\"]+)\"").matcher(vite);
+    Assert.assertTrue(declaration.find(), "Missing Vite content policy");
+    Assert.assertEquals(declaration.group(1), policy);
+  }
 
   @Test
   public void hostMustMatchThePublicAuthorityOrALoopbackAlias() {
@@ -34,15 +47,33 @@ public class RequestGuardTest {
     allowed("POST", "/api/analyses", false, "Host", host, "Sec-Fetch-Site", "same-origin");
     allowed("GET", "/", false, "Host", host, "Sec-Fetch-Site", "none");
     refused(
-        ErrorCode.ORIGIN_NOT_ALLOWED, "POST", "/api/analyses", false, "Host", host, "Origin",
+        ErrorCode.ORIGIN_NOT_ALLOWED,
+        "POST",
+        "/api/analyses",
+        false,
+        "Host",
+        host,
+        "Origin",
         "https://" + host);
     refused(
-        ErrorCode.ORIGIN_NOT_ALLOWED, "POST", "/api/analyses", false, "Host", host, "Origin",
+        ErrorCode.ORIGIN_NOT_ALLOWED,
+        "POST",
+        "/api/analyses",
+        false,
+        "Host",
+        host,
+        "Origin",
         "https://example.com");
     for (String site : new String[] {"same-site", "cross-site"})
       refused(
-          ErrorCode.ORIGIN_NOT_ALLOWED, "GET", "/api/models", false, "Host", host,
-          "Sec-Fetch-Site", site);
+          ErrorCode.ORIGIN_NOT_ALLOWED,
+          "GET",
+          "/api/models",
+          false,
+          "Host",
+          host,
+          "Sec-Fetch-Site",
+          site);
   }
 
   @Test
@@ -50,8 +81,17 @@ public class RequestGuardTest {
     String host = "reviewer.example:8080";
     for (String path : new String[] {"/?share=x", "/?%73hare=x", "/?share=", "/?a=1&share=x"})
       allowed(
-          "GET", path, false, "Host", host, "Sec-Fetch-Site", "cross-site", "Sec-Fetch-Mode",
-          "navigate", "Sec-Fetch-Dest", "document");
+          "GET",
+          path,
+          false,
+          "Host",
+          host,
+          "Sec-Fetch-Site",
+          "cross-site",
+          "Sec-Fetch-Mode",
+          "navigate",
+          "Sec-Fetch-Dest",
+          "document");
     String[][] refusedContexts = {
       {"GET", "/", "navigate", "document"},
       {"GET", "/api/shares/x", "navigate", "document"},
@@ -61,13 +101,33 @@ public class RequestGuardTest {
     };
     for (String[] context : refusedContexts)
       refused(
-          ErrorCode.ORIGIN_NOT_ALLOWED, context[0], context[1], false, "Host", host,
-          "Sec-Fetch-Site", "cross-site", "Sec-Fetch-Mode", context[2], "Sec-Fetch-Dest",
+          ErrorCode.ORIGIN_NOT_ALLOWED,
+          context[0],
+          context[1],
+          false,
+          "Host",
+          host,
+          "Sec-Fetch-Site",
+          "cross-site",
+          "Sec-Fetch-Mode",
+          context[2],
+          "Sec-Fetch-Dest",
           context[3]);
     refused(
-        ErrorCode.ORIGIN_NOT_ALLOWED, "GET", "/?share=x", false, "Host", host, "Origin",
-        "https://example.com", "Sec-Fetch-Site", "cross-site", "Sec-Fetch-Mode", "navigate",
-        "Sec-Fetch-Dest", "document");
+        ErrorCode.ORIGIN_NOT_ALLOWED,
+        "GET",
+        "/?share=x",
+        false,
+        "Host",
+        host,
+        "Origin",
+        "https://example.com",
+        "Sec-Fetch-Site",
+        "cross-site",
+        "Sec-Fetch-Mode",
+        "navigate",
+        "Sec-Fetch-Dest",
+        "document");
   }
 
   @Test
@@ -84,9 +144,7 @@ public class RequestGuardTest {
               + " data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:;"
               + " object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
       Assert.assertEquals(
-          headers.getFirst("X-Robots-Tag"),
-          path.contains("share") ? "noindex" : null,
-          path);
+          headers.getFirst("X-Robots-Tag"), path.contains("share") ? "noindex" : null, path);
     }
   }
 

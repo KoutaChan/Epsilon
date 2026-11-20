@@ -111,7 +111,8 @@ final class LedgerTables {
     if (size == HandShape.MAX_SIZE) return;
     int tile = full.seat(winner).last().tile();
     if (size != HandShape.MAX_SIZE - 1 || tile < 0)
-      throw new IllegalStateException("Seat " + winner + " won with " + size + " tiles and the last tile " + tile);
+      throw new IllegalStateException(
+          "Seat " + winner + " won with " + size + " tiles and the last tile " + tile);
     counts[tile]++;
   }
 }

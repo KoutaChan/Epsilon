@@ -17,7 +17,7 @@ public record PlayerState(
     List<String> hand,
     String draw,
     List<RiverTile> river,
-    List<Meld> melds,
+    List<MeldView> melds,
     int nuki) {
   public PlayerState withScore(int score) {
     return new PlayerState(score, riichi, hand, draw, river, melds, nuki);

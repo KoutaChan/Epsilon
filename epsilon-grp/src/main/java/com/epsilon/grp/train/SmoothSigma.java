@@ -68,7 +68,8 @@ public record SmoothSigma(Variant variant, List<Round> rounds, long seatHands, d
     public Builder add(List<GameRecord> games) {
       for (GameRecord game : games) {
         if (game.variant() != variant) {
-          throw new IllegalArgumentException("A " + game.variant() + " game among " + variant + " games");
+          throw new IllegalArgumentException(
+              "A " + game.variant() + " game among " + variant + " games");
         }
       }
       int seats = variant.seats();

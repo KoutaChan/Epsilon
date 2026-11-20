@@ -83,7 +83,8 @@ public class LateMonitorTest {
    * @param ends 記録にある局末
    * @param values 収集の Phi で求めた、局末の値の列
    */
-  private record Collected(ActivePhi active, GrpFixtures.Played played, HandEnds ends, HandEndValues values) {}
+  private record Collected(
+      ActivePhi active, GrpFixtures.Played played, HandEnds ends, HandEndValues values) {}
 
   @Test(timeOut = 300_000)
   public void aLateCohortCarriesBothModesTheLateReportAndTheQCalibration() throws Exception {
@@ -108,13 +109,15 @@ public class LateMonitorTest {
     Assert.assertEquals(line.other(), GrpMetrics.measure(ends, grp));
     Assert.assertEquals(line.late(), LateReport.measure(ends, collected.values(), grp));
     Assert.assertEquals(line.late().handEnds(), covered);
-    Assert.assertTrue(line.late().enumeration().settled() > 0, line.late().enumeration().toString());
+    Assert.assertTrue(
+        line.late().enumeration().settled() > 0, line.late().enumeration().toString());
     OutcomeCalibration.Check calibration = calibration(collected);
     Assert.assertEquals(line.outcomeCalibration(), calibration);
     Assert.assertEquals(calibration.handEnds() + calibration.skipped(), covered);
     Assert.assertTrue(line.summary().contains(" mode=LATE late="), line.summary());
     Assert.assertFalse(line.summary().contains("late=- "), line.summary());
-    Assert.assertEquals(PhiMonitorLine.readAll(files), List.of(line), "the line survives the round trip");
+    Assert.assertEquals(
+        PhiMonitorLine.readAll(files), List.of(line), "the line survives the round trip");
   }
 
   @Test(timeOut = 300_000)
@@ -153,7 +156,9 @@ public class LateMonitorTest {
     Assert.assertEquals(line6.active(), GrpMetrics.measure(ends6, sixth.values()));
     Assert.assertEquals(line6.other(), GrpMetrics.measure(ends6, late6));
     Assert.assertNotEquals(
-        line6.other(), GrpMetrics.measure(ends6, values(PhiValue.of(initial, PhiMode.LATE, SETTINGS_CUTOFF), ends6)));
+        line6.other(),
+        GrpMetrics.measure(
+            ends6, values(PhiValue.of(initial, PhiMode.LATE, SETTINGS_CUTOFF), ends6)));
     Assert.assertEquals(line6.late(), LateReport.measure(ends6, late6, sixth.values()));
     Assert.assertEquals(line6.outcomeCalibration(), calibration(sixth));
   }
@@ -170,7 +175,8 @@ public class LateMonitorTest {
     PhiMonitorLine rebuilt = PhiScorer.score(files, setup, 3).orElseThrow();
     Assert.assertEquals(rebuilt.mode(), PhiMode.LATE);
     Assert.assertEquals(rebuilt.cutoff(), Double.valueOf(4e-3));
-    Assert.assertEquals(rebuilt.active(), report(PhiValue.of(initial, PhiMode.LATE, 4e-3), ends(3)));
+    Assert.assertEquals(
+        rebuilt.active(), report(PhiValue.of(initial, PhiMode.LATE, 4e-3), ends(3)));
     Assert.assertNotNull(rebuilt.outcomeCalibration());
 
     // mode.jsonl よりヘッダーのモードを優先する
@@ -194,7 +200,8 @@ public class LateMonitorTest {
     GrpFixtures.record(files, 7, initial, GrpFixtures.games(7000, 60, 7));
     Files.writeString(files.counts(7), "not a count file");
     assertFromModeLines(PhiScorer.score(files, setup, 7).orElseThrow(), late, 7);
-    GrpFixtures.Played rules = GrpFixtures.played(8, 8000, 60, 8, new PhiStamp("RULES", Double.NaN));
+    GrpFixtures.Played rules =
+        GrpFixtures.played(8, 8000, 60, 8, new PhiStamp("RULES", Double.NaN));
     GrpFixtures.recordCounted(files, 8, initial, rules);
     assertFromModeLines(PhiScorer.score(files, setup, 8).orElseThrow(), late, 8);
 
@@ -202,7 +209,8 @@ public class LateMonitorTest {
     GrpFixtures.record(files, 1, initial, GrpFixtures.games(1000, 40, 1));
     assertFromModeLines(PhiScorer.score(files, setup, 1).orElseThrow(), grp, 1);
     Assert.assertEquals(
-        PhiMonitorLine.readAll(files).stream().map(PhiMonitorLine::cohort).toList(), List.of(3, 4, 5, 6, 7, 8, 1));
+        PhiMonitorLine.readAll(files).stream().map(PhiMonitorLine::cohort).toList(),
+        List.of(3, 4, 5, 6, 7, 8, 1));
   }
 
   @Test(timeOut = 300_000)
@@ -212,10 +220,13 @@ public class LateMonitorTest {
     Collected scoreOnly;
     Collected network;
     try (PhiResolver resolver = PhiResolver.open(scoreSetup, scoreFiles)) {
-      Assert.assertEquals(ModeLine.effectiveAt(PhiHistory.readModes(scoreFiles), 2).orElseThrow().mode(), PhiMode.LATE);
+      Assert.assertEquals(
+          ModeLine.effectiveAt(PhiHistory.readModes(scoreFiles), 2).orElseThrow().mode(),
+          PhiMode.LATE);
       scoreOnly = collect(scoreFiles, resolver, scoreSetup, 2, 40);
       PhiHistory.append(
-          scoreFiles, GrpFixtures.ready(scoreFiles, "g001-a1", 1, leaf).entry(GrpFixtures.VARIANT, 3, "test"));
+          scoreFiles,
+          GrpFixtures.ready(scoreFiles, "g001-a1", 1, leaf).entry(GrpFixtures.VARIANT, 3, "test"));
       network = collect(scoreFiles, resolver, scoreSetup, 3, 60);
     }
     for (Collected collected : List.of(scoreOnly, network)) {
@@ -242,11 +253,13 @@ public class LateMonitorTest {
     PhiSetup shadowSetup = grpStart("phi.grp.threads=2", "phi.grp.shadow=WITH_ORIGINAL");
     Path a = GrpFixtures.network(run.resolve("a"), 21);
     Path aq = GrpFixtures.outcomes(run.resolve("aq"), GrpFixtures.VARIANT, 22);
-    PhiEntry active = GrpFixtures.ready(files, "g001-a1", 1, a, aq).entry(GrpFixtures.VARIANT, 2, "test");
+    PhiEntry active =
+        GrpFixtures.ready(files, "g001-a1", 1, a, aq).entry(GrpFixtures.VARIANT, 2, "test");
     PhiHistory.append(files, active);
     Path b = GrpFixtures.network(run.resolve("b"), 23);
     Path bq = GrpFixtures.outcomes(run.resolve("bq"), GrpFixtures.VARIANT, 24);
-    PhiEntry withQ = GrpFixtures.ready(files, "g002-a1", 2, b, bq).entry(GrpFixtures.VARIANT, 2, "x");
+    PhiEntry withQ =
+        GrpFixtures.ready(files, "g002-a1", 2, b, bq).entry(GrpFixtures.VARIANT, 2, "x");
     PhiEntry withoutQ =
         GrpFixtures.ready(files, "g003-a1", 3, GrpFixtures.network(run.resolve("c"), 25))
             .entry(GrpFixtures.VARIANT, 2, "x");
@@ -279,7 +292,10 @@ public class LateMonitorTest {
     Assert.assertEquals(line4.mode(), PhiMode.GRP);
     Assert.assertEquals(line4.shadows().keySet(), Set.of("g002-a1", "g003-a1", PhiEntry.FIXED_ID));
     for (PhiEntry shadow : List.of(withQ, withoutQ, original))
-      Assert.assertEquals(line4.shadows().get(shadow.id()), report(PhiValue.grp(shadow), fourth.ends()), shadow.id());
+      Assert.assertEquals(
+          line4.shadows().get(shadow.id()),
+          report(PhiValue.grp(shadow), fourth.ends()),
+          shadow.id());
   }
 
   @Test(timeOut = 300_000)
@@ -323,7 +339,9 @@ public class LateMonitorTest {
     }
     PhiMonitorLine line = PhiScorer.score(files, setup, 2).orElseThrow();
     // 前の jar が書いた行。モード、もう一方のモード、終盤の報告、q の較正のフィールドが無い
-    var old = new PhiMonitorLine(3, line.phiId(), null, null, line.active(), null, null, null, Map.of(), 1.0);
+    var old =
+        new PhiMonitorLine(
+            3, line.phiId(), null, null, line.active(), null, null, null, Map.of(), 1.0);
     old.append(files);
     String text = Files.readAllLines(files.monitor(), StandardCharsets.UTF_8).getLast();
     for (String field : List.of("mode", "cutoff", "other", "late", "outcomeCalibration"))
@@ -345,7 +363,11 @@ public class LateMonitorTest {
     return GrpFixtures.grpStart(
         leaf,
         GrpFixtures.concat(
-            new String[] {"phi.start.outcomes=" + q, "phi.grp.monitor=SCORE", "phi.late.cutoff=" + SETTINGS_CUTOFF},
+            new String[] {
+              "phi.start.outcomes=" + q,
+              "phi.grp.monitor=SCORE",
+              "phi.late.cutoff=" + SETTINGS_CUTOFF
+            },
             assignments));
   }
 
@@ -353,18 +375,21 @@ public class LateMonitorTest {
    * 学習の JVM と同じ手順でコホート t を集める。反復 t の値を開き、その値の stamp をヘッダーに書いた数のファイルと、半荘の記録を書く。
    * 最後に、開いた Phi で局末の値の列を求める。
    */
-  private static Collected collect(GrpFiles files, PhiResolver resolver, PhiSetup setup, int t, int games)
-      throws Exception {
+  private static Collected collect(
+      GrpFiles files, PhiResolver resolver, PhiSetup setup, int t, int games) throws Exception {
     ActivePhi active = resolver.resolve(t, setup.phi());
     GrpFixtures.Played played = GrpFixtures.played(t, 1000L * t, games, t, active.value().stamp());
     GrpFixtures.recordCounted(files, t, active.entry(), played);
     HandEnds ends =
-        HandEnds.of(GrpFixtures.VARIANT, GrpFixtures.UTILITY, GameRecordCodec.read(files.records(t)).games());
+        HandEnds.of(
+            GrpFixtures.VARIANT,
+            GrpFixtures.UTILITY,
+            GameRecordCodec.read(files.records(t)).games());
     return new Collected(active, played, ends, collected(active.phi(), ends));
   }
 
   /**
-   * 収集で使う値を返す。開いた Phi で、局末ごとの Φ を 3 つのスレッドから 2 回ずつ求める（1 つのスレッドは逆順に回り、2 回目はメモに
+   * 収集で使う値を返す。開いた Phi で、局末ごとの Φ を 3 つのスレッドから 2 回ずつ求める（1 つのスレッドは逆順に回り、2 回目はキャッシュに
    * 当たる）。どの呼び出しの Φ も、その Phi で作った局末の値の列とビットで同じことを確かめてから、その列を返す。
    */
   private static HandEndValues collected(Phi phi, HandEnds ends) throws Exception {
@@ -394,7 +419,8 @@ public class LateMonitorTest {
     for (int h = 0; h < ends.handEnds(); h++)
       for (int seat = 0; seat < seats; seat++)
         for (long[][] call : bits)
-          Assert.assertEquals(call[h][seat], Double.doubleToLongBits(values.phi(h, seat)), "hand end " + h);
+          Assert.assertEquals(
+              call[h][seat], Double.doubleToLongBits(values.phi(h, seat)), "hand end " + h);
     return values;
   }
 
@@ -422,7 +448,8 @@ public class LateMonitorTest {
   }
 
   private HandEnds ends(int t) throws IOException {
-    return HandEnds.of(GrpFixtures.VARIANT, GrpFixtures.UTILITY, GameRecordCodec.read(files.records(t)).games());
+    return HandEnds.of(
+        GrpFixtures.VARIANT, GrpFixtures.UTILITY, GameRecordCodec.read(files.records(t)).games());
   }
 
   private static HandEndValues values(PhiValue value, HandEnds ends) throws IOException {
@@ -435,7 +462,15 @@ public class LateMonitorTest {
 
   private static PhiMonitorLine withoutSeconds(PhiMonitorLine line) {
     return new PhiMonitorLine(
-        line.cohort(), line.phiId(), line.mode(), line.cutoff(), line.active(), line.other(), line.late(),
-        line.outcomeCalibration(), line.shadows(), 0);
+        line.cohort(),
+        line.phiId(),
+        line.mode(),
+        line.cutoff(),
+        line.active(),
+        line.other(),
+        line.late(),
+        line.outcomeCalibration(),
+        line.shadows(),
+        0);
   }
 }

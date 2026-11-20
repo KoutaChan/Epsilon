@@ -26,7 +26,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * agent の方策を卓の席に置くテスト。バッチでまとめる方策では、区分・上限・予約がそのまま通り、送り出すバッチの O は要求の O と同じで、
+ * agent の方策を卓の席に置くテスト。バッチでまとめる方策では、区分（牌山の番号を引き継ぐ区分も）・上限・予約がそのまま通り、送り出すバッチの O は要求の O と同じで、
  * σ は選んだ手の one-hot になる。失敗は答えの失敗として伝わり、席を閉じると方策も閉じる。その場で答える方策は進行ワーカーの上で σ を書き、
  * 2 つのスレッドから呼んでも同じ答えを返す。
  */
@@ -63,6 +63,11 @@ public class PolicySeatTest {
     }
 
     @Override
+    public int admission(Observation observation, long wall) {
+      return Math.floorMod(wall, 4);
+    }
+
+    @Override
     public int maxBatch(int admission) {
       return admission + 3;
     }
@@ -73,7 +78,8 @@ public class PolicySeatTest {
     }
 
     @Override
-    public CompletableFuture<Void> choose(ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
+    public CompletableFuture<Void> choose(
+        ObservationBatch batch, int[] chosen, DecisionInferenceIngress reservation) {
       reservation.handoff(this).release();
       if (failing) {
         return CompletableFuture.failedFuture(new IllegalStateException("no answer"));
@@ -138,7 +144,8 @@ public class PolicySeatTest {
     for (int row = 0; row < batch.size(); row++) {
       PolicyRequest request = batch.get(row);
       int start = request.recordBase();
-      long[] words = Arrays.copyOfRange(request.recordWords(), start, start + request.bind(o).longs());
+      long[] words =
+          Arrays.copyOfRange(request.recordWords(), start, start + request.bind(o).longs());
       Assert.assertEquals(policy.received.get(row), words, "row " + row);
       float[] sigma = new float[request.legalCount()];
       sigma[sigma.length - 1] = 1f;
@@ -146,9 +153,22 @@ public class PolicySeatTest {
       Assert.assertNull(request.scores);
       Assert.assertNull(request.prior);
     }
-    Assert.assertThrows(UnsupportedOperationException.class, () -> seat.evaluateInline(batch.getFirst()));
+    Assert.assertThrows(
+        UnsupportedOperationException.class, () -> seat.evaluateInline(batch.getFirst()));
     seat.close();
     Assert.assertTrue(policy.closed);
+  }
+
+  /** 牌山の番号を引き継ぐ区分は、席から方策へそのまま渡る（イベントを保存する方策は、この区分で GPU とレーンを選ぶ）。 */
+  @Test
+  public void wallAdmissionsReachTheBatchedPolicy() {
+    var seat = new PolicySeat(new LastLegal());
+    Observation o = new Observation(TENHOU_4P);
+    var request = requests(1).getFirst();
+    for (long wall : new long[] {0, 1, 2, 3, 6, -1}) {
+      Assert.assertEquals(seat.admission(request.bind(o), wall), Math.floorMod(wall, 4));
+    }
+    Assert.assertEquals(new PolicySeat(new Hashed()).admission(null, 5), 0);
   }
 
   @Test
@@ -159,8 +179,10 @@ public class PolicySeatTest {
     var attempt = seat.tryAcquireIngress(0);
     CompletionException failure =
         Assert.expectThrows(
-            CompletionException.class, () -> seat.submit(List.<Query>copyOf(requests(3)), attempt.ingress()).join());
-    Assert.assertTrue(failure.getCause() instanceof IllegalStateException, String.valueOf(failure.getCause()));
+            CompletionException.class,
+            () -> seat.submit(List.<Query>copyOf(requests(3)), attempt.ingress()).join());
+    Assert.assertTrue(
+        failure.getCause() instanceof IllegalStateException, String.valueOf(failure.getCause()));
   }
 
   @Test

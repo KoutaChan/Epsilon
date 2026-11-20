@@ -15,7 +15,9 @@ import org.testng.annotations.Test;
  */
 public class CrnSchemeTest {
 
-  private static final int[] LEGAL = {discard(0), discard(9), discard(18), discard(27), discard(31)};
+  private static final int[] LEGAL = {
+    discard(0), discard(9), discard(18), discard(27), discard(31)
+  };
 
   private static int discard(int kind) {
     return Action.discard(kind, false, false, false);
@@ -35,7 +37,8 @@ public class CrnSchemeTest {
         long key = CrnScheme.SINGLE_RACE.decisionKey(hand, seat, kindClass, ordinal);
         Assert.assertEquals(key, CrnKeys.decisionKey(hand, seat, kindClass, ordinal));
         Assert.assertEquals(
-            CrnScheme.SINGLE_RACE.select(key, LEGAL, sigma, b, 0.1), CrnKeys.select(key, LEGAL, b, 0));
+            CrnScheme.SINGLE_RACE.select(key, LEGAL, sigma, b, 0.1),
+            CrnKeys.select(key, LEGAL, b, 0));
       }
     }
   }
@@ -45,16 +48,20 @@ public class CrnSchemeTest {
   public void twoStageFloorDrawsBehaviour() {
     double epsilon = 0.1;
     int n = LEGAL.length, keys = 100_000;
-    for (float[] sigma : new float[][] {{0, 0, 1, 0, 0}, {0.5f, 0, 0.25f, 0.25f, 0}, {0, 0, 0, 0, 0}}) {
+    for (float[] sigma :
+        new float[][] {{0, 0, 1, 0, 0}, {0.5f, 0, 0.25f, 0.25f, 0}, {0, 0, 0, 0, 0}}) {
       float[] b = new Behaviour(epsilon, 0, CrnScheme.TWO_STAGE_FLOOR).policy(sigma, n);
       long[] counts = new long[n];
       for (int k = 0; k < keys; k++) {
-        counts[CrnScheme.TWO_STAGE_FLOOR.select(SeedMixer.mix64(31L * k + 7), LEGAL, sigma, b, epsilon)]++;
+        counts[
+            CrnScheme.TWO_STAGE_FLOOR.select(
+                SeedMixer.mix64(31L * k + 7), LEGAL, sigma, b, epsilon)]++;
       }
       for (int a = 0; a < n; a++) {
         double expected = keys * (double) b[a];
         double z = (counts[a] - expected) / Math.sqrt(Math.max(expected * (1 - b[a]), 1));
-        Assert.assertTrue(Math.abs(z) < 4.5, "action " + a + " count " + counts[a] + " expected " + expected);
+        Assert.assertTrue(
+            Math.abs(z) < 4.5, "action " + a + " count " + counts[a] + " expected " + expected);
       }
     }
   }
@@ -113,7 +120,8 @@ public class CrnSchemeTest {
     Set<Long> keys = new HashSet<>();
     for (int seat = 0; seat < 4; seat++) {
       for (int kindClass = 0; kindClass < 3; kindClass++) {
-        Assert.assertTrue(keys.add(CrnScheme.TWO_STAGE_FLOOR.decisionKey(123L, seat, kindClass, 5)));
+        Assert.assertTrue(
+            keys.add(CrnScheme.TWO_STAGE_FLOOR.decisionKey(123L, seat, kindClass, 5)));
       }
     }
     CrnKeys.Cursor cursor = new CrnKeys.Cursor(4, CrnScheme.TWO_STAGE_FLOOR.kindClasses());

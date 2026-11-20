@@ -43,7 +43,8 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
    * @param rank 対にした牌山の δ の平均と標準誤差
    * @param utility 対にした牌山の υ の平均と標準誤差
    */
-  public record Side(RunDirectory run, JobFile job, EvaluationPlan plan, Value rank, Value utility) {}
+  public record Side(
+      RunDirectory run, JobFile job, EvaluationPlan plan, Value rank, Value utility) {}
 
   /**
    * 牌山ごとの値の平均と、平均の標準誤差（不偏分散から求める）。
@@ -66,7 +67,8 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
      * 相手。系譜のバージョンは指定（run のスナップショットのパス）とバージョンで比べるので、別の系譜の同じ番号のバージョンは別の相手に
      * なる。系譜の外のチェックポイントは SHA-256 で、チェックポイントの無い相手は書き方で比べる。
      */
-    OPPONENT("opponent", duel -> opponentKey(duel.opponent()), duel -> opponentText(duel.opponent())),
+    OPPONENT(
+        "opponent", duel -> opponentKey(duel.opponent()), duel -> opponentText(duel.opponent())),
     WALL_SEED("wall seed", DuelSetup::wallSeed),
     FIRST_WALL("first wall", DuelSetup::wallBase),
     /** 席の方式と方式（割り当ての番号の振り方）。 */
@@ -93,7 +95,8 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
       if (key.apply(first).equals(key.apply(second))) {
         return Optional.empty();
       }
-      return Optional.of("the " + noun + " differs (" + text.apply(first) + " and " + text.apply(second) + ")");
+      return Optional.of(
+          "the " + noun + " differs (" + text.apply(first) + " and " + text.apply(second) + ")");
     }
   }
 
@@ -112,14 +115,19 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
    * @throws IllegalArgumentException games.tsv の行が計画と合わないとき
    */
   public static JobComparison of(
-      String table, RunDirectory firstRun, int firstVersion, RunDirectory secondRun, int secondVersion)
+      String table,
+      RunDirectory firstRun,
+      int firstVersion,
+      RunDirectory secondRun,
+      int secondVersion)
       throws IOException {
     String firstName = RunDirectory.jobName(firstVersion, table);
     String secondName = RunDirectory.jobName(secondVersion, table);
     Path firstHome = firstRun.job(firstName);
     Path secondHome = secondRun.job(secondName);
     if (firstHome.equals(secondHome)) {
-      throw new SettingsException(List.of("Both jobs are " + firstHome + "; compare two different jobs"));
+      throw new SettingsException(
+          List.of("Both jobs are " + firstHome + "; compare two different jobs"));
     }
     List<String> problems = new ArrayList<>();
     Optional<Planned> firstJob = planned(firstRun, firstName, problems);
@@ -131,16 +139,24 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
     Planned second = secondJob.orElseThrow();
     boolean oneRun = firstRun.equals(secondRun);
     String pair =
-        "Cannot pair " + (oneRun ? firstName : firstHome.toString()) + " with "
+        "Cannot pair "
+            + (oneRun ? firstName : firstHome.toString())
+            + " with "
             + (oneRun ? secondName : secondHome.toString());
     DuelSetup firstDuel = first.plan().duel();
     DuelSetup secondDuel = second.plan().duel();
     for (Element element : Element.values()) {
-      element.mismatch(firstDuel, secondDuel).ifPresent(mismatch -> problems.add(pair + ": " + mismatch));
+      element
+          .mismatch(firstDuel, secondDuel)
+          .ifPresent(mismatch -> problems.add(pair + ": " + mismatch));
     }
     if (first.plan().twinDiscard() != second.plan().twinDiscard()) {
       problems.add(
-          pair + ": the twin discard differs (" + first.plan().twinDiscard() + " and " + second.plan().twinDiscard()
+          pair
+              + ": the twin discard differs ("
+              + first.plan().twinDiscard()
+              + " and "
+              + second.plan().twinDiscard()
               + ")");
     }
     if (!problems.isEmpty()) {
@@ -151,7 +167,10 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
     int walls = Math.min(firstValues.walls(), secondValues.walls());
     if (walls < 2) {
       throw new SettingsException(
-          List.of(pair + ": a paired standard error needs at least two walls finished in both jobs, not " + walls));
+          List.of(
+              pair
+                  + ": a paired standard error needs at least two walls finished in both jobs, not "
+                  + walls));
     }
     return new JobComparison(
         side(firstRun, first, firstValues, walls),
@@ -170,7 +189,8 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
    * @param problems 対にできない理由を足す先
    * @return 計画で牌山を打つジョブ。ジョブが無いか、まだ計画が無いか、打たずに候補を初めの王者にしたジョブなら空
    */
-  private static Optional<Planned> planned(RunDirectory run, String name, List<String> problems) throws IOException {
+  private static Optional<Planned> planned(RunDirectory run, String name, List<String> problems)
+      throws IOException {
     Path file = run.job(name).resolve(Jobs.JOB);
     if (!Files.exists(file)) {
       problems.add("There is no job " + name + " in " + run.root());
@@ -178,13 +198,19 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
     }
     JobFile job = RecordFile.read(JobFile.class, file).value();
     if (job.plan() == null) {
-      problems.add("The job " + name + " in " + run.root() + " has not started, so it has no plan yet");
+      problems.add(
+          "The job " + name + " in " + run.root() + " has not started, so it has no plan yet");
       return Optional.empty();
     }
     EvaluationPlan plan = RecordFile.read(EvaluationPlan.class, job.plan()).value();
     if (plan.crowns()) {
       problems.add(
-          "The job " + name + " in " + run.root() + " played no walls: it made " + plan.candidate().label()
+          "The job "
+              + name
+              + " in "
+              + run.root()
+              + " played no walls: it made "
+              + plan.candidate().label()
               + " the first champion");
       return Optional.empty();
     }
@@ -224,6 +250,8 @@ public record JobComparison(Side first, Side second, int walls, Value rank, Valu
     if (opponent.version() != null) {
       return opponent.label() + " " + opponent.spec();
     }
-    return opponent.sha256() != null ? opponent.label() + " sha256 " + opponent.sha256() : opponent.spec();
+    return opponent.sha256() != null
+        ? opponent.label() + " sha256 " + opponent.sha256()
+        : opponent.spec();
   }
 }

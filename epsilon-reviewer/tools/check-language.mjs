@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import { CLIENT_ERROR_CODES, SERVER_ERROR_CODES } from "../protocol/errors.ts";
+import {
+  CLIENT_ERROR_CODES,
+  SERVER_ERROR_CODES,
+} from "@epsilon-reviewer/protocol/errors";
 
 // language/<言語>/<ファイル>.json を確かめる。ja を基準に、どの言語にも同じファイルと同じキーがあり、文言の {名前} もそろっていること。
 // キーの先頭の語で、そのキーを置くファイルが決まる。ほかのファイルの語で始まるキーは置けない。errors.json のキーはエラーコードと 1 対 1 に対応する。

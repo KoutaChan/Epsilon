@@ -47,23 +47,36 @@ public record ArenaPlan(
     for (int slot = 0; slot < slots.size(); slot++) {
       if (slots.get(slot).variant() != variant) {
         throw new IllegalArgumentException(
-            "Variant mismatch: expected " + variant + " but found " + slots.get(slot).variant() + " in slot " + slot);
+            "Variant mismatch: expected "
+                + variant
+                + " but found "
+                + slots.get(slot).variant()
+                + " in slot "
+                + slot);
       }
     }
     if (walls < 1) {
       throw new IllegalArgumentException("An arena plays at least one wall: " + walls);
     }
     if (wallBase < 0 || wallBase > Long.MAX_VALUE - walls) {
-      throw new IllegalArgumentException("Walls " + wallBase + " + " + walls + " are outside the wall numbers");
+      throw new IllegalArgumentException(
+          "Walls " + wallBase + " + " + walls + " are outside the wall numbers");
     }
     Placements placements = new Placements(variant, seating, splits);
     if (placements.slots() != slots.size()) {
       throw new IllegalArgumentException(
-          "Split " + splits.get(0) + " does not seat " + slots.size() + " slots at the " + variant.seats() + " seats");
+          "Split "
+              + splits.get(0)
+              + " does not seat "
+              + slots.size()
+              + " slots at the "
+              + variant.seats()
+              + " seats");
     }
     long perWall = placements.gamesPerWall();
     if (walls * perWall > Integer.MAX_VALUE) {
-      throw new IllegalArgumentException(walls + " walls of " + perWall + " games are too many for one arena");
+      throw new IllegalArgumentException(
+          walls + " walls of " + perWall + " games are too many for one arena");
     }
   }
 
@@ -79,7 +92,16 @@ public record ArenaPlan(
   public ArenaPlan rest(int done) {
     Objects.checkIndex(done, walls);
     return new ArenaPlan(
-        variant, slots, seating, splits, drawOrder, wallSet, wallSeed, wallBase + done, walls - done, utility);
+        variant,
+        slots,
+        seating,
+        splits,
+        drawOrder,
+        wallSet,
+        wallSeed,
+        wallBase + done,
+        walls - done,
+        utility);
   }
 
   /** @return 牌山 1 つで打つ半荘の数（{@link Seating#BY_GAME} なら 1、ほかは全ての割り当ての数） */

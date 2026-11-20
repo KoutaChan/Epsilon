@@ -16,9 +16,11 @@ public record TenhouTag(String name, Map<String, String> attributes) {
    * 属性がいくつあっても照合のスタックは深くならない。
    */
   private static final Pattern TAG =
-      Pattern.compile("<([A-Za-z][A-Za-z0-9]*)((?:\\s+[A-Za-z][A-Za-z0-9]*\\s*=\\s*\"[^\"]*\")*+)\\s*/?>");
+      Pattern.compile(
+          "<([A-Za-z][A-Za-z0-9]*)((?:\\s+[A-Za-z][A-Za-z0-9]*\\s*=\\s*\"[^\"]*\")*+)\\s*/?>");
 
-  private static final Pattern ATTRIBUTE = Pattern.compile("([A-Za-z][A-Za-z0-9]*)\\s*=\\s*\"([^\"]*)\"");
+  private static final Pattern ATTRIBUTE =
+      Pattern.compile("([A-Za-z][A-Za-z0-9]*)\\s*=\\s*\"([^\"]*)\"");
 
   /** 数の列の区切り。 */
   private static final String SEPARATOR = ",";
@@ -98,7 +100,8 @@ public record TenhouTag(String name, Map<String, String> attributes) {
     try {
       return Integer.parseInt(text.trim());
     } catch (NumberFormatException failure) {
-      throw new IllegalArgumentException("Tenhou " + name + " has a value that is not an integer: " + text, failure);
+      throw new IllegalArgumentException(
+          "Tenhou " + name + " has a value that is not an integer: " + text, failure);
     }
   }
 }

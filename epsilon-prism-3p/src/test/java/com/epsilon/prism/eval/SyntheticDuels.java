@@ -3,8 +3,8 @@ package com.epsilon.prism.eval;
 import com.epsilon.agent.eval.DuelResult;
 import com.epsilon.agent.eval.DuelSetup;
 import com.epsilon.agent.eval.Estimate;
-import com.epsilon.agent.eval.PlayStats;
 import com.epsilon.agent.eval.Placements;
+import com.epsilon.agent.eval.PlayStats;
 import com.epsilon.agent.eval.Score;
 import com.epsilon.agent.eval.Stopped;
 import com.epsilon.agent.eval.TableSpec;
@@ -144,7 +144,8 @@ final class SyntheticDuels {
         utility,
         List.of(new DuelResult.SplitValue("1v2", rank, utility)),
         List.of(
-            new DuelResult.SlotValue(duel.candidate().label(), 2 + rank.mean(), rank.error(), 0, 0, shares),
+            new DuelResult.SlotValue(
+                duel.candidate().label(), 2 + rank.mean(), rank.error(), 0, 0, shares),
             new DuelResult.SlotValue(duel.opponent().label(), 2, 0, 0, 0, shares)),
         new PlayStats.Rates(0, 0, 0, 0, 0),
         0,
@@ -195,7 +196,8 @@ final class SyntheticDuels {
    * 計画の作り方と結果の反映は評価のジョブのまま使い、打ち手を開かずに合成の行と結果を返す。打たずに候補を最初の王者に
    * するジョブは、評価のジョブのまま開く。王者の卓は {@code champion} が返す結果を、ほかの卓は {@code places} の着順から作った行と結果を返す。
    */
-  record Runner(EvaluationJobs jobs, Function<JobFile, DuelResult> champion, Places places) implements JobRunner {
+  record Runner(EvaluationJobs jobs, Function<JobFile, DuelResult> champion, Places places)
+      implements JobRunner {
 
     @Override
     public Node.Table plan(JobFile job) throws Exception {

@@ -1,5 +1,7 @@
 package com.epsilon.prism3p.variant;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import com.epsilon.agent.eval.TableSpec;
 import com.epsilon.agent.policy.Series;
 import com.epsilon.agent.settings.SettingsException;
@@ -9,7 +11,6 @@ import com.epsilon.prism.eval.EvaluationTable;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.variant.PrismVariant;
 import com.epsilon.prism3p.eval.ThreePlayerOpponents;
-import com.epsilon.prism3p.input.InputSchema;
 import java.nio.file.Path;
 import java.util.List;
 import org.testng.Assert;
@@ -24,8 +25,8 @@ public class PrismVariantTest {
     Assert.assertTrue(three instanceof ThreePlayer, three.getClass().getName());
     Assert.assertEquals(three.variant(), Variant.TENHOU_3P);
     Assert.assertEquals(List.copyOf(PrismVariant.all()).size(), 1);
-    Assert.assertSame(three.input(), InputSchema.FORMAT);
-    Assert.assertSame(InputFormat.of(Variant.TENHOU_3P), InputSchema.FORMAT);
+    Assert.assertSame(three.input(), THREE_PLAYER);
+    Assert.assertSame(InputFormat.of(Variant.TENHOU_3P), THREE_PLAYER);
     Assert.assertEquals(three.commands(), List.of());
   }
 
@@ -47,7 +48,8 @@ public class PrismVariantTest {
     Assert.assertEquals(table(EvaluationTable.HEURISTIC).opponent(), EvaluationTable.HEURISTIC);
     Assert.assertEquals(table("prism:" + absolute).opponent(), "prism:" + absolute);
     SettingsException nano =
-        Assert.expectThrows(SettingsException.class, () -> table("nano:" + absolute.resolve("latest")));
+        Assert.expectThrows(
+            SettingsException.class, () -> table("nano:" + absolute.resolve("latest")));
     Assert.assertTrue(nano.problems().toString().contains("not NANO"), nano.problems().toString());
   }
 

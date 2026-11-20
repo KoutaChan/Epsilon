@@ -11,8 +11,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@code copy} か {@code copyFrom} でコピーする。行は RoundField の並びで書いた整数。
  *
  * <p>バージョンは中身を見分ける番号。局を足すと新しい番号に替わる。コピーした履歴は元と同じ番号を持ち、空の履歴は 0。
- * 番号は使い回さないので、バージョンが同じなら中身も同じで、Φ のメモと GruSinkhorn の状態のメモのキーに使える。中身が同じでも、
- * 別々に局を足した履歴はバージョンが違う（メモに当たらないだけで、値は変わらない）。
+ * 番号は使い回さないので、バージョンが同じなら中身も同じで、Φ のキャッシュと GruSinkhorn の状態のキャッシュのキーに使える。中身が同じでも、
+ * 別々に局を足した履歴はバージョンが違う（キャッシュに当たらないだけで、値は変わらない）。
  *
  * <p>メモリを確保するのは、容量を超えて足すとき（容量を倍にする）と、容量が足りない {@code copyFrom} だけ。同時に使えるのは
  * 1 スレッドだけ。
@@ -151,7 +151,8 @@ public final class RoundHistory {
 
   private void requireVariant(Variant other) {
     if (other != variant) {
-      throw new IllegalArgumentException("Variant mismatch: history " + variant + ", table " + other);
+      throw new IllegalArgumentException(
+          "Variant mismatch: history " + variant + ", table " + other);
     }
   }
 

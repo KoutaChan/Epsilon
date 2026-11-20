@@ -32,7 +32,8 @@ public class UraExpectationBiasTest {
 
   private static void assertUnbiased(Variant variant, long seed) {
     UraAudit audit = new UraAudit();
-    UraExpectationPlayTest.Tally tally = UraExpectationPlayTest.play(variant, seed, HAND_ENDS, audit);
+    UraExpectationPlayTest.Tally tally =
+        UraExpectationPlayTest.play(variant, seed, HAND_ENDS, audit);
     UraAudit.Report report = audit.report();
     log.info(
         String.format(

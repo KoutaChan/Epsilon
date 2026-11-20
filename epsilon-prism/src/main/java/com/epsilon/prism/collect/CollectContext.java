@@ -61,6 +61,8 @@ final class CollectContext implements TableHooks<PolicyRequest> {
   /** 行（{@link Row}）の受け取り先。経路ごとに {@link RowRecorder} を持ち、ラベル行と根の記録が行を作る。 */
   final RowSink rows;
 
+  final SplitTrial split;
+
   /** 局末の 3 ワードを書くエンコーダー。ドライバのスレッドだけが使う。 */
   private final OutcomeCodec outcomes;
 
@@ -76,7 +78,9 @@ final class CollectContext implements TableHooks<PolicyRequest> {
       TwinDiscard twinDiscard,
       CollectionMetrics metrics,
       StageTimer<CollectStage> timer,
-      RowSink rows) {
+      RowSink rows,
+      SplitTrial split) {
+    this.split = split;
     this.variant = variant;
     this.runSeed = runSeed;
     this.iterationSeed = iterationSeed;
@@ -100,7 +104,7 @@ final class CollectContext implements TableHooks<PolicyRequest> {
   /** 書き終えていない行が上限を超えたら新しい半荘を始めない。 */
   @Override
   public boolean backlogged() {
-    return rows.backlog() >= ROW_BACKLOG;
+    return rows != null && rows.backlog() >= ROW_BACKLOG;
   }
 
   /** 局末の値を待っている受け取り先ごとに、帳簿、局末の事実、値の順に渡す。ドライバのスレッドだけが呼ぶ。 */
@@ -138,7 +142,8 @@ final class CollectContext implements TableHooks<PolicyRequest> {
 
   /** 半荘の行の用途を返す。ホールドアウトに回すかは run 全体の種と半荘 ID だけで決めるので、反復をまたいでも変わらない。 */
   Row.Purpose purpose(long gameId) {
-    return CrnSeeds.unit(CrnSeeds.derive(runSeed, Domain.HOLDOUT, gameId)) < sampling.holdoutFraction()
+    return CrnSeeds.unit(CrnSeeds.derive(runSeed, Domain.HOLDOUT, gameId))
+            < sampling.holdoutFraction()
         ? Row.Purpose.HOLDOUT
         : Row.Purpose.TRAIN;
   }

@@ -207,7 +207,8 @@ final class LiveTranscript {
               drawn[tile.seat()] = tile.tile();
               if (tile.seat() == seat) {
                 Prompt prompt = prompts.turns.removeFirst();
-                Map<String, String> offers = prompt.bits() == 0 ? attributes() : attributes("t", prompt.bits());
+                Map<String, String> offers =
+                    prompt.bits() == 0 ? attributes() : attributes("t", prompt.bits());
                 line("T" + tile.tile(), offers, prompt.replies());
               } else {
                 line(String.valueOf((char) ('T' + letter)), attributes(), List.of());
@@ -216,7 +217,8 @@ final class LiveTranscript {
             case DISCARD -> {
               boolean tsumogiri = tile.tile() == drawn[tile.seat()];
               drawn[tile.seat()] = TurnEvent.NONE;
-              String name = (char) ((tsumogiri ? 'd' : 'D') + letter) + Integer.toString(tile.tile());
+              String name =
+                  (char) ((tsumogiri ? 'd' : 'D') + letter) + Integer.toString(tile.tile());
               Prompt prompt = tile.seat() == seat ? null : prompts.responses.remove(events);
               if (prompt == null) {
                 line(name, attributes(), List.of());
@@ -241,7 +243,8 @@ final class LiveTranscript {
   }
 
   private Map<String, String> reach(TenhouTag tag) {
-    Map<String, String> attributes = attributes("who", relative(tag.integer("who")), "step", tag.get("step"));
+    Map<String, String> attributes =
+        attributes("who", relative(tag.integer("who")), "step", tag.get("step"));
     if (tag.get("ten") != null) {
       attributes.put("ten", rotate(tag.get("ten"), 1));
     }
@@ -297,11 +300,13 @@ final class LiveTranscript {
     StringBuilder text = new StringBuilder();
     if (json) {
       text.append("{\"tag\":\"").append(name).append('"');
-      attributes.forEach((key, value) -> text.append(",\"").append(key).append("\":\"").append(value).append('"'));
+      attributes.forEach(
+          (key, value) -> text.append(",\"").append(key).append("\":\"").append(value).append('"'));
       text.append('}');
     } else {
       text.append('<').append(name);
-      attributes.forEach((key, value) -> text.append(' ').append(key).append("=\"").append(value).append('"'));
+      attributes.forEach(
+          (key, value) -> text.append(' ').append(key).append("=\"").append(value).append('"'));
       text.append("/>");
     }
     lines.add(new Line(text.toString(), replies));

@@ -53,30 +53,49 @@ public class JsonTest {
   @Test
   public void nullFieldsAreAbsent() {
     assertEquals(Json.read("{\"a\": null, \"b\": {\"c\": null}}", "n.json"), table("b", table()));
-    assertEquals(Json.tree(JsonParser.parseString("{\"a\": null, \"b\": 1}"), "n.json"), table("b", number("1")));
+    assertEquals(
+        Json.tree(JsonParser.parseString("{\"a\": null, \"b\": 1}"), "n.json"),
+        table("b", number("1")));
   }
 
   @Test
   public void duplicateKeysAreErrors() {
-    SettingsException top = expectThrows(SettingsException.class, () -> Json.read("{\"a\":1,\"a\":2}", "dup.json"));
+    SettingsException top =
+        expectThrows(SettingsException.class, () -> Json.read("{\"a\":1,\"a\":2}", "dup.json"));
     assertEquals(top.problems(), List.of("Cannot read dup.json: duplicate key a at $.a"));
     SettingsException nested =
-        expectThrows(SettingsException.class, () -> Json.read("{\"x\":{\"a\":1,\"b\":2,\"a\":null}}", "dup.json"));
+        expectThrows(
+            SettingsException.class,
+            () -> Json.read("{\"x\":{\"a\":1,\"b\":2,\"a\":null}}", "dup.json"));
     assertEquals(nested.problems(), List.of("Cannot read dup.json: duplicate key a at $.x.a"));
   }
 
   @Test
   public void malformedJsonIsAnError() {
-    for (String text : List.of("[1]", "\"x\"", "{} {}", "{a: 1}", "{\"a\": 1,}", "{\"a\": [1, null]}", "", "{\"a\": NaN}")) {
-      SettingsException thrown = expectThrows(SettingsException.class, () -> Json.read(text, "bad.json"));
+    for (String text :
+        List.of(
+            "[1]",
+            "\"x\"",
+            "{} {}",
+            "{a: 1}",
+            "{\"a\": 1,}",
+            "{\"a\": [1, null]}",
+            "",
+            "{\"a\": NaN}")) {
+      SettingsException thrown =
+          expectThrows(SettingsException.class, () -> Json.read(text, "bad.json"));
       assertEquals(thrown.problems().size(), 1, text);
       assertTrue(thrown.getMessage().startsWith("Cannot read bad.json: "), thrown.getMessage());
     }
     SettingsException list =
-        expectThrows(SettingsException.class, () -> Json.tree(JsonParser.parseString("[1, null]"), "bad.json"));
+        expectThrows(
+            SettingsException.class,
+            () -> Json.tree(JsonParser.parseString("[1, null]"), "bad.json"));
     assertEquals(list.problems(), List.of("Cannot read bad.json: null inside a list"));
     SettingsException notObject =
-        expectThrows(SettingsException.class, () -> Layer.json("models.json", JsonParser.parseString("[1]")));
+        expectThrows(
+            SettingsException.class,
+            () -> Layer.json("models.json", JsonParser.parseString("[1]")));
     assertEquals(notObject.problems(), List.of("Settings at models.json must be a JSON object"));
   }
 
@@ -85,14 +104,17 @@ public class JsonTest {
     Node.Table tree =
         table(
             "text", text("quote \" back \\ cr \r lf \n tab \t nul \0 ls   ps   é 漢"),
-            "numbers", array(number("-0"), number("1E+5"), number("1.0E-5"), number("9223372036854775807")),
+            "numbers",
+                array(
+                    number("-0"), number("1E+5"), number("1.0E-5"), number("9223372036854775807")),
             "flags", array(bool(true), bool(false)),
             "nested", table("empty", table(), "list", array(), "a.b", table("c", text(""))));
     String written = Json.write(tree);
     assertFalse(written.contains("\n"), written);
     assertEquals(Json.read(written, "again"), tree);
     assertEquals(Toml.read(Toml.write(Json.read(written, "again")), "again"), tree);
-    assertEquals(Json.read(Json.write(Json.read(JSON, "x.json")), "again"), Json.read(JSON, "x.json"));
+    assertEquals(
+        Json.read(Json.write(Json.read(JSON, "x.json")), "again"), Json.read(JSON, "x.json"));
   }
 
   @Test

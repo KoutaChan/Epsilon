@@ -67,7 +67,8 @@ public final class RiichiClient {
   /** 接続を作る。テストでは偽の接続を返す。 */
   @FunctionalInterface
   interface Connector {
-    Transport connect(URI uri, Map<String, String> headers) throws IOException, InterruptedException;
+    Transport connect(URI uri, Map<String, String> headers)
+        throws IOException, InterruptedException;
   }
 
   /** つなぎ直す前に待つ。テストでは実際には待たない。 */
@@ -104,7 +105,11 @@ public final class RiichiClient {
   private final Sleeper sleeper;
 
   private RiichiClient(
-      String token, Variant variant, Supplier<? extends Decider> deciders, Connector connector, Sleeper sleeper) {
+      String token,
+      Variant variant,
+      Supplier<? extends Decider> deciders,
+      Connector connector,
+      Sleeper sleeper) {
     this.token = token;
     headers = Map.of("Authorization", "Bearer " + token);
     this.variant = variant;
@@ -122,7 +127,8 @@ public final class RiichiClient {
    * @param deciders 接続ごとに新しい Decider を作るもの
    * @return 完走した対局の数と、途中で接続が切れた対局の数
    */
-  public static Result play(String token, Variant variant, int games, Supplier<? extends Decider> deciders)
+  public static Result play(
+      String token, Variant variant, int games, Supplier<? extends Decider> deciders)
       throws IOException, InterruptedException {
     return play(
         token,
@@ -141,7 +147,9 @@ public final class RiichiClient {
       Connector connector,
       Sleeper sleeper)
       throws IOException, InterruptedException {
-    return new RiichiClient(token, Objects.requireNonNull(variant, "variant"), deciders, connector, sleeper).run(games);
+    return new RiichiClient(
+            token, Objects.requireNonNull(variant, "variant"), deciders, connector, sleeper)
+        .run(games);
   }
 
   private Result run(int games) throws IOException, InterruptedException {
@@ -174,7 +182,8 @@ public final class RiichiClient {
         if (failures >= MAX_FAILURES) {
           throw new IOException("RiichiLab connection failure limit reached", lost);
         }
-        long delay = Math.min(MAX_DELAY_MILLIS, FIRST_DELAY_MILLIS << Math.min(failures - 1, MAX_DOUBLINGS));
+        long delay =
+            Math.min(MAX_DELAY_MILLIS, FIRST_DELAY_MILLIS << Math.min(failures - 1, MAX_DOUBLINGS));
         log.warn("RiichiLab reconnects in {} ms after {} failures", delay, failures);
         sleeper.sleep(delay);
       }
@@ -197,8 +206,10 @@ public final class RiichiClient {
               ? failure.getMessage()
               : "Connection lost during validation (" + redact(failure.toString()) + ")";
       throw new TerminalFailure(
-          "RiichiLab ranked authentication and validation failed. Ranked: " + rejection.getMessage()
-              + "; Validation: " + reason);
+          "RiichiLab ranked authentication and validation failed. Ranked: "
+              + rejection.getMessage()
+              + "; Validation: "
+              + reason);
     }
     log.info("RiichiLab validation passed; entering ranked play");
   }

@@ -56,7 +56,8 @@ public class DuelTest {
 
   private static final long BASE = 5_000L;
 
-  private static final DuelSetup.Entrant HEURISTIC = new DuelSetup.Entrant("heuristic", "heuristic", null, null);
+  private static final DuelSetup.Entrant HEURISTIC =
+      new DuelSetup.Entrant("heuristic", "heuristic", null, null);
 
   /**
    * ジョブの定義。打ち手は {@link CommonRandom} のソルトで書く。牌山の種は定義に書かず、計画を決める {@link Runner} が決める。
@@ -65,7 +66,13 @@ public class DuelTest {
    * @param opponent スロット 1 の打ち手のソルト
    */
   record Table(
-      Variant variant, long candidate, long opponent, Seating seating, List<String> splits, StopRule stop, int walls) {}
+      Variant variant,
+      long candidate,
+      long opponent,
+      Seating seating,
+      List<String> splits,
+      StopRule stop,
+      int walls) {}
 
   /** 打とうとすると落ちる打ち手。打たずに済むはずの続きに置く。名前は置き換える前の打ち手と同じにする。 */
   record Unplayable(Variant variant, String label) implements InlinePolicy {
@@ -115,7 +122,8 @@ public class DuelTest {
    * @param playable false なら、打つと落ちる打ち手を置く
    * @param edit 計画を書く前に、計画に手を加える関数
    */
-  record Runner(TableLoop table, long seed, boolean playable, UnaryOperator<DuelSetup> edit) implements JobRunner {
+  record Runner(TableLoop table, long seed, boolean playable, UnaryOperator<DuelSetup> edit)
+      implements JobRunner {
 
     Runner(TableLoop table, long seed) {
       this(table, seed, true, UnaryOperator.identity());
@@ -132,8 +140,10 @@ public class DuelTest {
           edit.apply(
               DuelSetup.of(
                   t.variant(),
-                  new DuelSetup.Entrant(Long.toString(t.candidate()), "random:" + t.candidate(), null, null),
-                  new DuelSetup.Entrant(Long.toString(t.opponent()), "random:" + t.opponent(), null, null),
+                  new DuelSetup.Entrant(
+                      Long.toString(t.candidate()), "random:" + t.candidate(), null, null),
+                  new DuelSetup.Entrant(
+                      Long.toString(t.opponent()), "random:" + t.opponent(), null, null),
                   t.seating(),
                   splits,
                   DrawOrder.SEAT_STREAMS,
@@ -150,12 +160,18 @@ public class DuelTest {
     public JobWork open(JobFile job, Path directory) throws IOException {
       DuelSetup setup = RecordFile.read(DuelSetup.class, job.plan()).value();
       return Duel.open(
-          job.name(), table, setup, policy(setup.variant(), setup.candidate()), policy(setup.variant(), setup.opponent()),
+          job.name(),
+          table,
+          setup,
+          policy(setup.variant(), setup.candidate()),
+          policy(setup.variant(), setup.opponent()),
           directory);
     }
 
     private Policy policy(Variant variant, DuelSetup.Entrant entrant) {
-      return playable ? new CommonRandom(variant, Long.parseLong(entrant.spec())) : new Unplayable(variant, entrant.label());
+      return playable
+          ? new CommonRandom(variant, Long.parseLong(entrant.spec()))
+          : new Unplayable(variant, entrant.label());
     }
   }
 
@@ -194,7 +210,8 @@ public class DuelTest {
    * ジョブを回す。止める牌山の数ごとに、そのバッチの後のセーフポイントで止め、記録の後にごみの行を足す（落ちたバッチの書きかけの行の
    * 代わり）。次は {@code continuation} で続け、最後は済むまで回す。
    */
-  private static Home duel(Path root, String table, Table definition, Runner first, Runner continuation, int... stops)
+  private static Home duel(
+      Path root, String table, Table definition, Runner first, Runner continuation, int... stops)
       throws Exception {
     Home home = create(root, table, definition);
     Runner runner = first;
@@ -213,11 +230,18 @@ public class DuelTest {
       assertTrue(halt.isPresent(), table + " stops at " + stop);
       assertEquals(after.walls(), stop, table);
       assertEquals(after.state(), JobFile.State.PENDING, table);
-      Files.writeString(home.directory().resolve(JobOutputs.GAMES), "garbage after the record\n", StandardOpenOption.APPEND);
-      Files.writeString(home.directory().resolve(JobOutputs.LOOKS), "garbage after the record\n", StandardOpenOption.APPEND);
+      Files.writeString(
+          home.directory().resolve(JobOutputs.GAMES),
+          "garbage after the record\n",
+          StandardOpenOption.APPEND);
+      Files.writeString(
+          home.directory().resolve(JobOutputs.LOOKS),
+          "garbage after the record\n",
+          StandardOpenOption.APPEND);
       runner = continuation;
     }
-    assertTrue(home.jobs().run(home.job(), runner, RunControl.detached(() -> false)).isEmpty(), table);
+    assertTrue(
+        home.jobs().run(home.job(), runner, RunControl.detached(() -> false)).isEmpty(), table);
     JobFile done = home.job();
     assertEquals(done.state(), JobFile.State.DONE, table + " " + done.reason());
     assertEquals(done.attempts(), stops.length + 1, table);
@@ -227,8 +251,20 @@ public class DuelTest {
 
   private static DuelResult withoutSeconds(DuelResult r) {
     return new DuelResult(
-        r.walls(), r.games(), r.verdict(), r.stopped(), r.score(), r.critical(), r.rank(), r.utility(), r.splits(),
-        r.slots(), r.play(), r.identical(), r.roundSpread(), 0);
+        r.walls(),
+        r.games(),
+        r.verdict(),
+        r.stopped(),
+        r.score(),
+        r.critical(),
+        r.rank(),
+        r.utility(),
+        r.splits(),
+        r.slots(),
+        r.play(),
+        r.identical(),
+        r.roundSpread(),
+        0);
   }
 
   private static TableLoop table() {
@@ -238,17 +274,32 @@ public class DuelTest {
   /** 四人打ちの 1v3 ＋ 3v1 で、精度の止め方（目標が 0 なので計画の牌山を全て打つ）。32 牌山を 8 牌山ごとに判定する。 */
   private static Table precision() {
     return new Table(
-        Variant.TENHOU_4P, 3, 5, Seating.EVERY_PLACEMENT, List.of("1v3", "3v1"), new StopRule.Precision(0, 0.01, 8), 32);
+        Variant.TENHOU_4P,
+        3,
+        5,
+        Seating.EVERY_PLACEMENT,
+        List.of("1v3", "3v1"),
+        new StopRule.Precision(0, 0.01, 8),
+        32);
   }
 
   @Test(timeOut = 600_000)
-  public void stoppingAndContinuingGivesTheSameRecordsAndResultFromThePlannedSeed() throws Exception {
+  public void stoppingAndContinuingGivesTheSameRecordsAndResultFromThePlannedSeed()
+      throws Exception {
     Path root = Files.createTempDirectory("duel-continue");
     try (TableLoop table = table()) {
-      Home straight = duel(root.resolve("straight"), "straight", precision(), new Runner(table, 77), null);
+      Home straight =
+          duel(root.resolve("straight"), "straight", precision(), new Runner(table, 77), null);
       // 続きの Runner は別の種で計画を決める。ただし計画は始めたときに書いてあるので、続きはそれを読み、同じ牌山を打つ
       Home stopped =
-          duel(root.resolve("stopped"), "stopped", precision(), new Runner(table, 77), new Runner(table, 78), 8, 24);
+          duel(
+              root.resolve("stopped"),
+              "stopped",
+              precision(),
+              new Runner(table, 77),
+              new Runner(table, 78),
+              8,
+              24);
       Home other = duel(root.resolve("other"), "other", precision(), new Runner(table, 78), null);
 
       DuelResult expected = straight.result();
@@ -264,10 +315,14 @@ public class DuelTest {
       assertEquals(Files.readAllLines(stopped.evaluations()).size(), 1, "one report line");
 
       // 済んだジョブをもう一度回しても打たず、記録も報告の行も変わらない
-      String games = Files.readString(stopped.directory().resolve(JobOutputs.GAMES), StandardCharsets.UTF_8);
+      String games =
+          Files.readString(stopped.directory().resolve(JobOutputs.GAMES), StandardCharsets.UTF_8);
       Runner idle = new Runner(table, 77, false, UnaryOperator.identity());
-      assertTrue(stopped.jobs().run(stopped.job(), idle, RunControl.detached(() -> false)).isEmpty());
-      assertEquals(Files.readString(stopped.directory().resolve(JobOutputs.GAMES), StandardCharsets.UTF_8), games);
+      assertTrue(
+          stopped.jobs().run(stopped.job(), idle, RunControl.detached(() -> false)).isEmpty());
+      assertEquals(
+          Files.readString(stopped.directory().resolve(JobOutputs.GAMES), StandardCharsets.UTF_8),
+          games);
       assertEquals(Files.readAllLines(stopped.evaluations()).size(), 1);
     } finally {
       DurableFiles.delete(root);
@@ -280,8 +335,13 @@ public class DuelTest {
     Path root = Files.createTempDirectory("duel-critical");
     Table definition =
         new Table(
-            Variant.TENHOU_4P, 3, 5, Seating.EVERY_PLACEMENT, List.of("1v3"),
-            new StopRule.Test(new Sequential(0.01, 3, 8), 10, 10), 24);
+            Variant.TENHOU_4P,
+            3,
+            5,
+            Seating.EVERY_PLACEMENT,
+            List.of("1v3"),
+            new StopRule.Test(new Sequential(0.01, 3, 8), 10, 10),
+            24);
     UnaryOperator<DuelSetup> wide =
         setup -> {
           List<DuelSetup.Look> looks = new ArrayList<>();
@@ -289,16 +349,36 @@ public class DuelTest {
             looks.add(new DuelSetup.Look(look.walls(), 1e9));
           }
           return new DuelSetup(
-              setup.variant(), setup.candidate(), setup.opponent(), setup.seating(), setup.splits(), setup.draws(),
-              setup.wallSet(), setup.wallSeed(), setup.wallBase(), setup.walls(), setup.stop(), setup.score(),
-              setup.utility(), setup.chunk(), looks);
+              setup.variant(),
+              setup.candidate(),
+              setup.opponent(),
+              setup.seating(),
+              setup.splits(),
+              setup.draws(),
+              setup.wallSet(),
+              setup.wallSeed(),
+              setup.wallBase(),
+              setup.walls(),
+              setup.stop(),
+              setup.score(),
+              setup.utility(),
+              setup.chunk(),
+              looks);
         };
     try (TableLoop table = table()) {
-      DuelResult computed = duel(root.resolve("computed"), "computed", definition, new Runner(table, 9), null).result();
+      DuelResult computed =
+          duel(root.resolve("computed"), "computed", definition, new Runner(table, 9), null)
+              .result();
       assertEquals(computed.verdict(), Verdict.EVEN, "wide even margins decide at the first look");
       assertEquals(computed.walls(), 8);
       Home recorded =
-          duel(root.resolve("recorded"), "recorded", definition, new Runner(table, 9, true, wide), new Runner(table, 9), 8);
+          duel(
+              root.resolve("recorded"),
+              "recorded",
+              definition,
+              new Runner(table, 9, true, wide),
+              new Runner(table, 9),
+              8);
       DuelResult result = recorded.result();
       assertEquals(result.verdict(), Verdict.UNDECIDED);
       assertEquals(result.stopped(), Stopped.LIMIT);
@@ -320,8 +400,16 @@ public class DuelTest {
     Variant three = Variant.TENHOU_3P;
     List<String> splits = List.of("1v2", "2v1");
     Table decided =
-        new Table(three, 3, 5, Seating.EVERY_PLACEMENT, splits, new StopRule.Test(new Sequential(0.01, 3, 8), 10, 10), 64);
-    Table fixed = new Table(three, 3, 5, Seating.EVERY_PLACEMENT, splits, new StopRule.Fixed(0.01), 8);
+        new Table(
+            three,
+            3,
+            5,
+            Seating.EVERY_PLACEMENT,
+            splits,
+            new StopRule.Test(new Sequential(0.01, 3, 8), 10, 10),
+            64);
+    Table fixed =
+        new Table(three, 3, 5, Seating.EVERY_PLACEMENT, splits, new StopRule.Fixed(0.01), 8);
     try (TableLoop table = table()) {
       Home home = duel(root.resolve("decided"), "decided", decided, new Runner(table, 11), null);
       Home only = duel(root.resolve("fixed"), "fixed", fixed, new Runner(table, 11), null);
@@ -349,7 +437,8 @@ public class DuelTest {
       assertEquals(result.identical(), expected.identical());
       assertEquals(result.roundSpread(), expected.roundSpread());
       for (int split = 0; split < splits.size(); split++) {
-        assertEquals(result.splits().get(split).rank().mean(), expected.splits().get(split).rank().mean());
+        assertEquals(
+            result.splits().get(split).rank().mean(), expected.splits().get(split).rank().mean());
       }
     } finally {
       DurableFiles.delete(root);
@@ -362,8 +451,16 @@ public class DuelTest {
     Variant four = Variant.TENHOU_4P;
     ArenaPlan plan =
         new ArenaPlan(
-            four, List.of(new CommonRandom(four, 3), new CommonRandom(four, 5)), Seating.EVERY_PLACEMENT,
-            List.of(Split.oneAgainstRest(four)), DrawOrder.SEAT_STREAMS, WallSet.FRESH, 0, BASE, 24, RankUtility.TENHOU);
+            four,
+            List.of(new CommonRandom(four, 3), new CommonRandom(four, 5)),
+            Seating.EVERY_PLACEMENT,
+            List.of(Split.oneAgainstRest(four)),
+            DrawOrder.SEAT_STREAMS,
+            WallSet.FRESH,
+            0,
+            BASE,
+            24,
+            RankUtility.TENHOU);
     try (TableLoop table = table()) {
       // 牌山を受け取るたびに、許す番号を受け取った牌山の番号より 4 大きくして全てを打つ。始めた牌山は、いつもその時点で許す番号より前にある
       AtomicLong limit = new AtomicLong(BASE + 3);
@@ -372,7 +469,8 @@ public class DuelTest {
       GameObserver watcher =
           new GameObserver() {
             @Override
-            public void decided(GameKey game, SeatView view, Decisions decisions, int slot, int choice) {
+            public void decided(
+                GameKey game, SeatView view, Decisions decisions, int slot, int choice) {
               if (game.wall() >= limit.get()) {
                 late.set(game.wall());
               }
@@ -485,9 +583,16 @@ public class DuelTest {
     Path root = Files.createTempDirectory("duel-wait");
     Table definition =
         new Table(
-            Variant.TENHOU_4P, 3, 5, Seating.EVERY_PLACEMENT, List.of("1v3", "3v1"), new StopRule.Precision(0, 0.01, 8), 64);
+            Variant.TENHOU_4P,
+            3,
+            5,
+            Seating.EVERY_PLACEMENT,
+            List.of("1v3", "3v1"),
+            new StopRule.Precision(0, 0.01, 8),
+            64);
     try (TableLoop table = table()) {
-      Home straight = duel(root.resolve("straight"), "straight", definition, new Runner(table, 77), null);
+      Home straight =
+          duel(root.resolve("straight"), "straight", definition, new Runner(table, 77), null);
       Runner runner = new Runner(table, 77);
       AtomicLong acts = new AtomicLong();
       AtomicLong idle = new AtomicLong(-1);
@@ -503,8 +608,12 @@ public class DuelTest {
               DuelSetup setup = RecordFile.read(DuelSetup.class, job.plan()).value();
               Duel duel =
                   Duel.open(
-                      job.name(), table, setup, new Counting(new CommonRandom(setup.variant(), 3), acts),
-                      new Counting(new CommonRandom(setup.variant(), 5), acts), directory);
+                      job.name(),
+                      table,
+                      setup,
+                      new Counting(new CommonRandom(setup.variant(), 3), acts),
+                      new Counting(new CommonRandom(setup.variant(), 5), acts),
+                      directory);
               return new JobWork() {
                 @Override
                 public Chunk next(long walls, JobOutputs outputs) throws Exception {
@@ -529,7 +638,9 @@ public class DuelTest {
       assertEquals(home.job().walls(), 64);
       assertTrue(
           idle.get() < acts.get(),
-          "the table played the whole plan (" + acts.get() + " decisions) while no chunk was taken");
+          "the table played the whole plan ("
+              + acts.get()
+              + " decisions) while no chunk was taken");
       assertEquals(home.games(), straight.games());
       assertEquals(home.looks(), straight.looks());
     } finally {
@@ -543,8 +654,13 @@ public class DuelTest {
     Path root = Files.createTempDirectory("duel-fell");
     Table definition =
         new Table(
-            Variant.TENHOU_4P, 3, 5, Seating.EVERY_PLACEMENT, List.of("1v3", "3v1"),
-            new StopRule.Test(new Sequential(0.01, 3, 4), 10, 10), 16);
+            Variant.TENHOU_4P,
+            3,
+            5,
+            Seating.EVERY_PLACEMENT,
+            List.of("1v3", "3v1"),
+            new StopRule.Test(new Sequential(0.01, 3, 4), 10, 10),
+            16);
     try (TableLoop table = table()) {
       Home home = duel(root, "fell", definition, new Runner(table, 13), null);
       DuelResult expected = home.result();
@@ -553,9 +669,21 @@ public class DuelTest {
       DurableFiles.write(
           home.directory().resolve(Jobs.JOB),
           new JobFile(
-              done.name(), done.version(), done.table(), done.order(), done.row(), done.definition(), done.plan(),
-              JobFile.State.RUNNING, done.attempts(), done.cleanStops(), done.walls(), done.gamesBytes(),
-              done.looksBytes(), done.created(), null));
+              done.name(),
+              done.version(),
+              done.table(),
+              done.order(),
+              done.row(),
+              done.definition(),
+              done.plan(),
+              JobFile.State.RUNNING,
+              done.attempts(),
+              done.cleanStops(),
+              done.walls(),
+              done.gamesBytes(),
+              done.looksBytes(),
+              done.created(),
+              null));
       Files.delete(home.directory().resolve(Jobs.RESULT));
       Files.delete(home.evaluations());
       List<String> games = home.games();
@@ -605,12 +733,16 @@ public class DuelTest {
   /** 計画は木と JSON を通して同じ値に戻る。系譜のバージョンには SHA-256 を書かず、系譜の外のチェックポイントにだけ書く。 */
   @Test
   public void theRecordsRoundTrip() throws Exception {
-    DuelSetup.Entrant outside = new DuelSetup.Entrant("nano:/models/v760", "nano:v760", null, "ab".repeat(32));
+    DuelSetup.Entrant outside =
+        new DuelSetup.Entrant("nano:/models/v760", "nano:v760", null, "ab".repeat(32));
     List<DuelSetup> setups =
         List.of(
             setup(new StopRule.Fixed(0.01), 12_288, outside),
             setup(new StopRule.Precision(0.002, 0.01, 512), 4096, HEURISTIC),
-            setup(new StopRule.Test(new Sequential(0.01, 3, 512), 0.02, 0.01), 4096, version("/runs/a", 8)));
+            setup(
+                new StopRule.Test(new Sequential(0.01, 3, 512), 0.02, 0.01),
+                4096,
+                version("/runs/a", 8)));
     assertTrue(RecordFile.json(setups.get(0)).contains("\"sha256\":\"" + outside.sha256() + "\""));
     assertFalse(RecordFile.json(setups.get(2)).contains("sha256"), RecordFile.json(setups.get(2)));
     for (DuelSetup setup : setups) {
@@ -634,7 +766,8 @@ public class DuelTest {
     Path root = Files.createTempDirectory("duel-records");
     try (TableLoop table = table()) {
       DuelResult result = duel(root, "records", precision(), new Runner(table, 77), null).result();
-      assertEquals(RecordFile.read(DuelResult.class, RecordFile.json(result), "test").value(), result);
+      assertEquals(
+          RecordFile.read(DuelResult.class, RecordFile.json(result), "test").value(), result);
     } finally {
       DurableFiles.delete(root);
     }
@@ -646,8 +779,16 @@ public class DuelTest {
     Variant three = Variant.TENHOU_3P;
     ArenaPlan plan =
         new ArenaPlan(
-            three, List.of(new CommonRandom(three, 3), new CommonRandom(three, 5)), Seating.EVERY_PLACEMENT,
-            List.of(Split.oneAgainstRest(three)), DrawOrder.SEAT_STREAMS, WallSet.FRESH, 1, BASE, 4, RankUtility.TENHOU);
+            three,
+            List.of(new CommonRandom(three, 3), new CommonRandom(three, 5)),
+            Seating.EVERY_PLACEMENT,
+            List.of(Split.oneAgainstRest(three)),
+            DrawOrder.SEAT_STREAMS,
+            WallSet.FRESH,
+            1,
+            BASE,
+            4,
+            RankUtility.TENHOU);
     PlayStats sum = new PlayStats(2);
     PlayStats read = new PlayStats(2);
     try (TableLoop table = table()) {
@@ -677,7 +818,8 @@ public class DuelTest {
     sum.appendTo(sumLine);
     assertEquals(readLine.toString(), sumLine.toString());
     assertTrue(sum.seatHands(0) > 0 && sum.rates(1).nuki() > 0, sumLine.toString());
-    expectThrows(IllegalArgumentException.class, () -> read.addColumns(new long[read.columns() - 1]));
+    expectThrows(
+        IllegalArgumentException.class, () -> read.addColumns(new long[read.columns() - 1]));
   }
 
   /**
@@ -687,36 +829,61 @@ public class DuelTest {
   @Test
   public void aDuelAgainstOneVersionNeverPairsWithAnotherVersion() {
     DuelSetup against8 = setup(new StopRule.Fixed(0.01), 4096, version("/runs/a", 8));
-    assertTrue(against8.pairsWith(setup(new StopRule.Precision(0.002, 0.01, 512), 2048, version("/runs/a", 8))));
+    assertTrue(
+        against8.pairsWith(
+            setup(new StopRule.Precision(0.002, 0.01, 512), 2048, version("/runs/a", 8))));
     assertFalse(against8.pairsWith(setup(new StopRule.Fixed(0.01), 4096, version("/runs/a", 9))));
     assertFalse(against8.pairsWith(setup(new StopRule.Fixed(0.01), 4096, version("/runs/b", 8))));
     assertFalse(against8.pairsWith(setup(new StopRule.Fixed(0.01), 4096, HEURISTIC)));
     expectThrows(
-        IllegalArgumentException.class, () -> new DuelSetup.Entrant("prism:/runs/a/00008", "v8", 8, "ab".repeat(32)));
+        IllegalArgumentException.class,
+        () -> new DuelSetup.Entrant("prism:/runs/a/00008", "v8", 8, "ab".repeat(32)));
   }
 
   @Test
   public void theSetupRejectsAPlanItsStopRuleWouldNotMake() {
-    DuelSetup setup = setup(new StopRule.Test(new Sequential(0.01, 3, 512), 0.02, 0.01), 4096, HEURISTIC);
+    DuelSetup setup =
+        setup(new StopRule.Test(new Sequential(0.01, 3, 512), 0.02, 0.01), 4096, HEURISTIC);
     List<DuelSetup.Look> shifted = new ArrayList<>(setup.looks());
     shifted.set(2, new DuelSetup.Look(shifted.get(2).walls() + 1, shifted.get(2).critical()));
     expectThrows(IllegalArgumentException.class, () -> withLooks(setup, setup.chunk(), shifted));
-    expectThrows(IllegalArgumentException.class, () -> withLooks(setup, setup.chunk(), setup.looks().subList(0, 7)));
-    expectThrows(IllegalArgumentException.class, () -> withLooks(setup, setup.chunk() * 2, setup.looks()));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> withLooks(setup, setup.chunk(), setup.looks().subList(0, 7)));
+    expectThrows(
+        IllegalArgumentException.class, () -> withLooks(setup, setup.chunk() * 2, setup.looks()));
     List<DuelSetup.Look> negative = new ArrayList<>(setup.looks());
     negative.set(0, new DuelSetup.Look(negative.get(0).walls(), -1));
     expectThrows(IllegalArgumentException.class, () -> withLooks(setup, setup.chunk(), negative));
     expectThrows(
         IllegalArgumentException.class,
-        () -> Stopping.recorded(new StopRule.Precision(0, 0.01, 8), 32, new double[] {2.58, 2.58, Double.NaN, 2.58}));
+        () ->
+            Stopping.recorded(
+                new StopRule.Precision(0, 0.01, 8),
+                32,
+                new double[] {2.58, 2.58, Double.NaN, 2.58}));
     expectThrows(
-        IllegalArgumentException.class, () -> Stopping.recorded(new StopRule.Fixed(0.01), 32, new double[] {2.58, 2.58}));
+        IllegalArgumentException.class,
+        () -> Stopping.recorded(new StopRule.Fixed(0.01), 32, new double[] {2.58, 2.58}));
   }
 
   private static DuelSetup withLooks(DuelSetup s, int chunk, List<DuelSetup.Look> looks) {
     return new DuelSetup(
-        s.variant(), s.candidate(), s.opponent(), s.seating(), s.splits(), s.draws(), s.wallSet(), s.wallSeed(),
-        s.wallBase(), s.walls(), s.stop(), s.score(), s.utility(), chunk, looks);
+        s.variant(),
+        s.candidate(),
+        s.opponent(),
+        s.seating(),
+        s.splits(),
+        s.draws(),
+        s.wallSet(),
+        s.wallSeed(),
+        s.wallBase(),
+        s.walls(),
+        s.stop(),
+        s.score(),
+        s.utility(),
+        chunk,
+        looks);
   }
 
   /** 計画と合わない games.tsv・looks.tsv は、開くときに拒み、方策を閉じる。 */
@@ -745,10 +912,20 @@ public class DuelTest {
       // 決着の後にも続く行（判定の止め方では、決着した時点より後の牌山は書かない）
       DuelSetup decided =
           DuelSetup.of(
-              setup.variant(), setup.candidate(), setup.opponent(), setup.seating(),
-              List.of(Split.oneAgainstRest(setup.variant()), Split.parse("3v1", 2, setup.variant())), setup.draws(),
-              setup.wallSet(), setup.wallSeed(), setup.wallBase(), setup.walls(),
-              new StopRule.Test(new Sequential(0.01, 3, 8), 10, 10), setup.score(), setup.utility());
+              setup.variant(),
+              setup.candidate(),
+              setup.opponent(),
+              setup.seating(),
+              List.of(
+                  Split.oneAgainstRest(setup.variant()), Split.parse("3v1", 2, setup.variant())),
+              setup.draws(),
+              setup.wallSet(),
+              setup.wallSeed(),
+              setup.wallBase(),
+              setup.walls(),
+              new StopRule.Test(new Sequential(0.01, 3, 8), 10, 10),
+              setup.score(),
+              setup.utility());
       expectRejected(table, decided, directory, games.subList(0, 16 * 8), looks.subList(0, 1));
     } finally {
       DurableFiles.delete(root);
@@ -756,7 +933,8 @@ public class DuelTest {
   }
 
   private static void expectRejected(
-      TableLoop table, DuelSetup setup, Path directory, List<String> games, List<String> looks) throws IOException {
+      TableLoop table, DuelSetup setup, Path directory, List<String> games, List<String> looks)
+      throws IOException {
     Files.write(directory.resolve(JobOutputs.GAMES), games, StandardCharsets.UTF_8);
     Files.write(directory.resolve(JobOutputs.LOOKS), looks, StandardCharsets.UTF_8);
     AtomicBoolean candidate = new AtomicBoolean(), opponent = new AtomicBoolean();
@@ -764,7 +942,11 @@ public class DuelTest {
         IllegalArgumentException.class,
         () ->
             Duel.open(
-                "broken", table, setup, new Closing(setup.variant(), candidate), new Closing(setup.variant(), opponent),
+                "broken",
+                table,
+                setup,
+                new Closing(setup.variant(), candidate),
+                new Closing(setup.variant(), opponent),
                 directory));
     assertTrue(candidate.get() && opponent.get(), "both policies are closed");
   }

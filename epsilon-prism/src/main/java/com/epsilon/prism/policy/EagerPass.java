@@ -7,10 +7,12 @@ import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
+import ai.djl.pytorch.engine.PtStream;
 import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputBlob.Axis;
+import com.epsilon.prism.model.InferenceIndexUpload;
 import com.epsilon.prism.model.NetworkInputs;
 import com.epsilon.prism.model.Staging;
 
@@ -18,7 +20,7 @@ import com.epsilon.prism.model.Staging;
  * eager の 1 回の受付で行うデバイスの処理。バッチごとに入力を転送し（{@link #upload}）、順伝播する（{@link #forward}）。GPU では、転送を
  * H2D ストリームの中で、順伝播を計算ストリームの中で呼ぶ。
  *
- * <p>出力は合法手の s（FP32）を、バッチの順、バッチの中では手の順に詰めてつないだもの（HIP の推論の出力と同じ並び）。ネットワークの s
+ * <p>出力は合法手の s（FP32）を、バッチの順、バッチの中では手の順に詰めてつないだもの（専用カーネルの出力と同じ並び）。ネットワークの s
  * [行, 手の容量] から、合法手の位置の値だけをデバイスの上で集める（位置は入力と一緒に送る）。
  *
  * <p>入力の配列・合法手の位置・出力はジョブのマネージャーに付け、{@link #close} まで持つ。これらは H2D ストリームで確保した領域なので、
@@ -36,6 +38,8 @@ final class EagerPass implements AutoCloseable {
   private final NetworkInputs[] inputs;
   private final NDArray[] slots;
   private final int[] widths;
+  private boolean indexTransfer;
+  private boolean reusableUploads = true;
 
   /**
    * @param network eager の推論のバックエンド
@@ -69,6 +73,18 @@ final class EagerPass implements AutoCloseable {
     }
   }
 
+  /** 同じ H2D ストリームへ通常入力とインデックスを順に積む。呼び出し元ではスコープを開かない。 */
+  void uploadIndices(PtStream h2d) {
+    try (var ignored = h2d == null ? null : h2d.openScope()) {
+      upload();
+    }
+    // 転送バッチ自身がこのストリームのスコープを開く。
+    indexTransfer = true;
+    reusableUploads = false;
+    InferenceIndexUpload.enqueue(inputs, work, uploads, h2d);
+    reusableUploads = true;
+  }
+
   /**
    * バッチごとに順伝播し、合法手の s をバッチの順につなぐ。
    *
@@ -86,9 +102,7 @@ final class EagerPass implements AutoCloseable {
         }
         NDArray values = NDArrays.gatherRows(scores.reshape(-1, 1), slots[chunk]).reshape(-1);
         values.attach(work);
-        for (NDArray input : inputs[chunk].tensors().values()) {
-          input.attach(work);
-        }
+        inputs[chunk].attachTensors(work);
         scopes[chunk].close();
         scopes[chunk] = null;
         packed.add(values);
@@ -115,10 +129,13 @@ final class EagerPass implements AutoCloseable {
 
   @Override
   public void close() {
+    // GPU の完了後に呼ばれる。転送のチケットを閉じてから固定バッファを返す。
+    if (indexTransfer) uploads.await();
     try {
       work.close();
     } finally {
-      network.releaseUploads(uploads);
+      if (reusableUploads) network.releaseUploads(uploads);
+      else uploads.close();
     }
   }
 }

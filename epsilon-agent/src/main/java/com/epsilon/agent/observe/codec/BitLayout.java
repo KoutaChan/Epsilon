@@ -1,6 +1,7 @@
 package com.epsilon.agent.observe.codec;
 
 import com.epsilon.mahjong.rules.Variant;
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
@@ -35,6 +36,10 @@ public final class BitLayout<E extends Enum<E> & BitField> {
   private final int units;
   private final int recordBits;
   private final long recordMask;
+
+  /** 記録の幅が 64 を割り切るなら true（どの記録も {@code long} をまたがない）。 */
+  private final boolean alignedWord;
+
   private final int endBit;
 
   /** フィールドごとに、最初の繰り返しが入るスロットの番号（フィールドの ordinal の順）。 */
@@ -51,7 +56,10 @@ public final class BitLayout<E extends Enum<E> & BitField> {
   private final int[] max;
 
   private BitLayout(Class<E> type, Variant variant, int unitBits, int startBit) {
-    if (unitBits != Byte.SIZE && unitBits != Short.SIZE && unitBits != Integer.SIZE && unitBits != Long.SIZE) {
+    if (unitBits != Byte.SIZE
+        && unitBits != Short.SIZE
+        && unitBits != Integer.SIZE
+        && unitBits != Long.SIZE) {
       throw new IllegalArgumentException("Unit must be 8, 16, 32 or 64 bits: " + unitBits);
     }
     this.type = Objects.requireNonNull(type, "type");
@@ -73,7 +81,8 @@ public final class BitLayout<E extends Enum<E> & BitField> {
       long span = (long) max[f] - min[f];
       int bits = Long.SIZE - Long.numberOfLeadingZeros(span);
       if (span < 1 || bits > MAX_FIELD_BITS || bits > unitBits) {
-        throw new IllegalArgumentException("Invalid range " + min[f] + ".." + max[f] + " for " + name(f));
+        throw new IllegalArgumentException(
+            "Invalid range " + min[f] + ".." + max[f] + " for " + name(f));
       }
       if (count[f] < 1) {
         throw new IllegalArgumentException("Invalid count " + count[f] + " for " + name(f));
@@ -100,18 +109,21 @@ public final class BitLayout<E extends Enum<E> & BitField> {
     units = Math.max(1, (bit + unitBits - 1) / unitBits);
     recordBits = units * unitBits;
     recordMask = recordBits >= Long.SIZE ? -1L : (1L << recordBits) - 1;
+    alignedWord = Long.SIZE % recordBits == 0;
   }
 
   /**
    * 指定したルールの範囲で、フィールドの enum を記録の先頭から詰めた配置を作る。単位の幅、フィールドの範囲、繰り返しの数のどれかが
    * 不正なら IllegalArgumentException を投げる。
    */
-  public static <E extends Enum<E> & BitField> BitLayout<E> of(Class<E> type, int unitBits, Variant variant) {
+  public static <E extends Enum<E> & BitField> BitLayout<E> of(
+      Class<E> type, int unitBits, Variant variant) {
     return new BitLayout<>(type, variant, unitBits, 0);
   }
 
   /** 共通の先頭部分に続けて、種類ごとのフィールドを詰めた配置を作る。ルールと単位の幅は、先頭部分の配置と同じ。 */
-  public static <E extends Enum<E> & BitField> BitLayout<E> following(BitLayout<?> prefix, Class<E> type) {
+  public static <E extends Enum<E> & BitField> BitLayout<E> following(
+      BitLayout<?> prefix, Class<E> type) {
     return new BitLayout<>(type, prefix.variant, prefix.unitBits, prefix.endBit);
   }
 
@@ -158,7 +170,8 @@ public final class BitLayout<E extends Enum<E> & BitField> {
   public void putRecord(long[] words, int base, int record, long word) {
     requireAlignedWord();
     if ((word & ~recordMask) != 0L) {
-      throw new IllegalArgumentException(type.getSimpleName() + " record word has bits beyond " + recordBits + ": " + word);
+      throw new IllegalArgumentException(
+          type.getSimpleName() + " record word has bits beyond " + recordBits + ": " + word);
     }
     int bit = record * recordBits;
     int index = base + (bit >>> WORD_SHIFT);
@@ -197,6 +210,17 @@ public final class BitLayout<E extends Enum<E> & BitField> {
   /** 記録 1 つに使う単位の数。 */
   public int units() {
     return units;
+  }
+
+  /**
+   * 2 つの配列の先頭から詰めた {@code records} 個の記録が、全てのビットで同じか。最後の {@code long} の、記録の後ろのビットは比べない。
+   */
+  public boolean sameRecords(long[] a, int aBase, long[] b, int bBase, int records) {
+    long bits = (long) records * recordBits;
+    int full = (int) (bits >>> WORD_SHIFT);
+    int rest = (int) (bits & WORD_MASK);
+    return Arrays.equals(a, aBase, aBase + full, b, bBase, bBase + full)
+        && (rest == 0 || ((a[aBase + full] ^ b[bBase + full]) & ((1L << rest) - 1)) == 0L);
   }
 
   /** 指定した数の記録を置くのに要る {@code long} の数。 */
@@ -257,7 +281,8 @@ public final class BitLayout<E extends Enum<E> & BitField> {
   /** フィールドに書くビット（値 − min）。 */
   private long stored(int f, int value) {
     if (value < min[f] || value > max[f]) {
-      throw new IllegalArgumentException(name(f) + " is outside " + min[f] + ".." + max[f] + ": " + value);
+      throw new IllegalArgumentException(
+          name(f) + " is outside " + min[f] + ".." + max[f] + ": " + value);
     }
     return (long) value - min[f];
   }
@@ -277,8 +302,9 @@ public final class BitLayout<E extends Enum<E> & BitField> {
   }
 
   private void requireAlignedWord() {
-    if (Long.SIZE % recordBits != 0) {
-      throw new IllegalStateException(type.getSimpleName() + " records of " + recordBits + " bits can straddle words");
+    if (!alignedWord) {
+      throw new IllegalStateException(
+          type.getSimpleName() + " records of " + recordBits + " bits can straddle words");
     }
   }
 

@@ -94,7 +94,8 @@ record Microbatch(
     for (Microbatch part : parts) {
       rows += part.rows();
       if (part.denominators != null) {
-        denominators = denominators == null ? part.denominators : denominators.plus(part.denominators);
+        denominators =
+            denominators == null ? part.denominators : denominators.plus(part.denominators);
       }
     }
     float share = (float) rows / stepRows;
@@ -123,9 +124,10 @@ record Microbatch(
    * 混ぜた後の値で、補助のヘッドの分母は元のバッチで数えた数。
    *
    * @param region 書き込むバッファ（{@link StepFeed#release} で返すまで、このマイクロバッチだけが使う）
+   * @param attentionTape 載せるレーンの順伝播が Attention の記録を使うか
    * @return 並べたマイクロバッチ
    */
-  Microbatch staged(PinnedUploads region) {
+  Microbatch staged(PinnedUploads region, boolean attentionTape) {
     return new Microbatch(
         batch,
         labels,
@@ -134,7 +136,8 @@ record Microbatch(
         tokens,
         share,
         denominators,
-        StagedBatch.stage(region, batch.input(), measured, auxiliary, labels, denominators));
+        StagedBatch.stage(
+            region, batch.input(), measured, auxiliary, labels, denominators, attentionTape));
   }
 
   /**

@@ -39,7 +39,8 @@ public class ControlFilesTest {
     // 要求のファイルは JSON で、要求の種類は kind に書く
     String text = Files.readString(run.control().resolve("3-restart.json"), StandardCharsets.UTF_8);
     Node.Table tree = Json.read(text, "request");
-    assertEquals(((Node.Table) tree.get("request")).get("kind"), new Node.Text("RESTART", "expected"));
+    assertEquals(
+        ((Node.Table) tree.get("request")).get("kind"), new Node.Text("RESTART", "expected"));
   }
 
   @Test
@@ -49,10 +50,11 @@ public class ControlFilesTest {
     ControlRequest refit = requests.submit(new Request.GrpRefit(5));
     assertEquals(refit.fileName(), "1-grp-refit.json");
     assertEquals(requests.pending(), List.of(refit));
-    String text = Files.readString(run.control().resolve("1-grp-refit.json"), StandardCharsets.UTF_8);
+    String text =
+        Files.readString(run.control().resolve("1-grp-refit.json"), StandardCharsets.UTF_8);
     Node.Table tree = (Node.Table) Json.read(text, "request").get("request");
     assertEquals(tree.get("kind"), new Node.Text("GRP_REFIT", "expected"));
-    // 安全点の確かめと GRP の裏の作業が同じ頼みを移しても誤りにならない
+    // セーフポイントでの確認と GRP の裏の作業が同じ要求を移しても誤りにならない
     requests.retire(refit);
     requests.retire(refit);
     assertEquals(requests.pending(), List.of());
@@ -92,12 +94,14 @@ public class ControlFilesTest {
     Node one = first.get("iteration");
     assertTrue(DurableFiles.appendAfterLast(file, "iteration", one, first));
     assertFalse(DurableFiles.appendAfterLast(file, "iteration", one, first));
-    Files.writeString(file, "{\"iteration\":2,\"x\"", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    Files.writeString(
+        file, "{\"iteration\":2,\"x\"", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
     assertEquals(DurableFiles.lines(file), List.of("{\"iteration\":1,\"x\":1}"));
     Node.Table second = Json.read("{\"iteration\":2,\"x\":2}", "line");
     assertTrue(DurableFiles.appendAfterLast(file, "iteration", second.get("iteration"), second));
     assertEquals(
-        Files.readString(file, StandardCharsets.UTF_8), "{\"iteration\":1,\"x\":1}\n{\"iteration\":2,\"x\":2}\n");
+        Files.readString(file, StandardCharsets.UTF_8),
+        "{\"iteration\":1,\"x\":1}\n{\"iteration\":2,\"x\":2}\n");
     assertFalse(DurableFiles.appendOnce(file, "iteration", one, first));
     assertEquals(DurableFiles.lines(file).size(), 2);
   }
@@ -110,6 +114,8 @@ public class ControlFilesTest {
     DurableFiles.seal(part, directory.resolve("COLLECT"));
     assertTrue(Files.exists(directory.resolve("COLLECT").resolve("report.json")));
     DurableFiles.write(part.resolve("report.json"), "{}\n");
-    expectThrows(FileAlreadyExistsException.class, () -> DurableFiles.seal(part, directory.resolve("COLLECT")));
+    expectThrows(
+        FileAlreadyExistsException.class,
+        () -> DurableFiles.seal(part, directory.resolve("COLLECT")));
   }
 }

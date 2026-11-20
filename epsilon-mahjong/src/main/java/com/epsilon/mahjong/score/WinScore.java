@@ -23,7 +23,16 @@ public final class WinScore {
   }
 
   public void copyFrom(WinScore other) {
-    set(other.yaku, other.closed, other.han, other.fu, other.dora, other.aka, other.ura, other.nuki, other.yakuman,
+    set(
+        other.yaku,
+        other.closed,
+        other.han,
+        other.fu,
+        other.dora,
+        other.aka,
+        other.ura,
+        other.nuki,
+        other.yakuman,
         other.base);
   }
 
@@ -79,7 +88,17 @@ public final class WinScore {
     return base;
   }
 
-  void set(long yaku, boolean closed, int han, int fu, int dora, int aka, int ura, int nuki, int yakuman, int base) {
+  void set(
+      long yaku,
+      boolean closed,
+      int han,
+      int fu,
+      int dora,
+      int aka,
+      int ura,
+      int nuki,
+      int yakuman,
+      int base) {
     this.yaku = yaku;
     this.closed = closed;
     this.han = han;
@@ -110,8 +129,14 @@ public final class WinScore {
     }
     text.append(']');
     if (yakuman == 0) {
-      text.append(" dora=").append(dora).append(" aka=").append(aka).append(" ura=").append(ura)
-          .append(" nuki=").append(nuki);
+      text.append(" dora=")
+          .append(dora)
+          .append(" aka=")
+          .append(aka)
+          .append(" ura=")
+          .append(ura)
+          .append(" nuki=")
+          .append(nuki);
     }
     return text.append(']').toString();
   }

@@ -25,7 +25,13 @@ import java.util.Objects;
  * @param settings 全てのキーの値（既定値も含む）
  */
 public record SettingsRow(
-    int row, int from, Instant time, String jar, String reason, List<ChangedKey> changes, Node.Table settings) {
+    int row,
+    int from,
+    Instant time,
+    String jar,
+    String reason,
+    List<ChangedKey> changes,
+    Node.Table settings) {
 
   public SettingsRow {
     if (row < 1 || from < 1) {
@@ -79,7 +85,8 @@ public record SettingsRow(
     }
 
     public static ChangedKey of(Difference difference) {
-      return new ChangedKey(difference.key(), difference.before(), difference.after(), difference.change());
+      return new ChangedKey(
+          difference.key(), difference.before(), difference.after(), difference.change());
     }
   }
 }

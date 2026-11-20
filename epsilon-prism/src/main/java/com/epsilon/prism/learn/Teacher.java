@@ -2,6 +2,7 @@ package com.epsilon.prism.learn;
 
 import com.epsilon.prism.luck.LedgerCorrection;
 import com.epsilon.prism.rows.Row;
+import java.util.function.IntFunction;
 
 /**
  * 生徒に渡す教師の作り方。運の精算の補正があれば、行の教師の値を Ỹ = Y − β_c·L にする（{@link LedgerCorrection#values}）。
@@ -15,9 +16,28 @@ import com.epsilon.prism.rows.Row;
  * @param anchor 学習に使う全ての行のアンカーの s（null ならアンカーなし）
  * @param anchorWeight アンカーの重み w（[0, 1)。アンカーがなければ 0）
  * @param gain 補助のヘッドの項に掛けるゲイン K′（(0, 1]）
+ * @param cohortCorrection 行のストアの番号から、その行に使う運の精算の補正を返す（null なら全ての行に {@code correction} を使う。null を
+ *     返した行は生の Y を使う）
  */
 public record Teacher(
-    LedgerCorrection correction, AnchorScores anchor, double anchorWeight, float gain) {
+    LedgerCorrection correction,
+    AnchorScores anchor,
+    double anchorWeight,
+    float gain,
+    IntFunction<LedgerCorrection> cohortCorrection) {
+
+  /**
+   * 全ての行に同じ補正を使う教師を作る。
+   *
+   * @param correction 運の精算の補正（null なら生の Y を使う）
+   * @param anchor 学習に使う全ての行のアンカーの s（null ならアンカーなし）
+   * @param anchorWeight アンカーの重み w（[0, 1)。アンカーがなければ 0）
+   * @param gain 補助のヘッドの項に掛けるゲイン K′（(0, 1]）
+   */
+  public Teacher(
+      LedgerCorrection correction, AnchorScores anchor, double anchorWeight, float gain) {
+    this(correction, anchor, anchorWeight, gain, null);
+  }
 
   /** 生の Y を使い、アンカーなし、ゲイン 1 の教師（replay の学習に使う）。 */
   public static final Teacher RAW = new Teacher(null, null, 0, 1f);
@@ -50,9 +70,11 @@ public record Teacher(
    */
   float[] values(Row row, int id) {
     float[] raw = row.values();
-    float[] values = correction == null ? raw : correction.values(row);
+    LedgerCorrection selected = cohortCorrection == null ? correction : cohortCorrection.apply(id);
+    float[] values = selected == null ? raw : selected.values(row);
     if (!anchored()) return values;
-    return anchored(values, anchor.scores(id), anchorWeight, values == raw ? new float[raw.length] : values);
+    return anchored(
+        values, anchor.scores(id), anchorWeight, values == raw ? new float[raw.length] : values);
   }
 
   boolean anchored() {
@@ -77,7 +99,9 @@ public record Teacher(
     }
     for (int a = 0; a < values.length; a++) {
       mixed[a] =
-          Float.isNaN(values[a]) ? Float.NaN : (float) ((1 - weight) * values[a] + weight * anchor[a]);
+          Float.isNaN(values[a])
+              ? Float.NaN
+              : (float) ((1 - weight) * values[a] + weight * anchor[a]);
     }
     return mixed;
   }

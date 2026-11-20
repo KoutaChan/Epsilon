@@ -24,7 +24,8 @@ public record PhiValue(
     Objects.requireNonNull(entry, "entry");
     Objects.requireNonNull(requested, "requested");
     Objects.requireNonNull(mode, "mode");
-    if (mode == PhiMode.LATE && (requested != PhiMode.LATE || !entry.hasOutcomes() || cutoff == null)) {
+    if (mode == PhiMode.LATE
+        && (requested != PhiMode.LATE || !entry.hasOutcomes() || cutoff == null)) {
       throw new IllegalArgumentException(
           "The LATE mode needs a LATE line, an outcome network and a cutoff: " + entry.id());
     }

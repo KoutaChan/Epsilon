@@ -34,9 +34,19 @@ public class DecisionClassMatchTest {
         Kind observed = Kind.classify(o.decisionKind(), legal);
         Assert.assertEquals(observed, table);
         DecisionClass expected =
-            DecisionClass.of(FOUR, table, Stage.of(FOUR, decision.liveLeft()), decision.threats(), decision.round());
+            DecisionClass.of(
+                FOUR,
+                table,
+                Stage.of(FOUR, decision.liveLeft()),
+                decision.threats(),
+                decision.round());
         Assert.assertEquals(
-            DecisionClass.of(FOUR, observed, Stage.of(FOUR, o.remainingWall()), Threats.count(o, facts), o.kyoku()),
+            DecisionClass.of(
+                FOUR,
+                observed,
+                Stage.of(FOUR, o.remainingWall()),
+                Threats.count(o, facts),
+                o.kyoku()),
             expected);
         kinds.add(table);
         classes.add(expected);

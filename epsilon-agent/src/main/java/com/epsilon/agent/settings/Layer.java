@@ -62,7 +62,8 @@ public record Layer(String origin, Source source, Node.Table tree, List<String> 
       if (stream == null) {
         throw new IllegalStateException("Bundled settings not found: " + name);
       }
-      return parse(origin, Source.BUNDLED, new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+      return parse(
+          origin, Source.BUNDLED, new String(stream.readAllBytes(), StandardCharsets.UTF_8));
     } catch (IOException failure) {
       throw new UncheckedIOException("Cannot read the bundled settings " + name, failure);
     }
@@ -79,9 +80,15 @@ public record Layer(String origin, Source source, Node.Table tree, List<String> 
     if (source != Source.FILE || presets == null) {
       return new Layer(origin, source, tree, List.of());
     }
-    if (!(presets instanceof Node.Array array) || !array.items().stream().allMatch(Node.Text.class::isInstance)) {
+    if (!(presets instanceof Node.Array array)
+        || !array.items().stream().allMatch(Node.Text.class::isInstance)) {
       throw new SettingsException(
-          List.of("Setting " + PRESETS + " at " + presets.origin() + " must be a list of preset names"));
+          List.of(
+              "Setting "
+                  + PRESETS
+                  + " at "
+                  + presets.origin()
+                  + " must be a list of preset names"));
     }
     List<String> names = array.items().stream().map(item -> ((Node.Text) item).value()).toList();
     return new Layer(origin, source, tree.without(PRESETS), names);

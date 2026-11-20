@@ -35,8 +35,10 @@ public record JobsRetry(
       throw new SettingsException(List.of("The run " + run + " has no job named " + name));
     }
     try {
-      JobFile retried = new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS)).retry(name);
-      return Outcome.ok(retried.name() + " is " + retried.state() + " from wall " + retried.walls());
+      JobFile retried =
+          new Jobs(directory.jobs(), directory.report(RunDirectory.EVALUATIONS)).retry(name);
+      return Outcome.ok(
+          retried.name() + " is " + retried.state() + " from wall " + retried.walls());
     } catch (IllegalArgumentException notFailed) {
       throw new SettingsException(List.of(notFailed.getMessage()));
     }

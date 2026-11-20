@@ -42,7 +42,8 @@ final class SyntheticChain {
    * @param seed 乱数の種
    * @return 作った辺
    */
-  static List<Ratings.Edge> edges(int nodes, int walls, double sharedLuck, boolean labelShared, long seed) {
+  static List<Ratings.Edge> edges(
+      int nodes, int walls, double sharedLuck, boolean labelShared, long seed) {
     SplittableRandom random = new SplittableRandom(seed);
     double[] luck = new double[walls];
     for (int i = 0; i < walls; i++) {
@@ -61,13 +62,15 @@ final class SyntheticChain {
         for (int i = 0; i < walls; i++) {
           values[i] = theta(v) - theta(0) + luck[i] + BASELINE_NOISE * random.nextGaussian();
         }
-        edges.add(new Ratings.Edge("v" + v, ANCHOR, labelShared ? baselineSeed : nextSeed++, values));
+        edges.add(
+            new Ratings.Edge("v" + v, ANCHOR, labelShared ? baselineSeed : nextSeed++, values));
       }
     }
     return edges;
   }
 
-  private static Ratings.Edge ladder(int a, int b, int walls, SplittableRandom random, long wallSeed) {
+  private static Ratings.Edge ladder(
+      int a, int b, int walls, SplittableRandom random, long wallSeed) {
     double[] values = new double[walls];
     for (int i = 0; i < walls; i++) {
       values[i] = theta(a) - theta(b) + LADDER_NOISE * random.nextGaussian();

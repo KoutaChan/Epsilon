@@ -10,7 +10,10 @@ package com.epsilon.prism.luck;
  *     使う
  */
 public record LedgerOutcome(
-    LedgerReport report, LedgerReport.Summary summary, LedgerCorrection correction, double appliedR2) {
+    LedgerReport report,
+    LedgerReport.Summary summary,
+    LedgerCorrection correction,
+    double appliedR2) {
 
   /** 係数を当てはめないときの結果。 */
   public static final LedgerOutcome NONE = new LedgerOutcome(null, null, null, 0);

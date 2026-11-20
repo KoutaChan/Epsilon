@@ -8,10 +8,10 @@ import com.epsilon.reviewer.engine.review.Analysis;
 import com.epsilon.reviewer.engine.review.JobControl;
 import com.epsilon.reviewer.engine.review.ReviewModel;
 import com.epsilon.reviewer.engine.scenario.ScenarioAnswer;
-import com.epsilon.reviewer.engine.view.Meld;
+import com.epsilon.reviewer.engine.view.MeldView;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.json.Json;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -69,7 +69,7 @@ public final class Format6 {
    * @param table この手順の局面
    */
   public record Step(
-      String event, int actor, int eventIndex, int cause, JsonObject json, TableState table) {
+      String event, int actor, int eventIndex, int cause, JsonObject json, TableView table) {
     public boolean decision() {
       return event == null;
     }
@@ -137,14 +137,14 @@ public final class Format6 {
     for (JsonElement element : json.getAsJsonArray("rounds")) {
       JsonObject round = element.getAsJsonObject();
       int firstEvent = round.get("firstEvent").getAsInt();
-      TableState table = table(round.getAsJsonObject("start"));
+      TableView table = table(round.getAsJsonObject("start"));
       List<Step> steps = new ArrayList<>();
       int events = 0;
       int lastEvent = -1;
       for (JsonElement item : round.getAsJsonArray("steps")) {
         JsonObject step = item.getAsJsonObject();
-        if (step.has("delta")) table = apply(table, step.getAsJsonObject("delta"));
         if (step.has("event")) {
+          if (step.has("delta")) table = apply(table, step.getAsJsonObject("delta"));
           lastEvent = firstEvent + events++;
           int actor = step.has("actor") ? step.get("actor").getAsInt() : -1;
           steps.add(new Step(step.get("event").getAsString(), actor, lastEvent, -1, step, table));
@@ -177,11 +177,11 @@ public final class Format6 {
     return json;
   }
 
-  static TableState table(JsonObject json) {
+  static TableView table(JsonObject json) {
     List<PlayerState> players = new ArrayList<>();
     for (JsonElement player : json.getAsJsonArray("players"))
       players.add(player(player.getAsJsonObject()));
-    return new TableState(
+    return new TableView(
         players,
         strings(json.getAsJsonArray("dora")),
         json.get("honba").getAsInt(),
@@ -193,7 +193,7 @@ public final class Format6 {
   private static PlayerState player(JsonObject json) {
     List<RiverTile> river = new ArrayList<>();
     for (JsonElement tile : json.getAsJsonArray("river")) river.add(riverTile(tile));
-    List<Meld> melds = new ArrayList<>();
+    List<MeldView> melds = new ArrayList<>();
     for (JsonElement meld : json.getAsJsonArray("melds")) melds.add(meld(meld));
     return new PlayerState(
         json.get("score").getAsInt(),
@@ -220,9 +220,9 @@ public final class Format6 {
     return true;
   }
 
-  private static Meld meld(JsonElement element) {
+  private static MeldView meld(JsonElement element) {
     JsonObject json = element.getAsJsonObject();
-    return new Meld(
+    return new MeldView(
         json.get("type").getAsString(),
         strings(json.getAsJsonArray("tiles")),
         json.get("from").getAsInt(),
@@ -230,7 +230,7 @@ public final class Format6 {
         json.get("addedIndex").getAsInt());
   }
 
-  private static TableState apply(TableState before, JsonObject delta) {
+  private static TableView apply(TableView before, JsonObject delta) {
     List<PlayerState> players = new ArrayList<>(before.players());
     if (delta.has("players"))
       for (JsonElement item : delta.getAsJsonArray("players")) {
@@ -251,7 +251,7 @@ public final class Format6 {
                 splice(old.melds(), update, "melds", Format6::meld),
                 update.has("nuki") ? update.get("nuki").getAsInt() : old.nuki()));
       }
-    return new TableState(
+    return new TableView(
         players,
         splice(before.dora(), delta, "dora", JsonElement::getAsString),
         delta.has("honba") ? delta.get("honba").getAsInt() : before.honba(),

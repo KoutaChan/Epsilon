@@ -1,3 +1,5 @@
+import { actionMessage } from "../../../language/actionMessages.ts";
+import { BACK } from "../../../components/tileAssets.ts";
 import type { MessageKey } from "../../../language/catalog.ts";
 import type { ReplayStage } from "./timeline.ts";
 import type { EventSnapshot, PlayerSnapshot, Snapshot } from "./types.ts";
@@ -47,19 +49,16 @@ export function describeReplayEvent(
       return {
         player,
         action: "replay.draw",
-        tiles: [reveal || step.actor === seat ? player!.draw! : "back"],
+        tiles: [reveal || step.actor === seat ? player!.draw! : BACK],
       };
     case "dahai": {
       const discard = player!.river.at(-1)!;
       return {
         player,
-        action: discard.riichi
-          ? discard.tsumogiri
-            ? "action.riichiTsumogiri"
-            : "action.riichi"
-          : discard.tsumogiri
-            ? "action.dahaiTsumogiri"
-            : "action.dahai",
+        action: actionMessage(
+          discard.riichi ? "RIICHI_DAHAI" : "DAHAI",
+          discard.tsumogiri ?? false,
+        ),
         tiles: [discard.tile],
       };
     }

@@ -12,14 +12,10 @@ import com.epsilon.prism.luck.UraAudit;
  * @param target 局末の値を待つ記録
  * @param action この経路で打った手
  * @param ledger 運の精算の帳簿（長さ {@link LedgerColumn#COUNT}）。帳簿を付けない収集では null
+ * @param seat 記録した判断の席（{@code target.seat()}）。帳簿を足す側の席で、裏ドラの監査が値を数える席
  */
-record Slot(Pending target, int action, double[] ledger) implements LedgerTarget, UraAudit.Row {
-
-  /** 帳簿を足す側の席で、裏ドラの監査が値を数える席。記録した判断の席と同じ。 */
-  @Override
-  public int seat() {
-    return target.seat();
-  }
+record Slot(Pending target, int action, double[] ledger, int seat)
+    implements LedgerTarget, UraAudit.Row {
 
   /** 裏ドラの監査で区分を分けるクラス。記録した判断のクラスと同じ。 */
   @Override

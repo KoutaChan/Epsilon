@@ -2,7 +2,7 @@ import type {
   Meld,
   Splice,
   StateDelta,
-} from "../../../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/result";
 import type {
   PlayerSnapshot,
   ReplayModel,

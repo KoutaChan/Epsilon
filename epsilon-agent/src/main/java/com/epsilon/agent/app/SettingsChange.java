@@ -42,14 +42,25 @@ import org.slf4j.LoggerFactory;
  * @param reason 変える理由
  * @param restart 速さに関わるキー（MACHINE）を変えたら、反復を閉じた後で起動し直す要求も置く
  */
-@Named(value = "settings change", doc = "Add a settings row to a continuing run (takes effect from the next iteration)")
+@Named(
+    value = "settings change",
+    doc = "Add a settings row to a continuing run (takes effect from the next iteration)")
 public record SettingsChange(
     @Key(doc = "Run directory to change", presence = Presence.REQUIRED) Path run,
     @Key(doc = "Change written as path=value", value = "[]") List<String> change,
     @Key(doc = "Settings file to layer on top", presence = Presence.ABSENT) Path apply,
-    @Key(doc = "Replace the whole settings with the given file instead of the latest row", value = "false") boolean replace,
-    @Key(doc = "Reason for the change (kept in the settings row)", presence = Presence.REQUIRED) String reason,
-    @Key(doc = "If a speed key (MACHINE) changes, also request a restart after the iteration closes", value = "false") boolean restart)
+    @Key(
+            doc = "Replace the whole settings with the given file instead of the latest row",
+            value = "false")
+        boolean replace,
+    @Key(doc = "Reason for the change (kept in the settings row)", presence = Presence.REQUIRED)
+        String reason,
+    @Key(
+            doc =
+                "If a speed key (MACHINE) changes, also request a restart after the iteration"
+                    + " closes",
+            value = "false")
+        boolean restart)
     implements BuiltinCommand {
 
   private static final Logger log = LoggerFactory.getLogger(SettingsChange.class);
@@ -79,14 +90,16 @@ public record SettingsChange(
     Application<Record> application = context.application();
     RunDirectory directory = new RunDirectory(run);
     if (!Files.isRegularFile(directory.settings())) {
-      throw new SettingsException(List.of("The run " + run + " has no settings rows: create it with settings create"));
+      throw new SettingsException(
+          List.of("The run " + run + " has no settings rows: create it with settings create"));
     }
     try (SettingsRows.Locked locked = new SettingsRows(directory).lock()) {
       return append(application, locked);
     }
   }
 
-  private Outcome append(Application<Record> application, SettingsRows.Locked locked) throws Exception {
+  private Outcome append(Application<Record> application, SettingsRows.Locked locked)
+      throws Exception {
     SettingsRow last = locked.latest();
     Settings<Record> previous = last.bind(application.schema());
     List<Layer> layers = new ArrayList<>();
@@ -103,7 +116,8 @@ public record SettingsChange(
     if (!change.isEmpty()) {
       layers.add(Layer.assignments("--change", change));
     }
-    Settings<Record> next = Settings.bind(application.schema(), replace ? application.stack(layers) : layers);
+    Settings<Record> next =
+        Settings.bind(application.schema(), replace ? application.stack(layers) : layers);
     List<Difference> differences = next.since(previous);
     if (differences.isEmpty()) {
       log.info("The change leaves settings row {} as it is; nothing written", last.row());
@@ -140,7 +154,9 @@ public record SettingsChange(
     }
     if (restart) {
       if (changes.contains(Change.MACHINE)) {
-        ControlRequest request = new ControlRequests(new RunDirectory(run)).submit(new Request.Restart(Request.At.ITERATION));
+        ControlRequest request =
+            new ControlRequests(new RunDirectory(run))
+                .submit(new Request.Restart(Request.At.ITERATION));
         log.info("Request {} restarts the run after the iteration closes", request.number());
       } else {
         log.info("No MACHINE key changed, so no restart is requested");
@@ -156,7 +172,8 @@ public record SettingsChange(
    * @param before 前の行の設定
    * @param after 足した行の設定
    */
-  private static void logJobs(RunKind<Record, ?, ?, ?> kind, SettingsRow row, Record before, Record after) {
+  private static void logJobs(
+      RunKind<Record, ?, ?, ?> kind, SettingsRow row, Record before, Record after) {
     int version = row.from() + 1;
     Map<String, Node.Table> was = definitions(kind.jobs(version, before));
     Map<String, Node.Table> will = definitions(kind.jobs(version, after));
@@ -172,8 +189,8 @@ public record SettingsChange(
     }
     List<String> removed = was.keySet().stream().filter(table -> !will.containsKey(table)).toList();
     log.info(
-        "Version {} is the first published with row {}: {} job(s) instead of {} ({} added {}, {} removed {}, {} changed"
-            + " {})",
+        "Version {} is the first published with row {}: {} job(s) instead of {} ({} added {}, {}"
+            + " removed {}, {} changed {})",
         version,
         row.row(),
         will.size(),
@@ -200,9 +217,14 @@ public record SettingsChange(
       case COLLECT -> "COLLECT: the next cohort is collected with it";
       case FIT -> "FIT: the next fit uses it";
       case MACHINE ->
-          "MACHINE: takes effect after restart: run '" + app + " control restart --run " + run + " --at ITERATION'";
+          "MACHINE: takes effect after restart: run '"
+              + app
+              + " control restart --run "
+              + run
+              + " --at ITERATION'";
       case SCHEDULE -> "SCHEDULE: the jobs of the next published version use it";
-      case FIXED, INHERIT -> throw new IllegalStateException("A settings row cannot change a " + kind + " key");
+      case FIXED, INHERIT ->
+          throw new IllegalStateException("A settings row cannot change a " + kind + " key");
     };
   }
 }

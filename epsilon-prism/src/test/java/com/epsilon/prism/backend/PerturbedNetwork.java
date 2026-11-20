@@ -24,7 +24,8 @@ public final class PerturbedNetwork {
    * @param seed 乱数の種
    * @return ネットワーク
    */
-  public static PrismNetwork of(NDManager manager, InputFormat format, PrismShape shape, long seed) {
+  public static PrismNetwork of(
+      NDManager manager, InputFormat format, PrismShape shape, long seed) {
     manager.getEngine().setRandomSeed((int) seed);
     PrismNetwork network = new PrismNetwork(format, shape);
     network.initialize(manager);

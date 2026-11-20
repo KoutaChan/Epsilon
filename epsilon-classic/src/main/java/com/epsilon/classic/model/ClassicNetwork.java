@@ -89,19 +89,24 @@ public final class ClassicNetwork extends AbstractBlock {
     this.variant = Objects.requireNonNull(variant, "variant");
     this.utility = Objects.requireNonNull(utility, "utility");
     if (variant.seats() != ClassicSchema.SEATS) {
-      throw new IllegalArgumentException("Classic networks need " + ClassicSchema.SEATS + " seats, not " + variant);
+      throw new IllegalArgumentException(
+          "Classic networks need " + ClassicSchema.SEATS + " seats, not " + variant);
     }
     schema = ClassicSchema.of(architecture);
     Widths widths = Widths.of(architecture);
     hidden = widths.hidden();
     stateEncoder = addChildBlock("stateEncoder", new StateEncoder(widths));
     policyStateReadout =
-        addChildBlock("policyStateReadout", new Readout(widths, Widths.POLICY_READOUT_FEED_FORWARD));
-    valueStateReadout = addChildBlock("valueStateReadout", new Readout(widths, Widths.VALUE_READOUT_FEED_FORWARD));
+        addChildBlock(
+            "policyStateReadout", new Readout(widths, Widths.POLICY_READOUT_FEED_FORWARD));
+    valueStateReadout =
+        addChildBlock("valueStateReadout", new Readout(widths, Widths.VALUE_READOUT_FEED_FORWARD));
     policyHead = addChildBlock("policyHead", new PolicyHead(widths, variant, utility));
     valueHiddenHead = addChildBlock("valueHiddenHead", Linear.builder().setUnits(hidden).build());
     valueResidualHead =
-        architecture == Architecture.MAJOR ? addChildBlock("valueResidualHead", zeroLinear(hidden)) : null;
+        architecture == Architecture.MAJOR
+            ? addChildBlock("valueResidualHead", zeroLinear(hidden))
+            : null;
     valueHead = addChildBlock("valueHead", zeroLinear(HlGauss.BINS));
     value = new ValueHead(schema, variant, utility, valueHiddenHead, valueResidualHead, valueHead);
   }
@@ -163,18 +168,30 @@ public final class ClassicNetwork extends AbstractBlock {
    * @return 出力
    */
   public Output forward(
-      ParameterStore store, ClassicBatch batch, Precision precision, boolean training, Heads heads) {
+      ParameterStore store,
+      ClassicBatch batch,
+      Precision precision,
+      boolean training,
+      Heads heads) {
     if (batch.schema() != schema) {
       throw new IllegalArgumentException(
-          "A " + architecture + " network cannot read " + batch.schema().architecture() + " inputs");
+          "A "
+              + architecture
+              + " network cannot read "
+              + batch.schema().architecture()
+              + " inputs");
     }
     Pass pass = new Pass(store, batch.manager(), precision, training);
     try (ArrayScope scope = new ArrayScope()) {
       Memory memory = stateEncoder.encode(pass, batch);
       PolicyScores policy =
-          heads.policy() ? policyHead.score(pass, batch, memory, policyStateReadout.read(pass, memory)) : null;
+          heads.policy()
+              ? policyHead.score(pass, batch, memory, policyStateReadout.read(pass, memory))
+              : null;
       NDArray values =
-          heads.value() ? value.logits(pass, valueStateReadout.read(pass, memory.detached()), batch) : null;
+          heads.value()
+              ? value.logits(pass, valueStateReadout.read(pass, memory.detached()), batch)
+              : null;
       if (policy != null) {
         scope.keep(policy.alternatives());
         scope.keep(policy.actions());
@@ -202,14 +219,20 @@ public final class ClassicNetwork extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use forward with a ClassicBatch");
   }
 
   @Override
   public Shape[] getOutputShapes(Shape[] inputShapes) {
     return new Shape[] {
-      new Shape(-1, Alternative.values().length), new Shape(-1, -1), new Shape(-1, -1), new Shape(-1, HlGauss.BINS)
+      new Shape(-1, Alternative.values().length),
+      new Shape(-1, -1),
+      new Shape(-1, -1),
+      new Shape(-1, HlGauss.BINS)
     };
   }
 

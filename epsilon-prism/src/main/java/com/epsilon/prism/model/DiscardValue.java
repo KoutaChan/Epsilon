@@ -7,7 +7,7 @@ import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
 
 /**
- * 打牌の値 B。HIP では K6 カーネルの最後で計算する。
+ * 打牌の値 B。HIP では候補カーネルの最後で計算する。
  *
  * <pre>
  * u^B  = W_B·N_B(z_t) + c_B                         （計算の型で求めて FP32 に変える）

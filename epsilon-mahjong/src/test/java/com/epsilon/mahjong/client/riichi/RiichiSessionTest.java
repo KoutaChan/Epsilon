@@ -128,7 +128,8 @@ public class RiichiSessionTest {
   public void aRiichiDiscardRequestedBeforeTheDeclarationIsAcceptedFails() {
     RiichiSession session = riichiPlayer(new AtomicInteger());
     session.handle(declaration(), System.nanoTime());
-    Assert.assertThrows(IllegalStateException.class, () -> session.handle(discard(2, 0), System.nanoTime()));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> session.handle(discard(2, 0), System.nanoTime()));
   }
 
   /** 締め切りでロンを見送ると同巡振聴になる。次に自分が判断するとき、席のビューは振聴を示す。 */
@@ -146,7 +147,14 @@ public class RiichiSessionTest {
     int nineMan = Tiles.physicalId(Tiles.M9, 0);
     Assert.assertNotNull(
         session.handle(
-            request(1, 0, nineMan, discardAction(nineMan), dahai("9m"), startRound(0, WAITING), draw(0, "9m")),
+            request(
+                1,
+                0,
+                nineMan,
+                discardAction(nineMan),
+                dahai("9m"),
+                startRound(0, WAITING),
+                draw(0, "9m")),
             System.nanoTime()));
     String ron =
         request(
@@ -245,7 +253,8 @@ public class RiichiSessionTest {
   public void aRejectedActionEndsTheSession(String status) {
     RiichiSession session = new RiichiSession(TENHOU_4P, first(), false);
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> session.handle(acknowledge(1, status), System.nanoTime()));
+        IllegalArgumentException.class,
+        () -> session.handle(acknowledge(1, status), System.nanoTime()));
   }
 
   @Test
@@ -288,8 +297,12 @@ public class RiichiSessionTest {
                     1,
                     0,
                     nineSou,
-                    "[{\"action_type\":\"Discard\",\"tile\":" + nineSou + ",\"consume_tiles\":[]},"
-                        + "{\"action_type\":\"Kita\",\"tile\":" + north + ",\"consume_tiles\":[]}]",
+                    "[{\"action_type\":\"Discard\",\"tile\":"
+                        + nineSou
+                        + ",\"consume_tiles\":[]},"
+                        + "{\"action_type\":\"Kita\",\"tile\":"
+                        + north
+                        + ",\"consume_tiles\":[]}]",
                     "[{\"type\":\"dahai\",\"pai\":\"9s\"},{\"type\":\"kita\",\"pai\":\"N\"}]",
                     startRound(TENHOU_3P, 0, NORTH_HAND, 0),
                     draw(0, "9s")),
@@ -345,8 +358,13 @@ public class RiichiSessionTest {
                     1,
                     0,
                     -1,
-                    "[{\"action_type\":\"Pon\",\"tile\":" + Tiles.physicalId(Tiles.SHA, 2) + ",\"consume_tiles\":["
-                        + Tiles.physicalId(Tiles.SHA, 0) + "," + Tiles.physicalId(Tiles.SHA, 1) + "]},"
+                    "[{\"action_type\":\"Pon\",\"tile\":"
+                        + Tiles.physicalId(Tiles.SHA, 2)
+                        + ",\"consume_tiles\":["
+                        + Tiles.physicalId(Tiles.SHA, 0)
+                        + ","
+                        + Tiles.physicalId(Tiles.SHA, 1)
+                        + "]},"
                         + "{\"action_type\":\"Pass\",\"tile\":null,\"consume_tiles\":[]}]",
                     "[{\"type\":\"pon\",\"pai\":\"W\",\"consumed\":[\"W\",\"W\"]},{\"type\":\"none\"}]",
                     startRound(TENHOU_3P, 0, PON_HAND, 2),
@@ -393,7 +411,8 @@ public class RiichiSessionTest {
               return indexOf(slots, slot, Type.RON_AGARI);
             },
             false);
-    String hand = "\"1p\",\"2p\",\"3p\",\"4p\",\"5p\",\"6p\",\"7p\",\"8p\",\"9p\",\"1s\",\"1s\",\"1s\",\"N\"";
+    String hand =
+        "\"1p\",\"2p\",\"3p\",\"4p\",\"5p\",\"6p\",\"7p\",\"8p\",\"9p\",\"1s\",\"1s\",\"1s\",\"N\"";
     JsonObject ron =
         object(
             session.handle(
@@ -401,7 +420,9 @@ public class RiichiSessionTest {
                     1,
                     0,
                     -1,
-                    "[{\"action_type\":\"Ron\",\"tile\":" + Tiles.physicalId(Tiles.PEI, 1) + ",\"consume_tiles\":[]},"
+                    "[{\"action_type\":\"Ron\",\"tile\":"
+                        + Tiles.physicalId(Tiles.PEI, 1)
+                        + ",\"consume_tiles\":[]},"
                         + "{\"action_type\":\"Pass\",\"tile\":null,\"consume_tiles\":[]}]",
                     "[{\"type\":\"hora\"},{\"type\":\"none\"}]",
                     startRound(TENHOU_3P, 0, hand, 1),
@@ -423,14 +444,19 @@ public class RiichiSessionTest {
     RiichiSession four = new RiichiSession(TENHOU_4P, first(), false);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> four.handle(discard(1, 0, startRound(TENHOU_3P, 0, NORTH_HAND, 0), draw(0, "S")), System.nanoTime()));
+        () ->
+            four.handle(
+                discard(1, 0, startRound(TENHOU_3P, 0, NORTH_HAND, 0), draw(0, "S")),
+                System.nanoTime()));
     RiichiSession three = new RiichiSession(TENHOU_3P, first(), false);
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> three.handle(discard(1, 0, startRound(0, WAITING), draw(0, "S")), System.nanoTime()));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> new RiichiSession(TENHOU_3P, first(), false).handle("{\"type\":\"start_game\",\"id\":3}", 0));
+        () ->
+            new RiichiSession(TENHOU_3P, first(), false)
+                .handle("{\"type\":\"start_game\",\"id\":3}", 0));
     RiichiSession seated = new RiichiSession(TENHOU_3P, first(), false);
     seated.handle("{\"type\":\"start_game\",\"id\":2}", 0);
     Assert.assertTrue(seated.started());
@@ -440,7 +466,9 @@ public class RiichiSessionTest {
   private static String[] callScene() {
     return new String[] {
       startRound(
-          1, "\"2m\",\"2m\",\"3m\",\"4m\",\"1p\",\"2p\",\"3p\",\"1s\",\"2s\",\"3s\",\"E\",\"S\",\"W\"", 0),
+          1,
+          "\"2m\",\"2m\",\"3m\",\"4m\",\"1p\",\"2p\",\"3p\",\"1s\",\"2s\",\"3s\",\"E\",\"S\",\"W\"",
+          0),
       "{\"type\":\"tsumo\",\"actor\":0,\"pai\":\"?\"}",
       "{\"type\":\"dahai\",\"actor\":0,\"pai\":\"2m\",\"tsumogiri\":false}"
     };
@@ -507,7 +535,9 @@ public class RiichiSessionTest {
     request.addProperty("request_id", id);
     request.add("possible_actions", JsonParser.parseString(possibleActions));
     request.addProperty(
-        "observation", Base64.getEncoder().encodeToString(observation.toString().getBytes(StandardCharsets.UTF_8)));
+        "observation",
+        Base64.getEncoder()
+            .encodeToString(observation.toString().getBytes(StandardCharsets.UTF_8)));
     return request.toString();
   }
 

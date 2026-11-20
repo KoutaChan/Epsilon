@@ -38,7 +38,8 @@ final class PlayerTileMixer extends AbstractBlock {
    */
   NDArray mix(Pass pass, NDArray byPlayer) {
     long rows = byPlayer.getShape().get(0);
-    NDArray input = byPlayer.swapAxes(1, 2).reshape(rows, Tiles.KINDS, (long) ClassicSchema.SEATS * context);
+    NDArray input =
+        byPlayer.swapAxes(1, 2).reshape(rows, Tiles.KINDS, (long) ClassicSchema.SEATS * context);
     NDArray combined = pass.linear(skipAndHiddenProjection, input);
     NDArray skip = combined.get("..., 0:{}", context);
     NDArray hidden = combined.get("..., {}:", context);
@@ -54,7 +55,10 @@ final class PlayerTileMixer extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use mix");
   }
 

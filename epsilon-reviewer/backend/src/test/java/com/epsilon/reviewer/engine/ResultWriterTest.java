@@ -15,9 +15,9 @@ import com.epsilon.reviewer.engine.format.ResultWriter;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
 import com.epsilon.reviewer.engine.load.RecordSummary;
 import com.epsilon.reviewer.engine.review.EvaluatedDecision;
-import com.epsilon.reviewer.engine.view.EventKind;
+import com.epsilon.reviewer.engine.view.EventKindView;
 import com.epsilon.reviewer.engine.view.RecordTable;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -99,13 +99,13 @@ public class ResultWriterTest {
   @Test
   public void eventStepsMustBeContiguousAndEvaluationsMustNotMix() throws IOException {
     LoadedRecord record = PlayedRecords.read(Variant.TENHOU_4P, 0);
-    TableState table = expected(record).getFirst().table();
+    TableView table = expected(record).getFirst().table();
     try (var writer = writer()) {
       writer.startRound(0, 0, 0, 0, table);
-      writer.event(0, EventKind.START_KYOKU, -1, null, null);
+      writer.event(0, EventKindView.START_KYOKU, -1, null, null);
       Assert.expectThrows(
-          IllegalStateException.class, () -> writer.event(2, EventKind.TSUMO, 0, null, null));
-      writer.event(1, EventKind.TSUMO, 0, null, null);
+          IllegalStateException.class, () -> writer.event(2, EventKindView.TSUMO, 0, null, null));
+      writer.event(1, EventKindView.TSUMO, 0, null, null);
       writer.decision(0, 1, 2, decision(true));
       Assert.expectThrows(
           IllegalStateException.class, () -> writer.decision(0, 1, 2, decision(false)));
@@ -113,7 +113,7 @@ public class ResultWriterTest {
     }
     try (var writer = writer()) {
       Assert.expectThrows(
-          IllegalStateException.class, () -> writer.event(0, EventKind.TSUMO, 0, null, null));
+          IllegalStateException.class, () -> writer.event(0, EventKindView.TSUMO, 0, null, null));
       writer.startRound(0, 0, 0, 0, table);
       Assert.expectThrows(
           IllegalStateException.class, () -> writer.decision(0, 0, 1, decision(true)));
@@ -127,7 +127,7 @@ public class ResultWriterTest {
     try (var writer =
         new ResultWriter(out, "id", "2026-11-04T00:00:00Z", Format6.MODEL, record.summary())) {
       writer.startRound(0, 0, 0, 0, expected(record).getFirst().table());
-      writer.event(0, EventKind.START_KYOKU, -1, null, null);
+      writer.event(0, EventKindView.START_KYOKU, -1, null, null);
       writer.decision(0, 0, 1, decision(false));
       writer.finish(null);
     }
@@ -135,7 +135,11 @@ public class ResultWriterTest {
         JsonParser.parseString(out.toString(StandardCharsets.UTF_8)).getAsJsonObject();
     Assert.assertFalse(json.has("temperature"));
     JsonObject step =
-        json.getAsJsonArray("rounds").get(0).getAsJsonObject().getAsJsonArray("steps").get(1)
+        json.getAsJsonArray("rounds")
+            .get(0)
+            .getAsJsonObject()
+            .getAsJsonArray("steps")
+            .get(1)
             .getAsJsonObject();
     Assert.assertEquals(
         step.toString(), "{\"seat\":0,\"candidates\":[[5,0.75],[371,0.25]],\"chosen\":1}");
@@ -145,18 +149,17 @@ public class ResultWriterTest {
   private static void assertOmissions(String name, Format6.Document document) {
     JsonObject json = document.json();
     Assert.assertEquals(json.get("format").getAsInt(), 7, name);
-    Assert.assertEquals(
-        json.get("temperature").getAsDouble(), FixtureFamily.TEMPERATURE, name);
+    Assert.assertEquals(json.get("temperature").getAsDouble(), FixtureFamily.TEMPERATURE, name);
     assertNullsOnlyForDraws(json, null);
     for (Format6.Round round : document.rounds())
       for (Format6.Step step : round.steps()) {
         JsonObject object = step.json();
         if (!step.decision()) {
-          EventKind kind = EventKind.valueOf(step.event().toUpperCase(Locale.ROOT));
+          EventKindView kind = EventKindView.valueOf(step.event().toUpperCase(Locale.ROOT));
           Assert.assertEquals(object.has("actor"), kind.hasActor(), name + " " + object);
           Assert.assertEquals(
               object.has("outcome"),
-              kind == EventKind.HORA || kind == EventKind.RYUKYOKU,
+              kind == EventKindView.HORA || kind == EventKindView.RYUKYOKU,
               name + " " + object);
           continue;
         }
@@ -241,11 +244,11 @@ public class ResultWriterTest {
       LoadedRecord record, int round, int position, RecordTable table, Steps steps) {
     Assert.assertEquals(record.step(round, position), steps.next);
     RecordEvent event = record.rounds().get(round).events().get(position);
-    int actor = EventKind.actor(event);
-    if (EventKind.declaresRiichi(event))
-      steps.event(EventKind.REACH.wireName(), actor, steps.list.getLast().table());
+    int actor = EventKindView.actor(event);
+    if (EventKindView.declaresRiichi(event))
+      steps.event(EventKindView.REACH.wireName(), actor, steps.list.getLast().table());
     table.apply(event);
-    EventKind kind = EventKind.of(event);
+    EventKindView kind = EventKindView.of(event);
     steps.event(kind.wireName(), kind.hasActor() ? actor : -1, table.state());
   }
 
@@ -254,7 +257,7 @@ public class ResultWriterTest {
     final List<Expected> list = new ArrayList<>();
     int next;
 
-    void event(String name, int actor, TableState table) {
+    void event(String name, int actor, TableView table) {
       list.add(new Expected(false, name, actor, next++, -1, table));
     }
   }
@@ -265,7 +268,8 @@ public class ResultWriterTest {
         "id",
         "2026-11-04T00:00:00Z",
         Format6.MODEL,
-        new RecordSummary("mjai", List.of("A", "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1));
+        new RecordSummary(
+            "mjai", List.of("A", "B", "C", "D"), List.of(25000, 25000, 25000, 25000), 1));
   }
 
   /** 候補が 2 つの判断。手の番号に意味は無く、書き分けを見るためだけに使う。 */
@@ -293,5 +297,5 @@ public class ResultWriterTest {
 
   /** 期待する手順 1 つ。cause を持つのは判断だけ。 */
   private record Expected(
-      boolean decision, String event, int actor, int eventIndex, int cause, TableState table) {}
+      boolean decision, String event, int actor, int eventIndex, int cause, TableView table) {}
 }

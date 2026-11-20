@@ -76,9 +76,11 @@ public record IterationReport(
     /** /proc/self/status の VmRSS（MiB）。読めなければ 0。 */
     private static long residentMiB() {
       try {
-        for (String line : Files.readAllLines(Path.of("/proc/self/status"), StandardCharsets.US_ASCII)) {
+        for (String line :
+            Files.readAllLines(Path.of("/proc/self/status"), StandardCharsets.US_ASCII)) {
           if (line.startsWith("VmRSS:")) {
-            return Long.parseLong(line.substring("VmRSS:".length()).replace("kB", "").strip()) >> 10;
+            return Long.parseLong(line.substring("VmRSS:".length()).replace("kB", "").strip())
+                >> 10;
           }
         }
       } catch (IOException | NumberFormatException unavailable) {
@@ -116,24 +118,30 @@ public record IterationReport(
    * @throws SettingsException フィールドが欠けているか、知らないフィールドや段があるか、値が型に合わないとき
    */
   public static IterationReport of(
-      Node.Table line, Map<String, Class<? extends Record>> metrics, Class<? extends Record> carry) {
+      Node.Table line,
+      Map<String, Class<? extends Record>> metrics,
+      Class<? extends Record> carry) {
     List<String> problems = new ArrayList<>();
     Map<String, Node> head = new LinkedHashMap<>(line.entries());
     Node steps = head.remove("steps");
     Node carried = head.remove("carry");
     Node resources = head.remove("resources");
     if (!(steps instanceof Node.Table stepTable)) {
-      throw new SettingsException(List.of("The iteration report at " + line.origin() + " has no steps table"));
+      throw new SettingsException(
+          List.of("The iteration report at " + line.origin() + " has no steps table"));
     }
-    if (!(carried instanceof Node.Table carryTable) || !(resources instanceof Node.Table resourceTable)) {
-      throw new SettingsException(List.of("The iteration report at " + line.origin() + " needs carry and resources"));
+    if (!(carried instanceof Node.Table carryTable)
+        || !(resources instanceof Node.Table resourceTable)) {
+      throw new SettingsException(
+          List.of("The iteration report at " + line.origin() + " needs carry and resources"));
     }
     Head read = RecordFile.read(Head.class, new Node.Table(head, line.origin())).value();
     Map<String, StepReport> reports = new LinkedHashMap<>();
     for (Map.Entry<String, Node> entry : stepTable.entries().entrySet()) {
       Class<? extends Record> type = metrics.get(entry.getKey());
       if (type == null || !(entry.getValue() instanceof Node.Table stepTree)) {
-        problems.add("Unknown step " + entry.getKey() + " in the iteration report at " + line.origin());
+        problems.add(
+            "Unknown step " + entry.getKey() + " in the iteration report at " + line.origin());
         continue;
       }
       reports.put(entry.getKey(), StepReport.of(stepTree, type));
@@ -155,7 +163,8 @@ public record IterationReport(
 
   /** 報告のファイルの全ての行を読む。 */
   public static List<IterationReport> read(
-      Path file, Map<String, Class<? extends Record>> metrics, Class<? extends Record> carry) throws IOException {
+      Path file, Map<String, Class<? extends Record>> metrics, Class<? extends Record> carry)
+      throws IOException {
     List<String> lines = DurableFiles.lines(file);
     List<IterationReport> reports = new ArrayList<>(lines.size());
     for (int index = 0; index < lines.size(); index++) {

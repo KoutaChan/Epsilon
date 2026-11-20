@@ -2,6 +2,7 @@ package com.epsilon.prism.luck;
 
 import com.epsilon.agent.settings.RecordFile;
 import com.epsilon.prism.core.DecisionClass;
+import com.epsilon.prism.noise.LedgerGroup;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -21,13 +22,16 @@ public class LedgerReportTest {
   public void theFullReportKeepsTheReportValues() {
     var rows = LedgerFitTest.rows(6000, 0, LedgerFitTest.ones(), LedgerFitTest.planted(), 0.3, 40);
     LedgerReport report = LedgerFitTest.CLASSIC.fitRows(rows).report();
-    LedgerReport.Full full = report.full();
+    var recording = new LedgerRecording(LedgerGroup.computed(), 24, 3);
+    LedgerReport.Full full = report.full(recording);
+    Assert.assertEquals(full.recording(), recording);
     Assert.assertEquals(full.rows(), report.rows());
     Assert.assertEquals(full.slots(), report.slots());
     Assert.assertEquals(full.skippedRows(), report.skippedRows());
     Assert.assertEquals(full.seconds(), report.seconds());
     assertSegment(full.all(), report.all(), "all");
-    Assert.assertEquals(List.copyOf(full.byClass().keySet()), List.copyOf(report.byClass().keySet()));
+    Assert.assertEquals(
+        List.copyOf(full.byClass().keySet()), List.copyOf(report.byClass().keySet()));
     report.byClass().forEach((name, line) -> assertSegment(full.byClass().get(name), line, name));
     Assert.assertEquals(full.bias(), report.bias());
     Assert.assertEquals(full.bias().all().size(), F);
@@ -54,7 +58,7 @@ public class LedgerReportTest {
     Assert.assertEquals(report.rows(), 40L);
     Assert.assertTrue(Double.isNaN(report.all().r2()));
     Assert.assertTrue(Double.isNaN(report.all().equivalentForks()));
-    LedgerReport.Full full = report.full();
+    LedgerReport.Full full = report.full(null);
     Assert.assertNull(full.all().r2());
     Assert.assertNull(full.all().equivalentForks());
     Assert.assertTrue(full.all().r2ByGroup().isEmpty(), full.all().r2ByGroup().toString());
@@ -85,7 +89,8 @@ public class LedgerReportTest {
     List<LedgerFitTest.SyntheticRow> shifted = new ArrayList<>();
     for (var row : rows) {
       float[] ledger = row.ledger().clone();
-      for (int a = 0; a < row.actions(); a++) if (!Float.isNaN(row.values()[a])) ledger[a * F + column] += 0.1f;
+      for (int a = 0; a < row.actions(); a++)
+        if (!Float.isNaN(row.values()[a])) ledger[a * F + column] += 0.1f;
       shifted.add(LedgerFitTest.withValues(row, row.values(), ledger));
     }
     LedgerReport biased = LedgerFitTest.CLASSIC.fitRows(shifted).report();
@@ -104,13 +109,15 @@ public class LedgerReportTest {
     Assert.assertTrue(quiet.biased().isEmpty(), quiet.biased().toString());
     same(quiet.maxAbsZ(), Math.abs(z), "max |z|");
 
-    LedgerReport.Summary unbiased = LedgerReport.Summary.of(LedgerFitTest.CLASSIC.fitRows(rows).report(), 4.5, true);
+    LedgerReport.Summary unbiased =
+        LedgerReport.Summary.of(LedgerFitTest.CLASSIC.fitRows(rows).report(), 4.5, true);
     Assert.assertTrue(unbiased.biased().isEmpty(), unbiased.biased().toString());
     Assert.assertTrue(unbiased.maxAbsZ() < 4.5, "max |z| " + unbiased.maxAbsZ());
   }
 
   /** 書く形の区分が、当てはめの区分の値をそのまま持つことを確かめる。どの値も有限な区分で使う。 */
-  private static void assertSegment(LedgerReport.Segment segment, LedgerReport.Line line, String label) {
+  private static void assertSegment(
+      LedgerReport.Segment segment, LedgerReport.Line line, String label) {
     Assert.assertEquals(segment.rows(), line.rows(), label);
     Assert.assertEquals(segment.slots(), line.slots(), label);
     same(segment.variance(), line.variance(), label + " variance");
@@ -118,24 +125,30 @@ public class LedgerReportTest {
     same(segment.r2(), line.r2(), label + " r2");
     same(segment.equivalentForks(), line.equivalentForks(), label + " forks");
     Assert.assertEquals(segment.r2ByGroup(), line.r2ByGroup(), label);
-    List<String> names = Arrays.stream(LedgerColumn.values()).map(LedgerColumn::reportName).toList();
+    List<String> names =
+        Arrays.stream(LedgerColumn.values()).map(LedgerColumn::reportName).toList();
     Assert.assertEquals(List.copyOf(segment.beta().keySet()), names, label);
     Assert.assertEquals(segment.folds().size(), 2, label);
     for (int f = 0; f < F; f++) {
       same(segment.beta().get(names.get(f)), line.beta()[f], label + " " + names.get(f));
       for (int fold = 0; fold < 2; fold++)
-        same(segment.folds().get(fold).beta().get(names.get(f)), line.betaByFold()[fold][f], label + " fold " + fold);
+        same(
+            segment.folds().get(fold).beta().get(names.get(f)),
+            line.betaByFold()[fold][f],
+            label + " fold " + fold);
     }
     for (int fold = 0; fold < 2; fold++) {
       same(segment.folds().get(fold).r2(), line.r2ByFold()[fold], label + " fold " + fold);
-      Assert.assertEquals(segment.folds().get(fold).fallback(), line.fallback()[fold], label + " fold " + fold);
+      Assert.assertEquals(
+          segment.folds().get(fold).fallback(), line.fallback()[fold], label + " fold " + fold);
     }
   }
 
   /** 書いた値が null でなく、有限な値とビットまで同じことを確かめる。 */
   private static void same(Double written, double value, String label) {
     Assert.assertNotNull(written, label);
-    Assert.assertEquals(Double.doubleToRawLongBits(written), Double.doubleToRawLongBits(value), label);
+    Assert.assertEquals(
+        Double.doubleToRawLongBits(written), Double.doubleToRawLongBits(value), label);
   }
 
   /** JSON に書いて読み戻す。 */

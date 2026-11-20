@@ -209,7 +209,8 @@ public final class TenhouRound {
 
     ScoringYaku scoring() {
       if (scoring == null) {
-        throw new IllegalArgumentException("Tenhou yaku " + this + " is not a yaku of the Tenhou rules");
+        throw new IllegalArgumentException(
+            "Tenhou yaku " + this + " is not a yaku of the Tenhou rules");
       }
       return scoring;
     }
@@ -271,7 +272,8 @@ public final class TenhouRound {
     rotation = Math.floorMod(variant.dealer(round) - oya, seats);
     int[] ten = init.integers("ten");
     if (ten.length != TAG_SEATS) {
-      throw new IllegalArgumentException("Tenhou INIT has " + ten.length + " scores for " + TAG_SEATS + " seats");
+      throw new IllegalArgumentException(
+          "Tenhou INIT has " + ten.length + " scores for " + TAG_SEATS + " seats");
     }
     int[] scores = new int[seats];
     for (int tagSeat = 0; tagSeat < TAG_SEATS; tagSeat++) {
@@ -281,7 +283,9 @@ public final class TenhouRound {
         requireEmpty("INIT ten", tagSeat, ten[tagSeat]);
       }
     }
-    start = new RoundStart(variant, round, seed[Seed.HONBA.ordinal()], seed[Seed.KYOTAKU.ordinal()], scores);
+    start =
+        new RoundStart(
+            variant, round, seed[Seed.HONBA.ordinal()], seed[Seed.KYOTAKU.ordinal()], scores);
     indicator = TenhouTiles.tile(seed[Seed.INDICATOR.ordinal()], set);
     wins.clear();
     kind = null;
@@ -329,7 +333,14 @@ public final class TenhouRound {
     int points = win.points(variant, variant.dealer(start.round()), tsumo);
     if (points != ten[Ten.POINTS.ordinal()]) {
       throw new IllegalArgumentException(
-          "The AGARI of seat " + who + " pays " + ten[Ten.POINTS.ordinal()] + ", but " + win + " pays " + points);
+          "The AGARI of seat "
+              + who
+              + " pays "
+              + ten[Ten.POINTS.ordinal()]
+              + ", but "
+              + win
+              + " pays "
+              + points);
     }
     wins.add(win);
     kind = tsumo ? EndKind.TSUMO : EndKind.RON;
@@ -381,7 +392,8 @@ public final class TenhouRound {
         deltas[seat] -= Variant.DEPOSIT;
       }
     }
-    return new RoundResult(kind, abortive, wins, loser, tenpaiMask, nagashi ? nagashiMask() : 0, deltas, ura);
+    return new RoundResult(
+        kind, abortive, wins, loser, tenpaiMask, nagashi ? nagashiMask() : 0, deltas, ura);
   }
 
   /** owari の終局の点（絶対席ごと、配列のコピー）。owari を読んでいなければ null。 */
@@ -447,7 +459,14 @@ public final class TenhouRound {
     int width = Pair.values().length;
     if (values.length != TAG_SEATS * width) {
       throw new IllegalArgumentException(
-          "Tenhou " + key + " lists " + values.length + " values for " + TAG_SEATS + " seats: " + end.get(key));
+          "Tenhou "
+              + key
+              + " lists "
+              + values.length
+              + " values for "
+              + TAG_SEATS
+              + " seats: "
+              + end.get(key));
     }
     int[] points = new int[seats];
     for (int tagSeat = 0; tagSeat < TAG_SEATS; tagSeat++) {
@@ -464,7 +483,8 @@ public final class TenhouRound {
   /** 空き席の値が 0 であることを確かめる。0 でなければ IllegalArgumentException を投げる。 */
   private static void requireEmpty(String field, int tagSeat, int value) {
     if (value != 0) {
-      throw new IllegalArgumentException("Tenhou " + field + " gives " + value + " to the empty seat " + tagSeat);
+      throw new IllegalArgumentException(
+          "Tenhou " + field + " gives " + value + " to the empty seat " + tagSeat);
     }
   }
 

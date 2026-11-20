@@ -161,7 +161,7 @@ final class EventScan {
     return riichiEvent[seat];
   }
 
-  /** 宣言牌で決まる立直の状態（{@link RoundRules#declaration}）。宣言していなければ {@code NONE}。 */
+  /** 宣言牌で決まる立直の状態（{@link RiichiState#declaration}）。宣言していなければ {@code NONE}。 */
   RiichiState declaration(int seat) {
     return declarations[seat];
   }
@@ -252,7 +252,7 @@ final class EventScan {
     if (riichiIndex[seat] == NONE && record.discardRiichi()) {
       riichiIndex[seat] = place;
       riichiEvent[seat] = event;
-      declarations[seat] = RoundRules.declaration(place == 0, interruptions > 0);
+      declarations[seat] = RiichiState.declaration(place == 0, interruptions > 0);
     } else if (riichiIndex[seat] != NONE) {
       afterRiichi[seat]++;
       if (record.discardTsumogiri()) {

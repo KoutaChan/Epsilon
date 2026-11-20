@@ -82,7 +82,8 @@ public class NextHandsTest {
     for (NextHands.Kind kind : expected) {
       Assert.assertEquals(counts.get(kind.ordinal()).handEnds(), 1, kind.toString());
     }
-    Assert.assertEquals(counts.get(NextHands.Kind.OUTCOME.ordinal()).handEnds(), ends.handEnds() - SPECIAL);
+    Assert.assertEquals(
+        counts.get(NextHands.Kind.OUTCOME.ordinal()).handEnds(), ends.handEnds() - SPECIAL);
 
     HandEnds odd = ends.select(h -> h % 2 == 1);
     NextHands selected = NextHands.of(odd, games);
@@ -96,7 +97,8 @@ public class NextHandsTest {
         Assert.assertEquals(selected.riichi(index, k), next.riichi(h, k));
       }
     }
-    Assert.assertThrows(IllegalArgumentException.class, () -> NextHands.of(ends, games.subList(1, games.size())));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> NextHands.of(ends, games.subList(1, games.size())));
   }
 
   @Test
@@ -113,18 +115,26 @@ public class NextHandsTest {
     Assert.assertEquals(split.seatHands(), ends.seatHands());
     Assert.assertEquals(split.missingShare(), (double) SPECIAL / ends.handEnds(), 1e-15);
     for (NextHands.Split part : List.of(split.candidate(), split.reference(), split.difference())) {
-      Assert.assertEquals(part.explained().mean(), part.all().mean() - part.represented().mean(), 1e-15);
       Assert.assertEquals(
-          part.explained().mean(), split.missingShare() * (part.missing().mean() - part.represented().mean()), 1e-12);
+          part.explained().mean(), part.all().mean() - part.represented().mean(), 1e-15);
+      Assert.assertEquals(
+          part.explained().mean(),
+          split.missingShare() * (part.missing().mean() - part.represented().mean()),
+          1e-12);
       Assert.assertTrue(part.explained().standardError() > 0);
     }
     NextHands.Split candidate = split.candidate();
     NextHands.Split difference = split.difference();
-    Assert.assertEquals(difference.all().mean(), candidate.all().mean() - split.reference().all().mean(), 1e-12);
     Assert.assertEquals(
-        difference.missing().mean(), candidate.missing().mean() - split.reference().missing().mean(), 1e-12);
+        difference.all().mean(), candidate.all().mean() - split.reference().all().mean(), 1e-12);
     Assert.assertEquals(
-        difference.explained().mean(), candidate.explained().mean() - split.reference().explained().mean(), 1e-12);
+        difference.missing().mean(),
+        candidate.missing().mean() - split.reference().missing().mean(),
+        1e-12);
+    Assert.assertEquals(
+        difference.explained().mean(),
+        candidate.explained().mean() - split.reference().explained().mean(),
+        1e-12);
     NextHands.KeepSplit same = next.keep(values, values, h -> true, (group, rank, gap) -> true);
     Assert.assertEquals(same.difference().all().mean(), 0.0);
     Assert.assertEquals(same.difference().explained().mean(), 0.0);
@@ -148,9 +158,11 @@ public class NextHandsTest {
       }
       Assert.assertEquals(predicted, 1, 1e-9, cell.toString());
       Assert.assertEquals(realized, 1, 1e-9, cell.toString());
-      double wins = cell.rates().get(OutcomeClasses.SeatClass.TSUMO.ordinal()).realized()
-          + cell.rates().get(OutcomeClasses.SeatClass.RON.ordinal()).realized();
-      Assert.assertTrue(cell.rates().get(OutcomeClasses.SeatClass.BIG_WIN.ordinal()).realized() <= wins + 1e-12);
+      double wins =
+          cell.rates().get(OutcomeClasses.SeatClass.TSUMO.ordinal()).realized()
+              + cell.rates().get(OutcomeClasses.SeatClass.RON.ordinal()).realized();
+      Assert.assertTrue(
+          cell.rates().get(OutcomeClasses.SeatClass.BIG_WIN.ordinal()).realized() <= wins + 1e-12);
       if (cell.group() == -1) {
         pooledSeats += cell.seatHands();
         pooledEnding += cell.ending();
@@ -198,7 +210,8 @@ public class NextHandsTest {
       int representable = 0;
       int rankChanges = 0;
       for (int h = 0; h < ends.handEnds(); h++) {
-        EngineGames.Hand hand = byGame.get(ends.gameId(ends.game(h))).get(h - ends.firstHand(ends.game(h)) + 1);
+        EngineGames.Hand hand =
+            byGame.get(ends.gameId(ends.game(h))).get(h - ends.firstHand(ends.game(h)) + 1);
         String context = variant + " " + hand;
         Assert.assertEquals(recorded.gameOver(h), searched.gameOver(h), context);
         Assert.assertEquals(recorded.gameOver(h), hand.next().gameOver(), context);
@@ -214,19 +227,34 @@ public class NextHandsTest {
         representable++;
         Assert.assertEquals(recorded.kind(h), NextHands.Kind.OUTCOME, context);
         Assert.assertEquals(recorded.found(h), 1, context);
-        int length = OutcomeRows.outcomeTerms(
-            hands, recorded.main(h, 0), recorded.base(h, 0), recorded.other(h, 0), recorded.riichi(h, 0), found, 0);
+        int length =
+            OutcomeRows.outcomeTerms(
+                hands,
+                recorded.main(h, 0),
+                recorded.base(h, 0),
+                recorded.other(h, 0),
+                recorded.riichi(h, 0),
+                found,
+                0);
         Assert.assertTrue(Arrays.equals(terms, 0, written, found, 0, length), context);
         boolean matched = false;
         for (int k = 0; k < searched.found(h) && !matched; k++) {
-          length = OutcomeRows.outcomeTerms(
-              hands, searched.main(h, k), searched.base(h, k), searched.other(h, k), searched.riichi(h, k), found, 0);
+          length =
+              OutcomeRows.outcomeTerms(
+                  hands,
+                  searched.main(h, k),
+                  searched.base(h, k),
+                  searched.other(h, k),
+                  searched.riichi(h, k),
+                  found,
+                  0);
           matched = Arrays.equals(terms, 0, written, found, 0, length);
         }
         Assert.assertTrue(matched, context);
       }
       Assert.assertTrue(representable > 500, variant + " " + representable);
-      Assert.assertTrue(rankChanges > 0 && rankChanges < ends.handEnds(), variant + " " + rankChanges);
+      Assert.assertTrue(
+          rankChanges > 0 && rankChanges < ends.handEnds(), variant + " " + rankChanges);
 
       HandEnds odd = ends.select(h -> h % 2 == 1);
       NextHands selected = NextHands.of(odd, counted);
@@ -245,7 +273,8 @@ public class NextHandsTest {
 
       Variant other = variant == Variant.TENHOU_4P ? Variant.TENHOU_3P : Variant.TENHOU_4P;
       Assert.assertThrows(
-          IllegalArgumentException.class, () -> NextHands.of(ends, CountedHands.builder(other, 4, 0, GrpFixtures.STAMP).build()));
+          IllegalArgumentException.class,
+          () -> NextHands.of(ends, CountedHands.builder(other, 4, 0, GrpFixtures.STAMP).build()));
       long gameId = -1;
       for (GameRecord game : played.games()) {
         if (game.handEnds().size() >= 2) {
@@ -260,8 +289,10 @@ public class NextHandsTest {
       fewer.remove(chosen.get(chosen.size() - 1));
       List<EngineGames.Hand> shifted = new ArrayList<>(played.hands());
       EngineGames.Hand second = chosen.get(1);
-      shifted.set(shifted.indexOf(second), new EngineGames.Hand(
-          gameId, shiftedStart(second.start()), second.outcome(), second.next()));
+      shifted.set(
+          shifted.indexOf(second),
+          new EngineGames.Hand(
+              gameId, shiftedStart(second.start()), second.outcome(), second.next()));
       for (List<EngineGames.Hand> broken : List.of(missing, fewer, shifted)) {
         CountedHands wrong = EngineGames.counted(variant, broken);
         Assert.assertThrows(IllegalArgumentException.class, () -> NextHands.of(ends, wrong));
@@ -313,7 +344,8 @@ public class NextHandsTest {
    */
   private static List<GameRecord> games() {
     List<GameRecord> games = new ArrayList<>();
-    GrpState south4 = new GrpState(OutcomeFixtures.FOUR, 7, 0, 1, new int[] {28_500, 26_500, 23_000, 21_000});
+    GrpState south4 =
+        new GrpState(OutcomeFixtures.FOUR, 7, 0, 1, new int[] {28_500, 26_500, 23_000, 21_000});
     RoundOutcome ron = new RoundOutcome(OutcomeFixtures.FOUR);
     ron.setRon(BaseClass.B240.base(), 0, 2, RoundOutcome.NO_SEAT, 0);
     int[] delta = new int[4];
@@ -325,9 +357,11 @@ public class NextHandsTest {
     GrpState west1 = new GrpState(OutcomeFixtures.FOUR, 8, 0, 0, scores);
     RoundOutcome tsumo = new RoundOutcome(OutcomeFixtures.FOUR);
     tsumo.setTsumo(BaseClass.MANGAN.base(), 1, RoundOutcome.NO_SEAT, 0);
-    games.add(new GameRecord(OutcomeFixtures.FOUR, 1, List.of(south4, west1), finalScores(west1, tsumo)));
+    games.add(
+        new GameRecord(OutcomeFixtures.FOUR, 1, List.of(south4, west1), finalScores(west1, tsumo)));
 
-    GrpState east2 = new GrpState(OutcomeFixtures.FOUR, 1, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000});
+    GrpState east2 =
+        new GrpState(OutcomeFixtures.FOUR, 1, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000});
     RoundOutcome pao = new RoundOutcome(OutcomeFixtures.FOUR);
     pao.setRon(BaseClass.YAKUMAN.base(), 2, 3, 0, 0);
     RoundOutcome nagashi = new RoundOutcome(OutcomeFixtures.FOUR);
@@ -335,10 +369,18 @@ public class NextHandsTest {
     long id = 2;
     for (RoundOutcome special : List.of(pao, nagashi)) {
       GrpState after = after(east2, special);
-      games.add(new GameRecord(OutcomeFixtures.FOUR, id++, List.of(east2, after), finalScores(after, bust(after))));
+      games.add(
+          new GameRecord(
+              OutcomeFixtures.FOUR, id++, List.of(east2, after), finalScores(after, bust(after))));
     }
-    GrpState shifted = new GrpState(OutcomeFixtures.FOUR, 2, 1, 0, new int[] {25_100, 24_900, 25_000, 25_000});
-    games.add(new GameRecord(OutcomeFixtures.FOUR, id, List.of(east2, shifted), finalScores(shifted, bust(shifted))));
+    GrpState shifted =
+        new GrpState(OutcomeFixtures.FOUR, 2, 1, 0, new int[] {25_100, 24_900, 25_000, 25_000});
+    games.add(
+        new GameRecord(
+            OutcomeFixtures.FOUR,
+            id,
+            List.of(east2, shifted),
+            finalScores(shifted, bust(shifted))));
     games.addAll(OutcomeFixtures.played(40, 100, 5));
     return games;
   }

@@ -1,16 +1,23 @@
 package com.epsilon.prism.policy;
 
 import ai.djl.Device;
+import ai.djl.ndarray.NDManager;
+import ai.djl.pytorch.engine.PtEngine;
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.runtime.DecisionDevicePipeline;
 import com.epsilon.agent.runtime.DecisionInferenceIngress;
+import com.epsilon.agent.runtime.EventCacheSettings;
 import com.epsilon.agent.runtime.InferenceDispatcher;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.Limits;
+import com.epsilon.prism.backend.KernelDevices;
 import com.epsilon.prism.backend.WeightPack;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.kernel.KernelProvider;
+import com.epsilon.prism.kernel.KernelProvider.Backend;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import java.io.IOException;
@@ -18,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,9 +36,9 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 1 つのバージョンの方策。要求が運ぶ記録 O（要求を出す側が取り込む）から、入力の形式の 1 行のライターで入力のバッチを作る
- * （{@link BatchEncoder}）。ネットワークの s は推論のバックエンド（{@link InferencePath}: eager か HIP、{@link DeviceInference}）で出す。
+ * （{@link BatchEncoder}）。ネットワークの s は推論のバックエンド（eager か専用カーネル、{@link DeviceInference}）で出す。
  * σ は s が最大の手に確率 1 を置く（同点は p0 で決める）。p0 は、{@code retain} の要求と、s の最大が同点の要求にだけ書く
- * （{@link GreedyAnswer}。p0 の特徴はライターが作る）。受付の区分は 1 つで、鳴きの行も同じ受付に入る（{@link #admission}）。
+ * （{@link GreedyAnswer}。p0 の特徴はライターが作る）。イベントを保存する場合は受付を卓ごとに振り分ける。鳴きの行も同じ卓の受付に入る。
  *
  * <p>GPU では、Nano と共通の受付・予約・デバイスパイプラインに載せる。GPU が複数あれば、それぞれに同じバージョンのネットワークを置く。
  * 符号化は符号化のプールで進み、順伝播はスロットごとの計算ストリームで出す。そのため、次の受付の符号化と 2 つのスロットの順伝播が重なる。
@@ -73,13 +81,14 @@ public final class NetworkPolicy implements PolicyService {
   private final InputFormat format;
   private final PolicyParams params;
   private final PriorSettings prior;
-  private final InferencePath inference;
+  private final Backend backend;
   private final List<DeviceInference> devices;
   private final NetworkRuntime runtime;
   private final int maxBatch;
   private final BatchEncoder encoder;
   private final List<DecisionDevicePipeline.Lease> leases = new ArrayList<>();
-  private final InferenceDispatcher.Registration<Batch, Void> registration;
+  private final List<InferenceDispatcher.Registration<Batch, Void>> registrations =
+      new ArrayList<>();
   private final Set<CompletableFuture<Void>> returning = ConcurrentHashMap.newKeySet();
   private final LongAdder decisions = new LongAdder();
   private final LongAdder batches = new LongAdder();
@@ -88,11 +97,11 @@ public final class NetworkPolicy implements PolicyService {
   private final AtomicLong last = new AtomicLong(UNSET);
   private boolean closed;
 
-  private NetworkPolicy(
+  NetworkPolicy(
       InputFormat format,
       PolicyParams params,
       PriorSettings prior,
-      InferencePath inference,
+      Backend nativeBackend,
       List<DeviceInference> devices,
       NetworkRuntime runtime,
       int maxBatch,
@@ -100,13 +109,12 @@ public final class NetworkPolicy implements PolicyService {
     this.format = format;
     this.params = params;
     this.prior = prior;
-    this.inference = inference;
+    this.backend = nativeBackend;
     this.devices = devices;
     this.runtime = runtime;
     this.maxBatch = maxBatch;
     this.encoder = encoder;
     if (!devices.getFirst().device().isGpu()) {
-      registration = null;
       return;
     }
     try {
@@ -116,8 +124,14 @@ public final class NetworkPolicy implements PolicyService {
         leases.add(lease);
         backends.add(new GpuBackend(lease, device));
       }
-      registration = runtime.dispatcher().register(backends);
+      if (encoder.eventPages) {
+        for (GpuBackend backend : backends)
+          registrations.add(runtime.dispatcher().register(List.of(backend)));
+      } else {
+        registrations.add(runtime.dispatcher().register(backends));
+      }
     } catch (RuntimeException | Error failure) {
+      for (var registration : registrations) registration.close();
       for (var lease : leases) {
         try {
           lease.close();
@@ -130,21 +144,21 @@ public final class NetworkPolicy implements PolicyService {
   }
 
   /**
-   * 保存したネットワークを開く。p0 の係数は {@link PriorSettings#STANDARD}。推論のバックエンドは、ネットワークの形とデバイスで決める
-   * （{@link InferencePath#resolve}）。HIP を選んでも HIP が扱えない形なら、eager にしてログに書く。HIP では先に libprism_hip.so を読み、
-   * 読めなければ例外で止まる。
+   * 保存したネットワークを開く。p0 の係数には {@link PriorSettings#STANDARD} を使う。
+   * 専用カーネルを使う設定では、モデルの宣言・精度・デバイスに対応する実装を選ぶ（{@link CollectionPlans}）。
+   * CPU と、宣言が専用カーネルの対応形でないモデルでは eager で計算する。
    *
-   * @param params バージョン番号（HIP に渡す重みのバージョン番号にもなる）
-   * @param model ネットワークのディレクトリ（weights.bin と model.json。architecture は epsilon-prism-v2）
+   * @param params バージョン番号（推論カーネルに渡す重みのバージョン番号にもなる）
+   * @param model ネットワークのディレクトリ（weights.bin と model.json）
    * @param devices GPU の列か、CPU 1 つ
    * @param runtime 符号化のプールと GPU の実行のリソース
    * @param maxBatch 1 回の受付で受ける行の上限
-   * @param precision eager で計算するときの精度（HIP は BFLOAT16 だけ）
-   * @param inference 設定で選んだ推論のバックエンド
+   * @param precision 計算の精度（専用カーネルは BFLOAT16）
+   * @param inference 設定で選んだ計算方法
    * @return 方策（ネットワークの所有権を持つ）
    * @throws IOException ネットワークが読めないとき
-   * @throws IllegalArgumentException HIP に BFLOAT16 でない精度を渡したとき
-   * @throws IllegalStateException HIP で libprism_hip.so が読めないか、GPU と合わないとき
+   * @throws IllegalArgumentException 専用カーネルが扱う形に BFLOAT16 以外の精度を指定したとき
+   * @throws IllegalStateException 専用カーネルが扱う形なのに、デバイスのバックエンドのプロバイダーが無いか使えないとき
    */
   public static NetworkPolicy open(
       PolicyParams params,
@@ -153,50 +167,80 @@ public final class NetworkPolicy implements PolicyService {
       NetworkRuntime runtime,
       int maxBatch,
       Precision precision,
-      InferencePath inference)
+      Kernels inference)
+      throws IOException {
+    return open(params, model, devices, runtime, maxBatch, maxBatch, precision, inference);
+  }
+
+  /** eager が選ばれたときだけ、専用カーネルと異なる行数の上限を適用する。 */
+  public static NetworkPolicy open(
+      PolicyParams params,
+      Path model,
+      List<Device> devices,
+      NetworkRuntime runtime,
+      int maxBatch,
+      int eagerMaxBatch,
+      Precision precision,
+      Kernels inference)
       throws IOException {
     Objects.requireNonNull(precision, "precision");
     Objects.requireNonNull(inference, "inference");
     // エンジンを初めて取る前に、全てのモデルに共通する実行の既定値（PyTorch の CPU スレッド数）を決める
     NetworkRuntime.initialize();
-    PrismShape shape = PrismNetwork.readShape(model);
-    InputFormat format = PrismNetwork.readFormat(model);
-    InferencePath path = inference.resolve(devices.getFirst(), shape);
-    if (path != inference) {
-      LOG.info(
-          "PRISM policy v{}: {} inference does not run {} on {}; using {}",
-          params.version(),
-          inference,
-          shape,
-          devices.getFirst(),
-          path);
-    }
-    return switch (path) {
-      case EAGER ->
-          eager(
+    var header = PrismNetwork.readHeader(model);
+    PrismShape shape = header.shape();
+    InputFormat format = header.format();
+    if (inference == Kernels.NATIVE && devices.getFirst().isGpu()) {
+      var network = new PrismNetwork(format, shape);
+      var selected =
+          CollectionPlans.select(
+              network, devices, precision, runtime == null ? null : runtime.eventCache());
+      if (selected.isPresent()) {
+        var plans = selected.get();
+        if (runtime == null)
+          throw new IllegalStateException("GPU policies require a network runtime");
+        try (var manager = NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME)) {
+          network.readWeights(model, manager);
+          var pack = plans.pack(network, params.version());
+          var cache = plans.cache() == KernelProvider.Cache.CAUSAL ? runtime.eventCache() : null;
+          return assemble(
+              format,
               params,
-              model,
+              PriorSettings.STANDARD,
+              plans.backend(),
               devices,
               runtime,
               maxBatch,
-              precision,
-              PriorSettings.STANDARD,
-              BatchEncoder.eagerBudget(devices.getFirst(), runtime));
-      case HIP -> {
-        if (precision != Precision.BFLOAT16) {
-          throw new IllegalArgumentException("PRISM's native kernels compute in BFLOAT16, not " + precision);
+              new BatchEncoder(
+                  format, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.PINNED, cache != null),
+              device -> {
+                var selectedDevice = plans.devices().get(device);
+                return NativeInference.open(
+                    device,
+                    params.version(),
+                    runtime.slots(),
+                    Math.multiplyExact(maxBatch, Limits.MAX_LEGAL_ACTIONS),
+                    () ->
+                        KernelLane.open(
+                            device,
+                            selectedDevice.provider(),
+                            selectedDevice.request(),
+                            pack,
+                            format),
+                    cache);
+              });
         }
-        yield hip(
-            params,
-            model,
-            devices,
-            runtime,
-            maxBatch,
-            PriorSettings.STANDARD,
-            BatchEncoder.UNBOUNDED,
-            HipInference.gpu(BatchPlan.Capacity.standard(format)));
       }
-    };
+    }
+    return eager(
+        params,
+        model,
+        devices,
+        runtime,
+        eagerMaxBatch,
+        precision,
+        PriorSettings.STANDARD,
+        BatchEncoder.eagerBudget(devices.getFirst(), runtime));
   }
 
   /**
@@ -216,12 +260,12 @@ public final class NetworkPolicy implements PolicyService {
       PriorSettings prior,
       int tokenBudget)
       throws IOException {
-    InputFormat format = PrismNetwork.readFormat(model);
+    InputFormat format = PrismNetwork.readHeader(model).format();
     return assemble(
         format,
         params,
         prior,
-        InferencePath.EAGER,
+        null,
         devices,
         runtime,
         maxBatch,
@@ -230,11 +274,11 @@ public final class NetworkPolicy implements PolicyService {
   }
 
   /**
-   * HIP で開く。重みは CPU に読んだ FP32 のネットワークから 1 回だけ作り、全てのデバイスのレーンにコピーする。レーンの数は、GPU なら
-   * スロットの数、CPU（テストの参照実装を呼び出しスレッドから呼ぶ）なら 1。
+   * 渡したレーンで、HIP の専用カーネルと同じ重みの束を使う方策を開く。重みは CPU に読んだ FP32 のネットワークから 1 回だけ作り、全ての
+   * デバイスのレーンにコピーする。レーンの数は、GPU ならスロットの数、CPU（テストの参照実装を呼び出しスレッドから呼ぶ）なら 1。
    *
    * @param tokenBudget 1 回の順伝播で扱うトークン数（パディング込み）の上限（本番は {@link BatchEncoder#UNBOUNDED}）
-   * @param lanes レーンを作るファクトリ（本番は {@link HipInference#gpu}）
+   * @param lanes レーンを作るファクトリ
    */
   static NetworkPolicy hip(
       PolicyParams params,
@@ -244,31 +288,48 @@ public final class NetworkPolicy implements PolicyService {
       int maxBatch,
       PriorSettings prior,
       int tokenBudget,
-      HipInference.Lanes lanes)
+      NativeInference.Lanes lanes)
       throws IOException {
     WeightPack pack = WeightPack.load(model, params.version());
     InputFormat format = PrismNetwork.readFormat(model);
     int scores = Math.multiplyExact(maxBatch, Limits.MAX_LEGAL_ACTIONS);
+    boolean reuse =
+        devices.stream().allMatch(Device::isGpu)
+            && pack.layout().reusableEventPrefix()
+            && runtime.eventCache().mode() == EventCacheSettings.Mode.CAUSAL;
     return assemble(
         format,
         params,
         prior,
-        InferencePath.HIP,
+        Backend.HIP,
         devices,
         runtime,
         maxBatch,
-        new BatchEncoder(format, tokenBudget, BatchEncoder.Memory.PINNED),
+        new BatchEncoder(
+            format,
+            tokenBudget,
+            devices.getFirst().isGpu() ? BatchEncoder.Memory.PINNED : BatchEncoder.Memory.DIRECT,
+            reuse),
         device ->
-            HipInference.open(
-                device, pack, device.isGpu() ? runtime.slots() : 1, scores, lanes));
+            NativeInference.open(
+                device,
+                pack,
+                device.isGpu() ? runtime.slots() : 1,
+                scores,
+                lanes,
+                reuse ? runtime.eventCache() : null));
   }
 
-  /** デバイスごとに推論のバックエンドを開いて、方策を組み立てる。失敗したら、開いたバックエンドと作業領域・バッチのプールを閉じる。 */
+  /**
+   * デバイスごとに推論のバックエンドを開いて、方策を組み立てる。失敗したら、開いたバックエンドと作業領域・バッチのプールを閉じる。
+   *
+   * @param backend 専用カーネルのバックエンド（eager なら null）
+   */
   private static NetworkPolicy assemble(
       InputFormat format,
       PolicyParams params,
       PriorSettings prior,
-      InferencePath inference,
+      Backend backend,
       List<Device> devices,
       NetworkRuntime runtime,
       int maxBatch,
@@ -277,10 +338,16 @@ public final class NetworkPolicy implements PolicyService {
       throws IOException {
     List<DeviceInference> opened = new ArrayList<>(devices.size());
     try {
+      if (devices.getFirst().isGpu() && backend != null) {
+        encoder.reserve(
+            Math.multiplyExact(
+                devices.size(), Math.addExact(runtime.readyBatches(), runtime.slots())),
+            maxBatch);
+      }
       for (Device device : devices) {
         opened.add(opener.open(device));
       }
-      return new NetworkPolicy(format, params, prior, inference, opened, runtime, maxBatch, encoder);
+      return new NetworkPolicy(format, params, prior, backend, opened, runtime, maxBatch, encoder);
     } catch (IOException | RuntimeException | Error failure) {
       for (DeviceInference device : opened) {
         try {
@@ -299,6 +366,11 @@ public final class NetworkPolicy implements PolicyService {
   }
 
   @Override
+  public boolean reuseEventPrefix() {
+    return encoder.eventPages;
+  }
+
+  @Override
   public int version() {
     return params.version();
   }
@@ -308,9 +380,14 @@ public final class NetworkPolicy implements PolicyService {
     return format;
   }
 
-  /** 使っている推論のバックエンド。設定で選んだものを、ネットワークの形とデバイスで決め直したもの。 */
-  public InferencePath inference() {
-    return inference;
+  /** 実際に使う計算方法。設定で選んだものを、モデルの宣言とデバイスで決め直したもの。 */
+  public Kernels inference() {
+    return backend == null ? Kernels.EAGER : Kernels.NATIVE;
+  }
+
+  /** 専用カーネルを選んだときのバックエンド。eager で計算するなら空。 */
+  public Optional<Backend> backend() {
+    return Optional.ofNullable(backend);
   }
 
   @Override
@@ -334,39 +411,80 @@ public final class NetworkPolicy implements PolicyService {
   }
 
   @Override
+  public int admission(Observation observation, long wall) {
+    return encoder.eventPages ? Math.floorMod(wall, devices.size() * runtime.slots()) : 0;
+  }
+
+  @Override
   public boolean needsWork() {
-    return registration == null || registration.needsWork();
+    if (registrations.isEmpty()) return true;
+    for (var registration : registrations) if (registration.needsWork()) return true;
+    return false;
   }
 
   @Override
   public synchronized DecisionInferenceIngress.Attempt tryAcquireIngress(int admission) {
-    if (registration == null) {
+    if (closed) throw new IllegalStateException("network policy is closed");
+    if (registrations.isEmpty()) {
       return DecisionInferenceIngress.Attempt.acquired(DecisionInferenceIngress.direct(this));
     }
-    var attempt = registration.tryReserve();
-    if (!attempt.acquired()) {
-      return DecisionInferenceIngress.Attempt.blocked(attempt.available());
-    }
+    var wake = encoder.whenFull();
+    if (wake != null) return DecisionInferenceIngress.Attempt.blocked(wake);
+    var attempt =
+        registrations.get(encoder.eventPages ? admission / runtime.slots() : 0).tryReserve();
+    if (!attempt.acquired()) return DecisionInferenceIngress.Attempt.blocked(attempt.available());
     var reservation = attempt.reservation();
-    return DecisionInferenceIngress.Attempt.acquired(
-        new DecisionInferenceIngress(this, reservation, reservation::close));
+    try {
+      var input = new InputReservation(reservation, encoder.borrow(), admission);
+      return DecisionInferenceIngress.Attempt.acquired(
+          new DecisionInferenceIngress(
+              this,
+              input,
+              () -> {
+                try {
+                  encoder.release(input.encoding());
+                } finally {
+                  reservation.close();
+                }
+              }));
+    } catch (RuntimeException | Error failure) {
+      reservation.close();
+      throw failure;
+    }
   }
 
+  /**
+   * 受付の予約。
+   *
+   * @param dispatch 実行先（GPU）の予約
+   * @param encoding 借りた作業領域
+   * @param admission 予約した区分。実行のレーンもこの区分で選ぶ
+   */
+  private record InputReservation(
+      InferenceDispatcher.Reservation<Batch, Void> dispatch, Encoding encoding, int admission) {}
+
   @Override
-  @SuppressWarnings("unchecked")
-  public CompletableFuture<Void> submit(List<PolicyRequest> rows, DecisionInferenceIngress ingress) {
+  public CompletableFuture<Void> submit(
+      List<PolicyRequest> rows, DecisionInferenceIngress ingress) {
     var ownership = ingress.handoff(this);
     first.compareAndSet(UNSET, System.nanoTime());
-    if (registration == null) {
+    if (registrations.isEmpty()) {
       ownership.move();
       return submitDirect(rows);
     }
-    var reservation = (InferenceDispatcher.Reservation<Batch, Void>) ownership.move();
-    Encoding encoding;
+    var input = (InputReservation) ownership.move();
+    var reservation = input.dispatch();
+    var encoding = input.encoding();
     try {
-      encoding = encoder.acquire(rows);
+      if (backend != null && rows.size() > maxBatch)
+        throw new IllegalArgumentException("input exceeds reserved row capacity");
+      encoding.reset(rows, input.admission());
     } catch (RuntimeException | Error failure) {
-      reservation.close();
+      try {
+        encoder.release(encoding);
+      } finally {
+        reservation.close();
+      }
       return CompletableFuture.failedFuture(failure);
     }
     var returned = new CompletableFuture<Void>();
@@ -433,8 +551,7 @@ public final class NetworkPolicy implements PolicyService {
     long start = first.get();
     long end = last.get();
     double seconds = start == UNSET || end == UNSET ? 0 : Math.max(0, end - start) / 1e9;
-    return new Throughput(
-        decisions.sum(), batches.sum(), chunks.sum(), seconds, encoder.seconds());
+    return new Throughput(decisions.sum(), batches.sum(), chunks.sum(), seconds, encoder.seconds());
   }
 
   @Override
@@ -445,9 +562,7 @@ public final class NetworkPolicy implements PolicyService {
     closed = true;
     Throwable failure = null;
     try {
-      if (registration != null) {
-        registration.close();
-      }
+      for (var registration : registrations) registration.close();
     } catch (RuntimeException | Error problem) {
       failure = problem;
     }
@@ -458,7 +573,7 @@ public final class NetworkPolicy implements PolicyService {
           "PRISM policy v{} ({}): decisions={} batches={} chunks={} rows/batch={} seconds={}"
               + " decisions/s={} encodeSeconds={}",
           params.version(),
-          inference,
+          KernelDevices.label(backend()),
           done.decisions(),
           done.batches(),
           done.chunks(),
@@ -556,17 +671,21 @@ public final class NetworkPolicy implements PolicyService {
 
     @Override
     public DecisionDevicePipeline.BatchMetadata batchMetadata() {
-      int rows = batch.encoding().rows().size();
-      return new DecisionDevicePipeline.BatchMetadata(rows, rows);
+      return new DecisionDevicePipeline.BatchMetadata(batch.encoding().rows().size(), maxBatch);
     }
 
-    /** 入力は提出のときに推論のバックエンドが転送するので、ここでは何もしない。 */
+    /** 前のバッチが GPU で動いている間に、次のバッチの配置と転送の引数を用意する。 */
     @Override
-    public void stage(DecisionDevicePipeline.Slot slot) {}
+    public void stage(DecisionDevicePipeline.Slot slot) {
+      if (encoder.eventPages) {
+        work = device.work(batch.encoding());
+        work.prepare(slot);
+      }
+    }
 
     @Override
     public void submit(DecisionDevicePipeline.Slot slot) {
-      work = device.work(batch.encoding());
+      if (work == null) work = device.work(batch.encoding());
       work.submit(slot);
     }
 

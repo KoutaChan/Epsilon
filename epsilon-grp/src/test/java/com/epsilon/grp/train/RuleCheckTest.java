@@ -42,16 +42,19 @@ public class RuleCheckTest {
     TableState east2 = play(new TableState(OutcomeFixtures.FOUR), pao);
     RoundOutcome bust = new RoundOutcome(OutcomeFixtures.FOUR);
     bust.setRon(BaseClass.HANEMAN.base(), 1, 2, RoundOutcome.NO_SEAT, 0);
-    GameRecord liable = new GameRecord(
-        OutcomeFixtures.FOUR, 1, List.of(GrpState.of(east2)), scores(play(east2, bust)));
+    GameRecord liable =
+        new GameRecord(
+            OutcomeFixtures.FOUR, 1, List.of(GrpState.of(east2)), scores(play(east2, bust)));
 
-    GrpState broken = new GrpState(OutcomeFixtures.FOUR, 1, 0, 0, new int[] {25_100, 24_900, 25_000, 25_000});
+    GrpState broken =
+        new GrpState(OutcomeFixtures.FOUR, 1, 0, 0, new int[] {25_100, 24_900, 25_000, 25_000});
     TableState brokenTable = new TableState(OutcomeFixtures.FOUR);
     brokenTable.set(1, 0, 0, broken.scores());
     RoundOutcome yakuman = new RoundOutcome(OutcomeFixtures.FOUR);
     yakuman.setRon(BaseClass.YAKUMAN.base(), 1, 3, RoundOutcome.NO_SEAT, 0);
-    GameRecord wrong = new GameRecord(
-        OutcomeFixtures.FOUR, 2, List.of(broken), scores(play(brokenTable, yakuman)));
+    GameRecord wrong =
+        new GameRecord(
+            OutcomeFixtures.FOUR, 2, List.of(broken), scores(play(brokenTable, yakuman)));
 
     RuleCheck.Count count = RuleCheck.count(OutcomeFixtures.FOUR, List.of(liable, wrong), 5);
     Assert.assertEquals(count.transitions(), 4);

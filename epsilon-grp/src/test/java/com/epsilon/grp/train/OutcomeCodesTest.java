@@ -107,8 +107,12 @@ public class OutcomeCodesTest {
       long checked = 0;
       for (int main = 0; main < hands.mainCount(); main++) {
         OutcomeSection section = hands.section(main);
-        int bases = section == OutcomeSection.TSUMO || section == OutcomeSection.RON
-            || section == OutcomeSection.DOUBLE_RON ? HandOutcomes.BASES : 1;
+        int bases =
+            section == OutcomeSection.TSUMO
+                    || section == OutcomeSection.RON
+                    || section == OutcomeSection.DOUBLE_RON
+                ? HandOutcomes.BASES
+                : 1;
         int others = section == OutcomeSection.DOUBLE_RON ? HandOutcomes.BASES : 1;
         int factors = hands.factorCount(main);
         for (int dealer = 0; dealer < seats; dealer++) {
@@ -128,11 +132,15 @@ public class OutcomeCodesTest {
                 int placedOther = others == 1 ? NONE : other;
                 hands.place(main, placedBase, placedOther, absolute, dealer, outcome);
                 long code = HandResult.raw(outcome, dealer);
-                int count = OutcomeRows.outcomeTerms(hands, main, placedBase, placedOther, relative, expected, 0);
+                int count =
+                    OutcomeRows.outcomeTerms(
+                        hands, main, placedBase, placedOther, relative, expected, 0);
                 Arrays.fill(actual, (short) 999);
                 Assert.assertEquals(codes.terms(code, actual, 2), count, outcome.toString());
                 Assert.assertEquals(
-                    Arrays.copyOfRange(actual, 2, 2 + count), Arrays.copyOf(expected, count), outcome.toString());
+                    Arrays.copyOfRange(actual, 2, 2 + count),
+                    Arrays.copyOf(expected, count),
+                    outcome.toString());
                 Assert.assertTrue(codes.decode(code), outcome.toString());
                 Assert.assertEquals(codes.main(), main, outcome.toString());
                 Assert.assertEquals(codes.base(), placedBase, outcome.toString());
@@ -146,18 +154,22 @@ public class OutcomeCodesTest {
       }
       Assert.assertTrue(checked > 50_000, variant + " " + checked);
 
-      for (RoundOutcome unexplained : List.of(
-          outcome(variant, o -> o.setTsumo(BaseClass.YAKUMAN.base(), 1, 0, 0)),
-          outcome(variant, o -> o.setRon(BaseClass.YAKUMAN.base(), 1, 2, 0, 0)),
-          outcome(variant, o -> {
-            o.setRon(BaseClass.MANGAN.base(), 1, 0, RoundOutcome.NO_SEAT, 0);
-            o.addRonWinner(BaseClass.YAKUMAN.base(), 2, 1);
-          }),
-          outcome(variant, o -> o.setExhaustive(0, 0b10, 0)),
-          outcome(variant, o -> o.setExhaustive(0b1, 0b1, 0)),
-          outcome(variant, o -> o.setExhaustive(0b1, 0, 0b11)))) {
+      for (RoundOutcome unexplained :
+          List.of(
+              outcome(variant, o -> o.setTsumo(BaseClass.YAKUMAN.base(), 1, 0, 0)),
+              outcome(variant, o -> o.setRon(BaseClass.YAKUMAN.base(), 1, 2, 0, 0)),
+              outcome(
+                  variant,
+                  o -> {
+                    o.setRon(BaseClass.MANGAN.base(), 1, 0, RoundOutcome.NO_SEAT, 0);
+                    o.addRonWinner(BaseClass.YAKUMAN.base(), 2, 1);
+                  }),
+              outcome(variant, o -> o.setExhaustive(0, 0b10, 0)),
+              outcome(variant, o -> o.setExhaustive(0b1, 0b1, 0)),
+              outcome(variant, o -> o.setExhaustive(0b1, 0, 0b11)))) {
         long code = HandResult.raw(unexplained, 0);
-        Assert.assertTrue(HandResult.valid(code, new RoundOutcome(variant)), unexplained.toString());
+        Assert.assertTrue(
+            HandResult.valid(code, new RoundOutcome(variant)), unexplained.toString());
         Arrays.fill(actual, (short) 999);
         Assert.assertEquals(codes.terms(code, actual, 0), 0, unexplained.toString());
         Assert.assertFalse(codes.decode(code), unexplained.toString());
@@ -196,7 +208,10 @@ public class OutcomeCodesTest {
         Assert.assertTrue(HandResult.valid(code, scratch), context);
         counts.add(hand.gameId(), start, code);
         search.from(GrpState.of(start));
-        int count = hand.next().gameOver() ? search.last(scores(hand.next())) : search.next(GrpState.of(hand.next()));
+        int count =
+            hand.next().gameOver()
+                ? search.last(scores(hand.next()))
+                : search.next(GrpState.of(hand.next()));
         int written = codes.terms(code, terms, 0);
         kinds.merge(hand.outcome().kind(), 1, Integer::sum);
         if (written == 0) {
@@ -208,8 +223,15 @@ public class OutcomeCodesTest {
         Assert.assertTrue(count > 0, context);
         boolean matched = false;
         for (int index = 0; index < count && !matched; index++) {
-          int length = OutcomeRows.outcomeTerms(
-              hands, search.main(index), search.base(index), search.other(index), search.riichi(index), found, 0);
+          int length =
+              OutcomeRows.outcomeTerms(
+                  hands,
+                  search.main(index),
+                  search.base(index),
+                  search.other(index),
+                  search.riichi(index),
+                  found,
+                  0);
           matched = length == written && Arrays.equals(terms, 0, written, found, 0, length);
         }
         Assert.assertTrue(matched, context);
@@ -239,14 +261,19 @@ public class OutcomeCodesTest {
       EngineGames.Played played = EngineGames.play(variant, 200, 500, 23 + variant.seats());
       CountedHands.Builder builder = CountedHands.builder(variant, 4, 0, GrpFixtures.STAMP);
       for (EngineGames.Hand hand : played.hands()) {
-        builder.add(hand.gameId(), hand.start(), HandResult.raw(hand.outcome(), hand.start().dealer()));
+        builder.add(
+            hand.gameId(), hand.start(), HandResult.raw(hand.outcome(), hand.start().dealer()));
       }
       CountedHands counted = builder.build();
       RecencyWindow window = new RecencyWindow(4, 1, 64);
       OutcomeRows.Split fromCounts =
-          OutcomeRows.builder(variant, window, GateCohort.NEXT, FinalRound::covers).add(4, counted).build();
+          OutcomeRows.builder(variant, window, GateCohort.NEXT, FinalRound::covers)
+              .add(4, counted)
+              .build();
       OutcomeRows.Split fromRecords =
-          OutcomeRows.builder(variant, window, GateCohort.NEXT, FinalRound::covers).add(4, played.games()).build();
+          OutcomeRows.builder(variant, window, GateCohort.NEXT, FinalRound::covers)
+              .add(4, played.games())
+              .build();
       int ambiguous = 0;
       OutcomeShape shape = new OutcomeShape(variant, GrpFixtures.plainFields(), 8);
       OutcomeNetwork network = GrpFixtures.outcomes(shape, 29, 0.5);
@@ -297,13 +324,15 @@ public class OutcomeCodesTest {
     }
     RecencyWindow window = new RecencyWindow(4, 1, 64);
     OutcomeRows.Split rows =
-        OutcomeRows.builder(variant, window, GateCohort.NEXT, FinalRound::covers).add(4, builder.build()).build();
+        OutcomeRows.builder(variant, window, GateCohort.NEXT, FinalRound::covers)
+            .add(4, builder.build())
+            .build();
     Assert.assertEquals(rows.train().size() + rows.stop().size(), 40);
 
     HandOutcomes hands = HandOutcomes.of(variant);
     double[] logits = new double[hands.logits()];
     for (int seat = 0; seat < 4; seat++) {
-      logits[hands.riichiTerm(seat, RiichiRole.WINNER, true)] = 3;
+      logits[hands.riichiLogit(seat, RiichiRole.WINNER)] = 3;
     }
     OutcomeShape shape = new OutcomeShape(variant, GrpFixtures.plainFields(), 4);
     OutcomeNetwork network = GrpFixtures.biased(shape, logits);
@@ -349,7 +378,8 @@ public class OutcomeCodesTest {
         outcome.setRon(base, winner, loser, RoundOutcome.NO_SEAT, riichi);
         int other = Seats.absolute(loser, 1 + random.nextInt(seats - 1), seats);
         if (other != winner) {
-          outcome.addRonWinner(bases[random.nextInt(bases.length)].base(), other, RoundOutcome.NO_SEAT);
+          outcome.addRonWinner(
+              bases[random.nextInt(bases.length)].base(), other, RoundOutcome.NO_SEAT);
         }
       }
       case 3 -> {

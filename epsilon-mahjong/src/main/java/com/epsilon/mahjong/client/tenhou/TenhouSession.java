@@ -177,9 +177,11 @@ public final class TenhouSession {
     if (live == null) {
       live = new LiveTable(variant, seat, decider);
     } else if (live.seat() != seat) {
-      throw new IllegalStateException("Tenhou moves this player from seat " + live.seat() + " to seat " + seat);
+      throw new IllegalStateException(
+          "Tenhou moves this player from seat " + live.seat() + " to seat " + seat);
     }
-    live.startRound(start, TenhouTiles.tiles(tag.required("hai"), variant.tiles()), round.indicator());
+    live.startRound(
+        start, TenhouTiles.tiles(tag.required("hai"), variant.tiles()), round.indicator());
     result = Result.NONE;
     ready = false;
     log.info("Tenhou {} starts with this player at seat {}", start, seat);
@@ -232,7 +234,9 @@ public final class TenhouSession {
       case KAKAN -> table.addedKan(seat, meld.base());
     }
     if (seat == table.seat()) {
-      return meld.type() == Meld.Type.CHI || meld.type() == Meld.Type.PON ? decide(0, true) : List.of();
+      return meld.type() == Meld.Type.CHI || meld.type() == Meld.Type.PON
+          ? decide(0, true)
+          : List.of();
     }
     int offers = TenhouCodec.offers(tag);
     return meld.type() == Meld.Type.KAKAN && offers != 0 ? decide(offers, false) : List.of();
@@ -260,7 +264,11 @@ public final class TenhouSession {
     int engine = decisions.size() == 0 ? 0 : TenhouCodec.bits(decisions, 0, turn);
     int server = offers & TenhouCodec.Offer.bits(turn);
     if (engine != server) {
-      log.warn("Tenhou offers bits {} to seat {}, but the engine allows {}", server, live.seat(), engine);
+      log.warn(
+          "Tenhou offers bits {} to seat {}, but the engine allows {}",
+          server,
+          live.seat(),
+          engine);
     }
     int code = live.decide(each -> TenhouCodec.offered(each, offers));
     if (code == LiveTable.NO_DECISION) {

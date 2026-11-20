@@ -6,7 +6,7 @@ import { runnerImport } from "vite";
 import {
   CLIENT_ERROR_CODES,
   SERVER_ERROR_CODES,
-} from "../../../protocol/errors.ts";
+} from "@epsilon-reviewer/protocol/errors";
 
 // catalog.ts は import.meta.glob で言語のファイルを集めるので、Vite のモジュールランナーで読み込む。
 const web = fileURLToPath(new URL("../../", import.meta.url));

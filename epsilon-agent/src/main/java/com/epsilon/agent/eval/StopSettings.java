@@ -24,7 +24,8 @@ public sealed interface StopSettings {
   @Case("PRECISION")
   record Precision(
       @Key(doc = "目標の標準誤差（判定に使う量の単位）", presence = Presence.REQUIRED) @Range(min = 0) double error,
-      @Key(doc = "両側の有意水準", presence = Presence.REQUIRED) @Range(min = 0, minInclusive = false, max = 0.2)
+      @Key(doc = "両側の有意水準", presence = Presence.REQUIRED)
+          @Range(min = 0, minInclusive = false, max = 0.2)
           double alpha,
       @Key(doc = "判定の時点の間隔（牌山の数）", presence = Presence.REQUIRED) @Range(min = 512) int checkEvery)
       implements StopSettings {}
@@ -40,10 +41,14 @@ public sealed interface StopSettings {
    */
   @Case("TEST")
   record Test(
-      @Key(doc = "互角の幅（0 なら互角では止めない）", presence = Presence.REQUIRED) @Range(min = 0) double evenMargin,
-      @Key(doc = "両側の有意水準", presence = Presence.REQUIRED) @Range(min = 0, minInclusive = false, max = 0.2)
+      @Key(doc = "互角の幅（0 なら互角では止めない）", presence = Presence.REQUIRED) @Range(min = 0)
+          double evenMargin,
+      @Key(doc = "両側の有意水準", presence = Presence.REQUIRED)
+          @Range(min = 0, minInclusive = false, max = 0.2)
           double alpha,
-      @Key(doc = "有意水準を判定の時点に配る消費関数の指数（大きいほど、早い時点に配る有意水準が小さい）", presence = Presence.REQUIRED) @Range(min = 0.5, max = 4) double spending,
+      @Key(doc = "有意水準を判定の時点に配る消費関数の指数（大きいほど、早い時点に配る有意水準が小さい）", presence = Presence.REQUIRED)
+          @Range(min = 0.5, max = 4)
+          double spending,
       @Key(doc = "判定の時点の間隔（牌山の数）", presence = Presence.REQUIRED) @Range(min = 512) int checkEvery,
       @Key(doc = "判定が「良い」なら、王者を候補に替える", presence = Presence.REQUIRED) boolean promote)
       implements StopSettings {}

@@ -48,7 +48,8 @@ public class ModelFamilyTest {
 
   @Test
   public void aSeriesWithoutAFamilyIsRejected() {
-    IllegalStateException missing = expectThrows(IllegalStateException.class, () -> ModelFamily.of(Series.NANO));
+    IllegalStateException missing =
+        expectThrows(IllegalStateException.class, () -> ModelFamily.of(Series.NANO));
     assertTrue(missing.getMessage().contains("NANO"), missing.getMessage());
   }
 
@@ -63,7 +64,8 @@ public class ModelFamilyTest {
           }
 
           @Override
-          public Policy open(Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime) {
+          public Policy open(
+              Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime) {
             received.add(runtime);
             return new FirstLegalFamily().open(checkpoint, variant, options, runtime);
           }
@@ -83,7 +85,8 @@ public class ModelFamilyTest {
     assertEquals(engine.advance(ws), Boundary.DECISIONS);
     Decisions decisions = engine.decisions();
     ObservationBatch batch = new ObservationBatch(VARIANT, 64);
-    int index = new ObservationWriter(VARIANT).capture(engine.view(decisions.seat(0)), decisions, 0, batch);
+    int index =
+        new ObservationWriter(VARIANT).capture(engine.view(decisions.seat(0)), decisions, 0, batch);
     return new Observation(VARIANT).bind(batch, index);
   }
 }

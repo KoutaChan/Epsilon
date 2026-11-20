@@ -11,7 +11,8 @@ import ai.djl.ndarray.NDArray;
  * @param discards B が値を出す打牌の手かどうか [行 × 手の容量]（ホストに置く。行の平均のアンカー {@link PrismLoss#rowMean} が読む）
  * @param auxiliary 補助のヘッドの出力（補助のヘッドを計算しない順伝播では null）
  */
-public record Outputs(NDArray scores, NDArray legal, int[] actions, boolean[] discards, Auxiliary auxiliary) {
+public record Outputs(
+    NDArray scores, NDArray legal, int[] actions, boolean[] discards, Auxiliary auxiliary) {
 
   /**
    * 補助のヘッドの出力（FP32 のロジットと値）。

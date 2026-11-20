@@ -27,7 +27,8 @@ final class Networks {
    *
    * @param manager パラメーターを持つマネージャー
    */
-  static ClassicNetwork create(Architecture architecture, Variant variant, NDManager manager, long seed) {
+  static ClassicNetwork create(
+      Architecture architecture, Variant variant, NDManager manager, long seed) {
     ClassicNetwork network = new ClassicNetwork(architecture, variant, utility(architecture));
     synchronized (Networks.class) {
       manager.getEngine().setRandomSeed(Long.hashCode(seed));

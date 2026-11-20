@@ -28,8 +28,10 @@ final class OldGameLog {
 
   /** ファイルを読んで 1 コホートの半荘を返す。形式が違えば IOException を投げる。 */
   static GameCohort read(Path file) throws IOException {
-    try (DataInputStream in = new DataInputStream(
-        new BufferedInputStream(new GZIPInputStream(Files.newInputStream(file), BUFFER), BUFFER))) {
+    try (DataInputStream in =
+        new DataInputStream(
+            new BufferedInputStream(
+                new GZIPInputStream(Files.newInputStream(file), BUFFER), BUFFER))) {
       if (in.readInt() != MAGIC || in.readInt() != 1) {
         throw new IOException("Not a game log of format 1: " + file);
       }

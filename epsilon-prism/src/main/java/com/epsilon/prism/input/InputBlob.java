@@ -1,8 +1,10 @@
 package com.epsilon.prism.input;
 
+import com.epsilon.prism.kernel.ModelSchema.Section;
+
 /**
  * 1 バッチの入力の並べ方。各領域（{@link Tensor}）の名前・軸・要素の型と、行と手のインデックスの列は、ルールに依らない。領域の幅は
- * ルールごとの形式（{@link InputFormat#width}）が決める。HIP 側の領域とは名前で対応させるので、名前は変えない。
+ * ルールごとの形式（{@link InputFormat#width}）が決める。カーネルの入力領域とは名前で対応させるので、名前は変えない。
  */
 public final class InputBlob {
 
@@ -50,31 +52,32 @@ public final class InputBlob {
 
   /** 1 バッチで送るテンソル。領域はこの順に並べ、各領域の先頭を {@link BatchPlan#TENSOR_ALIGNMENT} バイトの境界にそろえる。 */
   public enum Tensor {
-    ROUND_CATEGORY(Axis.ROW, Element.U8),
-    ROUND_SCALAR(Axis.ROW, Element.BF16),
-    SEAT_CATEGORY(Axis.SEAT, Element.U8),
-    SEAT_SCALAR(Axis.SEAT, Element.BF16),
-    TILE_CATEGORY(Axis.TILE, Element.U8),
-    EVENT_CATEGORY(Axis.EVENT, Element.U8),
-    EVENT_SCALAR(Axis.EVENT, Element.BF16),
-    RELATION(Axis.TOKEN, Element.U8),
-    TRANSITION_CATEGORY(Axis.TRANSITION, Element.U8),
-    TRANSITION_SCALAR(Axis.TRANSITION, Element.BF16),
+    ROUND_CATEGORY,
+    ROUND_SCALAR,
+    SEAT_CATEGORY,
+    SEAT_SCALAR,
+    TILE_CATEGORY,
+    EVENT_CATEGORY,
+    EVENT_SCALAR,
+    RELATION,
+    TRANSITION_CATEGORY,
+    TRANSITION_SCALAR,
     /** 遷移ごとに、局・席・牌の各キーに付けるコード。 */
-    TRANSITION_CODE(Axis.TRANSITION, Element.U8),
+    TRANSITION_CODE,
     /** 打牌の値のヘッドが FP32 のまま読むフィールド。 */
-    DISCARD_EXACT(Axis.TRANSITION, Element.FP32),
-    ACTION_COLUMN(Axis.ACTION, Element.I32),
+    DISCARD_EXACT,
+    ACTION_COLUMN,
     /** ゲートのヘッドが FP32 のまま読むフィールド。 */
-    ACTION_EXACT(Axis.ACTION, Element.FP32),
-    ROW_COLUMN(Axis.ROW, Element.I32);
+    ACTION_EXACT,
+    ROW_COLUMN;
 
     private final Axis axis;
     private final Element element;
 
-    Tensor(Axis axis, Element element) {
-      this.axis = axis;
-      this.element = element;
+    Tensor() {
+      Section section = Section.valueOf(name());
+      axis = Axis.valueOf(section.axis().name());
+      element = Element.valueOf(section.element().name());
     }
 
     /**
@@ -122,7 +125,7 @@ public final class InputBlob {
     DECISION_KIND
   }
 
-  /** 価値グラフでの手の扱いごとの、s の求め方。HIP のカーネルも同じ求め方をする。 */
+  /** 価値グラフでの手の扱いごとの、s の求め方。推論カーネルも同じ求め方をする。 */
   public enum Composition {
     /** s = B(t)。 */
     DISCARD_VALUE,

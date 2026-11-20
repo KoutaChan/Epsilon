@@ -33,7 +33,8 @@ public final class TestReviewer implements AutoCloseable {
   public static final ModelKey BROKEN = new ModelKey("fixture-broken", "r1");
 
   /** 全体の設定の既定値（同時に開くモデルは 2 つ、解析の worker は 1 つで、待てるのは 16 件）。 */
-  public static final ReviewerSettings SETTINGS = Settings.bind(ReviewerSettings.class, List.of()).value();
+  public static final ReviewerSettings SETTINGS =
+      Settings.bind(ReviewerSettings.class, List.of()).value();
 
   private static final Set<JobStatus> FINISHED =
       Set.of(JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED);
@@ -78,7 +79,8 @@ public final class TestReviewer implements AutoCloseable {
          "defaultModels":[{"modelId":"fixture","revision":"r1"}]}
         """
             .formatted(FixtureFamily.SERIES.id()));
-    return new ReviewerConfig(directory.resolve("data"), models, SETTINGS, FixtureFamily.families());
+    return new ReviewerConfig(
+        directory.resolve("data"), models, SETTINGS, FixtureFamily.families());
   }
 
   private static void checkpoint(Path directory, String name, String marker) throws IOException {

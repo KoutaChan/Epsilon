@@ -53,16 +53,12 @@ final class WinLegality {
    * 第一ツモかどうかは、実際のツモと同じにする。実際に引いた牌が赤でも、その赤は数えない。
    *
    * @param kind 引いたとする牌の種類
-   * @param red 引いたとする牌が赤の 5 なら true
    * @param out 和了の点数を書く先
    * @return 和了の形で役があれば true
    */
-  static boolean tsumoAs(PublicState state, Hand hand, int kind, boolean red, RuleWorkspace ws, WinScore out) {
+  static boolean tsumoAs(PublicState state, Hand hand, int kind, RuleWorkspace ws, WinScore out) {
     TurnEvent draw = state.last();
     long reds = draw.red() ? hand.redFives() & ~Tiles.bit(draw.tile()) : hand.redFives();
-    if (red) {
-      reds |= Tiles.bit(kind);
-    }
     WinContext context = load(state, hand, draw.seat(), reds, ws);
     context.hand().remove(draw.tile());
     setTsumo(context, draw, kind, state.liveLeft(), state.events());
@@ -79,11 +75,14 @@ final class WinLegality {
    * @param liveLeft ツモの後の山の残りの枚数
    * @param events 局の公開イベント
    */
-  static void setTsumo(WinContext context, TurnEvent draw, int kind, int liveLeft, EventLog events) {
+  static void setTsumo(
+      WinContext context, TurnEvent draw, int kind, int liveLeft, EventLog events) {
     Source source = draw.rinshan() ? Source.RINSHAN : liveLeft == 0 ? Source.HAITEI : Source.TSUMO;
     context.setWin(kind, source);
     context.setFirstDraw(
-        source == Source.TSUMO && events.interruptions() == 0 && events.riverSize(draw.seat()) == 0);
+        source == Source.TSUMO
+            && events.interruptions() == 0
+            && events.riverSize(draw.seat()) == 0);
   }
 
   /**
@@ -117,7 +116,14 @@ final class WinLegality {
 
   /** {@link #ron} と同じ判定をし、裏ドラを数えない点数を書く。 */
   static boolean ronWithoutUra(
-      PublicState state, Hand hand, int seat, int kind, boolean red, Source source, RuleWorkspace ws, WinScore out) {
+      PublicState state,
+      Hand hand,
+      int seat,
+      int kind,
+      boolean red,
+      Source source,
+      RuleWorkspace ws,
+      WinScore out) {
     return claimable(state, hand, seat, kind)
         && ws.scorer().score(loadRon(state, hand, seat, kind, red, source, ws), out);
   }
@@ -164,11 +170,19 @@ final class WinLegality {
   /** 形の上の待ちにあり、見逃しの振聴でも河の振聴でもなければ true。 */
   private static boolean claimable(PublicState state, Hand hand, int seat, int kind) {
     long waits = hand.waits();
-    return Tiles.contains(waits, kind) && !hand.missedRon() && (waits & state.riverKinds(seat)) == 0;
+    return Tiles.contains(waits, kind)
+        && !hand.missedRon()
+        && (waits & state.riverKinds(seat)) == 0;
   }
 
   private static WinContext loadRon(
-      PublicState state, Hand hand, int seat, int kind, boolean red, Source source, RuleWorkspace ws) {
+      PublicState state,
+      Hand hand,
+      int seat,
+      int kind,
+      boolean red,
+      Source source,
+      RuleWorkspace ws) {
     long reds = red ? hand.redFives() | Tiles.bit(kind) : hand.redFives();
     WinContext context = load(state, hand, seat, reds, ws);
     context.setWin(kind, source);
@@ -183,7 +197,8 @@ final class WinLegality {
    * @param ws 書く先の和了の状況を持つ作業領域
    * @return 書いた和了の状況
    */
-  private static WinContext load(PublicState state, Hand hand, int seat, long redFives, RuleWorkspace ws) {
+  private static WinContext load(
+      PublicState state, Hand hand, int seat, long redFives, RuleWorkspace ws) {
     Variant variant = state.variant();
     WinContext context = ws.context();
     context.clear();

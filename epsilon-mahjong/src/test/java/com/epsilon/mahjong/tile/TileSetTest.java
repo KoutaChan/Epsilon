@@ -47,7 +47,8 @@ public class TileSetTest {
   public void redFivesAreCopyZero() {
     Assert.assertEquals(redIds(TileSet.FULL), List.of(16, 52, 88));
     Assert.assertEquals(redIds(TileSet.SANMA), List.of(52, 88));
-    Assert.assertEquals(TileSet.FULL.redKinds(), Tiles.bit(Tiles.M5) | Tiles.bit(Tiles.P5) | Tiles.bit(Tiles.S5));
+    Assert.assertEquals(
+        TileSet.FULL.redKinds(), Tiles.bit(Tiles.M5) | Tiles.bit(Tiles.P5) | Tiles.bit(Tiles.S5));
     Assert.assertEquals(TileSet.SANMA.redKinds(), Tiles.bit(Tiles.P5) | Tiles.bit(Tiles.S5));
   }
 

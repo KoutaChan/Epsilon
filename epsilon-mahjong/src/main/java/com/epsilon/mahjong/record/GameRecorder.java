@@ -89,7 +89,9 @@ public final class GameRecorder {
       throw new IllegalStateException("No round is being recorded");
     }
     emit(full);
-    rounds.add(new RecordedRound(start, deal, indicator, RecordedRound.contractOrder(events), result(end)));
+    rounds.add(
+        new RecordedRound(
+            start, deal, indicator, RecordedRound.contractOrder(events), result(end)));
     open = false;
   }
 
@@ -102,7 +104,8 @@ public final class GameRecorder {
    */
   public RecordedGame gameEnded(TableState last, RecordedGame.Meta meta) {
     if (open || rounds.isEmpty()) {
-      throw new IllegalStateException(open ? "The last round has not ended" : "No round was recorded");
+      throw new IllegalStateException(
+          open ? "The last round has not ended" : "No round was recorded");
     }
     int[] scores = new int[seats];
     for (int seat = 0; seat < seats; seat++) {
@@ -172,7 +175,8 @@ public final class GameRecorder {
     riichiSeen = riichi;
     for (int index = chanceSeen; index < chance.size(); index++) {
       switch (chance.kind(index)) {
-        case DRAW, RINSHAN -> events.add(new RecordEvent.Draw(chance.seat(index), chance.tile(index)));
+        case DRAW, RINSHAN ->
+            events.add(new RecordEvent.Draw(chance.seat(index), chance.tile(index)));
         case URA -> ura.add(chance.tile(index));
         case INDICATOR -> {}
       }
@@ -184,7 +188,8 @@ public final class GameRecorder {
     int seat = log.seat(event);
     return switch (log.kind(event)) {
       case DISCARD ->
-          new RecordEvent.Discard(seat, removed(full, seat, 1).getFirst(), log.tsumogiri(event), log.riichi(event));
+          new RecordEvent.Discard(
+              seat, removed(full, seat, 1).getFirst(), log.tsumogiri(event), log.riichi(event));
       case MELD -> {
         Meld meld = Meld.of(log.meld(event));
         yield meld.type() == Meld.Type.ANKAN
@@ -265,7 +270,8 @@ public final class GameRecorder {
 
   private void requireVariant(FullView full) {
     if (full.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + full.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + full.variant());
     }
   }
 }

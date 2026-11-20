@@ -61,7 +61,8 @@ final class PolicyHead extends AbstractBlock {
   private static final int ALTERNATIVES = Alternative.values().length;
 
   /** 鳴きの種類の分岐（チー・ポン・大明槓）と、槓の種類の分岐（暗槓・加槓）の番号。 */
-  private static final int[] MELD_ALTERNATIVES = ordinals(Alternative.CHI, Alternative.PON, Alternative.DAIMINKAN);
+  private static final int[] MELD_ALTERNATIVES =
+      ordinals(Alternative.CHI, Alternative.PON, Alternative.DAIMINKAN);
 
   private static final int[] KAN_ALTERNATIVES = ordinals(Alternative.ANKAN, Alternative.KAKAN);
 
@@ -187,51 +188,71 @@ final class PolicyHead extends AbstractBlock {
             : addChildBlock(
                 "transitionWaitYakuProjection",
                 Linear.builder().setUnits(YAKU_EMBEDDING).optBias(false).build());
-    pointProjection = major ? addChildBlock("pointProjection", new PointProjection(variant, utility)) : null;
-    pointOutcomeEncoder = major ? addChildBlock("pointOutcomeEncoder", new PointOutcomeEncoder(context)) : null;
+    pointProjection =
+        major ? addChildBlock("pointProjection", new PointProjection(variant, utility)) : null;
+    pointOutcomeEncoder =
+        major ? addChildBlock("pointOutcomeEncoder", new PointOutcomeEncoder(context)) : null;
     policyNodeEmbedding =
-        major ? null : addChildBlock("policyNodeEmbedding", table(PolicyNode.values().length, hidden));
-    alternativeEmbedding = major ? null : addChildBlock("alternativeEmbedding", table(ALTERNATIVES, hidden));
-    alternativeOffset = major ? addChildBlock("alternativeOffset", table(ALTERNATIVES, hidden)) : null;
-    actionFeatureProjection = addChildBlock("actionFeatureProjection", Linear.builder().setUnits(hidden).build());
+        major
+            ? null
+            : addChildBlock("policyNodeEmbedding", table(PolicyNode.values().length, hidden));
+    alternativeEmbedding =
+        major ? null : addChildBlock("alternativeEmbedding", table(ALTERNATIVES, hidden));
+    alternativeOffset =
+        major ? addChildBlock("alternativeOffset", table(ALTERNATIVES, hidden)) : null;
+    actionFeatureProjection =
+        addChildBlock("actionFeatureProjection", Linear.builder().setUnits(hidden).build());
     transitionFeatureProjection =
         addChildBlock("transitionFeatureProjection", Linear.builder().setUnits(hidden).build());
     transitionTileKeyValueProjection =
         addChildBlock(
-            "transitionTileKeyValueProjection", Linear.builder().setUnits(TRANSITION_KEYS + context).build());
+            "transitionTileKeyValueProjection",
+            Linear.builder().setUnits(TRANSITION_KEYS + context).build());
     if (major) {
       Linear publicContext = Linear.builder().setUnits(TRANSITION_KEYS + context).build();
       publicContext.getDirectParameters().get("weight").setInitializer(new ConstantInitializer(0f));
       publicContext.getDirectParameters().get("bias").setInitializer(new ConstantInitializer(0f));
-      transitionPublicContextProjection = addChildBlock("transitionPublicContextProjection", publicContext);
+      transitionPublicContextProjection =
+          addChildBlock("transitionPublicContextProjection", publicContext);
     } else {
       transitionPublicContextProjection = null;
     }
     transitionTileQueryProjection =
-        addChildBlock("transitionTileQueryProjection", Linear.builder().setUnits(TRANSITION_KEYS).build());
+        addChildBlock(
+            "transitionTileQueryProjection", Linear.builder().setUnits(TRANSITION_KEYS).build());
     transitionWaitKeyValueProjection =
         addChildBlock(
-            "transitionWaitKeyValueProjection", Linear.builder().setUnits(TRANSITION_KEYS + context).build());
+            "transitionWaitKeyValueProjection",
+            Linear.builder().setUnits(TRANSITION_KEYS + context).build());
     playerTileQueryProjection =
-        addChildBlock("playerTileQueryProjection", Linear.builder().setUnits(context).optBias(false).build());
+        addChildBlock(
+            "playerTileQueryProjection", Linear.builder().setUnits(context).optBias(false).build());
     playerMemoryKeyValueProjection =
         major
             ? null
             : addChildBlock(
-                "playerMemoryKeyValueProjection", Linear.builder().setUnits(2L * context).optBias(false).build());
+                "playerMemoryKeyValueProjection",
+                Linear.builder().setUnits(2L * context).optBias(false).build());
     playerTileContextMixer = addChildBlock("playerTileContextMixer", new PlayerTileMixer(context));
     transitionFusion =
-        addChildBlock("transitionFusion", new FeatureFusion(hidden, hidden, context, hidden, context, hidden));
+        addChildBlock(
+            "transitionFusion",
+            new FeatureFusion(hidden, hidden, context, hidden, context, hidden));
     transitionLayerNorm = addChildBlock("transitionLayerNorm", LayerNorm.builder().axis(3).build());
     discardCandidateScorer = addChildBlock("discardCandidateScorer", new DiscardScorer(hidden));
     candidateFusion =
-        addChildBlock("candidateFusion", new FeatureFusion(hidden, hidden, hidden, hidden, context, hidden));
+        addChildBlock(
+            "candidateFusion", new FeatureFusion(hidden, hidden, hidden, hidden, context, hidden));
     candidateLayerNorm = addChildBlock("candidateLayerNorm", LayerNorm.builder().axis(2).build());
-    actionCandidateHidden = addChildBlock("actionCandidateHidden", Linear.builder().setUnits(hidden).build());
+    actionCandidateHidden =
+        addChildBlock("actionCandidateHidden", Linear.builder().setUnits(hidden).build());
     actionCandidateScoreHead =
-        addChildBlock("actionCandidateScoreHead", Linear.builder().setUnits(1).optBias(false).build());
-    alternativeHidden = addChildBlock("alternativeHidden", Linear.builder().setUnits(hidden).build());
-    alternativeScoreHead = addChildBlock("alternativeScoreHead", Linear.builder().setUnits(1).build());
+        addChildBlock(
+            "actionCandidateScoreHead", Linear.builder().setUnits(1).optBias(false).build());
+    alternativeHidden =
+        addChildBlock("alternativeHidden", Linear.builder().setUnits(hidden).build());
+    alternativeScoreHead =
+        addChildBlock("alternativeScoreHead", Linear.builder().setUnits(1).build());
     int pointFeatures = major ? PointProjection.GATE_FEATURES : 0;
     ronGate = addChildBlock("ronGate", new BinaryGate(hidden, pointFeatures));
     callGate = addChildBlock("callGate", new BinaryGate(hidden, 0));
@@ -254,11 +275,14 @@ final class PolicyHead extends AbstractBlock {
       int rows = batch.rows();
       int actions = batch.bucket().actions();
       NDArray actionCategories = batch.tensor(Tensor.ACTION_CATEGORIES);
-      NDArray legal = actionCategories.get("..., {}", columns.id()).neq(0).toType(pass.compute(), false);
+      NDArray legal =
+          actionCategories.get("..., {}", columns.id()).neq(0).toType(pass.compute(), false);
       NDArray typeMasks = NDArrays.categoricalMasks(actionCategories, legal, typeFields, typeSets);
-      NDArray groupMasks = NDArrays.categoricalMasks(actionCategories, legal, groupFields, groupSets);
+      NDArray groupMasks =
+          NDArrays.categoricalMasks(actionCategories, legal, groupFields, groupSets);
 
-      NDArray keyValues = major ? memory.players() : pass.linear(playerMemoryKeyValueProjection, memory.players());
+      NDArray keyValues =
+          major ? memory.players() : pass.linear(playerMemoryKeyValueProjection, memory.players());
       NDArray byPlayer =
           NDArrays.groupedPackedScaledDotProductAttention(
               pass.linear(playerTileQueryProjection, memory.tiles()),
@@ -270,7 +294,8 @@ final class PolicyHead extends AbstractBlock {
       Transitions transitions = transitions(pass, batch, memory, state, allPlayers);
 
       NDArray actionFeatures =
-          NDArrays.embeddingWithOffsets(actionCategories, actionOffsets, pass.table(actionFeatureEmbedding))
+          NDArrays.embeddingWithOffsets(
+                  actionCategories, actionOffsets, pass.table(actionFeatureEmbedding))
               .reshape(rows, actions, (long) columns.stride() * Widths.CATEGORY);
       NDArray pointGates = null;
       NDArray extra;
@@ -281,7 +306,8 @@ final class PolicyHead extends AbstractBlock {
       } else {
         extra = pass.toCompute(batch.tensor(Tensor.ACTION_NUMERICS));
       }
-      NDArray actionEmbeddings = Pass.silu(pass.linear(actionFeatureProjection, actionFeatures.concat(extra, 2)));
+      NDArray actionEmbeddings =
+          Pass.silu(pass.linear(actionFeatureProjection, actionFeatures.concat(extra, 2)));
       NDArray primaryTiles = actionCategories.get("..., {}", columns.primaryTile());
       NDArray stateCategories = batch.tensor(Tensor.STATE_CATEGORIES);
       NDArray eventContext =
@@ -292,7 +318,9 @@ final class PolicyHead extends AbstractBlock {
       NDArray rootContexts =
           eventContext
               .mul(groupMasks.get("..., 0").expandDims(2))
-              .add(NDArrays.paddedBatchGather(allPlayers, primaryTiles).mul(groupMasks.get("..., 1").expandDims(2)));
+              .add(
+                  NDArrays.paddedBatchGather(allPlayers, primaryTiles)
+                      .mul(groupMasks.get("..., 1").expandDims(2)));
       NDArray stateContext = state.reshape(rows, 1, hidden);
       NDArray candidates =
           ArrayScope.of(
@@ -309,7 +337,9 @@ final class PolicyHead extends AbstractBlock {
                                   stateContext)))
                       .mul(legal.expandDims(2)));
       NDArray rootScores =
-          pass.linear(actionCandidateScoreHead, Pass.silu(pass.linear(actionCandidateHidden, candidates)))
+          pass.linear(
+                  actionCandidateScoreHead,
+                  Pass.silu(pass.linear(actionCandidateHidden, candidates)))
               .reshape(rows, actions);
 
       DiscardChoices choices =
@@ -319,8 +349,11 @@ final class PolicyHead extends AbstractBlock {
               type(typeMasks, ActionType.RIICHI_DAHAI),
               columns);
       NDArray discard = choices.discardMask();
-      NDArray shared = NDArrays.paddedBatchGather(transitions.scores().get(":, :, 0"), choices.representativeSlots());
-      NDArray actionScores = rootScores.mul(discard.neg().add(1f)).add(shared.mul(discard)).mul(legal);
+      NDArray shared =
+          NDArrays.paddedBatchGather(
+              transitions.scores().get(":, :, 0"), choices.representativeSlots());
+      NDArray actionScores =
+          rootScores.mul(discard.neg().add(1f)).add(shared.mul(discard)).mul(legal);
       NDArray damaContexts = NDArrays.paddedBatchGather(candidates, choices.damaSlots());
       NDArray riichiContexts = NDArrays.paddedBatchGather(candidates, choices.riichiSlots());
       NDArray riichiScores =
@@ -343,19 +376,22 @@ final class PolicyHead extends AbstractBlock {
               damaContexts,
               riichiContexts,
               pointGates);
-      return new PolicyScores(scope.keep(alternatives), scope.keep(actionScores), scope.keep(riichiScores));
+      return new PolicyScores(
+          scope.keep(alternatives), scope.keep(actionScores), scope.keep(riichiScores));
     }
   }
 
   /** 遷移の表現を作り、打牌の遷移を採点する。実在する遷移だけを詰めて計算し、結果を [行, 合法手, 遷移] の並びに戻す。 */
-  private Transitions transitions(Pass pass, ClassicBatch batch, Memory memory, NDArray state, NDArray allPlayers) {
+  private Transitions transitions(
+      Pass pass, ClassicBatch batch, Memory memory, NDArray state, NDArray allPlayers) {
     try (ArrayScope scope = new ArrayScope()) {
       int rows = batch.rows();
       Bucket bucket = batch.bucket();
       int actions = bucket.actions();
       int per = bucket.transitions();
       long slots = (long) rows * actions * per;
-      NDArray categories = batch.tensor(Tensor.TRANSITION_CATEGORIES).reshape(slots, transitionStride);
+      NDArray categories =
+          batch.tensor(Tensor.TRANSITION_CATEGORIES).reshape(slots, transitionStride);
       NDArray presentValues = categories.get(":, {}", transitionPresent);
       NDArray indices = presentValues.gt(0).nonzero().reshape(-1);
       long present = indices.size();
@@ -364,22 +400,27 @@ final class PolicyHead extends AbstractBlock {
       NDArray numerics =
           pass.toCompute(
               NDArrays.gatherRows(
-                  batch.tensor(Tensor.TRANSITION_NUMERICS).reshape(slots, transitionNumerics), indices));
+                  batch.tensor(Tensor.TRANSITION_NUMERICS).reshape(slots, transitionNumerics),
+                  indices));
       NDArray tileCodes =
-          NDArrays.gatherRows(batch.tensor(Tensor.TRANSITION_TILES).reshape(slots, Tiles.KINDS), indices);
-      NDArray waitIds = NDArrays.gatherRows(batch.tensor(Tensor.WAIT_TILE_IDS).reshape(slots, WAITS), indices);
+          NDArrays.gatherRows(
+              batch.tensor(Tensor.TRANSITION_TILES).reshape(slots, Tiles.KINDS), indices);
+      NDArray waitIds =
+          NDArrays.gatherRows(batch.tensor(Tensor.WAIT_TILE_IDS).reshape(slots, WAITS), indices);
       NDArray features =
           Pass.silu(
               pass.linear(
                   transitionFeatureProjection,
-                  NDArrays.embeddingWithOffsets(compact, transitionOffsets, pass.table(actionFeatureEmbedding))
+                  NDArrays.embeddingWithOffsets(
+                          compact, transitionOffsets, pass.table(actionFeatureEmbedding))
                       .reshape(present, (long) transitionStride * Widths.CATEGORY)
                       .concat(numerics, 1)));
 
       NDArray tileKeyValues = pass.linear(transitionTileKeyValueProjection, memory.tiles());
       NDArray waitFeatures;
       if (major) {
-        tileKeyValues = tileKeyValues.add(pass.linear(transitionPublicContextProjection, allPlayers));
+        tileKeyValues =
+            tileKeyValues.add(pass.linear(transitionPublicContextProjection, allPlayers));
         waitFeatures = waitOutcomes(pass, batch, indices, batchIds, per, tileCodes, waitIds);
       } else {
         waitFeatures = waitYakus(pass, batch, indices, slots);
@@ -412,17 +453,24 @@ final class PolicyHead extends AbstractBlock {
                   NDArrays.gatherRows(state, batchIds)));
       embeddings = pass.norm(transitionLayerNorm, embeddings);
       NDArray discards = compact.get(":, {}", discardActionId).neq(0).toType(pass.compute(), false);
-      NDArray scores = discardCandidateScorer.score(pass, embeddings).reshape(present).mul(discards);
+      NDArray scores =
+          discardCandidateScorer.score(pass, embeddings).reshape(present).mul(discards);
       NDArray denseScores =
-          NDArrays.scatterRows(scores.reshape(present, 1), indices, slots).reshape(rows, actions, per);
-      NDArray denseEmbeddings = NDArrays.scatterRows(embeddings, indices, slots).reshape(rows, actions, per, hidden);
+          NDArrays.scatterRows(scores.reshape(present, 1), indices, slots)
+              .reshape(rows, actions, per);
+      NDArray denseEmbeddings =
+          NDArrays.scatterRows(embeddings, indices, slots).reshape(rows, actions, per, hidden);
       if (per == 1) {
-        return new Transitions(scope.keep(denseScores), scope.keep(denseEmbeddings.reshape(rows, actions, hidden)));
+        return new Transitions(
+            scope.keep(denseScores), scope.keep(denseEmbeddings.reshape(rows, actions, hidden)));
       }
-      NDArray presentMask = presentValues.reshape(rows, actions, per).neq(0).toType(pass.compute(), false);
-      NDArray weights = pass.toCompute(NDArrays.maskedSoftmax(denseScores, presentMask, 2).stopGradient());
+      NDArray presentMask =
+          presentValues.reshape(rows, actions, per).neq(0).toType(pass.compute(), false);
+      NDArray weights =
+          pass.toCompute(NDArrays.maskedSoftmax(denseScores, presentMask, 2).stopGradient());
       return new Transitions(
-          scope.keep(denseScores), scope.keep(denseEmbeddings.mul(weights.expandDims(3)).sum(new int[] {2})));
+          scope.keep(denseScores),
+          scope.keep(denseEmbeddings.mul(weights.expandDims(3)).sum(new int[] {2})));
     }
   }
 
@@ -442,18 +490,17 @@ final class PolicyHead extends AbstractBlock {
               .sub(1f)
               .reshape(present, WAITS, WIN_TYPES, ClassicSchema.YAKU_CHUNKS, 1);
       NDArray bits =
-          stored
-              .div(yakuBitDivisors)
-              .floor()
-              .mod(2f)
-              .reshape(present, WAITS, WIN_TYPES, YAKU_BITS);
+          stored.div(yakuBitDivisors).floor().mod(2f).reshape(present, WAITS, WIN_TYPES, YAKU_BITS);
       NDArray yakus =
           pass.linear(transitionWaitYakuProjection, pass.toCompute(bits))
               .reshape(present, WAITS, (long) WIN_TYPES * YAKU_EMBEDDING);
       NDArray scores =
           pass.toCompute(
               NDArrays.gatherRows(
-                      batch.tensor(Tensor.WAIT_SCORES).reshape(slots, (long) WAITS * waitScoreStride), indices)
+                      batch
+                          .tensor(Tensor.WAIT_SCORES)
+                          .reshape(slots, (long) WAITS * waitScoreStride),
+                      indices)
                   .reshape(present, WAITS, waitScoreStride));
       return scope.keep(yakus.concat(scores, 2));
     }
@@ -477,17 +524,21 @@ final class PolicyHead extends AbstractBlock {
     long slots = (long) batch.rows() * batch.bucket().actions() * per;
     NDArray facts =
         NDArrays.gatherRows(
-                batch.tensor(Tensor.WAIT_WIN_FACTS).reshape(slots, (long) WAITS * WIN_TYPES * waitFactStride),
+                batch
+                    .tensor(Tensor.WAIT_WIN_FACTS)
+                    .reshape(slots, (long) WAITS * WIN_TYPES * waitFactStride),
                 indices)
             .toType(DataType.INT32, false)
             .reshape(present * WAITS, WIN_TYPES, waitFactStride);
-    NDArray waits = facts.get(":, :, {}", waitFactValid).sum(new int[] {1}).gt(0).nonzero().reshape(-1);
+    NDArray waits =
+        facts.get(":, :, {}", waitFactValid).sum(new int[] {1}).gt(0).nonzero().reshape(-1);
     long count = waits.size();
     if (count == 0) {
       return pass.working().zeros(new Shape(present, WAITS, context), pass.compute());
     }
     NDArray owners = waits.floorDivide(WAITS);
-    NDArray kinds = NDArrays.gatherRows(waitIds.reshape(present * WAITS), waits).toType(DataType.INT64, false);
+    NDArray kinds =
+        NDArrays.gatherRows(waitIds.reshape(present * WAITS), waits).toType(DataType.INT64, false);
     NDArray aka =
         NDArrays.gatherRows(tileCodes, owners)
             .gather(kinds.maximum(1).sub(1).reshape(count, 1), 1)
@@ -510,13 +561,15 @@ final class PolicyHead extends AbstractBlock {
     Projection projection =
         pointProjection.waits(
             pass,
-            NDArrays.gatherRows(batch.tensor(Tensor.POINT_LEDGER_100), rowsOfWaits).toType(DataType.INT32, false),
+            NDArrays.gatherRows(batch.tensor(Tensor.POINT_LEDGER_100), rowsOfWaits)
+                .toType(DataType.INT32, false),
             NDArrays.gatherRows(batch.tensor(Tensor.STATE_CATEGORIES), rowsOfWaits),
             NDArrays.gatherRows(facts, waits),
             aka,
             riichi);
     NDArray outcomes = pointOutcomeEncoder.encode(pass, pass.toCompute(projection.features()));
-    NDArray cases = pass.toCompute(projection.valid().sum(new int[] {1}).maximum(1f).reshape(count, 1));
+    NDArray cases =
+        pass.toCompute(projection.valid().sum(new int[] {1}).maximum(1f).reshape(count, 1));
     NDArray pooled = outcomes.sum(new int[] {1}).div(cases);
     return NDArrays.scatterRows(pooled, waits, present * WAITS).reshape(present, WAITS, context);
   }
@@ -537,7 +590,9 @@ final class PolicyHead extends AbstractBlock {
       long rows = state.getShape().get(0);
       NDManager working = pass.working();
       NDArray pooled =
-          pass.toCompute(NDArrays.groupedMaskedSoftmaxPool(actionScores.stopGradient(), typeMasks, candidates));
+          pass.toCompute(
+              NDArrays.groupedMaskedSoftmaxPool(
+                  actionScores.stopGradient(), typeMasks, candidates));
       NDArray typePresence = typeMasks.transpose(2, 0, 1).sum(new int[] {2}).minimum(1f);
       NDArray zeroContext = working.zeros(new Shape(rows, hidden), pass.compute());
       NDArray zeroPresence = working.zeros(new Shape(rows), pass.compute());
@@ -563,7 +618,9 @@ final class PolicyHead extends AbstractBlock {
                 .reshape(1, ALTERNATIVES, 2L * hidden)
                 .broadcast(rows, ALTERNATIVES, 2L * hidden);
         preactivation =
-            pass.linear(alternativeHidden, NDArrays.concat(new NDList(states, alternativeContexts, fixed), 2));
+            pass.linear(
+                alternativeHidden,
+                NDArrays.concat(new NDList(states, alternativeContexts, fixed), 2));
       }
       NDArray scored =
           pass.linear(alternativeScoreHead, Pass.silu(preactivation))
@@ -572,10 +629,13 @@ final class PolicyHead extends AbstractBlock {
 
       NDArray passContext = pooled.get("{}, :, :", ActionType.PASS.ordinal());
       NDArray passPresence = typePresence.get("{}, :", ActionType.PASS.ordinal()).reshape(rows, 1);
-      NDArray meldContext = pool(pass, scored, alternativePresence, alternativeContexts, MELD_ALTERNATIVES);
+      NDArray meldContext =
+          pool(pass, scored, alternativePresence, alternativeContexts, MELD_ALTERNATIVES);
       NDArray meldPresence = any(alternativePresence, MELD_ALTERNATIVES);
       NDArray callScore =
-          callGate.score(pass, state, passContext, meldContext, null).mul(passPresence.mul(meldPresence));
+          callGate
+              .score(pass, state, passContext, meldContext, null)
+              .mul(passPresence.mul(meldPresence));
       NDArray declinedRon = mix(passContext, meldContext, callScore, passPresence, meldPresence);
       NDArray declinedRonPresence = either(passPresence, meldPresence);
       NDArray ronScore =
@@ -585,22 +645,33 @@ final class PolicyHead extends AbstractBlock {
                   state,
                   declinedRon,
                   context(alternativeContexts, Alternative.RON),
-                  pointGates == null ? null : pointGates(pointGates, typeMasks, ActionType.RON_AGARI))
+                  pointGates == null
+                      ? null
+                      : pointGates(pointGates, typeMasks, ActionType.RON_AGARI))
               .mul(declinedRonPresence.mul(has(alternativePresence, Alternative.RON)));
 
-      NDArray continuation = continuation(pass, choices, damaContexts, riichiContexts, actionScores, riichiScores);
-      NDArray kanContext = pool(pass, scored, alternativePresence, alternativeContexts, KAN_ALTERNATIVES);
-      NDArray continuationPresence = choices.representativeMask().sum(new int[] {1}).reshape(rows, 1).minimum(1f);
+      NDArray continuation =
+          continuation(pass, choices, damaContexts, riichiContexts, actionScores, riichiScores);
+      NDArray kanContext =
+          pool(pass, scored, alternativePresence, alternativeContexts, KAN_ALTERNATIVES);
+      NDArray continuationPresence =
+          choices.representativeMask().sum(new int[] {1}).reshape(rows, 1).minimum(1f);
       NDArray kanPresence = any(alternativePresence, KAN_ALTERNATIVES);
       NDArray kanScore =
-          kanGate.score(pass, state, continuation, kanContext, null).mul(continuationPresence.mul(kanPresence));
-      NDArray continued = mix(continuation, kanContext, kanScore, continuationPresence, kanPresence);
+          kanGate
+              .score(pass, state, continuation, kanContext, null)
+              .mul(continuationPresence.mul(kanPresence));
+      NDArray continued =
+          mix(continuation, kanContext, kanScore, continuationPresence, kanPresence);
       NDArray continuedPresence = either(continuationPresence, kanPresence);
       NDArray kyushuContext = context(alternativeContexts, Alternative.KYUSHU);
       NDArray kyushuPresence = has(alternativePresence, Alternative.KYUSHU);
       NDArray kyushuScore =
-          kyushuGate.score(pass, state, continued, kyushuContext, null).mul(continuedPresence.mul(kyushuPresence));
-      NDArray declinedTsumo = mix(continued, kyushuContext, kyushuScore, continuedPresence, kyushuPresence);
+          kyushuGate
+              .score(pass, state, continued, kyushuContext, null)
+              .mul(continuedPresence.mul(kyushuPresence));
+      NDArray declinedTsumo =
+          mix(continued, kyushuContext, kyushuScore, continuedPresence, kyushuPresence);
       NDArray declinedTsumoPresence = either(continuedPresence, kyushuPresence);
       NDArray tsumoScore =
           tsumoGate
@@ -609,7 +680,9 @@ final class PolicyHead extends AbstractBlock {
                   state,
                   declinedTsumo,
                   context(alternativeContexts, Alternative.TSUMO),
-                  pointGates == null ? null : pointGates(pointGates, typeMasks, ActionType.TSUMO_AGARI))
+                  pointGates == null
+                      ? null
+                      : pointGates(pointGates, typeMasks, ActionType.TSUMO_AGARI))
               .mul(declinedTsumoPresence.mul(has(alternativePresence, Alternative.TSUMO)));
 
       NDList columns = new NDList(ALTERNATIVES);
@@ -642,15 +715,19 @@ final class PolicyHead extends AbstractBlock {
       NDArray actionScores,
       NDArray riichiScores) {
     NDArray riichiProbability =
-        Activation.sigmoid(NDArrays.paddedBatchGather(riichiScores, choices.riichiSlots())).stopGradient();
+        Activation.sigmoid(NDArrays.paddedBatchGather(riichiScores, choices.riichiSlots()))
+            .stopGradient();
     NDArray joint = choices.damaPresent().mul(choices.riichiPresent());
     NDArray riichiMass = joint.mul(riichiProbability);
     NDArray riichiWeight = choices.riichiPresent().sub(joint).add(riichiMass).stopGradient();
     NDArray damaWeight = choices.damaPresent().sub(riichiMass).stopGradient();
     NDArray identities =
-        damaContexts.mul(damaWeight.expandDims(2)).add(riichiContexts.mul(riichiWeight.expandDims(2)));
+        damaContexts
+            .mul(damaWeight.expandDims(2))
+            .add(riichiContexts.mul(riichiWeight.expandDims(2)));
     NDArray identityWeights =
-        pass.toCompute(NDArrays.maskedSoftmax(actionScores, choices.representativeMask(), 1).stopGradient());
+        pass.toCompute(
+            NDArrays.maskedSoftmax(actionScores, choices.representativeMask(), 1).stopGradient());
     return identities.mul(identityWeights.expandDims(2)).sum(new int[] {1});
   }
 
@@ -665,7 +742,11 @@ final class PolicyHead extends AbstractBlock {
    * @return 合わせた文脈 [行, 幅]
    */
   private static NDArray mix(
-      NDArray baseline, NDArray selected, NDArray logit, NDArray baselinePresence, NDArray selectedPresence) {
+      NDArray baseline,
+      NDArray selected,
+      NDArray logit,
+      NDArray baselinePresence,
+      NDArray selectedPresence) {
     NDArray joint = baselinePresence.mul(selectedPresence);
     NDArray selectedMass = joint.mul(Activation.sigmoid(logit).stopGradient());
     NDArray selectedWeight = selectedPresence.sub(joint).add(selectedMass).stopGradient();
@@ -678,8 +759,10 @@ final class PolicyHead extends AbstractBlock {
    *
    * @param alternatives 合わせる分岐の番号
    */
-  private static NDArray pool(Pass pass, NDArray scored, NDArray presence, NDArray contexts, int[] alternatives) {
-    return pass.toCompute(NDArrays.indexedMaskedSoftmaxPool(scored.stopGradient(), presence, contexts, alternatives));
+  private static NDArray pool(
+      Pass pass, NDArray scored, NDArray presence, NDArray contexts, int[] alternatives) {
+    return pass.toCompute(
+        NDArrays.indexedMaskedSoftmaxPool(scored.stopGradient(), presence, contexts, alternatives));
   }
 
   /**
@@ -732,9 +815,11 @@ final class PolicyHead extends AbstractBlock {
   @Override
   protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
     actionOffsets = manager.create(actionOffsetValues).reshape(1, 1, actionOffsetValues.length);
-    transitionOffsets = manager.create(transitionOffsetValues).reshape(1, transitionOffsetValues.length);
+    transitionOffsets =
+        manager.create(transitionOffsetValues).reshape(1, transitionOffsetValues.length);
     actionFeatureEmbedding.initialize(manager, dataType, new Shape(-1, -1, columns.stride()));
-    transitionTileRelationEmbedding.initialize(manager, dataType, new Shape(-1, -1, -1, Tiles.KINDS));
+    transitionTileRelationEmbedding.initialize(
+        manager, dataType, new Shape(-1, -1, -1, Tiles.KINDS));
     Shape state = new Shape(-1, hidden);
     if (major) {
       pointProjection.initialize(manager, dataType, new Shape(-1, PointProjection.FEATURES));
@@ -755,11 +840,14 @@ final class PolicyHead extends AbstractBlock {
       policyNodeEmbedding.initialize(manager, dataType, new Shape(ALTERNATIVES));
       alternativeEmbedding.initialize(manager, dataType, new Shape(ALTERNATIVES));
     }
-    int actionExtra = major ? context : ClassicSchema.of(Architecture.NANO).layout(ActionFloat.class).stride();
+    int actionExtra =
+        major ? context : ClassicSchema.of(Architecture.NANO).layout(ActionFloat.class).stride();
     actionFeatureProjection.initialize(
         manager, dataType, new Shape(-1, (long) columns.stride() * Widths.CATEGORY + actionExtra));
     transitionFeatureProjection.initialize(
-        manager, dataType, new Shape(-1, (long) transitionStride * Widths.CATEGORY + transitionNumerics));
+        manager,
+        dataType,
+        new Shape(-1, (long) transitionStride * Widths.CATEGORY + transitionNumerics));
     transitionTileKeyValueProjection.initialize(manager, dataType, state);
     if (major) {
       transitionPublicContextProjection.initialize(manager, dataType, new Shape(-1, context));
@@ -782,14 +870,18 @@ final class PolicyHead extends AbstractBlock {
     actionCandidateScoreHead.initialize(manager, dataType, state);
     alternativeHidden.initialize(manager, dataType, new Shape(-1, (major ? 2L : 4L) * hidden));
     alternativeScoreHead.initialize(manager, dataType, state);
-    for (BinaryGate gate : new BinaryGate[] {ronGate, callGate, tsumoGate, kyushuGate, kanGate, riichiGate}) {
+    for (BinaryGate gate :
+        new BinaryGate[] {ronGate, callGate, tsumoGate, kyushuGate, kanGate, riichiGate}) {
       gate.initialize(manager, dataType, state);
     }
   }
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use score");
   }
 

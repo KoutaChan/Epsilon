@@ -27,7 +27,6 @@ import com.epsilon.mahjong.rules.RoundOutcome;
 import com.epsilon.mahjong.rules.Settlement;
 import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
-import com.epsilon.prism.FourPlayerFormat;
 import com.epsilon.prism.TestSettings;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.settings.PrismSettings;
@@ -45,7 +44,7 @@ import java.util.SplittableRandom;
  */
 final class GrpFixtures {
   static final RankUtility UTILITY = RankUtility.TENHOU;
-  static final Variant VARIANT = FourPlayerFormat.VARIANT;
+  static final Variant VARIANT = Variant.TENHOU_4P;
 
   /** 和了の基本点の候補（この中から一様に選ぶ）。 */
   private static final BaseClass[] BASES = {
@@ -85,12 +84,14 @@ final class GrpFixtures {
   }
 
   /** コホート {@code t} を確定し、項目 {@code entry} で集めた半荘の記録と、その数のファイルを書く。 */
-  static void recordCounted(GrpFiles files, int t, PhiEntry entry, Played played) throws IOException {
+  static void recordCounted(GrpFiles files, int t, PhiEntry entry, Played played)
+      throws IOException {
     record(files, t, entry, played.games());
     CountFile.write(files.counts(t), played.counted());
   }
 
-  private static GameRecord game(long gameId, SplittableRandom random, CountedHands.Builder counts) {
+  private static GameRecord game(
+      long gameId, SplittableRandom random, CountedHands.Builder counts) {
     TableState table = new TableState(VARIANT);
     TableState next = new TableState(VARIANT);
     RoundOutcome outcome = new RoundOutcome(VARIANT);
@@ -101,7 +102,8 @@ final class GrpFixtures {
       int winner = random.nextInt(4);
       int base = BASES[random.nextInt(BASES.length)].base();
       if (kind < 2) outcome.setExhaustive(random.nextInt(16), 0, 0);
-      else if (kind < 6) outcome.setRon(base, winner, (winner + 1 + random.nextInt(3)) % 4, RoundOutcome.NO_SEAT, 0);
+      else if (kind < 6)
+        outcome.setRon(base, winner, (winner + 1 + random.nextInt(3)) % 4, RoundOutcome.NO_SEAT, 0);
       else outcome.setTsumo(base, winner, RoundOutcome.NO_SEAT, 0);
       if (counts != null) counts.add(gameId, table, HandResult.raw(outcome, table.dealer()));
       Settlement.apply(VARIANT, table, outcome, delta);
@@ -133,27 +135,32 @@ final class GrpFixtures {
     return network(directory, GrpRefitter.shape(GrpFixtures.VARIANT), seed, scale);
   }
 
-  private static Path network(Path directory, GrpShape shape, long seed, double scale) throws IOException {
+  private static Path network(Path directory, GrpShape shape, long seed, double scale)
+      throws IOException {
     Random random = new Random(seed);
     float[] weights = new float[GrpTensor.starts(shape)[GrpTensor.values().length]];
-    for (int index = 0; index < weights.length; index++) weights[index] = (float) (random.nextGaussian() * scale);
+    for (int index = 0; index < weights.length; index++)
+      weights[index] = (float) (random.nextGaussian() * scale);
     GrpCheckpoint.write(GrpNetwork.of(shape, weights), directory);
     return directory.toAbsolutePath().normalize();
   }
 
   /** 乱数の重みを持つ小さな q（学び直しの GRP と同じフィールド、隠れ層の幅 8）を {@code directory} に書き、正規化した絶対パスを返す。 */
   static Path outcomes(Path directory, Variant variant, long seed) throws IOException {
-    return outcomes(directory, new OutcomeShape(variant, GrpRefitter.shape(VARIANT).fields(), 8), seed, 0.3);
+    return outcomes(
+        directory, new OutcomeShape(variant, GrpRefitter.shape(VARIANT).fields(), 8), seed, 0.3);
   }
 
   /**
    * 重みの標準偏差を {@code scale} にした q を {@code directory} に書き、正規化した絶対パスを返す。{@code scale} が 0 なら一様な q（終わり方と
    * 打点は一様、立直は 1/2）に、大きければ局の結果を大きく外す q になる。
    */
-  static Path outcomes(Path directory, OutcomeShape shape, long seed, double scale) throws IOException {
+  static Path outcomes(Path directory, OutcomeShape shape, long seed, double scale)
+      throws IOException {
     Random random = new Random(seed);
     float[] weights = new float[OutcomeTensor.starts(shape)[OutcomeTensor.values().length]];
-    for (int index = 0; index < weights.length; index++) weights[index] = (float) (random.nextGaussian() * scale);
+    for (int index = 0; index < weights.length; index++)
+      weights[index] = (float) (random.nextGaussian() * scale);
     GrpCheckpoint.write(OutcomeNetwork.of(shape, weights), directory);
     return directory.toAbsolutePath().normalize();
   }
@@ -163,7 +170,8 @@ final class GrpFixtures {
     GruShape shape = new GruShape(VARIANT, 8, 1);
     Random random = new Random(seed);
     float[] weights = new float[GruTensor.count(shape)];
-    for (int index = 0; index < weights.length; index++) weights[index] = (float) (random.nextGaussian() * 0.3);
+    for (int index = 0; index < weights.length; index++)
+      weights[index] = (float) (random.nextGaussian() * 0.3);
     GrpCheckpoint.write(GruSinkhorn.of(shape, weights), directory);
     return directory.toAbsolutePath().normalize();
   }
@@ -187,7 +195,10 @@ final class GrpFixtures {
   /** {@link #scoreStart} の上書き。 */
   static String[] scoreStartAssignments() {
     return new String[] {
-      "phi.source=SELF_GRP", "phi.start.kind=SCORE_RANK", "phi.grp.monitor=RECORD", "phi.grp.refit=MANUAL",
+      "phi.source=SELF_GRP",
+      "phi.start.kind=SCORE_RANK",
+      "phi.grp.monitor=RECORD",
+      "phi.grp.refit=MANUAL",
       "phi.grp.switching=PROPOSE"
     };
   }
@@ -195,8 +206,12 @@ final class GrpFixtures {
   /** {@link #grpStart} の上書き。 */
   static String[] grpStartAssignments(Path checkpoint) {
     return new String[] {
-      "phi.source=SELF_GRP", "phi.start.kind=GRP_CHECKPOINT", "phi.start.grp=" + checkpoint, "phi.grp.monitor=RECORD",
-      "phi.grp.refit=MANUAL", "phi.grp.switching=PROPOSE"
+      "phi.source=SELF_GRP",
+      "phi.start.kind=GRP_CHECKPOINT",
+      "phi.start.grp=" + checkpoint,
+      "phi.grp.monitor=RECORD",
+      "phi.grp.refit=MANUAL",
+      "phi.grp.switching=PROPOSE"
     };
   }
 
@@ -225,19 +240,22 @@ final class GrpFixtures {
   }
 
   /** コホート {@code t} を確定し、項目 {@code entry} で集めた半荘の記録 {@code games} を書く。 */
-  static void record(GrpFiles files, int t, PhiEntry entry, List<GameRecord> games) throws IOException {
+  static void record(GrpFiles files, int t, PhiEntry entry, List<GameRecord> games)
+      throws IOException {
     seal(files, t);
     Files.createDirectories(files.records(t).getParent());
     GameRecordCodec.write(files.records(t), new GameCohort(VARIANT, t, entry.id(), games));
   }
 
   /** 時点 {@code slot} の READY の候補の行を refits.jsonl に書く。 */
-  static RefitRecord ready(GrpFiles files, String id, int slot, Path checkpoint) throws IOException {
+  static RefitRecord ready(GrpFiles files, String id, int slot, Path checkpoint)
+      throws IOException {
     return ready(files, id, slot, checkpoint, null);
   }
 
   /** 時点 {@code slot} の READY の候補の行を、q（{@code outcomes}。無ければ null）と一緒に refits.jsonl に書く。 */
-  static RefitRecord ready(GrpFiles files, String id, int slot, Path checkpoint, Path outcomes) throws IOException {
+  static RefitRecord ready(GrpFiles files, String id, int slot, Path checkpoint, Path outcomes)
+      throws IOException {
     var record =
         new RefitRecord(
             id,
@@ -260,12 +278,24 @@ final class GrpFixtures {
 
   /** 点数の順位の項目。 */
   static PhiEntry scoreEntry(String id, int from) {
-    return new PhiEntry(id, PhiEntryKind.SCORE_RANK, VARIANT, "", "", "", "", "", "", from, "", "test");
+    return new PhiEntry(
+        id, PhiEntryKind.SCORE_RANK, VARIANT, "", "", "", "", "", "", from, "", "test");
   }
 
   /** 自己対局の候補の項目（checkpoint は読まない）。 */
   static PhiEntry selfEntry(String id, int from, String sha) {
     return new PhiEntry(
-        id, PhiEntryKind.NETWORK, VARIANT, "/grp/" + id, sha, "", "", "", "", from, PhiEntry.INITIAL_ID, "test");
+        id,
+        PhiEntryKind.NETWORK,
+        VARIANT,
+        "/grp/" + id,
+        sha,
+        "",
+        "",
+        "",
+        "",
+        from,
+        PhiEntry.INITIAL_ID,
+        "test");
   }
 }

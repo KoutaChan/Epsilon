@@ -20,9 +20,21 @@ public class WinLegalityTest {
   /** 和了の形でも役が無ければツモ和了は出ない。ドラと赤は役に数えない。 */
   @Test
   public void aWinNeedsAYakuAndDoraDoNotCount() {
-    Scene none = Scene.first().pon(1, 0, "2m").indicator("1m").hand(1, "340p678s99s78p").draw(1, "6p").turn();
+    Scene none =
+        Scene.first()
+            .pon(1, 0, "2m")
+            .indicator("1m")
+            .hand(1, "340p678s99s78p")
+            .draw(1, "6p")
+            .turn();
     Assert.assertFalse(none.legal(1).contains("TSUMO_AGARI"));
-    Scene tanyao = Scene.first().pon(1, 0, "2m").indicator("1m").hand(1, "340p678s44s78p").draw(1, "6p").turn();
+    Scene tanyao =
+        Scene.first()
+            .pon(1, 0, "2m")
+            .indicator("1m")
+            .hand(1, "340p678s44s78p")
+            .draw(1, "6p")
+            .turn();
     Assert.assertEquals(tanyao.legal(1).get(0), "TSUMO_AGARI");
     WinScore score = tanyao.decisions.win(0);
     Assert.assertTrue(score.has(ScoringYaku.TANYAO));
@@ -33,11 +45,18 @@ public class WinLegalityTest {
   /** 嶺上牌でのツモ和了は嶺上開花、山の最後のツモは海底、鳴きで途切れていない親の第一ツモは天和になる。 */
   @Test
   public void theDrawDecidesRinshanHaiteiAndTheFirstDraw() {
-    WinScore rinshan = tsumo(Scene.first().river(0, "9m").ankan(0, "5z").hand(0, "123m456p789s1z").rinshan(0, "1z"));
+    WinScore rinshan =
+        tsumo(
+            Scene.first().river(0, "9m").ankan(0, "5z").hand(0, "123m456p789s1z").rinshan(0, "1z"));
     Assert.assertTrue(rinshan.has(ScoringYaku.RINSHAN));
     Assert.assertFalse(rinshan.has(ScoringYaku.HAITEI));
     WinScore haitei =
-        tsumo(Scene.first().river(0, "9m").burn(Scene.VARIANT.liveWall() - 1).hand(0, TANKI_EAST).draw(0, "1z"));
+        tsumo(
+            Scene.first()
+                .river(0, "9m")
+                .burn(Scene.VARIANT.liveWall() - 1)
+                .hand(0, TANKI_EAST)
+                .draw(0, "1z"));
     Assert.assertTrue(haitei.has(ScoringYaku.HAITEI));
     WinScore tenhou = tsumo(Scene.first().hand(0, TANKI_EAST).draw(0, "1z"));
     Assert.assertTrue(tenhou.has(ScoringYaku.TENHOU));
@@ -52,7 +71,13 @@ public class WinLegalityTest {
    */
   @Test
   public void paoFallsOnTheSeatThatFedTheLastSet() {
-    Scene dragons = Scene.first().pon(1, 0, "5z").pon(1, 2, "6z").pon(1, 3, "7z").hand(1, "123m4p").draw(1, "4p");
+    Scene dragons =
+        Scene.first()
+            .pon(1, 0, "5z")
+            .pon(1, 2, "6z")
+            .pon(1, 3, "7z")
+            .hand(1, "123m4p")
+            .draw(1, "4p");
     WinScore score = tsumo(dragons);
     Assert.assertTrue(score.has(ScoringYaku.DAISANGEN));
     Assert.assertEquals(WinLegality.pao(dragons.full.seat(1), score, RoundOutcome.NO_SEAT), 3);
@@ -60,14 +85,27 @@ public class WinLegalityTest {
     Assert.assertEquals(WinLegality.pao(dragons.full.seat(1), score, 0), 3);
     Assert.assertEquals(WinLegality.pao(dragons.full.seat(1), score, 2), 3);
 
-    Scene closed = Scene.first().pon(1, 0, "5z").pon(1, 3, "7z").ankan(1, "6z").hand(1, "123m4p").draw(1, "4p");
+    Scene closed =
+        Scene.first()
+            .pon(1, 0, "5z")
+            .pon(1, 3, "7z")
+            .ankan(1, "6z")
+            .hand(1, "123m4p")
+            .draw(1, "4p");
     score = tsumo(closed);
     Assert.assertTrue(score.has(ScoringYaku.DAISANGEN));
-    Assert.assertEquals(WinLegality.pao(closed.full.seat(1), score, RoundOutcome.NO_SEAT), RoundOutcome.NO_SEAT);
+    Assert.assertEquals(
+        WinLegality.pao(closed.full.seat(1), score, RoundOutcome.NO_SEAT), RoundOutcome.NO_SEAT);
     Assert.assertEquals(WinLegality.pao(closed.full.seat(1), score, 3), RoundOutcome.NO_SEAT);
 
     Scene winds =
-        Scene.first().pon(2, 0, "1z").pon(2, 1, "2z").pon(2, 3, "3z").pon(2, 1, "4z").hand(2, "5p").draw(2, "5p");
+        Scene.first()
+            .pon(2, 0, "1z")
+            .pon(2, 1, "2z")
+            .pon(2, 3, "3z")
+            .pon(2, 1, "4z")
+            .hand(2, "5p")
+            .draw(2, "5p");
     score = tsumo(winds);
     Assert.assertTrue(score.has(ScoringYaku.DAISUUSHII));
     Assert.assertEquals(WinLegality.pao(winds.full.seat(2), score, RoundOutcome.NO_SEAT), 1);
@@ -75,14 +113,17 @@ public class WinLegalityTest {
     Assert.assertEquals(WinLegality.pao(winds.full.seat(2), score, 3), 1);
 
     Scene plain = Scene.first().river(0, "9m").hand(0, TANKI_EAST).draw(0, "1z");
-    Assert.assertEquals(WinLegality.pao(plain.full.seat(0), tsumo(plain), RoundOutcome.NO_SEAT), RoundOutcome.NO_SEAT);
+    Assert.assertEquals(
+        WinLegality.pao(plain.full.seat(0), tsumo(plain), RoundOutcome.NO_SEAT),
+        RoundOutcome.NO_SEAT);
   }
 
   /** 荒牌での聴牌の判定。手の内に 4 枚持つ牌だけを待つ形は不聴になり、副露で 3 枚使った牌の単騎は聴牌になる。 */
   @Test
   public void exhaustiveTenpaiIgnoresAWaitHeldFourTimesInHand() {
     Assert.assertFalse(WinLegality.tenpai(Scene.first().hand(0, "1111m234p567p789s").hands[0]));
-    Assert.assertTrue(WinLegality.tenpai(Scene.first().pon(0, 1, "1m").hand(0, "1m234p567p789s").hands[0]));
+    Assert.assertTrue(
+        WinLegality.tenpai(Scene.first().pon(0, 1, "1m").hand(0, "1m234p567p789s").hands[0]));
     Assert.assertTrue(WinLegality.tenpai(Scene.first().hand(0, "123m456p789s1122z").hands[0]));
     Assert.assertFalse(WinLegality.tenpai(Scene.first().hand(0, "13579m13579p135s").hands[0]));
   }
@@ -121,16 +162,21 @@ public class WinLegalityTest {
     Assert.assertEquals(last.full.waits(3), Tiles.bit(Tiles.S1) | Tiles.bit(Tiles.S4));
 
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> last.full.ronScore(3, Tiles.physicalId(Tiles.S1, 1), 3, last.ws, score));
+        IllegalArgumentException.class,
+        () -> last.full.ronScore(3, Tiles.physicalId(Tiles.S1, 1), 3, last.ws, score));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> last.full.ronScore(3, Tiles.physicalId(Tiles.S1, 1), 2, new RuleWorkspace(Variant.TENHOU_3P), score));
+        () ->
+            last.full.ronScore(
+                3, Tiles.physicalId(Tiles.S1, 1), 2, new RuleWorkspace(Variant.TENHOU_3P), score));
   }
 
   private static WinScore tsumo(Scene scene) {
     WinScore score = new WinScore();
     Hand hand = scene.hands[scene.state.last().seat()];
-    Assert.assertTrue(WinLegality.tsumo(scene.state, hand, scene.wall, scene.ws, score), "no win for " + hand.shape());
+    Assert.assertTrue(
+        WinLegality.tsumo(scene.state, hand, scene.wall, scene.ws, score),
+        "no win for " + hand.shape());
     return score;
   }
 }

@@ -19,16 +19,26 @@ public class RiichiClientTest {
   private static final String START = "{\"type\":\"start_game\",\"id\":0}";
   private static final String END = "{\"type\":\"end_game\",\"scores\":[25000,25000,25000,25000]}";
   private static final String PASSED = "{\"type\":\"validation_result\",\"passed\":true}";
-  private static final String INACTIVE = "{\"error\":\"Token verification failed: Bot is inactive\"}";
+  private static final String INACTIVE =
+      "{\"error\":\"Token verification failed: Bot is inactive\"}";
 
   @Test
   public void validationAndRankedConnectionsEachGetAFreshDecider() throws Exception {
     Script script =
-        new Script(transport(INACTIVE), transport(START, END, PASSED), transport(START, END), transport(START, END));
+        new Script(
+            transport(INACTIVE),
+            transport(START, END, PASSED),
+            transport(START, END),
+            transport(START, END));
     Assert.assertEquals(script.play(2), new RiichiClient.Result(2, 0));
     Assert.assertEquals(script.deciders.get(), 4);
     Assert.assertEquals(
-        script.uris, List.of(RiichiClient.RANKED, RiichiClient.VALIDATION, RiichiClient.RANKED, RiichiClient.RANKED));
+        script.uris,
+        List.of(
+            RiichiClient.RANKED,
+            RiichiClient.VALIDATION,
+            RiichiClient.RANKED,
+            RiichiClient.RANKED));
     script.assertAllClosed();
     Assert.assertTrue(script.delays.isEmpty());
   }
@@ -46,7 +56,8 @@ public class RiichiClientTest {
   public void aRejectionAfterValidationDoesNotValidateAgain() {
     Script script = new Script(transport(INACTIVE), transport(PASSED), transport(INACTIVE));
     Assert.assertThrows(IOException.class, () -> script.play(1));
-    Assert.assertEquals(script.uris, List.of(RiichiClient.RANKED, RiichiClient.VALIDATION, RiichiClient.RANKED));
+    Assert.assertEquals(
+        script.uris, List.of(RiichiClient.RANKED, RiichiClient.VALIDATION, RiichiClient.RANKED));
     script.assertAllClosed();
     Assert.assertTrue(script.delays.isEmpty());
   }
@@ -58,8 +69,12 @@ public class RiichiClientTest {
             transport("{\"error\":\"Token verification failed: ranked " + TOKEN + "\"}"),
             transport("{\"error\":\"Token verification failed: validation " + TOKEN + "\"}"));
     IOException error = Assert.expectThrows(IOException.class, () -> script.play(1));
-    Assert.assertTrue(error.getMessage().contains("Ranked: Token verification failed: ranked <redacted>"));
-    Assert.assertTrue(error.getMessage().contains("Validation: Token verification failed: validation <redacted>"));
+    Assert.assertTrue(
+        error.getMessage().contains("Ranked: Token verification failed: ranked <redacted>"));
+    Assert.assertTrue(
+        error
+            .getMessage()
+            .contains("Validation: Token verification failed: validation <redacted>"));
     Assert.assertFalse(error.toString().contains(TOKEN));
     script.assertAllClosed();
   }
@@ -83,7 +98,9 @@ public class RiichiClientTest {
     Assert.assertEquals(script.deciders.get(), RiichiClient.MAX_FAILURES);
     Assert.assertEquals(
         script.delays,
-        List.of(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L, 30_000L, 30_000L, 30_000L, 30_000L));
+        List.of(
+            1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L, 30_000L, 30_000L, 30_000L,
+            30_000L));
     script.assertAllClosed();
   }
 
@@ -111,7 +128,9 @@ public class RiichiClientTest {
     Script script =
         new Script(
             Variant.TENHOU_3P,
-            transport("{\"type\":\"start_game\",\"id\":2}", "{\"type\":\"end_game\",\"scores\":[35000,35000,35000]}"));
+            transport(
+                "{\"type\":\"start_game\",\"id\":2}",
+                "{\"type\":\"end_game\",\"scores\":[35000,35000,35000]}"));
     Assert.assertEquals(script.play(1), new RiichiClient.Result(1, 0));
     Assert.assertEquals(script.uris, List.of(RiichiClient.RANKED));
     script.assertAllClosed();

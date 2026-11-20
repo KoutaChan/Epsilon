@@ -98,7 +98,9 @@ public class MjaiSanmaTest {
             }
             int kyoku = event.get("kyoku").getAsInt();
             Assert.assertTrue(kyoku >= 1 && kyoku <= seats, event.toString());
-            Assert.assertTrue(Set.of("E", "S", "W").contains(event.get("bakaze").getAsString()), event.toString());
+            Assert.assertTrue(
+                Set.of("E", "S", "W").contains(event.get("bakaze").getAsString()),
+                event.toString());
           }
           case "hora" -> Assert.assertEquals(event.getAsJsonArray("deltas").size(), seats);
           case "ryukyoku" -> {
@@ -108,9 +110,11 @@ public class MjaiSanmaTest {
           case KITA -> {
             int actor = event.get("actor").getAsInt();
             Assert.assertTrue(actor >= 0 && actor < seats, event.toString());
-            Assert.assertEquals(event.toString(), KITA_EVENT + ",\"actor\":" + actor + ",\"pai\":\"N\"}");
+            Assert.assertEquals(
+                event.toString(), KITA_EVENT + ",\"actor\":" + actor + ",\"pai\":\"N\"}");
           }
-          case "nukidora", "nuki", "babei" -> Assert.fail("a nuki is written under another name: " + event);
+          case "nukidora", "nuki", "babei" ->
+              Assert.fail("a nuki is written under another name: " + event);
           case "chi" -> Assert.fail("a three-player record has a chi: " + event);
           default -> {}
         }
@@ -153,7 +157,8 @@ public class MjaiSanmaTest {
     JsonObject hora = ofType(text, "hora").get(0);
     Assert.assertEquals(yakuHan(hora, NUKIDORA), 2, hora.toString());
     Assert.assertEquals(yakuHan(hora, "dora"), 1, hora.toString());
-    Assert.assertEquals(yakuHan(hora, "dora") + yakuHan(hora, NUKIDORA), win.dora(), hora.toString());
+    Assert.assertEquals(
+        yakuHan(hora, "dora") + yakuHan(hora, NUKIDORA), win.dora(), hora.toString());
   }
 
   /** 北を抜いた後に国士無双をツモ和了しても、役満にはドラの翻が付かないので nukidora を書かない。 */
@@ -248,7 +253,11 @@ public class MjaiSanmaTest {
             "0:KYUSHU_KYUHAI");
     RecordedGame kan =
         RecordedGames.scene(
-            Scenes.first(VARIANT).hand(0, "19m258p147s369s45z").hand(1, "444z123p456p78s19m").hand(2, NOTEN_C).draws("6z"),
+            Scenes.first(VARIANT)
+                .hand(0, "19m258p147s369s45z")
+                .hand(1, "444z123p456p78s19m")
+                .hand(2, NOTEN_C)
+                .draws("6z"),
             "north-daiminkan",
             "0:DAHAI(N)",
             "1:DAIMINKAN(N)");
@@ -259,10 +268,12 @@ public class MjaiSanmaTest {
     for (RecordedGame game : List.of(nine, kan)) {
       String id = game.meta().id();
       String text = MjaiCodec.write(game);
-      Assert.assertEquals(MjaiCodec.read(riichiEnvStyle(text), id), MjaiCodec.read(withoutBreakdown(text), id), id);
+      Assert.assertEquals(
+          MjaiCodec.read(riichiEnvStyle(text), id), MjaiCodec.read(withoutBreakdown(text), id), id);
     }
     Assert.assertEquals(
-        MjaiCodec.read(nineText, "nine").rounds().get(0).result().abortive(), AbortiveDraw.NINE_TERMINALS);
+        MjaiCodec.read(nineText, "nine").rounds().get(0).result().abortive(),
+        AbortiveDraw.NINE_TERMINALS);
   }
 
   /** names の無い start_game では、四人打ちか三人打ちかを scores の数で決める。names の数が scores の数と合わない牌譜は読まない。 */
@@ -275,9 +286,11 @@ public class MjaiSanmaTest {
     Assert.assertEquals(read, MjaiCodec.read(withoutBreakdown(four), "four"));
 
     String three = MjaiCodec.write(selfPlay().get(0));
-    String fourNames = three.replaceFirst("\"names\":\\[[^\\]]*\\]", "\"names\":[\"\",\"\",\"\",\"\"]");
+    String fourNames =
+        three.replaceFirst("\"names\":\\[[^\\]]*\\]", "\"names\":[\"\",\"\",\"\",\"\"]");
     Assert.assertNotEquals(fourNames, three);
-    Assert.assertThrows(IllegalArgumentException.class, () -> MjaiCodec.read(fourNames, "disagree"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> MjaiCodec.read(fourNames, "disagree"));
   }
 
   /** 四人打ちの牌譜の北抜き、北でない牌の北抜き、北を持たない席の北抜き、三人打ちの牌譜のチーは読まない。 */
@@ -285,9 +298,12 @@ public class MjaiSanmaTest {
   public void inconsistentThreePlayerRecordsAreRejected() {
     String four = MjaiCodec.write(RecordedGames.play(Variant.TENHOU_4P, 0, "four"));
     int tsumo = four.indexOf("{\"type\":\"tsumo\"");
-    int actor = JsonParser.parseString(lineAt(four, tsumo)).getAsJsonObject().get("actor").getAsInt();
-    String fourNuki = insertAfterLine(four, tsumo, KITA_EVENT + ",\"actor\":" + actor + ",\"pai\":\"N\"}");
-    Assert.assertThrows(IllegalArgumentException.class, () -> MjaiCodec.read(fourNuki, "four-nuki"));
+    int actor =
+        JsonParser.parseString(lineAt(four, tsumo)).getAsJsonObject().get("actor").getAsInt();
+    String fourNuki =
+        insertAfterLine(four, tsumo, KITA_EVENT + ",\"actor\":" + actor + ",\"pai\":\"N\"}");
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> MjaiCodec.read(fourNuki, "four-nuki"));
 
     String three = textWithNuki();
     String west = three.replaceFirst("(\"type\":\"kita\",\"actor\":\\d,\"pai\":)\"N\"", "$1\"W\"");
@@ -295,12 +311,14 @@ public class MjaiSanmaTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> MjaiCodec.read(west, "west"));
 
     int kyoku = three.indexOf("{\"type\":\"start_kyoku\"");
-    JsonArray hands = JsonParser.parseString(lineAt(three, kyoku)).getAsJsonObject().getAsJsonArray("tehais");
+    JsonArray hands =
+        JsonParser.parseString(lineAt(three, kyoku)).getAsJsonObject().getAsJsonArray("tehais");
     int seat = 0;
     while (hands.get(seat).getAsJsonArray().contains(JsonParser.parseString("\"N\""))) {
       seat++;
     }
-    String noNorth = insertAfterLine(three, kyoku, KITA_EVENT + ",\"actor\":" + seat + ",\"pai\":\"N\"}");
+    String noNorth =
+        insertAfterLine(three, kyoku, KITA_EVENT + ",\"actor\":" + seat + ",\"pai\":\"N\"}");
     Assert.assertThrows(IllegalArgumentException.class, () -> MjaiCodec.read(noNorth, "no-north"));
 
     int dahai = three.indexOf("{\"type\":\"dahai\"");
@@ -377,7 +395,8 @@ public class MjaiSanmaTest {
     List<String> late = new ArrayList<>(lines);
     late.set(nuki + 1, lines.get(nuki + 2));
     late.set(nuki + 2, lines.get(nuki + 1));
-    Assert.assertThrows(IllegalArgumentException.class, () -> MjaiCodec.read(String.join("\n", late), "late"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> MjaiCodec.read(String.join("\n", late), "late"));
   }
 
   /** 北のポン・大明槓・加槓・暗槓はふつうの面子で、どれも書いて読むと同じ記録になり、再生できる。 */
@@ -385,7 +404,11 @@ public class MjaiSanmaTest {
   public void northMeldsAreOrdinaryMelds() {
     RecordedGame open =
         RecordedGames.scene(
-            Scenes.first(VARIANT).hand(0, "19m258p147s369s45z").hand(1, "444z123p456p78s19m").hand(2, NOTEN_C).draws("6z"),
+            Scenes.first(VARIANT)
+                .hand(0, "19m258p147s369s45z")
+                .hand(1, "444z123p456p78s19m")
+                .hand(2, NOTEN_C)
+                .draws("6z"),
             "north-daiminkan",
             "0:DAHAI(N)",
             "1:DAIMINKAN(N)");
@@ -419,8 +442,10 @@ public class MjaiSanmaTest {
     }
     Assert.assertTrue(hasMeld(open, Meld.Type.DAIMINKAN));
     Assert.assertTrue(hasMeld(added, Meld.Type.PON));
-    Assert.assertTrue(added.rounds().get(0).events().contains(new RecordEvent.AddedKan(1, Tiles.PEI)));
-    Assert.assertTrue(closed.rounds().get(0).events().contains(new RecordEvent.ClosedKan(0, Tiles.PEI)));
+    Assert.assertTrue(
+        added.rounds().get(0).events().contains(new RecordEvent.AddedKan(1, Tiles.PEI)));
+    Assert.assertTrue(
+        closed.rounds().get(0).events().contains(new RecordEvent.ClosedKan(0, Tiles.PEI)));
     JsonObject hora = ofType(MjaiCodec.write(closed), "hora").get(0);
     Assert.assertEquals(yakuHan(hora, "dora"), 4, hora.toString());
     Assert.assertEquals(yakuHan(hora, NUKIDORA), 0, hora.toString());
@@ -434,18 +459,26 @@ public class MjaiSanmaTest {
   public void threePlayerDrawsSurviveAWriteAndARead() {
     RecordedGame exhaustive =
         RecordedGames.scene(
-            Scenes.first(VARIANT).hand(0, TENPAI).hand(1, NOTEN_A).hand(2, NOTEN_B).drawAt(0, "4s4s4s"), "tenpai");
-    RoundResult tenpai = roundTrip(exhaustive, MjaiCodec.write(exhaustive)).rounds().get(0).result();
+            Scenes.first(VARIANT)
+                .hand(0, TENPAI)
+                .hand(1, NOTEN_A)
+                .hand(2, NOTEN_B)
+                .drawAt(0, "4s4s4s"),
+            "tenpai");
+    RoundResult tenpai =
+        roundTrip(exhaustive, MjaiCodec.write(exhaustive)).rounds().get(0).result();
     Assert.assertEquals(tenpai.kind(), EndKind.EXHAUSTIVE);
     Assert.assertEquals(tenpai.tenpaiMask(), 0b001);
     Assert.assertEquals(tenpai.deltas(), new int[] {2_000, -1_000, -1_000});
 
     RecordedGame childNagashi = nagashi(1);
-    RoundResult child = roundTrip(childNagashi, MjaiCodec.write(childNagashi)).rounds().get(0).result();
+    RoundResult child =
+        roundTrip(childNagashi, MjaiCodec.write(childNagashi)).rounds().get(0).result();
     Assert.assertEquals(child.nagashiMask(), 0b010);
     Assert.assertEquals(child.deltas(), new int[] {-4_000, 6_000, -2_000});
     RecordedGame dealerNagashi = nagashi(0);
-    RoundResult dealer = roundTrip(dealerNagashi, MjaiCodec.write(dealerNagashi)).rounds().get(0).result();
+    RoundResult dealer =
+        roundTrip(dealerNagashi, MjaiCodec.write(dealerNagashi)).rounds().get(0).result();
     Assert.assertEquals(dealer.nagashiMask(), 0b001);
     Assert.assertEquals(dealer.deltas(), new int[] {8_000, -4_000, -4_000});
 
@@ -460,7 +493,8 @@ public class MjaiSanmaTest {
             "nine-terminals",
             "0:KYUSHU_KYUHAI");
     Assert.assertEquals(
-        roundTrip(nine, MjaiCodec.write(nine)).rounds().get(0).result().abortive(), AbortiveDraw.NINE_TERMINALS);
+        roundTrip(nine, MjaiCodec.write(nine)).rounds().get(0).result().abortive(),
+        AbortiveDraw.NINE_TERMINALS);
 
     RecordedGame kans =
         RecordedGames.scene(
@@ -478,7 +512,8 @@ public class MjaiSanmaTest {
             "1:ANKAN(4p)",
             "1:DAHAI(9p)");
     Assert.assertEquals(
-        roundTrip(kans, MjaiCodec.write(kans)).rounds().get(0).result().abortive(), AbortiveDraw.FOUR_KANS);
+        roundTrip(kans, MjaiCodec.write(kans)).rounds().get(0).result().abortive(),
+        AbortiveDraw.FOUR_KANS);
   }
 
   /** hora は内訳のフィールドを全て持つか、どれも持たないかのどちらか。一部だけを持つ hora は読まない。 */
@@ -486,9 +521,13 @@ public class MjaiSanmaTest {
   public void aHoraWithPartOfItsBreakdownIsRejected() {
     List<JsonObject> events = parse(withoutBreakdown(MjaiCodec.write(selfPlay().get(0))));
     JsonObject hora =
-        events.stream().filter(event -> event.get("type").getAsString().equals("hora")).findFirst().orElseThrow();
+        events.stream()
+            .filter(event -> event.get("type").getAsString().equals("hora"))
+            .findFirst()
+            .orElseThrow();
     hora.addProperty("fu", 30);
-    Assert.assertThrows(IllegalArgumentException.class, () -> MjaiCodec.read(lines(events), "part"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> MjaiCodec.read(lines(events), "part"));
   }
 
   /**
@@ -528,7 +567,8 @@ public class MjaiSanmaTest {
       while (boundary == Boundary.DECISIONS) {
         boundary = driver.step(ws);
       }
-      Assert.assertTrue(before.result().matches(driver.engine().roundEnd(), before.riichiMask()), where);
+      Assert.assertTrue(
+          before.result().matches(driver.engine().roundEnd(), before.riichiMask()), where);
     }
     if (game.rounds().size() > 1) {
       driver.replay(read, ws);
@@ -587,7 +627,8 @@ public class MjaiSanmaTest {
           for (String key : List.of("yakus", "fan", "fu", "hora_points", "pao", "pai")) {
             event.remove(key);
           }
-          event.addProperty("tsumo", event.get("actor").getAsInt() == event.get("target").getAsInt());
+          event.addProperty(
+              "tsumo", event.get("actor").getAsInt() == event.get("target").getAsInt());
           JsonElement ura = event.remove("uradora_markers");
           if (ura != null) {
             event.add("ura_markers", ura);
@@ -674,7 +715,9 @@ public class MjaiSanmaTest {
   }
 
   private static List<JsonObject> ofType(String text, String type) {
-    return parse(text).stream().filter(event -> event.get("type").getAsString().equals(type)).toList();
+    return parse(text).stream()
+        .filter(event -> event.get("type").getAsString().equals(type))
+        .toList();
   }
 
   private static String type(String line) {

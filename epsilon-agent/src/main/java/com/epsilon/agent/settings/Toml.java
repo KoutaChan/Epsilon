@@ -80,7 +80,8 @@ public final class Toml {
       case Node.Text text -> quote(text.value());
       case Node.Numeral numeral -> numeral.written();
       case Node.Bool bool -> Boolean.toString(bool.value());
-      case Node.Array array -> array.items().stream().map(Toml::inline).collect(Collectors.joining(", ", "[", "]"));
+      case Node.Array array ->
+          array.items().stream().map(Toml::inline).collect(Collectors.joining(", ", "[", "]"));
       case Node.Table table ->
           table.entries().entrySet().stream()
               .map(entry -> Keys.quote(entry.getKey()) + " = " + inline(entry.getValue()))
@@ -283,7 +284,8 @@ public final class Toml {
     }
 
     Node.Array freeze() {
-      return new Node.Array(tables.stream().map(Building::freeze).map(Node.class::cast).toList(), origin);
+      return new Node.Array(
+          tables.stream().map(Building::freeze).map(Node.class::cast).toList(), origin);
     }
   }
 
@@ -416,7 +418,8 @@ public final class Toml {
       }
       if (NUMBER.matcher(token).matches()) {
         String literal = token.replace("_", "");
-        return new Node.Numeral(literal.startsWith("+") ? literal.substring(1) : literal, token, origin);
+        return new Node.Numeral(
+            literal.startsWith("+") ? literal.substring(1) : literal, token, origin);
       }
       if (!document) {
         return new Node.Text(token, origin);
@@ -470,7 +473,8 @@ public final class Toml {
       while (true) {
         skipBlank();
         if (atEnd() || peek() == '\n' || peek() == '\r') {
-          throw error(atEnd() ? "unterminated inline table" : "an inline table must fit on one line");
+          throw error(
+              atEnd() ? "unterminated inline table" : "an inline table must fit on one line");
         }
         List<String> keys = key();
         skipBlank();
@@ -560,7 +564,13 @@ public final class Toml {
 
     /** 値の終わりを示す文字か。値を読むときは空白・改行・カンマ・閉じ括弧だけで、文書を読むときは {@code #} も含む。 */
     private boolean delimiter(char c) {
-      return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == ']' || c == '}'
+      return c == ' '
+          || c == '\t'
+          || c == '\n'
+          || c == '\r'
+          || c == ','
+          || c == ']'
+          || c == '}'
           || (document && c == '#');
     }
 

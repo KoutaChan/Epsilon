@@ -51,7 +51,8 @@ public class ReplayDriverTest {
   public void aPonCutsOffAChiAndTheRonEndsTheGame() {
     ReplayDriver driver = new ReplayDriver(VARIANT);
     RuleWorkspace ws = new RuleWorkspace(VARIANT);
-    Assert.assertEquals(driver.start(ponOverChi().round(ponOverChiResult()), ws), Boundary.DECISIONS);
+    Assert.assertEquals(
+        driver.start(ponOverChi().round(ponOverChiResult()), ws), Boundary.DECISIONS);
     Decisions decisions = driver.engine().decisions();
     Assert.assertEquals(decisions.kind(0), EngineDecisionKind.TURN);
     Assert.assertEquals(chosen(driver, 0), "DAHAI(3p)");
@@ -71,7 +72,10 @@ public class ReplayDriverTest {
     Assert.assertEquals(chosen(driver, 0), "RON_AGARI");
     Assert.assertEquals(driver.step(ws), Boundary.GAME_END);
 
-    driver.replay(game("pon-over-chi", ponOverChi().round(ponOverChiResult()), 24_000, 21_000, 31_000, 24_000), ws);
+    driver.replay(
+        game(
+            "pon-over-chi", ponOverChi().round(ponOverChiResult()), 24_000, 21_000, 31_000, 24_000),
+        ws);
   }
 
   /** 手に無い牌の打牌は合法でない手になり、再生は例外を投げる。 */
@@ -105,8 +109,12 @@ public class ReplayDriverTest {
   public void onlyACallFromTheKamichaOrTheToimenClearsTheSameTurnFuriten() {
     ReplayDriver driver = new ReplayDriver(VARIANT);
     RuleWorkspace ws = new RuleWorkspace(VARIANT);
-    driver.replay(game("toimen-furiten", toimenPon().round(furitenRon()), 24_000, 30_300, 21_700, 24_000), ws);
-    driver.replay(game("kamicha-furiten", kamichaPon().round(furitenRon()), 24_000, 30_300, 21_700, 24_000), ws);
+    driver.replay(
+        game("toimen-furiten", toimenPon().round(furitenRon()), 24_000, 30_300, 21_700, 24_000),
+        ws);
+    driver.replay(
+        game("kamicha-furiten", kamichaPon().round(furitenRon()), 24_000, 30_300, 21_700, 24_000),
+        ws);
     RecordedGame shimocha =
         game("shimocha-furiten", shimochaPon().round(furitenRon()), 24_000, 30_300, 21_700, 24_000);
     assertRejected(shimocha, "which no seat can claim");
@@ -167,7 +175,8 @@ public class ReplayDriverTest {
     RoundResult draw = RoundResult.drawWithoutDetails(new int[3]);
     int kept = builder.round(draw).deal(0, 11);
     int taken = builder.round(draw).deal(0, 12);
-    Assert.assertEquals(List.of(Tiles.kind(kept), Tiles.kind(taken)), List.of(Tiles.PEI, Tiles.PEI));
+    Assert.assertEquals(
+        List.of(Tiles.kind(kept), Tiles.kind(taken)), List.of(Tiles.PEI, Tiles.PEI));
     Assert.assertTrue(taken > kept);
     List<RecordEvent> events = builder.events();
     events.set(1, new RecordEvent.Nuki(0, taken));
@@ -204,9 +213,12 @@ public class ReplayDriverTest {
     chiToo[chi] = 0;
     int[] held = {Tiles.physicalId(Tiles.P3, 1), Tiles.physicalId(Tiles.P3, 2)};
     int[] notHeld = {Tiles.physicalId(Tiles.P3, 1), Tiles.physicalId(Tiles.P3, 3)};
-    Assert.expectThrows(IllegalArgumentException.class, () -> driver.engine().commit(recorded, notHeld, 2, ws));
-    Assert.expectThrows(IllegalArgumentException.class, () -> driver.engine().commit(recorded, held, 1, ws));
-    Assert.expectThrows(IllegalArgumentException.class, () -> driver.engine().commit(chiToo, held, 2, ws));
+    Assert.expectThrows(
+        IllegalArgumentException.class, () -> driver.engine().commit(recorded, notHeld, 2, ws));
+    Assert.expectThrows(
+        IllegalArgumentException.class, () -> driver.engine().commit(recorded, held, 1, ws));
+    Assert.expectThrows(
+        IllegalArgumentException.class, () -> driver.engine().commit(chiToo, held, 2, ws));
 
     Assert.assertEquals(driver.step(ws), Boundary.DECISIONS);
     Assert.assertEquals(chosen(driver, 0), "DAHAI(6s)");
@@ -221,11 +233,19 @@ public class ReplayDriverTest {
     RoundBuilder builder = ponOverChi();
     List<RecordEvent> events = builder.events();
     RecordEvent.Call pon = (RecordEvent.Call) events.get(2);
-    Assert.assertEquals(pon.consumed(), List.of(Tiles.physicalId(Tiles.P3, 1), Tiles.physicalId(Tiles.P3, 2)));
+    Assert.assertEquals(
+        pon.consumed(), List.of(Tiles.physicalId(Tiles.P3, 1), Tiles.physicalId(Tiles.P3, 2)));
     int elsewhere = Tiles.physicalId(Tiles.P3, 3);
-    events.set(2, new RecordEvent.Call(1, pon.meld(), List.of(pon.consumed().getFirst(), elsewhere)));
+    events.set(
+        2, new RecordEvent.Call(1, pon.meld(), List.of(pon.consumed().getFirst(), elsewhere)));
     assertRejected(
-        game("call-without-the-tile", builder.round(events, ponOverChiResult()), 24_000, 21_000, 31_000, 24_000),
+        game(
+            "call-without-the-tile",
+            builder.round(events, ponOverChiResult()),
+            24_000,
+            21_000,
+            31_000,
+            24_000),
         "Seat 1 does not hold tile " + elsewhere);
   }
 
@@ -246,10 +266,13 @@ public class ReplayDriverTest {
             .draw(0, "6p")
             .discard(0, "1p");
     RoundResult.Win win =
-        new RoundResult.Win(1, 320, ScoringYaku.YAKUHAI_HAKU.bit(), 1, 40, 0, 0, 0, RoundOutcome.NO_SEAT);
+        new RoundResult.Win(
+            1, 320, ScoringYaku.YAKUHAI_HAKU.bit(), 1, 40, 0, 0, 0, RoundOutcome.NO_SEAT);
     RoundResult ron =
-        new RoundResult(EndKind.RON, null, List.of(win), 0, 0, 0, new int[] {-1_300, 1_300, 0}, new int[0]);
-    assertRejected(game("nuki-furiten", builder.round(ron), 33_700, 36_300, 35_000), "Seat 1 cannot ron");
+        new RoundResult(
+            EndKind.RON, null, List.of(win), 0, 0, 0, new int[] {-1_300, 1_300, 0}, new int[0]);
+    assertRejected(
+        game("nuki-furiten", builder.round(ron), 33_700, 36_300, 35_000), "Seat 1 cannot ron");
   }
 
   /**
@@ -259,8 +282,17 @@ public class ReplayDriverTest {
   public void aRiichiNukiOfAHeldNorthIsIllegal() {
     RoundBuilder builder = riichiOnNorth().draw(0, "3z").nuki(0);
     RoundResult draw =
-        new RoundResult(EndKind.EXHAUSTIVE, null, List.of(), RoundOutcome.NO_SEAT, 0, 0, new int[3], new int[0]);
-    assertRejected(game("riichi-nuki", builder.round(draw), 34_000, 35_000, 35_000), "is not legal");
+        new RoundResult(
+            EndKind.EXHAUSTIVE,
+            null,
+            List.of(),
+            RoundOutcome.NO_SEAT,
+            0,
+            0,
+            new int[3],
+            new int[0]);
+    assertRejected(
+        game("riichi-nuki", builder.round(draw), 34_000, 35_000, 35_000), "is not legal");
   }
 
   /**
@@ -272,10 +304,14 @@ public class ReplayDriverTest {
     RoundBuilder builder =
         riichiOnNorth().draw(0, "4z").nuki(0).draw(0, "6z").discard(0, "6z").draw(1, "4z").nuki(1);
     RoundResult.Win win =
-        new RoundResult.Win(0, 2_000, ScoringYaku.RIICHI.bit(), 5, 40, 0, 0, 0, RoundOutcome.NO_SEAT);
+        new RoundResult.Win(
+            0, 2_000, ScoringYaku.RIICHI.bit(), 5, 40, 0, 0, 0, RoundOutcome.NO_SEAT);
     RoundResult ron =
-        new RoundResult(EndKind.RON, null, List.of(win), 1, 0, 0, new int[] {13_000, -12_000, 0}, new int[0]);
-    assertRejected(game("riichi-nuki-miss", builder.round(ron), 48_000, 23_000, 35_000), "which no seat can claim");
+        new RoundResult(
+            EndKind.RON, null, List.of(win), 1, 0, 0, new int[] {13_000, -12_000, 0}, new int[0]);
+    assertRejected(
+        game("riichi-nuki-miss", builder.round(ron), 48_000, 23_000, 35_000),
+        "which no seat can claim");
   }
 
   /**
@@ -304,7 +340,8 @@ public class ReplayDriverTest {
     Variant variant = game.variant();
     IllegalStateException failure =
         Assert.expectThrows(
-            IllegalStateException.class, () -> new ReplayDriver(variant).replay(game, new RuleWorkspace(variant)));
+            IllegalStateException.class,
+            () -> new ReplayDriver(variant).replay(game, new RuleWorkspace(variant)));
     Assert.assertTrue(failure.getMessage().contains(reason), failure.getMessage());
   }
 
@@ -313,7 +350,8 @@ public class ReplayDriverTest {
    * （234m567m345p66s78s、断么九・平和）がロンする。
    */
   static RoundBuilder ponOverChi() {
-    return new RoundBuilder(new RoundStart(VARIANT, 7, 0, 0, new int[] {24_000, 23_000, 29_000, 24_000}))
+    return new RoundBuilder(
+            new RoundStart(VARIANT, 7, 0, 0, new int[] {24_000, 23_000, 29_000, 24_000}))
         .hand(3, "19m19p19s11223z3p7z")
         .hand(0, "24p28m28s4455677z")
         .hand(1, "33p3377m33677s66z")
@@ -329,8 +367,17 @@ public class ReplayDriverTest {
   static RoundResult ponOverChiResult() {
     RoundResult.Win win =
         new RoundResult.Win(
-            2, 480, ScoringYaku.TANYAO.bit() | ScoringYaku.PINFU.bit(), 2, 30, 0, 0, 0, RoundOutcome.NO_SEAT);
-    return new RoundResult(EndKind.RON, null, List.of(win), 1, 0, 0, new int[] {0, -2_000, 2_000, 0}, new int[0]);
+            2,
+            480,
+            ScoringYaku.TANYAO.bit() | ScoringYaku.PINFU.bit(),
+            2,
+            30,
+            0,
+            0,
+            0,
+            RoundOutcome.NO_SEAT);
+    return new RoundResult(
+        EndKind.RON, null, List.of(win), 1, 0, 0, new int[] {0, -2_000, 2_000, 0}, new int[0]);
   }
 
   /**
@@ -433,8 +480,10 @@ public class ReplayDriverTest {
   /** 席 2 の打牌への席 1 のロン（中のみ 40 符、基本点 320 の子のロン 1300 点）。 */
   static RoundResult furitenRon() {
     RoundResult.Win win =
-        new RoundResult.Win(1, 320, ScoringYaku.YAKUHAI_CHUN.bit(), 1, 40, 0, 0, 0, RoundOutcome.NO_SEAT);
-    return new RoundResult(EndKind.RON, null, List.of(win), 2, 0, 0, new int[] {0, 1_300, -1_300, 0}, new int[0]);
+        new RoundResult.Win(
+            1, 320, ScoringYaku.YAKUHAI_CHUN.bit(), 1, 40, 0, 0, 0, RoundOutcome.NO_SEAT);
+    return new RoundResult(
+        EndKind.RON, null, List.of(win), 2, 0, 0, new int[] {0, 1_300, -1_300, 0}, new int[0]);
   }
 
   /** チーよりポンが優先される場面で、席 3 の打牌を手に無い 5s に替えた記録。 */
@@ -442,7 +491,13 @@ public class ReplayDriverTest {
     RoundBuilder builder = ponOverChi();
     List<RecordEvent> events = builder.events();
     events.set(1, new RecordEvent.Discard(3, Tiles.physicalId(Tiles.S5, 1), false, false));
-    return game("illegal-discard", builder.round(events, ponOverChiResult()), 24_000, 21_000, 31_000, 24_000);
+    return game(
+        "illegal-discard",
+        builder.round(events, ponOverChiResult()),
+        24_000,
+        21_000,
+        31_000,
+        24_000);
   }
 
   /** チーよりポンが優先される場面で、点の移動を 1900 点に替えた記録。 */
@@ -464,7 +519,8 @@ public class ReplayDriverTest {
   /** 1 局で終わる半荘の記録。 */
   static RecordedGame game(String id, RecordedRound round, int... finalScores) {
     Variant variant = round.start().variant();
-    return new RecordedGame(variant, List.of(round), finalScores, RecordedGames.unnamed(id, variant));
+    return new RecordedGame(
+        variant, List.of(round), finalScores, RecordedGames.unnamed(id, variant));
   }
 
   /**

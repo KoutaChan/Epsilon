@@ -1,5 +1,7 @@
 package com.epsilon.prism.model;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
 import ai.djl.training.GradientCollector;
@@ -7,7 +9,6 @@ import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.model.Batches.Batch;
-import com.epsilon.prism4p.input.InputSchema;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -39,7 +40,7 @@ public class PrismStepBench {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu());
         NDManager scope = manager.newSubManager()) {
       manager.getEngine().setRandomSeed(7);
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard(depth));
+      PrismNetwork network = new PrismNetwork(FOUR_PLAYER, PrismShape.standard(depth));
       network.initialize(manager);
       Batches.perturb(network, 0.02f, 11);
       ParameterStore store = new ParameterStore(manager, false);
@@ -67,8 +68,11 @@ public class PrismStepBench {
             GradientCollector collector = manager.getEngine().newGradientCollector()) {
           Outputs outputs =
               network.forward(
-                  store, batch.inputs(stepScope), Pass.training(Precision.FLOAT32, measured, auxiliary));
-          collector.backward(loss.total(stepScope, outputs, labels, auxiliary, 1f, labels.size(), 1f));
+                  store,
+                  batch.inputs(stepScope),
+                  Pass.training(Precision.FLOAT32, measured, auxiliary));
+          collector.backward(
+              loss.total(stepScope, outputs, labels, auxiliary, 1f, labels.size(), 1f));
         }
         Batches.step(network, optimizer);
         long trained = System.nanoTime();
@@ -87,11 +91,11 @@ public class PrismStepBench {
       double trainMs = trainNanos / 1e6 / MEASURED;
       double inferMs = inferNanos / 1e6 / MEASURED;
       log.info(
-          "PRISM-STEP depth={} rows={} tokens={} transitions={} train_ms={} ({} ms/row, 256 rows ~{} ms)"
-              + " infer_ms={} ({} ms/row)",
+          "PRISM-STEP depth={} rows={} tokens={} transitions={} train_ms={} ({} ms/row, 256 rows"
+              + " ~{} ms) infer_ms={} ({} ms/row)",
           depth,
           ROWS,
-          InputSchema.FORMAT.fixedTokens() + EVENTS,
+          FOUR_PLAYER.fixedTokens() + EVENTS,
           batch.transitions(),
           String.format("%.1f", trainMs),
           String.format("%.2f", trainMs / ROWS),

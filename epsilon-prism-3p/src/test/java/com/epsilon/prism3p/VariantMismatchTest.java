@@ -2,6 +2,7 @@ package com.epsilon.prism3p;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_3P;
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
@@ -28,10 +29,12 @@ import com.epsilon.prism.collect.Collector;
 import com.epsilon.prism.collect.RowSink;
 import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.core.TwinDiscard;
-import com.epsilon.prism.hip.HipArchitecture;
-import com.epsilon.prism.hip.HipCounts;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
+import com.epsilon.prism.input.HostInputs;
+import com.epsilon.prism.input.Tokenizer;
+import com.epsilon.prism.kernel.CollectionArchitecture;
+import com.epsilon.prism.kernel.TokenCounts;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.noise.UraSettings;
@@ -40,9 +43,6 @@ import com.epsilon.prism.policy.PolicyRequest;
 import com.epsilon.prism.policy.PolicyService;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism3p.input.InputSchema;
-import com.epsilon.prism3p.input.InputWriter;
-import com.epsilon.prism3p.input.Tokenizer;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -61,7 +61,8 @@ public class VariantMismatchTest {
   private static final PolicyOptions CPU = PolicyOptions.defaults();
 
   private static final BatchPlan.Capacity ONE_ROW =
-      new BatchPlan.Capacity(1, Limits.MAX_EVENT_TOKENS, Limits.MAX_TRANSITIONS, Limits.MAX_LEGAL_ACTIONS);
+      new BatchPlan.Capacity(
+          1, Limits.MAX_EVENT_TOKENS, Limits.MAX_TRANSITIONS, Limits.MAX_LEGAL_ACTIONS);
 
   /** 乱数の種を決めた四人打ちの局で、最初の判断の O を返す。 */
   private static Observation fourPlayerObservation() {
@@ -77,7 +78,9 @@ public class VariantMismatchTest {
               if (!captured[0]) {
                 Decisions decisions = engine.decisions();
                 batch.clear();
-                reader.bind(batch, writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch));
+                reader.bind(
+                    batch,
+                    writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch));
                 captured[0] = true;
               }
             });
@@ -87,7 +90,8 @@ public class VariantMismatchTest {
 
   private static HostBatch threePlayerRow(Observation o) {
     HostBatch batch =
-        new HostBatch(InputSchema.FORMAT, ONE_ROW, ByteBuffer.allocate(BatchPlan.maxBytes(InputSchema.FORMAT, ONE_ROW)));
+        new HostBatch(
+            THREE_PLAYER, ONE_ROW, ByteBuffer.allocate(BatchPlan.maxBytes(THREE_PLAYER, ONE_ROW)));
     batch.plan().add(o);
     batch.plan().seal();
     return batch;
@@ -98,8 +102,11 @@ public class VariantMismatchTest {
     Observation four = fourPlayerObservation();
     HostBatch batch = threePlayerRow(four);
     IllegalArgumentException refused =
-        Assert.expectThrows(IllegalArgumentException.class, () -> new Tokenizer().write(four, new InputWriter().bind(batch, 0)));
-    Assert.assertEquals(refused.getMessage(), "Variant mismatch: expected TENHOU_3P but found TENHOU_4P");
+        Assert.expectThrows(
+            IllegalArgumentException.class,
+            () -> new Tokenizer(TENHOU_3P).write(four, new HostInputs(batch), 0));
+    Assert.assertEquals(
+        refused.getMessage(), "Variant mismatch: expected TENHOU_3P but found TENHOU_4P");
   }
 
   @Test
@@ -130,8 +137,15 @@ public class VariantMismatchTest {
       IllegalStateException refused =
           Assert.expectThrows(
               IllegalStateException.class,
-              () -> Collector.collect(table, plan, unused, Phi.scoreRank(phi, RankUtility.TENHOU), new RowSink(writer)));
-      Assert.assertTrue(refused.getMessage().startsWith("Variant mismatch: "), refused.getMessage());
+              () ->
+                  Collector.collect(
+                      table,
+                      plan,
+                      unused,
+                      Phi.scoreRank(phi, RankUtility.TENHOU),
+                      new RowSink(writer)));
+      Assert.assertTrue(
+          refused.getMessage().startsWith("Variant mismatch: "), refused.getMessage());
     } finally {
       Snapshot.deleteTree(directory);
     }
@@ -157,7 +171,7 @@ public class VariantMismatchTest {
 
   private static Path writeSnapshot(Path root, NDManager manager) throws IOException {
     Path snapshot = root.resolve("1");
-    PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard(2));
+    PrismNetwork network = new PrismNetwork(THREE_PLAYER, PrismShape.standard(2));
     network.initialize(manager);
     Snapshot.write(snapshot, network, PolicyParams.of(1));
     return snapshot;
@@ -174,12 +188,15 @@ public class VariantMismatchTest {
       Observation four = fourPlayerObservation();
       ModelFamily family = ModelFamily.of(Series.PRISM);
       try (Policy policy = family.open(snapshot, TENHOU_3P, CPU)) {
-        IllegalArgumentException refused = Assert.expectThrows(IllegalArgumentException.class, () -> policy.evaluate(four));
-        Assert.assertEquals(refused.getMessage(), "Variant mismatch: expected TENHOU_3P but found TENHOU_4P");
+        IllegalArgumentException refused =
+            Assert.expectThrows(IllegalArgumentException.class, () -> policy.evaluate(four));
+        Assert.assertEquals(
+            refused.getMessage(), "Variant mismatch: expected TENHOU_3P but found TENHOU_4P");
       }
       // 四人打ちのモジュールが無い classpath では、四人打ちとしては開けない
       IllegalStateException refused =
-          Assert.expectThrows(IllegalStateException.class, () -> family.open(snapshot, TENHOU_4P, CPU));
+          Assert.expectThrows(
+              IllegalStateException.class, () -> family.open(snapshot, TENHOU_4P, CPU));
       Assert.assertTrue(refused.getMessage().contains("TENHOU_4P"), refused.getMessage());
     } finally {
       Snapshot.deleteTree(root);
@@ -189,12 +206,13 @@ public class VariantMismatchTest {
   @Test
   public void theHipTableRefusesAnArchitectureOfOtherCounts() {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, PrismShape.standard(2));
+      PrismNetwork network = new PrismNetwork(THREE_PLAYER, PrismShape.standard(2));
       network.initialize(manager);
-      HipArchitecture three = WeightLayout.of(network).architecture();
-      HipCounts four = new HipCounts(4, 34, three.counts().keyCodes(), three.counts().tileRelations(), 110);
-      HipArchitecture other =
-          new HipArchitecture(
+      CollectionArchitecture three = WeightLayout.of(network).architecture();
+      TokenCounts four =
+          new TokenCounts(4, 34, three.counts().keyCodes(), three.counts().tileRelations(), 110);
+      CollectionArchitecture other =
+          new CollectionArchitecture(
               three.hidden(),
               three.epsilon(),
               three.scale(),
@@ -209,9 +227,13 @@ public class VariantMismatchTest {
       IllegalArgumentException refused =
           Assert.expectThrows(
               IllegalArgumentException.class,
-              () -> WeightLayout.of(InputSchema.FORMAT, other, network.inferenceParameters()));
+              () -> WeightLayout.of(THREE_PLAYER, other, network.inferenceParameters()));
       Assert.assertEquals(
-          refused.getMessage(), "the TENHOU_3P input has the counts " + three.counts() + ", the architecture has " + four);
+          refused.getMessage(),
+          "the TENHOU_3P input has the counts "
+              + three.counts()
+              + ", the architecture has "
+              + four);
     }
   }
 }

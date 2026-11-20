@@ -16,7 +16,10 @@ public record IterationFile(int iteration, int settingsRow, String jar, Instant 
   public IterationFile {
     if (iteration < 1 || settingsRow < 1) {
       throw new IllegalArgumentException(
-          "An iteration and its settings row start at 1: iteration " + iteration + ", row " + settingsRow);
+          "An iteration and its settings row start at 1: iteration "
+              + iteration
+              + ", row "
+              + settingsRow);
     }
     Objects.requireNonNull(jar, "jar");
     Objects.requireNonNull(started, "started");

@@ -50,7 +50,8 @@ public class StandardCampaignTest {
       RunDirectory run = new RunDirectory(root.resolve("run"));
       create(run, start);
       Runner<ClassicSettings, CampaignState, CampaignIteration, CampaignStep> runner =
-          new Runner<>(run, CampaignKind.STANDARD, new Runner.Options(JAR, null, null, () -> false));
+          new Runner<>(
+              run, CampaignKind.STANDARD, new Runner.Options(JAR, null, null, () -> false));
       Assert.assertEquals(runner.train(), Ending.FINISHED);
 
       TrajectoryBatch cohort = Cohort.trajectories(run.rows(1), VARIANT);
@@ -58,21 +59,28 @@ public class StandardCampaignTest {
       for (GameTrajectory game : cohort.games()) {
         Assert.assertTrue(game.size() > 0, "game " + game.id() + " has no learner decisions");
         for (int decision = 0; decision < game.size(); decision++) {
-          Assert.assertEquals(game.seat(decision), (int) (game.id() % VARIANT.seats()), "game " + game.id());
+          Assert.assertEquals(
+              game.seat(decision), (int) (game.id() % VARIANT.seats()), "game " + game.id());
         }
       }
       Assert.assertEquals(
-          ClassicCheckpoint.header(run.snapshot(2)).step(), ClassicCheckpoint.header(run.snapshot(1)).step() + STEPS);
+          ClassicCheckpoint.header(run.snapshot(2)).step(),
+          ClassicCheckpoint.header(run.snapshot(1)).step() + STEPS);
 
       List<String> lines = DurableFiles.lines(run.report(RunDirectory.ITERATIONS));
       Assert.assertEquals(lines.size(), 1);
-      JsonObject steps = JsonParser.parseString(lines.getFirst()).getAsJsonObject().getAsJsonObject("steps");
+      JsonObject steps =
+          JsonParser.parseString(lines.getFirst()).getAsJsonObject().getAsJsonObject("steps");
       JsonObject collect = steps.getAsJsonObject(CampaignStep.COLLECT.name());
       Assert.assertEquals(collect.get("games").getAsInt(), GAMES, collect.toString());
       Assert.assertEquals(collect.get("decisions").getAsLong(), cohort.size(), collect.toString());
-      Assert.assertEquals(collect.get("opponent").getAsString(), CampaignSession.label(1), collect.toString());
+      Assert.assertEquals(
+          collect.get("opponent").getAsString(), CampaignSession.label(1), collect.toString());
       for (CampaignStep skipped : List.of(CampaignStep.DUEL, CampaignStep.DECIDE)) {
-        Assert.assertEquals(steps.getAsJsonObject(skipped.name()).get("status").getAsString(), "SKIPPED", skipped.name());
+        Assert.assertEquals(
+            steps.getAsJsonObject(skipped.name()).get("status").getAsString(),
+            "SKIPPED",
+            skipped.name());
       }
     } finally {
       delete(root);

@@ -54,7 +54,7 @@ public final class RecordFile {
   public static <R extends Record> Loaded<R> read(Class<R> type, Node.Table tree) {
     RecordCodec codec = Schema.record(type);
     Binder binder = new Binder(Binder.Mode.RECORD, Set::of);
-    Binder.Bound bound = binder.record(codec, tree, "", Change.INHERIT);
+    Binder.Bound bound = binder.record(codec, tree, "", Change.FIXED);
     if (!binder.problems().isEmpty()) {
       throw new SettingsException(binder.problems());
     }

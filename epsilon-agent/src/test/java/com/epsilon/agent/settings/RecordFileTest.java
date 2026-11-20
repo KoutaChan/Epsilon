@@ -96,7 +96,8 @@ public class RecordFileTest {
     assertEquals(loaded.value().rows(), 0L);
     assertEquals(loaded.value().parts().get(1), new Part("b", 1.0));
     assertNull(loaded.value().before());
-    RecordFile.Loaded<State> rewritten = RecordFile.read(State.class, RecordFile.json(loaded.value()), "state.json");
+    RecordFile.Loaded<State> rewritten =
+        RecordFile.read(State.class, RecordFile.json(loaded.value()), "state.json");
     assertEquals(rewritten.added(), List.of());
     assertEquals(rewritten.value(), loaded.value());
   }
@@ -110,7 +111,8 @@ public class RecordFileTest {
             () ->
                 RecordFile.read(
                     State.class,
-                    json.replace("\"next\":3,", "").replace("\"paused\":true", "\"paused\":null,\"extra\":{\"deep\":1}"),
+                    json.replace("\"next\":3,", "")
+                        .replace("\"paused\":true", "\"paused\":null,\"extra\":{\"deep\":1}"),
                     "state.json"));
     assertEquals(
         thrown.problems(),
@@ -121,7 +123,8 @@ public class RecordFileTest {
     SettingsException part =
         expectThrows(
             SettingsException.class,
-            () -> RecordFile.read(State.class, json.replace("{\"name\":\"a\",", "{"), "state.json"));
+            () ->
+                RecordFile.read(State.class, json.replace("{\"name\":\"a\",", "{"), "state.json"));
     assertEquals(part.problems(), List.of("Missing field parts[0].name in state.json"));
   }
 
@@ -133,7 +136,8 @@ public class RecordFileTest {
             .replace("\"since\":\"2026-11-09T00:00:00Z\"", "\"since\":\"later\"")
             .replace("\"phase\":\"FIT\"", "\"phase\":\"PLAY\"")
             .replace("\"settings\":{", "\"settings\":[1],\"was\":{");
-    SettingsException thrown = expectThrows(SettingsException.class, () -> RecordFile.read(State.class, json, "s.json"));
+    SettingsException thrown =
+        expectThrows(SettingsException.class, () -> RecordFile.read(State.class, json, "s.json"));
     assertEquals(
         thrown.problems(),
         List.of(
@@ -149,7 +153,8 @@ public class RecordFileTest {
 
   @Test
   public void aNodeFieldHoldsAnyValue() {
-    for (Node before : List.of(number("1"), text("x"), Fixtures.array(), table("a", Fixtures.bool(true)))) {
+    for (Node before :
+        List.of(number("1"), text("x"), Fixtures.array(), table("a", Fixtures.bool(true)))) {
       State state = state();
       State changed =
           new State(
@@ -168,7 +173,8 @@ public class RecordFileTest {
               state.counts(),
               state.named(),
               state.tags());
-      assertEquals(RecordFile.read(State.class, RecordFile.json(changed), "state.json").value(), changed);
+      assertEquals(
+          RecordFile.read(State.class, RecordFile.json(changed), "state.json").value(), changed);
     }
   }
 }

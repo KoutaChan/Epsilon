@@ -127,7 +127,8 @@ final class UraScenes {
             choices[slot] = index;
           }
         }
-        Assert.assertTrue(choices[slot] >= 0, name + " is not legal for seat " + seat + ": " + legal);
+        Assert.assertTrue(
+            choices[slot] >= 0, name + " is not legal for seat " + seat + ": " + legal);
       }
       for (int pick = 0; pick < picks.length; pick++) {
         Assert.assertTrue(matched[pick], picks[pick] + " has no decision at this point");

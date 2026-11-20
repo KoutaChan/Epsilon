@@ -37,7 +37,8 @@ final class ShapeTableGenerator {
   /** 1 つの種類から始める順子は 0〜4 個。 */
   private static final int RUN_COUNTS = Tiles.COPIES + 1;
 
-  private static final int STATES = RUN_COUNTS * RUN_COUNTS * ShapeSection.MELD_TARGETS * (MAX_PAIRS + 1);
+  private static final int STATES =
+      RUN_COUNTS * RUN_COUNTS * ShapeSection.MELD_TARGETS * (MAX_PAIRS + 1);
 
   private ShapeTableGenerator() {}
 
@@ -49,7 +50,8 @@ final class ShapeTableGenerator {
     byte[] terminalMan = new byte[Block.RADIX * Block.RADIX];
     for (int nine = 0; nine < Block.RADIX; nine++) {
       for (int one = 0; one < Block.RADIX; one++) {
-        terminalMan[one + Block.RADIX * nine] = unsigned(suits.key(distances(new int[] {one, nine}, false)));
+        terminalMan[one + Block.RADIX * nine] =
+            unsigned(suits.key(distances(new int[] {one, nine}, false)));
       }
     }
     sections[ShapeSection.TERMINAL_MAN_KEY.ordinal()] = terminalMan;
@@ -158,7 +160,8 @@ final class ShapeTableGenerator {
     return tiles;
   }
 
-  private static void visit(Block block, int[][] states, int position, int code, int tiles, long[] distances) {
+  private static void visit(
+      Block block, int[][] states, int position, int code, int tiles, long[] distances) {
     if (position == block.size()) {
       distances[code] = Distances.of(states[position]);
       return;
@@ -185,7 +188,8 @@ final class ShapeTableGenerator {
    * @param pairs 雀頭の数
    */
   private static int state(int previous, int before, int melds, int pairs) {
-    return ((previous * RUN_COUNTS + before) * ShapeSection.MELD_TARGETS + melds) * (MAX_PAIRS + 1) + pairs;
+    return ((previous * RUN_COUNTS + before) * ShapeSection.MELD_TARGETS + melds) * (MAX_PAIRS + 1)
+        + pairs;
   }
 
   /**
@@ -210,9 +214,16 @@ final class ShapeTableGenerator {
             }
             int maxStarted = runs ? Variant.MAX_MELDS - melds : 0;
             for (int started = 0; started <= maxStarted; started++) {
-              for (int triplet = 0; triplet <= 1 && melds + started + triplet <= Variant.MAX_MELDS; triplet++) {
+              for (int triplet = 0;
+                  triplet <= 1 && melds + started + triplet <= Variant.MAX_MELDS;
+                  triplet++) {
                 for (int pair = 0; pairs + pair <= MAX_PAIRS; pair++) {
-                  int used = started + previous + before + HandShape.MELD_SIZE * triplet + PAIR_SIZE * pair;
+                  int used =
+                      started
+                          + previous
+                          + before
+                          + HandShape.MELD_SIZE * triplet
+                          + PAIR_SIZE * pair;
                   if (used > Tiles.COPIES) {
                     continue;
                   }
@@ -256,7 +267,8 @@ final class ShapeTableGenerator {
         for (int melds = 0; melds < ShapeSection.MELD_TARGETS; melds++) {
           int value = Distances.get(distances, melds, MAX_PAIRS);
           if (value >= IMPOSSIBLE) {
-            throw new IllegalStateException("No hand of " + melds + " melds and a pair for keys " + suit + ", " + honor);
+            throw new IllegalStateException(
+                "No hand of " + melds + " melds and a pair for keys " + suit + ", " + honor);
           }
           table[(suit * honors.size() + honor) * ShapeSection.MELD_TARGETS + melds] = (byte) value;
         }
@@ -317,7 +329,10 @@ final class ShapeTableGenerator {
           int best = IMPOSSIBLE;
           for (int left = 0; left <= melds; left++) {
             for (int leftPairs = 0; leftPairs <= pairs; leftPairs++) {
-              best = Math.min(best, get(first, left, leftPairs) + get(second, melds - left, pairs - leftPairs));
+              best =
+                  Math.min(
+                      best,
+                      get(first, left, leftPairs) + get(second, melds - left, pairs - leftPairs));
             }
           }
           merged |= (long) best << shift(melds, pairs);
@@ -398,7 +413,8 @@ final class ShapeTableGenerator {
      * @param needsPair 雀頭が要るか
      * @param meldCount 置いた面子の数
      */
-    private void decompose(Block block, int[] rest, int position, int pair, boolean needsPair, int meldCount) {
+    private void decompose(
+        Block block, int[] rest, int position, int pair, boolean needsPair, int meldCount) {
       if (position == rest.length) {
         if (needsPair == (pair >= 0)) {
           write(pair, meldCount);
@@ -413,7 +429,8 @@ final class ShapeTableGenerator {
           if (started < 0 || meldCount + triplet + started > Variant.MAX_MELDS) {
             continue;
           }
-          if (started > 0 && (!runs || rest[position + 1] < started || rest[position + 2] < started)) {
+          if (started > 0
+              && (!runs || rest[position + 1] < started || rest[position + 2] < started)) {
             continue;
           }
           int placed = meldCount;

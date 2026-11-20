@@ -127,11 +127,13 @@ final class Transitions {
         if (count > 0) {
           requireCallTiles(choices, tiles, count);
         }
-        yield afterDiscard(window.close(state, hands, decisions, choices, resolution), tiles, count, ws);
+        yield afterDiscard(
+            window.close(state, hands, decisions, choices, resolution), tiles, count, ws);
       }
       case CHANKAN, NUKI_RESPONSE -> {
         if (count > 0) {
-          throw new IllegalArgumentException("A " + kind + " decision takes no tile out of a hand, not " + count);
+          throw new IllegalArgumentException(
+              "A " + kind + " decision takes no tile out of a hand, not " + count);
         }
         yield afterKanOrNuki(window.close(state, hands, decisions, choices, resolution), ws);
       }
@@ -174,7 +176,8 @@ final class Transitions {
     EngineDecisionKind kind = decisions.kind(0);
     Action action = Action.of(decisions.legal(0, choice));
     if (count > 1) {
-      throw new IllegalArgumentException(action + " takes at most one tile out of the hand, not " + count);
+      throw new IllegalArgumentException(
+          action + " takes at most one tile out of the hand, not " + count);
     }
     int tile = count == 0 ? TurnEvent.NONE : tiles[0];
     int played =
@@ -183,14 +186,17 @@ final class Transitions {
           case NUKI -> steps.northOf(seat, tile);
           default -> {
             if (tile != TurnEvent.NONE) {
-              throw new IllegalArgumentException(action + " takes no tile out of the hand, not tile " + tile);
+              throw new IllegalArgumentException(
+                  action + " takes no tile out of the hand, not tile " + tile);
             }
             yield TurnEvent.NONE;
           }
         };
     resolution.clear();
     resolution.add(
-        decisions.id(0), true, decisions.legalCount(0) == 1 ? Resolution.Role.FORCED : Resolution.Role.CAUSAL);
+        decisions.id(0),
+        true,
+        decisions.legalCount(0) == 1 ? Resolution.Role.FORCED : Resolution.Role.CAUSAL);
     return switch (action.type()) {
       case TSUMO_AGARI -> tsumo(seat, ws);
       case KYUSHU_KYUHAI -> abortive(AbortiveDraw.NINE_TERMINALS, ws);
@@ -198,7 +204,8 @@ final class Transitions {
       case KAKAN -> kakan(seat, action.tile(), ws);
       case NUKI -> nuki(seat, played, ws);
       case DAHAI, RIICHI_DAHAI -> discard(seat, action, played, ws);
-      case CHI, PON, DAIMINKAN, RON_AGARI, PASS -> throw new IllegalStateException(kind + " cannot take " + action);
+      case CHI, PON, DAIMINKAN, RON_AGARI, PASS ->
+          throw new IllegalStateException(kind + " cannot take " + action);
     };
   }
 
@@ -241,7 +248,8 @@ final class Transitions {
    * @param tile 打つ物理 id
    */
   private Boundary discard(int seat, Action action, int tile, RuleWorkspace ws) {
-    steps.discard(seat, tile, action.selection().tsumogiri(), action.type() == Action.Type.RIICHI_DAHAI);
+    steps.discard(
+        seat, tile, action.selection().tsumogiri(), action.type() == Action.Type.RIICHI_DAHAI);
     revealPending();
     nextId = steps.respond(wall, nextId, ws);
     if (decisions.size() > 0) {
@@ -265,10 +273,12 @@ final class Transitions {
       int seat = decisions.seat(slot);
       switch (chosen.type()) {
         case RON_AGARI ->
-            throw new IllegalArgumentException("Seat " + seat + " rons, so no call takes the given tiles");
+            throw new IllegalArgumentException(
+                "Seat " + seat + " rons, so no call takes the given tiles");
         case CHI, PON, DAIMINKAN -> {
           if (call != null) {
-            throw new IllegalArgumentException("Seats " + caller + " and " + seat + " both call, not one");
+            throw new IllegalArgumentException(
+                "Seats " + caller + " and " + seat + " both call, not one");
           }
           call = chosen;
           caller = seat;
@@ -294,7 +304,8 @@ final class Transitions {
       case RON -> ron(ws);
       case TRIPLE_RON -> abortive(AbortiveDraw.TRIPLE_RON, ws);
       case CALL -> call(window.caller(), Action.of(window.call()), tiles, count, ws);
-      case PASS -> abort == null ? draw((state.last().seat() + 1) % seats, ws) : abortive(abort, ws);
+      case PASS ->
+          abort == null ? draw((state.last().seat() + 1) % seats, ws) : abortive(abort, ws);
     };
   }
 
@@ -450,9 +461,18 @@ final class Transitions {
         decisions.kind(slot) == EngineDecisionKind.TURN
             ? WinLegality.tsumo(state, hands[seat], wall, ws, score)
             : WinLegality.ron(
-                state, hands[seat], seat, last.tile(), last.red(), Window.ronSource(state), wall, ws, score);
+                state,
+                hands[seat],
+                seat,
+                last.tile(),
+                last.red(),
+                Window.ronSource(state),
+                wall,
+                ws,
+                score);
     if (!won) {
-      throw new IllegalStateException("Seat " + seat + " lost its win after the wall was reshuffled");
+      throw new IllegalStateException(
+          "Seat " + seat + " lost its win after the wall was reshuffled");
     }
   }
 

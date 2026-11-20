@@ -13,7 +13,8 @@ import java.util.Objects;
  * @param start 次の反復が打ち、生徒の学習を始めるバージョン（ふだんは next。王者へ戻したときは王者のバージョン）
  * @param regression 王者との決闘でのリグレッションの記録
  */
-public record PrismState(int next, long totalRows, PrismCarry carry, int start, Regression regression)
+public record PrismState(
+    int next, long totalRows, PrismCarry carry, int start, Regression regression)
     implements Progress {
 
   public PrismState {

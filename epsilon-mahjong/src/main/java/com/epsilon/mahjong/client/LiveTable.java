@@ -264,7 +264,12 @@ public final class LiveTable {
     }
     TableState after = end.next();
     if (!result.sameDeltas(end) || !after.endsWith(finalScores)) {
-      mismatch(result, "settles here to " + after + ", but the server ends with " + Arrays.toString(finalScores));
+      mismatch(
+          result,
+          "settles here to "
+              + after
+              + ", but the server ends with "
+              + Arrays.toString(finalScores));
     }
   }
 

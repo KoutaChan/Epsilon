@@ -1,6 +1,7 @@
 package com.epsilon.agent.play;
 
 import com.epsilon.agent.learn.StageTimer;
+import com.epsilon.agent.observe.EventRecords;
 import com.epsilon.agent.observe.ObservationBatch;
 import com.epsilon.mahjong.engine.Decisions;
 import com.epsilon.mahjong.engine.SeatView;
@@ -19,8 +20,35 @@ final class RunRecords {
   private static final int BATCH_LONGS = 128;
 
   private ObservationBatch batch;
+
+  /** 経路の公開のイベントのセクション（最初の取り込みの前は null）。局の中の取り込みは、前の取り込みに書き足す。 */
+  private EventRecords events;
+
   private long nanos;
   private long captures;
+
+  /** 半荘の主経路の記録を作る。 */
+  RunRecords() {}
+
+  /** 親の判断の時点で写したエンジンを進める続きの記録を作る。公開のイベントのセクションは親のものを写して始める。 */
+  RunRecords(RunRecords parent) {
+    if (parent.events != null) {
+      events = new EventRecords(parent.events);
+    }
+  }
+
+  /** 経路が次の局に入った。前の局の公開のイベントのセクションを捨てる。 */
+  void roundStarted() {
+    if (events != null) {
+      events.reset();
+    }
+  }
+
+  /** 分岐か半荘が終わった。最後の判断と各観測席の参照を返す。 */
+  void finished() {
+    clear();
+    if (events != null) events.releasePrefixes();
+  }
 
   /** 判断の時点の始めに、前の時点の O を捨てる。前の時点の答えと記録は書き終えている。 */
   void clear() {
@@ -40,13 +68,23 @@ final class RunRecords {
    *
    * @return バッチの中の O の番号
    */
-  int capture(Table.Tools tools, Variant variant, SeatView view, Decisions decisions, int slot) {
+  int capture(
+      Table.Tools tools,
+      Variant variant,
+      SeatView view,
+      Decisions decisions,
+      int slot,
+      boolean keepPrefix) {
     long started = System.nanoTime();
     if (batch == null) {
       batch = new ObservationBatch(variant, BATCH_LONGS);
     }
-    int index = tools.writer.capture(view, decisions, slot, batch);
-    tools.reader.bind(batch, index);
+    if (events == null) {
+      events = new EventRecords(variant);
+    }
+    int index = tools.writer.capture(view, decisions, slot, batch, events, tools.reader);
+    if (keepPrefix)
+      batch.rememberEvents(index, events.prefix(view.seat(), tools.reader.kanDoraIndicators()));
     nanos += System.nanoTime() - started;
     captures++;
     return index;

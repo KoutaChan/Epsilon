@@ -183,7 +183,13 @@ public final class ClassicSchema {
     stateOffsets = new int[categorical];
     int state = 0;
     for (StateToken token : StateToken.values()) {
-      state = namespaces(token.categorical, token.count, state, categoricalStarts[token.ordinal()], stateOffsets);
+      state =
+          namespaces(
+              token.categorical,
+              token.count,
+              state,
+              categoricalStarts[token.ordinal()],
+              stateOffsets);
     }
     stateDictionary = state;
     actionOffsets = new int[stride(ActionInt.class)];
@@ -244,7 +250,9 @@ public final class ClassicSchema {
 
   /** 状態の整数の行か実数の行の中で、そのトークンの種類が始まる要素の位置。 */
   public int stateStart(StateToken token, Tensor.Slab slab) {
-    return slab == Tensor.Slab.CATEGORICAL ? categoricalStarts[token.ordinal()] : numericStarts[token.ordinal()];
+    return slab == Tensor.Slab.CATEGORICAL
+        ? categoricalStarts[token.ordinal()]
+        : numericStarts[token.ordinal()];
   }
 
   /** 状態の整数の行の中で、公開の履歴が始まる要素の位置。公開の履歴を持たないアーキテクチャでは −1。 */
@@ -338,7 +346,8 @@ public final class ClassicSchema {
    * ブロック、追加の入力のフィールド、区分、牌のコード、役のビットのまとめ方、待ちの数、公開の履歴の書き方を含む。
    */
   SchemaDigest describe() {
-    SchemaDigest digest = SchemaDigest.named("epsilon-classic-input").with("architecture", architecture);
+    SchemaDigest digest =
+        SchemaDigest.named("epsilon-classic-input").with("architecture", architecture);
     for (FieldLayout<?> layout : layouts.values()) {
       digest.with(SchemaDigest.name(layout.type()), layout.describe());
     }

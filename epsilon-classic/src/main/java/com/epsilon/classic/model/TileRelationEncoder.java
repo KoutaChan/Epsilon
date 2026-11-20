@@ -53,7 +53,8 @@ final class TileRelationEncoder extends AbstractBlock {
       NDArray normalized = pass.norm(stages[0].attentionInputLayerNorm, residual);
       for (int index = 0; index < BLOCKS; index++) {
         Stage stage = stages[index];
-        LayerNorm following = index + 1 < BLOCKS ? stages[index + 1].attentionInputLayerNorm : outputLayerNorm;
+        LayerNorm following =
+            index + 1 < BLOCKS ? stages[index + 1].attentionInputLayerNorm : outputLayerNorm;
         residual = residual.add(stage.attend(pass, normalized, relationIds));
         residual = residual.add(stage.feedForward(pass, residual));
         normalized = pass.norm(following, residual);
@@ -64,7 +65,8 @@ final class TileRelationEncoder extends AbstractBlock {
 
   @Override
   protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
-    relationIds = manager.create(MahjongTileRelation.relationIds(), new Shape(Tiles.KINDS, Tiles.KINDS));
+    relationIds =
+        manager.create(MahjongTileRelation.relationIds(), new Shape(Tiles.KINDS, Tiles.KINDS));
     Shape tiles = new Shape(-1, Tiles.KINDS, hidden);
     for (Stage stage : stages) {
       stage.initialize(manager, dataType, tiles);
@@ -74,7 +76,10 @@ final class TileRelationEncoder extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use encode");
   }
 
@@ -104,18 +109,23 @@ final class TileRelationEncoder extends AbstractBlock {
       attentionWidth = widths.tileAttention();
       headWidth = attentionWidth / Widths.HEADS;
       feedForwardWidth = widths.tileFeedForward();
-      attentionInputLayerNorm = addChildBlock("attentionInputLayerNorm", LayerNorm.builder().axis(2).build());
+      attentionInputLayerNorm =
+          addChildBlock("attentionInputLayerNorm", LayerNorm.builder().axis(2).build());
       queryKeyValueProjection =
           addChildBlock(
-              "queryKeyValueProjection", Linear.builder().setUnits(3L * attentionWidth).optBias(false).build());
+              "queryKeyValueProjection",
+              Linear.builder().setUnits(3L * attentionWidth).optBias(false).build());
       relationBiasEmbedding = addChildBlock("relationBiasEmbedding", zeroTable(Widths.HEADS));
       relationKeyEmbedding = addChildBlock("relationKeyEmbedding", zeroTable(attentionWidth));
       attentionOutputProjection =
           addChildBlock("attentionOutputProjection", Linear.builder().setUnits(hidden).build());
-      feedForwardInputLayerNorm = addChildBlock("feedForwardInputLayerNorm", LayerNorm.builder().axis(2).build());
+      feedForwardInputLayerNorm =
+          addChildBlock("feedForwardInputLayerNorm", LayerNorm.builder().axis(2).build());
       feedForwardExpansion =
-          addChildBlock("feedForwardExpansion", Linear.builder().setUnits(feedForwardWidth).build());
-      feedForwardProjection = addChildBlock("feedForwardProjection", Linear.builder().setUnits(hidden).build());
+          addChildBlock(
+              "feedForwardExpansion", Linear.builder().setUnits(feedForwardWidth).build());
+      feedForwardProjection =
+          addChildBlock("feedForwardProjection", Linear.builder().setUnits(hidden).build());
     }
 
     /** 正規化したトークン [行, 34, 幅] に関係つきの Attention をかけ、残差に足す更新 [行, 34, 幅] を返す。 */
@@ -127,7 +137,8 @@ final class TileRelationEncoder extends AbstractBlock {
         NDArray keys = heads(parts.get(1), rows);
         NDArray values = heads(parts.get(2), rows);
         // [クエリ, キー, ヘッド] → [1, ヘッド, クエリ, キー]
-        NDArray bias = pass.embed(relationBiasEmbedding, relationIds).transpose(2, 0, 1).expandDims(0);
+        NDArray bias =
+            pass.embed(relationBiasEmbedding, relationIds).transpose(2, 0, 1).expandDims(0);
         // [関係, Attention の幅] → [1, ヘッド, ヘッドの幅, 関係]
         NDArray relationKeys =
             pass.own(pass.table(relationKeyEmbedding).reshape(RELATIONS, Widths.HEADS, headWidth))
@@ -137,14 +148,18 @@ final class TileRelationEncoder extends AbstractBlock {
             NDArrays.relationBiasedScaledDotProductAttention(
                 queries, keys, values, relationKeys, bias, relationIds, 1.0 / Math.sqrt(headWidth));
         return scope.keep(
-            pass.linear(attentionOutputProjection, context.swapAxes(1, 2).reshape(rows, Tiles.KINDS, attentionWidth)));
+            pass.linear(
+                attentionOutputProjection,
+                context.swapAxes(1, 2).reshape(rows, Tiles.KINDS, attentionWidth)));
       }
     }
 
     /** 残差 [行, 34, 幅] に FFN をかけ、残差に足す更新 [行, 34, 幅] を返す。 */
     NDArray feedForward(Pass pass, NDArray residual) {
       try (ArrayScope scope = new ArrayScope()) {
-        NDArray expanded = Pass.silu(pass.linear(feedForwardExpansion, pass.norm(feedForwardInputLayerNorm, residual)));
+        NDArray expanded =
+            Pass.silu(
+                pass.linear(feedForwardExpansion, pass.norm(feedForwardInputLayerNorm, residual)));
         return scope.keep(pass.linear(feedForwardProjection, expanded));
       }
     }
@@ -154,27 +169,34 @@ final class TileRelationEncoder extends AbstractBlock {
     }
 
     private static IdEmbedding zeroTable(int width) {
-      IdEmbedding table = new IdEmbedding.Builder().setDictionarySize(RELATIONS).setEmbeddingSize(width).build();
+      IdEmbedding table =
+          new IdEmbedding.Builder().setDictionarySize(RELATIONS).setEmbeddingSize(width).build();
       table.getDirectParameters().valueAt(0).setInitializer(new ConstantInitializer(0f));
       return table;
     }
 
     @Override
-    protected void initializeChildBlocks(NDManager manager, DataType dataType, Shape... inputShapes) {
+    protected void initializeChildBlocks(
+        NDManager manager, DataType dataType, Shape... inputShapes) {
       Shape tiles = new Shape(-1, Tiles.KINDS, hidden);
       attentionInputLayerNorm.initialize(manager, dataType, tiles);
       queryKeyValueProjection.initialize(manager, dataType, tiles);
       relationBiasEmbedding.initialize(manager, dataType, new Shape(Tiles.KINDS, Tiles.KINDS));
       relationKeyEmbedding.initialize(manager, dataType, new Shape(RELATIONS));
-      attentionOutputProjection.initialize(manager, dataType, new Shape(-1, Tiles.KINDS, attentionWidth));
+      attentionOutputProjection.initialize(
+          manager, dataType, new Shape(-1, Tiles.KINDS, attentionWidth));
       feedForwardInputLayerNorm.initialize(manager, dataType, tiles);
       feedForwardExpansion.initialize(manager, dataType, tiles);
-      feedForwardProjection.initialize(manager, dataType, new Shape(-1, Tiles.KINDS, feedForwardWidth));
+      feedForwardProjection.initialize(
+          manager, dataType, new Shape(-1, Tiles.KINDS, feedForwardWidth));
     }
 
     @Override
     protected NDList forwardInternal(
-        ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+        ParameterStore parameterStore,
+        NDList inputs,
+        boolean training,
+        PairList<String, Object> params) {
       throw new UnsupportedOperationException("Use attend");
     }
 

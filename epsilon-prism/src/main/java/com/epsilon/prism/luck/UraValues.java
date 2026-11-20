@@ -50,9 +50,16 @@ public final class UraValues {
    * @return 値を求めた作業領域（このスレッドで次に呼ぶまで有効）
    */
   public UraExpectation handEnd(
-      FullView full, RoundEnd end, TableState start, RoundHistory history, long gameId, int hand, double[] out) {
+      FullView full,
+      RoundEnd end,
+      TableState start,
+      RoundHistory history,
+      long gameId,
+      int hand,
+      double[] out) {
     UraExpectation values = workspaces.get();
-    values.evaluate(full, end, start, history, settings.averages(coin(iterationSeed, gameId, hand)));
+    values.evaluate(
+        full, end, start, history, settings.averages(coin(iterationSeed, gameId, hand)));
     values.values(settings, out);
     audit.handEnd(values);
     return values;
@@ -66,7 +73,8 @@ public final class UraValues {
    * @param hand 半荘の中の局の序数
    * @param rows 局末の値を受け取る行
    */
-  public void rows(UraExpectation values, long gameId, int hand, List<? extends UraAudit.Row> rows) {
+  public void rows(
+      UraExpectation values, long gameId, int hand, List<? extends UraAudit.Row> rows) {
     audit.rows(values, gameId, hand, rows);
   }
 

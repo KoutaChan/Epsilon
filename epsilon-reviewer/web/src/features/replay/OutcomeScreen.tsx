@@ -4,7 +4,6 @@ import { playerName, roundName, seatName } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import {
   collectWinningHands,
-  hasRecordedMatchEnd,
   rankFinalPlayers,
   roundScoreChanges,
 } from "./model/outcomeSummary.ts";
@@ -40,10 +39,7 @@ export function OutcomeScreen({
   const heading = useRef<HTMLHeadingElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const isMatch = stage === "match-result";
-  const matchEnded = hasRecordedMatchEnd(model);
-  const scoreTitle = t(
-    matchEnded ? "outcome.finalScores" : "outcome.lastScores",
-  );
+  const scoreTitle = t("outcome.finalScores");
   const winners = collectWinningHands(outcomeEvents);
   const changes = roundScoreChanges(playback.roundStart, snapshot);
   const number = (value: number) => value.toLocaleString(locale);
@@ -64,7 +60,7 @@ export function OutcomeScreen({
         })
       : roundName(entry, t);
   const title = isMatch
-    ? t(matchEnded ? "outcome.matchTitle" : "outcome.recordEnd")
+    ? t("outcome.matchTitle")
     : winners.length === 0
       ? t("event.ryukyoku")
       : winners.length === 1
@@ -137,9 +133,7 @@ export function OutcomeScreen({
                     >
                       <div className="em-winning-heading">
                         <h2>
-                          <span>
-                            {seatName(winner.player.seat, round, t)}
-                          </span>
+                          <span>{seatName(winner.player.seat, round, t)}</span>
                           {name(winner.player.seat)}
                         </h2>
                         <p>
@@ -236,13 +230,7 @@ export function OutcomeScreen({
           ) : (
             <button className="em-outcome-primary" onClick={() => move(1)}>
               <span>
-                {t(
-                  nextRound
-                    ? "outcome.nextRound"
-                    : matchEnded
-                      ? "outcome.toMatchResult"
-                      : "outcome.toRecordResult",
-                )}
+                {t(nextRound ? "outcome.nextRound" : "outcome.toMatchResult")}
                 {nextRound && <small>{roundLabel(nextRound)}</small>}
               </span>
               <ArrowRight />

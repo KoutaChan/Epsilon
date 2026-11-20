@@ -59,7 +59,7 @@ public final class ChampionStore {
 
   private final Path directory;
 
-  /** 読むだけで開いた置き場か。 */
+  /** 読むだけで開いた保存先か。 */
   private final boolean readOnly;
 
   private ChampionStore(Path directory, boolean readOnly) {
@@ -88,7 +88,8 @@ public final class ChampionStore {
       }
       Objects.requireNonNull(checkpoint, "checkpoint");
       if (!checkpoint.isAbsolute()) {
-        throw new IllegalArgumentException("The checkpoint of a champion must be an absolute path: " + checkpoint);
+        throw new IllegalArgumentException(
+            "The checkpoint of a champion must be an absolute path: " + checkpoint);
       }
       checkpoint = checkpoint.normalize();
       if (version < 0) {
@@ -118,13 +119,20 @@ public final class ChampionStore {
      */
     public void verify() throws IOException {
       if (sha256 == null) {
-        throw new IllegalStateException("Champion " + label + " is a version of the run and has no SHA-256 to verify");
+        throw new IllegalStateException(
+            "Champion " + label + " is a version of the run and has no SHA-256 to verify");
       }
       String actual = CheckpointFiles.sha256(checkpoint);
       if (!actual.equals(sha256)) {
         throw new IOException(
-            "The checkpoint of champion " + label + " at " + checkpoint + " has SHA-256 " + actual
-                + ", but the store recorded " + sha256);
+            "The checkpoint of champion "
+                + label
+                + " at "
+                + checkpoint
+                + " has SHA-256 "
+                + actual
+                + ", but the store recorded "
+                + sha256);
       }
     }
   }
@@ -166,18 +174,6 @@ public final class ChampionStore {
     store.removeTemporaries();
     store.syncReference(store.reference(store.history()));
     return store;
-  }
-
-  /**
-   * 記録の最後の王者を、保存先に何も書かずに読む（{@link #view} で開いた保存先の今の王者）。{@link #open} と違い、一時ファイルを消さず、
-   * 参照も書き直さないので、学習のロックを持たないプロセスが、学習の JVM の書き込みと同時に呼べる。
-   *
-   * @param directory 保存先のディレクトリ（run の champion）
-   * @return 記録に王者がいなければ空
-   * @throws IOException 記録が読めないとき、または筋が通らないとき
-   */
-  public static Optional<Champion> lastRecorded(Path directory) throws IOException {
-    return view(directory).current();
   }
 
   /**
@@ -300,7 +296,8 @@ public final class ChampionStore {
    */
   public boolean append(StoreEvent event) throws IOException {
     if (readOnly) {
-      throw new IllegalStateException("The champion store " + directory + " is open for reading only: " + event);
+      throw new IllegalStateException(
+          "The champion store " + directory + " is open for reading only: " + event);
     }
     List<Entry> history = history();
     Optional<Entry> recorded = recorded(history, event);
@@ -367,7 +364,9 @@ public final class ChampionStore {
     for (Entry entry : history) {
       Optional<Champion> champion = champion(entry.event());
       if (champion.isPresent()) {
-        reference = Optional.of(new Reference(champion.get(), duel(entry.event()).orElse(null), entry.at()));
+        reference =
+            Optional.of(
+                new Reference(champion.get(), duel(entry.event()).orElse(null), entry.at()));
       }
     }
     return reference;
@@ -379,7 +378,8 @@ public final class ChampionStore {
     boolean exists = Files.exists(file);
     if (expected.isEmpty()) {
       if (exists) {
-        throw new IOException(file + " names a champion, but " + directory.resolve(HISTORY) + " records none");
+        throw new IOException(
+            file + " names a champion, but " + directory.resolve(HISTORY) + " records none");
       }
       return;
     }
@@ -407,10 +407,11 @@ public final class ChampionStore {
     try (Stream<Path> listed = Files.list(directory)) {
       leftovers =
           listed
-              .filter(path -> {
-                String name = path.getFileName().toString();
-                return name.startsWith(prefix) && name.endsWith(".tmp");
-              })
+              .filter(
+                  path -> {
+                    String name = path.getFileName().toString();
+                    return name.startsWith(prefix) && name.endsWith(".tmp");
+                  })
               .toList();
     }
     for (Path leftover : leftovers) {

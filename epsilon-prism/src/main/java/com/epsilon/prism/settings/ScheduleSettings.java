@@ -36,7 +36,8 @@ public record ScheduleSettings(
    */
   public record CohortStep(
       @Key(doc = "この行を使い始める反復", presence = Presence.REQUIRED) @Range(min = 1) int from,
-      @Key(doc = "1 コホートの半荘の数", presence = Presence.REQUIRED) @Range(min = 1, max = MAX_GAMES_PER_COHORT)
+      @Key(doc = "1 コホートの半荘の数", presence = Presence.REQUIRED)
+          @Range(min = 1, max = MAX_GAMES_PER_COHORT)
           int games) {}
 
   public ScheduleSettings {
@@ -46,7 +47,8 @@ public record ScheduleSettings(
     }
     for (int index = 1; index < cohorts.size(); index++) {
       if (cohorts.get(index).from() <= cohorts.get(index - 1).from()) {
-        throw new InvalidSetting("cohorts", "the cohort steps' iterations must increase: " + cohorts);
+        throw new InvalidSetting(
+            "cohorts", "the cohort steps' iterations must increase: " + cohorts);
       }
     }
   }

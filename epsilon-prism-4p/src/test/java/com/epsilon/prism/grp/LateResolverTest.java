@@ -47,8 +47,10 @@ public class LateResolverTest {
     covered.clear();
     uncovered.clear();
     for (GameRecord game : GrpFixtures.games(0, 20, 5))
-      for (GrpState state : game.handEnds()) (FinalRound.covers(state) ? covered : uncovered).add(state);
-    Assert.assertTrue(covered.size() >= 4 && uncovered.size() >= 4, covered.size() + " / " + uncovered.size());
+      for (GrpState state : game.handEnds())
+        (FinalRound.covers(state) ? covered : uncovered).add(state);
+    Assert.assertTrue(
+        covered.size() >= 4 && uncovered.size() >= 4, covered.size() + " / " + uncovered.size());
     covered.subList(4, covered.size()).clear();
     uncovered.subList(4, uncovered.size()).clear();
   }
@@ -60,9 +62,12 @@ public class LateResolverTest {
 
   @Test
   public void theModeLinesSwitchTheValueOfTheSameEntry() throws IOException {
-    PhiSetup setup = GrpFixtures.grpStart(leaf, "phi.start.outcomes=" + q, "phi.late.from=3", "phi.late.cutoff=1e-4");
+    PhiSetup setup =
+        GrpFixtures.grpStart(
+            leaf, "phi.start.outcomes=" + q, "phi.late.from=3", "phi.late.cutoff=1e-4");
     try (PhiResolver resolver = PhiResolver.open(setup, files)) {
-      Assert.assertEquals(PhiHistory.readModes(files), List.of(ModeLine.late(CUTOFF, 3, "phi.late.from = 3")));
+      Assert.assertEquals(
+          PhiHistory.readModes(files), List.of(ModeLine.late(CUTOFF, 3, "phi.late.from = 3")));
       ActivePhi first = resolver.resolve(1, setup.phi());
       Assert.assertEquals(first.value(), PhiValue.grp(first.entry()));
       Assert.assertEquals(first.phi().kind(), Phi.Kind.NETWORK);
@@ -87,7 +92,8 @@ public class LateResolverTest {
     }
     // 再開しても、同じ反復には同じ値が効く
     try (PhiResolver resolver = PhiResolver.open(setup, files)) {
-      Assert.assertEquals(PhiHistory.readModes(files).size(), 2, "the first LATE line is written once");
+      Assert.assertEquals(
+          PhiHistory.readModes(files).size(), 2, "the first LATE line is written once");
       ActivePhi fourth = resolver.resolve(4, setup.phi());
       Assert.assertEquals(fourth.value().mode(), PhiMode.LATE);
       assertLate(fourth.phi());
@@ -103,7 +109,9 @@ public class LateResolverTest {
       Assert.assertEquals(first.value().requested(), PhiMode.LATE);
       Assert.assertEquals(first.value().mode(), PhiMode.GRP);
       Assert.assertEquals(first.phi().kind(), Phi.Kind.SCORE_RANK);
-      PhiHistory.append(files, GrpFixtures.ready(files, "g001-a1", 1, leaf).entry(GrpFixtures.VARIANT, 3, "test"));
+      PhiHistory.append(
+          files,
+          GrpFixtures.ready(files, "g001-a1", 1, leaf).entry(GrpFixtures.VARIANT, 3, "test"));
       ActivePhi network = resolver.resolve(3, setup.phi());
       Assert.assertEquals(network.entry().id(), "g001-a1");
       Assert.assertEquals(network.value().requested(), PhiMode.LATE);
@@ -131,7 +139,8 @@ public class LateResolverTest {
       Assert.assertEquals(third.entry().id(), PhiEntry.INITIAL_ID);
       Assert.assertEquals(third.value().mode(), PhiMode.GRP);
       Assert.assertEquals(
-          RefitRecord.latest(RefitRecord.readAll(files), "g002-a1").orElseThrow().status(), RefitStatus.REJECTED);
+          RefitRecord.latest(RefitRecord.readAll(files), "g002-a1").orElseThrow().status(),
+          RefitStatus.REJECTED);
       PhiEntry kept = PhiHistory.read(files).getLast();
       Assert.assertEquals(kept.id(), PhiEntry.INITIAL_ID);
       Assert.assertEquals(kept.effectiveFrom(), 3);
@@ -148,11 +157,13 @@ public class LateResolverTest {
       Assert.assertEquals(resolver.resolve(3, setup.phi()).value().mode(), PhiMode.GRP);
       Assert.assertEquals(resolver.resolve(4, setup.phi()).entry().id(), "g002-a1");
       corrupt(q);
-      IOException stopped = Assert.expectThrows(IOException.class, () -> resolver.resolve(5, setup.phi()));
+      IOException stopped =
+          Assert.expectThrows(IOException.class, () -> resolver.resolve(5, setup.phi()));
       Assert.assertTrue(stopped.getMessage().contains("g002-a1"), stopped.getMessage());
       Assert.assertEquals(PhiHistory.read(files).size(), 2, "nothing is rejected");
       Assert.assertEquals(
-          RefitRecord.latest(RefitRecord.readAll(files), "g002-a1").orElseThrow().status(), RefitStatus.READY);
+          RefitRecord.latest(RefitRecord.readAll(files), "g002-a1").orElseThrow().status(),
+          RefitStatus.READY);
     }
   }
 
@@ -160,7 +171,10 @@ public class LateResolverTest {
   public void aFixedGrpWithAnOutcomeNetworkEnumeratesFromItsStart() throws IOException {
     PhiSetup setup =
         GrpFixtures.setup(
-            "phi.source=FIXED_GRP", "phi.grp=" + leaf, "phi.outcomes=" + q, "phi.late.from=2",
+            "phi.source=FIXED_GRP",
+            "phi.grp=" + leaf,
+            "phi.outcomes=" + q,
+            "phi.late.from=2",
             "phi.late.cutoff=1e-4");
     try (PhiResolver resolver = PhiResolver.open(setup, files)) {
       ActivePhi first = resolver.resolve(1, setup.phi());
@@ -184,7 +198,7 @@ public class LateResolverTest {
   }
 
   /**
-   * 固定の GRP のファイルを替えると、次の反復は id が同じでも別の値になり、Phi（と終盤のメモ）を開き直す。Φ の段に書いた前の値は、
+   * 固定の GRP のファイルを替えると、次の反復は id が同じでも別の値になり、Phi（と終盤のキャッシュ）を開き直す。Φ の段に書いた前の値は、
    * ファイルの sha が合わないので開き直せない。
    */
   @Test
@@ -192,7 +206,10 @@ public class LateResolverTest {
     Path fixed = GrpFixtures.network(run.resolve("fixed"), 21);
     PhiSetup setup =
         GrpFixtures.setup(
-            "phi.source=FIXED_GRP", "phi.grp=" + fixed, "phi.outcomes=" + q, "phi.late.from=1",
+            "phi.source=FIXED_GRP",
+            "phi.grp=" + fixed,
+            "phi.outcomes=" + q,
+            "phi.late.from=1",
             "phi.late.cutoff=1e-4");
     try (PhiResolver resolver = PhiResolver.open(setup, files)) {
       ActivePhi first = resolver.resolve(1, setup.phi());
@@ -205,7 +222,8 @@ public class LateResolverTest {
       Assert.assertNotEquals(replaced.entry().sha256(), first.entry().sha256());
       Assert.assertFalse(replaced.value().sameValue(first.value()));
       Assert.assertNotSame(replaced.phi(), first.phi());
-      IOException refused = Assert.expectThrows(IOException.class, () -> resolver.reopen(first.value()));
+      IOException refused =
+          Assert.expectThrows(IOException.class, () -> resolver.reopen(first.value()));
       Assert.assertTrue(refused.getMessage().startsWith("GRP checkpoint "), refused.getMessage());
       Assert.assertSame(resolver.reopen(replaced.value()).phi(), replaced.phi());
     }
@@ -213,12 +231,16 @@ public class LateResolverTest {
 
   /** テストの q を持たせた候補の項目。 */
   private PhiEntry withOutcomes(String id, int from) throws IOException {
-    return HandEndPhi.checkpointEntry(id, GrpFixtures.VARIANT, leaf, "", q, from, PhiEntry.INITIAL_ID, "test");
+    return HandEndPhi.checkpointEntry(
+        id, GrpFixtures.VARIANT, leaf, "", q, from, PhiEntry.INITIAL_ID, "test");
   }
 
   private static void corrupt(Path checkpoint) throws IOException {
     Files.writeString(
-        checkpoint.resolve(GrpCheckpoint.WEIGHTS_FILE), "x", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+        checkpoint.resolve(GrpCheckpoint.WEIGHTS_FILE),
+        "x",
+        StandardCharsets.UTF_8,
+        StandardOpenOption.APPEND);
   }
 
   /**
@@ -227,11 +249,14 @@ public class LateResolverTest {
    */
   private void assertLate(Phi phi) throws IOException {
     GrpNetwork network = (GrpNetwork) GrpCheckpoint.read(leaf);
-    Phi direct = Phi.late(FinalRound.of(GrpCheckpoint.readOutcomes(q), network, CUTOFF), GrpFixtures.UTILITY, 16);
+    Phi direct =
+        Phi.late(
+            FinalRound.of(GrpCheckpoint.readOutcomes(q), network, CUTOFF), GrpFixtures.UTILITY, 16);
     boolean differs = false;
     for (GrpState state : covered) {
       long[] actual = PhiResolverTest.bits(PhiResolverTest.values(phi, state));
-      Assert.assertEquals(actual, PhiResolverTest.bits(PhiResolverTest.values(direct, state)), state.toString());
+      Assert.assertEquals(
+          actual, PhiResolverTest.bits(PhiResolverTest.values(direct, state)), state.toString());
       differs |= !Arrays.equals(actual, PhiResolverTest.bits(PhiResolverTest.direct(leaf, state)));
     }
     Assert.assertTrue(differs, "the covered hand ends are enumerated");

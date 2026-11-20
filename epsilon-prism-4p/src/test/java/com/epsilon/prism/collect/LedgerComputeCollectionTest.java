@@ -28,7 +28,8 @@ public class LedgerComputeCollectionTest {
 
   /** ラベル行、ロールイン、写しの中の行がどれも出るようにした抽出率（{@link CollectorTest} と同じ）。 */
   private static final Sampling SAMPLING =
-      TestSampling.grouped(0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
+      TestSampling.grouped(
+          0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
 
   /** 一様分布を ε_b = 0.05 だけ混ぜる行動方策。 */
   private static final Behaviour FLOOR = new Behaviour(0.05, 0, CrnScheme.SINGLE_RACE);
@@ -47,14 +48,23 @@ public class LedgerComputeCollectionTest {
             EnumSet.of(LedgerGroup.POINTS, LedgerGroup.URA, LedgerGroup.POLICY));
     for (Set<LedgerGroup> compute : subsets) {
       List<Row> part = collect(new LedgerRecording(compute, 32, 8));
-      Assert.assertEquals(projected(part, compute, false), projected(full, compute, true), compute.toString());
+      Assert.assertEquals(
+          projected(part, compute, false), projected(full, compute, true), compute.toString());
     }
   }
 
   /** 半荘 200〜203 を集め、確定して読み戻した行。 */
   private static List<Row> collect(LedgerRecording ledger) {
     return CollectorTest.collectGames(
-            SAMPLING, ledger, 7_001L * 5, 200, 4, FLOOR, new CollectorTest.HashedScorePolicy(), 1, 4)
+            SAMPLING,
+            ledger,
+            7_001L * 5,
+            200,
+            4,
+            FLOOR,
+            new CollectorTest.HashedScorePolicy(),
+            1,
+            4)
         .rows();
   }
 
@@ -67,12 +77,14 @@ public class LedgerComputeCollectionTest {
    * @param compute 帳簿で計算する組
    * @param reference 全ての組を計算した行なら true
    */
-  private static List<String> projected(List<Row> rows, Set<LedgerGroup> compute, boolean reference) {
+  private static List<String> projected(
+      List<Row> rows, Set<LedgerGroup> compute, boolean reference) {
     RowCodec codec = new RowCodec(0, TENHOU_4P);
     List<String> result = new ArrayList<>();
     for (Row row : rows) {
       Assert.assertEquals(row.ledgerFeatures(), LedgerColumn.COUNT);
-      StringBuilder text = new StringBuilder(Base64.getEncoder().encodeToString(codec.encode(stripped(row))));
+      StringBuilder text =
+          new StringBuilder(Base64.getEncoder().encodeToString(codec.encode(stripped(row))));
       for (int a = 0; a < row.actions(); a++)
         for (int f = 0; f < COLUMNS.length; f++) {
           float value = row.ledger(a, f);

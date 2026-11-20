@@ -58,10 +58,12 @@ final class ReferenceLoss {
       float share) {
     NDArray loss =
         value(scope, outputs, labels)
-            .add(rowMean(scope, outputs, labels).mul(PrismLoss.ROW_MEAN))
+            .add(rowMean(scope, outputs, labels).mul(PrismLoss.RowAnchor.GAIN.weight(gain)))
             .div(denominator);
     if (auxiliaryLabels != null && outputs.auxiliary() != null) {
-      loss = loss.add(auxiliary(scope, weights, outputs.auxiliary(), auxiliaryLabels, gain).mul(share));
+      loss =
+          loss.add(
+              auxiliary(scope, weights, outputs.auxiliary(), auxiliaryLabels, gain).mul(share));
     }
     return loss;
   }
@@ -106,7 +108,10 @@ final class ReferenceLoss {
     NDArray maskF = mask.toType(DataType.FLOAT32, false);
     NDArray nonEmpty = maskF.sum(ACTIONS, true).minimum(1f);
     NDArray peak =
-        NDArrays.where(mask, z, scope.full(shape, FLOOR)).max(ACTIONS, true).stopGradient().mul(nonEmpty);
+        NDArrays.where(mask, z, scope.full(shape, FLOOR))
+            .max(ACTIONS, true)
+            .stopGradient()
+            .mul(nonEmpty);
     NDArray shifted = NDArrays.where(mask, z.sub(peak), scope.zeros(shape, DataType.FLOAT32));
     NDArray e = shifted.exp().mul(maskF);
     NDArray sum = e.sum(ACTIONS, true).add(nonEmpty.neg().add(1f));
@@ -156,14 +161,21 @@ final class ReferenceLoss {
     Shape column = new Shape(rows);
     NDArray scores = outputs.scores();
     NDArray kept =
-        NDArrays.where(scope.create(measured, new Shape(rows, capacity)), scores, scope.zeros(scores.getShape()));
+        NDArrays.where(
+            scope.create(measured, new Shape(rows, capacity)),
+            scores,
+            scope.zeros(scores.getShape()));
     NDArray mean = kept.sum(new int[] {1}).div(scope.create(counts, column));
     return mean.square().mul(scope.create(weights, column)).sum();
   }
 
   /** 補助の項 L_aux（AuxiliaryLoss.terms の total と同じ値）。 */
   private static NDArray auxiliary(
-      NDManager scope, AuxiliaryLoss weights, Outputs.Auxiliary outputs, AuxiliaryLabels labels, float gain) {
+      NDManager scope,
+      AuxiliaryLoss weights,
+      Outputs.Auxiliary outputs,
+      AuxiliaryLabels labels,
+      float gain) {
     NDArray candidateSum = scope.zeros(new Shape());
     int candidates = labels.candidateActions().length;
     NDArray candidateTargets =
@@ -220,7 +232,8 @@ final class ReferenceLoss {
                   .div(used / HEADS.width(target));
         } else {
           NDArray columns = columnLoss(target.loss(), logits, truth, target.scale());
-          float denominator = target.reduction() == Reduction.MEAN ? used : used / HEADS.width(target);
+          float denominator =
+              target.reduction() == Reduction.MEAN ? used : used / HEADS.width(target);
           term =
               columns
                   .mul(scope.create(mask, new Shape(rows, HEADS.opponents(), HEADS.width(target))))
@@ -247,16 +260,15 @@ final class ReferenceLoss {
     }
     NDArray columns = columnLoss(loss, logits, truth, scale);
     int last = columns.getShape().dimension() - 1;
-    return reduction == Reduction.MEAN ? columns.mean(new int[] {last}) : columns.sum(new int[] {last});
+    return reduction == Reduction.MEAN
+        ? columns.mean(new int[] {last})
+        : columns.sum(new int[] {last});
   }
 
   private static NDArray columnLoss(Loss loss, NDArray logits, NDArray truth, float scale) {
     return switch (loss) {
       case SIGMOID ->
-          logits
-              .maximum(0)
-              .sub(logits.mul(truth))
-              .add(logits.abs().neg().exp().add(1).log());
+          logits.maximum(0).sub(logits.mul(truth)).add(logits.abs().neg().exp().add(1).log());
       case SQUARED -> logits.sub(truth.div(scale)).square();
       case SOFTMAX -> throw new IllegalArgumentException("softmax has no column loss");
     };

@@ -87,19 +87,25 @@ public class MjaiCodecTest {
             VARIANT,
             played.rounds(),
             played.finalScores(),
-            new RecordedGame.Meta("self-0", RecordedGame.Source.TENHOU, List.of("A", "B", "C", "D")));
+            new RecordedGame.Meta(
+                "self-0", RecordedGame.Source.TENHOU, List.of("A", "B", "C", "D")));
     String text = MjaiCodec.write(game);
     Assert.assertEquals(
         MjaiCodec.read(text, "named").meta(),
         new RecordedGame.Meta("named", RecordedGame.Source.MJAI, List.of("A", "B", "C", "D")));
-    String unnamed = text.replace("\"names\":[\"A\",\"B\",\"C\",\"D\"]", "\"names\":[\"A\",null,\"C\",\"D\"]");
+    String unnamed =
+        text.replace("\"names\":[\"A\",\"B\",\"C\",\"D\"]", "\"names\":[\"A\",null,\"C\",\"D\"]");
     Assert.assertNotEquals(unnamed, text);
-    Assert.assertEquals(MjaiCodec.read(unnamed, "unnamed").meta().names(), List.of("A", "", "C", "D"));
-    String bare = text.replace(",\"names\":[\"A\",\"B\",\"C\",\"D\"]", "").replace("\"names\":[\"A\",\"B\",\"C\",\"D\"],", "");
+    Assert.assertEquals(
+        MjaiCodec.read(unnamed, "unnamed").meta().names(), List.of("A", "", "C", "D"));
+    String bare =
+        text.replace(",\"names\":[\"A\",\"B\",\"C\",\"D\"]", "")
+            .replace("\"names\":[\"A\",\"B\",\"C\",\"D\"],", "");
     Assert.assertNotEquals(bare, text);
     RecordedGame read = MjaiCodec.read(bare, "bare");
     Assert.assertEquals(read.variant(), VARIANT);
-    Assert.assertEquals(read.meta().names(), List.of("", "", "", ""), "a start_game without names is unnamed");
+    Assert.assertEquals(
+        read.meta().names(), List.of("", "", "", ""), "a start_game without names is unnamed");
   }
 
   /** hora の点が翻・符と合わない牌譜は読まない。 */
@@ -110,7 +116,8 @@ public class MjaiCodecTest {
     int at = text.indexOf("\"hora_points\":");
     int end = text.indexOf(',', at);
     String wrong = text.substring(0, at) + "\"hora_points\":100" + text.substring(end);
-    Assert.assertThrows(IllegalArgumentException.class, () -> MjaiCodec.read(wrong, game.meta().id()));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> MjaiCodec.read(wrong, game.meta().id()));
   }
 
   /** 最後の打牌と違う牌を鳴いた記録は読まない。 */
@@ -122,7 +129,8 @@ public class MjaiCodecTest {
     int pai = text.indexOf("\"pai\":\"", at) + "\"pai\":\"".length();
     String other = text.charAt(pai) == '1' ? "2" : "1";
     String wrong = text.substring(0, pai) + other + text.substring(pai + 1);
-    Assert.assertThrows(IllegalArgumentException.class, () -> MjaiCodec.read(wrong, game.meta().id()));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> MjaiCodec.read(wrong, game.meta().id()));
   }
 
   /**
@@ -141,7 +149,13 @@ public class MjaiCodecTest {
             .indicator("7z")
             .ura(0, "1s");
     RecordedGame game =
-        RecordedGames.scene(scene, "empty-ura", "3:RIICHI_TSUMOGIRI(9p)", "1:DAHAI(5p)", "2:RON_AGARI", "3:RON_AGARI");
+        RecordedGames.scene(
+            scene,
+            "empty-ura",
+            "3:RIICHI_TSUMOGIRI(9p)",
+            "1:DAHAI(5p)",
+            "2:RON_AGARI",
+            "3:RON_AGARI");
     RoundResult played = game.rounds().get(0).result();
     Assert.assertEquals(played.wins().size(), 2);
     Assert.assertEquals(played.wins().get(0).seat(), 2);
@@ -175,7 +189,8 @@ public class MjaiCodecTest {
       boundary = driver.step(ws);
     }
     Assert.assertTrue(result.sameDeltas(driver.engine().roundEnd()));
-    Assert.assertTrue(played.matches(driver.engine().roundEnd(), game.rounds().get(0).riichiMask()));
+    Assert.assertTrue(
+        played.matches(driver.engine().roundEnd(), game.rounds().get(0).riichiMask()));
   }
 
   /**
@@ -222,10 +237,12 @@ public class MjaiCodecTest {
     Assert.assertEquals(names.keySet(), EnumSet.allOf(AbortiveDraw.class));
     names.forEach(
         (abortive, reasons) -> {
-          RecordedGame named = MjaiCodec.read(nine.replace(written, reason(reasons.get(0))), "named");
+          RecordedGame named =
+              MjaiCodec.read(nine.replace(written, reason(reasons.get(0))), "named");
           Assert.assertEquals(named.rounds().get(0).result().abortive(), abortive);
           for (String alias : reasons) {
-            Assert.assertEquals(MjaiCodec.read(nine.replace(written, reason(alias)), "named"), named, alias);
+            Assert.assertEquals(
+                MjaiCodec.read(nine.replace(written, reason(alias)), "named"), named, alias);
           }
         });
 
@@ -236,7 +253,9 @@ public class MjaiCodecTest {
 
     String text = MjaiCodec.write(RecordedGames.play(VARIANT, 0, "self-0"));
     String none = "{\"type\":\"none\"}\n";
-    Assert.assertEquals(MjaiCodec.read(none + text.replace("\n", "\n" + none), "none"), MjaiCodec.read(text, "none"));
+    Assert.assertEquals(
+        MjaiCodec.read(none + text.replace("\n", "\n" + none), "none"),
+        MjaiCodec.read(text, "none"));
   }
 
   /**
@@ -330,7 +349,9 @@ public class MjaiCodecTest {
       if (recorded.win()) {
         Assert.assertEquals(read.kind(), recorded.kind(), where);
         Assert.assertEquals(
-            read.wins(), recorded.wins().stream().map(win -> RoundResult.Win.unscored(win.seat())).toList(), where);
+            read.wins(),
+            recorded.wins().stream().map(win -> RoundResult.Win.unscored(win.seat())).toList(),
+            where);
         Assert.assertEquals(read.uraCount(), recorded.uraCount(), where);
       } else {
         Assert.assertEquals(read, RoundResult.drawWithoutDetails(recorded.deltas()), where);

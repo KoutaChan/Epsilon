@@ -21,7 +21,8 @@ public record ClassicExtras(long[] words) {
   public ClassicExtras {
     Objects.requireNonNull(words, "words");
     if (words.length != WORDS) {
-      throw new IllegalArgumentException("Classic extras hold " + WORDS + " words, not " + words.length);
+      throw new IllegalArgumentException(
+          "Classic extras hold " + WORDS + " words, not " + words.length);
     }
   }
 

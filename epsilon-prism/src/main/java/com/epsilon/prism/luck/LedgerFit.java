@@ -1,6 +1,8 @@
 package com.epsilon.prism.luck;
 
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.core.DecisionClass;
+import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.Row;
@@ -50,7 +52,10 @@ public final class LedgerFit {
 
   /** 報告で組ごとの R² を求める組（宣言の順。列を持つ組だけ）。 */
   private static final List<Part> PARTS =
-      Arrays.stream(LedgerGroup.values()).map(Part::of).filter(part -> part.columns().length > 0).toList();
+      Arrays.stream(LedgerGroup.values())
+          .map(Part::of)
+          .filter(part -> part.columns().length > 0)
+          .toList();
 
   /** 当てはめる列（補正に使う組の列、宣言の順）。 */
   private final int[] fitted;
@@ -61,16 +66,42 @@ public final class LedgerFit {
   /** 区分の当てはめに要る行の数。足りなければクラスをまとめて当てはめる。 */
   private final long minRows;
 
+  /** 局・順位の区分。クラスごとにだけ当てはめるなら null。 */
+  private final LedgerCell cells;
+
+  private static final int MIN_CELL_ROWS = 544;
+
   /**
    * @param apply 補正に使う組（列を持つ組を 1 つ以上含む）
    * @param ridge ridge の係数（正）
    * @param minRowsPerColumn 区分に要る行の数を、当てはめる列 1 つあたりで表した値
    */
   public LedgerFit(Set<LedgerGroup> apply, double ridge, int minRowsPerColumn) {
+    this(apply, ridge, minRowsPerColumn, LedgerCells.CLASS, null);
+  }
+
+  /**
+   * @param cells 係数を当てはめる区分
+   * @param variant 行のルール（区分の数と行の区分の読み方を決める。クラスごとにだけ当てはめるなら使わない）
+   */
+  public LedgerFit(
+      Set<LedgerGroup> apply,
+      double ridge,
+      int minRowsPerColumn,
+      LedgerCells cells,
+      Variant variant) {
+    this.cells =
+        switch (cells) {
+          case CLASS -> null;
+          case CLASS_STAGE_RANK -> LedgerCell.of(Objects.requireNonNull(variant, "variant"));
+        };
     fitted = columns(apply);
-    if (fitted.length == 0) throw new IllegalArgumentException("No ledger column belongs to " + apply);
-    if (!(ridge > 0 && Double.isFinite(ridge))) throw new IllegalArgumentException("Invalid ridge " + ridge);
-    if (minRowsPerColumn < 1) throw new IllegalArgumentException("Invalid minRowsPerColumn " + minRowsPerColumn);
+    if (fitted.length == 0)
+      throw new IllegalArgumentException("No ledger column belongs to " + apply);
+    if (!(ridge > 0 && Double.isFinite(ridge)))
+      throw new IllegalArgumentException("Invalid ridge " + ridge);
+    if (minRowsPerColumn < 1)
+      throw new IllegalArgumentException("Invalid minRowsPerColumn " + minRowsPerColumn);
     this.ridge = ridge;
     minRows = (long) minRowsPerColumn * fitted.length;
   }
@@ -89,7 +120,10 @@ public final class LedgerFit {
 
   /** 組に属する列の番号を、宣言の順に返す。 */
   private static int[] columns(Set<LedgerGroup> groups) {
-    return Arrays.stream(COLUMNS).filter(c -> groups.contains(c.group())).mapToInt(Enum::ordinal).toArray();
+    return Arrays.stream(COLUMNS)
+        .filter(c -> groups.contains(c.group()))
+        .mapToInt(Enum::ordinal)
+        .toArray();
   }
 
   /**
@@ -103,15 +137,15 @@ public final class LedgerFit {
   /** 行を順に足して当てはめる（系譜では、行のストアからバッチごとに読み出す行の並びを渡す）。 */
   public Result fit(Iterable<Row> rows) {
     long started = System.nanoTime();
-    var accumulator = new Accumulator();
-    for (Row row : rows) accumulator.add(FitRow.of(row));
+    var accumulator = new Accumulator(cells);
+    for (Row row : rows) accumulator.add(FitRow.of(row, cells));
     return result(accumulator, started);
   }
 
   /** {@link FitRow} の形の行を順に足して当てはめる。和に足す順は {@link #fit} と同じ。 */
   Result fitRows(Iterable<? extends FitRow> rows) {
     long started = System.nanoTime();
-    var accumulator = new Accumulator();
+    var accumulator = new Accumulator(cells);
     for (FitRow row : rows) accumulator.add(row);
     return result(accumulator, started);
   }
@@ -137,21 +171,22 @@ public final class LedgerFit {
   public static final class WriterTap implements CohortWriter.Tap {
     private final LedgerFit fit;
     private final Predicate<RowCodec.Index> rows;
-    private final Accumulator accumulator = new Accumulator();
+    private final Accumulator accumulator;
     private final Tape[] tapes;
     private boolean fitted;
 
     private WriterTap(LedgerFit fit, int shards, Predicate<RowCodec.Index> rows) {
       if (shards < 1) throw new IllegalArgumentException("shard count must be positive: " + shards);
       this.fit = fit;
+      accumulator = new Accumulator(fit.cells);
       this.rows = Objects.requireNonNull(rows, "rows");
       tapes = new Tape[shards];
-      for (int shard = 1; shard < shards; shard++) tapes[shard] = new Tape();
+      for (int shard = 1; shard < shards; shard++) tapes[shard] = new Tape(fit.cells != null);
     }
 
     @Override
     public void written(int shard, Row row, RowCodec.Index index) {
-      if (rows.test(index)) add(shard, FitRow.of(row));
+      if (rows.test(index)) add(shard, FitRow.of(row, fit.cells));
     }
 
     /** シャード {@code shard} のライターが次に書いた行を足す。シャード 0 ならすぐ足し、ほかのシャードなら貯めておく。 */
@@ -193,6 +228,12 @@ public final class LedgerFit {
     long[] games = new long[1024];
     byte[] classes = new byte[1024], counts = new byte[1024];
 
+    byte[] cells;
+
+    Tape(boolean byCell) {
+      cells = byCell ? new byte[games.length] : null;
+    }
+
     /** 行の最初の手の位置（ブロックの番号 × BLOCK + ブロックの中の位置）。 */
     long[] starts = new long[1024];
 
@@ -224,6 +265,7 @@ public final class LedgerFit {
         games = Arrays.copyOf(games, capacity);
         classes = Arrays.copyOf(classes, capacity);
         counts = Arrays.copyOf(counts, capacity);
+        if (cells != null) cells = Arrays.copyOf(cells, capacity);
         starts = Arrays.copyOf(starts, capacity);
       }
       float[] y = values.get((int) (slot / BLOCK));
@@ -241,6 +283,7 @@ public final class LedgerFit {
       }
       games[rows] = row.gameId();
       classes[rows] = (byte) row.decisionClass().ordinal();
+      if (cells != null) cells[rows] = (byte) row.cell();
       counts[rows] = (byte) m;
       starts[rows] = slot;
       rows++;
@@ -280,6 +323,11 @@ public final class LedgerFit {
       }
 
       @Override
+      public int cell() {
+        return cells[row];
+      }
+
+      @Override
       public float[] values() {
         return Arrays.copyOfRange(y, start, start + counts[row]);
       }
@@ -302,6 +350,15 @@ public final class LedgerFit {
     final double[] b = new double[F];
     double yy;
     long rows, slots;
+
+    void addAction(double[] centred, double y) {
+      for (int f = 0; f < F; f++) {
+        if (centred[f] == 0) continue;
+        b[f] += centred[f] * y;
+        for (int g = 0; g < F; g++) a[f * F + g] += centred[f] * centred[g];
+      }
+      yy += y * y;
+    }
 
     void add(Sums other) {
       for (int i = 0; i < a.length; i++) a[i] += other.a[i];
@@ -356,7 +413,8 @@ public final class LedgerFit {
         double sum = m[i][j];
         for (int p = 0; p < j; p++) sum -= m[i][p] * m[j][p];
         if (i == j) {
-          if (!(sum > 0)) throw new IllegalStateException("Ledger normal equations are not positive definite");
+          if (!(sum > 0))
+            throw new IllegalStateException("Ledger normal equations are not positive definite");
           m[i][i] = Math.sqrt(sum);
         } else {
           m[i][j] = sum / m[j][j];
@@ -381,9 +439,12 @@ public final class LedgerFit {
   /** 行を足していく和（当てはめと偏りの確かめに使う）。 */
   static final class Accumulator {
     final Sums[][] sums = new Sums[2][CLASSES];
+    final Sums[][][] cells;
 
     /** クラスと列ごとの、生の L の和・平方の和・L が 0 でない手の数。 */
-    final double[][] sum = new double[CLASSES][F], square = new double[CLASSES][F], nonzero = new double[CLASSES][F];
+    final double[][] sum = new double[CLASSES][F],
+        square = new double[CLASSES][F],
+        nonzero = new double[CLASSES][F];
 
     /** 半荘で束ねる和。半荘 ID をキーに [手の数, 列ごとの L の和] を持つ（全体の z に使う）。 */
     final Map<Long, double[]> byGame = new HashMap<>();
@@ -398,9 +459,15 @@ public final class LedgerFit {
 
     /** 前に足した行の半荘と、その半荘で束ねる和。 */
     private long lastGame;
+
     private double[] lastCluster;
 
     Accumulator() {
+      this(null);
+    }
+
+    Accumulator(LedgerCell partition) {
+      cells = partition == null ? null : new Sums[2][CLASSES][partition.count()];
       for (int p = 0; p < 2; p++) for (int c = 0; c < CLASSES; c++) sums[p][c] = new Sums();
     }
 
@@ -446,19 +513,24 @@ public final class LedgerFit {
       meanY /= m;
       for (int f = 0; f < F; f++) meanL[f] /= m;
       int c = row.decisionClass().ordinal();
-      Sums target = sums[(int) (row.gameId() & 1)][c];
+      int parity = (int) (row.gameId() & 1);
+      Sums target = sums[parity][c];
+      Sums cell = null;
+      if (cells != null) {
+        int index = row.cell();
+        cell = cells[parity][c][index];
+        if (cell == null) cells[parity][c][index] = cell = new Sums();
+        cell.rows++;
+        cell.slots += m;
+      }
       // 偏りの確かめには中心化しない生の L を使う（半荘で束ねる和は行ごとに 1 回だけ引く）
       double[] game = cluster(row.gameId());
       for (int i = 0; i < m; i++) {
         int a = measured[i];
         double y = values[a] - meanY;
         for (int f = 0; f < F; f++) centred[f] = row.ledger(a, f) - meanL[f];
-        for (int f = 0; f < F; f++) {
-          if (centred[f] == 0) continue;
-          target.b[f] += centred[f] * y;
-          for (int g = 0; g < F; g++) target.a[f * F + g] += centred[f] * centred[g];
-        }
-        target.yy += y * y;
+        target.addAction(centred, y);
+        if (cell != null) cell.addAction(centred, y);
         game[0]++;
         for (int f = 0; f < F; f++) {
           double l = row.ledger(a, f);
@@ -505,9 +577,11 @@ public final class LedgerFit {
   /** 足し終えた和から係数を当てはめ、報告を作る。 */
   private Result result(Accumulator sums, long started) {
     CrossFit both = new CrossFit(sums.sums);
+    if (sums.cells != null) both.fitCells(sums.cells);
     Map<String, LedgerReport.Line> byClass = new LinkedHashMap<>();
     for (DecisionClass c : DecisionClass.values())
-      if (both.classes[c.ordinal()].rows() > 0) byClass.put(c.name(), both.classes[c.ordinal()].line());
+      if (both.classes[c.ordinal()].rows() > 0)
+        byClass.put(c.name(), both.classes[c.ordinal()].line());
     var report =
         new LedgerReport(
             sums.rows,
@@ -515,8 +589,14 @@ public final class LedgerFit {
             sums.skipped,
             both.all(),
             byClass,
+            both.cellFolds,
             new LedgerReport.Bias(
-                features(sums.totalSums(), sums.totalSquares(), sums.totalNonzero(), sums.slots, sums.byGame)),
+                features(
+                    sums.totalSums(),
+                    sums.totalSquares(),
+                    sums.totalNonzero(),
+                    sums.slots,
+                    sums.byGame)),
             (System.nanoTime() - started) / 1e9);
     return new Result(both.correction(), report);
   }
@@ -530,7 +610,8 @@ public final class LedgerFit {
     long groups = clusters.size();
     for (int f = 0; f < F; f++) {
       double mean = count > 0 ? sums[f] / count : Double.NaN;
-      double sd = count == 0 ? Double.NaN : Math.sqrt(Math.max(0, squares[f] / count - mean * mean));
+      double sd =
+          count == 0 ? Double.NaN : Math.sqrt(Math.max(0, squares[f] / count - mean * mean));
       double share = count == 0 ? Double.NaN : nonzero[f] / count;
       double s2 = 0, sn = 0, n2 = 0, n = 0;
       for (double[] cluster : clusters.values()) {
@@ -561,17 +642,47 @@ public final class LedgerFit {
   private final class CrossFit {
     final Sums[] pooledByParity = new Sums[2];
     final ClassFit[] classes = new ClassFit[CLASSES];
+    final double[][][][] cellBeta = cells == null ? null : new double[2][CLASSES][cells.count()][];
+    final Map<String, List<LedgerReport.Fold>> cellFolds =
+        cells == null ? null : new LinkedHashMap<>();
+
+    void fitCells(Sums[][][] sums) {
+      Sums empty = new Sums();
+      for (DecisionClass group : DecisionClass.values()) {
+        int c = group.ordinal();
+        for (int cell = 0; cell < cells.count(); cell++) {
+          Sums even = Objects.requireNonNullElse(sums[0][c][cell], empty);
+          Sums odd = Objects.requireNonNullElse(sums[1][c][cell], empty);
+          if (Math.max(even.rows, odd.rows) < MIN_CELL_ROWS) continue;
+          var folds = new ArrayList<LedgerReport.Fold>(2);
+          for (int p = 0; p < 2; p++) {
+            Sums train = p == 0 ? odd : even, held = p == 0 ? even : odd;
+            double[] beta = classes[c].byFold[p];
+            boolean fallback = train.rows < MIN_CELL_ROWS;
+            if (!fallback) {
+              beta = classes[c].refine(p, train, held);
+              cellBeta[p][c][cell] = beta;
+            }
+            Double r2 = held.yy > 0 ? 1 - held.sse(beta) / held.yy : null;
+            folds.add(new LedgerReport.Fold(r2, LedgerReport.columns(beta), fallback));
+          }
+          cellFolds.put(cells.name(group, cell), List.copyOf(folds));
+        }
+      }
+    }
 
     CrossFit(Sums[][] parity) {
       for (int p = 0; p < 2; p++) pooledByParity[p] = Sums.of(parity[p]);
-      for (int c = 0; c < CLASSES; c++) classes[c] = new ClassFit(parity[0][c], parity[1][c], pooledByParity);
+      for (int c = 0; c < CLASSES; c++)
+        classes[c] = new ClassFit(parity[0][c], parity[1][c], pooledByParity);
     }
 
     /** 交差適合の係数を返す（偶奇 g・クラス c の係数は、偶奇 1 − g の行で当てはめたもの）。 */
     LedgerCorrection correction() {
       double[][][] beta = new double[2][CLASSES][];
-      for (int p = 0; p < 2; p++) for (int c = 0; c < CLASSES; c++) beta[p][c] = classes[c].byFold[p];
-      return new LedgerCorrection(beta);
+      for (int p = 0; p < 2; p++)
+        for (int c = 0; c < CLASSES; c++) beta[p][c] = classes[c].byFold[p];
+      return new LedgerCorrection(beta, cells, cellBeta);
     }
 
     /** 全てのクラスをまとめた区分の結果を返す。残差は、クラスごとの係数で求めた残差の和にする。 */
@@ -608,6 +719,8 @@ public final class LedgerFit {
     final double[] sse = new double[2];
     final double[] groupSse = new double[PARTS.size()];
 
+    final double[][][] partialByFold = cells == null ? null : new double[2][PARTS.size()][];
+
     ClassFit(Sums even, Sums odd, Sums[] pooledByParity) {
       folds = new Sums[] {even, odd};
       for (int p = 0; p < 2; p++) {
@@ -618,10 +731,23 @@ public final class LedgerFit {
         byFold[p] = source == null ? new double[F] : solve(source, fitted, ridge);
         sse[p] = folds[p].sse(byFold[p]);
         for (int k = 0; k < groupSse.length; k++) {
-          double[] partial = source == null ? new double[F] : solve(source, PARTS.get(k).columns(), ridge);
+          double[] partial =
+              source == null ? new double[F] : solve(source, PARTS.get(k).columns(), ridge);
           groupSse[k] += folds[p].sse(partial);
+          if (partialByFold != null) partialByFold[p][k] = partial;
         }
       }
+    }
+
+    /** この区分のホールドアウトの残差だけをクラスの係数から区分の係数に置き換える。 */
+    double[] refine(int parity, Sums train, Sums held) {
+      double[] beta = solve(train, fitted, ridge);
+      sse[parity] += held.sse(beta) - held.sse(byFold[parity]);
+      for (int k = 0; k < groupSse.length; k++) {
+        double[] partial = solve(train, PARTS.get(k).columns(), ridge);
+        groupSse[k] += held.sse(partial) - held.sse(partialByFold[parity][k]);
+      }
+      return beta;
     }
 
     long rows() {
@@ -631,12 +757,22 @@ public final class LedgerFit {
     LedgerReport.Line line() {
       Sums both = Sums.of(folds);
       return LedgerFit.line(
-          folds, sse, groupSse, both.rows >= minRows ? solve(both, fitted, ridge) : new double[F], byFold, fallback);
+          folds,
+          sse,
+          groupSse,
+          both.rows >= minRows ? solve(both, fitted, ridge) : new double[F],
+          byFold,
+          fallback);
     }
   }
 
   private static LedgerReport.Line line(
-      Sums[] folds, double[] sse, double[] groupSse, double[] beta, double[][] byFold, boolean[] fallback) {
+      Sums[] folds,
+      double[] sse,
+      double[] groupSse,
+      double[] beta,
+      double[][] byFold,
+      boolean[] fallback) {
     long rows = folds[0].rows + folds[1].rows, slots = folds[0].slots + folds[1].slots;
     double yy = folds[0].yy + folds[1].yy, residual = sse[0] + sse[1];
     Map<LedgerGroup, Double> byGroup = new EnumMap<>(LedgerGroup.class);

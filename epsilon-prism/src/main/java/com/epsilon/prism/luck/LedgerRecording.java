@@ -21,8 +21,12 @@ public record LedgerRecording(Set<LedgerGroup> compute, double pointClip, double
       throw new IllegalArgumentException(
           "A ledger computes a non-empty subset of " + LedgerGroup.computed() + ": " + compute);
     }
-    if (!(pointClip > 0 && policyClip > 0 && Double.isFinite(pointClip) && Double.isFinite(policyClip))) {
-      throw new IllegalArgumentException("Ledger clips must be positive and finite: " + pointClip + ", " + policyClip);
+    if (!(pointClip > 0
+        && policyClip > 0
+        && Double.isFinite(pointClip)
+        && Double.isFinite(policyClip))) {
+      throw new IllegalArgumentException(
+          "Ledger clips must be positive and finite: " + pointClip + ", " + policyClip);
     }
   }
 

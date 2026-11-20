@@ -1,7 +1,7 @@
 import type {
   ModelInfo,
   RecordSummary,
-} from "../../../../../protocol/model.ts";
+} from "@epsilon-reviewer/protocol/model";
 import type {
   ActionType,
   CandidateSet,
@@ -10,7 +10,7 @@ import type {
   RoundOutcome,
   StateDelta,
   TableState,
-} from "../../../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/result";
 
 // 読み込んだ解析結果。文書の配列やオブジェクトは、写さずにそのまま使う。局面は、見るときに stateReader が作る。
 

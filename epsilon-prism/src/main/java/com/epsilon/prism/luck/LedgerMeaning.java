@@ -57,7 +57,10 @@ public record LedgerMeaning(
    * @param catalog ルールで決まる帳簿の列の並び
    */
   static LedgerMeaning of(
-      LedgerSettings ledger, LedgerCatalog catalog, LossWeightSettings lossWeight, UraSettings ura) {
+      LedgerSettings ledger,
+      LedgerCatalog catalog,
+      LossWeightSettings lossWeight,
+      UraSettings ura) {
     LedgerSettings.Recording recording = ledger instanceof LedgerSettings.Recording r ? r : null;
     LedgerSettings.Fitting fitting = ledger instanceof LedgerSettings.Fitting f ? f : null;
     return new LedgerMeaning(
@@ -97,7 +100,12 @@ public record LedgerMeaning(
             new Item("ura", previous.ura, ura));
     for (Item item : items)
       if (!Objects.equals(item.before(), item.after()))
-        return "the ledger " + item.name() + " changed from " + item.before() + " to " + item.after();
+        return "the ledger "
+            + item.name()
+            + " changed from "
+            + item.before()
+            + " to "
+            + item.after();
     return null;
   }
 

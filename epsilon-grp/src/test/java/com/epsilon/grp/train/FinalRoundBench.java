@@ -29,10 +29,10 @@ import org.testng.annotations.Test;
  * -Dlate.outcomes に渡したチェックポイントから読む。
  *
  * <p>1 スレッドで、打ち切りの値ごとに次をログに書く。1 回の呼び出しの µs（平均・中央値・99%）。呼び出し 1 回あたりの、精算した組の
- * 数、葉のネットワークに通した葉の数、葉のメモに当たった数、半荘が終わる葉の数。埋めた確率（平均・99%・最大）と、半荘が終わる組の
+ * 数、葉のネットワークに通した葉の数、葉のキャッシュに当たった数、半荘が終わる葉の数。埋めた確率（平均・99%・最大）と、半荘が終わる組の
  * 確率の平均。内訳として、局の結果のネットワークの順伝播の µs と、葉を一様な定数に替えた参照実装（FinalRoundReference）の 1 回の
  * µs（順伝播・数え上げ・精算・足し込み）も書く。葉のネットワークだけにかかる時間は、1 卓の µs で書く。葉にネットワークを使った
- * 参照実装の結果が、FinalRound とビット単位で違う卓の数も書く。打ち切り 1e-5 では、葉のメモの大きさごとの当たりと µs も書く。
+ * 参照実装の結果が、FinalRound とビット単位で違う卓の数も書く。打ち切り 1e-5 では、葉のキャッシュの大きさごとの当たりと µs も書く。
  * 合否は判定しない。
  */
 public class FinalRoundBench {
@@ -45,7 +45,7 @@ public class FinalRoundBench {
   /** 葉のネットワークだけの時間を測るために記録する、葉の卓の数の上限。 */
   private static final int RECORDED_LEAVES = 200_000;
 
-  private static final double MEMO_CUTOFF = 1e-5;
+  private static final double CACHE_CUTOFF = 1e-5;
   private static final int[] LEAF_SLOTS = {1 << 10, 1 << 12, 1 << 14};
 
   @Test(groups = "native")
@@ -54,7 +54,8 @@ public class FinalRoundBench {
     String leafPath = System.getProperty("late.leaf");
     String outcomesPath = System.getProperty("late.outcomes");
     if (games == null || leafPath == null || outcomesPath == null) {
-      throw new SkipException("Pass -Dlate.games, -Dlate.leaf and -Dlate.outcomes to measure on recorded tables");
+      throw new SkipException(
+          "Pass -Dlate.games, -Dlate.leaf and -Dlate.outcomes to measure on recorded tables");
     }
     int wanted = Integer.getInteger("late.tables", DEFAULT_TABLES);
     GameCohort cohort = OldGameLog.read(Path.of(games));
@@ -75,18 +76,27 @@ public class FinalRoundBench {
     }
     GrpNetwork leaf = network(GrpCheckpoint.read(Path.of(leafPath)), leafPath);
     OutcomeNetwork outcomes = GrpCheckpoint.readOutcomes(Path.of(outcomesPath));
-    LOG.info(String.format(Locale.ROOT,
-        "LATE-BENCH cohort %d: %d games, %d hand ends, %d covered (%.2f%%), %d sampled; leaf %s, outcomes %s",
-        cohort.cohort(), cohort.games().size(), handEnds, covered.size(), 100.0 * covered.size() / handEnds,
-        sample.size(), leaf.shape(), outcomes.shape()));
+    LOG.info(
+        String.format(
+            Locale.ROOT,
+            "LATE-BENCH cohort %d: %d games, %d hand ends, %d covered (%.2f%%), %d sampled; leaf"
+                + " %s, outcomes %s",
+            cohort.cohort(),
+            cohort.games().size(),
+            handEnds,
+            covered.size(),
+            100.0 * covered.size() / handEnds,
+            sample.size(),
+            leaf.shape(),
+            outcomes.shape()));
     measureOutcomes(outcomes, sample);
     for (double cutoff : CUTOFFS) {
       FinalRound round = FinalRound.of(outcomes, leaf, cutoff);
       measureParts(round, sample, measureCalls(round, sample));
     }
-    FinalRound round = FinalRound.of(outcomes, leaf, MEMO_CUTOFF);
+    FinalRound round = FinalRound.of(outcomes, leaf, CACHE_CUTOFF);
     for (int slots : LEAF_SLOTS) {
-      measureMemo(round, sample, slots);
+      measureCache(round, sample, slots);
     }
   }
 
@@ -117,13 +127,22 @@ public class FinalRoundBench {
     }
     double[] sortedFilled = filled.clone();
     Arrays.sort(sortedFilled);
-    LOG.info(String.format(Locale.ROOT,
-        "LATE-BENCH cutoff %.0e: %s us/call; settled %.0f, leaf network %.1f, leaf memo hits %.1f,"
-            + " terminal leaves %.0f per call; filled mass mean %.3e p99 %.3e max %.3e; terminal mass mean %.4f",
-        round.cutoff(), spread(micros), workspace.settled() / (double) tables,
-        workspace.networkLeaves() / (double) tables, workspace.memoHits() / (double) tables,
-        workspace.terminalLeaves() / (double) tables, mean(filled), percentile(sortedFilled, 0.99),
-        sortedFilled[tables - 1], terminal / tables));
+    LOG.info(
+        String.format(
+            Locale.ROOT,
+            "LATE-BENCH cutoff %.0e: %s us/call; settled %.0f, leaf network %.1f, leaf cache hits"
+                + " %.1f, terminal leaves %.0f per call; filled mass mean %.3e p99 %.3e max %.3e;"
+                + " terminal mass mean %.4f",
+            round.cutoff(),
+            spread(micros),
+            workspace.settled() / (double) tables,
+            workspace.networkLeaves() / (double) tables,
+            workspace.cacheHits() / (double) tables,
+            workspace.terminalLeaves() / (double) tables,
+            mean(filled),
+            percentile(sortedFilled, 0.99),
+            sortedFilled[tables - 1],
+            terminal / tables));
     return values;
   }
 
@@ -140,23 +159,29 @@ public class FinalRoundBench {
     double[] p = new double[count];
     List<GrpState> leaves = new ArrayList<>();
     GrpWorkspace recording = GrpWorkspace.of(leaf.shape());
-    FinalRoundReference recorder = FinalRoundReference.of(round, (table, out) -> {
-      if (leaves.size() < RECORDED_LEAVES) {
-        leaves.add(GrpState.of(table));
-      }
-      leaf.permutations(table, recording, out);
-    });
+    FinalRoundReference recorder =
+        FinalRoundReference.of(
+            round,
+            (table, out) -> {
+              if (leaves.size() < RECORDED_LEAVES) {
+                leaves.add(GrpState.of(table));
+              }
+              leaf.permutations(table, recording, out);
+            });
     int differing = 0;
     for (int index = 0; index < sample.size(); index++) {
       recorder.permutations(sample.get(index), p);
       boolean same = true;
       for (int k = 0; k < count; k++) {
-        same &= Double.doubleToRawLongBits(p[k]) == Double.doubleToRawLongBits(values[index * count + k]);
+        same &=
+            Double.doubleToRawLongBits(p[k])
+                == Double.doubleToRawLongBits(values[index * count + k]);
       }
       differing += same ? 0 : 1;
     }
     double uniform = 1.0 / count;
-    FinalRoundReference constant = FinalRoundReference.of(round, (table, out) -> Arrays.fill(out, uniform));
+    FinalRoundReference constant =
+        FinalRoundReference.of(round, (table, out) -> Arrays.fill(out, uniform));
     for (GrpState state : sample) {
       constant.permutations(state, p);
     }
@@ -175,16 +200,25 @@ public class FinalRoundBench {
       leafMicros = (System.nanoTime() - start) / 1e3 / leaves.size();
     }
     double perCall = recorder.networkLeaves() / (double) sample.size();
-    LOG.info(String.format(Locale.ROOT,
-        "LATE-BENCH cutoff %.0e parts: constant leaves %.1f us/call (outcome forward, enumeration, settlement and"
-            + " sums); leaf network %.2f us/table over %d recorded tables x %.1f network leaves per call = %.1f us/call;"
-            + " copy with network leaves differs from FinalRound in %d of %d tables",
-        round.cutoff(), constantMicros, leafMicros, leaves.size(), perCall, perCall * leafMicros, differing,
-        sample.size()));
+    LOG.info(
+        String.format(
+            Locale.ROOT,
+            "LATE-BENCH cutoff %.0e parts: constant leaves %.1f us/call (outcome forward,"
+                + " enumeration, settlement and sums); leaf network %.2f us/table over %d recorded"
+                + " tables x %.1f network leaves per call = %.1f us/call; copy with network leaves"
+                + " differs from FinalRound in %d of %d tables",
+            round.cutoff(),
+            constantMicros,
+            leafMicros,
+            leaves.size(),
+            perCall,
+            perCall * leafMicros,
+            differing,
+            sample.size()));
   }
 
-  /** 葉のメモの大きさを指定して、1 回の呼び出しの µs と、メモに当たった割合を測る。 */
-  private static void measureMemo(FinalRound round, List<GrpState> sample, int slots) {
+  /** 葉のキャッシュの大きさを指定して、1 回の呼び出しの µs と、キャッシュに当たった割合を測る。 */
+  private static void measureCache(FinalRound round, List<GrpState> sample, int slots) {
     double[] p = new double[RankPermutations.of(round.variant()).count()];
     FinalRoundWorkspace warm = FinalRoundWorkspace.of(round, slots);
     for (GrpState state : sample) {
@@ -196,10 +230,17 @@ public class FinalRoundBench {
       round.permutations(state, workspace, p);
     }
     double micros = (System.nanoTime() - start) / 1e3 / sample.size();
-    long lookups = workspace.memoHits() + workspace.networkLeaves();
-    LOG.info(String.format(Locale.ROOT,
-        "LATE-BENCH cutoff %.0e leaf memo %d slots: %.1f us/call, %.1f%% of %.1f leaf lookups per call hit",
-        round.cutoff(), slots, micros, 100.0 * workspace.memoHits() / lookups, lookups / (double) sample.size()));
+    long lookups = workspace.cacheHits() + workspace.networkLeaves();
+    LOG.info(
+        String.format(
+            Locale.ROOT,
+            "LATE-BENCH cutoff %.0e leaf cache %d slots: %.1f us/call, %.1f%% of %.1f leaf lookups"
+                + " per call hit",
+            round.cutoff(),
+            slots,
+            micros,
+            100.0 * workspace.cacheHits() / lookups,
+            lookups / (double) sample.size()));
   }
 
   /** 局の結果のネットワークで、1 回の順伝播にかかる µs を測る。 */
@@ -213,7 +254,8 @@ public class FinalRoundBench {
       }
       micros = (System.nanoTime() - start) / 1e3 / sample.size();
     }
-    LOG.info(String.format(Locale.ROOT, "LATE-BENCH outcome network forward: %.2f us/table", micros));
+    LOG.info(
+        String.format(Locale.ROOT, "LATE-BENCH outcome network forward: %.2f us/table", micros));
   }
 
   private static GrpNetwork network(GrpModel model, String path) throws IOException {
@@ -227,7 +269,11 @@ public class FinalRoundBench {
   private static String spread(double[] values) {
     double[] sorted = values.clone();
     Arrays.sort(sorted);
-    return String.format(Locale.ROOT, "%.1f (median %.1f, p99 %.1f)", mean(values), percentile(sorted, 0.5),
+    return String.format(
+        Locale.ROOT,
+        "%.1f (median %.1f, p99 %.1f)",
+        mean(values),
+        percentile(sorted, 0.5),
         percentile(sorted, 0.99));
   }
 

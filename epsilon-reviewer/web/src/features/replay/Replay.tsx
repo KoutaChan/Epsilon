@@ -1,3 +1,4 @@
+import { DESKTOP_REFERENCE_WIDTH } from "./renderer/tableMetrics.ts";
 import { useState, type CSSProperties } from "react";
 import { RefreshCw } from "lucide-react";
 import { playerName, roundName } from "../../language/format";
@@ -69,10 +70,10 @@ export function Replay({
         ? 24
         : 23;
   const style = {
-    "--em-pc-ui-scale": String(viewport.width / 1440),
+    "--em-pc-ui-scale": String(viewport.width / DESKTOP_REFERENCE_WIDTH),
     // 候補欄は、上家（画面の左）の名札の下から画面の下端までに収める。横長で高さの低い画面では、高さに合わせて縮める。
     "--em-pc-candidate-scale": String(
-      Math.min(viewport.width / 1440, viewport.height / 760),
+      Math.min(viewport.width / DESKTOP_REFERENCE_WIDTH, viewport.height / 760),
     ),
     "--em-dora-tile": `${doraTile}px`,
     "--em-dora-width": `${doraTile * 5 + 22}px`,

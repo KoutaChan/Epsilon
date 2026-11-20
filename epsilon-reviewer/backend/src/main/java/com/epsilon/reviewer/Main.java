@@ -8,6 +8,7 @@ import com.epsilon.agent.app.Exit;
 import com.epsilon.agent.app.Named;
 import com.epsilon.agent.app.Outcome;
 import com.epsilon.agent.app.Signals;
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.agent.settings.InvalidSetting;
 import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Presence;
@@ -19,7 +20,6 @@ import com.epsilon.reviewer.error.ReviewerException;
 import com.epsilon.reviewer.http.HttpReviewer;
 import com.epsilon.reviewer.http.ServerConfig;
 import com.epsilon.reviewer.json.Json;
-import com.epsilon.reviewer.model.ModelFamilies;
 import com.epsilon.reviewer.stdio.FrameReader;
 import com.epsilon.reviewer.stdio.FrameWriter;
 import com.epsilon.reviewer.stdio.StdioHost;
@@ -58,14 +58,21 @@ public final class Main {
    * @param dataDir 解析結果の保存先
    * @param webDir 画面の web/dist。無ければ画面のパスは 404 を返す
    */
-  @Named(value = "serve", doc = "Start the HTTP server that takes analyses (stops on SIGTERM or SIGINT)")
+  @Named(
+      value = "serve",
+      doc = "Start the HTTP server that takes analyses (stops on SIGTERM or SIGINT)")
   public record Serve(
       @Key(doc = "Address to bind", value = "127.0.0.1") String host,
       @Key(doc = "Port to bind", value = "8080") @Range(min = 1, max = 65535) int port,
-      @Key(doc = "Public origin (http(s)://host[:port]; http://host:port if absent)", presence = Presence.ABSENT) String origin,
-      @Key(doc = "models.json (an empty catalog if absent)", presence = Presence.ABSENT) Path models,
+      @Key(
+              doc = "Public origin (http(s)://host[:port]; http://host:port if absent)",
+              presence = Presence.ABSENT)
+          String origin,
+      @Key(doc = "models.json (an empty catalog if absent)", presence = Presence.ABSENT)
+          Path models,
       @Key(doc = "Where analysis results are stored", value = "reviewer-data") Path dataDir,
-      @Key(doc = "web/dist of the UI (UI paths return 404 if absent)", presence = Presence.ABSENT) Path webDir)
+      @Key(doc = "web/dist of the UI (UI paths return 404 if absent)", presence = Presence.ABSENT)
+          Path webDir)
       implements ReviewerCommand {
 
     public Serve {
@@ -80,7 +87,10 @@ public final class Main {
         }
       } else if (WILDCARD_HOSTS.contains(host)) {
         throw new InvalidSetting(
-            "origin", "is required when host is the wildcard address " + host + " (give the URL that browsers open)");
+            "origin",
+            "is required when host is the wildcard address "
+                + host
+                + " (give the URL that browsers open)");
       }
     }
 
@@ -99,11 +109,15 @@ public final class Main {
       ReviewerSettings settings = context.settings().value();
       ReviewerSettings.Server server = settings.server();
       // JDK の HTTP サーバは、最初に作られるときにこれらの値を読む。
-      System.setProperty("sun.net.httpserver.maxReqTime", Integer.toString(server.requestSeconds()));
-      System.setProperty("sun.net.httpserver.maxRspTime", Integer.toString(server.responseSeconds()));
-      System.setProperty("sun.net.httpserver.maxConnections", Integer.toString(server.maxConnections()));
+      System.setProperty(
+          "sun.net.httpserver.maxReqTime", Integer.toString(server.requestSeconds()));
+      System.setProperty(
+          "sun.net.httpserver.maxRspTime", Integer.toString(server.responseSeconds()));
+      System.setProperty(
+          "sun.net.httpserver.maxConnections", Integer.toString(server.maxConnections()));
       URI publicOrigin = publicOrigin();
-      Reviewer reviewer = Reviewer.open(new ReviewerConfig(dataDir, models, settings, ModelFamilies.load()));
+      Reviewer reviewer =
+          Reviewer.open(new ReviewerConfig(dataDir, models, settings, ModelFamilies.load()));
       HttpReviewer http;
       try {
         http = HttpReviewer.start(new ServerConfig(host, port, publicOrigin, webDir), reviewer);
@@ -132,7 +146,10 @@ public final class Main {
    * @param dataDir 解析結果の保存先
    * @param models 同梱の models.json
    */
-  @Named(value = "engine", doc = "Take operations as framed stdin/stdout messages, as a child process of the desktop app")
+  @Named(
+      value = "engine",
+      doc =
+          "Take operations as framed stdin/stdout messages, as a child process of the desktop app")
   public record Engine(
       @Key(doc = "Where analysis results are stored", presence = Presence.REQUIRED) Path dataDir,
       @Key(doc = "Bundled models.json", presence = Presence.REQUIRED) Path models)
@@ -144,13 +161,16 @@ public final class Main {
       Reviewer reviewer;
       try {
         reviewer =
-            Reviewer.open(new ReviewerConfig(dataDir, models, context.settings().value(), ModelFamilies.load()));
+            Reviewer.open(
+                new ReviewerConfig(
+                    dataDir, models, context.settings().value(), ModelFamilies.load()));
       } catch (ReviewerException failure) {
         LOG.error("Could not start the reviewer engine: {}", failure.getMessage());
         return failed(frames, ErrorBody.of(failure));
       } catch (SettingsException invalid) {
         invalid.problems().forEach(LOG::error);
-        return failed(frames, ErrorBody.of(ErrorCode.INVALID_REQUEST, String.join("; ", invalid.problems())));
+        return failed(
+            frames, ErrorBody.of(ErrorCode.INVALID_REQUEST, String.join("; ", invalid.problems())));
       } catch (IOException | RuntimeException failure) {
         LOG.error("Could not start the reviewer engine", failure);
         return failed(frames, ErrorBody.of(ErrorCode.SERVER_ERROR));

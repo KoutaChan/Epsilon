@@ -316,7 +316,8 @@ public final class MjaiCodec {
   private static int[] integers(JsonObject event, String key, int size) {
     JsonArray values = field(event, key).getAsJsonArray();
     if (values.size() != size) {
-      throw new IllegalArgumentException("mjai " + key + " needs " + size + " values, got " + values.size());
+      throw new IllegalArgumentException(
+          "mjai " + key + " needs " + size + " values, got " + values.size());
     }
     int[] integers = new int[size];
     for (int index = 0; index < size; index++) {
@@ -347,6 +348,7 @@ public final class MjaiCodec {
 
     /** ルール。names の無い start_game の後は、最初の start_kyoku まで null。 */
     private Variant variant;
+
     private TileSet set;
     private int seats;
     private TileCopies copies;
@@ -395,7 +397,8 @@ public final class MjaiCodec {
         return;
       }
       if ((type == Type.START_GAME) == started) {
-        throw new IllegalArgumentException(id + " needs exactly one start_game first, got " + type.text());
+        throw new IllegalArgumentException(
+            id + " needs exactly one start_game first, got " + type.text());
       }
       if (type.inRound != (start != null)) {
         throw new IllegalArgumentException(
@@ -419,7 +422,8 @@ public final class MjaiCodec {
           events.add(new RecordEvent.AddedKan(actor, added.kind()));
         }
         case KITA -> nuki(event);
-        case DORA -> events.add(new RecordEvent.DoraReveal(copies.reveal(face(event, "dora_marker"))));
+        case DORA ->
+            events.add(new RecordEvent.DoraReveal(copies.reveal(face(event, "dora_marker"))));
         case REACH -> declared |= 1 << seat(integer(event, "actor"));
         case REACH_ACCEPTED -> {
           int actor = seat(integer(event, "actor"));
@@ -430,7 +434,10 @@ public final class MjaiCodec {
         case RYUKYOKU -> draw(event);
         case END_KYOKU -> finishRound();
         case END_GAME ->
-            finalScores = optional(event, "scores") == null ? settledScores() : integers(event, "scores", seats);
+            finalScores =
+                optional(event, "scores") == null
+                    ? settledScores()
+                    : integers(event, "scores", seats);
         case NONE -> throw new IllegalStateException("A none event is skipped before the checks");
       }
     }
@@ -478,18 +485,23 @@ public final class MjaiCodec {
       int wind = face(event, "bakaze").kind() - Tiles.TON;
       int number = integer(event, "kyoku") - 1;
       if (wind < 0 || wind >= Tiles.Group.WIND.size() || number < 0 || number >= seats) {
-        throw new IllegalArgumentException(id + " has no round " + event.get("bakaze") + event.get("kyoku"));
+        throw new IllegalArgumentException(
+            id + " has no round " + event.get("bakaze") + event.get("kyoku"));
       }
       int round = wind * seats + number;
       int[] scores = integers(event, "scores", seats);
-      start = new RoundStart(variant, round, integer(event, "honba"), integer(event, "kyotaku"), scores);
+      start =
+          new RoundStart(
+              variant, round, integer(event, "honba"), integer(event, "kyotaku"), scores);
       if (integer(event, "oya") != variant.dealer(round)) {
-        throw new IllegalArgumentException(id + " names dealer " + event.get("oya") + " in round " + round);
+        throw new IllegalArgumentException(
+            id + " names dealer " + event.get("oya") + " in round " + round);
       }
       copies.clear();
       JsonArray hands = field(event, "tehais").getAsJsonArray();
       if (hands.size() != seats) {
-        throw new IllegalArgumentException(id + " deals " + hands.size() + " hands to " + seats + " seats");
+        throw new IllegalArgumentException(
+            id + " deals " + hands.size() + " hands to " + seats + " seats");
       }
       deal = new int[seats][];
       for (int seat = 0; seat < seats; seat++) {
@@ -520,7 +532,8 @@ public final class MjaiCodec {
     private void discard(JsonObject event) {
       int actor = seat(integer(event, "actor"));
       int drawn = copies.drawn(actor);
-      int tile = copies.discard(actor, face(event, "pai"), field(event, "tsumogiri").getAsBoolean());
+      int tile =
+          copies.discard(actor, face(event, "pai"), field(event, "tsumogiri").getAsBoolean());
       events.add(new RecordEvent.Discard(actor, tile, tile == drawn, (declared & 1 << actor) != 0));
       declared &= ~(1 << actor);
       lastDiscarder = actor;
@@ -534,9 +547,18 @@ public final class MjaiCodec {
       }
       int target = seat(integer(event, "target"));
       Face called = face(event, "pai");
-      if (target != lastDiscarder || called.kind() != Tiles.kind(lastDiscard) || called.red() != set.red(lastDiscard)) {
+      if (target != lastDiscarder
+          || called.kind() != Tiles.kind(lastDiscard)
+          || called.red() != set.red(lastDiscard)) {
         throw new IllegalArgumentException(
-            id + ": seat " + actor + " calls " + called.mjai() + " of seat " + target + ", not the last discard");
+            id
+                + ": seat "
+                + actor
+                + " calls "
+                + called.mjai()
+                + " of seat "
+                + target
+                + ", not the last discard");
       }
       List<Face> consumed = faces(event, "consumed");
       Meld meld = Meld.call(type, Meld.RelativeSource.of(actor, target, seats), called, consumed);
@@ -554,11 +576,13 @@ public final class MjaiCodec {
     private void nuki(JsonObject event) {
       int actor = seat(integer(event, "actor"));
       if (!variant.has(RuleFlag.NUKI)) {
-        throw new IllegalArgumentException(id + ": seat " + actor + " takes out a north in " + variant);
+        throw new IllegalArgumentException(
+            id + ": seat " + actor + " takes out a north in " + variant);
       }
       Face north = optional(event, "pai") == null ? Face.of(Tiles.PEI, false) : face(event, "pai");
       if (north.kind() != Tiles.PEI) {
-        throw new IllegalArgumentException(id + ": seat " + actor + " takes out " + north.mjai() + ", not a north");
+        throw new IllegalArgumentException(
+            id + ": seat " + actor + " takes out " + north.mjai() + ", not a north");
       }
       events.add(new RecordEvent.Nuki(actor, copies.meld(actor, north)));
     }
@@ -567,8 +591,10 @@ public final class MjaiCodec {
       int actor = seat(integer(event, "actor"));
       List<Face> consumed = faces(event, "consumed");
       int kan = consumed.isEmpty() ? TurnEvent.NONE : consumed.get(0).kind();
-      if (consumed.size() != Tiles.COPIES || consumed.stream().anyMatch(face -> face.kind() != kan)) {
-        throw new IllegalArgumentException(id + ": seat " + actor + " cannot make an ankan of " + consumed);
+      if (consumed.size() != Tiles.COPIES
+          || consumed.stream().anyMatch(face -> face.kind() != kan)) {
+        throw new IllegalArgumentException(
+            id + ": seat " + actor + " cannot make an ankan of " + consumed);
       }
       for (Face face : consumed) {
         copies.meld(actor, face);
@@ -585,7 +611,8 @@ public final class MjaiCodec {
         throw new IllegalArgumentException(id + " ends round " + start.round() + " twice");
       }
       readUra(event);
-      wins.add(hasBreakdown(event) ? scoredWin(event, actor, tsumo) : RoundResult.Win.unscored(actor));
+      wins.add(
+          hasBreakdown(event) ? scoredWin(event, actor, tsumo) : RoundResult.Win.unscored(actor));
       ended = true;
       kind = tsumo ? EndKind.TSUMO : EndKind.RON;
       loser = tsumo ? RoundOutcome.NO_SEAT : target;
@@ -630,7 +657,15 @@ public final class MjaiCodec {
       int recorded = integer(event, "hora_points");
       if (points != recorded) {
         throw new IllegalArgumentException(
-            id + ": the hora of seat " + actor + " pays " + recorded + ", but " + win + " pays " + points);
+            id
+                + ": the hora of seat "
+                + actor
+                + " pays "
+                + recorded
+                + ", but "
+                + win
+                + " pays "
+                + points);
       }
       return win;
     }
@@ -659,7 +694,8 @@ public final class MjaiCodec {
         }
       }
       int pao = optional(event, "pao") != null ? seat(integer(event, "pao")) : RoundOutcome.NO_SEAT;
-      return RoundResult.Win.of(actor, yaku, fan, integer(event, "fu"), dora, aka, uraHan, fan / YAKUMAN_FAN, pao);
+      return RoundResult.Win.of(
+          actor, yaku, fan, integer(event, "fu"), dora, aka, uraHan, fan / YAKUMAN_FAN, pao);
     }
 
     /**
@@ -672,14 +708,18 @@ public final class MjaiCodec {
       int found = 0;
       for (int index = 0; index < DRAGONS.length; index++) {
         int dragon = Tiles.Group.DRAGON.first() + index;
-        int tiles = copies.count(actor, dragon) + melded[actor][dragon] + (ron != null && ron.kind() == dragon ? 1 : 0);
+        int tiles =
+            copies.count(actor, dragon)
+                + melded[actor][dragon]
+                + (ron != null && ron.kind() == dragon ? 1 : 0);
         if (tiles >= Meld.Type.PON.tiles()) {
           yaku |= DRAGONS[index].bit();
           found++;
         }
       }
       if (found != count) {
-        throw new IllegalArgumentException(id + ": seat " + actor + " has " + found + " dragon triplets, not " + count);
+        throw new IllegalArgumentException(
+            id + ": seat " + actor + " has " + found + " dragon triplets, not " + count);
       }
       return yaku;
     }
@@ -705,14 +745,16 @@ public final class MjaiCodec {
         nagashi = reason == Reason.NAGASHIMANGAN;
         JsonArray seatsTenpai = tenpais.getAsJsonArray();
         if (seatsTenpai.size() != seats) {
-          throw new IllegalArgumentException("mjai tenpais needs " + seats + " values, got " + seatsTenpai.size());
+          throw new IllegalArgumentException(
+              "mjai tenpais needs " + seats + " values, got " + seatsTenpai.size());
         }
         for (int seat = 0; seat < seats; seat++) {
           tenpaiMask |= seatsTenpai.get(seat).getAsBoolean() ? 1 << seat : 0;
         }
       }
       int[] deltas = integers(event, "deltas", seats);
-      if (accepted != 0 && Arrays.stream(deltas).sum() == -Variant.DEPOSIT * Integer.bitCount(accepted)) {
+      if (accepted != 0
+          && Arrays.stream(deltas).sum() == -Variant.DEPOSIT * Integer.bitCount(accepted)) {
         for (int seat = 0; seat < seats; seat++) {
           if ((accepted & 1 << seat) != 0) {
             deltas[seat] += Variant.DEPOSIT;
@@ -731,7 +773,8 @@ public final class MjaiCodec {
     /** end_kyoku で局の記録を仕上げる。ダブロンの和了は、放銃者から手番の近い順に並べ直す。 */
     private void finishRound() {
       if (!ended) {
-        throw new IllegalArgumentException(id + " ends round " + start.round() + " without a hora or ryukyoku");
+        throw new IllegalArgumentException(
+            id + " ends round " + start.round() + " without a hora or ryukyoku");
       }
       int[] deltas = moved.clone();
       for (int seat = 0; seat < seats; seat++) {
@@ -746,9 +789,12 @@ public final class MjaiCodec {
         wins.sort(Comparator.comparingInt(win -> Math.floorMod(win.seat() - loser, seats)));
         int[] uraIndicators = ura == null ? new int[0] : ura;
         int nagashiSeats = nagashi ? nagashiMask() : 0;
-        result = new RoundResult(kind, abortive, wins, loser, tenpaiMask, nagashiSeats, deltas, uraIndicators);
+        result =
+            new RoundResult(
+                kind, abortive, wins, loser, tenpaiMask, nagashiSeats, deltas, uraIndicators);
       }
-      rounds.add(new RecordedRound(start, deal, indicator, RecordedRound.contractOrder(events), result));
+      rounds.add(
+          new RecordedRound(start, deal, indicator, RecordedRound.contractOrder(events), result));
       start = null;
     }
 
@@ -763,7 +809,8 @@ public final class MjaiCodec {
       for (int seat = 0; seat < seats; seat++) {
         scores[seat] += deltas[seat];
       }
-      int deposits = last.result().win() ? 0 : last.start().kyotaku() + Integer.bitCount(last.riichiMask());
+      int deposits =
+          last.result().win() ? 0 : last.start().kyotaku() + Integer.bitCount(last.riichiMask());
       Placement.awardDeposits(scores, deposits);
       return scores;
     }
@@ -919,7 +966,8 @@ public final class MjaiCodec {
      */
     private int discard(List<RecordEvent> events, int index, RecordEvent.Discard discard) {
       int last = index;
-      while (last + 1 < events.size() && events.get(last + 1) instanceof RecordEvent.DoraReveal reveal) {
+      while (last + 1 < events.size()
+          && events.get(last + 1) instanceof RecordEvent.DoraReveal reveal) {
         dora(reveal.tile());
         last++;
       }
@@ -963,7 +1011,8 @@ public final class MjaiCodec {
           return;
         }
       }
-      throw new IllegalArgumentException("Seat " + kan.seat() + " has no pon of kind " + kan.kind() + " to add to");
+      throw new IllegalArgumentException(
+          "Seat " + kan.seat() + " has no pon of kind " + kan.kind() + " to add to");
     }
 
     private void dora(int tile) {
@@ -989,7 +1038,8 @@ public final class MjaiCodec {
         if (!win.scored()) {
           continue;
         }
-        Settlement.ron(variant, win.base(), win.seat(), result.loser(), dealer, 0, win.pao(), parts[index]);
+        Settlement.ron(
+            variant, win.base(), win.seat(), result.loser(), dealer, 0, win.pao(), parts[index]);
         for (int seat = 0; seat < seats; seat++) {
           parts[0][seat] -= parts[index][seat];
         }
@@ -1010,7 +1060,8 @@ public final class MjaiCodec {
         if (win.scored()) {
           hora.add("yakus", yakus(win, riichi));
           hora.addProperty("fu", win.fu());
-          hora.addProperty("fan", win.han() > 0 ? win.han() : win.base() / YAKUMAN_BASE * YAKUMAN_FAN);
+          hora.addProperty(
+              "fan", win.han() > 0 ? win.han() : win.base() / YAKUMAN_BASE * YAKUMAN_FAN);
           hora.addProperty("hora_points", win.points(variant, dealer, tsumo));
           if (win.pao() != RoundOutcome.NO_SEAT) {
             hora.addProperty("pao", win.pao());

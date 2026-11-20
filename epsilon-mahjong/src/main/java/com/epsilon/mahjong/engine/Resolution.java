@@ -68,7 +68,8 @@ public final class Resolution {
 
   void copyFrom(Resolution other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     System.arraycopy(other.ids, 0, ids, 0, ids.length);
     System.arraycopy(other.executed, 0, executed, 0, executed.length);

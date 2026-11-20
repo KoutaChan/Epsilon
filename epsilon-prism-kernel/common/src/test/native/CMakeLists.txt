@@ -13,7 +13,7 @@ endif()
 target_include_directories(inference_plan_test PRIVATE "${inference}/.." "${inference}")
 add_test(NAME inference_plan COMMAND inference_plan_test)
 
-foreach(test event_cache_test)
+foreach(test event_cache_test training_gradients_test)
   add_executable(${test} ${test}.cc)
   target_compile_features(${test} PRIVATE cxx_std_17)
   target_include_directories(${test} PRIVATE ../../main/native)

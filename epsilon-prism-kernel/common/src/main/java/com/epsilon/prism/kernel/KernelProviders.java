@@ -7,6 +7,7 @@ import com.epsilon.prism.kernel.KernelProvider.Use;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 
@@ -83,6 +84,39 @@ public final class KernelProviders {
                   + ": "
                   + String.join("; ", reasons));
     return selected;
+  }
+
+  /**
+   * 学習の演算（関係のコード・関係の Attention とその逆伝播・RMSNorm とその逆伝播）を全て持つ、要求のバックエンドの学習のプロバイダーを選ぶ。
+   *
+   * @param request 学習の要求
+   * @param providers 候補のプロバイダー
+   * @return 選んだプロバイダー（無ければ空）
+   * @throws IllegalArgumentException 学習の要求でないとき
+   * @throws IllegalStateException ABI が合わないときと、要る演算を持つプロバイダーが 2 つあるとき
+   */
+  public static Optional<TrainingProvider> training(
+      Request request, List<KernelProvider> providers) {
+    if (request.use() != Use.TRAINING)
+      throw new IllegalArgumentException("Expected a training request");
+    var needed =
+        EnumSet.of(
+            Operation.RELATION_CODES,
+            Operation.RELATION_ATTENTION,
+            Operation.RELATION_ATTENTION_BACKWARD,
+            Operation.RMS_NORM,
+            Operation.RMS_NORM_BACKWARD);
+    TrainingProvider found = null;
+    for (var provider : providers) {
+      if (!(provider instanceof TrainingProvider training)
+          || provider.backend() != request.backend()) continue;
+      requireAbi(provider);
+      if (!provider.capabilities(request).operations().containsAll(needed)) continue;
+      if (found != null)
+        throw new IllegalStateException("Multiple training providers for " + request.backend());
+      found = training;
+    }
+    return Optional.ofNullable(found);
   }
 
   private static void requireAbi(KernelProvider provider) {

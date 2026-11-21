@@ -168,7 +168,7 @@ public final class LedgerFit {
   record Retained(Result result, Iterable<FitRow> rows) {}
 
   /**
-   * 行を順に貯めてから、貯めた行を足して当てはめる。貯めた行の値は元の行とビット単位で同じなので、結果は {@link #fit} と同じ。
+   * 行を読んだ順に足しながら貯めて当てはめる。足す行と順は {@link #fit} と同じなので、結果はビット単位で同じ。
    *
    * @throws IllegalStateException ルールを渡さずに作ったとき（行の局面を読めない）
    */
@@ -177,10 +177,13 @@ public final class LedgerFit {
       throw new IllegalStateException("Retaining ledger rows needs the variant");
     }
     long started = System.nanoTime();
-    Tape tape = new Tape(cells != null, true);
-    for (Row row : rows) tape.append(FitRow.of(row, standings));
     var accumulator = new Accumulator(cells);
-    tape.replay(accumulator);
+    Tape tape = new Tape(cells != null, true);
+    for (Row row : rows) {
+      FitRow read = FitRow.of(row, standings);
+      accumulator.add(read);
+      tape.append(read);
+    }
     return new Retained(result(accumulator, started), Tape.rows(List.of(tape)));
   }
 

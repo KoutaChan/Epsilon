@@ -12,7 +12,7 @@ import java.util.Map;
  *
  * <p>局の段階は 3 つで、東場、南場の最後の局より前、南場の最後の局から後（西場を含む）。区切りは場風の境と
  * {@link Variant#lastRound()} から取る。四人打ちの段階の名前は {@code EAST}・{@code SOUTH_1_3}・{@code SOUTH_4_PLUS}、三人打ちは
- * {@code EAST}・{@code SOUTH_1_2}・{@code SOUTH_3_PLUS}。
+ * {@code EAST}・{@code SOUTH_1_2}・{@code SOUTH_3_PLUS}。帳簿の補正率が読む局面（{@link Standing}）も、同じ O から読む。
  */
 public final class LedgerCell {
   private static final int STAGES = 3;
@@ -56,6 +56,27 @@ public final class LedgerCell {
     Observation o = scratch.observation().bind(words, base);
     for (int seat = 0; seat < seats; seat++) scratch.scores()[o.absoluteSeat(seat)] = o.score(seat);
     return index(o.kyoku(), Placement.rank(scratch.scores(), o.observer()));
+  }
+
+  /**
+   * 判断時の公開の局面のうち、帳簿の補正率が読む値。
+   *
+   * @param rank 自席の順位（0 始まり。同点は起家順で、{@link #of} と同じ）
+   * @param gap 最も近い他家との点差の絶対値（点）
+   * @param round 局の番号（東 1 局を 0 とする通算）
+   */
+  public record Standing(int rank, int gap, int round) {}
+
+  /** O の判断の局面を返す。順位は {@link #of} と同じ求め方。 */
+  public Standing standing(long[] words, int base) {
+    Reader scratch = readers.get();
+    Observation o = scratch.observation().bind(words, base);
+    int gap = Integer.MAX_VALUE;
+    for (int seat = 0; seat < seats; seat++) {
+      scratch.scores()[o.absoluteSeat(seat)] = o.score(seat);
+      if (seat > 0) gap = Math.min(gap, Math.abs(o.score(seat) - o.score(0)));
+    }
+    return new Standing(Placement.rank(scratch.scores(), o.observer()), gap, o.kyoku());
   }
 
   int index(int kyoku, int rank) {

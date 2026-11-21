@@ -1,5 +1,6 @@
 package com.epsilon.prism.luck;
 
+import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.observe.ObservationBatch;
 import com.epsilon.agent.observe.ObservationWriter;
 import com.epsilon.mahjong.rules.Placement;
@@ -8,6 +9,7 @@ import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.rows.Row;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -26,7 +28,7 @@ import org.testng.annotations.Test;
  * 理論値に合う。偶奇 g の行に掛ける β は、偶奇 g の行に依らない。行の少ない判断のクラスは、まとめた当てはめを使う。帳簿の無い行と欠けた
  * 行は、そのまま通る。ridge は特徴の大きさに依らない。報告の組の R² は帳簿の 5 組ごとにあり、その組だけで当てはめた R² と同じ。係数が
  * 付くのは補正に使う組だけ。区分に要る行の数と ridge は、当てはめの値から決まる。局・順位の区分は、どのルールでも判断時の局と点と
- * 絶対席の順で決まる。
+ * 絶対席の順で決まる。行を貯めて当てはめても係数と報告はビットまで同じで、貯めた行は足した順に元の行と同じ値と局面を持つ。
  */
 public class LedgerFitTest {
   private static final int F = LedgerColumn.COUNT;
@@ -38,10 +40,21 @@ public class LedgerFitTest {
    * テストで使う行。帳簿の無い行は {@code ledger} が null。
    *
    * @param ledger 手ごとの帳簿（長さは 合法手の数 × F）
+   * @param standing 判断時の局面（補正率のテストのほかは東 1 局の首位・点差 0）
    */
   record SyntheticRow(
-      long gameId, DecisionClass decisionClass, float[] values, float[] ledger, int cell)
+      long gameId,
+      DecisionClass decisionClass,
+      float[] values,
+      float[] ledger,
+      int cell,
+      LedgerCell.Standing standing)
       implements FitRow {
+    SyntheticRow(
+        long gameId, DecisionClass decisionClass, float[] values, float[] ledger, int cell) {
+      this(gameId, decisionClass, values, ledger, cell, new LedgerCell.Standing(0, 0, 0));
+    }
+
     SyntheticRow(long gameId, DecisionClass decisionClass, float[] values, float[] ledger) {
       this(gameId, decisionClass, values, ledger, 0);
     }
@@ -563,6 +576,94 @@ public class LedgerFitTest {
         new LedgerFit(Set.of(LedgerGroup.URA), 0.001, 32).fitRows(rows).report().all().beta()[ura];
     Assert.assertTrue(strong != weak, "ridge 1 and 0.001 gave the same coefficient " + weak);
     Assert.assertEquals(strong * 2.0, weak * 1.001, 1e-12 * Math.abs(weak));
+  }
+
+  /**
+   * 行を貯める受け取り先は、貯めない受け取り先と同じ行を同じ順に足すので、係数と報告はビットまで同じ。貯めた行は足した順（シャード 0、1、2 の
+   * 順、シャードの中は書いた順）に、測った手の Y・帳簿・区分・局面を元の行と同じ値で持ち、飛ばした行は持たない。貯めた行は 1 度だけ
+   * 受け取れ、貯めない受け取り先からは受け取れない。
+   */
+  @Test
+  public void aRetainingStreamKeepsTheFitAndTheRows() {
+    Variant variant = Variant.TENHOU_4P;
+    List<SyntheticRow> written =
+        new ArrayList<>(LedgerCalibratorTest.scaledRows(variant, 3000, 0, 13));
+    written.set(5, withValues(written.get(5), written.get(5).values(), null));
+    var fitter =
+        new LedgerFit(LedgerGroup.computed(), 0.001, 32, LedgerCells.CLASS_STAGE_RANK, variant);
+    int shards = 3;
+    var plain = fitter.tap(shards, index -> true);
+    var retaining = fitter.tapRetaining(shards, index -> true);
+    List<List<SyntheticRow>> byShard = new ArrayList<>();
+    for (int shard = 0; shard < shards; shard++) byShard.add(new ArrayList<>());
+    for (int i = 0; i < written.size(); i++) byShard.get(i % shards).add(written.get(i));
+    for (int shard : new int[] {1, 0, 2})
+      for (SyntheticRow row : byShard.get(shard)) {
+        plain.add(shard, row);
+        retaining.add(shard, row);
+      }
+    assertBitwiseEqual(retaining.fit(), plain.fit());
+    Assert.expectThrows(IllegalStateException.class, plain::retained);
+    List<SyntheticRow> expected = new ArrayList<>();
+    for (List<SyntheticRow> shard : byShard)
+      for (SyntheticRow row : shard) if (row.ledger() != null) expected.add(row);
+    List<FitRow> kept = new ArrayList<>();
+    retaining.retained().forEach(kept::add);
+    Assert.assertEquals(kept.size(), expected.size());
+    for (int i = 0; i < kept.size(); i++) {
+      FitRow row = kept.get(i);
+      SyntheticRow source = expected.get(i);
+      Assert.assertEquals(row.gameId(), source.gameId());
+      Assert.assertEquals(row.decisionClass(), source.decisionClass());
+      Assert.assertEquals(row.cell(), source.cell());
+      Assert.assertEquals(row.standing(), source.standing());
+      Assert.assertEquals(row.values(), Arrays.copyOf(source.values(), 3));
+      for (int a = 0; a < 3; a++)
+        for (int f = 0; f < F; f++) Assert.assertEquals(row.ledger(a, f), source.ledger(a, f));
+    }
+    Assert.expectThrows(IllegalStateException.class, retaining::retained);
+    Assert.expectThrows(IllegalStateException.class, () -> CLASSIC.tapRetaining(1, index -> true));
+  }
+
+  /**
+   * コホートの行を貯めてから当てはめても、係数と報告は行を直に足したものとビットまで同じ。貯めた行の局面は、行の O から読んだ局面と同じ。
+   * 卓を打ち進めて集めた O で、四人打ちと三人打ちの行を作って確かめる。
+   */
+  @Test
+  public void retainingCohortRowsKeepsTheFit() {
+    for (Variant variant : Variant.values()) {
+      List<long[]> observations =
+          LedgerCalibratorTest.observations(variant, 61, 900, view -> view.legalActions() >= 2);
+      var random = new SplittableRandom(17);
+      List<Row> rows = new ArrayList<>();
+      for (int i = 0; i < observations.size(); i++) {
+        long[] words = observations.get(i);
+        int actions = new Observation(variant).bind(words, 0).legalActions();
+        float[] values = new float[actions], ledger = new float[actions * F];
+        Arrays.fill(values, Float.NaN);
+        Arrays.fill(ledger, Float.NaN);
+        for (int a = 0; a < Math.min(actions, 3); a++) {
+          values[a] = (float) random.nextGaussian();
+          for (int f = 0; f < F; f++)
+            ledger[a * F + f] = LedgerCalibratorTest.half(random.nextGaussian());
+        }
+        DecisionClass c = i % 2 == 0 ? DecisionClass.DISCARD_MID : DecisionClass.CALL;
+        rows.add(LedgerCalibratorTest.row(i, c, Row.Source.MAIN, words, values, ledger, 0));
+      }
+      var fitter =
+          new LedgerFit(LedgerGroup.computed(), 0.001, 2, LedgerCells.CLASS_STAGE_RANK, variant);
+      LedgerFit.Retained retained = fitter.fitRetaining(rows);
+      assertBitwiseEqual(retained.result(), fitter.fit(rows));
+      LedgerCell cells = LedgerCell.of(variant);
+      int i = 0;
+      for (FitRow row : retained.rows()) {
+        Row source = rows.get(i++);
+        Assert.assertEquals(row.standing(), cells.standing(source.observation(), 0));
+        Assert.assertEquals(row.cell(), cells.of(source.observation(), 0));
+      }
+      Assert.assertEquals(i, rows.size());
+    }
+    Assert.expectThrows(IllegalStateException.class, () -> CLASSIC.fitRetaining(List.of()));
   }
 
   /** 2 つの当てはめで、係数と報告（秒数を除く）がビット単位で一致することを確かめる。 */

@@ -6,6 +6,7 @@ import com.epsilon.agent.settings.Choice;
 import com.epsilon.agent.settings.InvalidSetting;
 import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Range;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -56,6 +57,8 @@ public sealed interface LedgerSettings {
     CoefficientSource coefficients();
 
     double biasZ();
+
+    LedgerCalibration calibration();
   }
 
   /** 帳簿を書かない。教師は生の Y。 */
@@ -99,6 +102,7 @@ public sealed interface LedgerSettings {
    * @param minRowsPerColumn 区分に要る行の数（当てはめる列 1 つあたり）
    * @param coefficients 行に掛ける係数をどの行で当てはめるか
    * @param biasZ 偏りを警告するしきい値（標準誤差の倍数）
+   * @param calibration 帳簿の補正率（教師を補正しないので、補正率を求めて報告するところまで）
    */
   @Case("AUDIT")
   record Audit(
@@ -132,7 +136,8 @@ public sealed interface LedgerSettings {
           CoefficientSource coefficients,
       @Key(doc = "偏りを警告するしきい値（標準誤差の倍数）", value = "3.0", change = Change.FIT)
           @Range(min = 0, minInclusive = false)
-          double biasZ)
+          double biasZ,
+      @Key(doc = "帳簿の補正率", value = "OFF", change = Change.FIT) LedgerCalibration calibration)
       implements LedgerSettings, Recording, Fitting {
 
     public Audit {
@@ -140,10 +145,19 @@ public sealed interface LedgerSettings {
       apply = Set.copyOf(apply);
       requireCollection(compute, slopeStep);
       requireFit(compute, apply);
+      Objects.requireNonNull(calibration, "calibration");
+      if (calibration.applies()) {
+        throw new InvalidSetting(
+            "calibration",
+            "calibration mode APPLY corrects the teacher, so it needs ledger mode APPLY");
+      }
     }
   }
 
-  /** 帳簿を行に書き、係数を当てはめて、教師を Ỹ = Y − β·L に補正する。キーは {@link Audit} と同じ。 */
+  /**
+   * 帳簿を行に書き、係数を当てはめて、教師を Ỹ = Y − β·L に補正する（補正率を教師に使うなら Ỹ = Y − h(o)·β·L）。キーは {@link Audit} と
+   * 同じで、補正率のモードは APPLY まで選べる。
+   */
   @Case("APPLY")
   record Apply(
       @Key(doc = "帳簿で計算する組（空にしない）", value = "[IMPROVE, POINTS, DORA, URA, POLICY]")
@@ -176,7 +190,8 @@ public sealed interface LedgerSettings {
           CoefficientSource coefficients,
       @Key(doc = "偏りを警告するしきい値（標準誤差の倍数）", value = "3.0", change = Change.FIT)
           @Range(min = 0, minInclusive = false)
-          double biasZ)
+          double biasZ,
+      @Key(doc = "帳簿の補正率", value = "OFF", change = Change.FIT) LedgerCalibration calibration)
       implements LedgerSettings, Recording, Fitting {
 
     public Apply {
@@ -184,6 +199,7 @@ public sealed interface LedgerSettings {
       apply = Set.copyOf(apply);
       requireCollection(compute, slopeStep);
       requireFit(compute, apply);
+      Objects.requireNonNull(calibration, "calibration");
     }
   }
 

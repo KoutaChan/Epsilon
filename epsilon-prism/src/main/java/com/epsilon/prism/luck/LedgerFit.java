@@ -11,9 +11,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -43,6 +45,9 @@ import java.util.function.Predicate;
  *
  * <p>系譜では、収集しながら和を作る（{@link WriterTap}）。和は行を足す順で決まる。{@link WriterTap} は、確定したコホートから行を選んで
  * 読み直す {@link #fit} と同じ行を同じ順に足すので、結果はビット単位で同じになる。
+ *
+ * <p>帳簿の補正率を求めるときは、当てはめに入れた行を貯めておき（{@link #fitRetaining}・{@link #tapRetaining}）、係数を当てはめた後で
+ * もう一度順に読む（{@link LedgerCalibrator}）。行を貯めても、係数と報告は貯めないときとビット単位で同じ。
  */
 public final class LedgerFit {
 
@@ -69,6 +74,9 @@ public final class LedgerFit {
   /** 局・順位の区分。クラスごとにだけ当てはめるなら null。 */
   private final LedgerCell cells;
 
+  /** 行の局面を読む区分（ルールを渡さなかったときは null で、行を貯めて読み直せない）。 */
+  private final LedgerCell standings;
+
   private static final int MIN_CELL_ROWS = 544;
 
   /**
@@ -82,7 +90,7 @@ public final class LedgerFit {
 
   /**
    * @param cells 係数を当てはめる区分
-   * @param variant 行のルール（区分の数と行の区分の読み方を決める。クラスごとにだけ当てはめるなら使わない）
+   * @param variant 行のルール（区分の数と行の区分・局面の読み方を決める。クラスごとにだけ当てはめ、行を貯めないなら null でよい）
    */
   public LedgerFit(
       Set<LedgerGroup> apply,
@@ -95,6 +103,7 @@ public final class LedgerFit {
           case CLASS -> null;
           case CLASS_STAGE_RANK -> LedgerCell.of(Objects.requireNonNull(variant, "variant"));
         };
+    standings = variant == null ? null : LedgerCell.of(variant);
     fitted = columns(apply);
     if (fitted.length == 0)
       throw new IllegalArgumentException("No ledger column belongs to " + apply);
@@ -151,13 +160,51 @@ public final class LedgerFit {
   }
 
   /**
+   * 当てはめの結果と、当てはめに入れた行を貯めたもの。帳簿の補正率を求めるときに、係数を当てはめた後で行をもう一度順に読む。
+   *
+   * @param result 当てはめの結果（行を貯めずに当てはめたものとビット単位で同じ）
+   * @param rows 当てはめに入れた行（足した順。飛ばした行は含まない）。行は測った手の Y・帳簿・局面だけを持つ
+   */
+  record Retained(Result result, Iterable<FitRow> rows) {}
+
+  /**
+   * 行を順に貯めてから、貯めた行を足して当てはめる。貯めた行の値は元の行とビット単位で同じなので、結果は {@link #fit} と同じ。
+   *
+   * @throws IllegalStateException ルールを渡さずに作ったとき（行の局面を読めない）
+   */
+  Retained fitRetaining(Iterable<Row> rows) {
+    if (standings == null) {
+      throw new IllegalStateException("Retaining ledger rows needs the variant");
+    }
+    long started = System.nanoTime();
+    Tape tape = new Tape(cells != null, true);
+    for (Row row : rows) tape.append(FitRow.of(row, standings));
+    var accumulator = new Accumulator(cells);
+    tape.replay(accumulator);
+    return new Retained(result(accumulator, started), Tape.rows(List.of(tape)));
+  }
+
+  /**
    * コホートのライターに付けて、収集しながら和を作る受け取り先を返す。
    *
    * @param shards コホートのライターの数（シャードの数）
    * @param rows 和に入れる行を選ぶ条件（行を読み直して当てはめるときと同じ選び方）
    */
   public WriterTap tap(int shards, Predicate<RowCodec.Index> rows) {
-    return new WriterTap(this, shards, rows);
+    return new WriterTap(this, shards, rows, false);
+  }
+
+  /**
+   * {@link #tap} と同じ受け取り先で、シャード 0 の行も貯めておき、当てはめた後で全ての行をもう一度読めるようにする
+   * （{@link WriterTap#retained}）。
+   *
+   * @throws IllegalStateException ルールを渡さずに作ったとき（行の局面を読めない）
+   */
+  WriterTap tapRetaining(int shards, Predicate<RowCodec.Index> rows) {
+    if (standings == null) {
+      throw new IllegalStateException("Retaining ledger rows needs the variant");
+    }
+    return new WriterTap(this, shards, rows, true);
   }
 
   /**
@@ -167,38 +214,50 @@ public final class LedgerFit {
    *
    * <p>{@link #written} は、シャードごとに 1 つのスレッド（そのシャードのライター）から呼ぶ。{@link #fit} は、ライターを止めた後
    * （{@link CohortWriter#seal}）に 1 度だけ呼ぶ。
+   *
+   * <p>行を貯める受け取り先（{@link LedgerFit#tapRetaining}）は、シャード 0 の行もすぐ足したうえで貯め、ほかのシャードの行には局面も
+   * 貯める。{@link #fit} の後も貯めた行を残し、{@link #retained} で渡す。
    */
   public static final class WriterTap implements CohortWriter.Tap {
     private final LedgerFit fit;
     private final Predicate<RowCodec.Index> rows;
     private final Accumulator accumulator;
     private final Tape[] tapes;
+    private final boolean retain;
     private boolean fitted;
 
-    private WriterTap(LedgerFit fit, int shards, Predicate<RowCodec.Index> rows) {
+    private WriterTap(LedgerFit fit, int shards, Predicate<RowCodec.Index> rows, boolean retain) {
       if (shards < 1) throw new IllegalArgumentException("shard count must be positive: " + shards);
       this.fit = fit;
       accumulator = new Accumulator(fit.cells);
       this.rows = Objects.requireNonNull(rows, "rows");
+      this.retain = retain;
       tapes = new Tape[shards];
-      for (int shard = 1; shard < shards; shard++) tapes[shard] = new Tape(fit.cells != null);
+      for (int shard = retain ? 0 : 1; shard < shards; shard++)
+        tapes[shard] = new Tape(fit.cells != null, retain);
     }
 
     @Override
     public void written(int shard, Row row, RowCodec.Index index) {
-      if (rows.test(index)) add(shard, FitRow.of(row, fit.cells));
-    }
-
-    /** シャード {@code shard} のライターが次に書いた行を足す。シャード 0 ならすぐ足し、ほかのシャードなら貯めておく。 */
-    void add(int shard, FitRow row) {
-      if (shard < 0 || shard >= tapes.length)
-        throw new IllegalArgumentException("shard " + shard + " out of " + tapes.length);
-      if (shard == 0) accumulator.add(row);
-      else tapes[shard].append(row);
+      if (rows.test(index)) add(shard, FitRow.of(row, retain ? fit.standings : fit.cells));
     }
 
     /**
-     * 貯めた行をシャードの順に足して解く。貯めた行はここで解放する。
+     * シャード {@code shard} のライターが次に書いた行を足す。シャード 0 ならすぐ足し、ほかのシャードなら貯めておく。行を貯める受け取り先は、
+     * シャード 0 の行も貯める。
+     *
+     * @throws IllegalStateException 当てはめた後に呼んだとき
+     */
+    void add(int shard, FitRow row) {
+      if (shard < 0 || shard >= tapes.length)
+        throw new IllegalArgumentException("shard " + shard + " out of " + tapes.length);
+      if (fitted) throw new IllegalStateException("Ledger stream is already fitted");
+      if (shard == 0) accumulator.add(row);
+      if (tapes[shard] != null) tapes[shard].append(row);
+    }
+
+    /**
+     * 貯めた行をシャードの順に足して解く。行を貯めない受け取り先では、貯めた行はここで解放する。
      *
      * @throws IllegalStateException 2 度目に呼んだとき
      */
@@ -208,16 +267,32 @@ public final class LedgerFit {
       long started = System.nanoTime();
       for (int shard = 1; shard < tapes.length; shard++) {
         tapes[shard].replay(accumulator);
-        tapes[shard] = null;
+        if (!retain) tapes[shard] = null;
       }
       return fit.result(accumulator, started);
+    }
+
+    /**
+     * 当てはめに入れた行を、足した順（シャード 0 の行、続いてシャード 1、…）に返す。貯めた行は受け取り先から外し、返した行を読み終えたら
+     * 解放できる。
+     *
+     * @throws IllegalStateException 行を貯めない受け取り先か、当てはめる前か、2 度目に呼んだとき
+     */
+    Iterable<FitRow> retained() {
+      if (!retain || !fitted || tapes[0] == null) {
+        throw new IllegalStateException("Ledger stream has no retained rows");
+      }
+      List<Tape> kept = List.of(tapes);
+      Arrays.fill(tapes, null);
+      return Tape.rows(kept);
     }
   }
 
   /**
    * 1 つのシャードで貯めた行。行ごとに半荘・判断のクラスを持ち、測った手の Y と帳簿の列を、行を書いた順・手の順に持つ。帳簿は fp16 で
    * 持つ（コホートの行の帳簿は fp16 で正確に表せる。{@link RowCodec}）。手は {@value #BLOCK} 手ずつのブロックに置き、1 行の手がブロックを
-   * またがないようにする。飛ばす行（{@link Accumulator#measured(FitRow, float[], int[])} が −1 を返す行）は、数だけを数える。
+   * またがないようにする。飛ばす行（{@link Accumulator#measured(FitRow, float[], int[])} が −1 を返す行）は、数だけを数える。局面を
+   * 貯めるテープは、行ごとに判断時の局面（{@link LedgerCell.Standing}）も持つ。
    */
   private static final class Tape {
     static final int BLOCK = 1 << 16;
@@ -230,8 +305,41 @@ public final class LedgerFit {
 
     byte[] cells;
 
-    Tape(boolean byCell) {
+    /** 行ごとの局面（局面を貯めないテープでは null）。 */
+    byte[] ranks, rounds;
+
+    int[] gaps;
+
+    Tape(boolean byCell, boolean standings) {
       cells = byCell ? new byte[games.length] : null;
+      if (standings) {
+        ranks = new byte[games.length];
+        rounds = new byte[games.length];
+        gaps = new int[games.length];
+      }
+    }
+
+    /** テープの行を、テープの順・行を書いた順に返す。 */
+    static Iterable<FitRow> rows(List<Tape> tapes) {
+      return () ->
+          new Iterator<>() {
+            private int tape, row;
+
+            @Override
+            public boolean hasNext() {
+              while (tape < tapes.size() && row >= tapes.get(tape).rows) {
+                tape++;
+                row = 0;
+              }
+              return tape < tapes.size();
+            }
+
+            @Override
+            public FitRow next() {
+              if (!hasNext()) throw new NoSuchElementException();
+              return tapes.get(tape).new Stored(row++);
+            }
+          };
     }
 
     /** 行の最初の手の位置（ブロックの番号 × BLOCK + ブロックの中の位置）。 */
@@ -266,6 +374,11 @@ public final class LedgerFit {
         classes = Arrays.copyOf(classes, capacity);
         counts = Arrays.copyOf(counts, capacity);
         if (cells != null) cells = Arrays.copyOf(cells, capacity);
+        if (ranks != null) {
+          ranks = Arrays.copyOf(ranks, capacity);
+          rounds = Arrays.copyOf(rounds, capacity);
+          gaps = Arrays.copyOf(gaps, capacity);
+        }
         starts = Arrays.copyOf(starts, capacity);
       }
       float[] y = values.get((int) (slot / BLOCK));
@@ -284,6 +397,12 @@ public final class LedgerFit {
       games[rows] = row.gameId();
       classes[rows] = (byte) row.decisionClass().ordinal();
       if (cells != null) cells[rows] = (byte) row.cell();
+      if (ranks != null) {
+        LedgerCell.Standing standing = row.standing();
+        ranks[rows] = (byte) standing.rank();
+        rounds[rows] = (byte) standing.round();
+        gaps[rows] = standing.gap();
+      }
       counts[rows] = (byte) m;
       starts[rows] = slot;
       rows++;
@@ -325,6 +444,12 @@ public final class LedgerFit {
       @Override
       public int cell() {
         return cells[row];
+      }
+
+      @Override
+      public LedgerCell.Standing standing() {
+        if (ranks == null) throw new IllegalStateException("This ledger tape keeps no standings");
+        return new LedgerCell.Standing(ranks[row], gaps[row], rounds[row]);
       }
 
       @Override

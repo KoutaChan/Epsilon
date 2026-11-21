@@ -2,17 +2,22 @@ package com.epsilon.prism.luck;
 
 import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Presence;
+import com.epsilon.prism.noise.LedgerCalibrationKind;
+import com.epsilon.prism.noise.LedgerCalibrationSource;
 import com.epsilon.prism.noise.LedgerGroup;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 運の精算の係数を当てはめた結果の報告。列ごとの偏りの確かめも含む。学習の段は、報告の全部を {@link Full} の形で書き、要約を段の報告
- * （{@link Summary}）とクラスごとの表（{@link Classes}）に書く。
+ * （{@link Summary}）とクラスごとの表（{@link Classes}）に書く。帳簿の補正率を求める反復では、その報告（{@link Calibration}）も
+ * 両方に入れる。
  *
  * @param rows 当てはめた行数
  * @param slots 当てはめた行の、測った手の数
@@ -106,10 +111,28 @@ public record LedgerReport(
 
   /** 報告の全部を、有限でない値を書かない書き出し用の形にして返す。 */
   public Full full(LedgerRecording recording) {
+    return full(recording, null);
+  }
+
+  /**
+   * 報告の全部と補正率の校正の報告を、有限でない値を書かない書き出し用の形にして返す。
+   *
+   * @param calibration 補正率の校正の報告（補正率を求めなければ null）
+   */
+  public Full full(LedgerRecording recording, Calibration calibration) {
     Map<String, Segment> classes = new LinkedHashMap<>();
     byClass.forEach((name, line) -> classes.put(name, Segment.of(line)));
     return new Full(
-        rows, slots, skippedRows, Segment.of(all), classes, bias, seconds, recording, byCell);
+        rows,
+        slots,
+        skippedRows,
+        Segment.of(all),
+        classes,
+        bias,
+        seconds,
+        recording,
+        byCell,
+        calibration);
   }
 
   /**
@@ -124,6 +147,7 @@ public record LedgerReport(
    * @param seconds 当てはめにかかった時間（秒）
    * @param byCell 局・順位の区分名ごとの偶奇の係数（クラス別の報告では省略）
    * @param recording 行の収集時に使った列の組と切り幅。記録がなければ null
+   * @param calibration 帳簿の補正率の校正（補正率を求めない反復では null）
    */
   public record Full(
       long rows,
@@ -135,7 +159,8 @@ public record LedgerReport(
       double seconds,
       @Key(doc = "係数を当てはめた行の帳簿の収集条件", presence = Presence.ABSENT) LedgerRecording recording,
       @Key(doc = "判断クラス・局・自席順位別の係数（両側ともクラス係数を使う区分は省略）", presence = Presence.ABSENT)
-          Map<String, List<Fold>> byCell) {
+          Map<String, List<Fold>> byCell,
+      @Key(doc = "帳簿の補正率の校正（補正率を求めない反復では無い）", presence = Presence.ABSENT) Calibration calibration) {
 
     public Full(
         long rows,
@@ -146,7 +171,20 @@ public record LedgerReport(
         Bias bias,
         double seconds,
         LedgerRecording recording) {
-      this(rows, slots, skippedRows, all, byClass, bias, seconds, recording, null);
+      this(rows, slots, skippedRows, all, byClass, bias, seconds, recording, null, null);
+    }
+
+    public Full(
+        long rows,
+        long slots,
+        long skippedRows,
+        Segment all,
+        Map<String, Segment> byClass,
+        Bias bias,
+        double seconds,
+        LedgerRecording recording,
+        Map<String, List<Fold>> byCell) {
+      this(rows, slots, skippedRows, all, byClass, bias, seconds, recording, byCell, null);
     }
 
     public Full {
@@ -228,6 +266,7 @@ public record LedgerReport(
    * @param biased z の絶対値が偏りの警告のしきい値を越えた列の名前（列の順）
    * @param seconds 当てはめにかかった時間（秒）
    * @param streamed 収集のライターが作った和を使ったか（false なら行を読み直した）
+   * @param calibration 帳簿の補正率の校正の要約（補正率を求めない反復では null）
    */
   public record Summary(
       long rows,
@@ -239,11 +278,54 @@ public record LedgerReport(
       @Key(doc = "列の z の絶対値の最大", presence = Presence.ABSENT) Double maxAbsZ,
       List<String> biased,
       double seconds,
-      boolean streamed) {
+      boolean streamed,
+      @Key(doc = "帳簿の補正率の校正の要約（補正率を求めない反復では無い）", presence = Presence.ABSENT)
+          CalibrationSummary calibration) {
 
     public Summary {
       r2ByGroup = groups(r2ByGroup);
       biased = List.copyOf(biased);
+    }
+
+    public Summary(
+        long rows,
+        long slots,
+        long skippedRows,
+        Double r2,
+        Double equivalentForks,
+        Map<LedgerGroup, Double> r2ByGroup,
+        Double maxAbsZ,
+        List<String> biased,
+        double seconds,
+        boolean streamed) {
+      this(
+          rows,
+          slots,
+          skippedRows,
+          r2,
+          equivalentForks,
+          r2ByGroup,
+          maxAbsZ,
+          biased,
+          seconds,
+          streamed,
+          null);
+    }
+
+    /** 補正率の校正の要約を付けた要約を返す。 */
+    public Summary with(CalibrationSummary calibration) {
+      return new Summary(
+          rows,
+          slots,
+          skippedRows,
+          r2,
+          equivalentForks,
+          r2ByGroup,
+          maxAbsZ,
+          biased,
+          seconds,
+          streamed,
+          calibration);
     }
 
     /**
@@ -307,6 +389,255 @@ public record LedgerReport(
       return new Classes(classes);
     }
   }
+
+  /**
+   * 帳簿の補正率の校正の報告（ledger.json の calibration）。腕は 3 つで、生の Y（raw）、帳簿の補正 Y − β·L（current）、補正率を掛けた
+   * 補正 Y − h(o)·β·L（shadow）。β はどの腕でも偶奇が逆の行で当てはめたもの、h は前のコホートの行で当てはめたもの
+   * （{@link LedgerCalibrator}）。J は、行ごとに測った手の中で中心化した残差の二乗を測った手の数で割り、行を等しい重みで平均した値。
+   * スロットの R² は、手ごとの残差の二乗の和で求めた 1 − 残差 / 生の値で、{@link Line#r2} と同じ数え方。有限でない値は書かない。
+   *
+   * @param mode 補正率のモード（設定に書く名前）
+   * @param kind 補正率の形
+   * @param applied 教師に掛けた腕（current か shadow）
+   * @param origin 今のコホートに掛けた補正率の出どころ（無ければ null で、補正率は 1）
+   * @param fallback 補正率を 1 にした理由（出どころがあれば null）
+   * @param rows 測った行の数
+   * @param slots 測った手の数
+   * @param j 腕ごとの J
+   * @param slotR2 腕ごとのスロットの R²（生は 0）
+   * @param scale 行ごとの補正率の分布
+   * @param bands 局面の帯ごとの J。全て（all）、南場の最後の局より前（early）と後（last）、後の局の順位 × 最も近い他家との点差の帯
+   *     （rank{順位}_{下の境}_{上の境}）。行の無い帯も載せる
+   * @param gates 和了の判断の教師の差（{@link LuckSettlement#gates} が足す。足す前は空）
+   * @param next 今のコホートの行で当てはめた、次の反復の補正率（当てはめられなければ null）
+   */
+  public record Calibration(
+      String mode,
+      LedgerCalibrationKind kind,
+      String applied,
+      @Key(doc = "今のコホートに掛けた補正率の出どころ", presence = Presence.ABSENT) Origin origin,
+      @Key(doc = "補正率を 1 にした理由", presence = Presence.ABSENT) String fallback,
+      long rows,
+      long slots,
+      Arms j,
+      Arms slotR2,
+      Scale scale,
+      List<Band> bands,
+      List<Gate> gates,
+      @Key(doc = "次の反復の補正率の当てはめ", presence = Presence.ABSENT) Next next) {
+
+    public Calibration {
+      Objects.requireNonNull(mode, "mode");
+      Objects.requireNonNull(kind, "kind");
+      Objects.requireNonNull(applied, "applied");
+      bands = List.copyOf(bands);
+      gates = List.copyOf(gates);
+    }
+
+    /** 和了の判断の教師の差を入れた報告を返す。 */
+    public Calibration withGates(List<Gate> gates) {
+      return new Calibration(
+          mode, kind, applied, origin, fallback, rows, slots, j, slotR2, scale, bands, gates, next);
+    }
+
+    /** 段の報告に書く要約。 */
+    public CalibrationSummary summary() {
+      return new CalibrationSummary(
+          mode,
+          applied,
+          origin == null ? null : origin.cohort(),
+          fallback,
+          j,
+          slotR2,
+          scale.mean(),
+          next == null ? null : next.cohort());
+    }
+  }
+
+  /**
+   * 腕ごとの値。有限でない値は null。
+   *
+   * @param raw 生の Y
+   * @param current 帳簿の補正 Y − β·L
+   * @param shadow 補正率を掛けた補正 Y − h(o)·β·L
+   */
+  public record Arms(
+      @Key(doc = "生の Y", presence = Presence.ABSENT) Double raw,
+      @Key(doc = "帳簿の補正", presence = Presence.ABSENT) Double current,
+      @Key(doc = "補正率を掛けた補正", presence = Presence.ABSENT) Double shadow) {
+
+    static Arms of(double raw, double current, double shadow) {
+      return new Arms(finite(raw), finite(current), finite(shadow));
+    }
+  }
+
+  /**
+   * 今のコホートに掛けた補正率の出どころ。
+   *
+   * @param source 当てはめる行を取ったコホートの選び方
+   * @param cohort 補正率を当てはめた行のコホート
+   * @param rows 当てはめた行の数
+   * @param gapGrid 点差の軸の格子の点の数
+   * @param roundGrid 局の番号の軸の格子の点の数
+   * @param regularization 係数の二乗の罰の係数
+   * @param shrink 補正率を 0 へ縮める罰の強さ
+   */
+  public record Origin(
+      LedgerCalibrationSource source,
+      int cohort,
+      long rows,
+      int gapGrid,
+      int roundGrid,
+      double regularization,
+      double shrink) {
+
+    static Origin of(LedgerCalibrator calibrator) {
+      return new Origin(
+          calibrator.source(),
+          calibrator.cohort(),
+          calibrator.rows(),
+          calibrator.gapGrid(),
+          calibrator.roundGrid(),
+          calibrator.regularization(),
+          calibrator.shrink());
+    }
+  }
+
+  /**
+   * 行ごとの補正率の分布。
+   *
+   * @param mean 平均
+   * @param min 最小
+   * @param max 最大
+   * @param histogram [0, 1] を等分した柱ごとの行の数（1 は最後の柱に入れる）
+   */
+  public record Scale(
+      @Key(doc = "平均", presence = Presence.ABSENT) Double mean,
+      @Key(doc = "最小", presence = Presence.ABSENT) Double min,
+      @Key(doc = "最大", presence = Presence.ABSENT) Double max,
+      List<Long> histogram) {
+
+    public Scale {
+      histogram = List.copyOf(histogram);
+    }
+  }
+
+  /**
+   * 局面の帯 1 つの J。差の標準誤差は半荘で束ねて求める（{@link LedgerCalibrator} の帯の和）。
+   *
+   * @param name 帯の名前
+   * @param rows 行の数
+   * @param games 半荘の数
+   * @param j 腕ごとの J
+   * @param currentMinusRaw J_今 − J_生
+   * @param seCurrentMinusRaw その標準誤差
+   * @param shadowMinusRaw J_影 − J_生
+   * @param seShadowMinusRaw その標準誤差
+   * @param shadowVsCurrent 帳簿の補正に対する J の減り 1 − J_影 / J_今
+   * @param seShadowVsCurrent その標準誤差（比を線形化したもの）
+   */
+  public record Band(
+      String name,
+      long rows,
+      long games,
+      Arms j,
+      @Key(doc = "J_今 − J_生", presence = Presence.ABSENT) Double currentMinusRaw,
+      @Key(doc = "J_今 − J_生 の標準誤差", presence = Presence.ABSENT) Double seCurrentMinusRaw,
+      @Key(doc = "J_影 − J_生", presence = Presence.ABSENT) Double shadowMinusRaw,
+      @Key(doc = "J_影 − J_生 の標準誤差", presence = Presence.ABSENT) Double seShadowMinusRaw,
+      @Key(doc = "1 − J_影 / J_今", presence = Presence.ABSENT) Double shadowVsCurrent,
+      @Key(doc = "1 − J_影 / J_今 の標準誤差", presence = Presence.ABSENT) Double seShadowVsCurrent) {}
+
+  /**
+   * 和了の判断の教師の差の、1 つの帯と和了の種類（{@link LedgerCalibrator} の和了の判断の差）。
+   *
+   * @param group 帯（FINAL_END か first_{下の境}_{上の境}）
+   * @param kind 和了の種類（tsumo か ron）
+   * @param rows 行の数
+   * @param games 半荘の数
+   * @param mean 腕ごとの差の平均
+   * @param sd 腕ごとの差の標準偏差（n − 1 で割る）
+   * @param currentMinusRawSd SD_今 − SD_生
+   * @param seCurrentMinusRawSd その標準誤差
+   * @param shadowMinusRawSd SD_影 − SD_生
+   * @param seShadowMinusRawSd その標準誤差
+   */
+  public record Gate(
+      String group,
+      String kind,
+      long rows,
+      long games,
+      Arms mean,
+      Arms sd,
+      @Key(doc = "SD_今 − SD_生", presence = Presence.ABSENT) Double currentMinusRawSd,
+      @Key(doc = "SD_今 − SD_生 の標準誤差", presence = Presence.ABSENT) Double seCurrentMinusRawSd,
+      @Key(doc = "SD_影 − SD_生", presence = Presence.ABSENT) Double shadowMinusRawSd,
+      @Key(doc = "SD_影 − SD_生 の標準誤差", presence = Presence.ABSENT) Double seShadowMinusRawSd) {}
+
+  /**
+   * 今のコホートの行で当てはめた、次の反復の補正率の要約。J は当てはめた行での値（ホールドアウトではない）。
+   *
+   * @param cohort 当てはめた行のコホート
+   * @param rows 当てはめた行の数
+   * @param j 生・帳簿の補正・当てはめた補正率での J
+   * @param meanCoefficient 係数の平均
+   * @param zeros 0 の係数の数
+   * @param ones 1 の係数の数
+   * @param coefficients 係数の数
+   */
+  public record Next(
+      int cohort,
+      long rows,
+      Arms j,
+      @Key(doc = "係数の平均", presence = Presence.ABSENT) Double meanCoefficient,
+      int zeros,
+      int ones,
+      int coefficients) {
+
+    static Next of(LedgerCalibrator next, LedgerCalibrator.Sums sums) {
+      double[] theta = next.theta();
+      double[] all = new double[theta.length];
+      Arrays.fill(all, 1);
+      int zeros = 0, ones = 0;
+      double total = 0;
+      for (double value : theta) {
+        total += value;
+        if (value == 0) zeros++;
+        if (value == 1) ones++;
+      }
+      double n = sums.rows;
+      return new Next(
+          next.cohort(),
+          next.rows(),
+          Arms.of(sums.c / n, sums.residual(all) / n, sums.residual(theta) / n),
+          finite(total / theta.length),
+          zeros,
+          ones,
+          theta.length);
+    }
+  }
+
+  /**
+   * 段の報告に書く、補正率の校正の要約。
+   *
+   * @param mode 補正率のモード（設定に書く名前）
+   * @param applied 教師に掛けた腕（current か shadow）
+   * @param origin 今のコホートに掛けた補正率を当てはめたコホート（無ければ null）
+   * @param fallback 補正率を 1 にした理由（出どころがあれば null）
+   * @param j 腕ごとの J
+   * @param slotR2 腕ごとのスロットの R²
+   * @param meanScale 補正率の平均
+   * @param next 次の反復の補正率を当てはめたコホート（当てはめられなければ null）
+   */
+  public record CalibrationSummary(
+      String mode,
+      String applied,
+      @Key(doc = "今のコホートに掛けた補正率を当てはめたコホート", presence = Presence.ABSENT) Integer origin,
+      @Key(doc = "補正率を 1 にした理由", presence = Presence.ABSENT) String fallback,
+      Arms j,
+      Arms slotR2,
+      @Key(doc = "補正率の平均", presence = Presence.ABSENT) Double meanScale,
+      @Key(doc = "次の反復の補正率を当てはめたコホート", presence = Presence.ABSENT) Integer next) {}
 
   /** 有限なら値を、そうでなければ null を返す。 */
   static Double finite(double value) {

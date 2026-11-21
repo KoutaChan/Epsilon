@@ -12,6 +12,10 @@ import com.epsilon.agent.settings.Change;
 import com.epsilon.prism.Main;
 import com.epsilon.prism.TestSettings;
 import com.epsilon.prism.eval.EvaluationTable;
+import com.epsilon.prism.noise.LedgerCalibration;
+import com.epsilon.prism.noise.LedgerCalibrationKind;
+import com.epsilon.prism.noise.LedgerCalibrationSource;
+import com.epsilon.prism.noise.LedgerSettings;
 import com.epsilon.prism.run.PrismCarry;
 import com.epsilon.prism.run.PrismState;
 import com.epsilon.prism.run.Regression;
@@ -37,7 +41,7 @@ import org.testng.annotations.Test;
  * 種類はセクションの中でもキーごとに決まる（推論の計算の型は収集から、学習器の計算の型は学習から、バッチの行数の上限は起動し直してから）。
  * 変えてはいけないキー（乱数の種、ネットワークの形、Φ の出どころ）を変えようとすると終了コード 2 で拒み、行を足さない。評価の卓を足すことと
  * 卓のキーを変えることは、次に始まる反復から効く SCHEDULE の変更になる。変更は、次に公開するバージョンのジョブが増える数・減る数・変わる数を
- * 出す。
+ * 出す。帳簿の補正率の値（モード・学習元・格子・罰の強さ）は、どれも次に始まる反復の学習から効く FIT の変更になる。
  */
 public class SettingsChangeTest {
 
@@ -106,6 +110,91 @@ public class SettingsChangeTest {
     // 同じ値なら行を足さない
     Assert.assertEquals(change("fit.lrPeak=0.002"), Exit.OK.code());
     Assert.assertEquals(rows().size(), 3);
+  }
+
+  /**
+   * 帳簿の補正率の値は、続いている run の設定の行で変えられ、どれも次に始まる反復の学習から効く（FIT）。補正率の節の無い行（節を持たない
+   * jar が書いた行）は補正率を求めない設定として読める。そこに SHADOW を足した行では、節の全てのキーが既定値で入る。縮める罰 ρ だけを
+   * 変えた次の行は ρ だけを変え、読み直すと ρ が効いている。モードを変える行では、同じ行に書かなかった節のキーは既定値に戻るので、
+   * 変えた値を同じ行に書き直す。範囲の外の値は拒み、行を足さない。
+   */
+  @Test
+  public void theLedgerCalibrationChangesFromTheNextIterationsFit() throws Exception {
+    Path file = new RunDirectory(run).settings();
+    String created = Files.readString(file, StandardCharsets.UTF_8);
+    String section = ",\"calibration\":{\"mode\":\"OFF\"}";
+    Assert.assertTrue(created.contains(section), created);
+    Files.writeString(file, created.replace(section, ""), StandardCharsets.UTF_8);
+    Assert.assertEquals(calibration(), new LedgerCalibration.Off());
+
+    Assert.assertEquals(change("noise.ledger.calibration.mode=SHADOW"), Exit.OK.code());
+    List<SettingsRow> rows = rows();
+    Assert.assertEquals(rows.size(), 2);
+    Assert.assertEquals(rows.get(1).from(), 3);
+    Map<String, Change> expected = new LinkedHashMap<>();
+    for (String key :
+        List.of("gapGrid", "kind", "mode", "regularization", "roundGrid", "shrink", "source"))
+      expected.put("noise.ledger.calibration." + key, Change.FIT);
+    Assert.assertEquals(changes(rows.get(1)), expected);
+    Assert.assertEquals(calibration(), shadow(0.08));
+
+    Assert.assertEquals(change("noise.ledger.calibration.shrink=0.2"), Exit.OK.code());
+    rows = rows();
+    Assert.assertEquals(rows.size(), 3);
+    Assert.assertEquals(rows.get(2).from(), 3);
+    Assert.assertEquals(
+        changes(rows.get(2)), Map.of("noise.ledger.calibration.shrink", Change.FIT));
+    Assert.assertEquals(calibration(), shadow(0.2));
+    Assert.assertEquals(
+        ((LedgerSettings.Fitting) rows.get(2).bind(PrismSettings.class).value().noise().ledger())
+            .calibration(),
+        shadow(0.2));
+
+    Assert.assertEquals(
+        change("noise.ledger.calibration.mode=APPLY", "noise.ledger.calibration.shrink=0.2"),
+        Exit.OK.code());
+    Assert.assertEquals(
+        changes(rows().get(3)), Map.of("noise.ledger.calibration.mode", Change.FIT));
+    Assert.assertEquals(
+        calibration(),
+        new LedgerCalibration.Apply(
+            LedgerCalibrationKind.COMMON_SCALE,
+            LedgerCalibrationSource.PREVIOUS_COHORT,
+            9,
+            3,
+            1e-4,
+            0.2));
+    Assert.assertEquals(change("noise.ledger.calibration.mode=SHADOW"), Exit.OK.code());
+    Map<String, Change> reset = new LinkedHashMap<>();
+    reset.put("noise.ledger.calibration.mode", Change.FIT);
+    reset.put("noise.ledger.calibration.shrink", Change.FIT);
+    Assert.assertEquals(changes(rows().get(4)), reset);
+    Assert.assertEquals(calibration(), shadow(0.08));
+
+    String before = Files.readString(file, StandardCharsets.UTF_8);
+    for (String invalid :
+        List.of(
+            "noise.ledger.calibration.shrink=-0.1",
+            "noise.ledger.calibration.regularization=0",
+            "noise.ledger.calibration.gapGrid=1",
+            "noise.ledger.calibration.roundGrid=10"))
+      Assert.assertEquals(change(invalid), Exit.USAGE.code(), invalid);
+    Assert.assertEquals(Files.readString(file, StandardCharsets.UTF_8), before);
+  }
+
+  /** 最新の行の帳簿の補正率の設定。 */
+  private LedgerCalibration calibration() throws Exception {
+    return ((LedgerSettings.Fitting) PrismApp.latest(run).noise().ledger()).calibration();
+  }
+
+  private static LedgerCalibration.Shadow shadow(double shrink) {
+    return new LedgerCalibration.Shadow(
+        LedgerCalibrationKind.COMMON_SCALE,
+        LedgerCalibrationSource.PREVIOUS_COHORT,
+        9,
+        3,
+        1e-4,
+        shrink);
   }
 
   @Test

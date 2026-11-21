@@ -18,6 +18,9 @@ interface FitRow {
   /** 判断時の局と自席の順位の区分。区分ごとに当てはめるときだけ読む。 */
   int cell();
 
+  /** 判断時の局面。帳簿の補正率を求めるときだけ読む。 */
+  LedgerCell.Standing standing();
+
   /** 合法手ごとの値 Y（測っていない手は NaN）。 */
   float[] values();
 
@@ -30,7 +33,7 @@ interface FitRow {
   /**
    * コホートの行を読む。
    *
-   * @param cells 行の区分を読む区分（区分ごとに当てはめないときは null）
+   * @param cells 行の区分と局面を読む区分（区分も局面も読まないときは null）
    */
   static FitRow of(Row row, LedgerCell cells) {
     return new Cohort(row, cells);
@@ -51,6 +54,11 @@ interface FitRow {
     @Override
     public int cell() {
       return cells.of(row.observation(), 0);
+    }
+
+    @Override
+    public LedgerCell.Standing standing() {
+      return cells.standing(row.observation(), 0);
     }
 
     @Override

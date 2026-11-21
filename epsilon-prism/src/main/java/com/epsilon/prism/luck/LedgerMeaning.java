@@ -85,6 +85,23 @@ public record LedgerMeaning(
             : null);
   }
 
+  /** 補正率の形を除いた写し（補正 β·L そのものの意味。校正器が記録し、掛けてよいかを照合する）。 */
+  public LedgerMeaning scaleFree() {
+    return new LedgerMeaning(
+        columns,
+        mode,
+        compute,
+        pointClip,
+        policyClip,
+        slopeStep,
+        slopeRefresh,
+        apply,
+        cells,
+        weighting,
+        ura,
+        null);
+  }
+
   /**
    * 前の反復から変わった項目を、英語の 1 文で返す。変わった項目が複数あれば、最初の 1 つだけを書く。
    *

@@ -6,10 +6,15 @@ import com.epsilon.agent.run.RunDirectory;
 import com.epsilon.prism.Main;
 import com.epsilon.prism.TestSettings;
 import com.epsilon.prism.app.FitCohorts;
+import com.epsilon.prism.app.FitPlateau;
+import com.epsilon.prism.app.PrismApp;
+import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.luck.LedgerColumn;
+import com.epsilon.prism.luck.LedgerCorrection;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.rows.RowCodec;
+import com.epsilon.prism.settings.PrismSettings;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -211,15 +216,17 @@ public class LuckLineageTest {
    * 反復 2 はその補正率をコホート 2 に掛けて測るが、教師と掛けた R² は帳簿の補正のまま（掛けた R² は全体の R²）。補正率を APPLY に変え、
    * 同じ設定の行で縮める罰 ρ を 0.2 にした反復 3 は、持ち越した R² を補正率の形の変化として捨て、コホート 2 の補正率（ρ 0.08 で当てはめた
    * もの）を教師に掛け、掛けた R² をその補正のスロットの R² にする。次の反復に持ち越す補正率は ρ 0.2 で当てはめる。段の報告の要約は
-   * ledger.jsonl の報告と合う。
+   * ledger.jsonl の報告と合う。反復 4 はコホート 3 の補正率（ρ 0.2）を掛ける。同じ設定の行のコホート 3〜4 を学び直す fit-cohorts の
+   * LINEAGE は、系譜の前のコホートの補正率から始めて補正率を順に渡し、系譜と同じ報告を書く（和了の判断の差は数えない）。fit-plateau の
+   * 教師の補正も同じ補正率を掛け、書いた報告から作り直しても全ての行で同じ。
    */
   @Test(groups = "slow", timeOut = 3_600_000)
   public void calibrationShadowCarriesTheScaleAndApplyTeachesIt() throws Exception {
-    Path run = null;
+    Path run = null, out = null;
     try {
       run = Files.createTempDirectory("prism-luck-calibration");
       TestSettings.create(
-          run, lineage("APPLY", "schedule.iterations=3", "noise.ledger.calibration.mode=SHADOW"));
+          run, lineage("APPLY", "schedule.iterations=4", "noise.ledger.calibration.mode=SHADOW"));
       Assert.assertEquals(PrismRun.runner(run, 2, () -> false).train(), Ending.LIMIT);
       JsonObject first = ledgerLine(run, 1).getAsJsonObject("calibration");
       Assert.assertEquals(first.get("applied").getAsString(), "current", first.toString());
@@ -241,7 +248,7 @@ public class LuckLineageTest {
       Assert.assertEquals(
           change(run, "noise.ledger.calibration.mode=APPLY", "noise.ledger.calibration.shrink=0.2"),
           Exit.OK.code());
-      Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
+      Assert.assertEquals(PrismRun.runner(run, 1, () -> false).train(), Ending.LIMIT);
       JsonObject third = learn(run, 3);
       Assert.assertEquals(
           third.get("carryReset").getAsString(),
@@ -264,9 +271,72 @@ public class LuckLineageTest {
               .get("calibration")
               .getAsString(),
           "COMMON_SCALE");
+
+      Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
+      JsonObject fourth = ledgerLine(run, 4).getAsJsonObject("calibration");
+      Assert.assertEquals(fourth.get("applied").getAsString(), "shadow", fourth.toString());
+      Assert.assertEquals(fourth.getAsJsonObject("origin").get("cohort").getAsInt(), 3);
+      Assert.assertEquals(fourth.getAsJsonObject("origin").get("shrink").getAsDouble(), 0.2);
+
+      out = Files.createTempDirectory("prism-luck-calibration-refit");
+      Path refit = out.resolve("refit");
+      String[] range = {
+        "fit-cohorts",
+        "--run",
+        run.toString(),
+        "--cohorts",
+        "3..4",
+        "--teacher",
+        "LINEAGE",
+        "--out",
+        refit.toString()
+      };
+      Assert.assertEquals(Main.run(range), Exit.OK.code());
+      for (int t = 3; t <= 4; t++)
+        Assert.assertEquals(
+            withoutGates(refitLedger(refit, t)),
+            withoutGates(withoutSeconds(ledgerLine(run, t))),
+            "cohort " + t);
+
+      PrismSettings latest = PrismApp.latest(run);
+      Path cache = out.resolve("plateau-ledger");
+      LedgerCorrection[] computed = FitPlateau.corrections(run, cache, latest, 3, 4);
+      LedgerCorrection[] restored = FitPlateau.corrections(run, cache, latest, 3, 4);
+      Assert.assertEquals(computed[0].scale().cohort(), 2);
+      Assert.assertEquals(computed[1].scale().cohort(), 3);
+      Assert.assertEquals(restored[0].scale(), computed[0].scale());
+      Assert.assertEquals(restored[1].scale(), computed[1].scale());
+      long compared = 0;
+      try (CohortStore store = new CohortStore()) {
+        for (int t = 3; t <= 4; t++) store.addCohort(CohortWriter.directory(run, t));
+        for (int t = 3; t <= 4; t++)
+          for (int id : store.select(t, t, latest.fit().rows())) {
+            Row row = store.read(id);
+            Assert.assertEquals(
+                restored[t - 3].values(row), computed[t - 3].values(row), "cohort " + t);
+            compared++;
+          }
+      }
+      Assert.assertTrue(compared > 0);
+      for (int t = 3; t <= 4; t++) {
+        Path saved = cache.resolve(String.format("%05d.json", t));
+        JsonObject report = JsonParser.parseString(Files.readString(saved)).getAsJsonObject();
+        Assert.assertEquals(
+            withoutGates(withoutSeconds(report)),
+            withoutGates(withoutSeconds(ledgerLine(run, t))),
+            "cohort " + t);
+      }
     } finally {
       delete(run);
+      delete(out);
     }
+  }
+
+  /** 補正率の報告から和了の判断の差を外したもの（学び直すコマンドは和了の判断の差を数えない）。 */
+  private static JsonObject withoutGates(JsonObject report) {
+    JsonObject copy = report.deepCopy();
+    if (copy.has("calibration")) copy.getAsJsonObject("calibration").remove("gates");
+    return copy;
   }
 
   /**

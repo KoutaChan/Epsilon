@@ -295,11 +295,13 @@ public final class LedgerFit {
    * 1 つのシャードで貯めた行。行ごとに半荘・判断のクラスを持ち、測った手の Y と帳簿の列を、行を書いた順・手の順に持つ。帳簿は fp16 で
    * 持つ（コホートの行の帳簿は fp16 で正確に表せる。{@link RowCodec}）。手は {@value #BLOCK} 手ずつのブロックに置き、1 行の手がブロックを
    * またがないようにする。飛ばす行（{@link Accumulator#measured(FitRow, float[], int[])} が −1 を返す行）は、数だけを数える。局面を
-   * 貯めるテープは、行ごとに判断時の局面（{@link LedgerCell.Standing}）も持つ。
+   * 貯めるテープは、行ごとに判断時の局面（{@link LedgerCell.Standing}）と、行の種類、測った手の中で打った手の位置（測っていなければ −1）も
+   * 持つ。
    */
   private static final class Tape {
     static final int BLOCK = 1 << 16;
     static final DecisionClass[] CLASS = DecisionClass.values();
+    static final Row.Source[] SOURCE = Row.Source.values();
 
     final List<float[]> values = new ArrayList<>();
     final List<short[]> terms = new ArrayList<>();
@@ -308,8 +310,8 @@ public final class LedgerFit {
 
     byte[] cells;
 
-    /** 行ごとの局面（局面を貯めないテープでは null）。 */
-    byte[] ranks, rounds;
+    /** 行ごとの局面・行の種類・打った手の位置（局面を貯めないテープでは null）。 */
+    byte[] ranks, rounds, sources, plays;
 
     int[] gaps;
 
@@ -318,6 +320,8 @@ public final class LedgerFit {
       if (standings) {
         ranks = new byte[games.length];
         rounds = new byte[games.length];
+        sources = new byte[games.length];
+        plays = new byte[games.length];
         gaps = new int[games.length];
       }
     }
@@ -380,6 +384,8 @@ public final class LedgerFit {
         if (ranks != null) {
           ranks = Arrays.copyOf(ranks, capacity);
           rounds = Arrays.copyOf(rounds, capacity);
+          sources = Arrays.copyOf(sources, capacity);
+          plays = Arrays.copyOf(plays, capacity);
           gaps = Arrays.copyOf(gaps, capacity);
         }
         starts = Arrays.copyOf(starts, capacity);
@@ -405,6 +411,10 @@ public final class LedgerFit {
         ranks[rows] = (byte) standing.rank();
         rounds[rows] = (byte) standing.round();
         gaps[rows] = standing.gap();
+        sources[rows] = (byte) row.source().ordinal();
+        int played = -1;
+        for (int i = 0; i < m && played < 0; i++) if (measured[i] == row.played()) played = i;
+        plays[rows] = (byte) played;
       }
       counts[rows] = (byte) m;
       starts[rows] = slot;
@@ -468,6 +478,20 @@ public final class LedgerFit {
       @Override
       public float ledger(int action, int column) {
         return Float.float16ToFloat(l[(start + action) * F + column]);
+      }
+
+      @Override
+      public int played() {
+        if (plays == null)
+          throw new IllegalStateException("This ledger tape keeps no played actions");
+        return plays[row];
+      }
+
+      @Override
+      public Row.Source source() {
+        if (sources == null)
+          throw new IllegalStateException("This ledger tape keeps no row sources");
+        return SOURCE[sources[row]];
       }
     }
   }

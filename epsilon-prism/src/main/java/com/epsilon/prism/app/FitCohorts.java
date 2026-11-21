@@ -18,8 +18,10 @@ import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Layer;
 import com.epsilon.agent.settings.Presence;
 import com.epsilon.agent.settings.Range;
+import com.epsilon.agent.settings.RecordFile;
 import com.epsilon.agent.settings.Settings;
 import com.epsilon.agent.settings.SettingsException;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.core.CrnSeeds;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.learn.AnchorScores;
@@ -29,6 +31,8 @@ import com.epsilon.prism.learn.FitPlan;
 import com.epsilon.prism.learn.FitResult;
 import com.epsilon.prism.learn.Selection;
 import com.epsilon.prism.learn.Teacher;
+import com.epsilon.prism.luck.LedgerCalibrator;
+import com.epsilon.prism.luck.LedgerMeaning;
 import com.epsilon.prism.luck.LedgerOutcome;
 import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.luck.LuckSettlement;
@@ -39,10 +43,14 @@ import com.epsilon.prism.noise.NoiseSettings;
 import com.epsilon.prism.noise.TempoSettings;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.rows.CohortWriter;
+import com.epsilon.prism.run.LearnReport;
 import com.epsilon.prism.run.Snapshot;
 import com.epsilon.prism.settings.FittingSettings;
 import com.epsilon.prism.settings.PrismSettings;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -62,8 +70,10 @@ import org.slf4j.LoggerFactory;
  * <p>教師は 2 つある。{@link Teacher#RAW RAW} は、範囲の全てのコホートから TRAIN のラベル行と根の記録（{@link Selection#LABELS_AND_ROOTS}）を
  * 選び、生の Y でアンカーなしに {@code fit.epochs} エポック学ぶ。{@link Mode#LINEAGE LINEAGE} は、系譜の更新をコホートごとに順にたどる。
  * まず生徒の行（{@code fit.rows}）で運の精算を当てはめる（noise.ledger）。当てはめは学習の段と同じ {@link LuckSettlement#learn} で行い、
- * 報告の全部をコホートごとに out/{@value #LEDGER}/&lt;t&gt;.json に書く。次に今のネットワークをアンカーにし（noise.tempo）、K′ と学習率の
- * 倍率を前のコホートの R² から決める。ステップ数は {@code fit.steps} で決める。
+ * 報告の全部をコホートごとに out/{@value #LEDGER}/&lt;t&gt;.json に書く。帳簿の補正率を求める設定では、補正率も系譜と同じにコホートの順に
+ * 渡す。最初のコホートには、run の系譜がその前のコホートで当てはめた補正率（{@link #calibrator}）を渡し、無ければ補正率を 1 にして理由を
+ * 報告に書く。次に今のネットワークをアンカーにし（noise.tempo）、K′ と学習率の倍率を前のコホートの R² から決める。ステップ数は
+ * {@code fit.steps} で決める。
  *
  * <p>始めのネットワークは、{@code --start} があれば、そのバージョンの重みにする（バージョンの形は学ぶ形と同じであること）。無ければゼロから
  * 学ぶ。{@code --shape} で深さを選べるアームを指定する場合は、{@code --depth} で深さも指定する。形を省くと run の network の形を使う。
@@ -286,6 +296,9 @@ public record FitCohorts(
     var sourceSettings = new SettingsRows(new RunDirectory(run)).read().reversed();
     Path anchorDirectory = out.resolve(ANCHOR);
     double r2 = appliedR2 == null ? 0 : appliedR2;
+    LedgerCalibrator carried = calibrator(run, span.first() - 1);
+    LedgerMeaning fitUnder =
+        carried == null ? null : meaning(run, span.first() - 1, settings.run().variant());
     Fitted last = null;
     try {
       for (int t = span.first(); t <= span.last(); t++) {
@@ -295,7 +308,12 @@ public record FitCohorts(
           try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
             ledger =
                 luck.learn(
-                    t, null, store.iterate(rows, fitting.batch(), readers, threads), rows.length);
+                    t,
+                    null,
+                    store.iterate(rows, fitting.batch(), readers, threads),
+                    rows.length,
+                    carried,
+                    fitUnder);
           }
           if (ledger.report() != null) {
             int cohort = t;
@@ -311,9 +329,11 @@ public record FitCohorts(
                         .ledger());
             DurableFiles.write(
                 out.resolve(LEDGER).resolve(String.format(Locale.ROOT, "%05d.json", t)),
-                ledger.report().full(recording));
+                ledger.full(recording));
           }
         }
+        carried = ledger.next();
+        fitUnder = luck.meaning();
         double gain = tempo.gain(t, r2);
         double lrScale = tempo.learningRateScale(t, r2);
         AnchorScores anchor = null;
@@ -373,6 +393,56 @@ public record FitCohorts(
       }
     }
     return last;
+  }
+
+  /**
+   * run の系譜がコホート {@code cohort} の行で当てはめた帳簿の補正率（reports/{@value LearnReport#LEDGER_LINES} の、その反復の行の
+   * calibration.next）。
+   *
+   * @return 補正率。その反復の行が無いか、その反復が補正率を当てはめていなければ null
+   * @throws IOException 報告を読めないとき
+   */
+  static LedgerCalibrator calibrator(Path run, int cohort) throws IOException {
+    Path lines = new RunDirectory(run).report(LearnReport.LEDGER_LINES);
+    if (cohort < 1 || !Files.exists(lines)) {
+      return null;
+    }
+    for (String line : Files.readAllLines(lines, StandardCharsets.UTF_8)) {
+      if (line.isBlank()) {
+        continue;
+      }
+      JsonObject row = JsonParser.parseString(line).getAsJsonObject();
+      if (row.get("iteration").getAsInt() != cohort) {
+        continue;
+      }
+      JsonObject calibration = row.getAsJsonObject("calibration");
+      JsonObject next = calibration == null ? null : calibration.getAsJsonObject("next");
+      if (next == null || !next.has("calibrator")) {
+        return null;
+      }
+      return RecordFile.read(
+              LedgerCalibrator.class, next.get("calibrator").toString(), lines + " t" + cohort)
+          .value();
+    }
+    return null;
+  }
+
+  /**
+   * run の系譜がコホート {@code cohort} を学んだ設定の行（そのコホートから効く最後の行）の、帳簿の意味（{@link
+   * LuckSettlement#meaning}）。
+   *
+   * @throws IOException 設定の行を読めないか、そのコホートから効く行が無いとき
+   */
+  static LedgerMeaning meaning(Path run, int cohort, Variant variant) throws IOException {
+    SettingsRow row =
+        new SettingsRows(new RunDirectory(run))
+            .read().reversed().stream()
+                .filter(candidate -> candidate.from() <= cohort)
+                .findFirst()
+                .orElseThrow(() -> new IOException("Missing settings for cohort " + cohort));
+    NoiseSettings noise =
+        Settings.section(NoiseSettings.class, "noise", List.of(row.layer())).value();
+    return LuckSettlement.of(noise, variant).meaning();
   }
 
   /** 始めのネットワークの形。アームがあればアームの形、無ければ run の network の形。 */

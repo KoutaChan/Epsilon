@@ -398,16 +398,18 @@ public record LedgerReport(
    *
    * @param mode 補正率のモード（設定に書く名前）
    * @param kind 補正率の形
-   * @param applied 教師に掛けた腕（current か shadow）
+   * @param applied 教師に実際に掛けた腕（{@link Arm#reportName}）。帳簿の補正が無ければ（帳簿を当てはめるだけのモードや、帳簿のある
+   *     行が無いとき）raw
    * @param origin 今のコホートに掛けた補正率の出どころ（無ければ null で、補正率は 1）
    * @param fallback 補正率を 1 にした理由（出どころがあれば null）
    * @param rows 測った行の数
    * @param slots 測った手の数
    * @param j 腕ごとの J
-   * @param slotR2 腕ごとのスロットの R²（生は 0）
+   * @param slotR2 腕ごとのスロットの R²（生は 0）。教師に掛けた腕の値（負なら 0）が、次の K′ を決める R² になる
    * @param scale 行ごとの補正率の分布
    * @param bands 局面の帯ごとの J。全て（all）、南場の最後の局より前（early）と後（last）、後の局の順位 × 最も近い他家との点差の帯
    *     （rank{順位}_{下の境}_{上の境}）。行の無い帯も載せる
+   * @param audits 補正の向きの監査（{@link Audit}）。事前に決めた群の順に、行の無い群も載せる（無ければ null）
    * @param gates 和了の判断の教師の差（{@link LuckSettlement#gates} が足す。足す前は空）
    * @param next 今のコホートの行で当てはめた、次の反復の補正率（当てはめられなければ null）
    */
@@ -423,21 +425,24 @@ public record LedgerReport(
       Arms slotR2,
       Scale scale,
       List<Band> bands,
+      @Key(doc = "補正の向きの監査", presence = Presence.ABSENT) List<Audit> audits,
       List<Gate> gates,
       @Key(doc = "次の反復の補正率の当てはめ", presence = Presence.ABSENT) Next next) {
 
     public Calibration {
       Objects.requireNonNull(mode, "mode");
       Objects.requireNonNull(kind, "kind");
-      Objects.requireNonNull(applied, "applied");
+      Arm.of(applied);
       bands = List.copyOf(bands);
+      audits = audits == null ? null : List.copyOf(audits);
       gates = List.copyOf(gates);
     }
 
     /** 和了の判断の教師の差を入れた報告を返す。 */
     public Calibration withGates(List<Gate> gates) {
       return new Calibration(
-          mode, kind, applied, origin, fallback, rows, slots, j, slotR2, scale, bands, gates, next);
+          mode, kind, applied, origin, fallback, rows, slots, j, slotR2, scale, bands, audits,
+          gates, next);
     }
 
     /** 段の報告に書く要約。 */
@@ -451,6 +456,37 @@ public record LedgerReport(
           slotR2,
           scale.mean(),
           next == null ? null : next.cohort());
+    }
+  }
+
+  /** 教師に掛けた補正の腕。報告には {@link #reportName} で書く。 */
+  public enum Arm {
+    /** 補正しない Y。 */
+    RAW("raw"),
+    /** 帳簿の補正 Y − β·L。 */
+    CURRENT("current"),
+    /** 補正率を掛けた補正 Y − h(o)·β·L。 */
+    SHADOW("shadow");
+
+    private final String reportName;
+
+    Arm(String reportName) {
+      this.reportName = reportName;
+    }
+
+    /** 報告に書く名前。 */
+    public String reportName() {
+      return reportName;
+    }
+
+    /**
+     * 報告に書いた名前の腕。
+     *
+     * @throws IllegalArgumentException 腕の名前でないとき
+     */
+    public static Arm of(String reportName) {
+      for (Arm arm : values()) if (arm.reportName.equals(reportName)) return arm;
+      throw new IllegalArgumentException("Unknown ledger arm: " + reportName);
     }
   }
 
@@ -491,7 +527,8 @@ public record LedgerReport(
       double regularization,
       double shrink) {
 
-    static Origin of(LedgerCalibrator calibrator) {
+    /** 補正率の出どころ。 */
+    public static Origin of(LedgerCalibrator calibrator) {
       return new Origin(
           calibrator.source(),
           calibrator.cohort(),
@@ -549,6 +586,34 @@ public record LedgerReport(
       @Key(doc = "1 − J_影 / J_今 の標準誤差", presence = Presence.ABSENT) Double seShadowVsCurrent) {}
 
   /**
+   * 補正の向きの監査の、事前に決めた群 1 つ（{@link LedgerCalibrator} の監査の群）。補正は行の全ての手に同じ量を足しても J を変えないので、
+   * 中心化しない補正の平均と、打った手の補正の偏りを別に数える。帳簿の条件付き平均が 0 なら、どちらの期待値も 0。
+   *
+   * @param group 群の名前
+   * @param rows 行の数
+   * @param games 半荘の数
+   * @param played 打った手を測った行の数
+   * @param rowMean 行の測った手の補正の平均（中心化しない）の、行の平均
+   * @param playedMinusOthers 打った手の補正 − ほかの測った手の補正の平均の、行の平均（打った手を測った行だけ）
+   */
+  public record Audit(
+      String group, long rows, long games, long played, Signed rowMean, Signed playedMinusOthers) {}
+
+  /**
+   * 補正の符号付きの平均と、その半荘で束ねた標準誤差。今は帳簿の補正 β·L、影は補正率を掛けた補正 h(o)·β·L。有限でない値は null。
+   *
+   * @param current 今の平均
+   * @param seCurrent その標準誤差
+   * @param shadow 影の平均
+   * @param seShadow その標準誤差
+   */
+  public record Signed(
+      @Key(doc = "今の平均", presence = Presence.ABSENT) Double current,
+      @Key(doc = "今の平均の標準誤差", presence = Presence.ABSENT) Double seCurrent,
+      @Key(doc = "影の平均", presence = Presence.ABSENT) Double shadow,
+      @Key(doc = "影の平均の標準誤差", presence = Presence.ABSENT) Double seShadow) {}
+
+  /**
    * 和了の判断の教師の差の、1 つの帯と和了の種類（{@link LedgerCalibrator} の和了の判断の差）。
    *
    * @param group 帯（FINAL_END か first_{下の境}_{上の境}）
@@ -557,6 +622,8 @@ public record LedgerReport(
    * @param games 半荘の数
    * @param mean 腕ごとの差の平均
    * @param sd 腕ごとの差の標準偏差（n − 1 で割る）
+   * @param correction 和了と比べる手の補正の差（β·L_和了 − β·L_比べる手。影はそれに h(o) を掛けた値）の符号付きの平均（無ければ
+   *     null）
    * @param currentMinusRawSd SD_今 − SD_生
    * @param seCurrentMinusRawSd その標準誤差
    * @param shadowMinusRawSd SD_影 − SD_生
@@ -569,6 +636,7 @@ public record LedgerReport(
       long games,
       Arms mean,
       Arms sd,
+      @Key(doc = "和了と比べる手の補正の差の平均", presence = Presence.ABSENT) Signed correction,
       @Key(doc = "SD_今 − SD_生", presence = Presence.ABSENT) Double currentMinusRawSd,
       @Key(doc = "SD_今 − SD_生 の標準誤差", presence = Presence.ABSENT) Double seCurrentMinusRawSd,
       @Key(doc = "SD_影 − SD_生", presence = Presence.ABSENT) Double shadowMinusRawSd,
@@ -584,6 +652,7 @@ public record LedgerReport(
    * @param zeros 0 の係数の数
    * @param ones 1 の係数の数
    * @param coefficients 係数の数
+   * @param calibrator 当てはめた補正率（係数まで。次のコホートに掛ける。無ければ null）
    */
   public record Next(
       int cohort,
@@ -592,7 +661,8 @@ public record LedgerReport(
       @Key(doc = "係数の平均", presence = Presence.ABSENT) Double meanCoefficient,
       int zeros,
       int ones,
-      int coefficients) {
+      int coefficients,
+      @Key(doc = "当てはめた補正率", presence = Presence.ABSENT) LedgerCalibrator calibrator) {
 
     static Next of(LedgerCalibrator next, LedgerCalibrator.Sums sums) {
       double[] theta = next.theta();
@@ -613,7 +683,8 @@ public record LedgerReport(
           finite(total / theta.length),
           zeros,
           ones,
-          theta.length);
+          theta.length,
+          next);
     }
   }
 
@@ -621,7 +692,7 @@ public record LedgerReport(
    * 段の報告に書く、補正率の校正の要約。
    *
    * @param mode 補正率のモード（設定に書く名前）
-   * @param applied 教師に掛けた腕（current か shadow）
+   * @param applied 教師に実際に掛けた腕（{@link Arm#reportName}）
    * @param origin 今のコホートに掛けた補正率を当てはめたコホート（無ければ null）
    * @param fallback 補正率を 1 にした理由（出どころがあれば null）
    * @param j 腕ごとの J

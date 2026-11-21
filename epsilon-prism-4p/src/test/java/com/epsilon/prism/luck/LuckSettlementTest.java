@@ -293,16 +293,57 @@ public class LuckSettlementTest {
       Assert.assertNull(fallback.origin());
       Assert.assertEquals(fallback.j().shadow(), fallback.j().current());
     }
-    LuckSettlement other =
+    LuckSettlement grouped =
         settle("noise.ledger.calibration.mode=SHADOW", "noise.ledger.apply=[POINTS, POLICY]");
-    LedgerOutcome grouped = other.learn(2, tapped(other, rows), List.of(), rows.size(), carried);
-    Assert.assertTrue(
-        grouped
+    LuckSettlement clipped =
+        settle("noise.ledger.calibration.mode=SHADOW", "noise.ledger.pointClip=16");
+    for (Object[] meaning :
+        new Object[][] {
+          {grouped, shadow.meaning(), "the carried calibrator scales the groups"},
+          {
+            clipped,
+            shadow.meaning(),
+            "the carried calibrator was fit on another ledger correction: the ledger pointClip"
+                + " changed from 32.0 to 16.0"
+          },
+          {shadow, null, "the ledger settings that fit the carried calibrator are unknown"}
+        }) {
+      LuckSettlement other = (LuckSettlement) meaning[0];
+      LedgerOutcome changed =
+          other.learn(
+              2, tapped(other, rows), List.of(), rows.size(), carried, (LedgerMeaning) meaning[1]);
+      String fallback = changed.calibration().report().fallback();
+      Assert.assertTrue(fallback.startsWith((String) meaning[2]), fallback);
+      Assert.assertNull(changed.calibration().report().origin(), fallback);
+    }
+    Assert.assertNull(
+        shadow
+            .learn(2, tapped(shadow, rows), List.of(), rows.size(), carried, shadow.meaning())
             .calibration()
             .report()
-            .fallback()
-            .startsWith("the carried calibrator scales the groups"),
-        grouped.calibration().report().fallback());
+            .fallback());
+  }
+
+  /**
+   * 帳簿を当てはめて監査するだけのモード（AUDIT）で補正率を求めると、教師は生の Y なので、掛けた腕は RAW、掛けた R² は 0。補正率は
+   * 測って、次の反復の補正率も当てはめる。
+   */
+  @Test
+  public void auditingTheLedgerTeachesTheRawArm() {
+    var before = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 20_000, 0, 68);
+    var rows = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 20_000, 1_000_000, 69);
+    LuckSettlement audit =
+        settle("noise.ledger.mode=AUDIT", "noise.ledger.calibration.mode=SHADOW", NO_GAIN);
+    LedgerCalibrator carried =
+        audit.learn(1, tapped(audit, before), List.of(), before.size(), null).next();
+    LedgerOutcome measured = audit.learn(2, tapped(audit, rows), List.of(), rows.size(), carried);
+    LedgerReport.Calibration report = measured.calibration().report();
+    Assert.assertEquals(report.applied(), "raw");
+    Assert.assertEquals(measured.summary().calibration().applied(), "raw");
+    Assert.assertNull(measured.correction());
+    Assert.assertEquals(measured.appliedR2(), 0.0);
+    Assert.assertEquals(report.origin().cohort(), 1);
+    Assert.assertEquals(measured.next().cohort(), 2);
   }
 
   /**

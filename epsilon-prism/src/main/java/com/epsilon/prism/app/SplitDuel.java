@@ -58,7 +58,8 @@ public record SplitDuel(
     @Key(
             doc =
                 "続きを打つ方策の独立した半荘で当てはめた"
-                    + " ledger.json。選択が割れた判断では両方の局末効用から各経路の帳簿補正を引いて差を集計する。省略時は生の効用差を使う",
+                    + " ledger.json。選択が割れた判断では両方の局末効用から各経路の帳簿補正を引いて差を集計する。省略時は生の効用差を使う。"
+                    + "補正率を掛けた教師の ledger.json は、補正率を作り直せないので受け付けない",
             presence = Presence.ABSENT)
         Path ledger,
     @Key(doc = "Report directory for JSON and TSV", presence = Presence.ABSENT) Path out)
@@ -76,6 +77,14 @@ public record SplitDuel(
                 ((PhiReport) StepReport.read(phi, PhiReport.class).metrics()).value(),
                 settings.utility());
     var fit = ledger == null ? null : RecordFile.read(LedgerReport.Full.class, ledger).value();
+    if (fit != null
+        && fit.calibration() != null
+        && LedgerReport.Arm.of(fit.calibration().applied()) == LedgerReport.Arm.SHADOW) {
+      throw new IOException(
+          "split-duel rebuilds only the unscaled ledger correction, but "
+              + ledger
+              + " taught with the calibrated scale");
+    }
     var recording =
         fit == null
             ? null

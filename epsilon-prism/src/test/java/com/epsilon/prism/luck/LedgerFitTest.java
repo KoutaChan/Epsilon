@@ -41,6 +41,8 @@ public class LedgerFitTest {
    *
    * @param ledger 手ごとの帳簿（長さは 合法手の数 × F）
    * @param standing 判断時の局面（補正率のテストのほかは東 1 局の首位・点差 0）
+   * @param played 打った手の位置（補正率の監査のテストのほかは 0）
+   * @param source 行の種類（補正率の監査のテストのほかは MAIN）
    */
   record SyntheticRow(
       long gameId,
@@ -48,8 +50,20 @@ public class LedgerFitTest {
       float[] values,
       float[] ledger,
       int cell,
-      LedgerCell.Standing standing)
+      LedgerCell.Standing standing,
+      int played,
+      Row.Source source)
       implements FitRow {
+    SyntheticRow(
+        long gameId,
+        DecisionClass decisionClass,
+        float[] values,
+        float[] ledger,
+        int cell,
+        LedgerCell.Standing standing) {
+      this(gameId, decisionClass, values, ledger, cell, standing, 0, Row.Source.MAIN);
+    }
+
     SyntheticRow(
         long gameId, DecisionClass decisionClass, float[] values, float[] ledger, int cell) {
       this(gameId, decisionClass, values, ledger, cell, new LedgerCell.Standing(0, 0, 0));

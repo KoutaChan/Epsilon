@@ -286,6 +286,7 @@ public class LedgerCalibratorTest {
       var pass = new LedgerCalibrator.Pass(current, applied, DEFAULTS, variant);
       var direct = new LedgerCalibrator.Sums(new LedgerCalibrator.Grid(variant, 9, 3));
       double[] j = new double[3], slot = new double[3];
+      double[] audit = new double[4];
       long last = 0;
       Map<String, Long> bands = new HashMap<>();
       for (var row : rows) {
@@ -311,6 +312,11 @@ public class LedgerCalibratorTest {
           es += (x - h * v) * (x - h * v);
         }
         direct.add(row.standing(), xx / 3, xv / 3, vv / 3);
+        double offset = (b[row.played()] - mb) * 3 / 2;
+        audit[0] += mb;
+        audit[1] += h * mb;
+        audit[2] += offset;
+        audit[3] += h * offset;
         j[0] += xx / 3;
         j[1] += ec / 3;
         j[2] += es / 3;
@@ -330,7 +336,8 @@ public class LedgerCalibratorTest {
       }
       LedgerCalibrator next = fit(pass.sums(), DEFAULTS, variant);
       LedgerReport.Calibration report =
-          pass.report("SHADOW", LedgerCalibrationKind.COMMON_SCALE, "current", null, next);
+          pass.report(
+              "SHADOW", LedgerCalibrationKind.COMMON_SCALE, LedgerReport.Arm.CURRENT, null, next);
       int n = rows.size();
       Assert.assertEquals(report.rows(), n);
       Assert.assertEquals(report.slots(), 3L * n);
@@ -374,6 +381,44 @@ public class LedgerCalibratorTest {
       Assert.assertEquals(report.next().j().raw(), j[0] / n, 1e-12);
       Assert.assertEquals(report.next().j().current(), j[1] / n, 1e-9);
       Assert.assertEquals(report.next().coefficients(), 108);
+      Assert.assertEquals(report.next().calibrator(), next);
+      Map<String, LedgerReport.Audit> audits = new HashMap<>();
+      for (LedgerReport.Audit group : report.audits()) audits.put(group.group(), group);
+      Assert.assertEquals(
+          audits.size(), LedgerCalibrator.AUDIT_GROUPS.size() + DecisionClass.COUNT);
+      LedgerReport.Audit all = audits.get("all");
+      Assert.assertEquals(all.rows(), n);
+      Assert.assertEquals(all.played(), n);
+      Assert.assertEquals(all.rowMean().current(), audit[0] / n, 1e-12);
+      Assert.assertEquals(all.rowMean().shadow(), audit[1] / n, 1e-12);
+      Assert.assertEquals(all.playedMinusOthers().current(), audit[2] / n, 1e-12);
+      Assert.assertEquals(all.playedMinusOthers().shadow(), audit[3] / n, 1e-12);
+      Assert.assertTrue(all.rowMean().seCurrent() > 0 && all.playedMinusOthers().seShadow() > 0);
+      Assert.assertEquals(audits.get("main").rowMean(), all.rowMean());
+      Assert.assertEquals(audits.get("rollin").rows(), 0);
+      Assert.assertNull(audits.get("rollin").rowMean().current());
+      Assert.assertEquals(audits.get("last").rows(), last);
+      Assert.assertEquals(audits.get("CALL").rows() + audits.get("DISCARD_MID").rows(), (long) n);
+    }
+  }
+
+  /**
+   * 補正率は 4 点の係数の双線形の補間を [0, 1] に収めた値で、係数が全て 1 の格子ではどの局面でもちょうど 1、全て 0 ではちょうど 0
+   * （重みの和の丸めで 1 を越えない）。
+   */
+  @Test
+  public void theScaleStaysInsideTheUnitInterval() {
+    for (Variant variant : List.of(Variant.TENHOU_4P, Variant.TENHOU_3P)) {
+      int size = new LedgerCalibrator.Grid(variant, 9, 3).size();
+      LedgerCalibrator ones = calibrator(variant, Collections.nCopies(size, 1.0));
+      LedgerCalibrator zeros = calibrator(variant, Collections.nCopies(size, 0.0));
+      for (int rank = 0; rank < variant.seats(); rank++)
+        for (int gap = 0; gap <= 60_000; gap += 100)
+          for (int round = 0; round <= variant.finalRound(); round++) {
+            var standing = new LedgerCell.Standing(rank, gap, round);
+            Assert.assertEquals(ones.scale(standing), 1.0, standing.toString());
+            Assert.assertEquals(zeros.scale(standing), 0.0, standing.toString());
+          }
     }
   }
 
@@ -400,7 +445,8 @@ public class LedgerCalibratorTest {
         new LedgerCalibrator.Pass(fitter.fitRows(after).correction(), scale, DEFAULTS, variant);
     for (var row : after) held.add(row);
     LedgerReport.Calibration report =
-        held.report("SHADOW", LedgerCalibrationKind.COMMON_SCALE, "current", null, null);
+        held.report(
+            "SHADOW", LedgerCalibrationKind.COMMON_SCALE, LedgerReport.Arm.CURRENT, null, null);
     Assert.assertTrue(report.j().shadow() < report.j().current(), report.j().toString());
   }
 
@@ -483,6 +529,7 @@ public class LedgerCalibratorTest {
       expected.computeIfAbsent("raw " + kind, k -> new ArrayList<>()).add(dy);
       expected.computeIfAbsent("current " + kind, k -> new ArrayList<>()).add(dy - db);
       expected.computeIfAbsent("shadow " + kind, k -> new ArrayList<>()).add(dy - 0.25 * db);
+      expected.computeIfAbsent("correction " + kind, k -> new ArrayList<>()).add(db);
     }
     rows.add(
         row(
@@ -529,6 +576,9 @@ public class LedgerCalibratorTest {
       Assert.assertEquals(gate.sd().current(), sd(expected.get("current " + kind)), 1e-12);
       Assert.assertEquals(gate.sd().shadow(), sd(expected.get("shadow " + kind)), 1e-12);
       Assert.assertEquals(gate.shadowMinusRawSd(), gate.sd().shadow() - gate.sd().raw(), 1e-15);
+      double correction = mean(expected.get("correction " + kind));
+      Assert.assertEquals(gate.correction().current(), correction, 1e-12);
+      Assert.assertEquals(gate.correction().shadow(), 0.25 * correction, 1e-12);
     }
     Assert.assertTrue(tsumoRows + ronRows >= 6, tsumoRows + " " + ronRows);
     for (String key : ronOnly.keySet()) Assert.assertTrue(key.endsWith(" ron"), key);

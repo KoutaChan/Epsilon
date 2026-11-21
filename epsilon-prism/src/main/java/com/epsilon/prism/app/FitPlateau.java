@@ -26,7 +26,9 @@ import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.learn.FitPlan;
 import com.epsilon.prism.learn.FitResult;
 import com.epsilon.prism.learn.Teacher;
+import com.epsilon.prism.luck.LedgerCalibrator;
 import com.epsilon.prism.luck.LedgerCorrection;
+import com.epsilon.prism.luck.LedgerMeaning;
 import com.epsilon.prism.luck.LedgerReport;
 import com.epsilon.prism.luck.LuckSettlement;
 import com.epsilon.prism.model.PrismNetwork;
@@ -278,9 +280,8 @@ public record FitPlateau(
     long seed =
         CrnSeeds.derive(s.run().seed(), CrnSeeds.Domain.LEARN, span.last(), 0x76326172L, replicate);
     int count = span.last() - span.first() + 1;
-    var corrections = new LedgerCorrection[count];
+    var corrections = corrections(run, out.resolve("ledger"), s, span.first(), span.last());
     var ends = new int[count];
-    for (int i = 0; i < count; i++) corrections[i] = ledger(s, span.first() + i);
     try (var store = new CohortStore()) {
       for (int i = 0; i < count; i++) {
         store.addCohort(CohortWriter.directory(run, span.first() + i));
@@ -410,8 +411,58 @@ public record FitPlateau(
     }
   }
 
-  private LedgerCorrection ledger(PrismSettings s, int t) throws IOException {
-    Path path = out.resolve("ledger").resolve(String.format(java.util.Locale.ROOT, "%05d.json", t));
+  /**
+   * コホートの範囲の教師の補正を、系譜と同じ帳簿の補正率の受け渡しで作る。最初のコホートには、run の系譜がその前のコホートで当てはめた
+   * 補正率（{@link FitCohorts#calibrator}）を渡し、後のコホートには、前のコホートの行で当てはめた補正率を渡す。コホート t の帳簿は
+   * cache/&lt;t&gt;.json に報告の全部を書き、書いてあれば報告から作り直す。
+   *
+   * @param run コホートを読む run のディレクトリ
+   * @param cache 帳簿の報告を置くディレクトリ
+   * @param settings 学習の設定
+   * @param first 範囲の最初のコホート
+   * @param last 範囲の最後のコホート
+   * @return コホートの順の教師の補正
+   * @throws IOException 帳簿を当てはめられないか、書いた報告が渡す補正率と合わないとき
+   */
+  public static LedgerCorrection[] corrections(
+      Path run, Path cache, PrismSettings settings, int first, int last) throws IOException {
+    var corrections = new LedgerCorrection[last - first + 1];
+    LedgerCalibrator carried = FitCohorts.calibrator(run, first - 1);
+    LedgerMeaning fitUnder =
+        carried == null ? null : FitCohorts.meaning(run, first - 1, settings.run().variant());
+    for (int t = first; t <= last; t++) {
+      Ledger ledger = ledger(run, cache, settings, t, carried, fitUnder);
+      corrections[t - first] = ledger.correction();
+      carried = ledger.next();
+      fitUnder = LuckSettlement.of(settings.noise(), settings.run().variant()).meaning();
+    }
+    return corrections;
+  }
+
+  /**
+   * コホート 1 つの教師の補正と、そのコホートの行で当てはめた次のコホートの補正率。
+   *
+   * @param correction 教師に掛ける補正（補正率を掛けたものを含む）
+   * @param next 次のコホートに渡す補正率（当てはめなければ null）
+   */
+  private record Ledger(LedgerCorrection correction, LedgerCalibrator next) {}
+
+  /**
+   * コホート t の帳簿を当てはめ、cache/&lt;t&gt;.json に報告の全部を書く。書いてあれば報告から作り直す。補正率を掛けた報告は、
+   * 掛けた補正率が {@code carried}（前のコホートの報告の補正率）と同じ出どころであることを確かめてから、同じ補正率を掛ける。
+   *
+   * @param carried 前のコホートから渡す補正率（無ければ null）
+   * @param fitUnder 渡す補正率を当てはめたコホートの帳簿の意味
+   */
+  private static Ledger ledger(
+      Path run,
+      Path cache,
+      PrismSettings s,
+      int t,
+      LedgerCalibrator carried,
+      LedgerMeaning fitUnder)
+      throws IOException {
+    Path path = cache.resolve(String.format(java.util.Locale.ROOT, "%05d.json", t));
     var luck = LuckSettlement.of(s.noise(), s.run().variant());
     if (!Files.exists(path)) {
       try (var store = new CohortStore();
@@ -423,14 +474,33 @@ public record FitPlateau(
                 t,
                 null,
                 store.iterate(rows, s.fit().batch(), readers, s.learner().decodeThreads()),
-                rows.length);
+                rows.length,
+                carried,
+                fitUnder);
         if (learned.correction() == null)
           throw new IOException("No applied ledger for cohort " + t);
-        DurableFiles.write(path, learned.report().full(luck.recording()));
-        return learned.correction();
+        DurableFiles.write(path, learned.full(luck.recording()));
+        return new Ledger(learned.correction(), learned.next());
       }
     }
     var saved = RecordFile.read(LedgerReport.Full.class, path).value();
-    return SplitDuel.correction(saved, saved.recording(), s.run().variant());
+    var correction = SplitDuel.correction(saved, saved.recording(), s.run().variant());
+    var calibration = saved.calibration();
+    if (calibration == null) {
+      return new Ledger(correction, null);
+    }
+    if (LedgerReport.Arm.of(calibration.applied()) == LedgerReport.Arm.SHADOW) {
+      if (carried == null || !LedgerReport.Origin.of(carried).equals(calibration.origin()))
+        throw new IOException(
+            "The saved ledger of cohort "
+                + t
+                + " was taught with the calibrator "
+                + calibration.origin()
+                + ", not the carried "
+                + (carried == null ? "none" : LedgerReport.Origin.of(carried)));
+      correction = correction.scaled(carried);
+    }
+    return new Ledger(
+        correction, calibration.next() == null ? null : calibration.next().calibrator());
   }
 }

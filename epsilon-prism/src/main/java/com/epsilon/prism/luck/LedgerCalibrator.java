@@ -98,14 +98,24 @@ public record LedgerCalibrator(
     }
   }
 
-  /** 局面の補正率 h(o) ∈ [0, 1]。 */
+  /**
+   * 局面の補正率 h(o)。囲む 4 点の係数の双線形の補間を、局の軸、点差の軸の順に線形補間を 2 回重ねて求める（{@link Grid#corners} の重みと
+   * 同じ関数）。どの補間も両端の係数の間に入るので h は 4 点の係数の最小と最大の間にあり、4 点の係数が同じならその値そのもの。
+   */
   public double scale(LedgerCell.Standing standing) {
     int[] index = new int[Grid.CORNERS];
     double[] weight = new double[Grid.CORNERS];
-    new Grid(variant, gapGrid, roundGrid).corners(standing, index, weight);
-    double scale = 0;
-    for (int p = 0; p < Grid.CORNERS; p++) scale += weight[p] * coefficients.get(index[p]);
-    return scale;
+    Grid grid = new Grid(variant, gapGrid, roundGrid);
+    double[] at = grid.corners(standing, index, weight);
+    double u = at[0], v = at[1];
+    double low = lerp(coefficients.get(index[0]), coefficients.get(index[1]), v);
+    double high = lerp(coefficients.get(index[2]), coefficients.get(index[3]), v);
+    return Math.min(1, Math.max(0, lerp(low, high, u)));
+  }
+
+  /** a から b への線形補間 a + t·(b − a)（0 ≤ t ≤ 1 なら a と b の間）。 */
+  private static double lerp(double a, double b, double t) {
+    return a + t * (b - a);
   }
 
   /**
@@ -138,9 +148,10 @@ public record LedgerCalibrator(
     /**
      * 局面を囲む 4 点の番号と双線形の重みを書く。順は（点差、局）の（低、低）・（低、高）・（高、低）・（高、高）。重みの和は 1。
      *
+     * @return 囲む区間の中の位置（点差の軸 u と局の軸 v。どちらも [0, 1]）
      * @throws IllegalArgumentException 順位か点差か局の番号が範囲の外のとき
      */
-    void corners(LedgerCell.Standing standing, int[] index, double[] weight) {
+    double[] corners(LedgerCell.Standing standing, int[] index, double[] weight) {
       int rank = standing.rank(), gap = standing.gap(), round = standing.round();
       if (rank < 0 || rank >= seats || gap < 0 || round < 0) {
         throw new IllegalArgumentException("Standing out of range: " + standing);
@@ -158,6 +169,7 @@ public record LedgerCalibrator(
       weight[1] = (1 - u) * v;
       weight[2] = u * (1 - v);
       weight[3] = u * v;
+      return new double[] {u, v};
     }
   }
 
@@ -426,9 +438,31 @@ public record LedgerCalibrator(
   static final int HISTOGRAM = 10;
 
   /**
+   * 補正の向きを監査する、事前に決めた群。all は全て、early と last は南場の最後の局より前と後、close と wide は後の局で最も近い他家との
+   * 点差が {@link #CLOSE_GAP} 点未満と {@link #WIDE_GAP} 点以上（first は自席が首位）、main・rollin・root は行の種類。この後に判断の
+   * クラスごとの群が、クラスの順に続く。
+   */
+  static final List<String> AUDIT_GROUPS =
+      List.of(
+          "all",
+          "early",
+          "last",
+          "close_first",
+          "wide_first",
+          "close_any",
+          "wide_any",
+          "main",
+          "rollin",
+          "root");
+
+  /** 監査の群の、接戦と大差の点差の境（点）。 */
+  static final int CLOSE_GAP = 4000, WIDE_GAP = 18000;
+
+  /**
    * 補正率を求めるモードで、係数を当てはめた後の行をもう一度順に読む。生（raw）・帳簿の補正 Y − β·L（current）・補正率を掛けた補正
-   * Y − h(o)·β·L（shadow）の 3 つの腕で、行内の J とスロットの残差を測り、局面の帯ごとと半荘ごとに束ねる。あわせて、次の反復の補正率を
-   * 当てはめる和を作る。β は行の偶奇が逆の行で当てはめたもの（{@link LedgerCorrection#coefficients}）。
+   * Y − h(o)·β·L（shadow）の 3 つの腕で、行内の J とスロットの残差を測り、局面の帯ごとと半荘ごとに束ねる。補正の向きの監査（{@link
+   * #AUDIT_GROUPS}）も同じ行で数える。あわせて、次の反復の補正率を当てはめる和を作る。β は行の偶奇が逆の行で当てはめたもの（{@link
+   * LedgerCorrection#coefficients}）。
    */
   static final class Pass {
     private final LedgerCorrection current;
@@ -437,6 +471,7 @@ public record LedgerCalibrator(
     private final Variant variant;
     private final Sums sums;
     private final Group[] groups;
+    private final AuditGroup[] audits;
     private final long[] histogram = new long[HISTOGRAM];
     private double scaleSum,
         scaleMin = Double.POSITIVE_INFINITY,
@@ -469,6 +504,11 @@ public record LedgerCalibrator(
         for (int band = 0; band < GAP_BANDS.length; band++)
           named.add(new Group("rank" + (rank + 1) + "_" + bandName(GAP_BANDS, band, "_")));
       groups = named.toArray(Group[]::new);
+      List<AuditGroup> checked = new ArrayList<>();
+      for (String name : AUDIT_GROUPS) checked.add(new AuditGroup(name));
+      for (DecisionClass decision : DecisionClass.values())
+        checked.add(new AuditGroup(decision.name()));
+      audits = checked.toArray(AuditGroup[]::new);
     }
 
     /** 行を 1 つ足す。帳簿の無い行、測った手が 2 つ未満の行、帳簿の欠けた行は飛ばす（係数の当てはめと同じ選び方）。 */
@@ -529,6 +569,24 @@ public record LedgerCalibrator(
         int band = band(GAP_BANDS, standing.gap());
         groups[3 + standing.rank() * GAP_BANDS.length + band].add(game, raw, cur, shadow);
       }
+      int played = -1;
+      for (int i = 0; i < m && played < 0; i++) if (measured[i] == row.played()) played = i;
+      double offset = played < 0 ? Double.NaN : (terms[played] - meanB) * m / (m - 1);
+      boolean first = standing.rank() == 0;
+      boolean close = last && standing.gap() < CLOSE_GAP, wide = last && standing.gap() >= WIDE_GAP;
+      audit(0, game, meanB, h, played >= 0, offset);
+      audit(last ? 2 : 1, game, meanB, h, played >= 0, offset);
+      if (close && first) audit(3, game, meanB, h, played >= 0, offset);
+      if (wide && first) audit(4, game, meanB, h, played >= 0, offset);
+      if (close) audit(5, game, meanB, h, played >= 0, offset);
+      if (wide) audit(6, game, meanB, h, played >= 0, offset);
+      audit(7 + row.source().ordinal(), game, meanB, h, played >= 0, offset);
+      audit(
+          AUDIT_GROUPS.size() + row.decisionClass().ordinal(), game, meanB, h, played >= 0, offset);
+    }
+
+    private void audit(int group, long game, double mean, double h, boolean played, double offset) {
+      audits[group].add(game, mean, h * mean, played, offset, h * offset);
     }
 
     /** 足した行の数。 */
@@ -550,23 +608,25 @@ public record LedgerCalibrator(
      * 報告を作る。和了の判断の差（{@code gates}）は空にしておく。
      *
      * @param mode 補正率のモード（設定に書く名前）
-     * @param applied 教師に掛けた腕
+     * @param applied 教師に実際に掛けた腕
      * @param fallback 補正率を 1 にした理由（補正率を掛けたなら null）
      * @param next 次の反復の補正率（当てはめられなければ null）
      */
     LedgerReport.Calibration report(
         String mode,
         LedgerCalibrationKind kind,
-        String applied,
+        LedgerReport.Arm applied,
         String fallback,
         LedgerCalibrator next) {
       List<LedgerReport.Band> bands = new ArrayList<>(groups.length);
       for (Group group : groups) bands.add(group.band());
+      List<LedgerReport.Audit> checked = new ArrayList<>(audits.length);
+      for (AuditGroup audit : audits) checked.add(audit.audit());
       double rawSlots = slotResidual[0];
       return new LedgerReport.Calibration(
           mode,
           kind,
-          applied,
+          applied.reportName(),
           scale == null ? null : LedgerReport.Origin.of(scale),
           fallback,
           rows,
@@ -579,8 +639,74 @@ public record LedgerCalibrator(
               rows == 0 ? null : scaleMax,
               Arrays.stream(histogram).boxed().toList()),
           bands,
+          checked,
           List.of(),
           next == null ? null : LedgerReport.Next.of(next, sums));
+    }
+  }
+
+  /**
+   * 補正の向きの監査の群 1 つの和。行ごとに、測った手の補正の平均 b̄（中心化しない）と、打った手の補正のほかの測った手の平均からの差
+   * (b_打った − b̄)·m/(m − 1) を、今（β·L）と影（h(o)·β·L）の腕で足し、半荘ごとにも束ねる。平均の標準誤差は、半荘 g の和 S_g と行の数
+   * n_g から se² = G/(G−1)·Σ_g (S_g − 平均·n_g)²/N²。
+   */
+  private static final class AuditGroup {
+    final String name;
+    final Map<Long, double[]> games = new HashMap<>();
+    long rows, played;
+
+    AuditGroup(String name) {
+      this.name = name;
+    }
+
+    void add(
+        long game,
+        double mean,
+        double scaledMean,
+        boolean hasPlayed,
+        double offset,
+        double scaled) {
+      double[] g = games.computeIfAbsent(game, ignored -> new double[6]);
+      g[0]++;
+      g[1] += mean;
+      g[2] += scaledMean;
+      rows++;
+      if (hasPlayed) {
+        g[3]++;
+        g[4] += offset;
+        g[5] += scaled;
+        played++;
+      }
+    }
+
+    LedgerReport.Audit audit() {
+      return new LedgerReport.Audit(
+          name, rows, games.size(), played, signed(0, 1, 2, rows), signed(3, 4, 5, played));
+    }
+
+    /** 行の数の列 {@code count}、今と影の和の列 {@code current}・{@code shadow} から、半荘で束ねた平均と標準誤差を求める。 */
+    private LedgerReport.Signed signed(int count, int current, int shadow, long n) {
+      double totalCurrent = 0, totalShadow = 0;
+      for (double[] g : games.values()) {
+        totalCurrent += g[current];
+        totalShadow += g[shadow];
+      }
+      double meanCurrent = totalCurrent / n, meanShadow = totalShadow / n;
+      double eCurrent = 0, eShadow = 0;
+      int clusters = 0;
+      for (double[] g : games.values()) {
+        if (g[count] == 0) continue;
+        clusters++;
+        double c = g[current] - meanCurrent * g[count], s = g[shadow] - meanShadow * g[count];
+        eCurrent += c * c;
+        eShadow += s * s;
+      }
+      double inflation = clusters >= 2 ? clusters / (clusters - 1.0) : Double.NaN;
+      return new LedgerReport.Signed(
+          LedgerReport.finite(meanCurrent),
+          LedgerReport.finite(Math.sqrt(inflation * eCurrent) / n),
+          LedgerReport.finite(meanShadow),
+          LedgerReport.finite(Math.sqrt(inflation * eShadow) / n));
     }
   }
 
@@ -783,17 +909,22 @@ public record LedgerCalibrator(
         sd[arm] = Math.sqrt(var[arm] / (n - 1));
         var[arm] /= n;
       }
+      double correction = mean[0] - mean[1], scaled = mean[0] - mean[2];
       Map<Long, double[]> games = new LinkedHashMap<>();
       for (Entry e : entries) {
-        double[] influence = games.computeIfAbsent(e.game(), ignored -> new double[2]);
+        double[] g = games.computeIfAbsent(e.game(), ignored -> new double[4]);
         double raw = influence(e.raw(), mean[0], var[0], sd[0], n);
-        influence[0] += influence(e.current(), mean[1], var[1], sd[1], n) - raw;
-        influence[1] += influence(e.shadow(), mean[2], var[2], sd[2], n) - raw;
+        g[0] += influence(e.current(), mean[1], var[1], sd[1], n) - raw;
+        g[1] += influence(e.shadow(), mean[2], var[2], sd[2], n) - raw;
+        g[2] += e.raw() - e.current() - correction;
+        g[3] += e.raw() - e.shadow() - scaled;
       }
-      double current = 0, shadow = 0;
+      double current = 0, shadow = 0, eCorrection = 0, eScaled = 0;
       for (double[] g : games.values()) {
         current += g[0] * g[0];
         shadow += g[1] * g[1];
+        eCorrection += g[2] * g[2];
+        eScaled += g[3] * g[3];
       }
       int count = games.size();
       double inflation = count >= 2 ? count / (count - 1.0) : Double.NaN;
@@ -805,6 +936,11 @@ public record LedgerCalibrator(
           count,
           LedgerReport.Arms.of(mean[0], mean[1], mean[2]),
           LedgerReport.Arms.of(sd[0], sd[1], sd[2]),
+          new LedgerReport.Signed(
+              LedgerReport.finite(correction),
+              LedgerReport.finite(Math.sqrt(inflation * eCorrection) / n),
+              LedgerReport.finite(scaled),
+              LedgerReport.finite(Math.sqrt(inflation * eScaled) / n)),
           LedgerReport.finite(sd[1] - sd[0]),
           LedgerReport.finite(Math.sqrt(inflation * current) / n),
           LedgerReport.finite(sd[2] - sd[0]),

@@ -30,6 +30,12 @@ interface FitRow {
   /** 手 {@code action} の、帳簿の列 {@code column} の値。 */
   float ledger(int action, int column);
 
+  /** {@link #values} の中で、その経路で実際に打った手の位置（打った手を持たない行では −1）。帳簿の補正率の監査だけで読む。 */
+  int played();
+
+  /** 行の種類。帳簿の補正率の監査だけで読む。 */
+  Row.Source source();
+
   /**
    * コホートの行を読む。
    *
@@ -74,6 +80,16 @@ interface FitRow {
     @Override
     public float ledger(int action, int column) {
       return row.ledger(action, column);
+    }
+
+    @Override
+    public int played() {
+      return row.played();
+    }
+
+    @Override
+    public Row.Source source() {
+      return row.source();
     }
   }
 }

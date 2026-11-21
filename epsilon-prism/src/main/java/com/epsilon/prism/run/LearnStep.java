@@ -271,7 +271,7 @@ final class LearnStep implements Step<PrismIteration> {
   /**
    * 反復の運の精算のうち、学習の段で教師を決めるまでの部分（{@link LuckSettlement#settle}）。和は、収集のライターが同じ JVM で作ったもの
    * があればそれを使い、なければ行のストアから行を読み直して作る。どちらも同じ行を同じ順に足すので、係数はビット単位で同じになる。帳簿の
-   * 補正率は、前の反復から持ち越したものを渡す。
+   * 補正率は、前の反復から持ち越したものと、それを当てはめた反復の帳簿の意味（持ち越しのキー）を渡す。
    */
   private static LuckSettlement.Settled settle(
       PrismIteration iteration, CohortStore store, int[] rows, int threads) {
@@ -279,12 +279,14 @@ final class LearnStep implements Step<PrismIteration> {
     try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
       Iterable<Row> stored =
           store.iterate(rows, iteration.settings().fit().batch(), readers, threads);
+      PrismCarry carry = iteration.state().carry();
       return luck.settle(
           iteration.number(),
           iteration.ledger(),
           stored,
           rows.length,
-          iteration.state().carry().calibrator());
+          carry.calibrator(),
+          carry.key() == null ? null : carry.key().ledger());
     }
   }
 

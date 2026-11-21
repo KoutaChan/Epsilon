@@ -41,9 +41,10 @@ import org.slf4j.LoggerFactory;
  *   <li>APPLY: SHADOW に加えて、教師を Ỹ = Y − h(o)·β·L にし、持ち越す R² を、その補正のホールドアウトのスロットの R² にする。
  * </ul>
  *
- * <p>持ち越した補正率が、補正率の設定の学習元の選び方（{@link LedgerCalibrationSource}）のコホートのものでないか、帳簿の列・補正に使う
- * 組・区分・ルールが今と違うときは、補正率を 1（帳簿の補正のまま）にして、理由を報告に書く。格子と罰の強さは、持ち越した補正率のものを
- * そのまま使い、今の設定の値は次の反復の補正率を当てはめるときに使う。
+ * <p>持ち越した補正率が、補正率の設定の学習元の選び方（{@link LedgerCalibrationSource}）のコホートのものでないか、形・ルール・帳簿の
+ * 列・補正に使う組・区分が違うか、当てはめた反復の補正 β·L の意味（{@link LedgerMeaning#scaleFree}。帳簿の切り幅なども含む）が今と
+ * 違うときは、補正率を 1（帳簿の補正のまま）にして、理由を報告に書く。格子と罰の強さは、持ち越した補正率のものをそのまま使い、今の設定の値は次の反復の補正率を当てはめるときに使う。
+ * 報告の掛けた腕（{@link LedgerReport.Arm}）は実際の教師から決め、帳簿の補正が無ければ RAW とする。
  */
 public final class LuckSettlement {
 
@@ -154,10 +155,23 @@ public final class LuckSettlement {
     return calibration != null ? fit.tapRetaining(writers, rows) : fit.tap(writers, rows);
   }
 
-  /** {@link #learn(int, LedgerFit.WriterTap, Iterable, int, LedgerCalibrator)} で、補正率を持ち越していないとき。 */
+  /** {@link #learn(int, LedgerFit.WriterTap, Iterable, int, LedgerCalibrator, LedgerMeaning)} で、補正率を持ち越していないとき。 */
   public LedgerOutcome learn(
       int cohort, LedgerFit.WriterTap streamed, Iterable<Row> stored, int selected) {
-    return learn(cohort, streamed, stored, selected, null);
+    return learn(cohort, streamed, stored, selected, null, meaning);
+  }
+
+  /**
+   * {@link #learn(int, LedgerFit.WriterTap, Iterable, int, LedgerCalibrator, LedgerMeaning)} で、持ち越した補正率を今と同じ帳簿の設定で
+   * 当てはめたとき。
+   */
+  public LedgerOutcome learn(
+      int cohort,
+      LedgerFit.WriterTap streamed,
+      Iterable<Row> stored,
+      int selected,
+      LedgerCalibrator carried) {
+    return learn(cohort, streamed, stored, selected, carried, meaning);
   }
 
   /**
@@ -170,6 +184,7 @@ public final class LuckSettlement {
    * @param stored 学習の段が選んだ行（和が無いときだけ読む）
    * @param selected 学習の段が選んだ行の数
    * @param carried 前の反復から持ち越した補正率（無ければ null）
+   * @param fitUnder 持ち越した補正率を当てはめた反復の帳簿の意味（{@link #meaning}。前の反復の持ち越しのキーにある）
    * @return 帳簿の結果。当てはめない段では {@link LedgerOutcome#NONE}
    * @throws IllegalStateException 和に足した行の数が、選んだ行の数と違うとき
    */
@@ -178,8 +193,9 @@ public final class LuckSettlement {
       LedgerFit.WriterTap streamed,
       Iterable<Row> stored,
       int selected,
-      LedgerCalibrator carried) {
-    return settle(cohort, streamed, stored, selected, carried).calibrate();
+      LedgerCalibrator carried,
+      LedgerMeaning fitUnder) {
+    return settle(cohort, streamed, stored, selected, carried, fitUnder).calibrate();
   }
 
   /**
@@ -195,6 +211,22 @@ public final class LuckSettlement {
       Iterable<Row> stored,
       int selected,
       LedgerCalibrator carried) {
+    return settle(cohort, streamed, stored, selected, carried, meaning);
+  }
+
+  /**
+   * {@link #settle(int, LedgerFit.WriterTap, Iterable, int, LedgerCalibrator)} で、持ち越した補正率を当てはめた反復の帳簿の意味を
+   * 渡すとき（引数は {@link #learn(int, LedgerFit.WriterTap, Iterable, int, LedgerCalibrator, LedgerMeaning)} と同じ）。
+   *
+   * @throws IllegalStateException 和に足した行の数が、選んだ行の数と違うとき
+   */
+  public Settled settle(
+      int cohort,
+      LedgerFit.WriterTap streamed,
+      Iterable<Row> stored,
+      int selected,
+      LedgerCalibrator carried,
+      LedgerMeaning fitUnder) {
     if (fit == null) {
       return new Settled(LedgerOutcome.NONE, null, null);
     }
@@ -255,13 +287,18 @@ public final class LuckSettlement {
     if (calibration == null) {
       return new Settled(fitted, null, correction);
     }
-    String fallback = mismatch(carried, cohort);
+    String fallback = mismatch(carried, fitUnder, cohort);
     LedgerCalibrator scale = fallback == null ? carried : null;
-    boolean scaled = calibration.applies() && correction != null && scale != null;
+    LedgerReport.Arm arm =
+        correction == null
+            ? LedgerReport.Arm.RAW
+            : calibration.applies() && scale != null
+                ? LedgerReport.Arm.SHADOW
+                : LedgerReport.Arm.CURRENT;
     return new Settled(
         fitted,
-        new Pending(cohort, retained, result.correction(), scale, fallback, scaled),
-        scaled ? correction.scaled(scale) : correction);
+        new Pending(cohort, retained, result.correction(), scale, fallback, arm),
+        arm == LedgerReport.Arm.SHADOW ? correction.scaled(scale) : correction);
   }
 
   /**
@@ -271,7 +308,7 @@ public final class LuckSettlement {
    * @param current 帳簿の補正（補正率を掛けない β·L）
    * @param scale 今のコホートに掛ける補正率（出どころが無ければ null）
    * @param fallback 補正率を 1 にした理由（補正率を掛けるなら null）
-   * @param scaled 教師に補正率を掛けたか
+   * @param applied 教師に実際に掛けた腕
    */
   private record Pending(
       int cohort,
@@ -279,7 +316,7 @@ public final class LuckSettlement {
       LedgerCorrection current,
       LedgerCalibrator scale,
       String fallback,
-      boolean scaled) {}
+      LedgerReport.Arm applied) {}
 
   /**
    * 教師を決めた後の帳簿の扱い（{@link #settle} が返す）。{@link #correction} は教師に掛ける補正で、{@link #calibrate} が補正率の 2 回目の
@@ -327,18 +364,18 @@ public final class LuckSettlement {
     LedgerCalibrator next =
         LedgerCalibrator.fit(
             pass.sums(), scaling, variant, cohort, catalog.columns(), apply, cells);
-    double applied = fitted.appliedR2();
-    if (pending.scaled()) {
-      double shadowR2 = pass.shadowR2();
-      applied = Double.isFinite(shadowR2) ? Math.max(0, shadowR2) : 0;
-    }
+    double applied =
+        switch (pending.applied()) {
+          case RAW -> 0;
+          case CURRENT -> fitted.appliedR2();
+          case SHADOW -> {
+            double shadowR2 = pass.shadowR2();
+            yield Double.isFinite(shadowR2) ? Math.max(0, shadowR2) : 0;
+          }
+        };
     LedgerReport.Calibration calibrated =
         pass.report(
-            caseName(calibration),
-            scaling.kind(),
-            pending.scaled() ? "shadow" : "current",
-            pending.fallback(),
-            next);
+            caseName(calibration), scaling.kind(), pending.applied(), pending.fallback(), next);
     LedgerReport.Arms j = calibrated.j();
     LOG.info(
         String.format(
@@ -402,9 +439,10 @@ public final class LuckSettlement {
   /**
    * 持ち越した補正率を今のコホートに掛けられるかを確かめる。
    *
+   * @param fitUnder 持ち越した補正率を当てはめた反復の帳簿の意味
    * @return 掛けられない理由（英語の 1 文）。掛けられるなら null
    */
-  private String mismatch(LedgerCalibrator carried, int cohort) {
+  private String mismatch(LedgerCalibrator carried, LedgerMeaning fitUnder, int cohort) {
     LedgerCalibration.Scaling scaling = (LedgerCalibration.Scaling) calibration;
     int expected =
         switch (scaling.source()) {
@@ -430,6 +468,13 @@ public final class LuckSettlement {
     }
     if (carried.cells() != cells) {
       return "the carried calibrator scales coefficients fit by " + carried.cells();
+    }
+    if (fitUnder == null) {
+      return "the ledger settings that fit the carried calibrator are unknown";
+    }
+    String changed = meaning.scaleFree().change(fitUnder.scaleFree());
+    if (changed != null) {
+      return "the carried calibrator was fit on another ledger correction: " + changed;
     }
     return null;
   }

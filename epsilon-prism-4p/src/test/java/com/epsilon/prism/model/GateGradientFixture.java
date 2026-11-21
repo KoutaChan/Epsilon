@@ -95,9 +95,7 @@ final class GateGradientFixture {
     return actual;
   }
 
-  void record(
-      NDManager m, CandidateKernels kernels, TrainingTensorTrace trace, String label, boolean check)
-      throws Exception {
+  void assertMatches(NDManager m, CandidateKernels kernels) {
     var gate = m.create(logits, new Shape(CODES, WIDTH));
     var slope = deviceSlope(m, kernels, gate);
     var projected = m.create(x, new Shape(rows, tiles, WIDTH)).toType(DataType.BFLOAT16, false);
@@ -113,17 +111,7 @@ final class GateGradientFixture {
         result);
     float[] expected = reduce(slope, false, false);
     Assert.assertFalse(Arrays.equals(expected, reduce(slope, true, false)));
-    if (check) Assert.assertEquals(result.toFloatArray(), expected);
-    if (trace != null) {
-      trace.tensor(label + "/slope", m.create(slope));
-      trace.tensor(label + "/rows", m.create(owners));
-      trace.tensor(label + "/ids", m.create(ids));
-      trace.tensor(label + "/projected", projected);
-      trace.tensor(label + "/upstream", upstream);
-      trace.tensor(label + "/observed", result);
-      trace.tensor(label + "/rowOrder", m.create(expected, gate.getShape()));
-      trace.tensor(label + "/shortFirst", m.create(reduce(slope, false, true), gate.getShape()));
-    }
+    Assert.assertEquals(result.toFloatArray(), expected);
   }
 
   static int[][] cases() {

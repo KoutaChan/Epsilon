@@ -32,7 +32,7 @@ public class CountGateGradientTest {
       var kernels = HipAttention.on(HipLibrary.load(), stream);
       for (int[] c : GateGradientFixture.cases()) {
         var fixture = new GateGradientFixture(c[0], c[1], c[2], c[3]);
-        fixture.record(manager, kernels, null, "", true);
+        fixture.assertMatches(manager, kernels);
       }
     }
   }

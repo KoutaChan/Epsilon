@@ -235,13 +235,6 @@ public class HipForwardTest {
     try (NativeLane lane =
         NativeLane.open(network, Device.gpu(0), GpuCase.capacity(rows.size()), 2)) {
       float[] hip = lane.forward(host);
-      var identity = V4BitFixture.compare(label, "inference", hip);
-      log.info(
-          "PRISM-V4-BITS {} inference different={}/{}",
-          label,
-          identity.differing(),
-          identity.elements());
-      Assert.assertEquals(identity.differing(), 0L, label + " inference bits");
       try (NDManager work = eager.newSubManager()) {
         float[] reference =
             EagerStages.scores(

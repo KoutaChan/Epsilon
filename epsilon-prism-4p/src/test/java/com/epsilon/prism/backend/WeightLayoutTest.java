@@ -221,6 +221,8 @@ public class WeightLayoutTest {
           header.elements(WeightField.REREAD_CODE_KEY, 0), 133L * shape.attention());
       WeightPack pack = WeightPack.build(layout, network, 3);
       Assert.assertEquals(new PackView(pack.buffer()).architecture(), architecture.encode());
+      WeightPack pack = WeightPack.build(layout, network, 1);
+      Assert.assertEquals(pack.buffer().remaining(), layout.bytes());
       log.info(
           "PRISM-HIP-LAYOUT {} pack={} MB",
           arm,

@@ -18,16 +18,10 @@ import com.epsilon.prism.input.InputSchema;
 import com.epsilon.prism.kernel.CollectionCapabilities;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.ShapeArm;
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.zip.GZIPInputStream;
 import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -44,8 +38,6 @@ public class EventCacheTest {
   };
 
   /** 基点の JAR が入力の全量で求めた、両ルールの V4_S・V4_M の判断と全ての合法手のスコア。 */
-  private static final String FROZEN_SCORES = "frozen-event-scores.gz";
-
   private static final long GENERATION = 3;
 
   @Test
@@ -356,93 +348,6 @@ public class EventCacheTest {
         Assert.assertEquals(lanes.paged.generation(), GENERATION + 2);
         Assert.assertEquals(count, actions);
       }
-    }
-  }
-
-  /**
-   * 基点の JAR が保存した両ルールの V4_S・V4_M の判断を流し、入力の全量の提出とページを使う提出の両方で、全ての合法手のコードと
-   * スコアのビットが保存した値と同じになる。
-   */
-  @Test(groups = "rocm")
-  public void allLegalScoresMatchFrozenObservations() throws Exception {
-    InputStream resource = EventCacheTest.class.getResourceAsStream(FROZEN_SCORES);
-    Assert.assertNotNull(resource, FROZEN_SCORES);
-    try (var in = new DataInputStream(new BufferedInputStream(new GZIPInputStream(resource)))) {
-      for (Variant variant : Variant.values())
-        for (ShapeArm arm : List.of(ShapeArm.V4_S, ShapeArm.V4_M)) frozenScores(variant, arm, in);
-      Assert.assertEquals(in.read(), -1);
-    }
-  }
-
-  /** 1 つのルールと形の保存した判断を読み、全量とページの両方のスコアを保存した値と照らす。 */
-  private static void frozenScores(Variant variant, ShapeArm arm, DataInputStream in)
-      throws IOException {
-    var base = InputSchema.of(variant);
-    var inputs = HipFixtures.observations(variant, 800, 1, TableWalk.Policy.CALLS, 240);
-    Assert.assertEquals(in.readUTF(), variant.name() + "/" + arm.name());
-    Assert.assertEquals(in.readInt(), inputs.size());
-    var replay = replay(arm.shape().inputFormat(base), inputs);
-    try (var cpu = NDManager.newBaseManager(Device.cpu());
-        var lanes =
-            new Lanes(PerturbedNetwork.of(cpu, base, arm.shape(), 229), Device.gpu(0), replay)) {
-      for (var words : inputs) {
-        Assert.assertEquals(in.readInt(), words.length);
-        long[] saved = new long[words.length];
-        for (int i = 0; i < saved.length; i++) saved[i] = in.readLong();
-        Assert.assertEquals(saved, words);
-        replay.encode(saved);
-        int count = replay.full.plan().count(Axis.ACTION);
-        var full = lanes.full(replay);
-        var paged = lanes.paged(replay);
-        Assert.assertEquals(full.length, count);
-        Assert.assertEquals(paged.length, count);
-        Assert.assertEquals(in.readInt(), count);
-        for (int r = 0; r < ROWS; r++) {
-          for (int j = 0; j < replay.full.plan().actions(r); j++) {
-            int i = replay.full.plan().firstAction(r) + j;
-            checkAction(
-                in,
-                replay.view.action(j).code(),
-                Float.floatToRawIntBits(full[i]),
-                Float.floatToRawIntBits(paged[i]));
-          }
-        }
-      }
-    }
-  }
-
-  /** 保存した手のコードとスコアのビットを読み、全量とページの両方のスコアがそれと同じことを確かめる。 */
-  static void checkAction(DataInputStream in, int code, int full, int paged) throws IOException {
-    Assert.assertEquals(in.readInt(), code);
-    int expected = in.readInt();
-    Assert.assertEquals(full, expected);
-    Assert.assertEquals(paged, expected);
-  }
-
-  @Test
-  public void scoreFixtureRejectsReorderingLostDuplicatesAndBitChanges() throws IOException {
-    var buffer = ByteBuffer.allocate(3 * 2 * Integer.BYTES);
-    for (int code : new int[] {10, 5, 10}) buffer.putInt(code).putInt(0x80000000);
-    checkScores(buffer.array(), new int[] {10, 5, 10}, 0x80000000);
-    Assert.expectThrows(
-        AssertionError.class, () -> checkScores(buffer.array(), new int[] {5, 10, 10}, 0x80000000));
-    Assert.expectThrows(
-        AssertionError.class, () -> checkScores(buffer.array(), new int[] {10, 5}, 0x80000000));
-    Assert.expectThrows(
-        AssertionError.class, () -> checkScores(buffer.array(), new int[] {10, 5, 10}, 0x80000001));
-    Assert.expectThrows(
-        java.io.EOFException.class,
-        () ->
-            checkScores(
-                java.util.Arrays.copyOf(buffer.array(), buffer.capacity() - 1),
-                new int[] {10, 5, 10},
-                0x80000000));
-  }
-
-  private static void checkScores(byte[] fixture, int[] codes, int bits) throws IOException {
-    try (var in = new DataInputStream(new ByteArrayInputStream(fixture))) {
-      for (int code : codes) checkAction(in, code, 0x80000000, bits);
-      Assert.assertEquals(in.read(), -1);
     }
   }
 

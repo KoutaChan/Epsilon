@@ -39,6 +39,8 @@ public class WeightPackRoundTripTest {
       {ShapeArm.V3.shape(ShapeArm.V3_DEPTH)},
       {ShapeArm.V3_ONE_STAGE.shape(ShapeArm.V3_DEPTH)},
       {ShapeArm.V3_CONTEXT_512.shape(ShapeArm.V3_DEPTH)},
+      {ShapeArm.V4_S.shape()},
+      {ShapeArm.V4_M.shape()},
     };
   }
 
@@ -53,12 +55,17 @@ public class WeightPackRoundTripTest {
     }
   }
 
+  @DataProvider
+  public Object[][] packFormats() {
+    return new Object[][] {{PrismShape.standard(2)}, {ShapeArm.V4_S.shape()}};
+  }
+
   /**
    * 四人打ちの束のバイトが変わらないことを確かめる。形式・記述・重みを別々に渡して束を作り、その牌の関係の表を
    * {@link MahjongTileRelation#relationIds()}（形式から作る前の表）で書き直す。それが、ネットワークから作った束と全てのバイトで一致する。
    * 同じ束を 2 度作っても一致する。
    */
-  @Test(dataProvider = "shapes")
+  @Test(dataProvider = "packFormats")
   public void fourPlayerPackKeepsItsBytes(PrismShape shape) {
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = perturbed(manager, shape);

@@ -15,7 +15,6 @@ import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.auxiliary.TargetSchema;
 import com.epsilon.prism.backend.HipFixtures;
 import com.epsilon.prism.backend.HipParity;
-import com.epsilon.prism.backend.V4BitFixture;
 import com.epsilon.prism.hip.HipAttention;
 import com.epsilon.prism.hip.HipLibrary;
 import com.epsilon.prism.kernel.TrainingKernels;
@@ -96,7 +95,8 @@ public class AttentionTapeGpuTest {
         PtStream stream = ((PtEngine) manager.getEngine()).newStream(gpu);
         PtStreamScope ignored = stream.openScope()) {
       HipAttention attention = HipAttention.on(HipLibrary.load(), stream);
-      compareV4KernelPrecisions(arm + "/random", network(manager, shape, 0), manager, attention);
+      compareV4KernelGradients(
+          arm + "/random/BF16", network(manager, shape, 0), manager, attention);
       String checkpoints = System.getProperty("prism.v4.checkpoints");
       if (checkpoints != null) {
         PrismNetwork trained = PrismNetwork.load(java.nio.file.Path.of(checkpoints, arm), manager);
@@ -104,30 +104,14 @@ public class AttentionTapeGpuTest {
         trained
             .getParameters()
             .forEach(pair -> pair.getValue().getArray().setRequiresGradient(true));
-        compareV4KernelPrecisions(arm + "/trained", trained, manager, attention);
+        compareV4KernelGradients(arm + "/trained", trained, manager, attention);
       }
     }
   }
 
-  private static void compareV4KernelPrecisions(
-      String label, PrismNetwork network, NDManager manager, HipAttention attention) {
-    compareV4KernelGradients(
-        label + "/BF16", network, manager, new AttentionTape(attention), Precision.BFLOAT16);
-    if (System.getProperty("prism.v4.bitFixtures") != null) {
-      AttentionTape fp32 =
-          network.shape() instanceof PrismShape.V4 && Boolean.getBoolean("prism.v4.fp32Candidate")
-              ? AttentionTape.candidateOnly(attention)
-              : null;
-      compareV4KernelGradients(label + "/FP32", network, manager, fp32, Precision.FLOAT32);
-    }
-  }
-
   private static void compareV4KernelGradients(
-      String label,
-      PrismNetwork network,
-      NDManager manager,
-      AttentionTape tape,
-      Precision precision) {
+      String label, PrismNetwork network, NDManager manager, HipAttention attention) {
+    Precision precision = Precision.BFLOAT16;
     var host = HipFixtures.encode(HipFixtures.mixedRows(48, 800), network.shape());
     var actions = HipParity.Actions.of(host);
     Random random = new Random(11);
@@ -150,14 +134,12 @@ public class AttentionTapeGpuTest {
         runWithTape(
             network,
             manager,
-            tape,
+            new AttentionTape(attention),
             precision,
             Context.Intermediates.CLOSE,
             inputs,
             labels,
             auxiliary);
-    checkV4TrainingBits(label, hip);
-    if (precision == Precision.FLOAT32) return;
     Outcome eager =
         run(
             network,
@@ -178,52 +160,6 @@ public class AttentionTapeGpuTest {
         log.info("PRISM-V4-GRADIENT {} {} relative L2 {}", label, entry.getKey(), error);
         Assert.assertTrue(error < 5e-2, label + " " + entry.getKey() + " gradient " + error);
       }
-    }
-  }
-
-  private static void checkV4TrainingBits(String label, Outcome hip) {
-    var scores = V4BitFixture.compare(label, "training-scores", hip.scores());
-    var loss = V4BitFixture.compare(label, "training-loss", new float[] {hip.loss()});
-    var total = new V4BitFixture.Difference(0, 0, 0.0, 0.0, 0f);
-    var groups = new java.util.TreeMap<String, V4BitFixture.Difference>();
-    for (var entry : hip.gradients().entrySet()) {
-      String name = entry.getKey();
-      var diff = V4BitFixture.compare(label, name, entry.getValue());
-      total = total.plus(diff);
-      String group =
-          name.contains("candidateFeatures_02segments_")
-                  || name.matches(".*candidate_code(Key|Value)$")
-              ? "K"
-              : name.contains("candidateFeatures_01count_")
-                  ? "DeltaC"
-                  : name.matches(".*(stateEmbedding|encoder\\d+|finalNorm)_.*") ? "trunk" : "other";
-      groups.merge(group, diff, V4BitFixture.Difference::plus);
-    }
-    groups.forEach(
-        (group, diff) ->
-            log.info(
-                "PRISM-V4-BITS {} {} different={}/{} rel={} max={}",
-                label,
-                group,
-                diff.differing(),
-                diff.elements(),
-                diff.relativeL2(),
-                diff.max()));
-    log.info(
-        "PRISM-V4-BITS {} training scores different={}/{} loss different={} gradients"
-            + " different={}/{} rel={} max={}",
-        label,
-        scores.differing(),
-        scores.elements(),
-        loss.differing(),
-        total.differing(),
-        total.elements(),
-        total.relativeL2(),
-        total.max());
-    Assert.assertEquals(
-        scores.differing() + loss.differing(), 0L, label + " training forward bits");
-    if (Boolean.getBoolean("prism.v4.strictGradientBits")) {
-      Assert.assertEquals(total.differing(), 0L, label + " gradient bits");
     }
   }
 

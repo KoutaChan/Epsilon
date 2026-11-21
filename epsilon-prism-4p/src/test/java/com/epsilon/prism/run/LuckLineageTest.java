@@ -34,6 +34,7 @@ import org.testng.annotations.Test;
  *   <li>AUDIT と APPLY は報告の全部を reports の ledger.jsonl に残し、段の報告の要約とノイズの表（noise.jsonl）はその中身と合う。
  *       fit-cohorts の LINEAGE は、同じコホートから同じ報告を書く。
  *   <li>APPLY で掛けた R² は state に持ち越され、補正に使う組を変えた次の反復で捨てられる。
+ *   <li>帳簿の補正率は、反復のコホートで当てはめて state に持ち越し、次の反復が SHADOW で測り、APPLY で教師に掛ける。
  *   <li>生徒の行をラベル行だけにしても、帳簿を当てはめる系譜は回る。
  *   <li>裏ドラの監査の割合は行を変えず、収集の段の報告の ura だけを変える。
  * </ul>
@@ -202,6 +203,69 @@ public class LuckLineageTest {
     } finally {
       delete(run);
       delete(out);
+    }
+  }
+
+  /**
+   * 帳簿の補正率の SHADOW は、反復 1 では持ち越しが無いので補正率 1 のまま測り、コホート 1 の行で当てはめた補正率を state の持ち越しに入れる。
+   * 反復 2 はその補正率をコホート 2 に掛けて測るが、教師と掛けた R² は帳簿の補正のまま（掛けた R² は全体の R²）。補正率を APPLY に変え、
+   * 同じ設定の行で縮める罰 ρ を 0.2 にした反復 3 は、持ち越した R² を補正率の形の変化として捨て、コホート 2 の補正率（ρ 0.08 で当てはめた
+   * もの）を教師に掛け、掛けた R² をその補正のスロットの R² にする。次の反復に持ち越す補正率は ρ 0.2 で当てはめる。段の報告の要約は
+   * ledger.jsonl の報告と合う。
+   */
+  @Test(groups = "slow", timeOut = 3_600_000)
+  public void calibrationShadowCarriesTheScaleAndApplyTeachesIt() throws Exception {
+    Path run = null;
+    try {
+      run = Files.createTempDirectory("prism-luck-calibration");
+      TestSettings.create(
+          run, lineage("APPLY", "schedule.iterations=3", "noise.ledger.calibration.mode=SHADOW"));
+      Assert.assertEquals(PrismRun.runner(run, 2, () -> false).train(), Ending.LIMIT);
+      JsonObject first = ledgerLine(run, 1).getAsJsonObject("calibration");
+      Assert.assertEquals(first.get("applied").getAsString(), "current", first.toString());
+      Assert.assertTrue(first.get("fallback").getAsString().startsWith("no calibrator"));
+      Assert.assertEquals(first.getAsJsonObject("next").get("cohort").getAsInt(), 1);
+      JsonObject second = ledgerLine(run, 2).getAsJsonObject("calibration");
+      Assert.assertEquals(second.getAsJsonObject("origin").get("cohort").getAsInt(), 1);
+      Assert.assertFalse(second.has("fallback"), second.toString());
+      Assert.assertEquals(second.get("applied").getAsString(), "current");
+      JsonObject learned = learn(run, 2);
+      JsonElement r2 = ledgerLine(run, 2).getAsJsonObject("all").get("r2");
+      Assert.assertEquals(
+          learned.get("appliedR2").getAsDouble(), r2 == null ? 0 : Math.max(0, r2.getAsDouble()));
+      JsonObject summary = learned.getAsJsonObject("ledger").getAsJsonObject("calibration");
+      Assert.assertEquals(summary.get("origin").getAsInt(), 1);
+      Assert.assertEquals(summary.get("j"), second.get("j"));
+      Assert.assertEquals(carry(run).getAsJsonObject("calibrator").get("cohort").getAsInt(), 2);
+
+      Assert.assertEquals(
+          change(run, "noise.ledger.calibration.mode=APPLY", "noise.ledger.calibration.shrink=0.2"),
+          Exit.OK.code());
+      Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
+      JsonObject third = learn(run, 3);
+      Assert.assertEquals(
+          third.get("carryReset").getAsString(),
+          "the ledger calibration changed from null to COMMON_SCALE");
+      JsonObject applied = ledgerLine(run, 3).getAsJsonObject("calibration");
+      Assert.assertEquals(applied.get("applied").getAsString(), "shadow", applied.toString());
+      Assert.assertEquals(applied.getAsJsonObject("origin").get("cohort").getAsInt(), 2);
+      Assert.assertEquals(applied.getAsJsonObject("origin").get("shrink").getAsDouble(), 0.08);
+      Assert.assertEquals(
+          carry(run).getAsJsonObject("calibrator").get("shrink").getAsDouble(), 0.2);
+      JsonElement shadow = applied.getAsJsonObject("slotR2").get("shadow");
+      Assert.assertEquals(
+          third.get("appliedR2").getAsDouble(),
+          shadow == null ? 0 : Math.max(0, shadow.getAsDouble()));
+      Assert.assertEquals(carry(run).getAsJsonObject("calibrator").get("cohort").getAsInt(), 3);
+      Assert.assertEquals(
+          carry(run)
+              .getAsJsonObject("key")
+              .getAsJsonObject("ledger")
+              .get("calibration")
+              .getAsString(),
+          "COMMON_SCALE");
+    } finally {
+      delete(run);
     }
   }
 

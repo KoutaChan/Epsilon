@@ -18,6 +18,7 @@ import com.epsilon.prism.grp.GrpBackground;
 import com.epsilon.prism.grp.GrpFiles;
 import com.epsilon.prism.grp.PhiSetup;
 import com.epsilon.prism.learn.Fit;
+import com.epsilon.prism.luck.LedgerCalibrator;
 import com.epsilon.prism.luck.LedgerReport;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.policy.PolicyParams;
@@ -154,7 +155,8 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
   }
 
   /**
-   * 段の報告から、次の state（持ち越し・行の総数）と、クラスごとの詳しい表の行を作る。帳簿を当てはめた反復では、
+   * 段の報告から、次の state（持ち越し・行の総数）と、クラスごとの詳しい表の行を作る。学習の段が次の反復の帳簿の補正率を当てはめて
+   * いれば（{@value LearnReport#CALIBRATOR}）、それも持ち越しに入れる。帳簿を当てはめた反復では、
    * 学習の段の出力にある帳簿の報告の全体も、reports の {@value LearnReport#LEDGER_LINES} に 1 行残す。反復の作業ディレクトリは
    * 反復を閉じると消えるので、その前に残しておく。
    */
@@ -166,8 +168,15 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
     PhiReport phi = (PhiReport) steps.get(PrismStep.PHI.name()).metrics();
     CollectReport collect = (CollectReport) steps.get(PrismStep.COLLECT.name()).metrics();
     LearnReport learn = (LearnReport) steps.get(PrismStep.LEARN.name()).metrics();
+    Path learned = iteration.work().resolve(LearnStep.LEARN);
+    Path calibrator = learned.resolve(LearnReport.CALIBRATOR);
     PrismCarry carry =
-        new PrismCarry(learn.appliedR2(), CarryKey.of(iteration.settings(), phi.value().entry()));
+        new PrismCarry(
+            learn.appliedR2(),
+            CarryKey.of(iteration.settings(), phi.value().entry()),
+            Files.exists(calibrator)
+                ? RecordFile.read(LedgerCalibrator.class, calibrator).value()
+                : null);
     // コホートを確定した後に王者へ戻すと決まった反復では、戻しを次の反復に送る
     int start = state.start() == collect.start() ? t + 1 : state.start();
     PrismState next =
@@ -175,7 +184,6 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
     CollectReport.Classes collected =
         RecordFile.read(CollectReport.Classes.class, run().rows(t).resolve(CollectReport.CLASSES))
             .value();
-    Path learned = iteration.work().resolve(LearnStep.LEARN);
     LedgerReport.Classes ledger =
         RecordFile.read(LedgerReport.Classes.class, learned.resolve(LearnReport.CLASSES)).value();
     LedgerReport.Summary summary = learn.ledger();

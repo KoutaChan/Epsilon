@@ -174,7 +174,7 @@ public final class AnchorScores {
    * @return s のコピー
    * @throws IllegalArgumentException この行の s がないとき
    */
-  float[] scores(int row) {
+  public float[] scores(int row) {
     int position = Arrays.binarySearch(rows, row);
     if (position < 0) {
       throw new IllegalArgumentException("no anchor scores for row " + row);

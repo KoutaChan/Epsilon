@@ -36,7 +36,9 @@ import org.testng.annotations.Test;
  * 初期化したままのバージョン 1 で集めて学習し、バージョン 2・3 を公開できることを確かめる。行・バージョン・Φ の履歴と、smoke の卓の
  * 評価のジョブがそろう。ネットワークの入力とヘッドのフィンガープリントは三人打ちの値になり、北抜きの判断は北抜きのクラスに数えられる。
  * 各コホートの局の数のファイルは grp/counts に移り、その局の数は収集の数と合い、牌譜を再現できる。ファイルのヘッダーにある Φ は、Φ の段で
- * 使った値と同じ。その run のコホートで fit-cohorts を回すと、三人打ちのネットワークができる。
+ * 使った値と同じ。その run のコホートで fit-cohorts を回すと、三人打ちのネットワークができる。帳簿の補正率（SHADOW）は三人打ちの格子
+ * （3 席 × 9 × 3 の係数）で当てはめて持ち越し、反復 2 はコホート 1 の補正率を掛けて測る。帳簿の係数が付くように、1 コホートを 4 半荘、
+ * 区分に要る行を列 1 つあたり 1 行にする。
  */
 public class ThreePlayerLineageSmokeTest {
 
@@ -53,11 +55,24 @@ public class ThreePlayerLineageSmokeTest {
               "phi.start.kind=SCORE_RANK",
               "phi.grp.refit=SCHEDULE",
               "phi.grp.switching=AUTO",
-              "phi.grp.threads=1");
+              "phi.grp.threads=1",
+              "schedule.cohorts=[{from = 1, games = 4}]",
+              "noise.ledger.minRowsPerColumn=1",
+              "noise.ledger.calibration.mode=SHADOW");
       Assert.assertEquals(created.schedule().iterations(), 2);
       Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
       Assert.assertEquals(state(run).get("next").getAsInt(), 3);
       Assert.assertEquals(PrismApp.latest(run).run().variant(), Variant.TENHOU_3P);
+      JsonObject calibrator = state(run).getAsJsonObject("carry").getAsJsonObject("calibrator");
+      Assert.assertEquals(calibrator.get("variant").getAsString(), "TENHOU_3P");
+      Assert.assertEquals(calibrator.get("cohort").getAsInt(), 2);
+      Assert.assertEquals(calibrator.getAsJsonArray("coefficients").size(), 81);
+      List<JsonObject> ledger = lines(directory.report(LearnReport.LEDGER_LINES));
+      JsonObject scaled = ledger.get(1).getAsJsonObject("calibration");
+      Assert.assertEquals(scaled.getAsJsonObject("origin").get("cohort").getAsInt(), 1);
+      Assert.assertEquals(scaled.get("applied").getAsString(), "current");
+      Assert.assertTrue(scaled.toString().contains("\"rank3_48000_inf\""), scaled.toString());
+      Assert.assertFalse(scaled.toString().contains("\"rank4_"), scaled.toString());
 
       List<JsonObject> iterations = lines(directory.report(RunDirectory.ITERATIONS));
       Assert.assertEquals(iterations.size(), 2);

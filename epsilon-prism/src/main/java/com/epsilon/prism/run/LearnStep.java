@@ -7,6 +7,7 @@ import com.epsilon.agent.run.StepReport;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.core.CrnSeeds;
+import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.learn.AnchorScores;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
@@ -24,6 +25,8 @@ import com.epsilon.prism.settings.PrismSettings;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -45,6 +48,9 @@ import org.slf4j.LoggerFactory;
  * 生徒を読み込んで学習器を準備する。生徒・段の報告・クラスごとの帳簿の当てはめ・帳簿の当てはめの報告の全体
  * （{@value LearnReport#LEDGER}。当てはめた反復だけ）は work/&lt;t&gt;/learn.part に書き、learn に rename する。この rename が完了
  * マーカーになる。途中で落ちたら初めから学習し直す。
+ *
+ * <p>帳簿の補正率を求める反復では、前の反復から持ち越した補正率で補正を測り、和了の判断の教師の差をアンカーの s で足し、次の反復の
+ * 補正率（{@value LearnReport#CALIBRATOR}）も learn.part に書く。持ち越しは反復の始めの state から読むので、学習し直しても同じ補正率を使う。
  */
 final class LearnStep implements Step<PrismIteration> {
 
@@ -98,7 +104,10 @@ final class LearnStep implements Step<PrismIteration> {
     if (learnt.ledger().report() != null) {
       DurableFiles.write(
           part.resolve(LearnReport.LEDGER),
-          learnt.ledger().report().full(LedgerRecording.of(settings.noise().ledger())));
+          learnt.ledger().full(LedgerRecording.of(settings.noise().ledger())));
+    }
+    if (learnt.ledger().next() != null) {
+      DurableFiles.write(part.resolve(LearnReport.CALIBRATOR), learnt.ledger().next());
     }
     StepReport step = StepReport.ran(iteration, started, learnt.report());
     step.write(part.resolve(PrismStep.REPORT));
@@ -179,6 +188,7 @@ final class LearnStep implements Step<PrismIteration> {
         if (scores != null) {
           anchor = await(scores);
         }
+        ledger = gates(iteration, store, ledger, anchor, threads);
       } catch (IOException | RuntimeException | Error failure) {
         if (warmed != null) {
           closeAfter(warmed, failure);
@@ -249,7 +259,8 @@ final class LearnStep implements Step<PrismIteration> {
 
   /**
    * 反復の運の精算のうち、学習の段で行う部分（{@link LuckSettlement#learn}）。和は、収集のライターが同じ JVM で作ったものがあれば
-   * それを使い、なければ行のストアから行を読み直して作る。どちらも同じ行を同じ順に足すので、係数はビット単位で同じになる。
+   * それを使い、なければ行のストアから行を読み直して作る。どちらも同じ行を同じ順に足すので、係数はビット単位で同じになる。帳簿の補正率は、
+   * 前の反復から持ち越したものを渡す。
    */
   private static LedgerOutcome settle(
       PrismIteration iteration, CohortStore store, int[] rows, int threads) {
@@ -257,8 +268,47 @@ final class LearnStep implements Step<PrismIteration> {
     try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
       Iterable<Row> stored =
           store.iterate(rows, iteration.settings().fit().batch(), readers, threads);
-      return luck.learn(iteration.number(), iteration.ledger(), stored, rows.length);
+      return luck.learn(
+          iteration.number(),
+          iteration.ledger(),
+          stored,
+          rows.length,
+          iteration.state().carry().calibrator());
     }
+  }
+
+  /**
+   * 帳簿の補正率を求めた反復で、和了の判断の教師の差を帳簿の結果に足す（{@link LuckSettlement#gates}）。生徒の行のうち主経路の
+   * FINAL_END の行を読み直し、ツモの比べる手はアンカーの s で選ぶ（アンカーが無ければツモの行は数えない）。補正率を求めない反復では、
+   * 結果をそのまま返す。
+   */
+  private static LedgerOutcome gates(
+      PrismIteration iteration,
+      CohortStore store,
+      LedgerOutcome ledger,
+      AnchorScores anchor,
+      int threads)
+      throws IOException {
+    if (ledger.calibration() == null) {
+      return ledger;
+    }
+    int t = iteration.number();
+    var students = iteration.settings().fit().rows();
+    int[] finals =
+        store.select(
+            t,
+            t,
+            index ->
+                students.test(index)
+                    && index.source() == Row.Source.MAIN
+                    && index.decisionClass() == DecisionClass.FINAL_END);
+    Row[] read;
+    try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
+      read = store.read(finals, readers, threads);
+    }
+    List<float[]> scores =
+        anchor == null ? null : Arrays.stream(finals).mapToObj(anchor::scores).toList();
+    return iteration.luck().gates(ledger, Arrays.asList(read), scores);
   }
 
   /** 失敗の後で、先に始めた学習器の準備が終わるのを待って閉じる。準備と閉じるときの例外は、元の失敗に添える。 */

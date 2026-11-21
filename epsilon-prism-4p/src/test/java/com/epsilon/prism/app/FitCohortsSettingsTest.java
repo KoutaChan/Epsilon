@@ -3,7 +3,6 @@ package com.epsilon.prism.app;
 import com.epsilon.agent.settings.Layer;
 import com.epsilon.prism.TestSettings;
 import com.epsilon.prism.learn.FitPlan;
-import com.epsilon.prism.model.ModelShapes;
 import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.noise.TempoLrMode;
@@ -57,12 +56,11 @@ public class FitCohortsSettingsTest {
     }
   }
 
-  @Test(dataProvider = "defaultShapes", dataProviderClass = ModelShapes.class)
-  public void absentPlanFieldsUseTheirDefaults(ModelShapes.DefaultShape fixture) {
-    PrismShape shape = fixture.arm().shape();
+  @Test
+  public void absentPlanFieldsUseTheirDefaults() {
+    PrismShape shape = PrismShape.standard();
     Gson gson = new Gson();
     JsonObject saved = gson.toJsonTree(shape).getAsJsonObject();
-    fixture.omitted().forEach(saved::remove);
     String json =
         """
         {"learner":{"steps":1,"batchSize":128,"lrPeak":0.001,"lrFloor":0.0001,

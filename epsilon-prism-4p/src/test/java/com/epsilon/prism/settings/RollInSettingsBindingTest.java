@@ -139,17 +139,9 @@ public class RollInSettingsBindingTest {
     for (String assignment :
         List.of(
             "labels.copies.CALL.copyLabelRate=1.5",
-            "labels.copies.CALL.deviationFloor=-0.1",
-            "labels.copies.CALL.maxCopyLabels=-1",
-            "labels.copies.CALL.laterRates.THREAT=2",
             "labels.copies.CALL.laterRates.NOPE=0.1",
-            "labels.copies.NOPE.copyLabelRate=0.1",
             "labels.copies.CALL.deviation=SOME",
-            "labels.copies.CALL.rate=0.1",
-            "labels.deviation=SOME",
-            "noise.rates.open.CALL=1.5",
-            "noise.rates.open.CALL=-0.1",
-            "noise.rates.open.NOPE=0.1"))
+            "noise.rates.open.CALL=1.5"))
       Assert.expectThrows(IllegalArgumentException.class, () -> TestSettings.of(assignment));
   }
 

@@ -3,7 +3,11 @@ package com.epsilon.prism.luck;
 import com.epsilon.agent.settings.SettingsException;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.TestSettings;
+import com.epsilon.prism.noise.LedgerCalibration;
+import com.epsilon.prism.noise.LedgerCalibrationKind;
+import com.epsilon.prism.noise.LedgerCalibrationSource;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.LedgerSettings;
 import com.epsilon.prism.settings.PrismSettings;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -13,9 +17,9 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 設定の noise セクションから作る運の精算（{@link LuckSettlement}）を確かめる。見るのは次の 3 つ。帳簿の 4 つのモードが、記録・
+ * 設定の noise セクションから作る運の精算（{@link LuckSettlement}）を確かめる。見るのは次の 4 つ。帳簿の 4 つのモードが、記録・
  * 当てはめ・補正のどこまでを行うか。計算する組、切る幅、補正に使う組、ridge、列 1 つあたりに要る行の数、偏りの警告のしきい値を設定から
- * 読むか。この jar で扱えない組み合わせを拒むか。
+ * 読むか。この jar で扱えない組み合わせを拒むか。帳簿の補正率の 3 つのモードが、教師・掛けた R²・次の反復の補正率をどう決めるか。
  */
 public class LuckSettlementTest {
   private static final int F = LedgerColumn.COUNT;
@@ -203,6 +207,243 @@ public class LuckSettlementTest {
     Assert.assertEquals(
         LuckSettlement.of(accepted.noise(), accepted.run().variant()).recording(),
         new LedgerRecording(EnumSet.of(LedgerGroup.DORA, LedgerGroup.URA), 64, 2));
+  }
+
+  /**
+   * 補正率の節が無い設定と OFF の設定は、同じ運の精算になる。行を貯めない受け取り先を返し、結果（係数・報告・補正・掛けた R²）はビットまで
+   * 同じで、補正率の結果は無い。持ち越しのキーも同じで、補正率の形は持たない。
+   */
+  @Test
+  public void calibrationOffIsTheLedgerAsBefore() {
+    var rows = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 3000, 0, 61);
+    LuckSettlement absent = settle();
+    LuckSettlement off = settle("noise.ledger.calibration.mode=OFF");
+    LedgerOutcome before = absent.learn(1, tapped(absent, rows), List.of(), rows.size());
+    LedgerOutcome after = off.learn(1, tapped(off, rows), List.of(), rows.size(), null);
+    LedgerFitTest.assertBitwiseEqual(
+        new LedgerFit.Result(after.correction(), after.report()),
+        new LedgerFit.Result(before.correction(), before.report()));
+    Assert.assertEquals(after.appliedR2(), before.appliedR2());
+    Assert.assertEquals(timeless(after.summary()), timeless(before.summary()));
+    Assert.assertNull(after.calibration());
+    Assert.assertNull(after.next());
+    Assert.assertNull(after.summary().calibration());
+    for (var row : rows)
+      Assert.assertEquals(after.correction().values(row), before.correction().values(row));
+    Assert.assertEquals(off.meaning(), absent.meaning());
+    Assert.assertNull(off.meaning().calibration());
+    LedgerFit.WriterTap tap = off.tap(1, index -> true);
+    tap.fit();
+    Assert.expectThrows(IllegalStateException.class, tap::retained);
+  }
+
+  /**
+   * SHADOW は教師と掛けた R² を帳簿の補正のまま変えず、持ち越した補正率を掛けた補正 Y − h(o)·β·L を測り、今のコホートの行で次の反復の
+   * 補正率を当てはめる。前のコホートで当てはめた補正率を、局面で帳簿の効き方が違う行に掛けると、J は帳簿の補正より下がる。持ち越しが無いか、
+   * 前のコホートのものでないか、補正に使う組が違えば、補正率を 1 にして理由を書く。
+   */
+  @Test
+  public void shadowMeasuresTheCarriedScaleButKeepsTheTeacher() {
+    var before = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 20_000, 0, 62);
+    var rows = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 20_000, 1_000_000, 63);
+    LuckSettlement off = settle();
+    LuckSettlement shadow = settle("noise.ledger.calibration.mode=SHADOW");
+    LedgerOutcome first = shadow.learn(1, tapped(shadow, before), List.of(), before.size(), null);
+    LedgerCalibrator carried = first.next();
+    Assert.assertNotNull(carried);
+    Assert.assertEquals(carried.cohort(), 1);
+    Assert.assertEquals(carried.variant(), Variant.TENHOU_4P);
+    Assert.assertEquals(carried.coefficients().size(), 108);
+    Assert.assertEquals(carried.shrink(), 0.08);
+    Assert.assertTrue(first.calibration().report().fallback().startsWith("no calibrator"));
+
+    LedgerOutcome plain = off.learn(2, tapped(off, rows), List.of(), rows.size());
+    LedgerOutcome measured = shadow.learn(2, tapped(shadow, rows), List.of(), rows.size(), carried);
+    LedgerFitTest.assertBitwiseEqual(
+        new LedgerFit.Result(measured.correction(), measured.report()),
+        new LedgerFit.Result(plain.correction(), plain.report()));
+    Assert.assertEquals(measured.appliedR2(), plain.appliedR2());
+    for (var row : rows)
+      Assert.assertEquals(measured.correction().values(row), plain.correction().values(row));
+    LedgerReport.Calibration report = measured.calibration().report();
+    Assert.assertEquals(report.mode(), "SHADOW");
+    Assert.assertEquals(report.applied(), "current");
+    Assert.assertNull(report.fallback());
+    Assert.assertEquals(report.origin().cohort(), 1);
+    Assert.assertEquals(report.origin().source(), LedgerCalibrationSource.PREVIOUS_COHORT);
+    Assert.assertEquals(report.rows(), rows.size());
+    Assert.assertTrue(report.j().shadow() < report.j().current(), report.j().toString());
+    Assert.assertTrue(report.j().current() < report.j().raw(), report.j().toString());
+    Assert.assertTrue(report.gates().isEmpty());
+    Assert.assertEquals(measured.next().cohort(), 2);
+    Assert.assertEquals(measured.summary().calibration(), report.summary());
+    Assert.assertEquals(measured.summary().calibration().origin(), Integer.valueOf(1));
+    Assert.assertEquals(measured.full(null).calibration(), report);
+
+    for (Object[] stale :
+        new Object[][] {
+          {null, "no calibrator was carried from cohort 2"},
+          {first.next(), "the carried calibrator was fit on cohort 1, not 2"}
+        }) {
+      LedgerOutcome wrong =
+          shadow.learn(
+              3, tapped(shadow, rows), List.of(), rows.size(), (LedgerCalibrator) stale[0]);
+      LedgerReport.Calibration fallback = wrong.calibration().report();
+      Assert.assertEquals(fallback.fallback(), stale[1]);
+      Assert.assertNull(fallback.origin());
+      Assert.assertEquals(fallback.j().shadow(), fallback.j().current());
+    }
+    LuckSettlement other =
+        settle("noise.ledger.calibration.mode=SHADOW", "noise.ledger.apply=[POINTS, POLICY]");
+    LedgerOutcome grouped = other.learn(2, tapped(other, rows), List.of(), rows.size(), carried);
+    Assert.assertTrue(
+        grouped
+            .calibration()
+            .report()
+            .fallback()
+            .startsWith("the carried calibrator scales the groups"),
+        grouped.calibration().report().fallback());
+  }
+
+  /**
+   * APPLY は、持ち越した補正率を掛けた補正 Y − h(o)·β·L を教師にし、掛けた R² をその補正のスロットの R² にする。β は帳簿の補正と同じ
+   * もの。持ち越しが無い反復は、教師も掛けた R² も帳簿の補正のまま。
+   */
+  @Test
+  public void applyTeachesTheScaledCorrection() {
+    var before = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 20_000, 0, 64);
+    var rows = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 20_000, 1_000_000, 65);
+    LuckSettlement off = settle();
+    LuckSettlement apply = settle("noise.ledger.calibration.mode=APPLY");
+    LedgerCalibrator carried =
+        apply.learn(1, tapped(apply, before), List.of(), before.size(), null).next();
+    LedgerOutcome plain = off.learn(2, tapped(off, rows), List.of(), rows.size());
+    LedgerOutcome scaled = apply.learn(2, tapped(apply, rows), List.of(), rows.size(), carried);
+    LedgerReport.Calibration report = scaled.calibration().report();
+    Assert.assertEquals(report.mode(), "APPLY");
+    Assert.assertEquals(report.applied(), "shadow");
+    Assert.assertEquals(scaled.appliedR2(), Math.max(0, report.slotR2().shadow()));
+    Assert.assertNotEquals(scaled.appliedR2(), plain.appliedR2());
+    Assert.assertSame(scaled.correction().scale(), carried);
+    int changed = 0;
+    for (var row : rows) {
+      double[] beta =
+          plain.correction().coefficients(row.gameId(), row.decisionClass().ordinal(), 0);
+      double h = carried.scale(row.standing());
+      float[] teacher = scaled.correction().values(row);
+      for (int a = 0; a < 3; a++) {
+        double expected = row.values()[a];
+        for (int f = 0; f < LedgerColumn.COUNT; f++) expected -= h * beta[f] * row.ledger(a, f);
+        Assert.assertEquals(teacher[a], (float) expected, 1e-6f);
+        if (teacher[a] != plain.correction().values(row)[a]) changed++;
+      }
+      Assert.assertTrue(Float.isNaN(teacher[3]));
+    }
+    Assert.assertTrue(changed > rows.size(), "changed " + changed);
+
+    LedgerOutcome first = apply.learn(1, tapped(apply, rows), List.of(), rows.size(), null);
+    LedgerOutcome reference = off.learn(1, tapped(off, rows), List.of(), rows.size());
+    Assert.assertEquals(first.calibration().report().applied(), "current");
+    Assert.assertEquals(first.appliedR2(), reference.appliedR2());
+    Assert.assertNull(first.correction().scale());
+    for (var row : rows)
+      Assert.assertEquals(first.correction().values(row), reference.correction().values(row));
+  }
+
+  /**
+   * 補正率の設定の既定値は、形 COMMON_SCALE、学習元は前のコホート、格子 9 × 3、二乗の罰の係数 1e-4、縮める罰 ρ 0.08。どの値も
+   * 設定で変えられ、ρ は 0 でもよい。AUDIT では SHADOW まで選べ、APPLY は帳簿の APPLY でだけ選べる。範囲の外の値（負の ρ、0 以下の
+   * 二乗の罰の係数、2 点未満か上限を越える格子）を拒み、帳簿を当てはめないモードには補正率の節が無い。
+   */
+  @Test
+  public void calibrationSettingsHaveTheDesignDefaults() {
+    PrismSettings shadow = TestSettings.of("noise.ledger.calibration.mode=SHADOW");
+    var fitting = (LedgerSettings.Fitting) shadow.noise().ledger();
+    Assert.assertEquals(
+        fitting.calibration(),
+        new LedgerCalibration.Shadow(
+            LedgerCalibrationKind.COMMON_SCALE,
+            LedgerCalibrationSource.PREVIOUS_COHORT,
+            9,
+            3,
+            1e-4,
+            0.08));
+    Assert.assertFalse(fitting.calibration().applies());
+    PrismSettings tuned =
+        TestSettings.of(
+            "noise.ledger.calibration.mode=APPLY",
+            "noise.ledger.calibration.source=PREVIOUS_COHORT",
+            "noise.ledger.calibration.gapGrid=5",
+            "noise.ledger.calibration.roundGrid=2",
+            "noise.ledger.calibration.regularization=0.003",
+            "noise.ledger.calibration.shrink=0");
+    Assert.assertEquals(
+        ((LedgerSettings.Fitting) tuned.noise().ledger()).calibration(),
+        new LedgerCalibration.Apply(
+            LedgerCalibrationKind.COMMON_SCALE,
+            LedgerCalibrationSource.PREVIOUS_COHORT,
+            5,
+            2,
+            0.003,
+            0));
+    rejects(
+        "noise.ledger.calibration.shrink",
+        ">= 0",
+        "noise.ledger.calibration.mode=SHADOW",
+        "noise.ledger.calibration.shrink=-0.01");
+    rejects(
+        "noise.ledger.calibration.regularization",
+        "> 0",
+        "noise.ledger.calibration.mode=SHADOW",
+        "noise.ledger.calibration.regularization=0");
+    rejects(
+        "noise.ledger.calibration.source",
+        "PREVIOUS_COHORT",
+        "noise.ledger.calibration.mode=SHADOW",
+        "noise.ledger.calibration.source=THIS_COHORT");
+    var none = (LedgerSettings.Fitting) TestSettings.of().noise().ledger();
+    Assert.assertEquals(none.calibration(), new LedgerCalibration.Off());
+    PrismSettings audited =
+        TestSettings.of("noise.ledger.mode=AUDIT", NO_GAIN, "noise.ledger.calibration.mode=SHADOW");
+    Assert.assertTrue(((LedgerSettings.Fitting) audited.noise().ledger()).calibration().scales());
+    rejects(
+        "noise.ledger.calibration",
+        "needs ledger mode APPLY",
+        "noise.ledger.mode=AUDIT",
+        NO_GAIN,
+        "noise.ledger.calibration.mode=APPLY");
+    rejects(
+        "noise.ledger.calibration.gapGrid",
+        "[2, 17]",
+        "noise.ledger.calibration.mode=SHADOW",
+        "noise.ledger.calibration.gapGrid=1");
+    rejects(
+        "noise.ledger.calibration.roundGrid",
+        "[2, 9]",
+        "noise.ledger.calibration.mode=APPLY",
+        "noise.ledger.calibration.roundGrid=10");
+    rejects(
+        "noise.ledger.calibration",
+        "",
+        "noise.ledger.mode=RECORD",
+        NO_GAIN,
+        "noise.ledger.calibration.mode=SHADOW");
+  }
+
+  /** 秒数を 0 にした要約。 */
+  private static LedgerReport.Summary timeless(LedgerReport.Summary summary) {
+    return new LedgerReport.Summary(
+        summary.rows(),
+        summary.slots(),
+        summary.skippedRows(),
+        summary.r2(),
+        summary.equivalentForks(),
+        summary.r2ByGroup(),
+        summary.maxAbsZ(),
+        summary.biased(),
+        0,
+        summary.streamed(),
+        summary.calibration());
   }
 
   private static void rejects(String path, String because, String... assignments) {

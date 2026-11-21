@@ -38,7 +38,8 @@ import org.testng.annotations.Test;
  * 各コホートの局の数のファイルは grp/counts に移り、その局の数は収集の数と合い、牌譜を再現できる。ファイルのヘッダーにある Φ は、Φ の段で
  * 使った値と同じ。その run のコホートで fit-cohorts を回すと、三人打ちのネットワークができる。帳簿の補正率（SHADOW）は三人打ちの格子
  * （3 席 × 9 × 3 の係数）で当てはめて持ち越し、反復 2 はコホート 1 の補正率を掛けて測る。帳簿の係数が付くように、1 コホートを 4 半荘、
- * 区分に要る行を列 1 つあたり 1 行にする。
+ * 区分に要る行を列 1 つあたり 1 行にする。コホート 2 は学習したバージョン 2 で集めるので、その行に補正の分散が無ければ補正率を作らず、
+ * 持ち越さない。
  */
 public class ThreePlayerLineageSmokeTest {
 
@@ -63,16 +64,23 @@ public class ThreePlayerLineageSmokeTest {
       Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
       Assert.assertEquals(state(run).get("next").getAsInt(), 3);
       Assert.assertEquals(PrismApp.latest(run).run().variant(), Variant.TENHOU_3P);
-      JsonObject calibrator = state(run).getAsJsonObject("carry").getAsJsonObject("calibrator");
-      Assert.assertEquals(calibrator.get("variant").getAsString(), "TENHOU_3P");
-      Assert.assertEquals(calibrator.get("cohort").getAsInt(), 2);
-      Assert.assertEquals(calibrator.getAsJsonArray("coefficients").size(), 81);
       List<JsonObject> ledger = lines(directory.report(LearnReport.LEDGER_LINES));
+      JsonObject fitted = ledger.get(0).getAsJsonObject("calibration").getAsJsonObject("next");
+      Assert.assertEquals(fitted.get("cohort").getAsInt(), 1);
+      Assert.assertEquals(fitted.get("coefficients").getAsInt(), 81);
       JsonObject scaled = ledger.get(1).getAsJsonObject("calibration");
       Assert.assertEquals(scaled.getAsJsonObject("origin").get("cohort").getAsInt(), 1);
       Assert.assertEquals(scaled.get("applied").getAsString(), "current");
       Assert.assertTrue(scaled.toString().contains("\"rank3_48000_inf\""), scaled.toString());
       Assert.assertFalse(scaled.toString().contains("\"rank4_"), scaled.toString());
+      JsonObject calibrator = state(run).getAsJsonObject("carry").getAsJsonObject("calibrator");
+      boolean refitted = scaled.has("next") && !scaled.get("next").isJsonNull();
+      Assert.assertEquals(calibrator != null, refitted, scaled.toString());
+      if (calibrator != null) {
+        Assert.assertEquals(calibrator.get("variant").getAsString(), "TENHOU_3P");
+        Assert.assertEquals(calibrator.get("cohort").getAsInt(), 2);
+        Assert.assertEquals(calibrator.getAsJsonArray("coefficients").size(), 81);
+      }
 
       List<JsonObject> iterations = lines(directory.report(RunDirectory.ITERATIONS));
       Assert.assertEquals(iterations.size(), 2);

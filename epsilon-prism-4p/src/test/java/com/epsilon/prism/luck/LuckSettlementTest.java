@@ -430,6 +430,37 @@ public class LuckSettlementTest {
         "noise.ledger.calibration.mode=SHADOW");
   }
 
+  /**
+   * 教師を決めるまで（settle）と補正率の 2 回目の走査（calibrate）に分けても、続けて回した learn と同じ結果になる。教師に掛ける補正は
+   * 走査の前に決まり（APPLY では持ち越した補正率を掛けたもの）、走査は 1 度だけ回って同じ結果を返す。補正率を求めない段では、走査は無く、
+   * 帳簿の補正をそのまま返す。
+   */
+  @Test
+  public void settlingBeforeTheSecondPassKeepsTheOutcome() {
+    var before = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 20_000, 0, 66);
+    var rows = LedgerCalibratorTest.scaledRows(Variant.TENHOU_4P, 20_000, 1_000_000, 67);
+    LuckSettlement apply = settle("noise.ledger.calibration.mode=APPLY");
+    LedgerCalibrator carried =
+        apply.learn(1, tapped(apply, before), List.of(), before.size(), null).next();
+    LuckSettlement.Settled settled =
+        apply.settle(2, tapped(apply, rows), List.of(), rows.size(), carried);
+    LedgerCorrection teacher = settled.correction();
+    Assert.assertSame(teacher.scale(), carried);
+    LedgerOutcome calibrated = settled.calibrate();
+    Assert.assertSame(settled.calibrate(), calibrated);
+    Assert.assertSame(calibrated.correction(), teacher);
+    LedgerOutcome learned = apply.learn(2, tapped(apply, rows), List.of(), rows.size(), carried);
+    Assert.assertEquals(calibrated.appliedR2(), learned.appliedR2());
+    Assert.assertEquals(calibrated.calibration().report(), learned.calibration().report());
+    Assert.assertEquals(calibrated.next(), learned.next());
+    for (var row : rows) Assert.assertEquals(teacher.values(row), learned.correction().values(row));
+
+    LuckSettlement off = settle();
+    LuckSettlement.Settled plain = off.settle(2, tapped(off, rows), List.of(), rows.size(), null);
+    Assert.assertSame(plain.calibrate().correction(), plain.correction());
+    Assert.assertNull(plain.calibrate().calibration());
+  }
+
   /** 秒数を 0 にした要約。 */
   private static LedgerReport.Summary timeless(LedgerReport.Summary summary) {
     return new LedgerReport.Summary(

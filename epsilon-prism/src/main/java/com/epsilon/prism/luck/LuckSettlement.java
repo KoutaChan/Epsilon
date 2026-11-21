@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
  *   <li>OFF: 補正率を求めない。上の段の動きのまま。
  *   <li>SHADOW: 当てはめに入れた行を貯め、係数を当てはめた後でもう一度読んで、前の反復から持ち越した補正率 h を掛けた補正 Y − h(o)·β·L
  *       を測り、今のコホートの行で次の反復の補正率を当てはめる（{@link LedgerCalibrator}）。教師と持ち越す R² は上の段の動きのまま。
+ *       もう一度読むのは教師を決めた後（{@link Settled#calibrate}）なので、生徒の学習と並べて回せる。
  *   <li>APPLY: SHADOW に加えて、教師を Ỹ = Y − h(o)·β·L にし、持ち越す R² を、その補正のホールドアウトのスロットの R² にする。
  * </ul>
  *
@@ -160,8 +161,9 @@ public final class LuckSettlement {
   }
 
   /**
-   * 学習の段で帳簿を扱う。当てはめる段では係数を当てはめて報告し、偏りの z の絶対値がしきい値を越えた列があれば警告を 1 行出す。補正する
-   * 段では、教師の補正と、掛けた補正の R² も返す。補正率を求める段では、持ち越した補正率を掛けた補正を測り、次の反復の補正率を当てはめる。
+   * 学習の段で帳簿を扱う（{@link #settle} の後に {@link Settled#calibrate} を続けて回す）。当てはめる段では係数を当てはめて報告し、偏りの z
+   * の絶対値がしきい値を越えた列があれば警告を 1 行出す。補正する段では、教師の補正と、掛けた補正の R² も返す。補正率を求める段では、
+   * 持ち越した補正率を掛けた補正を測り、次の反復の補正率を当てはめる。
    *
    * @param cohort コホートの番号（ログとエラーメッセージに書く）
    * @param streamed 同じ JVM の収集が作った和（無ければ null。あれば行を読まない）
@@ -177,8 +179,24 @@ public final class LuckSettlement {
       Iterable<Row> stored,
       int selected,
       LedgerCalibrator carried) {
+    return settle(cohort, streamed, stored, selected, carried).calibrate();
+  }
+
+  /**
+   * 学習の段の帳簿の扱いのうち、教師を決めるまで。係数を当てはめて報告し、教師に掛ける補正を決める（補正率を教師に使う段では、持ち越した
+   * 補正率を掛けた補正）。補正率を求める段の 2 回目の走査（補正率の報告・次の反復の補正率・掛けた補正の R²）は教師に要らないので、
+   * {@link Settled#calibrate} に残し、生徒の学習と並べて回せるようにする。引数は {@link #learn} と同じ。
+   *
+   * @throws IllegalStateException 和に足した行の数が、選んだ行の数と違うとき
+   */
+  public Settled settle(
+      int cohort,
+      LedgerFit.WriterTap streamed,
+      Iterable<Row> stored,
+      int selected,
+      LedgerCalibrator carried) {
     if (fit == null) {
-      return LedgerOutcome.NONE;
+      return new Settled(LedgerOutcome.NONE, null, null);
     }
     LedgerFit.Result result;
     Iterable<FitRow> retained = null;
@@ -233,20 +251,84 @@ public final class LuckSettlement {
     }
     double r2 = report.all().r2();
     double applied = correction == null || !Double.isFinite(r2) ? 0 : Math.max(0, r2);
+    LedgerOutcome fitted = new LedgerOutcome(report, summary, correction, applied);
     if (calibration == null) {
-      return new LedgerOutcome(report, summary, correction, applied);
+      return new Settled(fitted, null, correction);
     }
-    LedgerCalibration.Scaling scaling = (LedgerCalibration.Scaling) calibration;
     String fallback = mismatch(carried, cohort);
     LedgerCalibrator scale = fallback == null ? carried : null;
-    var pass = new LedgerCalibrator.Pass(result.correction(), scale, scaling, variant);
-    for (FitRow row : retained) pass.add(row);
+    boolean scaled = calibration.applies() && correction != null && scale != null;
+    return new Settled(
+        fitted,
+        new Pending(cohort, retained, result.correction(), scale, fallback, scaled),
+        scaled ? correction.scaled(scale) : correction);
+  }
+
+  /**
+   * 補正率の 2 回目の走査に渡す値。
+   *
+   * @param rows 当てはめに入れた行（走査の後に放す）
+   * @param current 帳簿の補正（補正率を掛けない β·L）
+   * @param scale 今のコホートに掛ける補正率（出どころが無ければ null）
+   * @param fallback 補正率を 1 にした理由（補正率を掛けるなら null）
+   * @param scaled 教師に補正率を掛けたか
+   */
+  private record Pending(
+      int cohort,
+      Iterable<FitRow> rows,
+      LedgerCorrection current,
+      LedgerCalibrator scale,
+      String fallback,
+      boolean scaled) {}
+
+  /**
+   * 教師を決めた後の帳簿の扱い（{@link #settle} が返す）。{@link #correction} は教師に掛ける補正で、{@link #calibrate} が補正率の 2 回目の
+   * 走査を回して運の精算の結果を返す。補正率を求めない段では、走査は無く、結果をすぐに返す。{@link #calibrate} は別のスレッドから
+   * 呼んでよい。
+   */
+  public final class Settled {
+    private final LedgerOutcome fitted;
+    private final LedgerCorrection teacher;
+    private Pending pending;
+    private LedgerOutcome outcome;
+
+    private Settled(LedgerOutcome fitted, Pending pending, LedgerCorrection teacher) {
+      this.fitted = fitted;
+      this.pending = pending;
+      this.teacher = teacher;
+      outcome = pending == null ? fitted : null;
+    }
+
+    /** 教師に掛ける補正（補正しない段では null）。補正率を教師に使う段では、持ち越した補正率を掛けた補正。 */
+    public LedgerCorrection correction() {
+      return teacher;
+    }
+
+    /**
+     * 補正率の 2 回目の走査を回し、運の精算の結果を返す。補正率を教師に使う段では、掛けた補正の R² を、補正率を掛けた補正のスロットの R²
+     * にする。走査した行はここで放す。2 度目からは同じ結果を返す。
+     */
+    public synchronized LedgerOutcome calibrate() {
+      if (outcome == null) {
+        outcome = calibrated(fitted, pending, teacher);
+        pending = null;
+      }
+      return outcome;
+    }
+  }
+
+  private LedgerOutcome calibrated(
+      LedgerOutcome fitted, Pending pending, LedgerCorrection teacher) {
+    LedgerCalibration.Scaling scaling = (LedgerCalibration.Scaling) calibration;
+    int cohort = pending.cohort();
+    LedgerCalibrator scale = pending.scale();
+    var pass = new LedgerCalibrator.Pass(pending.current(), scale, scaling, variant);
+    for (FitRow row : pending.rows()) pass.add(row);
     LedgerCalibrator next =
         LedgerCalibrator.fit(
             pass.sums(), scaling, variant, cohort, catalog.columns(), apply, cells);
-    boolean shadowApplied = calibration.applies() && correction != null && scale != null;
-    if (shadowApplied) {
-      correction = correction.scaled(scale);
+    double applied = fitted.appliedR2();
+    if (pending.scaled()) {
       double shadowR2 = pass.shadowR2();
       applied = Double.isFinite(shadowR2) ? Math.max(0, shadowR2) : 0;
     }
@@ -254,8 +336,8 @@ public final class LuckSettlement {
         pass.report(
             caseName(calibration),
             scaling.kind(),
-            shadowApplied ? "shadow" : "current",
-            fallback,
+            pending.scaled() ? "shadow" : "current",
+            pending.fallback(),
             next);
     LedgerReport.Arms j = calibrated.j();
     LOG.info(
@@ -275,15 +357,15 @@ public final class LuckSettlement {
             calibrated.slotR2().shadow(),
             calibrated.scale().mean(),
             next == null ? "none" : String.valueOf(next.cohort())));
-    if (fallback != null) {
-      LOG.info("t={} ledger calibration scales by 1: {}", cohort, fallback);
+    if (pending.fallback() != null) {
+      LOG.info("t={} ledger calibration scales by 1: {}", cohort, pending.fallback());
     }
     return new LedgerOutcome(
-        report,
-        summary.with(calibrated.summary()),
-        correction,
+        fitted.report(),
+        fitted.summary().with(calibrated.summary()),
+        teacher,
         applied,
-        new LedgerOutcome.Calibration(calibrated, result.correction(), scale, next));
+        new LedgerOutcome.Calibration(calibrated, pending.current(), scale, next));
   }
 
   /**

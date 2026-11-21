@@ -50,7 +50,8 @@ import org.slf4j.LoggerFactory;
  * マーカーになる。途中で落ちたら初めから学習し直す。
  *
  * <p>帳簿の補正率を求める反復では、前の反復から持ち越した補正率で補正を測り、和了の判断の教師の差をアンカーの s で足し、次の反復の
- * 補正率（{@value LearnReport#CALIBRATOR}）も learn.part に書く。持ち越しは反復の始めの state から読むので、学習し直しても同じ補正率を使う。
+ * 補正率（{@value LearnReport#CALIBRATOR}）も learn.part に書く。この 2 回目の走査は教師に要らないので、生徒の学習と並べて別のスレッドで
+ * 回す。持ち越しは反復の始めの state から読むので、学習し直しても同じ補正率を使う。
  */
 final class LearnStep implements Step<PrismIteration> {
 
@@ -124,7 +125,8 @@ final class LearnStep implements Step<PrismIteration> {
 
   /**
    * 帳簿を当てはめ、生徒を学習して保存する。生徒を学習するときは、帳簿の当てはめの間に別のスレッドで、アンカーの s の計算（アンカーを
-   * 混ぜる設定のときだけ）と学習器の準備を進める。帳簿は CPU だけを使うので、その間も学習のデバイスは空いている。
+   * 混ぜる設定のときだけ）と学習器の準備を進める。帳簿は CPU だけを使うので、その間も学習のデバイスは空いている。帳簿の補正率の 2 回目の
+   * 走査と和了の判断の差は、生徒の学習の間に別のスレッドで回し、学習の後で待つ。
    *
    * @param holdout コホートのホールドアウトの行の数
    * @param priorR2 K′ を決める R²
@@ -152,7 +154,7 @@ final class LearnStep implements Step<PrismIteration> {
     int steps = settings.fit().steps(rows.length);
     boolean fits = steps > 0;
     double gain = tempo.gain(t, priorR2);
-    LedgerOutcome ledger;
+    LuckSettlement.Settled settled;
     AnchorScores anchor = null;
     Fit.Prepared prepared;
     try (ExecutorService ahead = Executors.newFixedThreadPool(2)) {
@@ -184,11 +186,10 @@ final class LearnStep implements Step<PrismIteration> {
                           learning))
               : null;
       try {
-        ledger = settle(iteration, store, rows, threads);
+        settled = settle(iteration, store, rows, threads);
         if (scores != null) {
           anchor = await(scores);
         }
-        ledger = gates(iteration, store, ledger, anchor, threads);
       } catch (IOException | RuntimeException | Error failure) {
         if (warmed != null) {
           closeAfter(warmed, failure);
@@ -197,6 +198,7 @@ final class LearnStep implements Step<PrismIteration> {
       }
       prepared = warmed == null ? null : await(warmed);
     }
+    AnchorScores scored = anchor;
     double anchorWeight = tempo.anchored() ? 1 - gain : 0;
     LearnReport.Tempo filter =
         new LearnReport.Tempo(
@@ -206,24 +208,33 @@ final class LearnStep implements Step<PrismIteration> {
             tempo instanceof TempoSettings.On on ? on.scheduledGain(t) : gain,
             priorR2);
     FitResult result;
-    try {
-      if (prepared == null) {
-        Snapshot.copyModel(start, student);
-        result = FitResult.empty(rows.length);
-      } else {
-        if (tempo.anchored()) {
-          anchor.requireVersion(iteration.start());
+    LedgerOutcome ledger;
+    try (ExecutorService behind = Executors.newSingleThreadExecutor()) {
+      Future<LedgerOutcome> calibrated =
+          behind.submit(() -> gates(iteration, store, settled.calibrate(), scored));
+      try {
+        if (prepared == null) {
+          Snapshot.copyModel(start, student);
+          result = FitResult.empty(rows.length);
+        } else {
+          if (tempo.anchored()) {
+            anchor.requireVersion(iteration.start());
+          }
+          Teacher teacher =
+              new Teacher(
+                  settled.correction(),
+                  tempo.anchored() ? anchor : null,
+                  anchorWeight,
+                  (float) gain);
+          result = prepared.fit(teacher);
+          prepared.network().save(student);
         }
-        Teacher teacher =
-            new Teacher(
-                ledger.correction(), tempo.anchored() ? anchor : null, anchorWeight, (float) gain);
-        result = prepared.fit(teacher);
-        prepared.network().save(student);
+      } finally {
+        if (prepared != null) {
+          prepared.close();
+        }
       }
-    } finally {
-      if (prepared != null) {
-        prepared.close();
-      }
+      ledger = await(calibrated);
     }
     LOG.info(result.summary(t));
     LearnReport report =
@@ -258,17 +269,17 @@ final class LearnStep implements Step<PrismIteration> {
   }
 
   /**
-   * 反復の運の精算のうち、学習の段で行う部分（{@link LuckSettlement#learn}）。和は、収集のライターが同じ JVM で作ったものがあれば
-   * それを使い、なければ行のストアから行を読み直して作る。どちらも同じ行を同じ順に足すので、係数はビット単位で同じになる。帳簿の補正率は、
-   * 前の反復から持ち越したものを渡す。
+   * 反復の運の精算のうち、学習の段で教師を決めるまでの部分（{@link LuckSettlement#settle}）。和は、収集のライターが同じ JVM で作ったもの
+   * があればそれを使い、なければ行のストアから行を読み直して作る。どちらも同じ行を同じ順に足すので、係数はビット単位で同じになる。帳簿の
+   * 補正率は、前の反復から持ち越したものを渡す。
    */
-  private static LedgerOutcome settle(
+  private static LuckSettlement.Settled settle(
       PrismIteration iteration, CohortStore store, int[] rows, int threads) {
     LuckSettlement luck = iteration.luck();
     try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
       Iterable<Row> stored =
           store.iterate(rows, iteration.settings().fit().batch(), readers, threads);
-      return luck.learn(
+      return luck.settle(
           iteration.number(),
           iteration.ledger(),
           stored,
@@ -277,17 +288,16 @@ final class LearnStep implements Step<PrismIteration> {
     }
   }
 
+  /** 和了の判断の差のために行を読み直すスレッドの数（生徒の学習と並べて回すので少なくする）。 */
+  private static final int GATE_READERS = 2;
+
   /**
    * 帳簿の補正率を求めた反復で、和了の判断の教師の差を帳簿の結果に足す（{@link LuckSettlement#gates}）。生徒の行のうち主経路の
    * FINAL_END の行を読み直し、ツモの比べる手はアンカーの s で選ぶ（アンカーが無ければツモの行は数えない）。補正率を求めない反復では、
    * 結果をそのまま返す。
    */
   private static LedgerOutcome gates(
-      PrismIteration iteration,
-      CohortStore store,
-      LedgerOutcome ledger,
-      AnchorScores anchor,
-      int threads)
+      PrismIteration iteration, CohortStore store, LedgerOutcome ledger, AnchorScores anchor)
       throws IOException {
     if (ledger.calibration() == null) {
       return ledger;
@@ -303,8 +313,8 @@ final class LearnStep implements Step<PrismIteration> {
                     && index.source() == Row.Source.MAIN
                     && index.decisionClass() == DecisionClass.FINAL_END);
     Row[] read;
-    try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
-      read = store.read(finals, readers, threads);
+    try (ExecutorService readers = Executors.newFixedThreadPool(GATE_READERS)) {
+      read = store.read(finals, readers, GATE_READERS);
     }
     List<float[]> scores =
         anchor == null ? null : Arrays.stream(finals).mapToObj(anchor::scores).toList();

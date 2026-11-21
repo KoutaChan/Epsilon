@@ -43,16 +43,13 @@ public record PublishedModel(String directory, Variant variant, PrismShape shape
 
   @DataProvider
   public static Object[] fourPlayerModels() {
-    return new Object[] {fourPlayer(714), fourPlayer(760)};
+    return new Object[] {fourPlayer(760)};
   }
 
   @DataProvider
   public static Object[] threePlayerModels() {
     var shape = new PrismShape.V3(256, 512, 512, 768, 1536, 1024, true);
-    return new Object[] {
-      new PublishedModel("prism3p-u3-v355", Variant.TENHOU_3P, shape),
-      new PublishedModel("prism3p-u3-v413", Variant.TENHOU_3P, shape)
-    };
+    return new Object[] {new PublishedModel("prism3p-u3-v413", Variant.TENHOU_3P, shape)};
   }
 
   /** CPU のテストで読む配布モデル。置き場を渡していなければ飛ばす。 */

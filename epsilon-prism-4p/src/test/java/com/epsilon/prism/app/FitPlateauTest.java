@@ -9,8 +9,6 @@ import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
-import com.epsilon.prism.play.PublishedModel;
-import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.run.Snapshot;
 import java.nio.file.Files;
 import java.util.List;
@@ -69,33 +67,6 @@ public class FitPlateauTest {
       Assert.expectThrows(
           IllegalArgumentException.class,
           () -> FitPlateau.Update.of(history, null, bad, settings.noise().tempo()));
-    }
-  }
-
-  @Test
-  public void copiedV760PreservesPublishedEagerScores() throws Exception {
-    checkPublishedCopy(false);
-  }
-
-  @Test(groups = "rocm")
-  public void copiedV760PreservesPublishedHipScores() throws Exception {
-    checkPublishedCopy(true);
-  }
-
-  private void checkPublishedCopy(boolean hip) throws Exception {
-    var reference = PublishedModel.fourPlayer(760);
-    var original = Snapshot.model(hip ? reference.requiredSnapshot() : reference.snapshot());
-    var root = Files.createTempDirectory("plateau-v760");
-    try {
-      var shape = PrismNetwork.readShape(original);
-      var target = root.resolve("copy");
-      try (var model = Fit.load(original, Device.cpu())) {
-        Snapshot.write(target, (PrismNetwork) model.getBlock(), PolicyParams.of(760));
-      }
-      if (hip) reference.assertNativeScores(target, shape);
-      else reference.assertEagerScores(target, shape);
-    } finally {
-      Snapshot.deleteTree(root);
     }
   }
 

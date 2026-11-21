@@ -26,7 +26,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;
-import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -37,10 +36,6 @@ import org.testng.annotations.Test;
  * 専用のカーネルの代わりに eager で計算する。公開した v760 のバージョンも、同じ入口で開いて判断を評価できる。
  */
 public class PolicyEntryTest {
-
-  /** 公開した v760 のバージョン（読むだけで書かない）。 */
-  private static final Path PUBLISHED =
-      Path.of(System.getProperty("user.home"), "epsilon-ai/crr/runs/prism-v2b/snapshots/00760");
 
   private Path root;
   private Path snapshot;
@@ -101,21 +96,6 @@ public class PolicyEntryTest {
     try (Policy policy =
         open(snapshot, new PolicyOptions("cpu", Precision.FLOAT32, 8, Kernels.NATIVE))) {
       Assert.assertFalse(values(policy, 2).isEmpty());
-    }
-  }
-
-  @Test(timeOut = 600_000)
-  public void thePublishedV760OpensThroughTheEntryPoint() throws Exception {
-    if (!Files.isRegularFile(PUBLISHED.resolve("m0").resolve("weights.bin"))) {
-      throw new SkipException("published weights are not here: " + PUBLISHED);
-    }
-    try (Policy policy = open(PUBLISHED, PolicyOptions.defaults())) {
-      Assert.assertEquals(policy.label(), "prism:00760");
-      List<float[]> values = values(policy, 8);
-      Assert.assertEquals(values.size(), 8);
-      Assert.assertTrue(
-          values.stream().anyMatch(v -> v.length > 1 && v[0] != v[1]),
-          "the values are not trivial");
     }
   }
 

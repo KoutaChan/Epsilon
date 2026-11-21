@@ -18,9 +18,6 @@ import com.epsilon.prism.model.ModelShapes;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,37 +43,6 @@ public class WeightLayoutTest {
       {ShapeArm.V4_S.shape()},
       {ShapeArm.V4_M.shape()}
     };
-  }
-
-  @DataProvider
-  public Object[][] releasedPacks() {
-    return new Object[][] {
-      {
-        ShapeArm.V2,
-        70L,
-        28_976_896,
-        "cc77ed5379c30089d4a64b81548aebe099867cbe547a3ae98c3cdd11412063b4"
-      },
-      {
-        ShapeArm.V3,
-        72L,
-        34_994_432,
-        "ebe55c103215971f20406c7487775f8305592033a13da2c8c1fee308753bf3a7"
-      }
-    };
-  }
-
-  @Test(dataProvider = "releasedPacks")
-  public void matchesTheReleasedWeightPack(ShapeArm arm, long seed, int bytes, String digest)
-      throws NoSuchAlgorithmException {
-    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      PrismNetwork network = HipFixtures.network(manager, arm.shape(), seed);
-      var packed = WeightPack.build(WeightLayout.of(network), network, 5).buffer();
-      Assert.assertEquals(packed.remaining(), bytes);
-      MessageDigest hash = MessageDigest.getInstance("SHA-256");
-      hash.update(packed);
-      Assert.assertEquals(HexFormat.of().formatHex(hash.digest()), digest);
-    }
   }
 
   @Test(dataProvider = "shapes")

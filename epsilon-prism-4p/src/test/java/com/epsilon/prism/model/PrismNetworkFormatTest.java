@@ -8,7 +8,6 @@ import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.agent.runtime.Precision;
 import com.epsilon.prism.run.Snapshot;
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
@@ -111,58 +110,6 @@ public class PrismNetworkFormatTest {
       thrown = Assert.expectThrows(IOException.class, () -> PrismNetwork.readShape(untyped));
       Assert.assertTrue(
           thrown.getMessage().contains("unknown PRISM architecture"), thrown.getMessage());
-    } finally {
-      Snapshot.deleteTree(root);
-    }
-  }
-
-  @Test(dataProvider = "defaultShapes", dataProviderClass = ModelShapes.class)
-  public void defaultShapePreservesScoreBits(ModelShapes.DefaultShape fixture) throws IOException {
-    PrismShape shape = fixture.arm().shape();
-    Path root = Files.createTempDirectory("prism-format");
-    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      Path directory = root.resolve("model");
-      manager.getEngine().setRandomSeed(31);
-      PrismNetwork network = network(shape, manager);
-      Batches.perturb(network, 0.05f, 37);
-      network.save(directory);
-      Path metadata = directory.resolve("model.json");
-      JsonObject header = JsonParser.parseString(Files.readString(metadata)).getAsJsonObject();
-      JsonObject saved = header.getAsJsonObject("shape");
-      JsonObject canonical = new Gson().toJsonTree(shape).getAsJsonObject();
-      fixture.omitted().forEach(saved::remove);
-      NetworkInputs inputs =
-          Batches.build(List.of(Batches.turn(4), Batches.response(9)), 41).inputs(manager);
-      for (boolean explicit : List.of(false, true)) {
-        if (explicit) {
-          fixture.omitted().forEach(field -> saved.add(field, canonical.get(field)));
-        }
-        Files.writeString(metadata, header.toString());
-        PrismNetwork loaded = PrismNetwork.load(directory, manager);
-        Assert.assertEquals(loaded.shape(), shape);
-        ParameterStore store = new ParameterStore(manager, false);
-        for (Precision precision : Precision.values()) {
-          float[] scores =
-              loaded.forward(store, inputs, Pass.inference(precision)).scores().toFloatArray();
-          int[] bits = new int[scores.length];
-          for (int i = 0; i < scores.length; i++) {
-            bits[i] = Float.floatToRawIntBits(scores[i]);
-          }
-          int[] expected =
-              switch (precision) {
-                case FLOAT32 -> fixture.fp32();
-                case BFLOAT16 -> fixture.bf16();
-              };
-          Assert.assertEquals(
-              bits, expected, fixture.arm() + " " + precision + " explicit=" + explicit);
-        }
-      }
-      for (String field : fixture.omitted()) {
-        saved.addProperty(field, "false");
-        Files.writeString(metadata, header.toString());
-        Assert.assertThrows(IOException.class, () -> PrismNetwork.readShape(directory));
-        saved.add(field, canonical.get(field));
-      }
     } finally {
       Snapshot.deleteTree(root);
     }

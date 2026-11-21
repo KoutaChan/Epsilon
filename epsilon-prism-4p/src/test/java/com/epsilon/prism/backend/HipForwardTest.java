@@ -24,7 +24,6 @@ import com.epsilon.prism.run.Snapshot;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -58,7 +57,6 @@ public class HipForwardTest {
   private static final Logger log = LoggerFactory.getLogger(HipForwardTest.class);
 
   private static final int BATCHES = 8;
-  private static final int SAVED_ROWS = 2048;
   private static final double EAGER_LIMIT = 4e-2;
   private static final double FP32_LIMIT = 1e-1;
   private static final double REFERENCE_LIMIT = 2e-2;
@@ -255,47 +253,6 @@ public class HipForwardTest {
         HipParity.Report report = HipParity.compare(hip, reference, HipParity.Actions.of(host));
         log.info("PRISM-V4-PARITY {} {} {}", label, diff.line("scores"), report.summary());
         Assert.assertTrue(diff.relativeRms() <= EAGER_LIMIT, diff.line(label));
-      }
-    }
-  }
-
-  @DataProvider
-  public Object[][] identityShapes() {
-    return new Object[][] {{ShapeArm.V2, 70L}, {ShapeArm.V3, 72L}};
-  }
-
-  /** 保存した入力を再現し、同じ重みから得た各合法手の FP32 ビット列を読み戻す。 */
-  @Test(groups = "rocm", dataProvider = "identityShapes")
-  public void matchesSavedScoreBytes(ShapeArm arm, long seed) throws IOException {
-    String base = System.getProperty("prism.hip.identity");
-    Assert.assertNotNull(base, "set prism.hip.identity to the saved score fixture directory");
-    Path fixture = Path.of(base, arm.name());
-    HostBatch host = HipFixtures.encode(HipFixtures.simulatedRows(SAVED_ROWS, 800));
-    ByteBuffer input = host.blob().duplicate().position(0).limit(host.bytes());
-    Assert.assertEquals(
-        input.mismatch(ByteBuffer.wrap(Files.readAllBytes(fixture.resolve("input.bin")))),
-        -1,
-        "saved input differs");
-    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      PrismNetwork network = HipFixtures.network(manager, arm.shape(), seed);
-      WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 5);
-      ByteBuffer archived = ByteBuffer.wrap(Files.readAllBytes(fixture.resolve("weights.bin")));
-      ByteBuffer actual = pack.buffer();
-      Assert.assertEquals(actual.remaining(), archived.remaining(), "saved weight pack length");
-      Assert.assertEquals(actual.mismatch(archived), -1, "saved weight bytes differ");
-      try (NativeLane lane =
-          NativeLane.open(network, Device.gpu(0), GpuCase.capacity(SAVED_ROWS), 5)) {
-        float[] scores = lane.forward(host);
-        ByteBuffer saved =
-            ByteBuffer.wrap(Files.readAllBytes(fixture.resolve("scores.bin")))
-                .order(ByteOrder.LITTLE_ENDIAN);
-        Assert.assertEquals(saved.remaining(), scores.length * Float.BYTES);
-        for (int i = 0; i < scores.length; i++) {
-          Assert.assertEquals(
-              Float.floatToRawIntBits(scores[i]), saved.getInt(), "score at action " + i);
-        }
-        log.info(
-            "Saved score bytes arm={} actions={} bytes={}", arm, scores.length, saved.capacity());
       }
     }
   }

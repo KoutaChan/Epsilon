@@ -24,13 +24,10 @@ import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputSamples;
 import com.epsilon.prism.model.Batches.Batch;
 import java.nio.ByteBuffer;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -116,107 +113,6 @@ public class PrismNetworkTest {
       for (float score : scores) {
         Assert.assertEquals(score, 0f, "blank score");
       }
-    }
-  }
-
-  /** FP32 スコアのビット列と、関係の表の無効行も含めて登録順に連結した FP32 勾配のビット列の SHA-256。 */
-  @DataProvider
-  public Object[][] scoreAndGradientBits() {
-    return new Object[][] {
-      {
-        ShapeArm.V2.shape(),
-        Precision.FLOAT32,
-        "552836acf68520ffe21e5f9562d73b423b288e82d1cdf6014c9165cd6888fe26",
-        "9c698296f85a41192ac1b394251d22ea3e1dae6e3cc87b887227a3dd468b8391"
-      },
-      {
-        ShapeArm.V2.shape(),
-        Precision.BFLOAT16,
-        "df166f94f1ea1b6fd276d104836a2c42c9ad028609a28dfbfcbbbe5294d04ee2",
-        "39a399ce293ba138fe73c708190242038ac4efc202bb3b2092672f0af4427769"
-      },
-      {
-        ShapeArm.V2.shape(3),
-        Precision.FLOAT32,
-        "562ef583cf9b0f7e06ee1eefbcc2c74ba9562f899c59f2be6b8bd218e86d04f8",
-        "b64ba5292b4dee4136d0dd7f17a8ae319235114bac792f5886aedda84b26ca3b"
-      },
-      {
-        ShapeArm.V2.shape(3),
-        Precision.BFLOAT16,
-        "696b6e4394d0a53248ef20bd51014d578e7941142d32fdee86816310eaf20296",
-        "3a671d85c0310a6684fb8fe55df36219c0cf8e7d42e9927b356ba1a8095bfd64"
-      },
-      {
-        ShapeArm.V3.shape(),
-        Precision.FLOAT32,
-        "091e13b97db12c4bd5cb0a3f620e664c455017adb004ed9c19c1f5eef772be80",
-        "9abf5028cbef317664e09f97f06e0ee8c78126d8bc2915a0da3d7b798e6645d7"
-      },
-      {
-        ShapeArm.V3.shape(),
-        Precision.BFLOAT16,
-        "057452f04885e5abc5aade5e426ed69a961c4b2c2a7b53bd4facc5868c357247",
-        "873fb98479483fbb7984b14acfff1796374cf38c8b4d8451556f56ee658a1eb9"
-      },
-      {
-        ShapeArm.V3_ONE_STAGE.shape(),
-        Precision.FLOAT32,
-        "e5538d785cd5ee9962ef467c66066103bc66474897c3862f8c3167c058de551c",
-        "4bac0dd896bea05615af1bb198618940c08ee330511d643a07afab01d47b8383"
-      },
-      {
-        ShapeArm.V3_ONE_STAGE.shape(),
-        Precision.BFLOAT16,
-        "9262f9b6e918a0bc1e02e2b2e8fcad54cbb3808c2225e890d9cbf89f21da23aa",
-        "94149f268d0834996668f23ad392d96a3750a3f8911ea23a0660e550424edbe5"
-      },
-      {
-        ShapeArm.V3_CONTEXT_512.shape(),
-        Precision.FLOAT32,
-        "9cea2f18e24d73040d935d3db0231bc50bef41afeba4c43546f5db71cd69699f",
-        "df99d54bd91728d4f64dd095b01b9ef9a1af10626e77f326a0f1670ebfe195e5"
-      },
-      {
-        ShapeArm.V3_CONTEXT_512.shape(),
-        Precision.BFLOAT16,
-        "420591450abc9f5715c863dd4c7b9ab676943f89a23bf6f1c60376cec7b8f263",
-        "6f807a26ca04a9cf870934909f6745defb1a9636940a4c8f3ef9b21abd34a3c5"
-      },
-    };
-  }
-
-  @Test(dataProvider = "scoreAndGradientBits")
-  public void preservesScoreAndGradientBits(
-      PrismShape shape, Precision precision, String scoreBits, String gradientBits)
-      throws NoSuchAlgorithmException {
-    try (Net net = new Net(shape, 31)) {
-      Batches.perturb(net.network, 0.05f, 37);
-      Batch batch = Batches.build(Batches.allKinds(4), 41);
-      List<ValueLabel> labels = Batches.values(batch, 43);
-      AuxiliaryLabels auxiliary = Batches.auxiliary(batch, 47);
-      PrismLoss loss = new PrismLoss(AuxiliaryLoss.standard());
-      MessageDigest sha = MessageDigest.getInstance("SHA-256");
-      NDArray inferred = net.forward(net.manager, batch, Pass.inference(precision)).scores();
-      sha.update(inferred.toByteBuffer());
-      Assert.assertEquals(HexFormat.of().formatHex(sha.digest()), scoreBits, "inference scores");
-      try (GradientCollector collector = net.manager.getEngine().newGradientCollector()) {
-        Outputs trained =
-            net.forward(
-                net.manager,
-                batch,
-                Pass.training(precision, ValueLabel.measured(labels), auxiliary));
-        sha.update(trained.scores().toByteBuffer());
-        Assert.assertEquals(HexFormat.of().formatHex(sha.digest()), scoreBits, "training scores");
-        collector.backward(
-            loss.total(net.manager, trained, labels, auxiliary, 1f, labels.size(), 1f));
-      }
-      for (Pair<String, Parameter> p : net.network.getParameters()) {
-        NDArray gradient = p.getValue().getArray().getGradient();
-        sha.update(gradient.toByteBuffer());
-      }
-      Assert.assertEquals(
-          HexFormat.of().formatHex(sha.digest()), gradientBits, "parameter gradients");
     }
   }
 

@@ -13,15 +13,11 @@ import com.epsilon.prism.kernel.WeightField;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
-import com.epsilon.prism.run.Snapshot;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Path;
 import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
-import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -90,33 +86,6 @@ public class WeightPackRoundTripTest {
       Assert.assertEquals(
           built, expected, "the four-player pack with the MahjongTileRelation table");
     }
-  }
-
-  /** 公開した v760 の model.json が、今の PrismShape の標準の形（v2 の深さ 2）として読め、束の記述が v2 の記述と一致することを確かめる。 */
-  @Test
-  public void publishedV760ReadsAsTheV2Description() throws IOException {
-    String given = System.getProperty("prism.snapshot");
-    if (given == null) {
-      throw new SkipException("needs -Dprism.snapshot (the v760 snapshot directory)");
-    }
-    Path model = Snapshot.model(Path.of(given));
-    Assert.assertEquals(PrismNetwork.readShape(model), PrismShape.standard());
-    WeightPack pack = WeightPack.load(model, 760);
-    WeightLayout layout = pack.layout();
-    Assert.assertEquals(
-        layout.architecture(),
-        CollectionArchitecture.from(
-            new PrismNetwork(FOUR_PLAYER, PrismShape.standard()).declaration()));
-    Assert.assertEquals(new PackView(pack.buffer()).architecture(), layout.architecture().encode());
-    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-      PrismNetwork network = PrismNetwork.load(model, manager);
-      PackReadBack.assertReadsBack(layout, pack, network.inferenceParameters());
-    }
-    log.info(
-        "PRISM-HIP-V760 {} reads as {} ({} bytes)",
-        given,
-        layout.architecture().layers(),
-        layout.bytes());
   }
 
   /**

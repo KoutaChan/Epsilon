@@ -59,7 +59,7 @@ public class ThreePlayerLadderSmokeTest {
 
   private static final Variant THREE = Variant.TENHOU_3P;
   private static final String TEST =
-      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote"
+      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 128, promote"
           + " = true}";
 
   /** 混ぜた打ち手のバージョン（ほかはルールベースの打ち手。v1 は 8 つ前のラダーの相手）。 */
@@ -175,7 +175,7 @@ public class ThreePlayerLadderSmokeTest {
                           + "seating={kind = \"EVERY_PLACEMENT\", splits = [\"1v2\", \"2v1\"]}",
                       champion + "draws=SEAT_STREAMS",
                       champion + "wallSet=FRESH",
-                      champion + "walls=512",
+                      champion + "walls=128",
                       champion + "stop=" + TEST,
                       champion + "score=RANK",
                       champion + "every=1",

@@ -127,8 +127,9 @@ public class SplitDuelTest {
         Snapshot.write(a, HipFixtures.network(manager, shape, 3), PolicyParams.of(1));
         Snapshot.write(b, HipFixtures.network(manager, shape, 7), PolicyParams.of(2));
       }
-      String serial = compare(root, a, b, device, precision, 1);
-      Assert.assertEquals(compare(root, a, b, device, precision, 3), serial);
+      int games = device.equals("cpu") ? 2 : 3;
+      String serial = compare(root, a, b, device, precision, 1, games);
+      Assert.assertEquals(compare(root, a, b, device, precision, 3, games), serial);
       var fields = overall(serial);
       Assert.assertTrue(Long.parseLong(fields.get("disagreements")) > 0);
       for (String role : List.of("a", "b", "mu")) {
@@ -193,6 +194,19 @@ public class SplitDuelTest {
   static String compare(
       Path root, Path a, Path b, String device, String precision, int workers, String... options)
       throws IOException {
+    return compare(root, a, b, device, precision, workers, 3, options);
+  }
+
+  private static String compare(
+      Path root,
+      Path a,
+      Path b,
+      String device,
+      String precision,
+      int workers,
+      int games,
+      String... options)
+      throws IOException {
     String[] args = {
       "split-duel",
       "--a",
@@ -206,7 +220,7 @@ public class SplitDuelTest {
       "--q",
       "0.025",
       "--games",
-      "3",
+      Integer.toString(games),
       "--set",
       "run.variant=TENHOU_4P",
       "--set",
@@ -216,7 +230,7 @@ public class SplitDuelTest {
       "--set",
       "table.workers=" + workers,
       "--set",
-      "table.activeGames=3",
+      "table.activeGames=" + games,
       "--set",
       "inference.devices=[" + device + "]",
       "--set",

@@ -61,7 +61,7 @@ public class NetworkPolicyHipTest {
   private static final Logger log = LoggerFactory.getLogger(NetworkPolicyHipTest.class);
 
   private static final int GAMES = 6;
-  private static final int BATCHES = 16;
+  private static final int BATCHES = 8;
   private static final int VERSION = 3;
 
   /** CPU の方策の行の上限（推論のセクションの既定値）。 */

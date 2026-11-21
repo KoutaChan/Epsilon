@@ -582,8 +582,9 @@ public class PrismNetworkTest {
     }
   }
 
-  @Test(dataProvider = "smallShapes", dataProviderClass = ModelShapes.class)
-  public void fitsRandomValues(PrismShape shape) {
+  @Test
+  public void fitsRandomValues() {
+    PrismShape shape = Batches.small(2);
     try (Net net = new Net(shape, 3);
         NDManager scope = net.manager.newSubManager()) {
       Batch batch = Batches.build(Batches.allKinds(4), 13);

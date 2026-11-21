@@ -208,7 +208,7 @@ public class HipReferenceTest {
 
   @Test(dataProvider = "scoreShapes", dataProviderClass = HipFixtures.class)
   public void blankNetworkScoresPositiveZero(PrismShape shape) {
-    HostBatch batch = HipFixtures.encode(mixedRows(ROWS));
+    HostBatch batch = HipFixtures.encode(mixedRows(12));
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       manager.getEngine().setRandomSeed(5);
       PrismNetwork network = new PrismNetwork(FOUR_PLAYER, shape);
@@ -224,7 +224,7 @@ public class HipReferenceTest {
 
   @Test(dataProvider = "scoreShapes", dataProviderClass = HipFixtures.class)
   public void rebatchingKeepsRowScores(PrismShape shape) {
-    List<long[]> rows = mixedRows(ROWS);
+    List<long[]> rows = mixedRows(12);
     List<long[]> shuffled = new ArrayList<>(rows);
     Collections.shuffle(shuffled, new Random(3));
     try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {

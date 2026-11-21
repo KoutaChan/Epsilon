@@ -140,9 +140,16 @@ public class RunnerTest {
     int points = safePoints();
     // 反復ごとに 13 か所（段の前後で 6、段の中の待ちで 1、閉じた後で 1、ジョブの前後とチャンクで 4、ジョブの後で 1）。
     // ほかに、起動のときと、起動直後のジョブの後で 2 か所
-    assertEquals(points, 2 + 2 * 13);
-    for (boolean signal : List.of(false, true)) {
-      for (int n = 1; n <= points; n++) {
+    int startupPoints = 2;
+    int pointsPerIteration = 13;
+    assertEquals(points, startupPoints + 2 * pointsPerIteration);
+    for (int n = 1; n <= points; n++) {
+      // 起動では両方を試し、同じ種類の地点を反復ごとに別の停止経路で通す。
+      List<Boolean> signals =
+          n <= startupPoints
+              ? List.of(false, true)
+              : List.of(n > startupPoints + pointsPerIteration);
+      for (boolean signal : signals) {
         FakeRun world = FakeRun.create(Files.createTempDirectory("run-stop"));
         ControlRequests requests = new ControlRequests(world.run);
         int target = n;

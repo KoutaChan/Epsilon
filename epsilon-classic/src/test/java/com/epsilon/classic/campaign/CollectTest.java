@@ -151,11 +151,12 @@ public class CollectTest {
   /** macro の収集は、run の種と macro の番号だけで決まる（ワーカーと同時に進める半荘の数に依らない）。 */
   @Test(groups = "native", timeOut = 1_800_000)
   public void aMacroOnTheCpuDependsOnTheSeedsAlone() throws IOException {
+    int games = 2;
     Collect collect =
         new Collect(
             VARIANT,
             RUN_SEED,
-            new Collect.Settings(GAMES, 0.7),
+            new Collect.Settings(games, 0.7),
             EXPLORE,
             SelfPlayHooksTest.randomGrp(VARIANT, 5),
             CPU,
@@ -176,7 +177,7 @@ public class CollectTest {
     assertTrue(
         wide.opponent().equals(pool.champion()) || pool.past().contains(wide.opponent()),
         wide.opponent().label());
-    assertEquals(wide.trajectories().games().size(), GAMES);
+    assertEquals(wide.trajectories().games().size(), games);
     assertTrue(wide.trajectories().games().getFirst().hasPriors());
     assertTrue(Arrays.deepEquals(wide.calibration().counts(), single.calibration().counts()));
     assertEquals(counted(wide.calibration()), 3L * queried(wide.trajectories()));

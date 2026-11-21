@@ -37,7 +37,6 @@ public class EventCacheTest {
     Tensor.EVENT_CATEGORY, Tensor.EVENT_SCALAR, Tensor.RELATION
   };
 
-  /** 基点の JAR が入力の全量で求めた、両ルールの V4_S・V4_M の判断と全ての合法手のスコア。 */
   private static final long GENERATION = 3;
 
   @Test

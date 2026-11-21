@@ -4,6 +4,8 @@ import ai.djl.nn.Parameter;
 import ai.djl.util.Pair;
 import ai.djl.util.PairList;
 import com.epsilon.agent.observe.codec.Bfloat16;
+import com.epsilon.prism.backend.WeightLayout.Conversion;
+import com.epsilon.prism.backend.WeightLayout.Placement;
 import com.epsilon.prism.kernel.PackedWeightLayout;
 import com.epsilon.prism.kernel.WeightField;
 import java.nio.ByteBuffer;
@@ -45,18 +47,25 @@ public final class PackReadBack {
     Set<String> placed = new HashSet<>();
     Set<String> entries = new HashSet<>();
     List<long[]> extents = new ArrayList<>();
-    for (WeightLayout.Placement placement : layout.placements()) {
+    for (Placement placement : layout.placements()) {
       String name = placement.parameter();
       float[] source = values.get(name);
       Assert.assertNotNull(source, name);
       Assert.assertTrue(placed.add(name), name + " is placed twice");
-      Assert.assertTrue(
-          entries.add(placement.weight() + "/" + placement.entry()),
-          placement + " shares an entry");
-      Assert.assertEquals(
-          header.weight(placement.weight(), placement.entry()), placement.offset(), name);
-      Assert.assertEquals(
-          header.elements(placement.weight(), placement.entry()), source.length, name);
+      if (placement.weight() != null) {
+        Assert.assertTrue(
+            entries.add(placement.weight() + "/" + placement.entry()),
+            placement + " shares an entry");
+        Assert.assertEquals(
+            header.weight(placement.weight(), placement.entry()), placement.offset(), name);
+        Assert.assertEquals(
+            header.elements(placement.weight(), placement.entry()), source.length, name);
+        extents.add(
+            new long[] {
+              placement.offset(),
+              placement.offset() + header.bytes(placement.weight(), placement.entry())
+            });
+      }
       int at = Math.toIntExact(placement.offset());
       for (int i = 0; i < source.length; i++) {
         switch (placement.conversion()) {
@@ -79,12 +88,8 @@ public final class PackReadBack {
           }
         }
       }
-      extents.add(
-          new long[] {
-            placement.offset(),
-            placement.offset() + header.bytes(placement.weight(), placement.entry())
-          });
     }
+    assertCandidateTables(layout, values, extents);
     for (WeightLayout.Embedding embedding : layout.embeddings().values()) {
       for (String name : List.of(embedding.table(), embedding.projection(), embedding.bias())) {
         Assert.assertTrue(values.containsKey(name), name);
@@ -121,5 +126,58 @@ public final class PackReadBack {
       end = extent[1];
     }
     Assert.assertTrue(end <= layout.bytes());
+  }
+
+  /** 末尾の候補表は、共通ヘッダーの欄ではなく、収集計画が持つ位置から読む。 */
+  private static void assertCandidateTables(
+      WeightLayout layout, Map<String, float[]> values, List<long[]> extents) {
+    List<Placement> appended =
+        layout.placements().stream().filter(p -> p.weight() == null).toList();
+    var options = layout.planOptions();
+    var count = options.count();
+    if (count == null) {
+      Assert.assertNull(options.segments());
+      Assert.assertTrue(appended.isEmpty(), "unexpected candidate tables");
+      return;
+    }
+    var segments = options.segments();
+    Assert.assertNotNull(segments, "missing candidate segment table");
+    var segmentLayout = segments.layout();
+    Assert.assertEquals(appended.size(), 3 + segmentLayout.spans().size());
+
+    long first = count.offset();
+    long gateElements = (long) (layout.format().keys().codes() - count.firstCode()) * count.width();
+    long tileElements = (long) layout.architecture().hidden() * count.width();
+    long end = assertPlacement(appended.get(0), values, first, gateElements, Conversion.FP32);
+    end = assertPlacement(appended.get(1), values, end, tileElements, Conversion.BF16);
+    end = assertPlacement(appended.get(2), values, end, tileElements, Conversion.BF16);
+    extents.add(new long[] {first, end});
+
+    first = segments.offset();
+    long rowElements = 2L * layout.architecture().attention();
+    long rowBytes = rowElements * Float.BYTES;
+    for (int i = 0; i < segmentLayout.spans().size(); i++) {
+      var span = segmentLayout.spans().get(i);
+      assertPlacement(
+          appended.get(3 + i),
+          values,
+          first + span.firstRow() * rowBytes,
+          span.rows() * rowElements,
+          Conversion.FP32);
+    }
+    extents.add(new long[] {first, first + segmentLayout.tableRows() * rowBytes});
+  }
+
+  private static long assertPlacement(
+      Placement placement,
+      Map<String, float[]> values,
+      long offset,
+      long elements,
+      Conversion conversion) {
+    String name = placement.parameter();
+    Assert.assertEquals(placement.offset(), offset, name);
+    Assert.assertEquals(placement.conversion(), conversion, name);
+    Assert.assertEquals((long) values.get(name).length, elements, name);
+    return offset + elements * (conversion == Conversion.BF16 ? Short.BYTES : Float.BYTES);
   }
 }

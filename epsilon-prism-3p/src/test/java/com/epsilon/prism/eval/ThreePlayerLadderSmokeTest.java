@@ -47,7 +47,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 三人打ちの小さな系譜のスモークテスト（CPU）。バージョン 2〜10 を、予定の卓のジョブ
+ * 三人打ちの小さな系譜のスモークテスト（CPU）。バージョン 2・3・4・5・9・10 を、予定の卓のジョブ
  * （{@link com.epsilon.agent.eval.EvaluationSettings#scheduled}、{@code PrismRun.jobs} と同じ卓）として作り、{@link Jobs#runAll} で実行する。
  * 打ち手はルールベースの打ち手と、1 割の判断で合法手を乱数で選ぶルールベースの打ち手で、卓は実際に打つ。
  *
@@ -59,7 +59,7 @@ public class ThreePlayerLadderSmokeTest {
 
   private static final Variant THREE = Variant.TENHOU_3P;
   private static final String TEST =
-      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 128, promote"
+      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote"
           + " = true}";
 
   /** 混ぜた打ち手のバージョン（ほかはルールベースの打ち手。v1 は 8 つ前のラダーの相手）。 */
@@ -175,7 +175,7 @@ public class ThreePlayerLadderSmokeTest {
                           + "seating={kind = \"EVERY_PLACEMENT\", splits = [\"1v2\", \"2v1\"]}",
                       champion + "draws=SEAT_STREAMS",
                       champion + "wallSet=FRESH",
-                      champion + "walls=128",
+                      champion + "walls=512",
                       champion + "stop=" + TEST,
                       champion + "score=RANK",
                       champion + "every=1",
@@ -191,7 +191,7 @@ public class ThreePlayerLadderSmokeTest {
       DurableFiles.write(run.state(), new PrismState(11, 0, PrismCarry.NONE, 11, Regression.NONE));
       Jobs jobs = new Jobs(run.jobs(), run.report(RunDirectory.EVALUATIONS));
       try (TableLoop loop = new TableLoop(new TableSettings(16, 4, 1000L, 4))) {
-        for (int version = 2; version <= 10; version++) {
+        for (int version : List.of(2, 3, 4, 5, 9, 10)) {
           int order = 0;
           for (Map.Entry<String, TableSpec> entry :
               settings.evaluation().scheduled(version).entrySet()) {

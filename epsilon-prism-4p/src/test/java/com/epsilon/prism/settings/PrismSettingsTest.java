@@ -19,6 +19,7 @@ import com.epsilon.prism.core.TwinDiscard;
 import com.epsilon.prism.grp.PhiSettings;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
+import com.epsilon.prism.noise.LedgerCalibration;
 import com.epsilon.prism.noise.LedgerSettings;
 import com.epsilon.prism.noise.TempoSettings;
 import java.io.IOException;
@@ -35,7 +36,13 @@ public class PrismSettingsTest {
 
   @Test
   public void presetSectionsRoundTrip() {
-    var original = TestSettings.bind(List.of("production", "smoke"), "run.variant=TENHOU_4P");
+    var original =
+        TestSettings.bind(
+            List.of("production", "smoke"),
+            "run.variant=TENHOU_4P",
+            "noise.ledger.mode=APPLY",
+            "noise.ledger.calibration.mode=SHADOW",
+            "noise.ledger.calibration.gapGrid=5");
     Assert.assertEquals(original.value().inference().kernels(), Kernels.NATIVE);
     Assert.assertEquals(original.value().schedule().iterations(), 2);
     Assert.assertEquals(original.value().evaluation().tables().keySet(), Set.of("smoke"));
@@ -44,6 +51,9 @@ public class PrismSettingsTest {
     var saved = Layer.parse("saved settings", Layer.Source.RECORD, written);
     var read = Settings.bind(PrismSettings.class, PrismApp.application().stack(List.of(saved)));
     Assert.assertEquals(Toml.write(read.tree()), written);
+    var ledger = (LedgerSettings.Apply) read.value().noise().ledger();
+    var calibration = (LedgerCalibration.Shadow) ledger.calibration();
+    Assert.assertEquals(calibration.gapGrid(), 5);
   }
 
   /** 三人打ちの系譜のプリセットは四人打ちの jar にも入るが、四人打ちの run では席の分け方（3 席ぶん）を英語の理由で拒む。 */
@@ -80,6 +90,12 @@ public class PrismSettingsTest {
     // 1 つずつ確かめる: 拒まれる上書きと、エラーメッセージに入るキーのパスと理由
     // 補正の R² でゲインを上げる TEMPO には、補正する帳簿のモードが要る
     rejects("noise.tempo.noiseGain", "needs ledger mode APPLY", "noise.ledger.mode=RECORD");
+    rejects(
+        "noise.ledger.calibration.gapGrid",
+        "expected an integer",
+        "noise.ledger.mode=APPLY",
+        "noise.ledger.calibration.mode=SHADOW",
+        "noise.ledger.calibration.gapGrid=1");
     rejects(
         "inference.precision",
         "native kernels compute in BFLOAT16",

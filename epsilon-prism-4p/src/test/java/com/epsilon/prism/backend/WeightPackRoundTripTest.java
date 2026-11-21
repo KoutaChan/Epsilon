@@ -25,8 +25,7 @@ import org.testng.annotations.Test;
  * WeightPack の中身を読み戻して確かめる（CPU、native なし。{@link PackReadBack}）。全ての形で、推論に使う全てのパラメーターが、表か
  * 埋め込みのどちらかにちょうど 1 回置かれる。置いた値は、変換（BF16・BF16 に丸めた FP32・FP32）のとおりにビットまで読み戻せる。記述にある
  * 場所は全て埋まり、場所どうしは重ならない。四人打ちの束では、形式から作る牌の関係の表が {@link MahjongTileRelation#relationIds()} と一致し、
- * 束全体のバイトも変わらない。公開した v760 は、今のコードのまま v2 の深さ 2 の記述として読め、同じように読み戻せる（-Dprism.snapshot に
- * snapshot のディレクトリを渡す。無ければ飛ばす）。
+ * 同じ入力から作る束のバイトも変わらない。
  */
 public class WeightPackRoundTripTest {
   private static final Logger log = LoggerFactory.getLogger(WeightPackRoundTripTest.class);
@@ -78,7 +77,7 @@ public class WeightPackRoundTripTest {
 
       WeightLayout given =
           WeightLayout.of(
-              FOUR_PLAYER,
+              shape.inputFormat(FOUR_PLAYER),
               CollectionArchitecture.from(network.declaration()),
               network.inferenceParameters());
       Assert.assertEquals(given.architecture(), layout.architecture());

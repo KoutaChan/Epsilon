@@ -35,15 +35,14 @@ import org.testng.annotations.DataProvider;
 /** 配布済みの方策と、固定した判断列における各合法手の参照スコア。 */
 public record PublishedModel(String directory, Variant variant, PrismShape shape) {
   private static final String ROOT_PROPERTY = "prism.publishedModels";
-
-  public static PublishedModel fourPlayer(int version) {
-    return new PublishedModel(
-        "prism-v2b-v" + version, Variant.TENHOU_4P, new PrismShape.V2(256, 512, 256, 2));
-  }
+  // CPU の行列積の丸め方によって FP32 の最下位付近に出る差を許す。
+  private static final float CPU_FP32_SCORE_TOLERANCE = 5e-7f;
 
   @DataProvider
   public static Object[] fourPlayerModels() {
-    return new Object[] {fourPlayer(760)};
+    return new Object[] {
+      new PublishedModel("prism-v2b-v760", Variant.TENHOU_4P, new PrismShape.V2(256, 512, 256, 2))
+    };
   }
 
   @DataProvider
@@ -69,13 +68,9 @@ public record PublishedModel(String directory, Variant variant, PrismShape shape
     return snapshot;
   }
 
+  /** 保存したモデルの CPU の eager のスコアを配布モデルの参照と照らす。FP32 は絶対誤差、BF16 はビットで照らす。 */
   public void assertEagerScores() throws IOException {
-    assertEagerScores(snapshot(), shape);
-  }
-
-  /** 保存したモデルの CPU の eager のスコアを、この配布モデルの参照スコアのビットと照らす。 */
-  public void assertEagerScores(Path candidate, PrismShape candidateShape) throws IOException {
-    assertScores(candidate, candidateShape, "cpu", Optional.empty(), Precision.values());
+    assertScores(snapshot(), "cpu", Optional.empty(), Precision.values());
   }
 
   /**
@@ -83,28 +78,20 @@ public record PublishedModel(String directory, Variant variant, PrismShape shape
    * 全て 1 つのバッチにした提出、その並べ替えの 3 通りで照らす。配布モデルが無ければ失敗にする。
    */
   public void assertNativeScores() throws IOException {
-    assertNativeScores(requiredSnapshot(), shape);
-  }
-
-  /** 保存したモデルを専用カーネルで開き、この配布モデルの参照スコアのビットと照らす（照らし方は {@link #assertNativeScores()}）。 */
-  public void assertNativeScores(Path candidate, PrismShape candidateShape) throws IOException {
+    Path snapshot = requiredSnapshot();
     Optional<Backend> backend = Optional.of(KernelDevices.backend());
-    assertScores(candidate, candidateShape, "gpu0", backend, Precision.BFLOAT16);
-    assertBatchedScores(candidate, backend);
+    assertScores(snapshot, "gpu0", backend, Precision.BFLOAT16);
+    assertBatchedScores(snapshot, backend);
   }
 
   /**
    * @param expectedBackend 選ばれるはずの専用カーネルのバックエンド（eager なら空）
    */
   private void assertScores(
-      Path snapshot,
-      PrismShape expectedShape,
-      String device,
-      Optional<Backend> expectedBackend,
-      Precision... precisions)
+      Path snapshot, String device, Optional<Backend> expectedBackend, Precision... precisions)
       throws IOException {
     PrismShape saved = PrismNetwork.readShape(Snapshot.model(snapshot));
-    Assert.assertEquals(saved, expectedShape, directory);
+    Assert.assertEquals(saved, shape, directory);
     Kernels kernels = expectedBackend.isEmpty() ? Kernels.EAGER : Kernels.NATIVE;
     String path = KernelDevices.label(expectedBackend);
     var scores = PublishedScoreReference.load(path);
@@ -120,7 +107,11 @@ public record PublishedModel(String directory, Variant variant, PrismShape shape
       var options = new PolicyOptions(device, precision, 1, kernels);
       try (var policy = ModelFamily.of(Series.PRISM).open(snapshot, variant, options)) {
         Assert.assertEquals(((PrismPolicy) policy).backend(), expectedBackend, key);
-        assertScoreBits(policy, rows, reference.split(";"), key);
+        float tolerance =
+            expectedBackend.isEmpty() && precision == Precision.FLOAT32
+                ? CPU_FP32_SCORE_TOLERANCE
+                : 0.0f;
+        assertScoreRows(policy, rows, reference.split(";"), key, tolerance);
       }
     }
   }
@@ -165,33 +156,40 @@ public record PublishedModel(String directory, Variant variant, PrismShape shape
         Assert.assertTrue(attempt.acquired(), key);
         policy.submit(requests, attempt.ingress()).join();
         for (int i = 0; i < batch.length; i++) {
-          assertRowBits(
-              requests.get(i).scores, references[batch[i]], key + " batch row " + batch[i]);
+          assertRowScores(
+              requests.get(i).scores, references[batch[i]], key + " batch row " + batch[i], 0.0f);
         }
       }
     }
   }
 
-  private static void assertScoreBits(
-      Policy policy, ObservationBatch rows, String[] references, String key) {
+  private static void assertScoreRows(
+      Policy policy, ObservationBatch rows, String[] references, String key, float tolerance) {
     Assert.assertEquals(rows.size(), references.length, key);
     var observation = new Observation(rows.variant());
     for (int row = 0; row < rows.size(); row++) {
-      assertRowBits(
+      assertRowScores(
           policy.evaluate(observation.bind(rows, row)).values(),
           references[row],
-          key + " row " + row);
+          key + " row " + row,
+          tolerance);
     }
   }
 
-  /** 1 局面の全ての合法手のスコアのビットを、参照の 16 進の並びと照らす。 */
-  private static void assertRowBits(float[] actual, String reference, String label) {
+  /** 1 局面の全ての合法手のスコアを、参照の 16 進の並びと照らす。 */
+  private static void assertRowScores(
+      float[] actual, String reference, String label, float tolerance) {
     int[] expected =
         Arrays.stream(reference.trim().split("\\s+")).mapToInt(HexFormat::fromHexDigits).toArray();
     Assert.assertEquals(actual.length, expected.length, label);
     for (int action = 0; action < actual.length; action++) {
-      Assert.assertEquals(
-          Float.floatToRawIntBits(actual[action]), expected[action], label + " action " + action);
+      String location = label + " action " + action;
+      if (tolerance == 0.0f) {
+        Assert.assertEquals(Float.floatToRawIntBits(actual[action]), expected[action], location);
+      } else {
+        Assert.assertEquals(
+            actual[action], Float.intBitsToFloat(expected[action]), tolerance, location);
+      }
     }
   }
 }

@@ -365,7 +365,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
         if (role == Role.MAIN
             && (run.query(slot) == null
                 ? context.split.sampled(coinKey, decisions.id(slot))
-                : first[slot] != null)) split(run, decisions, slot);
+                : first[slot] != null)) split(run, decisions, slot, ws);
       } else if (plans[slot].retain()) record(run, decisions, chosen, slot, ws);
     }
     Arrays.fill(plans, LabelPlan.NONE);
@@ -566,7 +566,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
         recorded);
   }
 
-  private void split(Run<PolicyRequest> run, Decisions decisions, int slot) {
+  private void split(Run<PolicyRequest> run, Decisions decisions, int slot, RuleWorkspace ws) {
     PolicyRequest request = run.query(slot);
     SplitTrial trial = context.split;
     if (request == null) {
@@ -585,7 +585,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
       trial.agree(request.wall(), request.decisionClass());
       return;
     }
-    var pair = trial.disagree(request, a);
+    var pair = trial.disagree(request, a, b, run.full(), ws);
     spawn(run, decisions, slot, a, Role.FORK, List.of(slot(pair, a)));
     spawn(run, decisions, slot, b, Role.FORK, List.of(slot(pair, b)));
   }

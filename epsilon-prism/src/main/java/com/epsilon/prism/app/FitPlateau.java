@@ -28,17 +28,20 @@ import com.epsilon.prism.learn.FitResult;
 import com.epsilon.prism.learn.Teacher;
 import com.epsilon.prism.luck.LedgerCalibrator;
 import com.epsilon.prism.luck.LedgerCorrection;
-import com.epsilon.prism.luck.LedgerMeaning;
 import com.epsilon.prism.luck.LedgerReport;
 import com.epsilon.prism.luck.LuckSettlement;
+import com.epsilon.prism.luck.RootTraining;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.ShapeArm;
+import com.epsilon.prism.noise.LedgerSettings;
+import com.epsilon.prism.noise.RootCoefficients;
 import com.epsilon.prism.noise.TempoLrMode;
 import com.epsilon.prism.noise.TempoSettings;
 import com.epsilon.prism.policy.CollectionPlans;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.rows.CohortWriter;
+import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.run.Snapshot;
 import com.epsilon.prism.settings.PrismSettings;
 import com.google.gson.Gson;
@@ -49,9 +52,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 
@@ -320,6 +326,11 @@ public record FitPlateau(
               : Fit.load(previous.resolve("model"), devices.primary())) {
         var scores =
             AnchorScores.compute(store, rows, anchor, span.first(), path, devices, threads);
+        var ledgerSettings = (LedgerSettings.Fitting) s.noise().ledger();
+        if (ledgerSettings.calibration().scales()
+            || ledgerSettings.rootCoefficients().mode() != RootCoefficients.Mode.OFF) {
+          recordWins(store, rows, scores, ends, span, stage, previous, end == steps, s);
+        }
         var teacher =
             new Teacher(
                 null,
@@ -373,12 +384,61 @@ public record FitPlateau(
         } else {
           network.save(stage.resolve("model"));
           DurableFiles.seal(
-              stage,
-              out.resolve("checkpoint-" + String.format(java.util.Locale.ROOT, "%09d", end)));
+              stage, out.resolve("checkpoint-" + String.format(Locale.ROOT, "%09d", end)));
         }
         DurableFiles.write(out.resolve("progress.json"), after);
       }
       return Outcome.ok("Completed " + end + "/" + steps + " optimizer steps");
+    }
+  }
+
+  private record WinScores(int row, float[] scores) {}
+
+  /** 各チャンクで求めたアンカーの値を引き継ぎ、全行がそろったら各コホートの和了判断を集計する。 */
+  private void recordWins(
+      CohortStore store,
+      int[] rows,
+      AnchorScores anchor,
+      int[] ends,
+      Span span,
+      Path stage,
+      Path previous,
+      boolean complete,
+      PrismSettings settings)
+      throws IOException {
+    String filename = "win-scores.json";
+    List<WinScores> wins = new ArrayList<>();
+    if (previous != null)
+      wins.addAll(
+          Arrays.asList(
+              FIT_JSON.fromJson(Files.readString(previous.resolve(filename)), WinScores[].class)));
+    for (int id : Teacher.winRows(store, rows)) wins.add(new WinScores(id, anchor.scores(id)));
+    if (!complete) {
+      DurableFiles.write(stage.resolve(filename), FIT_JSON.toJson(wins));
+      return;
+    }
+    wins.sort(java.util.Comparator.comparingInt(WinScores::row));
+    int index = 0;
+    LedgerCalibrator previousScale =
+        FitCohorts.history(run, span.first() - 1, settings.run().variant()).scale();
+    for (int j = 0; j < ends.length; j++) {
+      Path report =
+          out.resolve("ledger").resolve(String.format(Locale.ROOT, "%05d.json", span.first() + j));
+      var saved = RecordFile.read(LedgerReport.Full.class, report).value();
+      List<Row> decisions = new ArrayList<>();
+      List<float[]> scores = new ArrayList<>();
+      while (index < wins.size() && wins.get(index).row() < ends[j]) {
+        var win = wins.get(index++);
+        decisions.add(store.read(win.row()));
+        scores.add(win.scores());
+      }
+      DurableFiles.write(
+          report, saved.withWins(settings.run().variant(), previousScale, decisions, scores));
+      var calibration = saved.calibration();
+      previousScale =
+          calibration == null || calibration.next() == null
+              ? null
+              : calibration.next().calibrator();
     }
   }
 
@@ -413,7 +473,7 @@ public record FitPlateau(
 
   /**
    * コホートの範囲の教師の補正を、系譜と同じ帳簿の補正率の受け渡しで作る。最初のコホートには、run の系譜がその前のコホートで当てはめた
-   * 補正率（{@link FitCohorts#calibrator}）を渡し、後のコホートには、前のコホートの行で当てはめた補正率を渡す。コホート t の帳簿は
+   * 補正率を渡し、後のコホートには、前のコホートの行で当てはめた補正率を渡す。コホート t の帳簿は
    * cache/&lt;t&gt;.json に報告の全部を書き、書いてあれば報告から作り直す。
    *
    * @param run コホートを読む run のディレクトリ
@@ -427,14 +487,12 @@ public record FitPlateau(
   public static LedgerCorrection[] corrections(
       Path run, Path cache, PrismSettings settings, int first, int last) throws IOException {
     var corrections = new LedgerCorrection[last - first + 1];
-    LedgerCalibrator carried = FitCohorts.calibrator(run, first - 1);
-    LedgerMeaning fitUnder =
-        carried == null ? null : FitCohorts.meaning(run, first - 1, settings.run().variant());
+    var history = FitCohorts.history(run, first - 1, settings.run().variant());
+    var meaning = LuckSettlement.of(settings.noise(), settings.run().variant()).meaning();
     for (int t = first; t <= last; t++) {
-      Ledger ledger = ledger(run, cache, settings, t, carried, fitUnder);
+      var ledger = ledger(run, cache, settings, t, history);
       corrections[t - first] = ledger.correction();
-      carried = ledger.next();
-      fitUnder = LuckSettlement.of(settings.noise(), settings.run().variant()).meaning();
+      history = new LuckSettlement.History(ledger.next(), meaning, ledger.rootNext());
     }
     return corrections;
   }
@@ -445,62 +503,102 @@ public record FitPlateau(
    * @param correction 教師に掛ける補正（補正率を掛けたものを含む）
    * @param next 次のコホートに渡す補正率（当てはめなければ null）
    */
-  private record Ledger(LedgerCorrection correction, LedgerCalibrator next) {}
+  private record Ledger(
+      LedgerCorrection correction, LedgerCalibrator next, RootTraining.State rootNext) {}
 
   /**
-   * コホート t の帳簿を当てはめ、cache/&lt;t&gt;.json に報告の全部を書く。書いてあれば報告から作り直す。補正率を掛けた報告は、
-   * 掛けた補正率が {@code carried}（前のコホートの報告の補正率）と同じ出どころであることを確かめてから、同じ補正率を掛ける。
+   * コホート t の帳簿を当てはめ、cache/&lt;t&gt;.json に報告の全部を書く。書いてあれば報告から作り直す。報告に保存した係数と倍率から教師を復元する。
    *
-   * @param carried 前のコホートから渡す補正率（無ければ null）
-   * @param fitUnder 渡す補正率を当てはめたコホートの帳簿の意味
+   * @param history 前のコホートで得た補正率と係数の学習状態
    */
   private static Ledger ledger(
-      Path run,
-      Path cache,
-      PrismSettings s,
-      int t,
-      LedgerCalibrator carried,
-      LedgerMeaning fitUnder)
+      Path run, Path cache, PrismSettings s, int t, LuckSettlement.History history)
       throws IOException {
-    Path path = cache.resolve(String.format(java.util.Locale.ROOT, "%05d.json", t));
+    LedgerCalibrator carried = history.scale();
+    Path path = cache.resolve(String.format(Locale.ROOT, "%05d.json", t));
     var luck = LuckSettlement.of(s.noise(), s.run().variant());
-    if (!Files.exists(path)) {
-      try (var store = new CohortStore();
-          var readers = Executors.newFixedThreadPool(s.learner().decodeThreads())) {
-        store.addCohort(CohortWriter.directory(run, t));
-        var rows = store.select(t, t, s.fit().rows());
-        var learned =
-            luck.learn(
-                t,
-                null,
-                store.iterate(rows, s.fit().batch(), readers, s.learner().decodeThreads()),
-                rows.length,
-                carried,
-                fitUnder);
-        if (learned.correction() == null)
-          throw new IOException("No applied ledger for cohort " + t);
-        DurableFiles.write(path, learned.full(luck.recording()));
-        return new Ledger(learned.correction(), learned.next());
-      }
-    }
+    if (!Files.exists(path)) return computeLedger(run, cache, path, s, t, history, luck);
     var saved = RecordFile.read(LedgerReport.Full.class, path).value();
-    var correction = SplitDuel.correction(saved, saved.recording(), s.run().variant());
-    var calibration = saved.calibration();
-    if (calibration == null) {
-      return new Ledger(correction, null);
+    var checkpoint =
+        LuckSettlement.History.read(
+            carried, luck.meaning(), cache, t, saved.roots() == null ? null : t);
+    if (checkpoint.failure() != null || history.failure() != null) {
+      var recovery =
+          new LuckSettlement.History(
+              carried,
+              history.meaning(),
+              null,
+              history.failure() != null ? history.failure() : checkpoint.failure());
+      return computeLedger(run, cache, path, s, t, recovery, luck);
     }
-    if (LedgerReport.Arm.of(calibration.applied()) == LedgerReport.Arm.COMMON_SCALE) {
-      if (carried == null || !LedgerReport.Origin.of(carried).equals(calibration.origin()))
-        throw new IOException(
-            "The saved ledger of cohort "
-                + t
-                + " was taught with the calibrator "
-                + calibration.origin()
-                + ", not the carried "
-                + (carried == null ? "none" : LedgerReport.Origin.of(carried)));
-      correction = correction.scaled(carried);
+    var rootNext = checkpoint.roots();
+    var fitting = (LedgerSettings.Fitting) s.noise().ledger();
+    var rootSettings = fitting.rootCoefficients();
+    var audit = saved.roots();
+    boolean enabled = rootSettings.mode() != RootCoefficients.Mode.OFF;
+    if (enabled != (audit != null)
+        || enabled != (rootNext != null)
+        || enabled
+            && (audit.mode() != rootSettings.mode()
+                || !rootNext.matches(t + 1, s.run().variant(), luck.meaning(), rootSettings)
+                || (audit.status() == null
+                        || audit.status().restart() == null
+                        || audit.model() != null)
+                    && !Objects.equals(
+                        audit.model(),
+                        history.roots() != null
+                                && history
+                                    .roots()
+                                    .matches(t, s.run().variant(), luck.meaning(), rootSettings)
+                            ? history.roots().active()
+                            : null))) {
+      var recovered =
+          new LuckSettlement.History(
+              carried,
+              history.meaning(),
+              null,
+              "Root ledger checkpoint does not match cached cohort " + t);
+      return computeLedger(run, cache, path, s, t, recovered, luck);
+    }
+    var correction = LedgerCorrection.restore(saved, saved.recording(), s.run().variant(), carried);
+    var calibration = saved.calibration();
+    if (calibration == null) return new Ledger(correction, null, rootNext);
+    if (calibration.origin() != null
+        && (carried == null || !LedgerReport.Origin.of(carried).equals(calibration.origin()))) {
+      throw new IOException("Carried calibrator differs from cached cohort " + t);
     }
     return new Ledger(
-        correction, calibration.next() == null ? null : calibration.next().calibrator());
+        correction, calibration.next() == null ? null : calibration.next().calibrator(), rootNext);
+  }
+
+  private static Ledger computeLedger(
+      Path run,
+      Path cache,
+      Path path,
+      PrismSettings s,
+      int t,
+      LuckSettlement.History history,
+      LuckSettlement luck)
+      throws IOException {
+    try (var store = new CohortStore();
+        var readers = Executors.newFixedThreadPool(s.learner().decodeThreads())) {
+      store.addCohort(CohortWriter.directory(run, t));
+      var rows = store.select(t, t, s.fit().rows());
+      var learned =
+          luck.settleWithHistory(
+                  t,
+                  null,
+                  store.iterate(rows, s.fit().batch(), readers, s.learner().decodeThreads()),
+                  rows.length,
+                  history)
+              .calibrate(s.learner().decodeThreads());
+      if (learned.correction() == null
+          && (learned.roots() == null
+              || learned.roots().status().teacher() != LedgerReport.Arm.RAW))
+        throw new IOException("No applied ledger for cohort " + t);
+      if (learned.rootNext() != null) learned.rootNext().write(cache);
+      DurableFiles.write(path, learned.full(luck.recording()));
+      return new Ledger(learned.correction(), learned.next(), learned.rootNext());
+    }
   }
 }

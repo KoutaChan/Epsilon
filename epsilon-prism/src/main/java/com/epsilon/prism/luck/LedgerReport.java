@@ -2,9 +2,12 @@ package com.epsilon.prism.luck;
 
 import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Presence;
+import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.noise.LedgerCalibrationKind;
 import com.epsilon.prism.noise.LedgerCalibrationSource;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.rows.Row;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -212,6 +215,47 @@ public record LedgerReport(
           null);
     }
 
+    /** 凍結したアンカーで採点済みの和了判断から、報告に各補正の教師差を加える。 */
+    public Full withWins(
+        Variant variant, LedgerCalibrator previous, List<Row> decisions, List<float[]> scores)
+        throws IOException {
+      if (calibration == null && (roots == null || roots.model() == null)) return this;
+      var baseline = LedgerCorrection.restoreClasses(this, recording, variant, previous);
+      var measured = calibration;
+      var candidate = roots;
+      if (calibration != null) {
+        LedgerCalibrator carried = calibration.origin() == null ? null : previous;
+        if (calibration.origin() != null
+            && (carried == null || !calibration.origin().equals(Origin.of(carried))))
+          throw new IOException("Missing calibrator for saved win audit");
+        measured =
+            calibration.withGates(
+                new LedgerCalibrator.Gates(baseline.scaled(null), baseline.scaled(carried), variant)
+                    .measure(decisions, scores));
+      }
+      if (roots != null && roots.model() != null)
+        candidate =
+            roots.withGates(
+                new LedgerCalibrator.Gates(
+                        baseline.scaled(
+                            calibration != null && calibration.origin() != null ? previous : null),
+                        new LedgerCorrection.ByRoot(roots.model()),
+                        variant)
+                    .measure(decisions, scores));
+      return new Full(
+          rows,
+          slots,
+          skippedRows,
+          all,
+          byClass,
+          bias,
+          seconds,
+          recording,
+          byCell,
+          measured,
+          candidate,
+          appliedScale);
+    }
 
     public Full {
       byClass = Collections.unmodifiableMap(new LinkedHashMap<>(byClass));

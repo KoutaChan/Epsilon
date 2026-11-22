@@ -1,7 +1,11 @@
 package com.epsilon.prism.luck;
 
+import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.rows.Row;
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 
 /** 凍結した帳簿の係数を、保存行の教師または同じ根から分岐した候補に適用する。 */
 public sealed interface LedgerCorrection {
@@ -20,6 +24,90 @@ public sealed interface LedgerCorrection {
   /** 分岐の根で全員の手牌を記録する必要があるか。 */
   default boolean needsHands() {
     return false;
+  }
+
+  /** 保存した当てはめの報告から補正を作る。区分ごとの係数の名前は、ルール {@code variant} の区分の名前で引く。 */
+  static LedgerCorrection restore(
+      LedgerReport.Full report,
+      LedgerRecording recording,
+      Variant variant,
+      LedgerCalibrator carried)
+      throws IOException {
+    if (report.roots() != null
+        && report.roots().status() != null
+        && report.roots().status().teacher() == LedgerReport.Arm.RAW) return null;
+    if (report.roots() != null && report.roots().applied()) {
+      var model = report.roots().model();
+      if (model == null
+          || model.weights().variant() != variant
+          || model.weights().columns().stream()
+              .anyMatch(col -> !recording.compute().contains(col.group())))
+        throw new IOException("Root ledger model differs from the duel recording");
+      return new LedgerCorrection.ByRoot(model);
+    }
+    return restoreClasses(report, recording, variant, carried);
+  }
+
+  /** 保存した両側の判断クラス別係数と、教師に掛けた共通の補正率を復元する。 */
+  static ByClass restoreClasses(
+      LedgerReport.Full report,
+      LedgerRecording recording,
+      Variant variant,
+      LedgerCalibrator carried)
+      throws IOException {
+    LedgerCalibrator scale = report.appliedScale();
+    if (report.calibration() != null
+        && LedgerReport.Arm.of(report.calibration().applied()) == LedgerReport.Arm.COMMON_SCALE) {
+      if (scale == null) scale = carried;
+      if (scale == null
+          || scale.variant() != variant
+          || !LedgerReport.Origin.of(scale).equals(report.calibration().origin())) {
+        throw new IOException(
+            "Missing matching ledger calibrator for " + report.calibration().origin());
+      }
+    }
+    double[][][] beta = new double[2][DecisionClass.COUNT][];
+    var cells = report.byCell();
+    var partition = cells == null ? null : LedgerCell.of(variant);
+    double[][][][] byCell =
+        cells == null ? null : new double[2][DecisionClass.COUNT][partition.count()][];
+    int loaded = 0;
+    for (DecisionClass group : DecisionClass.values()) {
+      int c = group.ordinal();
+      var folds = report.byClass().getOrDefault(group.name(), report.all()).folds();
+      for (int p = 0; p < 2; p++) beta[p][c] = coefficients(group.name(), folds, p, recording);
+      if (cells == null) continue;
+      for (int cell = 0; cell < partition.count(); cell++) {
+        String name = partition.name(group, cell);
+        var cellFolds = cells.get(name);
+        if (cellFolds == null) continue;
+        loaded++;
+        for (int p = 0; p < 2; p++)
+          byCell[p][c][cell] = coefficients(name, cellFolds, p, recording);
+      }
+    }
+    if (cells != null && loaded != cells.size())
+      throw new IOException("Unknown stage or rank for " + variant + " in ledger report");
+    return new LedgerCorrection.ByClass(beta, partition, byCell, scale);
+  }
+
+  private static double[] coefficients(
+      String name, List<LedgerReport.Fold> folds, int parity, LedgerRecording recording)
+      throws IOException {
+    if (folds.size() != 2) throw new IOException("Expected two ledger folds for " + name);
+    var named = folds.get(parity).beta();
+    if (named.size() != LedgerColumn.COUNT)
+      throw new IOException("Unexpected ledger columns for " + name);
+    double[] beta = new double[LedgerColumn.COUNT];
+    for (LedgerColumn column : LedgerColumn.values()) {
+      var weight = named.get(column.reportName());
+      if (weight == null || !Double.isFinite(weight))
+        throw new IOException("Missing coefficient for " + column);
+      if (weight != 0 && !recording.compute().contains(column.group()))
+        throw new IOException("Nonzero coefficient for unrecorded ledger group " + column.group());
+      beta[column.ordinal()] = weight;
+    }
+    return beta;
   }
 
   /** 判断クラスと局面の区分で係数を共有する補正。 */

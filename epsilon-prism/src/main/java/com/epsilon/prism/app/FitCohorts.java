@@ -296,9 +296,7 @@ public record FitCohorts(
     var sourceSettings = new SettingsRows(new RunDirectory(run)).read().reversed();
     Path anchorDirectory = out.resolve(ANCHOR);
     double r2 = appliedR2 == null ? 0 : appliedR2;
-    LedgerCalibrator carried = calibrator(run, span.first() - 1);
-    LedgerMeaning fitUnder =
-        carried == null ? null : meaning(run, span.first() - 1, settings.run().variant());
+    var history = history(run, span.first() - 1, settings.run().variant());
     Fitted last = null;
     try {
       for (int t = span.first(); t <= span.last(); t++) {
@@ -307,33 +305,15 @@ public record FitCohorts(
         if (rows.length > 0) {
           try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
             ledger =
-                luck.learn(
-                    t,
-                    null,
-                    store.iterate(rows, fitting.batch(), readers, threads),
-                    rows.length,
-                    carried,
-                    fitUnder);
-          }
-          if (ledger.report() != null) {
-            int cohort = t;
-            var source =
-                sourceSettings.stream()
-                    .filter(row -> row.from() <= cohort)
-                    .findFirst()
-                    .orElseThrow(() -> new IOException("Missing settings for cohort " + cohort));
-            var recording =
-                LedgerRecording.of(
-                    Settings.section(NoiseSettings.class, "noise", List.of(source.layer()))
-                        .value()
-                        .ledger());
-            DurableFiles.write(
-                out.resolve(LEDGER).resolve(String.format(Locale.ROOT, "%05d.json", t)),
-                ledger.full(recording));
+                luck.settleWithHistory(
+                        t,
+                        null,
+                        store.iterate(rows, fitting.batch(), readers, threads),
+                        rows.length,
+                        history)
+                    .calibrate(threads);
           }
         }
-        carried = ledger.next();
-        fitUnder = luck.meaning();
         double gain = tempo.gain(t, r2);
         double lrScale = tempo.learningRateScale(t, r2);
         AnchorScores anchor = null;
@@ -350,6 +330,25 @@ public record FitCohorts(
                   devices,
                   threads);
           anchor.requireVersion(t);
+        }
+        ledger = Teacher.auditWins(luck, ledger, store, rows, anchor);
+        history = new LuckSettlement.History(ledger.next(), luck.meaning(), ledger.rootNext());
+        if (history.roots() != null) history.roots().write(out.resolve(LEDGER));
+        if (ledger.report() != null) {
+          int cohort = t;
+          var source =
+              sourceSettings.stream()
+                  .filter(row -> row.from() <= cohort)
+                  .findFirst()
+                  .orElseThrow(() -> new IOException("Missing settings for cohort " + cohort));
+          var recording =
+              LedgerRecording.of(
+                  Settings.section(NoiseSettings.class, "noise", List.of(source.layer()))
+                      .value()
+                      .ledger());
+          DurableFiles.write(
+              out.resolve(LEDGER).resolve(String.format(Locale.ROOT, "%05d.json", t)),
+              ledger.full(recording));
         }
         FitPlan plan =
             new FitPlan(
@@ -395,36 +394,38 @@ public record FitCohorts(
     return last;
   }
 
-  /**
-   * run の系譜がコホート {@code cohort} の行で当てはめた帳簿の補正率（reports/{@value LearnReport#LEDGER_LINES} の、その反復の行の
-   * calibration.next）。
-   *
-   * @return 補正率。その反復の行が無いか、その反復が補正率を当てはめていなければ null
-   * @throws IOException 報告を読めないとき
-   */
-  static LedgerCalibrator calibrator(Path run, int cohort) throws IOException {
-    Path lines = new RunDirectory(run).report(LearnReport.LEDGER_LINES);
-    if (cohort < 1 || !Files.exists(lines)) {
-      return null;
+  /** 直前のコホートの報告から、再学習の最初の教師に必要な係数と補正率を読む。 */
+  static LuckSettlement.History history(Path run, int cohort, Variant variant) throws IOException {
+    var directory = new RunDirectory(run);
+
+    Path file = directory.report(LearnReport.LEDGER_LINES);
+    if (cohort > 0 && Files.exists(file)) {
+      try (var lines = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+        for (String line; (line = lines.readLine()) != null; ) {
+          if (line.isBlank()) continue;
+          JsonObject report = JsonParser.parseString(line).getAsJsonObject();
+          if (report.get("iteration").getAsInt() != cohort) continue;
+          JsonObject calibration = report.getAsJsonObject("calibration");
+          JsonObject next = calibration == null ? null : calibration.getAsJsonObject("next");
+          LedgerCalibrator scale =
+              next == null || !next.has("calibrator")
+                  ? null
+                  : RecordFile.read(
+                          LedgerCalibrator.class,
+                          next.get("calibrator").toString(),
+                          file + " t" + cohort)
+                      .value();
+          return LuckSettlement.History.read(
+              scale,
+              scale == null ? null : meaning(run, cohort, variant),
+              directory.reports(),
+              cohort,
+              report.has("roots") ? cohort : null);
+        }
+      }
     }
-    for (String line : Files.readAllLines(lines, StandardCharsets.UTF_8)) {
-      if (line.isBlank()) {
-        continue;
-      }
-      JsonObject row = JsonParser.parseString(line).getAsJsonObject();
-      if (row.get("iteration").getAsInt() != cohort) {
-        continue;
-      }
-      JsonObject calibration = row.getAsJsonObject("calibration");
-      JsonObject next = calibration == null ? null : calibration.getAsJsonObject("next");
-      if (next == null || !next.has("calibrator")) {
-        return null;
-      }
-      return RecordFile.read(
-              LedgerCalibrator.class, next.get("calibrator").toString(), lines + " t" + cohort)
-          .value();
-    }
-    return null;
+
+    return new LuckSettlement.History(null, null, null);
   }
 
   /**
@@ -433,7 +434,7 @@ public record FitCohorts(
    *
    * @throws IOException 設定の行を読めないか、そのコホートから効く行が無いとき
    */
-  static LedgerMeaning meaning(Path run, int cohort, Variant variant) throws IOException {
+  private static LedgerMeaning meaning(Path run, int cohort, Variant variant) throws IOException {
     SettingsRow row =
         new SettingsRows(new RunDirectory(run))
             .read().reversed().stream()

@@ -11,6 +11,7 @@ import com.epsilon.prism.backend.HipFixtures;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.luck.LedgerCell;
 import com.epsilon.prism.luck.LedgerColumn;
+import com.epsilon.prism.luck.LedgerCorrection;
 import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.luck.LedgerReport;
 import com.epsilon.prism.model.PrismShape;
@@ -51,7 +52,10 @@ public class SplitDuelTest {
       var path = root.resolve("ledger.json");
       Files.writeString(path, RecordFile.json(report));
       var saved = RecordFile.read(LedgerReport.Full.class, path).value();
-      var beta = SplitDuel.correction(saved, report.recording(), Variant.TENHOU_4P).beta();
+      var beta =
+          ((LedgerCorrection.ByClass)
+                  LedgerCorrection.restore(saved, report.recording(), Variant.TENHOU_4P, null))
+              .beta();
       int column = LedgerColumn.OPP_IMPROVE_1.ordinal();
       Assert.assertEquals(beta[0][DecisionClass.CALL.ordinal()][column], 1.0);
       Assert.assertEquals(beta[1][DecisionClass.CALL.ordinal()][column], -1.0);
@@ -89,7 +93,8 @@ public class SplitDuelTest {
             10, 20, 0, segment(1), Map.of(), new LedgerReport.Bias(List.of()), 0, null);
     var missing = new LedgerRecording(Set.of(LedgerGroup.POINTS), 12, 2);
     Assert.expectThrows(
-        IOException.class, () -> SplitDuel.correction(report, missing, Variant.TENHOU_4P));
+        IOException.class,
+        () -> LedgerCorrection.restore(report, missing, Variant.TENHOU_4P, null));
   }
 
   private static LedgerReport.Segment segment(double scale) {

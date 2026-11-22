@@ -14,14 +14,10 @@ import com.epsilon.agent.settings.Range;
 import com.epsilon.agent.settings.RecordFile;
 import com.epsilon.grp.Phi;
 import com.epsilon.mahjong.engine.DrawOrder;
-import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.collect.Collector;
 import com.epsilon.prism.collect.Sampling;
 import com.epsilon.prism.collect.SplitTrial;
-import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.grp.HandEndPhi;
-import com.epsilon.prism.luck.LedgerCell;
-import com.epsilon.prism.luck.LedgerColumn;
 import com.epsilon.prism.luck.LedgerCorrection;
 import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.luck.LedgerReport;
@@ -58,8 +54,7 @@ public record SplitDuel(
     @Key(
             doc =
                 "続きを打つ方策の独立した半荘で当てはめた"
-                    + " ledger.json。選択が割れた判断では両方の局末効用から各経路の帳簿補正を引いて差を集計する。省略時は生の効用差を使う。"
-                    + "補正率を掛けた教師の ledger.json は、補正率を作り直せないので受け付けない",
+                    + " ledger.json。選択が割れた判断では両方の局末効用から各経路の帳簿補正を引いて差を集計する。省略時は生の効用差を使う。",
             presence = Presence.ABSENT)
         Path ledger,
     @Key(doc = "Report directory for JSON and TSV", presence = Presence.ABSENT) Path out)
@@ -77,19 +72,11 @@ public record SplitDuel(
                 ((PhiReport) StepReport.read(phi, PhiReport.class).metrics()).value(),
                 settings.utility());
     var fit = ledger == null ? null : RecordFile.read(LedgerReport.Full.class, ledger).value();
-    if (fit != null
-        && fit.calibration() != null
-        && LedgerReport.Arm.of(fit.calibration().applied()) == LedgerReport.Arm.COMMON_SCALE) {
-      throw new IOException(
-          "split-duel rebuilds only the unscaled ledger correction, but "
-              + ledger
-              + " taught with the calibrated scale");
-    }
     var recording =
         fit == null
             ? null
             : recording(fit.recording(), settings.noise().ledger(), context.layers());
-    var correction = fit == null ? null : correction(fit, recording, variant);
+    var correction = fit == null ? null : LedgerCorrection.restore(fit, recording, variant, null);
     long seed = settings.run().seed();
     var cohort =
         new Collector.Cohort(
@@ -189,52 +176,5 @@ public record SplitDuel(
             || keys.contains("policyClip") && supplied.policyClip() != provenance.policyClip()))
       throw new IOException("Ledger recording settings differ from the fit provenance");
     return provenance;
-  }
-
-  /** 保存した当てはめの報告から補正を作る。区分ごとの係数の名前は、ルール {@code variant} の区分の名前で引く。 */
-  static LedgerCorrection.ByClass correction(
-      LedgerReport.Full report, LedgerRecording recording, Variant variant) throws IOException {
-    double[][][] beta = new double[2][DecisionClass.COUNT][];
-    var cells = report.byCell();
-    var partition = cells == null ? null : LedgerCell.of(variant);
-    double[][][][] byCell =
-        cells == null ? null : new double[2][DecisionClass.COUNT][partition.count()][];
-    int loaded = 0;
-    for (DecisionClass group : DecisionClass.values()) {
-      int c = group.ordinal();
-      var folds = report.byClass().getOrDefault(group.name(), report.all()).folds();
-      for (int p = 0; p < 2; p++) beta[p][c] = coefficients(group.name(), folds, p, recording);
-      if (cells == null) continue;
-      for (int cell = 0; cell < partition.count(); cell++) {
-        String name = partition.name(group, cell);
-        var cellFolds = cells.get(name);
-        if (cellFolds == null) continue;
-        loaded++;
-        for (int p = 0; p < 2; p++)
-          byCell[p][c][cell] = coefficients(name, cellFolds, p, recording);
-      }
-    }
-    if (cells != null && loaded != cells.size())
-      throw new IOException("Unknown stage or rank for " + variant + " in ledger report");
-    return new LedgerCorrection.ByClass(beta, partition, byCell);
-  }
-
-  private static double[] coefficients(
-      String name, List<LedgerReport.Fold> folds, int parity, LedgerRecording recording)
-      throws IOException {
-    if (folds.size() != 2) throw new IOException("Expected two ledger folds for " + name);
-    var named = folds.get(parity).beta();
-    if (named.size() != LedgerColumn.COUNT)
-      throw new IOException("Unexpected ledger columns for " + name);
-    double[] beta = new double[LedgerColumn.COUNT];
-    for (LedgerColumn column : LedgerColumn.values()) {
-      var weight = named.get(column.reportName());
-      if (weight == null || !Double.isFinite(weight))
-        throw new IOException("Missing coefficient for " + column);
-      if (weight != 0 && !recording.compute().contains(column.group()))
-        throw new IOException("Nonzero coefficient for unrecorded ledger group " + column.group());
-      beta[column.ordinal()] = weight;
-    }
-    return beta;
   }
 }

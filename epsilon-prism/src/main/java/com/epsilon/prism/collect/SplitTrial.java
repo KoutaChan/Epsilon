@@ -2,6 +2,9 @@ package com.epsilon.prism.collect;
 
 import com.epsilon.agent.play.TableLoop;
 import com.epsilon.grp.Phi;
+import com.epsilon.mahjong.engine.FullView;
+import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.prism.auxiliary.OracleCapture;
 import com.epsilon.prism.core.CrnSeeds;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.eval.GameEstimate;
@@ -26,7 +29,7 @@ public final class SplitTrial {
       all.add(group, 0);
     }
 
-    synchronized Pair start(DecisionClass group, int seat, int a, double[] beta) {
+    synchronized Pair start(DecisionClass group, int seat, int a, double[][] beta) {
       var pair = new Pair(this, group, seat, a, beta);
       pending.addLast(pair);
       return pair;
@@ -47,14 +50,14 @@ public final class SplitTrial {
   final PolicyService first;
   final PolicyService second;
   private final double rate;
-  private final LedgerCorrection.ByClass correction;
+  private final LedgerCorrection correction;
 
   private SplitTrial(
       Collector.Cohort cohort,
       double rate,
       PolicyService first,
       PolicyService second,
-      LedgerCorrection.ByClass correction) {
+      LedgerCorrection correction) {
     if (!(rate > 0 && rate <= 1)) throw new IllegalArgumentException("q must be in (0, 1]");
     if ((cohort.ledger() == null) != (correction == null))
       throw new IllegalArgumentException("Incomplete ledger");
@@ -73,7 +76,7 @@ public final class SplitTrial {
       double q,
       PolicyService a,
       PolicyService b,
-      LedgerCorrection.ByClass correction) {
+      LedgerCorrection correction) {
     var trial = new SplitTrial(cohort, q, a, b, correction);
     Collector.play(table, cohort, mu, phi, null, trial);
     return trial.results();
@@ -87,15 +90,21 @@ public final class SplitTrial {
     games.get(wall).agree(group);
   }
 
-  Pair disagree(PolicyRequest request, int a) {
+  Pair disagree(PolicyRequest request, int a, int b, FullView full, RuleWorkspace ws) {
     DecisionClass group = request.decisionClass();
-    double[] beta = null;
+    double[][] beta = null;
     if (correction != null) {
-      int cell =
-          correction.cells() == null
-              ? 0
-              : correction.cells().of(request.recordWords(), request.recordBase());
-      beta = correction.coefficients(request.wall(), group.ordinal(), cell);
+      long[] hands =
+          correction.needsHands() ? OracleCapture.capture(full, request.seat(), ws) : new long[0];
+      beta =
+          correction.atRoot(
+              request.wall(),
+              group.ordinal(),
+              request.recordWords(),
+              request.recordBase(),
+              hands,
+              a,
+              b);
     }
     return games.get(request.wall()).start(group, request.seat(), a, beta);
   }
@@ -120,10 +129,10 @@ public final class SplitTrial {
     private final DecisionClass group;
     private final int seat;
     private final int a;
-    private final double[] beta;
+    private final double[][] beta;
     private double first = Double.NaN, second = Double.NaN, adjustment;
 
-    Pair(Game game, DecisionClass group, int seat, int a, double[] beta) {
+    Pair(Game game, DecisionClass group, int seat, int a, double[][] beta) {
       this.game = game;
       this.group = group;
       this.seat = seat;
@@ -144,7 +153,7 @@ public final class SplitTrial {
     @Override
     public void acceptLedger(int action, double[] terms) {
       adjustment = 0;
-      for (int i = 0; i < terms.length; i++) adjustment += beta[i] * terms[i];
+      for (int i = 0; i < terms.length; i++) adjustment += beta[action == a ? 0 : 1][i] * terms[i];
     }
 
     @Override

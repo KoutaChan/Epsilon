@@ -583,7 +583,56 @@ public record LedgerReport(
       @Key(doc = "J_影 − J_生", presence = Presence.ABSENT) Double shadowMinusRaw,
       @Key(doc = "J_影 − J_生 の標準誤差", presence = Presence.ABSENT) Double seShadowMinusRaw,
       @Key(doc = "1 − J_影 / J_今", presence = Presence.ABSENT) Double shadowVsCurrent,
-      @Key(doc = "1 − J_影 / J_今 の標準誤差", presence = Presence.ABSENT) Double seShadowVsCurrent) {}
+      @Key(doc = "1 − J_影 / J_今 の標準誤差", presence = Presence.ABSENT) Double seShadowVsCurrent,
+      @Key(doc = "独立したコホートを合わせるための、半荘単位の対応差の集計", presence = Presence.ABSENT) Paired paired,
+      @Key(doc = "根の補正の J から比較の腕の J を引いた対応差", presence = Presence.ABSENT) Double shadowMinusCurrent,
+      @Key(doc = "比較の腕との対応差の半荘単位の標準誤差", presence = Presence.ABSENT) Double seShadowMinusCurrent) {}
+
+  /**
+   * 生からの二乗誤差の差を、半荘を単位にして合算するための値。半荘ごとの行数を n、差の和から n × 全行の平均差を引いた値を r とする。
+   *
+   * @param rows 行数
+   * @param games 半荘数
+   * @param mean 1 行あたりの平均差
+   * @param countSquares n の二乗の和
+   * @param countResidual n と r の積の和
+   * @param residualSquares r の二乗の和
+   */
+  public record Paired(
+      long rows,
+      long games,
+      double mean,
+      double countSquares,
+      double countResidual,
+      double residualSquares) {
+    /** 異なる半荘からなる 2 つの標本を、合算後の平均差のまわりに中心化する。 */
+    public Paired plus(Paired other) {
+      long total = Math.addExact(rows, other.rows);
+      double pooled = mean + (other.mean - mean) * ((double) other.rows / total);
+      double shift = mean - pooled, otherShift = other.mean - pooled;
+      return new Paired(
+          total,
+          Math.addExact(games, other.games),
+          pooled,
+          countSquares + other.countSquares,
+          countResidual
+              + shift * countSquares
+              + other.countResidual
+              + otherShift * other.countSquares,
+          squaresAt(shift) + other.squaresAt(otherShift));
+    }
+
+    private double squaresAt(double shift) {
+      return residualSquares + shift * (2 * countResidual + shift * countSquares);
+    }
+
+    /** 対応差の平均の標準誤差。半荘が 1 件のときは推定できないため null を返す。 */
+    public Double se() {
+      return games < 2
+          ? null
+          : Math.sqrt((double) games / (games - 1) * Math.max(0, residualSquares)) / rows;
+    }
+  }
 
   /**
    * 補正の向きの監査の、事前に決めた群 1 つ（{@link LedgerCalibrator} の監査の群）。補正は行の全ての手に同じ量を足しても J を変えないので、

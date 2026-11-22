@@ -458,6 +458,33 @@ public record LedgerCalibrator(
   /** 監査の群の、接戦と大差の点差の境（点）。 */
   static final int CLOSE_GAP = 4000, WIDE_GAP = 18000;
 
+  static Group[] bands(Variant variant) {
+    List<Group> named = new ArrayList<>();
+    named.add(new Group("all"));
+    named.add(new Group("early"));
+    named.add(new Group("last"));
+    for (int rank = 0; rank < variant.seats(); rank++)
+      for (int band = 0; band < GAP_BANDS.length; band++)
+        named.add(new Group("rank" + (rank + 1) + "_" + bandName(GAP_BANDS, band, "_")));
+    return named.toArray(Group[]::new);
+  }
+
+  static void addBands(
+      Group[] groups,
+      Variant variant,
+      LedgerCell.Standing s,
+      long game,
+      double raw,
+      double current,
+      double shadow) {
+    boolean last = s.round() >= variant.lastRound();
+    groups[0].add(game, raw, current, shadow);
+    groups[last ? 2 : 1].add(game, raw, current, shadow);
+    if (last)
+      groups[3 + s.rank() * GAP_BANDS.length + band(GAP_BANDS, s.gap())].add(
+          game, raw, current, shadow);
+  }
+
   /**
    * 補正率を求めるモードで、係数を当てはめた後の行をもう一度順に読む。生（raw）・帳簿の補正 Y − β·L（current）・補正率を掛けた補正
    * Y − h(o)·β·L（shadow）の 3 つの腕で、行内の J とスロットの残差を測り、局面の帯ごとと半荘ごとに束ねる。補正の向きの監査（{@link
@@ -496,14 +523,7 @@ public record LedgerCalibrator(
       this.scale = scale;
       this.variant = Objects.requireNonNull(variant, "variant");
       sums = new Sums(new Grid(variant, next.gapGrid(), next.roundGrid()));
-      List<Group> named = new ArrayList<>();
-      named.add(new Group("all"));
-      named.add(new Group("early"));
-      named.add(new Group("last"));
-      for (int rank = 0; rank < variant.seats(); rank++)
-        for (int band = 0; band < GAP_BANDS.length; band++)
-          named.add(new Group("rank" + (rank + 1) + "_" + bandName(GAP_BANDS, band, "_")));
-      groups = named.toArray(Group[]::new);
+      groups = bands(variant);
       List<AuditGroup> checked = new ArrayList<>();
       for (String name : AUDIT_GROUPS) checked.add(new AuditGroup(name));
       for (DecisionClass decision : DecisionClass.values())
@@ -563,12 +583,7 @@ public record LedgerCalibrator(
       histogram[Math.min((int) (h * HISTOGRAM), HISTOGRAM - 1)]++;
       long game = row.gameId();
       boolean last = standing.round() >= variant.lastRound();
-      groups[0].add(game, raw, cur, shadow);
-      groups[last ? 2 : 1].add(game, raw, cur, shadow);
-      if (last) {
-        int band = band(GAP_BANDS, standing.gap());
-        groups[3 + standing.rank() * GAP_BANDS.length + band].add(game, raw, cur, shadow);
-      }
+      addBands(groups, variant, standing, game, raw, cur, shadow);
       int played = -1;
       for (int i = 0; i < m && played < 0; i++) if (measured[i] == row.played()) played = i;
       double offset = played < 0 ? Double.NaN : (terms[played] - meanB) * m / (m - 1);
@@ -730,7 +745,7 @@ public record LedgerCalibrator(
    * <p>差 d = mean(J_腕 − J_基準) の標準誤差は、半荘 g の和 S_g と行の数 n_g から se² = G/(G−1)·Σ_g (S_g^腕 − S_g^基準 − d·n_g)²/N²。
    * 比 1 − J_影/J_今 は、R = ΣJ_影/ΣJ_今 で線形化した S_g^影 − R·S_g^今 を J_今 の平均で割って同じ式で求める。
    */
-  private static final class Group {
+  static final class Group {
     final String name;
     final Map<Long, double[]> games = new HashMap<>();
     long rows;
@@ -753,16 +768,27 @@ public record LedgerCalibrator(
     }
 
     LedgerReport.Band band() {
+      return band(false);
+    }
+
+    LedgerReport.Band band(boolean pooled) {
       double n = rows;
       double raw = sums[0] / n, current = sums[1] / n, shadow = sums[2] / n;
       double dCurrent = current - raw, dShadow = shadow - raw;
       double ratio = sums[2] / sums[1];
       double eCurrent = 0, eShadow = 0, eRatio = 0;
+      double countSquares = 0, countResidual = 0, eCompared = 0;
       for (double[] g : games.values()) {
         double c = g[2] - g[1] - dCurrent * g[0];
         double s = g[3] - g[1] - dShadow * g[0];
         double r = (g[3] - ratio * g[2]) / current;
         eCurrent += c * c;
+        if (pooled) {
+          double delta = g[3] - g[2] - (shadow - current) * g[0];
+          eCompared += delta * delta;
+          countSquares += g[0] * g[0];
+          countResidual += g[0] * s;
+        }
         eShadow += s * s;
         eRatio += r * r;
       }
@@ -778,7 +804,12 @@ public record LedgerCalibrator(
           LedgerReport.finite(dShadow),
           LedgerReport.finite(Math.sqrt(inflation * eShadow) / n),
           LedgerReport.finite(1 - ratio),
-          LedgerReport.finite(Math.sqrt(inflation * eRatio) / n));
+          LedgerReport.finite(Math.sqrt(inflation * eRatio) / n),
+          pooled && rows > 0
+              ? new LedgerReport.Paired(rows, count, dShadow, countSquares, countResidual, eShadow)
+              : null,
+          pooled ? LedgerReport.finite(shadow - current) : null,
+          pooled ? LedgerReport.finite(Math.sqrt(inflation * eCompared) / n) : null);
     }
   }
 

@@ -270,7 +270,12 @@ final class Learner implements AutoCloseable {
           lane.network.forward(
               new ParameterStore(scope, false),
               sent.inputs(),
-              Pass.training(lane.precision, part.measured(), part.auxiliary(), tape));
+              Pass.training(
+                  lane.precision,
+                  part.measured(),
+                  part.auxiliary(),
+                  tape,
+                  part.certifiedTurnRows()));
       NDArray value =
           loss.total(outputs, sent.loss(), gain, denominator, part.share(), pair, false);
       backward(collector, tape, value);
@@ -311,7 +316,12 @@ final class Learner implements AutoCloseable {
               lane.network.forward(
                   new ParameterStore(scope, false),
                   sent.inputs(),
-                  Pass.training(lane.precision, part.measured(), part.auxiliary(), tape));
+                  Pass.training(
+                      lane.precision,
+                      part.measured(),
+                      part.auxiliary(),
+                      tape,
+                      part.certifiedTurnRows()));
           NDArray value =
               loss.total(
                   outputs, sent.loss(), gain, prepared.denominator(), part.share(), pair, readLoss);

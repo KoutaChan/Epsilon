@@ -11,6 +11,7 @@ import com.epsilon.agent.run.SettingsRows;
 import com.epsilon.agent.settings.Change;
 import com.epsilon.prism.Main;
 import com.epsilon.prism.TestSettings;
+import com.epsilon.prism.core.AgariOrder;
 import com.epsilon.prism.eval.EvaluationTable;
 import com.epsilon.prism.noise.LedgerCalibration;
 import com.epsilon.prism.noise.LedgerCalibrationKind;
@@ -110,6 +111,13 @@ public class SettingsChangeTest {
     // 同じ値なら行を足さない
     Assert.assertEquals(change("fit.lrPeak=0.002"), Exit.OK.code());
     Assert.assertEquals(rows().size(), 3);
+
+    // fit.agariOrder は既定 LEGACY で、FIT キーとして CERTIFIED へ切り替えられる
+    Assert.assertEquals(PrismApp.latest(run).fit().agariOrder(), AgariOrder.Mode.LEGACY);
+    Assert.assertEquals(change("fit.agariOrder=CERTIFIED"), Exit.OK.code());
+    Assert.assertEquals(changes(rows().getLast()), Map.of("fit.agariOrder", Change.FIT));
+    Assert.assertEquals(PrismApp.latest(run).fit().agariOrder(), AgariOrder.Mode.CERTIFIED);
+    Assert.assertEquals(change("fit.agariOrder=UNKNOWN"), Exit.USAGE.code());
   }
 
   /**

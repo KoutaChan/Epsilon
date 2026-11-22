@@ -232,6 +232,9 @@ final class ValueGraphHead extends Module {
       if (index.measured != null) {
         peak = NDArrays.where(index.measured.array().gather(pivot, 1), peak, peak.stopGradient());
       }
+      if (index.certifiedTurnRows != null) {
+        peak = NDArrays.where(index.certifiedTurnRows.array(), peak.stopGradient(), peak);
+      }
       peak = peak.mul(index.pivotPresent.array()).reshape(index.rows);
       NDArray turn =
           NDArrays.gatherRows(peak, index.turnRows.array())

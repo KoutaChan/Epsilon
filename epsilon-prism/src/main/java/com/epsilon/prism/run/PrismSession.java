@@ -141,7 +141,8 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
               settings.network().shape(),
               Device.cpu(),
               settings.run().seed() + BLANK_SEED)) {
-        Snapshot.fill(part, (PrismNetwork) blank.getBlock(), PolicyParams.of(1));
+        Snapshot.fill(
+            part, (PrismNetwork) blank.getBlock(), PolicyParams.of(1, settings.fit().agariOrder()));
       }
       DurableFiles.seal(part, first);
     }

@@ -223,7 +223,7 @@ public record FitCohorts(
         Snapshot.write(
             snapshot,
             fitted,
-            PolicyParams.of(span.last() + 1),
+            PolicyParams.of(span.last() + 1, settings.fit().agariOrder()),
             new Snapshot.FitRecord(
                 run.toString(),
                 span.first(),
@@ -280,7 +280,14 @@ public record FitCohorts(
         fitting.auxiliary(),
         devices.devices());
     FitResult result =
-        Fit.run(store, rows, model, plan, Teacher.RAW, devices, settings.learner().decodeThreads());
+        Fit.run(
+            store,
+            rows,
+            model,
+            plan,
+            Teacher.RAW.withAgariOrder(fitting.agariOrder()),
+            devices,
+            settings.learner().decodeThreads());
     return new Fitted(plan, result);
   }
 
@@ -366,7 +373,12 @@ public record FitCohorts(
                     model,
                     plan,
                     new Teacher(
-                        ledger.correction(), anchor, anchor == null ? 0 : 1 - gain, (float) gain),
+                        ledger.correction(),
+                        anchor,
+                        anchor == null ? 0 : 1 - gain,
+                        (float) gain,
+                        null,
+                        fitting.agariOrder()),
                     devices,
                     threads);
         LOG.info(

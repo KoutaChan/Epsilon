@@ -8,6 +8,7 @@ import ai.djl.pytorch.engine.PtNDManager;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.Limits;
 import com.epsilon.prism.backend.EventPages;
+import com.epsilon.prism.core.AgariOrder;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputFormat;
@@ -70,6 +71,7 @@ final class BatchEncoder implements AutoCloseable {
   }
 
   final boolean eventPages;
+  private final AgariOrder.Mode agariOrder;
   private final ConcurrentHashMap<HostInputs, EventPages> pageBatches = new ConcurrentHashMap<>();
   private final InputFormat format;
   private final BatchPlan.Capacity capacity;
@@ -91,14 +93,24 @@ final class BatchEncoder implements AutoCloseable {
    * @throws IllegalArgumentException 最も長い 1 行が上限に入らないとき
    */
   BatchEncoder(InputFormat format, int budget, Memory memory) {
-    this(format, budget, memory, false);
+    this(format, budget, memory, false, AgariOrder.Mode.LEGACY);
   }
 
   BatchEncoder(InputFormat format, int budget, Memory memory, boolean eventPages) {
+    this(format, budget, memory, eventPages, AgariOrder.Mode.LEGACY);
+  }
+
+  BatchEncoder(
+      InputFormat format,
+      int budget,
+      Memory memory,
+      boolean eventPages,
+      AgariOrder.Mode agariOrder) {
     if (eventPages && !format.eventsSettleOnPublication()) {
       throw new IllegalArgumentException("event pages require immutable public event columns");
     }
     this.eventPages = eventPages;
+    this.agariOrder = agariOrder == null ? AgariOrder.Mode.LEGACY : agariOrder;
     if (budget < format.fixedTokens() + format.maxEvents()) {
       throw new IllegalArgumentException("token budget cannot hold the longest row: " + budget);
     }
@@ -147,7 +159,8 @@ final class BatchEncoder implements AutoCloseable {
                 (int) Math.min(capacity.actions(), (long) rows * Limits.MAX_LEGAL_ACTIONS));
         inputs.add(allocate(limits));
       }
-      encodings.add(new Encoding(format, inputs::get, eventPages ? pageBatches::get : null));
+      encodings.add(
+          new Encoding(format, inputs::get, eventPages ? pageBatches::get : null, agariOrder));
     }
     reserved = true;
   }
@@ -166,7 +179,8 @@ final class BatchEncoder implements AutoCloseable {
     Encoding encoding = encodings.poll();
     if (encoding != null) return encoding;
     if (reserved) throw new IllegalStateException("no reserved input available");
-    return new Encoding(format, ignored -> batch(), eventPages ? pageBatches::get : null);
+    return new Encoding(
+        format, ignored -> batch(), eventPages ? pageBatches::get : null, agariOrder);
   }
 
   /** 呼び出しスレッドの作業領域を借り、要求を付ける。 */

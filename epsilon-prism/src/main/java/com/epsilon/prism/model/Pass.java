@@ -13,14 +13,19 @@ import java.util.Objects;
  * @param auxiliary 補助のヘッドの教師（補助のヘッドを計算しないなら null）
  * @param tape バックボーンの Attention の自前の演算。逆伝播のために記録するものは学習だけで使い、推論では記録しない
  *     {@link AttentionTape#forwardOnly} を使う。null なら DJL の演算を使う
+ * @param certifiedTurnRows 証明辺のあるツモ和了を含む行の印（学習で該当行があるマイクロバッチだけ。それ以外は null）
  */
 public record Pass(
-    Precision precision, boolean[] measured, AuxiliaryLabels auxiliary, AttentionTape tape) {
+    Precision precision,
+    boolean[] measured,
+    AuxiliaryLabels auxiliary,
+    AttentionTape tape,
+    boolean[] certifiedTurnRows) {
 
   /**
    * 値の組み合わせを確かめる。
    *
-   * @throws IllegalArgumentException 推論に、補助のヘッドの教師か記録する Attention を渡したとき
+   * @throws IllegalArgumentException 推論に、補助のヘッドの教師・記録する Attention・証明辺の印を渡したとき
    */
   public Pass {
     Objects.requireNonNull(precision, "precision");
@@ -30,6 +35,14 @@ public record Pass(
     if (measured == null && tape != null && tape.recording()) {
       throw new IllegalArgumentException("a recording attention tape is used only in training");
     }
+    if (measured == null && certifiedTurnRows != null) {
+      throw new IllegalArgumentException("certified turn rows are used only in training");
+    }
+  }
+
+  public Pass(
+      Precision precision, boolean[] measured, AuxiliaryLabels auxiliary, AttentionTape tape) {
+    this(precision, measured, auxiliary, tape, null);
   }
 
   public static Pass inference(Precision precision) {
@@ -44,7 +57,7 @@ public record Pass(
    * @return 順伝播の種類
    */
   public static Pass inference(Precision precision, AttentionTape attention) {
-    return new Pass(precision, null, null, attention);
+    return new Pass(precision, null, null, attention, null);
   }
 
   /**
@@ -56,7 +69,7 @@ public record Pass(
    * @return 順伝播の種類
    */
   public static Pass training(Precision precision, boolean[] measured, AuxiliaryLabels auxiliary) {
-    return training(precision, measured, auxiliary, null);
+    return training(precision, measured, auxiliary, null, null);
   }
 
   /**
@@ -70,7 +83,31 @@ public record Pass(
    */
   public static Pass training(
       Precision precision, boolean[] measured, AuxiliaryLabels auxiliary, AttentionTape tape) {
-    return new Pass(precision, Objects.requireNonNull(measured, "measured"), auxiliary, tape);
+    return training(precision, measured, auxiliary, tape, null);
+  }
+
+  /**
+   * 証明辺のあるツモ行の印を添えて学習の順伝播を返す。
+   *
+   * @param precision 計算の型
+   * @param measured 測った手 C の印（バッチの中の手の順）
+   * @param auxiliary 補助のヘッドの教師（null なら補助のヘッドを計算しない）
+   * @param tape Attention の記録（null なら DJL の演算を使う）
+   * @param certifiedTurnRows 証明辺のあるツモ和了の行の印（該当行が無ければ null）
+   * @return 順伝播の種類
+   */
+  public static Pass training(
+      Precision precision,
+      boolean[] measured,
+      AuxiliaryLabels auxiliary,
+      AttentionTape tape,
+      boolean[] certifiedTurnRows) {
+    return new Pass(
+        precision,
+        Objects.requireNonNull(measured, "measured"),
+        auxiliary,
+        tape,
+        certifiedTurnRows);
   }
 
   public boolean training() {

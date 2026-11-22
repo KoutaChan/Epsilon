@@ -333,7 +333,10 @@ public final class Fit {
     /** 最初のステップの行で学習器をウォームアップする（教師は生の Y）。 */
     void rehearse() {
       int[] rows = batch(order, 0, plan.learner().batchSize());
-      StepFeed.Step step = await(feed.prepare(rows, new Teacher(null, null, 0, gain)));
+      StepFeed.Step step =
+          await(
+              feed.prepare(
+                  rows, new Teacher(null, null, 0, gain, null, plan.learner().agariOrder())));
       try {
         learner.rehearse(step);
       } finally {
@@ -353,6 +356,13 @@ public final class Fit {
       if (teacher.gain() != gain) {
         throw new IllegalArgumentException(
             "the teacher gain " + teacher.gain() + " differs from the learner gain " + gain);
+      }
+      if (teacher.agariOrder() != plan.learner().agariOrder()) {
+        throw new IllegalArgumentException(
+            "the teacher agari order "
+                + teacher.agariOrder()
+                + " differs from the learner agari order "
+                + plan.learner().agariOrder());
       }
       int batchSize = plan.learner().batchSize();
       double sum = 0;

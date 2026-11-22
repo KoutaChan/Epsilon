@@ -102,7 +102,8 @@ public final class StagedBatch {
       AuxiliaryLabels auxiliary,
       List<ValueLabel> labels,
       AuxiliaryLoss.Denominators denominators,
-      boolean attentionTape) {
+      boolean attentionTape,
+      boolean[] certifiedTurnRows) {
     this.region = region;
     BatchPlan plan = batch.plan();
     InputFormat format = plan.format();
@@ -130,7 +131,7 @@ public final class StagedBatch {
               : staging.add(bytes, Staging.Kind.of(tensor.element()), shape(tensor, columns)));
     }
     staging.align();
-    index = new BatchIndex(columns, measured, auxiliary, attentionTape, staging);
+    index = new BatchIndex(columns, measured, auxiliary, attentionTape, certifiedTurnRows, staging);
     staging.align();
     loss = LossInputs.stage(columns, labels, auxiliary, denominators, staging);
     staging.write(region);
@@ -158,7 +159,21 @@ public final class StagedBatch {
       List<ValueLabel> labels,
       AuxiliaryLoss.Denominators denominators,
       boolean attentionTape) {
-    return new StagedBatch(region, batch, measured, auxiliary, labels, denominators, attentionTape);
+    return stage(region, batch, measured, auxiliary, labels, denominators, attentionTape, null);
+  }
+
+  /** 証明辺のあるツモ和了行の印を添えてバッファに並べる。 */
+  public static StagedBatch stage(
+      PinnedUploads region,
+      HostBatch batch,
+      boolean[] measured,
+      AuxiliaryLabels auxiliary,
+      List<ValueLabel> labels,
+      AuxiliaryLoss.Denominators denominators,
+      boolean attentionTape,
+      boolean[] certifiedTurnRows) {
+    return new StagedBatch(
+        region, batch, measured, auxiliary, labels, denominators, attentionTape, certifiedTurnRows);
   }
 
   /**

@@ -212,7 +212,11 @@ public final class NetworkPolicy implements PolicyService {
               runtime,
               maxBatch,
               new BatchEncoder(
-                  format, BatchEncoder.UNBOUNDED, BatchEncoder.Memory.PINNED, cache != null),
+                  format,
+                  BatchEncoder.UNBOUNDED,
+                  BatchEncoder.Memory.PINNED,
+                  cache != null,
+                  params.agariOrder()),
               device -> {
                 var selectedDevice = plans.devices().get(device);
                 return NativeInference.open(
@@ -269,7 +273,8 @@ public final class NetworkPolicy implements PolicyService {
         devices,
         runtime,
         maxBatch,
-        new BatchEncoder(format, tokenBudget, BatchEncoder.Memory.DIRECT),
+        new BatchEncoder(
+            format, tokenBudget, BatchEncoder.Memory.DIRECT, false, params.agariOrder()),
         device -> EagerInference.load(model, device, precision));
   }
 
@@ -309,7 +314,8 @@ public final class NetworkPolicy implements PolicyService {
             format,
             tokenBudget,
             devices.getFirst().isGpu() ? BatchEncoder.Memory.PINNED : BatchEncoder.Memory.DIRECT,
-            reuse),
+            reuse,
+            params.agariOrder()),
         device ->
             NativeInference.open(
                 device,

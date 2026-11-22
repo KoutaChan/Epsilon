@@ -340,7 +340,8 @@ public record FitPlateau(
                 id -> {
                   int index = Arrays.binarySearch(ends, id + 1);
                   return corrections[index >= 0 ? index : -1 - index];
-                });
+                },
+                fit.agariOrder());
         var result =
             Fit.chunk(
                 store,
@@ -375,7 +376,7 @@ public record FitPlateau(
           Snapshot.write(
               stage.resolve("snapshot"),
               network,
-              PolicyParams.of(span.last() + 1),
+              PolicyParams.of(span.last() + 1, fit.agariOrder()),
               new Snapshot.FitRecord(
                   run.toString(), span.first(), span.last(), replicate, plan, total));
           DurableFiles.write(stage.resolve("snapshot/progress.json"), after);

@@ -59,7 +59,7 @@ final class PublishStep implements Step<PrismIteration> {
     DurableFiles.delete(part);
     Path learned = iteration.work().resolve(LearnStep.LEARN).resolve(LearnStep.STUDENT);
     MemorySettings memory = iteration.settings().memory();
-    PolicyParams params = PolicyParams.of(version);
+    PolicyParams params = PolicyParams.of(version, iteration.settings().fit().agariOrder());
     Snapshot.AverageRecord record = null;
     if (!memory.averages()) {
       Snapshot.fillCopy(part, learned, params);

@@ -1,9 +1,11 @@
 package com.epsilon.prism.settings;
 
+import com.epsilon.agent.settings.Change;
 import com.epsilon.agent.settings.InvalidSetting;
 import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Presence;
 import com.epsilon.agent.settings.Range;
+import com.epsilon.prism.core.AgariOrder;
 import com.epsilon.prism.core.ClassTables;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.learn.AdamEpsilon;
@@ -35,6 +37,7 @@ import java.util.Objects;
  * @param auxOracle 読みのヘッドの重み
  * @param auxResult 候補の結果のヘッドの重み
  * @param keepCohorts 行を残すコホートの数（古いものから消す）
+ * @param agariOrder 証明できる和了の順序を教師・学習・推論に反映するか
  */
 public record FittingSettings(
     @Key(doc = "生徒の行の選び方", value = "LABELS_AND_ROOTS") Selection rows,
@@ -55,10 +58,16 @@ public record FittingSettings(
     @Key(doc = "判断のクラスの重み（温度の逆数または一様）", value = "INVERSE_LAMBDA") PairLoss.ClassWeight classWeight,
     @Key(doc = "読みのヘッドの重み", value = "0.01") @Range(min = 0) double auxOracle,
     @Key(doc = "候補の結果のヘッドの重み", value = "0.01") @Range(min = 0) double auxResult,
-    @Key(doc = "行を残すコホートの数（古いものから消す）", value = "16") @Range(min = 1) int keepCohorts) {
+    @Key(doc = "行を残すコホートの数（古いものから消す）", value = "16") @Range(min = 1) int keepCohorts,
+    @Key(
+            doc = "証明できる和了の順序を教師・学習・推論に反映するか（LEGACY / CERTIFIED）",
+            value = "LEGACY",
+            change = Change.FIT)
+        AgariOrder.Mode agariOrder) {
 
   public FittingSettings {
     Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(agariOrder, "agariOrder");
     temperature = ClassTables.copy(temperature);
     if (lrFloor > lrPeak) {
       throw new InvalidSetting("lrFloor", "lrFloor " + lrFloor + " exceeds lrPeak " + lrPeak);
@@ -113,7 +122,8 @@ public record FittingSettings(
         loss,
         classWeight,
         adamEpsilon,
-        rowAnchor);
+        rowAnchor,
+        agariOrder);
   }
 
   /** 補助のヘッドの重み。 */

@@ -226,7 +226,9 @@ final class LearnStep implements Step<PrismIteration> {
                   settled.correction(),
                   tempo.anchored() ? anchor : null,
                   anchorWeight,
-                  (float) gain);
+                  (float) gain,
+                  null,
+                  settings.fit().agariOrder());
           result = fitStudent(prepared, teacher, student);
         } catch (RuntimeException e) {
           failure = LedgerCorrection.PredictionFailure.find(e);
@@ -253,7 +255,13 @@ final class LearnStep implements Step<PrismIteration> {
           result =
               fitStudent(
                   retry,
-                  new Teacher(ledger.correction(), scored, anchorWeight, (float) gain),
+                  new Teacher(
+                      ledger.correction(),
+                      scored,
+                      anchorWeight,
+                      (float) gain,
+                      null,
+                      settings.fit().agariOrder()),
                   student);
         }
       }

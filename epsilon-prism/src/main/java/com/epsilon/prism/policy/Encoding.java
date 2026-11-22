@@ -3,6 +3,7 @@ package com.epsilon.prism.policy;
 import com.epsilon.agent.observe.EventRecords.Prefix;
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.prism.backend.EventPages;
+import com.epsilon.prism.core.AgariOrder;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
@@ -47,6 +48,7 @@ final class Encoding {
   private final Function<HostInputs, EventPages> pageBatches;
   private final InputFormat format;
   private final IntFunction<HostInputs> inputs;
+  private final AgariOrder agariOrder;
   private final List<Chunk> chunks = new ArrayList<>();
   private List<PolicyRequest> rows;
   private int admission;
@@ -69,9 +71,27 @@ final class Encoding {
       InputFormat format,
       IntFunction<HostInputs> inputs,
       Function<HostInputs, EventPages> pageBatches) {
+    this(format, inputs, pageBatches, AgariOrder.Mode.LEGACY);
+  }
+
+  /**
+   * 和了順序クランプのモードを指定して空の作業領域を作る。
+   *
+   * @param format 入力の形式
+   * @param inputs 分割の順に入力領域を借りる関数
+   * @param pageBatches バッチの配置表を返す関数。通常推論では {@code null}
+   * @param agariOrder 推論時の和了順序クランプのモード
+   */
+  Encoding(
+      InputFormat format,
+      IntFunction<HostInputs> inputs,
+      Function<HostInputs, EventPages> pageBatches,
+      AgariOrder.Mode agariOrder) {
     this.inputs = inputs;
     this.pageBatches = pageBatches;
     this.format = format;
+    this.agariOrder =
+        agariOrder == AgariOrder.Mode.CERTIFIED ? new AgariOrder(format.variant()) : null;
   }
 
   /**
@@ -288,6 +308,12 @@ final class Encoding {
         }
         float[] scores = new float[actions];
         output.get(offset + plan.firstAction(row), scores);
+        if (agariOrder != null) {
+          Observation observation = observations[planned[target.first() + row]];
+          if (observation.wins() > 0) {
+            agariOrder.clamp(observation, scores);
+          }
+        }
         GreedyAnswer.write(
             request,
             scores,

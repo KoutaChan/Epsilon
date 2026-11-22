@@ -118,6 +118,9 @@ final class BatchIndex {
   /** C のマスク [行, 手の容量]（学習だけ。推論では null）。同値な手は、組のどれかが C に入っていれば組の全ての手で真。 */
   final Staging.Section measured;
 
+  /** 証明辺のあるツモ和了の行で真 [行, 1]（BOOLEAN。学習で該当行があるバッチだけ、それ以外は null）。 */
+  final Staging.Section certifiedTurnRows;
+
   final int candidateCount;
 
   /** 候補の手 e_a の集約（候補がなければ null）。 */
@@ -133,6 +136,9 @@ final class BatchIndex {
 
   /** 作るのに使った C のフラグ（推論では null）。{@link #builtFor} が順伝播の種類と照合する。 */
   private final boolean[] measuredFlags;
+
+  /** 作るのに使った証明辺ツモ行のフラグ（無ければ null）。{@link #builtFor} が順伝播の種類と照合する。 */
+  private final boolean[] certifiedTurnRowFlags;
 
   /** 作るのに使った補助のヘッドの教師（なければ null）。 */
   private final AuxiliaryLabels labels;
@@ -151,7 +157,13 @@ final class BatchIndex {
   static BatchIndex send(NetworkInputs inputs, Pass pass) {
     Staging staging = new Staging();
     BatchIndex index =
-        new BatchIndex(inputs, pass.measured(), pass.auxiliary(), pass.tape() != null, staging);
+        new BatchIndex(
+            inputs,
+            pass.measured(),
+            pass.auxiliary(),
+            pass.tape() != null,
+            pass.certifiedTurnRows(),
+            staging);
     staging.send(inputs.uploads(), inputs.manager());
     return index;
   }
@@ -172,6 +184,27 @@ final class BatchIndex {
       AuxiliaryLabels labels,
       boolean attentionTape,
       Staging staging) {
+    this(inputs, measuredFlags, labels, attentionTape, null, staging);
+  }
+
+  /**
+   * 証明辺ツモ行の印を含めてインデックスをホストで作って載せる。送るのは呼び出し元。
+   *
+   * @param inputs バッチの大きさとインデックスの、ホストの写し
+   * @param measuredFlags 学習の C のフラグ（バッチの手の順。推論では null）
+   * @param labels 補助のヘッドの教師（補助のヘッドを計算しないなら null）
+   * @param attentionTape Attention の記録がある順伝播で使うか
+   * @param certifiedTurnRowFlags 証明辺のあるツモ和了の行の印（該当行が無ければ null）
+   * @param staging 領域を載せる先
+   * @throws IllegalArgumentException インデックスの並びが正しくないとき
+   */
+  BatchIndex(
+      HostColumns inputs,
+      boolean[] measuredFlags,
+      AuxiliaryLabels labels,
+      boolean attentionTape,
+      boolean[] certifiedTurnRowFlags,
+      Staging staging) {
     format = inputs.format();
     Structure structure = new Structure(inputs);
     Role discardRole = format.discard();
@@ -179,6 +212,7 @@ final class BatchIndex {
     rows = inputs.rows();
     rowActions = structure.actionCount;
     this.measuredFlags = measuredFlags;
+    this.certifiedTurnRowFlags = certifiedTurnRowFlags;
     this.labels = labels;
     this.attentionTape = attentionTape;
 
@@ -392,6 +426,25 @@ final class BatchIndex {
     turnActions = staging.addLongs(lists.turnActions);
     turnGates = staging.addLongs(lists.turnGates);
     turnRows = staging.addLongs(lists.turnRows);
+    if (certifiedTurnRowFlags != null) {
+      if (certifiedTurnRowFlags.length != rows) {
+        throw new IllegalArgumentException(
+            "certifiedTurnRows has " + certifiedTurnRowFlags.length + " entries for " + rows);
+      }
+      boolean anyCertified = false;
+      for (boolean flag : certifiedTurnRowFlags) {
+        if (flag) {
+          anyCertified = true;
+          break;
+        }
+      }
+      certifiedTurnRows =
+          anyCertified && turnCount > 0
+              ? staging.add(certifiedTurnRowFlags, new Shape(rows, 1))
+              : null;
+    } else {
+      certifiedTurnRows = null;
+    }
 
     // 補助のヘッド（学習で教師があるときだけ）
     int[] candidates = labels == null ? new int[0] : labels.candidateActions();
@@ -446,7 +499,8 @@ final class BatchIndex {
   boolean builtFor(Pass pass) {
     return pass.measured() == measuredFlags
         && pass.auxiliary() == labels
-        && (pass.tape() != null) == attentionTape;
+        && (pass.tape() != null) == attentionTape
+        && pass.certifiedTurnRows() == certifiedTurnRowFlags;
   }
 
   /**

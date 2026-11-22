@@ -1,5 +1,6 @@
 package com.epsilon.prism.learn;
 
+import com.epsilon.prism.core.AgariOrder;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.model.LearningRateSchedule;
 import com.epsilon.prism.model.PairLoss;
@@ -20,6 +21,7 @@ import com.epsilon.prism.model.PrismLoss;
  * @param classWeight クラスごとの損失の重み
  * @param adamEpsilon AdamW の分母に加える ε の扱い
  * @param rowAnchor 行の平均のアンカーの重みの決め方
+ * @param agariOrder 証明できる和了の順序を教師・学習・推論に反映するか
  */
 public record FitSettings(
     int steps,
@@ -32,14 +34,44 @@ public record FitSettings(
     PairLoss.Mode loss,
     PairLoss.ClassWeight classWeight,
     AdamEpsilon adamEpsilon,
-    PrismLoss.RowAnchor rowAnchor) {
+    PrismLoss.RowAnchor rowAnchor,
+    AgariOrder.Mode agariOrder) {
 
-  /** 指定のない目的関数・判断クラスの重み・ε の扱い・アンカーには、差分整合・温度の逆数・DJL の固定値・教師のゲインを使う。 */
+  /** 指定のない目的関数・判断クラスの重み・ε の扱い・アンカー・和了順序には既定値を使う。 */
   public FitSettings {
     if (adamEpsilon == null) adamEpsilon = AdamEpsilon.FIXED;
     if (rowAnchor == null) rowAnchor = PrismLoss.RowAnchor.GAIN;
     if (loss == null) loss = PairLoss.Mode.PRISM;
     if (classWeight == null) classWeight = PairLoss.ClassWeight.INVERSE_LAMBDA;
+    if (agariOrder == null) agariOrder = AgariOrder.Mode.LEGACY;
+  }
+
+  /** 和了順序の制約を掛けない設定。 */
+  public FitSettings(
+      int steps,
+      int batchSize,
+      double lrPeak,
+      double lrFloor,
+      float gradientClip,
+      double lambdaDiscard,
+      double lambdaCommit,
+      PairLoss.Mode loss,
+      PairLoss.ClassWeight classWeight,
+      AdamEpsilon adamEpsilon,
+      PrismLoss.RowAnchor rowAnchor) {
+    this(
+        steps,
+        batchSize,
+        lrPeak,
+        lrFloor,
+        gradientClip,
+        lambdaDiscard,
+        lambdaCommit,
+        loss,
+        classWeight,
+        adamEpsilon,
+        rowAnchor,
+        null);
   }
 
   /** アンカーに教師のゲインを掛ける設定。 */
@@ -65,6 +97,7 @@ public record FitSettings(
         loss,
         classWeight,
         adamEpsilon,
+        null,
         null);
   }
 

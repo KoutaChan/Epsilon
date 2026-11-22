@@ -21,6 +21,7 @@ import com.epsilon.prism.model.PrismLoss;
  * @param classWeight クラスごとの損失の重み
  * @param adamEpsilon AdamW の分母に加える ε の扱い
  * @param rowAnchor 行の平均のアンカーの重みの決め方
+ * @param rowAnchorDiscards 行の平均のアンカーで平均を取る打牌の集合
  * @param agariOrder 証明できる和了の順序を教師・学習・推論に反映するか
  */
 public record FitSettings(
@@ -35,12 +36,14 @@ public record FitSettings(
     PairLoss.ClassWeight classWeight,
     AdamEpsilon adamEpsilon,
     PrismLoss.RowAnchor rowAnchor,
+    PrismLoss.RowAnchorDiscards rowAnchorDiscards,
     AgariOrder.Mode agariOrder) {
 
   /** 指定のない目的関数・判断クラスの重み・ε の扱い・アンカー・和了順序には既定値を使う。 */
   public FitSettings {
     if (adamEpsilon == null) adamEpsilon = AdamEpsilon.FIXED;
     if (rowAnchor == null) rowAnchor = PrismLoss.RowAnchor.GAIN;
+    if (rowAnchorDiscards == null) rowAnchorDiscards = PrismLoss.RowAnchorDiscards.MEASURED;
     if (loss == null) loss = PairLoss.Mode.PRISM;
     if (classWeight == null) classWeight = PairLoss.ClassWeight.INVERSE_LAMBDA;
     if (agariOrder == null) agariOrder = AgariOrder.Mode.LEGACY;
@@ -71,6 +74,7 @@ public record FitSettings(
         classWeight,
         adamEpsilon,
         rowAnchor,
+        null,
         null);
   }
 
@@ -97,6 +101,7 @@ public record FitSettings(
         loss,
         classWeight,
         adamEpsilon,
+        null,
         null,
         null);
   }

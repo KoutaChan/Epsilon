@@ -160,7 +160,9 @@ final class Learner implements AutoCloseable {
     this.devices = devices;
     schedule = plan.schedule();
     gradientClip = plan.learner().gradientClip();
-    loss = new PrismLoss(plan.auxiliary(), plan.learner().rowAnchor());
+    loss =
+        new PrismLoss(
+            plan.auxiliary(), plan.learner().rowAnchor(), plan.learner().rowAnchorDiscards());
     pair = plan.learner().loss().objective(plan.learner().classWeight());
     this.gain = gain;
     this.runtime = runtime;

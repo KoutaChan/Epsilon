@@ -254,6 +254,134 @@ public class PrismLossTest {
   }
 
   /**
+   * {@link PrismLoss.RowAnchorDiscards#LEGAL} では、測った打牌が 1 つ以上ある行で合法な打牌すべての平均を 0 に留め、
+   * 測った打牌どうし・未測定の打牌との差には勾配を掛けず、パディングと測った打牌の無い行を除外する。
+   * {@link PrismLoss.RowAnchorDiscards#MEASURED} は {@link ReferenceLoss} および既定コンストラクタとビットで一致する。
+   */
+  @Test
+  public void legalRowAnchorAveragesAllLegalDiscardsAndMeasuredMatchesReference() {
+    PrismLoss measured =
+        new PrismLoss(
+            AuxiliaryLoss.standard(),
+            PrismLoss.RowAnchor.GAIN,
+            PrismLoss.RowAnchorDiscards.MEASURED);
+    PrismLoss defaultLoss = new PrismLoss(AuxiliaryLoss.standard());
+    PrismLoss legal =
+        new PrismLoss(
+            AuxiliaryLoss.standard(), PrismLoss.RowAnchor.GAIN, PrismLoss.RowAnchorDiscards.LEGAL);
+
+    int rows = 4;
+    int capacity = 5;
+    int[] actions = {4, 3, 2, 5};
+    // 行 0: 合法打牌 3（測った 2・未測 1）+ 非打牌 1 + パディング枠に誤フラグ（a < actions で除外）
+    // 行 1: 合法打牌 2（測った打牌 0）+ 非打牌 1（測った）→ 測った打牌が無いためアンカー重み 0
+    // 行 2: 合法打牌 0（応答行）→ 割る数は 1、アンカー重み 0
+    // 行 3: 合法打牌 4（測った 1・未測 3）+ 非打牌 1（測った）
+    boolean[] discards = {
+      true, true, true, false, true,
+      true, true, false, false, false,
+      false, false, false, false, false,
+      true, true, true, true, false
+    };
+    boolean[] legalMask = new boolean[rows * capacity];
+    for (int r = 0; r < rows; r++) {
+      for (int a = 0; a < actions[r]; a++) {
+        legalMask[r * capacity + a] = true;
+      }
+    }
+    float[] scoreValues = {
+      0.30f, -0.10f, 0.70f, 1.25f, 9.50f,
+      0.40f, 0.80f, -0.20f, 4.00f, 5.00f,
+      0.50f, 0.00f, 3.00f, 2.00f, 1.00f,
+      -0.60f, 0.20f, 0.60f, 1.00f, -0.50f
+    };
+    List<ValueLabel> labels =
+        List.of(
+            new ValueLabel(new float[] {0.1f, -0.2f, Float.NaN, 0.3f}, 0.05f, 1.5f),
+            new ValueLabel(new float[] {Float.NaN, Float.NaN, 0.2f}, 0.05f, 2.0f),
+            new ValueLabel(new float[] {0.4f, 0.0f}, 0.10f, 1.2f),
+            new ValueLabel(
+                new float[] {-0.3f, Float.NaN, Float.NaN, Float.NaN, 0.2f}, 0.05f, 0.75f));
+
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+      Shape shape = new Shape(rows, capacity);
+      NDArray legalArray = manager.create(legalMask, shape);
+
+      NDArray legalScores = manager.create(scoreValues, shape);
+      legalScores.setRequiresGradient(true);
+      Outputs legalOutputs = new Outputs(legalScores, legalArray, actions, discards, null);
+      float legalRowMean;
+      try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
+        NDArray term = legal.rowMean(manager, legalOutputs, labels);
+        collector.backward(term);
+        legalRowMean = term.getFloat();
+      }
+      // 行 0: mean = (0.30 - 0.10 + 0.70) / 3 = 0.30, w = 1.5
+      // 行 3: mean = (-0.60 + 0.20 + 0.60 + 1.00) / 4 = 0.30, w = 0.75
+      float mean0 = (0.30f + -0.10f + 0.70f) / 3f;
+      float mean3 = (-0.60f + 0.20f + 0.60f + 1.00f) / 4f;
+      float expectedLegal = 1.5f * mean0 * mean0 + 0.75f * mean3 * mean3;
+      Assert.assertEquals(legalRowMean, expectedLegal, 1e-6f, "LEGAL rowMean");
+
+      float[] legalGrad = legalScores.getGradient().toFloatArray();
+      float g0 = 2f * 1.5f * mean0 / 3f;
+      float g3 = 2f * 0.75f * mean3 / 4f;
+      float[] expectedGrad = {
+        g0, g0, g0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, g3, g3, g3, g3, 0f
+      };
+      for (int i = 0; i < expectedGrad.length; i++) {
+        Assert.assertEquals(legalGrad[i], expectedGrad[i], 1e-6f, "LEGAL gradient " + i);
+      }
+
+      // MEASURED は既定コンストラクタおよび ReferenceLoss とビット一致
+      NDArray measuredScores = manager.create(scoreValues, shape);
+      measuredScores.setRequiresGradient(true);
+      Outputs measuredOutputs = new Outputs(measuredScores, legalArray, actions, discards, null);
+      float measuredTotal;
+      try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
+        NDArray total =
+            measured.total(manager, measuredOutputs, labels, null, GAIN, DENOMINATOR, SHARE);
+        collector.backward(total);
+        measuredTotal = total.getFloat();
+      }
+
+      NDArray defaultScores = manager.create(scoreValues, shape);
+      defaultScores.setRequiresGradient(true);
+      Outputs defaultOutputs = new Outputs(defaultScores, legalArray, actions, discards, null);
+      float defaultTotal;
+      try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
+        NDArray total =
+            defaultLoss.total(manager, defaultOutputs, labels, null, GAIN, DENOMINATOR, SHARE);
+        collector.backward(total);
+        defaultTotal = total.getFloat();
+      }
+
+      NDArray refScores = manager.create(scoreValues, shape);
+      refScores.setRequiresGradient(true);
+      Outputs refOutputs = new Outputs(refScores, legalArray, actions, discards, null);
+      float refTotal;
+      try (GradientCollector collector = manager.getEngine().newGradientCollector()) {
+        NDArray total =
+            ReferenceLoss.total(
+                manager, measured.auxiliary(), refOutputs, labels, null, GAIN, DENOMINATOR, SHARE);
+        collector.backward(total);
+        refTotal = total.getFloat();
+      }
+
+      Assert.assertEquals(
+          Float.floatToRawIntBits(measuredTotal),
+          Float.floatToRawIntBits(defaultTotal),
+          "MEASURED vs default total");
+      Assert.assertEquals(
+          Float.floatToRawIntBits(measuredTotal),
+          Float.floatToRawIntBits(refTotal),
+          "MEASURED vs ReferenceLoss total");
+      assertSameGradient("MEASURED vs default scores", defaultScores, measuredScores);
+      assertSameGradient("MEASURED vs ReferenceLoss scores", refScores, measuredScores);
+    }
+  }
+
+  /**
    * ネットワークの出力を葉にして、送った教師を使う経路と参照の経路（{@link ReferenceLoss}）で、損失と、s・補助のヘッドの出力への勾配が
    * ビットで同じことを確かめる。ネットワークの中の逆伝播は葉の勾配で決まる関数なので、比べるのは葉までにする（GPU の index_add の
    * アトミックな足し算の順に左右されない）。

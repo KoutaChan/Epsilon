@@ -34,6 +34,7 @@ import java.util.Objects;
  * <p>アンカーには教師のゲイン K′ を掛ける（{@link RowAnchor#GAIN}）。教師 (1−K′)·s_アンカー + K′·Ỹ では ℓ_PRISM が s を動かす力が K′ 倍になるので、アンカーだけを
  * 1 倍のままにすると、行の定数を留める力が手の差を学ぶ力に勝つ。D は行の種類で違い（根の記録では打った手と逸脱した手の 2 手だけ）、
  * 似た局面の行どうしで違う手の集合の平均を同時に 0 に留めることになるので、その釣り合いは手の差を縮める向きに働く。
+ * {@link RowAnchorDiscards#LEGAL} では、測った打牌が 1 つ以上ある行で、平均を取る対象を合法な打牌すべてにする。
  *
  * <p>損失は 2 段で取る。学習のレーンは、ネットワークの順伝播の前に教師をデバイスへ送り（{@link StagedBatch#send}）、順伝播の後は送った
  * 配列を読むだけにする（{@link #total(Outputs, LossInputs, float, int, float)}）。GPU のマネージャーで同期してコピーすると、ストリームが
@@ -43,8 +44,10 @@ import java.util.Objects;
  *
  * @param auxiliary 補助のヘッドの損失
  * @param rowAnchor 行の平均のアンカーの重みの決め方
+ * @param rowAnchorDiscards 行の平均のアンカーで平均を取る打牌の集合
  */
-public record PrismLoss(AuxiliaryLoss auxiliary, RowAnchor rowAnchor) {
+public record PrismLoss(
+    AuxiliaryLoss auxiliary, RowAnchor rowAnchor, RowAnchorDiscards rowAnchorDiscards) {
 
   /** 行の平均のアンカーの重みの決め方。 */
   public enum RowAnchor {
@@ -57,6 +60,14 @@ public record PrismLoss(AuxiliaryLoss auxiliary, RowAnchor rowAnchor) {
     float weight(float gain) {
       return this == GAIN ? ROW_MEAN * gain : ROW_MEAN;
     }
+  }
+
+  /** 行の平均のアンカーで平均を取る打牌の集合。 */
+  public enum RowAnchorDiscards {
+    /** 測った打牌の平均を使う。 */
+    MEASURED,
+    /** 合法な打牌すべての平均を使う。 */
+    LEGAL
   }
 
   /** 行の平均のアンカーの重み η。 */
@@ -72,18 +83,19 @@ public record PrismLoss(AuxiliaryLoss auxiliary, RowAnchor rowAnchor) {
   private static final float FLOOR = -1e30f;
 
   /**
-   * 補助の損失とアンカーの決め方があることを確かめる。
+   * 補助の損失とアンカーの設定があることを確かめる。
    *
-   * @throws NullPointerException 補助の損失かアンカーの決め方がないとき
+   * @throws NullPointerException 補助の損失かアンカーの設定がないとき
    */
   public PrismLoss {
     Objects.requireNonNull(auxiliary, "auxiliary");
     Objects.requireNonNull(rowAnchor, "rowAnchor");
+    Objects.requireNonNull(rowAnchorDiscards, "rowAnchorDiscards");
   }
 
-  /** アンカーに教師のゲインを掛ける損失（{@link RowAnchor#GAIN}）。 */
+  /** アンカーに教師のゲインを掛け、測った打牌の平均を使う損失（{@link RowAnchor#GAIN}・{@link RowAnchorDiscards#MEASURED}）。 */
   public PrismLoss(AuxiliaryLoss auxiliary) {
-    this(auxiliary, RowAnchor.GAIN);
+    this(auxiliary, RowAnchor.GAIN, RowAnchorDiscards.MEASURED);
   }
 
   /**
@@ -138,8 +150,8 @@ public record PrismLoss(AuxiliaryLoss auxiliary, RowAnchor rowAnchor) {
   }
 
   /**
-   * 行の平均のアンカーの和 Σ_{|D|≥1} w·s̄_D² を返す。ネットワークの出力が既にあるときに使う。D は測った打牌
-   * （{@link Outputs#discards}）で、ほかの手とパディングは読まない。
+   * 行の平均のアンカーの和を返す。ネットワークの出力が既にあるときに使う。平均を取る打牌は {@link #rowAnchorDiscards} で決まり、
+   * 測った打牌（{@link Outputs#discards}）が 1 つ以上ある行に掛ける。対象外の手とパディングは読まない。
    *
    * @param scope 作った配列を持たせるマネージャー
    * @param outputs ネットワークの出力
@@ -269,11 +281,18 @@ public record PrismLoss(AuxiliaryLoss auxiliary, RowAnchor rowAnchor) {
     return centered.square().sum(ACTIONS, true).div(count).mul(WEIGHT_FLOOR / 2);
   }
 
-  /** 行の平均のアンカーの和 Σ_{|D|≥1} w·s̄_D²。D の外の手とパディングは where で外す。 */
-  private static NDArray rowMeanSum(NDManager scope, NDArray scores, LossInputs inputs) {
-    NDArray kept =
-        NDArrays.where(inputs.measuredDiscards(), scores, scope.zeros(scores.getShape()));
-    NDArray mean = kept.sum(new int[] {1}).div(inputs.discardCounts());
+  /** 行の平均のアンカーの和。平均を取る打牌の外とパディングは where で外す。 */
+  private NDArray rowMeanSum(NDManager scope, NDArray scores, LossInputs inputs) {
+    NDArray mask =
+        rowAnchorDiscards == RowAnchorDiscards.LEGAL
+            ? inputs.legalDiscards()
+            : inputs.measuredDiscards();
+    NDArray count =
+        rowAnchorDiscards == RowAnchorDiscards.LEGAL
+            ? inputs.legalDiscardCounts()
+            : inputs.discardCounts();
+    NDArray kept = NDArrays.where(mask, scores, scope.zeros(scores.getShape()));
+    NDArray mean = kept.sum(new int[] {1}).div(count);
     return mean.square().mul(inputs.discardWeights()).sum();
   }
 

@@ -13,6 +13,7 @@ import com.epsilon.prism.Main;
 import com.epsilon.prism.TestSettings;
 import com.epsilon.prism.core.AgariOrder;
 import com.epsilon.prism.eval.EvaluationTable;
+import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.noise.LedgerCalibration;
 import com.epsilon.prism.noise.LedgerCalibrationKind;
 import com.epsilon.prism.noise.LedgerCalibrationSource;
@@ -118,6 +119,15 @@ public class SettingsChangeTest {
     Assert.assertEquals(changes(rows().getLast()), Map.of("fit.agariOrder", Change.FIT));
     Assert.assertEquals(PrismApp.latest(run).fit().agariOrder(), AgariOrder.Mode.CERTIFIED);
     Assert.assertEquals(change("fit.agariOrder=UNKNOWN"), Exit.USAGE.code());
+
+    // fit.rowAnchorDiscards は既定 MEASURED で、FIT キーとして LEGAL へ切り替えられる
+    Assert.assertEquals(
+        PrismApp.latest(run).fit().rowAnchorDiscards(), PrismLoss.RowAnchorDiscards.MEASURED);
+    Assert.assertEquals(change("fit.rowAnchorDiscards=LEGAL"), Exit.OK.code());
+    Assert.assertEquals(changes(rows().getLast()), Map.of("fit.rowAnchorDiscards", Change.FIT));
+    Assert.assertEquals(
+        PrismApp.latest(run).fit().rowAnchorDiscards(), PrismLoss.RowAnchorDiscards.LEGAL);
+    Assert.assertEquals(change("fit.rowAnchorDiscards=UNKNOWN"), Exit.USAGE.code());
   }
 
   /**

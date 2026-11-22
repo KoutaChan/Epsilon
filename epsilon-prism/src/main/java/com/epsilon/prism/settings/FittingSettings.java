@@ -31,6 +31,7 @@ import java.util.Objects;
  * @param gradientClip 勾配のノルムの上限（0 なら切らない）
  * @param adamEpsilon AdamW の分母に加える ε の扱い
  * @param rowAnchor 行の平均のアンカーの重みの決め方
+ * @param rowAnchorDiscards 行の平均のアンカーで平均を取る打牌の集合
  * @param temperature 判断のクラスごとの差分整合の温度
  * @param loss 測った手の差を学ぶ目的関数
  * @param classWeight 判断のクラスの重み
@@ -52,6 +53,11 @@ public record FittingSettings(
         AdamEpsilon adamEpsilon,
     @Key(doc = "行の平均のアンカーに教師のゲインを掛けるか（GAIN）、1 倍のままにするか（FIXED）", value = "GAIN")
         PrismLoss.RowAnchor rowAnchor,
+    @Key(
+            doc = "行の平均のアンカーで平均を取る打牌を測った打牌にするか（MEASURED）、合法な打牌すべてにするか（LEGAL）",
+            value = "MEASURED",
+            change = Change.FIT)
+        PrismLoss.RowAnchorDiscards rowAnchorDiscards,
     @Key(doc = "判断のクラスごとの差分整合の温度", presence = Presence.REQUIRED)
         Map<DecisionClass, @Range(min = 0, minInclusive = false) Double> temperature,
     @Key(doc = "手の差を学ぶ損失（差分整合・行で正規化した対・基準の手との対）", value = "PRISM") PairLoss.Mode loss,
@@ -67,6 +73,7 @@ public record FittingSettings(
 
   public FittingSettings {
     Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(rowAnchorDiscards, "rowAnchorDiscards");
     Objects.requireNonNull(agariOrder, "agariOrder");
     temperature = ClassTables.copy(temperature);
     if (lrFloor > lrPeak) {
@@ -123,6 +130,7 @@ public record FittingSettings(
         classWeight,
         adamEpsilon,
         rowAnchor,
+        rowAnchorDiscards,
         agariOrder);
   }
 

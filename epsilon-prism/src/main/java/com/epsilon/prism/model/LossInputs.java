@@ -36,6 +36,8 @@ public final class LossInputs {
   private final Staging.Section weights;
   private final Staging.Section measuredDiscards;
   private final Staging.Section discardCounts;
+  private final Staging.Section legalDiscards;
+  private final Staging.Section legalDiscardCounts;
   private final Staging.Section discardWeights;
   private final AuxiliaryLoss.Inputs auxiliary;
 
@@ -44,7 +46,7 @@ public final class LossInputs {
    *
    * <ul>
    *   <li>差分整合: [行, 容量] の C の印・Y（C の外は 0）・log p0_C（C の外は 0）と、[行, 1] の λ・行の重み（|C| &lt; 2 の行は 0）。
-   *   <li>行の平均のアンカー: [行, 容量] の D の印（測った打牌）と、[行] の |D|（D が空の行は 1）・行の重み（D が空の行は 0）。
+   *   <li>行の平均のアンカー: [行, 容量] の測った打牌と合法な打牌の印、[行] のそれぞれの数（空の行は 1）、行の重み（測った打牌が無い行は 0）。
    * </ul>
    */
   private LossInputs(
@@ -75,6 +77,8 @@ public final class LossInputs {
     float[] valueWeights = new float[rows];
     boolean[] discardSlots = new boolean[rows * capacity];
     float[] counts = new float[rows];
+    boolean[] legalDiscardSlots = new boolean[rows * capacity];
+    float[] legalCounts = new float[rows];
     float[] discardRowWeights = new float[rows];
     for (int row = 0; row < rows; row++) {
       ValueLabel label = labels.get(row);
@@ -86,13 +90,19 @@ public final class LossInputs {
       int base = row * capacity;
       int measuredCount = 0;
       int discardCount = 0;
+      int legalDiscardCount = 0;
       for (int a = 0; a < y.length; a++) {
+        boolean discard = discards[base + a];
+        if (discard) {
+          legalDiscardSlots[base + a] = true;
+          legalDiscardCount++;
+        }
         if (Float.isNaN(y[a])) {
           continue;
         }
         measuredSlots[base + a] = true;
         measuredCount++;
-        if (discards[base + a]) {
+        if (discard) {
           discardSlots[base + a] = true;
           discardCount++;
         }
@@ -109,6 +119,7 @@ public final class LossInputs {
       lambdas[row] = label.lambda();
       valueWeights[row] = measuredCount >= 2 ? label.weight() : 0f;
       counts[row] = Math.max(discardCount, 1);
+      legalCounts[row] = Math.max(legalDiscardCount, 1);
       discardRowWeights[row] = discardCount == 0 ? 0f : label.weight();
     }
     Shape slots = new Shape(rows, capacity);
@@ -119,6 +130,8 @@ public final class LossInputs {
     weights = staging.add(valueWeights, new Shape(rows, 1));
     measuredDiscards = staging.add(discardSlots, slots);
     discardCounts = staging.add(counts, new Shape(rows));
+    legalDiscards = staging.add(legalDiscardSlots, slots);
+    legalDiscardCounts = staging.add(legalCounts, new Shape(rows));
     discardWeights = staging.add(discardRowWeights, new Shape(rows));
     auxiliary =
         auxiliaryLabels == null
@@ -263,6 +276,16 @@ public final class LossInputs {
   /** |D| [行]（D が空の行は 1）。 */
   NDArray discardCounts() {
     return discardCounts.array();
+  }
+
+  /** 合法な打牌の印 [行, 容量]（BOOLEAN）。 */
+  NDArray legalDiscards() {
+    return legalDiscards.array();
+  }
+
+  /** 合法な打牌の数 [行]（合法な打牌が無い行は 1）。 */
+  NDArray legalDiscardCounts() {
+    return legalDiscardCounts.array();
   }
 
   /** 行の平均のアンカーで使う行の重み [行]（D が空の行は 0）。 */

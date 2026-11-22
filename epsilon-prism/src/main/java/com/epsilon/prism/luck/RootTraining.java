@@ -164,7 +164,7 @@ public final class RootTraining {
       RootCoefficients cfg,
       State carried,
       LedgerCalibration.Apply reference,
-      LedgerCorrection baseline) {
+      LedgerCorrection.ByClass baseline) {
     this.cohort = cohort;
     this.variant = v;
     this.meaning = meaning.scaleFree();

@@ -302,10 +302,14 @@ public class LuckLineageTest {
       Path cache = out.resolve("plateau-ledger");
       LedgerCorrection[] computed = FitPlateau.corrections(run, cache, latest, 3, 4);
       LedgerCorrection[] restored = FitPlateau.corrections(run, cache, latest, 3, 4);
-      Assert.assertEquals(computed[0].scale().cohort(), 2);
-      Assert.assertEquals(computed[1].scale().cohort(), 3);
-      Assert.assertEquals(restored[0].scale(), computed[0].scale());
-      Assert.assertEquals(restored[1].scale(), computed[1].scale());
+      Assert.assertEquals(((LedgerCorrection.ByClass) computed[0]).scale().cohort(), 2);
+      Assert.assertEquals(((LedgerCorrection.ByClass) computed[1]).scale().cohort(), 3);
+      Assert.assertEquals(
+          ((LedgerCorrection.ByClass) restored[0]).scale(),
+          ((LedgerCorrection.ByClass) computed[0]).scale());
+      Assert.assertEquals(
+          ((LedgerCorrection.ByClass) restored[1]).scale(),
+          ((LedgerCorrection.ByClass) computed[1]).scale());
       long compared = 0;
       try (CohortStore store = new CohortStore()) {
         for (int t = 3; t <= 4; t++) store.addCohort(CohortWriter.directory(run, t));

@@ -158,7 +158,7 @@ public final class LedgerFit {
    * @param correction 学習の行に掛ける交差適合の係数
    * @param report 報告
    */
-  public record Result(LedgerCorrection correction, LedgerReport report) {}
+  public record Result(LedgerCorrection.ByClass correction, LedgerReport report) {}
 
   /** 行を順に足して当てはめる（系譜では、行のストアからバッチごとに読み出す行の並びを渡す）。 */
   public Result fit(Iterable<Row> rows) {
@@ -919,11 +919,11 @@ public final class LedgerFit {
     }
 
     /** 交差適合の係数を返す（偶奇 g・クラス c の係数は、偶奇 1 − g の行で当てはめたもの）。 */
-    LedgerCorrection correction() {
+    LedgerCorrection.ByClass correction() {
       double[][][] beta = new double[2][CLASSES][];
       for (int p = 0; p < 2; p++)
         for (int c = 0; c < CLASSES; c++) beta[p][c] = classes[c].byFold[p];
-      return new LedgerCorrection(beta, cells, cellBeta);
+      return new LedgerCorrection.ByClass(beta, cells, cellBeta);
     }
 
     /** 全てのクラスをまとめた区分の結果を返す。残差は、クラスごとの係数で求めた残差の和にする。 */

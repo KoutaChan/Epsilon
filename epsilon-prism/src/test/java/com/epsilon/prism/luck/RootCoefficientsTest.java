@@ -1,11 +1,13 @@
 package com.epsilon.prism.luck;
 
+import com.epsilon.agent.observe.Observation;
 import com.epsilon.agent.settings.Layer;
 import com.epsilon.agent.settings.RecordFile;
 import com.epsilon.agent.settings.Settings;
 import com.epsilon.mahjong.action.Action;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.rules.Vocabulary;
+import com.epsilon.prism.auxiliary.OracleCodec;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
@@ -13,6 +15,7 @@ import com.epsilon.prism.noise.LossWeightSettings;
 import com.epsilon.prism.noise.RootCoefficients;
 import com.epsilon.prism.noise.SlopeRefresh;
 import com.epsilon.prism.rows.Row;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -74,6 +77,53 @@ public class RootCoefficientsTest {
     Assert.assertEquals(
         RootHoldout.decide(train(Variant.TENHOU_4P, false), common, true).arm(),
         LedgerReport.Arm.COMMON_SCALE);
+  }
+
+  @Test
+  public void keepsTheIncumbentTeacherWhenTheRootCheckpointCannotBeRead() throws Exception {
+    var dir = java.nio.file.Files.createTempDirectory("root-checkpoint");
+    try {
+      var path = RootTraining.State.file(dir, 1);
+      java.nio.file.Files.createDirectories(path.getParent());
+      java.nio.file.Files.writeString(path, "{}");
+      var history = LuckSettlement.History.read(null, null, dir, 1, 1);
+      Assert.assertNotNull(history.failure());
+      var variant = Variant.TENHOU_4P;
+      long[] words =
+          LedgerCalibratorTest.observations(variant, 17, 1, o -> o.legalActions() >= 2).getFirst();
+      int n = new Observation(variant).bind(words, 0).legalActions();
+      Row row =
+          LedgerCalibratorTest.row(
+              1,
+              DecisionClass.CALL,
+              Row.Source.MAIN,
+              words,
+              new float[n],
+              new float[n * LedgerColumn.COUNT],
+              0);
+      for (String mode : List.of("APPLY", "SHADOW")) {
+        var noise =
+            Settings.section(
+                    com.epsilon.prism.noise.NoiseSettings.class,
+                    "noise",
+                    List.of(
+                        Layer.resource("prism/presets/smoke.toml", "smoke"),
+                        Layer.assignments(
+                            "test",
+                            List.of(
+                                "noise.ledger.mode=APPLY",
+                                "noise.ledger.rootCoefficients.mode=" + mode))))
+                .value();
+        var luck = LuckSettlement.of(noise, variant);
+        var out = luck.settleWithHistory(2, null, List.of(row), 1, history).calibrate();
+        Assert.assertEquals(out.roots().status().restart(), history.failure());
+        Assert.assertEquals(out.roots().status().teacher(), LedgerReport.Arm.CLASS);
+        Assert.assertTrue(out.correction() instanceof LedgerCorrection.ByClass);
+        Assert.assertEquals(out.rootNext().first(), 3);
+      }
+    } finally {
+      com.epsilon.agent.run.DurableFiles.delete(dir);
+    }
   }
 
   @Test
@@ -249,6 +299,52 @@ public class RootCoefficientsTest {
     var pooled = a.paired().plus(b.paired());
     Assert.assertEquals(pooled.se(), together.band(true).seShadowMinusRaw(), 1e-14);
     Assert.assertTrue(pooled.se() > 0);
+  }
+
+  @Test
+  public void keepsUnmeasuredTargetsAndUsesRawValuesWithoutRootHands() {
+    var variant = Variant.TENHOU_4P;
+    var trained = train(variant, true);
+    long[] words =
+        LedgerCalibratorTest.observations(variant, 17, 1, o -> o.legalActions() >= 3).getFirst();
+    var o = new Observation(variant).bind(words, 0);
+    int n = o.legalActions(), gap = LedgerCell.of(variant).standing(o).gap();
+    var fold = new RootRates.Fold(3, Map.of("0", new RootRates.Curve(List.of(gap), List.of(1d))));
+    var rates =
+        new RootRates(
+            RootCoefficients.Context.GLOBAL, RootCoefficients.Direction.CONSTANT, List.of(fold));
+    var correction =
+        new LedgerCorrection.ByRoot(
+            new RootModel(
+                trained.weights(), rates, 4, RootModel.Choice.FITTED, trained.selection()));
+    float[] y = new float[n], ledger = new float[n * LedgerColumn.COUNT];
+    y[n - 1] = Float.NaN;
+    for (int i = 0; i < n; i++) ledger[i * LedgerColumn.COUNT] = 1;
+    Arrays.fill(ledger, (n - 1) * LedgerColumn.COUNT, ledger.length, Float.NaN);
+    Row raw = LedgerCalibratorTest.row(1, DecisionClass.CALL, Row.Source.MAIN, words, y, ledger, 0);
+    Assert.assertSame(correction.values(raw), y);
+    var full =
+        new Row(
+            raw.gameId(),
+            raw.decisionId(),
+            raw.decisionClass(),
+            raw.purpose(),
+            raw.source(),
+            raw.played(),
+            y,
+            raw.prior(),
+            raw.support(),
+            raw.deviation(),
+            raw.deviationProbability(),
+            raw.propensity(),
+            raw.rootDecisionId(),
+            ledger,
+            raw.outcomes(),
+            new long[OracleCodec.of(variant).maxLongs()],
+            words);
+    float[] targets = correction.values(full);
+    Assert.assertTrue(Float.isNaN(targets[n - 1]));
+    Assert.assertNotEquals(targets[0], y[0]);
   }
 
   @Test

@@ -15,7 +15,10 @@ public record LedgerOutcome(
     LedgerReport.Summary summary,
     LedgerCorrection correction,
     double appliedR2,
-    Calibration calibration) {
+    Calibration calibration,
+    RootAudit.Report roots,
+    RootTraining.State rootNext,
+    LedgerCorrection.ByClass comparison) {
 
   /** 係数を当てはめないときの結果。 */
   public static final LedgerOutcome NONE = new LedgerOutcome(null, null, null, 0);
@@ -25,7 +28,7 @@ public record LedgerOutcome(
       LedgerReport.Summary summary,
       LedgerCorrection correction,
       double appliedR2) {
-    this(report, summary, correction, appliedR2, null);
+    this(report, summary, correction, appliedR2, null, null, null, null);
   }
 
   /**
@@ -38,7 +41,7 @@ public record LedgerOutcome(
    */
   public record Calibration(
       LedgerReport.Calibration report,
-      LedgerCorrection current,
+      LedgerCorrection.ByClass current,
       LedgerCalibrator scale,
       LedgerCalibrator next) {}
 
@@ -49,7 +52,11 @@ public record LedgerOutcome(
 
   /** 書き出す報告の全部（補正率を求めた反復では、その報告も入れる）。 */
   public LedgerReport.Full full(LedgerRecording recording) {
-    return report.full(recording, calibration == null ? null : calibration.report());
+    return report.full(
+        recording,
+        calibration == null ? null : calibration.report(),
+        roots,
+        correction instanceof LedgerCorrection.ByClass classic ? classic.scale() : null);
   }
 
   /** 次の反復に渡す補正率（補正率を求めないか、当てはめられなければ null）。 */

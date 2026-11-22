@@ -85,7 +85,7 @@ public record LedgerMeaning(
             : null);
   }
 
-  /** 補正率の形を除いた写し（補正 β·L そのものの意味。校正器が記録し、掛けてよいかを照合する）。 */
+  /** 補正方法の切り替えをまたいで、同じ帳簿の列と教師で学んだかを照合する設定。 */
   public LedgerMeaning scaleFree() {
     return new LedgerMeaning(
         columns,

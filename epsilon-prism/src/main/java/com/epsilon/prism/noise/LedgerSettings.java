@@ -59,6 +59,8 @@ public sealed interface LedgerSettings {
     double biasZ();
 
     LedgerCalibration calibration();
+
+    RootCoefficients rootCoefficients();
   }
 
   /** 帳簿を書かない。教師は生の Y。 */
@@ -137,7 +139,8 @@ public sealed interface LedgerSettings {
       @Key(doc = "偏りを警告するしきい値（標準誤差の倍数）", value = "3.0", change = Change.FIT)
           @Range(min = 0, minInclusive = false)
           double biasZ,
-      @Key(doc = "帳簿の補正率", value = "OFF", change = Change.FIT) LedgerCalibration calibration)
+      @Key(doc = "帳簿の補正率", value = "OFF", change = Change.FIT) LedgerCalibration calibration,
+      @Key(doc = "根の情報から学ぶ帳簿の係数", change = Change.FIT) RootCoefficients rootCoefficients)
       implements LedgerSettings, Recording, Fitting {
 
     public Audit {
@@ -146,6 +149,11 @@ public sealed interface LedgerSettings {
       requireCollection(compute, slopeStep);
       requireFit(compute, apply);
       Objects.requireNonNull(calibration, "calibration");
+      Objects.requireNonNull(rootCoefficients, "rootCoefficients");
+      if (rootCoefficients.mode() == RootCoefficients.Mode.APPLY) {
+        throw new InvalidSetting(
+            "rootCoefficients.mode", "Root coefficients in APPLY mode require ledger mode APPLY");
+      }
       if (calibration.applies()) {
         throw new InvalidSetting(
             "calibration",
@@ -191,7 +199,8 @@ public sealed interface LedgerSettings {
       @Key(doc = "偏りを警告するしきい値（標準誤差の倍数）", value = "3.0", change = Change.FIT)
           @Range(min = 0, minInclusive = false)
           double biasZ,
-      @Key(doc = "帳簿の補正率", value = "OFF", change = Change.FIT) LedgerCalibration calibration)
+      @Key(doc = "帳簿の補正率", value = "OFF", change = Change.FIT) LedgerCalibration calibration,
+      @Key(doc = "根の情報から学ぶ帳簿の係数", change = Change.FIT) RootCoefficients rootCoefficients)
       implements LedgerSettings, Recording, Fitting {
 
     public Apply {
@@ -200,6 +209,7 @@ public sealed interface LedgerSettings {
       requireCollection(compute, slopeStep);
       requireFit(compute, apply);
       Objects.requireNonNull(calibration, "calibration");
+      Objects.requireNonNull(rootCoefficients, "rootCoefficients");
     }
   }
 

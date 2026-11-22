@@ -280,7 +280,7 @@ public class LedgerCalibratorTest {
     var rows = scaledRows(variant, 4000, 0, 21);
     var fitter =
         new LedgerFit(LedgerGroup.computed(), 0.001, 32, LedgerCells.CLASS_STAGE_RANK, variant);
-    LedgerCorrection current = fitter.fitRows(rows).correction();
+    var current = fitter.fitRows(rows).correction();
     LedgerCalibrator scale = calibrator(variant, Collections.nCopies(108, 0.55));
     for (LedgerCalibrator applied : Arrays.asList(null, scale)) {
       var pass = new LedgerCalibrator.Pass(current, applied, DEFAULTS, variant);
@@ -480,7 +480,7 @@ public class LedgerCalibratorTest {
     for (int f = 0; f < F; f++)
       beta[0][DecisionClass.FINAL_END.ordinal()][f] =
           beta[1][DecisionClass.FINAL_END.ordinal()][f] = 0.1 * (f % 4 + 1);
-    var current = new LedgerCorrection(beta);
+    var current = new LedgerCorrection.ByClass(beta);
     LedgerCalibrator scale = calibrator(variant, Collections.nCopies(108, 0.25));
     List<Row> rows = new ArrayList<>();
     List<float[]> scores = new ArrayList<>();
@@ -552,8 +552,8 @@ public class LedgerCalibratorTest {
     scores.add(scores.get(0));
     scores.add(scores.get(0));
 
-    var withScores = new LedgerCalibrator.Gates(current, scale, variant);
-    var withoutScores = new LedgerCalibrator.Gates(current, scale, variant);
+    var withScores = new LedgerCalibrator.Gates(current, current.scaled(scale), variant);
+    var withoutScores = new LedgerCalibrator.Gates(current, current.scaled(scale), variant);
     for (int i = 0; i < rows.size(); i++) {
       withScores.add(rows.get(i), scores.get(i));
       withoutScores.add(rows.get(i), null);

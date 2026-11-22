@@ -195,7 +195,7 @@ public class SplitTrialTest {
               1,
               new Choice(r -> example.matches(r) ? row.played() : 0),
               new Choice(r -> example.matches(r) ? example.alternative() : 0),
-              new LedgerCorrection(weights));
+              new LedgerCorrection.ByClass(weights));
       var diff = results.getLast().disagreements();
       Assert.assertEquals(diff.positions(), 1L);
       double termA = example.term(row.played()), termB = example.term(example.alternative());

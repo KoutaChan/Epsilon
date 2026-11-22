@@ -489,10 +489,10 @@ public record LedgerCalibrator(
    * 補正率を求めるモードで、係数を当てはめた後の行をもう一度順に読む。生（raw）・帳簿の補正 Y − β·L（current）・補正率を掛けた補正
    * Y − h(o)·β·L（shadow）の 3 つの腕で、行内の J とスロットの残差を測り、局面の帯ごとと半荘ごとに束ねる。補正の向きの監査（{@link
    * #AUDIT_GROUPS}）も同じ行で数える。あわせて、次の反復の補正率を当てはめる和を作る。β は行の偶奇が逆の行で当てはめたもの（{@link
-   * LedgerCorrection#coefficients}）。
+   * LedgerCorrection.ByClass#coefficients}）。
    */
   static final class Pass {
-    private final LedgerCorrection current;
+    private final LedgerCorrection.ByClass current;
     private final boolean byCell;
     private final LedgerCalibrator scale;
     private final Variant variant;
@@ -514,7 +514,7 @@ public record LedgerCalibrator(
      * @param next 次の反復の補正率の設定
      */
     Pass(
-        LedgerCorrection current,
+        LedgerCorrection.ByClass current,
         LedgerCalibrator scale,
         LedgerCalibration.Scaling next,
         Variant variant) {
@@ -822,9 +822,7 @@ public record LedgerCalibrator(
    * <p>腕ごとの標準偏差の、生との差の標準誤差は、標準偏差の影響関数 ((v − μ)² − σ̂²)·n/(n − 1)/(2s) を半荘で束ねて求める。
    */
   static final class Gates {
-    private final LedgerCorrection current;
-    private final boolean byCell;
-    private final LedgerCalibrator scale;
+    private final LedgerCorrection current, candidate;
     private final Variant variant;
     private final LedgerCell reader;
     private final Observation observation;
@@ -837,10 +835,9 @@ public record LedgerCalibrator(
       }
     }
 
-    Gates(LedgerCorrection current, LedgerCalibrator scale, Variant variant) {
-      this.current = Objects.requireNonNull(current, "current");
-      byCell = current.byCell() != null;
-      this.scale = scale;
+    Gates(LedgerCorrection current, LedgerCorrection candidate, Variant variant) {
+      this.current = Objects.requireNonNull(current);
+      this.candidate = Objects.requireNonNull(candidate);
       this.variant = Objects.requireNonNull(variant, "variant");
       reader = LedgerCell.of(variant);
       observation = new Observation(variant);
@@ -898,15 +895,11 @@ public record LedgerCalibrator(
       if (other < 0) {
         return;
       }
-      double[] beta =
-          current.coefficients(
-              row.gameId(), row.decisionClass().ordinal(), byCell ? reader.of(words, 0) : 0);
-      double db = 0;
-      for (int f = 0; f < LedgerColumn.COUNT; f++)
-        db += beta[f] * ((double) row.ledger(win, f) - row.ledger(other, f));
       double dy = (double) values[win] - values[other];
-      double h = scale == null ? 1 : scale.scale(standing);
-      Entry entry = new Entry(row.gameId(), dy, dy - db, dy - h * db);
+      double baseline = current.difference(row, win, other, standing);
+      double shadow =
+          candidate == current ? baseline : candidate.difference(row, win, other, standing);
+      Entry entry = new Entry(row.gameId(), dy, baseline, shadow);
       String kind = tsumo ? " tsumo" : " ron";
       byGroup.get("FINAL_END" + kind).add(entry);
       if (standing.rank() == 0) {
@@ -914,6 +907,11 @@ public record LedgerCalibrator(
             .get("first_" + bandName(GATE_BANDS, band(GATE_BANDS, standing.gap()), "_") + kind)
             .add(entry);
       }
+    }
+
+    List<LedgerReport.Gate> measure(List<Row> rows, List<float[]> scores) {
+      for (int i = 0; i < rows.size(); i++) add(rows.get(i), scores == null ? null : scores.get(i));
+      return gates();
     }
 
     /** 帯ごとの結果（2 行以上の帯だけ）。 */

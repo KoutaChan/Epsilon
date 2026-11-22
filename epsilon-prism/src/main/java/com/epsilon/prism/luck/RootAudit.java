@@ -66,7 +66,7 @@ public final class RootAudit {
 
   private final RootModel model;
   private final RootModel.Predictor predictor;
-  private final LedgerCorrection current;
+  private final LedgerCorrection.ByClass current;
   private final Variant variant;
   private final LedgerCalibrator.Group[] bands;
   private final Map<Long, double[]> games = new HashMap<>();
@@ -76,7 +76,7 @@ public final class RootAudit {
   private double[] residual = new double[0];
   private double yy, ee;
 
-  RootAudit(RootModel model, LedgerCorrection current) {
+  RootAudit(RootModel model, LedgerCorrection.ByClass current) {
     this.model = model;
     this.current = current;
     predictor = new RootModel.Predictor(model.weights(), model.rates());

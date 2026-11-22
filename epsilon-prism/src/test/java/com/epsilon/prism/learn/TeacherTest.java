@@ -171,7 +171,7 @@ public class TeacherTest {
       double[][][] beta = new double[2][DecisionClass.COUNT][F];
       for (double[][] fold : beta)
         for (double[] c : fold) for (int f = 0; f < F; f++) c[f] = random.nextGaussian() * 0.3;
-      correction = new LedgerCorrection(beta);
+      correction = new LedgerCorrection.ByClass(beta);
       float[] flat = new float[ROWS * ACTIONS];
       int[] ids = new int[ROWS], starts = new int[ROWS + 1];
       DecisionClass[] classes = DecisionClass.values();

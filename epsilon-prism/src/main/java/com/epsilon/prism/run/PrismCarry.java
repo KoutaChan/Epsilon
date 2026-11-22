@@ -17,7 +17,12 @@ public record PrismCarry(
     double ledgerR2,
     @Key(doc = "持ち越しのキー（始めの state では無い）", presence = Presence.ABSENT) CarryKey key,
     @Key(doc = "次の反復の帳簿の補正率（補正率を求めなかった反復では無い）", presence = Presence.ABSENT)
-        LedgerCalibrator calibrator) {
+        LedgerCalibrator calibrator,
+    @Key(doc = "根の係数を引き継ぐコホートの番号", presence = Presence.ABSENT) Integer rootCohort) {
+
+  public PrismCarry(double ledgerR2, CarryKey key, LedgerCalibrator calibrator) {
+    this(ledgerR2, key, calibrator, null);
+  }
 
   /** 何も持ち越さない初期値。 */
   public static final PrismCarry NONE = new PrismCarry(0, null);

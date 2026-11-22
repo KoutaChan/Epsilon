@@ -258,7 +258,7 @@ public class LedgerFitTest {
     double noise = 0.2;
     List<SyntheticRow> rows = rows(20_000, 0, ones(), beta, noise, 1);
     LedgerFit.Result fit = CLASSIC.fitRows(rows);
-    LedgerCorrection correction = fit.correction();
+    var correction = fit.correction();
     for (int g = 0; g < 2; g++)
       for (DecisionClass c : new DecisionClass[] {DecisionClass.DISCARD_MID, DecisionClass.CALL})
         for (int f : new int[] {0, 3, 15}) {
@@ -368,8 +368,8 @@ public class LedgerFitTest {
         if (!Float.isNaN(row.values()[a])) ledger[a * F + 7] *= 10_000f;
       scaled.add(withValues(row, row.values(), ledger));
     }
-    LedgerCorrection plain = CLASSIC.fitRows(rows).correction();
-    LedgerCorrection wide = CLASSIC.fitRows(scaled).correction();
+    var plain = CLASSIC.fitRows(rows).correction();
+    var wide = CLASSIC.fitRows(scaled).correction();
     for (int i = 0; i < 200; i++) {
       float[] a = plain.values(rows.get(i)), b = wide.values(scaled.get(i));
       for (int k = 0; k < a.length; k++)
@@ -383,8 +383,7 @@ public class LedgerFitTest {
     double[] coefficients = new double[F];
     coefficients[15] = 4.0;
     coefficients[3] = 0.05;
-    LedgerCorrection fit =
-        CLASSIC.fitRows(rows(20_000, 0, mixed, coefficients, 0.2, 7)).correction();
+    var fit = CLASSIC.fitRows(rows(20_000, 0, mixed, coefficients, 0.2, 7)).correction();
     for (int g = 0; g < 2; g++)
       Assert.assertEquals(fit.beta()[g][DecisionClass.CALL.ordinal()][15], 4.0, 0.2, "fold " + g);
   }

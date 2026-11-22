@@ -133,7 +133,7 @@ public final class RootHoldout {
   private final int cohort, seats;
   private final List<RootTraining.Candidate> specs;
   private final LedgerCalibration.Apply reference;
-  private final LedgerCorrection baseline;
+  private final LedgerCorrection.ByClass baseline;
   private final Map<LedgerCell.Standing, double[]> rates = new HashMap<>();
   private final Map<Long, Game> games = new HashMap<>();
   private final Game total;
@@ -143,7 +143,7 @@ public final class RootHoldout {
       int seats,
       List<RootTraining.Candidate> specs,
       LedgerCalibration.Apply reference,
-      LedgerCorrection baseline) {
+      LedgerCorrection.ByClass baseline) {
     this.cohort = cohort;
     this.seats = seats;
     this.specs = specs;

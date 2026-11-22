@@ -47,14 +47,14 @@ public final class SplitTrial {
   final PolicyService first;
   final PolicyService second;
   private final double rate;
-  private final LedgerCorrection correction;
+  private final LedgerCorrection.ByClass correction;
 
   private SplitTrial(
       Collector.Cohort cohort,
       double rate,
       PolicyService first,
       PolicyService second,
-      LedgerCorrection correction) {
+      LedgerCorrection.ByClass correction) {
     if (!(rate > 0 && rate <= 1)) throw new IllegalArgumentException("q must be in (0, 1]");
     if ((cohort.ledger() == null) != (correction == null))
       throw new IllegalArgumentException("Incomplete ledger");
@@ -73,7 +73,7 @@ public final class SplitTrial {
       double q,
       PolicyService a,
       PolicyService b,
-      LedgerCorrection correction) {
+      LedgerCorrection.ByClass correction) {
     var trial = new SplitTrial(cohort, q, a, b, correction);
     Collector.play(table, cohort, mu, phi, null, trial);
     return trial.results();

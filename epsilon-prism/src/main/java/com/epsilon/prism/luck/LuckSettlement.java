@@ -8,9 +8,11 @@ import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.epsilon.prism.noise.LedgerSettings;
 import com.epsilon.prism.noise.NoiseSettings;
+import com.epsilon.prism.noise.RootCoefficients;
 import com.epsilon.prism.noise.UraSettings;
 import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.rows.RowCodec;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -68,6 +70,8 @@ public final class LuckSettlement {
   /** 帳簿の補正率の設定（補正率を求めない段では null）。 */
   private final LedgerCalibration calibration;
 
+  private final RootCoefficients roots;
+
   private final Variant variant;
 
   /** 補正に使う組と、係数を当てはめる区分（当てはめない段では空と null）。 */
@@ -86,7 +90,9 @@ public final class LuckSettlement {
       LedgerCalibration calibration,
       Variant variant,
       Set<LedgerGroup> apply,
-      LedgerCells cells) {
+      LedgerCells cells,
+      RootCoefficients roots) {
+    this.roots = roots;
     this.catalog = catalog;
     this.recording = recording;
     this.fit = fit;
@@ -115,7 +121,10 @@ public final class LuckSettlement {
                 fitting.ridge(),
                 fitting.minRowsPerColumn(),
                 fitting.cells(),
-                variant),
+                variant,
+                fitting.rootCoefficients().mode() == RootCoefficients.Mode.OFF
+                    ? null
+                    : fitting.rootCoefficients().information()),
         fitting == null ? Double.NaN : fitting.biasZ(),
         ledger.corrects(),
         noise.ura(),
@@ -123,7 +132,10 @@ public final class LuckSettlement {
         fitting != null && fitting.calibration().scales() ? fitting.calibration() : null,
         variant,
         fitting == null ? Set.of() : fitting.apply(),
-        fitting == null ? null : fitting.cells());
+        fitting == null ? null : fitting.cells(),
+        fitting == null || fitting.rootCoefficients().mode() == RootCoefficients.Mode.OFF
+            ? null
+            : fitting.rootCoefficients());
   }
 
   /** 収集に渡す帳簿の値。帳簿を書かない段では null。 */
@@ -152,7 +164,9 @@ public final class LuckSettlement {
     if (fit == null) {
       return null;
     }
-    return calibration != null ? fit.tapRetaining(writers, rows) : fit.tap(writers, rows);
+    return calibration != null || roots != null
+        ? fit.tapRetaining(writers, rows)
+        : fit.tap(writers, rows);
   }
 
   /** {@link #learn(int, LedgerFit.WriterTap, Iterable, int, LedgerCalibrator, LedgerMeaning)} で、補正率を持ち越していないとき。 */
@@ -227,6 +241,54 @@ public final class LuckSettlement {
       int selected,
       LedgerCalibrator carried,
       LedgerMeaning fitUnder) {
+    return settleWithHistory(
+        cohort, streamed, stored, selected, new History(carried, fitUnder, null));
+  }
+
+  /** 前のコホートから引き継ぐ、共通の補正率と候補別の係数の学習状態。 */
+  public record History(
+      LedgerCalibrator scale, LedgerMeaning meaning, RootTraining.State roots, String failure) {
+    public History(LedgerCalibrator scale, LedgerMeaning meaning, RootTraining.State roots) {
+      this(scale, meaning, roots, null);
+    }
+
+    /** 直前に記録した根の係数を復元し、読めない場合はその理由を保持する。 */
+    public static History read(
+        LedgerCalibrator scale,
+        LedgerMeaning meaning,
+        java.nio.file.Path directory,
+        int expected,
+        Integer recorded) {
+      if (recorded == null) return new History(scale, meaning, null);
+      try {
+        if (recorded != expected)
+          throw new java.io.IOException(
+              "Expected root ledger cohort " + expected + ", found " + recorded);
+        var state = RootTraining.State.read(directory, recorded);
+        if (state == null)
+          throw new java.io.IOException("Missing root ledger checkpoint for cohort " + recorded);
+        return new History(scale, meaning, state);
+      } catch (java.io.IOException | RuntimeException e) {
+        return new History(scale, meaning, null, reason(e));
+      }
+    }
+  }
+
+  private static String reason(Throwable failure) {
+    while (failure instanceof java.util.concurrent.CompletionException
+        && failure.getCause() != null) failure = failure.getCause();
+    return failure.getClass().getSimpleName() + ": " + failure.getMessage();
+  }
+
+  /** 前の反復で確定した補正と学習履歴を引き継ぎ、当期の教師を決める。 */
+  public Settled settleWithHistory(
+      int cohort,
+      LedgerFit.WriterTap streamed,
+      Iterable<Row> stored,
+      int selected,
+      History history) {
+    LedgerCalibrator carried = history.scale();
+    LedgerMeaning fitUnder = history.meaning();
     if (fit == null) {
       return new Settled(LedgerOutcome.NONE, null, null);
     }
@@ -245,10 +307,10 @@ public final class LuckSettlement {
                 + selected
                 + " are selected");
       }
-      if (calibration != null) {
+      if (calibration != null || roots != null) {
         retained = streamed.retained();
       }
-    } else if (calibration != null) {
+    } else if (calibration != null || roots != null) {
       LedgerFit.Retained kept = fit.fitRetaining(stored);
       result = kept.result();
       retained = kept.rows();
@@ -277,28 +339,73 @@ public final class LuckSettlement {
           biasZ,
           summary.maxAbsZ());
     }
-    LedgerCorrection correction = corrects && report.rows() > 0 ? result.correction() : null;
+    LedgerCorrection.ByClass correction =
+        corrects && report.rows() > 0 ? result.correction() : null;
     if (corrects && correction == null) {
       LOG.warn("t={} no rows carry a ledger: the student learns the raw Y", cohort);
     }
     double r2 = report.all().r2();
     double applied = correction == null || !Double.isFinite(r2) ? 0 : Math.max(0, r2);
     LedgerOutcome fitted = new LedgerOutcome(report, summary, correction, applied);
-    if (calibration == null) {
+    if (calibration == null && roots == null) {
       return new Settled(fitted, null, correction);
     }
-    String fallback = mismatch(carried, fitUnder, cohort);
-    LedgerCalibrator scale = fallback == null ? carried : null;
-    LedgerReport.Arm arm =
-        correction == null
-            ? LedgerReport.Arm.RAW
-            : calibration.applies() && scale != null
-                ? LedgerReport.Arm.COMMON_SCALE
-                : LedgerReport.Arm.CLASS;
+    String fallback = calibration == null ? null : mismatch(carried, fitUnder, cohort);
+    LedgerCalibrator scale = calibration != null && fallback == null ? carried : null;
+    var reference =
+        calibration instanceof LedgerCalibration.Apply appliedScale ? appliedScale : null;
+    LedgerReport.Arm incumbent = incumbent(correction, scale);
+    LedgerCorrection baseline = teacher(incumbent, correction, scale);
+    LedgerReport.Arm arm = incumbent;
+    LedgerCorrection teacher = baseline;
+    RootTraining training = null;
+    RootHoldout.Decision decision = null;
+    String failure = history.failure();
+    if (roots != null && failure == null) {
+      try {
+        training =
+            new RootTraining(
+                cohort,
+                variant,
+                meaning,
+                roots,
+                history.roots(),
+                reference,
+                reference == null
+                    ? result.correction()
+                    : scale == null ? null : result.correction().scaled(scale));
+        decision = RootHoldout.decide(training.active(), reference, scale != null);
+        if (correction != null && roots.mode() == RootCoefficients.Mode.APPLY) {
+          arm = decision.arm();
+          teacher =
+              switch (arm) {
+                case RAW -> null;
+                case ROOT -> new LedgerCorrection.ByRoot(training.active());
+                case CLASS, COMMON_SCALE -> baseline;
+              };
+        }
+      } catch (RuntimeException e) {
+        failure = reason(e);
+        training = null;
+        arm = incumbent;
+        teacher = baseline;
+      }
+    }
     return new Settled(
         fitted,
-        new Pending(cohort, retained, result.correction(), scale, fallback, arm),
-        arm == LedgerReport.Arm.COMMON_SCALE ? correction.scaled(scale) : correction);
+        new Pending(
+            cohort,
+            retained,
+            result.correction(),
+            scale,
+            fallback,
+            incumbent,
+            baseline,
+            arm,
+            training,
+            decision,
+            failure),
+        teacher);
   }
 
   /**
@@ -313,10 +420,15 @@ public final class LuckSettlement {
   private record Pending(
       int cohort,
       Iterable<FitRow> rows,
-      LedgerCorrection current,
+      LedgerCorrection.ByClass current,
       LedgerCalibrator scale,
       String fallback,
-      LedgerReport.Arm applied) {}
+      LedgerReport.Arm incumbent,
+      LedgerCorrection baseline,
+      LedgerReport.Arm applied,
+      RootTraining training,
+      RootHoldout.Decision decision,
+      String failure) {}
 
   /**
    * 教師を決めた後の帳簿の扱い（{@link #settle} が返す）。{@link #correction} は教師に掛ける補正で、{@link #calibrate} が補正率の 2 回目の
@@ -326,6 +438,7 @@ public final class LuckSettlement {
   public final class Settled {
     private final LedgerOutcome fitted;
     private final LedgerCorrection teacher;
+    private final LedgerReport.Arm planned;
     private Pending pending;
     private LedgerOutcome outcome;
 
@@ -333,7 +446,13 @@ public final class LuckSettlement {
       this.fitted = fitted;
       this.pending = pending;
       this.teacher = teacher;
+      planned = pending == null ? null : pending.applied();
       outcome = pending == null ? fitted : null;
+    }
+
+    /** 確定した教師が、生徒の学習を始めたときの腕と異なるか。 */
+    public boolean teacherChanged(LedgerOutcome finalOutcome) {
+      return finalOutcome.roots() != null && planned != finalOutcome.roots().status().teacher();
     }
 
     /** 教師に掛ける補正（補正しない段では null）。補正率を教師に使う段では、持ち越した補正率を掛けた補正。 */
@@ -345,9 +464,31 @@ public final class LuckSettlement {
      * 補正率の 2 回目の走査を回し、運の精算の結果を返す。補正率を教師に使う段では、掛けた補正の R² を、補正率を掛けた補正のスロットの R²
      * にする。走査した行はここで放す。2 度目からは同じ結果を返す。
      */
-    public synchronized LedgerOutcome calibrate() {
+    public LedgerOutcome calibrate() {
+      return calibrate(1);
+    }
+
+    /** 指定した CPU 並列度の範囲で積率のブロックを計算し、収集順に加える。 */
+    public synchronized LedgerOutcome calibrate(int threads) {
       if (outcome == null) {
-        outcome = calibrated(fitted, pending, teacher);
+        long started = System.nanoTime();
+        int capacity =
+            Math.max(1, Math.min(threads, Runtime.getRuntime().availableProcessors()) - 1);
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(capacity)) {
+          if (pending.training() != null) pending.training().parallelize(workers, capacity);
+          outcome = calibrated(fitted, pending, teacher);
+        }
+        if (outcome.roots() != null) {
+          var status = outcome.roots().status();
+          LOG.info(
+              "t={} root ledger teacher={} comparison={} next={} guard={} calibrationSeconds={}",
+              pending.cohort(),
+              status.teacher(),
+              status.comparison(),
+              status.nextChoice(),
+              status.decision(),
+              (System.nanoTime() - started) * 1e-9);
+        }
         pending = null;
       }
       return outcome;
@@ -359,29 +500,172 @@ public final class LuckSettlement {
     LedgerCalibration.Scaling scaling = (LedgerCalibration.Scaling) calibration;
     int cohort = pending.cohort();
     LedgerCalibrator scale = pending.scale();
-    var pass = new LedgerCalibrator.Pass(pending.current(), scale, scaling, variant);
-    for (FitRow row : pending.rows()) pass.add(row);
+    var pass =
+        scaling == null
+            ? null
+            : new LedgerCalibrator.Pass(pending.current(), scale, scaling, variant);
+    var comparison = scale == null ? pending.current() : pending.current().scaled(scale);
+    LedgerOutcome baseline;
+    if (pass == null) {
+      baseline =
+          new LedgerOutcome(
+              fitted.report(),
+              fitted.summary(),
+              pending.baseline(),
+              fitted.appliedR2(),
+              null,
+              null,
+              null,
+              comparison);
+    } else {
+      for (FitRow row : pending.rows()) pass.add(row);
+      baseline = commonOutcome(fitted, pending, scaling, pass, comparison);
+    }
+    if (roots == null) return baseline;
+    if (pending.failure() != null) return failedRoot(cohort, baseline, pending.failure());
+    try {
+      var training = pending.training();
+      var active = training.active();
+      var audit = active == null ? null : new RootAudit(active, comparison);
+      for (FitRow row : pending.rows()) training.add(row, audit);
+      var cumulative = new HashMap<>(training.previousSigned());
+      List<RootAudit.Signed> signed = audit == null ? List.of() : audit.signed(cumulative);
+      for (var group : signed)
+        if (group.cumulative() != null) cumulative.put(group.group(), group.cumulative());
+      var next = training.finish(cumulative);
+      var status =
+          new RootAudit.Status(
+              pending.applied(),
+              scale == null ? LedgerReport.Arm.CLASS : LedgerReport.Arm.COMMON_SCALE,
+              training.restart,
+              active == null ? null : cohort - active.weights().first(),
+              next.active() == null ? null : next.active().choice(),
+              next.weights() != null && next.weights().ridge() == null,
+              pending.decision(),
+              next.active() == null ? null : next.active().selection());
+      var report =
+          audit == null
+              ? emptyReport(next, training.missing(), status)
+              : audit.report(roots.mode(), next.first(), training.missing(), status, signed);
+      return withRoot(baseline, teacher, report, next);
+    } catch (RuntimeException e) {
+      return failedRoot(cohort, baseline, reason(e));
+    }
+  }
+
+  private LedgerReport.Arm incumbent(LedgerCorrection.ByClass current, LedgerCalibrator scale) {
+    if (current == null) return LedgerReport.Arm.RAW;
+    return calibration instanceof LedgerCalibration.Apply && scale != null
+        ? LedgerReport.Arm.COMMON_SCALE
+        : LedgerReport.Arm.CLASS;
+  }
+
+  private static LedgerCorrection teacher(
+      LedgerReport.Arm arm, LedgerCorrection.ByClass current, LedgerCalibrator scale) {
+    return switch (arm) {
+      case RAW -> null;
+      case CLASS -> current;
+      case COMMON_SCALE -> current.scaled(scale);
+      case ROOT -> throw new IllegalArgumentException("Root is not an incumbent ledger correction");
+    };
+  }
+
+  private RootAudit.Report emptyReport(
+      RootTraining.State state, long missing, RootAudit.Status status) {
+    return new RootAudit.Report(
+        roots.mode(),
+        false,
+        state.first(),
+        missing,
+        null,
+        null,
+        List.of(),
+        List.of(),
+        List.of(),
+        status);
+  }
+
+  /** 根の補正が失敗した世代の教師と持ち越しを、既存の帳簿の設定から復元する。 */
+  public LedgerOutcome failedRoot(int cohort, LedgerOutcome outcome, String failure) {
+    var cal = outcome.calibration();
+    var current = cal == null ? outcome.comparison() : cal.current();
+    var scale = cal == null ? null : cal.scale();
+    var arm = incumbent(corrects && outcome.report().rows() > 0 ? current : null, scale);
+    var teacher = teacher(arm, current, scale);
+    var next = RootTraining.restartAfter(cohort, variant, meaning, roots);
+    var status =
+        new RootAudit.Status(
+            arm,
+            scale == null ? LedgerReport.Arm.CLASS : LedgerReport.Arm.COMMON_SCALE,
+            failure,
+            null,
+            null,
+            false,
+            new RootHoldout.Decision(arm, failure),
+            null);
+    LOG.warn(
+        "t={} root ledger failed; teaching {} and restarting after this cohort: {}",
+        cohort,
+        arm,
+        failure);
+    return withRoot(outcome, teacher, emptyReport(next, 0, status), next);
+  }
+
+  private static LedgerOutcome withRoot(
+      LedgerOutcome base,
+      LedgerCorrection teacher,
+      RootAudit.Report roots,
+      RootTraining.State next) {
+    var arm = roots.status().teacher();
+    var cal = base.calibration();
+    var summary = base.summary();
+    if (cal != null && !cal.report().applied().equals(arm.reportName())) {
+      var report = cal.report().withApplied(arm);
+      cal = new LedgerOutcome.Calibration(report, cal.current(), cal.scale(), cal.next());
+      summary = summary.with(report.summary());
+    }
+    Double r2 =
+        switch (arm) {
+          case RAW -> 0d;
+          case CLASS -> LedgerReport.finite(base.report().all().r2());
+          case COMMON_SCALE -> cal.report().slotR2().shadow();
+          case ROOT -> roots.r2();
+        };
+    return new LedgerOutcome(
+        base.report(),
+        summary,
+        teacher,
+        r2 == null ? 0 : Math.max(0, r2),
+        cal,
+        roots,
+        next,
+        base.comparison());
+  }
+
+  private LedgerOutcome commonOutcome(
+      LedgerOutcome fitted,
+      Pending pending,
+      LedgerCalibration.Scaling scaling,
+      LedgerCalibrator.Pass pass,
+      LedgerCorrection.ByClass comparison) {
+    int cohort = pending.cohort();
+    LedgerCalibrator scale = pending.scale();
     LedgerCalibrator next =
         LedgerCalibrator.fit(
             pass.sums(), scaling, variant, cohort, catalog.columns(), apply, cells);
-    double applied =
-        switch (pending.applied()) {
-          case RAW -> 0;
-          case ROOT -> throw new IllegalStateException("Common scale cannot teach with a root model");
-          case CLASS -> fitted.appliedR2();
-          case COMMON_SCALE -> {
-            double shadowR2 = pass.shadowR2();
-            yield Double.isFinite(shadowR2) ? Math.max(0, shadowR2) : 0;
-          }
-        };
+    double applied = fitted.appliedR2();
+    if (pending.incumbent() == LedgerReport.Arm.COMMON_SCALE) {
+      double r2 = pass.shadowR2();
+      applied = Double.isFinite(r2) ? Math.max(0, r2) : 0;
+    }
     LedgerReport.Calibration calibrated =
         pass.report(
-            caseName(calibration), scaling.kind(), pending.applied(), pending.fallback(), next);
+            caseName(calibration), scaling.kind(), pending.incumbent(), pending.fallback(), next);
     LedgerReport.Arms j = calibrated.j();
     LOG.info(
         String.format(
             Locale.ROOT,
-            "t=%d ledger calibration %s applied=%s source=%s rows=%d J raw=%s current=%s"
+            "t=%d ledger calibration %s baseline=%s source=%s rows=%d J raw=%s current=%s"
                 + " shadow=%s slot r2 current=%s shadow=%s mean h=%s next=%s",
             cohort,
             calibrated.mode(),
@@ -401,9 +685,12 @@ public final class LuckSettlement {
     return new LedgerOutcome(
         fitted.report(),
         fitted.summary().with(calibrated.summary()),
-        teacher,
+        pending.baseline(),
         applied,
-        new LedgerOutcome.Calibration(calibrated, pending.current(), scale, next));
+        new LedgerOutcome.Calibration(calibrated, pending.current(), scale, next),
+        null,
+        null,
+        comparison);
   }
 
   /**
@@ -417,24 +704,43 @@ public final class LuckSettlement {
    */
   public LedgerOutcome gates(LedgerOutcome outcome, List<Row> rows, List<float[]> scores) {
     LedgerOutcome.Calibration calibrated = outcome.calibration();
-    if (calibrated == null) {
+    var rootReport = outcome.roots();
+    if (calibrated == null && (rootReport == null || rootReport.model() == null)) {
       return outcome;
     }
     if (scores != null && scores.size() != rows.size()) {
       throw new IllegalArgumentException(
           "Gate rows " + rows.size() + " have " + scores.size() + " anchor scores");
     }
-    var gates = new LedgerCalibrator.Gates(calibrated.current(), calibrated.scale(), variant);
-    for (int i = 0; i < rows.size(); i++)
-      gates.add(rows.get(i), scores == null ? null : scores.get(i));
-    LedgerReport.Calibration report = calibrated.report().withGates(gates.gates());
+    if (rootReport != null && rootReport.model() != null) {
+      try {
+        var candidate = new LedgerCorrection.ByRoot(rootReport.model());
+        var gates = new LedgerCalibrator.Gates(outcome.comparison(), candidate, variant);
+        rootReport = rootReport.withGates(gates.measure(rows, scores));
+      } catch (RuntimeException e) {
+        return gates(failedRoot(outcome.rootNext().cohort(), outcome, reason(e)), rows, scores);
+      }
+    }
+    if (calibrated != null) {
+      var gates =
+          new LedgerCalibrator.Gates(
+              calibrated.current(), calibrated.current().scaled(calibrated.scale()), variant);
+      calibrated =
+          new LedgerOutcome.Calibration(
+              calibrated.report().withGates(gates.measure(rows, scores)),
+              calibrated.current(),
+              calibrated.scale(),
+              calibrated.next());
+    }
     return new LedgerOutcome(
         outcome.report(),
         outcome.summary(),
         outcome.correction(),
         outcome.appliedR2(),
-        new LedgerOutcome.Calibration(
-            report, calibrated.current(), calibrated.scale(), calibrated.next()));
+        calibrated,
+        rootReport,
+        outcome.rootNext(),
+        outcome.comparison());
   }
 
   /**

@@ -1,7 +1,13 @@
 package com.epsilon.prism.learn;
 
+import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.luck.LedgerCorrection;
+import com.epsilon.prism.luck.LedgerOutcome;
+import com.epsilon.prism.luck.LuckSettlement;
 import com.epsilon.prism.rows.Row;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.concurrent.Executors;
 import java.util.function.IntFunction;
 
 /**
@@ -75,6 +81,37 @@ public record Teacher(
     if (!anchored()) return values;
     return anchored(
         values, anchor.scores(id), anchorWeight, values == raw ? new float[raw.length] : values);
+  }
+
+  /** 学習に使う主経路の和了判断で、同じアンカーが選んだ対抗手との教師差を記録する。 */
+  public static LedgerOutcome auditWins(
+      LuckSettlement settlement,
+      LedgerOutcome outcome,
+      CohortStore store,
+      int[] selected,
+      AnchorScores anchor)
+      throws IOException {
+    if (outcome.calibration() == null
+        && (outcome.roots() == null || outcome.roots().model() == null)) return outcome;
+    int[] finals = winRows(store, selected);
+    Row[] read;
+    try (var readers = Executors.newFixedThreadPool(2)) {
+      read = store.read(finals, readers, 2);
+    }
+    var scores = anchor == null ? null : Arrays.stream(finals).mapToObj(anchor::scores).toList();
+    return settlement.gates(outcome, Arrays.asList(read), scores);
+  }
+
+  /** 選んだ行から、主経路の終盤の和了判断を取り出す。 */
+  public static int[] winRows(CohortStore store, int[] selected) {
+    return Arrays.stream(selected)
+        .filter(
+            id -> {
+              var index = store.index(id);
+              return index.source() == Row.Source.MAIN
+                  && index.decisionClass() == DecisionClass.FINAL_END;
+            })
+        .toArray();
   }
 
   boolean anchored() {

@@ -72,14 +72,14 @@ public class LuckSettlementTest {
     Assert.assertEquals(audited.appliedR2(), 0.0);
     Assert.assertTrue(audited.summary().streamed());
     LedgerFitTest.assertBitwiseEqual(
-        new LedgerFit.Result(expected.correction(), audited.report()), expected);
+        new LedgerFit.Result(byClass(expected.correction()), audited.report()), expected);
     Assert.assertEquals(audited.classes().classes().keySet(), audited.report().byClass().keySet());
 
     LuckSettlement apply = settle();
     Assert.assertEquals(apply.meaning().mode(), "APPLY");
     LedgerOutcome applied = apply.learn(1, tapped(apply, rows), List.of(), rows.size());
     LedgerFitTest.assertBitwiseEqual(
-        new LedgerFit.Result(applied.correction(), applied.report()), expected);
+        new LedgerFit.Result(byClass(applied.correction()), applied.report()), expected);
     double r2 = applied.report().all().r2();
     Assert.assertTrue(r2 > 0.5, "r2 " + r2);
     Assert.assertEquals(applied.appliedR2(), r2);
@@ -137,7 +137,7 @@ public class LuckSettlementTest {
     var rows = LedgerFitTest.rows(3000, 0, LedgerFitTest.ones(), LedgerFitTest.planted(), 0.3, 52);
     LedgerOutcome outcome = luck.learn(1, tapped(luck, rows), List.of(), rows.size());
     LedgerFitTest.assertBitwiseEqual(
-        new LedgerFit.Result(outcome.correction(), outcome.report()),
+        new LedgerFit.Result(byClass(outcome.correction()), outcome.report()),
         new LedgerFit(Set.of(LedgerGroup.POLICY), 0.5, 10).fitRows(rows));
     LedgerMeaning meaning = luck.meaning();
     Assert.assertEquals(meaning.compute(), compute);
@@ -221,15 +221,16 @@ public class LuckSettlementTest {
     LedgerOutcome before = absent.learn(1, tapped(absent, rows), List.of(), rows.size());
     LedgerOutcome after = off.learn(1, tapped(off, rows), List.of(), rows.size(), null);
     LedgerFitTest.assertBitwiseEqual(
-        new LedgerFit.Result(after.correction(), after.report()),
-        new LedgerFit.Result(before.correction(), before.report()));
+        new LedgerFit.Result(byClass(after.correction()), after.report()),
+        new LedgerFit.Result(byClass(before.correction()), before.report()));
     Assert.assertEquals(after.appliedR2(), before.appliedR2());
     Assert.assertEquals(timeless(after.summary()), timeless(before.summary()));
     Assert.assertNull(after.calibration());
     Assert.assertNull(after.next());
     Assert.assertNull(after.summary().calibration());
     for (var row : rows)
-      Assert.assertEquals(after.correction().values(row), before.correction().values(row));
+      Assert.assertEquals(
+          byClass(after.correction()).values(row), byClass(before.correction()).values(row));
     Assert.assertEquals(off.meaning(), absent.meaning());
     Assert.assertNull(off.meaning().calibration());
     LedgerFit.WriterTap tap = off.tap(1, index -> true);
@@ -260,11 +261,12 @@ public class LuckSettlementTest {
     LedgerOutcome plain = off.learn(2, tapped(off, rows), List.of(), rows.size());
     LedgerOutcome measured = shadow.learn(2, tapped(shadow, rows), List.of(), rows.size(), carried);
     LedgerFitTest.assertBitwiseEqual(
-        new LedgerFit.Result(measured.correction(), measured.report()),
-        new LedgerFit.Result(plain.correction(), plain.report()));
+        new LedgerFit.Result(byClass(measured.correction()), measured.report()),
+        new LedgerFit.Result(byClass(plain.correction()), plain.report()));
     Assert.assertEquals(measured.appliedR2(), plain.appliedR2());
     for (var row : rows)
-      Assert.assertEquals(measured.correction().values(row), plain.correction().values(row));
+      Assert.assertEquals(
+          byClass(measured.correction()).values(row), byClass(plain.correction()).values(row));
     LedgerReport.Calibration report = measured.calibration().report();
     Assert.assertEquals(report.mode(), "SHADOW");
     Assert.assertEquals(report.applied(), "current");
@@ -365,18 +367,18 @@ public class LuckSettlementTest {
     Assert.assertEquals(report.applied(), "shadow");
     Assert.assertEquals(scaled.appliedR2(), Math.max(0, report.slotR2().shadow()));
     Assert.assertNotEquals(scaled.appliedR2(), plain.appliedR2());
-    Assert.assertSame(scaled.correction().scale(), carried);
+    Assert.assertSame(byClass(scaled.correction()).scale(), carried);
     int changed = 0;
     for (var row : rows) {
       double[] beta =
-          plain.correction().coefficients(row.gameId(), row.decisionClass().ordinal(), 0);
+          byClass(plain.correction()).coefficients(row.gameId(), row.decisionClass().ordinal(), 0);
       double h = carried.scale(row.standing());
-      float[] teacher = scaled.correction().values(row);
+      float[] teacher = byClass(scaled.correction()).values(row);
       for (int a = 0; a < 3; a++) {
         double expected = row.values()[a];
         for (int f = 0; f < LedgerColumn.COUNT; f++) expected -= h * beta[f] * row.ledger(a, f);
         Assert.assertEquals(teacher[a], (float) expected, 1e-6f);
-        if (teacher[a] != plain.correction().values(row)[a]) changed++;
+        if (teacher[a] != byClass(plain.correction()).values(row)[a]) changed++;
       }
       Assert.assertTrue(Float.isNaN(teacher[3]));
     }
@@ -386,9 +388,10 @@ public class LuckSettlementTest {
     LedgerOutcome reference = off.learn(1, tapped(off, rows), List.of(), rows.size());
     Assert.assertEquals(first.calibration().report().applied(), "current");
     Assert.assertEquals(first.appliedR2(), reference.appliedR2());
-    Assert.assertNull(first.correction().scale());
+    Assert.assertNull(byClass(first.correction()).scale());
     for (var row : rows)
-      Assert.assertEquals(first.correction().values(row), reference.correction().values(row));
+      Assert.assertEquals(
+          byClass(first.correction()).values(row), byClass(reference.correction()).values(row));
   }
 
   /**
@@ -485,7 +488,7 @@ public class LuckSettlementTest {
         apply.learn(1, tapped(apply, before), List.of(), before.size(), null).next();
     LuckSettlement.Settled settled =
         apply.settle(2, tapped(apply, rows), List.of(), rows.size(), carried);
-    LedgerCorrection teacher = settled.correction();
+    var teacher = byClass(settled.correction());
     Assert.assertSame(teacher.scale(), carried);
     LedgerOutcome calibrated = settled.calibrate();
     Assert.assertSame(settled.calibrate(), calibrated);
@@ -494,7 +497,8 @@ public class LuckSettlementTest {
     Assert.assertEquals(calibrated.appliedR2(), learned.appliedR2());
     Assert.assertEquals(calibrated.calibration().report(), learned.calibration().report());
     Assert.assertEquals(calibrated.next(), learned.next());
-    for (var row : rows) Assert.assertEquals(teacher.values(row), learned.correction().values(row));
+    for (var row : rows)
+      Assert.assertEquals(teacher.values(row), byClass(learned.correction()).values(row));
 
     LuckSettlement off = settle();
     LuckSettlement.Settled plain = off.settle(2, tapped(off, rows), List.of(), rows.size(), null);
@@ -525,5 +529,9 @@ public class LuckSettlementTest {
         failure.problems().stream()
             .anyMatch(problem -> problem.contains(path) && problem.contains(because));
     Assert.assertTrue(named, String.join(" ", assignments) + " -> " + failure.problems());
+  }
+
+  private static LedgerCorrection.ByClass byClass(LedgerCorrection correction) {
+    return (LedgerCorrection.ByClass) correction;
   }
 }

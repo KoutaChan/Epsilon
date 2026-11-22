@@ -7,13 +7,13 @@ import com.epsilon.agent.run.StepReport;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.core.CrnSeeds;
-import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.learn.AnchorScores;
 import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.learn.FitPlan;
 import com.epsilon.prism.learn.FitResult;
 import com.epsilon.prism.learn.Teacher;
+import com.epsilon.prism.luck.LedgerCorrection;
 import com.epsilon.prism.luck.LedgerOutcome;
 import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.luck.LuckSettlement;
@@ -25,8 +25,6 @@ import com.epsilon.prism.settings.PrismSettings;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -110,6 +108,7 @@ final class LearnStep implements Step<PrismIteration> {
     if (learnt.ledger().next() != null) {
       DurableFiles.write(part.resolve(LearnReport.CALIBRATOR), learnt.ledger().next());
     }
+    if (learnt.ledger().rootNext() != null) learnt.ledger().rootNext().write(part);
     StepReport step = StepReport.ran(iteration, started, learnt.report());
     step.write(part.resolve(PrismStep.REPORT));
     DurableFiles.seal(part, learned);
@@ -211,30 +210,53 @@ final class LearnStep implements Step<PrismIteration> {
     LedgerOutcome ledger;
     try (ExecutorService behind = Executors.newSingleThreadExecutor()) {
       Future<LedgerOutcome> calibrated =
-          behind.submit(() -> gates(iteration, store, settled.calibrate(), scored));
-      try {
-        if (prepared == null) {
-          Snapshot.copyModel(start, student);
-          result = FitResult.empty(rows.length);
-        } else {
-          if (tempo.anchored()) {
-            anchor.requireVersion(iteration.start());
-          }
+          behind.submit(
+              () ->
+                  Teacher.auditWins(
+                      iteration.luck(), settled.calibrate(threads), store, rows, scored));
+      LedgerCorrection.PredictionFailure failure = null;
+      if (prepared == null) {
+        Snapshot.copyModel(start, student);
+        result = FitResult.empty(rows.length);
+      } else {
+        try (prepared) {
+          if (tempo.anchored()) anchor.requireVersion(iteration.start());
           Teacher teacher =
               new Teacher(
                   settled.correction(),
                   tempo.anchored() ? anchor : null,
                   anchorWeight,
                   (float) gain);
-          result = prepared.fit(teacher);
-          prepared.network().save(student);
-        }
-      } finally {
-        if (prepared != null) {
-          prepared.close();
+          result = fitStudent(prepared, teacher, student);
+        } catch (RuntimeException e) {
+          failure = LedgerCorrection.PredictionFailure.find(e);
+          if (failure == null) throw e;
+          result = null;
         }
       }
       ledger = await(calibrated);
+      if (failure != null) ledger = iteration.luck().failedRoot(t, ledger, failure.getMessage());
+      if (prepared != null && (failure != null || settled.teacherChanged(ledger))) {
+        LOG.warn(
+            "t={} restarting the student from the starting snapshot with its fallback teacher", t);
+        DurableFiles.delete(student);
+        try (var retry =
+            Fit.prepare(
+                store,
+                rows,
+                start,
+                plan(settings, t, steps, priorR2, start),
+                (float) gain,
+                devices,
+                threads,
+                learning)) {
+          result =
+              fitStudent(
+                  retry,
+                  new Teacher(ledger.correction(), scored, anchorWeight, (float) gain),
+                  student);
+        }
+      }
     }
     LOG.info(result.summary(t));
     LearnReport report =
@@ -248,6 +270,13 @@ final class LearnStep implements Step<PrismIteration> {
             ledger.appliedR2(),
             LearnReport.Fit.of(result));
     return new Learned(report, ledger);
+  }
+
+  private static FitResult fitStudent(Fit.Prepared prepared, Teacher teacher, Path student)
+      throws IOException {
+    var result = prepared.fit(teacher);
+    prepared.network().save(student);
+    return result;
   }
 
   /**
@@ -274,53 +303,22 @@ final class LearnStep implements Step<PrismIteration> {
    * 補正率は、前の反復から持ち越したものと、それを当てはめた反復の帳簿の意味（持ち越しのキー）を渡す。
    */
   private static LuckSettlement.Settled settle(
-      PrismIteration iteration, CohortStore store, int[] rows, int threads) {
+      PrismIteration iteration, CohortStore store, int[] rows, int threads) throws IOException {
     LuckSettlement luck = iteration.luck();
     try (ExecutorService readers = Executors.newFixedThreadPool(threads)) {
       Iterable<Row> stored =
           store.iterate(rows, iteration.settings().fit().batch(), readers, threads);
       PrismCarry carry = iteration.state().carry();
-      return luck.settle(
-          iteration.number(),
-          iteration.ledger(),
-          stored,
-          rows.length,
-          carry.calibrator(),
-          carry.key() == null ? null : carry.key().ledger());
+      var history =
+          LuckSettlement.History.read(
+              carry.calibrator(),
+              carry.key() == null ? null : carry.key().ledger(),
+              iteration.run().reports(),
+              iteration.number() - 1,
+              carry.rootCohort());
+      return luck.settleWithHistory(
+          iteration.number(), iteration.ledger(), stored, rows.length, history);
     }
-  }
-
-  /** 和了の判断の差のために行を読み直すスレッドの数（生徒の学習と並べて回すので少なくする）。 */
-  private static final int GATE_READERS = 2;
-
-  /**
-   * 帳簿の補正率を求めた反復で、和了の判断の教師の差を帳簿の結果に足す（{@link LuckSettlement#gates}）。生徒の行のうち主経路の
-   * FINAL_END の行を読み直し、ツモの比べる手はアンカーの s で選ぶ（アンカーが無ければツモの行は数えない）。補正率を求めない反復では、
-   * 結果をそのまま返す。
-   */
-  private static LedgerOutcome gates(
-      PrismIteration iteration, CohortStore store, LedgerOutcome ledger, AnchorScores anchor)
-      throws IOException {
-    if (ledger.calibration() == null) {
-      return ledger;
-    }
-    int t = iteration.number();
-    var students = iteration.settings().fit().rows();
-    int[] finals =
-        store.select(
-            t,
-            t,
-            index ->
-                students.test(index)
-                    && index.source() == Row.Source.MAIN
-                    && index.decisionClass() == DecisionClass.FINAL_END);
-    Row[] read;
-    try (ExecutorService readers = Executors.newFixedThreadPool(GATE_READERS)) {
-      read = store.read(finals, readers, GATE_READERS);
-    }
-    List<float[]> scores =
-        anchor == null ? null : Arrays.stream(finals).mapToObj(anchor::scores).toList();
-    return iteration.luck().gates(ledger, Arrays.asList(read), scores);
   }
 
   /** 失敗の後で、先に始めた学習器の準備が終わるのを待って閉じる。準備と閉じるときの例外は、元の失敗に添える。 */

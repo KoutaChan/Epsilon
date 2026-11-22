@@ -20,6 +20,7 @@ import com.epsilon.prism.grp.PhiSetup;
 import com.epsilon.prism.learn.Fit;
 import com.epsilon.prism.luck.LedgerCalibrator;
 import com.epsilon.prism.luck.LedgerReport;
+import com.epsilon.prism.luck.RootTraining;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.settings.PrismSettings;
@@ -170,13 +171,21 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
     LearnReport learn = (LearnReport) steps.get(PrismStep.LEARN.name()).metrics();
     Path learned = iteration.work().resolve(LearnStep.LEARN);
     Path calibrator = learned.resolve(LearnReport.CALIBRATOR);
+    Path roots = RootTraining.State.file(learned, t);
+    boolean carryRoots = Files.exists(roots);
+    if (carryRoots) {
+      Path target = RootTraining.State.file(run().reports(), t);
+      DurableFiles.createDirectories(target.getParent());
+      DurableFiles.write(target, output -> Files.copy(roots, output));
+    }
     PrismCarry carry =
         new PrismCarry(
             learn.appliedR2(),
             CarryKey.of(iteration.settings(), phi.value().entry()),
             Files.exists(calibrator)
                 ? RecordFile.read(LedgerCalibrator.class, calibrator).value()
-                : null);
+                : null,
+            carryRoots ? t : null);
     // コホートを確定した後に王者へ戻すと決まった反復では、戻しを次の反復に送る
     int start = state.start() == collect.start() ? t + 1 : state.start();
     PrismState next =
@@ -216,6 +225,7 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
     int newest = state.next() - 1 - latest.fit().keepCohorts();
     for (int cohort : sealedCohorts(run())) {
       if (cohort <= newest) {
+        if (cohort > 1) Files.deleteIfExists(RootTraining.State.file(run().reports(), cohort - 1));
         DurableFiles.delete(run().rows(cohort));
         LOG.info("Removed cohort {} (keeping {})", cohort, latest.fit().keepCohorts());
       }

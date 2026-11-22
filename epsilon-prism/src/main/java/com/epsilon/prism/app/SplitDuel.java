@@ -192,7 +192,7 @@ public record SplitDuel(
   }
 
   /** 保存した当てはめの報告から補正を作る。区分ごとの係数の名前は、ルール {@code variant} の区分の名前で引く。 */
-  static LedgerCorrection correction(
+  static LedgerCorrection.ByClass correction(
       LedgerReport.Full report, LedgerRecording recording, Variant variant) throws IOException {
     double[][][] beta = new double[2][DecisionClass.COUNT][];
     var cells = report.byCell();
@@ -216,7 +216,7 @@ public record SplitDuel(
     }
     if (cells != null && loaded != cells.size())
       throw new IOException("Unknown stage or rank for " + variant + " in ledger report");
-    return new LedgerCorrection(beta, partition, byCell);
+    return new LedgerCorrection.ByClass(beta, partition, byCell);
   }
 
   private static double[] coefficients(

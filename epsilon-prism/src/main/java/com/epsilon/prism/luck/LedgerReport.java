@@ -120,6 +120,14 @@ public record LedgerReport(
    * @param calibration 補正率の校正の報告（補正率を求めなければ null）
    */
   public Full full(LedgerRecording recording, Calibration calibration) {
+    return full(recording, calibration, null, null);
+  }
+
+  Full full(
+      LedgerRecording recording,
+      Calibration calibration,
+      RootAudit.Report roots,
+      LedgerCalibrator appliedScale) {
     Map<String, Segment> classes = new LinkedHashMap<>();
     byClass.forEach((name, line) -> classes.put(name, Segment.of(line)));
     return new Full(
@@ -132,7 +140,9 @@ public record LedgerReport(
         seconds,
         recording,
         byCell,
-        calibration);
+        calibration,
+        roots,
+        appliedScale);
   }
 
   /**
@@ -160,7 +170,9 @@ public record LedgerReport(
       @Key(doc = "係数を当てはめた行の帳簿の収集条件", presence = Presence.ABSENT) LedgerRecording recording,
       @Key(doc = "判断クラス・局・自席順位別の係数（両側ともクラス係数を使う区分は省略）", presence = Presence.ABSENT)
           Map<String, List<Fold>> byCell,
-      @Key(doc = "帳簿の補正率の校正（補正率を求めない反復では無い）", presence = Presence.ABSENT) Calibration calibration) {
+      @Key(doc = "帳簿の補正率の校正（補正率を求めない反復では無い）", presence = Presence.ABSENT) Calibration calibration,
+      @Key(doc = "根の係数による教師の監査", presence = Presence.ABSENT) RootAudit.Report roots,
+      @Key(doc = "教師に掛けた共通の補正率", presence = Presence.ABSENT) LedgerCalibrator appliedScale) {
 
     public Full(
         long rows,
@@ -171,7 +183,8 @@ public record LedgerReport(
         Bias bias,
         double seconds,
         LedgerRecording recording) {
-      this(rows, slots, skippedRows, all, byClass, bias, seconds, recording, null, null);
+      this(
+          rows, slots, skippedRows, all, byClass, bias, seconds, recording, null, null, null, null);
     }
 
     public Full(
@@ -184,8 +197,21 @@ public record LedgerReport(
         double seconds,
         LedgerRecording recording,
         Map<String, List<Fold>> byCell) {
-      this(rows, slots, skippedRows, all, byClass, bias, seconds, recording, byCell, null);
+      this(
+          rows,
+          slots,
+          skippedRows,
+          all,
+          byClass,
+          bias,
+          seconds,
+          recording,
+          byCell,
+          null,
+          null,
+          null);
     }
+
 
     public Full {
       byClass = Collections.unmodifiableMap(new LinkedHashMap<>(byClass));
@@ -436,6 +462,24 @@ public record LedgerReport(
       bands = List.copyOf(bands);
       audits = audits == null ? null : List.copyOf(audits);
       gates = List.copyOf(gates);
+    }
+
+    Calibration withApplied(Arm arm) {
+      return new Calibration(
+          mode,
+          kind,
+          arm.reportName(),
+          origin,
+          fallback,
+          rows,
+          slots,
+          j,
+          slotR2,
+          scale,
+          bands,
+          audits,
+          gates,
+          next);
     }
 
     /** 和了の判断の教師の差を入れた報告を返す。 */

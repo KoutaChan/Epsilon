@@ -464,9 +464,10 @@ public record LedgerReport(
     /** 補正しない Y。 */
     RAW("raw"),
     /** 帳簿の補正 Y − β·L。 */
-    CURRENT("current"),
+    CLASS("current"),
     /** 補正率を掛けた補正 Y − h(o)·β·L。 */
-    SHADOW("shadow");
+    COMMON_SCALE("shadow"),
+    ROOT("rootCoefficients");
 
     private final String reportName;
 

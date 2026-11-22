@@ -337,7 +337,7 @@ public class LedgerCalibratorTest {
       LedgerCalibrator next = fit(pass.sums(), DEFAULTS, variant);
       LedgerReport.Calibration report =
           pass.report(
-              "SHADOW", LedgerCalibrationKind.COMMON_SCALE, LedgerReport.Arm.CURRENT, null, next);
+              "SHADOW", LedgerCalibrationKind.COMMON_SCALE, LedgerReport.Arm.CLASS, null, next);
       int n = rows.size();
       Assert.assertEquals(report.rows(), n);
       Assert.assertEquals(report.slots(), 3L * n);
@@ -446,7 +446,7 @@ public class LedgerCalibratorTest {
     for (var row : after) held.add(row);
     LedgerReport.Calibration report =
         held.report(
-            "SHADOW", LedgerCalibrationKind.COMMON_SCALE, LedgerReport.Arm.CURRENT, null, null);
+            "SHADOW", LedgerCalibrationKind.COMMON_SCALE, LedgerReport.Arm.CLASS, null, null);
     Assert.assertTrue(report.j().shadow() < report.j().current(), report.j().toString());
   }
 

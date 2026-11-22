@@ -71,6 +71,11 @@ public final class LedgerCell {
   public Standing standing(long[] words, int base) {
     Reader scratch = readers.get();
     Observation o = scratch.observation().bind(words, base);
+    return standing(o);
+  }
+
+  Standing standing(Observation o) {
+    Reader scratch = readers.get();
     int gap = Integer.MAX_VALUE;
     for (int seat = 0; seat < seats; seat++) {
       scratch.scores()[o.absoluteSeat(seat)] = o.score(seat);

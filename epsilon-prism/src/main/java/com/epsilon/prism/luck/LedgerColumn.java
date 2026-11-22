@@ -53,6 +53,30 @@ public enum LedgerColumn {
     this.reportName = reportName;
   }
 
+  /** 全席の根の手牌を固定しても、その後の増分の条件付き平均が 0 になる列か。 */
+  boolean centeredGivenHands() {
+    return switch (this) {
+      case OWN_IMPROVE_1,
+          OWN_IMPROVE_2,
+          OWN_IMPROVE_3,
+          OWN_TSUMO,
+          OWN_FORCED_DEAL_IN,
+          OWN_DRAWN_DANGER,
+          OPP_IMPROVE_1,
+          OPP_IMPROVE_2,
+          OPP_TSUMO,
+          OPP_FORCED_TO_SELF,
+          OPP_FORCED_TO_OTHER,
+          OPP_DRAWN_CHANCE,
+          DORA_SELF,
+          DORA_OPPONENTS,
+          URA,
+          POLICY_SELF,
+          POLICY_OPPONENT ->
+          true;
+    };
+  }
+
   /** 計算と補正の単位にする組。 */
   public LedgerGroup group() {
     return group;

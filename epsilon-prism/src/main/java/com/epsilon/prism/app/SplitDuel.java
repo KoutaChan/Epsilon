@@ -79,7 +79,7 @@ public record SplitDuel(
     var fit = ledger == null ? null : RecordFile.read(LedgerReport.Full.class, ledger).value();
     if (fit != null
         && fit.calibration() != null
-        && LedgerReport.Arm.of(fit.calibration().applied()) == LedgerReport.Arm.SHADOW) {
+        && LedgerReport.Arm.of(fit.calibration().applied()) == LedgerReport.Arm.COMMON_SCALE) {
       throw new IOException(
           "split-duel rebuilds only the unscaled ledger correction, but "
               + ledger

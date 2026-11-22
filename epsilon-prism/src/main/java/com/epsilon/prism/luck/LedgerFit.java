@@ -4,11 +4,13 @@ import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.RootCoefficients;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.rows.RowCodec;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -77,6 +79,9 @@ public final class LedgerFit {
   /** 行の局面を読む区分（ルールを渡さなかったときは null で、行を貯めて読み直せない）。 */
   private final LedgerCell standings;
 
+  private final Variant variant;
+  private final RootCoefficients.Information rootInformation;
+
   private static final int MIN_CELL_ROWS = 544;
 
   /**
@@ -98,6 +103,18 @@ public final class LedgerFit {
       int minRowsPerColumn,
       LedgerCells cells,
       Variant variant) {
+    this(apply, ridge, minRowsPerColumn, cells, variant, null);
+  }
+
+  LedgerFit(
+      Set<LedgerGroup> apply,
+      double ridge,
+      int minRowsPerColumn,
+      LedgerCells cells,
+      Variant variant,
+      RootCoefficients.Information rootInformation) {
+    this.variant = variant;
+    this.rootInformation = rootInformation;
     this.cells =
         switch (cells) {
           case CLASS -> null;
@@ -178,7 +195,7 @@ public final class LedgerFit {
     }
     long started = System.nanoTime();
     var accumulator = new Accumulator(cells);
-    Tape tape = new Tape(cells != null, true);
+    Tape tape = new Tape(this, true);
     for (Row row : rows) {
       FitRow read = FitRow.of(row, standings);
       accumulator.add(read);
@@ -237,7 +254,7 @@ public final class LedgerFit {
       this.retain = retain;
       tapes = new Tape[shards];
       for (int shard = retain ? 0 : 1; shard < shards; shard++)
-        tapes[shard] = new Tape(fit.cells != null, retain);
+        tapes[shard] = new Tape(fit, retain);
     }
 
     @Override
@@ -315,8 +332,17 @@ public final class LedgerFit {
 
     int[] gaps;
 
-    Tape(boolean byCell, boolean standings) {
-      cells = byCell ? new byte[games.length] : null;
+    final RootFeatures.Reader rootReader;
+    final boolean hands;
+    final RootTape roots;
+    RuntimeException rootFailure;
+
+    Tape(LedgerFit fit, boolean standings) {
+      rootReader =
+          standings && fit.rootInformation != null ? new RootFeatures.Reader(fit.variant) : null;
+      roots = rootReader == null ? null : new RootTape(rootReader);
+      hands = fit.rootInformation == RootCoefficients.Information.ROOT_HANDS;
+      cells = fit.cells != null ? new byte[games.length] : null;
       if (standings) {
         ranks = new byte[games.length];
         rounds = new byte[games.length];
@@ -403,6 +429,13 @@ public final class LedgerFit {
           l[(at + i) * F + f] = half;
         }
       }
+      if (roots != null && rootFailure == null) {
+        try {
+          roots.add(rows, slot, row.root(rootReader, measured, m, hands));
+        } catch (RuntimeException failure) {
+          rootFailure = failure;
+        }
+      }
       games[rows] = row.gameId();
       classes[rows] = (byte) row.decisionClass().ordinal();
       if (cells != null) cells[rows] = (byte) row.cell();
@@ -432,6 +465,13 @@ public final class LedgerFit {
 
     /** 貯めた r 番目の行。 */
     private final class Stored implements FitRow {
+      @Override
+      public RootFeatures root(
+          RootFeatures.Reader reader, int[] actions, int count, boolean hands) {
+        if (rootFailure != null) throw rootFailure;
+        return roots.get(row, starts[row], count, standing());
+      }
+
       final int row, start;
       final float[] y;
       final short[] l;
@@ -493,6 +533,55 @@ public final class LedgerFit {
           throw new IllegalStateException("This ledger tape keeps no row sources");
         return SOURCE[sources[row]];
       }
+    }
+  }
+
+  /** 根の共通項は倍精度のまま行順に、手に固有の整数は測定候補順に保持する。 */
+  private static final class RootTape {
+    private static final int ROWS = 4096;
+    private final RootFeatures.Reader reader;
+    private final List<double[]> common = new ArrayList<>();
+    private final BitSet hands = new BitSet();
+    private final List<Actions> actions = new ArrayList<>();
+
+    private record Actions(byte[] types, byte[] waits, int[] points) {
+      Actions() {
+        this(new byte[Tape.BLOCK], new byte[Tape.BLOCK], new int[Tape.BLOCK]);
+      }
+    }
+
+    RootTape(RootFeatures.Reader reader) {
+      this.reader = reader;
+    }
+
+    void add(int row, long slot, RootFeatures root) {
+      int width = reader.commonLayout.width;
+      if (row % ROWS == 0) common.add(new double[ROWS * width]);
+      System.arraycopy(root.common(), 0, common.get(row / ROWS), row % ROWS * width, width);
+      hands.set(row, root.hands());
+      int block = (int) (slot / Tape.BLOCK), start = (int) (slot % Tape.BLOCK);
+      if (block == actions.size()) actions.add(new Actions());
+      Actions out = actions.get(block);
+      for (int i = 0; i < root.actionCount(); i++) {
+        out.types[start + i] = (byte) root.actionType(i);
+        out.waits[start + i] = (byte) root.opponentsWaiting(i);
+        out.points[start + i] = root.points(i);
+      }
+    }
+
+    RootFeatures get(int row, long slot, int count, LedgerCell.Standing standing) {
+      int width = reader.commonLayout.width, offset = row % ROWS * width;
+      double[] shared = Arrays.copyOfRange(common.get(row / ROWS), offset, offset + width);
+      int start = (int) (slot % Tape.BLOCK);
+      Actions a = actions.get((int) (slot / Tape.BLOCK));
+      int[] fields = new int[count * RootFeatures.ACTION_FIELDS];
+      for (int i = 0; i < count; i++) {
+        int j = i * RootFeatures.ACTION_FIELDS;
+        fields[j] = Byte.toUnsignedInt(a.types[start + i]);
+        fields[j + 1] = Byte.toUnsignedInt(a.waits[start + i]);
+        fields[j + 2] = a.points[start + i];
+      }
+      return new RootFeatures(shared, fields, hands.get(row), standing, reader.types);
     }
   }
 

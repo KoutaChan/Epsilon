@@ -293,12 +293,12 @@ public final class LuckSettlement {
         correction == null
             ? LedgerReport.Arm.RAW
             : calibration.applies() && scale != null
-                ? LedgerReport.Arm.SHADOW
-                : LedgerReport.Arm.CURRENT;
+                ? LedgerReport.Arm.COMMON_SCALE
+                : LedgerReport.Arm.CLASS;
     return new Settled(
         fitted,
         new Pending(cohort, retained, result.correction(), scale, fallback, arm),
-        arm == LedgerReport.Arm.SHADOW ? correction.scaled(scale) : correction);
+        arm == LedgerReport.Arm.COMMON_SCALE ? correction.scaled(scale) : correction);
   }
 
   /**
@@ -367,8 +367,9 @@ public final class LuckSettlement {
     double applied =
         switch (pending.applied()) {
           case RAW -> 0;
-          case CURRENT -> fitted.appliedR2();
-          case SHADOW -> {
+          case ROOT -> throw new IllegalStateException("Common scale cannot teach with a root model");
+          case CLASS -> fitted.appliedR2();
+          case COMMON_SCALE -> {
             double shadowR2 = pass.shadowR2();
             yield Double.isFinite(shadowR2) ? Math.max(0, shadowR2) : 0;
           }

@@ -489,7 +489,7 @@ public record FitPlateau(
     if (calibration == null) {
       return new Ledger(correction, null);
     }
-    if (LedgerReport.Arm.of(calibration.applied()) == LedgerReport.Arm.SHADOW) {
+    if (LedgerReport.Arm.of(calibration.applied()) == LedgerReport.Arm.COMMON_SCALE) {
       if (carried == null || !LedgerReport.Origin.of(carried).equals(calibration.origin()))
         throw new IOException(
             "The saved ledger of cohort "

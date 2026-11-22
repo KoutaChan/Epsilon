@@ -45,8 +45,18 @@ interface FitRow {
     return new Cohort(row, cells);
   }
 
+  /** 指定した候補順の根の特徴を返す。 */
+  default RootFeatures root(RootFeatures.Reader reader, int[] actions, int count, boolean hands) {
+    throw new IllegalStateException("This ledger row has no root features");
+  }
+
   /** コホートの行。 */
   record Cohort(Row row, LedgerCell cells) implements FitRow {
+    @Override
+    public RootFeatures root(RootFeatures.Reader reader, int[] actions, int count, boolean hands) {
+      return reader.read(row.observation(), 0, row.oracle(), actions, count, hands);
+    }
+
     @Override
     public long gameId() {
       return row.gameId();

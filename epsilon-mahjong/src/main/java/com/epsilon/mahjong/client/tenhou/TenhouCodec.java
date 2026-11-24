@@ -139,7 +139,7 @@ final class TenhouCodec {
     boolean lower = Character.isLowerCase(letter);
     String number = name.substring(1);
     for (TenhouTiles.Move kind : TenhouTiles.Move.values()) {
-      int seat = kind.seat(Character.toUpperCase(letter), variant);
+      int seat = kind.tagSeat(Character.toUpperCase(letter));
       boolean draw = kind == TenhouTiles.Move.DRAW;
       if (seat < 0 || lower && draw || number.isEmpty() && !draw) {
         continue;

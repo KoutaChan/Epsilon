@@ -186,7 +186,7 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
    *
    * @param code N タグの m
    * @param variant 卓のルール
-   * @param seat 鳴いた席（タグの席）
+   * @param seat 鳴いた席（天鳳の 4 席の上の絶対席。牌譜ではタグの席と同じ）
    * @return 面子とその物理牌
    * @throws IllegalArgumentException 面子のコードでない値か、北抜きのコードか、チーの無いルールでチーのコードを渡したとき
    */

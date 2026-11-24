@@ -9,6 +9,7 @@ import com.epsilon.mahjong.engine.RuleWorkspace;
 import com.epsilon.mahjong.engine.SeatView;
 import com.epsilon.mahjong.engine.TurnEvent;
 import com.epsilon.mahjong.io.tenhou.TenhouMeldCode;
+import com.epsilon.mahjong.io.tenhou.TenhouRound;
 import com.epsilon.mahjong.io.tenhou.TenhouTag;
 import com.epsilon.mahjong.io.tenhou.TenhouTiles;
 import com.epsilon.mahjong.io.tenhou.TenhouXml;
@@ -31,8 +32,9 @@ import java.util.stream.Collectors;
  * ツモ切りの打牌は小文字にする。その席に判断を求めるメッセージには t の bit を付ける。
  * 席の判断と返すはずのメッセージは、同じ牌譜を再生するエンジン（ReplayDriver）がその席に見せる合法手と、牌譜の手から作る。
  * 牌譜から分からない応答は見送りにする。返すはずのメッセージに書く物理牌は、その手でエンジンの手牌から出た牌。
- * 三人打ちの牌譜では、席ごとに並ぶ値の 4 つ目（空き席）は回さずに残す。N タグの m にある鳴き元は、鳴いた席から天鳳の 4 席の上で数えた
- * 値なので、相対席の上で数え直して書く（ライブのサーバも、自分を席 0 として数えるものとみなす）。北抜きの N タグには、自分の北抜きなら返事をせず、
+ * 三人打ちでも、天鳳のライブのサーバと同じく、空き席（北の絶対席 3）を含む 4 席の上で回す。自分が席 1・2 なら、親の番号の 3 や
+ * 空き席の値はタグの席 3 以外に来る。N タグの m にある鳴き元は、鳴いた席から 4 席の上で数えた距離なので、回しても変わらず、牌譜の
+ * 値をそのまま書く。北抜きの N タグには、自分の北抜きなら返事をせず、
  * 他家の北抜きなら抜いた北への応答を求める。
  */
 final class LiveTranscript {
@@ -179,9 +181,8 @@ final class LiveTranscript {
           boolean nuki = TenhouMeldCode.nuki(code);
           TenhouMeldCode meld = nuki ? null : TenhouMeldCode.decode(code, variant, who);
           Meld.Type type = nuki ? null : meld.meld().type();
-          int relativeWho = Math.floorMod(who - seat, seats);
-          String m = nuki ? tag.get("m") : Integer.toString(meld.encode(variant, relativeWho));
-          Map<String, String> attributes = attributes("who", relativeWho, "m", m);
+          int relativeWho = Math.floorMod(who - seat, TenhouRound.TAG_SEATS);
+          Map<String, String> attributes = attributes("who", relativeWho, "m", tag.get("m"));
           List<String> replies = List.of();
           if (who == seat && (type == Meld.Type.CHI || type == Meld.Type.PON)) {
             replies = prompts.postCalls.removeFirst().replies();
@@ -201,7 +202,7 @@ final class LiveTranscript {
         }
         default -> {
           TenhouTiles.TileTag tile = TenhouTiles.TileTag.parse(tag.name(), variant);
-          int letter = Math.floorMod(tile.seat() - seat, seats);
+          int letter = Math.floorMod(tile.seat() - seat, TenhouRound.TAG_SEATS);
           switch (tile.move()) {
             case DRAW -> {
               drawn[tile.seat()] = tile.tile();
@@ -277,7 +278,7 @@ final class LiveTranscript {
   }
 
   /**
-   * 席ごとに同じ数ずつ並ぶ値の列を、この席が先頭になるように回す。ルールの席数より後ろの値（三人打ちの空き席）はそのまま残す。
+   * 席ごとに同じ数ずつ並ぶ値の列を、この席が先頭になるように天鳳の 4 席の上で回す（三人打ちの空き席の値も一緒に回る）。
    *
    * @param values コンマで区切った値の列
    * @param width 1 席の値の数
@@ -285,15 +286,15 @@ final class LiveTranscript {
   private String rotate(String values, int width) {
     String[] split = values.split(",", -1);
     String[] rotated = split.clone();
-    for (int relative = 0; relative < seats; relative++) {
-      int absolute = (relative + seat) % seats;
+    for (int relative = 0; relative < TenhouRound.TAG_SEATS; relative++) {
+      int absolute = (relative + seat) % TenhouRound.TAG_SEATS;
       System.arraycopy(split, absolute * width, rotated, relative * width, width);
     }
     return String.join(",", rotated);
   }
 
   private String relative(int absolute) {
-    return Integer.toString(Math.floorMod(absolute - seat, seats));
+    return Integer.toString(Math.floorMod(absolute - seat, TenhouRound.TAG_SEATS));
   }
 
   private void line(String name, Map<String, String> attributes, List<String> replies) {

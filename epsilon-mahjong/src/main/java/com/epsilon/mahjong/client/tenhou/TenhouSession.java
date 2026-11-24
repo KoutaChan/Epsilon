@@ -149,9 +149,9 @@ public final class TenhouSession {
     return List.of(TenhouCodec.join(target));
   }
 
-  /** 打ち手の名前をログに出す。名前は自分を 0 とする相対席の順に並び、URL エンコードされている。 */
+  /** 打ち手の名前をログに出す。名前は自分を 0 とする天鳳の 4 席の順に並び（三人打ちの空き席は空）、URL エンコードされている。 */
   private void players(TenhouTag tag) {
-    for (int seat = 0; seat < variant.seats(); seat++) {
+    for (int seat = 0; seat < TenhouRound.TAG_SEATS; seat++) {
       String name = tag.get("n" + seat);
       if (name != null && !name.isEmpty()) {
         log.info("Tenhou player n{}: {}", seat, URLDecoder.decode(name, StandardCharsets.UTF_8));
@@ -227,7 +227,7 @@ public final class TenhouSession {
       int offers = TenhouCodec.offers(tag);
       return seat != table.seat() && offers != 0 ? decide(offers, false) : List.of();
     }
-    Meld meld = TenhouMeldCode.decode(code, variant, tag.integer("who")).meld();
+    Meld meld = TenhouMeldCode.decode(code, variant, seat).meld();
     switch (meld.type()) {
       case CHI, PON, DAIMINKAN -> table.call(seat, meld.id());
       case ANKAN -> table.closedKan(seat, meld.base());

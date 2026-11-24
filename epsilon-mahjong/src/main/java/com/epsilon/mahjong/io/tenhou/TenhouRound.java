@@ -16,15 +16,17 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 天鳳の局のタグ（INIT・REACH・AGARI・RYUUKYOKU）を読む。牌譜とライブの両方で使う。タグの席は回転させて絶対席に直す（絶対席 =
- * (タグの席 ＋ 回転) mod 席の数）。回転は INIT の親から決まり、牌譜では 0、自分を席 0 と書くライブでは自分の絶対席になる。
+ * 天鳳の局のタグ（INIT・REACH・AGARI・RYUUKYOKU）を読む。牌譜とライブの両方で使う。タグの席は、空き席を含む天鳳の 4 席の上で
+ * 回転させて絶対席に直す（絶対席 = (タグの席 ＋ 回転) mod 4）。回転は INIT の親から決まり、牌譜では 0、自分を席 0 と書くライブでは
+ * 自分の絶対席になる。
  *
  * <p>局の結果は、AGARI（ダブロンなら続けて複数）か RYUUKYOKU を積んで作る。AGARI の点（ten）が、翻・符か役満から計算した和了点と
  * 違えば IllegalArgumentException を投げる。局の点の移動は、sc の移動を足し、この局で成立した立直の供託を引いて求める。流し満貫の
  * 席は、荒牌の精算が sc の移動と一致する席の組にする。1 つのインスタンスを同時に使えるのは 1 つのスレッドだけ。
  *
- * <p>天鳳は席ごとの値（ten・sc・owari、INIT の配牌）を、三人打ちでも 4 席分書く。ルールの席の数より後ろの席は空き席で、値は 0 か
- * 空になる。読むときは、空き席の値が 0 であることを確かめてから捨てる。
+ * <p>天鳳は席ごとの値（ten・sc・owari、INIT の配牌）を、三人打ちでも 4 席分書く。絶対席がルールの席の数以上の席（三人打ちの北の
+ * 絶対席 3）は空き席で、値は 0 か空になる。牌譜ではタグの席 3、ライブでは自分から数えたタグの席 (3 − 自分の絶対席) mod 4 が空き席に
+ * あたる。読むときは、空き席の値が 0 であることを確かめてから捨てる。
  */
 public final class TenhouRound {
 
@@ -32,7 +34,7 @@ public final class TenhouRound {
   static final int POINT_UNIT = 100;
 
   /** 天鳳のタグが席ごとの値を並べる席の数（空き席を含む）。 */
-  static final int TAG_SEATS = 4;
+  public static final int TAG_SEATS = 4;
 
   /** INIT の seed の値の並び（宣言の順）。 */
   enum Seed {
@@ -266,10 +268,18 @@ public final class TenhouRound {
     }
     int round = TenhouRoundIndex.round(seed[Seed.ROUND.ordinal()], variant);
     int oya = init.integer("oya");
-    if (oya < 0 || oya >= seats) {
-      throw new IllegalArgumentException("Tenhou INIT names dealer " + oya + " of " + seats);
+    if (oya < 0 || oya >= TAG_SEATS) {
+      throw new IllegalArgumentException("Tenhou INIT names dealer " + oya + " of " + TAG_SEATS);
     }
-    rotation = Math.floorMod(variant.dealer(round) - oya, seats);
+    rotation = Math.floorMod(variant.dealer(round) - oya, TAG_SEATS);
+    if (rotation >= seats) {
+      throw new IllegalArgumentException(
+          "Tenhou INIT names dealer "
+              + oya
+              + " in round "
+              + round
+              + ", which seats this player on the empty seat");
+    }
     int[] ten = init.integers("ten");
     if (ten.length != TAG_SEATS) {
       throw new IllegalArgumentException(
@@ -277,8 +287,9 @@ public final class TenhouRound {
     }
     int[] scores = new int[seats];
     for (int tagSeat = 0; tagSeat < TAG_SEATS; tagSeat++) {
-      if (tagSeat < seats) {
-        scores[seat(tagSeat)] = ten[tagSeat] * POINT_UNIT;
+      int absolute = absolute(tagSeat);
+      if (absolute < seats) {
+        scores[absolute] = ten[tagSeat] * POINT_UNIT;
       } else {
         requireEmpty("INIT ten", tagSeat, ten[tagSeat]);
       }
@@ -308,12 +319,22 @@ public final class TenhouRound {
     return indicator;
   }
 
-  /** タグの席を絶対席に直す。そのルールに無い席なら IllegalArgumentException を投げる。 */
+  /** タグの席を絶対席に直す。天鳳の 4 席に無い席か、空き席なら IllegalArgumentException を投げる。 */
   public int seat(int tagSeat) {
-    if (tagSeat < 0 || tagSeat >= seats) {
-      throw new IllegalArgumentException("Tenhou names seat " + tagSeat + " of " + seats);
+    if (tagSeat < 0 || tagSeat >= TAG_SEATS) {
+      throw new IllegalArgumentException("Tenhou names seat " + tagSeat + " of " + TAG_SEATS);
     }
-    return (tagSeat + rotation) % seats;
+    int absolute = absolute(tagSeat);
+    if (absolute >= seats) {
+      throw new IllegalArgumentException(
+          "Tenhou names seat " + tagSeat + ", the empty seat of a " + seats + "-seat table");
+    }
+    return absolute;
+  }
+
+  /** タグの席を、空き席も含めた天鳳の 4 席の上の絶対席に直す。 */
+  private int absolute(int tagSeat) {
+    return (tagSeat + rotation) % TAG_SEATS;
   }
 
   /** AGARI を積む。ダブロンなら、同じ放銃者からのロンの AGARI を続けて積む。 */
@@ -363,7 +384,7 @@ public final class TenhouRound {
     if (type == null || type.abortive == null) {
       kind = EndKind.EXHAUSTIVE;
       nagashi = type == DrawType.NM;
-      for (int tagSeat = 0; tagSeat < seats; tagSeat++) {
+      for (int tagSeat = 0; tagSeat < TAG_SEATS; tagSeat++) {
         if (ryuukyoku.get("hai" + tagSeat) != null) {
           tenpaiMask |= 1 << seat(tagSeat);
         }
@@ -471,8 +492,9 @@ public final class TenhouRound {
     int[] points = new int[seats];
     for (int tagSeat = 0; tagSeat < TAG_SEATS; tagSeat++) {
       int value = Integer.parseInt(values[tagSeat * width + field.ordinal()].trim());
-      if (tagSeat < seats) {
-        points[seat(tagSeat)] = value * POINT_UNIT;
+      int absolute = absolute(tagSeat);
+      if (absolute < seats) {
+        points[absolute] = value * POINT_UNIT;
       } else {
         requireEmpty(end.name() + " " + key, tagSeat, value);
       }

@@ -43,6 +43,7 @@ public class HostReadyCapacityTest {
     assertSame(observed.getCause(), failure);
     expectThrows(IllegalStateException.class, capacity::tryAcquire);
     assertNull(capacity.release(true));
-    expectThrows(IllegalArgumentException.class, () -> new DecisionDevicePipeline.HostReadyCapacity(0));
+    expectThrows(
+        IllegalArgumentException.class, () -> new DecisionDevicePipeline.HostReadyCapacity(0));
   }
 }

@@ -32,7 +32,9 @@ public class LogGamesTest {
       for (int handEnd = 0; handEnd < record.handEnds().size(); handEnd++) {
         RoundStart next = game.rounds().get(handEnd + 1).start();
         GrpState state = record.handEnds().get(handEnd);
-        Assert.assertEquals(state, new GrpState(variant, next.round(), next.honba(), next.kyotaku(), next.scores()));
+        Assert.assertEquals(
+            state,
+            new GrpState(variant, next.round(), next.honba(), next.kyotaku(), next.scores()));
       }
       Assert.assertEquals(record.finalScores(), game.finalScores());
       Assert.assertEquals(record.gameId(), LogGames.gameId(game.meta().id()));
@@ -66,7 +68,10 @@ public class LogGamesTest {
       if (boundary == Boundary.GAME_END) {
         return recorder.gameEnded(
             engine.roundEnd().next(),
-            new RecordedGame.Meta("log-" + seed, RecordedGame.Source.TENHOU, Collections.nCopies(variant.seats(), "")));
+            new RecordedGame.Meta(
+                "log-" + seed,
+                RecordedGame.Source.TENHOU,
+                Collections.nCopies(variant.seats(), "")));
       }
       boundary = engine.advance(ws);
     }

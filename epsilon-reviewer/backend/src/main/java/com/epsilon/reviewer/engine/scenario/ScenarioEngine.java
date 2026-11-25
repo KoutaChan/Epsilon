@@ -72,7 +72,8 @@ public final class ScenarioEngine {
           throw new IllegalStateException("Seat " + seat + " has no turn at the decision");
         return new ScenarioAnswer(DecisionEvaluator.passOnly(model, decision.recorded()), null);
       }
-      return new ScenarioAnswer(evaluate(table, model, indexOf(decisions, decision.recorded())), null);
+      return new ScenarioAnswer(
+          evaluate(table, model, indexOf(decisions, decision.recorded())), null);
     }
     if (decision.kind() != Kind.RESPONSE)
       throw invalidEdit("call: the decision is not a response to a discard.");

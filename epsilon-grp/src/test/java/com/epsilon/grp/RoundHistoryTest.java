@@ -17,7 +17,8 @@ public class RoundHistoryTest {
     Assert.assertEquals(history.size(), 0);
     Assert.assertEquals(history.stamp(), 0);
     history.add(new TableState(Variant.TENHOU_4P));
-    history.add(new GrpState(Variant.TENHOU_4P, 5, 2, 1, new int[] {30_000, 20_000, 26_000, 23_000}));
+    history.add(
+        new GrpState(Variant.TENHOU_4P, 5, 2, 1, new int[] {30_000, 20_000, 26_000, 23_000}));
     Assert.assertEquals(history.size(), 2);
     Assert.assertEquals(history.round(0), 0);
     Assert.assertEquals(history.honba(0), 0);
@@ -97,15 +98,18 @@ public class RoundHistoryTest {
     RoundHistory history = new RoundHistory(Variant.TENHOU_4P);
     RoundHistory fork = new RoundHistory(Variant.TENHOU_4P);
     TableState table = new TableState(Variant.TENHOU_4P);
-    Allocations.assertSteady(2 * states.length + " rounds with forks", 10, () -> {
-      history.clear();
-      for (GrpState state : states) {
-        state.copyInto(table);
-        history.add(table);
-        history.add(state);
-        fork.copyFrom(history);
-      }
-    });
+    Allocations.assertSteady(
+        2 * states.length + " rounds with forks",
+        10,
+        () -> {
+          history.clear();
+          for (GrpState state : states) {
+            state.copyInto(table);
+            history.add(table);
+            history.add(state);
+            fork.copyFrom(history);
+          }
+        });
     Assert.assertEquals(fork.size(), 2 * states.length);
   }
 
@@ -115,11 +119,16 @@ public class RoundHistoryTest {
     TableState finished = GrpFixtures.finished();
     Assert.assertTrue(finished.gameOver(), finished.toString());
     Assert.assertThrows(IllegalArgumentException.class, () -> history.add(finished));
-    Assert.assertThrows(IllegalArgumentException.class, () -> history.add(new TableState(Variant.TENHOU_3P)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> history.add(new TableState(Variant.TENHOU_3P)));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> history.add(new GrpState(Variant.TENHOU_3P, 0, 0, 0, new int[] {35_000, 35_000, 35_000})));
-    Assert.assertThrows(IllegalArgumentException.class, () -> history.copyFrom(new RoundHistory(Variant.TENHOU_3P)));
+        () ->
+            history.add(
+                new GrpState(Variant.TENHOU_3P, 0, 0, 0, new int[] {35_000, 35_000, 35_000})));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> history.copyFrom(new RoundHistory(Variant.TENHOU_3P)));
     Assert.assertEquals(history.size(), 0);
   }
 
@@ -132,7 +141,13 @@ public class RoundHistoryTest {
       for (int seat = 0; seat < seats; seat++) {
         scores[seat] = history.score(index, seat);
       }
-      rows.add(new GrpState(history.variant(), history.round(index), history.honba(index), history.kyotaku(index), scores));
+      rows.add(
+          new GrpState(
+              history.variant(),
+              history.round(index),
+              history.honba(index),
+              history.kyotaku(index),
+              scores));
     }
     return rows;
   }

@@ -66,18 +66,4 @@ public interface FullView {
    * @return 和了の形で役があれば true
    */
   boolean tsumoScore(int seat, int kind, RuleWorkspace ws, WinScore out);
-
-  /**
-   * 直前にツモった牌が、指定した物理牌だったとして、ツモ和了の点を書く。{@link #tsumoScore} と同じだが、指定した牌が赤なら
-   * その赤を数える。実際に引いた牌が赤で、指定した牌がそれと違えば、引いた赤は数えない。
-   *
-   * @param seat 直前にツモった席
-   * @param physicalId 引いたとする牌の物理 id。誰にも見えない牌か、実際に引いた牌
-   * @param ws ルールの作業領域
-   * @param out 点を書く先。false のときの中身に意味は無い
-   * @return 和了の形で役があれば true
-   * @throws IllegalStateException 直前のイベントがその席のツモでないとき
-   * @throws IllegalArgumentException ルールに無い物理 id、見えている牌（実際に引いた牌は除く）、ルールの違う作業領域のとき
-   */
-  boolean tsumoScoreTile(int seat, int physicalId, RuleWorkspace ws, WinScore out);
 }

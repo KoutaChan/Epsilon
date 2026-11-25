@@ -1,4 +1,4 @@
-import type { ActionType } from "../../../protocol/result.ts";
+import type { ActionType } from "@epsilon-reviewer/protocol/result";
 import type { MessageKey } from "./catalog.ts";
 
 // 行動の種類と表示する文言の対応を、型で検査できる一覧で定義する。
@@ -16,3 +16,12 @@ export const actionMessageKeys = {
   KYUSHU_KYUHAI: "action.kyushu",
   NUKI: "action.nuki",
 } as const satisfies Record<ActionType, MessageKey>;
+
+export function actionMessage(
+  type: ActionType,
+  tsumogiri: boolean,
+): MessageKey {
+  if (tsumogiri && type === "DAHAI") return "action.dahaiTsumogiri";
+  if (tsumogiri && type === "RIICHI_DAHAI") return "action.riichiTsumogiri";
+  return actionMessageKeys[type];
+}

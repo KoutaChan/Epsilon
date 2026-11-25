@@ -21,12 +21,15 @@ import java.nio.file.Path;
 @Named(value = "campaign", doc = "Run the campaign macros", reads = Reads.RUN)
 public record Campaign(
     @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Maximum number of macros to close in this call", presence = Presence.ABSENT) @Range(min = 1) Integer stopAfter)
+    @Key(doc = "Maximum number of macros to close in this call", presence = Presence.ABSENT)
+        @Range(min = 1)
+        Integer stopAfter)
     implements ClassicCommand {
 
   @Override
   public Outcome run(Context<ClassicSettings> context) throws Exception {
     Signals signals = context.signals();
-    return CampaignKind.outcome(CampaignKind.STANDARD.runner(run, stopAfter, signals::requested).train());
+    return CampaignKind.outcome(
+        CampaignKind.STANDARD.runner(run, stopAfter, signals::requested).train());
   }
 }

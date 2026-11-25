@@ -28,6 +28,15 @@ public final class TenhouTiles {
       int seat = letter - first;
       return seat >= 0 && seat < variant.seats() ? seat : -1;
     }
+
+    /**
+     * タグの名前の先頭の文字から、空き席を含む天鳳の 4 席の上のタグの席を読む。この種類の文字でなければ −1 を返す。ライブでは自分を
+     * 席 0 として数えるので、三人打ちでも 0〜3 のどれもが他家の席になりうる。
+     */
+    public int tagSeat(char letter) {
+      int seat = letter - first;
+      return seat >= 0 && seat < TenhouRound.TAG_SEATS ? seat : -1;
+    }
   }
 
   /** ツモか打牌のタグ 1 つ。 */
@@ -48,7 +57,8 @@ public final class TenhouTiles {
       for (Move move : Move.values()) {
         int seat = move.seat(name.charAt(0), variant);
         if (seat >= 0) {
-          return new TileTag(move, seat, TenhouTiles.tile(Integer.parseInt(name.substring(1)), variant.tiles()));
+          return new TileTag(
+              move, seat, TenhouTiles.tile(Integer.parseInt(name.substring(1)), variant.tiles()));
         }
       }
       return null;

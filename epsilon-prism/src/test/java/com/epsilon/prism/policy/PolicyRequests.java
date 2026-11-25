@@ -49,7 +49,9 @@ public final class PolicyRequests {
     List<PolicyRequest> requests = new ArrayList<>(rows.size());
     for (long[] words : rows) {
       int index = batch.add(reader.bind(words, 0));
-      requests.add(new PolicyRequest(null, 0, index, null, null, true, 0, batch, index, reader.bind(batch, index)));
+      requests.add(
+          new PolicyRequest(
+              null, 0, index, null, null, true, 0, batch, index, reader.bind(batch, index)));
     }
     return requests;
   }
@@ -58,6 +60,15 @@ public final class PolicyRequests {
   public static PolicyRequest copy(PolicyRequest request) {
     Observation reader = new Observation(TENHOU_4P);
     return new PolicyRequest(
-        null, 0, request.record(), null, null, true, 0, request.records(), request.record(), request.bind(reader));
+        null,
+        0,
+        request.record(),
+        null,
+        null,
+        true,
+        0,
+        request.records(),
+        request.record(),
+        request.bind(reader));
   }
 }

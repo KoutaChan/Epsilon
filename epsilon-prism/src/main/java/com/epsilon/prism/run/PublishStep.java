@@ -40,7 +40,11 @@ final class PublishStep implements Step<PrismIteration> {
     if (Files.exists(file)) {
       return Optional.of(StepReport.read(file, PublishReport.class));
     }
-    StepReport report = StepReport.ran(iteration, System.nanoTime(), new PublishReport(iteration.version(), average(snapshot)));
+    StepReport report =
+        StepReport.ran(
+            iteration,
+            System.nanoTime(),
+            new PublishReport(iteration.version(), average(snapshot)));
     report.write(file);
     return Optional.of(report);
   }
@@ -55,7 +59,7 @@ final class PublishStep implements Step<PrismIteration> {
     DurableFiles.delete(part);
     Path learned = iteration.work().resolve(LearnStep.LEARN).resolve(LearnStep.STUDENT);
     MemorySettings memory = iteration.settings().memory();
-    PolicyParams params = PolicyParams.of(version);
+    PolicyParams params = PolicyParams.of(version, iteration.settings().fit().agariOrder());
     Snapshot.AverageRecord record = null;
     if (!memory.averages()) {
       Snapshot.fillCopy(part, learned, params);
@@ -63,7 +67,8 @@ final class PublishStep implements Step<PrismIteration> {
       MemorySettings.Step step = memory.step(version);
       record = new Snapshot.AverageRecord(memory.scheme(), step.eta(), memory.from());
       try (NDManager cpu = NDManager.newBaseManager(Device.cpu(), "PyTorch")) {
-        PrismNetwork average = PrismNetwork.load(Snapshot.model(run.snapshot(iteration.start())), cpu);
+        PrismNetwork average =
+            PrismNetwork.load(Snapshot.model(run.snapshot(iteration.start())), cpu);
         average.mixIn(PrismNetwork.load(learned, cpu), step.eta());
         Snapshot.fillAveraged(part, learned, average, record, params);
       }

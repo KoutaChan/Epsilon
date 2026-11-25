@@ -105,7 +105,8 @@ public class RunReportTest {
     writeIterations();
     RunReport two = RunReport.read(run, LAYOUT, 2);
     assertEquals(two.closed(), 4);
-    assertEquals(two.iterations().stream().map(line -> line.report().iteration()).toList(), List.of(3, 4));
+    assertEquals(
+        two.iterations().stream().map(line -> line.report().iteration()).toList(), List.of(3, 4));
     assertEquals(
         two.text(),
         lines(
@@ -117,7 +118,8 @@ public class RunReportTest {
             "",
             "No finished jobs"));
     String one = RunReport.read(run, LAYOUT, 1).text();
-    assertTrue(one.contains(row(ITERATIONS, "4", "5", "2", "13.5", "13.0", "0.5", "1300") + "\n"), one);
+    assertTrue(
+        one.contains(row(ITERATIONS, "4", "5", "2", "13.5", "13.0", "0.5", "1300") + "\n"), one);
     assertFalse(one.contains(CHANGED_LINE), one);
     assertEquals(RunReport.read(run, LAYOUT, 10).iterations().size(), 4);
   }
@@ -169,25 +171,33 @@ public class RunReportTest {
     List<String> results = DurableFiles.lines(evaluations);
 
     // 落ちた JVM が書きかけた最後の行は読まない
-    Files.writeString(iterations, "{\"iteration\":5,\"vers", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
-    Files.writeString(evaluations, "{\"job\":\"v00009-a\"", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    Files.writeString(
+        iterations, "{\"iteration\":5,\"vers", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    Files.writeString(
+        evaluations, "{\"job\":\"v00009-a\"", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
     RunReport report = RunReport.read(run, LAYOUT, null);
     assertEquals(report.closed(), 4);
     assertEquals(report.tables().getFirst().version(), 3);
 
-    assertBroken(iterations, List.of(written.get(0), "{\"iteration\":2,", written.get(2)), iterations + ":2");
+    assertBroken(
+        iterations,
+        List.of(written.get(0), "{\"iteration\":2,", written.get(2)),
+        iterations + ":2");
     assertBroken(
         iterations,
         List.of(written.get(0), written.get(2), written.get(1)),
         "Iteration 2 at " + iterations + ":3 does not follow iteration 3");
-    assertBroken(iterations, List.of(written.get(0).replace("\"PUBLISH\"", "\"LEARN\"")), "Unknown step LEARN");
+    assertBroken(
+        iterations,
+        List.of(written.get(0).replace("\"PUBLISH\"", "\"LEARN\"")),
+        "Unknown step LEARN");
     Files.writeString(iterations, lines(written.toArray(String[]::new)), StandardCharsets.UTF_8);
     assertBroken(evaluations, List.of(results.get(0), "not a line"), evaluations + ":2");
     assertBroken(evaluations, List.of(results.get(0).replace(",\"table\":\"b\"", "")), "Missing");
     assertBroken(evaluations, List.of(results.get(0).replace("\"sum\"", "\"total\"")), "total");
   }
 
-  /** 反復の行は、設定の行の番号だけで設定を指し、読んで木に戻すと同じ報告になる。設定の中身の SHA-256 の欄がある行は読まない。 */
+  /** 反復の行は、設定の行の番号だけで設定を指し、読んで木に戻すと同じ報告になる。設定の中身の SHA-256 の項目がある行は読まない。 */
   @Test
   public void anIterationLineNamesItsSettingsByTheRowAlone() throws IOException {
     writeIterations();
@@ -197,11 +207,17 @@ public class RunReportTest {
       assertFalse(line.contains("settingsSha"), line);
     }
     for (IterationReport report : IterationReport.read(iterations, LAYOUT.steps(), Carry.class)) {
-      assertEquals(IterationReport.of(Json.read(Json.write(report.tree()), "test"), LAYOUT.steps(), Carry.class), report);
+      assertEquals(
+          IterationReport.of(
+              Json.read(Json.write(report.tree()), "test"), LAYOUT.steps(), Carry.class),
+          report);
     }
     assertBroken(
         iterations,
-        List.of(written.get(0).replace("\"settingsRow\":1,", "\"settingsRow\":1,\"settingsSha\":\"ab\",")),
+        List.of(
+            written
+                .get(0)
+                .replace("\"settingsRow\":1,", "\"settingsRow\":1,\"settingsSha\":\"ab\",")),
         "settingsSha");
   }
 
@@ -233,7 +249,8 @@ public class RunReportTest {
             "No finished jobs"));
 
     // 出す反復の行は、今の型で読めなければ誤り
-    SettingsException error = expectThrows(SettingsException.class, () -> RunReport.read(run, LAYOUT, 3));
+    SettingsException error =
+        expectThrows(SettingsException.class, () -> RunReport.read(run, LAYOUT, 3));
     assertTrue(error.getMessage().contains(iterations + ":2"), error.getMessage());
   }
 
@@ -244,12 +261,17 @@ public class RunReportTest {
     List<String> written = DurableFiles.lines(iterations);
     // 秒が負の段
     assertBroken(
-        iterations, List.of(written.get(0).replace("\"seconds\":10.0", "\"seconds\":-10.0")), iterations + ":1");
+        iterations,
+        List.of(written.get(0).replace("\"seconds\":10.0", "\"seconds\":-10.0")),
+        iterations + ":1");
     // 行わなかった段に中身のフィールドがある
     assertBroken(
         iterations,
         List.of(
-            written.get(0), written.get(1).replace("\"status\":\"SKIPPED\"", "\"status\":\"SKIPPED\",\"version\":3")),
+            written.get(0),
+            written
+                .get(1)
+                .replace("\"status\":\"SKIPPED\"", "\"status\":\"SKIPPED\",\"version\":3")),
         iterations + ":2");
   }
 
@@ -269,7 +291,8 @@ public class RunReportTest {
     Path other = Files.createTempDirectory("not-a-run");
     try {
       SettingsException error =
-          expectThrows(SettingsException.class, () -> RunReport.read(new RunDirectory(other), LAYOUT, null));
+          expectThrows(
+              SettingsException.class, () -> RunReport.read(new RunDirectory(other), LAYOUT, null));
       assertTrue(error.getMessage().contains("has no settings rows"), error.getMessage());
     } finally {
       DurableFiles.delete(other);
@@ -284,7 +307,8 @@ public class RunReportTest {
             new RunReport.Layout(
                 LAYOUT.steps(),
                 Carry.class,
-                new RunReport.Columns<IterationReport>(List.of("seconds"), report -> List.of(Cell.NONE)),
+                new RunReport.Columns<IterationReport>(
+                    List.of("seconds"), report -> List.of(Cell.NONE)),
                 LAYOUT.tables()));
     expectThrows(
         IllegalArgumentException.class,
@@ -323,10 +347,30 @@ public class RunReportTest {
   private void writeIterations() throws IOException {
     write(
         RunDirectory.ITERATIONS,
-        iterationLine(1, 1, 10.5, step(Status.RAN, 10.0, new Collected(100)), step(Status.RAN, 0.5, new Published(2))),
-        iterationLine(2, 1, 12.24, step(Status.RAN, 12.24, new Collected(120)), step(Status.SKIPPED, 0, null)),
-        iterationLine(3, 2, 11.7, step(Status.REUSED, 11.0, new Collected(110)), step(Status.RAN, 0.7, new Published(4))),
-        iterationLine(4, 2, 13.5, step(Status.RAN, 13.0, new Collected(1300)), step(Status.RAN, 0.5, new Published(5))));
+        iterationLine(
+            1,
+            1,
+            10.5,
+            step(Status.RAN, 10.0, new Collected(100)),
+            step(Status.RAN, 0.5, new Published(2))),
+        iterationLine(
+            2,
+            1,
+            12.24,
+            step(Status.RAN, 12.24, new Collected(120)),
+            step(Status.SKIPPED, 0, null)),
+        iterationLine(
+            3,
+            2,
+            11.7,
+            step(Status.REUSED, 11.0, new Collected(110)),
+            step(Status.RAN, 0.7, new Published(4))),
+        iterationLine(
+            4,
+            2,
+            13.5,
+            step(Status.RAN, 13.0, new Collected(1300)),
+            step(Status.RAN, 0.5, new Published(5))));
   }
 
   /** 卓 a と b の結果。a のバージョン 2 は、バージョン 3 の後に足した（過去のバージョンを後から測ったジョブ）。 */
@@ -343,7 +387,8 @@ public class RunReportTest {
     return new StepReport(status, seconds, 1, "test0001", metrics);
   }
 
-  private static String iterationLine(int t, int row, double seconds, StepReport collect, StepReport publish) {
+  private static String iterationLine(
+      int t, int row, double seconds, StepReport collect, StepReport publish) {
     Map<String, StepReport> steps = new LinkedHashMap<>();
     steps.put("COLLECT", collect);
     steps.put("PUBLISH", publish);
@@ -362,8 +407,17 @@ public class RunReportTest {
   }
 
   private static String resultLine(int version, String table, long games, long sum) {
-    return "{\"job\":\"" + RunDirectory.jobName(version, table) + "\",\"version\":" + version + ",\"table\":\"" + table
-        + "\",\"games\":" + games + ",\"sum\":" + sum + "}";
+    return "{\"job\":\""
+        + RunDirectory.jobName(version, table)
+        + "\",\"version\":"
+        + version
+        + ",\"table\":\""
+        + table
+        + "\",\"games\":"
+        + games
+        + ",\"sum\":"
+        + sum
+        + "}";
   }
 
   private void write(String name, String... lines) throws IOException {
@@ -374,7 +428,8 @@ public class RunReportTest {
   /** 行を書き換えたファイルを読むと、その文を含む誤りになる。 */
   private void assertBroken(Path file, List<String> lines, String problem) throws IOException {
     Files.writeString(file, lines(lines.toArray(String[]::new)), StandardCharsets.UTF_8);
-    SettingsException error = expectThrows(SettingsException.class, () -> RunReport.read(run, LAYOUT, null));
+    SettingsException error =
+        expectThrows(SettingsException.class, () -> RunReport.read(run, LAYOUT, null));
     assertTrue(error.getMessage().contains(problem), error.getMessage());
   }
 
@@ -383,8 +438,10 @@ public class RunReportTest {
     Map<String, String> contents = new TreeMap<>();
     try (Stream<Path> walk = Files.walk(root)) {
       for (Path path : walk.toList()) {
-        String content = Files.isDirectory(path) ? "directory" : Files.readString(path, StandardCharsets.UTF_8);
-        contents.put(root.relativize(path).toString(), content + " " + Files.getLastModifiedTime(path));
+        String content =
+            Files.isDirectory(path) ? "directory" : Files.readString(path, StandardCharsets.UTF_8);
+        contents.put(
+            root.relativize(path).toString(), content + " " + Files.getLastModifiedTime(path));
       }
     }
     return contents;

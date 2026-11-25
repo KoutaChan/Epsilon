@@ -11,15 +11,11 @@ import java.util.Map;
  * 読むのはこの 37 種類だけで、雀魂の表記（0p・1z など）は受け付けない。局面・候補・副露に書く記号は {@link Face} が持つ文字列を使い回し、新しく作らない。
  */
 public final class TileCode {
-  /** 記号から、手牌に並べるときの順番への表。 */
-  private static final Map<String, Integer> ORDER = new HashMap<>();
-
   /** 記号から牌の種類と赤（{@link Face}）への表。 */
   private static final Map<String, Face> FACES = new HashMap<>();
 
   static {
     for (Face face : Face.values()) {
-      ORDER.put(face.mjai(), face.kind() * 2 + (face.red() ? 0 : 1));
       FACES.put(face.mjai(), face);
     }
   }
@@ -56,10 +52,8 @@ public final class TileCode {
     return face(code).red();
   }
 
-  /** 手牌に並べるときの順番（protocol/result.ts の tileOrder と同じ）。牌の種類の順で、赤の 5 は同じ種類の 5 の前に来る。 */
+  /** 手牌に並べるときの順番（protocol/tiles.ts の tileOrder と同じ）。牌の種類の順で、赤の 5 は同じ種類の 5 の前に来る。 */
   public static int order(String code) {
-    Integer order = code == null ? null : ORDER.get(code);
-    if (order == null) throw new IllegalArgumentException("Invalid tile code: " + code);
-    return order;
+    return face(code).order();
   }
 }

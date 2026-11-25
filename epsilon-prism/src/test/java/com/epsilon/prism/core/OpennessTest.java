@@ -28,7 +28,8 @@ public class OpennessTest {
   private static Openness of(Meld... melds) {
     // 自分は席 1、ほかの席はポンを持つ（他家の面子は手の形に入らない）
     Meld pon = Meld.pon(31, Meld.RelativeSource.TOIMEN, Meld.AkaSource.NONE);
-    return Openness.of(view(1, List.of(List.of(pon), List.of(melds), List.of(pon, pon), List.of())));
+    return Openness.of(
+        view(1, List.of(List.of(pon), List.of(melds), List.of(pon, pon), List.of())));
   }
 
   @Test
@@ -39,9 +40,11 @@ public class OpennessTest {
     Assert.assertEquals(of(Meld.ankan(3, false), Meld.ankan(27, false)), Openness.CLOSED);
     Assert.assertEquals(of(Meld.chi(0, 1, Meld.AkaSource.NONE)), Openness.OPEN);
     Assert.assertEquals(of(pon), Openness.OPEN);
-    Assert.assertEquals(of(Meld.daiminkan(9, Meld.RelativeSource.SHIMOCHA, Meld.AkaSource.NONE)), Openness.OPEN);
+    Assert.assertEquals(
+        of(Meld.daiminkan(9, Meld.RelativeSource.SHIMOCHA, Meld.AkaSource.NONE)), Openness.OPEN);
     Assert.assertEquals(of(Meld.kakan(pon, false)), Openness.OPEN);
-    Assert.assertEquals(of(Meld.ankan(3, false), Meld.chi(10, 12, Meld.AkaSource.NONE)), Openness.OPEN);
+    Assert.assertEquals(
+        of(Meld.ankan(3, false), Meld.chi(10, 12, Meld.AkaSource.NONE)), Openness.OPEN);
     Assert.assertEquals(Openness.COUNT, 2);
     for (Openness hand : Openness.values()) Assert.assertSame(Openness.of(hand.ordinal()), hand);
   }

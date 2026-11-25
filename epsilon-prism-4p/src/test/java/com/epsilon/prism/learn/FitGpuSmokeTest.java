@@ -1,5 +1,6 @@
 package com.epsilon.prism.learn;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertTrue;
 
 import ai.djl.Device;
@@ -7,9 +8,9 @@ import ai.djl.Model;
 import ai.djl.engine.Engine;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.prism.model.AuxiliaryLoss;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.rows.Row;
-import com.epsilon.prism4p.input.InputSchema;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,27 +39,37 @@ public class FitGpuSmokeTest {
       throw new SkipException("no GPU");
     }
     Device[] devices =
-        gpus >= 2
-            ? new Device[] {Device.gpu(0), Device.gpu(1)}
-            : new Device[] {Device.gpu(0)};
+        gpus >= 2 ? new Device[] {Device.gpu(0), Device.gpu(1)} : new Device[] {Device.gpu(0)};
     Path root = Files.createTempDirectory("prism-learn-gpu");
     try {
       List<Row> rows = SyntheticCohort.rows(500, 4, 1);
       SyntheticCohort.write(root.resolve("1"), 1, rows);
       FitPlan plan =
           new FitPlan(
-              new FitSettings(STEPS, 512, 2e-4, 1e-5, 0.5f, 0.01, 0.02),
+              new FitSettings(
+                  STEPS,
+                  512,
+                  2e-4,
+                  1e-5,
+                  0.5f,
+                  0.01,
+                  0.02,
+                  PairLoss.Mode.PRISM,
+                  PairLoss.ClassWeight.INVERSE_LAMBDA,
+                  AdamEpsilon.FIXED),
               PrismShape.standard(),
               AuxiliaryLoss.standard(),
               FitPlan.TOKEN_BUDGET,
               3);
       try (CohortStore store = new CohortStore();
-          Model model = Fit.blank(InputSchema.FORMAT, plan.shape(), devices[0], plan.seed())) {
+          Model model = Fit.blank(FOUR_PLAYER, plan.shape(), devices[0], plan.seed())) {
         store.addCohort(root.resolve("1"));
         int[] selected = store.select(1, 1, Selection.LABELS);
-        FitResult result = Fit.run(store, selected, model, plan, Teacher.RAW, NetworkDevices.of(devices), 8);
+        FitResult result =
+            Fit.run(store, selected, model, plan, Teacher.RAW, NetworkDevices.of(devices), 8);
         log.info(
-            "PRISM-FIT-GPU devices={} rows={} steps={} loss {} -> {} clipped={} ms/step={} stages={}",
+            "PRISM-FIT-GPU devices={} rows={} steps={} loss {} -> {} clipped={} ms/step={}"
+                + " stages={}",
             Arrays.toString(devices),
             result.rows(),
             result.steps(),

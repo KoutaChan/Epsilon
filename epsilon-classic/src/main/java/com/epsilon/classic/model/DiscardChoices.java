@@ -34,11 +34,13 @@ record DiscardChoices(
    * @param riichiMask 立直の打牌なら 1（ダマと同じ型）
    * @param columns 合法手の列のオフセット
    */
-  static DiscardChoices of(NDArray routes, NDArray damaMask, NDArray riichiMask, ActionColumns columns) {
+  static DiscardChoices of(
+      NDArray routes, NDArray damaMask, NDArray riichiMask, ActionColumns columns) {
     NDArray discard = damaMask.add(riichiMask);
     NDArray damaSlots = routes.get("..., {}", columns.damaSlot());
     NDArray riichiSlots = routes.get("..., {}", columns.riichiSlot());
-    NDArray representative = routes.get("..., {}", columns.representative()).toType(discard.getDataType(), false);
+    NDArray representative =
+        routes.get("..., {}", columns.representative()).toType(discard.getDataType(), false);
     return new DiscardChoices(
         damaMask,
         riichiMask,

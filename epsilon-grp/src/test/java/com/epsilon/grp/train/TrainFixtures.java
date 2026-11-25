@@ -16,8 +16,15 @@ final class TrainFixtures {
 
   /** 和了の基本点。安い基本点ほど多く入れて、出やすくしてある。 */
   private static final BaseClass[] BASES = {
-    BaseClass.B320, BaseClass.B320, BaseClass.B640, BaseClass.B640, BaseClass.B1280, BaseClass.MANGAN,
-    BaseClass.MANGAN, BaseClass.HANEMAN, BaseClass.BAIMAN
+    BaseClass.B320,
+    BaseClass.B320,
+    BaseClass.B640,
+    BaseClass.B640,
+    BaseClass.B1280,
+    BaseClass.MANGAN,
+    BaseClass.MANGAN,
+    BaseClass.HANEMAN,
+    BaseClass.BAIMAN
   };
 
   private TrainFixtures() {}

@@ -7,8 +7,9 @@ import com.epsilon.prism.auxiliary.TargetSchema;
 import com.epsilon.prism.input.InputBlob.ActionColumn;
 import com.epsilon.prism.input.InputBlob.Composition;
 import com.epsilon.prism.input.InputBlob.RowColumn;
-import com.epsilon.prism.input.InputFormat.Role;
 import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.input.InputFormat.Role;
+import com.epsilon.prism.kernel.CandidateKernels;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
@@ -61,7 +62,7 @@ final class BatchIndex {
   /** 牌の関係の種類（{@link MahjongTileRelation} の ordinal、INT32 [T·T]。T は牌のトークンの数）。 */
   final Staging.Section tileRelations;
 
-  /** 遷移ごとの行（INT32 [遷移]）。 */
+  /** 遷移ごとの行（INT32 [遷移]）。行の番号は減らない（{@link CandidateKernels} の並びの約束）。 */
   final Staging.Section transitionRows;
 
   /** 手を [行 × 手の容量] へ散らす位置（INT64）。 */
@@ -117,12 +118,15 @@ final class BatchIndex {
   /** C のマスク [行, 手の容量]（学習だけ。推論では null）。同値な手は、組のどれかが C に入っていれば組の全ての手で真。 */
   final Staging.Section measured;
 
+  /** 証明辺のあるツモ和了の行で真 [行, 1]（BOOLEAN。学習で該当行があるバッチだけ、それ以外は null）。 */
+  final Staging.Section certifiedTurnRows;
+
   final int candidateCount;
 
   /** 候補の手 e_a の集約（候補がなければ null）。 */
   final Aggregation candidates;
 
-  final Staging.Section candidateRows;
+  final CandidateDecisionRows candidateRows;
 
   final int readingCount;
   final Staging.Section readingRows;
@@ -133,8 +137,14 @@ final class BatchIndex {
   /** 作るのに使った C のフラグ（推論では null）。{@link #builtFor} が順伝播の種類と照合する。 */
   private final boolean[] measuredFlags;
 
+  /** 作るのに使った証明辺ツモ行のフラグ（無ければ null）。{@link #builtFor} が順伝播の種類と照合する。 */
+  private final boolean[] certifiedTurnRowFlags;
+
   /** 作るのに使った補助のヘッドの教師（なければ null）。 */
   private final AuxiliaryLabels labels;
+
+  /** Attention の記録がある順伝播（{@link Pass#tape}）のために作ったか。 */
+  private final boolean attentionTape;
 
   /**
    * インデックスをその場で作り、入力のバッファから同期で送る。
@@ -146,7 +156,14 @@ final class BatchIndex {
    */
   static BatchIndex send(NetworkInputs inputs, Pass pass) {
     Staging staging = new Staging();
-    BatchIndex index = new BatchIndex(inputs, pass.measured(), pass.auxiliary(), staging);
+    BatchIndex index =
+        new BatchIndex(
+            inputs,
+            pass.measured(),
+            pass.auxiliary(),
+            pass.tape() != null,
+            pass.certifiedTurnRows(),
+            staging);
     staging.send(inputs.uploads(), inputs.manager());
     return index;
   }
@@ -157,11 +174,37 @@ final class BatchIndex {
    * @param inputs バッチの大きさとインデックスの、ホストの写し
    * @param measuredFlags 学習の C のフラグ（バッチの手の順。推論では null）
    * @param labels 補助のヘッドの教師（補助のヘッドを計算しないなら null）
+   * @param attentionTape Attention の記録がある順伝播で使うか（候補の決定行の集め方が変わる。{@link CandidateDecisionRows}）
    * @param staging 領域を載せる先
    * @throws IllegalArgumentException インデックスの並びが正しくないとき
    */
   BatchIndex(
-      HostColumns inputs, boolean[] measuredFlags, AuxiliaryLabels labels, Staging staging) {
+      HostColumns inputs,
+      boolean[] measuredFlags,
+      AuxiliaryLabels labels,
+      boolean attentionTape,
+      Staging staging) {
+    this(inputs, measuredFlags, labels, attentionTape, null, staging);
+  }
+
+  /**
+   * 証明辺ツモ行の印を含めてインデックスをホストで作って載せる。送るのは呼び出し元。
+   *
+   * @param inputs バッチの大きさとインデックスの、ホストの写し
+   * @param measuredFlags 学習の C のフラグ（バッチの手の順。推論では null）
+   * @param labels 補助のヘッドの教師（補助のヘッドを計算しないなら null）
+   * @param attentionTape Attention の記録がある順伝播で使うか
+   * @param certifiedTurnRowFlags 証明辺のあるツモ和了の行の印（該当行が無ければ null）
+   * @param staging 領域を載せる先
+   * @throws IllegalArgumentException インデックスの並びが正しくないとき
+   */
+  BatchIndex(
+      HostColumns inputs,
+      boolean[] measuredFlags,
+      AuxiliaryLabels labels,
+      boolean attentionTape,
+      boolean[] certifiedTurnRowFlags,
+      Staging staging) {
     format = inputs.format();
     Structure structure = new Structure(inputs);
     Role discardRole = format.discard();
@@ -169,7 +212,9 @@ final class BatchIndex {
     rows = inputs.rows();
     rowActions = structure.actionCount;
     this.measuredFlags = measuredFlags;
+    this.certifiedTurnRowFlags = certifiedTurnRowFlags;
     this.labels = labels;
+    this.attentionTape = attentionTape;
 
     // トークン
     int events = inputs.events();
@@ -228,6 +273,7 @@ final class BatchIndex {
         transitionRow[structure.firstTransitionOfRow[r] + t] = r;
       }
     }
+    CandidateKernels.requireGroupedRows(transitionRow, rows);
     transitionRows = staging.add(transitionRow, new Shape(transitionRow.length));
 
     // 手の並べ方と価値グラフ
@@ -278,9 +324,11 @@ final class BatchIndex {
         case RIICHI_GATE -> {
           int base = structure.base(a, discardRole);
           lists.riichiActions.add(a);
-          lists.riichiBaseTransitions.add(structure.firstTransition(structure.representative[base]));
+          lists.riichiBaseTransitions.add(
+              structure.firstTransition(structure.representative[base]));
           lists.riichiGates.add(lists.gateActions.size());
-          lists.riichiAnchors.add(measuredGroup != null && measuredGroup[structure.representative[base]]);
+          lists.riichiAnchors.add(
+              measuredGroup != null && measuredGroup[structure.representative[base]]);
           lists.addGate(format, a, structure, base, false);
           pivot[slot] = true;
           pivotRow[r] = 1f;
@@ -304,8 +352,7 @@ final class BatchIndex {
     legal = staging.add(legalSlot, new Shape(rows, capacity));
     pivotMask = staging.add(pivot, new Shape(rows, capacity));
     pivotPresent = staging.add(pivotRow, new Shape(rows, 1));
-    measured =
-        measuredSlot == null ? null : staging.add(measuredSlot, new Shape(rows, capacity));
+    measured = measuredSlot == null ? null : staging.add(measuredSlot, new Shape(rows, capacity));
 
     discardCount = lists.discardActions.size();
     discardActions = staging.addLongs(lists.discardActions);
@@ -379,6 +426,25 @@ final class BatchIndex {
     turnActions = staging.addLongs(lists.turnActions);
     turnGates = staging.addLongs(lists.turnGates);
     turnRows = staging.addLongs(lists.turnRows);
+    if (certifiedTurnRowFlags != null) {
+      if (certifiedTurnRowFlags.length != rows) {
+        throw new IllegalArgumentException(
+            "certifiedTurnRows has " + certifiedTurnRowFlags.length + " entries for " + rows);
+      }
+      boolean anyCertified = false;
+      for (boolean flag : certifiedTurnRowFlags) {
+        if (flag) {
+          anyCertified = true;
+          break;
+        }
+      }
+      certifiedTurnRows =
+          anyCertified && turnCount > 0
+              ? staging.add(certifiedTurnRowFlags, new Shape(rows, 1))
+              : null;
+    } else {
+      certifiedTurnRows = null;
+    }
 
     // 補助のヘッド（学習で教師があるときだけ）
     int[] candidates = labels == null ? new int[0] : labels.candidateActions();
@@ -392,17 +458,17 @@ final class BatchIndex {
     }
     if (candidateCount > 0) {
       Aggregation.Builder chosen = new Aggregation.Builder(candidateCount);
-      long[] candidateRow = new long[candidateCount];
+      int[] candidateRow = new int[candidateCount];
       for (int c = 0; c < candidateCount; c++) {
         int action = candidates[c];
         chosen.add(structure.firstTransition(action), structure.transitionsOf(action));
         candidateRow[c] = structure.row[action];
       }
       this.candidates = chosen.build(1, staging);
-      candidateRows = staging.add(candidateRow, new Shape(candidateCount));
+      candidateRows = CandidateDecisionRows.stage(staging, rows, candidateRow, attentionTape);
     } else {
       this.candidates = null;
-      candidateRows = null;
+      candidateRows = CandidateDecisionRows.EMPTY;
     }
     int[] reading = labels == null ? new int[0] : labels.readingRows();
     readingCount = reading.length;
@@ -410,8 +476,7 @@ final class BatchIndex {
     for (int i = 0; i < readingCount; i++) {
       readingRow[i] = Objects.checkIndex(reading[i], rows);
     }
-    readingRows =
-        readingCount == 0 ? null : staging.add(readingRow, new Shape(readingCount));
+    readingRows = readingCount == 0 ? null : staging.add(readingRow, new Shape(readingCount));
 
     // フィールドの並べ方の列の添字（定数だが、転送を 1 回にまとめるためここで載せる）
     for (FieldPack pack : FieldPack.of(format).all()) {
@@ -426,13 +491,16 @@ final class BatchIndex {
   }
 
   /**
-   * このインデックスを、順伝播の種類と同じ C のフラグと補助のヘッドの教師で作ったかを返す。
+   * このインデックスを、順伝播の種類と同じ C のフラグと補助のヘッドの教師で、Attention の記録の有無も同じ順伝播のために作ったかを返す。
    *
    * @param pass 順伝播の種類
-   * @return 同じ配列から作ったなら true
+   * @return 同じ配列から、同じ記録の有無で作ったなら true
    */
   boolean builtFor(Pass pass) {
-    return pass.measured() == measuredFlags && pass.auxiliary() == labels;
+    return pass.measured() == measuredFlags
+        && pass.auxiliary() == labels
+        && (pass.tape() != null) == attentionTape
+        && pass.certifiedTurnRows() == certifiedTurnRowFlags;
   }
 
   /**
@@ -627,7 +695,8 @@ final class BatchIndex {
       firstTransitionOfRow = column(inputs, rows, RowColumn.FIRST_TRANSITION);
       transitionCount = column(inputs, rows, RowColumn.TRANSITIONS);
       contiguous("events", firstEvent, eventCount, inputs.events(), 0, format.eventCapacity());
-      contiguous("actions", firstAction, actionCount, inputs.actions(), 1, Limits.MAX_LEGAL_ACTIONS);
+      contiguous(
+          "actions", firstAction, actionCount, inputs.actions(), 1, Limits.MAX_LEGAL_ACTIONS);
       contiguous(
           "transitions",
           firstTransitionOfRow,
@@ -655,7 +724,8 @@ final class BatchIndex {
           baseAction[a] = inputs.action(a, ActionColumn.BASE);
           representative[a] = inputs.action(a, ActionColumn.REPRESENTATIVE);
           if (!inRow(representative[a], r)) {
-            throw new IllegalArgumentException("action " + a + " has a representative outside its row");
+            throw new IllegalArgumentException(
+                "action " + a + " has a representative outside its row");
           }
           if (baseAction[a] != -1 && !inRow(baseAction[a], r)) {
             throw new IllegalArgumentException("action " + a + " has a base outside its row");

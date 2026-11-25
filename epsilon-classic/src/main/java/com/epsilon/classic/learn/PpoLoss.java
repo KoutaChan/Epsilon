@@ -95,7 +95,8 @@ final class PpoLoss {
     NDArray surrogate = ratio.mul(advantage).minimum(ratio.clip(low, high).mul(advantage));
     NDArray weighted = surrogate.mul(credit).mul(actor).sum();
     NDArray probabilities = logProbabilities.exp().mul(legal);
-    NDArray entropy = probabilities.mul(logProbabilities.mul(legal)).sum(actions).neg().mul(actor).sum();
+    NDArray entropy =
+        probabilities.mul(logProbabilities.mul(legal)).sum(actions).neg().mul(actor).sum();
     if (coefficients.actorRows() > 0) {
       float policyScale = (float) (1 / coefficients.actorRows());
       objective =
@@ -107,7 +108,14 @@ final class PpoLoss {
     // 丸め誤差で行の KL がわずかに負になることがあるので、0 で下から抑える
     NDArray detached = logProbabilities.stopGradient().mul(legal);
     NDArray kl =
-        rolloutLog.exp().mul(legal).mul(rolloutLog.sub(detached)).sum(actions).maximum(0f).mul(actor).sum();
+        rolloutLog
+            .exp()
+            .mul(legal)
+            .mul(rolloutLog.sub(detached))
+            .sum(actions)
+            .maximum(0f)
+            .mul(actor)
+            .sum();
     float clip = (float) coefficients.clip();
     NDArray clipped =
         ratio
@@ -120,7 +128,12 @@ final class PpoLoss {
             .sum();
     NDArray sums =
         NDArrays.stack(
-                new NDList(weighted.stopGradient(), entropy.stopGradient(), kl, value.stopGradient(), clipped))
+                new NDList(
+                    weighted.stopGradient(),
+                    entropy.stopGradient(),
+                    kl,
+                    value.stopGradient(),
+                    clipped))
             .stopGradient();
     return new Terms(objective, sums);
   }

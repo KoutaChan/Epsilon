@@ -32,19 +32,33 @@ public class FailureTableTest {
       try (PhiResolver resolver = PhiResolver.open(GrpFixtures.scoreStart(), files)) {
         resolver.resolve(1, phi);
         // 4: checkpoint が消えた
-        PhiHistory.append(files, GrpFixtures.ready(files, "g002-a1", 2, gone).entry(GrpFixtures.VARIANT, 4, "test"));
+        PhiHistory.append(
+            files,
+            GrpFixtures.ready(files, "g002-a1", 2, gone).entry(GrpFixtures.VARIANT, 4, "test"));
         Snapshot.deleteTree(gone);
         // 5: checkpoint が壊れた
         Path broken = GrpFixtures.network(run.resolve("broken"), 3);
-        PhiHistory.append(files, GrpFixtures.ready(files, "g003-a1", 3, broken).entry(GrpFixtures.VARIANT, 5, "test"));
+        PhiHistory.append(
+            files,
+            GrpFixtures.ready(files, "g003-a1", 3, broken).entry(GrpFixtures.VARIANT, 5, "test"));
         Path weights = broken.resolve(GrpCheckpoint.WEIGHTS_FILE);
         Files.write(weights, Arrays.copyOf(Files.readAllBytes(weights), Float.BYTES));
         // 6: refits.jsonl に READY の行がない
         PhiHistory.append(
             files,
             new PhiEntry(
-                "g004-a1", PhiEntryKind.NETWORK, GrpFixtures.VARIANT, good.toString(), "", "", "", "", "", 6,
-                PhiEntry.INITIAL_ID, "test"));
+                "g004-a1",
+                PhiEntryKind.NETWORK,
+                GrpFixtures.VARIANT,
+                good.toString(),
+                "",
+                "",
+                "",
+                "",
+                "",
+                6,
+                PhiEntry.INITIAL_ID,
+                "test"));
         for (int t = 4; t <= 6; t++) {
           ActivePhi active = resolver.resolve(t, phi);
           Assert.assertEquals(active.entry().id(), PhiEntry.INITIAL_ID, "t=" + t);
@@ -61,16 +75,21 @@ public class FailureTableTest {
         for (int t = 4; t <= 6; t++) {
           PhiEntry effective = PhiHistory.effectiveAt(entries, t).orElseThrow();
           Assert.assertEquals(effective.id(), PhiEntry.INITIAL_ID);
-          Assert.assertTrue(effective.reason().startsWith("rejected g00" + (t - 2) + "-a1"), effective.reason());
+          Assert.assertTrue(
+              effective.reason().startsWith("rejected g00" + (t - 2) + "-a1"), effective.reason());
         }
         // 拒んだ候補は grp-switch でも入れ直せない
-        Assert.assertThrows(IllegalArgumentException.class, () -> PhiControl.switchTo(run, "g003-a1", null, "test"));
+        Assert.assertThrows(
+            IllegalArgumentException.class,
+            () -> PhiControl.switchTo(run, "g003-a1", null, "test"));
       }
       // 再開しても同じ履歴になる
       try (PhiResolver resolver = PhiResolver.open(GrpFixtures.scoreStart(), files)) {
         Assert.assertEquals(resolver.resolve(5, phi).entry().kind(), PhiEntryKind.SCORE_RANK);
         // 既に効いたことのある項目（時点 7 で効いた候補）は、読めなくなったら止める
-        PhiHistory.append(files, GrpFixtures.ready(files, "g005-a1", 5, good).entry(GrpFixtures.VARIANT, 7, "test"));
+        PhiHistory.append(
+            files,
+            GrpFixtures.ready(files, "g005-a1", 5, good).entry(GrpFixtures.VARIANT, 7, "test"));
         Assert.assertEquals(resolver.resolve(7, phi).entry().id(), "g005-a1");
       }
       Snapshot.deleteTree(good);
@@ -111,7 +130,9 @@ public class FailureTableTest {
       Path table = run.resolve("nan.json");
       Files.writeString(
           table,
-          "{\"variant\": \"" + GrpFixtures.VARIANT + "\", \"temperatures\": [1.0], \"low\": -1, \"high\": 0.667,"
+          "{\"variant\": \""
+              + GrpFixtures.VARIANT
+              + "\", \"temperatures\": [1.0], \"low\": -1, \"high\": 0.667,"
               + " \"corrections\": [[NaN, 0.0]]}");
       var files = new GrpFiles(run);
       PhiSetup nan = GrpFixtures.grpStart(gru, "phi.start.table=" + table);
@@ -119,23 +140,42 @@ public class FailureTableTest {
         Assert.assertThrows(IOException.class, () -> resolver.resolve(1, nan.phi()));
       }
       Path good = run.resolve("good.json");
-      PhiTable.of(GrpFixtures.VARIANT, new double[] {1.0}, -1, 2.0 / 3, new double[][] {{0.0, 0.01}})
+      PhiTable.of(
+              GrpFixtures.VARIANT, new double[] {1.0}, -1, 2.0 / 3, new double[][] {{0.0, 0.01}})
           .write(good);
-      PhiEntry gruEntry = HandEndPhi.checkpointEntry("x", GrpFixtures.VARIANT, gru, good.toString(), null, 1, "", "test");
+      PhiEntry gruEntry =
+          HandEndPhi.checkpointEntry(
+              "x", GrpFixtures.VARIANT, gru, good.toString(), null, 1, "", "test");
       Assert.assertEquals(HandEndPhi.open(gruEntry, GrpFixtures.UTILITY).kind(), Phi.Kind.GRU);
       Path network = GrpFixtures.network(run.resolve("network"), 7);
       PhiEntry overlaid =
-          HandEndPhi.checkpointEntry("y", GrpFixtures.VARIANT, network, good.toString(), null, 1, "", "test");
-      Assert.assertThrows(IllegalStateException.class, () -> HandEndPhi.open(overlaid, GrpFixtures.UTILITY));
+          HandEndPhi.checkpointEntry(
+              "y", GrpFixtures.VARIANT, network, good.toString(), null, 1, "", "test");
+      Assert.assertThrows(
+          IllegalStateException.class, () -> HandEndPhi.open(overlaid, GrpFixtures.UTILITY));
       // ルールの違う項目は開かない
       PhiEntry three =
           new PhiEntry(
-              "z", PhiEntryKind.NETWORK, Variant.TENHOU_3P, network.toString(),
-              GrpCheckpoint.sha256(network), "", "", "", "", 1, "", "test");
-      Assert.assertThrows(IllegalStateException.class, () -> HandEndPhi.open(three, GrpFixtures.UTILITY));
+              "z",
+              PhiEntryKind.NETWORK,
+              Variant.TENHOU_3P,
+              network.toString(),
+              GrpCheckpoint.sha256(network),
+              "",
+              "",
+              "",
+              "",
+              1,
+              "",
+              "test");
+      Assert.assertThrows(
+          IllegalStateException.class, () -> HandEndPhi.open(three, GrpFixtures.UTILITY));
       // 点数だけの項目は checkpoint を読まない
       Assert.assertEquals(
-          HandEndPhi.open(PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, GrpFixtures.VARIANT), GrpFixtures.UTILITY).kind(),
+          HandEndPhi.open(
+                  PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, GrpFixtures.VARIANT),
+                  GrpFixtures.UTILITY)
+              .kind(),
           Phi.Kind.SCORE_SMOOTH);
     } finally {
       Snapshot.deleteTree(run);

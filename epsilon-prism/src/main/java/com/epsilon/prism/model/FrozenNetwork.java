@@ -9,7 +9,7 @@ import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.agent.runtime.PinnedUploads;
 import com.epsilon.agent.runtime.Precision;
-import com.epsilon.prism.hip.TrainingKernels;
+import com.epsilon.prism.kernel.TrainingKernels;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -40,7 +40,8 @@ public final class FrozenNetwork implements AutoCloseable {
    * @return 読み込んだネットワーク
    * @throws IOException 読めないとき、または形式・フィンガープリント・重みが合わないとき
    */
-  public static FrozenNetwork load(Path model, Device device, Precision precision) throws IOException {
+  public static FrozenNetwork load(Path model, Device device, Precision precision)
+      throws IOException {
     Objects.requireNonNull(precision, "precision");
     // エンジンを初めて取る前に、全てのモデルに共通の実行時の既定値（PyTorch の CPU スレッド数）を決める
     NetworkRuntime.initialize();
@@ -96,7 +97,7 @@ public final class FrozenNetwork implements AutoCloseable {
    * 入力のマネージャーに付く。
    *
    * @param inputs バッチの入力
-   * @param attention バックボーンの Attention と正規化に使う自前の演算（null なら djl-rocm の演算）
+   * @param attention バックボーンの Attention と正規化に使う自前の演算（null なら DJL の演算）
    * @return s [行, 手の容量]（FP32。列 k は行の k 番目の手）
    */
   public NDArray scores(NetworkInputs inputs, TrainingKernels attention) {

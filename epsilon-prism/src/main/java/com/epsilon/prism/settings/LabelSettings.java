@@ -24,7 +24,8 @@ import java.util.Objects;
  * @param copies 根のクラスごとの写しの設定（書けるのはそのルールにあるクラス）
  */
 public record LabelSettings(
-    @Key(doc = "ホールドアウトにする半荘の割合", value = "0.05") @Range(min = 0, max = 1, maxInclusive = false) double holdout,
+    @Key(doc = "ホールドアウトにする半荘の割合", value = "0.05") @Range(min = 0, max = 1, maxInclusive = false)
+        double holdout,
     @Key(doc = "判断のクラスごとの中立ロールインの率", presence = Presence.REQUIRED)
         Map<DecisionClass, @Range(min = 0, max = 1) Double> rollin,
     @Key(doc = "確約のクラスの候補集合の大きさの上限", value = "6") @Range(min = 2, max = 32) int maxCandidates,

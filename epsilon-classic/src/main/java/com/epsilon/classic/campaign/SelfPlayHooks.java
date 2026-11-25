@@ -56,7 +56,8 @@ final class SelfPlayHooks implements TableHooks<Query> {
   SelfPlayHooks(Variant variant, GrpNetwork grp, Consumer<GameTrajectory> sink) {
     this.variant = Objects.requireNonNull(variant, "variant");
     if (grp != null && grp.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but the GRP is " + grp.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but the GRP is " + grp.variant());
     }
     this.grp = grp;
     this.sink = Objects.requireNonNull(sink, "sink");
@@ -140,7 +141,8 @@ final class SelfPlayHooks implements TableHooks<Query> {
         return;
       }
       if (holding) {
-        throw new IllegalStateException("Decision " + heldId + " of " + run + " was never resolved");
+        throw new IllegalStateException(
+            "Decision " + heldId + " of " + run + " was never resolved");
       }
       held.clear();
       Query query = run.query(slot);
@@ -181,12 +183,14 @@ final class SelfPlayHooks implements TableHooks<Query> {
       for (int slot = 0; slot < resolution.size(); slot++) {
         if (resolution.id(slot) == heldId) {
           boolean causal = resolution.role(slot) == Resolution.Role.CAUSAL;
-          trajectory.decision(tools.get().reader.bind(held, 0), heldChoice, heldProbability, causal);
+          trajectory.decision(
+              tools.get().reader.bind(held, 0), heldChoice, heldProbability, causal);
           holding = false;
           return;
         }
       }
-      throw new IllegalStateException("The engine did not resolve decision " + heldId + " of " + run);
+      throw new IllegalStateException(
+          "The engine did not resolve decision " + heldId + " of " + run);
     }
   }
 

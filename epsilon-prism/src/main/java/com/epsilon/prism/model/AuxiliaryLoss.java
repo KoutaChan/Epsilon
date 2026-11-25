@@ -50,7 +50,8 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
       TargetSchema heads = TargetSchema.of(variant);
       for (ReadingTarget target : READING_TARGETS) {
         if (target.condition() == ReadingCondition.RON_TILE
-            && (heads.width(target) != heads.width(ReadingTarget.DANGER) || target.loss() == Loss.SOFTMAX)) {
+            && (heads.width(target) != heads.width(ReadingTarget.DANGER)
+                || target.loss() == Loss.SOFTMAX)) {
           throw new IllegalStateException(target + " cannot use the ron-tile condition");
         }
       }
@@ -84,7 +85,9 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
    * @param total L_aux（K′ と α を掛けた値）
    */
   public record Terms(
-      Map<CandidateTarget, NDArray> candidate, Map<ReadingTarget, NDArray> reading, NDArray total) {}
+      Map<CandidateTarget, NDArray> candidate,
+      Map<ReadingTarget, NDArray> reading,
+      NDArray total) {}
 
   /**
    * ヘッドごとの平均の分母 n_h（条件を満たす所の数）。ふつうはマイクロバッチの教師から数える（{@link #of}）。1 つのバッチを分けて
@@ -101,7 +104,8 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
      * @throws IllegalArgumentException ヘッドの数と合わないか、負の数があるとき
      */
     public Denominators {
-      if (candidate.length != CANDIDATE_TARGETS.length || reading.length != READING_TARGETS.length) {
+      if (candidate.length != CANDIDATE_TARGETS.length
+          || reading.length != READING_TARGETS.length) {
         throw new IllegalArgumentException("denominators do not match the heads");
       }
       for (int count : candidate) {
@@ -127,7 +131,8 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
       int units = labels.readingRows().length * heads.opponents();
       int[] reading = new int[READING_TARGETS.length];
       for (ReadingTarget target : READING_TARGETS) {
-        reading[target.ordinal()] = count(readingMask(heads, target, labels.readingValues(), units));
+        reading[target.ordinal()] =
+            count(readingMask(heads, target, labels.readingValues(), units));
       }
       return new Denominators(candidate, reading);
     }
@@ -206,7 +211,8 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
         readingMasks.put(
             target,
             target.loss() == Loss.SOFTMAX
-                ? staging.add(unitMask(mask, heads.width(target), units), new Shape(rows, opponents))
+                ? staging.add(
+                    unitMask(mask, heads.width(target), units), new Shape(rows, opponents))
                 : staging.add(mask, new Shape(rows, opponents, heads.width(target))));
       }
     }
@@ -233,7 +239,8 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
    * @param gain ゲイン K′（replay では 1）
    * @return ヘッドごとの損失と合計
    */
-  public Terms terms(NDManager scope, Outputs.Auxiliary outputs, AuxiliaryLabels labels, float gain) {
+  public Terms terms(
+      NDManager scope, Outputs.Auxiliary outputs, AuxiliaryLabels labels, float gain) {
     Staging staging = new Staging();
     Inputs inputs = stage(labels, Denominators.of(labels), staging);
     staging.send(PinnedUploads.on(scope), scope);
@@ -260,9 +267,11 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
         term = scope.zeros(new Shape());
       } else {
         NDArray logits = section(outputs.candidates(), heads.offset(target), heads.width(target));
-        NDArray truth = section(inputs.candidateTargets().array(), heads.offset(target), heads.width(target));
+        NDArray truth =
+            section(inputs.candidateTargets().array(), heads.offset(target), heads.width(target));
         NDArray units = unitLoss(target.loss(), target.reduction(), logits, truth, target.scale());
-        term = units.mul(mask.array()).sum().div(inputs.denominators().candidate()[target.ordinal()]);
+        term =
+            units.mul(mask.array()).sum().div(inputs.denominators().candidate()[target.ordinal()]);
       }
       candidate.put(target, term);
       candidateSum = candidateSum.add(term);
@@ -278,13 +287,15 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
       } else {
         float used = inputs.denominators().reading()[target.ordinal()];
         NDArray logits = section(outputs.reading(), heads.offset(target), heads.width(target));
-        NDArray truth = section(inputs.readingTargets().array(), heads.offset(target), heads.width(target));
+        NDArray truth =
+            section(inputs.readingTargets().array(), heads.offset(target), heads.width(target));
         if (target.loss() == Loss.SOFTMAX) {
           NDArray entropy = crossEntropy(logits, truth);
           term = entropy.mul(mask.array()).sum().div(used / heads.width(target));
         } else {
           NDArray columns = columnLoss(target.loss(), logits, truth, target.scale());
-          float denominator = target.reduction() == Reduction.MEAN ? used : used / heads.width(target);
+          float denominator =
+              target.reduction() == Reduction.MEAN ? used : used / heads.width(target);
           term = columns.mul(mask.array()).sum().div(denominator);
         }
       }
@@ -314,17 +325,16 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
     }
     NDArray columns = columnLoss(loss, logits, truth, scale);
     int last = columns.getShape().dimension() - 1;
-    return reduction == Reduction.MEAN ? columns.mean(new int[] {last}) : columns.sum(new int[] {last});
+    return reduction == Reduction.MEAN
+        ? columns.mean(new int[] {last})
+        : columns.sum(new int[] {last});
   }
 
   /** 列ごとの損失（2 値の交差エントロピーか二乗誤差）。 */
   private static NDArray columnLoss(Loss loss, NDArray logits, NDArray truth, float scale) {
     return switch (loss) {
       case SIGMOID ->
-          logits
-              .maximum(0)
-              .sub(logits.mul(truth))
-              .add(logits.abs().neg().exp().add(1).log());
+          logits.maximum(0).sub(logits.mul(truth)).add(logits.abs().neg().exp().add(1).log());
       case SQUARED -> logits.sub(truth.div(scale)).square();
       case SOFTMAX -> throw new IllegalArgumentException("softmax has no column loss");
     };
@@ -348,7 +358,8 @@ public record AuxiliaryLoss(float oracleWeight, float resultWeight) {
   }
 
   /** 読みのヘッドの、列ごとの条件のマスク（[単位 × 幅]）。 */
-  private static float[] readingMask(TargetSchema heads, ReadingTarget target, float[] values, int units) {
+  private static float[] readingMask(
+      TargetSchema heads, ReadingTarget target, float[] values, int units) {
     int width = heads.width(target);
     float[] mask = new float[units * width];
     for (int u = 0; u < units; u++) {

@@ -107,11 +107,13 @@ public class DuelDecideTest {
             MARGIN,
             0,
             0);
-    return new EvaluationSettings(null, 3.0, 0.01, onWorse, Map.of(CHAMPION, champion, OUTSIDE, outside));
+    return new EvaluationSettings(
+        null, 3.0, 0.01, onWorse, Map.of(CHAMPION, champion, OUTSIDE, outside));
   }
 
   @Test(timeOut = 600_000)
-  public void theFirstChampionIsCrownedAndABetterCandidateIsConfirmedAndPromoted() throws Exception {
+  public void theFirstChampionIsCrownedAndABetterCandidateIsConfirmedAndPromoted()
+      throws Exception {
     Path root = Files.createTempDirectory("classic-duel-promote");
     try (TableLoop table = new TableLoop(new TableSettings(64, 8, 1000L, 4))) {
       EvaluationSettings evaluation = evaluation(new OnWorseSettings.Pause(1));
@@ -129,7 +131,7 @@ public class DuelDecideTest {
       Champion initial = store.current().orElseThrow();
       assertEquals(initial.label(), "v00010");
       assertEquals(initial.version(), 10);
-      Path measured = confirms(store,initial).resolve(crowned.check());
+      Path measured = confirms(store, initial).resolve(crowned.check());
       assertEquals(crowned.check(), "v00010-outside");
       assertTrue(Files.exists(measured.resolve(Jobs.RESULT)), measured.toString());
 
@@ -148,9 +150,12 @@ public class DuelDecideTest {
       assertEquals(store.past(), List.of(initial));
       assertEquals(
           events(store),
-          List.of(new StoreEvent.Initial(initial), new StoreEvent.Promoted(candidate, "v00020-champion")));
+          List.of(
+              new StoreEvent.Initial(initial),
+              new StoreEvent.Promoted(candidate, "v00020-champion")));
       // 確かめの卓で測った候補の値は、新しい王者の値として残る
-      assertTrue(Files.exists(confirms(store,candidate).resolve("v00020-outside").resolve(Jobs.RESULT)));
+      assertTrue(
+          Files.exists(confirms(store, candidate).resolve("v00020-outside").resolve(Jobs.RESULT)));
 
       // 昇格の段を 2 度当てても、1 度と同じ。完了マーカーの前に落ちた形でも同じ
       byte[] history = Files.readAllBytes(first.run().champion().resolve(ChampionStore.HISTORY));
@@ -158,8 +163,10 @@ public class DuelDecideTest {
       assertEquals(new DecideStep<Macro>().run(second).metrics(), promoted);
       Files.delete(second.work().resolve(DecideStep.FILE));
       assertEquals(new DecideStep<Macro>().run(second).metrics(), promoted);
-      assertEquals(Files.readAllBytes(first.run().champion().resolve(ChampionStore.HISTORY)), history);
-      assertEquals(Files.readAllBytes(first.run().champion().resolve(ChampionStore.CURRENT)), current);
+      assertEquals(
+          Files.readAllBytes(first.run().champion().resolve(ChampionStore.HISTORY)), history);
+      assertEquals(
+          Files.readAllBytes(first.run().champion().resolve(ChampionStore.CURRENT)), current);
       assertEquals(new ControlRequests(second.run()).pending(), List.of());
     } finally {
       DurableFiles.delete(root);
@@ -177,13 +184,16 @@ public class DuelDecideTest {
       assertEquals(duel.verdict(), Verdict.WORSE, duel.toString());
       assertEquals(held.action(), Action.HOLD, held.toString());
       assertEquals(
-          held.alarms().stream().map(Alarm::signal).toList(), List.of(Signal.CHAMPION_WORSE, Signal.WORSE_STREAK));
+          held.alarms().stream().map(Alarm::signal).toList(),
+          List.of(Signal.CHAMPION_WORSE, Signal.WORSE_STREAK));
       assertEquals(held.alarms().get(1).handling(), Alarm.Handling.PAUSE);
       Alarms alarms = new Alarms(Watch.of(macro.evaluation()), macro.run());
       assertEquals(alarms.read(), held.alarms());
       ChampionStore store = ChampionStore.open(macro.run().champion());
       assertEquals(store.current().orElseThrow(), champion);
-      assertEquals(events(store), List.of(new StoreEvent.Initial(champion), new StoreEvent.Paused("v00020-champion")));
+      assertEquals(
+          events(store),
+          List.of(new StoreEvent.Initial(champion), new StoreEvent.Paused("v00020-champion")));
       assertEquals(pauses(macro), 1);
 
       // 当て直しても、一時停止の要求とアラートの行は 1 つずつのまま
@@ -209,8 +219,15 @@ public class DuelDecideTest {
       macro.writeLearner(checkpoint);
       Champion candidate = Champion.of("v00020", checkpoint, 20);
       DuelReport better =
-          new DuelReport("v00020-champion", candidate, champion, Verdict.BETTER, false, new Estimate(0.1, 0.02, 0.05, 0.15));
-      new StepReport(StepReport.Status.RAN, 0, 1, JAR, better).write(macro.work().resolve(DuelStep.FILE));
+          new DuelReport(
+              "v00020-champion",
+              candidate,
+              champion,
+              Verdict.BETTER,
+              false,
+              new Estimate(0.1, 0.02, 0.05, 0.15));
+      new StepReport(StepReport.Status.RAN, 0, 1, JAR, better)
+          .write(macro.work().resolve(DuelStep.FILE));
 
       StepReport report = new DecideStep<Macro>().run(macro);
       Decision decision = (Decision) report.metrics();
@@ -226,7 +243,8 @@ public class DuelDecideTest {
               new StoreEvent.Initial(champion),
               new StoreEvent.NotConfirmed(candidate, "v00020-champion", "v00020-outside")));
       // 王者を王者になった後の初めての良いで測り、次からはその値を使う
-      assertTrue(Files.exists(confirms(store,champion).resolve("v00020-outside").resolve(Jobs.RESULT)));
+      assertTrue(
+          Files.exists(confirms(store, champion).resolve("v00020-outside").resolve(Jobs.RESULT)));
       assertEquals(pauses(macro), 0);
     } finally {
       DurableFiles.delete(root);
@@ -272,7 +290,7 @@ public class DuelDecideTest {
       Decision failed = (Decision) new DecideStep<Macro>().run(outage).metrics();
       assertEquals(failed.action(), Action.NOT_CONFIRMED, failed.toString());
       assertNull(failed.confirm());
-      Jobs measured = DuelJobs.jobs(confirms(store,champion));
+      Jobs measured = DuelJobs.jobs(confirms(store, champion));
       assertEquals(measured.read("v00020-outside").state(), JobFile.State.FAILED);
       assertEquals(store.current().orElseThrow(), champion);
 
@@ -353,14 +371,17 @@ public class DuelDecideTest {
       assertTrue(duel.failed(), duel.toString());
       JobFile refused = DuelJobs.jobs(store.duels()).read("v00030-champion");
       assertEquals(refused.state(), JobFile.State.FAILED);
-      assertTrue(refused.reason().contains("but the duel was planned with " + placed.sha256()), refused.reason());
+      assertTrue(
+          refused.reason().contains("but the duel was planned with " + placed.sha256()),
+          refused.reason());
       assertEquals(second.opened(), List.of());
 
       // 計画の相手は系譜の外のチェックポイントで、置いたときの SHA-256 を持つ
       JobFile played = DuelJobs.jobs(store.duels()).read("v00020-champion");
       assertEquals(
           RecordFile.read(DuelSetup.class, played.plan()).value().opponent(),
-          new DuelSetup.Entrant("nano:" + placed.checkpoint(), "nano-stage8", null, placed.sha256()));
+          new DuelSetup.Entrant(
+              "nano:" + placed.checkpoint(), "nano-stage8", null, placed.sha256()));
     } finally {
       DurableFiles.delete(root);
     }
@@ -398,8 +419,14 @@ public class DuelDecideTest {
     Champion candidate = Champion.of(label, checkpoint, macro.published());
     DuelReport better =
         new DuelReport(
-            label + "-champion", candidate, champion, Verdict.BETTER, false, new Estimate(0.1, 0.02, 0.05, 0.15));
-    new StepReport(StepReport.Status.RAN, 0, 1, JAR, better).write(macro.work().resolve(DuelStep.FILE));
+            label + "-champion",
+            candidate,
+            champion,
+            Verdict.BETTER,
+            false,
+            new Estimate(0.1, 0.02, 0.05, 0.15));
+    new StepReport(StepReport.Status.RAN, 0, 1, JAR, better)
+        .write(macro.work().resolve(DuelStep.FILE));
     return candidate;
   }
 
@@ -423,7 +450,8 @@ public class DuelDecideTest {
     Path temporary = directory.resolveSibling(directory.getFileName() + ".tmp");
     Files.createDirectories(temporary);
     Files.writeString(temporary.resolve(PLAYER), player, StandardCharsets.UTF_8);
-    Files.writeString(temporary.resolve("label"), directory.getFileName().toString(), StandardCharsets.UTF_8);
+    Files.writeString(
+        temporary.resolve("label"), directory.getFileName().toString(), StandardCharsets.UTF_8);
     Files.move(temporary, directory, StandardCopyOption.ATOMIC_MOVE);
   }
 
@@ -443,7 +471,8 @@ public class DuelDecideTest {
     private final List<String> opened = new CopyOnWriteArrayList<>();
 
     /** @param published macro が公開したバージョン */
-    Macro(Path root, int published, EvaluationSettings evaluation, String learner, TableLoop table) {
+    Macro(
+        Path root, int published, EvaluationSettings evaluation, String learner, TableLoop table) {
       this.run = new RunDirectory(root.resolve("run"));
       this.published = published;
       this.evaluation = evaluation;
@@ -541,7 +570,8 @@ public class DuelDecideTest {
     @Override
     public PolicyOptions options() {
       PolicyOptions defaults = PolicyOptions.defaults();
-      return new PolicyOptions(defaults.device(), precision, defaults.maxBatch(), defaults.kernels());
+      return new PolicyOptions(
+          defaults.device(), precision, defaults.maxBatch(), defaults.kernels());
     }
 
     @Override

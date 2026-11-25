@@ -105,8 +105,13 @@ final class ValueHead {
             .stopGradient()
             .reshape(rows, SEATS, SEATS);
     NDArray seat =
-        batch.tensor(Tensor.STATE_CATEGORIES).get(":, {}", playerSeat).toType(DataType.INT32, false).sub(1);
-    NDArray own = seat.reshape(rows, 1).eq(seatIds).toType(DataType.FLOAT32, false).reshape(rows, SEATS, 1);
+        batch
+            .tensor(Tensor.STATE_CATEGORIES)
+            .get(":, {}", playerSeat)
+            .toType(DataType.INT32, false)
+            .sub(1);
+    NDArray own =
+        seat.reshape(rows, 1).eq(seatIds).toType(DataType.FLOAT32, false).reshape(rows, SEATS, 1);
     NDArray ranks = marginals.mul(own).sum(new int[] {1});
     NDArray utility = ranks.mul(utilityValues).sum(new int[] {1});
     return support.targets(utility).maximum(HlGauss.PRIOR_FLOOR).log().stopGradient();

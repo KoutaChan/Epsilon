@@ -12,6 +12,7 @@
     "start": "npm run build && electron .",
     "pack": "electron-builder --dir"
   },
+  "dependencies": {"@epsilon-reviewer/protocol": "0.1.0"},
   "devDependencies": {
     "@types/node": "^24.0.0",
     "electron": "44.3.0",

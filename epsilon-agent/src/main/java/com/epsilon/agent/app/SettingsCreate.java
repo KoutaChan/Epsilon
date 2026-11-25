@@ -18,8 +18,11 @@ import org.slf4j.LoggerFactory;
  *
  * @param run 作る run のディレクトリ。設定の行が既にあれば誤りにする
  */
-@Named(value = "settings create", doc = "Layer and check the settings, then create the run directory and its first settings row")
-public record SettingsCreate(@Key(doc = "Run directory to create", presence = Presence.REQUIRED) Path run)
+@Named(
+    value = "settings create",
+    doc = "Layer and check the settings, then create the run directory and its first settings row")
+public record SettingsCreate(
+    @Key(doc = "Run directory to create", presence = Presence.REQUIRED) Path run)
     implements BuiltinCommand {
 
   private static final Logger log = LoggerFactory.getLogger(SettingsCreate.class);
@@ -31,7 +34,8 @@ public record SettingsCreate(@Key(doc = "Run directory to create", presence = Pr
     try (SettingsRows.Locked locked = rows.lock()) {
       if (!locked.rows().isEmpty()) {
         throw new SettingsException(
-            List.of("The run " + run + " already has settings rows; change them with settings change"));
+            List.of(
+                "The run " + run + " already has settings rows; change them with settings change"));
       }
       locked.append(1, Jars.running(), SettingsRow.CREATED, List.of(), settings.tree());
     }

@@ -118,7 +118,8 @@ public final class OutcomeCodec {
    */
   public void write(HandEndFacts end, int seat, int events, long[] to, int at) {
     if (end.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + end.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + end.variant());
     }
     Objects.checkIndex(seat, seats);
     Objects.checkFromIndexSize(at, WORDS, to.length);
@@ -131,7 +132,11 @@ public final class OutcomeCodec {
         int winner = outcome.winner(0);
         if (winner == seat) {
           put(to, factsAt, FactBits.OUTCOME, Outcome.SELF_TSUMO.ordinal());
-          put(to, factsAt, FactBits.WIN_POINTS, hundreds(tsumoGain(outcome.base(0), winner, dealer)));
+          put(
+              to,
+              factsAt,
+              FactBits.WIN_POINTS,
+              hundreds(tsumoGain(outcome.base(0), winner, dealer)));
         } else {
           put(to, factsAt, FactBits.OUTCOME, Outcome.OTHER_TSUMO.ordinal());
           put(to, factsAt, FactBits.WINNER, relative(seat, winner) - 1);
@@ -161,7 +166,13 @@ public final class OutcomeCodec {
     }
     int scoresAt = at + Word.SCORES.ordinal();
     for (int relative = 0; relative < seats; relative++) {
-      scores.put(to, scoresAt, 0, ScoreBits.SCORE, relative, hundreds(next.score(absolute(seat, relative))));
+      scores.put(
+          to,
+          scoresAt,
+          0,
+          ScoreBits.SCORE,
+          relative,
+          hundreds(next.score(absolute(seat, relative))));
     }
   }
 
@@ -173,7 +184,11 @@ public final class OutcomeCodec {
       int winner = outcome.winner(index);
       if (winner == seat) {
         put(to, factsAt, FactBits.OUTCOME, Outcome.SELF_RON.ordinal());
-        put(to, factsAt, FactBits.WIN_POINTS, hundreds(ScoreMath.ron(outcome.base(index), winner == dealer)));
+        put(
+            to,
+            factsAt,
+            FactBits.WIN_POINTS,
+            hundreds(ScoreMath.ron(outcome.base(index), winner == dealer)));
         writeYaku(end.yaku()[index], to, at);
         return;
       }
@@ -206,7 +221,8 @@ public final class OutcomeCodec {
 
   private static void writeYaku(long yaku, long[] to, int at) {
     if ((yaku & ~YAKU_BITS) != 0L) {
-      throw new IllegalStateException("Yaku bits outside the scoring yaku: " + Long.toHexString(yaku));
+      throw new IllegalStateException(
+          "Yaku bits outside the scoring yaku: " + Long.toHexString(yaku));
     }
     to[at + Word.YAKU.ordinal()] = yaku;
   }
@@ -260,6 +276,11 @@ public final class OutcomeCodec {
     return words[at + Word.YAKU.ordinal()];
   }
 
+  /** 記録した局末に続く局の番号。半荘が終わった局と記録がない手では −1。 */
+  public int nextRound(long[] words, int at) {
+    return fact(words, at, FactBits.NEXT_KYOKU);
+  }
+
   /**
    * 局末の点を返す。
    *
@@ -269,7 +290,8 @@ public final class OutcomeCodec {
    * @return 点
    */
   public int finalScore(long[] words, int at, int relative) {
-    return scores.get(words, at + Word.SCORES.ordinal(), 0, ScoreBits.SCORE, relative) * ObservationSchema.POINT_UNIT;
+    return scores.get(words, at + Word.SCORES.ordinal(), 0, ScoreBits.SCORE, relative)
+        * ObservationSchema.POINT_UNIT;
   }
 
   /**
@@ -302,7 +324,8 @@ public final class OutcomeCodec {
   /** 点を {@link ObservationSchema#POINT_UNIT} 点単位の値に直す。 */
   private static int hundreds(int points) {
     if (points % ObservationSchema.POINT_UNIT != 0) {
-      throw new IllegalStateException("Points are not a multiple of " + ObservationSchema.POINT_UNIT + ": " + points);
+      throw new IllegalStateException(
+          "Points are not a multiple of " + ObservationSchema.POINT_UNIT + ": " + points);
     }
     return points / ObservationSchema.POINT_UNIT;
   }

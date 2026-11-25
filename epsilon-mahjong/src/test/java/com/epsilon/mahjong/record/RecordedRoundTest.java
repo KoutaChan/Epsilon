@@ -107,33 +107,48 @@ public class RecordedRoundTest {
   /** 抜けるのは北だけ。 */
   @Test
   public void onlyANorthIsTakenOut() {
-    Assert.assertThrows(IllegalArgumentException.class, () -> new RecordEvent.Nuki(0, Tiles.physicalId(Tiles.SHA, 0)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> new RecordEvent.Nuki(0, Tiles.physicalId(Tiles.SHA, 0)));
     Assert.assertEquals(new RecordEvent.Nuki(2, 123).tile(), 123);
   }
 
   /** 鳴きが手から出す牌は、面子の鳴いた牌のほかの牌と 1 枚ずつ同じ種類の、重ならない物理牌。昇順に並べ直して持つ。 */
   @Test
   public void aCallTakesTheOtherTilesOfItsMeldFromTheHand() {
-    Assert.assertEquals(new RecordEvent.Call(1, DAIMINKAN.id(), List.of(107, 105, 106)).consumed(), DAIMINKAN_HAND);
+    Assert.assertEquals(
+        new RecordEvent.Call(1, DAIMINKAN.id(), List.of(107, 105, 106)).consumed(), DAIMINKAN_HAND);
     Meld chi = Meld.chi(Tiles.P6, Tiles.P6, Meld.AkaSource.NONE);
-    Assert.assertEquals(new RecordEvent.Call(1, chi.id(), List.of(66, 63)).consumed(), List.of(63, 66));
+    Assert.assertEquals(
+        new RecordEvent.Call(1, chi.id(), List.of(66, 63)).consumed(), List.of(63, 66));
     for (List<Integer> consumed :
-        List.of(List.of(105, 106), List.of(105, 106, 107, 104), List.of(105, 106, 103), List.of(105, 105, 106))) {
-      Assert.assertThrows(IllegalArgumentException.class, () -> new RecordEvent.Call(1, DAIMINKAN.id(), consumed));
+        List.of(
+            List.of(105, 106),
+            List.of(105, 106, 107, 104),
+            List.of(105, 106, 103),
+            List.of(105, 105, 106))) {
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> new RecordEvent.Call(1, DAIMINKAN.id(), consumed));
     }
-    Assert.assertThrows(IllegalArgumentException.class, () -> new RecordEvent.Call(1, chi.id(), List.of(59, 63)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new RecordEvent.Call(1, chi.id(), List.of(59, 63)));
   }
 
   /** 槓が無いのにめくった表示牌と、宣言牌の無い立直の成立は直せない。 */
   @Test
   public void revealsWithoutKansAndAcceptancesWithoutRiichiAreRejected() {
     List<RecordEvent> reveal =
-        List.of(new RecordEvent.Draw(0, 4), new RecordEvent.DoraReveal(41), new RecordEvent.Discard(0, 4, true, false));
+        List.of(
+            new RecordEvent.Draw(0, 4),
+            new RecordEvent.DoraReveal(41),
+            new RecordEvent.Discard(0, 4, true, false));
     Assert.assertThrows(IllegalArgumentException.class, () -> RecordedRound.contractOrder(reveal));
     Assert.assertThrows(
         IllegalArgumentException.class,
         () ->
             RecordedRound.contractOrder(
-                List.of(new RecordEvent.Discard(0, 4, true, false), new RecordEvent.RiichiAccepted(0))));
+                List.of(
+                    new RecordEvent.Discard(0, 4, true, false),
+                    new RecordEvent.RiichiAccepted(0))));
   }
 }

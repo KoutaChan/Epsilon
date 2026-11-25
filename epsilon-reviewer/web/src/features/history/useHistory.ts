@@ -1,4 +1,4 @@
-import type { HistoryList } from "../../../../protocol/model.ts";
+import type { HistoryList } from "@epsilon-reviewer/protocol/model";
 import { api } from "../../api/platform";
 import { useResource, type Resource } from "../../hooks/useResource";
 

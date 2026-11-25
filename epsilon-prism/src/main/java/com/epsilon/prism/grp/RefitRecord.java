@@ -116,15 +116,40 @@ public record RefitRecord(
    * @return 項目
    */
   public PhiEntry entry(Variant variant, int effectiveFrom, String reason) {
-    if (path.isEmpty()) throw new IllegalStateException("Refit attempt " + id + " has no candidate: " + status);
+    if (path.isEmpty())
+      throw new IllegalStateException("Refit attempt " + id + " has no candidate: " + status);
     return new PhiEntry(
-        id, PhiEntryKind.NETWORK, variant, path, "", "", "", outcomes, outcomesSha256, effectiveFrom, parent, reason);
+        id,
+        PhiEntryKind.NETWORK,
+        variant,
+        path,
+        "",
+        "",
+        "",
+        outcomes,
+        outcomesSha256,
+        effectiveFrom,
+        parent,
+        reason);
   }
 
   /** 同じ試行の状態を変えた行を返す。q はそのまま引き継ぐ。 */
   public RefitRecord with(RefitStatus next, GateReport report, String why, double took) {
     return new RefitRecord(
-        id, slot, next, cause, window, init, parent, path, outcomes, outcomesSha256, report, outcomeGate, why, took);
+        id,
+        slot,
+        next,
+        cause,
+        window,
+        init,
+        parent,
+        path,
+        outcomes,
+        outcomesSha256,
+        report,
+        outcomeGate,
+        why,
+        took);
   }
 
   /**
@@ -136,6 +161,7 @@ public record RefitRecord(
    */
   public RefitRecord withOutcomes(String directory, String sha, OutcomeGate.Report report) {
     return new RefitRecord(
-        id, slot, status, cause, window, init, parent, path, directory, sha, gate, report, detail, seconds);
+        id, slot, status, cause, window, init, parent, path, directory, sha, gate, report, detail,
+        seconds);
   }
 }

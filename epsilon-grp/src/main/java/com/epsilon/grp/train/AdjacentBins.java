@@ -16,12 +16,14 @@ final class AdjacentBins {
 
   /** 今の半荘で足した値の、セルごとの和と数。半荘が終わったら記録へ移す。 */
   private final double[] gameSum;
+
   private final double[] gameCount;
   private final int[] touched;
   private int touchedCount;
 
   /** 半荘ごと・セルごとに和と数を残した記録。半荘 g の記録は {@code gameEnds[g − 1]}（g = 0 なら 0）から {@code gameEnds[g]} の手前まで。 */
   private int[] entryCell = new int[1 << 10];
+
   private double[] entrySum = new double[entryCell.length];
   private double[] entryCount = new double[entryCell.length];
   private int entries;
@@ -106,7 +108,8 @@ final class AdjacentBins {
         int cell = entryCell[entry];
         int line = cell / bins;
         int bin = cell % bins;
-        double deviation = (entrySum[entry] - cells.mean(cell) * entryCount[entry]) / cells.count(cell);
+        double deviation =
+            (entrySum[entry] - cells.mean(cell) * entryCount[entry]) / cells.count(cell);
         if (bin < pairs) {
           influence.add(line * pairs + bin, -deviation);
         }
@@ -121,9 +124,12 @@ final class AdjacentBins {
     for (int line = 0; line < lines; line++) {
       for (int bin = 0; bin < pairs; bin++) {
         boolean defined = clusters(line, bin) >= 2 && clusters(line, bin + 1) >= 2;
-        differences[line][bin] = defined
-            ? new Paired(mean(line, bin + 1) - mean(line, bin), Math.sqrt(influence.variance(line * pairs + bin)))
-            : new Paired(Double.NaN, Double.NaN);
+        differences[line][bin] =
+            defined
+                ? new Paired(
+                    mean(line, bin + 1) - mean(line, bin),
+                    Math.sqrt(influence.variance(line * pairs + bin)))
+                : new Paired(Double.NaN, Double.NaN);
       }
     }
     return differences;

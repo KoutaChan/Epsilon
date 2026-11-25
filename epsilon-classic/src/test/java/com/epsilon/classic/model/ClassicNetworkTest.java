@@ -53,7 +53,8 @@ public class ClassicNetworkTest {
   private static final Logger LOG = LoggerFactory.getLogger(ClassicNetworkTest.class);
 
   /** どの判断も入る区分。 */
-  private static final Bucket BUCKET = Buckets.required(ClassicSchema.MAX_LEGAL, ClassicSchema.MAX_TRANSITIONS);
+  private static final Bucket BUCKET =
+      Buckets.required(ClassicSchema.MAX_LEGAL, ClassicSchema.MAX_TRANSITIONS);
 
   private static final int PER_KIND = 4;
   private static final int STEPS = 400_000;
@@ -73,11 +74,13 @@ public class ClassicNetworkTest {
     samples = new SampleDecisions(41, PER_KIND, STEPS);
     LOG.info("Sampled {} decisions: {}", samples.size(), samples.counts());
     for (Architecture architecture : Architecture.values()) {
-      RankUtility utility = architecture == Architecture.NANO ? RankUtility.TENHOU : RankUtility.AVERAGE_RANK;
+      RankUtility utility =
+          architecture == Architecture.NANO ? RankUtility.TENHOU : RankUtility.AVERAGE_RANK;
       ClassicNetwork network = new ClassicNetwork(architecture, SampleDecisions.VARIANT, utility);
       network.initialize(manager);
       randomize(network, 7L + architecture.ordinal());
-      ClassicInputs inputs = new ClassicInputs(ClassicSchema.of(architecture), BUCKET, samples.size());
+      ClassicInputs inputs =
+          new ClassicInputs(ClassicSchema.of(architecture), BUCKET, samples.size());
       float[][] priors = new float[samples.size()][];
       Random random = new Random(13);
       ClassicTokenizer tokenizer = new ClassicTokenizer(architecture, SampleDecisions.VARIANT);
@@ -116,7 +119,8 @@ public class ClassicNetworkTest {
         }
         assertEquals(sum, 1.0, 1e-4, "row " + row);
         float utility = fixture.network().support().decode(result.values(), row * HlGauss.BINS);
-        assertTrue(Float.isFinite(utility) && utility >= -1.5f && utility <= 1.5f, "utility " + utility);
+        assertTrue(
+            Float.isFinite(utility) && utility >= -1.5f && utility <= 1.5f, "utility " + utility);
       }
     }
   }
@@ -151,10 +155,14 @@ public class ClassicNetworkTest {
         Result alone = run(fixture.network(), single, 1, Precision.FLOAT32);
         for (int slot = 0; slot < smallest.actions(); slot++) {
           assertEquals(
-              alone.probabilities()[slot], batch.probabilities()[row * actions + slot], 1e-4f, smallest + " row " + row);
+              alone.probabilities()[slot],
+              batch.probabilities()[row * actions + slot],
+              1e-4f,
+              smallest + " row " + row);
         }
         for (int bin = 0; bin < HlGauss.BINS; bin++) {
-          assertEquals(alone.values()[bin], batch.values()[row * HlGauss.BINS + bin], 1e-3f, "row " + row);
+          assertEquals(
+              alone.values()[bin], batch.values()[row * HlGauss.BINS + bin], 1e-3f, "row " + row);
         }
       }
     }
@@ -213,7 +221,11 @@ public class ClassicNetworkTest {
         total += difference;
       }
       double mean = total / (samples.size() * BUCKET.actions());
-      LOG.info("{} BF16 probabilities: max |diff| {} mean |diff| {}", fixture.network().architecture(), worst, mean);
+      LOG.info(
+          "{} BF16 probabilities: max |diff| {} mean |diff| {}",
+          fixture.network().architecture(),
+          worst,
+          mean);
       assertTrue(worst < 0.1, "max probability difference " + worst);
       assertTrue(mean < 0.01, "mean probability difference " + mean);
       for (int row = 0; row < samples.size(); row++) {
@@ -232,20 +244,31 @@ public class ClassicNetworkTest {
       int hidden = network.architecture().hidden();
       int context = major ? 128 : 64;
       ClassicSchema schema = ClassicSchema.of(network.architecture());
-      assertShape(network, "01stateEncoder_01stateFeatureEmbedding_embedding", schema.stateDictionary(), 8);
-      assertShape(network, "01stateEncoder_02canonicalTileEmbedding_embedding", 35, hidden);
-      assertShape(network, "04policyHead_01actionFeatureEmbedding_embedding", schema.actionDictionary(), 8);
-      assertShape(network, "04policyHead_02transitionTileRelationEmbedding_embedding", 1601, 32 + context);
       assertShape(
-          network, "01stateEncoder_06tileRelationEncoder_01block0_04relationKeyEmbedding_embedding", 23, major ? 128 : 64);
+          network, "01stateEncoder_01stateFeatureEmbedding_embedding", schema.stateDictionary(), 8);
+      assertShape(network, "01stateEncoder_02canonicalTileEmbedding_embedding", 35, hidden);
+      assertShape(
+          network, "04policyHead_01actionFeatureEmbedding_embedding", schema.actionDictionary(), 8);
+      assertShape(
+          network, "04policyHead_02transitionTileRelationEmbedding_embedding", 1601, 32 + context);
+      assertShape(
+          network,
+          "01stateEncoder_06tileRelationEncoder_01block0_04relationKeyEmbedding_embedding",
+          23,
+          major ? 128 : 64);
       if (major) {
-        assertShape(network, "01stateEncoder_12publicHistoryEncoder_03relationTable_embedding", 76, 4 + context);
+        assertShape(
+            network,
+            "01stateEncoder_12publicHistoryEncoder_03relationTable_embedding",
+            76,
+            4 + context);
         assertShape(network, "04policyHead_23ronGate_02directFeatureProjection_weight", 256, 6);
         assertShape(network, "04policyHead_21alternativeHidden_weight", hidden, 2 * hidden);
         assertShape(network, "07valueHead_weight", HlGauss.BINS, hidden);
       } else {
         assertShape(network, "04policyHead_03transitionWaitYakuProjection_weight", 16, 42);
-        assertShape(network, "04policyHead_10transitionWaitKeyValueProjection_weight", 32 + context, 38);
+        assertShape(
+            network, "04policyHead_10transitionWaitKeyValueProjection_weight", 32 + context, 38);
         assertShape(network, "04policyHead_21alternativeHidden_weight", hidden, 4 * hidden);
         assertShape(network, "06valueHead_weight", HlGauss.BINS, hidden);
       }
@@ -253,13 +276,23 @@ public class ClassicNetworkTest {
   }
 
   /** ホストに読み出した、1 回の順伝播の出力。 */
-  private record Result(float[] probabilities, float[] values, float[] alternatives, float[] actions, float[] riichi) {}
+  private record Result(
+      float[] probabilities,
+      float[] values,
+      float[] alternatives,
+      float[] actions,
+      float[] riichi) {}
 
   private Result run(ClassicNetwork network, ClassicInputs inputs, int rows, Precision precision) {
     try (NDManager working = manager.newSubManager()) {
       ClassicBatch batch = ClassicBatch.send(working, uploads, inputs, rows);
       ClassicNetwork.Output output =
-          network.forward(new ParameterStore(working, false), batch, precision, false, ClassicNetwork.Heads.BOTH);
+          network.forward(
+              new ParameterStore(working, false),
+              batch,
+              precision,
+              false,
+              ClassicNetwork.Heads.BOTH);
       NDArray logProbabilities = PolicyGraph.logProbabilities(output.policy(), batch);
       float[] probabilities = PolicyGraph.probabilities(logProbabilities, batch).toFloatArray();
       return new Result(
@@ -287,17 +320,24 @@ public class ClassicNetworkTest {
     }
     if (response) {
       if (has(o, ActionType.RON_AGARI)
-          && (!hasOther(o, ActionType.RON_AGARI) || alternative(result, row, Alternative.RON) >= 0)) {
+          && (!hasOther(o, ActionType.RON_AGARI)
+              || alternative(result, row, Alternative.RON) >= 0)) {
         return best(o, scores, base, ActionType.RON_AGARI);
       }
-      boolean meld = has(o, ActionType.CHI) || has(o, ActionType.PON) || has(o, ActionType.DAIMINKAN);
+      boolean meld =
+          has(o, ActionType.CHI) || has(o, ActionType.PON) || has(o, ActionType.DAIMINKAN);
       if (meld && (!has(o, ActionType.PASS) || alternative(result, row, Alternative.CALL) >= 0)) {
-        return best(o, scores, base, heaviest(o, result, row, Alternative.CHI, Alternative.PON, Alternative.DAIMINKAN));
+        return best(
+            o,
+            scores,
+            base,
+            heaviest(o, result, row, Alternative.CHI, Alternative.PON, Alternative.DAIMINKAN));
       }
       return best(o, scores, base, ActionType.PASS);
     }
     if (has(o, ActionType.TSUMO_AGARI)
-        && (!hasOther(o, ActionType.TSUMO_AGARI) || alternative(result, row, Alternative.TSUMO) >= 0)) {
+        && (!hasOther(o, ActionType.TSUMO_AGARI)
+            || alternative(result, row, Alternative.TSUMO) >= 0)) {
       return best(o, scores, base, ActionType.TSUMO_AGARI);
     }
     if (has(o, ActionType.KYUSHU_KYUHAI)
@@ -380,7 +420,8 @@ public class ClassicNetworkTest {
   private static int best(Observation o, float[] scores, int base, ActionType type) {
     int best = -1;
     for (int action = 0; action < o.legalActions(); action++) {
-      if (SampleDecisions.type(o, action) == type && (best < 0 || scores[base + action] > scores[base + best])) {
+      if (SampleDecisions.type(o, action) == type
+          && (best < 0 || scores[base + action] > scores[base + best])) {
         best = action;
       }
     }
@@ -388,7 +429,8 @@ public class ClassicNetworkTest {
     return best;
   }
 
-  private static void write(ClassicTokenizer tokenizer, Observation o, float[] prior, ClassicInputs into, int row) {
+  private static void write(
+      ClassicTokenizer tokenizer, Observation o, float[] prior, ClassicInputs into, int row) {
     if (prior == null) {
       tokenizer.write(o, ClassicExtras.empty(), into, row);
     } else {

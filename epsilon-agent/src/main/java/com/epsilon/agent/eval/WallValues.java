@@ -32,8 +32,13 @@ public final class WallValues {
     int perWall = placements.gamesPerWall();
     if (lines.size() % perWall != 0 || lines.size() / perWall > setup.walls()) {
       throw new IllegalArgumentException(
-          "games.tsv holds " + lines.size() + " games, not whole walls of " + perWall + " games within "
-              + setup.walls() + " walls");
+          "games.tsv holds "
+              + lines.size()
+              + " games, not whole walls of "
+              + perWall
+              + " games within "
+              + setup.walls()
+              + " walls");
     }
     int walls = lines.size() / perWall;
     int columns = DuelTally.columns(seats, placements.slots());
@@ -48,7 +53,8 @@ public final class WallValues {
         int number = index * perWall + game;
         int placement = placements.placement(wall, game);
         String[] fields =
-            DuelTally.fields(lines.get(number), number, wall, game, placement, seatSlots[placement], columns);
+            DuelTally.fields(
+                lines.get(number), number, wall, game, placement, seatSlots[placement], columns);
         for (int seat = 0; seat < seats; seat++) {
           scores[game][seat] = Integer.parseInt(fields[DuelTally.SCORE_COLUMN + seat]);
         }

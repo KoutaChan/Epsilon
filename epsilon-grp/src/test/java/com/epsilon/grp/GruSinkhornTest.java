@@ -12,7 +12,7 @@ import org.testng.annotations.Test;
 
 /**
  * GruSinkhorn を確かめる。周辺確率の行と列の和、Φ の範囲と和、GRU の式（double で書いた参照と比べる）、Sinkhorn の出力ヘッド（対数で
- * 正規化したものと比べる）とクリップ、状態のメモの当たりと外れ、履歴の全ての局を読むこと、重みの並び、重み・作業領域・履歴の検査。
+ * 正規化したものと比べる）とクリップ、状態のキャッシュの当たりと外れ、履歴の全ての局を読むこと、重みの並び、重み・作業領域・履歴の検査。
  */
 public class GruSinkhornTest {
 
@@ -71,7 +71,9 @@ public class GruSinkhornTest {
           gru.phi(history, table, utility, workspace, phi);
           double total = 0;
           for (double value : phi) {
-            Assert.assertTrue(value >= lowest - TOLERANCE && value <= highest + TOLERANCE, Double.toString(value));
+            Assert.assertTrue(
+                value >= lowest - TOLERANCE && value <= highest + TOLERANCE,
+                Double.toString(value));
             total += value;
           }
           Assert.assertEquals(total, sum, TOLERANCE);
@@ -95,7 +97,8 @@ public class GruSinkhornTest {
         gru.marginals(history, state, workspace, actual);
         double[] expected = reference(gru, history, state);
         for (int index = 0; index < actual.length; index++) {
-          Assert.assertEquals(actual[index], expected[index], 1e-4, variant + " trial " + trial + " " + index);
+          Assert.assertEquals(
+              actual[index], expected[index], 1e-4, variant + " trial " + trial + " " + index);
         }
       }
     }
@@ -122,7 +125,8 @@ public class GruSinkhornTest {
         gru.marginals(history, GrpFixtures.state(variant, random), GruWorkspace.of(gru), actual);
         double[] expected = logSpaceSinkhorn(logits, variant.seats());
         for (int index = 0; index < actual.length; index++) {
-          Assert.assertEquals(actual[index], expected[index], TOLERANCE, variant + " trial " + trial + " " + index);
+          Assert.assertEquals(
+              actual[index], expected[index], TOLERANCE, variant + " trial " + trial + " " + index);
         }
       }
     }
@@ -146,20 +150,24 @@ public class GruSinkhornTest {
       double[] marginals = new double[shape.marginals()];
       Random random = new Random(31);
       gru.marginals(
-          GrpFixtures.history(variant, random, 1), GrpFixtures.state(variant, random), GruWorkspace.of(gru), marginals);
+          GrpFixtures.history(variant, random, 1),
+          GrpFixtures.state(variant, random),
+          GruWorkspace.of(gru),
+          marginals);
       double diagonal = StrictMath.exp(4) / (StrictMath.exp(4) + seats - 1);
       for (int seat = 0; seat < seats; seat++) {
         for (int rank = 0; rank < seats; rank++) {
           double expected = seat == rank ? diagonal : (1 - diagonal) / (seats - 1);
-          Assert.assertEquals(marginals[seat * seats + rank], expected, TOLERANCE, seat + " " + rank);
+          Assert.assertEquals(
+              marginals[seat * seats + rank], expected, TOLERANCE, seat + " " + rank);
         }
       }
     }
   }
 
-  /** バージョンが同じ履歴（コピーも）は状態のメモに当たり、新しい作業領域で読み直した値とビット単位で同じ。局を足すとバージョンが替わって外れる。 */
+  /** バージョンが同じ履歴（コピーも）は状態のキャッシュに当たり、新しい作業領域で読み直した値とビット単位で同じ。局を足すとバージョンが替わって外れる。 */
   @Test
-  public void stateMemoHitsGiveTheSameBits() {
+  public void stateCacheHitsGiveTheSameBits() {
     Variant variant = Variant.TENHOU_4P;
     GruShape shape = new GruShape(variant, 8, 2);
     GruSinkhorn gru = GrpFixtures.gru(shape, 37, 1.0);
@@ -227,8 +235,12 @@ public class GruSinkhornTest {
     int[][] starts = GruTensor.starts(shape);
     Assert.assertEquals(starts[GruTensor.values().length], new int[] {44_176});
     Assert.assertEquals(starts[GruTensor.INPUT_WEIGHTS.ordinal()], new int[] {0, 7 * 192});
-    Assert.assertEquals(starts[GruTensor.STATE_WEIGHTS.ordinal()], new int[] {7 * 192 + 64 * 192, 7 * 192 + 2 * 64 * 192});
-    Assert.assertEquals(starts[GruTensor.PROJECTION_WEIGHTS.ordinal()], new int[] {44_176 - 16 - 64 * 16 - 64 - 64 * 64});
+    Assert.assertEquals(
+        starts[GruTensor.STATE_WEIGHTS.ordinal()],
+        new int[] {7 * 192 + 64 * 192, 7 * 192 + 2 * 64 * 192});
+    Assert.assertEquals(
+        starts[GruTensor.PROJECTION_WEIGHTS.ordinal()],
+        new int[] {44_176 - 16 - 64 * 16 - 64 - 64 * 64});
     Assert.assertEquals(starts[GruTensor.LOGIT_BIAS.ordinal()], new int[] {44_176 - 16});
     Assert.assertEquals(new GruShape(Variant.TENHOU_3P, 64, 2).inputs(), 6);
   }
@@ -242,8 +254,10 @@ public class GruSinkhornTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> GruSinkhorn.of(shape, weights));
     weights[11] = Float.NEGATIVE_INFINITY;
     Assert.assertThrows(IllegalArgumentException.class, () -> GruSinkhorn.of(shape, weights));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new GruShape(Variant.TENHOU_4P, 0, 1));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new GruShape(Variant.TENHOU_4P, 4, 0));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new GruShape(Variant.TENHOU_4P, 0, 1));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new GruShape(Variant.TENHOU_4P, 4, 0));
   }
 
   @Test
@@ -259,7 +273,7 @@ public class GruSinkhornTest {
     Assert.assertEquals(kept[1], weights[1]);
   }
 
-  /** ほかのモデルの作業領域は、形が同じで、状態のメモに同じ履歴のバージョンがあっても拒む。 */
+  /** ほかのモデルの作業領域は、形が同じで、状態のキャッシュに同じ履歴のバージョンがあっても拒む。 */
   @Test
   public void historiesWorkspacesAndOutputsMustFit() {
     Variant variant = Variant.TENHOU_4P;
@@ -269,23 +283,33 @@ public class GruSinkhornTest {
     GrpState state = new GrpState(variant, 0, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000});
     RoundHistory history = GrpFixtures.history(variant, new Random(67), 2);
     double[] out = new double[16];
-    Assert.assertThrows(IllegalArgumentException.class, () -> gru.marginals(null, state, workspace, out));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> gru.marginals(new RoundHistory(variant), state, workspace, out));
+        IllegalArgumentException.class, () -> gru.marginals(null, state, workspace, out));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> gru.marginals(new RoundHistory(variant), state, workspace, out));
     RoundHistory three = GrpFixtures.history(Variant.TENHOU_3P, new Random(71), 2);
-    Assert.assertThrows(IllegalArgumentException.class, () -> gru.marginals(three, state, workspace, out));
-    GrpState threeState = new GrpState(Variant.TENHOU_3P, 0, 0, 0, new int[] {35_000, 35_000, 35_000});
-    Assert.assertThrows(IllegalArgumentException.class, () -> gru.marginals(history, threeState, workspace, out));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> gru.marginals(three, state, workspace, out));
+    GrpState threeState =
+        new GrpState(Variant.TENHOU_3P, 0, 0, 0, new int[] {35_000, 35_000, 35_000});
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> gru.marginals(history, threeState, workspace, out));
     GruSinkhorn twin = GrpFixtures.gru(shape, 62, 1.0);
     GruWorkspace other = GruWorkspace.of(twin);
     twin.marginals(history, state, other, out);
-    Assert.assertThrows(IllegalArgumentException.class, () -> gru.marginals(history, state, other, out));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> gru.phi(history, state, RankUtility.TENHOU, other, new double[4]));
-    Assert.assertThrows(IllegalArgumentException.class, () -> gru.marginals(history, state, workspace, new double[4]));
+        IllegalArgumentException.class, () -> gru.marginals(history, state, other, out));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> gru.phi(history, GrpFixtures.finished(), RankUtility.TENHOU, workspace, new double[4]));
+        () -> gru.phi(history, state, RankUtility.TENHOU, other, new double[4]));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> gru.marginals(history, state, workspace, new double[4]));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            gru.phi(history, GrpFixtures.finished(), RankUtility.TENHOU, workspace, new double[4]));
   }
 
   /**
@@ -439,7 +463,9 @@ public class GruSinkhornTest {
   private static void assertBits(double[] actual, double[] expected) {
     for (int index = 0; index < expected.length; index++) {
       Assert.assertEquals(
-          Double.doubleToRawLongBits(actual[index]), Double.doubleToRawLongBits(expected[index]), "index " + index);
+          Double.doubleToRawLongBits(actual[index]),
+          Double.doubleToRawLongBits(expected[index]),
+          "index " + index);
     }
   }
 }

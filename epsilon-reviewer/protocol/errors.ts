@@ -1,4 +1,4 @@
-// エラーコードは Web 版・デスクトップ版・Java で同じ文字列を使う。画面に出すのは errors.<コード> の文言だけ。
+// エラーコードは Web 版・デスクトップ版・Java で同じ文字列を使う。画面の文言は errors.<コード> にある。
 
 /**
  * Java の解析側が返すエラーコード。並び順と文字列は Java の ErrorCode と同じ（HTTP のステータスは Java 側で決める）。
@@ -29,6 +29,7 @@ export const SERVER_ERROR_CODES = [
   "job_not_found",
   "analysis_failed",
   "result_not_found",
+  "invalid_result",
   "share_not_found",
   "invalid_edit",
   "decision_not_found",
@@ -38,7 +39,6 @@ export const SERVER_ERROR_CODES = [
 export const CLIENT_ERROR_CODES = [
   "connection_failed",
   "invalid_response",
-  "invalid_result",
   "renderer_failed",
   "engine_failed",
   "operation_failed",

@@ -59,7 +59,9 @@ public class TableStateTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> table.set(12, 0, 0, even));
     Assert.assertThrows(IllegalArgumentException.class, () -> table.set(0, -1, 0, even));
     Assert.assertThrows(IllegalArgumentException.class, () -> table.set(0, 0, 1, even));
-    Assert.assertThrows(IllegalArgumentException.class, () -> table.set(0, 0, 0, new int[] {35_000, 35_000, 35_000}));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> table.set(0, 0, 0, new int[] {35_000, 35_000, 35_000}));
     Assert.assertEquals(table.score(0), 31_000, "a rejected set changes nothing");
   }
 
@@ -82,23 +84,29 @@ public class TableStateTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> table.setScenario(-1, 0, 0, even));
     Assert.assertThrows(IllegalArgumentException.class, () -> table.setScenario(0, -1, 0, even));
     Assert.assertThrows(IllegalArgumentException.class, () -> table.setScenario(0, 0, -1, even));
-    Assert.assertThrows(IllegalArgumentException.class, () -> table.setScenario(0, 0, 0, new int[3]));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> table.setScenario(0, 0, 0, new int[3]));
     Assert.assertEquals(table.score(0), 3_270_000, "a rejected scenario changes nothing");
     Assert.assertEquals(table.honba(), 255, "a rejected scenario changes nothing");
   }
 
   @Test
   public void startsAtComparesEveryFieldOfTheRoundStart() {
-    RoundStart start = new RoundStart(Variant.TENHOU_4P, 5, 1, 2, new int[] {30_000, 20_000, 24_000, 24_000});
+    RoundStart start =
+        new RoundStart(Variant.TENHOU_4P, 5, 1, 2, new int[] {30_000, 20_000, 24_000, 24_000});
     TableState table = new TableState(Variant.TENHOU_4P);
     table.set(start);
     Assert.assertTrue(table.startsAt(start));
     Assert.assertFalse(table.startsAt(new RoundStart(Variant.TENHOU_4P, 6, 1, 2, start.scores())));
     Assert.assertFalse(table.startsAt(new RoundStart(Variant.TENHOU_4P, 5, 0, 2, start.scores())));
     Assert.assertFalse(
-        table.startsAt(new RoundStart(Variant.TENHOU_4P, 5, 1, 1, new int[] {31_000, 20_000, 24_000, 24_000})));
+        table.startsAt(
+            new RoundStart(
+                Variant.TENHOU_4P, 5, 1, 1, new int[] {31_000, 20_000, 24_000, 24_000})));
     Assert.assertFalse(
-        table.startsAt(new RoundStart(Variant.TENHOU_4P, 5, 1, 2, new int[] {20_000, 30_000, 24_000, 24_000})));
+        table.startsAt(
+            new RoundStart(
+                Variant.TENHOU_4P, 5, 1, 2, new int[] {20_000, 30_000, 24_000, 24_000})));
     Assert.assertFalse(table.startsAt(RoundStart.first(Variant.TENHOU_3P)));
     table.finish();
     Assert.assertFalse(table.startsAt(start));
@@ -107,7 +115,8 @@ public class TableStateTest {
   @Test
   public void endsWithNeedsTheGameOverAndTheSameScores() {
     TableState table = new TableState(Variant.TENHOU_4P);
-    table.set(new RoundStart(Variant.TENHOU_4P, 7, 0, 1, new int[] {30_000, 20_000, 24_000, 25_000}));
+    table.set(
+        new RoundStart(Variant.TENHOU_4P, 7, 0, 1, new int[] {30_000, 20_000, 24_000, 25_000}));
     Assert.assertFalse(table.endsWith(new int[] {30_000, 20_000, 24_000, 25_000}));
     table.finish();
     Assert.assertTrue(table.endsWith(new int[] {31_000, 20_000, 24_000, 25_000}));
@@ -117,14 +126,17 @@ public class TableStateTest {
   @Test
   public void variantsMustMatch() {
     TableState four = new TableState(Variant.TENHOU_4P);
-    Assert.assertThrows(IllegalArgumentException.class, () -> four.set(RoundStart.first(Variant.TENHOU_3P)));
-    Assert.assertThrows(IllegalArgumentException.class, () -> four.copyFrom(new TableState(Variant.TENHOU_3P)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> four.set(RoundStart.first(Variant.TENHOU_3P)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> four.copyFrom(new TableState(Variant.TENHOU_3P)));
   }
 
   @Test
   public void copyFromCopiesEveryFieldAndStaysIndependent() {
     TableState source = new TableState(Variant.TENHOU_4P);
-    source.set(new RoundStart(Variant.TENHOU_4P, 7, 3, 2, new int[] {40_000, 18_000, 20_000, 20_000}));
+    source.set(
+        new RoundStart(Variant.TENHOU_4P, 7, 3, 2, new int[] {40_000, 18_000, 20_000, 20_000}));
     source.finish();
     TableState copy = new TableState(Variant.TENHOU_4P);
     copy.copyFrom(source);
@@ -142,7 +154,8 @@ public class TableStateTest {
   @Test
   public void finishGivesTheRemainingDepositsToTheTop() {
     TableState table = new TableState(Variant.TENHOU_4P);
-    table.set(new RoundStart(Variant.TENHOU_4P, 7, 0, 3, new int[] {20_000, 31_000, 31_000, 15_000}));
+    table.set(
+        new RoundStart(Variant.TENHOU_4P, 7, 0, 3, new int[] {20_000, 31_000, 31_000, 15_000}));
     table.finish();
     Assert.assertTrue(table.gameOver());
     Assert.assertEquals(table.kyotaku(), 0);

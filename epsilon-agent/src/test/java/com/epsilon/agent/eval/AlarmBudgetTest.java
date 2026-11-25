@@ -45,7 +45,8 @@ public class AlarmBudgetTest {
   /** 王者との決闘 999 回、ラダー 124 回、基準 121 回、ルールベースの打ち手の卓 1,000 回で、有意水準は全て 0.01。 */
   @Test
   public void aThousandVersionsGiveTheDesignTable() {
-    AlarmBudget budget = AlarmBudget.of(WATCH, new AlarmBudget.Exposure(999, 0.01, 124, 0.01, 121, 1000));
+    AlarmBudget budget =
+        AlarmBudget.of(WATCH, new AlarmBudget.Exposure(999, 0.01, 124, 0.01, 121, 1000));
     double tail = Normal.upper(3);
     assertEquals(budget.promotions(), 4.995, 1e-12);
     Map<Signal, Double> alarms = budget.alarms();
@@ -75,13 +76,21 @@ public class AlarmBudgetTest {
 
   @Test
   public void invalidExposuresAreRejected() {
-    assertThrows(IllegalArgumentException.class, () -> new AlarmBudget.Exposure(-1, 0.01, 0, 0.01, 0, 0));
-    assertThrows(IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0.01, -1, 0.01, 0, 0));
-    assertThrows(IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0.01, 0, 0.01, -1, 0));
-    assertThrows(IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0.01, 0, 0.01, 0, -1));
-    assertThrows(IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0, 0, 0.01, 0, 0));
-    assertThrows(IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 1, 0, 0.01, 0, 0));
-    assertThrows(IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0.01, 0, Double.NaN, 0, 0));
+    assertThrows(
+        IllegalArgumentException.class, () -> new AlarmBudget.Exposure(-1, 0.01, 0, 0.01, 0, 0));
+    assertThrows(
+        IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0.01, -1, 0.01, 0, 0));
+    assertThrows(
+        IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0.01, 0, 0.01, -1, 0));
+    assertThrows(
+        IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0.01, 0, 0.01, 0, -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 0, 0, 0.01, 0, 0));
+    assertThrows(
+        IllegalArgumentException.class, () -> new AlarmBudget.Exposure(0, 1, 0, 0.01, 0, 0));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new AlarmBudget.Exposure(0, 0.01, 0, Double.NaN, 0, 0));
     assertThrows(NullPointerException.class, () -> new AlarmBudget(0, null));
   }
 
@@ -96,7 +105,8 @@ public class AlarmBudgetTest {
     double worse = 0.1;
     for (int streak : new int[] {2, 3}) {
       Watch watch = new Watch(3, 0.01, new OnWorseSettings.Report(streak));
-      AlarmBudget budget = AlarmBudget.of(watch, new AlarmBudget.Exposure(duels, 2 * worse, 0, 0.01, 0, 0));
+      AlarmBudget budget =
+          AlarmBudget.of(watch, new AlarmBudget.Exposure(duels, 2 * worse, 0, 0.01, 0, 0));
       Alarms alarms = new Alarms(watch, run);
       Estimate even = Estimate.of(0, 1, 3);
       WallMean champion = new WallMean();
@@ -109,7 +119,8 @@ public class AlarmBudgetTest {
         for (int duel = 0; duel < duels; duel++) {
           Verdict verdict = random.nextDouble() < worse ? Verdict.WORSE : Verdict.EVEN;
           inARow = Alarms.streak(inARow, verdict);
-          for (Alarm alarm : alarms.championDuel("v00001-champion", duel, verdict, even, inARow, List.of())) {
+          for (Alarm alarm :
+              alarms.championDuel("v00001-champion", duel, verdict, even, inARow, List.of())) {
             if (alarm.signal() == Signal.CHAMPION_WORSE) {
               championCount++;
             } else {
@@ -129,7 +140,8 @@ public class AlarmBudgetTest {
           streaks.mean(),
           streaks.error(),
           budget.alarms().get(Signal.WORSE_STREAK));
-      assertEquals(champion.mean(), budget.alarms().get(Signal.CHAMPION_WORSE), 3 * champion.error());
+      assertEquals(
+          champion.mean(), budget.alarms().get(Signal.CHAMPION_WORSE), 3 * champion.error());
       assertEquals(streaks.mean(), budget.alarms().get(Signal.WORSE_STREAK), 3 * streaks.error());
     }
   }
@@ -162,7 +174,12 @@ public class AlarmBudgetTest {
     }
     double expected = budget.alarms().get(Signal.ANCHOR_DROP);
     double error = Math.sqrt(expected * (1 - expected / comparisons));
-    log.info("ALARM-BUDGET drops: anchor {} baseline {} budget {} ({})", anchors, baselines, expected, error);
+    log.info(
+        "ALARM-BUDGET drops: anchor {} baseline {} budget {} ({})",
+        anchors,
+        baselines,
+        expected,
+        error);
     assertEquals(anchors, expected, 3 * error);
     assertTrue(baselines <= anchors, baselines + " > " + anchors);
     assertEquals(budget.alarms().get(Signal.BASELINE_DROP), expected, 1e-9);

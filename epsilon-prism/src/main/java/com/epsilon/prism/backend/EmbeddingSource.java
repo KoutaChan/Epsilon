@@ -1,17 +1,17 @@
 package com.epsilon.prism.backend;
 
-import com.epsilon.prism.hip.HipEmbedding;
-import com.epsilon.prism.hip.HipSection;
 import com.epsilon.prism.input.FieldSpec;
 import com.epsilon.prism.input.InputBlob.Tensor;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.input.TokenLayout;
+import com.epsilon.prism.kernel.EmbeddingTable;
+import com.epsilon.prism.kernel.InputSection;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 
 /**
- * 埋め込みのカーネル（K1）に渡す、1 つの入力の形式・1 つのトークンの型の情報。フィールドの並び、入力の領域、ネットワークの
+ * 埋め込みのカーネルに渡す、1 つの入力の形式・1 つのトークンの型の情報。フィールドの並び、入力の領域、ネットワークの
  * パラメーターの名前を持つ。並べ方はネットワークの埋め込み（TokenEmbedding と CandidateLayer の前半）と同じで、形式の宣言から作る。
  * 埋め込むフィールドを列の順に [埋め込み × d] で並べ、その後に 2 値のフィールドのフラグ（列の順）、数値、厳密な値を並べる。
  */
@@ -21,7 +21,7 @@ final class EmbeddingSource {
   enum Kind {
     /** 局のトークン（stateEmbedding の G）。 */
     ROUND(
-        HipEmbedding.Slot.ROUND,
+        EmbeddingTable.Slot.ROUND,
         InputFormat::round,
         Tensor.ROUND_CATEGORY,
         Tensor.ROUND_SCALAR,
@@ -32,7 +32,7 @@ final class EmbeddingSource {
         "projectGBias"),
     /** 席のトークン（stateEmbedding の P）。 */
     SEAT(
-        HipEmbedding.Slot.SEAT,
+        EmbeddingTable.Slot.SEAT,
         InputFormat::seat,
         Tensor.SEAT_CATEGORY,
         Tensor.SEAT_SCALAR,
@@ -43,7 +43,7 @@ final class EmbeddingSource {
         "projectPBias"),
     /** 牌のトークン（stateEmbedding の T）。 */
     TILE(
-        HipEmbedding.Slot.TILE,
+        EmbeddingTable.Slot.TILE,
         InputFormat::tile,
         Tensor.TILE_CATEGORY,
         null,
@@ -54,7 +54,7 @@ final class EmbeddingSource {
         "projectTBias"),
     /** イベントのトークン（stateEmbedding の E）。 */
     EVENT(
-        HipEmbedding.Slot.EVENT,
+        EmbeddingTable.Slot.EVENT,
         InputFormat::event,
         Tensor.EVENT_CATEGORY,
         Tensor.EVENT_SCALAR,
@@ -65,7 +65,7 @@ final class EmbeddingSource {
         "projectEBias"),
     /** 遷移の静的な部分（candidate の table・project）。数値の後に、打牌の値 B のヘッドが読む厳密な値を BF16 にして並べる。 */
     TRANSITION(
-        HipEmbedding.Slot.TRANSITION,
+        EmbeddingTable.Slot.TRANSITION,
         InputFormat::transition,
         Tensor.TRANSITION_CATEGORY,
         Tensor.TRANSITION_SCALAR,
@@ -75,7 +75,7 @@ final class EmbeddingSource {
         "project",
         "projectBias");
 
-    private final HipEmbedding.Slot slot;
+    private final EmbeddingTable.Slot slot;
     private final Function<InputFormat, TokenLayout<?>> layout;
     private final Tensor category;
     private final Tensor scalar;
@@ -86,7 +86,7 @@ final class EmbeddingSource {
     private final String bias;
 
     Kind(
-        HipEmbedding.Slot slot,
+        EmbeddingTable.Slot slot,
         Function<InputFormat, TokenLayout<?>> layout,
         Tensor category,
         Tensor scalar,
@@ -153,7 +153,7 @@ final class EmbeddingSource {
     return Arrays.stream(Kind.values()).map(kind -> new EmbeddingSource(kind, format)).toList();
   }
 
-  HipEmbedding.Slot slot() {
+  EmbeddingTable.Slot slot() {
     return kind.slot;
   }
 
@@ -235,28 +235,28 @@ final class EmbeddingSource {
    *
    * @return 特徴（フラグ、数値、厳密な値の順）
    */
-  HipEmbedding.Dense[] dense() {
-    HipEmbedding.Dense[] features = new HipEmbedding.Dense[denseCount()];
+  EmbeddingTable.Dense[] dense() {
+    EmbeddingTable.Dense[] features = new EmbeddingTable.Dense[denseCount()];
     int k = 0;
     for (int flag : flags) {
-      features[k++] = new HipEmbedding.Dense(HipEmbedding.Source.FLAG, flag);
+      features[k++] = new EmbeddingTable.Dense(EmbeddingTable.Source.FLAG, flag);
     }
     for (int s = 0; s < scalars; s++) {
-      features[k++] = new HipEmbedding.Dense(HipEmbedding.Source.SCALAR, s);
+      features[k++] = new EmbeddingTable.Dense(EmbeddingTable.Source.SCALAR, s);
     }
     for (int x = 0; x < exacts; x++) {
-      features[k++] = new HipEmbedding.Dense(HipEmbedding.Source.EXACT, x);
+      features[k++] = new EmbeddingTable.Dense(EmbeddingTable.Source.EXACT, x);
     }
     return features;
   }
 
   /**
-   * 入力の領域と同じ名前の HIP の領域を返す。
+   * 入力の領域と同じ名前のカーネル入力領域を返す。
    *
    * @param tensor 入力の領域（null でもよい）
-   * @return HIP の領域。入力の領域が null なら null
+   * @return 対応するカーネル入力領域。入力の領域が null なら null
    */
-  static HipSection section(Tensor tensor) {
-    return tensor == null ? null : HipSection.valueOf(tensor.name());
+  static InputSection section(Tensor tensor) {
+    return tensor == null ? null : InputSection.valueOf(tensor.name());
   }
 }

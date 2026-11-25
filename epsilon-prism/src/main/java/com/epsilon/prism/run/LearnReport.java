@@ -3,6 +3,7 @@ package com.epsilon.prism.run;
 import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Presence;
 import com.epsilon.prism.learn.FitResult;
+import com.epsilon.prism.luck.LedgerCalibrator;
 import com.epsilon.prism.luck.LedgerReport;
 import java.util.Objects;
 
@@ -37,6 +38,12 @@ public record LearnReport(
   /** reports に置く、帳簿を当てはめた反復ごとの報告。1 行が 1 反復で、{@value #LEDGER} の中身に反復の番号を付けたもの。 */
   public static final String LEDGER_LINES = "ledger.jsonl";
 
+  /**
+   * 学習の段の出力に入る、反復のコホートの行で当てはめた次の反復の帳簿の補正率（{@link LedgerCalibrator}。当てはめた反復だけ）。反復を
+   * 閉じるときに持ち越しに入れる。
+   */
+  public static final String CALIBRATOR = "calibrator.json";
+
   public LearnReport {
     Objects.requireNonNull(tempo, "tempo");
     Objects.requireNonNull(fit, "fit");
@@ -51,7 +58,8 @@ public record LearnReport(
    * @param scheduledGain スケジュールで決まるゲイン K_t
    * @param r2 K′_t を決めるのに使った R²（持ち越しを捨てたら 0）
    */
-  public record Tempo(double gain, double anchorWeight, double lrScale, double scheduledGain, double r2) {}
+  public record Tempo(
+      double gain, double anchorWeight, double lrScale, double scheduledGain, double r2) {}
 
   /**
    * 生徒の学習の結果。有限でない損失は書かない（ステップが無ければ損失も無い）。

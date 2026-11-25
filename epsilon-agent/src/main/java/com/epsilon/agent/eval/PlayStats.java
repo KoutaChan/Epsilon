@@ -73,7 +73,8 @@ public final class PlayStats {
    * @param decision 判断の番号
    * @param choice 選んだ手（合法手の何番目か）
    */
-  public void decided(int[] slotOfSeat, SeatView view, Decisions decisions, int decision, int choice) {
+  public void decided(
+      int[] slotOfSeat, SeatView view, Decisions decisions, int decision, int choice) {
     int n = decisions.legalCount(decision);
     if (n < 2) {
       return;
@@ -204,7 +205,8 @@ public final class PlayStats {
    */
   public void add(PlayStats other) {
     if (other.slots != slots) {
-      throw new IllegalArgumentException("Play stats of " + other.slots + " slots added to " + slots);
+      throw new IllegalArgumentException(
+          "Play stats of " + other.slots + " slots added to " + slots);
     }
     for (int index = 0; index < counts.length; index++) {
       counts[index] += other.counts[index];
@@ -236,7 +238,8 @@ public final class PlayStats {
    */
   public void addColumns(long[] columns) {
     if (columns.length != counts.length) {
-      throw new IllegalArgumentException("Play stats have " + counts.length + " columns, not " + columns.length);
+      throw new IllegalArgumentException(
+          "Play stats have " + counts.length + " columns, not " + columns.length);
     }
     for (int index = 0; index < counts.length; index++) {
       counts[index] += columns[index];
@@ -272,7 +275,12 @@ public final class PlayStats {
 
     /** @return この率 − ほかの率 */
     public Rates minus(Rates other) {
-      return new Rates(win - other.win, dealIn - other.dealIn, riichi - other.riichi, open - other.open, nuki - other.nuki);
+      return new Rates(
+          win - other.win,
+          dealIn - other.dealIn,
+          riichi - other.riichi,
+          open - other.open,
+          nuki - other.nuki);
     }
   }
 

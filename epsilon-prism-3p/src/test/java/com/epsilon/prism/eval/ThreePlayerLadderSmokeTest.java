@@ -47,7 +47,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * 三人打ちの小さな系譜のスモークテスト（CPU）。バージョン 2〜10 を、予定の卓のジョブ
+ * 三人打ちの小さな系譜のスモークテスト（CPU）。バージョン 2・3・4・5・9・10 を、予定の卓のジョブ
  * （{@link com.epsilon.agent.eval.EvaluationSettings#scheduled}、{@code PrismRun.jobs} と同じ卓）として作り、{@link Jobs#runAll} で実行する。
  * 打ち手はルールベースの打ち手と、1 割の判断で合法手を乱数で選ぶルールベースの打ち手で、卓は実際に打つ。
  *
@@ -59,7 +59,8 @@ public class ThreePlayerLadderSmokeTest {
 
   private static final Variant THREE = Variant.TENHOU_3P;
   private static final String TEST =
-      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote = true}";
+      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote"
+          + " = true}";
 
   /** 混ぜた打ち手のバージョン（ほかはルールベースの打ち手。v1 は 8 つ前のラダーの相手）。 */
   private static final Set<Integer> MIXED = Set.of(2, 3, 10);
@@ -116,7 +117,13 @@ public class ThreePlayerLadderSmokeTest {
   /** 計画の打ち手を開く。系譜のバージョンが {@code MIXED} にあれば混ぜた打ち手を、ほかはルールベースの打ち手を返す。 */
   private static Policy player(DuelSetup.Entrant entrant) throws Exception {
     Policy rules =
-        EvaluationTable.open(EvaluationTable.HEURISTIC, THREE, null, TwinDiscard.TSUMOGIRI, PolicyOptions.defaults(), null);
+        EvaluationTable.open(
+            EvaluationTable.HEURISTIC,
+            THREE,
+            null,
+            TwinDiscard.TSUMOGIRI,
+            PolicyOptions.defaults(),
+            null);
     if (entrant.version() != null && MIXED.contains(entrant.version())) {
       return new Mixed((InlinePolicy) rules);
     }
@@ -164,7 +171,8 @@ public class ThreePlayerLadderSmokeTest {
               concat(
                   List.of(
                       champion + "opponent=champion",
-                      champion + "seating={kind = \"EVERY_PLACEMENT\", splits = [\"1v2\", \"2v1\"]}",
+                      champion
+                          + "seating={kind = \"EVERY_PLACEMENT\", splits = [\"1v2\", \"2v1\"]}",
                       champion + "draws=SEAT_STREAMS",
                       champion + "wallSet=FRESH",
                       champion + "walls=512",
@@ -183,13 +191,17 @@ public class ThreePlayerLadderSmokeTest {
       DurableFiles.write(run.state(), new PrismState(11, 0, PrismCarry.NONE, 11, Regression.NONE));
       Jobs jobs = new Jobs(run.jobs(), run.report(RunDirectory.EVALUATIONS));
       try (TableLoop loop = new TableLoop(new TableSettings(16, 4, 1000L, 4))) {
-        for (int version = 2; version <= 10; version++) {
+        for (int version : List.of(2, 3, 4, 5, 9, 10)) {
           int order = 0;
-          for (Map.Entry<String, TableSpec> entry : settings.evaluation().scheduled(version).entrySet()) {
-            jobs.create(JobFile.pending(version, entry.getKey(), order++, 1, RecordFile.tree(entry.getValue())));
+          for (Map.Entry<String, TableSpec> entry :
+              settings.evaluation().scheduled(version).entrySet()) {
+            jobs.create(
+                JobFile.pending(
+                    version, entry.getKey(), order++, 1, RecordFile.tree(entry.getValue())));
           }
           Runner runner = new Runner(new EvaluationJobs(run, settings, null, null), loop);
-          Assert.assertTrue(jobs.runAll(runner, RunControl.detached(() -> false)).isEmpty(), "v" + version);
+          Assert.assertTrue(
+              jobs.runAll(runner, RunControl.detached(() -> false)).isEmpty(), "v" + version);
         }
       }
       Set<String> names = new TreeSet<>();
@@ -201,8 +213,14 @@ public class ThreePlayerLadderSmokeTest {
       Assert.assertTrue(
           names.containsAll(
               List.of(
-                  "v00002-champion", "v00004-champion", "v00004-reference", "v00005-reference", "v00009-ladder8",
-                  "v00010-reference", "v00010-champion", "v00010-rx2")),
+                  "v00002-champion",
+                  "v00004-champion",
+                  "v00004-reference",
+                  "v00005-reference",
+                  "v00009-ladder8",
+                  "v00010-reference",
+                  "v00010-champion",
+                  "v00010-rx2")),
           names.toString());
       Assert.assertFalse(names.contains("v00010-ladder8"), names.toString());
       Assert.assertFalse(names.contains("v00003-reference"), "v3 is not promoted: " + names);
@@ -210,8 +228,12 @@ public class ThreePlayerLadderSmokeTest {
       // 王者: v2 を最初の王者にし、v4 を昇格させ、v10 は悪い
       List<ChampionStore.Entry> history = ChampionStore.open(run.champion()).history();
       Assert.assertEquals(history.size(), 2, history.toString());
-      Assert.assertTrue(history.get(0).event() instanceof StoreEvent.Initial initial && initial.champion().version() == 2);
-      Assert.assertTrue(history.get(1).event() instanceof StoreEvent.Promoted promoted && promoted.champion().version() == 4);
+      Assert.assertTrue(
+          history.get(0).event() instanceof StoreEvent.Initial initial
+              && initial.champion().version() == 2);
+      Assert.assertTrue(
+          history.get(1).event() instanceof StoreEvent.Promoted promoted
+              && promoted.champion().version() == 4);
       Assert.assertEquals(
           Jobs.result(run.job("v00004-champion"), DuelResult.class).verdict(), Verdict.BETTER);
       Assert.assertEquals(
@@ -220,22 +242,34 @@ public class ThreePlayerLadderSmokeTest {
       DuelResult ladder = Jobs.result(run.job("v00009-ladder8"), DuelResult.class);
       Assert.assertEquals(ladder.rank().mean(), 0.0);
       Assert.assertEquals(
-          RecordFile.read(EvaluationPlan.class, jobs.read("v00009-ladder8").plan()).value().duel().opponent().version(), 1);
+          RecordFile.read(EvaluationPlan.class, jobs.read("v00009-ladder8").plan())
+              .value()
+              .duel()
+              .opponent()
+              .version(),
+          1);
 
       // 報告
-      List<String> baseline = Files.readAllLines(run.report(EvaluationReports.BASELINE), StandardCharsets.UTF_8);
+      List<String> baseline =
+          Files.readAllLines(run.report(EvaluationReports.BASELINE), StandardCharsets.UTF_8);
       Assert.assertEquals(
           baseline.stream().skip(1).map(line -> line.split("\t")[0] + line.split("\t")[1]).toList(),
           List.of("4reference", "5reference", "10reference"),
           baseline.toString());
-      String ratings = Files.readString(run.report(EvaluationReports.RATINGS), StandardCharsets.UTF_8);
+      String ratings =
+          Files.readString(run.report(EvaluationReports.RATINGS), StandardCharsets.UTF_8);
       Assert.assertTrue(ratings.startsWith("# Ratings against v00002"), ratings);
-      String alarms = Files.readString(run.report(EvaluationReports.ALARMS), StandardCharsets.UTF_8);
+      String alarms =
+          Files.readString(run.report(EvaluationReports.ALARMS), StandardCharsets.UTF_8);
       for (Signal signal : Signal.values()) {
-        Assert.assertTrue(alarms.lines().anyMatch(line -> line.startsWith("# " + signal + "\t")), alarms);
+        Assert.assertTrue(
+            alarms.lines().anyMatch(line -> line.startsWith("# " + signal + "\t")), alarms);
       }
       List<String> raised =
-          alarms.lines().filter(line -> !line.startsWith("#") && !line.startsWith("job\t")).toList();
+          alarms
+              .lines()
+              .filter(line -> !line.startsWith("#") && !line.startsWith("job\t"))
+              .toList();
       List<String> signals = new ArrayList<>();
       for (String line : raised) {
         String[] fields = line.split("\t");

@@ -1,9 +1,9 @@
-import type { DesktopSettings } from "../../../protocol/bridge.ts";
+import type { DesktopSettings } from "@epsilon-reviewer/protocol/bridge";
 import type {
   CommandName,
   CommandRequest,
   CommandResponse,
-} from "../../../protocol/commands.ts";
+} from "@epsilon-reviewer/protocol/commands";
 
 export interface CallOptions {
   /** importBytes で送る牌譜。 */

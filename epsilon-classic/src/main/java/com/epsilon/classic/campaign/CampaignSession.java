@@ -50,7 +50,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>campaign はジョブを作らない。評価の卓は決闘の段が打つ。
  */
-final class CampaignSession implements RunSession<ClassicSettings, CampaignState, CampaignIteration> {
+final class CampaignSession
+    implements RunSession<ClassicSettings, CampaignState, CampaignIteration> {
 
   private static final Logger LOG = LoggerFactory.getLogger(CampaignSession.class);
 
@@ -86,7 +87,8 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
    *
    * @param collectors 自己対局の開き方
    */
-  static CampaignSession open(Launch<ClassicSettings> launch, Collector.Factory collectors) throws IOException {
+  static CampaignSession open(Launch<ClassicSettings> launch, Collector.Factory collectors)
+      throws IOException {
     ClassicSettings machine = launch.settings();
     NetworkRuntime learning = NetworkRuntime.forLearning();
     NetworkRuntime runtime = null;
@@ -98,7 +100,7 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
         }
       }
       InferenceSettings inference = machine.inference();
-      runtime = new NetworkRuntime(inference.encoders(), inference.slots(), inference.readyBatches());
+      runtime = new NetworkRuntime(inference);
       table = new TableLoop(machine.table());
       Collector collector = collectors.open(machine, runtime, table);
       return new CampaignSession(launch, learning, runtime, table, collector);
@@ -158,7 +160,8 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
     try (Stream<Path> files = Files.list(from)) {
       for (Path file : files.sorted().toList()) {
         if (!Files.isRegularFile(file)) {
-          throw new IllegalStateException("The network " + from + " holds more than files: " + file);
+          throw new IllegalStateException(
+              "The network " + from + " holds more than files: " + file);
         }
         Files.copy(file, part.resolve(file.getFileName()));
       }
@@ -180,7 +183,9 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
     if (start == null) {
       throw new SettingsException(
           List.of(
-              "The campaign " + run().root() + " has no start network: create it again with --set run.start=DIR"));
+              "The campaign "
+                  + run().root()
+                  + " has no start network: create it again with --set run.start=DIR"));
     }
     Path first = run().snapshot(1);
     if (!Files.isDirectory(first)) {
@@ -197,7 +202,8 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
   }
 
   @Override
-  public CampaignIteration iteration(IterationFile fixed, ClassicSettings settings, CampaignState state) {
+  public CampaignIteration iteration(
+      IterationFile fixed, ClassicSettings settings, CampaignState state) {
     return new CampaignIteration(fixed, settings, state, this);
   }
 
@@ -208,7 +214,9 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
     LearnReport learn = (LearnReport) steps.get(CampaignStep.LEARN.name()).metrics();
     CampaignState next =
         new CampaignState(
-            iteration.number() + 1, state.games() + collect.games(), state.decisions() + collect.decisions());
+            iteration.number() + 1,
+            state.games() + collect.games(),
+            state.decisions() + collect.decisions());
     return new Closing<>(next, new CampaignCarry(learn.rate().next()), Map.of());
   }
 
@@ -240,7 +248,8 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
 
   @Override
   public String summary(IterationReport report) {
-    CollectReport collect = (CollectReport) report.steps().get(CampaignStep.COLLECT.name()).metrics();
+    CollectReport collect =
+        (CollectReport) report.steps().get(CampaignStep.COLLECT.name()).metrics();
     LearnReport learn = (LearnReport) report.steps().get(CampaignStep.LEARN.name()).metrics();
     return String.format(
         Locale.ROOT,
@@ -259,7 +268,8 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
    *
    * @param seed 並べ替えの乱数の種
    */
-  SelfPlayLearner.Macro learn(CampaignIteration iteration, TrajectoryBatch batch, long seed) throws IOException {
+  SelfPlayLearner.Macro learn(CampaignIteration iteration, TrajectoryBatch batch, long seed)
+      throws IOException {
     SelfPlayLearner opened = learner(iteration);
     learnerVersion = 0;
     return opened.learn(batch, seed);
@@ -305,12 +315,17 @@ final class CampaignSession implements RunSession<ClassicSettings, CampaignState
     Model model = Model.newInstance("classic-learner", devices.primary(), PtEngine.ENGINE_NAME);
     try {
       model.setBlock(
-          ClassicCheckpoint.read(run().snapshot(version), iteration.settings().run().variant(), model.getNDManager()));
+          ClassicCheckpoint.read(
+              run().snapshot(version), iteration.settings().run().variant(), model.getNDManager()));
       SelfPlayLearner opened =
           version == 1
               ? new SelfPlayLearner(model, devices, learning, wanted)
               : SelfPlayLearner.resume(
-                  model, devices, learning, wanted, LearnStep.learner(run(), version).resolve(LearnStep.OPTIMIZER));
+                  model,
+                  devices,
+                  learning,
+                  wanted,
+                  LearnStep.learner(run(), version).resolve(LearnStep.OPTIMIZER));
       learnerModel = model;
       learner = opened;
       learnerVersion = version;

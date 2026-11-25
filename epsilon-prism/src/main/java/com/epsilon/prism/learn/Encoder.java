@@ -2,6 +2,7 @@ package com.epsilon.prism.learn;
 
 import com.epsilon.agent.observe.Observation;
 import com.epsilon.mahjong.rules.Variant;
+import com.epsilon.prism.core.AgariOrder;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.model.ValueLabel;
@@ -20,6 +21,7 @@ final class Encoder {
   private final Inputs inputs;
   private final FitSettings learner;
   private final TargetWriter targets;
+  private final AgariOrder agariOrder;
 
   /**
    * エンコードの作業領域を作る。
@@ -28,12 +30,13 @@ final class Encoder {
    * @param variant 行のルール（行のストアのルール）
    */
   Encoder(FitPlan plan, Variant variant) {
-    inputs = new Inputs(variant);
+    inputs = new Inputs(plan.shape().inputFormat(InputFormat.of(variant)));
     learner = plan.learner();
     targets =
         TargetWriter.needed(plan.auxiliary())
             ? PrismVariant.of(variant).targets(plan.auxiliary())
             : null;
+    agariOrder = learner.agariOrder() == AgariOrder.Mode.CERTIFIED ? new AgariOrder(variant) : null;
   }
 
   /**
@@ -49,22 +52,43 @@ final class Encoder {
   Microbatch encode(HostInputs batch, List<Row> rows, int[] ids, Teacher teacher) {
     if (rows.size() != batch.plan().rows() || rows.size() != ids.length) {
       throw new IllegalArgumentException(
-          rows.size() + " rows with " + ids.length + " ids for a batch planned with "
+          rows.size()
+              + " rows with "
+              + ids.length
+              + " ids for a batch planned with "
               + batch.plan().rows());
     }
     if (targets != null) {
       targets.clear();
     }
     List<ValueLabel> labels = new ArrayList<>(rows.size());
+    boolean[] certifiedTurnRows = null;
     for (int row = 0; row < rows.size(); row++) {
       Row source = rows.get(row);
       Observation o = inputs.write(batch, row, source);
-      labels.add(new ValueLabel(teacher.values(source, ids[row]), learner.lambda(source.decisionClass()), 1f));
+      float[] values;
+      if (agariOrder == null) {
+        values = teacher.values(source, ids[row]);
+      } else if (o.wins() == 0) {
+        values = teacher.values(source, ids[row], AgariOrder.Certification.NONE);
+      } else {
+        AgariOrder.Certification cert = agariOrder.certifyEdge(o);
+        if (cert.hasEdge() && cert.tsumo()) {
+          if (certifiedTurnRows == null) {
+            certifiedTurnRows = new boolean[rows.size()];
+          }
+          certifiedTurnRows[row] = true;
+        }
+        values = teacher.values(source, ids[row], cert);
+      }
+      float lambda = learner.lambda(source.decisionClass());
+      labels.add(new ValueLabel(values, lambda, 1f));
       if (targets != null) {
         targets.add(row, batch.plan().firstAction(row), source, o, inputs.writer);
       }
     }
-    return Microbatch.of(batch, labels, targets == null ? null : targets.labels());
+    return Microbatch.of(
+        batch, labels, certifiedTurnRows, targets == null ? null : targets.labels());
   }
 
   /**
@@ -79,11 +103,11 @@ final class Encoder {
     /**
      * ライターを作る。
      *
-     * @param variant 行のルール
+     * @param format 学習する形の入力形式
      */
-    Inputs(Variant variant) {
-      writer = InputFormat.of(variant).writer();
-      observation = new Observation(variant);
+    Inputs(InputFormat format) {
+      writer = format.writer();
+      observation = new Observation(format.variant());
     }
 
     /**

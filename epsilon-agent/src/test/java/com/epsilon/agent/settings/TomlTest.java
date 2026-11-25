@@ -173,7 +173,8 @@ public class TomlTest {
 
   @Test(dataProvider = "errors")
   public void errorsNameTheLine(String text, int line, String detail) {
-    SettingsException thrown = expectThrows(SettingsException.class, () -> Toml.read(text, "e.toml"));
+    SettingsException thrown =
+        expectThrows(SettingsException.class, () -> Toml.read(text, "e.toml"));
     assertEquals(thrown.problems(), List.of("Cannot read e.toml at line " + line + ": " + detail));
   }
 
@@ -194,17 +195,19 @@ public class TomlTest {
             "deep",
                 table(
                     "only",
-                    table("tables", table("leaf", bool(false)), "empty", table(), "list", array())));
+                    table(
+                        "tables", table("leaf", bool(false)), "empty", table(), "list", array())));
     String written = Toml.write(tree);
     assertEquals(Toml.read(written, "again"), tree);
     assertTrue(written.contains("\"a.b\" = "), written);
     assertTrue(written.contains("[deep.only]"), written);
   }
 
-
   @Test
   public void commandLineValues() {
-    assertEquals(Toml.value("prism:/runs/x/snapshots/00824", "--set"), text("prism:/runs/x/snapshots/00824"));
+    assertEquals(
+        Toml.value("prism:/runs/x/snapshots/00824", "--set"),
+        text("prism:/runs/x/snapshots/00824"));
     assertEquals(Toml.value("nano:/x y", "--set"), text("nano:/x y"));
     assertEquals(Toml.value("  padded  ", "--set"), text("padded"));
     assertEquals(Toml.value("", "--set"), text(""));
@@ -217,25 +220,33 @@ public class TomlTest {
     assertEquals(Toml.value("1 2", "--set"), text("1 2"));
     assertEquals(Toml.value("true", "--set"), bool(true));
     assertEquals(Toml.value("\"true\"", "--set"), text("true"));
-    assertEquals(Toml.value("[cpu, 2, \"x y\"]", "--set"), array(text("cpu"), number("2"), text("x y")));
-    assertEquals(Toml.value("{a = b, c = [1]}", "--set"), table("a", text("b"), "c", array(number("1"))));
+    assertEquals(
+        Toml.value("[cpu, 2, \"x y\"]", "--set"), array(text("cpu"), number("2"), text("x y")));
+    assertEquals(
+        Toml.value("{a = b, c = [1]}", "--set"), table("a", text("b"), "c", array(number("1"))));
     assertEquals(Toml.value("1", "--set").origin(), "--set");
   }
 
   @Test
   public void unreadableCommandLineValues() {
     for (String value : List.of("[1, 2", "{a = 1", "\"open", "[1] x", "{a = }")) {
-      SettingsException thrown = expectThrows(SettingsException.class, () -> Toml.value(value, "--set"));
-      assertTrue(thrown.getMessage().startsWith("Cannot read " + value + " at --set: "), thrown.getMessage());
+      SettingsException thrown =
+          expectThrows(SettingsException.class, () -> Toml.value(value, "--set"));
+      assertTrue(
+          thrown.getMessage().startsWith("Cannot read " + value + " at --set: "),
+          thrown.getMessage());
     }
   }
 
   @Test
   public void assignmentsBuildOneTree() {
     Node.Table tree = Toml.assignments(List.of("a.b=1", "a.c = x", "\"d.e\"=[1]"), "--set");
-    assertEquals(tree, table("a", table("b", number("1"), "c", text("x")), "d.e", array(number("1"))));
-    for (List<String> twice : List.of(List.of("a=1", "a=2"), List.of("a.b=1", "a=2"), List.of("a=1", "a.b=2"))) {
-      SettingsException thrown = expectThrows(SettingsException.class, () -> Toml.assignments(twice, "--set"));
+    assertEquals(
+        tree, table("a", table("b", number("1"), "c", text("x")), "d.e", array(number("1"))));
+    for (List<String> twice :
+        List.of(List.of("a=1", "a=2"), List.of("a.b=1", "a=2"), List.of("a=1", "a.b=2"))) {
+      SettingsException thrown =
+          expectThrows(SettingsException.class, () -> Toml.assignments(twice, "--set"));
       assertTrue(thrown.getMessage().contains("duplicate key"), thrown.getMessage());
     }
     expectThrows(SettingsException.class, () -> Toml.assignments(List.of("novalue"), "--set"));
@@ -244,6 +255,7 @@ public class TomlTest {
   @Test
   public void inlineWritesOneLine() {
     assertEquals(
-        Toml.inline(table("a", array(number("1"), text("x")), "b c", table())), "{a = [1, \"x\"], \"b c\" = {}}");
+        Toml.inline(table("a", array(number("1"), text("x")), "b c", table())),
+        "{a = [1, \"x\"], \"b c\" = {}}");
   }
 }

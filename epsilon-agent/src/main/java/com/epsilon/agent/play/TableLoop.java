@@ -93,7 +93,8 @@ public final class TableLoop implements AutoCloseable {
   }
 
   private synchronized ThreadLocal<Table.Tools> tools(Variant variant) {
-    return tools.computeIfAbsent(variant, key -> ThreadLocal.withInitial(() -> new Table.Tools(key)));
+    return tools.computeIfAbsent(
+        variant, key -> ThreadLocal.withInitial(() -> new Table.Tools(key)));
   }
 
   private sealed interface Event permits Advanced, Inferred, IngressReady, Rejected {}
@@ -103,7 +104,8 @@ public final class TableLoop implements AutoCloseable {
    *
    * @param spawned {@code runs} の末尾にある、このタスクで新しく作って進めた続きの数
    */
-  private record Advanced<Q extends Query>(List<Run<Q>> runs, List<Run.Status> status, int spawned, Throwable failure)
+  private record Advanced<Q extends Query>(
+      List<Run<Q>> runs, List<Run.Status> status, int spawned, Throwable failure)
       implements Event {}
 
   private record Inferred<Q extends Query>(List<Q> rows, Throwable failure) implements Event {}
@@ -155,7 +157,8 @@ public final class TableLoop implements AutoCloseable {
               && !admission.hasQueuedRows()
               && ready.isEmpty()
               && events.isEmpty())
-            throw new IllegalStateException("Table stalled: games=" + activeGames + " inFlight=" + inFlightTasks);
+            throw new IllegalStateException(
+                "Table stalled: games=" + activeGames + " inFlight=" + inFlightTasks);
           long waiting = System.nanoTime();
           table.timer.add(TableStage.DRIVER_BUSY, waiting - busy);
           Event event = admission.awaitEvent(events);
@@ -190,7 +193,9 @@ public final class TableLoop implements AutoCloseable {
 
     /** 全ての半荘を始めたか打ち切った後で、走っている半荘とタスクが全て終わったなら true。 */
     boolean finished() {
-      return (nextGame == games.size() || table.hooks.stopped()) && activeGames == 0 && inFlightTasks == 0;
+      return (nextGame == games.size() || table.hooks.stopped())
+          && activeGames == 0
+          && inFlightTasks == 0;
     }
 
     void refill() {
@@ -198,7 +203,8 @@ public final class TableLoop implements AutoCloseable {
       int additions = Math.min(limit - nextGame, settings.activeGames() - activeGames);
       // 系列の受け取り先のバックプレッシャーは、走っている半荘があるときだけ掛ける。
       // 全て止めるとライターの進みを知らせるイベントが来なくなり、卓が止まったと誤認する
-      if (additions <= 0 || table.hooks.stopped() || (activeGames > 0 && table.hooks.backlogged())) return;
+      if (additions <= 0 || table.hooks.stopped() || (activeGames > 0 && table.hooks.backlogged()))
+        return;
       int first = nextGame;
       nextGame += additions;
       activeGames += additions;
@@ -208,7 +214,8 @@ public final class TableLoop implements AutoCloseable {
         submit(
             () -> {
               List<Run<Q>> runs = new ArrayList<>(end - start);
-              for (int index = start; index < end; index++) runs.add(new Run<>(table, games.get(index)));
+              for (int index = start; index < end; index++)
+                runs.add(new Run<>(table, games.get(index)));
               return runs;
             });
       }
@@ -272,7 +279,8 @@ public final class TableLoop implements AutoCloseable {
           batch
               .evaluator()
               .submit(rows, batch.ingress())
-              .whenComplete((ignored, failure) -> events.add(new Inferred<>(rows, unwrap(failure))));
+              .whenComplete(
+                  (ignored, failure) -> events.add(new Inferred<>(rows, unwrap(failure))));
         } catch (RuntimeException | Error failure) {
           admission.encodingFailed(batch);
           events.add(new Rejected(failure));
@@ -281,9 +289,12 @@ public final class TableLoop implements AutoCloseable {
     }
 
     void scheduleIngressWake() {
-      if (!admission.hasQueuedRows() || !admission.waitingForIngress() || ingressWakeScheduled) return;
+      if (!admission.hasQueuedRows() || !admission.waitingForIngress() || ingressWakeScheduled)
+        return;
       ingressWakeScheduled = true;
-      admission.ingressAvailable().whenComplete((ignored, failure) -> events.add(new IngressReady(unwrap(failure))));
+      admission
+          .ingressAvailable()
+          .whenComplete((ignored, failure) -> events.add(new IngressReady(unwrap(failure))));
     }
 
     @SuppressWarnings("unchecked")
@@ -301,7 +312,8 @@ public final class TableLoop implements AutoCloseable {
             run.hooks().settle(run);
             switch (advanced.status().get(index)) {
               case NEEDS_POLICY -> {
-                for (Q query : run.outstanding()) admission.add(run.seatOf(query), query.admission(), query, now);
+                for (Q query : run.outstanding())
+                  admission.add(run.seatOf(query), query.admission(), query, now);
               }
               case FINISHED -> activeGames--;
             }
@@ -350,7 +362,9 @@ public final class TableLoop implements AutoCloseable {
   }
 
   private static Throwable unwrap(Throwable failure) {
-    return failure instanceof CompletionException && failure.getCause() != null ? failure.getCause() : failure;
+    return failure instanceof CompletionException && failure.getCause() != null
+        ? failure.getCause()
+        : failure;
   }
 
   private static void suppress(Throwable original, Throwable additional) {

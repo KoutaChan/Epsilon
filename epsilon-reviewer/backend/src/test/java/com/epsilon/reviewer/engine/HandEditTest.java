@@ -103,7 +103,7 @@ public class HandEditTest {
     Answer edited = answer(FURITEN_ROUND, CHI_RESPONSE, hand(new HandEdit(12, "9s")));
     Assert.assertFalse(base.input().furiten());
     Assert.assertTrue(edited.input().furiten(), "declining the 9s ron makes the seat furiten");
-    ScenarioEditTest.assertUnchanged(
+    ScenarioReplayTest.assertUnchanged(
         base.input(),
         edited.input(),
         ObservedInput::events,
@@ -136,7 +136,7 @@ public class HandEditTest {
     ObservedInput edited = answer(PAIR_ROUND, PAIR_TURN, hand(new HandEdit(1, "P"))).input();
     Assert.assertTrue(edited.legal().contains(discard("P")));
     Assert.assertFalse(edited.legal().contains(discard("3m")));
-    ScenarioEditTest.assertUnchanged(
+    ScenarioReplayTest.assertUnchanged(
         recorded, edited, ObservedInput::events, ObservedInput::scores, ObservedInput::indicators);
   }
 
@@ -174,11 +174,11 @@ public class HandEditTest {
 
   @Test
   public void riichiHandsCannotBeEdited() {
-    ScenarioEditTest.Decision decision =
-        ScenarioEditTest.Decision.find(
-            ScenarioEditTest::discards,
+    ScenarioReplayTest.Decision decision =
+        ScenarioReplayTest.Decision.find(
+            ScenarioReplayTest::discards,
             (table, step) -> table.players().get(step.actor()).riichi() ? step.actor() : -1);
-    ScenarioEditTest.rejected(
+    ScenarioReplayTest.rejected(
         decision,
         hand(new HandEdit(0, "E")),
         "edits.hand[0]",
@@ -187,15 +187,15 @@ public class HandEditTest {
 
   @Test
   public void discardsAfterTheCallComeFromTheEditedHand() {
-    ScenarioEditTest.Decision decision =
-        ScenarioEditTest.Decision.find(
+    ScenarioReplayTest.Decision decision =
+        ScenarioReplayTest.Decision.find(
             step -> step.offers(Action.Type.PON), (table, step) -> table.activeSeat());
     int seat = decision.step().actor();
     PlayerState own = decision.table().players().get(seat);
     int called = TileCode.kind(decision.player().river().getLast().tile());
     int index = 0;
     while (TileCode.kind(own.hand().get(index)) == called) index++;
-    String tile = ScenarioEditTest.rareTile(decision.table(), seat, own.hand().get(index));
+    String tile = ScenarioReplayTest.rareTile(decision.table(), seat, own.hand().get(index));
     int pon = -1;
     for (int i = 0; pon < 0; i++)
       if (decision.step().type(i) == Action.Type.PON) pon = decision.step().actionId(i);

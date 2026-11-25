@@ -1,5 +1,7 @@
 package com.epsilon.prism.run;
 
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
+
 import com.epsilon.agent.app.Exit;
 import com.epsilon.agent.run.Ending;
 import com.epsilon.agent.run.JobOutputs;
@@ -18,7 +20,6 @@ import com.epsilon.prism.grp.GrpFiles;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.settings.PrismSettings;
-import com.epsilon.prism3p.input.InputSchema;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
@@ -35,7 +36,10 @@ import org.testng.annotations.Test;
  * 初期化したままのバージョン 1 で集めて学習し、バージョン 2・3 を公開できることを確かめる。行・バージョン・Φ の履歴と、smoke の卓の
  * 評価のジョブがそろう。ネットワークの入力とヘッドのフィンガープリントは三人打ちの値になり、北抜きの判断は北抜きのクラスに数えられる。
  * 各コホートの局の数のファイルは grp/counts に移り、その局の数は収集の数と合い、牌譜を再現できる。ファイルのヘッダーにある Φ は、Φ の段で
- * 使った値と同じ。その run のコホートで fit-cohorts を回すと、三人打ちのネットワークができる。
+ * 使った値と同じ。その run のコホートで fit-cohorts を回すと、三人打ちのネットワークができる。帳簿の補正率（SHADOW）は三人打ちの格子
+ * （3 席 × 9 × 3 の係数）で当てはめて持ち越し、反復 2 はコホート 1 の補正率を掛けて測る。帳簿の係数が付くように、1 コホートを 4 半荘、
+ * 区分に要る行を列 1 つあたり 1 行にする。コホート 2 は学習したバージョン 2 で集めるので、その行に補正の分散が無ければ補正率を作らず、
+ * 持ち越さない。
  */
 public class ThreePlayerLineageSmokeTest {
 
@@ -52,11 +56,31 @@ public class ThreePlayerLineageSmokeTest {
               "phi.start.kind=SCORE_RANK",
               "phi.grp.refit=SCHEDULE",
               "phi.grp.switching=AUTO",
-              "phi.grp.threads=1");
+              "phi.grp.threads=1",
+              "schedule.cohorts=[{from = 1, games = 4}]",
+              "noise.ledger.minRowsPerColumn=1",
+              "noise.ledger.calibration.mode=SHADOW");
       Assert.assertEquals(created.schedule().iterations(), 2);
       Assert.assertEquals(PrismRun.runner(run, null, () -> false).train(), Ending.FINISHED);
       Assert.assertEquals(state(run).get("next").getAsInt(), 3);
       Assert.assertEquals(PrismApp.latest(run).run().variant(), Variant.TENHOU_3P);
+      List<JsonObject> ledger = lines(directory.report(LearnReport.LEDGER_LINES));
+      JsonObject fitted = ledger.get(0).getAsJsonObject("calibration").getAsJsonObject("next");
+      Assert.assertEquals(fitted.get("cohort").getAsInt(), 1);
+      Assert.assertEquals(fitted.get("coefficients").getAsInt(), 81);
+      JsonObject scaled = ledger.get(1).getAsJsonObject("calibration");
+      Assert.assertEquals(scaled.getAsJsonObject("origin").get("cohort").getAsInt(), 1);
+      Assert.assertEquals(scaled.get("applied").getAsString(), "current");
+      Assert.assertTrue(scaled.toString().contains("\"rank3_48000_inf\""), scaled.toString());
+      Assert.assertFalse(scaled.toString().contains("\"rank4_"), scaled.toString());
+      JsonObject calibrator = state(run).getAsJsonObject("carry").getAsJsonObject("calibrator");
+      boolean refitted = scaled.has("next") && !scaled.get("next").isJsonNull();
+      Assert.assertEquals(calibrator != null, refitted, scaled.toString());
+      if (calibrator != null) {
+        Assert.assertEquals(calibrator.get("variant").getAsString(), "TENHOU_3P");
+        Assert.assertEquals(calibrator.get("cohort").getAsInt(), 2);
+        Assert.assertEquals(calibrator.getAsJsonArray("coefficients").size(), 81);
+      }
 
       List<JsonObject> iterations = lines(directory.report(RunDirectory.ITERATIONS));
       Assert.assertEquals(iterations.size(), 2);
@@ -65,7 +89,12 @@ public class ThreePlayerLineageSmokeTest {
         JsonObject steps = iterations.get(t - 1).getAsJsonObject("steps");
         long rows = steps.getAsJsonObject(PrismStep.COLLECT.name()).get("rows").getAsLong();
         Assert.assertTrue(rows > 0, "rows of cohort " + t);
-        int fitSteps = steps.getAsJsonObject(PrismStep.LEARN.name()).getAsJsonObject("fit").get("steps").getAsInt();
+        int fitSteps =
+            steps
+                .getAsJsonObject(PrismStep.LEARN.name())
+                .getAsJsonObject("fit")
+                .get("steps")
+                .getAsInt();
         Assert.assertTrue(fitSteps > 0 && fitSteps <= 8, "steps " + fitSteps);
         Path cohort = CohortWriter.directory(run, t);
         Assert.assertTrue(Files.exists(cohort.resolve(CohortWriter.MANIFEST)), cohort.toString());
@@ -85,7 +114,12 @@ public class ThreePlayerLineageSmokeTest {
         Assert.assertEquals(counts.exploreTemperature(), created.behaviour().exploreTemperature());
         Assert.assertEquals(counts.phi().mode(), "GRP");
         Assert.assertTrue(Double.isNaN(counts.phi().cutoff()), "the GRP mode has no cutoff");
-        String used = steps.getAsJsonObject(PrismStep.PHI.name()).getAsJsonObject("value").get("mode").getAsString();
+        String used =
+            steps
+                .getAsJsonObject(PrismStep.PHI.name())
+                .getAsJsonObject("value")
+                .get("mode")
+                .getAsString();
         Assert.assertEquals(counts.phi().mode(), used);
       }
       Assert.assertTrue(nuki, "no decision was classed as NUKI");
@@ -93,11 +127,15 @@ public class ThreePlayerLineageSmokeTest {
       for (int version = 2; version <= 3; version++) {
         Path model = directory.snapshot(version).resolve(Snapshot.MODEL);
         Assert.assertEquals(PrismNetwork.readShape(model), created.network().shape());
-        JsonObject written = JsonParser.parseString(Files.readString(model.resolve("model.json"))).getAsJsonObject();
-        Assert.assertEquals(written.get("inputSchema").getAsString(), InputSchema.fingerprint());
-        Assert.assertEquals(written.get("headSchema").getAsString(), TargetSchema.of(Variant.TENHOU_3P).fingerprint());
+        JsonObject written =
+            JsonParser.parseString(Files.readString(model.resolve("model.json"))).getAsJsonObject();
+        Assert.assertEquals(written.get("inputSchema").getAsString(), THREE_PLAYER.fingerprint());
+        Assert.assertEquals(
+            written.get("headSchema").getAsString(),
+            TargetSchema.of(Variant.TENHOU_3P).fingerprint());
       }
-      Assert.assertFalse(Arrays.equals(weights(directory, 1), weights(directory, 2)), "version 2 learned nothing");
+      Assert.assertFalse(
+          Arrays.equals(weights(directory, 1), weights(directory, 2)), "version 2 learned nothing");
       for (int version = 1; version <= 3; version++) {
         Path job = directory.job(RunDirectory.jobName(version, "smoke"));
         Assert.assertTrue(Files.exists(job.resolve(Jobs.RESULT)), job.toString());
@@ -110,13 +148,22 @@ public class ThreePlayerLineageSmokeTest {
       Path refit = Files.createTempDirectory("prism-3p-refit");
       try {
         String[] arguments = {
-          "fit-cohorts", "--run", run.toString(), "--cohorts", "1..2", "--out", refit.toString(), "--max-rows", "32"
+          "fit-cohorts",
+          "--run",
+          run.toString(),
+          "--cohorts",
+          "1..2",
+          "--out",
+          refit.toString(),
+          "--max-rows",
+          "32"
         };
         Assert.assertEquals(Main.run(arguments), Exit.OK.code());
         Path model = refit.resolve(FitCohorts.SNAPSHOT).resolve(Snapshot.MODEL);
         Assert.assertEquals(PrismNetwork.readFormat(model).variant(), Variant.TENHOU_3P);
-        JsonObject written = JsonParser.parseString(Files.readString(model.resolve("model.json"))).getAsJsonObject();
-        Assert.assertEquals(written.get("inputSchema").getAsString(), InputSchema.fingerprint());
+        JsonObject written =
+            JsonParser.parseString(Files.readString(model.resolve("model.json"))).getAsJsonObject();
+        Assert.assertEquals(written.get("inputSchema").getAsString(), THREE_PLAYER.fingerprint());
       } finally {
         Snapshot.deleteTree(refit);
       }
@@ -126,7 +173,8 @@ public class ThreePlayerLineageSmokeTest {
   }
 
   private static byte[] weights(RunDirectory directory, int version) throws Exception {
-    return Files.readAllBytes(directory.snapshot(version).resolve(Snapshot.MODEL).resolve("weights.bin"));
+    return Files.readAllBytes(
+        directory.snapshot(version).resolve(Snapshot.MODEL).resolve("weights.bin"));
   }
 
   private static JsonObject state(Path run) throws Exception {

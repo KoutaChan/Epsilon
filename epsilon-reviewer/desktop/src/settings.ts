@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
-import type { DesktopSettings } from "../../protocol/bridge.ts";
-import { isFields } from "./values.ts";
+import type { DesktopSettings } from "@epsilon-reviewer/protocol/bridge";
+import { isFields } from "@epsilon-reviewer/protocol/values";
 
 /**
  * <userData>/settings.json に置くデスクトップ版の設定。ファイルが無ければ既定の値を使い、ファイルは書かない。

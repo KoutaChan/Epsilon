@@ -4,7 +4,6 @@ import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.mahjong.rules.Variant;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ServiceLoader;
 
 /**
  * 方策を開く入口。系列ごとに 1 つある。実装は META-INF/services/com.epsilon.agent.policy.ModelFamily に登録し、{@link #of} が
@@ -26,7 +25,8 @@ public interface ModelFamily {
    *     方策を閉じた後に呼び出し側が閉じる
    * @return 開いた方策
    */
-  Policy open(Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime) throws IOException;
+  Policy open(Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime)
+      throws IOException;
 
   /**
    * 推論のランタイムを方策が自分で持つ形で開く。CPU の方策や、1 判断ずつ評価する呼び出し側が使う。
@@ -42,21 +42,11 @@ public interface ModelFamily {
 
   /** 系列の実装をクラスパスから探す。見つからないか、2 つ以上あれば IllegalStateException を投げる。 */
   static ModelFamily of(Series series) {
-    ModelFamily found = null;
-    for (ModelFamily family : ServiceLoader.load(ModelFamily.class)) {
-      if (family.series() != series) {
-        continue;
-      }
-      if (found != null) {
-        throw new IllegalStateException(
-            "Two model families serve " + series + ": " + found.getClass().getName() + " and "
-                + family.getClass().getName());
-      }
-      found = family;
-    }
-    if (found == null) {
-      throw new IllegalStateException("No model family serves " + series + " on the classpath");
-    }
-    return found;
+    return ModelFamilies.load()
+        .find(series)
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "No model family serves " + series + " on the classpath"));
   }
 }

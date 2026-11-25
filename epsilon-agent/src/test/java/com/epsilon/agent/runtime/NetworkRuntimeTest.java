@@ -18,7 +18,8 @@ public class NetworkRuntimeTest {
     NetworkDevices gpus = NetworkDevices.parse("gpu1, gpu0");
     assertEquals(gpus.devices(), List.of(Device.gpu(1), Device.gpu(0)));
     assertEquals(gpus.primary(), Device.gpu(1));
-    for (String names : List.of("cpu,gpu0", "gpu0,gpu0", "cpu,cpu", "gpu", "gpu01", "gpu:0", "", "gpu0,")) {
+    for (String names :
+        List.of("cpu,gpu0", "gpu0,gpu0", "cpu,cpu", "gpu", "gpu01", "gpu:0", "", "gpu0,")) {
       expectThrows(IllegalArgumentException.class, () -> NetworkDevices.parse(names));
     }
     expectThrows(IllegalArgumentException.class, () -> new NetworkDevices(List.of()));
@@ -54,7 +55,8 @@ public class NetworkRuntimeTest {
         new InferenceAdmission<String, String, Integer>(
             1,
             (owner, key) -> 1,
-            (owner, key) -> DecisionInferenceIngress.Attempt.acquired(DecisionInferenceIngress.direct(owner)),
+            (owner, key) ->
+                DecisionInferenceIngress.Attempt.acquired(DecisionInferenceIngress.direct(owner)),
             owner -> true);
     admission.add("model", "shape", 1, 0);
     admission.encodingFailed(admission.admit(0, false));

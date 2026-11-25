@@ -69,7 +69,8 @@ final class Fields {
       int length = Array.getLength(expected);
       Assert.assertEquals(Array.getLength(actual), length, path + ".length");
       for (int index = 0; index < length; index++) {
-        compareValues(Array.get(expected, index), Array.get(actual, index), path + "[" + index + "]");
+        compareValues(
+            Array.get(expected, index), Array.get(actual, index), path + "[" + index + "]");
       }
       return;
     }
@@ -78,6 +79,9 @@ final class Fields {
 
   /** 値で比べる型か（基本型のラッパーと enum）。 */
   private static boolean isValue(Object value) {
-    return value instanceof Number || value instanceof Boolean || value instanceof Character || value instanceof Enum;
+    return value instanceof Number
+        || value instanceof Boolean
+        || value instanceof Character
+        || value instanceof Enum;
   }
 }

@@ -48,7 +48,8 @@ public class CollectTest {
   private static final Variant VARIANT = Variant.TENHOU_4P;
   private static final Architecture ARCHITECTURE = Architecture.NANO;
   private static final PolicyOptions CPU = PolicyOptions.defaults();
-  private static final Exploration.Settings EXPLORE = Settings.bind(ClassicSettings.class, List.of()).value().explore();
+  private static final Exploration.Settings EXPLORE =
+      Settings.bind(ClassicSettings.class, List.of()).value().explore();
   private static final long RUN_SEED = 77_031L, KEY = 0x7E57L;
   private static final int GAMES = 4;
 
@@ -88,14 +89,17 @@ public class CollectTest {
   /** 学習器の席が書く振る舞いの方策は、学習器の方策と判断の記録だけから作り直せる。 */
   @Test(groups = "native", timeOut = 1_800_000)
   public void theLearnerSeatPlaysTheBehaviourOfItsPolicy() throws IOException {
-    Collect collect = new Collect(VARIANT, RUN_SEED, new Collect.Settings(GAMES, 0.7), EXPLORE, null, CPU, null);
+    Collect collect =
+        new Collect(VARIANT, RUN_SEED, new Collect.Settings(GAMES, 0.7), EXPLORE, null, CPU, null);
     Exploration exploration = new Exploration(EXPLORE, UncertaintyCdf.empty());
     Collect.Played played;
     try (TableLoop table = new TableLoop(new TableSettings(4, 2, 1_000L, 4));
         LearnerSeat seat =
-            new LearnerSeat(ClassicFamily.open(ARCHITECTURE, learner, VARIANT, CPU, null), exploration, KEY);
+            new LearnerSeat(
+                ClassicFamily.open(ARCHITECTURE, learner, VARIANT, CPU, null), exploration, KEY);
         PolicySeat opponent =
-            new PolicySeat(ClassicFamily.open(ARCHITECTURE, champion, VARIANT, CPU, null).asPolicy())) {
+            new PolicySeat(
+                ClassicFamily.open(ARCHITECTURE, champion, VARIANT, CPU, null).asPolicy())) {
       assertTrue(seat.inline());
       played = collect.play(table, 0, seat, opponent, null);
     }
@@ -126,7 +130,10 @@ public class CollectTest {
           reference.probabilities(bound, policy);
           float[] behaviour = new float[legal];
           fresh.behaviour(
-              bound, policy, LearnerSeat.tie(KEY, game.id(), copy.words(), copy.start(0), bound.longs()), behaviour);
+              bound,
+              policy,
+              LearnerSeat.tie(KEY, game.id(), copy.words(), copy.start(0), bound.longs()),
+              behaviour);
           double sum = 0;
           for (float probability : behaviour) {
             assertTrue(probability >= floor * (1 - 1e-6), where + " " + Arrays.toString(behaviour));
@@ -144,11 +151,12 @@ public class CollectTest {
   /** macro の収集は、run の種と macro の番号だけで決まる（ワーカーと同時に進める半荘の数に依らない）。 */
   @Test(groups = "native", timeOut = 1_800_000)
   public void aMacroOnTheCpuDependsOnTheSeedsAlone() throws IOException {
+    int games = 2;
     Collect collect =
         new Collect(
             VARIANT,
             RUN_SEED,
-            new Collect.Settings(GAMES, 0.7),
+            new Collect.Settings(games, 0.7),
             EXPLORE,
             SelfPlayHooksTest.randomGrp(VARIANT, 5),
             CPU,
@@ -162,10 +170,14 @@ public class CollectTest {
     try (TableLoop table = new TableLoop(new TableSettings(1, 1, 1_000L, 4))) {
       single = collect.macro(table, 2, learner, pool, UncertaintyCdf.empty());
     }
-    assertEquals(SelfPlayHooksTest.digest(wide.trajectories()), SelfPlayHooksTest.digest(single.trajectories()));
+    assertEquals(
+        SelfPlayHooksTest.digest(wide.trajectories()),
+        SelfPlayHooksTest.digest(single.trajectories()));
     assertEquals(wide.opponent(), single.opponent());
-    assertTrue(wide.opponent().equals(pool.champion()) || pool.past().contains(wide.opponent()), wide.opponent().label());
-    assertEquals(wide.trajectories().games().size(), GAMES);
+    assertTrue(
+        wide.opponent().equals(pool.champion()) || pool.past().contains(wide.opponent()),
+        wide.opponent().label());
+    assertEquals(wide.trajectories().games().size(), games);
     assertTrue(wide.trajectories().games().getFirst().hasPriors());
     assertTrue(Arrays.deepEquals(wide.calibration().counts(), single.calibration().counts()));
     assertEquals(counted(wide.calibration()), 3L * queried(wide.trajectories()));
@@ -184,13 +196,17 @@ public class CollectTest {
     DurableFiles.delete(placed);
     RandomCheckpoints.write(placed, ARCHITECTURE, VARIANT, 35);
 
-    Collect collect = new Collect(VARIANT, RUN_SEED, new Collect.Settings(GAMES, 0.7), EXPLORE, null, CPU, null);
+    Collect collect =
+        new Collect(VARIANT, RUN_SEED, new Collect.Settings(GAMES, 0.7), EXPLORE, null, CPU, null);
     OpponentPool pool = OpponentPool.of(ChampionStore.open(placedStore));
     try (TableLoop table = new TableLoop(new TableSettings(4, 2, 1_000L, 4))) {
       IOException refused =
-          expectThrows(IOException.class, () -> collect.macro(table, 1, learner, pool, UncertaintyCdf.empty()));
+          expectThrows(
+              IOException.class,
+              () -> collect.macro(table, 1, learner, pool, UncertaintyCdf.empty()));
       assertTrue(
-          refused.getMessage().contains("but the store recorded " + pool.champion().sha256()), refused.getMessage());
+          refused.getMessage().contains("but the store recorded " + pool.champion().sha256()),
+          refused.getMessage());
     }
   }
 

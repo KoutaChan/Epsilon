@@ -41,7 +41,8 @@ public class CheckpointFilesTest {
   public record Header(String architecture, Variant variant, int hidden) {}
 
   /** PRISM の model.json のヘッダーの形。 */
-  public record PrismHeader(String architecture, String inputSchema, String headSchema, PrismShape shape) {}
+  public record PrismHeader(
+      String architecture, String inputSchema, String headSchema, PrismShape shape) {}
 
   public record PrismShape(int hidden, int ffn, int gate, int depth) {}
 
@@ -58,7 +59,8 @@ public class CheckpointFilesTest {
           "gate": 64,
           "depth": 3
         }
-      }""";
+      }\
+      """;
 
   /** 公開した PRISM の model.json。今の形に無い "frontier" のキーを持つ。 */
   private static final String PUBLISHED_PRISM_MODEL_JSON =
@@ -74,7 +76,8 @@ public class CheckpointFilesTest {
           "depth": 3,
           "frontier": false
         }
-      }""";
+      }\
+      """;
 
   private static final Header HEADER = new Header("test-v1", Variant.TENHOU_4P, 7);
   private static final Header OTHER = new Header("test-v1", Variant.TENHOU_3P, 9);
@@ -126,7 +129,9 @@ public class CheckpointFilesTest {
     Path directory = root.resolve("00014");
     CheckpointFiles.write(directory, new BytesBlock(new byte[] {5}), HEADER);
     String before = CheckpointFiles.sha256(directory);
-    expectThrows(FileAlreadyExistsException.class, () -> CheckpointFiles.write(directory, new FailingBlock(), OTHER));
+    expectThrows(
+        FileAlreadyExistsException.class,
+        () -> CheckpointFiles.write(directory, new FailingBlock(), OTHER));
     assertEquals(CheckpointFiles.sha256(directory), before);
     assertFalse(Files.exists(root.resolve("00014.tmp")));
   }
@@ -135,7 +140,8 @@ public class CheckpointFilesTest {
   public void aFailedWriteLeavesNoPartialDirectory() {
     Path directory = root.resolve("00015");
     IOException failure =
-        expectThrows(IOException.class, () -> CheckpointFiles.write(directory, new FailingBlock(), HEADER));
+        expectThrows(
+            IOException.class, () -> CheckpointFiles.write(directory, new FailingBlock(), HEADER));
     assertEquals(failure.getMessage(), FailingBlock.MESSAGE);
     assertFalse(Files.exists(directory));
     assertFalse(Files.exists(root.resolve("00015.tmp")));
@@ -164,7 +170,9 @@ public class CheckpointFilesTest {
   @Test
   public void anUninitializedBlockIsRejectedBeforeWriting() {
     Path directory = root.resolve("00017");
-    expectThrows(IllegalArgumentException.class, () -> CheckpointFiles.write(directory, new SequentialBlock(), HEADER));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> CheckpointFiles.write(directory, new SequentialBlock(), HEADER));
     assertFalse(Files.exists(directory));
     assertFalse(Files.exists(root.resolve("00017.tmp")));
   }
@@ -173,7 +181,9 @@ public class CheckpointFilesTest {
   public void trailingWeightsAreRejected() throws IOException {
     Path directory = root.resolve("00018");
     CheckpointFiles.write(directory, new BytesBlock(new byte[] {1, 2}), HEADER);
-    expectThrows(IOException.class, () -> CheckpointFiles.loadParameters(directory, new BytesBlock(new byte[1]), null));
+    expectThrows(
+        IOException.class,
+        () -> CheckpointFiles.loadParameters(directory, new BytesBlock(new byte[1]), null));
   }
 
   @Test
@@ -184,7 +194,11 @@ public class CheckpointFilesTest {
     PrismHeader header = CheckpointFiles.readHeader(saved, PrismHeader.class);
     assertEquals(
         header,
-        new PrismHeader("epsilon-prism-v2", "0123456789abcdef", "fedcba9876543210", new PrismShape(256, 768, 64, 3)));
+        new PrismHeader(
+            "epsilon-prism-v2",
+            "0123456789abcdef",
+            "fedcba9876543210",
+            new PrismShape(256, 768, 64, 3)));
     Path rewritten = root.resolve("m1");
     CheckpointFiles.write(rewritten, new BytesBlock(new byte[] {0}), header);
     assertEquals(Files.readString(rewritten.resolve("model.json")), PRISM_MODEL_JSON);
@@ -199,7 +213,11 @@ public class CheckpointFilesTest {
     PrismHeader header = CheckpointFiles.readHeader(published, PrismHeader.class);
     assertEquals(
         header,
-        new PrismHeader("epsilon-prism-v2", "0123456789abcdef", "fedcba9876543210", new PrismShape(256, 768, 64, 3)));
+        new PrismHeader(
+            "epsilon-prism-v2",
+            "0123456789abcdef",
+            "fedcba9876543210",
+            new PrismShape(256, 768, 64, 3)));
     Path rewritten = root.resolve("current");
     CheckpointFiles.write(rewritten, new BytesBlock(new byte[] {0}), header);
     assertEquals(Files.readString(rewritten.resolve("model.json")), PRISM_MODEL_JSON);

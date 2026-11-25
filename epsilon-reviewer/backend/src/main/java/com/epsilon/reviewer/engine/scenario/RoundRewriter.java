@@ -3,11 +3,12 @@ package com.epsilon.reviewer.engine.scenario;
 import com.epsilon.mahjong.record.RecordEditor;
 import com.epsilon.mahjong.record.RecordEvent;
 import com.epsilon.mahjong.record.RecordedRound;
+import com.epsilon.mahjong.record.TileCopies;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.scenario.VisibleTileCount.Placement;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RiverTile;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.engine.view.TileCode;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
@@ -118,8 +119,7 @@ public final class RoundRewriter {
     int seats = recorded.start().variant().seats();
     if (!edits.scores().isEmpty() && edits.scores().size() != seats)
       throw new ReviewerException(
-          ErrorCode.INVALID_REQUEST,
-          "edits.scores must contain " + (seats == 3 ? "three" : "four") + " scores.");
+          ErrorCode.INVALID_REQUEST, "edits.scores must contain " + seats + " scores.");
     var round = new RoundRewriter(recorded, decision);
     each(edits.rivers(), "edits.rivers", edit -> List.of(edit.seat(), edit.index()), round::river);
     each(edits.dora(), "edits.dora", DoraEdit::index, round::dora);
@@ -215,7 +215,7 @@ public final class RoundRewriter {
   /** 伏せた手牌にある指定の牌のうち、最も後に手に入った物理牌を取り出す。 */
   private int takeNewest(String code) {
     for (int i = concealed.size() - 1; i >= 0; i--)
-      if (copies.isCopy(concealed.get(i), code)) return concealed.remove(i);
+      if (copies.matches(concealed.get(i), TileCode.face(code))) return concealed.remove(i);
     throw new IllegalStateException("The hand of seat " + seat + " does not hold " + code);
   }
 
@@ -223,14 +223,14 @@ public final class RoundRewriter {
   private RewrittenRound finish(ScenarioEdits edits) {
     hand.sort(Comparator.comparingInt(TileCode::order));
     players.set(seat, players.get(seat).withHand(List.copyOf(hand), draw));
-    TableState shown = decision.table();
+    TableView shown = decision.table();
     int[] scores = scores(edits.scores());
     int honba = edits.honba() == null ? recorded.start().honba() : requireHonba(edits.honba());
     int deposited = shown.kyotaku() - recorded.start().kyotaku();
     int kyotaku =
         edits.kyotaku() == null ? shown.kyotaku() : requireKyotaku(edits.kyotaku(), deposited);
     var table =
-        new TableState(
+        new TableView(
             List.copyOf(players),
             List.copyOf(dora),
             honba,
@@ -265,9 +265,9 @@ public final class RoundRewriter {
    */
   private void assign() {
     replacements.sort(Comparator.comparingInt(Replacement::removed));
-    for (Replacement replacement : replacements) copies.free(replacement.removed());
+    for (Replacement replacement : replacements) copies.release(replacement.removed());
     for (Replacement replacement : replacements) {
-      int id = copies.take(replacement.tile());
+      int id = copies.reveal(TileCode.face(replacement.tile()));
       switch (replacement.slot()) {
         case Slot.Discarded(int position) -> editor.replaceDiscarded(position, id);
         case Slot.Indicator(int index) -> editor.replaceIndicator(index, id);

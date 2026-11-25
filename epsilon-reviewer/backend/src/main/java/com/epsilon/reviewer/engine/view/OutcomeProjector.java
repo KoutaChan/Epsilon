@@ -20,7 +20,7 @@ public final class OutcomeProjector {
    * @param end エンジンの局末（和了は結果と同じ順）
    * @param index 何番目の和了か
    */
-  public static RoundOutcome.Hora win(
+  public static OutcomeView.Hora win(
       RecordTable table, RoundResult result, RoundEnd end, int index) {
     int winner = result.wins().get(index).seat();
     int target = result.kind() == EndKind.TSUMO ? winner : result.loser();
@@ -29,7 +29,7 @@ public final class OutcomeProjector {
     if (score.has(ScoringYaku.RIICHI) || score.has(ScoringYaku.DOUBLE_RIICHI))
       for (int i = 0; i < result.uraCount(); i++)
         ura.add(TileCode.of(table.variant().tiles(), result.ura(i)));
-    return new RoundOutcome.Hora(
+    return new OutcomeView.Hora(
         winner,
         target,
         table.winningTile(),
@@ -37,7 +37,7 @@ public final class OutcomeProjector {
   }
 
   /** 流局の結果を作る。 */
-  public static RoundOutcome.Ryukyoku draw() {
-    return new RoundOutcome.Ryukyoku();
+  public static OutcomeView.Ryukyoku draw() {
+    return new OutcomeView.Ryukyoku();
   }
 }

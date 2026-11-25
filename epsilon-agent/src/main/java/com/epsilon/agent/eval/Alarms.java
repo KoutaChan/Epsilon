@@ -83,9 +83,15 @@ public final class Alarms {
    * @throws IllegalArgumentException 続いた回数が判定に合わないとき（悪いなら 1 以上、ほかの判定なら 0）
    */
   public List<Alarm> championDuel(
-      String job, int version, Verdict verdict, Estimate better, int streak, List<Integer> rollbacks) {
+      String job,
+      int version,
+      Verdict verdict,
+      Estimate better,
+      int streak,
+      List<Integer> rollbacks) {
     if (verdict == Verdict.WORSE ? streak < 1 : streak != 0) {
-      throw new IllegalArgumentException("A " + verdict + " duel cannot leave a worse streak of " + streak);
+      throw new IllegalArgumentException(
+          "A " + verdict + " duel cannot leave a worse streak of " + streak);
     }
     List<Alarm> alarms = new ArrayList<>(championDuel(job, version, verdict, better));
     OnWorseSettings onWorse = watch.onWorse();
@@ -106,7 +112,9 @@ public final class Alarms {
 
   /** 戻しを数える幅の中で王者へ戻した回数。幅は決闘のバージョンで終わり、そこから幅の分だけ前のバージョンは数えない。 */
   private static long rolledBack(List<Integer> rollbacks, int version, int span) {
-    return rollbacks.stream().filter(rolled -> rolled > version - span && rolled <= version).count();
+    return rollbacks.stream()
+        .filter(rolled -> rolled > version - span && rolled <= version)
+        .count();
   }
 
   /**
@@ -134,9 +142,11 @@ public final class Alarms {
    * @param championValues 王者の同じ卓の、牌山ごとの値（同じ牌山の集合）
    * @return 基準の卓の低下のアラート。同じ卓で同じ王者の低下をもう書いていれば空
    */
-  public List<Alarm> baseline(String job, int version, int champion, double[] current, double[] championValues)
+  public List<Alarm> baseline(
+      String job, int version, int champion, double[] current, double[] championValues)
       throws IOException {
-    return drop(job, version, Signal.BASELINE_DROP, champion, current, championValues, watch.margin());
+    return drop(
+        job, version, Signal.BASELINE_DROP, champion, current, championValues, watch.margin());
   }
 
   /**
@@ -149,13 +159,20 @@ public final class Alarms {
    * @param championValues 王者の同じ卓の、牌山ごとの値（同じ牌山の集合）
    * @return ルールベースの打ち手の卓の低下。同じ卓で同じ王者の低下をもう書いていれば空
    */
-  public List<Alarm> anchor(String job, int version, int champion, double[] current, double[] championValues)
+  public List<Alarm> anchor(
+      String job, int version, int champion, double[] current, double[] championValues)
       throws IOException {
     return drop(job, version, Signal.ANCHOR_DROP, champion, current, championValues, 0);
   }
 
   private List<Alarm> drop(
-      String job, int version, Signal signal, int champion, double[] current, double[] championValues, double margin)
+      String job,
+      int version,
+      Signal signal,
+      int champion,
+      double[] current,
+      double[] championValues,
+      double margin)
       throws IOException {
     OptionalInt raised = lastChampion(signal, job);
     if (raised.isPresent() && raised.getAsInt() == champion) {
@@ -169,7 +186,13 @@ public final class Alarms {
       return List.of();
     }
     return List.of(
-        Alarm.of(job, version, signal, Estimate.of(mean, error, watch.alarmZ()), Handling.REPORT, champion));
+        Alarm.of(
+            job,
+            version,
+            signal,
+            Estimate.of(mean, error, watch.alarmZ()),
+            Handling.REPORT,
+            champion));
   }
 
   /**
@@ -182,7 +205,9 @@ public final class Alarms {
     OptionalInt champion = OptionalInt.empty();
     for (Alarm line : read()) {
       boolean sameTable =
-          RunDirectory.parseJobName(line.job()).map(name -> name.table().equals(table)).orElse(false);
+          RunDirectory.parseJobName(line.job())
+              .map(name -> name.table().equals(table))
+              .orElse(false);
       if (line.signal() == signal && line.champion() != null && sameTable) {
         champion = OptionalInt.of(line.champion());
       }
@@ -203,7 +228,8 @@ public final class Alarms {
    */
   public void write(List<Alarm> alarms) throws IOException {
     for (Alarm alarm : alarms) {
-      if (DurableFiles.appendOnce(file, "alarm", new Node.Text(alarm.alarm(), "alarm"), RecordFile.tree(alarm))) {
+      if (DurableFiles.appendOnce(
+          file, "alarm", new Node.Text(alarm.alarm(), "alarm"), RecordFile.tree(alarm))) {
         LOG.warn(
             "Alarm {} at version {}: {} [{}, {}] ({})",
             alarm.signal(),
@@ -221,7 +247,9 @@ public final class Alarms {
     List<String> lines = DurableFiles.lines(file);
     List<Alarm> alarms = new ArrayList<>(lines.size());
     for (int index = 0; index < lines.size(); index++) {
-      alarms.add(RecordFile.read(Alarm.class, Json.read(lines.get(index), file + ":" + (index + 1))).value());
+      alarms.add(
+          RecordFile.read(Alarm.class, Json.read(lines.get(index), file + ":" + (index + 1)))
+              .value());
     }
     return alarms;
   }

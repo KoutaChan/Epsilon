@@ -11,30 +11,24 @@ import com.epsilon.agent.settings.Range;
  */
 public record GrpTraining(
     @Key(doc = "1 ステップで使う行の数", value = "4096") @Range(min = 1) int batchRows,
-    @Key(doc = "勾配全体のノルムの上限（超えたときだけ縮める）", value = "10.0")
-        @Range(min = 0, minInclusive = false)
+    @Key(doc = "勾配全体のノルムの上限（超えたときだけ縮める）", value = "10.0") @Range(min = 0, minInclusive = false)
         double clipNorm,
-    @Key(
-            doc = "早期終了用の検証の行で、損失がこの回数続けて良くならなければ、学習率を半分にする",
-            value = "2")
-        @Range(min = 1)
+    @Key(doc = "早期終了用の検証の行で、損失がこの回数続けて良くならなければ、学習率を半分にする", value = "2") @Range(min = 1)
         int halvingPatience,
-    @Key(doc = "早期終了用の検証の行で、損失がこの回数続けて良くならなければ、学習を止める（学習率を半分にする回数以上）", value = "4")
-        @Range(min = 1)
+    @Key(doc = "早期終了用の検証の行で、損失がこの回数続けて良くならなければ、学習を止める（学習率を半分にする回数以上）", value = "4") @Range(min = 1)
         int stopPatience,
     @Key(doc = "ゼロから学習するときの学習率", value = "1e-3") @Range(min = 0, minInclusive = false)
         double scratchRate,
     @Key(doc = "ゼロから学習するときのエポック数の上限", value = "16") @Range(min = 1) int scratchEpochs,
-    @Key(doc = "前のモデルの重みから続けて学習するときの学習率", value = "3e-4")
-        @Range(min = 0, minInclusive = false)
+    @Key(doc = "前のモデルの重みから続けて学習するときの学習率", value = "3e-4") @Range(min = 0, minInclusive = false)
         double warmRate,
-    @Key(doc = "前のモデルの重みから続けて学習するときのエポック数の上限", value = "1") @Range(min = 1)
-        int warmEpochs) {
+    @Key(doc = "前のモデルの重みから続けて学習するときのエポック数の上限", value = "1") @Range(min = 1) int warmEpochs) {
 
   public GrpTraining {
     if (stopPatience < halvingPatience) {
       throw new InvalidSetting(
-          "stopPatience", "stopPatience " + stopPatience + " is below halvingPatience " + halvingPatience);
+          "stopPatience",
+          "stopPatience " + stopPatience + " is below halvingPatience " + halvingPatience);
     }
   }
 }

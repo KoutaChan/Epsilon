@@ -1,7 +1,15 @@
 package com.epsilon.prism.learn;
 
+import com.epsilon.prism.core.AgariOrder;
+import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.luck.LedgerCorrection;
+import com.epsilon.prism.luck.LedgerOutcome;
+import com.epsilon.prism.luck.LuckSettlement;
 import com.epsilon.prism.rows.Row;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.concurrent.Executors;
+import java.util.function.IntFunction;
 
 /**
  * 生徒に渡す教師の作り方。運の精算の補正があれば、行の教師の値を Ỹ = Y − β_c·L にする（{@link LedgerCorrection#values}）。
@@ -15,9 +23,48 @@ import com.epsilon.prism.rows.Row;
  * @param anchor 学習に使う全ての行のアンカーの s（null ならアンカーなし）
  * @param anchorWeight アンカーの重み w（[0, 1)。アンカーがなければ 0）
  * @param gain 補助のヘッドの項に掛けるゲイン K′（(0, 1]）
+ * @param cohortCorrection 行のストアの番号から、その行に使う運の精算の補正を返す（null なら全ての行に {@code correction} を使う。null を
+ *     返した行は生の Y を使う）
+ * @param agariOrder 証明できる和了の順序を教師に反映するか（null は {@link AgariOrder.Mode#LEGACY}）
  */
 public record Teacher(
-    LedgerCorrection correction, AnchorScores anchor, double anchorWeight, float gain) {
+    LedgerCorrection correction,
+    AnchorScores anchor,
+    double anchorWeight,
+    float gain,
+    IntFunction<LedgerCorrection> cohortCorrection,
+    AgariOrder.Mode agariOrder) {
+
+  /**
+   * 全ての行に同じ補正を使う教師を作る。和了の順序制約は掛けない。
+   *
+   * @param correction 運の精算の補正（null なら生の Y を使う）
+   * @param anchor 学習に使う全ての行のアンカーの s（null ならアンカーなし）
+   * @param anchorWeight アンカーの重み w（[0, 1)。アンカーがなければ 0）
+   * @param gain 補助のヘッドの項に掛けるゲイン K′（(0, 1]）
+   */
+  public Teacher(
+      LedgerCorrection correction, AnchorScores anchor, double anchorWeight, float gain) {
+    this(correction, anchor, anchorWeight, gain, null, AgariOrder.Mode.LEGACY);
+  }
+
+  /**
+   * 行ごとの補正を使う教師を作る。和了の順序制約は掛けない。
+   *
+   * @param correction 運の精算の補正（null なら生の Y を使う）
+   * @param anchor 学習に使う全ての行のアンカーの s（null ならアンカーなし）
+   * @param anchorWeight アンカーの重み w（[0, 1)。アンカーがなければ 0）
+   * @param gain 補助のヘッドの項に掛けるゲイン K′（(0, 1]）
+   * @param cohortCorrection 行ごとの運の精算の補正
+   */
+  public Teacher(
+      LedgerCorrection correction,
+      AnchorScores anchor,
+      double anchorWeight,
+      float gain,
+      IntFunction<LedgerCorrection> cohortCorrection) {
+    this(correction, anchor, anchorWeight, gain, cohortCorrection, AgariOrder.Mode.LEGACY);
+  }
 
   /** 生の Y を使い、アンカーなし、ゲイン 1 の教師（replay の学習に使う）。 */
   public static final Teacher RAW = new Teacher(null, null, 0, 1f);
@@ -37,6 +84,14 @@ public record Teacher(
     if (!(gain > 0 && gain <= 1)) {
       throw new IllegalArgumentException("gain must be in (0, 1]: " + gain);
     }
+    if (agariOrder == null) {
+      agariOrder = AgariOrder.Mode.LEGACY;
+    }
+  }
+
+  /** 和了の順序モードを変えた教師を返す。 */
+  public Teacher withAgariOrder(AgariOrder.Mode mode) {
+    return new Teacher(correction, anchor, anchorWeight, gain, cohortCorrection, mode);
   }
 
   /**
@@ -47,12 +102,94 @@ public record Teacher(
    * @param id 行のストアの番号（アンカーの s を引くのに使う）
    * @return 合法手ごとの教師（測らない手は NaN）
    * @throws IllegalArgumentException アンカーの s にこの行がないとき、または手の数が行と違うとき
+   * @throws IllegalStateException {@link AgariOrder.Mode#CERTIFIED} で証明結果なしに呼ばれたとき
    */
   float[] values(Row row, int id) {
+    if (agariOrder == AgariOrder.Mode.CERTIFIED) {
+      throw new IllegalStateException("Certified agari order requires a row certification");
+    }
     float[] raw = row.values();
-    float[] values = correction == null ? raw : correction.values(row);
+    LedgerCorrection selected = cohortCorrection == null ? correction : cohortCorrection.apply(id);
+    float[] values = selected == null ? raw : selected.values(row);
     if (!anchored()) return values;
-    return anchored(values, anchor.scores(id), anchorWeight, values == raw ? new float[raw.length] : values);
+    return anchored(
+        values, anchor.scores(id), anchorWeight, values == raw ? new float[raw.length] : values);
+  }
+
+  /**
+   * 行の教師の値を返す。{@link AgariOrder.Mode#CERTIFIED} で証明辺がある行は、終局和了の枝の値を帳簿補正なし（生のラベルそのまま、
+   * C_win = 0）にし、アンカーを混ぜた後に証明辺に反していれば星型 DAG へ二乗距離射影を 1 回だけ掛ける。証明辺の無い行は従来と
+   * ビット単位で同じ。
+   *
+   * @param row 行
+   * @param id 行のストアの番号（アンカーの s を引くのに使う）
+   * @param certification その行の和了の証明結果（null は証明辺なしと同じ）
+   * @return 合法手ごとの教師（測らない手は NaN）
+   * @throws IllegalArgumentException アンカーの s にこの行がないとき、または手の数が行と違うとき
+   */
+  public float[] values(Row row, int id, AgariOrder.Certification certification) {
+    float[] raw = row.values();
+    LedgerCorrection selected = cohortCorrection == null ? correction : cohortCorrection.apply(id);
+    float[] values = selected == null ? raw : selected.values(row);
+    if (agariOrder == AgariOrder.Mode.LEGACY || certification == null || !certification.hasEdge()) {
+      if (!anchored()) return values;
+      return anchored(
+          values, anchor.scores(id), anchorWeight, values == raw ? new float[raw.length] : values);
+    }
+    int winAction = certification.action();
+    if (!Float.isNaN(raw[winAction])
+        && Float.floatToRawIntBits(values[winAction]) != Float.floatToRawIntBits(raw[winAction])) {
+      if (values == raw) {
+        values = raw.clone();
+      }
+      values[winAction] = raw[winAction];
+    }
+    if (anchored()) {
+      values =
+          anchored(
+              values,
+              anchor.scores(id),
+              anchorWeight,
+              values == raw ? new float[raw.length] : values);
+    }
+    if (AgariOrder.violates(values, winAction, certification.top())) {
+      if (values == raw) {
+        values = raw.clone();
+      }
+      AgariOrder.project(values, winAction, certification.top());
+    }
+    return values;
+  }
+
+  /** 学習に使う主経路の和了判断で、同じアンカーが選んだ対抗手との教師差を記録する。 */
+  public static LedgerOutcome auditWins(
+      LuckSettlement settlement,
+      LedgerOutcome outcome,
+      CohortStore store,
+      int[] selected,
+      AnchorScores anchor)
+      throws IOException {
+    if (outcome.calibration() == null
+        && (outcome.roots() == null || outcome.roots().model() == null)) return outcome;
+    int[] finals = winRows(store, selected);
+    Row[] read;
+    try (var readers = Executors.newFixedThreadPool(2)) {
+      read = store.read(finals, readers, 2);
+    }
+    var scores = anchor == null ? null : Arrays.stream(finals).mapToObj(anchor::scores).toList();
+    return settlement.gates(outcome, Arrays.asList(read), scores);
+  }
+
+  /** 選んだ行から、主経路の終盤の和了判断を取り出す。 */
+  public static int[] winRows(CohortStore store, int[] selected) {
+    return Arrays.stream(selected)
+        .filter(
+            id -> {
+              var index = store.index(id);
+              return index.source() == Row.Source.MAIN
+                  && index.decisionClass() == DecisionClass.FINAL_END;
+            })
+        .toArray();
   }
 
   boolean anchored() {
@@ -77,7 +214,9 @@ public record Teacher(
     }
     for (int a = 0; a < values.length; a++) {
       mixed[a] =
-          Float.isNaN(values[a]) ? Float.NaN : (float) ((1 - weight) * values[a] + weight * anchor[a]);
+          Float.isNaN(values[a])
+              ? Float.NaN
+              : (float) ((1 - weight) * values[a] + weight * anchor[a]);
     }
     return mixed;
   }

@@ -27,7 +27,10 @@ public record EvaluationPlan(
     Objects.requireNonNull(twinDiscard, "twinDiscard");
     if (duel != null && !duel.candidate().equals(candidate)) {
       throw new IllegalArgumentException(
-          "The duel of an evaluation plan seats " + duel.candidate().label() + ", not the candidate " + candidate.label());
+          "The duel of an evaluation plan seats "
+              + duel.candidate().label()
+              + ", not the candidate "
+              + candidate.label());
     }
   }
 

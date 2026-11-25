@@ -26,7 +26,8 @@ public final class RuleBotFamily implements ModelFamily {
    * @throws IllegalArgumentException チェックポイントを渡したとき
    */
   @Override
-  public Policy open(Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime) {
+  public Policy open(
+      Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime) {
     if (checkpoint != null) {
       throw new IllegalArgumentException("The rule bot takes no checkpoint: " + checkpoint);
     }

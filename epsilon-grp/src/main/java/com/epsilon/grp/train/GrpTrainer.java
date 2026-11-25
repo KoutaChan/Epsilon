@@ -54,29 +54,49 @@ public final class GrpTrainer {
    * @param closing 停止のフラグ。各ステップの前に見て、立っていれば STOPPED で終える
    */
   public static GrpTrained train(
-      GrpShape shape, GrpNetwork start, GrpRows train, GrpRows stop, GrpTrainingRule rule, BooleanSupplier closing) {
+      GrpShape shape,
+      GrpNetwork start,
+      GrpRows train,
+      GrpRows stop,
+      GrpTrainingRule rule,
+      BooleanSupplier closing) {
     rule.requireStart(start == null ? null : start.shape(), shape);
     if (train.variant() != shape.variant() || stop.variant() != shape.variant()) {
-      throw new IllegalArgumentException("Rows of " + train.variant() + " and " + stop.variant() + " for " + shape);
+      throw new IllegalArgumentException(
+          "Rows of " + train.variant() + " and " + stop.variant() + " for " + shape);
     }
     float[] initial = start == null ? scratch(shape, train, rule.seed()) : start.weights();
     try (GrpGraph graph = GrpGraph.of(shape, initial)) {
-      TrainingLoop.Result result = TrainingLoop.run(
-          "GRP", graph, new RowBatch(shape, rule.batchRows()), train, stop, initial, rule,
-          new SplittableRandom(SeedMixer.mix64(rule.seed() ^ SHUFFLE_SALT)), closing);
-      GrpNetwork network = result.ending() == TrainingEnding.STOPPED ? null : GrpNetwork.of(shape, result.weights());
-      return new GrpTrained(network, result.halfEpochs(), result.stopNll(), result.clippedSteps(), result.ending());
+      TrainingLoop.Result result =
+          TrainingLoop.run(
+              "GRP",
+              graph,
+              new RowBatch(shape, rule.batchRows()),
+              train,
+              stop,
+              initial,
+              rule,
+              new SplittableRandom(SeedMixer.mix64(rule.seed() ^ SHUFFLE_SALT)),
+              closing);
+      GrpNetwork network =
+          result.ending() == TrainingEnding.STOPPED ? null : GrpNetwork.of(shape, result.weights());
+      return new GrpTrained(
+          network, result.halfEpochs(), result.stopNll(), result.clippedSteps(), result.ending());
     }
   }
 
   /** ゼロから学習するときの初期の重み（GrpTensor の順）。{@code GrpGraph.scratch} で作った重みの b3 に、順列ごとの頻度の log を入れる。 */
   private static float[] scratch(GrpShape shape, GrpRows train, long seed) {
-    float[] weights = GrpGraph.scratch(shape, new SplittableRandom(SeedMixer.mix64(seed ^ INIT_SALT)));
+    float[] weights =
+        GrpGraph.scratch(shape, new SplittableRandom(SeedMixer.mix64(seed ^ INIT_SALT)));
     int outputs = shape.outputs();
     double[] counts = new double[shape.heads() * outputs];
     float scale = (float) (train.size() / train.totalWeight());
     for (int row = 0; row < train.size(); row++) {
-      int head = shape.phaseHeads() ? GrpPhase.of(shape.variant(), GrpKey.round(train.keys[row])).ordinal() : 0;
+      int head =
+          shape.phaseHeads()
+              ? GrpPhase.of(shape.variant(), GrpKey.round(train.keys[row])).ordinal()
+              : 0;
       float weight = train.weightOf(row) * scale;
       counts[head * outputs + train.permutations[row]] += weight;
     }

@@ -7,12 +7,13 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.pytorch.engine.PtEngine;
 import ai.djl.pytorch.engine.PtNDManager;
 import ai.djl.pytorch.engine.PtStream;
+import com.epsilon.agent.runtime.Kernels;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.input.InputFormat;
-import com.epsilon.prism.policy.InferencePath;
+import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.rows.Row;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -33,7 +34,7 @@ import org.slf4j.LoggerFactory;
  * （{@link #compute}）、エンコードのスレッドが行のストアの番号で引いて教師に混ぜる（{@link Teacher#values}）。
  *
  * <p>行の入力は、生徒のマイクロバッチと同じライター（{@link Encoder.Inputs}）で書く。アンカーを開くときは、推論のバックエンドと
- * バッチの容量を学習のレーンにそろえる（{@link Anchor}）。HIP の推論では行の s がバッチの組み方に依らないので、HIP のアンカーの s は、マイクロバッチの中で
+ * バッチの容量を学習のレーンにそろえる（{@link Anchor}）。専用カーネルの推論では行の s がバッチの組み方に依らないため、マイクロバッチの中で
  * 求めた s とビット単位で一致する。eager のアンカーの s は、バッチのパディングによって丸めが変わることがある。
  *
  * <p>アンカーのネットワークはバージョンで見分け、使う側が {@link #requireVersion} で照合する。
@@ -79,7 +80,7 @@ public final class AnchorScores {
    * @param rows 学習に使う行の、行のストアでの番号
    * @param directory アンカーのネットワークのディレクトリ
    * @param version アンカーのネットワークのバージョン
-   * @param path 推論のバックエンド（設定の inference）。HIP になるのは、GPU で、HIP のカーネルがその幅に特化しているときだけ
+   * @param path 設定で指定した推論のバックエンド。専用カーネルを使うにはモデルの形と GPU が対応している必要がある
    * @param devices アンカーを開くデバイス
    * @param threads 書き込みスレッドの上限（{@link #WRITERS_PER_DEVICE} × デバイスの数も超えない）
    * @return 行ごとの s
@@ -90,7 +91,7 @@ public final class AnchorScores {
       int[] rows,
       Path directory,
       int version,
-      InferencePath path,
+      Kernels path,
       NetworkDevices devices,
       int threads)
       throws IOException {
@@ -101,7 +102,12 @@ public final class AnchorScores {
     int slices = Math.ceilDiv(sorted.length, SLICE);
     float[][] values = new float[slices][];
     int[][] starts = new int[slices][];
-    InputFormat format = InputFormat.of(store.variant());
+    var header = PrismNetwork.readHeader(directory);
+    InputFormat format = header.format();
+    if (format.variant() != store.variant()) {
+      throw new IOException(
+          "Anchor variant " + format.variant() + " differs from cohort variant " + store.variant());
+    }
     BatchPlan.Capacity capacity = StepFeed.capacity(format, FitPlan.TOKEN_BUDGET);
     int writers = Math.max(1, Math.min(threads, WRITERS_PER_DEVICE * devices.size()));
     Slices job = new Slices(store, sorted, values, starts, new AtomicInteger());
@@ -118,8 +124,10 @@ public final class AnchorScores {
             Lane lane = lanes.get(writer % lanes.size());
             HostInputs batch =
                 HostInputs.allocate(
-                    format, capacity, bytes -> pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer());
-            work.add(pool.submit(() -> job.write(batch, new Encoder.Inputs(store.variant()), lane)));
+                    format,
+                    capacity,
+                    bytes -> pinned.allocatePinned(bytes, DataType.UINT8).getByteBuffer());
+            work.add(pool.submit(() -> job.write(batch, new Encoder.Inputs(format), lane)));
           }
           for (Future<?> future : work) {
             await(future);
@@ -152,7 +160,10 @@ public final class AnchorScores {
   public void requireVersion(int version) {
     if (version != this.version) {
       throw new IllegalStateException(
-          "anchor scores came from version " + this.version + " but the anchor is version " + version);
+          "anchor scores came from version "
+              + this.version
+              + " but the anchor is version "
+              + version);
     }
   }
 
@@ -163,7 +174,7 @@ public final class AnchorScores {
    * @return s のコピー
    * @throws IllegalArgumentException この行の s がないとき
    */
-  float[] scores(int row) {
+  public float[] scores(int row) {
     int position = Arrays.binarySearch(rows, row);
     if (position < 0) {
       throw new IllegalArgumentException("no anchor scores for row " + row);
@@ -305,7 +316,7 @@ public final class AnchorScores {
 
     private final Anchor anchor;
 
-    /** GPU のデバイスで作る計算ストリーム。HIP のアンカーが使い、eager のアンカーは使わない。CPU では null。 */
+    /** GPU 上で専用カーネルが使う計算ストリーム。CPU では null。 */
     private final PtStream stream;
 
     private Lane(Anchor anchor, PtStream stream) {
@@ -314,10 +325,10 @@ public final class AnchorScores {
     }
 
     /**
-     * デバイスにアンカーを開く。eager のアンカーでは、バックボーンの Attention に djl-rocm の演算を使う。自前のカーネルは専用の
+     * デバイスにアンカーを開く。eager のアンカーでは、バックボーンの Attention に DJL の演算を使う。自前のカーネルは専用の
      * ストリームに積むので、eager の配列と同じストリームに乗らないからである。
      */
-    static Lane open(Path directory, InferencePath path, Device device, BatchPlan.Capacity capacity)
+    static Lane open(Path directory, Kernels path, Device device, BatchPlan.Capacity capacity)
         throws IOException {
       PtEngine engine = (PtEngine) Engine.getEngine(PtEngine.ENGINE_NAME);
       PtStream stream = device.isGpu() ? engine.newStream(device) : null;

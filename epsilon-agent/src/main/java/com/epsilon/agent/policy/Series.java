@@ -112,7 +112,10 @@ public enum Series {
   private void requireCheckpoint(Path checkpoint) {
     if (checkpointed != (checkpoint != null)) {
       throw new IllegalArgumentException(
-          this + (checkpointed ? " needs a checkpoint" : " takes no checkpoint") + ": " + checkpoint);
+          this
+              + (checkpointed ? " needs a checkpoint" : " takes no checkpoint")
+              + ": "
+              + checkpoint);
     }
   }
 

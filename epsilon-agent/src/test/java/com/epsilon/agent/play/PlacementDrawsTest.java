@@ -66,7 +66,8 @@ public class PlacementDrawsTest {
     try (var table = new TableLoop(new TableSettings(6, 3, 200L, 4))) {
       for (Variant variant : List.of(Variant.TENHOU_4P, Variant.TENHOU_3P)) {
         for (DrawOrder order : DrawOrder.values()) {
-          for (Behaviour behaviour : new Behaviour[] {null, new Behaviour(0.1, 0, CrnScheme.TWO_STAGE_FLOOR)}) {
+          for (Behaviour behaviour :
+              new Behaviour[] {null, new Behaviour(0.1, 0, CrnScheme.TWO_STAGE_FLOOR)}) {
             String label = variant + " " + order + " " + behaviour;
             var digests = new Digests();
             // 割り当てごとに別の打ち手を置く（打ち手は状態を持たないので、どの割り当てでも打ち方は同じ）
@@ -81,7 +82,8 @@ public class PlacementDrawsTest {
                         behaviour,
                         game -> {
                           List<TableSeat<Query>> seats = new ArrayList<>();
-                          for (int seat = 0; seat < variant.seats(); seat++) seats.add(new TableLoopTest.InlineSeat());
+                          for (int seat = 0; seat < variant.seats(); seat++)
+                            seats.add(new TableLoopTest.InlineSeat());
                           return seats;
                         },
                         digests),
@@ -91,10 +93,16 @@ public class PlacementDrawsTest {
             for (int wall = 0; wall < WALLS; wall++) {
               long first = digests.games.get(new GameKey(BASE + wall, 0))[0];
               for (int placement = 1; placement < PLACEMENTS; placement++) {
-                Assert.assertEquals(digests.games.get(new GameKey(BASE + wall, placement))[0], first, label + " wall " + (BASE + wall) + " placement " + placement);
+                Assert.assertEquals(
+                    digests.games.get(new GameKey(BASE + wall, placement))[0],
+                    first,
+                    label + " wall " + (BASE + wall) + " placement " + placement);
               }
               if (wall > 0) {
-                Assert.assertNotEquals(digests.games.get(new GameKey(BASE + wall - 1, 0))[0], first, label + " walls " + (BASE + wall - 1) + " and " + (BASE + wall));
+                Assert.assertNotEquals(
+                    digests.games.get(new GameKey(BASE + wall - 1, 0))[0],
+                    first,
+                    label + " walls " + (BASE + wall - 1) + " and " + (BASE + wall));
               }
             }
           }

@@ -97,7 +97,8 @@ public final class JobOutputs implements AutoCloseable {
     }
 
     static Output open(Path file, long bytes) throws IOException {
-      FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+      FileChannel channel =
+          FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
       try {
         long size = channel.size();
         if (size < bytes) {
@@ -114,7 +115,8 @@ public final class JobOutputs implements AutoCloseable {
 
     void line(String line) throws IOException {
       if (line.indexOf('\n') >= 0) {
-        throw new IllegalArgumentException("A line of " + file.getFileName() + " must not contain a newline");
+        throw new IllegalArgumentException(
+            "A line of " + file.getFileName() + " must not contain a newline");
       }
       writer.write(line);
       writer.write('\n');

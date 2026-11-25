@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.analysis;
 
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.FixtureFamily;
 import com.epsilon.reviewer.ReviewerConfig;
@@ -10,7 +11,6 @@ import com.epsilon.reviewer.engine.load.RecordLoader;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.epsilon.reviewer.model.ModelCatalog;
-import com.epsilon.reviewer.model.ModelFamilies;
 import com.epsilon.reviewer.model.ModelKey;
 import com.epsilon.reviewer.model.ModelRegistry;
 import com.epsilon.reviewer.record.PreparedRecord;

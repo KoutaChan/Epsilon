@@ -11,7 +11,7 @@ import com.epsilon.prism.core.Twins;
  * p0 を作らない。打つ方策は常に貪欲で、一様分布を混ぜるのは行動方策の役目。
  *
  * <p>同値な打牌（{@link Twins}）は s も p0 も同じなので、σ は組の中で番号の小さい手に置く。切る方の手は、手を引いた後に {@link TwinDiscard}
- * で替える。σ の側で替えると、床を混ぜた b の上の指数競争で、同値な打牌でない手の当たり方まで変わる。
+ * で替える。σ の側で替えると、一様分布を混ぜた b の上の指数競争で、同値な打牌でない手の当たり方まで変わる。
  */
 public final class GreedyAnswer {
   private GreedyAnswer() {}

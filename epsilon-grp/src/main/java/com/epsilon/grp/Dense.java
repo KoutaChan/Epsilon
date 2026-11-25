@@ -24,7 +24,8 @@ final class Dense {
    * @param out y の書き先。先頭から {@code outputs} 個に書く
    * @param outputs 出力の数
    */
-  static void relu(float[] weights, int weight, int bias, float[] x, int inputs, float[] out, int outputs) {
+  static void relu(
+      float[] weights, int weight, int bias, float[] x, int inputs, float[] out, int outputs) {
     affine(weights, weight, bias, x, inputs, out, outputs);
     for (int j = 0; j < outputs; j++) {
       out[j] = out[j] > 0f ? out[j] : 0f;
@@ -32,7 +33,8 @@ final class Dense {
   }
 
   /** y = W·x ＋ b を float で求める（活性化なし）。引数は {@link #relu} と同じ。 */
-  static void affine(float[] weights, int weight, int bias, float[] x, int inputs, float[] out, int outputs) {
+  static void affine(
+      float[] weights, int weight, int bias, float[] x, int inputs, float[] out, int outputs) {
     System.arraycopy(weights, bias, out, 0, outputs);
     for (int i = 0; i < inputs; i++) {
       float xi = x[i];
@@ -51,7 +53,8 @@ final class Dense {
    *
    * @param z z の書き先。先頭から {@code outputs} 個に書く
    */
-  static void logits(float[] weights, int weight, int bias, float[] h, int inputs, double[] z, int outputs) {
+  static void logits(
+      float[] weights, int weight, int bias, float[] h, int inputs, double[] z, int outputs) {
     for (int k = 0; k < outputs; k++) {
       z[k] = weights[bias + k];
     }

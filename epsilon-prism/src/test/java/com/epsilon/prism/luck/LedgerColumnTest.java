@@ -42,7 +42,8 @@ public class LedgerColumnTest {
   @Test
   public void namesAndOrderAreTheFormerOnes() {
     Assert.assertEquals(LedgerColumn.COUNT, FORMER_NAMES.size());
-    Assert.assertEquals(Arrays.stream(LedgerColumn.values()).map(LedgerColumn::reportName).toList(), FORMER_NAMES);
+    Assert.assertEquals(
+        Arrays.stream(LedgerColumn.values()).map(LedgerColumn::reportName).toList(), FORMER_NAMES);
     Assert.assertEquals(new TreeSet<>(FORMER_NAMES).size(), FORMER_NAMES.size());
   }
 
@@ -58,7 +59,8 @@ public class LedgerColumnTest {
       byGroup.computeIfAbsent(column.group(), group -> new TreeSet<>()).add(column.ordinal());
     Assert.assertEquals(byGroup.keySet(), LedgerGroup.computed());
     Assert.assertEquals(byGroup.get(LedgerGroup.IMPROVE), new TreeSet<>(List.of(0, 1, 2, 6, 7)));
-    Assert.assertEquals(byGroup.get(LedgerGroup.POINTS), new TreeSet<>(List.of(3, 4, 5, 8, 9, 10, 11)));
+    Assert.assertEquals(
+        byGroup.get(LedgerGroup.POINTS), new TreeSet<>(List.of(3, 4, 5, 8, 9, 10, 11)));
     Assert.assertEquals(byGroup.get(LedgerGroup.DORA), range(12, 14));
     Assert.assertEquals(byGroup.get(LedgerGroup.URA), range(14, 15));
     Assert.assertEquals(byGroup.get(LedgerGroup.POLICY), range(15, 17));
@@ -70,7 +72,10 @@ public class LedgerColumnTest {
     for (LedgerColumn column : LedgerColumn.values()) {
       String name = column.reportName();
       if (name.contains("Improve")) Assert.assertEquals(column.group(), LedgerGroup.IMPROVE, name);
-      if (name.contains("Tsumo") || name.contains("DealIn") || name.contains("Danger") || name.contains("Forced")
+      if (name.contains("Tsumo")
+          || name.contains("DealIn")
+          || name.contains("Danger")
+          || name.contains("Forced")
           || name.contains("Chance")) Assert.assertEquals(column.group(), LedgerGroup.POINTS, name);
     }
   }
@@ -82,7 +87,8 @@ public class LedgerColumnTest {
       LedgerCatalog catalog = LedgerCatalog.of(variant);
       Assert.assertEquals(catalog.columns(), List.of(LedgerColumn.values()), variant.name());
       Assert.assertEquals(catalog.width(), LedgerColumn.COUNT, variant.name());
-      Assert.assertThrows(UnsupportedOperationException.class, () -> catalog.columns().add(LedgerColumn.URA));
+      Assert.assertThrows(
+          UnsupportedOperationException.class, () -> catalog.columns().add(LedgerColumn.URA));
     }
     Assert.assertThrows(NullPointerException.class, () -> LedgerCatalog.of(null));
   }

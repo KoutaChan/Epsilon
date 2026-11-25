@@ -27,11 +27,12 @@ public final class TransitionHands {
   private final AfterHand after = new AfterHand();
   private final int[] firstCallDiscard = new int[Limits.MAX_LEGAL_ACTIONS];
   private Observation o;
+  private boolean callOffsetsReady;
   private Action discard;
   private int slot;
 
   /**
-   * 判断の時点の手を作る。合法手ごとに、チー・ポンの後の打牌が、判断の記録にある鳴いた後の打牌の列で何番目から始まるかも数えておく。
+   * 判断の時点の手を作り、鳴いた後の打牌の読み出し位置を初期化する。
    *
    * @param o 判断の記録
    * @param tiles 種類ごとの枚数
@@ -40,6 +41,12 @@ public final class TransitionHands {
   public void load(Observation o, TileCounts tiles, SeatFacts seats) {
     this.o = o;
     current.loadCurrent(o, tiles, seats);
+    callOffsetsReady = false;
+  }
+
+  private void findCallOffsets() {
+    if (callOffsetsReady) return;
+    callOffsetsReady = true;
     int callDiscards = 0;
     for (int action = 0, actions = o.legalActions(); action < actions; action++) {
       firstCallDiscard[action] = callDiscards;
@@ -70,6 +77,7 @@ public final class TransitionHands {
         after.discard(chosen);
       }
       case CHI, PON -> {
+        findCallOffsets();
         discard = o.callDiscard(firstCallDiscard[action] + index);
         slot = ShapeAnalysis.callSlot(chosen, o.lastEventTile(), discard.tile());
         if (index == 0) {

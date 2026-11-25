@@ -14,10 +14,10 @@ import com.epsilon.mahjong.rules.EndKind;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.score.ScoringYaku;
 import com.epsilon.reviewer.engine.view.OutcomeProjector;
+import com.epsilon.reviewer.engine.view.OutcomeView;
 import com.epsilon.reviewer.engine.view.PlayerState;
 import com.epsilon.reviewer.engine.view.RecordTable;
-import com.epsilon.reviewer.engine.view.RoundOutcome;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.engine.view.TileCode;
 import com.epsilon.reviewer.engine.view.WinDetails;
 import java.util.ArrayList;
@@ -46,10 +46,10 @@ public class RoundOutcomeTest {
       Variant variant,
       RecordedRound round,
       int index,
-      RoundOutcome.Hora hora,
+      OutcomeView.Hora hora,
       RecordEvent last,
-      TableState before,
-      TableState after,
+      TableView before,
+      TableView after,
       int pao) {
     RoundResult.Win result() {
       return round.result().wins().get(index);
@@ -60,12 +60,15 @@ public class RoundOutcomeTest {
     }
   }
 
-  private record Draw(TableState before, TableState after, int[] next, boolean gameOver) {}
+  private record Draw(TableView before, TableView after, int[] next, boolean gameOver) {}
 
   @BeforeClass
   public void replay() {
     for (long seed = 0; seed < 300; seed++)
-      walk(RecordedGames.play(seed % 3 == 0 ? Variant.TENHOU_3P : Variant.TENHOU_4P, seed, "g" + seed), played);
+      walk(
+          RecordedGames.play(
+              seed % 3 == 0 ? Variant.TENHOU_3P : Variant.TENHOU_4P, seed, "g" + seed),
+          played);
     // 自己対局では起きにくいダブロン（本場と供託のある局）と包の和了は、牌山を手で並べた局で足す。
     for (RecordedGame game :
         List.of(
@@ -74,8 +77,7 @@ public class RoundOutcomeTest {
             SceneGames.threePlayerDoubleRon(),
             SceneGames.paoTsumo(),
             SceneGames.paoFeederRon(),
-            SceneGames.paoSplitRon()))
-      walk(game, played);
+            SceneGames.paoSplitRon())) walk(game, played);
   }
 
   @Test
@@ -112,7 +114,7 @@ public class RoundOutcomeTest {
     int redRon = 0;
     int robbed = 0;
     for (Win win : played) {
-      RoundOutcome.Hora hora = win.hora();
+      OutcomeView.Hora hora = win.hora();
       String tile = hora.winningTile();
       PlayerState winner = win.before().players().get(hora.actor());
       boolean tsumo = win.round().result().kind() == EndKind.TSUMO;
@@ -132,7 +134,8 @@ public class RoundOutcomeTest {
         case RecordEvent.Discard discard -> {
           Assert.assertEquals(discard.seat(), hora.target());
           Assert.assertEquals(TileCode.of(win.variant().tiles(), discard.tile()), tile);
-          Assert.assertEquals(win.before().players().get(hora.target()).river().getLast().tile(), tile);
+          Assert.assertEquals(
+              win.before().players().get(hora.target()).river().getLast().tile(), tile);
           if (TileCode.red(tile)) redRon++;
         }
         case RecordEvent.AddedKan kan -> {
@@ -156,8 +159,8 @@ public class RoundOutcomeTest {
 
   @Test
   public void drawsCarryNoReasonOrPaymentAndMoveTheScores() {
-    Assert.assertEquals(RoundOutcome.Ryukyoku.class.getRecordComponents().length, 0);
-    Assert.assertEquals(OutcomeProjector.draw(), new RoundOutcome.Ryukyoku());
+    Assert.assertEquals(OutcomeView.Ryukyoku.class.getRecordComponents().length, 0);
+    Assert.assertEquals(OutcomeProjector.draw(), new OutcomeView.Ryukyoku());
     Assert.assertFalse(draws.isEmpty());
     for (Draw draw : draws) {
       if (draw.gameOver()) continue;
@@ -195,22 +198,25 @@ public class RoundOutcomeTest {
       }
       for (ScoringYaku yaku : ScoringYaku.values()) {
         boolean has = (result.yaku() & yaku.bit()) != 0;
-        String code = switch (yaku) {
-          case YAKUHAI_SEAT -> "YAKUHAI_SEAT_" + seatWind(win);
-          case YAKUHAI_ROUND -> "YAKUHAI_ROUND_" + WINDS.charAt(win.round().start().round() / win.variant().seats());
-          default -> yaku.name();
-        };
+        String code =
+            switch (yaku) {
+              case YAKUHAI_SEAT -> "YAKUHAI_SEAT_" + seatWind(win);
+              case YAKUHAI_ROUND ->
+                  "YAKUHAI_ROUND_"
+                      + WINDS.charAt(win.round().start().round() / win.variant().seats());
+              default -> yaku.name();
+            };
         Assert.assertEquals(codes.contains(code), has, code);
         if (has && yaku == ScoringYaku.YAKUHAI_SEAT) seatWinds++;
       }
-      boolean declared = (result.yaku() & (ScoringYaku.RIICHI.bit() | ScoringYaku.DOUBLE_RIICHI.bit())) != 0;
+      boolean declared =
+          (result.yaku() & (ScoringYaku.RIICHI.bit() | ScoringYaku.DOUBLE_RIICHI.bit())) != 0;
       if (declared) {
         riichi++;
         Assert.assertEquals(details.uraIndicators().size(), win.round().result().uraCount());
         for (String tile : details.uraIndicators()) Assert.assertTrue(TileCode.isValid(tile), tile);
       } else Assert.assertTrue(details.uraIndicators().isEmpty());
-      boolean plain =
-          win.before().honba() == 0 && win.before().kyotaku() == 0 && win.pao() < 0;
+      boolean plain = win.before().honba() == 0 && win.before().kyotaku() == 0 && win.pao() < 0;
       if (plain && win.round().result().wins().size() == 1)
         Assert.assertEquals(win.gain(win.hora().actor()), details.points());
     }
@@ -226,9 +232,11 @@ public class RoundOutcomeTest {
       boolean last = i + 1 == played.size() || played.get(i + 1).round() != win.round();
       if (!last) continue;
       int[] deltas = win.round().result().deltas();
-      TableState start = start(win);
+      TableView start = start(win);
       for (int seat = 0; seat < deltas.length; seat++)
-        Assert.assertEquals(win.after().players().get(seat).score(), start.players().get(seat).score() + deltas[seat]);
+        Assert.assertEquals(
+            win.after().players().get(seat).score(),
+            start.players().get(seat).score() + deltas[seat]);
     }
   }
 
@@ -239,7 +247,7 @@ public class RoundOutcomeTest {
   }
 
   /** 局の始めの卓（配牌だけを置いた状態）。 */
-  private static TableState start(Win win) {
+  private static TableView start(Win win) {
     return new RecordTable(win.round()).state();
   }
 
@@ -263,8 +271,8 @@ public class RoundOutcomeTest {
       RecordEvent last = null;
       for (RecordEvent event : round.events()) {
         table.apply(event);
-        if (!(event instanceof RecordEvent.DoraReveal) && !(event instanceof RecordEvent.RiichiAccepted))
-          last = event;
+        if (!(event instanceof RecordEvent.DoraReveal)
+            && !(event instanceof RecordEvent.RiichiAccepted)) last = event;
       }
       Boundary boundary = driver.start(round, ws);
       while (boundary == Boundary.DECISIONS) boundary = driver.step(ws);
@@ -272,14 +280,22 @@ public class RoundOutcomeTest {
       RoundResult result = round.result();
       if (result.kind().win()) {
         for (int index = 0; index < result.wins().size(); index++) {
-          TableState before = table.state();
-          RoundOutcome.Hora hora = OutcomeProjector.win(table, result, end, index);
+          TableView before = table.state();
+          OutcomeView.Hora hora = OutcomeProjector.win(table, result, end, index);
           table.settleWin(end, index);
           into.add(
-              new Win(game.variant(), round, index, hora, last, before, table.state(), end.outcome().pao(index)));
+              new Win(
+                  game.variant(),
+                  round,
+                  index,
+                  hora,
+                  last,
+                  before,
+                  table.state(),
+                  end.outcome().pao(index)));
         }
       } else {
-        TableState before = table.state();
+        TableView before = table.state();
         table.settleDraw(end);
         int[] next = new int[game.variant().seats()];
         for (int seat = 0; seat < next.length; seat++) next[seat] = end.next().score(seat);

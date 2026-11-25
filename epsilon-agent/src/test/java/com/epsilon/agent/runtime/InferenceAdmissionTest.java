@@ -175,7 +175,8 @@ public class InferenceAdmissionTest {
     InferenceAdmission.Metrics metrics = admission.metrics();
     assertEquals(metrics.admitted().get(Reason.FULL), new InferenceAdmission.Metrics.Count(1, 4));
     assertEquals(metrics.admitted().get(Reason.SUPPLY), new InferenceAdmission.Metrics.Count(1, 1));
-    assertEquals(metrics.admitted().get(Reason.DEADLINE), new InferenceAdmission.Metrics.Count(0, 0));
+    assertEquals(
+        metrics.admitted().get(Reason.DEADLINE), new InferenceAdmission.Metrics.Count(0, 0));
     assertEquals(metrics.batches(), 2);
     assertEquals(metrics.maxOldestWaitNanos(), 100);
   }
@@ -217,20 +218,21 @@ public class InferenceAdmissionTest {
       Device device = new Device(1);
       var registration = dispatcher.register(List.of(new Backend(device)));
       try (registration) {
-        InferenceAdmission<InferenceDispatcher.Registration<Integer, Integer>, String, Integer> admission =
-            new InferenceAdmission<>(
-                WAIT,
-                (owner, key) -> 2,
-                (owner, key) -> {
-                  var attempt = owner.tryReserve();
-                  if (!attempt.acquired()) {
-                    return DecisionInferenceIngress.Attempt.blocked(attempt.available());
-                  }
-                  var reservation = attempt.reservation();
-                  return DecisionInferenceIngress.Attempt.acquired(
-                      new DecisionInferenceIngress(owner, reservation, reservation::close));
-                },
-                InferenceDispatcher.Registration::needsWork);
+        InferenceAdmission<InferenceDispatcher.Registration<Integer, Integer>, String, Integer>
+            admission =
+                new InferenceAdmission<>(
+                    WAIT,
+                    (owner, key) -> 2,
+                    (owner, key) -> {
+                      var attempt = owner.tryReserve();
+                      if (!attempt.acquired()) {
+                        return DecisionInferenceIngress.Attempt.blocked(attempt.available());
+                      }
+                      var reservation = attempt.reservation();
+                      return DecisionInferenceIngress.Attempt.acquired(
+                          new DecisionInferenceIngress(owner, reservation, reservation::close));
+                    },
+                    InferenceDispatcher.Registration::needsWork);
         for (int row = 0; row < 4; row++) {
           admission.add(registration, "shape", row, 0);
         }
@@ -242,7 +244,8 @@ public class InferenceAdmissionTest {
 
         @SuppressWarnings("unchecked")
         var reservation =
-            (InferenceDispatcher.Reservation<Integer, Integer>) first.ingress().handoff(registration).move();
+            (InferenceDispatcher.Reservation<Integer, Integer>)
+                first.ingress().handoff(registration).move();
         CompletableFuture<Integer> result = reservation.submit(first.rows().size());
         wake.get(5, TimeUnit.SECONDS);
         assertEquals(result.get(5, TimeUnit.SECONDS), Integer.valueOf(2));
@@ -260,7 +263,8 @@ public class InferenceAdmissionTest {
     return new InferenceAdmission<>(
         WAIT,
         (owner, key) -> 4,
-        (owner, key) -> DecisionInferenceIngress.Attempt.acquired(DecisionInferenceIngress.direct(owner)),
+        (owner, key) ->
+            DecisionInferenceIngress.Attempt.acquired(DecisionInferenceIngress.direct(owner)),
         needsWork);
   }
 

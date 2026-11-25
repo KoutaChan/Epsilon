@@ -13,7 +13,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * epsilon-grp の import と依存の決まりを確かめる。本体が import するのは java・slf4j・gson・mahjong・grp だけで、DJL（ai.djl）を
+ * epsilon-grp の import と依存の決まりを確かめる。本体が import するのは java・slf4j・gson・base.io・mahjong・grp だけで、DJL（ai.djl）を
  * import するのは、本体でもテストでも grp.train の下だけ。ワイルドカードの import は使わない。pom には PRISM のモジュールを書かない。
  */
 public class ImportRuleTest {
@@ -24,14 +24,26 @@ public class ImportRuleTest {
   private static final Path POM = Path.of("pom.xml");
   private static final Pattern IMPORT =
       Pattern.compile("^import\\s+(?:static\\s+)?([\\w.]+?)(\\.\\*)?;", Pattern.MULTILINE);
-  private static final Pattern ARTIFACT = Pattern.compile("<artifactId>\\s*([^<\\s]+)\\s*</artifactId>");
+  private static final Pattern ARTIFACT =
+      Pattern.compile("<artifactId>\\s*([^<\\s]+)\\s*</artifactId>");
   private static final List<String> MAIN_IMPORTS =
-      List.of("java.", "org.slf4j.", "com.google.gson.", "com.epsilon.mahjong.", "com.epsilon.grp.");
+      List.of(
+          "java.",
+          "org.slf4j.",
+          "com.google.gson.",
+          "com.epsilon.base.io.",
+          "com.epsilon.mahjong.",
+          "com.epsilon.grp.");
   private static final String DJL = "ai.djl.";
   private static final Pattern DJL_NAME = Pattern.compile("\\bai\\.djl\\.[A-Za-z]");
 
   /** PRISM のモジュールの artifactId。 */
-  private static final Set<String> PRISM_MODULES = Set.of("epsilon-prism", "epsilon-prism-hip");
+  private static final Set<String> PRISM_MODULES =
+      Set.of(
+          "epsilon-prism",
+          "epsilon-prism-kernel-common",
+          "epsilon-prism-hip",
+          "epsilon-prism-cuda");
 
   @Test
   public void mainImportsStayInsideTheAllowedLibraries() throws IOException {
@@ -42,7 +54,9 @@ public class ImportRuleTest {
       Matcher matcher = IMPORT.matcher(Files.readString(file));
       while (matcher.find()) {
         String imported = matcher.group(1);
-        boolean allowed = MAIN_IMPORTS.stream().anyMatch(imported::startsWith) || train && imported.startsWith(DJL);
+        boolean allowed =
+            MAIN_IMPORTS.stream().anyMatch(imported::startsWith)
+                || train && imported.startsWith(DJL);
         if (matcher.group(2) != null || !allowed) {
           violations.add(file + ": " + matcher.group());
         }
@@ -74,7 +88,8 @@ public class ImportRuleTest {
     List<String> violations = new ArrayList<>();
     for (Path root : List.of(MAIN, TEST)) {
       for (Path file : javaFiles(root)) {
-        if (!root.relativize(file).startsWith(TRAIN) && DJL_NAME.matcher(Files.readString(file)).find()) {
+        if (!root.relativize(file).startsWith(TRAIN)
+            && DJL_NAME.matcher(Files.readString(file)).find()) {
           violations.add(file.toString());
         }
       }

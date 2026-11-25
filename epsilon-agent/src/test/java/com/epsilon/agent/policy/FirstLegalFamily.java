@@ -16,7 +16,8 @@ public final class FirstLegalFamily implements ModelFamily {
 
   /** 渡されたランタイムは使わない。 */
   @Override
-  public Policy open(Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime) {
+  public Policy open(
+      Path checkpoint, Variant variant, PolicyOptions options, NetworkRuntime runtime) {
     return new FirstLegal(variant, series().label(checkpoint));
   }
 

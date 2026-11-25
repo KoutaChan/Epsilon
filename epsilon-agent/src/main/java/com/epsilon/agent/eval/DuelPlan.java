@@ -42,21 +42,31 @@ public record DuelPlan(ArenaPlan arena, StopRule stop, Score score) {
       throw new IllegalArgumentException("A duel seats two slots, not " + slots);
     }
     if (walls < 2) {
-      throw new IllegalArgumentException("A duel needs at least two walls for a standard error, not " + walls);
+      throw new IllegalArgumentException(
+          "A duel needs at least two walls for a standard error, not " + walls);
     }
     if (seating == Seating.BY_GAME) {
       if (!(stop instanceof StopRule.Fixed)) {
-        throw new IllegalArgumentException("A " + seating + " duel plays all its walls, so it cannot stop by " + stop);
+        throw new IllegalArgumentException(
+            "A " + seating + " duel plays all its walls, so it cannot stop by " + stop);
       }
       if (walls % variant.seats() != 0) {
         throw new IllegalArgumentException(
-            "A " + seating + " duel plays walls in multiples of the " + variant.seats() + " seats, not " + walls);
+            "A "
+                + seating
+                + " duel plays walls in multiples of the "
+                + variant.seats()
+                + " seats, not "
+                + walls);
       }
     }
     int checkEvery = stop.checkEvery(walls);
     if (checkEvery < 2 || walls % checkEvery != 0) {
       throw new IllegalArgumentException(
-          walls + " walls are not a multiple of the check interval " + checkEvery + " of at least two walls");
+          walls
+              + " walls are not a multiple of the check interval "
+              + checkEvery
+              + " of at least two walls");
     }
   }
 

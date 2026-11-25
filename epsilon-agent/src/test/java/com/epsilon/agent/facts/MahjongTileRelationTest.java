@@ -91,18 +91,26 @@ public class MahjongTileRelationTest {
       for (int key = 0; key < Tiles.KINDS; key++) {
         long pinned = Character.digit(TABLE.get(query).charAt(key), Character.MAX_RADIX);
         assertEquals(ids[query * Tiles.KINDS + key], pinned, query + " to " + key);
-        assertEquals(MahjongTileRelation.between(query, key).ordinal(), pinned, query + " to " + key);
+        assertEquals(
+            MahjongTileRelation.between(query, key).ordinal(), pinned, query + " to " + key);
       }
     }
   }
 
   @Test
   public void sameSuitDeltaIsKeyMinusQuery() {
-    assertEquals(MahjongTileRelation.between(Tiles.P2, Tiles.P5), MahjongTileRelation.SAME_SUIT_DELTA_PLUS_3);
-    assertEquals(MahjongTileRelation.between(Tiles.S9, Tiles.S1), MahjongTileRelation.SAME_SUIT_DELTA_MINUS_8);
-    assertEquals(MahjongTileRelation.between(Tiles.M5, Tiles.S5), MahjongTileRelation.CROSS_SUIT_SAME_RANK);
-    assertEquals(MahjongTileRelation.between(Tiles.TON, Tiles.CHUN), MahjongTileRelation.WIND_DRAGON);
-    assertEquals(MahjongTileRelation.between(Tiles.HAKU, Tiles.M1), MahjongTileRelation.NUMBER_HONOR);
+    assertEquals(
+        MahjongTileRelation.between(Tiles.P2, Tiles.P5),
+        MahjongTileRelation.SAME_SUIT_DELTA_PLUS_3);
+    assertEquals(
+        MahjongTileRelation.between(Tiles.S9, Tiles.S1),
+        MahjongTileRelation.SAME_SUIT_DELTA_MINUS_8);
+    assertEquals(
+        MahjongTileRelation.between(Tiles.M5, Tiles.S5), MahjongTileRelation.CROSS_SUIT_SAME_RANK);
+    assertEquals(
+        MahjongTileRelation.between(Tiles.TON, Tiles.CHUN), MahjongTileRelation.WIND_DRAGON);
+    assertEquals(
+        MahjongTileRelation.between(Tiles.HAKU, Tiles.M1), MahjongTileRelation.NUMBER_HONOR);
   }
 
   @Test

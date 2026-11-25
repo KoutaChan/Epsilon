@@ -46,23 +46,35 @@ public final class TestSampling {
       double rhoBranch,
       int maxCopyLabels) {
     double[] labelRates =
-        byClass(labelRateDiscardEarly, labelRateDiscardMid, labelRateDiscardLate, labelRateCommit, labelRateFinalEnd);
+        byClass(
+            labelRateDiscardEarly,
+            labelRateDiscardMid,
+            labelRateDiscardLate,
+            labelRateCommit,
+            labelRateFinalEnd);
     double[][] byHand = new double[Openness.COUNT][];
     Arrays.fill(byHand, labelRates);
     boolean[] measureAll = new boolean[DecisionClass.COUNT];
     double[] rollinRates =
-        byClass(rollinRateDiscard, rollinRateDiscard, rollinRateDiscard, rollinRateCommit, rollinRateCommit);
+        byClass(
+            rollinRateDiscard,
+            rollinRateDiscard,
+            rollinRateDiscard,
+            rollinRateCommit,
+            rollinRateCommit);
     RollInRule[] rollIn = new RollInRule[DecisionClass.COUNT];
     for (DecisionClass c : DecisionClass.values()) {
       measureAll[c.ordinal()] = measureAllDiscards && !c.commitment();
       rollIn[c.ordinal()] =
-          RollInRule.uniform(rollinRates[c.ordinal()], epsilonQ, DeviationTarget.ANY, rhoBranch, maxCopyLabels);
+          RollInRule.uniform(
+              rollinRates[c.ordinal()], epsilonQ, DeviationTarget.ANY, rhoBranch, maxCopyLabels);
     }
     return new Sampling(holdoutFraction, byHand, measureAll, maxCandidates, epsilonC, rollIn);
   }
 
   /** 打牌の 3 クラス・確約のクラス・オーラスの和了の率を、クラスの番号の順の表にする。 */
-  private static double[] byClass(double early, double mid, double late, double commit, double finalEnd) {
+  private static double[] byClass(
+      double early, double mid, double late, double commit, double finalEnd) {
     double[] rates = new double[DecisionClass.COUNT];
     for (DecisionClass c : DecisionClass.values()) {
       rates[c.ordinal()] =

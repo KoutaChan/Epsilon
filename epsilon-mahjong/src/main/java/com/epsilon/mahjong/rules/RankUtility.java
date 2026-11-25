@@ -10,6 +10,12 @@ public enum RankUtility {
   /** u_r = 1 − 2r/(S − 1)。S は席の数。 */
   AVERAGE_RANK(new double[] {1, 1.0 / 3, -1.0 / 3, -1}, new double[] {1, 0, -1});
 
+  /**
+   * {@link #TENHOU} の値を天鳳の段位 pt に直す倍率。四人打ちは +90 : +45 : 0 : −135（南の鳳凰卓の十段）、三人打ちは +135 : 0 : −135
+   * （三麻の七段）になる。
+   */
+  public static final double TENHOU_POINTS = 135;
+
   /** [席の数] → 順位ごとの値。 */
   private final double[][] bySeats;
 

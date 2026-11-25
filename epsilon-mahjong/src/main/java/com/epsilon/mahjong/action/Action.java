@@ -115,7 +115,8 @@ public final class Action {
     int[] codes = KIND_CODES[ActionSection.of(type, selection).ordinal()];
     int code = codes == null || kind < 0 || kind >= Tiles.KINDS ? -1 : codes[kind];
     if (code < 0) {
-      throw new IllegalArgumentException("No action code for " + type + " " + selection + " of kind " + kind);
+      throw new IllegalArgumentException(
+          "No action code for " + type + " " + selection + " of kind " + kind);
     }
     return code;
   }
@@ -141,7 +142,8 @@ public final class Action {
    * @param riichi 立直の宣言牌なら true
    */
   public static int discard(int kind, boolean red, boolean tsumogiri, boolean riichi) {
-    return code(riichi ? Type.RIICHI_DAHAI : Type.DAHAI, kind, TileSelection.discard(red, tsumogiri));
+    return code(
+        riichi ? Type.RIICHI_DAHAI : Type.DAHAI, kind, TileSelection.discard(red, tsumogiri));
   }
 
   /**
@@ -172,7 +174,8 @@ public final class Action {
             ? -1
             : (red ? RED_CHI_CODES : CHI_CODES)[base * Meld.RUN + position];
     if (code < 0) {
-      throw new IllegalArgumentException("No chi code for base " + base + " called " + called + " red " + red);
+      throw new IllegalArgumentException(
+          "No chi code for base " + base + " called " + called + " red " + red);
     }
     return code;
   }
@@ -273,7 +276,12 @@ public final class Action {
       }
       if (code != section.end()) {
         throw new IllegalStateException(
-            section + " lists " + (code - section.start()) + " codes but is " + section.width() + " wide");
+            section
+                + " lists "
+                + (code - section.start())
+                + " codes but is "
+                + section.width()
+                + " wide");
       }
     }
     return actions;

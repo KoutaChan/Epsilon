@@ -118,7 +118,8 @@ public final class PhiHistory {
   public static Optional<PhiEntry> effectiveAt(List<PhiEntry> entries, int t) {
     PhiEntry effective = null;
     for (PhiEntry entry : entries)
-      if (entry.effectiveFrom() <= t && (effective == null || entry.effectiveFrom() >= effective.effectiveFrom()))
+      if (entry.effectiveFrom() <= t
+          && (effective == null || entry.effectiveFrom() >= effective.effectiveFrom()))
         effective = entry;
     return Optional.ofNullable(effective);
   }
@@ -167,7 +168,9 @@ public final class PhiHistory {
   /** 初めの LATE の行を書く。呼び出し元がロックを持つこと。使い始める反復が 0 か、既に行があれば何もしない。 */
   private static void writeInitialMode(GrpFiles files, LateSettings late) throws IOException {
     if (late.from() == 0 || !readModes(files).isEmpty()) return;
-    write(files.modeHistory(), LINES.toJson(ModeLine.late(late.cutoff(), late.from(), "phi.late.from = " + late.from())));
+    write(
+        files.modeHistory(),
+        LINES.toJson(ModeLine.late(late.cutoff(), late.from(), "phi.late.from = " + late.from())));
   }
 
   /**
@@ -183,8 +186,13 @@ public final class PhiHistory {
         int open = firstOpenIteration(files);
         if (line.effectiveFrom() < open)
           throw new IllegalArgumentException(
-              "Mode line " + line.mode() + " effectiveFrom " + line.effectiveFrom()
-                  + " is not after the last started iteration (the first open iteration is " + open + ")");
+              "Mode line "
+                  + line.mode()
+                  + " effectiveFrom "
+                  + line.effectiveFrom()
+                  + " is not after the last started iteration (the first open iteration is "
+                  + open
+                  + ")");
         write(files.modeHistory(), LINES.toJson(line));
         return line;
       }
@@ -197,8 +205,16 @@ public final class PhiHistory {
     String reason = "phi start = " + start.kind();
     if (start instanceof PhiStartSettings.GrpCheckpoint checkpoint)
       return HandEndPhi.checkpointEntry(
-          PhiEntry.INITIAL_ID, setup.variant(), checkpoint.grp(), table(checkpoint), checkpoint.outcomes(), 1, "", reason);
-    return new PhiEntry(PhiEntry.INITIAL_ID, start.kind(), setup.variant(), "", "", "", "", "", "", 1, "", reason);
+          PhiEntry.INITIAL_ID,
+          setup.variant(),
+          checkpoint.grp(),
+          table(checkpoint),
+          checkpoint.outcomes(),
+          1,
+          "",
+          reason);
+    return new PhiEntry(
+        PhiEntry.INITIAL_ID, start.kind(), setup.variant(), "", "", "", "", "", "", 1, "", reason);
   }
 
   /** g000 で元の GRP に重ねる表のパス。表が無ければ空文字列。 */
@@ -208,7 +224,9 @@ public final class PhiHistory {
 
   /** g000 の q のディレクトリの絶対パス。無ければ空文字列。 */
   private static String outcomes(PhiStartSettings.GrpCheckpoint checkpoint) {
-    return checkpoint.outcomes() == null ? "" : checkpoint.outcomes().toAbsolutePath().normalize().toString();
+    return checkpoint.outcomes() == null
+        ? ""
+        : checkpoint.outcomes().toAbsolutePath().normalize().toString();
   }
 
   /**
@@ -218,7 +236,8 @@ public final class PhiHistory {
    * @return 渡した 1 行目の項目
    * @throws IOException 食い違うとき
    */
-  static PhiEntry requireInitialMatches(GrpFiles files, PhiEntry first, PhiSetup setup) throws IOException {
+  static PhiEntry requireInitialMatches(GrpFiles files, PhiEntry first, PhiSetup setup)
+      throws IOException {
     PhiStartSettings start = setup.selfGrp().start();
     if (!first.id().equals(PhiEntry.INITIAL_ID)
         || first.kind() != start.kind()
@@ -228,8 +247,12 @@ public final class PhiHistory {
                 || !first.table().equals(table(checkpoint))
                 || !first.outcomes().equals(outcomes(checkpoint)))))
       throw new IOException(
-          "The first entry of " + files.phiHistory() + " does not match the phi start " + start.kind()
-              + " and the GRP settings: " + first);
+          "The first entry of "
+              + files.phiHistory()
+              + " does not match the phi start "
+              + start.kind()
+              + " and the GRP settings: "
+              + first);
     return first;
   }
 
@@ -247,8 +270,13 @@ public final class PhiHistory {
         int open = firstOpenIteration(files);
         if (entry.effectiveFrom() < open)
           throw new IllegalArgumentException(
-              "Φ entry " + entry.id() + " effectiveFrom " + entry.effectiveFrom()
-                  + " is not after the last started iteration (the first open iteration is " + open + ")");
+              "Φ entry "
+                  + entry.id()
+                  + " effectiveFrom "
+                  + entry.effectiveFrom()
+                  + " is not after the last started iteration (the first open iteration is "
+                  + open
+                  + ")");
         appendChecked(files, entry);
         return entry;
       }
@@ -288,7 +316,10 @@ public final class PhiHistory {
   static int nextIteration(GrpFiles files) throws IOException {
     if (!Files.exists(files.state())) return 1;
     try {
-      return JsonParser.parseString(Files.readString(files.state())).getAsJsonObject().get("next").getAsInt();
+      return JsonParser.parseString(Files.readString(files.state()))
+          .getAsJsonObject()
+          .get("next")
+          .getAsInt();
     } catch (RuntimeException broken) {
       throw new IOException("Unreadable " + files.state(), broken);
     }
@@ -302,10 +333,12 @@ public final class PhiHistory {
   private static void appendChecked(GrpFiles files, PhiEntry entry) throws IOException {
     List<PhiEntry> entries = read(files);
     if (entries.isEmpty())
-      throw new IllegalArgumentException("No g000 in " + files.phiHistory() + " yet: the training JVM writes it first");
+      throw new IllegalArgumentException(
+          "No g000 in " + files.phiHistory() + " yet: the training JVM writes it first");
     for (PhiEntry existing : entries)
       if (existing.id().equals(entry.id()) && !existing.sameValue(entry))
-        throw new IllegalArgumentException("Φ entry id " + entry.id() + " already names another Φ: " + existing);
+        throw new IllegalArgumentException(
+            "Φ entry id " + entry.id() + " already names another Φ: " + existing);
     write(files.phiHistory(), LINES.toJson(entry));
   }
 
@@ -324,7 +357,8 @@ public final class PhiHistory {
   static void write(Path file, String line) throws IOException {
     Files.createDirectories(file.getParent());
     try (FileChannel channel =
-        FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+        FileChannel.open(
+            file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
       long size = channel.size();
       long keep = size;
       if (size > 0) {
@@ -345,7 +379,8 @@ public final class PhiHistory {
   static Locked lock(GrpFiles files, String name) throws IOException {
     Path path = files.lock(name);
     Files.createDirectories(path.getParent());
-    FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+    FileChannel channel =
+        FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
     try {
       channel.lock();
     } catch (IOException | RuntimeException failure) {

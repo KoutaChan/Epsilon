@@ -57,8 +57,10 @@ final class RandomCollector implements Collector {
   @Override
   public Collected collect(Macro macro) {
     plans.add(macro);
-    if (!Arrays.deepEquals(macro.calibration().counts(), calibration(macro.number() - 1).counts())) {
-      throw new AssertionError("Macro " + macro.number() + " did not get the calibration of the macro before it");
+    if (!Arrays.deepEquals(
+        macro.calibration().counts(), calibration(macro.number() - 1).counts())) {
+      throw new AssertionError(
+          "Macro " + macro.number() + " did not get the calibration of the macro before it");
     }
     Variant variant = macro.settings().run().variant();
     Random random = new Random(macro.seed());
@@ -73,7 +75,8 @@ final class RandomCollector implements Collector {
   @Override
   public void close() {}
 
-  private static GameTrajectory game(Variant variant, Random random, long id, int learner, boolean priors) {
+  private static GameTrajectory game(
+      Variant variant, Random random, long id, int learner, boolean priors) {
     Engine engine = new Engine(variant);
     RuleWorkspace ws = new RuleWorkspace(variant);
     ObservationWriter writer = new ObservationWriter(variant);
@@ -91,7 +94,8 @@ final class RandomCollector implements Collector {
         records.clear();
         for (int slot = 0; slot < decisions.size(); slot++) {
           int seat = decisions.seat(slot);
-          Observation o = reader.bind(records, writer.capture(engine.view(seat), decisions, slot, records));
+          Observation o =
+              reader.bind(records, writer.capture(engine.view(seat), decisions, slot, records));
           int legal = o.legalActions();
           choices[slot] = random.nextInt(legal);
           if (seat == learner && written < DECISIONS) {

@@ -39,7 +39,15 @@ public class NumberCodingTest {
             values[lane] = (byte) value;
             limits[lane] = (byte) limit;
             if (UnsignedBytes.allAtMost(values, limits, length) != (value <= limit)) {
-              Assert.fail("lane " + lane + " value " + value + " limit " + limit + " background " + background);
+              Assert.fail(
+                  "lane "
+                      + lane
+                      + " value "
+                      + value
+                      + " limit "
+                      + limit
+                      + " background "
+                      + background);
             }
           }
         }

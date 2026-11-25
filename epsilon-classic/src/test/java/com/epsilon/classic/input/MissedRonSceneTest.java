@@ -35,7 +35,9 @@ public class MissedRonSceneTest {
     assertFalse(RoundRules.afterCallFromShimocha(turn));
     assertTrue(scene.legal(1).contains("RIICHI_TSUMOGIRI(E)"), scene.legal(1).toString());
     assertRonFuriten(
-        turn, Map.of(Action.Type.DAHAI, RonFuritenKind.NONE, Action.Type.RIICHI_DAHAI, RonFuritenKind.NONE));
+        turn,
+        Map.of(
+            Action.Type.DAHAI, RonFuritenKind.NONE, Action.Type.RIICHI_DAHAI, RonFuritenKind.NONE));
     scene.play("1:DAHAI_TSUMOGIRI(E)").play("2:DAHAI_TSUMOGIRI(5s)");
     assertTrue(scene.legal(1).contains("RON_AGARI"), scene.legal(1).toString());
   }
@@ -103,14 +105,17 @@ public class MissedRonSceneTest {
       new ClassicTokenizer(architecture, RuleScene.VARIANT).write(o, ClassicExtras.empty(), in, 0);
       FieldLayout<ActionTransitionInt> layout = schema.layout(ActionTransitionInt.class);
       int first =
-          in.start(Tensor.TRANSITION_CATEGORIES, 0) + layout.offset(ActionTransitionInt.RESULTING_RON_FURITEN_KIND);
+          in.start(Tensor.TRANSITION_CATEGORIES, 0)
+              + layout.offset(ActionTransitionInt.RESULTING_RON_FURITEN_KIND);
       for (int action = 0; action < o.legalActions(); action++) {
         Action legal = o.action(action);
         for (int transition = 0; transition < Buckets.transitions(o, action); transition++) {
           int index = action * in.bucket().transitions() + transition;
           int value = in.categorical()[first + index * layout.stride()];
           assertEquals(
-              RonFuritenKind.values()[value - 1], expected.get(legal.type()), architecture + " " + legal);
+              RonFuritenKind.values()[value - 1],
+              expected.get(legal.type()),
+              architecture + " " + legal);
         }
       }
     }

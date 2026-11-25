@@ -117,7 +117,9 @@ final class PointProjection extends AbstractBlock {
     terminalUtility = new float[SEATS];
     for (int rank = 0; rank < SEATS; rank++) {
       terminalUtility[rank] =
-          utility == RankUtility.TENHOU ? (rank == SEATS - 1 ? -1f : 0f) : (float) utility.value(variant, rank);
+          utility == RankUtility.TENHOU
+              ? (rank == SEATS - 1 ? -1f : 0f)
+              : (float) utility.value(variant, rank);
     }
   }
 
@@ -129,9 +131,11 @@ final class PointProjection extends AbstractBlock {
   Projection actions(Pass pass, ClassicBatch batch) {
     int rows = batch.rows();
     NDArray state = batch.tensor(Tensor.STATE_CATEGORIES);
-    NDArray ledger = batch.tensor(Tensor.POINT_LEDGER_100).toType(DataType.INT32, false).reshape(rows, 1, SEATS);
+    NDArray ledger =
+        batch.tensor(Tensor.POINT_LEDGER_100).toType(DataType.INT32, false).reshape(rows, 1, SEATS);
     NDArray winFacts = batch.tensor(Tensor.ACTION_WIN_FACTS).toType(DataType.INT32, false);
-    NDArray types = batch.tensor(Tensor.ACTION_CATEGORIES).get("..., {}", type).toType(DataType.INT32, false);
+    NDArray types =
+        batch.tensor(Tensor.ACTION_CATEGORIES).get("..., {}", type).toType(DataType.INT32, false);
     NDArray ron = types.eq(ActionType.RON_AGARI.ordinal() + 1).toType(DataType.INT32, false);
     NDArray tsumo = types.eq(ActionType.TSUMO_AGARI.ordinal() + 1).toType(DataType.INT32, false);
     NDArray zeros = ron.mul(0);
@@ -149,14 +153,17 @@ final class PointProjection extends AbstractBlock {
    * @param riichi 遷移が立直の打牌なら 1 [待ち]（INT32）
    * @return 結果 [待ち, 8, ...]
    */
-  Projection waits(Pass pass, NDArray ledger, NDArray state, NDArray waitFacts, NDArray aka, NDArray riichi) {
+  Projection waits(
+      Pass pass, NDArray ledger, NDArray state, NDArray waitFacts, NDArray aka, NDArray riichi) {
     long count = state.getShape().get(0);
     NDArray ronFacts = waitFacts.get(":, 0, :");
     NDArray tsumoFacts = waitFacts.get(":, 1, :");
     NDArray ronRed = red(ronFacts, aka);
     NDArray tsumoRed = red(tsumoFacts, aka);
     NDArray cases =
-        NDArrays.stack(new NDList(ronFacts, ronFacts, ronFacts, tsumoFacts, ronRed, ronRed, ronRed, tsumoRed), 1);
+        NDArrays.stack(
+            new NDList(ronFacts, ronFacts, ronFacts, tsumoFacts, ronRed, ronRed, ronRed, tsumoRed),
+            1);
     return project(
         pass,
         ledger.reshape(count, 1, SEATS),
@@ -238,7 +245,8 @@ final class PointProjection extends AbstractBlock {
             .add(dealerRon.take(working, index).mul(dealerWins))
             .add(honbaSticks.mul(variant.ronHonba() / UNIT));
     NDArray childShare = tsumoChild.take(working, index).add(honbaSticks.mul(Variant.HONBA / UNIT));
-    NDArray dealerShare = tsumoDealer.take(working, index).add(honbaSticks.mul(Variant.HONBA / UNIT));
+    NDArray dealerShare =
+        tsumoDealer.take(working, index).add(honbaSticks.mul(Variant.HONBA / UNIT));
     NDArray received =
         dealerShare
             .mul(SEATS - 1)
@@ -251,8 +259,13 @@ final class PointProjection extends AbstractBlock {
     NDArray ronDelta = winner.sub(payer).mul(ronPayment.expandDims(2));
     NDArray dealerShareBySeat = dealerShare.expandDims(2);
     NDArray childWinnerPays =
-        dealerMask.mul(dealerShareBySeat).add(dealerMask.neg().add(1).mul(childShare.expandDims(2)));
-    NDArray pays = dealerShareBySeat.mul(dealerWins.expandDims(2)).add(childWinnerPays.mul(childWins.expandDims(2)));
+        dealerMask
+            .mul(dealerShareBySeat)
+            .add(dealerMask.neg().add(1).mul(childShare.expandDims(2)));
+    NDArray pays =
+        dealerShareBySeat
+            .mul(dealerWins.expandDims(2))
+            .add(childWinnerPays.mul(childWins.expandDims(2)));
     NDArray tsumoDelta = winner.mul(received.expandDims(2).add(pays)).sub(pays);
     NDArray active = valid.expandDims(2);
     NDArray settlement =
@@ -274,7 +287,8 @@ final class PointProjection extends AbstractBlock {
         dealerContinues
             .logicalAnd(self.gte(threshold))
             .logicalAnd(finalRank.eq(0))
-            .logicalOr(dealerContinues.logicalNot().logicalAnd(finals.max(new int[] {2}).gte(threshold)));
+            .logicalOr(
+                dealerContinues.logicalNot().logicalAnd(finals.max(new int[] {2}).gte(threshold)));
     NDArray activeFloat = valid.toType(DataType.FLOAT32, false);
     NDArray end =
         finals
@@ -291,7 +305,8 @@ final class PointProjection extends AbstractBlock {
             .mul(dealerContinues.logicalNot().toType(DataType.FLOAT32, false))
             .mul(southOrLater.toType(DataType.FLOAT32, false));
     NDArray nextRound = notEnd.sub(dealerRepeat).sub(westExtension);
-    NDArray utility = terminalUtilities.take(working, finalRank.toType(DataType.INT64, false)).mul(end);
+    NDArray utility =
+        terminalUtilities.take(working, finalRank.toType(DataType.INT64, false)).mul(end);
 
     NDArray zero = activeFloat.mul(0);
     NDArray sourceOneHot =
@@ -301,7 +316,10 @@ final class PointProjection extends AbstractBlock {
     NDList gaps = new NDList();
     for (int relative = 0; relative < SEATS; relative++) {
       gaps.add(
-          self.sub(relativeScore(finals, seat, relative)).toType(DataType.FLOAT32, false).div(SCORE_SCALE).expandDims(2));
+          self.sub(relativeScore(finals, seat, relative))
+              .toType(DataType.FLOAT32, false)
+              .div(SCORE_SCALE)
+              .expandDims(2));
     }
     NDArray activeVector = active.toType(DataType.FLOAT32, false);
     NDArray features =
@@ -324,7 +342,8 @@ final class PointProjection extends AbstractBlock {
                 2)
             .mul(activeVector);
     NDArray gates =
-        NDArrays.concat(new NDList(end.expandDims(2), utility.expandDims(2), rankOneHot), 2).mul(activeVector);
+        NDArrays.concat(new NDList(end.expandDims(2), utility.expandDims(2), rankOneHot), 2)
+            .mul(activeVector);
     return new Projection(features, gates, activeFloat);
   }
 
@@ -356,7 +375,9 @@ final class PointProjection extends AbstractBlock {
     NDArray result = scores.get("..., 0").mul(0);
     for (int player = 0; player < SEATS; player++) {
       int absolute = (player + relative) % SEATS;
-      result = result.add(scores.get("..., {}", absolute).mul(seat.eq(player).toType(DataType.INT32, false)));
+      result =
+          result.add(
+              scores.get("..., {}", absolute).mul(seat.eq(player).toType(DataType.INT32, false)));
     }
     return result;
   }
@@ -399,12 +420,13 @@ final class PointProjection extends AbstractBlock {
       for (int han = 0; han < HAN; han++) {
         for (int code = 0; code < FU_CODES; code++) {
           int index = (yakuman * HAN + han) * FU_CODES + code;
-          int fu = switch (code) {
-            case 0 -> 0;
-            case 1 -> 20;
-            case 2 -> 25;
-            default -> code * 10;
-          };
+          int fu =
+              switch (code) {
+                case 0 -> 0;
+                case 1 -> 20;
+                case 2 -> 25;
+                default -> code * 10;
+              };
           int base = yakuman > 0 || (han >= 1 && fu >= 20) ? ScoreMath.base(han, fu, yakuman) : 0;
           if (base > 0) {
             childRonTable[index] = ScoreMath.ron(base, false) / UNIT;
@@ -423,7 +445,10 @@ final class PointProjection extends AbstractBlock {
 
   @Override
   protected NDList forwardInternal(
-      ParameterStore parameterStore, NDList inputs, boolean training, PairList<String, Object> params) {
+      ParameterStore parameterStore,
+      NDList inputs,
+      boolean training,
+      PairList<String, Object> params) {
     throw new UnsupportedOperationException("Use actions or waits");
   }
 

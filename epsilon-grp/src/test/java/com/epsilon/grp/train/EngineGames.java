@@ -89,7 +89,8 @@ final class EngineGames {
   static CountedHands counted(Variant variant, List<Hand> hands) {
     CountedHands.Builder builder = CountedHands.builder(variant, 4, 0, GrpFixtures.STAMP);
     for (Hand hand : hands) {
-      builder.add(hand.gameId(), hand.start(), HandResult.raw(hand.outcome(), hand.start().dealer()));
+      builder.add(
+          hand.gameId(), hand.start(), HandResult.raw(hand.outcome(), hand.start().dealer()));
     }
     return builder.build();
   }

@@ -62,7 +62,12 @@ public final class NextHands {
    * @param seatChanged 最終順位が今の順位と違う席の率。率は（席, 局末）の組あたり
    */
   public record KindCount(
-      Kind kind, long handEnds, double share, Paired nextChanged, Paired finalChanged, Paired seatChanged) {}
+      Kind kind,
+      long handEnds,
+      double share,
+      Paired nextChanged,
+      Paired finalChanged,
+      Paired seatChanged) {}
 
   /**
    * （席, 局末）の組ごとの量 1 つの平均を、表せる局末と表せない局末に分けたもの。量は、誤差か、2 つの値の誤差の差。
@@ -113,11 +118,18 @@ public final class NextHands {
 
   /** 結果ごとに、終わり方、打点の番号 2 つ（無ければ −1）、立直した席のビット（相対席）を持つ。 */
   private final byte[] mains;
+
   private final byte[] bases;
   private final byte[] others;
   private final byte[] riichi;
 
-  private NextHands(HandEnds ends, byte[] kinds, boolean[] over, byte[] ranksAfter, int[] firstFound, Found found) {
+  private NextHands(
+      HandEnds ends,
+      byte[] kinds,
+      boolean[] over,
+      byte[] ranksAfter,
+      int[] firstFound,
+      Found found) {
     this.ends = ends;
     this.kinds = kinds;
     this.over = over;
@@ -141,7 +153,8 @@ public final class NextHands {
   public static NextHands of(HandEnds ends, List<GameRecord> games) {
     HandEnds root = ends.origin == null ? ends : ends.origin;
     if (games.size() != root.games()) {
-      throw new IllegalArgumentException(games.size() + " games for hand ends of " + root.games() + " games");
+      throw new IllegalArgumentException(
+          games.size() + " games for hand ends of " + root.games() + " games");
     }
     for (int game = 0; game < games.size(); game++) {
       if (games.get(game).gameId() != root.gameIds[game]) {
@@ -155,44 +168,47 @@ public final class NextHands {
     boolean[] over = new boolean[count];
     byte[] ranksAfter = new byte[count * seats];
     int[] foundCounts = new int[count];
-    ThreadLocal<TransitionSearch> searches = ThreadLocal.withInitial(() -> new TransitionSearch(ends.variant));
-    List<Found> chunks = IntStream.range(0, Math.ceilDiv(count, CHUNK))
-        .parallel()
-        .mapToObj(chunk -> {
-          TransitionSearch search = searches.get();
-          Found found = new Found();
-          int end = Math.min(count, (chunk + 1) * CHUNK);
-          for (int index = chunk * CHUNK; index < end; index++) {
-            int h = ends.sources == null ? index : ends.sources[index];
-            int game = root.game(h);
-            GameRecord record = games.get(game);
-            int next = h - root.firstHand[game] + 1;
-            search.from(root.states[h]);
-            int hits;
-            if (next < record.handEnds().size()) {
-              GrpState state = record.handEnds().get(next);
-              hits = search.next(state);
-              for (int seat = 0; seat < seats; seat++) {
-                ranksAfter[index * seats + seat] = (byte) state.rank(seat);
-              }
-            } else {
-              int[] finalScores = record.finalScores();
-              hits = search.last(finalScores);
-              over[index] = true;
-              for (int seat = 0; seat < seats; seat++) {
-                ranksAfter[index * seats + seat] = (byte) Placement.rank(finalScores, seat);
-              }
-            }
-            kinds[index] = (byte) kind(search, hits).ordinal();
-            int reproducing = search.found();
-            foundCounts[index] = reproducing;
-            for (int k = 0; k < reproducing; k++) {
-              found.add(search.main(k), search.base(k), search.other(k), search.riichi(k));
-            }
-          }
-          return found;
-        })
-        .toList();
+    ThreadLocal<TransitionSearch> searches =
+        ThreadLocal.withInitial(() -> new TransitionSearch(ends.variant));
+    List<Found> chunks =
+        IntStream.range(0, Math.ceilDiv(count, CHUNK))
+            .parallel()
+            .mapToObj(
+                chunk -> {
+                  TransitionSearch search = searches.get();
+                  Found found = new Found();
+                  int end = Math.min(count, (chunk + 1) * CHUNK);
+                  for (int index = chunk * CHUNK; index < end; index++) {
+                    int h = ends.sources == null ? index : ends.sources[index];
+                    int game = root.game(h);
+                    GameRecord record = games.get(game);
+                    int next = h - root.firstHand[game] + 1;
+                    search.from(root.states[h]);
+                    int hits;
+                    if (next < record.handEnds().size()) {
+                      GrpState state = record.handEnds().get(next);
+                      hits = search.next(state);
+                      for (int seat = 0; seat < seats; seat++) {
+                        ranksAfter[index * seats + seat] = (byte) state.rank(seat);
+                      }
+                    } else {
+                      int[] finalScores = record.finalScores();
+                      hits = search.last(finalScores);
+                      over[index] = true;
+                      for (int seat = 0; seat < seats; seat++) {
+                        ranksAfter[index * seats + seat] = (byte) Placement.rank(finalScores, seat);
+                      }
+                    }
+                    kinds[index] = (byte) kind(search, hits).ordinal();
+                    int reproducing = search.found();
+                    foundCounts[index] = reproducing;
+                    for (int k = 0; k < reproducing; k++) {
+                      found.add(search.main(k), search.base(k), search.other(k), search.riichi(k));
+                    }
+                  }
+                  return found;
+                })
+            .toList();
     int[] firstFound = new int[count + 1];
     for (int index = 0; index < count; index++) {
       firstFound[index + 1] = firstFound[index] + foundCounts[index];
@@ -221,7 +237,8 @@ public final class NextHands {
    */
   public static NextHands of(HandEnds ends, CountedHands counted) {
     if (counted.variant() != ends.variant) {
-      throw new IllegalArgumentException("A " + counted.variant() + " count file for " + ends.variant + " hand ends");
+      throw new IllegalArgumentException(
+          "A " + counted.variant() + " count file for " + ends.variant + " hand ends");
     }
     HandEnds root = ends.origin == null ? ends : ends.origin;
     int seats = ends.seats;
@@ -256,8 +273,8 @@ public final class NextHands {
       }
       int hand = first + h - root.firstHand[game] + 1;
       if (!startsAt(counted, hand, root.states[h])) {
-        throw new IllegalArgumentException("Counted hand " + hand + " of game " + gameId + " does not start at "
-            + root.states[h]);
+        throw new IllegalArgumentException(
+            "Counted hand " + hand + " of game " + gameId + " does not start at " + root.states[h]);
       }
       boolean last = hand == first + handEnds;
       over[index] = last;
@@ -370,47 +387,54 @@ public final class NextHands {
    * @return 局末の順に並べた値
    * @throws IllegalArgumentException ネットワークのルールが局末と違うとき
    */
-  double[] logLikelihoods(IntPredicate selected, OutcomeNetwork network, Supplier<OutcomeWorkspace> workspaces) {
+  double[] logLikelihoods(
+      IntPredicate selected, OutcomeNetwork network, Supplier<OutcomeWorkspace> workspaces) {
     if (network.variant() != ends.variant) {
-      throw new IllegalArgumentException("A " + network.variant() + " network for " + ends.variant + " hand ends");
+      throw new IllegalArgumentException(
+          "A " + network.variant() + " network for " + ends.variant + " hand ends");
     }
     HandOutcomes hands = HandOutcomes.of(ends.variant);
     int count = ends.handEnds();
     double[] out = new double[count];
     ThreadLocal<OutcomeWorkspace> locals = ThreadLocal.withInitial(workspaces);
-    IntStream.range(0, Math.ceilDiv(count, CHUNK)).parallel().forEach(chunk -> {
-      OutcomeWorkspace workspace = locals.get();
-      short[] terms = new short[hands.maxTerms()];
-      double[] logs = new double[1];
-      int end = Math.min(count, (chunk + 1) * CHUNK);
-      for (int h = chunk * CHUNK; h < end; h++) {
-        int outcomes = firstFound[h + 1] - firstFound[h];
-        if (outcomes == 0 || !selected.test(h)) {
-          out[h] = Double.NaN;
-          continue;
-        }
-        if (logs.length < outcomes) {
-          logs = new double[2 * outcomes];
-        }
-        network.forward(ends.states[h], workspace);
-        double max = Double.NEGATIVE_INFINITY;
-        for (int k = 0; k < outcomes; k++) {
-          int at = firstFound[h] + k;
-          int written = OutcomeRows.outcomeTerms(hands, mains[at], bases[at], others[at], riichi[at], terms, 0);
-          double log = 0;
-          for (int j = 0; j < written; j++) {
-            log += workspace.term(terms[j]);
-          }
-          logs[k] = log;
-          max = Math.max(max, log);
-        }
-        double total = 0;
-        for (int k = 0; k < outcomes; k++) {
-          total += StrictMath.exp(logs[k] - max);
-        }
-        out[h] = max + StrictMath.log(total);
-      }
-    });
+    IntStream.range(0, Math.ceilDiv(count, CHUNK))
+        .parallel()
+        .forEach(
+            chunk -> {
+              OutcomeWorkspace workspace = locals.get();
+              short[] terms = new short[hands.maxTerms()];
+              double[] logs = new double[1];
+              int end = Math.min(count, (chunk + 1) * CHUNK);
+              for (int h = chunk * CHUNK; h < end; h++) {
+                int outcomes = firstFound[h + 1] - firstFound[h];
+                if (outcomes == 0 || !selected.test(h)) {
+                  out[h] = Double.NaN;
+                  continue;
+                }
+                if (logs.length < outcomes) {
+                  logs = new double[2 * outcomes];
+                }
+                network.forward(ends.states[h], workspace);
+                double max = Double.NEGATIVE_INFINITY;
+                for (int k = 0; k < outcomes; k++) {
+                  int at = firstFound[h] + k;
+                  int written =
+                      OutcomeRows.outcomeTerms(
+                          hands, mains[at], bases[at], others[at], riichi[at], terms, 0);
+                  double log = 0;
+                  for (int j = 0; j < written; j++) {
+                    log += workspace.term(terms[j]);
+                  }
+                  logs[k] = log;
+                  max = Math.max(max, log);
+                }
+                double total = 0;
+                for (int k = 0; k < outcomes; k++) {
+                  total += StrictMath.exp(logs[k] - max);
+                }
+                out[h] = max + StrictMath.log(total);
+              }
+            });
     return out;
   }
 
@@ -452,13 +476,14 @@ public final class NextHands {
     List<KindCount> rows = new ArrayList<>(KINDS.length);
     for (Kind kind : KINDS) {
       int cell = kind.ordinal();
-      rows.add(new KindCount(
-          kind,
-          counts[cell],
-          (double) counts[cell] / total,
-          nextChanged.paired(cell),
-          finalChanged.paired(cell),
-          seatChanged.paired(cell)));
+      rows.add(
+          new KindCount(
+              kind,
+              counts[cell],
+              (double) counts[cell] / total,
+              nextChanged.paired(cell),
+              finalChanged.paired(cell),
+              seatChanged.paired(cell)));
     }
     return rows;
   }
@@ -474,7 +499,10 @@ public final class NextHands {
    * @return 分けた結果
    */
   public KeepSplit keep(
-      HandEndValues candidate, HandEndValues reference, IntPredicate selected, GrpMetrics.SeatFilter filter) {
+      HandEndValues candidate,
+      HandEndValues reference,
+      IntPredicate selected,
+      GrpMetrics.SeatFilter filter) {
     GrpMetrics.requireValues(ends, candidate);
     GrpMetrics.requireValues(ends, reference);
     int seats = ends.seats;
@@ -522,7 +550,11 @@ public final class NextHands {
           keepErrors(candidate, reference, j, x);
           for (int v = 0; v < QUANTITIES; v++) {
             double error = x[v];
-            influence.add(v, error - cells.mean(3 * v) - (represented ? ratio * (error - cells.mean(3 * v + 1)) : 0));
+            influence.add(
+                v,
+                error
+                    - cells.mean(3 * v)
+                    - (represented ? ratio * (error - cells.mean(3 * v + 1)) : 0));
           }
         }
       }
@@ -530,11 +562,13 @@ public final class NextHands {
     }
     Split[] splits = new Split[QUANTITIES];
     for (int v = 0; v < QUANTITIES; v++) {
-      splits[v] = new Split(
-          cells.paired(3 * v),
-          cells.paired(3 * v + 1),
-          cells.paired(3 * v + 2),
-          new Paired(cells.mean(3 * v) - cells.mean(3 * v + 1), Math.sqrt(influence.variance(v))));
+      splits[v] =
+          new Split(
+              cells.paired(3 * v),
+              cells.paired(3 * v + 1),
+              cells.paired(3 * v + 2),
+              new Paired(
+                  cells.mean(3 * v) - cells.mean(3 * v + 1), Math.sqrt(influence.variance(v))));
     }
     return new KeepSplit(
         (long) cells.count(0),

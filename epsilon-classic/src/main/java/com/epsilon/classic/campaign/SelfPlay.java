@@ -22,7 +22,8 @@ final class SelfPlay implements Collector {
   private final TableLoop table;
   private final GrpNetwork grp;
 
-  private SelfPlay(ClassicSettings machine, NetworkRuntime runtime, TableLoop table, GrpNetwork grp) {
+  private SelfPlay(
+      ClassicSettings machine, NetworkRuntime runtime, TableLoop table, GrpNetwork grp) {
     this.machine = machine;
     this.runtime = runtime;
     this.table = table;
@@ -34,14 +35,18 @@ final class SelfPlay implements Collector {
    *
    * @throws IllegalArgumentException GRP のチェックポイントがネットワークの GRP でないとき
    */
-  static Collector open(ClassicSettings machine, NetworkRuntime runtime, TableLoop table) throws IOException {
+  static Collector open(ClassicSettings machine, NetworkRuntime runtime, TableLoop table)
+      throws IOException {
     Path path = machine.run().grp();
     GrpNetwork grp = null;
     if (path != null) {
       GrpModel model = GrpCheckpoint.read(path);
       if (!(model instanceof GrpNetwork network)) {
         throw new IllegalArgumentException(
-            "The self-play GRP run.grp " + path + " must be a network GRP, not " + model.getClass().getSimpleName());
+            "The self-play GRP run.grp "
+                + path
+                + " must be a network GRP, not "
+                + model.getClass().getSimpleName());
       }
       grp = network;
     }
@@ -55,14 +60,19 @@ final class SelfPlay implements Collector {
         new Collect(
             settings.run().variant(),
             macro.seed(),
-            new Collect.Settings(settings.schedule().games(), settings.selfPlay().championProbability()),
+            new Collect.Settings(
+                settings.schedule().games(), settings.selfPlay().championProbability()),
             settings.explore(),
             grp,
             options(machine, settings),
             runtime);
     Collect.Result result =
         collect.macro(
-            table, macro.number(), macro.learner(), new OpponentPool(macro.champion(), macro.pool()), macro.calibration());
+            table,
+            macro.number(),
+            macro.learner(),
+            new OpponentPool(macro.champion(), macro.pool()),
+            macro.calibration());
     return new Collected(result.trajectories(), result.calibration(), result.opponent());
   }
 
@@ -80,6 +90,9 @@ final class SelfPlay implements Collector {
   static PolicyOptions options(ClassicSettings machine, ClassicSettings settings) {
     InferenceSettings inference = machine.inference();
     return new PolicyOptions(
-        inference.devices().getFirst(), settings.inference().precision(), inference.maxBatch(), inference.kernels());
+        inference.devices().getFirst(),
+        settings.inference().precision(),
+        inference.maxBatch(),
+        inference.kernels());
   }
 }

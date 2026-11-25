@@ -31,7 +31,8 @@ public record Evaluation(float[] probabilities, float[] values, int greedy) {
     }
     if (values != null) {
       if (values.length != probabilities.length) {
-        throw new IllegalArgumentException(values.length + " values for " + probabilities.length + " probabilities");
+        throw new IllegalArgumentException(
+            values.length + " values for " + probabilities.length + " probabilities");
       }
       for (float value : values) {
         if (!Float.isFinite(value)) {
@@ -40,7 +41,8 @@ public record Evaluation(float[] probabilities, float[] values, int greedy) {
       }
     }
     if (greedy < 0 || greedy >= probabilities.length) {
-      throw new IllegalArgumentException("Greedy action " + greedy + " is not among " + probabilities.length);
+      throw new IllegalArgumentException(
+          "Greedy action " + greedy + " is not among " + probabilities.length);
     }
   }
 }

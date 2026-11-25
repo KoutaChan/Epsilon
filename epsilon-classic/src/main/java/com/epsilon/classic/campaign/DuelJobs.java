@@ -60,7 +60,8 @@ final class DuelJobs {
 
     /** @return 牌山ごとの、判定に使う量の候補が良い向きの値（牌山の番号の順） */
     double[] values() throws IOException {
-      return WallValues.of(setup, DurableFiles.lines(home.resolve(JobOutputs.GAMES))).better(setup.score());
+      return WallValues.of(setup, DurableFiles.lines(home.resolve(JobOutputs.GAMES)))
+          .better(setup.score());
     }
   }
 
@@ -102,7 +103,8 @@ final class DuelJobs {
    */
   static DuelSetup.Entrant outside(String spec) throws IOException {
     Series.Spec parsed = Series.parse(spec);
-    String sha256 = parsed.series().checkpointed() ? CheckpointFiles.sha256(parsed.checkpoint()) : null;
+    String sha256 =
+        parsed.series().checkpointed() ? CheckpointFiles.sha256(parsed.checkpoint()) : null;
     return new DuelSetup.Entrant(spec, parsed.series().label(parsed.checkpoint()), null, sha256);
   }
 
@@ -112,7 +114,11 @@ final class DuelJobs {
    * @param wallSeed 牌山の種の素
    */
   static DuelSetup setup(
-      DuelMacro macro, TableSpec table, DuelSetup.Entrant candidate, DuelSetup.Entrant opponent, long wallSeed)
+      DuelMacro macro,
+      TableSpec table,
+      DuelSetup.Entrant candidate,
+      DuelSetup.Entrant opponent,
+      long wallSeed)
       throws IOException {
     Variant variant = macro.variant();
     return DuelSetup.of(
@@ -141,7 +147,8 @@ final class DuelJobs {
    * @throws Halted チャンクの後の安全点で止まると決めた
    * @throws IllegalStateException ジョブが、ほかの候補か、ほかの相手・牌山で計画してある
    */
-  static Optional<Played> play(DuelMacro macro, Path directory, JobFile job, DuelSetup setup) throws Exception {
+  static Optional<Played> play(DuelMacro macro, Path directory, JobFile job, DuelSetup setup)
+      throws Exception {
     Jobs jobs = jobs(directory);
     jobs.create(job);
     JobFile current = jobs.read(job.name());
@@ -149,9 +156,19 @@ final class DuelJobs {
       DuelSetup planned = planned(current);
       if (!planned.candidate().equals(setup.candidate()) || !planned.pairsWith(setup)) {
         throw new IllegalStateException(
-            "Job " + job.name() + " in " + directory + " was planned for " + planned.candidate().label() + " against "
-                + planned.opponent().label() + ", not for " + setup.candidate().label() + " against "
-                + setup.opponent().label() + " on the same walls; rename the table to measure anew");
+            "Job "
+                + job.name()
+                + " in "
+                + directory
+                + " was planned for "
+                + planned.candidate().label()
+                + " against "
+                + planned.opponent().label()
+                + ", not for "
+                + setup.candidate().label()
+                + " against "
+                + setup.opponent().label()
+                + " on the same walls; rename the table to measure anew");
       }
     }
     if (current.open()) {
@@ -163,12 +180,15 @@ final class DuelJobs {
     }
     Path home = directory.resolve(job.name());
     return switch (current.state()) {
-      case DONE -> Optional.of(new Played(planned(current), Jobs.result(home, DuelResult.class), home));
+      case DONE ->
+          Optional.of(new Played(planned(current), Jobs.result(home, DuelResult.class), home));
       case FAILED -> {
-        LOG.warn("{} FAILED after {} attempts: {}", job.name(), current.attempts(), current.reason());
+        LOG.warn(
+            "{} FAILED after {} attempts: {}", job.name(), current.attempts(), current.reason());
         yield Optional.empty();
       }
-      case PENDING, RUNNING -> throw new IllegalStateException("Job " + job.name() + " is still " + current.state());
+      case PENDING, RUNNING ->
+          throw new IllegalStateException("Job " + job.name() + " is still " + current.state());
     };
   }
 
@@ -185,7 +205,9 @@ final class DuelJobs {
           new StopRule.Precision(precision.error(), precision.alpha(), precision.checkEvery());
       case StopSettings.Test test ->
           new StopRule.Test(
-              new Sequential(test.alpha(), test.spending(), test.checkEvery()), test.evenMargin(), test.evenMargin());
+              new Sequential(test.alpha(), test.spending(), test.checkEvery()),
+              test.evenMargin(),
+              test.evenMargin());
     };
   }
 
@@ -206,7 +228,11 @@ final class DuelJobs {
     String actual = CheckpointFiles.sha256(spec.checkpoint());
     if (!actual.equals(entrant.sha256())) {
       throw new IOException(
-          "The checkpoint " + spec.checkpoint() + " has SHA-256 " + actual + ", but the duel was planned with "
+          "The checkpoint "
+              + spec.checkpoint()
+              + " has SHA-256 "
+              + actual
+              + ", but the duel was planned with "
               + entrant.sha256());
     }
   }

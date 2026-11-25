@@ -30,7 +30,11 @@ public class CandidateSetTest {
   @Test
   public void allActionsCoversEveryLegalAction() {
     int[] legal = {
-      dahai(M5), Action.discard(M5, false, true, false), dahai(M1), Action.discard(M1, false, false, true), dahai(M2)
+      dahai(M5),
+      Action.discard(M5, false, true, false),
+      dahai(M1),
+      Action.discard(M1, false, false, true),
+      dahai(M2)
     };
     for (int played = 0; played < legal.length; played++) {
       CandidateSet all = CandidateSet.allActions(legal, played);
@@ -40,7 +44,8 @@ public class CandidateSetTest {
       for (int a = 0; a < legal.length; a++) {
         int action = a;
         Assert.assertTrue(
-            Arrays.stream(all.support()).anyMatch(c -> Twins.same(legal, c, action)), "action " + a);
+            Arrays.stream(all.support()).anyMatch(c -> Twins.same(legal, c, action)),
+            "action " + a);
       }
       Assert.assertFalse(all.explored());
     }
@@ -55,7 +60,8 @@ public class CandidateSetTest {
     SeatFacts facts = new SeatFacts(Variant.TENHOU_4P);
     Random random = new Random(3);
     int threatened = 0, outside = 0;
-    for (ObservedDecisions.Decision decision : ObservedDecisions.collect(29, 2, TableWalk.Policy.GREEDY, 5_000)) {
+    for (ObservedDecisions.Decision decision :
+        ObservedDecisions.collect(29, 2, TableWalk.Policy.GREEDY, 5_000)) {
       Observation o = decision.observation();
       int[] legal = decision.legal();
       int n = legal.length;
@@ -67,9 +73,11 @@ public class CandidateSetTest {
       facts.load(o);
       int threats = Threats.count(o, facts);
       if (threats > 0) threatened++;
-      CandidateSet built = CandidateSet.build(o, legal, scores, prior, threats, 0, 6, 0.1, 0.9, 0.5);
+      CandidateSet built =
+          CandidateSet.build(o, legal, scores, prior, threats, 0, 6, 0.1, 0.9, 0.5);
       CandidateSet again =
-          CandidateSet.build(decision.observation(), legal, scores, prior, threats, 0, 6, 0.1, 0.9, 0.5);
+          CandidateSet.build(
+              decision.observation(), legal, scores, prior, threats, 0, 6, 0.1, 0.9, 0.5);
       Assert.assertEquals(again.support(), built.support());
       Assert.assertEquals(again.measured(), built.measured());
       Assert.assertFalse(built.explored());
@@ -80,10 +88,12 @@ public class CandidateSetTest {
         Assert.assertTrue(covered(legal, built.support(), regimes[r]), "the first regime");
       for (int played = 0; played < n; played++) {
         if (covered(legal, built.support(), played)) continue;
-        CandidateSet off = CandidateSet.build(o, legal, scores, prior, threats, played, 6, 0.1, 0.9, 0.5);
+        CandidateSet off =
+            CandidateSet.build(o, legal, scores, prior, threats, played, 6, 0.1, 0.9, 0.5);
         // 同値な手のどれが代表になるかは打った手で替わる（0 を打てば、0 と同値な手の代表は 0）ので、同値な手は同じと見て比べる
         Assert.assertEquals(off.support().length, built.support().length);
-        for (int c : off.support()) Assert.assertTrue(covered(legal, built.support(), c), "candidate " + c);
+        for (int c : off.support())
+          Assert.assertTrue(covered(legal, built.support(), c), "candidate " + c);
         Assert.assertFalse(off.playedInside(played));
         int[] measured = Arrays.copyOf(off.support(), off.support().length + 1);
         measured[measured.length - 1] = played;
@@ -139,9 +149,11 @@ public class CandidateSetTest {
         new int[] {1, 2, 0, 3});
     // 返すのは、渡した手の配列の中のインデックス
     Assert.assertEquals(
-        CandidateSet.ranking(new int[] {4, 1}, new float[] {0f, 0.3f, 0f, 0f, 0.7f}), new int[] {0, 1});
+        CandidateSet.ranking(new int[] {4, 1}, new float[] {0f, 0.3f, 0f, 0f, 0.7f}),
+        new int[] {0, 1});
     Assert.assertEquals(
-        CandidateSet.ranking(new int[] {0, 1, 2, 3}, new float[4], new float[] {0.1f, 0.4f, 0.1f, 0.4f}),
+        CandidateSet.ranking(
+            new int[] {0, 1, 2, 3}, new float[4], new float[] {0.1f, 0.4f, 0.1f, 0.4f}),
         new int[] {1, 3, 0, 2});
     Assert.assertEquals(Greedy.argmax(new float[4], new float[] {0.1f, 0.2f, 0.4f, 0.3f}, 4), 2);
   }

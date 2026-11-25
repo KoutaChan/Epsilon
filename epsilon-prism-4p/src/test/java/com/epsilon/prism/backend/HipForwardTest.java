@@ -1,23 +1,30 @@
 package com.epsilon.prism.backend;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
-import ai.djl.pytorch.engine.PtStream;
 import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.Precision;
-import com.epsilon.prism.hip.HipBatch;
-import com.epsilon.prism.hip.HipKernel;
-import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.HipPlan;
-import com.epsilon.prism.hip.HipRegion;
 import com.epsilon.prism.input.HostBatch;
-import com.epsilon.prism.input.InputBlob.Axis;
+import com.epsilon.prism.input.InputBlob.RowColumn;
 import com.epsilon.prism.input.InputFormat.Role;
+import com.epsilon.prism.kernel.InputSection;
+import com.epsilon.prism.kernel.PackedWeightLayout;
+import com.epsilon.prism.kernel.PackedWeights;
+import com.epsilon.prism.kernel.TokenGroup;
+import com.epsilon.prism.kernel.WeightField;
+import com.epsilon.prism.learn.CohortStore;
 import com.epsilon.prism.model.EagerStages;
+import com.epsilon.prism.model.NetworkInputs;
 import com.epsilon.prism.model.PrismNetwork;
-import com.epsilon.prism4p.input.InputSchema;
+import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.ShapeArm;
+import com.epsilon.prism.run.Snapshot;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -27,10 +34,12 @@ import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * 通しの順伝播のテスト（rocm のグループ。GPU 1 枚）。形は全てのアームで試す（{@link HipFixtures.Arm}、システムプロパティで絞れる）。
+ * 製品の入口（{@link NativeLane}）で通しの順伝播を確かめる（rocm のグループ。GPU 1 枚）。形は全てのアームで試す
+ * （{@link HipFixtures.Arm}、システムプロパティで絞れる）。
  *
  * <ul>
  *   <li>HIP の s を、eager の s（CPU の BF16 と FP32）と CPU の参照の s と比べる。差の中央値・p99・最大、手の種類ごとの符号つきの平均、
@@ -39,8 +48,8 @@ import org.testng.annotations.Test;
  *       {@value HipParity#ARGMAX_LIMIT} 以上（{@link #argmax}）
  *   <li>公開イベントが 90 を超える行（T > 128）のバッチでも同じことを確かめる（ログの行の先頭は「PRISM-HIP-T5 long」）
  *   <li>同じバッチを 2 回流すと s がビット単位で同じ。行を混ぜ、前に別の行を足してバッチを組み直しても、同じ行の s がビット単位で同じ
- *   <li>初期化したままのネットワークでは s が全て +0.0f。バージョンが違えば例外
- *   <li>1 判断あたりの GPU の時間（カーネルごと、本番の形の 2048 行のバッチ）
+ *   <li>初期化したままのネットワークでは s が全て +0.0f。前の世代で準備した提出は、次の世代を公開した後には通らない
+ *   <li>新しい重みの項目のどれかに NaN がある重みは公開できず、前の重みのまま s が変わらない
  * </ul>
  */
 @Test(groups = "rocm")
@@ -48,9 +57,6 @@ public class HipForwardTest {
   private static final Logger log = LoggerFactory.getLogger(HipForwardTest.class);
 
   private static final int BATCHES = 8;
-  private static final int SPEED_ROWS = 2048;
-  private static final int WARMUP = 5;
-  private static final int ITERATIONS = 20;
   private static final double EAGER_LIMIT = 4e-2;
   private static final double FP32_LIMIT = 1e-1;
   private static final double REFERENCE_LIMIT = 2e-2;
@@ -61,182 +67,264 @@ public class HipForwardTest {
   /** s と argmax の一致を確かめる（全てのアーム、24 行 × 8 バッチ）。eager は CPU で動かす。 */
   public void scoresMatchEager() {
     List<String> failures = new ArrayList<>();
-    eachArm(failures, HipFixtures.Arm.selected(), arm -> {
-      try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-          PtStream stream = GpuCase.newStream()) {
-        PrismNetwork network = HipFixtures.network(manager, arm.shape(), 50 + arm.ordinal());
-        ParameterStore store = new ParameterStore(manager, false);
-        WeightLayout layout = WeightLayout.of(network);
-        WeightPack pack = WeightPack.build(layout, network, 3);
-        Scores scores = new Scores();
-        try (HipBackend backend = HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(GpuCase.ROWS))) {
-          backend.publish(pack);
-          for (int b = 0; b < BATCHES; b++) {
-            HostBatch batch =
-                HipFixtures.encode(HipFixtures.mixedRows(GpuCase.ROWS, 600 + 100L * arm.ordinal() + 13L * b));
-            float[] s = backend.forward(batch, 3);
-            EagerStages.Stages eager = scores.add(s, network, store, manager, pack, batch);
-            if (b == 0) {
-              trace(backend.plan(), eager, arm.label() + " vs eager BF16", layout.architecture().counts().fixed()
-                  * batch.plan().rows(), batch.plan().count(Axis.TRANSITION));
+    eachArm(
+        failures,
+        HipFixtures.Arm.selected(),
+        arm -> {
+          try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+            PrismNetwork network = HipFixtures.network(manager, arm.shape(), 50 + arm.ordinal());
+            ParameterStore store = new ParameterStore(manager, false);
+            WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 3);
+            Scores scores = new Scores();
+            try (NativeLane lane =
+                NativeLane.open(network, Device.gpu(0), GpuCase.capacity(GpuCase.ROWS), 3)) {
+              for (int b = 0; b < BATCHES; b++) {
+                HostBatch batch =
+                    HipFixtures.encode(
+                        HipFixtures.mixedRows(GpuCase.ROWS, 600 + 100L * arm.ordinal() + 13L * b));
+                scores.add(lane.forward(batch), network, store, manager, pack, batch);
+              }
+              log.info(
+                  "PRISM-HIP-T5 arm {} largest score differences vs eager BF16:{}",
+                  arm.label(),
+                  largest(scores.hip(), scores.bf16(), join(scores.actions), 8));
             }
+            scores.check(failures, arm.label(), "");
           }
-          log.info("PRISM-HIP-T5 arm {} largest score differences vs eager BF16:{}", arm.label(),
-              largest(scores.hip(), scores.bf16(), join(scores.actions), 8));
-        }
-        scores.check(failures, arm.label(), "");
-      }
-    });
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
   /**
    * 普通の行 2 つと、公開イベントが 90 を超える行 {@value #LONG_ROWS} 個からなるバッチの s を確かめる（全てのアーム）。行のトークンが 128 を
-   * 超えるので、K2・K4 は 10 ウェーブ構成のカーネルを通る（普通の行はほかの構成のカーネル）。argmax は長い行だけでも数える。
+   * 超えるので、全トークンと固定トークンの Attention は 10 ウェーブ構成のカーネルを通る（普通の行はほかの構成のカーネル）。argmax は長い行だけでも数える。
    */
   public void longRowsMatchEager() {
     List<long[]> rows = new ArrayList<>(HipFixtures.mixedRows(2, 900));
     rows.addAll(HipFixtures.longRows(LONG_ROWS));
     List<String> failures = new ArrayList<>();
-    eachArm(failures, HipFixtures.Arm.selected(), arm -> {
-      try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-          PtStream stream = GpuCase.newStream()) {
-        PrismNetwork network = HipFixtures.network(manager, arm.shape(), 90 + arm.ordinal());
-        ParameterStore store = new ParameterStore(manager, false);
-        WeightLayout layout = WeightLayout.of(network);
-        WeightPack pack = WeightPack.build(layout, network, 6);
-        HostBatch batch = HipFixtures.encode(rows);
-        Scores scores = new Scores();
-        try (HipBackend backend = HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(rows.size()))) {
-          backend.publish(pack);
-          scores.add(backend.forward(batch, 6), network, store, manager, pack, batch);
-        }
-        scores.check(failures, arm.label(), "long ");
-        HipParity.Actions longOnly = subset(HipParity.Actions.of(batch), 2, rows.size());
-        HipParity.Report report = HipParity.compare(scores.hip(), scores.bf16(), longOnly);
-        log.info("PRISM-HIP-T5 long-only arm {} HIP vs eager BF16 (CPU): {} flips: {}", arm.label(), report.summary(),
-            flips(scores.hip(), scores.bf16(), longOnly));
-        argmax(failures, "long-only " + arm.label(), scores.hip(), scores.bf16(), scores.fp32(), longOnly);
-      }
-    });
+    eachArm(
+        failures,
+        HipFixtures.Arm.selected(),
+        arm -> {
+          try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+            PrismNetwork network = HipFixtures.network(manager, arm.shape(), 90 + arm.ordinal());
+            ParameterStore store = new ParameterStore(manager, false);
+            WeightPack pack = WeightPack.build(WeightLayout.of(network), network, 6);
+            HostBatch batch = HipFixtures.encode(rows);
+            Scores scores = new Scores();
+            try (NativeLane lane =
+                NativeLane.open(network, Device.gpu(0), GpuCase.capacity(rows.size()), 6)) {
+              scores.add(lane.forward(batch), network, store, manager, pack, batch);
+            }
+            scores.check(failures, arm.label(), "long ");
+            HipParity.Actions longOnly = subset(HipParity.Actions.of(batch), 2, rows.size());
+            HipParity.Report report = HipParity.compare(scores.hip(), scores.bf16(), longOnly);
+            log.info(
+                "PRISM-HIP-T5 long-only arm {} HIP vs eager BF16 (CPU): {} flips: {}",
+                arm.label(),
+                report.summary(),
+                flips(scores.hip(), scores.bf16(), longOnly));
+            argmax(
+                failures,
+                "long-only " + arm.label(),
+                scores.hip(),
+                scores.bf16(),
+                scores.fp32(),
+                longOnly);
+          }
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
   }
 
-  /** 同じバッチを 2 回流すと s がビット単位で同じ。行を混ぜ、前に別の行を足してバッチを組み直しても、同じ行の s がビット単位で同じ（全てのアーム）。 */
-  public void rebatchingKeepsRowScoresBitwise() {
+  /** 同じ行の各合法手のビット列は、行の順序、直前のバッチの長さ、レーン（ストリーム）に依存しない。 */
+  @Test(groups = "rocm", dataProvider = "scoreShapes", dataProviderClass = HipFixtures.class)
+  public void rebatchingKeepsRowScoresBitwise(PrismShape shape) {
     List<long[]> rows = HipReferenceTest.mixedRows(GpuCase.ROWS);
-    List<long[]> other = HipFixtures.simulatedRows(GpuCase.ROWS, 700);
     List<long[]> shuffled = new ArrayList<>(rows);
     Collections.shuffle(shuffled, new Random(9));
-    List<long[]> prefixed = new ArrayList<>(other.subList(0, 7));
-    prefixed.addAll(shuffled);
-    List<String> failures = new ArrayList<>();
-    eachArm(failures, HipFixtures.Arm.selected(), arm -> {
-      try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-          PtStream stream = GpuCase.newStream()) {
-        PrismNetwork network = HipFixtures.network(manager, arm.shape(), 61 + arm.ordinal());
-        WeightLayout layout = WeightLayout.of(network);
-        WeightPack pack = WeightPack.build(layout, network, 4);
-        try (HipBackend backend = HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(4 * GpuCase.ROWS))) {
-          backend.publish(pack);
-          HostBatch first = HipFixtures.encode(rows);
-          HostBatch second = HipFixtures.encode(prefixed);
-          float[] a = backend.forward(first, 4);
-          float[] b = backend.forward(second, 4);
-          float[] again = backend.forward(first, 4);
-          Assert.assertTrue(HipParity.bitwiseEqual(a, again), arm.label() + ": two runs of one batch differ");
-          int compared = 0;
+    List<long[]> longer = new ArrayList<>(HipFixtures.longRows(7));
+    longer.addAll(shuffled);
+    HostBatch first = HipFixtures.encode(rows);
+    HostBatch second = HipFixtures.encode(shuffled);
+    HostBatch longBatch = HipFixtures.encode(longer);
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+      PrismNetwork network = HipFixtures.network(manager, shape, 61);
+      float[] eager =
+          EagerStages.scores(
+              network,
+              new ParameterStore(manager, false),
+              EagerStages.inputs(manager, first),
+              Precision.BFLOAT16);
+      float[] expected = null;
+      for (int lane = 0; lane < 2; lane++) {
+        try (NativeLane backend =
+            NativeLane.open(network, Device.gpu(0), GpuCase.capacity(longer.size()), 4)) {
+          float[] original = backend.forward(first);
+          if (expected == null) {
+            Diff diff = Diff.fp32(eager, original);
+            Assert.assertTrue(diff.relativeRms() <= EAGER_LIMIT, diff.line(shape.toString()));
+            expected = original;
+          }
+          Assert.assertTrue(HipParity.bitwiseEqual(original, expected), "lane scores differ");
+          float[] reordered = backend.forward(second);
+          backend.forward(longBatch);
           for (int r = 0; r < rows.size(); r++) {
-            int s = prefixed.indexOf(rows.get(r));
-            for (int k = 0; k < HipFixtures.actions(first, r); k++) {
+            int firstAction = HipFixtures.firstAction(first, r);
+            int moved = HipFixtures.firstAction(second, shuffled.indexOf(rows.get(r)));
+            float[] alone = backend.forward(HipFixtures.encode(List.of(rows.get(r))));
+            Assert.assertEquals(alone.length, HipFixtures.actions(first, r));
+            for (int k = 0; k < alone.length; k++) {
+              int bits = Float.floatToRawIntBits(expected[firstAction + k]);
               Assert.assertEquals(
-                  Float.floatToRawIntBits(b[HipFixtures.firstAction(second, s) + k]),
-                  Float.floatToRawIntBits(a[HipFixtures.firstAction(first, r) + k]),
-                  arm.label() + " row " + r + " action " + k);
-              compared++;
+                  Float.floatToRawIntBits(reordered[moved + k]), bits, "shuffled row " + r);
+              Assert.assertEquals(Float.floatToRawIntBits(alone[k]), bits, "single row " + r);
             }
           }
-          log.info("PRISM-HIP-T5 rebatch arm {}: {} scores bitwise equal, two runs bitwise equal", arm.label(), compared);
+          Assert.assertTrue(
+              HipParity.bitwiseEqual(backend.forward(first), expected), "repeated scores differ");
         }
       }
-    });
-    Assert.assertTrue(failures.isEmpty(), failures.toString());
+    }
   }
 
-  /** 初期化したままのネットワークでは s が全て +0.0f。古いバージョンで forward すると例外になる（全てのアーム）。 */
+  @DataProvider
+  public Object[][] v4KernelArms() {
+    return new Object[][] {
+      {"V4_S", new PrismShape.V4()},
+      {"V4_M", new PrismShape.V4(384)},
+      {"V4_S_BIDIRECTIONAL", com.epsilon.prism.model.ModelShapes.bidirectional(256)},
+      {"V4_M_BIDIRECTIONAL", com.epsilon.prism.model.ModelShapes.bidirectional(384)}
+    };
+  }
+
+  @Test(groups = "rocm", dataProvider = "v4KernelArms")
+  public void v4KernelScoresMatchEager(String arm, PrismShape.V4 shape) throws IOException {
+    List<long[]> rows = new ArrayList<>(HipFixtures.mixedRows(24, 800));
+    rows.addAll(HipFixtures.longRows(2));
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu());
+        NDManager eager = NDManager.newBaseManager(Device.gpu(0), "PyTorch")) {
+      PrismNetwork random = HipFixtures.network(manager, shape, 76);
+      checkV4KernelScores(arm + "/random", random, eager, rows);
+      String checkpoints = System.getProperty("prism.v4.checkpoints");
+      if (checkpoints != null) {
+        Path checkpoint = Path.of(checkpoints, arm);
+        PrismNetwork trained = PrismNetwork.load(checkpoint, manager);
+        Assert.assertEquals(trained.shape(), shape);
+        checkV4KernelScores(arm + "/trained", trained, eager, rows);
+      }
+    }
+  }
+
+  @Test(groups = "rocm")
+  public void v4DepthThreeScoresMatchEager() {
+    List<long[]> rows = HipFixtures.longMixedRows();
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu());
+        NDManager eager = NDManager.newBaseManager(Device.gpu(0), "PyTorch")) {
+      for (int hidden : new int[] {256, 384}) {
+        var shape = new PrismShape.V4(hidden, 2 * hidden, 3, PrismShape.EventAttention.CAUSAL);
+        checkV4KernelScores(
+            "V4/" + hidden + "/depth3", HipFixtures.network(manager, shape, 77), eager, rows);
+      }
+    }
+  }
+
+  private static void checkV4KernelScores(
+      String label, PrismNetwork network, NDManager eager, List<long[]> rows) {
+    HostBatch host = HipFixtures.encode(rows, network.shape());
+    try (NativeLane lane =
+        NativeLane.open(network, Device.gpu(0), GpuCase.capacity(rows.size()), 2)) {
+      float[] hip = lane.forward(host);
+      try (NDManager work = eager.newSubManager()) {
+        float[] reference =
+            EagerStages.scores(
+                network,
+                new ParameterStore(work, false),
+                EagerStages.inputs(work, host),
+                Precision.BFLOAT16);
+        Diff diff = Diff.fp32(reference, hip);
+        HipParity.Report report = HipParity.compare(hip, reference, HipParity.Actions.of(host));
+        log.info("PRISM-V4-PARITY {} {} {}", label, diff.line("scores"), report.summary());
+        Assert.assertTrue(diff.relativeRms() <= EAGER_LIMIT, diff.line(label));
+      }
+    }
+  }
+
+  /** 行のイベントの範囲が壊れた入力は提出の前に拒み、拒んだ後も同じレーンで正しい s を返す。 */
+  public void validatesRowEventSpans() {
+    HostBatch host = HipFixtures.encode(HipFixtures.longRows(6));
+    ReferenceBatch batch = HipReference.batchOf(host);
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+      PrismNetwork network = HipFixtures.network(manager, ShapeArm.V3.shape(), 72);
+      WeightLayout layout = WeightLayout.of(network);
+      try (NativeLane backend =
+          NativeLane.open(network, Device.gpu(0), GpuCase.capacity(batch.rows()), 1)) {
+        float[] expected = backend.forward(host);
+        int row =
+            Math.toIntExact(batch.offset(InputSection.ROW_COLUMN))
+                + (batch.rows() - 1)
+                    * layout.header().sectionWidth(InputSection.ROW_COLUMN)
+                    * Integer.BYTES;
+        int first = row + RowColumn.FIRST_EVENT.ordinal() * Integer.BYTES;
+        int count = row + RowColumn.EVENTS.ordinal() * Integer.BYTES;
+        ByteBuffer blob = host.blob();
+        int savedFirst = blob.getInt(first);
+        int savedCount = blob.getInt(count);
+        int limit = layout.architecture().counts().maxEvents();
+        Assert.assertTrue(batch.events() > limit);
+        for (int[] span :
+            new int[][] {
+              {0, -1},
+              {-1, 0},
+              {0, limit + 1},
+              {batch.events(), 1},
+              {batch.events() + 1, 0},
+              {Integer.MAX_VALUE, 2},
+              {1, Integer.MAX_VALUE}
+            }) {
+          blob.putInt(first, span[0]).putInt(count, span[1]);
+          Assert.expectThrows(IllegalArgumentException.class, () -> backend.forward(host));
+        }
+        blob.putInt(first, batch.events()).putInt(count, 0);
+        backend.forward(host);
+        blob.putInt(first, savedFirst).putInt(count, savedCount);
+        Assert.assertTrue(HipParity.bitwiseEqual(backend.forward(host), expected));
+      }
+    }
+  }
+
+  /** 初期化したままのネットワークでは s が全て +0.0f。前の世代で準備した提出は、次の世代を公開した後には通らない（全てのアーム）。 */
   public void blankScoresZeroAndStaleVersionsFail() {
     List<String> failures = new ArrayList<>();
-    eachArm(failures, HipFixtures.Arm.selected(), arm -> {
-      try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-          PtStream stream = GpuCase.newStream()) {
-        manager.getEngine().setRandomSeed(7);
-        PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, arm.shape());
-        network.initialize(manager);
-        WeightLayout layout = WeightLayout.of(network);
-        try (HipBackend backend = HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(GpuCase.ROWS))) {
-          backend.publish(WeightPack.build(layout, network, 0));
-          HostBatch batch = HipFixtures.encode(HipReferenceTest.mixedRows(GpuCase.ROWS));
-          float[] s = backend.forward(batch, 0);
-          for (int a = 0; a < s.length; a++) {
-            Assert.assertEquals(Float.floatToRawIntBits(s[a]), 0, arm.label() + " blank score " + a + " = " + s[a]);
+    eachArm(
+        failures,
+        HipFixtures.Arm.selected(),
+        arm -> {
+          try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
+            manager.getEngine().setRandomSeed(7);
+            PrismNetwork network = new PrismNetwork(FOUR_PLAYER, arm.shape());
+            network.initialize(manager);
+            try (NativeLane lane =
+                NativeLane.open(network, Device.gpu(0), GpuCase.capacity(GpuCase.ROWS), 0)) {
+              HostBatch batch = HipFixtures.encode(HipReferenceTest.mixedRows(GpuCase.ROWS));
+              float[] s = lane.forward(batch);
+              for (int a = 0; a < s.length; a++) {
+                Assert.assertEquals(
+                    Float.floatToRawIntBits(s[a]),
+                    0,
+                    arm.label() + " blank score " + a + " = " + s[a]);
+              }
+              Runnable stale = lane.prepare(batch, NativeLane.scores(batch), null);
+              lane.publish(network, 1);
+              Assert.expectThrows(IllegalStateException.class, stale::run);
+              log.info(
+                  "PRISM-HIP-T5 blank arm {}: {} scores are +0.0f; stale generation rejected",
+                  arm.label(),
+                  s.length);
+            }
           }
-          Assert.expectThrows(IllegalStateException.class, () -> backend.forward(batch, 1));
-          log.info("PRISM-HIP-T5 blank arm {}: {} scores are +0.0f; stale version rejected", arm.label(), s.length);
-        }
-      }
-    });
+        });
     Assert.assertTrue(failures.isEmpty(), failures.toString());
-  }
-
-  /** 1 判断あたりの GPU の時間を測る（全てのアーム）。バッチは模擬の半荘の 2048 行で、アームごとに 1 行をログに書く。 */
-  public void measureSpeed() {
-    List<String> failures = new ArrayList<>();
-    HostBatch batch = HipFixtures.encode(HipFixtures.simulatedRows(SPEED_ROWS, 800));
-    eachArm(failures, HipFixtures.Arm.selected(), arm -> {
-      try (NDManager manager = NDManager.newBaseManager(Device.cpu());
-          PtStream stream = GpuCase.newStream()) {
-        PrismNetwork network = HipFixtures.network(manager, arm.shape(), 70 + arm.ordinal());
-        WeightLayout layout = WeightLayout.of(network);
-        WeightPack pack = WeightPack.build(layout, network, 5);
-        int rows = batch.plan().rows();
-        try (HipBackend backend = HipBackend.open(HipLibrary.load(), stream, layout, GpuCase.capacity(rows))) {
-          backend.publish(pack);
-          measure(backend, batch.blob(), HipBackend.batchOf(batch), pack.version(), arm.label());
-        }
-      }
-    });
-    Assert.assertTrue(failures.isEmpty(), failures.toString());
-  }
-  /**
-   * 通しの順伝播の後の作業領域（y、Cross-Attention のキーとバリュー、z、B）を各段の値と比べてログに書く。通しの s の差が、どの段で
-   * 大きくなるかを見るため。
-   *
-   * @param plan 順伝播を実行した計画
-   * @param expected 同じバッチの各段の値
-   * @param label ログの行の名前
-   * @param fixedTokens 局・席・牌のトークンの数 F·R
-   * @param transitions 遷移の数
-   */
-  private static void trace(HipPlan plan, EagerStages.Stages expected, String label, int fixedTokens, int transitions) {
-    int hidden = expected.states().length / fixedTokens;
-    log.info("PRISM-HIP-T5 trace {}: {}; {}; {}; {}", label,
-        Diff.bf16(expected.states(), read(plan, HipRegion.STATE, expected.states().length, true)).line("y"),
-        Diff.bf16(expected.memory(), read(plan, HipRegion.MEMORY, expected.memory().length, true)).line("KV"),
-        Diff.bf16(expected.transitions(), read(plan, HipRegion.TRANSITION, transitions * hidden, true)).line("z"),
-        Diff.fp32(expected.values(), read(plan, HipRegion.VALUE, transitions, false)).line("B"));
-  }
-
-  private static float[] read(HipPlan plan, HipRegion region, int count, boolean bf16) {
-    ByteBuffer buffer =
-        ByteBuffer.allocateDirect(count * (bf16 ? Short.BYTES : Float.BYTES)).order(ByteOrder.LITTLE_ENDIAN);
-    plan.copyOut(region, buffer, buffer.capacity());
-    plan.synchronize();
-    float[] values = new float[count];
-    for (int i = 0; i < count; i++) {
-      values[i] =
-          bf16 ? Float.intBitsToFloat((buffer.getShort(i * Short.BYTES) & 0xFFFF) << 16) : buffer.getFloat(i * Float.BYTES);
-    }
-    return values;
   }
 
   /** 差の大きい手を k 個選び、行・手の種類・参照の s・HIP の s を並べて返す。 */
@@ -245,7 +333,12 @@ public class HipForwardTest {
     for (int a = 0; a < order.length; a++) {
       order[a] = a;
     }
-    Arrays.sort(order, (x, y) -> Double.compare(Math.abs((double) hip[y] - reference[y]), Math.abs((double) hip[x] - reference[x])));
+    Arrays.sort(
+        order,
+        (x, y) ->
+            Double.compare(
+                Math.abs((double) hip[y] - reference[y]),
+                Math.abs((double) hip[x] - reference[x])));
     int[] rowOf = new int[order.length];
     for (int r = 0; r < actions.rowFirst().length; r++) {
       for (int a = actions.rowFirst()[r]; a < actions.rowFirst()[r] + actions.rowCount()[r]; a++) {
@@ -255,8 +348,14 @@ public class HipForwardTest {
     StringBuilder out = new StringBuilder();
     for (int i = 0; i < Math.min(k, order.length); i++) {
       int a = order[i];
-      out.append(String.format(Locale.ROOT, " [row %d %s ref %.4f hip %.4f]", rowOf[a], actions.roles()[a].name(),
-          reference[a], hip[a]));
+      out.append(
+          String.format(
+              Locale.ROOT,
+              " [row %d %s ref %.4f hip %.4f]",
+              rowOf[a],
+              actions.roles()[a].name(),
+              reference[a],
+              hip[a]));
     }
     return out.toString();
   }
@@ -279,56 +378,6 @@ public class HipForwardTest {
     }
   }
 
-  /** 冷えた GPU でバッチを {@value #WARMUP} + {@value #ITERATIONS} 回流し、カーネルごとの時間の中央値と経過時間の中央値を 1 行に書く。 */
-  private static void measure(HipBackend backend, ByteBuffer blob, HipBatch batch, long version, String arm) {
-    int decisions = batch.rows();
-    ByteBuffer scores = ByteBuffer.allocateDirect(batch.actions() * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
-    backend.plan().profile(true);
-    float[][] millis = new float[ITERATIONS][];
-    float[] totals = new float[ITERATIONS];
-    for (int i = 0; i < WARMUP + ITERATIONS; i++) {
-      long start = System.nanoTime();
-      backend.plan().forward(blob.duplicate().position(0), batch, scores, version);
-      backend.synchronize();
-      long wall = System.nanoTime() - start;
-      float[] kernels = backend.plan().kernelMillis();
-      if (i >= WARMUP) {
-        millis[i - WARMUP] = kernels;
-        totals[i - WARMUP] = wall / 1e6f;
-      }
-    }
-    StringBuilder line = new StringBuilder();
-    double sum = 0;
-    for (HipKernel kernel : HipKernel.values()) {
-      float[] samples = new float[ITERATIONS];
-      for (int i = 0; i < ITERATIONS; i++) {
-        samples[i] = millis[i][kernel.ordinal()];
-      }
-      Arrays.sort(samples);
-      double median = samples[ITERATIONS / 2];
-      if (Double.isNaN(median)) {
-        continue;  // この形では使わないカーネル
-      }
-      sum += median;
-      line.append(String.format(Locale.ROOT, " %s=%.3fms(%.3fus)", kernel, median, median * 1e3 / decisions));
-    }
-    Arrays.sort(totals);
-    int fixed = backend.layout().architecture().counts().fixed();
-    log.info(
-        "PRISM-HIP-SPEED arm {} rows {} tokens/row {} transitions/row {} actions/row {}:{} kernels={}ms"
-            + " ({} us/decision) wall={}ms ({} us/decision)",
-        arm,
-        decisions,
-        String.format(Locale.ROOT, "%.1f", ((double) fixed * decisions + batch.events()) / decisions),
-        String.format(Locale.ROOT, "%.1f", (double) batch.transitions() / decisions),
-        String.format(Locale.ROOT, "%.1f", (double) batch.actions() / decisions),
-        line,
-        String.format(Locale.ROOT, "%.3f", sum),
-        String.format(Locale.ROOT, "%.3f", sum * 1e3 / decisions),
-        String.format(Locale.ROOT, "%.3f", totals[ITERATIONS / 2]),
-        String.format(Locale.ROOT, "%.3f", totals[ITERATIONS / 2] * 1e3 / decisions));
-  }
-
   /** HIP、eager の BF16 と FP32、CPU の参照の s を、バッチをまたいでつなげた並びと、その手の形。 */
   private static final class Scores {
     private final List<Float> hip = new ArrayList<>();
@@ -339,11 +388,17 @@ public class HipForwardTest {
 
     /** 1 バッチぶんの HIP の s を足し、同じバッチの eager の BF16 と FP32、参照の s を計算して足す。eager の BF16 の各段の値を返す。 */
     EagerStages.Stages add(
-        float[] s, PrismNetwork network, ParameterStore store, NDManager manager, WeightPack pack, HostBatch batch) {
+        float[] s,
+        PrismNetwork network,
+        ParameterStore store,
+        NDManager manager,
+        WeightPack pack,
+        HostBatch batch) {
       EagerStages.Stages half;
       EagerStages.Stages full;
       try (NDManager scope = manager.newSubManager()) {
-        half = EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.BFLOAT16);
+        half =
+            EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.BFLOAT16);
       }
       try (NDManager scope = manager.newSubManager()) {
         full = EagerStages.run(network, store, EagerStages.inputs(scope, batch), Precision.FLOAT32);
@@ -374,8 +429,18 @@ public class HipForwardTest {
       HipParity.Report half = HipParity.compare(floats(hip), floats(bf16), joined);
       HipParity.Report full = HipParity.compare(floats(hip), floats(fp32), joined);
       HipParity.Report cpu = HipParity.compare(floats(hip), floats(reference), joined);
-      log.info("PRISM-HIP-T5 {}arm {} HIP vs eager BF16 (CPU): {} passes={}", prefix, arm, half.summary(), half.passes());
-      log.info("PRISM-HIP-T5 {}arm {} HIP vs eager FP32 (CPU): {} passes={}", prefix, arm, full.summary(), full.passes());
+      log.info(
+          "PRISM-HIP-T5 {}arm {} HIP vs eager BF16 (CPU): {} passes={}",
+          prefix,
+          arm,
+          half.summary(),
+          half.passes());
+      log.info(
+          "PRISM-HIP-T5 {}arm {} HIP vs eager FP32 (CPU): {} passes={}",
+          prefix,
+          arm,
+          full.summary(),
+          full.passes());
       log.info("PRISM-HIP-T5 {}arm {} HIP vs CPU reference: {}", prefix, arm, cpu.summary());
       Diff half16 = Diff.fp32(floats(bf16), floats(hip));
       Diff full32 = Diff.fp32(floats(fp32), floats(hip));
@@ -384,7 +449,11 @@ public class HipForwardTest {
       log.info("PRISM-HIP-T5 {}arm {} {}", prefix, arm, full32.line("s vs eager FP32"));
       log.info("PRISM-HIP-T5 {}arm {} {}", prefix, arm, mirror.line("s vs CPU reference"));
       String label = prefix + arm;
-      log.info("PRISM-HIP-T5 {}arm {} argmax flips vs eager BF16: {}", prefix, arm, flips(floats(hip), floats(bf16), joined));
+      log.info(
+          "PRISM-HIP-T5 {}arm {} argmax flips vs eager BF16: {}",
+          prefix,
+          arm,
+          flips(floats(hip), floats(bf16), joined));
       argmax(failures, label, floats(hip), floats(bf16), floats(fp32), joined);
       if (!(half16.relativeRms() <= EAGER_LIMIT)) {
         failures.add(label + " s vs eager BF16 " + half16.relativeRms());
@@ -440,7 +509,12 @@ public class HipForwardTest {
    * （{@value HipParity#ARGMAX_LIMIT} 以上）。
    */
   private static void argmax(
-      List<String> failures, String label, float[] hip, float[] bf16, float[] fp32, HipParity.Actions actions) {
+      List<String> failures,
+      String label,
+      float[] hip,
+      float[] bf16,
+      float[] fp32,
+      HipParity.Actions actions) {
     HipParity.Report half = HipParity.compare(hip, bf16, actions);
     int decided = 0;
     int agree = 0;
@@ -461,8 +535,8 @@ public class HipForwardTest {
     }
     double rate = decided == 0 ? 1 : (double) agree / decided;
     log.info(
-        "PRISM-HIP-T5 {} argmax vs eager BF16 {} on all {} rows (line {} {}); vs eager FP32 {} on {} rows that eager's own BF16"
-            + " rounding does not reorder",
+        "PRISM-HIP-T5 {} argmax vs eager BF16 {} on all {} rows (line {} {}); vs eager FP32 {} on"
+            + " {} rows that eager's own BF16 rounding does not reorder",
         label,
         String.format(Locale.ROOT, "%.5f", half.argmaxAgreement()),
         half.rows(),
@@ -471,7 +545,13 @@ public class HipForwardTest {
         String.format(Locale.ROOT, "%.5f", rate),
         decided);
     if (rate < HipParity.ARGMAX_LIMIT) {
-      failures.add(label + " argmax on rows that BF16 rounding does not reorder " + rate + " (" + decided + " rows)");
+      failures.add(
+          label
+              + " argmax on rows that BF16 rounding does not reorder "
+              + rate
+              + " ("
+              + decided
+              + " rows)");
     }
   }
 
@@ -510,8 +590,13 @@ public class HipForwardTest {
         delta = Math.max(delta, Math.abs((double) hip[k] - reference[k]));
       }
       count++;
-      out.append(String.format(Locale.ROOT, " [row %d gap %.3e max|ds| %.3e]", r,
-          (double) reference[b] - reference[a], delta));
+      out.append(
+          String.format(
+              Locale.ROOT,
+              " [row %d gap %.3e max|ds| %.3e]",
+              r,
+              (double) reference[b] - reference[a],
+              delta));
     }
     return count + out.toString();
   }
@@ -529,8 +614,189 @@ public class HipForwardTest {
   /** 行 [from, to) だけの手の形を返す（手の並びはバッチのまま）。 */
   private static HipParity.Actions subset(HipParity.Actions actions, int from, int to) {
     return new HipParity.Actions(
-        Arrays.copyOfRange(actions.rowFirst(), from, to), Arrays.copyOfRange(actions.rowCount(), from, to),
+        Arrays.copyOfRange(actions.rowFirst(), from, to),
+        Arrays.copyOfRange(actions.rowCount(), from, to),
         actions.roles());
   }
-}
 
+  private static final class Worst {
+    double error = -1;
+    int row;
+    int action;
+    float hip;
+    float eager;
+
+    void update(int[] rowIds, HipParity.Actions actions, float[] scores, float[] reference) {
+      for (int r = 0; r < rowIds.length; r++) {
+        for (int k = 0; k < actions.rowCount()[r]; k++) {
+          int i = actions.rowFirst()[r] + k;
+          double delta = Math.abs((double) scores[i] - reference[i]);
+          if (delta > error) {
+            error = delta;
+            row = rowIds[r];
+            action = k;
+            hip = scores[i];
+            eager = reference[i];
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * 新しい重みのスロット（候補層の 2 段目、型ごとの FFN と最後の正規化のゲイン）のどの項目でも、真ん中の要素 1 つを NaN にすると、重みの
+   * 公開はそのスロットと項目を名指しした例外で止まる（四人打ちの v3 の形）。止まった後も前の重みのままで、s はビット単位で変わらない。
+   */
+  public void publishRejectsNanInTheNewWeightSlots() throws IOException {
+    try (GpuCase c = HipFixtures.gpuCase(HipFixtures.Arm.V3, 47)) {
+      float[] before = c.forward();
+      PackedWeights weights = WeightPack.publication(c.network, 2);
+      PackedWeightLayout.Header header = c.layout.header();
+      int checked = 0;
+      for (WeightField weight : WeightField.values()) {
+        for (int entry = 0; entry < weight.index().entries(); entry++) {
+          long offset = header.weight(weight, entry);
+          if (offset < 0 || !newSlot(weight, entry)) {
+            continue;
+          }
+          ByteBuffer broken =
+              ByteBuffer.allocateDirect(weights.data().remaining()).order(ByteOrder.LITTLE_ENDIAN);
+          broken.put(weights.data()).flip();
+          int middle =
+              Math.toIntExact(
+                  offset + header.elements(weight, entry) / 2 * weight.element().bytes());
+          switch (weight.element()) {
+            case FP32 -> broken.putInt(middle, 0x7fc00000);
+            case BF16 -> broken.putShort(middle, (short) 0x7fc0);
+            default -> throw new IllegalStateException(weight + " holds no floating point values");
+          }
+          var publication =
+              new PackedWeights(
+                  weights.model(), 2, broken, weights.options(), weights.restoration());
+          String named = "weight slot " + weight.ordinal() + " entry " + entry + " ";
+          RuntimeException failure =
+              Assert.expectThrows(RuntimeException.class, () -> c.lane.publish(publication));
+          Assert.assertTrue(
+              String.valueOf(failure.getMessage()).contains(named),
+              weight + " entry " + entry + ": " + failure.getMessage());
+          checked++;
+        }
+      }
+      Assert.assertTrue(checked > 0);
+      Assert.assertEquals(c.lane.generation(), GpuCase.GENERATION);
+      Assert.assertTrue(
+          HipParity.bitwiseEqual(before, c.forward()), "a rejected publish changed the scores");
+      log.info(
+          "PRISM-HIP-T5 {} NaN in each of {} entries of the new weight slots stops the publish"
+              + " naming the slot; the lane keeps its weights",
+          c.name,
+          checked);
+    }
+  }
+
+  /** 2 段目のスロットか、型ごとのグループ（局・席、牌）の FFN と最後の正規化の項目なら true。 */
+  private static boolean newSlot(WeightField weight, int entry) {
+    return switch (weight.index()) {
+      case SINGLE, LAYER -> weight.reread();
+      case FFN ->
+          entry != WeightField.CANDIDATE_FFN
+              && entry % TokenGroup.values().length != TokenGroup.ALL.ordinal();
+      case GROUP -> entry != TokenGroup.ALL.ordinal();
+    };
+  }
+
+  private static final int COHORT_BATCH = 32;
+
+  @DataProvider
+  public Object[][] cohortArms() {
+    List<Object[]> cases = new ArrayList<>();
+    for (ShapeArm arm : List.of(ShapeArm.V3, ShapeArm.V4_S, ShapeArm.V4_M)) {
+      cases.add(new Object[] {arm, null});
+    }
+    String checkpoint = System.getProperty("prism.hip.checkpoint");
+    if (checkpoint != null) cases.add(new Object[] {ShapeArm.V4_S, checkpoint});
+    return cases.toArray(Object[][]::new);
+  }
+
+  /** コホート全体に等間隔に散らしたラベル行で、推論の入口から合法手のスコアまでを照合する。 */
+  @Test(groups = "rocm", dataProvider = "cohortArms")
+  public void cohortScoresMatchEager(ShapeArm arm, String checkpoint) throws IOException {
+    String directory = System.getProperty("prism.hip.cohort");
+    Assert.assertNotNull(directory, "set prism.hip.cohort to a saved cohort directory");
+    int count = checkpoint == null ? Integer.getInteger("prism.hip.parityRows", 4096) : 20_000;
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu());
+        CohortStore cohort = new CohortStore()) {
+      cohort.addCohort(Path.of(directory));
+      int iteration = cohort.cohorts().getFirst();
+      int[] labels = cohort.select(iteration, iteration, index -> index.source().label());
+      Assert.assertTrue(count > 0 && labels.length >= count);
+      PrismNetwork network =
+          checkpoint == null
+              ? HipFixtures.network(manager, arm.shape(), 72)
+              : PrismNetwork.load(Snapshot.model(Path.of(checkpoint)), manager);
+      if (checkpoint != null)
+        Assert.assertTrue(network.shape() instanceof PrismShape.V4, "checkpoint must contain V4");
+      Worst worst = new Worst();
+      ParameterStore store = new ParameterStore(manager, false);
+      HipParity.Rounding result = new HipParity.Rounding(0, 0, 0, 0, 0, 0, 0);
+      try (NativeLane lane =
+          NativeLane.open(network, Device.gpu(0), GpuCase.capacity(COHORT_BATCH), 1)) {
+        for (int start = 0; start < count; start += COHORT_BATCH) {
+          List<long[]> observations = new ArrayList<>();
+          int[] rowIds = new int[Math.min(COHORT_BATCH, count - start)];
+          for (int r = 0; r < rowIds.length; r++) {
+            rowIds[r] = labels[(int) ((long) (start + r) * labels.length / count)];
+            observations.add(cohort.read(rowIds[r]).observation());
+          }
+          HostBatch host = HipFixtures.encode(observations, network.shape());
+          try (NDManager scope = manager.newSubManager()) {
+            NetworkInputs inputs = EagerStages.inputs(scope, host);
+            float[] bf16 = EagerStages.scores(network, store, inputs, Precision.BFLOAT16);
+            float[] fp32 = EagerStages.scores(network, store, inputs, Precision.FLOAT32);
+            float[] hip = lane.forward(host);
+            var actions = HipParity.Actions.of(host);
+            result =
+                result.plus(
+                    HipParity.rounding(
+                        hip,
+                        bf16,
+                        fp32,
+                        actions,
+                        (row, eager, actual, gap, noise) ->
+                            log.info(
+                                "Stable disagreement arm={} row={} eagerAction={} hipAction={}"
+                                    + " gap={} noise={}",
+                                arm,
+                                rowIds[row],
+                                eager,
+                                actual,
+                                gap,
+                                noise)));
+            worst.update(rowIds, actions, hip, bf16);
+          }
+        }
+      }
+      log.info(
+          "Worst score arm={} checkpoint={} row={} action={} hip={} eager={} abs={}",
+          arm,
+          checkpoint,
+          worst.row,
+          worst.action,
+          worst.hip,
+          worst.eager,
+          worst.error);
+      log.info(
+          "Cohort parity arm={} rows={} actions={} relativeRms={} maxAbs={} stable={} agreed={}",
+          arm,
+          result.rows(),
+          result.actions(),
+          result.relativeRms(),
+          result.maximum(),
+          result.stable(),
+          result.agreed());
+      Assert.assertTrue(result.relativeRms() <= 0.04, result.toString());
+      Assert.assertTrue(
+          result.stable() > 0 && result.agreed() >= 0.99 * result.stable(), result.toString());
+    }
+  }
+}

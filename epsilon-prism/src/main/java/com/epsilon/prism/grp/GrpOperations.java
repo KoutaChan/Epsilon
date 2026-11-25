@@ -30,7 +30,8 @@ public record GrpOperations(
     @Key(doc = "学び直しでコホートに掛ける重みの半減期（コホートの数）", value = "2.0") @Range(min = 0, minInclusive = false)
         double halfLife,
     @Key(doc = "学び直しに使うコホートの数の上限", value = "64") @Range(min = 1) int window,
-    @Key(doc = "点数だけの Φ を初めて置き換えるのに、学び直しの範囲に要る半荘の数", value = "16384") @Range(min = 1) int trustGames,
+    @Key(doc = "点数だけの Φ を初めて置き換えるのに、学び直しの範囲に要る半荘の数", value = "16384") @Range(min = 1)
+        int trustGames,
     @Key(doc = "影として採点する Φ", value = "SELF_ONLY") PhiShadowReference shadow,
     @Key(doc = "学び直しの間に torch が使う演算スレッドの数", value = "4", change = Change.MACHINE) @Range(min = 1)
         int threads,
@@ -44,7 +45,8 @@ public record GrpOperations(
     Objects.requireNonNull(shadow, "shadow");
     Objects.requireNonNull(training, "training");
     if (!monitor.records()) {
-      throw new InvalidSetting("monitor", "the self-play GRP learns from the recorded games, so monitor cannot be OFF");
+      throw new InvalidSetting(
+          "monitor", "the self-play GRP learns from the recorded games, so monitor cannot be OFF");
     }
   }
 }

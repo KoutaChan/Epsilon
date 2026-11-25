@@ -54,7 +54,7 @@ import org.testng.Assert;
  * 読まない）で 1 コホートを集め、同値な打牌の切り方が全ての経路で効いたかを数える。
  *
  * <p>確かめ方: 方策は経路ごとに手番の合法手を覚え、同じ経路の次の問い合わせの O に出た打牌のイベントのツモ切りの印を、切り方と比べる（主経路の
- * 貪欲・床・探索と、写しと分岐の続きの手）。分岐と写しの最初の手は行の手の位置（打った手・候補集合・逸脱）で比べる。
+ * 貪欲方策・一様分布・探索と、写しと分岐の続きの手）。分岐と写しの最初の手は行の手の位置（打った手・候補集合・逸脱）で比べる。
  */
 public final class TwinCollection {
 
@@ -72,7 +72,7 @@ public final class TwinCollection {
   /**
    * 集めた結果。
    *
-   * @param rows 行（受け口に渡した順ではない）
+   * @param rows 行（受け取り先に渡した順ではない）
    * @param main 主経路の判断ごとの打った手を、同値な打牌の組の手出しの番号に直したもの（キーは牌山・判断 ID・判断の位置）
    * @param mainTwins 主経路で、手出しとツモ切りの両方で切れる打牌を切った手番の数
    * @param branchTwins 写しと分岐の続きで、同じ打牌を切った手番の数
@@ -80,7 +80,12 @@ public final class TwinCollection {
    * @param violations 切り方と違うツモ切りの印の打牌
    */
   public record Collected(
-      List<Row> rows, Map<String, Integer> main, long mainTwins, long branchTwins, long riichiTwins, List<String> violations) {}
+      List<Row> rows,
+      Map<String, Integer> main,
+      long mainTwins,
+      long branchTwins,
+      long riichiTwins,
+      List<String> violations) {}
 
   /**
    * 行の手の位置を数えた結果。
@@ -100,8 +105,10 @@ public final class TwinCollection {
    *
    * @param behaviour 全席の行動方策 b
    */
-  public static void assertEveryPath(Variant variant, Behaviour behaviour, long iterationSeed, List<Long> gameIds) {
-    Collected tsumogiri = collect(variant, TwinDiscard.TSUMOGIRI, behaviour, iterationSeed, gameIds);
+  public static void assertEveryPath(
+      Variant variant, Behaviour behaviour, long iterationSeed, List<Long> gameIds) {
+    Collected tsumogiri =
+        collect(variant, TwinDiscard.TSUMOGIRI, behaviour, iterationSeed, gameIds);
     Collected tedashi = collect(variant, TwinDiscard.TEDASHI, behaviour, iterationSeed, gameIds);
     assertPlays(tsumogiri, variant, TwinDiscard.TSUMOGIRI);
     assertPlays(tedashi, variant, TwinDiscard.TEDASHI);
@@ -116,7 +123,8 @@ public final class TwinCollection {
     Assert.assertTrue(collected.riichiTwins() > 0, twins + " riichi " + collected.riichiTwins());
     RowTwins rows = rowTwins(collected.rows(), variant, twins);
     Assert.assertEquals(rows.violations(), List.of(), twins.name());
-    Assert.assertTrue(rows.played() > 0 && rows.candidates() > 0 && rows.deviations() > 0, twins + " " + rows);
+    Assert.assertTrue(
+        rows.played() > 0 && rows.candidates() > 0 && rows.deviations() > 0, twins + " " + rows);
   }
 
   /**
@@ -126,7 +134,11 @@ public final class TwinCollection {
    * @param behaviour 全席の行動方策 b
    */
   public static Collected collect(
-      Variant variant, TwinDiscard twinDiscard, Behaviour behaviour, long iterationSeed, List<Long> gameIds) {
+      Variant variant,
+      TwinDiscard twinDiscard,
+      Behaviour behaviour,
+      long iterationSeed,
+      List<Long> gameIds) {
     Path directory;
     try {
       directory = Files.createTempDirectory("prism-twins");
@@ -139,9 +151,19 @@ public final class TwinCollection {
         var writer = new CohortWriter(directory, variant, 1, 0, 2, CohortWriter.Tap.NONE)) {
       var cohort =
           new Collector.Cohort(
-              variant, 7_001L, iterationSeed, gameIds, DrawOrder.SEAT_STREAMS, SAMPLING, null, URA, behaviour,
-              twinDiscard, main);
-      Collector.collect(table, cohort, policy, Phi.scoreRank(variant, UTILITY), new RowSink(writer));
+              variant,
+              7_001L,
+              iterationSeed,
+              gameIds,
+              DrawOrder.SEAT_STREAMS,
+              SAMPLING,
+              null,
+              URA,
+              behaviour,
+              twinDiscard,
+              main);
+      Collector.collect(
+          table, cohort, policy, Phi.scoreRank(variant, UTILITY), new RowSink(writer));
       writer.seal();
       List<Row> rows = read(directory, variant);
       return new Collected(
@@ -213,14 +235,21 @@ public final class TwinCollection {
               .append(" p=")
               .append(Float.floatToRawIntBits(row.propensity()))
               .append(" support=");
-      for (int a = 0; a < legal.length; a++) if ((row.support() >>> a & 1) != 0) text.append(hand(legal, a)).append(',');
+      for (int a = 0; a < legal.length; a++)
+        if ((row.support() >>> a & 1) != 0) text.append(hand(legal, a)).append(',');
       text.append(" values=");
       for (int a = 0; a < legal.length; a++)
-        if (row.measured(a)) text.append(hand(legal, a)).append(':').append(Float.floatToRawIntBits(row.values()[a])).append(',');
+        if (row.measured(a))
+          text.append(hand(legal, a))
+              .append(':')
+              .append(Float.floatToRawIntBits(row.values()[a]))
+              .append(',');
       text.append(" prior=");
       for (float p : row.prior()) text.append(Float.floatToRawIntBits(p)).append(',');
-      String key = row.gameId() + ":" + row.decisionId() + ":" + row.source() + ":" + row.rootDecisionId();
-      if (result.put(key, text.toString()) != null) throw new AssertionError("two rows share the key " + key);
+      String key =
+          row.gameId() + ":" + row.decisionId() + ":" + row.source() + ":" + row.rootDecisionId();
+      if (result.put(key, text.toString()) != null)
+        throw new AssertionError("two rows share the key " + key);
     }
     return result;
   }
@@ -229,7 +258,8 @@ public final class TwinCollection {
   static int twinKey(int code) {
     Action action = Action.of(code);
     if (!Twins.discard(action)) return code;
-    return Action.discard(action.tile(), action.selection().red(), false, action.type() == Action.Type.RIICHI_DAHAI);
+    return Action.discard(
+        action.tile(), action.selection().red(), false, action.type() == Action.Type.RIICHI_DAHAI);
   }
 
   /** 同値な打牌の組の手出しの位置（組の無い手はその位置）。 */
@@ -237,10 +267,20 @@ public final class TwinCollection {
     return TwinDiscard.TEDASHI.play(legal, a);
   }
 
-  private static void check(int[] legal, int a, TwinDiscard twinDiscard, Row row, String what, List<String> violations) {
+  private static void check(
+      int[] legal, int a, TwinDiscard twinDiscard, Row row, String what, List<String> violations) {
     boolean tsumogiri = Action.of(legal[a]).selection().tsumogiri();
     if (tsumogiri != (twinDiscard == TwinDiscard.TSUMOGIRI))
-      violations.add(row.source() + " " + row.gameId() + ":" + row.decisionId() + " " + what + " " + Action.of(legal[a]));
+      violations.add(
+          row.source()
+              + " "
+              + row.gameId()
+              + ":"
+              + row.decisionId()
+              + " "
+              + what
+              + " "
+              + Action.of(legal[a]));
   }
 
   private static int[] legal(Observation o) {
@@ -261,12 +301,21 @@ public final class TwinCollection {
   }
 
   private static Sampling sampling() {
-    Sampling base = TestSampling.grouped(0.25, 0.05, 0.05, 0.05, 0.15, 1.0, 6, false, 0.3, 0.2, 0.2, 0.1, 0.5, 2);
+    Sampling base =
+        TestSampling.grouped(
+            0.25, 0.05, 0.05, 0.05, 0.15, 1.0, 6, false, 0.3, 0.2, 0.2, 0.1, 0.5, 2);
     boolean[] measureAll = new boolean[DecisionClass.COUNT];
     measureAll[DecisionClass.DISCARD_LATE.ordinal()] = true;
     RollInRule[] rollIn = base.rollIn().clone();
-    rollIn[DecisionClass.DISCARD_MID.ordinal()] = RollInRule.uniform(0.2, 0.1, DeviationTarget.OTHER, 0.5, 2);
-    return new Sampling(base.holdoutFraction(), base.labelRates(), measureAll, base.maxCandidates(), base.epsilonC(), rollIn);
+    rollIn[DecisionClass.DISCARD_MID.ordinal()] =
+        RollInRule.uniform(0.2, 0.1, DeviationTarget.OTHER, 0.5, 2);
+    return new Sampling(
+        base.holdoutFraction(),
+        base.labelRates(),
+        measureAll,
+        base.maxCandidates(),
+        base.epsilonC(),
+        rollIn);
   }
 
   /** 手出しとツモ切りの両方で切れる打牌か。 */
@@ -285,7 +334,9 @@ public final class TwinCollection {
     private final ThreadLocal<Observation> readers;
     private final ThreadLocal<Shapes> shapes;
     private final Map<Object, Turn> turns = new ConcurrentHashMap<>();
-    final LongAdder mainTwins = new LongAdder(), branchTwins = new LongAdder(), riichiTwins = new LongAdder();
+    final LongAdder mainTwins = new LongAdder(),
+        branchTwins = new LongAdder(),
+        riichiTwins = new LongAdder();
     final Queue<String> violations = new ConcurrentLinkedQueue<>();
 
     /** 手番の問い合わせ。 */
@@ -340,15 +391,21 @@ public final class TwinCollection {
       request.sigma = sigma;
       if (request.retain()) request.prior = prior;
       if (o.decisionKind() == EngineDecisionKind.TURN)
-        turns.put(request.owner(), new Turn(legal.clone(), o.observer(), o.kyoku(), o.honba(), o.events()));
+        turns.put(
+            request.owner(),
+            new Turn(legal.clone(), o.observer(), o.kyoku(), o.honba(), o.events()));
     }
 
     /** 同じ経路の前の手番で切った打牌（O の次のイベント）を確かめる。 */
     private void check(Object owner, Observation o) {
       Turn turn = turns.remove(owner);
-      if (turn == null || o.kyoku() != turn.kyoku() || o.honba() != turn.honba() || o.events() <= turn.events()) return;
+      if (turn == null
+          || o.kyoku() != turn.kyoku()
+          || o.honba() != turn.honba()
+          || o.events() <= turn.events()) return;
       int event = turn.events();
-      if (o.eventKind(event) != EventKind.DISCARD || o.absoluteSeat(o.eventAuthor(event)) != turn.seat()) return;
+      if (o.eventKind(event) != EventKind.DISCARD
+          || o.absoluteSeat(o.eventAuthor(event)) != turn.seat()) return;
       int tile = o.discardTile(event);
       boolean red = o.discardAka(event), riichi = o.discardRiichi(event);
       if (!holds(turn.legal(), Action.discard(tile, red, false, riichi))
@@ -357,7 +414,13 @@ public final class TwinCollection {
       (main ? mainTwins : branchTwins).increment();
       if (riichi) riichiTwins.increment();
       if (o.discardTsumogiri(event) != (expected == TwinDiscard.TSUMOGIRI))
-        violations.add((main ? "main " : "branch ") + owner + " event " + event + " " + Action.discard(tile, red, false, riichi));
+        violations.add(
+            (main ? "main " : "branch ")
+                + owner
+                + " event "
+                + event
+                + " "
+                + Action.discard(tile, red, false, riichi));
     }
 
     private static boolean holds(int[] legal, int code) {
@@ -383,7 +446,8 @@ public final class TwinCollection {
       int tiles = 0;
       for (int kind = 0; kind < counts.length; kind++)
         for (int copy = 0; copy < counts[kind]; copy++, tiles++) hand.add(kind);
-      for (int meld = (HandShape.MAX_SIZE - tiles) / HandShape.MELD_SIZE; meld > 0; meld--) hand.addMeld();
+      for (int meld = (HandShape.MAX_SIZE - tiles) / HandShape.MELD_SIZE; meld > 0; meld--)
+        hand.addMeld();
       return this;
     }
 
@@ -401,7 +465,9 @@ public final class TwinCollection {
 
     @Override
     public void decided(GameKey game, SeatView view, Decisions decisions, int slot, int choice) {
-      choices.put(game.wall() + ":" + decisions.id(slot) + ":" + slot, twinKey(decisions.legal(slot, choice)));
+      choices.put(
+          game.wall() + ":" + decisions.id(slot) + ":" + slot,
+          twinKey(decisions.legal(slot, choice)));
     }
 
     @Override

@@ -30,7 +30,8 @@ public sealed interface StopRule {
   record Precision(double error, double alpha, int checkEvery) implements StopRule {
     public Precision {
       if (!(error >= 0 && Double.isFinite(error))) {
-        throw new IllegalArgumentException("Target error must be finite and non-negative: " + error);
+        throw new IllegalArgumentException(
+            "Target error must be finite and non-negative: " + error);
       }
       checkAlpha(alpha);
       if (checkEvery < 1) {
@@ -53,8 +54,10 @@ public sealed interface StopRule {
       if (sequential == null) {
         throw new NullPointerException("sequential");
       }
-      if (!(evenBelow >= 0 && Double.isFinite(evenBelow)) || !(evenAbove >= 0 && Double.isFinite(evenAbove))) {
-        throw new IllegalArgumentException("Even margins must be finite and non-negative: " + evenBelow + ", " + evenAbove);
+      if (!(evenBelow >= 0 && Double.isFinite(evenBelow))
+          || !(evenAbove >= 0 && Double.isFinite(evenAbove))) {
+        throw new IllegalArgumentException(
+            "Even margins must be finite and non-negative: " + evenBelow + ", " + evenAbove);
       }
     }
   }

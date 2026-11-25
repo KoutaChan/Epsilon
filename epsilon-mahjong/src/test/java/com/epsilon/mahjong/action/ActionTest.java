@@ -81,18 +81,29 @@ public class ActionTest {
 
   @Test
   public void encodersRejectActionsThatDoNotExist() {
-    Assert.assertThrows(IllegalArgumentException.class, () -> Action.code(Type.DAHAI, Tiles.M4, TileSelection.AKA));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Action.code(Type.DAHAI, Tiles.M1, TileSelection.NOT_APPLICABLE));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Action.code(Type.ANKAN, Tiles.M1, TileSelection.NON_AKA));
+        IllegalArgumentException.class, () -> Action.code(Type.DAHAI, Tiles.M4, TileSelection.AKA));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Action.code(Type.PON, Tiles.KINDS, TileSelection.NON_AKA));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Action.code(Type.PON, -1, TileSelection.NON_AKA));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Action.code(Type.CHI, Tiles.M1, TileSelection.NON_AKA));
+        IllegalArgumentException.class,
+        () -> Action.code(Type.DAHAI, Tiles.M1, TileSelection.NOT_APPLICABLE));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Action.code(Type.ANKAN, Tiles.M1, TileSelection.NON_AKA));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Action.code(Type.PON, Tiles.KINDS, TileSelection.NON_AKA));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Action.code(Type.PON, -1, TileSelection.NON_AKA));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Action.code(Type.CHI, Tiles.M1, TileSelection.NON_AKA));
     Assert.assertThrows(IllegalArgumentException.class, () -> Action.code(Type.ANKAN));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Action.chi(Tiles.M8, Tiles.M8, false));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Action.chi(Tiles.TON, Tiles.TON, false));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Action.chi(Tiles.M1, Tiles.M4, false));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Action.chi(Tiles.M8, Tiles.M8, false));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Action.chi(Tiles.TON, Tiles.TON, false));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Action.chi(Tiles.M1, Tiles.M4, false));
     Assert.assertThrows(IllegalArgumentException.class, () -> Action.chi(Tiles.M1, Tiles.M2, true));
     Assert.assertThrows(IllegalArgumentException.class, () -> Action.chi(Tiles.M3, Tiles.M5, true));
     Assert.assertThrows(IllegalArgumentException.class, () -> Action.of(-1));
@@ -139,7 +150,8 @@ public class ActionTest {
     Assert.assertSame(action.type(), Type.CHI, "code " + code);
     Assert.assertEquals(action.base(), base, "code " + code);
     Assert.assertEquals(action.tile(), called, "code " + code);
-    Assert.assertEquals(action.selection(), red ? TileSelection.AKA : TileSelection.NON_AKA, "code " + code);
+    Assert.assertEquals(
+        action.selection(), red ? TileSelection.AKA : TileSelection.NON_AKA, "code " + code);
     Assert.assertEquals(Action.chi(base, called, red), code);
   }
 }

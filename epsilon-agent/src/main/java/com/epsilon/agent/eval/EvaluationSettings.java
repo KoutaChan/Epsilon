@@ -34,13 +34,17 @@ import java.util.regex.Pattern;
 public record EvaluationSettings(
     @Key(doc = "尺度の基準の卓（書かなければ尺度を作らない）", presence = Presence.ABSENT, change = Change.SCHEDULE)
         String anchor,
-    @Key(doc = "アラートを出すしきい値（標準誤差の倍数）", value = "3.0", change = Change.SCHEDULE) @Range(min = 0, minInclusive = false)
+    @Key(doc = "アラートを出すしきい値（標準誤差の倍数）", value = "3.0", change = Change.SCHEDULE)
+        @Range(min = 0, minInclusive = false)
         double alarmZ,
-    @Key(doc = "基準の卓で低下のアラートを出すのに要る、王者の値からの悪化の幅（判定に使う量の単位）", value = "0.01",
+    @Key(
+            doc = "基準の卓で低下のアラートを出すのに要る、王者の値からの悪化の幅（判定に使う量の単位）",
+            value = "0.01",
             change = Change.SCHEDULE)
         @Range(min = 0)
         double dropMargin,
-    @Key(doc = "王者との決闘で「悪い」が続いたときの扱い", value = "REPORT", change = Change.SCHEDULE) OnWorseSettings onWorse,
+    @Key(doc = "王者との決闘で「悪い」が続いたときの扱い", value = "REPORT", change = Change.SCHEDULE)
+        OnWorseSettings onWorse,
     @Key(doc = "名前ごとの卓", change = Change.SCHEDULE) Map<String, TableSpec> tables) {
 
   private static final Pattern NAME = Pattern.compile("[A-Za-z0-9]+");
@@ -62,20 +66,28 @@ public record EvaluationSettings(
           || base.stop() instanceof StopSettings.Test
           || TableSpec.kind(base.opponent()) != TableSpec.Opponent.VERSION) {
         throw new InvalidSetting(
-            "anchor", "the anchor table plays fixed walls against version:N and stops at a fixed size or precision");
+            "anchor",
+            "the anchor table plays fixed walls against version:N and stops at a fixed size or"
+                + " precision");
       }
       for (Map.Entry<String, TableSpec> entry : tables.entrySet()) {
         if (rated(entry.getValue()) && entry.getValue().score() != base.score()) {
           throw new InvalidSetting(
               "anchor",
-              "the tables against version:N and version:-d score " + base.score() + " like the anchor table, not "
-                  + entry.getValue().score() + " (" + entry.getKey() + ")");
+              "the tables against version:N and version:-d score "
+                  + base.score()
+                  + " like the anchor table, not "
+                  + entry.getValue().score()
+                  + " ("
+                  + entry.getKey()
+                  + ")");
         }
       }
     }
     long promoting = tables.values().stream().filter(EvaluationSettings::promotes).count();
     if (promoting > 1) {
-      throw new InvalidSetting("tables", "at most one table promotes the champion, not " + promoting);
+      throw new InvalidSetting(
+          "tables", "at most one table promotes the champion, not " + promoting);
     }
     for (Map.Entry<String, TableSpec> entry : tables.entrySet()) {
       String confirm = entry.getValue().confirm();
@@ -84,11 +96,14 @@ public record EvaluationSettings(
       }
     }
     for (Map.Entry<String, TableSpec> entry : tables.entrySet()) {
-      boolean named = tables.values().stream().anyMatch(table -> entry.getKey().equals(table.confirm()));
+      boolean named =
+          tables.values().stream().anyMatch(table -> entry.getKey().equals(table.confirm()));
       if (named != (entry.getValue().confirmMargin() != null)) {
         throw new InvalidSetting(
             "tables." + entry.getKey() + ".confirmMargin",
-            named ? "a confirm table needs a confirmMargin" : "only a confirm table has a confirmMargin");
+            named
+                ? "a confirm table needs a confirmMargin"
+                : "only a confirm table has a confirmMargin");
       }
     }
   }
@@ -181,32 +196,41 @@ public record EvaluationSettings(
    * @param name 確かめの卓の名前
    * @param table 確かめの卓（その名前の卓が無ければ null）
    */
-  private static void requireConfirm(String caller, TableSpec calling, String name, TableSpec table) {
+  private static void requireConfirm(
+      String caller, TableSpec calling, String name, TableSpec table) {
     if (table == null) {
       throw new InvalidSetting("tables." + caller + ".confirm", "no table is named " + name);
     }
     String path = "tables." + name + ".";
     if (table.wallSet() != WallSet.FIXED) {
-      throw new InvalidSetting(path + "wallSet", "a confirm table plays the same walls for every version");
+      throw new InvalidSetting(
+          path + "wallSet", "a confirm table plays the same walls for every version");
     }
     if (!(table.stop() instanceof StopSettings.Fixed)) {
-      throw new InvalidSetting(path + "stop", "a confirm table plays all its walls, so it stops FIXED");
+      throw new InvalidSetting(
+          path + "stop", "a confirm table plays all its walls, so it stops FIXED");
     }
     if (table.score() != calling.score()) {
       throw new InvalidSetting(
           path + "score",
-          "a confirm table scores " + calling.score() + " like the table " + caller + " that calls it, not "
+          "a confirm table scores "
+              + calling.score()
+              + " like the table "
+              + caller
+              + " that calls it, not "
               + table.score());
     }
     if (table.every() != 0) {
       throw new InvalidSetting(
-          path + "every", "a confirm table plays only when a duel calls it, so every is 0, not " + table.every());
+          path + "every",
+          "a confirm table plays only when a duel calls it, so every is 0, not " + table.every());
     }
     TableSpec.Opponent kind = TableSpec.kind(table.opponent());
     if (kind != TableSpec.Opponent.HEURISTIC && kind != TableSpec.Opponent.CHECKPOINT) {
       throw new InvalidSetting(
           path + "opponent",
-          "a confirm table plays a frozen player outside the lineage (heuristic or a checkpoint), not "
+          "a confirm table plays a frozen player outside the lineage (heuristic or a checkpoint),"
+              + " not "
               + table.opponent());
     }
   }

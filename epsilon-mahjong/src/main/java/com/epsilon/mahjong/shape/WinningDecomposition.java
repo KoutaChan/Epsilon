@@ -40,11 +40,13 @@ public final class WinningDecomposition {
 
   /** ブロックごとに、分解の番号の範囲と、次に読む分解。 */
   private final int[] start = new int[BLOCKS.length];
+
   private final int[] end = new int[BLOCKS.length];
   private final int[] next = new int[BLOCKS.length];
 
   /** 面子ごとに、先頭の種類と、順子かどうか。 */
   private final int[] meldKinds = new int[Variant.MAX_MELDS];
+
   private final boolean[] meldRuns = new boolean[Variant.MAX_MELDS];
 
   private boolean more;
@@ -180,7 +182,8 @@ public final class WinningDecomposition {
     more = true;
     for (Block block : BLOCKS) {
       int b = block.ordinal();
-      int code = hand.code(block) + (added >= 0 && Block.of(added) == block ? Block.weight(added) : 0);
+      int code =
+          hand.code(block) + (added >= 0 && Block.of(added) == block ? Block.weight(added) : 0);
       int state = ShapeTables.state(block, code);
       start[b] = ShapeTables.first(state);
       end[b] = ShapeTables.first(state + 1);

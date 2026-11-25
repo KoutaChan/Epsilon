@@ -51,7 +51,10 @@ public final class RuleGames {
         if (boundary == Boundary.GAME_END) {
           return recorder.gameEnded(
               engine.roundEnd().next(),
-              new RecordedGame.Meta(id, RecordedGame.Source.TENHOU, Collections.nCopies(variant.seats(), "heuristic")));
+              new RecordedGame.Meta(
+                  id,
+                  RecordedGame.Source.TENHOU,
+                  Collections.nCopies(variant.seats(), "heuristic")));
         }
         boundary = engine.advance(ws);
       }
@@ -61,6 +64,9 @@ public final class RuleGames {
   /** 半荘を天鳳の牌譜の XML で {@code <id>.xml} に書く。 */
   public static void write(Path directory, RecordedGame game) throws IOException {
     Files.createDirectories(directory);
-    Files.writeString(directory.resolve(game.meta().id() + ".xml"), TenhouXml.write(game), StandardCharsets.UTF_8);
+    Files.writeString(
+        directory.resolve(game.meta().id() + ".xml"),
+        TenhouXml.write(game),
+        StandardCharsets.UTF_8);
   }
 }

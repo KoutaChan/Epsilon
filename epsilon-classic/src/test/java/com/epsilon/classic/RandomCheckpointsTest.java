@@ -34,8 +34,10 @@ public class RandomCheckpointsTest {
         RandomCheckpoints.write(first, architecture, VARIANT, 5);
         RandomCheckpoints.write(again, architecture, VARIANT, 5);
         RandomCheckpoints.write(other, architecture, VARIANT, 6);
-        assertEquals(CheckpointFiles.sha256(again), CheckpointFiles.sha256(first), architecture.toString());
-        assertNotEquals(CheckpointFiles.sha256(other), CheckpointFiles.sha256(first), architecture.toString());
+        assertEquals(
+            CheckpointFiles.sha256(again), CheckpointFiles.sha256(first), architecture.toString());
+        assertNotEquals(
+            CheckpointFiles.sha256(other), CheckpointFiles.sha256(first), architecture.toString());
         try (Policy policy = ModelFamily.of(architecture.series()).open(first, VARIANT, CPU)) {
           assertEquals(policy.label(), architecture.series().prefix() + ":" + first.getFileName());
         }

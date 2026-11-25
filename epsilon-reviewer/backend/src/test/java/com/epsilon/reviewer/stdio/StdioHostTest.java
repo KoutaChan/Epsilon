@@ -57,7 +57,8 @@ public class StdioHostTest {
       Assert.assertTrue(models.get("ok").getAsBoolean(), models.toString());
       Assert.assertEquals(models.getAsJsonObject("response").getAsJsonArray("models").size(), 3);
 
-      JsonObject imported = session.call("importBytes", "{}", TestFiles.played(Variant.TENHOU_4P, 0));
+      JsonObject imported =
+          session.call("importBytes", "{}", TestFiles.played(Variant.TENHOU_4P, 0));
       String recordId = imported.getAsJsonObject("response").get("recordId").getAsString();
       JsonObject started =
           session.call(
@@ -98,8 +99,7 @@ public class StdioHostTest {
       refused(session.call("job", "{\"jobId\":\"x\"}", null), "job_not_found");
       refused(session.call("history", "{\"extra\":1}", null), "invalid_request");
       refused(session.call("models", "{}", new byte[] {1}), "invalid_request");
-      refused(
-          session.call("importFile", "{\"path\":\"relative.xml\"}", null), "invalid_request");
+      refused(session.call("importFile", "{\"path\":\"relative.xml\"}", null), "invalid_request");
       JsonObject deleted = session.call("deleteResult", resultRequest, null);
       Assert.assertTrue(deleted.get("ok").getAsBoolean());
       Assert.assertFalse(deleted.has("response"));

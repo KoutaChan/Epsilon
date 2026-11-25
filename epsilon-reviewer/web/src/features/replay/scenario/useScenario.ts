@@ -4,8 +4,8 @@ import type {
   ScenarioAnswer,
   ScenarioEdits,
   ScenarioQuery,
-} from "../../../../../protocol/model.ts";
-import type { TableState } from "../../../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/model";
+import type { TableState } from "@epsilon-reviewer/protocol/result";
 import type { ScenarioClient } from "../../../review-entry.ts";
 import { readCandidates } from "../model/candidates.ts";
 import type { Candidate, DecisionStep, Snapshot } from "../model/types.ts";
@@ -29,7 +29,12 @@ import {
 
 export type ScenarioBoard = "edited" | "original";
 export type ScenarioStatus =
-  "idle" | "ready" | "loading" | "done" | "stale" | "error";
+  | "idle"
+  | "ready"
+  | "loading"
+  | "done"
+  | "stale"
+  | "error";
 type Analysis =
   | { status: "loading"; key: string }
   | { status: "done"; key: string; candidates: readonly Candidate[] }

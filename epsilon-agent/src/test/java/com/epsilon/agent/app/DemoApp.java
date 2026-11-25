@@ -17,7 +17,8 @@ final class DemoApp {
       @Key(doc = "同時に進める半荘の数", value = "8", change = Change.MACHINE) @Range(min = 1) int workers,
       @Key(doc = "乱数の種", value = "7", change = Change.FIXED) long seed,
       @Key(doc = "割合", value = "0.5", change = Change.COLLECT) @Range(min = 0, max = 1) double rate,
-      @Key(doc = "秘密のトークン", presence = Presence.ABSENT, change = Change.FIXED, secret = true) String token) {}
+      @Key(doc = "秘密のトークン", presence = Presence.ABSENT, change = Change.FIXED, secret = true)
+          String token) {}
 
   enum Mode {
     FAST,
@@ -54,8 +55,18 @@ final class DemoApp {
       context
           .out()
           .print(
-              "table=" + table + " mode=" + mode + " out=" + out + " workers=" + settings.workers() + " rate="
-                  + settings.rate() + " presets=" + context.presets());
+              "table="
+                  + table
+                  + " mode="
+                  + mode
+                  + " out="
+                  + out
+                  + " workers="
+                  + settings.workers()
+                  + " rate="
+                  + settings.rate()
+                  + " presets="
+                  + context.presets());
       return Outcome.ok("measured " + table.size());
     }
   }
@@ -85,7 +96,9 @@ final class DemoApp {
     @Override
     public Outcome run(Context<Demo> context) {
       Signals signals = context.signals();
-      return signals.requested() ? new Outcome(Exit.STOPPED, "stopped by " + signals.reason()) : Outcome.ok("ran");
+      return signals.requested()
+          ? new Outcome(Exit.STOPPED, "stopped by " + signals.reason())
+          : Outcome.ok("ran");
     }
   }
 

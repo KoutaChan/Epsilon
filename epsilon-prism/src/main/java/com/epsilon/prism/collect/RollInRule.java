@@ -15,7 +15,8 @@ import java.util.Objects;
  * @param laterRates 写しの中で逸脱した席の後の判断をラベル行にする率 ρ_br。その判断のクラスごとに、クラスの番号の順に並べる
  * @param maxLabels 写しごとのラベル行の上限
  */
-public record RollInRule(double rate, double epsilonQ, DeviationTarget target, double[] laterRates, int maxLabels) {
+public record RollInRule(
+    double rate, double epsilonQ, DeviationTarget target, double[] laterRates, int maxLabels) {
 
   /** 写しを作らない決まり。そのルール（四人打ち・三人打ち）に無いクラスに使う。 */
   public static final RollInRule OFF = uniform(0, 0, DeviationTarget.ANY, 0, 0);

@@ -1,6 +1,7 @@
 package com.epsilon.reviewer.engine.view;
 
 import com.epsilon.mahjong.action.Action;
+import com.epsilon.mahjong.action.Meld;
 import com.epsilon.mahjong.engine.SeatView;
 import com.epsilon.mahjong.engine.TurnEvent;
 import com.epsilon.mahjong.tile.Tiles;
@@ -66,9 +67,8 @@ public final class CandidateTiles {
   private static boolean ponRed(SeatView view, int kind) {
     int seat = view.seat();
     for (int i = 0; i < view.meldCount(seat); i++) {
-      var meld = com.epsilon.mahjong.action.Meld.of(view.meld(seat, i));
-      if (meld.type() == com.epsilon.mahjong.action.Meld.Type.PON && meld.base() == kind)
-        return meld.red();
+      var meld = Meld.of(view.meld(seat, i));
+      if (meld.type() == Meld.Type.PON && meld.base() == kind) return meld.red();
     }
     throw new IllegalArgumentException("Seat " + seat + " has no pon of kind " + kind);
   }

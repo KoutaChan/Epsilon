@@ -24,7 +24,7 @@ test("recorded normal and bonus yaku use localized names in each shipped languag
       "RIICHI",
       "YAKUHAI_SEAT_E",
       "YAKUHAI_ROUND_S",
-      "SUUANKOU_TANKI",
+      "SUUANKOU",
       "DORA",
       "URADORA",
       "AKADORA",

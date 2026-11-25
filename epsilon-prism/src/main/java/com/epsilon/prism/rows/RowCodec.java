@@ -111,11 +111,7 @@ public final class RowCodec {
    */
   public static Index index(Row row, int frameLength) {
     return new Index(
-        frameLength,
-        row.purpose(),
-        row.source(),
-        row.decisionClass(),
-        row.measuredCount());
+        frameLength, row.purpose(), row.source(), row.decisionClass(), row.measuredCount());
   }
 
   /**
@@ -125,7 +121,8 @@ public final class RowCodec {
    * @return インデックス
    * @throws IOException フレームの長さがヘッダーより短いか、列挙の番号が範囲の外のとき
    */
-  public static Index index(int frameLength, byte purpose, byte source, byte decisionClass, byte measured)
+  public static Index index(
+      int frameLength, byte purpose, byte source, byte decisionClass, byte measured)
       throws IOException {
     if (frameLength < FRAME_HEADER
         || purpose < 0

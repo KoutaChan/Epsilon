@@ -1,10 +1,5 @@
-import type { WinDetails } from "../../../../../protocol/result.ts";
-import type {
-  EventSnapshot,
-  PlayerSnapshot,
-  ReplayModel,
-  Snapshot,
-} from "./types.ts";
+import type { WinDetails } from "@epsilon-reviewer/protocol/result";
+import type { EventSnapshot, PlayerSnapshot, Snapshot } from "./types.ts";
 
 export interface WinningHand {
   readonly player: PlayerSnapshot;
@@ -49,25 +44,16 @@ export function roundScoreChanges(
 /** 最終の点数の高い順に並べ、1 から順位を付ける。同点は起家に近い席（席の番号の小さい方）を上にし、順位は重ねない。 */
 export function rankFinalPlayers(
   players: readonly PlayerSnapshot[],
-  finalScores: readonly number[] | undefined,
+  finalScores: readonly number[],
 ) {
   return players
     .map((player) => ({
       player,
-      score: finalScores?.[player.seat] ?? player.score,
+      score: finalScores[player.seat]!,
     }))
     .sort(
       (left, right) =>
         right.score - left.score || left.player.seat - right.player.seat,
     )
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
-}
-
-export function hasRecordedMatchEnd(model: ReplayModel): boolean {
-  return (
-    model.record.finalScores !== undefined ||
-    model.rounds
-      .at(-1)!
-      .steps.some((step) => !step.decision && step.eventType === "end_game")
-  );
 }

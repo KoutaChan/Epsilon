@@ -1,6 +1,7 @@
 package com.epsilon.reviewer.model;
 
 import com.epsilon.agent.checkpoint.CheckpointFiles;
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.agent.policy.ModelFamily;
 import com.epsilon.agent.policy.Policy;
 import com.epsilon.reviewer.error.ErrorCode;
@@ -45,8 +46,7 @@ public final class ModelRegistry implements AutoCloseable {
 
   private boolean closed;
 
-  public ModelRegistry(
-      ModelCatalog catalog, ModelFamilies families, int maxOpen, Duration idle) {
+  public ModelRegistry(ModelCatalog catalog, ModelFamilies families, int maxOpen, Duration idle) {
     this.catalog = catalog;
     this.families = families;
     this.maxOpen = maxOpen;

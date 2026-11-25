@@ -52,7 +52,11 @@ public final class Pipeline<K extends Enum<K> & StepKind<I>, I extends Iteration
       }
       reports.put(kind, report);
       LOG.info(
-          "t={} {} {} {}s", iteration.number(), kind.name(), report.status(), String.format("%.1f", report.seconds()));
+          "t={} {} {} {}s",
+          iteration.number(),
+          kind.name(),
+          report.status(),
+          String.format("%.1f", report.seconds()));
       if (control.check(SafePoint.afterStep(kind.name())).isPresent()) {
         return Optional.empty();
       }
@@ -89,7 +93,11 @@ public final class Pipeline<K extends Enum<K> & StepKind<I>, I extends Iteration
     }
     if (report.metrics() != null && !kind.metrics().isInstance(report.metrics())) {
       throw new IllegalStateException(
-          "The step " + kind.name() + " reported " + report.metrics().getClass().getName() + ", not "
+          "The step "
+              + kind.name()
+              + " reported "
+              + report.metrics().getClass().getName()
+              + ", not "
               + kind.metrics().getName());
     }
     return report;

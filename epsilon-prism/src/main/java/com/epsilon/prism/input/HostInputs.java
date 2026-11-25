@@ -23,8 +23,10 @@ public record HostInputs(HostBatch input) {
    * @param memory バイト数を受け取り、blob のバッファを確保する関数（ダイレクトバッファか、デバイスが読むバッチならページ固定のメモリ）
    * @return 確保した入力
    */
-  public static HostInputs allocate(InputFormat format, BatchPlan.Capacity capacity, IntFunction<ByteBuffer> memory) {
-    return new HostInputs(new HostBatch(format, capacity, memory.apply(BatchPlan.maxBytes(format, capacity))));
+  public static HostInputs allocate(
+      InputFormat format, BatchPlan.Capacity capacity, IntFunction<ByteBuffer> memory) {
+    return new HostInputs(
+        new HostBatch(format, capacity, memory.apply(BatchPlan.maxBytes(format, capacity))));
   }
 
   /**

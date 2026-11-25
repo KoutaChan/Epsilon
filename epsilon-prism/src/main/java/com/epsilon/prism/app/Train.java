@@ -22,7 +22,9 @@ import java.nio.file.Path;
 @Named(value = "train", doc = "Run the run's iterations", reads = Reads.RUN)
 public record Train(
     @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Cap on the iterations to finish in this call", presence = Presence.ABSENT) @Range(min = 1) Integer stopAfter)
+    @Key(doc = "Cap on the iterations to finish in this call", presence = Presence.ABSENT)
+        @Range(min = 1)
+        Integer stopAfter)
     implements PrismCommand {
 
   @Override

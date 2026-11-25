@@ -68,7 +68,8 @@ public class FuTest {
     WinScore tsumo = four("222m444p456m77s88s").tsumo("8s").score();
     assertScore(tsumo, 4, 40, 2_000);
     Assert.assertEquals(
-        tsumo.yaku(), YakuTest.bits(ScoringYaku.TANYAO, ScoringYaku.MENZEN_TSUMO, ScoringYaku.SANANKOU));
+        tsumo.yaku(),
+        YakuTest.bits(ScoringYaku.TANYAO, ScoringYaku.MENZEN_TSUMO, ScoringYaku.SANANKOU));
   }
 
   /** 4p は 345 の嵌張（32 → 40 符）とも 456 の両面（30 符）とも読める。翻が同じなので、符の高い嵌張の読みを採る。 */

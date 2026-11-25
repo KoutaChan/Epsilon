@@ -16,6 +16,7 @@ import com.epsilon.agent.run.Runner;
 import com.epsilon.agent.settings.RecordFile;
 import com.epsilon.prism.TestSettings;
 import com.epsilon.prism.eval.EvaluationTable;
+import com.epsilon.prism.rows.CohortRows;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.settings.PrismSettings;
 import com.google.gson.JsonElement;
@@ -23,17 +24,13 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,7 +58,13 @@ public class LineageResumeTest {
 
   /** 段の後で止めたとき、次の起動で一時停止の要求を出して、その前で止める段。 */
   private static final Map<String, String> NEXT_STEP =
-      Map.of("AFTER_STEP PHI", "COLLECT", "AFTER_STEP COLLECT", "LEARN", "AFTER_STEP LEARN", "PUBLISH");
+      Map.of(
+          "AFTER_STEP PHI",
+          "COLLECT",
+          "AFTER_STEP COLLECT",
+          "LEARN",
+          "AFTER_STEP LEARN",
+          "PUBLISH");
 
   @Test(groups = "slow", timeOut = 3_600_000)
   public void stoppingAtEverySafePointAndResumingGivesTheSameRun() throws Exception {
@@ -77,15 +80,19 @@ public class LineageResumeTest {
 
       List<String> points = stopEverywhere(stopped);
       for (String step : List.of("PHI", "COLLECT", "LEARN", "PUBLISH")) {
-        Assert.assertEquals(Collections.frequency(points, "BEFORE_STEP " + step), 2, step + " in " + points);
-        Assert.assertEquals(Collections.frequency(points, "AFTER_STEP " + step), 2, step + " in " + points);
+        Assert.assertEquals(
+            Collections.frequency(points, "BEFORE_STEP " + step), 2, step + " in " + points);
+        Assert.assertEquals(
+            Collections.frequency(points, "AFTER_STEP " + step), 2, step + " in " + points);
       }
       Assert.assertEquals(Collections.frequency(points, "ITERATION"), 2, points.toString());
       Assert.assertEquals(Collections.frequency(points, "LAUNCH"), 1, points.toString());
       for (String job : expected.jobs().keySet()) {
-        Assert.assertEquals(Collections.frequency(points, "AFTER_JOB " + job), 1, job + " in " + points);
+        Assert.assertEquals(
+            Collections.frequency(points, "AFTER_JOB " + job), 1, job + " in " + points);
       }
-      Assert.assertEquals(RunStatus.read(new RunDirectory(stopped).status()).state(), RunStatus.State.FINISHED);
+      Assert.assertEquals(
+          RunStatus.read(new RunDirectory(stopped).status()).state(), RunStatus.State.FINISHED);
       Assert.assertEquals(outcome(stopped), expected);
       assertNoLeftovers(new RunDirectory(stopped));
     } finally {
@@ -126,8 +133,12 @@ public class LineageResumeTest {
       Assert.assertEquals(runner(root, JAR, () -> false).train(), Ending.FINISHED);
       List<String> iterations = DurableFiles.lines(run.report(RunDirectory.ITERATIONS));
       Assert.assertEquals(iterations.size(), 3);
-      Assert.assertEquals(starts(iterations.get(1)), List.of(2, 2), "iteration 2 learns from the version it collected");
-      Assert.assertEquals(starts(iterations.get(2)), List.of(1, 1), "iteration 3 starts from the champion");
+      Assert.assertEquals(
+          starts(iterations.get(1)),
+          List.of(2, 2),
+          "iteration 2 learns from the version it collected");
+      Assert.assertEquals(
+          starts(iterations.get(2)), List.of(1, 1), "iteration 3 starts from the champion");
       PrismState closed = RecordFile.read(PrismState.class, run.state()).value();
       Assert.assertEquals(closed.next(), 4);
       Assert.assertEquals(closed.start(), 4);
@@ -169,7 +180,8 @@ public class LineageResumeTest {
 
   private static Runner<PrismSettings, PrismState, PrismIteration, PrismStep> runner(
       Path run, String jar, BooleanSupplier signalled) {
-    return new Runner<>(new RunDirectory(run), PrismRun.LINEAGE, new Runner.Options(jar, null, null, signalled));
+    return new Runner<>(
+        new RunDirectory(run), PrismRun.LINEAGE, new Runner.Options(jar, null, null, signalled));
   }
 
   /**
@@ -199,10 +211,13 @@ public class LineageResumeTest {
       }
       Assert.assertEquals(ending, Ending.STOPPED, points.toString());
       String reason = status.reason();
-      Assert.assertTrue(reason.startsWith("Stopped at ") && reason.endsWith(" by a signal"), reason);
-      String point = reason.substring("Stopped at ".length(), reason.length() - " by a signal".length());
+      Assert.assertTrue(
+          reason.startsWith("Stopped at ") && reason.endsWith(" by a signal"), reason);
+      String point =
+          reason.substring("Stopped at ".length(), reason.length() - " by a signal".length());
       if (before != null) {
-        Assert.assertEquals(point, "BEFORE_STEP " + before, "the pause request waits before its step");
+        Assert.assertEquals(
+            point, "BEFORE_STEP " + before, "the pause request waits before its step");
       }
       points.add(point);
       leaveTraces(run, point, status.iteration() == null ? 0 : status.iteration());
@@ -222,7 +237,9 @@ public class LineageResumeTest {
           Assert.assertEquals(runner(run.root(), "other002", () -> false).train(), Ending.REFUSED);
           RunStatus refused = RunStatus.read(run.status());
           Assert.assertEquals(refused.state(), RunStatus.State.FAILED);
-          Assert.assertEquals(refused.reason(), "Iteration 1 started with jar " + JAR + "; restore that jar to finish it");
+          Assert.assertEquals(
+              refused.reason(),
+              "Iteration 1 started with jar " + JAR + "; restore that jar to finish it");
         }
       }
       case "BEFORE_STEP PUBLISH" -> junk(PrismStep.part(run.snapshot(t + 1)));
@@ -234,11 +251,11 @@ public class LineageResumeTest {
               StandardOpenOption.CREATE,
               StandardOpenOption.APPEND);
       case "ITERATION" -> {
-        JobFile next = new Jobs(run.jobs(), run.report(RunDirectory.EVALUATIONS)).list().jobs().stream()
-            .filter(JobFile::open)
-            .findFirst()
-            .orElseThrow();
-        Files.writeString(run.job(next.name()).resolve(JobOutputs.GAMES), "0\t0\t0\t1,2,3,4\t0\t0\n");
+        JobFile next =
+            new Jobs(run.jobs(), run.report(RunDirectory.EVALUATIONS))
+                .list().jobs().stream().filter(JobFile::open).findFirst().orElseThrow();
+        Files.writeString(
+            run.job(next.name()).resolve(JobOutputs.GAMES), "0\t0\t0\t1,2,3,4\t0\t0\n");
         Files.writeString(run.job(next.name()).resolve(JobOutputs.LOOKS), "junk\n");
       }
       default -> {}
@@ -267,14 +284,26 @@ public class LineageResumeTest {
   private static String progress(RunDirectory run) {
     try {
       StringBuilder out = new StringBuilder();
-      out.append(Files.exists(run.state()) ? Files.readString(run.state(), StandardCharsets.UTF_8) : "-").append('|');
-      out.append(names(run.snapshots())).append('|').append(names(run.rows(1).getParent())).append('|');
+      out.append(
+              Files.exists(run.state())
+                  ? Files.readString(run.state(), StandardCharsets.UTF_8)
+                  : "-")
+          .append('|');
+      out.append(names(run.snapshots()))
+          .append('|')
+          .append(names(run.rows(1).getParent()))
+          .append('|');
       for (String t : names(run.work())) {
         out.append(t).append(names(run.work().resolve(t))).append('|');
       }
       out.append(DurableFiles.lines(run.report(RunDirectory.ITERATIONS)).size()).append('|');
       for (JobFile job : new Jobs(run.jobs(), run.report(RunDirectory.EVALUATIONS)).list().jobs()) {
-        out.append(job.name()).append(' ').append(job.state()).append(' ').append(job.walls()).append(',');
+        out.append(job.name())
+            .append(' ')
+            .append(job.state())
+            .append(' ')
+            .append(job.walls())
+            .append(',');
       }
       return out.toString();
     } catch (IOException unreadable) {
@@ -302,7 +331,8 @@ public class LineageResumeTest {
     for (Path directory : List.of(run.snapshots(), run.rows(1).getParent())) {
       try (Stream<Path> listed = Files.list(directory)) {
         Assert.assertEquals(
-            listed.filter(path -> path.getFileName().toString().endsWith(PrismStep.PART)).toList(), List.of());
+            listed.filter(path -> path.getFileName().toString().endsWith(PrismStep.PART)).toList(),
+            List.of());
       }
     }
   }
@@ -319,7 +349,7 @@ public class LineageResumeTest {
       List<String> alarms,
       Map<String, String> jobs,
       Map<String, String> snapshots,
-      Map<String, String> cohorts,
+      Map<String, Cohort> cohorts,
       List<String> champion) {}
 
   private static Outcome outcome(Path root) throws Exception {
@@ -336,7 +366,7 @@ public class LineageResumeTest {
         metrics.remove("seconds");
         metrics.remove("decisionsPerSecond");
         metrics.remove("waitSeconds");
-        // Φ の呼び出しの数は、時間やメモのヒットがスレッドの回り方で変わるので比べない
+        // Φ の呼び出しの数は、時間やキャッシュのヒットがスレッドの回り方で変わるので比べない
         metrics.remove("phi");
         metrics.addProperty("status", "DONE");
         for (String part : List.of("ledger", "fit")) {
@@ -355,7 +385,8 @@ public class LineageResumeTest {
     Map<String, String> jobs = new TreeMap<>();
     for (JobFile job : new Jobs(run.jobs(), run.report(RunDirectory.EVALUATIONS)).list().jobs()) {
       Path home = run.job(job.name());
-      JsonObject file = JsonParser.parseString(Files.readString(home.resolve(Jobs.JOB))).getAsJsonObject();
+      JsonObject file =
+          JsonParser.parseString(Files.readString(home.resolve(Jobs.JOB))).getAsJsonObject();
       file.remove("attempts");
       file.remove("cleanStops");
       file.remove("created");
@@ -371,9 +402,9 @@ public class LineageResumeTest {
     for (String version : names(run.snapshots())) {
       snapshots.put(version, CheckpointFiles.sha256(run.snapshots().resolve(version)));
     }
-    Map<String, String> cohorts = new TreeMap<>();
+    Map<String, Cohort> cohorts = new TreeMap<>();
     for (String cohort : names(run.rows(1).getParent())) {
-      cohorts.put(cohort, digest(run.rows(1).getParent().resolve(cohort)));
+      cohorts.put(cohort, Cohort.read(run.rows(1).getParent().resolve(cohort)));
     }
     List<String> champion = new ArrayList<>();
     for (ChampionStore.Entry entry : ChampionStore.open(run.champion()).history()) {
@@ -397,36 +428,12 @@ public class LineageResumeTest {
     return object.toString();
   }
 
-  /**
-   * コホートのマニフェスト、クラスごとの数、行（インデックスの項目と本体の組）の多重集合から求めた SHA-256。ライターは行を届いた順に
-   * 書き、その順は収集のスレッドの速さで変わるので、行の順は比べない。
-   */
-  private static String digest(Path cohort) throws Exception {
-    CohortWriter.Manifest manifest = CohortWriter.readManifest(cohort);
-    List<String> rows = new ArrayList<>();
-    for (CohortWriter.Shard shard : manifest.shards()) {
-      Path file = cohort.resolve(shard.file());
-      byte[] body = Files.readAllBytes(file);
-      ByteBuffer index = ByteBuffer.wrap(Files.readAllBytes(CohortWriter.index(file))).order(ByteOrder.LITTLE_ENDIAN);
-      int offset = 0;
-      while (index.hasRemaining()) {
-        byte[] entry = new byte[CohortWriter.INDEX_ENTRY];
-        index.get(entry);
-        int length = ByteBuffer.wrap(entry).order(ByteOrder.LITTLE_ENDIAN).getInt();
-        MessageDigest frame = MessageDigest.getInstance("SHA-256");
-        frame.update(body, offset, length);
-        rows.add(HexFormat.of().formatHex(entry) + HexFormat.of().formatHex(frame.digest()));
-        offset += length;
-      }
-      Assert.assertEquals(offset, body.length, file.toString());
+  private record Cohort(String manifest, String classes, List<CohortRows> rows) {
+    static Cohort read(Path directory) throws IOException {
+      return new Cohort(
+          Files.readString(directory.resolve(CohortWriter.MANIFEST)),
+          Files.readString(directory.resolve(CollectReport.CLASSES)),
+          CohortRows.read(directory));
     }
-    Collections.sort(rows);
-    MessageDigest sha = MessageDigest.getInstance("SHA-256");
-    sha.update(Files.readAllBytes(cohort.resolve(CohortWriter.MANIFEST)));
-    sha.update(Files.readAllBytes(cohort.resolve(CollectReport.CLASSES)));
-    for (String row : rows) {
-      sha.update(row.getBytes(StandardCharsets.UTF_8));
-    }
-    return HexFormat.of().formatHex(sha.digest());
   }
 }

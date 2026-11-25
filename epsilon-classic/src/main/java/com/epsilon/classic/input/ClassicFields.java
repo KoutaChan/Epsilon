@@ -603,7 +603,8 @@ public final class ClassicFields {
     /** 和了の後の (自分の点 − 上家の点) / 100000。 */
     NORMALIZED_SOLE_WIN_SCORE_GAP_KAMICHA(POINTS);
 
-    private static final Set<Architecture> ARCHITECTURES = ArchitectureScoped.scope(Architecture.NANO);
+    private static final Set<Architecture> ARCHITECTURES =
+        ArchitectureScoped.scope(Architecture.NANO);
 
     private final float scale;
 
@@ -671,7 +672,8 @@ public final class ClassicFields {
     /** 包が成り立つなら 1（点の写像はこの和了を使わない）。 */
     REQUIRES_PAO_CORRECTION(FLAG);
 
-    private static final Set<Architecture> ARCHITECTURES = ArchitectureScoped.scope(Architecture.MAJOR);
+    private static final Set<Architecture> ARCHITECTURES =
+        ArchitectureScoped.scope(Architecture.MAJOR);
 
     private final int width;
 
@@ -826,7 +828,8 @@ public final class ClassicFields {
     /** ツモの基本点 / 32000。 */
     TSUMO_NORMALIZED_BASE_POINTS(BASE_SCALE);
 
-    private static final Set<Architecture> ARCHITECTURES = ArchitectureScoped.scope(Architecture.NANO);
+    private static final Set<Architecture> ARCHITECTURES =
+        ArchitectureScoped.scope(Architecture.NANO);
 
     private final float scale;
 

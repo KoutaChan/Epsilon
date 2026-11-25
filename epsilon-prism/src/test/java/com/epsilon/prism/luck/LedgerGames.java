@@ -40,7 +40,8 @@ final class LedgerGames {
   /** 席ごとの仮の受け取り先（帳簿つき）。 */
   static List<Seat> seats(Variant variant) {
     List<Seat> seats = new ArrayList<>();
-    for (int seat = 0; seat < variant.seats(); seat++) seats.add(new Seat(seat, new double[LedgerColumn.COUNT]));
+    for (int seat = 0; seat < variant.seats(); seat++)
+      seats.add(new Seat(seat, new double[LedgerColumn.COUNT]));
     return seats;
   }
 
@@ -52,7 +53,9 @@ final class LedgerGames {
    */
   record Style(double callRate, boolean kans) {}
 
-  static final Style PLAIN = new Style(0.05, false), KANS = new Style(0.3, true), CALLS = new Style(0.6, true);
+  static final Style PLAIN = new Style(0.05, false),
+      KANS = new Style(0.3, true),
+      CALLS = new Style(0.6, true);
 
   /**
    * 打ち方に従って手を選ぶ。和了は必ず選び、{@code kans} なら槓と抜きも必ず選ぶ。立直は必ず選ぶ。鳴きは確率 {@code callRate} で選ぶ。
@@ -73,10 +76,13 @@ final class LedgerGames {
       if (style.kans())
         for (int a = 0; a < n; a++) {
           Action.Type type = type(decisions, slot, a);
-          if (type == Action.Type.ANKAN || type == Action.Type.KAKAN || type == Action.Type.DAIMINKAN
+          if (type == Action.Type.ANKAN
+              || type == Action.Type.KAKAN
+              || type == Action.Type.DAIMINKAN
               || type == Action.Type.NUKI) return a;
         }
-      for (int a = 0; a < n; a++) if (type(decisions, slot, a) == Action.Type.RIICHI_DAHAI) return a;
+      for (int a = 0; a < n; a++)
+        if (type(decisions, slot, a) == Action.Type.RIICHI_DAHAI) return a;
       int pass = -1;
       picks.clear();
       for (int a = 0; a < n; a++) {
@@ -86,7 +92,9 @@ final class LedgerGames {
       }
       if (pass >= 0) {
         double coin = random.nextDouble();
-        return !picks.isEmpty() && coin < style.callRate() ? picks.get(random.nextInt(picks.size())) : pass;
+        return !picks.isEmpty() && coin < style.callRate()
+            ? picks.get(random.nextInt(picks.size()))
+            : pass;
       }
       engine.full().copyHand(decisions.seat(slot), hand);
       int best = Integer.MAX_VALUE;
@@ -103,7 +111,8 @@ final class LedgerGames {
         if (shanten == best) picks.add(a);
       }
       if (!picks.isEmpty()) return picks.get(random.nextInt(picks.size()));
-      for (int a = 0; a < n; a++) if (type(decisions, slot, a) != Action.Type.KYUSHU_KYUHAI) return a;
+      for (int a = 0; a < n; a++)
+        if (type(decisions, slot, a) != Action.Type.KYUSHU_KYUHAI) return a;
       return 0;
     };
   }
@@ -134,7 +143,8 @@ final class LedgerGames {
         case DECISIONS -> {
           visitor.decision(engine, ws);
           Decisions decisions = engine.decisions();
-          for (int slot = 0; slot < decisions.size(); slot++) choices[slot] = chooser.choose(engine, slot, random);
+          for (int slot = 0; slot < decisions.size(); slot++)
+            choices[slot] = chooser.choose(engine, slot, random);
           boundary = engine.commit(choices, ws);
         }
         case ROUND_END -> {
@@ -227,7 +237,10 @@ final class LedgerGames {
                                                                 * (-1.13520398
                                                                     + t
                                                                         * (1.48851587
-                                                                            + t * (-0.82215223 + t * 0.17087277)))))))));
+                                                                            + t
+                                                                                * (-0.82215223
+                                                                                    + t
+                                                                                        * 0.17087277)))))))));
     return x >= 0 ? r : 2 - r;
   }
 }

@@ -46,7 +46,8 @@ public final class GrpNetwork implements GrpModel {
   public static GrpNetwork of(GrpShape shape, float[] weights) {
     int expected = GrpTensor.starts(shape)[GrpTensor.values().length];
     if (weights.length != expected) {
-      throw new IllegalArgumentException(shape + " needs " + expected + " weights, got " + weights.length);
+      throw new IllegalArgumentException(
+          shape + " needs " + expected + " weights, got " + weights.length);
     }
     for (int index = 0; index < weights.length; index++) {
       if (!Float.isFinite(weights[index])) {
@@ -103,7 +104,9 @@ public final class GrpNetwork implements GrpModel {
   public double logProbability(GrpState state, int permutation, GrpWorkspace workspace) {
     Objects.checkIndex(permutation, outputs);
     forward(check(workspace).encoder.load(state), workspace);
-    return workspace.logits[permutation] - workspace.logitMax - StrictMath.log(workspace.exponentSum);
+    return workspace.logits[permutation]
+        - workspace.logitMax
+        - StrictMath.log(workspace.exponentSum);
   }
 
   /**
@@ -131,9 +134,20 @@ public final class GrpNetwork implements GrpModel {
     workspace.encoder.encode(table, workspace.input);
     int[] at = starts;
     Dense.relu(
-        weights, at[GrpTensor.W1.ordinal()], at[GrpTensor.B1.ordinal()], workspace.input, width, workspace.hidden1, hidden);
+        weights,
+        at[GrpTensor.W1.ordinal()],
+        at[GrpTensor.B1.ordinal()],
+        workspace.input,
+        width,
+        workspace.hidden1,
+        hidden);
     Dense.relu(
-        weights, at[GrpTensor.W2.ordinal()], at[GrpTensor.B2.ordinal()], workspace.hidden1, hidden, workspace.hidden2,
+        weights,
+        at[GrpTensor.W2.ordinal()],
+        at[GrpTensor.B2.ordinal()],
+        workspace.hidden1,
+        hidden,
+        workspace.hidden2,
         hidden);
     int head = shape.phaseHeads() ? GrpPhase.of(shape.variant(), table.round()).ordinal() : 0;
     Dense.logits(
@@ -149,7 +163,8 @@ public final class GrpNetwork implements GrpModel {
 
   private GrpWorkspace check(GrpWorkspace workspace) {
     if (workspace.shape != shape && !workspace.shape.equals(shape)) {
-      throw new IllegalArgumentException("Workspace for " + workspace.shape + " used with " + shape);
+      throw new IllegalArgumentException(
+          "Workspace for " + workspace.shape + " used with " + shape);
     }
     return workspace;
   }

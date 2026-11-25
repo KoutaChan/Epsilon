@@ -4,10 +4,6 @@ package com.epsilon.prism.noise;
 public enum LedgerCells {
   /** 判断のクラスごと。 */
   CLASS,
-  /** 判断のクラスと局の段階ごと。 */
-  CLASS_STAGE,
-  /** 判断のクラスと順位ごと。 */
-  CLASS_RANK,
-  /** 判断のクラス、局の段階、順位の組ごと。 */
+  /** 判断のクラス、局の段階、順位の組ごと（区分の数と境は、帳簿の当てはめがルールの局と席から決める）。 */
   CLASS_STAGE_RANK
 }

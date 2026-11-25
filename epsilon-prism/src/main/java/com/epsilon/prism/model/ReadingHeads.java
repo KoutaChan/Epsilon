@@ -95,14 +95,20 @@ final class ReadingHeads extends Module {
     NDArray opponentStates =
         states.get(new NDIndex(":, {}:{}", opponentFirst, opponentFirst + opponents));
     NDArray tileStates = states.get(new NDIndex(":, {}:{}", tileFirst, tileFirst + tileCount));
+    return forward(context, opponentStates, tileStates);
+  }
+
+  NDArray forward(Context context, NDArray opponentStates, NDArray tileStates) {
     NDList parts = new NDList(ReadingTarget.values().length);
     for (ReadingTarget target : ReadingTarget.values()) {
       NDArray bias = context.fp32(biases.get(target));
       NDArray part =
           switch (Form.of(target)) {
-            case LINEAR -> context.toFloat(context.linear(opponentStates, seats.get(target), null)).add(bias);
+            case LINEAR ->
+                context.toFloat(context.linear(opponentStates, seats.get(target), null)).add(bias);
             case BILINEAR -> {
-              NDArray seat = context.toFloat(context.linear(opponentStates, seats.get(target), null));
+              NDArray seat =
+                  context.toFloat(context.linear(opponentStates, seats.get(target), null));
               NDArray tile = context.toFloat(context.linear(tileStates, tiles.get(target), null));
               yield seat.matMul(tile.transpose(0, 2, 1)).mul(SCALE).add(bias);
             }
@@ -116,7 +122,8 @@ final class ReadingHeads extends Module {
   private static String camel(ReadingTarget target) {
     StringBuilder name = new StringBuilder();
     for (String word : target.name().toLowerCase(Locale.ROOT).split("_")) {
-      name.append(name.isEmpty() ? word : Character.toUpperCase(word.charAt(0)) + word.substring(1));
+      name.append(
+          name.isEmpty() ? word : Character.toUpperCase(word.charAt(0)) + word.substring(1));
     }
     return name.toString();
   }

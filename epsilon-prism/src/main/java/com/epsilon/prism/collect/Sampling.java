@@ -58,7 +58,13 @@ public record Sampling(
   private static Sampling off() {
     RollInRule[] rollIn = new RollInRule[DecisionClass.COUNT];
     Arrays.fill(rollIn, RollInRule.OFF);
-    return new Sampling(0, new double[Openness.COUNT][DecisionClass.COUNT], new boolean[DecisionClass.COUNT], 2, 0, rollIn);
+    return new Sampling(
+        0,
+        new double[Openness.COUNT][DecisionClass.COUNT],
+        new boolean[DecisionClass.COUNT],
+        2,
+        0,
+        rollIn);
   }
 
   /**
@@ -76,15 +82,27 @@ public record Sampling(
     RollInRule[] rollIn = new RollInRule[DecisionClass.COUNT];
     Arrays.fill(rollIn, RollInRule.OFF);
     for (DecisionClass c : ClassTables.classes(variant)) {
-      for (Openness hand : Openness.values()) labelRates[hand.ordinal()][c.ordinal()] = rates.rate(c, hand);
+      for (Openness hand : Openness.values())
+        labelRates[hand.ordinal()][c.ordinal()] = rates.rate(c, hand);
       measureAll[c.ordinal()] = rates.allActions().contains(c);
       double[] later = new double[DecisionClass.COUNT];
-      for (DecisionClass next : DecisionClass.values()) later[next.ordinal()] = labels.copyLabelRate(c, next);
+      for (DecisionClass next : DecisionClass.values())
+        later[next.ordinal()] = labels.copyLabelRate(c, next);
       rollIn[c.ordinal()] =
-          new RollInRule(labels.rollin().get(c), labels.deviationFloor(c), labels.deviation(c), later, labels.maxCopyLabels(c));
+          new RollInRule(
+              labels.rollin().get(c),
+              labels.deviationFloor(c),
+              labels.deviation(c),
+              later,
+              labels.maxCopyLabels(c));
     }
     return new Sampling(
-        labels.holdout(), labelRates, measureAll, labels.maxCandidates(), labels.uniformCandidate(), rollIn);
+        labels.holdout(),
+        labelRates,
+        measureAll,
+        labels.maxCandidates(),
+        labels.uniformCandidate(),
+        rollIn);
   }
 
   /** クラス {@code c} の判断で全ての合法手を測るか。 */

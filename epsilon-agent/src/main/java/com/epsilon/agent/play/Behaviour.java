@@ -25,7 +25,8 @@ public record Behaviour(double epsilon, double temperature, CrnScheme scheme) {
   public Behaviour {
     if (!(epsilon >= 0 && epsilon < 1))
       throw new IllegalArgumentException("epsilon must be in [0, 1): " + epsilon);
-    if (!(temperature >= 0)) throw new IllegalArgumentException("temperature must be >= 0: " + temperature);
+    if (!(temperature >= 0))
+      throw new IllegalArgumentException("temperature must be >= 0: " + temperature);
     if (scheme == null) throw new IllegalArgumentException("scheme must be set");
   }
 
@@ -37,7 +38,10 @@ public record Behaviour(double epsilon, double temperature, CrnScheme scheme) {
     double sum = 0;
     for (int a = 0; a < n; a++) {
       // NaN の手は重みを 0 にし、最大の値にも数えない。全て NaN なら一様にする
-      weights[a] = Float.isNaN(scores[a]) || best == Double.NEGATIVE_INFINITY ? 0 : Math.exp((scores[a] - best) / temperature);
+      weights[a] =
+          Float.isNaN(scores[a]) || best == Double.NEGATIVE_INFINITY
+              ? 0
+              : Math.exp((scores[a] - best) / temperature);
       sum += weights[a];
     }
     if (sum == 0) {

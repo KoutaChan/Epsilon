@@ -61,7 +61,8 @@ public final class GrpFixtures {
    * 区分・和了者・2 人目の和了者・放銃者・聴牌した席のビットが全て合う終わり方の番号を返す。いない席には HandOutcomes.NONE を、
    * 聴牌した席が無ければ 0 を渡す。合う終わり方が無ければ例外を投げる。
    */
-  public static int main(HandOutcomes hands, OutcomeSection section, int winner, int second, int loser, int tenpai) {
+  public static int main(
+      HandOutcomes hands, OutcomeSection section, int winner, int second, int loser, int tenpai) {
     for (int main = 0; main < hands.mainCount(); main++) {
       if (hands.section(main) == section
           && hands.winner(main) == winner
@@ -71,7 +72,8 @@ public final class GrpFixtures {
         return main;
       }
     }
-    throw new IllegalArgumentException("No main outcome " + section + " " + winner + " " + second + " " + loser);
+    throw new IllegalArgumentException(
+        "No main outcome " + section + " " + winner + " " + second + " " + loser);
   }
 
   /**
@@ -105,7 +107,8 @@ public final class GrpFixtures {
   /** 四人打ちの終局の卓。南 4 の親（絶対席 3）が不聴で流れ、トップが返し点に届いて終わる。点は [40,000, 20,000, 20,000, 20,000]。 */
   public static TableState finished() {
     TableState start = new TableState(Variant.TENHOU_4P);
-    start.set(new RoundStart(Variant.TENHOU_4P, 7, 0, 0, new int[] {40_000, 20_000, 20_000, 20_000}));
+    start.set(
+        new RoundStart(Variant.TENHOU_4P, 7, 0, 0, new int[] {40_000, 20_000, 20_000, 20_000}));
     RoundOutcome draw = new RoundOutcome(Variant.TENHOU_4P);
     int[] delta = new int[4];
     Settlement.apply(Variant.TENHOU_4P, start, draw, delta);
@@ -145,6 +148,7 @@ public final class GrpFixtures {
       scores[a] = total / 200 * 100;
       scores[b] = total - scores[a];
     }
-    return new GrpState(variant, random.nextInt(variant.finalRound() + 1), random.nextInt(6), sticks, scores);
+    return new GrpState(
+        variant, random.nextInt(variant.finalRound() + 1), random.nextInt(6), sticks, scores);
   }
 }

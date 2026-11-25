@@ -45,12 +45,18 @@ public final class ClassicCheckpoint {
     Objects.requireNonNull(variant, "variant");
     ClassicHeader header = header(directory);
     if (header.variant() != variant) {
-      throw new IllegalStateException("Checkpoint " + directory + " is for " + header.variant() + ", not " + variant);
+      throw new IllegalStateException(
+          "Checkpoint " + directory + " is for " + header.variant() + ", not " + variant);
     }
     String fingerprint = ClassicSchema.of(header.architecture()).fingerprint();
     if (!header.inputFingerprint().equals(fingerprint)) {
       throw new IllegalStateException(
-          "Checkpoint " + directory + " has input fingerprint " + header.inputFingerprint() + ", not " + fingerprint);
+          "Checkpoint "
+              + directory
+              + " has input fingerprint "
+              + header.inputFingerprint()
+              + ", not "
+              + fingerprint);
     }
     return header;
   }
@@ -64,9 +70,11 @@ public final class ClassicCheckpoint {
    * @return 読んだネットワーク
    * @throws IllegalStateException ルールか入力のフィンガープリントがチェックポイントと合わない
    */
-  public static ClassicNetwork read(Path directory, Variant variant, NDManager manager) throws IOException {
+  public static ClassicNetwork read(Path directory, Variant variant, NDManager manager)
+      throws IOException {
     ClassicHeader header = verify(directory, variant);
-    ClassicNetwork network = new ClassicNetwork(header.architecture(), header.variant(), header.utility());
+    ClassicNetwork network =
+        new ClassicNetwork(header.architecture(), header.variant(), header.utility());
     network.initialize(manager);
     CheckpointFiles.loadParameters(directory, network, manager);
     return network;

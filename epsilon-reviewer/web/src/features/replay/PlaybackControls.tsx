@@ -1,3 +1,5 @@
+import { seatAt } from "./model/seats.ts";
+import { useDismiss } from "../../components/useDismiss";
 import {
   useCallback,
   useEffect,
@@ -74,15 +76,11 @@ export function PlaybackControls({
     opener.current = event.currentTarget;
     setMenu(menu === target ? null : target);
   };
-  useEffect(() => {
-    const pointer = (event: PointerEvent) => {
-      const node = event.target;
-      if (!(node instanceof Node) || !elements.playback.current?.contains(node))
-        setMenu(null);
-    };
-    document.addEventListener("pointerdown", pointer);
-    return () => document.removeEventListener("pointerdown", pointer);
-  }, [elements]);
+  useDismiss(
+    menu !== null,
+    (node) => Boolean(elements.playback.current?.contains(node)),
+    () => setMenu(null),
+  );
   useEffect(() => {
     if (stage !== "table") setMenu(null);
   }, [stage]);
@@ -144,15 +142,13 @@ export function PlaybackControls({
             name: playerName(currentPlayer.name, seat, t),
           })}
         >
-          <span className="em-seat-label">
-            {seatName(seat, round, t)}
-          </span>
+          <span className="em-seat-label">{seatName(seat, round, t)}</span>
           <ChevronDown />
         </summary>
         <div className="em-seat-menu">
           {snapshot.players.map((_, offset) => {
             const player =
-              snapshot.players[(round.dealer + offset) % round.seats]!;
+              snapshot.players[seatAt(round.dealer, offset, round.seats)]!;
             return (
               <button
                 key={player.seat}

@@ -180,7 +180,8 @@ public final class UraAudit {
     /** 丸めた値の、行の間の分散。(n·Σq² − (Σq)²) / n² を整数のまま求めてから double にするので、値が全て同じなら 0。 */
     double variance(int cell, long rows) {
       BigInteger sum = BigInteger.valueOf(sums.get(cell));
-      BigInteger centred = squareSum(cell).multiply(BigInteger.valueOf(rows)).subtract(sum.multiply(sum));
+      BigInteger centred =
+          squareSum(cell).multiply(BigInteger.valueOf(rows)).subtract(sum.multiply(sum));
       return centred.doubleValue() / SCALE / SCALE / rows / rows;
     }
   }
@@ -200,7 +201,9 @@ public final class UraAudit {
     }
 
     BigInteger sum(int cell) {
-      return BigInteger.valueOf(high.get(cell)).shiftLeft(32).add(BigInteger.valueOf(low.get(cell)));
+      return BigInteger.valueOf(high.get(cell))
+          .shiftLeft(32)
+          .add(BigInteger.valueOf(low.get(cell)));
     }
   }
 
@@ -232,7 +235,9 @@ public final class UraAudit {
         clusters++;
       }
       if (total == 0) return new Clustered(0, 0, 0);
-      BigInteger n = BigInteger.valueOf(total), all = BigInteger.valueOf(sum), centred = BigInteger.ZERO;
+      BigInteger n = BigInteger.valueOf(total),
+          all = BigInteger.valueOf(sum),
+          centred = BigInteger.ZERO;
       for (int cluster = 0; cluster < CLUSTERS; cluster++) {
         if (counts[cluster] == 0) continue;
         BigInteger deviation =
@@ -241,7 +246,8 @@ public final class UraAudit {
                 .subtract(BigInteger.valueOf(counts[cluster]).multiply(all));
         centred = centred.add(deviation.multiply(deviation));
       }
-      return new Clustered(total, clusters, centred.doubleValue() / SCALE / SCALE / total / total / total / total);
+      return new Clustered(
+          total, clusters, centred.doubleValue() / SCALE / SCALE / total / total / total / total);
     }
   }
 
@@ -264,7 +270,8 @@ public final class UraAudit {
    * @param nanos 期待値を求めた局末で、局末の値を求めるのにかかった時間の和（ナノ秒）
    * @param cells 行が 1 つ以上あった区分
    */
-  public record Report(long handEnds, long riichiWins, long averaged, long[] groups, long nanos, List<Cell> cells) {
+  public record Report(
+      long handEnds, long riichiWins, long averaged, long[] groups, long nanos, List<Cell> cells) {
 
     /** 期待値を求めた局末 1 つあたりの時間（µs）。 */
     public double microsPerAveraged() {
@@ -368,7 +375,8 @@ public final class UraAudit {
         double realizedVariance,
         double expectedVariance,
         double labelVariance) {
-      double error = clusters > 1 ? Math.sqrt(meanVariance * clusters / (clusters - 1)) : Double.NaN;
+      double error =
+          clusters > 1 ? Math.sqrt(meanVariance * clusters / (clusters - 1)) : Double.NaN;
       return new Cell(
           decisionClass,
           kan,

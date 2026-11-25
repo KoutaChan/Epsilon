@@ -31,11 +31,14 @@ import org.slf4j.LoggerFactory;
  */
 @Named(value = "play-tenhou", doc = "Play in a Tenhou private lobby")
 public record PlayTenhou(
-    @Key(doc = "Player (version directory, prism:DIR, nano:DIR, major:DIR, heuristic)", presence = Presence.REQUIRED)
+    @Key(
+            doc = "Player (version directory, prism:DIR, nano:DIR, major:DIR, heuristic)",
+            presence = Presence.REQUIRED)
         String model,
     @Key(doc = "Lobby number", presence = Presence.REQUIRED) String room,
     @Key(doc = "Name shown on Tenhou", value = "NoName") String name,
-    @Key(doc = "Number of games to play (reconnects for each game)", value = "1") @Range(min = 1) int games,
+    @Key(doc = "Number of games to play (reconnects for each game)", value = "1") @Range(min = 1)
+        int games,
     @Key(doc = "Rules (four-player or three-player)", value = "TENHOU_4P") Variant variant,
     @Key(doc = "Settings for opening the policy") PolicyOptions policy)
     implements PrismCommand {
@@ -49,7 +52,8 @@ public record PlayTenhou(
     try (Policy opened = ModelFamily.of(spec.series()).open(spec.checkpoint(), variant, policy)) {
       LOG.info("Tenhou room {} as {}: {} with {}", room, name, opened.label(), policy);
       for (int game = 0; game < games; game++) {
-        int rounds = TenhouClient.play(TenhouClient.SERVER, variant, room, name, new ClientSeat(opened));
+        int rounds =
+            TenhouClient.play(TenhouClient.SERVER, variant, room, name, new ClientSeat(opened));
         mismatched += rounds;
         LOG.info("Tenhou game {} finished: mismatchedRounds={}", game + 1, rounds);
       }

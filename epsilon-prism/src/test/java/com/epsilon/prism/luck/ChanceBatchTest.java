@@ -105,7 +105,9 @@ public class ChanceBatchTest {
    */
   @Test(dataProvider = "variants")
   public void handEndLeavesLateIndicatorsThenUra(Variant variant) {
-    RandomGames games = RandomGames.start(variant, 0xe4dL + variant.ordinal(), LedgerGames.chooser(variant, LedgerGames.KANS));
+    RandomGames games =
+        RandomGames.start(
+            variant, 0xe4dL + variant.ordinal(), LedgerGames.chooser(variant, LedgerGames.KANS));
     int read = 0;
     int rounds = 0;
     int uras = 0;
@@ -142,7 +144,10 @@ public class ChanceBatchTest {
               ura = true;
               uras++;
             } else {
-              Assert.assertEquals(log.kind(index), ChanceKind.INDICATOR, "event " + index + " after the last decision");
+              Assert.assertEquals(
+                  log.kind(index),
+                  ChanceKind.INDICATOR,
+                  "event " + index + " after the last decision");
               Assert.assertFalse(ura, "an indicator after the ura indicators");
               late++;
             }
@@ -168,10 +173,12 @@ public class ChanceBatchTest {
 
     ChanceBatch batch = new ChanceBatch();
     batch.read(ChanceLogs.of(variant, ChanceKind.INDICATOR, ChanceKind.INDICATOR, ChanceKind.DRAW));
-    Assert.assertThrows(IllegalStateException.class, () -> batch.read(ChanceLogs.of(variant, ChanceKind.DRAW)));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> batch.read(ChanceLogs.of(variant, ChanceKind.DRAW)));
 
     ChanceBatch good = new ChanceBatch();
-    good.read(ChanceLogs.of(variant, ChanceKind.INDICATOR, ChanceKind.INDICATOR, ChanceKind.RINSHAN));
+    good.read(
+        ChanceLogs.of(variant, ChanceKind.INDICATOR, ChanceKind.INDICATOR, ChanceKind.RINSHAN));
     Assert.assertEquals(good.reveals(), 2);
     Assert.assertEquals(good.draw(), 2);
     Assert.assertThrows(IndexOutOfBoundsException.class, () -> good.reveal(2));

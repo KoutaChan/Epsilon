@@ -24,7 +24,10 @@ public record PolicyOptions(
     @Key(doc = "推論のデバイス（cpu か gpuN）", value = "cpu", change = Change.MACHINE) String device,
     @Key(doc = "計算の型", value = "FLOAT32", change = Change.MACHINE) Precision precision,
     @Key(doc = "1 回の推論に入れる行の上限", value = "8", change = Change.MACHINE) @Range(min = 1) int maxBatch,
-    @Key(doc = "推論のバックエンド（専用のカーネルが無い系列で NATIVE にすると、開くときに拒む）", value = "EAGER", change = Change.MACHINE)
+    @Key(
+            doc = "推論のバックエンド（専用のカーネルが無い系列で NATIVE にすると、開くときに拒む）",
+            value = "EAGER",
+            change = Change.MACHINE)
         Kernels kernels) {
 
   private static final PolicyOptions DEFAULTS =

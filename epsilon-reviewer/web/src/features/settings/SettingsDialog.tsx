@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { FolderOpen } from "lucide-react";
-import type { DesktopSettings } from "../../../../protocol/bridge.ts";
+import type { DesktopSettings } from "@epsilon-reviewer/protocol/bridge";
 import type { DesktopSettingsAccess } from "../../api/client";
 import { Dialog } from "../../components/Dialog";
 import { useTask } from "../../hooks/useTask";

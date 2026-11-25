@@ -45,7 +45,13 @@ final class Quality {
    * @param waits 形の上の和了牌の種類のビット（聴牌の手だけ）
    */
   void setShape(
-      int shanten, boolean special, int chiitoitsuShanten, int ukeire, int ukeireKinds, int secondOrder, long waits) {
+      int shanten,
+      boolean special,
+      int chiitoitsuShanten,
+      int ukeire,
+      int ukeireKinds,
+      int secondOrder,
+      long waits) {
     this.shanten = shanten;
     this.special = special;
     this.chiitoitsuShanten = chiitoitsuShanten;

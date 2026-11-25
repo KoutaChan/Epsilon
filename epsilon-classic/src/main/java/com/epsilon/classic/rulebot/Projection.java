@@ -226,7 +226,12 @@ final class Projection {
     if (liveRon == 0) {
       out.setWaits(liveWaits, liveWaitKinds, 0, 0, 0);
     } else {
-      out.setWaits(liveWaits, liveWaitKinds, liveRon, minimumRon, (int) Math.round(ronTotal / (double) liveRon));
+      out.setWaits(
+          liveWaits,
+          liveWaitKinds,
+          liveRon,
+          minimumRon,
+          (int) Math.round(ronTotal / (double) liveRon));
     }
   }
 

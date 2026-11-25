@@ -26,13 +26,17 @@ public class EvaluationTableTest {
       Path snapshot = root.resolve("17");
       Assert.assertEquals(EvaluationTable.label(EvaluationTable.HEURISTIC), "heuristic");
       Assert.assertEquals(EvaluationTable.label("nano:" + root.resolve("latest")), "nano:latest");
-      Assert.assertEquals(EvaluationTable.label("major:" + root.resolve("macro614")), "major:macro614");
+      Assert.assertEquals(
+          EvaluationTable.label("major:" + root.resolve("macro614")), "major:macro614");
       Assert.assertEquals(EvaluationTable.label(snapshot.toString()), "prism:17");
       Assert.assertEquals(EvaluationTable.label("prism:" + snapshot), "prism:17");
-      Assert.assertEquals(EvaluationTable.spec(snapshot.toString()), new Series.Spec(Series.PRISM, snapshot));
-      Assert.assertEquals(EvaluationTable.spec(EvaluationTable.HEURISTIC), new Series.Spec(Series.RULE_BOT, null));
+      Assert.assertEquals(
+          EvaluationTable.spec(snapshot.toString()), new Series.Spec(Series.PRISM, snapshot));
+      Assert.assertEquals(
+          EvaluationTable.spec(EvaluationTable.HEURISTIC), new Series.Spec(Series.RULE_BOT, null));
       Assert.assertThrows(IllegalArgumentException.class, () -> EvaluationTable.spec("nano:"));
-      Assert.assertThrows(IllegalArgumentException.class, () -> EvaluationTable.spec("heuristic:" + root));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> EvaluationTable.spec("heuristic:" + root));
     } finally {
       Snapshot.deleteTree(root);
     }
@@ -54,9 +58,11 @@ public class EvaluationTableTest {
       Assert.assertEquals(planned.sha256(), CheckpointFiles.sha256(outside));
       EvaluationTable.verify(planned);
       Files.writeString(outside.resolve("weights.bin"), "changed", StandardCharsets.UTF_8);
-      IOException changed = Assert.expectThrows(IOException.class, () -> EvaluationTable.verify(planned));
+      IOException changed =
+          Assert.expectThrows(IOException.class, () -> EvaluationTable.verify(planned));
       Assert.assertTrue(
-          changed.getMessage().contains("but the duel was planned with " + planned.sha256()), changed.getMessage());
+          changed.getMessage().contains("but the duel was planned with " + planned.sha256()),
+          changed.getMessage());
 
       Path snapshot = root.resolve("00017");
       Files.createDirectories(snapshot);

@@ -66,12 +66,18 @@ public final class PrismApp {
   /** 設定が参照するファイルを確かめる。確かめるのは、Φ の GRP と表、評価の卓で相手にするチェックポイント。 */
   private static List<String> problems(PrismSettings settings) {
     List<String> problems =
-        new ArrayList<>(PhiControl.problems(new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed())));
+        new ArrayList<>(
+            PhiControl.problems(
+                new PhiSetup(settings.phi(), settings.run().variant(), settings.run().seed())));
     for (Map.Entry<String, TableSpec> entry : settings.evaluation().tables().entrySet()) {
       if (TableSpec.kind(entry.getValue().opponent()) == TableSpec.Opponent.CHECKPOINT) {
         Series.Spec spec = Series.parse(entry.getValue().opponent());
         if (!Files.isDirectory(spec.checkpoint())) {
-          problems.add("The opponent checkpoint of evaluation table " + entry.getKey() + " does not exist: " + spec.checkpoint());
+          problems.add(
+              "The opponent checkpoint of evaluation table "
+                  + entry.getKey()
+                  + " does not exist: "
+                  + spec.checkpoint());
         }
       }
     }

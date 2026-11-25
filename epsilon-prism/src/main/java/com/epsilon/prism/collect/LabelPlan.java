@@ -27,9 +27,11 @@ import com.epsilon.prism.core.Twins;
  * @param label ラベル行にするか
  * @param rollIn 中立ロールインを行うか（主経路だけ）
  */
-record LabelPlan(DecisionClass decisionClass, Openness hand, int threats, boolean label, boolean rollIn) {
+record LabelPlan(
+    DecisionClass decisionClass, Openness hand, int threats, boolean label, boolean rollIn) {
   /** 何もしない予定（分岐・評価・強制の手）。クラスと手の形は使わない。 */
-  static final LabelPlan NONE = new LabelPlan(DecisionClass.DISCARD_MID, Openness.CLOSED, 0, false, false);
+  static final LabelPlan NONE =
+      new LabelPlan(DecisionClass.DISCARD_MID, Openness.CLOSED, 0, false, false);
 
   /** 行を作る判断か。ラベル行か根の記録を書く判断では、方策が p0 を書き、記録 O を取り込む。 */
   boolean retain() {
@@ -42,7 +44,12 @@ record LabelPlan(DecisionClass decisionClass, Openness hand, int threats, boolea
    * @param coinKey 主経路の乱数のキー
    */
   static LabelPlan main(
-      CollectContext context, long coinKey, long decisionId, DecisionClass decisionClass, Openness hand, int threats) {
+      CollectContext context,
+      long coinKey,
+      long decisionId,
+      DecisionClass decisionClass,
+      Openness hand,
+      int threats) {
     boolean label = context.label(coinKey, decisionId, decisionClass, hand);
     boolean rollIn = context.rollIn(coinKey, decisionId, decisionClass);
     return label || rollIn ? new LabelPlan(decisionClass, hand, threats, label, rollIn) : NONE;
@@ -65,7 +72,8 @@ record LabelPlan(DecisionClass decisionClass, Openness hand, int threats, boolea
       Openness hand,
       int threats) {
     boolean label =
-        copyLabels < rule.maxLabels() && context.copyLabel(coinKey, decisionId, rule.laterRate(decisionClass));
+        copyLabels < rule.maxLabels()
+            && context.copyLabel(coinKey, decisionId, rule.laterRate(decisionClass));
     return label ? new LabelPlan(decisionClass, hand, threats, true, false) : NONE;
   }
 }

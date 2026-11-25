@@ -93,23 +93,55 @@ public class ReportTest {
     Assert.assertEquals(lines.get(0), run.root() + ": 3 closed iterations (the last 2 shown)");
     Assert.assertEquals(
         tokens(lines.get(1)),
-        List.of("iteration", "version", "row", "seconds", "PHI", "COLLECT", "LEARN", "PUBLISH", "rows", "r2", "gain"));
+        List.of(
+            "iteration",
+            "version",
+            "row",
+            "seconds",
+            "PHI",
+            "COLLECT",
+            "LEARN",
+            "PUBLISH",
+            "rows",
+            "r2",
+            "gain"));
     Assert.assertEquals(
-        tokens(lines.get(2)), List.of("2", "3", "1", "480.3", "0.2", "418.0", "59.0", "3.1", "692014", "-", "0.7867"));
+        tokens(lines.get(2)),
+        List.of("2", "3", "1", "480.3", "0.2", "418.0", "59.0", "3.1", "692014", "-", "0.7867"));
     Assert.assertEquals(
         tokens(lines.get(3)),
-        List.of("3", "4", "2*", "480.3", "0.2", "418.0", "59.0", "3.1", "742764", "0.0511", "0.7002"));
+        List.of(
+            "3", "4", "2*", "480.3", "0.2", "418.0", "59.0", "3.1", "742764", "0.0511", "0.7002"));
     Assert.assertEquals(lines.get(4), "* the settings row differs from the iteration before");
     Assert.assertEquals(lines.get(5), "");
     Assert.assertEquals(
         tokens(lines.get(6)),
         List.of(
-            "table", "version", "opponent", "games", "meanRank", "meanRankError", "delta", "deltaError", "verdict",
+            "table",
+            "version",
+            "opponent",
+            "games",
+            "meanRank",
+            "meanRankError",
+            "delta",
+            "deltaError",
+            "verdict",
             "stopped"));
-    Assert.assertEquals(tokens(lines.get(7)), List.of("champ", "2", "-", "-", "-", "-", "-", "-", "CROWNED", "-"));
+    Assert.assertEquals(
+        tokens(lines.get(7)), List.of("champ", "2", "-", "-", "-", "-", "-", "-", "CROWNED", "-"));
     Assert.assertEquals(
         tokens(lines.get(8)),
-        List.of("x1n3", "3", "nano:latest", "131072", "2.9500", "0.0030", "-0.0390", "0.0030", "UNDECIDED", "LIMIT"));
+        List.of(
+            "x1n3",
+            "3",
+            "nano:latest",
+            "131072",
+            "2.9500",
+            "0.0030",
+            "-0.0390",
+            "0.0030",
+            "UNDECIDED",
+            "LIMIT"));
     Assert.assertEquals(lines.size(), 9, ran.out());
   }
 
@@ -130,10 +162,12 @@ public class ReportTest {
     Assert.assertEquals(third.get("rowChanged"), new Node.Bool(true, "test"));
     Assert.assertEquals(third.get("r2"), numeral("0.0511"));
     Assert.assertEquals(
-        ((Node.Table) third.get("steps")).get("LEARN"), Json.read("{\"status\":\"RAN\",\"seconds\":59.0}", "test"));
+        ((Node.Table) third.get("steps")).get("LEARN"),
+        Json.read("{\"status\":\"RAN\",\"seconds\":59.0}", "test"));
     Node.Table tables = (Node.Table) json.get("tables");
     Assert.assertEquals(List.copyOf(tables.entries().keySet()), List.of("champ", "x1n3"));
-    Assert.assertEquals(tables.get("champ"), Json.read("{\"version\":2,\"verdict\":\"CROWNED\"}", "test"));
+    Assert.assertEquals(
+        tables.get("champ"), Json.read("{\"version\":2,\"verdict\":\"CROWNED\"}", "test"));
     Node.Table x1n3 = (Node.Table) tables.get("x1n3");
     Assert.assertEquals(x1n3.get("version"), numeral("3"));
     Assert.assertEquals(x1n3.get("opponent"), new Node.Text("nano:latest", "test"));
@@ -164,7 +198,9 @@ public class ReportTest {
     Node.Table first = Json.read(iterationLine(1, 1, 622_715, 0.0627, 0.9), "test");
     Node.Table steps = (Node.Table) first.get("steps");
     Map<String, Node> older = new LinkedHashMap<>(steps.entries());
-    older.put(PrismStep.COLLECT.name(), ((Node.Table) steps.get(PrismStep.COLLECT.name())).without("phi"));
+    older.put(
+        PrismStep.COLLECT.name(),
+        ((Node.Table) steps.get(PrismStep.COLLECT.name())).without("phi"));
     Map<String, Node> entries = new LinkedHashMap<>(first.entries());
     entries.put("steps", new Node.Table(older, "test"));
     Files.writeString(
@@ -177,7 +213,8 @@ public class ReportTest {
     Ran ran = report("--last", "2");
     Assert.assertEquals(ran.exit(), Exit.OK.code(), ran.out());
     Assert.assertEquals(
-        ran.out().lines().findFirst().orElseThrow(), run.root() + ": 3 closed iterations (the last 2 shown)");
+        ran.out().lines().findFirst().orElseThrow(),
+        run.root() + ": 3 closed iterations (the last 2 shown)");
     Assert.assertEquals(report("--json", "true", "--last", "1").exit(), Exit.OK.code());
     // 出す反復の行は、今の型で読めなければ誤り
     Assert.assertEquals(report().exit(), Exit.USAGE.code());
@@ -187,7 +224,9 @@ public class ReportTest {
   public void aDuelResultWithoutTheOpponentsSlotIsAMistakeOfItsLine() throws IOException {
     Node.Table result = RecordFile.tree(duel(2.94));
     Map<String, Node> entries = new LinkedHashMap<>(result.entries());
-    entries.put("slots", new Node.Array(List.of(((Node.Array) result.get("slots")).items().get(0)), "test"));
+    entries.put(
+        "slots",
+        new Node.Array(List.of(((Node.Array) result.get("slots")).items().get(0)), "test"));
     Files.writeString(
         run.report(RunDirectory.EVALUATIONS),
         lines(resultLine(4, "x1n3", new Node.Table(entries, "test"))),
@@ -261,7 +300,9 @@ public class ReportTest {
 
   private static LearnReport learned(int start, Double r2, double gain) {
     LedgerReport.Summary ledger =
-        r2 == null ? null : new LedgerReport.Summary(1_000, 500, 0, r2, 1.5, Map.of(), 2.0, List.of(), 3.0, true);
+        r2 == null
+            ? null
+            : new LedgerReport.Summary(1_000, 500, 0, r2, 1.5, Map.of(), 2.0, List.of(), 3.0, true);
     return new LearnReport(
         start,
         1_000,
@@ -317,8 +358,10 @@ public class ReportTest {
     Map<String, String> contents = new TreeMap<>();
     try (Stream<Path> walk = Files.walk(root)) {
       for (Path path : walk.toList()) {
-        String content = Files.isDirectory(path) ? "directory" : Files.readString(path, StandardCharsets.UTF_8);
-        contents.put(root.relativize(path).toString(), content + " " + Files.getLastModifiedTime(path));
+        String content =
+            Files.isDirectory(path) ? "directory" : Files.readString(path, StandardCharsets.UTF_8);
+        contents.put(
+            root.relativize(path).toString(), content + " " + Files.getLastModifiedTime(path));
       }
     }
     return contents;

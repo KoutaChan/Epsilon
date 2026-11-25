@@ -3,8 +3,8 @@ import type {
   ImportedRecord,
   JobStatus,
   ModelInfo,
-} from "../../../../protocol/model.ts";
-import type { ResultDocument } from "../../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/model";
+import type { ResultDocument } from "@epsilon-reviewer/protocol/result";
 import { errorKey, type MessageKey } from "../../language/catalog";
 import { modelLabel, sourceLabel } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";

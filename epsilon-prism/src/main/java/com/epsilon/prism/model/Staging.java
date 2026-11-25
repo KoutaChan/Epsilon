@@ -227,6 +227,16 @@ public final class Staging {
     return add(array, new Shape(array.length));
   }
 
+  /**
+   * 載せた要素の数を返す（整列のための詰め物を含む）。
+   *
+   * @param kind 型
+   * @return 要素の数
+   */
+  int length(Kind kind) {
+    return sizes[kind.ordinal()];
+  }
+
   /** 次に載せる領域の先頭を、型ごとに {@link #ALIGNMENT} バイトの境界にそろえる（領域の組の区切りに使う）。 */
   void align() {
     for (Kind kind : KINDS) {

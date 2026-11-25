@@ -95,7 +95,9 @@ public class PinnedUploadsTest {
       int64.asLongBuffer().put(new long[] {Long.MIN_VALUE, -1, 0, 7, 1L << 40, Long.MAX_VALUE});
       raw.put(DataType.INT64, int64);
       ByteBuffer float32 = allocate(6 * Float.BYTES);
-      float32.asFloatBuffer().put(new float[] {Float.NaN, -0f, Float.MIN_VALUE, -1.5f, Float.MAX_VALUE, 3.25f});
+      float32
+          .asFloatBuffer()
+          .put(new float[] {Float.NaN, -0f, Float.MIN_VALUE, -1.5f, Float.MAX_VALUE, 3.25f});
       raw.put(DataType.FLOAT32, float32);
       Shape shape = new Shape(2, 3);
       Map<DataType, NDArray> arrays = new EnumMap<>(DataType.class);
@@ -186,7 +188,8 @@ public class PinnedUploadsTest {
       assertEquals(region.enqueue(manager, null).array(DataType.FLOAT32).toFloatArray(), written);
       float[] sent = {3f, 4f};
       NDArray array =
-          region.send(manager, DataType.FLOAT32, new Shape(2), buffer -> buffer.asFloatBuffer().put(sent));
+          region.send(
+              manager, DataType.FLOAT32, new Shape(2), buffer -> buffer.asFloatBuffer().put(sent));
       assertEquals(array.toFloatArray(), sent);
     }
   }
@@ -224,7 +227,11 @@ public class PinnedUploadsTest {
       float[] values = {1f, 2f};
       PinnedUploads uploads = PinnedUploads.on(manager);
       NDArray sent =
-          uploads.send(manager, DataType.FLOAT32, new Shape(2), buffer -> buffer.asFloatBuffer().put(values));
+          uploads.send(
+              manager,
+              DataType.FLOAT32,
+              new Shape(2),
+              buffer -> buffer.asFloatBuffer().put(values));
       uploads.write(DataType.FLOAT32, values.length).asFloatBuffer().put(values);
       NDArray enqueued = uploads.enqueue(manager, null).array(DataType.FLOAT32);
       uploads.close();
@@ -259,7 +266,8 @@ public class PinnedUploadsTest {
       NDArray largeArray = send(uploads, manager, large, new Shape(256, 256), views, 1);
       NDArray againArray = send(uploads, manager, small, new Shape(3), views, 2);
       NDArray shortArray =
-          uploads.send(manager, DataType.INT16, new Shape(2), buffer -> buffer.asShortBuffer().put(shorts));
+          uploads.send(
+              manager, DataType.INT16, new Shape(2), buffer -> buffer.asShortBuffer().put(shorts));
       assertEquals(views[2].capacity(), large.length * Float.BYTES);
       assertEquals(smallArray.getDevice(), manager.getDevice());
       assertEquals(smallArray.toFloatArray(), small);
@@ -374,7 +382,12 @@ public class PinnedUploadsTest {
   }
 
   private static NDArray send(
-      PinnedUploads uploads, NDManager manager, float[] values, Shape shape, ByteBuffer[] views, int slot) {
+      PinnedUploads uploads,
+      NDManager manager,
+      float[] values,
+      Shape shape,
+      ByteBuffer[] views,
+      int slot) {
     return uploads.send(
         manager,
         DataType.FLOAT32,
@@ -405,7 +418,8 @@ public class PinnedUploadsTest {
     return buffer;
   }
 
-  private static void assertContents(NDArray actual, Shape shape, DataType type, ByteBuffer expected) {
+  private static void assertContents(
+      NDArray actual, Shape shape, DataType type, ByteBuffer expected) {
     assertEquals(actual.getShape(), shape);
     assertEquals(actual.getDataType(), type);
     assertEquals(actual.toByteBuffer(), expected, type.toString());

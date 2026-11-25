@@ -20,7 +20,7 @@ import java.util.Objects;
  */
 public final class BatchPlan {
 
-  /** バッチの中で、各テンソルの領域の先頭をそろえるバイト数。HostBatch と HIP 側の表はこの値を使う。 */
+  /** バッチの中で、各テンソルの領域の先頭をそろえるバイト数。ホストのバッチとカーネルの入力配置はこの値を使う。 */
   public static final int TENSOR_ALIGNMENT = 256;
 
   private static final Tensor[] TENSORS = Tensor.values();
@@ -183,7 +183,13 @@ public final class BatchPlan {
     }
     bytes =
         layout(
-            format, rowBytes, rows, firstEvent[rows], firstTransition[rows], firstAction[rows], offsets);
+            format,
+            rowBytes,
+            rows,
+            firstEvent[rows],
+            firstTransition[rows],
+            firstAction[rows],
+            offsets);
     return bytes;
   }
 
@@ -318,7 +324,13 @@ public final class BatchPlan {
 
   /** 各テンソルの領域を宣言の順に、先頭をそろえて詰め、末尾の位置を返す。{@code offsets} が null でなければ、各領域の先頭をそこに書く。 */
   private static int layout(
-      InputFormat format, int[] rowBytes, int rows, int events, int transitions, int actions, int[] offsets) {
+      InputFormat format,
+      int[] rowBytes,
+      int rows,
+      int events,
+      int transitions,
+      int actions,
+      int[] offsets) {
     int cursor = 0;
     for (Tensor tensor : TENSORS) {
       cursor = align(cursor);

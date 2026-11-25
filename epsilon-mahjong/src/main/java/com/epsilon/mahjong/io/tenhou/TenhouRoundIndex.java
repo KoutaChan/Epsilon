@@ -18,7 +18,8 @@ public final class TenhouRoundIndex {
     int seats = variant.seats();
     int round = tenhou / WIND_STRIDE * seats + tenhou % WIND_STRIDE;
     if (tenhou < 0 || tenhou % WIND_STRIDE >= seats || round > variant.finalRound()) {
-      throw new IllegalArgumentException("Tenhou round " + tenhou + " is not a round of " + variant);
+      throw new IllegalArgumentException(
+          "Tenhou round " + tenhou + " is not a round of " + variant);
     }
     return round;
   }

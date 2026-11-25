@@ -44,6 +44,7 @@ public final class HandEnds {
 
   /** 今の順位。配列の位置は h × S ＋ 席で、続く点差と最終順位も同じ。 */
   final byte[] rank;
+
   final int[] gap;
   final byte[] finalRank;
 
@@ -66,7 +67,8 @@ public final class HandEnds {
     int handEnds = 0;
     for (GameRecord game : games) {
       if (game.variant() != variant) {
-        throw new IllegalArgumentException("A " + game.variant() + " game among " + variant + " games");
+        throw new IllegalArgumentException(
+            "A " + game.variant() + " game among " + variant + " games");
       }
       handEnds += game.handEnds().size();
     }
@@ -166,7 +168,10 @@ public final class HandEnds {
 
   /** 半荘の列から作る。ルールの違う半荘があれば IllegalArgumentException を投げる。 */
   public static HandEnds of(Variant variant, RankUtility utility, List<GameRecord> games) {
-    return new HandEnds(Objects.requireNonNull(variant, "variant"), Objects.requireNonNull(utility, "utility"), games);
+    return new HandEnds(
+        Objects.requireNonNull(variant, "variant"),
+        Objects.requireNonNull(utility, "utility"),
+        games);
   }
 
   /**
@@ -261,6 +266,11 @@ public final class HandEnds {
 
   public int rank(int handEnd, int seat) {
     return rank[handEnd * seats + seat];
+  }
+
+  /** すぐ下の順位との点差。最下位だけはすぐ上の順位との差を返す。 */
+  public int gap(int handEnd, int seat) {
+    return gap[handEnd * seats + seat];
   }
 
   public int finalRank(int handEnd, int seat) {

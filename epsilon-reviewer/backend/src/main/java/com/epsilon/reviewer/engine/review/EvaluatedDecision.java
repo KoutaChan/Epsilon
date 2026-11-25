@@ -10,11 +10,7 @@ package com.epsilon.reviewer.engine.review;
  * @param valued {@code values} が損失なら true、確率なら false
  */
 public record EvaluatedDecision(
-    int[] actionIds,
-    float[] values,
-    String[][] tiles,
-    int chosen,
-    boolean valued) {
+    int[] actionIds, float[] values, String[][] tiles, int chosen, boolean valued) {
   public int size() {
     return actionIds.length;
   }

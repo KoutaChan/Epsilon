@@ -8,8 +8,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * 局末の卓から、絶対席ごとの Φ を求める。Φ を出す項目ごとに 1 つ作り、どのスレッドからも呼べる。終盤のメモは全てのスレッドで
- * 共有し、ほかのメモと作業領域はスレッドごとに持つ。どれもこの Phi と一緒に捨てる。
+ * 局末の卓から、絶対席ごとの Φ を求める。Φ を出す項目ごとに 1 つ作り、どのスレッドからも呼べる。終盤のキャッシュは全てのスレッドで
+ * 共有し、ほかのキャッシュと作業領域はスレッドごとに持つ。どれもこの Phi と一緒に捨てる。
  *
  * <p>項目は 5 種類ある。GrpNetwork は局末の卓だけを読む。GruSinkhorn は局末の卓に加えて、各局が始まったときの卓の履歴
  * （RoundHistory、終わった局まで）も読む。GruSinkhorn に PhiTable を重ねると、周辺確率に次局の温度を掛けてから Φ にし、終わった局
@@ -18,11 +18,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * を最後の局の数え上げ（FinalRound）で求め、ほかの卓を葉の GrpNetwork で求める。数え上げない卓の値は、葉の GrpNetwork だけの項目と
  * ビット単位で同じ。
  *
- * <p>半荘が続く卓では、キーを作ってメモを引き、外れたら項目で求める。メモのキーは、卓のキー（GrpKey）と印の組。印は、GruSinkhorn
- * では履歴のバージョン、ほかは 0。数え上げる卓は 1 回の計算が重いので、安い卓に追い出されないように別のメモ（終盤のメモ）に覚える。
- * 終盤のメモは全てのスレッドで共有するので、ほかのスレッドが数え上げた卓にも当たる。終盤のメモは Phi ごとに持つので、q のネットワーク・
- * 葉のネットワーク・打ち切りの値・効用のどれかが違う Φ を返すことはない。キーに収まらない卓は、メモを通さずに求める。Φ は卓と、印の
- * もとになる履歴だけで決まる。そのため、スレッド・メモ・呼び出しの順に依らず、ビット単位で同じになる。終局の卓では項目を使わず、順位の
+ * <p>半荘が続く卓では、キーを作ってキャッシュを引き、外れたら項目で求める。キャッシュのキーは、卓のキー（GrpKey）と印の組。印は、GruSinkhorn
+ * では履歴のバージョン、ほかは 0。数え上げる卓は 1 回の計算が重いので、安い卓に追い出されないように別のキャッシュ（終盤のキャッシュ）に覚える。
+ * 終盤のキャッシュは全てのスレッドで共有するので、ほかのスレッドが数え上げた卓にも当たる。終盤のキャッシュは Phi ごとに持つので、q のネットワーク・
+ * 葉のネットワーク・打ち切りの値・効用のどれかが違う Φ を返すことはない。キーに収まらない卓は、キャッシュを通さずに求める。Φ は卓と、印の
+ * もとになる履歴だけで決まる。そのため、スレッド・キャッシュ・呼び出しの順に依らず、ビット単位で同じになる。終局の卓では項目を使わず、順位の
  * 効用 u をそのまま返す（厳密な値）。表を重ねないときは、丸めの差を除いて Σ_i Φ_i = Σ_r u_r が成り立つ。
  */
 public final class Phi {
@@ -47,22 +47,27 @@ public final class Phi {
   }
 
   /**
-   * 全てのスレッドを合わせた呼び出しの集計。メモの当たり・外れの数、メモを通さなかった数、時間には、終盤のメモと数え上げの分も含む。
+   * 全てのスレッドを合わせた呼び出しの集計。キャッシュの当たり・外れの数、キャッシュを通さなかった数、時間には、終盤のキャッシュと数え上げの分も含む。
    *
    * @param requests 呼び出しの数（終局の卓を含む）
-   * @param hits メモに当たった数
-   * @param misses メモに外れて項目で求めた数
-   * @param bypasses キーに収まらず、メモを通さずに求めた数
+   * @param hits キャッシュに当たった数
+   * @param misses キャッシュに外れて項目で求めた数
+   * @param bypasses キーに収まらず、キャッシュを通さずに求めた数
    * @param nanos 項目で求めた時間の合計（ns）
    * @param late 数え上げる卓の分の集計。終盤の数え上げでない項目では全て 0
    */
-  public record Stats(long requests, long hits, long misses, long bypasses, long nanos, LateStats late) {
+  public record Stats(
+      long requests, long hits, long misses, long bypasses, long nanos, LateStats late) {
 
     /** 前に取った集計 {@code earlier} から増えた分を返す。 */
     public Stats since(Stats earlier) {
       return new Stats(
-          requests - earlier.requests, hits - earlier.hits, misses - earlier.misses, bypasses - earlier.bypasses,
-          nanos - earlier.nanos, late.since(earlier.late));
+          requests - earlier.requests,
+          hits - earlier.hits,
+          misses - earlier.misses,
+          bypasses - earlier.bypasses,
+          nanos - earlier.nanos,
+          late.since(earlier.late));
     }
   }
 
@@ -70,32 +75,42 @@ public final class Phi {
    * 終盤の数え上げで、数え上げる卓を呼んだ分の集計。
    *
    * @param requests 数え上げる卓の呼び出しの数
-   * @param hits 終盤のメモに当たった数（ほかのスレッドが数え上げた卓に当たった分も含む）
-   * @param misses 終盤のメモに外れて数え上げた数
-   * @param bypasses キーに収まらず、メモを通さずに数え上げた数
+   * @param hits 終盤のキャッシュに当たった数（ほかのスレッドが数え上げた卓に当たった分も含む）
+   * @param misses 終盤のキャッシュに外れて数え上げた数
+   * @param bypasses キーに収まらず、キャッシュを通さずに数え上げた数
    * @param nanos 数え上げた時間の合計（ns）
    * @param settled 精算して局を進めた組の数
    * @param leafNetworks 葉のネットワークで求めた卓の数（打ち切った確率を埋める分は数えない）
-   * @param leafHits 葉の値を葉のメモから読んだ数
+   * @param leafHits 葉の値を葉のキャッシュから読んだ数
    * @param filled 打ち切って葉のネットワークで埋めた確率を、数え上げた卓について足したもの
    */
   public record LateStats(
-      long requests, long hits, long misses, long bypasses, long nanos, long settled, long leafNetworks,
-      long leafHits, double filled) {
+      long requests,
+      long hits,
+      long misses,
+      long bypasses,
+      long nanos,
+      long settled,
+      long leafNetworks,
+      long leafHits,
+      double filled) {
 
     /** 前に取った集計 {@code earlier} から増えた分を返す。 */
     public LateStats since(LateStats earlier) {
       return new LateStats(
-          requests - earlier.requests, hits - earlier.hits, misses - earlier.misses, bypasses - earlier.bypasses,
-          nanos - earlier.nanos, settled - earlier.settled, leafNetworks - earlier.leafNetworks,
-          leafHits - earlier.leafHits, filled - earlier.filled);
+          requests - earlier.requests,
+          hits - earlier.hits,
+          misses - earlier.misses,
+          bypasses - earlier.bypasses,
+          nanos - earlier.nanos,
+          settled - earlier.settled,
+          leafNetworks - earlier.leafNetworks,
+          leafHits - earlier.leafHits,
+          filled - earlier.filled);
     }
   }
 
-  /** スレッドごとのメモのスロット数。 */
-  private static final int MEMO_SLOTS = 1 << 12;
-
-  /** 履歴を読まない項目で、メモの印に使う値。どの履歴でも同じ値にする。 */
+  /** 履歴を読まない項目で、キャッシュの印に使う値。どの履歴でも同じ値にする。 */
   private static final long NO_HISTORY = 0;
 
   private final Kind kind;
@@ -111,8 +126,17 @@ public final class Phi {
   /** 終盤の数え上げのときだけ持つ。 */
   private final FinalRound finalRound;
 
-  /** 全てのスレッドで共有する終盤のメモ。終盤の数え上げのときだけ持つ。 */
-  private final SharedPhiMemo lateMemo;
+  /** 終盤のキャッシュのスロットの数。終盤の数え上げのときだけ正。 */
+  private final int lateSlots;
+
+  /** スレッドごとのキャッシュと共有のキャッシュの大きさ。 */
+  private final PhiCacheSizes cacheSizes;
+
+  /** 全てのスレッドで共有する終盤のキャッシュ。終盤の数え上げのときだけ持つ。 */
+  private final SharedPhiCache lateCache;
+
+  /** 全てのスレッドで共有する、数え上げない卓のキャッシュ。スレッドごとのキャッシュに外れたときに引く。モデルを持たない項目では null。 */
+  private final SharedPhiCache sharedCache;
 
   private final ThreadLocal<Local> locals = ThreadLocal.withInitial(this::local);
 
@@ -127,16 +151,22 @@ public final class Phi {
    * @param late 数え上げの作業領域（終盤の数え上げだけ）
    */
   private record Local(
-      PhiMemo memo, GrpWorkspace network, GruWorkspace gru, double[] probabilities, double[] marginals,
-      FinalRoundWorkspace late, Counts counts) {}
+      PhiCache cache,
+      GrpWorkspace network,
+      GruWorkspace gru,
+      double[] probabilities,
+      double[] marginals,
+      FinalRoundWorkspace late,
+      Counts counts) {}
 
   /**
-   * スレッドごとの呼び出しの数と時間。スレッドごとのメモの当たり・外れはメモ自身が数え、共有する終盤のメモの分はここで数える。
+   * スレッドごとの呼び出しの数と時間。スレッドごとのキャッシュの当たり・外れはキャッシュ自身が数え、共有のキャッシュに当たった分と共有する終盤のキャッシュの分はここで数える。
    * そのスレッドだけが書く。
    */
   private static final class Counts {
     long requests;
     long nanos;
+    long sharedHits;
     long lateRequests;
     long lateHits;
     long lateMisses;
@@ -149,56 +179,103 @@ public final class Phi {
   }
 
   private Phi(
-      Kind kind, Variant variant, RankUtility utility, GrpModel model, PhiTable phiTable, FinalRound finalRound,
-      int lateSlots) {
+      Kind kind,
+      Variant variant,
+      RankUtility utility,
+      GrpModel model,
+      PhiTable phiTable,
+      FinalRound finalRound,
+      int lateSlots,
+      PhiCacheSizes cacheSizes) {
     this.kind = kind;
     this.variant = Objects.requireNonNull(variant, "variant");
     this.utility = Objects.requireNonNull(utility, "utility");
     this.model = model;
     this.phiTable = phiTable;
     this.finalRound = finalRound;
-    lateMemo = finalRound == null ? null : new SharedPhiMemo(lateSlots, variant.seats());
+    this.lateSlots = lateSlots;
+    this.cacheSizes = Objects.requireNonNull(cacheSizes, "cacheSizes");
+    lateCache = finalRound == null ? null : new SharedPhiCache(lateSlots, variant.seats());
+    sharedCache = model == null ? null : new SharedPhiCache(cacheSizes.shared(), variant.seats());
   }
 
   /** GrpNetwork か GruSinkhorn の Φ を作る。 */
   public static Phi of(GrpModel model, RankUtility utility) {
     return switch (model) {
-      case GrpNetwork network -> new Phi(Kind.NETWORK, network.variant(), utility, network, null, null, 0);
-      case GruSinkhorn gru -> new Phi(Kind.GRU, gru.variant(), utility, gru, null, null, 0);
+      case GrpNetwork network ->
+          new Phi(
+              Kind.NETWORK,
+              network.variant(),
+              utility,
+              network,
+              null,
+              null,
+              0,
+              PhiCacheSizes.DEFAULT);
+      case GruSinkhorn gru ->
+          new Phi(Kind.GRU, gru.variant(), utility, gru, null, null, 0, PhiCacheSizes.DEFAULT);
     };
   }
 
   /** GruSinkhorn に PhiTable を重ねる。ルールが違えば IllegalArgumentException を投げる。 */
   public static Phi of(GruSinkhorn model, RankUtility utility, PhiTable phiTable) {
     if (phiTable.variant() != model.variant()) {
-      throw new IllegalArgumentException("Variant mismatch: " + model + ", table " + phiTable.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: " + model + ", table " + phiTable.variant());
     }
-    return new Phi(Kind.GRU, model.variant(), utility, model, phiTable, null, 0);
+    return new Phi(
+        Kind.GRU, model.variant(), utility, model, phiTable, null, 0, PhiCacheSizes.DEFAULT);
   }
 
   /** 局末の点の順位をそのまま最終順位とみなす Φ。 */
   public static Phi scoreRank(Variant variant, RankUtility utility) {
-    return new Phi(Kind.SCORE_RANK, variant, utility, null, null, null, 0);
+    return new Phi(Kind.SCORE_RANK, variant, utility, null, null, null, 0, PhiCacheSizes.DEFAULT);
   }
 
   /** 点数のなめらかな関数の Φ（{@link ScoreSmooth}）。点のばらつきの係数を測っていないルールでは IllegalArgumentException を投げる。 */
   public static Phi scoreSmooth(Variant variant, RankUtility utility) {
     ScoreSmooth.requireMeasured(variant);
-    return new Phi(Kind.SCORE_SMOOTH, variant, utility, null, null, null, 0);
+    return new Phi(Kind.SCORE_SMOOTH, variant, utility, null, null, null, 0, PhiCacheSizes.DEFAULT);
   }
 
   /**
    * 終盤だけを数え上げる Φ を作る。数え上げる卓は最後の局の数え上げで、ほかの卓は葉のネットワークで求める。ルールは数え上げと同じ。
    *
-   * @param lateSlots 終盤のメモのスロットの数。終盤のメモは数え上げた卓の Φ を覚え、全てのスレッドで共有する。
+   * @param lateSlots 終盤のキャッシュのスロットの数。終盤のキャッシュは数え上げた卓の Φ を覚え、全てのスレッドで共有する。
    *     1 スロットは (S ＋ 1) × 8 バイト
    * @throws IllegalArgumentException スロットの数が 2 の冪でないとき、スロットの数と席の数の積が int に収まらないとき
    */
   public static Phi late(FinalRound finalRound, RankUtility utility, int lateSlots) {
     if (lateSlots < 1 || Integer.bitCount(lateSlots) != 1) {
-      throw new IllegalArgumentException("Late memo slots must be a power of two: " + lateSlots);
+      throw new IllegalArgumentException("Late cache slots must be a power of two: " + lateSlots);
     }
-    return new Phi(Kind.LATE, finalRound.variant(), utility, finalRound.leaf(), null, finalRound, lateSlots);
+    return new Phi(
+        Kind.LATE,
+        finalRound.variant(),
+        utility,
+        finalRound.leaf(),
+        null,
+        finalRound,
+        lateSlots,
+        PhiCacheSizes.DEFAULT);
+  }
+
+  /**
+   * キャッシュの大きさだけを替えた Φ を返す。キャッシュは空から始める。大きさは値に効かないので、返す Φ の値はこの Φ とビット単位で
+   * 同じ。
+   *
+   * @param sizes スレッドごとのキャッシュと共有のキャッシュの大きさ
+   */
+  public Phi withCacheSizes(PhiCacheSizes sizes) {
+    return new Phi(
+        kind,
+        variant,
+        utility,
+        model,
+        phiTable,
+        finalRound,
+        lateSlots,
+        Objects.requireNonNull(sizes, "sizes"));
   }
 
   public Kind kind() {
@@ -285,18 +362,20 @@ public final class Phi {
 
   /**
    * 半荘が続く卓の Φ と、席ごとの最終順位の周辺確率を書く。GruSinkhorn に表を重ねたときの周辺確率は、温度を掛けた後で補正を足す前の
-   * 値。記録した局末の評価に使うので、メモを通さず、集計にも入れない。Φ は {@link #values(RoundHistory, GrpState, double[])} と
+   * 値。記録した局末の評価に使うので、キャッシュを通さず、集計にも入れない。Φ は {@link #values(RoundHistory, GrpState, double[])} と
    * ビット単位で同じ。
    *
    * @param history {@link #values(RoundHistory, TableState, double[])} と同じ
    * @param phiOut Φ の出力先（長さ S）
    * @param marginalsOut 周辺確率の出力先（長さ S²。並びは [絶対席 × S ＋ 順位]）
    */
-  public void evaluate(RoundHistory history, GrpState state, double[] phiOut, double[] marginalsOut) {
+  public void evaluate(
+      RoundHistory history, GrpState state, double[] phiOut, double[] marginalsOut) {
     requireTable(state.variant(), phiOut);
     int seats = variant.seats();
     if (marginalsOut.length != seats * seats) {
-      throw new IllegalArgumentException(variant + " needs " + seats * seats + " marginals, got " + marginalsOut.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + seats * seats + " marginals, got " + marginalsOut.length);
     }
     Local local = locals.get();
     switch (kind) {
@@ -347,7 +426,7 @@ public final class Phi {
       }
       return;
     }
-    if (key != GrpKey.NONE && local.memo.find(stamp, key, out)) {
+    if (key != GrpKey.NONE && found(stamp, key, local, out)) {
       return;
     }
     long started = System.nanoTime();
@@ -363,7 +442,8 @@ public final class Phi {
       }
     }
     local.counts.nanos += System.nanoTime() - started;
-    remember(stamp, key, local.memo, out);
+    remember(stamp, key, local.cache, out);
+    if (sharedCache != null && key != GrpKey.NONE) sharedCache.store(stamp, key, out);
   }
 
   private void stateValues(RoundHistory history, GrpState state, double[] out) {
@@ -378,7 +458,7 @@ public final class Phi {
       }
       return;
     }
-    if (key != GrpKey.NONE && local.memo.find(stamp, key, out)) {
+    if (key != GrpKey.NONE && found(stamp, key, local, out)) {
       return;
     }
     long started = System.nanoTime();
@@ -394,17 +474,18 @@ public final class Phi {
       }
     }
     local.counts.nanos += System.nanoTime() - started;
-    remember(stamp, key, local.memo, out);
+    remember(stamp, key, local.cache, out);
+    if (sharedCache != null && key != GrpKey.NONE) sharedCache.store(stamp, key, out);
   }
 
-  /** 数え上げる卓の呼び出しを数え、終盤のメモに当たれば Φ をコピーして true を返す。 */
+  /** 数え上げる卓の呼び出しを数え、終盤のキャッシュに当たれば Φ をコピーして true を返す。 */
   private boolean lateFound(long key, Local local, double[] out) {
     Counts counts = local.counts;
     counts.lateRequests++;
     if (key == GrpKey.NONE) {
       return false;
     }
-    if (lateMemo.find(key, out)) {
+    if (lateCache.find(NO_HISTORY, key, out)) {
       counts.lateHits++;
       return true;
     }
@@ -412,13 +493,13 @@ public final class Phi {
     return false;
   }
 
-  /** 数え上げる卓の Φ を数え上げて書き、終盤のメモに覚える。キーに収まらない卓は覚えず、メモを通さなかった数に入れる。 */
+  /** 数え上げる卓の Φ を数え上げて書き、終盤のキャッシュに覚える。キーに収まらない卓は覚えず、キャッシュを通さなかった数に入れる。 */
   private void enumerate(long key, TableState table, Local local, double[] out) {
     FinalRoundWorkspace workspace = local.late;
     Counts counts = local.counts;
     long settled = workspace.settled();
     long leafNetworks = workspace.networkLeaves();
-    long leafHits = workspace.memoHits();
+    long leafHits = workspace.cacheHits();
     long started = System.nanoTime();
     double filled = finalRound.phi(table, utility, workspace, out);
     long nanos = System.nanoTime() - started;
@@ -426,18 +507,18 @@ public final class Phi {
     counts.lateNanos += nanos;
     counts.settled += workspace.settled() - settled;
     counts.leafNetworks += workspace.networkLeaves() - leafNetworks;
-    counts.leafHits += workspace.memoHits() - leafHits;
+    counts.leafHits += workspace.cacheHits() - leafHits;
     counts.filled += filled;
     if (key == GrpKey.NONE) {
       counts.lateBypasses++;
     } else {
-      lateMemo.store(key, out);
+      lateCache.store(NO_HISTORY, key, out);
     }
   }
 
-  /** 呼んだスレッドのメモを返す。当たり・外れの回数を読むのに使う。 */
-  public PhiMemo memo() {
-    return locals.get().memo;
+  /** 呼んだスレッドのキャッシュを返す。当たり・外れの回数を読むのに使う。 */
+  public PhiCache cache() {
+    return locals.get().cache;
   }
 
   /**
@@ -463,9 +544,10 @@ public final class Phi {
       Counts counts = local.counts;
       requests += counts.requests;
       nanos += counts.nanos;
-      hits += local.memo.hits();
-      misses += local.memo.misses();
-      bypasses += local.memo.bypasses();
+      // 共有のキャッシュに当たった呼び出しは、スレッドのキャッシュでは外れとして数えている
+      hits += local.cache.hits() + counts.sharedHits;
+      misses += local.cache.misses() - counts.sharedHits;
+      bypasses += local.cache.bypasses();
       lateRequests += counts.lateRequests;
       lateHits += counts.lateHits;
       lateMisses += counts.lateMisses;
@@ -477,19 +559,39 @@ public final class Phi {
       filled += counts.filled;
     }
     return new Stats(
-        requests, hits + lateHits, misses + lateMisses, bypasses + lateBypasses, nanos,
+        requests,
+        hits + lateHits,
+        misses + lateMisses,
+        bypasses + lateBypasses,
+        nanos,
         new LateStats(
-            lateRequests, lateHits, lateMisses, lateBypasses, lateNanos, settled, leafNetworks, leafHits, filled));
+            lateRequests,
+            lateHits,
+            lateMisses,
+            lateBypasses,
+            lateNanos,
+            settled,
+            leafNetworks,
+            leafHits,
+            filled));
   }
 
   @Override
   public String toString() {
     String entry = finalRound != null ? " " + finalRound : model == null ? "" : " " + model;
-    return "Phi[" + kind + " " + variant + " " + utility + entry + (phiTable == null ? "" : " with table") + "]";
+    return "Phi["
+        + kind
+        + " "
+        + variant
+        + " "
+        + utility
+        + entry
+        + (phiTable == null ? "" : " with table")
+        + "]";
   }
 
   /**
-   * メモの印を返す。GruSinkhorn では履歴のバージョン、ほかは 0。GruSinkhorn では、履歴が null でも空でもなく、ルールが同じことも
+   * キャッシュの印を返す。GruSinkhorn では履歴のバージョン、ほかは 0。GruSinkhorn では、履歴が null でも空でもなく、ルールが同じことも
    * 確かめる。
    */
   private long stamp(RoundHistory history) {
@@ -523,36 +625,64 @@ public final class Phi {
     }
   }
 
-  private static void remember(long stamp, long key, PhiMemo memo, double[] out) {
+  /** スレッドのキャッシュを引き、外れたら共有のキャッシュを引く。共有のキャッシュに当たればスレッドのキャッシュにも書く。当たれば Φ をコピーして true を返す。 */
+  private boolean found(long stamp, long key, Local local, double[] out) {
+    if (local.cache.find(stamp, key, out)) {
+      return true;
+    }
+    if (sharedCache == null || !sharedCache.find(stamp, key, out)) {
+      return false;
+    }
+    local.counts.sharedHits++;
+    local.cache.store(stamp, key, out);
+    return true;
+  }
+
+  private static void remember(long stamp, long key, PhiCache cache, double[] out) {
     if (key == GrpKey.NONE) {
-      memo.bypass();
+      cache.bypass();
     } else {
-      memo.store(stamp, key, out);
+      cache.store(stamp, key, out);
     }
   }
 
   private Local local() {
     int seats = variant.seats();
     int permutations = RankPermutations.of(variant).count();
-    PhiMemo memo = new PhiMemo(MEMO_SLOTS, seats);
+    PhiCache cache = new PhiCache(cacheSizes.thread(), seats);
     Counts counts = new Counts();
-    Local local = switch (kind) {
-      case NETWORK -> new Local(memo, networkWorkspace(), null, new double[permutations], null, null, counts);
-      case GRU -> new Local(memo, null, GruWorkspace.of((GruSinkhorn) model), null, null, null, counts);
-      case SCORE_RANK, SCORE_SMOOTH -> new Local(memo, null, null, null, new double[seats * seats], null, counts);
-      case LATE -> new Local(
-          memo, networkWorkspace(), null, new double[permutations], null, FinalRoundWorkspace.of(finalRound), counts);
-    };
+    Local local =
+        switch (kind) {
+          case NETWORK ->
+              new Local(
+                  cache, networkWorkspace(), null, new double[permutations], null, null, counts);
+          case GRU ->
+              new Local(
+                  cache, null, GruWorkspace.of((GruSinkhorn) model), null, null, null, counts);
+          case SCORE_RANK, SCORE_SMOOTH ->
+              new Local(cache, null, null, null, new double[seats * seats], null, counts);
+          case LATE ->
+              new Local(
+                  cache,
+                  networkWorkspace(),
+                  null,
+                  new double[permutations],
+                  null,
+                  FinalRoundWorkspace.of(finalRound),
+                  counts);
+        };
     registered.add(local);
     return local;
   }
 
   private void requireTable(Variant tableVariant, double[] out) {
     if (tableVariant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: Phi " + variant + ", table " + tableVariant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: Phi " + variant + ", table " + tableVariant);
     }
     if (out.length != variant.seats()) {
-      throw new IllegalArgumentException(variant + " needs " + variant.seats() + " values, got " + out.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + variant.seats() + " values, got " + out.length);
     }
   }
 }

@@ -57,11 +57,13 @@ public final class App {
    * @param out コマンドの結果と使い方の表示を書く先
    * @return 終了コード
    */
-  public static <R extends Record> int run(Application<R> application, String[] args, PrintStream out) {
+  public static <R extends Record> int run(
+      Application<R> application, String[] args, PrintStream out) {
     return run(application, args, out, new Signals());
   }
 
-  static <R extends Record> int run(Application<R> application, String[] args, PrintStream out, Signals signals) {
+  static <R extends Record> int run(
+      Application<R> application, String[] args, PrintStream out, Signals signals) {
     Catalog catalog = Catalog.of(application);
     Invocation invocation;
     try {
@@ -82,12 +84,19 @@ public final class App {
       log.error(
           "Unknown command {}{}; run '{} help' for the commands",
           unknown,
-          Catalog.suggestion(unknown, catalog.entries().stream().map(Catalog.Entry::name).toList(), " (did you mean ", "?)"),
+          Catalog.suggestion(
+              unknown,
+              catalog.entries().stream().map(Catalog.Entry::name).toList(),
+              " (did you mean ",
+              "?)"),
           application.name());
       return Exit.USAGE.code();
     }
     Catalog.Entry entry = match.entry();
-    log.info("Command started: {} {}", application.name(), invocation.describe(match, Invocation.secretPatterns(application.schema(), entry)));
+    log.info(
+        "Command started: {} {}",
+        application.name(),
+        invocation.describe(match, Invocation.secretPatterns(application.schema(), entry)));
     long started = System.nanoTime();
     Outcome outcome = execute(application, catalog, match, invocation, out, signals);
     out.flush();
@@ -118,7 +127,8 @@ public final class App {
       return Objects.requireNonNull(command.run(context), "outcome");
     } catch (SettingsException invalid) {
       invalid.problems().forEach(log::error);
-      return new Outcome(Exit.USAGE, invalid.problems().size() + " problem(s) in the arguments or settings");
+      return new Outcome(
+          Exit.USAGE, invalid.problems().size() + " problem(s) in the arguments or settings");
     } catch (InterruptedException interrupted) {
       Thread.currentThread().interrupt();
       return new Outcome(Exit.INTERRUPTED, "interrupted");
@@ -137,7 +147,8 @@ public final class App {
    */
   private record Layers(List<Layer> sections, List<Layer> settings, List<String> presets) {}
 
-  private static Layers layers(Application<?> application, Catalog catalog, Invocation invocation, Catalog.Entry entry)
+  private static Layers layers(
+      Application<?> application, Catalog catalog, Invocation invocation, Catalog.Entry entry)
       throws IOException {
     if (entry.named().reads() == Reads.RUN) {
       if (invocation.hasLayers()) {
@@ -191,7 +202,10 @@ public final class App {
     if (!problems.isEmpty()) {
       throw new SettingsException(problems);
     }
-    return new Layers(List.copyOf(layers), layers.stream().map(catalog::withoutSections).toList(), List.copyOf(presets));
+    return new Layers(
+        List.copyOf(layers),
+        layers.stream().map(catalog::withoutSections).toList(),
+        List.copyOf(presets));
   }
 
   private static void exit(int code) {
@@ -207,7 +221,8 @@ public final class App {
     private final Signals signals;
     private Settings<R> settings;
 
-    Invoked(Application<R> application, Reads reads, Layers layers, PrintStream out, Signals signals) {
+    Invoked(
+        Application<R> application, Reads reads, Layers layers, PrintStream out, Signals signals) {
       this.application = application;
       this.reads = reads;
       this.layers = layers;

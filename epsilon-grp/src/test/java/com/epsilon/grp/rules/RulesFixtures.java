@@ -24,7 +24,8 @@ public final class RulesFixtures {
   private RulesFixtures() {}
 
   /** 局の始まりの卓を作る。点と供託の点の和が、配給点の和になるように渡す。 */
-  public static TableState table(Variant variant, int round, int honba, int kyotaku, int... scores) {
+  public static TableState table(
+      Variant variant, int round, int honba, int kyotaku, int... scores) {
     TableState table = new TableState(variant);
     table.set(round, honba, kyotaku, scores);
     return table;
@@ -101,7 +102,8 @@ public final class RulesFixtures {
           outcome.setRon(base, winner, loser, RoundOutcome.NO_SEAT, riichi);
           int other = Seats.absolute(loser, 1 + random.nextInt(seats - 1), seats);
           if (other != winner) {
-            outcome.addRonWinner(bases[random.nextInt(bases.length)].base(), other, RoundOutcome.NO_SEAT);
+            outcome.addRonWinner(
+                bases[random.nextInt(bases.length)].base(), other, RoundOutcome.NO_SEAT);
           }
         } else if (kind < 96) {
           int tenpai = riichi;

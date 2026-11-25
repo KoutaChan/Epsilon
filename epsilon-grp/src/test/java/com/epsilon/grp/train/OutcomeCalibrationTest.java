@@ -51,7 +51,8 @@ public class OutcomeCalibrationTest {
       }
       for (int main = 0; main < hands.mainCount(); main++) {
         int term = hands.mainTerm(main);
-        Assert.assertEquals(tempered.term(term), original.term(term) / 2 - Math.log(sum), 1e-9, "row " + row);
+        Assert.assertEquals(
+            tempered.term(term), original.term(term) / 2 - Math.log(sum), 1e-9, "row " + row);
       }
     }
 
@@ -65,13 +66,16 @@ public class OutcomeCalibrationTest {
     Assert.assertTrue(best <= OutcomeCalibration.nll(countedRows, fitted / 1.05, workspaces));
     OutcomeNetwork sharpened = OutcomeCalibration.tempered(counted, 0.5);
     double doubled =
-        OutcomeCalibration.temperature(List.of(new OutcomeCalibration.Part(rows, sharpened)), workspaces);
+        OutcomeCalibration.temperature(
+            List.of(new OutcomeCalibration.Part(rows, sharpened)), workspaces);
     Assert.assertEquals(doubled, 2 * fitted, 0.01 * fitted);
 
-    OutcomeCalibration.Reliability reliability = OutcomeCalibration.reliability(countedRows, workspaces);
+    OutcomeCalibration.Reliability reliability =
+        OutcomeCalibration.reliability(countedRows, workspaces);
     Assert.assertEquals(reliability.rows(), rows.size());
     // 途中流局と全員聴牌の荒牌は、点数の動きも局の進み方も同じなので、どちらの終わり方でも再現できる。
-    Assert.assertTrue(reliability.ambiguousRows() > 0 && reliability.ambiguousRows() < rows.size(),
+    Assert.assertTrue(
+        reliability.ambiguousRows() > 0 && reliability.ambiguousRows() < rows.size(),
         reliability.ambiguousRows() + " ambiguous rows");
     long pairs = 0;
     double predicted = 0;
@@ -146,30 +150,42 @@ public class OutcomeCalibrationTest {
       Assert.assertEquals(check.nll(), sum / count, 1e-12 * sum / count, check.toString());
     }
     Assert.assertTrue(Math.abs(all.temperature() - 1) < 0.1, all.toString());
-    OutcomeCalibration.Check sharpened = OutcomeCalibration.check(next, h -> true, OutcomeCalibration.tempered(q, 0.5));
-    Assert.assertEquals(sharpened.temperature(), 2 * all.temperature(), 0.02 * all.temperature(), sharpened.toString());
+    OutcomeCalibration.Check sharpened =
+        OutcomeCalibration.check(next, h -> true, OutcomeCalibration.tempered(q, 0.5));
+    Assert.assertEquals(
+        sharpened.temperature(),
+        2 * all.temperature(),
+        0.02 * all.temperature(),
+        sharpened.toString());
 
     assertOutliers(all.outliers());
     double[] logits = new double[hands.logits()];
     for (int main = 0; main < hands.mainCount(); main++) {
       if (hands.section(main) == OutcomeSection.DRAW) {
-        logits[hands.mainTerm(main)] = 3;
+        logits[hands.mainLogit(main)] = 3;
       }
     }
-    OutcomeCalibration.Check drawing = OutcomeCalibration.check(next, h -> true, GrpFixtures.biased(shape, logits));
+    OutcomeCalibration.Check drawing =
+        OutcomeCalibration.check(next, h -> true, GrpFixtures.biased(shape, logits));
     assertOutliers(drawing.outliers());
     Assert.assertTrue(
-        drawing.outliers().stream().anyMatch(outlier -> outlier.rate().name().equals("DRAW")
-            && outlier.rate().realized() > 0 && outlier.rate().predicted() > outlier.rate().realized() + 0.3),
+        drawing.outliers().stream()
+            .anyMatch(
+                outlier ->
+                    outlier.rate().name().equals("DRAW")
+                        && outlier.rate().realized() > 0
+                        && outlier.rate().predicted() > outlier.rate().realized() + 0.3),
         drawing.outliers().toString());
 
     NextHands searched = NextHands.of(ends, drawn.games());
-    double recorded = OutcomeCalibration.nll(searched, h -> true, q, 1, () -> OutcomeWorkspace.of(shape));
+    double recorded =
+        OutcomeCalibration.nll(searched, h -> true, q, 1, () -> OutcomeWorkspace.of(shape));
     Assert.assertTrue(all.nll() >= recorded - 1e-12, all.nll() + " vs " + recorded);
 
     OutcomeCalibration.Check none = OutcomeCalibration.check(next, h -> false, q);
     Assert.assertEquals(none.handEnds(), 0);
-    Assert.assertTrue(Double.isNaN(none.nll()) && Double.isNaN(none.temperature()), none.toString());
+    Assert.assertTrue(
+        Double.isNaN(none.nll()) && Double.isNaN(none.temperature()), none.toString());
     Assert.assertTrue(none.outliers().isEmpty());
   }
 
@@ -183,8 +199,10 @@ public class OutcomeCalibrationTest {
     OutcomeShape shape = new OutcomeShape(variant, GrpFixtures.plainFields(), 8);
     OutcomeNetwork q = GrpFixtures.outcomes(shape, 19, 0.5);
     OutcomeFixtures.Drawn drawn = OutcomeFixtures.drawn(q, 500, 1, 7 + variant.seats());
-    NextHands next = NextHands.of(HandEnds.of(variant, RankUtility.TENHOU, drawn.games()), drawn.counted());
-    OutcomeClasses.Result classes = OutcomeClasses.measure(next, h -> q, h -> true, () -> OutcomeWorkspace.of(shape));
+    NextHands next =
+        NextHands.of(HandEnds.of(variant, RankUtility.TENHOU, drawn.games()), drawn.counted());
+    OutcomeClasses.Result classes =
+        OutcomeClasses.measure(next, h -> q, h -> true, () -> OutcomeWorkspace.of(shape));
     long rates = 0;
     for (OutcomeClasses.SeatCell cell : classes.seats()) {
       rates += cell.group() < 0 ? 0 : cell.rates().size();
@@ -196,8 +214,15 @@ public class OutcomeCalibrationTest {
     long neverSeen = outliers.stream().filter(outlier -> outlier.rate().realized() == 0).count();
     Assert.assertTrue(
         outliers.size() <= Math.max(3, rates / 30),
-        variant + ": " + outliers.size() + " outliers among " + rates + " rates, " + neverSeen
-            + " of them never seen in their cell; the largest: " + outliers.subList(0, Math.min(3, outliers.size())));
+        variant
+            + ": "
+            + outliers.size()
+            + " outliers among "
+            + rates
+            + " rates, "
+            + neverSeen
+            + " of them never seen in their cell; the largest: "
+            + outliers.subList(0, Math.min(3, outliers.size())));
   }
 
   @DataProvider

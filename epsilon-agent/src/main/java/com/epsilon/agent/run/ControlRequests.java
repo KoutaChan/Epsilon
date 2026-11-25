@@ -49,7 +49,8 @@ public final class ControlRequests {
     DurableFiles.createDirectories(control);
     synchronized (NUMBERING) {
       try (FileChannel channel =
-              FileChannel.open(control.resolve(".lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+              FileChannel.open(
+                  control.resolve(".lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
           FileLock lock = channel.lock()) {
         // JVM は control から done へ移すので、control を先に見れば、移している途中の要求も必ずどちらかで数えられる
         int highest = highest(control);
@@ -79,7 +80,8 @@ public final class ControlRequests {
     DurableFiles.createDirectories(done);
     Path retired = done.resolve(request.fileName());
     try {
-      Files.move(run.control().resolve(request.fileName()), retired, StandardCopyOption.ATOMIC_MOVE);
+      Files.move(
+          run.control().resolve(request.fileName()), retired, StandardCopyOption.ATOMIC_MOVE);
     } catch (NoSuchFileException moved) {
       if (Files.exists(retired)) {
         return;
@@ -137,7 +139,8 @@ public final class ControlRequests {
       }
       if (!request.fileName().equals(file.getFileName().toString())) {
         throw new SettingsException(
-            List.of("The request file " + file + " holds request " + request.fileName() + " instead"));
+            List.of(
+                "The request file " + file + " holds request " + request.fileName() + " instead"));
       }
       requests.add(request);
     }

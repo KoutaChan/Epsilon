@@ -3,8 +3,8 @@ import type {
   HistoryEntry,
   ImportedRecord,
   ModelInfo,
-} from "../../../protocol/model.ts";
-import type { ResultDocument } from "../../../protocol/result.ts";
+} from "@epsilon-reviewer/protocol/model";
+import type { ResultDocument } from "@epsilon-reviewer/protocol/result";
 
 // オーナーの画面の遷移。URL は使わないので、読み込み直すと最初の画面へ戻る。
 

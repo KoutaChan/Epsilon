@@ -2,7 +2,7 @@ import type errors from "../../../language/ja/errors.json";
 import type mahjong from "../../../language/ja/mahjong.json";
 import type replay from "../../../language/ja/replay.json";
 import type shell from "../../../language/ja/shell.json";
-import { isErrorCode } from "../../../protocol/errors.ts";
+import { isErrorCode } from "@epsilon-reviewer/protocol/errors";
 
 // 画面の文言は language/<言語>/ の shell・replay・mahjong・errors にある（desktop.json はメインプロセスだけが読む）。
 // キーの型は ja のファイルから作る。どの言語も同じキーを持つことは tools/check-language.mjs が確かめる。
@@ -55,7 +55,7 @@ export function translator(language: string): Translate {
 function translatorOf(messages: Readonly<Record<string, string>>): Translate {
   return (key, values) => {
     // キーは型で決まるが、牌譜の値から作ったキーは文言に無いことがある。そのときも画面を落とさず、キーをそのまま出す。
-    const message = messages[key] ?? key;
+    const message = messages[key] ?? catalogs.get("ja")?.[key] ?? key;
     if (values === undefined) return message;
     return message.replace(PLACEHOLDER, (token, name: string) =>
       Object.hasOwn(values, name) ? String(values[name]) : token,

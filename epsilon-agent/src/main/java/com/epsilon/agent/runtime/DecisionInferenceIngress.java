@@ -37,7 +37,8 @@ public final class DecisionInferenceIngress {
 
     public Attempt {
       if ((ingress == null) == (available == null)) {
-        throw new IllegalArgumentException("An ingress attempt holds exactly one of an ingress and a wake");
+        throw new IllegalArgumentException(
+            "An ingress attempt holds exactly one of an ingress and a wake");
       }
     }
 
@@ -115,7 +116,8 @@ public final class DecisionInferenceIngress {
 
     private void require(State expected) {
       if (state != expected) {
-        throw new IllegalStateException("The ingress ownership is " + state + ", expected " + expected);
+        throw new IllegalStateException(
+            "The ingress ownership is " + state + ", expected " + expected);
       }
     }
   }

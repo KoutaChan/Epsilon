@@ -44,7 +44,7 @@
       <version>${project.version}</version>
       <scope>runtime</scope>
     </dependency>
-    <!-- 試験の牌譜をエンジンで打つ道具（RecordedGames・Scenes）と、小さな乱数の checkpoint を書く道具。 -->
+    <!-- テストの牌譜をエンジンで打つ道具（RecordedGames・Scenes）と、小さな乱数の checkpoint を書く道具。 -->
     <dependency>
       <groupId>com.epsilon</groupId>
       <artifactId>epsilon-mahjong</artifactId>

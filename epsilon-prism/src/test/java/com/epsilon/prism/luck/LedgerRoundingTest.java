@@ -27,8 +27,10 @@ public class LedgerRoundingTest {
   }
 
   /** 書き下した derive で求めた、丸めに使う乱数。 */
-  private static double formerCoin(long seed, long gameId, long decisionId, int action, int column) {
-    return CrnSeeds.unit(formerDerive(seed, LEDGER_SALT, gameId, decisionId, (long) action * F + column));
+  private static double formerCoin(
+      long seed, long gameId, long decisionId, int action, int column) {
+    return CrnSeeds.unit(
+        formerDerive(seed, LEDGER_SALT, gameId, decisionId, (long) action * F + column));
   }
 
   /** 端の値（0・−1・最大・最小）と乱数を混ぜて、64 ビットの値を 1 つ返す。 */
@@ -51,11 +53,25 @@ public class LedgerRoundingTest {
       int action = random.nextInt(Decisions.MAX_LEGAL), column = random.nextInt(F);
       double coin = LedgerRounding.coin(LedgerRounding.key(seed, game, decision), action, column);
       double derived =
-          CrnSeeds.unit(CrnSeeds.derive(seed, CrnSeeds.Domain.LEDGER, game, decision, (long) action * F + column));
+          CrnSeeds.unit(
+              CrnSeeds.derive(
+                  seed, CrnSeeds.Domain.LEDGER, game, decision, (long) action * F + column));
       double former = formerCoin(seed, game, decision, action, column);
-      String where = "seed " + seed + " game " + game + " decision " + decision + " action " + action + " column " + column;
-      Assert.assertEquals(Double.doubleToRawLongBits(coin), Double.doubleToRawLongBits(derived), where);
-      Assert.assertEquals(Double.doubleToRawLongBits(coin), Double.doubleToRawLongBits(former), where);
+      String where =
+          "seed "
+              + seed
+              + " game "
+              + game
+              + " decision "
+              + decision
+              + " action "
+              + action
+              + " column "
+              + column;
+      Assert.assertEquals(
+          Double.doubleToRawLongBits(coin), Double.doubleToRawLongBits(derived), where);
+      Assert.assertEquals(
+          Double.doubleToRawLongBits(coin), Double.doubleToRawLongBits(former), where);
     }
   }
 
@@ -70,10 +86,12 @@ public class LedgerRoundingTest {
         Assert.assertEquals(CrnSeeds.derive(base, domain, a, b), CrnSeeds.extend(one, b));
         Assert.assertEquals(
             CrnSeeds.derive(base, domain, a, b, c), CrnSeeds.extend(CrnSeeds.extend(one, b), c));
-        Assert.assertEquals(CrnSeeds.derive(base, domain, a, b), SeedMixer.mix64(one ^ SeedMixer.mix64(b)));
+        Assert.assertEquals(
+            CrnSeeds.derive(base, domain, a, b), SeedMixer.mix64(one ^ SeedMixer.mix64(b)));
       }
       Assert.assertEquals(
-          CrnSeeds.derive(base, CrnSeeds.Domain.LEDGER, a, b, c), formerDerive(base, LEDGER_SALT, a, b, c));
+          CrnSeeds.derive(base, CrnSeeds.Domain.LEDGER, a, b, c),
+          formerDerive(base, LEDGER_SALT, a, b, c));
     }
   }
 
@@ -90,11 +108,12 @@ public class LedgerRoundingTest {
       int action = random.nextInt(actions);
       double[] terms = new double[F];
       for (int f = 0; f < F; f++)
-        terms[f] = switch (random.nextInt(4)) {
-          case 0 -> 0;
-          case 1 -> random.nextGaussian() * 1e-6;
-          default -> random.nextGaussian() * Math.scalb(1.0, random.nextInt(-6, 6));
-        };
+        terms[f] =
+            switch (random.nextInt(4)) {
+              case 0 -> 0;
+              case 1 -> random.nextGaussian() * 1e-6;
+              default -> random.nextGaussian() * Math.scalb(1.0, random.nextInt(-6, 6));
+            };
       float[] ledger = new float[actions * F];
       Arrays.fill(ledger, Float.NaN);
       LedgerRounding.write(LedgerRounding.key(seed, game, decision), action, terms, ledger);
@@ -105,15 +124,20 @@ public class LedgerRoundingTest {
             Assert.assertTrue(Float.isNaN(got), "touched action " + a);
             continue;
           }
-          float expected = LedgerRounding.round(terms[f], formerCoin(seed, game, decision, action, f));
-          Assert.assertEquals(Float.floatToRawIntBits(got), Float.floatToRawIntBits(expected), "column " + f);
+          float expected =
+              LedgerRounding.round(terms[f], formerCoin(seed, game, decision, action, f));
+          Assert.assertEquals(
+              Float.floatToRawIntBits(got), Float.floatToRawIntBits(expected), "column " + f);
         }
     }
     for (int f = 0; f < F; f++) {
       double coin = LedgerRounding.coin(LedgerRounding.key(1, 2, 3), 0, f);
-      Assert.assertNotEquals(LedgerRounding.coin(LedgerRounding.key(1, 2, 4), 0, f), coin, "decision, column " + f);
-      Assert.assertNotEquals(LedgerRounding.coin(LedgerRounding.key(1, 3, 3), 0, f), coin, "game, column " + f);
-      Assert.assertNotEquals(LedgerRounding.coin(LedgerRounding.key(2, 2, 3), 0, f), coin, "seed, column " + f);
+      Assert.assertNotEquals(
+          LedgerRounding.coin(LedgerRounding.key(1, 2, 4), 0, f), coin, "decision, column " + f);
+      Assert.assertNotEquals(
+          LedgerRounding.coin(LedgerRounding.key(1, 3, 3), 0, f), coin, "game, column " + f);
+      Assert.assertNotEquals(
+          LedgerRounding.coin(LedgerRounding.key(2, 2, 3), 0, f), coin, "seed, column " + f);
     }
   }
 }

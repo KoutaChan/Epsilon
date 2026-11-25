@@ -6,13 +6,13 @@ import com.epsilon.mahjong.rules.Variant;
 import java.util.Arrays;
 
 /**
- * FinalRound の作業領域。次のものを持つ: 2 つのネットワークの作業領域、精算と局の進行に使う卓と結果、葉のネットワークの値のメモ、
- * 数え上げの回数、最後に求めた卓で半荘が終わる組の確率の和。メモは GrpKey のキーで引くダイレクトマップ方式。葉のネットワークは
- * 変わらないので、メモに当たっても外れても値はビット単位で同じ。FinalRound ごとに作り、同時に使えるのは 1 スレッドだけ。
+ * FinalRound の作業領域。次のものを持つ: 2 つのネットワークの作業領域、精算と局の進行に使う卓と結果、葉のネットワークの値のキャッシュ、
+ * 数え上げの回数、最後に求めた卓で半荘が終わる組の確率の和。キャッシュは GrpKey のキーで引くダイレクトマップ方式。葉のネットワークは
+ * 変わらないので、キャッシュに当たっても外れても値はビット単位で同じ。FinalRound ごとに作り、同時に使えるのは 1 スレッドだけ。
  */
 public final class FinalRoundWorkspace {
 
-  /** 葉のメモの既定のスロットの数。 */
+  /** 葉のキャッシュの既定のスロットの数。 */
   public static final int LEAF_SLOTS = 1 << 10;
 
   final FinalRound finalRound;
@@ -29,18 +29,21 @@ public final class FinalRoundWorkspace {
 
   /** 長さ S! の配列。葉のネットワークの出力と、Φ を求めるときの p(π|s)。 */
   final double[] leafOut;
+
   final double[] mixture;
 
   /** 空のスロットのキーは GrpKey.NONE。値は [スロット × S! ＋ 順列] に並ぶ。 */
-  final long[] memoKeys;
-  final double[] memoValues;
-  final int memoMask;
+  final long[] cacheKeys;
+
+  final double[] cacheValues;
+  final int cacheMask;
 
   /**
    * 今の終わり方で、立直の有無を確率に入れる席の数。続く 3 つの配列には、その i 番目の席が立直した確率、立直していない確率、
    * 絶対席のビットを置く。
    */
   int factors;
+
   final double[] declared;
   final double[] quiet;
   final int[] riichiBits;
@@ -48,12 +51,13 @@ public final class FinalRoundWorkspace {
   long settled;
   long terminalLeaves;
   long networkLeaves;
-  long memoHits;
+  long cacheHits;
   double terminalMass;
 
-  private FinalRoundWorkspace(FinalRound finalRound, OutcomeWorkspace outcomes, GrpWorkspace leaf, int leafSlots) {
+  private FinalRoundWorkspace(
+      FinalRound finalRound, OutcomeWorkspace outcomes, GrpWorkspace leaf, int leafSlots) {
     if (leafSlots < 1 || Integer.bitCount(leafSlots) != 1) {
-      throw new IllegalArgumentException("Leaf memo slots must be a power of two: " + leafSlots);
+      throw new IllegalArgumentException("Leaf cache slots must be a power of two: " + leafSlots);
     }
     this.finalRound = finalRound;
     this.outcomes = outcomes;
@@ -68,21 +72,21 @@ public final class FinalRoundWorkspace {
     scores = new int[seats];
     leafOut = new double[count];
     mixture = new double[count];
-    memoKeys = new long[leafSlots];
-    Arrays.fill(memoKeys, GrpKey.NONE);
-    memoValues = new double[leafSlots * count];
-    memoMask = leafSlots - 1;
+    cacheKeys = new long[leafSlots];
+    Arrays.fill(cacheKeys, GrpKey.NONE);
+    cacheValues = new double[leafSlots * count];
+    cacheMask = leafSlots - 1;
     declared = new double[seats];
     quiet = new double[seats];
     riichiBits = new int[seats];
   }
 
-  /** 葉のメモは既定のスロットの数（{@link #LEAF_SLOTS}）で作る。 */
+  /** 葉のキャッシュは既定のスロットの数（{@link #LEAF_SLOTS}）で作る。 */
   public static FinalRoundWorkspace of(FinalRound finalRound) {
     return of(finalRound, LEAF_SLOTS);
   }
 
-  /** @param leafSlots 葉のメモのスロットの数 */
+  /** @param leafSlots 葉のキャッシュのスロットの数 */
   public static FinalRoundWorkspace of(FinalRound finalRound, int leafSlots) {
     return new FinalRoundWorkspace(
         finalRound,
@@ -91,9 +95,9 @@ public final class FinalRoundWorkspace {
         leafSlots);
   }
 
-  /** 葉のメモのスロットの数。 */
+  /** 葉のキャッシュのスロットの数。 */
   public int leafSlots() {
-    return memoKeys.length;
+    return cacheKeys.length;
   }
 
   /** この作業領域を作ってから、精算して局を進めた回数。 */
@@ -106,14 +110,14 @@ public final class FinalRoundWorkspace {
     return terminalLeaves;
   }
 
-  /** 葉のネットワークを呼んだ回数。メモに無かった卓とキーに収まらない卓で呼んだ分を数え、打ち切った確率を埋める呼び出しは数えない。 */
+  /** 葉のネットワークを呼んだ回数。キャッシュに無かった卓とキーに収まらない卓で呼んだ分を数え、打ち切った確率を埋める呼び出しは数えない。 */
   public long networkLeaves() {
     return networkLeaves;
   }
 
-  /** 葉のネットワークの値をメモから読んだ回数。 */
-  public long memoHits() {
-    return memoHits;
+  /** 葉のネットワークの値をキャッシュから読んだ回数。 */
+  public long cacheHits() {
+    return cacheHits;
   }
 
   /**

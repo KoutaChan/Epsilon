@@ -67,16 +67,20 @@ final class LearnStep implements Step<CampaignIteration> {
     TrajectoryBatch batch = Cohort.trajectories(run.rows(t), settings.run().variant());
     CampaignSession session = iteration.session();
     long step = ClassicCheckpoint.header(run.snapshot(iteration.version())).step();
-    SelfPlayLearner.Macro macro = session.learn(iteration, batch, SeedMixer.derive(settings.run().seed(), SEED_SALT, t));
+    SelfPlayLearner.Macro macro =
+        session.learn(iteration, batch, SeedMixer.derive(settings.run().seed(), SEED_SALT, t));
     DurableFiles.createDirectories(part);
-    session.saveLearner(part.resolve(OPTIMIZER), part.resolve(NETWORK), step + macro.steps().size());
-    StepReport report = StepReport.ran(iteration, started, LearnReport.of(iteration.version(), macro));
+    session.saveLearner(
+        part.resolve(OPTIMIZER), part.resolve(NETWORK), step + macro.steps().size());
+    StepReport report =
+        StepReport.ran(iteration, started, LearnReport.of(iteration.version(), macro));
     report.write(part.resolve(CampaignStep.REPORT));
     DurableFiles.seal(part, done);
     session.learned(iteration.published());
     publish(run, iteration.published());
     LOG.info(
-        "t={} learned version {} from {} decisions in {} steps ({} policy updates), kl={} rate {} -> {}",
+        "t={} learned version {} from {} decisions in {} steps ({} policy updates), kl={} rate {}"
+            + " -> {}",
         t,
         iteration.published(),
         macro.decisions(),
@@ -107,7 +111,13 @@ final class LearnStep implements Step<CampaignIteration> {
     Path snapshot = run.snapshot(version);
     if (Files.exists(snapshot)) {
       throw new IllegalStateException(
-          "Version " + version + " is already published at " + snapshot + " while " + network + " waits");
+          "Version "
+              + version
+              + " is already published at "
+              + snapshot
+              + " while "
+              + network
+              + " waits");
     }
     DurableFiles.createDirectories(run.snapshots());
     Files.move(network, snapshot, StandardCopyOption.ATOMIC_MOVE);

@@ -1,18 +1,26 @@
 import { useRef, useState } from "react";
 import { ArrowRight, Link, LoaderCircle, Upload } from "lucide-react";
 import { useLanguage } from "../../language/LanguageProvider";
+import { choosableSeats } from "../models/availability";
+import { ModelSelect } from "../models/ModelSelect";
+import type { Models } from "../models/useModels";
 
 /** ファイルの選択で選べる牌譜の拡張子（mjai・天鳳の XML・雀魂。gzip で圧縮したものも選べる）。 */
 const RECORD_FILE_TYPES =
   ".jsonl,.mjson,.mjai,.gz,.xml,.json,.bin,.dat,.majsoul";
 
-/** 牌譜を取り込むカード。天鳳の URL か、牌譜のファイル（選ぶかドロップする）から取り込む。モデルは、読んだ牌譜の人数で後から選ぶ。 */
+/**
+ * 牌譜を取り込むカード。天鳳の URL か、牌譜のファイル（選ぶかドロップする）から取り込む。使えるモデルが 2 つ以上ある人数ごとに、
+ * モデルを選ぶ欄を出す。選んだモデルは、その人数の牌譜の確認の画面で初めから選ばれる。
+ */
 export function ImportCard({
   busy,
+  models,
   onFile,
   onUrl,
 }: {
   busy: boolean;
+  models: Models;
   onFile: (file: File) => void;
   onUrl: (url: string) => void;
 }) {
@@ -20,6 +28,8 @@ export function ImportCard({
   const [url, setUrl] = useState("");
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const choosable =
+    models.state.status === "ready" ? choosableSeats(models.state.value) : [];
   return (
     <section
       className={`import-card ${dragging ? "dragging" : ""}`}
@@ -93,6 +103,16 @@ export function ImportCard({
           }}
         />
       </div>
+      {choosable.map((seats) => (
+        <ModelSelect
+          key={seats}
+          models={models}
+          id={`home-model-${seats}`}
+          seats={seats}
+          label={t("model.labelSeats", { seats })}
+          onlySeats
+        />
+      ))}
     </section>
   );
 }

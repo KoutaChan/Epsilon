@@ -41,7 +41,8 @@ public final class WallReplay {
     this.start = Objects.requireNonNull(start, "start");
     variant = start.variant();
     if (wall.length != variant.tiles().size()) {
-      throw new IllegalArgumentException(variant + " needs " + variant.tiles().size() + " positions, got " + wall.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + variant.tiles().size() + " positions, got " + wall.length);
     }
     for (int position = 0; position < wall.length; position++) {
       if (wall[position] == Wall.UNKNOWN) {
@@ -134,7 +135,8 @@ public final class WallReplay {
       String recorded = line < expected.size() ? expected.get(line) : "(none)";
       String again = line < actual.size() ? actual.get(line) : "(none)";
       if (!recorded.equals(again)) {
-        throw new AssertionError("The replay differs from the recorded line:\n  " + recorded + "\n  " + again);
+        throw new AssertionError(
+            "The replay differs from the recorded line:\n  " + recorded + "\n  " + again);
       }
     }
     return replayed;
@@ -142,7 +144,8 @@ public final class WallReplay {
 
   private void requireDecisions() {
     if (boundary != Boundary.DECISIONS) {
-      throw new IllegalStateException("The recorded line is at " + boundary + ", not at a decision");
+      throw new IllegalStateException(
+          "The recorded line is at " + boundary + ", not at a decision");
     }
   }
 
@@ -164,7 +167,8 @@ public final class WallReplay {
     for (int index = 0; index < chance.size(); index++) {
       switch (chance.kind(index)) {
         case DRAW -> markRead(read, Wall.livePosition(variant, draws++), chance.tile(index));
-        case RINSHAN -> markRead(read, Wall.rinshanPosition(variant, ++rinshans), chance.tile(index));
+        case RINSHAN ->
+            markRead(read, Wall.rinshanPosition(variant, ++rinshans), chance.tile(index));
         case INDICATOR, URA -> {}
       }
     }
@@ -191,41 +195,85 @@ public final class WallReplay {
     ChanceLog chance = full.chance();
     StringBuilder text = new StringBuilder("chance");
     for (int index = 0; index < chance.size(); index++) {
-      text.append(' ').append(chance.kind(index)).append(chance.seat(index)).append('/').append(chance.tile(index));
+      text.append(' ')
+          .append(chance.kind(index))
+          .append(chance.seat(index))
+          .append('/')
+          .append(chance.tile(index));
     }
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
-      text.append(' ').append(chance.start(kind)).append('/').append(chance.unseen(kind)).append('/')
+      text.append(' ')
+          .append(chance.start(kind))
+          .append('/')
+          .append(chance.unseen(kind))
+          .append('/')
           .append(full.unseen(kind));
     }
     lines.add(text.toString());
     SeatView table = full.seat(0);
-    text = new StringBuilder("table round=").append(table.round()).append(" dealer=").append(table.dealer())
-        .append(" current=").append(table.current()).append(" honba=").append(table.honba())
-        .append(" kyotaku=").append(table.kyotaku()).append(" live=").append(table.liveLeft());
+    text =
+        new StringBuilder("table round=")
+            .append(table.round())
+            .append(" dealer=")
+            .append(table.dealer())
+            .append(" current=")
+            .append(table.current())
+            .append(" honba=")
+            .append(table.honba())
+            .append(" kyotaku=")
+            .append(table.kyotaku())
+            .append(" live=")
+            .append(table.liveLeft());
     EventLog events = table.events();
     for (int event = 0; event < events.size(); event++) {
-      text.append(' ').append(events.kind(event)).append(events.seat(event)).append('/').append(events.tile(event))
-          .append(events.red(event) ? "r" : "").append(events.tsumogiri(event) ? "t" : "")
-          .append(events.riichi(event) ? "R" : "").append('/').append(events.calledBy(event))
-          .append('/').append(events.meld(event));
+      text.append(' ')
+          .append(events.kind(event))
+          .append(events.seat(event))
+          .append('/')
+          .append(events.tile(event))
+          .append(events.red(event) ? "r" : "")
+          .append(events.tsumogiri(event) ? "t" : "")
+          .append(events.riichi(event) ? "R" : "")
+          .append('/')
+          .append(events.calledBy(event))
+          .append('/')
+          .append(events.meld(event));
     }
     for (int index = 0; index < table.indicatorCount(); index++) {
-      text.append(" dora ").append(table.indicator(index)).append('@').append(table.indicatorEvent(index));
+      text.append(" dora ")
+          .append(table.indicator(index))
+          .append('@')
+          .append(table.indicatorEvent(index));
     }
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
-      text.append(' ').append(table.visible(kind)).append('/').append(table.doraWeight(kind));
+      text.append(' ').append(table.visible(kind));
     }
     lines.add(text.toString());
     HandShape shape = new HandShape();
     for (int seat = 0; seat < variant.seats(); seat++) {
       SeatView view = full.seat(seat);
       full.copyHand(seat, shape);
-      text = new StringBuilder("seat ").append(seat).append(' ').append(shape).append(" score=")
-          .append(view.score(seat)).append(' ').append(view.riichi(seat)).append(view.ippatsu(seat) ? " ippatsu" : "")
-          .append(" river=").append(Long.toHexString(view.riverKinds(seat)))
-          .append(" safe=").append(Long.toHexString(view.riichiSafe(seat)))
-          .append(" nuki=").append(view.nuki(seat)).append(" furiten=").append(full.furiten(seat))
-          .append(" waits=").append(Long.toHexString(full.waits(seat))).append(" melds=");
+      text =
+          new StringBuilder("seat ")
+              .append(seat)
+              .append(' ')
+              .append(shape)
+              .append(" score=")
+              .append(view.score(seat))
+              .append(' ')
+              .append(view.riichi(seat))
+              .append(view.ippatsu(seat) ? " ippatsu" : "")
+              .append(" river=")
+              .append(Long.toHexString(view.riverKinds(seat)))
+              .append(" safe=")
+              .append(Long.toHexString(view.riichiSafe(seat)))
+              .append(" nuki=")
+              .append(view.nuki(seat))
+              .append(" furiten=")
+              .append(full.furiten(seat))
+              .append(" waits=")
+              .append(Long.toHexString(full.waits(seat)))
+              .append(" melds=");
       for (int index = 0; index < view.meldCount(seat); index++) {
         text.append(view.meld(seat, index)).append(';');
       }
@@ -236,15 +284,27 @@ public final class WallReplay {
         }
       }
       TurnEvent last = view.last();
-      text.append(" last=").append(last.kind()).append(last.seat()).append('/').append(last.tile())
-          .append(last.red() ? "r" : "").append(last.rinshan() ? " rinshan" : "")
-          .append(last.doraPending() ? " pending" : "").append(' ').append(last.kanKind());
+      text.append(" last=")
+          .append(last.kind())
+          .append(last.seat())
+          .append('/')
+          .append(last.tile())
+          .append(last.red() ? "r" : "")
+          .append(last.rinshan() ? " rinshan" : "")
+          .append(last.doraPending() ? " pending" : "")
+          .append(' ')
+          .append(last.kanKind());
       lines.add(text.toString());
     }
     Decisions decisions = engine.decisions();
     for (int slot = 0; slot < decisions.size(); slot++) {
-      text = new StringBuilder("decision ").append(decisions.id(slot)).append(" seat ").append(decisions.seat(slot))
-          .append(' ').append(decisions.kind(slot));
+      text =
+          new StringBuilder("decision ")
+              .append(decisions.id(slot))
+              .append(" seat ")
+              .append(decisions.seat(slot))
+              .append(' ')
+              .append(decisions.kind(slot));
       for (int index = 0; index < decisions.legalCount(slot); index++) {
         text.append(' ').append(Action.of(decisions.legal(slot, index)));
       }

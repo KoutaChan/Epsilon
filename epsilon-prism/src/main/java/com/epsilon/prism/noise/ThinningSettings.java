@@ -32,7 +32,8 @@ public sealed interface ThinningSettings {
               doc = "判断のクラスごとの間引き方（書いたクラスだけを間引く。間引くクラスが 1 つ以上要る）",
               value = "{DISCARD_EARLY = {}, DISCARD_MID = {}, DISCARD_LATE = {}}")
           Map<DecisionClass, ClassThinning> classes,
-      @Key(doc = "監査のために全ての候補を測る行の割合", value = "0.005") @Range(min = 0, minInclusive = false, max = 1, maxInclusive = false)
+      @Key(doc = "監査のために全ての候補を測る行の割合", value = "0.005")
+          @Range(min = 0, minInclusive = false, max = 1, maxInclusive = false)
           double full)
       implements ThinningSettings {
 

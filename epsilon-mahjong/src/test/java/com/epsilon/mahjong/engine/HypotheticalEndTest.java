@@ -71,7 +71,9 @@ public class HypotheticalEndTest {
       }
     }
     for (String seen : Set.of("TSUMO", "RON", "EXHAUSTIVE", "ABORTIVE", "GAME_END", "RIICHI")) {
-      Assert.assertTrue(coverage.getOrDefault(seen, 0) > 0, variant + ": " + seen + " never happened: " + coverage);
+      Assert.assertTrue(
+          coverage.getOrDefault(seen, 0) > 0,
+          variant + ": " + seen + " never happened: " + coverage);
     }
   }
 
@@ -97,7 +99,8 @@ public class HypotheticalEndTest {
     scene.play(loser + ":" + (variant == Variant.TENHOU_4P ? "DAHAI(5p)" : "DAHAI_TSUMOGIRI(5p)"));
     int first = (loser + 1) % seats;
     int second = (loser + 2) % seats;
-    Assert.assertEquals(scene.play(first + ":RON_AGARI", second + ":RON_AGARI"), Boundary.ROUND_END);
+    Assert.assertEquals(
+        scene.play(first + ":RON_AGARI", second + ":RON_AGARI"), Boundary.ROUND_END);
     RoundOutcome outcome = scene.end().outcome();
     Assert.assertEquals(outcome.winnerCount(), 2);
     Assert.assertEquals(outcome.winner(0), first);
@@ -123,7 +126,8 @@ public class HypotheticalEndTest {
         if (Modifier.isStatic(field.getModifiers())) {
           continue;
         }
-        Class<?> held = field.getType().isArray() ? field.getType().getComponentType() : field.getType();
+        Class<?> held =
+            field.getType().isArray() ? field.getType().getComponentType() : field.getType();
         Assert.assertTrue(
             held.isPrimitive() || held.getPackageName().equals("com.epsilon.mahjong.rules"),
             "HypotheticalEnd." + field.getName() + " holds " + held);
@@ -167,7 +171,8 @@ public class HypotheticalEndTest {
             hypothetical.outcome().copyFrom(outcome);
             checksum += hypothetical.settle(start).score(0);
             checksum += hypothetical.exhaustive(start, 0, round & 1, 0).score(1);
-            checksum += hypothetical.tsumo(start, 0, round % seats, 2_000, RoundOutcome.NO_SEAT).score(0);
+            checksum +=
+                hypothetical.tsumo(start, 0, round % seats, 2_000, RoundOutcome.NO_SEAT).score(0);
             checksum += hypothetical.ron(start, 0, 0, 1, 2_000, RoundOutcome.NO_SEAT).score(1);
           }
           return checksum;
@@ -195,24 +200,35 @@ public class HypotheticalEndTest {
   private TableState rebuild(TableState start, RoundOutcome outcome) {
     int riichi = outcome.riichiMask();
     return switch (outcome.kind()) {
-      case TSUMO -> hypothetical.tsumo(start, riichi, outcome.winner(0), outcome.base(0), outcome.pao(0));
+      case TSUMO ->
+          hypothetical.tsumo(start, riichi, outcome.winner(0), outcome.base(0), outcome.pao(0));
       case RON -> {
         if (outcome.winnerCount() == 1) {
           yield hypothetical.ron(
               start, riichi, outcome.loser(), outcome.winner(0), outcome.base(0), outcome.pao(0));
         }
-        if (outcome.winnerCount() == 2 && outcome.pao(0) == RoundOutcome.NO_SEAT
+        if (outcome.winnerCount() == 2
+            && outcome.pao(0) == RoundOutcome.NO_SEAT
             && outcome.pao(1) == RoundOutcome.NO_SEAT) {
           yield hypothetical.doubleRon(
-              start, riichi, outcome.loser(), outcome.winner(0), outcome.base(0), outcome.winner(1), outcome.base(1));
+              start,
+              riichi,
+              outcome.loser(),
+              outcome.winner(0),
+              outcome.base(0),
+              outcome.winner(1),
+              outcome.base(1));
         }
-        hypothetical.outcome().setRon(outcome.base(0), outcome.winner(0), outcome.loser(), outcome.pao(0), riichi);
+        hypothetical
+            .outcome()
+            .setRon(outcome.base(0), outcome.winner(0), outcome.loser(), outcome.pao(0), riichi);
         for (int i = 1; i < outcome.winnerCount(); i++) {
           hypothetical.outcome().addRonWinner(outcome.base(i), outcome.winner(i), outcome.pao(i));
         }
         yield hypothetical.settle(start);
       }
-      case EXHAUSTIVE -> hypothetical.exhaustive(start, riichi, outcome.tenpaiMask(), outcome.nagashiMask());
+      case EXHAUSTIVE ->
+          hypothetical.exhaustive(start, riichi, outcome.tenpaiMask(), outcome.nagashiMask());
       case ABORTIVE -> hypothetical.abortive(start, riichi, outcome.abortive());
     };
   }

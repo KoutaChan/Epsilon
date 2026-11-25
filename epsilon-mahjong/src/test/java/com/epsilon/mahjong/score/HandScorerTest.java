@@ -13,6 +13,7 @@ import com.epsilon.mahjong.shape.HandShape;
 import com.epsilon.mahjong.shape.ShapeFixtures;
 import com.epsilon.mahjong.tile.TileSet;
 import com.epsilon.mahjong.tile.Tiles;
+import com.epsilon.mahjong.util.AllocationProbe;
 import java.util.Random;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -52,7 +53,8 @@ public class HandScorerTest {
       context.setWinds(Tiles.TON + random.nextInt(variant.seats()), Tiles.TON + random.nextInt(2));
       Assert.assertTrue(scorer.score(context, first), context.toString());
       assertFormulas(first, context);
-      Assert.assertTrue(first.yakuman() > 0 || first.has(ScoringYaku.RIICHI), context + " " + first);
+      Assert.assertTrue(
+          first.yakuman() > 0 || first.has(ScoringYaku.RIICHI), context + " " + first);
       context.hand().add(winning);
       Assert.assertTrue(scorer.score(context, second), context.toString());
       Assert.assertEquals(second.toString(), first.toString(), context.toString());
@@ -77,7 +79,8 @@ public class HandScorerTest {
       if (scorer.score(context, score)) {
         assertFormulas(score, context);
       } else {
-        Assert.assertEquals(score.base() + score.han() + score.fu() + score.yakuman(), 0, context.toString());
+        Assert.assertEquals(
+            score.base() + score.han() + score.fu() + score.yakuman(), 0, context.toString());
         Assert.assertEquals(score.yaku(), 0L, context.toString());
       }
     }
@@ -96,12 +99,22 @@ public class HandScorerTest {
   @Test
   public void clearForgetsEveryInput() {
     WinContext context =
-        three("123p456p789s44z23s").riichi().ippatsu().ron("4s").nuki(1).dora("3z").ura("3z").red("5p").context();
+        three("123p456p789s44z23s")
+            .riichi()
+            .ippatsu()
+            .ron("4s")
+            .nuki(1)
+            .dora("3z")
+            .ura("3z")
+            .red("5p")
+            .context();
     context.clear();
     Assert.assertEquals(context.toString(), new WinContext(Variant.TENHOU_3P).toString());
     Assert.assertEquals(context.hand().size(), 0);
-    Assert.assertEquals(context.meldCount() + context.indicatorCount() + context.uraIndicatorCount(), 0);
-    Assert.assertThrows(IllegalArgumentException.class, () -> new HandScorer().score(context, new WinScore()));
+    Assert.assertEquals(
+        context.meldCount() + context.indicatorCount() + context.uraIndicatorCount(), 0);
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new HandScorer().score(context, new WinScore()));
   }
 
   @Test
@@ -114,14 +127,25 @@ public class HandScorerTest {
     assertRejected(four(KANCHAN).red("5m").ron("2s"), "a red five outside the hand");
     assertRejected(four(KANCHAN).firstDraw().ron("2s"), "a first draw on a ron");
     assertRejected(
-        four("9p").ankan("1m").daiminkan("2p").ankan("3s").kakan("4s").dealer().firstDraw().tsumo("9p"),
+        four("9p")
+            .ankan("1m")
+            .daiminkan("2p")
+            .ankan("3s")
+            .kakan("4s")
+            .dealer()
+            .firstDraw()
+            .tsumo("9p"),
         "a first draw after melds");
     assertRejected(four(KANCHAN).riichi().firstDraw().tsumo("2s"), "a first draw after a riichi");
-    assertRejected(three("123p456p789s11m23s").nuki(1).firstDraw().tsumo("1s"), "a first draw after a nuki");
     assertRejected(
-        four("123m456m55p78s").ankan("9p").riichi().ippatsu().win("9s", Source.RINSHAN), "ippatsu on a rinshan draw");
-    assertRejected(four(KANCHAN).win("2s", Source.RINSHAN), "a rinshan draw without a kan or a nuki");
-    assertRejected(four(KANCHAN).riichi().ron("2s").dora("1z1z").ura("4s"), "fewer ura than dora indicators");
+        three("123p456p789s11m23s").nuki(1).firstDraw().tsumo("1s"), "a first draw after a nuki");
+    assertRejected(
+        four("123m456m55p78s").ankan("9p").riichi().ippatsu().win("9s", Source.RINSHAN),
+        "ippatsu on a rinshan draw");
+    assertRejected(
+        four(KANCHAN).win("2s", Source.RINSHAN), "a rinshan draw without a kan or a nuki");
+    assertRejected(
+        four(KANCHAN).riichi().ron("2s").dora("1z1z").ura("4s"), "fewer ura than dora indicators");
     assertRejected(three(KANCHAN).ron("2s"), "two to eight man in three-player");
     WinCase uncounted = four(KANCHAN).ron("2s");
     uncounted.context().hand().remove(Tiles.M1);
@@ -139,15 +163,20 @@ public class HandScorerTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> three.addIndicator(Tiles.M5));
     Assert.assertThrows(IllegalArgumentException.class, () -> three.setWinds(Tiles.PEI, Tiles.TON));
     Assert.assertThrows(IllegalArgumentException.class, () -> three.setWinds(Tiles.TON, Tiles.PEI));
-    Assert.assertThrows(IllegalArgumentException.class, () -> three.setRedFives(Tiles.bit(Tiles.M5)));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> three.addMeld(Meld.chi(Tiles.P1, Tiles.P1, AkaSource.NONE)));
+        IllegalArgumentException.class, () -> three.setRedFives(Tiles.bit(Tiles.M5)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> three.addMeld(Meld.chi(Tiles.P1, Tiles.P1, AkaSource.NONE)));
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> three.addMeld(Meld.pon(Tiles.M5, RelativeSource.KAMICHA, AkaSource.NONE)));
-    Assert.assertThrows(IllegalArgumentException.class, () -> three.addMeld(Meld.ankan(Tiles.M2, false)));
-    new WinContext(Variant.TENHOU_3P).addMeld(Meld.pon(Tiles.PEI, RelativeSource.KAMICHA, AkaSource.NONE));
-    Assert.assertThrows(IllegalArgumentException.class, () -> three.setRiichi(RiichiState.NONE, true));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> three.addMeld(Meld.ankan(Tiles.M2, false)));
+    new WinContext(Variant.TENHOU_3P)
+        .addMeld(Meld.pon(Tiles.PEI, RelativeSource.KAMICHA, AkaSource.NONE));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> three.setRiichi(RiichiState.NONE, true));
     WinContext four = new WinContext(Variant.TENHOU_4P);
     four.setWinds(Tiles.PEI, Tiles.SHA);
     four.setRedFives(Tiles.FIVES);
@@ -188,7 +217,8 @@ public class HandScorerTest {
         han += yaku.han(score.closed());
       }
     }
-    Assert.assertEquals(score.han(), han + score.dora() + score.aka() + score.ura() + score.nuki(), message);
+    Assert.assertEquals(
+        score.han(), han + score.dora() + score.aka() + score.ura() + score.nuki(), message);
     Assert.assertEquals(score.base(), ScoreMath.base(score.han(), score.fu(), 0), message);
     int fu = score.fu();
     if (fu == 20) {
@@ -222,5 +252,40 @@ public class HandScorerTest {
       return counts;
     }
     return ShapeFixtures.randomComplete(random, set, Variant.MAX_MELDS);
+  }
+
+  private static final int WARM_UP = 20_000;
+  private static final int MEASURED = 100_000;
+
+  @Test
+  public void scoringAllocatesNothingOnceWarm() {
+    AllocationProbe.assertNoAllocation(WARM_UP, MEASURED, new Workload()::run);
+  }
+
+  /** 四人打ちと三人打ちの、通常形・七対子・国士・副露・北抜き・役の無い手を順に採点する。 */
+  private static final class Workload {
+
+    private final HandScorer scorer = new HandScorer();
+    private final WinScore score = new WinScore();
+    private final WinContext[] contexts = {
+      four("123m456p789p55s23s").riichi().ron("1s").dora("4s").ura("1z").red("5p").context(),
+      four("1199m2255p3377s4z").tsumo("4z").dora("1m").context(),
+      four("19m19p19s1234567z").dealer().firstDraw().tsumo("7z").context(),
+      four("567m345p66p78s").chi("234m").ron("6s").context(),
+      four("111m333p555s77z99s").ron("9s").context(),
+      four("123m456m55p78s").ankan("9p").win("9s", Source.RINSHAN).dora("8p").context(),
+      three("123p456p789s44z23s").riichi().ron("4s").nuki(1).dora("3z").ura("3z").context(),
+      four("123m456p789p55s13s").ron("2s").context()
+    };
+
+    long run(int rounds) {
+      long checksum = 0;
+      for (int round = 0; round < rounds; round++) {
+        if (scorer.score(contexts[round % contexts.length], score)) {
+          checksum += score.base() + score.han() + score.fu() + score.yaku();
+        }
+      }
+      return checksum;
+    }
   }
 }

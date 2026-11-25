@@ -1,15 +1,10 @@
 package com.epsilon.reviewer;
 
+import com.epsilon.mahjong.ModuleDependencies;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
@@ -17,9 +12,6 @@ import org.testng.annotations.Test;
  * テストが import してよいのは、乱数の重みでチェックポイントを書いて開くためのクラスだけ。ワイルドカードの import は、本体でもテストでも認めない。
  */
 public class ImportDirectionTest {
-  private static final Pattern IMPORT =
-      Pattern.compile("^import\\s+(?:static\\s+)?([\\w.]+(?:\\.\\*)?)\\s*;", Pattern.MULTILINE);
-
   private static final Pattern MODEL_MODULES =
       Pattern.compile("com\\.epsilon\\.(prism|prism4p|prism3p|classic)\\..*");
 
@@ -37,39 +29,13 @@ public class ImportDirectionTest {
 
   @Test
   public void mainImportsNoModelModule() throws IOException {
-    List<String> wrong = new ArrayList<>();
-    for (Import found : imports(Path.of("src/main/java")))
-      if (MODEL_MODULES.matcher(found.name).matches()
-          || found.name.endsWith(".*")) wrong.add(found.toString());
-    Assert.assertEquals(wrong, List.of());
+    ModuleDependencies.checkImports(Path.of("src/main/java"), MODEL_MODULES.asMatchPredicate());
   }
 
   @Test
   public void testsImportOnlyTheCheckpointHelpers() throws IOException {
-    List<String> wrong = new ArrayList<>();
-    for (Import found : imports(Path.of("src/test/java")))
-      if ((MODEL_MODULES.matcher(found.name).matches() && !TEST_HELPERS.contains(found.name))
-          || found.name.endsWith(".*")) wrong.add(found.toString());
-    Assert.assertEquals(wrong, List.of());
-  }
-
-  private record Import(Path file, String name) {
-    @Override
-    public String toString() {
-      return file.getFileName() + ": " + name;
-    }
-  }
-
-  private static List<Import> imports(Path root) throws IOException {
-    Assert.assertTrue(Files.isDirectory(root), root.toAbsolutePath().toString());
-    List<Import> imports = new ArrayList<>();
-    try (var files = Files.walk(root)) {
-      for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
-        Matcher matcher = IMPORT.matcher(Files.readString(file, StandardCharsets.UTF_8));
-        while (matcher.find()) imports.add(new Import(file, matcher.group(1)));
-      }
-    }
-    Assert.assertFalse(imports.isEmpty(), "no imports under " + root);
-    return imports;
+    ModuleDependencies.checkImports(
+        Path.of("src/test/java"),
+        name -> MODEL_MODULES.matcher(name).matches() && !TEST_HELPERS.contains(name));
   }
 }

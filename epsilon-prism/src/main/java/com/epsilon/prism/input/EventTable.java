@@ -68,18 +68,33 @@ public final class EventTable {
   private final int[] discardIndex;
   private final Meld[] meld;
   private final int[] link;
-  private final int[] position;
-  private final int[] entity;
+  private final int[] identity;
+  private final int[] positionsWithIndicators;
+  private final int[] entitiesWithIndicators;
+  private final int[] meldEvents;
+  private int meldEntries;
+  private int[] position;
+  private int[] entity;
   private final int[] kanEvent = new int[Variant.MAX_KANS];
   private final int[] indicatorAfter = new int[WinContext.MAX_INDICATORS - 1];
   private final int[] discards;
   private final int[] lastDiscard;
   private final int[] riichiDeclaration;
+
+  /**
+   * 記録 {@code mark}（{@link #load(Observation, TileCounts, SeatFacts, int)}）より前の、席ごとの最後の打牌と立直の宣言牌（記録の
+   * イベントの番号。無ければ −1）。
+   */
+  private final int[] lastDiscardBefore;
+
+  private final int[] riichiBefore;
   private final int[] meldCount;
   private final Meld[] melds;
   private final int[] meldEvent;
   private final Observation.EventRecord record = new Observation.EventRecord();
   private int events;
+  private int declaredSeats;
+  private int nagashiSeats;
   private int kans;
   private int indicators;
   private int publicEvents;
@@ -97,11 +112,16 @@ public final class EventTable {
     discardIndex = new int[capacity];
     meld = new Meld[capacity];
     link = new int[capacity];
-    position = new int[capacity];
-    entity = new int[capacity + indicatorAfter.length];
+    identity = new int[capacity];
+    for (int e = 0; e < capacity; e++) identity[e] = e;
+    positionsWithIndicators = new int[capacity];
+    entitiesWithIndicators = new int[capacity + indicatorAfter.length];
+    meldEvents = new int[seats * Variant.MAX_MELDS + Variant.MAX_KANS];
     discards = new int[seats];
     lastDiscard = new int[seats];
     riichiDeclaration = new int[seats];
+    lastDiscardBefore = new int[seats];
+    riichiBefore = new int[seats];
     meldCount = new int[seats];
     melds = new Meld[seats * Variant.MAX_MELDS];
     meldEvent = new int[seats * Variant.MAX_MELDS];
@@ -131,22 +151,53 @@ public final class EventTable {
    *     枚数・面子が上限を超えるとき
    */
   public void load(Observation o, TileCounts tiles, SeatFacts seats) {
+    load(o, tiles, seats, 0);
+  }
+
+  /**
+   * {@link #load(Observation, TileCounts, SeatFacts)} と同じ値を作り、記録 {@code mark} の前の時点の、席ごとの最後の打牌と立直の
+   * 宣言牌も覚える（{@link #lastDiscardBefore}・{@link #riichiBefore}）。
+   *
+   * @param mark 覚える時点の記録の番号（0 以上、記録の数以下）
+   */
+  void load(Observation o, TileCounts tiles, SeatFacts seats, int mark) {
     begin(o);
+    Objects.checkIndex(mark, events + 1);
     tiles.begin(o);
     seats.begin(o);
     for (int e = 0; e < events; e++) {
+      if (e == mark) remember();
       read(o, e);
       tiles.add(record);
       seats.add(record);
     }
+    if (mark == events) remember();
     tiles.finish(o);
     seats.finish(o);
     placeIndicators(o);
   }
 
+  private void remember() {
+    System.arraycopy(lastDiscard, 0, lastDiscardBefore, 0, lastDiscard.length);
+    System.arraycopy(riichiDeclaration, 0, riichiBefore, 0, riichiDeclaration.length);
+  }
+
+  /** 記録 {@code mark}（{@link #load(Observation, TileCounts, SeatFacts, int)}）より前の、その席の最後の打牌（無ければ −1）。 */
+  int lastDiscardBefore(int seat) {
+    return lastDiscardBefore[seat];
+  }
+
+  /** 記録 {@code mark} より前の、その席の立直の宣言牌（無ければ −1）。 */
+  int riichiBefore(int seat) {
+    return riichiBefore[seat];
+  }
+
   private void begin(Observation o) {
     events = o.events();
+    declaredSeats = 0;
+    nagashiSeats = (1 << discards.length) - 1;
     kans = 0;
+    meldEntries = 0;
     Arrays.fill(discards, 0);
     Arrays.fill(lastDiscard, NONE);
     Arrays.fill(riichiDeclaration, NONE);
@@ -167,6 +218,13 @@ public final class EventTable {
   /** 槓ドラの表示を、めくられた公開の位置に挟む。 */
   private void placeIndicators(Observation o) {
     indicators = o.kanDoraIndicators();
+    if (indicators == 0) {
+      position = entity = identity;
+      publicEvents = events;
+      return;
+    }
+    position = positionsWithIndicators;
+    entity = entitiesWithIndicators;
     if (indicators > kans) {
       throw new IllegalStateException(indicators + " kan dora indicators for " + kans + " kans");
     }
@@ -197,11 +255,14 @@ public final class EventTable {
     riichi[e] = record.discardRiichi();
     calledBy[e] = record.discardCalledBy();
     discardIndex[e] = discards[who]++;
+    if (calledBy[e] >= 0 || !Tiles.contains(Tiles.TERMINALS_AND_HONORS, tile[e]))
+      nagashiSeats &= ~(1 << who);
     meld[e] = null;
     link[e] = NONE;
     lastDiscard[who] = e;
     if (riichi[e] && riichiDeclaration[who] == NONE) {
       riichiDeclaration[who] = e;
+      declaredSeats |= 1 << who;
     }
   }
 
@@ -218,6 +279,7 @@ public final class EventTable {
   }
 
   private void readMeld(int e, int who) {
+    meldEvents[meldEntries++] = e;
     Meld created = record.meld();
     kind[e] = MELD_EVENTS[created.type().ordinal()];
     tile[e] = created.base();
@@ -250,6 +312,26 @@ public final class EventTable {
       }
     }
     throw new IllegalStateException("kakan without its pon: tile " + base);
+  }
+
+  /** 加槓を含む副露イベントの数。 */
+  int meldEntries() {
+    return meldEntries;
+  }
+
+  /** 副露イベントを発生順に引く。 */
+  int meldEntry(int index) {
+    return meldEvents[Objects.checkIndex(index, meldEntries)];
+  }
+
+  /** 立直宣言を打った相対席のマスク。 */
+  int declaredSeats() {
+    return declaredSeats;
+  }
+
+  /** 流し満貫を保っている相対席のマスク。 */
+  int nagashiSeats() {
+    return nagashiSeats;
   }
 
   /** 記録のイベントの数。 */

@@ -55,7 +55,9 @@ public final class SchemaDigest {
   /** 記述の SHA-256 を取り、先頭 8 バイトを 16 進の 16 文字で返す。 */
   public String hex() {
     try {
-      byte[] hash = MessageDigest.getInstance("SHA-256").digest(text.toString().getBytes(StandardCharsets.UTF_8));
+      byte[] hash =
+          MessageDigest.getInstance("SHA-256")
+              .digest(text.toString().getBytes(StandardCharsets.UTF_8));
       return HexFormat.of().formatHex(hash, 0, FINGERPRINT_BYTES);
     } catch (NoSuchAlgorithmException impossible) {
       throw new IllegalStateException("SHA-256 is unavailable", impossible);
@@ -71,7 +73,9 @@ public final class SchemaDigest {
   /** パッケージを除いた型の名前。入れ子の型は Outer$Inner。 */
   public static String name(Class<?> type) {
     String packageName = type.getPackageName();
-    return packageName.isEmpty() ? type.getName() : type.getName().substring(packageName.length() + 1);
+    return packageName.isEmpty()
+        ? type.getName()
+        : type.getName().substring(packageName.length() + 1);
   }
 
   /** 型を名前の順に並べたコピー。sealed の permits のように順が決まらない一覧を、決まった順で書くのに使う。 */

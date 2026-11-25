@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { setImmediate as tick } from "node:timers/promises";
-import { FRAME_BODY_LIMIT } from "../../protocol/stdio.ts";
+import { FRAME_BODY_LIMIT } from "@epsilon-reviewer/protocol/stdio";
 import { EngineClient } from "../src/engine/client.ts";
 import { encodeFrame, FrameDecoder } from "../src/engine/frames.ts";
 

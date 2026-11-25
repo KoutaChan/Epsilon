@@ -1,7 +1,8 @@
+import { CENTER_CANVAS_SIZE, SCORE_BOX } from "./tableMetrics.ts";
 import * as THREE from "three";
 import { createResources, type Resources } from "./resources.ts";
 import type { TableFrame } from "./types.ts";
-import { displaySeats } from "../model/seats.ts";
+import { displaySeats, seatAt, seatOffset } from "../model/seats.ts";
 
 export interface TableMaterials {
   readonly ivory: THREE.MeshPhysicalMaterial;
@@ -349,7 +350,7 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
     );
   }
   const displayCanvas = document.createElement("canvas");
-  displayCanvas.width = displayCanvas.height = 768;
+  displayCanvas.width = displayCanvas.height = CENTER_CANVAS_SIZE;
   const dc = displayCanvas.getContext("2d")!,
     displayTex = keep(new THREE.CanvasTexture(displayCanvas));
   displayTex.colorSpace = THREE.SRGBColorSpace;
@@ -377,28 +378,28 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
     labels,
   }: Pick<TableFrame, "snapshot" | "dealer" | "viewSeat" | "labels">) {
     const active = snapshot.activeSeat;
-    dc.clearRect(0, 0, 768, 768);
+    dc.clearRect(0, 0, CENTER_CANVAS_SIZE, CENTER_CANVAS_SIZE);
     dc.fillStyle = "#414c59";
-    dc.fillRect(0, 0, 768, 768);
+    dc.fillRect(0, 0, CENTER_CANVAS_SIZE, CENTER_CANVAS_SIZE);
     dc.strokeStyle = "#8b969e";
     dc.lineWidth = 2;
     dc.strokeRect(4, 4, 760, 760);
     const seats = snapshot.players.length;
     displaySeats(seats).forEach((offset, i) => {
       if (offset === null) return;
-      const seat = (viewSeat + offset) % seats;
+      const seat = seatAt(viewSeat, offset, seats);
       const player = snapshot.players[seat]!;
       dc.save();
-      dc.translate(384, 384);
+      dc.translate(CENTER_CANVAS_SIZE / 2, CENTER_CANVAS_SIZE / 2);
       dc.rotate((-i * Math.PI) / 2);
       dc.fillStyle = active === seat ? "#9dd7e8" : "#697784";
       dc.fillRect(-316, 233, 75, 70);
       dc.fillStyle = active === seat ? "#112c40" : "#e1e8ec";
       dc.font = "bold 56px sans-serif";
       dc.textAlign = "center";
-      dc.fillText(labels.winds[(seat - dealer + seats) % seats]!, -279, 287);
+      dc.fillText(labels.winds[seatOffset(dealer, seat, seats)]!, -279, 287);
       dc.fillStyle = "#081322";
-      dc.fillRect(-177, 210, 354, 86);
+      dc.fillRect(SCORE_BOX.x, SCORE_BOX.y, SCORE_BOX.width, SCORE_BOX.height);
       dc.fillStyle = "#f3d35e";
       dc.font = "bold 76px monospace";
       dc.fillText(String(player.score), 0, 280);
@@ -414,12 +415,12 @@ export function createTableScene(renderer: THREE.WebGLRenderer): TableScene {
     dc.fillStyle = "#87e7f4";
     dc.font = "bold 64px sans-serif";
     dc.textAlign = "center";
-    dc.fillText(labels.round, 384, 320);
+    dc.fillText(labels.round, CENTER_CANVAS_SIZE / 2, 320);
     dc.font = "bold 112px monospace";
-    dc.fillText(String(snapshot.remaining), 384, 442);
+    dc.fillText(String(snapshot.remaining), CENTER_CANVAS_SIZE / 2, 442);
     dc.fillStyle = "#9ab9c8";
     dc.font = "36px sans-serif";
-    dc.fillText(labels.remaining, 384, 495);
+    dc.fillText(labels.remaining, CENTER_CANVAS_SIZE / 2, 495);
     displayTex.needsUpdate = true;
   }
   return {

@@ -67,7 +67,8 @@ public class ChampionStoreTest {
   }
 
   @Test
-  public void aCrashAfterTheTemporaryFileAndBeforeTheRenameKeepsThePreviousReference() throws Exception {
+  public void aCrashAfterTheTemporaryFileAndBeforeTheRenameKeepsThePreviousReference()
+      throws Exception {
     Fixture f = Fixture.create("champion-crash-rename");
     ChampionStore store = ChampionStore.open(f.store());
     store.append(new Initial(f.a()));
@@ -161,9 +162,14 @@ public class ChampionStoreTest {
     // 書き方の誤った SHA-256 と、相対パスのチェックポイントは拒む
     String sha = placed.sha256();
     Path checkpoint = f.b().checkpoint();
-    expectThrows(IllegalArgumentException.class, () -> new Champion("v00002", checkpoint, 2, sha.toUpperCase()));
-    expectThrows(IllegalArgumentException.class, () -> new Champion("v00002", checkpoint, 2, sha.substring(1)));
-    expectThrows(IllegalArgumentException.class, () -> new Champion("v00002", Path.of("v2"), 2, sha));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> new Champion("v00002", checkpoint, 2, sha.toUpperCase()));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> new Champion("v00002", checkpoint, 2, sha.substring(1)));
+    expectThrows(
+        IllegalArgumentException.class, () -> new Champion("v00002", Path.of("v2"), 2, sha));
   }
 
   @Test
@@ -239,8 +245,14 @@ public class ChampionStoreTest {
     Path measured = store.confirms(Precision.FLOAT32, f.b());
     assertEquals(
         measured,
-        f.store().toAbsolutePath().normalize().resolve(ChampionStore.CONFIRMS).resolve("FLOAT32").resolve("v00002"));
-    assertEquals(store.confirms(Precision.FLOAT32, Champion.of("v00002", f.b().checkpoint(), 2)), measured);
+        f.store()
+            .toAbsolutePath()
+            .normalize()
+            .resolve(ChampionStore.CONFIRMS)
+            .resolve("FLOAT32")
+            .resolve("v00002"));
+    assertEquals(
+        store.confirms(Precision.FLOAT32, Champion.of("v00002", f.b().checkpoint(), 2)), measured);
     assertNotEquals(store.confirms(Precision.FLOAT32, f.c()), measured);
     assertNotEquals(store.confirms(Precision.BFLOAT16, f.b()), measured);
   }
@@ -255,7 +267,8 @@ public class ChampionStoreTest {
 
     Files.writeString(f.history(), promoted + "\n", StandardCharsets.UTF_8);
     expectThrows(IOException.class, () -> ChampionStore.open(f.store()));
-    Files.writeString(f.history(), initial + "\n" + promoted + "\n" + initial + "\n", StandardCharsets.UTF_8);
+    Files.writeString(
+        f.history(), initial + "\n" + promoted + "\n" + initial + "\n", StandardCharsets.UTF_8);
     expectThrows(IOException.class, () -> ChampionStore.open(f.store()));
     String unknownField = initial.replace("\"champion\":{", "\"champion\":{\"extra\":1,");
     assertFalse(unknownField.equals(initial));
@@ -276,7 +289,11 @@ public class ChampionStoreTest {
     ChampionStore store = ChampionStore.open(f.store());
     store.append(new Initial(f.a()));
     store.append(new Promoted(f.b(), DUEL_2));
-    Files.writeString(f.history(), "{\"event\":{\"kind\":\"PAU", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    Files.writeString(
+        f.history(),
+        "{\"event\":{\"kind\":\"PAU",
+        StandardCharsets.UTF_8,
+        StandardOpenOption.APPEND);
     ChampionStore reopened = ChampionStore.open(f.store());
     assertEquals(reopened.history().size(), 2);
     assertTrue(reopened.append(new Promoted(f.c(), DUEL_3)));
@@ -289,11 +306,11 @@ public class ChampionStoreTest {
   @Test
   public void readingTheLastRecordedChampionWritesNothing() throws Exception {
     Fixture f = Fixture.create("champion-read-only");
-    assertTrue(ChampionStore.lastRecorded(f.store()).isEmpty());
+    assertTrue(ChampionStore.view(f.store()).current().isEmpty());
     assertFalse(Files.exists(f.store()));
     ChampionStore store = ChampionStore.open(f.store());
     store.append(new Initial(f.a()));
-    assertEquals(ChampionStore.lastRecorded(f.store()).orElseThrow(), f.a());
+    assertEquals(ChampionStore.view(f.store()).current().orElseThrow(), f.a());
     byte[] previous = Files.readAllBytes(f.current());
     store.append(new Promoted(f.b(), DUEL_2));
     byte[] next = Files.readAllBytes(f.current());
@@ -302,7 +319,7 @@ public class ChampionStoreTest {
     // ほかのプロセスが記録に行を足し、一時ファイルを書いた後、rename の前に読む: 記録の最後の王者を返し、一時ファイルも参照もそのまま
     Files.write(f.current(), previous);
     Files.write(f.temporary(), next);
-    assertEquals(ChampionStore.lastRecorded(f.store()).orElseThrow(), f.b());
+    assertEquals(ChampionStore.view(f.store()).current().orElseThrow(), f.b());
     assertEquals(Files.readAllBytes(f.temporary()), next);
     assertEquals(Files.readAllBytes(f.current()), previous);
     assertEquals(Files.readAllBytes(f.history()), history);

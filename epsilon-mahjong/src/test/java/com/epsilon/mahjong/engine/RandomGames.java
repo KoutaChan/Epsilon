@@ -101,7 +101,9 @@ public final class RandomGames {
       }
       case ROUND_END -> boundary = engine.advance(ws);
       case GAME_END -> {
-        engine.startGame(random.nextLong(), random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
+        engine.startGame(
+            random.nextLong(),
+            random.nextBoolean() ? DrawOrder.SEAT_STREAMS : DrawOrder.WALL_ORDER);
         boundary = engine.advance(ws);
       }
     }

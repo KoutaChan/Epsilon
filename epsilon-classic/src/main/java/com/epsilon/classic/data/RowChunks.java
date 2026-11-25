@@ -63,7 +63,8 @@ public final class RowChunks {
     for (int index = 0; index < chunks.size(); index++) {
       ClassicRows chunk = chunks.get(index);
       if (chunk.variant() != variant) {
-        throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + chunk.variant());
+        throw new IllegalArgumentException(
+            "Variant mismatch: expected " + variant + " but found " + chunk.variant());
       }
       if (chunk.size() > 0) {
         starts[filled] = rows;
@@ -96,10 +97,11 @@ public final class RowChunks {
     try (Stream<Path> listed = Files.list(directory)) {
       return listed
           .filter(Files::isRegularFile)
-          .filter(file -> {
-            String name = file.getFileName().toString();
-            return name.startsWith(PREFIX) && name.endsWith(SUFFIX);
-          })
+          .filter(
+              file -> {
+                String name = file.getFileName().toString();
+                return name.startsWith(PREFIX) && name.endsWith(SUFFIX);
+              })
           .sorted()
           .toList();
     }

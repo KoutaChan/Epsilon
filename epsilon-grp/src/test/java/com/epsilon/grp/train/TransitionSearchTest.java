@@ -33,7 +33,8 @@ public class TransitionSearchTest {
         } else {
           search.from(ends.get(hand - 1));
         }
-        int found = hand < ends.size() ? search.next(ends.get(hand)) : search.last(game.finalScores());
+        int found =
+            hand < ends.size() ? search.next(ends.get(hand)) : search.last(game.finalScores());
         Assert.assertTrue(found > 0, "game " + game.gameId() + " hand " + hand);
       }
     }
@@ -47,8 +48,10 @@ public class TransitionSearchTest {
   public void everyOutcomeWithTheSamePointsIsKept() {
     TransitionSearch search = new TransitionSearch(OutcomeFixtures.FOUR);
     search.fromStart();
-    int found = search.next(
-        new GrpState(OutcomeFixtures.FOUR, 1, 0, 0, new int[] {25_000, 27_000, 23_000, 25_000}));
+    int found =
+        search.next(
+            new GrpState(
+                OutcomeFixtures.FOUR, 1, 0, 0, new int[] {25_000, 27_000, 23_000, 25_000}));
     Assert.assertEquals(found, 4);
     HandOutcomes hands = HandOutcomes.of(OutcomeFixtures.FOUR);
     Set<List<Integer>> outcomes = new HashSet<>();
@@ -62,7 +65,12 @@ public class TransitionSearchTest {
     int cheap = BaseClass.B240.ordinal();
     int dear = BaseClass.B480.ordinal();
     Assert.assertEquals(
-        outcomes, Set.of(List.of(cheap, 0b0100), List.of(cheap, 0b0110), List.of(dear, 0), List.of(dear, 0b0010)));
+        outcomes,
+        Set.of(
+            List.of(cheap, 0b0100),
+            List.of(cheap, 0b0110),
+            List.of(dear, 0),
+            List.of(dear, 0b0010)));
   }
 
   /**
@@ -87,7 +95,10 @@ public class TransitionSearchTest {
     Assert.assertTrue(search.extras());
 
     Assert.assertEquals(
-        search.next(new GrpState(OutcomeFixtures.FOUR, 1, 1, 0, new int[] {25_100, 24_900, 25_000, 25_000})), 0);
+        search.next(
+            new GrpState(
+                OutcomeFixtures.FOUR, 1, 1, 0, new int[] {25_100, 24_900, 25_000, 25_000})),
+        0);
     Assert.assertFalse(search.extras());
   }
 

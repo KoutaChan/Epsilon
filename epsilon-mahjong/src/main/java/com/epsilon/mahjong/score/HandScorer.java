@@ -67,7 +67,8 @@ public final class HandScorer {
   /** 么九牌を含む順子（123・789）の先頭の牌を、3 色まとめて集合で持つ。 */
   private static final long OUTSIDE_RUNS =
       Arrays.stream(SUITS)
-          .mapToLong(suit -> Tiles.bit(suit.first()) | Tiles.bit(suit.last() - HandShape.MELD_SIZE + 1))
+          .mapToLong(
+              suit -> Tiles.bit(suit.first()) | Tiles.bit(suit.last() - HandShape.MELD_SIZE + 1))
           .reduce(0, (a, b) -> a | b);
 
   /** 1 色の 9 つの数（0 始まり）に全てビットを立てたマスク。 */
@@ -176,13 +177,17 @@ public final class HandScorer {
         Wait wait = WAITS[Integer.numberOfTrailingZeros(waits)];
         boolean opened = !tsumo && wait == Wait.SHANPON;
         int concealed = concealedCount - (opened ? 1 : 0);
-        boolean pinfu = closed && runCount == Variant.MAX_MELDS && pairFu == 0 && wait == Wait.RYANMEN;
+        boolean pinfu =
+            closed && runCount == Variant.MAX_MELDS && pairFu == 0 && wait == Wait.RYANMEN;
         int tripletFu =
             opened
-                ? Fu.triplets(concealedTriplets & ~Tiles.bit(winning), true) + Fu.triplet(winning, false, false)
+                ? Fu.triplets(concealedTriplets & ~Tiles.bit(winning), true)
+                    + Fu.triplet(winning, false, false)
                 : Fu.triplets(concealedTriplets, true);
         consider(
-            yaku | when(ScoringYaku.SANANKOU, concealed >= THREE_SETS) | when(ScoringYaku.PINFU, pinfu),
+            yaku
+                | when(ScoringYaku.SANANKOU, concealed >= THREE_SETS)
+                | when(ScoringYaku.PINFU, pinfu),
             yakuman | when(ScoringYaku.SUUANKOU, concealed == Variant.MAX_MELDS),
             Fu.total(pairFu + meldFu + tripletFu + Fu.wait(wait), tsumo, closed, pinfu));
       }
@@ -319,7 +324,12 @@ public final class HandScorer {
     HandShape given = context.hand();
     if (given.melds() != context.meldCount()) {
       throw new IllegalArgumentException(
-          "The hand counts " + given.melds() + " melds but " + context.meldCount() + " are given: " + context);
+          "The hand counts "
+              + given.melds()
+              + " melds but "
+              + context.meldCount()
+              + " are given: "
+              + context);
     }
     int kind = context.winningKind();
     hand.copyFrom(given);
@@ -375,19 +385,23 @@ public final class HandScorer {
 
   private void validate(Source source) {
     if ((hand.kinds() & ~context.variant().tiles().kinds()) != 0) {
-      throw new IllegalArgumentException(context.variant() + " does not use some tiles of " + context);
+      throw new IllegalArgumentException(
+          context.variant() + " does not use some tiles of " + context);
     }
     for (long rest = meldKinds; rest != 0; rest &= rest - 1) {
       if (count(Long.numberOfTrailingZeros(rest)) > Tiles.COPIES) {
-        throw new IllegalArgumentException("A kind has more than " + Tiles.COPIES + " tiles in " + context);
+        throw new IllegalArgumentException(
+            "A kind has more than " + Tiles.COPIES + " tiles in " + context);
       }
     }
     if (context.nuki() > 0 && count(Tiles.PEI) + context.nuki() > Tiles.COPIES) {
-      throw new IllegalArgumentException("The hand and the nuki hold more than four north tiles: " + context);
+      throw new IllegalArgumentException(
+          "The hand and the nuki hold more than four north tiles: " + context);
     }
     long reds = context.redFives();
     if ((reds & ~hand.kinds()) != 0 || (reds & meldReds) != 0) {
-      throw new IllegalArgumentException("The red fives are not among the concealed tiles: " + context);
+      throw new IllegalArgumentException(
+          "The red fives are not among the concealed tiles: " + context);
     }
     if (context.riichi() != RiichiState.NONE && !closed) {
       throw new IllegalArgumentException("Riichi needs a closed hand: " + context);
@@ -396,18 +410,24 @@ public final class HandScorer {
       throw new IllegalArgumentException("Only a plain tsumo can be the first draw: " + context);
     }
     if (context.firstDraw()
-        && (context.meldCount() > 0 || context.riichi() != RiichiState.NONE || context.nuki() > 0)) {
-      throw new IllegalArgumentException("A first draw cannot follow a meld, a riichi or a nuki: " + context);
+        && (context.meldCount() > 0
+            || context.riichi() != RiichiState.NONE
+            || context.nuki() > 0)) {
+      throw new IllegalArgumentException(
+          "A first draw cannot follow a meld, a riichi or a nuki: " + context);
     }
     if (source == Source.RINSHAN && kans == 0 && context.nuki() == 0) {
-      throw new IllegalArgumentException("A rinshan draw needs a kan or a nuki of the winner: " + context);
+      throw new IllegalArgumentException(
+          "A rinshan draw needs a kan or a nuki of the winner: " + context);
     }
     if (source == Source.RINSHAN && context.ippatsu()) {
-      throw new IllegalArgumentException("The kan or nuki before a rinshan draw ends the ippatsu: " + context);
+      throw new IllegalArgumentException(
+          "The kan or nuki before a rinshan draw ends the ippatsu: " + context);
     }
     int uraIndicators = context.uraIndicatorCount();
     if (uraIndicators != 0 && uraIndicators != context.indicatorCount()) {
-      throw new IllegalArgumentException("Ura indicators must match the dora indicators: " + context);
+      throw new IllegalArgumentException(
+          "Ura indicators must match the dora indicators: " + context);
     }
   }
 
@@ -418,7 +438,9 @@ public final class HandScorer {
           case RIICHI -> ScoringYaku.RIICHI.bit();
           case DOUBLE_RIICHI -> ScoringYaku.DOUBLE_RIICHI.bit();
         };
-    yaku |= when(ScoringYaku.IPPATSU, context.ippatsu()) | when(ScoringYaku.MENZEN_TSUMO, closed && tsumo);
+    yaku |=
+        when(ScoringYaku.IPPATSU, context.ippatsu())
+            | when(ScoringYaku.MENZEN_TSUMO, closed && tsumo);
     ScoringYaku sourceYaku = context.source().yaku();
     if (sourceYaku != null) {
       yaku |= sourceYaku.bit();

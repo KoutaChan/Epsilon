@@ -32,7 +32,8 @@ public class TsumoScoreTest {
   /** 暗槓の後の嶺上牌で、単騎待ちの牌を引く。ほかの種類で求めても嶺上開花が付く。槓子にした種類は 5 枚目が無いので拒む。 */
   @Test
   public void aRinshanDrawScoresEveryKindAsRinshan() {
-    EngineScene scene = EngineScene.first(VARIANT).hand(0, "1111m234p567p789s").draws("5z").rinshan("5z").start();
+    EngineScene scene =
+        EngineScene.first(VARIANT).hand(0, "1111m234p567p789s").draws("5z").rinshan("5z").start();
     scene.play("0:ANKAN(1m)");
     Assert.assertTrue(scene.turnOf(0));
     Assert.assertTrue(scene.view(0).last().rinshan());
@@ -41,13 +42,15 @@ public class TsumoScoreTest {
     Assert.assertTrue(out.has(ScoringYaku.MENZEN_TSUMO), out.toString());
     Assert.assertFalse(scene.engine.full().tsumoScore(0, Tiles.P1, scene.ws, out));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> scene.engine.full().tsumoScore(0, Tiles.M1, scene.ws, out));
+        IllegalArgumentException.class,
+        () -> scene.engine.full().tsumoScore(0, Tiles.M1, scene.ws, out));
   }
 
   /** 山の最後のツモは海底で、待ちのどちらの種類で求めても海底が付く。 */
   @Test
   public void theLastLiveTileScoresEveryKindAsHaitei() {
-    EngineScene scene = EngineScene.first(VARIANT).hand(1, TENPAI).drawAt(VARIANT.liveWall() - 1, "1z").start();
+    EngineScene scene =
+        EngineScene.first(VARIANT).hand(1, TENPAI).drawAt(VARIANT.liveWall() - 1, "1z").start();
     scene.passUntil(s -> s.liveLeft() == 0 && s.turnOf(1));
     assertLikeTheProjection(scene, 1);
     Assert.assertTrue(out.has(ScoringYaku.HAITEI), out.toString());
@@ -116,17 +119,20 @@ public class TsumoScoreTest {
   public void onlyTheSeatThatJustDrewCanScoreATsumo() {
     EngineScene pon = EngineScene.first(VARIANT).hand(1, "99p147m258s369s12z").draws("9p").start();
     FullView full = pon.engine.full();
-    Assert.assertThrows(IllegalStateException.class, () -> full.tsumoScore(1, Tiles.P9, pon.ws, out));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> full.tsumoScore(1, Tiles.P9, pon.ws, out));
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> full.tsumoScore(0, Tiles.P9, new RuleWorkspace(Variant.TENHOU_3P), out));
     pon.play("0:DAHAI_TSUMOGIRI(9p)");
     Assert.assertEquals(pon.engine.decisions().kind(0), EngineDecisionKind.RESPONSE);
-    Assert.assertThrows(IllegalStateException.class, () -> full.tsumoScore(0, Tiles.P9, pon.ws, out));
+    Assert.assertThrows(
+        IllegalStateException.class, () -> full.tsumoScore(0, Tiles.P9, pon.ws, out));
 
     EngineScene three = EngineScene.first(Variant.TENHOU_3P).start();
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> three.engine.full().tsumoScore(0, Tiles.M2, three.ws, out));
+        IllegalArgumentException.class,
+        () -> three.engine.full().tsumoScore(0, Tiles.M2, three.ws, out));
   }
 
   /**
@@ -137,7 +143,8 @@ public class TsumoScoreTest {
    */
   private void assertLikeTheProjection(EngineScene scene, int seat) {
     WinScore projected = projection(scene, seat);
-    Assert.assertTrue(scene.engine.full().tsumoScore(seat, scene.view(seat).last().tile(), scene.ws, out));
+    Assert.assertTrue(
+        scene.engine.full().tsumoScore(seat, scene.view(seat).last().tile(), scene.ws, out));
     Assert.assertEquals(out.toString(), projected.toString());
   }
 
@@ -147,7 +154,8 @@ public class TsumoScoreTest {
    * @param seat 手番の席
    */
   private static WinScore projection(EngineScene scene, int seat) {
-    Assert.assertEquals(scene.engine.decisions().legal(0, 0), TSUMO_CODE, scene.legal(seat).toString());
+    Assert.assertEquals(
+        scene.engine.decisions().legal(0, 0), TSUMO_CODE, scene.legal(seat).toString());
     WinSettlementProjection projection = new WinSettlementProjection(VARIANT);
     projection.load(scene.view(seat), TSUMO_CODE, scene.ws);
     return projection.score();

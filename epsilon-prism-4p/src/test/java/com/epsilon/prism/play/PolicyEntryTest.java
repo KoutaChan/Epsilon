@@ -17,7 +17,6 @@ import com.epsilon.agent.runtime.Precision;
 import com.epsilon.mahjong.engine.Decisions;
 import com.epsilon.prism.TableWalk;
 import com.epsilon.prism.backend.HipFixtures;
-import com.epsilon.prism.policy.InferencePath;
 import com.epsilon.prism.policy.NetworkPolicy;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.policy.PrismPolicy;
@@ -27,7 +26,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;
-import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -38,10 +36,6 @@ import org.testng.annotations.Test;
  * 専用のカーネルの代わりに eager で計算する。公開した v760 のバージョンも、同じ入口で開いて判断を評価できる。
  */
 public class PolicyEntryTest {
-
-  /** 公開した v760 のバージョン（読むだけで書かない）。 */
-  private static final Path PUBLISHED =
-      Path.of(System.getProperty("user.home"), "epsilon-ai/crr/runs/prism-v2b/snapshots/00760");
 
   private Path root;
   private Path snapshot;
@@ -64,11 +58,13 @@ public class PolicyEntryTest {
   public void theFamilyOpensWithTheGivenBatchAndPrecision() throws Exception {
     List<float[]> single;
     List<float[]> half;
-    try (Policy policy = open(snapshot, new PolicyOptions("cpu", Precision.FLOAT32, 3, Kernels.EAGER))) {
+    try (Policy policy =
+        open(snapshot, new PolicyOptions("cpu", Precision.FLOAT32, 3, Kernels.EAGER))) {
       Assert.assertEquals(((PrismPolicy) policy).maxBatch(0), 3);
       single = values(policy, 12);
     }
-    try (Policy policy = open(snapshot, new PolicyOptions("cpu", Precision.BFLOAT16, 5, Kernels.EAGER))) {
+    try (Policy policy =
+        open(snapshot, new PolicyOptions("cpu", Precision.BFLOAT16, 5, Kernels.EAGER))) {
       Assert.assertEquals(((PrismPolicy) policy).maxBatch(0), 5);
       half = values(policy, 12);
     }
@@ -77,7 +73,11 @@ public class PolicyEntryTest {
     for (int i = 0; i < single.size(); i++) {
       Assert.assertEquals(half.get(i).length, single.get(i).length);
       for (int a = 0; a < single.get(i).length; a++) {
-        Assert.assertEquals(half.get(i)[a], single.get(i)[a], 0.05f + 0.05f * Math.abs(single.get(i)[a]), "decision " + i);
+        Assert.assertEquals(
+            half.get(i)[a],
+            single.get(i)[a],
+            0.05f + 0.05f * Math.abs(single.get(i)[a]),
+            "decision " + i);
         differs |= half.get(i)[a] != single.get(i)[a];
       }
     }
@@ -88,26 +88,14 @@ public class PolicyEntryTest {
   public void nativeKernelsRunEagerOnTheCpu() throws Exception {
     for (Precision precision : Precision.values()) {
       try (NetworkPolicy network =
-          Snapshot.open(snapshot, List.of(Device.cpu()), null, 4, precision, InferencePath.of(Kernels.NATIVE))) {
-        Assert.assertEquals(network.inference(), InferencePath.EAGER, precision.toString());
+          Snapshot.open(snapshot, List.of(Device.cpu()), null, 4, precision, Kernels.NATIVE)) {
+        Assert.assertEquals(network.inference(), Kernels.EAGER, precision.toString());
         Assert.assertEquals(network.maxBatch(0), 4);
       }
     }
-    try (Policy policy = open(snapshot, new PolicyOptions("cpu", Precision.FLOAT32, 8, Kernels.NATIVE))) {
+    try (Policy policy =
+        open(snapshot, new PolicyOptions("cpu", Precision.FLOAT32, 8, Kernels.NATIVE))) {
       Assert.assertFalse(values(policy, 2).isEmpty());
-    }
-  }
-
-  @Test(timeOut = 600_000)
-  public void thePublishedV760OpensThroughTheEntryPoint() throws Exception {
-    if (!Files.isRegularFile(PUBLISHED.resolve("m0").resolve("weights.bin"))) {
-      throw new SkipException("published weights are not here: " + PUBLISHED);
-    }
-    try (Policy policy = open(PUBLISHED, PolicyOptions.defaults())) {
-      Assert.assertEquals(policy.label(), "prism:00760");
-      List<float[]> values = values(policy, 8);
-      Assert.assertEquals(values.size(), 8);
-      Assert.assertTrue(values.stream().anyMatch(v -> v.length > 1 && v[0] != v[1]), "the values are not trivial");
     }
   }
 

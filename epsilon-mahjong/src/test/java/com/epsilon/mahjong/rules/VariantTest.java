@@ -68,7 +68,8 @@ public class VariantTest {
   public void wallAndEventsFitTheVariant() {
     for (Variant variant : Variant.values()) {
       Assert.assertEquals(
-          variant.liveWall() + Variant.DEAD_WALL + Variant.HAND * variant.seats(), variant.tiles().size());
+          variant.liveWall() + Variant.DEAD_WALL + Variant.HAND * variant.seats(),
+          variant.tiles().size());
       Assert.assertTrue(variant.maxPublicEvents() <= Byte.MAX_VALUE, variant.name());
       Assert.assertEquals(variant.finalRound() + 1, 3 * variant.seats());
     }
@@ -80,13 +81,15 @@ public class VariantTest {
     for (Variant variant : Variant.values()) {
       int seats = variant.seats();
       int nuki = variant.has(RuleFlag.NUKI) ? Tiles.COPIES : 0;
-      Assert.assertEquals(variant.maxDiscards(), variant.liveWall() + Variant.MAX_MELDS * seats, variant.name());
+      Assert.assertEquals(
+          variant.maxDiscards(), variant.liveWall() + Variant.MAX_MELDS * seats, variant.name());
       Assert.assertEquals(
           variant.maxPublicEvents(),
           variant.maxDiscards() + Variant.MAX_MELDS * seats + Variant.MAX_KANS + nuki,
           variant.name());
       Assert.assertTrue(variant.maxDrawsPerSeat() * seats >= variant.liveWall(), variant.name());
-      Assert.assertTrue((variant.maxDrawsPerSeat() - 1) * seats < variant.liveWall(), variant.name());
+      Assert.assertTrue(
+          (variant.maxDrawsPerSeat() - 1) * seats < variant.liveWall(), variant.name());
     }
   }
 

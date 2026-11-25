@@ -12,7 +12,8 @@ export interface DesktopSettings {
 }
 
 export type BridgeReply<T> =
-  { ok: true; value: T } | { ok: false; error: ErrorBody };
+  | { ok: true; value: T }
+  | { ok: false; error: ErrorBody };
 
 /** Java の操作の応答。body は、本文を返す操作（result）が返す gzip の文書。 */
 export type InvokeReply =

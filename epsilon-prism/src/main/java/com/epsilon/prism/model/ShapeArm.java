@@ -1,44 +1,47 @@
 package com.epsilon.prism.model;
 
-/**
- * 形のアーム。型ごとの FFN を持たない形（V2）と、型ごとの FFN を持つ形（V3 で始まるアーム）を比べるために、形を名前で選べるようにする。
- * 名前は定数の綴りのまま使う（設定の network.shape でも fit-cohorts の --shape でも V2・V3・V3_ONE_STAGE・V3_CONTEXT_512）。V3 で始まる
- * アームは全て H 256・F 512（層 0）・G 512・深さ 3・牌の FFN 768・候補層の FFN 1024。
- */
+/** 設定と fit-cohorts で選べるネットワークの形。 */
 public enum ShapeArm {
   /** 型ごとの FFN を持たない形（H 256・F 512・G 256、深さは選べる）。 */
-  V2(null),
+  V2(PrismShape.standard()),
   /** 型ごとの FFN を持つ形（局・席の FFN 1536、候補層の 2 段目あり）。 */
   V3(new PrismShape.V3(256, 512, 512, 768, 1536, 1024, true)),
   /** V3 から候補層の 2 段目を外した形。 */
   V3_ONE_STAGE(new PrismShape.V3(256, 512, 512, 768, 1536, 1024, false)),
   /** V3 の局・席の FFN を 512 にした形。 */
-  V3_CONTEXT_512(new PrismShape.V3(256, 512, 512, 768, 512, 1024, true));
+  V3_CONTEXT_512(new PrismShape.V3(256, 512, 512, 768, 512, 1024, true)),
+  /** 幅 256 の V4。 */
+  V4_S(new PrismShape.V4()),
+  /** 幅 384 の V4。 */
+  V4_M(new PrismShape.V4(384));
 
   /** V3 で始まるアームの深さ。 */
   public static final int V3_DEPTH = PrismShape.V3.DEPTH;
 
-  /** V3 で始まるアームの形（V2 では null）。 */
-  private final PrismShape.V3 typed;
+  private final PrismShape.TokenTrunk fixed;
 
-  ShapeArm(PrismShape.V3 typed) {
-    this.typed = typed;
+  /** 設定や学習時にバックボーンの深さを選べるアーム。 */
+  public boolean selectableDepth() {
+    return this == V2;
   }
 
-  /**
-   * アームの形を返す。
-   *
-   * @param depth バックボーンの層の数（V3 で始まるアームは 3 だけ）
-   * @return 形
-   * @throws IllegalArgumentException V3 で始まるアームに 3 以外の深さを渡したとき
-   */
-  public PrismShape shape(int depth) {
-    if (typed == null) {
+  ShapeArm(PrismShape.TokenTrunk fixed) {
+    this.fixed = fixed;
+  }
+
+  /** 深さを指定せずに選んだ形。V2 は既定の深さを使う。 */
+  public PrismShape shape() {
+    return fixed;
+  }
+
+  /** トークンの幹の深さを指定した形。 */
+  public PrismShape.TokenTrunk shape(int depth) {
+    if (selectableDepth()) {
       return PrismShape.standard(depth);
     }
-    if (depth != V3_DEPTH) {
-      throw new IllegalArgumentException(this + " needs depth " + V3_DEPTH + ", got " + depth);
+    if (depth != fixed.depth()) {
+      throw new IllegalArgumentException(this + " needs depth " + fixed.depth() + ", got " + depth);
     }
-    return typed;
+    return fixed;
   }
 }

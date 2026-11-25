@@ -1,0 +1,605 @@
+package com.epsilon.prism.app;
+
+import ai.djl.Model;
+import com.epsilon.agent.app.Context;
+import com.epsilon.agent.app.Named;
+import com.epsilon.agent.app.Outcome;
+import com.epsilon.agent.app.Span;
+import com.epsilon.agent.run.DurableFiles;
+import com.epsilon.agent.runtime.Kernels;
+import com.epsilon.agent.runtime.Precision;
+import com.epsilon.agent.settings.Json;
+import com.epsilon.agent.settings.Key;
+import com.epsilon.agent.settings.Presence;
+import com.epsilon.agent.settings.Range;
+import com.epsilon.agent.settings.RecordFile;
+import com.epsilon.prism.backend.KernelDevices;
+import com.epsilon.prism.core.CrnSeeds;
+import com.epsilon.prism.input.BatchPlan;
+import com.epsilon.prism.input.InputFormat;
+import com.epsilon.prism.kernel.KernelProvider;
+import com.epsilon.prism.kernel.KernelProvider.Backend;
+import com.epsilon.prism.kernel.KernelProviders;
+import com.epsilon.prism.learn.AnchorScores;
+import com.epsilon.prism.learn.CohortStore;
+import com.epsilon.prism.learn.Fit;
+import com.epsilon.prism.learn.FitPlan;
+import com.epsilon.prism.learn.FitResult;
+import com.epsilon.prism.learn.Teacher;
+import com.epsilon.prism.luck.LedgerCalibrator;
+import com.epsilon.prism.luck.LedgerCorrection;
+import com.epsilon.prism.luck.LedgerReport;
+import com.epsilon.prism.luck.LuckSettlement;
+import com.epsilon.prism.luck.RootTraining;
+import com.epsilon.prism.model.PrismNetwork;
+import com.epsilon.prism.model.PrismShape;
+import com.epsilon.prism.model.ShapeArm;
+import com.epsilon.prism.noise.LedgerSettings;
+import com.epsilon.prism.noise.RootCoefficients;
+import com.epsilon.prism.noise.TempoLrMode;
+import com.epsilon.prism.noise.TempoSettings;
+import com.epsilon.prism.policy.CollectionPlans;
+import com.epsilon.prism.policy.PolicyParams;
+import com.epsilon.prism.rows.CohortWriter;
+import com.epsilon.prism.rows.Row;
+import com.epsilon.prism.run.Snapshot;
+import com.epsilon.prism.settings.PrismSettings;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.Executors;
+
+/** 複数のコホートを並べ替え、固定したモデルを基準に、同じ順列と学習率の進行を引き継いで 1 エポック学習する。 */
+@Named(
+    value = "fit-plateau",
+    doc = "Fit one resumable pass over saved cohorts with the combined TEMPO gain")
+public record FitPlateau(
+    @Key(doc = "Run containing the sealed cohorts", presence = Presence.REQUIRED) Path run,
+    @Key(doc = "Inclusive cohort range", presence = Presence.REQUIRED) String cohorts,
+    @Key(doc = "Frozen starting snapshot", presence = Presence.REQUIRED) Path start,
+    @Key(doc = "Recorded TEMPO gains and preceding R2 for the range", presence = Presence.REQUIRED)
+        Path schedule,
+    @Key(doc = "Arm output directory", presence = Presence.REQUIRED) Path out,
+    @Key(doc = "開始モデルに要求する形（省略時は保存した形を使う）", presence = Presence.ABSENT) ShapeArm shape,
+    @Key(
+            doc = "Combined teacher gain (default: product of the frozen schedule)",
+            presence = Presence.ABSENT)
+        @Range(min = 0, minInclusive = false, max = 1)
+        Double gain,
+    @Key(
+            doc =
+                "Optional multiplier for both lineage learning rates; the teacher and Adam epsilon"
+                    + " keep their gain",
+            presence = Presence.ABSENT)
+        @Range(min = 0, minInclusive = false)
+        Double lrScale,
+    @Key(
+            doc = "Require the native kernels for scoring the anchor and training the student",
+            value = "false")
+        boolean requireNative,
+    @Key(doc = "Maximum optimizer steps per invocation", value = "512") @Range(min = 1)
+        int chunkSteps,
+    @Key(doc = "Shuffle replica", value = "0") @Range(min = 0) int replicate)
+    implements PrismCommand {
+
+  public record Schedule(
+      int first,
+      List<Double> priorR2,
+      List<Double> gains,
+      double gain,
+      double lrPeak,
+      double lrFloor) {
+    double combined(Span span, TempoSettings tempo) {
+      if (!tempo.anchored()
+          || first != span.first()
+          || gains.size() != span.last() - first + 1
+          || priorR2.size() != gains.size())
+        throw new IllegalArgumentException("The TEMPO history must cover the requested iterations");
+      double keep = 1;
+      for (int i = 0; i < gains.size(); i++) {
+        double r2 = priorR2.get(i);
+        double k = tempo.gain(first + i, r2);
+        if (!(r2 >= 0 && r2 <= 1 && k > 0 && k <= 1 && Math.abs(k - gains.get(i)) < 1e-12))
+          throw new IllegalArgumentException(
+              "TEMPO history differs from the run at t=" + (first + i));
+        keep *= 1 - k;
+      }
+      if (!(Math.abs(1 - keep - gain) < 1e-12))
+        throw new IllegalArgumentException("Invalid cumulative TEMPO gain");
+      return 1 - keep;
+    }
+  }
+
+  record Update(double scheduledGain, double teacherGain, double lrScale) {
+    static Update of(
+        double scheduled, Double requested, Double requestedLrScale, TempoSettings settings) {
+      if (!(settings instanceof TempoSettings.On tempo) || tempo.lrMode() != TempoLrMode.GAIN) {
+        throw new IllegalArgumentException(
+            "The plateau fit requires the lineage TEMPO gain-based learning rate");
+      }
+      double chosen = requested == null ? scheduled : requested;
+      if (!(chosen > 0 && chosen <= 1))
+        throw new IllegalArgumentException("gain must be in (0, 1]");
+      double scale =
+          requestedLrScale == null
+              ? tempo.lrMode().scale(chosen, tempo.lrReferenceGain())
+              : requestedLrScale;
+      if (!(Double.isFinite(scale) && scale > 0))
+        throw new IllegalArgumentException("lr-scale must be finite and positive");
+      return new Update(scheduled, chosen, scale);
+    }
+  }
+
+  private record Recipe(
+      String run,
+      String start,
+      String inputs,
+      List<String> overrides,
+      String shape,
+      int seedReplica,
+      int first,
+      int last,
+      Update update) {}
+
+  private static final Gson FIT_JSON =
+      new GsonBuilder().serializeSpecialFloatingPointValues().create();
+
+  /**
+   * 再開のたびに照合する、アンカーの採点と学習の計算。
+   *
+   * @param devices 学習のデバイス
+   * @param anchorInference アンカーの採点に使う計算（{@link KernelDevices#label}）
+   * @param nativeTrainingAttention 学習の Attention を専用カーネルで計算するか
+   */
+  private record Execution(
+      List<String> devices, String anchorInference, boolean nativeTrainingAttention) {}
+
+  private record Progress(int steps, long rows, double elapsedSeconds) {}
+
+  @Override
+  public Outcome run(Context<PrismSettings> context) throws Exception {
+    var span = Span.of("cohorts", cohorts);
+    var settings = FitCohorts.settings(run, context.layers()).value();
+    var history = RecordFile.read(Schedule.class, schedule).value();
+    var tempo = settings.noise().tempo();
+    var update = Update.of(history.combined(span, tempo), gain, lrScale, tempo);
+    if (settings.fit().lrPeak() != history.lrPeak()
+        || settings.fit().lrFloor() != history.lrFloor())
+      throw new IllegalArgumentException("This arm requires the recorded lineage learning rate");
+    Path anchor = Snapshot.model(start);
+    var header = PrismNetwork.readHeader(anchor);
+    var original = header.shape();
+    var student = shape == null ? original : shape.shape();
+    if (!original.equals(student))
+      throw new IllegalArgumentException("Starting shape mismatch: " + original + " -> " + student);
+    if (PrismNetwork.readFormat(anchor).variant() != settings.run().variant())
+      throw new IllegalArgumentException("The start model does not match the run variant");
+    settings.runtime().apply();
+    settings.diagnostics().apply();
+    Files.createDirectories(out);
+    try (var channel =
+            FileChannel.open(
+                out.resolve("fit.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        var lock = channel.tryLock()) {
+      if (lock == null) throw new IOException("Another fitter owns " + out);
+      var digest = MessageDigest.getInstance("SHA-256");
+      for (Path path :
+          List.of(
+              schedule,
+              run.resolve("settings.jsonl"),
+              anchor.resolve("model.json"),
+              anchor.resolve("weights.bin"))) digest.update(Files.readAllBytes(path));
+      for (int t = span.first(); t <= span.last(); t++)
+        digest.update(
+            Files.readAllBytes(CohortWriter.directory(run, t).resolve(CohortWriter.MANIFEST)));
+      var recipe =
+          new Recipe(
+              run.toRealPath().toString(),
+              start.toRealPath().toString(),
+              HexFormat.of().formatHex(digest.digest()),
+              context.layers().stream().map(layer -> Json.write(layer.tree())).toList(),
+              shape == null ? "START" : shape.name(),
+              replicate,
+              span.first(),
+              span.last(),
+              update);
+      Path file = out.resolve("recipe.json");
+      if (Files.exists(file)) {
+        if (!recipe.equals(RecordFile.read(Recipe.class, file).value()))
+          throw new IOException("Arm inputs changed: " + out);
+      } else {
+        DurableFiles.write(file, recipe);
+      }
+      var devices = settings.learner().networkDevices();
+      Optional<Backend> scoring = Optional.empty();
+      boolean nativeTraining = false;
+      if (devices.primary().isGpu()) {
+        if (settings.inference().kernels() == Kernels.NATIVE) {
+          var teacher = new PrismNetwork(header.format(), original);
+          scoring =
+              CollectionPlans.select(
+                      teacher,
+                      List.of(devices.primary()),
+                      Precision.BFLOAT16,
+                      BatchPlan.Capacity.standard(teacher.format()),
+                      null)
+                  .map(CollectionPlans::backend);
+        }
+        var network = new PrismNetwork(InputFormat.of(header.format().variant()), student);
+        var request =
+            KernelDevices.request(
+                network,
+                devices.primary(),
+                BatchPlan.Capacity.standard(network.format()),
+                KernelProvider.Use.TRAINING);
+        nativeTraining = KernelProviders.training(request, KernelProviders.discover()).isPresent();
+      }
+      var execution =
+          new Execution(
+              devices.devices().stream().map(Object::toString).toList(),
+              KernelDevices.label(scoring),
+              nativeTraining);
+      if (requireNative && (scoring.isEmpty() || !nativeTraining)) {
+        throw new IllegalArgumentException(
+            "Expected native scoring and training for the plateau arm");
+      }
+      Path executionFile = out.resolve("execution.json");
+      if (Files.exists(executionFile)) {
+        if (!execution.equals(RecordFile.read(Execution.class, executionFile).value())) {
+          throw new IOException("The execution backend changed while resuming " + out);
+        }
+      } else {
+        if (requireNative && (Files.exists(out.resolve("snapshot")) || lastCheckpoint() != null)) {
+          throw new IOException("The existing fit did not record its execution backend");
+        }
+        DurableFiles.write(executionFile, execution);
+      }
+      if (Files.exists(out.resolve("snapshot"))) {
+        DurableFiles.write(
+            out.resolve("progress.json"),
+            Files.readAllBytes(out.resolve("snapshot/progress.json")));
+        return Outcome.ok("Completed " + out);
+      }
+      return fit(settings, span, anchor, student, update);
+    }
+  }
+
+  private Outcome fit(PrismSettings s, Span span, Path anchor, PrismShape student, Update update)
+      throws IOException {
+    double gain = update.teacherGain();
+    var devices = s.learner().networkDevices();
+    var fit = s.fit();
+    int threads = s.learner().decodeThreads();
+    var path = s.inference().kernels();
+    long seed =
+        CrnSeeds.derive(s.run().seed(), CrnSeeds.Domain.LEARN, span.last(), 0x76326172L, replicate);
+    int count = span.last() - span.first() + 1;
+    var corrections = corrections(run, out.resolve("ledger"), s, span.first(), span.last());
+    var ends = new int[count];
+    try (var store = new CohortStore()) {
+      for (int i = 0; i < count; i++) {
+        store.addCohort(CohortWriter.directory(run, span.first() + i));
+        ends[i] = store.size();
+      }
+      int[] order = Fit.shuffle(store.select(span.first(), span.last(), fit.rows()), seed);
+      if (order.length == 0 || store.variant() != s.run().variant())
+        throw new IOException("Invalid training rows");
+      int steps = Math.ceilDiv(order.length, fit.batch());
+      Path previous = lastCheckpoint();
+      var progress =
+          previous == null
+              ? new Progress(0, 0, 0)
+              : RecordFile.read(Progress.class, previous.resolve("progress.json")).value();
+      int begin = progress.steps();
+      int end = (int) Math.min(steps, (long) begin + chunkSteps);
+      var rows =
+          Arrays.copyOfRange(
+              order,
+              Math.multiplyExact(begin, fit.batch()),
+              (int) Math.min(order.length, (long) end * fit.batch()));
+      var plan =
+          new FitPlan(
+              fit.fit(steps, update.lrScale()),
+              student,
+              fit.auxiliary(),
+              FitPlan.TOKEN_BUDGET,
+              seed);
+      Path stage = out.resolve("chunk.part");
+      DurableFiles.delete(stage);
+      Files.createDirectories(stage);
+      long started = System.nanoTime();
+      try (Model model =
+          previous == null
+              ? Fit.load(anchor, devices.primary())
+              : Fit.load(previous.resolve("model"), devices.primary())) {
+        var scores =
+            AnchorScores.compute(store, rows, anchor, span.first(), path, devices, threads);
+        var ledgerSettings = (LedgerSettings.Fitting) s.noise().ledger();
+        if (ledgerSettings.calibration().scales()
+            || ledgerSettings.rootCoefficients().mode() != RootCoefficients.Mode.OFF) {
+          recordWins(store, rows, scores, ends, span, stage, previous, end == steps, s);
+        }
+        var teacher =
+            new Teacher(
+                null,
+                scores,
+                1 - gain,
+                (float) gain,
+                id -> {
+                  int index = Arrays.binarySearch(ends, id + 1);
+                  return corrections[index >= 0 ? index : -1 - index];
+                },
+                fit.agariOrder());
+        var result =
+            Fit.chunk(
+                store,
+                rows,
+                model,
+                plan,
+                teacher,
+                devices,
+                threads,
+                begin,
+                previous == null ? null : previous.resolve("adam"),
+                stage.resolve("adam"));
+        var network = (PrismNetwork) model.getBlock();
+        var after =
+            new Progress(
+                end,
+                progress.rows() + rows.length,
+                progress.elapsedSeconds() + (System.nanoTime() - started) / 1e9);
+        FitResult total =
+            previous == null
+                ? result
+                : accumulated(
+                    FIT_JSON.fromJson(
+                        Files.readString(previous.resolve("fit.json")), FitResult.class),
+                    result,
+                    devices.primary().isGpu());
+        DurableFiles.write(stage.resolve("fit.json"), FIT_JSON.toJson(total));
+        DurableFiles.write(stage.resolve("progress.json"), after);
+        if (end == steps) {
+          if (after.rows() != order.length)
+            throw new IOException("The epoch did not cover every selected row");
+          Snapshot.write(
+              stage.resolve("snapshot"),
+              network,
+              PolicyParams.of(span.last() + 1, fit.agariOrder()),
+              new Snapshot.FitRecord(
+                  run.toString(), span.first(), span.last(), replicate, plan, total));
+          DurableFiles.write(stage.resolve("snapshot/progress.json"), after);
+          DurableFiles.seal(stage.resolve("snapshot"), out.resolve("snapshot"));
+          DurableFiles.delete(stage);
+        } else {
+          network.save(stage.resolve("model"));
+          DurableFiles.seal(
+              stage, out.resolve("checkpoint-" + String.format(Locale.ROOT, "%09d", end)));
+        }
+        DurableFiles.write(out.resolve("progress.json"), after);
+      }
+      return Outcome.ok("Completed " + end + "/" + steps + " optimizer steps");
+    }
+  }
+
+  private record WinScores(int row, float[] scores) {}
+
+  /** 各チャンクで求めたアンカーの値を引き継ぎ、全行がそろったら各コホートの和了判断を集計する。 */
+  private void recordWins(
+      CohortStore store,
+      int[] rows,
+      AnchorScores anchor,
+      int[] ends,
+      Span span,
+      Path stage,
+      Path previous,
+      boolean complete,
+      PrismSettings settings)
+      throws IOException {
+    String filename = "win-scores.json";
+    List<WinScores> wins = new ArrayList<>();
+    if (previous != null)
+      wins.addAll(
+          Arrays.asList(
+              FIT_JSON.fromJson(Files.readString(previous.resolve(filename)), WinScores[].class)));
+    for (int id : Teacher.winRows(store, rows)) wins.add(new WinScores(id, anchor.scores(id)));
+    if (!complete) {
+      DurableFiles.write(stage.resolve(filename), FIT_JSON.toJson(wins));
+      return;
+    }
+    wins.sort(java.util.Comparator.comparingInt(WinScores::row));
+    int index = 0;
+    LedgerCalibrator previousScale =
+        FitCohorts.history(run, span.first() - 1, settings.run().variant()).scale();
+    for (int j = 0; j < ends.length; j++) {
+      Path report =
+          out.resolve("ledger").resolve(String.format(Locale.ROOT, "%05d.json", span.first() + j));
+      var saved = RecordFile.read(LedgerReport.Full.class, report).value();
+      List<Row> decisions = new ArrayList<>();
+      List<float[]> scores = new ArrayList<>();
+      while (index < wins.size() && wins.get(index).row() < ends[j]) {
+        var win = wins.get(index++);
+        decisions.add(store.read(win.row()));
+        scores.add(win.scores());
+      }
+      DurableFiles.write(
+          report, saved.withWins(settings.run().variant(), previousScale, decisions, scores));
+      var calibration = saved.calibration();
+      previousScale =
+          calibration == null || calibration.next() == null
+              ? null
+              : calibration.next().calibrator();
+    }
+  }
+
+  private static FitResult accumulated(FitResult before, FitResult chunk, boolean gpu) {
+    int steps = Math.addExact(before.steps(), chunk.steps());
+    int count = Fit.lossSamples(steps, gpu), previous = Fit.lossSamples(before.steps(), gpu);
+    double loss =
+        count == previous
+            ? before.loss()
+            : (before.loss() * previous + chunk.loss() * (count - previous)) / count;
+    double[] seconds = before.stageSeconds().clone();
+    for (int i = 0; i < seconds.length; i++) seconds[i] += chunk.stageSeconds()[i];
+    return new FitResult(
+        Math.addExact(before.rows(), chunk.rows()),
+        steps,
+        before.clippedSteps() + chunk.clippedSteps(),
+        loss,
+        before.firstLoss(),
+        count == previous ? before.lastLoss() : chunk.lastLoss(),
+        before.seconds() + chunk.seconds(),
+        seconds);
+  }
+
+  private Path lastCheckpoint() throws IOException {
+    try (var files = Files.list(out)) {
+      return files
+          .filter(p -> p.getFileName().toString().matches("checkpoint-[0-9]{9}"))
+          .max(Path::compareTo)
+          .orElse(null);
+    }
+  }
+
+  /**
+   * コホートの範囲の教師の補正を、系譜と同じ帳簿の補正率の受け渡しで作る。最初のコホートには、run の系譜がその前のコホートで当てはめた
+   * 補正率を渡し、後のコホートには、前のコホートの行で当てはめた補正率を渡す。コホート t の帳簿は
+   * cache/&lt;t&gt;.json に報告の全部を書き、書いてあれば報告から作り直す。
+   *
+   * @param run コホートを読む run のディレクトリ
+   * @param cache 帳簿の報告を置くディレクトリ
+   * @param settings 学習の設定
+   * @param first 範囲の最初のコホート
+   * @param last 範囲の最後のコホート
+   * @return コホートの順の教師の補正
+   * @throws IOException 帳簿を当てはめられないか、書いた報告が渡す補正率と合わないとき
+   */
+  public static LedgerCorrection[] corrections(
+      Path run, Path cache, PrismSettings settings, int first, int last) throws IOException {
+    var corrections = new LedgerCorrection[last - first + 1];
+    var history = FitCohorts.history(run, first - 1, settings.run().variant());
+    var meaning = LuckSettlement.of(settings.noise(), settings.run().variant()).meaning();
+    for (int t = first; t <= last; t++) {
+      var ledger = ledger(run, cache, settings, t, history);
+      corrections[t - first] = ledger.correction();
+      history = new LuckSettlement.History(ledger.next(), meaning, ledger.rootNext());
+    }
+    return corrections;
+  }
+
+  /**
+   * コホート 1 つの教師の補正と、そのコホートの行で当てはめた次のコホートの補正率。
+   *
+   * @param correction 教師に掛ける補正（補正率を掛けたものを含む）
+   * @param next 次のコホートに渡す補正率（当てはめなければ null）
+   */
+  private record Ledger(
+      LedgerCorrection correction, LedgerCalibrator next, RootTraining.State rootNext) {}
+
+  /**
+   * コホート t の帳簿を当てはめ、cache/&lt;t&gt;.json に報告の全部を書く。書いてあれば報告から作り直す。報告に保存した係数と倍率から教師を復元する。
+   *
+   * @param history 前のコホートで得た補正率と係数の学習状態
+   */
+  private static Ledger ledger(
+      Path run, Path cache, PrismSettings s, int t, LuckSettlement.History history)
+      throws IOException {
+    LedgerCalibrator carried = history.scale();
+    Path path = cache.resolve(String.format(Locale.ROOT, "%05d.json", t));
+    var luck = LuckSettlement.of(s.noise(), s.run().variant());
+    if (!Files.exists(path)) return computeLedger(run, cache, path, s, t, history, luck);
+    var saved = RecordFile.read(LedgerReport.Full.class, path).value();
+    var checkpoint =
+        LuckSettlement.History.read(
+            carried, luck.meaning(), cache, t, saved.roots() == null ? null : t);
+    if (checkpoint.failure() != null || history.failure() != null) {
+      var recovery =
+          new LuckSettlement.History(
+              carried,
+              history.meaning(),
+              null,
+              history.failure() != null ? history.failure() : checkpoint.failure());
+      return computeLedger(run, cache, path, s, t, recovery, luck);
+    }
+    var rootNext = checkpoint.roots();
+    var fitting = (LedgerSettings.Fitting) s.noise().ledger();
+    var rootSettings = fitting.rootCoefficients();
+    var audit = saved.roots();
+    boolean enabled = rootSettings.mode() != RootCoefficients.Mode.OFF;
+    if (enabled != (audit != null)
+        || enabled != (rootNext != null)
+        || enabled
+            && (audit.mode() != rootSettings.mode()
+                || !rootNext.matches(t + 1, s.run().variant(), luck.meaning(), rootSettings)
+                || (audit.status() == null
+                        || audit.status().restart() == null
+                        || audit.model() != null)
+                    && !Objects.equals(
+                        audit.model(),
+                        history.roots() != null
+                                && history
+                                    .roots()
+                                    .matches(t, s.run().variant(), luck.meaning(), rootSettings)
+                            ? history.roots().active()
+                            : null))) {
+      var recovered =
+          new LuckSettlement.History(
+              carried,
+              history.meaning(),
+              null,
+              "Root ledger checkpoint does not match cached cohort " + t);
+      return computeLedger(run, cache, path, s, t, recovered, luck);
+    }
+    var correction = LedgerCorrection.restore(saved, saved.recording(), s.run().variant(), carried);
+    var calibration = saved.calibration();
+    if (calibration == null) return new Ledger(correction, null, rootNext);
+    if (calibration.origin() != null
+        && (carried == null || !LedgerReport.Origin.of(carried).equals(calibration.origin()))) {
+      throw new IOException("Carried calibrator differs from cached cohort " + t);
+    }
+    return new Ledger(
+        correction, calibration.next() == null ? null : calibration.next().calibrator(), rootNext);
+  }
+
+  private static Ledger computeLedger(
+      Path run,
+      Path cache,
+      Path path,
+      PrismSettings s,
+      int t,
+      LuckSettlement.History history,
+      LuckSettlement luck)
+      throws IOException {
+    try (var store = new CohortStore();
+        var readers = Executors.newFixedThreadPool(s.learner().decodeThreads())) {
+      store.addCohort(CohortWriter.directory(run, t));
+      var rows = store.select(t, t, s.fit().rows());
+      var learned =
+          luck.settleWithHistory(
+                  t,
+                  null,
+                  store.iterate(rows, s.fit().batch(), readers, s.learner().decodeThreads()),
+                  rows.length,
+                  history)
+              .calibrate(s.learner().decodeThreads());
+      if (learned.correction() == null
+          && (learned.roots() == null
+              || learned.roots().status().teacher() != LedgerReport.Arm.RAW))
+        throw new IOException("No applied ledger for cohort " + t);
+      if (learned.rootNext() != null) learned.rootNext().write(cache);
+      DurableFiles.write(path, learned.full(luck.recording()));
+      return new Ledger(learned.correction(), learned.next(), learned.rootNext());
+    }
+  }
+}

@@ -23,16 +23,22 @@ public class EvaluationTest {
   @Test
   public void rejectsBrokenProbabilities() {
     expectThrows(IllegalArgumentException.class, () -> new Evaluation(new float[0], null, 0));
-    expectThrows(IllegalArgumentException.class, () -> new Evaluation(new float[] {0.5f, 0.4f}, null, 0));
-    expectThrows(IllegalArgumentException.class, () -> new Evaluation(new float[] {1.5f, -0.5f}, null, 0));
-    expectThrows(IllegalArgumentException.class, () -> new Evaluation(new float[] {Float.NaN, 1f}, null, 0));
+    expectThrows(
+        IllegalArgumentException.class, () -> new Evaluation(new float[] {0.5f, 0.4f}, null, 0));
+    expectThrows(
+        IllegalArgumentException.class, () -> new Evaluation(new float[] {1.5f, -0.5f}, null, 0));
+    expectThrows(
+        IllegalArgumentException.class, () -> new Evaluation(new float[] {Float.NaN, 1f}, null, 0));
   }
 
   @Test
   public void rejectsBrokenValuesAndGreedyActions() {
     float[] probabilities = {0.5f, 0.5f};
-    expectThrows(IllegalArgumentException.class, () -> new Evaluation(probabilities, new float[] {0f}, 0));
-    expectThrows(IllegalArgumentException.class, () -> new Evaluation(probabilities, new float[] {0f, Float.NaN}, 0));
+    expectThrows(
+        IllegalArgumentException.class, () -> new Evaluation(probabilities, new float[] {0f}, 0));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> new Evaluation(probabilities, new float[] {0f, Float.NaN}, 0));
     expectThrows(
         IllegalArgumentException.class,
         () -> new Evaluation(probabilities, new float[] {0f, Float.POSITIVE_INFINITY}, 0));
@@ -42,12 +48,21 @@ public class EvaluationTest {
 
   @Test
   public void optionsNameACpuOrAnIndexedGpu() {
-    assertEquals(new PolicyOptions("gpu1", Precision.BFLOAT16, 2048, Kernels.NATIVE).device(), "gpu1");
-    assertEquals(PolicyOptions.defaults(), new PolicyOptions("cpu", Precision.FLOAT32, 8, Kernels.EAGER));
+    assertEquals(
+        new PolicyOptions("gpu1", Precision.BFLOAT16, 2048, Kernels.NATIVE).device(), "gpu1");
+    assertEquals(
+        PolicyOptions.defaults(), new PolicyOptions("cpu", Precision.FLOAT32, 8, Kernels.EAGER));
     assertEquals(PolicyOptions.defaults().onDevice("gpu0").device(), "gpu0");
-    expectThrows(IllegalArgumentException.class, () -> new PolicyOptions("gpu:0", Precision.FLOAT32, 8, Kernels.EAGER));
-    expectThrows(IllegalArgumentException.class, () -> new PolicyOptions("gpu", Precision.FLOAT32, 8, Kernels.EAGER));
-    expectThrows(IllegalArgumentException.class, () -> new PolicyOptions("cpu", Precision.FLOAT32, 0, Kernels.EAGER));
-    expectThrows(NullPointerException.class, () -> new PolicyOptions("cpu", null, 8, Kernels.EAGER));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> new PolicyOptions("gpu:0", Precision.FLOAT32, 8, Kernels.EAGER));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> new PolicyOptions("gpu", Precision.FLOAT32, 8, Kernels.EAGER));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> new PolicyOptions("cpu", Precision.FLOAT32, 0, Kernels.EAGER));
+    expectThrows(
+        NullPointerException.class, () -> new PolicyOptions("cpu", null, 8, Kernels.EAGER));
   }
 }

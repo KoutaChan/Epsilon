@@ -11,9 +11,10 @@
   <packaging>pom</packaging>
   <name>Epsilon - Mahjong AI</name>
   <description>Japanese Riichi Mahjong AI</description>
-  <!-- djl.version と DJL の置き場（djl-rocm）、gson・DJL・logback の版は epsilon-base が持ち、ここは継ぐ。 -->
+  <!-- djl.version と DJL の置き場（djl-rocm）、gson・DJL・logback のバージョンは epsilon-base が持ち、ここは継ぐ。 -->
   <properties>
     <pytorch.native.version>2.11.0</pytorch.native.version>
+    <pytorch.rocm.flavor>rocm7.2</pytorch.rocm.flavor>
     <pytorch.linux.flavor>cpu</pytorch.linux.flavor>
     <pytorch.windows.flavor>cpu</pytorch.windows.flavor>
   </properties>
@@ -146,12 +147,17 @@
       <id>rocm</id>
       <properties>
         <pytorch.rocm.version>2.11.0</pytorch.rocm.version>
-        <pytorch.rocm.flavor>rocm7.2</pytorch.rocm.flavor>
         <pytorch.native.version>${pytorch.rocm.version}</pytorch.native.version>
         <pytorch.linux.flavor>${pytorch.rocm.flavor}</pytorch.linux.flavor>
       </properties>
     </profile>
-    <!-- NVIDIA の GPU（Linux・Windows）。同梱する DJL の JNI を CUDA の版にする。その版の JNI が djl-rocm に要る。 -->
+    <profile>
+      <id>native-hip</id>
+      <properties>
+        <pytorch.linux.flavor>${pytorch.rocm.flavor}</pytorch.linux.flavor>
+      </properties>
+    </profile>
+    <!-- NVIDIA の GPU（Linux・Windows）。対応する CUDA 用 JNI を djl-rocm から同梱する。 -->
     <profile>
       <id>cuda</id>
       <properties>
@@ -169,8 +175,8 @@
     <module>epsilon-agent</module>
     <module>epsilon-grp</module>
     <module>epsilon-classic</module>
-    <!-- PRISM の HIP の実行系。Java の部分はどこでも組み立て、native（libprism_hip.so）は -Pnative-hip のときだけ作る。 -->
-    <module>epsilon-prism-hip</module>
+    <!-- PRISM のカーネル（共通の部分と HIP・CUDA の実装）。Java の部分はどこでも組み立て、native は -Pnative-hip・-Pnative-cuda のときだけ作る。 -->
+    <module>epsilon-prism-kernel</module>
     <module>epsilon-prism</module>
     <module>epsilon-prism-4p</module>
     <module>epsilon-prism-3p</module>

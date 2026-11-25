@@ -11,7 +11,7 @@ import com.epsilon.mahjong.record.ReplayDriver;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.reviewer.engine.load.LoadedRecord;
 import com.epsilon.reviewer.engine.view.RecordTable;
-import com.epsilon.reviewer.engine.view.TableState;
+import com.epsilon.reviewer.engine.view.TableView;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import java.util.ArrayList;
@@ -77,7 +77,7 @@ public final class DecisionLocator {
       int seat,
       int slot,
       int position,
-      TableState table,
+      TableView table,
       RecordedRound recorded,
       int[] candidates) {
     Engine engine = driver.engine();

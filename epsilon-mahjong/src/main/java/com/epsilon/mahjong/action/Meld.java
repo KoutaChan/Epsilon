@@ -69,7 +69,8 @@ public final class Meld {
     public static RelativeSource of(int seat, int source, int seats) {
       requireSeats(seats);
       if (seat < 0 || seat >= seats || source < 0 || source >= seats) {
-        throw new IllegalArgumentException("Seats " + seat + " and " + source + " must be below " + seats);
+        throw new IllegalArgumentException(
+            "Seats " + seat + " and " + source + " must be below " + seats);
       }
       int distance = Math.floorMod(source - seat, seats);
       if (distance == 0) {
@@ -136,7 +137,8 @@ public final class Meld {
   };
 
   /** 番号の数（使わない番号を含む）。 */
-  public static final int IDS = TYPES.length * Tiles.KINDS * SOURCES.length * RUN * AKA_SOURCES.length;
+  public static final int IDS =
+      TYPES.length * Tiles.KINDS * SOURCES.length * RUN * AKA_SOURCES.length;
 
   private static final Meld[] TABLE = table();
 
@@ -191,7 +193,12 @@ public final class Meld {
    * @param red 4 枚に赤の 5 を含むなら true
    */
   public static Meld ankan(int kind, boolean red) {
-    return lookup(Type.ANKAN, kind, -1, RelativeSource.NONE, red ? AkaSource.CONSUMED_HAND_TILE : AkaSource.NONE);
+    return lookup(
+        Type.ANKAN,
+        kind,
+        -1,
+        RelativeSource.NONE,
+        red ? AkaSource.CONSUMED_HAND_TILE : AkaSource.NONE);
   }
 
   /**
@@ -213,7 +220,8 @@ public final class Meld {
       kinds[index + 1] = face.kind();
       if (face.red()) {
         if (aka != AkaSource.NONE) {
-          throw new IllegalArgumentException("A meld cannot hold two red fives: " + called + " " + consumed);
+          throw new IllegalArgumentException(
+              "A meld cannot hold two red fives: " + called + " " + consumed);
         }
         aka = AkaSource.CONSUMED_HAND_TILE;
       }
@@ -223,7 +231,8 @@ public final class Meld {
         switch (type) {
           case CHI -> {
             if (source != RelativeSource.KAMICHA) {
-              throw new IllegalArgumentException("A chi is called from the left, not from " + source);
+              throw new IllegalArgumentException(
+                  "A chi is called from the left, not from " + source);
             }
             yield chi(kinds[0], called.kind(), aka);
           }
@@ -236,7 +245,8 @@ public final class Meld {
       fits = meld.tile(index) == kinds[index];
     }
     if (!fits) {
-      throw new IllegalArgumentException("Tiles " + called + " " + consumed + " do not make " + meld);
+      throw new IllegalArgumentException(
+          "Tiles " + called + " " + consumed + " do not make " + meld);
     }
     return meld;
   }
@@ -255,7 +265,12 @@ public final class Meld {
     if (addedRed && pon.red()) {
       throw new IllegalArgumentException("A meld cannot hold two red fives: " + pon);
     }
-    return lookup(Type.KAKAN, pon.base, pon.called, pon.source, addedRed ? AkaSource.ADDED_KAN_TILE : pon.aka);
+    return lookup(
+        Type.KAKAN,
+        pon.base,
+        pon.called,
+        pon.source,
+        addedRed ? AkaSource.ADDED_KAN_TILE : pon.aka);
   }
 
   public int id() {
@@ -346,9 +361,13 @@ public final class Meld {
     return start <= Tiles.FIVE && Tiles.FIVE < start + RUN && start + position != Tiles.FIVE;
   }
 
-  private static Meld lookup(Type type, int base, int called, RelativeSource source, AkaSource aka) {
-    if (base < 0 || base >= Tiles.KINDS || type == Type.CHI && (called < base || called >= base + RUN)) {
-      throw new IllegalArgumentException("Not a meld: " + type + " base " + base + " called " + called);
+  private static Meld lookup(
+      Type type, int base, int called, RelativeSource source, AkaSource aka) {
+    if (base < 0
+        || base >= Tiles.KINDS
+        || type == Type.CHI && (called < base || called >= base + RUN)) {
+      throw new IllegalArgumentException(
+          "Not a meld: " + type + " base " + base + " called " + called);
     }
     Meld meld = TABLE[idOf(type, base, called, source, aka)];
     if (meld == null) {
@@ -360,7 +379,8 @@ public final class Meld {
 
   private static int idOf(Type type, int base, int called, RelativeSource source, AkaSource aka) {
     int position = type == Type.CHI ? called - base : 0;
-    return (((type.ordinal() * Tiles.KINDS + base) * SOURCES.length + source.ordinal()) * RUN + position)
+    return (((type.ordinal() * Tiles.KINDS + base) * SOURCES.length + source.ordinal()) * RUN
+                + position)
             * AKA_SOURCES.length
         + aka.ordinal();
   }
@@ -382,9 +402,14 @@ public final class Meld {
           int called = base + position;
           put(table, new Meld(Type.CHI, base, called, RelativeSource.KAMICHA, AkaSource.NONE));
           if (start + position == Tiles.FIVE) {
-            put(table, new Meld(Type.CHI, base, called, RelativeSource.KAMICHA, AkaSource.CALLED_TILE));
+            put(
+                table,
+                new Meld(Type.CHI, base, called, RelativeSource.KAMICHA, AkaSource.CALLED_TILE));
           } else if (redFromHand(start, position)) {
-            put(table, new Meld(Type.CHI, base, called, RelativeSource.KAMICHA, AkaSource.CONSUMED_HAND_TILE));
+            put(
+                table,
+                new Meld(
+                    Type.CHI, base, called, RelativeSource.KAMICHA, AkaSource.CONSUMED_HAND_TILE));
           }
         }
       }

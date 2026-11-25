@@ -52,15 +52,17 @@ public class GrpCheckpointTest {
     GrpShape shape = new GrpShape(Variant.TENHOU_4P, EnumSet.allOf(GrpField.class), 12, true);
     GrpNetwork network = GrpFixtures.network(shape, 21, 0.5);
     Path first = root.resolve("first");
-    String sha = GrpCheckpoint.write(network, first);
-    Assert.assertEquals(GrpCheckpoint.sha256(first), sha);
+    GrpCheckpoint.write(network, first);
+    String sha = GrpCheckpoint.sha256(first);
 
     GrpNetwork read = (GrpNetwork) GrpCheckpoint.read(first);
     Assert.assertEquals(read.shape(), shape);
     Assert.assertTrue(Arrays.equals(read.weights(), network.weights()));
     Path second = root.resolve("second");
-    Assert.assertEquals(GrpCheckpoint.write(read, second), sha);
-    Assert.assertThrows(IOException.class, () -> GrpCheckpoint.write(GrpFixtures.network(shape, 22, 0.5), first));
+    GrpCheckpoint.write(read, second);
+    Assert.assertEquals(GrpCheckpoint.sha256(second), sha);
+    Assert.assertThrows(
+        IOException.class, () -> GrpCheckpoint.write(GrpFixtures.network(shape, 22, 0.5), first));
     Assert.assertEquals(GrpCheckpoint.sha256(first), sha);
 
     byte[] description = Files.readAllBytes(first.resolve(GrpCheckpoint.JSON_FILE));
@@ -74,31 +76,31 @@ public class GrpCheckpointTest {
     Assert.assertEquals(weights.length, Float.BYTES * expected.length);
     ByteBuffer buffer = ByteBuffer.wrap(weights).order(ByteOrder.LITTLE_ENDIAN);
     for (int index = 0; index < expected.length; index++) {
-      Assert.assertEquals(Float.floatToRawIntBits(buffer.getFloat()), Float.floatToRawIntBits(expected[index]));
+      Assert.assertEquals(
+          Float.floatToRawIntBits(buffer.getFloat()), Float.floatToRawIntBits(expected[index]));
     }
   }
 
-  /** 書きかけで落ちた一時ディレクトリは次の書き込みが消し、親のディレクトリには書き終えたチェックポイントだけが残る。 */
+  /** 別の書き込みが使っているディレクトリとその中身を保つ。 */
   @Test
-  public void aStaleStagingDirectoryIsReplaced() throws IOException {
+  public void anotherWritersDirectoryIsPreserved() throws IOException {
     GrpShape shape = GrpFixtures.shape(Variant.TENHOU_4P, 6, false);
     Path directory = root.resolve("model");
     Path staging = root.resolve(".model.writing");
     Files.createDirectories(staging);
     Files.writeString(staging.resolve(GrpCheckpoint.JSON_FILE), "{");
-    String sha = GrpCheckpoint.write(GrpFixtures.network(shape, 5, 1.0), directory);
-    Assert.assertFalse(Files.exists(staging));
-    Assert.assertEquals(GrpCheckpoint.sha256(directory), sha);
-    try (Stream<Path> entries = Files.list(root)) {
-      Assert.assertEquals(entries.map(path -> path.getFileName().toString()).toList(), List.of("model"));
-    }
+    GrpCheckpoint.write(GrpFixtures.network(shape, 5, 1.0), directory);
+    Assert.assertEquals(Files.readString(staging.resolve(GrpCheckpoint.JSON_FILE)), "{");
+    Assert.assertTrue(GrpCheckpoint.read(directory) instanceof GrpNetwork);
   }
 
   @Test
   public void differentWeightsGiveADifferentSha() throws IOException {
     GrpShape shape = GrpFixtures.shape(Variant.TENHOU_3P, 6, false);
-    String first = GrpCheckpoint.write(GrpFixtures.network(shape, 1, 1.0), root.resolve("first"));
-    String second = GrpCheckpoint.write(GrpFixtures.network(shape, 2, 1.0), root.resolve("second"));
+    GrpCheckpoint.write(GrpFixtures.network(shape, 1, 1.0), root.resolve("first"));
+    String first = GrpCheckpoint.sha256(root.resolve("first"));
+    GrpCheckpoint.write(GrpFixtures.network(shape, 2, 1.0), root.resolve("second"));
+    String second = GrpCheckpoint.sha256(root.resolve("second"));
     Assert.assertNotEquals(first, second);
     Assert.assertTrue(first.matches("[0-9a-f]{64}"), first);
   }
@@ -109,13 +111,15 @@ public class GrpCheckpointTest {
     Path directory = root.resolve("three");
     GrpCheckpoint.write(GrpFixtures.network(shape, 3, 1.0), directory);
     JsonObject description = description(directory);
-    Assert.assertEquals(description.keySet(), Set.of("model", "variant", "fields", "hidden", "phaseHeads"));
+    Assert.assertEquals(
+        description.keySet(), Set.of("model", "variant", "fields", "hidden", "phaseHeads"));
     Assert.assertEquals(description.get("model").getAsString(), "GrpNetwork");
     Assert.assertEquals(description.get("variant").getAsString(), "TENHOU_3P");
     Assert.assertEquals(description.get("hidden").getAsInt(), 6);
     Assert.assertTrue(description.get("phaseHeads").getAsBoolean());
     JsonObject fields = description.getAsJsonObject("fields");
-    Assert.assertEquals(List.copyOf(fields.keySet()), List.of("ROUND", "HONBA", "KYOTAKU", "SCORE", "RANK", "GAP"));
+    Assert.assertEquals(
+        List.copyOf(fields.keySet()), List.of("ROUND", "HONBA", "KYOTAKU", "SCORE", "RANK", "GAP"));
     Assert.assertEquals(fields.get("ROUND").getAsInt(), 9);
     Assert.assertEquals(fields.get("RANK").getAsInt(), 9);
     Assert.assertEquals(fields.get("GAP").getAsInt(), 3);
@@ -158,7 +162,9 @@ public class GrpCheckpointTest {
     GrpCheckpoint.write(network, infinite);
     Path infiniteWeights = infinite.resolve(GrpCheckpoint.WEIGHTS_FILE);
     byte[] infiniteBytes = Files.readAllBytes(infiniteWeights);
-    ByteBuffer.wrap(infiniteBytes).order(ByteOrder.LITTLE_ENDIAN).putFloat(0, Float.POSITIVE_INFINITY);
+    ByteBuffer.wrap(infiniteBytes)
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .putFloat(0, Float.POSITIVE_INFINITY);
     Files.write(infiniteWeights, infiniteBytes);
     Assert.assertThrows(IOException.class, () -> GrpCheckpoint.read(infinite));
   }
@@ -172,15 +178,17 @@ public class GrpCheckpointTest {
     GruShape shape = new GruShape(Variant.TENHOU_4P, 6, 2);
     GruSinkhorn gru = GrpFixtures.gru(shape, 23, 0.5);
     Path first = root.resolve("gru");
-    String sha = GrpCheckpoint.write(gru, first);
-    Assert.assertEquals(GrpCheckpoint.sha256(first), sha);
+    GrpCheckpoint.write(gru, first);
+    String sha = GrpCheckpoint.sha256(first);
     Assert.assertTrue(sha.matches("[0-9a-f]{64}"), sha);
 
     GruSinkhorn read = (GruSinkhorn) GrpCheckpoint.read(first);
     Assert.assertEquals(read.shape(), shape);
     Assert.assertTrue(Arrays.equals(read.weights(), gru.weights()));
-    Assert.assertEquals(GrpCheckpoint.write(read, root.resolve("again")), sha);
-    Assert.assertNotEquals(GrpCheckpoint.write(GrpFixtures.gru(shape, 24, 0.5), root.resolve("other")), sha);
+    GrpCheckpoint.write(read, root.resolve("again"));
+    Assert.assertEquals(GrpCheckpoint.sha256(root.resolve("again")), sha);
+    GrpCheckpoint.write(GrpFixtures.gru(shape, 24, 0.5), root.resolve("other"));
+    Assert.assertNotEquals(GrpCheckpoint.sha256(root.resolve("other")), sha);
 
     Random random = new Random(25);
     RoundHistory history = GrpFixtures.history(Variant.TENHOU_4P, random, 4);
@@ -196,7 +204,8 @@ public class GrpCheckpointTest {
     Assert.assertEquals(bytes.length, Float.BYTES * GruTensor.count(shape));
     ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
     for (float weight : weights) {
-      Assert.assertEquals(Float.floatToRawIntBits(buffer.getFloat()), Float.floatToRawIntBits(weight));
+      Assert.assertEquals(
+          Float.floatToRawIntBits(buffer.getFloat()), Float.floatToRawIntBits(weight));
     }
 
     JsonObject description = description(first);
@@ -252,23 +261,27 @@ public class GrpCheckpointTest {
     OutcomeShape shape = new OutcomeShape(Variant.TENHOU_4P, GrpFixtures.plainFields(), 6);
     OutcomeNetwork outcomes = GrpFixtures.outcomes(shape, 27, 0.5);
     Path first = root.resolve("outcomes");
-    String sha = GrpCheckpoint.write(outcomes, first);
-    Assert.assertEquals(GrpCheckpoint.sha256(first), sha);
+    GrpCheckpoint.write(outcomes, first);
+    String sha = GrpCheckpoint.sha256(first);
     Assert.assertTrue(sha.matches("[0-9a-f]{64}"), sha);
 
     OutcomeNetwork read = GrpCheckpoint.readOutcomes(first);
     Assert.assertEquals(read.shape(), shape);
     Assert.assertTrue(Arrays.equals(read.weights(), outcomes.weights()));
-    Assert.assertEquals(GrpCheckpoint.write(read, root.resolve("again")), sha);
-    Assert.assertNotEquals(GrpCheckpoint.write(GrpFixtures.outcomes(shape, 28, 0.5), root.resolve("other")), sha);
+    GrpCheckpoint.write(read, root.resolve("again"));
+    Assert.assertEquals(GrpCheckpoint.sha256(root.resolve("again")), sha);
+    GrpCheckpoint.write(GrpFixtures.outcomes(shape, 28, 0.5), root.resolve("other"));
+    Assert.assertNotEquals(GrpCheckpoint.sha256(root.resolve("other")), sha);
     Assert.assertThrows(IOException.class, () -> GrpCheckpoint.write(outcomes, first));
 
     byte[] bytes = Files.readAllBytes(first.resolve(GrpCheckpoint.WEIGHTS_FILE));
     float[] weights = outcomes.weights();
-    Assert.assertEquals(bytes.length, Float.BYTES * OutcomeTensor.starts(shape)[OutcomeTensor.values().length]);
+    Assert.assertEquals(
+        bytes.length, Float.BYTES * OutcomeTensor.starts(shape)[OutcomeTensor.values().length]);
     ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
     for (float weight : weights) {
-      Assert.assertEquals(Float.floatToRawIntBits(buffer.getFloat()), Float.floatToRawIntBits(weight));
+      Assert.assertEquals(
+          Float.floatToRawIntBits(buffer.getFloat()), Float.floatToRawIntBits(weight));
     }
     JsonObject description = description(first);
     Assert.assertEquals(description.keySet(), Set.of("model", "variant", "fields", "hidden"));
@@ -282,19 +295,60 @@ public class GrpCheckpointTest {
     Path leafDirectory = root.resolve("leaf");
     GrpCheckpoint.write(leaf, leafDirectory);
     FinalRound original = FinalRound.of(outcomes, leaf, 1e-4);
-    FinalRound rebuilt = FinalRound.of(
-        GrpCheckpoint.readOutcomes(first), (GrpNetwork) GrpCheckpoint.read(leafDirectory), original.cutoff());
-    GrpState south4 = new GrpState(Variant.TENHOU_4P, 7, 1, 1, new int[] {28_000, 26_000, 24_000, 21_000});
+    FinalRound rebuilt =
+        FinalRound.of(
+            GrpCheckpoint.readOutcomes(first),
+            (GrpNetwork) GrpCheckpoint.read(leafDirectory),
+            original.cutoff());
+    GrpState south4 =
+        new GrpState(Variant.TENHOU_4P, 7, 1, 1, new int[] {28_000, 26_000, 24_000, 21_000});
     double[] expected = new double[24];
     double[] actual = new double[24];
     original.permutations(south4, FinalRoundWorkspace.of(original), expected);
     rebuilt.permutations(south4, FinalRoundWorkspace.of(rebuilt), actual);
     for (int k = 0; k < expected.length; k++) {
-      Assert.assertEquals(Double.doubleToRawLongBits(actual[k]), Double.doubleToRawLongBits(expected[k]), "π " + k);
+      Assert.assertEquals(
+          Double.doubleToRawLongBits(actual[k]), Double.doubleToRawLongBits(expected[k]), "π " + k);
     }
 
     Assert.assertThrows(IOException.class, () -> GrpCheckpoint.read(first));
     Assert.assertThrows(IOException.class, () -> GrpCheckpoint.readOutcomes(leafDirectory));
+  }
+
+  /**
+   * 足すロジットを持つ形は、grp.json にそのまとまりの名前と幅を書き、読み戻すと同じ形と重みになる。足すロジットを持たない形の
+   * grp.json には書かない。幅がこのコードと違うチェックポイントは拒む。
+   */
+  @Test
+  public void linkedOutcomeCheckpointsRoundTrip() throws IOException {
+    for (Variant variant : FinalRound.VARIANTS) {
+      OutcomeShape shape =
+          new OutcomeShape(variant, GrpFixtures.plainFields(), 5, EnumSet.allOf(OutcomeLink.class));
+      OutcomeNetwork outcomes = GrpFixtures.outcomes(shape, 41, 0.5);
+      Path linked = root.resolve("linked-" + variant);
+      GrpCheckpoint.write(outcomes, linked);
+      OutcomeNetwork read = GrpCheckpoint.readOutcomes(linked);
+      Assert.assertEquals(read.shape(), shape);
+      Assert.assertTrue(Arrays.equals(read.weights(), outcomes.weights()));
+      JsonObject links = description(linked).getAsJsonObject("links");
+      for (OutcomeLink link : OutcomeLink.values()) {
+        Assert.assertEquals(links.get(link.name()).getAsInt(), link.width(variant));
+      }
+
+      Path plain = root.resolve("plain-" + variant);
+      GrpCheckpoint.write(
+          GrpFixtures.outcomes(new OutcomeShape(variant, GrpFixtures.plainFields(), 5), 41, 0.5),
+          plain);
+      Assert.assertFalse(description(plain).has("links"));
+      Assert.assertTrue(GrpCheckpoint.readOutcomes(plain).shape().links().isEmpty());
+
+      JsonObject widened = description(linked);
+      widened
+          .getAsJsonObject("links")
+          .addProperty(OutcomeLink.RANK.name(), OutcomeLink.RANK.width(variant) + 1);
+      rewrite(linked, widened);
+      Assert.assertThrows(IOException.class, () -> GrpCheckpoint.readOutcomes(linked));
+    }
   }
 
   @Test
@@ -336,11 +390,13 @@ public class GrpCheckpointTest {
   }
 
   private static JsonObject description(Path directory) throws IOException {
-    String text = Files.readString(directory.resolve(GrpCheckpoint.JSON_FILE), StandardCharsets.UTF_8);
+    String text =
+        Files.readString(directory.resolve(GrpCheckpoint.JSON_FILE), StandardCharsets.UTF_8);
     return JsonParser.parseString(text).getAsJsonObject();
   }
 
   private static void rewrite(Path directory, JsonObject description) throws IOException {
-    Files.writeString(directory.resolve(GrpCheckpoint.JSON_FILE), description.toString(), StandardCharsets.UTF_8);
+    Files.writeString(
+        directory.resolve(GrpCheckpoint.JSON_FILE), description.toString(), StandardCharsets.UTF_8);
   }
 }

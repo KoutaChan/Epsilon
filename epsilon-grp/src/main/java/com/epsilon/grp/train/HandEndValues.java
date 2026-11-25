@@ -42,7 +42,7 @@ public final class HandEndValues {
   /** 精算して局を進めた組の数。配列の位置は h。数え上げた値でなければ null。 */
   final int[] settled;
 
-  /** 半荘が続く葉の数（葉のネットワークの値を読んだ数で、メモから読んだ分も入る）。配列の位置は h。数え上げた値でなければ null。 */
+  /** 半荘が続く葉の数（葉のネットワークの値を読んだ数で、キャッシュから読んだ分も入る）。配列の位置は h。数え上げた値でなければ null。 */
   final int[] leaves;
 
   private HandEndValues(HandEnds ends, double[] phi, double[] marginals, double[] jointLog) {
@@ -50,8 +50,14 @@ public final class HandEndValues {
   }
 
   private HandEndValues(
-      HandEnds ends, double[] phi, double[] marginals, double[] jointLog, double[] filledMass, double[] terminalMass,
-      int[] settled, int[] leaves) {
+      HandEnds ends,
+      double[] phi,
+      double[] marginals,
+      double[] jointLog,
+      double[] filledMass,
+      double[] terminalMass,
+      int[] settled,
+      int[] leaves) {
     this.ends = ends;
     this.phi = phi;
     this.marginals = marginals;
@@ -69,7 +75,8 @@ public final class HandEndValues {
    */
   public static HandEndValues of(HandEnds ends, GrpNetwork network, GrpWorkspace workspace) {
     if (network.variant() != ends.variant) {
-      throw new IllegalArgumentException("A " + network.variant() + " network for " + ends.variant + " hand ends");
+      throw new IllegalArgumentException(
+          "A " + network.variant() + " network for " + ends.variant + " hand ends");
     }
     int seats = ends.seats;
     RankPermutations table = RankPermutations.of(ends.variant);
@@ -116,10 +123,12 @@ public final class HandEndValues {
    */
   public static HandEndValues of(HandEnds ends, Phi phi) {
     if (phi.variant() != ends.variant) {
-      throw new IllegalArgumentException("A " + phi.variant() + " Φ for " + ends.variant + " hand ends");
+      throw new IllegalArgumentException(
+          "A " + phi.variant() + " Φ for " + ends.variant + " hand ends");
     }
     if (phi.utility() != ends.utility) {
-      throw new IllegalArgumentException("Φ of " + phi.utility() + " for hand ends of " + ends.utility);
+      throw new IllegalArgumentException(
+          "Φ of " + phi.utility() + " for hand ends of " + ends.utility);
     }
     if (phi.kind() == Phi.Kind.LATE) {
       return enumerated(ends, phi.finalRound(), phi::finalRoundWorkspace, phi::networkWorkspace);
@@ -149,7 +158,8 @@ public final class HandEndValues {
    *
    * @param workspaces 数え上げの作業領域を作る関数。値を求めるスレッドごとに 1 回呼ぶ（呼び出し元のスレッドでも呼ぶ）
    */
-  public static HandEndValues of(HandEnds ends, FinalRound round, Supplier<FinalRoundWorkspace> workspaces) {
+  public static HandEndValues of(
+      HandEnds ends, FinalRound round, Supplier<FinalRoundWorkspace> workspaces) {
     return enumerated(ends, round, workspaces, null);
   }
 
@@ -162,9 +172,13 @@ public final class HandEndValues {
    * @param networks 葉のネットワークの作業領域を作る関数。値を求めるスレッドごとに 1 回呼ぶ。null なら全ての局末を FinalRound で求める
    */
   private static HandEndValues enumerated(
-      HandEnds ends, FinalRound round, Supplier<FinalRoundWorkspace> workspaces, Supplier<GrpWorkspace> networks) {
+      HandEnds ends,
+      FinalRound round,
+      Supplier<FinalRoundWorkspace> workspaces,
+      Supplier<GrpWorkspace> networks) {
     if (round.variant() != ends.variant) {
-      throw new IllegalArgumentException("A " + round.variant() + " final round for " + ends.variant + " hand ends");
+      throw new IllegalArgumentException(
+          "A " + round.variant() + " final round for " + ends.variant + " hand ends");
     }
     int seats = ends.seats;
     int square = seats * seats;
@@ -177,31 +191,41 @@ public final class HandEndValues {
     double[] terminal = new double[ends.handEnds()];
     int[] settled = new int[ends.handEnds()];
     int[] leaves = new int[ends.handEnds()];
-    ThreadLocal<Local> locals = ThreadLocal.withInitial(() -> new Local(
-        workspaces.get(), networks == null ? null : networks.get(), new double[table.count()], new double[seats],
-        new double[square]));
+    ThreadLocal<Local> locals =
+        ThreadLocal.withInitial(
+            () ->
+                new Local(
+                    workspaces.get(),
+                    networks == null ? null : networks.get(),
+                    new double[table.count()],
+                    new double[seats],
+                    new double[square]));
     // 並列に回す前に、呼び出し元のスレッドで作業領域を 1 つ作る。作れない組み合わせは、ここで例外になる。
     locals.get();
-    IntStream.range(0, ends.handEnds()).parallel().forEach(h -> {
-      Local local = locals.get();
-      double[] probabilities = local.probabilities();
-      if (local.network() != null && !FinalRound.covers(ends.states[h])) {
-        jointLog[h] = network(ends, h, leaf, local.network(), probabilities);
-      } else {
-        FinalRoundWorkspace workspace = local.workspace();
-        long settledBefore = workspace.settled();
-        long leavesBefore = workspace.networkLeaves() + workspace.memoHits();
-        filled[h] = round.permutations(ends.states[h], workspace, probabilities);
-        terminal[h] = workspace.terminalMass();
-        settled[h] = (int) (workspace.settled() - settledBefore);
-        leaves[h] = (int) (workspace.networkLeaves() + workspace.memoHits() - leavesBefore);
-        jointLog[h] = StrictMath.log(probabilities[ends.permutation[h]]);
-      }
-      table.phi(probabilities, ends.dealer[h], ends.utility, local.phi());
-      table.marginals(probabilities, ends.dealer[h], local.marginals());
-      System.arraycopy(local.phi(), 0, phi, h * seats, seats);
-      System.arraycopy(local.marginals(), 0, marginals, h * square, square);
-    });
+    IntStream.range(0, ends.handEnds())
+        .parallel()
+        .forEach(
+            h -> {
+              Local local = locals.get();
+              double[] probabilities = local.probabilities();
+              if (local.network() != null && !FinalRound.covers(ends.states[h])) {
+                jointLog[h] = network(ends, h, leaf, local.network(), probabilities);
+              } else {
+                FinalRoundWorkspace workspace = local.workspace();
+                long settledBefore = workspace.settled();
+                long leavesBefore = workspace.networkLeaves() + workspace.cacheHits();
+                filled[h] = round.permutations(ends.states[h], workspace, probabilities);
+                terminal[h] = workspace.terminalMass();
+                settled[h] = (int) (workspace.settled() - settledBefore);
+                leaves[h] =
+                    (int) (workspace.networkLeaves() + workspace.cacheHits() - leavesBefore);
+                jointLog[h] = StrictMath.log(probabilities[ends.permutation[h]]);
+              }
+              table.phi(probabilities, ends.dealer[h], ends.utility, local.phi());
+              table.marginals(probabilities, ends.dealer[h], local.marginals());
+              System.arraycopy(local.phi(), 0, phi, h * seats, seats);
+              System.arraycopy(local.marginals(), 0, marginals, h * square, square);
+            });
     return new HandEndValues(ends, phi, marginals, jointLog, filled, terminal, settled, leaves);
   }
 
@@ -211,7 +235,11 @@ public final class HandEndValues {
    * @param network 葉のネットワークの作業領域。数え上げない局末を葉のネットワークで求めるときだけ持ち、ほかは null
    */
   private record Local(
-      FinalRoundWorkspace workspace, GrpWorkspace network, double[] probabilities, double[] phi, double[] marginals) {}
+      FinalRoundWorkspace workspace,
+      GrpWorkspace network,
+      double[] probabilities,
+      double[] phi,
+      double[] marginals) {}
 
   /**
    * 局末を選んだ列（{@code HandEnds.select}）の値を作る。選んだ局末の分だけ、この値からコピーする。
@@ -246,8 +274,14 @@ public final class HandEndValues {
       }
     }
     return new HandEndValues(
-        selection, selectedPhi, selectedMarginals, selectedJointLog, selectedFilled, selectedTerminal,
-        selectedSettled, selectedLeaves);
+        selection,
+        selectedPhi,
+        selectedMarginals,
+        selectedJointLog,
+        selectedFilled,
+        selectedTerminal,
+        selectedSettled,
+        selectedLeaves);
   }
 
   /** GrpNetwork 以外の項目（点数の Φ や GRU）の値を、局末ごとに入れて作る。 */
@@ -293,7 +327,7 @@ public final class HandEndValues {
   }
 
   /**
-   * 半荘が続く葉の数（葉のネットワークの値を読んだ数で、メモから読んだ分も入る）。精算した組の数からこの数を引くと、半荘が終わる葉の
+   * 半荘が続く葉の数（葉のネットワークの値を読んだ数で、キャッシュから読んだ分も入る）。精算した組の数からこの数を引くと、半荘が終わる葉の
    * 数になる。数え上げない局末と、数え上げた値でないときは 0。
    */
   public int leaves(int handEnd) {
@@ -379,7 +413,13 @@ public final class HandEndValues {
       int seats = ends.seats;
       if (values.length != seats || ranks.length != seats * seats) {
         throw new IllegalArgumentException(
-            "Expected " + seats + " values and " + seats * seats + " marginals, got " + values.length + " and "
+            "Expected "
+                + seats
+                + " values and "
+                + seats * seats
+                + " marginals, got "
+                + values.length
+                + " and "
                 + ranks.length);
       }
       Objects.checkIndex(handEnd, filled.length);

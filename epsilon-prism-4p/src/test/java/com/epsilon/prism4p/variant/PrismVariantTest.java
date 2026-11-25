@@ -1,5 +1,7 @@
 package com.epsilon.prism4p.variant;
 
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
+
 import com.epsilon.agent.policy.Series;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.TestSettings;
@@ -7,7 +9,6 @@ import com.epsilon.prism.eval.EvaluationTable;
 import com.epsilon.prism.input.InputFormat;
 import com.epsilon.prism.variant.PrismVariant;
 import com.epsilon.prism4p.eval.FourPlayerOpponents;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.file.Path;
 import java.util.List;
 import org.testng.Assert;
@@ -26,8 +27,8 @@ public class PrismVariantTest {
     Assert.assertTrue(four instanceof FourPlayer, four.getClass().getName());
     Assert.assertEquals(four.variant(), Variant.TENHOU_4P);
     Assert.assertEquals(List.copyOf(PrismVariant.all()).size(), 1);
-    Assert.assertSame(four.input(), InputSchema.FORMAT);
-    Assert.assertSame(InputFormat.of(Variant.TENHOU_4P), InputSchema.FORMAT);
+    Assert.assertSame(four.input(), FOUR_PLAYER);
+    Assert.assertSame(InputFormat.of(Variant.TENHOU_4P), FOUR_PLAYER);
     Assert.assertEquals(four.commands(), List.of());
   }
 
@@ -52,9 +53,15 @@ public class PrismVariantTest {
             "major:" + absolute.resolve("macro614"),
             "prism:" + absolute))
       Assert.assertEquals(
-          TestSettings.of(TestSettings.table("x", opponent, 4, 1, 1)).evaluation().tables().get("x").opponent(), opponent);
+          TestSettings.of(TestSettings.table("x", opponent, 4, 1, 1))
+              .evaluation()
+              .tables()
+              .get("x")
+              .opponent(),
+          opponent);
     for (String opponent : List.of("major:macro614", "prism:models", "nano:"))
       Assert.assertThrows(
-          IllegalArgumentException.class, () -> TestSettings.of(TestSettings.table("x", opponent, 4, 1, 1)));
+          IllegalArgumentException.class,
+          () -> TestSettings.of(TestSettings.table("x", opponent, 4, 1, 1)));
   }
 }

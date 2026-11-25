@@ -230,11 +230,19 @@ final class UraReference {
     if (outcome.kind() == EndKind.TSUMO) {
       next = hypothetical.tsumo(start, mask, outcome.winner(0), winnerBases[0], outcome.pao(0));
     } else if (outcome.winnerCount() == 1) {
-      next = hypothetical.ron(start, mask, outcome.loser(), outcome.winner(0), winnerBases[0], outcome.pao(0));
+      next =
+          hypothetical.ron(
+              start, mask, outcome.loser(), outcome.winner(0), winnerBases[0], outcome.pao(0));
     } else if (outcome.pao(0) == RoundOutcome.NO_SEAT && outcome.pao(1) == RoundOutcome.NO_SEAT) {
       next =
           hypothetical.doubleRon(
-              start, mask, outcome.loser(), outcome.winner(0), winnerBases[0], outcome.winner(1), winnerBases[1]);
+              start,
+              mask,
+              outcome.loser(),
+              outcome.winner(0),
+              winnerBases[0],
+              outcome.winner(1),
+              winnerBases[1]);
     } else {
       RoundOutcome copy = hypothetical.outcome();
       copy.setRon(winnerBases[0], outcome.winner(0), outcome.loser(), outcome.pao(0), mask);

@@ -11,7 +11,8 @@ import java.util.Map;
  * @param <S> state.json
  * @param <I> 反復
  */
-public interface RunSession<R extends Record, S extends Record & Progress, I extends Iteration> extends AutoCloseable {
+public interface RunSession<R extends Record, S extends Record & Progress, I extends Iteration>
+    extends AutoCloseable {
 
   /**
    * state.json が無い run の始めの state を作る（次の反復は 1）。バージョン 1 を置く。途中で落ちてもう一度呼ばれても、同じ結果にする。

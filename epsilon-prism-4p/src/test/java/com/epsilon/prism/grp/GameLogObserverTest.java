@@ -38,6 +38,7 @@ import com.epsilon.prism.core.TwinDiscard;
 import com.epsilon.prism.noise.UraSettings;
 import com.epsilon.prism.policy.PolicyRequest;
 import com.epsilon.prism.policy.PolicyService;
+import com.epsilon.prism.rows.CohortRows;
 import com.epsilon.prism.rows.CohortWriter;
 import com.epsilon.prism.run.Snapshot;
 import java.io.IOException;
@@ -60,19 +61,31 @@ import org.testng.annotations.Test;
  */
 public class GameLogObserverTest {
   private static final long SEED = 9_101L;
-  private static final PhiValue SCORE_RANK = PhiValue.grp(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, TENHOU_4P));
+  private static final PhiValue SCORE_RANK =
+      PhiValue.grp(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, TENHOU_4P));
 
   /** q を持つ項目に、LATE のモードの行（打ち切り 1e-5）を当てた値。記録は q を読まないので、パスの先は無くてよい。 */
   private static final PhiValue LATE =
       PhiValue.of(
           new PhiEntry(
-              "g003-a1", PhiEntryKind.NETWORK, TENHOU_4P, "/grp/a", "aa", "", "", "/grp/q", "qq", 4, PhiEntry.INITIAL_ID,
+              "g003-a1",
+              PhiEntryKind.NETWORK,
+              TENHOU_4P,
+              "/grp/a",
+              "aa",
+              "",
+              "",
+              "/grp/q",
+              "qq",
+              4,
+              PhiEntry.INITIAL_ID,
               "test"),
           ModeLine.late(1e-5, 4, "x"));
 
   /** ラベル行、ロールイン、写しの中の行がどれも出るようにした抽出率（本番より高い）。 */
   private static final Sampling SAMPLING =
-      TestSampling.grouped(0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
+      TestSampling.grouped(
+          0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
 
   /** 一様分布を ε_b = 0.05 だけ混ぜる行動方策。 */
   private static final Behaviour FLOOR = new Behaviour(0.05, 0, CrnScheme.TWO_STAGE_FLOOR);
@@ -142,11 +155,12 @@ public class GameLogObserverTest {
     Collected off = collect(null, 3, 4);
     var log = GameLogObserver.open(4, SCORE_RANK, 0);
     Collected on = collect(log, 3, 4);
-    Assert.assertTrue(off.rows().rows() > 0, "no rows");
+    Assert.assertTrue(!off.rows().isEmpty(), "no rows");
     Assert.assertEquals(on.rows(), off.rows());
     Assert.assertEquals(on.result().counts().hands(), off.result().counts().hands());
     Assert.assertEquals(log.seal(on.result().counts()).games().size(), GAMES);
-    Assert.assertEquals(log.countedHands(on.result().counts()).hands(), on.result().counts().hands());
+    Assert.assertEquals(
+        log.countedHands(on.result().counts()).hands(), on.result().counts().hands());
   }
 
   /** GRP のモードの印では、打ち切りが NaN になる。 */
@@ -164,7 +178,9 @@ public class GameLogObserverTest {
       Assert.assertEquals(hands.firstMismatch(), -1);
     }
     // LATE を求めても、q の無い項目は GRP のモードになり、印も GRP のモードになる
-    PhiValue kept = PhiValue.of(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, TENHOU_4P), ModeLine.late(1e-5, 1, "x"));
+    PhiValue kept =
+        PhiValue.of(
+            PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, TENHOU_4P), ModeLine.late(1e-5, 1, "x"));
     Assert.assertEquals(kept.stamp(), new PhiStamp("GRP", Double.NaN));
   }
 
@@ -180,10 +196,13 @@ public class GameLogObserverTest {
       long fed = fault == Fault.CONTINUING_END ? played - 1 : played;
       CollectionMetrics.Snapshot counts = counts(3, fed);
       Assert.assertEquals(log.seal(counts).games().size(), 3, fault.toString());
-      IllegalStateException refused = Assert.expectThrows(IllegalStateException.class, () -> log.countedHands(counts));
+      IllegalStateException refused =
+          Assert.expectThrows(IllegalStateException.class, () -> log.countedHands(counts));
       String expected = fault == Fault.ENDING_END ? "hand results for" : "does not replay";
-      Assert.assertTrue(refused.getMessage().contains(expected), fault + ": " + refused.getMessage());
-      Assert.assertTrue(refused.getMessage().contains(" 100 "), fault + ": " + refused.getMessage());
+      Assert.assertTrue(
+          refused.getMessage().contains(expected), fault + ": " + refused.getMessage());
+      Assert.assertTrue(
+          refused.getMessage().contains(" 100 "), fault + ": " + refused.getMessage());
     }
     // 局末の数が収集と合わなければ、数の列も作らない
     var log = GameLogObserver.open(1, SCORE_RANK, 0);
@@ -202,16 +221,20 @@ public class GameLogObserverTest {
     // 別のルールの卓は記録を止める（例外は外へ出ない）
     Assert.assertEquals(firstRoundEnd(Variant.TENHOU_3P, 4, 2, log).variant(), Variant.TENHOU_3P);
     log.gameEnded(new GameKey(2, 0), last);
-    IllegalStateException stopped = Assert.expectThrows(IllegalStateException.class, () -> log.seal(counts(2, 3)));
+    IllegalStateException stopped =
+        Assert.expectThrows(IllegalStateException.class, () -> log.seal(counts(2, 3)));
     Assert.assertTrue(stopped.getMessage().contains("stopped"), stopped.getMessage());
-    IllegalStateException counted = Assert.expectThrows(IllegalStateException.class, () -> log.countedHands(counts(2, 3)));
+    IllegalStateException counted =
+        Assert.expectThrows(IllegalStateException.class, () -> log.countedHands(counts(2, 3)));
     Assert.assertTrue(counted.getMessage().contains("stopped"), counted.getMessage());
     // 局末の数が収集と合わない記録は確定しない
     var mismatched = GameLogObserver.open(2, SCORE_RANK, 0);
     Assert.assertEquals(firstRoundEnd(TENHOU_4P, 3, 1, mismatched), next);
     mismatched.gameEnded(new GameKey(1, 0), last);
     Assert.assertEquals(mismatched.seal(counts(1, 2)).games().getFirst().handEnds(), List.of(next));
-    Assert.assertEquals(mismatched.seal(counts(1, 2)).games().getFirst().finalScores(), new int[] {40000, 30000, 20000, 10000});
+    Assert.assertEquals(
+        mismatched.seal(counts(1, 2)).games().getFirst().finalScores(),
+        new int[] {40000, 30000, 20000, 10000});
     Assert.expectThrows(IllegalStateException.class, () -> mismatched.seal(counts(1, 3)));
     // 半荘が終わった局末を受けていない半荘は、半荘の記録としては確定できても、数の列にはならない
     Assert.expectThrows(IllegalStateException.class, () -> mismatched.countedHands(counts(1, 2)));
@@ -234,7 +257,8 @@ public class GameLogObserverTest {
    * 乱数の種 {@code seed} で打った半荘のうち、半荘が続く最初の局末を、半荘 {@code gameId} として {@code observer} に渡す。戻り値は
    * その次局の卓。
    */
-  private static GrpState firstRoundEnd(Variant variant, long seed, long gameId, GameObserver observer) {
+  private static GrpState firstRoundEnd(
+      Variant variant, long seed, long gameId, GameObserver observer) {
     GrpState[] first = new GrpState[1];
     new TableWalk(variant, TableWalk.Policy.GREEDY)
         .run(
@@ -273,7 +297,8 @@ public class GameLogObserverTest {
    *
    * @return 打った局の数（渡さなかった局末も数える）
    */
-  private static long walk(Variant variant, long seed, int games, GameObserver observer, Fault fault) {
+  private static long walk(
+      Variant variant, long seed, int games, GameObserver observer, Fault fault) {
     RandomGames play = RandomGames.start(variant, seed);
     long played = 0;
     int continuing = 0;
@@ -287,7 +312,10 @@ public class GameLogObserverTest {
         GameKey key = new GameKey(100 + game, 0);
         boolean first = game == 0;
         boolean withheld =
-            first && (next.gameOver() ? fault == Fault.ENDING_END : fault == Fault.CONTINUING_END && continuing++ == 1);
+            first
+                && (next.gameOver()
+                    ? fault == Fault.ENDING_END
+                    : fault == Fault.CONTINUING_END && continuing++ == 1);
         played++;
         faulted |= withheld;
         if (!withheld) observer.roundEnded(key, play.engine.full(), end);
@@ -335,9 +363,14 @@ public class GameLogObserverTest {
       Assert.assertEquals(outcomes.size(), states.size() + 1, "game " + id);
       for (int hand = 0; hand <= states.size(); hand++) {
         hands.start(first + hand, start);
-        Assert.assertEquals(GrpState.of(start), hand == 0 ? opening : states.get(hand - 1), "game " + id + " hand " + hand);
         Assert.assertEquals(
-            hands.code(first + hand), HandResult.raw(outcomes.get(hand), start.dealer()), "game " + id + " hand " + hand);
+            GrpState.of(start),
+            hand == 0 ? opening : states.get(hand - 1),
+            "game " + id + " hand " + hand);
+        Assert.assertEquals(
+            hands.code(first + hand),
+            HandResult.raw(outcomes.get(hand), start.dealer()),
+            "game " + id + " hand " + hand);
       }
       ended++;
     }
@@ -348,12 +381,12 @@ public class GameLogObserverTest {
   private static final int GAMES = 6;
 
   /**
-   * 1 つの収集の結果と、確定したコホートの行のフィンガープリント。
+   * 1 つの収集の結果と、確定したコホートの行とインデックス。
    *
    * @param result 収集の結果
-   * @param rows 行のフィンガープリント
+   * @param rows 行とインデックス
    */
-  record Collected(Collector.Result result, RowHash.Digest rows) {}
+  record Collected(Collector.Result result, List<CohortRows> rows) {}
 
   /** 半荘 300〜305 を {@code observer} 付きで集め、行を一時ディレクトリのコホートに書いて確定する。 */
   private static Collected collect(GameObserver observer, int workers, int concurrent)
@@ -365,20 +398,34 @@ public class GameLogObserverTest {
         var writer = new CohortWriter(directory, TENHOU_4P, 4, 0, 2, CohortWriter.Tap.NONE)) {
       var cohort =
           new Collector.Cohort(
-              TENHOU_4P, SEED, SEED * 5, ids, DrawOrder.SEAT_STREAMS, SAMPLING, null, URA, FLOOR, TwinDiscard.TSUMOGIRI,
+              TENHOU_4P,
+              SEED,
+              SEED * 5,
+              ids,
+              DrawOrder.SEAT_STREAMS,
+              SAMPLING,
+              null,
+              URA,
+              FLOOR,
+              TwinDiscard.TSUMOGIRI,
               observer);
       var result =
           Collector.collect(
-              table, cohort, new HashedScorePolicy(), Phi.scoreRank(TENHOU_4P, RankUtility.TENHOU), new RowSink(writer));
+              table,
+              cohort,
+              new HashedScorePolicy(),
+              Phi.scoreRank(TENHOU_4P, RankUtility.TENHOU),
+              new RowSink(writer));
       writer.seal();
-      return new Collected(result, RowHash.of(directory));
+      return new Collected(result, CohortRows.read(directory));
     } finally {
       Snapshot.deleteTree(directory);
     }
   }
 
   /** 記録の半荘ごとに、次局の卓の列が収集の渡した列と一致し、最終の点数も一致することを確かめる。 */
-  private static void assertHistories(GameCohort games, Map<Long, List<GrpState>> states, Map<Long, int[]> finals) {
+  private static void assertHistories(
+      GameCohort games, Map<Long, List<GrpState>> states, Map<Long, int[]> finals) {
     int compared = 0;
     for (GameRecord game : games.games()) {
       List<GrpState> expected = states.getOrDefault(game.gameId(), List.of());
@@ -392,8 +439,27 @@ public class GameLogObserverTest {
   /** 収集の数のうち、記録が突き合わせるフィールド（半荘の数と局末の数）だけを入れたもの。 */
   private static CollectionMetrics.Snapshot counts(long games, long hands) {
     return new CollectionMetrics.Snapshot(
-        0, 0, hands, games, 0, 0, new long[1], new long[1], new long[1], new long[1], 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        new CollectionMetrics.Breakdown(Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of()));
+        0,
+        0,
+        hands,
+        games,
+        0,
+        0,
+        new long[1],
+        new long[1],
+        new long[1],
+        new long[1],
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        new CollectionMetrics.Breakdown(
+            Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of()));
   }
 
   /** 受けたものを記録に流しながら、収集が渡す次局の卓、局ごとの結果（半荘が終わった局も）、最終の点数を控えるオブザーバー。 */

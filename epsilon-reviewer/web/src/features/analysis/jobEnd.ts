@@ -1,4 +1,4 @@
-import type { JobStatus } from "../../../../protocol/model.ts";
+import { jobFinished, type JobStatus } from "@epsilon-reviewer/protocol/model";
 import { ApiError } from "../../api/errors.ts";
 
 /**
@@ -10,8 +10,7 @@ import { ApiError } from "../../api/errors.ts";
  */
 export function jobEnded(status: JobStatus, error: unknown): boolean {
   return (
-    status === "failed" ||
-    status === "cancelled" ||
+    (status !== "completed" && jobFinished(status)) ||
     (error instanceof ApiError && error.code === "job_not_found")
   );
 }

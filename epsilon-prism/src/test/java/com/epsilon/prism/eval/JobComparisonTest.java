@@ -99,12 +99,14 @@ public class JobComparisonTest {
 
   /** 牌山と半荘ごとに引いた着順。 */
   private static Places drawn(long salt) {
-    return (wall, game) -> (int) Math.floorMod(SeedMixer.mix64(salt * 1_000 + wall * PER_WALL + game), 3L);
+    return (wall, game) ->
+        (int) Math.floorMod(SeedMixer.mix64(salt * 1_000 + wall * PER_WALL + game), 3L);
   }
 
   /** run の系譜のバージョン。 */
   private static DuelSetup.Entrant version(RunDirectory run, int version) {
-    return new DuelSetup.Entrant("prism:" + run.snapshot(version), EvaluationJobs.label(version), version, null);
+    return new DuelSetup.Entrant(
+        "prism:" + run.snapshot(version), EvaluationJobs.label(version), version, null);
   }
 
   private static DuelSetup.Entrant candidate(RunDirectory run, int version) {
@@ -136,7 +138,19 @@ public class JobComparisonTest {
       RankUtility utility) {
     List<Split> parsed = splits.stream().map(split -> Split.parse(split, 2, variant)).toList();
     return DuelSetup.of(
-        variant, candidate, opponent, seating, parsed, draws, WallSet.FIXED, seed, base, walls, stop, score, utility);
+        variant,
+        candidate,
+        opponent,
+        seating,
+        parsed,
+        draws,
+        WallSet.FIXED,
+        seed,
+        base,
+        walls,
+        stop,
+        score,
+        utility);
   }
 
   /** 基準の計画: 3 人の 1v2 の全ての割り当て、席ごとのツモ列、評価の牌山、全ての牌山を打つ。 */
@@ -167,7 +181,8 @@ public class JobComparisonTest {
         int placement = layout.placement(wall, game);
         int[] slots = slotTable[placement];
         int place = places.place(index, game);
-        StringBuilder line = new StringBuilder().append(wall).append('\t').append(placement).append('\t');
+        StringBuilder line =
+            new StringBuilder().append(wall).append('\t').append(placement).append('\t');
         for (int slot : slots) {
           line.append(slot);
         }
@@ -196,7 +211,12 @@ public class JobComparisonTest {
    * @param lines games.tsv の行（済んだ牌山より後ろの行も書ける）
    */
   private static void job(
-      RunDirectory run, int version, EvaluationPlan plan, JobFile.State state, int recorded, List<String> lines)
+      RunDirectory run,
+      int version,
+      EvaluationPlan plan,
+      JobFile.State state,
+      int recorded,
+      List<String> lines)
       throws IOException {
     String name = RunDirectory.jobName(version, TABLE);
     Path home = run.job(name);
@@ -214,8 +234,21 @@ public class JobComparisonTest {
     DurableFiles.write(
         home.resolve(Jobs.JOB),
         new JobFile(
-            name, version, TABLE, 0, 1, RecordFile.tree(new Definition(TABLE)), RecordFile.tree(plan), state, 1, 0,
-            recorded, bytes, 0, CREATED, null));
+            name,
+            version,
+            TABLE,
+            0,
+            1,
+            RecordFile.tree(new Definition(TABLE)),
+            RecordFile.tree(plan),
+            state,
+            1,
+            0,
+            recorded,
+            bytes,
+            0,
+            CREATED,
+            null));
   }
 
   /** 同値な打牌を既定の切り方（ツモ切り）で切る計画。 */
@@ -224,7 +257,8 @@ public class JobComparisonTest {
   }
 
   /** 基準の計画で全ての牌山を打った、済んだジョブを書く。 */
-  private static void done(RunDirectory run, int version, Places places, String jar) throws IOException {
+  private static void done(RunDirectory run, int version, Places places, String jar)
+      throws IOException {
     done(run, run, version, places, jar);
   }
 
@@ -234,10 +268,16 @@ public class JobComparisonTest {
    * @param home ジョブを書く run
    * @param lineage 候補と相手のバージョンを持つ run（evaluate の --out のジョブは、別の run の系譜のバージョンを測る）
    */
-  private static void done(RunDirectory home, RunDirectory lineage, int version, Places places, String jar)
+  private static void done(
+      RunDirectory home, RunDirectory lineage, int version, Places places, String jar)
       throws IOException {
     DuelSetup duel = duel(candidate(lineage, version), opponent(lineage));
-    job(home, version, plan(duel.candidate(), duel, jar), JobFile.State.DONE, WALLS,
+    job(
+        home,
+        version,
+        plan(duel.candidate(), duel, jar),
+        JobFile.State.DONE,
+        WALLS,
         lines(duel, WALLS, places));
   }
 
@@ -319,7 +359,8 @@ public class JobComparisonTest {
 
     JobComparison comparison = JobComparison.of(TABLE, run, 2, run, 3);
     Assert.assertEquals(comparison.walls(), WALLS);
-    // 差の平均 −3 × (2/3) / 12 = −1/6、偏差の平方和 3 × (1/2)² + 9 × (1/6)² = 1 なので標準誤差は √(1 / 11 / 12)。効用は −1 倍
+    // 差の平均 −3 × (2/3) / 12 = −1/6、偏差の平方和 3 × (1/2)² + 9 × (1/6)² = 1 なので標準誤差は √(1 / 11 / 12)。効用は −1
+    // 倍
     Assert.assertEquals(comparison.rank().mean(), -1 / 6.0, 1e-12);
     Assert.assertEquals(comparison.rank().error(), Math.sqrt(1 / 132.0), 1e-12);
     Assert.assertEquals(comparison.utility().mean(), 1 / 6.0, 1e-12);
@@ -327,7 +368,10 @@ public class JobComparisonTest {
     double[] firstRank = rank(first, WALLS);
     double[] secondRank = rank(second, WALLS);
     assertValue(comparison.rank(), minus(secondRank, firstRank), "rank difference");
-    assertValue(comparison.utility(), minus(utility(second, WALLS), utility(first, WALLS)), "utility difference");
+    assertValue(
+        comparison.utility(),
+        minus(utility(second, WALLS), utility(first, WALLS)),
+        "utility difference");
     assertValue(comparison.first().rank(), firstRank, "first rank");
     assertValue(comparison.second().rank(), secondRank, "second rank");
     assertValue(comparison.first().utility(), utility(first, WALLS), "first utility");
@@ -353,7 +397,12 @@ public class JobComparisonTest {
     done(run, 2, first, "jar-a");
     // 回っている途中のジョブ: job.json は 6 牌山。games.tsv には、その後ろに書いた 2 牌山と書きかけの行もある
     DuelSetup running = duel(candidate(run, 3), opponent(run));
-    job(run, 3, plan(running.candidate(), running, "jar-a"), JobFile.State.RUNNING, 6,
+    job(
+        run,
+        3,
+        plan(running.candidate(), running, "jar-a"),
+        JobFile.State.RUNNING,
+        6,
         lines(running, 8, second));
     Files.writeString(
         run.job("v00003-x1n2").resolve(JobOutputs.GAMES),
@@ -364,7 +413,8 @@ public class JobComparisonTest {
     JobComparison comparison = JobComparison.of(TABLE, run, 2, run, 3);
     Assert.assertEquals(comparison.walls(), 6);
     assertValue(comparison.rank(), minus(rank(second, 6), rank(first, 6)), "rank difference");
-    assertValue(comparison.utility(), minus(utility(second, 6), utility(first, 6)), "utility difference");
+    assertValue(
+        comparison.utility(), minus(utility(second, 6), utility(first, 6)), "utility difference");
     assertValue(comparison.first().rank(), rank(first, 6), "first rank on the paired walls");
     Assert.assertEquals(comparison.first().job().walls() - comparison.walls(), WALLS - 6);
     Assert.assertEquals(comparison.second().job().walls() - comparison.walls(), 0);
@@ -375,22 +425,36 @@ public class JobComparisonTest {
 
     // 済んだ牌山が 1 つだけのジョブとは、対の標準誤差が出せない
     DuelSetup single = duel(candidate(run, 4), opponent(run));
-    job(run, 4, plan(single.candidate(), single, "jar-a"), JobFile.State.RUNNING, 1,
+    job(
+        run,
+        4,
+        plan(single.candidate(), single, "jar-a"),
+        JobFile.State.RUNNING,
+        1,
         lines(single, 1, second));
     SettingsException few =
         Assert.expectThrows(SettingsException.class, () -> JobComparison.of(TABLE, run, 2, run, 4));
     Assert.assertEquals(
         few.problems(),
         List.of(
-            "Cannot pair v00002-x1n2 with v00004-x1n2: a paired standard error needs at least two walls finished in"
-                + " both jobs, not 1"));
+            "Cannot pair v00002-x1n2 with v00004-x1n2: a paired standard error needs at least two"
+                + " walls finished in both jobs, not 1"));
 
     // job.json に書いた牌山の行を失った games.tsv は読まない
     DuelSetup lost = duel(candidate(run, 5), opponent(run));
-    job(run, 5, plan(lost.candidate(), lost, "jar-a"), JobFile.State.RUNNING, 6, lines(lost, 5, second));
-    IOException shorter = Assert.expectThrows(IOException.class, () -> JobComparison.of(TABLE, run, 2, run, 5));
+    job(
+        run,
+        5,
+        plan(lost.candidate(), lost, "jar-a"),
+        JobFile.State.RUNNING,
+        6,
+        lines(lost, 5, second));
+    IOException shorter =
+        Assert.expectThrows(IOException.class, () -> JobComparison.of(TABLE, run, 2, run, 5));
     Assert.assertTrue(
-        shorter.getMessage().contains("holds 15 games, but v00005-x1n2 recorded 6 walls of 3 games"),
+        shorter
+            .getMessage()
+            .contains("holds 15 games, but v00005-x1n2 recorded 6 walls of 3 games"),
         shorter.getMessage());
   }
 
@@ -410,84 +474,238 @@ public class JobComparisonTest {
     List<Apart> apart =
         List.of(
             new Apart(
-                duel(candidate, opponent, Variant.TENHOU_4P, Seating.EVERY_PLACEMENT, List.of("1v3"),
-                    DrawOrder.SEAT_STREAMS, seed, base, WALLS, fixed, Score.RANK, RankUtility.TENHOU),
+                duel(
+                    candidate,
+                    opponent,
+                    Variant.TENHOU_4P,
+                    Seating.EVERY_PLACEMENT,
+                    List.of("1v3"),
+                    DrawOrder.SEAT_STREAMS,
+                    seed,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
                 List.of(
                     "the variant differs (TENHOU_3P and TENHOU_4P)",
                     "the seating differs (EVERY_PLACEMENT [1v2] and EVERY_PLACEMENT [1v3])")),
             new Apart(
-                duel(candidate, version(run, 2), THREE, Seating.EVERY_PLACEMENT, one, DrawOrder.SEAT_STREAMS, seed,
-                    base, WALLS, fixed, Score.RANK, RankUtility.TENHOU),
+                duel(
+                    candidate,
+                    version(run, 2),
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    one,
+                    DrawOrder.SEAT_STREAMS,
+                    seed,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
                 List.of("the opponent differs (" + named(run, 1) + " and " + named(run, 2) + ")")),
             new Apart(
-                duel(candidate, outside("/elsewhere/00001", OPPONENT_SHA), THREE, Seating.EVERY_PLACEMENT, one,
-                    DrawOrder.SEAT_STREAMS, seed, base, WALLS, fixed, Score.RANK, RankUtility.TENHOU),
-                List.of("the opponent differs (" + named(run, 1) + " and nano:v760 sha256 " + OPPONENT_SHA + ")")),
+                duel(
+                    candidate,
+                    outside("/elsewhere/00001", OPPONENT_SHA),
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    one,
+                    DrawOrder.SEAT_STREAMS,
+                    seed,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
+                List.of(
+                    "the opponent differs ("
+                        + named(run, 1)
+                        + " and nano:v760 sha256 "
+                        + OPPONENT_SHA
+                        + ")")),
             new Apart(
-                duel(candidate, new DuelSetup.Entrant(EvaluationTable.HEURISTIC, "heuristic", null, null), THREE,
-                    Seating.EVERY_PLACEMENT, one, DrawOrder.SEAT_STREAMS, seed, base, WALLS, fixed, Score.RANK,
+                duel(
+                    candidate,
+                    new DuelSetup.Entrant(EvaluationTable.HEURISTIC, "heuristic", null, null),
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    one,
+                    DrawOrder.SEAT_STREAMS,
+                    seed,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
                     RankUtility.TENHOU),
                 List.of("the opponent differs (" + named(run, 1) + " and heuristic)")),
             new Apart(
-                duel(candidate, opponent, THREE, Seating.EVERY_PLACEMENT, one, DrawOrder.SEAT_STREAMS, seed + 1,
-                    base, WALLS, fixed, Score.RANK, RankUtility.TENHOU),
+                duel(
+                    candidate,
+                    opponent,
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    one,
+                    DrawOrder.SEAT_STREAMS,
+                    seed + 1,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
                 List.of("the wall seed differs (" + seed + " and " + (seed + 1) + ")")),
             new Apart(
-                duel(candidate, opponent, THREE, Seating.EVERY_PLACEMENT, one, DrawOrder.SEAT_STREAMS, seed,
-                    base + WALLS, WALLS, fixed, Score.RANK, RankUtility.TENHOU),
+                duel(
+                    candidate,
+                    opponent,
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    one,
+                    DrawOrder.SEAT_STREAMS,
+                    seed,
+                    base + WALLS,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
                 List.of("the first wall differs (" + base + " and " + (base + WALLS) + ")")),
             new Apart(
-                duel(candidate, opponent, THREE, Seating.BY_GAME, one, DrawOrder.SEAT_STREAMS, seed, base, WALLS,
-                    fixed, Score.RANK, RankUtility.TENHOU),
+                duel(
+                    candidate,
+                    opponent,
+                    THREE,
+                    Seating.BY_GAME,
+                    one,
+                    DrawOrder.SEAT_STREAMS,
+                    seed,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
                 List.of("the seating differs (EVERY_PLACEMENT [1v2] and BY_GAME [1v2])")),
             new Apart(
-                duel(candidate, opponent, THREE, Seating.EVERY_PLACEMENT, List.of("1v2", "2v1"),
-                    DrawOrder.SEAT_STREAMS, seed, base, WALLS, fixed, Score.RANK, RankUtility.TENHOU),
-                List.of("the seating differs (EVERY_PLACEMENT [1v2] and EVERY_PLACEMENT [1v2, 2v1])")),
+                duel(
+                    candidate,
+                    opponent,
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    List.of("1v2", "2v1"),
+                    DrawOrder.SEAT_STREAMS,
+                    seed,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
+                List.of(
+                    "the seating differs (EVERY_PLACEMENT [1v2] and EVERY_PLACEMENT [1v2, 2v1])")),
             new Apart(
-                duel(candidate, opponent, THREE, Seating.EVERY_PLACEMENT, one, DrawOrder.WALL_ORDER, seed, base,
-                    WALLS, fixed, Score.RANK, RankUtility.TENHOU),
+                duel(
+                    candidate,
+                    opponent,
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    one,
+                    DrawOrder.WALL_ORDER,
+                    seed,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
                 List.of("the draw order differs (SEAT_STREAMS and WALL_ORDER)")),
             new Apart(
-                duel(candidate, opponent, THREE, Seating.EVERY_PLACEMENT, one, DrawOrder.SEAT_STREAMS, seed, base,
-                    WALLS, fixed, Score.RANK, RankUtility.AVERAGE_RANK),
+                duel(
+                    candidate,
+                    opponent,
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    one,
+                    DrawOrder.SEAT_STREAMS,
+                    seed,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.AVERAGE_RANK),
                 List.of("the rank utility differs (TENHOU and AVERAGE_RANK)")),
             new Apart(
-                duel(candidate, opponent, THREE, Seating.EVERY_PLACEMENT, one, DrawOrder.WALL_ORDER, seed + 2,
-                    base, WALLS, fixed, Score.RANK, RankUtility.TENHOU),
+                duel(
+                    candidate,
+                    opponent,
+                    THREE,
+                    Seating.EVERY_PLACEMENT,
+                    one,
+                    DrawOrder.WALL_ORDER,
+                    seed + 2,
+                    base,
+                    WALLS,
+                    fixed,
+                    Score.RANK,
+                    RankUtility.TENHOU),
                 List.of(
                     "the wall seed differs (" + seed + " and " + (seed + 2) + ")",
                     "the draw order differs (SEAT_STREAMS and WALL_ORDER)")));
     for (Apart pair : apart) {
       job(run, 3, plan(candidate, pair.duel(), "jar-a"), JobFile.State.DONE, 0, List.of());
       SettingsException refused =
-          Assert.expectThrows(SettingsException.class, () -> JobComparison.of(TABLE, run, 2, run, 3));
+          Assert.expectThrows(
+              SettingsException.class, () -> JobComparison.of(TABLE, run, 2, run, 3));
       Assert.assertEquals(
           refused.problems(),
-          pair.because().stream().map(because -> "Cannot pair v00002-x1n2 with v00003-x1n2: " + because).toList());
+          pair.because().stream()
+              .map(because -> "Cannot pair v00002-x1n2 with v00003-x1n2: " + because)
+              .toList());
     }
 
     // 候補・牌山の数・止め方・判定に使う量・jar が違っても、相手が同じバージョンなら対にする
     DuelSetup longer =
-        duel(candidate, opponent, THREE, Seating.EVERY_PLACEMENT, one, DrawOrder.SEAT_STREAMS, seed, base, 2 * WALLS,
-            new StopRule.Precision(0.005, 0.01, WALLS), Score.UTILITY, RankUtility.TENHOU);
+        duel(
+            candidate,
+            opponent,
+            THREE,
+            Seating.EVERY_PLACEMENT,
+            one,
+            DrawOrder.SEAT_STREAMS,
+            seed,
+            base,
+            2 * WALLS,
+            new StopRule.Precision(0.005, 0.01, WALLS),
+            Score.UTILITY,
+            RankUtility.TENHOU);
     Places second = drawn(11);
-    job(run, 3, plan(candidate, longer, "jar-b"), JobFile.State.DONE, 2 * WALLS,
+    job(
+        run,
+        3,
+        plan(candidate, longer, "jar-b"),
+        JobFile.State.DONE,
+        2 * WALLS,
         lines(longer, 2 * WALLS, second));
     JobComparison comparison = JobComparison.of(TABLE, run, 2, run, 3);
     Assert.assertEquals(comparison.walls(), WALLS);
-    assertValue(comparison.rank(), minus(rank(second, WALLS), rank(first, WALLS)), "rank difference");
+    assertValue(
+        comparison.rank(), minus(rank(second, WALLS), rank(first, WALLS)), "rank difference");
     Assert.assertEquals(comparison.second().job().walls() - comparison.walls(), WALLS);
     Assert.assertEquals(comparison.first().plan().jar(), "jar-a");
     Assert.assertEquals(comparison.second().plan().jar(), "jar-b");
 
     // 同値な打牌の切り方が違えば、ほかの計画が同じでも対にしない
-    job(run, 4, new EvaluationPlan(candidate, longer, "jar-a", TwinDiscard.TEDASHI), JobFile.State.DONE, 0, List.of());
+    job(
+        run,
+        4,
+        new EvaluationPlan(candidate, longer, "jar-a", TwinDiscard.TEDASHI),
+        JobFile.State.DONE,
+        0,
+        List.of());
     SettingsException tedashi =
         Assert.expectThrows(SettingsException.class, () -> JobComparison.of(TABLE, run, 2, run, 4));
     Assert.assertEquals(
         tedashi.problems(),
-        List.of("Cannot pair v00002-x1n2 with v00004-x1n2: the twin discard differs (TSUMOGIRI and TEDASHI)"));
+        List.of(
+            "Cannot pair v00002-x1n2 with v00004-x1n2: the twin discard differs (TSUMOGIRI and"
+                + " TEDASHI)"));
   }
 
   /** 系譜の外のチェックポイントの相手は SHA-256 で比べる。場所が違っても中身が同じなら対にし、中身が違えば拒む。 */
@@ -496,13 +714,24 @@ public class JobComparisonTest {
     Places first = drawn(29);
     Places second = drawn(31);
     DuelSetup placed = duel(candidate(run, 2), outside("/models/v760", OPPONENT_SHA));
-    job(run, 2, plan(placed.candidate(), placed, "jar-a"), JobFile.State.DONE, WALLS,
+    job(
+        run,
+        2,
+        plan(placed.candidate(), placed, "jar-a"),
+        JobFile.State.DONE,
+        WALLS,
         lines(placed, WALLS, first));
     DuelSetup copied = duel(candidate(run, 3), outside("/copies/v760", OPPONENT_SHA));
-    job(run, 3, plan(copied.candidate(), copied, "jar-a"), JobFile.State.DONE, WALLS,
+    job(
+        run,
+        3,
+        plan(copied.candidate(), copied, "jar-a"),
+        JobFile.State.DONE,
+        WALLS,
         lines(copied, WALLS, second));
     JobComparison comparison = JobComparison.of(TABLE, run, 2, run, 3);
-    assertValue(comparison.rank(), minus(rank(second, WALLS), rank(first, WALLS)), "rank difference");
+    assertValue(
+        comparison.rank(), minus(rank(second, WALLS), rank(first, WALLS)), "rank difference");
 
     String other = "b".repeat(64);
     DuelSetup changed = duel(candidate(run, 4), outside("/models/v760", other));
@@ -512,8 +741,11 @@ public class JobComparisonTest {
     Assert.assertEquals(
         refused.problems(),
         List.of(
-            "Cannot pair v00002-x1n2 with v00004-x1n2: the opponent differs (nano:v760 sha256 " + OPPONENT_SHA
-                + " and nano:v760 sha256 " + other + ")"));
+            "Cannot pair v00002-x1n2 with v00004-x1n2: the opponent differs (nano:v760 sha256 "
+                + OPPONENT_SHA
+                + " and nano:v760 sha256 "
+                + other
+                + ")"));
   }
 
   @Test
@@ -525,18 +757,30 @@ public class JobComparisonTest {
     // 別の系譜のジョブ。相手はその系譜のバージョン 1 で、番号は同じでも中身の違うネットワークなので対にしない
     done(other, 4, theirs, "jar-a");
     SettingsException apart =
-        Assert.expectThrows(SettingsException.class, () -> JobComparison.of(TABLE, run, 5, other, 4));
+        Assert.expectThrows(
+            SettingsException.class, () -> JobComparison.of(TABLE, run, 5, other, 4));
     Assert.assertEquals(
         apart.problems(),
         List.of(
-            "Cannot pair " + run.job("v00005-x1n2") + " with " + other.job("v00004-x1n2")
-                + ": the opponent differs (" + named(run, 1) + " and " + named(other, 1) + ")"));
+            "Cannot pair "
+                + run.job("v00005-x1n2")
+                + " with "
+                + other.job("v00004-x1n2")
+                + ": the opponent differs ("
+                + named(run, 1)
+                + " and "
+                + named(other, 1)
+                + ")"));
 
     // 別の run に書いた、同じ系譜のバージョンを測るジョブ（相手も同じ系譜のバージョン 1）とは対にする
     done(other, run, 5, theirs, "jar-a");
     JobComparison comparison = JobComparison.of(TABLE, run, 5, other, 5);
-    assertValue(comparison.rank(), minus(rank(theirs, WALLS), rank(mine, WALLS)), "rank difference");
-    assertValue(comparison.utility(), minus(utility(theirs, WALLS), utility(mine, WALLS)), "utility difference");
+    assertValue(
+        comparison.rank(), minus(rank(theirs, WALLS), rank(mine, WALLS)), "rank difference");
+    assertValue(
+        comparison.utility(),
+        minus(utility(theirs, WALLS), utility(mine, WALLS)),
+        "utility difference");
     Assert.assertEquals(comparison.first().run(), run);
     Assert.assertEquals(comparison.second().run(), other);
 
@@ -544,7 +788,8 @@ public class JobComparisonTest {
     SettingsException itself =
         Assert.expectThrows(SettingsException.class, () -> JobComparison.of(TABLE, run, 5, run, 5));
     Assert.assertEquals(
-        itself.problems(), List.of("Both jobs are " + run.job("v00005-x1n2") + "; compare two different jobs"));
+        itself.problems(),
+        List.of("Both jobs are " + run.job("v00005-x1n2") + "; compare two different jobs"));
 
     // 無いジョブとまだ計画の無いジョブは、理由をまとめて出す
     DurableFiles.write(
@@ -564,21 +809,40 @@ public class JobComparisonTest {
         Assert.expectThrows(SettingsException.class, () -> JobComparison.of(TABLE, run, 5, run, 7));
     Assert.assertEquals(
         crowned.problems(),
-        List.of("The job v00007-x1n2 in " + run.root() + " played no walls: it made v00007 the first champion"));
+        List.of(
+            "The job v00007-x1n2 in "
+                + run.root()
+                + " played no walls: it made v00007 the first champion"));
 
     // 別の run との違いは、ジョブのディレクトリで書く
     DuelSetup seeded =
-        duel(candidate(other, 8), opponent(run), THREE, Seating.EVERY_PLACEMENT, List.of("1v2"),
-            DrawOrder.SEAT_STREAMS, 7, Arena.WALL_BASE, WALLS, new StopRule.Fixed(0.01), Score.RANK,
+        duel(
+            candidate(other, 8),
+            opponent(run),
+            THREE,
+            Seating.EVERY_PLACEMENT,
+            List.of("1v2"),
+            DrawOrder.SEAT_STREAMS,
+            7,
+            Arena.WALL_BASE,
+            WALLS,
+            new StopRule.Fixed(0.01),
+            Score.RANK,
             RankUtility.TENHOU);
     job(other, 8, plan(seeded.candidate(), seeded, "jar-a"), JobFile.State.DONE, 0, List.of());
     SettingsException across =
-        Assert.expectThrows(SettingsException.class, () -> JobComparison.of(TABLE, run, 5, other, 8));
+        Assert.expectThrows(
+            SettingsException.class, () -> JobComparison.of(TABLE, run, 5, other, 8));
     Assert.assertEquals(
         across.problems(),
         List.of(
-            "Cannot pair " + run.job("v00005-x1n2") + " with " + other.job("v00008-x1n2")
-                + ": the wall seed differs (" + Arena.EVALUATION_SEED + " and 7)"));
+            "Cannot pair "
+                + run.job("v00005-x1n2")
+                + " with "
+                + other.job("v00008-x1n2")
+                + ": the wall seed differs ("
+                + Arena.EVALUATION_SEED
+                + " and 7)"));
   }
 
   /** report を回して終了コードを確かめ、出力を返す。 */
@@ -610,28 +874,41 @@ public class JobComparisonTest {
     done(run, 3, second, "jar-b");
 
     String printed = report(Exit.OK, "--compare", TABLE, "--versions", "2,3");
-    Assert.assertTrue(printed.startsWith("x1n2: v00003 against v00002 on 12 paired walls (36 games)"), printed);
+    Assert.assertTrue(
+        printed.startsWith("x1n2: v00003 against v00002 on 12 paired walls (36 games)"), printed);
     double[] ranks = minus(rank(second, WALLS), rank(first, WALLS));
     double[] utilities = minus(utility(second, WALLS), utility(first, WALLS));
     Assert.assertTrue(
         line(printed, "rank ")
-            .contains(String.format(Locale.ROOT, "second - first %.6f, paired error %.6f", mean(ranks), error(ranks))),
+            .contains(
+                String.format(
+                    Locale.ROOT,
+                    "second - first %.6f, paired error %.6f",
+                    mean(ranks),
+                    error(ranks))),
         printed);
     Assert.assertTrue(
         line(printed, "utility ")
             .contains(
                 String.format(
-                    Locale.ROOT, "second - first %.6f, paired error %.6f", mean(utilities), error(utilities))),
+                    Locale.ROOT,
+                    "second - first %.6f, paired error %.6f",
+                    mean(utilities),
+                    error(utilities))),
         printed);
     Assert.assertTrue(
-        line(printed, "first ").contains("v00002-x1n2 in " + run.root() + ": DONE, 12 walls (0 unpaired)"), printed);
+        line(printed, "first ")
+            .contains("v00002-x1n2 in " + run.root() + ": DONE, 12 walls (0 unpaired)"),
+        printed);
     Assert.assertTrue(line(printed, "first ").contains("candidate v00002, jar jar-a"), printed);
     Assert.assertTrue(line(printed, "second ").contains("candidate v00003, jar jar-b"), printed);
 
     // --other の run に書いた、同じ系譜の同じバージョンを測るジョブ
     RunDirectory other = new RunDirectory(root.resolve("b"));
     done(other, run, 2, second, "jar-a");
-    String across = report(Exit.OK, "--compare", TABLE, "--versions", "2,2", "--other", other.root().toString());
+    String across =
+        report(
+            Exit.OK, "--compare", TABLE, "--versions", "2,2", "--other", other.root().toString());
     Assert.assertTrue(line(across, "second ").contains("v00002-x1n2 in " + other.root()), across);
 
     // 引数の誤りと、対にできない組は使い方の誤り

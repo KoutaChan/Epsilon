@@ -18,7 +18,9 @@ import com.epsilon.prism.grp.GrpBackground;
 import com.epsilon.prism.grp.GrpFiles;
 import com.epsilon.prism.grp.PhiSetup;
 import com.epsilon.prism.learn.Fit;
+import com.epsilon.prism.luck.LedgerCalibrator;
 import com.epsilon.prism.luck.LedgerReport;
+import com.epsilon.prism.luck.RootTraining;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.settings.PrismSettings;
@@ -54,7 +56,10 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
   private PrismSettings latest;
 
   private PrismSession(
-      Launch<PrismSettings> launch, TrainingResources resources, GrpBackground background, EvaluationJobs jobs) {
+      Launch<PrismSettings> launch,
+      TrainingResources resources,
+      GrpBackground background,
+      EvaluationJobs jobs) {
     this.launch = launch;
     this.resources = resources;
     this.background = background;
@@ -86,7 +91,10 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
               control::awaitRunning);
       background.request();
       return new PrismSession(
-          launch, resources, background, new EvaluationJobs(run, settings, resources.runtime(), resources.table()));
+          launch,
+          resources,
+          background,
+          new EvaluationJobs(run, settings, resources.runtime(), resources.table()));
     } catch (RuntimeException | Error failure) {
       resources.close();
       throw failure;
@@ -122,13 +130,19 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
   public PrismState begin(PrismSettings settings) throws IOException {
     Path first = run().snapshot(1);
     if (!Files.isDirectory(first)) {
-      LOG.warn("Starting a PRISM lineage from a blank network: s = 0 everywhere, so version 1 plays argmax p0");
+      LOG.warn(
+          "Starting a PRISM lineage from a blank network: s = 0 everywhere, so version 1 plays"
+              + " argmax p0");
       Path part = PrismStep.part(first);
       DurableFiles.delete(part);
       try (Model blank =
           Fit.blank(
-              settings.module().input(), settings.network().shape(), Device.cpu(), settings.run().seed() + BLANK_SEED)) {
-        Snapshot.fill(part, (PrismNetwork) blank.getBlock(), PolicyParams.of(1));
+              settings.module().input(),
+              settings.network().shape(),
+              Device.cpu(),
+              settings.run().seed() + BLANK_SEED)) {
+        Snapshot.fill(
+            part, (PrismNetwork) blank.getBlock(), PolicyParams.of(1, settings.fit().agariOrder()));
       }
       DurableFiles.seal(part, first);
     }
@@ -143,25 +157,45 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
   }
 
   /**
-   * 段の報告から、次の state（持ち越し・行の総数）と、クラスごとの詳しい表の行を作る。帳簿を当てはめた反復では、
+   * 段の報告から、次の state（持ち越し・行の総数）と、クラスごとの詳しい表の行を作る。学習の段が次の反復の帳簿の補正率を当てはめて
+   * いれば（{@value LearnReport#CALIBRATOR}）、それも持ち越しに入れる。帳簿を当てはめた反復では、
    * 学習の段の出力にある帳簿の報告の全体も、reports の {@value LearnReport#LEDGER_LINES} に 1 行残す。反復の作業ディレクトリは
    * 反復を閉じると消えるので、その前に残しておく。
    */
   @Override
-  public Closing<PrismState> close(PrismIteration iteration, PrismState state, Map<String, StepReport> steps)
+  public Closing<PrismState> close(
+      PrismIteration iteration, PrismState state, Map<String, StepReport> steps)
       throws IOException {
     int t = iteration.number();
     PhiReport phi = (PhiReport) steps.get(PrismStep.PHI.name()).metrics();
     CollectReport collect = (CollectReport) steps.get(PrismStep.COLLECT.name()).metrics();
     LearnReport learn = (LearnReport) steps.get(PrismStep.LEARN.name()).metrics();
-    PrismCarry carry = new PrismCarry(learn.appliedR2(), CarryKey.of(iteration.settings(), phi.value().entry()));
+    Path learned = iteration.work().resolve(LearnStep.LEARN);
+    Path calibrator = learned.resolve(LearnReport.CALIBRATOR);
+    Path roots = RootTraining.State.file(learned, t);
+    boolean carryRoots = Files.exists(roots);
+    if (carryRoots) {
+      Path target = RootTraining.State.file(run().reports(), t);
+      DurableFiles.createDirectories(target.getParent());
+      DurableFiles.write(target, output -> Files.copy(roots, output));
+    }
+    PrismCarry carry =
+        new PrismCarry(
+            learn.appliedR2(),
+            CarryKey.of(iteration.settings(), phi.value().entry()),
+            Files.exists(calibrator)
+                ? RecordFile.read(LedgerCalibrator.class, calibrator).value()
+                : null,
+            carryRoots ? t : null);
     // コホートを確定した後に王者へ戻すと決まった反復では、戻しを次の反復に送る
     int start = state.start() == collect.start() ? t + 1 : state.start();
-    PrismState next = new PrismState(t + 1, state.totalRows() + collect.rows(), carry, start, state.regression());
+    PrismState next =
+        new PrismState(t + 1, state.totalRows() + collect.rows(), carry, start, state.regression());
     CollectReport.Classes collected =
-        RecordFile.read(CollectReport.Classes.class, run().rows(t).resolve(CollectReport.CLASSES)).value();
-    Path learned = iteration.work().resolve(LearnStep.LEARN);
-    LedgerReport.Classes ledger = RecordFile.read(LedgerReport.Classes.class, learned.resolve(LearnReport.CLASSES)).value();
+        RecordFile.read(CollectReport.Classes.class, run().rows(t).resolve(CollectReport.CLASSES))
+            .value();
+    LedgerReport.Classes ledger =
+        RecordFile.read(LedgerReport.Classes.class, learned.resolve(LearnReport.CLASSES)).value();
     LedgerReport.Summary summary = learn.ledger();
     Map<String, Record> reports = new LinkedHashMap<>();
     reports.put(
@@ -192,6 +226,7 @@ final class PrismSession implements RunSession<PrismSettings, PrismState, PrismI
     int newest = state.next() - 1 - latest.fit().keepCohorts();
     for (int cohort : sealedCohorts(run())) {
       if (cohort <= newest) {
+        if (cohort > 1) Files.deleteIfExists(RootTraining.State.file(run().reports(), cohort - 1));
         DurableFiles.delete(run().rows(cohort));
         LOG.info("Removed cohort {} (keeping {})", cohort, latest.fit().keepCohorts());
       }

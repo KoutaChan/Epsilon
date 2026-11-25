@@ -145,7 +145,8 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
         offset += field.width();
       }
       if (offset != BITS) {
-        throw new IllegalStateException(type.getSimpleName() + " covers " + offset + " bits, not " + BITS);
+        throw new IllegalStateException(
+            type.getSimpleName() + " covers " + offset + " bits, not " + BITS);
       }
     }
 
@@ -185,7 +186,7 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
    *
    * @param code N タグの m
    * @param variant 卓のルール
-   * @param seat 鳴いた席（タグの席）
+   * @param seat 鳴いた席（天鳳の 4 席の上の絶対席。牌譜ではタグの席と同じ）
    * @return 面子とその物理牌
    * @throws IllegalArgumentException 面子のコードでない値か、北抜きのコードか、チーの無いルールでチーのコードを渡したとき
    */
@@ -228,7 +229,8 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
    */
   public static int nukiTile(int code, Variant variant) {
     if (!variant.has(RuleFlag.NUKI)) {
-      throw new IllegalArgumentException(variant + " has no nuki, but Tenhou code " + code + " is one");
+      throw new IllegalArgumentException(
+          variant + " has no nuki, but Tenhou code " + code + " is one");
     }
     int tile = NUKI.get(code, Nuki.TILE);
     if (!nuki(code) || NUKI.get(code, Nuki.PAD) != 0 || Tiles.kind(tile) != Tiles.PEI) {
@@ -266,7 +268,8 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
           case ANKAN -> KAN.put(Kan.TILE, Tiles.physicalId(meld.base(), 0));
         };
     if (!decode(code, variant, seat).equals(this)) {
-      throw new IllegalArgumentException("Tiles " + called + " and " + Arrays.toString(hand) + " do not make " + meld);
+      throw new IllegalArgumentException(
+          "Tiles " + called + " and " + Arrays.toString(hand) + " do not make " + meld);
     }
     return code;
   }
@@ -297,7 +300,8 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
 
   private static TenhouMeldCode chi(int code, Variant variant, int seat) {
     if (!variant.has(RuleFlag.CHI)) {
-      throw new IllegalArgumentException(variant + " has no chi, but Tenhou code " + code + " is one");
+      throw new IllegalArgumentException(
+          variant + " has no chi, but Tenhou code " + code + " is one");
     }
     int run = CHI.get(code, Chi.RUN);
     int sequence = run / RUN;
@@ -316,7 +320,8 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
     TileSet set = requireTiles(variant, tiles);
     int called = tiles[position];
     int[] hand = without(tiles, called);
-    return new TenhouMeldCode(Meld.chi(base, base + position, aka(set, called, hand)), called, hand);
+    return new TenhouMeldCode(
+        Meld.chi(base, base + position, aka(set, called, hand)), called, hand);
   }
 
   /**
@@ -337,7 +342,11 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
     TileSet set = requireTiles(variant, copies(kind));
     int called = pon[calledField % PON_TILES];
     int[] ponHand = without(pon, called);
-    Meld meld = Meld.pon(kind, source(TRIPLET.get(code, Triplet.FROM), variant, seat), aka(set, called, ponHand));
+    Meld meld =
+        Meld.pon(
+            kind,
+            source(TRIPLET.get(code, Triplet.FROM), variant, seat),
+            aka(set, called, ponHand));
     if (!added) {
       return new TenhouMeldCode(meld, called, ponHand);
     }
@@ -354,10 +363,12 @@ public record TenhouMeldCode(Meld meld, int called, int[] hand) {
     TileSet set = requireTiles(variant, all);
     int from = KAN.get(code, Kan.FROM);
     if (from == 0) {
-      return new TenhouMeldCode(Meld.ankan(kind, aka(set, -1, all) != Meld.AkaSource.NONE), -1, all);
+      return new TenhouMeldCode(
+          Meld.ankan(kind, aka(set, -1, all) != Meld.AkaSource.NONE), -1, all);
     }
     int[] hand = without(all, tile);
-    return new TenhouMeldCode(Meld.daiminkan(kind, source(from, variant, seat), aka(set, tile, hand)), tile, hand);
+    return new TenhouMeldCode(
+        Meld.daiminkan(kind, source(from, variant, seat), aka(set, tile, hand)), tile, hand);
   }
 
   private int encodeChi(Variant variant, int seat) {

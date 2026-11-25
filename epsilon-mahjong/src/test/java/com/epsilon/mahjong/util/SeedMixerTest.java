@@ -38,7 +38,8 @@ public class SeedMixerTest {
     Set<Long> seeds = new HashSet<>();
     for (long salt : new long[] {0, 1, 0xC6BC279692B5CC83L}) {
       for (long index = 0; index < 1_000; index++) {
-        Assert.assertTrue(seeds.add(SeedMixer.indexed(42, salt, index)), "salt " + salt + " index " + index);
+        Assert.assertTrue(
+            seeds.add(SeedMixer.indexed(42, salt, index)), "salt " + salt + " index " + index);
       }
     }
   }

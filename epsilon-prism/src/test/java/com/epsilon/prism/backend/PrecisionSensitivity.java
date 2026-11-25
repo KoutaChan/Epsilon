@@ -107,8 +107,9 @@ public final class PrecisionSensitivity {
       }
     }
     log.info(
-        "PRISM-PRECISION snapshot={} rows={} actions={} mean|s|={} mean|s-rowmean|={} meanGap={} narrow(<0.005)={}"
-            + " |FP32-BF16| median={} p99={} centered median={} p99={} argmax={} confident={} (rows {})",
+        "PRISM-PRECISION snapshot={} rows={} actions={} mean|s|={} mean|s-rowmean|={} meanGap={}"
+            + " narrow(<0.005)={} |FP32-BF16| median={} p99={} centered median={} p99={} argmax={}"
+            + " confident={} (rows {})",
         snapshot,
         considered,
         actions,
@@ -121,15 +122,21 @@ public final class PrecisionSensitivity {
         String.format(Locale.ROOT, "%.3e", quantile(centeredDifferences, 0.5)),
         String.format(Locale.ROOT, "%.3e", quantile(centeredDifferences, 0.99)),
         String.format(Locale.ROOT, "%.4f", (double) agree / considered),
-        String.format(Locale.ROOT, "%.4f", confident == 0 ? Double.NaN : (double) confidentAgree / confident),
+        String.format(
+            Locale.ROOT, "%.4f", confident == 0 ? Double.NaN : (double) confidentAgree / confident),
         confident);
   }
 
   /** バッチの行ごとの s を返す。各行の長さは、その行の手の数。 */
   private static List<float[]> scores(
-      PrismNetwork network, ParameterStore store, NDManager manager, HostBatch batch, Precision precision) {
+      PrismNetwork network,
+      ParameterStore store,
+      NDManager manager,
+      HostBatch batch,
+      Precision precision) {
     try (NDManager scope = manager.newSubManager()) {
-      Outputs outputs = network.forward(store, EagerStages.inputs(scope, batch), Pass.inference(precision));
+      Outputs outputs =
+          network.forward(store, EagerStages.inputs(scope, batch), Pass.inference(precision));
       float[] flat = outputs.scores().toFloatArray();
       int capacity = Math.toIntExact(outputs.scores().getShape().get(1));
       List<float[]> rows = new ArrayList<>(outputs.actions().length);
@@ -166,6 +173,8 @@ public final class PrecisionSensitivity {
 
   private static double quantile(List<Double> values, double q) {
     double[] sorted = values.stream().mapToDouble(Double::doubleValue).sorted().toArray();
-    return sorted.length == 0 ? Double.NaN : sorted[Math.min(sorted.length - 1, (int) (q * sorted.length))];
+    return sorted.length == 0
+        ? Double.NaN
+        : sorted[Math.min(sorted.length - 1, (int) (q * sorted.length))];
   }
 }

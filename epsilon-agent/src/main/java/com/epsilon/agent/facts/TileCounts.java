@@ -59,7 +59,8 @@ public final class TileCounts {
    */
   public void begin(Observation o) {
     if (o.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + o.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + o.variant());
     }
     Arrays.fill(visible, 0);
     Arrays.fill(dora, 0);
@@ -117,8 +118,14 @@ public final class TileCounts {
       int left = set.copies(kind) - visible[kind] - hand[kind];
       if (left < 0) {
         throw new IllegalStateException(
-            "More than " + set.copies(kind) + " tiles of kind " + kind + " are known: visible " + visible[kind]
-                + ", hand " + hand[kind]);
+            "More than "
+                + set.copies(kind)
+                + " tiles of kind "
+                + kind
+                + " are known: visible "
+                + visible[kind]
+                + ", hand "
+                + hand[kind]);
       }
       unseen[kind] = left;
       totalUnseen += left;

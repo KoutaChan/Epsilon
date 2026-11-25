@@ -36,8 +36,7 @@ public class LedgerFitWorkTest {
       if (i > 0 && random.nextInt(10) >= 7) game = random.nextInt(300);
       DecisionClass c = i % 3 == 0 ? DecisionClass.CALL : DecisionClass.DISCARD_MID;
       rows.add(
-          LedgerFitTest.row(
-              game, c, LedgerFitTest.ones(), LedgerFitTest.planted(), 0.3, random));
+          LedgerFitTest.row(game, c, LedgerFitTest.ones(), LedgerFitTest.planted(), 0.3, random));
     }
     return rows;
   }
@@ -57,7 +56,9 @@ public class LedgerFitWorkTest {
       }
     }
     Assert.assertEquals(
-        new ArrayList<>(accumulator.byGame.keySet()), new ArrayList<>(expected.keySet()), "cluster order");
+        new ArrayList<>(accumulator.byGame.keySet()),
+        new ArrayList<>(expected.keySet()),
+        "cluster order");
     for (Map.Entry<Long, double[]> entry : expected.entrySet()) {
       double[] got = accumulator.byGame.get(entry.getKey());
       for (int k = 0; k <= F; k++) {
@@ -67,7 +68,8 @@ public class LedgerFitWorkTest {
             "game " + entry.getKey() + " entry " + k);
       }
     }
-    Assert.assertTrue(expected.containsKey(0L) && expected.size() > 250, "games " + expected.size());
+    Assert.assertTrue(
+        expected.containsKey(0L) && expected.size() > 250, "games " + expected.size());
   }
 
   /**
@@ -108,7 +110,8 @@ public class LedgerFitWorkTest {
     log.info(
         String.format(
             Locale.ROOT,
-            "LEDGER fit sums: %d rows of %d games, new games %.1f B per game, known games %.2f B per row",
+            "LEDGER fit sums: %d rows of %d games, new games %.1f B per game, known games %.2f B"
+                + " per row",
             rows.size(),
             games,
             (double) fresh / games,
@@ -125,10 +128,12 @@ public class LedgerFitWorkTest {
   public void theTapeAppendsWithoutAllocating() {
     ThreadMXBean threads = allocationCounter();
     List<SyntheticRow> rows = new ArrayList<>();
-    for (SyntheticRow row : LedgerFitTest.rows(1_001, 0, LedgerFitTest.ones(), LedgerFitTest.planted(), 0.3, 3)) {
+    for (SyntheticRow row :
+        LedgerFitTest.rows(1_001, 0, LedgerFitTest.ones(), LedgerFitTest.planted(), 0.3, 3)) {
       // コホートの行の帳簿は fp16 で正確に表せる値だけなので、テープもその値しか受け付けない
       float[] ledger = row.ledger().clone();
-      for (int k = 0; k < ledger.length; k++) ledger[k] = Float.float16ToFloat(Float.floatToFloat16(ledger[k]));
+      for (int k = 0; k < ledger.length; k++)
+        ledger[k] = Float.float16ToFloat(Float.floatToFloat16(ledger[k]));
       rows.add(LedgerFitTest.withValues(row, row.values(), ledger));
     }
     long best = Long.MAX_VALUE;
@@ -140,7 +145,9 @@ public class LedgerFitWorkTest {
       long allocated = threads.getCurrentThreadAllocatedBytes() - before;
       if (round >= 297) best = Math.min(best, allocated);
     }
-    log.info(String.format(Locale.ROOT, "LEDGER tape: %d rows appended with %d B", rows.size() - 1, best));
+    log.info(
+        String.format(
+            Locale.ROOT, "LEDGER tape: %d rows appended with %d B", rows.size() - 1, best));
     Assert.assertTrue(best <= 4_096, "tape allocated " + best + " B");
   }
 

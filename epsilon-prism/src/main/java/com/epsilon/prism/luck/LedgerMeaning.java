@@ -3,6 +3,8 @@ package com.epsilon.prism.luck;
 import com.epsilon.agent.settings.Case;
 import com.epsilon.agent.settings.Key;
 import com.epsilon.agent.settings.Presence;
+import com.epsilon.prism.noise.LedgerCalibration;
+import com.epsilon.prism.noise.LedgerCalibrationKind;
 import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.epsilon.prism.noise.LedgerSettings;
@@ -28,6 +30,7 @@ import java.util.Set;
  * @param cells 係数を当てはめる区分
  * @param weighting 係数を当てはめるときの行の重み
  * @param ura 立直の和了で終わった局で、局末の値をどう作るか（設定に書く名前）
+ * @param calibration 教師に掛ける帳簿の補正率の形（補正率を教師に使わないモードでは null）
  */
 public record LedgerMeaning(
     List<LedgerColumn> columns,
@@ -40,7 +43,9 @@ public record LedgerMeaning(
     Set<LedgerGroup> apply,
     @Key(doc = "係数を当てはめる区分", presence = Presence.ABSENT) LedgerCells cells,
     LossWeightSettings.Weighting weighting,
-    String ura) {
+    String ura,
+    @Key(doc = "教師に掛ける帳簿の補正率の形（補正率を教師に使わなければ無い）", presence = Presence.ABSENT)
+        LedgerCalibrationKind calibration) {
 
   public LedgerMeaning {
     columns = List.copyOf(columns);
@@ -57,7 +62,10 @@ public record LedgerMeaning(
    * @param catalog ルールで決まる帳簿の列の並び
    */
   static LedgerMeaning of(
-      LedgerSettings ledger, LedgerCatalog catalog, LossWeightSettings lossWeight, UraSettings ura) {
+      LedgerSettings ledger,
+      LedgerCatalog catalog,
+      LossWeightSettings lossWeight,
+      UraSettings ura) {
     LedgerSettings.Recording recording = ledger instanceof LedgerSettings.Recording r ? r : null;
     LedgerSettings.Fitting fitting = ledger instanceof LedgerSettings.Fitting f ? f : null;
     return new LedgerMeaning(
@@ -71,7 +79,27 @@ public record LedgerMeaning(
         fitting == null ? Set.of() : fitting.apply(),
         fitting == null ? null : fitting.cells(),
         lossWeight.fit(),
-        caseName(ura));
+        caseName(ura),
+        fitting != null && fitting.calibration() instanceof LedgerCalibration.Apply scale
+            ? scale.kind()
+            : null);
+  }
+
+  /** 補正方法の切り替えをまたいで、同じ帳簿の列と教師で学んだかを照合する設定。 */
+  public LedgerMeaning scaleFree() {
+    return new LedgerMeaning(
+        columns,
+        mode,
+        compute,
+        pointClip,
+        policyClip,
+        slopeStep,
+        slopeRefresh,
+        apply,
+        cells,
+        weighting,
+        ura,
+        null);
   }
 
   /**
@@ -94,10 +122,16 @@ public record LedgerMeaning(
             new Item("apply", previous.apply, apply),
             new Item("cells", previous.cells, cells),
             new Item("weighting", previous.weighting, weighting),
-            new Item("ura", previous.ura, ura));
+            new Item("ura", previous.ura, ura),
+            new Item("calibration", previous.calibration, calibration));
     for (Item item : items)
       if (!Objects.equals(item.before(), item.after()))
-        return "the ledger " + item.name() + " changed from " + item.before() + " to " + item.after();
+        return "the ledger "
+            + item.name()
+            + " changed from "
+            + item.before()
+            + " to "
+            + item.after();
     return null;
   }
 

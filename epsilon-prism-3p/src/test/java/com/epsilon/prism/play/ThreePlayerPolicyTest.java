@@ -1,6 +1,7 @@
 package com.epsilon.prism.play;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_3P;
+import static com.epsilon.prism.input.InputSchema.THREE_PLAYER;
 
 import ai.djl.Device;
 import ai.djl.ndarray.NDManager;
@@ -26,7 +27,6 @@ import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.policy.PrismPolicy;
 import com.epsilon.prism.run.Snapshot;
-import com.epsilon.prism3p.input.InputSchema;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.file.Files;
@@ -45,6 +45,21 @@ public class ThreePlayerPolicyTest {
   private static final PolicyOptions CPU = PolicyOptions.defaults();
 
   private static final int DECISIONS = 8;
+
+  /** この機械の GPU のプロバイダーで配布モデルを開き、全ての合法手のスコアのビットを参照と照らす。 */
+  @Test(
+      groups = "gpu",
+      dataProvider = "threePlayerModels",
+      dataProviderClass = PublishedModel.class)
+  public void publishedNativeScores(PublishedModel model) throws Exception {
+    model.assertNativeScores();
+  }
+
+  @Test(dataProvider = "threePlayerModels", dataProviderClass = PublishedModel.class)
+  public void publishedWeightsKeepTheirContract(PublishedModel model) throws Exception {
+    PublishedWeights.check(model);
+    model.assertEagerScores();
+  }
 
   @Test(timeOut = 300_000)
   public void aV2SnapshotEvaluatesRealDecisions() throws Exception {
@@ -67,10 +82,14 @@ public class ThreePlayerPolicyTest {
       Path snapshot = root.resolve("1");
       try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
         Snapshot.write(
-            snapshot, PerturbedNetwork.of(manager, InputSchema.FORMAT, PrismShape.standard(2), 19), PolicyParams.of(1));
+            snapshot,
+            PerturbedNetwork.of(manager, THREE_PLAYER, PrismShape.standard(2), 19),
+            PolicyParams.of(1));
       }
       try (Policy family = ModelFamily.of(Series.PRISM).open(snapshot, TENHOU_3P, CPU)) {
-        assertTwins(TwinPolicyWalk.walk(family, TwinDiscard.TSUMOGIRI, TableWalk.Policy.GREEDY, 7, 4, 80, 16));
+        assertTwins(
+            TwinPolicyWalk.walk(
+                family, TwinDiscard.TSUMOGIRI, TableWalk.Policy.GREEDY, 7, 4, 80, 16));
       }
       for (TwinDiscard twins : TwinDiscard.values()) {
         try (Policy table = TwinPolicyWalk.open(snapshot, TENHOU_3P, twins)) {
@@ -93,14 +112,17 @@ public class ThreePlayerPolicyTest {
     try {
       Path snapshot = root.resolve("1");
       try (NDManager manager = NDManager.newBaseManager(Device.cpu())) {
-        PrismNetwork network = new PrismNetwork(InputSchema.FORMAT, shape);
+        PrismNetwork network = new PrismNetwork(THREE_PLAYER, shape);
         network.initialize(manager);
         Snapshot.write(snapshot, network, PolicyParams.of(1));
       }
-      JsonObject model = JsonParser.parseString(Files.readString(snapshot.resolve("m0/model.json"))).getAsJsonObject();
-      Assert.assertEquals(model.get("inputSchema").getAsString(), InputSchema.fingerprint());
-      Assert.assertEquals(model.get("headSchema").getAsString(), TargetSchema.of(TENHOU_3P).fingerprint());
-      Assert.assertSame(PrismNetwork.readFormat(snapshot.resolve("m0")), InputSchema.FORMAT);
+      JsonObject model =
+          JsonParser.parseString(Files.readString(snapshot.resolve("m0/model.json")))
+              .getAsJsonObject();
+      Assert.assertEquals(model.get("inputSchema").getAsString(), THREE_PLAYER.fingerprint());
+      Assert.assertEquals(
+          model.get("headSchema").getAsString(), TargetSchema.of(TENHOU_3P).fingerprint());
+      Assert.assertSame(PrismNetwork.readFormat(snapshot.resolve("m0")), THREE_PLAYER);
       int[] counts = new int[3];
       try (Policy policy = ModelFamily.of(Series.PRISM).open(snapshot, TENHOU_3P, CPU)) {
         Assert.assertTrue(policy instanceof PrismPolicy, policy.getClass().getName());
@@ -114,12 +136,14 @@ public class ThreePlayerPolicyTest {
                 2,
                 (engine, slot) -> {
                   Decisions decisions = engine.decisions();
-                  boolean nuki = decisions.kind(slot) == EngineDecisionKind.TURN && hasNuki(decisions, slot);
+                  boolean nuki =
+                      decisions.kind(slot) == EngineDecisionKind.TURN && hasNuki(decisions, slot);
                   if (counts[0] >= DECISIONS && (!nuki || counts[2] >= 2)) {
                     return;
                   }
                   batch.clear();
-                  int index = writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch);
+                  int index =
+                      writer.capture(engine.view(decisions.seat(slot)), decisions, slot, batch);
                   Observation o = reader.bind(batch, index);
                   Evaluation evaluation = policy.evaluate(o);
                   int n = o.legalActions();
@@ -133,7 +157,8 @@ public class ThreePlayerPolicyTest {
                   if (n == 1) {
                     Assert.assertEquals(evaluation.greedy(), 0);
                   } else {
-                    Query query = new Query(null, 0, slot, 0, batch, index, reader.bind(batch, index));
+                    Query query =
+                        new Query(null, 0, slot, 0, batch, index, reader.bind(batch, index));
                     var attempt = table.tryAcquireIngress(0);
                     Assert.assertTrue(attempt.acquired());
                     table.submit(List.of(query), attempt.ingress()).join();

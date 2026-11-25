@@ -65,11 +65,16 @@ public class RollInSettingsTest {
 
   /** 打牌の 3 クラス。 */
   private static final Set<DecisionClass> DISCARDS =
-      EnumSet.of(DecisionClass.DISCARD_EARLY, DecisionClass.DISCARD_MID, DecisionClass.DISCARD_LATE);
+      EnumSet.of(
+          DecisionClass.DISCARD_EARLY, DecisionClass.DISCARD_MID, DecisionClass.DISCARD_LATE);
 
   /** 副露している席の率を変えるクラス。 */
   private static final Set<DecisionClass> OPENED =
-      EnumSet.of(DecisionClass.DISCARD_EARLY, DecisionClass.DISCARD_MID, DecisionClass.DISCARD_LATE, DecisionClass.THREAT);
+      EnumSet.of(
+          DecisionClass.DISCARD_EARLY,
+          DecisionClass.DISCARD_MID,
+          DecisionClass.DISCARD_LATE,
+          DecisionClass.THREAT);
 
   /** 四人打ちの判断のクラス（北抜きのクラスは四人打ちの設定の表に無く、判断にも現れない）。 */
   private static final Set<DecisionClass> CLASSES = ClassTables.classes(Variant.TENHOU_4P);
@@ -84,7 +89,15 @@ public class RollInSettingsTest {
    */
   private static Collected collect(Sampling sampling, long iterationSeed, long first, int games) {
     return CollectorTest.collectGames(
-        sampling, CollectorTest.LEDGER, iterationSeed, first, games, GREEDY, new HashedScorePolicy(), 2, 4);
+        sampling,
+        CollectorTest.LEDGER,
+        iterationSeed,
+        first,
+        games,
+        GREEDY,
+        new HashedScorePolicy(),
+        2,
+        4);
   }
 
   /** 2 つの抽出率で、四人打ちのクラスの全ての表がビットまで一致することを確かめる。 */
@@ -107,7 +120,10 @@ public class RollInSettingsTest {
   }
 
   private static void assertBits(double actual, double expected, String label) {
-    Assert.assertEquals(Double.doubleToLongBits(actual), Double.doubleToLongBits(expected), label + ": " + actual + " " + expected);
+    Assert.assertEquals(
+        Double.doubleToLongBits(actual),
+        Double.doubleToLongBits(expected),
+        label + ": " + actual + " " + expected);
   }
 
   /** k が、n 回・率 p の二項分布の平均から {@link #SIGMAS} 標準偏差（に端の 1 を足した幅）の内にあることを確かめる。 */
@@ -117,7 +133,8 @@ public class RollInSettingsTest {
 
   /** 数え上げた k が、平均 {@code mean} から {@link #SIGMAS} 標準偏差（分散は {@code variance}。端の 1 を足した幅）の内にあることを確かめる。 */
   static void assertWithin(long k, double mean, double variance, String label) {
-    Assert.assertTrue(Math.abs(k - mean) <= SIGMAS * Math.sqrt(variance) + 1, label + ": mean " + mean);
+    Assert.assertTrue(
+        Math.abs(k - mean) <= SIGMAS * Math.sqrt(variance) + 1, label + ": mean " + mean);
   }
 
   private static long sum(Map<DecisionClass, Long> table) {
@@ -133,7 +150,8 @@ public class RollInSettingsTest {
   /** 根の行を、半荘と判断 ID のキーで引く表。 */
   private static Map<String, Row> roots(List<Row> rows) {
     Map<String, Row> roots = new HashMap<>();
-    for (Row row : rows) if (row.source() == Row.Source.ROOT) roots.put(row.gameId() + ":" + row.decisionId(), row);
+    for (Row row : rows)
+      if (row.source() == Row.Source.ROOT) roots.put(row.gameId() + ":" + row.decisionId(), row);
     return roots;
   }
 
@@ -147,7 +165,10 @@ public class RollInSettingsTest {
   /** 四人打ちの既定の率は、まとめて決めた率（{@link TestSampling#grouped}）で書いた既定値と全ての表で一致する。 */
   @Test
   public void defaultsKeepTheirRates() {
-    assertSameRates(sampling(), TestSampling.grouped(0.05, 0.013, 0.039, 0.0312, 0.104, 1.0, 6, true, 0.1, 0.002, 0.03, 0.1, 0.3, 2));
+    assertSameRates(
+        sampling(),
+        TestSampling.grouped(
+            0.05, 0.013, 0.039, 0.0312, 0.104, 1.0, 6, true, 0.1, 0.002, 0.03, 0.1, 0.3, 2));
   }
 
   /**
@@ -193,12 +214,14 @@ public class RollInSettingsTest {
           String key = row.gameId() + ":" + row.rootDecisionId();
           Assert.assertTrue(perCopy.merge(key, 1, Integer::sum) <= rule.maxLabels(), key);
           if (root.decisionClass() == DecisionClass.THREAT)
-            Assert.assertFalse(DISCARDS.contains(row.decisionClass()), "a discard row in a THREAT copy: " + key);
+            Assert.assertFalse(
+                DISCARDS.contains(row.decisionClass()), "a discard row in a THREAT copy: " + key);
         }
         case ROOT -> {
           RollInRule rule = sampling.rollIn(row.decisionClass());
           int supportSize = Integer.bitCount(row.support());
-          Assert.assertTrue((row.support() >>> row.deviation() & 1) != 0, "deviation outside the support");
+          Assert.assertTrue(
+              (row.support() >>> row.deviation() & 1) != 0, "deviation outside the support");
           Assert.assertEquals(row.propensity(), (float) (rule.rate() * row.deviationProbability()));
           Assert.assertTrue(row.deviationProbability() >= rule.epsilonQ() / supportSize - 1e-6);
           switch (row.decisionClass()) {
@@ -210,14 +233,19 @@ public class RollInSettingsTest {
             }
             case THREAT -> {
               Assert.assertNotEquals(row.deviation(), row.played());
-              Assert.assertEquals(row.support() >>> row.played() & 1, 0, "the played action in an OTHER support");
+              Assert.assertEquals(
+                  row.support() >>> row.played() & 1, 0, "the played action in an OTHER support");
             }
             default -> {}
           }
         }
       }
     }
-    assertWithin(count(breakdown.sameDeviations(), DecisionClass.CALL), sameMean, sameVariance, "CALL same deviations");
+    assertWithin(
+        count(breakdown.sameDeviations(), DecisionClass.CALL),
+        sameMean,
+        sameVariance,
+        "CALL same deviations");
     long callCopyLabels = sum(breakdown.copyLabels().get(DecisionClass.CALL));
     long callDeviators = count(breakdown.deviatorDecisions(), DecisionClass.CALL);
     Assert.assertTrue(callDeviators >= 200, "CALL deviator decisions " + callDeviators);
@@ -233,7 +261,8 @@ public class RollInSettingsTest {
 
     long midCopies = count(breakdown.copies(), DecisionClass.DISCARD_MID);
     long midLabels = sum(breakdown.copyLabels().get(DecisionClass.DISCARD_MID));
-    Assert.assertTrue(midLabels > 0 && midLabels <= midCopies, midLabels + " labels in " + midCopies + " copies");
+    Assert.assertTrue(
+        midLabels > 0 && midLabels <= midCopies, midLabels + " labels in " + midCopies + " copies");
   }
 
   /**
@@ -249,16 +278,24 @@ public class RollInSettingsTest {
       for (Openness hand : Openness.values()) {
         labels += count(breakdown.labels().get(hand), c);
         decisions += count(breakdown.decisions().get(hand), c);
-        Assert.assertTrue(count(breakdown.labels().get(hand), c) <= count(breakdown.decisions().get(hand), c), c + " " + hand);
+        Assert.assertTrue(
+            count(breakdown.labels().get(hand), c) <= count(breakdown.decisions().get(hand), c),
+            c + " " + hand);
       }
-      for (DecisionClass root : DecisionClass.values()) copyLabels += count(breakdown.copyLabels().get(root), c);
+      for (DecisionClass root : DecisionClass.values())
+        copyLabels += count(breakdown.copyLabels().get(root), c);
       Assert.assertEquals(labels, counts.labelRows()[i], c.name());
       Assert.assertEquals(decisions, counts.mainDecisions()[i], c.name());
       Assert.assertEquals(copyLabels, counts.copyLabelRows()[i], c.name());
-      Assert.assertEquals(count(breakdown.copies(), c) + count(breakdown.sameDeviations(), c), counts.roots()[i], c.name());
+      Assert.assertEquals(
+          count(breakdown.copies(), c) + count(breakdown.sameDeviations(), c),
+          counts.roots()[i],
+          c.name());
       Assert.assertTrue(
-          sum(breakdown.copyLabels().get(c)) <= count(breakdown.deviatorDecisions(), c), "copy labels of root " + c);
-      if (count(breakdown.copies(), c) == 0) Assert.assertEquals(count(breakdown.deviatorDecisions(), c), 0, c.name());
+          sum(breakdown.copyLabels().get(c)) <= count(breakdown.deviatorDecisions(), c),
+          "copy labels of root " + c);
+      if (count(breakdown.copies(), c) == 0)
+        Assert.assertEquals(count(breakdown.deviatorDecisions(), c), 0, c.name());
       copies += count(breakdown.copies(), c);
       same += count(breakdown.sameDeviations(), c);
     }
@@ -273,22 +310,31 @@ public class RollInSettingsTest {
   @Test(timeOut = 1_800_000)
   public void aRootRuleChangesOnlyTheRowsOfItsCopies() {
     Collected first = collect(sampling(PER_ROOT), 41_011L, 500, 4);
-    Collected second = collect(sampling(TestSettings.concat(PER_ROOT, "labels.copies.CALL.copyLabelRate=0.1")), 41_011L, 500, 4);
+    Collected second =
+        collect(
+            sampling(TestSettings.concat(PER_ROOT, "labels.copies.CALL.copyLabelRate=0.1")),
+            41_011L,
+            500,
+            4);
     List<Row> kept = new ArrayList<>(), keptSecond = new ArrayList<>();
     long callFirst = 0, callSecond = 0;
     Map<String, Row> firstRoots = roots(first.rows());
     for (Row row : first.rows())
-      if (row.source() == Row.Source.ROLLIN && rootOf(firstRoots, row).decisionClass() == DecisionClass.CALL) callFirst++;
+      if (row.source() == Row.Source.ROLLIN
+          && rootOf(firstRoots, row).decisionClass() == DecisionClass.CALL) callFirst++;
       else kept.add(row);
     Map<String, Row> secondRoots = roots(second.rows());
     for (Row row : second.rows())
-      if (row.source() == Row.Source.ROLLIN && rootOf(secondRoots, row).decisionClass() == DecisionClass.CALL) callSecond++;
+      if (row.source() == Row.Source.ROLLIN
+          && rootOf(secondRoots, row).decisionClass() == DecisionClass.CALL) callSecond++;
       else keptSecond.add(row);
     Assert.assertTrue(callFirst > callSecond, callFirst + " then " + callSecond);
-    Assert.assertTrue(kept.stream().anyMatch(row -> row.source() == Row.Source.ROLLIN), "no other copy rows");
+    Assert.assertTrue(
+        kept.stream().anyMatch(row -> row.source() == Row.Source.ROLLIN), "no other copy rows");
     Assert.assertEquals(CollectorTest.encoded(keptSecond), CollectorTest.encoded(kept));
     Assert.assertEquals(
-        second.result().counts().breakdown().deviatorDecisions(), first.result().counts().breakdown().deviatorDecisions());
+        second.result().counts().breakdown().deviatorDecisions(),
+        first.result().counts().breakdown().deviatorDecisions());
   }
 
   /**
@@ -320,16 +366,24 @@ public class RollInSettingsTest {
       Assert.assertEquals(other.labels().get(Openness.CLOSED), all.labels().get(Openness.CLOSED));
       for (DecisionClass c : DecisionClass.values())
         if (!OPENED.contains(c))
-          Assert.assertEquals(count(other.labels().get(Openness.OPEN), c), count(all.labels().get(Openness.OPEN), c), c.name());
+          Assert.assertEquals(
+              count(other.labels().get(Openness.OPEN), c),
+              count(all.labels().get(Openness.OPEN), c),
+              c.name());
       Set<String> superset = new HashSet<>(CollectorTest.encoded(collected.get(i - 1).rows()));
       for (String row : CollectorTest.encoded(collected.get(i).rows()))
-        Assert.assertTrue(superset.contains(row), "a row of rate " + i + " is not a row of the higher rate");
+        Assert.assertTrue(
+            superset.contains(row), "a row of rate " + i + " is not a row of the higher rate");
     }
     long half = 0;
-    for (DecisionClass c : OPENED) half += count(collected.get(1).result().counts().breakdown().labels().get(Openness.OPEN), c);
+    for (DecisionClass c : OPENED)
+      half += count(collected.get(1).result().counts().breakdown().labels().get(Openness.OPEN), c);
     assertBinomial(half, open, 0.5, "open labels at 0.5");
     for (DecisionClass c : OPENED)
-      Assert.assertEquals(count(collected.get(2).result().counts().breakdown().labels().get(Openness.OPEN), c), 0, c.name());
+      Assert.assertEquals(
+          count(collected.get(2).result().counts().breakdown().labels().get(Openness.OPEN), c),
+          0,
+          c.name());
     for (Collected each : collected) {
       Assert.assertEquals(each.result().counts().rootCount(), 0);
       for (Row row : each.rows()) Assert.assertTrue(Float.isNaN(row.propensity()));
@@ -340,14 +394,20 @@ public class RollInSettingsTest {
   @Test(timeOut = 1_800_000)
   public void configuredRollInDoesNotDependOnScheduling() {
     Sampling sampling =
-        sampling(TestSettings.concat(PER_ROOT, "noise.rates.open.DISCARD_MID=0.2", "noise.rates.open.THREAT=0.5"));
+        sampling(
+            TestSettings.concat(
+                PER_ROOT, "noise.rates.open.DISCARD_MID=0.2", "noise.rates.open.THREAT=0.5"));
     Collected serial =
-        CollectorTest.collectGames(sampling, CollectorTest.LEDGER, 61_017L, 700, 4, FLOOR, new HashedScorePolicy(), 1, 4);
+        CollectorTest.collectGames(
+            sampling, CollectorTest.LEDGER, 61_017L, 700, 4, FLOOR, new HashedScorePolicy(), 1, 4);
     Collected parallel =
-        CollectorTest.collectGames(sampling, CollectorTest.LEDGER, 61_017L, 700, 4, FLOOR, new HashedScorePolicy(), 4, 2);
+        CollectorTest.collectGames(
+            sampling, CollectorTest.LEDGER, 61_017L, 700, 4, FLOOR, new HashedScorePolicy(), 4, 2);
     CollectionMetrics.Snapshot a = serial.result().counts(), b = parallel.result().counts();
-    Assert.assertTrue(a.copies() > 0 && sum(a.labelRows()) > 0 && a.breakdown().openLabels() > 0, a.toString());
-    Assert.assertEquals(CollectorTest.encoded(parallel.rows()), CollectorTest.encoded(serial.rows()));
+    Assert.assertTrue(
+        a.copies() > 0 && sum(a.labelRows()) > 0 && a.breakdown().openLabels() > 0, a.toString());
+    Assert.assertEquals(
+        CollectorTest.encoded(parallel.rows()), CollectorTest.encoded(serial.rows()));
     Assert.assertEquals(b.breakdown(), a.breakdown());
     Assert.assertEquals(Arrays.toString(b.labelRows()), Arrays.toString(a.labelRows()));
     Assert.assertEquals(Arrays.toString(b.copyLabelRows()), Arrays.toString(a.copyLabelRows()));

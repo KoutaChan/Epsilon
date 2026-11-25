@@ -57,10 +57,18 @@ public final class AdamParameters implements AutoCloseable {
    */
   public AdamParameters(float[] weights, int[] starts, Shape[] forms, boolean[] hidden) {
     int blocks = forms.length;
-    if (starts.length != blocks + 1 || hidden.length != blocks || weights.length != starts[blocks]) {
+    if (starts.length != blocks + 1
+        || hidden.length != blocks
+        || weights.length != starts[blocks]) {
       throw new IllegalArgumentException(
-          blocks + " blocks over " + starts.length + " starts and " + hidden.length + " hidden flags, got "
-              + weights.length + " weights");
+          blocks
+              + " blocks over "
+              + starts.length
+              + " starts and "
+              + hidden.length
+              + " hidden flags, got "
+              + weights.length
+              + " weights");
     }
     this.starts = starts.clone();
     this.hidden = hidden.clone();
@@ -70,7 +78,9 @@ public final class AdamParameters implements AutoCloseable {
     firstMoments = new NDArray[blocks];
     secondMoments = new NDArray[blocks];
     for (int block = 0; block < blocks; block++) {
-      trainable[block] = manager.create(Arrays.copyOfRange(weights, starts[block], starts[block + 1]), forms[block]);
+      trainable[block] =
+          manager.create(
+              Arrays.copyOfRange(weights, starts[block], starts[block + 1]), forms[block]);
       trainable[block].setRequiresGradient(true);
       values[block] = trainable[block].stopGradient();
       firstMoments[block] = manager.zeros(forms[block]);
@@ -82,7 +92,8 @@ public final class AdamParameters implements AutoCloseable {
    * ゼロから学習するときの初期の重みを作る。隠れ層の重みは He の初期値で、平均 0、分散 2 / fan-in の正規分布からテンソルの順に
    * 引く（fan-in は形の最初の次元）。ほかの重みは 0 にする。
    */
-  public static float[] scratch(int[] starts, Shape[] forms, boolean[] hidden, SplittableRandom random) {
+  public static float[] scratch(
+      int[] starts, Shape[] forms, boolean[] hidden, SplittableRandom random) {
     float[] weights = new float[starts[forms.length]];
     for (int block = 0; block < forms.length; block++) {
       if (hidden[block]) {
@@ -118,7 +129,8 @@ public final class AdamParameters implements AutoCloseable {
    * @return 更新する前の重みでの損失と、勾配を縮めたかどうか
    * @throws IllegalStateException 損失か勾配のノルムが有限でないとき
    */
-  public TrainingStep step(Forward loss, int rows, double learningRate, double hiddenDecay, double clipNorm) {
+  public TrainingStep step(
+      Forward loss, int rows, double learningRate, double hiddenDecay, double clipNorm) {
     double value;
     try (NDManager scope = manager.newSubManager()) {
       try (GradientCollector collector = manager.getEngine().newGradientCollector()) {

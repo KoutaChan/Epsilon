@@ -44,6 +44,13 @@ public final class TileCopies {
     Arrays.fill(drawn, TurnEvent.NONE);
   }
 
+  /** 局で見えた物理牌を割り当て済みにする。同じ牌を再び見ても割り当ては変わらない。 */
+  public void use(int physicalId) {
+    if (!set.contains(physicalId))
+      throw new IllegalArgumentException("Unknown physical tile: " + physicalId);
+    used[physicalId] = true;
+  }
+
   /** 配牌の 1 枚に物理 id を割り当て、その席の手に入れて返す。 */
   public int deal(int seat, Face face) {
     int tile = allocate(face);
@@ -67,7 +74,10 @@ public final class TileCopies {
   public int discard(int seat, Face face, boolean tsumogiri) {
     int tile;
     if (tsumogiri) {
-      tile = drawn[seat] != TurnEvent.NONE && matches(drawn[seat], face) ? drawn[seat] : TurnEvent.NONE;
+      tile =
+          drawn[seat] != TurnEvent.NONE && matches(drawn[seat], face)
+              ? drawn[seat]
+              : TurnEvent.NONE;
     } else {
       tile = find(seat, face, drawn[seat]);
       if (tile == TurnEvent.NONE) {
@@ -76,7 +86,12 @@ public final class TileCopies {
     }
     if (tile == TurnEvent.NONE) {
       throw new IllegalArgumentException(
-          "Seat " + seat + " holds no " + (tsumogiri ? "drawn " : "") + face.mjai() + " to discard");
+          "Seat "
+              + seat
+              + " holds no "
+              + (tsumogiri ? "drawn " : "")
+              + face.mjai()
+              + " to discard");
     }
     held[seat][tile] = false;
     drawn[seat] = TurnEvent.NONE;
@@ -174,7 +189,8 @@ public final class TileCopies {
     return TurnEvent.NONE;
   }
 
-  private boolean matches(int tile, Face face) {
+  /** 物理牌の種類と赤が表記と一致するか。 */
+  public boolean matches(int tile, Face face) {
     return Tiles.kind(tile) == face.kind() && set.red(tile) == face.red();
   }
 }

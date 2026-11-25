@@ -76,11 +76,12 @@ final class CohortSplit {
     boolean stopping = cohort > window.newest() - GrpRows.STOP_COHORTS;
     Target[] targets = new Target[games];
     for (int index = 0; index < targets.length; index++) {
-      targets[index] = switch (gate.slice(gameIds.applyAsLong(index), gateCohort)) {
-        case TRAIN -> Target.TRAIN;
-        case STOP -> stopping ? Target.STOP : Target.NONE;
-        case GUARD -> Target.NONE;
-      };
+      targets[index] =
+          switch (gate.slice(gameIds.applyAsLong(index), gateCohort)) {
+            case TRAIN -> Target.TRAIN;
+            case STOP -> stopping ? Target.STOP : Target.NONE;
+            case GUARD -> Target.NONE;
+          };
     }
     return targets;
   }

@@ -26,7 +26,11 @@ public record RoundStart(Variant variant, int round, int honba, int kyotaku, int
     }
     if (total != (long) variant.seats() * variant.startPoints()) {
       throw new IllegalArgumentException(
-          "Scores " + Arrays.toString(scores) + " and " + kyotaku + " deposits do not add up to the starting total");
+          "Scores "
+              + Arrays.toString(scores)
+              + " and "
+              + kyotaku
+              + " deposits do not add up to the starting total");
     }
   }
 
@@ -39,10 +43,12 @@ public record RoundStart(Variant variant, int round, int honba, int kyotaku, int
       throw new IllegalArgumentException("Round " + round + " is outside " + variant);
     }
     if (honba < 0 || kyotaku < 0) {
-      throw new IllegalArgumentException("Honba and kyotaku must not be negative: " + honba + ", " + kyotaku);
+      throw new IllegalArgumentException(
+          "Honba and kyotaku must not be negative: " + honba + ", " + kyotaku);
     }
     if (scores.length != variant.seats()) {
-      throw new IllegalArgumentException(variant + " needs " + variant.seats() + " scores, got " + scores.length);
+      throw new IllegalArgumentException(
+          variant + " needs " + variant.seats() + " scores, got " + scores.length);
     }
   }
 
@@ -80,7 +86,16 @@ public record RoundStart(Variant variant, int round, int honba, int kyotaku, int
 
   @Override
   public String toString() {
-    return "RoundStart[" + variant + " round=" + round + " honba=" + honba + " kyotaku=" + kyotaku
-        + " scores=" + Arrays.toString(scores) + "]";
+    return "RoundStart["
+        + variant
+        + " round="
+        + round
+        + " honba="
+        + honba
+        + " kyotaku="
+        + kyotaku
+        + " scores="
+        + Arrays.toString(scores)
+        + "]";
   }
 }

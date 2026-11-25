@@ -36,7 +36,8 @@ public class LateHandEndValuesTest {
     FinalRound round = round(variant, 0.5);
     Phi late = Phi.late(round, UTILITY, 256);
     HandEndValues values = HandEndValues.of(ends, late);
-    HandEndValues network = HandEndValues.of(ends, round.leaf(), GrpWorkspace.of(round.leaf().shape()));
+    HandEndValues network =
+        HandEndValues.of(ends, round.leaf(), GrpWorkspace.of(round.leaf().shape()));
     HandEndValues enumerated = HandEndValues.of(ends, round, () -> FinalRoundWorkspace.of(round));
     Assert.assertTrue(values.enumerated());
     Assert.assertFalse(network.enumerated());
@@ -55,7 +56,8 @@ public class LateHandEndValuesTest {
         filled += values.filledMass(h);
         assertBits(values.filledMass(h), enumerated.filledMass(h), state);
         assertBits(values.terminalMass(h), enumerated.terminalMass(h), state);
-        Assert.assertTrue(values.terminalMass(h) + values.filledMass(h) <= 1 + 1e-12, state.toString());
+        Assert.assertTrue(
+            values.terminalMass(h) + values.filledMass(h) <= 1 + 1e-12, state.toString());
       } else {
         Assert.assertEquals(values.filledMass(h), 0.0, state.toString());
         Assert.assertEquals(values.terminalMass(h), 0.0, state.toString());
@@ -80,7 +82,8 @@ public class LateHandEndValuesTest {
       assertSame(chosen, direct, index);
       assertBits(chosen.phi(index, 0), values.phi(3 * index + 1, 0), selected.state(index));
       assertBits(chosen.filledMass(index), values.filledMass(3 * index + 1), selected.state(index));
-      assertBits(chosen.terminalMass(index), values.terminalMass(3 * index + 1), selected.state(index));
+      assertBits(
+          chosen.terminalMass(index), values.terminalMass(3 * index + 1), selected.state(index));
     }
   }
 
@@ -115,7 +118,7 @@ public class LateHandEndValuesTest {
 
   /**
    * 数え上げる局末の、精算した組の数と半荘が続く葉の数は、その局末だけを新しい作業領域で数え上げたときの数と同じになる。半荘が続く
-   * 葉の数は、精算した組の数から半荘が終わった葉の数を引いた数。葉のメモに当たったかどうかでは変わらないので、もう 1 度求めても同じ
+   * 葉の数は、精算した組の数から半荘が終わった葉の数を引いた数。葉のキャッシュに当たったかどうかでは変わらないので、もう 1 度求めても同じ
    * になる。数え上げない局末と、数え上げで求めていない値では 0。選んだ列にもそのまま移る。
    */
   @Test(dataProvider = "variants")
@@ -125,7 +128,8 @@ public class LateHandEndValuesTest {
     Phi late = Phi.late(round, UTILITY, 256);
     HandEndValues values = HandEndValues.of(ends, late);
     HandEndValues again = HandEndValues.of(ends, late);
-    HandEndValues network = HandEndValues.of(ends, round.leaf(), GrpWorkspace.of(round.leaf().shape()));
+    HandEndValues network =
+        HandEndValues.of(ends, round.leaf(), GrpWorkspace.of(round.leaf().shape()));
     double[] p = new double[RankPermutations.of(variant).count()];
     long leaves = 0;
     long terminal = 0;
@@ -143,12 +147,15 @@ public class LateHandEndValuesTest {
       FinalRoundWorkspace fresh = FinalRoundWorkspace.of(round);
       round.permutations(state, fresh, p);
       Assert.assertEquals(values.settled(h), fresh.settled(), state.toString());
-      Assert.assertEquals(values.leaves(h), fresh.networkLeaves() + fresh.memoHits(), state.toString());
-      Assert.assertEquals(values.settled(h) - values.leaves(h), fresh.terminalLeaves(), state.toString());
+      Assert.assertEquals(
+          values.leaves(h), fresh.networkLeaves() + fresh.cacheHits(), state.toString());
+      Assert.assertEquals(
+          values.settled(h) - values.leaves(h), fresh.terminalLeaves(), state.toString());
       leaves += values.leaves(h);
       terminal += fresh.terminalLeaves();
     }
-    Assert.assertTrue(leaves > 0 && terminal > 0, leaves + " leaves, " + terminal + " terminal leaves");
+    Assert.assertTrue(
+        leaves > 0 && terminal > 0, leaves + " leaves, " + terminal + " terminal leaves");
     HandEnds selected = ends.select(end -> end % 3 == 1);
     HandEndValues chosen = values.select(selected);
     for (int index = 0; index < selected.handEnds(); index++) {
@@ -181,6 +188,8 @@ public class LateHandEndValuesTest {
 
   private static void assertBits(double actual, double expected, GrpState state) {
     Assert.assertEquals(
-        Double.doubleToRawLongBits(actual), Double.doubleToRawLongBits(expected), String.valueOf(state));
+        Double.doubleToRawLongBits(actual),
+        Double.doubleToRawLongBits(expected),
+        String.valueOf(state));
   }
 }

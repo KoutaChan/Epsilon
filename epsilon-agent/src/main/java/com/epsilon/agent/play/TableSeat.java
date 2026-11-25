@@ -24,6 +24,16 @@ public interface TableSeat<Q extends Query> extends AutoCloseable {
   /** O を入れる受付の区分（0 以上）。同じ区分の問い合わせだけを 1 つのバッチにまとめる。問い合わせを作る進行のスレッドが呼ぶ。 */
   int admission(Observation observation);
 
+  /** 観測席の公開イベントの続きから計算する打ち手なら true。 */
+  default boolean reuseEventPrefix() {
+    return false;
+  }
+
+  /** 卓の番号を引き継いだ分岐を、同じ実行先に送るための受付区分を返す。 */
+  default int admission(Observation observation, long wall) {
+    return admission(observation);
+  }
+
   /** 受付の区分ごとに、1 つのバッチに入れられる問い合わせの上限。 */
   default int maxBatch(int admission) {
     return 4096;

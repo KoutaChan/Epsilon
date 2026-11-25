@@ -58,7 +58,11 @@ public abstract class Module extends AbstractBlock {
    * @return パラメーター
    */
   protected final Parameter table(String name, int rows, int dimension) {
-    return register(name, Parameter.Type.WEIGHT, new Shape(rows, dimension), new NormalInitializer(TABLE_SIGMA));
+    return register(
+        name,
+        Parameter.Type.WEIGHT,
+        new Shape(rows, dimension),
+        new NormalInitializer(TABLE_SIGMA));
   }
 
   /**
@@ -83,7 +87,8 @@ public abstract class Module extends AbstractBlock {
     return register(name, Parameter.Type.BIAS, new Shape(size), Initializer.ZEROS);
   }
 
-  private Parameter register(String name, Parameter.Type type, Shape shape, Initializer initializer) {
+  private Parameter register(
+      String name, Parameter.Type type, Shape shape, Initializer initializer) {
     return addParameter(
         Parameter.builder()
             .setName(name)

@@ -20,7 +20,8 @@ public sealed interface OnWorseSettings {
 
   /** 決闘のジョブが run に一時停止の要求を出す。 */
   @Case("PAUSE")
-  record Pause(@Key(doc = "一時停止を要求するまでに「悪い」が続く回数", presence = Presence.REQUIRED) @Range(min = 1) int streak)
+  record Pause(
+      @Key(doc = "一時停止を要求するまでに「悪い」が続く回数", presence = Presence.REQUIRED) @Range(min = 1) int streak)
       implements OnWorseSettings {}
 
   /**

@@ -6,7 +6,6 @@ import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.nn.Parameter;
 import com.epsilon.prism.auxiliary.TargetSchema;
-import com.epsilon.prism.auxiliary.TargetSchema.CandidateTarget;
 
 /**
  * 候補の結果を当てる補助のヘッド。学習のときだけ計算し、推論で使う重みには入れない。

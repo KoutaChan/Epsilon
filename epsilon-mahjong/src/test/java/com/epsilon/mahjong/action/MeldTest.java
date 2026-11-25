@@ -23,9 +23,11 @@ public class MeldTest {
   @Test
   public void idsKeepTheirMeaning() {
     Assert.assertEquals(Meld.chi(Tiles.M1, Tiles.M1, AkaSource.NONE).id(), 36);
-    Assert.assertEquals(Meld.pon(Tiles.P5, RelativeSource.SHIMOCHA, AkaSource.CALLED_TILE).id(), 2269);
+    Assert.assertEquals(
+        Meld.pon(Tiles.P5, RelativeSource.SHIMOCHA, AkaSource.CALLED_TILE).id(), 2269);
     Assert.assertEquals(Meld.ankan(Tiles.CHUN, false).id(), 6480);
-    Assert.assertEquals(Meld.kakan(Meld.pon(Tiles.S5, RelativeSource.TOIMEN, AkaSource.NONE), true).id(), 7611);
+    Assert.assertEquals(
+        Meld.kakan(Meld.pon(Tiles.S5, RelativeSource.TOIMEN, AkaSource.NONE), true).id(), 7611);
   }
 
   @Test
@@ -34,7 +36,9 @@ public class MeldTest {
     for (Meld meld : melds) {
       int position = meld.type() == Type.CHI ? meld.called() - meld.base() : 0;
       int expected =
-          (((meld.type().ordinal() * 34 + meld.base()) * 4 + meld.source().ordinal()) * 3 + position) * 4
+          (((meld.type().ordinal() * 34 + meld.base()) * 4 + meld.source().ordinal()) * 3
+                      + position)
+                  * 4
               + meld.aka().ordinal();
       Assert.assertEquals(meld.id(), expected, meld.toString());
       Assert.assertSame(Meld.of(meld.id()), meld);
@@ -58,7 +62,8 @@ public class MeldTest {
       Assert.assertThrows(IllegalArgumentException.class, () -> Meld.ankan(five, false));
       for (RelativeSource source : RelativeSource.values()) {
         if (source != RelativeSource.NONE) {
-          Assert.assertThrows(IllegalArgumentException.class, () -> Meld.daiminkan(five, source, AkaSource.NONE));
+          Assert.assertThrows(
+              IllegalArgumentException.class, () -> Meld.daiminkan(five, source, AkaSource.NONE));
           Meld pon = Meld.pon(five, source, AkaSource.NONE);
           Assert.assertThrows(IllegalArgumentException.class, () -> Meld.kakan(pon, false));
           Assert.assertSame(Meld.kakan(pon, true).aka(), AkaSource.ADDED_KAN_TILE);
@@ -87,21 +92,32 @@ public class MeldTest {
 
   @Test
   public void impossibleMeldsAreRejected() {
-    Assert.assertThrows(IllegalArgumentException.class, () -> Meld.chi(Tiles.TON, Tiles.TON, AkaSource.NONE));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Meld.chi(Tiles.M8, Tiles.M8, AkaSource.NONE));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Meld.chi(Tiles.M1, Tiles.M4, AkaSource.NONE));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Meld.chi(Tiles.M1, Tiles.M1, AkaSource.CALLED_TILE));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Meld.chi(Tiles.M3, Tiles.M5, AkaSource.CONSUMED_HAND_TILE));
+        IllegalArgumentException.class, () -> Meld.chi(Tiles.TON, Tiles.TON, AkaSource.NONE));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Meld.pon(Tiles.M1, RelativeSource.NONE, AkaSource.NONE));
+        IllegalArgumentException.class, () -> Meld.chi(Tiles.M8, Tiles.M8, AkaSource.NONE));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Meld.pon(Tiles.M1, RelativeSource.SHIMOCHA, AkaSource.CALLED_TILE));
+        IllegalArgumentException.class, () -> Meld.chi(Tiles.M1, Tiles.M4, AkaSource.NONE));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Meld.pon(Tiles.M5, RelativeSource.SHIMOCHA, AkaSource.ADDED_KAN_TILE));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Meld.pon(-1, RelativeSource.SHIMOCHA, AkaSource.NONE));
+        IllegalArgumentException.class, () -> Meld.chi(Tiles.M1, Tiles.M1, AkaSource.CALLED_TILE));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Meld.kakan(Meld.chi(Tiles.M1, Tiles.M1, AkaSource.NONE), false));
+        IllegalArgumentException.class,
+        () -> Meld.chi(Tiles.M3, Tiles.M5, AkaSource.CONSUMED_HAND_TILE));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Meld.pon(Tiles.M1, RelativeSource.NONE, AkaSource.NONE));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Meld.pon(Tiles.M1, RelativeSource.SHIMOCHA, AkaSource.CALLED_TILE));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Meld.pon(Tiles.M5, RelativeSource.SHIMOCHA, AkaSource.ADDED_KAN_TILE));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Meld.pon(-1, RelativeSource.SHIMOCHA, AkaSource.NONE));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Meld.kakan(Meld.chi(Tiles.M1, Tiles.M1, AkaSource.NONE), false));
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> Meld.kakan(Meld.pon(Tiles.M5, RelativeSource.KAMICHA, AkaSource.CALLED_TILE), true));
@@ -112,7 +128,8 @@ public class MeldTest {
 
   @Test
   public void kakanKeepsTheSourceAndTheRedOfItsPon() {
-    Meld kan = Meld.kakan(Meld.pon(Tiles.P5, RelativeSource.KAMICHA, AkaSource.CONSUMED_HAND_TILE), false);
+    Meld kan =
+        Meld.kakan(Meld.pon(Tiles.P5, RelativeSource.KAMICHA, AkaSource.CONSUMED_HAND_TILE), false);
     Assert.assertSame(kan.type(), Type.KAKAN);
     Assert.assertSame(kan.source(), RelativeSource.KAMICHA);
     Assert.assertSame(kan.aka(), AkaSource.CONSUMED_HAND_TILE);

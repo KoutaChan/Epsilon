@@ -1,7 +1,7 @@
 package com.epsilon.prism.run;
 
-import com.epsilon.agent.run.IterationFile;
 import com.epsilon.agent.run.Iteration;
+import com.epsilon.agent.run.IterationFile;
 import com.epsilon.agent.run.RunDirectory;
 import com.epsilon.prism.grp.ActivePhi;
 import com.epsilon.prism.grp.PhiEntry;
@@ -36,7 +36,8 @@ public final class PrismIteration implements Iteration {
   /** 収集のライターが作った帳簿の和（同じ JVM で集めたときだけ）。 */
   private LedgerFit.WriterTap ledger;
 
-  PrismIteration(IterationFile fixed, PrismSettings settings, PrismState state, PrismSession session) {
+  PrismIteration(
+      IterationFile fixed, PrismSettings settings, PrismState state, PrismSession session) {
     this.fixed = Objects.requireNonNull(fixed, "fixed");
     this.settings = Objects.requireNonNull(settings, "settings");
     this.state = Objects.requireNonNull(state, "state");

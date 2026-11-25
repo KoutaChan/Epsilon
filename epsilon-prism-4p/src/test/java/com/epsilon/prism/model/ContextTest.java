@@ -5,7 +5,6 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDManager;
 import ai.djl.training.ParameterStore;
 import com.epsilon.agent.runtime.Precision;
-import com.epsilon.prism.model.FitProbe.Stage;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -47,8 +46,7 @@ public class ContextTest {
       AttentionTape tape = new AttentionTape(new ReferenceAttention());
       tape.open(working);
       Context context =
-          new Context(
-              new ParameterStore(manager, false), working, Precision.FLOAT32, true, tape, FitProbe.NONE);
+          new Context(new ParameterStore(manager, false), working, Precision.FLOAT32, true, tape);
       NDArray carried = working.create(new float[] {1, 2, 3});
       NDArray[] arrays = new NDArray[3];
       NDArray output =
@@ -56,7 +54,7 @@ public class ContextTest {
               scope -> {
                 arrays[0] = carried.mul(3);
                 arrays[1] = carried.add(1);
-                arrays[2] = scope.cut(arrays[1], Stage.O_FFN_BACKWARD, 0);
+                arrays[2] = scope.cut(arrays[1]);
                 return arrays[2].mul(2);
               },
               carried);

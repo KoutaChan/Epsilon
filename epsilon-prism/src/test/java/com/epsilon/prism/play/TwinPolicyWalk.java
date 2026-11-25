@@ -30,7 +30,7 @@ import org.testng.Assert;
  */
 public final class TwinPolicyWalk {
 
-  /** CPU の FP32 の eager で、PRISM のバージョンを評価の卓の入口から開く推論の節。 */
+  /** 評価卓で PRISM を CPU の FP32 で動かすための eager 推論設定。 */
   private static final InferenceSettings CPU =
       new InferenceSettings(List.of("cpu"), Precision.FLOAT32, Kernels.EAGER, 8, 1, 1, 1);
 
@@ -51,9 +51,15 @@ public final class TwinPolicyWalk {
    * @param snapshot バージョンのディレクトリ
    * @param twinDiscard 同値な打牌のうち切る方
    */
-  public static Policy open(Path snapshot, Variant variant, TwinDiscard twinDiscard) throws IOException {
+  public static Policy open(Path snapshot, Variant variant, TwinDiscard twinDiscard)
+      throws IOException {
     return EvaluationTable.open(
-        snapshot.toAbsolutePath().toString(), variant, CPU, twinDiscard, PolicyOptions.defaults(), null);
+        snapshot.toAbsolutePath().toString(),
+        variant,
+        CPU,
+        twinDiscard,
+        PolicyOptions.defaults(),
+        null);
   }
 
   /**
@@ -66,7 +72,13 @@ public final class TwinPolicyWalk {
    * @param play 半荘の打ち方
    */
   public static Counts walk(
-      Policy policy, TwinDiscard twinDiscard, TableWalk.Policy play, long seed, int games, int pairs, int plain) {
+      Policy policy,
+      TwinDiscard twinDiscard,
+      TableWalk.Policy play,
+      long seed,
+      int games,
+      int pairs,
+      int plain) {
     Variant variant = policy.variant();
     ObservationWriter writer = new ObservationWriter(variant);
     ObservationBatch batch = new ObservationBatch(variant, 1 << 12);
@@ -102,17 +114,20 @@ public final class TwinPolicyWalk {
               int best = Greedy.argmax(values, null, n);
               int greedy = evaluation.greedy();
               Assert.assertEquals(greedy, twinDiscard.play(legal, best));
-              int fromHand = TwinDiscard.TEDASHI.play(legal, best), fromDraw = TwinDiscard.TSUMOGIRI.play(legal, best);
+              int fromHand = TwinDiscard.TEDASHI.play(legal, best),
+                  fromDraw = TwinDiscard.TSUMOGIRI.play(legal, best);
               if (fromHand != fromDraw) {
                 Assert.assertFalse(Action.of(legal[fromHand]).selection().tsumogiri());
                 Assert.assertTrue(Action.of(legal[fromDraw]).selection().tsumogiri());
                 Assert.assertEquals(Action.of(legal[fromDraw]).tile(), o.drawnTile());
-                Assert.assertEquals(greedy, twinDiscard == TwinDiscard.TSUMOGIRI ? fromDraw : fromHand);
+                Assert.assertEquals(
+                    greedy, twinDiscard == TwinDiscard.TSUMOGIRI ? fromDraw : fromHand);
                 counts[2]++;
               } else {
                 Assert.assertEquals(greedy, best);
               }
-              Assert.assertEquals(client.decide(engine.view(decisions.seat(slot)), decisions, slot), greedy);
+              Assert.assertEquals(
+                  client.decide(engine.view(decisions.seat(slot)), decisions, slot), greedy);
               Query query = new Query(null, 0, slot, 0, batch, index, reader.bind(batch, index));
               var attempt = table.tryAcquireIngress(0);
               Assert.assertTrue(attempt.acquired());

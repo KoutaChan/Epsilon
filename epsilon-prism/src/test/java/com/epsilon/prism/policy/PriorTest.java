@@ -29,7 +29,9 @@ public class PriorTest {
 
   @Test
   public void discardRatiosFollowShantenAndUkeire() {
-    int[] legal = {dahai(0), dahai(5), Action.discard(9, false, false, true), Action.code(Type.TSUMO_AGARI)};
+    int[] legal = {
+      dahai(0), dahai(5), Action.discard(9, false, false, true), Action.code(Type.TSUMO_AGARI)
+    };
     float[] p = prior(legal, new float[] {1, 2, 1, 0}, new float[] {20, 40, 10, 0});
     assertDistribution(p);
     Assert.assertEquals(Math.log(p[0] / (double) p[1]), -4.0 * (1 - 2) + 0.05 * (20 - 40), 1e-4);
@@ -43,7 +45,9 @@ public class PriorTest {
     float[] p =
         prior(
             new int[] {
-              dahai(3), Action.code(Type.ANKAN, 3, TileSelection.NOT_APPLICABLE), Action.code(Type.TSUMO_AGARI)
+              dahai(3),
+              Action.code(Type.ANKAN, 3, TileSelection.NOT_APPLICABLE),
+              Action.code(Type.TSUMO_AGARI)
             },
             new float[] {0, 0, 0},
             new float[] {30, 0, 0});

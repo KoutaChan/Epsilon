@@ -3,12 +3,16 @@ package com.epsilon.mahjong.shape;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.tile.TileSet;
 import com.epsilon.mahjong.tile.Tiles;
+import com.epsilon.mahjong.util.AllocationProbe;
 import java.util.Random;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-/** 表を引く解析器を総当たり（{@code BruteShape}）と照合し、よく知られた手の待ち、三人打ちの萬子、受け入れも確かめる。 */
+/**
+ * 表を引く解析器を総当たり（{@code BruteShape}）と照合し、よく知られた手の待ち、三人打ちの萬子、受け入れも確かめる。共有の表
+ * （{@link ShapeCache}）の値が解析器と同じことも確かめる。
+ */
 public class ShapeAnalyzerTest {
 
   private static final int SHANTEN_SAMPLES = 2_000;
@@ -28,14 +32,22 @@ public class ShapeAnalyzerTest {
       int melds = random.nextInt(Variant.MAX_MELDS + 1);
       int[] counts = randomHand(random, variant.tiles(), melds, sample, HandShape.MAX_SIZE);
       HandShape hand = ShapeFixtures.shape(counts, melds);
-      Assert.assertEquals(analyzer.shanten(hand), brute.distance(counts, melds) - 1, hand.toString());
-      Assert.assertEquals(analyzer.standardShanten(hand), brute.standard(counts, melds) - 1, hand.toString());
+      Assert.assertEquals(
+          analyzer.shanten(hand), brute.distance(counts, melds) - 1, hand.toString());
+      Assert.assertEquals(
+          analyzer.standardShanten(hand), brute.standard(counts, melds) - 1, hand.toString());
       if (melds == 0) {
-        Assert.assertEquals(ShapeAnalyzer.chiitoitsuShanten(hand), brute.chiitoitsu(counts, melds) - 1, hand.toString());
-        Assert.assertEquals(ShapeAnalyzer.kokushiShanten(hand), brute.kokushi(counts, melds) - 1, hand.toString());
+        Assert.assertEquals(
+            ShapeAnalyzer.chiitoitsuShanten(hand),
+            brute.chiitoitsu(counts, melds) - 1,
+            hand.toString());
+        Assert.assertEquals(
+            ShapeAnalyzer.kokushiShanten(hand), brute.kokushi(counts, melds) - 1, hand.toString());
       } else {
-        Assert.assertThrows(IllegalArgumentException.class, () -> ShapeAnalyzer.chiitoitsuShanten(hand));
-        Assert.assertThrows(IllegalArgumentException.class, () -> ShapeAnalyzer.kokushiShanten(hand));
+        Assert.assertThrows(
+            IllegalArgumentException.class, () -> ShapeAnalyzer.chiitoitsuShanten(hand));
+        Assert.assertThrows(
+            IllegalArgumentException.class, () -> ShapeAnalyzer.kokushiShanten(hand));
       }
     }
   }
@@ -44,6 +56,8 @@ public class ShapeAnalyzerTest {
   public void improvingAndWaitsMatchBruteForce(Variant variant) {
     ShapeAnalyzer analyzer = new ShapeAnalyzer(variant);
     ShapeAnalyzer.Analysis analysis = new ShapeAnalyzer.Analysis();
+    ShapeCache cache = ShapeCache.shared(variant);
+    ShapeAnalyzer.Analysis remembered = new ShapeAnalyzer.Analysis();
     BruteShape brute = new BruteShape(variant.tiles());
     Random random = new Random(47 + variant.ordinal());
     for (int sample = 0; sample < IMPROVING_SAMPLES; sample++) {
@@ -56,10 +70,13 @@ public class ShapeAnalyzerTest {
       analyzer.analyze(hand, analysis);
       Assert.assertEquals(analysis.improving(), improving, hand.toString());
       Assert.assertEquals(analysis.shanten(), analyzer.shanten(hand), hand.toString());
-      Assert.assertEquals(analysis.standardShanten(), analyzer.standardShanten(hand), hand.toString());
+      Assert.assertEquals(
+          analysis.standardShanten(), analyzer.standardShanten(hand), hand.toString());
       if (melds == 0) {
-        Assert.assertEquals(analysis.chiitoitsuShanten(), ShapeAnalyzer.chiitoitsuShanten(hand), hand.toString());
-        Assert.assertEquals(analysis.kokushiShanten(), ShapeAnalyzer.kokushiShanten(hand), hand.toString());
+        Assert.assertEquals(
+            analysis.chiitoitsuShanten(), ShapeAnalyzer.chiitoitsuShanten(hand), hand.toString());
+        Assert.assertEquals(
+            analysis.kokushiShanten(), ShapeAnalyzer.kokushiShanten(hand), hand.toString());
       } else {
         Assert.assertThrows(IllegalStateException.class, analysis::chiitoitsuShanten);
         Assert.assertThrows(IllegalStateException.class, analysis::kokushiShanten);
@@ -67,6 +84,63 @@ public class ShapeAnalyzerTest {
       if (hand.size() == HandShape.MAX_SIZE - 1) {
         Assert.assertEquals(analyzer.waits(hand), brute.waits(counts, melds), hand.toString());
       }
+      // 1 回目は求めて覚え、2 回目は覚えた値を読む。どちらも analyze と同じ結果になる。
+      for (int pass = 0; pass < 2; pass++) {
+        cache.analyze(hand, remembered);
+        assertSameAnalysis(remembered, analysis, hand);
+      }
+    }
+  }
+
+  @Test(dataProvider = "variants")
+  public void sharedCacheMatchesAnalyzeAcrossThreadsAndOverwrites(Variant variant)
+      throws Exception {
+    ShapeAnalyzer analyzer = new ShapeAnalyzer(variant);
+    ShapeCache cache = ShapeCache.shared(variant);
+    var pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+    try {
+      var futures = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+      for (int thread = 0; thread < 8; thread++) {
+        long seed = 61 + 8L * variant.ordinal() + thread;
+        futures.add(
+            pool.submit(
+                () -> {
+                  Random random = new Random(seed);
+                  ShapeAnalyzer.Analysis expected = new ShapeAnalyzer.Analysis();
+                  ShapeAnalyzer.Analysis remembered = new ShapeAnalyzer.Analysis();
+                  // 表の位置の数より多い形を、全てのスレッドが同じ順で何度も引き、書き合いと上書きを起こす。
+                  for (int sample = 0; sample < 60_000; sample++) {
+                    Random hands = new Random(random.nextInt(200_000));
+                    int melds = hands.nextInt(Variant.MAX_MELDS + 1);
+                    HandShape hand =
+                        ShapeFixtures.shape(
+                            randomHand(
+                                hands, variant.tiles(), melds, sample, HandShape.MAX_SIZE - 1),
+                            melds);
+                    analyzer.analyze(hand, expected);
+                    cache.analyze(hand, remembered);
+                    assertSameAnalysis(remembered, expected, hand);
+                  }
+                }));
+      }
+      for (var future : futures) future.get();
+    } finally {
+      pool.shutdownNow();
+    }
+  }
+
+  private static void assertSameAnalysis(
+      ShapeAnalyzer.Analysis actual, ShapeAnalyzer.Analysis expected, HandShape hand) {
+    Assert.assertEquals(actual.improving(), expected.improving(), hand.toString());
+    Assert.assertEquals(actual.shanten(), expected.shanten(), hand.toString());
+    Assert.assertEquals(actual.standardShanten(), expected.standardShanten(), hand.toString());
+    if (hand.melds() == 0) {
+      Assert.assertEquals(
+          actual.chiitoitsuShanten(), expected.chiitoitsuShanten(), hand.toString());
+      Assert.assertEquals(actual.kokushiShanten(), expected.kokushiShanten(), hand.toString());
+    } else {
+      Assert.assertThrows(IllegalStateException.class, actual::chiitoitsuShanten);
+      Assert.assertThrows(IllegalStateException.class, actual::kokushiShanten);
     }
   }
 
@@ -91,8 +165,10 @@ public class ShapeAnalyzerTest {
   @Test(dataProvider = "variants")
   public void kokushiWaitsOnTheMissingOrphanOrAllThirteen(Variant variant) {
     ShapeAnalyzer analyzer = new ShapeAnalyzer(variant);
-    Assert.assertEquals(analyzer.waits(ShapeFixtures.shape("19m19p19s1234567z", 0)), Tiles.TERMINALS_AND_HONORS);
-    Assert.assertEquals(analyzer.waits(ShapeFixtures.shape("119m19p19s123456z", 0)), Tiles.bit(Tiles.CHUN));
+    Assert.assertEquals(
+        analyzer.waits(ShapeFixtures.shape("19m19p19s1234567z", 0)), Tiles.TERMINALS_AND_HONORS);
+    Assert.assertEquals(
+        analyzer.waits(ShapeFixtures.shape("119m19p19s123456z", 0)), Tiles.bit(Tiles.CHUN));
   }
 
   @Test(dataProvider = "variants")
@@ -102,7 +178,8 @@ public class ShapeAnalyzerTest {
         analyzer.waits(ShapeFixtures.shape("111m456p789s11z23s", 0)), ShapeFixtures.kinds("14s"));
     Assert.assertEquals(
         analyzer.waits(ShapeFixtures.shape("11m99m123p456p789s", 0)), ShapeFixtures.kinds("19m"));
-    Assert.assertEquals(analyzer.waits(ShapeFixtures.shape("11p23s", 3)), ShapeFixtures.kinds("14s"));
+    Assert.assertEquals(
+        analyzer.waits(ShapeFixtures.shape("11p23s", 3)), ShapeFixtures.kinds("14s"));
     Assert.assertEquals(analyzer.waits(ShapeFixtures.shape("5z", 4)), Tiles.bit(Tiles.HAKU));
     Assert.assertEquals(analyzer.waits(ShapeFixtures.shape("111m456p789s1z357s", 0)), 0L);
   }
@@ -141,7 +218,8 @@ public class ShapeAnalyzerTest {
     ShapeAnalyzer analyzer = new ShapeAnalyzer(Variant.TENHOU_3P);
     HandShape hand = ShapeFixtures.shape("19m19p19s1234567z", 0);
     long all = Tiles.ALL_KINDS;
-    Assert.assertEquals(analyzer.remaining(hand, new byte[Tiles.KINDS], Tiles.range(Tiles.M2, Tiles.M8)), 0);
+    Assert.assertEquals(
+        analyzer.remaining(hand, new byte[Tiles.KINDS], Tiles.range(Tiles.M2, Tiles.M8)), 0);
     Assert.assertEquals(
         analyzer.remaining(hand, new byte[Tiles.KINDS], all), TileSet.SANMA.size() - hand.tiles());
     Assert.assertEquals(analyzer.acceptance(hand, new byte[Tiles.KINDS]), 13 * 4 - hand.tiles());
@@ -168,11 +246,14 @@ public class ShapeAnalyzerTest {
   private static int[] randomHand(Random random, TileSet set, int melds, int sample, int size) {
     int tiles = size - HandShape.MELD_SIZE * melds;
     return switch (sample % 4) {
-      case 0 -> size == HandShape.MAX_SIZE
-          ? ShapeFixtures.randomComplete(random, set, Variant.MAX_MELDS - melds)
-          : ShapeFixtures.randomNearComplete(random, set, Variant.MAX_MELDS - melds);
+      case 0 ->
+          size == HandShape.MAX_SIZE
+              ? ShapeFixtures.randomComplete(random, set, Variant.MAX_MELDS - melds)
+              : ShapeFixtures.randomNearComplete(random, set, Variant.MAX_MELDS - melds);
       case 1 -> ShapeFixtures.randomNearComplete(random, set, Variant.MAX_MELDS - melds);
-      case 2 -> ShapeFixtures.randomTiles(random, set, random.nextInt(4) == 0 ? random.nextInt(tiles + 1) : tiles);
+      case 2 ->
+          ShapeFixtures.randomTiles(
+              random, set, random.nextInt(4) == 0 ? random.nextInt(tiles + 1) : tiles);
       default -> orphans(random, melds == 0 ? tiles : random.nextInt(tiles + 1));
     };
   }
@@ -187,5 +268,62 @@ public class ShapeAnalyzerTest {
       }
     }
     return counts;
+  }
+
+  private static final int WARM_UP = 20_000;
+  private static final int MEASURED = 100_000;
+
+  @Test
+  public void handAnalysisAndDecompositionAllocateNothingOnceWarm() {
+    AllocationProbe.assertNoAllocation(WARM_UP, MEASURED, new Workload()::run);
+  }
+
+  /** 四人打ちと三人打ちの聴牌・1 向聴の手で、各メソッドを一通り呼ぶ。 */
+  private static final class Workload {
+
+    private final ShapeAnalyzer four = new ShapeAnalyzer(Variant.TENHOU_4P);
+    private final ShapeAnalyzer three = new ShapeAnalyzer(Variant.TENHOU_3P);
+    private final HandShape[] fourHands = {
+      ShapeFixtures.shape("1112345678999m", 0),
+      ShapeFixtures.shape("123m456p789s11z23s", 0),
+      ShapeFixtures.shape("13m456p789s11z237s", 0)
+    };
+    private final HandShape[] threeHands = {
+      ShapeFixtures.shape("11m99m123p456p789s", 0), ShapeFixtures.shape("1111m9999m55p", 1)
+    };
+    private final WinningDecomposition decomposition = new WinningDecomposition();
+    private final byte[] visible = new byte[Tiles.KINDS];
+
+    long run(int rounds) {
+      long checksum = 0;
+      for (int round = 0; round < rounds; round++) {
+        checksum += analyze(four, fourHands[round % fourHands.length], Tiles.S1);
+        checksum += analyze(three, threeHands[round % threeHands.length], Tiles.M1);
+      }
+      return checksum;
+    }
+
+    private long analyze(ShapeAnalyzer analyzer, HandShape hand, int kind) {
+      long checksum =
+          analyzer.shanten(hand)
+              + analyzer.standardShanten(hand)
+              + analyzer.acceptance(hand, visible);
+      long waits = analyzer.waits(hand);
+      checksum += waits ^ analyzer.improving(hand);
+      for (long rest = waits; rest != 0; rest &= rest - 1) {
+        int winning = Long.numberOfTrailingZeros(rest);
+        decomposition.bind(hand, winning);
+        while (decomposition.next()) {
+          checksum +=
+              decomposition.waits(winning) + decomposition.triplets() + decomposition.runs();
+        }
+      }
+      if (hand.count(kind) < Tiles.COPIES) {
+        hand.add(kind);
+        checksum += analyzer.shanten(hand);
+        hand.remove(kind);
+      }
+      return checksum;
+    }
   }
 }

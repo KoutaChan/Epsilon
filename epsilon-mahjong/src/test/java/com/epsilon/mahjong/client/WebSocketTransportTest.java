@@ -27,7 +27,8 @@ public class WebSocketTransportTest {
   @Test(timeOut = 10_000)
   public void aPeerThatAnswersNoPingEndsTheRead() throws Exception {
     try (Peer peer = new Peer(false);
-        WebSocketTransport transport = WebSocketTransport.connect(peer.uri(), Map.of(), PING_INTERVAL)) {
+        WebSocketTransport transport =
+            WebSocketTransport.connect(peer.uri(), Map.of(), PING_INTERVAL)) {
       Assert.assertEquals(transport.read().text(), Peer.GREETING);
       IOException lost = Assert.expectThrows(IOException.class, transport::read);
       Assert.assertTrue(lost.getMessage().contains("of a ping"), lost.getMessage());
@@ -38,7 +39,8 @@ public class WebSocketTransportTest {
   @Test(timeOut = 10_000)
   public void aPeerThatAnswersPingsIsWaitedFor() throws Exception {
     try (Peer peer = new Peer(true);
-        WebSocketTransport transport = WebSocketTransport.connect(peer.uri(), Map.of(), PING_INTERVAL)) {
+        WebSocketTransport transport =
+            WebSocketTransport.connect(peer.uri(), Map.of(), PING_INTERVAL)) {
       Assert.assertEquals(transport.read().text(), Peer.GREETING);
       Assert.assertEquals(transport.read().text(), Peer.LATE);
     }
@@ -55,7 +57,7 @@ public class WebSocketTransportTest {
 
     private static final int PINGS_BEFORE_LATE = 3;
 
-    /** ハンドシェイクの応答の Sec-WebSocket-Accept を作るときに、鍵の後ろへ付ける決まった文字列（RFC 6455）。 */
+    /** ハンドシェイクの応答の Sec-WebSocket-Accept を作るときに、キー（Sec-WebSocket-Key）の後ろへ付ける決まった文字列（RFC 6455）。 */
     private static final String ACCEPT_SUFFIX = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     private static final Pattern KEY = Pattern.compile("(?im)^Sec-WebSocket-Key:\\s*(\\S+)");
@@ -86,7 +88,8 @@ public class WebSocketTransportTest {
     }
 
     URI uri() {
-      return URI.create("ws://" + server.getInetAddress().getHostAddress() + ":" + server.getLocalPort() + "/");
+      return URI.create(
+          "ws://" + server.getInetAddress().getHostAddress() + ":" + server.getLocalPort() + "/");
     }
 
     @Override
@@ -144,7 +147,10 @@ public class WebSocketTransportTest {
         throw new IllegalStateException(missing);
       }
       String response =
-          "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "
+          "HTTP/1.1 101 Switching Protocols\r\n"
+              + "Upgrade: websocket\r\n"
+              + "Connection: Upgrade\r\n"
+              + "Sec-WebSocket-Accept: "
               + Base64.getEncoder().encodeToString(digest)
               + HEADERS_END;
       return response.getBytes(StandardCharsets.US_ASCII);

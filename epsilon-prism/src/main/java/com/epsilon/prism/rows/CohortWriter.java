@@ -143,7 +143,9 @@ public final class CohortWriter implements AutoCloseable {
     public Variant variant() {
       return ObservationSchema.variantOf(fingerprints.observation())
           .orElseThrow(
-              () -> new IllegalStateException("No variant has observation fingerprint " + fingerprints.observation()));
+              () ->
+                  new IllegalStateException(
+                      "No variant has observation fingerprint " + fingerprints.observation()));
     }
   }
 
@@ -214,10 +216,14 @@ public final class CohortWriter implements AutoCloseable {
     } catch (SettingsException broken) {
       throw new IOException("Not a cohort manifest: " + path + ": " + broken.getMessage(), broken);
     }
-    Variant variant = ObservationSchema.variantOf(manifest.fingerprints().observation()).orElse(null);
+    Variant variant =
+        ObservationSchema.variantOf(manifest.fingerprints().observation()).orElse(null);
     if (variant == null) {
       throw new IOException(
-          "Cohort " + directory + " has observation fingerprint " + manifest.fingerprints().observation()
+          "Cohort "
+              + directory
+              + " has observation fingerprint "
+              + manifest.fingerprints().observation()
               + " of no variant");
     }
     Fingerprints current = Fingerprints.of(variant);

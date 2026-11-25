@@ -12,7 +12,9 @@ public class ImportDirectionTest {
   @Test
   public void importsNoClassicNorTheFourPlayerModule() throws IOException {
     Assert.assertEquals(
-        ImportDirection.violations(ImportDirection.CLASSIC_PACKAGES + "|com\\.epsilon\\.prism4p(\\..*)?"), List.of());
+        ImportDirection.violations(
+            ImportDirection.CLASSIC_PACKAGES + "|com\\.epsilon\\.prism4p(\\..*)?"),
+        List.of());
   }
 
   @Test
@@ -22,6 +24,7 @@ public class ImportDirectionTest {
 
   @Test
   public void classpathHoldsNoFourPlayerModule() {
-    Assert.assertEquals(ImportDirection.loadable(List.of("com.epsilon.prism4p.variant.FourPlayer")), List.of());
+    Assert.assertEquals(
+        ImportDirection.loadable(List.of("com.epsilon.prism4p.variant.FourPlayer")), List.of());
   }
 }

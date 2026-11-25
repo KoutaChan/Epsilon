@@ -31,8 +31,18 @@ public class RecordsTest {
 
   /** CPU で回す小さな卓と、テストのルールと乱数の種。 */
   private static final String[] CPU = {
-    "--set", "run.variant=TENHOU_4P", "--set", "run.seed=" + TestSettings.SEED, "--set", "table.activeGames=4", "--set",
-    "table.workers=2", "--set", "inference.encoders=2", "--set", "table.batchWaitMicros=1000"
+    "--set",
+    "run.variant=TENHOU_4P",
+    "--set",
+    "run.seed=" + TestSettings.SEED,
+    "--set",
+    "table.activeGames=4",
+    "--set",
+    "table.workers=2",
+    "--set",
+    "inference.encoders=2",
+    "--set",
+    "table.batchWaitMicros=1000"
   };
 
   @Test(timeOut = 900_000)
@@ -58,8 +68,12 @@ public class RecordsTest {
         new ReplayDriver(VARIANT).replay(game, new RuleWorkspace(VARIANT));
         rounds += game.rounds().size();
         for (int seat = 0; seat < VARIANT.seats(); seat++) {
-          String expected = SelfPlayRecords.candidateSeat(gameId, seat, 2) ? "prism:1" : "heuristic";
-          Assert.assertEquals(game.meta().names().get(seat), expected, "game " + gameId + " seat " + seat);
+          String expected =
+              SelfPlayRecords.candidateSeat(gameId, seat, 2, VARIANT.seats())
+                  ? "prism:1"
+                  : "heuristic";
+          Assert.assertEquals(
+              game.meta().names().get(seat), expected, "game " + gameId + " seat " + seat);
         }
       }
       Assert.assertTrue(rounds >= 4, "rounds " + rounds);
@@ -84,7 +98,9 @@ public class RecordsTest {
         byte[] first = Files.readAllBytes(outs.get(0).resolve(name));
         Assert.assertEquals(Files.readAllBytes(outs.get(1).resolve(name)), first, name);
         RecordedGame game = RecordFiles.read(first, name);
-        Assert.assertTrue(game.meta().names().stream().allMatch("heuristic"::equals), game.meta().names().toString());
+        Assert.assertTrue(
+            game.meta().names().stream().allMatch("heuristic"::equals),
+            game.meta().names().toString());
       }
     } finally {
       Snapshot.deleteTree(root);
@@ -95,7 +111,8 @@ public class RecordsTest {
   public void candidateSeatsRotateWithTheGame() {
     for (long gameId = 0; gameId < 8; gameId++) {
       boolean[] seats = new boolean[4];
-      for (int seat = 0; seat < 4; seat++) seats[seat] = SelfPlayRecords.candidateSeat(gameId, seat, 3);
+      for (int seat = 0; seat < 4; seat++)
+        seats[seat] = SelfPlayRecords.candidateSeat(gameId, seat, 3, 4);
       int empty = (int) Math.floorMod(gameId + 3, 4);
       boolean[] expected = new boolean[4];
       Arrays.fill(expected, true);
@@ -106,7 +123,8 @@ public class RecordsTest {
 
   /** records のコマンドを CPU の卓で実行し、終了コードが 0 であることを確かめる。 */
   private static void run(String... arguments) {
-    String[] command = TestSettings.concat(TestSettings.concat(new String[] {"records"}, arguments), CPU);
+    String[] command =
+        TestSettings.concat(TestSettings.concat(new String[] {"records"}, arguments), CPU);
     Assert.assertEquals(Main.run(command), Exit.OK.code());
   }
 }

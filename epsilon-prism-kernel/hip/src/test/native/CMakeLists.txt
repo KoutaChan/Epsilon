@@ -1,0 +1,22 @@
+set(common_tests "${PRISM_COMMON}/src/test/native")
+set(submission_fixture "${common_tests}/collection_submission_test.cc")
+set_source_files_properties("${submission_fixture}" PROPERTIES LANGUAGE HIP)
+add_library(hip_submission_fixture OBJECT "${submission_fixture}")
+set_target_properties(hip_submission_fixture PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(hip_submission_fixture PRIVATE
+  "${PRISM_HIP_NATIVE_DIR}" "${PRISM_INFERENCE_DIR}" "${PRISM_INFERENCE_DIR}/..")
+target_compile_definitions(hip_submission_fixture PRIVATE PRISM_HIP_ARCH="${PRISM_HIP_ARCH}" PRISM_CHECKED=0)
+target_compile_options(hip_submission_fixture PRIVATE -UNDEBUG)
+
+add_executable(hip_collection_submission_test recorded_launches.cc "${common_tests}/recorded_commands.cc"
+  $<TARGET_OBJECTS:hip_submission_fixture> $<TARGET_OBJECTS:prism_hip_inference_objects>)
+target_compile_features(hip_collection_submission_test PRIVATE cxx_std_17)
+target_compile_definitions(hip_collection_submission_test PRIVATE __HIP_PLATFORM_AMD__ PRISM_HIP_ARCH="${PRISM_HIP_ARCH}")
+target_include_directories(hip_collection_submission_test PRIVATE "${common_tests}" "${CMAKE_HIP_COMPILER_ROCM_ROOT}/include")
+if(MSVC)
+  target_compile_options(hip_collection_submission_test PRIVATE /UNDEBUG /utf-8)
+else()
+  target_compile_options(hip_collection_submission_test PRIVATE -UNDEBUG)
+endif()
+set_target_properties(hip_collection_submission_test PROPERTIES LINKER_LANGUAGE CXX)
+add_test(NAME hip_collection_submission COMMAND hip_collection_submission_test)

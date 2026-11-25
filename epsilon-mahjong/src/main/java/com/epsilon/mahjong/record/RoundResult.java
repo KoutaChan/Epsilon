@@ -53,7 +53,8 @@ public record RoundResult(
    * @param ura 裏ドラの翻
    * @param pao 包の席。無ければ {@code RoundOutcome.NO_SEAT}
    */
-  public record Win(int seat, int base, long yaku, int han, int fu, int dora, int aka, int ura, int pao) {
+  public record Win(
+      int seat, int base, long yaku, int han, int fu, int dora, int aka, int ura, int pao) {
 
     public Win {
       if (seat < 0 || pao < RoundOutcome.NO_SEAT || pao == seat) {
@@ -61,7 +62,13 @@ public record RoundResult(
       }
       if (base != 0) {
         BaseClass.of(base);
-      } else if (yaku != 0 || han != 0 || fu != 0 || dora != 0 || aka != 0 || ura != 0 || pao != RoundOutcome.NO_SEAT) {
+      } else if (yaku != 0
+          || han != 0
+          || fu != 0
+          || dora != 0
+          || aka != 0
+          || ura != 0
+          || pao != RoundOutcome.NO_SEAT) {
         throw new IllegalArgumentException("A win without points holds only the seat " + seat);
       }
     }
@@ -85,7 +92,8 @@ public record RoundResult(
      *
      * @param yakuman 役満の倍率。役満でなければ 0
      */
-    public static Win of(int seat, long yaku, int han, int fu, int dora, int aka, int ura, int yakuman, int pao) {
+    public static Win of(
+        int seat, long yaku, int han, int fu, int dora, int aka, int ura, int yakuman, int pao) {
       if (yakuman > 0) {
         return new Win(seat, ScoreMath.base(0, 0, yakuman), yaku, 0, 0, 0, 0, 0, pao);
       }
@@ -109,7 +117,15 @@ public record RoundResult(
       if (tsumo) {
         Settlement.tsumo(variant, base, seat, dealer, 0, RoundOutcome.NO_SEAT, delta);
       } else {
-        Settlement.ron(variant, base, seat, (seat + 1) % variant.seats(), dealer, 0, RoundOutcome.NO_SEAT, delta);
+        Settlement.ron(
+            variant,
+            base,
+            seat,
+            (seat + 1) % variant.seats(),
+            dealer,
+            0,
+            RoundOutcome.NO_SEAT,
+            delta);
       }
       return delta[seat];
     }
@@ -118,7 +134,10 @@ public record RoundResult(
   public RoundResult {
     wins = List.copyOf(wins);
     if (kind == null) {
-      if (abortive != null || !wins.isEmpty() || loser != RoundOutcome.NO_SEAT || (tenpaiMask | nagashiMask) != 0) {
+      if (abortive != null
+          || !wins.isEmpty()
+          || loser != RoundOutcome.NO_SEAT
+          || (tenpaiMask | nagashiMask) != 0) {
         throw new IllegalArgumentException("A draw without details holds only the point moves");
       }
     } else {
@@ -276,14 +295,27 @@ public record RoundResult(
   @Override
   public int hashCode() {
     return Objects.hash(
-        kind, abortive, wins, loser, tenpaiMask, nagashiMask, Arrays.hashCode(deltas), Arrays.hashCode(uraIndicators));
+        kind,
+        abortive,
+        wins,
+        loser,
+        tenpaiMask,
+        nagashiMask,
+        Arrays.hashCode(deltas),
+        Arrays.hashCode(uraIndicators));
   }
 
   /** 終わり方のある結果で、各フィールドがその終わり方と合うかを確かめる。合わなければ IllegalArgumentException。 */
   private static void check(
-      EndKind kind, AbortiveDraw abortive, List<Win> wins, int loser, int tenpaiMask, int nagashiMask) {
+      EndKind kind,
+      AbortiveDraw abortive,
+      List<Win> wins,
+      int loser,
+      int tenpaiMask,
+      int nagashiMask) {
     if ((kind == EndKind.ABORTIVE) != (abortive != null)) {
-      throw new IllegalArgumentException("Only an abortive draw names one: " + kind + " " + abortive);
+      throw new IllegalArgumentException(
+          "Only an abortive draw names one: " + kind + " " + abortive);
     }
     boolean winsMatch =
         switch (kind) {
@@ -299,7 +331,8 @@ public record RoundResult(
     }
     for (int i = 0; kind == EndKind.RON && i < wins.size(); i++) {
       if (wins.get(i).pao() == loser) {
-        throw new IllegalArgumentException("Seat " + loser + " deals in, so it cannot also be liable for the win");
+        throw new IllegalArgumentException(
+            "Seat " + loser + " deals in, so it cannot also be liable for the win");
       }
     }
     if (kind != EndKind.EXHAUSTIVE && (tenpaiMask | nagashiMask) != 0) {
@@ -309,9 +342,20 @@ public record RoundResult(
 
   @Override
   public String toString() {
-    return "RoundResult[" + (kind == null ? "DRAW" : kind) + (abortive == null ? "" : " " + abortive) + " wins=" + wins
+    return "RoundResult["
+        + (kind == null ? "DRAW" : kind)
+        + (abortive == null ? "" : " " + abortive)
+        + " wins="
+        + wins
         + (loser == RoundOutcome.NO_SEAT ? "" : " loser=" + loser)
-        + " tenpai=" + Integer.toBinaryString(tenpaiMask) + " nagashi=" + Integer.toBinaryString(nagashiMask)
-        + " deltas=" + Arrays.toString(deltas) + " ura=" + Arrays.toString(uraIndicators) + "]";
+        + " tenpai="
+        + Integer.toBinaryString(tenpaiMask)
+        + " nagashi="
+        + Integer.toBinaryString(nagashiMask)
+        + " deltas="
+        + Arrays.toString(deltas)
+        + " ura="
+        + Arrays.toString(uraIndicators)
+        + "]";
   }
 }

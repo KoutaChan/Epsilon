@@ -68,8 +68,17 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
             "The decision pipeline on " + streams.device() + " failed", pipeline.terminalFailure);
       } else if (pipeline.slotCount != slotCount || pipeline.readyCapacity != readyCapacity) {
         throw new IllegalStateException(
-            "The decision pipeline on " + streams.device() + " runs " + pipeline.slotCount + '/'
-                + pipeline.readyCapacity + " but " + slotCount + '/' + readyCapacity + " was requested");
+            "The decision pipeline on "
+                + streams.device()
+                + " runs "
+                + pipeline.slotCount
+                + '/'
+                + pipeline.readyCapacity
+                + " but "
+                + slotCount
+                + '/'
+                + readyCapacity
+                + " was requested");
       }
       pipeline.references++;
       return new Lease(pipeline);
@@ -85,7 +94,8 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
       DecisionDevicePipeline pipeline = streams.pipeline;
       if (pipeline != null) {
         throw new IllegalStateException(
-            "The runtime still holds a decision pipeline on " + streams.device(), pipeline.terminalFailure);
+            "The runtime still holds a decision pipeline on " + streams.device(),
+            pipeline.terminalFailure);
       }
     }
   }
@@ -114,10 +124,21 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
       freeSlots.add(new Slot(index, manager, streams.h2d(), streams.compute(), streams.d2h()));
     }
     String suffix = device.getDeviceId() + "-" + Integer.toHexString(System.identityHashCode(this));
-    stagingThread = Thread.ofPlatform().daemon().name("epsilon-decision-stage-" + suffix).start(this::stageLoop);
-    submitThread = Thread.ofPlatform().daemon().name("epsilon-decision-submit-" + suffix).start(this::submitLoop);
+    stagingThread =
+        Thread.ofPlatform()
+            .daemon()
+            .name("epsilon-decision-stage-" + suffix)
+            .start(this::stageLoop);
+    submitThread =
+        Thread.ofPlatform()
+            .daemon()
+            .name("epsilon-decision-submit-" + suffix)
+            .start(this::submitLoop);
     completionThread =
-        Thread.ofPlatform().daemon().name("epsilon-decision-complete-" + suffix).start(this::completionLoop);
+        Thread.ofPlatform()
+            .daemon()
+            .name("epsilon-decision-complete-" + suffix)
+            .start(this::completionLoop);
   }
 
   @Override
@@ -215,7 +236,8 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
   }
 
   private void releaseHostReadyCell(Lease owner) {
-    CompletableFuture<Void> availability = hostReadyCapacity.release(running && terminalFailure == null);
+    CompletableFuture<Void> availability =
+        hostReadyCapacity.release(running && terminalFailure == null);
     owner.finishedHostReadyCell();
     if (availability != null) {
       availability.complete(null);
@@ -438,7 +460,8 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
       // 隔離したバッチは、モデルの配列をまだ指していることがある。失敗した後は、どのモデルにも権利を返させず、配列を解放させない
       if (terminalFailure != null) {
         throw new IllegalStateException(
-            "The decision pipeline on " + device + " retains quarantined GPU resources", terminalFailure);
+            "The decision pipeline on " + device + " retains quarantined GPU resources",
+            terminalFailure);
       }
       references--;
       if (references != 0) {
@@ -451,7 +474,8 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
 
   private void close() {
     running = false;
-    hostReadyCapacity.fail(new IllegalStateException("The decision pipeline on " + device + " is closed"));
+    hostReadyCapacity.fail(
+        new IllegalStateException("The decision pipeline on " + device + " is closed"));
     stagingThread.interrupt();
     submitThread.interrupt();
     completionThread.interrupt();
@@ -460,13 +484,16 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
     join(submitThread);
     if (terminalFailure != null) {
       throw new IllegalStateException(
-          "The decision pipeline on " + device + " retains quarantined GPU resources", terminalFailure);
+          "The decision pipeline on " + device + " retains quarantined GPU resources",
+          terminalFailure);
     }
     if (freeSlots.size() != slotCount) {
-      throw new IllegalStateException("The decision pipeline on " + device + " closed with active slots");
+      throw new IllegalStateException(
+          "The decision pipeline on " + device + " closed with active slots");
     }
     if (hostReadyCapacity.inUse() != 0) {
-      throw new IllegalStateException("The decision pipeline on " + device + " closed with host-ready cells");
+      throw new IllegalStateException(
+          "The decision pipeline on " + device + " closed with host-ready cells");
     }
     for (Slot slot : freeSlots) {
       slot.close();
@@ -585,7 +612,8 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
     @Override
     public void close() {
       if (pipeline.isWorkerThread(Thread.currentThread())) {
-        throw new IllegalStateException("A decision pipeline lease must be closed outside its worker threads");
+        throw new IllegalStateException(
+            "A decision pipeline lease must be closed outside its worker threads");
       }
       boolean interrupted = false;
       synchronized (this) {
@@ -716,7 +744,8 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
 
     private void require(CellState expected) {
       if (state != expected) {
-        throw new IllegalStateException("The host-ready cell is " + state + ", expected " + expected);
+        throw new IllegalStateException(
+            "The host-ready cell is " + state + ", expected " + expected);
       }
     }
   }
@@ -841,7 +870,12 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
     private Throwable failure;
     private State state = State.FREE;
 
-    private Slot(int index, PtNDManager manager, PtStream h2dStream, PtStream computeStream, PtStream d2hStream) {
+    private Slot(
+        int index,
+        PtNDManager manager,
+        PtStream h2dStream,
+        PtStream computeStream,
+        PtStream d2hStream) {
       this.index = index;
       this.manager = manager;
       this.h2dStream = h2dStream;
@@ -878,7 +912,11 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
 
     /** ホストへ転送した出力。次のバッチまで有効。 */
     public FloatBuffer outputFloats() {
-      return outputBuffer.getByteBuffer().duplicate().order(ByteOrder.nativeOrder()).asFloatBuffer();
+      return outputBuffer
+          .getByteBuffer()
+          .duplicate()
+          .order(ByteOrder.nativeOrder())
+          .asFloatBuffer();
     }
 
     /** 出力の転送は、計算が終わったのを見てから出す。計算を待つ転送を先に積むと、その後に積む入力の転送まで止まるため。 */
@@ -956,7 +994,8 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
 
     private void require(State expected) {
       if (state != expected) {
-        throw new IllegalStateException("Decision slot " + index + " is " + state + ", expected " + expected);
+        throw new IllegalStateException(
+            "Decision slot " + index + " is " + state + ", expected " + expected);
       }
     }
 
@@ -1067,7 +1106,8 @@ public final class DecisionDevicePipeline implements InferenceDispatcher.Device 
       total.submitNanos += entry.submitFinishedNanos - entry.submitStartedNanos;
     }
 
-    synchronized void finished(Entry entry, long now, boolean completionObserved, long releaseStartedNanos) {
+    synchronized void finished(
+        Entry entry, long now, boolean completionObserved, long releaseStartedNanos) {
       if (entry.submitted) {
         total.roundTripNanos += now - entry.enqueuedNanos;
         if (completionObserved) {

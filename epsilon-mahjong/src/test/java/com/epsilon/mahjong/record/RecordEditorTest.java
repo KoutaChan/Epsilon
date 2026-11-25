@@ -50,9 +50,11 @@ public class RecordEditorTest {
           int cursor = driver.cursor();
           for (int slot = 0; slot < decisions.size(); slot++) {
             int seat = decisions.seat(slot);
-            String where = game.meta().id() + " " + round.start() + " seat " + seat + " at " + cursor;
+            String where =
+                game.meta().id() + " " + round.start() + " seat " + seat + " at " + cursor;
             RecordEditor editor = new RecordEditor(round, cursor, seat);
-            Assert.assertEquals(editor.events(), shown(round.events().subList(0, cursor), seat), where);
+            Assert.assertEquals(
+                editor.events(), shown(round.events().subList(0, cursor), seat), where);
             SeatTable table = table(editor, ws);
             Assert.assertEquals(legal(table.decisions(), 0), legal(decisions, slot), where);
             compared++;
@@ -80,16 +82,19 @@ public class RecordEditorTest {
         RecordEditor editor = new RecordEditor(round, events.size(), seat);
         int spare = spares(round, 1)[0];
         for (int position = 0; position < events.size(); position++) {
-          if (events.get(position) instanceof RecordEvent.Discard discard && callOf(events, position) == null) {
+          if (events.get(position) instanceof RecordEvent.Discard discard
+              && callOf(events, position) == null) {
             List<RecordEvent> before = editor.events();
             int[] hand = editor.hand();
             editor.replaceDiscarded(position, spare);
             List<RecordEvent> after = editor.events();
             Assert.assertEquals(
                 after.get(position),
-                new RecordEvent.Discard(discard.seat(), spare, discard.tsumogiri(), discard.riichi()));
+                new RecordEvent.Discard(
+                    discard.seat(), spare, discard.tsumogiri(), discard.riichi()));
             int changed = changes(before, after) + changes(hand, editor.hand());
-            Assert.assertEquals(changed, discard.seat() == seat ? 2 : 1, game.meta().id() + " " + position);
+            Assert.assertEquals(
+                changed, discard.seat() == seat ? 2 : 1, game.meta().id() + " " + position);
             editor.replaceDiscarded(position, discard.tile());
             Assert.assertEquals(editor.events(), before);
             Assert.assertEquals(editor.hand(), hand);
@@ -100,7 +105,8 @@ public class RecordEditorTest {
           int dealt = editor.hand()[index];
           if (discarded(events, seat, dealt)) {
             int at = index;
-            Assert.assertThrows(IllegalArgumentException.class, () -> editor.replaceDealt(at, spare));
+            Assert.assertThrows(
+                IllegalArgumentException.class, () -> editor.replaceDealt(at, spare));
           } else {
             editor.replaceDealt(index, spare);
             Assert.assertEquals(editor.hand()[index], spare);
@@ -111,8 +117,10 @@ public class RecordEditorTest {
         editor.replaceIndicator(0, spare);
         Assert.assertEquals(editor.indicator(), spare);
         editor.replaceIndicator(0, round.indicator());
-        int reveals = (int) events.stream().filter(RecordEvent.DoraReveal.class::isInstance).count();
-        Assert.assertThrows(IllegalArgumentException.class, () -> editor.replaceIndicator(reveals + 1, spare));
+        int reveals =
+            (int) events.stream().filter(RecordEvent.DoraReveal.class::isInstance).count();
+        Assert.assertThrows(
+            IllegalArgumentException.class, () -> editor.replaceIndicator(reveals + 1, spare));
         int[] scores = round.start().scores();
         int[] swapped = {scores[1], scores[0], scores[3], scores[2]};
         editor.replaceStart(round.start().honba() + 1, round.start().kyotaku() + 2, swapped);
@@ -134,7 +142,8 @@ public class RecordEditorTest {
    */
   @Test
   public void aRewrittenRecordPlaysOnTheSeatTable() {
-    RecordedRound round = RecordedGames.scene(Scenes.first(Variant.TENHOU_4P), "tsumogiri").rounds().get(0);
+    RecordedRound round =
+        RecordedGames.scene(Scenes.first(Variant.TENHOU_4P), "tsumogiri").rounds().get(0);
     Variant variant = round.start().variant();
     RuleWorkspace ws = new RuleWorkspace(variant);
     ReplayDriver driver = new ReplayDriver(variant);
@@ -171,7 +180,8 @@ public class RecordEditorTest {
     int[] scores = {40_000, 30_000, 20_000, 10_000};
     editor.replaceStart(honba, kyotaku, scores);
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> new RoundStart(variant, editor.round(), honba, kyotaku, scores));
+        IllegalArgumentException.class,
+        () -> new RoundStart(variant, editor.round(), honba, kyotaku, scores));
     SeatTable moved = table(editor, ws);
     Assert.assertEquals(moved.view().honba(), honba);
     Assert.assertEquals(moved.view().kyotaku(), kyotaku);
@@ -190,19 +200,27 @@ public class RecordEditorTest {
     RecordedRound round = ReplayDriverTest.ponOverChi().round(ReplayDriverTest.ponOverChiResult());
     List<RecordEvent> events = round.events();
     RecordEditor editor = new RecordEditor(round, events.size(), 1);
-    Assert.assertThrows(IllegalArgumentException.class, () -> editor.replaceDrawn(0, Tiles.physicalId(Tiles.M1, 3)));
-    Assert.assertThrows(IllegalArgumentException.class, () -> editor.replaceDiscarded(2, Tiles.physicalId(Tiles.M1, 3)));
-    Assert.assertThrows(IllegalArgumentException.class, () -> editor.replaceDiscarded(1, Tiles.physicalId(Tiles.P4, 3)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> editor.replaceDrawn(0, Tiles.physicalId(Tiles.M1, 3)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> editor.replaceDiscarded(2, Tiles.physicalId(Tiles.M1, 3)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> editor.replaceDiscarded(1, Tiles.physicalId(Tiles.P4, 3)));
     RecordEvent.Discard called = (RecordEvent.Discard) events.get(1);
     int otherCopy = Tiles.physicalId(Tiles.P3, Tiles.copy(called.tile()) == 1 ? 2 : 1);
     editor.replaceDiscarded(1, otherCopy);
     Assert.assertEquals(((RecordEvent.Discard) editor.events().get(1)).tile(), otherCopy);
     Assert.assertEquals(editor.events().get(0), new RecordEvent.Draw(3, TurnEvent.NONE));
-    Assert.assertThrows(IndexOutOfBoundsException.class, () -> new RecordEditor(round, events.size() + 1, 1));
+    Assert.assertThrows(
+        IndexOutOfBoundsException.class, () -> new RecordEditor(round, events.size() + 1, 1));
 
     RecordedRound sanma = RecordedGames.play(Variant.TENHOU_3P, 0, "self-0").rounds().get(0);
     RecordEditor three = new RecordEditor(sanma, 0, 0);
-    Assert.assertThrows(IllegalArgumentException.class, () -> three.replaceDealt(0, Tiles.physicalId(Tiles.M2, 0)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> three.replaceDealt(0, Tiles.physicalId(Tiles.M2, 0)));
     Assert.assertThrows(IllegalArgumentException.class, () -> three.replaceStart(0, 0, new int[4]));
   }
 
@@ -213,7 +231,12 @@ public class RecordEditorTest {
   private static SeatTable table(RecordEditor editor, RuleWorkspace ws) {
     SeatTable table = new SeatTable(editor.variant(), editor.seat());
     table.startScenario(
-        editor.round(), editor.honba(), editor.kyotaku(), editor.scores(), editor.hand(), editor.indicator());
+        editor.round(),
+        editor.honba(),
+        editor.kyotaku(),
+        editor.scores(),
+        editor.hand(),
+        editor.indicator());
     for (RecordEvent event : editor.events()) {
       event.applyTo(table, ws);
     }
@@ -295,7 +318,8 @@ public class RecordEditorTest {
       if (event instanceof RecordEvent.Call call) {
         return call;
       }
-      if (!(event instanceof RecordEvent.DoraReveal) && !(event instanceof RecordEvent.RiichiAccepted)) {
+      if (!(event instanceof RecordEvent.DoraReveal)
+          && !(event instanceof RecordEvent.RiichiAccepted)) {
         return null;
       }
     }
@@ -311,8 +335,13 @@ public class RecordEditorTest {
   private static boolean discarded(List<RecordEvent> events, int seat, int tile) {
     return events.stream()
         .anyMatch(
-            event -> event instanceof RecordEvent.Discard discard && discard.seat() == seat && discard.tile() == tile
-                || event instanceof RecordEvent.Nuki nuki && nuki.seat() == seat && nuki.tile() == tile);
+            event ->
+                event instanceof RecordEvent.Discard discard
+                        && discard.seat() == seat
+                        && discard.tile() == tile
+                    || event instanceof RecordEvent.Nuki nuki
+                        && nuki.seat() == seat
+                        && nuki.tile() == tile);
   }
 
   /**
@@ -331,14 +360,17 @@ public class RecordEditorTest {
             melded |= Tiles.bit(meld.tile(index));
           }
         }
-        case RecordEvent.ClosedKan kan when kan.seat() == editor.seat() -> melded |= Tiles.bit(kan.kind());
-        case RecordEvent.AddedKan kan when kan.seat() == editor.seat() -> melded |= Tiles.bit(kan.kind());
+        case RecordEvent.ClosedKan kan when kan.seat() == editor.seat() ->
+            melded |= Tiles.bit(kan.kind());
+        case RecordEvent.AddedKan kan when kan.seat() == editor.seat() ->
+            melded |= Tiles.bit(kan.kind());
         default -> {}
       }
     }
     int[] hand = editor.hand();
     for (int index = 0; index < hand.length; index++) {
-      if (!discarded(events, editor.seat(), hand[index]) && !Tiles.contains(melded, Tiles.kind(hand[index]))) {
+      if (!discarded(events, editor.seat(), hand[index])
+          && !Tiles.contains(melded, Tiles.kind(hand[index]))) {
         return index;
       }
     }

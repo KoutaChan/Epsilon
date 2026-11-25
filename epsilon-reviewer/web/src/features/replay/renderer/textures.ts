@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { ASSET_TILES, tileAssetName } from "../tileAssets.ts";
+import { TILE_CODES } from "@epsilon-reviewer/protocol/tiles";
+import { tileAsset } from "../../../components/tileAssets.ts";
 
 /** 牌の画像 1 枚の読み込みを待つ時間（ms）。 */
 const TEXTURE_TIMEOUT_MS = 12000;
@@ -20,17 +21,15 @@ export function loadTileTextures(
   const materials = new Map<string, THREE.MeshBasicMaterial>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const loader = new THREE.TextureLoader();
-  const base = new URL("./tiles/Regular/", document.baseURI);
   const anisotropy = renderer.capabilities.getMaxAnisotropy();
   let disposed = false;
-  let remaining = ASSET_TILES.length;
+  let remaining = TILE_CODES.length;
 
-  for (const tile of ASSET_TILES) {
-    const name = tileAssetName(tile);
-    const url = new URL(name + ".svg", base).href;
+  for (const tile of TILE_CODES) {
+    const url = new URL(tileAsset(tile), document.baseURI).href;
     let settled = false;
     const timeout = setTimeout(
-      () => finish(new Error("Tile texture request timed out: " + name)),
+      () => finish(new Error("Tile texture request timed out: " + tile)),
       TEXTURE_TIMEOUT_MS,
     );
     timers.add(timeout);
@@ -78,7 +77,7 @@ export function loadTileTextures(
         finish();
       },
       undefined,
-      () => finish(new Error("Tile texture could not be loaded: " + name)),
+      () => finish(new Error("Tile texture could not be loaded: " + tile)),
     );
   }
   return {

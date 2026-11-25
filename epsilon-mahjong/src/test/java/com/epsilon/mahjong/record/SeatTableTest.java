@@ -74,7 +74,8 @@ public class SeatTableTest {
 
   /** 北を抜くルールでは、抜いた北への応答の判断も照合する。 */
   @Test(dataProvider = "records")
-  public void eachSeatSeesWhatTheEngineShowsItAtEveryOwnDecision(Variant variant, List<RecordedGame> handMade) {
+  public void eachSeatSeesWhatTheEngineShowsItAtEveryOwnDecision(
+      Variant variant, List<RecordedGame> handMade) {
     List<RecordedGame> games = new ArrayList<>();
     for (int seed = 100; seed < 100 + GAMES; seed++) {
       games.add(RecordedGames.play(variant, seed, "self-" + seed));
@@ -154,7 +155,12 @@ public class SeatTableTest {
       List<String> expected = follow(new SeatTable(variant, seat), round, ws);
       SeatTable scenario = new SeatTable(variant, seat);
       scenario.startScenario(
-          start.round(), start.honba(), start.kyotaku(), start.scores(), hand(round, seat), round.indicator());
+          start.round(),
+          start.honba(),
+          start.kyotaku(),
+          start.scores(),
+          hand(round, seat),
+          round.indicator());
       Assert.assertEquals(playOn(scenario, round, ws), expected, "seat " + seat);
     }
 
@@ -173,14 +179,16 @@ public class SeatTableTest {
     }
     scores[0] = 50_000;
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> new RoundStart(variant, start.round(), 255, 100, scores));
+        IllegalArgumentException.class,
+        () -> new RoundStart(variant, start.round(), 255, 100, scores));
     playOn(table, round, ws);
     RoundOutcome outcome = new RoundOutcome(variant);
     round.result().outcome(round.riichiMask(), outcome);
     RoundEnd end = table.settle(outcome);
     if (!end.next().gameOver()) {
       for (int seat = 0; seat < scores.length; seat++) {
-        Assert.assertEquals(end.next().score(seat), 50_000 - 10_000 * seat + end.delta(seat), "seat " + seat);
+        Assert.assertEquals(
+            end.next().score(seat), 50_000 - 10_000 * seat + end.delta(seat), "seat " + seat);
       }
     }
 
@@ -189,18 +197,26 @@ public class SeatTableTest {
     int[] even = start.scores();
     SeatTable checked = new SeatTable(variant, 0);
     checked.startScenario(start.round(), 1, 2, even, hand, indicator);
-    Assert.assertThrows(IllegalArgumentException.class, () -> checked.startScenario(-1, 0, 0, even, hand, indicator));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> checked.startScenario(-1, 0, 0, even, hand, indicator));
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> checked.startScenario(variant.finalRound() + 1, 0, 0, even, hand, indicator));
-    Assert.assertThrows(IllegalArgumentException.class, () -> checked.startScenario(0, -1, 0, even, hand, indicator));
-    Assert.assertThrows(IllegalArgumentException.class, () -> checked.startScenario(0, 0, -1, even, hand, indicator));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> checked.startScenario(0, 0, 0, Arrays.copyOf(even, even.length + 1), hand, indicator));
+        () -> checked.startScenario(0, -1, 0, even, hand, indicator));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> checked.startScenario(0, 0, 0, even, Arrays.copyOf(hand, Variant.HAND - 1), indicator));
+        () -> checked.startScenario(0, 0, -1, even, hand, indicator));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            checked.startScenario(0, 0, 0, Arrays.copyOf(even, even.length + 1), hand, indicator));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            checked.startScenario(0, 0, 0, even, Arrays.copyOf(hand, Variant.HAND - 1), indicator));
     Assert.assertEquals(checked.view().honba(), 1, "a rejected scenario changes nothing");
     Assert.assertEquals(checked.view().kyotaku(), 2, "a rejected scenario changes nothing");
   }
@@ -296,20 +312,32 @@ public class SeatTableTest {
   private static String snapshot(SeatView view, Decisions decisions, int slot) {
     StringBuilder text = new StringBuilder();
     text.append(view.kind())
-        .append(" round=").append(view.round())
-        .append(" dealer=").append(view.dealer())
-        .append(" current=").append(view.current())
-        .append(" honba=").append(view.honba())
-        .append(" kyotaku=").append(view.kyotaku())
-        .append(" live=").append(view.liveLeft());
+        .append(" round=")
+        .append(view.round())
+        .append(" dealer=")
+        .append(view.dealer())
+        .append(" current=")
+        .append(view.current())
+        .append(" honba=")
+        .append(view.honba())
+        .append(" kyotaku=")
+        .append(view.kyotaku())
+        .append(" live=")
+        .append(view.liveLeft());
     for (int seat = 0; seat < view.variant().seats(); seat++) {
-      text.append(" | seat ").append(seat)
-          .append(' ').append(view.score(seat))
-          .append(' ').append(view.riichi(seat))
+      text.append(" | seat ")
+          .append(seat)
+          .append(' ')
+          .append(view.score(seat))
+          .append(' ')
+          .append(view.riichi(seat))
           .append(view.ippatsu(seat) ? " ippatsu" : "")
-          .append(" river=").append(Long.toHexString(view.riverKinds(seat)))
-          .append(" safe=").append(Long.toHexString(view.riichiSafe(seat)))
-          .append(" nuki=").append(view.nuki(seat))
+          .append(" river=")
+          .append(Long.toHexString(view.riverKinds(seat)))
+          .append(" safe=")
+          .append(Long.toHexString(view.riichiSafe(seat)))
+          .append(" nuki=")
+          .append(view.nuki(seat))
           .append(" melds=");
       for (int index = 0; index < view.meldCount(seat); index++) {
         text.append(Meld.of(view.meld(seat, index))).append(';');
@@ -318,31 +346,41 @@ public class SeatTableTest {
     EventLog events = view.events();
     text.append(" | events");
     for (int event = 0; event < events.size(); event++) {
-      text.append(' ').append(events.kind(event)).append(events.seat(event))
-          .append('/').append(events.tile(event))
+      text.append(' ')
+          .append(events.kind(event))
+          .append(events.seat(event))
+          .append('/')
+          .append(events.tile(event))
           .append(events.red(event) ? "r" : "")
           .append(events.tsumogiri(event) ? "t" : "")
           .append(events.riichi(event) ? "R" : "")
-          .append('/').append(events.calledBy(event))
-          .append('/').append(events.meld(event));
+          .append('/')
+          .append(events.calledBy(event))
+          .append('/')
+          .append(events.meld(event));
     }
-    text.append(" dahai=").append(events.dahai()).append(" interruptions=").append(events.interruptions());
+    text.append(" dahai=")
+        .append(events.dahai())
+        .append(" interruptions=")
+        .append(events.interruptions());
     TurnEvent last = view.last();
-    text.append(" | last ").append(last.kind()).append(last.seat())
-        .append('/').append(last.tile())
+    text.append(" | last ")
+        .append(last.kind())
+        .append(last.seat())
+        .append('/')
+        .append(last.tile())
         .append(last.red() ? "r" : "")
         .append(last.rinshan() ? " rinshan" : "")
         .append(last.doraPending() ? " pending" : "")
-        .append(' ').append(last.kanKind());
+        .append(' ')
+        .append(last.kanKind());
     text.append(" | dora");
     for (int index = 0; index < view.indicatorCount(); index++) {
       text.append(' ').append(view.indicator(index)).append('@').append(view.indicatorEvent(index));
     }
     text.append(" | kinds");
     for (int kind = 0; kind < Tiles.KINDS; kind++) {
-      text.append(' ').append(view.count(kind))
-          .append('/').append(view.visible(kind))
-          .append('/').append(view.doraWeight(kind));
+      text.append(' ').append(view.count(kind)).append('/').append(view.visible(kind));
     }
     text.append(" | held");
     for (int tile = 0; tile < Tiles.PHYSICAL_IDS; tile++) {
@@ -350,7 +388,10 @@ public class SeatTableTest {
         text.append(' ').append(tile);
       }
     }
-    text.append(" | furiten=").append(view.furiten()).append(" waits=").append(Long.toHexString(view.waits()));
+    text.append(" | furiten=")
+        .append(view.furiten())
+        .append(" waits=")
+        .append(Long.toHexString(view.waits()));
     text.append(" | legal");
     for (int index = 0; index < decisions.legalCount(slot); index++) {
       text.append(' ').append(Action.of(decisions.legal(slot, index)));

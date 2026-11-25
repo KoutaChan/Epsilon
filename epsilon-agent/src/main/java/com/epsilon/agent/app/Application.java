@@ -68,7 +68,8 @@ public record Application<R extends Record>(
    */
   public Layer preset(String preset) {
     String resource = name + "/presets/" + preset + ".toml";
-    if (!PRESET.matcher(preset).matches() || schema.getClassLoader().getResource(resource) == null) {
+    if (!PRESET.matcher(preset).matches()
+        || schema.getClassLoader().getResource(resource) == null) {
       throw new SettingsException(List.of("Unknown preset " + preset));
     }
     return Layer.resource(resource, "preset " + preset);

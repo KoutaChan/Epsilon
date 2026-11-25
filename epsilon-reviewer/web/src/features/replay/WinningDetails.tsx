@@ -1,4 +1,4 @@
-import type { WinDetails } from "../../../../protocol/result.ts";
+import type { WinDetails } from "@epsilon-reviewer/protocol/result";
 import { Tile } from "../../components/Tile";
 import { useLanguage } from "../../language/LanguageProvider";
 import { yakuLabel } from "../../language/yakuMessages";

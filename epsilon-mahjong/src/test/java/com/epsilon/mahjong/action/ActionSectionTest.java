@@ -74,7 +74,8 @@ public class ActionSectionTest {
       Assert.assertTrue(section.contains(code), "code " + code);
     }
     Assert.assertThrows(IllegalArgumentException.class, () -> ActionSection.of(-1));
-    Assert.assertThrows(IllegalArgumentException.class, () -> ActionSection.of(ActionSection.SPACE));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> ActionSection.of(ActionSection.SPACE));
   }
 
   @Test
@@ -108,7 +109,8 @@ public class ActionSectionTest {
           }
         }
         if (found == null) {
-          Assert.assertThrows(IllegalArgumentException.class, () -> ActionSection.of(type, selection));
+          Assert.assertThrows(
+              IllegalArgumentException.class, () -> ActionSection.of(type, selection));
         } else {
           Assert.assertSame(ActionSection.of(type, selection), found);
         }

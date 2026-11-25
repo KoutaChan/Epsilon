@@ -38,9 +38,11 @@ public final class PhiControl {
         case PhiSettings.FixedGrp fixed -> open(PhiScorer.original(setup), fixed.late(), setup);
         case PhiSettings.SelfGrp self -> open(PhiHistory.initialEntry(setup), self.late(), setup);
         case PhiSettings.ScoreRank rank ->
-            HandEndPhi.open(PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, setup.variant()), setup.utility());
+            HandEndPhi.open(
+                PhiEntry.scoreOnly(PhiEntryKind.SCORE_RANK, setup.variant()), setup.utility());
         case PhiSettings.ScoreSmooth smooth ->
-            HandEndPhi.open(PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, setup.variant()), setup.utility());
+            HandEndPhi.open(
+                PhiEntry.scoreOnly(PhiEntryKind.SCORE_SMOOTH, setup.variant()), setup.utility());
       }
       return List.of();
     } catch (IOException | RuntimeException failure) {
@@ -48,7 +50,7 @@ public final class PhiControl {
     }
   }
 
-  /** 項目を GRP のモードで開いてみる。q を持てば、設定の打ち切りの値で LATE のモードでも開いてみる（終盤のメモは 1 スロット）。 */
+  /** 項目を GRP のモードで開いてみる。q を持てば、設定の打ち切りの値で LATE のモードでも開いてみる（終盤のキャッシュは 1 スロット）。 */
   private static void open(PhiEntry entry, LateSettings late, PhiSetup setup) throws IOException {
     HandEndPhi.open(entry, setup.utility());
     if (entry.hasOutcomes()) {
@@ -58,22 +60,25 @@ public final class PhiControl {
   }
 
   /**
-   * 手動の学び直しの頼みを run の control に置く。学び直すのは、学習の JVM で GRP の裏の作業（{@link GrpBackground}）が次に動いたとき。
-   * 関門はコホート n ＋ 1 で判定する。頼みは置いた数だけ番号の順に従い、学び終える前なら取り消しの頼みで消せる。
+   * 手動の再学習の要求を run の control に置く。学び直すのは、学習の JVM で GRP の裏の作業（{@link GrpBackground}）が次に動いたとき。
+   * 関門はコホート n ＋ 1 で判定する。要求は番号順に処理し、学び終える前なら取り消し要求で消せる。
    *
    * @param run run のディレクトリ
    * @param operations 自分の GRP の運用の設定
    * @param slot 学び直す時点 n（null なら、半荘の記録がある最新の確定済みのコホート）
-   * @return 置いた頼み
+   * @return 置いた要求
    * @throws IllegalArgumentException その時点のコホートが確定済みでないか半荘の記録が無いとき、または学び直しに使えるコホートが無いとき
    */
-  public static ControlRequest requestRefit(Path run, GrpOperations operations, Integer slot) throws IOException {
+  public static ControlRequest requestRefit(Path run, GrpOperations operations, Integer slot)
+      throws IOException {
     var files = new GrpFiles(run);
     int chosen = slot == null ? latestRecorded(files) : slot;
     if (!files.recorded(chosen))
-      throw new IllegalArgumentException("Cohort " + chosen + " of " + run + " is not sealed with game records");
+      throw new IllegalArgumentException(
+          "Cohort " + chosen + " of " + run + " is not sealed with game records");
     var window = new RecencyWindow(chosen, operations.halfLife(), operations.window());
-    if (window.cohorts() == 0) throw new IllegalArgumentException("No usable cohort up to " + chosen);
+    if (window.cohorts() == 0)
+      throw new IllegalArgumentException("No usable cohort up to " + chosen);
     var directory = new RunDirectory(run);
     ControlRequest written = new ControlRequests(directory).submit(new Request.GrpRefit(chosen));
     LOG.info(
@@ -99,14 +104,19 @@ public final class PhiControl {
    * @throws IllegalStateException g000 がまだ無いとき、sha が変わったとき、チェックポイントか q が読めないとき
    * @throws IllegalArgumentException 候補でも項目でもないか、READY でないとき
    */
-  public static Optional<PhiEntry> switchTo(Path run, String to, Integer from, String reason) throws IOException {
+  public static Optional<PhiEntry> switchTo(Path run, String to, Integer from, String reason)
+      throws IOException {
     var files = new GrpFiles(run);
     List<PhiEntry> entries = entries(files);
     int iteration = from == null ? PhiHistory.firstOpenIteration(files) : from;
     PhiEntry entry = target(files, entries, to, iteration, reason);
     Optional<PhiEntry> effective = PhiHistory.effectiveAt(entries, iteration);
     if (effective.isPresent() && effective.get().sameValue(entry)) {
-      LOG.warn("grp-switch: {} is already the Φ at iteration {} ({}); nothing appended", to, iteration, effective.get().id());
+      LOG.warn(
+          "grp-switch: {} is already the Φ at iteration {} ({}); nothing appended",
+          to,
+          iteration,
+          effective.get().id());
       return Optional.empty();
     }
     PhiHistory.append(files, entry);
@@ -139,26 +149,38 @@ public final class PhiControl {
    * @throws IllegalArgumentException Φ の出どころがモードを持たないとき、効き始めが始まった反復以前のとき
    */
   public static Optional<ModeLine> switchMode(
-      Path run, PhiSetup setup, PhiMode mode, Double cutoff, Integer from, String reason) throws IOException {
+      Path run, PhiSetup setup, PhiMode mode, Double cutoff, Integer from, String reason)
+      throws IOException {
     LateSettings late =
-        setup.phi()
+        setup
+            .phi()
             .lateSettings()
-            .orElseThrow(() -> new IllegalArgumentException("The Φ source " + setup.phi().source() + " has no Φ modes"));
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "The Φ source " + setup.phi().source() + " has no Φ modes"));
     var files = new GrpFiles(run);
     List<PhiEntry> entries = setup.selfPlay() ? entries(files) : List.of();
     if (!setup.selfPlay()) PhiHistory.initializeModes(files, late);
     int iteration = from == null ? PhiHistory.firstOpenIteration(files) : from;
-    Double lineCutoff = mode == PhiMode.LATE ? Objects.requireNonNullElse(cutoff, late.cutoff()) : cutoff;
+    Double lineCutoff =
+        mode == PhiMode.LATE ? Objects.requireNonNullElse(cutoff, late.cutoff()) : cutoff;
     var line = new ModeLine(mode, lineCutoff, iteration, ModeLine.SWITCH + " " + reason);
     Optional<ModeLine> effective = ModeLine.effectiveAt(PhiHistory.readModes(files), iteration);
     PhiMode was = effective.map(ModeLine::mode).orElse(PhiMode.GRP);
-    if (was == mode && Objects.equals(effective.map(ModeLine::cutoff).orElse(null), line.cutoff())) {
-      LOG.warn("grp-switch: the {} mode is already in effect at iteration {}; nothing appended", mode, iteration);
+    if (was == mode
+        && Objects.equals(effective.map(ModeLine::cutoff).orElse(null), line.cutoff())) {
+      LOG.warn(
+          "grp-switch: the {} mode is already in effect at iteration {}; nothing appended",
+          mode,
+          iteration);
       return Optional.empty();
     }
     if (mode == PhiMode.LATE) {
       PhiEntry entry =
-          setup.selfPlay() ? PhiHistory.effectiveAt(entries, iteration).orElseThrow() : PhiScorer.original(setup);
+          setup.selfPlay()
+              ? PhiHistory.effectiveAt(entries, iteration).orElseThrow()
+              : PhiScorer.original(setup);
       checkLate(entry, line, setup);
     }
     PhiHistory.appendMode(files, line);
@@ -167,7 +189,7 @@ public final class PhiControl {
   }
 
   /**
-   * LATE の行が効き始める反復で効く GRP の項目を確かめる。項目が q を持てば、終盤のメモを 1 スロットにして LATE のモードで開いてみる。
+   * LATE の行が効き始める反復で効く GRP の項目を確かめる。項目が q を持てば、終盤のキャッシュを 1 スロットにして LATE のモードで開いてみる。
    * q を持たなければ警告を出す。
    *
    * @throws IllegalStateException 項目が LATE のモードで開けないとき
@@ -175,8 +197,8 @@ public final class PhiControl {
   private static void checkLate(PhiEntry entry, ModeLine line, PhiSetup setup) {
     if (!entry.hasOutcomes()) {
       LOG.warn(
-          "grp-switch: Φ entry {} in effect at iteration {} has no outcome network, so the hand ends take the GRP mode"
-              + " until an entry with one is in effect",
+          "grp-switch: Φ entry {} in effect at iteration {} has no outcome network, so the hand"
+              + " ends take the GRP mode until an entry with one is in effect",
           entry.id(),
           line.effectiveFrom());
       return;
@@ -185,7 +207,10 @@ public final class PhiControl {
       HandEndPhi.openSingleSlot(PhiValue.of(entry, line), setup.utility());
     } catch (IOException | RuntimeException failure) {
       throw new IllegalStateException(
-          "Φ entry " + entry.id() + " in effect at iteration " + line.effectiveFrom()
+          "Φ entry "
+              + entry.id()
+              + " in effect at iteration "
+              + line.effectiveFrom()
               + " cannot be opened in the LATE mode",
           failure);
     }
@@ -199,35 +224,45 @@ public final class PhiControl {
   private static List<PhiEntry> entries(GrpFiles files) throws IOException {
     List<PhiEntry> entries = PhiHistory.read(files);
     if (entries.isEmpty())
-      throw new IllegalStateException("No g000 in " + files.phiHistory() + ": start the SELF_GRP lineage first");
+      throw new IllegalStateException(
+          "No g000 in " + files.phiHistory() + ": start the SELF_GRP lineage first");
     return entries;
   }
 
   /** 切り替える先の項目を反復 {@code from} から効かせる行を作る。既にある項目なら戻しの行、無ければ READY の候補の行にする。 */
-  private static PhiEntry target(GrpFiles files, List<PhiEntry> entries, String to, int from, String reason)
+  private static PhiEntry target(
+      GrpFiles files, List<PhiEntry> entries, String to, int from, String reason)
       throws IOException {
     Optional<RefitRecord> record = RefitRecord.latest(RefitRecord.readAll(files), to);
     if (record.isPresent() && record.get().status() != RefitStatus.READY)
-      throw new IllegalArgumentException("Candidate " + to + " is " + record.get().status() + ": " + record.get().detail());
+      throw new IllegalArgumentException(
+          "Candidate " + to + " is " + record.get().status() + ": " + record.get().detail());
     PhiEntry existing = null;
     for (PhiEntry entry : entries) if (entry.id().equals(to)) existing = entry;
     PhiEntry entry;
     if (existing != null) {
       entry = existing.from(from, PhiEntry.ROLLBACK + " " + reason);
     } else {
-      if (record.isEmpty()) throw new IllegalArgumentException("No Φ entry or refit attempt named " + to);
+      if (record.isEmpty())
+        throw new IllegalArgumentException("No Φ entry or refit attempt named " + to);
       entry = record.get().entry(entries.getFirst().variant(), from, reason);
     }
     if (!entry.sha256().isEmpty()) {
       String sha = GrpCheckpoint.sha256(Path.of(entry.path()));
       if (!sha.equals(entry.sha256()))
-        throw new IllegalStateException("GRP checkpoint " + entry.path() + " has sha " + sha + ", not " + entry.sha256());
+        throw new IllegalStateException(
+            "GRP checkpoint " + entry.path() + " has sha " + sha + ", not " + entry.sha256());
     }
     if (!entry.outcomesSha256().isEmpty()) {
       String sha = GrpCheckpoint.sha256(Path.of(entry.outcomes()));
       if (!sha.equals(entry.outcomesSha256()))
         throw new IllegalStateException(
-            "Outcome network " + entry.outcomes() + " has sha " + sha + ", not " + entry.outcomesSha256());
+            "Outcome network "
+                + entry.outcomes()
+                + " has sha "
+                + sha
+                + ", not "
+                + entry.outcomesSha256());
     }
     checkReadable(entry);
     return entry;

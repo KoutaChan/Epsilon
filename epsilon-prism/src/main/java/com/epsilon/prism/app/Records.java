@@ -34,13 +34,23 @@ import java.util.Locale;
  */
 @Named(value = "records", doc = "Write self-play games as game records")
 public record Records(
-    @Key(doc = "Candidate player (same forms as evaluate; heuristic also works)", presence = Presence.REQUIRED) String model,
+    @Key(
+            doc = "Candidate player (same forms as evaluate; heuristic also works)",
+            presence = Presence.REQUIRED)
+        String model,
     @Key(doc = "Output directory", presence = Presence.REQUIRED) Path out,
     @Key(doc = "Opponent player", value = EvaluationTable.HEURISTIC) String opponent,
-    @Key(doc = "Number of seats for the candidate (default: every seat)", presence = Presence.ABSENT) @Range(min = 1) Integer seats,
+    @Key(
+            doc = "Number of seats for the candidate (default: every seat)",
+            presence = Presence.ABSENT)
+        @Range(min = 1)
+        Integer seats,
     @Key(doc = "Number of games", value = "1024") @Range(min = 1) int games,
     @Key(doc = "First game ID", value = "0") @Range(min = 0) long firstGame,
-    @Key(doc = "Device of the classic players (cpu or gpuN; default: the per-rule default)", presence = Presence.ABSENT) String nanoDevice)
+    @Key(
+            doc = "Device of the classic players (cpu or gpuN; default: the per-rule default)",
+            presence = Presence.ABSENT)
+        String nanoDevice)
     implements PrismCommand {
 
   /** 牌山の種に混ぜるソルト。評価の牌山と重ならないようにする。 */
@@ -60,13 +70,16 @@ public record Records(
             inference.maxBatch(),
             Kernels.EAGER);
     TwinDiscard twinDiscard = settings.behaviour().twinDiscard();
-    try (var runtime = new NetworkRuntime(inference.encoders(), inference.slots(), inference.readyBatches());
+    try (var runtime = new NetworkRuntime(inference);
         var table = new TableLoop(settings.table());
-        var candidate = EvaluationTable.open(model, variant, inference, twinDiscard, options, runtime);
-        var rival = EvaluationTable.open(opponent, variant, inference, twinDiscard, options, runtime)) {
+        var candidate =
+            EvaluationTable.open(model, variant, inference, twinDiscard, options, runtime);
+        var rival =
+            EvaluationTable.open(opponent, variant, inference, twinDiscard, options, runtime)) {
       SelfPlayRecords.Result result =
           SelfPlayRecords.write(
               table,
+              variant,
               new SelfPlayRecords.Player(candidate, EvaluationTable.label(model)),
               new SelfPlayRecords.Player(rival, EvaluationTable.label(opponent)),
               seats == null ? variant.seats() : seats,

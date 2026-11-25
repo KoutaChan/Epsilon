@@ -64,8 +64,10 @@ public class TileCopiesTest {
   @Test
   public void onlyAnAssignedTileIsReleased() {
     TileCopies copies = new TileCopies(Variant.TENHOU_3P);
-    Assert.assertThrows(IllegalArgumentException.class, () -> copies.release(Tiles.physicalId(Tiles.M1, 0)));
-    Assert.assertThrows(IllegalArgumentException.class, () -> copies.release(Tiles.physicalId(Tiles.M5, 1)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> copies.release(Tiles.physicalId(Tiles.M1, 0)));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> copies.release(Tiles.physicalId(Tiles.M5, 1)));
     Assert.assertThrows(IllegalArgumentException.class, () -> copies.release(Tiles.PHYSICAL_IDS));
     int north = copies.deal(2, Face.PEI);
     copies.release(north);

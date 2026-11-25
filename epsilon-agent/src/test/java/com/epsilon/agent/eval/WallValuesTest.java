@@ -55,7 +55,12 @@ public class WallValuesTest {
     public JobWork open(JobFile job, Path directory) throws Exception {
       DuelSetup planned = RecordFile.read(DuelSetup.class, job.plan()).value();
       return Duel.open(
-          job.name(), table, planned, random(planned.candidate()), random(planned.opponent()), directory);
+          job.name(),
+          table,
+          planned,
+          random(planned.candidate()),
+          random(planned.opponent()),
+          directory);
     }
   }
 
@@ -68,11 +73,28 @@ public class WallValuesTest {
   }
 
   private static DuelSetup setup(
-      Seating seating, List<String> splits, DrawOrder draws, long base, int walls, long candidate, long opponent) {
+      Seating seating,
+      List<String> splits,
+      DrawOrder draws,
+      long base,
+      int walls,
+      long candidate,
+      long opponent) {
     List<Split> parsed = splits.stream().map(split -> Split.parse(split, 2, THREE)).toList();
     return DuelSetup.of(
-        THREE, entrant(candidate), entrant(opponent), seating, parsed, draws, WallSet.FIXED, SEED, base, walls,
-        new StopRule.Fixed(0.01), Score.RANK, RankUtility.TENHOU);
+        THREE,
+        entrant(candidate),
+        entrant(opponent),
+        seating,
+        parsed,
+        draws,
+        WallSet.FIXED,
+        SEED,
+        base,
+        walls,
+        new StopRule.Fixed(0.01),
+        Score.RANK,
+        RankUtility.TENHOU);
   }
 
   private static TableLoop table() {
@@ -110,7 +132,9 @@ public class WallValuesTest {
   }
 
   private static void assertBits(double[] actual, double[] expected, String label) {
-    assertTrue(Arrays.equals(actual, expected), label + ": " + Arrays.toString(actual) + " vs " + Arrays.toString(expected));
+    assertTrue(
+        Arrays.equals(actual, expected),
+        label + ": " + Arrays.toString(actual) + " vs " + Arrays.toString(expected));
   }
 
   @Test(timeOut = 600_000)
@@ -131,15 +155,24 @@ public class WallValuesTest {
         assertEquals(values.walls(), WALLS, seating.name());
         assertBits(values.rank(), expected[0], seating + " rank");
         assertBits(values.utility(), expected[1], seating + " utility");
-        assertTrue(Arrays.stream(values.rank()).anyMatch(rank -> rank != 0), seating + " all walls are even");
+        assertTrue(
+            Arrays.stream(values.rank()).anyMatch(rank -> rank != 0),
+            seating + " all walls are even");
         double[] negated = Arrays.stream(values.rank()).map(rank -> -rank).toArray();
         assertBits(values.better(Score.RANK), negated, seating + " better rank");
         assertBits(values.better(Score.UTILITY), expected[1], seating + " better utility");
         // 決闘の結果の平均は、読んだ牌山ごとの値の平均と一致する
         DuelResult result = Jobs.result(home, DuelResult.class);
-        assertEquals(result.rank().mean(), Arrays.stream(values.rank()).average().orElseThrow(), 1e-12, seating.name());
         assertEquals(
-            result.utility().mean(), Arrays.stream(values.utility()).average().orElseThrow(), 1e-12, seating.name());
+            result.rank().mean(),
+            Arrays.stream(values.rank()).average().orElseThrow(),
+            1e-12,
+            seating.name());
+        assertEquals(
+            result.utility().mean(),
+            Arrays.stream(values.utility()).average().orElseThrow(),
+            1e-12,
+            seating.name());
         // 牌山の数が計画より少ない行（止め方で早く止まったジョブ）は、行のある牌山だけを読む
         WallValues head = WallValues.of(setup, lines.subList(0, 4 * perWall));
         assertEquals(head.walls(), 4, seating.name());
@@ -154,7 +187,8 @@ public class WallValuesTest {
   public void linesThatDoNotMatchThePlanAreRefused() throws Exception {
     Path root = Files.createTempDirectory("wall-values-refused");
     try (TableLoop table = table()) {
-      DuelSetup setup = setup(Seating.EVERY_PLACEMENT, BOTH, DrawOrder.SEAT_STREAMS, BASE, WALLS, 3, 5);
+      DuelSetup setup =
+          setup(Seating.EVERY_PLACEMENT, BOTH, DrawOrder.SEAT_STREAMS, BASE, WALLS, 3, 5);
       List<String> lines = Files.readAllLines(duel(table, root, setup).resolve(JobOutputs.GAMES));
       assertEquals(WallValues.of(setup, lines).walls(), WALLS);
 
@@ -185,10 +219,12 @@ public class WallValuesTest {
       // 牌山の途中で終わる行
       refused(setup, lines.subList(0, 2 * 6 + 1), "not whole walls");
       // 計画より牌山が多い行
-      DuelSetup shorter = setup(Seating.EVERY_PLACEMENT, BOTH, DrawOrder.SEAT_STREAMS, BASE, WALLS / 2, 3, 5);
+      DuelSetup shorter =
+          setup(Seating.EVERY_PLACEMENT, BOTH, DrawOrder.SEAT_STREAMS, BASE, WALLS / 2, 3, 5);
       refused(shorter, lines, "within " + WALLS / 2 + " walls");
       // 牌山の番号が計画と違う行
-      DuelSetup shifted = setup(Seating.EVERY_PLACEMENT, BOTH, DrawOrder.SEAT_STREAMS, BASE + 1, WALLS, 3, 5);
+      DuelSetup shifted =
+          setup(Seating.EVERY_PLACEMENT, BOTH, DrawOrder.SEAT_STREAMS, BASE + 1, WALLS, 3, 5);
       refused(shifted, lines, "is not game");
       // 1 半荘ずつの計画で読むと、全ての割り当てを打った行は牌山の番号が合わない
       DuelSetup byGame = setup(Seating.BY_GAME, ONE, DrawOrder.SEAT_STREAMS, BASE, WALLS * 6, 3, 5);
@@ -199,7 +235,8 @@ public class WallValuesTest {
   }
 
   private static void refused(DuelSetup setup, List<String> lines, String because) {
-    IllegalArgumentException failure = expectThrows(IllegalArgumentException.class, () -> WallValues.of(setup, lines));
+    IllegalArgumentException failure =
+        expectThrows(IllegalArgumentException.class, () -> WallValues.of(setup, lines));
     assertTrue(failure.getMessage().contains(because), failure.getMessage());
   }
 
@@ -211,7 +248,8 @@ public class WallValuesTest {
       for (DrawOrder draws : DrawOrder.values()) {
         DuelSetup setup = setup(Seating.EVERY_PLACEMENT, BOTH, draws, BASE, WALLS, 7, 7);
         Path home = duel(table, root.resolve(draws.name()), setup);
-        WallValues values = WallValues.of(setup, Files.readAllLines(home.resolve(JobOutputs.GAMES)));
+        WallValues values =
+            WallValues.of(setup, Files.readAllLines(home.resolve(JobOutputs.GAMES)));
         assertEquals(values.walls(), WALLS, draws.name());
         double[] zero = new double[WALLS];
         assertBits(values.rank(), zero, draws + " rank");
@@ -233,9 +271,19 @@ public class WallValuesTest {
     DuelSetup base = setup(Seating.EVERY_PLACEMENT, ONE, DrawOrder.SEAT_STREAMS, BASE, WALLS, 3, 5);
     DuelSetup other =
         DuelSetup.of(
-            THREE, entrant(9), entrant(5), Seating.EVERY_PLACEMENT, List.of(Split.parse("1v2", 2, THREE)),
-            DrawOrder.SEAT_STREAMS, WallSet.FIXED, SEED, BASE, 2048, new StopRule.Precision(0.005, 0.01, 512),
-            Score.UTILITY, RankUtility.TENHOU);
+            THREE,
+            entrant(9),
+            entrant(5),
+            Seating.EVERY_PLACEMENT,
+            List.of(Split.parse("1v2", 2, THREE)),
+            DrawOrder.SEAT_STREAMS,
+            WallSet.FIXED,
+            SEED,
+            BASE,
+            2048,
+            new StopRule.Precision(0.005, 0.01, 512),
+            Score.UTILITY,
+            RankUtility.TENHOU);
     assertTrue(base.pairsWith(other));
     assertTrue(other.pairsWith(base));
     assertTrue(base.pairsWith(base));
@@ -247,16 +295,46 @@ public class WallValuesTest {
             setup(Seating.EVERY_PLACEMENT, ONE, DrawOrder.WALL_ORDER, BASE, WALLS, 3, 5),
             setup(Seating.EVERY_PLACEMENT, ONE, DrawOrder.SEAT_STREAMS, BASE + 1, WALLS, 3, 5),
             DuelSetup.of(
-                THREE, entrant(3), entrant(5), Seating.EVERY_PLACEMENT, List.of(Split.parse("1v2", 2, THREE)),
-                DrawOrder.SEAT_STREAMS, WallSet.FIXED, SEED + 1, BASE, WALLS, new StopRule.Fixed(0.01), Score.RANK,
+                THREE,
+                entrant(3),
+                entrant(5),
+                Seating.EVERY_PLACEMENT,
+                List.of(Split.parse("1v2", 2, THREE)),
+                DrawOrder.SEAT_STREAMS,
+                WallSet.FIXED,
+                SEED + 1,
+                BASE,
+                WALLS,
+                new StopRule.Fixed(0.01),
+                Score.RANK,
                 RankUtility.TENHOU),
             DuelSetup.of(
-                THREE, entrant(3), entrant(5), Seating.EVERY_PLACEMENT, List.of(Split.parse("1v2", 2, THREE)),
-                DrawOrder.SEAT_STREAMS, WallSet.FRESH, SEED, BASE, WALLS, new StopRule.Fixed(0.01), Score.RANK,
+                THREE,
+                entrant(3),
+                entrant(5),
+                Seating.EVERY_PLACEMENT,
+                List.of(Split.parse("1v2", 2, THREE)),
+                DrawOrder.SEAT_STREAMS,
+                WallSet.FRESH,
+                SEED,
+                BASE,
+                WALLS,
+                new StopRule.Fixed(0.01),
+                Score.RANK,
                 RankUtility.TENHOU),
             DuelSetup.of(
-                THREE, entrant(3), entrant(5), Seating.EVERY_PLACEMENT, List.of(Split.parse("1v2", 2, THREE)),
-                DrawOrder.SEAT_STREAMS, WallSet.FIXED, SEED, BASE, WALLS, new StopRule.Fixed(0.01), Score.RANK,
+                THREE,
+                entrant(3),
+                entrant(5),
+                Seating.EVERY_PLACEMENT,
+                List.of(Split.parse("1v2", 2, THREE)),
+                DrawOrder.SEAT_STREAMS,
+                WallSet.FIXED,
+                SEED,
+                BASE,
+                WALLS,
+                new StopRule.Fixed(0.01),
+                Score.RANK,
                 RankUtility.AVERAGE_RANK));
     for (DuelSetup setup : apart) {
       assertFalse(base.pairsWith(setup), setup.toString());

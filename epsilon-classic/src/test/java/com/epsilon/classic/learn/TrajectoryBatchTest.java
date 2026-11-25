@@ -86,7 +86,8 @@ public class TrajectoryBatchTest {
     assertThrows(IllegalArgumentException.class, () -> builder.hand(new float[16]));
     assertThrows(IllegalArgumentException.class, () -> builder.decision(o, 0, 0f, true));
     assertThrows(IllegalArgumentException.class, () -> builder.decision(o, 0, 1.5f, true));
-    assertThrows(IndexOutOfBoundsException.class, () -> builder.decision(o, o.legalActions(), 1f, true));
+    assertThrows(
+        IndexOutOfBoundsException.class, () -> builder.decision(o, o.legalActions(), 1f, true));
     assertThrows(IllegalArgumentException.class, () -> builder.finish(new int[3]));
     GameTrajectory game = builder.finish(SCORES);
     assertFalse(game.hasPriors());
@@ -135,7 +136,8 @@ public class TrajectoryBatchTest {
     List<GameTrajectory> twice = new ArrayList<>(games);
     twice.add(game(100, 1));
     assertThrows(IllegalArgumentException.class, () -> TrajectoryBatch.of(VARIANT, twice));
-    assertThrows(IllegalArgumentException.class, () -> TrajectoryBatch.of(Variant.TENHOU_3P, games));
+    assertThrows(
+        IllegalArgumentException.class, () -> TrajectoryBatch.of(Variant.TENHOU_3P, games));
     assertThrows(
         IllegalArgumentException.class,
         () -> new TrajectoryBatch.Collector(Variant.TENHOU_3P).add(games.getFirst()));
@@ -156,6 +158,7 @@ public class TrajectoryBatchTest {
   private static long[] words(Observation o) {
     ObservationBatch copy = new ObservationBatch(VARIANT, 64);
     int index = copy.add(o);
-    return Arrays.copyOfRange(copy.words(), copy.start(index), copy.start(index) + copy.longs(index));
+    return Arrays.copyOfRange(
+        copy.words(), copy.start(index), copy.start(index) + copy.longs(index));
   }
 }

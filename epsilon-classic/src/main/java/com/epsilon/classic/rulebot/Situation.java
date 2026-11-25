@@ -141,8 +141,9 @@ final class Situation {
     lateFirst = late && rank == 0;
     lateLast = late && rank == seats - 1;
     riichi = o.riichi(0);
-    missedRonStays = o.furitenTemporary() && (riichi != RiichiState.NONE || RoundRules.afterCallFromShimocha(o));
-    declaration = RoundRules.declaration(o.beforeFirstDiscard(0), o.callMade());
+    missedRonStays =
+        o.furitenTemporary() && (riichi != RiichiState.NONE || RoundRules.afterCallFromShimocha(o));
+    declaration = o.declaration();
     scanDiscards(o);
     collectThreats(o);
   }
@@ -263,12 +264,16 @@ final class Situation {
     for (int seat = 1; seat < seats; seat++) {
       boolean seatDealer = o.dealer() == seat;
       if (o.riichi(seat) != RiichiState.NONE || facts.riichiDeclaration(seat) >= 0) {
-        addThreat(seatDealer ? DEALER_RIICHI_WEIGHT : RIICHI_WEIGHT, facts.safe(seat), beforeRiichi[seat]);
+        addThreat(
+            seatDealer ? DEALER_RIICHI_WEIGHT : RIICHI_WEIGHT,
+            facts.safe(seat),
+            beforeRiichi[seat]);
         riichiThreats++;
         continue;
       }
       int melds = facts.meldCount(seat);
-      if (melds < OPEN_THREAT_MELDS && (melds < LATE_OPEN_THREAT_MELDS || turn < LATE_OPEN_THREAT_TURN)) {
+      if (melds < OPEN_THREAT_MELDS
+          && (melds < LATE_OPEN_THREAT_MELDS || turn < LATE_OPEN_THREAT_TURN)) {
         continue;
       }
       int weight =
@@ -320,7 +325,9 @@ final class Situation {
     int known = known(kind);
     if (!Tiles.Group.of(kind).suited()) {
       int danger =
-          known >= Tiles.COPIES ? DANGER_FOURTH_HONOR : known >= SEEN_HONOR ? DANGER_SEEN_HONOR : DANGER_LIVE_HONOR;
+          known >= Tiles.COPIES
+              ? DANGER_FOURTH_HONOR
+              : known >= SEEN_HONOR ? DANGER_SEEN_HONOR : DANGER_LIVE_HONOR;
       return danger + doraDanger(kind);
     }
     int number = Tiles.number(kind);
@@ -338,7 +345,10 @@ final class Situation {
     } else if (anchors > 0) {
       danger = Math.min(danger, DANGER_LATE_ONE_CHANCE);
     } else if (blocked(kind, number, Tiles.COPIES - 1)) {
-      danger = Math.min(danger, wall >= reliableOneChanceWall ? DANGER_EARLY_ONE_CHANCE : DANGER_LATE_ONE_CHANCE);
+      danger =
+          Math.min(
+              danger,
+              wall >= reliableOneChanceWall ? DANGER_EARLY_ONE_CHANCE : DANGER_LATE_ONE_CHANCE);
     }
     return danger + doraDanger(kind);
   }
@@ -384,7 +394,9 @@ final class Situation {
    * @param threshold 塞がっていると見る、見えている枚数の下限（ノーチャンスは 4、ワンチャンスは 3）
    */
   private boolean blocked(int kind, int number, int threshold) {
-    for (int start = Math.max(0, number - (RUN - 1)); start <= Math.min(number, LAST_RUN_START); start++) {
+    for (int start = Math.max(0, number - (RUN - 1));
+        start <= Math.min(number, LAST_RUN_START);
+        start++) {
       boolean closed = false;
       for (int offset = 0; offset < RUN && !closed; offset++) {
         int other = kind - number + start + offset;

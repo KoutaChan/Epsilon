@@ -16,7 +16,9 @@ public final class SuitSymmetry {
   /** 入れ替えの数（3 色の順列の数）。 */
   public static final int VIEWS = 6;
 
-  private static final int[][] SUITS = {{0, 1, 2}, {1, 2, 0}, {2, 0, 1}, {1, 0, 2}, {2, 1, 0}, {0, 2, 1}};
+  private static final int[][] SUITS = {
+    {0, 1, 2}, {1, 2, 0}, {2, 0, 1}, {1, 0, 2}, {2, 1, 0}, {0, 2, 1}
+  };
   private static final int[][] KIND_MAPS = new int[VIEWS][Tiles.KINDS];
 
   static {
@@ -24,7 +26,9 @@ public final class SuitSymmetry {
     for (int view = 0; view < VIEWS; view++) {
       for (int kind = 0; kind < Tiles.KINDS; kind++) {
         KIND_MAPS[view][kind] =
-            kind < suited ? SUITS[view][kind / Tiles.SUIT_SIZE] * Tiles.SUIT_SIZE + kind % Tiles.SUIT_SIZE : kind;
+            kind < suited
+                ? SUITS[view][kind / Tiles.SUIT_SIZE] * Tiles.SUIT_SIZE + kind % Tiles.SUIT_SIZE
+                : kind;
       }
     }
   }

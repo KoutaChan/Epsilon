@@ -43,9 +43,7 @@ public class OwnerCookieTest {
       Assert.assertFalse(again.headers().firstValue("Set-Cookie").isPresent());
       var malformed =
           server.send(
-              server
-                  .request("/api/history", null)
-                  .header("Cookie", OwnerCookie.NAME + "=short"));
+              server.request("/api/history", null).header("Cookie", OwnerCookie.NAME + "=short"));
       Assert.assertTrue(malformed.headers().firstValue("Set-Cookie").isPresent());
       var missing = server.send(server.request("/api/jobs/nope", null));
       Assert.assertTrue(missing.headers().firstValue("Set-Cookie").isPresent());

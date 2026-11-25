@@ -29,13 +29,15 @@ public record DuelReport(
     Objects.requireNonNull(job, "job");
     Objects.requireNonNull(candidate, "candidate");
     if ((champion == null) != (verdict == null)) {
-      throw new IllegalArgumentException("A duel has a verdict exactly when it has a champion: " + job);
+      throw new IllegalArgumentException(
+          "A duel has a verdict exactly when it has a champion: " + job);
     }
     if (failed && (verdict != Verdict.UNDECIDED || better != null)) {
       throw new IllegalArgumentException("A failed duel is undecided and has no estimate: " + job);
     }
     if ((better == null) != (champion == null || failed)) {
-      throw new IllegalArgumentException("A played duel has an estimate, and only a played duel: " + job);
+      throw new IllegalArgumentException(
+          "A played duel has an estimate, and only a played duel: " + job);
     }
   }
 
@@ -45,9 +47,15 @@ public record DuelReport(
   }
 
   /** 打ち終えた決闘の報告。 */
-  static DuelReport played(String job, Champion candidate, Champion champion, DuelJobs.Played played) {
+  static DuelReport played(
+      String job, Champion candidate, Champion champion, DuelJobs.Played played) {
     return new DuelReport(
-        job, candidate, champion, played.result().verdict(), false, DuelJobs.better(played.result()));
+        job,
+        candidate,
+        champion,
+        played.result().verdict(),
+        false,
+        DuelJobs.better(played.result()));
   }
 
   /** ジョブが FAILED になった決闘の報告（判定は未決）。 */

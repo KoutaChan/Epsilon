@@ -187,7 +187,8 @@ public final class RiichiSession {
       }
       case "validation_result" -> {
         validationPassed = object.get("passed").getAsBoolean();
-        log.info("RiichiLab validation passed={} reason={}", validationPassed, object.get("reason"));
+        log.info(
+            "RiichiLab validation passed={} reason={}", validationPassed, object.get("reason"));
       }
       default -> log.debug("RiichiLab message {} is not read", type);
     }
@@ -196,7 +197,8 @@ public final class RiichiSession {
 
   private void assignSeat(int id) {
     if (id < 0 || id >= variant.seats() || seat != TurnEvent.NONE && seat != id) {
-      throw new IllegalArgumentException("RiichiLab assigns seat " + id + " to the player of seat " + seat);
+      throw new IllegalArgumentException(
+          "RiichiLab assigns seat " + id + " to the player of seat " + seat);
     }
     if (seat == TurnEvent.NONE) {
       seat = id;
@@ -212,7 +214,8 @@ public final class RiichiSession {
     requestId = id;
     submitted = LiveTable.NO_DECISION;
     byte[] encoded = Base64.getDecoder().decode(message.get("observation").getAsString());
-    JsonObject observation = JsonParser.parseString(new String(encoded, StandardCharsets.UTF_8)).getAsJsonObject();
+    JsonObject observation =
+        JsonParser.parseString(new String(encoded, StandardCharsets.UTF_8)).getAsJsonObject();
     assignSeat(observation.get("player_id").getAsInt());
     for (JsonElement event : observation.getAsJsonArray("events")) {
       apply(JsonParser.parseString(event.getAsString()).getAsJsonObject());
@@ -233,7 +236,8 @@ public final class RiichiSession {
     }
     String reply = encode(code, wire, id, followUp);
     submitted = code;
-    boolean declares = !followUp && code != LiveTable.NO_DECISION && Action.of(code).type() == Type.RIICHI_DAHAI;
+    boolean declares =
+        !followUp && code != LiveTable.NO_DECISION && Action.of(code).type() == Type.RIICHI_DAHAI;
     riichiDiscard = declares ? code : LiveTable.NO_DECISION;
     riichiAccepted &= !declares;
     return reply;
@@ -246,7 +250,10 @@ public final class RiichiSession {
   private int choose() {
     for (int offered : wires.keySet()) {
       if (!allows(offered)) {
-        log.warn("RiichiLab offers {} to seat {}, which the engine does not allow", Action.of(offered), seat);
+        log.warn(
+            "RiichiLab offers {} to seat {}, which the engine does not allow",
+            Action.of(offered),
+            seat);
       }
     }
     return live.decide(this::offered);
@@ -257,7 +264,8 @@ public final class RiichiSession {
    * 出した手とみなす。
    */
   private boolean offered(int code) {
-    return wires.containsKey(code) || reachWire != null && Action.of(code).type() == Type.RIICHI_DAHAI;
+    return wires.containsKey(code)
+        || reachWire != null && Action.of(code).type() == Type.RIICHI_DAHAI;
   }
 
   /**
@@ -278,14 +286,22 @@ public final class RiichiSession {
     } else if (!followUp) {
       wire = reachWire;
     } else if (!riichiAccepted) {
-      throw new IllegalStateException("RiichiLab asks for the riichi discard before accepting the declaration");
+      throw new IllegalStateException(
+          "RiichiLab asks for the riichi discard before accepting the declaration");
     } else {
       Action riichi = Action.of(code);
-      wire = wires.get(Action.discard(riichi.tile(), riichi.selection().red(), riichi.selection().tsumogiri(), false));
+      wire =
+          wires.get(
+              Action.discard(
+                  riichi.tile(), riichi.selection().red(), riichi.selection().tsumogiri(), false));
     }
     if (wire == null) {
       throw new IllegalStateException(
-          "RiichiLab request " + id + " offers seat " + seat + " no action for "
+          "RiichiLab request "
+              + id
+              + " offers seat "
+              + seat
+              + " no action for "
               + (code == LiveTable.NO_DECISION ? "a pass" : Action.of(code)));
     }
     return wire;
@@ -368,7 +384,10 @@ public final class RiichiSession {
         yield Action.chi(base, Tiles.kind(tile), anyRed(consumed));
       }
       case PON ->
-          Action.code(Type.PON, Tiles.kind(tile), anyRed(consumed) ? TileSelection.AKA : TileSelection.NON_AKA);
+          Action.code(
+              Type.PON,
+              Tiles.kind(tile),
+              anyRed(consumed) ? TileSelection.AKA : TileSelection.NON_AKA);
       case DAIMINKAN -> Action.code(Type.DAIMINKAN, Tiles.kind(tile), TileSelection.NOT_APPLICABLE);
       case ANKAN -> Action.code(Type.ANKAN, Tiles.kind(consumed[0]), TileSelection.NOT_APPLICABLE);
       case KAKAN -> Action.code(Type.KAKAN, Tiles.kind(tile), TileSelection.NOT_APPLICABLE);
@@ -392,12 +411,14 @@ public final class RiichiSession {
       if (!legal.mjai.equals(wire.get("type").getAsString())) {
         continue;
       }
-      if (wire.has("pai") && !raw.get("tile").isJsonNull()
+      if (wire.has("pai")
+          && !raw.get("tile").isJsonNull()
           && face(raw.get("tile").getAsInt()) != Face.parse(wire.get("pai").getAsString())) {
         continue;
       }
       if (wire.has("consumed")
-          && !sameFaces(integers(raw.getAsJsonArray("consume_tiles")), wire.getAsJsonArray("consumed"))) {
+          && !sameFaces(
+              integers(raw.getAsJsonArray("consume_tiles")), wire.getAsJsonArray("consumed"))) {
         continue;
       }
       if (legal == Legal.DISCARD
@@ -407,7 +428,8 @@ public final class RiichiSession {
       }
       return wire;
     }
-    throw new IllegalArgumentException("RiichiLab offers " + raw + " without a matching possible action");
+    throw new IllegalArgumentException(
+        "RiichiLab offers " + raw + " without a matching possible action");
   }
 
   /** 観測に入った mjai のイベントを 1 つ卓に書く。 */
@@ -417,23 +439,37 @@ public final class RiichiSession {
       case "start_kyoku" -> startRound(event);
       case "tsumo" -> {
         int actor = event.get("actor").getAsInt();
-        table().draw(actor, actor == seat ? free(Face.parse(event.get("pai").getAsString())) : TurnEvent.NONE);
+        table()
+            .draw(
+                actor,
+                actor == seat ? free(Face.parse(event.get("pai").getAsString())) : TurnEvent.NONE);
       }
       case "dahai" ->
-          table().discard(
-              event.get("actor").getAsInt(),
-              representative(Face.parse(event.get("pai").getAsString())),
-              event.get("tsumogiri").getAsBoolean());
-      case "chi", "pon", "daiminkan" -> call(event, Meld.Type.valueOf(type.toUpperCase(Locale.ROOT)));
+          table()
+              .discard(
+                  event.get("actor").getAsInt(),
+                  representative(Face.parse(event.get("pai").getAsString())),
+                  event.get("tsumogiri").getAsBoolean());
+      case "chi", "pon", "daiminkan" ->
+          call(event, Meld.Type.valueOf(type.toUpperCase(Locale.ROOT)));
       case "ankan" ->
-          table().closedKan(event.get("actor").getAsInt(), faces(event.getAsJsonArray("consumed")).get(0).kind());
+          table()
+              .closedKan(
+                  event.get("actor").getAsInt(),
+                  faces(event.getAsJsonArray("consumed")).get(0).kind());
       case "kakan" ->
-          table().addedKan(event.get("actor").getAsInt(), Face.parse(event.get("pai").getAsString()).kind());
+          table()
+              .addedKan(
+                  event.get("actor").getAsInt(), Face.parse(event.get("pai").getAsString()).kind());
       case "kita" -> {
         int actor = event.get("actor").getAsInt();
-        table().nuki(actor, actor == seat ? held(Face.parse(event.get("pai").getAsString())) : TurnEvent.NONE);
+        table()
+            .nuki(
+                actor,
+                actor == seat ? held(Face.parse(event.get("pai").getAsString())) : TurnEvent.NONE);
       }
-      case "dora" -> table().dora(representative(Face.parse(event.get("dora_marker").getAsString())));
+      case "dora" ->
+          table().dora(representative(Face.parse(event.get("dora_marker").getAsString())));
       case "reach" -> {
         int actor = event.get("actor").getAsInt();
         table().declareRiichi(actor);
@@ -451,14 +487,17 @@ public final class RiichiSession {
     JsonArray hands = event.getAsJsonArray("tehais");
     int[] scores = integers(event.getAsJsonArray("scores"));
     if (hands.size() != variant.seats() || scores.length != variant.seats()) {
-      throw new IllegalArgumentException("RiichiLab plays " + hands.size() + " seats, not " + variant.seats());
+      throw new IllegalArgumentException(
+          "RiichiLab plays " + hands.size() + " seats, not " + variant.seats());
     }
     int wind = Face.parse(event.get("bakaze").getAsString()).kind() - Tiles.TON;
     int round = wind * variant.seats() + event.get("kyoku").getAsInt() - 1;
     RoundStart start =
-        new RoundStart(variant, round, event.get("honba").getAsInt(), event.get("kyotaku").getAsInt(), scores);
+        new RoundStart(
+            variant, round, event.get("honba").getAsInt(), event.get("kyotaku").getAsInt(), scores);
     if (event.get("oya").getAsInt() != variant.dealer(round)) {
-      throw new IllegalArgumentException("RiichiLab names dealer " + event.get("oya") + " in round " + round);
+      throw new IllegalArgumentException(
+          "RiichiLab names dealer " + event.get("oya") + " in round " + round);
     }
     if (live == null) {
       live = new LiveTable(variant, seat, decider);
@@ -470,7 +509,8 @@ public final class RiichiSession {
       hand[index] = copy(faces.get(index), tile -> dealt[tile]);
       dealt[hand[index]] = true;
     }
-    live.startRound(start, hand, representative(Face.parse(event.get("dora_marker").getAsString())));
+    live.startRound(
+        start, hand, representative(Face.parse(event.get("dora_marker").getAsString())));
     riichiDiscard = LiveTable.NO_DECISION;
     riichiAccepted = false;
     log.info("RiichiLab {} starts with this player at seat {}", start, seat);

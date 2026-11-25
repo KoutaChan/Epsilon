@@ -29,21 +29,31 @@ public class RegimeRepresentativesTest {
   @Test
   public void callRiichiAndKanRegimes() {
     int[] calls = {
-      Action.chi(M1, M2, false), Action.code(Type.PON, M2, TileSelection.NON_AKA), Action.code(Type.PASS)
+      Action.chi(M1, M2, false),
+      Action.code(Type.PON, M2, TileSelection.NON_AKA),
+      Action.code(Type.PASS)
     };
     Assert.assertEquals(
-        RegimeRepresentatives.of(null, calls, new float[] {0.2f, 0.5f, 0.1f}, null, 0), new int[] {1, 2});
-    int[] riichi = {dahai(M5), dahai(TON), dahai(P2), Action.discard(M1, false, false, true), dahai(M1)};
+        RegimeRepresentatives.of(null, calls, new float[] {0.2f, 0.5f, 0.1f}, null, 0),
+        new int[] {1, 2});
+    int[] riichi = {
+      dahai(M5), dahai(TON), dahai(P2), Action.discard(M1, false, false, true), dahai(M1)
+    };
     Assert.assertEquals(
         RegimeRepresentatives.of(null, riichi, new float[] {0.1f, 0f, -0.2f, 0.3f, 0.05f}, null, 0),
         new int[] {3, 0});
     int[] kans = {
-      Action.code(Type.ANKAN, M4, TileSelection.NOT_APPLICABLE), dahai(M4), dahai(M6), Action.code(Type.TSUMO_AGARI)
+      Action.code(Type.ANKAN, M4, TileSelection.NOT_APPLICABLE),
+      dahai(M4),
+      dahai(M6),
+      Action.code(Type.TSUMO_AGARI)
     };
     Assert.assertEquals(
-        RegimeRepresentatives.of(null, kans, new float[] {0.1f, 0.4f, 0.2f, 0.9f}, null, 0), new int[] {0, 3});
+        RegimeRepresentatives.of(null, kans, new float[] {0.1f, 0.4f, 0.2f, 0.9f}, null, 0),
+        new int[] {0, 3});
     int[] plain = {dahai(M1), dahai(M2)};
-    Assert.assertEquals(RegimeRepresentatives.of(null, plain, new float[] {0f, 1f}, null, 0), new int[0]);
+    Assert.assertEquals(
+        RegimeRepresentatives.of(null, plain, new float[] {0f, 1f}, null, 0), new int[0]);
   }
 
   /**
@@ -57,7 +67,8 @@ public class RegimeRepresentativesTest {
     TileCounts counts = new TileCounts(Variant.TENHOU_4P);
     Random random = new Random(5);
     int riichiChecked = 0, quiet = 0;
-    for (ObservedDecisions.Decision decision : ObservedDecisions.collect(13, 4, TableWalk.Policy.GREEDY, 20_000)) {
+    for (ObservedDecisions.Decision decision :
+        ObservedDecisions.collect(13, 4, TableWalk.Policy.GREEDY, 20_000)) {
       Observation o = decision.observation();
       int[] legal = decision.legal();
       float[] prior = new float[legal.length];
@@ -69,7 +80,8 @@ public class RegimeRepresentativesTest {
       int safest = RegimeRepresentatives.safest(o, legal, prior);
       int efficient = -1;
       for (int a = 0; a < legal.length; a++)
-        if (Twins.discard(Action.of(legal[a])) && (efficient < 0 || prior[a] > prior[efficient])) efficient = a;
+        if (Twins.discard(Action.of(legal[a])) && (efficient < 0 || prior[a] > prior[efficient]))
+          efficient = a;
       if (efficient < 0) {
         Assert.assertEquals(safest, -1);
         continue;

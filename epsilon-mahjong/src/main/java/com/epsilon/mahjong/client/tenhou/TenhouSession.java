@@ -149,9 +149,9 @@ public final class TenhouSession {
     return List.of(TenhouCodec.join(target));
   }
 
-  /** 打ち手の名前をログに出す。名前は自分を 0 とする相対席の順に並び、URL エンコードされている。 */
+  /** 打ち手の名前をログに出す。名前は自分を 0 とする天鳳の 4 席の順に並び（三人打ちの空き席は空）、URL エンコードされている。 */
   private void players(TenhouTag tag) {
-    for (int seat = 0; seat < variant.seats(); seat++) {
+    for (int seat = 0; seat < TenhouRound.TAG_SEATS; seat++) {
       String name = tag.get("n" + seat);
       if (name != null && !name.isEmpty()) {
         log.info("Tenhou player n{}: {}", seat, URLDecoder.decode(name, StandardCharsets.UTF_8));
@@ -177,9 +177,11 @@ public final class TenhouSession {
     if (live == null) {
       live = new LiveTable(variant, seat, decider);
     } else if (live.seat() != seat) {
-      throw new IllegalStateException("Tenhou moves this player from seat " + live.seat() + " to seat " + seat);
+      throw new IllegalStateException(
+          "Tenhou moves this player from seat " + live.seat() + " to seat " + seat);
     }
-    live.startRound(start, TenhouTiles.tiles(tag.required("hai"), variant.tiles()), round.indicator());
+    live.startRound(
+        start, TenhouTiles.tiles(tag.required("hai"), variant.tiles()), round.indicator());
     result = Result.NONE;
     ready = false;
     log.info("Tenhou {} starts with this player at seat {}", start, seat);
@@ -225,14 +227,16 @@ public final class TenhouSession {
       int offers = TenhouCodec.offers(tag);
       return seat != table.seat() && offers != 0 ? decide(offers, false) : List.of();
     }
-    Meld meld = TenhouMeldCode.decode(code, variant, tag.integer("who")).meld();
+    Meld meld = TenhouMeldCode.decode(code, variant, seat).meld();
     switch (meld.type()) {
       case CHI, PON, DAIMINKAN -> table.call(seat, meld.id());
       case ANKAN -> table.closedKan(seat, meld.base());
       case KAKAN -> table.addedKan(seat, meld.base());
     }
     if (seat == table.seat()) {
-      return meld.type() == Meld.Type.CHI || meld.type() == Meld.Type.PON ? decide(0, true) : List.of();
+      return meld.type() == Meld.Type.CHI || meld.type() == Meld.Type.PON
+          ? decide(0, true)
+          : List.of();
     }
     int offers = TenhouCodec.offers(tag);
     return meld.type() == Meld.Type.KAKAN && offers != 0 ? decide(offers, false) : List.of();
@@ -260,7 +264,11 @@ public final class TenhouSession {
     int engine = decisions.size() == 0 ? 0 : TenhouCodec.bits(decisions, 0, turn);
     int server = offers & TenhouCodec.Offer.bits(turn);
     if (engine != server) {
-      log.warn("Tenhou offers bits {} to seat {}, but the engine allows {}", server, live.seat(), engine);
+      log.warn(
+          "Tenhou offers bits {} to seat {}, but the engine allows {}",
+          server,
+          live.seat(),
+          engine);
     }
     int code = live.decide(each -> TenhouCodec.offered(each, offers));
     if (code == LiveTable.NO_DECISION) {

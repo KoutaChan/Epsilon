@@ -187,16 +187,19 @@ public final class GameTrajectory {
     public void hand(float[] prior) {
       requireOpen();
       if (!priors.isEmpty() && (prior != null) != withPriors) {
-        throw new IllegalArgumentException("Every hand of game " + id + " must have a GRP prior or none");
+        throw new IllegalArgumentException(
+            "Every hand of game " + id + " must have a GRP prior or none");
       }
       if (prior != null) {
         int seats = variant.seats();
         if (prior.length != seats * seats) {
-          throw new IllegalArgumentException("A GRP prior holds " + seats * seats + " values, not " + prior.length);
+          throw new IllegalArgumentException(
+              "A GRP prior holds " + seats * seats + " values, not " + prior.length);
         }
         for (float probability : prior) {
           if (!(probability >= 0) || !Float.isFinite(probability)) {
-            throw new IllegalArgumentException("GRP prior values must be finite and non-negative: " + probability);
+            throw new IllegalArgumentException(
+                "GRP prior values must be finite and non-negative: " + probability);
           }
         }
       }
@@ -218,14 +221,16 @@ public final class GameTrajectory {
      * @throws IndexOutOfBoundsException 選んだ手が合法手の範囲の外のとき
      * @throws IllegalStateException 局を始めていないか、半荘を終えた後のとき
      */
-    public void decision(Observation observation, int choice, float probability, boolean effective) {
+    public void decision(
+        Observation observation, int choice, float probability, boolean effective) {
       requireOpen();
       if (priors.isEmpty()) {
         throw new IllegalStateException("Start a hand of game " + id + " before its decisions");
       }
       Objects.checkIndex(choice, observation.legalActions());
       if (!(probability > 0 && probability <= 1)) {
-        throw new IllegalArgumentException("The behaviour probability must be in (0, 1]: " + probability);
+        throw new IllegalArgumentException(
+            "The behaviour probability must be in (0, 1]: " + probability);
       }
       observations.add(observation);
       if (size == chosen.length) {

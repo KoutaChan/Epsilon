@@ -34,7 +34,8 @@ final class Schema {
   private Schema() {}
 
   /** 1 つの型の値を、どう読みどう書くか。 */
-  sealed interface Codec permits ScalarCodec, RecordCodec, ChoiceCodec, ListCodec, MapCodec, TreeCodec {}
+  sealed interface Codec
+      permits ScalarCodec, RecordCodec, ChoiceCodec, ListCodec, MapCodec, TreeCodec {}
 
   /** 単一の値の型。 */
   enum Scalar {
@@ -99,7 +100,10 @@ final class Schema {
   record Component(String name, Codec codec, Key key, Node fallback, Method accessor) {}
 
   record RecordCodec(
-      Class<?> type, List<Component> components, Map<String, Component> named, Constructor<?> constructor)
+      Class<?> type,
+      List<Component> components,
+      Map<String, Component> named,
+      Constructor<?> constructor)
       implements Codec {
 
     /** @return その名前のコンポーネント。無ければ null */
@@ -112,7 +116,8 @@ final class Schema {
    * @param doc 種類のキーの説明（{@link Choice#doc}）
    * @param cases 種類のキーの値から、その種類の record への対応。並びは permits に書いたクラスの順
    */
-  record ChoiceCodec(Class<?> type, String key, String doc, Map<String, RecordCodec> cases) implements Codec {
+  record ChoiceCodec(Class<?> type, String key, String doc, Map<String, RecordCodec> cases)
+      implements Codec {
 
     /** 値だけで書いた種類を、種類のキーだけを持つテーブルに直す。テーブルでも文字列・真偽値でもなければ null。 */
     Node.Table normalize(Node node) {
@@ -146,7 +151,8 @@ final class Schema {
           return entry.getKey();
         }
       }
-      throw new IllegalArgumentException("Not a case of " + type.getName() + ": " + value.getClass().getName());
+      throw new IllegalArgumentException(
+          "Not a case of " + type.getName() + ": " + value.getClass().getName());
     }
   }
 
@@ -215,13 +221,18 @@ final class Schema {
       throw new IllegalStateException("No canonical constructor in " + type.getName(), missing);
     }
     RecordCodec codec =
-        new RecordCodec(type, List.copyOf(components), Collections.unmodifiableMap(named), constructor);
+        new RecordCodec(
+            type, List.copyOf(components), Collections.unmodifiableMap(named), constructor);
     for (Component component : codec.components()) {
       if (component.key() != null && !component.key().value().isEmpty()) {
         Binder check = new Binder(Binder.Mode.RECORD, Set::of);
         if (check.value(component.codec(), component.fallback(), component.name()) == null) {
           throw new IllegalStateException(
-              "Invalid default of " + type.getSimpleName() + "." + component.name() + ": "
+              "Invalid default of "
+                  + type.getSimpleName()
+                  + "."
+                  + component.name()
+                  + ": "
                   + String.join("; ", check.problems()));
         }
       }
@@ -234,19 +245,22 @@ final class Schema {
       return null;
     }
     if (key.presence() == Presence.ABSENT && type.isPrimitive()) {
-      throw new IllegalStateException("Setting " + where + " may be absent, so it needs a reference type");
+      throw new IllegalStateException(
+          "Setting " + where + " may be absent, so it needs a reference type");
     }
     if (key.secret() && !(codec instanceof ScalarCodec scalar && scalar.kind() == Scalar.STRING)) {
       throw new IllegalStateException("Secret setting " + where + " must be a string");
     }
     if (!key.value().isEmpty()) {
       if (key.presence() != Presence.DEFAULT) {
-        throw new IllegalStateException("Setting " + where + " has a default but presence " + key.presence());
+        throw new IllegalStateException(
+            "Setting " + where + " has a default but presence " + key.presence());
       }
       try {
         return Toml.value(key.value(), Binder.DEFAULT_ORIGIN);
       } catch (SettingsException unreadable) {
-        throw new IllegalStateException("Unreadable default of " + where + ": " + unreadable.getMessage());
+        throw new IllegalStateException(
+            "Unreadable default of " + where + ": " + unreadable.getMessage());
       }
     }
     if (key.presence() != Presence.DEFAULT) {
@@ -271,7 +285,8 @@ final class Schema {
         && annotated instanceof AnnotatedParameterizedType arguments) {
       codec = parameterized(parameterized, arguments.getAnnotatedActualTypeArguments(), where);
     } else {
-      throw new IllegalStateException("Unsupported settings type " + type.getTypeName() + " at " + where);
+      throw new IllegalStateException(
+          "Unsupported settings type " + type.getTypeName() + " at " + where);
     }
     Range range = annotated.getAnnotation(Range.class);
     if (range == null) {
@@ -306,7 +321,8 @@ final class Schema {
     throw new IllegalStateException("Unsupported settings type " + type.getName() + " at " + where);
   }
 
-  private static Codec parameterized(ParameterizedType type, AnnotatedType[] arguments, String where) {
+  private static Codec parameterized(
+      ParameterizedType type, AnnotatedType[] arguments, String where) {
     Type raw = type.getRawType();
     if (raw == List.class || raw == Set.class) {
       return new ListCodec(codec(arguments[0], where + "[]"), raw == Set.class);
@@ -318,7 +334,8 @@ final class Schema {
       }
       return new MapCodec((Class<?>) keys, codec(arguments[1], where + ".<key>"));
     }
-    throw new IllegalStateException("Unsupported settings type " + type.getTypeName() + " at " + where);
+    throw new IllegalStateException(
+        "Unsupported settings type " + type.getTypeName() + " at " + where);
   }
 
   private static ChoiceCodec choice(Class<?> type) {
@@ -333,17 +350,23 @@ final class Schema {
       Case value = permitted.getAnnotation(Case.class);
       if (!permitted.isRecord() || value == null) {
         throw new IllegalStateException(
-            "Every case of " + type.getName() + " must be a record with @Case: " + permitted.getName());
+            "Every case of "
+                + type.getName()
+                + " must be a record with @Case: "
+                + permitted.getName());
       }
       RecordCodec codec = record(permitted);
       if (codec.component(key) != null) {
-        throw new IllegalStateException("The case " + permitted.getName() + " has a component named " + key);
+        throw new IllegalStateException(
+            "The case " + permitted.getName() + " has a component named " + key);
       }
       if (cases.put(value.value(), codec) != null) {
-        throw new IllegalStateException("Duplicate case " + value.value() + " in " + type.getName());
+        throw new IllegalStateException(
+            "Duplicate case " + value.value() + " in " + type.getName());
       }
     }
-    ChoiceCodec built = new ChoiceCodec(type, key, annotation.doc(), Collections.unmodifiableMap(cases));
+    ChoiceCodec built =
+        new ChoiceCodec(type, key, annotation.doc(), Collections.unmodifiableMap(cases));
     ChoiceCodec previous = CHOICES.putIfAbsent(type, built);
     return previous != null ? previous : built;
   }
@@ -387,7 +410,9 @@ final class Schema {
       }
       case ListCodec list ->
           new Node.Array(
-              ((Collection<?>) value).stream().map(item -> node(list.element(), item, origin)).toList(), origin);
+              ((Collection<?>) value)
+                  .stream().map(item -> node(list.element(), item, origin)).toList(),
+              origin);
       case MapCodec map -> {
         Map<String, Node> entries = new LinkedHashMap<>();
         ((Map<?, ?>) value)
@@ -469,7 +494,9 @@ final class Schema {
       case ChoiceCodec choice -> String.join("|", choice.cases().keySet());
       case ListCodec list -> (list.set() ? "distinct " : "") + helpLabel(list.element()) + " list";
       case MapCodec map ->
-          helpLabel(map.value()) + " per " + (map.keys() == String.class ? "name" : map.keys().getSimpleName());
+          helpLabel(map.value())
+              + " per "
+              + (map.keys() == String.class ? "name" : map.keys().getSimpleName());
       case TreeCodec tree -> tree.table() ? "table" : "value";
     };
   }
@@ -489,7 +516,11 @@ final class Schema {
     String min = bound(range.min(), integral);
     String max = bound(range.max(), integral);
     if (low && high) {
-      return (range.minInclusive() ? "[" : "(") + min + ", " + max + (range.maxInclusive() ? "]" : ")");
+      return (range.minInclusive() ? "[" : "(")
+          + min
+          + ", "
+          + max
+          + (range.maxInclusive() ? "]" : ")");
     }
     if (low) {
       return (range.minInclusive() ? ">= " : "> ") + min;
@@ -542,7 +573,8 @@ final class Schema {
     return secrets;
   }
 
-  private static void secrets(Codec codec, List<String> path, List<List<String>> out, boolean collection) {
+  private static void secrets(
+      Codec codec, List<String> path, List<List<String>> out, boolean collection) {
     switch (codec) {
       case RecordCodec record -> {
         for (Component component : record.components()) {
@@ -550,14 +582,16 @@ final class Schema {
           child.add(component.name());
           if (component.key() != null && component.key().secret()) {
             if (collection) {
-              throw new IllegalStateException("Secret setting " + String.join(".", child) + " sits in a list or table");
+              throw new IllegalStateException(
+                  "Secret setting " + String.join(".", child) + " sits in a list or table");
             }
             out.add(List.copyOf(child));
           }
           secrets(component.codec(), child, out, collection);
         }
       }
-      case ChoiceCodec choice -> choice.cases().values().forEach(chosen -> secrets(chosen, path, out, collection));
+      case ChoiceCodec choice ->
+          choice.cases().values().forEach(chosen -> secrets(chosen, path, out, collection));
       case ListCodec list -> secrets(list.element(), path, out, true);
       case MapCodec map -> secrets(map.value(), path, out, true);
       default -> {}
@@ -574,11 +608,13 @@ final class Schema {
     Component component = null;
     for (int index = 0; index < keys.size(); index++) {
       if (codec == null) {
-        throw new IllegalStateException("Not a section: " + String.join(".", keys.subList(0, index)));
+        throw new IllegalStateException(
+            "Not a section: " + String.join(".", keys.subList(0, index)));
       }
       component = codec.component(keys.get(index));
       if (component == null) {
-        throw new IllegalStateException("Unknown setting " + String.join(".", keys) + " in " + root.type().getName());
+        throw new IllegalStateException(
+            "Unknown setting " + String.join(".", keys) + " in " + root.type().getName());
       }
       codec = component.codec() instanceof RecordCodec record ? record : null;
     }

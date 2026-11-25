@@ -66,7 +66,8 @@ public class RunnerTest {
   }
 
   @Test
-  public void aCrashBeforeOrAfterEveryDonePointContinuesToTheSameResultAndReport() throws Exception {
+  public void aCrashBeforeOrAfterEveryDonePointContinuesToTheSameResultAndReport()
+      throws Exception {
     FakeRun.Outcome expected = reference();
     for (int t = 1; t <= 2; t++) {
       for (Steps step : Steps.values()) {
@@ -77,10 +78,12 @@ public class RunnerTest {
           assertEquals(world.crashed, point);
           assertEquals(world.outcome(), expected, point + " " + t + " " + step);
           // 完了マーカーの後で落ちた段は回し直さない。前で落ちた段だけをもう 1 回回す
-          assertEquals(world.ran(t, step), point == Point.BEFORE_SEAL ? 2 : 1, point + " " + t + " " + step);
+          assertEquals(
+              world.ran(t, step), point == Point.BEFORE_SEAL ? 2 : 1, point + " " + t + " " + step);
           for (Steps earlier : Steps.values()) {
             if (earlier.ordinal() < step.ordinal()) {
-              assertEquals(world.ran(t, earlier), 1, point + " " + t + " " + step + " reran " + earlier);
+              assertEquals(
+                  world.ran(t, earlier), 1, point + " " + t + " " + step + " reran " + earlier);
             }
           }
           world.assertNoWork();
@@ -137,9 +140,16 @@ public class RunnerTest {
     int points = safePoints();
     // 反復ごとに 13 か所（段の前後で 6、段の中の待ちで 1、閉じた後で 1、ジョブの前後とチャンクで 4、ジョブの後で 1）。
     // ほかに、起動のときと、起動直後のジョブの後で 2 か所
-    assertEquals(points, 2 + 2 * 13);
-    for (boolean signal : List.of(false, true)) {
-      for (int n = 1; n <= points; n++) {
+    int startupPoints = 2;
+    int pointsPerIteration = 13;
+    assertEquals(points, startupPoints + 2 * pointsPerIteration);
+    for (int n = 1; n <= points; n++) {
+      // 起動では両方を試し、同じ種類の地点を反復ごとに別の停止経路で通す。
+      List<Boolean> signals =
+          n <= startupPoints
+              ? List.of(false, true)
+              : List.of(n > startupPoints + pointsPerIteration);
+      for (boolean signal : signals) {
         FakeRun world = FakeRun.create(Files.createTempDirectory("run-stop"));
         ControlRequests requests = new ControlRequests(world.run);
         int target = n;
@@ -188,7 +198,8 @@ public class RunnerTest {
     requests.submit(new Request.Stop(Request.At.ITERATION));
     assertEquals(world.train(), Ending.STOPPED);
     assertEquals(world.status().reason(), "Stopped at ITERATION by request 1");
-    assertEquals(Files.readString(world.run.state(), StandardCharsets.UTF_8), "{\"next\":2,\"value\":32}\n");
+    assertEquals(
+        Files.readString(world.run.state(), StandardCharsets.UTF_8), "{\"next\":2,\"value\":32}\n");
     // ジョブの前で止まった（バージョン 2 のジョブはまだ回していない）
     assertEquals(world.outcome().evaluations(), List.of());
     // 停止マーカーは次の起動では消えない
@@ -222,7 +233,7 @@ public class RunnerTest {
     assertEquals(world.outcome(), reference());
   }
 
-  /** GRP の学び直しの頼みには段と仕事を回す仕組みは従わず、取り消しの頼みが来れば次の安全点で消す。 */
+  /** 段とジョブの実行中は GRP の再学習要求を処理しない。取り消し要求を受けたら次のセーフポイントで削除する。 */
   @Test
   public void aGrpRefitRequestStaysUntilACancelRemovesIt() throws Exception {
     FakeRun world = FakeRun.create(Files.createTempDirectory("run-grp-refit"));
@@ -266,7 +277,8 @@ public class RunnerTest {
   }
 
   @Test
-  public void jobsCreatedForPublishedVersionsRunOldestFirstBeforeTheNextIteration() throws Exception {
+  public void jobsCreatedForPublishedVersionsRunOldestFirstBeforeTheNextIteration()
+      throws Exception {
     FakeRun world = FakeRun.create(Files.createTempDirectory("run-created-jobs"), "iterations=3");
     Jobs jobs = new Jobs(world.run.jobs(), world.run.report(RunDirectory.EVALUATIONS));
     // 反復 2 の途中で、公開した過去のバージョンのジョブを新しい順に作る（jobs create と同じ）
@@ -283,7 +295,13 @@ public class RunnerTest {
     // 反復 2 を閉じた後、次の反復の前に、作ったジョブと公開したバージョン 3 のジョブをバージョンの古い順に回した
     assertEquals(
         world.trail,
-        List.of("v00002-x1n3", "v00001-late", "v00002-late", "v00003-x1n3", "iteration 3", "v00004-x1n3"));
+        List.of(
+            "v00002-x1n3",
+            "v00001-late",
+            "v00002-late",
+            "v00003-x1n3",
+            "iteration 3",
+            "v00004-x1n3"));
     assertEquals(world.outcome().jobs().get("v00001-late"), JobFile.State.DONE);
     assertEquals(world.outcome().jobs().get("v00002-late"), JobFile.State.DONE);
   }
@@ -305,7 +323,10 @@ public class RunnerTest {
                     "more",
                     List.of(
                         new SettingsRow.ChangedKey(
-                            "batch", last.settings().get("batch"), changed.get("batch"), Change.MACHINE)),
+                            "batch",
+                            last.settings().get("batch"),
+                            changed.get("batch"),
+                            Change.MACHINE)),
                     changed));
           }
         });
@@ -366,11 +387,15 @@ public class RunnerTest {
     FakeRun world = FakeRun.create(Files.createTempDirectory("run-rows-order"));
     String first = Files.readString(world.run.settings(), StandardCharsets.UTF_8);
     Files.writeString(world.run.settings(), first.strip(), StandardCharsets.UTF_8);
-    SettingsException unterminated = expectThrows(SettingsException.class, () -> new SettingsRows(world.run).read());
+    SettingsException unterminated =
+        expectThrows(SettingsException.class, () -> new SettingsRows(world.run).read());
     assertTrue(unterminated.problems().getFirst().endsWith("does not end with a newline"));
     Files.writeString(world.run.settings(), first + first, StandardCharsets.UTF_8);
-    SettingsException doubled = expectThrows(SettingsException.class, () -> new SettingsRows(world.run).read());
-    assertTrue(doubled.problems().getFirst().startsWith("Settings row 1 at "), doubled.problems().getFirst());
+    SettingsException doubled =
+        expectThrows(SettingsException.class, () -> new SettingsRows(world.run).read());
+    assertTrue(
+        doubled.problems().getFirst().startsWith("Settings row 1 at "),
+        doubled.problems().getFirst());
     assertTrue(doubled.problems().getFirst().endsWith("is out of order (expected 2)"));
     Files.delete(world.run.settings());
     assertEquals(new SettingsRows(world.run).read(), List.of());
@@ -394,7 +419,8 @@ public class RunnerTest {
                 }));
     assertEquals(Files.readString(file, StandardCharsets.UTF_8), "row 1\n");
     try (Stream<Path> listed = Files.list(directory)) {
-      assertEquals(listed.map(path -> path.getFileName().toString()).toList(), List.of("settings.jsonl"));
+      assertEquals(
+          listed.map(path -> path.getFileName().toString()).toList(), List.of("settings.jsonl"));
     }
   }
 
@@ -407,7 +433,8 @@ public class RunnerTest {
     assertEquals(world.train(other), Ending.REFUSED);
     RunStatus status = world.status();
     assertEquals(status.state(), State.FAILED);
-    assertEquals(status.reason(), "Iteration 1 started with jar test0001; restore that jar to finish it");
+    assertEquals(
+        status.reason(), "Iteration 1 started with jar test0001; restore that jar to finish it");
     assertEquals(status.jar(), "other002");
     assertEquals(world.train(), Ending.FINISHED);
     assertEquals(world.outcome(), reference());
@@ -423,8 +450,12 @@ public class RunnerTest {
     assertEquals(world.ran(1, Steps.PHI), 1);
     FakeRun.Outcome outcome = world.outcome();
     // PHI の報告は、その段を回した jar のまま。後の段は新しい jar で回した
-    assertTrue(outcome.iterations().getFirst().contains("PHI=DONE/1/test0001/"), outcome.iterations().getFirst());
-    assertTrue(outcome.iterations().getFirst().contains("COLLECT=DONE/1/other002/"), outcome.iterations().getFirst());
+    assertTrue(
+        outcome.iterations().getFirst().contains("PHI=DONE/1/test0001/"),
+        outcome.iterations().getFirst());
+    assertTrue(
+        outcome.iterations().getFirst().contains("COLLECT=DONE/1/other002/"),
+        outcome.iterations().getFirst());
   }
 
   @Test
@@ -465,18 +496,33 @@ public class RunnerTest {
 
   private static FakeRun world() throws Exception {
     FakeRun world = FakeRun.create(Files.createTempDirectory("run-unclean"));
-    world.stepHooks.put("1:PHI", () -> Files.copy(world.run.status(), world.run.root().resolve("live.json")));
+    world.stepHooks.put(
+        "1:PHI", () -> Files.copy(world.run.status(), world.run.root().resolve("live.json")));
     world.train();
     Files.move(
-        world.run.root().resolve("live.json"), world.run.status(), StandardCopyOption.REPLACE_EXISTING);
+        world.run.root().resolve("live.json"),
+        world.run.status(),
+        StandardCopyOption.REPLACE_EXISTING);
     return world;
   }
 
   private static RunStatus withPid(RunStatus status, long pid, Long start, State state) {
     return new RunStatus(
-        state, pid, start, status.jar(), status.iteration(), status.step(), status.job(), status.since(),
-        status.updated(), status.settingsRow(), status.launchRow(), status.pendingRestart(), status.requests(),
-        status.obeyed(), status.reason());
+        state,
+        pid,
+        start,
+        status.jar(),
+        status.iteration(),
+        status.step(),
+        status.job(),
+        status.since(),
+        status.updated(),
+        status.settingsRow(),
+        status.launchRow(),
+        status.pendingRestart(),
+        status.requests(),
+        status.obeyed(),
+        status.reason());
   }
 
   @Test

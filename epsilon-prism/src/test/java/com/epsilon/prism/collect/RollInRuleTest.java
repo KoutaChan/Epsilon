@@ -20,7 +20,8 @@ public class RollInRuleTest {
     // 打った手が候補の外（一様分布を混ぜた分で選んだ手）なら、台は候補の全て
     Assert.assertEquals(RollIn.support(candidates, 2, DeviationTarget.OTHER), candidates);
     Assert.assertEquals(candidates, new int[] {1, 3, 4, 7});
-    Assert.expectThrows(IllegalStateException.class, () -> RollIn.support(new int[] {5}, 5, DeviationTarget.OTHER));
+    Assert.expectThrows(
+        IllegalStateException.class, () -> RollIn.support(new int[] {5}, 5, DeviationTarget.OTHER));
     Assert.assertEquals(RollIn.support(new int[] {5}, 5, DeviationTarget.ANY), new int[] {5});
   }
 
@@ -46,7 +47,8 @@ public class RollInRuleTest {
       Assert.assertEquals(d.probability(), (float) (d.action() == 0 ? q[0] : q[1]));
     }
     // ε_q = 1 なら台の上の一様分布になる
-    for (double value : RollIn.distribution(support, scores, null, 1.0)) Assert.assertEquals(value, 0.5);
+    for (double value : RollIn.distribution(support, scores, null, 1.0))
+      Assert.assertEquals(value, 0.5);
   }
 
   /** 決まりの値の範囲と、後の判断のクラスごとの ρ_br の表（クラスごとに 1 つ。作った後に元の配列を変えても変わらない）。 */
@@ -62,13 +64,23 @@ public class RollInRuleTest {
     for (DecisionClass c : DecisionClass.values()) Assert.assertEquals(uniform.laterRate(c), 0.3);
     Assert.assertEquals(RollInRule.OFF.rate(), 0.0);
     Assert.assertEquals(RollInRule.OFF.maxLabels(), 0);
-    Assert.expectThrows(IllegalArgumentException.class, () -> RollInRule.uniform(1.5, 0.1, DeviationTarget.ANY, 0.3, 2));
-    Assert.expectThrows(IllegalArgumentException.class, () -> RollInRule.uniform(0.1, -0.1, DeviationTarget.ANY, 0.3, 2));
-    Assert.expectThrows(IllegalArgumentException.class, () -> RollInRule.uniform(0.1, 0.1, DeviationTarget.ANY, Double.NaN, 2));
-    Assert.expectThrows(IllegalArgumentException.class, () -> RollInRule.uniform(0.1, 0.1, DeviationTarget.ANY, 0.3, -1));
-    Assert.expectThrows(NullPointerException.class, () -> RollInRule.uniform(0.1, 0.1, null, 0.3, 2));
     Assert.expectThrows(
-        IllegalArgumentException.class, () -> new RollInRule(0.1, 0.1, DeviationTarget.ANY, new double[3], 2));
+        IllegalArgumentException.class,
+        () -> RollInRule.uniform(1.5, 0.1, DeviationTarget.ANY, 0.3, 2));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> RollInRule.uniform(0.1, -0.1, DeviationTarget.ANY, 0.3, 2));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> RollInRule.uniform(0.1, 0.1, DeviationTarget.ANY, Double.NaN, 2));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> RollInRule.uniform(0.1, 0.1, DeviationTarget.ANY, 0.3, -1));
+    Assert.expectThrows(
+        NullPointerException.class, () -> RollInRule.uniform(0.1, 0.1, null, 0.3, 2));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> new RollInRule(0.1, 0.1, DeviationTarget.ANY, new double[3], 2));
   }
 
   /** 収集の率の表は、手の形ごとにも根のクラスごとにも、クラスの数だけ要る。 */
@@ -84,16 +96,25 @@ public class RollInRuleTest {
         () -> new Sampling(0, new double[1][DecisionClass.COUNT], measureAll, 2, 0, rules));
     Assert.expectThrows(
         IllegalArgumentException.class,
-        () -> new Sampling(0, new double[][] {new double[DecisionClass.COUNT], new double[2]}, measureAll, 2, 0, rules));
+        () ->
+            new Sampling(
+                0,
+                new double[][] {new double[DecisionClass.COUNT], new double[2]},
+                measureAll,
+                2,
+                0,
+                rules));
     Assert.expectThrows(
         IllegalArgumentException.class,
         () -> new Sampling(0, rates, measureAll, 2, 0, new RollInRule[DecisionClass.COUNT - 1]));
     RollInRule[] missing = rules.clone();
     missing[DecisionClass.KAN.ordinal()] = null;
-    Assert.expectThrows(NullPointerException.class, () -> new Sampling(0, rates, measureAll, 2, 0, missing));
+    Assert.expectThrows(
+        NullPointerException.class, () -> new Sampling(0, rates, measureAll, 2, 0, missing));
     double[][] negative = new double[Openness.COUNT][DecisionClass.COUNT];
     negative[Openness.OPEN.ordinal()][0] = -0.1;
-    Assert.expectThrows(IllegalArgumentException.class, () -> new Sampling(0, negative, measureAll, 2, 0, rules));
+    Assert.expectThrows(
+        IllegalArgumentException.class, () -> new Sampling(0, negative, measureAll, 2, 0, rules));
   }
 
   /** 根のクラスを持つのは写しの件数だけ。 */
@@ -103,8 +124,10 @@ public class RollInRuleTest {
     new DecisionCounts(Role.MAIN, null);
     new DecisionCounts(Role.FORK, null);
     Assert.expectThrows(IllegalArgumentException.class, () -> new DecisionCounts(Role.COPY, null));
-    Assert.expectThrows(IllegalArgumentException.class, () -> new DecisionCounts(Role.MAIN, DecisionClass.CALL));
-    Assert.expectThrows(IllegalArgumentException.class, () -> new DecisionCounts(Role.FORK, DecisionClass.CALL));
+    Assert.expectThrows(
+        IllegalArgumentException.class, () -> new DecisionCounts(Role.MAIN, DecisionClass.CALL));
+    Assert.expectThrows(
+        IllegalArgumentException.class, () -> new DecisionCounts(Role.FORK, DecisionClass.CALL));
   }
 
   /** 写しの件数は、逸脱した席の判断を根のクラスの列に、全ての判断を写しの判断の列に足す。主経路の件数は、手の形とクラスの列に足す。 */
@@ -124,7 +147,12 @@ public class RollInRuleTest {
     main.flush(metrics);
     Assert.assertEquals(metrics.copyDecisions.sum(), 2);
     Assert.assertEquals(metrics.deviatorDecisions[DecisionClass.CALL.ordinal()].sum(), 1);
-    Assert.assertEquals(metrics.mainDecisions[CollectionMetrics.byHand(Openness.OPEN, DecisionClass.THREAT)].sum(), 2);
-    Assert.assertEquals(metrics.mainDecisions[CollectionMetrics.byHand(Openness.CLOSED, DecisionClass.THREAT)].sum(), 1);
+    Assert.assertEquals(
+        metrics.mainDecisions[CollectionMetrics.byHand(Openness.OPEN, DecisionClass.THREAT)].sum(),
+        2);
+    Assert.assertEquals(
+        metrics.mainDecisions[CollectionMetrics.byHand(Openness.CLOSED, DecisionClass.THREAT)]
+            .sum(),
+        1);
   }
 }

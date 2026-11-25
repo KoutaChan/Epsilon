@@ -72,7 +72,8 @@ public final class Settings<R extends Record> {
    *
    * @throws SettingsException 層を選ぶキーが無いか読めない、層を作れない、または record に結び付けられない
    */
-  public static <R extends Record> Settings<R> bind(Class<R> root, List<Layer> layers, BaseLayer base) {
+  public static <R extends Record> Settings<R> bind(
+      Class<R> root, List<Layer> layers, BaseLayer base) {
     return bind(root, withBase(root, layers, base));
   }
 
@@ -83,12 +84,14 @@ public final class Settings<R extends Record> {
    * @return 選んだ層を先頭に足した、下から順の層
    * @throws SettingsException キーが無いか読めないか、その値で層を作れない
    */
-  public static List<Layer> withBase(Class<? extends Record> root, List<Layer> layers, BaseLayer base) {
+  public static List<Layer> withBase(
+      Class<? extends Record> root, List<Layer> layers, BaseLayer base) {
     RecordCodec codec = Schema.record(root);
     List<String> keys = Toml.path(base.key());
     Component component = Schema.component(codec, keys);
     if (!(component.codec() instanceof ScalarCodec)) {
-      throw new IllegalStateException("The base layer key " + base.key() + " must hold a single value");
+      throw new IllegalStateException(
+          "The base layer key " + base.key() + " must hold a single value");
     }
     Node node = Keys.find(Merge.layers(codec, layers, "", new ArrayList<>()), keys);
     if (node == null) {
@@ -108,7 +111,14 @@ public final class Settings<R extends Record> {
     } catch (IllegalArgumentException unknown) {
       throw new SettingsException(
           List.of(
-              "Invalid setting " + base.key() + "=" + name + " at " + node.origin() + ": " + unknown.getMessage()));
+              "Invalid setting "
+                  + base.key()
+                  + "="
+                  + name
+                  + " at "
+                  + node.origin()
+                  + ": "
+                  + unknown.getMessage()));
     }
     List<Layer> stacked = new ArrayList<>(layers.size() + 1);
     stacked.add(below);
@@ -123,7 +133,8 @@ public final class Settings<R extends Record> {
    * @param path セクションのパス（{@code train}、{@code settings.change}）
    * @throws SettingsException 全てのエラーを集めたもの
    */
-  public static <R extends Record> Settings<R> section(Class<R> type, String path, List<Layer> layers) {
+  public static <R extends Record> Settings<R> section(
+      Class<R> type, String path, List<Layer> layers) {
     RecordCodec codec = Schema.record(type);
     List<String> keys = Toml.path(path);
     List<String> problems = new ArrayList<>();
@@ -133,13 +144,20 @@ public final class Settings<R extends Record> {
       if (node instanceof Node.Table table) {
         sections.add(new Layer(layer.origin(), layer.source(), table, List.of()));
       } else if (node != null) {
-        problems.add("Invalid setting " + path + "=" + Keys.text(node) + " at " + node.origin() + ": expected a table");
+        problems.add(
+            "Invalid setting "
+                + path
+                + "="
+                + Keys.text(node)
+                + " at "
+                + node.origin()
+                + ": expected a table");
       }
     }
     Node.Table merged = Merge.layers(codec, sections, path, problems);
     Binder binder = new Binder(Binder.Mode.SETTINGS, () -> Schema.paths(codec, path));
     binder.problems().addAll(problems);
-    Binder.Bound bound = binder.record(codec, merged, path, Change.INHERIT);
+    Binder.Bound bound = binder.record(codec, merged, path, Change.FIXED);
     if (!binder.problems().isEmpty()) {
       throw new SettingsException(binder.problems());
     }
@@ -156,7 +174,8 @@ public final class Settings<R extends Record> {
     Class<R> type = (Class<R>) value.getClass();
     RecordCodec codec = Schema.record(type);
     Binder binder = new Binder(Binder.Mode.SETTINGS, () -> Schema.paths(codec, ""));
-    Binder.Bound bound = binder.record(codec, (Node.Table) Schema.node(codec, value, "record"), "", null);
+    Binder.Bound bound =
+        binder.record(codec, (Node.Table) Schema.node(codec, value, "record"), "", null);
     if (!binder.problems().isEmpty()) {
       throw new SettingsException(binder.problems());
     }
@@ -233,12 +252,15 @@ public final class Settings<R extends Record> {
    */
   public static <R extends Record> Node.Table beyondDefaults(
       Class<R> root, Node.Table tree, UnaryOperator<List<Layer>> stack) {
-    SortedMap<String, Node> effective = bind(root, stack.apply(List.of(Layer.tree(ROW, tree)))).effective();
+    SortedMap<String, Node> effective =
+        bind(root, stack.apply(List.of(Layer.tree(ROW, tree)))).effective();
     Node.Table kept = tree;
     for (List<String> value : values(tree, List.of(), new ArrayList<>())) {
       Node.Table without = Keys.remove(kept, value);
       try {
-        if (bind(root, stack.apply(List.of(Layer.tree(ROW, without)))).effective().equals(effective)) {
+        if (bind(root, stack.apply(List.of(Layer.tree(ROW, without))))
+            .effective()
+            .equals(effective)) {
           kept = without;
         }
       } catch (SettingsException noDefault) {
@@ -257,45 +279,51 @@ public final class Settings<R extends Record> {
     return relabelValues(tree, "", origin);
   }
 
-  private static Node.Table relabelValues(Node.Table table, String path, Function<String, String> origin) {
+  private static Node.Table relabelValues(
+      Node.Table table, String path, Function<String, String> origin) {
     Map<String, Node> entries = new LinkedHashMap<>();
-    table.entries().forEach(
-        (key, node) -> {
-          String child = Keys.join(path, key);
-          entries.put(
-              key,
-              node instanceof Node.Table inner && !inner.entries().isEmpty()
-                  ? relabelValues(inner, child, origin)
-                  : node.relabel(origin.apply(child)));
-        });
+    table
+        .entries()
+        .forEach(
+            (key, node) -> {
+              String child = Keys.join(path, key);
+              entries.put(
+                  key,
+                  node instanceof Node.Table inner && !inner.entries().isEmpty()
+                      ? relabelValues(inner, child, origin)
+                      : node.relabel(origin.apply(child)));
+            });
     return new Node.Table(entries, table.origin());
   }
 
   /** 木の値（葉と空のテーブル）のキーの並びを、木の順に足す。 */
-  private static List<List<String>> values(Node.Table table, List<String> path, List<List<String>> values) {
-    table.entries().forEach(
-        (key, node) -> {
-          List<String> child = new ArrayList<>(path);
-          child.add(key);
-          if (node instanceof Node.Table inner && !inner.entries().isEmpty()) {
-            values(inner, child, values);
-          } else {
-            values.add(List.copyOf(child));
-          }
-        });
+  private static List<List<String>> values(
+      Node.Table table, List<String> path, List<List<String>> values) {
+    table
+        .entries()
+        .forEach(
+            (key, node) -> {
+              List<String> child = new ArrayList<>(path);
+              child.add(key);
+              if (node instanceof Node.Table inner && !inner.entries().isEmpty()) {
+                values(inner, child, values);
+              } else {
+                values.add(List.copyOf(child));
+              }
+            });
     return values;
   }
 
   /**
    * キーの一覧（説明・型・既定値・範囲・変えてよい時期）。使い方の表示がこれを読む。種類を選ぶセクションは、種類のキーと全ての種類の
    * キーを並べる。名前をキーにしたテーブルは、{@code <name>} の項目のキーを並べる。親に従うキーは親の時期にする。いちばん外で親に従う
-   * キー（コマンドの引数）は INHERIT のままにする。
+   * キー（単独で調べるセクションやコマンドの引数）の時期は null。
    *
    * @throws IllegalStateException {@link Key} の注釈の無いコンポーネントがある
    */
   public static List<KeyInfo> describe(Class<? extends Record> root) {
     List<KeyInfo> keys = new ArrayList<>();
-    describe(Schema.record(root), "", Change.INHERIT, "", keys);
+    describe(Schema.record(root), "", null, "", keys);
     return List.copyOf(keys);
   }
 
@@ -306,13 +334,17 @@ public final class Settings<R extends Record> {
    * @param layers 下から順の層（四人打ち・三人打ちごとの層を入れるなら、{@link #withBase} を通した後のもの）
    * @param presets 先頭の {@value Layer#PRESETS} に書くプリセットの名前
    */
-  public static String template(Class<? extends Record> root, List<Layer> layers, List<String> presets) {
+  public static String template(
+      Class<? extends Record> root, List<Layer> layers, List<String> presets) {
     RecordCodec codec = Schema.record(root);
     List<String> ignored = new ArrayList<>();
     Node.Table merged = Merge.layers(codec, layers, "", ignored);
     List<Layer> writtenLayers =
         layers.stream()
-            .filter(layer -> layer.source() == Layer.Source.FILE || layer.source() == Layer.Source.COMMAND_LINE)
+            .filter(
+                layer ->
+                    layer.source() == Layer.Source.FILE
+                        || layer.source() == Layer.Source.COMMAND_LINE)
             .toList();
     Node.Table written = Merge.layers(codec, writtenLayers, "", ignored);
     return Template.write(codec, merged, written, presets);
@@ -334,7 +366,7 @@ public final class Settings<R extends Record> {
       if (key == null) {
         throw new IllegalStateException("Setting " + child + " has no @Key");
       }
-      Change resolved = key.change() == Change.INHERIT ? change : key.change();
+      Change resolved = Change.resolve(key, change);
       switch (component.codec()) {
         case RecordCodec record -> {
           keys.add(info(child, key, component, resolved, condition));
@@ -343,7 +375,11 @@ public final class Settings<R extends Record> {
         case ChoiceCodec choice -> {
           String discriminator = Keys.join(child, choice.key());
           keys.add(info(discriminator, key, component, resolved, condition));
-          choice.cases().forEach((name, chosen) -> describe(chosen, child, resolved, discriminator + "=" + name, keys));
+          choice
+              .cases()
+              .forEach(
+                  (name, chosen) ->
+                      describe(chosen, child, resolved, discriminator + "=" + name, keys));
         }
         case MapCodec map when map.value() instanceof RecordCodec record -> {
           keys.add(info(child, key, component, resolved, condition));
@@ -354,9 +390,12 @@ public final class Settings<R extends Record> {
     }
   }
 
-  private static KeyInfo info(String path, Key key, Component component, Change change, String condition) {
+  private static KeyInfo info(
+      String path, Key key, Component component, Change change, String condition) {
     String range =
-        component.codec() instanceof ScalarCodec scalar ? Schema.bounds(scalar.range(), scalar.kind().integral()) : "";
+        component.codec() instanceof ScalarCodec scalar
+            ? Schema.bounds(scalar.range(), scalar.kind().integral())
+            : "";
     return new KeyInfo(
         path,
         key.doc(),

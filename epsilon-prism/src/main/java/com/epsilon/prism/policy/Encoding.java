@@ -1,6 +1,9 @@
 package com.epsilon.prism.policy;
 
+import com.epsilon.agent.observe.EventRecords.Prefix;
 import com.epsilon.agent.observe.Observation;
+import com.epsilon.prism.backend.EventPages;
+import com.epsilon.prism.core.AgariOrder;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostBatch;
 import com.epsilon.prism.input.HostInputs;
@@ -10,7 +13,8 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
+import java.util.function.Function;
+import java.util.function.IntFunction;
 
 /**
  * 1 回の受付の要求を、ネットワークの入力にするための作業領域。{@link BatchEncoder} のプールで使い回す。
@@ -37,12 +41,17 @@ final class Encoding {
    *
    * @param batch 計画を確定した入力
    * @param first バッチの最初の行の位置（計画の中の位置）
+   * @param pages このバッチのイベントの配置表。通常推論では {@code null}
    */
-  record Chunk(HostInputs batch, int first) {}
+  record Chunk(HostInputs batch, int first, EventPages pages) {}
 
+  private final Function<HostInputs, EventPages> pageBatches;
   private final InputFormat format;
+  private final IntFunction<HostInputs> inputs;
+  private final AgariOrder agariOrder;
   private final List<Chunk> chunks = new ArrayList<>();
   private List<PolicyRequest> rows;
+  private int admission;
 
   /** 行ごとの O のリーダー。{@link #bind} で付け、{@link #rows} の行の数だけ使う。 */
   private Observation[] observations = new Observation[0];
@@ -55,22 +64,59 @@ final class Encoding {
    * 空の作業領域を作る。
    *
    * @param format 入力の形式。O のルール（四人打ちか三人打ち）と、行ごとの局・席・牌のトークンの数を持つ
+   * @param inputs 分割の順に入力領域を借りる関数
+   * @param pageBatches バッチの配置表を返す関数。通常推論では {@code null}
    */
-  Encoding(InputFormat format) {
+  Encoding(
+      InputFormat format,
+      IntFunction<HostInputs> inputs,
+      Function<HostInputs, EventPages> pageBatches) {
+    this(format, inputs, pageBatches, AgariOrder.Mode.LEGACY);
+  }
+
+  /**
+   * 和了順序クランプのモードを指定して空の作業領域を作る。
+   *
+   * @param format 入力の形式
+   * @param inputs 分割の順に入力領域を借りる関数
+   * @param pageBatches バッチの配置表を返す関数。通常推論では {@code null}
+   * @param agariOrder 推論時の和了順序クランプのモード
+   */
+  Encoding(
+      InputFormat format,
+      IntFunction<HostInputs> inputs,
+      Function<HostInputs, EventPages> pageBatches,
+      AgariOrder.Mode agariOrder) {
+    this.inputs = inputs;
+    this.pageBatches = pageBatches;
     this.format = format;
+    this.agariOrder =
+        agariOrder == AgariOrder.Mode.CERTIFIED ? new AgariOrder(format.variant()) : null;
+  }
+
+  /**
+   * 新しい要求の並びに付け替える。プールから借りたときに 1 回呼ぶ。区分は呼び出しスレッドで直接計算する受付では 0。
+   *
+   * @param requests 方策の要求（1 つ以上。結果を書き終えるまで借りる）
+   * @throws IllegalArgumentException 要求が無いとき
+   */
+  void reset(List<PolicyRequest> requests) {
+    reset(requests, 0);
   }
 
   /**
    * 新しい要求の並びに付け替える。プールから借りたときに 1 回呼ぶ。
    *
    * @param requests 方策の要求（1 つ以上。結果を書き終えるまで借りる）
+   * @param admission 受付を予約した区分。イベントを保存するバックエンドは、この区分でレーンを選ぶ
    * @throws IllegalArgumentException 要求が無いとき
    */
-  void reset(List<PolicyRequest> requests) {
+  void reset(List<PolicyRequest> requests, int admission) {
     if (requests.isEmpty()) {
       throw new IllegalArgumentException("no policy requests");
     }
     rows = requests;
+    this.admission = admission;
     chunks.clear();
     paddedTokens = 0;
     int count = requests.size();
@@ -96,9 +142,19 @@ final class Encoding {
     return rows;
   }
 
+  /** 受付を予約した区分。 */
+  int admission() {
+    return admission;
+  }
+
   /** バッチの並び（計画の順）。 */
   List<Chunk> chunks() {
     return chunks;
+  }
+
+  /** 完了通知を受けた受付の配置表とスロットを返す。 */
+  void completeEventPages() {
+    for (Chunk chunk : chunks) if (chunk.pages() != null) chunk.pages().complete();
   }
 
   /** 全てのバッチで扱うトークン数（パディング込み）の合計。デバイスの処理量の見積もりに使う。 */
@@ -132,10 +188,9 @@ final class Encoding {
   /**
    * バッチを計画して確定する。リーダーを付けた後に、1 つのスレッドで呼ぶ。
    *
-   * @param batches 空のバッチを借りる先
    * @param budget 1 回の順伝播で扱うトークン数（パディング込み）の上限
    */
-  void plan(Supplier<HostInputs> batches, int budget) {
+  void plan(int budget) {
     int count = rows.size();
     int widest = 0;
     for (int row = 0; row < count; row++) {
@@ -145,7 +200,7 @@ final class Encoding {
     }
     HostInputs spare = null;
     if ((long) count * widest <= budget) {
-      spare = batches.get();
+      spare = nextBatch();
       if (fill(spare)) {
         seal(spare, 0, widest);
         return;
@@ -166,7 +221,7 @@ final class Encoding {
         if (batch != null) {
           seal(batch, first, (int) (keys[position - 1] >>> Integer.SIZE));
         }
-        batch = spare != null ? spare : batches.get();
+        batch = spare != null ? spare : nextBatch();
         spare = null;
         first = position;
         if (batch.plan().add(o) < 0) {
@@ -176,6 +231,12 @@ final class Encoding {
       planned[position] = row;
     }
     seal(batch, first, (int) (keys[count - 1] >>> Integer.SIZE));
+  }
+
+  private HostInputs nextBatch() {
+    HostInputs next = inputs.apply(chunks.size());
+    next.plan().clear();
+    return next;
   }
 
   /** 要求の順のままバッチに入れる。バッチの容量を超えたら false を返す。 */
@@ -191,7 +252,9 @@ final class Encoding {
 
   private void seal(HostInputs batch, int first, int widest) {
     batch.plan().seal();
-    chunks.add(new Chunk(batch, first));
+    EventPages pages = pageBatches == null ? null : pageBatches.apply(batch);
+    if (pages != null) pages.bind(batch.input());
+    chunks.add(new Chunk(batch, first, pages));
     paddedTokens += (long) batch.plan().rows() * widest;
   }
 
@@ -214,14 +277,22 @@ final class Encoding {
       Chunk target = chunks.get(chunk);
       Observation o = observations[planned[position]];
       int row = position - target.first();
-      writer.write(o, target.batch(), row);
+      if (target.pages() == null) {
+        writer.write(o, target.batch(), row);
+      } else {
+        PolicyRequest request = rows.get(planned[position]);
+        Prefix prefix = request.records().eventPrefix(request.record());
+        target.batch().input().publishedPrefix(row, prefix);
+        writer.write(o, request.history(), target.batch(), row);
+        if (prefix == null) target.pages().observeSnapshot(row, o.events(), o.kanDoraIndicators());
+      }
     }
   }
 
   /**
    * 要求ごとに s・p0・σ を書く。
    *
-   * @param output 合法手の s を、バッチの順、バッチの中では手の順に詰めてつないだもの（位置 0 から読む。HIP の推論の出力と同じ並び）
+   * @param output 合法手の s を、バッチの順、バッチの中では手の順に詰めてつないだもの（位置 0 から読む。専用カーネルの出力と同じ並び）
    * @param settings p0 の係数
    */
   void answer(FloatBuffer output, PriorSettings settings) {
@@ -237,6 +308,12 @@ final class Encoding {
         }
         float[] scores = new float[actions];
         output.get(offset + plan.firstAction(row), scores);
+        if (agariOrder != null) {
+          Observation observation = observations[planned[target.first() + row]];
+          if (observation.wins() > 0) {
+            agariOrder.clamp(observation, scores);
+          }
+        }
         GreedyAnswer.write(
             request,
             scores,

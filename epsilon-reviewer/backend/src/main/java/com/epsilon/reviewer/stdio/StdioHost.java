@@ -128,8 +128,7 @@ public final class StdioHost {
         .filter(command -> command.stdio() && command.access().contains(Access.LOCAL))
         .orElseThrow(
             () ->
-                new ReviewerException(
-                    ErrorCode.INVALID_REQUEST, "Unknown command: " + text + "."));
+                new ReviewerException(ErrorCode.INVALID_REQUEST, "Unknown command: " + text + "."));
   }
 
   private static Record request(Command command, JsonObject header) {

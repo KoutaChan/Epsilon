@@ -14,20 +14,20 @@ import ai.djl.pytorch.engine.PtStream;
 import ai.djl.training.GradientCollector;
 import ai.djl.training.ParameterStore;
 import ai.djl.training.optimizer.Optimizer;
-import ai.djl.training.tracker.Tracker;
 import com.epsilon.agent.learn.DataParallelGroup;
 import com.epsilon.agent.learn.DataParallelGroup.Update;
 import com.epsilon.agent.runtime.NetworkDevices;
 import com.epsilon.agent.runtime.NetworkRuntime;
 import com.epsilon.agent.runtime.Precision;
-import com.epsilon.prism.hip.HipAttention;
-import com.epsilon.prism.hip.HipLibrary;
-import com.epsilon.prism.hip.TrainingKernels;
+import com.epsilon.prism.backend.KernelDevices;
+import com.epsilon.prism.input.BatchPlan;
+import com.epsilon.prism.kernel.KernelProvider;
+import com.epsilon.prism.kernel.KernelProviders;
+import com.epsilon.prism.kernel.TrainingKernels;
 import com.epsilon.prism.model.AttentionTape;
-import com.epsilon.prism.model.FitProbe;
-import com.epsilon.prism.model.FitProbe.Stage;
 import com.epsilon.prism.model.LearningRateSchedule;
 import com.epsilon.prism.model.Outputs;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.PrismLoss;
 import com.epsilon.prism.model.PrismNetwork;
@@ -35,6 +35,7 @@ import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.model.StagedBatch;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.LongAdder;
@@ -42,9 +43,7 @@ import java.util.concurrent.atomic.LongAdder;
 /**
  * 1 回の学習で使う学習器。デバイスごとのレーンでマイクロバッチの順伝播と逆伝播を行い、勾配を集めて AdamW（重みの
  * 減衰 0、FP32 の連続バッファ）で 1 ステップ進める。レーン 0 がマスターのネットワークで、残りはデータ並列のレプリカ。GPU のレーンは BF16、
- * CPU のレーンは FP32 で計算する。ビルドに libprism_hip.so が同梱されていれば（{@link HipLibrary#bundled}）、GPU のレーンはバックボーンの
- * Attention と正規化に自前の HIP の演算（{@link AttentionTape}）を使い、レーンの計算ストリームに積む。同梱されていなければ djl-rocm の演算を
- * 使う。CPU のレーンは djl の演算を使う。
+ * CPU のレーンは FP32 で計算する。GPU の学習演算は各レーンの計算ストリームで、対応するプロバイダーに委ねる。
  *
  * <p>1 ステップの損失は、マイクロバッチごとの {@link PrismLoss#total} の和である。差分整合の分母 B_C は、1 ステップの全てのレーンを通して
  * 数える。補助の項には、元のバッチの行が占める割合（{@link Microbatch#share}）とゲイン K′ を掛ける（replay では K′ = 1）。勾配のノルムは
@@ -59,15 +58,13 @@ import java.util.concurrent.atomic.LongAdder;
  * <p>ウォームアップ（{@link #rehearse}）では、最初のステップの前にレーンとレプリカを作り、各レーンでマイクロバッチを 1 つ通して、カーネルと
  * 作業領域を用意する。
  *
- * <p>学習の計測（{@link FitProfile}）では、レーンごとのタイマー（{@link FitProfile.Clock}）を順伝播と Attention の記録に渡し、
- * マイクロバッチの段（転送・ネットワークと逆伝播の段・損失・解放）に印を付ける。計測しないときのタイマーは何もしない。
+ * <p>学習カーネルは学習器を作るときにデバイスごとに開き、レーンを作り終えたらそのレーンに渡す。レーンに渡すまでは学習器が持ち、途中で
+ * 失敗したときや閉じるときに閉じる。レーンが持つイベントと学習カーネルは、レーンを閉じるときに閉じる。
  */
 final class Learner implements AutoCloseable {
 
   /** GPU で損失をホストへ読み戻すステップの間隔。同期を減らすためで、報告する損失は読み戻したステップの値で代表させる。 */
   static final int METRIC_EVERY = 20;
-
-  private static final float WEIGHT_DECAY = 0f;
 
   private final Model canonical;
   private final PrismNetwork network;
@@ -75,13 +72,17 @@ final class Learner implements AutoCloseable {
   private final LearningRateSchedule schedule;
   private final float gradientClip;
   private final PrismLoss loss;
+  private final PairLoss pair;
   private final Optimizer optimizer;
 
   /** 補助のヘッドの項に掛けるゲイン K′（{@link Teacher#gain}）。 */
   private final float gain;
 
-  /** 学習の計測（無効ならタイマーは何もしない）。 */
-  private final FitProfile profile;
+  /** デバイスごとの学習カーネル（無ければ null）。レーンに渡したものは null にする。 */
+  private final TrainingKernels[] kernels;
+
+  /** レーンごとに、順伝播を Attention の記録（{@link AttentionTape}）で行うか。 */
+  private final boolean[] attentionTapes;
 
   /**
    * レーンの計算用と転送用のストリームを借りるランタイム。所有者は呼び出し元で、学習器は閉じない。系譜では反復をまたいで同じものを渡す。
@@ -93,29 +94,61 @@ final class Learner implements AutoCloseable {
   private final LongAdder computeNanos = new LongAdder();
   private final LongAdder optimizerNanos = new LongAdder();
   private ParallelOptimizer parallel;
+
+  /** レーンを作るのに失敗したときの例外。学習カーネルはレーンと一緒に閉じたので、作り直さない。 */
+  private Throwable laneFailure;
+
   private boolean pendingUpdates;
   private int step;
 
   /** 今の更新の学習率（{@link #train} が決め、AdamW の更新の中で読む）。 */
   private volatile float rate;
 
+  static boolean samplesLoss(int optimizerStep, boolean gpu) {
+    return !gpu || optimizerStep % METRIC_EVERY == 1;
+  }
+
+  boolean sampledLoss() {
+    return samplesLoss(step, devices.primary().isGpu());
+  }
+
+  /** レーンのデバイスで学習カーネルを開く。開けるカーネルが無ければ null を返し、レーンは DJL の演算を使う。 */
+  @FunctionalInterface
+  interface LaneKernels {
+    TrainingKernels open(Device device, PrismNetwork network, PtStream stream);
+  }
+
   /**
-   * 学習器を作る。
+   * 学習器を作る。GPU のデバイスでは、対応するプロバイダーの学習カーネルを開く（{@link #training}）。
    *
    * @param canonical マスターのネットワークのモデル（ブロックは {@link PrismNetwork}、デバイスは学習に使うデバイスの先頭）
    * @param devices 学習に使うデバイス（先頭がマスター）
    * @param plan 学習の計画
    * @param gain 補助のヘッドの項に掛けるゲイン K′（{@link Teacher#gain}）
-   * @param profile 学習の計測（レーンのタイマーを作り、計測するステップの時間を足す）
    * @param runtime ストリームを借りるランタイム（閉じるのは呼び出し元）
+   */
+  Learner(
+      Model canonical, NetworkDevices devices, FitPlan plan, float gain, NetworkRuntime runtime) {
+    this(canonical, devices, plan, gain, runtime, Learner::training);
+  }
+
+  /**
+   * 学習カーネルの開き方を選んで学習器を作る。デバイスごとに学習カーネルを開き、途中で失敗したら開いたものを閉じてから投げ直す。
+   *
+   * @param canonical マスターのネットワークのモデル
+   * @param devices 学習に使うデバイス（先頭がマスター）
+   * @param plan 学習の計画
+   * @param gain 補助のヘッドの項に掛けるゲイン K′
+   * @param runtime ストリームを借りるランタイム（閉じるのは呼び出し元）
+   * @param laneKernels デバイスごとに学習カーネルを開く方法（GPU のデバイスには計算ストリームを、CPU には null を渡す）
    */
   Learner(
       Model canonical,
       NetworkDevices devices,
       FitPlan plan,
       float gain,
-      FitProfile profile,
-      NetworkRuntime runtime) {
+      NetworkRuntime runtime,
+      LaneKernels laneKernels) {
     if (!(canonical.getBlock() instanceof PrismNetwork block)) {
       throw new IllegalArgumentException("the model does not hold a PRISM network");
     }
@@ -127,26 +160,40 @@ final class Learner implements AutoCloseable {
     this.devices = devices;
     schedule = plan.schedule();
     gradientClip = plan.learner().gradientClip();
-    loss = new PrismLoss(plan.auxiliary());
+    loss =
+        new PrismLoss(
+            plan.auxiliary(), plan.learner().rowAnchor(), plan.learner().rowAnchorDiscards());
+    pair = plan.learner().loss().objective(plan.learner().classWeight());
     this.gain = gain;
-    this.profile = profile;
     this.runtime = runtime;
-    optimizer =
-        Optimizer.adamW()
-            .optLearningRateTracker(
-                new Tracker() {
-                  @Override
-                  public float getNewValue(int numUpdate) {
-                    return rate;
-                  }
-                })
-            .optWeightDecays(WEIGHT_DECAY)
-            .build();
+    kernels = new TrainingKernels[devices.size()];
+    attentionTapes = new boolean[devices.size()];
+    try {
+      for (int lane = 0; lane < kernels.length; lane++) {
+        Device device = devices.get(lane);
+        PtStream stream = device.isGpu() ? runtime.streams(device).compute() : null;
+        kernels[lane] = laneKernels.open(device, block, stream);
+        attentionTapes[lane] = kernels[lane] != null;
+      }
+      optimizer = plan.learner().adamEpsilon().optimizer(t -> rate, gain);
+    } catch (RuntimeException | Error failure) {
+      closeKernels(failure);
+      throw failure;
+    }
   }
 
   /**
-   * 1 ステップ分のマイクロバッチで 1 回更新する。計測のために同期するステップでは、ステップの始め・レーンの処理の後・最適化の後に、
-   * 全てのレーンを待つ（{@link FitProfile.Timing}）。
+   * レーンごとに、順伝播を Attention の記録で行うかを返す。マイクロバッチを並べる側（{@link StepFeed}）が、レーンの順伝播が読む
+   * インデックスだけを作るのに使う。
+   *
+   * @return レーンの順の真偽（写し）
+   */
+  boolean[] attentionTapes() {
+    return attentionTapes.clone();
+  }
+
+  /**
+   * 1 ステップ分のマイクロバッチで 1 回更新する。
    *
    * @param prepared 1 ステップ分のマイクロバッチ
    * @return 更新の前の損失（読み戻さないステップは NaN）
@@ -154,7 +201,6 @@ final class Learner implements AutoCloseable {
   double train(StepFeed.Step prepared) {
     rate = (float) schedule.rate(++step);
     ParallelOptimizer group = parallel();
-    FitProfile.Timing timing = profile.timing(step);
     List<Integer> active = new ArrayList<>();
     List<DataParallelGroup.LaneWork<NetworkLane, Double>> work = new ArrayList<>();
     for (int lane = 0; lane < prepared.lanes().size(); lane++) {
@@ -163,21 +209,17 @@ final class Learner implements AutoCloseable {
         continue;
       }
       active.add(lane);
-      work.add(worker -> backward(worker, parts, prepared, timing));
+      work.add(worker -> backward(worker, parts, prepared));
     }
     int[] lanes = active.stream().mapToInt(Integer::intValue).toArray();
     try {
-      timing.settle(group);
       long started = System.nanoTime();
       double value = group.execute(lanes, work).stream().mapToDouble(Double::doubleValue).sum();
-      timing.settle(group);
       long computed = System.nanoTime();
       group.step(lanes, List.of(new Update(ParameterSet.ALL, optimizer, 1f)));
-      timing.settle(group);
       long updated = System.nanoTime();
       computeNanos.add(computed - started);
       optimizerNanos.add(updated - computed);
-      profile.record(timing, prepared, computed - started, updated - computed);
       pendingUpdates = true;
       return value;
     } catch (IOException failure) {
@@ -217,23 +259,28 @@ final class Learner implements AutoCloseable {
   }
 
   /**
-   * 1 つのマイクロバッチの順伝播・損失・逆伝播を通し、勾配を捨てる。段のタイマーには印を付けない。戻り値は使わないが、レーンの処理の結果は
-   * null にできないので常に {@code TRUE} を返す。
+   * 1 つのマイクロバッチの順伝播・損失・逆伝播を通し、勾配を捨てる。戻り値は使わないが、レーンの処理の結果は null にできないので常に
+   * {@code TRUE} を返す。
    */
   private Boolean rehearse(NetworkLane lane, Microbatch part, int denominator) {
     Pending pending = upload(lane, part);
     try (NDManager scope = pending.scope();
         GradientCollector collector = lane.newGradientCollector()) {
       StagedBatch.Sent sent = pending.upload().receive();
-      AttentionTape tape =
-          lane.attention == null ? null : new AttentionTape(lane.attention, FitProbe.NONE);
+      AttentionTape tape = lane.attention == null ? null : new AttentionTape(lane.attention);
       Outputs outputs =
           lane.network.forward(
               new ParameterStore(scope, false),
               sent.inputs(),
-              Pass.training(lane.precision, part.measured(), part.auxiliary(), tape, FitProbe.NONE));
-      NDArray value = loss.total(outputs, sent.loss(), gain, denominator, part.share());
-      backward(collector, tape, value, FitProbe.NONE);
+              Pass.training(
+                  lane.precision,
+                  part.measured(),
+                  part.auxiliary(),
+                  tape,
+                  part.certifiedTurnRows()));
+      NDArray value =
+          loss.total(outputs, sent.loss(), gain, denominator, part.share(), pair, false);
+      backward(collector, tape, value);
     }
     lane.forgetGradients();
     return Boolean.TRUE;
@@ -246,12 +293,10 @@ final class Learner implements AutoCloseable {
    * 持つので、i のマネージャーを閉じた後も、i+1 の計算を積み終えるまで残る。途中で失敗したら、転送を積んだだけの i+1 のマネージャーも閉じる。
    * 計算に使っていない配列なので、そのメモリは転送用のストリームの順で転送が済んだ後に使い回される。
    */
-  private double backward(
-      NetworkLane lane, List<Microbatch> parts, StepFeed.Step prepared, FitProfile.Timing timing) {
+  private double backward(NetworkLane lane, List<Microbatch> parts, StepFeed.Step prepared) {
     double total = 0;
     boolean gpu = lane.manager().getDevice().isGpu();
-    FitProfile.Clock clock = lane.clock;
-    clock.begin(timing);
+    boolean readLoss = samplesLoss(step, gpu);
     long started = System.nanoTime();
     Pending next = upload(lane, parts.getFirst());
     transferNanos.add(System.nanoTime() - started);
@@ -268,38 +313,39 @@ final class Learner implements AutoCloseable {
           }
           StagedBatch.Sent sent = current.upload().receive();
           transferNanos.add(System.nanoTime() - sending);
-          clock.mark(Stage.TRANSFER);
-          AttentionTape tape =
-              lane.attention == null ? null : new AttentionTape(lane.attention, clock);
+          AttentionTape tape = lane.attention == null ? null : new AttentionTape(lane.attention);
           Outputs outputs =
               lane.network.forward(
                   new ParameterStore(scope, false),
                   sent.inputs(),
-                  Pass.training(lane.precision, part.measured(), part.auxiliary(), tape, clock));
+                  Pass.training(
+                      lane.precision,
+                      part.measured(),
+                      part.auxiliary(),
+                      tape,
+                      part.certifiedTurnRows()));
           NDArray value =
-              loss.total(outputs, sent.loss(), gain, prepared.denominator(), part.share());
-          clock.mark(Stage.LOSS);
+              loss.total(
+                  outputs, sent.loss(), gain, prepared.denominator(), part.share(), pair, readLoss);
           if (!gpu) {
-            collector.backward(value);
-            clock.mark(Stage.BACKWARD);
+            backward(collector, tape, value);
             total += value.getFloat();
-          } else if (step % METRIC_EVERY == 1) {
+          } else if (readLoss) {
             // 損失の読み戻し（ホストとの同期）は METRIC_EVERY ステップに 1 回だけ。読み戻しは逆伝播より先に予約しておく
             try (NDArray metric = value.reshape(1)) {
               try {
                 lane.enqueueMetricReadback(metric);
-                backward(collector, tape, value, clock);
+                backward(collector, tape, value);
                 total += lane.awaitMetricReadback()[0];
               } finally {
                 lane.closeMetricReadback();
               }
             }
           } else {
-            backward(collector, tape, value, clock);
+            backward(collector, tape, value);
             total = Double.NaN;
           }
         }
-        clock.mark(Stage.RELEASE);
       }
     } finally {
       if (next != null) {
@@ -324,12 +370,10 @@ final class Learner implements AutoCloseable {
     }
   }
 
-  /** 損失から逆伝播する。自前の Attention の記録があれば記録が段ごとに印を付け、なければ逆伝播の全体を 1 つの段として印を付ける。 */
-  private static void backward(
-      GradientCollector collector, AttentionTape tape, NDArray value, FitProbe probe) {
+  /** 損失から逆伝播する。自前の Attention の記録があれば、記録の逆伝播を使う。 */
+  private static void backward(GradientCollector collector, AttentionTape tape, NDArray value) {
     if (tape == null) {
       collector.backward(value);
-      probe.mark(Stage.BACKWARD);
     } else {
       tape.backward(collector, value);
     }
@@ -355,7 +399,7 @@ final class Learner implements AutoCloseable {
   /**
    * 段ごとにかかった秒数を返す。
    *
-   * @return {入力と損失の教師の転送, 順伝播と逆伝播, 最適化} の秒数
+   * @return {@link FitResult.Stage#TRANSFER} から {@link FitResult.Stage#OPTIMIZER} までの段の秒数（段の順）
    */
   double[] stageSeconds() {
     return new double[] {
@@ -363,15 +407,22 @@ final class Learner implements AutoCloseable {
     };
   }
 
-  /** データ並列のレーンを作る（1 回だけ）。 */
+  /**
+   * データ並列のレーンを作る（1 回だけ）。
+   *
+   * @throws IllegalStateException 前にレーンを作るのに失敗したとき
+   */
   private ParallelOptimizer parallel() {
     if (parallel != null) {
       return parallel;
     }
+    if (laneFailure != null) {
+      throw new IllegalStateException("The learner could not create its lanes", laneFailure);
+    }
     List<NetworkLane> lanes = new ArrayList<>();
     ParallelOptimizer created = null;
     try {
-      lanes.add(new NetworkLane(canonical, network, false, runtime, profile));
+      lanes.add(lane(0, canonical, network, false));
       PrismShape shape = network.shape();
       for (int index = 1; index < devices.size(); index++) {
         Model replica =
@@ -381,7 +432,7 @@ final class Learner implements AutoCloseable {
           replica.setBlock(copy);
           copy.initialize(replica.getNDManager());
           DataParallelGroup.copyParameters(canonical, replica);
-          lanes.add(new NetworkLane(replica, copy, true, runtime, profile));
+          lanes.add(lane(index, replica, copy, true));
         } catch (RuntimeException | Error failure) {
           replica.close();
           throw failure;
@@ -407,8 +458,77 @@ final class Learner implements AutoCloseable {
           }
         }
       }
+      laneFailure = failure;
       throw failure;
     }
+  }
+
+  /**
+   * レーンを作り、作り終えたらそのデバイスの学習カーネルをレーンに渡す。作るのに失敗したら、学習カーネルは学習器が持ったままにする。
+   *
+   * @param index レーンの番号（デバイスの順）
+   * @param model レーンのネットワークのモデル
+   * @param network レーンのネットワーク
+   * @param ownsModel レーンを閉じるときにモデルも閉じるか
+   * @return 作ったレーン
+   */
+  private NetworkLane lane(int index, Model model, PrismNetwork network, boolean ownsModel) {
+    Device device = devices.get(index);
+    PtStream copyStream = device.isGpu() ? runtime.streams(device).h2d() : null;
+    NetworkLane lane =
+        new NetworkLane(model, network, ownsModel, runtime, copyStream, kernels[index]);
+    kernels[index] = null;
+    return lane;
+  }
+
+  /**
+   * レーンに渡していない学習カーネルを閉じる。
+   *
+   * @param failure 閉じるきっかけの失敗（閉じるときの失敗をここに付ける。null なら最初の失敗を投げる）
+   */
+  private void closeKernels(Throwable failure) {
+    RuntimeException first = null;
+    for (int lane = 0; lane < kernels.length; lane++) {
+      TrainingKernels open = kernels[lane];
+      kernels[lane] = null;
+      if (open == null) continue;
+      try {
+        open.close();
+      } catch (RuntimeException closing) {
+        if (failure != null) {
+          failure.addSuppressed(closing);
+        } else if (first == null) {
+          first = closing;
+        } else {
+          first.addSuppressed(closing);
+        }
+      }
+    }
+    if (first != null) throw first;
+  }
+
+  /**
+   * 書き出した AdamW の状態（モーメントと更新の回数）を読み戻し、終えたステップの数を設定する。次の更新の学習率は、その次のステップの
+   * 値になる。
+   *
+   * @param state AdamW の状態のファイル（{@link #checkpoint} で書いたもの）
+   * @param completedSteps 終えたステップの数
+   * @throws IOException 読めないとき
+   */
+  void restore(Path state, int completedSteps) throws IOException {
+    optimizer.loadState(canonical.getNDManager(), state);
+    step = completedSteps;
+  }
+
+  /**
+   * 重みの更新が済むのを待ってから、AdamW の状態（モーメントと更新の回数）を書き出す。
+   *
+   * @param state 書き出すファイル
+   * @throws IOException 書けないとき
+   */
+  void checkpoint(Path state) throws IOException {
+    if (pendingUpdates) parallel.awaitParameterUpdates();
+    optimizer.saveState(state);
   }
 
   /**
@@ -428,7 +548,11 @@ final class Learner implements AutoCloseable {
           parallel.close();
         }
       } finally {
-        runtime.awaitIdle();
+        try {
+          closeKernels(null);
+        } finally {
+          runtime.awaitIdle();
+        }
       }
     }
   }
@@ -442,9 +566,24 @@ final class Learner implements AutoCloseable {
   private record Pending(NDManager scope, StagedBatch.Upload upload) {}
 
   /**
-   * 1 つのデバイスのレーン。ネットワークと計算の精度、GPU なら計算ストリームに積む Attention の演算、転送用のストリーム、段のタイマーを
-   * 持つ。
+   * GPU のデバイスで、そのモデルの学習演算を持つプロバイダーの学習カーネルを開く。
+   *
+   * @param device レーンのデバイス
+   * @param network 学習するネットワーク
+   * @param stream レーンの計算ストリーム（CPU のデバイスでは使わない）
+   * @return 学習カーネル（CPU のデバイスか、対応するプロバイダーが無ければ null）
    */
+  static TrainingKernels training(Device device, PrismNetwork network, PtStream stream) {
+    if (!device.isGpu()) return null;
+    var format = network.format();
+    var cap = BatchPlan.Capacity.standard(format);
+    var request = KernelDevices.request(network, device, cap, KernelProvider.Use.TRAINING);
+    return KernelProviders.training(request, KernelProviders.discover())
+        .map(provider -> provider.openTraining(request, stream.getId()))
+        .orElse(null);
+  }
+
+  /** 1 つのデバイスのレーン。ネットワークと計算の精度、GPU なら計算ストリームに積む Attention の演算と転送用のストリームを持つ。 */
   private static final class NetworkLane extends DataParallelGroup.Lane {
 
     private final PrismNetwork network;
@@ -457,33 +596,29 @@ final class Learner implements AutoCloseable {
     private final PtStream copyStream;
 
     /**
-     * バックボーンの Attention と正規化の自前の演算。libprism_hip.so を同梱したビルドの GPU のレーンだけが持つ。ほかのレーンでは null で、
-     * djl の演算を使う。
+     * バックボーンの Attention と正規化の専用カーネル。レーンのデバイスに対応する学習カーネルが無ければ null になり、
+     * DJL の演算を使う。レーンを閉じるときに閉じる。
      */
     private final TrainingKernels attention;
 
-    /** 学習の計測のタイマー（計測しないなら何もしない）。 */
-    private final FitProfile.Clock clock;
-
     /**
-     * レーンを作る。
+     * レーンを作る。親のクラスがイベントを作った後は、失敗しうる処理をしない（作りかけのレーンは誰も閉じないため）。
      *
-     * @param profile 学習の計測（レーンのタイマーを作る）
+     * @param copyStream 転送用のストリーム（CPU のレーンは null）
+     * @param attention このレーンが持つ学習カーネル（無ければ null）
      */
     NetworkLane(
         Model model,
         PrismNetwork network,
         boolean ownsModel,
         NetworkRuntime runtime,
-        FitProfile profile) {
+        PtStream copyStream,
+        TrainingKernels attention) {
       super(model, ownsModel, runtime);
       this.network = network;
-      Device device = model.getNDManager().getDevice();
-      precision = device.isGpu() ? Precision.BFLOAT16 : Precision.FLOAT32;
-      copyStream = device.isGpu() ? runtime.streams(device).h2d() : null;
-      attention =
-          device.isGpu() && HipLibrary.bundled() ? HipAttention.on(HipLibrary.load(), computeStream()) : null;
-      clock = profile.clock(computeStream());
+      precision = model.getNDManager().getDevice().isGpu() ? Precision.BFLOAT16 : Precision.FLOAT32;
+      this.copyStream = copyStream;
+      this.attention = attention;
     }
 
     /**
@@ -508,7 +643,9 @@ final class Learner implements AutoCloseable {
 
     @Override
     protected void closeRuntime() {
-      clock.close();
+      if (attention != null) {
+        attention.close();
+      }
     }
   }
 

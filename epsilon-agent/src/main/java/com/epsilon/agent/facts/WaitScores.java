@@ -48,7 +48,8 @@ public final class WaitScores {
   private final HandScorer scorer = new HandScorer();
 
   /** 待ち・和了の仕方・和了牌の組み合わせごとの点。添字は [待ち][和了の仕方][和了牌]。 */
-  private final WinScore[][][] scores = new WinScore[MAX_WAITS][METHODS.length][WinningTile.values().length];
+  private final WinScore[][][] scores =
+      new WinScore[MAX_WAITS][METHODS.length][WinningTile.values().length];
 
   private final int[] kinds = new int[MAX_WAITS];
   private int waits;
@@ -80,7 +81,8 @@ public final class WaitScores {
    */
   public void load(long waits, long red) {
     if (Long.bitCount(waits) > MAX_WAITS) {
-      throw new IllegalArgumentException("More than " + MAX_WAITS + " waits: " + Long.toBinaryString(waits));
+      throw new IllegalArgumentException(
+          "More than " + MAX_WAITS + " waits: " + Long.toBinaryString(waits));
     }
     this.waits = 0;
     long handRed = context.redFives();

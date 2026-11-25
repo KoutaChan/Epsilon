@@ -209,7 +209,8 @@ public final class Scenes {
           };
       for (int digit = at - digits; digit < at; digit++) {
         int number = text.charAt(digit) - '0';
-        faces[size++] = number == 0 ? Face.of(first + Tiles.FIVE, true) : Face.of(first + number - 1, false);
+        faces[size++] =
+            number == 0 ? Face.of(first + Tiles.FIVE, true) : Face.of(first + number - 1, false);
       }
       digits = 0;
     }

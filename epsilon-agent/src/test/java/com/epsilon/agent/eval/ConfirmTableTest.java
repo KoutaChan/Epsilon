@@ -21,15 +21,24 @@ import org.testng.annotations.Test;
 public class ConfirmTableTest {
 
   private static final String TEST =
-      "{kind = \"TEST\", evenMargin = 0.004, alpha = 0.01, spending = 3.0, checkEvery = 1536, promote = true}";
-  private static final String PRECISION = "{kind = \"PRECISION\", error = 0.005, alpha = 0.01, checkEvery = 512}";
+      "{kind = \"TEST\", evenMargin = 0.004, alpha = 0.01, spending = 3.0, checkEvery = 1536,"
+          + " promote = true}";
+  private static final String PRECISION =
+      "{kind = \"PRECISION\", error = 0.005, alpha = 0.01, checkEvery = 512}";
   private static final String BOTH = "{kind = \"EVERY_PLACEMENT\", splits = [\"1v3\", \"3v1\"]}";
   private static final String ONE = "{kind = \"EVERY_PLACEMENT\", splits = [\"1v3\"]}";
   private static final String V760 = "prism:/runs/prism-v2b/snapshots/00760";
 
   /** 卓のキーを全て書いた上書き。 */
   private static List<String> table(
-      String name, String opponent, String seating, String wallSet, int walls, String stop, String score, int every,
+      String name,
+      String opponent,
+      String seating,
+      String wallSet,
+      int walls,
+      String stop,
+      String score,
+      int every,
       int from) {
     String prefix = "evaluation.tables." + name + ".";
     return List.of(
@@ -85,7 +94,8 @@ public class ConfirmTableTest {
       assertFalse(evaluation.scheduled(version).containsKey("outside"), "v" + version);
     }
     // ルールベースの打ち手とほかの系列のチェックポイントも、系譜の外の打ち手として受ける
-    for (String opponent : List.of("heuristic", "major:/models/major/macro614", "nano:/models/nano/ppo17")) {
+    for (String opponent :
+        List.of("heuristic", "major:/models/major/macro614", "nano:/models/nano/ppo17")) {
       EvaluationSettings other =
           bind(
               champion(),
@@ -105,21 +115,73 @@ public class ConfirmTableTest {
     List<String> calls = set("champion.confirm", "outside");
     List<String> margin = set("outside.confirmMargin", "0.004");
     // 確かめの卓が無い
-    rejects("evaluation.tables.champion.confirm", "no table is named nowhere", champion(), set("champion.confirm", "nowhere"));
+    rejects(
+        "evaluation.tables.champion.confirm",
+        "no table is named nowhere",
+        champion(),
+        set("champion.confirm", "nowhere"));
     // 牌山は全てのバージョンで同じ、止め方は固定
-    rejects(outside + "wallSet", "the same walls for every version", champion(), calls, outside(), margin, set("outside.wallSet", "FRESH"));
-    rejects(outside + "stop", "stops FIXED", champion(), calls, outside(), margin, set("outside.stop", PRECISION));
+    rejects(
+        outside + "wallSet",
+        "the same walls for every version",
+        champion(),
+        calls,
+        outside(),
+        margin,
+        set("outside.wallSet", "FRESH"));
+    rejects(
+        outside + "stop",
+        "stops FIXED",
+        champion(),
+        calls,
+        outside(),
+        margin,
+        set("outside.stop", PRECISION));
     // 呼ぶ卓と同じ量で判定する
-    rejects(outside + "score", "scores UTILITY like the table champion", champion(), calls, outside(), margin, set("outside.score", "RANK"));
+    rejects(
+        outside + "score",
+        "scores UTILITY like the table champion",
+        champion(),
+        calls,
+        outside(),
+        margin,
+        set("outside.score", "RANK"));
     // 予定では打たない
-    rejects(outside + "every", "every is 0", champion(), calls, outside(), margin, set("outside.every", "10"));
+    rejects(
+        outside + "every",
+        "every is 0",
+        champion(),
+        calls,
+        outside(),
+        margin,
+        set("outside.every", "10"));
     // 系譜の外の凍結した打ち手を相手にする
-    rejects(outside + "opponent", "frozen player outside the lineage", champion(), calls, outside(), margin, set("outside.opponent", "champion"));
+    rejects(
+        outside + "opponent",
+        "frozen player outside the lineage",
+        champion(),
+        calls,
+        outside(),
+        margin,
+        set("outside.opponent", "champion"));
     // 幅は確かめの卓に必ず書き、ほかの卓には書かない
     rejects(outside + "confirmMargin", "needs a confirmMargin", champion(), calls, outside());
     rejects(outside + "confirmMargin", "only a confirm table", champion(), outside(), margin);
-    rejects("evaluation.tables.champion.confirmMargin", "only a confirm table", champion(), calls, outside(), margin, set("champion.confirmMargin", "0.004"));
-    rejects(outside + "confirmMargin", "", champion(), calls, outside(), set("outside.confirmMargin", "-0.001"));
+    rejects(
+        "evaluation.tables.champion.confirmMargin",
+        "only a confirm table",
+        champion(),
+        calls,
+        outside(),
+        margin,
+        set("champion.confirmMargin", "0.004"));
+    rejects(
+        outside + "confirmMargin",
+        "",
+        champion(),
+        calls,
+        outside(),
+        set("outside.confirmMargin", "-0.001"));
     // 確かめの卓を書けるのは王者を替える卓だけ
     rejects(
         "evaluation.tables.rx3.confirm",
@@ -145,7 +207,9 @@ public class ConfirmTableTest {
   private static void rejects(String path, String because, List<String>... parts) {
     SettingsException failure = expectThrows(SettingsException.class, () -> bind(parts));
     List<String> named =
-        failure.problems().stream().filter(problem -> problem.contains(path) && problem.contains(because)).toList();
+        failure.problems().stream()
+            .filter(problem -> problem.contains(path) && problem.contains(because))
+            .toList();
     assertFalse(named.isEmpty(), path + " " + because + " -> " + failure.problems());
     for (String problem : named) {
       assertTrue(problem.chars().allMatch(c -> c < 0x80), "not English: " + problem);

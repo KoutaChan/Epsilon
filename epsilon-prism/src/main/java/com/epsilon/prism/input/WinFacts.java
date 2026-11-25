@@ -20,7 +20,6 @@ import com.epsilon.mahjong.rules.Variant;
 public final class WinFacts {
 
   private final RankUtility utility;
-  private int[] after = new int[0];
   private int[] absolute = new int[0];
   private boolean ends;
   private float endUtility;
@@ -47,28 +46,13 @@ public final class WinFacts {
    */
   public void load(Observation o, int win) {
     Variant variant = o.variant();
-    int seats = variant.seats();
-    if (after.length != seats) {
-      after = new int[seats];
-      absolute = new int[seats];
+    if (absolute.length != variant.seats()) {
+      absolute = new int[variant.seats()];
     }
-    for (int seat = 0; seat < seats; seat++) {
-      after[seat] = o.score(seat) + o.winPayment(win, seat);
-    }
-    if (o.winSettlement(win) == SettlementAssumption.SOLE_RON && o.honba() > 0) {
-      addRonHonba(o, win, variant.ronHonba() * o.honba());
-    }
-    int deposits = o.kyotaku() * Variant.DEPOSIT;
-    int observer = o.observer();
-    for (int seat = 0; seat < seats; seat++) {
-      absolute[(observer + seat) % seats] = after[seat] + (seat == 0 ? deposits : 0);
-    }
+    ends = settlesGame(o, win, absolute);
     boolean dealer = o.dealer() == 0;
-    ends =
-        Progression.finishes(
-            variant, o.kyoku(), absolute, dealer ? DealerOutcome.CONTINUES : DealerOutcome.PASSES);
     rank = o.winRank(win, 0);
-    points = after[0] + deposits - o.score(0);
+    points = absolute[o.observer()] - o.score(0);
     endUtility = ends ? (float) utility.value(variant, rank) : 0f;
     renchan = dealer && !ends;
     pao = o.winPao(win);
@@ -110,16 +94,39 @@ public final class WinFacts {
     return uraEligible;
   }
 
-  /** ロンの本場を和了者に足し、払う席から引く。払うのは、包で放銃者のほかにも払う席があればその席、なければ放銃者。 */
-  private void addRonHonba(Observation o, int win, int honba) {
-    int discarder = o.lastEventSeat();
-    int payer = discarder;
-    for (int seat = 1; seat < after.length; seat++) {
-      if (seat != discarder && o.winPayment(win, seat) < 0) {
-        payer = seat;
+  /** 観測にある精算をしたときの点を絶対席の順に書き、半荘が終わるかを返す。 */
+  public static boolean settlesGame(Observation o, int win, int[] absolute) {
+    Variant variant = o.variant();
+    int seats = variant.seats();
+    int observer = o.observer();
+    for (int seat = 0; seat < seats; seat++) {
+      int abs = observer + seat;
+      if (abs >= seats) {
+        abs -= seats;
       }
+      absolute[abs] = o.score(seat) + o.winPayment(win, seat);
     }
-    after[0] += honba;
-    after[payer] -= honba;
+    absolute[observer] += o.kyotaku() * Variant.DEPOSIT;
+    if (o.winSettlement(win) == SettlementAssumption.SOLE_RON && o.honba() > 0) {
+      int discarder = o.lastEventSeat();
+      int payer = discarder;
+      for (int seat = 1; seat < seats; seat++) {
+        if (seat != discarder && o.winPayment(win, seat) < 0) {
+          payer = seat;
+        }
+      }
+      int honba = variant.ronHonba() * o.honba();
+      int absPayer = observer + payer;
+      if (absPayer >= seats) {
+        absPayer -= seats;
+      }
+      absolute[observer] += honba;
+      absolute[absPayer] -= honba;
+    }
+    return Progression.finishes(
+        variant,
+        o.kyoku(),
+        absolute,
+        o.dealer() == 0 ? DealerOutcome.CONTINUES : DealerOutcome.PASSES);
   }
 }

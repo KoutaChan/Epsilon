@@ -16,9 +16,13 @@ import org.slf4j.LoggerFactory;
  *
  * @param run 最新の設定の行を確かめる run のディレクトリ。指定しなければ、重ねた層から作った設定を確かめる
  */
-@Named(value = "settings check", doc = "Check the settings and the files they refer to (exit code 4 on a problem)")
+@Named(
+    value = "settings check",
+    doc = "Check the settings and the files they refer to (exit code 4 on a problem)")
 public record SettingsCheck(
-    @Key(doc = "Run directory whose latest settings row to check", presence = Presence.ABSENT) Path run) implements BuiltinCommand {
+    @Key(doc = "Run directory whose latest settings row to check", presence = Presence.ABSENT)
+        Path run)
+    implements BuiltinCommand {
 
   private static final Logger log = LoggerFactory.getLogger(SettingsCheck.class);
 

@@ -62,7 +62,8 @@ import java.util.Set;
  */
 public record PrismSettings(
     @Key(doc = "run のルールと乱数の種", change = Change.FIXED) RunSettings run,
-    @Key(doc = "ゼロから学習するバージョン 1 のネットワークの形", value = "V2", change = Change.FIXED) NetworkSettings network,
+    @Key(doc = "ゼロから学習するバージョン 1 のネットワークの形", value = "V2", change = Change.FIXED)
+        NetworkSettings network,
     @Key(doc = "局末の値 Φ の出どころ", value = "SELF_GRP", change = Change.FIXED) PhiSettings phi,
     @Key(doc = "反復の数とコホートの大きさ", change = Change.FIT) ScheduleSettings schedule,
     @Key(doc = "収集と評価の推論", change = Change.MACHINE) InferenceSettings inference,
@@ -102,7 +103,10 @@ public record PrismSettings(
     requireSubset("noise.rates.open", noise.rates().open().keySet(), variant);
     requireSubset("labels.copies", labels.copies().keySet(), variant);
     for (Map.Entry<DecisionClass, CopySettings> copy : labels.copies().entrySet()) {
-      requireSubset("labels.copies." + copy.getKey() + ".laterRates", copy.getValue().laterRates().keySet(), variant);
+      requireSubset(
+          "labels.copies." + copy.getKey() + ".laterRates",
+          copy.getValue().laterRates().keySet(),
+          variant);
     }
     if (inference.kernels() == Kernels.NATIVE
         && inference.networkDevices().primary().isGpu()
@@ -110,9 +114,14 @@ public record PrismSettings(
       throw new InvalidSetting("inference.precision", "PRISM's native kernels compute in BFLOAT16");
     }
     requireEvaluation(evaluation, module.opponents(), variant);
-    if (phi.lateSettings().map(LateSettings::from).orElse(0) > 0 && !FinalRound.VARIANTS.contains(variant)) {
+    if (phi.lateSettings().map(LateSettings::from).orElse(0) > 0
+        && !FinalRound.VARIANTS.contains(variant)) {
       throw new InvalidSetting(
-          "phi.late.from", "the late mode enumerates the final round of " + FinalRound.VARIANTS + " only, not " + variant);
+          "phi.late.from",
+          "the late mode enumerates the final round of "
+              + FinalRound.VARIANTS
+              + " only, not "
+              + variant);
     }
   }
 
@@ -148,23 +157,29 @@ public record PrismSettings(
     }
   }
 
-  private static void requireEvaluation(EvaluationSettings evaluation, OpponentRules rules, Variant variant) {
+  private static void requireEvaluation(
+      EvaluationSettings evaluation, OpponentRules rules, Variant variant) {
     for (Map.Entry<String, TableSpec> entry : evaluation.tables().entrySet()) {
       String path = "evaluation.tables." + entry.getKey();
       TableSpec table = entry.getValue();
       if (table.confirm() != null) {
         throw new InvalidSetting(
-            path + ".confirm", "a PRISM duel promotes on its verdict alone and plays no confirm table");
+            path + ".confirm",
+            "a PRISM duel promotes on its verdict alone and plays no confirm table");
       }
       switch (table.seating()) {
         case SeatingSettings.ByGame byGame -> {
           if (!(table.stop() instanceof StopSettings.Fixed)) {
-            throw new InvalidSetting(path + ".stop", "a BY_GAME table plays all its walls, so it stops FIXED");
+            throw new InvalidSetting(
+                path + ".stop", "a BY_GAME table plays all its walls, so it stops FIXED");
           }
           if (table.walls() % variant.seats() != 0) {
             throw new InvalidSetting(
                 path + ".walls",
-                "a BY_GAME table plays a multiple of " + variant.seats() + " walls, not " + table.walls());
+                "a BY_GAME table plays a multiple of "
+                    + variant.seats()
+                    + " walls, not "
+                    + table.walls());
           }
         }
         case SeatingSettings.EveryPlacement every -> {
@@ -190,7 +205,8 @@ public record PrismSettings(
 
   private static void requireSeries(String path, Series series, OpponentRules rules) {
     if (!rules.series().contains(series)) {
-      throw new InvalidSetting(path + ".opponent", "this variant plays " + rules.series() + ", not " + series);
+      throw new InvalidSetting(
+          path + ".opponent", "this variant plays " + rules.series() + ", not " + series);
     }
   }
 }

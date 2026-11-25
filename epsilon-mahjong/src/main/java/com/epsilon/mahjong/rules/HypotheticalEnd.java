@@ -72,7 +72,8 @@ public final class HypotheticalEnd {
    * @param pao 包の席。無ければ {@link RoundOutcome#NO_SEAT}
    * @return 次局の卓。次の呼び出しまで有効
    */
-  public TableState ron(TableState start, int riichiMask, int loser, int winner, int base, int pao) {
+  public TableState ron(
+      TableState start, int riichiMask, int loser, int winner, int base, int pao) {
     outcome.setRon(base, winner, loser, pao, riichiMask);
     return settle(start);
   }
@@ -90,7 +91,13 @@ public final class HypotheticalEnd {
    * @return 次局の卓。次の呼び出しまで有効
    */
   public TableState doubleRon(
-      TableState start, int riichiMask, int loser, int first, int firstBase, int second, int secondBase) {
+      TableState start,
+      int riichiMask,
+      int loser,
+      int first,
+      int firstBase,
+      int second,
+      int secondBase) {
     outcome.setRon(firstBase, first, loser, RoundOutcome.NO_SEAT, riichiMask);
     outcome.addRonWinner(secondBase, second, RoundOutcome.NO_SEAT);
     return settle(start);

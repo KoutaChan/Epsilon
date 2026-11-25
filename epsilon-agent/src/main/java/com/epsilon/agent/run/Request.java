@@ -63,7 +63,8 @@ public sealed interface Request {
    * @param before この名前の段の前でだけ待つ。無ければ次のセーフポイントで待つ
    */
   @Case("PAUSE")
-  record Pause(@Key(doc = "この名前の段の前でだけ待つ", presence = Presence.ABSENT) String before) implements Request {}
+  record Pause(@Key(doc = "この名前の段の前でだけ待つ", presence = Presence.ABSENT) String before)
+      implements Request {}
 
   /** 再開。これより前に置いた一時停止の要求を消す。 */
   @Case("RESUME")
@@ -78,8 +79,8 @@ public sealed interface Request {
   record Cancel(@Range(min = 1) int request) implements Request {}
 
   /**
-   * GRP の学び直し。自分の GRP の run で、学習の JVM の GRP の裏の作業が、時点のコホートが確定した後に 1 回だけ従う。段と仕事を回す仕組みは
-   * この頼みに従わず、取り消しの頼みが指したときだけ消す。
+   * GRP の学び直し。自分の GRP の run で、学習の JVM の GRP の裏の作業が、時点のコホートが確定した後に 1 回だけ従う。段とジョブを実行する側は
+   * この要求に従わず、取り消し要求が指したときだけ消す。
    *
    * @param slot 学び直す時点（このコホートまでの半荘の記録で学ぶ）
    */

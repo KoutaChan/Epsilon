@@ -1,4 +1,4 @@
-import type { Meld } from "../../../../../protocol/result.ts";
+import type { Meld } from "@epsilon-reviewer/protocol/result";
 import type { TableDimensions } from "./projection.ts";
 
 export const PLAYER_ROW_WIDTH = 23;

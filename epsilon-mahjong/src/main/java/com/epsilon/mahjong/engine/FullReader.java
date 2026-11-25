@@ -76,7 +76,8 @@ final class FullReader implements FullView {
       throw new IllegalArgumentException(variant + " has no physical tile " + tile);
     }
     if (ws.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + ws.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + ws.variant());
     }
     Source source = state.liveLeft() == 0 ? Source.HOUTEI : Source.RON;
     return WinLegality.ronWithoutUra(
@@ -91,24 +92,14 @@ final class FullReader implements FullView {
   @Override
   public boolean tsumoScore(int seat, int kind, RuleWorkspace ws, WinScore out) {
     requireDrawn(seat, ws);
-    return WinLegality.tsumoAs(state, hands[seat], kind, false, ws, out);
-  }
-
-  @Override
-  public boolean tsumoScoreTile(int seat, int physicalId, RuleWorkspace ws, WinScore out) {
-    requireDrawn(seat, ws);
-    if (!chance.hidden(physicalId) && physicalId != chance.tile(chance.size() - 1)) {
-      throw new IllegalArgumentException(
-          "Tile " + physicalId + " is neither hidden nor the tile seat " + seat + " drew");
-    }
-    boolean red = state.variant().tiles().red(physicalId);
-    return WinLegality.tsumoAs(state, hands[seat], Tiles.kind(physicalId), red, ws, out);
+    return WinLegality.tsumoAs(state, hands[seat], kind, ws, out);
   }
 
   /** 直前のイベントがその席のツモで、作業領域のルールが局のルールと合うことを確かめる。 */
   private void requireDrawn(int seat, RuleWorkspace ws) {
     TurnEvent last = state.last();
-    if (last.kind() != TurnEvent.Kind.DRAW || last.seat() != Objects.checkIndex(seat, hands.length)) {
+    if (last.kind() != TurnEvent.Kind.DRAW
+        || last.seat() != Objects.checkIndex(seat, hands.length)) {
       throw new IllegalStateException(
           "Seat " + seat + " did not draw last: " + last.kind() + " of seat " + last.seat());
     }

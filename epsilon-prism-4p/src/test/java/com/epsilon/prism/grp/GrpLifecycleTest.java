@@ -49,7 +49,8 @@ public class GrpLifecycleTest {
 
   /** {@code checkpoint} の GRP から始める自前の GRP の run（AUTO）を作る。g000 を書き、state.json の次のコホートを {@code next} にする。 */
   private PhiSetup start(Path checkpoint, int next) throws IOException {
-    PhiSetup setup = GrpFixtures.grpStart(checkpoint, "phi.grp.switching=AUTO", "phi.grp.refit=SCHEDULE");
+    PhiSetup setup =
+        GrpFixtures.grpStart(checkpoint, "phi.grp.switching=AUTO", "phi.grp.refit=SCHEDULE");
     GrpFixtures.writeState(run, next);
     PhiHistory.initialize(files, setup);
     return setup;
@@ -70,8 +71,20 @@ public class GrpLifecycleTest {
       Files.copy(checkpoint.resolve(name), candidate.resolve(name));
     var record =
         new RefitRecord(
-            id, slot, RefitStatus.TRAINED, RefitCause.SCHEDULE, new RecencyWindow(slot, 2, 64), GrpInit.SCRATCH,
-            PhiEntry.INITIAL_ID, candidate.toAbsolutePath().normalize().toString(), "", "", null, null, "", 1);
+            id,
+            slot,
+            RefitStatus.TRAINED,
+            RefitCause.SCHEDULE,
+            new RecencyWindow(slot, 2, 64),
+            GrpInit.SCRATCH,
+            PhiEntry.INITIAL_ID,
+            candidate.toAbsolutePath().normalize().toString(),
+            "",
+            "",
+            null,
+            null,
+            "",
+            1);
     record.append(files);
     return record;
   }
@@ -132,7 +145,8 @@ public class GrpLifecycleTest {
     lifecycle.boundary(2);
     RefitRecord rejected = latest("g001-a1");
     Assert.assertEquals(rejected.status(), RefitStatus.REJECTED);
-    Assert.assertTrue(rejected.gate().failures().contains(GateFailure.NOT_BETTER), rejected.gate().toString());
+    Assert.assertTrue(
+        rejected.gate().failures().contains(GateFailure.NOT_BETTER), rejected.gate().toString());
     // 反復 4 が始まった後の区切り 2・3 では、合格しても phi.jsonl に足さない
     trained(2, good);
     lifecycle.boundary(3);
@@ -164,7 +178,8 @@ public class GrpLifecycleTest {
     PhiSetup setup = start(bad, 3);
     var lifecycle = new GrpLifecycle(files, setup);
     record(1);
-    GrpFixtures.record(files, 2, GrpFixtures.scoreEntry("other", 1), GrpFixtures.games(20_000L, GAMES, 2));
+    GrpFixtures.record(
+        files, 2, GrpFixtures.scoreEntry("other", 1), GrpFixtures.games(20_000L, GAMES, 2));
     lifecycle.boundary(1);
     trained(1, good);
     lifecycle.boundary(2);
@@ -178,9 +193,24 @@ public class GrpLifecycleTest {
   @Test
   public void theSwitchWatchRollsBackToTheBestRecentEntry() throws Exception {
     PhiSetup setup = start(good, 10);
-    PhiHistory.appendUnstarted(files, new RefitRecord(
-        "g000-a1", 0, RefitStatus.READY, RefitCause.MANUAL, null, GrpInit.SCRATCH, PhiEntry.INITIAL_ID, bad.toString(),
-        "", "", null, null, "", 0).entry(GrpFixtures.VARIANT, 2, "test"));
+    PhiHistory.appendUnstarted(
+        files,
+        new RefitRecord(
+                "g000-a1",
+                0,
+                RefitStatus.READY,
+                RefitCause.MANUAL,
+                null,
+                GrpInit.SCRATCH,
+                PhiEntry.INITIAL_ID,
+                bad.toString(),
+                "",
+                "",
+                null,
+                null,
+                "",
+                0)
+            .entry(GrpFixtures.VARIANT, 2, "test"));
     var lifecycle = new GrpLifecycle(files, setup);
     for (int t = 1; t <= 9; t++) record(t);
     for (int h = 1; h <= 8; h++) lifecycle.boundary(h);
@@ -205,7 +235,9 @@ public class GrpLifecycleTest {
     SwitchWatchRecord.State state = SwitchWatchRecord.state(watch);
     Assert.assertTrue(state.widened());
     GrpOperations operations = setup.selfGrp().grp();
-    Assert.assertEquals(GrpRefitter.halfLife(operations, PhiHistory.read(files), state, 10), 2 * operations.halfLife());
+    Assert.assertEquals(
+        GrpRefitter.halfLife(operations, PhiHistory.read(files), state, 10),
+        2 * operations.halfLife());
     Assert.assertFalse(lifecycle.halted());
   }
 
@@ -213,10 +245,27 @@ public class GrpLifecycleTest {
   @Test
   public void anAlarmWhileWidenedHalts() throws Exception {
     PhiSetup setup = start(good, 10);
-    PhiHistory.appendUnstarted(files, new RefitRecord(
-        "g000-a1", 0, RefitStatus.READY, RefitCause.MANUAL, null, GrpInit.SCRATCH, PhiEntry.INITIAL_ID, bad.toString(),
-        "", "", null, null, "", 0).entry(GrpFixtures.VARIANT, 2, "test"));
-    new SwitchWatchRecord(1, PhiEntry.INITIAL_ID, "", null, SwitchWatchVerdict.ROLLBACK, true, false, "").append(files);
+    PhiHistory.appendUnstarted(
+        files,
+        new RefitRecord(
+                "g000-a1",
+                0,
+                RefitStatus.READY,
+                RefitCause.MANUAL,
+                null,
+                GrpInit.SCRATCH,
+                PhiEntry.INITIAL_ID,
+                bad.toString(),
+                "",
+                "",
+                null,
+                null,
+                "",
+                0)
+            .entry(GrpFixtures.VARIANT, 2, "test"));
+    new SwitchWatchRecord(
+            1, PhiEntry.INITIAL_ID, "", null, SwitchWatchVerdict.ROLLBACK, true, false, "")
+        .append(files);
     var lifecycle = new GrpLifecycle(files, setup);
     for (int t = 2; t <= 9; t++) record(t);
     for (int h = 2; h <= 8; h++) lifecycle.boundary(h);
@@ -227,7 +276,8 @@ public class GrpLifecycleTest {
     Assert.assertTrue(last.halted());
     Assert.assertEquals(last.rollbackTo(), "");
     Assert.assertTrue(lifecycle.halted());
-    Assert.assertEquals(PhiHistory.read(files).getLast().id(), "g000-a1", "a halt does not roll back");
+    Assert.assertEquals(
+        PhiHistory.read(files).getLast().id(), "g000-a1", "a halt does not roll back");
     RefitRecord refused = latest("g008-a1");
     Assert.assertEquals(refused.status(), RefitStatus.REJECTED);
     Assert.assertTrue(refused.detail().contains("halted"), refused.detail());
@@ -238,7 +288,8 @@ public class GrpLifecycleTest {
   public void refitsAfterARollbackAreAnchored() throws Exception {
     PhiSetup setup = start(bad, 6);
     PhiHistory.appendUnstarted(files, readyEntry("g001-a1", 1, good, 2));
-    PhiHistory.appendUnstarted(files, readyEntry("g001-a1", 1, good, 4).from(4, PhiEntry.ROLLBACK + " test"));
+    PhiHistory.appendUnstarted(
+        files, readyEntry("g001-a1", 1, good, 4).from(4, PhiEntry.ROLLBACK + " test"));
     PhiHistory.appendUnstarted(files, readyEntry("g003-a1", 3, bad, 5));
     var lifecycle = new GrpLifecycle(files, setup);
     for (int t = 1; t <= 5; t++) record(t);

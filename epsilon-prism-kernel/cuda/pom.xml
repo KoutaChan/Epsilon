@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.epsilon</groupId>
+    <artifactId>epsilon-prism-kernel</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>epsilon-prism-cuda</artifactId>
+  <name>Epsilon Prism CUDA</name>
+  <dependencies>
+    <dependency>
+      <groupId>com.epsilon</groupId>
+      <artifactId>epsilon-prism-kernel-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+  <properties>
+    <skip.cuda.compiler>true</skip.cuda.compiler>
+    <prism.cuda.jobs>2</prism.cuda.jobs>
+    <prism.cuda.arch>120</prism.cuda.arch>
+    <prism.cuda.tests>OFF</prism.cuda.tests>
+    <prism.cuda.build>${project.build.directory}/cmake</prism.cuda.build>
+  </properties>
+  <build>
+    <resources>
+      <resource><directory>src/main/resources</directory></resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>build-cuda-libraries</id>
+            <phase>process-classes</phase>
+            <goals><goal>run</goal></goals>
+            <configuration>
+              <skip>${skip.cuda.compiler}</skip>
+              <target>
+                <exec executable="cmake" failonerror="true">
+                  <env key="JAVA_HOME" value="${java.home}"/>
+                  <arg value="-S"/><arg value="${project.basedir}/src/main/native"/>
+                  <arg value="-B"/><arg value="${prism.cuda.build}"/>
+                  <arg value="-DCMAKE_BUILD_TYPE=Release"/>
+                  <arg value="-DCMAKE_CUDA_ARCHITECTURES=${prism.cuda.arch}"/>
+                  <arg value="-DBUILD_TESTING=${prism.cuda.tests}"/>
+                </exec>
+                <exec executable="cmake" failonerror="true">
+                  <arg value="--build"/><arg value="${prism.cuda.build}"/>
+                  <arg value="--config"/><arg value="Release"/>
+                  <arg value="--parallel"/><arg value="${prism.cuda.jobs}"/>
+                </exec>
+                <exec executable="cmake" failonerror="true">
+                  <arg value="--install"/><arg value="${prism.cuda.build}"/>
+                  <arg value="--config"/><arg value="Release"/>
+                  <arg value="--prefix"/><arg value="${project.build.outputDirectory}"/>
+                  <arg value="--component"/><arg value="jni"/>
+                </exec>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+  <profiles>
+    <profile>
+      <id>native-cuda</id>
+      <properties><skip.cuda.compiler>false</skip.cuda.compiler></properties>
+    </profile>
+    <profile>
+      <id>cuda-native-tests</id>
+      <properties>
+        <skip.cuda.compiler>false</skip.cuda.compiler>
+        <prism.cuda.tests>ON</prism.cuda.tests>
+      </properties>
+      <build><plugins><plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <executions><execution>
+          <id>test-cuda-kernels</id>
+          <phase>test</phase><goals><goal>run</goal></goals>
+          <configuration>
+            <skip>${skipTests}</skip>
+            <target><exec executable="ctest" failonerror="true">
+              <arg value="--test-dir"/><arg value="${prism.cuda.build}"/>
+              <arg value="-C"/><arg value="Release"/>
+              <arg value="--output-on-failure"/><arg value="--no-tests=error"/>
+            </exec></target>
+          </configuration>
+        </execution></executions>
+      </plugin></plugins></build>
+    </profile>
+  </profiles>
+</project>

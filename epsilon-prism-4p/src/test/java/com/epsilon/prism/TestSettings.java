@@ -131,7 +131,8 @@ public final class TestSettings {
   }
 
   /** プリセットと上書きを重ねた設定を、run のディレクトリの設定の 1 行目に書く。 */
-  public static PrismSettings create(Path run, List<String> presets, String... assignments) throws IOException {
+  public static PrismSettings create(Path run, List<String> presets, String... assignments)
+      throws IOException {
     Settings<PrismSettings> settings = bind(presets, assignments);
     try (SettingsRows.Locked locked = new SettingsRows(new RunDirectory(run)).lock()) {
       locked.append(1, "test", SettingsRow.CREATED, List.of(), settings.tree());

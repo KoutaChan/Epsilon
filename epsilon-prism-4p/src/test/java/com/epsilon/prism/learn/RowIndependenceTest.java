@@ -1,6 +1,7 @@
 package com.epsilon.prism.learn;
 
 import static com.epsilon.mahjong.rules.Variant.TENHOU_4P;
+import static com.epsilon.prism.input.InputSchema.FOUR_PLAYER;
 import static org.testng.Assert.assertTrue;
 
 import ai.djl.Device;
@@ -17,11 +18,12 @@ import com.epsilon.prism.Limits;
 import com.epsilon.prism.input.BatchPlan;
 import com.epsilon.prism.input.HostInputs;
 import com.epsilon.prism.model.AuxiliaryLoss;
+import com.epsilon.prism.model.ModelShapes;
+import com.epsilon.prism.model.PairLoss;
 import com.epsilon.prism.model.Pass;
 import com.epsilon.prism.model.PrismNetwork;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.rows.Row;
-import com.epsilon.prism4p.input.InputSchema;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Random;
@@ -37,37 +39,50 @@ import org.testng.annotations.Test;
 public class RowIndependenceTest {
   private static final Logger log = LoggerFactory.getLogger(RowIndependenceTest.class);
 
-  private static final PrismShape SHAPE = new PrismShape.V2(64, 128, 64, 2);
-
-  @Test(timeOut = 600_000)
-  public void scoresDoNotDependOnTheOtherRowsInTheBatch() {
+  @Test(dataProvider = "smallShapes", dataProviderClass = ModelShapes.class, timeOut = 600_000)
+  public void scoresDoNotDependOnTheOtherRowsInTheBatch(PrismShape shape) {
     List<Row> rows = SyntheticCohort.rows(900, 1, 5);
     assertTrue(rows.size() >= 8, "rows " + rows.size());
     FitPlan plan =
         new FitPlan(
-            new FitSettings(1, 4096, 3e-3, 3e-4, 1f, 0.01, 0.02),
-            SHAPE,
+            new FitSettings(
+                1,
+                4096,
+                3e-3,
+                3e-4,
+                1f,
+                0.01,
+                0.02,
+                PairLoss.Mode.PRISM,
+                PairLoss.ClassWeight.INVERSE_LAMBDA,
+                AdamEpsilon.FIXED),
+            shape,
             AuxiliaryLoss.standard(),
             1_000_000,
             5);
     Encoder encoder = new Encoder(plan, TENHOU_4P);
     Observation observation = new Observation(TENHOU_4P);
 
-    HostInputs together = batch(rows.size());
+    HostInputs together = batch(rows.size(), shape);
     together.plan().clear();
     for (Row row : rows) {
       assertTrue(together.plan().add(observation.bind(row.observation(), 0)) >= 0);
     }
     together.plan().seal();
+    boolean padded = false;
+    for (int i = 1; i < rows.size(); i++) {
+      padded |= together.plan().events(i) != together.plan().events(0);
+    }
+    assertTrue(padded, "The joint batch must contain event padding");
     Microbatch all = encoder.encode(together, rows, new int[rows.size()], Teacher.RAW);
 
-    try (Model model = Fit.blank(InputSchema.FORMAT, SHAPE, Device.cpu(), 7);
+    try (Model model = Fit.blank(FOUR_PLAYER, shape, Device.cpu(), 7);
         NDManager manager = NDManager.newBaseManager(Device.cpu())) {
       PrismNetwork network = (PrismNetwork) model.getBlock();
       perturb(network, 0.05f, 13);
       float[] joint = scores(network, all, manager);
       int jointWidth = joint.length / rows.size();
-      HostInputs single = batch(1);
+      HostInputs single = batch(1, shape);
       int compared = 0;
       double worst = 0;
       double largest = 0;
@@ -77,7 +92,8 @@ public class RowIndependenceTest {
         single.plan().clear();
         single.plan().add(observation);
         single.plan().seal();
-        float[] alone = scores(network, encoder.encode(single, List.of(row), new int[1], Teacher.RAW), manager);
+        float[] alone =
+            scores(network, encoder.encode(single, List.of(row), new int[1], Teacher.RAW), manager);
         for (int a = 0; a < legal; a++) {
           float expected = alone[a];
           float actual = joint[r * jointWidth + a];
@@ -102,14 +118,14 @@ public class RowIndependenceTest {
     }
   }
 
-  private static HostInputs batch(int rows) {
+  private static HostInputs batch(int rows, PrismShape shape) {
     BatchPlan.Capacity capacity =
         new BatchPlan.Capacity(
             rows,
             rows * Limits.MAX_EVENT_TOKENS,
             rows * Limits.MAX_TRANSITIONS,
             rows * Limits.MAX_LEGAL_ACTIONS);
-    return HostInputs.allocate(InputSchema.FORMAT, capacity, ByteBuffer::allocateDirect);
+    return HostInputs.allocate(FOUR_PLAYER, capacity, ByteBuffer::allocateDirect);
   }
 
   private static float[] scores(PrismNetwork network, Microbatch part, NDManager manager) {

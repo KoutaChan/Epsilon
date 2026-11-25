@@ -13,7 +13,8 @@ public class FaceTest {
     int plain = 0;
     for (Face face : Face.values()) {
       if (!face.red()) {
-        Assert.assertEquals(face.kind(), Tiles.class.getField(face.name()).getInt(null), face.name());
+        Assert.assertEquals(
+            face.kind(), Tiles.class.getField(face.name()).getInt(null), face.name());
         Assert.assertSame(Face.of(face.kind(), false), face);
         plain++;
       }

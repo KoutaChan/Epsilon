@@ -54,14 +54,26 @@ import org.slf4j.LoggerFactory;
  * @param out ジョブと報告を書くディレクトリ
  * @param nanoDevice classic の打ち手のデバイス（cpu か gpuN。無ければルールごとの既定値）
  */
-@Named(value = "evaluate", doc = "Play a candidate on a configured evaluation table and measure its placement and utility")
+@Named(
+    value = "evaluate",
+    doc = "Play a candidate on a configured evaluation table and measure its placement and utility")
 public record Evaluate(
-    @Key(doc = "Candidate player (version directory, prism:DIR, nano:DIR, major:DIR)", presence = Presence.ABSENT) String model,
-    @Key(doc = "Run directory holding the versions to measure (use with --versions)", presence = Presence.ABSENT) Path snapshots,
+    @Key(
+            doc = "Candidate player (version directory, prism:DIR, nano:DIR, major:DIR)",
+            presence = Presence.ABSENT)
+        String model,
+    @Key(
+            doc = "Run directory holding the versions to measure (use with --versions)",
+            presence = Presence.ABSENT)
+        Path snapshots,
     @Key(doc = "Range of versions to measure (a..b)", presence = Presence.ABSENT) String versions,
-    @Key(doc = "Table name (a name in evaluation.tables)", presence = Presence.REQUIRED) String table,
+    @Key(doc = "Table name (a name in evaluation.tables)", presence = Presence.REQUIRED)
+        String table,
     @Key(doc = "Directory for the jobs and the report", presence = Presence.REQUIRED) Path out,
-    @Key(doc = "Device of the classic players (cpu or gpuN; default: the per-rule default)", presence = Presence.ABSENT) String nanoDevice)
+    @Key(
+            doc = "Device of the classic players (cpu or gpuN; default: the per-rule default)",
+            presence = Presence.ABSENT)
+        String nanoDevice)
     implements PrismCommand {
 
   /** {@code --model} で測るジョブのバージョン。 */
@@ -75,10 +87,12 @@ public record Evaluate(
   public Evaluate {
     if (model != null) {
       if (snapshots != null || versions != null) {
-        throw new InvalidSetting("model", "--model measures one candidate: drop --snapshots and --versions");
+        throw new InvalidSetting(
+            "model", "--model measures one candidate: drop --snapshots and --versions");
       }
       if (model.equals(EvaluationTable.HEURISTIC)) {
-        throw new InvalidSetting("model", "the candidate must be a checkpoint, not " + EvaluationTable.HEURISTIC);
+        throw new InvalidSetting(
+            "model", "the candidate must be a checkpoint, not " + EvaluationTable.HEURISTIC);
       }
     } else if (snapshots == null || versions == null) {
       throw new InvalidSetting("model", "give --model, or --snapshots with --versions");
@@ -95,14 +109,23 @@ public record Evaluate(
     if (spec == null) {
       throw new SettingsException(
           List.of(
-              "Unknown evaluation table " + table + "; the settings define " + settings.evaluation().tables().keySet()));
+              "Unknown evaluation table "
+                  + table
+                  + "; the settings define "
+                  + settings.evaluation().tables().keySet()));
     }
     TableSpec.Opponent opponent = TableSpec.kind(spec.opponent());
-    if (model != null && opponent != TableSpec.Opponent.HEURISTIC && opponent != TableSpec.Opponent.CHECKPOINT) {
+    if (model != null
+        && opponent != TableSpec.Opponent.HEURISTIC
+        && opponent != TableSpec.Opponent.CHECKPOINT) {
       throw new SettingsException(
           List.of(
-              "Evaluation table " + table + " plays " + spec.opponent()
-                  + ", which needs the versions of a run: give --snapshots and --versions instead of --model"));
+              "Evaluation table "
+                  + table
+                  + " plays "
+                  + spec.opponent()
+                  + ", which needs the versions of a run: give --snapshots and --versions instead"
+                  + " of --model"));
     }
     settings.runtime().apply();
     settings.diagnostics().apply();
@@ -121,7 +144,8 @@ public record Evaluate(
         }
       }
       if (!missing.isEmpty()) {
-        throw new SettingsException(List.of("Versions " + missing + " are not published in " + lineage.root()));
+        throw new SettingsException(
+            List.of("Versions " + missing + " are not published in " + lineage.root()));
       }
     }
     RunDirectory output = new RunDirectory(out);
@@ -131,7 +155,7 @@ public record Evaluate(
     int ran = 0;
     String last = null;
     List<String> unfinished = new ArrayList<>();
-    try (var runtime = new NetworkRuntime(inference.encoders(), inference.slots(), inference.readyBatches());
+    try (var runtime = new NetworkRuntime(inference);
         var loop = new TableLoop(settings.table())) {
       EvaluationJobs runner =
           EvaluationJobs.measuring(
@@ -163,7 +187,14 @@ public record Evaluate(
         }
         job = jobs.read(name);
         if (job.state() != JobFile.State.DONE) {
-          unfinished.add(name + " is " + job.state() + " after " + job.attempts() + " attempts: " + job.reason());
+          unfinished.add(
+              name
+                  + " is "
+                  + job.state()
+                  + " after "
+                  + job.attempts()
+                  + " attempts: "
+                  + job.reason());
           continue;
         }
         ran++;
@@ -171,13 +202,24 @@ public record Evaluate(
       }
     }
     if (!unfinished.isEmpty()) {
-      throw new IllegalStateException("Evaluation jobs in " + out + " did not finish: " + String.join("; ", unfinished));
+      throw new IllegalStateException(
+          "Evaluation jobs in " + out + " did not finish: " + String.join("; ", unfinished));
     }
     if (measured.size() == 1) {
-      return Outcome.ok(last != null ? last : RunDirectory.jobName(measured.get(0), table) + " is already measured");
+      return Outcome.ok(
+          last != null
+              ? last
+              : RunDirectory.jobName(measured.get(0), table) + " is already measured");
     }
     return Outcome.ok(
-        "measured " + ran + " of " + measured.size() + " versions on " + table + ", " + (measured.size() - ran)
+        "measured "
+            + ran
+            + " of "
+            + measured.size()
+            + " versions on "
+            + table
+            + ", "
+            + (measured.size() - ran)
             + " were already measured");
   }
 
@@ -191,11 +233,16 @@ public record Evaluate(
     boolean same =
         job.definition().equals(definition)
             && (job.plan() == null
-                || RecordFile.read(EvaluationPlan.class, job.plan()).value().candidate().equals(candidate));
+                || RecordFile.read(EvaluationPlan.class, job.plan())
+                    .value()
+                    .candidate()
+                    .equals(candidate));
     if (!same) {
       throw new SettingsException(
           List.of(
-              "The job " + output.job(job.name()) + " measures another table or candidate; give another --out"));
+              "The job "
+                  + output.job(job.name())
+                  + " measures another table or candidate; give another --out"));
     }
   }
 
@@ -203,7 +250,10 @@ public record Evaluate(
   private static String summary(RunDirectory output, JobFile job) throws IOException {
     Path home = output.job(job.name());
     if (RecordFile.read(EvaluationPlan.class, job.plan()).value().crowns()) {
-      return job.name() + " made " + Jobs.result(home, EvaluationJobs.Crowned.class).champion() + " the first champion";
+      return job.name()
+          + " made "
+          + Jobs.result(home, EvaluationJobs.Crowned.class).champion()
+          + " the first champion";
     }
     return job.name() + " " + Jobs.result(home, DuelResult.class).summary();
   }

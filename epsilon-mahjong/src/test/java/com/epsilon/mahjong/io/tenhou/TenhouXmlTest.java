@@ -54,7 +54,8 @@ public class TenhouXmlTest {
       yakuman="48" doraHai="71" who="0" fromWho="1" sc="430,483,190,-483,190,0,190,0" \
       owari="913,101.3,-293,-79.3,190,-1.0,190,-21.0"/>\
       <PROF lobby="0" type="169" add="101.3,1,0,0,0,0,1,1,2,0,1"/>\
-      </mjloggm>""";
+      </mjloggm>\
+      """;
 
   /**
    * 天鳳が書く形の南 4 局（親は席 3）。席 1 は 7p を 2 枚（60・63）持ち、上家の席 0 が打った 6p（59）を、番号の大きい 63 と 8p（66）で
@@ -70,7 +71,8 @@ public class TenhouXmlTest {
       <AGARI ba="0,0" hai="4,8,12,20,24,28,53,56,60,76,80,84,100,101" machi="60" ten="30,2000,0" \
       yaku="7,1,8,1" doraHai="106" who="2" fromWho="1" sc="310,0,250,-20,250,20,190,0" \
       owari="310,41.0,230,-17.0,270,7.0,190,-31.0"/>\
-      </mjloggm>""";
+      </mjloggm>\
+      """;
 
   /**
    * 天鳳が書く形の南 4 局（親は席 3）。席 1 は 7p を 3 枚（60・62・63）持ち、対面の席 3 が打った 7p（61）を、番号の大きい 62・63 で
@@ -86,7 +88,8 @@ public class TenhouXmlTest {
       <AGARI ba="0,0" hai="4,8,12,20,24,28,53,56,60,76,80,84,100,101" machi="60" ten="30,2000,0" \
       yaku="7,1,8,1" doraHai="106" who="2" fromWho="1" sc="310,0,250,-20,250,20,190,0" \
       owari="310,41.0,230,-17.0,270,7.0,190,-31.0"/>\
-      </mjloggm>""";
+      </mjloggm>\
+      """;
 
   @DataProvider
   public static Object[][] variants() {
@@ -95,7 +98,9 @@ public class TenhouXmlTest {
 
   @DataProvider
   public static Object[][] callsWithTheHigherCopies() {
-    return new Object[][] {{CHI_WITH_THE_HIGHER_COPY, List.of(63, 66)}, {PON_WITH_THE_HIGHER_COPIES, List.of(62, 63)}};
+    return new Object[][] {
+      {CHI_WITH_THE_HIGHER_COPY, List.of(63, 66)}, {PON_WITH_THE_HIGHER_COPIES, List.of(62, 63)}
+    };
   }
 
   /** 自己対局の記録（鳴き・槓・立直・途中流局を広く含む。三人打ちは北抜きも）を書いて読み直すと同じ半荘になり、再生も記録と合う。 */
@@ -124,7 +129,10 @@ public class TenhouXmlTest {
     Assert.assertEquals(game.finalScores(), new int[] {91_300, -29_300, 19_000, 19_000});
     Assert.assertEquals(game.rounds().size(), 2);
     long yaku =
-        ScoringYaku.RIICHI.bit() | ScoringYaku.IPPATSU.bit() | ScoringYaku.MENZEN_TSUMO.bit() | ScoringYaku.PINFU.bit();
+        ScoringYaku.RIICHI.bit()
+            | ScoringYaku.IPPATSU.bit()
+            | ScoringYaku.MENZEN_TSUMO.bit()
+            | ScoringYaku.PINFU.bit();
     RoundResult.Win tsumo = RoundResult.Win.of(0, yaku, 6, 20, 1, 1, 0, 0, RoundOutcome.NO_SEAT);
     Assert.assertEquals(
         game.rounds().get(0).result(),
@@ -137,10 +145,19 @@ public class TenhouXmlTest {
             0,
             new int[] {18_000, -6_000, -6_000, -6_000},
             new int[] {135}));
-    RoundResult.Win ron = RoundResult.Win.of(0, ScoringYaku.KOKUSHI.bit(), 0, 0, 0, 0, 0, 1, RoundOutcome.NO_SEAT);
+    RoundResult.Win ron =
+        RoundResult.Win.of(0, ScoringYaku.KOKUSHI.bit(), 0, 0, 0, 0, 0, 1, RoundOutcome.NO_SEAT);
     Assert.assertEquals(
         game.rounds().get(1).result(),
-        new RoundResult(EndKind.RON, null, List.of(ron), 1, 0, 0, new int[] {48_300, -48_300, 0, 0}, new int[0]));
+        new RoundResult(
+            EndKind.RON,
+            null,
+            List.of(ron),
+            1,
+            0,
+            0,
+            new int[] {48_300, -48_300, 0, 0},
+            new int[0]));
     new ReplayDriver(VARIANT).replay(game, new RuleWorkspace(VARIANT));
   }
 
@@ -186,7 +203,8 @@ public class TenhouXmlTest {
     }
     String xml = TenhouXml.write(named(VARIANT, List.of("A", "B", "C", "D")));
     String renamed =
-        xml.replace("n0=\"%41\"", "n0=\"%E9%BA%BB%E9%9B%80\"").replaceFirst("<INIT", "<UN n2=\"%E3%81%82\"/><INIT");
+        xml.replace("n0=\"%41\"", "n0=\"%E9%BA%BB%E9%9B%80\"")
+            .replaceFirst("<INIT", "<UN n2=\"%E3%81%82\"/><INIT");
     Assert.assertNotEquals(renamed, xml);
     RecordedGame game = TenhouXml.read(renamed, "named");
     Assert.assertEquals(game.meta().names(), List.of("麻雀", "B", "あ", "D"));
@@ -200,8 +218,11 @@ public class TenhouXmlTest {
     Matcher points = Pattern.compile("<AGARI [^>]*ten=\"\\d+,(\\d+),").matcher(xml);
     Assert.assertTrue(points.find(), "no AGARI");
     String wrong =
-        xml.substring(0, points.start(1)) + (Integer.parseInt(points.group(1)) + 100) + xml.substring(points.end(1));
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouXml.read(wrong, "wrong-points"));
+        xml.substring(0, points.start(1))
+            + (Integer.parseInt(points.group(1)) + 100)
+            + xml.substring(points.end(1));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouXml.read(wrong, "wrong-points"));
   }
 
   /**
@@ -246,7 +267,8 @@ public class TenhouXmlTest {
     };
     for (int type : others) {
       String other = xml.replace(go, "<GO type=\"" + type + "\"");
-      Assert.assertThrows(IllegalArgumentException.class, () -> TenhouXml.read(other, "type-" + type));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> TenhouXml.read(other, "type-" + type));
     }
   }
 
@@ -290,7 +312,8 @@ public class TenhouXmlTest {
     Assert.assertEquals(TenhouRoundIndex.round(4, sanma), 3);
     Assert.assertEquals(TenhouRoundIndex.tenhou(8, sanma), 10);
     for (int round = 0; round <= sanma.finalRound(); round++) {
-      Assert.assertEquals(TenhouRoundIndex.round(TenhouRoundIndex.tenhou(round, sanma), sanma), round);
+      Assert.assertEquals(
+          TenhouRoundIndex.round(TenhouRoundIndex.tenhou(round, sanma), sanma), round);
     }
     Assert.assertThrows(IllegalArgumentException.class, () -> TenhouRoundIndex.round(3, sanma));
   }
@@ -298,16 +321,20 @@ public class TenhouXmlTest {
   @Test
   public void tileTagsNameTheSeatAndTheTile() {
     Assert.assertEquals(
-        TenhouTiles.TileTag.parse("T89", VARIANT), new TenhouTiles.TileTag(TenhouTiles.Move.DRAW, 0, 89));
+        TenhouTiles.TileTag.parse("T89", VARIANT),
+        new TenhouTiles.TileTag(TenhouTiles.Move.DRAW, 0, 89));
     Assert.assertEquals(
-        TenhouTiles.TileTag.parse("G37", VARIANT), new TenhouTiles.TileTag(TenhouTiles.Move.DISCARD, 3, 37));
+        TenhouTiles.TileTag.parse("G37", VARIANT),
+        new TenhouTiles.TileTag(TenhouTiles.Move.DISCARD, 3, 37));
     Assert.assertEquals(new TenhouTiles.TileTag(TenhouTiles.Move.DISCARD, 1, 73).name(), "E73");
     Assert.assertNull(TenhouTiles.TileTag.parse("INIT", VARIANT));
     Assert.assertNull(TenhouTiles.TileTag.parse("W12", Variant.TENHOU_3P));
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouTiles.TileTag.parse("T136", VARIANT));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouTiles.TileTag.parse("T136", VARIANT));
     Assert.assertEquals(TenhouTiles.tiles("", VARIANT.tiles()), new int[0]);
     Assert.assertEquals(TenhouTiles.tiles("4,0,135", VARIANT.tiles()), new int[] {4, 0, 135});
-    Assert.assertThrows(IllegalArgumentException.class, () -> TenhouTiles.tiles("4,8", Variant.TENHOU_3P.tiles()));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> TenhouTiles.tiles("4,8", Variant.TENHOU_3P.tiles()));
   }
 
   /** 半荘を書いた XML の、最初の AGARI のタグ。 */
@@ -330,6 +357,9 @@ public class TenhouXmlTest {
   private static RecordedGame named(Variant variant, List<String> names) {
     RecordedGame game = RecordedGames.play(variant, 0, "named");
     return new RecordedGame(
-        variant, game.rounds(), game.finalScores(), new RecordedGame.Meta("named", RecordedGame.Source.TENHOU, names));
+        variant,
+        game.rounds(),
+        game.finalScores(),
+        new RecordedGame.Meta("named", RecordedGame.Source.TENHOU, names));
   }
 }

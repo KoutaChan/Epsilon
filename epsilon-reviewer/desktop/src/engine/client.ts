@@ -1,8 +1,9 @@
 import type { Readable, Writable } from "node:stream";
-import type { InvokeReply } from "../../../protocol/bridge.ts";
-import type { StdioCommandName } from "../../../protocol/commands.ts";
-import { isErrorCode, type ErrorBody } from "../../../protocol/errors.ts";
-import { errorMessage, isFields, type Fields } from "../values.ts";
+import type { InvokeReply } from "@epsilon-reviewer/protocol/bridge";
+import type { StdioCommandName } from "@epsilon-reviewer/protocol/commands";
+import { isErrorCode, type ErrorBody } from "@epsilon-reviewer/protocol/errors";
+import { errorMessage } from "../values.ts";
+import { isFields, type Fields } from "@epsilon-reviewer/protocol/values";
 import { encodeFrame, FrameDecoder, type Frame } from "./frames.ts";
 
 /** 子プロセスが止まったときや起動できないときに、応答を待っている要求へ返すエラー。 */

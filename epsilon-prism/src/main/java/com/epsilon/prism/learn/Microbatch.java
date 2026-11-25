@@ -30,6 +30,7 @@ import java.util.List;
  * @param batch 入力（計画を確定したバッチ）
  * @param labels 行の順の教師
  * @param measured C の印（バッチの中の手の順。{@link ValueLabel#measured}）
+ * @param certifiedTurnRows 証明辺のあるツモ和了の行の印（該当行が無ければ null）
  * @param auxiliary 補助のヘッドの教師（補助のヘッドを計算しないなら null）
  * @param tokens パディングを含むトークン数（行数 × 最も長い行の S）
  * @param share 補助の項に掛ける割合（1 ステップの行のうち元のバッチの行が占める割合）
@@ -40,6 +41,7 @@ record Microbatch(
     HostInputs batch,
     List<ValueLabel> labels,
     boolean[] measured,
+    boolean[] certifiedTurnRows,
     AuxiliaryLabels auxiliary,
     long tokens,
     float share,
@@ -63,6 +65,23 @@ record Microbatch(
    * @return マイクロバッチ
    */
   static Microbatch of(HostInputs batch, List<ValueLabel> labels, AuxiliaryLabels auxiliary) {
+    return of(batch, labels, null, auxiliary);
+  }
+
+  /**
+   * 書き終えたバッチ・教師・証明辺のあるツモ行の印から作る。
+   *
+   * @param batch 入力
+   * @param labels 行の順の教師
+   * @param certifiedTurnRows 証明辺のあるツモ和了の行の印（該当行が無ければ null）
+   * @param auxiliary 補助のヘッドの教師（補助のヘッドを計算しないなら null）
+   * @return マイクロバッチ
+   */
+  static Microbatch of(
+      HostInputs batch,
+      List<ValueLabel> labels,
+      boolean[] certifiedTurnRows,
+      AuxiliaryLabels auxiliary) {
     BatchPlan plan = batch.plan();
     int widest = 0;
     for (int row = 0; row < plan.rows(); row++) {
@@ -73,6 +92,7 @@ record Microbatch(
         batch,
         labels,
         ValueLabel.measured(labels),
+        certifiedTurnRows,
         auxiliary,
         tokens,
         1f,
@@ -94,7 +114,8 @@ record Microbatch(
     for (Microbatch part : parts) {
       rows += part.rows();
       if (part.denominators != null) {
-        denominators = denominators == null ? part.denominators : denominators.plus(part.denominators);
+        denominators =
+            denominators == null ? part.denominators : denominators.plus(part.denominators);
       }
     }
     float share = (float) rows / stepRows;
@@ -105,6 +126,7 @@ record Microbatch(
               part.batch,
               part.labels,
               part.measured,
+              part.certifiedTurnRows,
               part.auxiliary,
               part.tokens,
               share,
@@ -123,18 +145,28 @@ record Microbatch(
    * 混ぜた後の値で、補助のヘッドの分母は元のバッチで数えた数。
    *
    * @param region 書き込むバッファ（{@link StepFeed#release} で返すまで、このマイクロバッチだけが使う）
+   * @param attentionTape 載せるレーンの順伝播が Attention の記録を使うか
    * @return 並べたマイクロバッチ
    */
-  Microbatch staged(PinnedUploads region) {
+  Microbatch staged(PinnedUploads region, boolean attentionTape) {
     return new Microbatch(
         batch,
         labels,
         measured,
+        certifiedTurnRows,
         auxiliary,
         tokens,
         share,
         denominators,
-        StagedBatch.stage(region, batch.input(), measured, auxiliary, labels, denominators));
+        StagedBatch.stage(
+            region,
+            batch.input(),
+            measured,
+            auxiliary,
+            labels,
+            denominators,
+            attentionTape,
+            certifiedTurnRows));
   }
 
   /**

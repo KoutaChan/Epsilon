@@ -7,7 +7,9 @@ import com.epsilon.mahjong.action.Meld;
 import com.epsilon.mahjong.action.Meld.AkaSource;
 import com.epsilon.mahjong.action.Meld.RelativeSource;
 import com.epsilon.mahjong.score.ScoringYaku;
+import com.epsilon.mahjong.score.WinScore;
 import com.epsilon.mahjong.tile.Tiles;
+import com.epsilon.mahjong.util.AllocationProbe;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -88,7 +90,9 @@ public class LegalTest {
             "DAHAI(6p)",
             "DAHAI(9s)"));
     Scene red = Scene.first().pon(1, 0, "7z").hand(1, "55m123p456p99s").draw(1, "0m").turn();
-    Assert.assertEquals(red.legal(1).subList(0, 3), List.of("TSUMO_AGARI", "DAHAI(5m)", "DAHAI_TSUMOGIRI_AKA(5mr)"));
+    Assert.assertEquals(
+        red.legal(1).subList(0, 3),
+        List.of("TSUMO_AGARI", "DAHAI(5m)", "DAHAI_TSUMOGIRI_AKA(5mr)"));
     Assert.assertTrue(red.decisions.win(0).has(ScoringYaku.YAKUHAI_CHUN));
     Assert.assertEquals(red.decisions.win(0).aka(), 1);
   }
@@ -99,7 +103,12 @@ public class LegalTest {
     List<String> nine = Scene.first().hand(0, "19m19p19s123z2345m").draw(0, "6m").turn().legal(0);
     Assert.assertEquals(nine.get(nine.size() - 1), "KYUSHU_KYUHAI");
     Assert.assertFalse(
-        Scene.first().hand(0, "19m19p19s12z23456m").draw(0, "7m").turn().legal(0).contains("KYUSHU_KYUHAI"));
+        Scene.first()
+            .hand(0, "19m19p19s12z23456m")
+            .draw(0, "7m")
+            .turn()
+            .legal(0)
+            .contains("KYUSHU_KYUHAI"));
     Assert.assertFalse(
         Scene.first()
             .ankan(2, "5z")
@@ -129,10 +138,22 @@ public class LegalTest {
     Assert.assertTrue(riichi(Scene.first().burn(liveWall - minWall - 1)));
     Assert.assertFalse(riichi(Scene.first().burn(liveWall - minWall)));
     Assert.assertFalse(
-        Scene.first().pon(0, 1, "7z").hand(0, "123m456p789s1z").draw(0, "2z").turn().legal(0).stream()
+        Scene.first()
+            .pon(0, 1, "7z")
+            .hand(0, "123m456p789s1z")
+            .draw(0, "2z")
+            .turn()
+            .legal(0)
+            .stream()
             .anyMatch(name -> name.startsWith("RIICHI")));
     Assert.assertEquals(
-        Scene.first().ankan(0, "5z").hand(0, "123m456p789s1z").draw(0, "2z").turn().legal(0).stream()
+        Scene.first()
+            .ankan(0, "5z")
+            .hand(0, "123m456p789s1z")
+            .draw(0, "2z")
+            .turn()
+            .legal(0)
+            .stream()
             .filter(name -> name.startsWith("RIICHI"))
             .toList(),
         List.of("RIICHI_DAHAI(E)", "RIICHI_TSUMOGIRI(S)"));
@@ -141,19 +162,27 @@ public class LegalTest {
   /** 槓できるのは、場の槓が 4 つ未満で、山の残りが 1 枚以上のときだけ。 */
   @Test
   public void kansNeedFewerThanFourKansAndATileLeft() {
-    Assert.assertTrue(quad(Scene.first().ankan(1, "1z").ankan(2, "2z").ankan(3, "3z")).contains("ANKAN(1m)"));
+    Assert.assertTrue(
+        quad(Scene.first().ankan(1, "1z").ankan(2, "2z").ankan(3, "3z")).contains("ANKAN(1m)"));
     Assert.assertFalse(
-        quad(Scene.first().ankan(1, "1z").ankan(2, "2z").ankan(3, "3z").ankan(1, "4z")).contains("ANKAN(1m)"));
-    Assert.assertFalse(quad(Scene.first().burn(Scene.VARIANT.liveWall() - 1)).contains("ANKAN(1m)"));
+        quad(Scene.first().ankan(1, "1z").ankan(2, "2z").ankan(3, "3z").ankan(1, "4z"))
+            .contains("ANKAN(1m)"));
+    Assert.assertFalse(
+        quad(Scene.first().burn(Scene.VARIANT.liveWall() - 1)).contains("ANKAN(1m)"));
   }
 
   /** 立直中の暗槓は、ツモった牌の種類で、待ちが変わらないときだけできる。暗槓も和了もできなければ、ツモ切りしかできない。 */
   @Test
   public void anAnkanInRiichiNeedsTheDrawnKindAndUnchangedWaits() {
     Assert.assertEquals(
-        inRiichi("111m456p789s2355s").draw(0, "1m").turn().legal(0), List.of("ANKAN(1m)", "DAHAI_TSUMOGIRI(1m)"));
-    Assert.assertEquals(inRiichi("3334m456p789s111z").draw(0, "3m").turn().legal(0), List.of("DAHAI_TSUMOGIRI(3m)"));
-    Assert.assertEquals(inRiichi("1111m23m456p789s5s").draw(0, "7z").turn().legal(0), List.of("DAHAI_TSUMOGIRI(C)"));
+        inRiichi("111m456p789s2355s").draw(0, "1m").turn().legal(0),
+        List.of("ANKAN(1m)", "DAHAI_TSUMOGIRI(1m)"));
+    Assert.assertEquals(
+        inRiichi("3334m456p789s111z").draw(0, "3m").turn().legal(0),
+        List.of("DAHAI_TSUMOGIRI(3m)"));
+    Assert.assertEquals(
+        inRiichi("1111m23m456p789s5s").draw(0, "7z").turn().legal(0),
+        List.of("DAHAI_TSUMOGIRI(C)"));
     Assert.assertEquals(
         inRiichi("1111m23m456p789s5s").draw(0, "0s").turn().legal(0),
         List.of("TSUMO_AGARI", "DAHAI_TSUMOGIRI_AKA(5sr)"));
@@ -162,29 +191,51 @@ public class LegalTest {
   /** 鳴いた後の打牌は、喰い替えになる牌（ポンは鳴いた種類、チーは鳴いた種類と筋の喰い替えになる種類）を除き、手番の打牌と同じ順に並べる。 */
   @Test
   public void postCallDiscardsLeaveOutTheSwapBan() {
-    Scene chi = Scene.first().hand(1, "2345m6899p789s11z").river(0, "2m").chi(1, "234m").postCall(1);
+    Scene chi =
+        Scene.first().hand(1, "2345m6899p789s11z").river(0, "2m").chi(1, "234m").postCall(1);
     Assert.assertEquals(chi.decisions.kind(0), EngineDecisionKind.POST_CALL_DAHAI);
     Assert.assertEquals(
         chi.legal(1),
-        List.of("DAHAI(6p)", "DAHAI(8p)", "DAHAI(9p)", "DAHAI(7s)", "DAHAI(8s)", "DAHAI(9s)", "DAHAI(E)"));
-    Scene pon = Scene.first().hand(1, "055p123m789s1122z").river(0, "5p").ponDiscard(1, false).postCall(1);
+        List.of(
+            "DAHAI(6p)",
+            "DAHAI(8p)",
+            "DAHAI(9p)",
+            "DAHAI(7s)",
+            "DAHAI(8s)",
+            "DAHAI(9s)",
+            "DAHAI(E)"));
+    Scene pon =
+        Scene.first().hand(1, "055p123m789s1122z").river(0, "5p").ponDiscard(1, false).postCall(1);
     Assert.assertEquals(
         pon.legal(1),
-        List.of("DAHAI(1m)", "DAHAI(2m)", "DAHAI(3m)", "DAHAI(7s)", "DAHAI(8s)", "DAHAI(9s)", "DAHAI(E)", "DAHAI(S)"));
-    Scene red = Scene.first().hand(1, "05568m123p789s11z").river(0, "7m").chi(1, "678m").postCall(1);
+        List.of(
+            "DAHAI(1m)",
+            "DAHAI(2m)",
+            "DAHAI(3m)",
+            "DAHAI(7s)",
+            "DAHAI(8s)",
+            "DAHAI(9s)",
+            "DAHAI(E)",
+            "DAHAI(S)"));
+    Scene red =
+        Scene.first().hand(1, "05568m123p789s11z").river(0, "7m").chi(1, "678m").postCall(1);
     Assert.assertEquals(red.legal(1).subList(0, 2), List.of("DAHAI_AKA(5mr)", "DAHAI(5m)"));
   }
 
   @Test
   public void swapBansCoverTheCalledKindAndTheOuterSuji() {
-    Assert.assertEquals(Legal.swapBan(chi(Tiles.M2, Tiles.M2)), Tiles.bit(Tiles.M2) | Tiles.bit(Tiles.M5));
+    Assert.assertEquals(
+        Legal.swapBan(chi(Tiles.M2, Tiles.M2)), Tiles.bit(Tiles.M2) | Tiles.bit(Tiles.M5));
     Assert.assertEquals(Legal.swapBan(chi(Tiles.M2, Tiles.M3)), Tiles.bit(Tiles.M3));
-    Assert.assertEquals(Legal.swapBan(chi(Tiles.M2, Tiles.M4)), Tiles.bit(Tiles.M4) | Tiles.bit(Tiles.M1));
+    Assert.assertEquals(
+        Legal.swapBan(chi(Tiles.M2, Tiles.M4)), Tiles.bit(Tiles.M4) | Tiles.bit(Tiles.M1));
     Assert.assertEquals(Legal.swapBan(chi(Tiles.P7, Tiles.P7)), Tiles.bit(Tiles.P7));
     Assert.assertEquals(Legal.swapBan(chi(Tiles.S1, Tiles.S3)), Tiles.bit(Tiles.S3));
     Assert.assertEquals(
-        Legal.swapBan(Meld.pon(Tiles.P5, RelativeSource.TOIMEN, AkaSource.NONE)), Tiles.bit(Tiles.P5));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Legal.swapBan(Meld.ankan(Tiles.P1, false)));
+        Legal.swapBan(Meld.pon(Tiles.P5, RelativeSource.TOIMEN, AkaSource.NONE)),
+        Tiles.bit(Tiles.P5));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Legal.swapBan(Meld.ankan(Tiles.P1, false)));
   }
 
   /**
@@ -240,14 +291,19 @@ public class LegalTest {
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> Legal.callMeld(chi, Action.code(Type.PON, Tiles.P6, TileSelection.NON_AKA)));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Legal.callMeld(chi, Action.chi(Tiles.P4, Tiles.P4, false)));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> Legal.callMeld(chi, Action.code(Type.DAIMINKAN, Tiles.P4, TileSelection.NOT_APPLICABLE)));
+        () -> Legal.callMeld(chi, Action.chi(Tiles.P4, Tiles.P4, false)));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            Legal.callMeld(
+                chi, Action.code(Type.DAIMINKAN, Tiles.P4, TileSelection.NOT_APPLICABLE)));
 
     SeatView toimen = Scene.first().hand(2, "46p123m789s11223z").river(0, "5p").full.seat(2);
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> Legal.callMeld(toimen, Action.chi(Tiles.P4, Tiles.P5, false)));
+        IllegalArgumentException.class,
+        () -> Legal.callMeld(toimen, Action.chi(Tiles.P4, Tiles.P5, false)));
 
     SeatView plain = Scene.first().hand(1, "55p123m789s11223z").river(0, "5p").full.seat(1);
     Assert.assertThrows(
@@ -266,7 +322,12 @@ public class LegalTest {
 
   /** 123m456p789s1122z の手に 3z をツモったとき、3z をツモ切りする立直が合法手に出るか。 */
   private static boolean riichi(Scene scene) {
-    return scene.hand(0, "123m456p789s1122z").draw(0, "3z").turn().legal(0).contains("RIICHI_TSUMOGIRI(W)");
+    return scene
+        .hand(0, "123m456p789s1122z")
+        .draw(0, "3z")
+        .turn()
+        .legal(0)
+        .contains("RIICHI_TSUMOGIRI(W)");
   }
 
   /** 1m を 4 枚持つ手に 5z をツモったときの合法手。 */
@@ -276,5 +337,92 @@ public class LegalTest {
 
   private static Meld chi(int base, int called) {
     return Meld.chi(base, called, AkaSource.NONE);
+  }
+
+  private static final int WARM_UP = 20_000;
+  private static final int MEASURED = 100_000;
+
+  @Test
+  public void legalMovesWindowsAndWinChecksAllocateNothingOnceWarm() {
+    AllocationProbe.assertNoAllocation(WARM_UP, MEASURED, new Workload()::run);
+  }
+
+  /**
+   * 測る処理の 1 回分。ツモ和了・暗槓・立直のある手番と、立直中に暗槓できる手番で合法手を作る。打牌への応答（ロン・ポン・チー）と
+   * 加槓への応答は、求めてから締める。ほかに、鳴いた後の打牌、ロンの点数、包、聴牌、流し満貫を調べる。応答を締めると状態が変わる
+   * ので、応答を求める前に毎回元の局面をコピーする。
+   */
+  private static final class Workload {
+
+    private final Scene turn =
+        Scene.first().river(0, "9s").hand(0, "1111m23m2222p34p5s").draw(0, "5s");
+    private final Scene riichi =
+        Scene.first().hand(0, "111m456p789s2355s").river(0, "9p").riichi(0).draw(0, "1m");
+    private final Scene response =
+        Scene.first()
+            .hand(1, "3467p123m789s11z9m")
+            .hand(2, "055p123s456s789s2z")
+            .hand(3, "123m456m789m46p11z")
+            .riichi(3)
+            .indicator("1m")
+            .ura(0, "1s")
+            .river(0, "5p");
+    private final Scene chankan =
+        Scene.first()
+            .pon(1, 3, "4s")
+            .hand(1, "4s123m456m789p")
+            .hand(2, "123p456p789p35s11z")
+            .draw(1, "5z")
+            .kakan(1, "4s");
+    private final Scene postCall =
+        Scene.first().hand(1, "2345m6899p789s11z").river(0, "2m").chi(1, "234m");
+    private final Scene work = Scene.first();
+    private final int[] responseChoices;
+    private final int[] chankanChoices;
+    private final WinScore score = new WinScore();
+
+    Workload() {
+      responseChoices = response.respond().choices("CHI(4p5p6p 5p)", "PON(5p)", "PASS");
+      chankanChoices = chankan.respond().choices("PASS");
+    }
+
+    long run(int rounds) {
+      long checksum = 0;
+      for (int round = 0; round < rounds; round++) {
+        checksum +=
+            Legal.turn(turn.state, turn.hands[0], turn.wall, turn.decisions, round, turn.ws);
+        checksum +=
+            Legal.turn(
+                riichi.state, riichi.hands[0], riichi.wall, riichi.decisions, round, riichi.ws);
+        checksum += turn.decisions.win(0).base();
+        checksum += close(response, responseChoices, round);
+        checksum += close(chankan, chankanChoices, round);
+        checksum += Legal.postCall(postCall.hands[1], 1, postCall.decisions, round);
+        if (response.full.ronScore(3, Tiles.physicalId(Tiles.P5, 3), 1, response.ws, score)) {
+          checksum += score.han();
+        }
+        checksum += WinLegality.pao(response.full.seat(3), score, 1);
+        checksum += WinLegality.tenpai(response.hands[3]) ? 1 : 0;
+        checksum += WinLegality.nagashi(postCall.state.events(), 0) ? 1 : 0;
+      }
+      return checksum;
+    }
+
+    /**
+     * 局面をコピーして他家の応答を求め、選んだ手で応答を締める。
+     *
+     * @param scene コピーする局面
+     * @param choices 席ごとに選んだ手（合法手の何番目か）
+     * @param id 次に使う判断の番号
+     */
+    private long close(Scene scene, int[] choices, long id) {
+      work.copyFrom(scene);
+      long next =
+          work.window.open(work.state, work.hands, work.wall, work.decisions, id, work.ws, true);
+      return next
+          + work.window
+              .close(work.state, work.hands, work.decisions, choices, work.resolution)
+              .ordinal();
+    }
   }
 }

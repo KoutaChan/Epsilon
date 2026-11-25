@@ -57,15 +57,29 @@ public final class KlLearningRate {
       @Key(doc = "下げ終えた目標が初めの目標の何倍か（0 より大きく 1 以下）", value = "0.5") double finalScale) {
 
     public Settings {
-      if (!(minimum > 0) || !(minimum <= initial) || !(initial <= maximum) || !Double.isFinite(maximum)) {
+      if (!(minimum > 0)
+          || !(minimum <= initial)
+          || !(initial <= maximum)
+          || !Double.isFinite(maximum)) {
         throw new IllegalArgumentException(
-            "Learning rates must satisfy 0 < minimum <= initial <= maximum: " + minimum + ", " + initial + ", " + maximum);
+            "Learning rates must satisfy 0 < minimum <= initial <= maximum: "
+                + minimum
+                + ", "
+                + initial
+                + ", "
+                + maximum);
       }
       if (warmup < 1 || window < 1 || plannedSteps < 0) {
-        throw new IllegalArgumentException("Bad KL control windows: " + warmup + ", " + window + ", " + plannedSteps);
+        throw new IllegalArgumentException(
+            "Bad KL control windows: " + warmup + ", " + window + ", " + plannedSteps);
       }
-      if (!(targetMultiplier >= 1) || !(deadBand > 1) || !(maximumFactor > 1) || !(finalScale > 0 && finalScale <= 1)
-          || !Double.isFinite(targetMultiplier) || !Double.isFinite(deadBand) || !Double.isFinite(maximumFactor)) {
+      if (!(targetMultiplier >= 1)
+          || !(deadBand > 1)
+          || !(maximumFactor > 1)
+          || !(finalScale > 0 && finalScale <= 1)
+          || !Double.isFinite(targetMultiplier)
+          || !Double.isFinite(deadBand)
+          || !Double.isFinite(maximumFactor)) {
         throw new IllegalArgumentException("Bad KL control factors: " + this);
       }
     }
@@ -80,14 +94,23 @@ public final class KlLearningRate {
    * @param endStep 目標を下げ終えるステップ
    * @param endTarget 下げ終えた目標
    */
-  public record Schedule(long anchorStep, double anchorTarget, long decayStep, long endStep, double endTarget) {
+  public record Schedule(
+      long anchorStep, double anchorTarget, long decayStep, long endStep, double endTarget) {
 
     public Schedule {
       if (anchorStep < 0 || decayStep < anchorStep || endStep < decayStep) {
-        throw new IllegalArgumentException("KL schedule steps must be ordered: " + anchorStep + ", " + decayStep + ", " + endStep);
+        throw new IllegalArgumentException(
+            "KL schedule steps must be ordered: " + anchorStep + ", " + decayStep + ", " + endStep);
       }
-      if (!(anchorTarget > 0) || !(endTarget > 0) || !(endTarget <= anchorTarget) || !Double.isFinite(anchorTarget)) {
-        throw new IllegalArgumentException("KL schedule targets must be positive and non-increasing: " + anchorTarget + ", " + endTarget);
+      if (!(anchorTarget > 0)
+          || !(endTarget > 0)
+          || !(endTarget <= anchorTarget)
+          || !Double.isFinite(anchorTarget)) {
+        throw new IllegalArgumentException(
+            "KL schedule targets must be positive and non-increasing: "
+                + anchorTarget
+                + ", "
+                + endTarget);
       }
     }
 
@@ -97,7 +120,8 @@ public final class KlLearningRate {
         return new Schedule(step, target, step, step, target);
       }
       if (planned <= step) {
-        throw new IllegalStateException("The KL target plan of " + planned + " steps ended before the warm-up at " + step);
+        throw new IllegalStateException(
+            "The KL target plan of " + planned + " steps ended before the warm-up at " + step);
       }
       long hold = Math.max(step, (planned + HOLD_DIVISOR - 1) / HOLD_DIVISOR);
       return new Schedule(step, target, hold, planned, target * settings.finalScale());
@@ -128,13 +152,20 @@ public final class KlLearningRate {
    * @param schedule 目標のスケジュール（ウォームアップの間は null）
    */
   public record State(
-      int macros, long steps, double rate, List<Double> warmup, List<Double> recent, double baseline, Schedule schedule) {
+      int macros,
+      long steps,
+      double rate,
+      List<Double> warmup,
+      List<Double> recent,
+      double baseline,
+      Schedule schedule) {
 
     public State {
       warmup = List.copyOf(warmup);
       recent = List.copyOf(recent);
       if (macros < 0 || steps < 0 || !(rate > 0) || !Double.isFinite(rate)) {
-        throw new IllegalArgumentException("Bad KL control state: " + macros + ", " + steps + ", " + rate);
+        throw new IllegalArgumentException(
+            "Bad KL control state: " + macros + ", " + steps + ", " + rate);
       }
       for (double kl : warmup) {
         requireKl(kl);
@@ -143,7 +174,8 @@ public final class KlLearningRate {
         requireKl(kl);
       }
       if ((schedule == null) != (baseline == 0)) {
-        throw new IllegalArgumentException("A KL control state has a baseline exactly when it has a schedule");
+        throw new IllegalArgumentException(
+            "A KL control state has a baseline exactly when it has a schedule");
       }
     }
   }
@@ -173,7 +205,8 @@ public final class KlLearningRate {
    * @param target その時点の目標（ウォームアップの間は NaN）
    * @param next 次の macro の学習率
    */
-  public record Adjustment(Action action, double applied, double observed, double median, double target, double next) {}
+  public record Adjustment(
+      Action action, double applied, double observed, double median, double target, double next) {}
 
   private final Settings settings;
   private State state;
@@ -194,13 +227,15 @@ public final class KlLearningRate {
     this.settings = Objects.requireNonNull(settings, "settings");
     Objects.requireNonNull(state, "state");
     if (state.rate() < settings.minimum() || state.rate() > settings.maximum()) {
-      throw new IllegalArgumentException("The saved learning rate " + state.rate() + " is outside " + settings);
+      throw new IllegalArgumentException(
+          "The saved learning rate " + state.rate() + " is outside " + settings);
     }
     boolean warmed = state.macros() >= settings.warmup();
     if (state.warmup().size() != Math.min(state.macros(), settings.warmup())
         || state.recent().size() != Math.min(state.macros(), settings.window())
         || (state.schedule() != null) != warmed) {
-      throw new IllegalArgumentException("The saved KL control state does not match " + settings + ": " + state);
+      throw new IllegalArgumentException(
+          "The saved KL control state does not match " + settings + ": " + state);
     }
     this.state = state;
   }
@@ -227,7 +262,8 @@ public final class KlLearningRate {
   public Adjustment accept(double kl, int acceptedSteps) {
     requireKl(kl);
     if (acceptedSteps < 1) {
-      throw new IllegalArgumentException("An accepted macro takes at least one policy step: " + acceptedSteps);
+      throw new IllegalArgumentException(
+          "An accepted macro takes at least one policy step: " + acceptedSteps);
     }
     State before = state;
     long steps = Math.addExact(before.steps(), acceptedSteps);
@@ -244,7 +280,12 @@ public final class KlLearningRate {
       }
       state = new State(before.macros() + 1, steps, applied, warmup, recent, baseline, schedule);
       return new Adjustment(
-          Action.WARMUP, applied, kl, median, schedule == null ? Double.NaN : schedule.target(steps), applied);
+          Action.WARMUP,
+          applied,
+          kl,
+          median,
+          schedule == null ? Double.NaN : schedule.target(steps),
+          applied);
     }
     double target = before.schedule().target(steps);
     double lower = target / settings.deadBand();
@@ -253,7 +294,10 @@ public final class KlLearningRate {
     double next = applied;
     if (median < lower || median > upper) {
       double raw = applied * Math.sqrt(target / Math.max(median, Math.min(MINIMUM_KL, lower)));
-      next = Math.max(applied / settings.maximumFactor(), Math.min(applied * settings.maximumFactor(), raw));
+      next =
+          Math.max(
+              applied / settings.maximumFactor(),
+              Math.min(applied * settings.maximumFactor(), raw));
       action = median < lower ? Action.INCREASE : Action.DECREASE;
       if (next > settings.maximum()) {
         next = settings.maximum();
@@ -264,7 +308,14 @@ public final class KlLearningRate {
       }
     }
     state =
-        new State(before.macros() + 1, steps, next, before.warmup(), recent, before.baseline(), before.schedule());
+        new State(
+            before.macros() + 1,
+            steps,
+            next,
+            before.warmup(),
+            recent,
+            before.baseline(),
+            before.schedule());
     return new Adjustment(action, applied, kl, median, target, next);
   }
 
@@ -293,7 +344,9 @@ public final class KlLearningRate {
     List<Double> sorted = new ArrayList<>(values);
     Collections.sort(sorted);
     int middle = sorted.size() / 2;
-    return sorted.size() % 2 == 1 ? sorted.get(middle) : (sorted.get(middle - 1) + sorted.get(middle)) / 2;
+    return sorted.size() % 2 == 1
+        ? sorted.get(middle)
+        : (sorted.get(middle - 1) + sorted.get(middle)) / 2;
   }
 
   private static void requireKl(double kl) {

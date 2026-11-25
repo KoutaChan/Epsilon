@@ -33,29 +33,64 @@ public class ThreePlayerLineagePresetTest {
   static final String PRESET = "three-player-lineage";
 
   /** プリセットにある卓の名前（名前の順）。 */
-  static final Set<String> TABLES = new TreeSet<>(List.of("champion", "ladder32", "ladder8", "reference", "rx2"));
+  static final Set<String> TABLES =
+      new TreeSet<>(List.of("champion", "ladder32", "ladder8", "reference", "rx2"));
 
   private static final Variant THREE = Variant.TENHOU_3P;
-  private static final String PRECISION_512 = "{kind = \"PRECISION\", error = 0.005, alpha = 0.01, checkEvery = 512}";
-  private static final String PRECISION_1024 = "{kind = \"PRECISION\", error = 0.005, alpha = 0.01, checkEvery = 1024}";
+  private static final String PRECISION_512 =
+      "{kind = \"PRECISION\", error = 0.005, alpha = 0.01, checkEvery = 512}";
+  private static final String PRECISION_1024 =
+      "{kind = \"PRECISION\", error = 0.005, alpha = 0.01, checkEvery = 1024}";
   private static final String TEST =
-      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote = true}";
+      "{kind = \"TEST\", evenMargin = 0.01, alpha = 0.01, spending = 3.0, checkEvery = 512, promote"
+          + " = true}";
 
   /** 精度で止める卓に書くキー。卓の名前より後ろのパスで書く。 */
   private static final Set<String> PRECISION_KEYS =
       Set.of(
-          "opponent", "seating.kind", "seating.splits", "draws", "wallSet", "walls", "stop.kind", "stop.error",
-          "stop.alpha", "stop.checkEvery", "score", "every", "from");
+          "opponent",
+          "seating.kind",
+          "seating.splits",
+          "draws",
+          "wallSet",
+          "walls",
+          "stop.kind",
+          "stop.error",
+          "stop.alpha",
+          "stop.checkEvery",
+          "score",
+          "every",
+          "from");
 
   /** 判定で止める卓に書くキー。卓の名前より後ろのパスで書く。 */
   private static final Set<String> TEST_KEYS =
       Set.of(
-          "opponent", "seating.kind", "seating.splits", "draws", "wallSet", "walls", "stop.kind", "stop.evenMargin",
-          "stop.alpha", "stop.spending", "stop.checkEvery", "stop.promote", "score", "every", "from");
+          "opponent",
+          "seating.kind",
+          "seating.splits",
+          "draws",
+          "wallSet",
+          "walls",
+          "stop.kind",
+          "stop.evenMargin",
+          "stop.alpha",
+          "stop.spending",
+          "stop.checkEvery",
+          "stop.promote",
+          "score",
+          "every",
+          "from");
 
   /** 卓のキーを全て書いた上書きの並び。 */
   private static List<String> table(
-      String name, String opponent, String splits, String wallSet, int walls, String stop, int every, int from) {
+      String name,
+      String opponent,
+      String splits,
+      String wallSet,
+      int walls,
+      String stop,
+      int every,
+      int from) {
     String prefix = "evaluation.tables." + name + ".";
     return List.of(
         prefix + "opponent=" + opponent,
@@ -121,7 +156,8 @@ public class ThreePlayerLineagePresetTest {
     Assert.assertEquals(evaluation.tables().keySet(), TABLES);
     // 卓の値は、上書きだけで書いた期待の卓と同じ
     Assert.assertEquals(evaluation.tables(), design().tables());
-    Assert.assertEquals(evaluation.tables().get("rx2").stop(), new StopSettings.Precision(0.005, 0.01, 1024));
+    Assert.assertEquals(
+        evaluation.tables().get("rx2").stop(), new StopSettings.Precision(0.005, 0.01, 1024));
     Assert.assertEquals(evaluation.tables().get("reference").onPromotion(), Boolean.TRUE);
 
     // 評価のセクションのキーは全てプリセットに書いてある。既定値やほかの層から来たキーは無い
@@ -131,11 +167,15 @@ public class ThreePlayerLineagePresetTest {
       if (!path.startsWith("evaluation.")) {
         continue;
       }
-      Assert.assertTrue(leaf.getValue().origin().startsWith("preset " + PRESET), path + " from " + leaf.getValue().origin());
+      Assert.assertTrue(
+          leaf.getValue().origin().startsWith("preset " + PRESET),
+          path + " from " + leaf.getValue().origin());
       if (path.startsWith("evaluation.tables.")) {
         String rest = path.substring("evaluation.tables.".length());
         int dot = rest.indexOf('.');
-        written.computeIfAbsent(rest.substring(0, dot), name -> new TreeSet<>()).add(rest.substring(dot + 1));
+        written
+            .computeIfAbsent(rest.substring(0, dot), name -> new TreeSet<>())
+            .add(rest.substring(dot + 1));
       }
     }
     for (String head : List.of("evaluation.anchor", "evaluation.alarmZ", "evaluation.dropMargin")) {
@@ -181,7 +221,8 @@ public class ThreePlayerLineagePresetTest {
       }
     }
     Assert.assertEquals(promoting, 1);
-    Assert.assertEquals(looks, Map.of("champion", 8, "ladder32", 16, "ladder8", 16, "reference", 16, "rx2", 16));
+    Assert.assertEquals(
+        looks, Map.of("champion", 8, "ladder32", 16, "ladder8", 16, "reference", 16, "rx2", 16));
     // 最初に測るバージョンでの相手。基準の卓は v32、8 バージョン前と打つ卓は v16 で v8、32 バージョン前と打つ卓は v40 で v8
     Assert.assertEquals(evaluation.tables().get("reference").opponentVersion(40), 32);
     Assert.assertEquals(evaluation.tables().get("ladder8").opponentVersion(16), 8);
@@ -193,15 +234,18 @@ public class ThreePlayerLineagePresetTest {
     String t = "evaluation.tables.";
     // version:N は N < from
     rejects(t + "reference.opponent", "1 <= N < from", t + "reference.from=32");
-    Assert.assertEquals(preset(t + "reference.from=33").value().evaluation().tables().get("reference").from(), 33);
+    Assert.assertEquals(
+        preset(t + "reference.from=33").value().evaluation().tables().get("reference").from(), 33);
     // version:-d は from - d >= 1
     rejects(t + "ladder8.opponent", "from - d >= 1", t + "ladder8.from=8");
     rejects(t + "ladder32.opponent", "from - d >= 1", t + "ladder32.from=32");
-    Assert.assertEquals(preset(t + "ladder32.from=33").value().evaluation().tables().get("ladder32").from(), 33);
+    Assert.assertEquals(
+        preset(t + "ladder32.from=33").value().evaluation().tables().get("ladder32").from(), 33);
     // 牌山の数は判定の間隔の倍数で、判定の時点は 32 回まで
     rejects(t + "rx2.walls", "is not a multiple of checkEvery 1024", t + "rx2.walls=16000");
     rejects(t + "rx2.walls", "exceeds 32 looks", t + "rx2.walls=33792");
-    Assert.assertEquals(preset(t + "rx2.walls=32768").value().evaluation().tables().get("rx2").walls(), 32768);
+    Assert.assertEquals(
+        preset(t + "rx2.walls=32768").value().evaluation().tables().get("rx2").walls(), 32768);
     rejects(t + "champion.walls", "is not a multiple of checkEvery 512", t + "champion.walls=4000");
     // 判定の間隔は 512 以上
     rejects(t + "champion.stop.checkEvery", "", t + "champion.stop.checkEvery=256");
@@ -217,17 +261,21 @@ public class ThreePlayerLineagePresetTest {
         concat(table("second", "version:16", "\"1v2\"", "FIXED", 8192, PRECISION_512, 8, 24)));
   }
 
-  /** 尺度の辺には上限を掛けないので、上限のキーは評価の節に無い。 */
+  /** 尺度の辺には上限を掛けないので、上限のキーは評価セクションに無い。 */
   @Test
   public void aLinearCapIsAnUnknownKey() {
     rejects("evaluation.linearCap", "Unknown setting", "evaluation.linearCap=0.05");
   }
 
   private static void rejects(String path, String because, String... assignments) {
-    SettingsException failure = Assert.expectThrows(SettingsException.class, () -> preset(assignments));
+    SettingsException failure =
+        Assert.expectThrows(SettingsException.class, () -> preset(assignments));
     List<String> named =
-        failure.problems().stream().filter(problem -> problem.contains(path) && problem.contains(because)).toList();
-    Assert.assertFalse(named.isEmpty(), String.join(" ", assignments) + " -> " + failure.problems());
+        failure.problems().stream()
+            .filter(problem -> problem.contains(path) && problem.contains(because))
+            .toList();
+    Assert.assertFalse(
+        named.isEmpty(), String.join(" ", assignments) + " -> " + failure.problems());
     for (String problem : named) {
       Assert.assertTrue(problem.chars().allMatch(c -> c < 0x80), "not English: " + problem);
     }
@@ -255,7 +303,8 @@ public class ThreePlayerLineagePresetTest {
     expected.put(72, List.of("champion", "ladder32", "ladder8", "reference", "rx2"));
     for (Map.Entry<Integer, List<String>> entry : expected.entrySet()) {
       int version = entry.getKey();
-      Assert.assertEquals(new ArrayList<>(evaluation.scheduled(version).keySet()), entry.getValue(), "v" + version);
+      Assert.assertEquals(
+          new ArrayList<>(evaluation.scheduled(version).keySet()), entry.getValue(), "v" + version);
     }
     Assert.assertEquals(evaluation.coveredLadders("reference", 40), List.of("ladder8"));
     Assert.assertEquals(evaluation.coveredLadders("reference", 64), List.of("ladder32"));
@@ -280,7 +329,8 @@ public class ThreePlayerLineagePresetTest {
     List<String> covered = new ArrayList<>();
     for (int version = 1; version <= 1000; version++) {
       for (Map.Entry<String, TableSpec> entry : tables.entrySet()) {
-        if (entry.getValue().scheduled(version) && !evaluation.scheduled(version).containsKey(entry.getKey())) {
+        if (entry.getValue().scheduled(version)
+            && !evaluation.scheduled(version).containsKey(entry.getKey())) {
           left.add(version + entry.getKey());
         }
       }

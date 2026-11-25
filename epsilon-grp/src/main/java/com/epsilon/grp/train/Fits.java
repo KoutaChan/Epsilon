@@ -75,7 +75,9 @@ final class Fits {
       meanX[category] = sumX[category] / count[category];
       meanY[category] = sumY[category] / count[category];
       spreadX[category] = sumXX[category] - count[category] * meanX[category] * meanX[category];
-      slope[category] = (sumXY[category] - count[category] * meanX[category] * meanY[category]) / spreadX[category];
+      slope[category] =
+          (sumXY[category] - count[category] * meanX[category] * meanY[category])
+              / spreadX[category];
     }
   }
 
@@ -101,15 +103,17 @@ final class Fits {
     List<GrpReport.Fit> fits = new ArrayList<>(count.length);
     for (int category = 0; category < count.length; category++) {
       double games = clusters[category];
-      double error = games < MIN_SLOPE_GAMES
-          ? Double.NaN
-          : Math.sqrt(games / (games - 1) * squares[category]) / spreadX[category];
-      fits.add(new GrpReport.Fit(
-          (long) count[category],
-          lastSum[category] / lastCount[category],
-          slope[category],
-          error,
-          (slope[category] - 1) / error));
+      double error =
+          games < MIN_SLOPE_GAMES
+              ? Double.NaN
+              : Math.sqrt(games / (games - 1) * squares[category]) / spreadX[category];
+      fits.add(
+          new GrpReport.Fit(
+              (long) count[category],
+              lastSum[category] / lastCount[category],
+              slope[category],
+              error,
+              (slope[category] - 1) / error));
     }
     return fits;
   }

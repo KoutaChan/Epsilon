@@ -57,7 +57,12 @@ public final class ScoreMath {
     }
     if (yakumanMultiplier < 0 || han < 1 || fu < MIN_FU) {
       throw new IllegalArgumentException(
-          "No base points for han " + han + ", fu " + fu + " and yakuman multiplier " + yakumanMultiplier);
+          "No base points for han "
+              + han
+              + ", fu "
+              + fu
+              + " and yakuman multiplier "
+              + yakumanMultiplier);
     }
     for (Limit limit : LIMITS) {
       if (han >= limit.han) {

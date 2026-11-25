@@ -42,10 +42,15 @@ import org.slf4j.LoggerFactory;
  */
 @Named(value = "play-riichi", doc = "Play RiichiLab ranked games with a published version")
 public record PlayRiichi(
-    @Key(doc = "Version directory to play, or a run directory (plays its latest version)", presence = Presence.REQUIRED) Path model,
-    @Key(doc = "Number of games to finish (0: play until stopped)", value = "0") @Range(min = 0) int games,
+    @Key(
+            doc = "Version directory to play, or a run directory (plays its latest version)",
+            presence = Presence.REQUIRED)
+        Path model,
+    @Key(doc = "Number of games to finish (0: play until stopped)", value = "0") @Range(min = 0)
+        int games,
     @Key(doc = "Settings for opening the policy") PolicyOptions policy,
-    @Key(doc = "Connection token (settings file only)", presence = Presence.ABSENT, secret = true) String token)
+    @Key(doc = "Connection token (settings file only)", presence = Presence.ABSENT, secret = true)
+        String token)
     implements PrismCommand {
 
   private static final Logger LOG = LoggerFactory.getLogger(PlayRiichi.class);
@@ -61,9 +66,14 @@ public record PlayRiichi(
     try (Policy opened = ModelFamily.of(Series.PRISM).open(snapshot, variant, policy)) {
       warmUp(opened);
       LOG.info("RiichiLab snapshot {} ready: variant={} games={}", snapshot, variant, games);
-      RiichiClient.Result result = RiichiClient.play(token, variant, games, () -> new ClientSeat(opened));
+      RiichiClient.Result result =
+          RiichiClient.play(token, variant, games, () -> new ClientSeat(opened));
       return Outcome.ok(
-          "snapshot=" + snapshot + " completedGames=" + result.completedGames() + " interruptedGames="
+          "snapshot="
+              + snapshot
+              + " completedGames="
+              + result.completedGames()
+              + " interruptedGames="
               + result.interruptedGames());
     }
   }

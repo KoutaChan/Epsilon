@@ -79,48 +79,79 @@ public class CountFileTest {
     assertRejected(directory, "flipped.bin", flipped);
     long code = RulesFixtures.allNoten(FOUR);
     int[] even = {25_000, 25_000, 25_000, 25_000};
-    assertRejected(directory, "trailing.bin", gzip(out -> {
-      header(out, FOUR.name(), 1);
-      game(out, 5, 1);
-      hand(out, 0, 0, 0, even, code);
-      out.writeByte(0);
-    }));
-    assertRejected(directory, "order.bin", gzip(out -> {
-      header(out, FOUR.name(), 2);
-      game(out, 5, 1);
-      hand(out, 0, 0, 0, even, code);
-      game(out, 5, 1);
-      hand(out, 0, 0, 0, even, code);
-    }));
-    assertRejected(directory, "empty-game.bin", gzip(out -> {
-      header(out, FOUR.name(), 1);
-      game(out, 5, 0);
-    }));
-    assertRejected(directory, "sum.bin", gzip(out -> {
-      header(out, FOUR.name(), 1);
-      game(out, 5, 1);
-      hand(out, 0, 0, 0, new int[] {25_000, 25_000, 25_000, 24_000}, code);
-    }));
-    assertRejected(directory, "variant.bin", gzip(out -> {
-      header(out, "TENHOU_5P", 0);
-    }));
-    assertRejected(directory, "code.bin", gzip(out -> {
-      header(out, FOUR.name(), 1);
-      game(out, 5, 1);
-      hand(out, 0, 0, 0, even, -1L);
-    }));
-    assertRejected(directory, "short.bin", gzip(out -> {
-      header(out, FOUR.name(), 2);
-      game(out, 5, 1);
-      hand(out, 0, 0, 0, even, code);
-    }));
+    assertRejected(
+        directory,
+        "trailing.bin",
+        gzip(
+            out -> {
+              header(out, FOUR.name(), 1);
+              game(out, 5, 1);
+              hand(out, 0, 0, 0, even, code);
+              out.writeByte(0);
+            }));
+    assertRejected(
+        directory,
+        "order.bin",
+        gzip(
+            out -> {
+              header(out, FOUR.name(), 2);
+              game(out, 5, 1);
+              hand(out, 0, 0, 0, even, code);
+              game(out, 5, 1);
+              hand(out, 0, 0, 0, even, code);
+            }));
+    assertRejected(
+        directory,
+        "empty-game.bin",
+        gzip(
+            out -> {
+              header(out, FOUR.name(), 1);
+              game(out, 5, 0);
+            }));
+    assertRejected(
+        directory,
+        "sum.bin",
+        gzip(
+            out -> {
+              header(out, FOUR.name(), 1);
+              game(out, 5, 1);
+              hand(out, 0, 0, 0, new int[] {25_000, 25_000, 25_000, 24_000}, code);
+            }));
+    assertRejected(
+        directory,
+        "variant.bin",
+        gzip(
+            out -> {
+              header(out, "TENHOU_5P", 0);
+            }));
+    assertRejected(
+        directory,
+        "code.bin",
+        gzip(
+            out -> {
+              header(out, FOUR.name(), 1);
+              game(out, 5, 1);
+              hand(out, 0, 0, 0, even, -1L);
+            }));
+    assertRejected(
+        directory,
+        "short.bin",
+        gzip(
+            out -> {
+              header(out, FOUR.name(), 2);
+              game(out, 5, 1);
+              hand(out, 0, 0, 0, even, code);
+            }));
     // 手で書いた正しいファイルは読める（上で拒んだのが、形の誤りだけのせいだと確かめる）
     Path written = directory.resolve("handmade.bin");
-    Files.write(written, gzip(out -> {
-      header(out, FOUR.name(), 1);
-      game(out, 5, 1);
-      hand(out, 0, 0, 0, even, code);
-    }));
+    Files.write(
+        written,
+        gzip(
+            out -> {
+              header(out, FOUR.name(), 1);
+              game(out, 5, 1);
+              hand(out, 0, 0, 0, even, code);
+            }));
     CountedHands read = CountFile.read(written);
     Assert.assertEquals(read.hands(), 1);
     Assert.assertEquals(read.code(0), code);
@@ -160,11 +191,14 @@ public class CountFileTest {
     PhiStamp late = new PhiStamp("LATE", 1e-5);
     Path handmade = directory.resolve("handmade-late.bin");
     long code = RulesFixtures.allNoten(FOUR);
-    Files.write(handmade, gzip(out -> {
-      header(out, FOUR.name(), late.mode(), late.cutoff(), 1);
-      game(out, 5, 1);
-      hand(out, 0, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000}, code);
-    }));
+    Files.write(
+        handmade,
+        gzip(
+            out -> {
+              header(out, FOUR.name(), late.mode(), late.cutoff(), 1);
+              game(out, 5, 1);
+              hand(out, 0, 0, 0, new int[] {25_000, 25_000, 25_000, 25_000}, code);
+            }));
     Assert.assertEquals(CountFile.read(handmade).phi(), late);
   }
 
@@ -182,11 +216,15 @@ public class CountFileTest {
       String mode = modes[at];
       double cutoff = cutoffs[at];
       Assert.assertThrows(IllegalArgumentException.class, () -> new PhiStamp(mode, cutoff));
-      assertRejected(directory, at + ".bin", gzip(out -> {
-        header(out, FOUR.name(), mode, cutoff, 1);
-        game(out, 5, 1);
-        hand(out, 0, 0, 0, even, code);
-      }));
+      assertRejected(
+          directory,
+          at + ".bin",
+          gzip(
+              out -> {
+                header(out, FOUR.name(), mode, cutoff, 1);
+                game(out, 5, 1);
+                hand(out, 0, 0, 0, even, code);
+              }));
     }
   }
 
@@ -195,10 +233,14 @@ public class CountFileTest {
     CountedHands.Builder builder = CountedHands.builder(FOUR, 1, 0, GrpFixtures.STAMP);
     TableState start = new TableState(FOUR);
     long code = RulesFixtures.allNoten(FOUR);
-    Assert.assertThrows(IllegalArgumentException.class, () -> CountedHands.builder(FOUR, 1, -1, GrpFixtures.STAMP));
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> CountedHands.builder(FOUR, 1, Double.NaN, GrpFixtures.STAMP));
-    Assert.assertThrows(IllegalArgumentException.class, () -> builder.add(1, new TableState(Variant.TENHOU_3P), code));
+        IllegalArgumentException.class, () -> CountedHands.builder(FOUR, 1, -1, GrpFixtures.STAMP));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> CountedHands.builder(FOUR, 1, Double.NaN, GrpFixtures.STAMP));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> builder.add(1, new TableState(Variant.TENHOU_3P), code));
     Assert.assertThrows(IllegalArgumentException.class, () -> builder.add(1, start, -1L));
     TableState scenario = new TableState(FOUR);
     scenario.setScenario(0, 0, 0, new int[] {25_000, 25_000, 25_000, 24_000});
@@ -219,7 +261,9 @@ public class CountFileTest {
     int target = counts.firstHand(game) + 1;
     CountedHands.Builder builder = CountedHands.builder(FOUR, 1, 0, GrpFixtures.STAMP);
     TableState start = new TableState(FOUR);
-    long other = RulesFixtures.code(FOUR, 0, o -> o.setTsumo(BaseClass.YAKUMAN_6.base(), 1, RoundOutcome.NO_SEAT, 0));
+    long other =
+        RulesFixtures.code(
+            FOUR, 0, o -> o.setTsumo(BaseClass.YAKUMAN_6.base(), 1, RoundOutcome.NO_SEAT, 0));
     for (int at = 0; at < counts.games(); at++) {
       for (int hand = counts.firstHand(at); hand < counts.firstHand(at + 1); hand++) {
         counts.start(hand, start);
@@ -229,7 +273,8 @@ public class CountFileTest {
     Assert.assertEquals(builder.build().firstMismatch(), target);
   }
 
-  private static void add(CountedHands.Builder builder, CountedHands played, int game, long gameId) {
+  private static void add(
+      CountedHands.Builder builder, CountedHands played, int game, long gameId) {
     TableState start = new TableState(played.variant());
     for (int hand = played.firstHand(game); hand < played.firstHand(game + 1); hand++) {
       played.start(hand, start);
@@ -283,7 +328,8 @@ public class CountFileTest {
     header(out, variant, GrpFixtures.STAMP.mode(), GrpFixtures.STAMP.cutoff(), games);
   }
 
-  private static void header(DataOutputStream out, String variant, String mode, double cutoff, int games)
+  private static void header(
+      DataOutputStream out, String variant, String mode, double cutoff, int games)
       throws IOException {
     out.writeUTF(variant);
     out.writeInt(1);
@@ -298,7 +344,8 @@ public class CountFileTest {
     out.writeShort(hands);
   }
 
-  private static void hand(DataOutputStream out, int round, int honba, int kyotaku, int[] scores, long code)
+  private static void hand(
+      DataOutputStream out, int round, int honba, int kyotaku, int[] scores, long code)
       throws IOException {
     out.writeByte(round);
     out.writeShort(honba);

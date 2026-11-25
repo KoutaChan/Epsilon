@@ -2,7 +2,6 @@ package com.epsilon.prism.input;
 
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.rules.Vocabulary;
-import com.epsilon.prism.FourPlayerFormat;
 import java.util.Objects;
 
 /**
@@ -28,7 +27,7 @@ public record FieldSpec(Coding coding, int vocabulary, int repeats, Vocabulary<?
      *
      * @return 語彙と繰り返し
      */
-    FieldSpec spec();
+    FieldSpec spec(Variant variant);
   }
 
   /** 値の書き方。 */
@@ -79,17 +78,6 @@ public record FieldSpec(Coding coding, int vocabulary, int repeats, Vocabulary<?
   /** n 種類の番号のフィールド（値は番号 + 1、0 はなし。語彙は種類の数 + 1）。牌・席・イベントの番号・向聴に使う。 */
   public static FieldSpec ids(int kinds) {
     return new FieldSpec(Coding.ID, kinds + 1, 1, null);
-  }
-
-  /**
-   * 四人打ちの語彙で値を書く enum のフィールドを返す。フィールドの enum の初期化から呼ばれるので、入力の形式のクラスの初期化には頼らない
-   * （頼ると、フィールドの enum を先に使ったときに初期化が循環する）。
-   *
-   * @param type 値の enum
-   * @return フィールドの仕様
-   */
-  public static FieldSpec oneOf(Class<? extends Enum<?>> type) {
-    return of(FourPlayerFormat.values(type));
   }
 
   /**

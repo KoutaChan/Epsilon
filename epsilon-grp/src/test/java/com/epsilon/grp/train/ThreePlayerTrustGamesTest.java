@@ -57,7 +57,9 @@ public class ThreePlayerTrustGamesTest {
       for (int hand = 0; hand < hands; hand++) {
         int first = 35_000 + 100 * (random.nextInt(201) - 100);
         int second = 35_000 + 100 * (random.nextInt(201) - 100);
-        handEnds.add(new GrpState(THREE, hand + 1, 0, 0, new int[] {first, second, 105_000 - first - second}));
+        handEnds.add(
+            new GrpState(
+                THREE, hand + 1, 0, 0, new int[] {first, second, 105_000 - first - second}));
       }
       games.add(new GameRecord(THREE, game, handEnds, shuffled(random)));
     }
@@ -76,7 +78,8 @@ public class ThreePlayerTrustGamesTest {
   }
 
   /** 使用中と候補の局末の値、半荘ごとの差の和、半荘ごとの席・局末の数。和と数は、局末を持つ半荘の分だけを持つ。 */
-  private record Synthetic(HandEnds ends, HandEndValues used, HandEndValues candidate, double[] sums, long[] counts) {}
+  private record Synthetic(
+      HandEnds ends, HandEndValues used, HandEndValues candidate, double[] sums, long[] counts) {}
 
   private static Synthetic synthetic(HandEnds ends, long seed) {
     SplittableRandom random = new SplittableRandom(seed);
@@ -113,7 +116,11 @@ public class ThreePlayerTrustGamesTest {
       games++;
     }
     return new Synthetic(
-        ends, used.build(), candidate.build(), Arrays.copyOf(sums, games), Arrays.copyOf(counts, games));
+        ends,
+        used.build(),
+        candidate.build(),
+        Arrays.copyOf(sums, games),
+        Arrays.copyOf(counts, games));
   }
 
   private static Synthetic standard() {
@@ -128,7 +135,9 @@ public class ThreePlayerTrustGamesTest {
   @Test
   public void gamesForTheLineMatchTheFormulaWithinTheirStandardError() {
     Synthetic synthetic = standard();
-    TrustGames trust = TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.candidate(), RESAMPLES, 11);
+    TrustGames trust =
+        TrustGames.measure(
+            synthetic.ends(), synthetic.used(), synthetic.candidate(), RESAMPLES, 11);
     double[] sums = synthetic.sums();
     long[] counts = synthetic.counts();
     int games = sums.length;
@@ -136,7 +145,8 @@ public class ThreePlayerTrustGamesTest {
     Assert.assertEquals(trust.games(), GAMES, "games without hand ends are not counted");
     Assert.assertEquals(trust.resamples(), RESAMPLES);
     Assert.assertEquals(trust.handEnds(), synthetic.ends().handEnds());
-    Assert.assertEquals(trust.handEndsPerGame(), (double) synthetic.ends().handEnds() / GAMES, 1e-12);
+    Assert.assertEquals(
+        trust.handEndsPerGame(), (double) synthetic.ends().handEnds() / GAMES, 1e-12);
 
     double total = 0;
     double weight = 0;
@@ -148,7 +158,8 @@ public class ThreePlayerTrustGamesTest {
     }
     double mean = total / weight;
     Assert.assertEquals(trust.difference().mean(), mean, 1e-12);
-    Assert.assertEquals(trust.difference().mean(), DIFFERENCE, 4 * SPREAD * Math.sqrt(squaredCounts) / weight);
+    Assert.assertEquals(
+        trust.difference().mean(), DIFFERENCE, 4 * SPREAD * Math.sqrt(squaredCounts) / weight);
 
     double squares = 0;
     for (int game = 0; game < games; game++) {
@@ -157,14 +168,20 @@ public class ThreePlayerTrustGamesTest {
     }
     double delta = Math.sqrt(squares) / weight;
     double bootstrapSe = 1 / Math.sqrt(2.0 * RESAMPLES);
-    Assert.assertEquals(trust.bootstrapSd() / delta, 1, 4 * bootstrapSe, "bootstrap SD against the delta method");
     Assert.assertEquals(
-        trust.bootstrapSd() / trust.difference().standardError(), 1, 4 * bootstrapSe,
+        trust.bootstrapSd() / delta, 1, 4 * bootstrapSe, "bootstrap SD against the delta method");
+    Assert.assertEquals(
+        trust.bootstrapSd() / trust.difference().standardError(),
+        1,
+        4 * bootstrapSe,
         "bootstrap SD against the clustered SE of the gate");
 
     // 式どおり
     double line = GAMES * Math.pow(2 * trust.bootstrapSd() / trust.difference().mean(), 2);
-    double power = GAMES * Math.pow((2 + 1.6448536269514722) * trust.bootstrapSd() / trust.difference().mean(), 2);
+    double power =
+        GAMES
+            * Math.pow(
+                (2 + 1.6448536269514722) * trust.bootstrapSd() / trust.difference().mean(), 2);
     Assert.assertEquals(trust.atLine(), line, line * 1e-12);
     Assert.assertEquals(trust.withPower(), power, power * 1e-12);
     Assert.assertTrue(trust.withPower() > trust.atLine());
@@ -173,9 +190,15 @@ public class ThreePlayerTrustGamesTest {
     double designedSd = SPREAD * Math.sqrt(squaredCounts) / weight;
     double designedLine = GAMES * Math.pow(2 * designedSd / DIFFERENCE, 2);
     double relativeSe =
-        2 * Math.sqrt(bootstrapSe * bootstrapSe + 1.0 / (2 * GAMES) + Math.pow(designedSd / DIFFERENCE, 2));
+        2
+            * Math.sqrt(
+                bootstrapSe * bootstrapSe
+                    + 1.0 / (2 * GAMES)
+                    + Math.pow(designedSd / DIFFERENCE, 2));
     Assert.assertEquals(
-        trust.atLine() / designedLine, 1, 4 * relativeSe,
+        trust.atLine() / designedLine,
+        1,
+        4 * relativeSe,
         "games at the line " + trust.atLine() + " against the designed " + designedLine);
   }
 
@@ -183,28 +206,36 @@ public class ThreePlayerTrustGamesTest {
   @Test
   public void theSameSeedGivesTheSameValue() {
     Synthetic synthetic = standard();
-    TrustGames first = TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.candidate(), 500, 23);
-    TrustGames again = TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.candidate(), 500, 23);
+    TrustGames first =
+        TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.candidate(), 500, 23);
+    TrustGames again =
+        TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.candidate(), 500, 23);
     Assert.assertEquals(again, first);
-    Assert.assertEquals(Double.doubleToRawLongBits(again.atLine()), Double.doubleToRawLongBits(first.atLine()));
+    Assert.assertEquals(
+        Double.doubleToRawLongBits(again.atLine()), Double.doubleToRawLongBits(first.atLine()));
     Synthetic rebuilt = standard();
-    TrustGames rebuiltAgain = TrustGames.measure(rebuilt.ends(), rebuilt.used(), rebuilt.candidate(), 500, 23);
+    TrustGames rebuiltAgain =
+        TrustGames.measure(rebuilt.ends(), rebuilt.used(), rebuilt.candidate(), 500, 23);
     Assert.assertEquals(rebuiltAgain, first, "the same games and values give the same measurement");
-    TrustGames other = TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.candidate(), 500, 24);
+    TrustGames other =
+        TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.candidate(), 500, 24);
     Assert.assertNotEquals(other.bootstrapSd(), first.bootstrapSd());
     Assert.assertEquals(other.bootstrapSd() / first.bootstrapSd(), 1, 8 / Math.sqrt(2.0 * 500));
-    Assert.assertEquals(other.difference(), first.difference(), "the difference does not depend on the seed");
+    Assert.assertEquals(
+        other.difference(), first.difference(), "the difference does not depend on the seed");
   }
 
   /** 候補が良くなっていなければ（差が 0 以上なら）、何半荘で比べても関門を通らず、要る半荘の数は +∞ になる。 */
   @Test
   public void aCandidateThatIsNotBetterNeedsInfinitelyManyGames() {
     Synthetic synthetic = standard();
-    TrustGames worse = TrustGames.measure(synthetic.ends(), synthetic.candidate(), synthetic.used(), 200, 1);
+    TrustGames worse =
+        TrustGames.measure(synthetic.ends(), synthetic.candidate(), synthetic.used(), 200, 1);
     Assert.assertTrue(worse.difference().mean() > 0);
     Assert.assertEquals(worse.atLine(), Double.POSITIVE_INFINITY);
     Assert.assertEquals(worse.withPower(), Double.POSITIVE_INFINITY);
-    TrustGames same = TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.used(), 200, 1);
+    TrustGames same =
+        TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.used(), 200, 1);
     Assert.assertEquals(same.difference().mean(), 0.0);
     Assert.assertEquals(same.bootstrapSd(), 0.0);
     Assert.assertEquals(same.atLine(), Double.POSITIVE_INFINITY);
@@ -216,7 +247,9 @@ public class ThreePlayerTrustGamesTest {
     IllegalArgumentException resamples =
         Assert.expectThrows(
             IllegalArgumentException.class,
-            () -> TrustGames.measure(synthetic.ends(), synthetic.used(), synthetic.candidate(), 1, 1));
+            () ->
+                TrustGames.measure(
+                    synthetic.ends(), synthetic.used(), synthetic.candidate(), 1, 1));
     Assert.assertEquals(resamples.getMessage(), "The bootstrap needs at least two resamples: 1");
     Synthetic other = synthetic(HandEnds.of(THREE, UTILITY, games(GAMES, EMPTY, 3)), 5);
     Assert.assertThrows(
@@ -229,6 +262,7 @@ public class ThreePlayerTrustGamesTest {
         Assert.expectThrows(
             IllegalArgumentException.class,
             () -> TrustGames.measure(single.ends(), single.used(), single.candidate(), 10, 1));
-    Assert.assertEquals(lonely.getMessage(), "The bootstrap needs at least two games with hand ends, got 1");
+    Assert.assertEquals(
+        lonely.getMessage(), "The bootstrap needs at least two games with hand ends, got 1");
   }
 }

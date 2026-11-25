@@ -77,7 +77,7 @@ final class GrpLifecycle {
   }
 
   /**
-   * 封印したコホート h の境目の手続き。
+   * コホート h の確定時に行う処理。
    *
    * @param held 呼び出し元が、この手続きの間、反復 h ＋ 1 の Φ の段を待たせているなら true。false なら、その反復の Φ は決まったものと
    *     して、phi.jsonl に足さない
@@ -86,16 +86,25 @@ final class GrpLifecycle {
     boolean late = !held || decided(h + 1);
     List<PhiEntry> history = PhiHistory.read(files);
     PhiEntry used =
-        PhiHistory.effectiveAt(history, h).orElseThrow(() -> new IOException("No Φ entry for cohort " + h));
+        PhiHistory.effectiveAt(history, h)
+            .orElseThrow(() -> new IOException("No Φ entry for cohort " + h));
     HandEnds ends = ends(h, used);
     Map<String, HandEndValues> values = new HashMap<>();
     SwitchWatchRecord watch = watch(h, history, used, ends, values, late);
     watch.append(files);
     if (watch.verdict() != null)
-      LOG.info("c{} switch watch verdict {} (rollback to {}, widened {}, halted {})", h, watch.verdict(),
-          watch.rollbackTo().isEmpty() ? "-" : watch.rollbackTo(), watch.widened(), watch.halted());
+      LOG.info(
+          "c{} switch watch verdict {} (rollback to {}, widened {}, halted {})",
+          h,
+          watch.verdict(),
+          watch.rollbackTo().isEmpty() ? "-" : watch.rollbackTo(),
+          watch.widened(),
+          watch.halted());
     if (watch.verdict() == SwitchWatchVerdict.HALT)
-      LOG.error("c{} the GRP switch watch halted the refits: the procedure keeps losing to earlier models", h);
+      LOG.error(
+          "c{} the GRP switch watch halted the refits: the procedure keeps losing to earlier"
+              + " models",
+          h);
     gate(h, PhiHistory.read(files), used, ends, values, watch, late);
   }
 
@@ -157,7 +166,12 @@ final class GrpLifecycle {
   }
 
   private SwitchWatchRecord watch(
-      int h, List<PhiEntry> history, PhiEntry used, HandEnds ends, Map<String, HandEndValues> values, boolean late)
+      int h,
+      List<PhiEntry> history,
+      PhiEntry used,
+      HandEnds ends,
+      Map<String, HandEndValues> values,
+      boolean late)
       throws IOException {
     SwitchWatchRecord.State state = SwitchWatchRecord.state(SwitchWatchRecord.readAll(files));
     PhiEntry previous = PhiHistory.previousAt(history, h).orElse(null);
@@ -165,7 +179,12 @@ final class GrpLifecycle {
     if (ends != null && previous != null)
       line =
           SwitchWatchLine.of(
-              h, used.id(), previous.id(), ends, values(used, ends, values), values(previous, ends, values));
+              h,
+              used.id(),
+              previous.id(),
+              ends,
+              values(used, ends, values),
+              values(previous, ends, values));
     SwitchWatchVerdict verdict = null;
     boolean widened = state.widened();
     boolean halted = state.halted();
@@ -186,18 +205,32 @@ final class GrpLifecycle {
                   files,
                   best.from(
                       h + 1,
-                      PhiEntry.ROLLBACK + " switch watch at c" + h + " chose " + best.id() + " over " + used.id()));
+                      PhiEntry.ROLLBACK
+                          + " switch watch at c"
+                          + h
+                          + " chose "
+                          + best.id()
+                          + " over "
+                          + used.id()));
           }
           case HALT -> halted = true;
         }
       }
     }
     return new SwitchWatchRecord(
-        h, used.id(), previous == null ? "" : previous.id(), line, verdict, widened, halted, rollbackTo);
+        h,
+        used.id(),
+        previous == null ? "" : previous.id(),
+        line,
+        verdict,
+        widened,
+        halted,
+        rollbackTo);
   }
 
   /** 直近に使った {@value SwitchWatchVerdict#LINES} 個の別々の項目のうち、コホート h で MSE が最も小さいもの。測れない項目は飛ばす。 */
-  private PhiEntry best(int h, List<PhiEntry> history, HandEnds ends, Map<String, HandEndValues> values)
+  private PhiEntry best(
+      int h, List<PhiEntry> history, HandEnds ends, Map<String, HandEndValues> values)
       throws IOException {
     List<PhiEntry> recent = new ArrayList<>();
     for (int t = h; t >= 1 && recent.size() < SwitchWatchVerdict.LINES; t--) {
@@ -211,7 +244,8 @@ final class GrpLifecycle {
       try {
         mse = GrpMetrics.mse(ends, values(entry, ends, values));
       } catch (IOException | RuntimeException unreadable) {
-        LOG.warn("c{} could not measure {} for the rollback: {}", h, entry.id(), unreadable.toString());
+        LOG.warn(
+            "c{} could not measure {} for the rollback: {}", h, entry.id(), unreadable.toString());
         continue;
       }
       if (mse < bestMse) {
@@ -238,15 +272,17 @@ final class GrpLifecycle {
     if (record.status() == RefitStatus.TRAINED) {
       long started = System.nanoTime();
       String refused =
-          watch.halted() ? "the switch watch halted the refits"
-              : !watch.rollbackTo().isEmpty() ? "the switch watch rolled back at c" + h
-              : ends == null ? "cohort " + h + " has no usable game records"
-              : null;
+          watch.halted()
+              ? "the switch watch halted the refits"
+              : !watch.rollbackTo().isEmpty()
+                  ? "the switch watch rolled back at c" + h
+                  : ends == null ? "cohort " + h + " has no usable game records" : null;
       if (refused != null) {
         record = record.with(RefitStatus.REJECTED, null, refused, 0);
       } else {
         GateReport report = judge(h, history, used, record, ends, values);
-        String detail = report.kind() + " gate at c" + h + (report.passed() ? "" : ": " + report.failures());
+        String detail =
+            report.kind() + " gate at c" + h + (report.passed() ? "" : ": " + report.failures());
         if (report.passed()) {
           OutcomeChoice choice = gateOutcomes(h, used, record, ends);
           record = record.withOutcomes(choice.directory(), choice.sha256(), choice.report());
@@ -276,7 +312,12 @@ final class GrpLifecycle {
 
   /** 候補を関門で判定する。 */
   private GateReport judge(
-      int h, List<PhiEntry> history, PhiEntry used, RefitRecord record, HandEnds ends, Map<String, HandEndValues> values)
+      int h,
+      List<PhiEntry> history,
+      PhiEntry used,
+      RefitRecord record,
+      HandEnds ends,
+      Map<String, HandEndValues> values)
       throws IOException {
     PhiEntry candidate = record.entry(setup.variant(), 1, "gate");
     Phi candidatePhi = HandEndPhi.open(candidate, utility);
@@ -287,11 +328,18 @@ final class GrpLifecycle {
     double usedMonotone = probe.violationRate(usedPhi);
     double candidateMonotone = probe.violationRate(candidatePhi);
     if (!used.candidate())
-      return GrpGate.replacement(ends, usedValues, candidateValues, usedMonotone, candidateMonotone);
+      return GrpGate.replacement(
+          ends, usedValues, candidateValues, usedMonotone, candidateMonotone);
     PhiEntry anchor = anchor(history, h);
-    if (anchor == null) return GrpGate.refit(ends, usedValues, candidateValues, usedMonotone, candidateMonotone);
+    if (anchor == null)
+      return GrpGate.refit(ends, usedValues, candidateValues, usedMonotone, candidateMonotone);
     return GrpGate.refit(
-        ends, usedValues, candidateValues, values(anchor, ends, values), usedMonotone, candidateMonotone);
+        ends,
+        usedValues,
+        candidateValues,
+        values(anchor, ends, values),
+        usedMonotone,
+        candidateMonotone);
   }
 
   /**
@@ -301,8 +349,10 @@ final class GrpLifecycle {
    * 引き継いだ候補も q を持たない。
    */
   private OutcomeChoice gateOutcomes(int h, PhiEntry used, RefitRecord record, HandEnds ends) {
-    if (!record.hasOutcomes()) return OutcomeChoice.kept(used, null, "the refit learned no outcome network");
-    if (!files.counted(h)) return OutcomeChoice.kept(used, null, "cohort " + h + " has no count file");
+    if (!record.hasOutcomes())
+      return OutcomeChoice.kept(used, null, "the refit learned no outcome network");
+    if (!files.counted(h))
+      return OutcomeChoice.kept(used, null, "cohort " + h + " has no count file");
     OutcomeGate.Report report;
     try {
       NextHands next = NextHands.of(ends, CountFile.read(files.counts(h)));
@@ -312,13 +362,22 @@ final class GrpLifecycle {
               ? OutcomeGate.refit(next, HandEndPhi.outcomes(used), candidate)
               : OutcomeGate.first(next, candidate);
     } catch (IOException | RuntimeException failure) {
-      LOG.warn("c{} could not gate the outcome network of {}: {}", h, record.id(), failure.toString(), failure);
+      LOG.warn(
+          "c{} could not gate the outcome network of {}: {}",
+          h,
+          record.id(),
+          failure.toString(),
+          failure);
       return OutcomeChoice.kept(used, null, failure.toString());
     }
     String measured =
         String.format(
             "q %s gate at c%d: mean %+.6f SE %.6f over %d hand ends",
-            report.kind(), h, report.versus().mean(), report.versus().standardError(), report.handEnds());
+            report.kind(),
+            h,
+            report.versus().mean(),
+            report.versus().standardError(),
+            report.handEnds());
     return report.passed()
         ? new OutcomeChoice(record.outcomes(), record.outcomesSha256(), report, measured)
         : OutcomeChoice.kept(used, report, "failed " + measured);
@@ -332,7 +391,8 @@ final class GrpLifecycle {
    * @param report q の関門の判定（測らなかったときは null）
    * @param note refits.jsonl の理由に足す文
    */
-  private record OutcomeChoice(String directory, String sha256, OutcomeGate.Report report, String note) {
+  private record OutcomeChoice(
+      String directory, String sha256, OutcomeGate.Report report, String note) {
 
     /** 使用中の項目の q を引き継ぐ。使用中の項目が q を持たなければ、q を持たない。 */
     static OutcomeChoice kept(PhiEntry used, OutcomeGate.Report report, String why) {
@@ -348,13 +408,15 @@ final class GrpLifecycle {
   private static PhiEntry anchor(List<PhiEntry> history, int h) {
     PhiEntry anchor = null;
     for (PhiEntry entry : history)
-      if (entry.rollback() && entry.effectiveFrom() <= h && h < entry.effectiveFrom() + GrpRefitter.FAST_ITERATIONS)
-        anchor = entry;
+      if (entry.rollback()
+          && entry.effectiveFrom() <= h
+          && h < entry.effectiveFrom() + GrpRefitter.FAST_ITERATIONS) anchor = entry;
     return anchor;
   }
 
   /** 項目で求めた局末の値。同じ区切りの中では、項目ごとに 1 度だけ求める。 */
-  private HandEndValues values(PhiEntry entry, HandEnds ends, Map<String, HandEndValues> values) throws IOException {
+  private HandEndValues values(PhiEntry entry, HandEnds ends, Map<String, HandEndValues> values)
+      throws IOException {
     HandEndValues held = values.get(entry.id());
     if (held == null) {
       held = HandEndValues.of(ends, HandEndPhi.open(entry, utility));

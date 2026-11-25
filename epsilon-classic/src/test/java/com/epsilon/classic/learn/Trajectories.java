@@ -37,7 +37,8 @@ final class Trajectories {
     return collector.build();
   }
 
-  private static GameTrajectory game(Variant variant, Random random, long id, boolean priors, int limit) {
+  private static GameTrajectory game(
+      Variant variant, Random random, long id, boolean priors, int limit) {
     Engine engine = new Engine(variant);
     RuleWorkspace ws = new RuleWorkspace(variant);
     ObservationWriter writer = new ObservationWriter(variant);
@@ -54,7 +55,10 @@ final class Trajectories {
         Decisions decisions = engine.decisions();
         records.clear();
         for (int slot = 0; slot < decisions.size(); slot++) {
-          Observation o = reader.bind(records, writer.capture(engine.view(decisions.seat(slot)), decisions, slot, records));
+          Observation o =
+              reader.bind(
+                  records,
+                  writer.capture(engine.view(decisions.seat(slot)), decisions, slot, records));
           int legal = o.legalActions();
           choices[slot] = random.nextInt(legal);
           if (written < limit) {
@@ -125,7 +129,8 @@ final class Trajectories {
             scratch.clear();
             for (int slot = 0; slot < decisions.size(); slot++) {
               int seat = decisions.seat(slot);
-              Observation o = reader.bind(scratch, writer.capture(engine.view(seat), decisions, slot, scratch));
+              Observation o =
+                  reader.bind(scratch, writer.capture(engine.view(seat), decisions, slot, scratch));
               choices[slot] = random.nextInt(o.legalActions());
               if (bySeat.get(o.observer()).size() < perSeat) {
                 bySeat.get(o.observer()).add(store.add(o));

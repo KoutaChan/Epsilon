@@ -54,6 +54,7 @@ public final class Observation {
 
   /** 相対席ごとの抜いた北の数。 */
   private final int[] nuki;
+
   private final int[] start = new int[ObservationSchema.sections()];
   private final Action[] legal = new Action[ObservationSchema.MAX_LEGAL];
   private final int[] representatives = new int[ObservationSchema.MAX_LEGAL];
@@ -77,6 +78,7 @@ public final class Observation {
   private boolean scanned;
   private int discardedSeats;
   private boolean meldMade;
+  private boolean interrupted;
 
   public Observation(Variant variant) {
     schema = ObservationSchema.of(variant);
@@ -84,7 +86,8 @@ public final class Observation {
     seats = variant.seats();
     discardKind = schema.eventKinds.index(EventKind.DISCARD);
     meldKind = schema.eventKinds.index(EventKind.MELD);
-    nukiKind = schema.eventKinds.contains(EventKind.NUKI) ? schema.eventKinds.index(EventKind.NUKI) : -1;
+    nukiKind =
+        schema.eventKinds.contains(EventKind.NUKI) ? schema.eventKinds.index(EventKind.NUKI) : -1;
     nuki = new int[seats];
   }
 
@@ -111,10 +114,40 @@ public final class Observation {
     return this;
   }
 
+  /**
+   * {@code parsed} が読んでいる O と同じビット列を、配列の指定した位置から読むように付け替える。セクションの位置と合法手は
+   * {@code parsed} が解釈した値を写すので、O を読み直さない。読んだ結果は {@link #bind(long[], int)} と同じ。ルールが違えば
+   * IllegalArgumentException を、O が配列に収まらなければ IndexOutOfBoundsException を投げる。
+   *
+   * @param parsed 同じ O を読んでいるリーダー
+   * @param words O の写しを持つ配列
+   * @param base 写しの先頭の位置
+   */
+  public Observation bind(Observation parsed, long[] words, int base) {
+    if (parsed.variant != variant) {
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + parsed.variant);
+    }
+    this.words = Objects.requireNonNull(words, "words");
+    this.base = base;
+    longs = parsed.longs;
+    Objects.checkFromIndexSize(base, longs, words.length);
+    System.arraycopy(parsed.start, 0, start, 0, start.length);
+    events = parsed.events;
+    actions = parsed.actions;
+    callDiscards = parsed.callDiscards;
+    wins = parsed.wins;
+    System.arraycopy(parsed.legal, 0, legal, 0, actions);
+    scanned = false;
+    representativesFound = false;
+    return this;
+  }
+
   /** バッチの中の、指定した番号の O を読むように付け替える。バッチのルールが違えば IllegalArgumentException を投げる。 */
   public Observation bind(ObservationBatch batch, int index) {
     if (batch.variant() != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + batch.variant());
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + batch.variant());
     }
     return bind(batch.words(), batch.start(index));
   }
@@ -177,6 +210,12 @@ public final class Observation {
   public boolean callMade() {
     scanEvents();
     return meldMade;
+  }
+
+  /** 今、自分が立直を宣言した場合に成立する立直の状態。 */
+  public RiichiState declaration() {
+    boolean firstDiscard = beforeFirstDiscard(0);
+    return RiichiState.declaration(firstDiscard, interrupted);
   }
 
   /** 指定した相対席が、この局で抜いた北の数。北抜きの無いルールでは 0。 */
@@ -249,7 +288,8 @@ public final class Observation {
 
   /** ドラ表示牌の種類。番号はめくった順で、0 が最初の表示牌。 */
   public int indicatorTile(int index) {
-    return schema.header.get(words, base, 0, HeaderBits.INDICATOR, Objects.checkIndex(index, indicators()));
+    return schema.header.get(
+        words, base, 0, HeaderBits.INDICATOR, Objects.checkIndex(index, indicators()));
   }
 
   /** ドラ表示牌に出た赤を、色ごとのビットで表した値。どの表示牌が赤かは O からは分からない。 */
@@ -299,11 +339,6 @@ public final class Observation {
     Objects.checkIndex(seat, seats);
     scanEvents();
     return (discardedSeats & 1 << seat) == 0;
-  }
-
-  /** 自分の純手牌にある、指定した種類の枚数。 */
-  public int handCount(int kind) {
-    return schema.hand.get(words, start(Section.HAND), 0, HandBits.COUNT, kind);
   }
 
   /** 自分の純手牌にある枚数を、渡した配列の先頭から牌の種類の順に書く。書くのは全ての種類の分（{@code Tiles.KINDS} 個）。 */
@@ -415,14 +450,18 @@ public final class Observation {
 
   /** 指定した合法手の後に打てる打牌の数（チー・ポンだけ。ほかの手は 0）。 */
   public int callDiscardsOf(int action) {
-    return schema.legal.get(words, start(Section.LEGAL), Objects.checkIndex(action, actions), LegalBits.CALL_DISCARDS);
+    return schema.legal.get(
+        words, start(Section.LEGAL), Objects.checkIndex(action, actions), LegalBits.CALL_DISCARDS);
   }
 
   /** チー・ポンの後の打牌を返す。番号は、チー・ポンの合法手の順に後の打牌を並べ、通しで振ったもの。 */
   public Action callDiscard(int index) {
     return Action.of(
         schema.callDiscard.get(
-            words, start(Section.CALL_DISCARD), Objects.checkIndex(index, callDiscards), CallDiscardBits.ACTION));
+            words,
+            start(Section.CALL_DISCARD),
+            Objects.checkIndex(index, callDiscards),
+            CallDiscardBits.ACTION));
   }
 
   /**
@@ -553,6 +592,32 @@ public final class Observation {
     return schema.discard.get(word, field);
   }
 
+  /**
+   * 先頭の {@code events} 個のイベントの記録を、詰めたまま写す。写した先は {@link #sameEvents} で、ほかの O のイベントと読み解かずに
+   * 比べられる。
+   *
+   * @param events 写すイベントの数（O のイベントの数以下）
+   * @param into 写す先（足りなければ伸ばした配列を返す）
+   * @return 写した配列
+   */
+  public long[] copyEvents(int events, long[] into) {
+    Objects.checkFromIndexSize(0, events, this.events + 1);
+    int longs = schema.event.longs(events);
+    long[] target =
+        into.length >= longs ? into : Arrays.copyOf(into, Math.max(longs, into.length * 2));
+    System.arraycopy(words, start(Section.EVENT), target, 0, longs);
+    return target;
+  }
+
+  /**
+   * 先頭の {@code events} 個のイベントの記録が、{@link #copyEvents} で写した記録と全てのビットで同じか。O のイベントが足りなければ
+   * false。
+   */
+  public boolean sameEvents(long[] section, int events) {
+    return events <= this.events
+        && schema.event.sameRecords(words, start(Section.EVENT), section, 0, events);
+  }
+
   /** イベントの記録を入れた {@code long}。番号の範囲を確かめてから読む。 */
   private long eventWord(int event) {
     return schema.event.record(words, start(Section.EVENT), Objects.checkIndex(event, events));
@@ -622,6 +687,7 @@ public final class Observation {
     int allSeats = variant.seatMask();
     int discarded = 0;
     boolean melds = false;
+    boolean nukiMade = false;
     boolean countNuki = nukiKind >= 0;
     Arrays.fill(nuki, 0);
     int at = start(Section.EVENT);
@@ -633,11 +699,13 @@ public final class Observation {
       } else if (kind == meldKind) {
         melds = true;
       } else {
+        nukiMade = true;
         nuki[schema.event.get(word, EventBits.AUTHOR)]++;
       }
     }
     discardedSeats = discarded;
     meldMade = melds;
+    interrupted = melds || nukiMade;
     scanned = true;
   }
 
@@ -710,7 +778,8 @@ public final class Observation {
 
     private void requireKind(EventKind expected) {
       if (kind != expected) {
-        throw new IllegalStateException("Public event " + event + " is not a " + expected + " event");
+        throw new IllegalStateException(
+            "Public event " + event + " is not a " + expected + " event");
       }
     }
   }

@@ -5,7 +5,11 @@ import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDArrays;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
+import ai.djl.training.GradientCollector;
 import com.epsilon.agent.runtime.PinnedUploads;
+import com.epsilon.agent.runtime.Precision;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -81,5 +85,88 @@ public class ValueGraphHeadTest {
         NDArrays.maskedSoftmax(logits, manager.create(mask, new Shape(members.length, width)), 1);
     NDArray rows = NDArrays.gatherRows(transitions, index).reshape(members.length, width, HIDDEN);
     return rows.mul(weights.expandDims(2)).sum(new int[] {1});
+  }
+
+  /**
+   * 証明辺のあるツモの行だけ {@code peak}（打牌・立直の最大 M）に {@code stopGradient} を掛ける VJP の確かめ。順伝播はビット同一、
+   * 証明辺ツモの行では和了の損失から M へ勾配が流れず（Δ には 1、打牌自身の損失からは 1）、同じバッチ内の非証明行では M へ勾配 1 が
+   * 流れる。証明辺の無いバッチでは {@link BatchIndex#certifiedTurnRows} が null になり従来の道と同一になる。
+   */
+  @Test(timeOut = 120_000)
+  public void certifiedTurnRowsStopPeakGradientWithoutChangingForward() {
+    Batches.Batch batch = Batches.build(List.of(Batches.turn(2), Batches.turn(2)), 13L);
+    boolean[] measured = new boolean[batch.actions()];
+    Arrays.fill(measured, true);
+    float[] rawValues = new float[batch.transitions()];
+    Arrays.fill(rawValues, 0.1f);
+    // 各行で行動 1（遷移 1 と 8）を唯一の最大 M にする
+    rawValues[1] = 2.0f;
+    rawValues[8] = 2.0f;
+    float[] rawDelta = new float[8];
+    Arrays.fill(rawDelta, -0.5f);
+    rawDelta[2] = 0.7f; // 行 0 の TSUMO_AGARI
+    rawDelta[6] = 0.9f; // 行 1 の TSUMO_AGARI
+
+    try (NDManager manager = NDManager.newBaseManager(Device.cpu(), "PyTorch")) {
+      NetworkInputs inputs = batch.inputs(manager);
+      BatchIndex legacyIndex =
+          BatchIndex.send(inputs, Pass.training(Precision.FLOAT32, measured, null, null, null));
+      BatchIndex emptyCertIndex =
+          BatchIndex.send(
+              inputs,
+              Pass.training(Precision.FLOAT32, measured, null, null, new boolean[] {false, false}));
+      BatchIndex certIndex =
+          BatchIndex.send(
+              inputs,
+              Pass.training(Precision.FLOAT32, measured, null, null, new boolean[] {true, false}));
+      Assert.assertNull(legacyIndex.certifiedTurnRows);
+      Assert.assertNull(emptyCertIndex.certifiedTurnRows);
+      Assert.assertNotNull(certIndex.certifiedTurnRows);
+      Assert.assertEquals(certIndex.gateCount, 8);
+
+      float[] legacyForward =
+          ValueGraphHead.compose(
+                  manager, legacyIndex, manager.create(rawValues), manager.create(rawDelta))
+              .toFloatArray();
+      float[] certForward =
+          ValueGraphHead.compose(
+                  manager, certIndex, manager.create(rawValues), manager.create(rawDelta))
+              .toFloatArray();
+      Assert.assertEquals(certForward.length, legacyForward.length);
+      for (int i = 0; i < legacyForward.length; i++) {
+        Assert.assertEquals(
+            Float.floatToRawIntBits(certForward[i]),
+            Float.floatToRawIntBits(legacyForward[i]),
+            "forward at " + i);
+      }
+
+      // 両行の TSUMO_AGARI（スロット 5）の和から逆伝播する
+      NDArray values = manager.create(rawValues);
+      NDArray delta = manager.create(rawDelta);
+      values.setRequiresGradient(true);
+      delta.setRequiresGradient(true);
+      try (GradientCollector gc = manager.getEngine().newGradientCollector()) {
+        NDArray scores = ValueGraphHead.compose(manager, certIndex, values, delta);
+        NDArray loss = scores.get("0, 5").add(scores.get("1, 5"));
+        gc.backward(loss);
+      }
+      float[] vGrad = values.getGradient().toFloatArray();
+      float[] dGrad = delta.getGradient().toFloatArray();
+      Assert.assertEquals(vGrad[1], 0f, 0f, "certified row peak gradient must be blocked");
+      Assert.assertEquals(vGrad[8], 1f, 1e-6f, "uncertified row peak gradient must flow");
+      Assert.assertEquals(dGrad[2], 1f, 1e-6f, "certified row tsumo delta gradient");
+      Assert.assertEquals(dGrad[6], 1f, 1e-6f, "uncertified row tsumo delta gradient");
+
+      // 証明辺ツモ行でも打牌自身のスコアからは B へ勾配 1 が流れる
+      NDArray valuesDiscard = manager.create(rawValues);
+      NDArray deltaDiscard = manager.create(rawDelta);
+      valuesDiscard.setRequiresGradient(true);
+      deltaDiscard.setRequiresGradient(true);
+      try (GradientCollector gc = manager.getEngine().newGradientCollector()) {
+        NDArray scores = ValueGraphHead.compose(manager, certIndex, valuesDiscard, deltaDiscard);
+        gc.backward(scores.get("0, 1"));
+      }
+      Assert.assertEquals(valuesDiscard.getGradient().toFloatArray()[1], 1f, 1e-6f);
+    }
   }
 }

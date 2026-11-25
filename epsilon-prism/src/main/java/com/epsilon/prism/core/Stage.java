@@ -24,7 +24,9 @@ public enum Stage {
    * @return 段階
    */
   public static Stage of(Variant variant, int wallRemaining) {
-    return wallRemaining >= earlyWall(variant) ? EARLY : wallRemaining >= midWall(variant) ? MID : LATE;
+    return wallRemaining >= earlyWall(variant)
+        ? EARLY
+        : wallRemaining >= midWall(variant) ? MID : LATE;
   }
 
   /**

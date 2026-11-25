@@ -26,9 +26,11 @@ public class SwitchWatchVerdictTest {
   @Test
   public void aWorseWatchRollsBackAndThenHalts() {
     // 8 行の平均の SE は √8 × 2e-5 / 8 ≈ 7.07e-6 なので、アラートのしきい値は ≈ 1.414e-5
-    Assert.assertEquals(SwitchWatchVerdict.judge(lines(1.5e-5, SE), false), SwitchWatchVerdict.ROLLBACK);
+    Assert.assertEquals(
+        SwitchWatchVerdict.judge(lines(1.5e-5, SE), false), SwitchWatchVerdict.ROLLBACK);
     Assert.assertEquals(SwitchWatchVerdict.judge(lines(1.5e-5, SE), true), SwitchWatchVerdict.HALT);
-    Assert.assertEquals(SwitchWatchVerdict.judge(lines(1.3e-5, SE), false), SwitchWatchVerdict.QUIET);
+    Assert.assertEquals(
+        SwitchWatchVerdict.judge(lines(1.3e-5, SE), false), SwitchWatchVerdict.QUIET);
   }
 
   @Test
@@ -43,27 +45,36 @@ public class SwitchWatchVerdictTest {
   @Test
   public void verdictsNeedEightAscendingLines() {
     Assert.assertThrows(
-        IllegalArgumentException.class, () -> SwitchWatchVerdict.judge(lines(0, SE).subList(0, 7), false));
+        IllegalArgumentException.class,
+        () -> SwitchWatchVerdict.judge(lines(0, SE).subList(0, 7), false));
     List<SwitchWatchLine> swapped = new ArrayList<>(lines(0, SE));
     SwitchWatchLine held = swapped.get(2);
     swapped.set(2, swapped.get(3));
     swapped.set(3, held);
-    Assert.assertThrows(IllegalArgumentException.class, () -> SwitchWatchVerdict.judge(swapped, false));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new SwitchWatchLine(1, "a", "b", Double.NaN, SE, 0));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new SwitchWatchLine(1, "a", "b", 0, -SE, 0));
-    Assert.assertThrows(IllegalArgumentException.class, () -> new SwitchWatchLine(1, "a", "b", 0, SE, Double.NaN));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> SwitchWatchVerdict.judge(swapped, false));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new SwitchWatchLine(1, "a", "b", Double.NaN, SE, 0));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new SwitchWatchLine(1, "a", "b", 0, -SE, 0));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> new SwitchWatchLine(1, "a", "b", 0, SE, Double.NaN));
   }
 
   @Test
   public void linesCompareTheUsedModelWithThePreviousOne() {
-    HandEnds ends = HandEnds.of(
-        Variant.TENHOU_4P, RankUtility.TENHOU, TrainFixtures.uniform(2_000, 6, new SplittableRandom(41)));
+    HandEnds ends =
+        HandEnds.of(
+            Variant.TENHOU_4P,
+            RankUtility.TENHOU,
+            TrainFixtures.uniform(2_000, 6, new SplittableRandom(41)));
     HandEndValues previous = shifted(ends, 0);
     HandEndValues used = shifted(ends, 0.05);
     SwitchWatchLine line = SwitchWatchLine.of(44, "g044", "g043", ends, used, previous);
     Assert.assertEquals(line.cohort(), 44);
     Assert.assertEquals(line.usedId(), "g044");
-    Assert.assertEquals(line.mseDifference(), GrpMetrics.mse(ends, used) - GrpMetrics.mse(ends, previous), 1e-12);
+    Assert.assertEquals(
+        line.mseDifference(), GrpMetrics.mse(ends, used) - GrpMetrics.mse(ends, previous), 1e-12);
     Assert.assertTrue(line.mseDifference() > 0);
     Assert.assertEquals(line.wobble(), 0.05, 1e-12);
   }

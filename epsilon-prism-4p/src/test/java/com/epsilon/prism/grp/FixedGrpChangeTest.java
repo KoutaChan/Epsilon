@@ -53,8 +53,14 @@ public class FixedGrpChangeTest {
                       changed.add(
                           Main.run(
                               new String[] {
-                                "settings", "change", "--run", run.toString(), "--change", "phi.grp=" + second,
-                                "--reason", "test"
+                                "settings",
+                                "change",
+                                "--run",
+                                run.toString(),
+                                "--change",
+                                "phi.grp=" + second,
+                                "--reason",
+                                "test"
                               }));
                     }
                     return false;
@@ -69,7 +75,8 @@ public class FixedGrpChangeTest {
       Assert.assertEquals(phiSha(before), GrpCheckpoint.sha256(first));
       Assert.assertEquals(phiSha(after), GrpCheckpoint.sha256(second));
       Assert.assertEquals(after.get("settingsRow").getAsInt(), 2);
-      Assert.assertEquals(phi(after).get("launchRow").getAsInt(), 1, "the same JVM ran both iterations");
+      Assert.assertEquals(
+          phi(after).get("launchRow").getAsInt(), 1, "the same JVM ran both iterations");
     } finally {
       Snapshot.deleteTree(root);
     }
@@ -91,6 +98,10 @@ public class FixedGrpChangeTest {
 
   /** 反復の報告で、Φ の段が決めた項目にある GRP の sha256 を返す。 */
   private static String phiSha(JsonObject report) {
-    return phi(report).getAsJsonObject("value").getAsJsonObject("entry").get("sha256").getAsString();
+    return phi(report)
+        .getAsJsonObject("value")
+        .getAsJsonObject("entry")
+        .get("sha256")
+        .getAsString();
   }
 }

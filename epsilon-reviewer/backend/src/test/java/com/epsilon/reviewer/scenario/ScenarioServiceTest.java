@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.scenario;
 
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.reviewer.FixtureFamily;
 import com.epsilon.reviewer.Reviewer;
 import com.epsilon.reviewer.ReviewerConfig;
@@ -12,7 +13,6 @@ import com.epsilon.reviewer.engine.scenario.ScenarioQuery;
 import com.epsilon.reviewer.error.ErrorCode;
 import com.epsilon.reviewer.error.ReviewerException;
 import com.epsilon.reviewer.model.ModelCatalog;
-import com.epsilon.reviewer.model.ModelFamilies;
 import com.epsilon.reviewer.model.ModelRegistry;
 import com.epsilon.reviewer.store.ResultId;
 import com.epsilon.reviewer.store.ResultMeta;
@@ -170,7 +170,8 @@ public class ScenarioServiceTest {
     // どちらも使えなければ断る。
     try (var withdrawn = new Scenarios(catalog("withdrawn", "missing", "missing"))) {
       Assert.assertEquals(
-          Assert.expectThrows(ReviewerException.class, () -> withdrawn.service.evaluate(meta, query))
+          Assert.expectThrows(
+                  ReviewerException.class, () -> withdrawn.service.evaluate(meta, query))
               .code(),
           ErrorCode.MODEL_UNAVAILABLE);
     }
@@ -266,7 +267,8 @@ public class ScenarioServiceTest {
     String dealer = " oya=\"0\" hai0=";
     int at = record.indexOf(dealer);
     Assert.assertTrue(at >= 0);
-    String changed = record.substring(0, at) + " oya=\"1\" hai0=" + record.substring(at + dealer.length());
+    String changed =
+        record.substring(0, at) + " oya=\"1\" hai0=" + record.substring(at + dealer.length());
     return StoredResults.gzip(changed.getBytes(StandardCharsets.UTF_8));
   }
 

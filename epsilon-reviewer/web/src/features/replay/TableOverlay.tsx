@@ -1,3 +1,4 @@
+import { BACK } from "../../components/tileAssets.ts";
 import { Tile, tileName } from "../../components/Tile";
 import {
   playerName,
@@ -7,15 +8,13 @@ import {
 } from "../../language/format";
 import { useLanguage } from "../../language/LanguageProvider";
 import { CandidateList } from "./CandidateList";
-import { displaySeats } from "./model/seats.ts";
+import { displaySeats, SEAT_SLOTS, seatAt, seatOffset } from "./model/seats.ts";
 import type { Layout, TableTargets } from "./renderer/types.ts";
 import { ScenarioControls } from "./ScenarioPanel";
 import { ScenarioPick, ScenarioTargets } from "./ScenarioTargets";
 import type { Scenario } from "./scenario/useScenario.ts";
 import type { TableElements } from "./tableElements.ts";
 import type { Playback } from "./usePlayback.ts";
-
-const SLOTS = ["south", "east", "north", "west"] as const;
 
 /** 卓に重ねる DOM（ドラ表示・名札・候補欄・もしもの操作と当たり判定）と、画面の読み上げに使う文を出す。 */
 export function TableOverlay({
@@ -76,7 +75,7 @@ export function TableOverlay({
         >
           <div className="em-dora">
             {Array.from({ length: 5 }, (_, index) => {
-              const tile = snapshot.dora[index] ?? "back";
+              const tile = snapshot.dora[index] ?? BACK;
               return editing && index < snapshot.dora.length ? (
                 <ScenarioPick
                   key={index}
@@ -122,8 +121,8 @@ export function TableOverlay({
             playback={playback}
           />
         )}
-        {SLOTS.map((slot, position) => {
-          const offset = displaySeats(round.seats)[position];
+        {displaySeats(round.seats).map((offset, position) => {
+          const slot = SEAT_SLOTS[position]!;
           // 三人打ちでも対面の名札は空のまま置いておく。描画が名札の位置を決めるときに使うため。
           if (offset === null)
             return (
@@ -135,10 +134,10 @@ export function TableOverlay({
                 hidden
               />
             );
-          const player = snapshot.players[(seat + offset) % round.seats]!,
+          const player = snapshot.players[seatAt(seat, offset, round.seats)]!,
             name = playerName(player.name, player.seat, t),
             wind = windName(
-              (player.seat - round.dealer + round.seats) % round.seats,
+              seatOffset(round.dealer, player.seat, round.seats),
               t,
               true,
             );

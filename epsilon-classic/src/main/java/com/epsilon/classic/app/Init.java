@@ -25,7 +25,8 @@ import java.nio.file.Path;
 @Named(value = "init", doc = "Write a checkpoint of a fresh network")
 public record Init(
     @Key(doc = "Network architecture", presence = Presence.REQUIRED) Architecture architecture,
-    @Key(doc = "Checkpoint directory to write (must not exist yet)", presence = Presence.REQUIRED) Path out,
+    @Key(doc = "Checkpoint directory to write (must not exist yet)", presence = Presence.REQUIRED)
+        Path out,
     @Key(doc = "Rules", value = "TENHOU_4P") Variant variant,
     @Key(doc = "Random seed for the initial weights", value = "1") long seed)
     implements ClassicCommand {
@@ -51,6 +52,11 @@ public record Init(
   }
 
   private static String summary(ClassicHeader header) {
-    return "architecture=" + header.architecture() + " variant=" + header.variant() + " utility=" + header.utility();
+    return "architecture="
+        + header.architecture()
+        + " variant="
+        + header.variant()
+        + " utility="
+        + header.utility();
   }
 }

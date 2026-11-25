@@ -102,7 +102,8 @@ public final class Decisions {
    * @param index 何番目の合法手か
    */
   public int legal(int slot, int index) {
-    return legal[Objects.checkIndex(slot, size) * MAX_LEGAL + Objects.checkIndex(index, counts[slot])];
+    return legal[
+        Objects.checkIndex(slot, size) * MAX_LEGAL + Objects.checkIndex(index, counts[slot])];
   }
 
   /** その席の判断が何番目か。その席が判断しないなら −1。 */
@@ -214,7 +215,8 @@ public final class Decisions {
 
   void copyFrom(Decisions other) {
     if (other.variant != variant) {
-      throw new IllegalArgumentException("Variant mismatch: expected " + variant + " but found " + other.variant);
+      throw new IllegalArgumentException(
+          "Variant mismatch: expected " + variant + " but found " + other.variant);
     }
     System.arraycopy(other.ids, 0, ids, 0, ids.length);
     System.arraycopy(other.seats, 0, seats, 0, seats.length);

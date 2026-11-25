@@ -58,7 +58,11 @@ public final class OutcomeCalibration {
    *     全ての区分をまとめたセルと、セルで予測した回数が少ない分類は入れない
    */
   public record Check(
-      long handEnds, long skipped, double nll, double temperature, List<OutcomeClasses.Outlier> outliers) {
+      long handEnds,
+      long skipped,
+      double nll,
+      double temperature,
+      List<OutcomeClasses.Outlier> outliers) {
 
     public Check {
       outliers = List.copyOf(outliers);
@@ -88,7 +92,13 @@ public final class OutcomeCalibration {
    * @param standardError 実際の率の、行をクラスタとした標準誤差
    */
   public record Bin(
-      String name, double low, double high, long pairs, double predicted, double realized, double standardError) {}
+      String name,
+      double low,
+      double high,
+      long pairs,
+      double predicted,
+      double realized,
+      double standardError) {}
 
   /**
    * 温度を掛けたネットワークを作る。最後の層の重みとバイアスを T で割り、float に丸める。T が 1 なら重みは変わらない。
@@ -97,11 +107,14 @@ public final class OutcomeCalibration {
    */
   public static OutcomeNetwork tempered(OutcomeNetwork network, double temperature) {
     if (!(temperature > 0 && temperature < Double.POSITIVE_INFINITY)) {
-      throw new IllegalArgumentException("A temperature must be positive and finite: " + temperature);
+      throw new IllegalArgumentException(
+          "A temperature must be positive and finite: " + temperature);
     }
     float[] weights = network.weights();
     int[] starts = OutcomeTensor.starts(network.shape());
-    for (int index = starts[OutcomeTensor.W3.ordinal()]; index < starts[OutcomeTensor.B3.ordinal() + 1]; index++) {
+    for (int index = starts[OutcomeTensor.W3.ordinal()];
+        index < starts[OutcomeTensor.B3.ordinal() + 1];
+        index++) {
       weights[index] = (float) (weights[index] / temperature);
     }
     return OutcomeNetwork.of(network.shape(), weights);
@@ -117,7 +130,8 @@ public final class OutcomeCalibration {
    * @return 行が無ければ NaN
    * @throws IllegalArgumentException 組のネットワークのルールが、その組の行と違うとき
    */
-  public static double nll(List<Part> parts, double temperature, Supplier<OutcomeWorkspace> workspaces) {
+  public static double nll(
+      List<Part> parts, double temperature, Supplier<OutcomeWorkspace> workspaces) {
     ThreadLocal<OutcomeWorkspace> locals = ThreadLocal.withInitial(workspaces);
     double sum = 0;
     double weight = 0;
@@ -129,17 +143,20 @@ public final class OutcomeCalibration {
       }
       OutcomeNetwork network = tempered(part.network(), temperature);
       double[] sums = new double[Math.ceilDiv(rows.size(), CHUNK_ROWS)];
-      IntStream.range(0, sums.length).parallel().forEach(chunk -> {
-        OutcomeWorkspace workspace = locals.get();
-        double[] logs = new double[rows.maxOutcomes()];
-        int end = Math.min(rows.size(), (chunk + 1) * CHUNK_ROWS);
-        double partial = 0;
-        for (int row = chunk * CHUNK_ROWS; row < end; row++) {
-          network.forward(GrpState.ofKey(rows.variant(), rows.keys[row]), workspace);
-          partial -= rows.weightOf(row) * rows.logLikelihood(row, workspace, logs);
-        }
-        sums[chunk] = partial;
-      });
+      IntStream.range(0, sums.length)
+          .parallel()
+          .forEach(
+              chunk -> {
+                OutcomeWorkspace workspace = locals.get();
+                double[] logs = new double[rows.maxOutcomes()];
+                int end = Math.min(rows.size(), (chunk + 1) * CHUNK_ROWS);
+                double partial = 0;
+                for (int row = chunk * CHUNK_ROWS; row < end; row++) {
+                  network.forward(GrpState.ofKey(rows.variant(), rows.keys[row]), workspace);
+                  partial -= rows.weightOf(row) * rows.logLikelihood(row, workspace, logs);
+                }
+                sums[chunk] = partial;
+              });
       for (double partial : sums) {
         sum += partial;
       }
@@ -196,7 +213,10 @@ public final class OutcomeCalibration {
    * @return 測る局末が無ければ NaN
    */
   public static double temperature(
-      NextHands next, IntPredicate selected, OutcomeNetwork network, Supplier<OutcomeWorkspace> workspaces) {
+      NextHands next,
+      IntPredicate selected,
+      OutcomeNetwork network,
+      Supplier<OutcomeWorkspace> workspaces) {
     HandEnds ends = next.ends();
     boolean measured = false;
     for (int h = 0; h < ends.handEnds() && !measured; h++) {
@@ -220,7 +240,8 @@ public final class OutcomeCalibration {
   public static Check check(NextHands next, IntPredicate selected, OutcomeNetwork network) {
     Supplier<OutcomeWorkspace> workspaces = () -> OutcomeWorkspace.of(network.shape());
     double nll = nll(next, selected, network, 1, workspaces);
-    OutcomeClasses.Result classes = OutcomeClasses.measure(next, h -> network, selected, workspaces);
+    OutcomeClasses.Result classes =
+        OutcomeClasses.measure(next, h -> network, selected, workspaces);
     return new Check(
         classes.handEnds(),
         classes.skipped(),
@@ -321,7 +342,14 @@ public final class OutcomeCalibration {
     List<Bin> bySection = new ArrayList<>(sections.length);
     for (OutcomeSection section : sections) {
       int index = section.ordinal();
-      bySection.add(row(section.name(), Double.NaN, Double.NaN, sectionRealized, index, sectionPredicted[index]));
+      bySection.add(
+          row(
+              section.name(),
+              Double.NaN,
+              Double.NaN,
+              sectionRealized,
+              index,
+              sectionPredicted[index]));
     }
     return new Reliability(count, ambiguous, table, bySection);
   }
@@ -332,10 +360,17 @@ public final class OutcomeCalibration {
    * @param cell 実際の率を足したセル
    * @param predicted 予測の確率の和
    */
-  private static Bin row(String name, double low, double high, Clusters realized, int cell, double predicted) {
+  private static Bin row(
+      String name, double low, double high, Clusters realized, int cell, double predicted) {
     double pairs = realized.count(cell);
     return new Bin(
-        name, low, high, (long) pairs, predicted / pairs, realized.mean(cell), Math.sqrt(realized.variance(cell)));
+        name,
+        low,
+        high,
+        (long) pairs,
+        predicted / pairs,
+        realized.mean(cell),
+        Math.sqrt(realized.variance(cell)));
   }
 
   /** 予測の確率が入る区間の番号。 */

@@ -35,6 +35,9 @@ import com.epsilon.mahjong.engine.EngineDecisionKind;
 import com.epsilon.mahjong.engine.SeatView;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.score.RiichiState;
+import com.epsilon.mahjong.tile.Tiles;
+import com.sun.management.ThreadMXBean;
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -45,6 +48,8 @@ import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -73,7 +78,8 @@ public class ClassicTokenizerTest {
   private final Observation o = new Observation(VARIANT);
   private final ClassicExtras extras = ClassicExtras.empty();
   private final float[] prior = prior();
-  private final List<Check> checks = List.of(new Check(Architecture.NANO), new Check(Architecture.MAJOR));
+  private final List<Check> checks =
+      List.of(new Check(Architecture.NANO), new Check(Architecture.MAJOR));
   private long decisions;
   private long riichiDiscards;
   private long chankans;
@@ -94,8 +100,8 @@ public class ClassicTokenizerTest {
     log.info(
         String.format(
             Locale.ROOT,
-            "CLASSIC tokens: decisions %d riichiDiscards %d chankans %d callTransitions %d waitingTransitions %d"
-                + " frontierTransitions %d pendingDeclarations %d buckets %s",
+            "CLASSIC tokens: decisions %d riichiDiscards %d chankans %d callTransitions %d"
+                + " waitingTransitions %d frontierTransitions %d pendingDeclarations %d buckets %s",
             decisions,
             riichiDiscards,
             chankans,
@@ -131,13 +137,19 @@ public class ClassicTokenizerTest {
     batch.clear();
     o.bind(batch, writer.capture(play.engine.view(boundary.seat(0)), boundary, 0, batch));
     ClassicTokenizer tokenizer = new ClassicTokenizer(Architecture.NANO, VARIANT);
-    ClassicInputs small = new ClassicInputs(ClassicSchema.of(Architecture.NANO), new Bucket(1, 1), 1);
+    ClassicInputs small =
+        new ClassicInputs(ClassicSchema.of(Architecture.NANO), new Bucket(1, 1), 1);
     assertThrows(IllegalArgumentException.class, () -> tokenizer.write(o, extras, small, 0));
-    ClassicInputs major = new ClassicInputs(ClassicSchema.of(Architecture.MAJOR), Buckets.required(o), 1);
+    ClassicInputs major =
+        new ClassicInputs(ClassicSchema.of(Architecture.MAJOR), Buckets.required(o), 1);
     assertThrows(IllegalArgumentException.class, () -> tokenizer.write(o, extras, major, 0));
-    ClassicInputs nano = new ClassicInputs(ClassicSchema.of(Architecture.NANO), Buckets.required(o), 1);
-    assertThrows(IllegalArgumentException.class, () -> tokenizer.write(o, extras, new float[3], nano, 0));
-    assertThrows(IllegalArgumentException.class, () -> new ClassicTokenizer(Architecture.NANO, Variant.TENHOU_3P));
+    ClassicInputs nano =
+        new ClassicInputs(ClassicSchema.of(Architecture.NANO), Buckets.required(o), 1);
+    assertThrows(
+        IllegalArgumentException.class, () -> tokenizer.write(o, extras, new float[3], nano, 0));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ClassicTokenizer(Architecture.NANO, Variant.TENHOU_3P));
   }
 
   private void visit(RandomPlay play) {
@@ -243,8 +255,15 @@ public class ClassicTokenizerTest {
         int second = in.start(tensor, 1);
         boolean same =
             tensor.slab() == Tensor.Slab.CATEGORICAL
-                ? Arrays.equals(in.categorical(), first, first + width, in.categorical(), second, second + width)
-                : Arrays.equals(in.numeric(), first, first + width, in.numeric(), second, second + width);
+                ? Arrays.equals(
+                    in.categorical(),
+                    first,
+                    first + width,
+                    in.categorical(),
+                    second,
+                    second + width)
+                : Arrays.equals(
+                    in.numeric(), first, first + width, in.numeric(), second, second + width);
         assertTrue(same, architecture + " " + tensor + " differs between two writes of one O");
       }
       state(in);
@@ -262,30 +281,41 @@ public class ClassicTokenizerTest {
       FieldLayout<RoundInt> roundInt = schema.layout(RoundInt.class);
       assertEquals(categorical[round + roundInt.offset(RoundInt.PLAYER_SEAT)], o.observer() + 1);
       assertEquals(categorical[round + roundInt.offset(RoundInt.KYOKU_INDEX)], o.kyoku() + 1);
-      assertEquals(categorical[round + roundInt.offset(RoundInt.DEALER_RELATIVE_SEAT)], o.dealer() + 1);
-      assertEquals(categorical[round + roundInt.offset(RoundInt.WALL_REMAINING)], o.remainingWall());
+      assertEquals(
+          categorical[round + roundInt.offset(RoundInt.DEALER_RELATIVE_SEAT)], o.dealer() + 1);
+      assertEquals(
+          categorical[round + roundInt.offset(RoundInt.WALL_REMAINING)], o.remainingWall());
       assertEquals(categorical[round + roundInt.offset(RoundInt.HONBA)], o.honba());
       FieldLayout<PlayerInt> playerInt = schema.layout(PlayerInt.class);
       int players = base + schema.stateStart(StateToken.PLAYER, Tensor.Slab.CATEGORICAL);
       for (int seat = 0; seat < ClassicSchema.SEATS; seat++) {
         int token = players + seat * playerInt.stride();
         assertEquals(categorical[token + playerInt.offset(PlayerInt.RELATIVE_SEAT)], seat + 1);
-        assertEquals(categorical[token + playerInt.offset(PlayerInt.ABSOLUTE_SEAT)], o.absoluteSeat(seat) + 1);
+        assertEquals(
+            categorical[token + playerInt.offset(PlayerInt.ABSOLUTE_SEAT)],
+            o.absoluteSeat(seat) + 1);
         if (!declared(seat)) {
           continue;
         }
-        assertTrue(categorical[token + playerInt.offset(PlayerInt.RIICHI_STATUS)] > 1, "a declared seat is in riichi");
+        assertTrue(
+            categorical[token + playerInt.offset(PlayerInt.RIICHI_STATUS)] > 1,
+            "a declared seat is in riichi");
         if (o.riichi(seat) == RiichiState.NONE) {
-          assertEquals(categorical[token + playerInt.offset(PlayerInt.IPPATSU)], 1, "a pending declaration has ippatsu");
+          assertEquals(
+              categorical[token + playerInt.offset(PlayerInt.IPPATSU)],
+              1,
+              "a pending declaration has ippatsu");
           pendingDeclarations += architecture == Architecture.NANO ? 1 : 0;
         }
       }
       FieldLayout<TileInt> tileInt = schema.layout(TileInt.class);
       int tiles = base + schema.stateStart(StateToken.TILE, Tensor.Slab.CATEGORICAL);
+      int[] counts = new int[Tiles.KINDS];
+      o.handCounts(counts);
       for (int kind = 0; kind < 34; kind++) {
         int token = tiles + kind * tileInt.stride();
         assertEquals(categorical[token + tileInt.offset(TileInt.TILE_TYPE)], kind + 1);
-        assertEquals(categorical[token + tileInt.offset(TileInt.SELF_HAND_COUNT)], o.handCount(kind));
+        assertEquals(categorical[token + tileInt.offset(TileInt.SELF_HAND_COUNT)], counts[kind]);
       }
       FieldLayout<RiverInt> riverInt = schema.layout(RiverInt.class);
       int rivers = base + schema.stateStart(StateToken.RIVER, Tensor.Slab.CATEGORICAL);
@@ -323,17 +353,25 @@ public class ClassicTokenizerTest {
 
     /** 公開の履歴の値を確かめる。値を持つのは実在するトークンだけで、関係は 0〜11、席はクエリの席から見た相対席。 */
     private void history(
-        short[] categorical, int base, int rivers, FieldLayout<RiverInt> riverInt, int melds, FieldLayout<MeldInt> meldInt) {
+        short[] categorical,
+        int base,
+        int rivers,
+        FieldLayout<RiverInt> riverInt,
+        int melds,
+        FieldLayout<MeldInt> meldInt) {
       int river = ClassicSchema.SEATS * ClassicSchema.RIVER_TOKENS;
       for (int query = 0; query < ClassicSchema.SEATS; query++) {
         for (int token = 0; token < ClassicSchema.HISTORY_TOKENS; token++) {
-          int at = base + schema.historyStart() + (query * ClassicSchema.HISTORY_TOKENS + token) * 2;
+          int at =
+              base + schema.historyStart() + (query * ClassicSchema.HISTORY_TOKENS + token) * 2;
           int packed = categorical[at] & 0xFFFF | (categorical[at + 1] & 0xFFFF) << 16;
           int author;
           boolean present;
           if (token < river) {
             author = token / ClassicSchema.RIVER_TOKENS;
-            present = categorical[rivers + token * riverInt.stride() + riverInt.offset(RiverInt.PRESENT)] == 1;
+            present =
+                categorical[rivers + token * riverInt.stride() + riverInt.offset(RiverInt.PRESENT)]
+                    == 1;
           } else {
             author = (token - river) / ClassicSchema.MELD_TOKENS;
             int meld = melds + (token - river) * meldInt.stride();
@@ -362,14 +400,27 @@ public class ClassicTokenizerTest {
       float[] numeric = in.numeric();
       FieldLayout<ActionInt> actionInt = schema.layout(ActionInt.class);
       FieldLayout<ActionTransitionInt> transitionInt = schema.layout(ActionTransitionInt.class);
-      FieldLayout<ActionTransitionFloat> transitionFloat = schema.layout(ActionTransitionFloat.class);
+      FieldLayout<ActionTransitionFloat> transitionFloat =
+          schema.layout(ActionTransitionFloat.class);
       for (int action = 0; action < bucket.actions(); action++) {
         boolean real = action < o.legalActions();
         int categories = in.start(Tensor.ACTION_CATEGORIES, 0) + action * actionCategories.length;
         units(categorical, categories, actionCategories, real);
-        units(numeric, in.start(Tensor.ACTION_NUMERICS, 0) + action * actionNumerics.length, actionNumerics, real);
-        units(categorical, in.start(Tensor.ACTION_ROUTES, 0) + action * actionRoutes.length, actionRoutes, real);
-        units(categorical, in.start(Tensor.ACTION_WIN_FACTS, 0) + action * actionFacts.length, actionFacts, real);
+        units(
+            numeric,
+            in.start(Tensor.ACTION_NUMERICS, 0) + action * actionNumerics.length,
+            actionNumerics,
+            real);
+        units(
+            categorical,
+            in.start(Tensor.ACTION_ROUTES, 0) + action * actionRoutes.length,
+            actionRoutes,
+            real);
+        units(
+            categorical,
+            in.start(Tensor.ACTION_WIN_FACTS, 0) + action * actionFacts.length,
+            actionFacts,
+            real);
         if (real) {
           int id = VocabularyCodec.actionIndex(o.action(action)) + 1;
           assertEquals(categorical[categories + actionInt.offset(ActionInt.ID)], id);
@@ -381,19 +432,22 @@ public class ClassicTokenizerTest {
         for (int transition = 0; transition < bucket.transitions(); transition++) {
           boolean present = transition < transitions;
           int index = action * bucket.transitions() + transition;
-          int base = in.start(Tensor.TRANSITION_CATEGORIES, 0) + index * transitionCategories.length;
+          int base =
+              in.start(Tensor.TRANSITION_CATEGORIES, 0) + index * transitionCategories.length;
           units(categorical, base, transitionCategories, present);
           int values = in.start(Tensor.TRANSITION_NUMERICS, 0) + index * transitionNumerics.length;
           units(numeric, values, transitionNumerics, present);
           if (present) {
             assertEquals(categorical[base + transitionInt.offset(ActionTransitionInt.PRESENT)], 1);
             assertTrue(categorical[base + transitionInt.offset(ActionTransitionInt.KIND)] >= 1);
-            assertTrue(categorical[base + transitionInt.offset(ActionTransitionInt.DISCARD_CONTEXT)] >= 1);
+            assertTrue(
+                categorical[base + transitionInt.offset(ActionTransitionInt.DISCARD_CONTEXT)] >= 1);
             float frontier =
                 numeric[
                     values
                         + transitionFloat.offset(
-                            ActionTransitionFloat.NORMALIZED_NEXT_FURITEN_FREE_RON_YAKU_TENPAI_UKEIRE_KINDS)];
+                            ActionTransitionFloat
+                                .NORMALIZED_NEXT_FURITEN_FREE_RON_YAKU_TENPAI_UKEIRE_KINDS)];
             frontierTransitions += frontier > 0 && architecture == Architecture.NANO ? 1 : 0;
             for (ActionTransitionFloat probability :
                 List.of(
@@ -431,7 +485,8 @@ public class ClassicTokenizerTest {
         assertTrue(categorical[ids + count] < ClassicSchema.WAIT_TILE_VALUES);
         count++;
       }
-      assertZero(categorical, ids + count, ClassicSchema.MAX_WAITS - count, "wait ids after the waits");
+      assertZero(
+          categorical, ids + count, ClassicSchema.MAX_WAITS - count, "wait ids after the waits");
       if (!present) {
         assertEquals(count, 0, "waits of padding");
       }
@@ -441,7 +496,11 @@ public class ClassicTokenizerTest {
       for (int wait = 0; wait < ClassicSchema.MAX_WAITS; wait++) {
         boolean real = wait < count;
         int slot = index * ClassicSchema.MAX_WAITS + wait;
-        units(in.numeric(), in.start(Tensor.WAIT_SCORES, 0) + slot * waitScores.length, waitScores, real);
+        units(
+            in.numeric(),
+            in.start(Tensor.WAIT_SCORES, 0) + slot * waitScores.length,
+            waitScores,
+            real);
         int pairs = in.start(Tensor.WAIT_WIN_FACTS, 0) + slot * 2 * waitFacts.length;
         units(categorical, pairs, waitFacts, real);
         units(categorical, pairs + waitFacts.length, waitFacts, real);
@@ -452,7 +511,8 @@ public class ClassicTokenizerTest {
         for (int chunk = 0; chunk < 2 * ClassicSchema.YAKU_CHUNKS; chunk++) {
           int value = categorical[chunks + chunk] & 0xFFFF;
           if (real) {
-            assertTrue(value >= 1 && value < ClassicSchema.YAKU_CHUNK_VALUES, "yaku chunk " + value);
+            assertTrue(
+                value >= 1 && value < ClassicSchema.YAKU_CHUNK_VALUES, "yaku chunk " + value);
           } else {
             assertEquals(value, 0, "yaku chunk of padding");
           }
@@ -472,9 +532,11 @@ public class ClassicTokenizerTest {
       FieldLayout<BoundaryFloat> layout = schema.layout(BoundaryFloat.class);
       int grp = base + layout.offset(BoundaryFloat.GRP_RANK);
       for (int index = 0; index < BoundaryFloat.GRP_RANK.count(); index++) {
-        assertEquals(in.numeric()[grp + index], withPrior ? prior[index] : 1f / ClassicSchema.SEATS, 0f);
+        assertEquals(
+            in.numeric()[grp + index], withPrior ? prior[index] : 1f / ClassicSchema.SEATS, 0f);
       }
-      assertEquals(in.numeric()[base + layout.offset(BoundaryFloat.PRESENT)], withPrior ? 1f : 0f, 0f);
+      assertEquals(
+          in.numeric()[base + layout.offset(BoundaryFloat.PRESENT)], withPrior ? 1f : 0f, 0f);
     }
 
     /** 整数のフィールドが幅の範囲内にあり、パディングなら 0 であることを確かめる。0 でない値を持ったフィールドを覚えておく。 */
@@ -489,7 +551,8 @@ public class ClassicTokenizerTest {
         }
         CategoricalField field = (CategoricalField) layout[index];
         if (value < 0 || value >= field.width()) {
-          fail(architecture + " " + field + " is " + value + ", outside [0, " + field.width() + ")");
+          fail(
+              architecture + " " + field + " is " + value + ", outside [0, " + field.width() + ")");
         }
         if (value != 0) {
           filled.add(field);
@@ -526,7 +589,9 @@ public class ClassicTokenizerTest {
   /** その席がこの局で立直を宣言したか（宣言牌がまだ通っていなくてもよい）。 */
   private boolean declared(int seat) {
     for (int event = 0; event < o.events(); event++) {
-      if (o.eventKind(event) == EventKind.DISCARD && o.eventAuthor(event) == seat && o.discardRiichi(event)) {
+      if (o.eventKind(event) == EventKind.DISCARD
+          && o.eventAuthor(event) == seat
+          && o.discardRiichi(event)) {
         return true;
       }
     }
@@ -538,6 +603,75 @@ public class ClassicTokenizerTest {
       if (values[index] != 0) {
         fail(what + " holds " + values[index] + " at " + (index - from));
       }
+    }
+  }
+
+  private static final int WARM_UP = 20_000;
+  private static final int MEASURED = 50_000;
+
+  /**
+   * 確保したバイト数の数え方そのものの誤差を見込んだ余裕（バイト）。測るのは 5 × 10^4 ステップなので、1 ステップで 16 バイト以上を
+   * 1 回確保するだけで 800 KB になる。
+   */
+  private static final long SLACK_BYTES = 4_096;
+
+  @Test(timeOut = 900_000)
+  public void tokenizingAllocatesNothingOnceWarm() {
+    ThreadMXBean threads =
+        ManagementFactory.getThreadMXBean() instanceof ThreadMXBean bean ? bean : null;
+    if (threads == null
+        || !threads.isThreadAllocatedMemorySupported()
+        || !threads.isThreadAllocatedMemoryEnabled()) {
+      throw new SkipException("Per-thread allocation counters are not available");
+    }
+    var workload = new AllocationWorkload();
+    long checksum = workload.run(WARM_UP);
+    long before = threads.getCurrentThreadAllocatedBytes();
+    checksum += workload.run(MEASURED);
+    long allocated = threads.getCurrentThreadAllocatedBytes() - before;
+    Assert.assertTrue(
+        allocated < SLACK_BYTES,
+        allocated + " bytes over " + MEASURED + " steps (checksum " + checksum + ")");
+  }
+
+  private static final class AllocationWorkload {
+    private final RandomPlay play = new RandomPlay(VARIANT, 29);
+    private final ObservationWriter writer = new ObservationWriter(VARIANT);
+    private final ObservationBatch batch = new ObservationBatch(VARIANT, 1_024);
+    private final Observation o = new Observation(VARIANT);
+    private final ClassicExtras extras = ClassicExtras.empty();
+    private final float[] prior = new float[ClassicSchema.SEATS * ClassicSchema.SEATS];
+
+    /** どの判断も収まる区分（1 席の合法手は 32 まで、鳴いた後の打牌は 11 まで）。 */
+    private final Bucket largest = Buckets.required(32, 11);
+
+    private final ClassicTokenizer nano = new ClassicTokenizer(Architecture.NANO, VARIANT);
+    private final ClassicTokenizer major = new ClassicTokenizer(Architecture.MAJOR, VARIANT);
+    private final ClassicInputs nanoInputs =
+        new ClassicInputs(ClassicSchema.of(Architecture.NANO), largest, 1);
+    private final ClassicInputs majorInputs =
+        new ClassicInputs(ClassicSchema.of(Architecture.MAJOR), largest, 1);
+
+    /** 指定したステップ数だけ進め、判断の時点ごとに判断する全ての席の入力を書く。最適化で計算が消されないように、書いた値の一部の和を返す。 */
+    private long run(int steps) {
+      long checksum = 0;
+      for (int step = 0; step < steps; step++) {
+        if (play.boundary() == Boundary.DECISIONS) {
+          Decisions decisions = play.engine.decisions();
+          batch.clear();
+          for (int slot = 0; slot < decisions.size(); slot++) {
+            o.bind(
+                batch,
+                writer.capture(play.engine.view(decisions.seat(slot)), decisions, slot, batch));
+            nano.write(o, extras, nanoInputs, 0);
+            major.write(o, extras, prior, majorInputs, 0);
+            checksum += nanoInputs.categorical()[nanoInputs.start(Tensor.ACTION_CATEGORIES, 0)];
+            checksum += majorInputs.categorical()[majorInputs.start(Tensor.TRANSITION_TILES, 0)];
+          }
+        }
+        play.step();
+      }
+      return checksum;
     }
   }
 }

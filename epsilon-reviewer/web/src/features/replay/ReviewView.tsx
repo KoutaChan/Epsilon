@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo } from "react";
 import { ArrowLeft, CircleAlert, LoaderCircle } from "lucide-react";
-import type { ResultDocument } from "../../../../protocol/result.ts";
+import type { ResultDocument } from "@epsilon-reviewer/protocol/result";
 import { useLanguage } from "../../language/LanguageProvider";
 import type { ReviewEntryProps } from "../../review-entry.ts";
 import { decodeResult } from "./model/decodeResult.ts";
@@ -44,7 +44,9 @@ export function ReviewView({
     return (
       <div className="replay-loading" role="alert">
         <CircleAlert aria-hidden="true" />
-        <span>{t("errors.invalid_result")}</span>
+        <span>
+          {t("errors.invalid_result")} {replay.message}
+        </span>
         <button className="button" onClick={onBack}>
           <ArrowLeft aria-hidden="true" />
           {backLabel}

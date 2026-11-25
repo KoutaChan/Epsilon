@@ -24,7 +24,7 @@ public record Watch(double alarmZ, double margin, OnWorseSettings onWorse) {
     }
   }
 
-  /** 評価の節の監視の設定。 */
+  /** 評価セクションの監視の設定。 */
   public static Watch of(EvaluationSettings evaluation) {
     return new Watch(evaluation.alarmZ(), evaluation.dropMargin(), evaluation.onWorse());
   }

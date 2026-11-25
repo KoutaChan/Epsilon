@@ -26,7 +26,10 @@ import java.util.List;
 @Named(value = "grp-refit", doc = "Put a manual GRP refit request into the run's control")
 public record RefitGrp(
     @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Point to refit at (default: the latest sealed cohort with game records)", presence = Presence.ABSENT) @Range(min = 1)
+    @Key(
+            doc = "Point to refit at (default: the latest sealed cohort with game records)",
+            presence = Presence.ABSENT)
+        @Range(min = 1)
         Integer slot)
     implements PrismCommand {
 
@@ -35,7 +38,8 @@ public record RefitGrp(
     context.requireNoLayers();
     PhiSettings phi = PrismApp.latest(run).phi();
     if (!(phi instanceof PhiSettings.SelfGrp self)) {
-      throw new SettingsException(List.of("The run " + run + " has the Φ source " + phi.source() + ", not SELF_GRP"));
+      throw new SettingsException(
+          List.of("The run " + run + " has the Φ source " + phi.source() + ", not SELF_GRP"));
     }
     ControlRequest written = PhiControl.requestRefit(run, self.grp(), slot);
     return Outcome.ok("request " + written.number() + ": " + Status.describe(written.request()));

@@ -70,7 +70,8 @@ public class LogRowsTest {
     int validation = 0;
     for (int index = 0; index < 4_000; index++) {
       validation += LogRows.validation("game-" + index, 0.1) ? 1 : 0;
-      Assert.assertEquals(LogRows.validation("game-" + index, 0.1), LogRows.validation("game-" + index, 0.1));
+      Assert.assertEquals(
+          LogRows.validation("game-" + index, 0.1), LogRows.validation("game-" + index, 0.1));
     }
     Assert.assertTrue(validation > 330 && validation < 470, "validation games " + validation);
   }

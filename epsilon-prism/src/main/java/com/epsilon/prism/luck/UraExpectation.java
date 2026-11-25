@@ -109,7 +109,8 @@ public final class UraExpectation {
    * @throws IllegalStateException 局末の偶然のイベントの記録の末尾に、めくってあるドラ表示牌と同じ枚数の裏ドラ表示牌が無いとき、
    *     またはめくった裏ドラ表示牌で数えた裏ドラの数が和了の採点と食い違うとき
    */
-  public boolean evaluate(FullView full, RoundEnd end, TableState start, RoundHistory history, boolean average) {
+  public boolean evaluate(
+      FullView full, RoundEnd end, TableState start, RoundHistory history, boolean average) {
     long started = System.nanoTime();
     tableValues(history, end.next(), actual);
     System.arraycopy(actual, 0, expected, 0, seats);
@@ -153,7 +154,8 @@ public final class UraExpectation {
   public void values(UraSettings ura, double[] out) {
     boolean expectation = ura instanceof UraSettings.Expected;
     if (expectation && riichiWin && !averaged) {
-      throw new IllegalStateException("The expected ura value was not computed for this riichi win");
+      throw new IllegalStateException(
+          "The expected ura value was not computed for this riichi win");
     }
     System.arraycopy(expectation ? expected : actual, 0, out, 0, seats);
   }
@@ -197,7 +199,8 @@ public final class UraExpectation {
     return riichi;
   }
 
-  private void average(FullView full, RoundEnd end, RoundOutcome outcome, TableState start, RoundHistory history) {
+  private void average(
+      FullView full, RoundEnd end, RoundOutcome outcome, TableState start, RoundHistory history) {
     int draws = loadPool(full);
     for (int v = 0; v < varyingCount; v++) {
       loadCounts(full, outcome.winner(varying[v]), counts[v]);
@@ -220,7 +223,8 @@ public final class UraExpectation {
         int first = rebased[0][k1];
         int second = varyingCount == 2 ? rebased[1][k2] : 0;
         int group = 0;
-        while (group < groups && (groupFirst[group] != first || groupSecond[group] != second)) group++;
+        while (group < groups && (groupFirst[group] != first || groupSecond[group] != second))
+          group++;
         if (group == groups) {
           groupFirst[group] = first;
           groupSecond[group] = second;
@@ -265,7 +269,8 @@ public final class UraExpectation {
       copy.setTsumo(bases[0], outcome.winner(0), outcome.pao(0), mask);
     } else {
       copy.setRon(bases[0], outcome.winner(0), outcome.loser(), outcome.pao(0), mask);
-      for (int i = 1; i < winners; i++) copy.addRonWinner(bases[i], outcome.winner(i), outcome.pao(i));
+      for (int i = 1; i < winners; i++)
+        copy.addRonWinner(bases[i], outcome.winner(i), outcome.pao(i));
     }
     return hypothetical.settle(start);
   }
@@ -287,10 +292,13 @@ public final class UraExpectation {
     int draws = full.seat(0).indicatorCount();
     ChanceLog log = full.chance();
     int size = log.size();
-    if (size < draws) throw new IllegalStateException("Only " + size + " chance events for " + draws + " ura indicators");
+    if (size < draws)
+      throw new IllegalStateException(
+          "Only " + size + " chance events for " + draws + " ura indicators");
     for (int index = size - draws; index < size; index++) {
       if (log.kind(index) != ChanceKind.URA)
-        throw new IllegalStateException("Chance event " + index + " is " + log.kind(index) + ", not an ura indicator");
+        throw new IllegalStateException(
+            "Chance event " + index + " is " + log.kind(index) + ", not an ura indicator");
       pool[Tiles.kind(log.tile(index))]++;
     }
     return draws;
@@ -303,9 +311,11 @@ public final class UraExpectation {
    */
   private static void requireRealized(ChanceLog log, int draws, int[] count, WinScore score) {
     int realized = 0;
-    for (int index = log.size() - draws; index < log.size(); index++) realized += count[Tiles.kind(log.tile(index))];
+    for (int index = log.size() - draws; index < log.size(); index++)
+      realized += count[Tiles.kind(log.tile(index))];
     if (realized != score.ura())
-      throw new IllegalStateException("The ura indicators count " + realized + " ura but the win scored " + score);
+      throw new IllegalStateException(
+          "The ura indicators count " + realized + " ura but the win scored " + score);
   }
 
   /** 和了者が数える裏ドラの数を、表示牌の種類ごとに書く（和了の手・面子・抜いた北のうち、その表示牌が指す種類の枚数）。 */

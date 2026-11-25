@@ -35,7 +35,8 @@ public final class TieJumps {
    */
   public static TieJump measure(HandEnds ends, GrpNetwork network, GrpWorkspace workspace) {
     if (network.variant() != ends.variant) {
-      throw new IllegalArgumentException("A " + network.variant() + " network for " + ends.variant + " hand ends");
+      throw new IllegalArgumentException(
+          "A " + network.variant() + " network for " + ends.variant + " hand ends");
     }
     int seats = ends.seats;
     AdjacentBins realized = new AdjacentBins(1, BINS);
@@ -79,7 +80,15 @@ public final class TieJumps {
       }
       for (int bin = 0; bin < BINS; bin++) {
         int difference = (bin - ZERO) * STEP;
-        curve[bin] = above(network, workspace, table, ends.states[tie.handEnd()], tie, difference, probabilities);
+        curve[bin] =
+            above(
+                network,
+                workspace,
+                table,
+                ends.states[tie.handEnd()],
+                tie,
+                difference,
+                probabilities);
         predictedCurve[bin] += curve[bin] / chosen.length;
       }
       predicted.add(0, curve[ZERO] - curve[ZERO - 1]);
@@ -116,7 +125,8 @@ public final class TieJumps {
     int total = scores[tie.first()] + scores[tie.second()];
     scores[tie.first()] = (total + difference) / 2;
     scores[tie.second()] = total - scores[tie.first()];
-    GrpState moved = new GrpState(state.variant(), state.round(), state.honba(), state.sticks(), scores);
+    GrpState moved =
+        new GrpState(state.variant(), state.round(), state.honba(), state.sticks(), scores);
     network.permutations(moved, workspace, probabilities);
     int firstRelative = Seats.relative(state.dealer(), tie.first(), seats);
     int secondRelative = Seats.relative(state.dealer(), tie.second(), seats);

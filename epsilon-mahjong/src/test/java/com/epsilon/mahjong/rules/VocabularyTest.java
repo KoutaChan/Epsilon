@@ -34,9 +34,11 @@ public class VocabularyTest {
   @Test
   public void scopedConstantsKeepTheDeclarationOrder() {
     Vocabulary<Sample> four = Vocabulary.of(Sample.class, Variant.TENHOU_4P);
-    Assert.assertEquals(four.constants(), List.of(Sample.PLAIN, Sample.FOUR_ONLY, Sample.MIDDLE, Sample.LAST));
+    Assert.assertEquals(
+        four.constants(), List.of(Sample.PLAIN, Sample.FOUR_ONLY, Sample.MIDDLE, Sample.LAST));
     Vocabulary<Sample> three = Vocabulary.of(Sample.class, Variant.TENHOU_3P);
-    Assert.assertEquals(three.constants(), List.of(Sample.PLAIN, Sample.MIDDLE, Sample.THREE_ONLY, Sample.LAST));
+    Assert.assertEquals(
+        three.constants(), List.of(Sample.PLAIN, Sample.MIDDLE, Sample.THREE_ONLY, Sample.LAST));
     Assert.assertSame(three.type(), Sample.class);
     Assert.assertSame(three.variant(), Variant.TENHOU_3P);
   }
@@ -59,7 +61,9 @@ public class VocabularyTest {
 
   @Test
   public void textHasTheFormOfArraysToString() {
-    Assert.assertEquals(Vocabulary.of(Sample.class, Variant.TENHOU_3P).toString(), "[PLAIN, MIDDLE, THREE_ONLY, LAST]");
+    Assert.assertEquals(
+        Vocabulary.of(Sample.class, Variant.TENHOU_3P).toString(),
+        "[PLAIN, MIDDLE, THREE_ONLY, LAST]");
     for (Variant variant : Variant.values()) {
       Vocabulary<AbortiveDraw> unscoped = Vocabulary.of(AbortiveDraw.class, variant);
       Assert.assertEquals(unscoped.constants(), List.of(AbortiveDraw.values()));
@@ -70,7 +74,8 @@ public class VocabularyTest {
   @Test
   public void listCannotBeChanged() {
     Vocabulary<Sample> vocabulary = Vocabulary.of(Sample.class, Variant.TENHOU_4P);
-    Assert.assertThrows(UnsupportedOperationException.class, () -> vocabulary.constants().add(Sample.PLAIN));
+    Assert.assertThrows(
+        UnsupportedOperationException.class, () -> vocabulary.constants().add(Sample.PLAIN));
   }
 
   @Test

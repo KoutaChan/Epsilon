@@ -61,19 +61,22 @@ public class ModeSwitchTest {
       Assert.assertEquals(PhiMode.byAlias(other), Optional.empty(), other);
     // 項目の id には別名を使えないので、grp-switch の切り替え先を取り違えることはない
     for (PhiMode mode : PhiMode.values())
-      Assert.assertThrows(IllegalArgumentException.class, () -> GrpFixtures.scoreEntry(mode.alias(), 1));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> GrpFixtures.scoreEntry(mode.alias(), 1));
   }
 
   @Test
   public void theAliasesAppendLinesFromTheFirstOpenIteration() throws Exception {
-    String[] assignments = GrpFixtures.concat(GrpFixtures.scoreStartAssignments(), "phi.late.cutoff=1e-4");
+    String[] assignments =
+        GrpFixtures.concat(GrpFixtures.scoreStartAssignments(), "phi.late.cutoff=1e-4");
     GrpFixtures.writeSettings(run, assignments);
     GrpFixtures.writeState(run, 5);
     PhiSetup setup = GrpFixtures.setup(assignments);
     // g000 は学習の JVM が書く。書かれる前は切り替えられない
     Assert.assertEquals(switchTo(run, "late"), Exit.FAILED.code());
     Assert.assertThrows(
-        IllegalStateException.class, () -> PhiControl.switchMode(run, setup, PhiMode.LATE, null, null, "test"));
+        IllegalStateException.class,
+        () -> PhiControl.switchMode(run, setup, PhiMode.LATE, null, null, "test"));
     Assert.assertFalse(Files.exists(files.modeHistory()));
     PhiHistory.initialize(files, setup);
 
@@ -88,16 +91,20 @@ public class ModeSwitchTest {
     Assert.assertTrue(PhiControl.switchMode(run, setup, PhiMode.LATE, 1e-4, 5, "test").isEmpty());
     Assert.assertEquals(PhiHistory.readModes(files), List.of(late));
     // 打ち切りの値が違えば、別の行として足す
-    Assert.assertEquals(switchTo(run, "late", "--cutoff", "1e-6", "--reason", "finer"), Exit.OK.code());
+    Assert.assertEquals(
+        switchTo(run, "late", "--cutoff", "1e-6", "--reason", "finer"), Exit.OK.code());
     ModeLine finer = ModeLine.late(1e-6, 5, "switch: finer");
     Assert.assertEquals(PhiHistory.readModes(files), List.of(late, finer));
 
     // 学習の JVM が動いていれば 1 反復先から効く。始まった反復からは効かせない
     ModeLine manual = ModeLine.grp(6, "switch: manual");
     try (TrainLock training = TrainLock.hold(new RunDirectory(run).trainLock())) {
-      Assert.assertEquals(PhiControl.switchMode(run, setup, PhiMode.GRP, null, null, "manual"), Optional.of(manual));
+      Assert.assertEquals(
+          PhiControl.switchMode(run, setup, PhiMode.GRP, null, null, "manual"),
+          Optional.of(manual));
       Assert.assertThrows(
-          IllegalArgumentException.class, () -> PhiControl.switchMode(run, setup, PhiMode.LATE, null, 5, "test"));
+          IllegalArgumentException.class,
+          () -> PhiControl.switchMode(run, setup, PhiMode.LATE, null, 5, "test"));
       Assert.assertEquals(switchTo(run, "late", "--from", "5"), Exit.FAILED.code());
     }
     // コホート 6 を確定した後は、反復 6 も始まっているとみなす
@@ -107,7 +114,12 @@ public class ModeSwitchTest {
     Assert.assertEquals(switchTo(run, "late"), Exit.OK.code());
     Assert.assertEquals(switchTo(run, "grp", "--from", "9", "--reason", "x1n3"), Exit.OK.code());
     List<ModeLine> written =
-        List.of(late, finer, manual, ModeLine.late(1e-4, 7, "switch: grp-switch"), ModeLine.grp(9, "switch: x1n3"));
+        List.of(
+            late,
+            finer,
+            manual,
+            ModeLine.late(1e-4, 7, "switch: grp-switch"),
+            ModeLine.grp(9, "switch: x1n3"));
     Assert.assertEquals(PhiHistory.readModes(files), written);
     Assert.assertEquals(PhiHistory.read(files).size(), 1, "mode lines leave the Φ entries alone");
 
@@ -137,7 +149,8 @@ public class ModeSwitchTest {
     Assert.assertEquals(PhiHistory.read(files).size(), 1);
     // 打ち切り 0 は、全てを数え上げる
     Assert.assertEquals(switchTo(run, "late", "--cutoff", "0"), Exit.OK.code());
-    Assert.assertEquals(PhiHistory.readModes(files), List.of(ModeLine.late(0, 3, "switch: grp-switch")));
+    Assert.assertEquals(
+        PhiHistory.readModes(files), List.of(ModeLine.late(0, 3, "switch: grp-switch")));
   }
 
   @Test
@@ -150,14 +163,17 @@ public class ModeSwitchTest {
     PhiHistory.initialize(files, setup);
     GrpFixtures.ready(files, "g002-a1", 2, leaf, q);
     PhiHistory.append(
-        files, HandEndPhi.checkpointEntry("g002-a1", GrpFixtures.VARIANT, leaf, "", q, 6, PhiEntry.INITIAL_ID, "test"));
+        files,
+        HandEndPhi.checkpointEntry(
+            "g002-a1", GrpFixtures.VARIANT, leaf, "", q, 6, PhiEntry.INITIAL_ID, "test"));
 
     // 反復 3 に効く g000 は q を持たないので、警告を出して書く
     Assert.assertEquals(switchTo(run, "late"), Exit.OK.code());
     List<String> warned = warnings();
     Assert.assertEquals(warned.size(), 1, warned.toString());
     Assert.assertTrue(
-        warned.getFirst().contains("entry g000 in effect at iteration 3 has no outcome network"), warned.getFirst());
+        warned.getFirst().contains("entry g000 in effect at iteration 3 has no outcome network"),
+        warned.getFirst());
     Assert.assertEquals(switchTo(run, "grp", "--from", "5"), Exit.OK.code());
     // 反復 6 に効く候補は q を持つので、開いてみてから書き、警告は出さない
     Assert.assertEquals(switchTo(run, "late", "--from", "6"), Exit.OK.code());
@@ -179,17 +195,25 @@ public class ModeSwitchTest {
     }
 
     // q が開けなければ、LATE の行は何も書かずに止める。GRP の行を足すときは q を開かない
-    Files.writeString(q.resolve(GrpCheckpoint.WEIGHTS_FILE), "x", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    Files.writeString(
+        q.resolve(GrpCheckpoint.WEIGHTS_FILE),
+        "x",
+        StandardCharsets.UTF_8,
+        StandardOpenOption.APPEND);
     Assert.assertEquals(switchTo(run, "grp", "--from", "7"), Exit.OK.code());
     Assert.assertEquals(switchTo(run, "late", "--from", "8"), Exit.FAILED.code());
     IllegalStateException refused =
         Assert.expectThrows(
-            IllegalStateException.class, () -> PhiControl.switchMode(run, setup, PhiMode.LATE, 1e-6, 8, "test"));
+            IllegalStateException.class,
+            () -> PhiControl.switchMode(run, setup, PhiMode.LATE, 1e-6, 8, "test"));
     Assert.assertTrue(
-        refused.getMessage().contains("entry g002-a1 in effect at iteration 8 cannot be opened in the LATE mode"),
+        refused
+            .getMessage()
+            .contains("entry g002-a1 in effect at iteration 8 cannot be opened in the LATE mode"),
         refused.getMessage());
     Assert.assertEquals(PhiHistory.readModes(files).size(), 4);
-    Assert.assertEquals(PhiHistory.readModes(files).getLast(), ModeLine.grp(7, "switch: grp-switch"));
+    Assert.assertEquals(
+        PhiHistory.readModes(files).getLast(), ModeLine.grp(7, "switch: grp-switch"));
   }
 
   @Test
@@ -197,7 +221,11 @@ public class ModeSwitchTest {
     Path leaf = GrpFixtures.network(run.resolve("leaf"), 11);
     Path q = GrpFixtures.outcomes(run.resolve("q"), GrpFixtures.VARIANT, 12);
     String[] assignments = {
-      "phi.source=FIXED_GRP", "phi.grp=" + leaf, "phi.outcomes=" + q, "phi.late.from=3", "phi.late.cutoff=1e-4"
+      "phi.source=FIXED_GRP",
+      "phi.grp=" + leaf,
+      "phi.outcomes=" + q,
+      "phi.late.from=3",
+      "phi.late.cutoff=1e-4"
     };
     GrpFixtures.writeSettings(run, assignments);
     GrpFixtures.writeState(run, 2);
@@ -209,13 +237,16 @@ public class ModeSwitchTest {
     // 項目の切り替えと再学習ができるのは、自前の GRP の run だけ
     Assert.assertEquals(switchTo(run, PhiEntry.INITIAL_ID), Exit.USAGE.code());
     Assert.assertEquals(switchTo(run, PhiEntry.FIXED_ID), Exit.USAGE.code());
-    Assert.assertEquals(PhiControlTest.prism("grp-refit", "--run", run.toString()), Exit.USAGE.code());
+    Assert.assertEquals(
+        PhiControlTest.prism("grp-refit", "--run", run.toString()), Exit.USAGE.code());
     Assert.assertEquals(switchTo(run, "late", "--from", "8"), Exit.OK.code());
     Assert.assertEquals(warnings(), List.of(), "the fixed GRP has q");
     Assert.assertEquals(switchTo(run, "late", "--from", "8"), Exit.OK.code());
     List<String> warned = warnings();
     Assert.assertEquals(warned.size(), 1, warned.toString());
-    Assert.assertTrue(warned.getFirst().contains("LATE mode is already in effect at iteration 8"), warned.getFirst());
+    Assert.assertTrue(
+        warned.getFirst().contains("LATE mode is already in effect at iteration 8"),
+        warned.getFirst());
     ModeLine again = ModeLine.late(1e-4, 8, "switch: grp-switch");
     Assert.assertEquals(PhiHistory.readModes(files), List.of(first, back, again));
     Assert.assertFalse(Files.exists(files.phiHistory()), "a fixed GRP writes no Φ entries");
@@ -233,8 +264,13 @@ public class ModeSwitchTest {
       }
     }
     // q が開けなければ、LATE の行は書かない
-    Files.writeString(q.resolve(GrpCheckpoint.WEIGHTS_FILE), "x", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
-    Assert.assertEquals(switchTo(run, "late", "--from", "9", "--cutoff", "1e-6"), Exit.FAILED.code());
+    Files.writeString(
+        q.resolve(GrpCheckpoint.WEIGHTS_FILE),
+        "x",
+        StandardCharsets.UTF_8,
+        StandardOpenOption.APPEND);
+    Assert.assertEquals(
+        switchTo(run, "late", "--from", "9", "--cutoff", "1e-6"), Exit.FAILED.code());
     Assert.assertEquals(PhiHistory.readModes(files), List.of(first, back, again));
   }
 
@@ -245,10 +281,12 @@ public class ModeSwitchTest {
 
     // 使い始める反復が 0 なら、手で足した行だけを書く
     Path withQ = run.resolve("with-q");
-    GrpFixtures.writeSettings(withQ, "phi.source=FIXED_GRP", "phi.grp=" + leaf, "phi.outcomes=" + q);
+    GrpFixtures.writeSettings(
+        withQ, "phi.source=FIXED_GRP", "phi.grp=" + leaf, "phi.outcomes=" + q);
     Assert.assertEquals(switchTo(withQ, "late"), Exit.OK.code());
     Assert.assertEquals(
-        PhiHistory.readModes(new GrpFiles(withQ)), List.of(ModeLine.late(1e-5, 1, "switch: grp-switch")));
+        PhiHistory.readModes(new GrpFiles(withQ)),
+        List.of(ModeLine.late(1e-5, 1, "switch: grp-switch")));
     Assert.assertEquals(warnings(), List.of());
 
     Path plain = run.resolve("plain");
@@ -258,9 +296,11 @@ public class ModeSwitchTest {
     List<String> warned = warnings();
     Assert.assertEquals(warned.size(), 1, warned.toString());
     Assert.assertTrue(
-        warned.getFirst().contains("entry fixed in effect at iteration 1 has no outcome network"), warned.getFirst());
+        warned.getFirst().contains("entry fixed in effect at iteration 1 has no outcome network"),
+        warned.getFirst());
     GrpFiles plainFiles = new GrpFiles(plain);
-    Assert.assertEquals(PhiHistory.readModes(plainFiles), List.of(ModeLine.late(1e-6, 1, "switch: grp-switch")));
+    Assert.assertEquals(
+        PhiHistory.readModes(plainFiles), List.of(ModeLine.late(1e-6, 1, "switch: grp-switch")));
     PhiSetup setup = GrpFixtures.setup(assignments);
     try (PhiResolver resolver = PhiResolver.open(setup, plainFiles)) {
       PhiValue value = resolver.resolve(1, setup.phi()).value();
@@ -278,7 +318,9 @@ public class ModeSwitchTest {
     Assert.assertEquals(switchTo(run, "late", "--cutoff", "1e-6"), Exit.USAGE.code());
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> PhiControl.switchMode(run, GrpFixtures.setup("phi.source=SCORE_RANK"), PhiMode.LATE, null, null, "x"));
+        () ->
+            PhiControl.switchMode(
+                run, GrpFixtures.setup("phi.source=SCORE_RANK"), PhiMode.LATE, null, null, "x"));
     Assert.assertFalse(Files.exists(files.directory()));
   }
 
@@ -292,7 +334,10 @@ public class ModeSwitchTest {
   private List<String> warnings() {
     List<String> warned =
         logs.list.stream()
-            .filter(event -> event.getLevel() == Level.WARN && event.getLoggerName().equals(PhiControl.class.getName()))
+            .filter(
+                event ->
+                    event.getLevel() == Level.WARN
+                        && event.getLoggerName().equals(PhiControl.class.getName()))
             .map(ILoggingEvent::getFormattedMessage)
             .toList();
     logs.list.clear();

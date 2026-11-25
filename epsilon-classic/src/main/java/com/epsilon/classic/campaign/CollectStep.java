@@ -51,9 +51,13 @@ final class CollectStep implements Step<CampaignIteration> {
     ClassicSettings settings = iteration.settings();
     ChampionStore store = ChampionStore.open(run.champion());
     Champion champion =
-        store.current().orElseThrow(() -> new IllegalStateException("The campaign " + run.root() + " has no champion"));
+        store
+            .current()
+            .orElseThrow(
+                () -> new IllegalStateException("The campaign " + run.root() + " has no champion"));
     List<Champion> pool = store.past(settings.selfPlay().pool());
-    UncertaintyCdf calibration = t == 1 ? UncertaintyCdf.empty() : Cohort.calibration(run.rows(t - 1));
+    UncertaintyCdf calibration =
+        t == 1 ? UncertaintyCdf.empty() : Cohort.calibration(run.rows(t - 1));
     Collector.Macro macro =
         new Collector.Macro(
             t,
@@ -67,16 +71,30 @@ final class CollectStep implements Step<CampaignIteration> {
     TrajectoryBatch trajectories = collected.trajectories();
     if (trajectories.variant() != settings.run().variant()) {
       throw new IllegalStateException(
-          "Macro " + t + " collected " + trajectories.variant() + " games, not " + settings.run().variant());
+          "Macro "
+              + t
+              + " collected "
+              + trajectories.variant()
+              + " games, not "
+              + settings.run().variant());
     }
     if (trajectories.games().size() != settings.schedule().games()) {
       throw new IllegalStateException(
-          "Macro " + t + " collected " + trajectories.games().size() + " games, not " + settings.schedule().games());
+          "Macro "
+              + t
+              + " collected "
+              + trajectories.games().size()
+              + " games, not "
+              + settings.schedule().games());
     }
     Champion opponent = collected.opponent();
     if (!opponent.equals(champion) && !pool.contains(opponent)) {
       throw new IllegalStateException(
-          "Macro " + t + " played against " + opponent.label() + ", who is neither the champion nor in the pool");
+          "Macro "
+              + t
+              + " played against "
+              + opponent.label()
+              + ", who is neither the champion nor in the pool");
     }
     long bytes = Cohort.write(part, collected);
     CollectReport metrics =
@@ -92,7 +110,8 @@ final class CollectStep implements Step<CampaignIteration> {
     report.write(part.resolve(CampaignStep.REPORT));
     DurableFiles.seal(part, sealed);
     LOG.info(
-        "t={} collected {} games and {} decisions of version {} against {} (champion {}, {} past champions, {} bytes)",
+        "t={} collected {} games and {} decisions of version {} against {} (champion {}, {} past"
+            + " champions, {} bytes)",
         t,
         metrics.games(),
         metrics.decisions(),

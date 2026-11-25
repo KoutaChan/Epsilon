@@ -16,17 +16,40 @@ public record InferenceSettings(
         List<String> devices,
     @Key(doc = "計算の型", value = "FLOAT32", change = Change.COLLECT) Precision precision,
     @Key(doc = "推論のバックエンド", value = "EAGER", change = Change.MACHINE) Kernels kernels,
-    @Key(doc = "1 回の推論に入れる行数の上限", value = "8", change = Change.MACHINE) @Range(min = 1) int maxBatch,
-    @Key(doc = "入力を符号化するスレッドの数", value = "20", change = Change.MACHINE) @Range(min = 1) int encoders,
+    @Key(doc = "1 回の推論に入れる行数の上限", value = "8", change = Change.MACHINE) @Range(min = 1)
+        int maxBatch,
+    @Key(doc = "入力を符号化するスレッドの数", value = "20", change = Change.MACHINE) @Range(min = 1)
+        int encoders,
     @Key(doc = "GPU ごとに同時に実行するバッチの数", value = "2", change = Change.MACHINE) @Range(min = 1, max = 4)
         int slots,
     @Key(doc = "GPU ごとに、符号化を終えて実行を待てるバッチの数（同時に実行するバッチの数以上）", value = "4", change = Change.MACHINE)
         @Range(min = 1)
-        int readyBatches) {
+        int readyBatches,
+    @Key(doc = "因果的なイベントの推論キャッシュ", change = Change.MACHINE) EventCacheSettings eventCache) {
+
+  public InferenceSettings(
+      List<String> devices,
+      Precision precision,
+      Kernels kernels,
+      int maxBatch,
+      int encoders,
+      int slots,
+      int readyBatches) {
+    this(
+        devices,
+        precision,
+        kernels,
+        maxBatch,
+        encoders,
+        slots,
+        readyBatches,
+        EventCacheSettings.DEFAULT);
+  }
 
   public InferenceSettings {
     devices = List.copyOf(devices);
     Objects.requireNonNull(precision, "precision");
+    Objects.requireNonNull(eventCache, "eventCache");
     Objects.requireNonNull(kernels, "kernels");
     try {
       NetworkDevices.parse(String.join(",", devices));
@@ -34,7 +57,8 @@ public record InferenceSettings(
       throw new InvalidSetting("devices", invalid.getMessage());
     }
     if (readyBatches < slots) {
-      throw new InvalidSetting("readyBatches", "readyBatches " + readyBatches + " is below slots " + slots);
+      throw new InvalidSetting(
+          "readyBatches", "readyBatches " + readyBatches + " is below slots " + slots);
     }
   }
 

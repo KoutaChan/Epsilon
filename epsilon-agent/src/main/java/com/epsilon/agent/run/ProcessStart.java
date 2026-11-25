@@ -21,7 +21,8 @@ public final class ProcessStart {
   public static OptionalLong of(long pid) {
     String stat;
     try {
-      stat = Files.readString(Path.of("/proc", Long.toString(pid), "stat"), StandardCharsets.US_ASCII);
+      stat =
+          Files.readString(Path.of("/proc", Long.toString(pid), "stat"), StandardCharsets.US_ASCII);
     } catch (IOException gone) {
       return OptionalLong.empty();
     }

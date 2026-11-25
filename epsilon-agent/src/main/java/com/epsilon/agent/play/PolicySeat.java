@@ -55,6 +55,12 @@ public final class PolicySeat implements TableSeat<Query> {
     return policy instanceof BatchedPolicy batched ? batched.admission(observation) : 0;
   }
 
+  /** 牌山の番号も方策に渡す。予約と実行には、方策が返した区分をそのまま使う。 */
+  @Override
+  public int admission(Observation observation, long wall) {
+    return policy instanceof BatchedPolicy batched ? batched.admission(observation, wall) : 0;
+  }
+
   @Override
   public int maxBatch(int admission) {
     return batched().maxBatch(admission);

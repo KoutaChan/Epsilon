@@ -104,6 +104,10 @@ final class StepFeed implements AutoCloseable {
 
   private final CohortStore store;
   private final int lanes;
+
+  /** レーンごとに、順伝播が Attention の記録を使うか（インデックスはそのレーンが読む分だけを作る）。 */
+  private final boolean[] attentionTapes;
+
   private final int budget;
   private final int threads;
   private final InputFormat format;
@@ -129,20 +133,22 @@ final class StepFeed implements AutoCloseable {
    *
    * @param store 行のストア
    * @param plan 学習の計画
-   * @param lanes デバイスの数
+   * @param attentionTapes デバイスの順に、そのレーンの順伝播が Attention の記録を使うか（長さがデバイスの数。{@link Learner#attentionTapes}）
    * @param threads 読み出しと符号化のスレッドの数
    */
-  StepFeed(CohortStore store, FitPlan plan, int lanes, int threads) {
+  StepFeed(CohortStore store, FitPlan plan, boolean[] attentionTapes, int threads) {
+    int lanes = attentionTapes.length;
     if (lanes < 1 || threads < 1) {
       throw new IllegalArgumentException(
           "lanes and threads must be positive: " + lanes + ", " + threads);
     }
     this.store = store;
     this.lanes = lanes;
+    this.attentionTapes = attentionTapes.clone();
     this.threads = threads;
     budget = plan.tokenBudget();
     Variant variant = store.variant();
-    format = InputFormat.of(variant);
+    format = plan.shape().inputFormat(InputFormat.of(variant));
     capacity = capacity(format, budget);
     pinned = (PtNDManager) NDManager.newBaseManager(Device.cpu(), PtEngine.ENGINE_NAME);
     coordinator = Executors.newSingleThreadExecutor(daemons("prism-feed-"));
@@ -225,7 +231,7 @@ final class StepFeed implements AutoCloseable {
         placed[indices.get(part)] = shared.get(part);
       }
     }
-    List<Microbatch> staged = stage(Arrays.asList(placed));
+    List<Microbatch> staged = stage(Arrays.asList(placed), placements);
     List<List<Microbatch>> assigned = new ArrayList<>(lanes);
     for (int lane = 0; lane < lanes; lane++) {
       assigned.add(new ArrayList<>());
@@ -247,12 +253,17 @@ final class StepFeed implements AutoCloseable {
     return step;
   }
 
-  /** マイクロバッチのデバイスへの入力を、作業スレッドでバッファに並べる（バッファは先読みのスレッドで借りる）。 */
-  private List<Microbatch> stage(List<Microbatch> microbatches) {
+  /**
+   * マイクロバッチのデバイスへの入力を、作業スレッドでバッファに並べる（バッファは先読みのスレッドで借りる）。インデックスは、割り当てた
+   * レーンの順伝播が読む分だけを作る。
+   */
+  private List<Microbatch> stage(List<Microbatch> microbatches, List<Placement> placements) {
     List<CompletableFuture<Microbatch>> staging = new ArrayList<>(microbatches.size());
-    for (Microbatch microbatch : microbatches) {
+    for (int index = 0; index < microbatches.size(); index++) {
+      Microbatch microbatch = microbatches.get(index);
+      boolean tape = attentionTapes[placements.get(index).lane()];
       PinnedUploads region = region();
-      staging.add(CompletableFuture.supplyAsync(() -> microbatch.staged(region), workers));
+      staging.add(CompletableFuture.supplyAsync(() -> microbatch.staged(region, tape), workers));
     }
     List<Microbatch> staged = new ArrayList<>(staging.size());
     for (CompletableFuture<Microbatch> future : staging) {
@@ -284,7 +295,8 @@ final class StepFeed implements AutoCloseable {
     long[] keys = new long[rows.length];
     long total = 0;
     for (int index = 0; index < rows.length; index++) {
-      int tokens = format.fixedTokens() + observation.bind(rows[index].observation(), 0).publicEvents();
+      int tokens =
+          format.fixedTokens() + observation.bind(rows[index].observation(), 0).publicEvents();
       keys[index] = (long) tokens << Integer.SIZE | index;
       total += tokens;
     }

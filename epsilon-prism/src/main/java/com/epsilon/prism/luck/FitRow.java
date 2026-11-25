@@ -15,6 +15,12 @@ interface FitRow {
   /** 判断のクラス。係数 β_c はクラスごとに持つ。 */
   DecisionClass decisionClass();
 
+  /** 判断時の局と自席の順位の区分。区分ごとに当てはめるときだけ読む。 */
+  int cell();
+
+  /** 判断時の局面。帳簿の補正率を求めるときだけ読む。 */
+  LedgerCell.Standing standing();
+
   /** 合法手ごとの値 Y（測っていない手は NaN）。 */
   float[] values();
 
@@ -24,13 +30,33 @@ interface FitRow {
   /** 手 {@code action} の、帳簿の列 {@code column} の値。 */
   float ledger(int action, int column);
 
-  /** コホートの行を読む。 */
-  static FitRow of(Row row) {
-    return new Cohort(row);
+  /** {@link #values} の中で、その経路で実際に打った手の位置（打った手を持たない行では −1）。帳簿の補正率の監査だけで読む。 */
+  int played();
+
+  /** 行の種類。帳簿の補正率の監査だけで読む。 */
+  Row.Source source();
+
+  /**
+   * コホートの行を読む。
+   *
+   * @param cells 行の区分と局面を読む区分（区分も局面も読まないときは null）
+   */
+  static FitRow of(Row row, LedgerCell cells) {
+    return new Cohort(row, cells);
+  }
+
+  /** 指定した候補順の根の特徴を返す。 */
+  default RootFeatures root(RootFeatures.Reader reader, int[] actions, int count, boolean hands) {
+    throw new IllegalStateException("This ledger row has no root features");
   }
 
   /** コホートの行。 */
-  record Cohort(Row row) implements FitRow {
+  record Cohort(Row row, LedgerCell cells) implements FitRow {
+    @Override
+    public RootFeatures root(RootFeatures.Reader reader, int[] actions, int count, boolean hands) {
+      return reader.read(row.observation(), 0, row.oracle(), actions, count, hands);
+    }
+
     @Override
     public long gameId() {
       return row.gameId();
@@ -39,6 +65,16 @@ interface FitRow {
     @Override
     public DecisionClass decisionClass() {
       return row.decisionClass();
+    }
+
+    @Override
+    public int cell() {
+      return cells.of(row.observation(), 0);
+    }
+
+    @Override
+    public LedgerCell.Standing standing() {
+      return cells.standing(row.observation(), 0);
     }
 
     @Override
@@ -54,6 +90,16 @@ interface FitRow {
     @Override
     public float ledger(int action, int column) {
       return row.ledger(action, column);
+    }
+
+    @Override
+    public int played() {
+      return row.played();
+    }
+
+    @Override
+    public Row.Source source() {
+      return row.source();
     }
   }
 }

@@ -31,7 +31,8 @@ public class ScenesTest {
     Face[] hand = Scenes.faces("123m456p789s1122z");
     for (int index = 0; index < Variant.HAND; index++) {
       int tile = wall[Wall.dealtPosition(VARIANT, 0, index)];
-      Assert.assertEquals(Face.of(Tiles.kind(tile), VARIANT.tiles().red(tile)), hand[index], "dealt " + index);
+      Assert.assertEquals(
+          Face.of(Tiles.kind(tile), VARIANT.tiles().red(tile)), hand[index], "dealt " + index);
     }
     int first = wall[Wall.livePosition(VARIANT, 0)];
     Assert.assertEquals(Tiles.kind(first), Tiles.M5);
@@ -71,10 +72,16 @@ public class ScenesTest {
     Assert.assertThrows(IllegalArgumentException.class, () -> Scenes.faces("12x"));
     Assert.assertThrows(IllegalArgumentException.class, () -> Scenes.faces("123m45"));
     Assert.assertThrows(IllegalArgumentException.class, () -> Scenes.faces("0z"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Scenes.first(VARIANT).hand(0, "123m456p789s112z"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Scenes.first(VARIANT).indicator("1z").indicator("2z"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Scenes.first(VARIANT).draws("1z1z1z1z1z"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Scenes.first(VARIANT).indicator("12z"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> Scenes.first(Variant.TENHOU_3P).draws("2m"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Scenes.first(VARIANT).hand(0, "123m456p789s112z"));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> Scenes.first(VARIANT).indicator("1z").indicator("2z"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Scenes.first(VARIANT).draws("1z1z1z1z1z"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Scenes.first(VARIANT).indicator("12z"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> Scenes.first(Variant.TENHOU_3P).draws("2m"));
   }
 }

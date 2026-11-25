@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FRAME_BODY_LIMIT, FRAME_HEADER_LIMIT } from "../../protocol/stdio.ts";
+import {
+  FRAME_BODY_LIMIT,
+  FRAME_HEADER_LIMIT,
+} from "@epsilon-reviewer/protocol/stdio";
 import { encodeFrame, FrameDecoder } from "../src/engine/frames.ts";
 
 const wire = (...frames) =>

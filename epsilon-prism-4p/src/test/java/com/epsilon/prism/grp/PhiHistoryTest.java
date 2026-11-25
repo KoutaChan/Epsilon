@@ -48,7 +48,8 @@ public class PhiHistoryTest {
       Assert.assertEquals(PhiHistory.read(files), List.of(first));
       // 再開のときに Φ の始め方を変えた設定は拒む。黙って別の Φ で続けることはしない
       Path checkpoint = GrpFixtures.network(run.resolve("model"), 1);
-      Assert.assertThrows(IOException.class, () -> PhiHistory.initialize(files, GrpFixtures.grpStart(checkpoint)));
+      Assert.assertThrows(
+          IOException.class, () -> PhiHistory.initialize(files, GrpFixtures.grpStart(checkpoint)));
     } finally {
       Snapshot.deleteTree(run);
     }
@@ -60,8 +61,11 @@ public class PhiHistoryTest {
     try {
       Path exact = GrpFixtures.gru(run.resolve("model"), 3);
       Path table = run.resolve("table.json");
-      PhiTable.of(GrpFixtures.VARIANT, new double[] {1.0, 1.2}, -1, 2.0 / 3, new double[][] {{0.01}}).write(table);
-      PhiSetup setup = GrpFixtures.grpStart(run.resolve("model/../model"), "phi.start.table=" + table);
+      PhiTable.of(
+              GrpFixtures.VARIANT, new double[] {1.0, 1.2}, -1, 2.0 / 3, new double[][] {{0.01}})
+          .write(table);
+      PhiSetup setup =
+          GrpFixtures.grpStart(run.resolve("model/../model"), "phi.start.table=" + table);
       var files = new GrpFiles(run);
       PhiEntry first = PhiHistory.initialize(files, setup);
       Assert.assertEquals(first.kind(), PhiEntryKind.NETWORK);
@@ -73,9 +77,11 @@ public class PhiHistoryTest {
       Assert.assertEquals(PhiHistory.initialize(files, setup), first);
       Assert.assertEquals(HandEndPhi.open(first, GrpFixtures.UTILITY).kind(), Phi.Kind.GRU);
       // 表を変えた設定は拒む
-      Assert.assertThrows(IOException.class, () -> PhiHistory.initialize(files, GrpFixtures.grpStart(exact)));
+      Assert.assertThrows(
+          IOException.class, () -> PhiHistory.initialize(files, GrpFixtures.grpStart(exact)));
       // 表の中身が変われば、項目を開かない
-      PhiTable.of(GrpFixtures.VARIANT, new double[] {1.3}, -1, 2.0 / 3, new double[][] {{0.01}}).write(table);
+      PhiTable.of(GrpFixtures.VARIANT, new double[] {1.3}, -1, 2.0 / 3, new double[][] {{0.01}})
+          .write(table);
       Assert.assertThrows(IOException.class, () -> HandEndPhi.open(first, GrpFixtures.UTILITY));
     } finally {
       Snapshot.deleteTree(run);
@@ -85,7 +91,12 @@ public class PhiHistoryTest {
   @Test
   public void theLatestStartingLineIsInEffect() {
     List<PhiEntry> entries =
-        List.of(score("g000", 1), self("g010-a1", 12, "a"), self("g020-a1", 30, "b"), self("g015-a1", 20, "c"), score("g000", 20));
+        List.of(
+            score("g000", 1),
+            self("g010-a1", 12, "a"),
+            self("g020-a1", 30, "b"),
+            self("g015-a1", 20, "c"),
+            score("g000", 20));
     Assert.assertTrue(PhiHistory.effectiveAt(entries, 0).isEmpty());
     Assert.assertEquals(PhiHistory.effectiveAt(entries, 11).orElseThrow().id(), "g000");
     Assert.assertEquals(PhiHistory.effectiveAt(entries, 12).orElseThrow().id(), "g010-a1");
@@ -100,18 +111,23 @@ public class PhiHistoryTest {
     try {
       var files = new GrpFiles(run);
       // g000 を書く前は何も足せない
-      Assert.assertThrows(IllegalArgumentException.class, () -> PhiHistory.append(files, self("g004-a1", 9, "a")));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> PhiHistory.append(files, self("g004-a1", 9, "a")));
       PhiHistory.initialize(files, GrpFixtures.scoreStart());
       GrpFixtures.writeState(run, 5);
       Assert.assertEquals(PhiHistory.firstOpenIteration(files), 5);
-      Assert.assertThrows(IllegalArgumentException.class, () -> PhiHistory.append(files, self("g004-a1", 4, "a")));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> PhiHistory.append(files, self("g004-a1", 4, "a")));
       PhiHistory.append(files, self("g004-a1", 5, "a"));
       try (TrainLock training = TrainLock.hold(new RunDirectory(run).trainLock())) {
         Assert.assertEquals(PhiHistory.firstOpenIteration(files), 6);
-        Assert.assertThrows(IllegalArgumentException.class, () -> PhiHistory.append(files, self("g004-a2", 5, "b")));
+        Assert.assertThrows(
+            IllegalArgumentException.class,
+            () -> PhiHistory.append(files, self("g004-a2", 5, "b")));
         PhiHistory.append(files, self("g004-a2", 6, "b"));
         // 学習の JVM は 1 つしか動かせない
-        Assert.assertThrows(IOException.class, () -> TrainLock.hold(new RunDirectory(run).trainLock()));
+        Assert.assertThrows(
+            IOException.class, () -> TrainLock.hold(new RunDirectory(run).trainLock()));
       }
       Assert.assertEquals(PhiHistory.firstOpenIteration(files), 5);
       Assert.assertEquals(PhiHistory.read(files).size(), 3);
@@ -135,7 +151,9 @@ public class PhiHistoryTest {
       Thread probe =
           new Thread(
               () -> {
-                try (var channel = java.nio.channels.FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                try (var channel =
+                        java.nio.channels.FileChannel.open(
+                            path, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                     var lock = channel.lock()) {
                   probing.countDown();
                   Thread.sleep(500);
@@ -169,9 +187,11 @@ public class PhiHistoryTest {
       GrpFixtures.writeState(run, 7);
       Assert.assertEquals(PhiHistory.firstOpenIteration(files), 7);
       Files.createDirectories(files.cohort(7));
-      Files.writeString(files.cohort(7).resolve(com.epsilon.prism.rows.CohortWriter.MANIFEST), "{}");
+      Files.writeString(
+          files.cohort(7).resolve(com.epsilon.prism.rows.CohortWriter.MANIFEST), "{}");
       Assert.assertEquals(PhiHistory.firstOpenIteration(files), 8);
-      Assert.assertThrows(IllegalArgumentException.class, () -> PhiHistory.append(files, self("g006-a1", 7, "a")));
+      Assert.assertThrows(
+          IllegalArgumentException.class, () -> PhiHistory.append(files, self("g006-a1", 7, "a")));
       PhiHistory.append(files, self("g006-a1", 8, "a"));
     } finally {
       Snapshot.deleteTree(run);
@@ -185,27 +205,82 @@ public class PhiHistoryTest {
       var files = new GrpFiles(run);
       PhiHistory.initialize(files, GrpFixtures.scoreStart());
       PhiHistory.append(files, self("g008-a1", 3, "a"));
-      Assert.assertThrows(IllegalArgumentException.class, () -> PhiHistory.append(files, self("g008-a1", 4, "other")));
+      Assert.assertThrows(
+          IllegalArgumentException.class,
+          () -> PhiHistory.append(files, self("g008-a1", 4, "other")));
       // 巻き戻しは、同じ id で同じ Φ を持つ行として足せる
       PhiHistory.append(files, score("g000", 4));
       PhiHistory.append(files, self("g008-a1", 6, "a"));
-      Assert.assertEquals(PhiHistory.effectiveAt(PhiHistory.read(files), 5).orElseThrow().kind(), PhiEntryKind.SCORE_RANK);
-      Assert.assertEquals(PhiHistory.effectiveAt(PhiHistory.read(files), 6).orElseThrow().id(), "g008-a1");
+      Assert.assertEquals(
+          PhiHistory.effectiveAt(PhiHistory.read(files), 5).orElseThrow().kind(),
+          PhiEntryKind.SCORE_RANK);
+      Assert.assertEquals(
+          PhiHistory.effectiveAt(PhiHistory.read(files), 6).orElseThrow().id(), "g008-a1");
       // 種類ごとに決まったフィールドの組を守らない項目は作れない
-      Assert.assertThrows(
-          IllegalArgumentException.class,
-          () -> new PhiEntry("x", PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp", "", "", "", "", "", 2, "", ""));
-      Assert.assertThrows(
-          IllegalArgumentException.class,
-          () -> new PhiEntry("x", PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT, "/grp", "", "", "", "", "", 2, "", ""));
       Assert.assertThrows(
           IllegalArgumentException.class,
           () ->
               new PhiEntry(
-                  "x", PhiEntryKind.NETWORK, GrpFixtures.VARIANT, "/grp", "sha", "/t.json", "", "", "", 2, "", ""));
+                  "x",
+                  PhiEntryKind.NETWORK,
+                  GrpFixtures.VARIANT,
+                  "/grp",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  2,
+                  "",
+                  ""));
       Assert.assertThrows(
           IllegalArgumentException.class,
-          () -> new PhiEntry("x", PhiEntryKind.SCORE_RANK, GrpFixtures.VARIANT, "", "", "", "", "", "", 0, "", ""));
+          () ->
+              new PhiEntry(
+                  "x",
+                  PhiEntryKind.SCORE_RANK,
+                  GrpFixtures.VARIANT,
+                  "/grp",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  2,
+                  "",
+                  ""));
+      Assert.assertThrows(
+          IllegalArgumentException.class,
+          () ->
+              new PhiEntry(
+                  "x",
+                  PhiEntryKind.NETWORK,
+                  GrpFixtures.VARIANT,
+                  "/grp",
+                  "sha",
+                  "/t.json",
+                  "",
+                  "",
+                  "",
+                  2,
+                  "",
+                  ""));
+      Assert.assertThrows(
+          IllegalArgumentException.class,
+          () ->
+              new PhiEntry(
+                  "x",
+                  PhiEntryKind.SCORE_RANK,
+                  GrpFixtures.VARIANT,
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  0,
+                  "",
+                  ""));
     } finally {
       Snapshot.deleteTree(run);
     }
@@ -217,7 +292,11 @@ public class PhiHistoryTest {
     try {
       var files = new GrpFiles(run);
       PhiHistory.initialize(files, GrpFixtures.scoreStart());
-      Files.writeString(files.phiHistory(), "{\"id\":\"g009-a1\",\"kind\":\"SEL", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+      Files.writeString(
+          files.phiHistory(),
+          "{\"id\":\"g009-a1\",\"kind\":\"SEL",
+          StandardCharsets.UTF_8,
+          StandardOpenOption.APPEND);
       Assert.assertEquals(PhiHistory.read(files).size(), 1);
       PhiHistory.append(files, self("g009-a2", 2, "b"));
       List<PhiEntry> entries = PhiHistory.read(files);
@@ -225,7 +304,8 @@ public class PhiHistoryTest {
       Assert.assertEquals(entries.get(1).id(), "g009-a2");
       Assert.assertTrue(Files.readString(files.phiHistory()).endsWith("\n"));
       // 改行で終わる壊れた行があれば、読まずに止める。どの項目が効いているか分からないため
-      Files.writeString(files.phiHistory(), "not json\n", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+      Files.writeString(
+          files.phiHistory(), "not json\n", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
       Assert.assertThrows(IOException.class, () -> PhiHistory.read(files));
     } finally {
       Snapshot.deleteTree(run);
@@ -248,8 +328,24 @@ public class PhiHistoryTest {
                     () -> {
                       try {
                         for (int i = 0; i < 10; i++) {
-                          PhiHistory.append(files, self("g" + (100 + writer) + "-a" + (i + 1), 2 + i, "s" + writer + i));
-                          new RefitRecord("g" + writer + "-a" + i, writer, RefitStatus.FAILED, RefitCause.MANUAL, null, GrpInit.WARM, "", "", "", "", null, null, "x", 0)
+                          PhiHistory.append(
+                              files,
+                              self("g" + (100 + writer) + "-a" + (i + 1), 2 + i, "s" + writer + i));
+                          new RefitRecord(
+                                  "g" + writer + "-a" + i,
+                                  writer,
+                                  RefitStatus.FAILED,
+                                  RefitCause.MANUAL,
+                                  null,
+                                  GrpInit.WARM,
+                                  "",
+                                  "",
+                                  "",
+                                  "",
+                                  null,
+                                  null,
+                                  "x",
+                                  0)
                               .append(files);
                         }
                       } catch (Throwable failure) {
@@ -280,13 +376,20 @@ public class PhiHistoryTest {
   public void phiStartIsValidated() {
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> GrpFixtures.setup("phi.source=SELF_GRP", "phi.start.kind=GRP_CHECKPOINT", "phi.grp.monitor=RECORD"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> GrpFixtures.scoreStart("phi.start.grp=/grp"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> GrpFixtures.scoreStart("phi.start.table=/table.json"));
-    Assert.assertThrows(IllegalArgumentException.class, () -> GrpFixtures.scoreStart("phi.grp.monitor=OFF"));
+        () ->
+            GrpFixtures.setup(
+                "phi.source=SELF_GRP", "phi.start.kind=GRP_CHECKPOINT", "phi.grp.monitor=RECORD"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> GrpFixtures.scoreStart("phi.start.grp=/grp"));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> GrpFixtures.setup("phi.source=FIXED_GRP", "phi.start.kind=SCORE_RANK", "phi.grp=/grp"));
+        () -> GrpFixtures.scoreStart("phi.start.table=/table.json"));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> GrpFixtures.scoreStart("phi.grp.monitor=OFF"));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            GrpFixtures.setup("phi.source=FIXED_GRP", "phi.start.kind=SCORE_RANK", "phi.grp=/grp"));
     Assert.assertTrue(GrpFixtures.scoreStart().selfPlay());
     Assert.assertTrue(GrpFixtures.grpStart(Path.of("/grp")).selfPlay());
   }
@@ -295,7 +398,11 @@ public class PhiHistoryTest {
   @Test
   public void previousAtSkipsTheSameValue() {
     List<PhiEntry> entries =
-        List.of(score("g000", 1), self("g003-a1", 4, "a"), self("g003-a1", 6, "a"), self("g007-a1", 9, "b"));
+        List.of(
+            score("g000", 1),
+            self("g003-a1", 4, "a"),
+            self("g003-a1", 6, "a"),
+            self("g007-a1", 9, "b"));
     Assert.assertTrue(PhiHistory.previousAt(entries, 3).isEmpty());
     Assert.assertEquals(PhiHistory.previousAt(entries, 7).orElseThrow().id(), "g000");
     Assert.assertEquals(PhiHistory.previousAt(entries, 9).orElseThrow().id(), "g003-a1");

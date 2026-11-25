@@ -29,14 +29,28 @@ import java.util.Optional;
  * @param cutoff LATE の打ち切りの値（行き先が late のときだけ使う。無ければ設定の phi.late.cutoff）
  * @param reason 記録に書く理由
  */
-@Named(value = "grp-switch", doc = "Switch the Φ entry or mode by hand, or go back to the previous entry")
+@Named(
+    value = "grp-switch",
+    doc = "Switch the Φ entry or mode by hand, or go back to the previous entry")
 public record SwitchGrp(
     @Key(doc = "Run directory", presence = Presence.REQUIRED) Path run,
-    @Key(doc = "Target (id of a READY candidate trial, id of an existing entry, or a mode alias: late, grp)", presence = Presence.REQUIRED)
+    @Key(
+            doc =
+                "Target (id of a READY candidate trial, id of an existing entry, or a mode alias:"
+                    + " late, grp)",
+            presence = Presence.REQUIRED)
         String to,
-    @Key(doc = "Iteration to take effect from (default: the one after the last started iteration)", presence = Presence.ABSENT) @Range(min = 1) Integer from,
-    @Key(doc = "LATE cutoff (only for target late; default: phi.late.cutoff in the settings)", presence = Presence.ABSENT)
-        @Range(min = 0, max = 0.01) Double cutoff,
+    @Key(
+            doc =
+                "Iteration to take effect from (default: the one after the last started iteration)",
+            presence = Presence.ABSENT)
+        @Range(min = 1)
+        Integer from,
+    @Key(
+            doc = "LATE cutoff (only for target late; default: phi.late.cutoff in the settings)",
+            presence = Presence.ABSENT)
+        @Range(min = 0, max = 0.01)
+        Double cutoff,
     @Key(doc = "Reason written to the record", value = "grp-switch") String reason)
     implements PrismCommand {
 
@@ -52,19 +66,23 @@ public record SwitchGrp(
     if (mode.isPresent()) {
       if (phi.lateSettings().isEmpty()) {
         throw new SettingsException(
-            List.of("The run " + run + " has the Φ source " + phi.source() + ", which has no Φ modes"));
+            List.of(
+                "The run " + run + " has the Φ source " + phi.source() + ", which has no Φ modes"));
       }
       var setup = new PhiSetup(phi, settings.run().variant(), settings.run().seed());
-      Optional<ModeLine> appended = PhiControl.switchMode(run, setup, mode.get(), cutoff, from, reason);
+      Optional<ModeLine> appended =
+          PhiControl.switchMode(run, setup, mode.get(), cutoff, from, reason);
       return Outcome.ok(
           appended
               .map(line -> "appended " + line.mode() + " from iteration " + line.effectiveFrom())
               .orElse(to + " is already in effect"));
     }
     if (!(phi instanceof PhiSettings.SelfGrp)) {
-      throw new SettingsException(List.of("The run " + run + " has the Φ source " + phi.source() + ", not SELF_GRP"));
+      throw new SettingsException(
+          List.of("The run " + run + " has the Φ source " + phi.source() + ", not SELF_GRP"));
     }
     Optional<PhiEntry> appended = PhiControl.switchTo(run, to, from, reason);
-    return Outcome.ok(appended.map(entry -> "appended " + entry.id()).orElse(to + " is already in effect"));
+    return Outcome.ok(
+        appended.map(entry -> "appended " + entry.id()).orElse(to + " is already in effect"));
   }
 }

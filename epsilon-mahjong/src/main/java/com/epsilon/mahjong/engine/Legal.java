@@ -45,7 +45,8 @@ public final class Legal {
    * @param id 次に使う判断 ID
    * @return 判断を作った後の、次に使う判断 ID
    */
-  static long turn(PublicState state, Hand hand, Wall wall, Decisions decisions, long id, RuleWorkspace ws) {
+  static long turn(
+      PublicState state, Hand hand, Wall wall, Decisions decisions, long id, RuleWorkspace ws) {
     TurnEvent draw = state.last();
     if (draw.kind() != TurnEvent.Kind.DRAW) {
       throw new IllegalStateException("A turn follows a draw, not " + draw.kind());
@@ -84,7 +85,14 @@ public final class Legal {
         addRiichiDiscards(hand, drawn, draw.red(), reds, decisions, ws);
       }
       for (long kinds = hand.shape().kinds(); kinds != 0; kinds &= kinds - 1) {
-        addDiscards(hand, Long.numberOfTrailingZeros(kinds), drawn, draw.red(), reds, Type.DAHAI, decisions);
+        addDiscards(
+            hand,
+            Long.numberOfTrailingZeros(kinds),
+            drawn,
+            draw.red(),
+            reds,
+            Type.DAHAI,
+            decisions);
       }
       if (nineTerminals(state, hand, seat)) {
         decisions.add(KYUSHU_CODE);
@@ -106,7 +114,14 @@ public final class Legal {
     decisions.clear();
     decisions.open(seat, EngineDecisionKind.POST_CALL_DAHAI);
     for (long kinds = allowed; kinds != 0; kinds &= kinds - 1) {
-      addDiscards(hand, Long.numberOfTrailingZeros(kinds), TurnEvent.NONE, false, reds, Type.DAHAI, decisions);
+      addDiscards(
+          hand,
+          Long.numberOfTrailingZeros(kinds),
+          TurnEvent.NONE,
+          false,
+          reds,
+          Type.DAHAI,
+          decisions);
     }
     return decisions.close(id) ? id + 1 : id;
   }
@@ -150,7 +165,8 @@ public final class Legal {
       }
     }
     if (count == 0) {
-      throw new IllegalStateException("No discard is left after " + call + " by seat " + view.seat());
+      throw new IllegalStateException(
+          "No discard is left after " + call + " by seat " + view.seat());
     }
     return count;
   }
@@ -188,7 +204,8 @@ public final class Legal {
     int kind = discard.tile();
     return switch (call.type()) {
       case PON -> Meld.pon(kind, source, aka(discard.red(), call.selection().red()));
-      case DAIMINKAN -> Meld.daiminkan(kind, source, aka(discard.red(), Tiles.contains(handReds, kind)));
+      case DAIMINKAN ->
+          Meld.daiminkan(kind, source, aka(discard.red(), Tiles.contains(handReds, kind)));
       case CHI -> Meld.chi(call.base(), kind, aka(discard.red(), call.selection().red()));
       default -> throw new IllegalArgumentException("Not a call: " + call);
     };
@@ -236,7 +253,8 @@ public final class Legal {
     TurnEvent discard = view.last();
     int seat = view.seat();
     if (discard.kind() != TurnEvent.Kind.DISCARD || discard.seat() == seat) {
-      throw new IllegalStateException("Seat " + seat + " can call only another seat's discard, not " + discard.kind());
+      throw new IllegalStateException(
+          "Seat " + seat + " can call only another seat's discard, not " + discard.kind());
     }
     Variant variant = view.variant();
     Type type = call.type();
@@ -247,7 +265,9 @@ public final class Legal {
     if (call.tile() != called) {
       throw new IllegalArgumentException(call + " does not call the discarded kind " + called);
     }
-    boolean fromLeft = Meld.RelativeSource.of(seat, discard.seat(), variant.seats()) == Meld.RelativeSource.KAMICHA;
+    boolean fromLeft =
+        Meld.RelativeSource.of(seat, discard.seat(), variant.seats())
+            == Meld.RelativeSource.KAMICHA;
     if (type == Type.CHI ? !fromLeft : !Tiles.contains(variant.meldableKinds(), called)) {
       throw new IllegalArgumentException(
           call + " is not open to seat " + seat + " on a discard of seat " + discard.seat());
@@ -262,9 +282,11 @@ public final class Legal {
         throw new IllegalArgumentException(call + " needs a red five in the hand of seat " + seat);
       }
       // 大明槓は手のその種類を全て使う。チー・ポンは、赤を使う鳴きなら赤 1 枚と赤でない牌を、使わない鳴きなら赤でない牌だけを使う。
-      int usable = type == Type.DAIMINKAN || useRed ? view.count(kind) : view.count(kind) - (red ? 1 : 0);
+      int usable =
+          type == Type.DAIMINKAN || useRed ? view.count(kind) : view.count(kind) - (red ? 1 : 0);
       if (usable < perKind) {
-        throw new IllegalArgumentException(call + " needs more of kind " + kind + " in the hand of seat " + seat);
+        throw new IllegalArgumentException(
+            call + " needs more of kind " + kind + " in the hand of seat " + seat);
       }
     }
     return meldOf(call, seat, discard, reds, variant.seats());
@@ -273,7 +295,8 @@ public final class Legal {
   /** 鳴きで手から面子へ出す種類。ポン・大明槓は鳴いた種類、チーは順子のほかの 2 種類。 */
   private static long takenKinds(Action call) {
     return call.type() == Type.CHI
-        ? Tiles.range(call.base(), call.base() + Meld.Type.CHI.tiles() - 1) & ~Tiles.bit(call.tile())
+        ? Tiles.range(call.base(), call.base() + Meld.Type.CHI.tiles() - 1)
+            & ~Tiles.bit(call.tile())
         : Tiles.bit(call.tile());
   }
 
@@ -339,6 +362,10 @@ public final class Legal {
   /** 立直の打牌を足す。足すのは、打った後の 13 枚に形の上の待ちが残る種類だけ。 */
   private static void addRiichiDiscards(
       Hand hand, int drawn, boolean drawnRed, long reds, Decisions decisions, RuleWorkspace ws) {
+    // 1 枚打っても和了に足りない枚数は減らないので、14 枚で 2 枚以上足りなければ、どれを打っても聴牌にならない
+    if (ws.analyzer().shanten(hand.shape()) > 0) {
+      return;
+    }
     HandShape probe = ws.probe();
     for (long kinds = hand.shape().kinds(); kinds != 0; kinds &= kinds - 1) {
       int kind = Long.numberOfTrailingZeros(kinds);

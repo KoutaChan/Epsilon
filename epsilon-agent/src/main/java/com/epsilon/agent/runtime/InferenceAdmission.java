@@ -137,7 +137,9 @@ public final class InferenceAdmission<E, K, R> {
   public Metrics metrics() {
     Map<Reason, Metrics.Count> admitted = new EnumMap<>(Reason.class);
     for (Reason reason : Reason.values()) {
-      admitted.put(reason, new Metrics.Count(batchesByReason[reason.ordinal()], rowsByReason[reason.ordinal()]));
+      admitted.put(
+          reason,
+          new Metrics.Count(batchesByReason[reason.ordinal()], rowsByReason[reason.ordinal()]));
     }
     return new Metrics(admitted, totalOldestWaitNanos, maxOldestWaitNanos);
   }
@@ -148,7 +150,8 @@ public final class InferenceAdmission<E, K, R> {
       if (candidate == null) {
         return null;
       }
-      DecisionInferenceIngress.Attempt attempt = acquire.apply(candidate.evaluator(), candidate.key());
+      DecisionInferenceIngress.Attempt attempt =
+          acquire.apply(candidate.evaluator(), candidate.key());
       if (!attempt.acquired()) {
         blocked.put(candidate.evaluator(), Boolean.TRUE);
         blockedWakes.add(attempt.available());
@@ -168,7 +171,8 @@ public final class InferenceAdmission<E, K, R> {
       rowsByReason[reason.ordinal()] += rows.size();
       totalOldestWaitNanos += waited;
       maxOldestWaitNanos = Math.max(maxOldestWaitNanos, waited);
-      return new Admitted<>(candidate.evaluator(), candidate.key(), rows, reason, attempt.ingress(), waited);
+      return new Admitted<>(
+          candidate.evaluator(), candidate.key(), rows, reason, attempt.ingress(), waited);
     }
   }
 
@@ -200,14 +204,20 @@ public final class InferenceAdmission<E, K, R> {
    * @param queueWaitNanos バッチで最も古い行が待った時間（ナノ秒）
    */
   public record Admitted<E, K, R>(
-      E evaluator, K key, List<R> rows, Reason reason, DecisionInferenceIngress ingress, long queueWaitNanos) {}
+      E evaluator,
+      K key,
+      List<R> rows,
+      Reason reason,
+      DecisionInferenceIngress ingress,
+      long queueWaitNanos) {}
 
   /**
    * 出したバッチの集計。待ち時間は、各バッチで最も古い行が待った時間を集めたもので、全ての行の待ち時間の平均ではない。
    *
    * @param admitted 理由ごとのバッチ数と行数
    */
-  public record Metrics(Map<Reason, Count> admitted, long totalOldestWaitNanos, long maxOldestWaitNanos) {
+  public record Metrics(
+      Map<Reason, Count> admitted, long totalOldestWaitNanos, long maxOldestWaitNanos) {
 
     public record Count(long batches, long rows) {}
 
@@ -220,6 +230,7 @@ public final class InferenceAdmission<E, K, R> {
   private static final class RowQueues<E, K, R> {
     private final long maxWaitNanos;
     private final ToIntBiFunction<E, K> batchSize;
+
     /** 評価器の一覧。評価器ごとの区分のキューは、下のリストの同じ添字に置く。評価器は数個なので、同一性で前から探す。 */
     private final List<E> evaluators = new ArrayList<>();
 
@@ -294,13 +305,16 @@ public final class InferenceAdmission<E, K, R> {
           }
         }
       }
-      return selectedRows == null ? null : new Candidate<>(selectedEvaluator, selectedKey, selectedRows, selectedIndex);
+      return selectedRows == null
+          ? null
+          : new Candidate<>(selectedEvaluator, selectedKey, selectedRows, selectedIndex);
     }
 
     /** 候補のバッチに入る分の行を、入れた順に取り出す。残った行の入れた時刻は変えない。 */
     List<R> remove(Candidate<E, K, R> candidate) {
       Ring<R> source = candidate.rows();
-      int count = Math.min(source.size, batchSize.applyAsInt(candidate.evaluator(), candidate.key()));
+      int count =
+          Math.min(source.size, batchSize.applyAsInt(candidate.evaluator(), candidate.key()));
       List<R> rows = new ArrayList<>(count);
       for (int row = 0; row < count; row++) {
         rows.add(source.remove());

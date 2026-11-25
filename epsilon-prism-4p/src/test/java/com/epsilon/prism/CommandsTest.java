@@ -19,8 +19,10 @@ import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.prism.app.DuelSigma;
 import com.epsilon.prism.app.Evaluate;
 import com.epsilon.prism.app.FitCohorts;
+import com.epsilon.prism.app.GrpCalibration;
 import com.epsilon.prism.app.GrpSigma;
 import com.epsilon.prism.app.GrpTrust;
+import com.epsilon.prism.app.HoldoutLoss;
 import com.epsilon.prism.app.JobsCreate;
 import com.epsilon.prism.app.JobsList;
 import com.epsilon.prism.app.JobsRetry;
@@ -31,6 +33,7 @@ import com.epsilon.prism.app.PrismApp;
 import com.epsilon.prism.app.Records;
 import com.epsilon.prism.app.RefitGrp;
 import com.epsilon.prism.app.Report;
+import com.epsilon.prism.app.SplitDuel;
 import com.epsilon.prism.app.SwitchGrp;
 import com.epsilon.prism.app.Train;
 import com.epsilon.prism.eval.EvaluationTable;
@@ -62,8 +65,26 @@ public class CommandsTest {
 
   private static final List<String> COMMANDS =
       List.of(
-          "train", "jobs list", "jobs run", "jobs retry", "jobs create", "report", "evaluate",
-          "duel-sigma", "fit-cohorts", "records", "grp-refit", "grp-switch", "grp-trust", "grp-sigma", "play-tenhou",
+          "train",
+          "jobs list",
+          "jobs run",
+          "jobs retry",
+          "jobs create",
+          "report",
+          "evaluate",
+          "yardstick",
+          "duel-sigma",
+          "holdout-loss",
+          "split-duel",
+          "grp-calibration",
+          "fit-cohorts",
+          "fit-plateau",
+          "records",
+          "grp-refit",
+          "grp-switch",
+          "grp-trust",
+          "grp-sigma",
+          "play-tenhou",
           "play-riichi");
 
   /** 最後に実行した {@link Echo}。 */
@@ -73,7 +94,8 @@ public class CommandsTest {
   public void commandsAreDistinctAndListedInHelpOrder() {
     List<String> names = new ArrayList<>();
     for (Class<?> group : PrismApp.application().commands())
-      for (Class<?> command : group.getPermittedSubclasses()) names.add(command.getAnnotation(Named.class).value());
+      for (Class<?> command : group.getPermittedSubclasses())
+        names.add(command.getAnnotation(Named.class).value());
     Assert.assertEquals(names, COMMANDS);
   }
 
@@ -83,38 +105,64 @@ public class CommandsTest {
     Assert.assertEquals(section(JobsList.class, "jobs.list", "run = \"/r\""), new JobsList(R));
     Assert.assertEquals(section(JobsRun.class, "jobs.run", "run = \"/r\""), new JobsRun(R));
     Assert.assertEquals(
-        section(JobsRetry.class, "jobs.retry", "run = \"/r\"\nname = \"v00002-x1n3\""), new JobsRetry(R, "v00002-x1n3"));
-    Assert.assertEquals(section(Report.class, "report", "run = \"/r\""), new Report(R, null, false, null, null, null));
+        section(JobsRetry.class, "jobs.retry", "run = \"/r\"\nname = \"v00002-x1n3\""),
+        new JobsRetry(R, "v00002-x1n3"));
     Assert.assertEquals(
-        section(JobsCreate.class, "jobs.create", "run = \"/r\"\ntable = \"x1n3\"\nversions = \"2..4\""),
+        section(Report.class, "report", "run = \"/r\""),
+        new Report(R, null, false, null, null, null));
+    Assert.assertEquals(
+        section(
+            JobsCreate.class, "jobs.create", "run = \"/r\"\ntable = \"x1n3\"\nversions = \"2..4\""),
         new JobsCreate(R, "x1n3", "2..4"));
     Assert.assertEquals(
         section(Evaluate.class, "evaluate", "model = \"prism:/m\"\ntable = \"x1n3\"\nout = \"/o\""),
         new Evaluate("prism:/m", null, null, "x1n3", O, null));
     Assert.assertEquals(
-        section(Evaluate.class, "evaluate", "snapshots = \"/r\"\nversions = \"2..4\"\ntable = \"x1n3\"\nout = \"/o\""),
+        section(
+            Evaluate.class,
+            "evaluate",
+            "snapshots = \"/r\"\nversions = \"2..4\"\ntable = \"x1n3\"\nout = \"/o\""),
         new Evaluate(null, R, "2..4", "x1n3", O, null));
-    Assert.assertEquals(section(DuelSigma.class, "duel-sigma", "run = \"/r\""), new DuelSigma(R, null, 16, 25000));
+    Assert.assertEquals(
+        section(DuelSigma.class, "duel-sigma", "run = \"/r\""), new DuelSigma(R, null, 16, 25000));
     Assert.assertEquals(
         section(FitCohorts.class, "fit-cohorts", "run = \"/r\"\ncohorts = \"3..5\"\nout = \"/o\""),
         new FitCohorts(R, "3..5", O, FitCohorts.Mode.RAW, null, null, null, null, null, 0));
     Assert.assertEquals(
         section(Records.class, "records", "model = \"prism:/m\"\nout = \"/o\""),
         new Records("prism:/m", O, EvaluationTable.HEURISTIC, null, 1024, 0, null));
-    Assert.assertEquals(section(RefitGrp.class, "grp-refit", "run = \"/r\""), new RefitGrp(R, null));
+    Assert.assertEquals(
+        section(RefitGrp.class, "grp-refit", "run = \"/r\""), new RefitGrp(R, null));
     Assert.assertEquals(
         section(SwitchGrp.class, "grp-switch", "run = \"/r\"\nto = \"g002-a1\""),
         new SwitchGrp(R, "g002-a1", null, null, "grp-switch"));
-    Assert.assertEquals(section(GrpTrust.class, "grp-trust", "run = \"/r\""), new GrpTrust(R, null, 2000));
-    Assert.assertEquals(section(GrpSigma.class, "grp-sigma", "run = \"/r\""), new GrpSigma(R, null));
+    Assert.assertEquals(
+        section(GrpTrust.class, "grp-trust", "run = \"/r\""), new GrpTrust(R, null, 2000));
+    Assert.assertEquals(
+        section(GrpSigma.class, "grp-sigma", "run = \"/r\""), new GrpSigma(R, null));
+    Assert.assertEquals(
+        section(GrpCalibration.class, "grp-calibration", "run = '/r'\ncohort = 1"),
+        new GrpCalibration(R, 1));
+    Assert.assertEquals(
+        section(
+            HoldoutLoss.class,
+            "holdout-loss",
+            "run = '/r'\nversions = ['/r']\ncohort = 1\nout = '/o'"),
+        new HoldoutLoss(R, 1, List.of(R), O));
+    Assert.assertEquals(
+        section(SplitDuel.class, "split-duel", "a = '/r'\nb = '/r'\nmu = '/r'\ngames = 2\nq = 0.5"),
+        new SplitDuel(R, R, R, 0, 2, 0.5, null, null, null));
     Assert.assertEquals(
         section(PlayTenhou.class, "play-tenhou", "model = \"prism:/m\"\nroom = \"1234\""),
-        new PlayTenhou("prism:/m", "1234", "NoName", 1, Variant.TENHOU_4P, PolicyOptions.defaults()));
+        new PlayTenhou(
+            "prism:/m", "1234", "NoName", 1, Variant.TENHOU_4P, PolicyOptions.defaults()));
     Assert.assertEquals(
         section(PlayRiichi.class, "play-riichi", "model = \"/m\""),
         new PlayRiichi(Path.of("/m"), 0, PolicyOptions.defaults(), null));
     Assert.assertEquals(
-        PolicyOptions.defaults(), new PolicyOptions("cpu", Precision.FLOAT32, 8, Kernels.EAGER), "the policy defaults");
+        PolicyOptions.defaults(),
+        new PolicyOptions("cpu", Precision.FLOAT32, 8, Kernels.EAGER),
+        "the policy defaults");
   }
 
   /**
@@ -124,19 +172,25 @@ public class CommandsTest {
   @Test
   public void theVariantCommandsRunFromThePrismEntryPoint() {
     Application<PrismSettings> prism = PrismApp.application();
-    List<Class<? extends Command<? super PrismSettings>>> commands = new ArrayList<>(prism.commands());
+    List<Class<? extends Command<? super PrismSettings>>> commands =
+        new ArrayList<>(prism.commands());
     commands.add(EchoCommand.class);
     Application<PrismSettings> application =
-        new Application<>(prism.name(), prism.schema(), commands, prism.base(), prism.check(), prism.runKind());
+        new Application<>(
+            prism.name(), prism.schema(), commands, prism.base(), prism.check(), prism.runKind());
     List<String> names = new ArrayList<>();
     for (Class<?> group : application.commands())
-      for (Class<?> command : group.getPermittedSubclasses()) names.add(command.getAnnotation(Named.class).value());
+      for (Class<?> command : group.getPermittedSubclasses())
+        names.add(command.getAnnotation(Named.class).value());
     Assert.assertEquals(names.getLast(), "echo");
     Assert.assertEquals(App.run(application, new String[] {"help", "echo"}), Exit.OK.code());
     Assert.assertEquals(App.run(application, new String[] {"echo"}), Exit.USAGE.code());
-    Assert.assertEquals(App.run(application, new String[] {"echo", "--path", "/o", "--count", "0"}), Exit.USAGE.code());
+    Assert.assertEquals(
+        App.run(application, new String[] {"echo", "--path", "/o", "--count", "0"}),
+        Exit.USAGE.code());
     ECHOED.set(null);
-    Assert.assertEquals(App.run(application, new String[] {"echo", "--path", "/o"}), Exit.OK.code());
+    Assert.assertEquals(
+        App.run(application, new String[] {"echo", "--path", "/o"}), Exit.OK.code());
     Assert.assertEquals(ECHOED.get(), new Echo(O, 1));
   }
 
@@ -151,18 +205,23 @@ public class CommandsTest {
     try {
       Path run = root.resolve("run");
       // 存在しない run は、作らずに拒む
-      Assert.assertEquals(Main.run(new String[] {"train", "--run", run.toString()}), Exit.USAGE.code());
-      Assert.assertEquals(Main.run(new String[] {"jobs", "run", "--run", run.toString()}), Exit.USAGE.code());
+      Assert.assertEquals(
+          Main.run(new String[] {"train", "--run", run.toString()}), Exit.USAGE.code());
+      Assert.assertEquals(
+          Main.run(new String[] {"jobs", "run", "--run", run.toString()}), Exit.USAGE.code());
       Assert.assertFalse(Files.exists(run), "a refused train creates no run");
       TestSettings.create(run, "phi.source=SCORE_RANK");
       // run を動かすコマンドは、設定を上書きする層を受け付けない
       Assert.assertEquals(
-          Main.run(new String[] {"train", "--run", run.toString(), "--set", "fit.maxSteps=1"}), Exit.USAGE.code());
-      Assert.assertEquals(
-          Main.run(new String[] {"jobs", "run", "--run", run.toString(), "--set", "fit.maxSteps=1"}),
+          Main.run(new String[] {"train", "--run", run.toString(), "--set", "fit.maxSteps=1"}),
           Exit.USAGE.code());
       Assert.assertEquals(
-          Main.run(new String[] {"train", "--run", run.toString(), "--stop-after", "0"}), Exit.USAGE.code());
+          Main.run(
+              new String[] {"jobs", "run", "--run", run.toString(), "--set", "fit.maxSteps=1"}),
+          Exit.USAGE.code());
+      Assert.assertEquals(
+          Main.run(new String[] {"train", "--run", run.toString(), "--stop-after", "0"}),
+          Exit.USAGE.code());
       Assert.assertFalse(Files.exists(run.resolve("state.json")), "a refused train writes nothing");
     } finally {
       Snapshot.deleteTree(root);
@@ -172,7 +231,8 @@ public class CommandsTest {
   /** コマンドのセクションに {@code body} だけを書いた設定ファイルから、コマンドを作る。 */
   private static <T extends Record> T section(Class<T> type, String path, String body) {
     String text = "[" + path + "]\n" + body + "\n";
-    return Settings.section(type, path, List.of(Layer.parse("prism.toml", Layer.Source.FILE, text))).value();
+    return Settings.section(type, path, List.of(Layer.parse("prism.toml", Layer.Source.FILE, text)))
+        .value();
   }
 
   /** ルール固有のコマンドと同じ型を持つ、テストの中だけで使うコマンドのインターフェース。 */

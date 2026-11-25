@@ -36,11 +36,13 @@ public class SettingsDefaultsTest {
     List<Class<? extends Record>> settings = new ArrayList<>();
     List<Class<? extends Record>> files = new ArrayList<>();
     for (Class<? extends Record> type : annotatedRecords()) {
-      boolean everyKey = Arrays.stream(type.getRecordComponents()).allMatch(c -> c.isAnnotationPresent(Key.class));
+      boolean everyKey =
+          Arrays.stream(type.getRecordComponents()).allMatch(c -> c.isAnnotationPresent(Key.class));
       (everyKey ? settings : files).add(type);
     }
     assertTrue(
-        settings.containsAll(List.of(InferenceSettings.class, TableSettings.class, RuntimeSettings.class)),
+        settings.containsAll(
+            List.of(InferenceSettings.class, TableSettings.class, RuntimeSettings.class)),
         settings.toString());
 
     Set<Class<?>> used = new HashSet<>();
@@ -75,7 +77,11 @@ public class SettingsDefaultsTest {
       if (topLevel) {
         for (RecordComponent component : type.getRecordComponents()) {
           if (component.getAnnotation(Key.class).change() == Change.INHERIT) {
-            failures.add(type.getName() + "." + component.getName() + " is a top-level key that inherits its change");
+            failures.add(
+                type.getName()
+                    + "."
+                    + component.getName()
+                    + " is a top-level key that inherits its change");
           }
         }
       }
@@ -108,7 +114,8 @@ public class SettingsDefaultsTest {
   /** このモジュールの本体のクラスから、キーの注釈を持つコンポーネントがある record を全て集める。 */
   @SuppressWarnings("unchecked")
   private static List<Class<? extends Record>> annotatedRecords() throws Exception {
-    Path classes = Path.of(Settings.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    Path classes =
+        Path.of(Settings.class.getProtectionDomain().getCodeSource().getLocation().toURI());
     assertTrue(Files.isDirectory(classes), classes.toString());
     List<Class<? extends Record>> records = new ArrayList<>();
     List<Path> paths;
@@ -129,7 +136,8 @@ public class SettingsDefaultsTest {
         continue;
       }
       if (type.isRecord()
-          && Arrays.stream(type.getRecordComponents()).anyMatch(c -> c.isAnnotationPresent(Key.class))) {
+          && Arrays.stream(type.getRecordComponents())
+              .anyMatch(c -> c.isAnnotationPresent(Key.class))) {
         records.add((Class<? extends Record>) type);
       }
     }

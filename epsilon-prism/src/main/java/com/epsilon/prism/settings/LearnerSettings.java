@@ -37,7 +37,12 @@ public record LearnerSettings(
     if (precision != computed) {
       throw new InvalidSetting(
           "precision",
-          "the learner computes in " + computed + " on " + parsed.primary() + " in this jar, not " + precision);
+          "the learner computes in "
+              + computed
+              + " on "
+              + parsed.primary()
+              + " in this jar, not "
+              + precision);
     }
   }
 

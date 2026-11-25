@@ -54,7 +54,10 @@ public final class OutcomeCodes {
         case TSUMO -> tsumo[hands.winner(main)] = main;
         case RON -> ron[hands.winner(main) * seats + hands.loser(main)] = main;
         case DOUBLE_RON ->
-            doubleRon[(hands.loser(main) * seats + hands.winner(main)) * seats + hands.secondWinner(main)] = main;
+            doubleRon[
+                    (hands.loser(main) * seats + hands.winner(main)) * seats
+                        + hands.secondWinner(main)] =
+                main;
         case DRAW -> draw[hands.tenpai(main)] = main;
         case ABORTIVE -> found = main;
       }
@@ -111,7 +114,9 @@ public final class OutcomeCodes {
           base = grade(0);
         } else {
           int lower = scratch.winner(0) < scratch.winner(1) ? 0 : 1;
-          main = doubleRon[(loser * seats + scratch.winner(lower)) * seats + scratch.winner(1 - lower)];
+          main =
+              doubleRon[
+                  (loser * seats + scratch.winner(lower)) * seats + scratch.winner(1 - lower)];
           base = grade(lower);
           other = grade(1 - lower);
         }

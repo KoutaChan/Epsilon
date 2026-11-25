@@ -84,7 +84,8 @@ final class Listing {
     if (component == null || component.key() == null) {
       return null;
     }
-    return Template.doc(component, resolve(component, scope.change()), scope.change(), false);
+    return Template.doc(
+        component, Change.resolve(component.key(), scope.change()), scope.change(), false);
   }
 
   /** セクションに書くキーの説明の引き方。 */
@@ -96,7 +97,7 @@ final class Listing {
     if (component == null) {
       return new Scope(null, scope.change(), null, null);
     }
-    Change change = resolve(component, scope.change());
+    Change change = Change.resolve(component.key(), scope.change());
     return switch (component.codec()) {
       case MapCodec map when Schema.inline(map) ->
           new Scope(map, change, Template.doc(component, change, scope.change(), false), null);
@@ -115,10 +116,6 @@ final class Listing {
       }
       case null, default -> null;
     };
-  }
-
-  private static Change resolve(Component component, Change parent) {
-    return component.key() == null || component.key().change() == Change.INHERIT ? parent : component.key().change();
   }
 
   /** 見出しを付けたセクションとして書くテーブルか。空のテーブルは {@code {}} で書く。 */

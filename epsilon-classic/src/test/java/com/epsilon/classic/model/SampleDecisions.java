@@ -52,7 +52,9 @@ public final class SampleDecisions {
         Decisions decisions = play.engine.decisions();
         for (int slot = 0; slot < decisions.size(); slot++) {
           scratch.clear();
-          o.bind(scratch, writer.capture(play.engine.view(decisions.seat(slot)), decisions, slot, scratch));
+          o.bind(
+              scratch,
+              writer.capture(play.engine.view(decisions.seat(slot)), decisions, slot, scratch));
           Kind kind = kind(o);
           if (counts.get(kind) < perKind) {
             store.add(o);

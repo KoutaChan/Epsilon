@@ -24,6 +24,7 @@ public enum GrpSlice {
 
   /** 検証用と関門用は別のソルトのハッシュで決めるので、互いに独立に決まる。 */
   private static final long STOP_SALT = 0x5D0F_6A1B_3C27_E849L;
+
   private static final long GUARD_SALT = 0x2B7E_1516_28AE_D2A6L;
 
   /** 関門のコホートでない半荘を、学習用か検証用に分ける。 */

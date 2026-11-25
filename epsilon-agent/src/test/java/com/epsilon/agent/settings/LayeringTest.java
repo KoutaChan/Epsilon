@@ -57,16 +57,21 @@ public class LayeringTest {
 
   private static Settings<Root> layered() {
     return Settings.bind(
-        Root.class, List.of(PRESET, file(FILE), set("fit.temperature.CALL=0.05", "table.activeGames=16")), BASE);
+        Root.class,
+        List.of(PRESET, file(FILE), set("fit.temperature.CALL=0.05", "table.activeGames=16")),
+        BASE);
   }
 
   @Test
   public void tablesMergeByKeyAndListsReplaceWhole() {
     Root root = layered().value();
     assertEquals(root.fit().lrPeak(), 0.002);
-    assertEquals(root.fit().temperature(), Map.of(Kind.DISCARD, 0.01, Kind.CALL, 0.05, Kind.KAN, 0.02));
+    assertEquals(
+        root.fit().temperature(), Map.of(Kind.DISCARD, 0.01, Kind.CALL, 0.05, Kind.KAN, 0.02));
     assertEquals(root.table(), new TableSettings(16, 3, 100000, 2));
-    assertEquals(root.evaluation().tables().get("smoke"), new Fixtures.Table("heuristic", 96, new Stop.Fixed(), null));
+    assertEquals(
+        root.evaluation().tables().get("smoke"),
+        new Fixtures.Table("heuristic", 96, new Stop.Fixed(), null));
     assertEquals(root.memory(), new Memory.Ema(8.0, 2));
     assertEquals(root.cohorts(), List.of(new Cohort(5, 10)));
   }
@@ -99,34 +104,45 @@ public class LayeringTest {
     assertTrue(toml.contains("seed = 7  # run.toml\n"), toml);
     assertFalse(toml.contains("# default"), toml);
     // キーとセクションの見出しの上には、ひな形と同じ説明を書く。型と、セクションと同じ変えてよい時期は書かない
-    assertTrue(toml.contains("\n# 記憶（次の反復の当てはめから効く）\n[memory]\n# 記憶の方式（NONE・EMA）\nscheme = \"EMA\"\n"), toml);
+    assertTrue(
+        toml.contains("\n# 記憶（次の反復の学習から効く）\n[memory]\n# 記憶の方式（NONE・EMA）\nscheme = \"EMA\"\n"),
+        toml);
     assertTrue(toml.contains("\n# 半減期（> 0.0）\nhalfLife = 8.0\n"), toml);
     assertTrue(toml.contains("\n# 判断のクラスごとの温度\n[fit.temperature]\n"), toml);
-    assertTrue(toml.contains("\n# 卓（次に公開するバージョンの仕事から効く）\n[evaluation.tables.smoke]\n"), toml);
+    assertTrue(toml.contains("\n# 卓（次に公開するバージョンのジョブから効く）\n[evaluation.tables.smoke]\n"), toml);
     assertTrue(toml.contains("\n# 止め方（FIXED・TEST）\nkind = \"FIXED\"  # preset smoke\n"), toml);
     // 空のテーブルのキーにも説明を書く
     String bare = bind(minimal()).toml();
-    assertTrue(bare.contains("\n# 評価（次に公開するバージョンの仕事から効く）\n[evaluation]\n# 卓\ntables = {}\n"), bare);
+    assertTrue(
+        bare.contains("\n# 評価（次に公開するバージョンのジョブから効く）\n[evaluation]\n# 卓\ntables = {}\n"), bare);
     assertFalse(effective.containsKey("evaluation.tables.smoke.checkpoint"));
     assertFalse(effective.containsKey("riichi.token"));
   }
 
   @Test
   public void anUpperLayerThatChangesTheKindReplacesTheChoice() {
-    Layer ema = Layer.parse("preset ema", Layer.Source.BUNDLED, "[memory]\nscheme = \"EMA\"\nhalfLife = 4.0\n");
+    Layer ema =
+        Layer.parse(
+            "preset ema", Layer.Source.BUNDLED, "[memory]\nscheme = \"EMA\"\nhalfLife = 4.0\n");
     Layer halfLife = Layer.parse("preset half", Layer.Source.BUNDLED, "[memory]\nhalfLife = 4.0\n");
     assertEquals(bind(ema, minimal(), set("memory=NONE")).value().memory(), new Memory.None());
     assertEquals(
-        bind(halfLife, file("[run]\nvariant = \"FOUR\"\nseed = 1\n[memory]\nscheme = \"NONE\"\n")).value().memory(),
+        bind(halfLife, file("[run]\nvariant = \"FOUR\"\nseed = 1\n[memory]\nscheme = \"NONE\"\n"))
+            .value()
+            .memory(),
         new Memory.None());
-    assertEquals(bind(halfLife, minimal(), set("memory.scheme=EMA")).value().memory(), new Memory.Ema(4.0, 16));
-    assertEquals(bind(ema, minimal(), set("memory.from=3")).value().memory(), new Memory.Ema(4.0, 3));
+    assertEquals(
+        bind(halfLife, minimal(), set("memory.scheme=EMA")).value().memory(),
+        new Memory.Ema(4.0, 16));
+    assertEquals(
+        bind(ema, minimal(), set("memory.from=3")).value().memory(), new Memory.Ema(4.0, 3));
     assertEquals(bind(minimal(), set("run.seed=9")).value().run().seed(), 9L);
   }
 
   @Test
   public void secretsAreMaskedAndReadOnlyFromTheSettingsFile() {
-    Settings<Root> settings = bind(file("[run]\nvariant = \"FOUR\"\nseed = 1\n[riichi]\ntoken = \"abc\"\n"));
+    Settings<Root> settings =
+        bind(file("[run]\nvariant = \"FOUR\"\nseed = 1\n[riichi]\ntoken = \"abc\"\n"));
     assertEquals(settings.value().riichi().token(), "abc");
     assertEquals(settings.effective().get("riichi.token"), new Node.Text(Binder.MASK, "x"));
     assertEquals(settings.effective().get("riichi.token").origin(), "run.toml:5");
@@ -138,7 +154,9 @@ public class LayeringTest {
         List.of(minimal(), set("riichi.token=x")),
         "Setting riichi.token at --set is secret and is read only from the settings file");
     assertProblems(
-        List.of(Layer.parse("preset leak", Layer.Source.BUNDLED, "[riichi]\ntoken = \"x\"\n"), minimal()),
+        List.of(
+            Layer.parse("preset leak", Layer.Source.BUNDLED, "[riichi]\ntoken = \"x\"\n"),
+            minimal()),
         "Setting riichi.token at preset leak:2 is secret and is read only from the settings file");
     assertProblems(
         List.of(minimal(), Layer.tree("settings row 1", Json.read(settings.json(), "row"))),
@@ -148,9 +166,11 @@ public class LayeringTest {
     assertFalse(built.json().contains("abc"), built.json());
     SettingsException section =
         expectThrows(
-            SettingsException.class, () -> Settings.section(Riichi.class, "riichi", List.of(set("riichi.token=x"))));
+            SettingsException.class,
+            () -> Settings.section(Riichi.class, "riichi", List.of(set("riichi.token=x"))));
     assertEquals(
-        section.problems(), List.of("Setting riichi.token at --set is secret and is read only from the settings file"));
+        section.problems(),
+        List.of("Setting riichi.token at --set is secret and is read only from the settings file"));
     String template =
         Settings.template(Root.class, List.of(file("[riichi]\ntoken = \"abc\"\n")), List.of());
     assertFalse(template.contains("abc"), template);
@@ -164,25 +184,39 @@ public class LayeringTest {
     assertEquals(stacked.size(), 2);
     assertEquals(Settings.bind(Root.class, List.of(minimal()), BASE).value().fit().lrPeak(), 0.002);
     assertEquals(
-        Settings.bind(Root.class, List.of(minimal(), set("fit.lrPeak=0.003")), BASE).value().fit().lrPeak(), 0.003);
+        Settings.bind(Root.class, List.of(minimal(), set("fit.lrPeak=0.003")), BASE)
+            .value()
+            .fit()
+            .lrPeak(),
+        0.003);
     assertEquals(
-        Settings.bind(Root.class, List.of(file("[run]\nvariant = \"THREE\"\nseed = 1\n"), set("run.variant=FOUR")), BASE)
+        Settings.bind(
+                Root.class,
+                List.of(file("[run]\nvariant = \"THREE\"\nseed = 1\n"), set("run.variant=FOUR")),
+                BASE)
             .value()
             .fit()
             .lrPeak(),
         0.002);
     SettingsException missing =
-        expectThrows(SettingsException.class, () -> Settings.bind(Root.class, List.of(set("run.seed=1")), BASE));
+        expectThrows(
+            SettingsException.class,
+            () -> Settings.bind(Root.class, List.of(set("run.seed=1")), BASE));
     assertEquals(missing.problems(), List.of("Missing setting run.variant"));
     SettingsException invalid =
-        expectThrows(SettingsException.class, () -> Settings.bind(Root.class, List.of(set("run.variant=SIX")), BASE));
-    assertEquals(invalid.problems(), List.of("Invalid setting run.variant=SIX at --set: expected one of [FOUR, THREE]"));
+        expectThrows(
+            SettingsException.class,
+            () -> Settings.bind(Root.class, List.of(set("run.variant=SIX")), BASE));
+    assertEquals(
+        invalid.problems(),
+        List.of("Invalid setting run.variant=SIX at --set: expected one of [FOUR, THREE]"));
     SettingsException unknown =
         expectThrows(
             SettingsException.class,
             () -> Settings.bind(Root.class, List.of(set("run.variant=THREE", "run.seed=1")), BASE));
     assertEquals(
-        unknown.problems(), List.of("Invalid setting run.variant=THREE at --set: no variant layer for THREE"));
+        unknown.problems(),
+        List.of("Invalid setting run.variant=THREE at --set: no variant layer for THREE"));
     expectThrows(
         IllegalStateException.class,
         () -> Settings.bind(Root.class, List.of(minimal()), new BaseLayer("run", name -> VARIANT)));
@@ -202,7 +236,8 @@ public class LayeringTest {
     Settings<Root> changed =
         bind(
             Layer.tree("settings row 1", row),
-            Layer.assignments("--change", List.of("memory=NONE", "run.seed=20261111", "table.workers=4")));
+            Layer.assignments(
+                "--change", List.of("memory=NONE", "run.seed=20261111", "table.workers=4")));
     assertEquals(changed.value().memory(), new Memory.None());
     List<Difference> differences = changed.since(again);
     assertEquals(
@@ -213,11 +248,15 @@ public class LayeringTest {
             new Difference("memory.scheme", text("EMA"), text("NONE"), Change.FIT),
             new Difference("run.seed", number("20261110"), number("20261111"), Change.FIXED),
             new Difference("table.workers", number("28"), number("4"), Change.MACHINE)));
-    SettingsException fixed = expectThrows(SettingsException.class, () -> Difference.rejectFixed(differences));
+    SettingsException fixed =
+        expectThrows(SettingsException.class, () -> Difference.rejectFixed(differences));
     assertEquals(
         fixed.problems(),
-        List.of("Setting run.seed is fixed for the run: the run started with 20261110, the change asks for 20261111"));
-    Difference.rejectFixed(differences.stream().filter(difference -> difference.change() != Change.FIXED).toList());
+        List.of(
+            "Setting run.seed is fixed for the run: the run started with 20261110, the change asks"
+                + " for 20261111"));
+    Difference.rejectFixed(
+        differences.stream().filter(difference -> difference.change() != Change.FIXED).toList());
     SettingsException edges =
         expectThrows(
             SettingsException.class,
@@ -236,9 +275,11 @@ public class LayeringTest {
 
   @Test
   public void stringsCompareByTheirTextHoweverTheyWereWritten() {
-    Settings<Root> start = bind(file("[run]\nvariant = \"FOUR\"\nseed = 1\nname = \"8\"\ndirectory = \"12\"\n"));
+    Settings<Root> start =
+        bind(file("[run]\nvariant = \"FOUR\"\nseed = 1\nname = \"8\"\ndirectory = \"12\"\n"));
     Layer row = Layer.tree("settings row 1", Json.read(start.json(), "row"));
-    Settings<Root> same = bind(row, Layer.assignments("--change", List.of("run.name=8", "run.directory=12")));
+    Settings<Root> same =
+        bind(row, Layer.assignments("--change", List.of("run.name=8", "run.directory=12")));
     assertEquals(same.value(), start.value());
     assertEquals(same.since(start), List.of());
     assertEquals(same.effective().get("run.name"), text("8"));
@@ -246,7 +287,8 @@ public class LayeringTest {
     // 数としては等しい 8 と 8.0 も、文字列としては違う
     Settings<Root> longer = bind(row, Layer.assignments("--change", List.of("run.name=8.0")));
     assertEquals(
-        longer.since(same), List.of(new Difference("run.name", text("8"), text("8.0"), Change.FIXED)));
+        longer.since(same),
+        List.of(new Difference("run.name", text("8"), text("8.0"), Change.FIXED)));
     Settings<Root> yes = bind(minimal(), set("run.name=true"));
     assertEquals(bind(minimal(), set("run.name=\"true\"")).since(yes), List.of());
   }
@@ -254,14 +296,20 @@ public class LayeringTest {
   @Test
   public void aCommandSectionBindsOnItsOwn() {
     TableSettings table =
-        Settings.section(TableSettings.class, "table", List.of(PRESET, minimal(), set("table.writers=1"))).value();
+        Settings.section(
+                TableSettings.class, "table", List.of(PRESET, minimal(), set("table.writers=1")))
+            .value();
     assertEquals(table, new TableSettings(8192, 3, 100000, 1));
     Settings<TableSettings> settings = Settings.section(TableSettings.class, "table", List.of());
     assertEquals(settings.change("table.workers"), Change.MACHINE);
     SettingsException invalid =
         expectThrows(
             SettingsException.class,
-            () -> Settings.section(TableSettings.class, "table", List.of(file("[table]\nworkers = 0\nworkerz = 1\n"))));
+            () ->
+                Settings.section(
+                    TableSettings.class,
+                    "table",
+                    List.of(file("[table]\nworkers = 0\nworkerz = 1\n"))));
     assertEquals(
         invalid.problems(),
         List.of(
@@ -269,8 +317,10 @@ public class LayeringTest {
             "Unknown setting table.workerz at run.toml:3 (did you mean table.workers?)"));
     SettingsException scalar =
         expectThrows(
-            SettingsException.class, () -> Settings.section(TableSettings.class, "table", List.of(file("table = 3\n"))));
-    assertEquals(scalar.problems(), List.of("Invalid setting table=3 at run.toml:1: expected a table"));
+            SettingsException.class,
+            () -> Settings.section(TableSettings.class, "table", List.of(file("table = 3\n"))));
+    assertEquals(
+        scalar.problems(), List.of("Invalid setting table=3 at run.toml:1: expected a table"));
   }
 
   @Test
@@ -299,7 +349,9 @@ public class LayeringTest {
     KeyInfo opponent = keys.get("evaluation.tables.<name>.opponent|");
     assertEquals(opponent.presence(), Presence.REQUIRED);
     assertEquals(opponent.change(), Change.SCHEDULE);
-    assertTrue(keys.containsKey("evaluation.tables.<name>.stop.alpha|evaluation.tables.<name>.stop.kind=TEST"));
+    assertTrue(
+        keys.containsKey(
+            "evaluation.tables.<name>.stop.alpha|evaluation.tables.<name>.stop.kind=TEST"));
     assertTrue(keys.get("riichi.token|").secret());
     assertEquals(keys.get("inference.slots|").range(), "[1, 4]");
     assertEquals(keys.get("inference.precision|").change(), Change.COLLECT);
@@ -308,7 +360,8 @@ public class LayeringTest {
 
   @Test
   public void templateCommentsWhatTheUserDidNotWrite() {
-    List<Layer> layers = Settings.withBase(Root.class, List.of(PRESET, set("run.variant=FOUR")), BASE);
+    List<Layer> layers =
+        Settings.withBase(Root.class, List.of(PRESET, set("run.variant=FOUR")), BASE);
     String template = Settings.template(Root.class, layers, List.of("smoke"));
     Set<String> lines = new HashSet<>(Arrays.asList(template.split("\n")));
     assertTrue(template.startsWith("presets = [\"smoke\"]\n"), template);
@@ -327,7 +380,9 @@ public class LayeringTest {
     Layer reread = Layer.parse("template.toml", Layer.Source.FILE, template);
     assertEquals(reread.presets(), List.of("smoke"));
     SettingsException missing =
-        expectThrows(SettingsException.class, () -> Settings.bind(Root.class, List.of(PRESET, reread), BASE));
+        expectThrows(
+            SettingsException.class,
+            () -> Settings.bind(Root.class, List.of(PRESET, reread), BASE));
     assertEquals(missing.problems(), List.of("Missing setting run.seed"));
     String empty = Settings.template(Root.class, List.of(), List.of());
     assertTrue(empty.contains("# [evaluation.tables.<名前>]\n"), empty);
@@ -363,16 +418,20 @@ public class LayeringTest {
             """);
     List<Layer> layers = List.of(PRESET, written, set("inference.slots=3", "memory.from=4"));
     Root expected = Settings.bind(Root.class, layers, BASE).value();
-    String template = Settings.template(Root.class, Settings.withBase(Root.class, layers, BASE), List.of("smoke"));
+    String template =
+        Settings.template(
+            Root.class, Settings.withBase(Root.class, layers, BASE), List.of("smoke"));
     Layer reread = Layer.parse("template.toml", Layer.Source.FILE, template);
-    assertEquals(Settings.bind(Root.class, List.of(PRESET, reread), BASE).value(), expected, template);
+    assertEquals(
+        Settings.bind(Root.class, List.of(PRESET, reread), BASE).value(), expected, template);
   }
 
   @Test
   public void layersFromFilesAndResources() throws Exception {
     Path path = Files.createTempFile("settings", ".toml");
     try {
-      Files.writeString(path, "presets = [\"production\", \"smoke\"]\n[run]\nseed = 3\n", StandardCharsets.UTF_8);
+      Files.writeString(
+          path, "presets = [\"production\", \"smoke\"]\n[run]\nseed = 3\n", StandardCharsets.UTF_8);
       Layer layer = Layer.toml(path);
       assertEquals(layer.source(), Layer.Source.FILE);
       assertEquals(layer.presets(), List.of("production", "smoke"));
@@ -382,12 +441,17 @@ public class LayeringTest {
       Files.delete(path);
     }
     SettingsException presets =
-        expectThrows(SettingsException.class, () -> Layer.parse("run.toml", Layer.Source.FILE, "presets = \"smoke\"\n"));
-    assertEquals(presets.problems(), List.of("Setting presets at run.toml:1 must be a list of preset names"));
+        expectThrows(
+            SettingsException.class,
+            () -> Layer.parse("run.toml", Layer.Source.FILE, "presets = \"smoke\"\n"));
+    assertEquals(
+        presets.problems(),
+        List.of("Setting presets at run.toml:1 must be a list of preset names"));
     Layer bundled = Layer.parse("preset x", Layer.Source.BUNDLED, "presets = [\"y\"]\n");
     assertEquals(bundled.presets(), List.of());
     assertEquals(bundled.tree().get(Layer.PRESETS), Fixtures.array(text("y")));
-    expectThrows(IllegalStateException.class, () -> Layer.resource("no/such/settings.toml", "preset none"));
+    expectThrows(
+        IllegalStateException.class, () -> Layer.resource("no/such/settings.toml", "preset none"));
     assertEquals(minimal().without("run").tree(), Fixtures.table());
     assertEquals(set("a=1").origin(), "--set");
     assertEquals(set("a=1").source(), Layer.Source.COMMAND_LINE);

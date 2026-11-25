@@ -34,8 +34,10 @@ public class SettingsCheckTest {
 
   @Test
   public void validSettingsPassAndNameTheirPhi() throws Exception {
-    Assert.assertEquals(check(write("score-rank.toml", "[phi]\nsource = \"SCORE_RANK\"\n")), Exit.OK.code());
-    Assert.assertEquals(check(write("self.toml", "[phi]\nsource = \"SELF_GRP\"\n")), Exit.OK.code());
+    Assert.assertEquals(
+        check(write("score-rank.toml", "[phi]\nsource = \"SCORE_RANK\"\n")), Exit.OK.code());
+    Assert.assertEquals(
+        check(write("self.toml", "[phi]\nsource = \"SELF_GRP\"\n")), Exit.OK.code());
     try (var listed = Files.list(directory)) {
       Assert.assertEquals(listed.count(), 2L, "settings check writes nothing");
     }
@@ -46,9 +48,12 @@ public class SettingsCheckTest {
     // 固定の GRP（GruSinkhorn）に表を重ねる項目は、チェックポイントと表の sha を持つ
     Path gru = GrpFixtures.gru(directory.resolve("gru"), 1);
     Path table = directory.resolve("table.json");
-    PhiTable.of(GrpFixtures.VARIANT, new double[] {1.1}, -1, 2.0 / 3, new double[][] {{0.01}}).write(table);
+    PhiTable.of(GrpFixtures.VARIANT, new double[] {1.1}, -1, 2.0 / 3, new double[][] {{0.01}})
+        .write(table);
     Assert.assertEquals(check(write("fixed.toml", fixed(gru, table))), Exit.OK.code());
-    PhiEntry entry = PhiScorer.original(GrpFixtures.setup("phi.source=FIXED_GRP", "phi.grp=" + gru, "phi.table=" + table));
+    PhiEntry entry =
+        PhiScorer.original(
+            GrpFixtures.setup("phi.source=FIXED_GRP", "phi.grp=" + gru, "phi.table=" + table));
     Assert.assertEquals(entry.id(), PhiEntry.FIXED_ID);
     Assert.assertEquals(entry.kind(), PhiEntryKind.NETWORK);
     Assert.assertEquals(entry.sha256(), GrpCheckpoint.sha256(gru));
@@ -65,14 +70,22 @@ public class SettingsCheckTest {
     Assert.assertEquals(check(write("unknown.toml", "grpRefitEvery = 48\n")), Exit.PROBLEMS.code());
     // 自前の GRP は記録が要る
     Assert.assertEquals(
-        check(write("unrecorded.toml", "[phi]\nsource = \"SELF_GRP\"\n\n[phi.grp]\nmonitor = \"OFF\"\n")),
+        check(
+            write(
+                "unrecorded.toml",
+                "[phi]\nsource = \"SELF_GRP\"\n\n[phi.grp]\nmonitor = \"OFF\"\n")),
         Exit.PROBLEMS.code());
     // GRP の運用のキーは、自前の GRP の設定でしか使えない
     Assert.assertEquals(
-        check(write("monitored.toml", "[phi]\nsource = \"SCORE_RANK\"\n\n[phi.grp]\nmonitor = \"SCORE\"\n")),
+        check(
+            write(
+                "monitored.toml",
+                "[phi]\nsource = \"SCORE_RANK\"\n\n[phi.grp]\nmonitor = \"SCORE\"\n")),
         Exit.PROBLEMS.code());
     // 開けない GRP と、無い設定ファイル
-    Assert.assertEquals(check(write("missing.toml", fixed(directory.resolve("no-grp"), null))), Exit.PROBLEMS.code());
+    Assert.assertEquals(
+        check(write("missing.toml", fixed(directory.resolve("no-grp"), null))),
+        Exit.PROBLEMS.code());
     Assert.assertEquals(check(directory.resolve("absent.toml")), Exit.USAGE.code());
   }
 
@@ -83,11 +96,15 @@ public class SettingsCheckTest {
 
   /** 固定の GRP を使う Φ のセクションを返す。表が null なら表を重ねない。 */
   private static String fixed(Path grp, Path table) {
-    return "[phi]\nsource = \"FIXED_GRP\"\ngrp = \"" + grp + "\"\n" + (table == null ? "" : "table = \"" + table + "\"\n");
+    return "[phi]\nsource = \"FIXED_GRP\"\ngrp = \""
+        + grp
+        + "\"\n"
+        + (table == null ? "" : "table = \"" + table + "\"\n");
   }
 
   /** 渡した本文（いちばん外のキーとセクション）に、テスト用のルールと乱数の種を足して、設定ファイルを書く。 */
   private Path write(String name, String body) throws IOException {
-    return Files.writeString(directory.resolve(name), body + "\n[run]\nvariant = \"TENHOU_4P\"\nseed = 1\n");
+    return Files.writeString(
+        directory.resolve(name), body + "\n[run]\nvariant = \"TENHOU_4P\"\nseed = 1\n");
   }
 }

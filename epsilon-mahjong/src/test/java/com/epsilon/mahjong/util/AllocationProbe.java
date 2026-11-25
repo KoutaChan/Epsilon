@@ -23,8 +23,11 @@ public final class AllocationProbe {
    * @param rounds 受け取った回数だけ処理を走らせる関数。最適化で処理が消されないよう、チェックサムを返す
    */
   public static void assertNoAllocation(int warmUp, int measured, IntToLongFunction rounds) {
-    ThreadMXBean threads = ManagementFactory.getThreadMXBean() instanceof ThreadMXBean bean ? bean : null;
-    if (threads == null || !threads.isThreadAllocatedMemorySupported() || !threads.isThreadAllocatedMemoryEnabled()) {
+    ThreadMXBean threads =
+        ManagementFactory.getThreadMXBean() instanceof ThreadMXBean bean ? bean : null;
+    if (threads == null
+        || !threads.isThreadAllocatedMemorySupported()
+        || !threads.isThreadAllocatedMemoryEnabled()) {
       throw new SkipException("Per-thread allocation counters are not available");
     }
     long checksum = rounds.applyAsLong(warmUp);
@@ -32,6 +35,7 @@ public final class AllocationProbe {
     checksum += rounds.applyAsLong(measured);
     long allocated = threads.getCurrentThreadAllocatedBytes() - before;
     Assert.assertTrue(
-        allocated < SLACK_BYTES, allocated + " bytes over " + measured + " rounds (checksum " + checksum + ")");
+        allocated < SLACK_BYTES,
+        allocated + " bytes over " + measured + " rounds (checksum " + checksum + ")");
   }
 }

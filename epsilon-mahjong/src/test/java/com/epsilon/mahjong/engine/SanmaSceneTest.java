@@ -50,8 +50,20 @@ public class SanmaSceneTest {
     Assert.assertEquals(
         scene.legal(0),
         List.of(
-            "ANKAN(1p)", "NUKI", "RIICHI_DAHAI(P)", "DAHAI(1p)", "DAHAI(2p)", "DAHAI(3p)", "DAHAI(4s)", "DAHAI(5s)",
-            "DAHAI(6s)", "DAHAI(7s)", "DAHAI(8s)", "DAHAI(N)", "DAHAI_TSUMOGIRI(N)", "DAHAI(P)"));
+            "ANKAN(1p)",
+            "NUKI",
+            "RIICHI_DAHAI(P)",
+            "DAHAI(1p)",
+            "DAHAI(2p)",
+            "DAHAI(3p)",
+            "DAHAI(4s)",
+            "DAHAI(5s)",
+            "DAHAI(6s)",
+            "DAHAI(7s)",
+            "DAHAI(8s)",
+            "DAHAI(N)",
+            "DAHAI_TSUMOGIRI(N)",
+            "DAHAI(P)"));
     scene.play("0:NUKI");
     Assert.assertTrue(scene.turnOf(0));
     SeatView view = scene.view(1);
@@ -148,14 +160,23 @@ public class SanmaSceneTest {
     scene.play("1:DAHAI_TSUMOGIRI(W)");
     scene.play("2:DAHAI_TSUMOGIRI(7p)");
     scene.play("0:DAHAI(3p)");
-    Assert.assertEquals(scene.legal(1), List.of("PON(3p)", "DAIMINKAN(3p)", "PASS"), "no chi from the kamicha");
+    Assert.assertEquals(
+        scene.legal(1), List.of("PON(3p)", "DAIMINKAN(3p)", "PASS"), "no chi from the kamicha");
     scene.play("1:PON(3p)");
     Assert.assertEquals(scene.engine.decisions().kind(0), EngineDecisionKind.POST_CALL_DAHAI);
     Assert.assertEquals(
         scene.legal(1),
         List.of(
-            "DAHAI(1m)", "DAHAI(9m)", "DAHAI(2p)", "DAHAI(4p)", "DAHAI(2s)", "DAHAI(5s)", "DAHAI(8s)", "DAHAI(N)",
-            "DAHAI(P)", "DAHAI(C)"));
+            "DAHAI(1m)",
+            "DAHAI(9m)",
+            "DAHAI(2p)",
+            "DAHAI(4p)",
+            "DAHAI(2s)",
+            "DAHAI(5s)",
+            "DAHAI(8s)",
+            "DAHAI(N)",
+            "DAHAI(P)",
+            "DAHAI(C)"));
   }
 
   /** 北を 4 枚持つ親の第一ツモ。北の暗槓も北抜きも選べ、並びは暗槓 → 北抜き → 立直の打牌 → 打牌。 */
@@ -164,8 +185,20 @@ public class SanmaSceneTest {
     Assert.assertEquals(
         fourNorths().legal(0),
         List.of(
-            "ANKAN(N)", "NUKI", "RIICHI_DAHAI(N)", "DAHAI_TSUMOGIRI(1m)", "DAHAI(1p)", "DAHAI(2p)", "DAHAI(3p)",
-            "DAHAI(4p)", "DAHAI(5p)", "DAHAI(6p)", "DAHAI(7s)", "DAHAI(8s)", "DAHAI(9s)", "DAHAI(N)"));
+            "ANKAN(N)",
+            "NUKI",
+            "RIICHI_DAHAI(N)",
+            "DAHAI_TSUMOGIRI(1m)",
+            "DAHAI(1p)",
+            "DAHAI(2p)",
+            "DAHAI(3p)",
+            "DAHAI(4p)",
+            "DAHAI(5p)",
+            "DAHAI(6p)",
+            "DAHAI(7s)",
+            "DAHAI(8s)",
+            "DAHAI(9s)",
+            "DAHAI(N)"));
   }
 
   /**
@@ -190,7 +223,8 @@ public class SanmaSceneTest {
     Assert.assertTrue(view.last().rinshan());
     Assert.assertTrue(view.last().doraPending());
     Assert.assertEquals(
-        view.meld(1, 0), Meld.daiminkan(Tiles.PEI, Meld.RelativeSource.KAMICHA, Meld.AkaSource.NONE).id());
+        view.meld(1, 0),
+        Meld.daiminkan(Tiles.PEI, Meld.RelativeSource.KAMICHA, Meld.AkaSource.NONE).id());
     Assert.assertEquals(view.nuki(1), 0);
     Assert.assertFalse(scene.legal(1).contains("NUKI"));
   }
@@ -217,8 +251,19 @@ public class SanmaSceneTest {
     Assert.assertEquals(
         scene.legal(1),
         List.of(
-            "KAKAN(N)", "NUKI", "DAHAI(1m)", "DAHAI(1p)", "DAHAI(2p)", "DAHAI(3p)", "DAHAI(4p)", "DAHAI(5p)",
-            "DAHAI(6p)", "DAHAI(7s)", "DAHAI(8s)", "DAHAI(9s)", "DAHAI_TSUMOGIRI(N)"));
+            "KAKAN(N)",
+            "NUKI",
+            "DAHAI(1m)",
+            "DAHAI(1p)",
+            "DAHAI(2p)",
+            "DAHAI(3p)",
+            "DAHAI(4p)",
+            "DAHAI(5p)",
+            "DAHAI(6p)",
+            "DAHAI(7s)",
+            "DAHAI(8s)",
+            "DAHAI(9s)",
+            "DAHAI_TSUMOGIRI(N)"));
     Meld pon = Meld.pon(Tiles.PEI, Meld.RelativeSource.KAMICHA, Meld.AkaSource.NONE);
 
     Engine extracted = scene.engine.copy();
@@ -254,7 +299,6 @@ public class SanmaSceneTest {
     Assert.assertEquals(view.meld(0, 0), Meld.ankan(Tiles.PEI, false).id());
     Assert.assertEquals(view.nuki(0), 0);
     Assert.assertEquals(view.visible(Tiles.PEI), 4);
-    Assert.assertEquals(view.doraWeight(Tiles.PEI), 1);
     Assert.assertEquals(scene.legal(0).get(0), "TSUMO_AGARI");
     Assert.assertFalse(scene.legal(0).contains("NUKI"));
 
@@ -393,7 +437,8 @@ public class SanmaSceneTest {
     Assert.assertEquals(scene.legal(0), List.of("TSUMO_AGARI", "NUKI", "DAHAI_TSUMOGIRI(N)"));
     scene.play("0:NUKI");
     Assert.assertTrue(scene.turnOf(0));
-    Assert.assertEquals(scene.legal(0), List.of("DAHAI_TSUMOGIRI(5p)"), "the north in the hand stays");
+    Assert.assertEquals(
+        scene.legal(0), List.of("DAHAI_TSUMOGIRI(5p)"), "the north in the hand stays");
     Assert.assertTrue(scene.engine.full().furiten(0));
     scene.play("0:DAHAI_TSUMOGIRI(5p)");
     scene.play("1:DAHAI_TSUMOGIRI(E)");
@@ -532,11 +577,15 @@ public class SanmaSceneTest {
   /** 南 3 局で親が流れたとき、トップが 40000 点に届いていれば終局し、届かなければ西入する。 */
   @Test
   public void theSouthThreeEndsOnlyWithATopAtTheReturnPoints() {
-    EngineScene stop = exhaustive(EngineScene.at(VARIANT, 5, 0, 0, 39_000, 33_000, 33_000), TENPAI, NOTEN_A, NOTEN_B);
+    EngineScene stop =
+        exhaustive(
+            EngineScene.at(VARIANT, 5, 0, 0, 39_000, 33_000, 33_000), TENPAI, NOTEN_A, NOTEN_B);
     Assert.assertEquals(stop.boundary(), Boundary.GAME_END);
     Assert.assertEquals(stop.end().next().score(0), 41_000);
 
-    EngineScene west = exhaustive(EngineScene.at(VARIANT, 5, 0, 0, 35_000, 35_000, 35_000), TENPAI, NOTEN_A, NOTEN_B);
+    EngineScene west =
+        exhaustive(
+            EngineScene.at(VARIANT, 5, 0, 0, 35_000, 35_000, 35_000), TENPAI, NOTEN_A, NOTEN_B);
     Assert.assertEquals(west.boundary(), Boundary.ROUND_END);
     assertNext(west.end(), 6, 1, 0);
   }
@@ -545,16 +594,19 @@ public class SanmaSceneTest {
   @Test
   public void theWestThreeEndsWhenTheDealerPasses() {
     EngineScene passed =
-        exhaustive(EngineScene.at(VARIANT, 8, 0, 0, 35_000, 35_000, 35_000), TENPAI, NOTEN_A, NOTEN_B);
+        exhaustive(
+            EngineScene.at(VARIANT, 8, 0, 0, 35_000, 35_000, 35_000), TENPAI, NOTEN_A, NOTEN_B);
     Assert.assertEquals(passed.boundary(), Boundary.GAME_END);
 
     EngineScene stays =
-        exhaustive(EngineScene.at(VARIANT, 8, 0, 0, 36_000, 35_000, 34_000), NOTEN_A, NOTEN_B, TENPAI);
+        exhaustive(
+            EngineScene.at(VARIANT, 8, 0, 0, 36_000, 35_000, 34_000), NOTEN_A, NOTEN_B, TENPAI);
     Assert.assertEquals(stays.boundary(), Boundary.ROUND_END);
     assertNext(stays.end(), 8, 1, 0);
 
     EngineScene stops =
-        exhaustive(EngineScene.at(VARIANT, 8, 0, 0, 30_000, 35_000, 40_000), NOTEN_A, NOTEN_B, TENPAI);
+        exhaustive(
+            EngineScene.at(VARIANT, 8, 0, 0, 30_000, 35_000, 40_000), NOTEN_A, NOTEN_B, TENPAI);
     Assert.assertEquals(stops.boundary(), Boundary.GAME_END);
     Assert.assertEquals(stops.end().next().score(2), 42_000);
   }

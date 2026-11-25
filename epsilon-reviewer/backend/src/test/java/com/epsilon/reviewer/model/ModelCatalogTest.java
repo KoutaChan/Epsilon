@@ -1,6 +1,7 @@
 package com.epsilon.reviewer.model;
 
 import com.epsilon.agent.checkpoint.CheckpointFiles;
+import com.epsilon.agent.policy.ModelFamilies;
 import com.epsilon.agent.policy.ModelFamily;
 import com.epsilon.agent.policy.Policy;
 import com.epsilon.agent.policy.PolicyOptions;
@@ -63,7 +64,8 @@ public class ModelCatalogTest {
   /** models.json の options は、方策を開く設定の全てのキーを同じ既定値と範囲で持ち、ほかには温度だけを持つ。 */
   @Test
   public void modelOptionsCarryEveryPolicyOption() {
-    List<String> policy = Settings.describe(PolicyOptions.class).stream().map(ModelCatalogTest::key).toList();
+    List<String> policy =
+        Settings.describe(PolicyOptions.class).stream().map(ModelCatalogTest::key).toList();
     List<String> model =
         Settings.describe(ModelOptions.class).stream()
             .filter(info -> !info.path().equals("temperature"))
@@ -153,7 +155,8 @@ public class ModelCatalogTest {
                 + "],\"defaultModels\":[{\"modelId\":\"gpu\",\"revision\":\"r1\"},"
                 + "{\"modelId\":\"default\",\"revision\":\"r1\"}]}");
     Assert.assertEquals(
-        catalog.view().defaultModels(), List.of(new ModelKey("gpu", "r1"), new ModelKey("default", "r1")));
+        catalog.view().defaultModels(),
+        List.of(new ModelKey("gpu", "r1"), new ModelKey("default", "r1")));
     ModelEntry plain = catalog.require(new ModelKey("default", "r1"));
     Assert.assertEquals(plain.series(), FixtureFamily.SERIES);
     Assert.assertEquals(plain.variant(), Variant.TENHOU_4P);
@@ -162,11 +165,11 @@ public class ModelCatalogTest {
     Assert.assertNull(plain.sha256());
     ModelEntry gpu = catalog.require(new ModelKey("gpu", "r1"));
     Assert.assertEquals(gpu.variant(), Variant.TENHOU_3P);
-    Assert.assertEquals(gpu.options(), new PolicyOptions("gpu1", Precision.BFLOAT16, 16, Kernels.EAGER));
+    Assert.assertEquals(
+        gpu.options(), new PolicyOptions("gpu1", Precision.BFLOAT16, 16, Kernels.EAGER));
     Assert.assertEquals(gpu.temperature(), 0.5);
     Assert.assertEquals(
-        catalog.require(new ModelKey("cpu", "r1")).options(),
-        PolicyOptions.defaults());
+        catalog.require(new ModelKey("cpu", "r1")).options(), PolicyOptions.defaults());
     ModelEntry rules = catalog.require(new ModelKey("rules", "r1"));
     Assert.assertEquals(rules.series(), Series.RULE_BOT);
     Assert.assertNull(rules.checkpoint());
@@ -183,7 +186,11 @@ public class ModelCatalogTest {
             "{\"models\":[" + ok + "," + ok + "]}",
             "{\"models\":[" + ok + "],\"defaultModel\":{\"modelId\":\"a\",\"revision\":\"r1\"}}",
             "{\"models\":[" + ok + "],\"defaultModels\":[{\"modelId\":\"b\",\"revision\":\"r1\"}]}",
-            "{\"models\":[" + ok + "," + model("c", "checkpoint", SERIES, null) + "],\"defaultModels\":["
+            "{\"models\":["
+                + ok
+                + ","
+                + model("c", "checkpoint", SERIES, null)
+                + "],\"defaultModels\":["
                 + "{\"modelId\":\"a\",\"revision\":\"r1\"},{\"modelId\":\"c\",\"revision\":\"r1\"}]}",
             "{\"models\":[" + model("a", "checkpoint", SERIES, "\"sha256\":\"ABC\"") + "]}",
             "{\"models\":[" + options("{\"temperature\":-1}") + "]}",
@@ -234,7 +241,8 @@ public class ModelCatalogTest {
     for (Precision choice : Precision.values()) {
       Assert.assertTrue(precision.contains(choice.name()), precision);
     }
-    String variant = problems("{\"models\":[" + model("a", "checkpoint", SERIES, null, "tenhou_4p") + "]}");
+    String variant =
+        problems("{\"models\":[" + model("a", "checkpoint", SERIES, null, "tenhou_4p") + "]}");
     Assert.assertTrue(variant.contains("models[0].variant=tenhou_4p"), variant);
     Assert.assertTrue(variant.contains("TENHOU_4P"), variant);
     String series = problems("{\"models\":[" + model("a", "checkpoint", "prism", null) + "]}");
@@ -249,7 +257,8 @@ public class ModelCatalogTest {
                 + "]}");
     Assert.assertEquals(both.lines().count(), 2L, both);
     Assert.assertTrue(
-        both.contains("models[0].options.temperature") && both.contains("models[1].options.device"), both);
+        both.contains("models[0].options.temperature") && both.contains("models[1].options.device"),
+        both);
   }
 
   @Test
@@ -321,7 +330,8 @@ public class ModelCatalogTest {
 
   /** 読めない models.json のエラーメッセージ（1 行に 1 つ）。 */
   private String problems(String json) {
-    return String.join("\n", Assert.expectThrows(SettingsException.class, () -> load(json)).problems());
+    return String.join(
+        "\n", Assert.expectThrows(SettingsException.class, () -> load(json)).problems());
   }
 
   private ModelCatalog load(String json) throws IOException {
@@ -370,7 +380,8 @@ public class ModelCatalogTest {
       throw new IllegalStateException(failure);
     }
     for (Path file : CheckpointFingerprint.files(directory)) {
-      digest.update(CheckpointFingerprint.relative(directory, file).getBytes(StandardCharsets.UTF_8));
+      digest.update(
+          CheckpointFingerprint.relative(directory, file).getBytes(StandardCharsets.UTF_8));
       digest.update((byte) 0);
       digest.update(ByteBuffer.allocate(Long.BYTES).putLong(Files.size(file)).array());
       try (InputStream in = new DigestInputStream(Files.newInputStream(file), digest)) {

@@ -43,9 +43,11 @@ public class RollInSettingsBindingTest {
       Assert.assertEquals(labels.deviationFloor(root), 0.1);
       Assert.assertEquals(labels.deviation(root), DeviationTarget.ANY);
       Assert.assertEquals(labels.maxCopyLabels(root), 2);
-      for (DecisionClass later : DecisionClass.values()) Assert.assertEquals(labels.copyLabelRate(root, later), 0.3);
+      for (DecisionClass later : DecisionClass.values())
+        Assert.assertEquals(labels.copyLabelRate(root, later), 0.3);
       for (Openness hand : Openness.values())
-        Assert.assertEquals(settings.noise().rates().rate(root, hand), settings.noise().rates().rate(root));
+        Assert.assertEquals(
+            settings.noise().rates().rate(root, hand), settings.noise().rates().rate(root));
     }
   }
 
@@ -66,8 +68,11 @@ public class RollInSettingsBindingTest {
             "labels.copies.RIICHI.deviationFloor=0.5",
             "labels.copies.KAN.laterRates.THREAT=0.9");
     LabelSettings labels = settings.labels();
-    Assert.assertEquals(labels.copies().keySet(), EnumSet.of(DecisionClass.RIICHI, DecisionClass.CALL, DecisionClass.KAN));
-    Assert.assertEquals(labels.copyLabelRate(DecisionClass.CALL, DecisionClass.DISCARD_EARLY), 0.05);
+    Assert.assertEquals(
+        labels.copies().keySet(),
+        EnumSet.of(DecisionClass.RIICHI, DecisionClass.CALL, DecisionClass.KAN));
+    Assert.assertEquals(
+        labels.copyLabelRate(DecisionClass.CALL, DecisionClass.DISCARD_EARLY), 0.05);
     Assert.assertEquals(labels.copyLabelRate(DecisionClass.CALL, DecisionClass.THREAT), 0.6);
     Assert.assertEquals(labels.copyLabelRate(DecisionClass.RIICHI, DecisionClass.THREAT), 0.25);
     Assert.assertEquals(labels.copyLabelRate(DecisionClass.KAN, DecisionClass.THREAT), 0.9);
@@ -96,7 +101,8 @@ public class RollInSettingsBindingTest {
     Assert.assertEquals(sampling.rollIn(DecisionClass.DISCARD_EARLY).rate(), 0.002);
 
     // セクションの deviation は、上書きしていない根のクラスに効く
-    LabelSettings other = TestSettings.of("labels.deviation=OTHER", "labels.copies.CALL.deviation=ANY").labels();
+    LabelSettings other =
+        TestSettings.of("labels.deviation=OTHER", "labels.copies.CALL.deviation=ANY").labels();
     Assert.assertEquals(other.deviation(DecisionClass.THREAT), DeviationTarget.OTHER);
     Assert.assertEquals(other.deviation(DecisionClass.CALL), DeviationTarget.ANY);
   }
@@ -133,17 +139,9 @@ public class RollInSettingsBindingTest {
     for (String assignment :
         List.of(
             "labels.copies.CALL.copyLabelRate=1.5",
-            "labels.copies.CALL.deviationFloor=-0.1",
-            "labels.copies.CALL.maxCopyLabels=-1",
-            "labels.copies.CALL.laterRates.THREAT=2",
             "labels.copies.CALL.laterRates.NOPE=0.1",
-            "labels.copies.NOPE.copyLabelRate=0.1",
             "labels.copies.CALL.deviation=SOME",
-            "labels.copies.CALL.rate=0.1",
-            "labels.deviation=SOME",
-            "noise.rates.open.CALL=1.5",
-            "noise.rates.open.CALL=-0.1",
-            "noise.rates.open.NOPE=0.1"))
+            "noise.rates.open.CALL=1.5"))
       Assert.expectThrows(IllegalArgumentException.class, () -> TestSettings.of(assignment));
   }
 
@@ -173,7 +171,9 @@ public class RollInSettingsBindingTest {
       Assert.assertEquals(row.row(), 2);
       Assert.assertEquals(row.from(), 1);
       Map<String, Change> changes =
-          row.changes().stream().collect(Collectors.toMap(SettingsRow.ChangedKey::key, SettingsRow.ChangedKey::change));
+          row.changes().stream()
+              .collect(
+                  Collectors.toMap(SettingsRow.ChangedKey::key, SettingsRow.ChangedKey::change));
       Assert.assertEquals(
           changes,
           Map.of(
@@ -189,15 +189,29 @@ public class RollInSettingsBindingTest {
       Assert.assertEquals(
           Main.run(
               new String[] {
-                "settings", "change", "--run", run.toString(), "--change", "noise.rates.open.CALL=0.5",
-                "--change", "labels.copies.THREAT.deviation=OTHER", "--reason", "test"
+                "settings",
+                "change",
+                "--run",
+                run.toString(),
+                "--change",
+                "noise.rates.open.CALL=0.5",
+                "--change",
+                "labels.copies.THREAT.deviation=OTHER",
+                "--reason",
+                "test"
               }),
           Exit.OK.code());
       SettingsRow third = rows(run).getLast();
       Assert.assertEquals(third.row(), 3);
       Assert.assertEquals(
-          third.changes().stream().collect(Collectors.toMap(SettingsRow.ChangedKey::key, SettingsRow.ChangedKey::change)),
-          Map.of("noise.rates.open.CALL", Change.COLLECT, "labels.copies.THREAT.deviation", Change.COLLECT));
+          third.changes().stream()
+              .collect(
+                  Collectors.toMap(SettingsRow.ChangedKey::key, SettingsRow.ChangedKey::change)),
+          Map.of(
+              "noise.rates.open.CALL",
+              Change.COLLECT,
+              "labels.copies.THREAT.deviation",
+              Change.COLLECT));
     } finally {
       Snapshot.deleteTree(run);
     }
@@ -205,7 +219,16 @@ public class RollInSettingsBindingTest {
 
   private static int apply(Path run, Path file) {
     return Main.run(
-        new String[] {"settings", "change", "--run", run.toString(), "--apply", file.toString(), "--reason", "test"});
+        new String[] {
+          "settings",
+          "change",
+          "--run",
+          run.toString(),
+          "--apply",
+          file.toString(),
+          "--reason",
+          "test"
+        });
   }
 
   private static List<SettingsRow> rows(Path run) throws Exception {

@@ -13,6 +13,7 @@ public final class GrpWorkspace {
 
   /** 最後に求めた softmax の max z と Σ exp(z − max z)。 */
   double logitMax;
+
   double exponentSum;
 
   private GrpWorkspace(GrpShape shape, GrpEncoder encoder) {

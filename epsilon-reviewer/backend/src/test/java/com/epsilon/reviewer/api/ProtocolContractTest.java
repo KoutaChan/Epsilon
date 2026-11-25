@@ -1,5 +1,6 @@
 package com.epsilon.reviewer.api;
 
+import com.epsilon.mahjong.action.Action;
 import com.epsilon.reviewer.error.ErrorCode;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -52,16 +53,28 @@ public class ProtocolContractTest {
 
   @Test
   public void errorCodesMatchTheServerErrorCodes() throws IOException {
-    List<String> lines = Files.readAllLines(PROTOCOL.resolve("errors.ts"));
-    int start = lines.indexOf("export const SERVER_ERROR_CODES = [");
+    var codes = strings("errors.ts", "SERVER_ERROR_CODES");
+    Assert.assertEquals(codes, Arrays.stream(ErrorCode.values()).map(ErrorCode::code).toList());
+  }
+
+  @Test
+  public void actionTypesMatchTheEngine() throws IOException {
+    Assert.assertEquals(
+        strings("result.ts", "ACTION_TYPES"),
+        Arrays.stream(Action.Type.values()).map(Enum::name).toList());
+  }
+
+  private static List<String> strings(String file, String name) throws IOException {
+    List<String> lines = Files.readAllLines(PROTOCOL.resolve(file));
+    int start = lines.indexOf("export const " + name + " = [");
+    Assert.assertTrue(start >= 0, name);
     List<String> codes = new ArrayList<>();
     for (int i = start + 1; !lines.get(i).equals("] as const;"); i++) {
       Matcher code = CODE.matcher(lines.get(i));
       Assert.assertTrue(code.matches(), lines.get(i));
       codes.add(code.group(1));
     }
-    Assert.assertEquals(
-        codes, Arrays.stream(ErrorCode.values()).map(ErrorCode::code).toList());
+    return codes;
   }
 
   /** COMMANDS の表を読む。1 つのコマンドが 1 つのブロックで、ブロックの各行は決まった書き方に従う。知らない行があれば失敗にする。 */

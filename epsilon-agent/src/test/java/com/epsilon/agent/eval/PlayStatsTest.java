@@ -49,7 +49,10 @@ public class PlayStatsTest {
 
   /** 候補の席（牌山の番号を 4 で割った余り）について局の結果を、スロットごと（候補は 0、相手は 1）に点の増減と判断を数え直す。 */
   static final class Recount implements GameObserver {
-    final LongAdder hands = new LongAdder(), wins = new LongAdder(), dealIns = new LongAdder(), riichi = new LongAdder();
+    final LongAdder hands = new LongAdder(),
+        wins = new LongAdder(),
+        dealIns = new LongAdder(),
+        riichi = new LongAdder();
 
     /** 添字は [スロット × 数の種類の数 ＋ 数の種類]。 */
     final AtomicLongArray columns = new AtomicLongArray(2 * Column.COUNT);
@@ -79,7 +82,8 @@ public class PlayStatsTest {
       Action.Type chosen = Action.of(decisions.legal(slot, choice)).type();
       if (canCall) {
         add(game, seat, Column.CALL_CHANCES, 1);
-        if (chosen == Action.Type.CHI || chosen == Action.Type.PON) add(game, seat, Column.CALLS_TAKEN, 1);
+        if (chosen == Action.Type.CHI || chosen == Action.Type.PON)
+          add(game, seat, Column.CALLS_TAKEN, 1);
       }
       if (canRiichi) {
         add(game, seat, Column.RIICHI_CHANCES, 1);
@@ -95,7 +99,8 @@ public class PlayStatsTest {
       if (full.seat(seat).riichi(seat) != RiichiState.NONE) riichi.increment();
       RoundOutcome outcome = end.outcome();
       if (outcome.kind() == EndKind.TSUMO || outcome.kind() == EndKind.RON)
-        for (int i = 0; i < outcome.winnerCount(); i++) if (outcome.winner(i) == seat) wins.increment();
+        for (int i = 0; i < outcome.winnerCount(); i++)
+          if (outcome.winner(i) == seat) wins.increment();
       if (outcome.kind() == EndKind.RON && outcome.loser() == seat) dealIns.increment();
     }
   }
@@ -134,7 +139,8 @@ public class PlayStatsTest {
     var recount = new Recount();
     var stats = new PlayStats(2);
     try (var table = new TableLoop(new TableSettings(4, 2, 1000L, 4))) {
-      var plan = ArenaTest.byGame(new Closed(new ArenaTest.Hashed(3)), new ArenaTest.Hashed(4), 16, 77, 0);
+      var plan =
+          ArenaTest.byGame(new Closed(new ArenaTest.Hashed(3)), new ArenaTest.Hashed(4), 16, 77, 0);
       Arena.play(
           table,
           plan,

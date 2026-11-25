@@ -30,14 +30,16 @@ public enum SwitchWatchVerdict {
    */
   public static SwitchWatchVerdict judge(List<SwitchWatchLine> lines, boolean widened) {
     if (lines.size() != LINES) {
-      throw new IllegalArgumentException("A switch watch verdict needs " + LINES + " lines, got " + lines.size());
+      throw new IllegalArgumentException(
+          "A switch watch verdict needs " + LINES + " lines, got " + lines.size());
     }
     double sum = 0;
     double variance = 0;
     for (int index = 0; index < LINES; index++) {
       SwitchWatchLine line = lines.get(index);
       if (index > 0 && line.cohort() <= lines.get(index - 1).cohort()) {
-        throw new IllegalArgumentException("Switch watch lines must have ascending cohorts: " + lines);
+        throw new IllegalArgumentException(
+            "Switch watch lines must have ascending cohorts: " + lines);
       }
       sum += line.mseDifference();
       variance += line.standardError() * line.standardError();

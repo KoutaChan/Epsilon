@@ -24,7 +24,8 @@ public class CapacityTest {
         call |= type == Action.Type.CHI || type == Action.Type.PON;
       }
       Capacity capacity = Capacity.of(o);
-      Assert.assertEquals(capacity, call ? Capacity.MULTIPLE_TRANSITIONS : Capacity.SINGLE_TRANSITION);
+      Assert.assertEquals(
+          capacity, call ? Capacity.MULTIPLE_TRANSITIONS : Capacity.SINGLE_TRANSITION);
       seen.add(capacity);
     }
     Assert.assertEquals(seen, EnumSet.allOf(Capacity.class));

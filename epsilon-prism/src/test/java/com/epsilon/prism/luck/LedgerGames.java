@@ -1,5 +1,7 @@
 package com.epsilon.prism.luck;
 
+import com.epsilon.grp.Phi;
+import com.epsilon.grp.ScoreSmooth;
 import com.epsilon.mahjong.action.Action;
 import com.epsilon.mahjong.engine.Boundary;
 import com.epsilon.mahjong.engine.ChanceKind;
@@ -9,6 +11,7 @@ import com.epsilon.mahjong.engine.DrawOrder;
 import com.epsilon.mahjong.engine.Engine;
 import com.epsilon.mahjong.engine.RandomGames;
 import com.epsilon.mahjong.engine.RuleWorkspace;
+import com.epsilon.mahjong.rules.RankUtility;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.shape.HandShape;
 import com.epsilon.mahjong.shape.ShapeAnalyzer;
@@ -30,6 +33,22 @@ final class LedgerGames {
   /** 古典の 5 組を全て計算し、点数を 32 千点で、方策の s を 8 で切る帳簿（同梱の設定の既定値と同じ）。 */
   static final LedgerRecording RECORDING =
       new LedgerRecording(LedgerGroup.computed(), 32, 8, PointUnit.THOUSANDS);
+
+  /** {@link #RECORDING} の点の列を Φ の単位にした帳簿。 */
+  static final LedgerRecording PHI_RECORDING =
+      new LedgerRecording(LedgerGroup.computed(), 32, 8, PointUnit.PHI);
+
+  /**
+   * 帳簿の点の列の単位に合う値の出どころ。千点なら null。Φ の単位なら、モデルを持たない Φ で作る（点数のなめらかな関数。その係数を
+   * 持たないルールでは、点数の順位）。
+   */
+  static PhiStakes stakes(LedgerRecording recording, Variant variant) {
+    if (recording.pointUnit() != PointUnit.PHI) return null;
+    return new PhiStakes(
+        ScoreSmooth.sigmaPerHand(variant).isPresent()
+            ? Phi.scoreSmooth(variant, RankUtility.TENHOU)
+            : Phi.scoreRank(variant, RankUtility.TENHOU));
+  }
 
   /**
    * 帳簿のテストの仮の受け取り先（席と帳簿だけを持つ）。

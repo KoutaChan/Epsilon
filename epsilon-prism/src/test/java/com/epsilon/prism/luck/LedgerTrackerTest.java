@@ -25,6 +25,8 @@ import com.epsilon.mahjong.tile.TileSet;
 import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.mahjong.util.SeedMixer;
 import com.epsilon.prism.core.CrnSeeds;
+import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.PointUnit;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -59,6 +61,17 @@ public class LedgerTrackerTest {
   @DataProvider
   public Object[][] variants() {
     return new Object[][] {{Variant.TENHOU_4P}, {Variant.TENHOU_3P}};
+  }
+
+  /** ルールと、点の列の単位が違う帳簿の組。 */
+  @DataProvider
+  public Object[][] units() {
+    return new Object[][] {
+      {Variant.TENHOU_4P, LedgerGames.RECORDING},
+      {Variant.TENHOU_3P, LedgerGames.RECORDING},
+      {Variant.TENHOU_4P, LedgerGames.PHI_RECORDING},
+      {Variant.TENHOU_3P, LedgerGames.PHI_RECORDING}
+    };
   }
 
   /** テストで使う s。手の番号と席から作るハッシュで、値は [-1, 1)。方策の項は、どの s でも平均 0 になる。 */
@@ -97,11 +110,16 @@ public class LedgerTrackerTest {
    * 混ぜた b から引く。
    */
   private static Hand playHand(
-      Variant variant, long seed, LedgerGames.Style style, StageTimer<Stage> timer) {
+      Variant variant,
+      long seed,
+      LedgerGames.Style style,
+      LedgerRecording recording,
+      PhiStakes stakes,
+      StageTimer<Stage> timer) {
     var engine = new Engine(variant);
     engine.startGame(SeedMixer.mix64(seed * 2_147_483_647L), DrawOrder.SEAT_STREAMS);
     var ws = new RuleWorkspace(variant);
-    var tracker = new LedgerTracker(LedgerGames.RECORDING);
+    var tracker = new LedgerTracker(recording, stakes);
     var random = new Random(seed);
     var chooser = LedgerGames.chooser(variant, style);
     var behaviour = new Behaviour(0.1, 0, CrnScheme.SINGLE_RACE);
@@ -111,7 +129,7 @@ public class LedgerTrackerTest {
     Boundary boundary = engine.advance(ws);
     while (boundary == Boundary.DECISIONS) {
       FullView full = engine.full();
-      tracker.observe(full, seats == null ? List.of() : seats, ws);
+      tracker.observe(full, engine.handStart(), null, seats == null ? List.of() : seats, ws);
       if (seats == null) {
         seats = LedgerGames.seats(variant);
         firstDraws = draws(full.chance());
@@ -147,16 +165,25 @@ public class LedgerTrackerTest {
   /**
    * 20000 局（それぞれ半荘の最初の局）を打ち、席ごとの受け取り先の帳簿を局で束ねて z を取る。全ての席・列で |z| &lt; 4.5 を求める
    * （0 でない局が 30 未満の席・列は飛ばす）。局で全ての席を足すと、裏ドラの項は重みの和が 0 なので和が恒等的に 0 になる。そのため z は
-   * 席ごとに取る。主な列（受け入れ・ツモ・表示・裏ドラ・方策）は、全ての席で十分な回数起きる。
+   * 席ごとに取る。主な列（受け入れ・ツモ・表示・裏ドラ・方策）は、全ての席で十分な回数起きる。点の列の単位が Φ の帳簿でも同じ
+   * （Φ の単位の点の列は、どれかの席で十分な回数起きる）。
    */
-  @Test(dataProvider = "variants", timeOut = 900_000)
-  public void everyTermIsCentredOverManyHands(Variant variant) {
+  @Test(dataProvider = "units", timeOut = 900_000)
+  public void everyTermIsCentredOverManyHands(Variant variant, LedgerRecording recording) {
     int columns = LedgerColumn.COUNT, seats = variant.seats(), hands = 20_000;
+    PhiStakes stakes = LedgerGames.stakes(recording, variant);
+    boolean phi = recording.pointUnit() == PointUnit.PHI;
     double[][] sum = new double[seats][columns], square = new double[seats][columns];
     int[][] nonzero = new int[seats][columns];
     for (long seed = 1; seed <= hands; seed++) {
       Hand hand =
-          playHand(variant, seed, seed % 3 == 0 ? LedgerGames.KANS : LedgerGames.PLAIN, null);
+          playHand(
+              variant,
+              seed,
+              seed % 3 == 0 ? LedgerGames.KANS : LedgerGames.PLAIN,
+              recording,
+              stakes,
+              null);
       for (LedgerGames.Seat target : hand.seats()) {
         int seat = target.seat();
         for (int f = 0; f < columns; f++) {
@@ -202,7 +229,7 @@ public class LedgerTrackerTest {
             LedgerColumn.POLICY_OPPONENT
           })
         Assert.assertTrue(
-            nonzero[seat][column.ordinal()] >= 30,
+            happened(nonzero, seat, column, phi) >= 30,
             variant
                 + " seat "
                 + seat
@@ -211,7 +238,18 @@ public class LedgerTrackerTest {
                 + " happened in "
                 + nonzero[seat][column.ordinal()]
                 + " hands");
-    Assert.assertTrue(tested >= 12 * seats, variant + " tested seat columns " + tested);
+    Assert.assertTrue(
+        tested >= (phi ? 10 : 12) * seats, variant + " tested seat columns " + tested);
+  }
+
+  /**
+   * 列の値が 0 でなかった局の数。Φ の単位の点の列は、その席の Φ が動かない出来事では 0 になるので、最も多い席の数を返す。
+   */
+  private static int happened(int[][] nonzero, int seat, LedgerColumn column, boolean phi) {
+    if (!phi || column.group() != LedgerGroup.POINTS) return nonzero[seat][column.ordinal()];
+    int most = 0;
+    for (int[] counts : nonzero) most = Math.max(most, counts[column.ordinal()]);
+    return most;
   }
 
   /**
@@ -346,7 +384,7 @@ public class LedgerTrackerTest {
     for (int k = 0; k < 10_000; k++)
       Assert.assertTrue(CrnKeys.select(SeedMixer.mix64(k), legal, odd, 0) >= 3);
     // トラッカー: s のない判断と、b > 0 の手の s が有限でない判断は帳簿を変えない
-    var tracker = new LedgerTracker(LedgerGames.RECORDING);
+    var tracker = new LedgerTracker(LedgerGames.RECORDING, null);
     List<LedgerGames.Seat> seats = LedgerGames.seats(Variant.TENHOU_4P);
     tracker.policy(0, null, p, 0, 3, seats);
     tracker.policy(0, new float[] {Float.NaN, 0f, 1f}, p, 1, 3, seats);
@@ -391,7 +429,7 @@ public class LedgerTrackerTest {
     Assert.assertThrows(
         IllegalStateException.class,
         () -> LedgerTracker.add(new double[LedgerColumn.COUNT], 3, Double.NEGATIVE_INFINITY));
-    var tracker = new LedgerTracker(LedgerGames.RECORDING);
+    var tracker = new LedgerTracker(LedgerGames.RECORDING, null);
     List<LedgerGames.Seat> seats = LedgerGames.seats(Variant.TENHOU_4P);
     Assert.assertThrows(
         IllegalStateException.class,
@@ -488,11 +526,13 @@ public class LedgerTrackerTest {
    */
   @Test(dataProvider = "variants", timeOut = 300_000)
   public void ledgerCostPerDraw(Variant variant) {
-    for (long seed = 1; seed <= 50; seed++) playHand(variant, seed, LedgerGames.PLAIN, null);
+    for (long seed = 1; seed <= 50; seed++)
+      playHand(variant, seed, LedgerGames.PLAIN, LedgerGames.RECORDING, null, null);
     var timer = new StageTimer<>(Stage.class);
     long draws = 0;
     for (long seed = 1001; seed <= 1400; seed++)
-      draws += playHand(variant, seed, LedgerGames.PLAIN, timer).draws();
+      draws +=
+          playHand(variant, seed, LedgerGames.PLAIN, LedgerGames.RECORDING, null, timer).draws();
     StageTimer.Entry entry = timer.snapshot().get(Stage.LEDGER);
     Assert.assertNotNull(entry);
     double perCall = entry.seconds() / entry.count() * 1e9, perDraw = entry.seconds() / draws * 1e9;
@@ -519,7 +559,7 @@ public class LedgerTrackerTest {
     var copyWs = new RuleWorkspace(variant);
     var random = new Random(seed);
     var chooser = LedgerGames.chooser(variant, LedgerGames.KANS);
-    var tracker = new LedgerTracker(LedgerGames.RECORDING);
+    var tracker = new LedgerTracker(LedgerGames.RECORDING, null);
     List<LedgerGames.Seat> seats = LedgerGames.seats(variant);
     int[] choices = new int[variant.seats()];
     Engine copy = null;
@@ -527,8 +567,8 @@ public class LedgerTrackerTest {
     int decision = 0;
     Boundary boundary = engine.advance(ws);
     while (boundary == Boundary.DECISIONS) {
-      tracker.observe(engine.full(), seats, ws);
-      if (copy != null) copyTracker.observe(copy.full(), follower, copyWs);
+      tracker.observe(engine.full(), engine.handStart(), null, seats, ws);
+      if (copy != null) copyTracker.observe(copy.full(), copy.handStart(), null, follower, copyWs);
       Decisions decisions = engine.decisions();
       for (int slot = 0; slot < decisions.size(); slot++)
         choices[slot] = chooser.choose(engine, slot, random);
@@ -561,7 +601,7 @@ public class LedgerTrackerTest {
       for (int slot = 0; slot < decisions.size(); slot++)
         choices[slot] = chooser.choose(branch, slot, random);
       if (branch.commit(choices, ws) != Boundary.DECISIONS) break;
-      tracker.observe(branch.full(), seats, ws);
+      tracker.observe(branch.full(), branch.handStart(), null, seats, ws);
     }
     tracker.handEnd(branch.full(), branch.roundEnd(), seats);
   }

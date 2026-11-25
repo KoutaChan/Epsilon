@@ -2,6 +2,7 @@ package com.epsilon.prism.luck;
 
 import com.epsilon.agent.learn.StageTimer;
 import com.epsilon.agent.play.CrnKeys;
+import com.epsilon.grp.RoundHistory;
 import com.epsilon.mahjong.engine.ChanceKind;
 import com.epsilon.mahjong.engine.ChanceLog;
 import com.epsilon.mahjong.engine.EventLog;
@@ -12,6 +13,7 @@ import com.epsilon.mahjong.engine.SeatView;
 import com.epsilon.mahjong.rules.EndKind;
 import com.epsilon.mahjong.rules.RoundOutcome;
 import com.epsilon.mahjong.rules.ScoreMath;
+import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.score.RiichiState;
 import com.epsilon.mahjong.score.WinScore;
@@ -20,13 +22,15 @@ import com.epsilon.mahjong.shape.ShapeAnalyzer;
 import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.mahjong.util.SeedMixer;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.PointUnit;
 import java.util.Arrays;
 import java.util.List;
 
 /**
  * 1 本の経路について、運の精算の帳簿を計算する。増分の式と平均 0 の条件はパッケージの説明に書く。受け取り先（{@link LedgerTarget}）の
  * 帳簿に、判断の時点ごとに前の判断の時点からのツモと槓ドラの表示の増分を、強制でない判断ごとに方策の偶然の増分を、局末に裏ドラの増分を足す。
- * 点の払いの式も持つ。計算するのは収集の設定（{@link LedgerRecording}）が選んだ組の列だけで、ほかの列は 0 のまま。どの列の値も、ほかの組を
+ * 点の払いの式も持つ。点の列の出来事の値は、収集の設定の単位に従って、動く点（千点）か局の結果の Φ の差（{@link PhiStakes}）にする。
+ * 計算するのは収集の設定（{@link LedgerRecording}）が選んだ組の列だけで、ほかの列は 0 のまま。どの列の値も、ほかの組を
  * 計算するかどうかに依らない。
  *
  * <p>1 度に 1 スレッドだけが触る。席ごとの栄和の表は stamp が同じなら使い回し、写しと分岐は親の表の配列を写して始める。表そのものは作った
@@ -92,6 +96,9 @@ public final class LedgerTracker {
   /** 点の列を切る幅（千点）と、方策の列で s を切る幅（効用）。 */
   private final double pointClip, policyClip;
 
+  /** 点の列を Φ の単位で付けるときの値の出どころ。千点で付けるときは null。写しと分岐は親と同じ物を持つ。 */
+  private final PhiStakes stakes;
+
   /** 計測した時間と呼び出しの数（{@link #flush} でまとめて足す）。 */
   private long nanos, calls;
 
@@ -100,14 +107,22 @@ public final class LedgerTracker {
   /**
    * 主経路の計算器を作る。局の始めから読む。
    *
-   * @param recording 計算する組と切る幅
+   * @param recording 計算する組と切る幅と点の列の単位
+   * @param stakes 点の列の単位が Φ のときの値の出どころ。千点のときは null
+   * @throws IllegalArgumentException 値の出どころの有無が点の列の単位と合わないとき
    */
-  public LedgerTracker(LedgerRecording recording) {
+  public LedgerTracker(LedgerRecording recording, PhiStakes stakes) {
+    if ((recording.pointUnit() == PointUnit.PHI) != (stakes != null))
+      throw new IllegalArgumentException(
+          "Point unit "
+              + recording.pointUnit()
+              + (stakes == null ? " needs phi stakes" : " takes no phi stakes"));
     int bits = 0;
     for (LedgerGroup group : recording.compute()) bits |= 1 << group.ordinal();
     groups = bits;
     pointClip = recording.pointClip();
     policyClip = recording.policyClip();
+    this.stakes = stakes;
     seatTables = new SeatTable[MAX_SEATS];
     batch = new ChanceBatch();
   }
@@ -121,6 +136,7 @@ public final class LedgerTracker {
     groups = parent.groups;
     pointClip = parent.pointClip;
     policyClip = parent.policyClip;
+    stakes = parent.stakes;
     seatTables = parent.seatTables.clone();
     batch = new ChanceBatch(parent.batch);
   }
@@ -158,11 +174,18 @@ public final class LedgerTracker {
    * イベントの前に戻して計算する。帳簿を持つ受け取り先の席ごとに増分を求め、その席の全ての受け取り先の帳簿に足す。
    *
    * @param full 判断の時点の局面
+   * @param start 局の始まりの卓
+   * @param history 終わった局までの各局の始まりの卓。点の列の単位が Φ で、その Φ が履歴を読むときだけ使う
    * @param targets 経路の受け取り先
    * @param ws 採点に使うルールの作業領域
    * @throws IllegalStateException 束の並びが崩れているとき、プールが空のとき、帳簿の値が有限でないとき
    */
-  public void observe(FullView full, List<? extends LedgerTarget> targets, RuleWorkspace ws) {
+  public void observe(
+      FullView full,
+      TableState start,
+      RoundHistory history,
+      List<? extends LedgerTarget> targets,
+      RuleWorkspace ws) {
     ChanceLog log = full.chance();
     batch.read(log);
     boolean dora = computes(LedgerGroup.DORA);
@@ -193,7 +216,7 @@ public final class LedgerTracker {
     }
     if (draw >= 0) {
       if (trace != null) trace.add(event(full, work, log, draw, pool, drawer, drawn));
-      if (draws) draw(full, ws, work, drawer, drawn, pool, seats, delta);
+      if (draws) draw(full, start, history, ws, work, drawer, drawn, pool, seats, delta);
     }
     apply(delta, targets, 0, URA);
     nanos += System.nanoTime() - started;
@@ -308,10 +331,12 @@ public final class LedgerTracker {
 
   /**
    * ツモ 1 回分の、受け入れの列と点の列の増分を、受け取り先の席ごとに足す。{@code drawer} はツモった席、{@code drawn} は引いた種類、
-   * {@code pool} はツモの前のプール。
+   * {@code pool} はツモの前のプール。{@code start} と {@code history} は、点の列を Φ の単位で付けるときの卓と履歴。
    */
   private void draw(
       FullView full,
+      TableState start,
+      RoundHistory history,
       RuleWorkspace ws,
       Workspace work,
       int drawer,
@@ -356,6 +381,9 @@ public final class LedgerTracker {
               ? table(full, ws, work, seat)
               : null;
     double[] values = work.values;
+    // 点の列を Φ の単位で付けるときの値。千点で付けるときは null
+    PhiStakes.Table stake =
+        points && stakes != null ? stakes.bind(start, history, riichiMask(view, count)) : null;
     for (int seat = 0; seat < count; seat++) {
       if ((seats & (1 << seat)) == 0) continue;
       double[] row = delta[seat];
@@ -370,9 +398,11 @@ public final class LedgerTracker {
           for (long bits = tsumo; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
             values[tile] =
-                thousands(
-                    tsumoGain(variant, work.tsumoBase[tile], drawer, dealer, honba, sticks),
-                    pointClip);
+                stake != null
+                    ? stake.tsumo(seat, drawer, work.tsumoBase[tile])
+                    : thousands(
+                        tsumoGain(variant, work.tsumoBase[tile], drawer, dealer, honba, sticks),
+                        pointClip);
           }
           add(row, OWN_TSUMO, centred(tsumo, values, drawn, pool, total));
         }
@@ -383,6 +413,10 @@ public final class LedgerTracker {
         if (ron != 0) {
           for (long bits = ron; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
+            if (stake != null) {
+              values[tile] = ronStake(stake, seen, count, tile, drawer, ~(1 << drawer), seat);
+              continue;
+            }
             double loss = 0;
             for (int other = 0; other < count; other++)
               if (other != drawer && (seen[other].ron() & (1L << tile)) != 0)
@@ -408,8 +442,10 @@ public final class LedgerTracker {
           for (long bits = tsumo; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
             values[tile] =
-                -thousands(
-                    tsumoPayment(work.tsumoBase[tile], drawer, seat, dealer, honba), pointClip);
+                stake != null
+                    ? stake.tsumo(seat, drawer, work.tsumoBase[tile])
+                    : -thousands(
+                        tsumoPayment(work.tsumoBase[tile], drawer, seat, dealer, honba), pointClip);
           }
           add(row, OPP_TSUMO, centred(tsumo, values, drawn, pool, total));
         }
@@ -418,6 +454,10 @@ public final class LedgerTracker {
         if (gain != 0) {
           for (long bits = gain; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
+            if (stake != null) {
+              values[tile] = ronStake(stake, seen, count, tile, drawer, 1 << seat, seat);
+              continue;
+            }
             int gained =
                 ronPayment(variant, own.ronBase()[tile], seat, dealer, honba)
                     + Variant.DEPOSIT * sticks;
@@ -436,6 +476,11 @@ public final class LedgerTracker {
           if (ron != 0) {
             for (long bits = ron; bits != 0; bits &= bits - 1) {
               int tile = Long.numberOfTrailingZeros(bits);
+              if (stake != null) {
+                values[tile] =
+                    ronStake(stake, seen, count, tile, drawer, ~(1 << drawer | 1 << seat), seat);
+                continue;
+              }
               double paid = 0;
               for (int other = 0; other < count; other++)
                 if (other != drawer && other != seat && (seen[other].ron() & (1L << tile)) != 0)
@@ -450,6 +495,33 @@ public final class LedgerTracker {
         }
       }
     }
+  }
+
+  /** 立直している席のマスクを返す。 */
+  private static int riichiMask(SeatView view, int count) {
+    int mask = 0;
+    for (int seat = 0; seat < count; seat++)
+      if (view.riichi(seat) != RiichiState.NONE) mask |= 1 << seat;
+    return mask;
+  }
+
+  /**
+   * {@code drawer} が種類 {@code tile} を打ち、{@code candidates} の席のうち栄和できる全員が栄和したときの、席 {@code seat} の値を
+   * Φ の単位で返す。
+   */
+  private static double ronStake(
+      PhiStakes.Table stake,
+      SeatTable[] seen,
+      int count,
+      int tile,
+      int drawer,
+      int candidates,
+      int seat) {
+    stake.clearWinners();
+    for (int other = 0; other < count; other++)
+      if ((candidates & (1 << other)) != 0 && (seen[other].ron() & (1L << tile)) != 0)
+        stake.winner(other, seen[other].ronBase()[tile]);
+    return stake.ron(seat, drawer);
   }
 
   /**

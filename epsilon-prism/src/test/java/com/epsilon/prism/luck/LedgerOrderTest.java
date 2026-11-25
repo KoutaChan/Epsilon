@@ -32,7 +32,7 @@ public class LedgerOrderTest {
   public void tracedEventsMatchTheChanceLog(Variant variant, int rounds) {
     TileSet set = variant.tiles();
     int seats = variant.seats();
-    var tracker = new LedgerTracker(LedgerGames.RECORDING);
+    var tracker = new LedgerTracker(LedgerGames.RECORDING, null);
     List<LedgerTracker.Event> traced = new ArrayList<>();
     tracker.trace(traced);
     List<LedgerGames.Seat> targets = LedgerGames.seats(variant);
@@ -52,13 +52,13 @@ public class LedgerOrderTest {
             ChanceLog log = full.chance();
             if (fresh[0]) {
               // 最初の判断の時点より前のイベント（親の最初のツモ）は比べない
-              tracker.observe(full, List.of(), ws);
+              tracker.observe(full, engine.handStart(), null, List.of(), ws);
               fresh[0] = false;
               position[0] = log.size();
               Assert.assertTrue(traced.isEmpty());
               return;
             }
-            tracker.observe(full, targets, ws);
+            tracker.observe(full, engine.handStart(), null, targets, ws);
             Assert.assertEquals(traced.size(), log.size() - position[0], "events of the batch");
             int drawer = -1, drawn = -1;
             for (int i = position[0]; i < log.size(); i++)

@@ -16,7 +16,9 @@ import com.epsilon.prism.core.Openness;
 import com.epsilon.prism.core.TwinDiscard;
 import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.luck.LedgerTracker;
+import com.epsilon.prism.luck.PhiStakes;
 import com.epsilon.prism.luck.UraValues;
+import com.epsilon.prism.noise.PointUnit;
 import com.epsilon.prism.noise.UraSettings;
 import com.epsilon.prism.policy.PolicyRequest;
 import com.epsilon.prism.rows.Row;
@@ -45,6 +47,9 @@ final class CollectContext implements TableHooks<PolicyRequest> {
 
   /** ラベルの値の受け取り先ごとに付ける、運の精算の帳簿（{@link LedgerTracker}）。帳簿を付けない収集では null。 */
   final LedgerRecording ledger;
+
+  /** 帳簿の点の列を Φ の単位で付けるときの値の出どころ（{@link PhiStakes}）。千点で付ける収集と、帳簿を付けない収集では null。 */
+  final PhiStakes stakes;
 
   /** 局末の値を求める（裏ドラの扱いとその監査も行う）。局末になった進行のスレッドが呼ぶ。 */
   final UraValues ura;
@@ -87,6 +92,7 @@ final class CollectContext implements TableHooks<PolicyRequest> {
     this.phi = phi;
     this.sampling = sampling == null ? Sampling.OFF : sampling;
     this.ledger = ledger;
+    stakes = ledger != null && ledger.pointUnit() == PointUnit.PHI ? new PhiStakes(phi) : null;
     this.ura = new UraValues(ura, phi, iterationSeed);
     this.behaviour = behaviour;
     this.twinDiscard = twinDiscard;

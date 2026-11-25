@@ -158,7 +158,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
     copyRule = null;
     plans = plans(context);
     targets = new ArrayList<>();
-    ledger = context.ledger == null ? null : new LedgerTracker(context.ledger);
+    ledger = context.ledger == null ? null : new LedgerTracker(context.ledger, context.stakes);
     rows = context.split == null ? new RowRecorder(context.variant) : null;
   }
 
@@ -212,7 +212,7 @@ final class CollectionPath implements RunHooks<PolicyRequest> {
   @Override
   public void boundary(Run<PolicyRequest> run, Decisions decisions, RuleWorkspace ws) {
     FullView full = run.full();
-    if (ledger != null) ledger.observe(full, targets, ws);
+    if (ledger != null) ledger.observe(full, run.handStart(), history, targets, ws);
     if (rows != null) rows.boundary(full, targets);
     stage = Stage.of(context.variant, full.seat(0).liveLeft());
   }

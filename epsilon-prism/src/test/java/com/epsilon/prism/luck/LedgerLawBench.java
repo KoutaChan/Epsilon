@@ -24,7 +24,7 @@ public class LedgerLawBench {
 
   @Test(dataProvider = "variants", timeOut = 3_600_000)
   public void conditionalMeanIsZeroUnderReshuffle(Variant variant) {
-    LedgerLawTest.conditionalMean(variant, new int[] {8, 8, 6, 6}, 8000);
+    LedgerLawTest.conditionalMean(variant, LedgerGames.RECORDING, new int[] {8, 8, 6, 6}, 8000);
   }
 
   @Test(dataProvider = "variants", timeOut = 3_600_000)

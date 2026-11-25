@@ -15,11 +15,13 @@ import com.epsilon.mahjong.engine.TurnEvent;
 import com.epsilon.mahjong.engine.WallReplay;
 import com.epsilon.mahjong.rules.RoundOutcome;
 import com.epsilon.mahjong.rules.RoundStart;
+import com.epsilon.mahjong.rules.TableState;
 import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.score.RiichiState;
 import com.epsilon.mahjong.tile.TileSet;
 import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.mahjong.util.SeedMixer;
+import com.epsilon.prism.noise.LedgerGroup;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -55,9 +57,25 @@ public class LedgerLawTest {
     poolMatches(variant, 3, 2, 2000);
   }
 
+  /** ルールと、点の列の単位が違う帳簿の組。 */
+  @DataProvider
+  public Object[][] units() {
+    return new Object[][] {
+      {Variant.TENHOU_4P, LedgerGames.RECORDING},
+      {Variant.TENHOU_3P, LedgerGames.RECORDING},
+      {Variant.TENHOU_4P, LedgerGames.PHI_RECORDING},
+      {Variant.TENHOU_3P, LedgerGames.PHI_RECORDING}
+    };
+  }
+
+  @Test(dataProvider = "units", timeOut = 600_000)
+  public void conditionalMeanIsZeroUnderReshuffle(Variant variant, LedgerRecording recording) {
+    conditionalMean(variant, recording, new int[] {2, 2, 2, 2}, 1500);
+  }
+
   @Test(dataProvider = "variants", timeOut = 600_000)
-  public void conditionalMeanIsZeroUnderReshuffle(Variant variant) {
-    conditionalMean(variant, new int[] {2, 2, 2, 2}, 1500);
+  public void phiPointColumnsVanishOnADecidedTable(Variant variant) {
+    decidedTable(variant, 60);
   }
 
   @Test(dataProvider = "variants", timeOut = 600_000)
@@ -182,13 +200,29 @@ public class LedgerLawTest {
 
   /** ランダムな卓と牌山で牌譜の局を 1 つ打ち、判断の時点ごとに {@code probe} を呼ぶ。{@code probe} が探し終えたら true を返す。 */
   static boolean line(Variant variant, long seed, LedgerGames.Style style, Probe probe) {
+    return line(variant, seed, style, LedgerGames.RECORDING, null, probe);
+  }
+
+  /**
+   * {@link #line(Variant, long, LedgerGames.Style, Probe)} と同じ局を、指定した帳簿のトラッカーで打つ。{@code fixed} が null でなければ、
+   * ランダムな卓の代わりにその卓から打つ。
+   */
+  static boolean line(
+      Variant variant,
+      long seed,
+      LedgerGames.Style style,
+      LedgerRecording recording,
+      RoundStart fixed,
+      Probe probe) {
     var random = new Random(seed);
     TileSet set = variant.tiles();
     int[] scores = new int[variant.seats()];
     Arrays.fill(scores, variant.startPoints());
     RoundStart start =
-        new RoundStart(
-            variant, random.nextInt(variant.finalRound() + 1), random.nextInt(3), 0, scores);
+        fixed != null
+            ? fixed
+            : new RoundStart(
+                variant, random.nextInt(variant.finalRound() + 1), random.nextInt(3), 0, scores);
     int[] wall = new int[set.size()];
     for (int index = 0; index < wall.length; index++) wall[index] = set.physicalId(index);
     for (int index = wall.length - 1; index > 0; index--) {
@@ -197,12 +231,12 @@ public class LedgerLawTest {
       wall[other] = tile;
     }
     var replay = new WallReplay(start, wall);
-    var line = new LedgerTracker(LedgerGames.RECORDING);
+    var line = new LedgerTracker(recording, LedgerGames.stakes(recording, variant));
     var ws = new RuleWorkspace(variant);
     RandomGames.Chooser chooser = LedgerGames.chooser(variant, style);
     for (int turn = 0; replay.boundary() == Boundary.DECISIONS; turn++) {
       Engine engine = replay.engine();
-      line.observe(engine.full(), List.of(), ws);
+      line.observe(engine.full(), engine.handStart(), null, List.of(), ws);
       long choiceSeed = SeedMixer.mix64(seed * 1_000_003L + turn);
       var choiceRandom = new Random(choiceSeed);
       Decisions decisions = engine.decisions();
@@ -339,9 +373,10 @@ public class LedgerLawTest {
    * 帳簿の増分の条件付きの平均が 0 になることを確かめる。牌譜の局の判断の時点をいくつか固定する（{@link #category} の 4 種類の時点を
    * 含む）。それぞれで、読んでいない位置だけを並べ替えた写しで同じ手を打ち、次にイベントが起きた判断の時点までの帳簿の増分を、席と列ごとに
    * 平均する。並べ替えは、イベントの前に分かっていることを変えずに、見えない牌だけを引き直す。そのため c がツモの後の手・裏ドラ・引いた牌の
-   * 赤などを読んでいれば、平均がずれる。時点ごとに |z| &lt; 4.5 を求める。
+   * 赤などを読んでいれば、平均がずれる。時点ごとに |z| &lt; 4.5 を求める。点の列の単位が Φ の帳簿でも同じ。
    */
-  static void conditionalMean(Variant variant, int[] wanted, int replicates) {
+  static void conditionalMean(
+      Variant variant, LedgerRecording recording, int[] wanted, int replicates) {
     int seats = variant.seats(), columns = LedgerColumn.COUNT;
     int[] found = new int[wanted.length];
     int[] tested = {0};
@@ -353,6 +388,8 @@ public class LedgerLawTest {
           variant,
           lineSeed,
           LedgerGames.KANS,
+          recording,
+          null,
           (replay, line, choices, followSeed) -> {
             int category = category(replay.engine());
             if (category < 0 || found[category] >= wanted[category]) return false;
@@ -372,7 +409,7 @@ public class LedgerLawTest {
                   followSeed,
                   ws,
                   e -> {
-                    tracker.observe(e.full(), targets, ws);
+                    tracker.observe(e.full(), e.handStart(), null, targets, ws);
                     return !events.isEmpty();
                   });
               if (events.isEmpty()) continue;
@@ -390,6 +427,8 @@ public class LedgerLawTest {
               for (int f = 0; f < columns; f++) {
                 String where =
                     variant
+                        + " "
+                        + recording.pointUnit()
                         + " line "
                         + lineSeed
                         + " category "
@@ -414,6 +453,66 @@ public class LedgerLawTest {
     Assert.assertTrue(
         tested[0] >= (all + 1) / 2,
         variant + " tested " + tested[0] + " " + Arrays.toString(found));
+  }
+
+  /**
+   * 順位が動かない卓で、点の列を Φ の単位で付けた帳簿が恒等的に 0 になることを確かめる。最後の局を、親が大差の首位の卓から {@code lines} 局
+   * 打つ。どの和了でも流局でも半荘が終わり、親は首位のままなので、親の席の点の列は全ての局でちょうど 0。同じ局を千点で付けた帳簿では、
+   * 親の席の点の列が 0 でない局がある。順位が動く子の席では、Φ の単位でも 0 でない局がある。
+   */
+  static void decidedTable(Variant variant, int lines) {
+    int seats = variant.seats(), trailing = 5000;
+    int[] scores = new int[seats];
+    Arrays.fill(scores, variant.startPoints());
+    var table = new TableState(variant);
+    table.set(variant.finalRound(), 0, 0, scores);
+    int dealer = table.dealer();
+    Arrays.fill(scores, trailing);
+    scores[dealer] = seats * variant.startPoints() - (seats - 1) * trailing;
+    var start = new RoundStart(variant, variant.finalRound(), 0, 0, scores);
+    var ws = new RuleWorkspace(variant);
+    RandomGames.Chooser chooser = LedgerGames.chooser(variant, LedgerGames.PLAIN);
+    // [単位][親か子か] の、点の列が 0 でなかった局の数
+    int[][] nonzero = new int[2][2];
+    List<LedgerRecording> recordings = List.of(LedgerGames.RECORDING, LedgerGames.PHI_RECORDING);
+    for (long seed = 1; seed <= lines; seed++) {
+      long lineSeed = SeedMixer.mix64(seed * 86_028_121L + variant.ordinal());
+      for (int unit = 0; unit < recordings.size(); unit++) {
+        int u = unit;
+        line(
+            variant,
+            lineSeed,
+            LedgerGames.PLAIN,
+            recordings.get(unit),
+            start,
+            (replay, line, choices, followSeed) -> {
+              Engine copy = replay.engine().copy();
+              var tracker = new LedgerTracker(line);
+              List<LedgerGames.Seat> targets = LedgerGames.seats(variant);
+              follow(
+                  copy,
+                  choices,
+                  chooser,
+                  followSeed,
+                  ws,
+                  e -> {
+                    tracker.observe(e.full(), e.handStart(), null, targets, ws);
+                    return false;
+                  });
+              boolean[] moved = new boolean[2];
+              for (LedgerGames.Seat target : targets)
+                for (LedgerColumn column : COLUMNS)
+                  if (column.group() == LedgerGroup.POINTS
+                      && target.ledger()[column.ordinal()] != 0)
+                    moved[target.seat() == dealer ? 0 : 1] = true;
+              for (int side = 0; side < 2; side++) if (moved[side]) nonzero[u][side]++;
+              return true;
+            });
+      }
+    }
+    Assert.assertEquals(nonzero[1][0], 0, variant + " PHI point columns of the leading dealer");
+    Assert.assertTrue(nonzero[0][0] > lines / 4, variant + " THOUSANDS dealer " + nonzero[0][0]);
+    Assert.assertTrue(nonzero[1][1] > lines / 4, variant + " PHI others " + nonzero[1][1]);
   }
 
   /**

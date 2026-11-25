@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 public class LedgerComputeTest {
   private static final LedgerColumn[] COLUMNS = LedgerColumn.values();
 
-  /** 全ての組を計算する帳簿と、比べる帳簿（組の部分集合 7 つと、切る幅を変えた 2 つ）。 */
+  /** 全ての組を計算する帳簿と、比べる帳簿（組の部分集合 7 つと、切る幅を変えた 2 つと、点の列の単位を Φ にした 1 つ）。 */
   private static final List<LedgerRecording> RECORDINGS =
       List.of(
           LedgerGames.RECORDING,
@@ -43,10 +43,11 @@ public class LedgerComputeTest {
               8,
               PointUnit.THOUSANDS),
           new LedgerRecording(LedgerGroup.computed(), 2, 8, PointUnit.THOUSANDS),
-          new LedgerRecording(LedgerGroup.computed(), 32, 0.25, PointUnit.THOUSANDS));
+          new LedgerRecording(LedgerGroup.computed(), 32, 0.25, PointUnit.THOUSANDS),
+          LedgerGames.PHI_RECORDING);
 
-  /** 点数の列を切る幅を変えた帳簿と、方策の列で s を切る幅を変えた帳簿の番号。 */
-  private static final int POINT_CLIP = 8, POLICY_CLIP = 9;
+  /** 点数の列を切る幅を変えた帳簿・方策の列で s を切る幅を変えた帳簿・点の列の単位を Φ にした帳簿の番号。 */
+  private static final int POINT_CLIP = 8, POLICY_CLIP = 9, POINT_UNIT = 10;
 
   @DataProvider
   public Object[][] variants() {
@@ -67,7 +68,9 @@ public class LedgerComputeTest {
     for (int k = 1; k < RECORDINGS.size(); k++) {
       LedgerRecording recording = RECORDINGS.get(k);
       LedgerGroup changing =
-          k == POINT_CLIP ? LedgerGroup.POINTS : k == POLICY_CLIP ? LedgerGroup.POLICY : null;
+          k == POINT_CLIP || k == POINT_UNIT
+              ? LedgerGroup.POINTS
+              : k == POLICY_CLIP ? LedgerGroup.POLICY : null;
       long changed = 0;
       for (LedgerColumn column : COLUMNS) {
         long count = differences[k][column.ordinal()];
@@ -110,7 +113,9 @@ public class LedgerComputeTest {
 
     private void start() {
       seats.clear();
-      for (int k = 0; k < trackers.length; k++) trackers[k] = new LedgerTracker(RECORDINGS.get(k));
+      for (int k = 0; k < trackers.length; k++)
+        trackers[k] =
+            new LedgerTracker(RECORDINGS.get(k), LedgerGames.stakes(RECORDINGS.get(k), variant));
     }
 
     private List<LedgerGames.Seat> targets(int k) {
@@ -120,7 +125,8 @@ public class LedgerComputeTest {
     @Override
     public void decision(Engine engine, RuleWorkspace ws) {
       FullView full = engine.full();
-      for (int k = 0; k < trackers.length; k++) trackers[k].observe(full, targets(k), ws);
+      for (int k = 0; k < trackers.length; k++)
+        trackers[k].observe(full, engine.handStart(), null, targets(k), ws);
       if (seats.isEmpty())
         for (int k = 0; k < trackers.length; k++) seats.add(LedgerGames.seats(variant));
       Decisions decisions = engine.decisions();

@@ -173,7 +173,8 @@ public record SplitDuel(
         && (supplied == null
             || keys.contains("compute") && !supplied.compute().equals(provenance.compute())
             || keys.contains("pointClip") && supplied.pointClip() != provenance.pointClip()
-            || keys.contains("policyClip") && supplied.policyClip() != provenance.policyClip()))
+            || keys.contains("policyClip") && supplied.policyClip() != provenance.policyClip()
+            || keys.contains("pointUnit") && supplied.pointUnit() != provenance.pointUnit()))
       throw new IOException("Ledger recording settings differ from the fit provenance");
     return provenance;
   }

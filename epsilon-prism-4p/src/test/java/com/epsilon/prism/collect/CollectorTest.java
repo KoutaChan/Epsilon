@@ -36,6 +36,7 @@ import com.epsilon.prism.luck.LedgerFit;
 import com.epsilon.prism.luck.LedgerFitTest;
 import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.PointUnit;
 import com.epsilon.prism.noise.UraSettings;
 import com.epsilon.prism.policy.Capacity;
 import com.epsilon.prism.policy.PolicyRequest;
@@ -82,7 +83,8 @@ public class CollectorTest {
           0.25, 0.03, 0.03, 0.03, 0.15, 1.0, 6, false, 0.3, 0.02, 0.1, 0.1, 0.5, 2);
 
   /** 行の帳簿の 17 列が属する 5 つの組を全て計算し、点の列を 32 千点、方策の列の s を 8 で切る帳簿（同梱の設定の既定値と同じ）。 */
-  static final LedgerRecording LEDGER = new LedgerRecording(LedgerGroup.computed(), 32, 8);
+  static final LedgerRecording LEDGER =
+      new LedgerRecording(LedgerGroup.computed(), 32, 8, PointUnit.THOUSANDS);
 
   /** 裏ドラは実際の値で学び、局の 5% では期待値も求めて監査する（同梱の設定の既定値と同じ）。 */
   static final UraSettings URA = new UraSettings.Realized(0.05);

@@ -1,9 +1,12 @@
 package com.epsilon.prism.luck;
 
+import com.epsilon.agent.settings.Key;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.epsilon.prism.noise.LedgerSettings;
+import com.epsilon.prism.noise.PointUnit;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -12,8 +15,13 @@ import java.util.Set;
  * @param compute 計算する組（行の帳簿の列を持つ 5 つの組から選んだ、空でない部分集合）
  * @param pointClip 点の列を切る幅（千点）
  * @param policyClip 方策の列で s を切る幅（効用。増分の絶対値はこの 2 倍まで）
+ * @param pointUnit 点の列の単位
  */
-public record LedgerRecording(Set<LedgerGroup> compute, double pointClip, double policyClip) {
+public record LedgerRecording(
+    Set<LedgerGroup> compute,
+    double pointClip,
+    double policyClip,
+    @Key(doc = "点の列の単位", value = "THOUSANDS") PointUnit pointUnit) {
 
   public LedgerRecording {
     compute = groups(compute);
@@ -28,6 +36,7 @@ public record LedgerRecording(Set<LedgerGroup> compute, double pointClip, double
       throw new IllegalArgumentException(
           "Ledger clips must be positive and finite: " + pointClip + ", " + policyClip);
     }
+    Objects.requireNonNull(pointUnit, "pointUnit");
   }
 
   /**
@@ -37,7 +46,11 @@ public record LedgerRecording(Set<LedgerGroup> compute, double pointClip, double
    */
   public static LedgerRecording of(LedgerSettings ledger) {
     return ledger instanceof LedgerSettings.Recording recording
-        ? new LedgerRecording(recording.compute(), recording.pointClip(), recording.policyClip())
+        ? new LedgerRecording(
+            recording.compute(),
+            recording.pointClip(),
+            recording.policyClip(),
+            recording.pointUnit())
         : null;
   }
 

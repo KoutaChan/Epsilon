@@ -17,6 +17,7 @@ import com.epsilon.prism.luck.LedgerReport;
 import com.epsilon.prism.model.PrismShape;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.epsilon.prism.noise.LedgerSettings;
+import com.epsilon.prism.noise.PointUnit;
 import com.epsilon.prism.noise.SlopeRefresh;
 import com.epsilon.prism.policy.PolicyParams;
 import com.epsilon.prism.run.Snapshot;
@@ -48,7 +49,7 @@ public class SplitDuelTest {
               Map.of("THREAT", segment(3)),
               new LedgerReport.Bias(List.of()),
               0,
-              new LedgerRecording(LedgerGroup.computed(), 12, 2));
+              new LedgerRecording(LedgerGroup.computed(), 12, 2, PointUnit.THOUSANDS));
       var path = root.resolve("ledger.json");
       Files.writeString(path, RecordFile.json(report));
       var saved = RecordFile.read(LedgerReport.Full.class, path).value();
@@ -67,15 +68,25 @@ public class SplitDuelTest {
 
   @Test
   public void recordingMustBeKnownAndMatchTheFittedColumns() throws Exception {
-    var fit = new LedgerRecording(LedgerGroup.computed(), 12, 2);
-    var settings = new LedgerSettings.RecordOnly(fit.compute(), 12, 2, 1000, SlopeRefresh.DEPOSIT);
+    var fit = new LedgerRecording(LedgerGroup.computed(), 12, 2, PointUnit.THOUSANDS);
+    var settings =
+        new LedgerSettings.RecordOnly(
+            fit.compute(), 12, PointUnit.THOUSANDS, 2, 1000, SlopeRefresh.DEPOSIT);
     var off = new LedgerSettings.Off();
     Assert.assertEquals(SplitDuel.recording(fit, off, List.of()), fit);
     Assert.expectThrows(IOException.class, () -> SplitDuel.recording(null, off, List.of()));
     var clips = Layer.parse("clips", Layer.Source.FILE, "[noise.ledger]\npointClip = 9");
-    var mismatch = new LedgerSettings.RecordOnly(fit.compute(), 9, 2, 1000, SlopeRefresh.DEPOSIT);
+    var mismatch =
+        new LedgerSettings.RecordOnly(
+            fit.compute(), 9, PointUnit.THOUSANDS, 2, 1000, SlopeRefresh.DEPOSIT);
     Assert.expectThrows(
         IOException.class, () -> SplitDuel.recording(fit, mismatch, List.of(clips)));
+    var unit = Layer.parse("unit", Layer.Source.FILE, "[noise.ledger]\npointUnit = \"PHI\"");
+    var otherUnit =
+        new LedgerSettings.RecordOnly(
+            fit.compute(), 12, PointUnit.PHI, 2, 1000, SlopeRefresh.DEPOSIT);
+    Assert.expectThrows(
+        IOException.class, () -> SplitDuel.recording(fit, otherUnit, List.of(unit)));
     Assert.expectThrows(
         IOException.class, () -> SplitDuel.recording(null, settings, List.of(clips)));
     var explicit =
@@ -91,7 +102,7 @@ public class SplitDuelTest {
     var report =
         new LedgerReport.Full(
             10, 20, 0, segment(1), Map.of(), new LedgerReport.Bias(List.of()), 0, null);
-    var missing = new LedgerRecording(Set.of(LedgerGroup.POINTS), 12, 2);
+    var missing = new LedgerRecording(Set.of(LedgerGroup.POINTS), 12, 2, PointUnit.THOUSANDS);
     Assert.expectThrows(
         IOException.class,
         () -> LedgerCorrection.restore(report, missing, Variant.TENHOU_4P, null));
@@ -173,7 +184,7 @@ public class SplitDuelTest {
               Map.of(),
               new LedgerReport.Bias(List.of()),
               0,
-              new LedgerRecording(LedgerGroup.computed(), 32, 8),
+              new LedgerRecording(LedgerGroup.computed(), 32, 8, PointUnit.THOUSANDS),
               cells);
       var path = root.resolve("ledger.json");
       Files.writeString(path, RecordFile.json(report));

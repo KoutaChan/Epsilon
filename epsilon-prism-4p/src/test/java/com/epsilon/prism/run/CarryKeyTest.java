@@ -18,10 +18,10 @@ import org.testng.annotations.Test;
 
 /**
  * 持ち越しのキーのうち、帳簿の部分（{@link com.epsilon.prism.luck.LedgerMeaning}）のテスト。帳簿の列や教師の意味を決める値が
- * 変わると、持ち越しを捨て、変わった項目を理由に書く。そうした値は、列の並び、モード、計算する組、クリップの幅、傾きの列の値、補正に
+ * 変わると、持ち越しを捨て、変わった項目を理由に書く。そうした値は、列の並び、モード、計算する組、クリップの幅、点の列の単位、傾きの列の値、補正に
  * 使う組、教師に掛ける補正率の形。当てはめにだけ効く値（ridge、列 1 つに要る行の数、偏りの警告のしきい値、裏ドラの監査の割合、補正率の
  * 格子と罰の強さ）が変わっても捨てない。
- * state.json に書いて読み戻したキーは、同じ設定から作ったキーと等しい。
+ * state.json に書いて読み戻したキーは、同じ設定から作ったキーと等しい。点の列の単位が無い state.json のキーは、単位が千点のキーと等しい。
  */
 public class CarryKeyTest {
 
@@ -52,6 +52,12 @@ public class CarryKeyTest {
           RecordFile.read(PrismCarry.class, RecordFile.json(carry), "state.json").value();
       Assert.assertEquals(back, carry, label);
       Assert.assertNull(key(settings).resetReason(back.key(), true), label);
+      String json = RecordFile.json(carry);
+      String unit = ",\"pointUnit\":\"THOUSANDS\"";
+      Assert.assertTrue(json.contains(unit), json);
+      PrismCarry older =
+          RecordFile.read(PrismCarry.class, json.replace(unit, ""), "state.json").value();
+      Assert.assertEquals(older, carry, label);
     }
   }
 
@@ -68,6 +74,7 @@ public class CarryKeyTest {
       },
       {"pointClip", new String[] {"noise.ledger.pointClip=16"}},
       {"policyClip", new String[] {"noise.ledger.policyClip=4"}},
+      {"pointUnit", new String[] {"noise.ledger.pointUnit=PHI"}},
       {"slopeStep", new String[] {"noise.ledger.slopeStep=2000"}},
       {"slopeRefresh", new String[] {"noise.ledger.slopeRefresh=HAND"}},
       {"apply", new String[] {"noise.ledger.apply=[POINTS, POLICY]"}},

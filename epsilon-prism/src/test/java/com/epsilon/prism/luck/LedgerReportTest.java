@@ -3,6 +3,7 @@ package com.epsilon.prism.luck;
 import com.epsilon.agent.settings.RecordFile;
 import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.PointUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -22,7 +23,7 @@ public class LedgerReportTest {
   public void theFullReportKeepsTheReportValues() {
     var rows = LedgerFitTest.rows(6000, 0, LedgerFitTest.ones(), LedgerFitTest.planted(), 0.3, 40);
     LedgerReport report = LedgerFitTest.CLASSIC.fitRows(rows).report();
-    var recording = new LedgerRecording(LedgerGroup.computed(), 24, 3);
+    var recording = new LedgerRecording(LedgerGroup.computed(), 24, 3, PointUnit.THOUSANDS);
     LedgerReport.Full full = report.full(recording);
     Assert.assertEquals(full.recording(), recording);
     Assert.assertEquals(full.rows(), report.rows());

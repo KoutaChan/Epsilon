@@ -16,6 +16,7 @@ import com.epsilon.prism.luck.LedgerColumn;
 import com.epsilon.prism.luck.LedgerCorrection;
 import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.PointUnit;
 import com.epsilon.prism.noise.UraSettings;
 import com.epsilon.prism.policy.PolicyRequest;
 import com.epsilon.prism.policy.PolicyService;
@@ -144,7 +145,7 @@ public class SplitTrialTest {
   @Test
   public void terminalForksSubtractEachActionsOwnLedger() throws Exception {
     var variant = Variant.TENHOU_4P;
-    var recording = new LedgerRecording(Set.of(LedgerGroup.IMPROVE), 32, 8);
+    var recording = new LedgerRecording(Set.of(LedgerGroup.IMPROVE), 32, 8, PointUnit.THOUSANDS);
     var sampling = TestSampling.grouped(0, .12, .12, .12, .12, 1, 2, false, 0, 0, 0, 0, 0, 1);
     var walls = List.of(13L);
     var cohort =

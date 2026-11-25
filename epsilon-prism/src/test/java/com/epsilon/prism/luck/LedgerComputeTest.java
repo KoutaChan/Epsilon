@@ -9,6 +9,7 @@ import com.epsilon.mahjong.rules.Variant;
 import com.epsilon.mahjong.util.SeedMixer;
 import com.epsilon.prism.core.CrnSeeds;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.PointUnit;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -29,16 +30,20 @@ public class LedgerComputeTest {
   private static final List<LedgerRecording> RECORDINGS =
       List.of(
           LedgerGames.RECORDING,
-          new LedgerRecording(Set.of(LedgerGroup.IMPROVE), 32, 8),
-          new LedgerRecording(Set.of(LedgerGroup.POINTS), 32, 8),
-          new LedgerRecording(Set.of(LedgerGroup.DORA), 32, 8),
-          new LedgerRecording(Set.of(LedgerGroup.URA), 32, 8),
-          new LedgerRecording(Set.of(LedgerGroup.POLICY), 32, 8),
-          new LedgerRecording(EnumSet.of(LedgerGroup.IMPROVE, LedgerGroup.DORA), 32, 8),
+          new LedgerRecording(Set.of(LedgerGroup.IMPROVE), 32, 8, PointUnit.THOUSANDS),
+          new LedgerRecording(Set.of(LedgerGroup.POINTS), 32, 8, PointUnit.THOUSANDS),
+          new LedgerRecording(Set.of(LedgerGroup.DORA), 32, 8, PointUnit.THOUSANDS),
+          new LedgerRecording(Set.of(LedgerGroup.URA), 32, 8, PointUnit.THOUSANDS),
+          new LedgerRecording(Set.of(LedgerGroup.POLICY), 32, 8, PointUnit.THOUSANDS),
           new LedgerRecording(
-              EnumSet.of(LedgerGroup.POINTS, LedgerGroup.URA, LedgerGroup.POLICY), 32, 8),
-          new LedgerRecording(LedgerGroup.computed(), 2, 8),
-          new LedgerRecording(LedgerGroup.computed(), 32, 0.25));
+              EnumSet.of(LedgerGroup.IMPROVE, LedgerGroup.DORA), 32, 8, PointUnit.THOUSANDS),
+          new LedgerRecording(
+              EnumSet.of(LedgerGroup.POINTS, LedgerGroup.URA, LedgerGroup.POLICY),
+              32,
+              8,
+              PointUnit.THOUSANDS),
+          new LedgerRecording(LedgerGroup.computed(), 2, 8, PointUnit.THOUSANDS),
+          new LedgerRecording(LedgerGroup.computed(), 32, 0.25, PointUnit.THOUSANDS));
 
   /** 点数の列を切る幅を変えた帳簿と、方策の列で s を切る幅を変えた帳簿の番号。 */
   private static final int POINT_CLIP = 8, POLICY_CLIP = 9;

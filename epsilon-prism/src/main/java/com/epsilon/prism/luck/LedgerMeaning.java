@@ -9,6 +9,7 @@ import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.epsilon.prism.noise.LedgerSettings;
 import com.epsilon.prism.noise.LossWeightSettings;
+import com.epsilon.prism.noise.PointUnit;
 import com.epsilon.prism.noise.SlopeRefresh;
 import com.epsilon.prism.noise.UraSettings;
 import java.util.List;
@@ -17,7 +18,7 @@ import java.util.Set;
 
 /**
  * 持ち越しのキーのうち、運の精算の部分。帳簿の列と教師の意味を決める設定の値を持つ。この値が前の反復と違えば、前の反復の補正の R² は
- * 同じ量を測っていない。帳簿のモードが持たないキーは、組の集合なら空、ほかの値なら null にする。
+ * 同じ量を測っていない。帳簿のモードが持たないキーは、組の集合なら空、点の列の単位なら THOUSANDS、ほかの値なら null にする。
  *
  * @param columns 行に書く帳簿の列の並び（帳簿を書かないモードでは空）
  * @param mode 帳簿のモード（設定に書く名前）
@@ -31,6 +32,7 @@ import java.util.Set;
  * @param weighting 係数を当てはめるときの行の重み
  * @param ura 立直の和了で終わった局で、局末の値をどう作るか（設定に書く名前）
  * @param calibration 教師に掛ける帳簿の補正率の形（補正率を教師に使わないモードでは null）
+ * @param pointUnit 点の列の単位
  */
 public record LedgerMeaning(
     List<LedgerColumn> columns,
@@ -45,7 +47,8 @@ public record LedgerMeaning(
     LossWeightSettings.Weighting weighting,
     String ura,
     @Key(doc = "教師に掛ける帳簿の補正率の形（補正率を教師に使わなければ無い）", presence = Presence.ABSENT)
-        LedgerCalibrationKind calibration) {
+        LedgerCalibrationKind calibration,
+    @Key(doc = "点の列の単位", value = "THOUSANDS") PointUnit pointUnit) {
 
   public LedgerMeaning {
     columns = List.copyOf(columns);
@@ -54,6 +57,7 @@ public record LedgerMeaning(
     apply = LedgerRecording.groups(apply);
     Objects.requireNonNull(weighting, "weighting");
     Objects.requireNonNull(ura, "ura");
+    Objects.requireNonNull(pointUnit, "pointUnit");
   }
 
   /**
@@ -82,7 +86,8 @@ public record LedgerMeaning(
         caseName(ura),
         fitting != null && fitting.calibration() instanceof LedgerCalibration.Apply scale
             ? scale.kind()
-            : null);
+            : null,
+        recording == null ? PointUnit.THOUSANDS : recording.pointUnit());
   }
 
   /** 補正方法の切り替えをまたいで、同じ帳簿の列と教師で学んだかを照合する設定。 */
@@ -99,7 +104,8 @@ public record LedgerMeaning(
         cells,
         weighting,
         ura,
-        null);
+        null,
+        pointUnit);
   }
 
   /**
@@ -123,7 +129,8 @@ public record LedgerMeaning(
             new Item("cells", previous.cells, cells),
             new Item("weighting", previous.weighting, weighting),
             new Item("ura", previous.ura, ura),
-            new Item("calibration", previous.calibration, calibration));
+            new Item("calibration", previous.calibration, calibration),
+            new Item("pointUnit", previous.pointUnit, pointUnit));
     for (Item item : items)
       if (!Objects.equals(item.before(), item.after()))
         return "the ledger "

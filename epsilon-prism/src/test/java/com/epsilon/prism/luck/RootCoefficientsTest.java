@@ -12,6 +12,7 @@ import com.epsilon.prism.core.DecisionClass;
 import com.epsilon.prism.noise.LedgerCells;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.epsilon.prism.noise.LossWeightSettings;
+import com.epsilon.prism.noise.PointUnit;
 import com.epsilon.prism.noise.RootCoefficients;
 import com.epsilon.prism.noise.SlopeRefresh;
 import com.epsilon.prism.rows.Row;
@@ -238,7 +239,8 @@ public class RootCoefficientsTest {
             LedgerCells.CLASS,
             LossWeightSettings.Weighting.UNIFORM,
             "REALIZED",
-            null);
+            null,
+            PointUnit.THOUSANDS);
     RootTraining.State state = null;
     for (int cohort = 1; cohort <= 4; cohort++) {
       var fit = new RootTraining(cohort, variant, meaning, settings, state, null, null);

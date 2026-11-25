@@ -14,6 +14,7 @@ import com.epsilon.mahjong.shape.HandShape;
 import com.epsilon.mahjong.shape.ShapeAnalyzer;
 import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.PointUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -27,7 +28,8 @@ final class LedgerGames {
   private LedgerGames() {}
 
   /** 古典の 5 組を全て計算し、点数を 32 千点で、方策の s を 8 で切る帳簿（同梱の設定の既定値と同じ）。 */
-  static final LedgerRecording RECORDING = new LedgerRecording(LedgerGroup.computed(), 32, 8);
+  static final LedgerRecording RECORDING =
+      new LedgerRecording(LedgerGroup.computed(), 32, 8, PointUnit.THOUSANDS);
 
   /**
    * 帳簿のテストの仮の受け取り先（席と帳簿だけを持つ）。

@@ -7,6 +7,7 @@ import com.epsilon.agent.play.CrnScheme;
 import com.epsilon.prism.luck.LedgerColumn;
 import com.epsilon.prism.luck.LedgerRecording;
 import com.epsilon.prism.noise.LedgerGroup;
+import com.epsilon.prism.noise.PointUnit;
 import com.epsilon.prism.rows.Row;
 import com.epsilon.prism.rows.RowCodec;
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ public class LedgerComputeCollectionTest {
             Set.of(LedgerGroup.POLICY),
             EnumSet.of(LedgerGroup.POINTS, LedgerGroup.URA, LedgerGroup.POLICY));
     for (Set<LedgerGroup> compute : subsets) {
-      List<Row> part = collect(new LedgerRecording(compute, 32, 8));
+      List<Row> part = collect(new LedgerRecording(compute, 32, 8, PointUnit.THOUSANDS));
       Assert.assertEquals(
           projected(part, compute, false), projected(full, compute, true), compute.toString());
     }

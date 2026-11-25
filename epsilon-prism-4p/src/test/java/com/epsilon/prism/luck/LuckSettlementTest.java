@@ -8,6 +8,7 @@ import com.epsilon.prism.noise.LedgerCalibrationKind;
 import com.epsilon.prism.noise.LedgerCalibrationSource;
 import com.epsilon.prism.noise.LedgerGroup;
 import com.epsilon.prism.noise.LedgerSettings;
+import com.epsilon.prism.noise.PointUnit;
 import com.epsilon.prism.settings.PrismSettings;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -59,7 +60,9 @@ public class LuckSettlementTest {
     Assert.assertTrue(off.meaning().columns().isEmpty());
 
     LuckSettlement record = settle("noise.ledger.mode=RECORD", NO_GAIN);
-    Assert.assertEquals(record.recording(), new LedgerRecording(LedgerGroup.computed(), 32, 8));
+    Assert.assertEquals(
+        record.recording(),
+        new LedgerRecording(LedgerGroup.computed(), 32, 8, PointUnit.THOUSANDS));
     Assert.assertEquals(record.width(), F);
     Assert.assertEquals(record.width(), LedgerCatalog.of(Variant.TENHOU_4P).width());
     Assert.assertNull(record.tap(2, index -> true));
@@ -132,7 +135,8 @@ public class LuckSettlementTest {
             "noise.ledger.ridge=0.5",
             "noise.ledger.minRowsPerColumn=10");
     Set<LedgerGroup> compute = EnumSet.of(LedgerGroup.POINTS, LedgerGroup.POLICY);
-    Assert.assertEquals(luck.recording(), new LedgerRecording(compute, 4, 0.5));
+    Assert.assertEquals(
+        luck.recording(), new LedgerRecording(compute, 4, 0.5, PointUnit.THOUSANDS));
     Assert.assertEquals(luck.width(), F);
     var rows = LedgerFitTest.rows(3000, 0, LedgerFitTest.ones(), LedgerFitTest.planted(), 0.3, 52);
     LedgerOutcome outcome = luck.learn(1, tapped(luck, rows), List.of(), rows.size());
@@ -206,7 +210,8 @@ public class LuckSettlementTest {
             "noise.ledger.biasZ=5");
     Assert.assertEquals(
         LuckSettlement.of(accepted.noise(), accepted.run().variant()).recording(),
-        new LedgerRecording(EnumSet.of(LedgerGroup.DORA, LedgerGroup.URA), 64, 2));
+        new LedgerRecording(
+            EnumSet.of(LedgerGroup.DORA, LedgerGroup.URA), 64, 2, PointUnit.THOUSANDS));
   }
 
   /**

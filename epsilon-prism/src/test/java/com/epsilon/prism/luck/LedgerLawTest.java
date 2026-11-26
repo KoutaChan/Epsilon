@@ -64,7 +64,9 @@ public class LedgerLawTest {
       {Variant.TENHOU_4P, LedgerGames.RECORDING},
       {Variant.TENHOU_3P, LedgerGames.RECORDING},
       {Variant.TENHOU_4P, LedgerGames.PHI_RECORDING},
-      {Variant.TENHOU_3P, LedgerGames.PHI_RECORDING}
+      {Variant.TENHOU_3P, LedgerGames.PHI_RECORDING},
+      {Variant.TENHOU_4P, LedgerGames.PHI_DRAWS_RECORDING},
+      {Variant.TENHOU_3P, LedgerGames.PHI_DRAWS_RECORDING}
     };
   }
 

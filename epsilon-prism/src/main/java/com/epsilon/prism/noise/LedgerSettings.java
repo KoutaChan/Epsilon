@@ -85,7 +85,8 @@ public sealed interface LedgerSettings {
           Set<LedgerGroup> compute,
       @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false)
           double pointClip,
-      @Key(doc = "点の列の単位（千点か、局の結果の Φ の差か）", value = "THOUSANDS") PointUnit pointUnit,
+      @Key(doc = "点の列の単位（千点か、局の結果の Φ の差か。Φ の求め方と、Φ で付ける列の選び方を含む）", value = "THOUSANDS")
+          PointUnit pointUnit,
       @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false)
           double policyClip,
       @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000)
@@ -117,7 +118,8 @@ public sealed interface LedgerSettings {
           Set<LedgerGroup> compute,
       @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false)
           double pointClip,
-      @Key(doc = "点の列の単位（千点か、局の結果の Φ の差か）", value = "THOUSANDS") PointUnit pointUnit,
+      @Key(doc = "点の列の単位（千点か、局の結果の Φ の差か。Φ の求め方と、Φ で付ける列の選び方を含む）", value = "THOUSANDS")
+          PointUnit pointUnit,
       @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false)
           double policyClip,
       @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000)
@@ -179,7 +181,8 @@ public sealed interface LedgerSettings {
           Set<LedgerGroup> compute,
       @Key(doc = "点の列を切る幅（千点）", value = "32") @Range(min = 0, minInclusive = false)
           double pointClip,
-      @Key(doc = "点の列の単位（千点か、局の結果の Φ の差か）", value = "THOUSANDS") PointUnit pointUnit,
+      @Key(doc = "点の列の単位（千点か、局の結果の Φ の差か。Φ の求め方と、Φ で付ける列の選び方を含む）", value = "THOUSANDS")
+          PointUnit pointUnit,
       @Key(doc = "方策の列で手の値を切る幅（効用）", value = "8") @Range(min = 0, minInclusive = false)
           double policyClip,
       @Key(doc = "傾きの列で点をずらす幅（100 点の倍数）", value = "1000") @Range(min = 100, max = 8000)

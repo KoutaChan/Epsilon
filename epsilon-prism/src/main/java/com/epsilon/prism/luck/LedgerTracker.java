@@ -29,7 +29,7 @@ import java.util.List;
 /**
  * 1 本の経路について、運の精算の帳簿を計算する。増分の式と平均 0 の条件はパッケージの説明に書く。受け取り先（{@link LedgerTarget}）の
  * 帳簿に、判断の時点ごとに前の判断の時点からのツモと槓ドラの表示の増分を、強制でない判断ごとに方策の偶然の増分を、局末に裏ドラの増分を足す。
- * 点の払いの式も持つ。点の列の出来事の値は、収集の設定の単位に従って、動く点（千点）か局の結果の Φ の差（{@link PhiStakes}）にする。
+ * 点の払いの式も持つ。点の列の出来事の値は、収集の設定の単位に従って、列ごとに、動く点（千点）か局の結果の Φ の差（{@link PhiStakes}）にする。
  * 計算するのは収集の設定（{@link LedgerRecording}）が選んだ組の列だけで、ほかの列は 0 のまま。どの列の値も、ほかの組を
  * 計算するかどうかに依らない。
  *
@@ -99,6 +99,9 @@ public final class LedgerTracker {
   /** 点の列を Φ の単位で付けるときの値の出どころ。千点で付けるときは null。写しと分岐は親と同じ物を持つ。 */
   private final PhiStakes stakes;
 
+  /** 放銃と栄和の列も Φ の単位で付けるか。 */
+  private final boolean ronStakes;
+
   /** 計測した時間と呼び出しの数（{@link #flush} でまとめて足す）。 */
   private long nanos, calls;
 
@@ -108,21 +111,21 @@ public final class LedgerTracker {
    * 主経路の計算器を作る。局の始めから読む。
    *
    * @param recording 計算する組と切る幅と点の列の単位
-   * @param stakes 点の列の単位が Φ のときの値の出どころ。千点のときは null
+   * @param stakes 点の列のどれかを Φ の単位で付けるときの値の出どころ。全ての列が千点のときは null
    * @throws IllegalArgumentException 値の出どころの有無が点の列の単位と合わないとき
    */
   public LedgerTracker(LedgerRecording recording, PhiStakes stakes) {
-    if ((recording.pointUnit() == PointUnit.PHI) != (stakes != null))
+    PointUnit unit = recording.pointUnit();
+    if (unit.phiDraws() != (stakes != null))
       throw new IllegalArgumentException(
-          "Point unit "
-              + recording.pointUnit()
-              + (stakes == null ? " needs phi stakes" : " takes no phi stakes"));
+          "Point unit " + unit + (stakes == null ? " needs phi stakes" : " takes no phi stakes"));
     int bits = 0;
     for (LedgerGroup group : recording.compute()) bits |= 1 << group.ordinal();
     groups = bits;
     pointClip = recording.pointClip();
     policyClip = recording.policyClip();
     this.stakes = stakes;
+    ronStakes = unit.phiRons();
     seatTables = new SeatTable[MAX_SEATS];
     batch = new ChanceBatch();
   }
@@ -137,6 +140,7 @@ public final class LedgerTracker {
     pointClip = parent.pointClip;
     policyClip = parent.policyClip;
     stakes = parent.stakes;
+    ronStakes = parent.ronStakes;
     seatTables = parent.seatTables.clone();
     batch = new ChanceBatch(parent.batch);
   }
@@ -381,9 +385,10 @@ public final class LedgerTracker {
               ? table(full, ws, work, seat)
               : null;
     double[] values = work.values;
-    // 点の列を Φ の単位で付けるときの値。千点で付けるときは null
+    // 点の列を Φ の単位で付けるときの値。千点で付けるときは null。ronTable は、放銃と栄和の列に使う値
     PhiStakes.Table stake =
         points && stakes != null ? stakes.bind(start, history, riichiMask(view, count)) : null;
+    PhiStakes.Table ronTable = ronStakes ? stake : null;
     for (int seat = 0; seat < count; seat++) {
       if ((seats & (1 << seat)) == 0) continue;
       double[] row = delta[seat];
@@ -413,8 +418,8 @@ public final class LedgerTracker {
         if (ron != 0) {
           for (long bits = ron; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
-            if (stake != null) {
-              values[tile] = ronStake(stake, seen, count, tile, drawer, ~(1 << drawer), seat);
+            if (ronTable != null) {
+              values[tile] = ronStake(ronTable, seen, count, tile, drawer, ~(1 << drawer), seat);
               continue;
             }
             double loss = 0;
@@ -454,8 +459,8 @@ public final class LedgerTracker {
         if (gain != 0) {
           for (long bits = gain; bits != 0; bits &= bits - 1) {
             int tile = Long.numberOfTrailingZeros(bits);
-            if (stake != null) {
-              values[tile] = ronStake(stake, seen, count, tile, drawer, 1 << seat, seat);
+            if (ronTable != null) {
+              values[tile] = ronStake(ronTable, seen, count, tile, drawer, 1 << seat, seat);
               continue;
             }
             int gained =
@@ -476,9 +481,9 @@ public final class LedgerTracker {
           if (ron != 0) {
             for (long bits = ron; bits != 0; bits &= bits - 1) {
               int tile = Long.numberOfTrailingZeros(bits);
-              if (stake != null) {
+              if (ronTable != null) {
                 values[tile] =
-                    ronStake(stake, seen, count, tile, drawer, ~(1 << drawer | 1 << seat), seat);
+                    ronStake(ronTable, seen, count, tile, drawer, ~(1 << drawer | 1 << seat), seat);
                 continue;
               }
               double paid = 0;

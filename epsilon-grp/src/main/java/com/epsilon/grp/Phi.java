@@ -278,6 +278,16 @@ public final class Phi {
         Objects.requireNonNull(sizes, "sizes"));
   }
 
+  /**
+   * 終盤の数え上げをしない Φ を返す。終盤の数え上げの項目では、葉のネットワークだけの項目を返す（効用とキャッシュの大きさは同じで、
+   * キャッシュは空から始める）。ほかの項目では、この Φ をそのまま返す。
+   */
+  public Phi leaf() {
+    return kind == Kind.LATE
+        ? new Phi(Kind.NETWORK, variant, utility, model, null, null, 0, cacheSizes)
+        : this;
+  }
+
   public Kind kind() {
     return kind;
   }

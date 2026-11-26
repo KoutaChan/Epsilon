@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 public class LedgerComputeTest {
   private static final LedgerColumn[] COLUMNS = LedgerColumn.values();
 
-  /** 全ての組を計算する帳簿と、比べる帳簿（組の部分集合 7 つと、切る幅を変えた 2 つと、点の列の単位を Φ にした 1 つ）。 */
+  /** 全ての組を計算する帳簿と、比べる帳簿（組の部分集合 7 つと、切る幅を変えた 2 つと、点の列の単位を Φ にした 2 つ）。 */
   private static final List<LedgerRecording> RECORDINGS =
       List.of(
           LedgerGames.RECORDING,
@@ -44,10 +44,11 @@ public class LedgerComputeTest {
               PointUnit.THOUSANDS),
           new LedgerRecording(LedgerGroup.computed(), 2, 8, PointUnit.THOUSANDS),
           new LedgerRecording(LedgerGroup.computed(), 32, 0.25, PointUnit.THOUSANDS),
-          LedgerGames.PHI_RECORDING);
+          LedgerGames.PHI_RECORDING,
+          LedgerGames.PHI_DRAWS_RECORDING);
 
-  /** 点数の列を切る幅を変えた帳簿・方策の列で s を切る幅を変えた帳簿・点の列の単位を Φ にした帳簿の番号。 */
-  private static final int POINT_CLIP = 8, POLICY_CLIP = 9, POINT_UNIT = 10;
+  /** 点数の列を切る幅を変えた帳簿・方策の列で s を切る幅を変えた帳簿・点の列の単位を Φ にした帳簿・ツモの和了の 2 列だけを Φ にした帳簿の番号。 */
+  private static final int POINT_CLIP = 8, POLICY_CLIP = 9, POINT_UNIT = 10, POINT_DRAWS = 11;
 
   @DataProvider
   public Object[][] variants() {
@@ -62,13 +63,15 @@ public class LedgerComputeTest {
   @Test(dataProvider = "variants", timeOut = 600_000)
   public void eachGroupIsComputedAsInTheFullLedger(Variant variant) {
     long[][] differences = new long[RECORDINGS.size()][COLUMNS.length];
-    long[] nonzero = new long[COLUMNS.length];
-    LedgerGames.walk(variant, 51L, LedgerGames.PLAIN, 300, new Side(variant, differences, nonzero));
-    LedgerGames.walk(variant, 52L, LedgerGames.KANS, 200, new Side(variant, differences, nonzero));
+    long[] nonzero = new long[COLUMNS.length], drawsVsPhi = new long[COLUMNS.length];
+    LedgerGames.walk(
+        variant, 51L, LedgerGames.PLAIN, 300, new Side(variant, differences, nonzero, drawsVsPhi));
+    LedgerGames.walk(
+        variant, 52L, LedgerGames.KANS, 200, new Side(variant, differences, nonzero, drawsVsPhi));
     for (int k = 1; k < RECORDINGS.size(); k++) {
       LedgerRecording recording = RECORDINGS.get(k);
       LedgerGroup changing =
-          k == POINT_CLIP || k == POINT_UNIT
+          k == POINT_CLIP || k == POINT_UNIT || k == POINT_DRAWS
               ? LedgerGroup.POINTS
               : k == POLICY_CLIP ? LedgerGroup.POLICY : null;
       long changed = 0;
@@ -80,6 +83,16 @@ public class LedgerComputeTest {
       if (changing != null)
         Assert.assertTrue(
             changed > 0, variant + " " + recording + " changed no " + changing + " column");
+    }
+    // ツモの和了の 2 列だけを Φ にした帳簿は、その 2 列が全ての列を Φ にした帳簿と同じで、ほかの点の列は千点の帳簿と同じ
+    for (LedgerColumn column : COLUMNS) {
+      if (column.group() != LedgerGroup.POINTS) continue;
+      boolean draw = column == LedgerColumn.OWN_TSUMO || column == LedgerColumn.OPP_TSUMO;
+      long[] same = draw ? drawsVsPhi : differences[POINT_DRAWS];
+      Assert.assertEquals(same[column.ordinal()], 0L, variant + " " + column.reportName());
+      if (draw)
+        Assert.assertTrue(
+            differences[POINT_DRAWS][column.ordinal()] > 0, variant + " " + column.reportName());
     }
     for (LedgerColumn column :
         new LedgerColumn[] {
@@ -101,13 +114,18 @@ public class LedgerComputeTest {
     private final Variant variant;
     private final long[][] differences;
     private final long[] nonzero;
+
+    /** 列ごとに、ツモの和了の 2 列だけを Φ にした帳簿と、全ての列を Φ にした帳簿の値が違った回数。 */
+    private final long[] drawsVsPhi;
+
     private final LedgerTracker[] trackers = new LedgerTracker[RECORDINGS.size()];
     private final List<List<LedgerGames.Seat>> seats = new ArrayList<>();
 
-    Side(Variant variant, long[][] differences, long[] nonzero) {
+    Side(Variant variant, long[][] differences, long[] nonzero, long[] drawsVsPhi) {
       this.variant = variant;
       this.differences = differences;
       this.nonzero = nonzero;
+      this.drawsVsPhi = drawsVsPhi;
       start();
     }
 
@@ -163,6 +181,11 @@ public class LedgerComputeTest {
       for (int seat = 0; seat < reference.size(); seat++) {
         double[] expected = reference.get(seat).ledger();
         for (int f = 0; f < COLUMNS.length; f++) if (expected[f] != 0) nonzero[f]++;
+        double[] phi = seats.get(POINT_UNIT).get(seat).ledger(),
+            draws = seats.get(POINT_DRAWS).get(seat).ledger();
+        for (int f = 0; f < COLUMNS.length; f++)
+          if (Double.doubleToRawLongBits(phi[f]) != Double.doubleToRawLongBits(draws[f]))
+            drawsVsPhi[f]++;
         for (int k = 1; k < trackers.length; k++) {
           Set<LedgerGroup> compute = RECORDINGS.get(k).compute();
           double[] actual = seats.get(k).get(seat).ledger();

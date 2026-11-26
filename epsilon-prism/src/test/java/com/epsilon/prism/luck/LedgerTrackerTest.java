@@ -26,7 +26,6 @@ import com.epsilon.mahjong.tile.Tiles;
 import com.epsilon.mahjong.util.SeedMixer;
 import com.epsilon.prism.core.CrnSeeds;
 import com.epsilon.prism.noise.LedgerGroup;
-import com.epsilon.prism.noise.PointUnit;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -70,7 +69,9 @@ public class LedgerTrackerTest {
       {Variant.TENHOU_4P, LedgerGames.RECORDING},
       {Variant.TENHOU_3P, LedgerGames.RECORDING},
       {Variant.TENHOU_4P, LedgerGames.PHI_RECORDING},
-      {Variant.TENHOU_3P, LedgerGames.PHI_RECORDING}
+      {Variant.TENHOU_3P, LedgerGames.PHI_RECORDING},
+      {Variant.TENHOU_4P, LedgerGames.PHI_DRAWS_RECORDING},
+      {Variant.TENHOU_3P, LedgerGames.PHI_DRAWS_RECORDING}
     };
   }
 
@@ -172,7 +173,7 @@ public class LedgerTrackerTest {
   public void everyTermIsCentredOverManyHands(Variant variant, LedgerRecording recording) {
     int columns = LedgerColumn.COUNT, seats = variant.seats(), hands = 20_000;
     PhiStakes stakes = LedgerGames.stakes(recording, variant);
-    boolean phi = recording.pointUnit() == PointUnit.PHI;
+    boolean phi = recording.pointUnit().phiDraws();
     double[][] sum = new double[seats][columns], square = new double[seats][columns];
     int[][] nonzero = new int[seats][columns];
     for (long seed = 1; seed <= hands; seed++) {

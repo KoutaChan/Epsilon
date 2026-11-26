@@ -47,6 +47,10 @@ public class LatePhiTest {
     Assert.assertSame(late.finalRound(), round);
     Assert.assertNull(leaf.finalRound());
     Assert.assertFalse(late.needsHistory());
+    Phi own = late.leaf();
+    Assert.assertEquals(own.kind(), Phi.Kind.NETWORK);
+    Assert.assertSame(own.model(), round.leaf());
+    Assert.assertSame(leaf.leaf(), leaf);
     int seats = variant.seats();
     double[] values = new double[seats];
     double[] expected = new double[seats];
@@ -58,6 +62,9 @@ public class LatePhiTest {
       assertBits(values, expected, state);
       state.copyInto(table);
       late.values(table, values);
+      assertBits(values, expected, state);
+      own.values(state, values);
+      leaf.values(state, expected);
       assertBits(values, expected, state);
       if (FinalRound.covers(state)) {
         covered++;

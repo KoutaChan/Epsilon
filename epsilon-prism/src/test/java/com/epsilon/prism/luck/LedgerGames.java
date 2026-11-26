@@ -38,12 +38,16 @@ final class LedgerGames {
   static final LedgerRecording PHI_RECORDING =
       new LedgerRecording(LedgerGroup.computed(), 32, 8, PointUnit.PHI);
 
+  /** {@link #RECORDING} のツモの和了の 2 列だけを Φ の単位にした帳簿。 */
+  static final LedgerRecording PHI_DRAWS_RECORDING =
+      new LedgerRecording(LedgerGroup.computed(), 32, 8, PointUnit.PHI_DRAWS);
+
   /**
    * 帳簿の点の列の単位に合う値の出どころ。千点なら null。Φ の単位なら、モデルを持たない Φ で作る（点数のなめらかな関数。その係数を
    * 持たないルールでは、点数の順位）。
    */
   static PhiStakes stakes(LedgerRecording recording, Variant variant) {
-    if (recording.pointUnit() != PointUnit.PHI) return null;
+    if (!recording.pointUnit().phiDraws()) return null;
     return new PhiStakes(
         ScoreSmooth.sigmaPerHand(variant).isPresent()
             ? Phi.scoreSmooth(variant, RankUtility.TENHOU)
